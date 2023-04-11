@@ -1,9 +1,9 @@
 [fetch]
-	prune = true
+  prune = true
 [push]
-	default = current
+  default = current
 [branch]
-	autosetupmerge = always
+  autosetupmerge = always
   autosetuprebase = always
 [alias]
   co = checkout
