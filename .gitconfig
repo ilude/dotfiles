@@ -25,3 +25,6 @@
   lf = show --pretty=\"format:\" --name-only
   wtf = reflog
   rs = remote show origin
+[user]
+	name = Mike Glenn
+	email = 219478+ilude@users.noreply.github.com
