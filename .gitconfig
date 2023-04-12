@@ -13,6 +13,7 @@
   s = status -s
   br = branch
   unstage = reset .
+  rh = reset --hard
   db = !git branch -D $1 && git push --delete origin $1
   dlb = !git branch -D $1
   drb = !git remote prune origin && git push --delete origin  $1
@@ -28,3 +29,5 @@
 [user]
 	name = Mike Glenn
 	email = 219478+ilude@users.noreply.github.com
+[credential]
+	helper = "!f() { /home/anvil/.vscode-server/bin/e344f1f539a80912a0e9357cec841f36ce97a4e2/node /tmp/vscode-remote-containers-9965557f-96cf-4275-a241-e9df6624be5b.js git-credential-helper $*; }; f"
