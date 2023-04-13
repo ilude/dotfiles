@@ -1,5 +1,10 @@
 autoload -U compinit && compinit
 
+HISTFILE=/mnt/.devcontainer/shell-history
+HISTSIZE=10000
+SAVEHIST=10000
+setopt share_history
+
 #PATH=$PATH:/usr/local/bin
 
 alias kc='kubectl'
