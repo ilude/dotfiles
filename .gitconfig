@@ -1,11 +1,10 @@
 [fetch]
   prune = true
 [push]
-	autoSetupRemote = true
-	default = current
+  autoSetupRemote = true
+  default = current
 [branch]
-	autoSetupRebase = always
-
+  autoSetupRebase = always
 [alias]
   co = checkout
   cb = checkout -b
