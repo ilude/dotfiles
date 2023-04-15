@@ -1,3 +1,8 @@
+[[ $commands[kubectl] ]] && source <(kubectl completion zsh)
+[[ $commands[helm] ]] && source <(helm completion zsh)
+plugins=(git kubectl zsh-completions zsh-syntax-highlighting zsh-autosuggestions)
+
+autoload -U +X bashcompinit && bashcompinit
 autoload -U compinit && compinit
 
 if [ -f /mnt/.devcontainer/shell-history ]; then
@@ -10,19 +15,13 @@ setopt share_history
 
 #PATH=$PATH:/usr/local/bin
 
-alias kc='kubectl'
 alias l='ls --color -lha --group-directories-first'
-
-source <(kubectl completion zsh )
-source <(helm completion zsh)
-#complete -F __start_kubectl k
+alias kc='kubectl'
+complete -F __start_kubectl kc
 
 # make autocompletion
 # https://unix.stackexchange.com/a/499322/3098
-
 zstyle ':completion:*:*:make:*' tag-order 'targets'
-
-plugins=(kubectl zsh-syntax-highlighting zsh-autosuggestions)
 
 # https://stackoverflow.com/a/65045491
 _git_branch() {
