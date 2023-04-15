@@ -1,10 +1,11 @@
 [fetch]
   prune = true
 [push]
-  default = current
+	autoSetupRemote = true
+	default = current
 [branch]
-  autosetupmerge = always
-  autosetuprebase = always
+	autoSetupRebase = always
+
 [alias]
   co = checkout
   cb = checkout -b
@@ -29,3 +30,5 @@
 [user]
 	name = Mike Glenn
 	email = 219478+ilude@users.noreply.github.com
+
+
