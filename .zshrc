@@ -25,8 +25,6 @@ complete -F __start_kubectl kc
 
 zstyle ':completion:*:*:make:*' tag-order 'targets'
 
-
-
 # https://stackoverflow.com/a/65045491
 _git_branch() {
   local ref=$(git symbolic-ref --short HEAD 2> /dev/null)
