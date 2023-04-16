@@ -24,6 +24,10 @@ if type kubectl &> /dev/null; then
   plugins( kubectl )
   source <(kubectl completion zsh )
   complete -F __start_kubectl kc
+
+  if [ -f ~/.kube/config ]; then
+    echo "Found existing k8s cluster configuration..."
+  fi
 fi
 
 if type helm &> /dev/null; then
@@ -55,6 +59,4 @@ if [ -f ~/.env ]; then
   source ~/.env
 fi
 
-if [ -f ~/.kube/config ]; then
-  echo "Found existing k8s cluster configuration..."
-fi
+
