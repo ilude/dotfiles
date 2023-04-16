@@ -12,6 +12,9 @@ SAVEHIST=10000
 setopt SHARE_HISTORY
 setopt EXTENDED_HISTORY
 
+setopt GLOB_COMPLETE
+#zstyle ':completion*:default' menu 'select=0'
+
 alias es='env | sort'
 alias l='ls --color -lha --group-directories-first'
 alias kc='kubectl'
