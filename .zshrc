@@ -1,4 +1,4 @@
-plugins=(git kubectl zsh-vcs zsh-shift-select zsh-syntax-highlighting zsh-autosuggestions)
+plugins=(git zsh-vcs zsh-shift-select zsh-syntax-highlighting zsh-autosuggestions)
 
 autoload -Uz zsh-completions bashcompinit && bashcompinit
 autoload -Uz compinit && compinit
@@ -17,16 +17,22 @@ setopt GLOB_COMPLETE
 
 alias es='env | sort'
 alias l='ls --color -lha --group-directories-first'
-alias kc='kubectl'
 alias sz='source ~/.zshrc'
 
-source <(kubectl completion zsh )
-source <(helm completion zsh)
-complete -F __start_kubectl kc
+if type kubectl &> /dev/null; then
+  alias kc='kubectl'
+  plugins( kubectl )
+  source <(kubectl completion zsh )
+  complete -F __start_kubectl kc
+fi
+
+if type helm &> /dev/null; then
+  plugins( helm )
+  source <(helm completion zsh )
+fi
 
 # make autocompletion
 # https://unix.stackexchange.com/a/499322/3098
-
 zstyle ':completion:*:*:make:*' tag-order 'targets'
 
 bindkey  "^[[H"   beginning-of-line
