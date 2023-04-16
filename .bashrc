@@ -1,1 +1,1 @@
-exec /bin/zsh -1
+#exec /bin/zsh -1

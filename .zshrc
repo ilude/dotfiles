@@ -21,7 +21,7 @@ alias sz='source ~/.zshrc'
 
 if type kubectl &> /dev/null; then
   alias kc='kubectl'
-  plugins( kubectl )
+  #plugins( kubectl )
   source <(kubectl completion zsh )
   complete -F __start_kubectl kc
 
@@ -31,7 +31,7 @@ if type kubectl &> /dev/null; then
 fi
 
 if type helm &> /dev/null; then
-  plugins( helm )
+  #plugins( helm )
   source <(helm completion zsh )
 fi
 
