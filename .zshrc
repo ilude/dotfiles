@@ -46,13 +46,13 @@ bindkey  "^[[F"   end-of-line
 _git_branch() {
   local ref=$(git symbolic-ref --short HEAD 2> /dev/null)
   if [ -n "${ref}" ]; then
-    echo "%F{yellow}[%f%F{red}${ref}%f%F{yellow}]%f"
+    echo "%F{yellow}[%f%F{red}${ref}%f%F{yellow}]"
   else
     echo ""
   fi
 }
 setopt PROMPT_SUBST
-PS1='%F{green}%M%f:%F{cyan}%~$(_git_branch)$ '
+PS1='%F{green}%M%f:%F{cyan}%~$(_git_branch)%f$ '
 
 if [ -f ~/.env ]; then
   #echo "sourcing ~/.env..."
