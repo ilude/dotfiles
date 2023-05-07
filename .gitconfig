@@ -33,3 +33,7 @@
 	skippedCherryPicks = false
 [pull]
 	rebase = true
+[safe]
+	directory = /apps/onramp
+	directory = /apps/stable-diff-production
+
