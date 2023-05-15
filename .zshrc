@@ -18,6 +18,7 @@ setopt GLOB_COMPLETE
 alias es='env | sort'
 alias l='ls --color -lha --group-directories-first'
 alias sz='source ~/.zshrc'
+alias dps='docker ps --format="table {{.Names}}\t{{.ID}}\t{{.Image}}\t{{.RunningFor}}\t{{.State}}\t{{.Status}}"'
 
 if type kubectl &> /dev/null; then
   alias kc='kubectl'
