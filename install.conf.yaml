@@ -5,6 +5,10 @@
 
 - clean: ['~']
 
+- shell:
+  - sudo apt -y install make zsh zsh-autosuggestions zsh-syntax-highlighting qemu-guest-agent
+  - chsh -s $(which zsh)
+
 - link:
     ~/.zshrc: .zshrc
     ~/.gitconfig: .gitconfig
