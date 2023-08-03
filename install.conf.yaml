@@ -7,7 +7,7 @@
 
 - shell:
   - sudo apt -y install make zsh zsh-autosuggestions zsh-syntax-highlighting qemu-guest-agent
-  - chsh -s $(which zsh)
+  - sudo chsh -s $(which zsh) $(whoami)
 
 - link:
     ~/.zshrc: .zshrc
