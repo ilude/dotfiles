@@ -6,8 +6,8 @@
 - clean: ['~']
 
 - shell:
-  - sudo apt -y install make zsh zsh-autosuggestions zsh-syntax-highlighting qemu-guest-agent
-  - sudo chsh -s $(which zsh) $(whoami)
+  - chmod +x setup_zsh.sh
+  - ./setup_zsh.sh
 
 - link:
     ~/.zshrc: .zshrc
