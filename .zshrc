@@ -4,13 +4,21 @@ autoload -Uz zsh-completions bashcompinit && bashcompinit
 autoload -Uz compinit && compinit
 
 if [ -f /mnt/.devcontainer/shell-history ]; then
-    HISTFILE=/mnt/.devcontainer/shell-history
+  HISTFILE=/mnt/.devcontainer/shell-history
+else
+  HISTFILE=~/.zsh_history
 fi
 
-HISTSIZE=10000
-SAVEHIST=10000
-setopt SHARE_HISTORY
+# https://zsh-manual.netlify.app/options#1624-history
+export HISTSIZE=100000
+export SAVEHIST=100000
+export HISTTIMEFORMAT="[%F %T] "
+setopt APPEND_HISTORY
 setopt EXTENDED_HISTORY
+setopt HIST_FIND_NO_DUPS
+setopt HIST_IGNORE_DUPS 
+setopt HIST_REDUCE_BLANKS
+setopt SHARE_HISTORY
 
 setopt GLOB_COMPLETE
 #zstyle ':completion*:default' menu 'select=0'
@@ -19,6 +27,7 @@ alias es='env | sort'
 alias l='ls --color -lha --group-directories-first'
 alias sz='source ~/.zshrc'
 alias dps='tput rmam; docker ps --format="table {{.Names}}\t{{.ID}}\t{{.Image}}\t{{.RunningFor}}\t{{.State}}\t{{.Status}}" | (sed -u 1q; sort); tput smam'
+alias history="history 1"
 
 if type kubectl &> /dev/null; then
   alias kc='kubectl'
