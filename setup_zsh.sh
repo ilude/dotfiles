@@ -2,11 +2,9 @@
 
 OS=$(uname -s | tr A-Z a-z)
 PACKAGES="make zsh zsh-autosuggestions zsh-syntax-highlighting"
-echo $OS
 case $OS in
   linux)
     source /etc/os-release
-    echo $ID
     case $ID in
       debian|ubuntu|mint)
         if [[ "$EUID" -ne 0 ]]; then
