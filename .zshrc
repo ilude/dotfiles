@@ -28,6 +28,7 @@ alias l='ls --color -lha --group-directories-first'
 alias sz='source ~/.zshrc'
 alias dps='tput rmam; docker ps --format="table {{.Names}}\t{{.ID}}\t{{.Image}}\t{{.RunningFor}}\t{{.State}}\t{{.Status}}" | (sed -u 1q; sort); tput smam'
 alias history="history 1"
+export HOSTNAME=$(hostname)
 
 if type kubectl &> /dev/null; then
   alias kc='kubectl'
