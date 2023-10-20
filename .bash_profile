@@ -1,1 +1,1 @@
-echo "in ~/.bash_profile"
+#echo "in ~/.bash_profile"
