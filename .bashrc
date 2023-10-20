@@ -10,12 +10,10 @@ esac
 # which for some crazy reason vscode will start as a bash shell
 # even if you set it to use zsh in your settings
 # if [[ "$TERM_PROGRAM" == "vscode" && "$SHLVL" -le "1" && $(which zsh) ]]; then
-echo "TERM_PROGRAM: $TERM_PROGRAM"
-echo "SHLVL: $SHLVL"
+#echo "TERM_PROGRAM: $TERM_PROGRAM"
+#echo "SHLVL: $SHLVL"
 
 if [[ "$TERM_PROGRAM" == "vscode" && $(which zsh) ]]; then
-  # echo "TERM_PROGRAM: $TERM_PROGRAM"
-  # echo "SHLVL: $SHLVL"
   exec zsh -l
 fi
-echo "in ~/.bashrc"
+#echo "in ~/.bashrc"
