@@ -18,3 +18,4 @@ if [[ "$TERM_PROGRAM" == "vscode" && $(which zsh) ]]; then
   # echo "SHLVL: $SHLVL"
   exec zsh -l
 fi
+echo "in ~/.bashrc"
