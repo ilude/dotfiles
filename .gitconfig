@@ -37,3 +37,7 @@
 	directory = /apps/onramp
 	directory = /apps/stable-diff-production
 
+[credential]
+	helper = "!f() { /home/vscode/.vscode-server/bin/f1b07bd25dfad64b0167beb15359ae573aecd2cc/node /tmp/vscode-remote-containers-964cfd4a-433d-488a-8b33-9089eedac01c.js git-credential-helper $*; }; f"
+[init]
+	defaultBranch = main
