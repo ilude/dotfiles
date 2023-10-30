@@ -14,3 +14,4 @@
     ~/.gitconfig: .gitconfig
     ~/.bashrc: .bashrc
     ~/.bash_profile: .bash_profile
+    ~/.dircolors: .dircolors
