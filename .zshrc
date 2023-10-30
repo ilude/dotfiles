@@ -24,11 +24,21 @@ setopt GLOB_COMPLETE
 #zstyle ':completion*:default' menu 'select=0'
 
 alias es='env | sort'
-alias l='ls --color -lha --group-directories-first'
+alias l='ls --color=auto -lhA --group-directories-first'
 alias sz='source ~/.zshrc'
 alias dps='tput rmam; docker ps --format="table {{.Names}}\t{{.ID}}\t{{.Image}}\t{{.RunningFor}}\t{{.State}}\t{{.Status}}" | (sed -u 1q; sort); tput smam'
 alias history="history 1"
 export HOSTNAME=$(hostname)
+
+# https://superuser.com/a/448294/29344
+export LC_COLLATE="C"
+
+# https://unix.stackexchange.com/a/196558/3098
+if [[ -f ~/.dircolors ]] ; then
+    eval $(dircolors -b ~/.dircolors)     
+elif [[ -f /etc/DIR_COLORS ]] ; then
+    eval $(dircolors -b /etc/DIR_COLORS)
+fi
 
 if type kubectl &> /dev/null; then
   alias kc='kubectl'
