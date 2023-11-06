@@ -8,24 +8,26 @@ case $OS in
     case $ID in
       debian|ubuntu|mint)
         if [[ "$EUID" -ne 0 ]]; then
-          sudo apt -y install $PACKAGES
+          sudo apt update
+          sudo apt -y install $PACKAGES python3-dev python3-pip python3-setuptools
         else
-          apt -y install $PACKAGES
+          apt update
+          apt -y install $PACKAGES python3-dev python3-pip python3-setuptools
         fi
         ;;
       alpine)
         if [[ "$EUID" -ne 0 ]]; then
-          sudo apk add $PACKAGES shadow
+          sudo apk add --update $PACKAGES shadow py3-pip py3-setuptools
           echo "auth        sufficient  pam_rootok.so" | sudo tee /etc/pam.d/chsh
         else
-          apk add $PACKAGES
+          apk add --update $PACKAGES
         fi
         ;;
       fedora|rhel|centos)
         if [[ "$EUID" -ne 0 ]]; then
-          sudo yum install $PACKAGES
+          sudo yum install $PACKAGES python3-dev python3-pip python3-setuptools
         else
-          yum install $PACKAGES
+          yum install $PACKAGES python3-dev python3-pip python3-setuptools
         fi
         ;;
       *)
