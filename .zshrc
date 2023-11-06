@@ -13,6 +13,7 @@ fi
 export HISTSIZE=100000
 export SAVEHIST=100000
 export HISTTIMEFORMAT="[%F %T] "
+export PATH="$HOME/.local/bin:$PATH"
 setopt APPEND_HISTORY
 setopt EXTENDED_HISTORY
 setopt HIST_FIND_NO_DUPS
@@ -81,6 +82,7 @@ if [ -f ~/.env ]; then
 fi
 
 # https://github.com/nvbn/thefuck#installation
-fuck --yeah
+eval $(thefuck --alias fu)
+#fu -r
 
 #echo "in ~/.zshrc"
