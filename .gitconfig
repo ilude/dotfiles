@@ -38,7 +38,7 @@
 	directory = /apps/stable-diff-production
 
 [credential]
-	helper = "!f() { /home/vscode/.vscode-server/bin/f1b07bd25dfad64b0167beb15359ae573aecd2cc/node /tmp/vscode-remote-containers-66c57923-b015-4ee1-ae96-386bbf68120b.js git-credential-helper $*; }; f"
+	helper = "!f() { /home/vscode/.vscode-server/bin/f1b07bd25dfad64b0167beb15359ae573aecd2cc/node /tmp/vscode-remote-containers-5a09e548-1360-4114-bc36-2b099a2dbc83.js git-credential-helper $*; }; f"
 [init]
 	defaultBranch = main
 [submodule]

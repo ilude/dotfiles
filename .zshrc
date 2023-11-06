@@ -80,4 +80,7 @@ if [ -f ~/.env ]; then
   source ~/.env
 fi
 
+# https://github.com/nvbn/thefuck#installation
+fuck --yeah
+
 #echo "in ~/.zshrc"
