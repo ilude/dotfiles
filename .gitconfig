@@ -1,10 +1,18 @@
+[advice]
+	skippedCherryPicks = false
+[branch]
+  autoSetupRebase = always
 [fetch]
   prune = true
+[init]
+	defaultBranch = main
+[pull]
+	rebase = true
 [push]
   autoSetupRemote = true
   default = current
-[branch]
-  autoSetupRebase = always
+[submodule]
+	recurse = true
 [alias]
   co = checkout
   cb = checkout -b
@@ -29,16 +37,9 @@
 [user]
 	name = Mike Glenn
 	email = 219478+ilude@users.noreply.github.com
-[advice]
-	skippedCherryPicks = false
-[pull]
-	rebase = true
 [safe]
 	directory = /apps/onramp
 	directory = /apps/stable-diff-production
 [credential]
-	helper = "!f() { /home/vscode/.vscode-server/bin/f1b07bd25dfad64b0167beb15359ae573aecd2cc/node /tmp/vscode-remote-containers-5a09e548-1360-4114-bc36-2b099a2dbc83.js git-credential-helper $*; }; f"
-[init]
-	defaultBranch = main
-[submodule]
-	recurse = true
+	helper = "!f() { /home/vscode/.vscode-server/bin/2b35e1e6d88f1ce073683991d1eff5284a32690f/node /tmp/vscode-remote-containers-3f5954cf-8554-4f0b-9089-eb5b5afd0bcd.js git-credential-helper $*; }; f"
+
