@@ -14,12 +14,12 @@
   br = branch
   unstage = reset .
   rh = reset --hard
-  db = !sh -c "git branch -D $1 && git push origin --delete $1" -
-  dlb = !sh -c "git branch -D $1" -
-  drb = !sh -c "git remote prune origin && git push origin --delete $1" -
+  db = !sh -c 'git branch -D $1 && git push origin --delete $1' -
+  dlb = !sh -c 'git branch -D $1' -
+  drb = !sh -c 'git remote prune origin && git push origin --delete $1' -
   aa = !git add -A . && git status -s
   pushall = "!git push --all; git push --tags"
-  ct = !sh -c "git checkout -b $1 && git push --set-upstream origin $1" -
+  ct = !sh -c 'git checkout -b $1 && git push --set-upstream origin $1' -
   ls = !git --no-pager log -10 --date=short --pretty='%C(yellow)%h%Creset - %C(yellow)%an%Creset %C(white)%ad%Creset%C(yellow)%d%Creset %Cgreen%s%Creset'
   ll = !git log --date=short --pretty='%C(yellow)%h%Creset - %C(yellow)%an%Creset %C(white)%ad%Creset%C(yellow)%d%Creset %Cgreen%s%Creset'
   lg = log --graph --abbrev-commit --date=relative --pretty='%C(yellow)%h%Creset - %C(yellow)%an%Creset%C(yellow)%d%Creset %s %Cgreen(%cr)%Creset'
