@@ -39,12 +39,13 @@
   lf = show --pretty=\"format:\" --name-only
   wtf = reflog
   rs = remote show origin
-[user]
-	name = Mike Glenn
-	email = 219478+ilude@users.noreply.github.com
 [safe]
-	directory = /apps/onramp
-	directory = /apps/stable-diff-production
+	directory = *
+[includeIf "hasconfig:remote.*.url:git@github.com:*/**"]
+  	path = ~/.dotfiles/.gitconfig-personal
+[includeIf "hasconfig:remote.*.url:git@github.com:rammounts/**"]
+  	path = ~/.dotfiles/.gitconfig-professional
+[includeIf "hasconfig:remote.*.url:git@bitbucket.org:rammounts/**"]
+  	path = ~/.dotfiles/.gitconfig-professional
 [credential]
-	helper = "!f() { /home/vscode/.vscode-server/bin/2b35e1e6d88f1ce073683991d1eff5284a32690f/node /tmp/vscode-remote-containers-3f5954cf-8554-4f0b-9089-eb5b5afd0bcd.js git-credential-helper $*; }; f"
-
+	helper = "!f() { /home/vscode/.vscode-server/bin/1a5daa3a0231a0fbba4f14db7ec463cf99d7768e/node /tmp/vscode-remote-containers-b84496c3-1c9b-4a0a-85d1-909e0f622fda.js git-credential-helper $*; }; f"
