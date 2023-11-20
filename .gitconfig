@@ -41,6 +41,7 @@
   rs = remote show origin
 [safe]
 	directory = *
+	directory = *
 [includeIf "hasconfig:remote.*.url:git@github.com:rammounts/**"]
   	path = ~/.dotfiles/.gitconfig-professional
 [includeIf "hasconfig:remote.*.url:git@bitbucket.org:rammounts/**"]
@@ -53,4 +54,4 @@
   	path = ~/.dotfiles/.gitconfig-personal
 
 [credential]
-	helper = "!f() { /home/Mike/.vscode-server/bin/1a5daa3a0231a0fbba4f14db7ec463cf99d7768e/node /tmp/vscode-remote-containers-9d9369b3-07d5-459f-9d8f-6caae1b15547.js git-credential-helper $*; }; f"
+	helper = "!f() { /home/Mike/.vscode-server/bin/1a5daa3a0231a0fbba4f14db7ec463cf99d7768e/node /tmp/vscode-remote-containers-ddd8d498-3848-423e-9bc5-43b0f3e8c256.js git-credential-helper $*; }; f"

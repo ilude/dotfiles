@@ -1,7 +1,7 @@
 #!/bin/bash
 
 OS=$(uname -s | tr A-Z a-z)
-PACKAGES="make zsh zsh-autosuggestions zsh-syntax-highlighting"
+PACKAGES="linux-headers make zsh zsh-autosuggestions zsh-syntax-highlighting"
 case $OS in
   linux)
     source /etc/os-release
