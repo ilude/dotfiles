@@ -3,11 +3,7 @@ plugins=(git zsh-vcs zsh-shift-select zsh-syntax-highlighting zsh-autosuggestion
 autoload -Uz zsh-completions bashcompinit && bashcompinit
 autoload -Uz compinit && compinit
 
-if [ -f /mnt/.devcontainer/shell-history ]; then
-  HISTFILE=/mnt/.devcontainer/shell-history
-else
-  HISTFILE=~/.zsh_history
-fi
+HISTFILE=~/.zsh_history
 
 # https://zsh-manual.netlify.app/options#1624-history
 export HISTSIZE=100000
@@ -82,7 +78,8 @@ if [ -f ~/.env ]; then
 fi
 
 # https://github.com/nvbn/thefuck#installation
-eval $(thefuck --alias fu)
-#fu -r
+if type thefuck &> /dev/null; then
+  eval $(thefuck --alias fu)
+fi
 
 #echo "in ~/.zshrc"
