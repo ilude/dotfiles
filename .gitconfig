@@ -1,23 +1,23 @@
 [core]
-	eol = lf
-	autocrlf = input
-	editor = code --wait
-	symlinks = true
+  eol = lf
+  autocrlf = input
+  editor = code --wait
+  symlinks = true
 [advice]
-	skippedCherryPicks = false
+  skippedCherryPicks = false
 [branch]
   autoSetupRebase = always
 [fetch]
   prune = true
 [init]
-	defaultBranch = main
+  defaultBranch = main
 [pull]
-	rebase = true
+  rebase = true
 [push]
   autoSetupRemote = true
   default = current
 [submodule]
-	recurse = true
+  recurse = true
 [alias]
   co = checkout
   cb = checkout -b
@@ -40,20 +40,17 @@
   wtf = reflog
   rs = remote show origin
 [safe]
-	directory = *
+  directory = *
 [user]
-	name = mike
-	email = mglenn@ilude.com
+  name = mike
+  email = mglenn@ilude.com
 [includeIf "hasconfig:remote.*.url:git@github.com:rammounts/**"]
-  	path = ~/.dotfiles/.gitconfig-professional
+  path = ~/.dotfiles/.gitconfig-professional
 [includeIf "hasconfig:remote.*.url:git@bitbucket.org:rammounts/**"]
-  	path = ~/.dotfiles/.gitconfig-professional
+  path = ~/.dotfiles/.gitconfig-professional
 [includeIf "hasconfig:remote.*.url:https://github.com/traefikturkey/**"]
-  	path = ~/.dotfiles/.gitconfig-personal
+  path = ~/.dotfiles/.gitconfig-personal
 [includeIf "hasconfig:remote.*.url:https://github.com/ilude/**"]
-  	path = ~/.dotfiles/.gitconfig-personal
+  path = ~/.dotfiles/.gitconfig-personal
 [includeIf "hasconfig:remote.*.url:git@github.com:*/**"]
-  	path = ~/.dotfiles/.gitconfig-personal
-
-[credential]
-	helper = "!f() { /home/Mike/.vscode-server/bin/1a5daa3a0231a0fbba4f14db7ec463cf99d7768e/node /tmp/vscode-remote-containers-2f154a1b-42f6-4856-8e23-8203b43b00b7.js git-credential-helper $*; }; f"
+  path = ~/.dotfiles/.gitconfig-personal
