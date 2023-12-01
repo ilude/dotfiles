@@ -20,15 +20,21 @@ setopt SHARE_HISTORY
 setopt GLOB_COMPLETE
 #zstyle ':completion*:default' menu 'select=0'
 
+# https://superuser.com/a/448294/29344
+export LC_COLLATE="C"
+
 alias es='env | sort'
-alias l='ls --color=auto -lhA --group-directories-first'
 alias sz='source ~/.zshrc'
 alias dps='tput rmam; docker ps --format="table {{.Names}}\t{{.ID}}\t{{.Image}}\t{{.RunningFor}}\t{{.State}}\t{{.Status}}" | (sed -u 1q; sort); tput smam'
 alias history="history 1"
 export HOSTNAME=$(hostname)
 
-# https://superuser.com/a/448294/29344
-export LC_COLLATE="C"
+if type exa &> /dev/null; then
+  alias ls=exa
+  alias l='exa --color=auto -l --icons --group-directories-first'
+else
+  alias l='ls --color=auto -lhA --group-directories-first'
+fi
 
 # https://unix.stackexchange.com/a/196558/3098
 if [[ -f ~/.dircolors ]] ; then
