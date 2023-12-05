@@ -31,7 +31,7 @@ export HOSTNAME=$(hostname)
 
 if type exa &> /dev/null; then
   alias ls=exa
-  alias l='exa --color=auto -l --icons --group-directories-first'
+  alias l='exa --color=auto -la --group-directories-first'
 else
   alias l='ls --color=auto -lhA --group-directories-first'
 fi
@@ -89,3 +89,5 @@ if type thefuck &> /dev/null; then
 fi
 
 #echo "in ~/.zshrc"
+
+if [ -e /home/Mike/.nix-profile/etc/profile.d/nix.sh ]; then . /home/Mike/.nix-profile/etc/profile.d/nix.sh; fi # added by Nix installer
