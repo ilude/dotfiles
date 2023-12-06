@@ -22,6 +22,7 @@ case $OS in
         else
           apk add --update $PACKAGES
         fi
+        
         ;;
       fedora|rhel|centos)
         if [[ "$EUID" -ne 0 ]]; then
@@ -40,6 +41,8 @@ case $OS in
     echo -n "unsupported OS"
     ;;
 esac
+
+pip3 install dircolors tldr thefuck
 
 # check if we are in proxmox
 if [[ "$EUID" -ne 0 ]]; then
