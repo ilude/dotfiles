@@ -54,3 +54,5 @@
   path = ~/.dotfiles/.gitconfig-personal
 [includeIf "hasconfig:remote.*.url:git@github.com:*/**"]
   path = ~/.dotfiles/.gitconfig-personal
+[init]
+	defaultBranch = main
