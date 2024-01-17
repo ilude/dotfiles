@@ -20,8 +20,12 @@ setopt SHARE_HISTORY
 setopt GLOB_COMPLETE
 #zstyle ':completion*:default' menu 'select=0'
 
+<<<<<<< Updated upstream
 # https://superuser.com/a/448294/29344
 export LC_COLLATE="C"
+=======
+export LC_ALL="C"
+>>>>>>> Stashed changes
 
 alias es='env | sort'
 alias sz='source ~/.zshrc'
