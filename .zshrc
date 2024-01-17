@@ -13,19 +13,15 @@ export PATH="$HOME/.local/bin:$PATH"
 setopt APPEND_HISTORY
 setopt EXTENDED_HISTORY
 setopt HIST_FIND_NO_DUPS
-setopt HIST_IGNORE_DUPS 
+setopt HIST_IGNORE_DUPS
 setopt HIST_REDUCE_BLANKS
 setopt SHARE_HISTORY
 
 setopt GLOB_COMPLETE
 #zstyle ':completion*:default' menu 'select=0'
 
-<<<<<<< Updated upstream
 # https://superuser.com/a/448294/29344
-export LC_COLLATE="C"
-=======
 export LC_ALL="C"
->>>>>>> Stashed changes
 
 alias es='env | sort'
 alias sz='source ~/.zshrc'
