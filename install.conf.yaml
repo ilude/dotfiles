@@ -13,4 +13,9 @@
     ~/.zshrc: .zshrc
     ~/.gitconfig: .gitconfig
     ~/.bashrc: .bashrc
+<<<<<<< HEAD
     ~/.profile: .bash_profile
+=======
+    ~/.bash_profile: .bash_profile
+    ~/.dircolors: .dircolors
+>>>>>>> origin/production
