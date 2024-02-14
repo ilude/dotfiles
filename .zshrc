@@ -63,8 +63,21 @@ fi
 # https://unix.stackexchange.com/a/499322/3098
 zstyle ':completion:*:*:make:*' tag-order 'targets'
 
+# home and end move cursor to respective line positions 
 bindkey  "^[[H"   beginning-of-line
 bindkey  "^[[F"   end-of-line
+
+# ctrl+b/f or ctrl+left/right: move word by word (backward/forward)
+bindkey '^b' backward-word
+bindkey '^f' forward-word
+bindkey '^[[1;5D' backward-word
+bindkey '^[[1;5C' forward-word
+
+# ctrl+backspace: delete word before
+bindkey '^H' backward-kill-word
+
+# ctrl+delete: delete word after
+bindkey "\e[3;5~" kill-word
 
 # https://stackoverflow.com/a/65045491
 _git_branch() {
