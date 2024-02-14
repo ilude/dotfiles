@@ -3,31 +3,45 @@ plugins=(git zsh-vcs zsh-shift-select zsh-syntax-highlighting zsh-autosuggestion
 autoload -Uz zsh-completions bashcompinit && bashcompinit
 autoload -Uz compinit && compinit
 
-if [ -f /mnt/.devcontainer/shell-history ]; then
-  HISTFILE=/mnt/.devcontainer/shell-history
-else
-  HISTFILE=~/.zsh_history
-fi
+HISTFILE=~/.zsh_history
 
 # https://zsh-manual.netlify.app/options#1624-history
 export HISTSIZE=100000
 export SAVEHIST=100000
 export HISTTIMEFORMAT="[%F %T] "
+export PATH="$HOME/.local/bin:$PATH"
 setopt APPEND_HISTORY
 setopt EXTENDED_HISTORY
 setopt HIST_FIND_NO_DUPS
-setopt HIST_IGNORE_DUPS 
+setopt HIST_IGNORE_DUPS
 setopt HIST_REDUCE_BLANKS
 setopt SHARE_HISTORY
 
 setopt GLOB_COMPLETE
 #zstyle ':completion*:default' menu 'select=0'
 
+# https://superuser.com/a/448294/29344
+export LC_ALL="C"
+
 alias es='env | sort'
-alias l='ls --color -lha --group-directories-first'
 alias sz='source ~/.zshrc'
 alias dps='tput rmam; docker ps --format="table {{.Names}}\t{{.ID}}\t{{.Image}}\t{{.RunningFor}}\t{{.State}}\t{{.Status}}" | (sed -u 1q; sort); tput smam'
 alias history="history 1"
+export HOSTNAME=$(hostname)
+
+if type exa &> /dev/null; then
+  alias ls=exa
+  alias l='exa --color=auto -la --group-directories-first'
+else
+  alias l='ls --color=auto -lhA --group-directories-first'
+fi
+
+# https://unix.stackexchange.com/a/196558/3098
+if [[ -f ~/.dircolors ]] ; then
+    eval $(dircolors -b ~/.dircolors)     
+elif [[ -f /etc/DIR_COLORS ]] ; then
+    eval $(dircolors -b /etc/DIR_COLORS)
+fi
 
 if type kubectl &> /dev/null; then
   alias kc='kubectl'
@@ -69,4 +83,9 @@ if [ -f ~/.env ]; then
   source ~/.env
 fi
 
+# https://github.com/nvbn/thefuck#installation
+if type thefuck &> /dev/null; then
+  eval $(thefuck --alias fu)
+fi
 
+#echo "in ~/.zshrc"
