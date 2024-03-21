@@ -21,7 +21,7 @@ setopt GLOB_COMPLETE
 #zstyle ':completion*:default' menu 'select=0'
 
 # https://superuser.com/a/448294/29344
-export LC_ALL="C"
+export LC_ALL="C.UTF-8"
 
 alias es='env | sort'
 alias sz='source ~/.zshrc'
@@ -94,11 +94,6 @@ PS1='%F{green}%M%f:%F{cyan}%~$(_git_branch)%f$ '
 if [ -f ~/.env ]; then
   #echo "sourcing ~/.env..."
   source ~/.env
-fi
-
-# https://github.com/nvbn/thefuck#installation
-if type thefuck &> /dev/null; then
-  eval $(thefuck --alias fu)
 fi
 
 #echo "in ~/.zshrc"

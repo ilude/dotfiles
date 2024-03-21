@@ -67,7 +67,7 @@ esac
 
 # https://stackoverflow.com/questions/68673221/warning-running-pip-as-the-root-user
 export PIP_ROOT_USER_ACTION=ignore
-pip3 install dircolors tldr thefuck
+pip3 install dircolors tldr
 
 # check if we are in proxmox
 if [[ "$EUID" -ne 0 ]]; then
