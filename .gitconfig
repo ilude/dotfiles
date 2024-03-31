@@ -3,6 +3,14 @@
   autocrlf = input
   editor = code --wait
   symlinks = true
+[diff]
+  tool = vscode
+[difftool "vscode"]
+  cmd = code --wait --diff $LOCAL $REMOTE
+[merge]
+  tool = vscode
+[mergetool "vscode"]
+  cmd = code --wait $MERGED
 [advice]
   skippedCherryPicks = false
 [branch]
@@ -41,6 +49,7 @@
   rs = remote show origin
 [safe]
   directory = *
+	directory = /workspaces/onboard
 [user]
   name = mike
   email = mglenn@ilude.com
