@@ -3,6 +3,15 @@
   autocrlf = input
   editor = code --wait
   symlinks = true
+[diff]
+  tool = vscode
+[difftool "vscode"]
+  cmd = code --wait --diff $LOCAL $REMOTE
+[merge]
+  tool = vscode
+[mergetool "vscode"]
+  cmd = code --wait $MERGED
+
 [advice]
   skippedCherryPicks = false
 [branch]
@@ -44,10 +53,6 @@
 [user]
   name = mike
   email = mglenn@ilude.com
-[includeIf "hasconfig:remote.*.url:git@github.com:rammounts/**"]
-  path = ~/.dotfiles/.gitconfig-professional
-[includeIf "hasconfig:remote.*.url:git@bitbucket.org:rammounts/**"]
-  path = ~/.dotfiles/.gitconfig-professional
 [includeIf "hasconfig:remote.*.url:https://github.com/traefikturkey/**"]
   path = ~/.dotfiles/.gitconfig-personal
 [includeIf "hasconfig:remote.*.url:https://github.com/ilude/**"]
