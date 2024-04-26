@@ -1,13 +1,14 @@
 - defaults:
     link:
-      relink: true
-      force: true
+        relink: true
+        force: true
 
 - clean: ['~']
 
 - shell:
-  - chmod +x setup_zsh.sh
-  - ./setup_zsh.sh
+    - ssh-import-id gh:ilude
+    - chmod +x setup_zsh.sh
+    - ./setup_zsh.sh
 
 - link:
     ~/.zshrc: .zshrc
