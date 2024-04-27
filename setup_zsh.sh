@@ -1,4 +1,10 @@
 #!/bin/bash
+
+if [ -f /etc/NIXOS ]; then
+    echo "NixOS found, nothing to be done!"
+    exit 0
+fi
+
 BASE_PACKAGES="make zsh zsh-autosuggestions zsh-syntax-highlighting"
 PYTHON_PACKAGES="python3-dev python3-pip python3-setuptools"
 HEADER_PACKAGES="linux-headers"
