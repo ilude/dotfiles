@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 if [ -f /etc/NIXOS ]; then
     echo "NixOS found, nothing to be done!"
