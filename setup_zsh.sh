@@ -5,12 +5,9 @@ if [ -f /etc/NIXOS ]; then
     exit 0
 fi
 
-BASE_PACKAGES="make zsh zsh-autosuggestions zsh-syntax-highlighting"
+BASE_PACKAGES="make ssh-import-id zsh zsh-autosuggestions zsh-syntax-highlighting"
 PYTHON_PACKAGES="python3-dev python3-pip python3-setuptools"
-HEADER_PACKAGES="linux-headers"
-
-# https://www.jeffgeerling.com/blog/2023/how-solve-error-externally-managed-environment-when-installing-pip3
-PYTHON_EXTERNAL_MANAGED_FILE="/usr/lib/python3.11/EXTERNALLY-MANAGED"
+HEADER_PACKAGES="linux-headers-generic"
 
 OS=$(uname -s | tr A-Z a-z)
 
@@ -29,31 +26,26 @@ case $OS in
         if [[ "$EUID" -ne 0 ]]; then
           sudo apt update
           sudo apt -y install $PACKAGES
-          sudo rm -rf $PYTHON_EXTERNAL_MANAGED_FILE
         else
           apt update
           apt -y install $PACKAGES
-          rm -rf $PYTHON_EXTERNAL_MANAGED_FILE
         fi
         ;;
       alpine)
+        PACKAGES="$BASE_PACKAGES linux-headers shadow py3-pip py3-setuptools"
         if [[ "$EUID" -ne 0 ]]; then
-          sudo apk add --update $BASE_PACKAGES $HEADER_PACKAGES shadow py3-pip py3-setuptools
-          sudo rm -rf $PYTHON_EXTERNAL_MANAGED_FILE
+          sudo apk add --update $PACKAGES
           echo "auth        sufficient  pam_rootok.so" | sudo tee /etc/pam.d/chsh
         else
-          apk add --update $BASE_PACKAGES $HEADER_PACKAGES shadow py3-pip py3-setuptools
-          rm -rf $PYTHON_EXTERNAL_MANAGED_FILE
+          apk add --update $PACKAGES
         fi
         
         ;;
       fedora|rhel|centos)
         if [[ "$EUID" -ne 0 ]]; then
           sudo yum install $PACKAGES
-          sudo rm -rf $PYTHON_EXTERNAL_MANAGED_FILE
         else
           yum install $PACKAGES
-          rm -rf $PYTHON_EXTERNAL_MANAGED_FILE
         fi
         ;;
       *)
@@ -64,7 +56,6 @@ case $OS in
   proxmox)
     apt update
     apt -y install $PACKAGES
-    rm -rf 
   ;;
   *)
     echo -n "unsupported OS"
@@ -74,6 +65,8 @@ esac
 # https://stackoverflow.com/questions/68673221/warning-running-pip-as-the-root-user
 export PIP_ROOT_USER_ACTION=ignore
 pip3 install dircolors tldr
+
+ssh-import-id gh:ilude
 
 # check if we are in proxmox
 if [[ "$EUID" -ne 0 ]]; then

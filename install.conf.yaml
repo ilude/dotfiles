@@ -6,7 +6,6 @@
 - clean: ['~']
 
 - shell:
-    - ssh-import-id gh:ilude
     - chmod +x setup_zsh.sh
     - ./setup_zsh.sh
 
