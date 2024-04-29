@@ -21,10 +21,12 @@ setopt GLOB_COMPLETE
 #zstyle ':completion*:default' menu 'select=0'
 
 # https://superuser.com/a/448294/29344
-export LC_ALL="C.UTF-8"
+export LC_ALL=en_US.UTF-8  
+export LANG=en_US.UTF-8
 
-alias nix-gc="nix-store --gc"
-alias nix-rs="sudo nix-rebuild switch"
+alias nix-gc='nix-store --gc'
+alias nix-rs='sudo nixos-rebuild switch'
+alias nix-code='code /etc/nixos/configuration.nix'
 
 alias es='env | sort'
 alias sz='source ~/.zshrc'
@@ -100,6 +102,3 @@ if [ -f ~/.env ]; then
 fi
 
 #echo "in ~/.zshrc"
-
-export LC_ALL=en_US.UTF-8  
-export LANG=en_US.UTF-8
