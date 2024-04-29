@@ -23,6 +23,9 @@ setopt GLOB_COMPLETE
 # https://superuser.com/a/448294/29344
 export LC_ALL="C.UTF-8"
 
+alias nix-gc="nix-store --gc"
+alias nix-rs="sudo nix-rebuild switch"
+
 alias es='env | sort'
 alias sz='source ~/.zshrc'
 alias dps='tput rmam; docker ps --format="table {{.Names}}\t{{.ID}}\t{{.Image}}\t{{.RunningFor}}\t{{.State}}\t{{.Status}}" | (sed -u 1q; sort); tput smam'
