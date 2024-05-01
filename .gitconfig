@@ -31,6 +31,7 @@
   cb = checkout -b
   ci = commit -m
   ca = !git add -A . && git status -s && git commit -m
+  cu = commit --amend --no-edit
   s = status -s
   br = branch
   unstage = reset .
