@@ -3,6 +3,12 @@ plugins=(git zsh-vcs zsh-shift-select zsh-syntax-highlighting zsh-autosuggestion
 autoload -Uz zsh-completions bashcompinit && bashcompinit
 autoload -Uz compinit && compinit
 
+source /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+if [[ -x "$(command -v fzf)" ]]; then
+    # If fzf is installed, run the command
+    eval "$(fzf --zsh)"
+fi
+
 HISTFILE=~/.zsh_history
 
 # https://zsh-manual.netlify.app/options#1624-history
@@ -66,7 +72,8 @@ fi
 
 # make autocompletion
 # https://unix.stackexchange.com/a/499322/3098
-zstyle ':completion:*:*:make:*' tag-order 'targets'
+# zstyle ':completion:*:*:make:*' tag-order 'targets'
+zstyle ':completion::complete:make::' tag-order targets
 
 # home and end move cursor to respective line positions 
 bindkey  "^[[H"   beginning-of-line
