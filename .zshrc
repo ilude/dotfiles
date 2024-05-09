@@ -31,7 +31,7 @@ export HOSTNAME=$(hostname)
 
 if type exa &> /dev/null; then
   alias ls=exa
-  alias l='exa --color=auto -la --group-directories-first'
+  alias l='exa --group --color=auto -la --group-directories-first'
 else
   alias l='ls --color=auto -lhA --group-directories-first'
 fi
