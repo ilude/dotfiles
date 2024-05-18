@@ -1,13 +1,46 @@
-plugins=(git zsh-vcs zsh-shift-select zsh-syntax-highlighting zsh-autosuggestions)
+############################################################################
+#
+# Completions
+#
+############################################################################
+zstyle ':completion:*' completer _complete _ignored _files
+zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
+setopt globdots
+setopt GLOB_COMPLETE
 
-autoload -Uz zsh-completions bashcompinit && bashcompinit
-autoload -Uz compinit && compinit
+# make autocompletion
+# https://unix.stackexchange.com/a/499322/3098
+# zstyle ':completion:*:*:make:*' tag-order 'targets'
+zstyle ':completion::complete:make::' tag-order targets
+zstyle ':completion::complete:make:*:targets' ignored-patterns '*[?%\:]=*' '$(*)'
 
-source /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh
-if [[ -x "$(command -v fzf)" ]]; then
-    # If fzf is installed, run the command
-    eval "$(fzf --zsh)"
-fi
+autoload -Uz compinit
+compinit
+
+############################################################################
+#
+# Plugins
+#
+############################################################################
+
+source ~/.dotfiles/plugin-functions.sh
+
+export FZF_DEFAULT_OPTS="--ansi --no-info"
+plugin "Aloxaf/fzf-tab"
+zstyle ':completion:*' menu no
+
+plugin "zsh-users/zsh-autosuggestions"
+bindkey '^ ' autosuggest-accept # ctrl+space 
+
+plugin "zsh-users/zsh-completions"
+plugin "zsh-users/zsh-syntax-highlighting"
+plugin "joshskidmore/zsh-fzf-history-search"
+
+############################################################################
+#
+# History
+#
+############################################################################
 
 HISTFILE=~/.zsh_history
 
@@ -15,7 +48,7 @@ HISTFILE=~/.zsh_history
 export HISTSIZE=100000
 export SAVEHIST=100000
 export HISTTIMEFORMAT="[%F %T] "
-export PATH="$HOME/.local/bin:$PATH"
+
 setopt APPEND_HISTORY
 setopt EXTENDED_HISTORY
 setopt HIST_FIND_NO_DUPS
@@ -23,57 +56,11 @@ setopt HIST_IGNORE_DUPS
 setopt HIST_REDUCE_BLANKS
 setopt SHARE_HISTORY
 
-setopt GLOB_COMPLETE
-#zstyle ':completion*:default' menu 'select=0'
-
-# https://superuser.com/a/448294/29344
-export LC_ALL=en_US.UTF-8  
-export LANG=en_US.UTF-8
-
-alias nix-gc='nix-store --gc'
-alias nix-rs='sudo nixos-rebuild switch'
-alias nix-code='code /etc/nixos/configuration.nix'
-
-alias es='env | sort'
-alias sz='source ~/.zshrc'
-alias dps='tput rmam; docker ps --format="table {{.Names}}\t{{.ID}}\t{{.Image}}\t{{.RunningFor}}\t{{.State}}\t{{.Status}}" | (sed -u 1q; sort); tput smam'
-alias history="history 1"
-export HOSTNAME=$(hostname)
-
-if type exa &> /dev/null; then
-  alias ls=exa
-  alias l='exa --color=auto -la --group-directories-first'
-else
-  alias l='ls --color=auto -lhA --group-directories-first'
-fi
-
-# https://unix.stackexchange.com/a/196558/3098
-if [[ -f ~/.dircolors ]] ; then
-    eval $(dircolors -b ~/.dircolors)     
-elif [[ -f /etc/DIR_COLORS ]] ; then
-    eval $(dircolors -b /etc/DIR_COLORS)
-fi
-
-if type kubectl &> /dev/null; then
-  alias kc='kubectl'
-  #plugins( kubectl )
-  source <(kubectl completion zsh )
-  complete -F __start_kubectl kc
-
-  if [ -f ~/.kube/config ]; then
-    echo "Found existing k8s cluster configuration..."
-  fi
-fi
-
-if type helm &> /dev/null; then
-  #plugins( helm )
-  source <(helm completion zsh )
-fi
-
-# make autocompletion
-# https://unix.stackexchange.com/a/499322/3098
-# zstyle ':completion:*:*:make:*' tag-order 'targets'
-zstyle ':completion::complete:make::' tag-order targets
+############################################################################
+#
+# Keybindings
+#
+############################################################################
 
 # home and end move cursor to respective line positions 
 bindkey  "^[[H"   beginning-of-line
@@ -91,21 +78,68 @@ bindkey '^H' backward-kill-word
 # ctrl+delete: delete word after
 bindkey "\e[3;5~" kill-word
 
-# https://stackoverflow.com/a/65045491
-_git_branch() {
-  local ref=$(git symbolic-ref --short HEAD 2> /dev/null)
-  if [ -n "${ref}" ]; then
-    echo "%F{yellow}[%f%F{red}${ref}%f%F{yellow}]"
-  else
-    echo ""
+
+############################################################################
+#
+# Git Prompt
+#
+############################################################################
+
+autoload -Uz vcs_info
+setopt prompt_subst
+
+zstyle ':vcs_info:*' enable git
+zstyle ':vcs_info:*' check-for-changes true
+zstyle ':vcs_info:git:*' formats '%F{yellow}[%f%F{green}%b%f%F{yellow}]%f'
+zstyle ':vcs_info:git:*' actionformats '%F{yellow}[%f%F{red}%b%f%F{yellow}]%f'
+
+function +vi-git-untracked() {
+  if [[ $(git rev-parse --is-inside-work-tree 2>/dev/null) == 'true' ]] && \
+     [[ $(git status --porcelain | wc -l) -ne 0 ]]; then
+    hook_com[branch]='%F{red}'${hook_com[branch]}'%f'
   fi
 }
-setopt PROMPT_SUBST
-PS1='%F{green}%M%f:%F{cyan}%~$(_git_branch)%f$ '
 
-if [ -f ~/.env ]; then
-  #echo "sourcing ~/.env..."
-  source ~/.env
+zstyle ':vcs_info:git+post-backend:*' hooks git-untracked
+
+precmd() { vcs_info }
+
+PROMPT='%~${vcs_info_msg_0_}%f>%(?: : )'
+
+############################################################################
+#
+# Aliases
+#
+############################################################################
+
+alias nix-gc='nix-store --gc'
+alias nix-rs='sudo nixos-rebuild switch'
+alias nix-code='code /etc/nixos/configuration.nix'
+alias es='env | sort'
+alias sz='source ~/.zshrc'
+alias dps='tput rmam; docker ps --format="table {{.Names}}\\t{{.ID}}\\t{{.Image}}\\t{{.RunningFor}}\\t{{.State}}\\t{{.Status}}" | (sed -u 1q; sort); tput smam'
+alias history="history 1"
+
+if type exa &> /dev/null; then
+    alias ls=exa
+    alias l='exa --color=auto -la --group-directories-first --group'
+else
+    alias l='ls --color=auto -lhA --group-directories-first'
 fi
 
-#echo "in ~/.zshrc"
+############################################################################
+#
+# Exports
+#
+############################################################################
+
+export LC_ALL=en_US.UTF-8
+export LANG=en_US.UTF-8
+export HOSTNAME=$(hostname)
+export PATH="$HOME/.local/bin:$PATH"
+
+if [[ -f ~/.dircolors ]] ; then
+    eval $(dircolors -b ~/.dircolors)
+elif [[ -f /etc/DIR_COLORS ]] ; then
+    eval $(dircolors -b /etc/DIR_COLORS)
+fi
