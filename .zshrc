@@ -118,6 +118,7 @@ alias nix-rs='sudo nixos-rebuild switch'
 alias nix-code='code /etc/nixos/configuration.nix'
 alias es='env | sort'
 alias sz='source ~/.zshrc'
+alias ez='$EDITOR ~/.zshrc'
 alias dps='tput rmam; docker ps --format="table {{.Names}}\\t{{.ID}}\\t{{.Image}}\\t{{.RunningFor}}\\t{{.State}}\\t{{.Status}}" | (sed -u 1q; sort); tput smam'
 alias history="history 1"
 
@@ -144,4 +145,10 @@ if [[ -f ~/.dircolors ]] ; then
     eval $(dircolors -b ~/.dircolors)
 elif [[ -f /etc/DIR_COLORS ]] ; then
     eval $(dircolors -b /etc/DIR_COLORS)
+fi
+
+if [[ "$TERM_PROGRAM" == "vscode" ]]; then
+  export EDITOR="code"
+else
+  export EDITOR="nano"
 fi
