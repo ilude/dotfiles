@@ -10,6 +10,8 @@ function plugin() {
     git clone "https://github.com/$repo.git" "$plugin_dir"
   fi
 
+  chmod g-w -R "$plugin_dir"
+
   #echo "loading $plugin_dir/${repo##*/}.plugin.zsh..."
   source "$plugin_dir/${repo##*/}.plugin.zsh"
 }

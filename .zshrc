@@ -35,6 +35,7 @@ bindkey '^ ' autosuggest-accept # ctrl+space
 plugin "zsh-users/zsh-completions"
 plugin "zsh-users/zsh-syntax-highlighting"
 plugin "joshskidmore/zsh-fzf-history-search"
+plugin "djui/alias-tips"
 
 ############################################################################
 #
@@ -120,9 +121,10 @@ alias sz='source ~/.zshrc'
 alias dps='tput rmam; docker ps --format="table {{.Names}}\\t{{.ID}}\\t{{.Image}}\\t{{.RunningFor}}\\t{{.State}}\\t{{.Status}}" | (sed -u 1q; sort); tput smam'
 alias history="history 1"
 
-if type exa &> /dev/null; then
-    alias ls=exa
-    alias l='exa --color=auto -la --group-directories-first --group'
+if type eza &> /dev/null; then
+    alias ls=eza
+    alias l='eza --color=auto -la --group-directories-first --group'
+    alias tree='eza --tree --level=2'
 else
     alias l='ls --color=auto -lhA --group-directories-first'
 fi
