@@ -104,7 +104,7 @@ zstyle ':vcs_info:git+post-backend:*' hooks git-untracked
 
 precmd() { vcs_info }
 
-PROMPT='%~${vcs_info_msg_0_}%f>%(?: : )'
+PROMPT='%F{green}%m%f:%F{blue}%~${vcs_info_msg_0_}%f>%(?: : )'
 
 ############################################################################
 #
