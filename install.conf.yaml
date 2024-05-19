@@ -15,3 +15,6 @@
     ~/.bashrc: .bashrc
     ~/.profile: .bash_profile
     ~/.dircolors: .dircolors
+
+- shell:
+    - source ~/.zshrc
