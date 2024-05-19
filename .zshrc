@@ -4,7 +4,9 @@
 #
 ############################################################################
 zstyle ':completion:*' completer _complete _ignored _files
-zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}' special-dirs true
+#zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}' special-dirs true
+# https://stackoverflow.com/questions/24226685/have-zsh-return-case-insensitive-auto-complete-matches-but-prefer-exact-matches
+zstyle ':completion:*' matcher-list '' 'm:{a-zA-Z}={A-Za-z}' 'r:|=*' 'l:|=* r:|=*'
 setopt globdots
 setopt GLOB_COMPLETE
 
