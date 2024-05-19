@@ -4,7 +4,7 @@
 #
 ############################################################################
 zstyle ':completion:*' completer _complete _ignored _files
-zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
+zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}' special-dirs true
 setopt globdots
 setopt GLOB_COMPLETE
 
@@ -25,9 +25,9 @@ compinit
 
 source ~/.dotfiles/plugin-functions.sh
 
-export FZF_DEFAULT_OPTS="--ansi --no-info"
-plugin "Aloxaf/fzf-tab"
-zstyle ':completion:*' menu no
+# export FZF_DEFAULT_OPTS="--ansi --no-info"
+# plugin "Aloxaf/fzf-tab"
+# zstyle ':completion:*' menu no
 
 plugin "zsh-users/zsh-autosuggestions"
 bindkey '^ ' autosuggest-accept # ctrl+space 
