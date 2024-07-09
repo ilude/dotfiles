@@ -50,7 +50,6 @@
   rs = remote show origin
 [safe]
   directory = *
-	directory = /workspaces/onboard
 [user]
   name = mike
   email = mglenn@ilude.com
@@ -60,5 +59,3 @@
   path = ~/.dotfiles/.gitconfig-personal
 [includeIf "hasconfig:remote.*.url:git@github.com:*/**"]
   path = ~/.dotfiles/.gitconfig-personal
-[init]
-	defaultBranch = main
