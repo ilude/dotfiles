@@ -17,4 +17,4 @@
     ~/.dircolors: .dircolors
 
 - shell:
-    - source ~/.zshrc
+    - "[[ \"$(basename -- \"$SHELL\")\" == \"bash\" ]] && exec \"$(which zsh)\""

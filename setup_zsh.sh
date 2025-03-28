@@ -1,80 +1,93 @@
 #!/usr/bin/env bash
 
-if [ -f /etc/NIXOS ]; then
+# Function to install necessary packages based on OS type
+install_packages() {
+  # Define package groups
+  BASE_PACKAGES=(coreutils eza fzf make ssh-import-id zsh zsh-autosuggestions zsh-syntax-highlighting)
+  PYTHON_PACKAGES=(python3-dev python3-pip python3-setuptools)
+  HEADER_PACKAGES=(linux-headers-generic)
+  
+  # Combine all package lists
+  PACKAGES=("${BASE_PACKAGES[@]}" "${HEADER_PACKAGES[@]}" "${PYTHON_PACKAGES[@]}")
+  
+  # Default values for command execution
+  POST_COMMAND=""
+  COMMAND=""
+  OS="linux" # Default OS assumption
+  
+  # Determine if sudo is needed
+  SUDO=""
+  if [[ "$EUID" -ne 0 ]]; then
+    SUDO=sudo
+  fi
+  
+  # Check if running on Proxmox
+  if command -v systemctl >/dev/null 2>&1; then
+    if systemctl status pve-cluster 2>&1 | grep -q "running"; then
+      OS="proxmox"
+      HEADER_PACKAGES=(pve-headers proxmox-default-headers)
+    fi
+  fi
+  
+  # Detect OS and set package manager command
+  if [[ -f /etc/os-release ]]; then
+    source /etc/os-release
+    case $ID in
+      debian|ubuntu|mint)
+        PACKAGES+=(tldr)
+        COMMAND="apt install -y"
+        ;;
+      alpine)
+        PACKAGES=("${BASE_PACKAGES[@]}" apk-tools-zsh-completion linux-headers shadow py3-pip py3-setuptools)
+        COMMAND="apk add --update"
+        POST_COMMAND="$SUDO tee /etc/pam.d/chsh <<< 'auth        sufficient  pam_rootok.so'"
+        ;;
+      fedora|rhel|centos)
+        COMMAND="yum install -y"
+        ;;
+      *)
+        echo "Unsupported Linux distribution, exiting."
+        exit 1
+        ;;
+    esac
+  elif [[ "$OS" == "proxmox" ]]; then
+    COMMAND="apt install -y"
+  else
+    echo "Unsupported OS, exiting."
+    exit 1
+  fi
+  
+  # Install packages one by one with error handling
+  echo "📦 Installing system packages..."
+  for package in "${PACKAGES[@]}"; do
+    echo "Installing: $package"
+    if ! $SUDO $COMMAND "$package"; then
+      echo "❌ Failed to install: $package" >&2
+    fi
+  done
+  
+  # Execute post-install command if needed
+  if [[ -n "$POST_COMMAND" ]]; then
+    eval "$POST_COMMAND"
+  fi
+  
+  # Change user shell to zsh
+  echo "🔄 Setting $(whoami) shell to $(which zsh)"
+  $SUDO chsh -s $(which zsh) $(whoami)
+}
+
+# Check if running on NixOS and exit if true
+if [[ -f /etc/NIXOS ]]; then
     echo "NixOS found, nothing to be done!"
     exit 0
 fi
 
-BASE_PACKAGES="coreutils eza fzf make ssh-import-id zsh zsh-autosuggestions zsh-completions zsh-syntax-highlighting zsh-vcs"
-PYTHON_PACKAGES="python3-dev python3-pip python3-setuptools"
-HEADER_PACKAGES="linux-headers-generic"
+# Run package installation function
+install_packages
 
-OS=$(uname -s | tr A-Z a-z)
-
-if command -v systemctl >/dev/null 2>&1; then
-  if systemctl status pve-cluster | grep -q "running"; then
-    OS=proxmox
-    HEADER_PACKAGES="pve-headers proxmox-default-headers"
-  fi
-fi
-
-PACKAGES="$BASE_PACKAGES $HEADER_PACKAGES $PYTHON_PACKAGES"
-
-case $OS in
-  linux)
-    source /etc/os-release
-    case $ID in
-      debian|ubuntu|mint)  
-        PACKAGES += " tldr"
-        if [[ "$EUID" -ne 0 ]]; then
-          sudo apt update
-          sudo apt -y install $PACKAGES
-        else
-          apt update
-          apt -y install $PACKAGES
-        fi
-        ;;
-      alpine)
-        PACKAGES="$BASE_PACKAGES apk-tools-zsh-completion linux-headers shadow py3-pip py3-setuptools"
-        if [[ "$EUID" -ne 0 ]]; then
-          sudo apk add --update $PACKAGES
-          echo "auth        sufficient  pam_rootok.so" | sudo tee /etc/pam.d/chsh
-        else
-          apk add --update $PACKAGES
-        fi
-        
-        ;;
-      fedora|rhel|centos)
-        if [[ "$EUID" -ne 0 ]]; then
-          sudo yum install $PACKAGES
-        else
-          yum install $PACKAGES
-        fi
-        ;;
-      *)
-        echo -n "unsupported linux distro"
-        ;;
-    esac
-  ;;
-  proxmox)
-    apt update
-    apt -y install $PACKAGES
-  ;;
-  *)
-    echo -n "unsupported OS"
-  ;;
-esac
-
-# https://stackoverflow.com/questions/68673221/warning-running-pip-as-the-root-user
-# export PIP_ROOT_USER_ACTION=ignore
-
-ssh-import-id gh:ilude
-
-# check if we are in proxmox
-if [[ "$EUID" -ne 0 ]]; then
-  echo Setting $(whoami) shell to $(which zsh)
-  sudo chsh -s $(which zsh) $(whoami)
+# Import SSH keys from GitHub if ssh-import-id is available
+if command -v ssh-import-id >/dev/null 2>&1; then
+    ssh-import-id gh:ilude
 else
-  echo Setting $(whoami) shell to $(which zsh)
-  chsh -s $(which zsh) $(whoami)
+    echo "⚠️ Warning: ssh-import-id not found, skipping SSH key import." >&2
 fi
