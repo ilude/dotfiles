@@ -13,7 +13,7 @@ install_packages() {
   # Default values for command execution
   POST_COMMAND=""
   COMMAND=""
-  OS="linux" # Default OS assumption
+  OS=$(uname -s | tr A-Z a-z) # Default OS assumption
   
   # Determine if sudo is needed
   SUDO=""
