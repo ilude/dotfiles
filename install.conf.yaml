@@ -15,6 +15,3 @@
     ~/.bashrc: .bashrc
     ~/.profile: .bash_profile
     ~/.dircolors: .dircolors
-
-- shell:
-    - "[[ \"$(basename -- \"$SHELL\")\" == \"bash\" ]] && exec \"$(which zsh)\""
