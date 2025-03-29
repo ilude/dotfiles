@@ -38,7 +38,7 @@ install_packages() {
         COMMAND="apt install -y"
         ;;
       alpine)
-        PACKAGES=("${BASE_PACKAGES[@]}" apk-tools-zsh-completion linux-headers shadow py3-pip py3-setuptools)
+        PACKAGES=("${BASE_PACKAGES[@]}" apk-tools-zsh-completion linux-headers shadow py3-pip py3-setuptools zsh-vcs)
         COMMAND="apk add --update"
         POST_COMMAND="$SUDO tee /etc/pam.d/chsh <<< 'auth        sufficient  pam_rootok.so'"
         ;;
