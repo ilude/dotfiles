@@ -46,21 +46,21 @@ install_packages() {
         COMMAND="yum install -y"
         ;;
       *)
-        echo "Unsupported Linux distribution, exiting."
+        echo "❌ Unsupported Linux distribution, exiting."
         exit 1
         ;;
     esac
   elif [[ "$OS" == "proxmox" ]]; then
     COMMAND="apt install -y"
   else
-    echo "Unsupported OS, exiting."
+    echo "❌ Unsupported OS, exiting."
     exit 1
   fi
   
   # Install packages one by one with error handling
   echo "📦 Installing system packages..."
   for package in "${PACKAGES[@]}"; do
-    echo "Installing: $package"
+    echo "📦 Installing: $package"
     if ! $SUDO $COMMAND "$package"; then
       echo "❌ Failed to install: $package" >&2
     fi
@@ -87,7 +87,12 @@ install_packages
 
 # Import SSH keys from GitHub if ssh-import-id is available
 if command -v ssh-import-id >/dev/null 2>&1; then
+    echo "🔄 Importing .ssh/authorized_keys from github for user ilude..."
     ssh-import-id gh:ilude
 else
     echo "⚠️ Warning: ssh-import-id not found, skipping SSH key import." >&2
 fi
+
+source ~/.dotfiles/zsh-plugins
+
+echo "✅ Setup completed successfully!"

@@ -5,9 +5,7 @@
 
 - clean: ['~']
 
-- shell:
-    - chmod +x setup_zsh.sh
-    - ./setup_zsh.sh
+
 
 - link:
     ~/.zshrc: .zshrc

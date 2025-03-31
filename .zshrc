@@ -25,19 +25,9 @@ compinit
 #
 ############################################################################
 
-source ~/.dotfiles/plugin-functions.sh
+source ~/.dotfiles/zsh-plugins
 
-# export FZF_DEFAULT_OPTS="--ansi --no-info"
-# plugin "Aloxaf/fzf-tab"
-# zstyle ':completion:*' menu no
-
-plugin "zsh-users/zsh-autosuggestions"
 bindkey '^ ' autosuggest-accept # ctrl+space 
-
-plugin "zsh-users/zsh-completions"
-plugin "zsh-users/zsh-syntax-highlighting"
-plugin "joshskidmore/zsh-fzf-history-search"
-plugin "djui/alias-tips"
 
 ############################################################################
 #
