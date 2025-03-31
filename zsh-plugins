@@ -12,9 +12,17 @@ function plugin() {
 
   chmod g-w -R "$plugin_dir"
 
-  #echo "loading $plugin_dir/${repo##*/}.plugin.zsh..."
-  source "$plugin_dir/${repo##*/}.plugin.zsh"
+  # only run if we are being sourced from zsh
+  if [ -n "$ZSH_VERSION" ]; then
+    source "$plugin_dir/${repo##*/}.plugin.zsh"
+  fi
 }
 
 # Create the plugins directory if it doesn't exist
 mkdir -p "${HOME}/.dotfiles/plugins"
+
+plugin "zsh-users/zsh-autosuggestions"
+plugin "zsh-users/zsh-completions"
+plugin "zsh-users/zsh-syntax-highlighting"
+plugin "joshskidmore/zsh-fzf-history-search"
+plugin "djui/alias-tips"
