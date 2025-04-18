@@ -6,21 +6,21 @@ install_packages() {
   BASE_PACKAGES=(coreutils eza fzf make ssh-import-id zsh zsh-autosuggestions zsh-syntax-highlighting)
   PYTHON_PACKAGES=(python3-dev python3-pip python3-setuptools)
   HEADER_PACKAGES=(linux-headers-generic)
-  
+
   # Combine all package lists
   PACKAGES=("${BASE_PACKAGES[@]}" "${HEADER_PACKAGES[@]}" "${PYTHON_PACKAGES[@]}")
-  
+
   # Default values for command execution
   POST_COMMAND=""
   COMMAND=""
   OS=$(uname -s | tr A-Z a-z) # Default OS assumption
-  
+
   # Determine if sudo is needed
   SUDO=""
   if [[ "$EUID" -ne 0 ]]; then
     SUDO=sudo
   fi
-  
+
   # Check if running on Proxmox
   if command -v systemctl >/dev/null 2>&1; then
     if systemctl status pve-cluster 2>&1 | grep -q "running"; then
@@ -28,14 +28,15 @@ install_packages() {
       HEADER_PACKAGES=(pve-headers proxmox-default-headers)
     fi
   fi
-  
+
   # Detect OS and set package manager command
   if [[ -f /etc/os-release ]]; then
     source /etc/os-release
     case $ID in
       debian|ubuntu|mint)
         PACKAGES+=(tldr)
-        COMMAND="apt install -y"
+        COMMAND="apt-get install -y"
+	$SUDO apt-get update
         ;;
       alpine)
         PACKAGES=("${BASE_PACKAGES[@]}" apk-tools-zsh-completion linux-headers shadow py3-pip py3-setuptools zsh-vcs)
@@ -51,12 +52,13 @@ install_packages() {
         ;;
     esac
   elif [[ "$OS" == "proxmox" ]]; then
-    COMMAND="apt install -y"
+    COMMAND="apt-get install -y"
+    apt-get update
   else
     echo "❌ Unsupported OS, exiting."
     exit 1
   fi
-  
+
   # Install packages one by one with error handling
   echo "📦 Installing system packages..."
   for package in "${PACKAGES[@]}"; do
@@ -65,12 +67,12 @@ install_packages() {
       echo "❌ Failed to install: $package" >&2
     fi
   done
-  
+
   # Execute post-install command if needed
   if [[ -n "$POST_COMMAND" ]]; then
     eval "$POST_COMMAND"
   fi
-  
+
   # Change user shell to zsh
   echo "🔄 Setting $(whoami) shell to $(which zsh)"
   $SUDO chsh -s $(which zsh) $(whoami)
