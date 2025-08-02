@@ -59,3 +59,5 @@
   path = ~/.dotfiles/.gitconfig-personal
 [includeIf "hasconfig:remote.*.url:git@github.com:*/**"]
   path = ~/.dotfiles/.gitconfig-personal
+[credential]
+	helper = "!f() { /home/vscode/.vscode-server/bin/c306e94f98122556ca081f527b466015e1bc37b0/node /tmp/vscode-remote-containers-1b528399-d7b7-4314-a649-61b35917cdf0.js git-credential-helper $*; }; f"
