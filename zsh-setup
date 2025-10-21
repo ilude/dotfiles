@@ -35,8 +35,9 @@ install_packages() {
     case $ID in
       debian|ubuntu|mint)
         PACKAGES+=(tldr)
-        COMMAND="apt-get install -y"
-	$SUDO apt-get update
+        # Use --no-install-recommends and disable suggests to avoid extra packages
+        COMMAND="apt-get install -y --no-install-recommends -o APT::Install-Suggests=false"
+        $SUDO apt-get update
         ;;
       alpine)
         PACKAGES=("${BASE_PACKAGES[@]}" apk-tools-zsh-completion linux-headers shadow py3-pip py3-setuptools coreutils zsh-vcs)
@@ -52,8 +53,9 @@ install_packages() {
         ;;
     esac
   elif [[ "$OS" == "proxmox" ]]; then
-    COMMAND="apt-get install -y"
-    apt-get update
+    # Proxmox should use sudo for update and avoid installing recommended/suggested packages
+    COMMAND="apt-get install -y --no-install-recommends -o APT::Install-Suggests=false"
+    $SUDO apt-get update
   else
     echo "❌ Unsupported OS, exiting."
     exit 1
