@@ -1,3 +1,10 @@
 [user]
 	name = mike
-	email = mike.glenn@rammount.com
+	email = michael.glenn@eagletg.com
+
+[core]
+	sshCommand = ssh -i ~/.ssh/id_ed25519 -F ~/.ssh/config
+
+[url "github.com-work:"]
+	insteadOf = git@github.com:
+	insteadOf = https://github.com/
