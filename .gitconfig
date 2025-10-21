@@ -56,7 +56,7 @@
 
 [includeIf "hasconfig:remote.*.url:https://github.com/mtg-eagletg/**"]
   path = ~/.dotfiles/.gitconfig-professional
-[includeIf "hasconfig:remote.*.url:https://github.com/EagleTG-Development**"]
+[includeIf "hasconfig:remote.*.url:https://github.com/EagleTG-Development/**"]
   path = ~/.dotfiles/.gitconfig-professional
 [includeIf "hasconfig:remote.*.url:git@github.com:mtg-eagletg/**"]
   path = ~/.dotfiles/.gitconfig-professional
@@ -67,11 +67,11 @@
 
 
 
-[includeIf "hasconfig:remote.*.url:https://github.com/*/**"]
+[includeIf "hasconfig:remote.*.url:https://github.com/mtg-eagletg/**"]
   path = ~/.dotfiles/.gitconfig-personal
-[includeIf "hasconfig:remote.*.url:git@github.com:*/**"]
+[includeIf "hasconfig:remote.*.url:git@github.com:mtg-eagletg/**"]
   path = ~/.dotfiles/.gitconfig-personal
 [includeIf "hasconfig:remote.*.url:github.com-personal:*/**"]
   path = ~/.dotfiles/.gitconfig-personal
 [credential]
-	helper = "!f() { /home/vscode/.vscode-server/bin/03c265b1adee71ac88f833e065f7bb956b60550a/node /tmp/vscode-remote-containers-bcd1833d-0a56-41a6-9cec-7d8dfb355757.js git-credential-helper $*; }; f"
+	helper = "!f() { /home/vscode/.vscode-server/bin/03c265b1adee71ac88f833e065f7bb956b60550a/node /tmp/vscode-remote-containers-473c65f2-f17f-4d31-9101-ea64f60f0e03.js git-credential-helper $*; }; f"
