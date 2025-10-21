@@ -1,3 +1,11 @@
 [user]
 	name = mike
 	email = 219478+ilude@users.noreply.github.com
+
+# Personal repos configuration
+[core]
+	sshCommand = ssh -i ~/.ssh/id_ed25519-personal -F ~/.ssh/config
+
+[url "github.com-personal:"]
+	insteadOf = git@github.com:
+	insteadOf = https://github.com/
