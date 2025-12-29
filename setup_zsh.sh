@@ -1,10 +1,11 @@
 #!/bin/bash
-BASE_PACKAGES="make zsh zsh-autosuggestions zsh-syntax-highlighting"
+BASE_PACKAGES="make zsh zsh-autosuggestions zsh-syntax-highlighting fzf"
 PYTHON_PACKAGES="python3-dev python3-pip python3-setuptools"
-HEADER_PACKAGES="linux-headers"
+HEADER_PACKAGES="linux-headers-generic"
 
 # https://www.jeffgeerling.com/blog/2023/how-solve-error-externally-managed-environment-when-installing-pip3
-PYTHON_EXTERNAL_MANAGED_FILE="/usr/lib/python3.11/EXTERNALLY-MANAGED"
+# Find the EXTERNALLY-MANAGED file dynamically (varies by Python version)
+PYTHON_EXTERNAL_MANAGED_FILE=$(ls /usr/lib/python*/EXTERNALLY-MANAGED 2>/dev/null | head -1)
 
 OS=$(uname -s | tr A-Z a-z)
 
@@ -19,35 +20,34 @@ case $OS in
   linux)
     source /etc/os-release
     case $ID in
-      debian|ubuntu|mint)  
+      debian|ubuntu|mint)
         if [[ "$EUID" -ne 0 ]]; then
           sudo apt update
           sudo apt -y install $PACKAGES
-          sudo rm -rf $PYTHON_EXTERNAL_MANAGED_FILE
+          [[ -n "$PYTHON_EXTERNAL_MANAGED_FILE" ]] && sudo rm -f "$PYTHON_EXTERNAL_MANAGED_FILE"
         else
           apt update
           apt -y install $PACKAGES
-          rm -rf $PYTHON_EXTERNAL_MANAGED_FILE
+          [[ -n "$PYTHON_EXTERNAL_MANAGED_FILE" ]] && rm -f "$PYTHON_EXTERNAL_MANAGED_FILE"
         fi
         ;;
       alpine)
         if [[ "$EUID" -ne 0 ]]; then
           sudo apk add --update $BASE_PACKAGES $HEADER_PACKAGES shadow py3-pip py3-setuptools
-          sudo rm -rf $PYTHON_EXTERNAL_MANAGED_FILE
+          [[ -n "$PYTHON_EXTERNAL_MANAGED_FILE" ]] && sudo rm -f "$PYTHON_EXTERNAL_MANAGED_FILE"
           echo "auth        sufficient  pam_rootok.so" | sudo tee /etc/pam.d/chsh
         else
           apk add --update $BASE_PACKAGES $HEADER_PACKAGES shadow py3-pip py3-setuptools
-          rm -rf $PYTHON_EXTERNAL_MANAGED_FILE
+          [[ -n "$PYTHON_EXTERNAL_MANAGED_FILE" ]] && rm -f "$PYTHON_EXTERNAL_MANAGED_FILE"
         fi
-        
         ;;
       fedora|rhel|centos)
         if [[ "$EUID" -ne 0 ]]; then
           sudo yum install $PACKAGES
-          sudo rm -rf $PYTHON_EXTERNAL_MANAGED_FILE
+          [[ -n "$PYTHON_EXTERNAL_MANAGED_FILE" ]] && sudo rm -f "$PYTHON_EXTERNAL_MANAGED_FILE"
         else
           yum install $PACKAGES
-          rm -rf $PYTHON_EXTERNAL_MANAGED_FILE
+          [[ -n "$PYTHON_EXTERNAL_MANAGED_FILE" ]] && rm -f "$PYTHON_EXTERNAL_MANAGED_FILE"
         fi
         ;;
       *)
@@ -58,7 +58,7 @@ case $OS in
   proxmox)
     apt update
     apt -y install $PACKAGES
-    rm -rf 
+    [[ -n "$PYTHON_EXTERNAL_MANAGED_FILE" ]] && rm -f "$PYTHON_EXTERNAL_MANAGED_FILE"
   ;;
   *)
     echo -n "unsupported OS"
