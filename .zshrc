@@ -95,14 +95,9 @@ function +vi-git-untracked() {
 
 zstyle ':vcs_info:git+post-backend:*' hooks git-untracked
 
-# Oh My Posh prompt (preferred) or fallback to native zsh prompt
-if command -v oh-my-posh >/dev/null 2>&1; then
-    eval "$(oh-my-posh init zsh --config ~/.config/ohmyposh/prompt.json 2>/dev/null)"
-else
-    # Fallback prompt: [root:]~/.dotfiles[main]>
-    precmd() { vcs_info }
-    PROMPT='%(#.%F{red}root:%f.)%F{green}%~%f${vcs_info_msg_0_}> '
-fi
+# Fallback prompt (used if oh-my-posh not available)
+precmd() { vcs_info }
+PROMPT='%(#.%F{red}root:%f.)%F{green}%~%f${vcs_info_msg_0_}> '
 
 ############################################################################
 #
@@ -196,4 +191,14 @@ if command -v fzf >/dev/null 2>&1; then
         [[ -f "$fzf_comp" ]] && source "$fzf_comp"
     done
     true  # Ensure exit 0 even if no fzf completions found
+fi
+
+############################################################################
+#
+# Oh My Posh (must be after PATH setup)
+#
+############################################################################
+
+if command -v oh-my-posh >/dev/null 2>&1; then
+    eval "$(oh-my-posh init zsh --config ~/.config/ohmyposh/prompt.json 2>/dev/null)"
 fi
