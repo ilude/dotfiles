@@ -95,10 +95,14 @@ function +vi-git-untracked() {
 
 zstyle ':vcs_info:git+post-backend:*' hooks git-untracked
 
-precmd() { vcs_info }
-
-# Fallback prompt (when oh-my-posh not available): [root:]~/.dotfiles[main]>
-PROMPT='%(#.%F{red}root:%f.)%F{green}%~%f${vcs_info_msg_0_}> '
+# Oh My Posh prompt (preferred) or fallback to native zsh prompt
+if command -v oh-my-posh >/dev/null 2>&1; then
+    eval "$(oh-my-posh init zsh --config ~/.config/ohmyposh/prompt.json 2>/dev/null)"
+else
+    # Fallback prompt: [root:]~/.dotfiles[main]>
+    precmd() { vcs_info }
+    PROMPT='%(#.%F{red}root:%f.)%F{green}%~%f${vcs_info_msg_0_}> '
+fi
 
 ############################################################################
 #
