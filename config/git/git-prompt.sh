@@ -8,34 +8,29 @@ __prompt_path() {
     local user="${USER:-$USERNAME}"
     local git_bash_home="/c/Users/$user"
     if [[ -n "$user" && "$p" == "$git_bash_home"* ]]; then
-        echo "~${p#"$git_bash_home"}"
-        return
+        p="~${p#"$git_bash_home"}"
+    elif [[ -n "$HOME" && "$p" == "$HOME"* ]]; then
+        p="~${p#"$HOME"}"
     fi
-    # Fallback to HOME
-    if [[ -n "$HOME" && "$p" == "$HOME"* ]]; then
-        echo "~${p#"$HOME"}"
-        return
-    fi
-    echo "$p"
+    printf '%s' "$p"
 }
 
-# Get git branch
+# Get git branch (fast, no network)
 __prompt_git() {
+    # Use git symbolic-ref which is faster than branch --show-current
     local branch
-    branch=$(git branch --show-current 2>/dev/null)
-    [[ -n "$branch" ]] && echo "[$branch]"
+    branch=$(git symbolic-ref --short HEAD 2>/dev/null) || return
+    printf '[%s]' "$branch"
 }
 
 # Build prompt: [root:]path[branch]>
 __set_prompt() {
-    local path=$(__prompt_path)
-    local git=$(__prompt_git)
-    local prefix=""
+    local path git prefix=""
+    path=$(__prompt_path)
+    git=$(__prompt_git)
 
     # Red root: prefix if running as root
-    if [[ $EUID -eq 0 ]]; then
-        prefix="\[\e[31m\]root:\[\e[0m\]"
-    fi
+    [[ $EUID -eq 0 ]] && prefix='\[\e[31m\]root:\[\e[0m\]'
 
     # Colors: green path, yellow brackets, cyan branch
     if [[ -n "$git" ]]; then
