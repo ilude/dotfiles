@@ -74,30 +74,20 @@ bindkey "\e[3;5~" kill-word
 
 ############################################################################
 #
-# Git Prompt
+# Prompt (fast - just branch name, no status checks)
 #
 ############################################################################
 
-autoload -Uz vcs_info
 setopt prompt_subst
 
-zstyle ':vcs_info:*' enable git
-zstyle ':vcs_info:*' check-for-changes true
-zstyle ':vcs_info:git:*' formats '%F{yellow}[%f%F{green}%b%f%F{yellow}]%f'
-zstyle ':vcs_info:git:*' actionformats '%F{yellow}[%f%F{red}%b%f%F{yellow}]%f'
-
-function +vi-git-untracked() {
-  if [[ $(git rev-parse --is-inside-work-tree 2>/dev/null) == 'true' ]] && \
-     [[ $(git status --porcelain | wc -l) -ne 0 ]]; then
-    hook_com[branch]='%F{red}'${hook_com[branch]}'%f'
-  fi
+# Fast git prompt (no status checks)
+__git_prompt() {
+    local b=$(git symbolic-ref --short HEAD 2>/dev/null)
+    [[ -n "$b" ]] && echo "%F{yellow}[%F{cyan}${b}%F{yellow}]%f"
 }
 
-zstyle ':vcs_info:git+post-backend:*' hooks git-untracked
-
-# Fallback prompt (used if oh-my-posh not available)
-precmd() { vcs_info }
-PROMPT='%(#.%F{red}root:%f.)%F{green}%~%f${vcs_info_msg_0_}> '
+# Prompt: [root:]~/.dotfiles[main]>
+PROMPT='%(#.%F{red}root:%f.)%F{green}%~%f$(__git_prompt)> '
 
 ############################################################################
 #
@@ -191,14 +181,4 @@ if command -v fzf >/dev/null 2>&1; then
         [[ -f "$fzf_comp" ]] && source "$fzf_comp"
     done
     true  # Ensure exit 0 even if no fzf completions found
-fi
-
-############################################################################
-#
-# Oh My Posh (must be after PATH setup)
-#
-############################################################################
-
-if command -v oh-my-posh >/dev/null 2>&1; then
-    eval "$(oh-my-posh init zsh --config ~/.config/ohmyposh/prompt.json 2>/dev/null)"
 fi
