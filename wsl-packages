@@ -1,0 +1,260 @@
+#!/usr/bin/env bash
+#
+# WSL Package Installer - Idempotent
+# Installs modern CLI tools and zsh environment for Ubuntu WSL
+#
+# Usage: ./wsl-packages [--force]
+#
+# Options:
+#   --force    Reinstall packages even if already present
+
+set -e
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+FORCE=false
+[[ "$1" == "--force" ]] && FORCE=true
+
+# Check if running in WSL
+if [[ -z "$WSL_DISTRO_NAME" && ! -f /proc/sys/fs/binfmt_misc/WSLInterop ]]; then
+    echo -e "${RED}Error: This script must be run inside WSL${NC}"
+    exit 1
+fi
+
+echo -e "${CYAN}=== WSL Package Installer ===${NC}"
+
+# ============================================================================
+# Helper Functions (Idempotent)
+# ============================================================================
+
+command_exists() {
+    command -v "$1" &>/dev/null
+}
+
+package_installed() {
+    dpkg -l "$1" 2>/dev/null | grep -q "^ii"
+}
+
+install_if_missing() {
+    local pkg="$1"
+    local name="${2:-$pkg}"
+
+    if package_installed "$pkg" && [[ "$FORCE" != "true" ]]; then
+        echo -e "  ${name}: ${GREEN}already installed${NC}"
+        return 0
+    fi
+
+    echo -e "  ${name}: ${CYAN}installing...${NC}"
+    sudo apt-get install -y "$pkg" >/dev/null 2>&1
+    echo -e "  ${name}: ${GREEN}done${NC}"
+}
+
+# ============================================================================
+# System Update (only if needed)
+# ============================================================================
+
+echo -e "\n${CYAN}Checking system packages...${NC}"
+
+# Only update if cache is older than 1 hour
+APT_CACHE="/var/cache/apt/pkgcache.bin"
+if [[ ! -f "$APT_CACHE" ]] || [[ $(find "$APT_CACHE" -mmin +60 2>/dev/null) ]]; then
+    echo -e "  Updating package cache..."
+    sudo apt-get update >/dev/null 2>&1
+else
+    echo -e "  Package cache: ${GREEN}up to date${NC}"
+fi
+
+# ============================================================================
+# Core Packages
+# ============================================================================
+
+echo -e "\n${CYAN}Core packages...${NC}"
+
+CORE_PACKAGES=(
+    "zsh:Zsh shell"
+    "git:Git"
+    "curl:curl"
+    "wget:wget"
+    "unzip:unzip"
+    "build-essential:Build tools"
+    "gpg:GPG"
+    "ca-certificates:CA certificates"
+    "jq:jq (JSON processor)"
+)
+
+for item in "${CORE_PACKAGES[@]}"; do
+    pkg="${item%%:*}"
+    name="${item#*:}"
+    install_if_missing "$pkg" "$name"
+done
+
+# ============================================================================
+# Modern CLI Tools (from apt)
+# ============================================================================
+
+echo -e "\n${CYAN}Modern CLI tools...${NC}"
+
+CLI_PACKAGES=(
+    "ripgrep:ripgrep (rg)"
+    "fd-find:fd-find (fd)"
+    "bat:bat (cat replacement)"
+    "fzf:fzf (fuzzy finder)"
+    "btop:btop (system monitor)"
+    "tldr:tldr (man pages)"
+)
+
+for item in "${CLI_PACKAGES[@]}"; do
+    pkg="${item%%:*}"
+    name="${item#*:}"
+    install_if_missing "$pkg" "$name"
+done
+
+# ============================================================================
+# eza (requires external repository)
+# ============================================================================
+
+echo -e "\n${CYAN}Installing eza...${NC}"
+
+if command_exists eza && [[ "$FORCE" != "true" ]]; then
+    echo -e "  eza: ${GREEN}already installed${NC}"
+else
+    # Add eza repository if not present
+    if [[ ! -f /etc/apt/sources.list.d/gierens.list ]]; then
+        echo -e "  Adding eza repository..."
+        sudo mkdir -p /etc/apt/keyrings
+        wget -qO- https://raw.githubusercontent.com/eza-community/eza/main/deb.asc | sudo gpg --dearmor -o /etc/apt/keyrings/gierens.gpg 2>/dev/null
+        echo "deb [signed-by=/etc/apt/keyrings/gierens.gpg] http://deb.gierens.de stable main" | sudo tee /etc/apt/sources.list.d/gierens.list >/dev/null
+        sudo chmod 644 /etc/apt/keyrings/gierens.gpg /etc/apt/sources.list.d/gierens.list
+        sudo apt-get update >/dev/null 2>&1
+    fi
+    install_if_missing "eza" "eza (modern ls)"
+fi
+
+# ============================================================================
+# zoxide (smart cd)
+# ============================================================================
+
+echo -e "\n${CYAN}Installing zoxide...${NC}"
+
+# Check both PATH and ~/.local/bin for zoxide
+if { command_exists zoxide || [[ -x "$HOME/.local/bin/zoxide" ]]; } && [[ "$FORCE" != "true" ]]; then
+    echo -e "  zoxide: ${GREEN}already installed${NC}"
+else
+    echo -e "  zoxide: ${CYAN}installing via script...${NC}"
+    curl -sSfL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | sh >/dev/null 2>&1
+    echo -e "  zoxide: ${GREEN}done${NC}"
+fi
+
+# ============================================================================
+# Oh My Posh
+# ============================================================================
+
+echo -e "\n${CYAN}Installing Oh My Posh...${NC}"
+
+# Check both PATH and ~/.local/bin for oh-my-posh
+if { command_exists oh-my-posh || [[ -x "$HOME/.local/bin/oh-my-posh" ]]; } && [[ "$FORCE" != "true" ]]; then
+    echo -e "  oh-my-posh: ${GREEN}already installed${NC}"
+else
+    echo -e "  oh-my-posh: ${CYAN}installing...${NC}"
+    curl -s https://ohmyposh.dev/install.sh | bash -s -- -d ~/.local/bin >/dev/null 2>&1
+    echo -e "  oh-my-posh: ${GREEN}done${NC}"
+fi
+
+# Ensure ~/.local/bin is in PATH for current session
+export PATH="$HOME/.local/bin:$PATH"
+
+# ============================================================================
+# Set Zsh as Default Shell
+# ============================================================================
+
+echo -e "\n${CYAN}Configuring default shell...${NC}"
+
+CURRENT_SHELL=$(getent passwd "$USER" | cut -d: -f7)
+ZSH_PATH=$(which zsh)
+
+if [[ "$CURRENT_SHELL" == "$ZSH_PATH" ]]; then
+    echo -e "  Default shell: ${GREEN}already zsh${NC}"
+else
+    echo -e "  Setting default shell to zsh..."
+    sudo chsh -s "$ZSH_PATH" "$USER" 2>/dev/null || {
+        # Fallback: add exec zsh to .bashrc if chsh fails
+        if ! grep -q "exec zsh" ~/.bashrc 2>/dev/null; then
+            echo -e "\n# Auto-switch to zsh\nif [ -t 1 ] && command -v zsh &>/dev/null; then\n  exec zsh\nfi" >> ~/.bashrc
+        fi
+    }
+    echo -e "  Default shell: ${GREEN}set to zsh${NC}"
+fi
+
+# ============================================================================
+# WSL Configuration
+# ============================================================================
+
+echo -e "\n${CYAN}Configuring WSL...${NC}"
+
+WSL_CONF="/etc/wsl.conf"
+if [[ -f "$WSL_CONF" ]] && grep -q "metadata" "$WSL_CONF" 2>/dev/null; then
+    echo -e "  wsl.conf: ${GREEN}already configured${NC}"
+else
+    echo -e "  Configuring wsl.conf for metadata support..."
+    sudo tee "$WSL_CONF" >/dev/null <<'WSLCONF'
+[automount]
+enabled = true
+options = "metadata,umask=022,fmask=011"
+mountFsTab = true
+
+[interop]
+enabled = true
+appendWindowsPath = true
+
+[network]
+generateResolvConf = true
+WSLCONF
+    echo -e "  wsl.conf: ${GREEN}configured${NC}"
+    echo -e "  ${YELLOW}Note: Restart WSL for wsl.conf changes to take effect${NC}"
+fi
+
+# ============================================================================
+# Create shell aliases for Ubuntu package naming
+# ============================================================================
+
+echo -e "\n${CYAN}Setting up aliases...${NC}"
+
+ALIASES_FILE="$HOME/.local/share/wsl-aliases.sh"
+mkdir -p "$(dirname "$ALIASES_FILE")"
+
+cat > "$ALIASES_FILE" <<'ALIASES'
+# Ubuntu package name aliases (fd-find -> fd, batcat -> bat)
+# Source this from .zshrc or .bashrc
+
+# Only create aliases if the Ubuntu-named binaries exist
+command -v fdfind &>/dev/null && ! command -v fd &>/dev/null && alias fd='fdfind'
+command -v batcat &>/dev/null && ! command -v bat &>/dev/null && alias bat='batcat'
+ALIASES
+
+echo -e "  Aliases file: ${GREEN}created${NC}"
+
+# ============================================================================
+# Summary
+# ============================================================================
+
+echo -e "\n${GREEN}=== WSL Package Installation Complete ===${NC}"
+echo ""
+echo "Installed tools:"
+echo "  - zsh (shell)"
+echo "  - fzf (fuzzy finder)"
+echo "  - eza (modern ls)"
+echo "  - zoxide (smart cd)"
+echo "  - ripgrep (rg)"
+echo "  - fd-find (fd)"
+echo "  - bat (cat replacement)"
+echo "  - oh-my-posh (prompt)"
+echo ""
+echo "Next steps:"
+echo "  1. Restart WSL: wsl --shutdown (from Windows)"
+echo "  2. Open a new terminal"
+echo ""
