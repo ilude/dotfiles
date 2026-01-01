@@ -47,7 +47,7 @@
           "type": "text",
           "style": "plain",
           "foreground": "white",
-          "template": "> "
+          "template": ">"
         }
       ]
     }
