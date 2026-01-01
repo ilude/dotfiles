@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+
+# Configure Claude MCP servers based on platform
+# Writes to ~/.claude/.mcp.json (gitignored, machine-specific)
+# Windows: wraps npx with cmd /c for compatibility
+# Linux: uses npx directly
+
+CLAUDE_DIR="${HOME}/.claude"
+MCP_FILE="${CLAUDE_DIR}/.mcp.json"
+
+# Detect Windows (MSYS, Git Bash, Cygwin)
+is_windows() {
+    [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ -n "$WINDIR" ]]
+}
+
+# Generate platform-appropriate MCP config
+generate_mcp_config() {
+    if is_windows; then
+        # Windows: npx needs cmd wrapper in Git Bash
+        cat << 'EOF'
+{
+  "mcpServers": {
+    "flaresolverr": {
+      "command": "python",
+      "args": ["${USERPROFILE}/.claude/tools/flaresolverr-mcp/server.py"]
+    },
+    "browsermcp": {
+      "command": "cmd",
+      "args": ["/c", "npx", "@browsermcp/mcp@latest"]
+    }
+  }
+}
+EOF
+    else
+        # Linux/macOS: npx works directly
+        cat << 'EOF'
+{
+  "mcpServers": {
+    "flaresolverr": {
+      "command": "python",
+      "args": ["${HOME}/.claude/tools/flaresolverr-mcp/server.py"]
+    },
+    "browsermcp": {
+      "command": "npx",
+      "args": ["@browsermcp/mcp@latest"]
+    }
+  }
+}
+EOF
+    fi
+}
+
+echo "Configuring Claude MCP servers..."
+
+# Ensure claude directory exists
+mkdir -p "$CLAUDE_DIR"
+
+# Generate expected config
+expected=$(generate_mcp_config)
+
+# Check if file exists and has correct content (idempotency)
+if [[ -f "$MCP_FILE" ]]; then
+    current=$(cat "$MCP_FILE")
+    if [[ "$current" == "$expected" ]]; then
+        echo "  MCP config: Already up to date"
+        exit 0
+    fi
+fi
+
+# Write the config
+echo "$expected" > "$MCP_FILE"
+
+if is_windows; then
+    echo "  MCP config: Written (Windows mode)"
+else
+    echo "  MCP config: Written (Linux/macOS mode)"
+fi

@@ -301,6 +301,20 @@ try {
         & bash $gitSshSetup
     }
 
+    # Set up Claude Code directory link
+    Write-Host "`nSetting up Claude Code directory..." -ForegroundColor Cyan
+    $claudeLinkSetup = Join-Path $BASEDIR "claude-link-setup"
+    if (Test-Path $claudeLinkSetup) {
+        & bash $claudeLinkSetup
+    }
+
+    # Configure Claude MCP servers
+    Write-Host "`nConfiguring Claude MCP servers..." -ForegroundColor Cyan
+    $claudeMcpSetup = Join-Path $BASEDIR "claude-mcp-setup"
+    if (Test-Path $claudeMcpSetup) {
+        & bash $claudeMcpSetup
+    }
+
     # Package installation decision
     $shouldInstallPackages = $false
     $installReason = ""
