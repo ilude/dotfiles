@@ -430,6 +430,19 @@ try {
         Write-Host "`nDotbot completed with warnings." -ForegroundColor Yellow
     }
 
+    # Git Bash prompt (symlinks don't work reliably on Windows without admin)
+    Write-Host "`nConfiguring Git Bash prompt..." -ForegroundColor Cyan
+    $gitPromptSrc = Join-Path $BASEDIR "config\git\git-prompt.sh"
+    $gitPromptDst = Join-Path $env:USERPROFILE ".config\git\git-prompt.sh"
+    if (Test-Path $gitPromptSrc) {
+        $gitPromptDir = Split-Path $gitPromptDst -Parent
+        if (-not (Test-Path $gitPromptDir)) {
+            New-Item -ItemType Directory -Path $gitPromptDir -Force | Out-Null
+        }
+        Copy-Item $gitPromptSrc $gitPromptDst -Force
+        Write-Host "  Git Bash prompt configured" -ForegroundColor Green
+    }
+
     # Configure git SSH keys
     Write-Host "`nConfiguring Git SSH keys..." -ForegroundColor Cyan
     $gitSshSetup = Join-Path $BASEDIR "git-ssh-setup"
@@ -519,6 +532,11 @@ try {
                 Write-Host "  WSL dotfiles configured" -ForegroundColor Green
             } else {
                 Write-Host "  WSL dotfiles setup completed with warnings" -ForegroundColor Yellow
+            }
+
+            # Copy zsh-plugins to ~/.dotfiles/ (required by .zshrc)
+            if (Test-Path $zshPlugins) {
+                Get-Content $zshPlugins -Raw | wsl --cd ~ bash -c 'mkdir -p ~/.dotfiles && cat > ~/.dotfiles/zsh-plugins && chmod +x ~/.dotfiles/zsh-plugins'
             }
 
             # Cleanup

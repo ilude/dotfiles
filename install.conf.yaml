@@ -20,6 +20,8 @@
 - link:
     ~/.config/ohmyposh/prompt.json: config/ohmyposh/prompt.json
 
+# Git Bash prompt (Windows) - copied by install.ps1, symlinks don't work reliably
+
 # Windows-specific: PowerShell profile
 - link:
     ~/Documents/PowerShell/Microsoft.PowerShell_profile.ps1:

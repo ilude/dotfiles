@@ -97,7 +97,8 @@ zstyle ':vcs_info:git+post-backend:*' hooks git-untracked
 
 precmd() { vcs_info }
 
-PROMPT='%F{green}%m%f:%F{blue}%~${vcs_info_msg_0_}%f>%(?: : )'
+# Fallback prompt (when oh-my-posh not available): [root:]~/.dotfiles[main]>
+PROMPT='%(#.%F{red}root:%f.)%F{green}%~%f${vcs_info_msg_0_}> '
 
 ############################################################################
 #
@@ -174,8 +175,8 @@ if command -v tailscale >/dev/null 2>&1; then
     source <(tailscale completion zsh 2>/dev/null)
 fi
 
-# docker (if docker CLI installed)
-if command -v docker >/dev/null 2>&1; then
+# docker (if docker CLI actually works, not just a WSL shim)
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
     source <(docker completion zsh 2>/dev/null)
 fi
 
