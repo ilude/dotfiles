@@ -190,4 +190,5 @@ if command -v fzf >/dev/null 2>&1; then
         /usr/local/opt/fzf/shell/key-bindings.zsh; do
         [[ -f "$fzf_comp" ]] && source "$fzf_comp"
     done
+    true  # Ensure exit 0 even if no fzf completions found
 fi
