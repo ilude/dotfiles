@@ -80,6 +80,15 @@ bindkey "\e[3;5~" kill-word
 
 setopt prompt_subst
 
+# Fast path (maps Windows home to ~, shows Linux home as full path)
+__prompt_path() {
+    local p="$PWD"
+    case "$p" in
+        /mnt/c/Users/${USER:-$USERNAME}*) echo "~${p#/mnt/c/Users/${USER:-$USERNAME}}" ;;
+        *) echo "$p" ;;
+    esac
+}
+
 # Fast git prompt (no status checks)
 __git_prompt() {
     local b=$(git symbolic-ref --short HEAD 2>/dev/null)
@@ -87,7 +96,7 @@ __git_prompt() {
 }
 
 # Prompt: [root:]~/.dotfiles[main]>
-PROMPT='%(#.%F{red}root:%f.)%F{green}%~%f$(__git_prompt)> '
+PROMPT='%(#.%F{red}root:%f.)%F{green}$(__prompt_path)%f$(__git_prompt)> '
 
 ############################################################################
 #
