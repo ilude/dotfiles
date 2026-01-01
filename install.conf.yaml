@@ -1,13 +1,27 @@
 - defaults:
     link:
-        relink: true
-        force: true
+      relink: true
+      force: true
+      create: true
 
 - clean: ['~']
 
+# Cross-platform shell configs
 - link:
-    ~/.zshrc: .zshrc
     ~/.gitconfig: .gitconfig
+    ~/.zshrc: .zshrc
+    ~/.zprofile: .zprofile
+    ~/.profile: .profile
     ~/.bashrc: .bashrc
-    ~/.profile: .bash_profile
+    ~/.bash_profile: .bash_profile
     ~/.dircolors: .dircolors
+
+# Oh My Posh config (works on both platforms)
+- link:
+    ~/.config/ohmyposh/prompt.json: config/ohmyposh/prompt.json
+
+# Windows-specific: PowerShell profile
+- link:
+    ~/Documents/PowerShell/Microsoft.PowerShell_profile.ps1:
+      path: powershell/profile.ps1
+      if: '[ "$OSTYPE" = "msys" ] || [ "$OSTYPE" = "cygwin" ] || [ -n "$WINDIR" ]'

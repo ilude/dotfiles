@@ -3,8 +3,5 @@
 	email = michael.glenn@eagletg.com
 
 [core]
-	sshCommand = ssh -i ~/.ssh/id_ed25519 -F ~/.ssh/config
+	sshCommand = ssh -i ~/.ssh/id_ed25519-eagletg -F ~/.ssh/config
 
-[url "github.com-work:"]
-	insteadOf = git@github.com:
-	insteadOf = https://github.com/
