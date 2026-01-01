@@ -187,6 +187,10 @@ fi
 echo ""
 echo -e "${CYAN}Setting up zsh plugins...${NC}"
 if [[ -f "${BASEDIR}/zsh-plugins" ]]; then
+    # Copy to ~/.dotfiles/ so .zshrc can source it
+    mkdir -p ~/.dotfiles
+    cp -f "${BASEDIR}/zsh-plugins" ~/.dotfiles/zsh-plugins
+    chmod +x ~/.dotfiles/zsh-plugins
     source "${BASEDIR}/zsh-plugins"
     echo -e "${GREEN}Zsh plugins installed!${NC}"
 fi

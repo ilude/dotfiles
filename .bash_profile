@@ -1,3 +1,9 @@
-#echo "in ~/.bash_profile"
+# Source .bashrc for interactive shells
+if [[ -f ~/.bashrc ]]; then
+    source ~/.bashrc
+fi
 
-if [ -e /home/Mike/.nix-profile/etc/profile.d/nix.sh ]; then . /home/Mike/.nix-profile/etc/profile.d/nix.sh; fi # added by Nix installer
+# Nix installer
+if [[ -e /home/Mike/.nix-profile/etc/profile.d/nix.sh ]]; then
+    source /home/Mike/.nix-profile/etc/profile.d/nix.sh
+fi
