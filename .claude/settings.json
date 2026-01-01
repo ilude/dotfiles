@@ -55,10 +55,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/sync-claude-config.sh\""
-          },
-          {
-            "type": "command",
             "command": "bash \"$HOME/.claude/hooks/ensure-mcp-config.sh\""
           }
         ]
@@ -67,7 +63,7 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "pwsh -NoProfile -Command \"$input | & \\\"$env:USERPROFILE\\.claude\\claude-status.ps1\\\"\""
+    "command": "bash -c '$HOME/.claude/claude-status'"
   },
   "alwaysThinkingEnabled": true
 }
