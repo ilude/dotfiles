@@ -236,6 +236,142 @@ function Install-Packages {
 }
 
 # ============================================================================
+# WSL FUNCTIONS (Idempotent)
+# ============================================================================
+
+function Get-WSLStatus {
+    <#
+    .SYNOPSIS
+        Returns WSL installation status
+    .OUTPUTS
+        'not-installed' - WSL not available
+        'no-distro' - WSL installed but no distro
+        'ready' - WSL with distro ready
+    #>
+
+    # Check if wsl.exe exists
+    $wslCmd = Get-Command wsl.exe -ErrorAction SilentlyContinue
+    if (-not $wslCmd) {
+        return 'not-installed'
+    }
+
+    # Check if any distro is installed
+    try {
+        $distros = wsl --list --quiet 2>$null
+        if ($LASTEXITCODE -ne 0 -or -not $distros) {
+            return 'no-distro'
+        }
+        # Filter out empty lines and Docker distros
+        $realDistros = $distros | Where-Object { $_ -and $_ -notmatch 'docker' }
+        if ($realDistros) {
+            return 'ready'
+        }
+        return 'no-distro'
+    } catch {
+        return 'no-distro'
+    }
+}
+
+function Install-WSLWithUbuntu {
+    <#
+    .SYNOPSIS
+        Installs WSL and Ubuntu 24.04 if not present (idempotent)
+    .OUTPUTS
+        'already-installed' - No action needed
+        'reboot-required' - WSL installed, reboot needed
+        'distro-installed' - Ubuntu installed, ready to use
+        'failed' - Installation failed
+    #>
+    param(
+        [string]$Distro = "Ubuntu-24.04"
+    )
+
+    $status = Get-WSLStatus
+
+    switch ($status) {
+        'ready' {
+            Write-Host "  WSL: already installed with distro" -ForegroundColor DarkGray
+            return 'already-installed'
+        }
+        'not-installed' {
+            Write-Host "  Installing WSL..." -ForegroundColor Cyan
+            # Install WSL without a distro first (to handle reboot cleanly)
+            $result = wsl --install --no-distribution 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "  WSL components installed" -ForegroundColor Green
+                Write-Host "  ${Yellow}A reboot may be required before installing Ubuntu${NC}" -ForegroundColor Yellow
+
+                # Try to install distro immediately (works on some systems)
+                Write-Host "  Attempting to install $Distro..." -ForegroundColor Cyan
+                wsl --install -d $Distro --no-launch 2>$null
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "  $Distro installed" -ForegroundColor Green
+                    return 'distro-installed'
+                } else {
+                    return 'reboot-required'
+                }
+            } else {
+                Write-Host "  WSL installation failed" -ForegroundColor Red
+                return 'failed'
+            }
+        }
+        'no-distro' {
+            Write-Host "  WSL installed, adding $Distro..." -ForegroundColor Cyan
+            wsl --install -d $Distro --no-launch 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                # Set as default distro
+                wsl --set-default $Distro 2>$null
+                Write-Host "  $Distro installed and set as default" -ForegroundColor Green
+                return 'distro-installed'
+            } else {
+                Write-Host "  Failed to install $Distro" -ForegroundColor Red
+                return 'failed'
+            }
+        }
+    }
+    return 'failed'
+}
+
+function Install-WSLPackages {
+    <#
+    .SYNOPSIS
+        Runs the wsl-packages script inside WSL (idempotent)
+    #>
+    param(
+        [string]$Distro = $null
+    )
+
+    $wslPackagesScript = Join-Path $BASEDIR "wsl-packages"
+    if (-not (Test-Path $wslPackagesScript)) {
+        Write-Host "  wsl-packages script not found, skipping" -ForegroundColor Yellow
+        return $false
+    }
+
+    Write-Host "  Installing packages inside WSL..." -ForegroundColor Cyan
+
+    # Copy script to WSL and run it
+    $distroArg = if ($Distro) { "-d $Distro" } else { "" }
+
+    # Create temp location and copy script
+    $copyCmd = "mkdir -p /tmp/dotfiles-setup && cat > /tmp/dotfiles-setup/wsl-packages && chmod +x /tmp/dotfiles-setup/wsl-packages"
+    Get-Content $wslPackagesScript -Raw | wsl $distroArg --cd ~ bash -c $copyCmd
+
+    # Run the script
+    $runResult = wsl $distroArg --cd ~ bash -c '/tmp/dotfiles-setup/wsl-packages'
+
+    # Cleanup
+    wsl $distroArg --cd ~ bash -c 'rm -rf /tmp/dotfiles-setup' 2>$null
+
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "  WSL packages installed" -ForegroundColor Green
+        return $true
+    } else {
+        Write-Host "  WSL package installation had warnings" -ForegroundColor Yellow
+        return $true
+    }
+}
+
+# ============================================================================
 # MAIN
 # ============================================================================
 
@@ -315,66 +451,81 @@ try {
         & bash $claudeMcpSetup
     }
 
-    # Set up WSL dotfiles (shell configs, Claude status script, etc.)
-    Write-Host "`nSetting up WSL dotfiles..." -ForegroundColor Cyan
-    $wslCheck = Get-Command wsl -ErrorAction SilentlyContinue
-    if ($wslCheck) {
-        # Check if WSL is actually configured with a distro
-        $wslList = wsl --list --quiet 2>$null
-        if ($LASTEXITCODE -eq 0 -and $wslList) {
-            # Copy install-wsl script to WSL and run it (avoids /mnt/c I/O issues)
-            $installWslPath = Join-Path $BASEDIR "install-wsl"
-            $installWslYaml = Join-Path $BASEDIR "install.wsl.yaml"
-            if ((Test-Path $installWslPath) -and (Test-Path $installWslYaml)) {
-                # Create temp directory in WSL and copy necessary files
-                $wslSetup = @'
-mkdir -p /tmp/dotfiles-setup
-'@
-                wsl --cd ~ bash -c $wslSetup
+    # ========================================================================
+    # WSL Setup (install WSL, Ubuntu, packages, and dotfiles)
+    # ========================================================================
+    Write-Host "`nSetting up WSL environment..." -ForegroundColor Cyan
 
-                # Copy the installer and config
-                Get-Content $installWslPath -Raw | wsl --cd ~ bash -c 'cat > /tmp/dotfiles-setup/install-wsl && chmod +x /tmp/dotfiles-setup/install-wsl'
-                Get-Content $installWslYaml -Raw | wsl --cd ~ bash -c 'cat > /tmp/dotfiles-setup/install.wsl.yaml'
+    # Step 1: Ensure WSL and Ubuntu are installed
+    $wslResult = Install-WSLWithUbuntu -Distro "Ubuntu-24.04"
 
-                # Copy key dotfiles for linking
-                $dotfiles = @('.zshrc', '.zprofile', '.profile', '.bashrc', '.bash_profile', '.gitconfig', '.dircolors')
-                foreach ($file in $dotfiles) {
-                    $filePath = Join-Path $BASEDIR $file
-                    if (Test-Path $filePath) {
-                        Get-Content $filePath -Raw | wsl --cd ~ bash -c "cat > /tmp/dotfiles-setup/$file"
-                    }
-                }
-
-                # Copy claude-status script
-                $claudeStatus = Join-Path $BASEDIR ".claude\claude-status"
-                if (Test-Path $claudeStatus) {
-                    Get-Content $claudeStatus -Raw | wsl --cd ~ bash -c 'mkdir -p /tmp/dotfiles-setup/.claude && cat > /tmp/dotfiles-setup/.claude/claude-status && chmod +x /tmp/dotfiles-setup/.claude/claude-status'
-                }
-
-                # Copy ohmyposh config
-                $ohMyPosh = Join-Path $BASEDIR "config\ohmyposh\prompt.json"
-                if (Test-Path $ohMyPosh) {
-                    Get-Content $ohMyPosh -Raw | wsl --cd ~ bash -c 'mkdir -p /tmp/dotfiles-setup/config/ohmyposh && cat > /tmp/dotfiles-setup/config/ohmyposh/prompt.json'
-                }
-
-                # Run the installer from the temp directory
-                wsl --cd ~ bash -c 'cd /tmp/dotfiles-setup && ./install-wsl'
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Host "  WSL dotfiles configured" -ForegroundColor Green
-                } else {
-                    Write-Host "  WSL setup completed with warnings" -ForegroundColor Yellow
-                }
-
-                # Cleanup
-                wsl --cd ~ bash -c 'rm -rf /tmp/dotfiles-setup'
-            } else {
-                Write-Host "  install-wsl or install.wsl.yaml not found, skipping" -ForegroundColor DarkGray
-            }
-        } else {
-            Write-Host "  No WSL distro installed, skipping" -ForegroundColor DarkGray
-        }
+    if ($wslResult -eq 'reboot-required') {
+        Write-Host "`n${Yellow}========================================${NC}" -ForegroundColor Yellow
+        Write-Host "WSL installation requires a system reboot." -ForegroundColor Yellow
+        Write-Host "After rebooting, run this script again to:" -ForegroundColor Yellow
+        Write-Host "  - Complete Ubuntu 24.04 installation" -ForegroundColor Yellow
+        Write-Host "  - Install WSL packages (zsh, fzf, eza, etc.)" -ForegroundColor Yellow
+        Write-Host "  - Configure dotfiles in WSL" -ForegroundColor Yellow
+        Write-Host "========================================" -ForegroundColor Yellow
+    } elseif ($wslResult -eq 'failed') {
+        Write-Host "  WSL setup failed, skipping WSL configuration" -ForegroundColor Red
     } else {
-        Write-Host "  WSL not available, skipping" -ForegroundColor DarkGray
+        # Step 2: Install packages inside WSL
+        Install-WSLPackages
+
+        # Step 3: Copy and install dotfiles in WSL
+        Write-Host "`n  Configuring WSL dotfiles..." -ForegroundColor Cyan
+        $installWslPath = Join-Path $BASEDIR "install-wsl"
+        $installWslYaml = Join-Path $BASEDIR "install.wsl.yaml"
+
+        if ((Test-Path $installWslPath) -and (Test-Path $installWslYaml)) {
+            # Create temp directory in WSL
+            wsl --cd ~ bash -c 'mkdir -p /tmp/dotfiles-setup'
+
+            # Copy the installer and config
+            Get-Content $installWslPath -Raw | wsl --cd ~ bash -c 'cat > /tmp/dotfiles-setup/install-wsl && chmod +x /tmp/dotfiles-setup/install-wsl'
+            Get-Content $installWslYaml -Raw | wsl --cd ~ bash -c 'cat > /tmp/dotfiles-setup/install.wsl.yaml'
+
+            # Copy key dotfiles for linking
+            $dotfiles = @('.zshrc', '.zprofile', '.profile', '.bashrc', '.bash_profile', '.gitconfig', '.dircolors')
+            foreach ($file in $dotfiles) {
+                $filePath = Join-Path $BASEDIR $file
+                if (Test-Path $filePath) {
+                    Get-Content $filePath -Raw | wsl --cd ~ bash -c "cat > /tmp/dotfiles-setup/$file"
+                }
+            }
+
+            # Copy zsh-plugins script
+            $zshPlugins = Join-Path $BASEDIR "zsh-plugins"
+            if (Test-Path $zshPlugins) {
+                Get-Content $zshPlugins -Raw | wsl --cd ~ bash -c 'cat > /tmp/dotfiles-setup/zsh-plugins && chmod +x /tmp/dotfiles-setup/zsh-plugins'
+            }
+
+            # Copy claude-status script
+            $claudeStatus = Join-Path $BASEDIR ".claude\claude-status"
+            if (Test-Path $claudeStatus) {
+                Get-Content $claudeStatus -Raw | wsl --cd ~ bash -c 'mkdir -p /tmp/dotfiles-setup/.claude && cat > /tmp/dotfiles-setup/.claude/claude-status && chmod +x /tmp/dotfiles-setup/.claude/claude-status'
+            }
+
+            # Copy ohmyposh config
+            $ohMyPosh = Join-Path $BASEDIR "config\ohmyposh\prompt.json"
+            if (Test-Path $ohMyPosh) {
+                Get-Content $ohMyPosh -Raw | wsl --cd ~ bash -c 'mkdir -p /tmp/dotfiles-setup/config/ohmyposh && cat > /tmp/dotfiles-setup/config/ohmyposh/prompt.json'
+            }
+
+            # Run the installer from the temp directory
+            wsl --cd ~ bash -c 'cd /tmp/dotfiles-setup && ./install-wsl'
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "  WSL dotfiles configured" -ForegroundColor Green
+            } else {
+                Write-Host "  WSL dotfiles setup completed with warnings" -ForegroundColor Yellow
+            }
+
+            # Cleanup
+            wsl --cd ~ bash -c 'rm -rf /tmp/dotfiles-setup'
+        } else {
+            Write-Host "  install-wsl or install.wsl.yaml not found, skipping dotfiles" -ForegroundColor DarkGray
+        }
     }
 
     # Package installation decision
