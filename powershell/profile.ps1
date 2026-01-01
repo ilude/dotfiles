@@ -1,5 +1,5 @@
-# PowerShell Profile - Modernized (Dec 2025)
-# Requires: PowerShell 7.2+, Oh My Posh
+# PowerShell Profile - Modernized (Jan 2026)
+# Requires: PowerShell 7.2+
 #
 # One-time setup (modules):
 #   Install-Module PSFzf -Scope CurrentUser
@@ -32,16 +32,18 @@ Add-PathIfNotExists -PathToAdd "$env:USERPROFILE\.local\bin"
 
 #endregion
 
-#region Oh My Posh Prompt
+#region Prompt (fast native - no oh-my-posh)
 
-$ohmyposhConfig = "$env:USERPROFILE\.config\ohmyposh\prompt.json"
-if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
-  if (Test-Path $ohmyposhConfig) {
-    oh-my-posh init pwsh --config $ohmyposhConfig | Invoke-Expression
-  } else {
-    # Fallback to built-in theme
-    oh-my-posh init pwsh --config "$env:POSH_THEMES_PATH\minimal.omp.json" | Invoke-Expression
-  }
+function prompt {
+    $p = $PWD.Path.Replace($env:USERPROFILE, '~').Replace('\', '/')
+    $branch = git symbolic-ref --short HEAD 2>$null
+    if ($branch) {
+        Write-Host $p -NoNewline -ForegroundColor Green
+        Write-Host "[$branch]" -NoNewline -ForegroundColor Cyan
+        return "> "
+    }
+    Write-Host $p -NoNewline -ForegroundColor Green
+    return "> "
 }
 
 #endregion
@@ -104,9 +106,9 @@ if (Get-Module -ListAvailable DockerCompletion) {
   Import-Module DockerCompletion
 }
 
-# Git completion via posh-git (for tab expansion, not prompt)
+# Git completion via posh-git (tab expansion only, prompt disabled)
 if (Get-Module -ListAvailable posh-git) {
-  $env:POSH_GIT_ENABLED = $false  # Disable posh-git prompt (we use oh-my-posh)
+  $env:POSH_GIT_ENABLED = $false
   Import-Module posh-git
 }
 
