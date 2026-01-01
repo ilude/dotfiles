@@ -294,6 +294,13 @@ try {
         Write-Host "`nDotbot completed with warnings." -ForegroundColor Yellow
     }
 
+    # Configure git SSH keys
+    Write-Host "`nConfiguring Git SSH keys..." -ForegroundColor Cyan
+    $gitSshSetup = Join-Path $BASEDIR "git-ssh-setup"
+    if (Test-Path $gitSshSetup) {
+        & bash $gitSshSetup
+    }
+
     # Package installation decision
     $shouldInstallPackages = $false
     $installReason = ""
