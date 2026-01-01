@@ -170,15 +170,16 @@ if [[ "$INSTALL_PACKAGES" == "true" ]]; then
     echo ""
     echo -e "${CYAN}Installing system packages...${NC}"
 
-    # Run zsh-setup in Linux mode
-    if [[ -f "${BASEDIR}/zsh-setup" ]]; then
-        # Temporarily unset Windows detection variables
+    # Prefer wsl-packages (modern, idempotent) over zsh-setup
+    if [[ -f "${BASEDIR}/wsl-packages" ]]; then
+        bash "${BASEDIR}/wsl-packages"
+    elif [[ -f "${BASEDIR}/zsh-setup" ]]; then
+        # Fallback to zsh-setup in Linux mode
         unset WINDIR
         export OSTYPE="linux-gnu"
-
         bash "${BASEDIR}/zsh-setup"
     else
-        echo -e "${YELLOW}zsh-setup not found, skipping package installation${NC}"
+        echo -e "${YELLOW}No package installer found, skipping${NC}"
     fi
 fi
 
