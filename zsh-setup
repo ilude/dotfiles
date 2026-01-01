@@ -48,7 +48,7 @@ setup_windows() {
 # Function to install necessary packages based on OS type
 install_packages() {
   # Define package groups
-  BASE_PACKAGES=(coreutils make ssh-import-id zsh zsh-autosuggestions zsh-syntax-highlighting)
+  BASE_PACKAGES=(coreutils make ssh-import-id zsh zsh-autosuggestions zsh-syntax-highlighting eza)
   PYTHON_PACKAGES=(python3-dev python3-pip python3-setuptools)
   HEADER_PACKAGES=(linux-headers-generic)
 
