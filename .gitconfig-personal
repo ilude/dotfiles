@@ -2,7 +2,5 @@
 	name = mike
 	email = 219478+ilude@users.noreply.github.com
 
-# Personal repos configuration
-[core]
-	sshCommand = ssh -i ~/.ssh/id_ed25519
-
+[include]
+	path = ~/.gitconfig-personal-local

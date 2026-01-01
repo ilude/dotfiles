@@ -2,6 +2,5 @@
 	name = mike
 	email = michael.glenn@eagletg.com
 
-[core]
-	sshCommand = ssh -i ~/.ssh/id_ed25519-eagletg -F ~/.ssh/config
-
+[include]
+	path = ~/.gitconfig-professional-local

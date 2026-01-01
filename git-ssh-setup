@@ -1,20 +1,11 @@
 #!/usr/bin/env bash
 
 # Configure git SSH keys based on what's available
+# Writes to ~/.gitconfig-*-local files (gitignored, machine-specific)
 # Priority for personal: id_ed25519-personal > id_ed25519
 # Priority for work: id_ed25519-work > id_ed25519-eagletg
 
-DOTFILES_DIR="${HOME}/.dotfiles"
 SSH_DIR="${HOME}/.ssh"
-
-# Cross-platform sed -i (macOS requires '' argument)
-sed_inplace() {
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        sed -i '' "$@"
-    else
-        sed -i "$@"
-    fi
-}
 
 # Find the best available personal SSH key (returns portable path with ~)
 find_personal_key() {
@@ -48,31 +39,24 @@ build_ssh_command() {
     fi
 }
 
-# Update gitconfig file with the correct SSH command
-update_gitconfig() {
+# Write local gitconfig with SSH command (creates or updates)
+write_local_config() {
     local config_file="$1"
     local ssh_command="$2"
+    local expected="[core]
+	sshCommand = $ssh_command"
 
-    if [[ ! -f "$config_file" ]]; then
-        echo "  Warning: $config_file not found, skipping"
-        return 1
+    # Check if file exists and has correct content (idempotency)
+    if [[ -f "$config_file" ]]; then
+        local current
+        current=$(cat "$config_file")
+        if [[ "$current" == "$expected" ]]; then
+            return 0  # Already correct
+        fi
     fi
 
-    # Check current value to avoid unnecessary writes (idempotency)
-    local current
-    current=$(grep "sshCommand = " "$config_file" 2>/dev/null | sed 's/.*sshCommand = //')
-    if [[ "$current" == "$ssh_command" ]]; then
-        return 0  # Already correct, no change needed
-    fi
-
-    # Update or add sshCommand
-    if grep -q "sshCommand" "$config_file"; then
-        sed_inplace "s|sshCommand = .*|sshCommand = $ssh_command|" "$config_file"
-    else
-        # Add sshCommand under [core] section
-        sed_inplace '/^\[core\]/a\
-	sshCommand = '"$ssh_command" "$config_file"
-    fi
+    # Write the config
+    echo "$expected" > "$config_file"
 }
 
 echo "Configuring Git SSH keys..."
@@ -81,7 +65,7 @@ echo "Configuring Git SSH keys..."
 personal_key=$(find_personal_key)
 if [[ -n "$personal_key" ]]; then
     ssh_cmd=$(build_ssh_command "$personal_key")
-    update_gitconfig "${DOTFILES_DIR}/.gitconfig-personal" "$ssh_cmd"
+    write_local_config "${HOME}/.gitconfig-personal-local" "$ssh_cmd"
     echo "  Personal: $personal_key"
 else
     echo "  Personal: No key found (checked id_ed25519-personal, id_ed25519)"
@@ -91,7 +75,7 @@ fi
 work_key=$(find_work_key)
 if [[ -n "$work_key" ]]; then
     ssh_cmd=$(build_ssh_command "$work_key")
-    update_gitconfig "${DOTFILES_DIR}/.gitconfig-professional" "$ssh_cmd"
+    write_local_config "${HOME}/.gitconfig-professional-local" "$ssh_cmd"
     echo "  Work: $work_key"
 else
     echo "  Work: No key found (checked id_ed25519-work, id_ed25519-eagletg)"
