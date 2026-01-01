@@ -1,0 +1,45 @@
+# WSL-specific dotbot configuration
+# This config is designed to run inside WSL and link to configs from the
+# Windows dotfiles repo mounted at /mnt/c/Users/<user>/.dotfiles
+
+- defaults:
+    link:
+      relink: true
+      force: true
+      create: true
+
+- clean: ['~']
+
+# Shell configs - link from WSL home to the Windows dotfiles
+- link:
+    ~/.gitconfig:
+      path: .gitconfig
+    ~/.zshrc:
+      path: .zshrc
+    ~/.zprofile:
+      path: .zprofile
+    ~/.profile:
+      path: .profile
+    ~/.bashrc:
+      path: .bashrc
+    ~/.bash_profile:
+      path: .bash_profile
+    ~/.dircolors:
+      path: .dircolors
+
+# Oh My Posh config
+- link:
+    ~/.config/ohmyposh/prompt.json:
+      path: config/ohmyposh/prompt.json
+
+# Claude Code status script (for statusLine in WSL bash)
+- link:
+    ~/.claude/claude-status:
+      path: .claude/claude-status
+
+# SSH keys - share from Windows (optional, uncomment if you want shared keys)
+# Note: Requires WSL to mount Windows drives with metadata enabled
+# - link:
+#     ~/.ssh:
+#       path: /mnt/c/Users/mglenn/.ssh
+#       force: false

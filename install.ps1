@@ -315,6 +315,68 @@ try {
         & bash $claudeMcpSetup
     }
 
+    # Set up WSL dotfiles (shell configs, Claude status script, etc.)
+    Write-Host "`nSetting up WSL dotfiles..." -ForegroundColor Cyan
+    $wslCheck = Get-Command wsl -ErrorAction SilentlyContinue
+    if ($wslCheck) {
+        # Check if WSL is actually configured with a distro
+        $wslList = wsl --list --quiet 2>$null
+        if ($LASTEXITCODE -eq 0 -and $wslList) {
+            # Copy install-wsl script to WSL and run it (avoids /mnt/c I/O issues)
+            $installWslPath = Join-Path $BASEDIR "install-wsl"
+            $installWslYaml = Join-Path $BASEDIR "install.wsl.yaml"
+            if ((Test-Path $installWslPath) -and (Test-Path $installWslYaml)) {
+                # Create temp directory in WSL and copy necessary files
+                $wslSetup = @'
+mkdir -p /tmp/dotfiles-setup
+'@
+                wsl --cd ~ bash -c $wslSetup
+
+                # Copy the installer and config
+                Get-Content $installWslPath -Raw | wsl --cd ~ bash -c 'cat > /tmp/dotfiles-setup/install-wsl && chmod +x /tmp/dotfiles-setup/install-wsl'
+                Get-Content $installWslYaml -Raw | wsl --cd ~ bash -c 'cat > /tmp/dotfiles-setup/install.wsl.yaml'
+
+                # Copy key dotfiles for linking
+                $dotfiles = @('.zshrc', '.zprofile', '.profile', '.bashrc', '.bash_profile', '.gitconfig', '.dircolors')
+                foreach ($file in $dotfiles) {
+                    $filePath = Join-Path $BASEDIR $file
+                    if (Test-Path $filePath) {
+                        Get-Content $filePath -Raw | wsl --cd ~ bash -c "cat > /tmp/dotfiles-setup/$file"
+                    }
+                }
+
+                # Copy claude-status script
+                $claudeStatus = Join-Path $BASEDIR ".claude\claude-status"
+                if (Test-Path $claudeStatus) {
+                    Get-Content $claudeStatus -Raw | wsl --cd ~ bash -c 'mkdir -p /tmp/dotfiles-setup/.claude && cat > /tmp/dotfiles-setup/.claude/claude-status && chmod +x /tmp/dotfiles-setup/.claude/claude-status'
+                }
+
+                # Copy ohmyposh config
+                $ohMyPosh = Join-Path $BASEDIR "config\ohmyposh\prompt.json"
+                if (Test-Path $ohMyPosh) {
+                    Get-Content $ohMyPosh -Raw | wsl --cd ~ bash -c 'mkdir -p /tmp/dotfiles-setup/config/ohmyposh && cat > /tmp/dotfiles-setup/config/ohmyposh/prompt.json'
+                }
+
+                # Run the installer from the temp directory
+                wsl --cd ~ bash -c 'cd /tmp/dotfiles-setup && ./install-wsl'
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "  WSL dotfiles configured" -ForegroundColor Green
+                } else {
+                    Write-Host "  WSL setup completed with warnings" -ForegroundColor Yellow
+                }
+
+                # Cleanup
+                wsl --cd ~ bash -c 'rm -rf /tmp/dotfiles-setup'
+            } else {
+                Write-Host "  install-wsl or install.wsl.yaml not found, skipping" -ForegroundColor DarkGray
+            }
+        } else {
+            Write-Host "  No WSL distro installed, skipping" -ForegroundColor DarkGray
+        }
+    } else {
+        Write-Host "  WSL not available, skipping" -ForegroundColor DarkGray
+    }
+
     # Package installation decision
     $shouldInstallPackages = $false
     $installReason = ""
