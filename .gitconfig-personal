@@ -4,5 +4,5 @@
 
 # Personal repos configuration
 [core]
-	sshCommand = ssh -i ~/.ssh/id_ed25519-personal -F ~/.ssh/config
+	sshCommand = ssh -i ~/.ssh/id_ed25519
 

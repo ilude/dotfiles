@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+
+# Configure git SSH keys based on what's available
+# Priority for personal: id_ed25519-personal > id_ed25519
+# Priority for work: id_ed25519-work > id_ed25519-eagletg
+
+DOTFILES_DIR="${HOME}/.dotfiles"
+SSH_DIR="${HOME}/.ssh"
+
+# Find the best available personal SSH key (returns portable path with ~)
+find_personal_key() {
+    for key in "id_ed25519-personal" "id_ed25519"; do
+        if [[ -f "${SSH_DIR}/${key}" ]]; then
+            echo "~/.ssh/${key}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Find the best available work SSH key (returns portable path with ~)
+find_work_key() {
+    for key in "id_ed25519-work" "id_ed25519-eagletg"; do
+        if [[ -f "${SSH_DIR}/${key}" ]]; then
+            echo "~/.ssh/${key}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Build sshCommand - only include -F if config exists
+build_ssh_command() {
+    local key="$1"
+    if [[ -f "${SSH_DIR}/config" ]]; then
+        echo "ssh -i $key -F ~/.ssh/config"
+    else
+        echo "ssh -i $key"
+    fi
+}
+
+# Update gitconfig file with the correct SSH command
+update_gitconfig() {
+    local config_file="$1"
+    local ssh_command="$2"
+
+    if [[ ! -f "$config_file" ]]; then
+        echo "Warning: $config_file not found, skipping"
+        return 1
+    fi
+
+    # Use sed to update the sshCommand line
+    if grep -q "sshCommand" "$config_file"; then
+        sed -i "s|sshCommand = .*|sshCommand = $ssh_command|" "$config_file"
+    else
+        # Add sshCommand under [core] section
+        sed -i '/^\[core\]/a\	sshCommand = '"$ssh_command" "$config_file"
+    fi
+}
+
+echo "🔑 Configuring Git SSH keys..."
+
+# Configure personal key
+personal_key=$(find_personal_key)
+if [[ -n "$personal_key" ]]; then
+    ssh_cmd=$(build_ssh_command "$personal_key")
+    update_gitconfig "${DOTFILES_DIR}/.gitconfig-personal" "$ssh_cmd"
+    echo "  Personal: $personal_key"
+else
+    echo "  Personal: No key found (checked id_ed25519-personal, id_ed25519)"
+fi
+
+# Configure work key
+work_key=$(find_work_key)
+if [[ -n "$work_key" ]]; then
+    ssh_cmd=$(build_ssh_command "$work_key")
+    update_gitconfig "${DOTFILES_DIR}/.gitconfig-professional" "$ssh_cmd"
+    echo "  Work: $work_key"
+else
+    echo "  Work: No key found (checked id_ed25519-work, id_ed25519-eagletg)"
+fi
+
+echo "  Git SSH configuration complete"
