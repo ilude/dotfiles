@@ -31,3 +31,5 @@ git submodule update --init --recursive "${DOTBOT_DIR}"
 
 "${BASEDIR}/git-ssh-setup"
 "${BASEDIR}/zsh-setup"
+"${BASEDIR}/claude-link-setup"
+"${BASEDIR}/claude-mcp-setup"
