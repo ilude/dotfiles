@@ -2,3 +2,5 @@ plugins/*
 !**/.keep
 .specstory/
 .gitconfig.old
+.gitconfig-personal-local
+.gitconfig-professional-local
