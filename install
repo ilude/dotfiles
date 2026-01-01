@@ -4,9 +4,24 @@ set -e
 
 CONFIG="install.conf.yaml"
 DOTBOT_DIR="dotbot"
-
 DOTBOT_BIN="bin/dotbot"
 BASEDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Detect Windows
+is_windows() {
+  [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ -n "$WINDIR" ]]
+}
+
+# Windows notice
+if is_windows; then
+    echo "=== Dotfiles Installer (Git Bash) ==="
+    echo ""
+    echo "For full package installation, run in PowerShell:"
+    echo "  ~/.dotfiles/install.ps1"
+    echo ""
+    echo "Proceeding with dotbot + zsh setup..."
+    echo ""
+fi
 
 cd "${BASEDIR}"
 git -C "${DOTBOT_DIR}" submodule sync --quiet --recursive

@@ -133,14 +133,61 @@ export LANG=en_US.UTF-8
 export HOSTNAME=$(hostname)
 export PATH="$HOME/.local/bin:$PATH"
 
-if [[ -f ~/.dircolors ]] ; then
-    eval $(dircolors -b ~/.dircolors)
-elif [[ -f /etc/DIR_COLORS ]] ; then
-    eval $(dircolors -b /etc/DIR_COLORS)
+# Directory colors (skip if dircolors not available, e.g., some Windows setups)
+if command -v dircolors >/dev/null 2>&1; then
+    if [[ -f ~/.dircolors ]] ; then
+        eval $(dircolors -b ~/.dircolors)
+    elif [[ -f /etc/DIR_COLORS ]] ; then
+        eval $(dircolors -b /etc/DIR_COLORS)
+    fi
 fi
 
 if [[ "$TERM_PROGRAM" == "vscode" ]]; then
   export EDITOR="code"
 else
   export EDITOR="nano"
+fi
+
+############################################################################
+#
+# CLI Tool Completions
+#
+############################################################################
+
+# kubectl
+if command -v kubectl >/dev/null 2>&1; then
+    source <(kubectl completion zsh)
+fi
+
+# helm
+if command -v helm >/dev/null 2>&1; then
+    source <(helm completion zsh)
+fi
+
+# GitHub CLI
+if command -v gh >/dev/null 2>&1; then
+    source <(gh completion -s zsh)
+fi
+
+# tailscale
+if command -v tailscale >/dev/null 2>&1; then
+    source <(tailscale completion zsh 2>/dev/null)
+fi
+
+# docker (if docker CLI installed)
+if command -v docker >/dev/null 2>&1; then
+    source <(docker completion zsh 2>/dev/null)
+fi
+
+# fzf key bindings and completion
+if command -v fzf >/dev/null 2>&1; then
+    # Try common fzf completion locations
+    for fzf_comp in \
+        /usr/share/fzf/completion.zsh \
+        /usr/share/fzf/key-bindings.zsh \
+        ~/.fzf.zsh \
+        /usr/local/opt/fzf/shell/completion.zsh \
+        /usr/local/opt/fzf/shell/key-bindings.zsh; do
+        [[ -f "$fzf_comp" ]] && source "$fzf_comp"
+    done
 fi

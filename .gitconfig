@@ -1,32 +1,64 @@
+# Unified cross-platform gitconfig (Linux + Windows)
+
 [core]
   eol = lf
   autocrlf = input
   editor = code --wait
   symlinks = true
+
 [diff]
   tool = vscode
 [difftool "vscode"]
   cmd = code --wait --diff $LOCAL $REMOTE
+[difftool]
+  prompt = false
+
 [merge]
   tool = vscode
 [mergetool "vscode"]
   cmd = code --wait $MERGED
+[mergetool]
+  prompt = false
+  keepbackup = false
+
 [advice]
   skippedCherryPicks = false
+
 [branch]
   autoSetupRebase = always
+
 [fetch]
   prune = true
+
 [init]
   defaultBranch = main
+
 [pull]
   rebase = true
+
 [push]
   autoSetupRemote = true
   default = current
+
 [submodule]
   recurse = true
+
+[safe]
+  directory = *
+
+[filter "lfs"]
+  clean = git-lfs clean -- %f
+  smudge = git-lfs smudge -- %f
+  process = git-lfs filter-process
+  required = true
+
+[user]
+  name = mike
+  email = mglenn@ilude.com
+
 [alias]
+  # Basic shortcuts
+  alias = config --get-regexp \"alias.*\"
   co = checkout
   cb = checkout -b
   ci = commit -m
@@ -36,46 +68,64 @@
   br = branch
   unstage = reset .
   rh = reset --hard
+  aa = !git add -A . && git status -s
+  pushall = !git push --all && git push --tags
+
+  # Branch management
+  ct = !sh -c 'git checkout -b $1 && git push --set-upstream origin $1' -
+  cto = !sh -c 'git checkout -t origin/$1' -
   db = !sh -c 'git branch -D $1 && git push origin --delete $1' -
   dlb = !sh -c 'git branch -D $1' -
   drb = !sh -c 'git remote prune origin && git push origin --delete $1' -
-  aa = !git add -A . && git status -s
-  pushall = "!git push --all; git push --tags"
-  ct = !sh -c 'git checkout -b $1 && git push --set-upstream origin $1' -
+  track = !sh -c 'branch=$(git name-rev --name-only HEAD); git branch --track $branch ${1:-origin}/${2:-$branch}' -
+
+  # Logging
   ls = !git --no-pager log -10 --date=short --pretty='%C(yellow)%h%Creset - %C(yellow)%an%Creset %C(white)%ad%Creset%C(yellow)%d%Creset %Cgreen%s%Creset'
   ll = !git log --date=short --pretty='%C(yellow)%h%Creset - %C(yellow)%an%Creset %C(white)%ad%Creset%C(yellow)%d%Creset %Cgreen%s%Creset'
   lg = log --graph --abbrev-commit --date=relative --pretty='%C(yellow)%h%Creset - %C(yellow)%an%Creset%C(yellow)%d%Creset %s %Cgreen(%cr)%Creset'
-  lf = show --pretty=\"format:\" --name-only
+  lf = show --pretty=format: --name-only
+
+  # Misc
+  ts = tag -n10
   wtf = reflog
   rs = remote show origin
-[safe]
-  directory = *
-[user]
-  name = mike
-  email = mglenn@ilude.com
 
-[includeIf "hasconfig:remote.*.url:https://github.com/mtg-eagletg/**"]
-  path = ~/.dotfiles/.gitconfig-professional
-[includeIf "hasconfig:remote.*.url:https://github.com/EagleTG-Development/**"]
-  path = ~/.dotfiles/.gitconfig-professional
-[includeIf "hasconfig:remote.*.url:git@github.com:mtg-eagletg/**"]
-  path = ~/.dotfiles/.gitconfig-professional
-[includeIf "hasconfig:remote.*.url:git@github.com:EagleTG-Development/**"]
-  path = ~/.dotfiles/.gitconfig-professional
-[includeIf "hasconfig:remote.*.url:github.com-work:*/**"]
+#############################################################################
+# Identity includes - Windows (directory-based)
+# These paths don't exist on Linux so they're safely ignored
+#############################################################################
+
+[includeIf "gitdir:C:/Projects/Work/"]
   path = ~/.dotfiles/.gitconfig-professional
 
-
-
-[includeIf "hasconfig:remote.*.url:https://github.com/ilude/**"]
+[includeIf "gitdir:C:/Projects/Personal/"]
   path = ~/.dotfiles/.gitconfig-personal
+
+#############################################################################
+# Identity includes - Linux/Universal (URL-based)
+# Fallback for repos outside the Windows directory structure
+#############################################################################
+
+# Personal repos
 [includeIf "hasconfig:remote.*.url:git@github.com:ilude/**"]
   path = ~/.dotfiles/.gitconfig-personal
-[includeIf "hasconfig:remote.*.url:github.com-personal:*/**"]
-  path = ~/.dotfiles/.gitconfig-personal
-[includeIf "hasconfig:remote.*.url:https://github.com/traefikturkey/**"]
+[includeIf "hasconfig:remote.*.url:https://github.com/ilude/**"]
   path = ~/.dotfiles/.gitconfig-personal
 [includeIf "hasconfig:remote.*.url:git@github.com:traefikturkey/**"]
   path = ~/.dotfiles/.gitconfig-personal
-[credential]
-	helper = "!f() { /home/vscode/.vscode-server/bin/03c265b1adee71ac88f833e065f7bb956b60550a/node /tmp/vscode-remote-containers-473c65f2-f17f-4d31-9101-ea64f60f0e03.js git-credential-helper $*; }; f"
+[includeIf "hasconfig:remote.*.url:https://github.com/traefikturkey/**"]
+  path = ~/.dotfiles/.gitconfig-personal
+[includeIf "hasconfig:remote.*.url:github.com-personal:*/**"]
+  path = ~/.dotfiles/.gitconfig-personal
+
+# Work repos
+[includeIf "hasconfig:remote.*.url:git@github.com:mtg-eagletg/**"]
+  path = ~/.dotfiles/.gitconfig-professional
+[includeIf "hasconfig:remote.*.url:https://github.com/mtg-eagletg/**"]
+  path = ~/.dotfiles/.gitconfig-professional
+[includeIf "hasconfig:remote.*.url:git@github.com:EagleTG-Development/**"]
+  path = ~/.dotfiles/.gitconfig-professional
+[includeIf "hasconfig:remote.*.url:https://github.com/EagleTG-Development/**"]
+  path = ~/.dotfiles/.gitconfig-professional
+[includeIf "hasconfig:remote.*.url:github.com-work:*/**"]
+  path = ~/.dotfiles/.gitconfig-professional

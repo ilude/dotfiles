@@ -1,5 +1,50 @@
 #!/usr/bin/env bash
 
+# Detect Windows (Git Bash / MSYS2 / Cygwin)
+is_windows() {
+  [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ -n "$WINDIR" ]]
+}
+
+# Windows-specific setup
+setup_windows() {
+  echo "Windows detected (Git Bash/MSYS2)"
+  echo ""
+
+  # Check zsh is available
+  if ! command -v zsh >/dev/null 2>&1; then
+    echo "zsh not found. Install via:"
+    echo "  pacman -S zsh   # Git Bash / MSYS2"
+    echo ""
+  else
+    echo "zsh: $(which zsh)"
+  fi
+
+  # Check for fzf (required for zsh-fzf-history-search)
+  if ! command -v fzf >/dev/null 2>&1; then
+    echo "fzf not found. Install via:"
+    echo "  winget install junegunn.fzf"
+    echo ""
+  else
+    echo "fzf: $(which fzf)"
+  fi
+
+  # Check for eza (optional, for better ls)
+  if ! command -v eza >/dev/null 2>&1; then
+    echo "eza not found (optional). Install via:"
+    echo "  winget install eza-community.eza"
+    echo ""
+  else
+    echo "eza: $(which eza)"
+  fi
+
+  # Install zsh plugins (same as Linux)
+  source ~/.dotfiles/zsh-plugins
+
+  echo ""
+  echo "Windows setup complete!"
+  echo "Restart your terminal or run: source ~/.zshrc"
+}
+
 # Function to install necessary packages based on OS type
 install_packages() {
   # Define package groups
@@ -80,23 +125,29 @@ install_packages() {
   $SUDO chsh -s $(which zsh) $(whoami)
 }
 
+# Platform detection and routing
+if is_windows; then
+    setup_windows
+    exit 0
+fi
+
 # Check if running on NixOS and exit if true
 if [[ -f /etc/NIXOS ]]; then
     echo "NixOS found, nothing to be done!"
     exit 0
 fi
 
-# Run package installation function
+# Run package installation function (Linux only)
 install_packages
 
 # Import SSH keys from GitHub if ssh-import-id is available
 if command -v ssh-import-id >/dev/null 2>&1; then
-    echo "🔄 Importing .ssh/authorized_keys from github for user ilude..."
+    echo "Importing .ssh/authorized_keys from github for user ilude..."
     ssh-import-id gh:ilude
 else
-    echo "⚠️ Warning: ssh-import-id not found, skipping SSH key import." >&2
+    echo "Warning: ssh-import-id not found, skipping SSH key import." >&2
 fi
 
 source ~/.dotfiles/zsh-plugins
 
-echo "✅ Setup completed successfully!"
+echo "Setup completed successfully!"
