@@ -1,7 +1,7 @@
 .PHONY: test test-quick test-docker preflight help lint format check install-hooks
 
 # Shell scripts to check (excludes dotbot submodule and plugins)
-SHELL_SCRIPTS := .bashrc .zshrc install install-wsl git-ssh-setup claude-link-setup claude-mcp-setup zsh-setup zsh-plugins wsl-packages
+SHELL_SCRIPTS := .bashrc .zshrc install install-wsl git-ssh-setup claude-link-setup claude-mcp-setup copilot-link-setup zsh-setup zsh-plugins wsl-packages
 
 # Default target
 help:
@@ -20,7 +20,7 @@ preflight:
 	@echo "Running pre-flight checks..."
 	@# Check for CRLF corruption in shell scripts
 	@if command -v file >/dev/null 2>&1; then \
-		if file .bashrc .zshrc install install-wsl git-ssh-setup claude-link-setup 2>/dev/null | grep -q CRLF; then \
+		if file .bashrc .zshrc install install-wsl git-ssh-setup claude-link-setup copilot-link-setup 2>/dev/null | grep -q CRLF; then \
 			echo "ERROR: CRLF line endings detected. Run: dos2unix <file>"; \
 			exit 1; \
 		fi; \
