@@ -14,7 +14,41 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 |------|------|---------|
 | Lint | shellcheck | `shellcheck *.sh` |
 | Format | shfmt | `shfmt -w *.sh` |
+| Style | bashate | `bashate *.sh` |
+| Security | shellharden | `shellharden --check *.sh` |
+| POSIX check | checkbashisms | `checkbashisms *.sh` |
+| Test | bats | `bats test/` |
 | Coverage | bashcov | `bashcov ./test.sh` |
+| Coverage | kcov | `kcov coverage/ bats test/` |
+
+### Tool Installation
+
+```bash
+# Ubuntu/Debian
+sudo apt install shellcheck shfmt devscripts  # devscripts includes checkbashisms
+
+# macOS
+brew install shellcheck shfmt bash checkbashisms
+
+# pip (bashate)
+pip install bashate
+
+# cargo (shellharden)
+cargo install shellharden
+
+# npm (bats)
+npm install -g bats
+```
+
+### Tool Descriptions
+
+- **shellcheck**: Static analysis, catches bugs and security issues
+- **shfmt**: Formats shell scripts consistently
+- **bashate**: OpenStack style enforcer (E* error codes)
+- **shellharden**: Suggests safer quoting and variable usage
+- **checkbashisms**: Finds bash-specific syntax in scripts meant to be POSIX
+- **bats**: Bash Automated Testing System
+- **kcov**: Code coverage for bash scripts
 
 ## Shebang
 
