@@ -198,12 +198,5 @@ fi
 echo ""
 echo -e "${GREEN}=== WSL Setup Complete ===${NC}"
 echo ""
-echo "Next steps:"
-echo "  1. Restart your WSL terminal or run: source ~/.zshrc"
-echo "  2. If zsh isn't your default shell, run: chsh -s \$(which zsh)"
+echo "If zsh isn't your default shell, run: chsh -s \$(which zsh)"
 echo ""
-if [[ "$INSTALL_PACKAGES" != "true" ]]; then
-    echo "To install system packages, run:"
-    echo "  $BASEDIR/install-wsl --packages"
-    echo ""
-fi
