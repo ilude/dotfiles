@@ -1,0 +1,102 @@
+# Version History
+
+## 1.0.0 - 2025-11-10
+
+Initial release of the GitHub Copilot Instructions Template.
+
+### Features
+
+**Main Orchestration:**
+- Comprehensive copilot-instructions.md with core philosophy
+- Task failure rules and execution guidelines
+- Code modification principles and workflow process
+
+**Instruction Files:**
+- Python standards (uv and traditional tooling)
+- Dockerfile best practices (Alpine, multi-stage, security)
+- DevContainer configuration (Docker-in-Docker, VS Code integration)
+- Testing standards (pytest, fixtures, coverage)
+- Makefile patterns (targets, variables, automation)
+- Ignore files management (.gitignore, .dockerignore)
+- Self-explanatory code commenting philosophy
+- Copilot customization guidelines
+- MCP services reference (optional)
+
+**Prompt Files:**
+- commit.prompt.md - Automated commit workflow
+- check.prompt.md - Comprehensive quality checks
+- test.prompt.md - Test execution and fixing
+- lint.prompt.md - Code linting and style
+
+### Source Projects
+
+Consolidated best practices from:
+- agent-spike (Python 3.14, uv, self-explanatory code)
+- mentat-cli (CQRS, speckit workflow, IoC patterns)
+- joyride-python (Docker, 12-Factor, BE BRIEF)
+- onboard/attempt-one (modular, MCP services)
+- onramp (service-oriented, meta-instructions)
+
+### Key Principles
+
+- Execute autonomously, don't ask permission
+- Make minimal, surgical changes
+- Always verify with tests before completion
+- Be direct and concise in communication
+- Code should be self-explanatory
+
+### Customization Points
+
+All files include customization notes:
+- Language/framework-specific sections to add/remove
+- Tool configuration (uv vs pip, ruff vs flake8)
+- Project structure patterns
+- Team-specific conventions
+- CI/CD integration points
+
+### Documentation
+
+- Comprehensive README with quick start guide
+- Usage examples for all prompts
+- Troubleshooting section
+- Best practices for maintenance
+- Links to official documentation
+
+---
+
+## Future Versions
+
+### Planned for 2.0.0
+- Additional language support (TypeScript, Go, Rust)
+- Framework-specific templates (React, FastAPI, Django)
+- More prompt examples (refactor, deploy, review)
+- Integration with popular CI/CD systems
+- Video tutorials and examples
+
+### Contributions Welcome
+- Language/framework instruction files
+- New prompt patterns
+- Improved examples and documentation
+- Bug fixes and clarifications
+
+---
+
+## Maintenance Notes
+
+**When updating this template:**
+
+1. Update version number in this file
+2. Document all changes under new version heading
+3. Update README.md if significant changes
+4. Test all instruction and prompt files
+5. Verify examples still work
+6. Update "Last updated" date in README
+
+**Breaking changes should increment major version (X.0.0)**
+**New features should increment minor version (1.X.0)**
+**Bug fixes should increment patch version (1.0.X)**
+
+---
+
+**Template maintained at:** https://github.com/yourusername/copilot-instructions-template
+**Issues/PRs welcome!**

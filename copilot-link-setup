@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+
+# Create ~/.copilot link to dotfiles
+# Windows: uses junction (no admin required)
+# Linux: uses symlink
+
+DOTFILES_DIR="${HOME}/.dotfiles"
+COPILOT_SOURCE="${DOTFILES_DIR}/copilot"
+COPILOT_TARGET="${HOME}/.copilot"
+
+# Detect Windows
+is_windows() {
+    [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ -n "$WINDIR" ]]
+}
+
+echo "Setting up GitHub Copilot directory link..."
+
+# Check if source exists
+if [[ ! -d "$COPILOT_SOURCE" ]]; then
+    echo "  Error: Source directory not found: $COPILOT_SOURCE"
+    exit 1
+fi
+
+# Check if target already correct
+if [[ -L "$COPILOT_TARGET" ]]; then
+    current_target=$(readlink -f "$COPILOT_TARGET" 2>/dev/null || readlink "$COPILOT_TARGET")
+    expected_target=$(readlink -f "$COPILOT_SOURCE" 2>/dev/null || echo "$COPILOT_SOURCE")
+    if [[ "$current_target" == "$expected_target" ]] || [[ "$current_target" == "$COPILOT_SOURCE" ]]; then
+        echo "  ~/.copilot: Already linked correctly"
+        exit 0
+    fi
+fi
+
+# Remove existing target if it exists
+if [[ -e "$COPILOT_TARGET" ]] || [[ -L "$COPILOT_TARGET" ]]; then
+    echo "  Removing existing ~/.copilot..."
+    rm -rf "$COPILOT_TARGET"
+fi
+
+# Create link
+if is_windows; then
+    # Windows: use junction (doesn't require admin)
+    win_target=$(cygpath -w "$COPILOT_TARGET")
+    win_source=$(cygpath -w "$COPILOT_SOURCE")
+    if cmd //c "mklink /J $win_target $win_source" > /dev/null 2>&1; then
+        echo "  ~/.copilot: Junction created"
+    else
+        echo "  Error: Failed to create junction"
+        exit 1
+    fi
+else
+    # Linux/macOS: use symlink
+    ln -s "$COPILOT_SOURCE" "$COPILOT_TARGET"
+    echo "  ~/.copilot: Symlink created"
+fi
