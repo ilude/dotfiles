@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2088  # Intentional: we want literal ~ for portable gitconfig
 
 # Configure git SSH keys based on what's available
 # Writes to ~/.gitconfig-*-local files (gitignored, machine-specific)
@@ -11,7 +12,7 @@ SSH_DIR="${HOME}/.ssh"
 find_personal_key() {
     for key in "id_ed25519-personal" "id_ed25519"; do
         if [[ -f "${SSH_DIR}/${key}" ]]; then
-            echo "~/.ssh/${key}"
+            printf '%s\n' "~/.ssh/${key}"
             return 0
         fi
     done
@@ -22,7 +23,7 @@ find_personal_key() {
 find_work_key() {
     for key in "id_ed25519-work" "id_ed25519-eagletg"; do
         if [[ -f "${SSH_DIR}/${key}" ]]; then
-            echo "~/.ssh/${key}"
+            printf '%s\n' "~/.ssh/${key}"
             return 0
         fi
     done

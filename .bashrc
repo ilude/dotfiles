@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Early exit if not running interactively
 case $- in
     *i*) ;;
@@ -13,11 +14,12 @@ __set_prompt() {
 
     # Normalize path to ~ (use $HOME which is always set)
     case "$p" in
-        "$HOME"*) p="~${p#$HOME}" ;;
+        "$HOME"*) p="~${p#"$HOME"}" ;;
     esac
 
     # Get git branch (fast)
-    local branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+    local branch
+    branch=$(git symbolic-ref --short HEAD 2>/dev/null)
 
     # Build prompt
     if [[ -n "$branch" ]]; then

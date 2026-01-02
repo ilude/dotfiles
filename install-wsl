@@ -56,7 +56,8 @@ find_dotfiles_dir() {
     fi
 
     # Check script directory
-    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     if [[ -f "$script_dir/install.wsl.yaml" ]]; then
         echo "$script_dir"
         return 0
@@ -64,7 +65,8 @@ find_dotfiles_dir() {
 
     # Try to find in /mnt/c/Users (may fail if mount has issues)
     for dir in /mnt/c/Users/*/; do
-        local user=$(basename "$dir" 2>/dev/null)
+        local user
+        user=$(basename "$dir" 2>/dev/null)
         if [[ -n "$user" && "$user" != "Public" && "$user" != "Default" && "$user" != "Default User" && "$user" != "All Users" ]]; then
             if [[ -d "${dir}.dotfiles" && -f "${dir}.dotfiles/install.wsl.yaml" ]]; then
                 echo "${dir}.dotfiles"
@@ -124,9 +126,7 @@ if [[ "$USE_DOTBOT" == "true" ]]; then
     fi
 
     echo -e "${CYAN}Running dotbot...${NC}"
-    "$PYTHON" "${BASEDIR}/${DOTBOT_DIR}/${DOTBOT_BIN}" -d "${BASEDIR}" -c "${CONFIG}" "${@}"
-
-    if [[ $? -eq 0 ]]; then
+    if "$PYTHON" "${BASEDIR}/${DOTBOT_DIR}/${DOTBOT_BIN}" -d "${BASEDIR}" -c "${CONFIG}" "${@}"; then
         echo -e "${GREEN}Dotbot completed successfully!${NC}"
     else
         echo -e "${YELLOW}Dotbot completed with warnings.${NC}"
