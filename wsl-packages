@@ -115,6 +115,24 @@ for item in "${CLI_PACKAGES[@]}"; do
 done
 
 # ============================================================================
+# Dev/Testing tools
+# ============================================================================
+
+echo -e "\n${CYAN}Dev/Testing tools...${NC}"
+
+DEV_PACKAGES=(
+    "shellcheck:shellcheck (shell linter)"
+    "shfmt:shfmt (shell formatter)"
+    "bats:bats (bash testing)"
+)
+
+for item in "${DEV_PACKAGES[@]}"; do
+    pkg="${item%%:*}"
+    name="${item#*:}"
+    install_if_missing "$pkg" "$name"
+done
+
+# ============================================================================
 # eza (requires external repository)
 # ============================================================================
 
