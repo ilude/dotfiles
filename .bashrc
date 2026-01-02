@@ -27,9 +27,9 @@ __set_prompt() {
         esac
     fi
 
-    # Get git branch (fast)
+    # Get git branch (fast, || true prevents errexit in test environments)
     local branch
-    branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+    branch=$(git symbolic-ref --short HEAD 2>/dev/null) || true
 
     # Build prompt
     if [[ -n "$branch" ]]; then

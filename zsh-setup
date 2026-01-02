@@ -113,7 +113,8 @@ install_packages() {
   echo "📦 Installing system packages..."
   for package in "${PACKAGES[@]}"; do
     echo "📦 Installing: $package"
-    if ! $SUDO "$COMMAND" "$package"; then
+    # shellcheck disable=SC2086  # Word splitting on COMMAND is intentional
+    if ! $SUDO $COMMAND "$package"; then
       echo "❌ Failed to install: $package" >&2
     fi
   done
