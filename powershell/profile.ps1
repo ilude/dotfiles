@@ -39,7 +39,9 @@ function prompt {
     $branch = git symbolic-ref --short HEAD 2>$null
     if ($branch) {
         Write-Host $p -NoNewline -ForegroundColor Green
-        Write-Host "[$branch]" -NoNewline -ForegroundColor Cyan
+        Write-Host "[" -NoNewline -ForegroundColor Yellow
+        Write-Host $branch -NoNewline -ForegroundColor Cyan
+        Write-Host "]" -NoNewline -ForegroundColor Yellow
         return "> "
     }
     Write-Host $p -NoNewline -ForegroundColor Green
