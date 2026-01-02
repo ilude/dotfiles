@@ -348,6 +348,28 @@ jobs:
 
 ---
 
+## Sub-Agent Testing Rules
+
+When spawning sub-agents to run tests:
+
+- **Targeted tests only** - Run specific test files, never full suite
+- **Match scope to changes** - Test files related to what was modified
+- **Fast feedback** - Sub-agents should complete quickly
+
+```bash
+# ✅ CORRECT - Targeted
+bats test/prompt_format.bats
+bats test/git_ssh_setup.bats -f "symlink"
+
+# ❌ WRONG - Full suite in sub-agent
+bats test/
+make test
+```
+
+**Why this matters:** Full test suites waste time and context. Sub-agents should validate specific changes, not re-run everything.
+
+---
+
 ## Installation
 
 ```bash
