@@ -1,4 +1,4 @@
-.PHONY: test test-quick test-docker preflight help lint format check
+.PHONY: test test-quick test-docker preflight help lint format check install-hooks
 
 # Shell scripts to check (excludes dotbot submodule and plugins)
 SHELL_SCRIPTS := .bashrc .zshrc install install-wsl git-ssh-setup claude-link-setup claude-mcp-setup zsh-setup zsh-plugins wsl-packages
@@ -6,13 +6,14 @@ SHELL_SCRIPTS := .bashrc .zshrc install install-wsl git-ssh-setup claude-link-se
 # Default target
 help:
 	@echo "Available targets:"
-	@echo "  make test        - Run tests locally (requires bats)"
-	@echo "  make test-docker - Run tests in Ubuntu 24.04 container (recommended)"
-	@echo "  make test-quick  - Run only core tests locally"
-	@echo "  make preflight   - Check environment (CRLF, dependencies)"
-	@echo "  make lint        - Run shellcheck on shell scripts"
-	@echo "  make format      - Format shell scripts with shfmt"
-	@echo "  make check       - Run all checks (lint + test)"
+	@echo "  make test          - Run tests locally (requires bats)"
+	@echo "  make test-docker   - Run tests in Ubuntu 24.04 container (recommended)"
+	@echo "  make test-quick    - Run only core tests locally"
+	@echo "  make preflight     - Check environment (CRLF, dependencies)"
+	@echo "  make lint          - Run shellcheck on shell scripts"
+	@echo "  make format        - Format shell scripts with shfmt"
+	@echo "  make check         - Run all checks (lint + test)"
+	@echo "  make install-hooks - Install git pre-commit hook for testing"
 
 # Pre-flight environment checks
 preflight:
@@ -88,3 +89,10 @@ format:
 # Run all checks
 check: lint test
 	@echo "All checks passed."
+
+# Install git hooks (enables pre-commit testing)
+install-hooks:
+	@echo "Installing git hooks..."
+	git config core.hooksPath hooks
+	chmod +x hooks/*
+	@echo "Git hooks installed. Commits will now run tests first."
