@@ -10,13 +10,10 @@ esac
 
 __set_prompt() {
     local p="$PWD"
-    local user="${USERNAME:-$USER}"
 
-    # Normalize path to ~
+    # Normalize path to ~ (use $HOME which is always set)
     case "$p" in
-        /c/Users/$user*) p="~${p#/c/Users/$user}" ;;
-        /mnt/c/Users/$user*) p="~${p#/mnt/c/Users/$user}" ;;
-        $HOME*) p="~${p#$HOME}" ;;
+        "$HOME"*) p="~${p#$HOME}" ;;
     esac
 
     # Get git branch (fast)

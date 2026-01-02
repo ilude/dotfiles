@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 UserPromptSubmit hook to auto-inject session context for /pickup and /snapshot commands.
 Windows-safe using os.path for all file operations.

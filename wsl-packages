@@ -181,13 +181,11 @@ if [[ "$CURRENT_SHELL" == "$ZSH_PATH" ]]; then
     echo -e "  Default shell: ${GREEN}already zsh${NC}"
 else
     echo -e "  Setting default shell to zsh..."
-    sudo chsh -s "$ZSH_PATH" "$USER" 2>/dev/null || {
-        # Fallback: add exec zsh to .bashrc if chsh fails
-        if ! grep -q "exec zsh" ~/.bashrc 2>/dev/null; then
-            echo -e "\n# Auto-switch to zsh\nif [ -t 1 ] && command -v zsh &>/dev/null; then\n  exec zsh\nfi" >> ~/.bashrc
-        fi
-    }
-    echo -e "  Default shell: ${GREEN}set to zsh${NC}"
+    if sudo chsh -s "$ZSH_PATH" "$USER" 2>/dev/null; then
+        echo -e "  Default shell: ${GREEN}set to zsh${NC}"
+    else
+        echo -e "  ${YELLOW}Could not change default shell. Run manually: chsh -s \$(which zsh)${NC}"
+    fi
 fi
 
 # ============================================================================

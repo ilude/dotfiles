@@ -16,8 +16,13 @@ setopt GLOB_COMPLETE
 zstyle ':completion::complete:make::' tag-order targets
 zstyle ':completion::complete:make:*:targets' ignored-patterns '*[?%\:]=*' '$(*)'
 
+# Faster compinit - only regenerate once per day
 autoload -Uz compinit
-compinit
+if [[ -n ~/.zcompdump(#qN.mh+24) ]]; then
+    compinit
+else
+    compinit -C  # Skip security check, use cache
+fi
 
 ############################################################################
 #
@@ -80,13 +85,11 @@ bindkey "\e[3;5~" kill-word
 
 setopt prompt_subst
 
-# Fast path (maps Windows home to ~, shows Linux home as full path)
+# Fast path - normalize $HOME to ~
 __prompt_path() {
     local p="$PWD"
-    case "$p" in
-        /mnt/c/Users/${USER:-$USERNAME}*) echo "~${p#/mnt/c/Users/${USER:-$USERNAME}}" ;;
-        *) echo "$p" ;;
-    esac
+    [[ "$p" == "$HOME"* ]] && p="~${p#$HOME}"
+    echo "$p"
 }
 
 # Fast git prompt (no status checks)
@@ -129,7 +132,7 @@ fi
 
 export LC_ALL=en_US.UTF-8
 export LANG=en_US.UTF-8
-export HOSTNAME=$(hostname)
+export HOSTNAME="${HOSTNAME:-$(hostname)}"  # Use existing or fallback
 export PATH="$HOME/.local/bin:$PATH"
 
 # Directory colors (skip if dircolors not available, e.g., some Windows setups)
@@ -173,10 +176,8 @@ if command -v tailscale >/dev/null 2>&1; then
     source <(tailscale completion zsh 2>/dev/null)
 fi
 
-# docker (if docker CLI actually works, not just a WSL shim)
-if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-    source <(docker completion zsh 2>/dev/null)
-fi
+# docker - skip docker info check (too slow), lazy load instead
+# Run: _init_docker_completion to enable if needed
 
 # fzf key bindings and completion
 if command -v fzf >/dev/null 2>&1; then

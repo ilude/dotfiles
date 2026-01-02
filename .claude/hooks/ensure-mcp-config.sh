@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # ensure-mcp-config.sh
 # SessionStart hook to ensure browsermcp and flaresolverr MCP configs exist
 # Config-only - does NOT install dependencies

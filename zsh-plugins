@@ -7,10 +7,10 @@ function plugin() {
 
   if [ ! -d "$plugin_dir" ]; then
     echo "Installing plugin: $repo"
-    git clone "https://github.com/$repo.git" "$plugin_dir"
+    git clone --depth 1 "https://github.com/$repo.git" "$plugin_dir" 2>/dev/null
+    # chmod only on fresh clone, not every startup (slow on Windows)
+    chmod g-w "$plugin_dir" 2>/dev/null
   fi
-
-  chmod g-w -R "$plugin_dir"
 
   # only run if we are being sourced from zsh
   if [ -n "$ZSH_VERSION" ]; then

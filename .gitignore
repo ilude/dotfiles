@@ -31,3 +31,5 @@ plugins/*
 .claude/stats-cache.json
 .claude/tmp/
 .claude/.mcp.json
+.claude/image-cache/
+CLAUDE.md
