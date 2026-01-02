@@ -57,7 +57,9 @@ $corePackages = @(
     @{ Id = 'sharkdp.fd'; Name = 'fd (find replacement)' },
     @{ Id = 'sharkdp.bat'; Name = 'bat (cat replacement)' },
     @{ Id = 'aristocratos.btop4win'; Name = 'btop (system monitor)' },
-    @{ Id = 'tldr-pages.tlrc'; Name = 'tldr (man pages)' }
+    @{ Id = 'tldr-pages.tlrc'; Name = 'tldr (man pages)' },
+    @{ Id = 'koalaman.shellcheck'; Name = 'shellcheck (shell linter)' },
+    @{ Id = 'mvdan.shfmt'; Name = 'shfmt (shell formatter)' }
 )
 
 $workPackages = @(
@@ -240,6 +242,25 @@ function Install-Packages {
     foreach ($pkg in $corePackages) {
         if (-not (Install-WingetPackage -Id $pkg.Id -Name $pkg.Name)) {
             $script:failed += $pkg.Name
+        }
+    }
+
+    # npm global packages (requires Node.js from core packages)
+    Write-Host "`n--- npm Global Packages ---" -ForegroundColor Cyan
+    $npmPackages = @('bats')
+    foreach ($pkg in $npmPackages) {
+        Write-Host "  $pkg..." -ForegroundColor Cyan -NoNewline
+        $installed = npm list -g $pkg 2>$null | Select-String $pkg
+        if ($installed) {
+            Write-Host " already installed" -ForegroundColor DarkGray
+        } else {
+            try {
+                npm install -g $pkg 2>$null | Out-Null
+                Write-Host " installed" -ForegroundColor Green
+            } catch {
+                Write-Host " failed" -ForegroundColor Red
+                $script:failed += "npm:$pkg"
+            }
         }
     }
 
