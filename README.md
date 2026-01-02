@@ -58,6 +58,14 @@ make format        # Format with shfmt
 make check         # Run lint + test
 ```
 
+### Git Hooks
+
+Install pre-commit hook to run tests before each commit:
+
+```bash
+make install-hooks
+```
+
 ## Structure
 
 | Path | Purpose |

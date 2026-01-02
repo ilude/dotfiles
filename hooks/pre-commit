@@ -1,0 +1,19 @@
+#!/bin/bash
+# Pre-commit hook: runs tests before allowing commit
+
+set -e
+
+# Get the repo root
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+echo "Running pre-commit tests..."
+
+# Run quick tests (skip full test suite for speed)
+if command -v make &>/dev/null && [[ -f "$REPO_ROOT/Makefile" ]]; then
+    cd "$REPO_ROOT"
+    make test-quick
+else
+    echo "Warning: make not found or Makefile missing, skipping tests"
+fi
+
+echo "Pre-commit checks passed."
