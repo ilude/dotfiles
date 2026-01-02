@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC1090,SC1091
 
 # Detect Windows (Git Bash / MSYS2 / Cygwin)
 is_windows() {
@@ -60,7 +61,7 @@ install_packages() {
   # Default values for command execution
   POST_COMMAND=""
   COMMAND=""
-  OS=$(uname -s | tr A-Z a-z) # Default OS assumption
+  OS=$(uname -s | tr '[:upper:]' '[:lower:]') # Default OS assumption
 
   # Determine if sudo is needed
   SUDO=""
@@ -112,7 +113,7 @@ install_packages() {
   echo "📦 Installing system packages..."
   for package in "${PACKAGES[@]}"; do
     echo "📦 Installing: $package"
-    if ! $SUDO $COMMAND "$package"; then
+    if ! $SUDO "$COMMAND" "$package"; then
       echo "❌ Failed to install: $package" >&2
     fi
   done
@@ -124,7 +125,7 @@ install_packages() {
 
   # Change user shell to zsh
   echo "🔄 Setting $(whoami) shell to $(which zsh)"
-  $SUDO chsh -s $(which zsh) $(whoami)
+  $SUDO chsh -s "$(which zsh)" "$(whoami)"
 }
 
 # Platform detection and routing

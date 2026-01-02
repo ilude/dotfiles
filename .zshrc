@@ -1,3 +1,5 @@
+# shellcheck shell=bash disable=SC1009,SC1036,SC1072,SC1073
+# Note: This is a zsh file. Shellcheck doesn't fully support zsh syntax.
 ############################################################################
 #
 # Completions

@@ -42,8 +42,7 @@ if is_windows; then
     # Windows: use junction (doesn't require admin)
     win_target=$(cygpath -w "$CLAUDE_TARGET")
     win_source=$(cygpath -w "$CLAUDE_SOURCE")
-    cmd //c "mklink /J \"$win_target\" \"$win_source\"" > /dev/null 2>&1
-    if [[ $? -eq 0 ]]; then
+    if cmd //c "mklink /J \"$win_target\" \"$win_source\"" > /dev/null 2>&1; then
         echo "  ~/.claude: Junction created"
     else
         echo "  Error: Failed to create junction"
