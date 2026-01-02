@@ -60,6 +60,20 @@ description: Personal development philosophy emphasizing experiment-driven, fail
 
 ## Error Handling - Self-Recovery
 
+### Repeated Feedback = STOP
+
+If the user reports the **same issue twice**, STOP guessing fixes:
+
+1. **Acknowledge** - "I see this is still happening"
+2. **Investigate** - Read error messages carefully, trace root cause
+3. **Research** - Use web search if needed for platform-specific issues
+4. **Fix properly** - Address root cause, not symptoms
+
+❌ **Never:** Keep trying random fixes while user repeats the same error message
+✅ **Always:** Step back, understand WHY, then fix
+
+---
+
 **When errors occur, fix them autonomously:**
 
 ```

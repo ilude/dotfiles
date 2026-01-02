@@ -387,6 +387,32 @@ main "$@"
 
 ---
 
+## Known Regression Areas
+
+### Prompt Format Display
+
+The shell prompt (`~/.dotfiles[main]>`) is a **frequent regression point**. After ANY changes to:
+- `.zshrc`, `.bashrc`, `.zprofile`, `.profile`
+- Prompt-related functions
+- Path normalization code
+
+**Verify these cases work:**
+
+| Platform | In Home Dir | In Git Repo | Expected Prompt |
+|----------|-------------|-------------|-----------------|
+| Git Bash | `~/.dotfiles` | yes | `~/.dotfiles[main]>` |
+| WSL | `/mnt/c/Users/name/.dotfiles` | yes | `~/.dotfiles[main]>` |
+| Linux | `~/.dotfiles` | yes | `~/.dotfiles[main]>` |
+
+**Common failures:**
+- Shows `/mnt/c/Users/...` instead of `~/...`
+- Shows `/c/Users/...` instead of `~/...`
+- Missing or wrong bracket colors
+
+**Run prompt tests after shell config changes:** `bats test/prompt_format.bats`
+
+---
+
 ## Common Pitfalls
 
 | Issue | Cause | Fix |
