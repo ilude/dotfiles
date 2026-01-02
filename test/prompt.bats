@@ -108,7 +108,8 @@ teardown() {
 
     __set_prompt
 
-    [[ "$PS1" == *"[testbranch]"* ]] || [[ "$PS1" == *"[master]"* ]] || [[ "$PS1" == *"[main]"* ]]
+    # Branch name appears in prompt with yellow brackets (e[33m) and cyan branch (e[36m)
+    [[ "$PS1" == *'e[33m'* ]] && [[ "$PS1" == *'e[36m'* ]] && [[ "$PS1" == *'testbranch'* ]]
 }
 
 @test "prompt: no brackets when not in git repo" {
@@ -119,6 +120,7 @@ teardown() {
 
     __set_prompt
 
-    # Should not contain brackets (no git branch)
-    [[ "$PS1" != *"["* ]]
+    # Should not contain git branch colors (yellow e[33m or cyan e[36m for branch)
+    # Only green (e[32m) for path should be present
+    [[ "$PS1" != *'e[33m'* ]] && [[ "$PS1" != *'e[36m'* ]]
 }
