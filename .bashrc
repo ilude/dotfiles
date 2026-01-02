@@ -12,10 +12,20 @@ esac
 __set_prompt() {
     local p="$PWD"
 
-    # Normalize path to ~ (use $HOME which is always set)
-    case "$p" in
-        "$HOME"*) p="~${p#"$HOME"}" ;;
-    esac
+    # Normalize path to ~
+    # In WSL: map Windows home (/mnt/c/Users/$USER) to ~, keep Linux home as full path
+    # On other platforms: map $HOME to ~
+    if [[ -f /proc/sys/fs/binfmt_misc/WSLInterop ]]; then
+        # WSL: only Windows home becomes ~
+        case "$p" in
+            /mnt/c/[Uu]sers/"$USER"*) p="~${p#/mnt/c/[Uu]sers/"$USER"}" ;;
+        esac
+    else
+        # Non-WSL: normal $HOME substitution
+        case "$p" in
+            "$HOME"*) p="~${p#"$HOME"}" ;;
+        esac
+    fi
 
     # Get git branch (fast)
     local branch
