@@ -87,10 +87,22 @@ bindkey "\e[3;5~" kill-word
 
 setopt prompt_subst
 
-# Fast path - normalize $HOME to ~
+# Fast path - normalize path to ~
+# In WSL: map Windows home (/mnt/c/Users/$USER) to ~, keep Linux home as full path
+# On other platforms: map $HOME to ~
 __prompt_path() {
     local p="$PWD"
-    [[ "$p" == "$HOME"* ]] && p="~${p#$HOME}"
+    if [[ -f /proc/sys/fs/binfmt_misc/WSLInterop ]]; then
+        # WSL: only Windows home becomes ~
+        if [[ "$p" == /mnt/c/[Uu]sers/$USER* ]]; then
+            p="~${p#/mnt/c/[Uu]sers/$USER}"
+        fi
+    else
+        # Non-WSL: normal $HOME substitution
+        if [[ "$p" == "$HOME"* ]]; then
+            p="~${p#$HOME}"
+        fi
+    fi
     echo "$p"
 }
 
