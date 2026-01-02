@@ -55,6 +55,9 @@ venv/
 # Temporary output directory
 tmp/
 
+# Weekly activity reports (personal working notes)
+war/
+
 # Plugins and cache
 plugins/
 stats-cache.json
