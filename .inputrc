@@ -1,0 +1,103 @@
+# ~/.inputrc - Readline configuration for Bash
+# Applied to all programs using GNU Readline (bash, python, etc.)
+
+$include /etc/inputrc
+
+# Use vi or emacs mode (emacs is default, matches zsh default)
+set editing-mode emacs
+
+# Case-insensitive completion
+set completion-ignore-case on
+
+# Treat hyphens and underscores as equivalent for completion
+set completion-map-case on
+
+# Show all completions on first tab if ambiguous
+set show-all-if-ambiguous on
+
+# Show all completions on second tab if still ambiguous
+set show-all-if-unmodified on
+
+# Color completions by file type (like ls --color)
+set colored-stats on
+
+# Color completion prefix
+set colored-completion-prefix on
+
+# Mark symlinked directories with trailing slash
+set mark-symlinked-directories on
+
+# Don't expand ~ to full home path
+set expand-tilde off
+
+# Don't ring bell on completion
+set bell-style none
+
+# Show file type indicator in completions (like ls -F)
+set visible-stats on
+
+# Keep cursor at same position during history navigation
+set history-preserve-point on
+
+# Allow UTF-8 input and output
+set input-meta on
+set output-meta on
+set convert-meta off
+
+############################################################################
+# Key Bindings (matching zsh behavior)
+############################################################################
+
+# Home/End keys
+"\e[H": beginning-of-line
+"\e[F": end-of-line
+"\e[1~": beginning-of-line
+"\e[4~": end-of-line
+
+# Ctrl+Left/Right: move word by word
+"\e[1;5C": forward-word
+"\e[1;5D": backward-word
+"\e[5C": forward-word
+"\e[5D": backward-word
+
+# Ctrl+B/F: move word by word (like zsh)
+"\C-b": backward-word
+"\C-f": forward-word
+
+# Ctrl+A/E: beginning/end of line
+"\C-a": beginning-of-line
+"\C-e": end-of-line
+
+# Ctrl+Backspace: delete word before cursor
+"\C-h": backward-kill-word
+
+# Ctrl+Delete: delete word after cursor
+"\e[3;5~": kill-word
+
+# Ctrl+K: kill to end of line
+"\C-k": kill-line
+
+# Ctrl+U: kill to beginning of line
+"\C-u": unix-line-discard
+
+# Alt+.: insert last argument from previous command (like zsh)
+"\e.": yank-last-arg
+"\e_": yank-last-arg
+
+# Up/Down arrows search history
+"\e[A": history-search-backward
+"\e[B": history-search-forward
+
+# Page Up/Down for history
+"\e[5~": history-search-backward
+"\e[6~": history-search-forward
+
+# Ctrl+L: clear screen
+"\C-l": clear-screen
+
+# Tab: complete (menu-complete cycles through options)
+TAB: menu-complete
+"\e[Z": menu-complete-backward
+
+# Ctrl+Space: complete and show menu
+"\C-@": complete
