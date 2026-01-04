@@ -12,6 +12,9 @@ export PATH="$HOME/.local/bin:$PATH"
 # Switch to zsh if available and running interactively
 if [ -t 1 ] && command -v zsh >/dev/null 2>&1; then
     export SHELL=$(command -v zsh)
+    # ZDOTDIR tells zsh where to find config files (.zshrc, .zprofile, etc.)
+    # This is needed because MSYS2's zsh may use a different home directory
+    export ZDOTDIR="$HOME"
     exec zsh -l
 fi
 

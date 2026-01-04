@@ -245,6 +245,14 @@ teardown() {
     grep -q 'exec zsh -l\|exec.*zsh.*-l' "$DOTFILES_DIR/.bash_profile"
 }
 
+@test "shell-setup: ZDOTDIR set before exec zsh" {
+    # ZDOTDIR tells zsh where to find config files
+    # This is critical for MSYS2's zsh which may have a different home directory
+    # Without this, zsh won't find .zshrc and shows the newuser wizard
+    grep -q 'ZDOTDIR' "$DOTFILES_DIR/.bash_profile"
+    grep -q 'ZDOTDIR' "$DOTFILES_DIR/.profile"
+}
+
 # =============================================================================
 # Zsh plugins tests
 # WHY: Plugins provide autosuggestions and syntax highlighting

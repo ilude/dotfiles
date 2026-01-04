@@ -18,6 +18,9 @@ fi
 # This provides unified shell experience across all platforms
 if [[ -t 1 ]] && command -v zsh &>/dev/null; then
     export SHELL=$(command -v zsh)
+    # ZDOTDIR tells zsh where to find config files (.zshrc, .zprofile, etc.)
+    # This is needed because MSYS2's zsh may use a different home directory
+    export ZDOTDIR="$HOME"
     exec zsh -l
 fi
 
