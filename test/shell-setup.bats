@@ -350,6 +350,16 @@ teardown() {
     grep -q 'Zsh Plugins\|zsh plugins' "$DOTFILES_DIR/wsl-packages"
 }
 
+@test "shell-setup: install.wsl.yaml symlinks ~/.dotfiles to Windows mount" {
+    # ~/.dotfiles should be a symlink so paths like ~/.dotfiles/zsh-plugins work
+    grep -q '~/.dotfiles' "$DOTFILES_DIR/install.wsl.yaml"
+}
+
+@test "shell-setup: install.ps1 runs install-wsl from Windows mount for proper symlinks" {
+    # Running from mount uses dotbot, running from temp copy uses manual fallback
+    grep -q "cd.*wslBasedir.*install-wsl" "$DOTFILES_DIR/install.ps1"
+}
+
 # =============================================================================
 # Fallback behavior tests
 # WHY: .bashrc should work standalone if zsh unavailable

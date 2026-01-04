@@ -1,6 +1,9 @@
 # WSL-specific dotbot configuration
 # This config is designed to run inside WSL and link to configs from the
 # Windows dotfiles repo mounted at /mnt/c/Users/<user>/.dotfiles
+#
+# KEY: ~/.dotfiles symlinks to the Windows mount so all paths work consistently
+# (e.g., source ~/.dotfiles/zsh-plugins works in both Git Bash and WSL)
 
 - defaults:
     link:
@@ -9,6 +12,13 @@
       create: true
 
 - clean: ['~']
+
+# Symlink ~/.dotfiles to this repo (Windows mount)
+# This makes paths like ~/.dotfiles/zsh-plugins work consistently
+- link:
+    ~/.dotfiles:
+      path: ''
+      force: true
 
 # Shell configs - link from WSL home to the Windows dotfiles
 - link:
@@ -26,6 +36,8 @@
       path: .bash_profile
     ~/.dircolors:
       path: .dircolors
+    ~/.hushlogin:
+      path: .hushlogin
 
 # Oh My Posh config
 - link:

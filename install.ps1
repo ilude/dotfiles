@@ -656,22 +656,9 @@ try {
     } elseif ($wslResult -eq 'failed') {
         Write-Host "  WSL setup failed, skipping WSL configuration" -ForegroundColor Red
     } else {
-        # Step 2: Pre-copy key files before installing packages
-        # (wsl-packages sets zsh as default, subsequent commands need these files)
-        # Use WSL to read from /mnt/c directly to avoid PowerShell CRLF issues
         $wslBasedir = ConvertTo-WSLPath $BASEDIR
-        $zshPlugins = Join-Path $BASEDIR "zsh-plugins"
-        if (Test-Path $zshPlugins) {
-            wsl -e bash --norc -c "mkdir -p ~/.dotfiles && tr -d '\r' < '$wslBasedir/zsh-plugins' > ~/.dotfiles/zsh-plugins && chmod +x ~/.dotfiles/zsh-plugins"
-        }
 
-        # Also pre-copy .zshrc so zsh has a valid config when it starts
-        $zshrc = Join-Path $BASEDIR ".zshrc"
-        if (Test-Path $zshrc) {
-            wsl -e bash --norc -c "tr -d '\r' < '$wslBasedir/.zshrc' > ~/.zshrc"
-        }
-
-        # Step 2.5: Configure passwordless sudo (requires password once, then never again)
+        # Step 2: Configure passwordless sudo (requires password once, then never again)
         # This must happen BEFORE wsl-packages so package installation doesn't prompt
         Write-Host "  Configuring passwordless sudo..." -ForegroundColor Cyan
         $sudoersCheck = wsl -e bash --norc -c 'sudo -n true 2>/dev/null && echo "ok" || echo "need"'
@@ -683,65 +670,27 @@ try {
             Write-Host "  Passwordless sudo: already configured" -ForegroundColor DarkGray
         }
 
-        # Step 3: Install packages inside WSL
-        $null = Install-WSLPackages
-
-        # Step 4: Copy and install dotfiles in WSL
+        # Step 3: Install dotfiles in WSL using dotbot (creates symlinks to Windows dotfiles)
+        # This runs BEFORE wsl-packages so symlinks exist when zsh starts
         Write-Host "`n  Configuring WSL dotfiles..." -ForegroundColor Cyan
         $installWslPath = Join-Path $BASEDIR "install-wsl"
         $installWslYaml = Join-Path $BASEDIR "install.wsl.yaml"
 
         if ((Test-Path $installWslPath) -and (Test-Path $installWslYaml)) {
-            # Use WSL to read from /mnt/c directly to avoid PowerShell CRLF issues
-            # Use wsl -e to bypass login shell entirely
-            $wslBasedir = ConvertTo-WSLPath $BASEDIR
-
-            # Create temp directory in WSL
-            wsl -e bash --norc -c 'mkdir -p /tmp/dotfiles-setup'
-
-            # Copy the installer and config
-            wsl -e bash --norc -c "tr -d '\r' < '$wslBasedir/install-wsl' > /tmp/dotfiles-setup/install-wsl && chmod +x /tmp/dotfiles-setup/install-wsl"
-            wsl -e bash --norc -c "tr -d '\r' < '$wslBasedir/install.wsl.yaml' > /tmp/dotfiles-setup/install.wsl.yaml"
-
-            # Copy key dotfiles for linking
-            $dotfiles = @('.zshrc', '.zprofile', '.profile', '.bashrc', '.bash_profile', '.gitconfig', '.dircolors')
-            foreach ($file in $dotfiles) {
-                $filePath = Join-Path $BASEDIR $file
-                if (Test-Path $filePath) {
-                    wsl -e bash --norc -c "tr -d '\r' < '$wslBasedir/$file' > /tmp/dotfiles-setup/$file"
-                }
-            }
-
-            # Copy zsh-plugins script
-            if (Test-Path $zshPlugins) {
-                wsl -e bash --norc -c "tr -d '\r' < '$wslBasedir/zsh-plugins' > /tmp/dotfiles-setup/zsh-plugins && chmod +x /tmp/dotfiles-setup/zsh-plugins"
-            }
-
-            # Copy claude-status script
-            $claudeStatus = Join-Path $BASEDIR ".claude\claude-status"
-            if (Test-Path $claudeStatus) {
-                wsl -e bash --norc -c "mkdir -p /tmp/dotfiles-setup/.claude && tr -d '\r' < '$wslBasedir/.claude/claude-status' > /tmp/dotfiles-setup/.claude/claude-status && chmod +x /tmp/dotfiles-setup/.claude/claude-status"
-            }
-
-            # Copy ohmyposh config
-            $ohMyPosh = Join-Path $BASEDIR "config\ohmyposh\prompt.json"
-            if (Test-Path $ohMyPosh) {
-                wsl -e bash --norc -c "mkdir -p /tmp/dotfiles-setup/config/ohmyposh && tr -d '\r' < '$wslBasedir/config/ohmyposh/prompt.json' > /tmp/dotfiles-setup/config/ohmyposh/prompt.json"
-            }
-
-            # Run the installer from the temp directory
-            wsl -e bash --norc -c 'cd /tmp/dotfiles-setup && ./install-wsl'
+            # Run install-wsl directly from Windows mount - this uses dotbot to create
+            # proper symlinks from WSL home to the Windows dotfiles repo
+            wsl -e bash --norc -c "cd '$wslBasedir' && ./install-wsl"
             if ($LASTEXITCODE -eq 0) {
-                Write-Host "  WSL dotfiles configured" -ForegroundColor Green
+                Write-Host "  WSL dotfiles configured (symlinks created)" -ForegroundColor Green
             } else {
                 Write-Host "  WSL dotfiles setup completed with warnings" -ForegroundColor Yellow
             }
-
-            # Cleanup
-            wsl -e bash --norc -c 'rm -rf /tmp/dotfiles-setup'
         } else {
             Write-Host "  install-wsl or install.wsl.yaml not found, skipping dotfiles" -ForegroundColor DarkGray
         }
+
+        # Step 4: Install packages inside WSL (zsh, fzf, eza, etc.)
+        $null = Install-WSLPackages
     }
 
     # Package installation decision
