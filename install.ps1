@@ -732,6 +732,50 @@ try {
         Write-Host "`nLock file updated: $LOCKFILE" -ForegroundColor Green
     }
 
+    # ========================================================================
+    # PowerShell Completion Cache (for fast profile startup)
+    # ========================================================================
+    Write-Host "`nGenerating PowerShell completion cache..." -ForegroundColor Cyan
+
+    $completionCacheDir = "$env:LOCALAPPDATA\PowerShell\CompletionCache"
+    if (-not (Test-Path $completionCacheDir)) {
+        New-Item -ItemType Directory -Path $completionCacheDir -Force | Out-Null
+    }
+
+    $completionTools = @(
+        @{Name='kubectl'; Cmd='kubectl completion powershell'},
+        @{Name='helm'; Cmd='helm completion powershell'},
+        @{Name='gh'; Cmd='gh completion -s powershell'},
+        @{Name='tailscale'; Cmd='tailscale completion powershell'}
+    )
+
+    foreach ($tool in $completionTools) {
+        if (Get-Command $tool.Name -ErrorAction SilentlyContinue) {
+            Write-Host "  Caching $($tool.Name)..." -ForegroundColor Cyan -NoNewline
+            try {
+                Invoke-Expression $tool.Cmd | Out-File "$completionCacheDir\$($tool.Name).ps1" -Encoding utf8
+                Write-Host " done" -ForegroundColor Green
+            }
+            catch {
+                Write-Host " failed" -ForegroundColor Red
+            }
+        }
+    }
+
+    # zoxide init
+    if (Get-Command zoxide -ErrorAction SilentlyContinue) {
+        Write-Host "  Caching zoxide..." -ForegroundColor Cyan -NoNewline
+        try {
+            zoxide init powershell | Out-File "$completionCacheDir\zoxide.ps1" -Encoding utf8
+            Write-Host " done" -ForegroundColor Green
+        }
+        catch {
+            Write-Host " failed" -ForegroundColor Red
+        }
+    }
+
+    Write-Host "  Completion cache: $completionCacheDir" -ForegroundColor DarkGray
+
     Write-Host "`nInstallation complete." -ForegroundColor Green
 
 } catch {
