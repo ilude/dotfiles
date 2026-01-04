@@ -1,0 +1,131 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Overview
+
+Cross-platform dotfiles repository for Linux and Windows. Uses **Dotbot** for symlink management with automatic SSH key detection and shell configuration.
+
+## Commands
+
+### Installation
+
+**Linux/Git Bash/MSYS2:**
+```bash
+~/.dotfiles/install
+```
+
+**Windows PowerShell (full package installation):**
+```powershell
+~/.dotfiles/install.ps1           # Core packages
+~/.dotfiles/install.ps1 -Work     # + AWS, Helm, Terraform, etc.
+~/.dotfiles/install.ps1 -ITAdmin  # + AD, Graph, Exchange modules
+```
+
+### Development
+
+```bash
+just update  # Update dotbot submodule, commit, and reinstall
+make test    # Run bats tests
+```
+
+## Architecture
+
+### Installation Flow
+1. `install` (bash) or `install.ps1` (PowerShell) → entry points
+2. **Dotbot** creates symlinks defined in `install.conf.yaml`
+3. `git-ssh-setup` detects SSH keys, writes machine-specific `.gitconfig-*-local` files
+4. `zsh-setup` installs zsh plugins and system packages (Linux)
+
+### Git Identity System
+- **Directory-based** (Windows): `C:/Projects/Work/` → professional, `C:/Projects/Personal/` → personal
+- **URL-based** (universal): GitHub org matching via `includeIf hasconfig:remote.*.url`
+- Machine-specific SSH configs in `.gitconfig-personal-local` and `.gitconfig-professional-local` (gitignored)
+
+### SSH Key Priority
+- Personal: `id_ed25519-personal` > `id_ed25519`
+- Work: `id_ed25519-work` > `id_ed25519-eagletg`
+
+### Key Files
+| File | Purpose |
+|------|---------|
+| `install.conf.yaml` | Dotbot symlink configuration |
+| `.gitconfig` | Unified Git config with identity includes |
+| `.gitconfig-personal` / `.gitconfig-professional` | Identity-specific configs |
+| `.zshrc` | Main zsh configuration |
+| `powershell/profile.ps1` | PowerShell profile |
+| `config/ohmyposh/prompt.json` | Oh My Posh prompt theme |
+| `.claude/` | Global Claude Code config (symlinked to ~/.claude/) |
+| `copilot/` | Global Copilot instructions (symlinked) |
+
+### Platform Detection
+Scripts use `$OSTYPE` (`msys`, `cygwin`) or `$WINDIR` for Windows detection. All scripts are designed to be idempotent.
+
+### Unified Shell Architecture (CRITICAL)
+
+**Goal**: All terminals (Git Bash, WSL, Linux) use zsh with identical config for consistent muscle memory.
+
+#### Why Zsh Everywhere
+- Autosuggestions (gray text from history as you type)
+- Syntax highlighting (red = invalid command)
+- Better tab completion (case-insensitive, fuzzy)
+- One config to maintain, not parallel bash/zsh
+
+#### Shell Startup Flow
+```
+.bash_profile → adds MSYS2 to PATH → sets ZDOTDIR → exec env ZDOTDIR=... zsh -l
+                                                           ↓
+                                                      .zshrc → zsh-plugins
+```
+
+#### MSYS2/Git Bash Complexity (READ THIS)
+Git Bash and MSYS2's zsh have **different HOME directories**:
+- Git Bash: `HOME=/c/Users/Mike`
+- MSYS2 zsh: `HOME=/home/Mike`
+
+**Critical fixes required:**
+1. **ZDOTDIR must use `env`** to cross the boundary:
+   ```bash
+   # WRONG - ZDOTDIR is empty in zsh:
+   export ZDOTDIR="$HOME" && exec zsh -l
+
+   # RIGHT - env passes it through:
+   exec env ZDOTDIR="$(cygpath -u "$USERPROFILE")" zsh -l
+   ```
+
+2. **All dotfiles paths must use `$ZDOTDIR`**, not `~` or `$HOME`:
+   ```bash
+   # WRONG - expands to /home/Mike/.dotfiles (doesn't exist):
+   source ~/.dotfiles/zsh-plugins
+
+   # RIGHT - uses ZDOTDIR which is /c/Users/Mike:
+   source "${ZDOTDIR:-$HOME}/.dotfiles/zsh-plugins"
+   ```
+
+#### WSL Prompt Path Normalization
+Windows home `/mnt/c/Users/Mike` should display as `~`, but Linux home `/home/mike` stays as full path.
+
+**Gotcha**: `$USER` is lowercase (`mike`) but Windows path has `Mike`. Use case-insensitive comparison:
+```zsh
+p_lower="${(L)p}"  # lowercase the path
+win_home_lower="/mnt/c/users/${(L)user}"  # lowercase the pattern
+```
+
+#### Key Test File
+`test/shell-setup.bats` - Contains 48 tests documenting WHY each config exists. Read the header comments first.
+
+## Testing
+
+Tests use [bats-core](https://github.com/bats-core/bats-core):
+```bash
+make test              # Run all tests
+bats test/prompt.bats  # Run specific test file
+```
+
+## Conventions
+
+- All scripts must be idempotent (safe to re-run)
+- Use VS Code as default editor/diff/merge tool
+- LF line endings (`autocrlf = input`)
+- Default branch is `main`
+- Dotbot uses `force: true` and `relink: true` for symlinks
