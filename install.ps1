@@ -304,6 +304,24 @@ function Install-Packages {
         Write-Host "  (Run installer again after MSYS2 finishes installing)" -ForegroundColor DarkGray
     }
 
+    # Install zsh plugins for Git Bash
+    Write-Host "`n--- Zsh Plugins (Git Bash) ---" -ForegroundColor Cyan
+    $gitBash = "C:\Program Files\Git\bin\bash.exe"
+    $zshPluginsScript = Join-Path $dotfilesDir "zsh-plugins"
+    if ((Test-Path $gitBash) -and (Test-Path $zshPluginsScript)) {
+        Write-Host "  Installing zsh plugins..." -ForegroundColor Cyan
+        # Run zsh-plugins with ZDOTDIR set so it finds the right dotfiles dir
+        $zdotdir = $HOME -replace '\\', '/'
+        & $gitBash --login -c "ZDOTDIR='$zdotdir' source '$($zshPluginsScript -replace '\\', '/')'" 2>&1 | ForEach-Object {
+            if ($_ -match 'Installing plugin') {
+                Write-Host "    $_" -ForegroundColor DarkGray
+            }
+        }
+        Write-Host "  Plugins installed" -ForegroundColor Green
+    } else {
+        Write-Host "  Git Bash not found - skipping plugin install" -ForegroundColor Yellow
+    }
+
     # PowerShell user modules (CurrentUser scope, no admin required)
     Write-Host "`n--- PowerShell User Modules ---" -ForegroundColor Blue
     foreach ($mod in $userModules) {
