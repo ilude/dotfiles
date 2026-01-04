@@ -318,6 +318,12 @@ teardown() {
     grep -q 'Test-Path.*msys64\|msys2Pacman' "$DOTFILES_DIR/install.ps1"
 }
 
+@test "shell-setup: install.ps1 installs zsh plugins for Git Bash" {
+    # Plugins should be installed during setup, not on first shell startup
+    grep -q 'zsh-plugins' "$DOTFILES_DIR/install.ps1"
+    grep -q 'Zsh Plugins' "$DOTFILES_DIR/install.ps1"
+}
+
 # =============================================================================
 # WSL-specific tests
 # WHY: Documents Linux/WSL zsh installation via apt
