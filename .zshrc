@@ -32,7 +32,8 @@ fi
 #
 ############################################################################
 
-source ~/.dotfiles/zsh-plugins
+# Use ZDOTDIR for dotfiles path (MSYS2's zsh has different HOME than Git Bash)
+source "${ZDOTDIR:-$HOME}/.dotfiles/zsh-plugins"
 
 bindkey '^ ' autosuggest-accept # ctrl+space 
 
