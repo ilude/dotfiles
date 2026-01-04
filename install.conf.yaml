@@ -15,6 +15,7 @@
     ~/.bashrc: .bashrc
     ~/.bash_profile: .bash_profile
     ~/.inputrc: .inputrc
+    ~/.hushlogin: .hushlogin
     ~/.dircolors: .dircolors
 
 # Oh My Posh config (works on both platforms)

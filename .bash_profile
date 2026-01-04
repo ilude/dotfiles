@@ -19,8 +19,12 @@ fi
 if [[ -t 1 ]] && command -v zsh &>/dev/null; then
     export SHELL=$(command -v zsh)
     # ZDOTDIR tells zsh where to find config files (.zshrc, .zprofile, etc.)
-    # This is needed because MSYS2's zsh may use a different home directory
-    export ZDOTDIR="$HOME"
+    # MSYS2's zsh uses different home than Git Bash, so we convert Windows path
+    if [[ -n "$USERPROFILE" ]] && command -v cygpath &>/dev/null; then
+        export ZDOTDIR="$(cygpath -u "$USERPROFILE")"
+    else
+        export ZDOTDIR="$HOME"
+    fi
     exec zsh -l
 fi
 
