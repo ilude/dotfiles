@@ -29,4 +29,5 @@ plugin "zsh-users/zsh-autosuggestions"
 plugin "zsh-users/zsh-completions"
 plugin "zsh-users/zsh-syntax-highlighting"
 plugin "joshskidmore/zsh-fzf-history-search"
-plugin "djui/alias-tips"
+# alias-tips disabled - requires python3, causes issues on Windows
+# plugin "djui/alias-tips"
