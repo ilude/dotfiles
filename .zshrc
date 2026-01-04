@@ -90,7 +90,7 @@ setopt prompt_subst
 
 # Fast path - normalize path to ~
 # In WSL: map Windows home (/mnt/c/Users/$USER) to ~, keep Linux home as full path
-# On other platforms: map $HOME to ~
+# On other platforms: map $HOME to ~ (use ZDOTDIR if set, for MSYS2 compatibility)
 __prompt_path() {
     local p="$PWD"
     if [[ -f /proc/sys/fs/binfmt_misc/WSLInterop ]]; then
@@ -104,9 +104,10 @@ __prompt_path() {
             p="~${p:${#win_home_lower}}"
         fi
     else
-        # Non-WSL: normal $HOME substitution
-        if [[ "$p" == "$HOME"* ]]; then
-            p="~${p#$HOME}"
+        # Non-WSL: use ZDOTDIR if set (MSYS2 zsh has wrong HOME), else HOME
+        local home="${ZDOTDIR:-$HOME}"
+        if [[ "$p" == "$home"* ]]; then
+            p="~${p#$home}"
         fi
     fi
     echo "$p"
