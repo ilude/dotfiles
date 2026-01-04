@@ -253,6 +253,13 @@ teardown() {
     grep -q 'ZDOTDIR' "$DOTFILES_DIR/.profile"
 }
 
+@test "shell-setup: ZDOTDIR uses cygpath for MSYS2 compatibility" {
+    # MSYS2's zsh needs paths in its own format
+    # cygpath converts Windows paths (USERPROFILE) to Unix format
+    grep -q 'cygpath.*USERPROFILE' "$DOTFILES_DIR/.bash_profile"
+    grep -q 'cygpath.*USERPROFILE' "$DOTFILES_DIR/.profile"
+}
+
 # =============================================================================
 # Zsh plugins tests
 # WHY: Plugins provide autosuggestions and syntax highlighting

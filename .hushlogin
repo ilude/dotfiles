@@ -1,0 +1,2 @@
+# Suppress login message on WSL/Linux
+# This file's presence silences the "Welcome to Ubuntu" message
