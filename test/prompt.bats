@@ -63,6 +63,26 @@ teardown() {
     [[ "$PS1" != *"/mnt/c"* ]]
 }
 
+@test "prompt: WSL Windows home path normalizes with mixed case" {
+    skip_unless_linux
+
+    # Skip if not actually in WSL
+    if [[ ! -f /proc/sys/fs/binfmt_misc/WSLInterop ]]; then
+        skip "Test requires actual WSL environment"
+    fi
+
+    # Windows paths often have mixed case (Users vs users)
+    # The capitalized username (Mike) should still match $USER (mike)
+    local username="${USER:-$(whoami)}"
+    local capitalized="${username^}"  # Capitalize first letter
+    PWD="/mnt/c/Users/${capitalized}/.dotfiles"
+    __set_prompt
+
+    # Should still normalize to ~/.dotfiles regardless of case
+    [[ "$PS1" == *"~/.dotfiles"* ]]
+    [[ "$PS1" != *"/mnt/c"* ]]
+}
+
 @test "prompt: WSL Linux home stays as full path (not ~)" {
     skip_unless_linux
 

@@ -94,8 +94,13 @@ __prompt_path() {
     local p="$PWD"
     if [[ -f /proc/sys/fs/binfmt_misc/WSLInterop ]]; then
         # WSL: only Windows home becomes ~
-        if [[ "$p" == /mnt/c/[Uu]sers/$USER* ]]; then
-            p="~${p#/mnt/c/[Uu]sers/$USER}"
+        # Use case-insensitive comparison (Windows paths vary in case)
+        local user="${USER:-$(whoami)}"
+        local p_lower="${(L)p}"
+        local win_home_lower="/mnt/c/users/${(L)user}"
+        if [[ "$p_lower" == "$win_home_lower"* ]]; then
+            # Strip Windows home prefix, preserving case of remaining path
+            p="~${p:${#win_home_lower}}"
         fi
     else
         # Non-WSL: normal $HOME substitution

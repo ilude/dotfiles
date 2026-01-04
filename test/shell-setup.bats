@@ -59,8 +59,8 @@ teardown() {
 }
 
 @test "shell-setup: .profile execs zsh when available" {
-    # .profile should exec zsh if it's available
-    grep -q 'exec zsh' "$DOTFILES_DIR/.profile"
+    # .profile should exec zsh if it's available (via env to pass ZDOTDIR)
+    grep -q 'exec.*zsh' "$DOTFILES_DIR/.profile"
 }
 
 @test "shell-setup: .profile checks for interactive terminal before exec" {
@@ -207,7 +207,7 @@ teardown() {
     # Critical: PATH must be set BEFORE exec zsh line
     # Otherwise zsh won't be found
     local msys_line=$(grep -n 'msys64' "$DOTFILES_DIR/.bash_profile" | head -1 | cut -d: -f1)
-    local exec_line=$(grep -n 'exec zsh' "$DOTFILES_DIR/.bash_profile" | head -1 | cut -d: -f1)
+    local exec_line=$(grep -n 'exec.*zsh' "$DOTFILES_DIR/.bash_profile" | head -1 | cut -d: -f1)
 
     [[ -n "$msys_line" ]] && [[ -n "$exec_line" ]]
     [[ "$msys_line" -lt "$exec_line" ]]
@@ -258,6 +258,13 @@ teardown() {
     # cygpath converts Windows paths (USERPROFILE) to Unix format
     grep -q 'cygpath.*USERPROFILE' "$DOTFILES_DIR/.bash_profile"
     grep -q 'cygpath.*USERPROFILE' "$DOTFILES_DIR/.profile"
+}
+
+@test "shell-setup: exec zsh uses env to pass ZDOTDIR across MSYS2 boundary" {
+    # Environment variables don't cross Git Bash -> MSYS2 boundary without 'env'
+    # exec env ZDOTDIR=... zsh -l ensures zsh receives ZDOTDIR
+    grep -q 'exec env ZDOTDIR=' "$DOTFILES_DIR/.bash_profile"
+    grep -q 'exec env ZDOTDIR=' "$DOTFILES_DIR/.profile"
 }
 
 # =============================================================================
