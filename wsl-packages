@@ -255,6 +255,23 @@ ALIASES
 echo -e "  Aliases file: ${GREEN}created${NC}"
 
 # ============================================================================
+# Zsh Plugins
+# ============================================================================
+
+echo -e "\n${CYAN}Installing zsh plugins...${NC}"
+
+DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ZSH_PLUGINS_SCRIPT="$DOTFILES_DIR/zsh-plugins"
+
+if [[ -x "$ZSH_PLUGINS_SCRIPT" ]]; then
+    # Source zsh-plugins in bash mode (just clones repos, doesn't source .zsh files)
+    source "$ZSH_PLUGINS_SCRIPT"
+    echo -e "  Plugins: ${GREEN}installed${NC}"
+else
+    echo -e "  ${YELLOW}zsh-plugins script not found at $ZSH_PLUGINS_SCRIPT${NC}"
+fi
+
+# ============================================================================
 # Summary
 # ============================================================================
 

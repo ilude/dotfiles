@@ -344,6 +344,12 @@ teardown() {
     grep -q 'wsl.conf\|metadata' "$DOTFILES_DIR/wsl-packages"
 }
 
+@test "shell-setup: wsl-packages installs zsh plugins" {
+    # Plugins should be installed during setup, not on first shell startup
+    grep -q 'zsh-plugins' "$DOTFILES_DIR/wsl-packages"
+    grep -q 'Zsh Plugins\|zsh plugins' "$DOTFILES_DIR/wsl-packages"
+}
+
 # =============================================================================
 # Fallback behavior tests
 # WHY: .bashrc should work standalone if zsh unavailable
