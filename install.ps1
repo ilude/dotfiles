@@ -78,6 +78,15 @@ $itAdminModules = @(
     'Az'
 )
 
+# PowerShell user modules (always installed, CurrentUser scope)
+$userModules = @(
+    'PSFzf',
+    'Terminal-Icons',
+    'CompletionPredictor',
+    'DockerCompletion',
+    'posh-git'
+)
+
 # ============================================================================
 # LIST MODE (no elevation required)
 # ============================================================================
@@ -91,6 +100,9 @@ if ($ListPackages) {
 
     Write-Host "`n=== IT Admin Modules (-ITAdmin) ===" -ForegroundColor Magenta
     $itAdminModules | ForEach-Object { Write-Host "  $_" }
+
+    Write-Host "`n=== PowerShell User Modules ===" -ForegroundColor Blue
+    $userModules | ForEach-Object { Write-Host "  $_" }
 
     exit 0
 }
@@ -261,6 +273,14 @@ function Install-Packages {
                 Write-Host " failed" -ForegroundColor Red
                 $script:failed += "npm:$pkg"
             }
+        }
+    }
+
+    # PowerShell user modules (CurrentUser scope, no admin required)
+    Write-Host "`n--- PowerShell User Modules ---" -ForegroundColor Blue
+    foreach ($mod in $userModules) {
+        if (-not (Install-PSModule -Name $mod)) {
+            $script:failed += $mod
         }
     }
 
@@ -711,14 +731,6 @@ try {
         $lockData | ConvertTo-Json | Set-Content $LOCKFILE -Force
         Write-Host "`nLock file updated: $LOCKFILE" -ForegroundColor Green
     }
-
-    # Post-install reminders
-    Write-Host "`nPost-install (run in new terminal if needed):" -ForegroundColor Yellow
-    Write-Host "  Install-Module PSFzf -Scope CurrentUser -Force" -ForegroundColor DarkGray
-    Write-Host "  Install-Module Terminal-Icons -Scope CurrentUser -Force" -ForegroundColor DarkGray
-    Write-Host "  Install-Module CompletionPredictor -Scope CurrentUser -Force" -ForegroundColor DarkGray
-    Write-Host "  Install-Module DockerCompletion -Scope CurrentUser -Force" -ForegroundColor DarkGray
-    Write-Host "  Install-Module posh-git -Scope CurrentUser -Force" -ForegroundColor DarkGray
 
     Write-Host "`nInstallation complete." -ForegroundColor Green
 
