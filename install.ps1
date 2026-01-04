@@ -653,6 +653,18 @@ try {
             wsl -e bash --norc -c "tr -d '\r' < '$wslBasedir/.zshrc' > ~/.zshrc"
         }
 
+        # Step 2.5: Configure passwordless sudo (requires password once, then never again)
+        # This must happen BEFORE wsl-packages so package installation doesn't prompt
+        Write-Host "  Configuring passwordless sudo..." -ForegroundColor Cyan
+        $sudoersCheck = wsl -e bash --norc -c 'sudo -n true 2>/dev/null && echo "ok" || echo "need"'
+        if ($sudoersCheck -eq "need") {
+            # Create sudoers.d entry for current user (prompts for password once)
+            wsl -e bash -c 'echo "$(whoami) ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/$(whoami)-nopasswd > /dev/null && sudo chmod 440 /etc/sudoers.d/$(whoami)-nopasswd'
+            Write-Host "  Passwordless sudo: configured" -ForegroundColor Green
+        } else {
+            Write-Host "  Passwordless sudo: already configured" -ForegroundColor DarkGray
+        }
+
         # Step 3: Install packages inside WSL
         $null = Install-WSLPackages
 
