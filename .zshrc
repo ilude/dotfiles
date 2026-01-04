@@ -32,6 +32,13 @@ fi
 #
 ############################################################################
 
+# Fix cursor flickering with autosuggestions on MSYS2/Git Bash
+# Async mode causes redraw issues on Windows terminals
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
+    ZSH_AUTOSUGGEST_USE_ASYNC=0
+    ZSH_AUTOSUGGEST_MANUAL_REBIND=1
+fi
+
 # Use ZDOTDIR for dotfiles path (MSYS2's zsh has different HOME than Git Bash)
 source "${ZDOTDIR:-$HOME}/.dotfiles/zsh-plugins"
 
