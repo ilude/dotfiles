@@ -8,6 +8,10 @@
 
 # Meta-configuration (auto-generated)
 .claude/
+.mcp.json
+
+# MCP tools (machine-specific installations)
+tools/
 
 # Session data and history
 history.jsonl

@@ -96,21 +96,16 @@ teardown() {
 
 # =============================================================================
 # claude-link-setup idempotency tests
-# Note: Windows junction tests are skipped because junctions in temp directories
-# have specific requirements that may not be available in all test environments.
+# Tests symlink creation on Linux/WSL and junction creation on Windows.
+# Both are detected by [ -L ] in Git Bash.
 # =============================================================================
 
 @test "claude-link-setup: runs successfully on first execution" {
-    # Skip on Windows - junctions in temp dirs have issues
-    skip_unless_linux
-
     run "$DOTFILES_DIR/claude-link-setup"
     [ "$status" -eq 0 ]
 }
 
 @test "claude-link-setup: creates link to .claude directory" {
-    skip_unless_linux
-
     run "$DOTFILES_DIR/claude-link-setup"
     [ "$status" -eq 0 ]
 
@@ -122,8 +117,6 @@ teardown() {
 }
 
 @test "claude-link-setup: runs successfully on second execution" {
-    skip_unless_linux
-
     # First run
     run "$DOTFILES_DIR/claude-link-setup"
     [ "$status" -eq 0 ]
@@ -134,8 +127,6 @@ teardown() {
 }
 
 @test "claude-link-setup: second run preserves link functionality" {
-    skip_unless_linux
-
     # First run
     "$DOTFILES_DIR/claude-link-setup"
 
@@ -154,8 +145,6 @@ teardown() {
 }
 
 @test "claude-link-setup: second run reports already linked" {
-    skip_unless_linux
-
     # First run
     "$DOTFILES_DIR/claude-link-setup"
 
@@ -172,4 +161,148 @@ teardown() {
     run "$DOTFILES_DIR/claude-link-setup"
     [ "$status" -eq 1 ]
     [[ "$output" == *"not found"* ]]
+}
+
+# =============================================================================
+# claude-link-setup backup/merge tests
+# When ~/.claude is an existing directory (not a symlink), the script should:
+# 1. Create a backup archive before making changes
+# 2. Merge machine-specific files into dotfiles
+# 3. Create the symlink after backup/merge completes
+# =============================================================================
+
+@test "claude-link-setup: creates backup when ~/.claude is existing directory" {
+    # Create existing ~/.claude directory with content (simulating pre-existing install)
+    mkdir -p "$HOME/.claude"
+    echo "session data" > "$HOME/.claude/history.jsonl"
+
+    run "$DOTFILES_DIR/claude-link-setup"
+    [ "$status" -eq 0 ]
+
+    # Backup archive should be created in HOME
+    # Either .tar.gz (fallback) or .7z (if available)
+    backup_count=$(ls "$HOME"/claude-backup-*.tar.gz "$HOME"/claude-backup-*.7z 2>/dev/null | wc -l)
+    [ "$backup_count" -ge 1 ]
+}
+
+@test "claude-link-setup: merges history.jsonl from existing directory" {
+    # Create existing ~/.claude with history
+    mkdir -p "$HOME/.claude"
+    echo '{"session":"old"}' > "$HOME/.claude/history.jsonl"
+
+    run "$DOTFILES_DIR/claude-link-setup"
+    [ "$status" -eq 0 ]
+
+    # history.jsonl should now exist in dotfiles
+    [ -f "$HOME/.dotfiles/.claude/history.jsonl" ]
+
+    # Content should include the old session data
+    grep -q "old" "$HOME/.dotfiles/.claude/history.jsonl"
+}
+
+@test "claude-link-setup: appends to existing history.jsonl instead of overwriting" {
+    # Pre-existing history in dotfiles
+    echo '{"session":"existing"}' > "$HOME/.dotfiles/.claude/history.jsonl"
+
+    # Create ~/.claude with additional history
+    mkdir -p "$HOME/.claude"
+    echo '{"session":"new"}' > "$HOME/.claude/history.jsonl"
+
+    run "$DOTFILES_DIR/claude-link-setup"
+    [ "$status" -eq 0 ]
+
+    # Both entries should be present (appended, not overwritten)
+    grep -q "existing" "$HOME/.dotfiles/.claude/history.jsonl"
+    grep -q "new" "$HOME/.dotfiles/.claude/history.jsonl"
+}
+
+@test "claude-link-setup: merges debug directory contents" {
+    # Create existing ~/.claude with debug files
+    mkdir -p "$HOME/.claude/debug"
+    echo "debug1" > "$HOME/.claude/debug/session-abc.txt"
+    echo "debug2" > "$HOME/.claude/debug/session-def.txt"
+
+    run "$DOTFILES_DIR/claude-link-setup"
+    [ "$status" -eq 0 ]
+
+    # Debug files should be merged to dotfiles
+    [ -f "$HOME/.dotfiles/.claude/debug/session-abc.txt" ]
+    [ -f "$HOME/.dotfiles/.claude/debug/session-def.txt" ]
+}
+
+@test "claude-link-setup: preserves existing files in dotfiles during merge" {
+    # Pre-existing debug file in dotfiles
+    mkdir -p "$HOME/.dotfiles/.claude/debug"
+    echo "original content" > "$HOME/.dotfiles/.claude/debug/existing.txt"
+
+    # Create ~/.claude with a different file
+    mkdir -p "$HOME/.claude/debug"
+    echo "new content" > "$HOME/.claude/debug/new-file.txt"
+
+    run "$DOTFILES_DIR/claude-link-setup"
+    [ "$status" -eq 0 ]
+
+    # Original file should be preserved
+    [ -f "$HOME/.dotfiles/.claude/debug/existing.txt" ]
+    grep -q "original content" "$HOME/.dotfiles/.claude/debug/existing.txt"
+
+    # New file should be added
+    [ -f "$HOME/.dotfiles/.claude/debug/new-file.txt" ]
+}
+
+@test "claude-link-setup: copies credentials file if not in dotfiles" {
+    # Create ~/.claude with credentials
+    mkdir -p "$HOME/.claude"
+    echo '{"token":"secret"}' > "$HOME/.claude/.credentials.json"
+
+    run "$DOTFILES_DIR/claude-link-setup"
+    [ "$status" -eq 0 ]
+
+    # Credentials should be copied to dotfiles
+    [ -f "$HOME/.dotfiles/.claude/.credentials.json" ]
+}
+
+@test "claude-link-setup: does not overwrite existing credentials in dotfiles" {
+    # Pre-existing credentials in dotfiles
+    echo '{"token":"dotfiles-token"}' > "$HOME/.dotfiles/.claude/.credentials.json"
+
+    # Create ~/.claude with different credentials
+    mkdir -p "$HOME/.claude"
+    echo '{"token":"local-token"}' > "$HOME/.claude/.credentials.json"
+
+    run "$DOTFILES_DIR/claude-link-setup"
+    [ "$status" -eq 0 ]
+
+    # Dotfiles credentials should be preserved (not overwritten)
+    grep -q "dotfiles-token" "$HOME/.dotfiles/.claude/.credentials.json"
+}
+
+@test "claude-link-setup: creates symlink after backup/merge completes" {
+    # Create existing ~/.claude directory
+    mkdir -p "$HOME/.claude"
+    echo "data" > "$HOME/.claude/history.jsonl"
+
+    run "$DOTFILES_DIR/claude-link-setup"
+    [ "$status" -eq 0 ]
+
+    # ~/.claude should now be a symlink (or junction on Windows)
+    [ -L "$HOME/.claude" ]
+
+    # Link should point to dotfiles
+    link_target=$(readlink -f "$HOME/.claude")
+    [[ "$link_target" == *".dotfiles/.claude"* ]]
+}
+
+@test "claude-link-setup: merged content accessible through symlink" {
+    # Create existing ~/.claude with history
+    mkdir -p "$HOME/.claude"
+    echo "merged-data" > "$HOME/.claude/history.jsonl"
+
+    "$DOTFILES_DIR/claude-link-setup"
+
+    # Should be able to read merged content through the symlink
+    grep -q "merged-data" "$HOME/.claude/history.jsonl"
+
+    # Original test marker from dotfiles should also be accessible
+    [ -f "$HOME/.claude/test-marker" ]
 }

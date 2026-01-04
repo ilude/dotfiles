@@ -3,6 +3,12 @@
 # Create ~/.claude link to dotfiles
 # Windows: uses junction (no admin required)
 # Linux: uses symlink
+#
+# If ~/.claude is an existing directory (not a link), this script will:
+# 1. Create a backup archive in ~/
+# 2. Merge machine-specific data into dotfiles
+# 3. Remove the original directory
+# 4. Create the junction/symlink
 
 DOTFILES_DIR="${HOME}/.dotfiles"
 CLAUDE_SOURCE="${DOTFILES_DIR}/.claude"
@@ -13,6 +19,139 @@ is_windows() {
     [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ -n "$WINDIR" ]]
 }
 
+# Check if path is a junction (Windows) or symlink
+is_link() {
+    local path="$1"
+    if is_windows; then
+        # Check for junction or symlink on Windows
+        if [[ -L "$path" ]]; then
+            return 0
+        fi
+        # Check Windows junction via cmd
+        local win_path
+        win_path=$(cygpath -w "$path" 2>/dev/null)
+        if [[ -n "$win_path" ]] && cmd //c "dir /AL \"$(dirname "$win_path")\"" 2>/dev/null | grep -q "$(basename "$path")"; then
+            return 0
+        fi
+        return 1
+    else
+        [[ -L "$path" ]]
+    fi
+}
+
+# Create backup archive
+create_backup() {
+    local source="$1"
+    local timestamp
+    timestamp=$(date +%Y%m%d-%H%M%S)
+    local backup_name="claude-backup-${timestamp}"
+
+    echo "  Creating backup archive..."
+
+    # Prefer 7z if available, fallback to tar.gz
+    if command -v 7z &>/dev/null; then
+        local archive="${HOME}/${backup_name}.7z"
+        if is_windows; then
+            local win_source win_archive
+            win_source=$(cygpath -w "$source")
+            win_archive=$(cygpath -w "$archive")
+            7z a -mx=5 "$win_archive" "$win_source" >/dev/null 2>&1
+        else
+            7z a -mx=5 "$archive" "$source" >/dev/null 2>&1
+        fi
+        if [[ $? -eq 0 ]]; then
+            echo "  Backup created: ~/${backup_name}.7z"
+            return 0
+        fi
+    fi
+
+    # Fallback to tar.gz
+    local archive="${HOME}/${backup_name}.tar.gz"
+    tar -czf "$archive" -C "$(dirname "$source")" "$(basename "$source")" 2>/dev/null
+    if [[ $? -eq 0 ]]; then
+        echo "  Backup created: ~/${backup_name}.tar.gz"
+        return 0
+    fi
+
+    echo "  Warning: Failed to create backup archive"
+    return 1
+}
+
+# Merge machine-specific files from existing ~/.claude to dotfiles
+merge_to_dotfiles() {
+    local source="$1"  # existing ~/.claude
+    local dest="$2"    # dotfiles/.claude
+
+    echo "  Merging machine-specific data to dotfiles..."
+
+    # Files/directories to preserve (machine-specific, gitignored in dotfiles)
+    local items_to_merge=(
+        "history.jsonl"
+        "debug"
+        "file-history"
+        "projects"
+        ".credentials.json"
+        ".mcp.json"
+        "tools"
+        "statsig"
+        "CHECKPOINT"
+    )
+
+    # Also merge any settings files
+    local settings_files=(
+        ".claude/settings.local.json"
+        "settings.local.json"
+    )
+
+    local merged_count=0
+
+    for item in "${items_to_merge[@]}"; do
+        local src_path="${source}/${item}"
+        local dest_path="${dest}/${item}"
+
+        if [[ -e "$src_path" ]]; then
+            if [[ -d "$src_path" ]]; then
+                # Directory: merge contents (copy new files, skip existing)
+                mkdir -p "$dest_path"
+                # Use cp with no-clobber where supported, or rsync-like behavior
+                if [[ -d "$src_path" ]]; then
+                    cp -rn "$src_path/." "$dest_path/" 2>/dev/null || \
+                    cp -r "$src_path/." "$dest_path/" 2>/dev/null
+                fi
+                echo "    Merged: $item/"
+            else
+                # File: copy if not exists in dest, or append for history.jsonl
+                if [[ "$item" == "history.jsonl" ]] && [[ -f "$dest_path" ]]; then
+                    # Append history entries (each line is a JSON object)
+                    cat "$src_path" >> "$dest_path"
+                    echo "    Merged: $item (appended)"
+                elif [[ ! -f "$dest_path" ]]; then
+                    cp "$src_path" "$dest_path"
+                    echo "    Copied: $item"
+                else
+                    echo "    Skipped: $item (already exists)"
+                fi
+            fi
+            ((merged_count++))
+        fi
+    done
+
+    # Handle nested settings files
+    for item in "${settings_files[@]}"; do
+        local src_path="${source}/${item}"
+        local dest_path="${dest}/${item}"
+
+        if [[ -f "$src_path" ]] && [[ ! -f "$dest_path" ]]; then
+            mkdir -p "$(dirname "$dest_path")"
+            cp "$src_path" "$dest_path"
+            echo "    Copied: $item"
+            ((merged_count++))
+        fi
+    done
+
+    echo "  Merged $merged_count items"
+}
+
 echo "Setting up Claude Code directory link..."
 
 # Check if source exists
@@ -21,19 +160,35 @@ if [[ ! -d "$CLAUDE_SOURCE" ]]; then
     exit 1
 fi
 
-# Check if target already correct
-if [[ -L "$CLAUDE_TARGET" ]]; then
+# Check if target is already a correct link
+if is_link "$CLAUDE_TARGET"; then
     current_target=$(readlink -f "$CLAUDE_TARGET" 2>/dev/null || readlink "$CLAUDE_TARGET")
     expected_target=$(readlink -f "$CLAUDE_SOURCE" 2>/dev/null || echo "$CLAUDE_SOURCE")
     if [[ "$current_target" == "$expected_target" ]] || [[ "$current_target" == "$CLAUDE_SOURCE" ]]; then
         echo "  ~/.claude: Already linked correctly"
         exit 0
     fi
+    echo "  Removing incorrect link..."
+    rm -f "$CLAUDE_TARGET"
 fi
 
-# Remove existing target if it exists
+# Handle existing directory (not a link)
+if [[ -d "$CLAUDE_TARGET" ]] && ! is_link "$CLAUDE_TARGET"; then
+    echo "  Found existing ~/.claude directory with data"
+
+    # Create backup
+    create_backup "$CLAUDE_TARGET"
+
+    # Merge machine-specific data to dotfiles
+    merge_to_dotfiles "$CLAUDE_TARGET" "$CLAUDE_SOURCE"
+
+    # Remove the original directory
+    echo "  Removing original ~/.claude directory..."
+    rm -rf "$CLAUDE_TARGET"
+fi
+
+# Remove any remaining target
 if [[ -e "$CLAUDE_TARGET" ]] || [[ -L "$CLAUDE_TARGET" ]]; then
-    echo "  Removing existing ~/.claude..."
     rm -rf "$CLAUDE_TARGET"
 fi
 
@@ -43,7 +198,7 @@ if is_windows; then
     win_target=$(cygpath -w "$CLAUDE_TARGET")
     win_source=$(cygpath -w "$CLAUDE_SOURCE")
     if cmd //c "mklink /J $win_target $win_source" > /dev/null 2>&1; then
-        echo "  ~/.claude: Junction created"
+        echo "  ~/.claude: Junction created -> ~/.dotfiles/.claude"
     else
         echo "  Error: Failed to create junction"
         exit 1
@@ -51,5 +206,7 @@ if is_windows; then
 else
     # Linux/macOS: use symlink
     ln -s "$CLAUDE_SOURCE" "$CLAUDE_TARGET"
-    echo "  ~/.claude: Symlink created"
+    echo "  ~/.claude: Symlink created -> ~/.dotfiles/.claude"
 fi
+
+echo "  Done"
