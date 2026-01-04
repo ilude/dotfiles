@@ -93,13 +93,23 @@ Git Bash and MSYS2's zsh have **different HOME directories**:
    exec env ZDOTDIR="$(cygpath -u "$USERPROFILE")" zsh -l
    ```
 
-2. **All dotfiles paths must use `$ZDOTDIR`**, not `~` or `$HOME`:
+2. **All dotfiles paths must use `${ZDOTDIR:-$HOME}`**, not `~` or `$HOME`:
    ```bash
    # WRONG - expands to /home/Mike/.dotfiles (doesn't exist):
    source ~/.dotfiles/zsh-plugins
 
    # RIGHT - uses ZDOTDIR which is /c/Users/Mike:
    source "${ZDOTDIR:-$HOME}/.dotfiles/zsh-plugins"
+   ```
+
+3. **Prompt path normalization must also use ZDOTDIR**:
+   ```zsh
+   # WRONG - HOME is /home/Mike in MSYS2 zsh:
+   if [[ "$p" == "$HOME"* ]]; then
+
+   # RIGHT - ZDOTDIR is /c/Users/Mike:
+   local home="${ZDOTDIR:-$HOME}"
+   if [[ "$p" == "$home"* ]]; then
    ```
 
 #### WSL Prompt Path Normalization
