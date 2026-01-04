@@ -59,7 +59,8 @@ $corePackages = @(
     @{ Id = 'aristocratos.btop4win'; Name = 'btop (system monitor)' },
     @{ Id = 'tldr-pages.tlrc'; Name = 'tldr (man pages)' },
     @{ Id = 'koalaman.shellcheck'; Name = 'shellcheck (shell linter)' },
-    @{ Id = 'mvdan.shfmt'; Name = 'shfmt (shell formatter)' }
+    @{ Id = 'mvdan.shfmt'; Name = 'shfmt (shell formatter)' },
+    @{ Id = 'MSYS2.MSYS2'; Name = 'MSYS2 (provides zsh for Git Bash)' }
 )
 
 $workPackages = @(
@@ -274,6 +275,33 @@ function Install-Packages {
                 $script:failed += "npm:$pkg"
             }
         }
+    }
+
+    # MSYS2 packages (zsh for Git Bash - requires MSYS2 from core packages)
+    Write-Host "`n--- MSYS2 Packages (Git Bash zsh) ---" -ForegroundColor Cyan
+    $msys2Pacman = "C:\msys64\usr\bin\pacman.exe"
+    if (Test-Path $msys2Pacman) {
+        $msys2Packages = @('zsh')
+        foreach ($pkg in $msys2Packages) {
+            Write-Host "  $pkg..." -ForegroundColor Cyan -NoNewline
+            # Check if package is installed
+            $installed = & $msys2Pacman -Q $pkg 2>$null
+            if ($installed) {
+                Write-Host " already installed" -ForegroundColor DarkGray
+            } else {
+                try {
+                    # Install package non-interactively
+                    & $msys2Pacman -S --noconfirm $pkg 2>$null | Out-Null
+                    Write-Host " installed" -ForegroundColor Green
+                } catch {
+                    Write-Host " failed" -ForegroundColor Red
+                    $script:failed += "msys2:$pkg"
+                }
+            }
+        }
+    } else {
+        Write-Host "  MSYS2 not found at C:\msys64 - skipping zsh install" -ForegroundColor Yellow
+        Write-Host "  (Run installer again after MSYS2 finishes installing)" -ForegroundColor DarkGray
     }
 
     # PowerShell user modules (CurrentUser scope, no admin required)
