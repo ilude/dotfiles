@@ -1,15 +1,47 @@
 # PowerShell Profile - Modernized (Jan 2026)
 # Requires: PowerShell 7.2+
 #
-# One-time setup (modules):
-#   Install-Module PSFzf -Scope CurrentUser
-#   Install-Module Terminal-Icons -Scope CurrentUser
-#   Install-Module CompletionPredictor -Scope CurrentUser
-#   Install-Module DockerCompletion -Scope CurrentUser
-#   Install-Module posh-git -Scope CurrentUser
-#
-# One-time setup (winget):
-#   winget install JanDeDobbeleer.OhMyPosh junegunn.fzf ajeetdsouza.zoxide
+# Modules auto-install on first run. CLI tools via winget:
+#   winget install junegunn.fzf ajeetdsouza.zoxide
+
+#region Module Auto-Installation
+
+$script:RequiredModules = @(
+  'PSReadLine',
+  'CompletionPredictor',
+  'Terminal-Icons',
+  'DockerCompletion',
+  'posh-git',
+  'PSFzf'
+)
+
+# Check and install missing modules (once per session, interactive only)
+if ($Host.Name -eq 'ConsoleHost' -and -not $env:PWSH_MODULES_CHECKED) {
+  $env:PWSH_MODULES_CHECKED = '1'
+  $missing = $script:RequiredModules | Where-Object { -not (Get-Module -ListAvailable $_) }
+
+  if ($missing) {
+    Write-Host "Missing PowerShell modules: $($missing -join ', ')" -ForegroundColor Yellow
+    $response = Read-Host "Install them now? [Y/n]"
+    if ($response -match '^(y|yes)?$') {
+      foreach ($mod in $missing) {
+        Write-Host "Installing $mod..." -ForegroundColor Cyan
+        try {
+          Install-Module $mod -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop
+          Write-Host "  Installed $mod" -ForegroundColor Green
+        }
+        catch {
+          Write-Host "  Failed to install $mod: $_" -ForegroundColor Red
+        }
+      }
+      Write-Host "Reloading profile..." -ForegroundColor Cyan
+      & $PROFILE
+      return
+    }
+  }
+}
+
+#endregion
 
 #region PATH Management
 
@@ -52,46 +84,56 @@ function prompt {
 
 #region PSReadLine Configuration
 
-if ($Host.UI.SupportsVirtualTerminal -and (Get-Module -ListAvailable PSReadLine)) {
-  try {
-    # Predictive IntelliSense (fish/zsh-autosuggestions style)
-    Set-PSReadLineOption -PredictionSource HistoryAndPlugin -ErrorAction Stop
-    Set-PSReadLineOption -PredictionViewStyle InlineView
-    Set-PSReadLineOption -HistorySearchCursorMovesToEnd
-
-    # Colors (match zsh theme style)
-    Set-PSReadLineOption -Colors @{
-      Command            = 'Green'
-      Parameter          = 'DarkGray'
-      String             = 'DarkYellow'
-      Variable           = 'Cyan'
-      Number             = 'White'
-      Operator           = 'White'
-      Member             = 'White'
-      Type               = 'DarkCyan'
-      InlinePrediction   = 'DarkGray'
-    }
-
-    # Key bindings (zsh-like)
-    Set-PSReadLineKeyHandler -Chord "Ctrl+Spacebar" -Function MenuComplete
-    Set-PSReadLineKeyHandler -Chord "Ctrl+f" -Function ForwardWord
-    Set-PSReadLineKeyHandler -Chord "Ctrl+b" -Function BackwardWord
-    Set-PSReadLineKeyHandler -Chord "Ctrl+a" -Function BeginningOfLine
-    Set-PSReadLineKeyHandler -Chord "Ctrl+e" -Function EndOfLine
-    Set-PSReadLineKeyHandler -Chord "Ctrl+k" -Function ForwardDeleteLine
-    Set-PSReadLineKeyHandler -Chord "Ctrl+u" -Function BackwardDeleteLine
-
-    # Alt+. to insert last argument (like zsh)
-    Set-PSReadLineKeyHandler -Chord "Alt+." -Function YankLastArg
-  }
-  catch {
-    # Silently ignore in non-interactive sessions
-  }
-}
-
-# Load CompletionPredictor if available
+# Load CompletionPredictor FIRST (required for HistoryAndPlugin prediction source)
 if (Get-Module -ListAvailable CompletionPredictor) {
   Import-Module CompletionPredictor -ErrorAction SilentlyContinue
+}
+
+if (Get-Module -ListAvailable PSReadLine) {
+  # Ensure Tab completion always works (basic completion fallback)
+  Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete
+
+  # Configure predictive IntelliSense if terminal supports it
+  if ($Host.UI.SupportsVirtualTerminal) {
+    try {
+      # Use Plugin source only if CompletionPredictor is loaded
+      $predictionSource = if (Get-Module CompletionPredictor) { 'HistoryAndPlugin' } else { 'History' }
+      Set-PSReadLineOption -PredictionSource $predictionSource
+      Set-PSReadLineOption -PredictionViewStyle InlineView
+      Set-PSReadLineOption -HistorySearchCursorMovesToEnd
+
+      # Colors (match zsh theme style)
+      Set-PSReadLineOption -Colors @{
+        Command            = 'Green'
+        Parameter          = 'DarkGray'
+        String             = 'DarkYellow'
+        Variable           = 'Cyan'
+        Number             = 'White'
+        Operator           = 'White'
+        Member             = 'White'
+        Type               = 'DarkCyan'
+        InlinePrediction   = 'DarkGray'
+      }
+
+      # Key bindings (zsh-like)
+      Set-PSReadLineKeyHandler -Chord "Ctrl+Spacebar" -Function MenuComplete
+      Set-PSReadLineKeyHandler -Chord "Ctrl+f" -Function ForwardWord
+      Set-PSReadLineKeyHandler -Chord "Ctrl+b" -Function BackwardWord
+      Set-PSReadLineKeyHandler -Chord "Ctrl+a" -Function BeginningOfLine
+      Set-PSReadLineKeyHandler -Chord "Ctrl+e" -Function EndOfLine
+      Set-PSReadLineKeyHandler -Chord "Ctrl+k" -Function ForwardDeleteLine
+      Set-PSReadLineKeyHandler -Chord "Ctrl+u" -Function BackwardDeleteLine
+
+      # Alt+. to insert last argument (like zsh)
+      Set-PSReadLineKeyHandler -Chord "Alt+." -Function YankLastArg
+    }
+    catch {
+      # Show errors in interactive sessions so user knows what failed
+      if ($Host.Name -eq 'ConsoleHost') {
+        Write-Host "PSReadLine config error: $_" -ForegroundColor Red
+      }
+    }
+  }
 }
 
 #endregion
@@ -295,6 +337,59 @@ function l {
 }
 
 Set-Alias -Name ll -Value l -Force
+
+# Tree view (like zsh tree alias with eza)
+function tree {
+  [CmdletBinding()]
+  param(
+    [Parameter(Position=0)]
+    [string]$Path = '.',
+    [Alias('L')][int]$Depth = 3,
+    [Alias('a')][switch]$All
+  )
+
+  # Use eza if available (matches zsh behavior)
+  if (Get-Command eza -ErrorAction SilentlyContinue) {
+    $args = @('--tree', "--level=$Depth", '--icons')
+    if ($All) { $args += '-a' }
+    $args += $Path
+    & eza @args
+  }
+  else {
+    # Fallback to native PowerShell tree
+    function Show-Tree {
+      param([string]$Dir, [int]$Level, [int]$MaxDepth, [string]$Prefix = '', [bool]$ShowHidden)
+      if ($Level -ge $MaxDepth) { return }
+
+      $items = Get-ChildItem -Path $Dir -Force:$ShowHidden -ErrorAction SilentlyContinue |
+               Sort-Object { -not $_.PSIsContainer }, Name
+
+      for ($i = 0; $i -lt $items.Count; $i++) {
+        $item = $items[$i]
+        $isLast = ($i -eq $items.Count - 1)
+        $connector = if ($isLast) { '└── ' } else { '├── ' }
+        $color = if ($item.PSIsContainer) { 'Cyan' } else { 'Gray' }
+
+        Write-Host "$Prefix$connector" -NoNewline
+        Write-Host $item.Name -ForegroundColor $color
+
+        if ($item.PSIsContainer) {
+          $newPrefix = $Prefix + $(if ($isLast) { '    ' } else { '│   ' })
+          Show-Tree -Dir $item.FullName -Level ($Level + 1) -MaxDepth $MaxDepth -Prefix $newPrefix -ShowHidden $ShowHidden
+        }
+      }
+    }
+
+    $resolvedPath = Resolve-Path $Path -ErrorAction SilentlyContinue
+    if ($resolvedPath) {
+      Write-Host (Split-Path $resolvedPath -Leaf) -ForegroundColor Cyan
+      Show-Tree -Dir $resolvedPath -Level 0 -MaxDepth $Depth -Prefix '' -ShowHidden $All
+    }
+    else {
+      Write-Error "Path not found: $Path"
+    }
+  }
+}
 
 # Profile reload
 function Reload-Profile {
