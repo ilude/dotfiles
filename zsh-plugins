@@ -1,10 +1,13 @@
 #!/bin/bash
 # shellcheck disable=SC1090
 
+# Use ZDOTDIR for dotfiles path (MSYS2's zsh has different HOME than Git Bash)
+DOTFILES_HOME="${ZDOTDIR:-$HOME}"
+
 # Function to download plugins from GitHub
 function plugin() {
   local repo=$1
-  local plugin_dir="${HOME}/.dotfiles/plugins/${repo##*/}"
+  local plugin_dir="${DOTFILES_HOME}/.dotfiles/plugins/${repo##*/}"
 
   if [ ! -d "$plugin_dir" ]; then
     echo "Installing plugin: $repo"
@@ -20,7 +23,7 @@ function plugin() {
 }
 
 # Create the plugins directory if it doesn't exist
-mkdir -p "${HOME}/.dotfiles/plugins"
+mkdir -p "${DOTFILES_HOME}/.dotfiles/plugins"
 
 plugin "zsh-users/zsh-autosuggestions"
 plugin "zsh-users/zsh-completions"
