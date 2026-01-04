@@ -25,9 +25,14 @@ __set_prompt() {
     # On other platforms: map $HOME to ~
     if [[ -f /proc/sys/fs/binfmt_misc/WSLInterop ]]; then
         # WSL: only Windows home becomes ~
-        case "$p" in
-            /mnt/c/[Uu]sers/"$USER"*) p="~${p#/mnt/c/[Uu]sers/"$USER"}" ;;
-        esac
+        # Use case-insensitive comparison (Windows paths vary in case)
+        local user="${USER:-$(whoami)}"
+        local p_lower="${p,,}"
+        local win_home_lower="/mnt/c/users/${user,,}"
+        if [[ "$p_lower" == "$win_home_lower"* ]]; then
+            # Strip Windows home prefix, preserving case of remaining path
+            p="~${p:${#win_home_lower}}"
+        fi
     else
         # Non-WSL: normal $HOME substitution
         case "$p" in

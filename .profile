@@ -14,13 +14,12 @@ if [ -t 1 ] && command -v zsh >/dev/null 2>&1; then
     export SHELL=$(command -v zsh)
     # ZDOTDIR tells zsh where to find config files (.zshrc, .zprofile, etc.)
     # MSYS2's zsh uses different home than Git Bash, so we convert Windows path
+    # NOTE: Must use 'env' to pass ZDOTDIR across Git Bash -> MSYS2 boundary
     if [ -n "$USERPROFILE" ] && command -v cygpath >/dev/null 2>&1; then
-        ZDOTDIR="$(cygpath -u "$USERPROFILE")"
-        export ZDOTDIR
+        exec env ZDOTDIR="$(cygpath -u "$USERPROFILE")" zsh -l
     else
-        export ZDOTDIR="$HOME"
+        exec env ZDOTDIR="$HOME" zsh -l
     fi
-    exec zsh -l
 fi
 
 # Fallback: source .bashrc for bash users
