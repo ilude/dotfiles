@@ -1,4 +1,4 @@
-# PowerShell Profile - Modernized (Jan 2026)
+# PowerShell Profile - Optimized for fast startup
 # Requires: PowerShell 7.2+
 #
 # Modules auto-install on first run. CLI tools via winget:
@@ -15,10 +15,18 @@ $script:RequiredModules = @(
   'PSFzf'
 )
 
+# Single-pass module availability check (cached for session)
+if (-not $script:AvailableModules) {
+  $script:AvailableModules = @{}
+  foreach ($mod in $script:RequiredModules) {
+    $script:AvailableModules[$mod] = [bool](Get-Module -ListAvailable $mod)
+  }
+}
+
 # Check and install missing modules (once per session, interactive only)
 if ($Host.Name -eq 'ConsoleHost' -and -not $env:PWSH_MODULES_CHECKED) {
   $env:PWSH_MODULES_CHECKED = '1'
-  $missing = $script:RequiredModules | Where-Object { -not (Get-Module -ListAvailable $_) }
+  $missing = $script:RequiredModules | Where-Object { -not $script:AvailableModules[$_] }
 
   if ($missing) {
     Write-Host "Missing PowerShell modules: $($missing -join ', ')" -ForegroundColor Yellow
@@ -31,7 +39,7 @@ if ($Host.Name -eq 'ConsoleHost' -and -not $env:PWSH_MODULES_CHECKED) {
           Write-Host "  Installed $mod" -ForegroundColor Green
         }
         catch {
-          Write-Host "  Failed to install $mod: $_" -ForegroundColor Red
+          Write-Host "  Failed to install ${mod}: $_" -ForegroundColor Red
         }
       }
       Write-Host "Reloading profile..." -ForegroundColor Cyan
@@ -85,11 +93,11 @@ function prompt {
 #region PSReadLine Configuration
 
 # Load CompletionPredictor FIRST (required for HistoryAndPlugin prediction source)
-if (Get-Module -ListAvailable CompletionPredictor) {
+if ($script:AvailableModules['CompletionPredictor']) {
   Import-Module CompletionPredictor -ErrorAction SilentlyContinue
 }
 
-if (Get-Module -ListAvailable PSReadLine) {
+if ($script:AvailableModules['PSReadLine']) {
   # Ensure Tab completion always works (basic completion fallback)
   Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete
 
@@ -98,9 +106,9 @@ if (Get-Module -ListAvailable PSReadLine) {
     try {
       # Use Plugin source only if CompletionPredictor is loaded
       $predictionSource = if (Get-Module CompletionPredictor) { 'HistoryAndPlugin' } else { 'History' }
-      Set-PSReadLineOption -PredictionSource $predictionSource
-      Set-PSReadLineOption -PredictionViewStyle InlineView
-      Set-PSReadLineOption -HistorySearchCursorMovesToEnd
+      Set-PSReadLineOption -PredictionSource $predictionSource -ErrorAction SilentlyContinue
+      Set-PSReadLineOption -PredictionViewStyle InlineView -ErrorAction SilentlyContinue
+      Set-PSReadLineOption -HistorySearchCursorMovesToEnd -ErrorAction SilentlyContinue
 
       # Colors (match zsh theme style)
       Set-PSReadLineOption -Colors @{
@@ -128,36 +136,26 @@ if (Get-Module -ListAvailable PSReadLine) {
       Set-PSReadLineKeyHandler -Chord "Alt+." -Function YankLastArg
     }
     catch {
-      # Show errors in interactive sessions so user knows what failed
-      if ($Host.Name -eq 'ConsoleHost') {
-        Write-Host "PSReadLine config error: $_" -ForegroundColor Red
-      }
+      # Silently ignore in non-interactive contexts (measurement, scripts, etc.)
     }
   }
 }
 
 #endregion
 
-#region Modules
+#region Modules (deferred loading for heavy modules)
 
-# Terminal-Icons (file icons in directory listings)
-if (Get-Module -ListAvailable Terminal-Icons) {
-  Import-Module Terminal-Icons
-}
-
-# Docker completion
-if (Get-Module -ListAvailable DockerCompletion) {
-  Import-Module DockerCompletion
-}
-
-# Git completion via posh-git (tab expansion only, prompt disabled)
-if (Get-Module -ListAvailable posh-git) {
-  $env:POSH_GIT_ENABLED = $false
-  Import-Module posh-git
+# Terminal-Icons - defer until first ls/Get-ChildItem (heavy: ~650ms)
+$script:TerminalIconsLoaded = $false
+function Import-TerminalIconsOnce {
+  if (-not $script:TerminalIconsLoaded -and $script:AvailableModules['Terminal-Icons']) {
+    Import-Module Terminal-Icons
+    $script:TerminalIconsLoaded = $true
+  }
 }
 
 # PSFzf (fuzzy finder - Ctrl+R for history, Ctrl+T for files)
-if ((Get-Module -ListAvailable PSFzf) -and (Get-Command fzf -ErrorAction SilentlyContinue)) {
+if ($script:AvailableModules['PSFzf'] -and (Get-Command fzf -ErrorAction SilentlyContinue)) {
   Import-Module PSFzf
   Set-PsFzfOption -PSReadlineChordProvider 'Ctrl+t' -PSReadlineChordReverseHistory 'Ctrl+r'
   Set-PsFzfOption -EnableAliasFuzzyEdit
@@ -167,26 +165,81 @@ if ((Get-Module -ListAvailable PSFzf) -and (Get-Command fzf -ErrorAction Silentl
   Set-PsFzfOption -EnableAliasFuzzyGitStatus
 }
 
+# Git/Docker completions - load on first use via argument completers
+# posh-git provides git tab completion when loaded
+if ($script:AvailableModules['posh-git']) {
+  Register-ArgumentCompleter -Native -CommandName git -ScriptBlock {
+    param($wordToComplete, $commandAst, $cursorPosition)
+    if (-not (Get-Module posh-git)) {
+      $env:POSH_GIT_ENABLED = $false
+      Import-Module posh-git
+    }
+    # Let posh-git handle it after loading
+    $null
+  }
+}
+
+if ($script:AvailableModules['DockerCompletion']) {
+  Register-ArgumentCompleter -Native -CommandName docker -ScriptBlock {
+    param($wordToComplete, $commandAst, $cursorPosition)
+    if (-not (Get-Module DockerCompletion)) {
+      Import-Module DockerCompletion
+    }
+    $null
+  }
+}
+
 #endregion
 
-#region CLI Tool Completions
+#region CLI Tool Completions (cached for speed)
 
-# kubectl
-if (Get-Command kubectl -ErrorAction SilentlyContinue) {
-  kubectl completion powershell | Out-String | Invoke-Expression
+$script:CompletionCacheDir = "$env:LOCALAPPDATA\PowerShell\CompletionCache"
+
+function Update-Completions {
+  <#
+  .SYNOPSIS
+  Regenerate cached CLI completions. Run after installing/updating CLI tools.
+  #>
+  if (-not (Test-Path $script:CompletionCacheDir)) {
+    New-Item -ItemType Directory -Path $script:CompletionCacheDir -Force | Out-Null
+  }
+
+  $tools = @(
+    @{Name='kubectl'; Cmd='kubectl completion powershell'},
+    @{Name='helm'; Cmd='helm completion powershell'},
+    @{Name='gh'; Cmd='gh completion -s powershell'},
+    @{Name='tailscale'; Cmd='tailscale completion powershell'}
+  )
+
+  foreach ($tool in $tools) {
+    if (Get-Command $tool.Name -ErrorAction SilentlyContinue) {
+      Write-Host "Caching $($tool.Name) completions..." -ForegroundColor Cyan
+      try {
+        Invoke-Expression $tool.Cmd | Out-File "$script:CompletionCacheDir\$($tool.Name).ps1" -Encoding utf8
+      }
+      catch {
+        Write-Host "  Failed: $_" -ForegroundColor Red
+      }
+    }
+  }
+
+  # zoxide
+  if (Get-Command zoxide -ErrorAction SilentlyContinue) {
+    Write-Host "Caching zoxide init..." -ForegroundColor Cyan
+    zoxide init powershell | Out-File "$script:CompletionCacheDir\zoxide.ps1" -Encoding utf8
+  }
+
+  Write-Host "Done. Reload profile to use cached completions." -ForegroundColor Green
 }
 
-# helm
-if (Get-Command helm -ErrorAction SilentlyContinue) {
-  helm completion powershell | Out-String | Invoke-Expression
+# Load cached completions (generated by install.ps1)
+if (Test-Path $script:CompletionCacheDir) {
+  Get-ChildItem "$script:CompletionCacheDir\*.ps1" -ErrorAction SilentlyContinue | ForEach-Object {
+    . $_.FullName
+  }
 }
 
-# GitHub CLI
-if (Get-Command gh -ErrorAction SilentlyContinue) {
-  gh completion -s powershell | Out-String | Invoke-Expression
-}
-
-# winget
+# winget (inline - fast enough)
 if (Get-Command winget -ErrorAction SilentlyContinue) {
   Register-ArgumentCompleter -Native -CommandName winget -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
@@ -199,7 +252,7 @@ if (Get-Command winget -ErrorAction SilentlyContinue) {
   }
 }
 
-# dotnet
+# dotnet (inline - fast enough)
 if (Get-Command dotnet -ErrorAction SilentlyContinue) {
   Register-ArgumentCompleter -Native -CommandName dotnet -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
@@ -207,11 +260,6 @@ if (Get-Command dotnet -ErrorAction SilentlyContinue) {
       [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     }
   }
-}
-
-# tailscale
-if (Get-Command tailscale -ErrorAction SilentlyContinue) {
-  tailscale completion powershell | Out-String | Invoke-Expression
 }
 
 #endregion
@@ -316,6 +364,8 @@ function l {
     [string]$Path = '.'
   )
 
+  Import-TerminalIconsOnce
+
   try {
     $items = Get-ChildItem -Force -Path $Path -ErrorAction Stop |
              Sort-Object { -not $_.PSIsContainer }, Name
@@ -419,14 +469,5 @@ function Get-Editor {
 
 $env:COMPOSE_CONVERT_WINDOWS_PATHS = 1
 $env:DOCKER_BUILDKIT = 1
-
-#endregion
-
-#region Directory Navigation
-
-# zoxide (smart cd - like z/autojump)
-if (Get-Command zoxide -ErrorAction SilentlyContinue) {
-  Invoke-Expression (& { (zoxide init powershell | Out-String) })
-}
 
 #endregion
