@@ -1,5 +1,6 @@
 # PATH configuration (sourced by all shells)
-export PATH="$HOME/.local/bin:$PATH"
+# Use WINHOME on Windows platforms (set in 00-winhome.zsh), fall back to HOME
+export PATH="${WINHOME:-$HOME}/.local/bin:$PATH"
 
 # MSYS2/Git Bash: restore Git for Windows in PATH
 # MSYS2's login shell resets PATH, losing Git for Windows binaries
