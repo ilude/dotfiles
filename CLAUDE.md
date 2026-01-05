@@ -54,7 +54,7 @@ make test    # Run bats tests
 | `.bash_profile` | Login shell → zsh transition with ZDOTDIR setup |
 | `.zshrc` | Main zsh config, sources `zsh/rc.d/*.zsh` |
 | `.zshenv` | All zsh shells, sources `zsh/env.d/*.zsh` |
-| `zsh/env.d/` | Environment modules (locale, PATH, WINHOME) |
+| `zsh/env.d/` | Environment modules (WINHOME, locale, PATH) |
 | `zsh/rc.d/` | Interactive modules (completions, history, prompt, aliases) |
 | `zsh-plugins` | On-demand plugin downloader from GitHub |
 | `.zshrc-msys2-bootstrap` | MSYS2 HOME redirect to Windows home |
@@ -83,7 +83,7 @@ Scripts use `$OSTYPE` (`msys`, `cygwin`) or `$WINDIR` for Windows detection. All
 ```
 .bash_profile → adds MSYS2 to PATH → sets ZDOTDIR → exec env ZDOTDIR=... zsh -l
                                                            ↓
-                                                      .zshenv → zsh/env.d/*.zsh (locale, PATH, WINHOME)
+                                                      .zshenv → zsh/env.d/*.zsh (WINHOME, locale, PATH)
                                                            ↓
                                                       .zshrc → zsh/rc.d/*.zsh (completions, plugins, history, prompt)
                                                            ↓
