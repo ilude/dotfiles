@@ -6,6 +6,7 @@ plugins/*
 .gitconfig-professional-local
 .path-windows-local
 .zshrc.local
+*.zwc
 # Claude Code - sensitive and session data
 claude/.credentials.json
 claude/*.key
