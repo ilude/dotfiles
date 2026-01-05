@@ -10,8 +10,14 @@ zstyle ':completion::complete:make::' tag-order targets
 zstyle ':completion::complete:make:*:targets' ignored-patterns '*[?%\:]=*' '$(*)'
 
 # Faster compinit - only regenerate once per day
-# -u suppresses permission warnings (common on Windows/MSYS2)
 # Use ZDOTDIR for MSYS2/Git Bash compatibility
+#
+# SECURITY TRADEOFF: -u flag suppresses "insecure directories" warnings
+# Why needed: MSYS2/Git Bash has permission mismatches - completion dirs are
+# often group/world-writable by Windows standards but safe in practice.
+# Without -u: compinit prompts interactively, breaking non-interactive shells.
+# Risk: Malicious completion files in /usr/share/zsh could be loaded.
+# Mitigation: This is a personal workstation, not a shared server.
 autoload -Uz compinit
 _zcompdump="${ZDOTDIR:-$HOME}/.zcompdump"
 if [[ -n ${_zcompdump}(#qN.mh+24) ]]; then
