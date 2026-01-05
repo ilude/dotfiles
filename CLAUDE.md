@@ -22,6 +22,8 @@ Cross-platform dotfiles repository for Linux and Windows. Uses **Dotbot** for sy
 ~/.dotfiles/install.ps1 -ITAdmin  # + AD, Graph, Exchange modules
 ```
 
+> **Note for Claude:** Self-elevating scripts like `install.ps1` can be run directly via `pwsh -File install.ps1`. They spawn an elevated admin window automatically - you won't see output but the script runs.
+
 ### Development
 
 ```bash

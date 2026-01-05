@@ -37,3 +37,4 @@ last-context.txt
 *.7z
 # Stale directory (renamed to claude/)
 .claude/
+InstallationLog.txt
