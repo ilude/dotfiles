@@ -129,3 +129,31 @@ teardown() {
 @test "keybindings: ctrl+delete bound to kill-word" {
     grep -q 'bindkey.*kill-word' "$DOTFILES_DIR/zsh/rc.d/04-keybindings.zsh"
 }
+
+# =============================================================================
+# 09-version-managers.zsh tests
+# =============================================================================
+
+@test "version-managers: pyenv lazy loading defined" {
+    grep -q 'pyenv()' "$DOTFILES_DIR/zsh/rc.d/09-version-managers.zsh"
+}
+
+@test "version-managers: rbenv lazy loading defined" {
+    grep -q 'rbenv()' "$DOTFILES_DIR/zsh/rc.d/09-version-managers.zsh"
+}
+
+@test "version-managers: nodenv lazy loading defined" {
+    grep -q 'nodenv()' "$DOTFILES_DIR/zsh/rc.d/09-version-managers.zsh"
+}
+
+@test "version-managers: nvm lazy loading defined" {
+    grep -q 'nvm()' "$DOTFILES_DIR/zsh/rc.d/09-version-managers.zsh"
+}
+
+@test "version-managers: nvm lazy-loads node/npm/npx" {
+    grep -q 'node npm npx' "$DOTFILES_DIR/zsh/rc.d/09-version-managers.zsh"
+}
+
+@test "version-managers: uses unfunction for proper lazy loading" {
+    grep -q 'unfunction' "$DOTFILES_DIR/zsh/rc.d/09-version-managers.zsh"
+}
