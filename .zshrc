@@ -26,3 +26,6 @@ unset _dotfiles
 
 # Source uv environment if installed (conditional to avoid errors when not present)
 [[ -f "${ZDOTDIR:-$HOME}/.local/bin/env" ]] && . "${ZDOTDIR:-$HOME}/.local/bin/env"
+
+# Debug timing report (only shown when DEBUG=1)
+debug_report
