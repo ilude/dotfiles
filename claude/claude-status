@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# Claude Code status line script - cross-platform (Linux/macOS/Windows Git Bash/WSL)
+# Reads JSON from stdin with model and workspace info, outputs formatted status
+
+# Read stdin into variable
+stdin_input=$(cat)
+
+# Parse JSON - try jq first, fall back to python
+if command -v jq &>/dev/null; then
+    model=$(echo "$stdin_input" | jq -r '.model.display_name // "unknown"' 2>/dev/null)
+    cwd=$(echo "$stdin_input" | jq -r '.workspace.current_dir // ""' 2>/dev/null)
+else
+    # Python fallback (try python3 first, then python)
+    PYTHON_CMD=$(command -v python3 || command -v python)
+    # Pass JSON via stdin to avoid quoting issues
+    # Use tab as delimiter to handle spaces in values
+    IFS=$'\t' read -r model cwd <<< $(echo "$stdin_input" | $PYTHON_CMD -c "
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    model = data.get('model', {}).get('display_name', 'unknown')
+    cwd = data.get('workspace', {}).get('current_dir', '')
+    print(model + '\t' + cwd)
+except:
+    print('parse-error\t')
+" 2>/dev/null)
+fi
+
+# Use cwd from JSON, or fall back to current directory
+current_path="${cwd:-$(pwd)}"
+
+# Detect if running in WSL
+is_wsl() {
+    [[ -n "$WSL_DISTRO_NAME" || -f /proc/sys/fs/binfmt_misc/WSLInterop ]]
+}
+
+# Convert Windows path to WSL path for filesystem access
+# C:/Users/... or C:\Users\... -> /mnt/c/Users/...
+to_wsl_path() {
+    local p="$1"
+    # Convert backslashes to forward slashes
+    p="${p//\\//}"
+    # Convert C:/ to /mnt/c/
+    if [[ "$p" =~ ^([A-Za-z]):/(.*) ]]; then
+        local drive="${BASH_REMATCH[1],,}"  # lowercase
+        local rest="${BASH_REMATCH[2]}"
+        echo "/mnt/$drive/$rest"
+    else
+        echo "$p"
+    fi
+}
+
+# Normalize Windows paths for display (removes drive prefix)
+normalize_path() {
+    local p="$1"
+    # Convert backslashes to forward slashes
+    p="${p//\\//}"
+    # Remove drive letter prefix like C: or /c/ or /mnt/c/
+    p="${p#[A-Za-z]:}"
+    p="${p#/[a-z]/}"
+    p="${p#/mnt/[a-z]/}"
+    echo "$p"
+}
+
+# Get home directory path (normalized for display comparison)
+get_home_pattern() {
+    # For WSL, use Users/<username> pattern to match normalized Windows paths (no leading /)
+    if is_wsl; then
+        echo "Users/$USER"
+    else
+        normalize_path "${HOME:-$USERPROFILE}"
+    fi
+}
+
+# Get path for git commands (WSL needs /mnt/c/ paths)
+if is_wsl; then
+    git_path=$(to_wsl_path "$current_path")
+else
+    git_path="$current_path"
+fi
+
+normalized_path=$(normalize_path "$current_path")
+home_pattern=$(get_home_pattern)
+
+# Try to find git root using the appropriate path format
+git_repo_path=""
+if [[ -n "$git_path" ]]; then
+    if git -C "$git_path" rev-parse --git-dir &>/dev/null; then
+        git_repo_path=$(git -C "$git_path" rev-parse --show-toplevel 2>/dev/null)
+    fi
+fi
+
+# Determine directory name to display
+if [[ -n "$git_repo_path" ]]; then
+    normalized_repo=$(normalize_path "$git_repo_path")
+    basename=$(basename "$normalized_repo")
+
+    # Check if repo is in home directory
+    if [[ "$normalized_repo" == "$home_pattern"* ]]; then
+        dir="~/$basename"
+    else
+        dir="$basename"
+    fi
+else
+    # No git repo - show path relative to home
+    if [[ "$normalized_path" == "$home_pattern"* ]]; then
+        relative_path="${normalized_path#$home_pattern}"
+        if [[ -n "$relative_path" ]]; then
+            dir="~$relative_path"
+        else
+            dir="~"
+        fi
+    else
+        dir="$normalized_path"
+    fi
+fi
+
+# Get git branch
+branch=""
+if [[ -n "$git_repo_path" || -n "$git_path" ]]; then
+    branch_name=$(git -C "$git_path" branch --show-current 2>/dev/null)
+    if [[ -n "$branch_name" ]]; then
+        # ANSI: Yellow brackets, Blue branch name
+        branch="\033[33m[\033[34m${branch_name}\033[33m]\033[0m"
+    fi
+fi
+
+# ANSI color codes
+GREEN="\033[32m"
+ORANGE="\033[38;5;208m"
+RESET="\033[0m"
+
+# Output formatted status line: dir[branch] | model
+if [[ -n "$branch" ]]; then
+    echo -e "${GREEN}${dir}${RESET}${branch} | ${ORANGE}${model}${RESET}"
+else
+    echo -e "${GREEN}${dir}${RESET} | ${ORANGE}${model}${RESET}"
+fi
