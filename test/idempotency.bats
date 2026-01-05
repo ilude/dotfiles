@@ -8,10 +8,11 @@ setup() {
     setup_test_home
 
     # Create .dotfiles structure in test HOME
-    mkdir -p "$HOME/.dotfiles/.claude"
+    # Note: claude-link-setup expects 'claude' not '.claude'
+    mkdir -p "$HOME/.dotfiles/claude"
 
-    # Create a dummy file in .claude to verify link works
-    echo "test" > "$HOME/.dotfiles/.claude/test-marker"
+    # Create a dummy file in claude to verify link works
+    echo "test" > "$HOME/.dotfiles/claude/test-marker"
 }
 
 teardown() {
@@ -156,7 +157,7 @@ teardown() {
 
 @test "claude-link-setup: fails gracefully when source missing" {
     # Remove the source directory
-    rm -rf "$HOME/.dotfiles/.claude"
+    rm -rf "$HOME/.dotfiles/claude"
 
     run "$DOTFILES_DIR/claude-link-setup"
     [ "$status" -eq 1 ]
@@ -194,15 +195,15 @@ teardown() {
     [ "$status" -eq 0 ]
 
     # history.jsonl should now exist in dotfiles
-    [ -f "$HOME/.dotfiles/.claude/history.jsonl" ]
+    [ -f "$HOME/.dotfiles/claude/history.jsonl" ]
 
     # Content should include the old session data
-    grep -q "old" "$HOME/.dotfiles/.claude/history.jsonl"
+    grep -q "old" "$HOME/.dotfiles/claude/history.jsonl"
 }
 
 @test "claude-link-setup: appends to existing history.jsonl instead of overwriting" {
     # Pre-existing history in dotfiles
-    echo '{"session":"existing"}' > "$HOME/.dotfiles/.claude/history.jsonl"
+    echo '{"session":"existing"}' > "$HOME/.dotfiles/claude/history.jsonl"
 
     # Create ~/.claude with additional history
     mkdir -p "$HOME/.claude"
@@ -212,8 +213,8 @@ teardown() {
     [ "$status" -eq 0 ]
 
     # Both entries should be present (appended, not overwritten)
-    grep -q "existing" "$HOME/.dotfiles/.claude/history.jsonl"
-    grep -q "new" "$HOME/.dotfiles/.claude/history.jsonl"
+    grep -q "existing" "$HOME/.dotfiles/claude/history.jsonl"
+    grep -q "new" "$HOME/.dotfiles/claude/history.jsonl"
 }
 
 @test "claude-link-setup: merges debug directory contents" {
@@ -226,14 +227,14 @@ teardown() {
     [ "$status" -eq 0 ]
 
     # Debug files should be merged to dotfiles
-    [ -f "$HOME/.dotfiles/.claude/debug/session-abc.txt" ]
-    [ -f "$HOME/.dotfiles/.claude/debug/session-def.txt" ]
+    [ -f "$HOME/.dotfiles/claude/debug/session-abc.txt" ]
+    [ -f "$HOME/.dotfiles/claude/debug/session-def.txt" ]
 }
 
 @test "claude-link-setup: preserves existing files in dotfiles during merge" {
     # Pre-existing debug file in dotfiles
-    mkdir -p "$HOME/.dotfiles/.claude/debug"
-    echo "original content" > "$HOME/.dotfiles/.claude/debug/existing.txt"
+    mkdir -p "$HOME/.dotfiles/claude/debug"
+    echo "original content" > "$HOME/.dotfiles/claude/debug/existing.txt"
 
     # Create ~/.claude with a different file
     mkdir -p "$HOME/.claude/debug"
@@ -243,11 +244,11 @@ teardown() {
     [ "$status" -eq 0 ]
 
     # Original file should be preserved
-    [ -f "$HOME/.dotfiles/.claude/debug/existing.txt" ]
-    grep -q "original content" "$HOME/.dotfiles/.claude/debug/existing.txt"
+    [ -f "$HOME/.dotfiles/claude/debug/existing.txt" ]
+    grep -q "original content" "$HOME/.dotfiles/claude/debug/existing.txt"
 
     # New file should be added
-    [ -f "$HOME/.dotfiles/.claude/debug/new-file.txt" ]
+    [ -f "$HOME/.dotfiles/claude/debug/new-file.txt" ]
 }
 
 @test "claude-link-setup: copies credentials file if not in dotfiles" {
@@ -259,12 +260,12 @@ teardown() {
     [ "$status" -eq 0 ]
 
     # Credentials should be copied to dotfiles
-    [ -f "$HOME/.dotfiles/.claude/.credentials.json" ]
+    [ -f "$HOME/.dotfiles/claude/.credentials.json" ]
 }
 
 @test "claude-link-setup: does not overwrite existing credentials in dotfiles" {
     # Pre-existing credentials in dotfiles
-    echo '{"token":"dotfiles-token"}' > "$HOME/.dotfiles/.claude/.credentials.json"
+    echo '{"token":"dotfiles-token"}' > "$HOME/.dotfiles/claude/.credentials.json"
 
     # Create ~/.claude with different credentials
     mkdir -p "$HOME/.claude"
@@ -274,7 +275,7 @@ teardown() {
     [ "$status" -eq 0 ]
 
     # Dotfiles credentials should be preserved (not overwritten)
-    grep -q "dotfiles-token" "$HOME/.dotfiles/.claude/.credentials.json"
+    grep -q "dotfiles-token" "$HOME/.dotfiles/claude/.credentials.json"
 }
 
 @test "claude-link-setup: creates symlink after backup/merge completes" {
@@ -290,7 +291,7 @@ teardown() {
 
     # Link should point to dotfiles
     link_target=$(readlink -f "$HOME/.claude")
-    [[ "$link_target" == *".dotfiles/.claude"* ]]
+    [[ "$link_target" == *".dotfiles/claude"* ]]
 }
 
 @test "claude-link-setup: merged content accessible through symlink" {
