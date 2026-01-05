@@ -17,13 +17,13 @@ zsh-setup text eol=lf
 # Python scripts
 *.py text eol=lf
 
-# Keep Windows batch files with CRLF
-*.bat text eol=crlf
-*.cmd text eol=crlf
+# Windows batch files - LF works fine
+*.bat text eol=lf
+*.cmd text eol=lf
 
-# PowerShell can handle either, but keep consistent
-*.ps1 text eol=crlf
-*.psm1 text eol=crlf
+# PowerShell handles LF fine
+*.ps1 text eol=lf
+*.psm1 text eol=lf
 
 # Binary files
 *.png binary
