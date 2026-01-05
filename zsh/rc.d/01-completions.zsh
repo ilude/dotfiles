@@ -11,9 +11,12 @@ zstyle ':completion::complete:make:*:targets' ignored-patterns '*[?%\:]=*' '$(*)
 
 # Faster compinit - only regenerate once per day
 # -u suppresses permission warnings (common on Windows/MSYS2)
+# Use ZDOTDIR for MSYS2/Git Bash compatibility
 autoload -Uz compinit
-if [[ -n ~/.zcompdump(#qN.mh+24) ]]; then
-    compinit -u
+_zcompdump="${ZDOTDIR:-$HOME}/.zcompdump"
+if [[ -n ${_zcompdump}(#qN.mh+24) ]]; then
+    compinit -u -d "$_zcompdump"
 else
-    compinit -u -C  # Skip security check, use cache
+    compinit -u -C -d "$_zcompdump"  # Skip security check, use cache
 fi
+unset _zcompdump
