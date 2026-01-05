@@ -4,6 +4,7 @@ plugins/*
 .gitconfig.old
 .gitconfig-personal-local
 .gitconfig-professional-local
+.path-windows-local
 # Claude Code - sensitive and session data
 claude/.credentials.json
 claude/*.key
