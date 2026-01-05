@@ -7,3 +7,9 @@ export PATH="${WINHOME:-$HOME}/.local/bin:$PATH"
 if [[ ("$OSTYPE" == "msys" || "$OSTYPE" == "cygwin") && -d "/c/Program Files/Git/mingw64/bin" ]]; then
     export PATH="/c/Program Files/Git/mingw64/bin:$PATH"
 fi
+
+# Windows: source generated PATH config (from install.ps1)
+# Contains Windows dev tools converted to Git Bash format
+if [[ ("$OSTYPE" == "msys" || "$OSTYPE" == "cygwin") && -f "${ZDOTDIR:-$HOME}/.path-windows-local" ]]; then
+    source "${ZDOTDIR:-$HOME}/.path-windows-local"
+fi
