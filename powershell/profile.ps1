@@ -79,6 +79,13 @@ $env:WINHOME = $env:USERPROFILE
 
 #endregion
 
+#region Aliases
+
+# Claude Code YOLO mode
+function ccyl { claude --dangerously-skip-permissions @args }
+
+#endregion
+
 #region Prompt (fast native - no oh-my-posh)
 
 function prompt {
