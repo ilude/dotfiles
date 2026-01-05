@@ -56,3 +56,10 @@ __set_prompt() {
 }
 
 PROMPT_COMMAND=__set_prompt
+
+############################################################################
+# Aliases
+############################################################################
+
+# Claude Code YOLO mode
+alias ccyl='claude --dangerously-skip-permissions'
