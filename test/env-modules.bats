@@ -23,6 +23,18 @@ teardown() {
     grep -q '/proc/sys/fs/binfmt_misc/WSLInterop' "$DOTFILES_DIR/zsh/env.d/00-winhome.zsh"
 }
 
+@test "winhome: detects WSL via /proc/version fallback" {
+    grep -q '/proc/version' "$DOTFILES_DIR/zsh/env.d/00-winhome.zsh"
+}
+
+@test "winhome: exports IS_WSL on WSL" {
+    grep -q 'IS_WSL=1' "$DOTFILES_DIR/zsh/env.d/00-winhome.zsh"
+}
+
+@test "winhome: exports IS_MSYS on MSYS2" {
+    grep -q 'IS_MSYS=1' "$DOTFILES_DIR/zsh/env.d/00-winhome.zsh"
+}
+
 @test "winhome: sets WINHOME on WSL to /mnt/c/Users" {
     grep -q 'WINHOME="/mnt/c/Users/' "$DOTFILES_DIR/zsh/env.d/00-winhome.zsh"
 }
