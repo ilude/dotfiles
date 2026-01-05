@@ -35,7 +35,8 @@ make test    # Run bats tests
 1. `install` (bash) or `install.ps1` (PowerShell) → entry points
 2. **Dotbot** creates symlinks defined in `install.conf.yaml`
 3. `git-ssh-setup` detects SSH keys, writes machine-specific `.gitconfig-*-local` files
-4. `zsh-setup` installs zsh plugins and system packages (Linux)
+4. `zsh-setup` installs zsh and sets as default shell (Linux only)
+5. `zsh-plugins` downloads plugins on first shell startup
 
 ### Git Identity System
 - **Directory-based** (Windows): `C:/Projects/Work/` → professional, `C:/Projects/Personal/` → personal
@@ -50,9 +51,16 @@ make test    # Run bats tests
 | File | Purpose |
 |------|---------|
 | `install.conf.yaml` | Dotbot symlink configuration |
+| `.bash_profile` | Login shell → zsh transition with ZDOTDIR setup |
+| `.zshrc` | Main zsh config, sources `zsh/rc.d/*.zsh` |
+| `.zshenv` | All zsh shells, sources `zsh/env.d/*.zsh` |
+| `zsh/env.d/` | Environment modules (locale, PATH, WINHOME) |
+| `zsh/rc.d/` | Interactive modules (completions, history, prompt, aliases) |
+| `zsh-plugins` | On-demand plugin downloader from GitHub |
+| `.zshrc-msys2-bootstrap` | MSYS2 HOME redirect to Windows home |
 | `.gitconfig` | Unified Git config with identity includes |
 | `.gitconfig-personal` / `.gitconfig-professional` | Identity-specific configs |
-| `.zshrc` | Main zsh configuration |
+| `git-ssh-setup` | SSH key detection, writes `.gitconfig-*-local` files |
 | `powershell/profile.ps1` | PowerShell profile |
 | `config/ohmyposh/prompt.json` | Oh My Posh prompt theme |
 | `.claude/` | Global Claude Code config (symlinked to ~/.claude/) |
@@ -75,7 +83,11 @@ Scripts use `$OSTYPE` (`msys`, `cygwin`) or `$WINDIR` for Windows detection. All
 ```
 .bash_profile → adds MSYS2 to PATH → sets ZDOTDIR → exec env ZDOTDIR=... zsh -l
                                                            ↓
-                                                      .zshrc → zsh-plugins
+                                                      .zshenv → zsh/env.d/*.zsh (locale, PATH, WINHOME)
+                                                           ↓
+                                                      .zshrc → zsh/rc.d/*.zsh (completions, plugins, history, prompt)
+                                                           ↓
+                                                      zsh-plugins (downloads if missing)
 ```
 
 #### MSYS2/Git Bash Complexity (READ THIS)
@@ -121,6 +133,14 @@ p_lower="${(L)p}"  # lowercase the path
 win_home_lower="/mnt/c/users/${(L)user}"  # lowercase the pattern
 ```
 
+#### Windows Performance Workarounds
+Plugins have known issues on Windows terminals (ConPTY):
+- **Async autosuggestions disabled** - Causes cursor flickering in VS Code/Windows Terminal
+- **Syntax highlighting disabled** - Performance issues on MSYS2
+- **Autosuggestion buffer limited to 50 chars** - Long-line lag workaround
+
+These are configured in `zsh/rc.d/02-plugins.zsh` with platform detection.
+
 #### Key Test File
 `test/shell-setup.bats` - Contains 48 tests documenting WHY each config exists. Read the header comments first.
 
@@ -129,6 +149,10 @@ win_home_lower="/mnt/c/users/${(L)user}"  # lowercase the pattern
 Tests use [bats-core](https://github.com/bats-core/bats-core):
 ```bash
 make test              # Run all tests
+make test-docker       # Run in Ubuntu 24.04 container (CI environment)
+make lint              # Run shellcheck
+make format            # Format with shfmt
+make check             # lint + test
 bats test/prompt.bats  # Run specific test file
 ```
 
