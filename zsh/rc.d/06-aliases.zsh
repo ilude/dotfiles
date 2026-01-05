@@ -18,11 +18,42 @@ alias history="history 1"
 # Docker
 alias dps='tput rmam; docker ps --format="table {{.Names}}\\t{{.ID}}\\t{{.Image}}\\t{{.RunningFor}}\\t{{.State}}\\t{{.Status}}" | (sed -u 1q; sort); tput smam'
 
-# Directory listing (eza or fallback to ls)
+# =============================================================================
+# Tool fallback chains - modern tools with graceful degradation
+# =============================================================================
+
+# ls: eza > exa > ls
 if (( ${+commands[eza]} )); then
-    alias ls=eza
-    alias l='eza --color=auto -la --group-directories-first --group'
+    alias ls='eza --color=auto --group-directories-first'
+    alias l='eza -la --group-directories-first --group'
+    alias ll='eza -la --group-directories-first --group'
     alias tree='eza --tree --level=2'
+elif (( ${+commands[exa]} )); then
+    alias ls='exa --color=auto --group-directories-first'
+    alias l='exa -la --group-directories-first'
+    alias ll='exa -la --group-directories-first'
+    alias tree='exa --tree --level=2'
 else
-    alias l='ls --color=auto -lhA --group-directories-first'
+    alias ls='ls --color=auto'
+    alias l='ls -lhA --color=auto --group-directories-first'
+    alias ll='ls -lhA --color=auto --group-directories-first'
 fi
+
+# cat: bat > batcat > cat (batcat is Debian/Ubuntu package name)
+if (( ${+commands[bat]} )); then
+    alias cat='bat --paging=never'
+    alias less='bat'
+elif (( ${+commands[batcat]} )); then
+    alias cat='batcat --paging=never'
+    alias less='batcat'
+fi
+
+# find: fd > fdfind > find (fdfind is Debian/Ubuntu package name)
+if (( ${+commands[fd]} )); then
+    alias find='fd'
+elif (( ${+commands[fdfind]} )); then
+    alias find='fdfind'
+fi
+
+# grep: rg > grep
+(( ${+commands[rg]} )) && alias grep='rg'
