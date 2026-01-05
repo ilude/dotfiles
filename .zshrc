@@ -24,4 +24,5 @@ done
 
 unset _dotfiles
 
-. "$HOME/.local/bin/env"
+# Source uv environment if installed (conditional to avoid errors when not present)
+[[ -f "${ZDOTDIR:-$HOME}/.local/bin/env" ]] && . "${ZDOTDIR:-$HOME}/.local/bin/env"
