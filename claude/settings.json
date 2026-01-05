@@ -106,7 +106,7 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "bash -c '$HOME/.claude/claude-status'"
+    "command": "bash \"$HOME/.claude/claude-status\""
   },
   "alwaysThinkingEnabled": true
 }
