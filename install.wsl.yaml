@@ -24,6 +24,8 @@
 - link:
     ~/.gitconfig:
       path: .gitconfig
+    ~/.zshenv:
+      path: .zshenv
     ~/.zshrc:
       path: .zshrc
     ~/.zprofile:
