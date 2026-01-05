@@ -46,10 +46,10 @@
     ~/.config/ohmyposh/prompt.json:
       path: config/ohmyposh/prompt.json
 
-# Claude Code status script (for statusLine in WSL bash)
+# Claude Code config directory (hooks, settings, status script)
 - link:
-    ~/.claude/claude-status:
-      path: claude/claude-status
+    ~/.claude:
+      path: claude
 
 # SSH keys - share from Windows (optional, uncomment if you want shared keys)
 # Note: Requires WSL to mount Windows drives with metadata enabled
