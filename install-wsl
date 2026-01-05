@@ -97,8 +97,17 @@ if [[ -z "$WSL_DISTRO_NAME" && ! -f /proc/sys/fs/binfmt_misc/WSLInterop ]]; then
     echo ""
 fi
 
-# Ensure ~/.claude directory exists
-mkdir -p ~/.claude
+# Handle ~/.claude - backup if directory, remove to allow symlink
+if [[ -d ~/.claude && ! -L ~/.claude ]]; then
+    BACKUP_FILE="$HOME/.claude-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+    echo -e "${YELLOW}Backing up existing ~/.claude to ${BACKUP_FILE}${NC}"
+    tar -czf "$BACKUP_FILE" -C "$HOME" .claude 2>/dev/null || true
+    rm -rf ~/.claude
+    echo -e "${GREEN}Backup created, removed ~/.claude directory${NC}"
+elif [[ -L ~/.claude ]]; then
+    # Remove old symlink to allow dotbot to recreate
+    rm -f ~/.claude
+fi
 
 # Change to dotfiles directory
 cd "$BASEDIR"
@@ -153,13 +162,18 @@ else
         echo "  Copied: ~/.config/ohmyposh/prompt.json"
     fi
 
-    # Copy Claude status script
-    if [[ -f "${BASEDIR}/.claude/claude-status" ]]; then
-        mkdir -p ~/.claude
-        [[ -L ~/.claude/claude-status ]] && rm -f ~/.claude/claude-status
-        cp -f "${BASEDIR}/.claude/claude-status" ~/.claude/claude-status
-        chmod +x ~/.claude/claude-status
-        echo "  Copied: ~/.claude/claude-status"
+    # Symlink Claude directory (or copy if source is temporary)
+    if [[ -d "${BASEDIR}/claude" ]]; then
+        rm -rf ~/.claude 2>/dev/null || true
+        if [[ "$BASEDIR" == /mnt/c/* ]]; then
+            # Link to Windows dotfiles
+            ln -sf "${BASEDIR}/claude" ~/.claude
+            echo "  Linked: ~/.claude -> ${BASEDIR}/claude"
+        else
+            # Copy if source is temporary
+            cp -rf "${BASEDIR}/claude" ~/.claude
+            echo "  Copied: ~/.claude"
+        fi
     fi
 
     echo -e "${GREEN}Manual setup completed!${NC}"
