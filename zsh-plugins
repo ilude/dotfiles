@@ -27,7 +27,9 @@ mkdir -p "${DOTFILES_HOME}/.dotfiles/plugins"
 
 plugin "zsh-users/zsh-autosuggestions"
 plugin "zsh-users/zsh-completions"
-plugin "zsh-users/zsh-syntax-highlighting"
+# Syntax highlighting causes cursor flickering on Windows (ConPTY bug)
+# Set ZSH_DISABLE_SYNTAX_HIGHLIGHTING=1 in rc.d/02-plugins.zsh to skip
+[[ -z "$ZSH_DISABLE_SYNTAX_HIGHLIGHTING" ]] && plugin "zsh-users/zsh-syntax-highlighting"
 plugin "joshskidmore/zsh-fzf-history-search"
 # alias-tips disabled - requires python3, causes issues on Windows
 # plugin "djui/alias-tips"
