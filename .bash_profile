@@ -43,3 +43,6 @@ fi
 if [[ -f ~/.bashrc ]]; then
     source ~/.bashrc
 fi
+
+# Source uv environment if available (added by uv installer)
+[[ -f "$HOME/.local/bin/env" ]] && . "$HOME/.local/bin/env"
