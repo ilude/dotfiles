@@ -27,3 +27,30 @@ is_macos() {
 is_windows() {
     is_msys || [[ -n "$WINDIR" ]]
 }
+
+# =============================================================================
+# Debug and PATH utilities
+# =============================================================================
+
+# PATH preservation for debugging/recovery
+# Usage: restore_path to revert PATH changes
+typeset -g DOTFILES_ORIGINAL_PATH="$PATH"
+restore_path() {
+    PATH="$DOTFILES_ORIGINAL_PATH"
+}
+
+# Debug profiling (enable with: DEBUG=1 zsh)
+# Shows timing for each sourced file
+if [[ -n "$DEBUG" ]]; then
+    setopt XTRACE
+    PS4='+%N:%i> '
+    typeset -F SECONDS
+    _dotfiles_debug_start=$SECONDS
+fi
+
+# Call at end of .zshrc to show total load time
+debug_report() {
+    if [[ -n "$DEBUG" ]]; then
+        print "Shell loaded in $(( (SECONDS - _dotfiles_debug_start) * 1000 ))ms"
+    fi
+}
