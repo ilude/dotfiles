@@ -139,3 +139,24 @@ bats test/prompt.bats  # Run specific test file
 - LF line endings (`autocrlf = input`)
 - Default branch is `main`
 - Dotbot uses `force: true` and `relink: true` for symlinks
+
+## Reference: Cross-Platform Dotfiles Repos
+
+These repos successfully support Linux + Git Bash/MSYS2 + WSL. Reference for solving cross-platform issues:
+
+| Repo | Platforms | Notable Approach |
+|------|-----------|------------------|
+| [bernardopg/zshrc-config](https://github.com/bernardopg/zshrc-config) | Linux, WSL, MSYS2, Git-Bash, Cygwin | Single .zshrc with comprehensive OSTYPE detection |
+| [Alex-D/dotfiles](https://github.com/Alex-D/dotfiles) | Windows, WSL2, Git Bash | Symlinks + Windows username detection from WSL |
+| [agkozak/dotfiles](https://github.com/agkozak/dotfiles) | Linux, macOS, MSYS2, Cygwin, WSL | Battle-tested zsh config with MSYS2 fixes |
+| [z0rc/dotfiles](https://github.com/z0rc/dotfiles) | macOS, Debian, Ubuntu, CentOS, WSL | XDG-compliant, minimal HOME clutter |
+| [purarue/dotfiles](https://github.com/purarue/dotfiles) | Linux, macOS, Android (Termux), WSL | ON_OS variable pattern |
+| [fatso83/dotfiles](https://github.com/fatso83/dotfiles) | macOS, Linux, WSL2 | BSD vs GNU utility wrappers |
+
+### Key Resources
+
+- [MSYS2 nsswitch.conf HOME fix](https://github.com/msys2/MSYS2-packages/issues/1167) - `db_home: env windows`
+- [Git for Windows HOME patch](https://github.com/git-for-windows/msys2-runtime/commit/9660c5ffe82b921dd2193efa18e9721f47a6b22f)
+- [chezmoi cross-platform templates](https://www.chezmoi.io/user-guide/manage-machine-to-machine-differences/)
+- [yadm alternate files](https://yadm.io/docs/alternates) - Platform-specific file suffixes
+- [Git for Windows symlinks](https://gitforwindows.org/symbolic-links.html) - `MSYS=winsymlinks:nativestrict`
