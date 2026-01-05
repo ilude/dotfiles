@@ -83,3 +83,31 @@ teardown() {
     # 00-helpers.zsh should be first to load
     [ -f "$DOTFILES_DIR/zsh/rc.d/00-helpers.zsh" ]
 }
+
+# =============================================================================
+# PATH preservation
+# =============================================================================
+
+@test "helpers: DOTFILES_ORIGINAL_PATH saved" {
+    grep -q 'DOTFILES_ORIGINAL_PATH' "$DOTFILES_DIR/zsh/rc.d/00-helpers.zsh"
+}
+
+@test "helpers: restore_path function defined" {
+    grep -q 'restore_path()' "$DOTFILES_DIR/zsh/rc.d/00-helpers.zsh"
+}
+
+# =============================================================================
+# Debug infrastructure
+# =============================================================================
+
+@test "helpers: debug mode checks DEBUG variable" {
+    grep -q '\$DEBUG' "$DOTFILES_DIR/zsh/rc.d/00-helpers.zsh"
+}
+
+@test "helpers: debug_report function defined" {
+    grep -q 'debug_report()' "$DOTFILES_DIR/zsh/rc.d/00-helpers.zsh"
+}
+
+@test "helpers: .zshrc calls debug_report at end" {
+    grep -q 'debug_report' "$DOTFILES_DIR/.zshrc"
+}
