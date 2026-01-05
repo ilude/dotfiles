@@ -2,6 +2,7 @@
 
 # Claude Code YOLO mode
 alias ccyl='claude --dangerously-skip-permissions'
+alias claude-install='npm install -g @anthropic-ai/claude-code'
 
 # NixOS
 alias nix-gc='nix-store --gc'

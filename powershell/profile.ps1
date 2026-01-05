@@ -83,6 +83,7 @@ $env:WINHOME = $env:USERPROFILE
 
 # Claude Code YOLO mode
 function ccyl { claude --dangerously-skip-permissions @args }
+function claude-install { npm install -g @anthropic-ai/claude-code }
 
 #endregion
 
