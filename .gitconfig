@@ -6,8 +6,25 @@
   editor = code --wait
   symlinks = true
 
+[pager]
+  # Use delta for better diffs if installed, otherwise default pager
+  # Install: cargo install git-delta, or: brew install git-delta
+  diff = delta
+  show = delta
+  log = delta
+
+[delta]
+  navigate = true
+  side-by-side = false
+  line-numbers = true
+  syntax-theme = Dracula
+
+[interactive]
+  diffFilter = delta --color-only
+
 [diff]
   tool = vscode
+  colorMoved = default
 [difftool "vscode"]
   cmd = code --wait --diff $LOCAL $REMOTE
 [difftool]
