@@ -307,7 +307,7 @@ function Install-Packages {
     # Install zsh plugins for Git Bash
     Write-Host "`n--- Zsh Plugins (Git Bash) ---" -ForegroundColor Cyan
     $gitBash = "C:\Program Files\Git\bin\bash.exe"
-    $zshPluginsScript = Join-Path $dotfilesDir "zsh-plugins"
+    $zshPluginsScript = Join-Path $BASEDIR "zsh-plugins"
     if ((Test-Path $gitBash) -and (Test-Path $zshPluginsScript)) {
         Write-Host "  Installing zsh plugins..." -ForegroundColor Cyan
         # Run zsh-plugins with ZDOTDIR set so it finds the right dotfiles dir
@@ -320,6 +320,18 @@ function Install-Packages {
         Write-Host "  Plugins installed" -ForegroundColor Green
     } else {
         Write-Host "  Git Bash not found - skipping plugin install" -ForegroundColor Yellow
+    }
+
+    # Create MSYS2 zsh bootstrap (fixes HOME mismatch between Git Bash and MSYS2 zsh)
+    Write-Host "`n--- MSYS2 Zsh Bootstrap ---" -ForegroundColor Cyan
+    $msys2Home = "C:\msys64\home\$env:USERNAME"
+    $bootstrapSrc = Join-Path $BASEDIR ".zshrc-msys2-bootstrap"
+    if ((Test-Path $msys2Home) -and (Test-Path $bootstrapSrc)) {
+        $bootstrapDst = Join-Path $msys2Home ".zshrc"
+        Copy-Item $bootstrapSrc $bootstrapDst -Force
+        Write-Host "  Created $bootstrapDst" -ForegroundColor Green
+    } else {
+        Write-Host "  MSYS2 home not found - skipping bootstrap" -ForegroundColor DarkGray
     }
 
     # PowerShell user modules (CurrentUser scope, no admin required)
