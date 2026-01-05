@@ -7,6 +7,9 @@
 # See .bash_profile for the zsh exec that provides unified shell experience.
 #
 
+# Debug mode: touch ~/.dotfiles-disabled to bypass all customizations
+[[ -f ~/.dotfiles-disabled ]] && return
+
 # Early exit if not running interactively
 case $- in
     *i*) ;;
