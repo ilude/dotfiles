@@ -16,6 +16,19 @@ teardown() {
 }
 
 # =============================================================================
+# 01-completions.zsh tests
+# =============================================================================
+
+@test "completions: zcompdump uses ZDOTDIR for MSYS2 compatibility" {
+    # Must use ZDOTDIR, not ~ or $HOME, for MSYS2/Git Bash compatibility
+    grep -q 'ZDOTDIR:-\$HOME.*zcompdump' "$DOTFILES_DIR/zsh/rc.d/01-completions.zsh"
+}
+
+@test "completions: compinit uses -d flag for custom zcompdump location" {
+    grep -q 'compinit.*-d' "$DOTFILES_DIR/zsh/rc.d/01-completions.zsh"
+}
+
+# =============================================================================
 # 02-plugins.zsh tests
 # =============================================================================
 
@@ -60,8 +73,9 @@ teardown() {
     grep -q 'SAVEHIST=100000' "$DOTFILES_DIR/zsh/rc.d/03-history.zsh"
 }
 
-@test "history: HISTFILE is set" {
-    grep -q 'HISTFILE=' "$DOTFILES_DIR/zsh/rc.d/03-history.zsh"
+@test "history: HISTFILE uses ZDOTDIR for MSYS2 compatibility" {
+    # Must use ZDOTDIR, not ~ or $HOME, for MSYS2/Git Bash compatibility
+    grep -q 'HISTFILE="\${ZDOTDIR:-\$HOME}' "$DOTFILES_DIR/zsh/rc.d/03-history.zsh"
 }
 
 @test "history: APPEND_HISTORY option enabled" {
