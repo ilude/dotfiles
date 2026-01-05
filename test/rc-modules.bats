@@ -28,6 +28,14 @@ teardown() {
     grep -q 'compinit.*-d' "$DOTFILES_DIR/zsh/rc.d/01-completions.zsh"
 }
 
+@test "completions: auto-compiles zsh files with zcompile" {
+    grep -q 'zcompile' "$DOTFILES_DIR/zsh/rc.d/01-completions.zsh"
+}
+
+@test "completions: zwc files are gitignored" {
+    grep -q '\.zwc' "$DOTFILES_DIR/.gitignore"
+}
+
 # =============================================================================
 # 02-plugins.zsh tests
 # =============================================================================
