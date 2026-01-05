@@ -200,3 +200,24 @@ source_functions() {
     [ -f "$HOME/.gitconfig-professional-local" ]
     grep -q "id_ed25519-work" "$HOME/.gitconfig-professional-local"
 }
+
+# =============================================================================
+# Git delta configuration tests
+# =============================================================================
+
+@test "gitconfig: pager section uses delta" {
+    grep -q '\[pager\]' "$DOTFILES_DIR/.gitconfig"
+    grep -q 'diff = delta' "$DOTFILES_DIR/.gitconfig"
+}
+
+@test "gitconfig: delta section configured" {
+    grep -q '\[delta\]' "$DOTFILES_DIR/.gitconfig"
+}
+
+@test "gitconfig: delta has line-numbers enabled" {
+    grep -q 'line-numbers = true' "$DOTFILES_DIR/.gitconfig"
+}
+
+@test "gitconfig: interactive diffFilter uses delta" {
+    grep -q 'diffFilter = delta' "$DOTFILES_DIR/.gitconfig"
+}
