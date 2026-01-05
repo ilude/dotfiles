@@ -29,4 +29,5 @@ if [ -n "$BASH_VERSION" ] && [ -f ~/.bashrc ]; then
     . ~/.bashrc
 fi
 
-. "$HOME/.local/bin/env"
+# Source uv environment if installed (conditional to avoid errors when not present)
+[ -f "$HOME/.local/bin/env" ] && . "$HOME/.local/bin/env"

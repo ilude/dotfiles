@@ -383,3 +383,20 @@ teardown() {
     # Future maintainers should understand .bashrc is minimal by design
     grep -qi 'fallback\|minimal' "$DOTFILES_DIR/.bashrc"
 }
+
+# =============================================================================
+# uv environment sourcing (conditional)
+# =============================================================================
+
+@test "shell-setup: .zshrc sources uv env conditionally" {
+    # Must check file existence before sourcing to avoid errors when uv not installed
+    grep -q '\[\[.*\.local/bin/env.*\]\].*&&' "$DOTFILES_DIR/.zshrc"
+}
+
+@test "shell-setup: .bashrc sources uv env conditionally" {
+    grep -q '\[\[.*\.local/bin/env.*\]\].*&&' "$DOTFILES_DIR/.bashrc"
+}
+
+@test "shell-setup: .profile sources uv env conditionally" {
+    grep -q '\[.*\.local/bin/env.*\].*&&' "$DOTFILES_DIR/.profile"
+}
