@@ -169,6 +169,20 @@ else
 fi
 
 # ============================================================================
+# uv (Python package manager)
+# ============================================================================
+
+echo -e "\n${CYAN}Installing uv...${NC}"
+
+if { command_exists uv || [[ -x "$HOME/.local/bin/uv" ]]; } && [[ "$FORCE" != "true" ]]; then
+    echo -e "  uv: ${GREEN}already installed${NC}"
+else
+    echo -e "  uv: ${CYAN}installing via script...${NC}"
+    curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1
+    echo -e "  uv: ${GREEN}done${NC}"
+fi
+
+# ============================================================================
 # Oh My Posh
 # ============================================================================
 
