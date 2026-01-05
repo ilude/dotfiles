@@ -157,3 +157,23 @@ teardown() {
 @test "version-managers: uses unfunction for proper lazy loading" {
     grep -q 'unfunction' "$DOTFILES_DIR/zsh/rc.d/09-version-managers.zsh"
 }
+
+# =============================================================================
+# 10-ssh-agent.zsh tests
+# =============================================================================
+
+@test "ssh-agent: skips when VSCODE_INJECTION set" {
+    grep -q 'VSCODE_INJECTION' "$DOTFILES_DIR/zsh/rc.d/10-ssh-agent.zsh"
+}
+
+@test "ssh-agent: skips when SSH_AUTH_SOCK already set" {
+    grep -q 'SSH_AUTH_SOCK' "$DOTFILES_DIR/zsh/rc.d/10-ssh-agent.zsh"
+}
+
+@test "ssh-agent: skips on Windows" {
+    grep -q 'is_windows' "$DOTFILES_DIR/zsh/rc.d/10-ssh-agent.zsh"
+}
+
+@test "ssh-agent: runs ssh-add in background" {
+    grep -q 'ssh-add.*&' "$DOTFILES_DIR/zsh/rc.d/10-ssh-agent.zsh"
+}
