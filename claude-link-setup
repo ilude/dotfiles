@@ -11,7 +11,7 @@
 # 4. Create the junction/symlink
 
 DOTFILES_DIR="${HOME}/.dotfiles"
-CLAUDE_SOURCE="${DOTFILES_DIR}/.claude"
+CLAUDE_SOURCE="${DOTFILES_DIR}/claude"
 CLAUDE_TARGET="${HOME}/.claude"
 
 # Detect Windows
@@ -80,7 +80,7 @@ create_backup() {
 # Merge machine-specific files from existing ~/.claude to dotfiles
 merge_to_dotfiles() {
     local source="$1"  # existing ~/.claude
-    local dest="$2"    # dotfiles/.claude
+    local dest="$2"    # dotfiles/claude
 
     echo "  Merging machine-specific data to dotfiles..."
 
@@ -198,7 +198,7 @@ if is_windows; then
     win_target=$(cygpath -w "$CLAUDE_TARGET")
     win_source=$(cygpath -w "$CLAUDE_SOURCE")
     if cmd //c "mklink /J $win_target $win_source" > /dev/null 2>&1; then
-        echo "  ~/.claude: Junction created -> ~/.dotfiles/.claude"
+        echo "  ~/.claude: Junction created -> ~/.dotfiles/claude"
     else
         echo "  Error: Failed to create junction"
         exit 1
@@ -206,7 +206,7 @@ if is_windows; then
 else
     # Linux/macOS: use symlink
     ln -s "$CLAUDE_SOURCE" "$CLAUDE_TARGET"
-    echo "  ~/.claude: Symlink created -> ~/.dotfiles/.claude"
+    echo "  ~/.claude: Symlink created -> ~/.dotfiles/claude"
 fi
 
 echo "  Done"
