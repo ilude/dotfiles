@@ -400,3 +400,15 @@ teardown() {
 @test "shell-setup: .profile sources uv env conditionally" {
     grep -q '\[.*\.local/bin/env.*\].*&&' "$DOTFILES_DIR/.profile"
 }
+
+# =============================================================================
+# Machine-specific overrides
+# =============================================================================
+
+@test "shell-setup: .zshrc supports .zshrc.local override" {
+    grep -q '\.zshrc\.local' "$DOTFILES_DIR/.zshrc"
+}
+
+@test "shell-setup: .zshrc.local is gitignored" {
+    grep -q '\.zshrc\.local' "$DOTFILES_DIR/.gitignore"
+}

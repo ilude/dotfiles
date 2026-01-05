@@ -27,5 +27,9 @@ unset _dotfiles
 # Source uv environment if installed (conditional to avoid errors when not present)
 [[ -f "${ZDOTDIR:-$HOME}/.local/bin/env" ]] && . "${ZDOTDIR:-$HOME}/.local/bin/env"
 
+# Machine-specific overrides (not tracked in git)
+# Create ~/.zshrc.local for machine-specific customizations
+source_if_exists "${ZDOTDIR:-$HOME}/.zshrc.local"
+
 # Debug timing report (only shown when DEBUG=1)
 debug_report
