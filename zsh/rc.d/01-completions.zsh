@@ -26,3 +26,15 @@ else
     compinit -u -C -d "$_zcompdump"  # Skip security check, use cache
 fi
 unset _zcompdump
+
+# Auto-compile zsh files for faster startup (creates .zwc files)
+# Only recompiles if source is newer than compiled version
+() {
+    local f
+    local zdot="${ZDOTDIR:-$HOME}"
+    for f in "$zdot/.zshrc" "$zdot/.zshenv" \
+             "$zdot/.dotfiles/zsh"/{env.d,rc.d}/*.zsh(N); do
+        [[ -f "$f" && (! -f "$f.zwc" || "$f" -nt "$f.zwc") ]] && \
+            zcompile "$f" 2>/dev/null
+    done
+}
