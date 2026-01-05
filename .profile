@@ -28,3 +28,5 @@ fi
 if [ -n "$BASH_VERSION" ] && [ -f ~/.bashrc ]; then
     . ~/.bashrc
 fi
+
+. "$HOME/.local/bin/env"
