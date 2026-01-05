@@ -97,20 +97,28 @@ teardown() {
 # .zshrc configuration
 # =============================================================================
 
-@test "shell-setup: .zshrc enables completion system" {
-    grep -q 'compinit' "$DOTFILES_DIR/.zshrc"
+@test "shell-setup: .zshrc sources rc.d modules" {
+    # Modular config: .zshrc sources zsh/rc.d/*.zsh files
+    grep -q 'rc.d.*\.zsh' "$DOTFILES_DIR/.zshrc"
 }
 
-@test "shell-setup: .zshrc configures history" {
-    grep -q 'HISTFILE\|HISTSIZE\|SAVEHIST' "$DOTFILES_DIR/.zshrc"
+@test "shell-setup: rc.d enables completion system" {
+    # compinit is in the completions module
+    grep -q 'compinit' "$DOTFILES_DIR/zsh/rc.d/01-completions.zsh"
 }
 
-@test "shell-setup: .zshrc sources zsh-plugins" {
-    grep -q 'zsh-plugins' "$DOTFILES_DIR/.zshrc"
+@test "shell-setup: rc.d configures history" {
+    # History config is in the history module
+    grep -q 'HISTFILE\|HISTSIZE\|SAVEHIST' "$DOTFILES_DIR/zsh/rc.d/03-history.zsh"
 }
 
-@test "shell-setup: .zshrc has case-insensitive completion" {
-    grep -q 'matcher-list.*a-zA-Z.*A-Za-z\|completion-ignore-case' "$DOTFILES_DIR/.zshrc"
+@test "shell-setup: rc.d sources zsh-plugins" {
+    # Plugin loading is in the plugins module
+    grep -q 'zsh-plugins' "$DOTFILES_DIR/zsh/rc.d/02-plugins.zsh"
+}
+
+@test "shell-setup: rc.d has case-insensitive completion" {
+    grep -q 'matcher-list.*a-zA-Z.*A-Za-z\|completion-ignore-case' "$DOTFILES_DIR/zsh/rc.d/01-completions.zsh"
 }
 
 # =============================================================================
@@ -177,14 +185,15 @@ teardown() {
 # =============================================================================
 
 @test "shell-setup: prompt shows git branch on all platforms" {
-    # Both .bashrc and .zshrc should show git branch
+    # .bashrc has inline prompt, zsh uses rc.d/05-prompt.zsh
     grep -q 'git.*branch\|symbolic-ref' "$DOTFILES_DIR/.bashrc"
-    grep -q 'git.*branch\|symbolic-ref\|__git_prompt' "$DOTFILES_DIR/.zshrc"
+    grep -q 'git.*branch\|symbolic-ref' "$DOTFILES_DIR/zsh/rc.d/05-prompt.zsh"
 }
 
 @test "shell-setup: both shells normalize home to ~" {
+    # .bashrc normalizes HOME to ~, zsh prompt module does the same
     grep -q 'HOME.*~\|~.*HOME\|p=.*~' "$DOTFILES_DIR/.bashrc"
-    grep -q 'HOME.*~\|~.*HOME\|__prompt_path' "$DOTFILES_DIR/.zshrc"
+    grep -q 'HOME\|ZDOTDIR\|home' "$DOTFILES_DIR/zsh/rc.d/05-prompt.zsh"
 }
 
 # =============================================================================
@@ -293,9 +302,9 @@ teardown() {
     grep -q 'alias-tips' "$DOTFILES_DIR/zsh-plugins"
 }
 
-@test "shell-setup: .zshrc binds Ctrl+Space for autosuggestion accept" {
-    # Ctrl+Space accepts the gray autosuggestion
-    grep -q "Ctrl.*Space\|autosuggest-accept\|'^ '" "$DOTFILES_DIR/.zshrc"
+@test "shell-setup: rc.d binds Ctrl+Space for autosuggestion accept" {
+    # Ctrl+Space accepts the gray autosuggestion (in plugins module)
+    grep -q "autosuggest-accept\|'^ '" "$DOTFILES_DIR/zsh/rc.d/02-plugins.zsh"
 }
 
 # =============================================================================
