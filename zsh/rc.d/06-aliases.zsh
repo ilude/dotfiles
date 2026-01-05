@@ -1,5 +1,8 @@
 # Aliases (interactive shells)
 
+# Claude Code YOLO mode
+alias ccyl='claude --dangerously-skip-permissions'
+
 # NixOS
 alias nix-gc='nix-store --gc'
 alias nix-rs='sudo nixos-rebuild switch'
