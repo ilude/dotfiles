@@ -23,3 +23,5 @@ for f in "$_dotfiles/zsh/rc.d"/*.zsh(N); do
 done
 
 unset _dotfiles
+
+. "$HOME/.local/bin/env"
