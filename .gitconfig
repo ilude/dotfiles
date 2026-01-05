@@ -80,7 +80,7 @@
   track = !sh -c 'branch=$(git name-rev --name-only HEAD); git branch --track $branch ${1:-origin}/${2:-$branch}' -
 
   # Logging
-  ls = !git --no-pager log -10 --date=short --pretty='%C(yellow)%h%Creset - %C(yellow)%an%Creset %C(white)%ad%Creset%C(yellow)%d%Creset %Cgreen%s%Creset'
+  ls = "!f() { git --no-pager log -${1:-10} --date=short --pretty='%C(yellow)%h%Creset - %C(yellow)%an%Creset %C(white)%ad%Creset%C(yellow)%d%Creset %Cgreen%s%Creset'; }; f"
   ll = !git log --date=short --pretty='%C(yellow)%h%Creset - %C(yellow)%an%Creset %C(white)%ad%Creset%C(yellow)%d%Creset %Cgreen%s%Creset'
   lg = log --graph --abbrev-commit --date=relative --pretty='%C(yellow)%h%Creset - %C(yellow)%an%Creset%C(yellow)%d%Creset %s %Cgreen(%cr)%Creset'
   lf = show --pretty=format: --name-only

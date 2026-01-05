@@ -9,6 +9,7 @@
 # Cross-platform shell configs
 - link:
     ~/.gitconfig: .gitconfig
+    ~/.zshenv: .zshenv
     ~/.zshrc: .zshrc
     ~/.zprofile: .zprofile
     ~/.profile: .profile
