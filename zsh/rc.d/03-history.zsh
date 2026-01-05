@@ -1,5 +1,6 @@
 # History configuration (interactive shells)
-HISTFILE=~/.zsh_history
+# Use ZDOTDIR for MSYS2/Git Bash compatibility (different HOME directories)
+HISTFILE="${ZDOTDIR:-$HOME}/.zsh_history"
 
 # https://zsh-manual.netlify.app/options#1624-history
 export HISTSIZE=100000
