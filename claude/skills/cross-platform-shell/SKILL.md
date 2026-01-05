@@ -413,6 +413,88 @@ The shell prompt (`~/.dotfiles[main]>`) is a **frequent regression point**. Afte
 
 ---
 
+## Git Bash Startup Order
+
+Understanding the initialization order is critical for debugging shell issues on Windows.
+
+### Login Shell (git-bash.exe)
+
+```
+1. /etc/profile
+   ├── Sets PATH, MSYSTEM, MINGW_MOUNT_POINT
+   ├── Defines profile_d() function
+   ├── Sources /etc/profile.d/*.sh (in LC_COLLATE=C order):
+   │   ├── aliases.sh      - Default aliases
+   │   ├── bash_profile.sh - Creates ~/.bash_profile if missing
+   │   ├── env.sh          - Environment setup
+   │   ├── git-prompt.sh   - Sets PS1 with __git_ps1, stores MSYS2_PS1
+   │   ├── lang.sh         - Locale settings
+   │   └── perlbin.sh      - Perl paths
+   └── Sources /etc/bash.bashrc
+
+2. /etc/bash.bashrc
+   ├── Uses MSYS2_PS1 if set (from git-prompt.sh)
+   └── Sets default PS1 if not exported
+
+3. ~/.bash_profile (USER FILE)
+   └── Typically sources ~/.bashrc or execs to zsh
+```
+
+### Non-Login Shell (VS Code terminal, subshells, Claude Code)
+
+```
+1. /etc/bash.bashrc
+   ├── Checks for MSYS2_PS1 from parent environment
+   └── Last line: shopt -q login_shell || . /etc/profile.d/git-prompt.sh
+       ↑ Sources git-prompt.sh for non-login shells!
+
+2. ~/.bashrc (USER FILE)
+```
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `/etc/profile` | System login shell init, PATH setup, sources profile.d |
+| `/etc/bash.bashrc` | System interactive shell init |
+| `/etc/profile.d/git-prompt.sh` | Sets PS1 with backtick __git_ps1, stores MSYS2_PS1 |
+| `/mingw64/share/git/completion/git-prompt.sh` | Full __git_ps1 function (21KB) |
+| `~/.bash_profile` | User login shell (runs after /etc/profile) |
+| `~/.bashrc` | User interactive shell (runs after /etc/bash.bashrc) |
+
+### The Backtick PS1 Issue
+
+The system git-prompt.sh sets PS1 using backtick command substitution:
+
+```bash
+PS1="$PS1"'`__git_ps1`'   # Evaluated on each prompt
+```
+
+This is stored in MSYS2_PS1 and can leak into subshells. If your ~/.bashrc uses PROMPT_COMMAND to rebuild PS1, it overrides this. But tools capturing shell state between /etc/bash.bashrc and ~/.bashrc may see the backtick version.
+
+**Workaround** - reset PS1 early in ~/.bashrc:
+
+```bash
+# Clear backtick-based PS1 before it can be captured
+PS1='$ '
+unset MSYS2_PS1
+```
+
+### MSYS2 vs Git Bash HOME
+
+| Shell | Default HOME |
+|-------|--------------|
+| Git Bash | `/c/Users/username` (Windows home) |
+| MSYS2 zsh | `/home/username` (MSYS2 home) |
+
+When exec'ing from Git Bash to MSYS2 zsh, explicitly set HOME:
+
+```bash
+exec env HOME="$(cygpath -u "$USERPROFILE")" ZDOTDIR="$(cygpath -u "$USERPROFILE")" zsh -l
+```
+
+---
+
 ## Common Pitfalls
 
 | Issue | Cause | Fix |
@@ -423,3 +505,5 @@ The shell prompt (`~/.dotfiles[main]>`) is a **frequent regression point**. Afte
 | `command not found` | Different tool names | Check with `command -v` first |
 | Temp file issues | Junctions fail in temp dirs | Use file copy instead |
 | `$HOME` wrong | WSL vs Windows home | Explicitly detect Windows home |
+| Backtick PS1 in subshells | System git-prompt.sh | Reset PS1 early in ~/.bashrc |
+| MSYS2 zsh wrong HOME | Different HOME defaults | Pass HOME via env in exec |
