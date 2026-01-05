@@ -63,3 +63,4 @@ PROMPT_COMMAND=__set_prompt
 
 # Claude Code YOLO mode
 alias ccyl='claude --dangerously-skip-permissions'
+alias claude-install='npm install -g @anthropic-ai/claude-code'
