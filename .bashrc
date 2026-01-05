@@ -65,4 +65,5 @@ PROMPT_COMMAND=__set_prompt
 alias ccyl='claude --dangerously-skip-permissions'
 alias claude-install='npm install -g @anthropic-ai/claude-code'
 
-. "$HOME/.local/bin/env"
+# Source uv environment if installed (conditional to avoid errors when not present)
+[[ -f "$HOME/.local/bin/env" ]] && . "$HOME/.local/bin/env"
