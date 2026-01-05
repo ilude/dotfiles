@@ -76,8 +76,28 @@ teardown() {
     grep -q "alias tree='eza --tree" "$DOTFILES_DIR/zsh/rc.d/06-aliases.zsh"
 }
 
+@test "aliases: exa fallback for ls defined" {
+    grep -q '\${+commands\[exa\]}' "$DOTFILES_DIR/zsh/rc.d/06-aliases.zsh"
+}
+
 @test "aliases: fallback l alias uses ls with color" {
-    grep -q "alias l='ls --color=auto" "$DOTFILES_DIR/zsh/rc.d/06-aliases.zsh"
+    grep -q "alias l='ls.*--color=auto" "$DOTFILES_DIR/zsh/rc.d/06-aliases.zsh"
+}
+
+@test "aliases: bat fallback chain defined" {
+    # bat > batcat > cat
+    grep -q '\${+commands\[bat\]}' "$DOTFILES_DIR/zsh/rc.d/06-aliases.zsh"
+    grep -q '\${+commands\[batcat\]}' "$DOTFILES_DIR/zsh/rc.d/06-aliases.zsh"
+}
+
+@test "aliases: fd fallback chain defined" {
+    # fd > fdfind > find
+    grep -q '\${+commands\[fd\]}' "$DOTFILES_DIR/zsh/rc.d/06-aliases.zsh"
+    grep -q '\${+commands\[fdfind\]}' "$DOTFILES_DIR/zsh/rc.d/06-aliases.zsh"
+}
+
+@test "aliases: rg fallback for grep defined" {
+    grep -q '\${+commands\[rg\]}' "$DOTFILES_DIR/zsh/rc.d/06-aliases.zsh"
 }
 
 # =============================================================================
