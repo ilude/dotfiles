@@ -1,0 +1,112 @@
+{
+  "includeCoAuthoredBy": false,
+  "permissions": {
+    "allow": [
+      "Bash(bash:*)",
+      "Bash(cat:*)",
+      "Bash(chmod:*)",
+      "Bash(date:*)",
+      "Bash(diff:*)",
+      "Bash(docker pull:*)",
+      "Bash(echo:*)",
+      "Bash(find:*)",
+      "Bash(gh:*)",
+      "Bash(git add:*)",
+      "Bash(git config:*)",
+      "Bash(git init:*)",
+      "Bash(git log:*)",
+      "Bash(git reset:*)",
+      "Bash(git rm:*)",
+      "Bash(git:*)",
+      "Bash(grep:*)",
+      "Bash(jq:*)",
+      "Bash(ls:*)",
+      "Bash(make:*)",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)",
+      "Bash(printf:*)",
+      "Bash(pwd:*)",
+      "Bash(python:*)",
+      "Bash(test:*)",
+      "Bash(timeout:*)",
+      "Bash(tree:*)",
+      "Bash(type:*)",
+      "Bash(uname:*)",
+      "Bash(which:*)",
+      "Bash(whoami:*)",
+      "Edit",
+      "Read",
+      "Read(//c/tmp/**)",
+      "Read(//c/Users/m*/.claude/**)",
+      "Read(~/**)",
+      "Skill",
+      "SlashCommand",
+      "Task",
+      "TodoWrite",
+      "WebFetch",
+      "WebFetch(domain:code.claude.com)",
+      "WebSearch",
+      "Write"
+    ],
+    "deny": [
+      "Bash(rm -rf /*:*)",
+      "Bash(rm -rf ~/*:*)",
+      "Bash(sudo rm -rf:*)",
+      "Bash(mkfs:*)",
+      "Bash(dd if=* of=/dev/*:*)"
+    ],
+    "ask": [
+      "Bash(git push --force:*)",
+      "Bash(git reset --hard:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/ensure-mcp-config.sh\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'uv run \"$HOME/.claude/hooks/damage-control/bash-tool-damage-control.py\"'",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'uv run \"$HOME/.claude/hooks/damage-control/edit-tool-damage-control.py\"'",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'uv run \"$HOME/.claude/hooks/damage-control/write-tool-damage-control.py\"'",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash -c '$HOME/.claude/claude-status'"
+  },
+  "alwaysThinkingEnabled": true
+}

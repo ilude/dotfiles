@@ -32,3 +32,5 @@ plugins/*
 .claude/tmp/
 .claude/.mcp.json
 .claude/image-cache/
+
+last-context.txt
