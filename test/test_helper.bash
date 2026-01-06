@@ -3,6 +3,12 @@
 # Get the dotfiles directory (parent of test/)
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# Pre-cache frequently-read file contents for faster grep
+ZSHRC_CONTENT="$(cat "$DOTFILES_DIR/.zshrc")"
+BASHRC_CONTENT="$(cat "$DOTFILES_DIR/.bashrc")"
+BASH_PROFILE_CONTENT="$(cat "$DOTFILES_DIR/.bash_profile")"
+PROFILE_CONTENT="$(cat "$DOTFILES_DIR/.profile")"
+
 # Save original HOME for restoration
 ORIG_HOME="$HOME"
 
