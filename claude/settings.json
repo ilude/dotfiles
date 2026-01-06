@@ -66,7 +66,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/ensure-mcp-config.sh\""
+            "command": "bash -c '\"${WINHOME:-$HOME}/.claude/hooks/ensure-mcp-config.sh\"'"
           }
         ]
       }
@@ -77,7 +77,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'uv run \"$HOME/.claude/hooks/damage-control/bash-tool-damage-control.py\"'",
+            "command": "bash -c 'uv run \"${WINHOME:-$HOME}/.claude/hooks/damage-control/bash-tool-damage-control.py\"'",
             "timeout": 5
           }
         ]
@@ -87,7 +87,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'uv run \"$HOME/.claude/hooks/damage-control/edit-tool-damage-control.py\"'",
+            "command": "bash -c 'uv run \"${WINHOME:-$HOME}/.claude/hooks/damage-control/edit-tool-damage-control.py\"'",
             "timeout": 5
           }
         ]
@@ -97,7 +97,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'uv run \"$HOME/.claude/hooks/damage-control/write-tool-damage-control.py\"'",
+            "command": "bash -c 'uv run \"${WINHOME:-$HOME}/.claude/hooks/damage-control/write-tool-damage-control.py\"'",
             "timeout": 5
           }
         ]
@@ -106,7 +106,7 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "bash \"$HOME/.claude/claude-status\""
+    "command": "bash ~/.claude/claude-status"
   },
   "alwaysThinkingEnabled": true
 }

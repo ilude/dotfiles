@@ -72,13 +72,6 @@ Add-PathIfNotExists -PathToAdd "$env:USERPROFILE\.local\bin"
 
 #endregion
 
-#region Environment Variables
-
-# WINHOME: Windows home directory (matches WINHOME in zsh for cross-platform scripts)
-$env:WINHOME = $env:USERPROFILE
-
-#endregion
-
 #region Aliases
 
 # Claude Code YOLO mode
