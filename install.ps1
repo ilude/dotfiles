@@ -392,22 +392,6 @@ function Install-Packages {
         Write-Host "  MSYS2 home not found - skipping bootstrap" -ForegroundColor DarkGray
     }
 
-    # Fix MSYS2 nsswitch.conf if needed (ensures HOME=/c/Users/username)
-    $nsswitchPath = "C:\msys64\etc\nsswitch.conf"
-    if (Test-Path $nsswitchPath) {
-        $content = Get-Content $nsswitchPath -Raw
-        if ($content -match 'db_home:\s+cygwin\s+desc' -and $content -notmatch 'db_home:\s+env\s+windows') {
-            Write-Host "  Fixing MSYS2 nsswitch.conf (adding 'env windows' to db_home)..." -ForegroundColor Yellow
-            $newContent = $content -replace 'db_home:\s+cygwin\s+desc', 'db_home: env windows cygwin desc'
-            Copy-Item $nsswitchPath "$nsswitchPath.bak" -Force
-            $newContent = $newContent -replace "`r`n", "`n"
-            [System.IO.File]::WriteAllText($nsswitchPath, $newContent)
-            Write-Host "  Fixed (backup at $nsswitchPath.bak)" -ForegroundColor Green
-        } else {
-            Write-Host "  MSYS2 nsswitch.conf: already correct" -ForegroundColor DarkGray
-        }
-    }
-
     # Create symlinks from MSYS2 home to Windows home (for git, ssh, etc.)
     Write-Host "`n--- MSYS2 Home Symlinks ---" -ForegroundColor Cyan
     if (Test-Path $msys2Home) {
@@ -863,6 +847,26 @@ try {
         }
         $lockData | ConvertTo-Json | Set-Content $LOCKFILE -Force
         Write-Host "`nLock file updated: $LOCKFILE" -ForegroundColor Green
+    }
+
+    # ========================================================================
+    # MSYS2 nsswitch.conf Fix (Always runs - system config, not a package)
+    # ========================================================================
+    # This fix ensures MSYS2's zsh resolves HOME to /c/Users/username instead of
+    # /c/msys64/home/username. Without this, all ZDOTDIR workarounds are needed.
+    $nsswitchPath = "C:\msys64\etc\nsswitch.conf"
+    if (Test-Path $nsswitchPath) {
+        $content = Get-Content $nsswitchPath -Raw
+        if ($content -match 'db_home:\s+cygwin\s+desc' -and $content -notmatch 'db_home:\s+env\s+windows') {
+            Write-Host "`nFixing MSYS2 nsswitch.conf (adding 'env windows' to db_home)..." -ForegroundColor Yellow
+            $newContent = $content -replace 'db_home:\s+cygwin\s+desc', 'db_home: env windows cygwin desc'
+            Copy-Item $nsswitchPath "$nsswitchPath.bak" -Force
+            $newContent = $newContent -replace "`r`n", "`n"
+            [System.IO.File]::WriteAllText($nsswitchPath, $newContent)
+            Write-Host "  Fixed (backup at $nsswitchPath.bak)" -ForegroundColor Green
+        } else {
+            Write-Host "`nMSYS2 nsswitch.conf: already correct" -ForegroundColor DarkGray
+        }
     }
 
     # ========================================================================
