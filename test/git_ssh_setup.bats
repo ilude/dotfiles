@@ -8,14 +8,6 @@ setup() {
     setup_test_home
     # Update SSH_DIR to use new HOME
     export SSH_DIR="$HOME/.ssh"
-}
-
-teardown() {
-    teardown_test_home
-}
-
-# Source the script functions (skip the main execution by redefining echo temporarily)
-source_functions() {
     # Source only the function definitions by extracting them
     eval "$(sed -n '/^find_personal_key()/,/^}/p' "$DOTFILES_DIR/git-ssh-setup")"
     eval "$(sed -n '/^find_work_key()/,/^}/p' "$DOTFILES_DIR/git-ssh-setup")"
@@ -23,19 +15,21 @@ source_functions() {
     eval "$(sed -n '/^write_local_config()/,/^}/p' "$DOTFILES_DIR/git-ssh-setup")"
 }
 
+teardown() {
+    teardown_test_home
+}
+
 # =============================================================================
 # find_personal_key tests
 # =============================================================================
 
 @test "find_personal_key: returns failure when no keys exist" {
-    source_functions
     run find_personal_key
     [ "$status" -eq 1 ]
     [ -z "$output" ]
 }
 
 @test "find_personal_key: returns id_ed25519 when only that exists" {
-    source_functions
     touch "$SSH_DIR/id_ed25519"
     run find_personal_key
     [ "$status" -eq 0 ]
@@ -43,7 +37,6 @@ source_functions() {
 }
 
 @test "find_personal_key: returns id_ed25519-personal when only that exists" {
-    source_functions
     touch "$SSH_DIR/id_ed25519-personal"
     run find_personal_key
     [ "$status" -eq 0 ]
@@ -51,7 +44,6 @@ source_functions() {
 }
 
 @test "find_personal_key: prefers id_ed25519-personal over id_ed25519" {
-    source_functions
     touch "$SSH_DIR/id_ed25519"
     touch "$SSH_DIR/id_ed25519-personal"
     run find_personal_key
@@ -64,14 +56,12 @@ source_functions() {
 # =============================================================================
 
 @test "find_work_key: returns failure when no keys exist" {
-    source_functions
     run find_work_key
     [ "$status" -eq 1 ]
     [ -z "$output" ]
 }
 
 @test "find_work_key: returns id_ed25519-eagletg when only that exists" {
-    source_functions
     touch "$SSH_DIR/id_ed25519-eagletg"
     run find_work_key
     [ "$status" -eq 0 ]
@@ -79,7 +69,6 @@ source_functions() {
 }
 
 @test "find_work_key: returns id_ed25519-work when only that exists" {
-    source_functions
     touch "$SSH_DIR/id_ed25519-work"
     run find_work_key
     [ "$status" -eq 0 ]
@@ -87,7 +76,6 @@ source_functions() {
 }
 
 @test "find_work_key: prefers id_ed25519-work over id_ed25519-eagletg" {
-    source_functions
     touch "$SSH_DIR/id_ed25519-eagletg"
     touch "$SSH_DIR/id_ed25519-work"
     run find_work_key
@@ -100,14 +88,12 @@ source_functions() {
 # =============================================================================
 
 @test "build_ssh_command: without ssh config file" {
-    source_functions
     run build_ssh_command "~/.ssh/id_ed25519"
     [ "$status" -eq 0 ]
     [ "$output" = "ssh -i ~/.ssh/id_ed25519" ]
 }
 
 @test "build_ssh_command: with ssh config file" {
-    source_functions
     touch "$SSH_DIR/config"
     run build_ssh_command "~/.ssh/id_ed25519"
     [ "$status" -eq 0 ]
@@ -119,7 +105,6 @@ source_functions() {
 # =============================================================================
 
 @test "write_local_config: creates new config file" {
-    source_functions
     local config_file="$HOME/.gitconfig-test-local"
     local ssh_cmd="ssh -i ~/.ssh/id_ed25519"
 
@@ -130,7 +115,6 @@ source_functions() {
 }
 
 @test "write_local_config: updates existing config with different content" {
-    source_functions
     local config_file="$HOME/.gitconfig-test-local"
 
     # Write initial content
@@ -144,7 +128,6 @@ source_functions() {
 }
 
 @test "write_local_config: idempotent when content matches" {
-    source_functions
     local config_file="$HOME/.gitconfig-test-local"
     local ssh_cmd="ssh -i ~/.ssh/id_ed25519"
 
