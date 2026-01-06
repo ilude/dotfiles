@@ -392,6 +392,42 @@ function Install-Packages {
         Write-Host "  MSYS2 home not found - skipping bootstrap" -ForegroundColor DarkGray
     }
 
+    # Create symlinks from MSYS2 home to Windows home (for git, ssh, etc.)
+    Write-Host "`n--- MSYS2 Home Symlinks ---" -ForegroundColor Cyan
+    if (Test-Path $msys2Home) {
+        $winHome = $env:USERPROFILE
+        $symlinks = @(
+            @{ Name = ".gitconfig"; Target = "$winHome\.gitconfig" },
+            @{ Name = ".ssh"; Target = "$winHome\.ssh" }
+        )
+        foreach ($link in $symlinks) {
+            $linkPath = Join-Path $msys2Home $link.Name
+            $targetPath = $link.Target
+            if (Test-Path $targetPath) {
+                if (Test-Path $linkPath) {
+                    $item = Get-Item $linkPath -Force
+                    if ($item.LinkType -eq "SymbolicLink") {
+                        Write-Host "  $($link.Name) already linked" -ForegroundColor DarkGray
+                        continue
+                    }
+                    # Backup existing file/dir
+                    $backup = "$linkPath.bak"
+                    Move-Item $linkPath $backup -Force
+                    Write-Host "  Backed up existing $($link.Name) to $($link.Name).bak" -ForegroundColor Yellow
+                }
+                try {
+                    New-Item -ItemType SymbolicLink -Path $linkPath -Target $targetPath -Force | Out-Null
+                    Write-Host "  Linked $($link.Name) -> $targetPath" -ForegroundColor Green
+                } catch {
+                    Write-Host "  Failed to create symlink for $($link.Name): $_" -ForegroundColor Red
+                    Write-Host "  (Enable Developer Mode in Windows Settings to allow symlinks)" -ForegroundColor DarkGray
+                }
+            } else {
+                Write-Host "  Skipping $($link.Name) - target not found: $targetPath" -ForegroundColor DarkGray
+            }
+        }
+    }
+
     # PowerShell user modules (CurrentUser scope, no admin required)
     Write-Host "`n--- PowerShell User Modules ---" -ForegroundColor Blue
     foreach ($mod in $userModules) {
