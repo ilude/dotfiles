@@ -392,6 +392,22 @@ function Install-Packages {
         Write-Host "  MSYS2 home not found - skipping bootstrap" -ForegroundColor DarkGray
     }
 
+    # Fix MSYS2 nsswitch.conf if needed (ensures HOME=/c/Users/username)
+    $nsswitchPath = "C:\msys64\etc\nsswitch.conf"
+    if (Test-Path $nsswitchPath) {
+        $content = Get-Content $nsswitchPath -Raw
+        if ($content -match 'db_home:\s+cygwin\s+desc' -and $content -notmatch 'db_home:\s+env\s+windows') {
+            Write-Host "  Fixing MSYS2 nsswitch.conf (adding 'env windows' to db_home)..." -ForegroundColor Yellow
+            $newContent = $content -replace 'db_home:\s+cygwin\s+desc', 'db_home: env windows cygwin desc'
+            Copy-Item $nsswitchPath "$nsswitchPath.bak" -Force
+            $newContent = $newContent -replace "`r`n", "`n"
+            [System.IO.File]::WriteAllText($nsswitchPath, $newContent)
+            Write-Host "  Fixed (backup at $nsswitchPath.bak)" -ForegroundColor Green
+        } else {
+            Write-Host "  MSYS2 nsswitch.conf: already correct" -ForegroundColor DarkGray
+        }
+    }
+
     # Create symlinks from MSYS2 home to Windows home (for git, ssh, etc.)
     Write-Host "`n--- MSYS2 Home Symlinks ---" -ForegroundColor Cyan
     if (Test-Path $msys2Home) {
@@ -774,7 +790,7 @@ try {
         $sudoersCheck = wsl -e bash --norc -c 'sudo -n true 2>/dev/null && echo "ok" || echo "need"'
         if ($sudoersCheck -eq "need") {
             # Create sudoers.d entry for current user (prompts for password once)
-            wsl -e bash -c 'echo "$(whoami) ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/$(whoami)-nopasswd > /dev/null && sudo chmod 440 /etc/sudoers.d/$(whoami)-nopasswd'
+            wsl -e bash -c 'echo "$(whoami) ALL=(ALL) NOPASSWD: /usr/bin/apt, /usr/bin/apt-get, /usr/bin/chsh" | sudo tee /etc/sudoers.d/$(whoami)-nopasswd > /dev/null && sudo chmod 440 /etc/sudoers.d/$(whoami)-nopasswd'
             Write-Host "  Passwordless sudo: configured" -ForegroundColor Green
         } else {
             Write-Host "  Passwordless sudo: already configured" -ForegroundColor DarkGray
