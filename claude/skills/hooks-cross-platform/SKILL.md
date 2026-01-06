@@ -12,6 +12,57 @@ Activate when:
 
 ## Critical Rules
 
+### 0. Windows: Claude Code Runs Hooks via WSL (NOT Git Bash)
+
+**CRITICAL**: On Windows with WSL installed, Claude Code spawns hook commands via **WSL bash**, not Git Bash. This has major implications:
+
+**The Problem:**
+- WSL bash runs as **non-interactive, non-login** shell
+- `.bashrc`, `.profile`, `.zshenv` are NOT sourced
+- `~/.local/bin` is NOT in PATH
+- Tools like `uv`, `oh-my-posh` installed in `~/.local/bin` won't be found
+
+**Detection** (hook debug output):
+```
+HOME: /home/mike           ← WSL home, not /c/Users/Mike
+PWD: /mnt/c/Users/Mike/... ← WSL mount path format
+Which uv: NOT FOUND        ← Tools in ~/.local/bin missing
+Dollar-dash: hB            ← No 'i' (interactive) or 'l' (login)
+```
+
+**The Fix**: Use `bash -l` (login shell) in settings.json:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [{
+          "type": "command",
+          "command": "bash -l -c 'uv run ~/.claude/hooks/my-hook.py'"
+        }]
+      }
+    ]
+  }
+}
+```
+
+**Why `bash -l` works:**
+- Login shell sources `/etc/profile` → `~/.profile`
+- `~/.profile` should have: `export PATH="$HOME/.local/bin:$PATH"`
+- Now `uv`, `oh-my-posh`, etc. are found
+
+**Alternative**: Add PATH directly in hook command:
+```json
+"command": "bash -c 'PATH=\"$HOME/.local/bin:$PATH\" uv run ~/.claude/hooks/my-hook.py'"
+```
+
+**Ensure WSL ~/.profile has:**
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
 ### 1. Shebang Lines
 
 **Bash scripts**: Always use `#!/usr/bin/env bash` (NOT `#!/bin/bash`)
@@ -308,3 +359,5 @@ if __name__ == "__main__":
 | Windows paths in WSL | Git/file operations fail | Convert `C:/` to `/mnt/c/` |
 | Spaces in paths | Arguments split incorrectly | Use tab delimiter or JSON |
 | Missing tool (jq) | Script fails | Always provide Python fallback |
+| WSL: uv/tools not found | "command not found" in hooks | Use `bash -l` for login shell (sources ~/.profile) |
+| WSL: wrong HOME | HOME=/home/mike not Windows | Expected on WSL - use WINHOME or detect platform |
