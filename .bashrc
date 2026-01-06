@@ -10,6 +10,10 @@
 # Debug mode: touch ~/.dotfiles-disabled to bypass all customizations
 [[ -f ~/.dotfiles-disabled ]] && return
 
+# Add ~/.local/bin to PATH for all shells (including non-interactive)
+# This ensures tools like uv are available in Claude Code hooks
+export PATH="$HOME/.local/bin:$PATH"
+
 # Early exit if not running interactively
 case $- in
     *i*) ;;
