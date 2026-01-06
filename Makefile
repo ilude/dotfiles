@@ -1,4 +1,4 @@
-.PHONY: test test-quick test-docker preflight help lint format check install-hooks
+.PHONY: test test-quick test-parallel test-docker preflight help lint format check install-hooks
 
 # Shell scripts to check (excludes dotbot submodule and plugins)
 SHELL_SCRIPTS := .bashrc .zshrc install install-wsl git-ssh-setup claude-link-setup claude-mcp-setup copilot-link-setup zsh-setup zsh-plugins wsl-packages
@@ -9,6 +9,7 @@ help:
 	@echo "  make test          - Run tests locally (requires bats)"
 	@echo "  make test-docker   - Run tests in Ubuntu 24.04 container (recommended)"
 	@echo "  make test-quick    - Run only core tests locally"
+	@echo "  make test-parallel - Run tests in parallel (faster but noisier output)"
 	@echo "  make preflight     - Check environment (CRLF, dependencies)"
 	@echo "  make lint          - Run shellcheck on shell scripts"
 	@echo "  make format        - Format shell scripts with shfmt"
@@ -42,6 +43,14 @@ test: preflight
 # Run only core tests (faster)
 test-quick: preflight
 	bats test/git_ssh_setup.bats
+
+# Run tests in parallel (faster but noisier output)
+test-parallel: preflight
+	bats test/aliases.bats test/cli-completions.bats test/editor.bats \
+	     test/env-modules.bats test/helpers.bats test/rc-modules.bats & \
+	bats test/git_ssh_setup.bats test/idempotency.bats & \
+	bats test/prompt.bats test/shell-setup.bats & \
+	wait
 
 # Run tests in Ubuntu 24.04 Docker container (matches CI environment)
 test-docker:
