@@ -135,12 +135,42 @@ if (-not $isAdmin) {
 
     try {
         Start-Process -FilePath $pwshExe -ArgumentList $argList -Verb RunAs -Wait
+
+        # Show log file location after elevated window closes
+        $LogsDir = Join-Path $PSScriptRoot "logs"
+        if (Test-Path $LogsDir) {
+            $latestLog = Get-ChildItem -Path $LogsDir -Filter "install_*.log" |
+                Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($latestLog) {
+                Write-Host "`nElevated installation log saved to:" -ForegroundColor Cyan
+                Write-Host "  $($latestLog.FullName)" -ForegroundColor White
+            }
+        }
+
         exit 0
     } catch {
         Write-Host "Elevation cancelled or failed: $($_.Exception.Message)" -ForegroundColor Red
         exit 2
     }
 }
+
+# ============================================================================
+# START LOGGING (runs in elevated window)
+# ============================================================================
+
+# Create logs directory
+$LogsDir = Join-Path $PSScriptRoot "logs"
+if (-not (Test-Path $LogsDir)) {
+    New-Item -ItemType Directory -Path $LogsDir -Force | Out-Null
+}
+
+# Start transcript with timestamp
+$Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$LogFile = Join-Path $LogsDir "install_$Timestamp.log"
+Start-Transcript -Path $LogFile -Force | Out-Null
+
+Write-Host "Logging to: $LogFile" -ForegroundColor DarkGray
+Write-Host ""
 
 # ============================================================================
 # HELPER FUNCTIONS
@@ -882,5 +912,14 @@ try {
     Write-Host $_.ScriptStackTrace -ForegroundColor DarkRed
 }
 
-Write-Host "`nPress any key to exit..." -ForegroundColor DarkGray
-$null = Read-Host
+# ============================================================================
+# STOP LOGGING AND SHOW LOCATION
+# ============================================================================
+
+Stop-Transcript | Out-Null
+
+Write-Host "`nInstallation log saved to:" -ForegroundColor Cyan
+Write-Host "  $LogFile" -ForegroundColor White
+Write-Host "`nWindow will close automatically in 5 seconds..." -ForegroundColor DarkGray
+
+Start-Sleep -Seconds 5
