@@ -35,6 +35,28 @@ git clone --recursive https://github.com/ilude/dotfiles.git $HOME\.dotfiles
 ~/.dotfiles/install-wsl --packages   # Also install apt packages
 ```
 
+## Windows Requirements
+
+For proper operation on Windows with Git Bash and MSYS2:
+
+### Git for Windows Installation Options
+
+When installing Git for Windows, select:
+- **Line ending**: "Checkout as-is, commit Unix-style line endings" (LFOnly)
+- **Symbolic links**: Enable symbolic links
+- **Terminal**: Use MinTTY (recommended)
+
+### MSYS2 HOME Resolution
+
+If using MSYS2's zsh from Git Bash, the `nsswitch.conf` must have `db_home` configured correctly:
+
+```
+# C:\msys64\etc\nsswitch.conf
+db_home: env windows cygwin desc
+```
+
+The `install.ps1` script automatically detects and fixes this if needed. Without this fix, HOME resolves to `/c/msys64/home/username` instead of `/c/Users/username`, causing config files to be missed.
+
 ## Shell Architecture
 
 All terminals (Git Bash, WSL, Linux) transition to zsh for a consistent experience:
