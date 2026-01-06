@@ -27,12 +27,13 @@ if [[ -t 1 ]]; then
     if [[ -n "$_zsh" ]]; then
         export SHELL="$_zsh"
         # ZDOTDIR tells zsh where to find config files (.zshrc, .zprofile, etc.)
-        # HOME must also be set so zsh starts in the right directory
         # MSYS2's zsh uses different home than Git Bash, so we convert Windows path
         # NOTE: Must use 'env' to pass vars across Git Bash -> MSYS2 boundary
         if [[ -n "$USERPROFILE" ]] && command -v cygpath &>/dev/null; then
             _home="$(cygpath -u "$USERPROFILE")"
-            exec env HOME="$_home" ZDOTDIR="$_home" "$_zsh" -l
+            # Use -i (interactive) not -l (login) on Windows to preserve PWD
+            # Login shells cd to HOME, but MSYS2 zsh ignores our HOME override
+            exec env HOME="$_home" ZDOTDIR="$_home" "$_zsh" -i
         else
             exec env ZDOTDIR="$HOME" "$_zsh" -l
         fi

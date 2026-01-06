@@ -83,7 +83,7 @@ secrets/*.json filter=git-crypt diff=git-crypt
 | revert | Reverts | Undo previous commit |
 
 ### Breaking Changes
-Use `!` after type: `feat!: remove deprecated API`
+Append `!` after the type for breaking changes: `feat!: remove deprecated API`
 Or add footer: `BREAKING CHANGE: description`
 
 ### Atomic Commits
@@ -181,7 +181,7 @@ Common mistakes that lead to force push:
 
 ### If File is in .gitignore But Needs Committing
 1. STOP - Do not use `git add -f`
-2. Better: Add exception to .gitignore using `!` prefix
+2. Better: Add exception to .gitignore using the negation operator
    ```
    # In .gitignore:
    *.log

@@ -249,9 +249,15 @@ teardown() {
     grep -q 'SHELL=.*zsh\|export SHELL' "$DOTFILES_DIR/.bash_profile"
 }
 
-@test "shell-setup: exec zsh uses login shell flag" {
-    # zsh -l ensures .zprofile and .zshrc are sourced
-    grep -q 'exec zsh -l\|exec.*zsh.*-l' "$DOTFILES_DIR/.bash_profile"
+@test "shell-setup: exec zsh uses login shell on Linux" {
+    # zsh -l ensures .zprofile and .zshrc are sourced (Linux path)
+    grep -q '\$_zsh" -l' "$DOTFILES_DIR/.bash_profile"
+}
+
+@test "shell-setup: exec zsh uses interactive shell on Windows to preserve PWD" {
+    # zsh -i (not -l) on Windows preserves current directory
+    # Login shells cd to HOME, but MSYS2's zsh ignores our HOME override
+    grep -q '\$_zsh.*-i' "$DOTFILES_DIR/.bash_profile"
 }
 
 @test "shell-setup: ZDOTDIR set before exec zsh" {
