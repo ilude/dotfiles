@@ -34,12 +34,20 @@ teardown() {
     grep -q 'is_wsl()' "$DOTFILES_DIR/zsh/rc.d/00-helpers.zsh"
 }
 
+@test "helpers: is_wsl checks WSL_DISTRO_NAME first (most reliable)" {
+    grep -q 'WSL_DISTRO_NAME' "$DOTFILES_DIR/zsh/rc.d/00-helpers.zsh"
+}
+
 @test "helpers: is_wsl checks WSLInterop file" {
     grep -q '/proc/sys/fs/binfmt_misc/WSLInterop' "$DOTFILES_DIR/zsh/rc.d/00-helpers.zsh"
 }
 
 @test "helpers: is_wsl checks /proc/version fallback" {
     grep -q '/proc/version' "$DOTFILES_DIR/zsh/rc.d/00-helpers.zsh"
+}
+
+@test "helpers: 00-winhome.zsh also checks WSL_DISTRO_NAME" {
+    grep -q 'WSL_DISTRO_NAME' "$DOTFILES_DIR/zsh/env.d/00-winhome.zsh"
 }
 
 @test "helpers: is_msys function defined" {
