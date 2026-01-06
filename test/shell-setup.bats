@@ -391,6 +391,90 @@ teardown() {
 }
 
 # =============================================================================
+# .bashrc consistency with zsh (platform detection, locale, editor, tools)
+# =============================================================================
+
+@test "shell-setup: .bashrc has is_wsl helper" {
+    grep -q 'is_wsl()' "$DOTFILES_DIR/.bashrc"
+}
+
+@test "shell-setup: .bashrc is_wsl checks WSL_DISTRO_NAME" {
+    grep -q 'WSL_DISTRO_NAME' "$DOTFILES_DIR/.bashrc"
+}
+
+@test "shell-setup: .bashrc has is_msys helper" {
+    grep -q 'is_msys()' "$DOTFILES_DIR/.bashrc"
+}
+
+@test "shell-setup: .bashrc sets LC_ALL locale" {
+    grep -q 'LC_ALL' "$DOTFILES_DIR/.bashrc"
+}
+
+@test "shell-setup: .bashrc sets LANG locale" {
+    grep -q 'LANG' "$DOTFILES_DIR/.bashrc"
+}
+
+@test "shell-setup: .bashrc sets EDITOR default" {
+    grep -q 'EDITOR' "$DOTFILES_DIR/.bashrc"
+}
+
+@test "shell-setup: .bashrc sets VISUAL default" {
+    grep -q 'VISUAL' "$DOTFILES_DIR/.bashrc"
+}
+
+@test "shell-setup: .bashrc has eza fallback chain" {
+    grep -q 'command -v eza' "$DOTFILES_DIR/.bashrc"
+}
+
+@test "shell-setup: .bashrc has bat alias" {
+    grep -q 'command -v bat' "$DOTFILES_DIR/.bashrc"
+}
+
+@test "shell-setup: .bashrc has ripgrep alias" {
+    grep -q 'command -v rg' "$DOTFILES_DIR/.bashrc"
+}
+
+# =============================================================================
+# Install script idempotency and headless detection
+# =============================================================================
+
+@test "shell-setup: install script uses cmp for idempotent bootstrap" {
+    # MSYS2 bootstrap should compare before copying
+    grep -q 'cmp -s' "$DOTFILES_DIR/install"
+}
+
+@test "shell-setup: install script detects headless servers" {
+    # Should check DISPLAY and skip GUI tools on headless Linux
+    grep -q 'DISPLAY\|HEADLESS' "$DOTFILES_DIR/install"
+}
+
+@test "shell-setup: install script skips GUI tools on headless" {
+    # claude-link-setup etc should be gated by HEADLESS check
+    grep -q 'HEADLESS.*claude-link\|if.*HEADLESS' "$DOTFILES_DIR/install"
+}
+
+# =============================================================================
+# install.ps1 nsswitch.conf fix
+# =============================================================================
+
+@test "shell-setup: install.ps1 has nsswitch.conf fix" {
+    grep -q 'nsswitch.conf' "$DOTFILES_DIR/install.ps1"
+}
+
+@test "shell-setup: install.ps1 nsswitch fix is in main flow not Install-Packages" {
+    # The fix should be AFTER the Install-Packages call, not inside the function
+    # Count lines: nsswitch fix should appear after "Install-Packages -Work"
+    local install_packages_line=$(grep -n 'Install-Packages -Work' "$DOTFILES_DIR/install.ps1" | head -1 | cut -d: -f1)
+    local nsswitch_fix_line=$(grep -n 'db_home.*env windows' "$DOTFILES_DIR/install.ps1" | head -1 | cut -d: -f1)
+    [ "$nsswitch_fix_line" -gt "$install_packages_line" ]
+}
+
+@test "shell-setup: install.ps1 creates nsswitch.conf backup" {
+    # Backup is referenced as $nsswitchPath.bak (variable interpolation)
+    grep -q 'nsswitchPath.*\.bak' "$DOTFILES_DIR/install.ps1"
+}
+
+# =============================================================================
 # uv environment sourcing (conditional)
 # =============================================================================
 
