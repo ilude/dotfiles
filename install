@@ -32,13 +32,27 @@ git submodule update --init --recursive "${DOTBOT_DIR}"
 # MSYS2 zsh bootstrap: create redirect from /home/$USER to Windows home
 # This fixes the HOME mismatch between Git Bash and MSYS2's zsh
 if is_windows && [[ -d "/home/$USER" ]]; then
-    echo "Creating MSYS2 zsh bootstrap..."
-    cp "${BASEDIR}/.zshrc-msys2-bootstrap" "/home/$USER/.zshrc"
-    echo "  Created /home/$USER/.zshrc"
+    target="/home/$USER/.zshrc"
+    source="${BASEDIR}/.zshrc-msys2-bootstrap"
+    if [[ -f "$target" ]] && cmp -s "$source" "$target"; then
+        echo "MSYS2 bootstrap: already correct"
+    else
+        echo "Creating MSYS2 zsh bootstrap..."
+        cp "$source" "$target"
+        echo "  Created $target"
+    fi
+fi
+
+# Skip GUI tools on headless Linux servers
+if [[ -z "$DISPLAY" ]] && [[ -z "$WAYLAND_DISPLAY" ]] && [[ -z "$WSL_DISTRO_NAME" ]] && ! is_windows; then
+    echo "Headless server detected - skipping GUI tool setup"
+    HEADLESS=1
 fi
 
 "${BASEDIR}/git-ssh-setup"
 "${BASEDIR}/zsh-setup"
-"${BASEDIR}/claude-link-setup"
-"${BASEDIR}/claude-mcp-setup"
-"${BASEDIR}/copilot-link-setup"
+if [[ -z "$HEADLESS" ]]; then
+    "${BASEDIR}/claude-link-setup"
+    "${BASEDIR}/claude-mcp-setup"
+    "${BASEDIR}/copilot-link-setup"
+fi
