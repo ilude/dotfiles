@@ -21,6 +21,34 @@ case $- in
 esac
 
 ############################################################################
+# Platform Detection Helpers
+############################################################################
+
+is_wsl() {
+    [[ -n "$WSL_DISTRO_NAME" ]] || \
+    [[ -f /proc/sys/fs/binfmt_misc/WSLInterop ]] || \
+    grep -qi microsoft /proc/version 2>/dev/null
+}
+
+is_msys() {
+    [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]
+}
+
+############################################################################
+# Locale Settings
+############################################################################
+
+export LC_ALL="${LC_ALL:-en_US.UTF-8}"
+export LANG="${LANG:-en_US.UTF-8}"
+
+############################################################################
+# Editor Settings
+############################################################################
+
+export EDITOR="${EDITOR:-code}"
+export VISUAL="${VISUAL:-code}"
+
+############################################################################
 # Bash Prompt: ~/.dotfiles[main]>
 ############################################################################
 
@@ -69,5 +97,24 @@ PROMPT_COMMAND=__set_prompt
 alias ccyl='claude --dangerously-skip-permissions'
 alias claude-install='npm install -g @anthropic-ai/claude-code'
 
+# Modern tool fallback chains (eza, bat, ripgrep)
+if command -v eza &>/dev/null; then
+    alias ls='eza --group-directories-first'
+    alias ll='eza -la --group-directories-first'
+    alias l='eza -l --group-directories-first'
+elif command -v exa &>/dev/null; then
+    alias ls='exa --group-directories-first'
+    alias ll='exa -la --group-directories-first'
+    alias l='exa -l --group-directories-first'
+else
+    alias ll='ls -la'
+    alias l='ls -l'
+fi
+
+command -v bat &>/dev/null && alias cat='bat --paging=never'
+command -v rg &>/dev/null && alias grep='rg'
+command -v fd &>/dev/null && alias find='fd'
+
 # Source uv environment if installed (conditional to avoid errors when not present)
+# shellcheck source=/dev/null
 [[ -f "$HOME/.local/bin/env" ]] && . "$HOME/.local/bin/env"
