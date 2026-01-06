@@ -41,3 +41,4 @@ last-context.txt
 # Stale directory (renamed to claude/)
 .claude/
 InstallationLog.txt
+hook-debug*.*
