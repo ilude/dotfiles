@@ -154,51 +154,46 @@ else
 fi
 
 # ============================================================================
-# zoxide (smart cd)
+# zoxide (smart cd) - install to /usr/local/bin for all shells
 # ============================================================================
 
 echo -e "\n${CYAN}Installing zoxide...${NC}"
 
-# Check both PATH and ~/.local/bin for zoxide
-if { command_exists zoxide || [[ -x "$HOME/.local/bin/zoxide" ]]; } && [[ "$FORCE" != "true" ]]; then
+if command_exists zoxide && [[ "$FORCE" != "true" ]]; then
     echo -e "  zoxide: ${GREEN}already installed${NC}"
 else
-    echo -e "  zoxide: ${CYAN}installing via script...${NC}"
-    curl -sSfL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | sh >/dev/null 2>&1
+    echo -e "  zoxide: ${CYAN}installing to /usr/local/bin...${NC}"
+    curl -sSfL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | sudo sh -s -- --bin-dir /usr/local/bin >/dev/null 2>&1
     echo -e "  zoxide: ${GREEN}done${NC}"
 fi
 
 # ============================================================================
-# uv (Python package manager)
+# uv (Python package manager) - install to /usr/local/bin for all shells
 # ============================================================================
 
 echo -e "\n${CYAN}Installing uv...${NC}"
 
-if { command_exists uv || [[ -x "$HOME/.local/bin/uv" ]]; } && [[ "$FORCE" != "true" ]]; then
+if command_exists uv && [[ "$FORCE" != "true" ]]; then
     echo -e "  uv: ${GREEN}already installed${NC}"
 else
-    echo -e "  uv: ${CYAN}installing via script...${NC}"
-    curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1
+    echo -e "  uv: ${CYAN}installing to /usr/local/bin...${NC}"
+    curl -LsSf https://astral.sh/uv/install.sh | sudo UV_INSTALL_DIR=/usr/local/bin sh >/dev/null 2>&1
     echo -e "  uv: ${GREEN}done${NC}"
 fi
 
 # ============================================================================
-# Oh My Posh
+# Oh My Posh - install to /usr/local/bin for all shells
 # ============================================================================
 
 echo -e "\n${CYAN}Installing Oh My Posh...${NC}"
 
-# Check both PATH and ~/.local/bin for oh-my-posh
-if { command_exists oh-my-posh || [[ -x "$HOME/.local/bin/oh-my-posh" ]]; } && [[ "$FORCE" != "true" ]]; then
+if command_exists oh-my-posh && [[ "$FORCE" != "true" ]]; then
     echo -e "  oh-my-posh: ${GREEN}already installed${NC}"
 else
-    echo -e "  oh-my-posh: ${CYAN}installing...${NC}"
-    curl -s https://ohmyposh.dev/install.sh | bash -s -- -d ~/.local/bin >/dev/null 2>&1
+    echo -e "  oh-my-posh: ${CYAN}installing to /usr/local/bin...${NC}"
+    curl -s https://ohmyposh.dev/install.sh | sudo bash -s -- -d /usr/local/bin >/dev/null 2>&1
     echo -e "  oh-my-posh: ${GREEN}done${NC}"
 fi
-
-# Ensure ~/.local/bin is in PATH for current session
-export PATH="$HOME/.local/bin:$PATH"
 
 # ============================================================================
 # Set Zsh as Default Shell
