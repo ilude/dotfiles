@@ -13,7 +13,4 @@ elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
     # Git Bash/MSYS2: Use ZDOTDIR (Windows home) or construct from /c/Users/$USER
     export WINHOME="${ZDOTDIR:-/c/Users/${USER:-$(whoami)}}"
     export IS_MSYS=1
-    # MSYS2's zsh has HOME=/home/$USER but git expects ~/.gitconfig at Windows home
-    # GIT_CONFIG_GLOBAL tells git where to find the global config
-    export GIT_CONFIG_GLOBAL="$WINHOME/.gitconfig"
 fi
