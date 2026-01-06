@@ -112,6 +112,14 @@ install_packages() {
   # Install packages one by one with error handling
   echo "📦 Installing system packages..."
   for package in "${PACKAGES[@]}"; do
+    # Check if already installed (dpkg for Debian/Ubuntu, rpm for Fedora)
+    if command -v dpkg &>/dev/null && dpkg -l "$package" 2>/dev/null | grep -q "^ii"; then
+      echo "  $package: already installed"
+      continue
+    elif command -v rpm &>/dev/null && rpm -q "$package" &>/dev/null; then
+      echo "  $package: already installed"
+      continue
+    fi
     echo "📦 Installing: $package"
     # shellcheck disable=SC2086  # Word splitting on COMMAND is intentional
     if ! $SUDO $COMMAND "$package"; then
@@ -146,8 +154,13 @@ install_packages
 
 # Import SSH keys from GitHub if ssh-import-id is available
 if command -v ssh-import-id >/dev/null 2>&1; then
-    echo "Importing .ssh/authorized_keys from github for user ilude..."
-    ssh-import-id gh:ilude
+    GITHUB_USER="${GITHUB_USER:-ilude}"
+    if ! grep -q "$GITHUB_USER" ~/.ssh/authorized_keys 2>/dev/null; then
+        echo "Importing .ssh/authorized_keys from github for user $GITHUB_USER..."
+        ssh-import-id "gh:$GITHUB_USER"
+    else
+        echo "SSH keys for $GITHUB_USER already present, skipping import."
+    fi
 else
     echo "Warning: ssh-import-id not found, skipping SSH key import." >&2
 fi
