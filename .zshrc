@@ -1,6 +1,9 @@
 # .zshrc - interactive shell configuration
 # Sources modular rc.d/ files for organized configuration
 
+# Enable zprof when DEBUG=1 (run: DEBUG=1 zsh)
+[[ -n "$DEBUG" ]] && zmodload zsh/zprof
+
 # Fix MSYS2/Git Bash HOME mismatch: MSYS2 zsh sets HOME=/home/Mike
 # but dotfiles are at /c/Users/Mike. Detect and fix ZDOTDIR.
 if [[ -z "$ZDOTDIR" && "$OSTYPE" == "cygwin" && -d "/c/Users/${USER:-$(whoami)}" ]]; then
@@ -33,3 +36,6 @@ source_if_exists "${ZDOTDIR:-$HOME}/.zshrc.local"
 
 # Debug timing report (only shown when DEBUG=1)
 debug_report
+
+# Print zprof report when DEBUG=1
+[[ -n "$DEBUG" ]] && zprof
