@@ -114,6 +114,102 @@ teardown() {
 }
 
 # =============================================================================
+# Space-in-path edge cases
+# =============================================================================
+
+@test "prompt: home with space normalizes to ~ on non-WSL" {
+    skip_unless_linux
+
+    # Create a test home with a space in the name
+    local space_home="$TEST_HOME/Mike Smith"
+    mkdir -p "$space_home"
+    export HOME="$space_home"
+    cd "$HOME"
+    __set_prompt
+
+    # PS1 should contain ~, not the full path with space
+    [[ "$PS1" == *"~"* ]]
+    [[ "$PS1" != *"Mike Smith"* ]]
+}
+
+@test "prompt: subdir under home with space normalizes to ~/subdir on non-WSL" {
+    skip_unless_linux
+
+    # Create a test home with a space and a subdirectory
+    local space_home="$TEST_HOME/Mike Smith"
+    mkdir -p "$space_home/projects"
+    export HOME="$space_home"
+    cd "$HOME/projects"
+    __set_prompt
+
+    # Should show ~/projects, not full path
+    [[ "$PS1" == *"~/projects"* ]]
+    [[ "$PS1" != *"Mike Smith"* ]]
+}
+
+@test "prompt: WSL Windows home with space normalizes to ~" {
+    skip_unless_linux
+
+    # Skip if not actually in WSL
+    if [[ ! -f /proc/sys/fs/binfmt_misc/WSLInterop ]]; then
+        skip "Test requires actual WSL environment"
+    fi
+
+    # Simulate Windows path with space in username
+    PWD="/mnt/c/Users/Mike Smith/.dotfiles"
+    __set_prompt
+
+    # Should normalize to ~/.dotfiles even with space in home path
+    [[ "$PS1" == *"~/.dotfiles"* ]]
+    [[ "$PS1" != *"/mnt/c"* ]]
+    [[ "$PS1" != *"Mike Smith"* ]]
+}
+
+@test "prompt: WSL Windows home with space and mixed case normalizes" {
+    skip_unless_linux
+
+    # Skip if not actually in WSL
+    if [[ ! -f /proc/sys/fs/binfmt_misc/WSLInterop ]]; then
+        skip "Test requires actual WSL environment"
+    fi
+
+    # Windows path with space and mixed case (USERS vs users)
+    PWD="/mnt/c/USERS/Mike Smith/projects"
+    __set_prompt
+
+    # Should normalize to ~/projects regardless of case or space
+    [[ "$PS1" == *"~/projects"* ]]
+    [[ "$PS1" != *"/mnt/c"* ]]
+    [[ "$PS1" != *"Mike Smith"* ]]
+}
+
+@test "prompt: directory name with space stays as-is when not under home" {
+    skip_unless_linux
+
+    # Non-home path with spaces should display as-is
+    PWD="/tmp/my project/code"
+    __set_prompt
+
+    # Should show full path with spaces preserved
+    [[ "$PS1" == *"/tmp/my project/code"* ]]
+}
+
+@test "prompt: deeply nested path under home with space normalizes correctly" {
+    skip_unless_linux
+
+    # Create a deeply nested structure under a home with space
+    local space_home="$TEST_HOME/Mike Smith"
+    mkdir -p "$space_home/work/client projects/web app"
+    export HOME="$space_home"
+    cd "$HOME/work/client projects/web app"
+    __set_prompt
+
+    # Should normalize to ~/work/client projects/web app
+    [[ "$PS1" == *"~/work/client projects/web app"* ]]
+    [[ "$PS1" != *"Mike Smith"* ]]
+}
+
+# =============================================================================
 # Git branch tests
 # =============================================================================
 
