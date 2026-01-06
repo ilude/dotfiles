@@ -8,6 +8,7 @@ source_if_exists() {
 
 # Platform detection helpers (consolidate existing patterns)
 is_wsl() {
+    [[ -n "$WSL_DISTRO_NAME" ]] || \
     [[ -f /proc/sys/fs/binfmt_misc/WSLInterop ]] || \
     grep -qi microsoft /proc/version 2>/dev/null
 }

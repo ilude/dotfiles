@@ -4,7 +4,8 @@
 # WSL detection uses two methods for reliability:
 # 1. WSLInterop file (standard method)
 # 2. /proc/version check (fallback for edge cases)
-if [[ -f /proc/sys/fs/binfmt_misc/WSLInterop ]] || \
+if [[ -n "$WSL_DISTRO_NAME" ]] || \
+   [[ -f /proc/sys/fs/binfmt_misc/WSLInterop ]] || \
    grep -qi microsoft /proc/version 2>/dev/null; then
     # WSL: Windows home is /mnt/c/Users/$USER
     export WINHOME="/mnt/c/Users/${USER:-$(whoami)}"
