@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Test hook to debug what environment Claude Code hooks run in
+
+# Use absolute path that works in both Git Bash and WSL
+output_file="/mnt/c/Users/mike/.dotfiles/hook-debug.txt"
+[[ ! -d "/mnt/c/Users/mike" ]] && output_file="/mnt/c/Users/mike/.dotfiles/hook-debug.txt"
+
+{
+    echo "=== Hook Environment Debug ==="
+    echo ""
+    echo "Shell: $SHELL"
+    echo "Bash: $BASH"
+    echo "Bash Version: $BASH_VERSION"
+    echo "PWD: $PWD"
+    echo "HOME: $HOME"
+    echo "WINHOME: $WINHOME"
+    echo "USERPROFILE: $USERPROFILE"
+    echo "Which uv: $(which uv 2>/dev/null || echo 'NOT FOUND')"
+    echo "Which python: $(which python 2>/dev/null || echo 'NOT FOUND')"
+    echo ""
+    echo "=== Shell Mode Detection ==="
+    echo "Dollar-dash: $-"
+    echo "PS1 set: ${PS1:+yes}"
+    echo "BASH_ENV: ${BASH_ENV:-not set}"
+    echo "Sourced .bashrc: ${BASHRC_SOURCED:-no}"
+    echo ""
+    echo "=== PATH ==="
+    echo "$PATH" | tr ':' '\n'
+    echo ""
+    echo "Hook ran successfully!"
+} > "$output_file"
+
+exit 0
