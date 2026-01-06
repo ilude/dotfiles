@@ -1,4 +1,4 @@
-.PHONY: test test-quick test-parallel test-docker test-powershell preflight help lint format check install-hooks
+.PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all test test-quick test-parallel test-docker test-powershell preflight help lint format check install-hooks
 
 # Shell scripts to check (excludes dotbot submodule and plugins)
 SHELL_SCRIPTS := .bashrc .zshrc install install-wsl git-ssh-setup claude-link-setup claude-mcp-setup copilot-link-setup zsh-setup zsh-plugins wsl-packages
@@ -6,6 +6,9 @@ SHELL_SCRIPTS := .bashrc .zshrc install install-wsl git-ssh-setup claude-link-se
 # Default target
 help:
 	@echo "Available targets:"
+	@echo "  make validate      - Validate shell environment (bash)"
+	@echo "  make validate-all  - Validate all shells (bash + PowerShell)"
+	@echo "  make validate-pwsh - Validate PowerShell environment"
 	@echo "  make test          - Run tests locally (requires bats)"
 	@echo "  make test-docker   - Run tests in Ubuntu 24.04 container (recommended)"
 	@echo "  make test-powershell - Run Pester tests for PowerShell code (Windows)"
@@ -16,6 +19,29 @@ help:
 	@echo "  make format        - Format shell scripts with shfmt"
 	@echo "  make check         - Run all checks (lint + test)"
 	@echo "  make install-hooks - Install git pre-commit hook for testing"
+
+# Shell environment validation (diagnostic)
+validate: validate-bash
+	@echo "Validation complete."
+
+validate-bash:
+	@bash validate/validate-all.sh
+
+validate-pwsh:
+	@pwsh -NoProfile -ExecutionPolicy Bypass -File validate.ps1
+
+validate-all: validate-bash validate-pwsh
+	@echo "Full validation complete (bash + PowerShell)."
+
+# Component-specific validation
+validate-env:
+	@bash validate/validate-environment.sh
+
+validate-tools:
+	@bash validate/validate-tools.sh
+
+validate-config:
+	@bash validate/validate-config.sh
 
 # Pre-flight environment checks
 preflight:
