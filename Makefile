@@ -1,4 +1,4 @@
-.PHONY: test test-quick test-parallel test-docker preflight help lint format check install-hooks
+.PHONY: test test-quick test-parallel test-docker test-powershell preflight help lint format check install-hooks
 
 # Shell scripts to check (excludes dotbot submodule and plugins)
 SHELL_SCRIPTS := .bashrc .zshrc install install-wsl git-ssh-setup claude-link-setup claude-mcp-setup copilot-link-setup zsh-setup zsh-plugins wsl-packages
@@ -8,6 +8,7 @@ help:
 	@echo "Available targets:"
 	@echo "  make test          - Run tests locally (requires bats)"
 	@echo "  make test-docker   - Run tests in Ubuntu 24.04 container (recommended)"
+	@echo "  make test-powershell - Run Pester tests for PowerShell code (Windows)"
 	@echo "  make test-quick    - Run only core tests locally"
 	@echo "  make test-parallel - Run tests in parallel (faster but noisier output)"
 	@echo "  make preflight     - Check environment (CRLF, dependencies)"
@@ -60,6 +61,11 @@ test-docker:
 		apt-get install -y -qq bats git >/dev/null 2>&1 && \
 		echo "Running tests..." && \
 		bats test/'
+
+# Run PowerShell Pester tests (Windows only)
+test-powershell:
+	@echo "Running Pester tests..."
+	@powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Pester test/*.tests.ps1"
 
 # Lint shell scripts with shellcheck
 lint:

@@ -85,7 +85,8 @@ $userModules = @(
     'Terminal-Icons',
     'CompletionPredictor',
     'DockerCompletion',
-    'posh-git'
+    'posh-git',
+    'Pester'
 )
 
 # ============================================================================
@@ -145,47 +146,8 @@ if (-not $isAdmin) {
 # HELPER FUNCTIONS
 # ============================================================================
 
-function Get-ContentLF {
-    # Read file and ensure LF line endings for WSL compatibility
-    param([string]$Path)
-    (Get-Content $Path -Raw) -replace "`r`n", "`n" -replace "`r", "`n"
-}
-
-function ConvertTo-GitBashPath {
-    # Convert Windows path to Git Bash format: C:\path -> /c/path
-    param([string]$Path)
-    $path = $Path -replace '\\', '/'
-    if ($path -match '^([A-Za-z]):(.*)') {
-        return '/' + $matches[1].ToLower() + $matches[2]
-    }
-    return $path
-}
-
-function Get-GitBash {
-    # Find Git Bash executable (not WSL bash)
-    $gitBashPaths = @(
-        "$env:ProgramFiles\Git\bin\bash.exe",
-        "$env:ProgramFiles\Git\usr\bin\bash.exe",
-        "${env:ProgramFiles(x86)}\Git\bin\bash.exe"
-    )
-    foreach ($path in $gitBashPaths) {
-        if (Test-Path $path) {
-            return $path
-        }
-    }
-    # Fallback to searching PATH (may find WSL bash)
-    return (Get-Command bash -ErrorAction SilentlyContinue)?.Source
-}
-
-function ConvertTo-WSLPath {
-    # Convert Windows path to WSL format: C:\path -> /mnt/c/path
-    param([string]$Path)
-    $path = $Path -replace '\\', '/'
-    if ($path -match '^([A-Za-z]):(.*)') {
-        return '/mnt/' + $matches[1].ToLower() + $matches[2]
-    }
-    return $path
-}
+# Source path utility functions (extracted for testability)
+. "$PSScriptRoot/powershell/lib/path-utils.ps1"
 
 function Write-GitBashPath {
     # Generate .path-windows-local with Windows PATH converted for Git Bash
