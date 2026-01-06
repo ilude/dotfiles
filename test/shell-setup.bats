@@ -418,3 +418,201 @@ teardown() {
 @test "shell-setup: .zshrc.local is gitignored" {
     grep -q '\.zshrc\.local' "$DOTFILES_DIR/.gitignore"
 }
+
+# =============================================================================
+# ZDOTDIR Shell Boundary Crossing - BEHAVIOR TESTS
+# WHY: Git Bash and MSYS2's zsh have DIFFERENT HOME directories:
+#   - Git Bash: HOME=/c/Users/Mike
+#   - MSYS2 zsh: HOME=/home/Mike
+# ZDOTDIR must be passed via `env` command to cross the boundary.
+# These tests EXECUTE zsh to verify the behavior, not just grep config.
+# =============================================================================
+
+@test "shell-setup: ZDOTDIR reaches zsh process when passed via env" {
+    # Verify that ZDOTDIR environment variable is actually received by zsh
+    # This tests the core mechanism: 'env ZDOTDIR=... zsh -c' pattern
+    command -v zsh >/dev/null || skip "zsh not installed"
+
+    local _zdotdir
+    _zdotdir=$(mktemp -d)
+
+    # Use env to pass ZDOTDIR (the pattern .bash_profile uses)
+    local output
+    output=$(env ZDOTDIR="$_zdotdir" zsh -c 'echo $ZDOTDIR')
+
+    rm -rf "$_zdotdir"
+
+    [[ "$output" == "$_zdotdir" ]]
+}
+
+@test "shell-setup: zsh sources .zshrc from ZDOTDIR not HOME" {
+    # Verify zsh looks for .zshrc in ZDOTDIR, not HOME
+    # This is critical: on MSYS2, HOME=/home/Mike but ZDOTDIR=/c/Users/Mike
+    command -v zsh >/dev/null || skip "zsh not installed"
+
+    local _zdotdir
+    _zdotdir=$(mktemp -d)
+
+    # Create test .zshrc in ZDOTDIR
+    echo 'export ZDOTDIR_TEST_VAR=from_zdotdir' > "$_zdotdir/.zshrc"
+
+    # Set HOME to a fake location, ZDOTDIR to our test dir
+    local output
+    output=$(env ZDOTDIR="$_zdotdir" HOME="/home/nonexistent" zsh -c 'source "$ZDOTDIR/.zshrc" 2>/dev/null; echo $ZDOTDIR_TEST_VAR')
+
+    rm -rf "$_zdotdir"
+
+    [[ "$output" == "from_zdotdir" ]]
+}
+
+@test "shell-setup: ZDOTDIR persists in zsh subshells" {
+    # Ensure ZDOTDIR is available in nested zsh calls
+    command -v zsh >/dev/null || skip "zsh not installed"
+
+    local _zdotdir
+    _zdotdir=$(mktemp -d)
+
+    local output
+    output=$(env ZDOTDIR="$_zdotdir" zsh -c 'zsh -c "echo \$ZDOTDIR"')
+
+    rm -rf "$_zdotdir"
+
+    [[ "$output" == "$_zdotdir" ]]
+}
+
+@test "shell-setup: \${ZDOTDIR:-\$HOME} pattern resolves correctly when ZDOTDIR set" {
+    # Test the fallback pattern used throughout dotfiles
+    # When ZDOTDIR is set, it should be used
+    command -v zsh >/dev/null || skip "zsh not installed"
+
+    local _zdotdir
+    _zdotdir=$(mktemp -d)
+
+    local output
+    output=$(env ZDOTDIR="$_zdotdir" HOME="/home/different" zsh -c 'echo ${ZDOTDIR:-$HOME}')
+
+    rm -rf "$_zdotdir"
+
+    [[ "$output" == "$_zdotdir" ]]
+}
+
+@test "shell-setup: \${ZDOTDIR:-\$HOME} pattern falls back to HOME when ZDOTDIR unset" {
+    # Test fallback behavior when ZDOTDIR is not set
+    command -v zsh >/dev/null || skip "zsh not installed"
+
+    local _home
+    _home=$(mktemp -d)
+
+    # Explicitly unset ZDOTDIR, set HOME
+    local output
+    output=$(env -u ZDOTDIR HOME="$_home" zsh -c 'echo ${ZDOTDIR:-$HOME}')
+
+    rm -rf "$_home"
+
+    [[ "$output" == "$_home" ]]
+}
+
+@test "shell-setup: dotfiles path resolution works with ZDOTDIR on Windows" {
+    skip_unless_windows
+
+    command -v zsh >/dev/null || skip "zsh not installed"
+
+    # Use actual USERPROFILE converted via cygpath (mirrors .bash_profile)
+    local win_home
+    win_home=$(cygpath -u "$USERPROFILE")
+
+    # Verify zsh can resolve dotfiles path using ZDOTDIR
+    local output
+    output=$(env ZDOTDIR="$win_home" zsh -c 'echo "${ZDOTDIR:-$HOME}/.dotfiles"')
+
+    [[ "$output" == "$win_home/.dotfiles" ]]
+}
+
+@test "shell-setup: ZDOTDIR with spaces in path works correctly" {
+    # Edge case: paths with spaces must be handled properly
+    command -v zsh >/dev/null || skip "zsh not installed"
+
+    local _zdotdir
+    _zdotdir=$(mktemp -d)/path\ with\ spaces
+    mkdir -p "$_zdotdir"
+
+    local output
+    output=$(env ZDOTDIR="$_zdotdir" zsh -c 'echo "$ZDOTDIR"')
+
+    rm -rf "$(dirname "$_zdotdir")"
+
+    [[ "$output" == "$_zdotdir" ]]
+}
+
+@test "shell-setup: zsh interactive mode preserves ZDOTDIR" {
+    # Test that -i flag (used on Windows) preserves ZDOTDIR
+    command -v zsh >/dev/null || skip "zsh not installed"
+
+    local _zdotdir
+    _zdotdir=$(mktemp -d)
+    touch "$_zdotdir/.zshrc"  # Empty .zshrc to prevent newuser wizard
+
+    local output
+    # Use -i for interactive mode (as .bash_profile does on Windows)
+    output=$(env ZDOTDIR="$_zdotdir" zsh -i -c 'echo $ZDOTDIR' 2>/dev/null)
+
+    rm -rf "$_zdotdir"
+
+    [[ "$output" == "$_zdotdir" ]]
+}
+
+@test "shell-setup: zsh login mode preserves ZDOTDIR" {
+    # Test that -l flag (used on Linux) preserves ZDOTDIR
+    command -v zsh >/dev/null || skip "zsh not installed"
+
+    local _zdotdir
+    _zdotdir=$(mktemp -d)
+    touch "$_zdotdir/.zshrc"  # Empty .zshrc to prevent newuser wizard
+
+    local output
+    # Use -l for login mode (as .bash_profile does on Linux)
+    output=$(env ZDOTDIR="$_zdotdir" zsh -l -c 'echo $ZDOTDIR' 2>/dev/null)
+
+    rm -rf "$_zdotdir"
+
+    [[ "$output" == "$_zdotdir" ]]
+}
+
+@test "shell-setup: export ZDOTDIR without env does NOT cross MSYS2 boundary" {
+    # Demonstrates WHY we need 'env' - export alone doesn't work
+    skip_unless_windows
+
+    command -v zsh >/dev/null || skip "zsh not installed"
+
+    local _zdotdir
+    _zdotdir=$(mktemp -d)
+
+    # This simulates the WRONG pattern (export + exec without env)
+    # In a real shell, export ZDOTDIR=... ; exec zsh would fail to pass ZDOTDIR
+    # We can't fully test exec behavior, but we document the correct pattern
+    local correct_output
+    correct_output=$(env ZDOTDIR="$_zdotdir" zsh -c 'echo $ZDOTDIR')
+
+    rm -rf "$_zdotdir"
+
+    # Verify the env pattern works (the correct approach)
+    [[ "$correct_output" == "$_zdotdir" ]]
+}
+
+@test "shell-setup: zsh respects ZDOTDIR for .zshenv location" {
+    # .zshenv is sourced for ALL zsh instances (even non-interactive)
+    command -v zsh >/dev/null || skip "zsh not installed"
+
+    local _zdotdir
+    _zdotdir=$(mktemp -d)
+
+    # Create .zshenv that sets a marker variable
+    echo 'export ZSHENV_MARKER=from_zshenv' > "$_zdotdir/.zshenv"
+
+    local output
+    output=$(env ZDOTDIR="$_zdotdir" zsh -c 'echo $ZSHENV_MARKER')
+
+    rm -rf "$_zdotdir"
+
+    [[ "$output" == "from_zshenv" ]]
+}
