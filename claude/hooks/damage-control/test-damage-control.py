@@ -412,7 +412,7 @@ def run_test(hook_type: str, tool_name: str, value: str, expectation: str, verbo
 def get_test_fixtures_path() -> Path:
     """Get path to test_fixtures.yaml."""
     script_dir = get_script_dir()
-    return script_dir / "test_fixtures.yaml"
+    return script_dir / "tests" / "test_fixtures.yaml"
 
 
 def load_test_fixtures() -> Dict[str, Any]:
