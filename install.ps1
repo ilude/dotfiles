@@ -56,6 +56,7 @@ $corePackages = @(
     @{ Id = 'BurntSushi.ripgrep.MSVC'; Name = 'ripgrep (rg)' },
     @{ Id = 'sharkdp.fd'; Name = 'fd (find replacement)' },
     @{ Id = 'sharkdp.bat'; Name = 'bat (cat replacement)' },
+    @{ Id = 'dandavison.delta'; Name = 'git-delta (diff pager)' },
     @{ Id = 'aristocratos.btop4win'; Name = 'btop (system monitor)' },
     @{ Id = 'tldr-pages.tlrc'; Name = 'tldr (man pages)' },
     @{ Id = 'koalaman.shellcheck'; Name = 'shellcheck (shell linter)' },
@@ -393,7 +394,8 @@ function Install-Packages {
     # Packages that need manual symlinks in WinGet Links
     $wingetLinks = @(
         @{ PackageId = 'Oven-sh.Bun'; ExeName = 'bun.exe'; RelativePath = 'bun-windows-x64' },
-        @{ PackageId = 'cURL.cURL'; ExeName = 'curl.exe'; RelativePath = '' }  # Version in path, uses recursive search
+        @{ PackageId = 'cURL.cURL'; ExeName = 'curl.exe'; RelativePath = '' },  # Version in path, uses recursive search
+        @{ PackageId = 'dandavison.delta'; ExeName = 'delta.exe'; RelativePath = '' }  # Version in path, uses recursive search
     )
     foreach ($link in $wingetLinks) {
         Write-Host "  $($link.ExeName)..." -ForegroundColor Cyan -NoNewline
