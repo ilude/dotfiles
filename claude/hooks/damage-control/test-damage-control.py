@@ -6,7 +6,7 @@
 Damage Control Test Runner - Python/UV
 =======================================
 
-Tests damage control hooks via CLI or interactive mode.
+Tests damage control hooks via CLI, interactive, or batch test suite mode.
 
 Usage:
   # Interactive mode - test Bash, Edit, Write hooks interactively
@@ -15,6 +15,12 @@ Usage:
 
   # CLI mode - test a single command
   uv run test-damage-control.py <hook> <tool_name> <command_or_path> [--expect-blocked|--expect-allowed]
+
+  # Batch test suite mode
+  uv run test-damage-control.py --test-suite all
+  uv run test-damage-control.py --test-suite unwrap
+  uv run test-damage-control.py --test-suite git
+  uv run test-damage-control.py --test-suite logging
 
 Examples:
   # Interactive mode
@@ -29,9 +35,12 @@ Examples:
   # Test bash allows safe command
   uv run test-damage-control.py bash Bash "ls -la" --expect-allowed
 
+  # Run batch test suite
+  uv run test-damage-control.py --test-suite all
+
 Exit codes:
-  0 = Test passed (expectation matched)
-  1 = Test failed (expectation not matched)
+  0 = All tests passed (expectation matched)
+  1 = Test(s) failed (expectation not matched)
 """
 
 import subprocess
@@ -43,6 +52,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
 
 import yaml
+import argparse
 
 
 # Import patterns and utilities from the bash tool script (avoid duplication)
@@ -343,7 +353,7 @@ def build_tool_input(tool_name: str, value: str) -> dict:
         return {"command": value}
 
 
-def run_test(hook_type: str, tool_name: str, value: str, expectation: str) -> bool:
+def run_test(hook_type: str, tool_name: str, value: str, expectation: str, verbose: bool = True) -> bool:
     """Run a single test and return True if passed.
 
     expectation can be: "blocked" or "allowed" (exit code based)
@@ -368,10 +378,12 @@ def run_test(hook_type: str, tool_name: str, value: str, expectation: str) -> bo
         stdout = result.stdout.strip()
         stderr = result.stderr.strip()
     except subprocess.TimeoutExpired:
-        print("TIMEOUT")
+        if verbose:
+            print("TIMEOUT")
         return False
     except Exception as e:
-        print(f"ERROR: {e}")
+        if verbose:
+            print(f"ERROR: {e}")
         return False
 
     # Handle PreToolUse hooks (exit code based)
@@ -382,42 +394,179 @@ def run_test(hook_type: str, tool_name: str, value: str, expectation: str) -> bo
     expected = "BLOCKED" if expect_blocked else "ALLOWED"
     actual = "BLOCKED" if blocked else "ALLOWED"
 
-    if passed:
-        print(f"PASS: {expected} - {value}")
-    else:
-        print(f"FAIL: Expected {expected}, got {actual} - {value}")
-        if stderr:
-            print(f"  stderr: {stderr[:200]}")
+    if verbose:
+        if passed:
+            print(f"PASS: {expected} - {value}")
+        else:
+            print(f"FAIL: Expected {expected}, got {actual} - {value}")
+            if stderr:
+                print(f"  stderr: {stderr[:200]}")
 
     return passed
 
 
+# ============================================================================
+# BATCH TEST SUITE MODE
+# ============================================================================
+
+def get_test_fixtures_path() -> Path:
+    """Get path to test_fixtures.yaml."""
+    script_dir = get_script_dir()
+    return script_dir / "test_fixtures.yaml"
+
+
+def load_test_fixtures() -> Dict[str, Any]:
+    """Load test fixtures from YAML file."""
+    fixtures_path = get_test_fixtures_path()
+
+    if not fixtures_path.exists():
+        print(f"Error: test_fixtures.yaml not found at {fixtures_path}")
+        return {}
+
+    with open(fixtures_path, "r") as f:
+        return yaml.safe_load(f) or {}
+
+
+def run_test_suite(suite_name: str) -> int:
+    """Run predefined test suite from fixtures.
+
+    Returns:
+        0 if all tests pass
+        1 if any test fails
+    """
+    fixtures = load_test_fixtures()
+
+    if not fixtures:
+        print("No test fixtures loaded")
+        return 1
+
+    # Determine which suites to run
+    suites_to_run = []
+    if suite_name == "all":
+        suites_to_run = ["shellUnwrapping", "gitSemantic", "backwardCompat"]
+    else:
+        # Map friendly names to fixture keys
+        suite_map = {
+            "unwrap": "shellUnwrapping",
+            "git": "gitSemantic",
+            "logging": "backwardCompat",  # Backward compat tests
+        }
+        if suite_name in suite_map:
+            suites_to_run = [suite_map[suite_name]]
+        else:
+            print(f"Unknown suite: {suite_name}")
+            print(f"Available: all, unwrap, git, logging")
+            return 1
+
+    total_tests = 0
+    passed_tests = 0
+
+    for suite_key in suites_to_run:
+        if suite_key not in fixtures:
+            print(f"Warning: Suite '{suite_key}' not found in fixtures")
+            continue
+
+        suite_data = fixtures[suite_key]
+        print(f"\n{'=' * 60}")
+        print(f"Test Suite: {suite_key}")
+        print(f"{'=' * 60}\n")
+
+        # Run blocked tests
+        if "blocked" in suite_data:
+            print(f"  Testing {len(suite_data['blocked'])} blocked cases:")
+            for test_case in suite_data["blocked"]:
+                command = test_case.get("command", "")
+                reason = test_case.get("reason", "")
+                hook = test_case.get("hook", "bash")
+                tool = test_case.get("tool", "Bash")
+
+                total_tests += 1
+                print(f"    [{total_tests}] {reason}")
+                if run_test(hook, tool, command, "blocked", verbose=False):
+                    passed_tests += 1
+                    print(f"         PASS")
+                else:
+                    print(f"         FAIL")
+
+        # Run allowed tests
+        if "allowed" in suite_data:
+            print(f"\n  Testing {len(suite_data['allowed'])} allowed cases:")
+            for test_case in suite_data["allowed"]:
+                command = test_case.get("command", "")
+                reason = test_case.get("reason", "")
+                hook = test_case.get("hook", "bash")
+                tool = test_case.get("tool", "Bash")
+
+                total_tests += 1
+                print(f"    [{total_tests}] {reason}")
+                if run_test(hook, tool, command, "allowed", verbose=False):
+                    passed_tests += 1
+                    print(f"         PASS")
+                else:
+                    print(f"         FAIL")
+
+    # Print summary
+    print(f"\n{'=' * 60}")
+    print(f"Test Summary")
+    print(f"{'=' * 60}")
+    print(f"Total: {total_tests}")
+    print(f"Passed: {passed_tests}")
+    print(f"Failed: {total_tests - passed_tests}")
+    if total_tests > 0:
+        pass_rate = (passed_tests / total_tests) * 100
+        print(f"Pass Rate: {pass_rate:.1f}%")
+    print()
+
+    return 0 if passed_tests == total_tests else 1
+
+
 def main():
-    # Check for interactive mode
-    if len(sys.argv) >= 2 and sys.argv[1].lower() in ('-i', '--interactive'):
+    # Parse arguments
+    parser = argparse.ArgumentParser(
+        description="Damage Control Test Runner",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__
+    )
+
+    # Create subcommands/modes
+    parser.add_argument('-i', '--interactive', action='store_true',
+                        help='Run interactive mode')
+    parser.add_argument('--test-suite', choices=['all', 'unwrap', 'git', 'logging'],
+                        help='Run batch test suite')
+
+    # Positional args for CLI mode (hook_type tool_name value)
+    parser.add_argument('hook_type', nargs='?', default=None,
+                        help='Hook type: bash, edit, write')
+    parser.add_argument('tool_name', nargs='?', default=None,
+                        help='Tool name: Bash, Edit, Write')
+    parser.add_argument('value', nargs='?', default=None,
+                        help='Command or path to test')
+    parser.add_argument('--expect-blocked', action='store_const', const='blocked', dest='expectation',
+                        help='Expect command to be blocked')
+    parser.add_argument('--expect-allowed', action='store_const', const='allowed', dest='expectation',
+                        help='Expect command to be allowed')
+
+    args = parser.parse_args()
+
+    # Interactive mode
+    if args.interactive:
         run_interactive_mode()
         sys.exit(0)
 
-    # CLI mode requires at least 4 args
-    if len(sys.argv) < 4:
-        print(__doc__)
+    # Batch test suite mode
+    if args.test_suite:
+        exit_code = run_test_suite(args.test_suite)
+        sys.exit(exit_code)
+
+    # CLI mode - requires hook_type, tool_name, and value
+    if not args.hook_type or not args.tool_name or not args.value:
+        parser.print_help()
         sys.exit(1)
 
-    hook_type = sys.argv[1].lower()
-    tool_name = sys.argv[2]
-    value = sys.argv[3]
+    # Default expectation to "blocked" if not specified
+    expectation = args.expectation or "blocked"
 
-    # Default expectation
-    expectation = "blocked"
-
-    if len(sys.argv) > 4:
-        flag = sys.argv[4].lower()
-        if flag == "--expect-allowed":
-            expectation = "allowed"
-        elif flag == "--expect-blocked":
-            expectation = "blocked"
-
-    passed = run_test(hook_type, tool_name, value, expectation)
+    passed = run_test(args.hook_type.lower(), args.tool_name, args.value, expectation)
     sys.exit(0 if passed else 1)
 
 
