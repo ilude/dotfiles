@@ -24,6 +24,8 @@
 - link:
     ~/.gitconfig:
       path: .gitconfig
+    ~/.gitignore_global:
+      path: .gitignore_global
     ~/.zshenv:
       path: .zshenv
     ~/.zshrc:
