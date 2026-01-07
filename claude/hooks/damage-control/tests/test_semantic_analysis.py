@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import importlib.util
 spec = importlib.util.spec_from_file_location(
     "damage_control",
-    Path(__file__).parent / "bash-tool-damage-control.py"
+    Path(__file__).parent.parent / "bash-tool-damage-control.py"
 )
 damage_control = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(damage_control)
