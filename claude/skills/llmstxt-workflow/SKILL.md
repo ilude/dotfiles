@@ -299,10 +299,11 @@ Curated directory of products and companies with llms.txt files.
 - Paginated (12+ pages)
 - Submit new entries via "Submit" button
 
-**Browsing:**
-- No search API - browse only
-- Navigate pages: `https://directory.llmstxt.cloud/?page=2`
-- Categories shown on each entry
+**Browsing & Search:**
+- Search: `https://directory.llmstxt.cloud/?search=anthropic`
+- Pagination: `https://directory.llmstxt.cloud/?page=2`
+- Combine: `https://directory.llmstxt.cloud/?search=api&page=1`
+- Categories: AI, Developer tools, Finance, Products, Websites
 
 **Entry format:**
 ```
