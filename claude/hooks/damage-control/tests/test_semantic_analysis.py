@@ -487,20 +487,20 @@ class TestAuditLogging:
         assert log_path.parent.name == 'damage-control'
 
     def test_get_log_path_filename_format(self, tmp_log_dir):
-        """Test log filename format: YYYY-MM-DD-HH-MM-SS-<guid>.log."""
+        """Test log filename format: YYYY-MM-DD.log (daily file)."""
         log_path = get_log_path()
         filename = log_path.name
 
-        # Check format: YYYY-MM-DD-HH-MM-SS-<8chars>.log
-        pattern = r'\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}-[a-f0-9]{8}\.log'
+        # Check format: YYYY-MM-DD.log (one file per day)
+        pattern = r'\d{4}-\d{2}-\d{2}\.log'
         assert re.match(pattern, filename), f"Filename '{filename}' doesn't match expected pattern"
 
-    def test_get_log_path_unique_filenames(self, tmp_log_dir):
-        """Test that get_log_path() generates unique filenames."""
+    def test_get_log_path_same_day_same_file(self, tmp_log_dir):
+        """Test that get_log_path() returns same path within the same day."""
         path1 = get_log_path()
         path2 = get_log_path()
-        # Different GUIDs should make filenames unique
-        assert path1 != path2
+        # Same day should give same filename (all entries appended to daily file)
+        assert path1 == path2
 
     def test_get_log_path_uses_home_directory(self, tmp_path, monkeypatch):
         """Test that log path is based on HOME environment variable."""
@@ -855,7 +855,7 @@ class TestAuditLogging:
         assert entry['session_id'] == 'test-session-123'
 
     def test_log_decision_multiple_entries_jsonl(self, tmp_log_dir, tmp_path):
-        """Test that multiple log_decision calls append to JSONL format."""
+        """Test that multiple log_decision calls append to same daily JSONL file."""
         # Log multiple decisions
         for i in range(3):
             log_decision(
@@ -868,10 +868,20 @@ class TestAuditLogging:
                 semantic_match=False,
             )
 
-        # Each call creates a new file, so we should have 3 log files
+        # All entries go to the same daily file (JSONL format)
         claude_logs = tmp_path / ".claude" / "logs" / "damage-control"
         log_files = list(claude_logs.glob('*.log'))
-        assert len(log_files) == 3
+        assert len(log_files) == 1, "Should have exactly 1 daily log file"
+
+        # Verify the file contains 3 JSONL entries
+        with open(log_files[0], 'r') as f:
+            lines = f.readlines()
+        assert len(lines) == 3, "Daily log should have 3 entries"
+
+        # Verify each line is valid JSON with expected command
+        for i, line in enumerate(lines):
+            entry = json.loads(line)
+            assert entry['command'] == f"command_{i}"
 
 
 # ============================================================================
