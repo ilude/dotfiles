@@ -6,6 +6,16 @@ model: haiku
 
 Run git status to check uncommitted files. If working tree is clean or merge conflicts exist, exit with appropriate message.
 
+## Pre-commit Hook Optimization
+
+Before creating any commits, check if a pre-commit hook exists and will run tests:
+1. Check if `git config core.hooksPath` is set, or if `.git/hooks/pre-commit` exists
+2. If a hook exists, run the test suite ONCE now (e.g., `make test-quick` or the project's test command)
+3. If tests fail, stop and report the failure - do not proceed with commits
+4. If tests pass, use `--no-verify` flag on all subsequent git commit commands to skip redundant hook runs
+
+This ensures tests run exactly once for multi-commit operations instead of once per commit.
+
 Check for git-crypt encrypted files by reading .gitattributes if it exists. Parse lines with "filter=git-crypt" to identify encrypted file patterns. These files will be skipped during security scanning since they're encrypted before pushing.
 
 Scan all non-encrypted modified and untracked files for secrets. Look for:
@@ -36,8 +46,8 @@ For each group of related files:
 2. Write a commit message that is human-style with natural grammar
 3. NO emojis in commit messages
 4. Brief summary line with optional detailed body
-5. Use HEREDOC format for multi-line messages: git commit -m "$(cat <<'EOF'\ntype: summary\n\nOptional details\nEOF\n)"
-6. Create the commit
+5. Use HEREDOC format for multi-line messages: git commit --no-verify -m "$(cat <<'EOF'\ntype: summary\n\nOptional details\nEOF\n)"
+6. Create the commit (use --no-verify since tests already ran in the pre-commit optimization step)
 
 After each commit, run git status again. If legitimate files remain (not matching the auto-ignore patterns), categorize and group them, then commit. Repeat this loop until git status shows only ignored files or working tree is clean.
 
