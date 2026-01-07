@@ -5,6 +5,7 @@
   autocrlf = input
   editor = code --wait
   symlinks = true
+  excludesFile = ~/.gitignore_global
 
 [pager]
   # Use delta for better diffs if installed, otherwise default pager
