@@ -3,62 +3,57 @@
 
 import sys
 import os
+from pathlib import Path
+
+import pytest
 
 # Import the hook module
 import importlib.util
-spec = importlib.util.spec_from_file_location(
-    "hook_module",
-    os.path.join(os.path.dirname(__file__), "..", "bash-tool-damage-control.py")
-)
-hook_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(hook_module)
 
-check_command = hook_module.check_command
+HOOK_DIR = Path(__file__).parent.parent
 
-# Test configuration (minimal)
-config = {
-    "bashToolPatterns": [],
-    "zeroAccessPaths": [],
-    "readOnlyPaths": [],
-    "noDeletePaths": []
-}
+def load_module(name: str, filename: str):
+    """Load a module with dashes in its filename."""
+    spec = importlib.util.spec_from_file_location(name, HOOK_DIR / filename)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
-# Integration test cases: (command, expected_blocked, description)
-test_cases = [
-    # Git semantic analysis should catch these
-    ('git checkout -- .', True, 'Git semantic: checkout with --'),
-    ('git push --force', True, 'Git semantic: force push'),
-    ('git reset --hard', True, 'Git semantic: hard reset'),
-    ('git clean -fd', True, 'Git semantic: clean with flags'),
+bash_tool = load_module("bash_tool", "bash-tool-damage-control.py")
+check_command = bash_tool.check_command
 
-    # These should pass
-    ('git checkout -b feature', False, 'Git semantic: safe checkout -b'),
-    ('git push --force-with-lease', False, 'Git semantic: safe force with lease'),
-    ('git status', False, 'Git semantic: safe status'),
 
-    # Shell unwrapping + git semantic
-    ('bash -c "git push --force"', True, 'Unwrapped git force push'),
-    ('sh -c "git reset --hard"', True, 'Unwrapped git hard reset'),
-]
+@pytest.fixture
+def minimal_config():
+    """Minimal test configuration."""
+    return {
+        "bashToolPatterns": [],
+        "zeroAccessPaths": [],
+        "readOnlyPaths": [],
+        "noDeletePaths": []
+    }
 
-print('Testing integration of git semantic analysis...\n')
-all_passed = True
-for cmd, expected_blocked, description in test_cases:
-    is_blocked, should_ask, reason = check_command(cmd, config)
-    passed = is_blocked == expected_blocked
-    status = 'PASS' if passed else 'FAIL'
-    all_passed = all_passed and passed
 
-    print(f'[{status}] {description}')
-    print(f'  Command: {cmd}')
-    print(f'  Expected blocked: {expected_blocked}, Got blocked: {is_blocked}')
-    if reason:
-        print(f'  Reason: {reason}')
-    print()
+class TestGitSemanticIntegration:
+    """Integration tests for git semantic analysis with check_command."""
 
-if all_passed:
-    print('[SUCCESS] All integration tests passed!')
-    sys.exit(0)
-else:
-    print('[FAILURE] Some integration tests failed!')
-    sys.exit(1)
+    @pytest.mark.parametrize("command,expected_blocked,description", [
+        # Git semantic analysis should catch these
+        ('git checkout -- .', True, 'Git semantic: checkout with --'),
+        ('git push --force', True, 'Git semantic: force push'),
+        ('git reset --hard', True, 'Git semantic: hard reset'),
+        ('git clean -fd', True, 'Git semantic: clean with flags'),
+        # These should pass
+        ('git checkout -b feature', False, 'Git semantic: safe checkout -b'),
+        ('git push --force-with-lease', False, 'Git semantic: safe force with lease'),
+        ('git status', False, 'Git semantic: safe status'),
+        # Shell unwrapping + git semantic
+        ('bash -c "git push --force"', True, 'Unwrapped git force push'),
+        ('sh -c "git reset --hard"', True, 'Unwrapped git hard reset'),
+    ])
+    def test_git_semantic_integration(self, minimal_config, command, expected_blocked, description):
+        """Test that git semantic analysis integrates with check_command."""
+        is_blocked, should_ask, reason, pattern, unwrapped, semantic = check_command(
+            command, minimal_config
+        )
+        assert is_blocked == expected_blocked, f"{description}: expected {expected_blocked}, got {is_blocked}"
