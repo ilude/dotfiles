@@ -1,4 +1,4 @@
-.PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all test test-quick test-parallel test-docker test-powershell preflight help lint format check install-hooks
+.PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all test test-quick test-parallel test-docker test-powershell test-damage-control test-damage-control-unit test-damage-control-integration preflight help lint format check install-hooks
 
 # Shell scripts to check (excludes dotbot submodule and plugins)
 SHELL_SCRIPTS := .bashrc .zshrc install install-wsl git-ssh-setup claude-link-setup claude-mcp-setup copilot-link-setup zsh-setup zsh-plugins wsl-packages
@@ -14,6 +14,9 @@ help:
 	@echo "  make test-powershell - Run Pester tests for PowerShell code (Windows)"
 	@echo "  make test-quick    - Run only core tests locally"
 	@echo "  make test-parallel - Run tests in parallel (faster but noisier output)"
+	@echo "  make test-damage-control - Run damage-control tests (smoke + unit + integration)"
+	@echo "  make test-damage-control-unit - Run damage-control unit tests (pytest)"
+	@echo "  make test-damage-control-integration - Run damage-control integration tests"
 	@echo "  make preflight     - Check environment (CRLF, dependencies)"
 	@echo "  make lint          - Run shellcheck on shell scripts"
 	@echo "  make format        - Format shell scripts with shfmt"
@@ -66,6 +69,20 @@ preflight:
 # Run all tests locally
 test: preflight
 	bats test/
+
+# Damage Control test targets
+test-damage-control-unit:
+	@echo "Running damage control unit tests..."
+	@cd "$(CURDIR)" && uv run pytest claude/hooks/damage-control/tests/ -v --tb=short
+
+test-damage-control-integration:
+	@echo "Running damage control integration tests..."
+	@cd "$(CURDIR)" && uv run claude/hooks/damage-control/test-damage-control.py --test-suite all
+
+test-damage-control: preflight test-damage-control-unit test-damage-control-integration
+	@echo "Running damage control smoke tests..."
+	@bats test/damage-control.bats
+	@echo "All damage control tests passed."
 
 # Run only core tests (faster)
 test-quick: preflight
