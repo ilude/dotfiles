@@ -83,8 +83,7 @@ secrets/*.json filter=git-crypt diff=git-crypt
 | revert | Reverts | Undo previous commit |
 
 ### Breaking Changes
-Append `!` after the type for breaking changes: `feat!: remove deprecated API`
-Or add footer: `BREAKING CHANGE: description`
+add footer: `BREAKING CHANGE: description`
 
 ### Atomic Commits
 Each commit should:
