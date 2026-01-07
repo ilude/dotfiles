@@ -15,6 +15,7 @@ Exit codes:
 """
 
 import json
+import subprocess
 import sys
 import os
 import fnmatch
@@ -95,6 +96,28 @@ def log_decision(
     except Exception as e:
         # Never crash the hook due to logging failure
         print(f"Warning: Failed to write audit log: {e}", file=sys.stderr)
+
+
+def spawn_log_rotation() -> None:
+    """Fire-and-forget log rotation. Non-blocking, cross-platform."""
+    rotate_script = Path(__file__).parent / "log_rotate.py"
+    if not rotate_script.exists():
+        return
+    try:
+        kwargs = {
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+        }
+        if sys.platform == "win32":
+            kwargs["creationflags"] = (
+                subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW
+            )
+        else:
+            kwargs["start_new_session"] = True
+
+        subprocess.Popen([sys.executable, str(rotate_script)], **kwargs)
+    except OSError:
+        pass  # Don't crash hook if rotation fails to spawn
 
 
 def is_glob_pattern(pattern: str) -> bool:
@@ -252,12 +275,20 @@ def main() -> None:
 
     # Check if file is blocked with context awareness
     blocked, reason = check_path(file_path, config, context=context)
+
+    # Log decision
     if blocked:
         log_decision("Edit", file_path, "blocked", reason, context)
+    else:
+        log_decision("Edit", file_path, "allowed", "", context)
+
+    # Spawn log rotation (fire-and-forget)
+    spawn_log_rotation()
+
+    if blocked:
         print(f"SECURITY: Blocked edit to {reason}: {file_path}", file=sys.stderr)
         sys.exit(2)
 
-    log_decision("Edit", file_path, "allowed", "", context)
     sys.exit(0)
 
 
