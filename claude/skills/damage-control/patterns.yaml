@@ -720,6 +720,18 @@ zeroAccessPaths:
   - "backup.sql"
   - "*.dump"
 
+  # ---------------------------------------------------------------------------
+  # WINDOWS CREDENTIAL STORES (MITRE T1003.002, T1003.004, T1003.005)
+  # ---------------------------------------------------------------------------
+  # SAM/SECURITY/SYSTEM hives (require SYSTEM privileges but defense-in-depth)
+  - "C:/Windows/System32/config/SAM"
+  - "C:/Windows/System32/config/SYSTEM"
+  - "C:/Windows/System32/config/SECURITY"
+  # DPAPI Master Keys
+  - "*/Microsoft/Protect/"
+  - "*/Microsoft/Credentials/"
+  - "*/Microsoft/Vault/"
+
 # ---------------------------------------------------------------------------
 # READ-ONLY PATHS - Can read, but not write/edit/delete
 # ---------------------------------------------------------------------------
