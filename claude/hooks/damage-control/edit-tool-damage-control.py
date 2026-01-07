@@ -20,8 +20,81 @@ import os
 import fnmatch
 from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
+from datetime import datetime
 
 import yaml
+
+
+# ============================================================================
+# AUDIT LOGGING
+# ============================================================================
+
+def get_log_path() -> Path:
+    """Get path to daily audit log file.
+
+    Creates ~/.claude/logs/damage-control/ directory if it doesn't exist.
+    Returns path in format: ~/.claude/logs/damage-control/YYYY-MM-DD.log
+
+    All entries for a given day are appended to the same file (JSONL format).
+    """
+    logs_dir = Path(os.path.expanduser("~")) / ".claude" / "logs" / "damage-control"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    filename = f"{date_str}.log"
+
+    return logs_dir / filename
+
+
+def log_decision(
+    tool_name: str,
+    file_path: str,
+    decision: str,
+    reason: str = "",
+    context: Optional[str] = None,
+) -> None:
+    """Log security decision to audit log in JSONL format.
+
+    Args:
+        tool_name: Name of the tool (e.g., "Edit", "Write").
+        file_path: Path to the file being accessed.
+        decision: Security decision ("blocked" or "allowed").
+        reason: Human-readable reason for blocking (if applicable).
+        context: Context name if applicable (e.g., "documentation").
+    """
+    try:
+        log_path = get_log_path()
+
+        # Truncate file_path to 200 chars for display
+        file_path_truncated = file_path[:200]
+        if len(file_path) > 200:
+            file_path_truncated += "..."
+
+        # Get context information
+        user = os.getenv("USER", "unknown")
+        cwd = os.getcwd()
+        session_id = os.getenv("CLAUDE_SESSION_ID", "")
+
+        # Build JSONL record
+        log_entry = {
+            "timestamp": datetime.now().isoformat(),
+            "tool": tool_name,
+            "file_path": file_path_truncated,
+            "decision": decision,
+            "reason": reason,
+            "context": context,
+            "user": user,
+            "cwd": cwd,
+            "session_id": session_id,
+        }
+
+        # Write as JSONL (one JSON object per line)
+        with open(log_path, "a") as f:
+            f.write(json.dumps(log_entry) + "\n")
+
+    except Exception as e:
+        # Never crash the hook due to logging failure
+        print(f"Warning: Failed to write audit log: {e}", file=sys.stderr)
 
 
 def is_glob_pattern(pattern: str) -> bool:
@@ -94,17 +167,61 @@ def load_config() -> Dict[str, Any]:
     return config
 
 
-def check_path(file_path: str, config: Dict[str, Any]) -> Tuple[bool, str]:
-    """Check if file_path is blocked. Returns (blocked, reason)."""
+def detect_context(tool_name: str, tool_input: Dict[str, Any], config: Dict[str, Any]) -> Optional[str]:
+    """Detect if we're in a special context that allows relaxed checks.
+
+    For Edit/Write tools, this checks file extensions against documentation context.
+
+    Args:
+        tool_name: Name of the tool being invoked ("Edit", "Write").
+        tool_input: Tool input parameters (file_path).
+        config: Loaded configuration from patterns.yaml.
+
+    Returns:
+        Context name (e.g., 'documentation') or None if no context detected.
+    """
+    contexts_config = config.get("contexts", {})
+
+    # Check for documentation context (file extension based)
+    if tool_name in ("Edit", "Write"):
+        doc_ctx = contexts_config.get("documentation", {})
+        if doc_ctx.get("enabled", False):
+            file_path = tool_input.get("file_path", "")
+            extensions = doc_ctx.get("detection", {}).get("file_extensions", [])
+            for ext in extensions:
+                if file_path.endswith(ext):
+                    return "documentation"
+
+    return None
+
+
+def check_path(file_path: str, config: Dict[str, Any], context: Optional[str] = None) -> Tuple[bool, str]:
+    """Check if file_path is blocked. Returns (blocked, reason).
+
+    Args:
+        file_path: Path to file being edited.
+        config: Loaded configuration from patterns.yaml.
+        context: Optional context name that may relax certain checks.
+    """
+    # Get context configuration to determine which checks to relax
+    context_config = {}
+    if context:
+        context_config = config.get("contexts", {}).get(context, {})
+    relaxed_checks = set(context_config.get("relaxed_checks", []))
+
     # Check zero-access paths first (no access at all)
-    for zero_path in config.get("zeroAccessPaths", []):
-        if match_path(file_path, zero_path):
-            return True, f"zero-access path {zero_path} (no operations allowed)"
+    # Skip only if explicitly relaxed (should NEVER be relaxed for security)
+    if "zeroAccessPaths" not in relaxed_checks:
+        for zero_path in config.get("zeroAccessPaths", []):
+            if match_path(file_path, zero_path):
+                return True, f"zero-access path {zero_path} (no operations allowed)"
 
     # Check read-only paths (edits not allowed)
-    for readonly in config.get("readOnlyPaths", []):
-        if match_path(file_path, readonly):
-            return True, f"read-only path {readonly}"
+    # Skip only if explicitly relaxed
+    if "readOnlyPaths" not in relaxed_checks:
+        for readonly in config.get("readOnlyPaths", []):
+            if match_path(file_path, readonly):
+                return True, f"read-only path {readonly}"
 
     return False, ""
 
@@ -130,12 +247,17 @@ def main() -> None:
     if not file_path:
         sys.exit(0)
 
-    # Check if file is blocked
-    blocked, reason = check_path(file_path, config)
+    # Detect context (e.g., documentation)
+    context = detect_context(tool_name, tool_input, config)
+
+    # Check if file is blocked with context awareness
+    blocked, reason = check_path(file_path, config, context=context)
     if blocked:
+        log_decision("Edit", file_path, "blocked", reason, context)
         print(f"SECURITY: Blocked edit to {reason}: {file_path}", file=sys.stderr)
         sys.exit(2)
 
+    log_decision("Edit", file_path, "allowed", "", context)
     sys.exit(0)
 
 
