@@ -17,6 +17,9 @@ This skill helps users deploy and manage the Damage Control security system, whi
   - `zeroAccessPaths` - No access at all (secrets/credentials)
   - `readOnlyPaths` - Read allowed, modifications blocked
   - `noDeletePaths` - All operations except delete
+- **Shell Unwrapping**: Detects shell wrapper invocations (bash -c, sh -c) and analyzes inner commands
+- **Git Semantic Analysis**: Understands git command semantics (force push, hard reset, reflog deletion)
+- **Audit Logging**: Complete JSON logs of all decisions for compliance and analysis
 
 ## Skill Structure
 
@@ -30,6 +33,7 @@ This skill helps users deploy and manage the Damage Control security system, whi
 │   ├── manual_control_damage_control_ag_workflow.md
 │   ├── list_damage_controls.md
 │   ├── test_damage_control.md
+│   ├── view_audit_logs.md       # New: Audit log analysis guide
 │   └── build_for_windows.md
 ├── hooks/
 │   ├── damage-control-python/   # Python/UV implementation
@@ -37,7 +41,11 @@ This skill helps users deploy and manage the Damage Control security system, whi
 │   │   ├── edit-tool-damage-control.py
 │   │   ├── write-tool-damage-control.py
 │   │   ├── python-settings.json
-│   │   └── test-damage-control.py
+│   │   ├── test-damage-control.py
+│   │   └── tests/               # Comprehensive test suite
+│   │       ├── test_integration.py
+│   │       ├── test_git_semantic.py
+│   │       └── conftest.py
 │   └── damage-control-typescript/  # Bun/TypeScript implementation
 │       ├── bash-tool-damage-control.ts
 │       ├── edit-tool-damage-control.ts
@@ -92,6 +100,46 @@ The install workflow copies hooks and creates settings based on the chosen level
             ├── edit-tool-damage-control.py
             └── write-tool-damage-control.py
 ```
+
+---
+
+## Enhanced Features
+
+### Shell Unwrapping
+
+Detects and analyzes commands wrapped in shell invocations:
+- Recognizes `bash -c`, `sh -c`, `zsh -c`, etc.
+- Extracts and evaluates the inner command
+- Blocks if inner command matches dangerous patterns
+- Works recursively for deeply nested wrappers
+
+Example: `bash -c 'rm -rf /tmp/data'` → extracts `rm -rf /tmp/data` → blocks
+
+### Git Semantic Analysis
+
+Understands git command structure and semantics:
+- **Force operations**: `git push --force`, `git push --force-with-lease`
+- **Destructive history operations**: `git reset --hard`, `git revert --no-edit`
+- **Reflog deletion**: `git reflog delete`, `git reflog expire`
+- **Checkout forced operations**: `git checkout -f`
+- **Conditional blocking**: Respects `git config safe.directoryRefresh` and `push.default` settings
+
+Example: `git push --force` → matches git-force pattern → blocks
+
+### Audit Logging
+
+Comprehensive JSON logging of all security decisions:
+- Location: `~/.claude/logs/damage-control/`
+- Per-tool logs: `bash-tool.log`, `edit-tool.log`, `write-tool.log`
+- Queryable JSON format for analysis and compliance
+- Includes timestamp, decision, matched pattern, confidence
+
+View logs:
+```bash
+cat ~/.claude/logs/damage-control/*.log | jq
+```
+
+For detailed analysis examples, see [cookbook/view_audit_logs.md](cookbook/view_audit_logs.md).
 
 ---
 
@@ -199,6 +247,54 @@ This section defines the decision tree for handling user requests. Based on what
 
 ## Testing
 
+### Smoke Tests (Quick Validation)
+
+Fast validation of hook installation and basic functionality:
+```bash
+cd ~/.dotfiles
+make test-damage-control
+```
+
+Individual smoke tests:
+```bash
+bats test/damage-control.bats
+```
+
+### Unit Tests (Comprehensive)
+
+94 pytest tests covering all edge cases and features:
+```bash
+cd ~/.dotfiles
+make test-damage-control-unit
+# or directly:
+uv run pytest claude/hooks/damage-control/tests/ -v
+```
+
+### Integration Tests (Full Test Runner)
+
+42 integration test cases via the Python test runner:
+```bash
+cd ~/.dotfiles
+make test-damage-control-integration
+```
+
+Test specific features:
+```bash
+# Test shell unwrapping
+uv run test-damage-control.py --test-suite unwrap
+
+# Test git semantic analysis
+uv run test-damage-control.py --test-suite git
+
+# Test audit logging
+uv run test-damage-control.py --test-suite logging
+
+# Test all features
+uv run test-damage-control.py --test-suite all
+```
+
+### Manual Testing with Test Prompts
+
 Use the test prompts in [test-prompts/](test-prompts/) to validate the hooks:
 
 - `sentient_v1.md` - Tests `rm -rf` blocking (bashToolPatterns)
@@ -220,6 +316,7 @@ Run a test:
 - [cookbook/manual_control_damage_control_ag_workflow.md](cookbook/manual_control_damage_control_ag_workflow.md) - Manual guidance
 - [cookbook/list_damage_controls.md](cookbook/list_damage_controls.md) - List all configurations
 - [cookbook/test_damage_control.md](cookbook/test_damage_control.md) - Test all hooks
+- [cookbook/view_audit_logs.md](cookbook/view_audit_logs.md) - View and analyze audit logs
 - [cookbook/build_for_windows.md](cookbook/build_for_windows.md) - Add Windows patterns
 - [hooks/damage-control-python/](hooks/damage-control-python/) - Python implementation
 - [hooks/damage-control-typescript/](hooks/damage-control-typescript/) - TypeScript implementation
