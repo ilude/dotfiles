@@ -1,0 +1,5 @@
+# Global gitignore - patterns ignored in all repositories
+# See: https://git-scm.com/docs/gitignore
+
+# AI/LLM tools
+.specstory/
