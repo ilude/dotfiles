@@ -31,6 +31,148 @@ import yaml
 
 
 # ============================================================================
+# CONFIGURATION COMPILATION AND CACHING
+# ============================================================================
+
+# Module-level cache for compiled configuration
+_compiled_config_cache: Optional[Dict[str, Any]] = None
+
+
+def compile_regex_patterns(patterns: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Pre-compile regex patterns from bashToolPatterns config.
+
+    Args:
+        patterns: List of pattern dictionaries from YAML config.
+
+    Returns:
+        List of pattern dictionaries with added 'compiled' field containing
+        compiled regex objects. Invalid patterns are skipped with warning.
+    """
+    compiled = []
+    for idx, item in enumerate(patterns):
+        pattern = item.get("pattern", "")
+        if not pattern:
+            continue
+
+        try:
+            # Pre-compile with IGNORECASE flag (used throughout check_command)
+            compiled_regex = re.compile(pattern, re.IGNORECASE)
+            # Create new dict with compiled pattern added
+            compiled_item = item.copy()
+            compiled_item["compiled"] = compiled_regex
+            compiled.append(compiled_item)
+        except re.error as e:
+            # Skip invalid patterns with warning (don't crash)
+            print(f"Warning: Invalid regex pattern at index {idx}: {pattern} - {e}", file=sys.stderr)
+            continue
+
+    return compiled
+
+
+def preprocess_path_list(paths: List[str]) -> List[Dict[str, Any]]:
+    """Pre-process path list for fast matching.
+
+    For glob patterns: pre-compile glob-to-regex conversion
+    For literal paths: pre-compute expanded path and escaped forms
+
+    Args:
+        paths: List of path strings (may contain globs like *.pem or literals like ~/.ssh/)
+
+    Returns:
+        List of path dictionaries with pre-computed data:
+        - is_glob: bool
+        - original: str (original path string)
+        - glob_regex: compiled regex (only for globs)
+        - expanded: str (only for literals)
+        - escaped_expanded: str (only for literals)
+        - escaped_original: str (only for literals)
+    """
+    processed = []
+    for path in paths:
+        if not path:
+            continue
+
+        path_obj = {
+            "original": path,
+            "is_glob": is_glob_pattern(path),
+        }
+
+        if path_obj["is_glob"]:
+            # Pre-compile glob-to-regex for command matching
+            try:
+                glob_regex_str = glob_to_regex(path)
+                path_obj["glob_regex"] = re.compile(glob_regex_str, re.IGNORECASE)
+            except re.error as e:
+                print(f"Warning: Invalid glob pattern: {path} - {e}", file=sys.stderr)
+                continue
+        else:
+            # Pre-compute expanded path and escaped forms for literal paths
+            try:
+                expanded = os.path.expanduser(path)
+                path_obj["expanded"] = expanded
+                path_obj["escaped_expanded"] = re.escape(expanded)
+                path_obj["escaped_original"] = re.escape(path)
+            except Exception as e:
+                print(f"Warning: Failed to process path: {path} - {e}", file=sys.stderr)
+                continue
+
+        processed.append(path_obj)
+
+    return processed
+
+
+def compile_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Compile configuration for fast pattern matching.
+
+    Pre-processes all patterns and paths at load time:
+    - Compiles all regex patterns with IGNORECASE
+    - Pre-processes all path lists (glob-to-regex, expanduser, re.escape)
+
+    Args:
+        config: Raw configuration from load_config()
+
+    Returns:
+        Compiled configuration with pre-computed data added
+    """
+    compiled = config.copy()
+
+    # Compile bashToolPatterns regex patterns
+    patterns = config.get("bashToolPatterns", [])
+    compiled["bashToolPatterns_compiled"] = compile_regex_patterns(patterns)
+
+    # Pre-process all path lists
+    zero_access = config.get("zeroAccessPaths", [])
+    compiled["zeroAccessPaths_compiled"] = preprocess_path_list(zero_access)
+
+    read_only = config.get("readOnlyPaths", [])
+    compiled["readOnlyPaths_compiled"] = preprocess_path_list(read_only)
+
+    no_delete = config.get("noDeletePaths", [])
+    compiled["noDeletePaths_compiled"] = preprocess_path_list(no_delete)
+
+    return compiled
+
+
+def get_compiled_config() -> Dict[str, Any]:
+    """Get compiled configuration, using module-level cache.
+
+    Loads and compiles configuration once, then returns cached version
+    on subsequent calls. Cache persists for the lifetime of the process.
+
+    Returns:
+        Compiled configuration dictionary
+    """
+    global _compiled_config_cache
+
+    if _compiled_config_cache is None:
+        # Load and compile configuration once
+        raw_config = load_config()
+        _compiled_config_cache = compile_config(raw_config)
+
+    return _compiled_config_cache
+
+
+# ============================================================================
 # AUDIT LOGGING
 # ============================================================================
 
@@ -636,16 +778,30 @@ def detect_context(tool_name: str, tool_input: Dict[str, Any], config: Dict[str,
 # PATH CHECKING
 # ============================================================================
 
-def check_path_patterns(command: str, path: str, patterns: List[Tuple[str, str]], path_type: str) -> Tuple[bool, str]:
+def check_path_patterns(command: str, path_obj: Dict[str, Any], patterns: List[Tuple[str, str]], path_type: str) -> Tuple[bool, str]:
     """Check command against a list of patterns for a specific path.
 
-    Supports both:
-    - Literal paths: ~/.bashrc, /etc/hosts (prefix matching)
-    - Glob patterns: *.lock, *.md, src/* (glob matching)
+    Uses pre-processed path objects from preprocess_path_list().
+
+    Args:
+        command: Command string to check
+        path_obj: Pre-processed path object with compiled regex/escaped forms
+        patterns: List of (pattern_template, operation) tuples
+        path_type: Human-readable path type for error messages
+
+    Returns:
+        Tuple of (is_blocked, reason)
     """
-    if is_glob_pattern(path):
-        # Glob pattern - convert to regex for command matching
-        glob_regex = glob_to_regex(path)
+    path_str = path_obj["original"]
+
+    if path_obj["is_glob"]:
+        # Use pre-compiled glob regex
+        glob_regex_compiled = path_obj.get("glob_regex")
+        if not glob_regex_compiled:
+            return False, ""
+
+        glob_regex_str = glob_regex_compiled.pattern
+
         for pattern_template, operation in patterns:
             # For glob patterns, we check if the operation + glob appears in command
             # e.g., "rm *.lock" should match DELETE_PATTERNS with *.lock
@@ -653,15 +809,17 @@ def check_path_patterns(command: str, path: str, patterns: List[Tuple[str, str]]
                 # Build a regex that matches: operation ... glob_pattern
                 # Extract the command prefix from pattern_template (e.g., '\brm\s+.*' from '\brm\s+.*{path}')
                 cmd_prefix = pattern_template.replace("{path}", "")
-                if cmd_prefix and re.search(cmd_prefix + glob_regex, command, re.IGNORECASE):
-                    return True, f"Blocked: {operation} operation on {path_type} {path}"
+                if cmd_prefix and re.search(cmd_prefix + glob_regex_str, command, re.IGNORECASE):
+                    return True, f"Blocked: {operation} operation on {path_type} {path_str}"
             except re.error:
                 continue
     else:
-        # Original literal path matching (prefix-based)
-        expanded = os.path.expanduser(path)
-        escaped_expanded = re.escape(expanded)
-        escaped_original = re.escape(path)
+        # Use pre-computed escaped forms for literal paths
+        escaped_expanded = path_obj.get("escaped_expanded", "")
+        escaped_original = path_obj.get("escaped_original", "")
+
+        if not escaped_expanded or not escaped_original:
+            return False, ""
 
         for pattern_template, operation in patterns:
             # Check both expanded path (/Users/x/.ssh/) and original tilde form (~/.ssh/)
@@ -669,7 +827,7 @@ def check_path_patterns(command: str, path: str, patterns: List[Tuple[str, str]]
             pattern_original = pattern_template.replace("{path}", escaped_original)
             try:
                 if re.search(pattern_expanded, command) or re.search(pattern_original, command):
-                    return True, f"Blocked: {operation} operation on {path_type} {path}"
+                    return True, f"Blocked: {operation} operation on {path_type} {path_str}"
             except re.error:
                 continue
 
@@ -681,7 +839,7 @@ def check_command(command: str, config: Dict[str, Any], context: Optional[str] =
 
     Args:
         command: Command string to check.
-        config: Loaded configuration from patterns.yaml.
+        config: Configuration (either raw from load_config() or compiled from get_compiled_config()).
         context: Optional context name (e.g., 'documentation', 'commit_message') that may relax certain checks.
 
     Returns: (blocked, ask, reason, pattern_matched, was_unwrapped, semantic_match)
@@ -708,21 +866,44 @@ def check_command(command: str, config: Dict[str, Any], context: Optional[str] =
         if is_dangerous_git:
             return True, False, f"Blocked: {git_reason}", "semantic_git", was_unwrapped, True
 
-    patterns = config.get("bashToolPatterns", [])
-    zero_access_paths = config.get("zeroAccessPaths", [])
-    read_only_paths = config.get("readOnlyPaths", [])
-    no_delete_paths = config.get("noDeletePaths", [])
+    # Check if config is compiled (has _compiled keys) or raw
+    # For backward compatibility with tests that pass raw configs
+    has_compiled = "bashToolPatterns_compiled" in config
+
+    if has_compiled:
+        # Use pre-compiled patterns from config
+        compiled_patterns = config.get("bashToolPatterns_compiled", [])
+        compiled_zero_access = config.get("zeroAccessPaths_compiled", [])
+        compiled_read_only = config.get("readOnlyPaths_compiled", [])
+        compiled_no_delete = config.get("noDeletePaths_compiled", [])
+    else:
+        # Compile on the fly for backward compatibility (slower path)
+        raw_patterns = config.get("bashToolPatterns", [])
+        compiled_patterns = compile_regex_patterns(raw_patterns)
+
+        raw_zero_access = config.get("zeroAccessPaths", [])
+        compiled_zero_access = preprocess_path_list(raw_zero_access)
+
+        raw_read_only = config.get("readOnlyPaths", [])
+        compiled_read_only = preprocess_path_list(raw_read_only)
+
+        raw_no_delete = config.get("noDeletePaths", [])
+        compiled_no_delete = preprocess_path_list(raw_no_delete)
 
     # 1. Check against patterns from YAML (may block or ask)
     # Skip if bashToolPatterns is relaxed in this context (e.g., documentation)
     if "bashToolPatterns" not in relaxed_checks:
-        for idx, item in enumerate(patterns):
-            pattern = item.get("pattern", "")
+        for idx, item in enumerate(compiled_patterns):
+            compiled_regex = item.get("compiled")
             reason = item.get("reason", "Blocked by pattern")
             should_ask = item.get("ask", False)
 
+            if not compiled_regex:
+                continue
+
             try:
-                if re.search(pattern, unwrapped_cmd, re.IGNORECASE):
+                # Use pre-compiled regex (already has IGNORECASE flag)
+                if compiled_regex.search(unwrapped_cmd):
                     pattern_id = f"yaml_pattern_{idx}"
                     if should_ask:
                         return False, True, reason, pattern_id, was_unwrapped, False  # Ask for confirmation
@@ -734,38 +915,40 @@ def check_command(command: str, config: Dict[str, Any], context: Optional[str] =
     # 2. Check for ANY access to zero-access paths (including reads)
     # Skip only if explicitly relaxed in context (should NEVER be relaxed for security)
     if "zeroAccessPaths" not in relaxed_checks:
-        for zero_path in zero_access_paths:
-            if is_glob_pattern(zero_path):
-                # Convert glob to regex for command matching
-                glob_regex = glob_to_regex(zero_path)
-                try:
-                    if re.search(glob_regex, unwrapped_cmd, re.IGNORECASE):
-                        return True, False, f"Blocked: zero-access pattern {zero_path} (no operations allowed)", "zero_access_glob", was_unwrapped, False
-                except re.error:
-                    continue
+        for path_obj in compiled_zero_access:
+            if path_obj["is_glob"]:
+                # Use pre-compiled glob regex
+                glob_regex_compiled = path_obj.get("glob_regex")
+                if glob_regex_compiled:
+                    try:
+                        if glob_regex_compiled.search(unwrapped_cmd):
+                            return True, False, f"Blocked: zero-access pattern {path_obj['original']} (no operations allowed)", "zero_access_glob", was_unwrapped, False
+                    except re.error:
+                        continue
             else:
-                # Original literal path matching
-                expanded = os.path.expanduser(zero_path)
-                escaped_expanded = re.escape(expanded)
-                escaped_original = re.escape(zero_path)
+                # Use pre-computed escaped forms for literal paths
+                escaped_expanded = path_obj.get("escaped_expanded", "")
+                escaped_original = path_obj.get("escaped_original", "")
 
-                # Check both expanded path (/Users/x/.ssh/) and original tilde form (~/.ssh/)
-                if re.search(escaped_expanded, unwrapped_cmd) or re.search(escaped_original, unwrapped_cmd):
-                    return True, False, f"Blocked: zero-access path {zero_path} (no operations allowed)", "zero_access_literal", was_unwrapped, False
+                if escaped_expanded or escaped_original:
+                    # Check both expanded path (/Users/x/.ssh/) and original tilde form (~/.ssh/)
+                    if (escaped_expanded and re.search(escaped_expanded, unwrapped_cmd)) or \
+                       (escaped_original and re.search(escaped_original, unwrapped_cmd)):
+                        return True, False, f"Blocked: zero-access path {path_obj['original']} (no operations allowed)", "zero_access_literal", was_unwrapped, False
 
     # 3. Check for modifications to read-only paths (reads allowed)
     # Skip only if explicitly relaxed in context
     if "readOnlyPaths" not in relaxed_checks:
-        for readonly in read_only_paths:
-            blocked, reason = check_path_patterns(unwrapped_cmd, readonly, READ_ONLY_BLOCKED, "read-only path")
+        for path_obj in compiled_read_only:
+            blocked, reason = check_path_patterns(unwrapped_cmd, path_obj, READ_ONLY_BLOCKED, "read-only path")
             if blocked:
                 return True, False, reason, "readonly_path", was_unwrapped, False
 
     # 4. Check for deletions on no-delete paths (read/write/edit allowed)
     # Skip only if explicitly relaxed in context
     if "noDeletePaths" not in relaxed_checks:
-        for no_delete in no_delete_paths:
-            blocked, reason = check_path_patterns(unwrapped_cmd, no_delete, NO_DELETE_BLOCKED, "no-delete path")
+        for path_obj in compiled_no_delete:
+            blocked, reason = check_path_patterns(unwrapped_cmd, path_obj, NO_DELETE_BLOCKED, "no-delete path")
             if blocked:
                 return True, False, reason, "nodelete_path", was_unwrapped, False
 
@@ -777,7 +960,8 @@ def check_command(command: str, config: Dict[str, Any], context: Optional[str] =
 # ============================================================================
 
 def main() -> None:
-    config = load_config()
+    # Get compiled configuration (uses module-level cache)
+    config = get_compiled_config()
 
     # Read hook input from stdin
     try:
@@ -803,7 +987,7 @@ def main() -> None:
     # Detect context (e.g., documentation, commit_message)
     context = detect_context(tool_name, tool_input, config)
 
-    # Check the command with context awareness
+    # Check the command with context awareness (uses compiled config)
     is_blocked, should_ask, reason, pattern_matched, was_unwrapped, semantic_match = check_command(command, config, context=context)
 
     # Log the decision with all metadata
