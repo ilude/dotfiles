@@ -22,7 +22,6 @@ import sys
 import re
 import os
 import fnmatch
-import uuid
 from pathlib import Path
 from typing import Tuple, List, Dict, Any, Optional
 from datetime import datetime
@@ -35,21 +34,22 @@ import yaml
 # ============================================================================
 
 def get_log_path() -> Path:
-    """Get path to audit log file with timestamp and GUID.
+    """Get path to daily audit log file.
 
     Creates ~/.claude/logs/damage-control/ directory if it doesn't exist.
-    Returns path in format: ~/.claude/logs/damage-control/YYYY-MM-DD-HH-MM-SS-<8char_guid>.log
+    Returns path in format: ~/.claude/logs/damage-control/YYYY-MM-DD.log
+
+    All entries for a given day are appended to the same file (JSONL format).
 
     Returns:
-        Path object for the log file.
+        Path object for the daily log file.
     """
     logs_dir = Path(os.path.expanduser("~")) / ".claude" / "logs" / "damage-control"
     logs_dir.mkdir(parents=True, exist_ok=True)
 
-    # Generate timestamp and GUID for filename
-    timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    guid = str(uuid.uuid4())[:8]  # First 8 chars of UUID
-    filename = f"{timestamp}-{guid}.log"
+    # Use date-only for daily log files
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    filename = f"{date_str}.log"
 
     return logs_dir / filename
 
@@ -113,11 +113,12 @@ def log_decision(
     pattern_matched: str = "",
     unwrapped: bool = False,
     semantic_match: bool = False,
+    context: Optional[str] = None,
 ) -> None:
     """Log security decision to audit log in JSONL format.
 
     One JSON object per line, containing timestamp, tool, command (truncated),
-    redacted command, decision (blocked/ask/allowed), reason, and flags.
+    redacted command, decision (blocked/ask/allowed), reason, flags, and context.
 
     Args:
         tool_name: Name of the tool (e.g., "Bash").
@@ -127,6 +128,7 @@ def log_decision(
         pattern_matched: Pattern that matched (if any), e.g., "semantic_git" or "regex_pattern_name".
         unwrapped: True if command was unwrapped from a shell wrapper.
         semantic_match: True if decision based on semantic analysis (e.g., git dangerous operations).
+        context: Context name if applicable (e.g., "documentation", "commit_message").
     """
     try:
         log_path = get_log_path()
@@ -161,6 +163,7 @@ def log_decision(
             "session_id": session_id,
             "unwrapped": unwrapped,
             "semantic_match": semantic_match,
+            "context": context,
         }
 
         # Write as JSONL (one JSON object per line)
@@ -551,6 +554,62 @@ def load_config() -> Dict[str, Any]:
 
 
 # ============================================================================
+# CONTEXT DETECTION
+# ============================================================================
+
+def detect_context(tool_name: str, tool_input: Dict[str, Any], config: Dict[str, Any]) -> Optional[str]:
+    """Detect if we're in a special context that allows relaxed checks.
+
+    Contexts are defined in patterns.yaml and can relax certain security checks
+    when operating in specific scenarios (e.g., writing documentation with
+    command examples, or committing messages that mention dangerous commands).
+
+    Args:
+        tool_name: Name of the tool being invoked ("Bash", "Edit", "Write").
+        tool_input: Tool input parameters (command, file_path, etc.).
+        config: Loaded configuration from patterns.yaml.
+
+    Returns:
+        Context name (e.g., 'documentation', 'commit_message') or None if no context detected.
+
+    Examples:
+        >>> detect_context("Edit", {"file_path": "README.md"}, config)
+        'documentation'
+        >>> detect_context("Bash", {"command": "git commit -m 'test'"}, config)
+        'commit_message'
+        >>> detect_context("Write", {"file_path": "script.py"}, config)
+        None
+    """
+    contexts_config = config.get("contexts", {})
+
+    # Check Edit/Write tools for documentation context (file extension based)
+    if tool_name in ("Edit", "Write"):
+        doc_ctx = contexts_config.get("documentation", {})
+        if doc_ctx.get("enabled", False):
+            file_path = tool_input.get("file_path", "")
+            extensions = doc_ctx.get("detection", {}).get("file_extensions", [])
+            for ext in extensions:
+                if file_path.endswith(ext):
+                    return "documentation"
+
+    # Check Bash tool for commit message context (command pattern based)
+    elif tool_name == "Bash":
+        commit_ctx = contexts_config.get("commit_message", {})
+        if commit_ctx.get("enabled", False):
+            command = tool_input.get("command", "")
+            patterns = commit_ctx.get("detection", {}).get("command_patterns", [])
+            for pattern in patterns:
+                try:
+                    if re.search(pattern, command, re.IGNORECASE):
+                        return "commit_message"
+                except re.error:
+                    # Skip invalid regex patterns
+                    continue
+
+    return None
+
+
+# ============================================================================
 # PATH CHECKING
 # ============================================================================
 
@@ -594,8 +653,13 @@ def check_path_patterns(command: str, path: str, patterns: List[Tuple[str, str]]
     return False, ""
 
 
-def check_command(command: str, config: Dict[str, Any]) -> Tuple[bool, bool, str, str, bool, bool]:
+def check_command(command: str, config: Dict[str, Any], context: Optional[str] = None) -> Tuple[bool, bool, str, str, bool, bool]:
     """Check if command should be blocked or requires confirmation.
+
+    Args:
+        command: Command string to check.
+        config: Loaded configuration from patterns.yaml.
+        context: Optional context name (e.g., 'documentation', 'commit_message') that may relax certain checks.
 
     Returns: (blocked, ask, reason, pattern_matched, was_unwrapped, semantic_match)
       - blocked=True, ask=False: Block the command
@@ -605,13 +669,21 @@ def check_command(command: str, config: Dict[str, Any]) -> Tuple[bool, bool, str
       - was_unwrapped: True if command was unwrapped from shell wrapper
       - semantic_match: True if decision based on semantic analysis (e.g., git dangerous operations)
     """
+    # Get context configuration to determine which checks to relax
+    context_config = {}
+    if context:
+        context_config = config.get("contexts", {}).get(context, {})
+    relaxed_checks = set(context_config.get("relaxed_checks", []))
+
     # Unwrap shell wrappers first to detect hidden commands
     unwrapped_cmd, was_unwrapped = unwrap_command(command)
 
     # Semantic git analysis - check AFTER unwrapping, BEFORE regex patterns
-    is_dangerous_git, git_reason = analyze_git_command(unwrapped_cmd)
-    if is_dangerous_git:
-        return True, False, f"Blocked: {git_reason}", "semantic_git", was_unwrapped, True
+    # Only skip if explicitly relaxed in context (unlikely for most contexts)
+    if "semantic_git" not in relaxed_checks:
+        is_dangerous_git, git_reason = analyze_git_command(unwrapped_cmd)
+        if is_dangerous_git:
+            return True, False, f"Blocked: {git_reason}", "semantic_git", was_unwrapped, True
 
     patterns = config.get("bashToolPatterns", [])
     zero_access_paths = config.get("zeroAccessPaths", [])
@@ -619,52 +691,60 @@ def check_command(command: str, config: Dict[str, Any]) -> Tuple[bool, bool, str
     no_delete_paths = config.get("noDeletePaths", [])
 
     # 1. Check against patterns from YAML (may block or ask)
-    for idx, item in enumerate(patterns):
-        pattern = item.get("pattern", "")
-        reason = item.get("reason", "Blocked by pattern")
-        should_ask = item.get("ask", False)
+    # Skip if bashToolPatterns is relaxed in this context (e.g., documentation)
+    if "bashToolPatterns" not in relaxed_checks:
+        for idx, item in enumerate(patterns):
+            pattern = item.get("pattern", "")
+            reason = item.get("reason", "Blocked by pattern")
+            should_ask = item.get("ask", False)
 
-        try:
-            if re.search(pattern, unwrapped_cmd, re.IGNORECASE):
-                pattern_id = f"yaml_pattern_{idx}"
-                if should_ask:
-                    return False, True, reason, pattern_id, was_unwrapped, False  # Ask for confirmation
-                else:
-                    return True, False, f"Blocked: {reason}", pattern_id, was_unwrapped, False  # Block
-        except re.error:
-            continue
-
-    # 2. Check for ANY access to zero-access paths (including reads)
-    for zero_path in zero_access_paths:
-        if is_glob_pattern(zero_path):
-            # Convert glob to regex for command matching
-            glob_regex = glob_to_regex(zero_path)
             try:
-                if re.search(glob_regex, unwrapped_cmd, re.IGNORECASE):
-                    return True, False, f"Blocked: zero-access pattern {zero_path} (no operations allowed)", "zero_access_glob", was_unwrapped, False
+                if re.search(pattern, unwrapped_cmd, re.IGNORECASE):
+                    pattern_id = f"yaml_pattern_{idx}"
+                    if should_ask:
+                        return False, True, reason, pattern_id, was_unwrapped, False  # Ask for confirmation
+                    else:
+                        return True, False, f"Blocked: {reason}", pattern_id, was_unwrapped, False  # Block
             except re.error:
                 continue
-        else:
-            # Original literal path matching
-            expanded = os.path.expanduser(zero_path)
-            escaped_expanded = re.escape(expanded)
-            escaped_original = re.escape(zero_path)
 
-            # Check both expanded path (/Users/x/.ssh/) and original tilde form (~/.ssh/)
-            if re.search(escaped_expanded, unwrapped_cmd) or re.search(escaped_original, unwrapped_cmd):
-                return True, False, f"Blocked: zero-access path {zero_path} (no operations allowed)", "zero_access_literal", was_unwrapped, False
+    # 2. Check for ANY access to zero-access paths (including reads)
+    # Skip only if explicitly relaxed in context (should NEVER be relaxed for security)
+    if "zeroAccessPaths" not in relaxed_checks:
+        for zero_path in zero_access_paths:
+            if is_glob_pattern(zero_path):
+                # Convert glob to regex for command matching
+                glob_regex = glob_to_regex(zero_path)
+                try:
+                    if re.search(glob_regex, unwrapped_cmd, re.IGNORECASE):
+                        return True, False, f"Blocked: zero-access pattern {zero_path} (no operations allowed)", "zero_access_glob", was_unwrapped, False
+                except re.error:
+                    continue
+            else:
+                # Original literal path matching
+                expanded = os.path.expanduser(zero_path)
+                escaped_expanded = re.escape(expanded)
+                escaped_original = re.escape(zero_path)
+
+                # Check both expanded path (/Users/x/.ssh/) and original tilde form (~/.ssh/)
+                if re.search(escaped_expanded, unwrapped_cmd) or re.search(escaped_original, unwrapped_cmd):
+                    return True, False, f"Blocked: zero-access path {zero_path} (no operations allowed)", "zero_access_literal", was_unwrapped, False
 
     # 3. Check for modifications to read-only paths (reads allowed)
-    for readonly in read_only_paths:
-        blocked, reason = check_path_patterns(unwrapped_cmd, readonly, READ_ONLY_BLOCKED, "read-only path")
-        if blocked:
-            return True, False, reason, "readonly_path", was_unwrapped, False
+    # Skip only if explicitly relaxed in context
+    if "readOnlyPaths" not in relaxed_checks:
+        for readonly in read_only_paths:
+            blocked, reason = check_path_patterns(unwrapped_cmd, readonly, READ_ONLY_BLOCKED, "read-only path")
+            if blocked:
+                return True, False, reason, "readonly_path", was_unwrapped, False
 
     # 4. Check for deletions on no-delete paths (read/write/edit allowed)
-    for no_delete in no_delete_paths:
-        blocked, reason = check_path_patterns(unwrapped_cmd, no_delete, NO_DELETE_BLOCKED, "no-delete path")
-        if blocked:
-            return True, False, reason, "nodelete_path", was_unwrapped, False
+    # Skip only if explicitly relaxed in context
+    if "noDeletePaths" not in relaxed_checks:
+        for no_delete in no_delete_paths:
+            blocked, reason = check_path_patterns(unwrapped_cmd, no_delete, NO_DELETE_BLOCKED, "no-delete path")
+            if blocked:
+                return True, False, reason, "nodelete_path", was_unwrapped, False
 
     return False, False, "", "", was_unwrapped, False
 
@@ -697,8 +777,11 @@ def main() -> None:
     if not command:
         sys.exit(0)
 
-    # Check the command
-    is_blocked, should_ask, reason, pattern_matched, was_unwrapped, semantic_match = check_command(command, config)
+    # Detect context (e.g., documentation, commit_message)
+    context = detect_context(tool_name, tool_input, config)
+
+    # Check the command with context awareness
+    is_blocked, should_ask, reason, pattern_matched, was_unwrapped, semantic_match = check_command(command, config, context=context)
 
     # Log the decision with all metadata
     decision = "blocked" if is_blocked else ("ask" if should_ask else "allowed")
@@ -710,6 +793,7 @@ def main() -> None:
         pattern_matched=pattern_matched,
         unwrapped=was_unwrapped,
         semantic_match=semantic_match,
+        context=context,
     )
 
     if is_blocked:
