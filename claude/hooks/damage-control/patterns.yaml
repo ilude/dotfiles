@@ -73,6 +73,7 @@ bashToolPatterns:
   # ---------------------------------------------------------------------------
   - pattern: '\bgit\s+reset\s+--hard\b'
     reason: git reset --hard (use --soft or stash)
+    ask: true
 
   - pattern: '\bgit\s+clean\s+(-[^\s]*)*-[fd]'
     reason: git clean with force/directory flags
