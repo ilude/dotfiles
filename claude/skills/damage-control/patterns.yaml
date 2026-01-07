@@ -732,6 +732,34 @@ zeroAccessPaths:
   - "*/Microsoft/Credentials/"
   - "*/Microsoft/Vault/"
 
+  # ---------------------------------------------------------------------------
+  # BROWSER CREDENTIALS (MITRE T1555.003)
+  # ---------------------------------------------------------------------------
+  # Chrome/Chromium credential files
+  - "*/Google/Chrome/User Data/*/Login Data"
+  - "*/Google/Chrome/User Data/*/Login Data-journal"
+  - "*/Google/Chrome/User Data/*/Cookies"
+  - "*/Google/Chrome/User Data/Local State"
+  # Microsoft Edge
+  - "*/Microsoft/Edge/User Data/*/Login Data"
+  - "*/Microsoft/Edge/User Data/*/Login Data-journal"
+  - "*/Microsoft/Edge/User Data/*/Cookies"
+  - "*/Microsoft/Edge/User Data/Local State"
+  # Brave
+  - "*/BraveSoftware/Brave-Browser/User Data/*/Login Data"
+  - "*/BraveSoftware/Brave-Browser/User Data/*/Cookies"
+  # Firefox
+  - "*/Mozilla/Firefox/Profiles/*/logins.json"
+  - "*/Mozilla/Firefox/Profiles/*/key4.db"
+  - "*/Mozilla/Firefox/Profiles/*/key3.db"
+  - "*/Mozilla/Firefox/Profiles/*/cookies.sqlite"
+  # Linux browsers
+  - "~/.config/google-chrome/*/Login Data"
+  - "~/.config/google-chrome/*/Cookies"
+  - "~/.mozilla/firefox/*/logins.json"
+  - "~/.mozilla/firefox/*/key4.db"
+  - "~/.mozilla/firefox/*/cookies.sqlite"
+
 # ---------------------------------------------------------------------------
 # READ-ONLY PATHS - Can read, but not write/edit/delete
 # ---------------------------------------------------------------------------
