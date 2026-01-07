@@ -140,10 +140,19 @@ When writing code in commits, avoid AI patterns:
 
 ## Safety Rules
 
-- MUST NOT skip hooks (--no-verify) without explicit request
+- MUST NOT skip hooks (--no-verify) without explicit request **EXCEPT**: when creating multiple atomic commits, run tests ONCE before all commits, then use --no-verify to avoid redundant test runs
 - Only amend your own unpushed commits
 - MUST check authorship before amending
 - If pre-commit hooks modify files, only amend if safe
+
+### Multi-Commit Hook Optimization
+
+When creating multiple atomic commits (e.g., separating docs, feat, test changes):
+1. Detect if pre-commit hook exists (`git config core.hooksPath` or `.git/hooks/pre-commit`)
+2. Run the test suite ONCE before any commits (e.g., `make test-quick`)
+3. If tests fail, stop immediately
+4. If tests pass, use `--no-verify` on all subsequent commits
+5. This ensures tests run exactly once instead of N times for N commits
 
 ### Force Push - AVOID
 **Never use `git push --force` or `--force-with-lease` unless explicitly requested by user.**
