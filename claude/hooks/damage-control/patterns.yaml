@@ -862,3 +862,50 @@ noDeletePaths:
   # - app/
   # - tests/
   # - docs/
+
+# ===========================================================================
+# CONTEXTS - Context-aware pattern relaxation
+# ===========================================================================
+# Defines contexts where certain checks can be relaxed (e.g., documentation
+# files can contain dangerous command examples without triggering blocks)
+contexts:
+  # Documentation context - allow command patterns in text files
+  documentation:
+    enabled: true  # Context awareness is now active
+    detection:
+      # File extensions that trigger documentation context (Edit/Write tools)
+      file_extensions:
+        - ".md"
+        - ".markdown"
+        - ".mdx"
+        - ".rst"
+        - ".adoc"
+        - ".txt"
+    # Checks to skip in this context
+    relaxed_checks:
+      - bashToolPatterns  # Don't check bash command patterns in docs
+    # Checks to always enforce even in this context
+    enforced_checks:
+      - zeroAccessPaths   # Still block secret/sensitive files
+      - readOnlyPaths     # Still block system directories
+      - noDeletePaths     # Still block important file deletion
+
+  # Commit message context - allow command mentions in commit messages
+  commit_message:
+    enabled: true  # Context awareness is now active
+    detection:
+      # Command patterns that indicate commit message writing (Bash tool)
+      command_patterns:
+        - 'git\s+commit.*-m'                                  # git commit -m "message"
+        - 'git\s+commit.*<<\s*EOF'                            # heredoc commit
+        - 'git\s+commit.*cat.*EOF'                            # cat to heredoc
+        - '\b(nano|vim|nvim|emacs|code|vi)\s+.*\.git/COMMIT_EDITMSG'  # editor on commit file
+    # Checks to skip in this context
+    relaxed_checks:
+      - bashToolPatterns  # Don't check command patterns in commit messages
+    # Checks to always enforce even in this context
+    enforced_checks:
+      - zeroAccessPaths   # Still block secret operations
+      - readOnlyPaths     # Still block system modifications
+      - noDeletePaths     # Still block important deletions
+      - semantic_git      # Still analyze the git command itself
