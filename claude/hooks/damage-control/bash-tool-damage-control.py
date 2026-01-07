@@ -18,6 +18,7 @@ JSON output for ask patterns:
 """
 
 import json
+import subprocess
 import sys
 import re
 import os
@@ -173,6 +174,28 @@ def log_decision(
     except Exception as e:
         # Never crash the hook due to logging failure
         print(f"Warning: Failed to write audit log: {e}", file=sys.stderr)
+
+
+def spawn_log_rotation() -> None:
+    """Fire-and-forget log rotation. Non-blocking, cross-platform."""
+    rotate_script = Path(__file__).parent / "log_rotate.py"
+    if not rotate_script.exists():
+        return
+    try:
+        kwargs = {
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+        }
+        if sys.platform == "win32":
+            kwargs["creationflags"] = (
+                subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW
+            )
+        else:
+            kwargs["start_new_session"] = True
+
+        subprocess.Popen([sys.executable, str(rotate_script)], **kwargs)
+    except OSError:
+        pass  # Don't crash hook if rotation fails to spawn
 
 
 # ============================================================================
@@ -795,6 +818,9 @@ def main() -> None:
         semantic_match=semantic_match,
         context=context,
     )
+
+    # Spawn log rotation (fire-and-forget)
+    spawn_log_rotation()
 
     if is_blocked:
         print(f"SECURITY: {reason}", file=sys.stderr)
