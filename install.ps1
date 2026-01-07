@@ -290,6 +290,84 @@ function Install-PSModule {
     }
 }
 
+function Ensure-WinGetLinksInPath {
+    # Ensure WinGet Links directory exists and is in User PATH
+    $linksDir = "$env:LOCALAPPDATA\Microsoft\WinGet\Links"
+
+    # Create directory if it doesn't exist
+    if (-not (Test-Path $linksDir)) {
+        New-Item -ItemType Directory -Path $linksDir -Force | Out-Null
+    }
+
+    # Check if already in User PATH
+    $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+    if ($userPath -notlike "*$linksDir*") {
+        Write-Host "  Adding WinGet Links to User PATH..." -ForegroundColor Cyan
+        $newPath = "$linksDir;$userPath"
+        [Environment]::SetEnvironmentVariable("PATH", $newPath, "User")
+        # Also update current session
+        $env:PATH = "$linksDir;$env:PATH"
+        Write-Host "  WinGet Links added to PATH" -ForegroundColor Green
+        return $true
+    }
+    return $false
+}
+
+function New-WinGetLink {
+    # Create symlink in WinGet Links for packages that don't auto-create them
+    param(
+        [string]$PackageId,
+        [string]$ExeName,
+        [string]$RelativePath = ""  # Path within package dir to the exe
+    )
+
+    $linksDir = "$env:LOCALAPPDATA\Microsoft\WinGet\Links"
+    $packagesDir = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages"
+    $linkPath = Join-Path $linksDir $ExeName
+
+    # Skip if link already exists
+    if (Test-Path $linkPath) {
+        return $false
+    }
+
+    # Find the package directory (includes source suffix)
+    $packageDir = Get-ChildItem -Path $packagesDir -Directory -Filter "${PackageId}_*" | Select-Object -First 1
+    if (-not $packageDir) {
+        return $false
+    }
+
+    # Build full path to executable
+    $exePath = if ($RelativePath) {
+        Join-Path $packageDir.FullName $RelativePath $ExeName
+    } else {
+        Join-Path $packageDir.FullName $ExeName
+    }
+
+    if (-not (Test-Path $exePath)) {
+        # Try searching within package dir
+        $found = Get-ChildItem -Path $packageDir.FullName -Recurse -Filter $ExeName -File | Select-Object -First 1
+        if ($found) {
+            $exePath = $found.FullName
+        } else {
+            return $false
+        }
+    }
+
+    # Create symlink
+    try {
+        New-Item -ItemType SymbolicLink -Path $linkPath -Target $exePath -Force | Out-Null
+        return $true
+    } catch {
+        # Symlink failed, try hardlink or copy as fallback
+        try {
+            Copy-Item $exePath $linkPath -Force
+            return $true
+        } catch {
+            return $false
+        }
+    }
+}
+
 function Install-Packages {
     param([switch]$Work, [switch]$ITAdmin)
 
@@ -305,6 +383,29 @@ function Install-Packages {
     foreach ($pkg in $corePackages) {
         if (-not (Install-WingetPackage -Id $pkg.Id -Name $pkg.Name)) {
             $script:failed += $pkg.Name
+        }
+    }
+
+    # WinGet Links setup (some packages don't auto-create symlinks)
+    Write-Host "`n--- WinGet Links ---" -ForegroundColor Cyan
+    Ensure-WinGetLinksInPath
+
+    # Packages that need manual symlinks in WinGet Links
+    $wingetLinks = @(
+        @{ PackageId = 'Oven-sh.Bun'; ExeName = 'bun.exe'; RelativePath = 'bun-windows-x64' },
+        @{ PackageId = 'cURL.cURL'; ExeName = 'curl.exe'; RelativePath = '' }  # Version in path, uses recursive search
+    )
+    foreach ($link in $wingetLinks) {
+        Write-Host "  $($link.ExeName)..." -ForegroundColor Cyan -NoNewline
+        if (New-WinGetLink -PackageId $link.PackageId -ExeName $link.ExeName -RelativePath $link.RelativePath) {
+            Write-Host " linked" -ForegroundColor Green
+        } else {
+            $linkPath = "$env:LOCALAPPDATA\Microsoft\WinGet\Links\$($link.ExeName)"
+            if (Test-Path $linkPath) {
+                Write-Host " already linked" -ForegroundColor DarkGray
+            } else {
+                Write-Host " skipped (not installed)" -ForegroundColor DarkGray
+            }
         }
     }
 
