@@ -53,6 +53,80 @@ def glob_to_regex(glob_pattern: str) -> str:
     return result
 
 
+# ============================================================================
+# COMPILATION AND CACHING (Phase 1 optimizations)
+# ============================================================================
+
+def compile_regex_patterns(patterns: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Pre-compile regex patterns from bashToolPatterns config."""
+    compiled = []
+    for idx, item in enumerate(patterns):
+        pattern = item.get("pattern", "")
+        if not pattern:
+            continue
+
+        try:
+            compiled_regex = re.compile(pattern, re.IGNORECASE)
+            compiled_item = item.copy()
+            compiled_item["compiled"] = compiled_regex
+            compiled.append(compiled_item)
+        except re.error:
+            continue
+
+    return compiled
+
+
+def preprocess_path_list(paths: List[str]) -> List[Dict[str, Any]]:
+    """Pre-process path list for fast matching."""
+    processed = []
+    for path in paths:
+        if not path:
+            continue
+
+        path_obj = {
+            "original": path,
+            "is_glob": is_glob_pattern(path),
+        }
+
+        if path_obj["is_glob"]:
+            try:
+                glob_regex_str = glob_to_regex(path)
+                path_obj["glob_regex"] = re.compile(glob_regex_str, re.IGNORECASE)
+            except re.error:
+                continue
+        else:
+            try:
+                expanded = os.path.expanduser(path)
+                path_obj["expanded"] = expanded
+                path_obj["escaped_expanded"] = re.escape(expanded)
+                path_obj["escaped_original"] = re.escape(path)
+            except Exception:
+                continue
+
+        processed.append(path_obj)
+
+    return processed
+
+
+def compile_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Compile configuration for fast pattern matching."""
+    compiled = config.copy()
+
+    patterns = config.get("bashToolPatterns", [])
+    compiled["bashToolPatterns_compiled"] = compile_regex_patterns(patterns)
+
+    zero_access = config.get("zeroAccessPaths", [])
+    compiled["zeroAccessPaths_compiled"] = preprocess_path_list(zero_access)
+
+    read_only = config.get("readOnlyPaths", [])
+    compiled["readOnlyPaths_compiled"] = preprocess_path_list(read_only)
+
+    no_delete = config.get("noDeletePaths", [])
+    compiled["noDeletePaths_compiled"] = preprocess_path_list(no_delete)
+
+    return compiled
+
+
 WRITE_PATTERNS = [
     (r'>\s*{path}', "write"),
     (r'\btee\s+(?!.*-a).*{path}', "write"),
@@ -106,28 +180,37 @@ READ_ONLY_BLOCKED = (
 NO_DELETE_BLOCKED = DELETE_PATTERNS
 
 
-def check_path_patterns(command: str, path: str, patterns: List[Tuple[str, str]], path_type: str) -> Tuple[bool, str]:
-    """Check command against a list of patterns for a specific path."""
-    if is_glob_pattern(path):
-        glob_regex = glob_to_regex(path)
+def check_path_patterns(command: str, path_obj: Dict[str, Any], patterns: List[Tuple[str, str]], path_type: str) -> Tuple[bool, str]:
+    """Check command against a list of patterns for a specific path (optimized version)."""
+    path_str = path_obj["original"]
+
+    if path_obj["is_glob"]:
+        glob_regex_compiled = path_obj.get("glob_regex")
+        if not glob_regex_compiled:
+            return False, ""
+
+        glob_regex_str = glob_regex_compiled.pattern
+
         for pattern_template, operation in patterns:
             try:
                 cmd_prefix = pattern_template.replace("{path}", "")
-                if cmd_prefix and re.search(cmd_prefix + glob_regex, command, re.IGNORECASE):
-                    return True, f"Blocked: {operation} operation on {path_type} {path}"
+                if cmd_prefix and re.search(cmd_prefix + glob_regex_str, command, re.IGNORECASE):
+                    return True, f"Blocked: {operation} operation on {path_type} {path_str}"
             except re.error:
                 continue
     else:
-        expanded = os.path.expanduser(path)
-        escaped_expanded = re.escape(expanded)
-        escaped_original = re.escape(path)
+        escaped_expanded = path_obj.get("escaped_expanded", "")
+        escaped_original = path_obj.get("escaped_original", "")
+
+        if not escaped_expanded or not escaped_original:
+            return False, ""
 
         for pattern_template, operation in patterns:
             pattern_expanded = pattern_template.replace("{path}", escaped_expanded)
             pattern_original = pattern_template.replace("{path}", escaped_original)
             try:
                 if re.search(pattern_expanded, command) or re.search(pattern_original, command):
-                    return True, f"Blocked: {operation} operation on {path_type} {path}"
+                    return True, f"Blocked: {operation} operation on {path_type} {path_str}"
             except re.error:
                 continue
 
@@ -135,23 +218,44 @@ def check_path_patterns(command: str, path: str, patterns: List[Tuple[str, str]]
 
 
 def check_command(command: str, config: Dict[str, Any]) -> Tuple[bool, bool, str]:
-    """Check if command should be blocked or requires confirmation.
+    """Check if command should be blocked or requires confirmation (optimized version).
 
     Returns: (blocked, ask, reason)
     """
-    patterns = config.get("bashToolPatterns", [])
-    zero_access_paths = config.get("zeroAccessPaths", [])
-    read_only_paths = config.get("readOnlyPaths", [])
-    no_delete_paths = config.get("noDeletePaths", [])
+    # Check if config is compiled (has _compiled keys) or raw
+    has_compiled = "bashToolPatterns_compiled" in config
+
+    if has_compiled:
+        # Use pre-compiled patterns from config
+        compiled_patterns = config.get("bashToolPatterns_compiled", [])
+        compiled_zero_access = config.get("zeroAccessPaths_compiled", [])
+        compiled_read_only = config.get("readOnlyPaths_compiled", [])
+        compiled_no_delete = config.get("noDeletePaths_compiled", [])
+    else:
+        # Compile on the fly for backward compatibility (slower path)
+        raw_patterns = config.get("bashToolPatterns", [])
+        compiled_patterns = compile_regex_patterns(raw_patterns)
+
+        raw_zero_access = config.get("zeroAccessPaths", [])
+        compiled_zero_access = preprocess_path_list(raw_zero_access)
+
+        raw_read_only = config.get("readOnlyPaths", [])
+        compiled_read_only = preprocess_path_list(raw_read_only)
+
+        raw_no_delete = config.get("noDeletePaths", [])
+        compiled_no_delete = preprocess_path_list(raw_no_delete)
 
     # 1. Check against bash tool patterns
-    for item in patterns:
-        pattern = item.get("pattern", "")
+    for item in compiled_patterns:
+        compiled_regex = item.get("compiled")
         reason = item.get("reason", "Blocked by pattern")
         should_ask = item.get("ask", False)
 
+        if not compiled_regex:
+            continue
+
         try:
-            if re.search(pattern, command, re.IGNORECASE):
+            if compiled_regex.search(command):
                 if should_ask:
                     return False, True, reason
                 else:
@@ -160,31 +264,33 @@ def check_command(command: str, config: Dict[str, Any]) -> Tuple[bool, bool, str
             continue
 
     # 2. Check for ANY access to zero-access paths
-    for zero_path in zero_access_paths:
-        if is_glob_pattern(zero_path):
-            glob_regex = glob_to_regex(zero_path)
-            try:
-                if re.search(glob_regex, command, re.IGNORECASE):
-                    return True, False, f"Blocked: zero-access pattern {zero_path}"
-            except re.error:
-                continue
+    for path_obj in compiled_zero_access:
+        if path_obj["is_glob"]:
+            glob_regex_compiled = path_obj.get("glob_regex")
+            if glob_regex_compiled:
+                try:
+                    if glob_regex_compiled.search(command):
+                        return True, False, f"Blocked: zero-access pattern {path_obj['original']}"
+                except re.error:
+                    continue
         else:
-            expanded = os.path.expanduser(zero_path)
-            escaped_expanded = re.escape(expanded)
-            escaped_original = re.escape(zero_path)
+            escaped_expanded = path_obj.get("escaped_expanded", "")
+            escaped_original = path_obj.get("escaped_original", "")
 
-            if re.search(escaped_expanded, command) or re.search(escaped_original, command):
-                return True, False, f"Blocked: zero-access path {zero_path}"
+            if escaped_expanded or escaped_original:
+                if (escaped_expanded and re.search(escaped_expanded, command)) or \
+                   (escaped_original and re.search(escaped_original, command)):
+                    return True, False, f"Blocked: zero-access path {path_obj['original']}"
 
     # 3. Check for modifications to read-only paths
-    for readonly in read_only_paths:
-        blocked, reason = check_path_patterns(command, readonly, READ_ONLY_BLOCKED, "read-only path")
+    for path_obj in compiled_read_only:
+        blocked, reason = check_path_patterns(command, path_obj, READ_ONLY_BLOCKED, "read-only path")
         if blocked:
             return True, False, reason
 
     # 4. Check for deletions on no-delete paths
-    for no_delete in no_delete_paths:
-        blocked, reason = check_path_patterns(command, no_delete, NO_DELETE_BLOCKED, "no-delete path")
+    for path_obj in compiled_no_delete:
+        blocked, reason = check_path_patterns(command, path_obj, NO_DELETE_BLOCKED, "no-delete path")
         if blocked:
             return True, False, reason
 
@@ -349,8 +455,21 @@ def load_patterns() -> Dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
-def run_benchmark(config: Dict[str, Any], iterations: int = 1000) -> Dict[str, Any]:
-    """Run benchmark on bash commands and path patterns."""
+def run_benchmark(config: Dict[str, Any], iterations: int = 1000, use_compiled: bool = False) -> Dict[str, Any]:
+    """Run benchmark on bash commands and path patterns.
+
+    Args:
+        config: Configuration dictionary (raw or compiled)
+        iterations: Number of iterations to run
+        use_compiled: If True, compile the config once before benchmarking
+
+    Returns:
+        Dictionary with bash and path statistics
+    """
+    # Compile config once if requested (simulates module-level caching)
+    if use_compiled:
+        config = compile_config(config)
+
     bash_times = []
     path_times = []
 
@@ -470,6 +589,7 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Print results without appending to BENCHMARKS.md")
     parser.add_argument("--note", type=str, default="", help="Optional note to include in benchmark table")
     parser.add_argument("--iterations", type=int, default=1000, help="Number of iterations (default: 1000)")
+    parser.add_argument("--compiled", action="store_true", help="Use compiled patterns (Phase 1 optimizations)")
     args = parser.parse_args()
 
     print("Loading patterns...")
@@ -482,11 +602,13 @@ def main() -> None:
         len(config.get("noDeletePaths", []))
     )
 
+    mode = "compiled" if args.compiled else "raw"
     print(f"Patterns loaded: {bash_count} bash patterns, {path_count} path patterns")
+    print(f"Mode: {mode}")
     print(f"Test corpus: {len(BASH_COMMANDS)} bash commands, {len(FILE_PATHS)} file paths")
     print(f"Running {args.iterations} iterations...\n")
 
-    stats = run_benchmark(config, args.iterations)
+    stats = run_benchmark(config, args.iterations, use_compiled=args.compiled)
 
     print("Bash Command Pattern Matching:")
     print(format_stats(stats["bash"]))
