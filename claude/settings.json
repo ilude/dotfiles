@@ -78,7 +78,7 @@
           {
             "type": "command",
             "command": "bash -c 'uv run $HOME/.claude/hooks/damage-control/bash-tool-damage-control.py'",
-            "timeout": 5 
+            "timeout": 5
           }
         ]
       },
@@ -107,6 +107,10 @@
   "statusLine": {
     "type": "command",
     "command": "bash ~/.claude/claude-status"
+  },
+  "enabledPlugins": {
+    "handbook-git-worktree@cc-handbook": true,
+    "handbook-glab@cc-handbook": true
   },
   "alwaysThinkingEnabled": true
 }
