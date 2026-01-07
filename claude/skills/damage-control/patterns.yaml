@@ -796,6 +796,22 @@ zeroAccessPaths:
   - "/etc/master.passwd"
   - "/etc/spwd.db"
 
+  # ---------------------------------------------------------------------------
+  # CRYPTOCURRENCY WALLETS
+  # ---------------------------------------------------------------------------
+  # Bitcoin Core
+  - "*/Bitcoin/wallet.dat"
+  - "*/Bitcoin/wallets/"
+  - "~/.bitcoin/wallet.dat"
+  - "~/.bitcoin/wallets/"
+  # Ethereum/Geth
+  - "*/Ethereum/keystore/"
+  - "~/.ethereum/keystore/"
+  # Generic wallet patterns
+  - "wallet.dat"
+  - "*.wallet"
+  - "*/keystore/*.json"
+
 # ---------------------------------------------------------------------------
 # READ-ONLY PATHS - Can read, but not write/edit/delete
 # ---------------------------------------------------------------------------
