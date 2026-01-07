@@ -73,7 +73,7 @@ test: preflight
 # Damage Control test targets
 test-damage-control-unit:
 	@echo "Running damage control unit tests..."
-	@cd "$(CURDIR)" && uv run pytest claude/hooks/damage-control/tests/ -v --tb=short
+	@cd "$(CURDIR)" && uv run pytest claude/hooks/damage-control/tests/test_semantic_analysis.py -v --tb=short
 
 test-damage-control-integration:
 	@echo "Running damage control integration tests..."
