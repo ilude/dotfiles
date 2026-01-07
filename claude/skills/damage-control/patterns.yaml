@@ -760,6 +760,22 @@ zeroAccessPaths:
   - "~/.mozilla/firefox/*/key4.db"
   - "~/.mozilla/firefox/*/cookies.sqlite"
 
+  # ---------------------------------------------------------------------------
+  # MESSAGING APP TOKENS (Session hijacking prevention)
+  # ---------------------------------------------------------------------------
+  # Discord (tokens in LevelDB - MITRE T1528)
+  - "*/Discord/Local Storage/leveldb/"
+  - "*/discordcanary/Local Storage/leveldb/"
+  - "*/discordptb/Local Storage/leveldb/"
+  # Telegram (session data)
+  - "*/Telegram Desktop/tdata/"
+  # Slack
+  - "*/Slack/storage/"
+  - "*/Slack/Cookies"
+  # Signal
+  - "*/Signal/sql/"
+  - "*/Signal/config.json"
+
 # ---------------------------------------------------------------------------
 # READ-ONLY PATHS - Can read, but not write/edit/delete
 # ---------------------------------------------------------------------------
