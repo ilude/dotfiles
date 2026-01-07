@@ -288,9 +288,48 @@ The file must have:
 
 ## Directory Listings
 
-Register your llms.txt at:
-- [llmstxt.site](https://llmstxt.site/) - Community directory
-- [directory.llmstxt.cloud](https://directory.llmstxt.cloud/) - Cloud directory
+### directory.llmstxt.cloud
+
+Curated directory of products and companies with llms.txt files.
+
+**Features:**
+- Browse by category: AI, Developer tools, Finance, Products, Websites
+- Shows token counts for each llms.txt file
+- Indicates if llms-full.txt variant exists
+- Paginated (12+ pages)
+- Submit new entries via "Submit" button
+
+**Browsing:**
+- No search API - browse only
+- Navigate pages: `https://directory.llmstxt.cloud/?page=2`
+- Categories shown on each entry
+
+**Entry format:**
+```
+Company Name | Category | /llms.txt (X tokens) | /llms-full.txt (Y tokens)
+```
+
+### llmstxt.site
+
+Community directory with hundreds of verified sites.
+
+**Features:**
+- Token counts for context size planning
+- Verified implementations
+- 788+ listed sites
+
+### llms-txt-hub (GitHub)
+
+GitHub repository tracking llms.txt implementations:
+- [thedaviddias/llms-txt-hub](https://github.com/thedaviddias/llms-txt-hub)
+- Structured data in repository
+- Submit via pull request
+
+### Submitting Your Site
+
+1. **directory.llmstxt.cloud**: Click "Submit" button on site
+2. **llmstxt.site**: Follow submission process on site
+3. **llms-txt-hub**: Open pull request on GitHub
 
 ---
 
