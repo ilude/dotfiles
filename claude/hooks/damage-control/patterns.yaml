@@ -73,7 +73,6 @@ bashToolPatterns:
   # ---------------------------------------------------------------------------
   - pattern: '\bgit\s+reset\s+--hard\b'
     reason: git reset --hard (use --soft or stash)
-    ask: true
 
   - pattern: '\bgit\s+clean\s+(-[^\s]*)*-[fd]'
     reason: git clean with force/directory flags
@@ -720,6 +719,108 @@ zeroAccessPaths:
   - "dump.sql"
   - "backup.sql"
   - "*.dump"
+
+  # ---------------------------------------------------------------------------
+  # WINDOWS CREDENTIAL STORES (MITRE T1003.002, T1003.004, T1003.005)
+  # ---------------------------------------------------------------------------
+  # SAM/SECURITY/SYSTEM hives (require SYSTEM privileges but defense-in-depth)
+  - "C:/Windows/System32/config/SAM"
+  - "C:/Windows/System32/config/SYSTEM"
+  - "C:/Windows/System32/config/SECURITY"
+  # DPAPI Master Keys
+  - "*/Microsoft/Protect/"
+  - "*/Microsoft/Credentials/"
+  - "*/Microsoft/Vault/"
+
+  # ---------------------------------------------------------------------------
+  # BROWSER CREDENTIALS (MITRE T1555.003)
+  # ---------------------------------------------------------------------------
+  # Chrome/Chromium credential files
+  - "*/Google/Chrome/User Data/*/Login Data"
+  - "*/Google/Chrome/User Data/*/Login Data-journal"
+  - "*/Google/Chrome/User Data/*/Cookies"
+  - "*/Google/Chrome/User Data/Local State"
+  # Microsoft Edge
+  - "*/Microsoft/Edge/User Data/*/Login Data"
+  - "*/Microsoft/Edge/User Data/*/Login Data-journal"
+  - "*/Microsoft/Edge/User Data/*/Cookies"
+  - "*/Microsoft/Edge/User Data/Local State"
+  # Brave
+  - "*/BraveSoftware/Brave-Browser/User Data/*/Login Data"
+  - "*/BraveSoftware/Brave-Browser/User Data/*/Cookies"
+  # Firefox
+  - "*/Mozilla/Firefox/Profiles/*/logins.json"
+  - "*/Mozilla/Firefox/Profiles/*/key4.db"
+  - "*/Mozilla/Firefox/Profiles/*/key3.db"
+  - "*/Mozilla/Firefox/Profiles/*/cookies.sqlite"
+  # Linux browsers
+  - "~/.config/google-chrome/*/Login Data"
+  - "~/.config/google-chrome/*/Cookies"
+  - "~/.mozilla/firefox/*/logins.json"
+  - "~/.mozilla/firefox/*/key4.db"
+  - "~/.mozilla/firefox/*/cookies.sqlite"
+
+  # ---------------------------------------------------------------------------
+  # MESSAGING APP TOKENS (Session hijacking prevention)
+  # ---------------------------------------------------------------------------
+  # Discord (tokens in LevelDB - MITRE T1528)
+  - "*/Discord/Local Storage/leveldb/"
+  - "*/discordcanary/Local Storage/leveldb/"
+  - "*/discordptb/Local Storage/leveldb/"
+  # Telegram (session data)
+  - "*/Telegram Desktop/tdata/"
+  # Slack
+  - "*/Slack/storage/"
+  - "*/Slack/Cookies"
+  # Signal
+  - "*/Signal/sql/"
+  - "*/Signal/config.json"
+
+  # ---------------------------------------------------------------------------
+  # PASSWORD MANAGER DATABASES
+  # ---------------------------------------------------------------------------
+  # KeePass
+  - "*.kdbx"
+  - "*.kdb"
+  # 1Password
+  - "*/1Password/data/"
+  - "*/1Password/logs/"
+  # Bitwarden
+  - "*/Bitwarden/data/"
+
+  # ---------------------------------------------------------------------------
+  # LINUX SYSTEM CREDENTIALS (MITRE T1003.008)
+  # ---------------------------------------------------------------------------
+  - "/etc/shadow"
+  - "/etc/shadow-"
+  - "/etc/master.passwd"
+  - "/etc/spwd.db"
+
+  # ---------------------------------------------------------------------------
+  # CRYPTOCURRENCY WALLETS
+  # ---------------------------------------------------------------------------
+  # Bitcoin Core
+  - "*/Bitcoin/wallet.dat"
+  - "*/Bitcoin/wallets/"
+  - "~/.bitcoin/wallet.dat"
+  - "~/.bitcoin/wallets/"
+  # Ethereum/Geth
+  - "*/Ethereum/keystore/"
+  - "~/.ethereum/keystore/"
+  # Generic wallet patterns
+  - "wallet.dat"
+  - "*.wallet"
+  - "*/keystore/*.json"
+
+  # ---------------------------------------------------------------------------
+  # ADDITIONAL TOKENS & CREDENTIALS
+  # ---------------------------------------------------------------------------
+  # GitHub CLI
+  - "~/.config/gh/hosts.yml"
+  # Vault
+  - "~/.vault-token"
+  # AWS Session
+  - "~/.aws/sso/cache/"
 
 # ---------------------------------------------------------------------------
 # READ-ONLY PATHS - Can read, but not write/edit/delete
