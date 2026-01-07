@@ -16,7 +16,6 @@
       "Bash(git init:*)",
       "Bash(git log:*)",
       "Bash(git reset:*)",
-      "Bash(git rm:*)",
       "Bash(git:*)",
       "Bash(grep:*)",
       "Bash(jq:*)",
