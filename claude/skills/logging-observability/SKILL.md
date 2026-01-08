@@ -1,22 +1,59 @@
 ---
 name: logging-observability
-description: Guidelines for structured logging, distributed tracing, and debugging patterns across languages. Covers logging best practices, observability, security considerations, and performance analysis.
-activation_triggers:
-  - logging
-  - observability
-  - tracing
-  - debugging
-  - structured logging
-  - log aggregation
-  - performance metrics
-  - monitoring
-  - correlation ID
-  - trace ID
+description: |
+  Guidelines for structured logging, distributed tracing, and debugging patterns across languages.
+  Covers logging best practices, observability, security considerations, and performance analysis.
+  Trigger keywords: logging, observability, tracing, debugging, structured logging, log aggregation, performance metrics, monitoring, correlation ID, trace ID.
 ---
 
 # Logging & Observability Skill
 
 Activate when working with logging systems, distributed tracing, debugging, monitoring, or any observability-related tasks across applications.
+
+---
+
+## CRITICAL: Avoid Observability Theater
+
+**Logging everything is easy. Logging what MATTERS is hard.**
+
+Before adding logging, tracing, or metrics, ask:
+
+1. **Will anyone look at this?**
+   - "We log every function entry/exit" → Who reviews these logs?
+   - "Best practices say log everything" → Not a real use case
+
+2. **Does this help debug real problems?**
+   - "What context do I need when something breaks at 3am?"
+   - Not: "What could theoretically be useful someday?"
+
+3. **What's the cost?**
+   - Log volume → storage costs, query latency
+   - Trace spans → performance overhead, cognitive load
+   - Metrics cardinality → Prometheus explosion
+
+### The Observability Litmus Test
+
+> "What specific debugging scenario requires this log/trace/metric?"
+
+If the answer is vague ("visibility", "observability", "just in case"), it may be theater.
+
+### Observability Anti-Patterns to Avoid
+
+| Anti-Pattern | Example | Problem |
+|--------------|---------|---------|
+| **Log spam** | `logger.debug(f"Processing item {i}")` in tight loop | Buries signal in noise |
+| **Trace everything** | Span per helper function call | 100+ spans per request |
+| **Metric explosion** | High-cardinality labels (user_id, request_id) | Prometheus OOM |
+| **Copy-paste logging** | "Starting X...", "Finished X" everywhere | No actionable info |
+
+### When Full Observability IS Worth It
+
+- Production systems with SLO requirements
+- Distributed systems where request flow is complex
+- Systems with historical debugging difficulties
+- Compliance/audit requirements
+
+---
 
 ## 1. Logging Best Practices
 

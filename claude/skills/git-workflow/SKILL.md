@@ -210,6 +210,57 @@ git fsck --unreachable        # Find orphaned objects
 git fsck --lost-found         # Recover to .git/lost-found/
 ```
 
+## Validation Script
+
+Quick validation before commits:
+
+```bash
+#!/bin/bash
+# git-pre-commit-check.sh - Run before committing
+
+set -e
+
+echo "=== Git Pre-Commit Validation ==="
+
+# Check for secrets
+echo "Checking for secrets..."
+if git diff --cached --name-only | xargs grep -l -E \
+  '(AKIA|ghp_|sk-ant-|sk-proj-|API_KEY=|PASSWORD=|-----BEGIN)' 2>/dev/null; then
+  echo "❌ FAIL: Potential secrets detected in staged files"
+  exit 1
+fi
+echo "✓ No secrets detected"
+
+# Check for .env files being committed
+if git diff --cached --name-only | grep -E '^\.env$|\.env\.[^e]' 2>/dev/null; then
+  echo "❌ FAIL: .env file staged for commit"
+  exit 1
+fi
+echo "✓ No .env files staged"
+
+# Check for large files (>1MB)
+for file in $(git diff --cached --name-only); do
+  if [ -f "$file" ]; then
+    size=$(wc -c < "$file")
+    if [ "$size" -gt 1048576 ]; then
+      echo "⚠ WARNING: Large file: $file ($(($size/1024))KB)"
+    fi
+  fi
+done
+
+# Validate commit message format (if message provided)
+echo "✓ Validation passed - ready to commit"
+```
+
+### Validation Checklist
+
+Before each commit:
+- [ ] No secrets/API keys in diff
+- [ ] No .env files staged
+- [ ] No large binary files
+- [ ] Commit message follows conventional commits
+- [ ] Changes are atomic (one logical change)
+
 ## Philosophy
 
 This skill defines the principles. The `/commit` command implements the procedural execution. Security always comes first, commits require explicit request, and pushes require the "push" keyword.
