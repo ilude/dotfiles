@@ -1,14 +1,60 @@
 #!/bin/bash
-# Pre-commit hook: runs tests before allowing commit
+# Pre-commit hook: runs tests only when testable code changes
 
 set -e
 
-# Get the repo root
 REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+# Get list of staged files
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR)
+
+if [[ -z "$STAGED_FILES" ]]; then
+    echo "No staged files, skipping tests."
+    exit 0
+fi
+
+# Check if any staged file requires testing
+needs_test=false
+
+while IFS= read -r file; do
+    case "$file" in
+        # Shell scripts (no extension)
+        install|install-wsl|git-ssh-setup|claude-link-setup|claude-mcp-setup|copilot-link-setup|zsh-setup|zsh-plugins|wsl-packages)
+            needs_test=true ;;
+        # Shell config files
+        .bashrc|.bash_profile|.profile|.zshrc|.zshenv)
+            needs_test=true ;;
+        # Zsh modules
+        zsh/*.zsh)
+            needs_test=true ;;
+        zsh/*/*.zsh)
+            needs_test=true ;;
+        # Test files
+        test/*.bats|test/*.bash)
+            needs_test=true ;;
+        # Python hooks (any .py in claude/hooks/)
+        claude/hooks/*.py|claude/hooks/*/*.py|claude/hooks/*/*/*.py)
+            needs_test=true ;;
+        # Build system
+        Makefile)
+            needs_test=true ;;
+        # Git config
+        .gitconfig|.gitconfig-*)
+            needs_test=true ;;
+        # PowerShell install script
+        install.ps1)
+            needs_test=true ;;
+    esac
+    [[ "$needs_test" == "true" ]] && break
+done <<< "$STAGED_FILES"
+
+if [[ "$needs_test" != "true" ]]; then
+    echo "No testable code changed, skipping tests."
+    exit 0
+fi
 
 echo "Running pre-commit tests..."
 
-# Run quick tests (skip full test suite for speed)
 if command -v make &>/dev/null && [[ -f "$REPO_ROOT/Makefile" ]]; then
     cd "$REPO_ROOT"
     make test-quick
