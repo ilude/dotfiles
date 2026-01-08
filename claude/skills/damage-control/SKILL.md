@@ -1,6 +1,8 @@
 ---
-name: Damage Control
-description: Install, configure, and manage the Claude Code Damage Control security hooks system. Use when user mentions damage control, security hooks, protected paths, blocked commands, install security, or modify protection settings.
+name: damage-control
+description: |
+  Install, configure, and manage the Claude Code Damage Control security hooks system.
+  Trigger keywords: damage control, security hooks, protected paths, blocked commands, install security, modify protection settings.
 ---
 
 # Damage Control Skill

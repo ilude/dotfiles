@@ -9,18 +9,17 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 Guidelines for working with Python projects across different package managers, code styles, and architectural patterns using modern tooling (uv, Python 3.9+).
 
-## Tool Grid
+---
 
-| Task | Tool | Command |
-|------|------|---------|
-| Lint | Ruff | `uv run ruff check . --fix` |
-| Format | Ruff | `uv run ruff format .` |
-| Type check | Mypy | `uv run mypy src/` |
-| Type check | Pyright | `uv run pyright` |
-| Security | Bandit | `uv run bandit -r src/` |
-| Dead code | Vulture | `uv run vulture src/` |
-| Coverage | pytest-cov | `uv run pytest --cov=src` |
-| Complexity | Radon | `uv run radon cc src/ -a` |
+## Philosophy
+
+- **Explicit over implicit** - Prefer clear, visible configuration (pyproject.toml over setup.py)
+- **Type safety** - Use type hints for better IDE support and documentation
+- **Modern tooling** - Use uv for fast, deterministic dependency management
+- **Consistent environments** - Same dependencies across dev, CI, and production
+- **Test as you go** - Write tests for critical paths, not 100% coverage theater
+
+---
 
 ## CRITICAL: Virtual Environment Best Practices
 
@@ -492,6 +491,81 @@ async def main():
 - FastAPI specifics → see `fastapi-workflow`
 - Flask specifics → see `flask-workflow`
 - Database migrations → see `database-workflow`
+
+## Quick Reference: Tool Grid
+
+| Task | Tool | Command |
+|------|------|---------|
+| Lint | Ruff | `uv run ruff check . --fix` |
+| Format | Ruff | `uv run ruff format .` |
+| Type check | Mypy | `uv run mypy src/` |
+| Type check | Pyright | `uv run pyright` |
+| Security | Bandit | `uv run bandit -r src/` |
+| Dead code | Vulture | `uv run vulture src/` |
+| Coverage | pytest-cov | `uv run pytest --cov=src` |
+| Complexity | Radon | `uv run radon cc src/ -a` |
+
+## Validation Script
+
+Quick project validation before commits or PRs:
+
+```bash
+#!/bin/bash
+# python-project-check.sh - Validate Python project compliance
+
+set -e
+
+echo "=== Python Project Validation ==="
+
+# Check for pyproject.toml
+if [ ! -f "pyproject.toml" ]; then
+  echo "❌ FAIL: Missing pyproject.toml"
+  exit 1
+fi
+echo "✓ pyproject.toml exists"
+
+# Check for uv.lock or requirements.txt
+if [ ! -f "uv.lock" ] && [ ! -f "requirements.txt" ]; then
+  echo "⚠ WARNING: No lockfile (uv.lock) or requirements.txt"
+fi
+
+# Run linting
+echo "Running ruff check..."
+uv run ruff check . --quiet || echo "⚠ Linting issues found"
+
+# Run type checking (if mypy configured)
+if grep -q "mypy" pyproject.toml 2>/dev/null; then
+  echo "Running mypy..."
+  uv run mypy src/ --ignore-missing-imports --quiet || echo "⚠ Type errors found"
+fi
+
+# Run tests
+echo "Running tests..."
+uv run pytest tests/ -q --tb=no || echo "⚠ Test failures"
+
+# Check for .venv path references in code
+if grep -r "\.venv" --include="*.py" . 2>/dev/null | grep -v "__pycache__"; then
+  echo "❌ FAIL: Hardcoded .venv paths found - use 'uv run python' instead"
+  exit 1
+fi
+echo "✓ No hardcoded .venv paths"
+
+echo "✓ Validation complete"
+```
+
+### Makefile Integration
+
+```makefile
+.PHONY: validate
+validate: ## Run full project validation
+	@echo "Running linter..."
+	uv run ruff check .
+	@echo "Running type checker..."
+	uv run mypy src/ --ignore-missing-imports
+	@echo "Running tests..."
+	uv run pytest tests/ -v
+	@echo "✓ All validations passed"
+```
 
 ## Quick Reference
 

@@ -7,6 +7,52 @@ description: DevContainer configuration for consistent development environments 
 
 Guidelines for setting up and maintaining consistent development environments using DevContainers with Docker, featuring non-root user configurations, environment management, multi-stage builds, and Python-focused patterns.
 
+---
+
+## CRITICAL: Avoid DevContainer Complexity Theater
+
+**DevContainers solve real problems. Make sure you have those problems.**
+
+Before setting up a DevContainer, ask:
+
+1. **Does the team actually need environment consistency?**
+   - "We had 3 'works on my machine' bugs this month" → DevContainers help
+   - "Best practices say use containers" → Not a real problem
+
+2. **Is the setup cost worth the benefit?**
+   - Solo developer with stable local setup → probably overkill
+   - Team with varying OS/versions → likely worth it
+   - Complex dependencies (CUDA, native libs) → definitely worth it
+
+3. **Can simpler tooling achieve the same goal?**
+   - `uv` for Python version management
+   - `nvm` for Node version management
+   - `asdf` for multi-language version management
+
+### The DevContainer Litmus Test
+
+> "What specific onboarding problem does this solve that version managers don't?"
+
+If the answer is vague ("consistency", "best practices", "isolation"), it may be overkill.
+
+### DevContainer Anti-Patterns to Avoid
+
+| Anti-Pattern | Example | Problem |
+|--------------|---------|---------|
+| **Solo developer overhead** | Full DevContainer for personal project | Maintenance cost exceeds benefit |
+| **Simple stack containers** | DevContainer for single-language CLI tool | `uv` or `nvm` suffices |
+| **Feature creep** | Adding every VS Code extension | Slows container builds |
+| **Over-isolation** | Separate containers per service locally | Docker Compose suffices |
+
+### When DevContainers ARE Worth It
+
+- Multi-developer teams with environment drift
+- Complex native dependencies (CUDA, system libraries)
+- Projects requiring specific OS configurations
+- Onboarding new developers frequently
+
+---
+
 ## Quick Start Checklist
 
 - [ ] Create `.devcontainer/` directory structure

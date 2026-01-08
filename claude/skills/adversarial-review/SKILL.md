@@ -1,3 +1,10 @@
+---
+name: adversarial-review
+description: |
+  Red-team attack framework for plans/systems to find flaws, edge cases, and blind spots.
+  Trigger keywords: red-team, adversarial review, find flaws, edge cases, blind spots, attack vectors, "what could go wrong", "poke holes in this", critique, challenge.
+---
+
 # Adversarial Review Framework
 
 **Auto-activate when:** User mentions red-team, adversarial review, find flaws, edge cases, blind spots, attack vectors, "what could go wrong", "poke holes in this", or asks to critique/challenge a plan or design.
@@ -22,7 +29,7 @@ Before recommending ANY mitigation, ask:
    - Don't add defense-in-depth that defends against nothing
 
 3. **Does the mitigation actually mitigate?**
-   - A NetworkPolicy allowing `0.0.0.0/0` egress is security theater
+   - A NetworkPolicy allowing \ egress is security theater
    - An input validator that doesn't reject malicious input is theater
    - A "security" feature that's always disabled in practice is theater
 
@@ -109,7 +116,7 @@ Be skeptical of your own findings. If every finding leads to "add more controls,
 ### Real-World Lesson
 
 A GitLab deployment added Cilium CNI "for NetworkPolicy support." The NetworkPolicies:
-- Allowed egress to `0.0.0.0/0` (everything)
+- Allowed egress to \ (everything)
 - Didn't segment workloads (single app)
 - Provided zero actual security value
 
