@@ -4,7 +4,7 @@
   eol = lf
   autocrlf = input
   editor = code --wait
-  symlinks = true
+	symlinks = true
   excludesFile = ~/.gitignore_global
 
 [pager]
