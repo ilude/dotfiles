@@ -864,7 +864,7 @@ def check_command(command: str, config: Dict[str, Any], context: Optional[str] =
     if "semantic_git" not in relaxed_checks:
         is_dangerous_git, git_reason = analyze_git_command(unwrapped_cmd)
         if is_dangerous_git:
-            return True, False, f"Blocked: {git_reason}", "semantic_git", was_unwrapped, True
+            return False, True, git_reason, "semantic_git", was_unwrapped, True
 
     # Check if config is compiled (has _compiled keys) or raw
     # For backward compatibility with tests that pass raw configs
