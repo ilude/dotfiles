@@ -73,9 +73,11 @@ bashToolPatterns:
   # ---------------------------------------------------------------------------
   - pattern: '\bgit\s+reset\s+--hard\b'
     reason: git reset --hard (use --soft or stash)
+    ask: true
 
   - pattern: '\bgit\s+clean\s+(-[^\s]*)*-[fd]'
     reason: git clean with force/directory flags
+    ask: true
 
   # Note: This blocks --force but NOT --force-with-lease
   - pattern: '\bgit\s+push\s+.*--force(?!-with-lease)'
@@ -86,6 +88,7 @@ bashToolPatterns:
 
   - pattern: '\bgit\s+stash\s+clear\b'
     reason: git stash clear (deletes ALL stashes)
+    ask: true
 
   - pattern: '\bgit\s+reflog\s+expire\b'
     reason: git reflog expire (destroys recovery mechanism)
@@ -140,9 +143,11 @@ bashToolPatterns:
 
   - pattern: '\bkillall\s+-9\b'
     reason: killall -9
+    ask: true
 
   - pattern: '\bpkill\s+-9\b'
     reason: pkill -9
+    ask: true
 
   # ---------------------------------------------------------------------------
   # HISTORY/SHELL MANIPULATION
@@ -155,147 +160,188 @@ bashToolPatterns:
   # ---------------------------------------------------------------------------
   - pattern: '\baws\s+s3\s+rm\s+.*--recursive'
     reason: aws s3 rm --recursive (deletes all objects)
+    ask: true
 
   - pattern: '\baws\s+s3\s+rb\s+.*--force'
     reason: aws s3 rb --force (force removes bucket)
+    ask: true
 
   - pattern: '\baws\s+ec2\s+terminate-instances\b'
     reason: aws ec2 terminate-instances
+    ask: true
 
   - pattern: '\baws\s+rds\s+delete-db-instance\b'
     reason: aws rds delete-db-instance
+    ask: true
 
   - pattern: '\baws\s+cloudformation\s+delete-stack\b'
     reason: aws cloudformation delete-stack (deletes infrastructure)
+    ask: true
 
   - pattern: '\baws\s+dynamodb\s+delete-table\b'
     reason: aws dynamodb delete-table
+    ask: true
 
   - pattern: '\baws\s+eks\s+delete-cluster\b'
     reason: aws eks delete-cluster
+    ask: true
 
   - pattern: '\baws\s+lambda\s+delete-function\b'
     reason: aws lambda delete-function
+    ask: true
 
   - pattern: '\baws\s+iam\s+delete-role\b'
     reason: aws iam delete-role
+    ask: true
 
   - pattern: '\baws\s+iam\s+delete-user\b'
     reason: aws iam delete-user
+    ask: true
 
   # ---------------------------------------------------------------------------
   # GCP (gcloud) DESTRUCTIVE OPERATIONS
   # ---------------------------------------------------------------------------
   - pattern: '\bgcloud\s+projects\s+delete\b'
     reason: gcloud projects delete (DELETES ENTIRE PROJECT)
+    ask: true
 
   - pattern: '\bgcloud\s+compute\s+instances\s+delete\b'
     reason: gcloud compute instances delete
+    ask: true
 
   - pattern: '\bgcloud\s+sql\s+instances\s+delete\b'
     reason: gcloud sql instances delete
+    ask: true
 
   - pattern: '\bgcloud\s+container\s+clusters\s+delete\b'
     reason: gcloud container clusters delete (GKE)
+    ask: true
 
   - pattern: '\bgcloud\s+storage\s+rm\s+.*-r'
     reason: gcloud storage rm -r (recursive delete)
+    ask: true
 
   - pattern: '\bgcloud\s+functions\s+delete\b'
     reason: gcloud functions delete
+    ask: true
 
   - pattern: '\bgcloud\s+iam\s+service-accounts\s+delete\b'
     reason: gcloud iam service-accounts delete
+    ask: true
 
   # ---------------------------------------------------------------------------
   # FIREBASE DESTRUCTIVE OPERATIONS
   # ---------------------------------------------------------------------------
   - pattern: '\bfirebase\s+projects:delete\b'
     reason: firebase projects:delete (deletes entire project)
+    ask: true
 
   - pattern: '\bfirebase\s+firestore:delete\s+.*--all-collections'
     reason: firebase firestore:delete --all-collections (wipes all data)
+    ask: true
 
   - pattern: '\bfirebase\s+database:remove\b'
     reason: firebase database:remove (wipes Realtime DB)
+    ask: true
 
   - pattern: '\bfirebase\s+hosting:disable\b'
     reason: firebase hosting:disable
+    ask: true
 
   - pattern: '\bfirebase\s+functions:delete\b'
     reason: firebase functions:delete
+    ask: true
 
   # ---------------------------------------------------------------------------
   # VERCEL DESTRUCTIVE OPERATIONS
   # ---------------------------------------------------------------------------
   - pattern: '\bvercel\s+remove\s+.*--yes'
     reason: vercel remove --yes (removes deployment)
+    ask: true
 
   - pattern: '\bvercel\s+projects\s+rm\b'
     reason: vercel projects rm (deletes project)
+    ask: true
 
   - pattern: '\bvercel\s+env\s+rm\s+.*--yes'
     reason: vercel env rm --yes (removes env variables)
+    ask: true
 
   # ---------------------------------------------------------------------------
   # NETLIFY DESTRUCTIVE OPERATIONS
   # ---------------------------------------------------------------------------
   - pattern: '\bnetlify\s+sites:delete\b'
     reason: netlify sites:delete (deletes entire site)
+    ask: true
 
   - pattern: '\bnetlify\s+functions:delete\b'
     reason: netlify functions:delete
+    ask: true
 
   # ---------------------------------------------------------------------------
   # CLOUDFLARE (wrangler) DESTRUCTIVE OPERATIONS
   # ---------------------------------------------------------------------------
   - pattern: '\bwrangler\s+delete\b'
     reason: wrangler delete (deletes Worker)
+    ask: true
 
   - pattern: '\bwrangler\s+r2\s+bucket\s+delete\b'
     reason: wrangler r2 bucket delete
+    ask: true
 
   - pattern: '\bwrangler\s+kv:namespace\s+delete\b'
     reason: wrangler kv:namespace delete
+    ask: true
 
   - pattern: '\bwrangler\s+d1\s+delete\b'
     reason: wrangler d1 delete (deletes database)
+    ask: true
 
   - pattern: '\bwrangler\s+queues\s+delete\b'
     reason: wrangler queues delete
+    ask: true
 
   # ---------------------------------------------------------------------------
   # DOCKER DESTRUCTIVE OPERATIONS
   # ---------------------------------------------------------------------------
   - pattern: '\bdocker\s+system\s+prune\s+.*-a'
     reason: docker system prune -a (removes all unused data)
+    ask: true
 
   - pattern: '\bdocker\s+rm\s+.*-f.*\$\(docker\s+ps'
     reason: docker rm -f $(docker ps) (force removes containers)
+    ask: true
 
   - pattern: '\bdocker\s+rmi\s+.*-f'
     reason: docker rmi -f (force removes images)
+    ask: true
 
   - pattern: '\bdocker\s+volume\s+rm\b'
     reason: docker volume rm (data loss)
+    ask: true
 
   - pattern: '\bdocker\s+volume\s+prune\b'
     reason: docker volume prune (removes unused volumes)
+    ask: true
 
   # ---------------------------------------------------------------------------
   # KUBERNETES (kubectl) DESTRUCTIVE OPERATIONS
   # ---------------------------------------------------------------------------
   - pattern: '\bkubectl\s+delete\s+namespace\b'
     reason: kubectl delete namespace
+    ask: true
 
   - pattern: '\bkubectl\s+delete\s+all\s+--all'
     reason: kubectl delete all --all
+    ask: true
 
   - pattern: '\bkubectl\s+delete\s+.*--all\s+--all-namespaces'
     reason: kubectl delete across all namespaces
+    ask: true
 
   - pattern: '\bhelm\s+uninstall\b'
     reason: helm uninstall (removes release)
+    ask: true
 
   # ---------------------------------------------------------------------------
   # DATABASE CLI DESTRUCTIVE OPERATIONS
@@ -323,45 +369,57 @@ bashToolPatterns:
   # ---------------------------------------------------------------------------
   - pattern: '\bterraform\s+destroy\b'
     reason: terraform destroy (destroys all infrastructure)
+    ask: true
 
   - pattern: '\bpulumi\s+destroy\b'
     reason: pulumi destroy (destroys all resources)
+    ask: true
 
   - pattern: '\bserverless\s+remove\b'
     reason: serverless remove (removes stack)
+    ask: true
 
   - pattern: '\bsls\s+remove\b'
     reason: sls remove (removes stack)
+    ask: true
 
   - pattern: '\bsam\s+delete\b'
     reason: sam delete (deletes SAM application)
+    ask: true
 
   # ---------------------------------------------------------------------------
   # HEROKU DESTRUCTIVE OPERATIONS
   # ---------------------------------------------------------------------------
   - pattern: '\bheroku\s+apps:destroy\b'
     reason: heroku apps:destroy
+    ask: true
 
   - pattern: '\bheroku\s+pg:reset\b'
     reason: heroku pg:reset (resets database)
+    ask: true
 
   # ---------------------------------------------------------------------------
   # OTHER CLOUD PLATFORMS DESTRUCTIVE OPERATIONS
   # ---------------------------------------------------------------------------
   - pattern: '\bfly\s+apps\s+destroy\b'
     reason: fly apps destroy (Fly.io)
+    ask: true
 
   - pattern: '\bfly\s+destroy\b'
     reason: fly destroy (Fly.io)
+    ask: true
 
   - pattern: '\bdoctl\s+compute\s+droplet\s+delete\b'
     reason: doctl droplet delete (DigitalOcean)
+    ask: true
 
   - pattern: '\bdoctl\s+databases\s+delete\b'
     reason: doctl databases delete (DigitalOcean)
+    ask: true
 
   - pattern: '\bsupabase\s+db\s+reset\b'
     reason: supabase db reset
+    ask: true
 
   # ---------------------------------------------------------------------------
   # GITHUB CLI DESTRUCTIVE OPERATIONS
@@ -578,15 +636,19 @@ bashToolPatterns:
   # ---------------------------------------------------------------------------
   - pattern: '\bStop-Process\s+.*-Force'
     reason: Stop-Process -Force (PowerShell kill -9)
+    ask: true
 
   - pattern: '\btaskkill\s+/[fF]'
     reason: taskkill /F (force kill)
+    ask: true
 
   - pattern: '\btaskkill\s+.*\/IM\s+\*'
     reason: taskkill targeting all processes
+    ask: true
 
   - pattern: '\bkill\s+.*-Force'
     reason: kill alias with -Force
+    ask: true
 
   # ---------------------------------------------------------------------------
   # WINDOWS SYSTEM OPERATIONS
