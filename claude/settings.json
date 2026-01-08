@@ -109,7 +109,11 @@
   },
   "enabledPlugins": {
     "handbook-git-worktree@cc-handbook": true,
-    "handbook-glab@cc-handbook": true
+    "handbook-glab@cc-handbook": true,
+    "aws-cdk@aws-skills": true,
+    "aws-cost-ops@aws-skills": true,
+    "serverless-eda@aws-skills": true,
+    "aws-agentic-ai@aws-skills": true
   },
   "alwaysThinkingEnabled": true
 }
