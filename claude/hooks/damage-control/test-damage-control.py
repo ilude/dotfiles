@@ -356,7 +356,10 @@ def build_tool_input(tool_name: str, value: str) -> dict:
 def run_test(hook_type: str, tool_name: str, value: str, expectation: str, verbose: bool = True) -> bool:
     """Run a single test and return True if passed.
 
-    expectation can be: "blocked" or "allowed" (exit code based)
+    expectation can be: "blocked", "ask", or "allowed"
+    - blocked: exit code 2
+    - ask: exit code 0 with JSON containing permissionDecision: "ask"
+    - allowed: exit code 0 without ask JSON
     """
     hook_path = get_hook_path(hook_type)
     tool_input = build_tool_input(tool_name, value)
@@ -367,12 +370,18 @@ def run_test(hook_type: str, tool_name: str, value: str, expectation: str, verbo
     })
 
     try:
+        # On Windows, hide console windows to avoid focus-stealing during tests
+        kwargs = {}
+        if sys.platform == "win32":
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
         result = subprocess.run(
             ["uv", "run", str(hook_path)],
             input=input_json,
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
+            **kwargs
         )
         exit_code = result.returncode
         stdout = result.stdout.strip()
@@ -386,19 +395,29 @@ def run_test(hook_type: str, tool_name: str, value: str, expectation: str, verbo
             print(f"ERROR: {e}")
         return False
 
-    # Handle PreToolUse hooks (exit code based)
-    blocked = exit_code == 2
-    expect_blocked = expectation == "blocked"
-    passed = blocked == expect_blocked
+    # Determine actual result: blocked (exit 2), ask (exit 0 + JSON), or allowed (exit 0)
+    if exit_code == 2:
+        actual = "blocked"
+    elif exit_code == 0 and stdout:
+        # Check for ask JSON in stdout
+        try:
+            output = json.loads(stdout)
+            if output.get("hookSpecificOutput", {}).get("permissionDecision") == "ask":
+                actual = "ask"
+            else:
+                actual = "allowed"
+        except json.JSONDecodeError:
+            actual = "allowed"
+    else:
+        actual = "allowed"
 
-    expected = "BLOCKED" if expect_blocked else "ALLOWED"
-    actual = "BLOCKED" if blocked else "ALLOWED"
+    passed = actual == expectation
 
     if verbose:
         if passed:
-            print(f"PASS: {expected} - {value}")
+            print(f"PASS: {expectation.upper()} - {value}")
         else:
-            print(f"FAIL: Expected {expected}, got {actual} - {value}")
+            print(f"FAIL: Expected {expectation.upper()}, got {actual.upper()} - {value}")
             if stderr:
                 print(f"  stderr: {stderr[:200]}")
 
@@ -543,6 +562,8 @@ def main():
                         help='Command or path to test')
     parser.add_argument('--expect-blocked', action='store_const', const='blocked', dest='expectation',
                         help='Expect command to be blocked')
+    parser.add_argument('--expect-ask', action='store_const', const='ask', dest='expectation',
+                        help='Expect command to trigger confirmation dialog')
     parser.add_argument('--expect-allowed', action='store_const', const='allowed', dest='expectation',
                         help='Expect command to be allowed')
 
