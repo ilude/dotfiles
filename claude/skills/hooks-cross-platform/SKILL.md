@@ -1,3 +1,10 @@
+---
+name: hooks-cross-platform
+description: |
+  Cross-platform Claude Code hooks and status scripts for Windows, WSL, and Linux.
+  Trigger keywords: hooks, claude-status, .claude/hooks, Windows hooks, WSL hooks, cross-platform scripts.
+---
+
 # Cross-Platform Hooks and Status Scripts
 
 Guidelines for writing Claude Code hooks and status scripts that work on Windows (PowerShell, Git Bash), WSL, and Linux.

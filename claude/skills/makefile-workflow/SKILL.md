@@ -9,6 +9,49 @@ Makefiles provide consistent command interfaces across development, testing, and
 
 ---
 
+## CRITICAL: Avoid Makefile Complexity Theater
+
+**Makefiles are tools, not requirements. Use them when they solve real problems.**
+
+Before adding a Makefile, ask:
+
+1. **Does this solve a real problem?**
+   - "We have 5+ commands to remember" → Makefile helps
+   - "Best practices say use Makefiles" → Not a real problem
+
+2. **Is simpler tooling sufficient?**
+   - `package.json` scripts for Node.js projects
+   - `pyproject.toml` scripts with uv/poetry
+   - Shell scripts for one-off automation
+
+3. **What's the maintenance cost?**
+   - Makefile syntax has learning curve (tabs, variable types)
+   - Platform differences require careful handling
+
+### The Makefile Litmus Test
+
+> "Do I need a Makefile, or will package.json scripts / pyproject.toml scripts suffice?"
+
+If your project is single-language with straightforward commands, language-native task runners are simpler.
+
+### Makefile Anti-Patterns to Avoid
+
+| Anti-Pattern | Example | Problem |
+|--------------|---------|---------|
+| **Echo spam** | "Starting...", "Now doing...", "Done!" | Adds noise, obscures real output |
+| **Flag accumulation** | `pytest -v --tb=short --strict-markers --durations=0` | Unnecessary flags add confusion |
+| **Wrapper theater** | `make lint` just calls `npm run lint` | Extra layer with no value |
+| **Platform complexity** | Windows/Mac/Linux detection for simple tasks | When cross-platform isn't needed |
+
+### When Makefiles ARE Worth It
+
+- Multi-language projects (Python + Go + TypeScript)
+- Complex build pipelines with real dependencies
+- Projects where `npm scripts` or `pyproject.toml` can't express the workflow
+- Teams already familiar with Make
+
+---
+
 ## Overview and Purpose
 
 Makefiles serve as a unified interface for project automation:

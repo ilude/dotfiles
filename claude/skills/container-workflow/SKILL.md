@@ -15,6 +15,43 @@ Guidelines for containerized applications using Docker, Docker Compose, and orch
 - Infrastructure orchestration - see `ansible-workflow`
 - Kubernetes patterns - separate skill
 
+---
+
+## CRITICAL: Avoid Container Complexity Theater
+
+**Containers are tools, not requirements. Use them when they solve real problems.**
+
+Before adding container complexity, ask:
+
+1. **Does this solve a real problem?**
+   - "We need consistent environments" → Containers help
+   - "Best practices say use containers" → Not a real problem
+
+2. **Is the simpler approach sufficient?**
+   - Local development often works fine without containers
+   - Not every service needs its own container
+
+3. **What's the operational cost?**
+   - Container orchestration adds debugging complexity
+   - Network overlay issues (DNS, CNI) cause outages
+
+### The Container Complexity Litmus Test
+
+> "If I remove this container pattern, what specific problem occurs?"
+
+If the answer is vague ("isolation", "best practices", "microservices"), the pattern may be theater.
+
+### Container Anti-Patterns to Avoid
+
+| Anti-Pattern | Example | Problem |
+|--------------|---------|---------|
+| **mTLS theater** | "mTLS between all services" | In single-tenant app where TLS terminates at edge |
+| **Sidecar proliferation** | "Add sidecars for observability" | When log shipping from host works fine |
+| **Network policy theater** | "NetworkPolicy for pod segmentation" | Policies that allow 0.0.0.0/0 egress |
+| **Service mesh overhead** | "Istio for traffic management" | For 3 services talking to each other |
+
+---
+
 ## CRITICAL: Docker Compose V2 Syntax
 
 **MUST NOT use `version:` field** (deprecated) **or `docker-compose` with hyphen:**
@@ -808,6 +845,80 @@ docker system prune
 - Using env vars instead of secrets for sensitive data
 - Missing resource limits in production
 - No log rotation configured
+
+---
+
+## Validation Script
+
+Quick container validation before deployment:
+
+```bash
+#!/bin/bash
+# container-validate.sh - Validate Docker configuration
+
+set -e
+
+echo "=== Container Validation ==="
+
+# Check Dockerfile exists
+if [ ! -f "Dockerfile" ]; then
+  echo "❌ FAIL: Missing Dockerfile"
+  exit 1
+fi
+echo "✓ Dockerfile exists"
+
+# Check for deprecated version field in docker-compose
+if grep -q "^version:" docker-compose.yml 2>/dev/null; then
+  echo "❌ FAIL: Remove deprecated 'version:' from docker-compose.yml"
+  exit 1
+fi
+echo "✓ No deprecated version field"
+
+# Check for non-root user
+if ! grep -q "^USER" Dockerfile; then
+  echo "⚠ WARNING: No USER directive in Dockerfile (running as root)"
+fi
+
+# Check for health check
+if ! grep -q "HEALTHCHECK" Dockerfile; then
+  echo "⚠ WARNING: No HEALTHCHECK in Dockerfile"
+fi
+
+# Check for latest tag
+if grep -q ":latest" Dockerfile; then
+  echo "⚠ WARNING: Using :latest tag - pin specific versions for reproducibility"
+fi
+
+# Check for .local domain (conflicts with mDNS)
+if grep -r "\.local" docker-compose.yml 2>/dev/null; then
+  echo "❌ FAIL: Using .local domain (conflicts with mDNS) - use .internal"
+  exit 1
+fi
+echo "✓ No .local domain usage"
+
+# Check for secrets in environment
+if grep -r "PASSWORD=" docker-compose.yml 2>/dev/null | grep -v "_FILE="; then
+  echo "⚠ WARNING: Password in environment - use Docker secrets instead"
+fi
+
+# Validate docker-compose syntax
+echo "Validating docker-compose.yml..."
+docker compose config --quiet 2>/dev/null || echo "⚠ docker-compose validation failed"
+
+echo "✓ Container validation complete"
+```
+
+### Makefile Integration
+
+```makefile
+.PHONY: docker-validate
+docker-validate: ## Validate container configuration
+	@./scripts/container-validate.sh
+
+.PHONY: docker-lint
+docker-lint: ## Lint Dockerfile with hadolint
+	@docker run --rm -i hadolint/hadolint < Dockerfile
+```
 
 ---
 
