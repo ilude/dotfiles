@@ -68,7 +68,7 @@ teardown() {
 
 @test "damage-control: bash hook detects git semantic violations" {
     cd "$DOTFILES_DIR"
-    run uv run claude/hooks/damage-control/test-damage-control.py bash Bash "git push --force" --expect-blocked
+    run uv run claude/hooks/damage-control/test-damage-control.py bash Bash "git push --force" --expect-ask
     [ "$status" -eq 0 ]
 }
 

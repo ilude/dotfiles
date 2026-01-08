@@ -37,13 +37,13 @@ def minimal_config():
 class TestGitSemanticIntegration:
     """Integration tests for git semantic analysis with check_command."""
 
-    @pytest.mark.parametrize("command,expected_blocked,description", [
-        # Git semantic analysis should catch these
+    @pytest.mark.parametrize("command,expected_dangerous,description", [
+        # Git semantic analysis should catch these (blocked or ask)
         ('git checkout -- .', True, 'Git semantic: checkout with --'),
         ('git push --force', True, 'Git semantic: force push'),
         ('git reset --hard', True, 'Git semantic: hard reset'),
         ('git clean -fd', True, 'Git semantic: clean with flags'),
-        # These should pass
+        # These should pass (allowed)
         ('git checkout -b feature', False, 'Git semantic: safe checkout -b'),
         ('git push --force-with-lease', False, 'Git semantic: safe force with lease'),
         ('git status', False, 'Git semantic: safe status'),
@@ -51,9 +51,11 @@ class TestGitSemanticIntegration:
         ('bash -c "git push --force"', True, 'Unwrapped git force push'),
         ('sh -c "git reset --hard"', True, 'Unwrapped git hard reset'),
     ])
-    def test_git_semantic_integration(self, minimal_config, command, expected_blocked, description):
+    def test_git_semantic_integration(self, minimal_config, command, expected_dangerous, description):
         """Test that git semantic analysis integrates with check_command."""
         is_blocked, should_ask, reason, pattern, unwrapped, semantic = check_command(
             command, minimal_config
         )
-        assert is_blocked == expected_blocked, f"{description}: expected {expected_blocked}, got {is_blocked}"
+        # Dangerous = blocked OR requires confirmation (ask)
+        is_dangerous = is_blocked or should_ask
+        assert is_dangerous == expected_dangerous, f"{description}: expected dangerous={expected_dangerous}, got blocked={is_blocked}, ask={should_ask}"
