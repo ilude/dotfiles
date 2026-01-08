@@ -11,6 +11,50 @@ Apply structured analytical frameworks to ANY artifact: prompts, systems, docume
 
 **12 Total Frameworks** organized in 3 tiers for easy selection.
 
+---
+
+## CRITICAL: Avoid Security Theater & Complexity Theater
+
+**These frameworks find problems. Finding problems WORTH SOLVING is the real skill.**
+
+### The Trap
+
+Analysis frameworks bias toward "find issue → recommend mitigation." This creates:
+- **Security theater**: Controls that look secure but provide no real protection
+- **Complexity theater**: Features/abstractions added to feel thorough but add no value
+
+### The Litmus Tests
+
+Before recommending ANY mitigation or addition:
+
+> **Security**: "If I remove this control, what specific attack becomes possible?"
+>
+> **Complexity**: "If I remove this abstraction, what real problem occurs?"
+
+If the answer is vague ("defense in depth", "best practices", "might need it later"), the recommendation may be theater.
+
+### Real-World Example
+
+A GitLab deployment added Cilium CNI "for NetworkPolicy support" after security analysis recommended pod segmentation. The NetworkPolicies:
+- Allowed egress to `0.0.0.0/0` (everything)
+- Didn't segment workloads (single-tenant app)
+- Provided zero actual security value
+
+The cost: DNS outages during every infrastructure change, hours of debugging.
+
+**The analysis found a "gap" (no NetworkPolicy) without asking "does this deployment need NetworkPolicy?"**
+
+### Framework-Specific Warnings
+
+| Framework | Theater Risk | Mitigation |
+|-----------|--------------|------------|
+| **adversarial-review** | Finds hypothetical attacks, recommends controls for non-threats | Ask: "Is this threat realistic for THIS system?" |
+| **security-first-design** | Recommends OWASP controls without context | Ask: "Is this already mitigated at VPC/IAM/app layer?" |
+| **deep-analyze** | Every finding gets a mitigation | Ask: "What's the cost of NOT mitigating?" |
+| **scope-boundary** | (Good) - Actually prevents theater | Use this to counter-balance other frameworks |
+
+---
+
 ## Framework Tiers
 
 ### Tier 1: Core Frameworks (Use Most Often)
@@ -225,6 +269,8 @@ Synthesis - Balanced Integration
 ### adversarial-review [NEW]
 **Best for**: Red-team attack on plans/systems to find flaws, edge cases, blind spots
 
+**WARNING**: This framework can cause security/complexity theater. See "Avoid Theater" section above.
+
 ```
 {BASE_TARGET}
 
@@ -256,7 +302,17 @@ Phase 5: Attack Vectors & Blind Spots
 - Where could malicious input cause issues?
 - What would break this in production?
 
-Be adversarial. If you don't find issues, you weren't critical enough.
+Phase 6: Mitigation Value Assessment (REQUIRED)
+For EVERY mitigation suggested in Phases 1-5:
+- What specific attack/failure does this prevent? (Name it, not "defense in depth")
+- Is this threat realistic for THIS system? (single vs multi-tenant, trusted vs untrusted)
+- Is this already mitigated elsewhere? (VPC, SGs, IAM, app-level auth)
+- What's the operational cost? (complexity, failure modes, maintenance)
+- What happens if we DON'T add this? (quantify actual risk)
+
+If you can't answer these clearly, the mitigation may be theater.
+
+Be adversarial about finding issues, but also adversarial about your own recommendations.
 ```
 
 ### scope-boundary [NEW]
@@ -365,6 +421,8 @@ Phase 5: Quality Gate
 ### security-first-design [NEW]
 **Best for**: Authentication, secrets, external data, user input
 
+**WARNING**: This framework can cause security theater. See "Avoid Theater" section above.
+
 ```
 {BASE_DESIGN}
 
@@ -398,12 +456,28 @@ Phase 4: Input Validation
 - Is input sanitized before use?
 - Are file uploads restricted?
 
-Phase 5: Security Recommendations
-- **CRITICAL**: Must-fix security issues
-- **HIGH**: Should-fix vulnerabilities
-- **MEDIUM**: Defense-in-depth improvements
+Phase 5: Context-Aware Security Assessment
+Before recommending controls, assess:
+- Is this single-tenant or multi-tenant?
+- Are users trusted (internal) or untrusted (public)?
+- What's already protected at infrastructure layer? (VPC, SGs, IAM)
+- What's the realistic threat model? (Who is the attacker?)
 
-Default to paranoid. Security issues are blocking.
+Phase 6: Security Recommendations (with justification)
+For each recommendation:
+- **Issue**: [Specific vulnerability]
+- **Severity**: CRITICAL/HIGH/MEDIUM
+- **Threat**: [Who exploits this, how, realistic?]
+- **Already mitigated?**: [Check infra/app layers]
+- **Operational cost**: [Complexity added]
+- **Recommendation**: [Control to add, IF justified]
+
+Skip MEDIUM/"defense-in-depth" recommendations if:
+- Threat is hypothetical, not realistic
+- Already mitigated at another layer
+- Operational cost exceeds security benefit
+
+Default to paranoid for CRITICAL/HIGH. Be skeptical of MEDIUM.
 ```
 
 ### evidence-based-optimization [NEW]
@@ -483,11 +557,32 @@ NEVER optimize without measuring. Premature optimization is evil.
 | Missing synthesis | Just listing perspectives | Must integrate views |
 | Fake adversarial | Not finding issues | Be genuinely critical |
 | Scope creep | "While we're at it..." | MVP first, defer nice-to-haves |
+| **Security theater** | Adding controls that don't mitigate real threats | Ask: "What specific attack does this prevent?" |
+| **Complexity theater** | Adding abstractions to feel thorough | Ask: "What breaks if I remove this?" |
+| **Checkbox security** | "Best practices" without threat modeling | Assess: Is this relevant to THIS system? |
+| **Hypothetical hardening** | "An attacker could..." for non-threats | Require: Realistic attacker, realistic path |
 
 ## Effectiveness Indicators
 
-**Strong**: Analysis finds real problems, personas conflict, confidence varies, verification changes conclusions, approaches differ, scope gets trimmed, security issues found
-**Weak**: No issues found, personas agree, perspectives identical, no constraints added, superficial application, rubber-stamp approval
+**Strong analysis**:
+- Finds real problems (not hypothetical)
+- Personas have genuine conflict
+- Confidence varies appropriately
+- Verification changes conclusions
+- Scope gets trimmed (not expanded)
+- Security recommendations are context-specific
+- Mitigations have clear cost-benefit justification
+- Some recommendations are "don't add this"
+
+**Weak analysis (may indicate theater)**:
+- Every finding leads to "add more controls"
+- No recommendations are rejected as not worth the cost
+- "Defense in depth" used without specific threat
+- MEDIUM recommendations all accepted uncritically
+- No consideration of existing infrastructure protections
+- Complexity always increases, never decreases
+
+**The best analysis sometimes concludes: "This is already secure enough for its context."**
 
 ## Integration Notes
 
