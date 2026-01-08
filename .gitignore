@@ -43,4 +43,6 @@ last-context.txt
 InstallationLog.txt
 hook-debug*.*
 backups/
-logs/claude/cache/
+logs/
+claude/cache/
+claude/logs/
