@@ -694,14 +694,19 @@ bashToolPatterns:
 # ---------------------------------------------------------------------------
 # These contain secrets/credentials - block ALL operations including reads
 # Enforced by: Bash, Edit, Write tools
-# Supports glob patterns: *.pem, .env*, *-credentials.json
+# Supports glob patterns: *.pem, *-credentials.json
 zeroAccessPaths:
   # ---------------------------------------------------------------------------
   # ENVIRONMENT FILES (HIGH RISK - contain secrets)
+  # Note: .env.example, .env.sample, .env.template are intentionally ALLOWED
   # ---------------------------------------------------------------------------
   - ".env"
-  - ".env.*"
-  - ".env*.local"
+  - ".env.local"
+  - ".env.development"
+  - ".env.production"
+  - ".env.staging"
+  - ".env.test"
+  - ".env.*.local"
   - "*.env"
 
   # ---------------------------------------------------------------------------
