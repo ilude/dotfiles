@@ -697,19 +697,6 @@ bashToolPatterns:
 # Supports glob patterns: *.pem, *-credentials.json
 zeroAccessPaths:
   # ---------------------------------------------------------------------------
-  # ENVIRONMENT FILES (HIGH RISK - contain secrets)
-  # Note: .env.example, .env.sample, .env.template are intentionally ALLOWED
-  # ---------------------------------------------------------------------------
-  - ".env"
-  - ".env.local"
-  - ".env.development"
-  - ".env.production"
-  - ".env.staging"
-  - ".env.test"
-  - ".env.*.local"
-  - "*.env"
-
-  # ---------------------------------------------------------------------------
   # SSH KEYS AND CONFIG
   # ---------------------------------------------------------------------------
   - "~/.ssh/"
