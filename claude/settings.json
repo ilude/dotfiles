@@ -86,6 +86,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash -c 'uv run $HOME/.claude/hooks/path-normalization/path-normalization-hook.py'",
+            "timeout": 5
+          },
+          {
+            "type": "command",
             "command": "bash -c 'uv run $HOME/.claude/hooks/damage-control/edit-tool-damage-control.py'",
             "timeout": 5
           }
@@ -94,6 +99,11 @@
       {
         "matcher": "Write",
         "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'uv run $HOME/.claude/hooks/path-normalization/path-normalization-hook.py'",
+            "timeout": 5
+          },
           {
             "type": "command",
             "command": "bash -c 'uv run $HOME/.claude/hooks/damage-control/write-tool-damage-control.py'",
