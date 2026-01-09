@@ -931,9 +931,11 @@ def check_command(command: str, config: Dict[str, Any], context: Optional[str] =
                 escaped_original = path_obj.get("escaped_original", "")
 
                 if escaped_expanded or escaped_original:
-                    # Check both expanded path (/Users/x/.ssh/) and original tilde form (~/.ssh/)
-                    if (escaped_expanded and re.search(escaped_expanded, unwrapped_cmd)) or \
-                       (escaped_original and re.search(escaped_original, unwrapped_cmd)):
+                    # Match path only if NOT followed by more filename chars
+                    # This prevents .env from matching .env.example
+                    suffix = r'(?![a-zA-Z0-9_.-])'
+                    if (escaped_expanded and re.search(escaped_expanded + suffix, unwrapped_cmd)) or \
+                       (escaped_original and re.search(escaped_original + suffix, unwrapped_cmd)):
                         return True, False, f"Blocked: zero-access path {path_obj['original']} (no operations allowed)", "zero_access_literal", was_unwrapped, False
 
     # 3. Check for modifications to read-only paths (reads allowed)
