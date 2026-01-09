@@ -167,28 +167,7 @@ def main() -> None:
 
     if is_absolute or uses_backslashes:
         suggestion = get_relative_suggestion(file_path)
-
-        print("PATH NORMALIZATION REQUIRED", file=sys.stderr)
-        print("", file=sys.stderr)
-
-        if is_absolute:
-            print(f"Problem: {reason} detected", file=sys.stderr)
-            print(f"  Given: {file_path}", file=sys.stderr)
-            print("", file=sys.stderr)
-
-        if uses_backslashes:
-            print("Problem: Path uses backslashes (\\) instead of forward slashes (/)", file=sys.stderr)
-            print("", file=sys.stderr)
-
-        print("Required format:", file=sys.stderr)
-        print("  - Use RELATIVE paths from workspace root", file=sys.stderr)
-        print("  - Use forward slashes (/) not backslashes (\\)", file=sys.stderr)
-        print("", file=sys.stderr)
-        print(f"Suggested path: {suggestion}", file=sys.stderr)
-        print("", file=sys.stderr)
-        print("Example: Instead of 'E:/Projects/myproject/src/file.py'", file=sys.stderr)
-        print("     Use: 'src/file.py' (relative from workspace root)", file=sys.stderr)
-
+        print(f"Use relative path: '{suggestion}'", file=sys.stderr)
         sys.exit(2)
 
     sys.exit(0)
