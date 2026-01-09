@@ -1,0 +1,198 @@
+# /// script
+# requires-python = ">=3.8"
+# dependencies = []
+# ///
+"""
+Claude Code Path Normalization Hook
+====================================
+
+Blocks Edit/Write operations using absolute paths and guides Claude to use
+relative paths from the workspace root instead.
+
+Goals:
+- Use relative paths: projectfolder/... instead of E:/Projects/projectfolder/...
+- Use forward slashes: / not backslashes
+- Start from workspace root and use relative paths
+
+Exit codes:
+  0 = Allow (path is relative and uses forward slashes)
+  2 = Block (stderr fed back to Claude with guidance)
+"""
+
+import json
+import os
+import re
+import sys
+from typing import Tuple
+
+
+def is_absolute_path(file_path: str) -> Tuple[bool, str]:
+    """Check if path is absolute and return reason if so.
+
+    Detects:
+    - Windows drive letters: C:/, C:\\, E:/Projects/...
+    - MSYS/Git Bash style: /c/, /e/, /mnt/c/
+    - UNC paths: //server/share, \\\\server\\share
+
+    Returns:
+        Tuple of (is_absolute, reason)
+    """
+    if not file_path:
+        return False, ""
+
+    # Normalize for checking (but preserve original for error message)
+    path = file_path.strip()
+
+    # Windows drive letter paths: C:/, C:\, E:/Projects/...
+    if re.match(r'^[A-Za-z]:[/\\]', path):
+        return True, "Windows absolute path with drive letter"
+
+    # MSYS/Git Bash paths: /c/, /e/Users/...
+    if re.match(r'^/[A-Za-z]/', path):
+        return True, "MSYS/Git Bash absolute path"
+
+    # WSL mount paths: /mnt/c/, /mnt/d/
+    if re.match(r'^/mnt/[A-Za-z]/', path):
+        return True, "WSL mount path"
+
+    # UNC paths: //server/share or \\server\share
+    if re.match(r'^[/\\]{2}', path):
+        return True, "UNC network path"
+
+    # Unix absolute paths starting with /
+    # But exclude common relative-looking paths that start with ./
+    if path.startswith('/') and not path.startswith('./'):
+        # Allow some special paths that might be intentional
+        allowed_prefixes = ['/dev/', '/proc/', '/tmp/', '/var/']
+        if not any(path.startswith(p) for p in allowed_prefixes):
+            # Check if it looks like a project path (has multiple segments)
+            # Skip single-segment paths like /Makefile which might be from root
+            if path.count('/') > 1:
+                return True, "Unix absolute path"
+
+    return False, ""
+
+
+def has_backslashes(file_path: str) -> bool:
+    """Check if path uses backslashes (Windows style)."""
+    return '\\' in file_path
+
+
+def get_relative_suggestion(file_path: str) -> str:
+    """Suggest how to convert the path to relative.
+
+    Tries to extract the project-relative portion of the path.
+    """
+    # Get the current working directory for context
+    cwd = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+
+    # Normalize slashes for comparison
+    normalized_path = file_path.replace('\\', '/')
+    normalized_cwd = cwd.replace('\\', '/')
+
+    # Handle MSYS paths like /c/Users/...
+    msys_match = re.match(r'^/([A-Za-z])/(.*)', normalized_path)
+    if msys_match:
+        drive = msys_match.group(1).upper()
+        rest = msys_match.group(2)
+        normalized_path = f"{drive}:/{rest}"
+
+    # Handle Windows paths
+    win_match = re.match(r'^([A-Za-z]):[/\\](.*)', normalized_path)
+    if win_match:
+        drive = win_match.group(1).upper()
+        rest = win_match.group(2)
+        normalized_path = f"{drive}:/{rest}"
+
+    # Same for cwd
+    cwd_msys_match = re.match(r'^/([A-Za-z])/(.*)', normalized_cwd)
+    if cwd_msys_match:
+        drive = cwd_msys_match.group(1).upper()
+        rest = cwd_msys_match.group(2)
+        normalized_cwd = f"{drive}:/{rest}"
+
+    cwd_win_match = re.match(r'^([A-Za-z]):[/\\](.*)', normalized_cwd)
+    if cwd_win_match:
+        drive = cwd_win_match.group(1).upper()
+        rest = cwd_win_match.group(2)
+        normalized_cwd = f"{drive}:/{rest}"
+
+    # Check if path starts with cwd
+    if normalized_path.lower().startswith(normalized_cwd.lower()):
+        # Extract relative portion
+        relative = normalized_path[len(normalized_cwd):].lstrip('/')
+        if relative:
+            return relative
+
+    # Try to find a common project folder pattern
+    # Look for patterns like: .../Projects/ProjectName/...
+    project_patterns = [
+        r'[/\\]Projects[/\\]([^/\\]+[/\\].+)$',
+        r'[/\\]repos[/\\]([^/\\]+[/\\].+)$',
+        r'[/\\]src[/\\]([^/\\]+[/\\].+)$',
+        r'[/\\]code[/\\]([^/\\]+[/\\].+)$',
+    ]
+
+    for pattern in project_patterns:
+        match = re.search(pattern, file_path, re.IGNORECASE)
+        if match:
+            return match.group(1).replace('\\', '/')
+
+    # Fall back to just the filename
+    return os.path.basename(file_path)
+
+
+def main() -> None:
+    # Read hook input from stdin
+    try:
+        input_data = json.load(sys.stdin)
+    except json.JSONDecodeError as e:
+        print(f"Error: Invalid JSON input: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    tool_name = input_data.get("tool_name", "")
+    tool_input = input_data.get("tool_input", {})
+
+    # Only check Edit and Write tools
+    if tool_name not in ("Edit", "Write"):
+        sys.exit(0)
+
+    file_path = tool_input.get("file_path", "")
+    if not file_path:
+        sys.exit(0)
+
+    # Check for absolute paths
+    is_absolute, reason = is_absolute_path(file_path)
+    uses_backslashes = has_backslashes(file_path)
+
+    if is_absolute or uses_backslashes:
+        suggestion = get_relative_suggestion(file_path)
+
+        print("PATH NORMALIZATION REQUIRED", file=sys.stderr)
+        print("", file=sys.stderr)
+
+        if is_absolute:
+            print(f"Problem: {reason} detected", file=sys.stderr)
+            print(f"  Given: {file_path}", file=sys.stderr)
+            print("", file=sys.stderr)
+
+        if uses_backslashes:
+            print("Problem: Path uses backslashes (\\) instead of forward slashes (/)", file=sys.stderr)
+            print("", file=sys.stderr)
+
+        print("Required format:", file=sys.stderr)
+        print("  - Use RELATIVE paths from workspace root", file=sys.stderr)
+        print("  - Use forward slashes (/) not backslashes (\\)", file=sys.stderr)
+        print("", file=sys.stderr)
+        print(f"Suggested path: {suggestion}", file=sys.stderr)
+        print("", file=sys.stderr)
+        print("Example: Instead of 'E:/Projects/myproject/src/file.py'", file=sys.stderr)
+        print("     Use: 'src/file.py' (relative from workspace root)", file=sys.stderr)
+
+        sys.exit(2)
+
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
