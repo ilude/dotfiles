@@ -148,8 +148,16 @@ def match_path(file_path: str, pattern: str) -> bool:
             return True
         return False
     else:
-        # Prefix matching (original behavior for directories)
-        if expanded_normalized.startswith(expanded_pattern) or expanded_normalized == expanded_pattern.rstrip('/'):
+        # Exact match or directory prefix matching
+        # .env should NOT match .env.example (different files)
+        # ~/.ssh/ SHOULD match ~/.ssh/id_rsa (directory contains file)
+        if expanded_normalized == expanded_pattern or expanded_normalized == expanded_pattern.rstrip('/'):
+            return True
+        # Only prefix match if pattern is a directory (ends with /)
+        if expanded_pattern.endswith('/') and expanded_normalized.startswith(expanded_pattern):
+            return True
+        # Also match if path is inside the directory (pattern without trailing /)
+        if expanded_normalized.startswith(expanded_pattern + '/') or expanded_normalized.startswith(expanded_pattern + os.sep):
             return True
         return False
 
