@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+# /// script
+# requires-python = ">=3.8"
+# dependencies = ["pytest"]
+# ///
 """Test integration of git semantic analysis with check_command."""
 
 import sys
