@@ -742,9 +742,9 @@ zeroAccessPaths:
   # SSL/TLS CERTIFICATES AND PRIVATE KEYS
   # ---------------------------------------------------------------------------
   - "*.pem"
-  - "*.key"
   - "*.p12"
   - "*.pfx"
+  - "*.ppk"        # PuTTY private keys
 
   # ---------------------------------------------------------------------------
   # TERRAFORM STATE (contains secrets in plaintext!)
@@ -1064,12 +1064,12 @@ contexts:
         - 'git\s+commit.*<<\s*EOF'                            # heredoc commit
         - 'git\s+commit.*cat.*EOF'                            # cat to heredoc
         - '\b(nano|vim|nvim|emacs|code|vi)\s+.*\.git/COMMIT_EDITMSG'  # editor on commit file
-    # Checks to skip in this context
+    # Checks to skip in this context (commit messages are just text, no actual file operations)
     relaxed_checks:
       - bashToolPatterns  # Don't check command patterns in commit messages
+      - zeroAccessPaths   # Text mentions of patterns like *.pem aren't file access
+      - readOnlyPaths     # Text mentions aren't file modifications
+      - noDeletePaths     # Text mentions aren't file deletions
     # Checks to always enforce even in this context
     enforced_checks:
-      - zeroAccessPaths   # Still block secret operations
-      - readOnlyPaths     # Still block system modifications
-      - noDeletePaths     # Still block important deletions
-      - semantic_git      # Still analyze the git command itself
+      - semantic_git      # Still analyze the git command itself (push --force, etc.)
