@@ -13,6 +13,10 @@ Exit codes:
   0 = Allow command (or JSON output with permissionDecision)
   2 = Block command (stderr fed back to Claude)
 
+Environment variables:
+  CLAUDE_DISABLE_HOOKS - Comma-separated list of hook names to disable
+                         Use "damage-control" to disable this hook
+
 JSON output for ask patterns:
   {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "ask", "permissionDecisionReason": "..."}}
 """
@@ -28,6 +32,14 @@ from typing import Tuple, List, Dict, Any, Optional
 from datetime import datetime
 
 import yaml
+
+HOOK_NAME = "damage-control"
+
+
+def is_hook_disabled() -> bool:
+    """Check if this hook is disabled via CLAUDE_DISABLE_HOOKS env var."""
+    disabled_hooks = os.environ.get("CLAUDE_DISABLE_HOOKS", "")
+    return HOOK_NAME in [h.strip() for h in disabled_hooks.split(",")]
 
 
 # ============================================================================
@@ -962,6 +974,10 @@ def check_command(command: str, config: Dict[str, Any], context: Optional[str] =
 # ============================================================================
 
 def main() -> None:
+    # Check if hook is disabled
+    if is_hook_disabled():
+        sys.exit(0)
+
     # Get compiled configuration (uses module-level cache)
     config = get_compiled_config()
 

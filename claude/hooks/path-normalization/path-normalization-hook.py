@@ -17,6 +17,10 @@ Goals:
 Exit codes:
   0 = Allow (path is relative and uses forward slashes)
   2 = Block (stderr fed back to Claude with guidance)
+
+Environment variables:
+  CLAUDE_DISABLE_HOOKS - Comma-separated list of hook names to disable
+                         Use "path-normalization" to disable this hook
 """
 
 import json
@@ -24,6 +28,14 @@ import os
 import re
 import sys
 from typing import Tuple
+
+HOOK_NAME = "path-normalization"
+
+
+def is_hook_disabled() -> bool:
+    """Check if this hook is disabled via CLAUDE_DISABLE_HOOKS env var."""
+    disabled_hooks = os.environ.get("CLAUDE_DISABLE_HOOKS", "")
+    return HOOK_NAME in [h.strip() for h in disabled_hooks.split(",")]
 
 
 def is_absolute_path(file_path: str) -> Tuple[bool, str]:
@@ -176,6 +188,10 @@ def is_claude_internal_path(file_path: str) -> bool:
 
 
 def main() -> None:
+    # Check if hook is disabled
+    if is_hook_disabled():
+        sys.exit(0)
+
     # Read hook input from stdin
     try:
         input_data = json.load(sys.stdin)
@@ -212,11 +228,8 @@ def main() -> None:
         sys.exit(0)
 
     # Also allow Claude Code's internal paths (plans, cache, etc.)
+    # Don't enforce backslash rules here - Claude Code controls these paths internally
     if is_absolute and is_claude_internal_path(file_path):
-        if uses_backslashes:
-            suggestion = file_path.replace('\\', '/')
-            print(f"Use forward slashes: '{suggestion}'", file=sys.stderr)
-            sys.exit(2)
         sys.exit(0)
 
     if is_absolute or uses_backslashes:
