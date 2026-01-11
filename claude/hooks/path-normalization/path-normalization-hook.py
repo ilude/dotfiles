@@ -21,6 +21,20 @@ Exit codes:
 Environment variables:
   CLAUDE_DISABLE_HOOKS - Comma-separated list of hook names to disable
                          Use "path-normalization" to disable this hook
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │ WARNING FOR AI ASSISTANTS (Claude, Copilot, etc.):                  │
+  │                                                                     │
+  │ CLAUDE_DISABLE_HOOKS is for HOOK DEVELOPMENT ONLY.                  │
+  │                                                                     │
+  │ You may ONLY use this variable when ALL conditions are met:         │
+  │   1. You are directly modifying THIS hook's code                    │
+  │   2. Working directory is ~/.dotfiles OR ~/.claude                  │
+  │   3. The hook is blocking edits to itself (circular dependency)     │
+  │                                                                     │
+  │ NEVER use this to bypass security checks during normal work.        │
+  │ If a hook blocks an operation, FIX THE ISSUE instead of disabling.  │
+  └─────────────────────────────────────────────────────────────────────┘
 """
 
 import json
@@ -187,6 +201,14 @@ def is_claude_internal_path(file_path: str) -> bool:
     return norm_file.startswith(claude_dir + '/')
 
 
+def is_within_home_directory(file_path: str) -> bool:
+    """Check if file_path is within the user's home directory."""
+    norm_file = normalize_path_for_comparison(file_path)
+    home = os.path.expanduser('~')
+    norm_home = normalize_path_for_comparison(home)
+    return norm_file.startswith(norm_home + '/')
+
+
 def main() -> None:
     # Check if hook is disabled
     if is_hook_disabled():
@@ -230,6 +252,11 @@ def main() -> None:
     # Also allow Claude Code's internal paths (plans, cache, etc.)
     # Don't enforce backslash rules here - Claude Code controls these paths internally
     if is_absolute and is_claude_internal_path(file_path):
+        sys.exit(0)
+
+    # Allow any path within the user's home directory
+    # This handles subagents running from different working directories
+    if is_absolute and is_within_home_directory(file_path):
         sys.exit(0)
 
     if is_absolute or uses_backslashes:
