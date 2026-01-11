@@ -118,7 +118,7 @@ teardown() {
 # =============================================================================
 
 @test "damage-control: unit tests pass (short suite)" {
-    cd "$DOTFILES_DIR"
-    run uv run --with pytest pytest claude/hooks/damage-control/tests/test_integration.py -v --tb=short -x
+    cd "$DOTFILES_DIR/claude/hooks/damage-control"
+    run uv run pytest tests/test_integration.py -v --tb=short -x
     [ "$status" -eq 0 ]
 }
