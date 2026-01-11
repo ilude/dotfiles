@@ -164,6 +164,17 @@ def is_path_within_project(file_path: str, project_dir: str) -> bool:
     return norm_file.startswith(norm_proj + '/') or norm_file == norm_proj
 
 
+def is_claude_internal_path(file_path: str) -> bool:
+    """Check if file_path is within Claude Code's internal directories (~/.claude/)."""
+    norm_file = normalize_path_for_comparison(file_path)
+
+    # Get home directory and construct claude config path
+    home = os.path.expanduser('~')
+    claude_dir = normalize_path_for_comparison(os.path.join(home, '.claude'))
+
+    return norm_file.startswith(claude_dir + '/')
+
+
 def main() -> None:
     # Read hook input from stdin
     try:
@@ -194,6 +205,14 @@ def main() -> None:
     # Claude Code internally expands relative paths to absolute
     if is_absolute and is_path_within_project(file_path, project_dir):
         # Still warn about backslashes for consistency
+        if uses_backslashes:
+            suggestion = file_path.replace('\\', '/')
+            print(f"Use forward slashes: '{suggestion}'", file=sys.stderr)
+            sys.exit(2)
+        sys.exit(0)
+
+    # Also allow Claude Code's internal paths (plans, cache, etc.)
+    if is_absolute and is_claude_internal_path(file_path):
         if uses_backslashes:
             suggestion = file_path.replace('\\', '/')
             print(f"Use forward slashes: '{suggestion}'", file=sys.stderr)
