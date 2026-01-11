@@ -142,6 +142,28 @@ def get_relative_suggestion(file_path: str) -> str:
     return os.path.basename(file_path)
 
 
+def normalize_path_for_comparison(path: str) -> str:
+    """Normalize a path for case-insensitive, slash-insensitive comparison."""
+    # Normalize slashes
+    normalized = path.replace('\\', '/').lower()
+
+    # Handle MSYS paths like /c/Users/...
+    msys_match = re.match(r'^/([a-z])/(.*)', normalized)
+    if msys_match:
+        normalized = f"{msys_match.group(1)}:/{msys_match.group(2)}"
+
+    return normalized.rstrip('/')
+
+
+def is_path_within_project(file_path: str, project_dir: str) -> bool:
+    """Check if file_path is within or equal to the project directory."""
+    norm_file = normalize_path_for_comparison(file_path)
+    norm_proj = normalize_path_for_comparison(project_dir)
+
+    # Check if file is within project dir
+    return norm_file.startswith(norm_proj + '/') or norm_file == norm_proj
+
+
 def main() -> None:
     # Read hook input from stdin
     try:
@@ -161,9 +183,22 @@ def main() -> None:
     if not file_path:
         sys.exit(0)
 
+    # Get project directory
+    project_dir = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+
     # Check for absolute paths
     is_absolute, reason = is_absolute_path(file_path)
     uses_backslashes = has_backslashes(file_path)
+
+    # If path is within the project directory, allow it even if absolute
+    # Claude Code internally expands relative paths to absolute
+    if is_absolute and is_path_within_project(file_path, project_dir):
+        # Still warn about backslashes for consistency
+        if uses_backslashes:
+            suggestion = file_path.replace('\\', '/')
+            print(f"Use forward slashes: '{suggestion}'", file=sys.stderr)
+            sys.exit(2)
+        sys.exit(0)
 
     if is_absolute or uses_backslashes:
         suggestion = get_relative_suggestion(file_path)
