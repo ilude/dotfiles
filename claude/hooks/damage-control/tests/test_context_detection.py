@@ -309,8 +309,9 @@ class TestNoContextStandardBehavior:
 
     def test_edit_blocks_zero_access_without_context(self, config_with_contexts_enabled, tmp_log_dir):
         """Edit tool blocks zero-access paths when not in a context."""
+        # Test with exact .env match (not .env.example which should be allowed)
         blocked, reason = edit_check_path(
-            ".env.local",
+            ".env",
             config_with_contexts_enabled,
             context=None
         )
@@ -319,8 +320,9 @@ class TestNoContextStandardBehavior:
 
     def test_write_blocks_zero_access_without_context(self, config_with_contexts_enabled, tmp_log_dir):
         """Write tool blocks zero-access paths when not in a context."""
+        # Test with exact .env match (not .env.example which should be allowed)
         blocked, reason = write_check_path(
-            ".env.production",
+            ".env",
             config_with_contexts_enabled,
             context=None
         )

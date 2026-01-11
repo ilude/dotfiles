@@ -1,0 +1,13 @@
+[project]
+name = "damage-control-tests"
+version = "0.1.0"
+requires-python = ">=3.8"
+dependencies = [
+    "pyyaml",
+    "pytest",
+    "pytest-cov",
+    "pytest-asyncio",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
