@@ -46,3 +46,5 @@ backups/
 logs/
 claude/cache/
 claude/logs/
+claude/paste-cache/
+claude/.update.lock

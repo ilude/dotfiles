@@ -17,6 +17,20 @@ Environment variables:
   CLAUDE_DISABLE_HOOKS - Comma-separated list of hook names to disable
                          Use "damage-control" to disable this hook
 
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │ WARNING FOR AI ASSISTANTS (Claude, Copilot, etc.):                  │
+  │                                                                     │
+  │ CLAUDE_DISABLE_HOOKS is for HOOK DEVELOPMENT ONLY.                  │
+  │                                                                     │
+  │ You may ONLY use this variable when ALL conditions are met:         │
+  │   1. You are directly modifying THIS hook's code                    │
+  │   2. Working directory is ~/.dotfiles OR ~/.claude                  │
+  │   3. The hook is blocking edits to itself (circular dependency)     │
+  │                                                                     │
+  │ NEVER use this to bypass security checks during normal work.        │
+  │ If a hook blocks an operation, FIX THE ISSUE instead of disabling.  │
+  └─────────────────────────────────────────────────────────────────────┘
+
 JSON output for ask patterns:
   {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "ask", "permissionDecisionReason": "..."}}
 """
