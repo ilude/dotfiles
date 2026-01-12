@@ -102,6 +102,41 @@ class TestAbsoluteWithinProject:
         )
         assert result.blocked
 
+    def test_absolute_within_project_backslash_suggests_relative_path(self, run_hook):
+        """Absolute path within project should suggest relative path, not full absolute path.
+
+        This was a bug where CASE 3 suggested 'C:/full/path/file.py' instead of 'scripts/file.py'.
+        """
+        # Simulate the exact scenario from the bug report:
+        # - Project: C:\Projects\Work\Github\warmachine
+        # - File: C:\Projects\Work\Github\warmachine\scripts\Setup-AzureAD.ps1
+        # - Expected suggestion: scripts/Setup-AzureAD.ps1 (relative)
+        # - Bug output: C:/Projects/Work/Github/warmachine/scripts/Setup-AzureAD.ps1 (absolute)
+
+        result = run_hook(
+            "Write",
+            r"C:\Projects\Work\Github\warmachine\scripts\Setup-AzureAD.ps1",
+            env={"CLAUDE_PROJECT_DIR": r"C:\Projects\Work\Github\warmachine"},
+        )
+        assert result.blocked, f"Expected blocked, got exit {result.exit_code}"
+        assert "Use relative path:" in result.stderr, f"Wrong error type: {result.stderr}"
+        # CRITICAL: Should NOT contain the full Windows path with drive letter
+        assert "C:/" not in result.stderr, f"Suggestion has full absolute path: {result.stderr}"
+        assert "C:\\" not in result.stderr, f"Suggestion has full absolute path: {result.stderr}"
+        # Should contain the relative path
+        assert "scripts/Setup-AzureAD.ps1" in result.stderr, f"Missing relative path: {result.stderr}"
+
+    def test_msys_project_windows_file_suggests_relative(self, run_hook):
+        """MSYS-style project dir with Windows file path should suggest relative path."""
+        result = run_hook(
+            "Write",
+            r"C:\Projects\Work\Github\warmachine\scripts\Setup-AzureAD.ps1",
+            env={"CLAUDE_PROJECT_DIR": "/c/Projects/Work/Github/warmachine"},
+        )
+        assert result.blocked
+        assert "scripts/Setup-AzureAD.ps1" in result.stderr
+        assert "C:/" not in result.stderr
+
 
 class TestAbsoluteWithinHome:
     """Test Case 4: Absolute path within home directory should ALLOW (exit 0)."""
