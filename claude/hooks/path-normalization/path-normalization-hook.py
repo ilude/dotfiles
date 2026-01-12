@@ -205,11 +205,11 @@ def main() -> None:
     if not is_absolute:
         sys.exit(0)
 
-    # CASE 3: Absolute within project - allow (but enforce forward slashes)
+    # CASE 3: Absolute within project - suggest relative path with forward slashes
     if is_path_within_project(file_path, project_dir):
         if uses_backslashes:
-            suggestion = file_path.replace('\\', '/')
-            print(f"Use forward slashes: '{suggestion}'", file=sys.stderr)
+            suggestion = get_relative_suggestion(file_path)
+            print(f"Use relative path: '{suggestion}'", file=sys.stderr)
             sys.exit(2)
         sys.exit(0)
 
