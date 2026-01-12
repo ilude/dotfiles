@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Clone Claude Code plugin marketplaces from known_marketplaces.json
+
+set -e
+
+CLAUDE_DIR="${HOME}/.claude"
+PLUGINS_DIR="${CLAUDE_DIR}/plugins"
+MARKETPLACES_DIR="${PLUGINS_DIR}/marketplaces"
+CONFIG_FILE="${PLUGINS_DIR}/known_marketplaces.json"
+
+# Check if config exists
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    echo "claude-plugins-setup: No known_marketplaces.json found, skipping"
+    exit 0
+fi
+
+# Check for required tools
+if ! command -v jq &> /dev/null; then
+    echo "claude-plugins-setup: jq not found, skipping marketplace setup"
+    echo "  Install jq to enable automatic marketplace cloning"
+    exit 0
+fi
+
+mkdir -p "$MARKETPLACES_DIR"
+
+echo "Setting up Claude Code plugin marketplaces..."
+
+# Parse known_marketplaces.json and clone each marketplace
+jq -r 'to_entries[] | "\(.key) \(.value.source.repo)"' "$CONFIG_FILE" | while read -r name repo; do
+    target_dir="${MARKETPLACES_DIR}/${name}"
+    
+    if [[ -d "$target_dir/.git" ]]; then
+        echo "  ${name}: already cloned, updating..."
+        git -C "$target_dir" pull --quiet 2>/dev/null || echo "    (update failed, using existing)"
+    else
+        echo "  ${name}: cloning from ${repo}..."
+        rm -rf "$target_dir" 2>/dev/null || true
+        git clone --quiet "https://github.com/${repo}.git" "$target_dir" || {
+            echo "    (clone failed, skipping)"
+            continue
+        }
+    fi
+done
+
+echo "Claude plugin marketplaces ready."
