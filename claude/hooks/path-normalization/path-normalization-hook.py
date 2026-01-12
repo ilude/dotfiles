@@ -1,174 +1,90 @@
 # /// script
-# requires-python = ">=3.8"
+# requires-python = ">=3.9"
 # dependencies = []
 # ///
 """
-Claude Code Path Normalization Hook
-====================================
-
-Blocks Edit/Write operations using absolute paths and guides Claude to use
-relative paths from the workspace root instead.
-
-Goals:
-- Use relative paths: projectfolder/... instead of E:/Projects/projectfolder/...
-- Use forward slashes: / not backslashes
-- Start from workspace root and use relative paths
-
-Exit codes:
-  0 = Allow (path is relative and uses forward slashes)
-  2 = Block (stderr fed back to Claude with guidance)
-
-Environment variables:
-  CLAUDE_DISABLE_HOOKS - Comma-separated list of hook names to disable
-                         Use "path-normalization" to disable this hook
-
-  ┌─────────────────────────────────────────────────────────────────────┐
-  │ WARNING FOR AI ASSISTANTS (Claude, Copilot, etc.):                  │
-  │                                                                     │
-  │ CLAUDE_DISABLE_HOOKS is for HOOK DEVELOPMENT ONLY.                  │
-  │                                                                     │
-  │ You may ONLY use this variable when ALL conditions are met:         │
-  │   1. You are directly modifying THIS hook's code                    │
-  │   2. Working directory is ~/.dotfiles OR ~/.claude                  │
-  │   3. The hook is blocking edits to itself (circular dependency)     │
-  │                                                                     │
-  │ NEVER use this to bypass security checks during normal work.        │
-  │ If a hook blocks an operation, FIX THE ISSUE instead of disabling.  │
-  └─────────────────────────────────────────────────────────────────────┘
+Claude Code Path Normalization Hook - Simplified with pathlib
 """
 
 import json
 import os
 import re
 import sys
-from typing import Tuple
+from pathlib import Path
 
 HOOK_NAME = "path-normalization"
+BACKSLASH = chr(92)  # Use chr() to avoid escaping issues
 
 
 def is_hook_disabled() -> bool:
-    """Check if this hook is disabled via CLAUDE_DISABLE_HOOKS env var."""
     disabled_hooks = os.environ.get("CLAUDE_DISABLE_HOOKS", "")
     return HOOK_NAME in [h.strip() for h in disabled_hooks.split(",")]
 
-def get_home_directory() -> str:
-    """Get user's home directory, handling MSYS2/Git Bash correctly.
 
-    In MSYS2/Git Bash, os.path.expanduser('~') returns /home/Mike
-    but we need the Windows home (C:/Users/Mike).
-    """
+def get_home_path() -> Path:
     userprofile = os.environ.get("USERPROFILE")
     if userprofile:
-        return userprofile
-    return os.environ.get("HOME") or os.path.expanduser("~")
+        return Path(userprofile)
+    return Path.home()
 
 
+def to_windows_path(path_str: str) -> str:
+    msys_match = re.match(r'^/([a-zA-Z])/(.*)', path_str)
+    if msys_match:
+        return f"{msys_match.group(1).upper()}:/{msys_match.group(2)}"
+    wsl_match = re.match(r'^/mnt/([a-zA-Z])/(.*)', path_str)
+    if wsl_match:
+        return f"{wsl_match.group(1).upper()}:/{wsl_match.group(2)}"
+    return path_str
 
-def is_absolute_path(file_path: str) -> Tuple[bool, str]:
-    """Check if path is absolute and return reason if so.
 
-    Detects:
-    - Windows drive letters: C:/, C:\\, E:/Projects/...
-    - MSYS/Git Bash style: /c/, /e/, /mnt/c/
-    - UNC paths: //server/share, \\\\server\\share
+def resolve_path(path_str: str) -> Path:
+    return Path(to_windows_path(path_str)).resolve()
 
-    Returns:
-        Tuple of (is_absolute, reason)
-    """
+
+def is_absolute_path(file_path: str) -> bool:
     if not file_path:
-        return False, ""
-
-    # Normalize for checking (but preserve original for error message)
+        return False
     path = file_path.strip()
-
-    # Windows drive letter paths: C:/, C:\, E:/Projects/...
-    if re.match(r'^[A-Za-z]:[/\\]', path):
-        return True, "Windows absolute path with drive letter"
-
-    # MSYS/Git Bash paths: /c/, /e/Users/...
+    # Windows: C:/ or C:\
+    if len(path) >= 3 and path[1] == ':' and path[2] in ('/', BACKSLASH):
+        if path[0].isalpha():
+            return True
+    # MSYS/Git Bash: /c/
     if re.match(r'^/[A-Za-z]/', path):
-        return True, "MSYS/Git Bash absolute path"
-
-    # WSL mount paths: /mnt/c/, /mnt/d/
+        return True
+    # WSL: /mnt/c/
     if re.match(r'^/mnt/[A-Za-z]/', path):
-        return True, "WSL mount path"
-
-    # UNC paths: //server/share or \\server\share
-    if re.match(r'^[/\\]{2}', path):
-        return True, "UNC network path"
-
-    # Unix absolute paths starting with /
-    # But exclude common relative-looking paths that start with ./
+        return True
+    # UNC: //server/share or \server\share
+    if len(path) >= 2 and path[0] in ('/', BACKSLASH) and path[1] in ('/', BACKSLASH):
+        return True
+    # Unix absolute (but allow /tmp, /dev, etc.)
     if path.startswith('/') and not path.startswith('./'):
-        # Allow some special paths that might be intentional
-        allowed_prefixes = ['/dev/', '/proc/', '/tmp/', '/var/']
-        if not any(path.startswith(p) for p in allowed_prefixes):
-            # Check if it looks like a project path (has multiple segments)
-            # Skip single-segment paths like /Makefile which might be from root
+        allowed = ['/dev/', '/proc/', '/tmp/', '/var/']
+        if not any(path.startswith(p) for p in allowed):
             if path.count('/') > 1:
-                return True, "Unix absolute path"
-
-    return False, ""
+                return True
+    return False
 
 
 def has_backslashes(file_path: str) -> bool:
-    """Check if path uses backslashes (Windows style)."""
-    return '\\' in file_path
+    return BACKSLASH in file_path
 
 
-def get_relative_suggestion(file_path: str) -> str:
-    """Suggest the project-relative portion of an absolute path."""
-    project_dir = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
-
-    norm_path = normalize_path_for_comparison(file_path)
-    norm_proj = normalize_path_for_comparison(project_dir)
-
-    if norm_path.startswith(norm_proj + '/'):
-        relative = file_path[len(project_dir):].lstrip('/\\')
-        return relative.replace('\\', '/')
-
-    return os.path.basename(file_path)
+def is_within_directory(file_path: Path, directory: Path) -> bool:
+    try:
+        return file_path.resolve().is_relative_to(directory.resolve())
+    except (ValueError, OSError):
+        return False
 
 
-def normalize_path_for_comparison(path: str) -> str:
-    """Normalize a path for case-insensitive, slash-insensitive comparison."""
-    # Normalize slashes
-    normalized = path.replace('\\', '/').lower()
-
-    # Handle MSYS paths like /c/Users/...
-    msys_match = re.match(r'^/([a-z])/(.*)', normalized)
-    if msys_match:
-        normalized = f"{msys_match.group(1)}:/{msys_match.group(2)}"
-
-    return normalized.rstrip('/')
-
-
-def is_path_within_project(file_path: str, project_dir: str) -> bool:
-    """Check if file_path is within or equal to the project directory."""
-    norm_file = normalize_path_for_comparison(file_path)
-    norm_proj = normalize_path_for_comparison(project_dir)
-
-    # Check if file is within project dir
-    return norm_file.startswith(norm_proj + '/') or norm_file == norm_proj
-
-
-def is_claude_internal_path(file_path: str) -> bool:
-    """Check if file_path is within Claude Code's internal directories (~/.claude/)."""
-    norm_file = normalize_path_for_comparison(file_path)
-
-    # Get home directory and construct claude config path
-    home = get_home_directory()
-    claude_dir = normalize_path_for_comparison(os.path.join(home, '.claude'))
-
-    return norm_file.startswith(claude_dir + '/')
-
-
-def is_within_home_directory(file_path: str) -> bool:
-    """Check if file_path is within the user's home directory."""
-    norm_file = normalize_path_for_comparison(file_path)
-    home = get_home_directory()
-    norm_home = normalize_path_for_comparison(home)
-    return norm_file.startswith(norm_home + '/')
+def get_relative_path(file_path: Path, base_dir: Path) -> str:
+    try:
+        relative = file_path.resolve().relative_to(base_dir.resolve())
+        return str(relative).replace(BACKSLASH, '/')
+    except ValueError:
+        return file_path.name
 
 
 def main() -> None:
@@ -187,38 +103,42 @@ def main() -> None:
     if tool_name not in ("Edit", "Write"):
         sys.exit(0)
 
-    file_path = tool_input.get("file_path", "")
-    if not file_path:
+    file_path_str = tool_input.get("file_path", "")
+    if not file_path_str:
         sys.exit(0)
 
-    project_dir = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
-    is_absolute, _ = is_absolute_path(file_path)
-    uses_backslashes = has_backslashes(file_path)
+    project_dir = Path(to_windows_path(os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())))
+    home_dir = get_home_path()
 
-    # CASE 1: Relative path with backslashes - suggest forward slashes
-    if not is_absolute and uses_backslashes:
-        suggestion = file_path.replace('\\', '/')
+    is_abs = is_absolute_path(file_path_str)
+    uses_backslashes = has_backslashes(file_path_str)
+
+    # CASE 1: Relative path with backslashes
+    if not is_abs and uses_backslashes:
+        suggestion = file_path_str.replace(BACKSLASH, '/')
         print(f"Use forward slashes: '{suggestion}'", file=sys.stderr)
         sys.exit(2)
 
     # CASE 2: Clean relative path - allow
-    if not is_absolute:
+    if not is_abs:
         sys.exit(0)
 
-    # CASE 3: Absolute within project - suggest relative path with forward slashes
-    if is_path_within_project(file_path, project_dir):
+    file_path = resolve_path(file_path_str)
+
+    # CASE 3: Absolute within project
+    if is_within_directory(file_path, project_dir):
         if uses_backslashes:
-            suggestion = get_relative_suggestion(file_path)
+            suggestion = get_relative_path(file_path, project_dir)
             print(f"Use relative path: '{suggestion}'", file=sys.stderr)
             sys.exit(2)
         sys.exit(0)
 
     # CASE 4: Absolute within home directory - allow
-    if is_within_home_directory(file_path):
+    if is_within_directory(file_path, home_dir):
         sys.exit(0)
 
     # CASE 5: Absolute outside allowed areas - block
-    suggestion = get_relative_suggestion(file_path)
+    suggestion = get_relative_path(file_path, project_dir)
     print(f"Use relative path: '{suggestion}'", file=sys.stderr)
     sys.exit(2)
 

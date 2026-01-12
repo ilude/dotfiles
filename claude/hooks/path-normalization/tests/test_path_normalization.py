@@ -406,3 +406,65 @@ class TestSuggestionMessages:
         assert result.blocked
         assert "Use relative path:" in result.stderr
         assert "important_file.py" in result.stderr
+
+
+class TestCrossDirectoryWrites:
+    """Test writing to home directory paths from a different project directory.
+    
+    This was a bug where writing to ~/.claude/skills/... from ~/.dotfiles was blocked
+    even though the target is within the home directory.
+    """
+
+    def test_write_to_claude_from_dotfiles(self, run_hook, tmp_path):
+        """Writing to ~/.claude/skills from ~/.dotfiles should be allowed.
+        
+        Regression test for: path-normalization blocking writes to ~/.claude/skills/...
+        when CLAUDE_PROJECT_DIR is ~/.dotfiles
+        """
+        home_dir = tmp_path / "Users" / "TestUser"
+        dotfiles_dir = home_dir / ".dotfiles"
+        claude_skills = home_dir / ".claude" / "skills" / "test-skill"
+        
+        dotfiles_dir.mkdir(parents=True)
+        claude_skills.mkdir(parents=True)
+        
+        # Target file in ~/.claude/skills (outside project, but within home)
+        file_path = f"{str(claude_skills).replace(chr(92), '/')}/SKILL.md"
+        home_str = str(home_dir).replace(chr(92), '/')
+        project_str = str(dotfiles_dir).replace(chr(92), '/')
+        
+        result = run_hook(
+            "Write",
+            file_path,
+            env={
+                "USERPROFILE": home_str,
+                "CLAUDE_PROJECT_DIR": project_str,
+            },
+        )
+        assert result.allowed, (
+            f"Writing to ~/.claude/skills from ~/.dotfiles should be allowed. "
+            f"Got exit {result.exit_code}: {result.stderr}"
+        )
+
+    def test_write_to_home_subdir_from_different_project(self, run_hook, tmp_path):
+        """Writing to any home subdirectory from a different project should be allowed."""
+        home_dir = tmp_path / "Users" / "TestUser"
+        project_dir = home_dir / "Projects" / "myproject"
+        target_dir = home_dir / "Documents" / "notes"
+        
+        project_dir.mkdir(parents=True)
+        target_dir.mkdir(parents=True)
+        
+        file_path = f"{str(target_dir).replace(chr(92), '/')}/todo.md"
+        home_str = str(home_dir).replace(chr(92), '/')
+        project_str = str(project_dir).replace(chr(92), '/')
+        
+        result = run_hook(
+            "Write",
+            file_path,
+            env={
+                "USERPROFILE": home_str,
+                "CLAUDE_PROJECT_DIR": project_str,
+            },
+        )
+        assert result.allowed, f"Expected allowed, got: {result.stderr}"
