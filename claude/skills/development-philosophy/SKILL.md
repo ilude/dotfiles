@@ -5,17 +5,21 @@ description: Personal development philosophy emphasizing experiment-driven, fail
 
 # Development Philosophy
 
-**Auto-activate when:** User mentions planning, architecture, design decisions, MVP, over-engineering, simplicity, fail-fast, experiment-driven, or asks to apply development principles. Should activate during planning phases of new features or when reviewing proposed implementations.
+**Auto-activate when:** User mentions planning, architecture, design decisions, MVP, over-engineering, simplicity, fail-fast, experiment-driven, comments, docstrings, documentation philosophy, POLA, security design, threat modeling, authentication, authorization, API security, secrets, encryption, security review, or asks to apply development principles. Should activate during planning phases of new features or when reviewing proposed implementations.
 
 ## Core Principles
 
 **Execute immediately. Solve real problems. Start simple, iterate based on evidence.**
 
-**Four pillars:**
+**Five pillars:**
 1. **Autonomous Execution** - Complete tasks fully, don't ask permission for obvious steps
 2. **Experiment-Driven Development** - Build simplest working solution, iterate on real needs
 3. **Fail-Fast Learning** - Short cycles, expect to pivot, document learnings
-4. **Least Astonishment** - Changes should be predictable; match existing patterns (see `~/.claude/skills/least-astonishment/`)
+4. **Least Astonishment** - Changes should be predictable; match existing patterns (see [least-astonishment.md](least-astonishment.md))
+5. **Security-First Design** - Evaluate security implications before implementation, avoid security theater (see [security-first.md](security-first.md))
+
+**Related principles:**
+- **Code Documentation** - Write self-explanatory code; comment WHY not WHAT (see [documentation.md](documentation.md))
 
 ---
 
