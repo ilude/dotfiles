@@ -36,6 +36,7 @@ If the answer is vague ("might be slow", "best practices", "scales better"), the
 
 Detailed patterns and examples are available in the reference docs:
 
+- **[SQL Workflow](sql.md)** - SQL syntax, formatting, naming conventions, data types, SQLFluff configuration
 - **[Migration Patterns](references/migration-patterns.md)** - Version control, rollback strategies, idempotent migrations, naming conventions
 - **[ORM Patterns](references/orm-patterns.md)** - Active Record vs Data Mapper, query builders, eager/lazy loading, N+1 prevention
 - **[SQL Optimization](references/sql-optimization.md)** - Index usage, EXPLAIN analysis, connection pooling, pagination
