@@ -192,8 +192,8 @@ def main() -> None:
 
     has_backslash = BACKSLASH in path_str
 
-    # CASE 1: Home-relative paths (~/...) - ALLOW if using forward slashes
-    if path_str.startswith('~/'):
+    # CASE 1: Home-relative paths (~/ or ~\) - ALLOW if using forward slashes
+    if path_str.startswith('~/') or path_str.startswith('~' + BACKSLASH):
         if has_backslash:
             suggested = path_str.replace(BACKSLASH, '/')
             block(tool_name, path_str, "backslash in home-relative path", suggested)
