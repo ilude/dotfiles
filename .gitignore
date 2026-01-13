@@ -49,3 +49,11 @@ claude/cache/
 claude/logs/
 claude/paste-cache/
 claude/.update.lock
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# uv lock file (machine-specific)
+uv.lock
