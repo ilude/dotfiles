@@ -1,4 +1,4 @@
-.PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all test test-quick test-parallel test-docker test-powershell test-damage-control test-damage-control-unit test-damage-control-integration preflight help lint format check install-hooks
+.PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all test test-quick test-parallel test-docker test-powershell test-pytest test-bats preflight help lint format check install-hooks
 
 # Shell scripts to check (excludes dotbot submodule and plugins)
 SHELL_SCRIPTS := .bashrc .zshrc install install-wsl git-ssh-setup claude-link-setup claude-mcp-setup copilot-link-setup zsh-setup zsh-plugins wsl-packages
@@ -9,14 +9,12 @@ help:
 	@echo "  make validate      - Validate shell environment (bash)"
 	@echo "  make validate-all  - Validate all shells (bash + PowerShell)"
 	@echo "  make validate-pwsh - Validate PowerShell environment"
-	@echo "  make test          - Run tests locally (requires bats)"
+	@echo "  make test          - Run all tests (pytest + bats)"
+	@echo "  make test-pytest   - Run pytest tests only"
+	@echo "  make test-bats     - Run bats tests only (prompt, git_ssh_setup)"
 	@echo "  make test-docker   - Run tests in Ubuntu 24.04 container (recommended)"
 	@echo "  make test-powershell - Run Pester tests for PowerShell code (Windows)"
 	@echo "  make test-quick    - Run only core tests locally"
-	@echo "  make test-parallel - Run tests in parallel (faster but noisier output)"
-	@echo "  make test-damage-control - Run damage-control tests (smoke + unit + integration)"
-	@echo "  make test-damage-control-unit - Run damage-control unit tests (pytest)"
-	@echo "  make test-damage-control-integration - Run damage-control integration tests"
 	@echo "  make preflight     - Check environment (CRLF, dependencies)"
 	@echo "  make lint          - Run shellcheck on shell scripts"
 	@echo "  make format        - Format shell scripts with shfmt"
@@ -66,34 +64,57 @@ preflight:
 	fi
 	@echo "Pre-flight checks passed."
 
-# Run all tests locally
+# Run all tests (pytest + bats) with timing
 test: preflight
-	bats test/
+	@echo "=== Test Suite ==="
+	@start_time=$$(date +%s); \
+	echo ""; \
+	echo "--- pytest: test/ ---"; \
+	file_start=$$(date +%s); \
+	uv run pytest test/ -v --tb=short --durations=5 && \
+	echo "  Time: $$(($$(date +%s) - file_start))s"; \
+	echo ""; \
+	echo "--- pytest: damage-control hooks ---"; \
+	file_start=$$(date +%s); \
+	uv run pytest claude/hooks/damage-control/tests/ -v --tb=short --durations=5 && \
+	echo "  Time: $$(($$(date +%s) - file_start))s"; \
+	echo ""; \
+	echo "--- pytest: path-normalization hooks ---"; \
+	file_start=$$(date +%s); \
+	uv run pytest claude/hooks/path-normalization/tests/ -v --tb=short --durations=5 && \
+	echo "  Time: $$(($$(date +%s) - file_start))s"; \
+	echo ""; \
+	echo "--- bats: prompt.bats ---"; \
+	file_start=$$(date +%s); \
+	bats test/prompt.bats && \
+	echo "  Time: $$(($$(date +%s) - file_start))s"; \
+	echo ""; \
+	echo "--- bats: git_ssh_setup.bats ---"; \
+	file_start=$$(date +%s); \
+	bats test/git_ssh_setup.bats && \
+	echo "  Time: $$(($$(date +%s) - file_start))s"; \
+	echo ""; \
+	echo "=== All tests passed in $$(($$(date +%s) - start_time))s ==="
 
-# Damage Control test targets
-test-damage-control-unit:
-	@echo "Running damage control unit tests..."
-	@cd "$(CURDIR)" && uv run pytest claude/hooks/damage-control/tests/test_semantic_analysis.py -v --tb=short
+# Run pytest tests (config patterns, idempotency, hooks)
+test-pytest:
+	@echo "Running pytest..."
+	uv run pytest test/ claude/hooks/*/tests/ -v --tb=short --durations=10
 
-test-damage-control-integration:
-	@echo "Running damage control integration tests..."
-	@cd "$(CURDIR)" && uv run claude/hooks/damage-control/test-damage-control.py --test-suite all
-
-test-damage-control: preflight test-damage-control-unit test-damage-control-integration
-	@echo "Running damage control smoke tests..."
-	@bats test/damage-control.bats
-	@echo "All damage control tests passed."
+# Run bats tests (bash-dependent tests only)
+test-bats: preflight
+	@echo "Running bats..."
+	bats test/prompt.bats test/git_ssh_setup.bats
 
 # Run only core tests (faster)
 test-quick: preflight
+	uv run pytest test/test_config_patterns.py -v --tb=short -x
 	bats test/git_ssh_setup.bats
 
-# Run tests in parallel (faster but noisier output)
+# Run tests in parallel
 test-parallel: preflight
-	bats test/aliases.bats test/cli-completions.bats test/editor.bats \
-	     test/env-modules.bats test/helpers.bats test/rc-modules.bats & \
-	bats test/git_ssh_setup.bats test/idempotency.bats & \
-	bats test/prompt.bats test/shell-setup.bats & \
+	uv run pytest test/ claude/hooks/*/tests/ -v --tb=short -n auto &
+	bats test/prompt.bats test/git_ssh_setup.bats &
 	wait
 
 # Run tests in Ubuntu 24.04 Docker container (matches CI environment)
@@ -101,9 +122,13 @@ test-docker:
 	@echo "Running tests in Ubuntu 24.04 container..."
 	docker run --rm -v "$(CURDIR):/dotfiles:ro" -w /dotfiles ubuntu:24.04 bash -c '\
 		apt-get update -qq && \
-		apt-get install -y -qq bats git >/dev/null 2>&1 && \
-		echo "Running tests..." && \
-		bats test/'
+		apt-get install -y -qq bats git python3 python3-pip pipx zsh >/dev/null 2>&1 && \
+		pipx install uv >/dev/null 2>&1 && \
+		export PATH="$$HOME/.local/bin:$$PATH" && \
+		echo "Running pytest..." && \
+		uv run pytest test/ claude/hooks/*/tests/ -v --tb=short && \
+		echo "Running bats..." && \
+		bats test/prompt.bats test/git_ssh_setup.bats'
 
 # Run PowerShell Pester tests (Windows only)
 test-powershell:
