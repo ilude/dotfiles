@@ -39,7 +39,15 @@ The hook explicitly checks for Windows drive letters (`C:`) to work correctly re
 
 ## Troubleshooting
 
-### Check the logs
+### Trigger Patterns (Auto-Activate)
+
+This documentation is relevant when you see ANY of:
+- `PreToolUse:Write hook error:` with `path-normalization-hook.py`
+- `PreToolUse:Edit hook error:` with `path-normalization-hook.py`
+- `Use relative path:` error messages
+- `Use forward slashes:` error messages
+
+### Step 1: Check the logs
 
 Logs are written to `~/.claude/logs/path-normalization/YYYY-MM-DD.log` in JSONL format:
 
@@ -68,6 +76,24 @@ grep 'path-normalization-hook.py' ~/.claude/logs/path-normalization/*.log
   "session_id": ""
 }
 ```
+
+### Step 2: Analyze the blocked entry
+
+Find the log entry for the failed operation and check if `suggested_path` is correct:
+
+| suggested_path | Verdict | Action |
+|----------------|---------|--------|
+| Clean relative path (`file.md`, `docs/file.md`) | Hook working correctly | Retry with suggested path |
+| Same as input (`C:\Projects\...`) | **BUG in hook** | Fix the hook (see below) |
+| Still has backslashes | **BUG in hook** | Fix the hook |
+| Empty or wrong file | **BUG in hook** | Fix the hook |
+
+### Step 3: If bug found, fix and test
+
+1. Edit the hook: `~/.claude/hooks/path-normalization/path-normalization-hook.py`
+2. Run tests: `cd ~/.claude/hooks/path-normalization && uv run pytest -v`
+3. Add regression test for the specific failure
+4. Retry the original operation
 
 ### Common issues
 
