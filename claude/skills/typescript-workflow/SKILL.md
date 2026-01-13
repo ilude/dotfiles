@@ -19,6 +19,16 @@ Guidelines for working with TypeScript and JavaScript projects using Bun as the 
 | Test | Bun test | `bun test` |
 | Coverage | c8 | `bun run c8 bun test` |
 
+## Extended Documentation
+
+| Topic | File |
+|-------|------|
+| React patterns | [frameworks/react.md](frameworks/react.md) |
+| Next.js patterns | [frameworks/nextjs.md](frameworks/nextjs.md) |
+| CSS and styling | [styling/css.md](styling/css.md) |
+| Bun testing | [testing/bun-testing.md](testing/bun-testing.md) |
+| Web project setup | [web-projects.md](web-projects.md) |
+
 ## CRITICAL: Bun Package Manager
 
 **You MUST use Bun commands** for all package and runtime operations in Bun projects:
@@ -37,18 +47,7 @@ bun run build      # Run build script
 
 # Testing
 bun test           # Run tests with Bun's native test runner
-
-# Package info
-bun list           # List installed packages
-bun outdated       # Check for updates
 ```
-
-**Benefits of Bun:**
-- Native TypeScript support (no transpilation setup)
-- Significantly faster than Node.js
-- All-in-one tool (package manager, runtime, test runner)
-- Smaller node_modules footprint
-- Drop-in Node.js compatibility for most packages
 
 ## Module Systems
 
@@ -64,20 +63,11 @@ import { type User } from './types';
 // Import default exports
 import express from 'express';
 
-// Import with alias
-import * as helpers from './utils/helpers';
-
 // Export named
-export function getUserById(id: string): Promise<User> {
-  // ...
-}
-
-// Export default
-export default UserService;
+export function getUserById(id: string): Promise<User> { /* ... */ }
 
 // Re-export
 export { type User } from './types';
-export { UserService } from './services/user-service';
 ```
 
 ### CommonJS Fallback
@@ -85,25 +75,8 @@ export { UserService } from './services/user-service';
 Use only when necessary for legacy compatibility:
 
 ```javascript
-// Require imports
 const { UserService } = require('./services/user-service');
-const express = require('express');
-
-// Module exports
-module.exports = UserService;
-module.exports = { UserService, UserRepository };
-```
-
-### Mixed Module Usage
-
-In `package.json`, specify module type:
-
-```json
-{
-  "type": "module",
-  "name": "my-app",
-  "version": "1.0.0"
-}
+module.exports = { UserService };
 ```
 
 ## TypeScript Configuration
@@ -121,50 +94,39 @@ In `package.json`, specify module type:
     "skipLibCheck": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
-    "allowJs": false,
     "outDir": "./dist",
     "rootDir": "./src",
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "@services/*": ["src/services/*"],
-      "@models/*": ["src/models/*"]
+      "@services/*": ["src/services/*"]
     },
     "declaration": true,
-    "declarationMap": true,
     "sourceMap": true,
-    "removeComments": true,
     "noImplicitAny": true,
     "strictNullChecks": true,
-    "strictFunctionTypes": true,
-    "strictPropertyInitialization": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true
+    "noImplicitReturns": true
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist", "**/*.test.ts"]
 }
 ```
 
-### Key Options Explained
+### Key Options
 
-- **target:** ES2020 for modern environments, ES2015 for legacy support
-- **module:** ESNext for Bun/bundlers, CommonJS for Node.js compatibility
-- **moduleResolution:** bundler (for Bun/bundlers), node (for Node.js)
+- **target:** ES2020 for modern environments
+- **module:** ESNext for Bun/bundlers
+- **moduleResolution:** bundler (for Bun/bundlers)
 - **strict:** Enable all strict type checking
-- **skipLibCheck:** Skip type checking of declaration files
-- **baseUrl + paths:** Enable path aliases for cleaner imports
-- **noUnusedLocals/Parameters:** Catch dead code
+- **baseUrl + paths:** Enable path aliases
 
 ## Code Style and Formatting
 
 ### Biome (Preferred)
 
-Biome is the RECOMMENDED all-in-one tool for linting and formatting. It replaces ESLint and Prettier with faster performance and unified configuration.
-
-**Installation:**
+Biome is the RECOMMENDED all-in-one tool for linting and formatting.
 
 ```bash
 bun add --dev @biomejs/biome
@@ -175,9 +137,7 @@ bun add --dev @biomejs/biome
 ```json
 {
   "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
-  "organizeImports": {
-    "enabled": true
-  },
+  "organizeImports": { "enabled": true },
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
@@ -186,15 +146,7 @@ bun add --dev @biomejs/biome
   },
   "linter": {
     "enabled": true,
-    "rules": {
-      "recommended": true,
-      "complexity": {
-        "noUselessSwitchCase": "error"
-      },
-      "style": {
-        "noNonNullAssertion": "warn"
-      }
-    }
+    "rules": { "recommended": true }
   },
   "javascript": {
     "formatter": {
@@ -209,42 +161,20 @@ bun add --dev @biomejs/biome
 **Usage:**
 
 ```bash
-# Check and fix all issues
-bun run biome check --apply .
-
-# Format only
-bun run biome format --write .
-
-# Lint only
-bun run biome lint .
-
-# CI mode (check without fixing)
-bun run biome check .
-```
-
-### Legacy: ESLint + Prettier
-
-If a project uses ESLint/Prettier, migration to Biome is RECOMMENDED. For legacy support:
-
-```bash
-# ESLint
-bun add --dev eslint
-bun run eslint src/ --fix
-
-# Prettier
-bun add --dev prettier
-bun run prettier --write src/
+bun run biome check --apply .  # Check and fix all issues
+bun run biome format --write .  # Format only
+bun run biome lint .  # Lint only
 ```
 
 ## Naming Conventions
 
 ### File Naming
 
-- **Components:** PascalCase - `UserProfile.tsx`, `LoginForm.tsx`
-- **Utilities/Helpers:** camelCase - `formatDate.ts`, `apiClient.ts`
-- **Types/Interfaces:** PascalCase - `User.ts`, `ApiResponse.ts`
-- **Constants:** UPPER_SNAKE_CASE - `API_ENDPOINTS.ts`, `CONFIG.ts`
-- **Test files:** `.test.ts` or `.spec.ts` suffix - `user.service.test.ts`
+- **Components:** PascalCase - `UserProfile.tsx`
+- **Utilities/Helpers:** camelCase - `formatDate.ts`
+- **Types/Interfaces:** PascalCase - `User.ts`
+- **Constants:** UPPER_SNAKE_CASE - `API_ENDPOINTS.ts`
+- **Test files:** `.test.ts` suffix - `user.service.test.ts`
 
 ### Code Naming
 
@@ -254,104 +184,52 @@ class UserService { /* ... */ }
 interface UserRepository { /* ... */ }
 enum UserRole { Admin = 'ADMIN', User = 'USER' }
 
-// Methods, properties, variables, functions: camelCase
+// Methods, properties, variables: camelCase
 getUserById(id: string): Promise<User>
 const userData = {};
 
-// Private members: camelCase with leading underscore
-private _cache: Map<string, User> = new Map();
-
 // Constants: UPPER_SNAKE_CASE
 const MAX_RETRIES = 3;
-const API_BASE_URL = 'https://api.example.com';
 
 // React hooks: camelCase with use prefix
 function useUserData(userId: string) { /* ... */ }
 ```
 
-## Type Safety and Annotations
+## Type Safety
 
 ### Type Hints
 
 - **Explicit types** for function parameters and return values
-- **MUST NOT use `any`** - use `unknown` and type narrowing if needed
-- **Avoid implicit `any`** - enable `noImplicitAny` in tsconfig.json
+- **MUST NOT use `any`** - use `unknown` and type narrowing
+- **Avoid implicit `any`** - enable `noImplicitAny`
 
 ```typescript
-// Function parameters and return types
-function processUser(user: User): Promise<ProcessedUser> {
-  // ...
-}
+function processUser(user: User): Promise<ProcessedUser> { /* ... */ }
 
-// Arrow functions
-const formatName = (first: string, last: string): string => {
-  return `${first} ${last}`;
-};
+const formatName = (first: string, last: string): string => `${first} ${last}`;
 
-// Complex types
-type ApiResponse<T> = {
-  status: number;
-  data: T;
-  error?: string;
-};
-
-interface RequestHandler {
-  handle(request: Request): Promise<Response>;
-}
-```
-
-### Generics
-
-```typescript
-// Generic functions
-function getById<T extends { id: string }>(items: T[], id: string): T | undefined {
-  return items.find((item) => item.id === id);
-}
-
-// Generic classes
-class Repository<T> {
-  async getById(id: string): Promise<T | null> {
-    // ...
-  }
-}
-
-// Generic types
 type Result<T, E = Error> = { success: true; data: T } | { success: false; error: E };
 ```
 
-### Data Validation
-
-Use **Zod** for runtime validation with type inference:
+### Data Validation with Zod
 
 ```typescript
 import { z } from 'zod';
 
-// Schema definition
 const UserSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1),
   email: z.string().email(),
-  age: z.number().int().positive().optional(),
 });
 
-// Type inference from schema
 type User = z.infer<typeof UserSchema>;
 
-// Runtime validation
 function createUser(data: unknown): User {
   return UserSchema.parse(data);
-}
-
-// Safe parsing with error handling
-const result = UserSchema.safeParse(data);
-if (!result.success) {
-  console.error(result.error.format());
 }
 ```
 
 ## Project Structure
-
-### Recommended Directory Layout
 
 ```
 project/
@@ -360,12 +238,10 @@ project/
 │   ├── types/               # Type definitions
 │   ├── services/            # Business logic
 │   ├── repositories/        # Data access layer
-│   ├── models/              # Data models
 │   ├── handlers/            # Request/event handlers
-│   ├── middleware/          # Express/web middleware
 │   ├── utils/               # Utility functions
 │   └── config/              # Configuration
-├── tests/                   # Unit and integration tests
+├── tests/                   # Tests
 ├── dist/                    # Compiled output (gitignored)
 ├── package.json
 ├── tsconfig.json
@@ -373,37 +249,13 @@ project/
 └── bun.lock
 ```
 
-### Import Patterns
-
-```typescript
-// Absolute imports with path aliases
-import { UserService } from '@services/user-service';
-import type { User } from '@models/user';
-
-// Relative imports within same feature
-import { UserRepository } from '../repositories/user-repository';
-import { validateUser } from '../utils/validators';
-
-// Re-exports from index files
-export { UserService, UserRepository } from './index';
-```
-
 ## Error Handling
 
-### Exception Best Practices
-
 ```typescript
-// Define custom error classes
 class AppError extends Error {
   constructor(message: string, public code: string, public statusCode = 500) {
     super(message);
     this.name = 'AppError';
-  }
-}
-
-class ValidationError extends AppError {
-  constructor(message: string, public field: string) {
-    super(message, 'VALIDATION_ERROR', 400);
   }
 }
 
@@ -413,7 +265,7 @@ class NotFoundError extends AppError {
   }
 }
 
-// Result pattern for explicit error handling
+// Result pattern
 type Result<T, E = Error> = { ok: true; value: T } | { ok: false; error: E };
 
 async function safeFetchUser(id: string): Promise<Result<User, AppError>> {
@@ -426,21 +278,17 @@ async function safeFetchUser(id: string): Promise<Result<User, AppError>> {
 }
 ```
 
-## Configuration Management
-
-### Environment Variables
+## Environment Variables
 
 Use Zod for environment validation:
 
 ```typescript
-// env.ts
 import { z } from 'zod';
 
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(3000),
   DATABASE_URL: z.string().url(),
-  API_KEY: z.string(),
 });
 
 export default EnvSchema.parse(process.env);
@@ -493,7 +341,7 @@ describe('UserService', () => {
 });
 ```
 
-See **typescript-testing** skill for comprehensive testing patterns.
+See [testing/bun-testing.md](testing/bun-testing.md) for comprehensive testing patterns.
 
 ## Quick Reference
 
@@ -504,12 +352,6 @@ See **typescript-testing** skill for comprehensive testing patterns.
 - Enable strict TypeScript (`"strict": true`)
 - Validate all external input with Zod
 - Use custom error classes and Result types
-
-## Out of Scope
-
-- Next.js specifics → see `nextjs-workflow`
-- React specifics → see `react-workflow`
-- Database migrations → see `database-workflow`
 
 ---
 
