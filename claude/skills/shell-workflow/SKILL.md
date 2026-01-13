@@ -1,12 +1,22 @@
 ---
 name: shell-workflow
-description: Shell script workflow guidelines. Activate when working with shell scripts (.sh), bash scripts, or shell-specific tooling like shellcheck, shfmt.
+description: Shell script workflow guidelines. Activate when working with shell scripts (.sh), bash scripts, Makefiles, bats tests, or cross-platform scripting.
 location: user
 ---
 
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119.
-
 # Shell Script Workflow
+
+## Related Documentation
+
+- [CLI Development](cli-development.md) - CLI design principles and best practices
+- [PowerShell](powershell.md) - Windows automation and scripting
+- [Makefile Best Practices](makefile.md) - Build automation and task runners
+- [Bats Testing](testing/bats.md) - Shell script testing framework
+- [Cross-Platform Scripting](cross-platform.md) - Windows/WSL/Linux patterns
+- [CLI Tools](tools.md) - Modern command-line utilities (rg, fd, bat, etc.)
+- [WinGet Workflow](winget.md) - Windows package management with winget
+
+---
 
 ## Tool Grid
 
@@ -14,41 +24,11 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 |------|------|---------|
 | Lint | shellcheck | `shellcheck *.sh` |
 | Format | shfmt | `shfmt -w *.sh` |
-| Style | bashate | `bashate *.sh` |
 | Security | shellharden | `shellharden --check *.sh` |
 | POSIX check | checkbashisms | `checkbashisms *.sh` |
 | Test | bats | `bats test/` |
-| Coverage | bashcov | `bashcov ./test.sh` |
-| Coverage | kcov | `kcov coverage/ bats test/` |
 
-### Tool Installation
-
-```bash
-# Ubuntu/Debian
-sudo apt install shellcheck shfmt devscripts  # devscripts includes checkbashisms
-
-# macOS
-brew install shellcheck shfmt bash checkbashisms
-
-# pip (bashate)
-pip install bashate
-
-# cargo (shellharden)
-cargo install shellharden
-
-# npm (bats)
-npm install -g bats
-```
-
-### Tool Descriptions
-
-- **shellcheck**: Static analysis, catches bugs and security issues
-- **shfmt**: Formats shell scripts consistently
-- **bashate**: OpenStack style enforcer (E* error codes)
-- **shellharden**: Suggests safer quoting and variable usage
-- **checkbashisms**: Finds bash-specific syntax in scripts meant to be POSIX
-- **bats**: Bash Automated Testing System
-- **kcov**: Code coverage for bash scripts
+---
 
 ## Shebang
 
@@ -60,9 +40,11 @@ Scripts MUST use the portable shebang:
 
 POSIX-only scripts MAY use `#!/bin/sh` when bash features are not needed.
 
+---
+
 ## Strict Mode
 
-All bash scripts MUST enable strict mode at the top:
+All bash scripts MUST enable strict mode:
 
 ```bash
 set -euo pipefail
@@ -74,39 +56,29 @@ set -euo pipefail
 | `-u` | Error on undefined variables |
 | `-o pipefail` | Fail on pipe errors |
 
-For debugging, scripts MAY temporarily add `set -x` for trace output.
-
-## Size Limit
-
-Scripts SHOULD NOT exceed 100 lines of code (excluding comments and blank lines).
-
-When a script exceeds 100 lines:
-- The script SHOULD be refactored into smaller functions
-- Complex logic SHOULD be converted to Python for maintainability
+---
 
 ## Variable Quoting
 
-Variables MUST be quoted to prevent word splitting and glob expansion:
+Variables MUST be quoted to prevent word splitting:
 
 ```bash
 # Correct
 echo "$variable"
 cp "$source" "$destination"
 
-# Incorrect - MUST NOT use
+# Incorrect
 echo $variable
-cp $source $destination
 ```
 
 Arrays MUST use proper expansion:
 
 ```bash
-# Correct
-"${array[@]}"
-
-# For single string with spaces
-"${array[*]}"
+"${array[@]}"     # Each element as separate word
+"${array[*]}"     # All elements as single string
 ```
+
+---
 
 ## Variable Naming
 
@@ -114,36 +86,27 @@ Arrays MUST use proper expansion:
 |-------|------------|---------|
 | Environment/Global | UPPER_CASE | `LOG_LEVEL`, `CONFIG_PATH` |
 | Local/Script | lower_case | `file_count`, `temp_dir` |
-| Constants | UPPER_CASE | `readonly MAX_RETRIES=3` |
+| Constants | UPPER_CASE + readonly | `readonly MAX_RETRIES=3` |
 
-Constants SHOULD be declared with `readonly`:
-
-```bash
-readonly CONFIG_FILE="/etc/app/config"
-readonly -a VALID_OPTIONS=("start" "stop" "restart")
-```
+---
 
 ## Test Syntax
 
 In bash scripts, `[[ ]]` MUST be used over `[ ]`:
 
 ```bash
-# Correct - bash
 if [[ -f "$file" ]]; then
     echo "File exists"
 fi
 
-if [[ "$string" == "value" ]]; then
-    echo "Match"
-fi
-
-# Pattern matching (bash-only)
 if [[ "$string" =~ ^[0-9]+$ ]]; then
     echo "Numeric"
 fi
 ```
 
 POSIX scripts MUST use `[ ]` for compatibility.
+
+---
 
 ## Functions
 
@@ -154,16 +117,14 @@ my_function() {
     local input="$1"
     local result=""
 
-    # Process input
     result=$(process "$input")
-
     echo "$result"
 }
 ```
 
-Function naming conventions:
-- Use snake_case: `process_file`, `validate_input`
-- Prefix private functions with underscore: `_helper_function`
+Naming: snake_case, prefix private functions with underscore: `_helper_function`
+
+---
 
 ## Temporary Files
 
@@ -184,19 +145,15 @@ cleanup() {
 trap cleanup EXIT
 ```
 
-The `EXIT` trap ensures cleanup runs on normal exit, error, or interrupt.
+---
 
 ## Exit Codes
-
-Scripts MUST use standard exit codes:
 
 | Code | Meaning |
 |------|---------|
 | 0 | Success |
 | 1 | General error |
 | 2 | Misuse (invalid arguments, missing dependencies) |
-
-Example usage:
 
 ```bash
 main() {
@@ -209,42 +166,30 @@ main() {
         echo "Error: Processing failed" >&2
         exit 1
     fi
-
-    exit 0
 }
 ```
 
+---
+
 ## Error Handling
 
-### Continuing on Error
-
-Use `|| true` when a command failure SHOULD NOT stop execution:
-
 ```bash
+# Continue on optional failure
 rm -f "$optional_file" || true
-```
 
-### Explicit Failure
-
-Use `|| exit 1` for critical operations:
-
-```bash
+# Exit on critical failure
 cd "$required_dir" || exit 1
-source "$config_file" || exit 1
-```
 
-### Custom Error Messages
-
-```bash
+# Custom error message
 command_that_might_fail || {
     echo "Error: command failed" >&2
     exit 1
 }
 ```
 
-## Portability Considerations
+---
 
-### POSIX vs Bash
+## POSIX vs Bash
 
 | Feature | POSIX | Bash |
 |---------|-------|------|
@@ -254,26 +199,9 @@ command_that_might_fail || {
 | `source` | Use `.` | Both work |
 | Process substitution | Not available | `<(cmd)` |
 
-### Portable Alternatives
-
-When POSIX compatibility is REQUIRED:
-
-```bash
-# Instead of bash arrays, use positional parameters or newline-separated strings
-files=$(find . -name "*.txt")
-
-# Instead of [[ ]], use [ ]
-if [ -f "$file" ]; then
-    echo "exists"
-fi
-
-# Instead of source, use .
-. ./config.sh
-```
+---
 
 ## Input Validation
-
-User input MUST be validated:
 
 ```bash
 validate_input() {
@@ -285,13 +213,13 @@ validate_input() {
     fi
 
     if [[ ! "$input" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-        echo "Error: Invalid characters in input" >&2
+        echo "Error: Invalid characters" >&2
         return 1
     fi
-
-    return 0
 }
 ```
+
+---
 
 ## Command Substitution
 
@@ -300,15 +228,14 @@ Modern syntax MUST be used:
 ```bash
 # Correct
 result=$(command)
-nested=$(echo $(inner_command))
 
 # Incorrect - MUST NOT use backticks
 result=`command`
 ```
 
-## Logging
+---
 
-Scripts SHOULD include consistent logging:
+## Logging
 
 ```bash
 log_info() {
@@ -323,6 +250,8 @@ log_debug() {
     [[ "${DEBUG:-0}" == "1" ]] && echo "[DEBUG] $*"
 }
 ```
+
+---
 
 ## Script Template
 
@@ -340,7 +269,6 @@ Usage: $SCRIPT_NAME [options] <argument>
 Options:
     -h, --help    Show this help message
     -v, --verbose Enable verbose output
-
 EOF
 }
 
@@ -373,3 +301,13 @@ main() {
 
 main "$@"
 ```
+
+---
+
+## Size Limit
+
+Scripts SHOULD NOT exceed 100 lines (excluding comments/blanks).
+
+When a script exceeds 100 lines:
+- Refactor into smaller functions
+- Consider converting to Python for maintainability

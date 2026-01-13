@@ -374,8 +374,15 @@ project/
 
 ---
 
+## Framework-Specific Patterns
+
+For web framework patterns, see the framework-specific guides:
+
+- **[Rails](frameworks/rails.md)** - Ruby on Rails conventions, service objects, Hotwire/Stimulus, Rails 8.x features
+- **[Hanami](frameworks/hanami.md)** - Slices architecture, dry-rb ecosystem, ROM persistence, dependency injection
+
+---
+
 ## Out of Scope
 
-- Rails specifics -> see `rails-workflow`
-- Hanami specifics -> see `hanami-workflow`
 - Gem publishing -> see `gem-publishing`
