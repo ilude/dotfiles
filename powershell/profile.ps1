@@ -51,6 +51,42 @@ if ($Host.Name -eq 'ConsoleHost' -and -not $env:PWSH_MODULES_CHECKED) {
 
 #endregion
 
+#region Secrets Import
+
+# Import secrets from ~/.dotfiles/.secrets (bash-style export VAR=value)
+# Mirrors zsh behavior - same secrets file works for both shells
+function Import-Secrets {
+  [CmdletBinding()]
+  param(
+    [string]$Path = "$env:USERPROFILE\.dotfiles\.secrets"
+  )
+
+  if (-not (Test-Path $Path)) {
+    Write-Verbose "Secrets file not found: $Path"
+    return
+  }
+
+  Get-Content $Path | ForEach-Object {
+    $line = $_.Trim()
+    # Skip comments and empty lines
+    if ($line -match '^\s*#' -or $line -eq '') { return }
+    # Parse: export VAR=value or VAR=value
+    if ($line -match '^(export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$') {
+      $name = $Matches[2]
+      $value = $Matches[3]
+      # Remove surrounding quotes if present
+      $value = $value -replace '^["'\'']|["'\'']$', ''
+      [Environment]::SetEnvironmentVariable($name, $value, 'Process')
+      Write-Verbose "Set $name"
+    }
+  }
+}
+
+# Auto-import secrets on profile load
+Import-Secrets
+
+#endregion
+
 #region PATH Management
 
 function Add-PathIfNotExists {
