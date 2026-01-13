@@ -7,112 +7,133 @@ description: "Evidence-based code review avoiding false positives. Triggers: cod
 
 **Invoke:** `/code-review` or mention "code review", "review changes", "review PR"
 
-**Philosophy:** Finding issues is easy. Finding issues WORTH FIXING is hard.
+---
+
+## Core Principle: Must vs May
+
+Static analysis research distinguishes two types of findings:
+
+| Type | Definition | Risk |
+|------|------------|------|
+| **MUST** | Issue definitely occurs on a reachable path | Real bug |
+| **MAY** | Issue could occur under some hypothetical condition | Often false positive |
+
+**The Rule:** Only flag MUST issues. If you can't prove it definitely happens, don't report it.
+
+- **Wrong:** "This could crash if the list is empty"
+- **Right:** "This crashes because caller X passes empty list at line Y"
+
+This single principle eliminates most false positives. The techniques below help you distinguish MUST from MAY.
 
 ---
 
-## CRITICAL: The False Positive Problem
-
-Up to 40% of AI code review alerts are ignored due to false positives. This skill prevents the most common causes:
-
-| False Positive Type | How This Skill Prevents It |
-|---------------------|---------------------------|
-| Pre-existing issues flagged as new | Scope to diff only with `git merge-base` |
-| "Bugs" that can't happen | Verify call sites and type constraints |
-| Assumed "standards" | Check if pattern exists elsewhere in codebase |
-| Out-of-scope improvements | Respect ticket scope (extract vs refactor) |
-| Speculative issues | Require 80%+ confidence to report |
-
----
-
-## Step 1: Scope to THIS Branch's Changes Only
+## Step 1: Scope to This Branch Only
 
 ```bash
-# CRITICAL: Get changes specific to THIS branch
 MERGE_BASE=$(git merge-base origin/dev HEAD)
 git diff $MERGE_BASE..HEAD --name-only  # Files changed
 git diff $MERGE_BASE..HEAD              # Actual diff
 ```
 
-**Never review code that isn't in the diff.** Pre-existing technical debt is out of scope.
+**Only review code in the diff.** Pre-existing issues are out of scope—they're MAY issues for this review (may have been intentional, may be handled elsewhere).
 
 ---
 
-## Step 2: Pre-Flag Checklist (5 Points)
+## Step 2: Three Verification Pillars
 
-Before flagging ANY issue, verify ALL of the following:
+Before flagging ANY issue, verify using these three techniques from static analysis research:
 
-| # | Check | How to Verify |
-|---|-------|---------------|
-| 1 | **Is it in the diff?** | Only lines with `+` or `-` in `git diff` |
-| 2 | **Is it new?** | Compare to `git show MERGE_BASE:path/to/file` |
-| 3 | **Can it actually happen?** | Trace the data flow backwards - check callers, guards, and constraints |
-| 4 | **Is it a documented standard?** | Search codebase for pattern usage |
-| 5 | **Confidence > 80%?** | If speculative, don't report |
+### Pillar 1: Path Feasibility
 
-**If ANY check fails, do NOT flag the issue.**
+**Question:** Can this code path actually execute?
 
-### Critical: Trace Data Flow Before Flagging
+Many "bugs" exist on paths that are never taken:
+- A guard earlier in the code prevents the dangerous case
+- A type constraint makes the scenario impossible
+- The caller validates before calling
 
-Before flagging any potential bug, **follow the code path backwards**:
+**Verification:**
+```bash
+# Find the path to the "bug"
+# Check each condition on that path
+# If ANY condition is always false, the path is infeasible
+```
 
-1. **Find all callers** of the method/function
-2. **Check for guards** - does the caller validate inputs before passing them?
-3. **Check for constraints** - do types, interfaces, or earlier code guarantee safe values?
-4. **Check the broader context** - is there a pattern that ensures this case is handled?
+**Real example:** `list.Substring(0, list.Length-1)` "crashes on empty" → Caller has `if (list.Any())` guard → Path to crash is infeasible → NOT a bug.
 
-If the issue is already handled upstream, **it's not an issue**. Don't flag it, don't mention it.
+### Pillar 2: Context Completeness
 
-**Examples:**
-- "Empty collection could crash `Substring`" -> Caller has `if (list.Any())` guard -> NOT an issue
-- "Null reference possible" -> Parameter comes from non-nullable interface -> NOT an issue
-- "Division by zero" -> Earlier validation rejects zero values -> NOT an issue
+**Question:** Do I have full context, or am I missing information?
+
+False positives often come from incomplete context:
+- **Interface contracts:** Parameter is part of an API signature—other implementations may use it
+- **Cross-file dependencies:** Variable is validated in another file before reaching here
+- **Framework guarantees:** The framework ensures non-null before calling your code
+
+**Verification:**
+- Check if the code implements an interface—respect the contract
+- Check other files that interact with this code
+- Check framework documentation for guarantees
+
+**Real example:** "Parameter `scac` is unused" → It's part of interface contract, callers pass it, other implementations may use it → NOT an issue.
+
+### Pillar 3: Interprocedural Analysis
+
+**Question:** What happens across function boundaries?
+
+Analyzing one function in isolation produces false positives. You must trace data flow:
+
+1. **Find all callers** of the method
+2. **Check caller guards** - does caller validate inputs?
+3. **Check caller constraints** - what values can caller actually pass?
+4. **Propagate guarantees** - if caller guarantees X, the callee can assume X
+
+**Verification:**
+```bash
+# Find all call sites
+grep -rn "MethodName(" --include="*.cs" .
+
+# For each caller, check:
+# - What guards exist before the call?
+# - What values are actually passed?
+# - Are there type constraints?
+```
+
+If the issue is handled by callers, it's a MAY issue (may be a problem if called differently), not a MUST issue.
 
 ---
 
-## Step 3: Classification System
+## Step 3: The Verification Checklist
 
-Use these categories (not just "bug" or "issue"):
+Before flagging, verify ALL:
+
+| # | Check | Pillar |
+|---|-------|--------|
+| 1 | Is it in the diff? | Scope |
+| 2 | Is it new to this branch? | Scope |
+| 3 | Is the path feasible? | Path Feasibility |
+| 4 | Do I have complete context? | Context Completeness |
+| 5 | Have I checked callers? | Interprocedural |
+| 6 | Is confidence > 80%? | MUST vs MAY |
+
+**If ANY check fails, do NOT flag.**
+
+---
+
+## Step 4: Classification
 
 | Category | Definition | Action |
 |----------|------------|--------|
-| **BLOCKER** | New bug/security issue in THIS diff | Must fix before merge |
-| **FOLLOW-UP** | Pre-existing debt revealed by changes | Create separate ticket |
-| **NIT** | Stylistic/educational, technically correct | Optional, author's choice |
-| **QUESTION** | Need clarification, not a suggestion | Ask, don't assume |
-
----
-
-## Step 4: Verification Protocols
-
-### For Potential Bugs
-```bash
-# Find all call sites
-grep -rn "FunctionName(" --include="*.cs" .
-
-# Check each caller for guards
-# Does the caller validate inputs?
-# Does the caller handle the error case?
-```
-
-### For "Missing" Patterns
-```bash
-# Before claiming something is "standard", verify:
-grep -rn "PatternName" --include="*.cs" . | wc -l
-# If < 10% of files use it, it's NOT a standard
-```
-
-### For Code Duplication
-```bash
-# Is duplication NEW or pre-existing?
-git show $MERGE_BASE:path/to/original.cs | grep -A 20 "duplicated code"
-```
+| **BLOCKER** | MUST issue—definitely occurs in this diff | Fix before merge |
+| **FOLLOW-UP** | Pre-existing debt revealed by changes | Separate ticket |
+| **NIT** | Style preference, technically correct code | Author's choice |
+| **QUESTION** | Need clarification to determine MUST vs MAY | Ask, don't assume |
 
 ---
 
 ## Step 5: Output Format
 
-For each issue found:
+For each issue:
 
 ```markdown
 ## [CATEGORY] Title
@@ -121,111 +142,85 @@ For each issue found:
 **Confidence:** 85%
 
 ### Issue
-[Specific problem description]
+[What MUST happen, not what COULD happen]
 
 ### Evidence
-- [Concrete evidence from code/diff]
-- [Call site analysis results]
-- [Pattern search results]
+- [Path feasibility: how you verified the path is reachable]
+- [Context: what callers/interfaces you checked]
+- [Concrete scenario where this triggers]
 
 ### Recommendation
-[Specific, actionable fix]
+[Specific fix]
 ```
 
+**IMPORTANT:** Do NOT include "Not Flagged" or "Verified Safe" sections. If verification proves something is not an issue, simply don't mention it.
+
 ---
 
-## Anti-Patterns to Avoid
+## Anti-Patterns (Real-World Traps)
 
 ### The "Potential Bug" Trap
-- **Wrong:** "This could crash if X is null"
-- **Right:** "This WILL crash because caller Y passes null at line Z"
+Saying "could" or "might" indicates a MAY issue. Convert to MUST or don't flag.
+- **MAY:** "This could crash if X is null"
+- **MUST:** "This crashes because Y passes null at line Z"
 
-**Example - Empty collection crash:**
-- **Wrong:** "`list.Substring(0, list.Length-1)` crashes on empty input"
-- **Verify first:** `grep -rn "MethodName(" .` → caller has `if (list.Any())` guard
-- **Result:** NOT a bug - caller guarantees non-empty
+### The "Unused Parameter" Trap
+Parameters in interface contracts aren't unused—they're part of the API.
+- **Wrong:** "Parameter `scac` is never used"
+- **Verify:** Is it part of an interface? Do callers pass it? Could other implementations use it?
+- If yes to any: NOT an issue
 
 ### The "Linter's Job" Trap
-- **Wrong:** "Unused imports should be removed"
-- **Right:** Defer to linting tools (`dotnet format`, `eslint --fix`, etc.)
-- **Non-issues:** Unused imports, formatting, whitespace, naming conventions
-- These are automatically caught by CI/IDE - not worth review comments
+Don't flag what automated tools catch: unused imports, formatting, whitespace.
+These are CI/IDE concerns, not review concerns.
 
-### The "Best Practice" Trap
-- **Wrong:** "Should use logging for audit trail"
-- **Right:** "Other methods in this class use LogEmail() at lines X, Y, Z"
-
-### The "Code Smell" Trap
-- **Wrong:** "This method is too long"
-- **Right:** "BLOCKER: This condition is never true due to type constraint"
+### The "Missing Pattern" Trap
+Before claiming something violates a "standard," verify the standard exists:
+```bash
+grep -rn "PatternName" --include="*.cs" . | wc -l
+# If < 10% of files use it, it's NOT a standard
+```
 
 ### The "Scope Creep" Trap
-- **Wrong:** "While we're here, let's also refactor..."
-- **Right:** "This ticket is extract-only. Refactoring is FOLLOW-UP."
+Respect ticket scope:
 
----
-
-## Understanding Ticket Scope
-
-| Ticket Type | What to Review | What NOT to Flag |
-|-------------|----------------|------------------|
-| **Extract/Move** | Code was copied correctly | Code improvements |
-| **Refactor** | Logic is preserved | Style preferences |
-| **New Feature** | Correctness, edge cases | Unrelated code |
-| **Bug Fix** | Fix is correct, no regression | Surrounding code |
+| Ticket Type | Review For | Don't Flag |
+|-------------|------------|------------|
+| Extract/Move | Correct copy | Improvements |
+| Refactor | Logic preserved | Style |
+| New Feature | Correctness | Unrelated code |
+| Bug Fix | Fix works | Surrounding code |
 
 ---
 
 ## Confidence Scoring
 
-Only report issues with confidence > 80%. Calculate based on:
+Only report at > 80% confidence:
 
-| Factor | Impact on Confidence |
-|--------|---------------------|
-| Evidence from diff | +30% |
-| Call site verified | +25% |
-| Reproducible scenario | +25% |
+| Factor | Impact |
+|--------|--------|
+| Path verified reachable | +30% |
+| Callers checked | +25% |
+| Concrete scenario exists | +25% |
 | Pattern verified in codebase | +20% |
 | Speculative/hypothetical | -50% |
-
----
-
-## Multi-Agent Review (Recommended)
-
-For significant reviews, use parallel agents:
-
-```
-Agent 1: Diff-Only Bug Hunter
-- Only looks at changed lines
-- Checks for actual bugs, not style
-
-Agent 2: Call Site Verifier
-- For each flagged issue, verify callers
-- Downgrade issues that callers handle
-
-Agent 3: Standards Auditor
-- Verify any claimed "standards" against codebase
-- Only flag violations of verified patterns
-```
 
 ---
 
 ## Quick Reference
 
 ```bash
-# Get merge base
+# Scope to branch
 MERGE_BASE=$(git merge-base origin/dev HEAD)
-
-# View diff
 git diff $MERGE_BASE..HEAD
 
-# View specific file before changes
+# Check file before changes
 git show $MERGE_BASE:path/to/file.cs
 
-# Find callers
+# Find callers (interprocedural)
 grep -rn "MethodName(" --include="*.cs" .
 
-# Check pattern frequency
+# Verify pattern exists (context)
 grep -rn "Pattern" --include="*.cs" . | wc -l
 ```
 
@@ -233,11 +228,15 @@ grep -rn "Pattern" --include="*.cs" . | wc -l
 
 ## Sources
 
-This skill is based on research from:
-- [CodeRabbit: Pipeline AI vs Agentic AI](https://www.coderabbit.ai/blog/pipeline-ai-vs-agentic-ai-for-code-reviews-let-the-model-reason-within-reason)
-- [Greptile: How to Make LLMs Shut Up](https://www.greptile.com/blog/make-llms-shut-up)
-- [Academic: Multi-review aggregation +43.67% F1](https://arxiv.org/abs/2509.01494)
-- [Academic: 80% confidence threshold](https://arxiv.org/abs/2402.00905)
-- [ACM: Support, Not Automation](https://dl.acm.org/doi/abs/10.1145/3696630.3728505)
+### Academic Foundations
+- [LLM4FPM: Precise Code Context for False Positive Mitigation](https://arxiv.org/html/2411.03079v1) - Context completeness achieves 99% F1
+- [LLM4PFA: Path Feasibility Analysis](https://arxiv.org/html/2506.10322v1) - Filters 72-96% of false positives
+- [IEEE: Mitigating False Positive SA Warnings](https://ieeexplore.ieee.org/document/10305541/) - Comprehensive survey
+- [Harvard CS252r: Interprocedural Analysis](https://groups.seas.harvard.edu/courses/cs252/2011sp/slides/Lec05-Interprocedural.pdf)
+- [SMASH: Compositional May-Must Analysis](https://dl.acm.org/doi/10.1145/1706299.1706307)
 
-**Key Insight:** "The definition of a 'nit' is subjective and varies from team to team." - Greptile
+### Industry Practice
+- [CodeRabbit: Let the Model Reason](https://www.coderabbit.ai/blog/pipeline-ai-vs-agentic-ai-for-code-reviews-let-the-model-reason-within-reason)
+- [Greptile: How to Make LLMs Shut Up](https://www.greptile.com/blog/make-llms-shut-up)
+
+**Key Insight:** The MUST vs MAY distinction from static analysis theory explains why "trace backwards" and "check callers" work—they convert MAY findings into confirmed MUST issues or eliminate them entirely.
