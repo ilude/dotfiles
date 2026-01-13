@@ -11,6 +11,11 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 Comprehensive git workflow principles for all git operations.
 
+**See also:**
+- [worktrees.md](worktrees.md) - Git worktrees for parallel development
+- [github-setup.md](github-setup.md) - GitHub repository configuration
+- [gitlab.md](gitlab.md) - GitLab CLI (glab) workflow
+
 ## Critical Rules
 
 ### Push Behavior
@@ -264,3 +269,139 @@ Before each commit:
 ## Philosophy
 
 This skill defines the principles. The `/commit` command implements the procedural execution. Security always comes first, commits require explicit request, and pushes require the "push" keyword.
+
+---
+
+## .gitignore Best Practices
+
+### Organization
+
+- **Alphabetical ordering** within sections (case-sensitive)
+- **Section comments** to group related patterns
+- **Specific patterns** over broad rules
+
+```gitignore
+# Build artifacts (alphabetical)
+build/
+dist/
+*.egg-info/
+
+# IDEs (alphabetical)
+.idea/
+.vscode/
+*.swp
+```
+
+### What to Include
+
+**Build artifacts:** `build/`, `dist/`, `*.egg-info/`, `bin/`, `out/`
+
+**Dependencies:** `node_modules/`, `.venv/`, `venv/`, `vendor/`
+
+**Compiled code:** `*.pyc`, `*.pyo`, `__pycache__/`, `*.o`, `*.so`
+
+**Test outputs:** `.pytest_cache/`, `.coverage`, `htmlcov/`, `.tox/`
+
+**Environment files:** `.env`, `.env.*` (except `.env.example`)
+
+**Logs:** `*.log`, `logs/`
+
+**OS files:** `.DS_Store`, `Thumbs.db`
+
+**IDE files:** `.vscode/`, `.idea/`, `*.swp`
+
+**Temporary:** `tmp/`, `temp/`, `*.tmp`
+
+### What NOT to Include
+
+- Source code or tests
+- Configuration templates (`.env.example`, `config.example.yml`)
+- Project documentation (`README.md`, `docs/`)
+- Essential config (`pyproject.toml`, `package.json`, `Dockerfile`)
+
+### Negation for Exceptions
+
+```gitignore
+# Ignore all .env files except the example
+.env.*
+!.env.example
+
+# Ignore configs except template
+config/*.yml
+!config/template.yml
+```
+
+### Common Mistakes
+
+```gitignore
+# BAD: Too broad
+*
+*.py*
+config/
+
+# GOOD: Specific patterns
+*.pyc
+*.pyo
+__pycache__/
+config/*.local
+```
+
+### Testing Patterns
+
+```bash
+# Check what Git ignores
+git status --ignored
+
+# Check specific file
+git check-ignore -v path/to/file.txt
+
+# List tracked files
+git ls-files
+```
+
+### Python Template
+
+```gitignore
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.so
+
+# Virtual environments
+.venv/
+venv/
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Type checking
+.mypy_cache/
+
+# Linting
+.ruff_cache/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary
+temp/
+tmp/
+```
