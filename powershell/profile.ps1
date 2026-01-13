@@ -75,7 +75,7 @@ function Import-Secrets {
       $name = $Matches[2]
       $value = $Matches[3]
       # Remove surrounding quotes if present
-      $value = $value -replace '^["'\'']|["'\'']$', ''
+      $value = $value -replace '^["'']|["'']$', ''
       [Environment]::SetEnvironmentVariable($name, $value, 'Process')
       Write-Verbose "Set $name"
     }
