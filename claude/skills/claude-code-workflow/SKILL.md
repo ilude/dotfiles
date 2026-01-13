@@ -1,6 +1,6 @@
 ---
 name: claude-code-workflow
-description: Claude Code AI-assisted development workflow. Activate when discussing Claude Code usage, AI-assisted coding, prompting strategies, or Claude Code-specific patterns.
+description: Claude Code AI-assisted development workflow. Activate when discussing Claude Code usage, AI-assisted coding, prompting strategies, context management, /snapshot, /pickup, hooks, .claude/hooks, multi-instance verification, browser automation, PTC orchestration, YouTube transcripts, ruleset optimization, CLAUDE.md optimization, multi-agent AI projects, .spec/, lessons/, or Claude Code-specific patterns.
 location: user
 ---
 
@@ -9,6 +9,18 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 # Claude Code Workflow
 
 Guidelines for effective AI-assisted development with Claude Code.
+
+## Sub-Guides
+
+| Guide | Description |
+|-------|-------------|
+| [Context Management](context-management.md) | In-session token hygiene and cross-session persistence (/snapshot, /pickup) |
+| [Multi-Instance](multi-instance.md) | Using separate Claude contexts for verification |
+| [Browser Orchestration](browser-orchestration.md) | PTC for multi-URL scraping and browser automation |
+| [YouTube Transcript](youtube-transcript.md) | Fetching YouTube transcripts and metadata |
+| [Ruleset Optimization](ruleset-optimization.md) | Optimizing CLAUDE.md and skills for context efficiency |
+| [Multi-Agent Projects](multi-agent-projects.md) | Working with .spec/, lessons/, STATUS.md patterns |
+| [Marketplace Manager](marketplace-manager.md) | Add and manage Claude Code plugin marketplaces |
 
 ## Task Value Matrix
 
