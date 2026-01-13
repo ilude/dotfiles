@@ -1,9 +1,6 @@
 ---
 name: logging-observability
-description: |
-  Guidelines for structured logging, distributed tracing, and debugging patterns across languages.
-  Covers logging best practices, observability, security considerations, and performance analysis.
-  Trigger keywords: logging, observability, tracing, debugging, structured logging, log aggregation, performance metrics, monitoring, correlation ID, trace ID.
+description: "Structured logging, distributed tracing, and debugging patterns. Triggers: logging, observability, tracing, debugging, structured logging, log aggregation, performance metrics, monitoring, correlation ID, trace ID."
 ---
 
 # Logging & Observability Skill

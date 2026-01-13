@@ -1,8 +1,6 @@
 ---
 name: code-review
-description: |
-  Evidence-based code review that avoids false positives. Invoke with `/code-review` or trigger keywords: code review, review changes, review PR, review diff.
-  Based on research from CodeRabbit, Greptile, and academic papers on reducing AI code review false positives.
+description: "Evidence-based code review avoiding false positives. Triggers: code review, review code, review changes, review PR, review diff, review branch, PR review, pull request review. Activate when user asks to review code, changes, a branch, or a PR."
 ---
 
 # Evidence-Based Code Review
