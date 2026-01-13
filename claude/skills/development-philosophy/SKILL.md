@@ -186,6 +186,32 @@ index = binary_search(sorted_list, target)
 - ❌ Interface for every class
 
 ---
+### Standard Library First
+
+**Before writing custom code, check if stdlib solves it.**
+
+| Instead of... | Use... |
+|---------------|--------|
+| Custom path string manipulation | `pathlib.Path` |
+| Manual JSON parsing | `json` module |
+| Regex for URL parsing | `urllib.parse` |
+| Custom date math | `datetime`, `timedelta` |
+| Hand-rolled retries | `tenacity`, `backoff` |
+| DIY argument parsing | `argparse`, `click`, `typer` |
+
+**Principles:**
+- **Stdlib first** - Check if Python/language stdlib solves it before writing custom code
+- **Battle-tested libraries second** - Well-maintained packages > custom implementations
+- **Inline trivial helpers** - One-liner functions used once add cognitive overhead without value
+- **Delete, don't wrap** - If stdlib does 90% of what you need, use it directly; don't wrap it
+
+**Before writing a utility function, ask:**
+1. Does stdlib have this? (It usually does)
+2. Is there a well-known library for this?
+3. If I must write it, is it more than 3 lines? (If not, inline it)
+
+---
+
 
 ## Task Execution Workflow
 
