@@ -76,6 +76,27 @@ grep 'path-normalization-hook.py' ~/.claude/logs/path-normalization/*.log
 | "File has been unexpectedly modified" | Absolute path or backslashes slipped through | Check logs - if path was "allowed" but shouldn't be, fix `is_absolute()` |
 | Hook not firing | Hook not in settings.json or tool_name mismatch | Verify `~/.claude/settings.json` has PreToolUse hook for Edit/Write |
 | Wrong suggestion | Path detection logic error | Check `is_within()` and `CLAUDE_PROJECT_DIR` |
+| `suggested_path` equals full input path | Cross-platform Path.name bug (see below) | Use `normalize_separators()` before Path operations |
+
+### Known bug: Cross-platform `Path.name` failure
+
+**Symptom**: Log shows `suggested_path` is the full absolute path instead of just the filename:
+```json
+{
+  "file_path": "C:\\Projects\\Work\\file.md",
+  "suggested_path": "C:\\Projects\\Work\\file.md"  // BUG: should be "file.md"
+}
+```
+
+**Root cause**: On Unix/WSL, `Path("C:\\path\\file.md").name` returns the **entire string** because backslashes aren't recognized as path separators. Python's pathlib only recognizes `/` on Unix.
+
+**Fix**: The hook uses `normalize_separators()` to convert backslashes to forward slashes before any Path operations, and extracts filenames using string operations:
+```python
+normalized = normalize_separators(path_str)  # C:/Projects/Work/file.md
+filename = normalized.rsplit('/', 1)[-1]     # file.md
+```
+
+**Regression test**: `test_windows_backslash_path_suggests_filename_only` in the test suite
 
 ### Testing the hook manually
 

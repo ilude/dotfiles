@@ -98,10 +98,26 @@ def is_hook_disabled() -> bool:
     return HOOK_NAME in [h.strip() for h in disabled.split(",")]
 
 
+def normalize_separators(path_str: str) -> str:
+    """Convert backslashes to forward slashes for consistent path handling.
+
+    Critical for Unix/WSL: Path("C:\\path\\file").name returns the entire string
+    because backslashes aren't recognized as separators. Normalizing first ensures
+    Path operations work correctly regardless of input format.
+    """
+    return path_str.replace(BACKSLASH, '/')
+
+
 def to_windows_path(path_str: str) -> str:
-    """Convert MSYS (/c/), WSL (/mnt/c/), or Cygwin (/cygdrive/c/) to Windows (C:/)."""
-    match = re.match(r'^(?:/mnt|/cygdrive)?/([a-zA-Z])/(.*)', path_str)
-    return f"{match.group(1).upper()}:/{match.group(2)}" if match else path_str
+    """Convert MSYS (/c/), WSL (/mnt/c/), Cygwin (/cygdrive/c/), or backslash paths to Windows (C:/).
+
+    Also normalizes backslashes to forward slashes for consistent handling.
+    """
+    # First normalize backslashes to forward slashes
+    normalized = normalize_separators(path_str)
+    # Handle MSYS/WSL/Cygwin style paths
+    match = re.match(r'^(?:/mnt|/cygdrive)?/([a-zA-Z])/(.*)', normalized)
+    return f"{match.group(1).upper()}:/{match.group(2)}" if match else normalized
 
 
 def is_unc_path(path: str) -> bool:
@@ -223,7 +239,11 @@ def main() -> None:
         block(tool_name, path_str, "absolute path in home", f"~/{relative}")
 
     # Outside allowed areas -> suggest filename only (user must determine location)
-    block(tool_name, path_str, "absolute path outside project/home", file_path.name)
+    # Use string operations to extract filename since Path.name can fail with
+    # cross-platform paths (e.g., Windows path on Unix)
+    normalized = normalize_separators(path_str)
+    filename = normalized.rsplit('/', 1)[-1]
+    block(tool_name, path_str, "absolute path outside project/home", filename)
 
 
 if __name__ == "__main__":
