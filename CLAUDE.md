@@ -166,6 +166,41 @@ bats test/prompt.bats  # Run specific test file
 - Default branch is `main`
 - Dotbot uses `force: true` and `relink: true` for symlinks
 
+### Dotbot Configuration Options
+
+```yaml
+- defaults:
+    link:
+      relink: true    # Replace existing symlinks
+      force: true     # Replace existing files
+      create: true    # Create parent directories
+
+- link:
+    ~/target:
+      path: source
+      if: '[ "$OSTYPE" = "msys" ]'  # Conditional linking
+```
+
+### Idempotent Script Patterns
+
+```bash
+# Check before create
+if [[ -L "$link" ]]; then
+    echo "Already linked: $link"
+    return 0
+fi
+
+# Config file generation - only write if changed
+if [[ -f "$file" ]]; then
+    existing=$(cat "$file")
+    if [[ "$existing" == "$content" ]]; then
+        echo "Already configured: $file"
+        return 0
+    fi
+fi
+echo "$content" > "$file"
+```
+
 ## Reference: Cross-Platform Dotfiles Repos
 
 These repos successfully support Linux + Git Bash/MSYS2 + WSL. Reference for solving cross-platform issues:
