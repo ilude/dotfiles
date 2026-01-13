@@ -1,7 +1,6 @@
 ---
 name: ux-design-workflow
-description: |
-  Comprehensive UX/UI design workflow - from idea to working code. Covers accessibility (WCAG), design tokens, distinctive aesthetics, and implementation pipelines. Activate when working with design systems, UI components, "build a UI", "design this", or user interface patterns.
+description: "UX/UI design workflow from idea to code. Covers accessibility (WCAG), design tokens, aesthetics, pipelines. Triggers: design systems, UI components, build a UI, design this, user interface patterns, accessibility, WCAG."
 location: user
 ---
 
