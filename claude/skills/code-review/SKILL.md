@@ -126,6 +126,17 @@ For each issue found:
 - **Wrong:** "This could crash if X is null"
 - **Right:** "This WILL crash because caller Y passes null at line Z"
 
+**Example - Empty collection crash:**
+- **Wrong:** "`list.Substring(0, list.Length-1)` crashes on empty input"
+- **Verify first:** `grep -rn "MethodName(" .` → caller has `if (list.Any())` guard
+- **Result:** NOT a bug - caller guarantees non-empty
+
+### The "Linter's Job" Trap
+- **Wrong:** "Unused imports should be removed"
+- **Right:** Defer to linting tools (`dotnet format`, `eslint --fix`, etc.)
+- **Non-issues:** Unused imports, formatting, whitespace, naming conventions
+- These are automatically caught by CI/IDE - not worth review comments
+
 ### The "Best Practice" Trap
 - **Wrong:** "Should use logging for audit trail"
 - **Right:** "Other methods in this class use LogEmail() at lines X, Y, Z"
