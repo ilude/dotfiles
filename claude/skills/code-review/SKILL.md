@@ -46,11 +46,27 @@ Before flagging ANY issue, verify ALL of the following:
 |---|-------|---------------|
 | 1 | **Is it in the diff?** | Only lines with `+` or `-` in `git diff` |
 | 2 | **Is it new?** | Compare to `git show MERGE_BASE:path/to/file` |
-| 3 | **Can it actually happen?** | Find and check ALL call sites |
+| 3 | **Can it actually happen?** | Trace the data flow backwards - check callers, guards, and constraints |
 | 4 | **Is it a documented standard?** | Search codebase for pattern usage |
 | 5 | **Confidence > 80%?** | If speculative, don't report |
 
 **If ANY check fails, do NOT flag the issue.**
+
+### Critical: Trace Data Flow Before Flagging
+
+Before flagging any potential bug, **follow the code path backwards**:
+
+1. **Find all callers** of the method/function
+2. **Check for guards** - does the caller validate inputs before passing them?
+3. **Check for constraints** - do types, interfaces, or earlier code guarantee safe values?
+4. **Check the broader context** - is there a pattern that ensures this case is handled?
+
+If the issue is already handled upstream, **it's not an issue**. Don't flag it, don't mention it.
+
+**Examples:**
+- "Empty collection could crash `Substring`" -> Caller has `if (list.Any())` guard -> NOT an issue
+- "Null reference possible" -> Parameter comes from non-nullable interface -> NOT an issue
+- "Division by zero" -> Earlier validation rejects zero values -> NOT an issue
 
 ---
 
