@@ -338,6 +338,39 @@ class TestAbsoluteOutsideAllowed:
         )
         assert result.blocked
 
+    def test_windows_backslash_path_suggests_filename_only(self, run_hook, tmp_path):
+        """Windows backslash paths outside project should suggest just filename.
+
+        Regression test: On Unix/WSL, Path("C:\\path\\file").name returns the
+        entire string because backslashes aren't separators. The hook must
+        normalize backslashes before extracting the filename.
+
+        Bug: suggested_path was "C:\\Projects\\Work\\file.md" instead of "file.md"
+        Fix: Use string operations to extract filename after normalizing separators.
+        """
+        home_dir = tmp_path / "Users" / "TestUser"
+        home_dir.mkdir(parents=True)
+
+        # Use a Windows backslash path that's outside home/project
+        backslash = chr(92)
+        windows_path = f"C:{backslash}Projects{backslash}Work{backslash}Gitlab{backslash}docs{backslash}FILE.md"
+
+        result = run_hook(
+            "Write",
+            windows_path,
+            env={
+                "USERPROFILE": str(home_dir).replace("\\", "/"),
+                "CLAUDE_PROJECT_DIR": str(tmp_path / "project").replace("\\", "/"),
+            },
+        )
+        assert result.blocked, f"Expected blocked, got exit {result.exit_code}"
+        assert "Use relative path:" in result.stderr
+        # The suggestion should be just the filename, not the full path
+        assert "FILE.md" in result.stderr
+        # Should NOT contain the full path or backslashes in suggestion
+        assert "Projects" not in result.stderr
+        assert backslash not in result.stderr
+
 
 class TestNonEditWriteTools:
     """Test Case 7: Non-Edit/Write tools should ALLOW (exit 0) regardless of path."""
