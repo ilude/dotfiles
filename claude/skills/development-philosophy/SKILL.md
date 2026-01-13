@@ -233,6 +233,27 @@ index = binary_search(sorted_list, target)
 
 ---
 
+## Pre-Completion Checklist
+
+**Before declaring a task "done", verify:**
+
+| Check | Question |
+|-------|----------|
+| **Tests pass** | Did you run the test suite? |
+| **Original issue fixed** | Does the original problem still reproduce? |
+| **No regressions** | Did you break anything else? |
+| **Clean state** | No debug prints, commented code, or TODOs left? |
+| **Scope respected** | Did you only change what was requested? |
+
+**Red flags that you're not done:**
+- "It should work now" without running tests
+- Warnings in test output (warnings ARE failures)
+- Uncommitted debug statements
+- Changes to unrelated files
+- Edge cases mentioned but not tested
+
+---
+
 ## Key Questions
 
 **Before adding abstraction:**
