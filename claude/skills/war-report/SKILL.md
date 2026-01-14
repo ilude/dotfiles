@@ -11,38 +11,35 @@ description: Generate weekly activity reports (WAR) from git commits. Analyzes c
 
 ## Process
 
-1. **Get user identity**
-   - Run `git config user.email` to get the user's email
-   - Use this email for `--author` filter in all git log commands
-   - This ensures only the user's commits are included, not teammates
-
-2. **Get date context**
+1. **Get date context**
    - Run `date` to get current date
    - Calculate the Friday date for the report filename
-   - Determine Sunday-Saturday range for the week
+   - Determine Sunday-Saturday range for the week (e.g., "2026-01-12" to "2026-01-18 23:59:59")
 
-3. **Discover git repositories**
+2. **Discover git repositories**
    - Scan `C:\Projects\Work\` (or `CLAUDE_WAR_ROOT` env var if set) for all directories containing `.git/`
-   - Command: `for dir in /c/Projects/Work/*/; do [ -d "$dir/.git" ] && echo "$dir"; done`
+   - Use: `find /c/Projects/Work/Gitlab /c/Projects/Work/Github -name ".git" -type d 2>/dev/null | sed 's|/.git$||'`
    - This finds all active git projects automatically
 
-4. **Gather commits from each repo**
-   - For each discovered repo, run: `git log --since="last Sunday" --until="Saturday" --oneline --all --author="<user-email>"`
+3. **Gather commits from each repo**
+   - Use the `get-user-commits.py` script for exact email matching
+   - Command: `python ~/.claude/skills/war-report/get-user-commits.py <repo_path> "<since_date>" "<until_date>"`
+   - Script automatically gets user email and filters to exact matches only
    - Skip repos with no commits in the date range
    - Only include repos with activity in the final report
 
-5. **Review prior week's report**
+4. **Review prior week's report**
    - List files with: `ls -la ~/.claude/war/` (glob patterns unreliable on Windows)
    - Read the most recent `war-YYYY-MM-DD.md` file
    - Identify ongoing work threads that continued this week
    - Note any work that was started last week and completed/progressed this week
 
-6. **Generate summary**
+5. **Generate summary**
    - Synthesize commits into high-level accomplishment bullets
    - Be brief: 1 line per major item, avoid sub-bullets unless essential
    - Focus on WHAT was accomplished, not implementation details
 
-7. **Write report**
+6. **Write report**
    - Create `~/.claude/war/war-YYYY-MM-DD.md` (Friday date)
    - Bullet list only, no header
 

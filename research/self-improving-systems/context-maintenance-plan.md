@@ -1,3 +1,15 @@
+---
+id: context-maintenance-plan
+title: Context Maintenance System - Implementation Plan
+created: 2025-01-24
+updated: 2026-01-14
+status: active
+tags: [hooks, git-automation, status-md, claude-md, implementation]
+related:
+  - self-improving-systems-overview
+aliases: [context-maintenance, memory-system]
+---
+
 # Context Maintenance System - Comprehensive Plan
 
 **Created**: 2025-01-24
