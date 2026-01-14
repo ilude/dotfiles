@@ -17,7 +17,7 @@ Guidelines for effective AI-assisted development with Claude Code.
 | [Context Management](context-management.md) | In-session token hygiene and cross-session persistence (/snapshot, /pickup) |
 | [Multi-Instance](multi-instance.md) | Using separate Claude contexts for verification |
 | [Browser Orchestration](browser-orchestration.md) | PTC for multi-URL scraping and browser automation |
-| [YouTube Transcript](youtube-transcript.md) | Fetching YouTube transcripts and metadata |
+| `/yt` command | Fetching YouTube transcripts and metadata |
 | [Ruleset Optimization](ruleset-optimization.md) | Optimizing CLAUDE.md and skills for context efficiency |
 | [Multi-Agent Projects](multi-agent-projects.md) | Working with .spec/, lessons/, STATUS.md patterns |
 | [Marketplace Manager](marketplace-manager.md) | Add and manage Claude Code plugin marketplaces |
