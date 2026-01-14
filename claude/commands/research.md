@@ -174,6 +174,8 @@ Ensure transitions between sections are smooth and avoid redundancy.
 
 **Goal:** Create polished output matching requested format.
 
+**CRITICAL**: Every research output MUST include a comprehensive Sources section at the end with all URLs and references used during research. Organize by category (Academic, Practical, Tools, etc.) with clickable markdown links `[Title](URL)`.
+
 ### Narrative Format
 ```markdown
 # <Topic>: A Deep Dive
@@ -228,12 +230,18 @@ Ensure transitions between sections are smooth and avoid redundancy.
 ## Common Pitfalls
 1. [Pitfall + how to avoid]
 
-## Further Reading
+## Sources
+
 ### Academic
-- [Source] - key insight
+- [Paper Title](https://arxiv.org/...) - Key insight about X
+- [Research Paper](https://example.org/...) - Validates Y approach
 
 ### Practical
-- [Source] - key insight
+- [Blog Post](https://example.com/...) - Implementation guide
+- [GitHub Repo](https://github.com/...) - Reference implementation
+
+### Tools & Frameworks
+- [Documentation](https://docs.example.com/...) - Official reference
 
 ## Follow-up Questions
 [3-5 deeper topics to explore]
@@ -273,8 +281,18 @@ Ensure transitions between sections are smooth and avoid redundancy.
 ## Production Considerations
 [Performance, scaling, monitoring]
 
-## References
-[Sources]
+## Sources
+
+### Documentation
+- [Official Docs](https://docs.example.com/...) - Reference material
+
+### Code Examples
+- [GitHub Repo](https://github.com/...) - Reference implementation
+- [Tutorial](https://example.com/...) - Step-by-step guide
+
+### Community
+- [Stack Overflow](https://stackoverflow.com/...) - Common issues
+- [Discussion Forum](https://example.com/...) - Best practices
 ```
 
 ### Adaptation Rules
