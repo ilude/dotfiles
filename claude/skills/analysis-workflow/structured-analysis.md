@@ -2,7 +2,46 @@
 
 Apply structured analytical frameworks to ANY artifact: prompts, systems, documents, code, architecture.
 
-**12 Total Frameworks** organized in 3 tiers for easy selection.
+---
+
+## Core Principle: Externalize Reasoning
+
+**From Richards Heuer (CIA)**: Structured analytic techniques "externalize internal thought processes so they can be shared, built on, and critiqued."
+
+This principle explains WHY frameworks work:
+- Makes assumptions visible and challengeable
+- Enables collaboration on reasoning, not just conclusions
+- Creates audit trail for decisions
+
+---
+
+## Debiasing Techniques (Use Throughout)
+
+### Consider the Opposite
+
+**Most effective single debiasing technique** (reduces confirmation bias, overconfidence, anchoring):
+
+> "What evidence would prove my conclusion WRONG?"
+
+Apply at each analysis phase.
+
+### Outside View / Reference Class Forecasting
+
+**From Kahneman & Lovallo** (Nobel Prize-winning work):
+
+Instead of detailed project analysis (inside view), ask:
+1. What similar projects/decisions existed before?
+2. What were their actual outcomes (not plans)?
+3. Where does this case fit in that distribution?
+
+> "Ignore the specifics. What usually happens in cases like this?"
+
+### Calibration
+
+When expressing confidence:
+- Use explicit probabilities (70%, not "probably")
+- Track your predictions vs outcomes
+- Calibration goal: If you say 80%, you should be right ~80% of the time
 
 ---
 
@@ -12,7 +51,7 @@ Apply structured analytical frameworks to ANY artifact: prompts, systems, docume
 - **deep-analyze**: Verification, gaps, adversarial review
 - **reasoning-scaffold**: Systematic decisions with clear criteria
 - **scope-boundary**: Prevent scope creep, MVP validation
-- **adversarial-review**: Red-team attack to find flaws/blind spots
+- **pre-mortem**: Risk identification (see adversarial.md)
 
 ### Tier 2: Auto-Invoke (Triggered by Context)
 - **zero-warning-verification**: Pre-commit quality gate
@@ -20,11 +59,8 @@ Apply structured analytical frameworks to ANY artifact: prompts, systems, docume
 - **idempotency-audit**: Scripts/setup/migrations
 
 ### Tier 3: On-Demand (Explicit Request Only)
-- **meta-prompting**: Design optimal prompts
-- **recursive-review**: 3-pass refinement
 - **multi-perspective**: Multiple conflicting viewpoints
 - **evidence-based-optimization**: Require proof before optimizing
-- **deliberate-detail**: Comprehensive documentation
 
 ---
 
@@ -40,19 +76,21 @@ Provide thorough analysis.
 
 Phase 2: Chain of Verification
 1. Incompleteness Check: 3 ways analysis might be incomplete/biased
-2. Challenging Evidence: Counter-examples, alternative interpretations
-3. Revised Findings: What changed or introduced new uncertainties
-4. Confidence Calibration: 0-100% with justification
+2. Consider the Opposite: What would prove this wrong?
+3. Outside View: What usually happens in similar cases?
+4. Revised Findings: What changed or introduced new uncertainties
+5. Confidence Calibration: 0-100% with explicit justification
 
-Phase 3: Adversarial Review
-1. 5 Failure Modes: Likelihood (L/M/H) and Impact (1-10)
-2. Top 3 Vulnerabilities: Prioritize by importance
-3. Mitigations: Strengthening strategies
+Phase 3: Pre-Mortem
+"This analysis led to a bad decision. What did we miss?"
+1. 5 Failure Modes: Severity (1-10) × Likelihood (H/M/L)
+2. Top 3 Vulnerabilities: Prioritize by severity × likelihood
+3. Mitigations: Only if they pass the theater litmus test
 
 Phase 4: Final Synthesis
 - Core findings (with confidence levels)
-- Key uncertainties
-- Recommended actions
+- Key uncertainties (what we don't know)
+- Recommended actions (with cost-benefit)
 
 Be self-critical. If verification doesn't find problems, analysis wasn't rigorous enough.
 ```
@@ -65,25 +103,31 @@ Be self-critical. If verification doesn't find problems, analysis wasn't rigorou
 Step 1: Core Question
 [Fundamental question being asked]
 
-Step 2: Key Components
+Step 2: Outside View
+[What usually happens in similar situations? Reference class?]
+
+Step 3: Key Components
 [Essential variables, entities, components]
 
-Step 3: Relationships
+Step 4: Relationships
 [Dependencies and interactions between components]
 
-Step 4: Possible Approaches
+Step 5: Possible Approaches
 [3-5 approaches with Description, Pros, Cons]
 
-Step 5: Decision Criteria
+Step 6: Decision Criteria
 [Criteria with relative weights/importance]
 
-Step 6: Optimal Approach
+Step 7: Consider the Opposite
+[For each approach: What would make this the WRONG choice?]
+
+Step 8: Optimal Approach
 [Selection justified against criteria]
 
-Step 7: Risk Analysis
-[Risks and mitigation strategies]
+Step 9: Pre-Mortem
+[If this fails, what went wrong?]
 
-Step 8: Final Recommendation
+Step 10: Final Recommendation
 [Recommendation, confidence 0-100%, justification]
 ```
 
@@ -188,10 +232,13 @@ Phase 1: Attack Surface
 - What authentication/authorization is needed?
 - What secrets/credentials are involved?
 
-Phase 2: OWASP Top 10 Review
-- Injection, broken auth, data exposure, XXE
-- Access control, misconfig, XSS, deserialization
-- Vulnerable components, insufficient logging
+Phase 2: STRIDE Analysis
+- Spoofing: Can identity be faked?
+- Tampering: Can data be modified?
+- Repudiation: Can actions be denied?
+- Information disclosure: Can data leak?
+- Denial of service: Can availability be attacked?
+- Elevation of privilege: Can access be escalated?
 
 Phase 3: Secret Management
 - Where are secrets stored? (NEVER in code/git)
@@ -204,15 +251,16 @@ Phase 4: Context-Aware Assessment
 - What's protected at infrastructure layer?
 - What's the realistic threat model?
 
-Phase 5: Security Recommendations (with justification)
-For each recommendation:
+Phase 5: Security Recommendations (with theater check)
+For each recommendation, answer:
 - Issue: [Specific vulnerability]
 - Severity: CRITICAL/HIGH/MEDIUM
-- Threat: [Who exploits this, realistic?]
+- Threat: [Who exploits this? Realistic?]
 - Already mitigated?: [Check infra/app layers]
 - Recommendation: [Control, IF justified]
+- Litmus test: "If removed, what specific attack becomes possible?"
 
-Skip MEDIUM recommendations if threat is hypothetical or already mitigated.
+Skip recommendations if threat is hypothetical or already mitigated.
 ```
 
 ---
@@ -230,12 +278,13 @@ Define 3 Expert Personas with conflicting priorities:
 - Persona 3: [Role] - Priority: [Z conflicts with X,Y]
 
 Round 1: Opening Arguments
-Round 2: Critiques
-Round 3: Refinement
+Round 2: Critiques (each critiques the others)
+Round 3: Consider the Opposite (each argues opposing view)
+Round 4: Refinement
 
 Synthesis:
 - Points of Agreement
-- Irreconcilable Differences
+- Irreconcilable Differences (acknowledge, don't force consensus)
 - Recommended Balanced Solution
 
 Personas must have genuine tension.
@@ -248,16 +297,20 @@ Personas must have genuine tension.
 ```
 Phase 1: Problem Validation
 - What specific problem does this solve?
-- What evidence shows this is a problem?
+- What evidence shows this is a problem? (not assumption)
 
 Phase 2: Baseline Measurement
 - What's the current performance?
 - Is the measurement methodology valid?
 
-Phase 3: Alternative Solutions
+Phase 3: Outside View
+- What do similar systems achieve?
+- Is our baseline typical or unusual?
+
+Phase 4: Alternative Solutions
 - Approach, Complexity, Expected Impact, Risks
 
-Phase 4: Proof Requirement
+Phase 5: Proof Requirement
 - What benchmarks prove this works?
 - Expected improvement (quantified)?
 
@@ -268,18 +321,31 @@ NEVER optimize without measuring. Premature optimization is evil.
 
 ## Technique Combinations
 
-- `deep-analyze,multi-perspective` - Rigorous multi-angle analysis
-- `reasoning-scaffold,deliberate-detail` - Structured exploration with depth
-- `adversarial-review,scope-boundary` - Challenge plan, trim scope
-- `security-first-design,adversarial-review` - Security review with red-team
+- `deep-analyze,pre-mortem` - Rigorous analysis with risk identification
+- `reasoning-scaffold,outside-view` - Structured decision with base rates
+- `scope-boundary,evidence-based` - MVP validation with measurement
+- `security-first-design,STRIDE` - Security review with systematic threat enumeration
 
 ---
 
 ## Framework-Specific Theater Risks
 
-| Framework | Theater Risk | Mitigation |
-|-----------|--------------|------------|
-| adversarial-review | Finds hypothetical attacks | Ask: "Is this threat realistic?" |
-| security-first-design | Recommends OWASP controls without context | Ask: "Already mitigated at VPC/IAM/app?" |
+| Framework | Theater Risk | Counter |
+|-----------|--------------|---------|
 | deep-analyze | Every finding gets a mitigation | Ask: "What's the cost of NOT mitigating?" |
+| security-first-design | Recommends OWASP controls without context | Ask: "Already mitigated at VPC/IAM/app?" |
+| multi-perspective | Fake conflict for show | Ensure genuine tension in personas |
 | scope-boundary | (Good) - Actually prevents theater | Use to counter-balance other frameworks |
+
+---
+
+## Sources
+
+### Academic Foundations
+- [Richards Heuer: Psychology of Intelligence Analysis](https://archive.org/details/PsychologyOfIntelligenceAnalysis) - CIA structured analytic techniques
+- [Kahneman & Lovallo: Outside View](https://hbr.org/2003/07/delusions-of-success-how-optimism-undermines-executives-decisions) - Reference class forecasting
+- [Consider the Opposite Research](https://www.sciencedirect.com/science/article/abs/pii/S0361476X20300096) - Debiasing effectiveness
+
+### Industry Frameworks
+- [STRIDE Model](https://en.wikipedia.org/wiki/STRIDE_model) - Microsoft threat taxonomy
+- [RAND: Structured Analytic Techniques](https://www.rand.org/pubs/research_reports/RR1408.html) - Intelligence community assessment
