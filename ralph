@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Defaults
+max_iterations=10
+prd_file="./PRD.md"
+progress_file="./progress.md"
+
+# Help message
+usage() {
+    echo "Usage: ralph [OPTIONS] [PRD_FILE]"
+    echo ""
+    echo "Arguments:"
+    echo "  PRD_FILE              Path to PRD file (default: ./PRD.md)"
+    echo ""
+    echo "Options:"
+    echo "  -m, --max N           Maximum iterations (default: 10)"
+    echo "  -p, --progress FILE   Progress log file (default: ./progress.md)"
+    echo "  -h, --help            Show help"
+}
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -m|--max) max_iterations="$2"; shift 2 ;;
+        -p|--progress) progress_file="$2"; shift 2 ;;
+        -h|--help) usage; exit 0 ;;
+        *) prd_file="$1"; shift ;;
+    esac
+done
+
+# Validation
+if [[ ! -f "$prd_file" ]]; then
+    echo "Error: PRD file not found: $prd_file" >&2
+    exit 1
+fi
+
+# Task detection function
+get_next_task() {
+    grep -m1 -E '^\s*-\s*\[ \]\s+.+' "$prd_file" 2>/dev/null || true
+}
+
+# Main loop
+iteration=0
+while [[ $iteration -lt $max_iterations ]]; do
+    task=$(get_next_task)
+    if [[ -z "$task" ]]; then
+        echo "All tasks complete!"
+        break
+    fi
+
+    iteration=$((iteration + 1))
+    echo "=== Iteration $iteration/$max_iterations ==="
+    echo "Task: $task"
+
+    # Run claude with RALPH prompt (fresh context each iteration)
+    # We use a heredoc for the prompt to keep it clean
+    prompt=$(cat <<EOF
+You are working in RALPH mode (fresh context each iteration).
+
+1. Read the PRD file at: $prd_file
+2. Find the FIRST task marked with '- [ ]' (incomplete)
+3. Work on ONLY that one task
+4. When done, update the PRD: change '- [ ]' to '- [x]'
+5. Append to $progress_file:
+   ## Iteration $iteration - $(date '+%Y-%m-%d %H:%M:%S')
+   Task: {task description}
+   Actions: {what you did}
+   Status: {complete/partial/blocked}
+6. Exit when finished with this task
+EOF
+)
+
+    claude -p "$prompt"
+done
+
+echo "RALPH loop finished after $iteration iterations."
