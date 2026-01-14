@@ -5,6 +5,7 @@ Usage:
     uv run fetch_transcript.py <youtube_url_or_video_id> [--timed] [--json]
     uv run fetch_transcript.py https://youtube.com/watch?v=dQw4w9WgXcQ
     uv run fetch_transcript.py dQw4w9WgXcQ --timed --json
+    uv run fetch_transcript.py dQw4w9WgXcQ --output transcript.txt
 
 Environment variables:
     WEBSHARE_PROXY_USERNAME - Webshare proxy username
@@ -163,6 +164,10 @@ def main():
         action="store_true",
         help="Disable proxy even if credentials are set"
     )
+    parser.add_argument(
+        "--output",
+        help="Write transcript to file (always writes timed text format)"
+    )
 
     args = parser.parse_args()
 
@@ -180,7 +185,16 @@ def main():
         else:
             print("No proxy configured (direct connection)", file=sys.stderr)
 
-        if args.timed:
+        if args.output:
+            # Always fetch timed for file output
+            result = service.fetch_timed_transcript(video_id, languages)
+            output_path = Path(args.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            with output_path.open("w", encoding="utf-8") as f:
+                for segment in result:
+                    f.write(f"[{segment['start']:.1f}s] {segment['text']}\n")
+            print(f"Transcript saved to: {args.output}", file=sys.stderr)
+        elif args.timed:
             result = service.fetch_timed_transcript(video_id, languages)
             if args.json:
                 print(json.dumps(result, indent=2))
