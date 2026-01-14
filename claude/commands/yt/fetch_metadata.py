@@ -5,6 +5,7 @@ Usage:
     uv run fetch_metadata.py <youtube_url_or_video_id> [--json] [--urls-only]
     uv run fetch_metadata.py https://youtube.com/watch?v=dQw4w9WgXcQ
     uv run fetch_metadata.py dQw4w9WgXcQ --json
+    uv run fetch_metadata.py dQw4w9WgXcQ --output metadata.json
 
 Environment variables:
     YOUTUBE_API_KEY - YouTube Data API v3 key (required)
@@ -268,6 +269,10 @@ def main():
         action="store_true",
         help="Only print the video description"
     )
+    parser.add_argument(
+        "--output",
+        help="Write metadata to JSON file"
+    )
 
     args = parser.parse_args()
 
@@ -280,6 +285,14 @@ def main():
         if error:
             print(f"Error: {error}", file=sys.stderr)
             sys.exit(1)
+
+        if args.output:
+            output_path = Path(args.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            with output_path.open("w", encoding="utf-8") as f:
+                json.dump(metadata, f, indent=2)
+            print(f"Metadata saved to: {args.output}", file=sys.stderr)
+            return
 
         if args.urls_only:
             urls = metadata["description_urls"]
