@@ -5,7 +5,7 @@
       "repo": "anthropics/claude-plugins-official"
     },
     "installLocation": "C:\\Users\\Mike\\.claude\\plugins\\marketplaces\\claude-plugins-official",
-    "lastUpdated": "2026-01-13T19:50:40.205Z"
+    "lastUpdated": "2026-01-14T00:39:57.015Z"
   },
   "cc-handbook": {
     "source": {
@@ -13,7 +13,7 @@
       "repo": "NikiforovAll/claude-code-rules"
     },
     "installLocation": "C:\\Users\\Mike\\.claude\\plugins\\marketplaces\\cc-handbook",
-    "lastUpdated": "2026-01-13T19:50:42.310Z"
+    "lastUpdated": "2026-01-14T00:39:59.489Z"
   },
   "aws-skills": {
     "source": {
@@ -21,6 +21,6 @@
       "repo": "zxkane/aws-skills"
     },
     "installLocation": "C:\\Users\\Mike\\.claude\\plugins\\marketplaces\\aws-skills",
-    "lastUpdated": "2026-01-13T19:50:43.931Z"
+    "lastUpdated": "2026-01-14T00:40:01.019Z"
   }
 }
