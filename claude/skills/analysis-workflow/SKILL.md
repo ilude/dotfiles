@@ -17,13 +17,23 @@ This skill provides three complementary analysis approaches:
 
 ---
 
+## Core Principle: Structured Beats Ad-Hoc
+
+**From cognitive science research**: Technological aids (frameworks, checklists, structured processes) are **2x more effective** than pure cognitive strategies for reducing bias. Build analysis into systems, don't rely on willpower.
+
+> **You cannot think your way out of biases you don't know you have.**
+
+This explains WHY frameworks matter: they externalize reasoning so it can be examined, challenged, and improved.
+
+---
+
 ## CRITICAL: Avoid Analysis Theater
 
 **Finding problems is easy. Finding problems WORTH SOLVING is the real skill.**
 
 ### The Trap
 
-Analysis frameworks bias toward "find issue -> recommend mitigation." This creates:
+Analysis frameworks bias toward "find issue → recommend mitigation." This creates:
 - **Security theater**: Controls that look secure but provide no real protection
 - **Complexity theater**: Abstractions added to feel thorough but add no value
 
@@ -48,22 +58,17 @@ The cost: DNS outages during every infrastructure change, hours of debugging.
 
 **The analysis found a "gap" (no NetworkPolicy) without asking "does this deployment need NetworkPolicy?"**
 
-### Strong Analysis Indicators
+### Strong vs Weak Analysis Indicators
 
-- Finds real problems (not hypothetical)
-- Confidence varies appropriately
-- Some recommendations are "don't add this"
-- Scope gets trimmed (not expanded)
-- Mitigations have clear cost-benefit justification
+| Strong Analysis | Weak Analysis (Theater Warning) |
+|-----------------|--------------------------------|
+| Finds real problems (not hypothetical) | Every finding leads to "add more controls" |
+| Confidence varies appropriately | No recommendations rejected as not worth cost |
+| Some recommendations are "don't add this" | "Defense in depth" without specific threat |
+| Scope gets trimmed (not expanded) | Complexity always increases, never decreases |
+| Mitigations have clear cost-benefit | Generic best practices applied without context |
 
-### Weak Analysis Indicators (Theater Warning)
-
-- Every finding leads to "add more controls"
-- No recommendations rejected as not worth the cost
-- "Defense in depth" used without specific threat
-- Complexity always increases, never decreases
-
-**The best analysis sometimes concludes: "This is already secure/good enough for its context."**
+**The best analysis sometimes concludes: "This is already good enough for its context."**
 
 ---
 
@@ -92,11 +97,25 @@ Is there an error/failure/unexpected behavior?
 
 ---
 
+## Key Cognitive Biases to Counter
+
+Research shows these biases most affect technical analysis:
+
+| Bias | Description | Counter |
+|------|-------------|---------|
+| **Confirmation bias** | Seeking evidence that confirms, not refutes | "Consider the opposite" |
+| **Overconfidence** | Overestimating abilities/likelihood of success | Pre-mortem, calibration |
+| **Anchoring** | Early info disproportionately influences | Outside view, reference class |
+| **Availability** | Recent examples dominate over statistics | Base rates, systematic search |
+| **Planning fallacy** | Underestimate time/cost despite history | Reference class forecasting |
+
+---
+
 ## Sub-Files
 
-- **[structured-analysis.md](structured-analysis.md)** - 12 analytical frameworks in 3 tiers
-- **[debugging.md](debugging.md)** - Systematic debugging methodology
-- **[adversarial.md](adversarial.md)** - Red-team attack framework
+- **[structured-analysis.md](structured-analysis.md)** - Core analytical frameworks with debiasing
+- **[debugging.md](debugging.md)** - Scientific debugging methodology
+- **[adversarial.md](adversarial.md)** - Red-team attack framework with pre-mortem
 
 ---
 
@@ -110,3 +129,18 @@ Is there an error/failure/unexpected behavior?
 | Security theater | Adding controls for hypothetical threats | Ask: "What specific attack?" |
 | Complexity theater | Adding abstractions to feel thorough | Ask: "What breaks if removed?" |
 | Scope creep | "While we're at it..." | MVP first, defer nice-to-haves |
+
+---
+
+## Sources
+
+### Academic Foundations
+- [Richards Heuer: Psychology of Intelligence Analysis](https://archive.org/details/PsychologyOfIntelligenceAnalysis) - CIA tradecraft
+- [Gary Klein: Pre-Mortem Method](https://www.gary-klein.com/premortem) - 30% improvement in risk identification
+- [Kahneman & Lovallo: Delusions of Success](https://hbr.org/2003/07/delusions-of-success-how-optimism-undermines-executives-decisions) - Outside view
+- [Zeller: Why Programs Fail](https://dl.acm.org/doi/10.5555/1077048) - Scientific debugging
+
+### Research Evidence
+- [Devil's Advocacy Meta-Analysis](https://www.sciencedirect.com/science/article/abs/pii/074959789090051A) - 23% decision quality improvement
+- [Debiasing Meta-Analysis (Nature, 2025)](https://www.nature.com/articles/s41562-025-02253-y) - Technological aids 2x more effective
+- [Hypothesizer Study](https://dl.acm.org/doi/10.1145/3586183.3606781) - 5x debugging success with hypothesis-driven approach
