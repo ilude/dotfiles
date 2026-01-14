@@ -16,7 +16,7 @@ paths:
 Guidelines for containerized projects using Docker, Dockerfile, docker-compose, containers, and DevContainers. Covers multi-stage builds, security, signal handling, entrypoint scripts, and deployment workflows.
 
 ## Out of Scope
-- Infrastructure orchestration - see @~/.claude/skills/ansible-workflow/SKILL.md
+- Infrastructure orchestration - see @~/.claude/rules/ansible/core.md
 - Kubernetes patterns - separate skill
 
 ---
