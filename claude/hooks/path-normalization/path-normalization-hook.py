@@ -224,13 +224,33 @@ def main() -> None:
         log_decision(tool_name, path_str, "allowed", "clean relative path")
         sys.exit(0)
 
-    # CASE 6: Absolute path - BLOCK, suggest relative path to cwd
+    # CASE 6: Absolute path - BLOCK, suggest relative path
     # This is the key fix: absolute paths cause Claude Code Edit bugs
     win_path = to_windows_path(path_str)
     file_path = Path(win_path).resolve()
+    home = Path(os.path.expanduser('~')).resolve()
     cwd = Path(to_windows_path(os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd()))).resolve()
 
-    # Try to make it relative to cwd
+    # Check if within home directory - needed for prioritization
+    if is_within(file_path, home):
+        home_relative = str(file_path.relative_to(home)).replace(BACKSLASH, '/')
+
+        # Priority 1: Dotfiles in home (like ~/.dotfiles/...) should use home-relative
+        # for portability, even if cwd is within the dotfiles directory
+        if home_relative.startswith('.'):
+            suggested = f"~/{home_relative}"
+            block(tool_name, path_str, "absolute path", suggested)
+
+        # Priority 2: If within cwd (and not a dotfile), use cwd-relative (shorter)
+        if is_within(file_path, cwd):
+            relative = str(file_path.relative_to(cwd)).replace(BACKSLASH, '/')
+            block(tool_name, path_str, "absolute path", relative)
+
+        # Priority 3: Within home but not cwd -> use home-relative
+        suggested = f"~/{home_relative}"
+        block(tool_name, path_str, "absolute path", suggested)
+
+    # Within cwd but not home -> use cwd-relative
     if is_within(file_path, cwd):
         relative = str(file_path.relative_to(cwd)).replace(BACKSLASH, '/')
         block(tool_name, path_str, "absolute path", relative)
