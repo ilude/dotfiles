@@ -5,6 +5,7 @@ set -euo pipefail
 max_iterations=10
 prd_file="./PRD.md"
 progress_file="./progress.md"
+skip_validation=false
 
 # Help message
 usage() {
@@ -16,6 +17,7 @@ usage() {
     echo "Options:"
     echo "  -m, --max N           Maximum iterations (default: 10)"
     echo "  -p, --progress FILE   Progress log file (default: ./progress.md)"
+    echo "  --skip-validation     Skip acceptance criteria validation"
     echo "  -h, --help            Show help"
 }
 
@@ -24,6 +26,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         -m|--max) max_iterations="$2"; shift 2 ;;
         -p|--progress) progress_file="$2"; shift 2 ;;
+        --skip-validation) skip_validation=true; shift ;;
         -h|--help) usage; exit 0 ;;
         *) prd_file="$1"; shift ;;
     esac
@@ -33,6 +36,85 @@ done
 if [[ ! -f "$prd_file" ]]; then
     echo "Error: PRD file not found: $prd_file" >&2
     exit 1
+fi
+
+# Validate acceptance criteria quality
+validate_acceptance_criteria() {
+    local has_issues=false
+    local issue_count=0
+
+    echo "=== Validating Acceptance Criteria ==="
+
+    # Check for vague/subjective terms
+    local bad_patterns=(
+        "look nice"
+        "look good"
+        "user-friendly"
+        "better"
+        "improve"
+        "fix"
+        "nicer"
+        "cleaner"
+        "easier"
+        "faster"
+        "more"
+    )
+
+    for pattern in "${bad_patterns[@]}"; do
+        if grep -iq "$pattern" "$prd_file"; then
+            echo "⚠️  Warning: Found potentially vague term '$pattern'"
+            echo "   Consider making this more specific and measurable"
+            has_issues=true
+            ((issue_count++))
+        fi
+    done
+
+    # Check if tasks have Verification sections
+    local task_count
+    task_count=$(grep -c "^### Task" "$prd_file" 2>/dev/null || echo "0")
+    task_count=${task_count//[^0-9]/}  # Strip non-numeric chars
+
+    local verification_count
+    verification_count=$(grep -c "Verification:" "$prd_file" 2>/dev/null || echo "0")
+    verification_count=${verification_count//[^0-9]/}
+
+    if [[ ${task_count:-0} -gt 0 && ${verification_count:-0} -eq 0 ]]; then
+        echo "⚠️  Warning: No 'Verification:' sections found in tasks"
+        echo "   Agents need clear verification methods to test their work"
+        has_issues=true
+        ((issue_count++))
+    fi
+
+    # Check for acceptance criteria sections (handle both plain and bold markdown)
+    local criteria_count
+    criteria_count=$(grep -cE "(\*\*)?Acceptance Criteria(\*\*)?" "$prd_file" 2>/dev/null || echo "0")
+    criteria_count=${criteria_count//[^0-9]/}
+
+    if [[ ${task_count:-0} -gt 0 && ${criteria_count:-0} -eq 0 ]]; then
+        echo "⚠️  Warning: No 'Acceptance Criteria' sections found"
+        echo "   Consider using /prd to generate a properly structured PRD"
+        has_issues=true
+        ((issue_count++))
+    fi
+
+    if [[ "$has_issues" == true ]]; then
+        echo ""
+        echo "Found $issue_count potential issue(s) with acceptance criteria"
+        echo "Tip: Use /acceptance-criteria to convert vague requirements into testable ones"
+        echo ""
+        read -p "Continue anyway? (y/N) " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+    else
+        echo "✓ Acceptance criteria look good!"
+        echo ""
+    fi
+}
+
+if [[ "$skip_validation" == false ]]; then
+    validate_acceptance_criteria
 fi
 
 # Task detection function

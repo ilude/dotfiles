@@ -168,6 +168,108 @@ ISO 8601 UTC timestamp. Updated after each history analysis.
 
 ---
 
+### `/acceptance-criteria [requirement]`
+
+**Purpose**: Convert vague requirements into verifiable, testable acceptance criteria.
+
+**Location**: `~/.claude/commands/acceptance-criteria.md`
+
+**What it does**:
+1. **Analyzes Requirements**: Identifies vague or subjective terms
+2. **Asks Clarifying Questions**: Converts subjective terms into measurable outcomes
+3. **Generates Structured Criteria**: Creates acceptance criteria with verification methods
+4. **Provides Test Commands**: Includes exact commands agents can run to verify
+
+**Usage**:
+```bash
+# Interactive mode
+/acceptance-criteria
+
+# With requirement as argument
+/acceptance-criteria Make the login page better
+```
+
+**Example Conversion**:
+
+Before (vague):
+```
+Make the login page better
+```
+
+After (verifiable):
+```markdown
+## Task: Add Input Validation to Login Form
+
+**User Story**: As a user, I want immediate feedback on invalid input
+
+**Acceptance Criteria**:
+1. [ ] Email field shows error "Invalid email format" when incorrect
+   - Verification: `npm test -- login-validation.test.ts`
+   - Expected result: Test suite passes
+2. [ ] Submit button disabled when validation errors present
+   - Verification: E2E test in `e2e/login.spec.ts`
+   - Expected result: Button has `disabled` attribute
+
+**Test Commands**:
+- `npm test -- login-validation.test.ts`
+- `npm run test:e2e -- e2e/login.spec.ts`
+```
+
+**When to Use**:
+- Before starting RALPH loop (ensure PRD quality)
+- When task seems vague or subjective
+- When you're unsure how to verify completion
+- When converting user feedback into actionable tasks
+
+**Benefits**:
+- **Autonomous Agents**: Agents can verify their own work
+- **Clear Expectations**: No ambiguity about "done"
+- **Better PRDs**: Leads to higher quality product requirements
+- **Faster Iteration**: Less back-and-forth with agents
+
+---
+
+### `/prd`
+
+**Purpose**: Generate a PRD.md template for RALPH loop usage with acceptance criteria guidelines.
+
+**Location**: `~/.claude/commands/prd.md`
+
+**What it does**:
+1. **Creates Structured PRD**: Template with acceptance criteria sections
+2. **Includes Guidelines**: Examples of good vs bad criteria
+3. **Verification Methods**: Shows how to make criteria testable
+
+**Usage**:
+```bash
+/prd
+```
+
+Claude will ask for:
+- Project name
+- Brief description/goals
+
+**Output Format**:
+```markdown
+# Project: {name}
+
+## Tasks
+
+### Task 1: {Task Name}
+
+**User Story**: As a {role}, I want {feature} so that {benefit}
+
+**Acceptance Criteria**:
+1. [ ] {Specific outcome}
+   - Verification: {Test command}
+2. [ ] {Another outcome}
+   - Verification: {Test command}
+```
+
+**Best Practice**: Use `/acceptance-criteria` to flesh out each task's criteria before starting `ralph`.
+
+---
+
 ## How to Create New Commands
 
 1. Create a markdown file in `~/.claude/commands/`
