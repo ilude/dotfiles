@@ -13,11 +13,16 @@ Claude Code's Edit tool has bugs with path handling:
 
 Using relative paths with forward slashes works correctly.
 
+SIMPLE RULES:
+1. ~\\... → ~/...  (just fix backslashes in home-relative paths)
+2. Absolute within cwd → relative to cwd
+3. Absolute outside cwd → filename only
+
 This hook blocks problematic path formats and suggests the correct alternative:
 - Relative paths with forward slashes: "claude/skills/test/SKILL.md" ✓
 - Home-relative paths with forward slashes: "~/.claude/skills/test.md" ✓
-- Absolute paths: "C:/Users/.../file.py" ✗ (blocked)
-- Backslash separators: "claude\\skills\\test.md" ✗ (blocked)
+- Absolute paths: "C:/Users/.../file.py" ✗ (blocked, suggest relative or filename)
+- Backslash separators: "claude\\skills\\test.md" ✗ (blocked, suggest forward slashes)
 
 Note: Path traversal (../) in relative paths is intentionally allowed. This hook
 works around Edit tool bugs, not project boundary enforcement. Claude Code has
@@ -27,9 +32,6 @@ Exit codes:
   0 = Allow (path format is safe)
   1 = Error (invalid JSON input)
   2 = Block (stderr fed back to Claude with correct path suggestion)
-
-See git log for this file's history - commit dba41d9 incorrectly loosened
-the rules to allow absolute paths, which re-enabled the buggy code path.
 """
 
 import json
@@ -222,21 +224,16 @@ def main() -> None:
         log_decision(tool_name, path_str, "allowed", "clean relative path")
         sys.exit(0)
 
-    # CASE 6: Absolute path - BLOCK, suggest relative path
+    # CASE 6: Absolute path - BLOCK, suggest relative path to cwd
     # This is the key fix: absolute paths cause Claude Code Edit bugs
-    file_path = Path(to_windows_path(path_str)).resolve()
-    project = Path(to_windows_path(os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd()))).resolve()
-    home = Path(os.environ.get("USERPROFILE") or Path.home()).resolve()
+    win_path = to_windows_path(path_str)
+    file_path = Path(win_path).resolve()
+    cwd = Path(to_windows_path(os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd()))).resolve()
 
-    # Absolute within project -> suggest project-relative path
-    if is_within(file_path, project):
-        relative = str(file_path.relative_to(project)).replace(BACKSLASH, '/')
-        block(tool_name, path_str, "absolute path in project", relative)
-
-    # Absolute within home -> suggest home-relative path (~/)
-    if is_within(file_path, home):
-        relative = str(file_path.relative_to(home)).replace(BACKSLASH, '/')
-        block(tool_name, path_str, "absolute path in home", f"~/{relative}")
+    # Try to make it relative to cwd
+    if is_within(file_path, cwd):
+        relative = str(file_path.relative_to(cwd)).replace(BACKSLASH, '/')
+        block(tool_name, path_str, "absolute path", relative)
 
     # Outside allowed areas -> suggest filename only (user must determine location)
     # Use string operations to extract filename since Path.name can fail with
