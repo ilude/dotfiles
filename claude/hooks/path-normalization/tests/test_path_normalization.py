@@ -203,46 +203,6 @@ class TestAbsoluteWithinProject:
         assert "Users" not in result.stderr
 
 
-class TestAbsoluteWithinHome:
-    """Test Case 5: Absolute path within home directory should BLOCK and suggest ~/."""
-
-    def test_absolute_within_home_blocked(self, run_hook, tmp_path):
-        """Absolute path within home directory should suggest home-relative path."""
-        home_dir = tmp_path / "Users" / "TestUser"
-        home_dir.mkdir(parents=True)
-
-        # Create a path within home
-        dotfiles_path = home_dir / ".dotfiles" / "file.py"
-        path_str = str(dotfiles_path).replace("\\", "/")
-        home_str = str(home_dir).replace("\\", "/")
-
-        result = run_hook(
-            "Edit",
-            path_str,
-            env={"USERPROFILE": home_str},
-        )
-        assert result.blocked, f"Expected blocked, got exit {result.exit_code}"
-        assert "Use home-relative path:" in result.stderr
-        assert "~/.dotfiles/file.py" in result.stderr
-
-    def test_windows_home_path_blocked(self, run_hook, tmp_path):
-        """Windows-style home path should be blocked with ~/ suggestion."""
-        home_dir = tmp_path / "Users" / "Mike"
-        home_dir.mkdir(parents=True)
-
-        # Simulate C:/Users/Mike/.dotfiles/file.py
-        file_path = f"{str(home_dir).replace(chr(92), '/')}/.dotfiles/file.py"
-        home_str = str(home_dir).replace("\\", "/")
-
-        result = run_hook(
-            "Edit",
-            file_path,
-            env={"USERPROFILE": home_str},
-        )
-        assert result.blocked
-        assert "~/.dotfiles/file.py" in result.stderr
-
-
 class TestClaudeInternalPaths:
     """Test Case 6: Claude internal paths - absolute should block, ~/ should allow."""
 
@@ -252,22 +212,16 @@ class TestClaudeInternalPaths:
         assert result.allowed, f"Expected allowed, got exit {result.exit_code}: {result.stderr}"
 
     def test_claude_absolute_blocked(self, run_hook, tmp_path):
-        """Absolute paths to ~/.claude/ should be blocked with ~/ suggestion."""
+        """Absolute paths to ~/.claude/ should be blocked with filename suggestion."""
         home_dir = tmp_path / "Users" / "TestUser"
         claude_dir = home_dir / ".claude" / "plans"
         claude_dir.mkdir(parents=True)
 
         path_str = str(claude_dir / "test.md").replace("\\", "/")
-        home_str = str(home_dir).replace("\\", "/")
 
-        result = run_hook(
-            "Edit",
-            path_str,
-            env={"USERPROFILE": home_str},
-        )
+        result = run_hook("Edit", path_str)
         assert result.blocked, f"Expected blocked, got exit {result.exit_code}"
-        assert "Use home-relative path:" in result.stderr
-        assert "~/.claude/plans/test.md" in result.stderr
+        assert "test.md" in result.stderr
 
     def test_claude_logs_absolute_blocked(self, run_hook, tmp_path):
         """Absolute paths within ~/.claude/logs/ should be blocked."""
@@ -276,15 +230,10 @@ class TestClaudeInternalPaths:
         claude_dir.mkdir(parents=True)
 
         path_str = str(claude_dir / "session.log").replace("\\", "/")
-        home_str = str(home_dir).replace("\\", "/")
 
-        result = run_hook(
-            "Edit",
-            path_str,
-            env={"USERPROFILE": home_str},
-        )
+        result = run_hook("Edit", path_str)
         assert result.blocked
-        assert "~/.claude/logs/session.log" in result.stderr
+        assert "session.log" in result.stderr
 
 
 class TestAbsoluteOutsideAllowed:
@@ -396,39 +345,18 @@ class TestNonEditWriteTools:
         assert result.allowed
 
 
-class TestHomeDetection:
-    """Test Case 8: HOME detection should use USERPROFILE over expanduser."""
+class TestAbsoluteOutsideCwd:
+    """Absolute paths outside cwd should suggest filename only."""
 
-    def test_userprofile_takes_precedence(self, run_hook, tmp_path):
-        """USERPROFILE env var should be used for home detection in suggestions."""
-        # Create a custom "home" directory
-        custom_home = tmp_path / "CustomHome" / "User"
-        custom_home.mkdir(parents=True)
-
-        # Absolute path within custom home should be blocked with ~/ suggestion
-        file_path = f"{str(custom_home).replace(chr(92), '/')}/.config/file.py"
+    def test_path_outside_cwd_suggests_filename(self, run_hook, tmp_path):
+        """Paths outside cwd should be blocked with filename suggestion."""
+        project_dir = tmp_path / "project"
+        project_dir.mkdir(parents=True)
 
         result = run_hook(
             "Edit",
-            file_path,
-            env={"USERPROFILE": str(custom_home).replace("\\", "/")},
-        )
-        assert result.blocked, f"Expected blocked, got exit {result.exit_code}"
-        assert "~/.config/file.py" in result.stderr
-
-    def test_path_outside_userprofile_blocked(self, run_hook, tmp_path):
-        """Paths outside USERPROFILE should be blocked with filename suggestion."""
-        custom_home = tmp_path / "CustomHome" / "User"
-        custom_home.mkdir(parents=True)
-
-        # Path outside custom home
-        result = run_hook(
-            "Edit",
-            "D:/Outside/custom/home/file.py",
-            env={
-                "USERPROFILE": str(custom_home).replace("\\", "/"),
-                "CLAUDE_PROJECT_DIR": str(tmp_path / "project").replace("\\", "/"),
-            },
+            "D:/Outside/project/file.py",
+            env={"CLAUDE_PROJECT_DIR": str(project_dir).replace("\\", "/")},
         )
         assert result.blocked
         assert "file.py" in result.stderr
@@ -532,54 +460,40 @@ class TestCrossDirectoryWrites:
         assert result.allowed, f"Expected allowed, got exit {result.exit_code}: {result.stderr}"
 
     def test_write_to_claude_absolute_blocked(self, run_hook, tmp_path):
-        """Absolute path to ~/.claude/skills should be blocked with ~/ suggestion."""
-        home_dir = tmp_path / "Users" / "TestUser"
-        dotfiles_dir = home_dir / ".dotfiles"
-        claude_skills = home_dir / ".claude" / "skills" / "test-skill"
+        """Absolute path outside project should be blocked with filename suggestion."""
+        project_dir = tmp_path / "project"
+        target_dir = tmp_path / "other" / "skills"
 
-        dotfiles_dir.mkdir(parents=True)
-        claude_skills.mkdir(parents=True)
+        project_dir.mkdir(parents=True)
+        target_dir.mkdir(parents=True)
 
-        # Absolute path to ~/.claude/skills (should suggest ~/ instead)
-        file_path = f"{str(claude_skills).replace(chr(92), '/')}/SKILL.md"
-        home_str = str(home_dir).replace(chr(92), '/')
-        project_str = str(dotfiles_dir).replace(chr(92), '/')
+        file_path = f"{str(target_dir).replace(chr(92), '/')}/SKILL.md"
 
         result = run_hook(
             "Write",
             file_path,
-            env={
-                "USERPROFILE": home_str,
-                "CLAUDE_PROJECT_DIR": project_str,
-            },
+            env={"CLAUDE_PROJECT_DIR": str(project_dir).replace(chr(92), '/')},
         )
         assert result.blocked, f"Expected blocked, got exit {result.exit_code}"
-        assert "Use home-relative path:" in result.stderr
-        assert "~/.claude/skills/test-skill/SKILL.md" in result.stderr
+        assert "SKILL.md" in result.stderr
 
-    def test_write_to_home_subdir_absolute_blocked(self, run_hook, tmp_path):
-        """Absolute path to home subdirectory should be blocked with ~/ suggestion."""
-        home_dir = tmp_path / "Users" / "TestUser"
-        project_dir = home_dir / "Projects" / "myproject"
-        target_dir = home_dir / "Documents" / "notes"
+    def test_write_to_subdir_absolute_blocked(self, run_hook, tmp_path):
+        """Absolute path outside project should be blocked with filename suggestion."""
+        project_dir = tmp_path / "project"
+        target_dir = tmp_path / "other" / "notes"
 
         project_dir.mkdir(parents=True)
         target_dir.mkdir(parents=True)
 
         file_path = f"{str(target_dir).replace(chr(92), '/')}/todo.md"
-        home_str = str(home_dir).replace(chr(92), '/')
-        project_str = str(project_dir).replace(chr(92), '/')
 
         result = run_hook(
             "Write",
             file_path,
-            env={
-                "USERPROFILE": home_str,
-                "CLAUDE_PROJECT_DIR": project_str,
-            },
+            env={"CLAUDE_PROJECT_DIR": str(project_dir).replace(chr(92), '/')},
         )
         assert result.blocked, f"Expected blocked, got exit {result.exit_code}"
-        assert "~/Documents/notes/todo.md" in result.stderr
+        assert "todo.md" in result.stderr
 
     def test_write_to_home_subdir_home_relative_allowed(self, run_hook):
         """Writing to ~/Documents using ~/ path should be allowed."""
