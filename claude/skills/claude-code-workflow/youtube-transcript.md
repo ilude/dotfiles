@@ -11,7 +11,7 @@ Fetch YouTube transcripts and metadata with proxy support.
 ## Quick Start
 
 ```bash
-cd ~/.claude/skills/youtube-transcript
+cd ~/.dotfiles/claude/skills/claude-code-workflow
 
 # Fetch transcript (no API key needed)
 uv run fetch_transcript.py "https://youtube.com/watch?v=VIDEO_ID"
@@ -130,7 +130,7 @@ JSON output includes:
 ```python
 import os
 import sys
-sys.path.insert(0, os.path.expanduser("~/.claude/skills/youtube-transcript"))
+sys.path.insert(0, os.path.expanduser("~/.dotfiles/claude/skills/claude-code-workflow"))
 
 # Transcript
 from fetch_transcript import YouTubeTranscriptService, extract_video_id
@@ -158,8 +158,8 @@ urls = extract_urls("Check https://example.com and https://docs.com")
 ## Files
 
 ```
-~/.claude/skills/youtube-transcript/
-├── SKILL.md                    # This documentation
+~/.dotfiles/claude/skills/claude-code-workflow/
+├── youtube-transcript.md       # This documentation
 ├── pyproject.toml              # Dependencies (uv)
 ├── fetch_transcript.py         # Transcript fetching script
 ├── fetch_metadata.py           # Metadata fetching script
@@ -172,7 +172,7 @@ urls = extract_urls("Check https://example.com and https://docs.com")
 ## Testing
 
 ```bash
-cd ~/.claude/skills/youtube-transcript
+cd ~/.dotfiles/claude/skills/claude-code-workflow
 
 # Install dev dependencies
 uv sync --group dev
