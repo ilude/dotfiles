@@ -65,7 +65,7 @@ All playbooks and roles MUST pass linting before commit:
 ansible-lint && yamllint .
 ```
 
-Configuration templates available in `@~/.claude/skills/ansible-workflow/assets/`:
+Configuration templates available in `@~/.claude/rules/ansible/assets/`:
 - `.ansible-lint.template` - Production profile with strict mode
 - `.yamllint.template` - YAML linting with 120 char lines
 
@@ -336,7 +336,7 @@ molecule destroy           # Cleanup
 
 ### ansible.cfg Settings
 
-Use the template at `@~/.claude/skills/ansible-workflow/assets/ansible.cfg.template`:
+Use the template at `@~/.claude/rules/ansible/assets/ansible.cfg.template`:
 
 - `forks = 20` - Parallel execution
 - `pipelining = True` - Reduce SSH operations
