@@ -58,3 +58,6 @@ __pycache__/
 
 # uv lock file (machine-specific)
 uv.lock
+
+# Claude Code temporary working directories
+tmpclaude-*
