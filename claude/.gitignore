@@ -15,6 +15,7 @@ tools/
 
 # Session data and history
 history.jsonl
+history/
 CHECKPOINT
 .checkpoints/
 
