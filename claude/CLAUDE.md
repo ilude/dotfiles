@@ -89,6 +89,42 @@ See `~/.claude/skills/*/SKILL.md` for details.
 
 ---
 
+## Session History Capture
+
+Record significant session activities to `~/.claude/history/{project}.jsonl` for later analysis.
+
+### When to Append
+
+Append history at END of response for these events:
+
+| Type | Trigger |
+|------|---------|
+| `task_complete` | Major task finished |
+| `decision` | Design/architecture choice |
+| `error_resolved` | Complex error fixed |
+| `learning` | Discovered pattern/gotcha |
+| `milestone` | Feature/phase completed |
+
+**Skip**: Trivial file reads, routine git commands, simple questions.
+
+### Entry Format
+
+Append to `~/.claude/history/{project}.jsonl` (project = git repo name or directory):
+
+```json
+{"ts":"2026-01-15T23:30:00Z","sid":"abc12345","type":"task_complete","summary":"Implemented user auth","details":"Added JWT, bcrypt, endpoints","tags":["auth","api"]}
+```
+
+**Fields**: `ts` (UTC ISO8601), `sid` (session ID, first 8 chars), `type`, `summary` (max 100 chars), `details` (optional), `tags` (optional).
+
+### Project Detection
+
+1. Git repo name: `basename $(git rev-parse --show-toplevel)`
+2. Directory name: `basename $PWD`
+3. Fallback: `_global`
+
+---
+
 **See `~/.claude/CHANGELOG.md` for detailed change history.**
 - no toggle needed, people who use light mode are just wrong
 - You should use subagent task where possible to speed up todo list tasks and other related work!
