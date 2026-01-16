@@ -59,6 +59,7 @@
       "Bash(git reset --hard:*)"
     ]
   },
+  "model": "opus",
   "hooks": {
     "SessionStart": [
       {
@@ -125,6 +126,5 @@
     "serverless-eda@aws-skills": true,
     "aws-agentic-ai@aws-skills": true
   },
-  "alwaysThinkingEnabled": true,
-  "model": "sonnet"
+  "alwaysThinkingEnabled": true
 }
