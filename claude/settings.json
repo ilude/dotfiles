@@ -112,6 +112,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'uv run $HOME/.claude/hooks/session-history/session_history_hook.py'",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   },
   "statusLine": {
