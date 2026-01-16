@@ -64,7 +64,11 @@ Provide:
 Be concise - this summary replaces loading the full transcript.
 ```
 
-### 5. Return Results
+### 5. Save Summary to File
+
+Write the haiku agent's summary to `~/.dotfiles/claude/logs/yt/{video_id}/summary.md` in markdown format.
+
+### 6. Return Results
 
 Present the haiku summary to the user, plus these file paths for follow-up:
 
@@ -72,6 +76,7 @@ Present the haiku summary to the user, plus these file paths for follow-up:
 Files saved:
 - claude/logs/yt/{video_id}/transcript.txt
 - claude/logs/yt/{video_id}/metadata.json
+- claude/logs/yt/{video_id}/summary.md
 ```
 
 ## Follow-Up Questions
