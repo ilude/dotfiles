@@ -66,6 +66,6 @@ war/
 # Plugins and cache
 plugins/marketplaces/
 plugins/*.lock
+plugins/installed_plugins.json
 !plugins/known_marketplaces.json
-!plugins/installed_plugins.json
 stats-cache.json
