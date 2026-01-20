@@ -156,6 +156,70 @@ bashToolPatterns:
     reason: clearing shell history
 
   # ---------------------------------------------------------------------------
+  # FIND DELETE OPERATIONS
+  # ---------------------------------------------------------------------------
+  # find -delete permanently removes files without confirmation
+
+  - pattern: '\bfind\s+.*-delete\b'
+    reason: find -delete permanently removes matched files
+    ask: true
+
+  - pattern: '\bfind\s+.*-exec\s+rm\b'
+    reason: find -exec rm removes matched files
+    ask: true
+
+  # ---------------------------------------------------------------------------
+  # INTERPRETER ONE-LINER OPERATIONS
+  # ---------------------------------------------------------------------------
+  # Dangerous code execution via interpreter -c/-e flags
+
+  # Python dangerous operations
+  - pattern: '\bpython[23]?\s+-c\s+[''"].*\b(os\.remove|os\.unlink|shutil\.rmtree|os\.system|subprocess)\b'
+    reason: Python one-liner with potentially dangerous operation
+    ask: true
+
+  # Node.js dangerous operations
+  - pattern: '\bnode\s+(-e|--eval)\s+[''"].*\b(fs\.rm|fs\.unlink|child_process|exec|spawn)\b'
+    reason: Node.js one-liner with potentially dangerous operation
+    ask: true
+
+  # Ruby dangerous operations
+  - pattern: '\bruby\s+-e\s+[''"].*\b(FileUtils\.rm|File\.delete|system|exec|`)\b'
+    reason: Ruby one-liner with potentially dangerous operation
+    ask: true
+
+  # Perl dangerous operations
+  - pattern: '\bperl\s+-e\s+[''"].*\b(unlink|rmdir|system|exec|`)\b'
+    reason: Perl one-liner with potentially dangerous operation
+    ask: true
+
+  # ---------------------------------------------------------------------------
+  # XARGS DESTRUCTIVE OPERATIONS
+  # ---------------------------------------------------------------------------
+  # xargs can amplify dangerous commands across many files
+
+  - pattern: '\bxargs\s+.*\brm\s+-[rRf]'
+    reason: xargs piping to rm -rf can delete many files
+    ask: true
+
+  - pattern: '\bxargs\s+.*\brm\b'
+    reason: xargs piping to rm can delete many files
+    ask: true
+
+  - pattern: '\bxargs\s+.*\b(bash|sh|zsh)\s+-c\b'
+    reason: xargs with shell execution can run arbitrary commands
+    ask: true
+
+  # GNU parallel has similar risks
+  - pattern: '\bparallel\s+.*\brm\s+-[rRf]'
+    reason: parallel piping to rm -rf can delete many files
+    ask: true
+
+  - pattern: '\bparallel\s+.*\b(bash|sh|zsh)\s+-c\b'
+    reason: parallel with shell execution can run arbitrary commands
+    ask: true
+
+  # ---------------------------------------------------------------------------
   # AWS CLI DESTRUCTIVE OPERATIONS
   # ---------------------------------------------------------------------------
   - pattern: '\baws\s+s3\s+rm\s+.*--recursive'
