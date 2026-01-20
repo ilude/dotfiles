@@ -102,20 +102,53 @@ bashToolPatterns:
   # ---------------------------------------------------------------------------
   # GIT OPERATIONS REQUIRING CONFIRMATION (ask: true)
   # ---------------------------------------------------------------------------
+  # Enhanced patterns from waleedkhanbaloch/claude-code-safety-net
+
+  # git checkout -- discards uncommitted changes permanently
   - pattern: '\bgit\s+checkout\s+--\s*\.'
-    reason: Discards all uncommitted changes
+    reason: Discards all uncommitted changes. Use 'git stash' first
     ask: true
 
-  - pattern: '\bgit\s+restore\s+\.'
-    reason: Discards all uncommitted changes
+  # git checkout <ref> -- <path> overwrites working tree
+  - pattern: '\bgit\s+checkout\s+\S+\s+--\s+\S'
+    reason: Overwrites working tree with ref version. Use 'git stash' first
+    ask: true
+
+  # git checkout --pathspec-from-file can overwrite multiple files
+  - pattern: '\bgit\s+checkout\s+.*--pathspec-from-file'
+    reason: Can overwrite multiple files. Use 'git stash' first
+    ask: true
+
+  # git restore without --staged discards uncommitted changes
+  - pattern: '\bgit\s+restore\s+(?!.*--staged)[^\n]*$'
+    reason: Discards uncommitted changes. Use 'git stash' first or --staged to only unstage
+    ask: true
+
+  # git restore --worktree explicitly discards working tree changes
+  - pattern: '\bgit\s+restore\s+.*--worktree'
+    reason: Explicitly discards working tree changes. Use 'git stash' first
+    ask: true
+
+  # git reset --merge can lose uncommitted changes
+  - pattern: '\bgit\s+reset\s+--merge'
+    reason: Can lose uncommitted changes. Use 'git stash' first
     ask: true
 
   - pattern: '\bgit\s+stash\s+drop\b'
-    reason: Permanently deletes a stash
+    reason: Permanently deletes a stash. Consider 'git stash list' first
     ask: true
 
   - pattern: '\bgit\s+branch\s+(-[^\s]*)*-D'
-    reason: Force deletes branch (even if unmerged)
+    reason: Force deletes branch without merge check. Use -d for safe delete
+    ask: true
+
+  # git worktree remove --force can delete uncommitted changes
+  - pattern: '\bgit\s+worktree\s+remove\s+.*--force'
+    reason: Can delete uncommitted changes. Remove --force flag
+    ask: true
+
+  - pattern: '\bgit\s+worktree\s+remove\s+.*-f\b'
+    reason: Can delete uncommitted changes. Remove -f flag
     ask: true
 
   - pattern: '\bgit\s+push\s+\S+\s+--delete\b'
@@ -159,14 +192,47 @@ bashToolPatterns:
   # FIND DELETE OPERATIONS
   # ---------------------------------------------------------------------------
   # find -delete permanently removes files without confirmation
+  # Enhanced patterns from waleedkhanbaloch/claude-code-safety-net
 
-  - pattern: '\bfind\s+.*-delete\b'
-    reason: find -delete permanently removes matched files
+  # find -delete outside of -exec blocks is always dangerous
+  - pattern: '\bfind\s+[^|;]*-delete\b'
+    reason: find -delete permanently removes files. Use -print first to preview
     ask: true
 
+  # find -exec rm -rf is dangerous
+  - pattern: '\bfind\s+.*-exec\s+rm\s+-[rRf]'
+    reason: find -exec rm -rf can delete entire directory trees
+
+  # find -exec rm (without -rf) still needs confirmation
   - pattern: '\bfind\s+.*-exec\s+rm\b'
     reason: find -exec rm removes matched files
     ask: true
+
+  # find -execdir rm is equally dangerous
+  - pattern: '\bfind\s+.*-execdir\s+rm\s+-[rRf]'
+    reason: find -execdir rm -rf can delete entire directory trees
+
+  - pattern: '\bfind\s+.*-execdir\s+rm\b'
+    reason: find -execdir rm removes matched files
+    ask: true
+
+  # ---------------------------------------------------------------------------
+  # TMPDIR OVERRIDE DETECTION
+  # ---------------------------------------------------------------------------
+  # TMPDIR set to non-temp paths enables path traversal attacks
+  # Pattern from waleedkhanbaloch/claude-code-safety-net
+
+  # TMPDIR set to empty is dangerous: $TMPDIR/foo expands to /foo
+  - pattern: '\bTMPDIR=["'']?["'']?\s'
+    reason: Empty TMPDIR is dangerous - $TMPDIR/foo expands to /foo
+
+  # TMPDIR set to non-temp paths (not /tmp, /var/tmp)
+  - pattern: '\bTMPDIR=[''"]?(/home|/root|/etc|/usr|/var(?!/tmp)|/opt|/mnt|/media|~)'
+    reason: TMPDIR redirected to non-temp path enables path traversal attacks
+
+  # TMPDIR pointing to Windows system paths
+  - pattern: '\bTMPDIR=[''"]?[Cc]:[/\\](Windows|Users|Program)'
+    reason: TMPDIR redirected to Windows system path - dangerous
 
   # ---------------------------------------------------------------------------
   # INTERPRETER ONE-LINER OPERATIONS
@@ -197,18 +263,27 @@ bashToolPatterns:
   # XARGS DESTRUCTIVE OPERATIONS
   # ---------------------------------------------------------------------------
   # xargs can amplify dangerous commands across many files
+  # Patterns from waleedkhanbaloch/claude-code-safety-net
 
-  - pattern: '\bxargs\s+.*\brm\s+-[rRf]'
-    reason: xargs piping to rm -rf can delete many files
-    ask: true
+  # xargs with shell -c is ALWAYS dangerous - stdin feeds into shell execution
+  - pattern: '\bxargs\s+.*\b(bash|sh|zsh|ksh|dash|csh|tcsh|fish)\s+-c\b'
+    reason: xargs with shell -c can execute arbitrary commands from dynamic input
+
+  # xargs rm -rf with dynamic input is inherently dangerous
+  - pattern: '\bxargs\s+.*\brm\s+.*-[rRf]'
+    reason: xargs rm -rf with dynamic input can delete many files unexpectedly
 
   - pattern: '\bxargs\s+.*\brm\b'
     reason: xargs piping to rm can delete many files
     ask: true
 
-  - pattern: '\bxargs\s+.*\b(bash|sh|zsh)\s+-c\b'
-    reason: xargs with shell execution can run arbitrary commands
-    ask: true
+  # xargs with find is dangerous when find has -delete
+  - pattern: '\bxargs\s+.*\bfind\s+.*-delete\b'
+    reason: xargs with find -delete can delete files from dynamic input
+
+  # xargs with git destructive operations
+  - pattern: '\bxargs\s+.*\bgit\s+(push\s+--force|reset\s+--hard|clean\s+-f)'
+    reason: xargs with destructive git commands amplifies damage
 
   # GNU parallel has similar risks
   - pattern: '\bparallel\s+.*\brm\s+-[rRf]'

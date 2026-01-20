@@ -43,3 +43,16 @@ repos:
   last_reviewed_commit: null
   last_reviewed_at: null
   ignored_features: []
+- url: https://github.com/waleedkhanbaloch/claude-code-safety-net
+  category: hooks
+  description: "\U0001F6E1\uFE0F Enhance code safety with Claude Code Safety Net,\
+    \ a tool designed to identify and mitigate risks in your codebase effectively."
+  last_reviewed_commit: 7979ce6ad5f2689d1005320a34df80673d493de6
+  last_reviewed_at: '2026-01-20T17:25:31.130769+00:00'
+  ignored_features:
+  - Dangerous Code Pattern Regex
+  - Git Checkout Safety Analysis
+  - Paranoid rm Mode
+  - Path-based rm -rf Containment
+  - Recursive Flag Detection
+  - Variable Expansion Safety

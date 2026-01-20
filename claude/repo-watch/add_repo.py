@@ -55,6 +55,8 @@ def get_repo_files(owner: str, repo: str) -> list[str]:
             ["gh", "api", f"repos/{owner}/{repo}/git/trees/HEAD", "--jq", ".tree[].path"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=True,
         )
         return result.stdout.strip().split("\n")
@@ -69,10 +71,12 @@ def get_repo_description(owner: str, repo: str) -> str:
             ["gh", "api", f"repos/{owner}/{repo}", "--jq", ".description // empty"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=True,
         )
         return result.stdout.strip()
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, AttributeError):
         return ""
 
 
