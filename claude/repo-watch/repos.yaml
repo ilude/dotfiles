@@ -1,0 +1,45 @@
+version: '1.0'
+category_mappings:
+  skills:
+    local_path: ~/.claude/skills
+    description: Claude Code skills
+    indicators:
+    - SKILL.md
+    - skills/
+  damage-control:
+    local_path: ~/.claude/hooks/damage-control
+    description: Security patterns and hooks
+    indicators:
+    - safety
+    - guard
+    - rules-*.ts
+  hooks:
+    local_path: ~/.claude/hooks
+    description: Claude Code event hooks
+    indicators:
+    - hooks/
+    - PreToolUse
+  commands:
+    local_path: ~/.claude/commands
+    description: Slash commands
+    indicators:
+    - commands/
+  dotfiles:
+    local_path: ~/.dotfiles
+    description: Cross-platform dotfiles
+    indicators:
+    - .zshrc
+    - dotbot
+repos:
+- url: https://github.com/kenryu42/claude-code-safety-net
+  category: damage-control
+  description: Semantic command analysis for safety
+  last_reviewed_commit: b71fd9f24e87e49bfe19400d35b46ebae6ecdbc5
+  last_reviewed_at: '2026-01-20T16:32:27.919002+00:00'
+  ignored_features: []
+- url: https://github.com/NikiforovAll/claude-code-rules
+  category: skills
+  description: Claude Code rules collection
+  last_reviewed_commit: null
+  last_reviewed_at: null
+  ignored_features: []
