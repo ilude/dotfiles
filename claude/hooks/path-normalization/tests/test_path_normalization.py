@@ -212,7 +212,7 @@ class TestClaudeInternalPaths:
         assert result.allowed, f"Expected allowed, got exit {result.exit_code}: {result.stderr}"
 
     def test_claude_absolute_blocked(self, run_hook, tmp_path):
-        """Absolute paths to ~/.claude/ should be blocked with filename suggestion."""
+        """Absolute paths to ~/.claude/plans/ should be allowed (plan files)."""
         home_dir = tmp_path / "Users" / "TestUser"
         claude_dir = home_dir / ".claude" / "plans"
         claude_dir.mkdir(parents=True)
@@ -220,8 +220,7 @@ class TestClaudeInternalPaths:
         path_str = str(claude_dir / "test.md").replace("\\", "/")
 
         result = run_hook("Edit", path_str)
-        assert result.blocked, f"Expected blocked, got exit {result.exit_code}"
-        assert "test.md" in result.stderr
+        assert result.allowed, f"Expected allowed, got exit {result.exit_code}: {result.stderr}"
 
     def test_claude_logs_absolute_blocked(self, run_hook, tmp_path):
         """Absolute paths within ~/.claude/logs/ should be blocked."""
