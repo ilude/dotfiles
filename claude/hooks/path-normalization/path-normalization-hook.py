@@ -192,6 +192,13 @@ def main() -> None:
     if not path_str or not isinstance(path_str, str):
         sys.exit(0)
 
+    # CASE 0: Plan files - ALLOW without normalization
+    # Claude Code writes plan files with absolute paths; don't interfere
+    normalized_check = normalize_separators(path_str)
+    if '.claude/plans/' in normalized_check or normalized_check.endswith('.claude/plans'):
+        log_decision(tool_name, path_str, "allowed", "plan file path")
+        sys.exit(0)
+
     has_backslash = BACKSLASH in path_str
 
     # CASE 1: Home-relative paths (~/ or ~\) - ALLOW if using forward slashes
