@@ -20,6 +20,10 @@
     ~/.hushlogin: .hushlogin
     ~/.dircolors: .dircolors
 
+# Claude Code config
+- link:
+    ~/.claude: claude
+
 # Oh My Posh config (works on both platforms)
 - link:
     ~/.config/ohmyposh/prompt.json: config/ohmyposh/prompt.json
