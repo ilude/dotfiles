@@ -1,0 +1,147 @@
+# Sequence Detection Patterns
+# ============================
+# Defines multi-step attack patterns that are dangerous when executed
+# in sequence, even if individual steps are benign.
+
+# Dangerous sequences to detect
+dangerousSequences:
+  # ---------------------------------------------------------------------------
+  # SENSITIVE FILE TO NETWORK
+  # ---------------------------------------------------------------------------
+  # Pattern: Read sensitive file -> Network command
+  - name: sensitive_file_to_network
+    description: "Sensitive file read followed by network command"
+    steps:
+      - tool: Read
+        pattern: '\.(env|pem|key|tfstate|credentials)$'
+        capture: file_path
+      - tool: Bash
+        pattern: '\b(curl|wget|nc|ncat|netcat|dig|nslookup)\b'
+    window: 5  # Within 5 tool calls
+    action: ask
+    reason: "Sensitive file was recently read. Network command could exfiltrate data."
+    severity: high
+
+  # ---------------------------------------------------------------------------
+  # CREDENTIAL SEARCH TO NETWORK
+  # ---------------------------------------------------------------------------
+  # Pattern: Search for credentials -> Network command
+  - name: credential_search_to_network
+    description: "Credential file search followed by network command"
+    steps:
+      - tool: Glob
+        pattern: '(credentials|secret|\.aws|\.ssh|\.env|password|token)'
+      - tool: Bash
+        pattern: '\b(curl|wget|nc|ncat)\b'
+    window: 10  # Within 10 tool calls
+    action: ask
+    reason: "Credential search followed by network command - verify intent."
+    severity: high
+
+  # ---------------------------------------------------------------------------
+  # AWS CREDENTIALS TO S3
+  # ---------------------------------------------------------------------------
+  # Pattern: Read AWS creds -> S3 command (could upload elsewhere)
+  - name: aws_creds_to_s3
+    description: "AWS credentials read followed by S3 command"
+    steps:
+      - tool: Read
+        pattern: '\.aws/(credentials|config)'
+      - tool: Bash
+        pattern: '\baws\s+s3\b'
+    window: 5
+    action: ask
+    reason: "AWS credentials were recently read. Verify S3 destination is authorized."
+    severity: high
+
+  # ---------------------------------------------------------------------------
+  # SSH KEY TO NETWORK
+  # ---------------------------------------------------------------------------
+  # Pattern: Read SSH key -> Any network command
+  - name: ssh_key_to_network
+    description: "SSH private key read followed by network command"
+    steps:
+      - tool: Read
+        pattern: 'id_(rsa|ed25519|ecdsa)$'
+      - tool: Bash
+        pattern: '\b(curl|wget|nc|ncat|ssh|scp|rsync)\b'
+    window: 5
+    action: ask
+    reason: "SSH private key was recently read. Verify network command intent."
+    severity: critical
+
+  # ---------------------------------------------------------------------------
+  # DATABASE DUMP TO UPLOAD
+  # ---------------------------------------------------------------------------
+  # Pattern: Database dump command -> Cloud upload
+  - name: db_dump_to_cloud
+    description: "Database dump followed by cloud upload"
+    steps:
+      - tool: Bash
+        pattern: '\b(pg_dump|mysqldump|mongodump)\b'
+      - tool: Bash
+        pattern: '\b(aws\s+s3|gsutil|az\s+storage|rclone)\b'
+    window: 5
+    action: ask
+    reason: "Database dump followed by cloud upload - verify destination is authorized."
+    severity: high
+
+  # ---------------------------------------------------------------------------
+  # ENV FILE ENUMERATION TO EXFIL
+  # ---------------------------------------------------------------------------
+  # Pattern: Find/glob for .env files -> Read -> Network
+  - name: env_enumeration_to_exfil
+    description: "Environment file enumeration followed by exfiltration"
+    steps:
+      - tool: Glob
+        pattern: '\.env'
+      - tool: Read
+        pattern: '\.env'
+      - tool: Bash
+        pattern: '\b(curl|wget|nc)\b'
+    window: 8
+    action: block  # This sequence is highly suspicious
+    reason: "Environment file enumeration and read followed by network command."
+    severity: critical
+
+  # ---------------------------------------------------------------------------
+  # TERRAFORM STATE TO NETWORK
+  # ---------------------------------------------------------------------------
+  # Pattern: Read tfstate -> Network command
+  - name: tfstate_to_network
+    description: "Terraform state read followed by network command"
+    steps:
+      - tool: Read
+        pattern: '\.tfstate$'
+      - tool: Bash
+        pattern: '\b(curl|wget|nc|ncat)\b'
+    window: 5
+    action: ask
+    reason: "Terraform state (may contain secrets) was recently read."
+    severity: high
+
+  # ---------------------------------------------------------------------------
+  # KUBERNETES CONFIG TO NETWORK
+  # ---------------------------------------------------------------------------
+  - name: kubeconfig_to_network
+    description: "Kubernetes config read followed by network command"
+    steps:
+      - tool: Read
+        pattern: '(\.kube/config|kubeconfig)'
+      - tool: Bash
+        pattern: '\b(curl|wget|nc)\b'
+    window: 5
+    action: ask
+    reason: "Kubernetes config was recently read. Verify network command intent."
+    severity: high
+
+# Configuration
+config:
+  # Maximum history entries to track
+  max_history: 50
+
+  # History expiry in seconds (default: 30 minutes)
+  history_expiry_seconds: 1800
+
+  # State file location (relative to ~/.claude/)
+  state_file: "state/sequence-history.json"
