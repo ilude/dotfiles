@@ -7,6 +7,50 @@ This PreToolUse hook works around bugs in Claude Code's Edit/Write tools on Wind
 1. **Absolute paths** (`C:/Users/...`, `/c/Users/...`, `/mnt/c/Users/...`)
 2. **Backslash separators** (`claude\skills\test.py`)
 
+## Issue Status
+
+**Last researched: 2026-01-29**
+
+**Upstream bug status: UNFIXED** - The core path normalization / cache poisoning bug remains open.
+
+### Changelog Reference
+
+- [CHANGELOG.md](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md)
+
+**v2.1.7** added a partial fix:
+> "Fixed false 'file modified' errors on Windows when cloud sync tools, antivirus scanners, or Git touch file timestamps without changing content"
+
+This addresses timestamp-based false positives but **does NOT fix** the path separator / cache poisoning issue.
+
+### Related GitHub Issues
+
+| Issue | Title | Status | Notes |
+|-------|-------|--------|-------|
+| [#7935](https://github.com/anthropics/claude-code/issues/7935) | Edit tool path format issue on Windows | Closed (inactivity) | **Master issue** - Detailed cache poisoning analysis. Closed after 60 days inactivity, NOT because it was fixed |
+| [#12805](https://github.com/anthropics/claude-code/issues/12805) | Edit/Write tools fail with 'unexpectedly modified' on Windows (MINGW) | Open | Comprehensive repro with timestamp evidence |
+| [#12695](https://github.com/anthropics/claude-code/issues/12695) | Edit Tool False Positive "File unexpectedly modified" on Windows | Open | Cross-referenced from other issues |
+| [#17380](https://github.com/anthropics/claude-code/issues/17380) | Edit Tool Calls Periodically Fail on Windows Due to Path Issues | Closed (duplicate) | Documents workaround via CLAUDE.md prompting |
+| [#17684](https://github.com/anthropics/claude-code/issues/17684) | Edit tool fails with "unexpectedly modified" when file hasn't changed | Closed (duplicate) | Notes issue accumulates over session |
+| [#11684](https://github.com/anthropics/claude-code/issues/11684) | Edit Tool Fails with 'File Unexpectedly Modified' on Windows/Git Bash | Open | Suggests content hash instead of timestamp |
+
+### Root Cause (from #7935 analysis)
+
+The Edit tool maintains an internal file state cache that:
+1. Creates cache entries using the **exact path format** from `Read()` operations
+2. Looks up entries using a **normalized path** during `Edit()` operations
+3. Results in cache misses when `Read(C:/path)` doesn't match `Edit(C:\path)` lookup
+
+**Cache Poisoning Matrix** (from [#7935 comment](https://github.com/anthropics/claude-code/issues/7935#issuecomment-3445397088)):
+
+| Read Format | Edit Format | Result |
+|-------------|-------------|--------|
+| `C:\path` | `C:\path` | Works |
+| `C:\path` | `C:/path` | Works |
+| `C:/path` | `C:\path` | FAILS |
+| `C:/path` | `C:/path` | FAILS |
+
+**This hook prevents the poisoned state by blocking problematic paths before they reach Claude Code.**
+
 ## Solution
 
 The hook blocks problematic paths and suggests the correct format:
