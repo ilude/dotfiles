@@ -890,10 +890,9 @@ zeroAccessPaths:
   - "*.ppk"        # PuTTY private keys
 
   # ---------------------------------------------------------------------------
-  # TERRAFORM STATE (contains secrets in plaintext!)
+  # TERRAFORM STATE DIRECTORIES (contain cached providers/modules)
   # ---------------------------------------------------------------------------
-  - "*.tfstate"
-  - "*.tfstate.backup"
+  # Note: *.tfstate moved to readOnlyPaths - read allowed for inspection
   - ".terraform/"
 
   # ---------------------------------------------------------------------------
@@ -1058,6 +1057,13 @@ readOnlyPaths:
   - ~/.zshrc
   - ~/.profile
   - ~/.bash_profile
+
+  # ---------------------------------------------------------------------------
+  # TERRAFORM STATE FILES - Read allowed for inspection, no modifications
+  # ---------------------------------------------------------------------------
+  # Contains secrets in plaintext but inspection is needed for debugging
+  - "*.tfstate"
+  - "*.tfstate.backup"
 
   # ---------------------------------------------------------------------------
   # LOCK FILES - Never manually edit, use package managers
