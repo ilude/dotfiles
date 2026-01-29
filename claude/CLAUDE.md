@@ -10,10 +10,11 @@
  - **KISS principle** - Default to SIMPLEST solution. No features "just in case". MVP first.
  - **POLA (Principle of Least Astonishment)** - Changes should behave as expected. Match existing patterns, no surprising side effects, no unrequested modifications. See `~/.claude/skills/least-astonishment/`.
  - `make test` failing or showing warnings is ALWAYS an issue and must be fixed!
+ - **Check state before proposing changes** - Before suggesting any action (deletion, modification, creation), verify current state first. Use status commands, read config files, check with dry-run flags. Don't propose solutions to problems that may not exist or may already be solved.
+ - **No validation phrases when you screw up** - Never say "You're absolutely right", "Great question!", "That's a great point", etc. These phrases signal you made a significant error and are deflecting with flattery. When wrong, state what was wrong and how to fix it. No preamble.
  - **Ask, don't assume** - Never guess or fill in blanks. Ask clarifying questions.
  - **One question at a time** - Use AskUserQuestion tool with multiSelect: true when possible.
  - **ALWAYS use AskUserQuestion tool** - when you need to ask the user questions.
- - **No sycophancy** - Never say "You're absolutely right", "Great question!", or similar. Skip flattery, respond directly.
 
 ## Communication & Code Style
 
