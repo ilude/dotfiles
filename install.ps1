@@ -44,7 +44,7 @@ $corePackages = @(
     @{ Id = 'OpenJS.NodeJS'; Name = 'Node.js' },
     @{ Id = 'Oven-sh.Bun'; Name = 'Bun' },
     @{ Id = 'Python.Python.3.14'; Name = 'Python 3.14' },
-    @{ Id = 'GnuWin32.Make'; Name = 'GNU Make' },
+    @{ Id = 'ezwinports.make'; Name = 'GNU Make' },
     @{ Id = 'cURL.cURL'; Name = 'curl' },
     @{ Id = 'junegunn.fzf'; Name = 'fzf (fuzzy finder)' },
     @{ Id = 'eza-community.eza'; Name = 'eza (modern ls)' },
@@ -396,7 +396,8 @@ function Install-Packages {
     $wingetLinks = @(
         @{ PackageId = 'Oven-sh.Bun'; ExeName = 'bun.exe'; RelativePath = 'bun-windows-x64' },
         @{ PackageId = 'cURL.cURL'; ExeName = 'curl.exe'; RelativePath = '' },  # Version in path, uses recursive search
-        @{ PackageId = 'dandavison.delta'; ExeName = 'delta.exe'; RelativePath = '' }  # Version in path, uses recursive search
+        @{ PackageId = 'dandavison.delta'; ExeName = 'delta.exe'; RelativePath = '' },  # Version in path, uses recursive search
+        @{ PackageId = 'ezwinports.make'; ExeName = 'make.exe'; RelativePath = '' }  # Portable package needs link
     )
     foreach ($link in $wingetLinks) {
         Write-Host "  $($link.ExeName)..." -ForegroundColor Cyan -NoNewline
