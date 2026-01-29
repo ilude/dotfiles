@@ -251,6 +251,11 @@ def main() -> None:
         # Priority 2: If within cwd (and not a dotfile), use cwd-relative (shorter)
         if is_within(file_path, cwd):
             relative = str(file_path.relative_to(cwd)).replace(BACKSLASH, '/')
+            # If it's just a filename (no path separators), allow it - the message
+            # "Use relative path: 'filename'" is confusing since that IS the relative path
+            if '/' not in relative:
+                log_decision(tool_name, path_str, "allowed", "file in cwd (filename only)")
+                sys.exit(0)
             block(tool_name, path_str, "absolute path", relative)
 
         # Priority 3: Within home but not cwd -> use home-relative
@@ -260,6 +265,10 @@ def main() -> None:
     # Within cwd but not home -> use cwd-relative
     if is_within(file_path, cwd):
         relative = str(file_path.relative_to(cwd)).replace(BACKSLASH, '/')
+        # If it's just a filename (no path separators), allow it
+        if '/' not in relative:
+            log_decision(tool_name, path_str, "allowed", "file in cwd (filename only)")
+            sys.exit(0)
         block(tool_name, path_str, "absolute path", relative)
 
     # Outside allowed areas -> suggest filename only (user must determine location)
