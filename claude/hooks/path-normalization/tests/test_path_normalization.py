@@ -52,21 +52,21 @@ class TestRelativePathsForwardSlashes:
 
 
 class TestRelativePathsBackslashes:
-    """Test Case 2: Relative paths with backslashes should BLOCK with suggestion."""
+    """Test Case 2: Relative paths with backslashes should be FIXED transparently."""
 
     @pytest.mark.parametrize(
-        "path,expected_suggestion",
+        "path,expected_fixed",
         [
             ("plugins\\python\\file.py", "plugins/python/file.py"),
             ("src\\components\\Button.tsx", "src/components/Button.tsx"),
             ("lib\\utils\\helper.py", "lib/utils/helper.py"),
         ],
     )
-    def test_backslash_blocked_with_suggestion(self, run_hook, path, expected_suggestion):
-        """Relative paths with backslashes should be blocked with correct suggestion."""
+    def test_backslash_fixed_transparently(self, run_hook, path, expected_fixed):
+        """Relative paths with backslashes should be transparently fixed."""
         result = run_hook("Edit", path)
-        assert result.blocked, f"Expected blocked (exit 2), got exit {result.exit_code}"
-        assert f"Use forward slashes: '{expected_suggestion}'" in result.stderr
+        assert result.fixed, f"Expected fixed (exit 0 with updatedInput), got exit {result.exit_code}"
+        assert result.fixed_path == expected_fixed, f"Expected '{expected_fixed}', got '{result.fixed_path}'"
 
 
 class TestHomeRelativePaths:
@@ -86,12 +86,11 @@ class TestHomeRelativePaths:
         result = run_hook("Edit", path)
         assert result.allowed, f"Expected allowed, got exit {result.exit_code}: {result.stderr}"
 
-    def test_home_relative_backslash_blocked(self, run_hook):
-        """Home-relative paths with backslashes should be blocked."""
+    def test_home_relative_backslash_fixed(self, run_hook):
+        """Home-relative paths with backslashes should be transparently fixed."""
         result = run_hook("Edit", r"~\.claude\skills\test\SKILL.md")
-        assert result.blocked
-        assert "Use forward slashes:" in result.stderr
-        assert "~/.claude/skills/test/SKILL.md" in result.stderr
+        assert result.fixed, f"Expected fixed, got exit {result.exit_code}"
+        assert result.fixed_path == "~/.claude/skills/test/SKILL.md"
 
     def test_write_tool_home_relative_allowed(self, run_hook):
         """Write tool with home-relative path should be allowed."""
@@ -100,10 +99,10 @@ class TestHomeRelativePaths:
 
 
 class TestAbsoluteWithinProject:
-    """Test Case 3: Absolute path within project directory should BLOCK with relative path suggestion."""
+    """Test Case 3: Absolute path within project directory should be FIXED to relative path."""
 
-    def test_absolute_within_project_forward_slash_blocked(self, run_hook, tmp_path):
-        """Absolute path within project dir (forward slashes) should suggest relative path."""
+    def test_absolute_within_project_forward_slash_fixed(self, run_hook, tmp_path):
+        """Absolute path within project dir (forward slashes) should be fixed to relative path."""
         project_dir = tmp_path / "Projects" / "myproject"
         project_dir.mkdir(parents=True)
         file_path = project_dir / "src" / "file.py"
@@ -117,12 +116,11 @@ class TestAbsoluteWithinProject:
             path_str,
             env={"CLAUDE_PROJECT_DIR": project_str},
         )
-        assert result.blocked, f"Expected blocked, got exit {result.exit_code}"
-        assert "Use relative path:" in result.stderr
-        assert "src/file.py" in result.stderr
+        assert result.fixed, f"Expected fixed, got exit {result.exit_code}"
+        assert result.fixed_path == "src/file.py"
 
-    def test_absolute_within_project_backslash_blocked(self, run_hook, tmp_path):
-        """Absolute path within project using backslashes should be blocked."""
+    def test_absolute_within_project_backslash_fixed(self, run_hook, tmp_path):
+        """Absolute path within project using backslashes should be fixed."""
         project_dir = tmp_path / "Projects" / "myproject"
         project_dir.mkdir(parents=True)
 
@@ -137,18 +135,18 @@ class TestAbsoluteWithinProject:
             path_str,
             env={"CLAUDE_PROJECT_DIR": str(project_dir)},
         )
-        assert result.blocked
-        assert "Use relative path:" in result.stderr
+        assert result.fixed
+        assert result.fixed_path == "src/file.py"
 
-    def test_absolute_within_project_backslash_suggests_relative_path(self, run_hook):
-        """Absolute path within project should suggest relative path, not full absolute path.
+    def test_absolute_within_project_backslash_fixes_to_relative_path(self, run_hook):
+        """Absolute path within project should be fixed to relative path, not full absolute path.
 
         This was a bug where CASE 3 suggested 'C:/full/path/file.py' instead of 'scripts/file.py'.
         """
         # Simulate the exact scenario from the bug report:
         # - Project: C:\Projects\Work\Github\warmachine
         # - File: C:\Projects\Work\Github\warmachine\scripts\Setup-AzureAD.ps1
-        # - Expected suggestion: scripts/Setup-AzureAD.ps1 (relative)
+        # - Expected fix: scripts/Setup-AzureAD.ps1 (relative)
         # - Bug output: C:/Projects/Work/Github/warmachine/scripts/Setup-AzureAD.ps1 (absolute)
 
         result = run_hook(
@@ -156,30 +154,29 @@ class TestAbsoluteWithinProject:
             r"C:\Projects\Work\Github\warmachine\scripts\Setup-AzureAD.ps1",
             env={"CLAUDE_PROJECT_DIR": r"C:\Projects\Work\Github\warmachine"},
         )
-        assert result.blocked, f"Expected blocked, got exit {result.exit_code}"
-        assert "Use relative path:" in result.stderr, f"Wrong error type: {result.stderr}"
+        assert result.fixed, f"Expected fixed, got exit {result.exit_code}"
         # CRITICAL: Should NOT contain the full Windows path with drive letter
-        assert "C:/" not in result.stderr, f"Suggestion has full absolute path: {result.stderr}"
-        assert "C:\\" not in result.stderr, f"Suggestion has full absolute path: {result.stderr}"
-        # Should contain the relative path
-        assert "scripts/Setup-AzureAD.ps1" in result.stderr, f"Missing relative path: {result.stderr}"
+        assert result.fixed_path is not None
+        assert "C:/" not in result.fixed_path, f"Fixed path has full absolute path: {result.fixed_path}"
+        assert "C:\\" not in result.fixed_path, f"Fixed path has full absolute path: {result.fixed_path}"
+        # Should be the relative path
+        assert result.fixed_path == "scripts/Setup-AzureAD.ps1", f"Wrong fixed path: {result.fixed_path}"
 
-    def test_msys_project_windows_file_suggests_relative(self, run_hook):
-        """MSYS-style project dir with Windows file path should suggest relative path."""
+    def test_msys_project_windows_file_fixes_to_relative(self, run_hook):
+        """MSYS-style project dir with Windows file path should be fixed to relative path."""
         result = run_hook(
             "Write",
             r"C:\Projects\Work\Github\warmachine\scripts\Setup-AzureAD.ps1",
             env={"CLAUDE_PROJECT_DIR": "/c/Projects/Work/Github/warmachine"},
         )
-        assert result.blocked
-        assert "scripts/Setup-AzureAD.ps1" in result.stderr
-        assert "C:/" not in result.stderr
+        assert result.fixed
+        assert result.fixed_path == "scripts/Setup-AzureAD.ps1"
 
-    def test_absolute_forward_slash_within_project_suggests_relative(self, run_hook, tmp_path):
-        """Forward-slash absolute path within project should suggest relative path.
+    def test_absolute_forward_slash_within_project_fixes_to_relative(self, run_hook, tmp_path):
+        """Forward-slash absolute path within project should be fixed to relative path.
 
         Regression test for issue where C:/Users/mglenn/.dotfiles/claude/skills/...
-        was allowed through instead of suggesting claude/skills/... as relative path.
+        was allowed through instead of being fixed to claude/skills/... relative path.
         """
         project_dir = tmp_path / "Users" / "mglenn" / ".dotfiles"
         target_file = project_dir / "claude" / "skills" / "test" / "SKILL.md"
@@ -196,11 +193,8 @@ class TestAbsoluteWithinProject:
             path_str,
             env={"CLAUDE_PROJECT_DIR": project_str},
         )
-        assert result.blocked, f"Expected blocked, got exit {result.exit_code}: {result.stderr}"
-        assert "Use relative path:" in result.stderr
-        assert "claude/skills/test/SKILL.md" in result.stderr
-        # Should NOT contain the absolute path
-        assert "Users" not in result.stderr
+        assert result.fixed, f"Expected fixed, got exit {result.exit_code}: {result.stderr}"
+        assert result.fixed_path == "claude/skills/test/SKILL.md"
 
 
 class TestClaudeInternalPaths:
@@ -222,17 +216,21 @@ class TestClaudeInternalPaths:
         result = run_hook("Edit", path_str)
         assert result.allowed, f"Expected allowed, got exit {result.exit_code}: {result.stderr}"
 
-    def test_claude_logs_absolute_blocked(self, run_hook, tmp_path):
-        """Absolute paths within ~/.claude/logs/ should be blocked."""
+    def test_claude_logs_absolute_fixed(self, run_hook, tmp_path):
+        """Absolute paths within ~/.claude/logs/ should be fixed to home-relative."""
         home_dir = tmp_path / "Users" / "TestUser"
         claude_dir = home_dir / ".claude" / "logs"
         claude_dir.mkdir(parents=True)
 
         path_str = str(claude_dir / "session.log").replace("\\", "/")
 
-        result = run_hook("Edit", path_str)
-        assert result.blocked
-        assert "session.log" in result.stderr
+        result = run_hook(
+            "Edit",
+            path_str,
+            env={"USERPROFILE": str(home_dir).replace("\\", "/")},
+        )
+        assert result.fixed
+        assert result.fixed_path == "~/.claude/logs/session.log"
 
 
 class TestAbsoluteOutsideAllowed:
@@ -419,17 +417,16 @@ class TestEdgeCases:
 
 
 class TestSuggestionMessages:
-    """Verify error messages contain helpful suggestions."""
+    """Verify fixed paths and block messages contain correct paths."""
 
-    def test_backslash_suggestion_format(self, run_hook):
-        """Backslash error should suggest the corrected path."""
+    def test_backslash_fixed_path_format(self, run_hook):
+        """Backslash path should be fixed to forward slashes."""
         result = run_hook("Edit", r"src\components\Button.tsx")
-        assert result.blocked
-        assert "Use forward slashes:" in result.stderr
-        assert "src/components/Button.tsx" in result.stderr
+        assert result.fixed
+        assert result.fixed_path == "src/components/Button.tsx"
 
-    def test_absolute_suggestion_extracts_filename(self, run_hook, tmp_path):
-        """Absolute path error should suggest relative or filename."""
+    def test_absolute_outside_project_extracts_filename(self, run_hook, tmp_path):
+        """Absolute path outside project/home should suggest filename."""
         home_dir = tmp_path / "Users" / "TestUser"
         home_dir.mkdir(parents=True)
 
@@ -449,7 +446,8 @@ class TestSuggestionMessages:
 class TestCrossDirectoryWrites:
     """Test writing to home directory paths from a different project directory.
 
-    Absolute paths should be blocked with appropriate ~/ suggestions.
+    Absolute paths within home should be fixed to ~/ paths.
+    Absolute paths outside home/project should be blocked with filename suggestion.
     Home-relative paths (~/) should be allowed.
     """
 
@@ -458,12 +456,14 @@ class TestCrossDirectoryWrites:
         result = run_hook("Write", "~/.claude/skills/test-skill/SKILL.md")
         assert result.allowed, f"Expected allowed, got exit {result.exit_code}: {result.stderr}"
 
-    def test_write_to_claude_absolute_blocked(self, run_hook, tmp_path):
-        """Absolute path outside project should be blocked with filename suggestion."""
+    def test_write_to_absolute_outside_home_and_project_blocked(self, run_hook, tmp_path):
+        """Absolute path outside both project and home should be blocked."""
         project_dir = tmp_path / "project"
+        home_dir = tmp_path / "home" / "user"
         target_dir = tmp_path / "other" / "skills"
 
         project_dir.mkdir(parents=True)
+        home_dir.mkdir(parents=True)
         target_dir.mkdir(parents=True)
 
         file_path = f"{str(target_dir).replace(chr(92), '/')}/SKILL.md"
@@ -471,15 +471,19 @@ class TestCrossDirectoryWrites:
         result = run_hook(
             "Write",
             file_path,
-            env={"CLAUDE_PROJECT_DIR": str(project_dir).replace(chr(92), '/')},
+            env={
+                "CLAUDE_PROJECT_DIR": str(project_dir).replace(chr(92), '/'),
+                "USERPROFILE": str(home_dir).replace(chr(92), '/'),
+            },
         )
         assert result.blocked, f"Expected blocked, got exit {result.exit_code}"
         assert "SKILL.md" in result.stderr
 
-    def test_write_to_subdir_absolute_blocked(self, run_hook, tmp_path):
-        """Absolute path outside project should be blocked with filename suggestion."""
+    def test_write_to_absolute_within_home_fixed(self, run_hook, tmp_path):
+        """Absolute path within home should be fixed to ~/ path."""
         project_dir = tmp_path / "project"
-        target_dir = tmp_path / "other" / "notes"
+        home_dir = tmp_path / "home" / "user"
+        target_dir = home_dir / "Documents" / "notes"
 
         project_dir.mkdir(parents=True)
         target_dir.mkdir(parents=True)
@@ -489,10 +493,13 @@ class TestCrossDirectoryWrites:
         result = run_hook(
             "Write",
             file_path,
-            env={"CLAUDE_PROJECT_DIR": str(project_dir).replace(chr(92), '/')},
+            env={
+                "CLAUDE_PROJECT_DIR": str(project_dir).replace(chr(92), '/'),
+                "USERPROFILE": str(home_dir).replace(chr(92), '/'),
+            },
         )
-        assert result.blocked, f"Expected blocked, got exit {result.exit_code}"
-        assert "todo.md" in result.stderr
+        assert result.fixed, f"Expected fixed, got exit {result.exit_code}"
+        assert result.fixed_path == "~/Documents/notes/todo.md"
 
     def test_write_to_home_subdir_home_relative_allowed(self, run_hook):
         """Writing to ~/Documents using ~/ path should be allowed."""
@@ -662,9 +669,9 @@ class TestCaseSensitivity:
             file_path,
             env={"CLAUDE_PROJECT_DIR": project_str},
         )
-        assert result.blocked
-        # Should suggest relative path since it's within project (case-insensitive)
-        assert "src/file.py" in result.stderr or "file.py" in result.stderr
+        assert result.fixed
+        # Should fix to relative path since it's within project (case-insensitive)
+        assert result.fixed_path == "src/file.py"
 
     @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only test")
     def test_case_mismatch_within_home(self, run_hook, tmp_path):
@@ -681,9 +688,9 @@ class TestCaseSensitivity:
             file_path,
             env={"USERPROFILE": home_str},
         )
-        assert result.blocked
-        # Should suggest home-relative path
-        assert "~/" in result.stderr or "file.py" in result.stderr
+        assert result.fixed
+        # Should fix to home-relative path
+        assert result.fixed_path == "~/.config/file.py"
 
 
 class TestPathTraversal:

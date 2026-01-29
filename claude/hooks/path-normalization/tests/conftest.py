@@ -33,6 +33,28 @@ class HookResult:
         """Check if the operation was blocked (exit 2)."""
         return self.exit_code == 2
 
+    @property
+    def fixed(self) -> bool:
+        """Check if the path was transparently fixed (exit 0 with updatedInput)."""
+        if self.exit_code != 0:
+            return False
+        try:
+            output = json.loads(self.stdout)
+            return "updatedInput" in output.get("hookSpecificOutput", {})
+        except (json.JSONDecodeError, TypeError):
+            return False
+
+    @property
+    def fixed_path(self) -> Optional[str]:
+        """Get the fixed path from updatedInput, or None if not fixed."""
+        if not self.fixed:
+            return None
+        try:
+            output = json.loads(self.stdout)
+            return output["hookSpecificOutput"]["updatedInput"].get("file_path")
+        except (json.JSONDecodeError, KeyError, TypeError):
+            return None
+
 
 @pytest.fixture
 def run_hook():
