@@ -132,6 +132,48 @@ def to_windows_path(path_str: str) -> str:
     return f"{match.group(1).upper()}:/{match.group(2)}" if match else normalized
 
 
+def get_windows_home(win_path: str) -> Path:
+    """Get the Windows home directory for path comparison.
+
+    When running in WSL, os.path.expanduser('~') returns the WSL home (/home/user),
+    not the Windows home (C:/Users/user). This function detects the correct home
+    based on the path being checked and environment variables.
+
+    Priority:
+    1. USERPROFILE environment variable (set by Windows)
+    2. WINHOME environment variable (set by dotfiles for WSL)
+    3. Extract from path if it contains /Users/ pattern
+    4. Fall back to os.path.expanduser('~')
+    """
+    # Try USERPROFILE first (Windows sets this)
+    userprofile = os.environ.get('USERPROFILE')
+    if userprofile:
+        return Path(to_windows_path(userprofile)).resolve()
+
+    # Try WINHOME (set by dotfiles zsh config for WSL)
+    winhome = os.environ.get('WINHOME')
+    if winhome:
+        return Path(to_windows_path(winhome)).resolve()
+
+    # Extract from the path itself if it contains Windows user directory pattern
+    # Matches: C:/Users/username/..., /mnt/c/Users/username/..., /c/Users/username/...
+    normalized = normalize_separators(win_path)
+    user_match = re.match(r'^(?:[A-Za-z]:|/mnt/[a-z]|/[a-z])?/[Uu]sers/([^/]+)/', normalized)
+    if user_match:
+        username = user_match.group(1)
+        # Determine the drive letter from the path
+        drive_match = re.match(r'^([A-Za-z]):', normalized)
+        if drive_match:
+            drive = drive_match.group(1).upper()
+        else:
+            # Default to C: for MSYS/WSL paths
+            drive = 'C'
+        return Path(f"{drive}:/Users/{username}").resolve()
+
+    # Fall back to standard expanduser (works correctly on native Windows)
+    return Path(os.path.expanduser('~')).resolve()
+
+
 def is_unc_path(path: str) -> bool:
     """Check if path is UNC (//server or \\\\server) without triggering network I/O."""
     if len(path) < 3:
@@ -286,7 +328,9 @@ def main() -> None:
     # and only block ambiguous cases (outside both)
     win_path = to_windows_path(path_str)
     file_path = Path(win_path).resolve()
-    home = Path(os.path.expanduser('~')).resolve()
+    # Use get_windows_home() to handle WSL environment where expanduser('~')
+    # returns /home/user instead of the Windows home directory
+    home = get_windows_home(win_path)
     cwd = Path(to_windows_path(os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd()))).resolve()
 
     # Check if within home directory - needed for prioritization
