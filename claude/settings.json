@@ -59,7 +59,7 @@
       "Bash(git reset --hard:*)"
     ]
   },
-  "model": "opus",
+  "model": "sonnet",
   "hooks": {
     "SessionStart": [
       {
