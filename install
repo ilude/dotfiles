@@ -51,6 +51,14 @@ fi
 
 "${BASEDIR}/git-ssh-setup"
 "${BASEDIR}/zsh-setup"
+
+# Install uv (Python package manager) - required for Claude Code hooks
+if command -v uv &>/dev/null; then
+    echo "uv: already installed"
+else
+    echo "Installing uv..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+fi
 if [[ -z "$HEADLESS" ]]; then
     "${BASEDIR}/claude-link-setup"
     "${BASEDIR}/claude-mcp-setup"
