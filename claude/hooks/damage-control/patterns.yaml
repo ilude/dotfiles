@@ -42,6 +42,18 @@ bashToolPatterns:
     reason: rm with recursive or force flags
     ask: true
 
+  # HARD BLOCK: Critical Claude Code configuration files (delete = catastrophic)
+  - pattern: '\brm\s+.*\bCLAUDE\.md\b'
+    reason: CLAUDE.md is a critical Claude Code configuration file
+
+  - pattern: '\brm\s+.*\bAGENTS?\.md\b'
+    reason: AGENT.md/AGENTS.md are critical Claude Code configuration files
+
+  # Simple rm without flags - still deletes files permanently
+  - pattern: '\brm\s+[^-\s]'
+    reason: rm deletes files permanently
+    ask: true
+
   - pattern: '\brm\s+--recursive'
     reason: rm with --recursive flag
     ask: true
@@ -1101,6 +1113,7 @@ noDeletePaths:
   # ---------------------------------------------------------------------------
   - ~/.claude/
   - CLAUDE.md
+  - AGENTS.md
 
   # ---------------------------------------------------------------------------
   # LICENSE AND LEGAL FILES
