@@ -61,6 +61,7 @@ $corePackages = @(
     @{ Id = 'tldr-pages.tlrc'; Name = 'tldr (man pages)' },
     @{ Id = 'koalaman.shellcheck'; Name = 'shellcheck (shell linter)' },
     @{ Id = 'mvdan.shfmt'; Name = 'shfmt (shell formatter)' },
+    @{ Id = 'astral-sh.uv'; Name = 'uv (Python package manager)' },
     @{ Id = 'MSYS2.MSYS2'; Name = 'MSYS2 (provides zsh for Git Bash)' }
 )
 
