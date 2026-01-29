@@ -8,8 +8,10 @@ bashToolPatterns:
   # ---------------------------------------------------------------------------
   # GIT RM - Must come before general rm patterns to avoid false matches
   # ---------------------------------------------------------------------------
-  - pattern: '\bgit\s+rm\b'
-    reason: git rm (removes files from working tree and index)
+  # git rm --cached only removes from index (safe - files stay on disk)
+  # git rm without --cached deletes files from working tree AND index
+  - pattern: '\bgit\s+rm\s+(?!.*--cached).*\S'
+    reason: git rm (deletes files from working tree and index). Use --cached to only remove from index.
     ask: true
 
   # ---------------------------------------------------------------------------
@@ -34,11 +36,12 @@ bashToolPatterns:
     reason: rm recursive on Windows home via Git Bash (/c/Users) - CATASTROPHIC
 
   # Regular rm with recursive/force - ask for confirmation
-  - pattern: '\brm\s+(-[^\s]*)*-[rRf]'
+  # Note: (?<!git\s) negative lookbehind excludes 'git rm' (handled separately above)
+  - pattern: '(?<!git\s)\brm\s+(-[^\s]*)*-[rRf]'
     reason: rm with recursive or force flags
     ask: true
 
-  - pattern: '\brm\s+-[rRf]'
+  - pattern: '(?<!git\s)\brm\s+-[rRf]'
     reason: rm with recursive or force flags
     ask: true
 
