@@ -491,6 +491,49 @@ def unwrap_command(command: str, depth: int = 0) -> Tuple[str, bool]:
 
 
 # ============================================================================
+# READ-ONLY COMMAND DETECTION
+# ============================================================================
+
+# Commands that only read/query information and don't access file contents
+# These can safely reference zero-access paths without triggering blocks
+READONLY_GIT_COMMANDS = [
+    # Git info commands that don't read file contents
+    r'\bgit\s+check-ignore\b',      # Check .gitignore rules
+    r'\bgit\s+ls-files\b',          # List tracked files
+    r'\bgit\s+ls-tree\b',           # List tree contents
+    r'\bgit\s+status\b',            # Show working tree status
+    r'\bgit\s+diff\s+--name',       # Show changed file names only
+    r'\bgit\s+log\s+--name',        # Show log with file names only
+    r'\bgit\s+rev-parse\b',         # Parse revisions
+    r'\bgit\s+branch\b',            # List/manage branches (without -D)
+    r'\bgit\s+remote\b',            # List remotes
+    r'\bgit\s+config\b',            # Read/write config
+    r'\bgit\s+show-ref\b',          # List references
+    # git rm --cached only removes from index, not filesystem
+    # Must match various flag orderings: git rm --cached, git rm -r --cached, git rm --cached -r
+    r'\bgit\s+rm\s+.*--cached\b',   # Remove from index only (files stay on disk)
+]
+
+
+def is_readonly_git_command(command: str) -> bool:
+    """Check if command is a read-only git command that doesn't access file contents.
+
+    These commands can safely reference zero-access paths (like .terraform/)
+    because they only query git metadata, not actual file contents.
+
+    Args:
+        command: Command string to check
+
+    Returns:
+        True if command is a read-only git info command
+    """
+    for pattern in READONLY_GIT_COMMANDS:
+        if re.search(pattern, command, re.IGNORECASE):
+            return True
+    return False
+
+
+# ============================================================================
 # GIT SEMANTIC ANALYSIS
 # ============================================================================
 
@@ -940,7 +983,8 @@ def check_command(command: str, config: Dict[str, Any], context: Optional[str] =
 
     # 2. Check for ANY access to zero-access paths (including reads)
     # Skip only if explicitly relaxed in context (should NEVER be relaxed for security)
-    if "zeroAccessPaths" not in relaxed_checks:
+    # ALSO skip for read-only git commands that just query metadata (not file contents)
+    if "zeroAccessPaths" not in relaxed_checks and not is_readonly_git_command(unwrapped_cmd):
         for path_obj in compiled_zero_access:
             if path_obj["is_glob"]:
                 # Use pre-compiled glob regex
