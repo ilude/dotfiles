@@ -53,15 +53,35 @@ The Edit tool maintains an internal file state cache that:
 
 ## Solution
 
-The hook blocks problematic paths and suggests the correct format:
+The hook uses **transparent fixes** for deterministic cases (zero-retry latency) and **blocks** only for ambiguous cases:
 
-| Input Path | Decision | Suggested Fix |
-|------------|----------|---------------|
-| `claude/skills/test.py` | ALLOW | - |
-| `~/.claude/skills/test.py` | ALLOW | - |
-| `claude\skills\test.py` | BLOCK | `claude/skills/test.py` |
-| `C:/Users/.../file.py` | BLOCK | relative path |
-| `/c/Users/.../file.py` | BLOCK | relative path |
+| Input Path | Decision | Action |
+|------------|----------|--------|
+| `claude/skills/test.py` | ALLOW | Pass through |
+| `~/.claude/skills/test.py` | ALLOW | Pass through |
+| `claude\skills\test.py` | **FIX** | Auto-correct to `claude/skills/test.py` |
+| `C:/Users/.../project/file.py` | **FIX** | Auto-correct to `file.py` (relative to cwd) |
+| `C:/Users/name/.dotfiles/...` | **FIX** | Auto-correct to `~/.dotfiles/...` |
+| `D:/Random/path/file.py` | BLOCK | Suggest `file.py` (ambiguous - outside project/home) |
+
+### How Transparent Fixes Work
+
+The hook uses the PreToolUse `updatedInput` feature (Claude Code v2.0.10+) to modify paths before the tool executes:
+
+```json
+{
+  "hookSpecificOutput": {
+    "permissionDecision": "allow",
+    "updatedInput": {"file_path": "corrected/path.py"},
+    "additionalContext": "Path was auto-corrected..."
+  }
+}
+```
+
+**Benefits:**
+- Zero retry loops (faster, cheaper)
+- Transparent to Claude
+- Deterministic path resolution
 
 ## Key Design Decisions
 
@@ -113,24 +133,27 @@ grep 'path-normalization-hook.py' ~/.claude/logs/path-normalization/*.log
   "timestamp": "2026-01-13T11:22:59.529030",
   "tool": "Edit",
   "file_path": "C:/Users/mglenn/.dotfiles/test.py",
-  "decision": "blocked",
-  "reason": "absolute path in project",
+  "decision": "fixed",
+  "reason": "absolute path within project",
   "suggested_path": "test.py",
   "cwd": "C:\\Users\\mglenn\\.dotfiles",
   "session_id": ""
 }
 ```
 
-### Step 2: Analyze the blocked entry
+**Decision values:** `allowed` (pass through), `fixed` (auto-corrected via updatedInput), `blocked` (rejected with suggestion)
 
-Find the log entry for the failed operation and check if `suggested_path` is correct:
+### Step 2: Analyze the log entry
 
-| suggested_path | Verdict | Action |
-|----------------|---------|--------|
-| Clean relative path (`file.md`, `docs/file.md`) | Hook working correctly | Retry with suggested path |
-| Same as input (`C:\Projects\...`) | **BUG in hook** | Fix the hook (see below) |
-| Still has backslashes | **BUG in hook** | Fix the hook |
-| Empty or wrong file | **BUG in hook** | Fix the hook |
+Find the log entry for the failed operation and check the `decision` and `suggested_path`:
+
+| Decision | suggested_path | Verdict | Action |
+|----------|----------------|---------|--------|
+| `fixed` | Clean relative path | Hook working correctly | Should have succeeded automatically |
+| `blocked` | Clean relative path | Hook working correctly | Claude should retry with suggested path |
+| `fixed` | Same as input | **BUG in hook** | Fix the path correction logic |
+| `blocked` | Still has backslashes | **BUG in hook** | Fix the suggestion logic |
+| `allowed` | - | Possible issue | Hook didn't catch problematic path - check detection logic |
 
 ### Step 3: If bug found, fix and test
 
@@ -188,7 +211,31 @@ uv run pytest -v
 
 ## Do NOT
 
-- **Do NOT** use `USERPROFILE` environment variable tricks - the issue is Claude Code's Edit tool, not path resolution
-- **Do NOT** try to "fix" paths by converting them - just block and suggest the correct format
-- **Do NOT** add complex path manipulation - keep it simple, let Claude retry with the suggested path
 - **Do NOT** assume the bug is in this hook when you see "unexpectedly modified" - first check the logs to see what path was actually passed
+- **Do NOT** use `Path.name` on cross-platform paths - use string operations after normalizing separators
+- **Do NOT** call `Path.resolve()` on UNC paths - it triggers network I/O
+- **Do NOT** mutate `tool_input` - always create new objects for `updatedInput`
+
+## References
+
+### Claude Code Hooks Documentation
+
+- [Hooks Reference](https://code.claude.com/docs/en/hooks) - Official PreToolUse schema, exit codes, `updatedInput` feature
+- [Feature Request: Enhance PreToolUse Hooks #4368](https://github.com/anthropics/claude-code/issues/4368) - `updatedInput` feature request and implementation
+- [ClaudeLog Hooks Guide](https://claudelog.com/mechanics/hooks/) - Performance best practices, timeout handling
+- [DataCamp Claude Code Hooks Tutorial](https://www.datacamp.com/tutorial/claude-code-hooks) - Practical examples
+- [GitButler Claude Code Hooks](https://docs.gitbutler.com/features/ai-integration/claude-code-hooks) - Integration patterns
+
+### Python Cross-Platform Path Handling
+
+- [pathlib vs os.path Trade-offs](https://www.pythonsnacks.com/p/paths-in-python-comparing-os-path-and-pathlib) - When to use each
+- [Python pathlib Documentation](https://docs.python.org/3/library/pathlib.html) - Official reference
+- [Avoiding Windows Backslash Problems](https://lerner.co.il/2018/07/24/avoiding-windows-backslash-problems-with-pythons-raw-strings/) - Raw strings and escaping
+- [Handle Windows Paths in Python - Sentry](https://sentry.io/answers/handle-windows-paths-in-python/) - Common pitfalls
+- [wslPath Library](https://github.com/akikuno/wslPath) - WSL path conversion patterns
+
+### Implementation Patterns
+
+- [disler/claude-code-hooks-mastery](https://github.com/disler/claude-code-hooks-mastery) - All 8 hook lifecycle events
+- [karanb192/claude-code-hooks](https://github.com/karanb192/claude-code-hooks) - Security-focused PreToolUse examples
+- [affaan-m/everything-claude-code](https://github.com/affaan-m/everything-claude-code) - Battle-tested production hooks
