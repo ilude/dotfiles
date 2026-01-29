@@ -1,0 +1,107 @@
+# Taint Tracking Configuration
+# ============================
+# Defines sensitive file patterns that should be tracked when read,
+# and network commands that trigger exfiltration checks.
+
+# Sensitive path patterns - files that get "tainted" when read
+sensitivePaths:
+  # Environment and config files
+  - pattern: '\.env$'
+    type: environment_file
+    sensitivity: critical
+
+  - pattern: '\.env\.[^.]+$'
+    type: environment_file
+    sensitivity: critical
+
+  # Private keys
+  - pattern: '\.pem$'
+    type: private_key
+    sensitivity: critical
+
+  - pattern: '\.key$'
+    type: private_key
+    sensitivity: critical
+
+  - pattern: 'id_(rsa|ed25519|ecdsa)$'
+    type: ssh_private_key
+    sensitivity: critical
+
+  # Terraform state (contains secrets in plaintext)
+  - pattern: '\.tfstate$'
+    type: terraform_state
+    sensitivity: critical
+
+  # Cloud credentials
+  - pattern: '\.aws/credentials$'
+    type: aws_credentials
+    sensitivity: critical
+
+  - pattern: '\.aws/config$'
+    type: aws_config
+    sensitivity: high
+
+  - pattern: 'credentials\.json$'
+    type: gcp_credentials
+    sensitivity: critical
+
+  - pattern: '\.azure/'
+    type: azure_credentials
+    sensitivity: critical
+
+  - pattern: '\.kube/config$'
+    type: kubernetes_config
+    sensitivity: critical
+
+  # Database credentials
+  - pattern: 'database\.ya?ml$'
+    type: database_config
+    sensitivity: high
+
+  - pattern: 'secrets\.ya?ml$'
+    type: secrets_file
+    sensitivity: critical
+
+# Network commands that should trigger taint checks
+networkCommands:
+  # HTTP clients
+  - pattern: '\bcurl\b'
+    type: http_client
+
+  - pattern: '\bwget\b'
+    type: http_client
+
+  # Network utilities
+  - pattern: '\b(nc|ncat|netcat)\b'
+    type: netcat
+
+  - pattern: '/dev/(tcp|udp)/'
+    type: bash_socket
+
+  # DNS (can exfiltrate via subdomains)
+  - pattern: '\b(dig|nslookup|host)\b'
+    type: dns_lookup
+
+  # Cloud CLIs
+  - pattern: '\baws\s+s3\b'
+    type: aws_s3
+
+  - pattern: '\bgsutil\b'
+    type: gcp_storage
+
+  - pattern: '\baz\s+storage\b'
+    type: azure_storage
+
+  - pattern: '\brclone\b'
+    type: rclone
+
+# Session state configuration
+session:
+  # State file location (relative to ~/.claude/)
+  state_file: "state/taint-session.json"
+
+  # Maximum taint entries to track (oldest removed first)
+  max_entries: 100
+
+  # Taint expiry in seconds (default: 1 hour)
+  taint_expiry_seconds: 3600

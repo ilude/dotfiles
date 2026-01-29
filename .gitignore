@@ -61,3 +61,4 @@ uv.lock
 
 # Claude Code temporary working directories
 tmpclaude-*
+claude/tasks/
