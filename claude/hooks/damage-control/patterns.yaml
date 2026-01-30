@@ -53,7 +53,8 @@ bashToolPatterns:
     reason: AGENT.md/AGENTS.md are critical Claude Code configuration files
 
   # Simple rm without flags - still deletes files permanently
-  - pattern: '\brm\s+[^-\s]'
+  # (?<!-) excludes --rm flag (e.g., docker compose run --rm)
+  - pattern: '(?<!-)\brm\s+[^-\s]'
     reason: rm deletes files permanently
     ask: true
 
