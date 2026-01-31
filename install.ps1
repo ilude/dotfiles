@@ -62,7 +62,9 @@ $corePackages = @(
     @{ Id = 'koalaman.shellcheck'; Name = 'shellcheck (shell linter)' },
     @{ Id = 'mvdan.shfmt'; Name = 'shfmt (shell formatter)' },
     @{ Id = 'astral-sh.uv'; Name = 'uv (Python package manager)' },
-    @{ Id = 'MSYS2.MSYS2'; Name = 'MSYS2 (provides zsh for Git Bash)' }
+    @{ Id = 'MSYS2.MSYS2'; Name = 'MSYS2 (provides zsh for Git Bash)' },
+    @{ Id = 'Rclone.Rclone'; Name = 'rclone (cloud sync)' },
+    @{ Id = 'WinFsp.WinFsp'; Name = 'WinFsp (FUSE for Windows)' }
 )
 
 $workPackages = @(
@@ -237,6 +239,61 @@ function Write-GitBashPath {
 
     [System.IO.File]::WriteAllText($outputFile, $contentLF)
     Write-Host "  PATH config: generated ($($filteredPaths.Count) paths)" -ForegroundColor Green
+}
+
+function Configure-Rclone {
+    # Configure rclone for MinIO access
+    # Reads MINIO_* vars from .secrets and creates rclone.conf
+
+    $rcloneDir = "$env:APPDATA\rclone"
+    $rcloneConf = "$rcloneDir\rclone.conf"
+    $secretsFile = "$env:USERPROFILE\.dotfiles\.secrets"
+
+    if (-not (Test-Path $secretsFile)) {
+        Write-Host "  .secrets file not found, skipping rclone config" -ForegroundColor Yellow
+        return
+    }
+
+    # Parse MINIO vars from .secrets (bash format)
+    $secrets = Get-Content $secretsFile -Raw
+    $endpoint = if ($secrets -match 'MINIO_ENDPOINT=([^\r\n]+)') { $matches[1] } else { $null }
+    $accessKey = if ($secrets -match 'MINIO_ACCESS_KEY=([^\r\n]+)') { $matches[1] } else { $null }
+    $secretKey = if ($secrets -match 'MINIO_SECRET_KEY=([^\r\n]+)') { $matches[1] } else { $null }
+
+    if (-not ($endpoint -and $accessKey -and $secretKey)) {
+        Write-Host "  MINIO credentials not found in .secrets, skipping rclone config" -ForegroundColor Yellow
+        return
+    }
+
+    # Create rclone directory
+    if (-not (Test-Path $rcloneDir)) {
+        New-Item -ItemType Directory -Path $rcloneDir -Force | Out-Null
+    }
+
+    # Build config content
+    $configContent = @"
+[menos]
+type = s3
+provider = Minio
+env_auth = false
+access_key_id = $accessKey
+secret_access_key = $secretKey
+endpoint = http://$endpoint
+acl = private
+"@
+
+    # Check if config already exists and matches
+    if (Test-Path $rcloneConf) {
+        $existing = Get-Content $rcloneConf -Raw
+        if ($existing -match '\[menos\]' -and $existing -match [regex]::Escape($endpoint)) {
+            Write-Host "  rclone config: already configured" -ForegroundColor DarkGray
+            return
+        }
+    }
+
+    # Write config
+    $configContent | Set-Content $rcloneConf -Force
+    Write-Host "  rclone config: created $rcloneConf" -ForegroundColor Green
 }
 
 function Install-WingetPackage {
@@ -944,6 +1001,10 @@ try {
         }
         $lockData | ConvertTo-Json | Set-Content $LOCKFILE -Force
         Write-Host "`nLock file updated: $LOCKFILE" -ForegroundColor Green
+
+        # Configure rclone for MinIO (after rclone is installed)
+        Write-Host "`nConfiguring rclone..." -ForegroundColor Cyan
+        Configure-Rclone
     }
 
     # ========================================================================
