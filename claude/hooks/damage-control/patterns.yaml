@@ -95,12 +95,17 @@ bashToolPatterns:
     reason: git clean with force/directory flags
     ask: true
 
-  # Note: This blocks --force but NOT --force-with-lease
+  # --force is hard blocked, --force-with-lease asks for confirmation
   - pattern: '\bgit\s+push\s+.*--force(?!-with-lease)'
-    reason: git push --force (use --force-with-lease)
+    reason: git push --force (use --force-with-lease for safer alternative)
 
   - pattern: '\bgit\s+push\s+(-[^\s]*)*-f\b'
-    reason: git push -f (use --force-with-lease)
+    reason: git push -f (use --force-with-lease for safer alternative)
+
+  # --force-with-lease is safer but still rewrites remote history
+  - pattern: '\bgit\s+push\s+.*--force-with-lease'
+    reason: git push --force-with-lease (rewrites remote history, but with safety check)
+    ask: true
 
   - pattern: '\bgit\s+stash\s+clear\b'
     reason: git stash clear (deletes ALL stashes)
