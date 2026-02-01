@@ -618,9 +618,9 @@ def analyze_git_command(command: str) -> Tuple[bool, str]:
     # GIT PUSH
     # ========================================================================
     elif subcommand == 'push':
-        # Safe: --force-with-lease (check this FIRST before checking --force)
+        # Ask: --force-with-lease (safer than --force but still rewrites remote history)
         if '--force-with-lease' in args_str:
-            return False, ""
+            return True, "git push --force-with-lease can overwrite remote history (safer than --force, but still destructive)"
 
         # Dangerous: --force (without lease)
         if '--force' in args:
