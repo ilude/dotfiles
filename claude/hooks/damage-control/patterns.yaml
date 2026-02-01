@@ -621,6 +621,9 @@ bashToolPatterns:
   # ===========================================================================
   # These patterns detect potential data exfiltration attempts.
   # Based on research from OWASP, MITRE ATLAS, and real-world exploits.
+  #
+  # Patterns marked with `exfil: true` respect the allowed-hosts.yaml whitelist.
+  # Private IPs (RFC1918) and configured hosts bypass these checks.
 
   # ---------------------------------------------------------------------------
   # DNS EXFILTRATION - Data encoded in subdomain lookups
@@ -630,11 +633,13 @@ bashToolPatterns:
   - pattern: '\b(dig|nslookup|host)\s+\S+\.\S+'
     reason: "DNS lookup can exfiltrate data via subdomain encoding"
     ask: true
+    exfil: true
 
   # Ping to constructed hostnames can leak data via DNS resolution
   - pattern: '\bping\s+.*\S+\.\S+\.\S+'
     reason: "Ping to hostname can leak data via DNS resolution"
     ask: true
+    exfil: true
 
   # ---------------------------------------------------------------------------
   # NETWORK UPLOAD - HTTP/socket data transmission
@@ -643,25 +648,30 @@ bashToolPatterns:
   - pattern: '\bcurl\s+.*(-d\s|--data|--data-binary|--data-raw|-F\s|--form|-T\s|--upload-file)'
     reason: "curl uploading data to remote server"
     ask: true
+    exfil: true
 
   # wget POST
   - pattern: '\bwget\s+.*--post-(file|data)'
     reason: "wget posting data to remote server"
     ask: true
+    exfil: true
 
   # Netcat sending data (input redirection or pipe before nc)
   - pattern: '\b(nc|ncat|netcat)\s+[^\s]+\s+\d+\s*<'
     reason: "Netcat sending file to remote host"
     ask: true
+    exfil: true
 
   # Netcat with execute flag - reverse shell risk (HARD BLOCK)
   - pattern: '\b(nc|ncat|netcat)\s+.*-e'
     reason: "Netcat with execute flag - reverse shell risk"
+    exfil: true
 
   # Bash /dev/tcp or /dev/udp socket
   - pattern: '/dev/(tcp|udp)/'
     reason: "Bash TCP/UDP socket - potential exfiltration"
     ask: true
+    exfil: true
 
   # ---------------------------------------------------------------------------
   # ENCODING + NETWORK - Obfuscated exfiltration
@@ -670,21 +680,25 @@ bashToolPatterns:
   - pattern: '\bbase64\b.*\|\s*(curl|wget|nc|ncat)'
     reason: "Base64 encoding before network command - potential exfiltration"
     ask: true
+    exfil: true
 
   # curl with base64 in command substitution
   - pattern: '\bcurl\b.*\$\(.*base64'
     reason: "curl with base64 encoded data - potential exfiltration"
     ask: true
+    exfil: true
 
   # Compression before network
   - pattern: '\b(gzip|tar|zip)\b.*\|\s*(curl|wget|nc)'
     reason: "Compression before network command - potential exfiltration"
     ask: true
+    exfil: true
 
   # xxd/hexdump before network (hex encoding)
   - pattern: '\b(xxd|hexdump)\b.*\|\s*(curl|wget|nc)'
     reason: "Hex encoding before network command - potential exfiltration"
     ask: true
+    exfil: true
 
   # ---------------------------------------------------------------------------
   # CLOUD UPLOAD - Cloud storage exfiltration
@@ -693,21 +707,25 @@ bashToolPatterns:
   - pattern: '\brclone\s+(copy|sync|move)'
     reason: "Rclone cloud sync - verify destination is authorized"
     ask: true
+    exfil: true
 
   # AWS S3 upload
   - pattern: '\baws\s+s3\s+(cp|sync|mv)\s+[^\s]+\s+s3://'
     reason: "AWS S3 upload - verify destination bucket"
     ask: true
+    exfil: true
 
   # GCP Storage upload
   - pattern: '\bgsutil\s+(cp|rsync)\s+[^\s]+\s+gs://'
     reason: "GCP Storage upload - verify destination bucket"
     ask: true
+    exfil: true
 
   # Azure storage upload
   - pattern: '\b(az\s+storage\s+blob\s+upload|azcopy\s+copy)'
     reason: "Azure storage upload - verify destination"
     ask: true
+    exfil: true
 
   # ---------------------------------------------------------------------------
   # SENSITIVE DATA + NETWORK COMBINATIONS (Lethal Trifecta)
@@ -715,24 +733,29 @@ bashToolPatterns:
   # Environment variables piped to network (HARD BLOCK - high confidence attack)
   - pattern: '\b(env|printenv)\b.*\|\s*(curl|wget|nc|ncat)'
     reason: "Environment variables piped to network - credential exfiltration"
+    exfil: true
 
   # Sensitive files piped (ask - could be legitimate but risky)
   - pattern: '\bcat\s+.*\.(env|pem|key|crt|p12|pfx)\b.*\|'
     reason: "Sensitive file content piped - verify destination"
     ask: true
+    exfil: true
 
   # AWS credentials read then network command
   - pattern: '\bcat\s+.*\.aws/(credentials|config).*\|'
     reason: "AWS credentials piped - potential exfiltration"
+    exfil: true
 
   # SSH private key read then pipe
   - pattern: '\bcat\s+.*id_(rsa|ed25519|ecdsa).*\|'
     reason: "SSH private key piped - potential exfiltration"
+    exfil: true
 
   # Process substitution with sensitive files to network
   - pattern: '\b(curl|wget)\s+.*<\(.*\.(env|pem|key)'
     reason: "Process substitution with sensitive file to network"
     ask: true
+    exfil: true
 
   # ===========================================================================
   # WINDOWS PATTERNS

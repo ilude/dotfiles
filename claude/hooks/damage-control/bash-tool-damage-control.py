@@ -788,6 +788,202 @@ def load_config() -> Dict[str, Any]:
 
 
 # ============================================================================
+# ALLOWED HOSTS (Exfiltration Whitelist)
+# ============================================================================
+
+# Module-level cache for allowed hosts
+_allowed_hosts_cache: Optional[List[str]] = None
+
+
+def get_allowed_hosts_path() -> Path:
+    """Get path to allowed-hosts.yaml."""
+    script_dir = Path(__file__).parent
+    return script_dir / "allowed-hosts.yaml"
+
+
+def load_allowed_hosts() -> List[str]:
+    """Load allowed hosts from YAML config file.
+
+    Returns:
+        List of allowed host patterns (exact or wildcard).
+    """
+    global _allowed_hosts_cache
+
+    if _allowed_hosts_cache is not None:
+        return _allowed_hosts_cache
+
+    config_path = get_allowed_hosts_path()
+
+    if not config_path.exists():
+        _allowed_hosts_cache = []
+        return _allowed_hosts_cache
+
+    try:
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f) or {}
+            _allowed_hosts_cache = config.get("allowedHosts", [])
+    except Exception as e:
+        print(f"Warning: Failed to load allowed-hosts.yaml: {e}", file=sys.stderr)
+        _allowed_hosts_cache = []
+
+    return _allowed_hosts_cache
+
+
+def is_private_ip(host: str) -> bool:
+    """Check if host is a private/local IP address (RFC1918 + localhost).
+
+    These are allowed by default for exfil patterns because the threat model
+    is prompt injection sending data to attacker-controlled external servers,
+    not internal network hosts.
+
+    Args:
+        host: IP address or hostname to check.
+
+    Returns:
+        True if host is a private/local IP address.
+    """
+    # Localhost
+    if host in ("localhost", "127.0.0.1", "::1"):
+        return True
+    if host.startswith("127."):
+        return True
+
+    # Check for IP-like pattern
+    parts = host.split(".")
+    if len(parts) != 4:
+        return False
+
+    try:
+        octets = [int(p) for p in parts]
+    except ValueError:
+        return False
+
+    # Validate octets
+    if not all(0 <= o <= 255 for o in octets):
+        return False
+
+    # 10.0.0.0/8
+    if octets[0] == 10:
+        return True
+
+    # 172.16.0.0/12 (172.16.x.x - 172.31.x.x)
+    if octets[0] == 172 and 16 <= octets[1] <= 31:
+        return True
+
+    # 192.168.0.0/16
+    if octets[0] == 192 and octets[1] == 168:
+        return True
+
+    return False
+
+
+def host_matches_pattern(host: str, pattern: str) -> bool:
+    """Check if host matches an allowed pattern.
+
+    Supports:
+        - Exact match: "api.example.com"
+        - Wildcard prefix: "*.example.com" matches "api.example.com"
+        - Wildcard suffix: "192.168.*" matches "192.168.1.1"
+
+    Args:
+        host: Hostname or IP to check.
+        pattern: Pattern to match against.
+
+    Returns:
+        True if host matches the pattern.
+    """
+    host = host.lower()
+    pattern = pattern.lower()
+
+    # Exact match
+    if host == pattern:
+        return True
+
+    # Wildcard matching using fnmatch
+    if "*" in pattern:
+        return fnmatch.fnmatch(host, pattern)
+
+    return False
+
+
+def is_allowed_host(host: str) -> bool:
+    """Check if host is allowed (private IP or in allowedHosts list).
+
+    Args:
+        host: Hostname or IP address to check.
+
+    Returns:
+        True if host is allowed for network operations.
+    """
+    if not host:
+        return False
+
+    # Private IPs are always allowed
+    if is_private_ip(host):
+        return True
+
+    # Check against allowed hosts list
+    allowed_hosts = load_allowed_hosts()
+    for pattern in allowed_hosts:
+        if host_matches_pattern(host, pattern):
+            return True
+
+    return False
+
+
+def extract_host_from_command(command: str) -> Optional[str]:
+    """Extract destination host from network commands.
+
+    Handles various command formats:
+        - URLs: http://host:port/path, https://host/path
+        - nc/netcat: nc host port
+        - /dev/tcp: /dev/tcp/host/port
+
+    Args:
+        command: Command string to parse.
+
+    Returns:
+        Extracted hostname/IP or None if not found.
+    """
+    # URL pattern: http(s)://host(:port)(/path)
+    url_match = re.search(r'https?://([^/:]+)', command, re.IGNORECASE)
+    if url_match:
+        return url_match.group(1)
+
+    # nc/netcat: nc [-flags] host port
+    # Match: nc host port, nc -v host port, ncat host port, netcat host port
+    nc_match = re.search(r'\b(?:nc|ncat|netcat)\s+(?:-[^\s]+\s+)*([^\s-][^\s]*)\s+\d+', command)
+    if nc_match:
+        host = nc_match.group(1)
+        # Filter out flags that might have been captured
+        if not host.startswith("-"):
+            return host
+
+    # /dev/tcp/host/port or /dev/udp/host/port
+    dev_match = re.search(r'/dev/(?:tcp|udp)/([^/]+)/', command)
+    if dev_match:
+        return dev_match.group(1)
+
+    # dig/nslookup/host: dig @server domain or dig domain
+    dns_match = re.search(r'\b(?:dig|nslookup|host)\s+(?:@([^\s]+)|[^\s]+\.([^\s]+))', command)
+    if dns_match:
+        # Return the server if specified with @, otherwise the domain
+        return dns_match.group(1) or (dns_match.group(2) if dns_match.group(2) else None)
+
+    # ssh user@host or ssh host
+    ssh_match = re.search(r'\bssh\s+(?:[^\s]+@)?([^\s]+)', command)
+    if ssh_match:
+        host = ssh_match.group(1)
+        if "@" in host:
+            host = host.split("@")[1]
+        # Filter out flags
+        if not host.startswith("-"):
+            return host
+
+    return None
+
+
+# ============================================================================
 # CONTEXT DETECTION
 # ============================================================================
 
@@ -966,6 +1162,7 @@ def check_command(command: str, config: Dict[str, Any], context: Optional[str] =
             compiled_regex = item.get("compiled")
             reason = item.get("reason", "Blocked by pattern")
             should_ask = item.get("ask", False)
+            is_exfil = item.get("exfil", False)
 
             if not compiled_regex:
                 continue
@@ -973,6 +1170,13 @@ def check_command(command: str, config: Dict[str, Any], context: Optional[str] =
             try:
                 # Use pre-compiled regex (already has IGNORECASE flag)
                 if compiled_regex.search(unwrapped_cmd):
+                    # For exfil patterns, check if destination host is allowed
+                    if is_exfil:
+                        host = extract_host_from_command(unwrapped_cmd)
+                        if host and is_allowed_host(host):
+                            # Host is allowed, skip this pattern
+                            continue
+
                     pattern_id = f"yaml_pattern_{idx}"
                     if should_ask:
                         return False, True, reason, pattern_id, was_unwrapped, False  # Ask for confirmation
