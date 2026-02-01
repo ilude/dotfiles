@@ -1,64 +1,95 @@
-plugins/*
-!**/.keep
-.specstory/
+# =============================================================================
+# Git Configuration (machine-specific)
+# =============================================================================
 .gitconfig.old
 .gitconfig-personal-local
 .gitconfig-professional-local
+
+# =============================================================================
+# Shell Configuration (machine-specific)
+# =============================================================================
 .path-windows-local
 .zshrc.local
-.secrets
 *.zwc
-# Claude Code - sensitive and session data
+
+# =============================================================================
+# Secrets and Credentials
+# =============================================================================
+.secrets
+
+# =============================================================================
+# Claude Code
+# =============================================================================
+# Stale directory (renamed to claude/)
+.claude/
+
+# Sensitive data
 claude/.credentials.json
 claude/*.key
 claude/*.pem
 claude/*.env
 claude/*secret*
 claude/*password*
-claude/history.jsonl
+claude/.mcp.json
+
+# Session and state data
 claude/CHECKPOINT
 claude/.checkpoints/
 claude/.session/
-claude/plans/
-claude/file-history/
-claude/projects/
-claude/todos/
-claude/debug/
-claude/shell-snapshots/
-claude/.specstory/
-claude/ide/
-claude/statsig/
-claude/telemetry/
-claude/downloads/
-claude/session-env/
-claude/plugins/
+claude/.update.lock
+claude/history.jsonl
 claude/stats-cache.json
-claude/tmp/
-claude/.mcp.json
-claude/image-cache/
 
-last-context.txt
-*.7z
-# Stale directory (renamed to claude/)
-.claude/
-InstallationLog.txt
-hook-debug*.*
-backups/
-logs/
+# Working directories
 claude/cache/
+claude/debug/
+claude/downloads/
+claude/file-history/
+claude/ide/
+claude/image-cache/
+claude/paste-cache/
+claude/plans/
+claude/projects/
+claude/session-env/
+claude/shell-snapshots/
+claude/tasks/
+claude/tmp/
+claude/todos/
+
+# Logs (keep yt/.gitkeep)
 claude/logs/*
 !claude/logs/yt/.gitkeep
-claude/paste-cache/
-claude/.update.lock
 
+# Plugins and telemetry
+claude/plugins/
+claude/statsig/
+claude/telemetry/
+
+# Specstory
+claude/.specstory/
+
+# =============================================================================
 # Python
+# =============================================================================
 .venv/
 __pycache__/
 *.pyc
-
-# uv lock file (machine-specific)
 uv.lock
 
-# Claude Code temporary working directories
+# =============================================================================
+# Temporary and Build Files
+# =============================================================================
+backups/
+logs/
 tmpclaude-*
-claude/tasks/
+last-context.txt
+hook-debug*.*
+InstallationLog.txt
+*.7z
+
+# =============================================================================
+# Miscellaneous
+# =============================================================================
+plugins/*
+!**/.keep
+.specstory/
