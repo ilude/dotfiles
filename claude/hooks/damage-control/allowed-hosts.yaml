@@ -1,0 +1,20 @@
+# Allowed Hosts for Network Operations
+# =====================================
+# Hosts listed here bypass exfiltration warnings.
+# The threat model: prompt injection tricking Claude into sending data
+# to attacker-controlled servers. Internal hosts are not a realistic target.
+#
+# Supports:
+#   - Exact match: "api.example.com"
+#   - Wildcards: "*.ilude.com", "192.168.*"
+#
+# Private IP ranges (RFC1918) are allowed by default in the hook code,
+# so you don't need to list them here unless you want to be explicit.
+
+allowedHosts:
+  # Trusted domains
+  - "*.ilude.com"
+
+  # Add additional trusted external hosts below:
+  # - "api.mycompany.com"
+  # - "*.internal.mycompany.com"
