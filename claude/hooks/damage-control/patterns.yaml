@@ -346,6 +346,31 @@ bashToolPatterns:
     reason: aws eks delete-cluster
     ask: true
 
+  # AWS EKS operations that write to ~/.kube/ (in zeroAccessPaths)
+  - pattern: '\baws\s+eks\s+update-kubeconfig\b'
+    reason: aws eks update-kubeconfig (writes to ~/.kube/config)
+    ask: true
+
+  - pattern: '\baws\s+eks\s+create-cluster\b'
+    reason: aws eks create-cluster (creates infrastructure)
+    ask: true
+
+  - pattern: '\baws\s+eks\s+update-cluster-config\b'
+    reason: aws eks update-cluster-config (modifies cluster settings)
+    ask: true
+
+  - pattern: '\baws\s+eks\s+update-cluster-version\b'
+    reason: aws eks update-cluster-version (upgrades Kubernetes)
+    ask: true
+
+  - pattern: '\baws\s+eks\s+create-nodegroup\b'
+    reason: aws eks create-nodegroup (creates compute resources)
+    ask: true
+
+  - pattern: '\baws\s+eks\s+delete-nodegroup\b'
+    reason: aws eks delete-nodegroup
+    ask: true
+
   - pattern: '\baws\s+lambda\s+delete-function\b'
     reason: aws lambda delete-function
     ask: true
@@ -499,8 +524,48 @@ bashToolPatterns:
     reason: kubectl delete across all namespaces
     ask: true
 
+  - pattern: '\bkubectl\s+apply\b'
+    reason: kubectl apply (modifies cluster resources)
+    ask: true
+
+  - pattern: '\bkubectl\s+delete\s+(?!namespace|all)'
+    reason: kubectl delete (removes resources)
+    ask: true
+
+  - pattern: '\bkubectl\s+rollout\s+restart\b'
+    reason: kubectl rollout restart (restarts pods)
+    ask: true
+
+  - pattern: '\bkubectl\s+scale\b'
+    reason: kubectl scale (changes replica count)
+    ask: true
+
+  - pattern: '\bkubectl\s+exec\b'
+    reason: kubectl exec (shell access to pod)
+    ask: true
+
+  - pattern: '\bkubectl\s+port-forward\b'
+    reason: kubectl port-forward (network access)
+    ask: true
+
+  - pattern: '\bkubectl\s+create\s+secret\b'
+    reason: kubectl create secret (creates sensitive data)
+    ask: true
+
   - pattern: '\bhelm\s+uninstall\b'
     reason: helm uninstall (removes release)
+    ask: true
+
+  - pattern: '\bhelm\s+install\b'
+    reason: helm install (deploys to cluster)
+    ask: true
+
+  - pattern: '\bhelm\s+upgrade\b'
+    reason: helm upgrade (modifies deployment)
+    ask: true
+
+  - pattern: '\bhelm\s+rollback\b'
+    reason: helm rollback (reverts release)
     ask: true
 
   # ---------------------------------------------------------------------------
@@ -529,6 +594,26 @@ bashToolPatterns:
   # ---------------------------------------------------------------------------
   - pattern: '\bterraform\s+destroy\b'
     reason: terraform destroy (destroys all infrastructure)
+    ask: true
+
+  - pattern: '\bterraform\s+apply\b'
+    reason: terraform apply (modifies infrastructure)
+    ask: true
+
+  - pattern: '\bterraform\s+import\b'
+    reason: terraform import (imports existing resources)
+    ask: true
+
+  - pattern: '\bterraform\s+taint\b'
+    reason: terraform taint (marks resource for recreation)
+    ask: true
+
+  - pattern: '\bterraform\s+state\s+rm\b'
+    reason: terraform state rm (removes from state file)
+    ask: true
+
+  - pattern: '\bterraform\s+state\s+mv\b'
+    reason: terraform state mv (moves resources in state)
     ask: true
 
   - pattern: '\bpulumi\s+destroy\b'
@@ -989,6 +1074,24 @@ bashToolPatterns:
 
   - pattern: '\breg\s+delete\s+.*\/f'
     reason: reg delete with force flag
+
+# ---------------------------------------------------------------------------
+# ENVIRONMENT FILES - Contain secrets, require confirmation
+# ---------------------------------------------------------------------------
+# .env files typically contain API keys, database passwords, JWT secrets
+# Using ask: true to allow legitimate access with user approval
+
+  - pattern: '\.env\b'
+    reason: .env file may contain secrets (API keys, passwords)
+    ask: true
+
+  - pattern: '\.env\.[a-zA-Z]+'
+    reason: .env.* file may contain secrets (API keys, passwords)
+    ask: true
+
+  - pattern: '\w+\.env\b'
+    reason: *.env file may contain secrets (API keys, passwords)
+    ask: true
 
 # ---------------------------------------------------------------------------
 # ZERO ACCESS PATHS - No read, write, or any access allowed
