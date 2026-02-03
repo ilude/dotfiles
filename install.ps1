@@ -372,6 +372,129 @@ function Ensure-WinGetLinksInPath {
     return $false
 }
 
+function Get-WindowsTerminalSettingsPaths {
+    $paths = @()
+
+    # Store/MSIX packaged Windows Terminal
+    $packagesRoot = Join-Path $env:LOCALAPPDATA "Packages"
+    if (Test-Path $packagesRoot) {
+        $candidates = Get-ChildItem -Path $packagesRoot -Directory -Filter "Microsoft.WindowsTerminal*" -ErrorAction SilentlyContinue
+        foreach ($dir in $candidates) {
+            $settingsPath = Join-Path $dir.FullName "LocalState\settings.json"
+            if (Test-Path $settingsPath) {
+                $paths += $settingsPath
+            }
+        }
+    }
+
+    # Unpackaged Windows Terminal (rare, but supported)
+    $unpackaged = Join-Path $env:LOCALAPPDATA "Microsoft\Windows Terminal\settings.json"
+    if (Test-Path $unpackaged) {
+        $paths += $unpackaged
+    }
+
+    return $paths | Select-Object -Unique
+}
+
+function Ensure-WindowsTerminalShiftEnter {
+    # Configure Windows Terminal to send an escape sequence for Shift+Enter
+    # so OpenCode can reliably receive it.
+    $settingsPaths = Get-WindowsTerminalSettingsPaths
+    if (-not $settingsPaths -or $settingsPaths.Count -eq 0) {
+        Write-Host "  Windows Terminal settings not found, skipping" -ForegroundColor DarkGray
+        return $false
+    }
+
+    $actionId = "User.sendInput.ShiftEnterCustom"
+    $escapeSequence = [string]([char]27) + "[13;2u"
+    $updatedAny = $false
+
+    foreach ($settingsPath in $settingsPaths) {
+        try {
+            $raw = Get-Content $settingsPath -Raw -ErrorAction Stop
+            $data = $raw | ConvertFrom-Json -ErrorAction Stop
+        } catch {
+            Write-Host "  Windows Terminal settings: failed to read $settingsPath" -ForegroundColor Yellow
+            continue
+        }
+
+        $changed = $false
+
+        # Ensure actions is an array
+        $actions = @()
+        if ($null -ne $data.actions) {
+            $actions = @($data.actions)
+        }
+
+        $existingAction = $actions | Where-Object { $_ -and $_.id -eq $actionId } | Select-Object -First 1
+        if ($existingAction) {
+            if (-not $existingAction.command) {
+                $existingAction | Add-Member -NotePropertyName command -NotePropertyValue ([pscustomobject]@{}) -Force
+            }
+            if ($existingAction.command.action -ne "sendInput" -or $existingAction.command.input -ne $escapeSequence) {
+                $existingAction.command.action = "sendInput"
+                $existingAction.command.input = $escapeSequence
+                $changed = $true
+            }
+        } else {
+            $actions += [ordered]@{
+                command = [ordered]@{
+                    action = "sendInput"
+                    input  = $escapeSequence
+                }
+                id      = $actionId
+            }
+            $changed = $true
+        }
+        $data.actions = $actions
+
+        # Ensure keybindings array contains shift+enter
+        $keybindings = @()
+        if ($null -ne $data.keybindings) {
+            $keybindings = @($data.keybindings)
+        }
+
+        # Remove any other shift+enter mappings to avoid ambiguity
+        $beforeCount = $keybindings.Count
+        $keybindings = @($keybindings | Where-Object { $_ -and ($_.keys -ne "shift+enter" -or $_.id -eq $actionId) })
+        if ($keybindings.Count -ne $beforeCount) {
+            $changed = $true
+        }
+
+        $existingKeybind = $keybindings | Where-Object { $_ -and $_.id -eq $actionId } | Select-Object -First 1
+        if ($existingKeybind) {
+            if ($existingKeybind.keys -ne "shift+enter") {
+                $existingKeybind.keys = "shift+enter"
+                $changed = $true
+            }
+        } else {
+            $keybindings += [ordered]@{
+                id   = $actionId
+                keys = "shift+enter"
+            }
+            $changed = $true
+        }
+        $data.keybindings = $keybindings
+
+        if (-not $changed) {
+            Write-Host "  Windows Terminal Shift+Enter: already configured ($settingsPath)" -ForegroundColor DarkGray
+            continue
+        }
+
+        try {
+            $json = $data | ConvertTo-Json -Depth 100
+            $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+            [System.IO.File]::WriteAllText($settingsPath, ($json + "`n"), $utf8NoBom)
+            Write-Host "  Windows Terminal Shift+Enter: configured ($settingsPath)" -ForegroundColor Green
+            $updatedAny = $true
+        } catch {
+            Write-Host "  Windows Terminal settings: failed to write $settingsPath" -ForegroundColor Yellow
+        }
+    }
+
+    return $updatedAny
+}
+
 function New-WinGetLink {
     # Create symlink in WinGet Links for packages that don't auto-create them
     param(
@@ -1008,6 +1131,60 @@ try {
     }
 
     # ========================================================================
+    # VS Code Settings Symlinks (admin required for symlinks without Developer Mode)
+    # ========================================================================
+    Write-Host "`nConfiguring VS Code settings symlinks..." -ForegroundColor Cyan
+    $vscodeUserDir = "$env:APPDATA\Code\User"
+    $vscodeSource = Join-Path $BASEDIR "vscode"
+
+    if (Test-Path $vscodeSource) {
+        if (-not (Test-Path $vscodeUserDir)) {
+            New-Item -ItemType Directory -Path $vscodeUserDir -Force | Out-Null
+        }
+
+        $vscodeFiles = @("settings.json", "keybindings.json")
+        foreach ($file in $vscodeFiles) {
+            $srcPath = Join-Path $vscodeSource $file
+            $dstPath = Join-Path $vscodeUserDir $file
+
+            if (-not (Test-Path $srcPath)) {
+                Write-Host "  ${file}: source not found" -ForegroundColor DarkGray
+                continue
+            }
+
+            # Check if already a symlink pointing to correct target
+            if (Test-Path $dstPath) {
+                $item = Get-Item $dstPath -Force
+                if ($item.LinkType -eq "SymbolicLink") {
+                    $target = $item.Target
+                    if ($target -eq $srcPath) {
+                        Write-Host "  ${file}: already linked" -ForegroundColor DarkGray
+                        continue
+                    }
+                }
+                # Remove existing file/symlink
+                Remove-Item $dstPath -Force
+            }
+
+            try {
+                New-Item -ItemType SymbolicLink -Path $dstPath -Target $srcPath -Force | Out-Null
+                Write-Host "  ${file}: linked" -ForegroundColor Green
+            } catch {
+                Write-Host "  ${file}: symlink failed, copying instead" -ForegroundColor Yellow
+                Copy-Item $srcPath $dstPath -Force
+            }
+        }
+    } else {
+        Write-Host "  vscode/ directory not found, skipping" -ForegroundColor DarkGray
+    }
+
+    # ========================================================================
+    # Windows Terminal - OpenCode Shift+Enter
+    # ========================================================================
+    Write-Host "`nConfiguring Windows Terminal (Shift+Enter)..." -ForegroundColor Cyan
+    $null = Ensure-WindowsTerminalShiftEnter
+
+    # ========================================================================
     # MSYS2 nsswitch.conf Fix (Always runs - system config, not a package)
     # ========================================================================
     # This fix ensures MSYS2's zsh resolves HOME to /c/Users/username instead of
@@ -1076,6 +1253,8 @@ try {
 } catch {
     Write-Host "`nERROR: $_" -ForegroundColor Red
     Write-Host $_.ScriptStackTrace -ForegroundColor DarkRed
+    Write-Host "`nPress Enter to exit..." -ForegroundColor Yellow
+    Read-Host | Out-Null
 }
 
 # ============================================================================
@@ -1086,6 +1265,6 @@ Stop-Transcript | Out-Null
 
 Write-Host "`nInstallation log saved to:" -ForegroundColor Cyan
 Write-Host "  $LogFile" -ForegroundColor White
-Write-Host "`nWindow will close automatically in 5 seconds..." -ForegroundColor DarkGray
+Write-Host "`nPress Enter to close..." -ForegroundColor DarkGray
 
-Start-Sleep -Seconds 5
+Read-Host | Out-Null
