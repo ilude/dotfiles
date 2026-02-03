@@ -4,6 +4,10 @@
 # Modules auto-install on first run. CLI tools via winget:
 #   winget install junegunn.fzf ajeetdsouza.zoxide
 
+# Disable mouse tracking to prevent escape sequence leakage in TUI apps (Claude Code, etc.)
+# See: https://github.com/anthropics/claude-code/issues/10375
+[Console]::Write("`e[?1003l`e[?1006l")
+
 #region Module Auto-Installation
 
 $script:RequiredModules = @(
