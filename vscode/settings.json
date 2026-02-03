@@ -1,0 +1,339 @@
+{
+  "[ansible]": {
+    "editor.autoIndent": "advanced",
+    "editor.detectIndentation": true,
+    "editor.insertSpaces": true,
+    "editor.quickSuggestions": {
+      "comments": true,
+      "other": true,
+      "strings": true
+    }
+  },
+  "[bash]": {
+    "editor.insertSpaces": false,
+    "editor.tabSize": 2
+  },
+  "[css]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[html]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[makefile]": {
+    "editor.tabSize": 2,
+    "editor.insertSpaces": false,
+    "editor.detectIndentation": false
+  },
+  "[python]": {
+    "editor.tabSize": 4,
+    "editor.detectIndentation": false,
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "ms-python.black-formatter"
+  },
+  "[ruby]": {
+    "editor.formatOnSave": true,
+    "editor.formatOnType": true,
+    "editor.insertSpaces": true,
+    "editor.rulers": [
+      120
+    ],
+    "editor.semanticHighlighting.enabled": true,
+    "files.insertFinalNewline": true,
+    "files.trimFinalNewlines": true,
+    "files.trimTrailingWhitespace": true
+  },
+  "[xml]": {
+    "editor.defaultFormatter": "fabianlauer.vs-code-xml-format"
+  },
+  "[yaml]": {
+    "editor.defaultFormatter": "redhat.vscode-yaml"
+  },
+  "autopep8.args": [
+    "--indent-size=2",
+    "--max-line-length=140",
+    "--ignore=E121"
+  ],
+  "ansible.ansible.useFullyQualifiedCollectionNames": false,
+  "codeium.enableConfig": {
+    "*": true,
+    "ansible": true
+  },
+  "patternlinks.rules": [
+    {
+      "linkPattern": "((?:vivaldi|brave|chrome):\/\/.*)",
+      "linkTarget": "$0"
+    }
+  ],
+  "cSpell.userWords": [
+    "accesslog",
+    "Agentic",
+    "aiohttp",
+    "appuser",
+    "asyncio",
+    "autoheal",
+    "bradlc",
+    "browsermcp",
+    "BUILDKIT",
+    "caserver",
+    "centurylinklabs",
+    "certificatesresolvers",
+    "conffile",
+    "coredns",
+    "corefile",
+    "coreutils",
+    "cssmin",
+    "Cupertino",
+    "dateutil",
+    "defrag",
+    "DKMS",
+    "dnschallenge",
+    "dnslib",
+    "dnsutils",
+    "docstrings",
+    "dotenv",
+    "dpkg",
+    "endassets",
+    "entrypoints",
+    "fbclid",
+    "gclid",
+    "Gunicorn",
+    "hasattr",
+    "healthcheck",
+    "HOSTIP",
+    "hugepage",
+    "hugepages",
+    "iframe",
+    "ilude",
+    "insecureskipverify",
+    "isort",
+    "jobs",
+    "letsencrypt",
+    "Liskov",
+    "lxml",
+    "mktime",
+    "modelcontextprotocol",
+    "MSYS",
+    "mypy",
+    "NODENAME",
+    "NOPASSWD",
+    "noprofile",
+    "ollama",
+    "oneshot",
+    "openfray",
+    "parameterlist",
+    "PGID",
+    "photoprism",
+    "prestart",
+    "PUID",
+    "Pydantic",
+    "pyproject",
+    "pytest",
+    "pyyaml",
+    "redirections",
+    "Schyler",
+    "Selfhosted",
+    "sequentialthinking",
+    "serverstransport",
+    "setuptools",
+    "stripprefix",
+    "surrealdb",
+    "swimmies",
+    "Tfidf",
+    "toolsai",
+    "traefik",
+    "unidecode",
+    "usermod",
+    "Vectorizer",
+    "WAITTIME",
+    "websecure",
+    "yarnpkg",
+    "zoneinfo"
+  ],
+  "diffEditor.renderSideBySide": false,
+  "editor.fontSize": 16,
+  "editor.indentSize": "tabSize",
+  "editor.renderControlCharacters": true,
+  "editor.tabCompletion": "on",
+  "explorer.compactFolders": false,
+  "explorer.openEditors.visible": 0,
+  "files.associations": {
+    "Dockerfile.*": "dockerfile",
+    ".secrets": "nix"
+  },
+  "files.eol": "\n",
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.bundle": true,
+    "**/.cache": true,
+    "**/.codeium": true,
+    "**/.coverage*": true,
+    "**/.dotnet": true,
+    "**/.htmlcov": true,
+    "**/.local": true,
+    "**/.pytest_cache": true,
+    "**/.sudo_as_admin_successful": true,
+    "**/.vagrant": true,
+    "**/.venv": true,
+    "**/.vscode-server": true,
+    "**/.webassets-cache": true,
+    "**/.wget-hsts": true,
+    "**/.zcompdump": true,
+    "**/.zsh_history": true,
+    "**/*.egg-info": true,
+    "**/*.pyc": {
+      "when": "$(basename).py"
+    }
+  },
+  "files.readonlyFromPermissions": true,
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/node_modules/*/**": true
+  },
+  "git.confirmSync": false,
+  "git.enableSmartCommit": true,
+  "git.ignoreMissingGitWarning": true,
+  "git.openRepositoryInParentFolders": "never",
+  "gitlens.advanced.messages": {
+    "suppressLineUncommittedWarning": true
+  },
+  "gitlens.codeLens.scopes": [
+    "document"
+  ],
+  "lldb.suppressUpdateNotifications": true,
+  "notebook.output.wordWrap": true,
+  "powershell.promptToUpdatePowerShell": false,
+  "redhat.telemetry.enabled": false,
+  "remote.autoForwardPortsSource": "hybrid",
+  "security.promptForRemoteFileProtocolHandling": false,
+  "security.workspace.trust.untrustedFiles": "open",
+  "terminal.integrated.allowChords": false,
+  "terminal.integrated.defaultProfile.linux": "zsh",
+  "terminal.integrated.defaultProfile.windows": "PowerShell",
+  "terminal.integrated.enableMultiLinePasteWarning": "never",
+  "terminal.integrated.fontSize": 16,
+  "terminal.integrated.persistentSessionReviveProcess": "never",
+  "terminal.integrated.profiles.linux": {
+    "bash": {
+      "args": [
+        "-l"
+      ],
+      "icon": "terminal-bash",
+      "path": "bash"
+    },
+    "pwsh": {
+      "args": [
+        "-nologo"
+      ],
+      "icon": "terminal-powershell",
+      "path": "pwsh"
+    },
+    "tmux": {
+      "args": [],
+      "icon": "terminal-tmux",
+      "path": "tmux"
+    },
+    "zsh": {
+      "args": [
+        "-l"
+      ],
+      "path": "zsh"
+    }
+  },
+  "todo-tree.general.tags": [
+    "BUG",
+    "HACK",
+    "FIXME",
+    "TODO",
+    "XXX",
+    "[ ]",
+    "[x]"
+  ],
+  "todo-tree.highlights.enabled": true,
+  "todo-tree.regex.regex": "(//|#|<!--|;|/\\*|^|^\\s*(-|\\d+.))\\s*($TAGS)",
+  "todo-tree.tree.showScanModeButton": false,
+  "vsicons.dontShowNewVersionMessage": true,
+  "workbench.iconTheme": "vscode-icons",
+  "workbench.startupEditor": "none",
+  "workbench.tree.indent": 4,
+  "notebook.output.scrolling": true,
+  "notebook.output.textLineLimit": 100,
+  "jupyter.askForKernelRestart": false,
+  "settingsSync.ignoredExtensions": [],
+  "terminal.integrated.copyOnSelection": true,
+  "notebook.lineNumbers": "on",
+  "workbench.editor.enablePreview": false,
+  "editor.minimap.enabled": false,
+  "explorer.confirmDragAndDrop": false,
+  "window.title": "${remoteName}${activeFolderMedium}${separator}${rootNameShort}${separator}${activeRepositoryName}",
+  "window.titleSeparator": " : ",
+  "diffEditor.ignoreTrimWhitespace": false,
+  "[nix]": {
+    "editor.defaultFormatter": "jnoortheen.nix-ide"
+  },
+  "makefile.configureOnOpen": false,
+  "docker.extension.enableComposeLanguageServer": false,
+  "docker.extension.dockerEngineAvailabilityPrompt": false,
+  "dart.flutterSdkPath": "C:\\Projects\\working\\flutter-sdk\\flutter",
+  "extensions.ignoreRecommendations": true,
+  "github.copilot.nextEditSuggestions.enabled": true,
+  "specstory.helpUsImprove": false,
+  "specstory.coordinatedUniversalTimezone": false,
+  "zenMode.restore": false,
+  "window.restoreWindows": "none",
+  "window.newWindowDimensions": "inherit",
+  "terminal.integrated.persistentSessionScrollback": 1500,
+  "terminal.integrated.scrollback": 2500,
+  "python.analysis.typeCheckingMode": "standard",
+  "security.allowedUNCHosts": [
+    "pve.ilude.com"
+  ],
+  "workbench.settings.applyToAllProfiles": [
+    "chat.tools.terminal.autoApprove"
+  ],
+  "editor.codeActionsOnSave": {},
+  "chat.agent.maxRequests": 100,
+  "chat.mcp.autostart": "newAndOutdated",
+  "chat.tools.terminal.autoApprove": {
+    "ls": true,
+    "uv sync": true,
+    "/^uv run (-m|behave|black|isort|pytest|python)[\\s\\S]*/m": true,
+    "/^make (test|lint)$/": true,
+    "/^git (status|show\\b.*).*/": true,
+    "/^docker (build|run|compose|rm|logs).*/": true,
+    "/^make (format|lint|run|test|)$/": true,
+    "behave": true,
+    "sed -n": true,
+    "sleep": true
+  },
+  "terminal.integrated.automationProfile.windows": {},
+  "notebook.cellToolbarLocation": {
+    "default": "right",
+    "jupyter-notebook": "right"
+  },
+  "chat.mcp.serverSampling": {
+    "Global in Code: sequentialthinking": {
+      "allowedModels": [
+        "copilot/gpt-4.1",
+        "copilot/claude-opus-4",
+        "copilot/claude-opus-41",
+        "copilot/claude-sonnet-4",
+        "copilot/gemini-2.0-flash-001",
+        "copilot/gemini-2.5-pro",
+        "copilot/gpt-4o-mini",
+        "copilot/gpt-5",
+        "copilot/gpt-5-mini",
+        "copilot/o3",
+        "copilot/o4-mini"
+      ]
+    }
+  },
+  "containers.containerClient": "com.microsoft.visualstudio.containers.docker",
+  "containers.orchestratorClient": "com.microsoft.visualstudio.orchestrators.dockercompose",
+  "remote.SSH.remotePlatform": {
+    "10.0.65.36": "linux",
+    "rearden.ilude.com": "linux",
+    "patriot-onramp.ilude.com": "linux"
+  },
+  "specstory.cloudSync.enabled": "never"
+}
