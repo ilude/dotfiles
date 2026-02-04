@@ -1090,7 +1090,7 @@ bashToolPatterns:
     ask: true
 
   - pattern: '\w+\.env\b'
-    reason: *.env file may contain secrets (API keys, passwords)
+    reason: "*.env file may contain secrets (API keys, passwords)"
     ask: true
 
 # ---------------------------------------------------------------------------
