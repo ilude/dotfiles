@@ -228,6 +228,27 @@ This section defines the decision tree for handling user requests. Based on what
 | 0    | Ask (JSON output triggers dialog)    |
 | 2    | Block operation                      |
 
+### patterns.yaml Syntax
+
+**YAML interprets certain characters as special syntax.** Always quote values containing:
+
+| Character | YAML Meaning | Example Fix |
+|-----------|--------------|-------------|
+| `*` at start | Alias reference | `reason: "*.env files..."` |
+| `&` at start | Anchor definition | `reason: "&& chained..."` |
+| `:` followed by space | Key-value separator | `reason: "Note: this..."` |
+| `#` | Comment | `pattern: "foo#bar"` |
+| `@`, `` ` `` | Reserved | Quote if at start |
+
+**Common mistake:**
+```yaml
+# WRONG - YAML interprets * as alias
+reason: *.env file may contain secrets
+
+# RIGHT - quoted string
+reason: "*.env file may contain secrets"
+```
+
 ---
 
 ## Testing
