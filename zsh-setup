@@ -6,6 +6,11 @@ is_windows() {
   [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ -n "$WINDIR" ]]
 }
 
+# Detect macOS
+is_macos() {
+  [[ "$(uname -s)" == "Darwin" ]]
+}
+
 # Windows-specific setup
 setup_windows() {
   echo "Windows detected (Git Bash/MSYS2)"
@@ -137,9 +142,68 @@ install_packages() {
   $SUDO chsh -s "$(which zsh)" "$(whoami)"
 }
 
+# macOS-specific setup
+setup_macos() {
+    echo "macOS detected"
+    echo ""
+
+    # Check for Homebrew
+    if ! command -v brew &>/dev/null; then
+        echo "Homebrew not found. Install it first:"
+        echo '  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+        echo ""
+        exit 1
+    fi
+
+    # macOS packages (zsh is already default shell since Catalina)
+    local packages=(
+        coreutils    # GNU coreutils (gls, gdate, etc.)
+        fzf          # Fuzzy finder
+        ripgrep      # Fast grep (rg)
+        fd           # Fast find
+        bat          # Better cat
+        eza          # Modern ls
+        jq           # JSON processor
+        zoxide       # Smart cd
+        git-delta    # Better git diff
+    )
+
+    echo "Installing packages via Homebrew..."
+    for pkg in "${packages[@]}"; do
+        if brew list "$pkg" &>/dev/null; then
+            echo "  $pkg: already installed"
+        else
+            echo "  Installing: $pkg"
+            brew install "$pkg"
+        fi
+    done
+
+    # Check if zsh is the default shell (it should be on macOS 10.15+)
+    local current_shell
+    current_shell=$(dscl . -read ~/ UserShell | awk '{print $2}')
+    if [[ "$current_shell" != *"zsh"* ]]; then
+        echo "Setting zsh as default shell..."
+        chsh -s "$(which zsh)"
+    else
+        echo "zsh: already default shell"
+    fi
+
+    # Install zsh plugins
+    source ~/.dotfiles/zsh-plugins
+
+    echo ""
+    echo "macOS setup complete!"
+    echo "Restart your terminal or run: source ~/.zshrc"
+}
+
 # Platform detection and routing
 if is_windows; then
     setup_windows
+    exit 0
+fi
+
+if is_macos; then
+    setup_macos
     exit 0
 fi
 
