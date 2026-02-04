@@ -1,6 +1,5 @@
 {
   "includeCoAuthoredBy": false,
-  "companyAnnouncements": [],
   "permissions": {
     "allow": [
       "Bash(bash:*)",
@@ -60,7 +59,7 @@
       "Bash(git reset --hard:*)"
     ]
   },
-  "model": "opus",
+  "model": "haiku",
   "hooks": {
     "SessionStart": [
       {
@@ -124,6 +123,17 @@
           }
         ]
       }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -l -c 'python $HOME/.claude/hooks/notify/notification-sound.py'",
+            "timeout": 2
+          }
+        ]
+      }
     ]
   },
   "statusLine": {
@@ -138,5 +148,6 @@
     "serverless-eda@aws-skills": true,
     "aws-agentic-ai@aws-skills": true
   },
-  "alwaysThinkingEnabled": true
+  "alwaysThinkingEnabled": true,
+  "companyAnnouncements": []
 }
