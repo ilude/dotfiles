@@ -1,5 +1,6 @@
 {
   "includeCoAuthoredBy": false,
+  "companyAnnouncements": [],
   "permissions": {
     "allow": [
       "Bash(bash:*)",
