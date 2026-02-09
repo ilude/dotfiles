@@ -33,6 +33,8 @@ claude/*password*
 claude/.mcp.json
 
 # Session and state data
+claude/provider-config.json
+claude/toggle/
 claude/CHECKPOINT
 claude/.checkpoints/
 claude/.session/
