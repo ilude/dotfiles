@@ -5,31 +5,46 @@
 DOTFILES_HOME="${ZDOTDIR:-$HOME}"
 
 # Function to download plugins from GitHub
+# Usage: plugin "user/repo" ["tag"]
 function plugin() {
   local repo=$1
-  local plugin_dir="${DOTFILES_HOME}/.dotfiles/plugins/${repo##*/}"
+  local tag=${2:-}
+  local name="${repo##*/}"
+  local url="https://github.com/$repo.git"
+  local dest="${DOTFILES_HOME}/.dotfiles/plugins/$name"
 
-  if [ ! -d "$plugin_dir" ]; then
-    echo "Installing plugin: $repo"
-    git clone --depth 1 "https://github.com/$repo.git" "$plugin_dir" 2>/dev/null
-    # chmod only on fresh clone, not every startup (slow on Windows)
-    chmod g-w "$plugin_dir" 2>/dev/null
+  if [ ! -d "$dest" ]; then
+    echo "Installing plugin: $repo${tag:+ @ $tag}"
+    local tmp_dir
+    tmp_dir=$(mktemp -d) || { echo "Failed to create temp dir"; return 1; }
+    local clone_args=(--depth 1)
+    [[ -n "$tag" ]] && clone_args+=(--branch "$tag")
+    if timeout 30 git clone "${clone_args[@]}" "$url" "$tmp_dir/$name" 2>&1; then
+        mv "$tmp_dir/$name" "$dest"
+        # chmod only on fresh clone, not every startup (slow on Windows)
+        chmod g-w "$dest" 2>/dev/null
+    else
+        echo "Failed to clone $name. Try manually: git clone $url $dest"
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+    rm -rf "$tmp_dir"
   fi
 
   # only run if we are being sourced from zsh
   if [ -n "$ZSH_VERSION" ]; then
-    source "$plugin_dir/${repo##*/}.plugin.zsh"
+    source "$dest/$name.plugin.zsh"
   fi
 }
 
 # Create the plugins directory if it doesn't exist
 mkdir -p "${DOTFILES_HOME}/.dotfiles/plugins"
 
-plugin "zsh-users/zsh-autosuggestions"
-plugin "zsh-users/zsh-completions"
+plugin "zsh-users/zsh-autosuggestions" "v0.7.1"
+plugin "zsh-users/zsh-completions" "0.35.0"
 # Syntax highlighting causes cursor flickering on Windows (ConPTY bug)
 # Set ZSH_DISABLE_SYNTAX_HIGHLIGHTING=1 in rc.d/02-plugins.zsh to skip
-[[ -z "$ZSH_DISABLE_SYNTAX_HIGHLIGHTING" ]] && plugin "zsh-users/zsh-syntax-highlighting"
+[[ -z "$ZSH_DISABLE_SYNTAX_HIGHLIGHTING" ]] && plugin "zsh-users/zsh-syntax-highlighting" "0.8.0"
 plugin "joshskidmore/zsh-fzf-history-search"
 # alias-tips disabled - requires python3, causes issues on Windows
 # plugin "djui/alias-tips"

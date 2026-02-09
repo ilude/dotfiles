@@ -11,8 +11,8 @@ alias nix-code='code /etc/nixos/configuration.nix'
 
 # Environment and shell
 alias es='env | sort'
-alias sz='source ~/.zshrc'
-alias ez='$EDITOR ~/.zshrc'
+alias sz='source ${ZDOTDIR:-$HOME}/.zshrc'
+alias ez='$EDITOR ${ZDOTDIR:-$HOME}/.zshrc'
 alias history="history 1"
 
 # Docker

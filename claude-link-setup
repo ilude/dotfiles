@@ -14,7 +14,7 @@ DOTFILES_DIR="${HOME}/.dotfiles"
 CLAUDE_SOURCE="${DOTFILES_DIR}/claude"
 CLAUDE_TARGET="${HOME}/.claude"
 
-# Detect Windows
+# Self-contained platform detection (intentionally not sourcing rc.d/00-helpers.zsh)
 is_windows() {
     [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ -n "$WINDIR" ]]
 }
@@ -55,20 +55,21 @@ create_backup() {
             local win_source win_archive
             win_source=$(cygpath -w "$source")
             win_archive=$(cygpath -w "$archive")
-            7z a -mx=5 "$win_archive" "$win_source" >/dev/null 2>&1
+            if 7z a -mx=5 "$win_archive" "$win_source" >/dev/null 2>&1; then
+                echo "  Backup created: ~/${backup_name}.7z"
+                return 0
+            fi
         else
-            7z a -mx=5 "$archive" "$source" >/dev/null 2>&1
-        fi
-        if [[ $? -eq 0 ]]; then
-            echo "  Backup created: ~/${backup_name}.7z"
-            return 0
+            if 7z a -mx=5 "$archive" "$source" >/dev/null 2>&1; then
+                echo "  Backup created: ~/${backup_name}.7z"
+                return 0
+            fi
         fi
     fi
 
     # Fallback to tar.gz
     local archive="${HOME}/${backup_name}.tar.gz"
-    tar -czf "$archive" -C "$(dirname "$source")" "$(basename "$source")" 2>/dev/null
-    if [[ $? -eq 0 ]]; then
+    if tar -czf "$archive" -C "$(dirname "$source")" "$(basename "$source")" 2>/dev/null; then
         echo "  Backup created: ~/${backup_name}.tar.gz"
         return 0
     fi
@@ -208,5 +209,8 @@ else
     ln -s "$CLAUDE_SOURCE" "$CLAUDE_TARGET"
     echo "  ~/.claude: Symlink created -> ~/.dotfiles/claude"
 fi
+
+# Lock down sensitive credential files
+[[ -f "$CLAUDE_TARGET/.credentials.json" ]] && chmod 600 "$CLAUDE_TARGET/.credentials.json"
 
 echo "  Done"

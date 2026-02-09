@@ -5,6 +5,7 @@
 # Writes to ~/.gitconfig-*-local files (gitignored, machine-specific)
 # Priority for personal: id_ed25519-personal > id_ed25519
 # Priority for work: id_ed25519-work > id_ed25519-eagletg
+# Note: generic id_ed25519 is used for personal ONLY (never work)
 
 SSH_DIR="${HOME}/.ssh"
 
@@ -20,6 +21,8 @@ find_personal_key() {
 }
 
 # Find the best available work SSH key (returns portable path with ~)
+# Note: generic id_ed25519 is NOT a fallback here - avoids accidentally
+# pushing to work repos with a personal key
 find_work_key() {
     for key in "id_ed25519-work" "id_ed25519-eagletg"; do
         if [[ -f "${SSH_DIR}/${key}" ]]; then
@@ -70,6 +73,11 @@ if [[ -n "$personal_key" ]]; then
     echo "  Personal: $personal_key"
 else
     echo "  Personal: No key found (checked id_ed25519-personal, id_ed25519)"
+fi
+
+# Warn if only generic key exists (no dedicated personal or work keys)
+if [[ "$personal_key" == "~/.ssh/id_ed25519" ]]; then
+    echo "  Warning: Only generic id_ed25519 found. Using for personal identity only. Create id_ed25519-work for work identity."
 fi
 
 # Configure work key

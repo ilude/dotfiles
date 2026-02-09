@@ -29,7 +29,7 @@ if (( ${+commands[fzf]} )); then
     for fzf_comp in \
         /usr/share/fzf/completion.zsh \
         /usr/share/fzf/key-bindings.zsh \
-        ~/.fzf.zsh \
+        "${ZDOTDIR:-$HOME}/.fzf.zsh" \
         /usr/local/opt/fzf/shell/completion.zsh \
         /usr/local/opt/fzf/shell/key-bindings.zsh; do
         [[ -f "$fzf_comp" ]] && source "$fzf_comp"

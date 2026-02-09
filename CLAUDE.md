@@ -60,7 +60,7 @@ make test    # Run bats tests
 | `zsh/rc.d/` | Interactive modules (completions, history, prompt, aliases) |
 | `zsh-plugins` | On-demand plugin downloader from GitHub |
 | `.zshrc-msys2-bootstrap` | MSYS2 HOME redirect to Windows home |
-| `.gitconfig` | Unified Git config with identity includes |
+| `config/git/config` | Unified Git config with identity includes |
 | `.gitconfig-personal` / `.gitconfig-professional` | Identity-specific configs |
 | `git-ssh-setup` | SSH key detection, writes `.gitconfig-*-local` files |
 | `powershell/profile.ps1` | PowerShell profile |

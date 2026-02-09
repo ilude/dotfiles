@@ -9,7 +9,19 @@ Cross-platform dotfiles for Linux, Windows (PowerShell, Git Bash/MSYS2), and WSL
 - **Dotbot symlinks** - Declarative symlink management, idempotent installation
 - **Claude Code integration** - Skills, hooks, and damage control security system
 
+## Prerequisites
+
+**Linux / Git Bash / WSL:**
+- git
+- curl
+- python3 (for running tests)
+
+**Windows:**
+- [winget](https://learn.microsoft.com/en-us/windows/package-manager/winget/) (included with Windows 11; [install on Windows 10](https://github.com/microsoft/winget-cli))
+
 ## Installation
+
+> **Note:** Dotbot uses `force: true` for symlinks, which will overwrite existing files at target locations (including `~/.claude/`). Back up any existing configuration before running the installer for the first time.
 
 ### Linux / Git Bash / MSYS2
 
@@ -95,7 +107,8 @@ Automatic identity switching based on directory or remote URL:
 | `zsh/env.d/` | Environment modules (WINHOME, locale, PATH) |
 | `zsh/rc.d/` | Interactive modules (completions, plugins, prompt, aliases) |
 | `powershell/profile.ps1` | PowerShell profile |
-| `config/` | App configs (git, oh-my-posh) |
+| `config/git/` | Git config and global ignore (XDG-compliant) |
+| `config/ohmyposh/` | Oh My Posh prompt theme |
 | `claude/` | Claude Code skills, hooks, damage control |
 | `copilot/` | GitHub Copilot instructions |
 | `test/` | Bats test files |

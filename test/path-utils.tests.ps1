@@ -102,4 +102,57 @@ Describe "Get-GitBash" {
             $result | Should Match "bash"
         }
     }
+
+    It "does not return WSL bash from WindowsApps" {
+        $result = Get-GitBash
+        if ($result) {
+            $result | Should Not Match "WindowsApps"
+        }
+    }
+
+    It "does not return WSL bash" {
+        $result = Get-GitBash
+        if ($result) {
+            $result | Should Not Match "wsl"
+        }
+    }
+}
+
+Describe "Get-GitBash WSL filtering" {
+    It "should not return WSL bash from WindowsApps" {
+        Mock Get-Command {
+            @(
+                [PSCustomObject]@{ Source = "C:\Program Files\Git\usr\bin\bash.exe" },
+                [PSCustomObject]@{ Source = "C:\Windows\System32\bash.exe" },
+                [PSCustomObject]@{ Source = "$env:LOCALAPPDATA\Microsoft\WindowsApps\bash.exe" }
+            )
+        }
+        Mock Test-Path { return $false }
+        $result = Get-GitBash
+        $result | Should Not Match 'WindowsApps'
+        $result | Should Not Match 'System32'
+    }
+
+    It "should return Git Bash when mixed with WSL paths" {
+        Mock Get-Command {
+            @(
+                [PSCustomObject]@{ Source = "C:\Program Files\Git\usr\bin\bash.exe" },
+                [PSCustomObject]@{ Source = "$env:LOCALAPPDATA\Microsoft\WindowsApps\bash.exe" }
+            )
+        }
+        Mock Test-Path { return $false }
+        $result = Get-GitBash
+        $result | Should Be "C:\Program Files\Git\usr\bin\bash.exe"
+    }
+
+    It "should return null when only WSL bash is available" {
+        Mock Get-Command {
+            @(
+                [PSCustomObject]@{ Source = "$env:LOCALAPPDATA\Microsoft\WindowsApps\bash.exe" }
+            )
+        }
+        Mock Test-Path { return $false }
+        $result = Get-GitBash
+        $result | Should BeNullOrEmpty
+    }
 }

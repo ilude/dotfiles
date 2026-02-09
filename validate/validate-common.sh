@@ -83,12 +83,13 @@ summary() {
     return 0
 }
 
-# Platform detection functions
+# Self-contained platform detection (intentionally not sourcing rc.d/00-helpers.zsh)
 
 # is_wsl() - Check if running in WSL
 # Returns 0 if WSL, 1 otherwise
 is_wsl() {
-    [[ -n "$WSL_DISTRO_NAME" ]] || [[ -f /proc/sys/fs/binfmt_misc/WSLInterop ]]
+    [[ -n "$WSL_DISTRO_NAME" ]] || [[ -f /proc/sys/fs/binfmt_misc/WSLInterop ]] || \
+    grep -qi microsoft /proc/version 2>/dev/null
 }
 
 # is_msys() - Check if running on Git Bash or MSYS2

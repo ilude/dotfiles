@@ -22,10 +22,10 @@
 
 # Shell configs - link from WSL home to the Windows dotfiles
 - link:
-    ~/.gitconfig:
-      path: .gitconfig
-    ~/.gitignore_global:
-      path: .gitignore_global
+    ~/.config/git/config:
+      path: config/git/config
+    ~/.config/git/ignore:
+      path: config/git/ignore
     ~/.zshenv:
       path: .zshenv
     ~/.zshrc:

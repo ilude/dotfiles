@@ -1,7 +1,7 @@
 update:
   git submodule update --remote --merge
-  git aa
-  git ci "update dotbot"
+  git add -A
+  git commit -m "update dotbot"
   git pull 
   git push
   ./install
