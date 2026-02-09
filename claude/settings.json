@@ -59,7 +59,7 @@
       "Bash(git reset --hard:*)"
     ]
   },
-  "model": "haiku",
+  "model": "opus",
   "hooks": {
     "SessionStart": [
       {

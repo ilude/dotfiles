@@ -147,3 +147,5 @@
   path = ~/.dotfiles/.gitconfig-professional
 [includeIf "hasconfig:remote.*.url:github.com-work:*/**"]
   path = ~/.dotfiles/.gitconfig-professional
+[credential "https://repo.teams-sddc-dev.com"]
+	provider = generic
