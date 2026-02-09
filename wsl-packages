@@ -274,6 +274,7 @@ ZSH_PLUGINS_SCRIPT="$DOTFILES_DIR/zsh-plugins"
 
 if [[ -x "$ZSH_PLUGINS_SCRIPT" ]]; then
     # Source zsh-plugins in bash mode (just clones repos, doesn't source .zsh files)
+    # shellcheck source=zsh-plugins
     source "$ZSH_PLUGINS_SCRIPT"
     echo -e "  Plugins: ${GREEN}installed${NC}"
 else

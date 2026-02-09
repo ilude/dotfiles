@@ -21,7 +21,7 @@ case $- in
 esac
 
 ############################################################################
-# Platform Detection Helpers
+# Self-contained platform detection (intentionally not sourcing rc.d/00-helpers.zsh)
 ############################################################################
 
 is_wsl() {

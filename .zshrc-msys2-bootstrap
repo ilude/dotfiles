@@ -1,4 +1,4 @@
 # Bootstrap: redirect to Windows home dotfiles
 # MSYS2 zsh uses /home/Mike, but dotfiles are in /c/Users/Mike
-export ZDOTDIR="/c/Users/${USER:-Mike}"
+export ZDOTDIR="/c/Users/${USER:-${USERNAME:-$(whoami)}}"
 source "$ZDOTDIR/.zshrc"

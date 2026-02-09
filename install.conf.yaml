@@ -8,8 +8,8 @@
 
 # Cross-platform shell configs
 - link:
-    ~/.gitconfig: .gitconfig
-    ~/.gitignore_global: .gitignore_global
+    ~/.config/git/config: config/git/config
+    ~/.config/git/ignore: config/git/ignore
     ~/.zshenv: .zshenv
     ~/.zshrc: .zshrc
     ~/.zprofile: .zprofile

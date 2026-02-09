@@ -84,6 +84,11 @@ test: preflight
 	uv run pytest claude/hooks/path-normalization/tests/ -v --tb=short --durations=5 && \
 	echo "  Time: $$(($$(date +%s) - file_start))s"; \
 	echo ""; \
+	echo "--- pytest: session-history hooks ---"; \
+	file_start=$$(date +%s); \
+	uv run pytest claude/hooks/session-history/tests/ -v --tb=short --durations=5 && \
+	echo "  Time: $$(($$(date +%s) - file_start))s"; \
+	echo ""; \
 	echo "--- bats: prompt.bats ---"; \
 	file_start=$$(date +%s); \
 	bats test/prompt.bats && \

@@ -25,14 +25,14 @@ teardown_test_home() {
     [[ -d "$TEST_HOME" ]] && rm -rf "$TEST_HOME"
 }
 
-# Check if running on Windows (Git Bash/MSYS2)
+# Self-contained platform detection (intentionally not sourcing rc.d/00-helpers.zsh)
 is_windows() {
     [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ -n "$WINDIR" ]]
 }
 
-# Check if running in WSL
 is_wsl() {
-    [[ -n "$WSL_DISTRO_NAME" ]] || [[ -f /proc/sys/fs/binfmt_misc/WSLInterop ]]
+    [[ -n "$WSL_DISTRO_NAME" ]] || [[ -f /proc/sys/fs/binfmt_misc/WSLInterop ]] || \
+    grep -qi microsoft /proc/version 2>/dev/null
 }
 
 # Skip test if not on Windows

@@ -3,12 +3,17 @@
 # dependencies = ["pytest"]
 # ///
 """
-Configuration Pattern Tests
+Configuration Pattern Tests (Config Drift Detection)
 
 Validates that shell configuration files contain expected patterns.
 Converted from bats grep tests for faster execution.
 
-These tests verify configuration correctness, not shell behavior.
+These tests intentionally check implementation details (exact strings, file
+structure) rather than behavior. This catches accidental config changes like
+typos, deletions, or format drift. While coupling tests to implementation is
+normally discouraged, the tradeoff is acceptable for a personal dotfiles repo
+where catching config drift outweighs test fragility concerns.
+
 For actual bash/zsh execution tests, see prompt.bats and git_ssh_setup.bats.
 """
 
@@ -33,7 +38,7 @@ ALIASES_PATTERNS = [
     ("alias nix-gc=", "nix-gc alias defined"),
     ("alias nix-rs=", "nix-rs alias defined"),
     # Shell/Environment aliases
-    ("alias sz='source ~/.zshrc'", "sz sources .zshrc"),
+    (r"alias sz='source \$\{ZDOTDIR:-\$HOME\}/\.zshrc'", "sz sources .zshrc"),
     ("alias ez=", "ez opens .zshrc in editor"),
     ("alias es='env | sort'", "es shows sorted env"),
     ('alias history="history 1"', "history alias shows full history"),
@@ -193,7 +198,7 @@ CLI_COMPLETIONS_PATTERNS = [
     ("tailscale completion zsh 2>/dev/null", "tailscale silences errors"),
     # fzf paths
     ("/usr/share/fzf", "checks /usr/share/fzf for completion"),
-    ("~/.fzf.zsh", "checks ~/.fzf.zsh"),
+    (r"\$\{ZDOTDIR:-\$HOME\}/\.fzf\.zsh", "checks ~/.fzf.zsh"),
     ("/usr/local/opt/fzf", "checks homebrew fzf path"),
     (r"true.*# Ensure exit 0", "fzf loop ensures exit 0"),
     # Docker handling
@@ -215,7 +220,7 @@ def test_cli_completions(pattern, desc):
 EDITOR_PATTERNS = [
     # dircolors configuration
     (r"\$\{\+commands\[dircolors\]\}", "dircolors check uses commands hash"),
-    ("~/.dircolors", "supports custom ~/.dircolors file"),
+    (r"\$\{ZDOTDIR:-\$HOME\}/\.dircolors", "supports custom ~/.dircolors file"),
     ("/etc/DIR_COLORS", "falls back to /etc/DIR_COLORS"),
     # EDITOR configuration
     (r"TERM_PROGRAM.*vscode", "EDITOR set to code when in VS Code terminal"),
@@ -689,25 +694,25 @@ def test_install_wsl_from_mount():
 
 # Git delta configuration (from git_ssh_setup.bats)
 def test_gitconfig_pager_delta():
-    """.gitconfig pager section uses delta."""
-    content = (DOTFILES / ".gitconfig").read_text()
+    """git config pager section uses delta."""
+    content = (DOTFILES / "config" / "git" / "config").read_text()
     assert "[pager]" in content
     assert "diff = delta" in content
 
 
 def test_gitconfig_delta_section():
-    """.gitconfig delta section configured."""
-    content = (DOTFILES / ".gitconfig").read_text()
+    """git config delta section configured."""
+    content = (DOTFILES / "config" / "git" / "config").read_text()
     assert "[delta]" in content
 
 
 def test_gitconfig_delta_line_numbers():
-    """.gitconfig delta has line-numbers enabled."""
-    content = (DOTFILES / ".gitconfig").read_text()
+    """git config delta has line-numbers enabled."""
+    content = (DOTFILES / "config" / "git" / "config").read_text()
     assert "line-numbers = true" in content
 
 
 def test_gitconfig_delta_diff_filter():
-    """.gitconfig interactive diffFilter uses delta."""
-    content = (DOTFILES / ".gitconfig").read_text()
+    """git config interactive diffFilter uses delta."""
+    content = (DOTFILES / "config" / "git" / "config").read_text()
     assert "diffFilter = delta" in content

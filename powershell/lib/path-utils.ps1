@@ -60,8 +60,10 @@ function Get-GitBash {
             return $path
         }
     }
-    # Fallback to searching PATH (may find WSL bash)
-    $cmd = Get-Command bash -ErrorAction SilentlyContinue
+    # Fallback to searching PATH - filter out WSL bash, we want Git Bash
+    $cmd = Get-Command bash -All -ErrorAction SilentlyContinue |
+        Where-Object { $_.Source -notmatch 'wsl|WindowsApps' } |
+        Select-Object -First 1
     if ($cmd) { return $cmd.Source }
     return $null
 }
