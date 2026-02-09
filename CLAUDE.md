@@ -38,9 +38,9 @@ make test    # Run bats tests
 1. `install` (bash) or `install.ps1` (PowerShell) → entry points
 2. XDG migration: removes old `~/.gitconfig` and `~/.gitignore_global` so Git uses `~/.config/git/`
 3. **Dotbot** creates symlinks defined in `install.conf.yaml`
-4. `git-ssh-setup` detects SSH keys, writes machine-specific `.gitconfig-*-local` files
-5. `zsh-setup` installs zsh and sets as default shell (Linux only)
-6. `zsh-plugins` downloads version-pinned plugins on first shell startup
+4. `scripts/git-ssh-setup` detects SSH keys, writes machine-specific `.gitconfig-*-local` files
+5. `scripts/zsh-setup` installs zsh and sets as default shell (Linux only)
+6. `scripts/zsh-plugins` downloads version-pinned plugins on first shell startup
 7. Credential lockdown: `chmod 600` on sensitive files like `~/.claude/.credentials.json`
 
 ### Git Identity System
@@ -56,17 +56,17 @@ make test    # Run bats tests
 | File | Purpose |
 |------|---------|
 | `install.conf.yaml` | Dotbot symlink configuration |
-| `.bash_profile` | Login shell → zsh transition with ZDOTDIR setup |
-| `.zshrc` | Main zsh config, sources `zsh/rc.d/*.zsh` |
-| `.zshenv` | All zsh shells, sources `zsh/env.d/*.zsh` |
+| `home/.bash_profile` | Login shell → zsh transition with ZDOTDIR setup |
+| `home/.zshrc` | Main zsh config, sources `zsh/rc.d/*.zsh` |
+| `home/.zshenv` | All zsh shells, sources `zsh/env.d/*.zsh` |
 | `zsh/env.d/` | Environment modules (WINHOME, locale, PATH) |
 | `zsh/rc.d/` | Interactive modules (completions, history, prompt, aliases) |
-| `zsh-plugins` | On-demand plugin downloader from GitHub |
+| `scripts/zsh-plugins` | On-demand plugin downloader from GitHub |
 | `.zshrc-msys2-bootstrap` | MSYS2 HOME redirect to Windows home |
 | `config/git/config` | Unified Git config (XDG: `~/.config/git/config`) |
 | `config/git/ignore` | Global gitignore (XDG: `~/.config/git/ignore`) |
-| `.gitconfig-personal` / `.gitconfig-professional` | Identity-specific configs |
-| `git-ssh-setup` | SSH key detection, writes `.gitconfig-*-local` files |
+| `config/git/gitconfig-personal` / `config/git/gitconfig-professional` | Identity-specific configs |
+| `scripts/git-ssh-setup` | SSH key detection, writes `.gitconfig-*-local` files |
 | `powershell/profile.ps1` | PowerShell profile |
 | `config/ohmyposh/prompt.json` | Oh My Posh prompt theme |
 | `.claude/` | Global Claude Code config (symlinked to ~/.claude/) |
@@ -87,16 +87,16 @@ Canonical helpers are in `zsh/rc.d/00-helpers.zsh` (`is_windows`, `is_wsl`, `is_
 
 #### Shell Startup Flow
 ```
-.bash_profile → adds MSYS2 to PATH → sets ZDOTDIR → exec env ZDOTDIR=... zsh -l
-                                                           ↓
-                                                      .zshenv → zsh/env.d/*.zsh (WINHOME, locale, PATH)
-                                                              → sets _DOTFILES_ENV_SOURCED=1
-                                                           ↓
-                                                      .zshrc → skips env.d if _DOTFILES_ENV_SOURCED
-                                                             → sources .secrets (interactive only)
-                                                             → zsh/rc.d/*.zsh (completions, plugins, history, prompt)
-                                                           ↓
-                                                      zsh-plugins (downloads pinned versions if missing)
+home/.bash_profile → adds MSYS2 to PATH → sets ZDOTDIR → exec env ZDOTDIR=... zsh -l
+                                                               ↓
+                                                          home/.zshenv → zsh/env.d/*.zsh (WINHOME, locale, PATH)
+                                                                       → sets _DOTFILES_ENV_SOURCED=1
+                                                               ↓
+                                                          home/.zshrc → skips env.d if _DOTFILES_ENV_SOURCED
+                                                                      → sources .env (interactive only)
+                                                                      → zsh/rc.d/*.zsh (completions, plugins, history, prompt)
+                                                               ↓
+                                                          scripts/zsh-plugins (downloads pinned versions if missing)
 ```
 
 #### MSYS2/Git Bash Complexity (READ THIS)
@@ -117,10 +117,10 @@ Git Bash and MSYS2's zsh have **different HOME directories**:
 2. **All dotfiles paths must use `${ZDOTDIR:-$HOME}`**, not `~` or `$HOME`:
    ```bash
    # WRONG - expands to /home/Mike/.dotfiles (doesn't exist):
-   source ~/.dotfiles/zsh-plugins
+   source ~/.dotfiles/scripts/zsh-plugins
 
    # RIGHT - uses ZDOTDIR which is /c/Users/Mike:
-   source "${ZDOTDIR:-$HOME}/.dotfiles/zsh-plugins"
+   source "${ZDOTDIR:-$HOME}/.dotfiles/scripts/zsh-plugins"
    ```
 
 3. **Prompt path normalization must also use ZDOTDIR**:

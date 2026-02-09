@@ -22,8 +22,10 @@ from typing import Optional
 
 
 def load_secrets_file() -> None:
-    """Load secrets from ~/.dotfiles/.secrets if env vars not set."""
-    secrets_path = Path.home() / ".dotfiles" / ".secrets"
+    """Load secrets from ~/.dotfiles/.env if env vars not set."""
+    secrets_path = Path.home() / ".dotfiles" / ".env"
+    if not secrets_path.exists():
+        secrets_path = Path.home() / ".dotfiles" / ".secrets"
     if not secrets_path.exists():
         return
 

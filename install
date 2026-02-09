@@ -43,6 +43,15 @@ if [[ -e "$HOME/.gitignore_global" || -L "$HOME/.gitignore_global" ]]; then
 fi
 completed_steps+=("XDG migration")
 
+current_step=".env migration"
+if [[ -f "$BASEDIR/.secrets" && ! -f "$BASEDIR/.env" ]]; then
+    echo "Migrating .secrets -> .env"
+    mv "$BASEDIR/.secrets" "$BASEDIR/.env"
+elif [[ -f "$BASEDIR/.secrets" && -f "$BASEDIR/.env" ]]; then
+    echo "Warning: both .secrets and .env exist - using .env (remove .secrets manually)"
+fi
+completed_steps+=(".env migration")
+
 current_step="Dotbot symlinks"
 cd "${BASEDIR}"
 git -C "${DOTBOT_DIR}" submodule sync --quiet --recursive
@@ -73,11 +82,11 @@ if [[ -z "$DISPLAY" ]] && [[ -z "$WAYLAND_DISPLAY" ]] && [[ -z "$WSL_DISTRO_NAME
 fi
 
 current_step="Git SSH setup"
-"${BASEDIR}/git-ssh-setup"
+"${BASEDIR}/scripts/git-ssh-setup"
 completed_steps+=("Git SSH setup")
 
 current_step="Zsh setup"
-"${BASEDIR}/zsh-setup"
+"${BASEDIR}/scripts/zsh-setup"
 completed_steps+=("Zsh setup")
 
 current_step="uv install"
@@ -92,10 +101,10 @@ completed_steps+=("uv install")
 
 current_step="GUI tool setup"
 if [[ -z "$HEADLESS" ]]; then
-    "${BASEDIR}/claude-link-setup"
-    "${BASEDIR}/claude-mcp-setup"
-    "${BASEDIR}/claude-plugins-setup"
-    "${BASEDIR}/copilot-link-setup"
+    "${BASEDIR}/scripts/claude-link-setup"
+    "${BASEDIR}/scripts/claude-mcp-setup"
+    "${BASEDIR}/scripts/claude-plugins-setup"
+    "${BASEDIR}/scripts/copilot-link-setup"
 fi
 completed_steps+=("GUI tool setup")
 

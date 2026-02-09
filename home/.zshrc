@@ -21,9 +21,13 @@ if [[ -z "$_DOTFILES_ENV_SOURCED" && -d "$_dotfiles/zsh/env.d" ]]; then
     done
 fi
 
-# Source secrets file if it exists (API keys, tokens, etc.)
+# Source environment secrets if present (API keys, tokens, etc.)
 # Loaded here (not .zshenv) so secrets are only available in interactive shells
-[[ -f "${ZDOTDIR:-$HOME}/.dotfiles/.secrets" ]] && source "${ZDOTDIR:-$HOME}/.dotfiles/.secrets"
+if [[ -f "$_dotfiles/.env" ]]; then
+    source "$_dotfiles/.env"
+elif [[ -f "$_dotfiles/.secrets" ]]; then
+    source "$_dotfiles/.secrets"
+fi
 
 # Source rc.d modules (interactive shell config)
 for f in "$_dotfiles/zsh/rc.d"/*.zsh(N); do

@@ -157,8 +157,7 @@
   "explorer.compactFolders": false,
   "explorer.openEditors.visible": 0,
   "files.associations": {
-    "Dockerfile.*": "dockerfile",
-    ".secrets": "nix"
+    "Dockerfile.*": "dockerfile"
   },
   "files.eol": "\n",
   "files.exclude": {
