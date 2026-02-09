@@ -61,7 +61,13 @@ Project B Infrastructure
 
 ## Critical Rules
 
-**No AI mentions.** Never include "AI-assisted", "Claude", "generated", "co-authored", or any indication of AI involvement. These are the user's work accomplishments.
+**No AI mentions or AI-related work.** Never include AI-related commits, work items, or tooling in the report. Filter out:
+- Any commits mentioning "Claude", "AI", "Bedrock", "OpenCode", or similar tools
+- Developer setup scripts for AI tools
+- AI tooling configuration, hooks, or integrations
+- Documentation related to AI development workflows
+
+These are internal development tools and should not appear in work accomplishment reports. Focus only on business deliverables and infrastructure work.
 
 **Continuity matters.** Always review last week's report first. If work continues from prior week, integrate it naturally with phrases like "completing prior week's [description] work" within the bullet point itself. Keep the section structure clean without "(continued)" markers in headers.
 
