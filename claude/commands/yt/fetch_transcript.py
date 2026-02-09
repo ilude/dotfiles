@@ -23,12 +23,14 @@ from typing import Optional
 
 
 def load_secrets_file() -> None:
-    """Load secrets from ~/.dotfiles/.secrets if env vars not set.
+    """Load secrets from ~/.dotfiles/.env if env vars not set.
 
     Parses bash-style export VAR=value lines and sets them as env vars.
-    This allows the script to work even when not run from a shell that sourced .secrets.
+    This allows the script to work even when not run from a shell that sourced .env.
     """
-    secrets_path = Path.home() / ".dotfiles" / ".secrets"
+    secrets_path = Path.home() / ".dotfiles" / ".env"
+    if not secrets_path.exists():
+        secrets_path = Path.home() / ".dotfiles" / ".secrets"
     if not secrets_path.exists():
         return
 

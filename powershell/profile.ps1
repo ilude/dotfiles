@@ -57,13 +57,17 @@ if ($Host.Name -eq 'ConsoleHost' -and -not $env:PWSH_MODULES_CHECKED) {
 
 #region Secrets Import
 
-# Import secrets from ~/.dotfiles/.secrets (bash-style export VAR=value)
+# Import secrets from ~/.dotfiles/.env (bash-style export VAR=value)
 # Mirrors zsh behavior - same secrets file works for both shells
 function Import-Secrets {
   [CmdletBinding()]
   param(
-    [string]$Path = "$env:USERPROFILE\.dotfiles\.secrets"
+    [string]$Path = "$env:USERPROFILE\.dotfiles\.env"
   )
+
+  if (-not (Test-Path $Path)) {
+    $Path = "$env:USERPROFILE\.dotfiles\.secrets"
+  }
 
   if (-not (Test-Path $Path)) {
     Write-Verbose "Secrets file not found: $Path"

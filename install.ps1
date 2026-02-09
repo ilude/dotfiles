@@ -267,30 +267,34 @@ function Write-GitBashPath {
 
 function Configure-Rclone {
     # Configure rclone for MinIO access
-    # Reads MINIO_* vars from .secrets and creates rclone.conf
+    # Reads MINIO_* vars from .env and creates rclone.conf
 
     $rcloneDir = "$env:APPDATA\rclone"
     $rcloneConf = "$rcloneDir\rclone.conf"
-    $secretsFile = "$env:USERPROFILE\.dotfiles\.secrets"
+    $secretsFile = "$env:USERPROFILE\.dotfiles\.env"
 
     if (-not (Test-Path $secretsFile)) {
-        Write-Host "  .secrets file not found, skipping rclone config" -ForegroundColor Yellow
+        $secretsFile = "$env:USERPROFILE\.dotfiles\.secrets"
+    }
+
+    if (-not (Test-Path $secretsFile)) {
+        Write-Host "  .env file not found, skipping rclone config" -ForegroundColor Yellow
         return
     }
 
-    # Parse MINIO vars from .secrets (bash format)
+    # Parse MINIO vars from .env (bash format)
     $secrets = Get-Content $secretsFile -Raw
     $endpoint = if ($secrets -match 'MINIO_ENDPOINT=([^\r\n]+)') { $matches[1] } else { $null }
     $accessKey = if ($secrets -match 'MINIO_ACCESS_KEY=([^\r\n]+)') { $matches[1] } else { $null }
     $secretKey = if ($secrets -match 'MINIO_SECRET_KEY=([^\r\n]+)') { $matches[1] } else { $null }
 
-    # Strip surrounding quotes from values (bash-style .secrets may quote them)
+    # Strip surrounding quotes from values (bash-style .env may quote them)
     $endpoint = $endpoint -replace '^["'']+|["'']+$', ''
     $accessKey = $accessKey -replace '^["'']+|["'']+$', ''
     $secretKey = $secretKey -replace '^["'']+|["'']+$', ''
 
     if (-not ($endpoint -and $accessKey -and $secretKey)) {
-        Write-Host "  MINIO credentials not found in .secrets, skipping rclone config" -ForegroundColor Yellow
+        Write-Host "  MINIO credentials not found in .env, skipping rclone config" -ForegroundColor Yellow
         return
     }
 
@@ -671,7 +675,7 @@ function Install-Packages {
     # Install zsh plugins for Git Bash
     Write-Host "`n--- Zsh Plugins (Git Bash) ---" -ForegroundColor Cyan
     $gitBash = "C:\Program Files\Git\bin\bash.exe"
-    $zshPluginsScript = Join-Path $BASEDIR "zsh-plugins"
+    $zshPluginsScript = Join-Path $BASEDIR "scripts" "zsh-plugins"
     if ((Test-Path $gitBash) -and (Test-Path $zshPluginsScript)) {
         Write-Host "  Installing zsh plugins..." -ForegroundColor Cyan
         # Run zsh-plugins with ZDOTDIR set so it finds the right dotfiles dir
@@ -902,7 +906,7 @@ function Install-WSLPackages {
         [string]$Distro = $null
     )
 
-    $wslPackagesScript = Join-Path $BASEDIR "wsl-packages"
+    $wslPackagesScript = Join-Path $BASEDIR "scripts" "wsl-packages"
     if (-not (Test-Path $wslPackagesScript)) {
         Write-Host "  wsl-packages script not found, skipping" -ForegroundColor Yellow
         return $false
@@ -1051,7 +1055,7 @@ try {
         Write-Host "  Using: $gitBash" -ForegroundColor DarkGray
         # Configure git SSH keys
         Write-Host "`nConfiguring Git SSH keys..." -ForegroundColor Cyan
-        $gitSshSetup = Join-Path $BASEDIR "git-ssh-setup"
+        $gitSshSetup = Join-Path $BASEDIR "scripts" "git-ssh-setup"
         if (Test-Path $gitSshSetup) {
             $bashPath = ConvertTo-GitBashPath $gitSshSetup
             & $gitBash "$bashPath"
@@ -1059,7 +1063,7 @@ try {
 
         # Set up Claude Code directory link
         Write-Host "`nSetting up Claude Code directory..." -ForegroundColor Cyan
-        $claudeLinkSetup = Join-Path $BASEDIR "claude-link-setup"
+        $claudeLinkSetup = Join-Path $BASEDIR "scripts" "claude-link-setup"
         if (Test-Path $claudeLinkSetup) {
             $bashPath = ConvertTo-GitBashPath $claudeLinkSetup
             & $gitBash "$bashPath"
@@ -1067,7 +1071,7 @@ try {
 
         # Configure Claude MCP servers
         Write-Host "`nConfiguring Claude MCP servers..." -ForegroundColor Cyan
-        $claudeMcpSetup = Join-Path $BASEDIR "claude-mcp-setup"
+        $claudeMcpSetup = Join-Path $BASEDIR "scripts" "claude-mcp-setup"
         if (Test-Path $claudeMcpSetup) {
             $bashPath = ConvertTo-GitBashPath $claudeMcpSetup
             & $gitBash "$bashPath"
