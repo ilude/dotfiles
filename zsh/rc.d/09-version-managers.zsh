@@ -5,10 +5,10 @@
 # The wrapper function loads the real tool on first invocation.
 
 # pyenv - Python version manager
-if [[ -d "${PYENV_ROOT:-$HOME/.pyenv}" ]]; then
+if [[ -d "${PYENV_ROOT:-${ZDOTDIR:-$HOME}/.pyenv}" ]]; then
     pyenv() {
         unfunction pyenv
-        export PYENV_ROOT="${PYENV_ROOT:-$HOME/.pyenv}"
+        export PYENV_ROOT="${PYENV_ROOT:-${ZDOTDIR:-$HOME}/.pyenv}"
         path=($PYENV_ROOT/bin $path)
         eval "$(command pyenv init -)"
         pyenv "$@"
@@ -16,10 +16,10 @@ if [[ -d "${PYENV_ROOT:-$HOME/.pyenv}" ]]; then
 fi
 
 # rbenv - Ruby version manager
-if [[ -d "${RBENV_ROOT:-$HOME/.rbenv}" ]]; then
+if [[ -d "${RBENV_ROOT:-${ZDOTDIR:-$HOME}/.rbenv}" ]]; then
     rbenv() {
         unfunction rbenv
-        export RBENV_ROOT="${RBENV_ROOT:-$HOME/.rbenv}"
+        export RBENV_ROOT="${RBENV_ROOT:-${ZDOTDIR:-$HOME}/.rbenv}"
         path=($RBENV_ROOT/bin $path)
         eval "$(command rbenv init -)"
         rbenv "$@"
@@ -27,10 +27,10 @@ if [[ -d "${RBENV_ROOT:-$HOME/.rbenv}" ]]; then
 fi
 
 # nodenv - Node.js version manager
-if [[ -d "${NODENV_ROOT:-$HOME/.nodenv}" ]]; then
+if [[ -d "${NODENV_ROOT:-${ZDOTDIR:-$HOME}/.nodenv}" ]]; then
     nodenv() {
         unfunction nodenv
-        export NODENV_ROOT="${NODENV_ROOT:-$HOME/.nodenv}"
+        export NODENV_ROOT="${NODENV_ROOT:-${ZDOTDIR:-$HOME}/.nodenv}"
         path=($NODENV_ROOT/bin $path)
         eval "$(command nodenv init -)"
         nodenv "$@"
@@ -38,10 +38,10 @@ if [[ -d "${NODENV_ROOT:-$HOME/.nodenv}" ]]; then
 fi
 
 # nvm - Node Version Manager (special case - uses NVM_DIR)
-if [[ -d "${NVM_DIR:-$HOME/.nvm}" ]]; then
+if [[ -d "${NVM_DIR:-${ZDOTDIR:-$HOME}/.nvm}" ]]; then
     nvm() {
         unfunction nvm
-        export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+        export NVM_DIR="${NVM_DIR:-${ZDOTDIR:-$HOME}/.nvm}"
         source_if_exists "$NVM_DIR/nvm.sh"
         nvm "$@"
     }

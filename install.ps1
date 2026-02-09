@@ -21,6 +21,11 @@
 
 .PARAMETER ListPackages
     Just list packages without installing
+
+.PARAMETER NoElevate
+    Skip self-elevation. Useful with Developer Mode enabled where symlinks
+    work without admin. Admin-only operations (MSYS2 nsswitch.conf, WSL install)
+    will be skipped with a warning.
 #>
 
 param(
@@ -28,7 +33,8 @@ param(
     [switch]$ForcePackages,
     [switch]$Work,
     [switch]$ITAdmin,
-    [switch]$ListPackages
+    [switch]$ListPackages,
+    [switch]$NoElevate
 )
 
 # ============================================================================
@@ -120,7 +126,17 @@ if ($ListPackages) {
 $LOCKFILE = Join-Path $env:USERPROFILE ".dotfiles.lock"
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
-if (-not $isAdmin) {
+# Operations requiring elevation:
+#   - MSYS2 nsswitch.conf modification (system file)
+#   - Symlink creation without Developer Mode
+#   - WSL installation
+# If Developer Mode is enabled, symlinks work without elevation,
+# and remaining admin operations can be deferred.
+
+# Check Developer Mode early (before elevation decision)
+$DevModeEarly = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -Name AllowDevelopmentWithoutDevLicense -ErrorAction SilentlyContinue).AllowDevelopmentWithoutDevLicense -eq 1
+
+if (-not $isAdmin -and -not $NoElevate -and -not $DevModeEarly) {
     Write-Host "Requesting Administrator privileges..." -ForegroundColor Yellow
 
     # Determine PowerShell executable
@@ -156,6 +172,14 @@ if (-not $isAdmin) {
         Write-Host "Elevation cancelled or failed: $($_.Exception.Message)" -ForegroundColor Red
         exit 2
     }
+} elseif (-not $isAdmin -and ($NoElevate -or $DevModeEarly)) {
+    if ($DevModeEarly) {
+        Write-Host "Developer Mode enabled - creating symlinks without elevation" -ForegroundColor Green
+    }
+    if ($NoElevate) {
+        Write-Host "Skipping elevation (-NoElevate)" -ForegroundColor Yellow
+    }
+    Write-Host "Admin-only operations (MSYS2 nsswitch.conf, WSL install) will be skipped" -ForegroundColor Yellow
 }
 
 # ============================================================================
@@ -259,6 +283,11 @@ function Configure-Rclone {
     $endpoint = if ($secrets -match 'MINIO_ENDPOINT=([^\r\n]+)') { $matches[1] } else { $null }
     $accessKey = if ($secrets -match 'MINIO_ACCESS_KEY=([^\r\n]+)') { $matches[1] } else { $null }
     $secretKey = if ($secrets -match 'MINIO_SECRET_KEY=([^\r\n]+)') { $matches[1] } else { $null }
+
+    # Strip surrounding quotes from values (bash-style .secrets may quote them)
+    $endpoint = $endpoint -replace '^["'']+|["'']+$', ''
+    $accessKey = $accessKey -replace '^["'']+|["'']+$', ''
+    $secretKey = $secretKey -replace '^["'']+|["'']+$', ''
 
     if (-not ($endpoint -and $accessKey -and $secretKey)) {
         Write-Host "  MINIO credentials not found in .secrets, skipping rclone config" -ForegroundColor Yellow
@@ -614,7 +643,7 @@ function Install-Packages {
 
     # MSYS2 packages (zsh for Git Bash - requires MSYS2 from core packages)
     Write-Host "`n--- MSYS2 Packages (Git Bash zsh) ---" -ForegroundColor Cyan
-    $msys2Pacman = "C:\msys64\usr\bin\pacman.exe"
+    $msys2Pacman = "$Msys2Root\usr\bin\pacman.exe"
     if (Test-Path $msys2Pacman) {
         $msys2Packages = @('zsh')
         foreach ($pkg in $msys2Packages) {
@@ -635,7 +664,7 @@ function Install-Packages {
             }
         }
     } else {
-        Write-Host "  MSYS2 not found at C:\msys64 - skipping zsh install" -ForegroundColor Yellow
+        Write-Host "  MSYS2 not found at $Msys2Root - skipping zsh install" -ForegroundColor Yellow
         Write-Host "  (Run installer again after MSYS2 finishes installing)" -ForegroundColor DarkGray
     }
 
@@ -659,7 +688,7 @@ function Install-Packages {
 
     # Create MSYS2 zsh bootstrap (fixes HOME mismatch between Git Bash and MSYS2 zsh)
     Write-Host "`n--- MSYS2 Zsh Bootstrap ---" -ForegroundColor Cyan
-    $msys2Home = "C:\msys64\home\$env:USERNAME"
+    $msys2Home = "$Msys2Root\home\$env:USERNAME"
     $bootstrapSrc = Join-Path $BASEDIR ".zshrc-msys2-bootstrap"
     if ((Test-Path $msys2Home) -and (Test-Path $bootstrapSrc)) {
         $bootstrapDst = Join-Path $msys2Home ".zshrc"
@@ -674,7 +703,7 @@ function Install-Packages {
     if (Test-Path $msys2Home) {
         $winHome = $env:USERPROFILE
         $symlinks = @(
-            @{ Name = ".gitconfig"; Target = "$winHome\.gitconfig" },
+            @{ Name = ".config\git"; Target = "$winHome\.config\git" },
             @{ Name = ".ssh"; Target = "$winHome\.ssh" }
         )
         foreach ($link in $symlinks) {
@@ -943,11 +972,36 @@ try {
     $DOTBOT_BIN = "bin/dotbot"
     $BASEDIR = $PSScriptRoot
 
+    # Detect MSYS2 installation path (winget may install to different locations)
+    $Msys2Root = @("C:\msys64", "C:\tools\msys64", "$env:LOCALAPPDATA\msys64") |
+        Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $Msys2Root) { $Msys2Root = "C:\msys64" }  # fallback for install path
+
+    # Check if Developer Mode is enabled (symlinks don't need elevation)
+    $DevMode = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -Name AllowDevelopmentWithoutDevLicense -ErrorAction SilentlyContinue).AllowDevelopmentWithoutDevLicense -eq 1
+
     Write-Host "`n=== Dotfiles Installer ===" -ForegroundColor Cyan
-    Write-Host "Running as Administrator" -ForegroundColor Green
+    if ($isAdmin) {
+        Write-Host "Running as Administrator" -ForegroundColor Green
+    } elseif ($DevMode) {
+        Write-Host "Running with Developer Mode (no elevation)" -ForegroundColor Green
+    }
 
     Set-Location $BASEDIR
     Write-Host "Working directory: $BASEDIR" -ForegroundColor DarkGray
+
+    # Migrate from ~/.gitconfig to XDG path (~/.config/git/config)
+    # Remove old symlink/file so git uses the XDG location instead
+    $oldGitconfig = Join-Path $env:USERPROFILE ".gitconfig"
+    if (Test-Path $oldGitconfig) {
+        Write-Host "Migrating ~/.gitconfig -> ~/.config/git/config (XDG)" -ForegroundColor Yellow
+        Remove-Item $oldGitconfig -Force
+    }
+    $oldGitignore = Join-Path $env:USERPROFILE ".gitignore_global"
+    if (Test-Path $oldGitignore) {
+        Write-Host "Migrating ~/.gitignore_global -> ~/.config/git/ignore (XDG)" -ForegroundColor Yellow
+        Remove-Item $oldGitignore -Force
+    }
 
     # Update dotbot submodule
     Write-Host "`nUpdating dotbot submodule..." -ForegroundColor Cyan
@@ -1029,8 +1083,21 @@ try {
     # ========================================================================
     Write-Host "`nSetting up WSL environment..." -ForegroundColor Cyan
 
-    # Step 1: Ensure WSL and Ubuntu are installed
-    $wslResult = Install-WSLWithUbuntu -Distro "Ubuntu-24.04"
+    # Step 1: Ensure WSL and Ubuntu are installed (requires admin for initial install)
+    if ($isAdmin) {
+        $wslResult = Install-WSLWithUbuntu -Distro "Ubuntu-24.04"
+    } else {
+        # Without admin, check if WSL is already available
+        $wslStatus = Get-WSLStatus
+        if ($wslStatus -eq 'ready') {
+            $wslResult = 'already-installed'
+            Write-Host "  WSL: already installed (skipping install step - no admin)" -ForegroundColor DarkGray
+        } else {
+            $wslResult = 'failed'
+            Write-Host "  WSL installation requires admin - skipping" -ForegroundColor Yellow
+            Write-Host "  Run without -NoElevate to install WSL, or enable it manually" -ForegroundColor DarkGray
+        }
+    }
 
     if ($wslResult -eq 'reboot-required') {
         Write-Host "`n${Yellow}========================================${NC}" -ForegroundColor Yellow
@@ -1133,6 +1200,9 @@ try {
     # ========================================================================
     # VS Code Settings Symlinks (admin required for symlinks without Developer Mode)
     # ========================================================================
+    # VS Code settings/keybindings: Create symlinks first, fall back to file copy.
+    # The duplication is intentional - symlinks require Developer Mode or elevation
+    # on Windows, so the copy fallback ensures settings work on all machines.
     Write-Host "`nConfiguring VS Code settings symlinks..." -ForegroundColor Cyan
     $vscodeUserDir = "$env:APPDATA\Code\User"
     $vscodeSource = Join-Path $BASEDIR "vscode"
@@ -1185,23 +1255,27 @@ try {
     $null = Ensure-WindowsTerminalShiftEnter
 
     # ========================================================================
-    # MSYS2 nsswitch.conf Fix (Always runs - system config, not a package)
+    # MSYS2 nsswitch.conf Fix (requires admin - system file)
     # ========================================================================
     # This fix ensures MSYS2's zsh resolves HOME to /c/Users/username instead of
     # /c/msys64/home/username. Without this, all ZDOTDIR workarounds are needed.
-    $nsswitchPath = "C:\msys64\etc\nsswitch.conf"
-    if (Test-Path $nsswitchPath) {
-        $content = Get-Content $nsswitchPath -Raw
-        if ($content -match 'db_home:\s+cygwin\s+desc' -and $content -notmatch 'db_home:\s+env\s+windows') {
-            Write-Host "`nFixing MSYS2 nsswitch.conf (adding 'env windows' to db_home)..." -ForegroundColor Yellow
-            $newContent = $content -replace 'db_home:\s+cygwin\s+desc', 'db_home: env windows cygwin desc'
-            Copy-Item $nsswitchPath "$nsswitchPath.bak" -Force
-            $newContent = $newContent -replace "`r`n", "`n"
-            [System.IO.File]::WriteAllText($nsswitchPath, $newContent)
-            Write-Host "  Fixed (backup at $nsswitchPath.bak)" -ForegroundColor Green
-        } else {
-            Write-Host "`nMSYS2 nsswitch.conf: already correct" -ForegroundColor DarkGray
+    if ($isAdmin) {
+        $nsswitchPath = "$Msys2Root\etc\nsswitch.conf"
+        if (Test-Path $nsswitchPath) {
+            $content = Get-Content $nsswitchPath -Raw
+            if ($content -match 'db_home:\s+cygwin\s+desc' -and $content -notmatch 'db_home:\s+env\s+windows') {
+                Write-Host "`nFixing MSYS2 nsswitch.conf (adding 'env windows' to db_home)..." -ForegroundColor Yellow
+                $newContent = $content -replace 'db_home:\s+cygwin\s+desc', 'db_home: env windows cygwin desc'
+                Copy-Item $nsswitchPath "$nsswitchPath.bak" -Force
+                $newContent = $newContent -replace "`r`n", "`n"
+                [System.IO.File]::WriteAllText($nsswitchPath, $newContent)
+                Write-Host "  Fixed (backup at $nsswitchPath.bak)" -ForegroundColor Green
+            } else {
+                Write-Host "`nMSYS2 nsswitch.conf: already correct" -ForegroundColor DarkGray
+            }
         }
+    } else {
+        Write-Host "`nMSYS2 nsswitch.conf: skipped (requires admin)" -ForegroundColor Yellow
     }
 
     # ========================================================================

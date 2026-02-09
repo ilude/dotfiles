@@ -5,7 +5,6 @@
   autocrlf = input
   editor = code --wait
 	symlinks = true
-  excludesFile = ~/.gitignore_global
 
 [pager]
   # Use delta for better diffs if installed, otherwise default pager
@@ -62,7 +61,9 @@
   recurse = true
 
 [safe]
-  directory = *
+  # Only trust dotfiles repo (both Windows and Git Bash paths)
+  directory = C:/Users/mglenn/.dotfiles
+  directory = /c/Users/mglenn/.dotfiles
 
 [filter "lfs"]
   clean = git-lfs clean -- %f
@@ -71,8 +72,9 @@
   required = true
 
 [user]
-  name = mike
-  email = mglenn@ilude.com
+  name = Mike Glenn
+  email = UNCONFIGURED@example.com
+  # Default sentinel - directory-based includeIf overrides with real email
 
 [alias]
   # Basic shortcuts
@@ -147,5 +149,4 @@
   path = ~/.dotfiles/.gitconfig-professional
 [includeIf "hasconfig:remote.*.url:github.com-work:*/**"]
   path = ~/.dotfiles/.gitconfig-professional
-[credential "https://repo.teams-sddc-dev.com"]
-	provider = generic
+# Work-specific credential helpers belong in .gitconfig-professional-local

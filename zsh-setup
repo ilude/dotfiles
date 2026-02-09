@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC1090,SC1091
 
-# Detect Windows (Git Bash / MSYS2 / Cygwin)
+# Self-contained platform detection (intentionally not sourcing rc.d/00-helpers.zsh)
 is_windows() {
   [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ -n "$WINDIR" ]]
 }
@@ -150,6 +150,7 @@ setup_macos() {
     # Check for Homebrew
     if ! command -v brew &>/dev/null; then
         echo "Homebrew not found. Install it first:"
+        # shellcheck disable=SC2016
         echo '  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
         echo ""
         exit 1

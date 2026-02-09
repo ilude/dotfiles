@@ -19,13 +19,27 @@ from pathlib import Path
 
 import pytest
 
-# Skip all tests in this module on Windows - they require bash/zsh subprocesses
-# and Unix-style path handling that don't work on Windows
-pytestmark = pytest.mark.skipif(
-    sys.platform == "win32", reason="Subprocess tests require Unix shell"
-)
-
 DOTFILES = Path(__file__).parent.parent
+
+
+def _find_bash():
+    """Find a usable bash executable, preferring Git Bash on Windows."""
+    bash = shutil.which("bash")
+    if bash:
+        # Filter out WSL bash on Windows - we want Git Bash
+        if sys.platform == "win32" and ("WindowsApps" in bash or "System32" in bash):
+            return None
+        return bash
+    return None
+
+
+BASH = _find_bash()
+
+needs_bash = pytest.mark.skipif(BASH is None, reason="bash not found")
+needs_zsh = pytest.mark.skipif(
+    shutil.which("zsh") is None or sys.platform == "win32",
+    reason="zsh not installed or Windows paths incompatible with zsh subprocesses",
+)
 
 
 # =============================================================================
@@ -59,11 +73,10 @@ def tmp_home(tmp_path, monkeypatch):
     return home
 
 
-@pytest.fixture
-def zsh_available():
-    """Skip test if zsh is not available."""
-    if shutil.which("zsh") is None:
-        pytest.skip("zsh not installed")
+def _run_script(script_path, env):
+    """Run a shell script, using bash explicitly on Windows."""
+    cmd = [BASH, str(script_path)] if sys.platform == "win32" else [str(script_path)]
+    return subprocess.run(cmd, env=env, capture_output=True, text=True)
 
 
 # =============================================================================
@@ -71,6 +84,7 @@ def zsh_available():
 # =============================================================================
 
 
+@needs_bash
 class TestGitSshSetup:
     """Tests for git-ssh-setup script idempotency."""
 
@@ -78,13 +92,12 @@ class TestGitSshSetup:
         """git-ssh-setup runs successfully on first execution."""
         ssh_key = tmp_home / ".ssh" / "id_ed25519"
         ssh_key.touch()
-        ssh_key.chmod(0o600)
+        if sys.platform != "win32":
+            ssh_key.chmod(0o600)
 
-        result = subprocess.run(
-            [str(DOTFILES / "git-ssh-setup")],
+        result = _run_script(
+            DOTFILES / "git-ssh-setup",
             env={**os.environ, "HOME": str(tmp_home)},
-            capture_output=True,
-            text=True,
         )
         assert result.returncode == 0, f"Failed: {result.stderr}"
 
@@ -92,12 +105,12 @@ class TestGitSshSetup:
         """git-ssh-setup creates gitconfig files with SSH key present."""
         ssh_key = tmp_home / ".ssh" / "id_ed25519"
         ssh_key.touch()
-        ssh_key.chmod(0o600)
+        if sys.platform != "win32":
+            ssh_key.chmod(0o600)
 
-        subprocess.run(
-            [str(DOTFILES / "git-ssh-setup")],
+        _run_script(
+            DOTFILES / "git-ssh-setup",
             env={**os.environ, "HOME": str(tmp_home)},
-            capture_output=True,
         )
 
         # Personal config should be created (id_ed25519 is fallback for personal)
@@ -107,37 +120,34 @@ class TestGitSshSetup:
         """git-ssh-setup runs successfully on second execution."""
         ssh_key = tmp_home / ".ssh" / "id_ed25519"
         ssh_key.touch()
-        ssh_key.chmod(0o600)
+        if sys.platform != "win32":
+            ssh_key.chmod(0o600)
 
         env = {**os.environ, "HOME": str(tmp_home)}
 
         # First run
-        result1 = subprocess.run(
-            [str(DOTFILES / "git-ssh-setup")], env=env, capture_output=True
-        )
+        result1 = _run_script(DOTFILES / "git-ssh-setup", env=env)
         assert result1.returncode == 0
 
         # Second run
-        result2 = subprocess.run(
-            [str(DOTFILES / "git-ssh-setup")], env=env, capture_output=True
-        )
+        result2 = _run_script(DOTFILES / "git-ssh-setup", env=env)
         assert result2.returncode == 0
 
     def test_second_run_does_not_corrupt_config(self, tmp_home):
         """git-ssh-setup second run does not corrupt config files."""
         ssh_key = tmp_home / ".ssh" / "id_ed25519"
         ssh_key.touch()
-        ssh_key.chmod(0o600)
+        if sys.platform != "win32":
+            ssh_key.chmod(0o600)
 
         env = {**os.environ, "HOME": str(tmp_home)}
-        script = str(DOTFILES / "git-ssh-setup")
 
         # First run
-        subprocess.run([script], env=env, capture_output=True)
+        _run_script(DOTFILES / "git-ssh-setup", env=env)
         content_after_first = (tmp_home / ".gitconfig-personal-local").read_text()
 
         # Second run
-        subprocess.run([script], env=env, capture_output=True)
+        _run_script(DOTFILES / "git-ssh-setup", env=env)
         content_after_second = (tmp_home / ".gitconfig-personal-local").read_text()
 
         assert content_after_first == content_after_second
@@ -145,22 +155,20 @@ class TestGitSshSetup:
     def test_handles_missing_keys_gracefully(self, tmp_home):
         """git-ssh-setup handles missing SSH keys gracefully."""
         # No SSH keys created
-        result = subprocess.run(
-            [str(DOTFILES / "git-ssh-setup")],
+        result = _run_script(
+            DOTFILES / "git-ssh-setup",
             env={**os.environ, "HOME": str(tmp_home)},
-            capture_output=True,
         )
         assert result.returncode == 0
 
     def test_multiple_runs_with_no_keys(self, tmp_home):
         """git-ssh-setup multiple runs with no keys still succeeds."""
         env = {**os.environ, "HOME": str(tmp_home)}
-        script = str(DOTFILES / "git-ssh-setup")
 
-        result1 = subprocess.run([script], env=env, capture_output=True)
+        result1 = _run_script(DOTFILES / "git-ssh-setup", env=env)
         assert result1.returncode == 0
 
-        result2 = subprocess.run([script], env=env, capture_output=True)
+        result2 = _run_script(DOTFILES / "git-ssh-setup", env=env)
         assert result2.returncode == 0
 
 
@@ -169,25 +177,23 @@ class TestGitSshSetup:
 # =============================================================================
 
 
+@needs_bash
 class TestClaudeLinkSetup:
     """Tests for claude-link-setup script idempotency."""
 
     def test_runs_successfully_first_execution(self, tmp_home):
         """claude-link-setup runs successfully on first execution."""
-        result = subprocess.run(
-            [str(DOTFILES / "claude-link-setup")],
+        result = _run_script(
+            DOTFILES / "claude-link-setup",
             env={**os.environ, "HOME": str(tmp_home)},
-            capture_output=True,
-            text=True,
         )
         assert result.returncode == 0, f"Failed: {result.stderr}"
 
     def test_creates_link_to_claude_directory(self, tmp_home):
         """claude-link-setup creates link to .claude directory."""
-        subprocess.run(
-            [str(DOTFILES / "claude-link-setup")],
+        _run_script(
+            DOTFILES / "claude-link-setup",
             env={**os.environ, "HOME": str(tmp_home)},
-            capture_output=True,
         )
 
         # Link should exist
@@ -200,23 +206,21 @@ class TestClaudeLinkSetup:
     def test_runs_successfully_second_execution(self, tmp_home):
         """claude-link-setup runs successfully on second execution."""
         env = {**os.environ, "HOME": str(tmp_home)}
-        script = str(DOTFILES / "claude-link-setup")
 
-        result1 = subprocess.run([script], env=env, capture_output=True)
+        result1 = _run_script(DOTFILES / "claude-link-setup", env=env)
         assert result1.returncode == 0
 
-        result2 = subprocess.run([script], env=env, capture_output=True)
+        result2 = _run_script(DOTFILES / "claude-link-setup", env=env)
         assert result2.returncode == 0
 
     def test_second_run_preserves_link(self, tmp_home):
         """claude-link-setup second run preserves link functionality."""
         env = {**os.environ, "HOME": str(tmp_home)}
-        script = str(DOTFILES / "claude-link-setup")
 
-        subprocess.run([script], env=env, capture_output=True)
+        _run_script(DOTFILES / "claude-link-setup", env=env)
         assert (tmp_home / ".claude" / "test-marker").exists()
 
-        subprocess.run([script], env=env, capture_output=True)
+        _run_script(DOTFILES / "claude-link-setup", env=env)
         assert (tmp_home / ".claude" / "test-marker").exists()
 
         content = (tmp_home / ".claude" / "test-marker").read_text()
@@ -225,11 +229,10 @@ class TestClaudeLinkSetup:
     def test_second_run_reports_already_linked(self, tmp_home):
         """claude-link-setup second run reports already linked."""
         env = {**os.environ, "HOME": str(tmp_home)}
-        script = str(DOTFILES / "claude-link-setup")
 
-        subprocess.run([script], env=env, capture_output=True)
+        _run_script(DOTFILES / "claude-link-setup", env=env)
 
-        result = subprocess.run([script], env=env, capture_output=True, text=True)
+        result = _run_script(DOTFILES / "claude-link-setup", env=env)
         assert result.returncode == 0
         assert "Already linked" in result.stdout
 
@@ -238,16 +241,15 @@ class TestClaudeLinkSetup:
         # Remove the source directory
         shutil.rmtree(tmp_home / ".dotfiles" / "claude")
 
-        result = subprocess.run(
-            [str(DOTFILES / "claude-link-setup")],
+        result = _run_script(
+            DOTFILES / "claude-link-setup",
             env={**os.environ, "HOME": str(tmp_home)},
-            capture_output=True,
-            text=True,
         )
         assert result.returncode == 1
         assert "not found" in result.stdout
 
 
+@needs_bash
 class TestClaudeLinkSetupBackupMerge:
     """Tests for claude-link-setup backup and merge functionality."""
 
@@ -258,10 +260,9 @@ class TestClaudeLinkSetupBackupMerge:
         existing_claude.mkdir()
         (existing_claude / "history.jsonl").write_text("session data")
 
-        result = subprocess.run(
-            [str(DOTFILES / "claude-link-setup")],
+        result = _run_script(
+            DOTFILES / "claude-link-setup",
             env={**os.environ, "HOME": str(tmp_home)},
-            capture_output=True,
         )
         assert result.returncode == 0
 
@@ -275,10 +276,9 @@ class TestClaudeLinkSetupBackupMerge:
         existing_claude.mkdir()
         (existing_claude / "history.jsonl").write_text('{"session":"old"}')
 
-        subprocess.run(
-            [str(DOTFILES / "claude-link-setup")],
+        _run_script(
+            DOTFILES / "claude-link-setup",
             env={**os.environ, "HOME": str(tmp_home)},
-            capture_output=True,
         )
 
         # history.jsonl should now exist in dotfiles
@@ -298,10 +298,9 @@ class TestClaudeLinkSetupBackupMerge:
         existing_claude.mkdir()
         (existing_claude / "history.jsonl").write_text('{"session":"new"}')
 
-        subprocess.run(
-            [str(DOTFILES / "claude-link-setup")],
+        _run_script(
+            DOTFILES / "claude-link-setup",
             env={**os.environ, "HOME": str(tmp_home)},
-            capture_output=True,
         )
 
         history_content = (
@@ -318,10 +317,9 @@ class TestClaudeLinkSetupBackupMerge:
         (debug_dir / "session-abc.txt").write_text("debug1")
         (debug_dir / "session-def.txt").write_text("debug2")
 
-        subprocess.run(
-            [str(DOTFILES / "claude-link-setup")],
+        _run_script(
+            DOTFILES / "claude-link-setup",
             env={**os.environ, "HOME": str(tmp_home)},
-            capture_output=True,
         )
 
         dotfiles_debug = tmp_home / ".dotfiles" / "claude" / "debug"
@@ -340,10 +338,9 @@ class TestClaudeLinkSetupBackupMerge:
         (existing_claude / "debug").mkdir(parents=True)
         (existing_claude / "debug" / "new-file.txt").write_text("new content")
 
-        subprocess.run(
-            [str(DOTFILES / "claude-link-setup")],
+        _run_script(
+            DOTFILES / "claude-link-setup",
             env={**os.environ, "HOME": str(tmp_home)},
-            capture_output=True,
         )
 
         # Original should be preserved
@@ -357,10 +354,9 @@ class TestClaudeLinkSetupBackupMerge:
         existing_claude.mkdir()
         (existing_claude / ".credentials.json").write_text('{"token":"secret"}')
 
-        subprocess.run(
-            [str(DOTFILES / "claude-link-setup")],
+        _run_script(
+            DOTFILES / "claude-link-setup",
             env={**os.environ, "HOME": str(tmp_home)},
-            capture_output=True,
         )
 
         assert (tmp_home / ".dotfiles" / "claude" / ".credentials.json").exists()
@@ -377,10 +373,9 @@ class TestClaudeLinkSetupBackupMerge:
         existing_claude.mkdir()
         (existing_claude / ".credentials.json").write_text('{"token":"local-token"}')
 
-        subprocess.run(
-            [str(DOTFILES / "claude-link-setup")],
+        _run_script(
+            DOTFILES / "claude-link-setup",
             env={**os.environ, "HOME": str(tmp_home)},
-            capture_output=True,
         )
 
         content = (
@@ -394,10 +389,9 @@ class TestClaudeLinkSetupBackupMerge:
         existing_claude.mkdir()
         (existing_claude / "history.jsonl").write_text("data")
 
-        subprocess.run(
-            [str(DOTFILES / "claude-link-setup")],
+        _run_script(
+            DOTFILES / "claude-link-setup",
             env={**os.environ, "HOME": str(tmp_home)},
-            capture_output=True,
         )
 
         # ~/.claude should now be a symlink (or junction on Windows)
@@ -409,10 +403,9 @@ class TestClaudeLinkSetupBackupMerge:
         existing_claude.mkdir()
         (existing_claude / "history.jsonl").write_text("merged-data")
 
-        subprocess.run(
-            [str(DOTFILES / "claude-link-setup")],
+        _run_script(
+            DOTFILES / "claude-link-setup",
             env={**os.environ, "HOME": str(tmp_home)},
-            capture_output=True,
         )
 
         # Should be able to read merged content through the symlink
@@ -426,10 +419,11 @@ class TestClaudeLinkSetupBackupMerge:
 # =============================================================================
 
 
+@needs_zsh
 class TestZdotdirBehavior:
     """Tests for ZDOTDIR shell boundary crossing behavior."""
 
-    def test_zdotdir_reaches_zsh_process(self, zsh_available, tmp_path):
+    def test_zdotdir_reaches_zsh_process(self, tmp_path):
         """ZDOTDIR reaches zsh process when passed via env."""
         zdotdir = tmp_path / "zdotdir"
         zdotdir.mkdir()
@@ -443,7 +437,7 @@ class TestZdotdirBehavior:
 
         assert result.stdout.strip() == str(zdotdir)
 
-    def test_zsh_sources_zshrc_from_zdotdir(self, zsh_available, tmp_path):
+    def test_zsh_sources_zshrc_from_zdotdir(self, tmp_path):
         """zsh sources .zshrc from ZDOTDIR not HOME."""
         zdotdir = tmp_path / "zdotdir"
         zdotdir.mkdir()
@@ -464,7 +458,7 @@ class TestZdotdirBehavior:
 
         assert result.stdout.strip() == "from_zdotdir"
 
-    def test_zdotdir_persists_in_subshells(self, zsh_available, tmp_path):
+    def test_zdotdir_persists_in_subshells(self, tmp_path):
         """ZDOTDIR persists in nested zsh calls."""
         zdotdir = tmp_path / "zdotdir"
         zdotdir.mkdir()
@@ -478,7 +472,7 @@ class TestZdotdirBehavior:
 
         assert result.stdout.strip() == str(zdotdir)
 
-    def test_zdotdir_fallback_pattern_with_zdotdir_set(self, zsh_available, tmp_path):
+    def test_zdotdir_fallback_pattern_with_zdotdir_set(self, tmp_path):
         """${ZDOTDIR:-$HOME} pattern resolves correctly when ZDOTDIR set."""
         zdotdir = tmp_path / "zdotdir"
         zdotdir.mkdir()
@@ -496,7 +490,7 @@ class TestZdotdirBehavior:
 
         assert result.stdout.strip() == str(zdotdir)
 
-    def test_zdotdir_fallback_pattern_without_zdotdir(self, zsh_available, tmp_path):
+    def test_zdotdir_fallback_pattern_without_zdotdir(self, tmp_path):
         """${ZDOTDIR:-$HOME} pattern falls back to HOME when ZDOTDIR unset."""
         home = tmp_path / "home"
         home.mkdir()
@@ -514,7 +508,7 @@ class TestZdotdirBehavior:
 
         assert result.stdout.strip() == str(home)
 
-    def test_zdotdir_with_spaces_in_path(self, zsh_available, tmp_path):
+    def test_zdotdir_with_spaces_in_path(self, tmp_path):
         """ZDOTDIR with spaces in path works correctly."""
         zdotdir = tmp_path / "path with spaces"
         zdotdir.mkdir()
@@ -528,7 +522,7 @@ class TestZdotdirBehavior:
 
         assert result.stdout.strip() == str(zdotdir)
 
-    def test_zsh_interactive_mode_preserves_zdotdir(self, zsh_available, tmp_path):
+    def test_zsh_interactive_mode_preserves_zdotdir(self, tmp_path):
         """zsh interactive mode (-i) preserves ZDOTDIR."""
         zdotdir = tmp_path / "zdotdir"
         zdotdir.mkdir()
@@ -544,7 +538,7 @@ class TestZdotdirBehavior:
 
         assert result.stdout.strip() == str(zdotdir)
 
-    def test_zsh_login_mode_preserves_zdotdir(self, zsh_available, tmp_path):
+    def test_zsh_login_mode_preserves_zdotdir(self, tmp_path):
         """zsh login mode (-l) preserves ZDOTDIR."""
         zdotdir = tmp_path / "zdotdir"
         zdotdir.mkdir()
@@ -560,7 +554,7 @@ class TestZdotdirBehavior:
 
         assert result.stdout.strip() == str(zdotdir)
 
-    def test_zsh_respects_zdotdir_for_zshenv(self, zsh_available, tmp_path):
+    def test_zsh_respects_zdotdir_for_zshenv(self, tmp_path):
         """zsh respects ZDOTDIR for .zshenv location."""
         zdotdir = tmp_path / "zdotdir"
         zdotdir.mkdir()
@@ -581,7 +575,7 @@ class TestZdotdirBehavior:
         sys.platform != "win32" and "MSYSTEM" not in os.environ,
         reason="Windows/MSYS2 only test",
     )
-    def test_zdotdir_windows_path_resolution(self, zsh_available, tmp_path):
+    def test_zdotdir_windows_path_resolution(self, tmp_path):
         """dotfiles path resolution works with ZDOTDIR on Windows."""
         # Use actual path conversion if on Windows
         zdotdir = tmp_path / "zdotdir"

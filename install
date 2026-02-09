@@ -2,12 +2,19 @@
 
 set -e
 
+completed_steps=()
+current_step=""
+install_failed=0
+trap 'install_failed=$?' ERR
+# shellcheck disable=SC2154
+trap 'echo ""; echo "=== Install Summary ==="; for s in "${completed_steps[@]}"; do echo "  [done] $s"; done; if [[ $install_failed -ne 0 ]]; then echo "  [FAIL] $current_step"; fi' EXIT
+
 CONFIG="install.conf.yaml"
 DOTBOT_DIR="dotbot"
 DOTBOT_BIN="bin/dotbot"
 BASEDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Detect Windows
+# Self-contained platform detection (intentionally not sourcing rc.d/00-helpers.zsh)
 is_windows() {
   [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ -n "$WINDIR" ]]
 }
@@ -23,12 +30,27 @@ if is_windows; then
     echo ""
 fi
 
+current_step="XDG migration"
+# Migrate from ~/.gitconfig to XDG path (~/.config/git/config)
+# Remove old symlink/file so git uses the XDG location instead
+if [[ -e "$HOME/.gitconfig" || -L "$HOME/.gitconfig" ]]; then
+    echo "Migrating ~/.gitconfig -> ~/.config/git/config (XDG)"
+    rm -f "$HOME/.gitconfig"
+fi
+if [[ -e "$HOME/.gitignore_global" || -L "$HOME/.gitignore_global" ]]; then
+    echo "Migrating ~/.gitignore_global -> ~/.config/git/ignore (XDG)"
+    rm -f "$HOME/.gitignore_global"
+fi
+completed_steps+=("XDG migration")
+
+current_step="Dotbot symlinks"
 cd "${BASEDIR}"
 git -C "${DOTBOT_DIR}" submodule sync --quiet --recursive
 git submodule update --init --recursive "${DOTBOT_DIR}"
-
 "${BASEDIR}/${DOTBOT_DIR}/${DOTBOT_BIN}" -d "${BASEDIR}" -c "${CONFIG}" "${@}"
+completed_steps+=("Dotbot symlinks")
 
+current_step="MSYS2 zsh bootstrap"
 # MSYS2 zsh bootstrap: create redirect from /home/$USER to Windows home
 # This fixes the HOME mismatch between Git Bash and MSYS2's zsh
 if is_windows && [[ -d "/home/$USER" ]]; then
@@ -42,6 +64,7 @@ if is_windows && [[ -d "/home/$USER" ]]; then
         echo "  Created $target"
     fi
 fi
+completed_steps+=("MSYS2 zsh bootstrap")
 
 # Skip GUI tools on headless Linux servers
 if [[ -z "$DISPLAY" ]] && [[ -z "$WAYLAND_DISPLAY" ]] && [[ -z "$WSL_DISTRO_NAME" ]] && ! is_windows; then
@@ -49,19 +72,34 @@ if [[ -z "$DISPLAY" ]] && [[ -z "$WAYLAND_DISPLAY" ]] && [[ -z "$WSL_DISTRO_NAME
     HEADLESS=1
 fi
 
+current_step="Git SSH setup"
 "${BASEDIR}/git-ssh-setup"
-"${BASEDIR}/zsh-setup"
+completed_steps+=("Git SSH setup")
 
+current_step="Zsh setup"
+"${BASEDIR}/zsh-setup"
+completed_steps+=("Zsh setup")
+
+current_step="uv install"
 # Install uv (Python package manager) - required for Claude Code hooks
 if command -v uv &>/dev/null; then
     echo "uv: already installed"
 else
     echo "Installing uv..."
-    curl -LsSf https://astral.sh/uv/install.sh | sh
+    curl -LsSf https://astral.sh/uv/0.6.6/install.sh | sh
 fi
+completed_steps+=("uv install")
+
+current_step="GUI tool setup"
 if [[ -z "$HEADLESS" ]]; then
     "${BASEDIR}/claude-link-setup"
     "${BASEDIR}/claude-mcp-setup"
     "${BASEDIR}/claude-plugins-setup"
     "${BASEDIR}/copilot-link-setup"
 fi
+completed_steps+=("GUI tool setup")
+
+current_step="Credential lockdown"
+# Lock down sensitive credential files
+[[ -f "$HOME/.claude/.credentials.json" ]] && chmod 600 "$HOME/.claude/.credentials.json"
+completed_steps+=("Credential lockdown")

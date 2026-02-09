@@ -39,7 +39,7 @@ while IFS= read -r file; do
         Makefile)
             needs_test=true ;;
         # Git config
-        .gitconfig|.gitconfig-*)
+        config/git/*|.gitconfig|.gitconfig-*)
             needs_test=true ;;
         # PowerShell install script
         install.ps1)

@@ -8,7 +8,7 @@
 CLAUDE_DIR="${HOME}/.claude"
 MCP_FILE="${CLAUDE_DIR}/.mcp.json"
 
-# Detect Windows (MSYS, Git Bash, Cygwin)
+# Self-contained platform detection (intentionally not sourcing rc.d/00-helpers.zsh)
 is_windows() {
     [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ -n "$WINDIR" ]]
 }

@@ -145,7 +145,7 @@ else
     echo -e "${CYAN}Dotbot not available, performing manual setup...${NC}"
 
     # Copy shell configs (not link, since source may be temporary)
-    for file in .zshrc .zprofile .profile .bashrc .bash_profile .gitconfig .dircolors; do
+    for file in .zshrc .zprofile .profile .bashrc .bash_profile .dircolors; do
         if [[ -f "${BASEDIR}/${file}" ]]; then
             # Remove existing symlink if present
             [[ -L ~/${file} ]] && rm -f ~/${file}
@@ -153,6 +153,18 @@ else
             echo "  Copied: ~/${file}"
         fi
     done
+
+    # Git config (XDG-compliant path)
+    if [[ -f "${BASEDIR}/config/git/config" ]]; then
+        mkdir -p ~/.config/git
+        cp -f "${BASEDIR}/config/git/config" ~/.config/git/config
+        echo "  Copied: ~/.config/git/config"
+    fi
+    if [[ -f "${BASEDIR}/config/git/ignore" ]]; then
+        mkdir -p ~/.config/git
+        cp -f "${BASEDIR}/config/git/ignore" ~/.config/git/ignore
+        echo "  Copied: ~/.config/git/ignore"
+    fi
 
     # Copy Oh My Posh config
     if [[ -f "${BASEDIR}/config/ohmyposh/prompt.json" ]]; then

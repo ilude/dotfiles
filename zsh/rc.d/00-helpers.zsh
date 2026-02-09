@@ -1,12 +1,16 @@
 # Helper functions for shell configuration
 # Sourced first (00- prefix) so available to all other modules
 
+# Deduplicate PATH entries
+typeset -U path
+
 # Source a file only if it exists
 source_if_exists() {
     [[ -f "$1" ]] && source "$1"
 }
 
-# Platform detection helpers (consolidate existing patterns)
+# Canonical platform detection helpers
+# Other scripts may redefine these for self-containment (see validate/ scripts)
 is_wsl() {
     [[ -n "$WSL_DISTRO_NAME" ]] || \
     [[ -f /proc/sys/fs/binfmt_misc/WSLInterop ]] || \

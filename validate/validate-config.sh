@@ -15,7 +15,7 @@ section "Dotfiles Installation"
 check '[[ -d ~/.dotfiles ]]' ".dotfiles directory exists"
 check '[[ -L ~/.zshrc ]]' ".zshrc is symlink"
 check '[[ -L ~/.bashrc ]]' ".bashrc is symlink"
-check '[[ -L ~/.gitconfig ]]' ".gitconfig is symlink"
+check '[[ -L ~/.config/git/config ]]' "git config is symlink (XDG)"
 check '[[ -d ~/.dotfiles/zsh/env.d ]]' "zsh/env.d directory exists"
 check '[[ -d ~/.dotfiles/zsh/rc.d ]]' "zsh/rc.d directory exists"
 

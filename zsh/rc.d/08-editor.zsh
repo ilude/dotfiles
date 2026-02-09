@@ -2,8 +2,8 @@
 
 # Directory colors (skip if dircolors not available, e.g., some Windows setups)
 if (( ${+commands[dircolors]} )); then
-    if [[ -f ~/.dircolors ]]; then
-        eval $(dircolors -b ~/.dircolors)
+    if [[ -f "${ZDOTDIR:-$HOME}/.dircolors" ]]; then
+        eval $(dircolors -b "${ZDOTDIR:-$HOME}/.dircolors")
     elif [[ -f /etc/DIR_COLORS ]]; then
         eval $(dircolors -b /etc/DIR_COLORS)
     fi
