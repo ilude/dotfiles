@@ -17,9 +17,10 @@ Cross-platform dotfiles repository for Linux and Windows. Uses **Dotbot** for sy
 
 **Windows PowerShell (full package installation):**
 ```powershell
-~/.dotfiles/install.ps1           # Core packages
-~/.dotfiles/install.ps1 -Work     # + AWS, Helm, Terraform, etc.
-~/.dotfiles/install.ps1 -ITAdmin  # + AD, Graph, Exchange modules
+~/.dotfiles/install.ps1              # Core packages
+~/.dotfiles/install.ps1 -Work        # + AWS, Helm, Terraform, etc.
+~/.dotfiles/install.ps1 -ITAdmin     # + AD, Graph, Exchange modules
+~/.dotfiles/install.ps1 -NoElevate   # Skip elevation (Developer Mode)
 ```
 
 > **Note for Claude:** Self-elevating scripts like `install.ps1` can be run directly via `pwsh -File install.ps1`. They spawn an elevated admin window automatically - you won't see output but the script runs. Wrap in a 90 second timeout to avoid hanging: `timeout 90 pwsh -File install.ps1 -SkipPackages`
@@ -35,10 +36,12 @@ make test    # Run bats tests
 
 ### Installation Flow
 1. `install` (bash) or `install.ps1` (PowerShell) → entry points
-2. **Dotbot** creates symlinks defined in `install.conf.yaml`
-3. `git-ssh-setup` detects SSH keys, writes machine-specific `.gitconfig-*-local` files
-4. `zsh-setup` installs zsh and sets as default shell (Linux only)
-5. `zsh-plugins` downloads plugins on first shell startup
+2. XDG migration: removes old `~/.gitconfig` and `~/.gitignore_global` so Git uses `~/.config/git/`
+3. **Dotbot** creates symlinks defined in `install.conf.yaml`
+4. `git-ssh-setup` detects SSH keys, writes machine-specific `.gitconfig-*-local` files
+5. `zsh-setup` installs zsh and sets as default shell (Linux only)
+6. `zsh-plugins` downloads version-pinned plugins on first shell startup
+7. Credential lockdown: `chmod 600` on sensitive files like `~/.claude/.credentials.json`
 
 ### Git Identity System
 - **Directory-based** (Windows): `C:/Projects/Work/` → professional, `C:/Projects/Personal/` → personal
@@ -46,8 +49,8 @@ make test    # Run bats tests
 - Machine-specific SSH configs in `.gitconfig-personal-local` and `.gitconfig-professional-local` (gitignored)
 
 ### SSH Key Priority
-- Personal: `id_ed25519-personal` > `id_ed25519`
-- Work: `id_ed25519-work` > `id_ed25519-eagletg`
+- Personal: `id_ed25519-personal` > `id_ed25519` (generic key used for personal only)
+- Work: `id_ed25519-work` > `id_ed25519-eagletg` (requires a named key; generic `id_ed25519` is NOT used for work)
 
 ### Key Files
 | File | Purpose |
@@ -60,7 +63,8 @@ make test    # Run bats tests
 | `zsh/rc.d/` | Interactive modules (completions, history, prompt, aliases) |
 | `zsh-plugins` | On-demand plugin downloader from GitHub |
 | `.zshrc-msys2-bootstrap` | MSYS2 HOME redirect to Windows home |
-| `config/git/config` | Unified Git config with identity includes |
+| `config/git/config` | Unified Git config (XDG: `~/.config/git/config`) |
+| `config/git/ignore` | Global gitignore (XDG: `~/.config/git/ignore`) |
 | `.gitconfig-personal` / `.gitconfig-professional` | Identity-specific configs |
 | `git-ssh-setup` | SSH key detection, writes `.gitconfig-*-local` files |
 | `powershell/profile.ps1` | PowerShell profile |
@@ -69,7 +73,7 @@ make test    # Run bats tests
 | `copilot/` | Global Copilot instructions (symlinked) |
 
 ### Platform Detection
-Scripts use `$OSTYPE` (`msys`, `cygwin`) or `$WINDIR` for Windows detection. All scripts are designed to be idempotent.
+Canonical helpers are in `zsh/rc.d/00-helpers.zsh` (`is_windows`, `is_wsl`, `is_linux`, `is_macos`). Standalone scripts redefine these for self-containment. All scripts are designed to be idempotent.
 
 ### Unified Shell Architecture (CRITICAL)
 
@@ -86,10 +90,13 @@ Scripts use `$OSTYPE` (`msys`, `cygwin`) or `$WINDIR` for Windows detection. All
 .bash_profile → adds MSYS2 to PATH → sets ZDOTDIR → exec env ZDOTDIR=... zsh -l
                                                            ↓
                                                       .zshenv → zsh/env.d/*.zsh (WINHOME, locale, PATH)
+                                                              → sets _DOTFILES_ENV_SOURCED=1
                                                            ↓
-                                                      .zshrc → zsh/rc.d/*.zsh (completions, plugins, history, prompt)
+                                                      .zshrc → skips env.d if _DOTFILES_ENV_SOURCED
+                                                             → sources .secrets (interactive only)
+                                                             → zsh/rc.d/*.zsh (completions, plugins, history, prompt)
                                                            ↓
-                                                      zsh-plugins (downloads if missing)
+                                                      zsh-plugins (downloads pinned versions if missing)
 ```
 
 #### MSYS2/Git Bash Complexity (READ THIS)
