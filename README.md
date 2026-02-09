@@ -34,9 +34,10 @@ git clone --recursive https://github.com/ilude/dotfiles.git ~/.dotfiles
 
 ```powershell
 git clone --recursive https://github.com/ilude/dotfiles.git $HOME\.dotfiles
-~\.dotfiles\install.ps1             # Core packages
-~\.dotfiles\install.ps1 -Work       # + AWS, Terraform, Helm, etc.
-~\.dotfiles\install.ps1 -ITAdmin    # + AD, Graph, Exchange modules
+~\.dotfiles\install.ps1                # Core packages
+~\.dotfiles\install.ps1 -Work          # + AWS, Terraform, Helm, etc.
+~\.dotfiles\install.ps1 -ITAdmin       # + AD, Graph, Exchange modules
+~\.dotfiles\install.ps1 -NoElevate     # Skip elevation (Developer Mode)
 ~\.dotfiles\install.ps1 -ListPackages  # Show available packages
 ```
 

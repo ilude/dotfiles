@@ -29,7 +29,7 @@ Located in `powershell/lib/path-utils.ps1`:
 | `ConvertTo-GitBashPath` | 6 | Windows → Git Bash path conversion |
 | `ConvertTo-WSLPath` | 5 | Windows → WSL path conversion |
 | `Get-ContentLF` | 4 | File reading with LF normalization |
-| `Get-GitBash` | 2 | Git Bash executable detection |
+| `Get-GitBash` | 5 | Git Bash executable detection + WSL path filtering |
 
 ## Adding Tests for Standard Functions (Phase 2)
 
