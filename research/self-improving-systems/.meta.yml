@@ -1,6 +1,0 @@
-topic: self-improving-systems
-description: Research on AI systems that learn from corrections and behavior
-keywords: [meta-learning, autoskill, context-maintenance, hooks, skills]
-notes:
-  - overview.md
-  - context-maintenance-plan.md

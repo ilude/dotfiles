@@ -64,7 +64,7 @@ current_step="MSYS2 zsh bootstrap"
 # This fixes the HOME mismatch between Git Bash and MSYS2's zsh
 if is_windows && [[ -d "/home/$USER" ]]; then
     target="/home/$USER/.zshrc"
-    source="${BASEDIR}/.zshrc-msys2-bootstrap"
+    source="${BASEDIR}/zsh/zshrc-msys2-bootstrap"
     if [[ -f "$target" ]] && cmp -s "$source" "$target"; then
         echo "MSYS2 bootstrap: already correct"
     else
