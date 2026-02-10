@@ -69,6 +69,15 @@
             "command": "bash ~/.claude/hooks/ensure-mcp-config.sh"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/team-cleanup.sh",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PreToolUse": [
@@ -109,6 +118,28 @@
             "type": "command",
             "command": "bash -c 'uv run $HOME/.claude/hooks/damage-control/write-tool-damage-control.py'",
             "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'uv run $HOME/.claude/hooks/quality-validation/quality_validation_hook.py'",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'uv run $HOME/.claude/hooks/quality-validation/quality_validation_hook.py'",
+            "timeout": 15
           }
         ]
       }
