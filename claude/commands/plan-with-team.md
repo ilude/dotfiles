@@ -155,6 +155,7 @@ Execute the plan with these exact steps:
    - Send shutdown messages to agents via SendMessage (natural language: "All tasks are complete, please shut down")
    - Use `type: "shutdown_request"` for each agent
    - After all agents confirm shutdown, run TeamDelete()
+   - **Archive the plan**: Move `.specs/{slug}/` to `.specs/archive/{slug}/` (create `.specs/archive/` if needed). This keeps completed plans for reference without cluttering active specs.
 
 ## Step 7: Error Recovery
 
