@@ -284,7 +284,7 @@ function Configure-Rclone {
 
     # Parse MINIO vars from .env (bash format)
     $secrets = Get-Content $secretsFile -Raw
-    $endpoint = if ($secrets -match 'MINIO_ENDPOINT=([^\r\n]+)') { $matches[1] } else { $null }
+    $endpoint = if ($secrets -match 'MINIO_URL=(?:https?://)?([^\r\n]+)') { $matches[1] } else { $null }
     $accessKey = if ($secrets -match 'MINIO_ACCESS_KEY=([^\r\n]+)') { $matches[1] } else { $null }
     $secretKey = if ($secrets -match 'MINIO_SECRET_KEY=([^\r\n]+)') { $matches[1] } else { $null }
 
