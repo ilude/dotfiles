@@ -1,0 +1,56 @@
+# Quality Validation Configuration
+# Add a language by adding a block. No code changes needed.
+# Install commands use platform detection: winget (Windows), brew (macOS), apt (Debian/Ubuntu)
+
+python:
+  extensions: [".py"]
+  markers: ["pyproject.toml", "setup.py", "requirements.txt"]
+  validators:
+    - name: ruff-check
+      command: ["uv", "run", "ruff", "check", "{file}"]
+      check: "uv"
+    - name: ruff-format
+      command: ["uv", "run", "ruff", "format", "--check", "{file}"]
+      check: "uv"
+  install:
+    winget: null
+    brew: null
+    apt: null
+    pip: "uv tool install ruff"
+
+typescript:
+  extensions: [".ts", ".tsx", ".js", ".jsx"]
+  markers: ["package.json", "tsconfig.json"]
+  validators:
+    - name: biome
+      command: ["npx", "@biomejs/biome", "check", "{file}"]
+      check: "npx"
+  install:
+    winget: null
+    brew: null
+    apt: null
+    npm: "npm install -D @biomejs/biome"
+
+shell:
+  extensions: [".sh", ".bash"]
+  markers: ["Makefile", ".shellcheckrc"]
+  validators:
+    - name: shellcheck
+      command: ["shellcheck", "{file}"]
+      check: "shellcheck"
+  install:
+    winget: "winget install koalaman.shellcheck"
+    brew: "brew install shellcheck"
+    apt: "sudo apt install shellcheck"
+
+go:
+  extensions: [".go"]
+  markers: ["go.mod"]
+  validators:
+    - name: go-vet
+      command: ["go", "vet", "{file}"]
+      check: "go"
+  install:
+    winget: "winget install GoLang.Go"
+    brew: "brew install go"
+    apt: "sudo apt install golang-go"
