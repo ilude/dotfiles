@@ -23,7 +23,7 @@ Extract the 11-character video ID from the URL or use directly if already an ID.
 ### 2. Call menos API
 
 ```bash
-cd ~/.dotfiles/claude/commands/yt && uv run ingest_video.py "{url_or_video_id}"
+cd ~/.claude/commands/yt && unset VIRTUAL_ENV && uv run ingest_video.py "{url_or_video_id}"
 ```
 
 The API will:
@@ -69,7 +69,7 @@ Optional (for local file browsing):
 
 User: `/yt dQw4w9WgXcQ`
 
-1. Run: `cd ~/.dotfiles/claude/commands/yt && uv run ingest_video.py dQw4w9WgXcQ`
+1. Run: `cd ~/.claude/commands/yt && unset VIRTUAL_ENV && uv run ingest_video.py dQw4w9WgXcQ`
 2. API fetches transcript, generates summary
 3. Display summary to user
 4. Note files stored in MinIO
