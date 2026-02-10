@@ -78,6 +78,15 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/git-pull-check.sh",
+            "timeout": 15
+          }
+        ]
       }
     ],
     "PreToolUse": [
