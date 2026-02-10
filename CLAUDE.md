@@ -62,7 +62,7 @@ make test    # Run bats tests
 | `zsh/env.d/` | Environment modules (WINHOME, locale, PATH) |
 | `zsh/rc.d/` | Interactive modules (completions, history, prompt, aliases) |
 | `scripts/zsh-plugins` | On-demand plugin downloader from GitHub |
-| `.zshrc-msys2-bootstrap` | MSYS2 HOME redirect to Windows home |
+| `zsh/zshrc-msys2-bootstrap` | MSYS2 HOME redirect to Windows home |
 | `config/git/config` | Unified Git config (XDG: `~/.config/git/config`) |
 | `config/git/ignore` | Global gitignore (XDG: `~/.config/git/ignore`) |
 | `config/git/gitconfig-personal` / `config/git/gitconfig-professional` | Identity-specific configs |

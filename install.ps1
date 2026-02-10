@@ -693,7 +693,7 @@ function Install-Packages {
     # Create MSYS2 zsh bootstrap (fixes HOME mismatch between Git Bash and MSYS2 zsh)
     Write-Host "`n--- MSYS2 Zsh Bootstrap ---" -ForegroundColor Cyan
     $msys2Home = "$Msys2Root\home\$env:USERNAME"
-    $bootstrapSrc = Join-Path $BASEDIR ".zshrc-msys2-bootstrap"
+    $bootstrapSrc = Join-Path $BASEDIR "zsh\zshrc-msys2-bootstrap"
     if ((Test-Path $msys2Home) -and (Test-Path $bootstrapSrc)) {
         $bootstrapDst = Join-Path $msys2Home ".zshrc"
         Copy-Item $bootstrapSrc $bootstrapDst -Force
