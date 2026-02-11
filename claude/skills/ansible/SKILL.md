@@ -3,8 +3,6 @@ name: ansible
 description: Ansible automation, playbooks, and configuration management. Activate when working with Ansible YAML files or discussing Ansible patterns.
 ---
 
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119.
-
 # Ansible Workflow
 
 ## Tool Grid
@@ -181,38 +179,7 @@ compose:
   ansible_host: private_ip_address
 ```
 
-### Azure RM
-
-```yaml
-# inventories/azure/azure_rm.yml
-plugin: azure.azcollection.azure_rm
-auth_source: auto
-include_vm_resource_groups:
-  - production-rg
-  - staging-rg
-keyed_groups:
-  - key: tags.Environment
-    prefix: env
-hostnames:
-  - private_ipv4_addresses
-```
-
-### GCP Compute
-
-```yaml
-# inventories/gcp/gcp_compute.yml
-plugin: google.cloud.gcp_compute
-projects:
-  - my-project-id
-zones:
-  - us-central1-a
-  - us-central1-b
-keyed_groups:
-  - key: labels.environment
-    prefix: env
-hostnames:
-  - private_ip
-```
+See Ansible docs for Azure (`azure.azcollection.azure_rm`) and GCP (`google.cloud.gcp_compute`) dynamic inventory plugins.
 
 ## Handler Patterns
 
@@ -256,21 +223,14 @@ Handlers execute in definition order, not notification order. Define handlers in
 
 ## Variable Precedence
 
-Ansible variable precedence (highest to lowest):
+Key levels (highest to lowest):
 
-1. Extra vars (`-e "var=value"`)
-2. Task vars (in task definition)
-3. Block vars
-4. Role and include vars
-5. Set facts / registered vars
-6. Play vars_files
-7. Play vars
-8. Host facts
-9. Playbook host_vars
-10. Inventory host_vars
-11. Playbook group_vars
-12. Inventory group_vars
-13. Role defaults
+1. Extra vars (`-e "var=value"`) - always wins
+2. Task/block/role vars
+3. Play vars_files and play vars
+4. Role defaults - lowest priority
+
+See [Ansible docs](https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_variables.html#variable-precedence-where-should-i-put-a-variable) for the full 22-level precedence list.
 
 ### Best Practices
 
