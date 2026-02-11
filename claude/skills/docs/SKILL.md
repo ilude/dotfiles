@@ -3,10 +3,6 @@ name: docs
 description: Technical documentation, writing guides, and documentation patterns. Activate when writing or discussing documentation.
 ---
 
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
-"SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
-interpreted as described in RFC 2119.
-
 # Documentation Workflow
 
 ## Tool Grid
