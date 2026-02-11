@@ -5,7 +5,26 @@ description: Go development with testing, modules, and best practices. Activate 
 
 # Go Skill
 
-This skill provides comprehensive guidelines for Go development.
+Go emphasizes simplicity, explicit error handling, and strong concurrency primitives. Prefer composition over inheritance, return errors instead of panicking, and keep packages small and focused.
+
+## Quick Reference
+
+| Command | Purpose |
+|---------|---------|
+| `go build ./...` | Build all packages |
+| `go test ./...` | Run all tests |
+| `go test -race ./...` | Run tests with race detector |
+| `go fmt ./...` | Format all code |
+| `go vet ./...` | Static analysis |
+| `go mod tidy` | Clean up module dependencies |
+| `golangci-lint run` | Comprehensive linting |
+
+**Error handling pattern:**
+```go
+if err != nil {
+    return fmt.Errorf("operation failed: %w", err)
+}
+```
 
 ## Contents
 

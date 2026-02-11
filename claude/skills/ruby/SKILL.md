@@ -5,7 +5,20 @@ description: Ruby development with Rails, RSpec, and best practices. Activate wh
 
 # Ruby Skill
 
-This skill provides comprehensive guidelines for Ruby development.
+Ruby prioritizes developer happiness with expressive syntax and convention over configuration. Use Bundler for dependency management, leverage blocks and iterators, and follow the principle of least surprise.
+
+## Quick Reference
+
+| Command | Purpose |
+|---------|---------|
+| `bundle install` | Install dependencies |
+| `bundle exec rspec` | Run RSpec tests |
+| `bundle exec rails s` | Start Rails server |
+| `bundle exec rubocop` | Lint and format |
+| `bundle exec rake db:migrate` | Run migrations |
+| `ruby -c file.rb` | Syntax check |
+
+**Key patterns:** Blocks (`do...end`, `{}`), symbols (`:name`), duck typing, mixins via modules, `Enumerable` for collection processing.
 
 ## Contents
 
