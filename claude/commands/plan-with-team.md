@@ -62,46 +62,66 @@ completed:
 - **Test command**: {detected or "none detected"}
 - **Lint command**: {detected or "none detected"}
 
+## Complexity Analysis
+
+Assign each task a model and agent using these heuristics (user can override):
+
+| Scope | Keywords | Model | Agent |
+|-------|----------|-------|-------|
+| 1-2 files AND mechanical | rename, add flag, update config, fix typo, add test | haiku | builder-light |
+| 3-5 files OR feature work | implement, refactor, add feature, integrate, extend | sonnet | builder |
+| 6+ files OR architecture | architect, redesign, migrate, coordinate, cross-cutting | opus | builder-heavy |
+
+| Task | Est. Files | Change Type | Model | Agent |
+|------|-----------|-------------|-------|-------|
+| {task name} | {count} | {mechanical/feature/architecture} | {haiku/sonnet/opus} | {agent} |
+
 ## Team Members
-| Name | Agent | Role |
-|------|-------|------|
-| {slug}-builder | builder (sonnet) | Implement changes |
-| {slug}-validator | validator (haiku) | Verify output |
 
-## Tasks
+Only list agents actually needed for this plan:
 
-### Task 1: {implementation task name}
-- **Owner**: {slug}-builder
-- **Blocked By**: none
-- **Description**: {what to implement}
-- **Acceptance Criteria**:
-  - [ ] {verifiable criterion 1}
-  - [ ] {verifiable criterion 2}
-- **Verification Command**: {detected lint/test command}
+| Name | Agent | Model | Role |
+|------|-------|-------|------|
+| {slug}-builder-1 | {agent type} | {model} | {role description} |
+| {slug}-validator-1 | {validator/validator-heavy} | {model} | Wave validation |
 
-### Task 2: Validate implementation
-- **Owner**: {slug}-validator
-- **Blocked By**: Task 1
-- **Description**: Run linters, tests, and content checks on the builder's output
-- **Acceptance Criteria**:
-  - [ ] All linters pass
-  - [ ] All tests pass
-  - [ ] No debug statements or hardcoded secrets
+## Execution Waves
+
+Group independent tasks (no builder dependencies) into the same wave. Tasks depending on a previous wave's output go in the next wave. Each wave ends with a validation gate.
+
+Validator model rule: if wave contains any sonnet/opus builder → validator-heavy (sonnet), otherwise → validator (haiku).
+
+### Wave 1 (parallel)
+- T1: {task name} [{model}] — {agent}
+- T2: {task name} [{model}] — {agent}
+
+### Wave 1 Validation
+- V1: Validate wave 1 [{validator model}] — {validator agent}, blockedBy: [T1, T2]
+
+### Wave 2
+- T3: {task name} [{model}] — {agent}, blockedBy: [V1]
+
+### Wave 2 Validation
+- V2: Validate wave 2 [{validator model}] — {validator agent}, blockedBy: [T3]
 
 ## Dependency Graph
-Task 1 (builder) → Task 2 (validator)
+Wave 1: T1, T2 (parallel) → V1 → Wave 2: T3 → V2
 ```
 
-For complex tasks, create multiple builder/validator task pairs.
+For complex tasks, create multiple waves with parallel builders and validation gates between them.
 
 ## Step 4: Self-Validate Plan
 
 Before presenting, verify the plan has:
 - [ ] Objective section
-- [ ] Team Members table
+- [ ] Complexity Analysis table with Model/Agent for every task
+- [ ] Team Members table (only lists agents actually needed)
 - [ ] At least one builder task
-- [ ] At least one validator task
-- [ ] Every validator task has `Blocked By` referencing a builder task
+- [ ] Tasks are organized into numbered waves
+- [ ] Each wave has exactly one validation task
+- [ ] Validator blockedBy includes ALL builder tasks in its wave
+- [ ] Wave N+1 builders blockedBy Wave N validator
+- [ ] Validator model matches wave rule (sonnet/opus builders → validator-heavy, haiku-only → validator)
 - [ ] Every task has Acceptance Criteria
 
 If validation fails, fix the plan before continuing.
@@ -118,47 +138,51 @@ If "Cancel": Stop execution.
 
 ## Step 6: Orchestrate
 
-Execute the plan with these exact steps:
+Execute the plan using wave-based orchestration:
 
 1. **Create team**:
    ```
    TeamCreate(team_name="{slug}")
    ```
 
-2. **Create tasks** from the plan:
+2. **Create ALL tasks** across all waves (builders + validators):
    ```
-   TaskCreate for each task in the plan
-   ```
-
-3. **Set dependencies**:
-   ```
-   TaskUpdate(validator_task, addBlockedBy: [builder_task_ids])
+   TaskCreate for each task in the plan (all waves at once)
    ```
 
-4. **Spawn builder agent**:
-   ```
-   Task(subagent_type="builder", team_name="{slug}", name="{slug}-builder", prompt="...")
-   ```
-   Include the task description, acceptance criteria, and project context in the prompt.
+3. **Set ALL dependencies** via TaskUpdate:
+   - Wave 1 builders: no blockers
+   - Wave 1 validator: `addBlockedBy` all Wave 1 builder task IDs
+   - Wave 2 builders: `addBlockedBy` Wave 1 validator task ID
+   - Wave 2 validator: `addBlockedBy` all Wave 2 builder task IDs
+   - Continue pattern for additional waves
 
-5. **Spawn validator agent**:
+4. **Assign owners** via TaskUpdate for all tasks.
+
+5. **Spawn Wave 1 builders in parallel** (multiple Task() calls in one message):
    ```
-   Task(subagent_type="validator", team_name="{slug}", name="{slug}-validator", prompt="...")
+   Task(subagent_type="{agent}", team_name="{slug}", name="{slug}-builder-1", prompt="...")
+   Task(subagent_type="{agent}", team_name="{slug}", name="{slug}-builder-2", prompt="...")
    ```
-   Include what to validate and the verification commands.
+   Use the agent type from the Complexity Analysis (builder-light, builder, or builder-heavy).
+   Include the task description, acceptance criteria, and project context in each prompt.
 
-6. **Assign tasks**: Use TaskUpdate to set owner on each task.
+6. **Monitor Wave 1** — check TaskList. When ALL Wave 1 builders complete:
+   Spawn Wave 1 validator:
+   ```
+   Task(subagent_type="{validator-agent}", team_name="{slug}", name="{slug}-validator-1", prompt="...")
+   ```
+   Use validator-heavy if wave had sonnet/opus builders, otherwise validator.
 
-7. **Monitor progress**:
-   - Check TaskList periodically
-   - If builder completes → validator auto-unblocks
-   - If validator reports FAIL → create fix task for builder, re-block validator
-   - If an agent is idle too long → check on it via SendMessage
+7. **Handle validation result**:
+   - **PASS** → proceed to spawn Wave 2 builders (same parallel pattern as step 5)
+   - **FAIL** → create a fix task for the failed items, assign to appropriate builder, block re-validation on the fix task. Re-run validation after fix completes.
 
-8. **Complete**:
-   - When all tasks are done, present a summary to the user
-   - Send shutdown messages to agents via SendMessage (natural language: "All tasks are complete, please shut down")
-   - Use `type: "shutdown_request"` for each agent
+8. **Repeat** steps 6-7 for each subsequent wave.
+
+9. **Complete** when all waves pass validation:
+   - Present summary to user
+   - SendMessage(type: "shutdown_request") to each agent
    - After all agents confirm shutdown, run TeamDelete()
 
 ## Step 7: Archive Plan
