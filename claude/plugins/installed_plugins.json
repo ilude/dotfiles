@@ -60,6 +60,16 @@
         "lastUpdated": "2026-01-13T00:56:06.586Z",
         "isLocal": true
       }
+    ],
+    "superpowers@superpowers-marketplace": [
+      {
+        "scope": "user",
+        "installPath": "C:\\Users\\mglenn\\.claude\\plugins\\cache\\superpowers-marketplace\\superpowers\\4.2.0",
+        "version": "4.2.0",
+        "installedAt": "2026-02-11T01:15:00.000Z",
+        "lastUpdated": "2026-02-11T01:15:00.000Z",
+        "isLocal": true
+      }
     ]
   }
 }
