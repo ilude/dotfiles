@@ -268,6 +268,10 @@ This skill defines the principles. The `/commit` command implements the procedur
 
 ---
 
+## .gitignore Modifications
+
+**MUST ask before adding entries to .gitignore.** Do not unilaterally decide that a file or directory should be ignored. The user may want to track it. Always ask first using AskUserQuestion, even if it seems obvious (e.g., build artifacts, working directories, temp files).
+
 ## .gitignore Best Practices
 
 ### Organization
