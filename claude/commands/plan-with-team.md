@@ -47,6 +47,11 @@ Tell the user: "I'll create `.specs/{slug}/plan.md` for the team plan."
 Write the plan to `.specs/{slug}/plan.md` using this template:
 
 ```
+---
+created: {YYYY-MM-DD}
+completed:
+---
+
 # Team Plan: {task-name}
 
 ## Objective
@@ -155,9 +160,19 @@ Execute the plan with these exact steps:
    - Send shutdown messages to agents via SendMessage (natural language: "All tasks are complete, please shut down")
    - Use `type: "shutdown_request"` for each agent
    - After all agents confirm shutdown, run TeamDelete()
-   - **Archive the plan**: Move `.specs/{slug}/` to `.specs/archive/{slug}/` (create `.specs/archive/` if needed). This keeps completed plans for reference without cluttering active specs.
 
-## Step 7: Error Recovery
+## Step 7: Archive Plan
+
+This step is **mandatory** after team completion. Do not skip it.
+
+1. **Set completion date**: Edit `.specs/{slug}/plan.md` frontmatter, setting `completed: {YYYY-MM-DD}` to today's date
+2. **Create archive directory** if needed: `mkdir -p .specs/archive`
+3. **Move the plan**: `mv .specs/{slug}/ .specs/archive/{slug}/`
+4. **Verify**: Confirm `.specs/archive/{slug}/plan.md` exists
+
+This keeps completed plans for reference without cluttering active specs.
+
+## Step 8: Error Recovery
 
 - **TeamCreate fails**: Report error, no cleanup needed
 - **Agent crashes**: Mark task as pending, reassign or ask user
