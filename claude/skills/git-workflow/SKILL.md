@@ -1,13 +1,9 @@
 ---
 name: git-workflow
-description: Git workflow and commit guidelines. Trigger keywords: git, commit, push, .git, version control. MUST be activated before ANY git commit, push, or version control operation. Includes security scanning for secrets (API keys, tokens, .env files), commit message formatting with HEREDOC, logical commit grouping (docs, test, feat, fix, refactor, chore, build, deps), push behavior rules, safety rules for hooks and force pushes, and CRITICAL safeguards for destructive operations (filter-branch, gc --prune, reset --hard). Activate when user requests committing changes, pushing code, creating commits, rewriting history, or performing any git operations including analyzing uncommitted changes.
+description: Activate when working with git operations, commits, branches, or version control. Trigger on git commands, .git/ files, .gitignore, .gitattributes, or mentions of commit, push, merge, rebase, reset, filter-branch, or history rewrite.
 ---
 
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119.
-
 # Git Workflow Guidelines
-
-**Auto-activate when:** Working with `.gitignore`, `.gitattributes`, `.git/`, or when user mentions commit, push, git, version control, pull request, branch, merge, staging changes, filter-branch, rebase, reset, or history rewrite. Should also activate when bash commands contain `git` (requires conversation parsing).
 
 Comprehensive git workflow principles for all git operations.
 
