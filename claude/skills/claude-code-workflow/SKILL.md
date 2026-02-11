@@ -1,10 +1,8 @@
 ---
 name: claude-code-workflow
-description: Claude Code AI-assisted development workflow. Activate when discussing Claude Code usage, AI-assisted coding, prompting strategies, context management, /snapshot, /pickup, hooks, .claude/hooks, multi-instance verification, browser automation, PTC orchestration, YouTube transcripts, ruleset optimization, CLAUDE.md optimization, multi-agent AI projects, .spec/, lessons/, or Claude Code-specific patterns.
+description: Activate when discussing Claude Code usage, prompting strategies, context management, /snapshot, /pickup, hooks, multi-instance verification, browser automation, ruleset optimization, CLAUDE.md optimization, multi-agent projects, or .spec/ patterns.
 location: user
 ---
-
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119.
 
 # Claude Code Workflow
 
