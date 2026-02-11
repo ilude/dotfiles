@@ -1,6 +1,6 @@
 ---
 name: youtube-transcript
-description: YouTube transcript context management. Trigger keywords: YouTube, video_id, transcript, yt. Auto-activate when working with YouTube transcripts, video_id references, or files in claude/logs/yt/ directory. Uses file-based storage with haiku summarization for context efficiency.
+description: Activate when working with YouTube transcripts, video_id references, files in claude/logs/yt/ directory, or when user mentions the /yt command.
 ---
 
 # YouTube Transcript Context Management
