@@ -5,8 +5,6 @@ description: TypeScript/JavaScript development with Bun, Biome, Zod, and modern 
 
 # TypeScript/JavaScript Projects Workflow
 
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119.
-
 Guidelines for working with TypeScript and JavaScript projects using Bun as the primary package manager with modern tooling and best practices.
 
 ## Tool Grid

@@ -3,8 +3,6 @@ name: api-design
 description: API design patterns including REST, GraphQL, and authentication. Activate when designing APIs or discussing API patterns.
 ---
 
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119.
-
 # API Design Patterns
 
 Language-agnostic patterns for designing robust, scalable REST and GraphQL APIs. Focus on solving real problems with simple, maintainable solutions.
