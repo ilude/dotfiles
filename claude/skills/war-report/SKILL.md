@@ -5,10 +5,6 @@ description: Generate weekly activity reports (WAR) from git commits. Analyzes c
 
 # War Report Generator
 
-**Auto-activate when:** User mentions war report, weekly report, WAR, activity report, weekly accomplishments, or asks what was worked on this week.
-
-**Purpose:** Generate concise weekly activity summaries from git commit history.
-
 ## Process
 
 1. **Get date context**
