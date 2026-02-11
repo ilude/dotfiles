@@ -186,7 +186,8 @@
     "aws-cdk@aws-skills": true,
     "aws-cost-ops@aws-skills": true,
     "serverless-eda@aws-skills": true,
-    "aws-agentic-ai@aws-skills": true
+    "aws-agentic-ai@aws-skills": true,
+    "superpowers@superpowers-marketplace": true
   },
   "alwaysThinkingEnabled": true,
   "env": {
