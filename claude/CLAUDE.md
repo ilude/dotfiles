@@ -17,6 +17,8 @@
  - **Ask, don't assume** - Never guess or fill in blanks. Ask clarifying questions.
  - **One question at a time** - Use AskUserQuestion tool with multiSelect: true when possible.
  - **ALWAYS use AskUserQuestion tool** - when you need to ask the user questions.
+ - **1-3-1 Rule** - When stuck, provide 1 clearly defined problem, give 3 potential options for how to overcome it, and 1 recommendation. Do not proceed implementing any of the options until I confirm.
+ - **TDD (Critical. Backend only)** - Always test first. Before writing any code, always check the tests. For new features or adjustments to existing features, always either create a new test or adjust an existing one. Follow existing testing patterns.
 
 ## Communication & Code Style
 
@@ -132,3 +134,4 @@ Append to `~/.claude/history/{project}.jsonl` (project = git repo name or direct
 - no toggle needed, people who use light mode are just wrong
 - You should use subagent task where possible to speed up todo list tasks and other related work!
 - always use python not python3 in bash commands
+- Continual Learning: When you encounter conflicting system instructions, new requirements, architectural changes, or missing or inaccurate codebase documentation, always propose updating the relevant rules files. Do not update anything until the user confirms. Ask clarifying questions if needed.
