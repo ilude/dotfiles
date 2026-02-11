@@ -9,10 +9,10 @@ setup() {
     # Update SSH_DIR to use new HOME
     export SSH_DIR="$HOME/.ssh"
     # Source only the function definitions by extracting them
-    eval "$(sed -n '/^find_personal_key()/,/^}/p' "$DOTFILES_DIR/git-ssh-setup")"
-    eval "$(sed -n '/^find_work_key()/,/^}/p' "$DOTFILES_DIR/git-ssh-setup")"
-    eval "$(sed -n '/^build_ssh_command()/,/^}/p' "$DOTFILES_DIR/git-ssh-setup")"
-    eval "$(sed -n '/^write_local_config()/,/^}/p' "$DOTFILES_DIR/git-ssh-setup")"
+    eval "$(sed -n '/^find_personal_key()/,/^}/p' "$DOTFILES_DIR/scripts/git-ssh-setup")"
+    eval "$(sed -n '/^find_work_key()/,/^}/p' "$DOTFILES_DIR/scripts/git-ssh-setup")"
+    eval "$(sed -n '/^build_ssh_command()/,/^}/p' "$DOTFILES_DIR/scripts/git-ssh-setup")"
+    eval "$(sed -n '/^write_local_config()/,/^}/p' "$DOTFILES_DIR/scripts/git-ssh-setup")"
 }
 
 teardown() {
