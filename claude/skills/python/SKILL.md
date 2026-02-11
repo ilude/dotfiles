@@ -9,39 +9,18 @@ Guidelines for working with Python projects across different package managers, c
 
 ## Philosophy
 
-- **Explicit over implicit** - Prefer clear, visible configuration (pyproject.toml over setup.py)
-- **Type safety** - Use type hints for better IDE support and documentation
-- **Modern tooling** - Use uv for fast, deterministic dependency management
-- **Consistent environments** - Same dependencies across dev, CI, and production
-- **Test as you go** - Write tests for critical paths, not 100% coverage theater
+Explicit over implicit. Type hints everywhere. Modern tooling (uv, Ruff). Test critical paths.
 
 ---
-
-## CRITICAL: Virtual Environment Best Practices
-
-**MUST NOT reference .venv paths manually** (e.g., `.venv/Scripts/python.exe` or `../../../.venv/`) - causes cross-platform issues and breaks on structure changes.
-
-**MUST use `uv run python`** in uv-based projects (auto-finds venv, works cross-platform, no activation needed):
-
-```bash
-# BAD: ../../../.venv/Scripts/python.exe script.py
-# GOOD: uv run python script.py
-
-uv run python -m module.cli
-```
-
-**Prefer shared root .venv** unless isolation required (saves ~7GB per environment).
 
 ## Tooling and Package Management
 
 ### UV Package Manager (Preferred)
 - **Use `uv` exclusively** for modern Python projects
-- **Installation commands:**
-  - Production: `uv add <package>`
-  - Development: `uv add --dev <package>`
-  - Optional groups: `uv add --group <group-name> <package>` (e.g., notebook, docs)
+- **MUST use `uv run`** for all execution (auto-finds venv, cross-platform, no activation needed)
+- **MUST NOT reference .venv paths manually** (e.g., `.venv/Scripts/python.exe`)
+- **Installation:** `uv add <package>`, `uv add --dev <package>`, `uv add --group <name> <package>`
 - **Execution:** `uv run python script.py` or `uv run pytest`
-- **MUST NOT call python/pytest directly** - MUST use `uv run`
 - Run `uv sync` before executing code in new projects
 
 ### Alternative: Traditional Tools
@@ -257,12 +236,6 @@ For web framework patterns, load the appropriate framework rules:
   - `core/commands.py` - Command DTOs
   - `core/queries.py` - Query DTOs
   - `handlers/command_handler.py` - Command processing
-
-### Async/Await
-- Use `async def` for I/O-bound operations
-- Use `await` for async calls
-- Use `asyncio` for concurrent operations
-- Be aware of event loop management
 
 ## Quick Reference: Tool Grid
 
