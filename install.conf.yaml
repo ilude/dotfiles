@@ -10,15 +10,15 @@
 - link:
     ~/.config/git/config: config/git/config
     ~/.config/git/ignore: config/git/ignore
-    ~/.zshenv: .zshenv
-    ~/.zshrc: .zshrc
-    ~/.zprofile: .zprofile
-    ~/.profile: .profile
-    ~/.bashrc: .bashrc
-    ~/.bash_profile: .bash_profile
-    ~/.inputrc: .inputrc
-    ~/.hushlogin: .hushlogin
-    ~/.dircolors: .dircolors
+    ~/.zshenv: home/.zshenv
+    ~/.zshrc: home/.zshrc
+    ~/.zprofile: home/.zprofile
+    ~/.profile: home/.profile
+    ~/.bashrc: home/.bashrc
+    ~/.bash_profile: home/.bash_profile
+    ~/.inputrc: home/.inputrc
+    ~/.hushlogin: home/.hushlogin
+    ~/.dircolors: home/.dircolors
 
 # Claude Code config
 - link:

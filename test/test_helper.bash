@@ -1,20 +1,16 @@
 # Bats test helper - shared setup/teardown utilities
 
 # Get the dotfiles directory (parent of test/)
+export DOTFILES_DIR
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-
-# Pre-cache frequently-read file contents for faster grep
-ZSHRC_CONTENT="$(cat "$DOTFILES_DIR/.zshrc")"
-BASHRC_CONTENT="$(cat "$DOTFILES_DIR/.bashrc")"
-BASH_PROFILE_CONTENT="$(cat "$DOTFILES_DIR/.bash_profile")"
-PROFILE_CONTENT="$(cat "$DOTFILES_DIR/.profile")"
 
 # Save original HOME for restoration
 ORIG_HOME="$HOME"
 
 # Create isolated test environment
 setup_test_home() {
-    export TEST_HOME=$(mktemp -d)
+    export TEST_HOME
+    TEST_HOME=$(mktemp -d)
     export HOME="$TEST_HOME"
     mkdir -p "$HOME/.ssh"
 }

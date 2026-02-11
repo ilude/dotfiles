@@ -44,7 +44,7 @@ setup_windows() {
   fi
 
   # Install zsh plugins (same as Linux)
-  source ~/.dotfiles/zsh-plugins
+  source ~/.dotfiles/scripts/zsh-plugins
 
   echo ""
   echo "Windows setup complete!"
@@ -190,7 +190,7 @@ setup_macos() {
     fi
 
     # Install zsh plugins
-    source ~/.dotfiles/zsh-plugins
+    source ~/.dotfiles/scripts/zsh-plugins
 
     echo ""
     echo "macOS setup complete!"
@@ -230,6 +230,6 @@ else
     echo "Warning: ssh-import-id not found, skipping SSH key import." >&2
 fi
 
-source ~/.dotfiles/zsh-plugins
+source ~/.dotfiles/scripts/zsh-plugins
 
 echo "Setup completed successfully!"
