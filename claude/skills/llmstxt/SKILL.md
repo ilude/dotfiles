@@ -211,31 +211,7 @@ Generate both if your documentation is extensive.
 
 ## Tools & Ecosystem
 
-### Python CLI
-
-```bash
-pip install llms-txt
-
-# Parse and convert to XML context
-llms_txt2ctx llms.txt > context.xml
-
-# Python API
-from llms_txt import parse_llms_file, create_ctx
-parsed = parse_llms_file(content)
-context = create_ctx(parsed)
-```
-
-### Static Site Generators
-
-- **VitePress**: `vitepress-plugin-llms`
-- **Docusaurus**: `docusaurus-plugin-llms`
-- **Mintlify**: Built-in support
-
-### Other Tools
-
-- **Firecrawl**: llms.txt Generator for any website
-- **VS Code PagePilot**: Loads external llms.txt context
-- **llms-txt-php**: PHP library for reading/writing
+For Python CLI, static site generator plugins, and other tools, see [tools.md](tools.md).
 
 ---
 
@@ -288,49 +264,7 @@ The file must have:
 
 ## Directory Listings
 
-### directory.llmstxt.cloud
-
-Curated directory of products and companies with llms.txt files.
-
-**Features:**
-- Browse by category: AI, Developer tools, Finance, Products, Websites
-- Shows token counts for each llms.txt file
-- Indicates if llms-full.txt variant exists
-- Paginated (12+ pages)
-- Submit new entries via "Submit" button
-
-**Browsing & Search:**
-- Search: `https://directory.llmstxt.cloud/?search=anthropic`
-- Pagination: `https://directory.llmstxt.cloud/?page=2`
-- Combine: `https://directory.llmstxt.cloud/?search=api&page=1`
-- Categories: AI, Developer tools, Finance, Products, Websites
-
-**Entry format:**
-```
-Company Name | Category | /llms.txt (X tokens) | /llms-full.txt (Y tokens)
-```
-
-### llmstxt.site
-
-Community directory with hundreds of verified sites.
-
-**Features:**
-- Token counts for context size planning
-- Verified implementations
-- 788+ listed sites
-
-### llms-txt-hub (GitHub)
-
-GitHub repository tracking llms.txt implementations:
-- [thedaviddias/llms-txt-hub](https://github.com/thedaviddias/llms-txt-hub)
-- Structured data in repository
-- Submit via pull request
-
-### Submitting Your Site
-
-1. **directory.llmstxt.cloud**: Click "Submit" button on site
-2. **llmstxt.site**: Follow submission process on site
-3. **llms-txt-hub**: Open pull request on GitHub
+Browse existing llms.txt implementations at [directory.llmstxt.cloud](https://directory.llmstxt.cloud/) (curated directory with token counts and category filtering).
 
 ---
 
