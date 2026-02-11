@@ -10,7 +10,7 @@ setup() {
 
     # Extract __set_prompt function from .bashrc (bypassing non-interactive check)
     # The function starts at "^__set_prompt()" and ends at "^PROMPT_COMMAND"
-    eval "$(sed -n '/^__set_prompt()/,/^PROMPT_COMMAND/p' "$DOTFILES_DIR/.bashrc" | head -n -1)"
+    eval "$(sed -n '/^__set_prompt()/,/^PROMPT_COMMAND/p' "$DOTFILES_DIR/home/.bashrc" | head -n -1)"
 }
 
 teardown() {
