@@ -1,6 +1,6 @@
 ---
 name: analysis-workflow
-description: Unified analysis skill combining structured analysis, systematic debugging, and adversarial review. Provides frameworks for code review, debugging, validation, and red-team critique.
+description: Activate when user mentions analyze, review, validate, critique, debug, troubleshoot, red-team, adversarial, or "what could go wrong". Use for code review, debugging, validation, and error investigation.
 ---
 
 # Analysis Workflow Skill
