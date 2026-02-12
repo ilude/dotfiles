@@ -1,6 +1,6 @@
 [project]
 name = "youtube-transcript"
-version = "3.0.0"
+version = "4.0.0"
 description = "YouTube transcript fetcher with menos API integration"
 requires-python = ">=3.11"
 dependencies = [
@@ -14,6 +14,8 @@ dependencies = [
 fetch-transcript = "fetch_transcript:main"
 fetch-metadata = "fetch_metadata:main"
 ingest-video = "ingest_video:main"
+check-job = "check_job:main"
+reprocess = "reprocess:main"
 
 [dependency-groups]
 dev = [
