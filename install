@@ -102,6 +102,7 @@ completed_steps+=("uv install")
 current_step="GUI tool setup"
 if [[ -z "$HEADLESS" ]]; then
     "${BASEDIR}/scripts/claude-link-setup"
+    "${BASEDIR}/scripts/opencode-link-setup"
     "${BASEDIR}/scripts/claude-mcp-setup"
     "${BASEDIR}/scripts/claude-plugins-setup"
     "${BASEDIR}/scripts/copilot-link-setup"
