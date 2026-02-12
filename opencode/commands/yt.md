@@ -1,11 +1,11 @@
 ---
-description: Fetch YouTube video transcript and/or metadata
+description: Ingest YouTube video and return job/status details
 argument-hint: <url-or-id>
 ---
 
-# YouTube Transcript & Metadata
+# YouTube Ingest & Retrieval
 
-Ingest YouTube videos via menos API with automatic summary generation.
+Ingest YouTube videos via menos API and return ingest status/job information.
 
 ## Usage
 
@@ -13,6 +13,7 @@ The user wants to run: `/yt $ARGUMENTS`
 
 Parse the arguments:
 - **Required**: YouTube URL or video ID (e.g., `dQw4w9WgXcQ` or `https://youtube.com/watch?v=dQw4w9WgXcQ`)
+- **Optional flags**: `--wait` (poll job to terminal state), `--verbose` (show full job fields when polling)
 
 ## Execution Steps
 
@@ -26,24 +27,25 @@ Extract the 11-character video ID from the URL or use directly if already an ID.
 cd ~/.claude/commands/yt && unset VIRTUAL_ENV && uv run ingest_video.py "{url_or_video_id}"
 ```
 
+This command calls the unified ingest endpoint: `POST /api/v1/ingest`.
+
 The API will:
 - Fetch the transcript via server-side proxy
 - Store transcript in MinIO at `youtube/{video_id}/transcript.txt`
 - Store metadata in MinIO at `youtube/{video_id}/metadata.json`
-- Generate summary using qwen3 LLM
-- Store summary in MinIO at `youtube/{video_id}/summary.md`
-- Create embeddings for semantic search
+- Enqueue unified pipeline processing (summary/tags/entities/quality are asynchronous)
 
 ### 3. Return Results
 
-Present the summary returned by the API to the user.
+Show ingest response fields (`video_id`, `title`, `job_id`, chunk/transcript counts).
+
+If `job_id` exists, tell the user pipeline processing is asynchronous and that `--wait` can be used for completion polling.
 
 Include storage note:
 ```
 Files stored in MinIO (menos bucket):
 - youtube/{video_id}/transcript.txt
 - youtube/{video_id}/metadata.json
-- youtube/{video_id}/summary.md
 
 To browse files: rclone mount menos:menos L: --vfs-cache-mode full
 ```
@@ -51,9 +53,9 @@ To browse files: rclone mount menos:menos L: --vfs-cache-mode full
 ## Follow-Up Questions
 
 When the user asks detailed questions about the video:
-- The transcript is stored on the menos server
-- Use the menos API `/youtube/{video_id}` endpoint to retrieve info
-- Or browse files via rclone mount
+- Use `GET /api/v1/youtube/{video_id}` for transcript + pipeline output fields
+- Use `GET /api/v1/youtube/{video_id}/transcript` for raw text only
+- If ingest just ran, poll `GET /api/v1/jobs/{job_id}` until terminal before expecting summary/tags/topics/entities
 
 ## Environment Setup
 
@@ -70,9 +72,9 @@ Optional (for local file browsing):
 User: `/yt dQw4w9WgXcQ`
 
 1. Run: `cd ~/.claude/commands/yt && unset VIRTUAL_ENV && uv run ingest_video.py dQw4w9WgXcQ`
-2. API fetches transcript, generates summary
-3. Display summary to user
-4. Note files stored in MinIO
+2. API fetches transcript and creates/queues pipeline job
+3. Display ingest result and job_id
+4. Note where transcript/metadata are stored
 
 User: "What does the video say about X?"
 

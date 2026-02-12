@@ -20,6 +20,8 @@ All endpoints require RFC 9421 signed requests. Base URL from `API_BASE_URL` in 
 | `GET` | `/api/v1/youtube` | List all ingested videos (filter: `?channel_id=`) |
 | `GET` | `/api/v1/youtube/channels` | List channels with video counts |
 | `POST` | `/api/v1/youtube/ingest` | Ingest new video by URL |
+| `POST` | `/api/v1/ingest` | Unified URL ingest (routes YouTube/web, dedupe-aware) |
+| `GET` | `/api/v1/jobs/{job_id}` | Pipeline job status for async ingest jobs |
 
 ### Content (works for any content type including YouTube)
 
@@ -72,6 +74,9 @@ PYTHONPATH=. uv run python scripts/signed_request.py POST /api/v1/search/agentic
 
 # Content stats
 PYTHONPATH=. uv run python scripts/signed_request.py GET /api/v1/content/stats
+
+# Unified ingest (YouTube or web)
+PYTHONPATH=. uv run python scripts/signed_request.py POST /api/v1/ingest '{"url":"https://youtube.com/watch?v=VIDEO_ID"}'
 ```
 
 ## Context Efficiency Strategy
@@ -81,7 +86,7 @@ PYTHONPATH=. uv run python scripts/signed_request.py GET /api/v1/content/stats
 ### When analyzing a video's content:
 
 1. **Save locally first** using `fetch_video.py --save DIR`
-2. **Use Task tool with `subagent_type=Explore`** to read and analyze the saved transcript
+2. **Use Task tool with `subagent_type=explore`** to read and analyze the saved transcript
 3. The Explore agent reads the transcript, answers questions, and extracts relevant sections
 4. Keep main context usage minimal (~500 tokens per video)
 
@@ -92,7 +97,7 @@ User: "What did they say about authentication in video XYZ?"
 
 Steps:
 1. Run: PYTHONPATH=. uv run python scripts/fetch_video.py XYZ --save /tmp/
-2. Task(subagent_type=Explore, prompt="Read /tmp/XYZ_transcript.txt and find all mentions of authentication. Provide quotes with timestamps.")
+2. Task(subagent_type=explore, prompt="Read /tmp/XYZ_transcript.txt and find all mentions of authentication. Provide quotes with timestamps.")
 3. Answer user with specific quotes and timestamps from the Explore agent's response
 ```
 
@@ -129,3 +134,9 @@ The `GET /youtube/{video_id}` response includes:
 | `description_urls` | list[str] | YouTube |
 | `chunk_count` | int | SurrealDB |
 | `processing_status` | string | Pipeline |
+
+## Operational Notes
+
+- `POST /api/v1/youtube/ingest` is YouTube-focused and returns transcript/chunk metadata at ingest time.
+- `POST /api/v1/ingest` is the unified endpoint. For YouTube, it may return a queued `job_id` (or `null` on dedupe).
+- For finalized summary/tags/topics/entities, query `GET /api/v1/youtube/{video_id}` after pipeline processing completes.

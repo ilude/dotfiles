@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Ingest a YouTube video via menos API with SSH key authentication."""
+"""Ingest a YouTube video via menos unified ingest endpoint."""
 
 import argparse
 import json
@@ -15,8 +15,14 @@ from signing import RequestSigner
 TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 
 
-def poll_job(client: httpx.Client, signer: RequestSigner, api_base: str, host: str,
-             job_id: str, verbose: bool = False) -> None:
+def poll_job(
+    client: httpx.Client,
+    signer: RequestSigner,
+    api_base: str,
+    host: str,
+    job_id: str,
+    verbose: bool = False,
+) -> None:
     """Poll a job until it reaches a terminal status."""
     print(f"Waiting for job {job_id}...")
 
@@ -53,22 +59,13 @@ def poll_job(client: httpx.Client, signer: RequestSigner, api_base: str, host: s
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Ingest a YouTube video via menos API"
+    parser = argparse.ArgumentParser(description="Ingest a YouTube video via menos API")
+    parser.add_argument("video", help="YouTube URL or video ID")
+    parser.add_argument(
+        "--wait", action="store_true", help="Poll job status until completion"
     )
     parser.add_argument(
-        "video",
-        help="YouTube URL or video ID"
-    )
-    parser.add_argument(
-        "--wait",
-        action="store_true",
-        help="Poll job status until completion"
-    )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Show all fields when polling completes"
+        "--verbose", action="store_true", help="Show all fields when polling completes"
     )
 
     args = parser.parse_args()
@@ -94,12 +91,12 @@ def main():
     # Prepare request
     api_base = get_api_base()
     host = get_api_host()
-    url = f"{api_base}/youtube/ingest"
+    url = f"{api_base}/ingest"
     body_data = {"url": f"https://youtube.com/watch?v={video_id}"}
     body_bytes = json.dumps(body_data).encode()
 
     # Sign request
-    path = "/api/v1/youtube/ingest"
+    path = "/api/v1/ingest"
     sig_headers = signer.sign_request("POST", path, host, body_bytes)
 
     headers = {
@@ -123,11 +120,10 @@ def main():
 
             data = response.json()
 
-            print(f"Video ID: {data.get('video_id', 'N/A')}")
+            print(f"Video ID: {video_id}")
             print(f"Title: {data.get('title', 'N/A')}")
-            print(f"Transcript: {data.get('transcript_length', 'N/A')} chars")
-            print(f"Chunks: {data.get('chunks_created', 'N/A')}")
-            print(f"File: {data.get('file_path', 'N/A')}")
+            print(f"Content ID: {data.get('content_id', 'N/A')}")
+            print(f"Content Type: {data.get('content_type', 'N/A')}")
             print(f"Job ID: {data.get('job_id', 'N/A')}")
             print()
 
