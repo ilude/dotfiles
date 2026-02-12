@@ -23,6 +23,7 @@
 # Claude Code config
 - link:
     ~/.claude: claude
+    ~/.config/opencode: opencode
 
 # Oh My Posh config (works on both platforms)
 - link:

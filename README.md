@@ -8,6 +8,7 @@ Cross-platform dotfiles for Linux, Windows (PowerShell, Git Bash/MSYS2), and WSL
 - **Automatic Git identity** - Directory-based and URL-based identity switching with SSH key detection
 - **Dotbot symlinks** - Declarative symlink management, idempotent installation
 - **Claude Code integration** - Skills, hooks, and damage control security system
+- **OpenCode command sharing** - Uses `claude/commands/` as the single source of truth for both tools
 
 ## Prerequisites
 
@@ -110,7 +111,8 @@ Automatic identity switching based on directory or remote URL:
 | `powershell/profile.ps1` | PowerShell profile |
 | `config/git/` | Git config and global ignore (XDG-compliant) |
 | `config/ohmyposh/` | Oh My Posh prompt theme |
-| `claude/` | Claude Code skills, hooks, damage control |
+| `claude/` | Claude/OpenCode shared commands, Claude skills, hooks, damage control |
+| `opencode/` | OpenCode global config (linked to `~/.config/opencode`) |
 | `copilot/` | GitHub Copilot instructions |
 | `test/` | Bats test files |
 | `plugins/` | Zsh plugins (auto-downloaded) |
