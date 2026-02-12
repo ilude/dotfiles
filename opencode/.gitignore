@@ -1,0 +1,15 @@
+node_modules/
+bun.lock
+*.log
+
+# Potential machine-local auth/state files
+*.key
+*.pem
+*.p12
+*.pfx
+*.token
+*.secret
+*.credentials*
+auth*.json
+session*.json
+state*.json

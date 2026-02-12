@@ -1069,6 +1069,14 @@ try {
             & $gitBash "$bashPath"
         }
 
+        # Set up OpenCode commands link (shared with ~/.dotfiles/claude/commands)
+        Write-Host "`nSetting up OpenCode commands..." -ForegroundColor Cyan
+        $opencodeLinkSetup = Join-Path $BASEDIR "scripts" "opencode-link-setup"
+        if (Test-Path $opencodeLinkSetup) {
+            $bashPath = ConvertTo-GitBashPath $opencodeLinkSetup
+            & $gitBash "$bashPath"
+        }
+
         # Configure Claude MCP servers
         Write-Host "`nConfiguring Claude MCP servers..." -ForegroundColor Cyan
         $claudeMcpSetup = Join-Path $BASEDIR "scripts" "claude-mcp-setup"

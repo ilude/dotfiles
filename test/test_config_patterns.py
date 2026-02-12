@@ -26,14 +26,38 @@ import pytest
 DOTFILES = Path(__file__).parent.parent
 
 
+def get_dotfile_path(name: str) -> Path:
+    """Resolve canonical dotfile path, preferring home/ in repo."""
+    home_path = DOTFILES / "home" / name
+    if home_path.exists():
+        return home_path
+
+    root_path = DOTFILES / name
+    if root_path.exists():
+        return root_path
+
+    raise FileNotFoundError(f"Dotfile not found: {name}")
+
+
+def read_dotfile(name: str) -> str:
+    """Read canonical dotfile content."""
+    return get_dotfile_path(name).read_text()
+
+
 # =============================================================================
 # From aliases.bats (20 tests)
 # =============================================================================
 
 ALIASES_PATTERNS = [
     # Claude Code aliases
-    ("alias ccyl='claude --dangerously-skip-permissions'", "ccyl alias uses dangerously-skip-permissions"),
-    ("alias claude-install='npm install -g @anthropic-ai/claude-code'", "claude-install alias"),
+    (
+        "alias ccyl='claude --dangerously-skip-permissions'",
+        "ccyl alias uses dangerously-skip-permissions",
+    ),
+    (
+        "alias claude-install='npm install -g @anthropic-ai/claude-code'",
+        "claude-install alias",
+    ),
     # NixOS aliases
     ("alias nix-gc=", "nix-gc alias defined"),
     ("alias nix-rs=", "nix-rs alias defined"),
@@ -59,7 +83,9 @@ ALIASES_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize("pattern,desc", ALIASES_PATTERNS, ids=[p[1] for p in ALIASES_PATTERNS])
+@pytest.mark.parametrize(
+    "pattern,desc", ALIASES_PATTERNS, ids=[p[1] for p in ALIASES_PATTERNS]
+)
 def test_aliases(pattern, desc):
     """Verify zsh/rc.d/06-aliases.zsh contains expected patterns."""
     content = (DOTFILES / "zsh/rc.d/06-aliases.zsh").read_text()
@@ -96,7 +122,9 @@ HELPERS_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize("pattern,desc", HELPERS_PATTERNS, ids=[p[1] for p in HELPERS_PATTERNS])
+@pytest.mark.parametrize(
+    "pattern,desc", HELPERS_PATTERNS, ids=[p[1] for p in HELPERS_PATTERNS]
+)
 def test_helpers(pattern, desc):
     """Verify zsh/rc.d/00-helpers.zsh contains expected patterns."""
     content = (DOTFILES / "zsh/rc.d/00-helpers.zsh").read_text()
@@ -111,7 +139,7 @@ def test_helpers_winhome_wsl_check():
 
 def test_helpers_debug_report_called():
     """.zshrc calls debug_report at end."""
-    content = (DOTFILES / ".zshrc").read_text()
+    content = read_dotfile(".zshrc")
     assert "debug_report" in content
 
 
@@ -137,7 +165,9 @@ WINHOME_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize("pattern,desc", WINHOME_PATTERNS, ids=[p[1] for p in WINHOME_PATTERNS])
+@pytest.mark.parametrize(
+    "pattern,desc", WINHOME_PATTERNS, ids=[p[1] for p in WINHOME_PATTERNS]
+)
 def test_winhome(pattern, desc):
     """Verify zsh/env.d/00-winhome.zsh contains expected patterns."""
     content = (DOTFILES / "zsh/env.d/00-winhome.zsh").read_text()
@@ -150,7 +180,9 @@ LOCALE_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize("pattern,desc", LOCALE_PATTERNS, ids=[p[1] for p in LOCALE_PATTERNS])
+@pytest.mark.parametrize(
+    "pattern,desc", LOCALE_PATTERNS, ids=[p[1] for p in LOCALE_PATTERNS]
+)
 def test_locale(pattern, desc):
     """Verify zsh/env.d/01-locale.zsh contains expected patterns."""
     content = (DOTFILES / "zsh/env.d/01-locale.zsh").read_text()
@@ -162,11 +194,16 @@ PATH_PATTERNS = [
     (r"\$\{WINHOME:-\$HOME\}/\.local/bin", "uses WINHOME for .local/bin on Windows"),
     ("/c/Program Files/Git/mingw64/bin", "restores Git for Windows mingw64 bin"),
     (r"\.path-windows-local", "sources .path-windows-local on Windows"),
-    (r"\$\{ZDOTDIR:-\$HOME\}/\.path-windows-local", "uses ZDOTDIR for .path-windows-local"),
+    (
+        r"\$\{ZDOTDIR:-\$HOME\}/\.path-windows-local",
+        "uses ZDOTDIR for .path-windows-local",
+    ),
 ]
 
 
-@pytest.mark.parametrize("pattern,desc", PATH_PATTERNS, ids=[p[1] for p in PATH_PATTERNS])
+@pytest.mark.parametrize(
+    "pattern,desc", PATH_PATTERNS, ids=[p[1] for p in PATH_PATTERNS]
+)
 def test_path(pattern, desc):
     """Verify zsh/env.d/02-path.zsh contains expected patterns."""
     content = (DOTFILES / "zsh/env.d/02-path.zsh").read_text()
@@ -202,11 +239,18 @@ CLI_COMPLETIONS_PATTERNS = [
     ("/usr/local/opt/fzf", "checks homebrew fzf path"),
     (r"true.*# Ensure exit 0", "fzf loop ensures exit 0"),
     # Docker handling
-    (r"skip docker info check|too slow", "docker completion skips slow docker info check"),
+    (
+        r"skip docker info check|too slow",
+        "docker completion skips slow docker info check",
+    ),
 ]
 
 
-@pytest.mark.parametrize("pattern,desc", CLI_COMPLETIONS_PATTERNS, ids=[p[1] for p in CLI_COMPLETIONS_PATTERNS])
+@pytest.mark.parametrize(
+    "pattern,desc",
+    CLI_COMPLETIONS_PATTERNS,
+    ids=[p[1] for p in CLI_COMPLETIONS_PATTERNS],
+)
 def test_cli_completions(pattern, desc):
     """Verify zsh/rc.d/07-cli-completions.zsh contains expected patterns."""
     content = (DOTFILES / "zsh/rc.d/07-cli-completions.zsh").read_text()
@@ -235,7 +279,9 @@ EDITOR_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize("pattern,desc", EDITOR_PATTERNS, ids=[p[1] for p in EDITOR_PATTERNS])
+@pytest.mark.parametrize(
+    "pattern,desc", EDITOR_PATTERNS, ids=[p[1] for p in EDITOR_PATTERNS]
+)
 def test_editor(pattern, desc):
     """Verify zsh/rc.d/08-editor.zsh contains expected patterns."""
     content = (DOTFILES / "zsh/rc.d/08-editor.zsh").read_text()
@@ -254,7 +300,9 @@ COMPLETIONS_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize("pattern,desc", COMPLETIONS_PATTERNS, ids=[p[1] for p in COMPLETIONS_PATTERNS])
+@pytest.mark.parametrize(
+    "pattern,desc", COMPLETIONS_PATTERNS, ids=[p[1] for p in COMPLETIONS_PATTERNS]
+)
 def test_completions(pattern, desc):
     """Verify zsh/rc.d/01-completions.zsh contains expected patterns."""
     content = (DOTFILES / "zsh/rc.d/01-completions.zsh").read_text()
@@ -272,13 +320,21 @@ PLUGINS_PATTERNS = [
     ("ZSH_AUTOSUGGEST_USE_ASYNC=0", "ZSH_AUTOSUGGEST_USE_ASYNC disabled on Windows"),
     ("ZSH_AUTOSUGGEST_MANUAL_REBIND=1", "ZSH_AUTOSUGGEST_MANUAL_REBIND set on Windows"),
     ("ZSH_DISABLE_SYNTAX_HIGHLIGHTING=1", "ZSH_DISABLE_SYNTAX_HIGHLIGHTING on Windows"),
-    ("ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=50", "ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE limits line length"),
-    (r"\$\{ZDOTDIR:-\$HOME\}/\.dotfiles/zsh-plugins", "sources zsh-plugins using ZDOTDIR"),
+    (
+        "ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=50",
+        "ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE limits line length",
+    ),
+    (
+        r"\$\{ZDOTDIR:-\$HOME\}/\.dotfiles/zsh-plugins",
+        "sources zsh-plugins using ZDOTDIR",
+    ),
     (r"bindkey '\^ ' autosuggest-accept", "ctrl+space bound to autosuggest-accept"),
 ]
 
 
-@pytest.mark.parametrize("pattern,desc", PLUGINS_PATTERNS, ids=[p[1] for p in PLUGINS_PATTERNS])
+@pytest.mark.parametrize(
+    "pattern,desc", PLUGINS_PATTERNS, ids=[p[1] for p in PLUGINS_PATTERNS]
+)
 def test_plugins(pattern, desc):
     """Verify zsh/rc.d/02-plugins.zsh contains expected patterns."""
     content = (DOTFILES / "zsh/rc.d/02-plugins.zsh").read_text()
@@ -289,7 +345,10 @@ def test_plugins(pattern, desc):
 HISTORY_PATTERNS = [
     ("HISTSIZE=100000", "HISTSIZE is 100000"),
     ("SAVEHIST=100000", "SAVEHIST is 100000"),
-    (r'HISTFILE="\$\{ZDOTDIR:-\$HOME\}', "HISTFILE uses ZDOTDIR for MSYS2 compatibility"),
+    (
+        r'HISTFILE="\$\{ZDOTDIR:-\$HOME\}',
+        "HISTFILE uses ZDOTDIR for MSYS2 compatibility",
+    ),
     ("setopt APPEND_HISTORY", "APPEND_HISTORY option enabled"),
     ("setopt EXTENDED_HISTORY", "EXTENDED_HISTORY option enabled"),
     ("setopt HIST_IGNORE_DUPS", "HIST_IGNORE_DUPS option enabled"),
@@ -297,7 +356,9 @@ HISTORY_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize("pattern,desc", HISTORY_PATTERNS, ids=[p[1] for p in HISTORY_PATTERNS])
+@pytest.mark.parametrize(
+    "pattern,desc", HISTORY_PATTERNS, ids=[p[1] for p in HISTORY_PATTERNS]
+)
 def test_history(pattern, desc):
     """Verify zsh/rc.d/03-history.zsh contains expected patterns."""
     content = (DOTFILES / "zsh/rc.d/03-history.zsh").read_text()
@@ -315,7 +376,9 @@ KEYBINDINGS_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize("pattern,desc", KEYBINDINGS_PATTERNS, ids=[p[1] for p in KEYBINDINGS_PATTERNS])
+@pytest.mark.parametrize(
+    "pattern,desc", KEYBINDINGS_PATTERNS, ids=[p[1] for p in KEYBINDINGS_PATTERNS]
+)
 def test_keybindings(pattern, desc):
     """Verify zsh/rc.d/04-keybindings.zsh contains expected patterns."""
     content = (DOTFILES / "zsh/rc.d/04-keybindings.zsh").read_text()
@@ -333,7 +396,11 @@ VERSION_MANAGERS_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize("pattern,desc", VERSION_MANAGERS_PATTERNS, ids=[p[1] for p in VERSION_MANAGERS_PATTERNS])
+@pytest.mark.parametrize(
+    "pattern,desc",
+    VERSION_MANAGERS_PATTERNS,
+    ids=[p[1] for p in VERSION_MANAGERS_PATTERNS],
+)
 def test_version_managers(pattern, desc):
     """Verify zsh/rc.d/09-version-managers.zsh contains expected patterns."""
     content = (DOTFILES / "zsh/rc.d/09-version-managers.zsh").read_text()
@@ -349,7 +416,9 @@ SSH_AGENT_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize("pattern,desc", SSH_AGENT_PATTERNS, ids=[p[1] for p in SSH_AGENT_PATTERNS])
+@pytest.mark.parametrize(
+    "pattern,desc", SSH_AGENT_PATTERNS, ids=[p[1] for p in SSH_AGENT_PATTERNS]
+)
 def test_ssh_agent(pattern, desc):
     """Verify zsh/rc.d/10-ssh-agent.zsh contains expected patterns."""
     content = (DOTFILES / "zsh/rc.d/10-ssh-agent.zsh").read_text()
@@ -360,29 +429,30 @@ def test_ssh_agent(pattern, desc):
 # From shell-setup.bats grep tests (~70 tests)
 # =============================================================================
 
+
 # .profile behavior
 def test_profile_sources_bashrc():
     """.profile sources .bashrc for bash."""
-    content = (DOTFILES / ".profile").read_text()
+    content = read_dotfile(".profile")
     assert re.search(r"source.*bashrc|\. ~/\.bashrc|\. \$HOME/\.bashrc", content)
 
 
 def test_profile_execs_zsh():
     """.profile execs zsh when available."""
-    content = (DOTFILES / ".profile").read_text()
+    content = read_dotfile(".profile")
     assert re.search(r"exec.*zsh", content)
 
 
 def test_profile_checks_interactive():
     """.profile checks for interactive terminal before exec."""
-    content = (DOTFILES / ".profile").read_text()
+    content = read_dotfile(".profile")
     assert re.search(r"-t 1|tty|interactive", content)
 
 
 # zsh-plugins script
 def test_zsh_plugins_exists():
     """zsh-plugins script exists and is executable (Unix only)."""
-    script = DOTFILES / "zsh-plugins"
+    script = DOTFILES / "scripts" / "zsh-plugins"
     assert script.exists()
     # Skip executable check on Windows (no Unix permissions)
     if os.name != "nt":
@@ -402,29 +472,31 @@ ZSH_PLUGINS_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize("pattern,desc", ZSH_PLUGINS_PATTERNS, ids=[p[1] for p in ZSH_PLUGINS_PATTERNS])
+@pytest.mark.parametrize(
+    "pattern,desc", ZSH_PLUGINS_PATTERNS, ids=[p[1] for p in ZSH_PLUGINS_PATTERNS]
+)
 def test_zsh_plugins(pattern, desc):
     """Verify zsh-plugins script contains expected patterns."""
-    content = (DOTFILES / "zsh-plugins").read_text()
+    content = (DOTFILES / "scripts" / "zsh-plugins").read_text()
     assert re.search(pattern, content), f"Pattern not found: {pattern}"
 
 
 # .zshrc configuration
 def test_zshrc_sources_rc_modules():
     """.zshrc sources rc.d modules."""
-    content = (DOTFILES / ".zshrc").read_text()
+    content = read_dotfile(".zshrc")
     assert re.search(r"rc\.d.*\.zsh", content)
 
 
 def test_zshrc_uv_env_conditional():
     """.zshrc sources uv env conditionally."""
-    content = (DOTFILES / ".zshrc").read_text()
+    content = read_dotfile(".zshrc")
     assert re.search(r"\[\[.*\.local/bin/env.*\]\].*&&", content)
 
 
 def test_zshrc_local_override():
     """.zshrc supports .zshrc.local override."""
-    content = (DOTFILES / ".zshrc").read_text()
+    content = read_dotfile(".zshrc")
     assert ".zshrc.local" in content
 
 
@@ -437,12 +509,12 @@ def test_zshrc_local_gitignored():
 # .bashrc as fallback
 def test_bashrc_exists():
     """.bashrc exists as fallback."""
-    assert (DOTFILES / ".bashrc").exists()
+    assert get_dotfile_path(".bashrc").exists()
 
 
 def test_bashrc_early_exit():
     """.bashrc has early exit for non-interactive."""
-    content = (DOTFILES / ".bashrc").read_text(encoding="utf-8", errors="replace")
+    content = read_dotfile(".bashrc")
     # Check first 20 lines
     first_lines = "\n".join(content.split("\n")[:20])
     assert re.search(r"case \$-|return|\[ -z \"\$PS1\" \]", first_lines)
@@ -450,20 +522,23 @@ def test_bashrc_early_exit():
 
 def test_bashrc_prompt_function():
     """.bashrc has prompt function."""
-    content = (DOTFILES / ".bashrc").read_text()
+    content = read_dotfile(".bashrc")
     assert re.search(r"__set_prompt|PS1=", content)
 
 
 def test_bashrc_self_contained():
     """.bashrc is self-contained fallback (no zsh dependencies)."""
-    content = (DOTFILES / ".bashrc").read_text()
+    content = read_dotfile(".bashrc")
     # Should NOT depend on zsh-plugins
-    assert "zsh-plugins" not in content or "source" not in content.split("zsh-plugins")[0][-50:]
+    assert (
+        "zsh-plugins" not in content
+        or "source" not in content.split("zsh-plugins")[0][-50:]
+    )
 
 
 def test_bashrc_documents_fallback():
     """.bashrc documents it is a fallback."""
-    content = (DOTFILES / ".bashrc").read_text().lower()
+    content = read_dotfile(".bashrc").lower()
     assert "fallback" in content or "minimal" in content
 
 
@@ -482,54 +557,56 @@ BASHRC_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize("pattern,desc", BASHRC_PATTERNS, ids=[p[1] for p in BASHRC_PATTERNS])
+@pytest.mark.parametrize(
+    "pattern,desc", BASHRC_PATTERNS, ids=[p[1] for p in BASHRC_PATTERNS]
+)
 def test_bashrc(pattern, desc):
     """Verify .bashrc contains expected patterns."""
-    content = (DOTFILES / ".bashrc").read_text()
+    content = read_dotfile(".bashrc")
     assert re.search(pattern, content), f"Pattern not found: {pattern}"
 
 
 def test_bashrc_uv_env_conditional():
     """.bashrc sources uv env conditionally."""
-    content = (DOTFILES / ".bashrc").read_text()
+    content = read_dotfile(".bashrc")
     assert re.search(r"\[\[.*\.local/bin/env.*\]\].*&&", content)
 
 
 # Platform-specific zsh installation
 def test_wsl_packages_zsh():
     """wsl-packages installs zsh on Linux/WSL."""
-    assert (DOTFILES / "wsl-packages").exists()
-    content = (DOTFILES / "wsl-packages").read_text()
+    assert (DOTFILES / "scripts" / "wsl-packages").exists()
+    content = (DOTFILES / "scripts" / "wsl-packages").read_text()
     assert "zsh" in content
 
 
 def test_wsl_packages_default_shell():
     """wsl-packages sets zsh as default shell."""
-    content = (DOTFILES / "wsl-packages").read_text()
+    content = (DOTFILES / "scripts" / "wsl-packages").read_text()
     assert re.search(r"chsh.*zsh|default.*zsh", content)
 
 
 def test_wsl_packages_apt():
     """wsl-packages uses apt for zsh."""
-    content = (DOTFILES / "wsl-packages").read_text()
+    content = (DOTFILES / "scripts" / "wsl-packages").read_text()
     assert re.search(r"apt.*install|apt-get.*install", content)
 
 
 def test_wsl_packages_fzf():
     """wsl-packages installs fzf."""
-    content = (DOTFILES / "wsl-packages").read_text()
+    content = (DOTFILES / "scripts" / "wsl-packages").read_text()
     assert "fzf" in content
 
 
 def test_wsl_packages_wsl_conf():
     """wsl-packages configures wsl.conf."""
-    content = (DOTFILES / "wsl-packages").read_text()
+    content = (DOTFILES / "scripts" / "wsl-packages").read_text()
     assert re.search(r"wsl\.conf|metadata", content)
 
 
 def test_wsl_packages_zsh_plugins():
     """wsl-packages installs zsh plugins."""
-    content = (DOTFILES / "wsl-packages").read_text()
+    content = (DOTFILES / "scripts" / "wsl-packages").read_text()
     assert re.search(r"zsh-plugins|Zsh Plugins|zsh plugins", content)
 
 
@@ -548,16 +625,18 @@ BASH_PROFILE_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize("pattern,desc", BASH_PROFILE_PATTERNS, ids=[p[1] for p in BASH_PROFILE_PATTERNS])
+@pytest.mark.parametrize(
+    "pattern,desc", BASH_PROFILE_PATTERNS, ids=[p[1] for p in BASH_PROFILE_PATTERNS]
+)
 def test_bash_profile(pattern, desc):
     """Verify .bash_profile contains expected patterns."""
-    content = (DOTFILES / ".bash_profile").read_text()
+    content = read_dotfile(".bash_profile")
     assert re.search(pattern, content), f"Pattern not found: {pattern}"
 
 
 def test_msys2_path_before_zsh_exec():
     """MSYS2 path added before zsh exec."""
-    content = (DOTFILES / ".bash_profile").read_text()
+    content = read_dotfile(".bash_profile")
     lines = content.split("\n")
     msys_line = None
     exec_line = None
@@ -580,23 +659,25 @@ PROFILE_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize("pattern,desc", PROFILE_PATTERNS, ids=[p[1] for p in PROFILE_PATTERNS])
+@pytest.mark.parametrize(
+    "pattern,desc", PROFILE_PATTERNS, ids=[p[1] for p in PROFILE_PATTERNS]
+)
 def test_profile(pattern, desc):
     """Verify .profile contains expected patterns."""
-    content = (DOTFILES / ".profile").read_text()
+    content = read_dotfile(".profile")
     assert re.search(pattern, content), f"Pattern not found: {pattern}"
 
 
 def test_profile_uv_env_conditional():
     """.profile sources uv env conditionally."""
-    content = (DOTFILES / ".profile").read_text()
+    content = read_dotfile(".profile")
     assert re.search(r"\[.*\.local/bin/env.*\].*&&", content)
 
 
 # Unified experience verification
 def test_prompt_shows_git_branch_bashrc():
     """.bashrc prompt shows git branch."""
-    content = (DOTFILES / ".bashrc").read_text()
+    content = read_dotfile(".bashrc")
     assert re.search(r"git.*branch|symbolic-ref", content)
 
 
@@ -608,7 +689,7 @@ def test_prompt_shows_git_branch_zsh():
 
 def test_bashrc_normalizes_home():
     """.bashrc normalizes HOME to ~."""
-    content = (DOTFILES / ".bashrc").read_text()
+    content = read_dotfile(".bashrc")
     assert re.search(r"HOME.*~|~.*HOME|p=.*~", content)
 
 
