@@ -1,133 +1,80 @@
 #!/usr/bin/env python
 """Ingest a YouTube video via menos API with SSH key authentication."""
 
-import hashlib
+import argparse
 import json
-import re
 import sys
 import time
-from base64 import b64encode
 from pathlib import Path
 
 import httpx
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives.serialization import load_ssh_private_key
 
-# menos API endpoint
-API_BASE = "http://192.168.16.241:8000/api/v1"
+from api_config import extract_video_id, get_api_base, get_api_host
+from signing import RequestSigner
 
-
-class RequestSigner:
-    """Signs HTTP requests per RFC 9421."""
-
-    def __init__(self, private_key: Ed25519PrivateKey, key_id: str):
-        self.private_key = private_key
-        self.key_id = key_id
-
-    @classmethod
-    def from_file(cls, path: Path, password: bytes | None = None) -> "RequestSigner":
-        """Load signer from SSH private key file."""
-        key_data = path.read_bytes()
-        private_key = load_ssh_private_key(key_data, password=password)
-
-        if not isinstance(private_key, Ed25519PrivateKey):
-            raise ValueError("Only ed25519 keys are supported")
-
-        # Compute key_id from public key
-        public_key = private_key.public_key()
-        public_bytes = public_key.public_bytes_raw()
-        key_type = b"ssh-ed25519"
-        key_blob = (
-            len(key_type).to_bytes(4, "big")
-            + key_type
-            + len(public_bytes).to_bytes(4, "big")
-            + public_bytes
-        )
-        digest = hashlib.sha256(key_blob).hexdigest()
-        key_id = f"SHA256:{digest[:16]}"
-
-        return cls(private_key, key_id)
-
-    def sign_request(
-        self,
-        method: str,
-        path: str,
-        host: str,
-        body: bytes | None = None,
-    ) -> dict[str, str]:
-        """Generate signature headers for a request."""
-        created = int(time.time())
-
-        # Components to sign
-        components = ['"@method"', '"@path"', '"@authority"']
-        if body:
-            components.append('"content-digest"')
-
-        # Build signature base
-        lines = [
-            f'"@method": {method}',
-            f'"@path": {path}',
-            f'"@authority": {host}',
-        ]
-
-        content_digest = None
-        if body:
-            digest = hashlib.sha256(body).digest()
-            digest_b64 = b64encode(digest).decode()
-            content_digest = f"sha-256=:{digest_b64}:"
-            lines.append(f'"content-digest": {content_digest}')
-
-        # Build signature-input value
-        components_str = " ".join(components)
-        sig_params = f'({components_str});keyid="{self.key_id}";alg="ed25519";created={created}'
-        lines.append(f'"@signature-params": {sig_params}')
-
-        signature_base = "\n".join(lines)
-
-        # Sign
-        signature_bytes = self.private_key.sign(signature_base.encode())
-        signature_b64 = b64encode(signature_bytes).decode()
-
-        result = {
-            "signature-input": f"sig1={sig_params}",
-            "signature": f"sig1=:{signature_b64}:",
-        }
-
-        if content_digest:
-            result["content-digest"] = content_digest
-
-        return result
+TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 
 
-def extract_video_id(url_or_id: str) -> str:
-    """Extract video ID from URL or return as-is if already an ID."""
-    # Already an ID (11 chars)
-    if re.match(r"^[a-zA-Z0-9_-]{11}$", url_or_id):
-        return url_or_id
+def poll_job(client: httpx.Client, signer: RequestSigner, api_base: str, host: str,
+             job_id: str, verbose: bool = False) -> None:
+    """Poll a job until it reaches a terminal status."""
+    print(f"Waiting for job {job_id}...")
 
-    # Various YouTube URL formats
-    patterns = [
-        r"(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/embed/)([a-zA-Z0-9_-]{11})",
-        r"youtube\.com/shorts/([a-zA-Z0-9_-]{11})",
-    ]
+    while True:
+        time.sleep(3)
 
-    for pattern in patterns:
-        match = re.search(pattern, url_or_id)
-        if match:
-            return match.group(1)
+        job_path = f"/api/v1/jobs/{job_id}"
+        if verbose:
+            job_path += "?verbose=true"
+        job_url = f"{api_base}/jobs/{job_id}"
+        if verbose:
+            job_url += "?verbose=true"
 
-    raise ValueError(f"Could not extract video ID from: {url_or_id}")
+        sig_headers = signer.sign_request("GET", job_path, host)
+        response = client.get(job_url, headers=sig_headers)
+
+        if response.status_code != 200:
+            print(f"Error polling job: {response.status_code}", file=sys.stderr)
+            print(response.text, file=sys.stderr)
+            sys.exit(1)
+
+        job_data = response.json()
+        status = job_data.get("status", "unknown")
+        print(f"  Status: {status}")
+
+        if status in TERMINAL_STATUSES:
+            print()
+            if verbose:
+                for key, value in job_data.items():
+                    print(f"  {key}: {value}")
+            else:
+                print(f"Final status: {status}")
+            return
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: ingest_video.py <youtube_url_or_id>", file=sys.stderr)
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description="Ingest a YouTube video via menos API"
+    )
+    parser.add_argument(
+        "video",
+        help="YouTube URL or video ID"
+    )
+    parser.add_argument(
+        "--wait",
+        action="store_true",
+        help="Poll job status until completion"
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show all fields when polling completes"
+    )
 
-    url_or_id = sys.argv[1]
+    args = parser.parse_args()
 
     try:
-        video_id = extract_video_id(url_or_id)
+        video_id = extract_video_id(args.video)
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
@@ -145,18 +92,14 @@ def main():
         sys.exit(1)
 
     # Prepare request
-    url = f"{API_BASE}/youtube/ingest"
+    api_base = get_api_base()
+    host = get_api_host()
+    url = f"{api_base}/youtube/ingest"
     body_data = {"url": f"https://youtube.com/watch?v={video_id}"}
     body_bytes = json.dumps(body_data).encode()
 
-    # Parse host from URL
-    from urllib.parse import urlparse
-
-    parsed = urlparse(API_BASE)
-    host = parsed.netloc
-
     # Sign request
-    path = f"/api/v1/youtube/ingest"
+    path = "/api/v1/youtube/ingest"
     sig_headers = signer.sign_request("POST", path, host, body_bytes)
 
     headers = {
@@ -173,25 +116,24 @@ def main():
         with httpx.Client(timeout=180.0) as client:
             response = client.post(url, content=body_bytes, headers=headers)
 
-        if response.status_code != 200:
-            print(f"Error: API returned {response.status_code}", file=sys.stderr)
-            print(response.text, file=sys.stderr)
-            sys.exit(1)
+            if response.status_code != 200:
+                print(f"Error: API returned {response.status_code}", file=sys.stderr)
+                print(response.text, file=sys.stderr)
+                sys.exit(1)
 
-        data = response.json()
+            data = response.json()
 
-        print(f"Video ID: {data['video_id']}")
-        print(f"Title: {data['title']}")
-        print(f"Transcript: {data['transcript_length']} chars")
-        print(f"Chunks: {data['chunks_created']}")
-        print(f"File: {data['file_path']}")
-        print()
+            print(f"Video ID: {data.get('video_id', 'N/A')}")
+            print(f"Title: {data.get('title', 'N/A')}")
+            print(f"Transcript: {data.get('transcript_length', 'N/A')} chars")
+            print(f"Chunks: {data.get('chunks_created', 'N/A')}")
+            print(f"File: {data.get('file_path', 'N/A')}")
+            print(f"Job ID: {data.get('job_id', 'N/A')}")
+            print()
 
-        if data.get("summary"):
-            print("=== Summary ===")
-            print(data["summary"])
-        else:
-            print("(No summary generated)")
+            job_id = data.get("job_id")
+            if args.wait and job_id:
+                poll_job(client, signer, api_base, host, job_id, verbose=args.verbose)
 
     except httpx.RequestError as e:
         print(f"Error: Request failed: {e}", file=sys.stderr)

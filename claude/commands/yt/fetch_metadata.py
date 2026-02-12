@@ -20,47 +20,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-
-def load_secrets_file() -> None:
-    """Load secrets from ~/.dotfiles/.env if env vars not set."""
-    secrets_path = Path.home() / ".dotfiles" / ".env"
-    if not secrets_path.exists():
-        secrets_path = Path.home() / ".dotfiles" / ".secrets"
-    if not secrets_path.exists():
-        return
-
-    for line in secrets_path.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        match = re.match(r'^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$', line)
-        if match:
-            name, value = match.groups()
-            value = value.strip('\'"')
-            if name not in os.environ:
-                os.environ[name] = value
-
+from api_config import extract_video_id, load_secrets_file
 
 # Load secrets before anything else
 load_secrets_file()
-
-
-def extract_video_id(url_or_id: str) -> str:
-    """Extract video ID from YouTube URL or return as-is if already an ID."""
-    if re.match(r'^[0-9A-Za-z_-]{11}$', url_or_id):
-        return url_or_id
-
-    patterns = [
-        r'(?:v=|\/)([0-9A-Za-z_-]{11}).*',
-        r'youtu\.be\/([0-9A-Za-z_-]{11})',
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, url_or_id)
-        if match:
-            return match.group(1)
-
-    raise ValueError(f"Could not extract video ID from: {url_or_id}")
 
 
 def extract_urls(text: str) -> list[str]:
