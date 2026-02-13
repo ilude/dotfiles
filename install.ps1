@@ -405,6 +405,85 @@ function Ensure-WinGetLinksInPath {
     return $false
 }
 
+function Optimize-UserPath {
+    # Clean up User PATH: remove duplicates, empty entries, and WinGet Packages
+    # paths whose executables are all covered by WinGet Links shims
+    $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+    $entries = $userPath -split ";"
+
+    $linksDir = "$env:LOCALAPPDATA\Microsoft\WinGet\Links"
+    $packagesDirLower = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages".ToLower()
+
+    $seen = @{}
+    $cleaned = @()
+    $removedDupes = 0
+    $removedEmpty = 0
+    $removedCovered = @()
+
+    foreach ($entry in $entries) {
+        # Skip empty entries
+        if (-not $entry.Trim()) {
+            $removedEmpty++
+            continue
+        }
+
+        # Skip duplicates (case-insensitive, trailing-slash normalized)
+        $normalized = $entry.TrimEnd('\', '/').ToLower()
+        if ($seen.ContainsKey($normalized)) {
+            $removedDupes++
+            continue
+        }
+        $seen[$normalized] = $true
+
+        # Check WinGet Packages paths for Links coverage
+        if ($normalized.StartsWith($packagesDirLower)) {
+            if (Test-Path $entry -PathType Container) {
+                $exes = Get-ChildItem -Path $entry -Filter "*.exe" -File -ErrorAction SilentlyContinue
+                if ($exes) {
+                    $allCovered = $true
+                    foreach ($exe in $exes) {
+                        if (-not (Test-Path (Join-Path $linksDir $exe.Name))) {
+                            $allCovered = $false
+                            break
+                        }
+                    }
+                    if ($allCovered) {
+                        $removedCovered += $entry
+                        continue
+                    }
+                }
+            }
+        }
+
+        $cleaned += $entry
+    }
+
+    $totalRemoved = $removedDupes + $removedEmpty + $removedCovered.Count
+    if ($totalRemoved -gt 0) {
+        $newPath = $cleaned -join ";"
+        [Environment]::SetEnvironmentVariable("PATH", $newPath, "User")
+
+        $details = @()
+        if ($removedDupes) { $details += "$removedDupes duplicates" }
+        if ($removedEmpty) { $details += "$removedEmpty empty" }
+        if ($removedCovered.Count) { $details += "$($removedCovered.Count) covered by WinGet Links" }
+        Write-Host "  Removed $totalRemoved entries ($($details -join ', '))" -ForegroundColor Green
+        foreach ($entry in $removedCovered) {
+            $leaf = Split-Path $entry -Leaf
+            # Trim WinGet source suffix for readability
+            $leaf = $leaf -replace '_Microsoft\.Winget\.Source_8wekyb3d8bbwe$', ''
+            Write-Host "    $leaf" -ForegroundColor DarkGray
+        }
+
+        $machLen = ([Environment]::GetEnvironmentVariable("PATH", "Machine")).Length
+        $combinedLen = $machLen + 1 + $newPath.Length
+        $color = if ($combinedLen -gt 2048) { 'Yellow' } else { 'Green' }
+        Write-Host "  Combined PATH: $combinedLen chars (limit ~2048)" -ForegroundColor $color
+    } else {
+        Write-Host "  User PATH: already optimized" -ForegroundColor DarkGray
+    }
+}
+
 function Get-WindowsTerminalSettingsPaths {
     $paths = @()
 
@@ -570,7 +649,7 @@ function New-WinGetLink {
 
     # Create symlink
     try {
-        New-Item -ItemType SymbolicLink -Path $linkPath -Target $exePath -Force | Out-Null
+        New-Item -ItemType SymbolicLink -Path $linkPath -Target $exePath -Force -ErrorAction Stop | Out-Null
         return $true
     } catch {
         # Symlink failed, try hardlink or copy as fallback
@@ -610,7 +689,10 @@ function Install-Packages {
         @{ PackageId = 'Oven-sh.Bun'; ExeName = 'bun.exe'; RelativePath = 'bun-windows-x64' },
         @{ PackageId = 'cURL.cURL'; ExeName = 'curl.exe'; RelativePath = '' },  # Version in path, uses recursive search
         @{ PackageId = 'dandavison.delta'; ExeName = 'delta.exe'; RelativePath = '' },  # Version in path, uses recursive search
-        @{ PackageId = 'ezwinports.make'; ExeName = 'make.exe'; RelativePath = '' }  # Portable package needs link
+        @{ PackageId = 'ezwinports.make'; ExeName = 'make.exe'; RelativePath = '' },  # Portable package needs link
+        @{ PackageId = 'TerraformLinters.tflint'; ExeName = 'tflint.exe'; RelativePath = '' },
+        @{ PackageId = 'AquaSecurity.Trivy'; ExeName = 'trivy.exe'; RelativePath = '' },
+        @{ PackageId = 'SST.opencode'; ExeName = 'opencode.exe'; RelativePath = '' }
     )
     foreach ($link in $wingetLinks) {
         Write-Host "  $($link.ExeName)..." -ForegroundColor Cyan -NoNewline
@@ -1208,6 +1290,33 @@ try {
         Write-Host "`nConfiguring rclone..." -ForegroundColor Cyan
         Configure-Rclone
     }
+
+    # ========================================================================
+    # WinGet Links Maintenance (ensure shims exist for packages with long PATH entries)
+    # Runs independently of Install-Packages so optimization works on every run
+    # ========================================================================
+    Write-Host "`nEnsuring WinGet Links..." -ForegroundColor Cyan
+    Ensure-WinGetLinksInPath
+    $maintenanceLinks = @(
+        @{ PackageId = 'dandavison.delta'; ExeName = 'delta.exe'; RelativePath = '' },
+        @{ PackageId = 'TerraformLinters.tflint'; ExeName = 'tflint.exe'; RelativePath = '' },
+        @{ PackageId = 'AquaSecurity.Trivy'; ExeName = 'trivy.exe'; RelativePath = '' },
+        @{ PackageId = 'SST.opencode'; ExeName = 'opencode.exe'; RelativePath = '' }
+    )
+    foreach ($link in $maintenanceLinks) {
+        if (New-WinGetLink -PackageId $link.PackageId -ExeName $link.ExeName -RelativePath $link.RelativePath) {
+            Write-Host "  $($link.ExeName): linked" -ForegroundColor Green
+        }
+    }
+
+    # ========================================================================
+    # PATH Optimization (remove duplicates, empty entries, redundant WinGet paths)
+    # ========================================================================
+    Write-Host "`nOptimizing User PATH..." -ForegroundColor Cyan
+    Optimize-UserPath
+
+    # Regenerate Git Bash PATH after optimization (idempotent - skips if unchanged)
+    Write-GitBashPath
 
     # ========================================================================
     # VS Code Settings Symlinks (admin required for symlinks without Developer Mode)
