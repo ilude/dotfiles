@@ -116,10 +116,10 @@
 #############################################################################
 
 [includeIf "gitdir:C:/Projects/Work/"]
-  path = ~/.dotfiles/.gitconfig-professional
+  path = ~/.gitconfig-professional
 
 [includeIf "gitdir:C:/Projects/Personal/"]
-  path = ~/.dotfiles/.gitconfig-personal
+  path = ~/.gitconfig-personal
 
 #############################################################################
 # Identity includes - Linux/Universal (URL-based)
@@ -128,25 +128,25 @@
 
 # Personal repos
 [includeIf "hasconfig:remote.*.url:git@github.com:ilude/**"]
-  path = ~/.dotfiles/.gitconfig-personal
+  path = ~/.gitconfig-personal
 [includeIf "hasconfig:remote.*.url:https://github.com/ilude/**"]
-  path = ~/.dotfiles/.gitconfig-personal
+  path = ~/.gitconfig-personal
 [includeIf "hasconfig:remote.*.url:git@github.com:traefikturkey/**"]
-  path = ~/.dotfiles/.gitconfig-personal
+  path = ~/.gitconfig-personal
 [includeIf "hasconfig:remote.*.url:https://github.com/traefikturkey/**"]
-  path = ~/.dotfiles/.gitconfig-personal
+  path = ~/.gitconfig-personal
 [includeIf "hasconfig:remote.*.url:github.com-personal:*/**"]
-  path = ~/.dotfiles/.gitconfig-personal
+  path = ~/.gitconfig-personal
 
 # Work repos
 [includeIf "hasconfig:remote.*.url:git@github.com:mtg-eagletg/**"]
-  path = ~/.dotfiles/.gitconfig-professional
+  path = ~/.gitconfig-professional
 [includeIf "hasconfig:remote.*.url:https://github.com/mtg-eagletg/**"]
-  path = ~/.dotfiles/.gitconfig-professional
+  path = ~/.gitconfig-professional
 [includeIf "hasconfig:remote.*.url:git@github.com:EagleTG-Development/**"]
-  path = ~/.dotfiles/.gitconfig-professional
+  path = ~/.gitconfig-professional
 [includeIf "hasconfig:remote.*.url:https://github.com/EagleTG-Development/**"]
-  path = ~/.dotfiles/.gitconfig-professional
+  path = ~/.gitconfig-professional
 [includeIf "hasconfig:remote.*.url:github.com-work:*/**"]
-  path = ~/.dotfiles/.gitconfig-professional
+  path = ~/.gitconfig-professional
 # Work-specific credential helpers belong in .gitconfig-professional-local
