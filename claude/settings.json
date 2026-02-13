@@ -1,4 +1,7 @@
 {
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
   "includeCoAuthoredBy": false,
   "permissions": {
     "allow": [
@@ -190,8 +193,6 @@
     "superpowers@superpowers-marketplace": true
   },
   "alwaysThinkingEnabled": true,
-  "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
-  },
-  "companyAnnouncements": []
+  "companyAnnouncements": [],
+  "skipDangerousModePermissionPrompt": true
 }
