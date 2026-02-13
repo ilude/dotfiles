@@ -10,6 +10,8 @@
 - link:
     ~/.config/git/config: config/git/config
     ~/.config/git/ignore: config/git/ignore
+    ~/.gitconfig-personal: config/git/gitconfig-personal
+    ~/.gitconfig-professional: config/git/gitconfig-professional
     ~/.zshenv: home/.zshenv
     ~/.zshrc: home/.zshrc
     ~/.zprofile: home/.zprofile
