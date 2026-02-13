@@ -261,7 +261,6 @@
   "settingsSync.ignoredExtensions": [],
   "terminal.integrated.copyOnSelection": true,
   "notebook.lineNumbers": "on",
-  "workbench.editor.enablePreview": false,
   "editor.minimap.enabled": false,
   "explorer.confirmDragAndDrop": false,
   "window.title": "${remoteName}${activeFolderMedium}${separator}${rootNameShort}${separator}${activeRepositoryName}",
@@ -334,5 +333,7 @@
     "rearden.ilude.com": "linux",
     "patriot-onramp.ilude.com": "linux"
   },
-  "specstory.cloudSync.enabled": "never"
+  "specstory.cloudSync.enabled": "never",
+  "workbench.editor.enablePreview": false,
+  "claudeCode.preferredLocation": "panel"
 }
