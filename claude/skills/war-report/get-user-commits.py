@@ -2,6 +2,9 @@
 """
 Get git commits for the current user with exact email matching.
 
+Output format: date<TAB>hash subject (one per line)
+Example output: February 09\ta1b2c3d Fixed routing error
+
 Usage:
     python get-user-commits.py <repo_path> <since_date> <until_date>
 
@@ -32,8 +35,8 @@ def get_commits(repo_path: Path, since: str, until: str, user_email: str) -> lis
 
     Returns list of commit messages (one-line format).
     """
-    # Use format that includes email so we can filter exactly
-    # Format: hash<TAB>author_email<TAB>subject
+    # Use format that includes email and date so we can filter exactly
+    # Format: hash<TAB>author_email<TAB>date<TAB>subject
     result = subprocess.run(
         [
             "git",
@@ -41,7 +44,8 @@ def get_commits(repo_path: Path, since: str, until: str, user_email: str) -> lis
             f"--since={since}",
             f"--until={until}",
             "--all",
-            "--format=%h\t%ae\t%s",
+            "--format=%h\t%ae\t%ad\t%s",
+            "--date=format:%B %d",
         ],
         cwd=repo_path,
         capture_output=True,
@@ -55,15 +59,15 @@ def get_commits(repo_path: Path, since: str, until: str, user_email: str) -> lis
         if not line:
             continue
 
-        parts = line.split("\t", 2)
-        if len(parts) != 3:
+        parts = line.split("\t", 3)
+        if len(parts) != 4:
             continue
 
-        commit_hash, author_email, subject = parts
+        commit_hash, author_email, commit_date, subject = parts
 
         # Exact email match only
         if author_email == user_email:
-            commits.append(f"{commit_hash} {subject}")
+            commits.append(f"{commit_date}\t{commit_hash} {subject}")
 
     return commits
 
