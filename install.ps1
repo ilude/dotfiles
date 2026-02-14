@@ -127,10 +127,10 @@ $LOCKFILE = Join-Path $env:USERPROFILE ".dotfiles.lock"
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
 # Operations requiring elevation:
+#   - Enable Developer Mode (first run only - allows symlinks without admin)
 #   - MSYS2 nsswitch.conf modification (system file)
-#   - Symlink creation without Developer Mode
 #   - WSL installation
-# If Developer Mode is enabled, symlinks work without elevation,
+# Once Developer Mode is enabled, symlinks work without elevation,
 # and remaining admin operations can be deferred.
 
 # Check Developer Mode early (before elevation decision)
@@ -1073,6 +1073,19 @@ try {
         Write-Host "Running with Developer Mode (no elevation)" -ForegroundColor Green
     }
 
+    # Enable Developer Mode when running elevated (allows symlinks without admin)
+    # This is done early so symlinks work for the rest of this run AND future runs
+    if ($isAdmin -and -not $DevMode) {
+        Write-Host "`nEnabling Developer Mode (symlinks without elevation)..." -ForegroundColor Cyan
+        $regPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock'
+        if (-not (Test-Path $regPath)) {
+            New-Item -Path $regPath -Force | Out-Null
+        }
+        New-ItemProperty -Path $regPath -Name AllowDevelopmentWithoutDevLicense -Value 1 -PropertyType DWORD -Force | Out-Null
+        $DevMode = $true
+        Write-Host "  Developer Mode enabled" -ForegroundColor Green
+    }
+
     Set-Location $BASEDIR
     Write-Host "Working directory: $BASEDIR" -ForegroundColor DarkGray
 
@@ -1442,6 +1455,17 @@ try {
     }
 
     Write-Host "  Completion cache: $completionCacheDir" -ForegroundColor DarkGray
+
+    # Warn about existing repos that may have local core.symlinks=false
+    # Git sets core.symlinks=false at clone time when symlinks aren't available.
+    # Now that Developer Mode is enabled and global config has symlinks=true,
+    # existing repos need their local override removed.
+    Write-Host "`n--- Symlink Note ---" -ForegroundColor Yellow
+    Write-Host "  Repos cloned before Developer Mode was enabled may have a local" -ForegroundColor Yellow
+    Write-Host "  core.symlinks=false override. For each affected repo, run:" -ForegroundColor Yellow
+    Write-Host "    git config --unset core.symlinks" -ForegroundColor White
+    Write-Host "    git checkout -- <symlinked-files>" -ForegroundColor White
+    Write-Host "  Or re-clone the repo." -ForegroundColor Yellow
 
     Write-Host "`nInstallation complete." -ForegroundColor Green
 
