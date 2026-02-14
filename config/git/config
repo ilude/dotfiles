@@ -4,7 +4,7 @@
   eol = lf
   autocrlf = input
   editor = code --wait
-	symlinks = true
+  symlinks = true
 
 [pager]
   # Use delta for better diffs if installed, otherwise default pager
