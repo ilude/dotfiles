@@ -36,12 +36,13 @@ make test    # Run bats tests
 
 ### Installation Flow
 1. `install` (bash) or `install.ps1` (PowerShell) → entry points
-2. XDG migration: removes old `~/.gitconfig` and `~/.gitignore_global` so Git uses `~/.config/git/`
-3. **Dotbot** creates symlinks defined in `install.conf.yaml`
-4. `scripts/git-ssh-setup` detects SSH keys, writes machine-specific `.gitconfig-*-local` files
-5. `scripts/zsh-setup` installs zsh and sets as default shell (Linux only)
-6. `scripts/zsh-plugins` downloads version-pinned plugins on first shell startup
-7. Credential lockdown: `chmod 600` on sensitive files like `~/.claude/.credentials.json`
+2. Windows: enables Developer Mode (registry key, allows symlinks without admin)
+3. XDG migration: removes old `~/.gitconfig` and `~/.gitignore_global` so Git uses `~/.config/git/`
+4. **Dotbot** creates symlinks defined in `install.conf.yaml`
+5. `scripts/git-ssh-setup` detects SSH keys, writes machine-specific `.gitconfig-*-local` files
+6. `scripts/zsh-setup` installs zsh and sets as default shell (Linux only)
+7. `scripts/zsh-plugins` downloads version-pinned plugins on first shell startup
+8. Credential lockdown: `chmod 600` on sensitive files like `~/.claude/.credentials.json`
 
 ### Git Identity System
 - **Directory-based** (Windows): `C:/Projects/Work/` → professional, `C:/Projects/Personal/` → personal
