@@ -1,6 +1,6 @@
 ---
 description: Ingest YouTube video and return job/status details
-argument-hint: <url-or-id>
+argument-hint: <url-or-id | list [n]>
 ---
 
 # YouTube Ingest & Retrieval
@@ -11,7 +11,25 @@ Ingest YouTube videos via menos API and return ingest status/job information.
 
 The user wants to run: `/yt $ARGUMENTS`
 
-Parse the arguments:
+Parse the arguments to determine the subcommand:
+
+### Subcommand: `list [n]`
+
+If the first argument is `list`, show recently ingested videos.
+
+- **Optional**: number of videos to show (default: 10, max: 100)
+
+Run:
+```bash
+cd ~/.claude/commands/yt && unset VIRTUAL_ENV && uv run list_videos.py {n}
+```
+
+Display the output to the user and stop. No further steps needed.
+
+### Subcommand: ingest (default)
+
+If the first argument is NOT `list`, treat it as an ingest request.
+
 - **Required**: YouTube URL or video ID (e.g., `dQw4w9WgXcQ` or `https://youtube.com/watch?v=dQw4w9WgXcQ`)
 - **Optional flags**: `--wait` (poll job to terminal state), `--verbose` (show full job fields when polling)
 
