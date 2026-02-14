@@ -262,6 +262,24 @@ Before each commit:
 - [ ] Commit message follows conventional commits
 - [ ] Changes are atomic (one logical change)
 
+## Worktrees
+
+When creating worktrees, **always use `.worktrees/` inside the project root** — never create sibling directories.
+
+```bash
+# Correct — contained within the project
+git worktree add .worktrees/feature-x feature-x
+
+# Wrong — pollutes parent directory
+git worktree add ../project-feature-x feature-x
+```
+
+`git worktree add` creates the `.worktrees/` directory automatically. The directory is globally gitignored via `~/.config/git/ignore`.
+
+**Gotcha:** Untracked and gitignored files (e.g., `.env`, `.venv/`, build artifacts) are NOT present in worktrees — only tracked files from the checked-out branch. If the project needs local setup, run it in the worktree.
+
+See [worktrees.md](worktrees.md) for full details including parallel sessions and cleanup.
+
 ## Philosophy
 
 This skill defines the principles. The `/commit` command implements the procedural execution. Security always comes first, commits require explicit request, and pushes require the "push" keyword.
