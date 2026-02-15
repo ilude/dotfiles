@@ -74,4 +74,4 @@ Please generate a `PRD.md` file in the current directory using the following tem
 - {Any other project-level success metrics}
 ```
 
-**Tip**: If you're unsure how to make criteria verifiable, use `/acceptance-criteria` to convert vague requirements into testable ones.
+**Tip**: The `planning` skill auto-activates with detailed methodology for converting vague requirements into testable criteria.

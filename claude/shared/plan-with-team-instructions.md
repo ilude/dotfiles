@@ -101,6 +101,25 @@ Validator model rule: if wave contains any sonnet/opus builder → validator-hea
 
 ## Dependency Graph
 Wave 1: T1, T2 (parallel) → V1 → Wave 2: T3 → V2
+
+## Acceptance Criteria Guidelines
+
+Every task MUST have verifiable acceptance criteria. For methodology, the `planning` skill auto-activates with detailed guidance.
+
+**Quick rules:**
+- Each criterion must be specific and measurable (no "looks good" or "works correctly")
+- Include a verification method: exact command, test, API call, or file check
+- Include expected result
+
+**Format:**
+1. [ ] [Specific, measurable outcome]
+   - Verification: [Exact command or test to run]
+   - Expected result: [What passing looks like]
+
+**Example:**
+- T1: Add user endpoint
+  - AC: `curl -s localhost:3000/api/users | jq '.status'` returns `200`
+  - AC: `npm test -- users.test.ts` passes with 0 warnings
 ```
 
 For complex tasks, create multiple waves with parallel builders and validation gates between them.
@@ -118,6 +137,7 @@ Before presenting, verify the plan has:
 - [ ] Wave N+1 builders blockedBy Wave N validator
 - [ ] Validator model matches wave rule (sonnet/opus builders → validator-heavy, haiku-only → validator)
 - [ ] Every task has Acceptance Criteria
+- [ ] Each Acceptance Criterion has a verification command or test
 
 If validation fails, fix the plan before continuing.
 
