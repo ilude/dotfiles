@@ -32,18 +32,10 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install bats-core shellcheck
 
-      - name: Setup MSYS2 (Windows)
-        if: runner.os == 'Windows'
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          install: zsh
-
-      - name: Run checks
+      - name: Run checks (Linux/macOS)
         if: runner.os != 'Windows'
         run: make check
 
-      - name: Run tests (Windows/MSYS2)
+      - name: Run tests (Windows)
         if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: make test-pytest
+        run: uv run pytest test/ claude/hooks/*/tests/ -v --tb=short
