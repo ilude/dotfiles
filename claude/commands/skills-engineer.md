@@ -1,6 +1,6 @@
 ---
-description: Orchestrate skill lifecycle — review, write, or optimize skills
-argument-hint: <review|write|optimize> [skill-name or topic]
+description: Orchestrate skill lifecycle — review, write, optimize, audit, or manage rulesets
+argument-hint: <review|write|optimize|audit|ruleset> [skill-name or topic]
 ---
 
 # Skills Engineer Command
@@ -16,11 +16,15 @@ Input: $ARGUMENTS
   - Review an existing skill (audit quality and activation)
   - Write a new skill (research + generate)
   - Optimize an existing skill (review + research + improve)
+  - Audit skill activations (analyze history for missed triggers)
+  - Optimize a CLAUDE.md ruleset (analyze and improve rules files)
 
 **If provided**, extract mode and target:
 - `review <skill-name>` → Review mode
 - `write <topic>` → Write mode
 - `optimize <skill-name>` → Optimize mode
+- `audit` → Audit mode
+- `ruleset [personal]` → Ruleset mode
 
 ## Step 2: Validate Target
 
@@ -32,6 +36,15 @@ Input: $ARGUMENTS
 **For write:**
 1. Check if `~/.claude/skills/<topic>/` already exists
 2. If exists, ask: "Skill directory already exists. Review it instead, or overwrite?"
+
+**For audit:**
+1. No target needed - analyzes all skills against session history
+2. Requires `~/.claude/scripts/skill-analyzer.py`
+
+**For ruleset:**
+1. No parameter → target is project `.claude/CLAUDE.md`
+2. `personal` parameter → target is `~/.claude/CLAUDE.md`
+3. Accepts flags: `--no-history`, `--history-only`
 
 ## Step 3: Execute Mode
 
@@ -134,6 +147,12 @@ Launch parallel searches targeting the weakest dimensions:
 - Industry patterns and anti-patterns
 - Competing approaches and frameworks
 
+For each research finding, create a theory-practice mapping:
+
+| Academic Principle | Current Skill Rule | Action |
+|-------------------|-------------------|--------|
+| [principle] | [existing rule or "(missing)"] | Ground / Add / Expand / Skip |
+
 **Phase C: Improve** (Task agent, opus)
 
 Apply optimizations:
@@ -163,6 +182,95 @@ Ask: "Apply changes?" Options:
 
 ---
 
+### Audit Mode
+
+Analyze conversation history for skill activation patterns. Detect missed activations and suggest trigger improvements.
+
+**Requires:** `~/.claude/scripts/skill-analyzer.py`
+
+**Phase A: Run Analyzer**
+
+Execute skill-analyzer.py with checkpoint mode (only analyzes new messages since last run):
+```bash
+python ~/.claude/scripts/skill-analyzer.py --json ./tmp/analyze-skills-temp.json --checkpoint --verbose
+```
+
+Use `--reset` flag to re-analyze everything. If script doesn't exist, inform user and exit.
+
+**Phase B: Parse & Present**
+
+Load JSON output. Group suggestions by skill. For each missed activation:
+- Skill name and evidence (file touched, import used, error encountered)
+- Current activation patterns vs suggested additions
+- Confidence level (HIGH = direct file match, MEDIUM = import pattern, LOW = error pattern)
+
+**Phase C: Update Options**
+
+Present choices:
+1. Update high-confidence suggestions only
+2. Update all suggestions
+3. Select individually (ask for each skill)
+4. Skip all updates
+
+For each skill to update: read SKILL.md, find "Auto-activates when" section, append new patterns, create .backup file.
+
+**Phase D: Report**
+
+Display summary: skills updated, patterns added, files modified. Remove temp JSON file.
+
+---
+
+### Ruleset Mode
+
+Analyze and optimize CLAUDE.md ruleset files with history-based meta-learning.
+
+For optimization philosophy, see the `ruleset-optimization` skill in `~/.claude/skills/claude-code-workflow/`.
+
+**Parameters:**
+- No parameter → optimize project ruleset at `.claude/CLAUDE.md`
+- `personal` → optimize personal ruleset at `~/.claude/CLAUDE.md`
+- `--no-history` → skip history analysis
+- `--history-only` → only analyze history, don't modify ruleset
+
+**Phase A: Target & Context**
+
+Determine target (project vs personal). Create `.claude` directory if needed. Gather project context: directory listing, package manager detection, git status.
+
+**Phase B: History Analysis** (skip if `--no-history`)
+
+Scan session history for workflow antipatterns:
+
+| Pattern | Description |
+|---------|-------------|
+| Tool misuse | Using bash (grep, find, cat) instead of Read/Glob/Grep |
+| Path hardcoding | Manual `.venv/` or absolute paths |
+| Correction loops | Repeated corrections indicate unclear rules |
+| Missing preconditions | File not found errors suggest skipped verification |
+
+**Phase C: Skills Inventory**
+
+Discover skills in `~/.claude/skills/` and `./.claude/skills/`. Calculate token savings: active (always loaded) vs inactive (conditional).
+
+**Phase D: Deduplication** (project mode only)
+
+Compare project ruleset with personal ruleset. Classify duplication: exact (>80% similarity), hierarchical (50-80%), partial overlap, redundant examples.
+
+**Phase E: Ruleset Analysis**
+
+Detect issues by priority: HIGH (outdated descriptions, inaccuracies, contradictions, missing refs), MEDIUM (poor ordering, missing quick start), LOW (verbose explanations, inconsistent formatting).
+
+**Phase F: Recommendations**
+
+Merge all findings into prioritized report with token impact. Present choices:
+1. Apply HIGH+CRITICAL only
+2. Apply HIGH+MEDIUM+CRITICAL (recommended)
+3. Apply ALL
+4. Show draft
+5. Analysis only
+6. Add history rules only
+
+---
+
 ## Step 4: Save Research
 
 If web research was performed in any mode, save sources to `~/.claude/research/<skill-name>-sources.md`.
@@ -175,6 +283,9 @@ If web research was performed in any mode, save sources to `~/.claude/research/<
 | Research | Task (parallel) | sonnet | Web searches |
 | Synthesis/Generation | Task | opus | Complex reasoning, writing |
 | Review scoring | Main | sonnet | Checklist evaluation |
+| Audit analysis | Main | sonnet | History parsing, pattern matching |
+| Ruleset analysis | Main | sonnet | Rule conflict detection |
+| Ruleset optimization | Task | opus | Complex deduplication, rewriting |
 | User presentation | Main | - | Interaction |
 
 ## Edge Cases
@@ -184,3 +295,6 @@ If web research was performed in any mode, save sources to `~/.claude/research/<
 3. **Research finds nothing**: Fall back to existing knowledge, note limited sources
 4. **Already well-optimized (all 5/5)**: Report "no significant improvements found"
 5. **Very large skill (>500 lines)**: Flag for splitting into main + sub-skills
+6. **No skill-analyzer.py**: Audit mode requires the script — inform user and exit
+7. **No session history**: Audit skips history analysis, reports no data
+8. **Ruleset not found**: Create minimal template and offer to populate
