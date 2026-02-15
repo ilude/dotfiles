@@ -38,4 +38,5 @@ jobs:
 
       - name: Run tests (Windows)
         if: runner.os == 'Windows'
+        shell: bash
         run: uv run pytest test/ claude/hooks/*/tests/ -v --tb=short
