@@ -10,8 +10,8 @@ git-ssh-setup text eol=lf
 claude-link-setup text eol=lf
 claude-mcp-setup text eol=lf
 zsh-plugins text eol=lf
-wsl-packages text eol=lf
-install-wsl text eol=lf
+wsl/install text eol=lf
+wsl/packages text eol=lf
 zsh-setup text eol=lf
 
 # Python scripts

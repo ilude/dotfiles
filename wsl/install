@@ -4,8 +4,8 @@
 # Installs dotfiles from Windows dotfiles repo into WSL environment
 #
 # Usage:
-#   From Windows (PowerShell/cmd): wsl --cd ~ ~/.dotfiles/install-wsl
-#   From WSL directly: /mnt/c/Users/<user>/.dotfiles/install-wsl
+#   From Windows (PowerShell/cmd): wsl --cd ~ ~/.dotfiles/wsl/install
+#   From WSL directly: /mnt/c/Users/<user>/.dotfiles/wsl/install
 #
 # Options:
 #   --packages    Also install system packages (apt packages, zsh setup)
@@ -14,7 +14,7 @@
 set -e
 
 # Configuration
-CONFIG="install.wsl.yaml"
+CONFIG="wsl/install.conf.yaml"
 DOTBOT_DIR="dotbot"
 DOTBOT_BIN="bin/dotbot"
 
@@ -36,7 +36,7 @@ for arg in "$@"; do
         --help|-h)
             echo "WSL Dotfiles Installer"
             echo ""
-            echo "Usage: install-wsl [OPTIONS]"
+            echo "Usage: wsl/install [OPTIONS]"
             echo ""
             echo "Options:"
             echo "  --packages    Install system packages (apt, zsh, etc.)"
@@ -50,7 +50,7 @@ done
 # Priority: 1) Current directory, 2) Script directory, 3) /mnt/c/Users/*/.dotfiles
 find_dotfiles_dir() {
     # Check current directory first (for temp copy approach)
-    if [[ -f "./install.wsl.yaml" ]]; then
+    if [[ -f "./wsl/install.conf.yaml" ]]; then
         pwd
         return 0
     fi
@@ -58,8 +58,8 @@ find_dotfiles_dir() {
     # Check script directory
     local script_dir
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    if [[ -f "$script_dir/install.wsl.yaml" ]]; then
-        echo "$script_dir"
+    if [[ -f "$script_dir/../wsl/install.conf.yaml" ]]; then
+        echo "$(cd "$script_dir/.." && pwd)"
         return 0
     fi
 
@@ -68,7 +68,7 @@ find_dotfiles_dir() {
         local user
         user=$(basename "$dir" 2>/dev/null)
         if [[ -n "$user" && "$user" != "Public" && "$user" != "Default" && "$user" != "Default User" && "$user" != "All Users" ]]; then
-            if [[ -d "${dir}.dotfiles" && -f "${dir}.dotfiles/install.wsl.yaml" ]]; then
+            if [[ -d "${dir}.dotfiles" && -f "${dir}.dotfiles/wsl/install.conf.yaml" ]]; then
                 echo "${dir}.dotfiles"
                 return 0
             fi
@@ -197,8 +197,8 @@ if [[ "$INSTALL_PACKAGES" == "true" ]]; then
     echo -e "${CYAN}Installing system packages...${NC}"
 
     # Prefer wsl-packages (modern, idempotent) over zsh-setup
-    if [[ -f "${BASEDIR}/wsl-packages" ]]; then
-        bash "${BASEDIR}/wsl-packages"
+    if [[ -f "${BASEDIR}/wsl/packages" ]]; then
+        bash "${BASEDIR}/wsl/packages"
     elif [[ -f "${BASEDIR}/zsh-setup" ]]; then
         # Fallback to zsh-setup in Linux mode
         unset WINDIR

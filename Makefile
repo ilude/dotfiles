@@ -1,7 +1,7 @@
 .PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all test test-quick test-parallel test-docker test-powershell test-pytest test-bats preflight help lint format check install-hooks
 
 # Shell scripts to check (excludes dotbot submodule and plugins)
-SHELL_SCRIPTS := home/.bashrc home/.zshrc install install-wsl scripts/git-ssh-setup scripts/claude-link-setup scripts/claude-mcp-setup scripts/copilot-link-setup scripts/zsh-setup scripts/zsh-plugins scripts/wsl-packages
+SHELL_SCRIPTS := home/.bashrc home/.zshrc install wsl/install scripts/git-ssh-setup scripts/claude-link-setup scripts/claude-mcp-setup scripts/copilot-link-setup scripts/zsh-setup scripts/zsh-plugins wsl/packages
 
 # Default target
 help:
@@ -49,7 +49,7 @@ preflight:
 	@echo "Running pre-flight checks..."
 	@# Check for CRLF corruption in shell scripts
 	@if command -v file >/dev/null 2>&1; then \
-		if file .bashrc .zshrc install install-wsl git-ssh-setup claude-link-setup copilot-link-setup 2>/dev/null | grep -q CRLF; then \
+		if file .bashrc .zshrc install wsl/install git-ssh-setup claude-link-setup copilot-link-setup 2>/dev/null | grep -q CRLF; then \
 			echo "ERROR: CRLF line endings detected. Run: dos2unix <file>"; \
 			exit 1; \
 		fi; \

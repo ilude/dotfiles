@@ -19,7 +19,7 @@ needs_test=false
 while IFS= read -r file; do
     case "$file" in
         # Shell scripts (no extension)
-        install|install-wsl|git-ssh-setup|claude-link-setup|claude-mcp-setup|copilot-link-setup|zsh-setup|zsh-plugins|wsl-packages)
+        install|wsl/install|git-ssh-setup|claude-link-setup|claude-mcp-setup|copilot-link-setup|zsh-setup|zsh-plugins|wsl/packages)
             needs_test=true ;;
         # Shell config files
         .bashrc|.bash_profile|.profile|.zshrc|.zshenv)

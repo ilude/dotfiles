@@ -22,36 +22,29 @@
 
 # Shell configs - link from WSL home to the Windows dotfiles
 - link:
-    ~/.config/git/config:
-      path: config/git/config
-    ~/.config/git/ignore:
-      path: config/git/ignore
-    ~/.zshenv:
-      path: .zshenv
-    ~/.zshrc:
-      path: .zshrc
-    ~/.zprofile:
-      path: .zprofile
-    ~/.profile:
-      path: .profile
-    ~/.bashrc:
-      path: .bashrc
-    ~/.bash_profile:
-      path: .bash_profile
-    ~/.dircolors:
-      path: .dircolors
-    ~/.hushlogin:
-      path: .hushlogin
+    ~/.config/git/config: config/git/config
+    ~/.config/git/ignore: config/git/ignore
+    ~/.gitconfig-personal: config/git/gitconfig-personal
+    ~/.gitconfig-professional: config/git/gitconfig-professional
+    ~/.zshenv: home/.zshenv
+    ~/.zshrc: home/.zshrc
+    ~/.zprofile: home/.zprofile
+    ~/.profile: home/.profile
+    ~/.bashrc: home/.bashrc
+    ~/.bash_profile: home/.bash_profile
+    ~/.inputrc: home/.inputrc
+    ~/.dircolors: home/.dircolors
+    ~/.hushlogin: home/.hushlogin
 
 # Oh My Posh config
 - link:
     ~/.config/ohmyposh/prompt.json:
       path: config/ohmyposh/prompt.json
 
-# Claude Code config directory (hooks, settings, status script)
+# Claude Code config
 - link:
-    ~/.claude:
-      path: claude
+    ~/.claude: claude
+    ~/.config/opencode: opencode
 
 # SSH keys - share from Windows (optional, uncomment if you want shared keys)
 # Note: Requires WSL to mount Windows drives with metadata enabled
