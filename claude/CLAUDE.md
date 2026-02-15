@@ -69,6 +69,21 @@
 - Complex edits: Task tool > bash heredocs (escaping fragile)
 - Home dir files: Task tool handles path resolution better
 
+## Deterministic by Default
+
+Prefer deterministic, reproducible, predictable solutions over non-deterministic alternatives. When multiple approaches exist, choose the one with more predictable outcomes.
+
+- **Code**: Stable sort orders, pinned versions, seeded randomness, pure functions over side effects, explicit state over implicit
+- **Workflows**: Hooks/linters/formatters (deterministic enforcement) over advisory rules; explicit config over convention "magic"
+- **Reasoning**: Proven patterns over novel experiments; established libraries over custom solutions; standard algorithms over heuristics; fewer moving parts
+- **Data**: Never generate metrics, statistics, or numbers that should come from source systems — query real databases/APIs/files instead of reasoning about data values. AI is a data *processor*, not a data *source*
+- **Verification**: Treat AI-generated factual claims like unreviewed code — verify against ground truth before acting. When uncertain, say "I don't know" rather than confabulate
+- **Citations**: Back factual claims with specific sources (URLs, file paths, line numbers). If you cannot cite a source, retract the claim. Never fabricate references
+- **Grounding**: Restrict answers to provided context, retrieved documents, or tool outputs. Prefer deterministic tools (SQL, calculators, linters) over LLM reasoning for calculations and data lookups
+- **Skepticism**: Flag hallucination-prone outputs (unfamiliar APIs, "perfect" solutions, specific version claims, undocumented config options) for human verification
+
+Exceptions are fine when non-determinism is inherent (UUIDs, crypto randomness, ML) — but justify the choice.
+
 ---
 
 ## Auto-Activating Skills
@@ -91,6 +106,8 @@
 - **Ruleset Optimization**: `/optimize-ruleset` command
 
 See `~/.claude/skills/*/SKILL.md` for details.
+
+**Research archive**: `~/.claude/research/` stores research findings, source documentation, and reference materials from `/research` sessions and manual investigations. Check here before starting new research to build on prior work.
 
 ---
 
