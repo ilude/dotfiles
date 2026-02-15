@@ -45,8 +45,8 @@ git clone --recursive https://github.com/ilude/dotfiles.git $HOME\.dotfiles
 ### WSL (from Windows)
 
 ```bash
-~/.dotfiles/install-wsl              # Install dotfiles into WSL
-~/.dotfiles/install-wsl --packages   # Also install apt packages
+~/.dotfiles/wsl/install              # Install dotfiles into WSL
+~/.dotfiles/wsl/install --packages   # Also install apt packages
 ```
 
 ## Windows Requirements
@@ -104,7 +104,7 @@ Automatic identity switching based on directory or remote URL:
 |------|---------|
 | `install` | Main installer (bash) |
 | `install.ps1` | Windows installer with package management |
-| `install-wsl` | WSL-specific installer |
+| `wsl/` | WSL installer, packages, and validation |
 | `install.conf.yaml` | Dotbot symlink configuration |
 | `zsh/env.d/` | Environment modules (WINHOME, locale, PATH) |
 | `zsh/rc.d/` | Interactive modules (completions, plugins, prompt, aliases) |

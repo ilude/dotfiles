@@ -3,7 +3,7 @@
 # Checks WSL environment variables, mounts, and tools
 
 # Source common validation utilities
-source "$(dirname "$0")/validate-common.sh"
+source "$(dirname "$0")/../validate/validate-common.sh"
 
 # Early exit if not WSL (silent, no output)
 if ! is_wsl; then
