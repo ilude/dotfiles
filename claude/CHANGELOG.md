@@ -4,6 +4,28 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
+## 2026-02-15: CLAUDE.md Cleanup & Skill Trigger Expansion
+
+**Removed:**
+- Session History Capture section (never produced meaningful entries, only "session_end" stubs)
+- Auto-Activating Skills cheat sheet (redundant with skill frontmatter descriptions)
+- Research archive reference line (already covered in research-archive skill)
+
+**Changed:**
+- Broadened activation triggers in 11 SKILL.md files: docs, llmstxt, code-review, docker, database, csharp, terraform, ansible, go, ruby, rust
+- Added missing file patterns, CLI commands, and language concepts to each skill's description
+- Added changelog maintenance instruction to CLAUDE.md (replacing passive reference)
+
+**Impact:**
+- ~42 lines of redundant instructions removed from CLAUDE.md
+- Skills now auto-activate on broader set of relevant keywords and file patterns
+
+**Files:**
+- `~/.claude/CLAUDE.md`
+- `~/.claude/skills/{docs,llmstxt,code-review,docker,database,csharp,terraform,ansible,go,ruby,rust}/SKILL.md`
+
+---
+
 ## 2025-11-10: Ruleset Optimization (History Analysis)
 
 **First `/optimize-ruleset personal` run:**

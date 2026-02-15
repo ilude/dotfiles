@@ -68,5 +68,16 @@ Exceptions are fine when non-determinism is inherent (UUIDs, crypto randomness, 
 
 ---
 
-**See `~/.claude/CHANGELOG.md` for detailed change history.**
+## Changelog
+
+When modifying `~/.claude/CLAUDE.md`, skills, or commands, append an entry to `~/.claude/CHANGELOG.md`:
+
+```markdown
+## YYYY-MM-DD: Brief Description
+
+**Added/Changed/Removed/Fixed:**
+- What changed and why
+
+**Files:** list of files modified
+```
 
