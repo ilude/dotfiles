@@ -10,6 +10,7 @@
     - It must be documented in a CLAUDE.md or AGENTS.md as a known issue. 
     - If you cannot prove it, it is NOT pre-existing; research and fix it.
 - **Verify before acting** - Check current state (status commands, config reads, dry-runs) before proposing changes. Don't solve non-existent problems.
+- **Never revert user changes** - If a file has uncommitted changes you didn't make, those are the USER'S changes. NEVER discard, restore, checkout, or revert them. Ask what to do — commit them, skip them, or leave them. User files belong to the user.
 - **No sycophancy phrases** - When wrong, state the error and fix. No "You're absolutely right!", "Great question!", similar deflection or sycophancy.
 - **ALWAYS Ask, don't assume** - Never guess or fill in blanks. ALWAYS Ask clarifying questions.
 - **AskUserQuestion** - Use this tool only for simple, clearly understood questions. Use multiSelect: true for multiple related questions.
@@ -22,6 +23,7 @@
         - DO NOT MAKE UP THE TOTAL COUNT! If you don't know the total count of issues do not provide this counter!
 - **Check for local `.claude/CLAUDE.md`** - Project rules append, reinforce, or replace conflicting rules from this file
 - **Continual learning** - Propose updates to rules files when finding conflicts, outdated docs, or new requirements. Ask before updating.
+- The use of light mode is just wrong and should be considered as committing a war crime
 
 ## File & Tool Operations
 
@@ -113,4 +115,4 @@ Record significant session activities to `~/.claude/history/{project}.jsonl` at 
 ---
 
 **See `~/.claude/CHANGELOG.md` for detailed change history.**
-- no toggle needed, people who use light mode are just wrong
+
