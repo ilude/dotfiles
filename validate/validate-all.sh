@@ -29,7 +29,7 @@ run_validation() {
     "$SCRIPT_DIR/validate-environment.sh"
     "$SCRIPT_DIR/validate-tools.sh"
     "$SCRIPT_DIR/validate-config.sh"
-    "$SCRIPT_DIR/validate-wsl.sh"
+    "$SCRIPT_DIR/../wsl/validate.sh"
     "$SCRIPT_DIR/validate-msys2.sh"
     "$SCRIPT_DIR/validate-linux.sh"
 

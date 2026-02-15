@@ -574,39 +574,39 @@ def test_bashrc_uv_env_conditional():
 
 # Platform-specific zsh installation
 def test_wsl_packages_zsh():
-    """wsl-packages installs zsh on Linux/WSL."""
-    assert (DOTFILES / "scripts" / "wsl-packages").exists()
-    content = (DOTFILES / "scripts" / "wsl-packages").read_text()
+    """wsl/packages installs zsh on Linux/WSL."""
+    assert (DOTFILES / "wsl" / "packages").exists()
+    content = (DOTFILES / "wsl" / "packages").read_text()
     assert "zsh" in content
 
 
 def test_wsl_packages_default_shell():
-    """wsl-packages sets zsh as default shell."""
-    content = (DOTFILES / "scripts" / "wsl-packages").read_text()
+    """wsl/packages sets zsh as default shell."""
+    content = (DOTFILES / "wsl" / "packages").read_text()
     assert re.search(r"chsh.*zsh|default.*zsh", content)
 
 
 def test_wsl_packages_apt():
-    """wsl-packages uses apt for zsh."""
-    content = (DOTFILES / "scripts" / "wsl-packages").read_text()
+    """wsl/packages uses apt for zsh."""
+    content = (DOTFILES / "wsl" / "packages").read_text()
     assert re.search(r"apt.*install|apt-get.*install", content)
 
 
 def test_wsl_packages_fzf():
-    """wsl-packages installs fzf."""
-    content = (DOTFILES / "scripts" / "wsl-packages").read_text()
+    """wsl/packages installs fzf."""
+    content = (DOTFILES / "wsl" / "packages").read_text()
     assert "fzf" in content
 
 
 def test_wsl_packages_wsl_conf():
-    """wsl-packages configures wsl.conf."""
-    content = (DOTFILES / "scripts" / "wsl-packages").read_text()
+    """wsl/packages configures wsl.conf."""
+    content = (DOTFILES / "wsl" / "packages").read_text()
     assert re.search(r"wsl\.conf|metadata", content)
 
 
 def test_wsl_packages_zsh_plugins():
-    """wsl-packages installs zsh plugins."""
-    content = (DOTFILES / "scripts" / "wsl-packages").read_text()
+    """wsl/packages installs zsh plugins."""
+    content = (DOTFILES / "wsl" / "packages").read_text()
     assert re.search(r"zsh-plugins|Zsh Plugins|zsh plugins", content)
 
 
@@ -762,15 +762,15 @@ def test_install_nsswitch_backup():
 
 
 def test_install_wsl_yaml():
-    """install.wsl.yaml symlinks ~/.dotfiles to Windows mount."""
-    content = (DOTFILES / "install.wsl.yaml").read_text()
+    """wsl/install.conf.yaml symlinks ~/.dotfiles to Windows mount."""
+    content = (DOTFILES / "wsl" / "install.conf.yaml").read_text()
     assert "~/.dotfiles" in content
 
 
 def test_install_wsl_from_mount():
-    """install.ps1 runs install-wsl from Windows mount."""
+    """install.ps1 runs wsl/install from Windows mount."""
     content = (DOTFILES / "install.ps1").read_text()
-    assert re.search(r"cd.*wslBasedir.*install-wsl", content)
+    assert re.search(r"cd.*wslBasedir.*wsl/install", content)
 
 
 # Git delta configuration (from git_ssh_setup.bats)

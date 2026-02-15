@@ -996,9 +996,9 @@ function Install-WSLPackages {
         [string]$Distro = $null
     )
 
-    $wslPackagesScript = Join-Path $BASEDIR "scripts" "wsl-packages"
+    $wslPackagesScript = Join-Path $BASEDIR "wsl" "packages"
     if (-not (Test-Path $wslPackagesScript)) {
-        Write-Host "  wsl-packages script not found, skipping" -ForegroundColor Yellow
+        Write-Host "  wsl/packages script not found, skipping" -ForegroundColor Yellow
         return $false
     }
 
@@ -1242,20 +1242,20 @@ try {
         # Step 3: Install dotfiles in WSL using dotbot (creates symlinks to Windows dotfiles)
         # This runs BEFORE wsl-packages so symlinks exist when zsh starts
         Write-Host "`n  Configuring WSL dotfiles..." -ForegroundColor Cyan
-        $installWslPath = Join-Path $BASEDIR "install-wsl"
-        $installWslYaml = Join-Path $BASEDIR "install.wsl.yaml"
+        $installWslPath = Join-Path $BASEDIR "wsl" "install"
+        $installWslYaml = Join-Path $BASEDIR "wsl" "install.conf.yaml"
 
         if ((Test-Path $installWslPath) -and (Test-Path $installWslYaml)) {
-            # Run install-wsl directly from Windows mount - this uses dotbot to create
+            # Run wsl/install directly from Windows mount - this uses dotbot to create
             # proper symlinks from WSL home to the Windows dotfiles repo
-            wsl -e bash --norc -c "cd '$wslBasedir' && ./install-wsl"
+            wsl -e bash --norc -c "cd '$wslBasedir' && ./wsl/install"
             if ($LASTEXITCODE -eq 0) {
                 Write-Host "  WSL dotfiles configured (symlinks created)" -ForegroundColor Green
             } else {
                 Write-Host "  WSL dotfiles setup completed with warnings" -ForegroundColor Yellow
             }
         } else {
-            Write-Host "  install-wsl or install.wsl.yaml not found, skipping dotfiles" -ForegroundColor DarkGray
+            Write-Host "  wsl/install or wsl/install.conf.yaml not found, skipping dotfiles" -ForegroundColor DarkGray
         }
 
         # Step 4: Install packages inside WSL (zsh, fzf, eza, etc.)
