@@ -1,6 +1,6 @@
 ---
 name: llmstxt
-description: LLMs.txt standard for AI-friendly documentation. Activate when discussing llms.txt or AI documentation formats.
+description: LLMs.txt standard for AI-friendly documentation. Activate when discussing llms.txt, /llms.txt endpoints, llms-full.txt, AI-readable documentation, machine-readable docs, or the llmstxt.org specification.
 ---
 
 # llms.txt Workflow

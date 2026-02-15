@@ -1,6 +1,6 @@
 ---
 name: rust
-description: Rust development with Cargo, testing, and ownership patterns. Activate when working with .rs files, Cargo.toml, or discussing Rust patterns.
+description: Rust development with Cargo, testing, and ownership patterns. Activate when working with .rs files, Cargo.toml, Cargo.lock, or discussing Rust patterns, ownership, borrowing, lifetimes, traits, cargo build/test/run, Result/Option types, or the borrow checker.
 ---
 
 # Rust Skill

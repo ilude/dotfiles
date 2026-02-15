@@ -1,6 +1,6 @@
 ---
 name: csharp
-description: C# and .NET development with testing and best practices. Activate when working with .cs, .csproj files, or discussing C#/.NET patterns.
+description: C# and .NET development with testing and best practices. Activate when working with .cs, .csproj, .sln files, or discussing C#/.NET patterns, dotnet CLI, NuGet, Entity Framework, LINQ, dependency injection, async/await in .NET, or xUnit/NUnit testing.
 ---
 
 # C# Skill

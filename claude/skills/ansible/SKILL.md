@@ -1,6 +1,6 @@
 ---
 name: ansible
-description: Ansible automation, playbooks, and configuration management. Activate when working with Ansible YAML files or discussing Ansible patterns.
+description: Ansible automation, playbooks, and configuration management. Activate when working with Ansible YAML files, playbooks, inventory files, roles, handlers, or discussing Ansible patterns, ansible-playbook, ansible-lint, molecule testing, or Ansible Galaxy.
 ---
 
 # Ansible Workflow
