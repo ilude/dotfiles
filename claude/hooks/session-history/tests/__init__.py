@@ -1,1 +1,0 @@
-# Session history hook tests

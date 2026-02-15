@@ -96,7 +96,7 @@ class TestGitSshSetup:
             ssh_key.chmod(0o600)
 
         result = _run_script(
-            DOTFILES / "git-ssh-setup",
+            DOTFILES / "scripts" / "git-ssh-setup",
             env={**os.environ, "HOME": str(tmp_home)},
         )
         assert result.returncode == 0, f"Failed: {result.stderr}"
@@ -109,7 +109,7 @@ class TestGitSshSetup:
             ssh_key.chmod(0o600)
 
         _run_script(
-            DOTFILES / "git-ssh-setup",
+            DOTFILES / "scripts" / "git-ssh-setup",
             env={**os.environ, "HOME": str(tmp_home)},
         )
 
@@ -126,11 +126,11 @@ class TestGitSshSetup:
         env = {**os.environ, "HOME": str(tmp_home)}
 
         # First run
-        result1 = _run_script(DOTFILES / "git-ssh-setup", env=env)
+        result1 = _run_script(DOTFILES / "scripts" / "git-ssh-setup", env=env)
         assert result1.returncode == 0
 
         # Second run
-        result2 = _run_script(DOTFILES / "git-ssh-setup", env=env)
+        result2 = _run_script(DOTFILES / "scripts" / "git-ssh-setup", env=env)
         assert result2.returncode == 0
 
     def test_second_run_does_not_corrupt_config(self, tmp_home):
@@ -143,11 +143,11 @@ class TestGitSshSetup:
         env = {**os.environ, "HOME": str(tmp_home)}
 
         # First run
-        _run_script(DOTFILES / "git-ssh-setup", env=env)
+        _run_script(DOTFILES / "scripts" / "git-ssh-setup", env=env)
         content_after_first = (tmp_home / ".gitconfig-personal-local").read_text()
 
         # Second run
-        _run_script(DOTFILES / "git-ssh-setup", env=env)
+        _run_script(DOTFILES / "scripts" / "git-ssh-setup", env=env)
         content_after_second = (tmp_home / ".gitconfig-personal-local").read_text()
 
         assert content_after_first == content_after_second
@@ -156,7 +156,7 @@ class TestGitSshSetup:
         """git-ssh-setup handles missing SSH keys gracefully."""
         # No SSH keys created
         result = _run_script(
-            DOTFILES / "git-ssh-setup",
+            DOTFILES / "scripts" / "git-ssh-setup",
             env={**os.environ, "HOME": str(tmp_home)},
         )
         assert result.returncode == 0
@@ -165,10 +165,10 @@ class TestGitSshSetup:
         """git-ssh-setup multiple runs with no keys still succeeds."""
         env = {**os.environ, "HOME": str(tmp_home)}
 
-        result1 = _run_script(DOTFILES / "git-ssh-setup", env=env)
+        result1 = _run_script(DOTFILES / "scripts" / "git-ssh-setup", env=env)
         assert result1.returncode == 0
 
-        result2 = _run_script(DOTFILES / "git-ssh-setup", env=env)
+        result2 = _run_script(DOTFILES / "scripts" / "git-ssh-setup", env=env)
         assert result2.returncode == 0
 
 
@@ -184,7 +184,7 @@ class TestClaudeLinkSetup:
     def test_runs_successfully_first_execution(self, tmp_home):
         """claude-link-setup runs successfully on first execution."""
         result = _run_script(
-            DOTFILES / "claude-link-setup",
+            DOTFILES / "scripts" / "claude-link-setup",
             env={**os.environ, "HOME": str(tmp_home)},
         )
         assert result.returncode == 0, f"Failed: {result.stderr}"
@@ -192,7 +192,7 @@ class TestClaudeLinkSetup:
     def test_creates_link_to_claude_directory(self, tmp_home):
         """claude-link-setup creates link to .claude directory."""
         _run_script(
-            DOTFILES / "claude-link-setup",
+            DOTFILES / "scripts" / "claude-link-setup",
             env={**os.environ, "HOME": str(tmp_home)},
         )
 
@@ -207,20 +207,20 @@ class TestClaudeLinkSetup:
         """claude-link-setup runs successfully on second execution."""
         env = {**os.environ, "HOME": str(tmp_home)}
 
-        result1 = _run_script(DOTFILES / "claude-link-setup", env=env)
+        result1 = _run_script(DOTFILES / "scripts" / "claude-link-setup", env=env)
         assert result1.returncode == 0
 
-        result2 = _run_script(DOTFILES / "claude-link-setup", env=env)
+        result2 = _run_script(DOTFILES / "scripts" / "claude-link-setup", env=env)
         assert result2.returncode == 0
 
     def test_second_run_preserves_link(self, tmp_home):
         """claude-link-setup second run preserves link functionality."""
         env = {**os.environ, "HOME": str(tmp_home)}
 
-        _run_script(DOTFILES / "claude-link-setup", env=env)
+        _run_script(DOTFILES / "scripts" / "claude-link-setup", env=env)
         assert (tmp_home / ".claude" / "test-marker").exists()
 
-        _run_script(DOTFILES / "claude-link-setup", env=env)
+        _run_script(DOTFILES / "scripts" / "claude-link-setup", env=env)
         assert (tmp_home / ".claude" / "test-marker").exists()
 
         content = (tmp_home / ".claude" / "test-marker").read_text()
@@ -230,9 +230,9 @@ class TestClaudeLinkSetup:
         """claude-link-setup second run reports already linked."""
         env = {**os.environ, "HOME": str(tmp_home)}
 
-        _run_script(DOTFILES / "claude-link-setup", env=env)
+        _run_script(DOTFILES / "scripts" / "claude-link-setup", env=env)
 
-        result = _run_script(DOTFILES / "claude-link-setup", env=env)
+        result = _run_script(DOTFILES / "scripts" / "claude-link-setup", env=env)
         assert result.returncode == 0
         assert "Already linked" in result.stdout
 
@@ -242,7 +242,7 @@ class TestClaudeLinkSetup:
         shutil.rmtree(tmp_home / ".dotfiles" / "claude")
 
         result = _run_script(
-            DOTFILES / "claude-link-setup",
+            DOTFILES / "scripts" / "claude-link-setup",
             env={**os.environ, "HOME": str(tmp_home)},
         )
         assert result.returncode == 1
@@ -261,7 +261,7 @@ class TestClaudeLinkSetupBackupMerge:
         (existing_claude / "history.jsonl").write_text("session data")
 
         result = _run_script(
-            DOTFILES / "claude-link-setup",
+            DOTFILES / "scripts" / "claude-link-setup",
             env={**os.environ, "HOME": str(tmp_home)},
         )
         assert result.returncode == 0
@@ -277,7 +277,7 @@ class TestClaudeLinkSetupBackupMerge:
         (existing_claude / "history.jsonl").write_text('{"session":"old"}')
 
         _run_script(
-            DOTFILES / "claude-link-setup",
+            DOTFILES / "scripts" / "claude-link-setup",
             env={**os.environ, "HOME": str(tmp_home)},
         )
 
@@ -299,7 +299,7 @@ class TestClaudeLinkSetupBackupMerge:
         (existing_claude / "history.jsonl").write_text('{"session":"new"}')
 
         _run_script(
-            DOTFILES / "claude-link-setup",
+            DOTFILES / "scripts" / "claude-link-setup",
             env={**os.environ, "HOME": str(tmp_home)},
         )
 
@@ -318,7 +318,7 @@ class TestClaudeLinkSetupBackupMerge:
         (debug_dir / "session-def.txt").write_text("debug2")
 
         _run_script(
-            DOTFILES / "claude-link-setup",
+            DOTFILES / "scripts" / "claude-link-setup",
             env={**os.environ, "HOME": str(tmp_home)},
         )
 
@@ -339,7 +339,7 @@ class TestClaudeLinkSetupBackupMerge:
         (existing_claude / "debug" / "new-file.txt").write_text("new content")
 
         _run_script(
-            DOTFILES / "claude-link-setup",
+            DOTFILES / "scripts" / "claude-link-setup",
             env={**os.environ, "HOME": str(tmp_home)},
         )
 
@@ -355,7 +355,7 @@ class TestClaudeLinkSetupBackupMerge:
         (existing_claude / ".credentials.json").write_text('{"token":"secret"}')
 
         _run_script(
-            DOTFILES / "claude-link-setup",
+            DOTFILES / "scripts" / "claude-link-setup",
             env={**os.environ, "HOME": str(tmp_home)},
         )
 
@@ -374,13 +374,11 @@ class TestClaudeLinkSetupBackupMerge:
         (existing_claude / ".credentials.json").write_text('{"token":"local-token"}')
 
         _run_script(
-            DOTFILES / "claude-link-setup",
+            DOTFILES / "scripts" / "claude-link-setup",
             env={**os.environ, "HOME": str(tmp_home)},
         )
 
-        content = (
-            tmp_home / ".dotfiles" / "claude" / ".credentials.json"
-        ).read_text()
+        content = (tmp_home / ".dotfiles" / "claude" / ".credentials.json").read_text()
         assert "dotfiles-token" in content
 
     def test_creates_symlink_after_merge(self, tmp_home):
@@ -390,7 +388,7 @@ class TestClaudeLinkSetupBackupMerge:
         (existing_claude / "history.jsonl").write_text("data")
 
         _run_script(
-            DOTFILES / "claude-link-setup",
+            DOTFILES / "scripts" / "claude-link-setup",
             env={**os.environ, "HOME": str(tmp_home)},
         )
 
@@ -404,7 +402,7 @@ class TestClaudeLinkSetupBackupMerge:
         (existing_claude / "history.jsonl").write_text("merged-data")
 
         _run_script(
-            DOTFILES / "claude-link-setup",
+            DOTFILES / "scripts" / "claude-link-setup",
             env={**os.environ, "HOME": str(tmp_home)},
         )
 
@@ -446,7 +444,11 @@ class TestZdotdirBehavior:
         (zdotdir / ".zshrc").write_text("export ZDOTDIR_TEST_VAR=from_zdotdir")
 
         result = subprocess.run(
-            ["zsh", "-c", 'source "$ZDOTDIR/.zshrc" 2>/dev/null; echo $ZDOTDIR_TEST_VAR'],
+            [
+                "zsh",
+                "-c",
+                'source "$ZDOTDIR/.zshrc" 2>/dev/null; echo $ZDOTDIR_TEST_VAR',
+            ],
             env={
                 **os.environ,
                 "ZDOTDIR": str(zdotdir),
@@ -478,7 +480,7 @@ class TestZdotdirBehavior:
         zdotdir.mkdir()
 
         result = subprocess.run(
-            ["zsh", "-c", 'echo ${ZDOTDIR:-$HOME}'],
+            ["zsh", "-c", "echo ${ZDOTDIR:-$HOME}"],
             env={
                 **os.environ,
                 "ZDOTDIR": str(zdotdir),
@@ -500,7 +502,7 @@ class TestZdotdirBehavior:
         env["HOME"] = str(home)
 
         result = subprocess.run(
-            ["zsh", "-c", 'echo ${ZDOTDIR:-$HOME}'],
+            ["zsh", "-c", "echo ${ZDOTDIR:-$HOME}"],
             env=env,
             capture_output=True,
             text=True,
