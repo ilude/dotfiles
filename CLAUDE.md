@@ -25,6 +25,12 @@ Cross-platform dotfiles repository for Linux and Windows. Uses **Dotbot** for sy
 
 > **Note for Claude:** Self-elevating scripts like `install.ps1` can be run directly via `pwsh -File install.ps1`. They spawn an elevated admin window automatically - you won't see output but the script runs. Wrap in a 90 second timeout to avoid hanging: `timeout 90 pwsh -File install.ps1 -SkipPackages`
 
+**WSL (from Windows):**
+```bash
+~/.dotfiles/wsl/install              # Install dotfiles into WSL
+~/.dotfiles/wsl/install --packages   # Also install apt packages
+```
+
 ### Development
 
 ```bash
@@ -43,6 +49,18 @@ make test    # Run bats tests
 6. `scripts/zsh-setup` installs zsh and sets as default shell (Linux only)
 7. `scripts/zsh-plugins` downloads version-pinned plugins on first shell startup
 8. Credential lockdown: `chmod 600` on sensitive files like `~/.claude/.credentials.json`
+
+### WSL Installation Flow
+WSL setup is orchestrated by `install.ps1` and uses files in the `wsl/` directory:
+1. `install.ps1` installs WSL + Ubuntu 24.04 (requires admin for first install)
+2. Configures passwordless sudo for apt/chsh
+3. Runs `wsl/install` inside WSL via `wsl -e bash --norc -c "cd '$wslBasedir' && ./wsl/install"`
+4. `wsl/install` runs **Dotbot** with `wsl/install.conf.yaml` to create symlinks from WSL `~` into the Windows-mounted dotfiles repo (`/mnt/c/Users/<user>/.dotfiles`)
+5. `wsl/install.conf.yaml` creates a `~/.dotfiles` self-symlink so paths like `~/.dotfiles/scripts/zsh-plugins` resolve correctly inside WSL
+6. `wsl/packages` installs apt packages (zsh, fzf, eza, etc.) and sets zsh as default shell
+7. `wsl/install` downloads zsh plugins
+
+**Key difference from main config**: `wsl/install.conf.yaml` must mirror the links in `install.conf.yaml` (using `home/` prefixed source paths). When adding new links to `install.conf.yaml`, also add them to `wsl/install.conf.yaml` (skip Windows-only links like PowerShell profile and VS Code Windows paths).
 
 ### Git Identity System
 - **Directory-based** (Windows): `C:/Projects/Work/` → professional, `C:/Projects/Personal/` → personal
@@ -70,6 +88,10 @@ make test    # Run bats tests
 | `scripts/git-ssh-setup` | SSH key detection, writes `.gitconfig-*-local` files |
 | `powershell/profile.ps1` | PowerShell profile |
 | `config/ohmyposh/prompt.json` | Oh My Posh prompt theme |
+| `wsl/install` | WSL-specific installer (runs dotbot with `wsl/install.conf.yaml`) |
+| `wsl/install.conf.yaml` | WSL dotbot config (symlinks WSL `~` into Windows mount) |
+| `wsl/packages` | WSL apt package installer (zsh, fzf, eza, etc.) |
+| `wsl/validate.sh` | WSL environment validation |
 | `.claude/` | Global Claude Code config (symlinked to ~/.claude/) |
 | `copilot/` | Global Copilot instructions (symlinked) |
 
