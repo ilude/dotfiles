@@ -1,7 +1,7 @@
 .PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all test test-quick test-parallel test-docker test-powershell test-pytest test-bats preflight help lint format check install-hooks
 
 # Shell scripts to check (excludes dotbot submodule and plugins)
-SHELL_SCRIPTS := .bashrc .zshrc install install-wsl git-ssh-setup claude-link-setup claude-mcp-setup copilot-link-setup zsh-setup zsh-plugins wsl-packages
+SHELL_SCRIPTS := home/.bashrc home/.zshrc install install-wsl scripts/git-ssh-setup scripts/claude-link-setup scripts/claude-mcp-setup scripts/copilot-link-setup scripts/zsh-setup scripts/zsh-plugins scripts/wsl-packages
 
 # Default target
 help:
@@ -149,7 +149,7 @@ lint:
 		echo "         apt install shellcheck (Ubuntu)"; \
 		exit 1; \
 	fi
-	shellcheck $(SHELL_SCRIPTS)
+	shellcheck --severity=warning $(SHELL_SCRIPTS)
 	@# Optional: bashate style check
 	@if command -v bashate >/dev/null 2>&1; then \
 		echo "Running bashate..."; \

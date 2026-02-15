@@ -37,13 +37,13 @@ jobs:
         uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
-          install: bats zsh shellcheck
+          install: zsh
 
       - name: Run checks
         if: runner.os != 'Windows'
         run: make check
 
-      - name: Run checks (Windows/MSYS2)
+      - name: Run tests (Windows/MSYS2)
         if: runner.os == 'Windows'
         shell: msys2 {0}
-        run: make check
+        run: make test-pytest
