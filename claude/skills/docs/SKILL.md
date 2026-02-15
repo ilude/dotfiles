@@ -1,6 +1,6 @@
 ---
 name: docs
-description: Technical documentation, writing guides, and documentation patterns. Activate when writing or discussing documentation.
+description: Technical documentation, writing guides, and documentation patterns. Activate when writing or discussing documentation, working with .md markdown files, README, CHANGELOG, docs/ folders, mkdocs, docusaurus, or technical writing.
 ---
 
 # Documentation Workflow

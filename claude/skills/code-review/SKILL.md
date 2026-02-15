@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: "Evidence-based code review avoiding false positives. Triggers: code review, review code, review changes, review PR, review diff, review branch, PR review, pull request review. Activate when user asks to review code, changes, a branch, or a PR."
+description: "Evidence-based code review avoiding false positives. Triggers: code review, review code, review changes, review PR, review diff, review branch, review commit, PR review, pull request review, git diff, git show, compare changes. Activate when user asks to review code, changes, a branch, a commit, or a PR."
 ---
 
 # Evidence-Based Code Review
