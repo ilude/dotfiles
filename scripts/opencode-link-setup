@@ -1,81 +1,82 @@
 #!/usr/bin/env bash
 
-# Link OpenCode global commands to dotfiles Claude commands
-# Windows: uses junction (no admin required)
-# Linux/macOS: uses symlink
+# Set up OpenCode commands directory with overlay pattern:
+# Since ~/.config/opencode -> ~/.dotfiles/opencode (via dotbot), the commands
+# directory is ~/.dotfiles/opencode/commands/. This script populates it with:
+# 1. Real files: OpenCode-specific overrides (e.g., commit.md with different model)
+# 2. Symlinks: shared commands from claude/commands/ (for everything else)
+# A .gitignore in that directory keeps the symlinks out of version control.
 
 DOTFILES_DIR="${HOME}/.dotfiles"
-COMMANDS_SOURCE="${DOTFILES_DIR}/claude/commands"
-OPENCODE_CONFIG_DIR="${HOME}/.config/opencode"
-COMMANDS_TARGET="${OPENCODE_CONFIG_DIR}/commands"
+CLAUDE_COMMANDS="${DOTFILES_DIR}/claude/commands"
+OPENCODE_COMMANDS="${DOTFILES_DIR}/opencode/commands"
 
 # Self-contained platform detection (intentionally not sourcing rc.d helpers)
 is_windows() {
     [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ -n "$WINDIR" ]]
 }
 
-# Check if path is a junction (Windows) or symlink
-is_link() {
-    local path="$1"
-    if is_windows; then
-        if [[ -L "$path" ]]; then
-            return 0
-        fi
-        local win_path
-        win_path=$(cygpath -w "$path" 2>/dev/null)
-        if [[ -n "$win_path" ]] && cmd //c "dir /AL \"$(dirname "$win_path")\"" 2>/dev/null | grep -q "$(basename "$path")"; then
-            return 0
-        fi
-        return 1
-    else
-        [[ -L "$path" ]]
-    fi
-}
-
 echo "Setting up OpenCode shared commands..."
 
-if [[ ! -d "$COMMANDS_SOURCE" ]]; then
-    echo "  Error: Source directory not found: $COMMANDS_SOURCE"
+if [[ ! -d "$CLAUDE_COMMANDS" ]]; then
+    echo "  Error: Source directory not found: $CLAUDE_COMMANDS"
     exit 1
 fi
 
-mkdir -p "$OPENCODE_CONFIG_DIR"
+mkdir -p "$OPENCODE_COMMANDS"
 
-if is_link "$COMMANDS_TARGET"; then
-    current_target=$(readlink -f "$COMMANDS_TARGET" 2>/dev/null || readlink "$COMMANDS_TARGET")
-    expected_target=$(readlink -f "$COMMANDS_SOURCE" 2>/dev/null || echo "$COMMANDS_SOURCE")
-    if [[ "$current_target" == "$expected_target" ]] || [[ "$current_target" == "$COMMANDS_SOURCE" ]]; then
-        echo "  ~/.config/opencode/commands: Already linked correctly"
-        exit 0
+linked=0
+skipped=0
+
+for file in "$CLAUDE_COMMANDS"/*.md; do
+    [[ -f "$file" ]] || continue
+    filename=$(basename "$file")
+    target="${OPENCODE_COMMANDS}/${filename}"
+
+    # Skip if a real (non-symlink) override file exists
+    if [[ -f "$target" ]] && [[ ! -L "$target" ]]; then
+        ((skipped++))
+        continue
     fi
-    echo "  Removing incorrect link..."
-    rm -f "$COMMANDS_TARGET"
-fi
 
-# If commands dir already exists, merge unique files into source, then replace with link.
-if [[ -d "$COMMANDS_TARGET" ]] && ! is_link "$COMMANDS_TARGET"; then
-    echo "  Found existing OpenCode commands directory"
-    echo "  Merging unique files into ~/.dotfiles/claude/commands..."
-    cp -rn "$COMMANDS_TARGET/." "$COMMANDS_SOURCE/" 2>/dev/null || true
-    rm -rf "$COMMANDS_TARGET"
-fi
-
-if [[ -e "$COMMANDS_TARGET" ]] || [[ -L "$COMMANDS_TARGET" ]]; then
-    rm -rf "$COMMANDS_TARGET"
-fi
-
-if is_windows; then
-    win_target=$(cygpath -w "$COMMANDS_TARGET")
-    win_source=$(cygpath -w "$COMMANDS_SOURCE")
-    if cmd //c "mklink /J $win_target $win_source" > /dev/null 2>&1; then
-        echo "  ~/.config/opencode/commands: Junction created -> ~/.dotfiles/claude/commands"
+    # Create or refresh symlink
+    rm -f "$target"
+    if is_windows; then
+        MSYS=winsymlinks:nativestrict ln -sf "$file" "$target" 2>/dev/null
     else
-        echo "  Error: Failed to create junction"
-        exit 1
+        ln -sf "$file" "$target"
     fi
-else
-    ln -s "$COMMANDS_SOURCE" "$COMMANDS_TARGET"
-    echo "  ~/.config/opencode/commands: Symlink created -> ~/.dotfiles/claude/commands"
-fi
+    ((linked++))
+done
 
+# Symlink subdirectories (e.g., yt/) unless a real override directory exists
+for dir in "$CLAUDE_COMMANDS"/*/; do
+    [[ -d "$dir" ]] || continue
+    dirname=$(basename "$dir")
+    target="${OPENCODE_COMMANDS}/${dirname}"
+
+    # Skip if a real (non-symlink) override directory exists
+    if [[ -d "$target" ]] && [[ ! -L "$target" ]]; then
+        ((skipped++))
+        continue
+    fi
+
+    rm -f "$target"
+    if is_windows; then
+        MSYS=winsymlinks:nativestrict ln -sf "$dir" "$target" 2>/dev/null
+    else
+        ln -sf "$dir" "$target"
+    fi
+    ((linked++))
+done
+
+# Clean up stale symlinks (commands removed from claude/commands)
+for file in "$OPENCODE_COMMANDS"/*.md; do
+    [[ -L "$file" ]] || continue
+    if [[ ! -e "$file" ]]; then
+        rm -f "$file"
+    fi
+done
+
+echo "  ~/.config/opencode/commands: ${linked} shared, ${skipped} overridden"
 echo "  Done"
