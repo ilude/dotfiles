@@ -24,16 +24,18 @@ Ask ONE question at a time to extract:
 
 ### 3. Create Idea Folder
 ```
-.claude/ideas/<slug>/
-├── YYYY-MM-DD-idea.md    # Main idea document
+.specs/<slug>/
+├── IDEA.md                # Main idea document
 ├── research/              # Any web research, references
 ├── decisions/             # Key decisions made
 └── [other files as needed]
 ```
 
+This aligns with `.specs/` used by `/do-this` and `/plan-with-team`. If the idea becomes actionable, a `plan.md` can be added alongside `IDEA.md` in the same directory.
+
 **Slug naming:**
-- Start with date if no clear name: `2025-11-22/`
-- Refine as idea clarifies: `2025-11-22/` → `voice-memo-ingest/`
+- Use descriptive slug: `voice-memo-ingest/`, `shared-command-pattern/`
+- If no clear name yet, use date prefix: `2025-11-22-braindump/`
 - Ask user before renaming
 
 ### 4. Determine Path Forward
@@ -43,15 +45,15 @@ Ask ONE question at a time to extract:
 - Get user approval
 - Execute with FREQUENT git commits (every meaningful change)
 - Push often so progress is saved
-- Continue capturing context in idea folder while working
+- Continue capturing context in .specs directory while working
 
 **If needs more thought:**
-- Save everything to idea folder
-- Add to `.claude/STATUS.md` or `SUGGESTED_NEXT.md` for future reference
+- Save everything to `.specs/<slug>/IDEA.md`
+- Add to `.specs/<slug>/SUGGESTED_NEXT.md` for future reference
 - Commit and push what we have
 
 ### 5. Git Discipline
-- Commit after creating idea folder
+- Commit after creating .specs directory
 - Commit after each phase of planning
 - Commit after each implementation step
 - Push after every 2-3 commits minimum
