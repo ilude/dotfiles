@@ -558,7 +558,11 @@ function Ensure-WindowsTerminalShiftEnter {
             }
             $changed = $true
         }
-        $data.actions = $actions
+        if ($null -eq $data.PSObject.Properties['actions']) {
+            $data | Add-Member -NotePropertyName actions -NotePropertyValue $actions
+        } else {
+            $data.actions = $actions
+        }
 
         # Ensure keybindings array contains shift+enter
         $keybindings = @()
@@ -586,7 +590,11 @@ function Ensure-WindowsTerminalShiftEnter {
             }
             $changed = $true
         }
-        $data.keybindings = $keybindings
+        if ($null -eq $data.PSObject.Properties['keybindings']) {
+            $data | Add-Member -NotePropertyName keybindings -NotePropertyValue $keybindings
+        } else {
+            $data.keybindings = $keybindings
+        }
 
         if (-not $changed) {
             Write-Host "  Windows Terminal Shift+Enter: already configured ($settingsPath)" -ForegroundColor DarkGray
