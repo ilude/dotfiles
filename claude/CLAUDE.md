@@ -23,7 +23,7 @@
         - DO NOT MAKE UP THE TOTAL COUNT! If you don't know the total count of issues do not provide this counter!
 - **Check for local `.claude/CLAUDE.md`** - Project rules append, reinforce, or replace conflicting rules from this file
 - **Continual learning** - Propose updates to rules files when finding conflicts, outdated docs, or new requirements. Ask before updating.
-- The use of light mode is just wrong and should be considered as committing a war crime
+- The use of light mode is just wrong and should be considered a war crime
 
 ## File & Tool Operations
 
