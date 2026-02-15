@@ -83,7 +83,6 @@ Exceptions are fine when non-determinism is inherent (UUIDs, crypto randomness, 
 
 **Manual-only skills:**
 - **Prompt Engineering**: `/optimize-prompt`, `/prompt-help` commands
-- **Ruleset Optimization**: `/optimize-ruleset` command
 
 See `~/.claude/skills/*/SKILL.md` for details.
 
