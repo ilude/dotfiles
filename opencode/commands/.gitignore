@@ -1,0 +1,5 @@
+# Ignore symlinks created by install script (overlay from claude/commands).
+# Only override files (like commit.md) are git-tracked.
+*
+!.gitignore
+!commit.md
