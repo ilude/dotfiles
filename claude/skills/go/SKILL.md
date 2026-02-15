@@ -1,6 +1,6 @@
 ---
 name: go
-description: Go development with testing, modules, and best practices. Activate when working with .go files, go.mod, or discussing Go patterns.
+description: Go development with testing, modules, and best practices. Activate when working with .go files, go.mod, go.sum, or discussing Go patterns, goroutines, channels, interfaces, go test, go vet, or Go concurrency patterns.
 ---
 
 # Go Skill
