@@ -4,6 +4,17 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
+## 2026-02-16: Add root cause analysis rules and common pitfalls
+
+**Added:**
+- Technology capabilities verification rule (search docs before claiming limitations)
+- Root Cause Analysis section (investigate before fixing, never mask symptoms)
+- Common pitfalls: removing functionality as fix, multiple deploy cycles, silent query failures
+
+**Files:** ~/.claude/CLAUDE.md
+
+---
+
 ## 2026-02-15: CLAUDE.md Cleanup & Skill Trigger Expansion
 
 **Removed:**

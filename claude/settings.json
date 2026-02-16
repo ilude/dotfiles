@@ -194,5 +194,6 @@
   },
   "alwaysThinkingEnabled": true,
   "companyAnnouncements": [],
-  "skipDangerousModePermissionPrompt": true
+  "skipDangerousModePermissionPrompt": true,
+  "effortLevel": "medium"
 }
