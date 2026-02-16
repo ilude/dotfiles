@@ -102,7 +102,7 @@ def main():
                 title = (item.get("title") or "Untitled")[:70]
                 metadata = item.get("metadata", {})
                 video_id = metadata.get("video_id", "unknown")
-                chunks = metadata.get("chunk_count", 0)
+                chunks = item.get("chunk_count", 0)
                 ingested = _fmt_date(item.get("created_at"))
                 published = _fmt_date(metadata.get("published_at"))
 
