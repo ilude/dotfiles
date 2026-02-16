@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Cross-platform dotfiles repository for Linux and Windows. Uses **Dotbot** for symlink management with automatic SSH key detection and shell configuration.
+Cross-platform dotfiles repository for Linux and Windows. Uses **Dotbot** for symlink management with automatic SSH key detection and shell configuration. Includes **menos** as a git submodule — a self-hosted content vault for YouTube transcripts, markdown files, and structured data.
 
 ## Commands
 
@@ -94,6 +94,7 @@ WSL setup is orchestrated by `install.ps1` and uses files in the `wsl/` director
 | `wsl/validate.sh` | WSL environment validation |
 | `.claude/` | Global Claude Code config (symlinked to ~/.claude/) |
 | `copilot/` | Global Copilot instructions (symlinked) |
+| `menos/` | Content vault submodule (FastAPI + SurrealDB + MinIO + Ollama) |
 
 ### Platform Detection
 Canonical helpers are in `zsh/rc.d/00-helpers.zsh` (`is_windows`, `is_wsl`, `is_linux`, `is_macos`). Standalone scripts redefine these for self-containment. All scripts are designed to be idempotent.
@@ -175,6 +176,59 @@ These are configured in `zsh/rc.d/02-plugins.zsh` with platform detection.
 
 #### Key Test File
 `test/shell-setup.bats` - Contains 48 tests documenting WHY each config exists. Read the header comments first.
+
+## menos (Content Vault)
+
+Git submodule at `menos/` — a self-hosted content vault with semantic search. See `menos/.claude/CLAUDE.md` for full project rules.
+
+**Stack**: Python 3.12+, FastAPI, SurrealDB, MinIO, Ollama
+
+### Key Paths
+
+| Path | Purpose |
+|------|---------|
+| `menos/api/` | FastAPI application, tests, scripts, migrations |
+| `menos/infra/ansible/` | Deployment via Ansible in Docker |
+| `menos/.claude/rules/` | Project rules (architecture, API ref, schema, deployment, gotchas) |
+
+### Deployment
+
+```bash
+cd menos/infra/ansible
+docker compose run --rm ansible ansible-playbook -i inventory/hosts.yml playbooks/deploy.yml
+```
+
+Server: `192.168.16.241` (user: anvil). Post-deploy verifies git SHA via `/health`.
+
+### `/yt` Command
+
+Claude Code skill for YouTube video ingestion via menos API.
+
+**Ingest a video:**
+```
+/yt https://youtube.com/watch?v=VIDEO_ID
+```
+Fetches transcript, stores in MinIO, enqueues pipeline processing (summary, tags, entities, quality).
+
+**List recent videos:**
+```
+/yt list [n]
+```
+
+**Flags**: `--wait` (poll job to completion), `--verbose` (show full job fields)
+
+After ingestion, ask follow-up questions about the video content — Claude will query the API for transcript and pipeline results.
+
+### Annotations
+
+Content items can have annotations (e.g., screenshot text linked to a video):
+- `POST /api/v1/content/{id}/annotations` — create annotation
+- `GET /api/v1/content/{id}/annotations` — list annotations
+- Utility script: `~/.claude/commands/yt/post_annotation.py <content_id> <title> <text_file> [tags...]`
+
+### Authentication
+
+All API endpoints use RFC 9421 HTTP signatures with ed25519 keys (`~/.ssh/id_ed25519`). Client signing handled by `~/.claude/commands/yt/signing.py`.
 
 ## Testing
 
