@@ -27,6 +27,18 @@ OpenClaw's concept is right — always-on personal AI assistant with memory, plu
 
 Onyx keeps OpenClaw's philosophy (files-first memory, workspace markdown, plugin architecture) but rebuilds it in TypeScript on infrastructure we already operate.
 
+### Architecture at a Glance
+
+Bun/Hono API server with SvelteKit frontend. Shares SurrealDB, MinIO, and Ollama with menos (separate namespaces/buckets). SearXNG provides web search. Bot plugins (Discord, Telegram) are post-MVP.
+
+```
+  SvelteKit UI ──► Hono API ──┬── SurrealDB (search index + metadata)
+                               ├── MinIO (memory files + session logs)
+                               ├── Ollama (embeddings + local LLM)
+                               ├── SearXNG (web search)
+                               └── LLM Providers (Vercel AI SDK + subscription SDKs)
+```
+
 ---
 
 ## Research Summary
@@ -112,15 +124,7 @@ DEFINE FIELD chunk_overlap ON memory_meta TYPE int;
 
 #### Sync Flow
 
-```
-1. Agent writes to MinIO (memory_write tool)
-2. File watcher detects change (or sync on session start)
-3. Compare checksum → skip if unchanged
-4. Chunk markdown (~400 tokens, 80 overlap)
-5. Embed via Ollama
-6. Upsert chunks in SurrealDB
-7. Delete stale chunks for changed files
-```
+On file change (or session start), compare checksums, re-chunk changed files (~400 tokens, 80 overlap), embed via Ollama, and upsert into SurrealDB. Stale chunks are deleted automatically.
 
 #### Hybrid Search (Vector + Full-Text)
 
@@ -383,26 +387,6 @@ function getProvider(model: string): ProviderBackend {
 3. **GitHub Copilot SDK** — Only official way to use Copilot subscription (OAuth device flow)
 4. **Vercel AI SDK** — Handles all API-key and credential-based providers with a unified interface (20+ official providers, community providers for Ollama/OpenRouter)
 
-#### Dependencies
-
-```json
-{
-  "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": ">=0.1.0",
-    "@openai/codex-sdk": ">=0.1.0",
-    "@github/copilot-sdk": ">=0.1.0",
-    "ai": ">=4.0.0",
-    "@ai-sdk/openai": ">=1.0.0",
-    "@ai-sdk/anthropic": ">=1.0.0",
-    "@ai-sdk/amazon-bedrock": ">=1.0.0",
-    "@ai-sdk/google-vertex": ">=1.0.0",
-    "@ai-sdk/azure": ">=1.0.0",
-    "ollama-ai-provider": ">=1.0.0",
-    "@openrouter/ai-sdk-provider": ">=0.1.0"
-  }
-}
-```
-
 ---
 
 ### D5: Session Persistence - DECIDED
@@ -563,12 +547,20 @@ data: [DONE]
 
 #### Authentication
 
-```
-# Bearer token (API key style)
-Authorization: Bearer onyx_sk_abc123
+**MVP**: Password login → session cookie. Single user, password configured in `onyx.json` (hashed).
 
-# Or basic auth
-Authorization: Basic base64(user:pass)
+- Web UI: Login form, server sets `HttpOnly` secure session cookie
+- API clients: `Authorization: Bearer onyx_sk_<token>` (static API key for programmatic access)
+- Both methods coexist — cookie for browser, bearer token for scripts/plugins
+
+**Future (Phase 3)**: Add WebAuthn/passkey support for passwordless login.
+
+```
+# Browser (cookie-based, set after login)
+Cookie: onyx_session=<signed-session-id>
+
+# API clients (static token)
+Authorization: Bearer onyx_sk_abc123
 ```
 
 #### Agent Routing
@@ -583,28 +575,7 @@ Authorization: Basic base64(user:pass)
 # Option 3: Default to "main" agent
 ```
 
-#### Implementation Sketch
-
-```typescript
-// Using Hono or SvelteKit server route
-async function chatCompletions(req: Request): Promise<Response> {
-  const body = await req.json() as ChatCompletionRequest;
-  const agentId = req.headers.get("x-onyx-agent-id") ?? "main";
-  const sessionId = req.headers.get("x-onyx-session-id");
-
-  // Validate auth
-  // Get or create session
-  // Route to provider (abstraction layer)
-  // Stream response
-
-  if (body.stream) {
-    return new Response(streamResponse(body), {
-      headers: { "Content-Type": "text/event-stream" }
-    });
-  }
-  return Response.json(await completeResponse(body));
-}
-```
+*Implemented as Hono routes in `api/src/gateway/http.ts`.*
 
 ---
 
@@ -759,39 +730,17 @@ async function chatCompletions(req: Request): Promise<Response> {
 
 #### Config Storage
 
-Provider credentials stored in:
-- `~/.config/onyx/config.json` (file-based, like OpenClaw)
-- Or SurrealDB `onyx.config` table (encrypted at rest)
-
-```json
-{
-  "providers": {
-    "openrouter": {
-      "api_key": "sk-or-..."
-    },
-    "bedrock": {
-      "aws_access_key_id": "...",
-      "aws_secret_access_key": "...",
-      "aws_region": "us-east-1"
-    },
-    "ollama": {
-      "base_url": "http://localhost:11434"
-    }
-  },
-  "default_model": "claude-subscription/claude-sonnet-4-20250514"
-}
-```
+All configuration lives in `~/.config/onyx/onyx.json` (see D9). Sensitive fields (API keys, password hash) are encrypted in place using a master key derived from the gateway password. The web UI config page reads/writes this file.
 
 #### Security
 
-- Auth required for all UI access (token or password)
-- Credentials encrypted at rest
-- API keys displayed as redacted (`sk-or-...xxx`)
-- Localhost auto-approved, remote requires pairing
+- Authentication: see D6 (password + session cookie for UI, bearer token for API)
+- Provider credentials encrypted at rest
+- API keys displayed as redacted (`sk-or-...xxx`) in the config UI
 
 ---
 
-### D9: Tool System - DECIDED
+### D8: Tool System - DECIDED
 
 **Decision**: Built-in tool groups + custom tools + cron scheduling
 
@@ -811,164 +760,9 @@ Provider credentials stored in:
 | `git` | `git_commit`, `git_push`, `git_pull`, `git_status` | Post-MVP |
 | `docker` | `docker_ps`, `docker_logs`, `docker_stats`, `docker_exec` | Post-MVP |
 
-#### Web Search: SearXNG
-
-```yaml
-# docker-compose.yml addition
-searxng:
-  image: searxng/searxng:latest
-  ports:
-    - "8888:8080"
-  environment:
-    - SEARXNG_BASE_URL=http://localhost:8888
-    - SEARXNG_SECRET=changeme
-  volumes:
-    - searxng_config:/etc/searxng
-```
-
-```typescript
-// Tool implementation
-async function webSearch(query: string, limit = 10) {
-  const response = await fetch(
-    `http://searxng:8080/search?q=${encodeURIComponent(query)}&format=json&engines=google,bing`
-  );
-  const data = await response.json();
-  return data.results.slice(0, limit);
-}
-```
-
-#### Scheduling
-
-```typescript
-import { CronJob } from "cron";  // or similar
-
-// Cron-style job
-new CronJob("0 9 * * *", () => runHeartbeat(agentId));
-
-// Interval job
-setInterval(() => syncMemoryIndex(), 5 * 60 * 1000);
-```
-
-#### Model Routing Tool
-
-```typescript
-async function selectModel(task: string, context: Record<string, unknown>): Promise<string> {
-  if (["quick", "simple", "what is"].some(kw => task.toLowerCase().includes(kw)))
-    return "ollama/llama3";
-  if (["debug", "complex", "architect"].some(kw => task.toLowerCase().includes(kw)))
-    return "claude-subscription/claude-opus-4-20250514";
-  return "openrouter/anthropic/claude-sonnet-4";
-}
-```
-
-#### Mermaid Rendering Tool
-
-```typescript
-async function renderMermaid(diagram: string): Promise<string> {
-  // Use mermaid-js render service
-  const response = await fetch("http://mermaid-render:8080/render", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code: diagram, format: "svg" }),
-  });
-  return response.text();
-}
-```
-
-```dockerfile
-# Separate render service
-FROM node:20
-WORKDIR /app
-RUN npm install @mermaid-js/mermaid-cli
-CMD ["node", "index.js"]
-```
-
-#### Git Tool
-
-```typescript
-import { $ } from "bun";
-
-class GitTool {
-  async commit(message: string, files?: string[]): Promise<string> {
-    await $`git add ${files ?? ["."]}`;
-    const result = await $`git commit -m ${message}`;
-    return result.text();
-  }
-
-  async push(remote = "origin", branch?: string): Promise<string> {
-    const cmd = branch
-      ? $`git push ${remote} ${branch}`
-      : $`git push ${remote}`;
-    return (await cmd).text();
-  }
-
-  async status(): Promise<string> {
-    return (await $`git status --porcelain`).text();
-  }
-}
-```
-
-#### Docker Tool
-
-```typescript
-import { $ } from "bun";
-
-class DockerTool {
-  async ps(all = false): Promise<object[]> {
-    const flag = all ? "-a" : "";
-    const result = await $`docker ps ${flag} --format ${"{{json .}}"}`;
-    return result.text().split("\n").filter(Boolean).map(line => JSON.parse(line));
-  }
-
-  async logs(container: string, tail = 100): Promise<string> {
-    return (await $`docker logs --tail ${tail} ${container}`).text();
-  }
-
-  async exec(container: string, command: string[]): Promise<string> {
-    return (await $`docker exec ${container} ${command}`).text();
-  }
-
-  async stats(container?: string): Promise<object[]> {
-    const args = container
-      ? $`docker stats --no-stream --format ${"{{json .}}"} ${container}`
-      : $`docker stats --no-stream --format ${"{{json .}}"}`;
-    const result = await args;
-    return result.text().split("\n").filter(Boolean).map(line => JSON.parse(line));
-  }
-}
-```
-
-**Docker in Docker Setup**:
-```dockerfile
-# Onyx Dockerfile
-FROM oven/bun:latest
-
-# Install Docker CLI
-RUN apt-get update && apt-get install -y \
-    docker.io \
-    && rm -rf /var/lib/apt/lists/*
-
-# Mount Docker socket (for DinD)
-# Or use Docker-in-Docker: docker:dind as sidecar
-```
-
-```yaml
-# docker-compose.yml
-services:
-  onyx:
-    image: onyx:latest
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      - DOCKER_HOST=unix:///var/run/docker.sock
-
-  # Or DinD sidecar
-  # docker-dind:
-  #   image: docker:dind
-  #   privileged: true
-```
-
 #### Tool Definition Schema
+
+Tools follow OpenAI function calling format:
 
 ```json
 {
@@ -986,38 +780,54 @@ services:
 }
 ```
 
-#### UI Display: Markdown + Mermaid
+#### Infrastructure Dependencies
 
-The web interface will render:
-- Markdown messages with syntax highlighting
-- Mermaid diagrams inline (using `mermaid.js` in browser)
+- **SearXNG**: Self-hosted meta-search engine for `web_search` tool (see D10 service map)
+- **Docker socket**: Required for post-MVP `docker` tools (mount `/var/run/docker.sock`)
+
+#### UI Rendering
+
+The web interface renders assistant responses with:
+- Markdown with syntax highlighting (`marked` + `highlight.js`)
+- Mermaid diagrams inline (`mermaid.js` in browser)
 - Tool call cards with expandable input/output
 - Code blocks with copy button
 
-```svelte
-<!-- MessageContent.svelte -->
-<script>
-  import { onMount } from 'svelte';
-  import mermaid from 'mermaid';
-  import Markdown from './Markdown.svelte';
+---
 
-  export let content;
-  export let diagramCode;
+### D10: Deployment Topology - DECIDED
 
-  onMount(() => mermaid.initialize({ startOnLoad: true }));
-</script>
+**Decision**: Single Docker Compose stack, shared network, host-mounted volumes for development
 
-<div class="prose">
-  <Markdown {content} />
-  {#if diagramCode}
-    <pre class="mermaid">{diagramCode}</pre>
-  {/if}
-</div>
-```
+#### Service Map
+
+| Service | Image | Port | Volumes | Notes |
+|---------|-------|------|---------|-------|
+| **onyx-api** | `onyx:local` (Dockerfile) | `18790` | Source mount (dev), Docker socket | Hono HTTP + WebSocket |
+| **onyx-frontend** | `onyx-frontend:local` (Dockerfile) | `5173` (dev) / `18791` (prod) | Source mount (dev) | SvelteKit, proxies API calls to onyx-api |
+| **surrealdb** | `surrealdb/surrealdb:v2` | `8000` | `surrealdb_data:/data` | Shared with menos (separate namespaces) |
+| **minio** | `minio/minio:latest` | `9000` / `9001` (console) | `minio_data:/data` | Shared with menos (separate buckets) |
+| **ollama** | `ollama/ollama:latest` | `11434` | `ollama_models:/root/.ollama` | Shared with menos |
+| **searxng** | `searxng/searxng:latest` | `8888` | `searxng_config:/etc/searxng` | Onyx-only, web search tool |
+
+#### Networking
+
+- All services on a shared `onyx-net` bridge network
+- menos services join the same network for shared SurrealDB/MinIO/Ollama access
+- Only onyx-api, onyx-frontend, and minio console expose host ports
+
+#### Shared vs. Onyx-Only
+
+| Resource | Shared with menos? |
+|----------|--------------------|
+| SurrealDB | Yes — namespace `onyx` vs `menos` |
+| MinIO | Yes — bucket `onyx-memory`, `onyx-sessions` vs `menos-content` |
+| Ollama | Yes — same models |
+| SearXNG | No — Onyx only |
 
 ---
 
-### D8: Agent Definition Format - DECIDED
+### D9: Agent Definition Format - DECIDED
 
 **Decision**: OpenClaw-compatible format (JSON config + workspace markdown files)
 
@@ -1089,8 +899,8 @@ The web interface will render:
   gateway: {
     port: 18790,  // Different from OpenClaw's 18789
     auth: {
-      mode: "token",
-      token: "${ONYX_GATEWAY_TOKEN}"
+      password_hash: "$argon2id$...",   // Hashed password for web UI login
+      api_key: "onyx_sk_..."            // Static bearer token for API clients
     }
   }
 }
@@ -1118,60 +928,6 @@ The web interface will render:
 └── ...
 ```
 
-#### Workspace File Templates
-
-**AGENTS.md** (operating instructions):
-```markdown
-# Operating Instructions
-
-## Core Behaviors
-- Always search memory before answering questions about past conversations
-- Write important facts to daily memory log
-- Be concise but thorough
-
-## Tool Usage
-- Use memory_search before claiming "I don't remember"
-- Cite sources when using web_search results
-
-## Boundaries
-- Never execute shell commands without explicit approval
-- Don't access files outside the workspace
-```
-
-**SOUL.md** (persona):
-```markdown
-# Persona
-
-You are a helpful personal assistant with expertise in software development.
-
-## Tone
-- Professional but friendly
-- Direct and concise
-- Admit uncertainty rather than guessing
-
-## Boundaries
-- Don't pretend to have emotions
-- Don't make promises about capabilities you don't have
-```
-
-**USER.md** (user profile):
-```markdown
-# User Profile
-
-Name: Mike
-Timezone: America/New_York
-Preferred communication: Direct, minimal small talk
-
-## Interests
-- Software development (TypeScript, Python)
-- DevOps and infrastructure
-- AI/ML tooling
-
-## Work Context
-- Senior engineer
-- Uses Claude Code daily
-```
-
 #### OpenClaw Compatibility Matrix
 
 | Feature | OpenClaw | Onyx | Compatible? |
@@ -1192,7 +948,7 @@ Preferred communication: Direct, minimal small talk
 | `skills/` | ✓ | ✓ | Yes |
 | `channels.*` | ✓ | Plugins | Different (Onyx uses plugins) |
 | `providers.*` | ✗ | ✓ | Onyx extension |
-| Sandbox config | ✓ | TBD | Future |
+| Sandbox config | ✓ | Phase 3 | Tool execution isolation — see [OpenClaw sandboxing docs](https://docs.openclaw.ai/gateway/sandboxing) |
 
 #### Differences from OpenClaw
 
@@ -1201,27 +957,6 @@ Preferred communication: Direct, minimal small talk
 3. **Providers section**: Onyx-specific for API keys, OAuth status
 4. **Channels**: Onyx uses plugin architecture, not built-in channels
 5. **Storage**: Onyx uses MinIO + SurrealDB, OpenClaw uses filesystem + SQLite
-
-#### Migration Path (OpenClaw → Onyx)
-
-```typescript
-function migrateOpenClawConfig(openclawPath: string): OnyxConfig {
-  const config = JSON.parse(readFileSync(openclawPath, "utf-8"));
-
-  const onyxConfig: OnyxConfig = {
-    agents: config.agents ?? {},
-    bindings: config.bindings ?? [],
-  };
-
-  for (const agent of onyxConfig.agents?.list ?? []) {
-    if (agent.model) {
-      agent.model = remapModelPrefix(agent.model);
-    }
-  }
-
-  return onyxConfig;
-}
-```
 
 ---
 
@@ -1331,52 +1066,40 @@ onyx/
 
 ---
 
-## Dependencies (Initial)
+## Dependencies
 
 ### API (Bun)
 
-```json
-{
-  "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": ">=0.1.0",
-    "@openai/codex-sdk": ">=0.1.0",
-    "@github/copilot-sdk": ">=0.1.0",
-    "ai": ">=4.0.0",
-    "@ai-sdk/openai": ">=1.0.0",
-    "@ai-sdk/anthropic": ">=1.0.0",
-    "@ai-sdk/amazon-bedrock": ">=1.0.0",
-    "ollama-ai-provider": ">=1.0.0",
-    "@openrouter/ai-sdk-provider": ">=0.1.0",
-    "surrealdb": ">=1.0.0",
-    "minio": ">=8.0.0",
-    "zod": ">=3.23.0",
-    "hono": ">=4.0.0"
-  }
-}
-```
+| Package | Purpose |
+|---------|---------|
+| `hono` | HTTP framework + WebSocket |
+| `zod` | Schema validation |
+| `surrealdb` | Database client |
+| `minio` | Object storage client |
+| `ai` | Vercel AI SDK core |
+| `@ai-sdk/openai` | OpenAI provider (API key) |
+| `@ai-sdk/anthropic` | Anthropic provider (API key) |
+| `@ai-sdk/amazon-bedrock` | AWS Bedrock provider |
+| `ollama-ai-provider` | Ollama provider |
+| `@openrouter/ai-sdk-provider` | OpenRouter provider |
+| `@anthropic-ai/claude-agent-sdk` | Claude subscription (Phase 2) |
+| `@openai/codex-sdk` | OpenAI/Codex subscription (Phase 2) |
+| `@github/copilot-sdk` | GitHub Copilot subscription (Phase 2) |
 
 ### Frontend (SvelteKit)
 
-```json
-{
-  "devDependencies": {
-    "@sveltejs/kit": "^2.0.0",
-    "svelte": "^5.0.0",
-    "tailwindcss": "^4.0.0",
-    "bits-ui": "^1.0.0",
-    "typescript": "^5.0.0",
-    "vite": "^7.0.0",
-    "vitest": "^4.0.0"
-  },
-  "dependencies": {
-    "marked": ">=17.0.0",
-    "dompurify": ">=3.0.0",
-    "highlight.js": ">=11.0.0"
-  }
-}
-```
+| Package | Purpose |
+|---------|---------|
+| `@sveltejs/kit` | Framework |
+| `svelte` | UI library |
+| `tailwindcss` | Styling |
+| `bits-ui` | Component primitives (shadcn-svelte) |
+| `marked` | Markdown rendering |
+| `dompurify` | HTML sanitization |
+| `highlight.js` | Code syntax highlighting |
+| `vitest` | Unit testing |
 
-*Note: shadcn-svelte uses bits-ui as its component primitive library. marked + DOMPurify + highlight.js for chat message rendering (matching agent-spike and slash-ski patterns).*
+*shadcn-svelte uses bits-ui as its component primitive library. marked + DOMPurify + highlight.js for chat message rendering (matching agent-spike and slash-ski patterns).*
 
 #### Frontend Documentation (LLM-Friendly)
 
@@ -1404,14 +1127,60 @@ onyx/
 
 ---
 
-## Next Steps
+## Roadmap
 
-1. **Answer open questions above**
-2. Design SurrealDB schema for memory system
-3. Define plugin manifest format
-4. Scaffold project structure with Bun
-5. Implement core gateway (Hono + WS)
-6. Add first plugin (CLI for testing)
+### Phase 1: MVP — Personal Assistant via Web UI
+
+Single-user assistant accessible through a browser. No bot plugins yet.
+
+| Deliverable | Details |
+|-------------|---------|
+| **Project scaffold** | Bun monorepo, Docker Compose (Onyx + SurrealDB + MinIO + Ollama + SearXNG) |
+| **Provider abstraction** | Vercel AI SDK backend first (Ollama + API key providers). Subscription SDKs deferred until official releases stabilize |
+| **OpenAI-compatible API** | `/v1/chat/completions`, `/v1/models`, `/health` via Hono |
+| **Session management** | JSONL in MinIO, metadata in SurrealDB |
+| **Memory system** | Files-first in MinIO, hybrid search (vector + BM25) in SurrealDB, Ollama embeddings |
+| **MVP tools** | `memory` (search/write/get), `sessions` (list/history), `web` (SearXNG search/fetch), `fs` (read/write/edit), `runtime` (exec), `schedule` (cron jobs) |
+| **Agent definitions** | OpenClaw-compatible JSON config + workspace markdown files |
+| **Web UI** | SvelteKit + shadcn-svelte: chat, sessions, memory browser, agent config, provider settings |
+| **Auth** | Bearer token (single user, configured in `onyx.json`) |
+
+### Phase 2: Integrations & Multi-Platform
+
+| Deliverable | Details |
+|-------------|---------|
+| **Bot plugins** | Discord, Telegram (in-process, PluginProtocol interface) |
+| **menos integration** | `menos_search`, `menos_ingest` tools |
+| **Subscription providers** | Claude Agent SDK, OpenAI Codex SDK, GitHub Copilot SDK (when SDKs mature) |
+| **Additional tools** | `model_routing`, `mermaid`, `git`, `docker` |
+| **CLI plugin** | Terminal-based chat interface |
+
+### Phase 3: Future
+
+| Deliverable | Details |
+|-------------|---------|
+| **Multi-user** | User accounts, per-user agents and memory |
+| **Sandbox isolation** | Isolate tool execution (shell, fs, browser) in Docker containers per agent/session. Per-agent sandbox config, workspace access control, bind mounts. Required for multi-user and remote access. Reference: [OpenClaw sandboxing](https://docs.openclaw.ai/gateway/sandboxing), [multi-agent sandbox config](https://openclawcn.com/en/docs/multi-agent-sandbox-tools/) |
+| **Plugin extraction** | Move plugins to separate processes (REST/gRPC/WebSocket) |
+| **Passkey auth** | WebAuthn/passkey support for passwordless login |
+| **MCP support** | Model Context Protocol for external tool servers |
+
+---
+
+## Conventions
+
+### Testing
+
+| Layer | Framework | Command | Scope |
+|-------|-----------|---------|-------|
+| **API unit/integration** | `bun test` (built-in) | `bun test` | Providers, memory, sessions, tools |
+| **Frontend unit** | Vitest | `bun run test` (in `frontend/`) | Components, stores, API client |
+| **E2E** | Playwright | `bun run test:e2e` | Chat flow, session management, provider config |
+
+- API tests live in `api/tests/`, mirroring `api/src/` structure
+- Frontend tests live alongside components (`*.test.ts`)
+- E2E tests in `frontend/e2e/`
+- Use `bun test --watch` during development
 
 ---
 
@@ -1419,28 +1188,20 @@ onyx/
 
 <!-- Use this section for notes, decisions, and working through problems -->
 
-### Decision Log
+### Decision Summary
 
-| Date | Decision | Rationale |
-|------|----------|-----------|
-| 2026-02-16 | Sibling to menos, not extension | Keep services focused, share infrastructure |
-| 2026-02-16 | Plugin architecture for bots | Allows bots to run separately, better scaling |
-| 2026-02-16 | SurrealDB + MinIO (match menos) | Reuse existing infrastructure knowledge |
-| 2026-02-16 | Personal assistant MVP first | Reduce scope, validate architecture |
-| 2026-02-16 | Files-first in MinIO, SurrealDB as index | Match OpenClaw philosophy: files are truth, DB is derived. Human-editable, portable, git-friendly |
-| 2026-02-16 | Shared infra with menos, separate namespaces | Same SurrealDB/MinIO/Ollama, Onyx queries menos for RAG, conversations stay in Onyx |
-| 2026-02-16 | In-process plugins for MVP | Simpler deployment, interfaces designed for future extraction to separate services |
-| 2026-02-16 | ~~Claude Agent SDK + LiteLLM~~ | Superseded by 4-SDK TypeScript abstraction layer (see below) |
-| 2026-02-16 | MinIO for session logs + SurrealDB metadata | JSONL files scale to any length, metadata enables fast queries |
-| 2026-02-16 | OpenAI-compatible HTTP API | Drop-in replacement, works with existing tools/libraries |
-| 2026-02-16 | Browser Control UI (SvelteKit + shadcn-svelte) | Chat, sessions, memory, agents, provider config, logs |
-| 2026-02-16 | OpenClaw-compatible agent format | JSON config + workspace markdown files, enables migration |
-| 2026-02-16 | Comprehensive tool system | Memory, sessions, web (SearXNG), FS, runtime, schedule. menos, model routing, mermaid, git, docker are post-MVP |
-| 2026-02-16 | SvelteKit + shadcn-svelte for web UI | Less boilerplate than React, built-in routing, shadcn-svelte for accessible components |
-| 2026-02-16 | Narrowed MVP tool scope | Only memory, sessions, web, fs, runtime, schedule for MVP. menos, model routing, mermaid, git, docker are post-MVP |
-| 2026-02-16 | Web UI is primary interface for MVP | Bot plugins (Discord/Telegram) are post-MVP; web UI serves as both chat and admin |
-| 2026-02-16 | Full TypeScript/Bun stack (dropped Python/FastAPI) | All subscription providers have official TS SDKs; one language across frontend+backend; LiteLLM no longer needed |
-| 2026-02-16 | 4-SDK provider abstraction layer | Claude Agent SDK + OpenAI Codex SDK + GitHub Copilot SDK + Vercel AI SDK; covers subscriptions + API keys |
+| ID | Decision | One-liner |
+|----|----------|-----------|
+| D1 | Memory Architecture | Files-first in MinIO, SurrealDB as search index |
+| D2 | menos Integration | Shared infra, Onyx queries menos, conversations stay in Onyx |
+| D3 | Bot Plugin Architecture | In-process plugins for MVP, interfaces for future extraction |
+| D4 | LLM Provider Strategy | 4-SDK TypeScript abstraction (no LiteLLM) |
+| D5 | Session Persistence | JSONL in MinIO + metadata in SurrealDB |
+| D6 | API Design | OpenAI-compatible HTTP API |
+| D7 | Web Interface | SvelteKit + shadcn-svelte control UI |
+| D8 | Tool System | Built-in tool groups + custom tools + cron scheduling |
+| D9 | Agent Definition Format | OpenClaw-compatible JSON config + workspace markdown |
+| D10 | Deployment Topology | Single Docker Compose stack, shared network |
 
 ### Research Links
 
