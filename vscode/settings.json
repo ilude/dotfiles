@@ -335,5 +335,6 @@
   },
   "specstory.cloudSync.enabled": "never",
   "workbench.editor.enablePreview": false,
-  "claudeCode.preferredLocation": "panel"
+  "claudeCode.preferredLocation": "panel",
+  "editor.accessibilitySupport": "on"
 }
