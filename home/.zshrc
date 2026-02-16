@@ -48,3 +48,8 @@ debug_report
 
 # Print zprof report when DEBUG=1
 [[ -n "$DEBUG" ]] && zprof
+
+. "$HOME/.local/bin/env"
+
+# opencode
+export PATH=/Users/mglenn/.opencode/bin:$PATH
