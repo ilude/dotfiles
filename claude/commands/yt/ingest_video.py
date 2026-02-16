@@ -67,6 +67,9 @@ def main():
     parser.add_argument(
         "--verbose", action="store_true", help="Show all fields when polling completes"
     )
+    parser.add_argument(
+        "--test", action="store_true", help="Tag this video as test content"
+    )
 
     args = parser.parse_args()
 
@@ -91,12 +94,18 @@ def main():
     # Prepare request
     api_base = get_api_base()
     host = get_api_host()
+
+    # Build URL with optional test tag
     url = f"{api_base}/ingest"
+    path = "/api/v1/ingest"
+    if args.test:
+        url += "?tags=test"
+        path += "?tags=test"
+
     body_data = {"url": f"https://youtube.com/watch?v={video_id}"}
     body_bytes = json.dumps(body_data).encode()
 
     # Sign request
-    path = "/api/v1/ingest"
     sig_headers = signer.sign_request("POST", path, host, body_bytes)
 
     headers = {
