@@ -126,14 +126,26 @@ if [[ -n "$git_repo_path" || -n "$git_path" ]]; then
     fi
 fi
 
+# Read effort level from settings.json
+effort=""
+settings_file="${HOME}/.claude/settings.json"
+if [[ -f "$settings_file" ]]; then
+    if command -v jq &>/dev/null; then
+        effort=$(jq -r '.effortLevel // "medium"' "$settings_file" 2>/dev/null)
+    fi
+fi
+effort="${effort:-medium}"
+
 # ANSI color codes
 GREEN="\033[32m"
 ORANGE="\033[38;5;208m"
+CYAN="\033[36m"
 RESET="\033[0m"
 
-# Output formatted status line: dir[branch] | model
+# Output formatted status line: dir[branch] | model | effort
+effort_label="\033[37m[\033[36m${effort}\033[37m]\033[0m"
 if [[ -n "$branch" ]]; then
-    echo -e "${GREEN}${dir}${RESET}${branch} | ${ORANGE}${model}${RESET}"
+    echo -e "${GREEN}${dir}${RESET}${branch} | ${ORANGE}${model}${RESET}${effort_label}"
 else
-    echo -e "${GREEN}${dir}${RESET} | ${ORANGE}${model}${RESET}"
+    echo -e "${GREEN}${dir}${RESET} | ${ORANGE}${model}${RESET}${effort_label}"
 fi
