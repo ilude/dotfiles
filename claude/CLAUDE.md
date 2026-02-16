@@ -49,6 +49,7 @@ Prefer deterministic, reproducible, predictable solutions over non-deterministic
 - **Reasoning**: Proven patterns over novel experiments; established libraries over custom solutions; standard algorithms over heuristics; fewer moving parts
 - **Data**: Never generate metrics, statistics, or numbers that should come from source systems — query real databases/APIs/files instead of reasoning about data values. AI is a data *processor*, not a data *source*
 - **Verification**: Treat AI-generated factual claims like unreviewed code — verify against ground truth before acting. When uncertain, say "I don't know" rather than confabulate
+- **Technology capabilities**: NEVER claim a technology "doesn't support" a feature without verifying via web search or official documentation first. Database engines, frameworks, and libraries evolve — your training data may be outdated. When unsure, search before asserting limitations.
 - **Citations**: Back factual claims with specific sources (URLs, file paths, line numbers). If you cannot cite a source, retract the claim. Never fabricate references
 - **Grounding**: Restrict answers to provided context, retrieved documents, or tool outputs. Prefer deterministic tools (SQL, calculators, linters) over LLM reasoning for calculations and data lookups
 - **Skepticism**: Flag hallucination-prone outputs (unfamiliar APIs, "perfect" solutions, specific version claims, undocumented config options) for human verification
@@ -65,6 +66,17 @@ Exceptions are fine when non-determinism is inherent (UUIDs, crypto randomness, 
 - Non-idempotent scripts - ALL setup/install scripts MUST be safely re-runnable
 - State tracking files - Detect state from system directly
 - Always use `python` not `python3` in bash commands
+- Removing functionality as a "fix" - If a feature shows wrong data (e.g., count=0), investigate WHY the data is wrong. Never hide/remove the display — that's suppressing symptoms, not fixing the bug
+- Multiple deploy cycles - Before deploying a fix to a remote server, verify locally first: run migrations, check logs, run tests. Each failed deploy wastes time. One deploy should be enough if you verify before pushing
+- Silent query failures - When a database query returns no results unexpectedly, check field types first. Type mismatches (string vs object) often cause queries to silently match nothing instead of erroring
+
+## Root Cause Analysis
+
+When encountering a bug or unexpected behavior:
+1. **Investigate before fixing** - Understand WHY the problem exists before changing code. Query the database, read logs, check types.
+2. **Never mask symptoms** - If data is wrong, fix the data pipeline. If a count is 0, find out why — don't remove the count field.
+3. **Fix forward, don't remove** - If a migration fails, understand the error and fix the SQL. Don't delete the problematic clause and hope for the best.
+4. **Verify the fix end-to-end** - After a fix, confirm the original problem is actually resolved, not just that the error went away.
 
 ---
 
