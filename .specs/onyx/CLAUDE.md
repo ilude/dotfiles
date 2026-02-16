@@ -37,7 +37,7 @@ Original stack was Python/FastAPI/LiteLLM. Changed to full TypeScript/Bun becaus
 | API key providers (OpenAI, Anthropic, Bedrock, Ollama, OpenRouter, Google, Azure, etc.) | Vercel AI SDK (`ai`) | API keys / credentials |
 
 Custom abstraction layer unifies all four backends behind a single interface.
-**Note**: Subscription SDKs (Claude Agent SDK, Codex SDK, Copilot SDK) are **Phase 2** — Vercel AI SDK (API key providers) ships in Phase 1.
+**Note**: MVP supports both subscription SDK backends and API key/credential providers.
 
 ### Stack
 
@@ -59,18 +59,18 @@ Custom abstraction layer unifies all four backends behind a single interface.
 - **Event loop / scheduling** (TBD JS scheduler)
 - **Filesystem + MinIO**
 - **SurrealDB** replacing SQLite
-- **Auth**: Bearer token (single user, configured in `onyx.json`)
-- **Provider**: Vercel AI SDK only (Ollama + API key providers)
+- **Auth**: Username/password (single user) + optional bearer token for API clients
+- **Provider**: Four-SDK abstraction (subscription backends + API key/credential providers)
 
-NOT MVP: git tools, docker tools, mermaid rendering, model routing, menos integration, bot plugins (Discord/Telegram — Phase 2), subscription SDKs (Phase 2)
+NOT MVP: git tools, docker tools, mermaid rendering, model routing, menos integration, bot plugins (Discord/Telegram — Phase 2)
 
 ## Roadmap
 
 ### Phase 1: MVP — Personal Assistant via Web UI
-Project scaffold, Vercel AI SDK providers, OpenAI-compatible API (Hono), sessions, memory, MVP tools (memory/sessions/web/fs/runtime/schedule), agent definitions, web UI, bearer token auth.
+Project scaffold, four-SDK providers, OpenAI-compatible API (Hono), sessions, memory, MVP tools (memory/sessions/web/fs/runtime/schedule), agent definitions, web UI, username/password auth (+ optional bearer token).
 
 ### Phase 2: Integrations & Multi-Platform
-Bot plugins (Discord, Telegram), menos integration, subscription providers (Claude Agent SDK, Codex SDK, Copilot SDK), additional tools (model routing, mermaid, git, docker), CLI plugin.
+Bot plugins (Discord, Telegram), menos integration, subscription provider hardening (OAuth UX/reliability/fallbacks), additional tools (model routing, mermaid, git, docker), CLI plugin.
 
 ### Phase 3: Future
 Multi-user, sandbox isolation, plugin extraction to separate processes, passkey auth (WebAuthn), MCP support.
@@ -92,9 +92,9 @@ Multi-user, sandbox isolation, plugin extraction to separate processes, passkey 
 
 ## Auth Strategy
 
-- **Phase 1**: Bearer token only (`Authorization: Bearer onyx_sk_<token>`)
-- **Phase 2**: Password login → session cookie (web UI) + bearer token (API)
-- **Phase 3**: WebAuthn/passkey for passwordless login
+- **Phase 1**: Username/password login with session cookie (web UI) + optional bearer token (API)
+- **Phase 2**: Passkey as optional auth method
+- **Phase 3**: Advanced auth hardening (multi-user-oriented)
 
 ## Testing
 
