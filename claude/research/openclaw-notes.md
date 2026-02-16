@@ -243,6 +243,21 @@ Local-first sidecar combining BM25 + vectors + reranking. Enable with `memory.ba
 | Setup complexity | Medium | Low | Low | Low |
 | Containers needed | 2 (Graphiti + Neo4j) | 1 | 1 (Qdrant) | 1 |
 
+## Related Projects & Clones
+
+| Repo | Description |
+|------|-------------|
+| [qwibitai/nanoclaw](https://github.com/qwibitai/nanoclaw) | |
+| [memovai/mimiclaw](https://github.com/memovai/mimiclaw) | |
+| [rocopolas/FemtoBot](https://github.com/rocopolas/FemtoBot) | |
+| [HKUDS/nanobot](https://github.com/HKUDS/nanobot) | |
+| [openclaw/openclaw](https://github.com/openclaw/openclaw) | Main project |
+
+### YouTube
+
+- [I Built My Own Clawdbot (It's ACTUALLY Safe)](https://www.youtube.com/watch?v=zeJ4whgLELE) — menos: `ryjkp7sppzrqiomtttqc`
+- [I build OpenClaw REPLICA inside Claude Code (CHEAP & SECURE)](https://www.youtube.com/watch?v=jGuzXshuFrQ) — menos: `nwiz158wkr0s1l3etdh0`
+
 ## Sources
 
 - [OpenClaw GitHub](https://github.com/openclaw/openclaw)
