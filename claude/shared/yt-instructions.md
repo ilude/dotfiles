@@ -19,7 +19,9 @@ Run:
 cd ~/.claude/commands/yt && unset VIRTUAL_ENV && uv run list_videos.py {n}
 ```
 
-Display the output to the user and stop. No further steps needed.
+**IMPORTANT**: The script output is NOT visible to the user — only you can see it. You MUST read the script output, then format and display it back to the user as a markdown table or formatted list. Do not just run the command and say "here are the results" — the user cannot see tool output. Reproduce the full list in your response.
+
+Stop after displaying. No further steps needed.
 
 ### Subcommand: ingest (default)
 
