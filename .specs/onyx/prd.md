@@ -1,7 +1,7 @@
 # Onyx - Personal AI Assistant Platform
 
 **Status**: Planning / Research Phase
-**Stack**: Python 3.12+, uv, FastAPI, SurrealDB, MinIO, Docker
+**Stack**: TypeScript, Bun, SvelteKit, SurrealDB, MinIO, Docker
 **Relationship**: Sibling service to menos, shares infrastructure
 
 ---
@@ -11,10 +11,21 @@
 OpenClaw-inspired personal AI assistant with:
 - Plugin architecture for Discord/Telegram bots
 - Graph + vector memory using SurrealDB
-- Multi-provider LLM support (Anthropic, OpenAI, Ollama, multi-provider via LiteLLM)
+- Multi-provider LLM support (Anthropic, OpenAI, Ollama, multi-provider via 4-SDK abstraction)
 - Integration with menos content vault
 
 **MVP Focus**: Personal assistant (single user) first, expand to multi-user/team later.
+
+### Why Not Just Use OpenClaw?
+
+OpenClaw's concept is right — always-on personal AI assistant with memory, plugins, and multi-platform support. But the implementation has friction:
+
+- **Model subscription configuration** is overly difficult — getting it working with available subscriptions was painful
+- **brew-centric extensibility** — plugin ecosystem and tooling assumes macOS with Homebrew
+- **Not Docker/Linux friendly** — designed for local macOS development, not containerized Linux deployment
+- **SQLite limitations** — we already run SurrealDB + MinIO for menos; no reason to add SQLite
+
+Onyx keeps OpenClaw's philosophy (files-first memory, workspace markdown, plugin architecture) but rebuilds it in TypeScript on infrastructure we already operate.
 
 ---
 
@@ -115,14 +126,14 @@ DEFINE FIELD chunk_overlap ON memory_meta TYPE int;
 
 ```surql
 -- Semantic search (70% weight)
-LET $vec_results = SELECT *, 
+LET $vec_results = SELECT *,
     vector::similarity::cosine(embedding, $query_vec) AS score
 FROM memory_chunk
 WHERE agent_id = $agent_id
 ORDER BY score DESC
 LIMIT 20;
 
--- Full-text search (30% weight) 
+-- Full-text search (30% weight)
 LET $fts_results = SELECT *,
     search::score(1) AS score
 FROM memory_chunk
@@ -131,7 +142,7 @@ WHERE content @1@ $keywords
 ORDER BY score DESC
 LIMIT 20;
 
--- Merge with weighted RRF (done in Python)
+-- Merge with weighted RRF (done in TypeScript)
 ```
 
 ---
@@ -178,16 +189,15 @@ LIMIT 20;
 
 Onyx can search menos content for RAG context:
 
-```python
-# Example: searching menos for relevant content
-async def search_menos_content(query: str, limit: int = 5):
-    """Query menos API for YouTube transcripts, notes, etc."""
-    response = await http_client.get(
-        f"{MENOS_URL}/api/v1/content/search",
-        params={"q": query, "limit": limit},
-        headers=sign_request(...)  # ed25519
-    )
-    return response.json()
+```typescript
+// Example: searching menos for relevant content
+async function searchMenosContent(query: string, limit = 5) {
+  const response = await fetch(
+    `${MENOS_URL}/api/v1/content/search?q=${query}&limit=${limit}`,
+    { headers: signRequest(...) }  // ed25519
+  );
+  return response.json();
+}
 ```
 
 Use cases:
@@ -237,38 +247,14 @@ Conversation history stored in Onyx's own namespace:
 
 #### Plugin Interface (Abstract)
 
-```python
-from abc import ABC, abstractmethod
-from typing import AsyncIterator
-
-class PluginProtocol(ABC):
-    """Base interface for all channel plugins."""
-    
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        """Plugin identifier (e.g., 'discord', 'telegram')."""
-        ...
-    
-    @abstractmethod
-    async def start(self) -> None:
-        """Start the plugin (connect to service)."""
-        ...
-    
-    @abstractmethod
-    async def stop(self) -> None:
-        """Graceful shutdown."""
-        ...
-    
-    @abstractmethod
-    async def send_message(self, channel_id: str, content: str) -> None:
-        """Send a message to a channel."""
-        ...
-    
-    @abstractmethod
-    def incoming_messages(self) -> AsyncIterator[IncomingMessage]:
-        """Stream of incoming messages from the platform."""
-        ...
+```typescript
+interface PluginProtocol {
+  readonly name: string;
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  sendMessage(channelId: string, content: string): Promise<void>;
+  incomingMessages(): AsyncIterableIterator<IncomingMessage>;
+}
 ```
 
 #### Plugin Manifest (YAML)
@@ -278,10 +264,10 @@ class PluginProtocol(ABC):
 name: discord
 version: "0.1.0"
 description: Discord bot integration
-entry_point: onyx.plugins.discord:DiscordPlugin
+entry_point: ./plugins/discord/bot.ts
 
 dependencies:
-  - discord.py>=2.5.0
+  - discord.js>=14.0.0
 
 config_schema:
   token:
@@ -300,7 +286,7 @@ hooks:
 
 #### Plugin Loading
 
-```python
+```yaml
 # Plugins loaded at startup from config
 plugins:
   enabled:
@@ -325,86 +311,96 @@ No core changes needed - just swap the in-process plugin for a client stub.
 
 ### D4: LLM Provider Strategy - DECIDED
 
-**Decision**: Claude Agent SDK + LiteLLM dual backend
+**Decision**: Four-SDK TypeScript abstraction layer (no LiteLLM)
+
+#### Why No LiteLLM?
+
+All key providers now have official TypeScript SDKs. A custom abstraction layer unifies them behind a single interface, eliminating the need for LiteLLM (Python) or its proxy.
 
 #### Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     Onyx Provider Interface                     │
+│              Onyx Provider Abstraction Layer                     │
 │                                                                 │
-│  class ProviderProtocol:                                        │
-│      async def complete(messages, model, **kwargs) -> Response  │
-│      async def stream(messages, model, **kwargs) -> AsyncIter   │
+│  Unified interface:                                             │
+│    complete(messages, model, opts) → Response                   │
+│    stream(messages, model, opts) → AsyncIterator                │
+│    listModels() → Model[]                                       │
 │                                                                 │
-└───────────────────────┬─────────────────────────────────────────┘
-                        │
-          ┌─────────────┴─────────────┐
-          │                           │
-          ▼                           ▼
-┌─────────────────────┐    ┌─────────────────────┐
-│   Claude Agent SDK  │    │      LiteLLM        │
-│                     │    │                     │
-│ - Claude Pro/Max    │    │ - AWS Bedrock       │
-│   subscription      │    │ - OpenRouter        │
-│   (via bundled CLI) │    │ - GitHub Copilot    │
-│                     │    │ - ChatGPT Plus/Pro  │
-│                     │    │ - Ollama            │
-│                     │    │ - OpenAI API        │
-│                     │    │ - Anthropic API     │
-│                     │    │ - Google Vertex     │
-│                     │    │ - Azure OpenAI      │
-│                     │    │ - 100+ more         │
-└─────────────────────┘    └─────────────────────┘
+└──────────┬──────────────┬──────────────┬──────────────┬────────┘
+           │              │              │              │
+           ▼              ▼              ▼              ▼
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│ Claude Agent │ │   OpenAI     │ │   GitHub     │ │  Vercel AI   │
+│     SDK      │ │  Codex SDK   │ │ Copilot SDK  │ │     SDK      │
+│              │ │              │ │              │ │              │
+│ Claude Sub   │ │ ChatGPT Sub  │ │ Copilot Sub  │ │ OpenAI  key  │
+│ (Pro/Max)    │ │ (Plus/Pro)   │ │ (OAuth)      │ │ Anthropic key│
+│              │ │              │ │              │ │ Bedrock      │
+│              │ │              │ │              │ │ Ollama       │
+│              │ │              │ │              │ │ OpenRouter   │
+│              │ │              │ │              │ │ Google       │
+│              │ │              │ │              │ │ Azure        │
+│              │ │              │ │              │ │ Groq, etc.   │
+└──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘
 ```
 
-#### Provider Selection Logic
+#### Provider Routing
 
-```python
-def get_provider(model: str) -> ProviderProtocol:
-    """Route to appropriate backend based on model prefix."""
-    if model.startswith("claude-subscription/"):
-        # Uses Claude Code CLI auth (~/.claude.json OAuth tokens)
-        return ClaudeAgentSDKProvider()
-    else:
-        # Everything else via LiteLLM
-        # bedrock/..., openrouter/..., ollama/..., github_copilot/..., etc.
-        return LiteLLMProvider()
+```typescript
+function getProvider(model: string): ProviderBackend {
+  if (model.startsWith("claude-subscription/"))
+    return new ClaudeAgentProvider();    // @anthropic-ai/claude-agent-sdk
+  if (model.startsWith("codex/") || model.startsWith("chatgpt/"))
+    return new OpenAICodexProvider();    // @openai/codex-sdk
+  if (model.startsWith("copilot/"))
+    return new CopilotProvider();        // @github/copilot-sdk
+  // Everything else via Vercel AI SDK
+  return new VercelAIProvider();         // ai + @ai-sdk/*
+}
 ```
 
 #### Supported Providers
 
-| Provider | Model Prefix | Auth Method |
-|----------|--------------|-------------|
-| **Claude Subscription** | `claude-subscription/` | OAuth via Claude Code CLI |
-| AWS Bedrock | `bedrock/` | AWS credentials |
-| OpenRouter | `openrouter/` | API key |
-| GitHub Copilot | `github_copilot/` | OAuth (LiteLLM device flow) |
-| ChatGPT Plus/Pro | `chatgpt/` | OAuth (LiteLLM device flow) |
-| Ollama | `ollama/` | Local (OpenAI-compatible API) |
-| OpenAI API | `openai/` or default | API key |
-| Anthropic API | `anthropic/` | API key |
-| Google Vertex | `vertex_ai/` | GCP credentials |
-| Azure OpenAI | `azure/` | Azure credentials |
+| Provider | SDK | Auth Method | Model Prefix |
+|----------|-----|-------------|-------------|
+| **Claude Subscription** (Pro/Max) | `@anthropic-ai/claude-agent-sdk` | OAuth | `claude-subscription/` |
+| **OpenAI/Codex Subscription** (ChatGPT Plus/Pro) | `@openai/codex-sdk` | OAuth device flow | `codex/`, `chatgpt/` |
+| **GitHub Copilot** | `@github/copilot-sdk` | OAuth device flow | `copilot/` |
+| AWS Bedrock | `@ai-sdk/amazon-bedrock` | AWS credentials | `bedrock/` |
+| OpenAI (API key) | `@ai-sdk/openai` | API key | `openai/` |
+| Anthropic (API key) | `@ai-sdk/anthropic` | API key | `anthropic/` |
+| Ollama | `ollama-ai-provider` | Local endpoint | `ollama/` |
+| OpenRouter | `@openrouter/ai-sdk-provider` | API key | `openrouter/` |
+| Google Vertex | `@ai-sdk/google-vertex` | GCP credentials | `vertex/` |
+| Azure OpenAI | `@ai-sdk/azure` | Azure credentials | `azure/` |
 
-#### Why Two Backends?
+#### Why Four Backends?
 
-1. **Claude Agent SDK** provides subscription access to Claude Pro/Max
-   - Uses bundled Claude Code CLI
-   - Reads OAuth tokens from `~/.claude.json`
-   - Only way to use Claude subscription programmatically
-
-2. **LiteLLM** handles everything else
-   - 100+ providers with unified interface
-   - OAuth flows for GitHub Copilot and ChatGPT subscriptions
-   - Battle-tested, maintained
+1. **Claude Agent SDK** — Only official way to use Claude Pro/Max subscription programmatically
+2. **OpenAI Codex SDK** — Only official way to use ChatGPT Plus/Pro subscription (OAuth device flow)
+3. **GitHub Copilot SDK** — Only official way to use Copilot subscription (OAuth device flow)
+4. **Vercel AI SDK** — Handles all API-key and credential-based providers with a unified interface (20+ official providers, community providers for Ollama/OpenRouter)
 
 #### Dependencies
 
-```toml
-[project.dependencies]
-claude-agent-sdk = ">=0.1.0"
-litellm = ">=1.50.0"
+```json
+{
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": ">=0.1.0",
+    "@openai/codex-sdk": ">=0.1.0",
+    "@github/copilot-sdk": ">=0.1.0",
+    "ai": ">=4.0.0",
+    "@ai-sdk/openai": ">=1.0.0",
+    "@ai-sdk/anthropic": ">=1.0.0",
+    "@ai-sdk/amazon-bedrock": ">=1.0.0",
+    "@ai-sdk/google-vertex": ">=1.0.0",
+    "@ai-sdk/azure": ">=1.0.0",
+    "ollama-ai-provider": ">=1.0.0",
+    "@openrouter/ai-sdk-provider": ">=0.1.0"
+  }
+}
 ```
 
 ---
@@ -453,22 +449,14 @@ DEFINE INDEX idx_session_updated ON session FIELDS updated_at;
 
 #### Operations
 
-```python
-class SessionManager:
-    async def create_session(self, agent_id: str) -> Session:
-        """Create new session, initialize empty JSONL in MinIO."""
-        
-    async def append_message(self, session_id: str, message: Message) -> None:
-        """Append to JSONL, update metadata in SurrealDB."""
-        
-    async def get_messages(self, session_id: str, limit: int = None) -> list[Message]:
-        """Stream JSONL from MinIO, optionally limit to last N."""
-        
-    async def list_sessions(self, agent_id: str) -> list[SessionMeta]:
-        """Query SurrealDB for session metadata."""
-        
-    async def search_sessions(self, query: str) -> list[SessionMeta]:
-        """Full-text search across session content (requires indexing)."""
+```typescript
+class SessionManager {
+  async createSession(agentId: string): Promise<Session> { ... }
+  async appendMessage(sessionId: string, message: Message): Promise<void> { ... }
+  async getMessages(sessionId: string, limit?: number): Promise<Message[]> { ... }
+  async listSessions(agentId: string): Promise<SessionMeta[]> { ... }
+  async searchSessions(query: string): Promise<SessionMeta[]> { ... }
+}
 ```
 
 #### Benefits
@@ -489,7 +477,7 @@ class SessionManager:
 
 - Drop-in replacement for any OpenAI client
 - Works with existing tools, libraries, UIs
-- LiteLLM, LangChain, etc. can use Onyx as a backend
+- LangChain, Vercel AI SDK, etc. can use Onyx as a backend
 - Simple, well-documented standard
 
 #### Endpoints
@@ -513,29 +501,29 @@ GET  /v1/agents/{id}          # Get agent config
 
 #### Chat Completions Request
 
-```python
-# Standard OpenAI format
-POST /v1/chat/completions
+```json
+// Standard OpenAI format
+// POST /v1/chat/completions
 {
-    "model": "claude-subscription/claude-sonnet-4-20250514",  # or "ollama/llama3", etc.
+    "model": "claude-subscription/claude-sonnet-4-20250514",
     "messages": [
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "Hello!"}
     ],
     "stream": true,
     "temperature": 0.7,
-    
-    # Onyx extensions (optional)
-    "x-onyx-agent-id": "main",           # Route to specific agent
-    "x-onyx-session-id": "abc123",       # Continue existing session
-    "x-onyx-include-memory": true        # Include memory context
+
+    // Onyx extensions (optional)
+    "x-onyx-agent-id": "main",
+    "x-onyx-session-id": "abc123",
+    "x-onyx-include-memory": true
 }
 ```
 
 #### Chat Completions Response
 
-```python
-# Standard OpenAI format
+```json
+// Standard OpenAI format
 {
     "id": "chatcmpl-abc123",
     "object": "chat.completion",
@@ -554,8 +542,8 @@ POST /v1/chat/completions
         "completion_tokens": 9,
         "total_tokens": 21
     },
-    
-    # Onyx extensions
+
+    // Onyx extensions
     "x-onyx-session-id": "abc123"
 }
 ```
@@ -575,7 +563,7 @@ data: [DONE]
 
 #### Authentication
 
-```python
+```
 # Bearer token (API key style)
 Authorization: Bearer onyx_sk_abc123
 
@@ -585,7 +573,7 @@ Authorization: Basic base64(user:pass)
 
 #### Agent Routing
 
-```python
+```
 # Option 1: In model field (OpenClaw style)
 "model": "onyx:research-agent"
 
@@ -595,32 +583,27 @@ Authorization: Basic base64(user:pass)
 # Option 3: Default to "main" agent
 ```
 
-#### FastAPI Implementation Sketch
+#### Implementation Sketch
 
-```python
-from fastapi import FastAPI, Header
-from fastapi.responses import StreamingResponse
+```typescript
+// Using Hono or SvelteKit server route
+async function chatCompletions(req: Request): Promise<Response> {
+  const body = await req.json() as ChatCompletionRequest;
+  const agentId = req.headers.get("x-onyx-agent-id") ?? "main";
+  const sessionId = req.headers.get("x-onyx-session-id");
 
-app = FastAPI()
+  // Validate auth
+  // Get or create session
+  // Route to provider (abstraction layer)
+  // Stream response
 
-@app.post("/v1/chat/completions")
-async def chat_completions(
-    request: ChatCompletionRequest,
-    authorization: str = Header(...),
-    x_onyx_agent_id: str = Header("main"),
-    x_onyx_session_id: str = Header(None),
-):
-    # Validate auth
-    # Get or create session
-    # Route to provider (Claude Agent SDK or LiteLLM)
-    # Stream response
-    
-    if request.stream:
-        return StreamingResponse(
-            stream_response(request),
-            media_type="text/event-stream"
-        )
-    return await complete_response(request)
+  if (body.stream) {
+    return new Response(streamResponse(body), {
+      headers: { "Content-Type": "text/event-stream" }
+    });
+  }
+  return Response.json(await completeResponse(body));
+}
 ```
 
 ---
@@ -633,13 +616,14 @@ async def chat_completions(
 
 | Component | Choice | Rationale |
 |-----------|--------|-----------|
-| Framework | **Vite + React** | Fast dev, good ecosystem, familiar |
-| Styling | **Tailwind CSS** | Utility-first, consistent with modern UIs |
-| State | **Zustand** or React Query | Simple, minimal boilerplate |
+| Framework | **SvelteKit** | Less boilerplate than React, built-in routing/SSR, excellent DX |
+| UI Components | **shadcn-svelte** | Accessible, composable components with Tailwind styling |
+| Styling | **Tailwind CSS** | Utility-first, consistent with shadcn-svelte |
+| State | SvelteKit stores + server load | Built-in reactivity, no extra state library needed |
 | WebSocket | Native WebSocket | Real-time streaming |
-| Bundling | Static files served by FastAPI | Single deployment |
+| Bundling | Static adapter or Node adapter | SvelteKit builds to static or server-rendered |
 
-*Note: OpenClaw uses Lit (web components). React is more familiar and has broader ecosystem support.*
+*Note: OpenClaw uses Lit (web components). SvelteKit offers less boilerplate than React, built-in routing, and excellent performance. shadcn-svelte provides the same accessible component patterns as shadcn/ui.*
 
 #### UI Sections
 
@@ -703,7 +687,23 @@ async def chat_completions(
 │                                                                 │
 │  ─────────────────────────────────────────────────────────────  │
 │                                                                 │
-│  LiteLLM Providers                                              │
+│  Subscription Providers                                         │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ OpenAI/Codex (ChatGPT Plus/Pro)        [Authenticate]   │   │
+│  │ Status: Not authenticated                               │   │
+│  │ [Start OAuth Device Flow]                               │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ GitHub Copilot                         [Authenticate]   │   │
+│  │ Status: Not authenticated                               │   │
+│  │ [Start OAuth Device Flow]                               │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  ─────────────────────────────────────────────────────────────  │
+│                                                                 │
+│  API Key / Credential Providers (Vercel AI SDK)                 │
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │ AWS Bedrock                              [Configure]     │   │
@@ -717,12 +717,6 @@ async def chat_completions(
 │  │ OpenRouter                               [Connected ✓]   │   │
 │  │ API Key: sk-or-...redacted...                            │   │
 │  │ [Edit] [Test Connection]                                 │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │ GitHub Copilot                           [Authenticate]  │   │
-│  │ Status: Not authenticated                                │   │
-│  │ [Start OAuth Flow]                                       │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────────┐   │
@@ -756,7 +750,7 @@ async def chat_completions(
 { "type": "sessions.list" }
 { "type": "memory.search", "data": { "query": "docker networking" } }
 
-// Server -> Client  
+// Server -> Client
 { "type": "chat.delta", "data": { "content": "Hello", "sessionId": "abc123" } }
 { "type": "chat.tool_call", "data": { "tool": "memory_search", "input": {...} } }
 { "type": "chat.done", "data": { "sessionId": "abc123", "usage": {...} } }
@@ -799,23 +793,23 @@ Provider credentials stored in:
 
 ### D9: Tool System - DECIDED
 
-**Decision**: Built-in tool groups + custom tools + APScheduler for cron
+**Decision**: Built-in tool groups + custom tools + cron scheduling
 
 #### Tool Categories
 
 | Group | Tools | MVP? |
 |-------|-------|------|
-| `memory` | `memory_search`, `memory_write`, `memory_get` | Yes |
-| `sessions` | `sessions_list`, `sessions_history`, `sessions_send` | Yes |
-| `web` | `web_search`, `web_fetch` | Yes |
-| `fs` | `read`, `write`, `edit` | Yes |
-| `runtime` | `exec`, `process` | Yes |
-| `schedule` | `schedule`, `list_jobs`, `cancel_job` | Yes |
-| `menos` | `menos_search`, `menos_ingest` | Yes |
-| `model_routing` | `select_model`, `route_task` | Yes |
-| `mermaid` | `render_mermaid` | Yes |
-| `git` | `git_commit`, `git_push`, `git_pull`, `git_status` | Yes |
-| `docker` | `docker_ps`, `docker_logs`, `docker_stats`, `docker_exec` | Yes |
+| `memory` | `memory_search`, `memory_write`, `memory_get` | **Yes** |
+| `sessions` | `sessions_list`, `sessions_history`, `sessions_send` | **Yes** |
+| `web` | `web_search`, `web_fetch` | **Yes** |
+| `fs` | `read`, `write`, `edit` | **Yes** |
+| `runtime` | `exec`, `process` | **Yes** |
+| `schedule` | `schedule`, `list_jobs`, `cancel_job` | **Yes** |
+| `menos` | `menos_search`, `menos_ingest` | Post-MVP |
+| `model_routing` | `select_model`, `route_task` | Post-MVP |
+| `mermaid` | `render_mermaid` | Post-MVP |
+| `git` | `git_commit`, `git_push`, `git_pull`, `git_status` | Post-MVP |
+| `docker` | `docker_ps`, `docker_logs`, `docker_stats`, `docker_exec` | Post-MVP |
 
 #### Web Search: SearXNG
 
@@ -832,81 +826,53 @@ searxng:
     - searxng_config:/etc/searxng
 ```
 
-```python
-# Tool implementation
-async def web_search(query: str, limit: int = 10):
-    """Search using local SearXNG instance."""
-    response = await http_client.get(
-        "http://searxng:8080/search",
-        params={"q": query, "format": "json", "engines": "google,bing"}
-    )
-    return response.json()["results"]
+```typescript
+// Tool implementation
+async function webSearch(query: string, limit = 10) {
+  const response = await fetch(
+    `http://searxng:8080/search?q=${encodeURIComponent(query)}&format=json&engines=google,bing`
+  );
+  const data = await response.json();
+  return data.results.slice(0, limit);
+}
 ```
 
-#### Scheduling: APScheduler
+#### Scheduling
 
-```python
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
+```typescript
+import { CronJob } from "cron";  // or similar
 
-scheduler = AsyncIOScheduler()
+// Cron-style job
+new CronJob("0 9 * * *", () => runHeartbeat(agentId));
 
-# Cron-style job
-scheduler.add_job(
-    run_heartbeat,
-    CronTrigger.from_crontab("0 9 * * *"),  # 9 AM daily
-    args=[agent_id],
-    id=f"heartbeat_{agent_id}"
-)
-
-# Interval job
-scheduler.add_job(
-    sync_memory_index,
-    "interval",
-    minutes=5,
-    id="memory_sync"
-)
-
-# One-time job
-scheduler.add_job(
-    cleanup_sessions,
-    "date",
-    run_date=datetime(2026, 3, 1, 0, 0),
-    id="session_cleanup"
-)
+// Interval job
+setInterval(() => syncMemoryIndex(), 5 * 60 * 1000);
 ```
 
 #### Model Routing Tool
 
-```python
-async def select_model(task: str, context: dict) -> str:
-    """Route task to best model based on complexity."""
-    
-    # Simple heuristics
-    if any(kw in task.lower() for kw in ["quick", "simple", "what is"]):
-        return "ollama/llama3"  # Fast, local
-    
-    if any(kw in task.lower() for kw in ["debug", "complex", "architect"]):
-        return "claude-subscription/claude-opus-4-20250514"  # Best reasoning
-    
-    # Default to mid-tier
-    return "openrouter/anthropic/claude-sonnet-4"
+```typescript
+async function selectModel(task: string, context: Record<string, unknown>): Promise<string> {
+  if (["quick", "simple", "what is"].some(kw => task.toLowerCase().includes(kw)))
+    return "ollama/llama3";
+  if (["debug", "complex", "architect"].some(kw => task.toLowerCase().includes(kw)))
+    return "claude-subscription/claude-opus-4-20250514";
+  return "openrouter/anthropic/claude-sonnet-4";
+}
 ```
 
 #### Mermaid Rendering Tool
 
-```python
-async def render_mermaid(diagram: str) -> str:
-    """Render mermaid diagram to SVG/PNG."""
-    import mermaid
-    
-    # Use mermaid-js directly or a simple HTTP API
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            "http://mermaid-render:8080/render",
-            json={"code": diagram, "format": "svg"}
-        ) as resp:
-            return await resp.text()
+```typescript
+async function renderMermaid(diagram: string): Promise<string> {
+  // Use mermaid-js render service
+  const response = await fetch("http://mermaid-render:8080/render", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: diagram, format: "svg" }),
+  });
+  return response.text();
+}
 ```
 
 ```dockerfile
@@ -919,66 +885,63 @@ CMD ["node", "index.js"]
 
 #### Git Tool
 
-```python
-class GitTool:
-    async def commit(self, message: str, files: list[str] = None) -> str:
-        """Stage and commit files."""
-        # Use git CLI
-        result = await run(["git", "add", *(files or ["."])])
-        result = await run(["git", "commit", "-m", message])
-        return result.stdout
-    
-    async def push(self, remote: str = "origin", branch: str = None) -> str:
-        """Push to remote."""
-        cmd = ["git", "push", remote]
-        if branch:
-            cmd.append(branch)
-        return (await run(cmd)).stdout
-    
-    async def status(self) -> str:
-        """Get git status."""
-        return (await run(["git", "status", "--porcelain"])).stdout
+```typescript
+import { $ } from "bun";
+
+class GitTool {
+  async commit(message: string, files?: string[]): Promise<string> {
+    await $`git add ${files ?? ["."]}`;
+    const result = await $`git commit -m ${message}`;
+    return result.text();
+  }
+
+  async push(remote = "origin", branch?: string): Promise<string> {
+    const cmd = branch
+      ? $`git push ${remote} ${branch}`
+      : $`git push ${remote}`;
+    return (await cmd).text();
+  }
+
+  async status(): Promise<string> {
+    return (await $`git status --porcelain`).text();
+  }
+}
 ```
 
 #### Docker Tool
 
-```python
-class DockerTool:
-    """Docker in Docker support."""
-    
-    async def ps(self, all: bool = False) -> list[dict]:
-        """List containers."""
-        result = await run([
-            "docker", "ps", 
-            "--format", "{{json .}}"
-        ] + (["-a"] if all else []))
-        return [json.loads(line) for line in result.stdout.splitlines()]
-    
-    async def logs(self, container: str, tail: int = 100) -> str:
-        """Get container logs."""
-        return (await run([
-            "docker", "logs", "--tail", str(tail), container
-        ])).stdout
-    
-    async def exec(self, container: str, command: list[str]) -> str:
-        """Execute command in container."""
-        return (await run([
-            "docker", "exec", container, *command
-        ])).stdout
-    
-    async def stats(self, container: str = None) -> list[dict]:
-        """Get container stats."""
-        cmd = ["docker", "stats", "--no-stream", "--format", "{{json .}}"]
-        if container:
-            cmd.append(container)
-        result = await run(cmd)
-        return [json.loads(line) for line in result.stdout.splitlines() if line]
+```typescript
+import { $ } from "bun";
+
+class DockerTool {
+  async ps(all = false): Promise<object[]> {
+    const flag = all ? "-a" : "";
+    const result = await $`docker ps ${flag} --format ${"{{json .}}"}`;
+    return result.text().split("\n").filter(Boolean).map(line => JSON.parse(line));
+  }
+
+  async logs(container: string, tail = 100): Promise<string> {
+    return (await $`docker logs --tail ${tail} ${container}`).text();
+  }
+
+  async exec(container: string, command: string[]): Promise<string> {
+    return (await $`docker exec ${container} ${command}`).text();
+  }
+
+  async stats(container?: string): Promise<object[]> {
+    const args = container
+      ? $`docker stats --no-stream --format ${"{{json .}}"} ${container}`
+      : $`docker stats --no-stream --format ${"{{json .}}"}`;
+    const result = await args;
+    return result.text().split("\n").filter(Boolean).map(line => JSON.parse(line));
+  }
+}
 ```
 
 **Docker in Docker Setup**:
 ```dockerfile
 # Onyx Dockerfile
-FROM python:3.12-slim
+FROM oven/bun:latest
 
 # Install Docker CLI
 RUN apt-get update && apt-get install -y \
@@ -1031,20 +994,25 @@ The web interface will render:
 - Tool call cards with expandable input/output
 - Code blocks with copy button
 
-```typescript
-// React component for rendering
-import mermaid from 'mermaid';
+```svelte
+<!-- MessageContent.svelte -->
+<script>
+  import { onMount } from 'svelte';
+  import mermaid from 'mermaid';
+  import Markdown from './Markdown.svelte';
 
-mermaid.initialize({ startOnLoad: true });
+  export let content;
+  export let diagramCode;
 
-function MessageContent({ content }) {
-  return (
-    <div className="prose">
-      <ReactMarkdown>{content}</ReactMarkdown>
-      <MermaidChart>{diagramCode}</MermaidChart>
-    </div>
-  );
-}
+  onMount(() => mermaid.initialize({ startOnLoad: true }));
+</script>
+
+<div class="prose">
+  <Markdown {content} />
+  {#if diagramCode}
+    <pre class="mermaid">{diagramCode}</pre>
+  {/if}
+</div>
 ```
 
 ---
@@ -1073,7 +1041,7 @@ function MessageContent({ content }) {
         default: true,
         workspace: "~/.config/onyx/workspace",
         model: "claude-subscription/claude-sonnet-4-20250514",
-        
+
         // Tool restrictions (optional)
         tools: {
           allow: ["memory_read", "memory_write", "web_search"],
@@ -1082,10 +1050,10 @@ function MessageContent({ content }) {
       },
       {
         id: "research",
-        name: "Research Agent", 
+        name: "Research Agent",
         workspace: "~/.config/onyx/workspace-research",
         model: "openrouter/anthropic/claude-opus-4",
-        
+
         // Per-agent overrides
         temperature: 0.3,
         maxTokens: 8192
@@ -1098,9 +1066,9 @@ function MessageContent({ content }) {
     { agentId: "main", match: { channel: "discord" } },
     { agentId: "research", match: { channel: "telegram" } },
     // Route specific Discord guild to research agent
-    { 
-      agentId: "research", 
-      match: { channel: "discord", guildId: "123456789" } 
+    {
+      agentId: "research",
+      match: { channel: "discord", guildId: "123456789" }
     }
   ],
 
@@ -1133,7 +1101,7 @@ function MessageContent({ content }) {
 ```
 ~/.config/onyx/workspace/           # Main agent workspace
 ├── AGENTS.md                       # Operating instructions, rules
-├── SOUL.md                         # Persona, tone, boundaries  
+├── SOUL.md                         # Persona, tone, boundaries
 ├── USER.md                         # User profile
 ├── IDENTITY.md                     # Agent name/vibe
 ├── TOOLS.md                        # Tool usage guidance
@@ -1181,7 +1149,7 @@ You are a helpful personal assistant with expertise in software development.
 - Direct and concise
 - Admit uncertainty rather than guessing
 
-## Boundaries  
+## Boundaries
 - Don't pretend to have emotions
 - Don't make promises about capabilities you don't have
 ```
@@ -1195,7 +1163,7 @@ Timezone: America/New_York
 Preferred communication: Direct, minimal small talk
 
 ## Interests
-- Software development (Python, TypeScript)
+- Software development (TypeScript, Python)
 - DevOps and infrastructure
 - AI/ML tooling
 
@@ -1236,24 +1204,23 @@ Preferred communication: Direct, minimal small talk
 
 #### Migration Path (OpenClaw → Onyx)
 
-```python
-def migrate_openclaw_config(openclaw_path: str) -> dict:
-    """Convert OpenClaw config to Onyx format."""
-    with open(openclaw_path) as f:
-        config = json5.load(f)
-    
-    # Copy compatible fields
-    onyx_config = {
-        "agents": config.get("agents", {}),
-        "bindings": config.get("bindings", []),
+```typescript
+function migrateOpenClawConfig(openclawPath: string): OnyxConfig {
+  const config = JSON.parse(readFileSync(openclawPath, "utf-8"));
+
+  const onyxConfig: OnyxConfig = {
+    agents: config.agents ?? {},
+    bindings: config.bindings ?? [],
+  };
+
+  for (const agent of onyxConfig.agents?.list ?? []) {
+    if (agent.model) {
+      agent.model = remapModelPrefix(agent.model);
     }
-    
-    # Remap model prefixes
-    for agent in onyx_config["agents"].get("list", []):
-        if model := agent.get("model"):
-            agent["model"] = remap_model_prefix(model)
-    
-    return onyx_config
+  }
+
+  return onyxConfig;
+}
 ```
 
 ---
@@ -1263,13 +1230,13 @@ def migrate_openclaw_config(openclaw_path: str) -> dict:
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         ONYX GATEWAY                            │
-│                    (FastAPI + WebSocket)                        │
+│                     (Bun + WebSocket)                           │
 │  ┌───────────────────────────────────────────────────────────┐  │
-│  │  Core Modules:                                            │  │
+│  │  Core Modules (TypeScript/Bun):                           │  │
 │  │  ├── gateway/          # WebSocket + HTTP endpoints       │  │
 │  │  ├── agents/           # Agent runtime, tool execution    │  │
-│  │  ├── memory/           # Vector search, graph queries     │  │
-│  │  ├── providers/        # LLM provider registry            │  │
+│  │  ├── memory/           # Vector search, hybrid queries    │  │
+│  │  ├── providers/        # 4-SDK provider abstraction       │  │
 │  │  ├── plugins/          # Plugin loader, hooks             │  │
 │  │  └── sessions/         # Conversation state management    │  │
 │  └───────────────────────────────────────────────────────────┘  │
@@ -1297,76 +1264,143 @@ def migrate_openclaw_config(openclaw_path: str) -> dict:
 
 ```
 onyx/
-├── pyproject.toml
+├── package.json
+├── bun.lock
+├── tsconfig.json
 ├── Dockerfile
 ├── docker-compose.yml
-├── src/
-│   └── onyx/
-│       ├── __init__.py
-│       ├── main.py              # FastAPI app entry
-│       ├── config.py            # Settings (Pydantic)
-│       ├── gateway/
-│       │   ├── __init__.py
-│       │   ├── websocket.py     # WS connection handler
-│       │   └── http.py          # REST endpoints
-│       ├── agents/
-│       │   ├── __init__.py
-│       │   ├── runtime.py       # Agent execution loop
-│       │   ├── tools/           # Built-in tools
-│       │   └── context.py       # Session context
-│       ├── memory/
-│       │   ├── __init__.py
-│       │   ├── vector.py        # Vector search
-│       │   ├── graph.py         # Graph queries
-│       │   └── hybrid.py        # Combined search
-│       ├── providers/
-│       │   ├── __init__.py
-│       │   ├── registry.py      # Provider abstraction
-│       │   ├── anthropic.py
-│       │   ├── openai.py
-│       │   └── ollama.py
-│       ├── plugins/
-│       │   ├── __init__.py
-│       │   ├── loader.py        # Plugin discovery
-│       │   ├── hooks.py         # Lifecycle hooks
-│       │   └── manifest.py      # Plugin config schema
-│       └── sessions/
-│           ├── __init__.py
-│           └── manager.py       # Session state
+├── frontend/                    # SvelteKit app
+│   ├── package.json
+│   ├── svelte.config.js
+│   ├── src/
+│   │   ├── app.html
+│   │   ├── app.css
+│   │   ├── lib/
+│   │   │   ├── components/      # Svelte components (shadcn-svelte)
+│   │   │   ├── stores/          # Svelte stores
+│   │   │   └── api.ts           # API client
+│   │   └── routes/
+│   │       ├── +layout.svelte
+│   │       ├── +page.svelte
+│   │       ├── chat/[[id]]/     # Chat interface
+│   │       ├── sessions/        # Session management
+│   │       ├── memory/          # Memory browser
+│   │       ├── agents/          # Agent config
+│   │       ├── config/          # Provider settings
+│   │       └── login/           # Auth
+│   └── static/
+├── api/                         # Backend API (Bun)
+│   ├── package.json
+│   ├── src/
+│   │   ├── index.ts             # Entry point
+│   │   ├── config.ts            # Settings
+│   │   ├── gateway/
+│   │   │   ├── websocket.ts     # WS connection handler
+│   │   │   └── http.ts          # REST endpoints
+│   │   ├── agents/
+│   │   │   ├── runtime.ts       # Agent execution loop
+│   │   │   ├── tools/           # Built-in tools
+│   │   │   └── context.ts       # Session context
+│   │   ├── memory/
+│   │   │   ├── vector.ts        # Vector search
+│   │   │   └── hybrid.ts        # Combined search (vector + BM25)
+│   │   ├── providers/
+│   │   │   ├── abstraction.ts   # Unified provider interface
+│   │   │   ├── claude-agent.ts  # Claude subscription
+│   │   │   ├── codex.ts         # OpenAI/Codex subscription
+│   │   │   ├── copilot.ts       # GitHub Copilot subscription
+│   │   │   └── vercel-ai.ts     # API key providers
+│   │   ├── plugins/
+│   │   │   ├── loader.ts        # Plugin discovery
+│   │   │   ├── hooks.ts         # Lifecycle hooks
+│   │   │   └── manifest.ts      # Plugin config schema
+│   │   └── sessions/
+│   │       └── manager.ts       # Session state
+│   └── tests/
 ├── plugins/
 │   ├── discord/
 │   │   ├── manifest.yaml
-│   │   └── bot.py
+│   │   └── bot.ts
 │   └── telegram/
 │       ├── manifest.yaml
-│       └── bot.py
-└── tests/
+│       └── bot.ts
+└── shared/                      # Shared types between frontend + API
+    ├── types.ts
+    └── schemas.ts               # Zod schemas (shared validation)
 ```
 
 ---
 
 ## Dependencies (Initial)
 
-```toml
-[project]
-dependencies = [
-    "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.34.0",
-    "websockets>=14.0",
-    "pydantic>=2.10.0",
-    "pydantic-settings>=2.7.0",
-    "surrealdb>=0.4.0",
-    "minio>=7.2.0",
-    "anthropic>=0.40.0",
-    "openai>=1.58.0",
-    "ollama>=0.4.0",
-    "httpx>=0.28.0",
-]
+### API (Bun)
 
-[project.optional-dependencies]
-discord = ["discord.py>=2.5.0"]
-telegram = ["python-telegram-bot>=21.0"]
+```json
+{
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": ">=0.1.0",
+    "@openai/codex-sdk": ">=0.1.0",
+    "@github/copilot-sdk": ">=0.1.0",
+    "ai": ">=4.0.0",
+    "@ai-sdk/openai": ">=1.0.0",
+    "@ai-sdk/anthropic": ">=1.0.0",
+    "@ai-sdk/amazon-bedrock": ">=1.0.0",
+    "ollama-ai-provider": ">=1.0.0",
+    "@openrouter/ai-sdk-provider": ">=0.1.0",
+    "surrealdb": ">=1.0.0",
+    "minio": ">=8.0.0",
+    "zod": ">=3.23.0",
+    "hono": ">=4.0.0"
+  }
+}
 ```
+
+### Frontend (SvelteKit)
+
+```json
+{
+  "devDependencies": {
+    "@sveltejs/kit": "^2.0.0",
+    "svelte": "^5.0.0",
+    "tailwindcss": "^4.0.0",
+    "bits-ui": "^1.0.0",
+    "typescript": "^5.0.0",
+    "vite": "^7.0.0",
+    "vitest": "^4.0.0"
+  },
+  "dependencies": {
+    "marked": ">=17.0.0",
+    "dompurify": ">=3.0.0",
+    "highlight.js": ">=11.0.0"
+  }
+}
+```
+
+*Note: shadcn-svelte uses bits-ui as its component primitive library. marked + DOMPurify + highlight.js for chat message rendering (matching agent-spike and slash-ski patterns).*
+
+#### Frontend Documentation (LLM-Friendly)
+
+| Library | Resource | URL |
+|---------|----------|-----|
+| **Svelte + SvelteKit + CLI** | Full docs | [svelte.dev/llms-full.txt](https://svelte.dev/llms-full.txt) |
+| | Medium (compressed) | [svelte.dev/llms-medium.txt](https://svelte.dev/llms-medium.txt) |
+| | Small (minimal) | [svelte.dev/llms-small.txt](https://svelte.dev/llms-small.txt) |
+| | SvelteKit only | [svelte.dev/docs/kit/llms.txt](https://svelte.dev/docs/kit/llms.txt) |
+| | Svelte only | [svelte.dev/docs/svelte/llms.txt](https://svelte.dev/docs/svelte/llms.txt) |
+| | CLI Tailwind integration | [svelte.dev/docs/cli/tailwind/llms.txt](https://svelte.dev/docs/cli/tailwind/llms.txt) |
+| | Docs hub (all variants) | [svelte.dev/docs/llms](https://svelte.dev/docs/llms) |
+| **shadcn-svelte** | llms.txt (40+ components) | [shadcn-svelte.com/llms.txt](https://www.shadcn-svelte.com/llms.txt) |
+| | SvelteKit install guide | [shadcn-svelte.com/docs/installation/sveltekit](https://www.shadcn-svelte.com/docs/installation/sveltekit) |
+| | Full docs | [shadcn-svelte.com/docs](https://www.shadcn-svelte.com/docs) |
+| **Tailwind CSS** | No official llms.txt | [PR rejected](https://github.com/tailwindlabs/tailwindcss.com/pull/2388) — docs at [tailwindcss.com/docs](https://tailwindcss.com/docs) |
+| | Community scraper | [jsr.io/@jurajstefanic/docs2llms](https://jsr.io/@jurajstefanic/docs2llms) |
+
+#### Reference Repos
+
+| Repo | Stack | Relevance |
+|------|-------|-----------|
+| [ilude/agent-spike](https://github.com/ilude/agent-spike) | SvelteKit + Svelte 5 + Vite, marked + DOMPurify + highlight.js, CodeMirror, D3, Vitest + Playwright | Chat UI patterns, SSE streaming, vault/studio editing |
+| [slash-ski](https://github.com/Ministry-of-Downhill-Redistribution/slash-ski) | SvelteKit + Svelte 5 + Tailwind 4 + Bun, marked + DOMPurify, Lucia auth, Prisma, Vitest | Tailwind integration patterns, auth, testing setup |
 
 ---
 
@@ -1375,8 +1409,8 @@ telegram = ["python-telegram-bot>=21.0"]
 1. **Answer open questions above**
 2. Design SurrealDB schema for memory system
 3. Define plugin manifest format
-4. Scaffold project structure with uv
-5. Implement core gateway (FastAPI + WS)
+4. Scaffold project structure with Bun
+5. Implement core gateway (Hono + WS)
 6. Add first plugin (CLI for testing)
 
 ---
@@ -1396,15 +1430,21 @@ telegram = ["python-telegram-bot>=21.0"]
 | 2026-02-16 | Files-first in MinIO, SurrealDB as index | Match OpenClaw philosophy: files are truth, DB is derived. Human-editable, portable, git-friendly |
 | 2026-02-16 | Shared infra with menos, separate namespaces | Same SurrealDB/MinIO/Ollama, Onyx queries menos for RAG, conversations stay in Onyx |
 | 2026-02-16 | In-process plugins for MVP | Simpler deployment, interfaces designed for future extraction to separate services |
-| 2026-02-16 | Claude Agent SDK + LiteLLM | SDK for Claude subscription, LiteLLM for everything else (Bedrock, OpenRouter, Copilot, ChatGPT, Ollama, etc.) |
+| 2026-02-16 | ~~Claude Agent SDK + LiteLLM~~ | Superseded by 4-SDK TypeScript abstraction layer (see below) |
 | 2026-02-16 | MinIO for session logs + SurrealDB metadata | JSONL files scale to any length, metadata enables fast queries |
 | 2026-02-16 | OpenAI-compatible HTTP API | Drop-in replacement, works with existing tools/libraries |
-| 2026-02-16 | Browser Control UI (React + Vite) | Chat, sessions, memory, agents, provider config, logs |
+| 2026-02-16 | Browser Control UI (SvelteKit + shadcn-svelte) | Chat, sessions, memory, agents, provider config, logs |
 | 2026-02-16 | OpenClaw-compatible agent format | JSON config + workspace markdown files, enables migration |
-| 2026-02-16 | Comprehensive tool system | Memory, sessions, web (SearXNG), FS, runtime, schedule (APScheduler), menos, model routing, mermaid, git, docker |
+| 2026-02-16 | Comprehensive tool system | Memory, sessions, web (SearXNG), FS, runtime, schedule. menos, model routing, mermaid, git, docker are post-MVP |
+| 2026-02-16 | SvelteKit + shadcn-svelte for web UI | Less boilerplate than React, built-in routing, shadcn-svelte for accessible components |
+| 2026-02-16 | Narrowed MVP tool scope | Only memory, sessions, web, fs, runtime, schedule for MVP. menos, model routing, mermaid, git, docker are post-MVP |
+| 2026-02-16 | Web UI is primary interface for MVP | Bot plugins (Discord/Telegram) are post-MVP; web UI serves as both chat and admin |
+| 2026-02-16 | Full TypeScript/Bun stack (dropped Python/FastAPI) | All subscription providers have official TS SDKs; one language across frontend+backend; LiteLLM no longer needed |
+| 2026-02-16 | 4-SDK provider abstraction layer | Claude Agent SDK + OpenAI Codex SDK + GitHub Copilot SDK + Vercel AI SDK; covers subscriptions + API keys |
 
 ### Research Links
 
+- **[OpenClaw Research Notes](openclaw-notes.md)** - Local research: Docker setup, memory architecture, enhancement options (Graphiti, Cognee, Mem0, ClawRAG), hybrid search tuning, decision matrix
 - [OpenClaw GitHub](https://github.com/openclaw/openclaw)
 - [nanobot](https://github.com/HKUDS/nanobot) - Python reference implementation
 - [FemtoBot](https://github.com/rocopolas/FemtoBot) - Ollama + ChromaDB patterns
