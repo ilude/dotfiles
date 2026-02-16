@@ -10,7 +10,7 @@
 
 OpenClaw-inspired personal AI assistant with:
 - Plugin architecture for Discord/Telegram bots
-- Graph + vector memory using SurrealDB
+- Vector + keyword hybrid memory in MVP (optional graph extension)
 - Multi-provider LLM support (Anthropic, OpenAI, Ollama, multi-provider via 4-SDK abstraction)
 - Integration with menos content vault
 
@@ -75,6 +75,8 @@ Bun/Hono API server with SvelteKit frontend. Shares SurrealDB, MinIO, and Ollama
 
 Following OpenClaw's philosophy: **files are truth, database is derived index**.
 
+Graph modeling (entities/edges over memory) is optional and explicitly post-MVP unless requirements change.
+
 #### Storage Layout
 
 ```
@@ -122,6 +124,20 @@ DEFINE FIELD chunk_size ON memory_meta TYPE int;
 DEFINE FIELD chunk_overlap ON memory_meta TYPE int;
 ```
 
+#### Embedding Dimension Policy (MVP)
+
+- MVP pins one embedding model and one dimension for all indexed chunks (current target: `nomic-embed-text`, 1024-d).
+- Changing embedding model or dimension is a migration event: full re-embed + reindex for the affected agent scope.
+- `memory_meta` stores the active embedding fingerprint (`provider`, `model`, chunk config) and is checked on startup/session begin.
+- If fingerprint differs from indexed data, Onyx marks index stale and triggers deterministic rebuild before hybrid search is considered healthy.
+
+#### Full-Text Index Requirements (MVP)
+
+- Define and migrate a full-text search index for `memory_chunk.content` before enabling hybrid search.
+- Use a fixed analyzer configuration (tokenization + normalization/stemming) so BM25 scoring is stable across environments.
+- Ensure the query operator/index reference used by `search::score(...)` and `content @...@` maps to that index.
+- Validate FTS index presence at startup and fail fast (or disable BM25 path with explicit warning) if missing.
+
 #### Sync Flow
 
 On file change (or session start), compare checksums, re-chunk changed files (~400 tokens, 80 overlap), embed via Ollama, and upsert into SurrealDB. Stale chunks are deleted automatically.
@@ -141,6 +157,7 @@ LIMIT 20;
 LET $fts_results = SELECT *,
     search::score(1) AS score
 FROM memory_chunk
+-- Requires configured FTS index on memory_chunk.content
 WHERE content @1@ $keywords
   AND agent_id = $agent_id
 ORDER BY score DESC
@@ -220,7 +237,7 @@ Conversation history stored in Onyx's own namespace:
 
 ### D3: Bot Plugin Architecture - DECIDED
 
-**Decision**: In-process plugins for MVP, interfaces designed for future extraction
+**Decision**: No production bot plugins in MVP. Build PluginProtocol interfaces in MVP, ship in-process plugins in Phase 2.
 
 #### Plugin Architecture
 
@@ -321,6 +338,8 @@ No core changes needed - just swap the in-process plugin for a client stub.
 
 All key providers now have official TypeScript SDKs. A custom abstraction layer unifies them behind a single interface, eliminating the need for LiteLLM (Python) or its proxy.
 
+MVP must support both subscription-backed access and API-key/credential-backed access.
+
 #### Architecture
 
 ```
@@ -379,6 +398,14 @@ function getProvider(model: string): ProviderBackend {
 | OpenRouter | `@openrouter/ai-sdk-provider` | API key | `openrouter/` |
 | Google Vertex | `@ai-sdk/google-vertex` | GCP credentials | `vertex/` |
 | Azure OpenAI | `@ai-sdk/azure` | Azure credentials | `azure/` |
+
+#### Docker Auth State (MVP)
+
+- Subscription backends must persist OAuth/session artifacts on host-mounted volumes.
+- Onyx API container receives explicit mount points for provider auth state (read/write) and does not rely on ephemeral container filesystem.
+- Required auth mount paths are documented in deploy config and validated at startup.
+- If required auth state is missing/expired, provider status is `unauthenticated` and UI must offer re-auth flow.
+- Container rebuild/restart must not invalidate authenticated subscription providers when host mounts are unchanged.
 
 #### Why Four Backends?
 
@@ -547,13 +574,13 @@ data: [DONE]
 
 #### Authentication
 
-**MVP**: Password login → session cookie. Single user, password configured in `onyx.json` (hashed).
+**MVP**: Username/password login. Single user, password configured in `onyx.json` (hashed).
 
 - Web UI: Login form, server sets `HttpOnly` secure session cookie
 - API clients: `Authorization: Bearer onyx_sk_<token>` (static API key for programmatic access)
 - Both methods coexist — cookie for browser, bearer token for scripts/plugins
 
-**Future (Phase 3)**: Add WebAuthn/passkey support for passwordless login.
+**Future (Phase 2)**: Add passkey as an optional auth method.
 
 ```
 # Browser (cookie-based, set after login)
@@ -566,16 +593,17 @@ Authorization: Bearer onyx_sk_abc123
 #### Agent Routing
 
 ```
-# Option 1: In model field (OpenClaw style)
-"model": "onyx:research-agent"
+# Canonical: model is provider model identifier
+"model": "openrouter/anthropic/claude-opus-4"
 
-# Option 2: Header
+# Agent selection via header
 "x-onyx-agent-id": "research-agent"
 
-# Option 3: Default to "main" agent
+# Default when header omitted
+# route to "main" agent
 ```
 
-*Implemented as Hono routes in `api/src/gateway/http.ts`.*
+*Planned as Hono routes in `api/src/gateway/http.ts`.*
 
 ---
 
@@ -653,7 +681,7 @@ Authorization: Bearer onyx_sk_abc123
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  Claude Subscription                              [Connected ✓] │
-│  └─ Uses Claude Code CLI auth (~/.claude.json)                  │
+│  └─ Uses host auth state mounted into Onyx runtime              │
 │     Status: Authenticated as mike@example.com                   │
 │                                                                 │
 │  ─────────────────────────────────────────────────────────────  │
@@ -732,6 +760,14 @@ Authorization: Bearer onyx_sk_abc123
 
 All configuration lives in `~/.config/onyx/onyx.json` (see D9). Sensitive fields (API keys, password hash) are encrypted in place using a master key derived from the gateway password. The web UI config page reads/writes this file.
 
+MVP key lifecycle requirements:
+
+- Encryption key derivation is password-based (deterministic KDF with per-install salt).
+- Password change requires authenticated re-encryption of all protected fields in `onyx.json` in one transaction.
+- If old password is unavailable (reset flow), encrypted provider credentials are discarded and must be re-entered.
+- Non-interactive startup must fail fast with explicit error if encrypted config cannot be decrypted.
+- Bootstrap flow initializes salt + encrypted secret fields only after first successful username/password setup.
+
 #### Security
 
 - Authentication: see D6 (password + session cookie for UI, bearer token for API)
@@ -759,6 +795,13 @@ All configuration lives in `~/.config/onyx/onyx.json` (see D9). Sensitive fields
 | `mermaid` | `render_mermaid` | Post-MVP |
 | `git` | `git_commit`, `git_push`, `git_pull`, `git_status` | Post-MVP |
 | `docker` | `docker_ps`, `docker_logs`, `docker_stats`, `docker_exec` | Post-MVP |
+
+#### MVP Risk Acceptance: Runtime Tools
+
+- `runtime.exec` is intentionally included in MVP before sandbox isolation is delivered.
+- This is accepted only for single-user, self-hosted operation on trusted infrastructure.
+- Internet-exposed or multi-user deployment with `runtime.exec` enabled is out of MVP security posture.
+- Phase 3 sandbox isolation remains the mitigation path for broader/remote usage.
 
 #### Tool Definition Schema
 
@@ -795,28 +838,31 @@ The web interface renders assistant responses with:
 
 ---
 
-### D10: Deployment Topology - DECIDED
+### D10: Deployment Topology - OPEN
 
-**Decision**: Single Docker Compose stack, shared network, host-mounted volumes for development
+**Current proposal**: Single Docker Compose stack, shared network, host-mounted volumes for development.
 
-#### Service Map
+**Open question**: Keep separate `onyx-api` and `onyx-frontend` services, or unify serving in one service for MVP.
+
+#### Candidate Service Map (Option A: Separate Services)
 
 | Service | Image | Port | Volumes | Notes |
 |---------|-------|------|---------|-------|
-| **onyx-api** | `onyx:local` (Dockerfile) | `18790` | Source mount (dev), Docker socket | Hono HTTP + WebSocket |
+| **onyx-api** | `onyx:local` (Dockerfile) | `18790` | Source mount (dev), Docker socket, provider auth-state mounts | Hono HTTP + WebSocket |
 | **onyx-frontend** | `onyx-frontend:local` (Dockerfile) | `5173` (dev) / `18791` (prod) | Source mount (dev) | SvelteKit, proxies API calls to onyx-api |
 | **surrealdb** | `surrealdb/surrealdb:v2` | `8000` | `surrealdb_data:/data` | Shared with menos (separate namespaces) |
 | **minio** | `minio/minio:latest` | `9000` / `9001` (console) | `minio_data:/data` | Shared with menos (separate buckets) |
 | **ollama** | `ollama/ollama:latest` | `11434` | `ollama_models:/root/.ollama` | Shared with menos |
 | **searxng** | `searxng/searxng:latest` | `8888` | `searxng_config:/etc/searxng` | Onyx-only, web search tool |
 
-#### Networking
+#### Candidate Networking (for Option A)
 
-- All services on a shared `onyx-net` bridge network
+- All services run on a shared `onyx-net` bridge network
 - menos services join the same network for shared SurrealDB/MinIO/Ollama access
 - Only onyx-api, onyx-frontend, and minio console expose host ports
+- If MVP chooses unified serving, this networking/port plan must be revised
 
-#### Shared vs. Onyx-Only
+#### Shared vs. Onyx-Only (applies to either option)
 
 | Resource | Shared with menos? |
 |----------|--------------------|
@@ -1082,9 +1128,9 @@ onyx/
 | `@ai-sdk/amazon-bedrock` | AWS Bedrock provider |
 | `ollama-ai-provider` | Ollama provider |
 | `@openrouter/ai-sdk-provider` | OpenRouter provider |
-| `@anthropic-ai/claude-agent-sdk` | Claude subscription (Phase 2) |
-| `@openai/codex-sdk` | OpenAI/Codex subscription (Phase 2) |
-| `@github/copilot-sdk` | GitHub Copilot subscription (Phase 2) |
+| `@anthropic-ai/claude-agent-sdk` | Claude subscription backend |
+| `@openai/codex-sdk` | OpenAI/Codex subscription backend |
+| `@github/copilot-sdk` | GitHub Copilot subscription backend |
 
 ### Frontend (SvelteKit)
 
@@ -1136,14 +1182,14 @@ Single-user assistant accessible through a browser. No bot plugins yet.
 | Deliverable | Details |
 |-------------|---------|
 | **Project scaffold** | Bun monorepo, Docker Compose (Onyx + SurrealDB + MinIO + Ollama + SearXNG) |
-| **Provider abstraction** | Vercel AI SDK backend first (Ollama + API key providers). Subscription SDKs deferred until official releases stabilize |
+| **Provider abstraction** | Four-SDK abstraction in MVP: subscription-backed providers + API-key/credential providers |
 | **OpenAI-compatible API** | `/v1/chat/completions`, `/v1/models`, `/health` via Hono |
 | **Session management** | JSONL in MinIO, metadata in SurrealDB |
 | **Memory system** | Files-first in MinIO, hybrid search (vector + BM25) in SurrealDB, Ollama embeddings |
 | **MVP tools** | `memory` (search/write/get), `sessions` (list/history), `web` (SearXNG search/fetch), `fs` (read/write/edit), `runtime` (exec), `schedule` (cron jobs) |
 | **Agent definitions** | OpenClaw-compatible JSON config + workspace markdown files |
 | **Web UI** | SvelteKit + shadcn-svelte: chat, sessions, memory browser, agent config, provider settings |
-| **Auth** | Bearer token (single user, configured in `onyx.json`) |
+| **Auth** | Username/password login (single user). Optional static bearer token for API clients |
 
 ### Phase 2: Integrations & Multi-Platform
 
@@ -1151,7 +1197,7 @@ Single-user assistant accessible through a browser. No bot plugins yet.
 |-------------|---------|
 | **Bot plugins** | Discord, Telegram (in-process, PluginProtocol interface) |
 | **menos integration** | `menos_search`, `menos_ingest` tools |
-| **Subscription providers** | Claude Agent SDK, OpenAI Codex SDK, GitHub Copilot SDK (when SDKs mature) |
+| **Subscription provider hardening** | Improve reliability, OAuth UX, and fallback behavior for Claude/Codex/Copilot backends |
 | **Additional tools** | `model_routing`, `mermaid`, `git`, `docker` |
 | **CLI plugin** | Terminal-based chat interface |
 
@@ -1188,20 +1234,29 @@ Single-user assistant accessible through a browser. No bot plugins yet.
 
 <!-- Use this section for notes, decisions, and working through problems -->
 
+### Review Clarifications (2026-02-16)
+
+- Auth direction: MVP is username/password. Passkey becomes an optional auth method in Phase 2.
+- Plugin timeline: Discord/Telegram plugins are Phase 2 (not MVP).
+- Provider support: MVP must support both subscription-backed model access and API-key/credential providers.
+- Memory scope: Graph memory is optional; MVP memory remains vector + keyword hybrid.
+- Runtime tool safety: keep current scope as-is in PRD (no additional guardrail spec added now).
+- Frontend deployment: service split is not final; keep frontend/API serving strategy as an open decision.
+
 ### Decision Summary
 
 | ID | Decision | One-liner |
 |----|----------|-----------|
 | D1 | Memory Architecture | Files-first in MinIO, SurrealDB as search index |
 | D2 | menos Integration | Shared infra, Onyx queries menos, conversations stay in Onyx |
-| D3 | Bot Plugin Architecture | In-process plugins for MVP, interfaces for future extraction |
+| D3 | Bot Plugin Architecture | Plugin interfaces in MVP; in-process Discord/Telegram plugins in Phase 2 |
 | D4 | LLM Provider Strategy | 4-SDK TypeScript abstraction (no LiteLLM) |
 | D5 | Session Persistence | JSONL in MinIO + metadata in SurrealDB |
 | D6 | API Design | OpenAI-compatible HTTP API |
 | D7 | Web Interface | SvelteKit + shadcn-svelte control UI |
 | D8 | Tool System | Built-in tool groups + custom tools + cron scheduling |
 | D9 | Agent Definition Format | OpenClaw-compatible JSON config + workspace markdown |
-| D10 | Deployment Topology | Single Docker Compose stack, shared network |
+| D10 | Deployment Topology | Open decision: separate frontend/API vs unified serving |
 
 ### Research Links
 
