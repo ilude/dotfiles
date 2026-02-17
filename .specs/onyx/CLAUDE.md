@@ -6,6 +6,11 @@ This file provides context for Claude Code when working on the Onyx project.
 
 Personal AI assistant platform — OpenClaw's concept rebuilt in **TypeScript/Bun** on existing menos infrastructure (SurrealDB, MinIO, Ollama). Runs on Linux with Docker. Single-user MVP.
 
+## Working Scope (Issue 2)
+
+- MVP execution scope is Onyx-first: implement within the `onyx/` repo/submodule.
+- Do not require direct parent-repo Ansible edits (`menos/infra/ansible`) for MVP task completion.
+
 ## Why Not Just Use OpenClaw
 
 - Overly difficult to get working with available model subscriptions
@@ -14,7 +19,8 @@ Personal AI assistant platform — OpenClaw's concept rebuilt in **TypeScript/Bu
 
 ## Key Files
 
-- `prd.md` — comprehensive PRD with 10 decided architectural decisions (D1-D10)
+- `prd.md` — comprehensive PRD; D1-D12 are the authoritative architecture scope
+- `plan.md` — MVP implementation plan aligned to D1-D12 decisions
 - `research/openclaw-notes.md` — research notes: Docker setup, memory architecture, enhancement options, hybrid search tuning, decision matrix
 - `research/` — source analyses, comparisons, prompt extraction, and research outputs from PicoClaw, NanoClaw, Nanobot, OpenClaw
 - `features/` — future feature design documents (e.g., ToolResult duality)
@@ -47,7 +53,7 @@ Custom abstraction layer unifies all four backends behind a single interface.
 |-----------|-----------|
 | Backend runtime | Bun / Hono (HTTP + WebSocket) |
 | Frontend | SvelteKit + shadcn-svelte + Tailwind CSS |
-| LLM providers | 4-SDK abstraction layer (Vercel AI SDK first, subscription SDKs Phase 2) |
+| LLM providers | 4-SDK abstraction layer (subscription SDKs + API key/credential backends in MVP) |
 | Scheduling | TBD (node-cron, BullMQ, or similar) |
 | Package manager | Bun / package.json |
 | SurrealDB client | surrealdb.js |
@@ -63,16 +69,19 @@ Custom abstraction layer unifies all four backends behind a single interface.
 - **SurrealDB** replacing SQLite
 - **Auth**: Username/password (single user) + optional bearer token for API clients
 - **Provider**: Four-SDK abstraction (subscription backends + API key/credential providers)
+- **Heartbeat**: Engine + web UI notification center only (no external channels/gatherers)
+- **menos integration**: Internal server-side retrieval only (no user-visible `menos_*` tools)
+- **Deployment**: Onyx-owned deployment artifacts modeled after `menos/infra/ansible` patterns, with separate Onyx compose lifecycle using shared SurrealDB/MinIO/Ollama services
 
-NOT MVP: git tools, docker tools, mermaid rendering, model routing, menos integration, bot plugins (Discord/Telegram — Phase 2)
+NOT MVP: git tools, docker tools, mermaid rendering, model routing, external heartbeat channels/gatherers, production bot plugins (Discord/Telegram — Phase 2)
 
 ## Roadmap
 
 ### Phase 1: MVP — Personal Assistant via Web UI
-Project scaffold, four-SDK providers, OpenAI-compatible API (Hono), sessions, memory, MVP tools (memory/sessions/web/fs/runtime/schedule), agent definitions, web UI, username/password auth (+ optional bearer token).
+Project scaffold, four-SDK providers (subscription + API key/credential), OpenAI-compatible API (Hono), header-only `x-onyx-*` extensions, sessions, memory, MVP tools (including canonical `memory_read` and `runtime_exec`), agent definitions, heartbeat + web notification center, internal menos retrieval, web UI, username/password auth (+ optional bearer token).
 
 ### Phase 2: Integrations & Multi-Platform
-Bot plugins (Discord, Telegram), menos integration, subscription provider hardening (OAuth UX/reliability/fallbacks), additional tools (model routing, mermaid, git, docker), CLI plugin.
+Production bot plugins (Discord, Telegram), user-visible menos tools/integrations, additional heartbeat gatherers/channels, subscription provider hardening (OAuth UX/reliability/fallbacks), additional tools (model routing, mermaid, git, docker), CLI plugin.
 
 ### Phase 3: Future
 Multi-user, sandbox isolation, plugin extraction to separate processes, passkey auth (WebAuthn), MCP support.
@@ -81,22 +90,32 @@ Multi-user, sandbox isolation, plugin extraction to separate processes, passkey 
 
 | ID | Decision | One-liner |
 |----|----------|-----------|
-| D1 | Memory | Files-first in MinIO, SurrealDB as search index |
-| D2 | menos integration | Shared infra, Onyx queries menos, conversations stay in Onyx |
-| D3 | Bot plugins | Phase 2, in-process with interfaces for future extraction |
-| D4 | LLM providers | 4-SDK TypeScript abstraction (Phase 1: Vercel AI SDK; Phase 2: subscription SDKs) |
+| D1 | Memory | Files-first in MinIO + SurrealDB index; hybrid search requires FTS/BM25 availability (fail fast if unavailable) |
+| D2 | menos integration | Shared infra; MVP uses internal server-side retrieval only; conversations stay in Onyx |
+| D3 | Bot plugins | MVP ships PluginProtocol interface + test stub only; production plugins in Phase 2 |
+| D4 | LLM providers | 4-SDK TypeScript abstraction with subscription + API key/credential backends in MVP |
 | D5 | Sessions | MinIO JSONL + SurrealDB metadata |
-| D6 | API | OpenAI-compatible HTTP API (Hono) |
+| D6 | API | OpenAI-compatible HTTP API (Hono) with header-only `x-onyx-*` extensions |
 | D7 | Web UI | SvelteKit + shadcn-svelte + Tailwind CSS |
-| D8 | Tool system | Built-in tool groups + custom tools + cron scheduling |
-| D9 | Agent format | OpenClaw-compatible JSON config + workspace markdown |
-| D10 | Deployment | Single Docker Compose stack, shared network with menos |
+| D8 | Tool system | Built-in tool groups + custom tools + cron scheduling (canonical IDs include `memory_read`, `runtime_exec`) |
+| D9 | Agent format | OpenClaw-compatible JSON config + workspace markdown under `~/.config/onyx/workspace` |
+| D10 | Deployment | Onyx-owned deploy path modeled after menos Ansible patterns; MVP shares SurrealDB/MinIO/Ollama services without requiring direct `menos/infra/ansible` edits |
+| D11 | Runtime | ReAct loop with bounded iterations, token budgets, and provider failover |
+| D12 | Heartbeat | Autonomous loop; MVP notification sink is web UI center only |
 
 ## Auth Strategy
 
 - **Phase 1**: Username/password login with session cookie (web UI) + optional bearer token (API)
+- `password_hash` is auth-only; provider credentials are not derived from user password
+- Provider credentials stay behind a server-side secret broker boundary (config stores references/metadata only)
 - **Phase 2**: Passkey as optional auth method
 - **Phase 3**: Advanced auth hardening (multi-user-oriented)
+
+## Path Conventions
+
+- Config root: `~/.config/onyx/onyx.json`
+- Main workspace: `~/.config/onyx/workspace/`
+- Memory files: `~/.config/onyx/workspace/MEMORY.md` and `~/.config/onyx/workspace/memory/YYYY-MM-DD.md`
 
 ## Testing
 

@@ -18,6 +18,7 @@ Build the complete Onyx Phase 1 MVP — a personal AI assistant platform with Ty
 - **PRD**: `.specs/onyx/prd.md` (12 decided architectural decisions, D1-D12)
 - **Working Context**: `.specs/onyx/CLAUDE.md`
 - **Target directory**: Separate `onyx` repository, imported into this repo as a git submodule after initial bootstrap commit
+- **Execution scope (MVP)**: Onyx-only implementation in `onyx/`; parent-repo (`menos/infra/ansible`) changes are not required for MVP task completion
 
 ## Security Implementation Baseline (OWASP + 12-Factor)
 
@@ -28,6 +29,9 @@ Build the complete Onyx Phase 1 MVP — a personal AI assistant platform with Ty
 - **Redaction gate**: all logs/transcripts/tool results pass through secret-redaction middleware before persistence/streaming.
 - **Lifecycle controls**: secret metadata supports rotation/revocation/expiry; startup fails fast if required refs cannot be resolved.
 - **Auditability**: emit tamper-resistant audit events for secret resolve attempts, denials, rotations, and failures.
+- **Phase 1 security baseline gate**: require a mandatory non-exfiltration security gate test before Phase 1 completion.
+
+Roadmap note: Phase 2 and Phase 3 continue additional security hardening.
 
 References:
 - 12-Factor App, Config: https://12factor.net/config
@@ -38,6 +42,7 @@ References:
 
 | Task | Est. Files | Change Type | Model | Agent |
 |------|-----------|-------------|-------|-------|
+| T0: Background orchestration | 2-3 | execution control | sonnet | coordinator |
 | T1: Monorepo scaffold | 8-10 | architecture | opus | builder-heavy |
 | T2: Shared types + Zod schemas | 2-3 | feature | sonnet | builder |
 | T3: Config system (onyx.json) | 3-4 | feature | sonnet | builder |
@@ -75,6 +80,7 @@ References:
 
 | Name | Agent | Model | Role |
 |------|-------|-------|------|
+| onyx-orchestrator | coordinator | sonnet | Background coordinator for dependency dispatch, status tracking, and wave gating |
 | onyx-scaffold | builder-heavy | opus | Monorepo scaffold + architectural foundations |
 | onyx-types | builder | sonnet | Shared types + Zod schemas |
 | onyx-infra-1 | builder | sonnet | Config + SurrealDB client |
@@ -99,15 +105,47 @@ References:
 
 ## Execution Waves
 
+Issue 4 decision (governance): runtime/dependency version pinning is intentionally deferred; Bun/Node versions, container image tags, and env minimum baselines will be finalized at implementation kickoff, not in this planning document.
+
+Issue 6 decision (governance): autonomous delivery uses a single long-lived feature branch across all waves; wave-by-wave PR slicing is not used during implementation.
+
+Guardrail: Wave 1 coding must not start until that kickoff baseline is documented.
+
+### Wave 0: Coordination Bootstrap
+
+- **T0**: Background orchestration setup [sonnet] — coordinator
+  - Define machine-readable task registry for `T*` + `V*` status (`pending` | `in_progress` | `blocked` | `done`)
+  - Define handoff contract: each builder returns changed files, test commands run, and unresolved blockers
+  - Define validator contract: each `V*` publishes pass/fail and unblock list for next wave
+  - Define retry/escalation policy for failed tasks (max retries, escalation to orchestrator)
+  - Acceptance Criteria:
+    1. [ ] Orchestrator can schedule all unblocked tasks in parallel for current wave
+       - Verification: dry-run dispatch against dependency graph
+       - Expected: only tasks with satisfied `blockedBy` are scheduled
+    2. [ ] Task status transitions are deterministic and auditable
+       - Verification: run simulated lifecycle (pending -> in_progress -> done / blocked)
+       - Expected: state transitions are valid and persisted
+     3. [ ] Validator output gates next-wave dispatch automatically
+        - Verification: mark V1 fail then pass
+        - Expected: wave-2 tasks remain blocked until V1 passes
+
+#### Wave 0 DoD Gate
+
+- All Wave 0 task acceptance criteria pass.
+- Validator V0 passes.
+- Required Wave 0 verification command outputs and artifacts are recorded.
+- No unresolved blockers remain for Wave 1 tasks.
+
 ### Wave 1: Project Foundation (parallel)
 
-- **T1**: Monorepo scaffold [opus] — builder-heavy
+- **T1**: Monorepo scaffold [opus] — builder-heavy, blockedBy: [T0]
   - Create `onyx/` directory with Bun workspace monorepo: root `package.json`, `tsconfig.json`, `biome.json`
   - `api/` package: `package.json`, `tsconfig.json`, `src/index.ts` (Hono hello world)
   - `frontend/` package: SvelteKit init stub (placeholder, full setup in Wave 7)
   - `shared/` package: `package.json`, `tsconfig.json`
   - Root `Dockerfile` (multi-stage for api), `docker-compose.yml` (stub services)
   - `.env.example`, `.gitignore`
+  - Derive initial `onyx/.env.example` schema from `menos/.env` structure by mirroring required variable names only (no secret value copying)
   - Acceptance Criteria:
     1. [ ] `cd onyx && bun install` succeeds with zero errors
        - Verification: `cd onyx && bun install && echo "OK"`
@@ -122,7 +160,7 @@ References:
        - Verification: `cd onyx && npx @biomejs/biome check .`
        - Expected: Exit 0, no errors
 
-- **T2**: Shared types + Zod schemas [sonnet] — builder
+- **T2**: Shared types + Zod schemas [sonnet] — builder, blockedBy: [T0]
   - `shared/src/types.ts`: Core types (Message, Session, Agent, Provider, Tool, MemoryFile, etc.)
   - `shared/src/schemas.ts`: Zod schemas for API request/response validation
   - `shared/src/index.ts`: Re-exports
@@ -134,9 +172,16 @@ References:
     2. [ ] Zod schemas validate OpenAI-compatible chat completion request/response
        - Verification: `cd onyx && bun test shared/`
        - Expected: All tests pass
-    3. [ ] Package exports work from api and frontend
-       - Verification: `cd onyx/api && bun run -e "import { ChatCompletionRequest } from '@onyx/shared'; console.log('OK')"`
-       - Expected: "OK"
+     3. [ ] Package exports work from api and frontend
+        - Verification: `cd onyx/api && bun run -e "import { ChatCompletionRequest } from '@onyx/shared'; console.log('OK')"`
+        - Expected: "OK"
+
+#### Wave 1 DoD Gate
+
+- All Wave 1 task acceptance criteria pass.
+- Validator V1 passes.
+- Required Wave 1 verification command outputs and artifacts are recorded.
+- No unresolved blockers remain for Wave 2 tasks.
 
 ### Wave 1 Validation
 
@@ -220,18 +265,25 @@ References:
     1. [ ] `onyx.json` persists only secret references, never raw provider credentials
        - Verification: `cd onyx && bun test api/src/secrets/ref.test.ts`
        - Expected: Validation rejects plaintext secret fields and accepts reference-only config
-    2. [ ] Provider backends can execute with broker-resolved secrets while model/tool payloads never contain raw credentials
-       - Verification: `cd onyx && bun test api/src/secrets/isolation.test.ts`
-       - Expected: Requests succeed; tests confirm prompts/tool payloads/log events contain no secret values
+    2. [ ] Provider backends can execute with broker-resolved secrets while model prompts/tool payloads/stream deltas never contain raw credentials
+        - Verification: `cd onyx && bun test api/src/secrets/isolation.test.ts`
+        - Expected: Requests succeed; tests confirm prompts/tool payloads/log events/streamed deltas contain no secret values
     3. [ ] Redaction middleware scrubs known key/token patterns from logs/tool results/transcripts before persistence
        - Verification: `cd onyx && bun test api/src/security/redact.test.ts`
        - Expected: Secret canary strings are redacted in all output channels
     4. [ ] Startup fails fast when required secret references cannot be resolved
        - Verification: `cd onyx && bun test api/src/secrets/startup.test.ts`
        - Expected: Deterministic startup error with unresolved ref diagnostics
-    5. [ ] Secret access emits auditable events with allow/deny outcomes
-       - Verification: `cd onyx && bun test api/src/security/audit.test.ts`
-       - Expected: Audit stream contains timestamped secret-access records without raw secret content
+     5. [ ] Secret access emits auditable events with allow/deny outcomes
+        - Verification: `cd onyx && bun test api/src/security/audit.test.ts`
+        - Expected: Audit stream contains timestamped secret-access records without raw secret content
+
+#### Wave 2 DoD Gate
+
+- All Wave 2 task acceptance criteria pass.
+- Validator V2 passes.
+- Required Wave 2 verification command outputs and artifacts are recorded.
+- No unresolved blockers remain for Wave 3 tasks.
 
 ### Wave 2 Validation
 
@@ -311,9 +363,16 @@ References:
     2. [ ] Routing resolves correct agent from channel + metadata
        - Verification: Test with multiple bindings, verify first-match-wins
        - Expected: Correct agent ID returned for each scenario
-    3. [ ] Missing workspace files handled gracefully (empty defaults)
-       - Verification: Load agent with missing SOUL.md
-       - Expected: No error, empty string used
+     3. [ ] Missing workspace files handled gracefully (empty defaults)
+        - Verification: Load agent with missing SOUL.md
+        - Expected: No error, empty string used
+
+#### Wave 3 DoD Gate
+
+- All Wave 3 task acceptance criteria pass.
+- Validator V3 passes.
+- Required Wave 3 verification command outputs and artifacts are recorded.
+- No unresolved blockers remain for Wave 4 tasks.
 
 ### Wave 3 Validation
 
@@ -338,9 +397,9 @@ References:
     3. [ ] Loop detection catches same tool+args called consecutively
        - Verification: Call same tool 3 times with same args
        - Expected: Third call blocked with loop detection error
-    4. [ ] Tool results are sanitized before they reach transcript or stream output
-       - Verification: Inject canary secret-like strings in mock tool output
-       - Expected: Output is redacted in stored transcript and streamed payload
+    4. [ ] Tool results (including `runtime_exec` paths) are sanitized before they reach logs, transcripts, or stream output
+       - Verification: Inject canary secret-like strings in mock tool output (including `runtime_exec` stdout/stderr path)
+       - Expected: Output is redacted in logs, stored transcript, and streamed payload
 
 - **T12**: Memory tools [sonnet] — builder, blockedBy: [V3]
   - `api/src/tools/memory/`: `memory_search`, `memory_write`, `memory_read` tools
@@ -391,14 +450,23 @@ References:
     2. [ ] Schedule tool creates cron jobs that persist
        - Verification: Create a job, list jobs, verify it appears
        - Expected: Job listed with correct schedule
-    3. [ ] Cancel job removes scheduled task
-       - Verification: Create then cancel, verify removed
-       - Expected: Job no longer in list
+     3. [ ] Cancel job removes scheduled task
+        - Verification: Create then cancel, verify removed
+        - Expected: Job no longer in list
+
+#### Wave 4 DoD Gate
+
+- All Wave 4 task acceptance criteria pass.
+- Validator V4 passes.
+- Mandatory Phase 1 security gate test passes: secret non-exfiltration is verified across prompts, tool outputs, logs, transcripts, streamed deltas, and `runtime_exec` paths.
+- Required Wave 4 verification command outputs and artifacts are recorded.
+- No unresolved blockers remain for Wave 5 tasks.
 
 ### Wave 4 Validation
 
 - **V4**: Validate Wave 4 [sonnet] — validator-heavy, blockedBy: [T11, T12, T13, T14, T15]
   - Verify all tool groups register, execute, handle errors, and loop detection works
+  - Run mandatory Phase 1 security gate test for secret non-exfiltration across prompts, tool outputs, logs, transcripts, streamed deltas, and `runtime_exec` paths
 
 ### Wave 5: Agent Runtime + Gateway (parallel)
 
@@ -473,9 +541,16 @@ References:
     2. [ ] `chat.send` triggers agent runtime and streams deltas back
        - Verification: Send chat.send, collect all messages until chat.done
        - Expected: Receive delta messages + done
-    3. [ ] `chat.abort` stops in-flight generation
-       - Verification: Send chat.send then immediately chat.abort
-       - Expected: Receive chat.done with abort finish_reason
+     3. [ ] `chat.abort` stops in-flight generation
+        - Verification: Send chat.send then immediately chat.abort
+        - Expected: Receive chat.done with abort finish_reason
+
+#### Wave 5 DoD Gate
+
+- All Wave 5 task acceptance criteria pass.
+- Validator V5 passes.
+- Required Wave 5 verification command outputs and artifacts are recorded.
+- No unresolved blockers remain for Wave 6 tasks.
 
 ### Wave 5 Validation
 
@@ -511,9 +586,16 @@ References:
     2. [ ] SSE endpoint pushes new notifications to connected clients
        - Verification: Connect to SSE, trigger notification, verify received
        - Expected: Notification received via SSE within 1 second
-    3. [ ] Priority levels respected in notification payload
-       - Verification: Create notifications with each priority, verify field present
-       - Expected: Priority field matches
+     3. [ ] Priority levels respected in notification payload
+        - Verification: Create notifications with each priority, verify field present
+        - Expected: Priority field matches
+
+#### Wave 6 DoD Gate
+
+- All Wave 6 task acceptance criteria pass.
+- Validator V6 passes.
+- Required Wave 6 verification command outputs and artifacts are recorded.
+- No unresolved blockers remain for Wave 7 and Wave 9 tasks (T30 path).
 
 ### Wave 6 Validation
 
@@ -553,9 +635,16 @@ References:
     2. [ ] Unauthenticated access redirects to /login
        - Verification: Navigate to /chat without auth
        - Expected: Redirected to /login
-    3. [ ] Successful login redirects to /chat
-       - Verification: Login with valid credentials
-       - Expected: Redirected to /chat
+     3. [ ] Successful login redirects to /chat
+        - Verification: Login with valid credentials
+        - Expected: Redirected to /chat
+
+#### Wave 7 DoD Gate
+
+- All Wave 7 task acceptance criteria pass.
+- Validator V7 passes.
+- Required Wave 7 verification command outputs and artifacts are recorded.
+- No unresolved blockers remain for Wave 8 tasks.
 
 ### Wave 7 Validation
 
@@ -637,9 +726,16 @@ References:
     2. [ ] System status shows service health
        - Verification: Navigate to status page
        - Expected: SurrealDB, MinIO, Ollama status indicators shown
-    3. [ ] Notification center shows heartbeat notifications with priority badges
-       - Verification: Trigger a notification, check notification dropdown
-       - Expected: Notification visible with priority level
+     3. [ ] Notification center shows heartbeat notifications with priority badges
+        - Verification: Trigger a notification, check notification dropdown
+        - Expected: Notification visible with priority level
+
+#### Wave 8 DoD Gate
+
+- All Wave 8 task acceptance criteria pass.
+- Validator V8 passes.
+- Required Wave 8 verification command outputs and artifacts are recorded.
+- No unresolved blockers remain for Wave 9 tasks.
 
 ### Wave 8 Validation
 
@@ -670,8 +766,8 @@ References:
   - `onyx/frontend/Dockerfile`: SvelteKit build
   - External network join to `menos-network` for shared services
   - SearXNG service configuration
-  - `.env.example` with all required variables
-  - `menos/infra/ansible/` extensions: additive Onyx deploy tasks/vars preserving existing menos deployment flow
+  - `.env.example` with all required variables, with schema mirrored from required `menos/.env` keys only (no secret value copying)
+  - Onyx-owned deployment artifacts modeled after `menos/infra/ansible` patterns; no direct edits to `menos/infra/ansible` required in MVP
   - Acceptance Criteria:
     1. [ ] `docker compose build` succeeds for all services
        - Verification: `cd onyx && docker compose build`
@@ -685,9 +781,16 @@ References:
     4. [ ] Shared services (SurrealDB, MinIO, Ollama) accessible via menos-network
        - Verification: Verify onyx-api can reach SurrealDB on menos-network
        - Expected: Connection successful
-    5. [ ] Ansible deployment remains additive with independent Onyx lifecycle
-       - Verification: run Ansible in check mode for Onyx tasks and verify menos services are untouched
-       - Expected: Onyx deploy/update actions are isolated from menos service restart/rollback path
+     5. [ ] Deployment artifacts are Onyx-owned and pattern-aligned with menos while preserving independent Onyx lifecycle
+        - Verification: review Onyx deploy assets against menos playbook patterns; run Onyx deployment path and verify shared services are consumed, not modified
+        - Expected: Onyx deploy/update actions remain isolated and require no direct MVP edits under `menos/infra/ansible`
+
+#### Wave 9 DoD Gate
+
+- All Wave 9 task acceptance criteria pass.
+- Validator V9 passes.
+- Required Wave 9 verification command outputs and artifacts are recorded.
+- No unresolved blockers remain for Wave 10 tasks.
 
 ### Wave 9 Validation
 
@@ -710,9 +813,16 @@ References:
     2. [ ] API integration: Chat completions with tool calls executes full ReAct loop
        - Verification: `cd onyx && bun test tests/integration/`
        - Expected: Integration tests pass
-    3. [ ] All `bun test` suites pass across entire project
-       - Verification: `cd onyx && bun test`
-       - Expected: 0 failures
+     3. [ ] All `bun test` suites pass across entire project
+        - Verification: `cd onyx && bun test`
+        - Expected: 0 failures
+
+#### Wave 10 DoD Gate
+
+- All Wave 10 task acceptance criteria pass.
+- Validator V10 passes.
+- Required Wave 10 verification command outputs and artifacts are recorded.
+- No unresolved blockers remain for next-wave closure and handoff tasks.
 
 ### Wave 10 Validation
 
@@ -722,6 +832,7 @@ References:
 ## Dependency Graph
 
 ```
+Wave 0:  T0 → V0
 Wave 1:  T1, T2 (parallel) → V1
 Wave 2:  T3, T4, T5, T6, T6b (parallel) → V2
 Wave 3:  T7, T8, T9, T10 (parallel) → V3
@@ -735,4 +846,17 @@ Wave 9:  T29 (needs V8), T30 (needs V6) → V9
 Wave 10: T31 → V10
 ```
 
+- **V0**: Validate Wave 0 [sonnet] — validator-heavy, blockedBy: [T0]
+  - Verify orchestrator can enforce dependency gating, parallel dispatch, and deterministic task state transitions.
+
 Note: T30 (Docker Compose) is unblocked by V6 (not V8), allowing it to start earlier while frontend pages are still being built.
+
+## Orchestration Protocol (Background Agent)
+
+- Single background coordinator (`onyx-orchestrator`) owns dispatch and state; builders/validators do not self-schedule outside orchestrator decisions.
+- Dispatch rule: schedule all tasks with satisfied `blockedBy` concurrently; never dispatch blocked tasks.
+- Kickoff baseline rule: before any Wave 1 coding dispatch, record the implementation baseline for runtime/dependency pins (Bun/Node, container tags, env minimums).
+- Completion rule: each task must publish artifacts (`files changed`, `tests run`, `result`) before state can move to `done`.
+- Failure rule: failed task moves to `blocked` with reason; orchestrator retries per policy or escalates.
+- Gate rule: next wave cannot start until current wave validator (`V*`) passes.
+- Guardrail: even on the same long-lived branch, wave progression still requires current-wave DoD completion and validator pass before any next-wave task can move to `in_progress`.
