@@ -4,6 +4,20 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
+## 2026-02-17: Eliminate provenance-based work avoidance
+
+**Added:**
+- New critical rule: "Never use provenance to avoid requested work" — blocks using "pre-existing", "not my changes", etc. as reasons to skip user-requested work
+
+**Changed:**
+- "Fix ALL errors and warnings" — removed escape hatch language ("prove it's pre-existing"), replaced with "fix them all regardless of who introduced them"
+- "Never revert user changes" → renamed to "No unsolicited destructive git actions" — narrowed scope to destructive actions only, no longer implies skipping requested work on files you didn't author
+- `/commit` instructions now explicitly state to commit ALL uncommitted files matching auto-stage rules, regardless of who made the changes
+
+**Files:** `claude/CLAUDE.md`, `claude/shared/commit-instructions.md`
+
+---
+
 ## 2026-02-16: Add root cause analysis rules and common pitfalls
 
 **Added:**
