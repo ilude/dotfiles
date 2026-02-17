@@ -33,27 +33,19 @@ Ranked by frequency and severity across all 40 sessions analyzed.
 | Unauthorized destructive actions | No explicit prohibition on `git restore` / file deletion existed before incident; subagent "clean working tree" instinct | `claude/CLAUDE.md` (rule added post-incident) | DONE (rule exists) |
 | Pre-existing abuse | "Fix ALL errors and warnings" rule lacked enforcement mechanism; escape hatch had no proof requirement | `claude/CLAUDE.md:8` | DONE (proof required), but rule still needs teeth -- see Section 4 |
 | Removing functionality as fix | KISS principle misapplied; "Removing functionality is not fixing" rule exists but agents ignore it under pressure | `claude/CLAUDE.md:10` "Common Pitfalls" section | MEDIUM -- add concrete examples |
-| Unverified tech claims | "Verify technology claims via web search" exists only in MEMORY.md, not in CLAUDE.md Critical Rules | `~/.claude/projects/*/memory/MEMORY.md` | HIGH -- promote to CLAUDE.md |
-| Wrong/missing data | "Port ALL query logic" is MEMORY-only; no rule requires output verification against source data | `~/.claude/projects/*/memory/MEMORY.md` | MEDIUM |
+| Unverified tech claims | Rule exists in `claude/CLAUDE.md` but visibility in Critical Rules can be improved | `claude/CLAUDE.md` | MEDIUM -- visibility tweak |
+| Wrong/missing data | "Port ALL query logic" is MEMORY-only; no rule requires output verification against source data | `claude/projects/*/memory/MEMORY.md` | MEDIUM |
 | Sycophancy phrases | "No sycophancy phrases" rule bans ALL affirmative openers including legitimate error acknowledgments | `claude/CLAUDE.md:14` | HIGH -- refine scope |
 | Work scope narrowing | No rule requires atomic updates across shared-instructions pattern files | No rule exists | MEDIUM -- add rule |
-| Multiple deploy cycles | "Test migrations locally before deploying" is MEMORY-only | `~/.claude/projects/*/memory/MEMORY.md` | LOW (project-specific) |
+| Multiple deploy cycles | "Test migrations locally before deploying" is MEMORY-only | `claude/projects/*/memory/MEMORY.md` | LOW (project-specific) |
 | Repeated retries | No retry discipline rule exists; agents retry identical failing operations indefinitely | No rule exists | HIGH -- add rule (debug logs show 7x and 14x retry clusters) |
-| 1-3-1 scope confusion | "ALWAYS Ask" contradicts "Complete ALL steps without asking" | `claude/CLAUDE.md:16,37` | CRITICAL -- root cause of most agent confusion |
+| 1-3-1 scope confusion | Clarify boundary between decision framing and routine command execution | `claude/CLAUDE.md` | MEDIUM -- clarify scope text |
 
 ---
 
 ## 3. Contradictions & Paradoxes
 
 ### CRITICAL (proven friction in session history)
-
-**C1. "ALWAYS Ask" vs "Complete ALL steps without asking"**
-- Rules audit Issue 1; skills audit Conflict 1 (development-philosophy); history-batch-b Pattern 2
-- `claude/CLAUDE.md:16`: "ALWAYS Ask, do not assume -- Never guess or fill in blanks."
-- `claude/CLAUDE.md:37`: "Complete ALL steps of clear-scope tasks without asking between steps"
-- `development-philosophy` SKILL.md: "Execute immediately. Never ask permission for obvious steps."
-- **Evidence:** History batch B shows 3-iteration refinement of 1-3-1 rule scope (session 4378e5c6). Development-philosophy fires on 20+ trigger keywords, overriding ask-first in most technical conversations.
-- **Triple-sourced:** Found independently by rules audit, skills audit, AND history audit.
 
 **C2. Sycophancy rule bans legitimate error acknowledgment**
 - History-batch-a Finding 6; history-batch-b Pattern 10
@@ -75,7 +67,7 @@ Ranked by frequency and severity across all 40 sessions analyzed.
 - Rules audit Issue 3; skills audit Conflict 5 (research-archive)
 - `claude/CLAUDE.md:5`: "No proactive file creation -- Only create files when explicitly requested"
 - `do-this-instructions.md:134`, `plan-with-team-instructions.md:42`, `dig-into-instructions.md:53`: all create `.specs/` files
-- `research-archive` skill: creates files proactively in `~/.claude/research/`
+- `research-archive` skill: creates files proactively in `claude/research/`
 - **Triple-sourced:** Rules audit, skills audit, and commands audit (via `/idea` auto-commit).
 
 **H2. 1-3-1 Rule vs auto-execution in commit/do-this workflows**
@@ -85,15 +77,14 @@ Ranked by frequency and severity across all 40 sessions analyzed.
 - `do-this-instructions.md:128`: medium route "No approval gate -- execute immediately."
 - **Evidence:** The 1-3-1 rule reads as applying to ALL decisions, with no scope exclusion for structured command workflows.
 
-**H3. Missing skills referenced by active commands**
+**H3. Missing skill still referenced by active command**
 - Commands audit "Missing skills referenced by commands" table
-- `/pickup` and `/snapshot` delegate entirely to `session-context-management` skill -- **does not exist**
-- `/optimize-prompt` and `/prompt-help` invoke `structured-analysis` skill -- **does not exist**
-- **Evidence:** 4 commands reference 2 non-existent skills. Commands will silently produce incomplete output.
+- `claude/commands/optimize-prompt.md` invokes `structured-analysis` skill -- **does not exist**
+- **Evidence:** Active command depends on a missing skill. Output quality and completeness are degraded until the dependency is resolved.
 
 **H4. code-review skill hardcodes wrong base branch**
 - Skills audit code-review BLOCKER 1
-- `~/.claude/skills/code-review/SKILL.md:33,214`: hardcodes `origin/dev`
+- `claude/skills/code-review/SKILL.md:33,214`: hardcodes `origin/dev`
 - This repo uses `origin/main`. Every code review diffs against the wrong base.
 
 **H5. development-philosophy overly broad triggers**
@@ -125,10 +116,6 @@ Ranked by frequency and severity across all 40 sessions analyzed.
 - Skills audit Conflict 4
 - Skill says "MUST use Bun" AND "Detect from lock files, Respect project package manager"
 
-**M6. OpenCode review.md references non-existent model**
-- Commands audit HIGH finding
-- `opencode/commands/review.md`: specifies `openai/gpt-5.3-codex` -- not a known real model
-
 **M7. -pro agents reference non-existent `rules/` directory**
 - Commands audit MEDIUM finding
 - 5 agent files say "Rules from rules/X auto-activate" but `rules/` does not exist; should be `skills/`
@@ -139,7 +126,6 @@ Ranked by frequency and severity across all 40 sessions analyzed.
 **L2. `python` vs `python3` rule needs platform context** -- Rules audit Issue 12
 **L3. Light mode joke in Critical Rules** -- Rules audit Issue 13
 **L4. `/idea` auto-commits without user request** -- Commands audit LOW
-**L5. Hardcoded emoji in `/pickup` and `/snapshot`** -- Commands audit LOW
 **L6. `code-review` Verified Safe prohibition conflicts with agent system prompt** -- Skills audit code-review BLOCKER 2
 
 ---
@@ -148,27 +134,11 @@ Ranked by frequency and severity across all 40 sessions analyzed.
 
 Ordered by impact. Each cites evidence from audit files.
 
-### RC1. Resolve "ALWAYS Ask" vs "Complete without asking" (CRITICAL)
-
-**File:** `~/.dotfiles/claude/CLAUDE.md`
-**Current text (line 16):**
-```
-- **ALWAYS Ask, don't assume** - Never guess or fill in blanks. ALWAYS Ask clarifying questions.
-```
-**Current text (line 37):**
-```
-- Complete ALL steps of clear-scope tasks without asking between steps
-```
-**Proposed text (replace line 16):**
-```
-- **Ask when scope is unclear** - When the task goal, target files, or approach is ambiguous, ask clarifying questions before starting. Once scope is confirmed and the task is clear, execute all steps without stopping to ask between them.
-```
-**Proposed text (remove line 37):** Delete -- the replacement above subsumes both rules.
-**Rationale:** Root cause of most agent confusion (C1). Triple-sourced: rules audit Issue 1, skills audit Conflict 1, history-batch-b Pattern 2. The current pair of absolute mandates forces agents into a paradox.
+Path normalization rule for this section: all file paths are repository-relative (for example `claude/CLAUDE.md`, `claude/skills/code-review/SKILL.md`).
 
 ### RC2. Fix sycophancy rule to allow error acknowledgment (CRITICAL)
 
-**File:** `~/.dotfiles/claude/CLAUDE.md`
+**File:** `claude/CLAUDE.md`
 **Current text (line 14):**
 ```
 - **No sycophancy phrases** - When wrong, state the error and fix. No "You're absolutely right!", "Great question!", similar deflection or sycophancy.
@@ -179,32 +149,35 @@ Ordered by impact. Each cites evidence from audit files.
 ```
 **Rationale:** C2. Dual-sourced: history-batch-a Finding 6 (5 sessions), history-batch-b Pattern 10 (2 sessions). The blanket ban prevents legitimate error acknowledgment. The fix distinguishes between empty affirmation (bad) and factual correction (fine).
 
-### RC3. Add `--no-verify` override note to commit-instructions (HIGH)
+### RC3. Enforce explicit `--no-verify` opt-in at runtime (HIGH)
 
-**File:** `~/.dotfiles/claude/shared/commit-instructions.md`
-**Current text:** (no override note exists)
-**Proposed text (add at top, after title):**
+**File:** `claude/shared/commit-instructions.md`
+**Current text:** workflow auto-applies `--no-verify` after one pre-validation test run
+**Proposed text (policy update):**
 ```
-> **Note:** This workflow intentionally uses `--no-verify` after pre-validating all checks. This is authorized by the user and overrides the default system prohibition against `--no-verify`.
+- Require explicit runtime user opt-in before using `--no-verify`.
+- If no explicit opt-in exists, run normal `git commit` with hooks enabled.
+- Keep pre-validation optimization logic, but do not treat command invocation as implicit authorization.
 ```
-**Rationale:** C3. Triple-sourced: rules audit Issue 4, skills audit Conflict 2, commands audit `/commit`. The justification exists but is "buried and not surfaced to agents."
+**Rationale:** C3. Documentation-only notes do not resolve a policy conflict. Runtime behavior must enforce explicit authorization.
 
 ### RC4. Remove `--no-verify` exception from git-workflow skill (HIGH)
 
-**File:** `~/.claude/skills/git-workflow/SKILL.md`
-**Current text (line 143 area):**
+**File:** `claude/skills/git-workflow/SKILL.md`
+**Current text (multiple sections):**
 ```
 MUST NOT skip hooks (--no-verify) without explicit request EXCEPT when creating multiple atomic commits
 ```
 **Proposed text:**
 ```
-MUST NOT skip hooks (--no-verify) without explicit request. The /commit command handles pre-validation separately.
+MUST NOT skip hooks (--no-verify) without explicit request.
 ```
-**Rationale:** C3, skills audit Conflict 2. The `/commit` skill already handles the run-tests-once pattern correctly. git-workflow duplicates it with a conflicting policy.
+**Implementation scope:** update every `--no-verify` exception path in this skill, including safety rules and multi-commit optimization guidance, so no conflicting fallback remains.
+**Rationale:** C3, skills audit Conflict 2. Partial edits leave residual contradictions.
 
 ### RC5. Scope "No proactive file creation" rule (HIGH)
 
-**File:** `~/.dotfiles/claude/CLAUDE.md`
+**File:** `claude/CLAUDE.md`
 **Current text (line 5):**
 ```
 - **No proactive file creation** - Only create files when explicitly requested
@@ -215,21 +188,19 @@ MUST NOT skip hooks (--no-verify) without explicit request. The /commit command 
 ```
 **Rationale:** H1. Triple-sourced: rules audit Issue 3, skills audit Conflict 5, commands audit `/idea`. Commands like `/do-this`, `/plan-with-team`, `/dig-into`, and `/research` all create files as part of their workflow.
 
-### RC6. Promote "verify technology claims" to CLAUDE.md (HIGH)
+### RC6. Improve visibility of "verify technology claims" rule (HIGH)
 
-**File:** `~/.dotfiles/claude/CLAUDE.md`
-**Current text:** Rule exists only in MEMORY.md
-**Proposed text (add to Critical Rules):**
+**File:** `claude/CLAUDE.md`
+**Current text:** Rule is present in "Deterministic by Default" (`claude/CLAUDE.md`)
+**Proposed text (visibility-only):**
 ```
-- **Technology capabilities**: NEVER claim a technology "doesn't support" a feature without verifying via web search or official documentation first. Database engines, frameworks, and libraries evolve -- your training data may be outdated. When unsure, search before asserting limitations.
+Keep existing rule text unchanged. Optionally duplicate or cross-link it in Critical Rules for prominence.
 ```
-**Rationale:** History-batch-a Finding 3 (session 0c4fb327). User said: "have you confirmed this with a web search or was that yet another in a long line of lazyness on your part." This pattern recurred despite existing MEMORY note -- it needs to be a Critical Rule.
-
-**Note:** This rule already exists in the "Deterministic by Default" section of CLAUDE.md. Verify it is present and prominent enough. If it is already there, no change needed -- but consider moving it up to Critical Rules for visibility.
+**Rationale:** Avoid stale duplicate work. This is a prominence tweak, not a missing-rule fix.
 
 ### RC7. Add retry discipline rule (HIGH)
 
-**File:** `~/.dotfiles/claude/CLAUDE.md`
+**File:** `claude/CLAUDE.md`
 **Current text:** No retry discipline rule exists
 **Proposed text (add to Common Pitfalls):**
 ```
@@ -237,29 +208,16 @@ MUST NOT skip hooks (--no-verify) without explicit request. The /commit command 
 ```
 **Rationale:** Debug findings show 7 consecutive identical Read attempts on a 61,626-token file (Feb 16) and 14 sequential Bash failures in 3 minutes (Feb 1). No rule prevented this.
 
-### RC8. Fix development-philosophy autonomy override (HIGH)
-
-**File:** `~/.claude/skills/development-philosophy/SKILL.md`
-**Current text (lines 12, 44, 230):**
-```
-Execute immediately. Never ask permission for obvious steps.
-```
-**Proposed text:**
-```
-Prefer action over analysis paralysis for obvious steps, but defer to CLAUDE.md rules on when to ask for confirmation.
-```
-**Rationale:** C1, H5. Skills audit Conflicts 1 and BLOCKER 1. This skill overrides user-configured ask-first behavior across 20+ trigger keywords.
-
 ### RC9. Narrow development-philosophy triggers (HIGH)
 
-**File:** `~/.claude/skills/development-philosophy/SKILL.md`
+**File:** `claude/skills/development-philosophy/SKILL.md`
 **Current text (triggers list):** planning, architecture, design decisions, MVP, over-engineering, simplicity, fail-fast, experiment-driven, comments, docstrings, documentation philosophy, POLA, security design, threat modeling, authentication, authorization, API security, secrets, encryption, security review
 **Proposed text (triggers list):** MVP, over-engineering, simplicity, fail-fast, experiment-driven, KISS, POLA
 **Rationale:** H5. Skills audit BLOCKER 2. The 20+ keywords cause this skill to fire in almost every technical conversation, creating conflicts with 8+ other skills that own those domains (api-design owns authentication, docs owns docstrings, planning owns planning, etc.).
 
 ### RC10. Fix code-review base branch (HIGH)
 
-**File:** `~/.claude/skills/code-review/SKILL.md`
+**File:** `claude/skills/code-review/SKILL.md`
 **Current text (lines 33, 214):**
 ```
 MERGE_BASE=origin/dev
@@ -272,7 +230,7 @@ MERGE_BASE=$(git merge-base origin/main HEAD 2>/dev/null || git merge-base origi
 
 ### RC11. Scope 1-3-1 Rule to exclude structured command workflows (MEDIUM)
 
-**File:** `~/.dotfiles/claude/CLAUDE.md`
+**File:** `claude/CLAUDE.md`
 **Current text (lines 18-21):**
 ```
 - **1-3-1 Rule** - Do not assume the user has full context; be concise but present a clear, understandable explanation of the problem space and possible solutions.
@@ -288,7 +246,7 @@ MERGE_BASE=$(git merge-base origin/main HEAD 2>/dev/null || git merge-base origi
 
 ### RC12. Clarify "One at a time" rule (MEDIUM)
 
-**File:** `~/.dotfiles/claude/CLAUDE.md`
+**File:** `claude/CLAUDE.md`
 **Current text (lines 22-24):**
 ```
 - **One at a time** - When working through multiple issues, present them one at a time.
@@ -303,7 +261,7 @@ MERGE_BASE=$(git merge-base origin/main HEAD 2>/dev/null || git merge-base origi
 
 ### RC13. Fix TodoWrite references (MEDIUM)
 
-**File:** `~/.dotfiles/claude/CLAUDE.md`
+**File:** `claude/CLAUDE.md`
 **Current text (lines 39-42):**
 ```
 ### TodoWrite Usage
@@ -322,7 +280,7 @@ MERGE_BASE=$(git merge-base origin/main HEAD 2>/dev/null || git merge-base origi
 
 ### RC14. Qualify Python docstring rule (MEDIUM)
 
-**File:** `~/.claude/skills/python/core.md` (or equivalent)
+**File:** `claude/skills/python/SKILL.md`
 **Current text:**
 ```
 Provide docstrings for all public modules, classes, and functions.
@@ -335,51 +293,49 @@ Provide docstrings for new public modules, classes, and functions you create. Do
 
 ### RC15. Fix TypeScript Bun contradiction (MEDIUM)
 
-**File:** `~/.claude/skills/typescript/SKILL.md`
+**File:** `claude/skills/typescript/SKILL.md`
 **Current text:**
 ```
 CRITICAL: MUST use Bun commands
 ```
 **Proposed text:**
 ```
-Prefer Bun if bun.lockb exists. Otherwise detect and use the project's package manager (npm, pnpm, yarn) from the lock file present.
+Preserve existing JavaScript/TypeScript workflow in existing projects. For new JavaScript/TypeScript introductions, default to Bun.
 ```
-**Rationale:** M5. Skills audit Conflict 4. The absolute "MUST use Bun" conflicts with "Respect project package manager" in the same skill.
-
-### RC16. Fix OpenCode review.md model reference (MEDIUM)
-
-**File:** `~/.dotfiles/opencode/commands/review.md`
-**Current text:**
-```
-model: openai/gpt-5.3-codex
-```
-**Proposed text:** Replace with a verified available model from OpenCode's supported model list.
-**Rationale:** M6. Commands audit HIGH finding. Model does not exist as of Feb 2026.
+**Rationale:** M5. Keep Bun-first defaults for new work while avoiding forced migrations in existing repositories.
 
 ### RC17. Fix -pro agent `rules/` paths (MEDIUM)
 
-**Files:** `csharp-pro.md`, `devops-pro.md`, `python-pro.md`, `terraform-pro.md`, `typescript-pro.md`
+**Files:**
+- `claude/agents/csharp-pro.md`
+- `claude/agents/devops-pro.md`
+- `claude/agents/python-pro.md`
+- `claude/agents/terraform-pro.md`
+- `claude/agents/typescript-pro.md`
 **Current text:** "Rules from rules/X/ auto-activate"
 **Proposed text:** "Skills from skills/X/ auto-activate" (or remove the claim)
 **Rationale:** M7. Commands audit. `rules/` directory does not exist; the correct path is `skills/`.
 
 ### RC18. Create or remove missing skill references (HIGH)
 
-**Files:** `/pickup`, `/snapshot`, `/optimize-prompt`, `/prompt-help` commands
-**Missing skills:**
-- `session-context-management` -- `/pickup` and `/snapshot` delegate entirely to this
-- `structured-analysis` -- `/optimize-prompt` and `/prompt-help` require this
+**File:** `claude/commands/optimize-prompt.md`
+**Missing skill:** `structured-analysis`
 
-**Options:**
-1. Create the skills at `~/.claude/skills/{name}/SKILL.md`
-2. Inline the implementation into the commands
-3. Mark the commands as non-functional/deprecated
+**Primary recommendation:** Create the missing skill at:
+1. `claude/skills/structured-analysis/SKILL.md`
 
-**Rationale:** H3. Commands audit "Missing skills" table. 4 commands reference 2 non-existent skills.
+Fallback only if skill creation is out of scope: inline implementation into commands.
+
+**Acceptance criteria:**
+- `optimize-prompt` no longer depends on a missing skill reference.
+- The `structured-analysis` skill file includes enough detail for optimize-prompt workflows (not placeholders).
+- A reference check confirms command->skill links resolve.
+
+**Rationale:** H3. Active command references a missing skill and can produce incomplete guidance.
 
 ### RC19. Add shared-instructions atomicity rule (MEDIUM)
 
-**File:** `~/.dotfiles/claude/CLAUDE.md`
+**File:** `claude/CLAUDE.md`
 **Current text:** No rule exists
 **Proposed text (add to File & Tool Operations):**
 ```
@@ -389,7 +345,7 @@ model: openai/gpt-5.3-codex
 
 ### RC20. Add "removing functionality is not fixing" examples (MEDIUM)
 
-**File:** `~/.dotfiles/claude/CLAUDE.md`
+**File:** `claude/CLAUDE.md`
 **Current text (Common Pitfalls):**
 ```
 - Removing functionality as a "fix" - If a feature shows wrong data (e.g., count=0), investigate WHY the data is wrong. Never hide/remove the display -- that's suppressing symptoms, not fixing the bug
@@ -408,15 +364,15 @@ Simple (1-2 line edits) AND high-impact. Do these first.
 
 | # | Change | File | Effort | Ref |
 |---|--------|------|--------|-----|
-| QW1 | Add `--no-verify` override note | `claude/shared/commit-instructions.md` | 2 lines | RC3 |
-| QW2 | Fix `MERGE_BASE=origin/dev` to multi-branch fallback | `~/.claude/skills/code-review/SKILL.md` (2 locations) | 2 lines | RC10 |
-| QW3 | Replace "MUST use Bun" with conditional detection | `~/.claude/skills/typescript/SKILL.md` | 1 line | RC15 |
-| QW4 | Qualify Python docstring rule to new code only | `~/.claude/skills/python/core.md` | 1 line | RC14 |
-| QW5 | Remove `--no-verify` exception from git-workflow | `~/.claude/skills/git-workflow/SKILL.md` | 1 line | RC4 |
-| QW6 | Fix `rules/` to `skills/` in 5 -pro agent files | 5 agent .md files | 1 line each | RC17 |
+| QW1 | Require explicit runtime opt-in for `--no-verify` | `claude/shared/commit-instructions.md` | 2-4 lines | RC3 |
+| QW2 | Fix `MERGE_BASE=origin/dev` to multi-branch fallback | `claude/skills/code-review/SKILL.md` (2 locations) | 2 lines | RC10 |
+| QW3 | Clarify Bun policy: preserve existing workflows, default Bun for new JS/TS | `claude/skills/typescript/SKILL.md` | 1-2 lines | RC15 |
+| QW4 | Qualify Python docstring rule to new code only | `claude/skills/python/SKILL.md` | 1 line | RC14 |
+| QW5 | Remove all `--no-verify` exception fallbacks from git-workflow | `claude/skills/git-workflow/SKILL.md` | 2-4 lines | RC4 |
+| QW6 | Fix `rules/` to `skills/` in 5 -pro agent files | `claude/agents/{csharp-pro,devops-pro,python-pro,terraform-pro,typescript-pro}.md` | 1 line each | RC17 |
 | QW7 | Rename TodoWrite section to TaskCreate/TaskUpdate/TaskList | `claude/CLAUDE.md` | 3 lines | RC13 |
-| QW8 | Fix `.spec/` to `.specs/` in development-philosophy | `~/.claude/skills/development-philosophy/SKILL.md` | 1 line | Skills audit |
-| QW9 | Fix `.spec/` to `.specs/` in claude-code-workflow | `~/.claude/skills/claude-code-workflow/SKILL.md` | 1 line | Skills audit |
+| QW8 | Fix `.spec/` to `.specs/` in development-philosophy | `claude/skills/development-philosophy/SKILL.md` | 1 line | Skills audit |
+| QW9 | Fix `.spec/` to `.specs/` in claude-code-workflow | `claude/skills/claude-code-workflow/SKILL.md` | 1 line | Skills audit |
 | QW10 | Add retry discipline to Common Pitfalls | `claude/CLAUDE.md` | 2 lines | RC7 |
 
 ---
@@ -425,38 +381,7 @@ Simple (1-2 line edits) AND high-impact. Do these first.
 
 These need rethinking, not just text patches.
 
-### S1. The Ask vs Execute Paradox (affects entire ruleset)
-
-**Problem:** Three layers of the ruleset give contradictory guidance on when to ask vs when to execute:
-1. CLAUDE.md "ALWAYS Ask" (global default: ask)
-2. CLAUDE.md "Complete ALL steps" (execution override: don't ask)
-3. development-philosophy skill "Execute immediately" (skill override: never ask)
-4. `/do-this` medium route "No approval gate" (command override: skip approval)
-5. 1-3-1 Rule "Do not proceed until I confirm" (global default: always confirm)
-
-Each layer was added to fix a different problem, but together they form a contradictory stack. An agent reading all of them simultaneously has no clear resolution order.
-
-**Recommendation:** Establish a single decision framework:
-- **Ambiguous scope?** Ask before starting (replaces "ALWAYS Ask")
-- **Clear scope, executing steps?** Complete without asking (replaces "Complete ALL steps")
-- **Structured command invoked?** Follow command's own approval logic (replaces per-command exceptions)
-- **Design decision with trade-offs?** Use 1-3-1 (replaces unbounded 1-3-1)
-
-This is RC1 + RC8 + RC11 combined into an architectural fix.
-
-### S2. Missing Skills Architecture
-
-**Problem:** 4 commands (`/pickup`, `/snapshot`, `/optimize-prompt`, `/prompt-help`) reference 2 skills that do not exist (`session-context-management`, `structured-analysis`). These commands are effectively non-functional.
-
-**Recommendation:** Audit all commands for skill dependencies. Either:
-- Create the missing skills
-- Inline the functionality
-- Deprecate the commands with a clear message
-- Add a pre-flight check to command execution that validates skill existence
-
-This is a systemic issue -- no mechanism prevents commands from referencing non-existent skills.
-
-### S3. Skill Trigger Overlap Creates Unpredictable Behavior
+### S1. Skill Trigger Overlap Creates Unpredictable Behavior
 
 **Problem:** The skill activation system uses keyword matching with no priority or exclusivity mechanism. When a user says "review this architecture for security issues," at least 4 skills activate simultaneously: code-review, analysis-workflow, development-philosophy, and api-design. Each provides competing methodologies and some contradict each other.
 
@@ -466,7 +391,7 @@ This is a systemic issue -- no mechanism prevents commands from referencing non-
 
 The trigger overlap table from the skills audit (10 overlapping keywords across 15+ skills) should be used as the starting point.
 
-### S4. Builder Agent Validation Commands Have No Single Source of Truth
+### S2. Builder Agent Validation Commands Have No Single Source of Truth
 
 **Problem:** All three builder agents (builder, builder-light, builder-heavy) duplicate identical validation command lists:
 ```
@@ -477,12 +402,14 @@ Go: go vet + go test
 ```
 Adding a new language or changing a command requires editing 3 files. The typescript-pro agent also conflicts by preferring `bun` over `npm` for these same commands.
 
-**Recommendation:** Extract validation commands into a shared reference file (e.g., `claude/shared/validation-commands.md`) that all builder agents include. Language-specific agents can override when a project's lock file indicates a different package manager.
+**Recommendation:** Extract validation commands into a shared reference file (e.g., `claude/shared/validation-commands.md`) that all builder agents include, and define precedence explicitly:
+- Preserve existing JavaScript/TypeScript tooling in existing projects.
+- For new JavaScript/TypeScript introductions, default to Bun.
+- Project-local scripts and lockfile conventions override generic skill defaults.
 
-### S5. MEMORY.md Contains Rules That Should Be in CLAUDE.md
+### S3. MEMORY.md Contains Rules That Should Be in CLAUDE.md
 
 **Problem:** Several rules exist only in MEMORY.md (auto-memory) rather than in CLAUDE.md (project rules):
-- "Verify technology claims via web search" -- proven friction pattern, still only in memory
 - "Port ALL query logic when moving code" -- proven friction pattern, only in memory
 - "Test migrations locally before deploying" -- proven friction, only in memory
 
@@ -490,20 +417,19 @@ MEMORY.md is project-specific and may not load in all contexts. Critical behavio
 
 **Recommendation:** Audit MEMORY.md for rules that have been proven by friction incidents. Promote them to CLAUDE.md. Keep MEMORY.md for project-specific context (e.g., "SurrealDB chunk.content_id stores plain strings") rather than behavioral rules.
 
-### S6. No Mechanism to Prevent Commands Referencing Non-Existent Resources
+### S4. Missing Skill References + No Resource Validation Gate
 
-**Problem:** Multiple commands reference non-existent skills, non-existent models, and non-existent command paths:
-- `/pickup` and `/snapshot` reference `session-context-management` skill (missing)
-- `/optimize-prompt` and `/prompt-help` reference `structured-analysis` skill (missing)
-- `opencode/commands/review.md` references `openai/gpt-5.3-codex` model (missing)
-- `README.md` documents `/optimize-ruleset` and `/acceptance-criteria` (missing)
+**Problem:** Active commands reference missing skills, and there is no automated validation to prevent this drift:
+- `claude/commands/optimize-prompt.md` references `structured-analysis` (missing)
 
-**Recommendation:** Add a validation step to `/skills-engineer audit` mode that checks all commands for:
-- Skill references that resolve to existing `~/.claude/skills/*/SKILL.md` files
-- Model references that are in a known-good list
-- Command cross-references that resolve to existing files
+**Recommendation (combined immediate + preventive):**
+1. Immediate repair: create the missing skill (`claude/skills/structured-analysis/SKILL.md`) or inline as fallback.
+2. Preventive control: add a validation step to `/skills-engineer audit` mode that checks:
+   - Skill references resolve to existing `claude/skills/*/SKILL.md`
+   - Model references are in a known-good list
+   - Command cross-references resolve to existing files
 
-This could also be a pre-commit hook or a periodic health check.
+This can run as a pre-commit hook or periodic health check.
 
 ---
 
@@ -511,7 +437,6 @@ This could also be a pre-commit hook or a periodic health check.
 
 | Finding | History A | History B | Debug | Rules | Skills | Commands |
 |---------|-----------|-----------|-------|-------|--------|----------|
-| Ask vs Execute paradox | | Pattern 2 | | Issue 1 | Conflict 1 | |
 | Sycophancy scope | Finding 6 | Pattern 10 | | | | |
 | --no-verify conflict | | | | Issue 4 | Conflict 2 | /commit |
 | No proactive file creation scope | | | | Issue 3 | Conflict 5 | /idea |
@@ -520,7 +445,7 @@ This could also be a pre-commit hook or a periodic health check.
 | Remove functionality as fix | Finding 2 | | | | | |
 | Unverified tech claims | Finding 3 | | | | | |
 | Retry without strategy | | | 7x Read, 14x Bash | | | |
-| Missing skills | | | | | | /pickup, /snapshot, /optimize-prompt |
+| Missing skills | | | | | | /optimize-prompt |
 | code-review wrong base | | | | | BLOCKER 1 | |
 | dev-philosophy triggers | | | | | BLOCKER 2 | |
 | Bun contradiction | | | | | Conflict 4 | typescript-pro |

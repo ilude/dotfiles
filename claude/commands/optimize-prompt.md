@@ -16,7 +16,7 @@ Parse → Select → Apply → Output
 
 ## Help Mode
 
-If ARG starts with "help": Direct to `/prompt-help [technique]` and exit without optimization.
+If ARG starts with "help": display available techniques from this command and exit without optimization.
 
 ## Normal Optimization Mode
 
