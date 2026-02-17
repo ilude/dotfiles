@@ -16,8 +16,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
+
+      - name: Init submodules
+        run: git submodule update --init dotbot
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
