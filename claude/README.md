@@ -7,7 +7,6 @@ Personal Claude Code configuration files for synchronizing settings, custom comm
 - **CLAUDE.md** - Personal ruleset with preferences and patterns that apply to all projects
 - **commands/** - Custom slash commands for Claude Code
   - `commit.md` - Enhanced git commit workflow
-  - `optimize-ruleset.md` - Ruleset optimization and analysis
 - **COMMANDS-QUICKSTART.md** - Documentation for using custom commands
 - **settings.json** - Claude Code global settings
 
@@ -75,7 +74,6 @@ git push origin main
 ├── settings.json           # Claude Code settings
 └── commands/               # Custom slash commands
     ├── commit.md
-    ├── optimize-ruleset.md
     └── README.md
 ```
 
@@ -113,7 +111,6 @@ The `CLAUDE.md` file contains your personal preferences that apply to ALL Claude
 Available custom slash commands:
 
 - `/commit [push]` - Create logical git commits with optional push
-- `/optimize-ruleset` - Analyze and optimize CLAUDE.md ruleset files
 
 See `COMMANDS-QUICKSTART.md` for detailed usage instructions.
 

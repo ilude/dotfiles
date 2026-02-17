@@ -1,6 +1,6 @@
 ---
 name: claude-code-workflow
-description: Activate when discussing Claude Code usage, prompting strategies, context management, /snapshot, /pickup, hooks, multi-instance verification, browser automation, ruleset optimization, CLAUDE.md optimization, multi-agent projects, or .spec/ patterns.
+description: Activate when discussing Claude Code usage, prompting strategies, context management, hooks, multi-instance verification, browser automation, ruleset optimization, CLAUDE.md optimization, multi-agent projects, or .spec/ patterns.
 location: user
 ---
 
@@ -12,7 +12,7 @@ Guidelines for effective AI-assisted development with Claude Code.
 
 | Guide | Description |
 |-------|-------------|
-| [Context Management](context-management.md) | In-session token hygiene and cross-session persistence (/snapshot, /pickup) |
+| [Context Management](context-management.md) | In-session token hygiene and cross-session persistence via session files |
 | [Multi-Instance](multi-instance.md) | Using separate Claude contexts for verification |
 | [Browser Orchestration](browser-orchestration.md) | PTC for multi-URL scraping and browser automation |
 | `/yt` command | Fetching YouTube transcripts and metadata |
@@ -201,8 +201,8 @@ Criteria: [list] | Location: [file] | Constraints: [limits]
 
 ### Context Preservation
 - MUST save context before long breaks
-- SHOULD use /snapshot for complex multi-session work
-- MAY use /pickup to resume efficiently
+- SHOULD persist cross-session state for complex multi-session work
+- MAY resume from saved session files efficiently
 
 ---
 

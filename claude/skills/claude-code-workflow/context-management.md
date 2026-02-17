@@ -14,7 +14,7 @@ Guidelines for managing Claude Code context efficiently - both within sessions (
 | Task takes >15 min or 3+ files | **Cross-Session** |
 | Interruption likely (meeting, EOD) | **Cross-Session** |
 | Multiple people/instances on feature | **Cross-Session** |
-| User says `/snapshot` or `/pickup` | **Cross-Session** |
+| User requests resumable state across sessions | **Cross-Session** |
 
 ---
 
@@ -96,7 +96,7 @@ Or briefly state: "Continuing from checkpoint - working on [task], last complete
 2. **Multiple files/steps**: Work touches 3+ files OR has 3+ distinct steps
 3. **Interruptions likely**: Meeting soon, end of day approaching
 4. **Scope might expand**: Starting with "just a quick fix" on complex code
-5. **User explicitly invokes `/snapshot` or `/pickup` commands**
+5. **User explicitly requests resumable state across sessions**
 
 ### File Structure
 
@@ -176,10 +176,10 @@ Last: YYYY-MM-DD HH:MM
 
 **Always use relative paths** in session files, never absolute paths.
 
-### Commands
+### Capabilities
 
-- `/snapshot` - Save current state to session files
-- `/pickup` - Resume from saved session
+- Save current state to session files
+- Resume from saved session files
 
 ### Workflow
 
@@ -219,9 +219,9 @@ Last: YYYY-MM-DD HH:MM
 
 For long-running features spanning multiple sessions:
 
-1. **Cross-session** (`/snapshot`) at natural stopping points
+1. **Cross-session** state capture at natural stopping points
 2. **In-session** (checkpoint + clear) when context bloats mid-work
-3. **Cross-session** (`/pickup`) to resume after clear or new session
+3. **Cross-session** resume from saved session files after clear or new session
 
 **Cross-session** = persistent memory (survives session end)
 **In-session** = working memory management (keeps current session efficient)

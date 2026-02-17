@@ -136,7 +136,7 @@ Brief introduction and purpose.
 
 ---
 
-## Commands
+## Related Workflows
 
-- `/optimize-ruleset` - Analyze and optimize current ruleset
-- `/analyze-permissions` - Review permission patterns
+- Ruleset audits and recommendation reviews
+- Permission pattern reviews via dedicated tooling/scripts when needed

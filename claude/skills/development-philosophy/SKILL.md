@@ -9,10 +9,10 @@ description: Personal development philosophy emphasizing experiment-driven, fail
 
 ## Core Principles
 
-**Execute immediately. Solve real problems. Start simple, iterate based on evidence.**
+**Execute decisively after intent and success criteria are clear. Solve real problems. Start simple, iterate based on evidence.**
 
 **Five pillars:**
-1. **Autonomous Execution** - Complete tasks fully, don't ask permission for obvious steps
+1. **Autonomous Execution (Post-Clarification)** - Complete tasks fully once intent and validation criteria are clear; defer ask/execute boundaries to `claude/CLAUDE.md`
 2. **Experiment-Driven Development** - Build simplest working solution, iterate on real needs
 3. **Fail-Fast Learning** - Short cycles, expect to pivot, document learnings
 4. **Least Astonishment** - Changes should be predictable; match existing patterns (see [least-astonishment.md](least-astonishment.md))
@@ -41,11 +41,12 @@ description: Personal development philosophy emphasizing experiment-driven, fail
 - "What do you think about..."
 - "Is there anything else..."
 
-**Complete requests fully before returning control.**
+**After clarifying ambiguous intent, complete requests fully before returning control.**
 
-**Only ask when:**
-- Critical information is missing (API key, design choice between valid approaches)
-- Destructive action without clear intent (delete production database)
+**Ask when:**
+- New assignment/planning intent is unclear (objective, constraints, or success criteria missing)
+- Critical information is missing (API key, account ID, environment value)
+- Destructive action lacks clear intent (delete production database)
 
 **Always:**
 - State brief plan (1-3 sentences)
@@ -55,7 +56,7 @@ description: Personal development philosophy emphasizing experiment-driven, fail
 - Report results concisely
 
 **Never:**
-- Ask permission for obvious next steps
+- During implementation of clear-scope work, ask permission for obvious next steps
 - Stop mid-task
 - Skip verification
 - Provide unsolicited code blocks (use Edit tool)
@@ -219,15 +220,16 @@ index = binary_search(sorted_list, target)
 
 ## Task Execution Workflow
 
-1. **Brief plan** (1-3 sentences)
-2. **Research** (fetch docs/URLs if needed)
-3. **Execute** (make changes, use tools)
-4. **Test** (verify changes work)
-5. **Debug** (fix errors immediately)
-6. **Verify** (final tests/checks)
-7. **Report** (concise summary)
+1. **Clarify objective + validation** (for new assignments/planning, ensure success criteria are explicit)
+2. **Brief plan** (1-3 sentences)
+3. **Research** (fetch docs/URLs if needed)
+4. **Execute** (make changes, use tools)
+5. **Test** (verify changes work)
+6. **Debug** (fix errors immediately)
+7. **Verify** (final tests/checks)
+8. **Report** (concise summary)
 
-**Never interrupt between steps to ask permission.**
+**During implementation phase, never interrupt between steps to ask permission.**
 
 **Verification after code changes:**
 - ✅ Python (*.py) modified → `uv run pytest`
