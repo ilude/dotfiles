@@ -2,7 +2,7 @@
 
 **Status**: Planning / Research Phase
 **Stack**: TypeScript, Bun, SvelteKit, SurrealDB, MinIO, Docker
-**Relationship**: Sibling service to menos, shares infrastructure
+**Relationship**: MVP runs as a sibling service to menos on shared infrastructure (long-term plan: absorb menos into Onyx)
 
 ---
 
@@ -83,7 +83,7 @@ Graph modeling (entities/edges over memory) is optional and explicitly post-MVP 
 MinIO bucket: onyx-memory/
 ├── {agent_id}/
 │   ├── MEMORY.md                    # Long-term curated facts
-│   └── daily/
+│   └── memory/
 │       ├── 2026-02-15.md            # Daily logs (append-only)
 │       └── 2026-02-16.md
 └── _shared/                         # Cross-agent reference docs (optional)
@@ -100,7 +100,7 @@ DEFINE FIELD agent_id ON memory_file TYPE string;
 DEFINE FIELD path ON memory_file TYPE string;          -- MinIO object key
 DEFINE FIELD checksum ON memory_file TYPE string;      -- For change detection
 DEFINE FIELD indexed_at ON memory_file TYPE datetime;
-DEFINE FIELD source ON memory_file TYPE string;        -- "memory" | "daily" | "shared"
+DEFINE FIELD source ON memory_file TYPE string;        -- "memory" | "memory_log" | "shared"
 DEFINE INDEX idx_file_agent ON memory_file FIELDS agent_id;
 
 -- Chunked text with embeddings
@@ -145,7 +145,7 @@ Memory search functionality is guaranteed regardless of embedding availability. 
 - Define and migrate a full-text search index for `memory_chunk.content` before enabling hybrid search.
 - Use a fixed analyzer configuration (tokenization + normalization/stemming) so BM25 scoring is stable across environments.
 - Ensure the query operator/index reference used by `search::score(...)` and `content @...@` maps to that index.
-- Validate FTS index presence at startup and fail fast (or disable BM25 path with explicit warning) if missing.
+- Validate FTS index presence at startup and fail fast if missing.
 
 #### Sync Flow
 
@@ -155,7 +155,7 @@ On file change (or session start), compare checksums, re-chunk changed files (~4
 
 **MEMORY.md** is always loaded fully into the agent's context as working memory (consensus pattern across all reference projects). This ensures active facts are always available without search latency.
 
-**All memory files** (MEMORY.md + daily/*.md + any custom memory documents) are also stored in MinIO and indexed in SurrealDB for hybrid search. This enables:
+**All memory files** (MEMORY.md + memory/*.md + any custom memory documents) are also stored in MinIO and indexed in SurrealDB for hybrid search. This enables:
 - Semantic search across all memory (vector similarity)
 - Keyword search for specific terms (BM25)
 - Future graph relations (person → project → decision → conversation)
@@ -202,7 +202,7 @@ LIMIT 20;
 
 ### D2: menos Integration Scope - DECIDED
 
-**Decision**: Shared infrastructure, Onyx can query menos, conversations stay in Onyx
+**Decision**: Shared infrastructure, Onyx can query menos internally in MVP, conversations stay in Onyx
 
 #### Shared Infrastructure
 
@@ -240,7 +240,14 @@ LIMIT 20;
 
 #### Onyx → menos Queries
 
-Onyx can search menos content for RAG context:
+Onyx can search menos content for RAG context.
+
+MVP boundary:
+- menos retrieval is server-side/internal only.
+- No user-visible `menos_*` tools in MVP (those remain Phase 2).
+- Retrieved menos data is treated as context input, not conversation storage.
+
+Example internal retrieval:
 
 ```typescript
 // Example: searching menos for relevant content
@@ -310,7 +317,7 @@ interface PluginProtocol {
 }
 ```
 
-#### Plugin Manifest (YAML)
+#### Plugin Manifest (YAML, Phase 2 example)
 
 ```yaml
 # plugins/discord/manifest.yaml
@@ -340,7 +347,17 @@ hooks:
 #### Plugin Loading
 
 ```yaml
-# Plugins loaded at startup from config
+# MVP: interfaces + test stub only (no Discord/Telegram production plugins)
+plugins:
+  enabled:
+    - test_stub
+  test_stub:
+    mode: noop
+```
+
+Phase 2 example (production bot plugins):
+
+```yaml
 plugins:
   enabled:
     - discord
@@ -592,13 +609,15 @@ GET  /v1/agents/{id}          # Get agent config
         {"role": "user", "content": "Hello!"}
     ],
     "stream": true,
-    "temperature": 0.7,
-
-    // Onyx extensions (optional)
-    "x-onyx-agent-id": "main",
-    "x-onyx-session-id": "abc123",
-    "x-onyx-include-memory": true
+    "temperature": 0.7
 }
+```
+
+```http
+# Onyx extensions are header-only (MVP and beyond)
+x-onyx-agent-id: main
+x-onyx-session-id: abc123
+x-onyx-include-memory: true
 ```
 
 #### Chat Completions Response
@@ -622,11 +641,13 @@ GET  /v1/agents/{id}          # Get agent config
         "prompt_tokens": 12,
         "completion_tokens": 9,
         "total_tokens": 21
-    },
-
-    // Onyx extensions
-    "x-onyx-session-id": "abc123"
+    }
 }
+```
+
+```http
+# Response header
+x-onyx-session-id: abc123
 ```
 
 #### Streaming (SSE)
@@ -666,12 +687,16 @@ Authorization: Bearer onyx_sk_abc123
 # Canonical: model is provider model identifier
 "model": "openrouter/anthropic/claude-opus-4"
 
-# Agent selection via header
+# Agent selection via header (canonical)
 "x-onyx-agent-id": "research-agent"
 
 # Default when header omitted
 # route to "main" agent
 ```
+
+Header validation rules:
+- `x-onyx-*` fields are accepted only as headers.
+- `x-onyx-*` fields in request body are rejected as invalid input.
 
 *Planned as Hono routes in `api/src/gateway/http.ts`.*
 
@@ -734,7 +759,7 @@ Authorization: Bearer onyx_sk_abc123
 
 **3. Memory**
 - Search memory (vector + keyword)
-- Browse memory files (daily logs, MEMORY.md)
+- Browse memory files (memory logs, MEMORY.md)
 - View/edit memory files
 - Sync status indicator
 
@@ -828,21 +853,22 @@ Authorization: Bearer onyx_sk_abc123
 
 #### Config Storage
 
-All configuration lives in `~/.config/onyx/onyx.json` (see D9). Sensitive fields (API keys, password hash) are encrypted in place using a master key derived from the gateway password. The web UI config page reads/writes this file.
+All configuration lives in `~/.config/onyx/onyx.json` (see D9). The file stores non-secret settings and auth metadata (for example `password_hash`). Provider credentials are stored outside `onyx.json` in a secret broker/store and referenced by ID from config. The web UI config page reads/writes config metadata and broker references.
 
 MVP key lifecycle requirements:
 
-- Encryption key derivation is password-based (deterministic KDF with per-install salt).
-- Password change requires authenticated re-encryption of all protected fields in `onyx.json` in one transaction.
-- If old password is unavailable (reset flow), encrypted provider credentials are discarded and must be re-entered.
-- Non-interactive startup must fail fast with explicit error if encrypted config cannot be decrypted.
-- Bootstrap flow initializes salt + encrypted secret fields only after first successful username/password setup.
+- Gateway password is never used as a config-encryption key.
+- Provider credentials are never persisted in model-readable config/transcript files.
+- Secret broker access is server-side only; model/tool-facing contexts receive opaque handles or redacted values.
+- Non-interactive startup must fail fast with explicit error if required broker secrets are unavailable.
+- Password reset/login flows do not expose provider credentials; recovery may require re-binding broker references.
 
 #### Security
 
 - Authentication: see D6 (password + session cookie for UI, bearer token for API)
-- Provider credentials encrypted at rest
+- Provider credentials isolated in secret broker/storage and encrypted at rest
 - API keys displayed as redacted (`sk-or-...xxx`) in the config UI
+- Tool outputs, logs, and transcripts must redact credential material before persistence/streaming
 
 ---
 
@@ -854,11 +880,11 @@ MVP key lifecycle requirements:
 
 | Group | Tools | MVP? |
 |-------|-------|------|
-| `memory` | `memory_search`, `memory_write`, `memory_get` | **Yes** |
+| `memory` | `memory_search`, `memory_write`, `memory_read` | **Yes** |
 | `sessions` | `sessions_list`, `sessions_history`, `sessions_send` | **Yes** |
 | `web` | `web_search`, `web_fetch` | **Yes** |
 | `fs` | `read`, `write`, `edit` | **Yes** |
-| `runtime` | `exec`, `process` | **Yes** |
+| `runtime` | `runtime_exec`, `runtime_process` | **Yes** |
 | `schedule` | `schedule`, `list_jobs`, `cancel_job` | **Yes** |
 | `menos` | `menos_search`, `menos_ingest` | Post-MVP |
 | `model_routing` | `select_model`, `route_task` | Post-MVP |
@@ -868,10 +894,16 @@ MVP key lifecycle requirements:
 
 #### MVP Risk Acceptance: Runtime Tools
 
-- `runtime.exec` is intentionally included in MVP before sandbox isolation is delivered.
+- `runtime_exec` is intentionally included in MVP before sandbox isolation is delivered.
 - This is accepted only for single-user, self-hosted operation on trusted infrastructure.
-- Internet-exposed or multi-user deployment with `runtime.exec` enabled is out of MVP security posture.
+- Internet-exposed or multi-user deployment with `runtime_exec` enabled is out of MVP security posture.
 - Phase 3 sandbox isolation remains the mitigation path for broader/remote usage.
+
+#### Credential Isolation Boundary (MVP)
+
+- Model-facing runtime must not have direct access to raw provider credentials.
+- Credential use is mediated by a server-side secret broker boundary.
+- Tools must not return raw secrets; execution results are redacted before they reach the LLM or UI transcript.
 
 #### Tool Definition Schema
 
@@ -916,9 +948,17 @@ In MVP, the same tool result is shown to both the LLM and the user (no separate 
 
 ### D10: Deployment Topology - OPEN
 
-**Current proposal**: Single Docker Compose stack, shared network, host-mounted volumes for development.
+**Decision (deployment substrate)**: Onyx piggybacks on the existing `menos/infra/ansible` deployment stack, using a separate Onyx compose project in MVP.
+
+Current menos Ansible facts (source of truth for deployment flow):
+- Targets inventory host `menos` (`192.168.16.241`, user `anvil`) via `inventory/hosts.yml`
+- Deploys to `/apps/menos` with data under `/apps/menos/data`
+- Syncs compose/env/app artifacts, then runs `docker compose pull`, `build`, `up -d`
+- Verifies post-deploy health at `http://<host>:8000/health` and checks deployed git SHA
 
 **Open question**: Keep separate `onyx-api` and `onyx-frontend` services, or unify serving in one service for MVP.
+
+**Strategic direction**: menos is expected to be phased into Onyx long-term; MVP keeps independent deployment lifecycle to reduce rollout risk.
 
 #### Candidate Service Map (Option A: Separate Services)
 
@@ -933,9 +973,9 @@ In MVP, the same tool result is shown to both the LLM and the user (no separate 
 
 #### Candidate Networking (for Option A)
 
-- All services run on a shared `onyx-net` bridge network
-- menos services join the same network for shared SurrealDB/MinIO/Ollama access
-- Only onyx-api, onyx-frontend, and minio console expose host ports
+- Onyx services should join existing `menos-network` (defined in `menos` compose) to reach shared dependencies
+- SurrealDB/MinIO/Ollama remain deployed by menos Ansible-managed compose files
+- Only Onyx service ports should be newly exposed for Onyx runtime/UI
 - If MVP chooses unified serving, this networking/port plan must be revised
 
 #### Shared vs. Onyx-Only (applies to either option)
@@ -946,6 +986,13 @@ In MVP, the same tool result is shown to both the LLM and the user (no separate 
 | MinIO | Yes — bucket `onyx-memory`, `onyx-sessions` vs `menos-content` |
 | Ollama | Yes — same models |
 | SearXNG | No — Onyx only |
+
+#### Ansible Integration Boundaries (MVP)
+
+- **Shared (reuse as-is)**: existing inventory host targeting, SSH/auth flow, Ansible container runtime, and shared services (`surrealdb`, `minio`, `ollama`) managed under `menos/infra/ansible`
+- **Onyx-specific (additive only)**: Onyx compose project files, Onyx env vars/secrets, and Onyx deploy/data path vars in Ansible
+- **Lifecycle isolation**: Onyx and menos are deployed/restarted/rolled back independently in MVP, even on the same host/network
+- **Playbook changes**: extend current deployment flow with Onyx sync/build/up tasks while preserving current menos deploy and verification behavior
 
 ---
 
@@ -1340,7 +1387,7 @@ When the user sends `chat.abort`:
 
 ### D12: Heartbeat System - DECIDED
 
-**Decision**: Autonomous background loop that proactively checks integrated services and notifies the user via configured channels. MVP includes the framework and cron engine; service integrations are progressive.
+**Decision**: Autonomous background loop with MVP notifications delivered to the web UI notification center only. External gatherers/channels are Phase 2+.
 
 The Heartbeat is what makes Onyx proactive rather than purely reactive. Instead of waiting for the user to ask "do I have any meetings?", the Heartbeat checks on a schedule and reaches out when something needs attention.
 
@@ -1374,7 +1421,7 @@ The Heartbeat is what makes Onyx proactive rather than purely reactive. Instead 
 #### Sequence Diagram: Heartbeat Tick
 
 ```
-Cron           HeartbeatEngine    DataGatherers     AgentRuntime     Plugin/Channel
+Cron           HeartbeatEngine    DataGatherers     AgentRuntime     NotificationSink
  │                  │                 │                  │                │
  │  tick            │                 │                  │                │
  │─────────────────▶│                 │                  │                │
@@ -1401,12 +1448,14 @@ Cron           HeartbeatEngine    DataGatherers     AgentRuntime     Plugin/Chan
  │                  │  }                                 │                │
  │                  │◀───────────────────────────────────│                │
  │                  │                                                     │
- │                  │  sendNotification(message, channel)                │
+ │                  │  sendNotification(message, sink)                   │
  │                  │───────────────────────────────────────────────────▶│
  │                  │                                                     │
  │                  │  OR if notify: false                               │
  │                  │  log("HEARTBEAT OK - nothing to report")          │
 ```
+
+For MVP, `NotificationSink` is the web UI notification center only.
 
 #### HEARTBEAT.md — Workspace File
 
@@ -1501,10 +1550,9 @@ This approach is cleaner than OpenClaw's truncate-after-the-fact strategy — th
 
 When the heartbeat decides to notify:
 
-1. Message is sent via the agent's **primary channel** (configured in bindings or agent config)
-2. If primary channel is unavailable, fall back to secondary (e.g., Slack → email)
-3. Notification includes priority level (`high`, `normal`, `low`)
-4. Channels can filter by priority (e.g., Discord only gets `high`)
+1. Message is delivered to the web UI notification center
+2. Notification includes priority level (`high`, `normal`, `low`)
+3. No external channel delivery is performed in MVP
 
 ```json5
 // In agent config
@@ -1515,8 +1563,7 @@ When the heartbeat decides to notify:
     "intervalMinutes": 30,
     "activeHours": { "start": "08:00", "end": "22:00" },
     "timezone": "America/New_York",
-    "notifyChannel": "slack",        // Primary notification channel
-    "fallbackChannel": "web",        // If primary unavailable
+    "notifyChannel": "web",          // MVP: web UI notification center only
     "quietMode": false               // true = log only, never notify
   }
 }
@@ -1550,7 +1597,8 @@ Both modes are fully functional in Phase 1. This avoids the workaround of embedd
 - `HEARTBEAT.md` workspace file support
 - Heartbeat config in agent definition
 - **Cron session modes** (both main and isolated, with auto-selection)
-- Log-only mode (no external data gatherers yet)
+- Web UI notification center delivery only (no external channels)
+- No external data gatherers in MVP
 - The `schedule` tool (D8) provides the cron engine that heartbeat reuses
 
 **Phase 2:**
@@ -1595,7 +1643,7 @@ Both modes are fully functional in Phase 1. This avoids the workaround of embedd
         // Tool restrictions (optional)
         tools: {
           allow: ["memory_read", "memory_write", "web_search"],
-          deny: ["shell_exec"]
+          deny: ["runtime_exec"]
         }
       },
       {
@@ -1916,14 +1964,14 @@ Single-user assistant accessible through a browser. No bot plugins yet.
 
 | Deliverable | Details |
 |-------------|---------|
-| **Project scaffold** | Bun monorepo, Docker Compose (Onyx + SurrealDB + MinIO + Ollama + SearXNG) |
+| **Project scaffold** | Bun monorepo; Onyx services deployed by extending existing `menos/infra/ansible` flow while reusing SurrealDB/MinIO/Ollama |
 | **Provider abstraction** | Four-SDK abstraction in MVP: subscription-backed providers + API-key/credential providers |
 | **OpenAI-compatible API** | `/v1/chat/completions`, `/v1/models`, `/health` via Hono |
 | **Session management** | JSONL in MinIO, metadata in SurrealDB |
 | **Memory system** | Files-first in MinIO, hybrid search (vector + BM25) in SurrealDB, Ollama embeddings |
-| **MVP tools** | `memory` (search/write/get), `sessions` (list/history), `web` (SearXNG search/fetch), `fs` (read/write/edit), `runtime` (exec), `schedule` (cron jobs) |
+| **MVP tools** | `memory` (search/write/read), `sessions` (list/history), `web` (SearXNG search/fetch), `fs` (read/write/edit), `runtime` (`runtime_exec`), `schedule` (cron jobs) |
 | **Agent runtime** | ReAct loop with configurable iteration limits, token budgets, context assembly, provider failover (D11) |
-| **Heartbeat framework** | Cron engine + HEARTBEAT.md support + log-only mode (no external gatherers in MVP) (D12) |
+| **Heartbeat framework** | Cron engine + HEARTBEAT.md support + web UI notification center delivery only (no external gatherers/channels in MVP) (D12) |
 | **Agent definitions** | OpenClaw-compatible JSON config + workspace markdown files (including HEARTBEAT.md) |
 | **Web UI** | SvelteKit + shadcn-svelte: chat, sessions, memory browser, agent config, provider settings |
 | **Auth** | Username/password login (single user). Optional static bearer token for API clients |
@@ -1979,25 +2027,27 @@ Single-user assistant accessible through a browser. No bot plugins yet.
 - Plugin timeline: Discord/Telegram plugins are Phase 2 (not MVP).
 - Provider support: MVP must support both subscription-backed model access and API-key/credential providers.
 - Memory scope: Graph memory is optional; MVP memory remains vector + keyword hybrid.
-- Runtime tool safety: keep current scope as-is in PRD (no additional guardrail spec added now).
+- Runtime tool safety: `runtime_exec` remains MVP-only for trusted single-user self-hosting; credential isolation boundary is now explicitly defined in D8.
 - Frontend deployment: service split is not final; keep frontend/API serving strategy as an open decision.
+- Deployment substrate: Onyx deployment piggybacks on existing menos Ansible inventory + playbook flow; only Onyx-specific assets/tasks are additive.
+- Deployment lifecycle: MVP runs Onyx as a separate compose project; long-term plan is phased menos absorption into Onyx.
 
 ### Decision Summary
 
 | ID | Decision | One-liner |
 |----|----------|-----------|
 | D1 | Memory Architecture | Files-first in MinIO, SurrealDB hybrid search index, MEMORY.md always in-context, dual update strategy (explicit + auto-consolidation), MinIO versioning |
-| D2 | menos Integration | Shared infra, Onyx queries menos, conversations stay in Onyx |
+| D2 | menos Integration | Shared infra, internal server-side menos retrieval in MVP, conversations stay in Onyx |
 | D3 | Bot Plugin Architecture | Plugin interfaces in MVP; in-process Discord/Telegram plugins in Phase 2 |
 | D4 | LLM Provider Strategy | 4-SDK TypeScript abstraction, Vercel AI SDK primary, per-task model routing for cost optimization |
 | D5 | Session Persistence | JSONL in MinIO + metadata in SurrealDB |
 | D6 | API Design | OpenAI-compatible HTTP API |
 | D7 | Web Interface | SvelteKit + shadcn-svelte control UI |
-| D8 | Tool System | Built-in tool groups + custom tools + cron scheduling, simple loop detection MVP, same result to LLM and user |
+| D8 | Tool System | Built-in tool groups + canonical tool IDs, custom tools + cron scheduling, credential isolation boundary in MVP |
 | D9 | Agent Definition Format | OpenClaw-compatible JSON config + workspace markdown + conversational onboarding wizard |
-| D10 | Deployment Topology | Open decision: separate frontend/API vs unified serving |
+| D10 | Deployment Topology | Piggyback on existing menos Ansible infrastructure; frontend/API split remains open |
 | D11 | Agent Runtime & ReAct Loop | ReAct loop with 10-section modular system prompt (static-first for caching), token budgets, context assembly, provider failover, configurable reflection prompt, simple tool loop detection |
-| D12 | Heartbeat System | Autonomous proactive engine with cron + data gatherers + LLM reasoning, no-op responses logged separately (never in transcript), both main and isolated session modes |
+| D12 | Heartbeat System | Autonomous proactive engine with cron + LLM reasoning, MVP web UI notification center only, no-op responses logged separately (never in transcript) |
 
 ### Research Links
 
