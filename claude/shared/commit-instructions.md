@@ -26,6 +26,8 @@ Scan all non-encrypted modified and untracked files for secrets. Look for:
 
 If secrets are found, STOP immediately. Show details and suggest adding files to .gitignore. Do not proceed with commits.
 
+Commit ALL uncommitted changes in the working tree. Do not skip files because they were changed in a previous task, by the user manually, or by another agent. If a file is uncommitted and matches the auto-stage rules below, it gets committed. The "never revert user changes" rule applies to destructive actions (restore, checkout, discard) — not to committing via /commit.
+
 Categorize uncommitted files using this approach:
 - Auto-ignore and add to .gitignore: *.log, *.csv, *.tsv, *.db, *.sqlite, *.sqlite3, large data files (*.json over 1MB, *.xml data dumps)
 - Auto-stage for commit: Source code files (*.py, *.js, *.ts, etc.), documentation (*.md, *.rst, *.txt), configuration files (pyproject.toml, package.json, Dockerfile, docker-compose.yml), small JSON/YAML configs, test files
