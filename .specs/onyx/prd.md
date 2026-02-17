@@ -873,6 +873,557 @@ The web interface renders assistant responses with:
 
 ---
 
+### D11: Agent Runtime & ReAct Loop - DECIDED
+
+**Decision**: Standard ReAct (Reason + Act) loop with configurable iteration limits, token budgets for context assembly, and provider failover.
+
+This is the core execution engine — the runtime behavior that makes Onyx an AI assistant rather than a collection of infrastructure.
+
+#### The Four Pillars
+
+Onyx's architecture follows the same four-pillar model as OpenClaw:
+
+```
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│  1. Memory   │  │ 2. Heartbeat │  │ 3. Adapters  │  │  4. Skills   │
+│              │  │              │  │  (Plugins)   │  │   (Tools)    │
+│ How it       │  │ How it acts  │  │ How it works │  │ How it       │
+│ remembers    │  │ proactively  │  │ everywhere   │  │ extends      │
+│              │  │              │  │              │  │              │
+│ D1: Files +  │  │ D12: Cron +  │  │ D3: Plugin   │  │ D8: Tool     │
+│ hybrid search│  │ LLM reasoning│  │ protocol     │  │ groups       │
+└──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘
+        │                │                 │                  │
+        └────────────────┴─────────┬───────┴──────────────────┘
+                                   ▼
+                        ┌─────────────────────┐
+                        │   Agent Runtime     │
+                        │   (ReAct Loop)      │
+                        │   D11: This section │
+                        └─────────────────────┘
+```
+
+#### ReAct Loop — Core Cycle
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    AGENT TURN (per message)                       │
+│                                                                   │
+│  ┌─────────┐    ┌──────────┐    ┌──────────┐    ┌────────────┐  │
+│  │ Receive │───▶│ Assemble │───▶│ LLM Call │───▶│   Parse    │  │
+│  │ Message │    │ Context  │    │(streaming│    │  Response   │  │
+│  └─────────┘    └──────────┘    │)         │    └─────┬──────┘  │
+│                                 └──────────┘          │          │
+│                                                       ▼          │
+│                                              ┌────────────────┐  │
+│                                              │  text_delta?   │  │
+│                                              │  tool_call?    │  │
+│                                              │  done?         │  │
+│                                              └───┬────┬───┬───┘  │
+│                                                  │    │   │      │
+│          ┌───────────────────────────────────────┘    │   │      │
+│          ▼                                            │   ▼      │
+│  ┌───────────────┐                                    │ ┌──────┐ │
+│  │ Stream text   │                                    │ │ Done │ │
+│  │ to client     │                                    │ └──┬───┘ │
+│  └───────────────┘                                    │    │     │
+│                                                       ▼    │     │
+│                                              ┌─────────────┐│     │
+│                                              │Execute Tool ││     │
+│                                              │             ││     │
+│                                              │ Append tool ││     │
+│                                              │ result to   ││     │
+│                                              │ messages    ││     │
+│                                              └──────┬──────┘│     │
+│                                                     │       │     │
+│                                                     ▼       │     │
+│                                              ┌─────────────┐│     │
+│                                              │iteration < │││     │
+│                                              │ max_turns? │││     │
+│                                              └──┬──────┬──┘│     │
+│                                              yes│      │no  │     │
+│                                     ┌───────────┘      │    │     │
+│                                     │ Loop back to     │    │     │
+│                                     │ "LLM Call"       ▼    │     │
+│                                     │           ┌──────────┐│     │
+│                                     │           │Force stop││     │
+│                                     │           │+ warning ││     │
+│                                     │           └────┬─────┘│     │
+│                                     │                │      │     │
+│  ┌──────────────────────────────────┘                │      │     │
+│  │                                                   ▼      ▼     │
+│  │                                            ┌─────────────────┐ │
+│  │                                            │  Finalize Turn  │ │
+│  │                                            │  - Save session │ │
+│  │                                            │  - Update daily │ │
+│  │                                            │    log          │ │
+│  │                                            │  - Emit usage   │ │
+│  │                                            └─────────────────┘ │
+│  │                                                                │
+│  └─── (back to LLM Call with tool result appended) ──────────────│
+│                                                                   │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+#### Sequence Diagram 1: Simple Message (no tools)
+
+```
+User          Plugin/UI       Gateway        AgentRuntime      Provider       Memory
+ │               │               │               │               │             │
+ │  send msg     │               │               │               │             │
+ │──────────────▶│  incoming     │               │               │             │
+ │               │──────────────▶│  route(msg)   │               │             │
+ │               │               │──────────────▶│               │             │
+ │               │               │               │  searchMemory │             │
+ │               │               │               │──────────────────────────▶│
+ │               │               │               │  memory results            │
+ │               │               │               │◀──────────────────────────│
+ │               │               │               │               │             │
+ │               │               │               │  assembleContext()          │
+ │               │               │               │  (system prompt             │
+ │               │               │               │   + memory + history)       │
+ │               │               │               │               │             │
+ │               │               │               │  stream()     │             │
+ │               │               │               │──────────────▶│             │
+ │               │               │               │  text deltas  │             │
+ │               │  chat.delta   │               │◀──────────────│             │
+ │  stream text  │◀──────────────│◀──────────────│               │             │
+ │◀──────────────│               │               │  finish       │             │
+ │               │  chat.done    │               │◀──────────────│             │
+ │  done + usage │◀──────────────│◀──────────────│               │             │
+ │◀──────────────│               │               │               │             │
+ │               │               │               │  saveSession()│             │
+ │               │               │               │  appendDailyLog()           │
+```
+
+#### Sequence Diagram 2: Tool Call Loop
+
+```
+User          AgentRuntime      Provider        ToolExecutor     Memory
+ │               │               │               │               │
+ │  "search for  │               │               │               │
+ │   X and       │               │               │               │
+ │   summarize"  │               │               │               │
+ │──────────────▶│               │               │               │
+ │               │ assembleCtx() │               │               │
+ │               │ stream()      │               │               │
+ │               │──────────────▶│               │               │
+ │               │               │               │               │
+ │               │  tool_call:   │               │               │
+ │               │  web_search   │               │               │
+ │  chat.tool    │◀──────────────│               │               │
+ │◀──────────────│               │               │               │
+ │               │               │               │               │
+ │               │  execute("web_search", args)  │               │
+ │               │──────────────────────────────▶│               │
+ │               │  tool result (search results) │               │
+ │               │◀──────────────────────────────│               │
+ │               │                               │               │
+ │               │ ── iteration 2/25 ──          │               │
+ │               │ append tool result to messages │               │
+ │               │ stream()      │               │               │
+ │               │──────────────▶│               │               │
+ │               │               │               │               │
+ │               │  tool_call:   │               │               │
+ │               │  web_fetch    │               │               │
+ │  chat.tool    │◀──────────────│               │               │
+ │◀──────────────│               │               │               │
+ │               │  execute("web_fetch", args)   │               │
+ │               │──────────────────────────────▶│               │
+ │               │  tool result (page content)   │               │
+ │               │◀──────────────────────────────│               │
+ │               │                               │               │
+ │               │ ── iteration 3/25 ──          │               │
+ │               │ stream()      │               │               │
+ │               │──────────────▶│               │               │
+ │               │  text deltas (summary)        │               │
+ │  chat.delta   │◀──────────────│               │               │
+ │◀──────────────│               │               │               │
+ │               │  finish_reason: stop           │               │
+ │  chat.done    │◀──────────────│               │               │
+ │◀──────────────│               │               │               │
+```
+
+#### Sequence Diagram 3: Provider Failure + Fallback
+
+```
+User          AgentRuntime      Primary         Fallback        UI
+ │               │             Provider         Provider         │
+ │  send msg     │               │               │               │
+ │──────────────▶│               │               │               │
+ │               │  stream()     │               │               │
+ │               │──────────────▶│               │               │
+ │               │  HTTP 529     │               │               │
+ │               │  (overloaded) │               │               │
+ │               │◀──────────────│               │               │
+ │               │                               │               │
+ │               │  ── retry 1/3 (backoff) ──    │               │
+ │               │  stream()     │               │               │
+ │               │──────────────▶│               │               │
+ │               │  HTTP 529     │               │               │
+ │               │◀──────────────│               │               │
+ │               │                               │               │
+ │               │  ── check fallback config ──  │               │
+ │               │  stream()                     │               │
+ │               │──────────────────────────────▶│               │
+ │               │  text deltas                  │               │
+ │  chat.delta   │◀──────────────────────────────│               │
+ │◀──────────────│                               │  status:      │
+ │               │                               │  "using       │
+ │               │──────────────────────────────────▶ fallback"  │
+ │               │  finish                       │               │
+ │  chat.done    │◀──────────────────────────────│               │
+ │◀──────────────│                               │               │
+```
+
+#### Context Assembly
+
+When a message arrives, the runtime assembles the LLM context from workspace files and dynamic sources:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    CONTEXT WINDOW                             │
+│                                                               │
+│  ┌─────────────────────────────────────────────────────────┐ │
+│  │  SYSTEM PROMPT (assembled from workspace files)          │ │
+│  │                                                          │ │
+│  │  1. SOUL.md      — persona, tone, values                │ │
+│  │  2. IDENTITY.md  — name, vibe                           │ │
+│  │  3. USER.md      — user profile, preferences            │ │
+│  │  4. AGENTS.md    — operating rules, instructions        │ │
+│  │  5. TOOLS.md     — tool usage guidance                  │ │
+│  │  6. HEARTBEAT.md — proactive check context (if active)  │ │
+│  │  7. skills/*.md  — active skill instructions            │ │
+│  │                                                          │ │
+│  │  Budget: ~30% of context window                         │ │
+│  └─────────────────────────────────────────────────────────┘ │
+│                                                               │
+│  ┌─────────────────────────────────────────────────────────┐ │
+│  │  MEMORY CONTEXT (retrieved per-turn)                     │ │
+│  │                                                          │ │
+│  │  - MEMORY.md     — full curated long-term memory        │ │
+│  │  - Hybrid search results (top-k chunks from D1 query)  │ │
+│  │  - Today's daily log (current session context)          │ │
+│  │                                                          │ │
+│  │  Budget: ~15% of context window                         │ │
+│  └─────────────────────────────────────────────────────────┘ │
+│                                                               │
+│  ┌─────────────────────────────────────────────────────────┐ │
+│  │  CONVERSATION HISTORY (from session JSONL)               │ │
+│  │                                                          │ │
+│  │  - Load most recent N messages from session              │ │
+│  │  - Trim oldest messages first when budget exceeded       │ │
+│  │  - Tool call/result pairs kept together (never split)   │ │
+│  │                                                          │ │
+│  │  Budget: ~45% of context window                         │ │
+│  └─────────────────────────────────────────────────────────┘ │
+│                                                               │
+│  ┌─────────────────────────────────────────────────────────┐ │
+│  │  RESPONSE HEADROOM                                       │ │
+│  │                                                          │ │
+│  │  Reserved for LLM response generation                   │ │
+│  │                                                          │ │
+│  │  Budget: ~10% of context window (min 4096 tokens)       │ │
+│  └─────────────────────────────────────────────────────────┘ │
+│                                                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Token Budget Policy
+
+| Segment | Budget | Strategy when exceeded |
+|---------|--------|----------------------|
+| System prompt | ~30% | Truncate skills (least-recently-used first). Core files (SOUL, AGENTS, USER) are never truncated |
+| Memory context | ~15% | Reduce top-k results. MEMORY.md summary always included |
+| Conversation history | ~45% | Drop oldest message pairs. Tool call+result pairs are atomic (never split) |
+| Response headroom | ~10% (min 4096) | Non-negotiable floor. Other segments shrink to maintain this |
+
+Budgets are proportional — actual token counts depend on the model's context window size. A 200k-token model allocates differently than a 32k model.
+
+#### Runtime Configuration
+
+```json5
+// In onyx.json, per-agent or global
+{
+  "runtime": {
+    "maxTurns": 25,              // Max ReAct iterations per user message
+    "turnTimeoutMs": 120000,     // 2 min per LLM call
+    "toolTimeoutMs": 60000,      // 1 min per tool execution
+    "totalTimeoutMs": 600000,    // 10 min per entire agent turn
+    "memorySearchTopK": 10,      // Hybrid search results per turn
+    "contextBudget": {
+      "systemPrompt": 0.30,
+      "memory": 0.15,
+      "history": 0.45,
+      "responseHeadroom": 0.10
+    }
+  },
+
+  "failover": {
+    "retries": 2,                // Retries on same provider before failover
+    "backoffMs": [1000, 3000],   // Exponential backoff per retry
+    "fallbackModel": "openrouter/anthropic/claude-sonnet-4"
+    // null = no fallback, return error to user
+  }
+}
+```
+
+#### Agent Routing
+
+When a message arrives from a plugin/channel:
+
+1. Match `bindings[]` in order — first match wins (most-specific bindings should be listed first)
+2. If no binding matches, route to the agent marked `default: true`
+3. If no default agent exists, return error to the channel
+
+```typescript
+function resolveAgent(channel: string, metadata: ChannelMeta): Agent {
+  for (const binding of config.bindings) {
+    if (binding.match.channel !== channel) continue;
+    // Check additional match criteria (guildId, chatId, etc.)
+    if (matchesAll(binding.match, metadata)) {
+      return getAgent(binding.agentId);
+    }
+  }
+  return getDefaultAgent(); // throws if no default
+}
+```
+
+#### Tool Execution
+
+Tools execute sequentially within a single LLM response. If the LLM returns multiple `tool_call` entries in one response, they execute in order (not parallel in MVP — parallel tool execution is a future optimization).
+
+**On tool failure:**
+1. Capture the error message
+2. Return error as the tool result (the LLM sees the error and can reason about it)
+3. Do NOT retry automatically — let the LLM decide whether to retry, try a different approach, or report the failure to the user
+
+**On tool timeout:**
+1. Kill the execution after `toolTimeoutMs`
+2. Return timeout error as tool result
+3. Continue the ReAct loop (LLM sees the timeout)
+
+#### Memory Write-Back
+
+Memory updates happen at specific points, not continuously:
+
+| Event | Action |
+|-------|--------|
+| End of agent turn | Append conversation summary to today's daily log (`memory/YYYY-MM-DD.md`) |
+| Explicit `memory_write` tool call | Agent writes to MEMORY.md or creates a new memory file |
+| Session end (explicit or timeout) | Final daily log entry with session summary |
+
+Daily log writes are append-only. MEMORY.md writes are explicit (the agent decides what's worth persisting long-term via the `memory_write` tool).
+
+#### Abort/Cancel
+
+When the user sends `chat.abort`:
+1. Cancel the in-flight LLM streaming call (provider SDK cancellation)
+2. If a tool is currently executing, let it complete (tools may have side effects — don't kill mid-write)
+3. Save whatever partial response was generated to the session
+4. Emit `chat.done` with `finish_reason: "abort"`
+
+---
+
+### D12: Heartbeat System - DECIDED
+
+**Decision**: Autonomous background loop that proactively checks integrated services and notifies the user via configured channels. MVP includes the framework and cron engine; service integrations are progressive.
+
+The Heartbeat is what makes Onyx proactive rather than purely reactive. Instead of waiting for the user to ask "do I have any meetings?", the Heartbeat checks on a schedule and reaches out when something needs attention.
+
+#### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      HEARTBEAT ENGINE                            │
+│                                                                   │
+│  ┌─────────────┐    ┌──────────────────┐    ┌────────────────┐  │
+│  │   Cron      │───▶│  Data Gatherers  │───▶│  LLM Reasoning │  │
+│  │  Scheduler  │    │  (per-source)    │    │  (agent turn)  │  │
+│  └─────────────┘    └──────────────────┘    └───────┬────────┘  │
+│                                                      │           │
+│                                              ┌───────▼────────┐  │
+│                                              │   Decision:    │  │
+│                                              │   notify or    │  │
+│                                              │   stay silent? │  │
+│                                              └───┬────────┬───┘  │
+│                                                  │        │      │
+│                                            notify│  silent│      │
+│                                                  ▼        ▼      │
+│                                           ┌──────────┐ ┌──────┐  │
+│                                           │ Send via │ │ Log  │  │
+│                                           │ adapter  │ │ only │  │
+│                                           └──────────┘ └──────┘  │
+│                                                                   │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+#### Sequence Diagram: Heartbeat Tick
+
+```
+Cron           HeartbeatEngine    DataGatherers     AgentRuntime     Plugin/Channel
+ │                  │                 │                  │                │
+ │  tick            │                 │                  │                │
+ │─────────────────▶│                 │                  │                │
+ │                  │  gather()       │                  │                │
+ │                  │────────────────▶│                  │                │
+ │                  │                 │ fetch calendar   │                │
+ │                  │                 │ fetch email      │                │
+ │                  │                 │ fetch tasks      │                │
+ │                  │                 │ check services   │                │
+ │                  │  gathered data  │                  │                │
+ │                  │◀────────────────│                  │                │
+ │                  │                                    │                │
+ │                  │  runAgentTurn(                     │                │
+ │                  │    system: HEARTBEAT.md,           │                │
+ │                  │    user: gathered_data)            │                │
+ │                  │───────────────────────────────────▶│                │
+ │                  │                                    │                │
+ │                  │  response: {                       │                │
+ │                  │    notify: true,                   │                │
+ │                  │    message: "Meeting in 15 min -   │                │
+ │                  │      prep doc is empty",           │                │
+ │                  │    priority: "high",               │                │
+ │                  │    channel: "primary"              │                │
+ │                  │  }                                 │                │
+ │                  │◀───────────────────────────────────│                │
+ │                  │                                                     │
+ │                  │  sendNotification(message, channel)                │
+ │                  │───────────────────────────────────────────────────▶│
+ │                  │                                                     │
+ │                  │  OR if notify: false                               │
+ │                  │  log("HEARTBEAT OK - nothing to report")          │
+```
+
+#### HEARTBEAT.md — Workspace File
+
+Each agent can have a `HEARTBEAT.md` in its workspace that defines what to check and how to reason about it:
+
+```markdown
+# Heartbeat Instructions
+
+## Schedule
+Check every 30 minutes during active hours (8am-10pm local time).
+
+## Data Sources
+Check the following and report anything that needs my attention:
+
+### Calendar (Google Calendar)
+- Upcoming meetings in the next 60 minutes
+- Flag if a meeting has no agenda or empty shared docs
+- Flag double-bookings
+
+### Email (Gmail)
+- Unread emails from contacts in USER.md
+- Emails marked urgent or requiring action
+- Skip newsletters and automated notifications
+
+### Tasks (GitHub Issues)
+- Issues assigned to me with approaching deadlines
+- PRs awaiting my review for >24 hours
+
+## Notification Rules
+- Only notify if something genuinely needs attention
+- "Nothing to report" = stay silent (log only)
+- High priority: meetings within 15 min, urgent emails
+- Normal priority: approaching deadlines, pending reviews
+- Never notify between 10pm and 8am
+
+## Tone
+Brief and actionable. Example:
+- "Meeting with Design team in 15 min — shared doc is empty"
+- "3 PRs waiting for your review (oldest: 2 days)"
+```
+
+#### Data Gatherer Interface
+
+```typescript
+interface DataGatherer {
+  readonly name: string;
+  readonly description: string;
+  enabled(): boolean;
+  gather(): Promise<GatheredData>;
+}
+
+interface GatheredData {
+  source: string;
+  timestamp: Date;
+  items: DataItem[];
+  errors?: string[];  // Partial failures (e.g., API timeout)
+}
+
+// MVP gatherers (Phase 1)
+// None — framework only. Heartbeat runs but has no external sources.
+// The schedule tool (D8) provides the cron engine.
+
+// Phase 2 gatherers (progressive, each is a small integration)
+// - CalendarGatherer (Google Calendar API)
+// - EmailGatherer (Gmail API / IMAP)
+// - GitHubGatherer (GitHub API — issues, PRs, notifications)
+// - SlackGatherer (unread mentions, DMs)
+// - CustomGatherer (user-defined webhook/API polling)
+```
+
+#### Heartbeat in the Agent Turn
+
+The Heartbeat reuses the same `AgentRuntime` (D11) but with a different context assembly:
+
+| Segment | Normal Turn | Heartbeat Turn |
+|---------|-------------|----------------|
+| System prompt | SOUL + IDENTITY + USER + AGENTS + TOOLS | SOUL + IDENTITY + USER + **HEARTBEAT.md** |
+| User message | Actual user message | Gathered data (structured text from all sources) |
+| Memory | Hybrid search on user query | Today's daily log only (for context on what's already been reported) |
+| Tools available | All configured tools | `schedule` only (heartbeat can reschedule itself, but cannot use fs/runtime/web) |
+| Response | Streamed to user | Evaluated: notify via channel or log silently |
+
+#### Notification Delivery
+
+When the heartbeat decides to notify:
+
+1. Message is sent via the agent's **primary channel** (configured in bindings or agent config)
+2. If primary channel is unavailable, fall back to secondary (e.g., Slack → email)
+3. Notification includes priority level (`high`, `normal`, `low`)
+4. Channels can filter by priority (e.g., Discord only gets `high`)
+
+```json5
+// In agent config
+{
+  "id": "main",
+  "heartbeat": {
+    "enabled": true,
+    "intervalMinutes": 30,
+    "activeHours": { "start": "08:00", "end": "22:00" },
+    "timezone": "America/New_York",
+    "notifyChannel": "slack",        // Primary notification channel
+    "fallbackChannel": "web",        // If primary unavailable
+    "quietMode": false               // true = log only, never notify
+  }
+}
+```
+
+#### MVP Scope
+
+**Phase 1 (MVP):**
+- Heartbeat engine framework (cron scheduler + agent turn invocation)
+- `HEARTBEAT.md` workspace file support
+- Heartbeat config in agent definition
+- Log-only mode (no external data gatherers yet)
+- The `schedule` tool (D8) provides the cron engine that heartbeat reuses
+
+**Phase 2:**
+- Calendar gatherer (Google Calendar API)
+- Email gatherer (Gmail API)
+- GitHub gatherer (issues, PRs, notifications)
+- Slack gatherer (unread mentions)
+- Notification delivery via plugins
+
+**Phase 3:**
+- Custom gatherers (user-defined webhook/API polling)
+- Heartbeat chaining (one agent's heartbeat triggers another)
+- Smart scheduling (increase frequency when activity is high, decrease when idle)
+
+---
+
 ### D9: Agent Definition Format - DECIDED
 
 **Decision**: OpenClaw-compatible format (JSON config + workspace markdown files)
@@ -961,6 +1512,7 @@ The web interface renders assistant responses with:
 ├── USER.md                         # User profile
 ├── IDENTITY.md                     # Agent name/vibe
 ├── TOOLS.md                        # Tool usage guidance
+├── HEARTBEAT.md                    # Proactive check definitions (see D12)
 ├── MEMORY.md                       # Curated long-term memory
 ├── memory/
 │   ├── 2026-02-15.md              # Daily logs
@@ -992,6 +1544,7 @@ The web interface renders assistant responses with:
 | `memory/YYYY-MM-DD.md` | ✓ | ✓ | Yes |
 | `MEMORY.md` | ✓ | ✓ | Yes |
 | `skills/` | ✓ | ✓ | Yes |
+| `HEARTBEAT.md` | ✓ | ✓ | Yes (see D12) |
 | `channels.*` | ✓ | Plugins | Different (Onyx uses plugins) |
 | `providers.*` | ✗ | ✓ | Onyx extension |
 | Sandbox config | ✓ | Phase 3 | Tool execution isolation — see [OpenClaw sandboxing docs](https://docs.openclaw.ai/gateway/sandboxing) |
@@ -1015,7 +1568,15 @@ The web interface renders assistant responses with:
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │  Core Modules (TypeScript/Bun):                           │  │
 │  │  ├── gateway/          # WebSocket + HTTP endpoints       │  │
-│  │  ├── agents/           # Agent runtime, tool execution    │  │
+│  │  ├── agents/                                              │  │
+│  │  │   ├── runtime.ts    # ReAct loop (D11)                │  │
+│  │  │   ├── context.ts    # Context assembly + token budgets │  │
+│  │  │   ├── router.ts     # Binding-based agent routing      │  │
+│  │  │   └── tools/        # Built-in tool implementations    │  │
+│  │  ├── heartbeat/        # Proactive engine (D12)           │  │
+│  │  │   ├── engine.ts     # Cron scheduler + tick dispatch   │  │
+│  │  │   ├── gatherers/    # Data source integrations         │  │
+│  │  │   └── notify.ts     # Notification routing             │  │
 │  │  ├── memory/           # Vector search, hybrid queries    │  │
 │  │  ├── providers/        # 4-SDK provider abstraction       │  │
 │  │  ├── plugins/          # Plugin loader, hooks             │  │
@@ -1079,9 +1640,14 @@ onyx/
 │   │   │   ├── websocket.ts     # WS connection handler
 │   │   │   └── http.ts          # REST endpoints
 │   │   ├── agents/
-│   │   │   ├── runtime.ts       # Agent execution loop
-│   │   │   ├── tools/           # Built-in tools
-│   │   │   └── context.ts       # Session context
+│   │   │   ├── runtime.ts       # ReAct loop (D11)
+│   │   │   ├── context.ts       # Context assembly + token budgets (D11)
+│   │   │   ├── router.ts        # Binding-based agent routing (D11)
+│   │   │   └── tools/           # Built-in tool implementations
+│   │   ├── heartbeat/
+│   │   │   ├── engine.ts        # Cron scheduler + tick dispatch (D12)
+│   │   │   ├── gatherers/       # Data source integrations (D12)
+│   │   │   └── notify.ts        # Notification routing (D12)
 │   │   ├── memory/
 │   │   │   ├── vector.ts        # Vector search
 │   │   │   └── hybrid.ts        # Combined search (vector + BM25)
@@ -1187,7 +1753,9 @@ Single-user assistant accessible through a browser. No bot plugins yet.
 | **Session management** | JSONL in MinIO, metadata in SurrealDB |
 | **Memory system** | Files-first in MinIO, hybrid search (vector + BM25) in SurrealDB, Ollama embeddings |
 | **MVP tools** | `memory` (search/write/get), `sessions` (list/history), `web` (SearXNG search/fetch), `fs` (read/write/edit), `runtime` (exec), `schedule` (cron jobs) |
-| **Agent definitions** | OpenClaw-compatible JSON config + workspace markdown files |
+| **Agent runtime** | ReAct loop with configurable iteration limits, token budgets, context assembly, provider failover (D11) |
+| **Heartbeat framework** | Cron engine + HEARTBEAT.md support + log-only mode (no external gatherers in MVP) (D12) |
+| **Agent definitions** | OpenClaw-compatible JSON config + workspace markdown files (including HEARTBEAT.md) |
 | **Web UI** | SvelteKit + shadcn-svelte: chat, sessions, memory browser, agent config, provider settings |
 | **Auth** | Username/password login (single user). Optional static bearer token for API clients |
 
@@ -1196,6 +1764,7 @@ Single-user assistant accessible through a browser. No bot plugins yet.
 | Deliverable | Details |
 |-------------|---------|
 | **Bot plugins** | Discord, Telegram (in-process, PluginProtocol interface) |
+| **Heartbeat gatherers** | Calendar (Google), Email (Gmail), GitHub (issues/PRs), Slack (mentions) — notification delivery via plugins |
 | **menos integration** | `menos_search`, `menos_ingest` tools |
 | **Subscription provider hardening** | Improve reliability, OAuth UX, and fallback behavior for Claude/Codex/Copilot backends |
 | **Additional tools** | `model_routing`, `mermaid`, `git`, `docker` |
@@ -1207,6 +1776,7 @@ Single-user assistant accessible through a browser. No bot plugins yet.
 |-------------|---------|
 | **Multi-user** | User accounts, per-user agents and memory |
 | **Sandbox isolation** | Isolate tool execution (shell, fs, browser) in Docker containers per agent/session. Per-agent sandbox config, workspace access control, bind mounts. Required for multi-user and remote access. Reference: [OpenClaw sandboxing](https://docs.openclaw.ai/gateway/sandboxing), [multi-agent sandbox config](https://openclawcn.com/en/docs/multi-agent-sandbox-tools/) |
+| **Heartbeat advanced** | Custom gatherers (webhook/API polling), heartbeat chaining, smart scheduling |
 | **Plugin extraction** | Move plugins to separate processes (REST/gRPC/WebSocket) |
 | **Passkey auth** | WebAuthn/passkey support for passwordless login |
 | **MCP support** | Model Context Protocol for external tool servers |
@@ -1257,10 +1827,12 @@ Single-user assistant accessible through a browser. No bot plugins yet.
 | D8 | Tool System | Built-in tool groups + custom tools + cron scheduling |
 | D9 | Agent Definition Format | OpenClaw-compatible JSON config + workspace markdown |
 | D10 | Deployment Topology | Open decision: separate frontend/API vs unified serving |
+| D11 | Agent Runtime & ReAct Loop | ReAct loop with token budgets, context assembly, provider failover |
+| D12 | Heartbeat System | Autonomous proactive engine — cron + data gatherers + LLM reasoning + notify |
 
 ### Research Links
 
-- **[OpenClaw Research Notes](openclaw-notes.md)** - Local research: Docker setup, memory architecture, enhancement options (Graphiti, Cognee, Mem0, ClawRAG), hybrid search tuning, decision matrix
+- **[OpenClaw Research Notes](research/openclaw-notes.md)** - Local research: Docker setup, memory architecture, enhancement options (Graphiti, Cognee, Mem0, ClawRAG), hybrid search tuning, decision matrix
 - [OpenClaw GitHub](https://github.com/openclaw/openclaw)
 - [nanobot](https://github.com/HKUDS/nanobot) - Python reference implementation
 - [FemtoBot](https://github.com/rocopolas/FemtoBot) - Ollama + ChromaDB patterns

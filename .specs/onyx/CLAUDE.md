@@ -15,7 +15,9 @@ Personal AI assistant platform — OpenClaw's concept rebuilt in **TypeScript/Bu
 ## Key Files
 
 - `prd.md` — comprehensive PRD with 10 decided architectural decisions (D1-D10)
-- `openclaw-notes.md` — research notes: Docker setup, memory architecture, enhancement options, hybrid search tuning, decision matrix
+- `research/openclaw-notes.md` — research notes: Docker setup, memory architecture, enhancement options, hybrid search tuning, decision matrix
+- `research/` — source analyses, comparisons, prompt extraction, and research outputs from PicoClaw, NanoClaw, Nanobot, OpenClaw
+- `features/` — future feature design documents (e.g., ToolResult duality)
 
 ## MAJOR PIVOT: Python → TypeScript/Bun (2026-02-16)
 
