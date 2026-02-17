@@ -16,13 +16,17 @@ Review a plan file for issues, ambiguities, questions, and unclear instructions.
 
 ## Process
 
-### 1. Identify Target File
+### 1. Identify Target File (Deterministic, Sequential)
 
-- If `$ARGUMENTS` is provided, use it as the target file.
-- If not provided, auto-detect in this order:
-  1. `./plan.md`
-  2. `./.specs/**/plan.md`
-- If multiple candidates are found, present the list and ask the user to choose one path.
+- If `$ARGUMENTS` is provided, use it as the target file and skip auto-detection entirely.
+- With an explicit path, do not run `Glob` for candidate discovery.
+- Validate the provided path is readable; if not, return a direct file-not-found/readability error for that exact path.
+- If `$ARGUMENTS` is not provided, auto-detect in this exact order (sequentially, not in parallel):
+  1. Check `./plan.md`; if present, select it and stop.
+  2. Check `./.specs/**/plan.md` under the repository root `.specs/` only.
+- During auto-detection, exclude nested project trees/submodules (for example, `menos/.specs/**`) unless the user explicitly asks for cross-project search.
+- If multiple candidates remain, sort paths lexicographically and ask the user to choose one path.
+- Do not broaden discovery scope unless the user explicitly requests it.
 - Prefer OpenCode tools (`Read`/`Glob`) over shell file discovery.
 
 ### 1.5 Execution Mode (Required)
@@ -33,6 +37,12 @@ Default mode is **analysis-only** unless user explicitly asks for edits.
 - **interactive-fix:** discuss one issue with 1-3-1, apply exactly one chosen fix, then continue
 
 Do not edit files unless mode is `interactive-fix` or user explicitly requests edits.
+
+Mode transition rules:
+- Start in `analysis-only`.
+- If the user explicitly asks to "do the fixes", "apply updates", "patch as we go", or equivalent, switch to `interactive-fix` immediately.
+- In `interactive-fix`, apply each accepted decision before presenting the next issue.
+- Do not switch back to `analysis-only` unless the user asks.
 
 ### 2. Initial Review & Assessment
 
@@ -50,6 +60,18 @@ Read the plan file and perform comprehensive analysis:
 **Assess scope:**
 - Count estimated issues
 - Determine if tracking file is warranted (>5 issues or complex dependencies)
+
+Issue hygiene requirements:
+- Maintain an internal issue registry with a short "root cause" tag per issue.
+- Do not raise derivative issues that are only restatements of already-resolved root causes.
+- If a newly found issue depends on a prior decision, present it as a dependency follow-up and state that linkage explicitly.
+
+### 2.5 Repo Grounding Pass (Before Path/Command Issues)
+
+Before raising any issue about paths, commands, file locations, or tooling assumptions:
+- Validate against the real repository layout using `Read`/`Glob`.
+- Cite the concrete file path(s) that support the concern.
+- If repository evidence is missing, do not present the issue yet.
 
 ### 3. Create Tracking File (optional, user-requested)
 
@@ -106,6 +128,7 @@ Rules:
 - Present exactly one issue at a time.
 - Do not present batches of issues unless user explicitly asks for a batch summary.
 - Do not claim a total issue count unless it is deterministic.
+- Do not ask the same root issue multiple times with different wording.
 
 ### 5. Apply Chosen Resolution (interactive-fix only)
 
@@ -130,6 +153,12 @@ Instructions:
 
 Do not apply additional inferred changes beyond the selected issue.
 
+Implementation requirements:
+- Apply immediately after each user decision (before presenting the next issue).
+- Use a background subagent (`plan-updater`) for the targeted edit when available.
+- After edit, re-read the changed section to confirm the specific acceptance was applied.
+- If edit is blocked, report the blocker and do not continue to new issues.
+
 ### 6. Report Changes
 
 Present concise explanation to user:
@@ -138,6 +167,11 @@ Present concise explanation to user:
 ✓ Updated: [Brief description of what was changed in the plan file]
 ```
 
+Include a one-line status marker after each decision:
+- `Applied` (edited successfully)
+- `Not applied` (analysis-only mode)
+- `Blocked` (edit failed with reason)
+
 ### 7. Continue to Next Issue
 
 If tracking file exists, update it:
@@ -145,6 +179,11 @@ If tracking file exists, update it:
 - Note any observations for future reference
 
 Move to next issue. Repeat steps 4-7 until the user stops or issues are exhausted.
+
+Before presenting the next issue:
+- Recompute issue list against current file state.
+- Remove resolved and derivative issues.
+- Prefer net-new, material issues only.
 
 ### 8. Cleanup
 
@@ -226,3 +265,7 @@ Constraints:
 - Do not edit by default; analysis-only is the default mode
 - Tracking file is opt-in only (create only when requested)
 - Command is idempotent — safe to re-run on same plan file
+- File discovery fallback steps must be sequential (no parallel globbing for fallback logic)
+- Keep auto-detection bounded to repo-root scope unless user explicitly expands scope
+- In `interactive-fix`, do not batch deferred edits; update continuously after each accepted resolution
+- Prefer repository-grounded evidence over abstract plan-only assumptions when available
