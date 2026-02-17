@@ -124,9 +124,18 @@ DEFINE FIELD chunk_size ON memory_meta TYPE int;
 DEFINE FIELD chunk_overlap ON memory_meta TYPE int;
 ```
 
+#### Embedding Provider Selection
+
+**Auto-selection with graceful fallback:**
+1. **Ollama local embeddings** (preferred) — Uses existing menos infrastructure (`nomic-embed-text`), zero API costs, privacy-preserving
+2. **API embeddings via Vercel AI SDK** — Falls back to whatever embedding provider the user configured (OpenAI, etc.)
+3. **FTS-only (no vectors)** — If no embedding provider available, memory search still works via BM25 keyword search
+
+Memory search functionality is guaranteed regardless of embedding availability. This matches OpenClaw's proven graceful degradation pattern.
+
 #### Embedding Dimension Policy (MVP)
 
-- MVP pins one embedding model and one dimension for all indexed chunks (current target: `nomic-embed-text`, 1024-d).
+- MVP pins one embedding model and one dimension for all indexed chunks (current target: `nomic-embed-text`, 1024-d from Ollama).
 - Changing embedding model or dimension is a migration event: full re-embed + reindex for the affected agent scope.
 - `memory_meta` stores the active embedding fingerprint (`provider`, `model`, chunk config) and is checked on startup/session begin.
 - If fingerprint differs from indexed data, Onyx marks index stale and triggers deterministic rebuild before hybrid search is considered healthy.
@@ -141,6 +150,29 @@ DEFINE FIELD chunk_overlap ON memory_meta TYPE int;
 #### Sync Flow
 
 On file change (or session start), compare checksums, re-chunk changed files (~400 tokens, 80 overlap), embed via Ollama, and upsert into SurrealDB. Stale chunks are deleted automatically.
+
+#### Memory Loading Strategy
+
+**MEMORY.md** is always loaded fully into the agent's context as working memory (consensus pattern across all reference projects). This ensures active facts are always available without search latency.
+
+**All memory files** (MEMORY.md + daily/*.md + any custom memory documents) are also stored in MinIO and indexed in SurrealDB for hybrid search. This enables:
+- Semantic search across all memory (vector similarity)
+- Keyword search for specific terms (BM25)
+- Future graph relations (person → project → decision → conversation)
+
+SurrealDB replaces OpenClaw's SQLite layer, providing both the search index and enabling optional graph modeling post-MVP.
+
+#### MEMORY.md Update Mechanisms
+
+**Dual update strategy:**
+
+1. **Explicit updates** — Agent can update MEMORY.md at any time via the `edit_file` tool. This gives the agent full control over what's worth persisting long-term.
+
+2. **Automatic consolidation** — LLM-based consolidation runs as backup every ~25 messages, extracting new facts from conversation history while preserving existing content. Prevents memory loss if agent forgets to update explicitly.
+
+**Safety net:** MinIO bucket versioning is enabled on the memory bucket. Every write (explicit or consolidation) automatically creates a recoverable version. No git needed; versioning happens at the storage layer. This allows browsing/restoring any previous MEMORY.md state if hard-fought memory is lost.
+
+**Future enhancement:** A `memory_history` tool could expose version browsing to the agent or user, allowing rollback or diff viewing directly from the chat interface.
 
 #### Hybrid Search (Vector + Full-Text)
 
@@ -413,6 +445,44 @@ function getProvider(model: string): ProviderBackend {
 2. **OpenAI Codex SDK** — Only official way to use ChatGPT Plus/Pro subscription (OAuth device flow)
 3. **GitHub Copilot SDK** — Only official way to use Copilot subscription (OAuth device flow)
 4. **Vercel AI SDK** — Handles all API-key and credential-based providers with a unified interface (20+ official providers, community providers for Ollama/OpenRouter)
+
+#### Provider Abstraction Interface
+
+**Vercel AI SDK as primary, thin adapters for subscription SDKs:**
+
+Vercel AI SDK handles all API-key backends (OpenAI, Anthropic, Ollama, OpenRouter, Bedrock, Google, Azure, etc.) with native TypeScript support. Subscription SDKs (Claude Agent, Codex, Copilot) get thin adapter layers conforming to the same common interface.
+
+**Key requirement:** The abstraction must support **per-task model selection**, not just per-provider. Different tasks route to different models:
+- Heartbeat checks → cheap/fast model (e.g., Ollama local, GPT-4o-mini)
+- Cron jobs → task-appropriate model (configurable per job)
+- Subagents → frontier or specialized model
+- Main conversation → user's default model
+
+This enables cost optimization without changing the provider interface.
+
+#### Model Routing & Cost Optimization
+
+**Problem:** Sending all tasks (heartbeats, cron, subagents, simple lookups) to a frontier model like Claude Opus can burn $100+/month unnecessarily. OpenClaw's default config is a cost trap.
+
+**Solution (Phase 1):** Per-task model configuration knobs. User assigns models to roles manually:
+
+```json5
+{
+  "models": {
+    "defaultModel": "claude-subscription/claude-sonnet-4-20250514",  // Main conversation
+    "heartbeatModel": "ollama/qwen3-32b",                             // Free local model
+    "cronModel": "openrouter/gpt-4o-mini",                            // $0.15/1M tokens
+    "subagentModel": "openrouter/anthropic/claude-opus-4"             // Frontier for complex tasks
+  }
+}
+```
+
+**Benefits:**
+- Covers the biggest cost win (heartbeats + cron on cheap models) with zero complexity
+- System prompt already designed static-first for cache optimization (10-section structure)
+- Provider abstraction already supports per-task model selection
+
+**Phase 2:** Add lightweight complexity classifier for automatic routing based on query characteristics (length, code presence, reasoning markers, multi-step intent). Start simple, tune with real usage data.
 
 ---
 
@@ -836,6 +906,12 @@ The web interface renders assistant responses with:
 - Tool call cards with expandable input/output
 - Code blocks with copy button
 
+#### ToolResult Display Strategy (MVP)
+
+In MVP, the same tool result is shown to both the LLM and the user (no separate ForLLM/ForUser formatting). This keeps the tool interface simple and provides full transparency in the web UI.
+
+**Future consideration:** ToolResult duality (separate formatting for LLM vs user, silent tool calls, async feedback) may be added post-MVP if usage patterns show clear benefit. See `.specs/onyx/features/future-toolresult-duality.md` for the full design.
+
 ---
 
 ### D10: Deployment Topology - OPEN
@@ -1078,22 +1154,36 @@ User          AgentRuntime      Primary         Fallback        UI
 
 #### Context Assembly
 
-When a message arrives, the runtime assembles the LLM context from workspace files and dynamic sources:
+When a message arrives, the runtime assembles the LLM context from workspace files and dynamic sources.
+
+**System Prompt Structure (10 Sections):**
+
+The system prompt is assembled from modular sections, ordered **static → dynamic** for prompt caching optimization (static sections get cached, dynamic sections change per-turn):
+
+1. **Identity + Safety** — Core agent identity and safety guardrails (static, cacheable)
+2. **Tool Call Style** — Guidance on when to narrate vs. silently use tools (static, cacheable)
+3. **Skills Summary** — Progressive loading: skill descriptions in prompt, full content read on demand (mostly static)
+4. **Messaging Rules** — Channel routing, when to reply vs. stay silent (mostly static)
+5. **Silent Reply Protocol** — Token-based mechanism for suppressing empty responses (static)
+6. **Heartbeat Instructions** — HEARTBEAT_OK protocol and "nothing to report" behavior (static)
+7. **Bootstrap Files** — SOUL.md, USER.md, AGENTS.md content injected here (changes rarely)
+8. **Tools** — Dynamic list of available tools with schemas (changes per session)
+9. **Memory** — MEMORY.md content (changes frequently as agent learns)
+10. **Session Metadata** — Current channel, chat ID, conversation summary (changes every turn)
+
+**Cherry-picked features from reference projects:**
+- Internal thought tags from NanoClaw (`<internal>` for reasoning not shown to user)
+- External content security wrapper from OpenClaw (marks untrusted input boundaries)
+- Scheduled task prefix from NanoClaw (`[SCHEDULED TASK - ...]` for cron-triggered turns)
+
+**Context Window Budget:**
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    CONTEXT WINDOW                             │
 │                                                               │
 │  ┌─────────────────────────────────────────────────────────┐ │
-│  │  SYSTEM PROMPT (assembled from workspace files)          │ │
-│  │                                                          │ │
-│  │  1. SOUL.md      — persona, tone, values                │ │
-│  │  2. IDENTITY.md  — name, vibe                           │ │
-│  │  3. USER.md      — user profile, preferences            │ │
-│  │  4. AGENTS.md    — operating rules, instructions        │ │
-│  │  5. TOOLS.md     — tool usage guidance                  │ │
-│  │  6. HEARTBEAT.md — proactive check context (if active)  │ │
-│  │  7. skills/*.md  — active skill instructions            │ │
+│  │  SYSTEM PROMPT (10 sections above, modular assembly)     │ │
 │  │                                                          │ │
 │  │  Budget: ~30% of context window                         │ │
 │  └─────────────────────────────────────────────────────────┘ │
@@ -1151,12 +1241,24 @@ Budgets are proportional — actual token counts depend on the model's context w
     "toolTimeoutMs": 60000,      // 1 min per tool execution
     "totalTimeoutMs": 600000,    // 10 min per entire agent turn
     "memorySearchTopK": 10,      // Hybrid search results per turn
+    "reflectionPrompt": false,   // Optional reflection prompt after tool rounds
+                                  // false = disabled (default)
+                                  // string = custom prompt injected after each tool result
+                                  // Example: "Reflect on the results and decide next steps."
     "contextBudget": {
       "systemPrompt": 0.30,
       "memory": 0.15,
       "history": 0.45,
       "responseHeadroom": 0.10
     }
+  },
+
+  "models": {
+    "defaultModel": "claude-subscription/claude-sonnet-4-20250514",  // Main conversation
+    "heartbeatModel": "ollama/qwen3-32b",        // Heartbeat checks (free local model)
+    "cronModel": "openrouter/gpt-4o-mini",       // Scheduled tasks (cheap API model)
+    "subagentModel": null                         // null = use defaultModel for subagents
+                                                  // Can override to frontier model for complex tasks
   },
 
   "failover": {
@@ -1202,6 +1304,17 @@ Tools execute sequentially within a single LLM response. If the LLM returns mult
 1. Kill the execution after `toolTimeoutMs`
 2. Return timeout error as tool result
 3. Continue the ReAct loop (LLM sees the timeout)
+
+#### Tool Loop Detection
+
+**Phase 1 (MVP):** Simple exact-duplicate detection (~10 lines of code). If the agent calls the same tool with the same arguments multiple times in a row, abort and return an error explaining the loop was detected. `maxTurns` serves as the outer safety net for cost control.
+
+**Phase 2:** Full pattern matching based on real usage data:
+- Ping-pong detection (alternating between two tools repeatedly)
+- Polling detection (same read operation with no state change)
+- Sliding window thresholds (10 warning, 20 critical, 30 circuit breaker)
+
+Starting simple allows tuning thresholds based on observed behavior rather than speculation.
 
 #### Memory Write-Back
 
@@ -1376,6 +1489,14 @@ The Heartbeat reuses the same `AgentRuntime` (D11) but with a different context 
 | Tools available | All configured tools | `schedule` only (heartbeat can reschedule itself, but cannot use fs/runtime/web) |
 | Response | Streamed to user | Evaluated: notify via channel or log silently |
 
+#### Heartbeat Transcript Management
+
+**No-op heartbeat responses** (those returning `HEARTBEAT_OK` or equivalent "nothing to report" sentinel) are logged to a **separate heartbeat audit log** for observability but **NEVER enter the conversation transcript**. This prevents context pollution from zero-information exchanges (48 useless turns/day at 30-min intervals).
+
+**Heartbeats that trigger actual actions** (reminders, alerts, scheduled tasks, notifications) go into the conversation transcript normally like any other agent turn.
+
+This approach is cleaner than OpenClaw's truncate-after-the-fact strategy — the no-op exchange never enters the transcript in the first place, avoiding both context pollution and the need for file truncation.
+
 #### Notification Delivery
 
 When the heartbeat decides to notify:
@@ -1401,12 +1522,34 @@ When the heartbeat decides to notify:
 }
 ```
 
+#### Cron Session Modes
+
+Scheduled tasks (cron jobs) support two execution modes:
+
+**1. Main session (`sessionTarget: "main"`):**
+- Task is injected into the main conversation session
+- Heartbeat processes it with full conversation context
+- Use for context-aware tasks (e.g., "summarize today's conversations")
+
+**2. Isolated session (`sessionTarget: "isolated"`):**
+- Fresh session with no conversation history
+- Cheaper and faster for self-contained tasks
+- Use for routine checks (e.g., "check weather", "pull latest emails")
+
+**Auto-selection logic (with user override):**
+- Tasks referencing conversation context → `main` mode
+- Self-contained tasks → `isolated` mode
+- User can always override via toggle in task creation UI
+
+Both modes are fully functional in Phase 1. This avoids the workaround of embedding context at creation time and delivers the full scheduling experience from MVP launch.
+
 #### MVP Scope
 
 **Phase 1 (MVP):**
 - Heartbeat engine framework (cron scheduler + agent turn invocation)
 - `HEARTBEAT.md` workspace file support
 - Heartbeat config in agent definition
+- **Cron session modes** (both main and isolated, with auto-selection)
 - Log-only mode (no external data gatherers yet)
 - The `schedule` tool (D8) provides the cron engine that heartbeat reuses
 
@@ -1556,6 +1699,32 @@ When the heartbeat decides to notify:
 3. **Providers section**: Onyx-specific for API keys, OAuth status
 4. **Channels**: Onyx uses plugin architecture, not built-in channels
 5. **Storage**: Onyx uses MinIO + SurrealDB, OpenClaw uses filesystem + SQLite
+
+#### First-Time Onboarding (SOUL/USER Setup)
+
+On first launch, Onyx runs a **5-phase conversational wizard** to generate workspace files. This avoids the blank-template problem common in all reference projects.
+
+**Design principles:**
+- **Multiple-choice over open-ended** — Concrete selectable options with "other" escape hatch. Prevents decision paralysis.
+- **Selections map directly to rules** — Each checkbox generates a specific SOUL.md behavioral rule (e.g., selecting "Sycophancy" annoyance → "No filler praise. State corrections directly."). No interpretation gap.
+- **Progressive disclosure** — Phase 1-2 required (~5 min), Phase 3-4 optional (~10 min). Users can skip and return later.
+- **Conversational follow-ups** — Not a form. Interesting answers trigger deeper questions (soulcraft pattern).
+- **Always editable** — Show file paths after generation, encourage manual editing.
+
+**Generated files:**
+1. **SOUL.md** — Agent personality, tone, behavioral rules (30-80 lines optimal)
+2. **USER.md** — User context, preferences, communication style
+3. **IDENTITY.md** — Agent name, vibe, presentation
+4. **AGENTS.md** — Security boundaries, permissions, operating instructions
+
+**Onboarding flow phases:**
+- **Phase 1:** Agent identity (name, role, personality traits)
+- **Phase 2:** User preferences (communication style, annoyances to avoid, priorities)
+- **Phase 3:** Tools and permissions (which tools to enable, risk tolerance)
+- **Phase 4:** Proactive behavior (heartbeat settings, notification preferences)
+- **Phase 5:** Review and confirm (show generated files, allow edits before saving)
+
+Full flow with all questions, options, and rule mappings documented in `research/research-soul-setup-prompts.md` §10.
 
 ---
 
@@ -1817,18 +1986,18 @@ Single-user assistant accessible through a browser. No bot plugins yet.
 
 | ID | Decision | One-liner |
 |----|----------|-----------|
-| D1 | Memory Architecture | Files-first in MinIO, SurrealDB as search index |
+| D1 | Memory Architecture | Files-first in MinIO, SurrealDB hybrid search index, MEMORY.md always in-context, dual update strategy (explicit + auto-consolidation), MinIO versioning |
 | D2 | menos Integration | Shared infra, Onyx queries menos, conversations stay in Onyx |
 | D3 | Bot Plugin Architecture | Plugin interfaces in MVP; in-process Discord/Telegram plugins in Phase 2 |
-| D4 | LLM Provider Strategy | 4-SDK TypeScript abstraction (no LiteLLM) |
+| D4 | LLM Provider Strategy | 4-SDK TypeScript abstraction, Vercel AI SDK primary, per-task model routing for cost optimization |
 | D5 | Session Persistence | JSONL in MinIO + metadata in SurrealDB |
 | D6 | API Design | OpenAI-compatible HTTP API |
 | D7 | Web Interface | SvelteKit + shadcn-svelte control UI |
-| D8 | Tool System | Built-in tool groups + custom tools + cron scheduling |
-| D9 | Agent Definition Format | OpenClaw-compatible JSON config + workspace markdown |
+| D8 | Tool System | Built-in tool groups + custom tools + cron scheduling, simple loop detection MVP, same result to LLM and user |
+| D9 | Agent Definition Format | OpenClaw-compatible JSON config + workspace markdown + conversational onboarding wizard |
 | D10 | Deployment Topology | Open decision: separate frontend/API vs unified serving |
-| D11 | Agent Runtime & ReAct Loop | ReAct loop with token budgets, context assembly, provider failover |
-| D12 | Heartbeat System | Autonomous proactive engine — cron + data gatherers + LLM reasoning + notify |
+| D11 | Agent Runtime & ReAct Loop | ReAct loop with 10-section modular system prompt (static-first for caching), token budgets, context assembly, provider failover, configurable reflection prompt, simple tool loop detection |
+| D12 | Heartbeat System | Autonomous proactive engine with cron + data gatherers + LLM reasoning, no-op responses logged separately (never in transcript), both main and isolated session modes |
 
 ### Research Links
 
