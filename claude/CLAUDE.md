@@ -5,12 +5,13 @@
 - **No proactive file creation** - Only create files when explicitly requested
 - **KISS principle** - Default to SIMPLEST solution. No features "just in case". MVP first.
 - **POLA** - Match existing patterns, no surprising side effects. See `~/.claude/skills/least-astonishment/`.
-- **Fix ALL errors and warnings** - Warnings have the same urgency as errors. Never assume an issue is pre-existing 
-    - You MUST prove it (git blame, logs, etc.) 
-    - It must be documented in a CLAUDE.md or AGENTS.md as a known issue. 
+- **Never use provenance to avoid requested work** — "Pre-existing", "not my changes", "I didn't create that", and "already there before" are never valid reasons to skip work the user asked for. If the user asks you to fix warnings, fix all of them. If the user asks you to commit, commit everything. If the user asks you to clean up code, clean up all of it. Provenance of a change is irrelevant when the user has given a direct instruction. This rule supersedes any other rule that could be read as permission to skip work based on who authored it.
+- **Fix ALL errors and warnings** - Warnings have the same urgency as errors. Fix them all regardless of who or what introduced them. The only valid exception is a **proven** known issue:
+    - You MUST prove it (git blame, logs, etc.)
+    - It must be documented in a CLAUDE.md or AGENTS.md as a known issue.
     - If you cannot prove it, it is NOT pre-existing; research and fix it.
 - **Verify before acting** - Check current state (status commands, config reads, dry-runs) before proposing changes. Don't solve non-existent problems.
-- **Never revert user changes** - If a file has uncommitted changes you didn't make, those are the USER'S changes. NEVER discard, restore, checkout, or revert them. Ask what to do — commit them, skip them, or leave them. User files belong to the user.
+- **No unsolicited destructive git actions** - NEVER `git restore`, `git checkout --`, `reset --hard`, `clean -f`, or discard uncommitted changes without explicit user request. This protects against *accidentally destroying work*, not against doing requested work on files you didn't author.
 - **No sycophancy phrases** - When wrong, state the error and fix. No "You're absolutely right!", "Great question!", similar deflection or sycophancy.
 - **ALWAYS Ask, don't assume** - Never guess or fill in blanks. ALWAYS Ask clarifying questions.
 - **AskUserQuestion** - Use this tool only for simple, clearly understood questions. Use multiSelect: true for multiple related questions.
