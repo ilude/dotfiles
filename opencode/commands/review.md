@@ -1,0 +1,228 @@
+---
+description: Review plan files for issues, ambiguities, and unclear instructions using GPT-5.3-Codex
+model: openai/gpt-5.3-codex
+---
+
+# /review Command
+
+Review a plan file for issues, ambiguities, questions, and unclear instructions. Uses GPT-5.3-Codex for deep analysis and enforces one-issue-at-a-time 1-3-1 interaction.
+
+## Usage
+
+```
+/review                          # Auto-detect plan.md in current/.specs directories
+/review path/to/plan.md          # Review specific plan file
+```
+
+## Process
+
+### 1. Identify Target File
+
+- If `$ARGUMENTS` is provided, use it as the target file.
+- If not provided, auto-detect in this order:
+  1. `./plan.md`
+  2. `./.specs/**/plan.md`
+- If multiple candidates are found, present the list and ask the user to choose one path.
+- Prefer OpenCode tools (`Read`/`Glob`) over shell file discovery.
+
+### 1.5 Execution Mode (Required)
+
+Default mode is **analysis-only** unless user explicitly asks for edits.
+
+- **analysis-only (default):** review + 1-3-1 issue discussion, no file edits
+- **interactive-fix:** discuss one issue with 1-3-1, apply exactly one chosen fix, then continue
+
+Do not edit files unless mode is `interactive-fix` or user explicitly requests edits.
+
+### 2. Initial Review & Assessment
+
+Read the plan file and perform comprehensive analysis:
+
+**Look for:**
+- **Ambiguities**: Vague requirements, undefined terms, unclear scope
+- **Logical gaps**: Missing steps, undefined dependencies, impossible sequences  
+- **Unclear instructions**: Actions without clear success criteria, undefined methods
+- **Missing context**: Unstated assumptions, missing prerequisites
+- **Contradictions**: Conflicting requirements or goals
+- **Scope creep indicators**: Open-ended language, "maybe", "consider"
+- **Resource issues**: Undefined timelines, missing skill requirements
+
+**Assess scope:**
+- Count estimated issues
+- Determine if tracking file is warranted (>5 issues or complex dependencies)
+
+### 3. Create Tracking File (optional, user-requested)
+
+Only create a tracking file when the user explicitly asks for one.
+
+If requested:
+
+```bash
+tracking_file="${plan_file}.review-tracking.md"
+cat > "$tracking_file" <<EOF
+---
+created: $(date -Iseconds)
+plan_file: $plan_file
+total_issues: <count>
+status: in-progress
+---
+
+# Review Tracking: $(basename "$plan_file")
+
+## Issues Found
+
+| # | Severity | Issue Summary | Status |
+|---|----------|---------------|--------|
+EOF
+```
+
+### 4. Present Issues One-by-One (1-3-1 Rule)
+
+For each issue found, present using the 1-3-1 format. This is a hard interaction contract.
+
+---
+
+**Issue [N]: [Brief Title]**
+
+**Problem:** [1-2 sentence description of the issue]
+
+**Goal:** [What needs to be resolved/clarified]
+
+| Option | Pros | Cons |
+|--------|------|------|
+| **A: [Approach 1]** | [Pros] | [Cons] |
+| **B: [Approach 2]** | [Pros] | [Cons] |
+| **C: [Approach 3]** | [Pros] | [Cons] |
+
+**Recommendation: Option [X]** — [Brief justification]
+
+How would you like to resolve this?
+
+---
+
+**Wait for user response before proceeding.**
+
+Rules:
+- Present exactly one issue at a time.
+- Do not present batches of issues unless user explicitly asks for a batch summary.
+- Do not claim a total issue count unless it is deterministic.
+
+### 5. Apply Chosen Resolution (interactive-fix only)
+
+After user answers, update only the selected issue.
+
+```
+Task: Update plan file with resolution
+
+Context:
+- Plan file: $plan_file
+- Issue: [Issue description]
+- User resolution: [User's answer]
+- Tracking file: $tracking_file (if exists)
+
+Instructions:
+1. Read the current plan file
+2. Apply the user's resolution to address the issue
+3. Update the plan file in-place
+4. If tracking file exists, mark this issue as "resolved"
+5. Return a concise summary of changes made
+```
+
+Do not apply additional inferred changes beyond the selected issue.
+
+### 6. Report Changes
+
+Present concise explanation to user:
+
+```
+✓ Updated: [Brief description of what was changed in the plan file]
+```
+
+### 7. Continue to Next Issue
+
+If tracking file exists, update it:
+- Mark current issue as resolved
+- Note any observations for future reference
+
+Move to next issue. Repeat steps 4-7 until the user stops or issues are exhausted.
+
+### 8. Cleanup
+
+When all issues resolved:
+
+```bash
+if [[ -f "$tracking_file" ]]; then
+    # Archive tracking file with completion timestamp
+    mv "$tracking_file" "${tracking_file%.md}.completed.md"
+    echo "Review complete. Tracking archived to: ${tracking_file%.md}.completed.md"
+fi
+
+echo "✓ Plan review complete. All issues resolved."
+```
+
+## Review Checklist
+
+When analyzing a plan file, verify:
+
+- [ ] Clear objective statement exists
+- [ ] Scope is well-defined (what's in/out)
+- [ ] Prerequisites are listed
+- [ ] Dependencies are identified and ordered
+- [ ] Success criteria are measurable
+- [ ] Timeline/estimates are realistic
+- [ ] Resource requirements are specified
+- [ ] Risks are identified with mitigations
+- [ ] Decision rationale is documented
+- [ ] No undefined acronyms or terms
+
+## Example Issues to Catch
+
+| Issue Type | Example | Better Alternative |
+|------------|---------|-------------------|
+| Vague scope | "Implement the feature" | "Implement user authentication with email/password login" |
+| Missing timeline | "Do this soon" | "Complete by 2026-02-20 (3 business days)" |
+| Undefined success | "Make it fast" | "Achieve <100ms response time for 95th percentile" |
+| Open-ended | "Consider adding X" | "Decision: Add X (yes/no) - if yes, create follow-up task" |
+| Hidden dependency | "Deploy to production" | "Deploy to production (requires: CI tests passing, ops approval)" |
+
+## Anti-Patterns to Flag
+
+| Anti-Pattern | Why It's Bad | How to Fix |
+|--------------|--------------|------------|
+| "Just do it" instructions | No context, can't verify correctness | Add context and success criteria |
+| Circular dependencies | Task A needs B, B needs A | Identify cycle and break with intermediate milestone |
+| Infinite scope | "Fix all bugs" | Define specific bugs or time-box the effort |
+| Missing decision rationale | "We chose X" | Add "because [specific reason and trade-offs]" |
+| Assumed knowledge | "Use the standard approach" | Specify which standard, link to docs |
+
+## Background Subagent Template
+
+When launching updates, use this agent:
+
+```yaml
+Name: plan-updater
+Model: openai/gpt-5.3-codex
+Tools: Read, Edit, Write
+
+Instructions:
+You are a precise plan file editor. Your task:
+1. Read the plan file at the specified path
+2. Apply the user's resolution to address the specific issue
+3. Make minimal, targeted edits to resolve the issue
+4. Preserve all other content and formatting
+5. Return a concise summary of exactly what was changed
+
+Constraints:
+- Do not restructure the entire file unless necessary
+- Preserve existing YAML frontmatter
+- Maintain consistent formatting
+- If unsure about placement, ask for clarification
+```
+
+## Notes
+
+- Never use AskUserQuestion tool — present issues inline for discussion
+- One question at a time — complete resolution before moving to next issue
+- Do not edit by default; analysis-only is the default mode
+- Tracking file is opt-in only (create only when requested)
+- Command is idempotent — safe to re-run on same plan file
