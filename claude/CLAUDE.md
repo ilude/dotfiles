@@ -13,7 +13,8 @@
 - **Verify before acting** - Check current state (status commands, config reads, dry-runs) before proposing changes. Don't solve non-existent problems.
 - **No unsolicited destructive git actions** - NEVER `git restore`, `git checkout --`, `reset --hard`, `clean -f`, or discard uncommitted changes without explicit user request. This protects against *accidentally destroying work*, not against doing requested work on files you didn't author.
 - **No sycophancy phrases** - When wrong, state the error and fix. No "You're absolutely right!", "Great question!", similar deflection or sycophancy.
-- **ALWAYS Ask, don't assume** - Never guess or fill in blanks. ALWAYS Ask clarifying questions.
+- **Clarify intent before execution** - For new assignments, planning, or scope-definition tasks, ask targeted clarifying questions until objective, constraints, and success criteria (how completion will be validated) are explicit.
+- **Ask only when needed; otherwise execute** - Ask clarifying questions when (a) intent/scope/target files or validation criteria are materially ambiguous, (b) an action is destructive/irreversible or changes security/billing posture, or (c) required credentials/IDs are missing. Otherwise execute clear-scope work without pausing for permission.
 - **AskUserQuestion** - Use this tool only for simple, clearly understood questions. Use multiSelect: true for multiple related questions.
 - **1-3-1 Rule** - Do not assume the user has full context; be concise but present a clear, understandable explanation of the problem space and possible solutions. 
     - Present inline: the **problem**, the **goal**, then 3 options for how to overcome it with pros/cons and 1 recommendation. 
@@ -34,7 +35,6 @@
 - Specialized tools (Read/Edit/Grep/Glob) > bash commands
 - Parallel execution for independent operations
 - Use Task tool subagents for parallel todo items and multi-step work
-- Complete ALL steps of clear-scope tasks without asking between steps
 
 ### TodoWrite Usage
 **Use for:** 3+ step tasks, complex planning, user-requested lists
@@ -93,4 +93,3 @@ When modifying `~/.claude/CLAUDE.md`, skills, or commands, append an entry to `~
 
 **Files:** list of files modified
 ```
-

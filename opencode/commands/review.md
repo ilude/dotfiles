@@ -1,5 +1,6 @@
 ---
 description: Review plan files for issues, ambiguities, and unclear instructions using GPT-5.3-Codex
+argument-hint: [path/to/plan.md]
 model: openai/gpt-5.3-codex
 ---
 
@@ -18,12 +19,20 @@ Review a plan file for issues, ambiguities, questions, and unclear instructions.
 
 ### 1. Identify Target File (Deterministic, Sequential)
 
-- If `$ARGUMENTS` is provided, use it as the target file and skip auto-detection entirely.
+- Command argument values are injected by OpenCode before execution:
+  - Full argument string: `$ARGUMENTS`
+  - First positional argument: `$1`
+- Select explicit path source in this exact order:
+  1. Use `$ARGUMENTS` when non-empty.
+  2. Otherwise use `$1` when non-empty.
+- Normalize explicit argument before use: trim surrounding whitespace and remove one pair of matching outer quotes (`"..."` or `'...'`).
+- If an explicit argument is provided after normalization, use it as the target file and skip auto-detection entirely.
 - With an explicit path, do not run `Glob` for candidate discovery.
 - Validate the provided path is readable; if not, return a direct file-not-found/readability error for that exact path.
-- If `$ARGUMENTS` is not provided, auto-detect in this exact order (sequentially, not in parallel):
+- If no explicit argument remains after normalization, auto-detect in this exact order (sequentially, not in parallel):
   1. Check `./plan.md`; if present, select it and stop.
   2. Check `./.specs/**/plan.md` under the repository root `.specs/` only.
+- Repository root for detection is the current working directory when `/review` starts.
 - During auto-detection, exclude nested project trees/submodules (for example, `menos/.specs/**`) unless the user explicitly asks for cross-project search.
 - If multiple candidates remain, sort paths lexicographically and ask the user to choose one path.
 - Do not broaden discovery scope unless the user explicitly requests it.
@@ -34,14 +43,14 @@ Review a plan file for issues, ambiguities, questions, and unclear instructions.
 Default mode is **analysis-only** unless user explicitly asks for edits.
 
 - **analysis-only (default):** review + 1-3-1 issue discussion, no file edits
-- **interactive-fix:** discuss one issue with 1-3-1, apply exactly one chosen fix, then continue
+- **interactive-fix:** discuss one issue with 1-3-1, enqueue exactly one background fix task for the selected option, then continue
 
 Do not edit files unless mode is `interactive-fix` or user explicitly requests edits.
 
 Mode transition rules:
 - Start in `analysis-only`.
 - If the user explicitly asks to "do the fixes", "apply updates", "patch as we go", or equivalent, switch to `interactive-fix` immediately.
-- In `interactive-fix`, apply each accepted decision before presenting the next issue.
+- In `interactive-fix`, follow this loop: analyze -> present issue -> user selects option -> enqueue background fix task -> move to next issue.
 - Do not switch back to `analysis-only` unless the user asks.
 
 ### 2. Initial Review & Assessment
@@ -73,7 +82,44 @@ Before raising any issue about paths, commands, file locations, or tooling assum
 - Cite the concrete file path(s) that support the concern.
 - If repository evidence is missing, do not present the issue yet.
 
-### 3. Create Tracking File (optional, user-requested)
+### 3. Scratchpad (Required Internal State)
+
+Create and maintain a per-plan scratchpad file for issue registry and background task state:
+
+```text
+scratchpad_file="${plan_file}.review-scratchpad.md"
+```
+
+Required scratchpad structure:
+
+```markdown
+---
+created: <ISO timestamp>
+plan_file: <path>
+mode: analysis-only|interactive-fix
+status: in-progress
+---
+
+# Review Scratchpad
+
+## Root Cause Registry
+## Issue Queue
+## Decisions
+## Background Tasks
+## Failures
+## Final Reanalysis Notes
+```
+
+Rules:
+- Scratchpad is mandatory for every `/review` run.
+- Use it as the source of truth for dedupe and resolved root causes.
+- Record background task transitions: `queued -> running -> success|failed`.
+
+Task state model:
+- `queued`, `running`, `success`, `failed`, `cancelled`.
+- `success`, `failed`, and `cancelled` are terminal states.
+
+### 4. Create Tracking File (optional, user-requested)
 
 Only create a tracking file when the user explicitly asks for one.
 
@@ -98,7 +144,10 @@ status: in-progress
 EOF
 ```
 
-### 4. Present Issues One-by-One (1-3-1 Rule)
+Tracking file status values:
+- `open`, `queued`, `running`, `resolved`, `failed`, `deferred`.
+
+### 5. Present Issues One-by-One (1-3-1 Rule)
 
 For each issue found, present using the 1-3-1 format. This is a hard interaction contract.
 
@@ -130,62 +179,77 @@ Rules:
 - Do not claim a total issue count unless it is deterministic.
 - Do not ask the same root issue multiple times with different wording.
 
-### 5. Apply Chosen Resolution (interactive-fix only)
+### 6. Apply Chosen Resolution (interactive-fix only)
 
-After user answers, update only the selected issue.
+After user answers, create exactly one background task for the selected issue.
 
 ```
-Task: Update plan file with resolution
+Task: Enqueue selected resolution
 
 Context:
 - Plan file: $plan_file
 - Issue: [Issue description]
 - User resolution: [User's answer]
+- Scratchpad file: $scratchpad_file
 - Tracking file: $tracking_file (if exists)
 
 Instructions:
 1. Read the current plan file
-2. Apply the user's resolution to address the issue
-3. Update the plan file in-place
-4. If tracking file exists, mark this issue as "resolved"
-5. Return a concise summary of changes made
+2. Launch `plan-updater` background task for the selected resolution
+3. Update scratchpad task state to `queued`
+4. Do not block issue presentation while task runs
+5. Return task id and queued status
 ```
 
 Do not apply additional inferred changes beyond the selected issue.
 
 Implementation requirements:
-- Apply immediately after each user decision (before presenting the next issue).
-- Use a background subagent (`plan-updater`) for the targeted edit when available.
-- After edit, re-read the changed section to confirm the specific acceptance was applied.
-- If edit is blocked, report the blocker and do not continue to new issues.
+- `plan-updater` background task is required by default.
+- If subagent tooling is unavailable, fall back to local edit and record fallback in scratchpad.
+- Apply timeout + bounded retry for background tasks.
+- Default policy: timeout `120s`, retries `1`, retry delay `5s`.
+- If task still fails after retry, mark as `failed` in scratchpad and continue review.
+- In `interactive-fix`, do not wait for task completion before presenting the next issue.
 
-### 6. Report Changes
+### 7. Report Task Dispatch
 
 Present concise explanation to user:
 
 ```
-✓ Updated: [Brief description of what was changed in the plan file]
+✓ Queued: [Brief description of selected fix and task id]
 ```
 
 Include a one-line status marker after each decision:
-- `Applied` (edited successfully)
+- `Queued` (background task created)
 - `Not applied` (analysis-only mode)
-- `Blocked` (edit failed with reason)
+- `Blocked` (task creation failed)
 
-### 7. Continue to Next Issue
+### 8. Continue to Next Issue
 
 If tracking file exists, update it:
-- Mark current issue as resolved
+- Mark current issue as `queued` (or `resolved` only after task success)
 - Note any observations for future reference
 
-Move to next issue. Repeat steps 4-7 until the user stops or issues are exhausted.
+Move to next issue immediately after queueing the selected fix. Repeat steps 5-8 until the user stops or issues are exhausted.
 
 Before presenting the next issue:
-- Recompute issue list against current file state.
+- Recompute issue list against current file state plus accepted decisions recorded in scratchpad.
 - Remove resolved and derivative issues.
 - Prefer net-new, material issues only.
+- If accepted decision intent conflicts with in-flight task output, keep issue state as pending until task reaches terminal state.
+- After task success, task output is source of truth for subsequent issue recomputation.
 
-### 8. Cleanup
+### 9. Final Task Drain + Full Reanalysis (interactive-fix only)
+
+When issue presentation ends:
+- Wait until all background tasks are terminal (`success`, `failed`, or `cancelled`).
+- Start final full-file reanalysis only after all background tasks complete.
+- If failures exist after retry, present failed tasks and ask user disposition:
+  - retry failed tasks
+  - convert specific failures to manual fixes
+  - defer failed items
+
+### 10. Cleanup
 
 When all issues resolved:
 
@@ -198,6 +262,16 @@ fi
 
 echo "✓ Plan review complete. All issues resolved."
 ```
+
+Scratchpad cleanup is required at end of run:
+- Ask user exactly once: `Delete`, `Archive (.completed)`, or `Keep` scratchpad.
+- Apply the selected cleanup action to `${plan_file}.review-scratchpad.md`.
+
+If user stops mid-run while tasks are in-flight:
+- Ask user once: `wait-all`, `cancel-pending`, or `abort-now`.
+- `wait-all`: allow all queued/running tasks to reach terminal state, then proceed to cleanup.
+- `cancel-pending`: cancel only `queued` tasks; allow `running` tasks to finish.
+- `abort-now`: stop issue presentation immediately and skip task waiting; leave non-terminal tasks unmanaged.
 
 ## Review Checklist
 
@@ -241,7 +315,7 @@ When launching updates, use this agent:
 ```yaml
 Name: plan-updater
 Model: openai/gpt-5.3-codex
-Tools: Read, Edit, Write
+Tools: file-read and file-edit tools available in runtime (for example Read + apply_patch)
 
 Instructions:
 You are a precise plan file editor. Your task:
@@ -249,13 +323,14 @@ You are a precise plan file editor. Your task:
 2. Apply the user's resolution to address the specific issue
 3. Make minimal, targeted edits to resolve the issue
 4. Preserve all other content and formatting
-5. Return a concise summary of exactly what was changed
+5. Return concise status with task id, outcome, and exact changed locations
 
 Constraints:
 - Do not restructure the entire file unless necessary
 - Preserve existing YAML frontmatter
 - Maintain consistent formatting
 - If unsure about placement, ask for clarification
+- Respect timeout/retry policy from caller
 ```
 
 ## Notes
@@ -267,5 +342,5 @@ Constraints:
 - Command is idempotent — safe to re-run on same plan file
 - File discovery fallback steps must be sequential (no parallel globbing for fallback logic)
 - Keep auto-detection bounded to repo-root scope unless user explicitly expands scope
-- In `interactive-fix`, do not batch deferred edits; update continuously after each accepted resolution
+- In `interactive-fix`, use async background task dispatch per accepted issue and perform one final full-file reanalysis after all tasks complete
 - Prefer repository-grounded evidence over abstract plan-only assumptions when available
