@@ -1,7 +1,7 @@
 # Aliases (interactive shells)
 
 # Claude Code YOLO mode
-alias ccyl='claude --dangerously-skip-permissions'
+alias ccyl='clear && claude --dangerously-skip-permissions'
 alias claude-install='npm install -g @anthropic-ai/claude-code'
 
 # NixOS
