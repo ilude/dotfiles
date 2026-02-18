@@ -3,4 +3,4 @@ description: Generate a structured team execution plan with builder/validator ag
 argument-hint: <task description>
 ---
 
-!`cat ~/.dotfiles/claude/shared/plan-with-team-instructions.md`
+@~/.dotfiles/claude/shared/plan-with-team-instructions.md
