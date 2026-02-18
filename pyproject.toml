@@ -5,6 +5,7 @@ requires-python = ">=3.9"
 dependencies = [
     "pytest",
     "pyyaml",
+    "ruff",
 ]
 
 [tool.pytest.ini_options]
