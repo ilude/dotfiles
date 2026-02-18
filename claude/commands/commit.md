@@ -4,4 +4,4 @@ argument-hint: push
 model: haiku
 ---
 
-!`cat ~/.dotfiles/claude/shared/commit-instructions.md`
+@~/.dotfiles/claude/shared/commit-instructions.md
