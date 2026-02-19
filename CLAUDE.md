@@ -35,7 +35,7 @@ Cross-platform dotfiles repository for Linux and Windows. Uses **Dotbot** for sy
 
 ```bash
 just update  # Update dotbot submodule, commit, and reinstall
-make test    # Run bats tests
+make test    # Run pytest tests
 ```
 
 ## Architecture
@@ -174,8 +174,10 @@ Plugins have known issues on Windows terminals (ConPTY):
 
 These are configured in `zsh/rc.d/02-plugins.zsh` with platform detection.
 
-#### Key Test File
-`test/shell-setup.bats` - Contains 48 tests documenting WHY each config exists. Read the header comments first.
+#### Key Test Files
+- `test/test_config_patterns.py` - Configuration drift detection (validates shell config files contain expected patterns)
+- `test/test_prompt.py` - Prompt path normalization and git branch display
+- `test/test_git_ssh_setup.py` - Git SSH key detection and config generation
 
 ## menos (Content Vault)
 
@@ -232,14 +234,13 @@ All API endpoints use RFC 9421 HTTP signatures with ed25519 keys (`~/.ssh/id_ed2
 
 ## Testing
 
-Tests use [bats-core](https://github.com/bats-core/bats-core):
+Tests use pytest for cross-platform testing:
 ```bash
-make test              # Run all tests
-make test-docker       # Run in Ubuntu 24.04 container (CI environment)
+make test              # Run pytest tests
+make test-docker       # Run tests in Ubuntu 24.04 container (CI environment)
 make lint              # Run shellcheck
 make format            # Format with shfmt
 make check             # lint + test
-bats test/prompt.bats  # Run specific test file
 ```
 
 ## Known Issues

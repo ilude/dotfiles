@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.9"
-# dependencies = ["pytest"]
+# dependencies = ["pytest", "pyyaml"]
 # ///
 """
 Configuration Pattern Tests (Config Drift Detection)
@@ -14,7 +14,7 @@ typos, deletions, or format drift. While coupling tests to implementation is
 normally discouraged, the tradeoff is acceptable for a personal dotfiles repo
 where catching config drift outweighs test fragility concerns.
 
-For actual bash/zsh execution tests, see prompt.bats and git_ssh_setup.bats.
+For bash/zsh execution tests, see test_prompt.py and test_git_ssh_setup.py.
 """
 
 import os
@@ -22,6 +22,7 @@ import re
 from pathlib import Path
 
 import pytest
+import yaml
 
 DOTFILES = Path(__file__).parent.parent
 
@@ -797,3 +798,113 @@ def test_gitconfig_delta_diff_filter():
     """git config interactive diffFilter uses delta."""
     content = (DOTFILES / "config" / "git" / "config").read_text()
     assert "diffFilter = delta" in content
+
+
+# =============================================================================
+# From install.conf.yaml sync tests
+# =============================================================================
+
+
+def _parse_link_targets_from_yaml(yaml_path: Path) -> dict:
+    """Parse dotbot link configuration and return all targets.
+
+    Returns dict mapping target paths to their config (string if simple, dict if conditional).
+    Only includes 'link' sections, skipping 'defaults', 'clean', etc.
+    """
+    with open(yaml_path) as f:
+        data = yaml.safe_load(f)
+
+    targets = {}
+    for item in data:
+        if isinstance(item, dict) and "link" in item:
+            link_config = item["link"]
+            for target, source_config in link_config.items():
+                targets[target] = source_config
+
+    return targets
+
+
+def _get_unconditional_targets(targets: dict) -> set:
+    """Extract only unconditional link targets (those without 'if' condition).
+
+    Conditional targets have dict values with an 'if' key.
+    Unconditional targets are simple strings or dict without 'if'.
+    """
+    unconditional = set()
+    for target, config in targets.items():
+        # String config = unconditional
+        if isinstance(config, str):
+            unconditional.add(target)
+        # Dict without 'if' key = unconditional
+        elif isinstance(config, dict) and "if" not in config:
+            unconditional.add(target)
+        # Dict with 'if' = conditional, skip
+
+    return unconditional
+
+
+def test_install_conf_wsl_sync():
+    """All unconditional main config links appear in WSL config.
+
+    This verifies that install.conf.yaml and wsl/install.conf.yaml
+    stay in sync. Per CLAUDE.md: "wsl/install.conf.yaml must mirror
+    the links in install.conf.yaml (skip Windows-only links)."
+    """
+    main_conf = DOTFILES / "install.conf.yaml"
+    wsl_conf = DOTFILES / "wsl" / "install.conf.yaml"
+
+    main_targets = _parse_link_targets_from_yaml(main_conf)
+    wsl_targets = _parse_link_targets_from_yaml(wsl_conf)
+
+    # Get unconditional targets (no 'if' condition)
+    main_unconditional = _get_unconditional_targets(main_targets)
+    wsl_all = set(wsl_targets.keys())
+
+    # WSL has its own ~/.dotfiles self-symlink, remove from comparison
+    wsl_only = wsl_all - main_unconditional
+    expected_wsl_only = {"~/.dotfiles"}
+
+    # Check all main unconditional targets are in WSL
+    missing_in_wsl = main_unconditional - wsl_all
+    assert not missing_in_wsl, (
+        f"WSL config missing these main targets: {sorted(missing_in_wsl)}"
+    )
+
+    # Check no unexpected extra targets in WSL (besides ~/.dotfiles)
+    assert wsl_only == expected_wsl_only, (
+        f"WSL config has unexpected extra targets: {sorted(wsl_only - expected_wsl_only)}"
+    )
+
+
+def test_install_conf_wsl_sync_missing_detection():
+    """Sync test catches missing links in WSL config.
+
+    This is a negative-path test that proves the check would catch
+    a missing link. We temporarily simulate a missing link by
+    excluding a target, verify the test would fail, then restore it.
+    """
+    main_conf = DOTFILES / "install.conf.yaml"
+    wsl_conf = DOTFILES / "wsl" / "install.conf.yaml"
+
+    main_targets = _parse_link_targets_from_yaml(main_conf)
+    wsl_targets = _parse_link_targets_from_yaml(wsl_conf)
+
+    main_unconditional = _get_unconditional_targets(main_targets)
+    wsl_all = set(wsl_targets.keys())
+
+    # Pick a real target from main config
+    test_target = next(iter(main_unconditional))
+
+    # Verify the target IS currently in WSL (baseline)
+    assert test_target in wsl_all, (
+        f"Test setup failed: {test_target} not in WSL config"
+    )
+
+    # Simulate missing by removing it temporarily
+    wsl_all_minus_one = wsl_all - {test_target}
+
+    # Verify the check would catch this as missing
+    missing = main_unconditional - wsl_all_minus_one
+    assert test_target in missing, (
+        f"Check failed to detect missing {test_target}"
+    )
