@@ -11,6 +11,7 @@
     - It must be documented in a CLAUDE.md or AGENTS.md as a known issue.
     - If you cannot prove it, it is NOT pre-existing; research and fix it.
 - **Verify before acting** - Check current state (status commands, config reads, dry-runs) before proposing changes. Don't solve non-existent problems.
+- **Validate runtime metadata against filesystem** - If environment metadata conflicts with observed state (e.g., git repo reported false but `.git/` exists), trust direct verification commands/tools before deciding workflow behavior.
 - **No unsolicited destructive git actions** - NEVER `git restore`, `git checkout --`, `reset --hard`, `clean -f`, or discard uncommitted changes without explicit user request. This protects against *accidentally destroying work*, not against doing requested work on files you didn't author.
 - **No sycophancy phrases** - When wrong, state the error and fix. No "You're absolutely right!", "Great question!", similar deflection or sycophancy.
 - **Clarify intent before execution** - For new assignments, planning, or scope-definition tasks, ask targeted clarifying questions until objective, constraints, and success criteria (how completion will be validated) are explicit.
@@ -35,6 +36,9 @@
 - Specialized tools (Read/Edit/Grep/Glob) > bash commands
 - Parallel execution for independent operations
 - Use Task tool subagents for parallel todo items and multi-step work
+
+### Workflow-Specific Overrides
+- If a higher-priority workflow instruction says "do not use TodoWrite/Task" (e.g., specific git/PR flows), that override takes precedence for that workflow only.
 
 ### TodoWrite Usage
 **Use for:** 3+ step tasks, complex planning, user-requested lists
