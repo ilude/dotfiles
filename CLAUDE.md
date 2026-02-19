@@ -242,6 +242,20 @@ make check             # lint + test
 bats test/prompt.bats  # Run specific test file
 ```
 
+## Known Issues
+
+### Claude Code pinned to 2.1.42 on Windows
+
+**Tracking:** https://github.com/anthropics/claude-code/issues/14828
+
+Claude Code 2.1.45+ causes CMD windows to flash and steal keyboard focus on every tool call and hook execution on Windows. Pinned to 2.1.42 via:
+- `install.ps1`: `$claudeCodeVersion = "2.1.42"` (npm install with exact version)
+- `claude/settings.json`: `DISABLE_AUTOUPDATER=1` + `_version_pin` block
+
+**Related regressions in 2.1.45+:** #26481 (Bash exit 1 / onecmd), #26610 (session env not supported on Windows), #26746 (hook paths broken)
+
+**When to remove:** Once #14828 is confirmed fixed, remove the `_version_pin` block and `DISABLE_AUTOUPDATER` from `settings.json`, and either update or remove the pinned version in `install.ps1`.
+
 ## Conventions
 
 - All scripts must be idempotent (safe to re-run)
