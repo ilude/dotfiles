@@ -1,9 +1,3 @@
----
-description: Review plan files for issues, ambiguities, and unclear instructions using GPT-5.3-Codex
-argument-hint: [path/to/plan.md]
-model: openai/gpt-5.3-codex
----
-
 # /review Command
 
 Review a plan file for issues, ambiguities, questions, and unclear instructions. Uses GPT-5.3-Codex for deep analysis and enforces one-issue-at-a-time 1-3-1 interaction.
@@ -59,7 +53,7 @@ Read the plan file and perform comprehensive analysis:
 
 **Look for:**
 - **Ambiguities**: Vague requirements, undefined terms, unclear scope
-- **Logical gaps**: Missing steps, undefined dependencies, impossible sequences  
+- **Logical gaps**: Missing steps, undefined dependencies, impossible sequences
 - **Unclear instructions**: Actions without clear success criteria, undefined methods
 - **Missing context**: Unstated assumptions, missing prerequisites
 - **Contradictions**: Conflicting requirements or goals
@@ -216,7 +210,7 @@ Implementation requirements:
 Present concise explanation to user:
 
 ```
-✓ Queued: [Brief description of selected fix and task id]
+Queued: [Brief description of selected fix and task id]
 ```
 
 Include a one-line status marker after each decision:
@@ -260,7 +254,7 @@ if [[ -f "$tracking_file" ]]; then
     echo "Review complete. Tracking archived to: ${tracking_file%.md}.completed.md"
 fi
 
-echo "✓ Plan review complete. All issues resolved."
+echo "Plan review complete. All issues resolved."
 ```
 
 Scratchpad cleanup is required at end of run:
