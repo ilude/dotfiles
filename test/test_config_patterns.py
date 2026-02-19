@@ -51,8 +51,8 @@ def read_dotfile(name: str) -> str:
 ALIASES_PATTERNS = [
     # Claude Code aliases
     (
-        "alias ccyl='claude --dangerously-skip-permissions'",
-        "ccyl alias uses dangerously-skip-permissions",
+        "alias ccyl='clear && claude --dangerously-skip-permissions'",
+        "ccyl alias clears screen and uses dangerously-skip-permissions",
     ),
     (
         "alias claude-install='npm install -g @anthropic-ai/claude-code'",
