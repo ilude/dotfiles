@@ -1,1 +1,0 @@
-C:/Users/Mike/.dotfiles/claude/commands/snapshot.md
