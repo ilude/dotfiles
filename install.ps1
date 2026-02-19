@@ -284,6 +284,7 @@ function Configure-Rclone {
 
     # Parse MINIO vars from .env (bash format)
     $secrets = Get-Content $secretsFile -Raw
+    $scheme = if ($secrets -match 'MINIO_URL=(https?)://') { $matches[1] } else { 'http' }
     $endpoint = if ($secrets -match 'MINIO_URL=(?:https?://)?([^\r\n]+)') { $matches[1] } else { $null }
     $accessKey = if ($secrets -match 'MINIO_ACCESS_KEY=([^\r\n]+)') { $matches[1] } else { $null }
     $secretKey = if ($secrets -match 'MINIO_SECRET_KEY=([^\r\n]+)') { $matches[1] } else { $null }
@@ -311,7 +312,7 @@ provider = Minio
 env_auth = false
 access_key_id = $accessKey
 secret_access_key = $secretKey
-endpoint = http://$endpoint
+endpoint = ${scheme}://$endpoint
 acl = private
 "@
 
@@ -735,6 +736,24 @@ function Install-Packages {
         }
     }
 
+    # Claude Code (pinned version - see https://github.com/anthropics/claude-code/issues/14828)
+    # 2.1.45+ causes CMD window focus stealing on Windows. Remove pin when #14828 is fixed.
+    Write-Host "`n--- Claude Code ---" -ForegroundColor Cyan
+    $claudeCodeVersion = "2.1.42"
+    Write-Host "  Claude Code@$claudeCodeVersion..." -ForegroundColor Cyan -NoNewline
+    $installedVersion = npm list -g @anthropic-ai/claude-code 2>$null | Select-String '@anthropic-ai/claude-code@(\S+)' | ForEach-Object { $_.Matches[0].Groups[1].Value }
+    if ($installedVersion -eq $claudeCodeVersion) {
+        Write-Host " already installed" -ForegroundColor DarkGray
+    } else {
+        try {
+            npm install -g "@anthropic-ai/claude-code@$claudeCodeVersion" 2>$null | Out-Null
+            Write-Host " installed" -ForegroundColor Green
+        } catch {
+            Write-Host " failed" -ForegroundColor Red
+            $script:failed += "npm:claude-code"
+        }
+    }
+
     # MSYS2 packages (zsh for Git Bash - requires MSYS2 from core packages)
     Write-Host "`n--- MSYS2 Packages (Git Bash zsh) ---" -ForegroundColor Cyan
     $msys2Pacman = "$Msys2Root\usr\bin\pacman.exe"
@@ -786,8 +805,14 @@ function Install-Packages {
     $bootstrapSrc = Join-Path $BASEDIR "zsh\zshrc-msys2-bootstrap"
     if ((Test-Path $msys2Home) -and (Test-Path $bootstrapSrc)) {
         $bootstrapDst = Join-Path $msys2Home ".zshrc"
-        Copy-Item $bootstrapSrc $bootstrapDst -Force
-        Write-Host "  Created $bootstrapDst" -ForegroundColor Green
+        $newContent = Get-Content $bootstrapSrc -Raw
+        $existing = if (Test-Path $bootstrapDst) { Get-Content $bootstrapDst -Raw } else { $null }
+        if ($newContent -eq $existing) {
+            Write-Host "  MSYS2 bootstrap: already up to date" -ForegroundColor DarkGray
+        } else {
+            Copy-Item $bootstrapSrc $bootstrapDst -Force
+            Write-Host "  Created $bootstrapDst" -ForegroundColor Green
+        }
     } else {
         Write-Host "  MSYS2 home not found - skipping bootstrap" -ForegroundColor DarkGray
     }
@@ -954,7 +979,7 @@ function Install-WSLWithUbuntu {
             $result = wsl --install --no-distribution 2>&1
             if ($LASTEXITCODE -eq 0) {
                 Write-Host "  WSL components installed" -ForegroundColor Green
-                Write-Host "  ${Yellow}A reboot may be required before installing Ubuntu${NC}" -ForegroundColor Yellow
+                Write-Host "  A reboot may be required before installing Ubuntu" -ForegroundColor Yellow
 
                 # Try to install distro immediately (works on some systems)
                 Write-Host "  Attempting to install $Distro..." -ForegroundColor Cyan
@@ -1013,12 +1038,13 @@ function Install-WSLPackages {
     wsl @distroArg -e bash --norc -c "mkdir -p /tmp/dotfiles-setup && tr -d '\r' < '$wslPath' > /tmp/dotfiles-setup/wsl-packages && chmod +x /tmp/dotfiles-setup/wsl-packages"
 
     # Run the script
-    $runResult = wsl @distroArg -e bash --norc -c '/tmp/dotfiles-setup/wsl-packages'
+    wsl @distroArg -e bash --norc -c '/tmp/dotfiles-setup/wsl-packages'
+    $runExitCode = $LASTEXITCODE
 
     # Cleanup
     wsl @distroArg -e bash --norc -c 'rm -rf /tmp/dotfiles-setup' 2>$null
 
-    if ($LASTEXITCODE -eq 0) {
+    if ($runExitCode -eq 0) {
         Write-Host "  WSL packages installed" -ForegroundColor Green
         return $true
     } else {
@@ -1101,13 +1127,25 @@ try {
     # Remove old symlink/file so git uses the XDG location instead
     $oldGitconfig = Join-Path $env:USERPROFILE ".gitconfig"
     if (Test-Path $oldGitconfig) {
-        Write-Host "Migrating ~/.gitconfig -> ~/.config/git/config (XDG)" -ForegroundColor Yellow
-        Remove-Item $oldGitconfig -Force
+        $item = Get-Item $oldGitconfig -Force
+        if ($item.LinkType -eq "SymbolicLink") {
+            Write-Host "Migrating ~/.gitconfig -> ~/.config/git/config (XDG)" -ForegroundColor Yellow
+            Remove-Item $oldGitconfig -Force
+        } else {
+            Write-Host "WARNING: ~/.gitconfig is a real file - backing up to ~/.gitconfig.bak" -ForegroundColor Red
+            Move-Item $oldGitconfig "$oldGitconfig.bak" -Force
+        }
     }
     $oldGitignore = Join-Path $env:USERPROFILE ".gitignore_global"
     if (Test-Path $oldGitignore) {
-        Write-Host "Migrating ~/.gitignore_global -> ~/.config/git/ignore (XDG)" -ForegroundColor Yellow
-        Remove-Item $oldGitignore -Force
+        $item = Get-Item $oldGitignore -Force
+        if ($item.LinkType -eq "SymbolicLink") {
+            Write-Host "Migrating ~/.gitignore_global -> ~/.config/git/ignore (XDG)" -ForegroundColor Yellow
+            Remove-Item $oldGitignore -Force
+        } else {
+            Write-Host "WARNING: ~/.gitignore_global is a real file - backing up to ~/.gitignore_global.bak" -ForegroundColor Red
+            Move-Item $oldGitignore "$oldGitignore.bak" -Force
+        }
     }
 
     # Update dotbot submodule
@@ -1230,7 +1268,7 @@ try {
         # Step 2: Configure passwordless sudo (requires password once, then never again)
         # This must happen BEFORE wsl-packages so package installation doesn't prompt
         Write-Host "  Configuring passwordless sudo..." -ForegroundColor Cyan
-        $sudoersCheck = wsl -e bash --norc -c 'sudo -n true 2>/dev/null && echo "ok" || echo "need"'
+        $sudoersCheck = wsl -e bash --norc -c 'sudo -n apt --version 2>/dev/null && echo "ok" || echo "need"'
         if ($sudoersCheck -eq "need") {
             # Create sudoers.d entry for current user (prompts for password once)
             wsl -e bash -c 'echo "$(whoami) ALL=(ALL) NOPASSWD: /usr/bin/apt, /usr/bin/apt-get, /usr/bin/chsh" | sudo tee /etc/sudoers.d/$(whoami)-nopasswd > /dev/null && sudo chmod 440 /etc/sudoers.d/$(whoami)-nopasswd'
