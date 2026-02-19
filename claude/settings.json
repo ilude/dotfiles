@@ -1,6 +1,14 @@
 {
   "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "DISABLE_AUTOUPDATER": "1"
+  },
+  "_version_pin": {
+    "pinned": "2.1.42",
+    "reason": "2.1.45+ causes CMD window focus stealing on Windows (every tool call/hook spawns visible console window)",
+    "tracking": "https://github.com/anthropics/claude-code/issues/14828",
+    "related": ["#26481 (Bash exit 1 / onecmd)", "#26610 (session env not supported)", "#26746 (hook paths broken)"],
+    "action": "Remove DISABLE_AUTOUPDATER and this block once #14828 is fixed"
   },
   "includeCoAuthoredBy": false,
   "permissions": {
