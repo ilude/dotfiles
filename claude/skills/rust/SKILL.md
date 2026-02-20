@@ -25,3 +25,10 @@ Rust guarantees memory safety without garbage collection through its ownership s
 
 - [core.md](core.md) - Cargo, error handling, ownership, memory safety, modules
 - [testing.md](testing.md) - Unit tests, integration tests, mocking, coverage
+- [async.md](async.md) - Tokio runtime, spawn, JoinSet, select!, channels, cancellation
+- [concurrency.md](concurrency.md) - Arc/Mutex/RwLock, parking_lot, atomics, Send/Sync, crossbeam
+- [workspace.md](workspace.md) - Multi-crate workspaces, feature flags, conditional compilation
+- [performance.md](performance.md) - Release profiles, criterion benchmarks, allocation avoidance
+- [web.md](web.md) - Axum router/handlers/extractors, tower middleware, sqlx, JWT auth
+- [serde.md](serde.md) - Derive patterns, custom serializers, zero-copy, format-specific patterns
+- [ffi.md](ffi.md) - C interop, cbindgen, PyO3 Python bindings, wasm-bindgen
