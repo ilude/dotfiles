@@ -34,18 +34,15 @@ Review a plan file for issues, ambiguities, questions, and unclear instructions.
 
 ### 1.5 Execution Mode (Required)
 
-Default mode is **analysis-only** unless user explicitly asks for edits.
+Default mode is **review-then-apply**.
 
-- **analysis-only (default):** review + 1-3-1 issue discussion, no file edits
-- **interactive-fix:** discuss one issue with 1-3-1, enqueue exactly one background fix task for the selected option, then continue
-
-Do not edit files unless mode is `interactive-fix` or user explicitly requests edits.
+- **review-then-apply (default):** review + 1-3-1 issue discussion, then apply all accepted resolutions to the passed-in plan file after the final issue is discussed.
+- **analysis-only (explicit only):** review + 1-3-1 issue discussion, no file edits.
 
 Mode transition rules:
-- Start in `analysis-only`.
-- If the user explicitly asks to "do the fixes", "apply updates", "patch as we go", or equivalent, switch to `interactive-fix` immediately.
-- In `interactive-fix`, follow this loop: analyze -> present issue -> user selects option -> enqueue background fix task -> move to next issue.
-- Do not switch back to `analysis-only` unless the user asks.
+- Start in `review-then-apply`.
+- Switch to `analysis-only` only when the user explicitly asks for no edits.
+- In `review-then-apply`, do not end the run or ask cleanup questions before applying accepted fixes.
 
 ### 2. Initial Review & Assessment
 
@@ -90,7 +87,7 @@ Required scratchpad structure:
 ---
 created: <ISO timestamp>
 plan_file: <path>
-mode: analysis-only|interactive-fix
+mode: review-then-apply|analysis-only
 status: in-progress
 ---
 
@@ -155,11 +152,12 @@ For each issue found, present using the 1-3-1 format. This is a hard interaction
 
 | Option | Pros | Cons |
 |--------|------|------|
-| **A: [Approach 1]** | [Pros] | [Cons] |
-| **B: [Approach 2]** | [Pros] | [Cons] |
-| **C: [Approach 3]** | [Pros] | [Cons] |
+| **1: [Approach 1]** | [Pros] | [Cons] |
+| **2: [Approach 2]** | [Pros] | [Cons] |
+| **3: [Approach 3]** | [Pros] | [Cons] |
+| **4: [All of the above / Hybrid]** | [Pros] | [Cons] |
 
-**Recommendation: Option [X]** — [Brief justification]
+**Recommendation: Option [N]** — [Brief justification]
 
 How would you like to resolve this?
 
@@ -173,75 +171,43 @@ Rules:
 - Do not claim a total issue count unless it is deterministic.
 - Do not ask the same root issue multiple times with different wording.
 
-### 6. Apply Chosen Resolution (interactive-fix only)
+### 6. Record Decision and Continue
 
-After user answers, create exactly one background task for the selected issue.
+After each user answer:
+- Record the selected option in scratchpad decisions.
+- Do not edit the plan yet in `review-then-apply` mode.
+- Move to the next issue and repeat until all material issues are discussed.
 
-```
-Task: Enqueue selected resolution
+### 7. Apply Accepted Resolutions (Required in review-then-apply)
 
-Context:
-- Plan file: $plan_file
-- Issue: [Issue description]
-- User resolution: [User's answer]
-- Scratchpad file: $scratchpad_file
-- Tracking file: $tracking_file (if exists)
-
-Instructions:
-1. Read the current plan file
-2. Launch `plan-updater` background task for the selected resolution
-3. Update scratchpad task state to `queued`
-4. Do not block issue presentation while task runs
-5. Return task id and queued status
-```
-
-Do not apply additional inferred changes beyond the selected issue.
-
-Implementation requirements:
-- `plan-updater` background task is required by default.
-- If subagent tooling is unavailable, fall back to local edit and record fallback in scratchpad.
-- Apply timeout + bounded retry for background tasks.
+After the final issue question is answered:
+- Apply all accepted resolutions to the passed-in plan file in a single deterministic edit pass.
+- Do not introduce extra inferred changes beyond accepted resolutions.
+- If subagent tooling is unavailable, fall back to local edits and record fallback in scratchpad.
+- Apply timeout + bounded retry for apply operations.
 - Default policy: timeout `120s`, retries `1`, retry delay `5s`.
-- If task still fails after retry, mark as `failed` in scratchpad and continue review.
-- In `interactive-fix`, do not wait for task completion before presenting the next issue.
 
-### 7. Report Task Dispatch
+### 8. Report Apply Status
 
-Present concise explanation to user:
+Present concise status to user:
 
 ```
-Queued: [Brief description of selected fix and task id]
+Applied: [Brief description of what was applied to <plan_file>]
 ```
 
-Include a one-line status marker after each decision:
-- `Queued` (background task created)
-- `Not applied` (analysis-only mode)
-- `Blocked` (task creation failed)
+Include a one-line status marker after apply attempt:
+- `Applied` (all accepted fixes written)
+- `Partially applied` (some fixes failed; list them)
+- `Not applied` (analysis-only mode only)
+- `Blocked` (apply failed)
 
-### 8. Continue to Next Issue
+### 9. Final Full Reanalysis (After Apply)
 
-If tracking file exists, update it:
-- Mark current issue as `queued` (or `resolved` only after task success)
-- Note any observations for future reference
-
-Move to next issue immediately after queueing the selected fix. Repeat steps 5-8 until the user stops or issues are exhausted.
-
-Before presenting the next issue:
-- Recompute issue list against current file state plus accepted decisions recorded in scratchpad.
-- Remove resolved and derivative issues.
-- Prefer net-new, material issues only.
-- If accepted decision intent conflicts with in-flight task output, keep issue state as pending until task reaches terminal state.
-- After task success, task output is source of truth for subsequent issue recomputation.
-
-### 9. Final Task Drain + Full Reanalysis (interactive-fix only)
-
-When issue presentation ends:
-- Wait until all background tasks are terminal (`success`, `failed`, or `cancelled`).
-- Start final full-file reanalysis only after all background tasks complete.
-- If failures exist after retry, present failed tasks and ask user disposition:
-  - retry failed tasks
-  - convert specific failures to manual fixes
-  - defer failed items
+When apply phase ends:
+- Re-read the updated plan file.
+- Verify each accepted decision is reflected.
+- Remove resolved/derivative issues from registry.
+- If any accepted fix is missing, apply remaining fixes before declaring completion.
 
 ### 10. Cleanup
 
@@ -261,11 +227,14 @@ Scratchpad cleanup is required at end of run:
 - Ask user exactly once: `Delete`, `Archive (.completed)`, or `Keep` scratchpad.
 - Apply the selected cleanup action to `${plan_file}.review-scratchpad.md`.
 
-If user stops mid-run while tasks are in-flight:
-- Ask user once: `wait-all`, `cancel-pending`, or `abort-now`.
-- `wait-all`: allow all queued/running tasks to reach terminal state, then proceed to cleanup.
-- `cancel-pending`: cancel only `queued` tasks; allow `running` tasks to finish.
-- `abort-now`: stop issue presentation immediately and skip task waiting; leave non-terminal tasks unmanaged.
+Cleanup ordering rule:
+- In `review-then-apply`, cleanup prompt is allowed only after accepted fixes have been applied (or a blocked state is explicitly reported).
+
+If user stops mid-run before final apply:
+- Ask user once: `apply-now`, `discard-pending`, or `abort-now`.
+- `apply-now`: apply all accepted decisions gathered so far, then proceed to cleanup.
+- `discard-pending`: keep discussion only, do not edit, then proceed to cleanup.
+- `abort-now`: stop immediately and leave scratchpad in-progress.
 
 ## Review Checklist
 
@@ -331,10 +300,10 @@ Constraints:
 
 - Never use AskUserQuestion tool — present issues inline for discussion
 - One question at a time — complete resolution before moving to next issue
-- Do not edit by default; analysis-only is the default mode
+- Default behavior is review-then-apply; analysis-only must be explicitly requested
 - Tracking file is opt-in only (create only when requested)
 - Command is idempotent — safe to re-run on same plan file
 - File discovery fallback steps must be sequential (no parallel globbing for fallback logic)
 - Keep auto-detection bounded to repo-root scope unless user explicitly expands scope
-- In `interactive-fix`, use async background task dispatch per accepted issue and perform one final full-file reanalysis after all tasks complete
+- In `review-then-apply`, complete all issue questions first, then apply accepted fixes in one pass and reanalyze
 - Prefer repository-grounded evidence over abstract plan-only assumptions when available
