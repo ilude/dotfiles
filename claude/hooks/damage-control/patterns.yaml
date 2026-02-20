@@ -1125,9 +1125,7 @@ zeroAccessPaths:
   # Azure
   - "~/.azure/"
 
-  # Kubernetes
-  - "~/.kube/"
-  - "kubeconfig"
+  # Kubernetes secrets (kubeconfig moved to readOnlyPaths for ask-based access)
   - "*-secret.yaml"
   - "secrets.yaml"
 
@@ -1305,6 +1303,12 @@ readOnlyPaths:
   - /sbin/
   - /boot/
   - /root/
+
+  # ---------------------------------------------------------------------------
+  # KUBERNETES CONFIG (moved from zeroAccessPaths for ask-based access)
+  # ---------------------------------------------------------------------------
+  - "~/.kube/"
+  - "kubeconfig"
 
   # ---------------------------------------------------------------------------
   # SHELL HISTORY FILES
