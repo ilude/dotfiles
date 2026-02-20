@@ -5,7 +5,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from check_job import cancel_job, get_job, main, poll_job
+from check_job import cancel_job, get_job, main
+from job_utils import poll_job
 
 
 @pytest.fixture
@@ -88,7 +89,7 @@ class TestPollJob:
 
         mock_client.get.side_effect = [resp_processing, resp_completed]
 
-        with patch("check_job.time.sleep"):
+        with patch("job_utils.time.sleep"):
             poll_job(mock_client, mock_signer, "http://localhost:8000/api/v1",
                      "localhost:8000", "job_123")
 
@@ -109,7 +110,7 @@ class TestPollJob:
         }
         mock_client.get.return_value = resp_completed
 
-        with patch("check_job.time.sleep"):
+        with patch("job_utils.time.sleep"):
             poll_job(mock_client, mock_signer, "http://localhost:8000/api/v1",
                      "localhost:8000", "job_123", verbose=True)
 

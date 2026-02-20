@@ -5,7 +5,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ingest_video import main, poll_job
+from ingest_video import main
+from job_utils import poll_job
 
 
 @pytest.fixture
@@ -125,7 +126,7 @@ class TestPollJob:
 
         mock_client.get.side_effect = [resp_processing, resp_completed]
 
-        with patch("ingest_video.time.sleep"):
+        with patch("job_utils.time.sleep"):
             poll_job(mock_client, mock_signer, "http://localhost:8000/api/v1",
                      "localhost:8000", "job_123")
 
@@ -147,7 +148,7 @@ class TestPollJob:
 
         mock_client.get.side_effect = [resp_processing, resp_failed]
 
-        with patch("ingest_video.time.sleep"):
+        with patch("job_utils.time.sleep"):
             poll_job(mock_client, mock_signer, "http://localhost:8000/api/v1",
                      "localhost:8000", "job_123")
 
@@ -167,7 +168,7 @@ class TestPollJob:
         }
         mock_client.get.return_value = resp_completed
 
-        with patch("ingest_video.time.sleep"):
+        with patch("job_utils.time.sleep"):
             poll_job(mock_client, mock_signer, "http://localhost:8000/api/v1",
                      "localhost:8000", "job_123", verbose=True)
 
@@ -188,7 +189,7 @@ class TestPollJob:
         resp_error.text = "Internal Server Error"
         mock_client.get.return_value = resp_error
 
-        with patch("ingest_video.time.sleep"):
+        with patch("job_utils.time.sleep"):
             with pytest.raises(SystemExit) as exc_info:
                 poll_job(mock_client, mock_signer, "http://localhost:8000/api/v1",
                          "localhost:8000", "job_123")
