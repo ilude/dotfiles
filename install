@@ -99,6 +99,18 @@ else
 fi
 completed_steps+=("uv install")
 
+current_step="Python dev tools"
+if command -v uv &>/dev/null; then
+    # Install ruff globally via uv tool (required for Claude Code quality hooks)
+    if command -v ruff &>/dev/null; then
+        echo "ruff: already installed"
+    else
+        echo "Installing ruff..."
+        uv tool install ruff
+    fi
+fi
+completed_steps+=("Python dev tools")
+
 current_step="GUI tool setup"
 if [[ -z "$HEADLESS" ]]; then
     "${BASEDIR}/scripts/claude-link-setup"
