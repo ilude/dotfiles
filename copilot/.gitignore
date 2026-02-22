@@ -55,6 +55,7 @@ wheels/
 !.vscode/launch.json
 !.vscode/extensions.json
 .idea/
+ide/
 *.swp
 *.swo
 *~
