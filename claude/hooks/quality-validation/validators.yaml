@@ -7,11 +7,11 @@ python:
   markers: ["pyproject.toml", "setup.py", "requirements.txt"]
   validators:
     - name: ruff-check
-      command: ["uv", "run", "ruff", "check", "{file}"]
-      check: "uv"
+      command: ["ruff", "check", "{file}"]
+      check: "ruff"
     - name: ruff-format
-      command: ["uv", "run", "ruff", "format", "--check", "{file}"]
-      check: "uv"
+      command: ["ruff", "format", "--check", "{file}"]
+      check: "ruff"
   install:
     winget: null
     brew: null

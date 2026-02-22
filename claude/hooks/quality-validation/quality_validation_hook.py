@@ -219,14 +219,13 @@ def main() -> None:
         if not cmd_template:
             continue
 
-        # Check tool availability
+        # Check tool availability - warn but don't block for missing linters
         if check_tool and not shutil.which(check_tool):
             install_suggestion = get_install_suggestion(lang_config, name)
-            hint = f"{check_tool} not found."
+            hint = f"[quality-validation] {check_tool} not found, skipping {name}."
             if install_suggestion:
                 hint += f" Install with: {install_suggestion}"
-            hint += f'\nTo skip this check, add "{name}" to ~/.claude/hooks/quality-validation/skip-validators.txt'
-            errors.append(hint)
+            print(hint, file=sys.stderr)
             continue
 
         # Build and run command

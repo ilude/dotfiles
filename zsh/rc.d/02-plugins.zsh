@@ -12,7 +12,7 @@ fi
 ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=50
 
 # Use ZDOTDIR for dotfiles path (MSYS2's zsh has different HOME than Git Bash)
-source "${ZDOTDIR:-$HOME}/.dotfiles/zsh-plugins"
+source "${ZDOTDIR:-$HOME}/.dotfiles/scripts/zsh-plugins"
 
 # ctrl+space to accept autosuggestion
 bindkey '^ ' autosuggest-accept
