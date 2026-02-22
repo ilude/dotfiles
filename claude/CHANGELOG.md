@@ -4,6 +4,21 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
+## 2026-02-21: Add workflow orchestration rules
+
+**Added:**
+- "Plan mode default" critical rule — enter plan mode for non-trivial tasks, re-plan on failure
+- "Workflow Orchestration" section with task tracking (`tasks/todo.md`, `tasks/lessons.md`), demand elegance, autonomous bug fixing, and verification-before-done
+- Self-improvement loop: update `tasks/lessons.md` after any user correction
+
+**Changed:**
+- KISS principle — added "every change should touch minimal code"
+- Subagent guidance — expanded to "use liberally, one focused task per subagent, throw more compute at complex problems"
+
+**Files:** `claude/CLAUDE.md`
+
+---
+
 ## 2026-02-17: Eliminate provenance-based work avoidance
 
 **Added:**
