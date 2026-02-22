@@ -23,13 +23,13 @@ typescript:
   markers: ["package.json", "tsconfig.json"]
   validators:
     - name: biome
-      command: ["npx", "@biomejs/biome", "check", "{file}"]
-      check: "npx"
+      command: ["bunx", "--bun", "@biomejs/biome", "check", "{file}"]
+      check: "bun"
   install:
-    winget: null
-    brew: null
-    apt: null
-    npm: "npm install -D @biomejs/biome"
+    winget: "winget install Oven-sh.Bun"
+    brew: "brew install oven-sh/bun/bun"
+    apt: "curl -fsSL https://bun.sh/install | bash"
+    npm: "bun add -D @biomejs/biome"
 
 shell:
   extensions: [".sh", ".bash"]
