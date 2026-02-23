@@ -111,17 +111,12 @@ if command -v uv &>/dev/null; then
 fi
 completed_steps+=("Python dev tools")
 
-current_step="bun install"
-# Install bun (JavaScript runtime/bundler) - macOS only
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    if command -v bun &>/dev/null; then
-        echo "bun: already installed"
-    else
-        echo "Installing bun..."
-        curl -fsSL https://bun.sh/install | bash
-    fi
+current_step="Homebrew packages"
+if [[ "$OSTYPE" == "darwin"* ]] && command -v brew &>/dev/null; then
+    echo "Installing Homebrew packages..."
+    brew bundle --file="${BASEDIR}/Brewfile" --no-lock
 fi
-completed_steps+=("bun install")
+completed_steps+=("Homebrew packages")
 
 current_step="GUI tool setup"
 if [[ -z "$HEADLESS" ]]; then
