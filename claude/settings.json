@@ -78,14 +78,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.claude/hooks/ensure-mcp-config.sh"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
             "command": "bash $HOME/.claude/hooks/team-cleanup.sh",
             "timeout": 5
           }
