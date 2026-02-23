@@ -142,6 +142,16 @@ See [aesthetics.md](./aesthetics.md) for:
 - Intentional color (dominant colors with sharp accents)
 - Motion with purpose
 
+### Deep Analysis Mode
+
+For complex layout or interaction decisions, analyze through multiple lenses before committing:
+- **Performance** — Repaint/reflow costs, state complexity, bundle impact
+- **Cognitive load** — Where will users hesitate? What defaults reduce decisions?
+- **Accessibility edge cases** — Screen readers, keyboard-only, reduced motion, high contrast
+- **Maintainability** — Will this be clear to the next developer in 6 months?
+
+If the reasoning feels easy, dig deeper — surface-level choices produce surface-level UI.
+
 ### Accessibility Standards
 
 All implementations MUST achieve (see parent SKILL.md):
