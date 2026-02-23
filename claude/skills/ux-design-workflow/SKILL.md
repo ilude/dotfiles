@@ -28,6 +28,8 @@ End-to-end workflow for designing and building user interfaces with accessibilit
 4. **Performance over polish** - Fast > pretty
 5. **Feedback over silence** - Always show state
 6. **Progressive disclosure** - Show what's needed when needed
+7. **Use existing libraries** - If a UI library (Shadcn, Radix, MUI, etc.) is active in the project, use its primitives. Wrap and style them for the aesthetic vision, but never rebuild what the library already provides
+8. **Justify every element** - Before placing any component, confirm its purpose. If it has no clear function, remove it. If a layout looks like a template, redesign it
 
 ---
 
