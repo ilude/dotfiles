@@ -257,6 +257,40 @@ Claude Code 2.1.45+ causes CMD windows to flash and steal keyboard focus on ever
 
 **When to remove:** Once #14828 is confirmed fixed, remove the `_version_pin` block and `DISABLE_AUTOUPDATER` from `settings.json`, and either update or remove the pinned version in `install.ps1`.
 
+## Submodule Workflow (onyx, menos)
+
+This repo uses git submodules that are worked on from multiple machines. Follow these rules to avoid dangling commit references that break `git pull`.
+
+### Never force-push submodule repos
+
+**NEVER** use `git push --force`, `git commit --amend` on pushed commits, or interactive rebase on pushed commits in `onyx` or `menos`. Force pushes rewrite history, which invalidates the commit SHA pinned in this parent repo. When another machine pulls dotfiles and tries to fetch the now-deleted SHA, it fails with `upload-pack: not our ref`.
+
+### Updating a submodule reference
+
+```bash
+cd onyx                          # or menos
+git pull                         # get latest from remote
+cd ..
+git add onyx                     # stage the new submodule pointer
+git commit -m "chore: update onyx submodule (description of changes)"
+```
+
+### Pulling dotfiles with submodules
+
+If `git pull` fails due to a submodule fetch error, use:
+```bash
+git pull --no-recurse-submodules
+git submodule update --init --recursive
+```
+
+### Rules summary
+
+- No `--force` push in any submodule repo
+- No `--amend` on already-pushed commits in submodules
+- No interactive rebase on pushed commits in submodules
+- Always `git pull` inside the submodule before updating the parent reference
+- Use `git submodule update --init --recursive` after pulling dotfiles
+
 ## Conventions
 
 - All scripts must be idempotent (safe to re-run)
