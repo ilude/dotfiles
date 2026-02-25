@@ -1678,3 +1678,40 @@ injectionPatterns:
   - pattern: '###\s*(Instruction|System)'
     type: hidden_instruction
     severity: medium
+
+# ── AST Analysis Configuration ──────────────────────────────────────────────
+# Tree-sitter based AST analysis runs as a veto-only second pass after regex.
+# AST can escalate allow→ask|block but never downgrade block→allow.
+astAnalysis:
+  enabled: true
+  timeoutMs: 50
+
+  # Commands that skip AST analysis entirely (fast path)
+  safeCommands:
+    - ls
+    - echo
+    - cat
+    - grep
+    - head
+    - tail
+    - wc
+    - date
+    - pwd
+    - whoami
+    - "git status"
+    - "git log"
+    - "git diff"
+    - "git branch"
+
+  # Commands that get extra AST scrutiny for variable expansion / eval wrapping
+  dangerousCommands:
+    - rm
+    - mv
+    - dd
+    - mkfs
+    - chmod
+    - chown
+    - kill
+    - pkill
+    - shutdown
+    - reboot

@@ -326,7 +326,7 @@ PLUGINS_PATTERNS = [
         "ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE limits line length",
     ),
     (
-        r"\$\{ZDOTDIR:-\$HOME\}/\.dotfiles/zsh-plugins",
+        r"\$\{ZDOTDIR:-\$HOME\}/\.dotfiles/scripts/zsh-plugins",
         "sources zsh-plugins using ZDOTDIR",
     ),
     (r"bindkey '\^ ' autosuggest-accept", "ctrl+space bound to autosuggest-accept"),
@@ -896,15 +896,11 @@ def test_install_conf_wsl_sync_missing_detection():
     test_target = next(iter(main_unconditional))
 
     # Verify the target IS currently in WSL (baseline)
-    assert test_target in wsl_all, (
-        f"Test setup failed: {test_target} not in WSL config"
-    )
+    assert test_target in wsl_all, f"Test setup failed: {test_target} not in WSL config"
 
     # Simulate missing by removing it temporarily
     wsl_all_minus_one = wsl_all - {test_target}
 
     # Verify the check would catch this as missing
     missing = main_unconditional - wsl_all_minus_one
-    assert test_target in missing, (
-        f"Check failed to detect missing {test_target}"
-    )
+    assert test_target in missing, f"Check failed to detect missing {test_target}"
