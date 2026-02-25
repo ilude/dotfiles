@@ -427,3 +427,190 @@ class TestNewPipeTargets:
 
     def test_pipeline_detection_bat(self):
         assert _is_readonly_search_pipeline("git diff HEAD | bat") is True
+
+
+# ============================================================================
+# Echo/printf display commands (never execute their arguments)
+# ============================================================================
+
+
+class TestEchoDisplayCommands:
+    """Verify that echo/printf containing dangerous-looking strings are allowed.
+
+    Real-world case: kubectl get ... ; echo "kubectl scale deployment ..."
+    The echo is just displaying a string, not executing it.
+    """
+
+    def test_echo_with_kubectl_scale(self, full_config):
+        """Exact false positive from production: echo showing a kubectl scale command."""
+        cmd = 'echo "kubectl scale deployment cluster-autoscaler -n kube-system --replicas=0"'
+        blocked, ask, reason, pattern, _, _ = check_command(cmd, full_config)
+        assert not blocked and not ask, (
+            f"False positive: echo with kubectl scale\n"
+            f"  blocked={blocked}, ask={ask}, reason={reason}"
+        )
+
+    def test_real_world_kubectl_get_then_echo(self, full_config):
+        """Real-world command: kubectl get (safe) ; echo (display) ; echo (display)."""
+        cmd = (
+            "kubectl get deployment cluster-autoscaler -n kube-system "
+            '-o jsonpath=\'{.metadata.name}\' 2>/dev/null; '
+            'echo "---scale-replicas-command-would-be---"; '
+            'echo "kubectl scale deployment cluster-autoscaler -n kube-system --replicas=0"'
+        )
+        blocked, ask, reason, pattern, _, _ = check_command(cmd, full_config)
+        assert not blocked and not ask, (
+            f"False positive: kubectl get + echo chain\n"
+            f"  blocked={blocked}, ask={ask}, reason={reason}"
+        )
+
+    @pytest.mark.parametrize(
+        "command,description",
+        [
+            (
+                'echo "helm upgrade my-release chart/"',
+                "echo with helm upgrade",
+            ),
+            (
+                'echo "terraform destroy -auto-approve"',
+                "echo with terraform destroy",
+            ),
+            (
+                'printf "Run: rm -rf /tmp/build\\n"',
+                "printf with rm -rf",
+            ),
+            (
+                'echo "DROP TABLE users;" | cat',
+                "echo with SQL piped to cat",
+            ),
+            (
+                'grep "pattern" file; echo "kubectl delete pod foo"',
+                "grep then echo with kubectl delete",
+            ),
+        ],
+    )
+    def test_echo_printf_not_blocked(self, full_config, command, description):
+        """Display commands must NOT trigger bashToolPatterns."""
+        blocked, ask, reason, pattern, _, _ = check_command(command, full_config)
+        assert not blocked and not ask, (
+            f"False positive: {description}\n"
+            f"  command: {command}\n"
+            f"  blocked={blocked}, ask={ask}, reason={reason}"
+        )
+
+    def test_pipeline_detection_echo(self):
+        assert _is_readonly_search_pipeline('echo "helm upgrade"') is True
+
+    def test_pipeline_detection_printf(self):
+        assert _is_readonly_search_pipeline('printf "terraform destroy"') is True
+
+    def test_echo_piped_to_head(self):
+        assert _is_readonly_search_pipeline('echo "long output" | head') is True
+
+    def test_echo_piped_to_unsafe(self):
+        """echo piped to bash IS dangerous — the string gets executed."""
+        assert _is_readonly_search_pipeline('echo "rm -rf /" | bash') is False
+
+    def test_echo_then_dangerous_via_ampersand(self):
+        """echo followed by actual dangerous command must be caught."""
+        assert is_readonly_search_command('echo "safe" && rm -rf /') is False
+
+    def test_echo_then_dangerous_caught(self, full_config):
+        """echo chained with actual dangerous command must still be caught."""
+        cmd = 'echo "deploying..." && helm upgrade release chart/'
+        blocked, ask, reason, pattern, _, _ = check_command(cmd, full_config)
+        assert blocked or ask, (
+            f"Dangerous command not caught after echo\n"
+            f"  command: {cmd}\n"
+            f"  blocked={blocked}, ask={ask}"
+        )
+
+
+# ============================================================================
+# Bash comment stripping
+# ============================================================================
+
+
+class TestBashCommentStripping:
+    """Verify that bash comments (# ...) don't trigger pattern matching.
+
+    Real-world case: multi-line command with comments mentioning 'helm upgrade'
+    followed by a safe 'find' command.
+    """
+
+    def test_comment_with_helm_upgrade(self, full_config):
+        """Comment mentioning helm upgrade must NOT trigger patterns."""
+        cmd = '# during the Helm upgrade\nfind /path -name "*.tf" | head -20'
+        blocked, ask, reason, pattern, _, _ = check_command(cmd, full_config)
+        assert not blocked and not ask, (
+            f"False positive: comment with helm upgrade\n"
+            f"  blocked={blocked}, ask={ask}, reason={reason}"
+        )
+
+    def test_real_world_comments_then_find(self, full_config):
+        """Real-world: multi-line comments then find command."""
+        cmd = (
+            "# Health check: 30s interval * 3 threshold = 90s\n"
+            '# The plan says "timeout: 120s" for NLB health checks\n'
+            "# during the Helm upgrade (when old DaemonSet pods are terminated)\n"
+            'find /path/terraform -name "*.tf" 2>/dev/null | head -20'
+        )
+        blocked, ask, reason, pattern, _, _ = check_command(cmd, full_config)
+        assert not blocked and not ask, (
+            f"False positive: comments + find command\n"
+            f"  blocked={blocked}, ask={ask}, reason={reason}"
+        )
+
+    def test_inline_comment_after_command(self, full_config):
+        """Inline comment after a safe command must not trigger."""
+        cmd = 'grep pattern file  # this searches for terraform destroy'
+        blocked, ask, reason, pattern, _, _ = check_command(cmd, full_config)
+        assert not blocked and not ask, (
+            f"False positive: inline comment with dangerous text\n"
+            f"  blocked={blocked}, ask={ask}, reason={reason}"
+        )
+
+    def test_comment_only(self, full_config):
+        """A command that is just a comment should be allowed."""
+        cmd = "# helm upgrade release chart/"
+        blocked, ask, reason, pattern, _, _ = check_command(cmd, full_config)
+        assert not blocked and not ask, (
+            f"False positive: pure comment\n"
+            f"  blocked={blocked}, ask={ask}, reason={reason}"
+        )
+
+    def test_dangerous_command_not_hidden_by_comment(self, full_config):
+        """A real dangerous command on a separate line must still be caught."""
+        cmd = "# this is a comment\nhelm upgrade release chart/"
+        blocked, ask, reason, pattern, _, _ = check_command(cmd, full_config)
+        assert blocked or ask, (
+            f"Dangerous command hidden by comment\n"
+            f"  blocked={blocked}, ask={ask}"
+        )
+
+
+# ============================================================================
+# Find command (read-only search)
+# ============================================================================
+
+
+class TestFindCommand:
+    """Verify that find (a read-only search tool) is recognized."""
+
+    def test_find_pipe_head(self):
+        assert _is_readonly_search_pipeline('find /path -name "*.tf" | head -20') is True
+
+    def test_find_name_only(self):
+        assert _is_readonly_search_pipeline('find . -name "*.py"') is True
+
+    def test_find_type(self):
+        assert _is_readonly_search_pipeline("find /var -type f | sort") is True
+
+    def test_find_not_blocked(self, full_config):
+        """find piped to head must be allowed."""
+        cmd = 'find /path/terraform -name "*.tf" 2>/dev/null | head -20'
+        blocked, ask, reason, pattern, _, _ = check_command(cmd, full_config)
+        assert not blocked and not ask, (
+            f"False positive: find piped to head\n"
+            f"  blocked={blocked}, ask={ask}, reason={reason}"
+        )

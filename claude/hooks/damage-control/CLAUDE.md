@@ -119,8 +119,8 @@ Prevents false positives from dangerous-looking strings inside search arguments 
 **How it works:**
 - Splits commands on `&&`, `||`, `;`, `&` (respecting quoted strings)
 - For each segment, checks if the entire pipe chain is read-only:
-  - First command must be a search tool (grep, rg, ag, ack, git grep, git log, git diff, git show)
-  - All pipe targets must be safe transformers (head, tail, sort, wc, jq, yq, etc.)
+  - First command must be a read-only tool: search (grep, rg, ag, ack, git grep/log/diff/show), display (echo, printf), or read-only CLI subcommands (kubectl get/describe/logs, helm list/status/get, terraform show/plan/output)
+  - All pipe targets must be safe transformers (head, tail, sort, wc, jq, yq, bat, echo, etc.)
 - Only skips `bashToolPatterns` — path-based checks (zeroAccessPaths, readOnlyPaths, noDeletePaths) still apply
 - If ANY segment is not read-only, the full command is checked normally
 
@@ -297,20 +297,20 @@ reason: "*.env file may contain secrets"
 
 All damage-control changes MUST follow red-green-refactor (TDD):
 
-1. **Red** — Write a failing test that demonstrates the bug or specifies the new behavior
-2. **Green** — Write the minimal code to make the test pass
+1. **Red** — Write a failing test, then **run it and confirm it actually fails**. If the test passes immediately, it proves nothing — fix the test or your assumptions before moving on
+2. **Green** — Write the minimal code to make the test pass, then **run it and confirm it passes**
 3. **Refactor** — Clean up while keeping tests green
 
-**Why this matters for security hooks:** A passing test suite is the proof that patterns work. If you can't write a test for a behavior, you can't prove it's protected.
+**Why this matters for security hooks:** A passing test suite is the proof that patterns work. If you can't write a test for a behavior, you can't prove it's protected. A test you never ran red is a test you can't trust.
 
 **Workflow:**
 ```bash
 # 1. Write your test in claude/hooks/damage-control/tests/
-# 2. Run it — confirm it fails (red)
+# 2. Run it — CONFIRM it fails (red). If it passes, your test is wrong.
 uv run pytest claude/hooks/damage-control/tests/test_your_file.py -v -k test_name
 
 # 3. Implement the fix
-# 4. Run it — confirm it passes (green)
+# 4. Run it — CONFIRM it passes (green)
 uv run pytest claude/hooks/damage-control/tests/test_your_file.py -v -k test_name
 
 # 5. Run full suite — confirm no regressions
