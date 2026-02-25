@@ -136,16 +136,22 @@ if [[ -f "$settings_file" ]]; then
 fi
 effort="${effort:-medium}"
 
+# Get Claude Code version
+cc_version=$(claude --version 2>/dev/null | grep -oP '[\d.]+' | head -1)
+cc_version="${cc_version:-?}"
+
 # ANSI color codes
 GREEN="\033[32m"
 ORANGE="\033[38;5;208m"
 CYAN="\033[36m"
+DIM="\033[2m"
 RESET="\033[0m"
 
-# Output formatted status line: dir[branch] | model | effort
+# Output formatted status line: dir[branch] | model [effort] | vX.X.X
 effort_label="\033[37m[\033[36m${effort}\033[37m]\033[0m"
+version_label="${DIM}v${cc_version}${RESET}"
 if [[ -n "$branch" ]]; then
-    echo -e "${GREEN}${dir}${RESET}${branch} | ${ORANGE}${model}${RESET}${effort_label}"
+    echo -e "${GREEN}${dir}${RESET}${branch} | ${ORANGE}${model}${RESET}${effort_label} | ${version_label}"
 else
-    echo -e "${GREEN}${dir}${RESET} | ${ORANGE}${model}${RESET}${effort_label}"
+    echo -e "${GREEN}${dir}${RESET} | ${ORANGE}${model}${RESET}${effort_label} | ${version_label}"
 fi
