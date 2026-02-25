@@ -484,7 +484,9 @@ def unwrap_command(command: str, depth: int = 0) -> Tuple[str, bool]:
             return unwrap_command(python_code, depth + 1)
 
     # Pattern for env wrappers: env VAR=val command
-    env_pattern = r"\benv\s+(?:[A-Z_][A-Z0-9_]*=[^\s]+\s+)*(.+)"
+    # Anchor to start of command (or after | ; && ||) to avoid matching
+    # "env" as a subcommand of other tools (e.g., "poetry env remove")
+    env_pattern = r"(?:^|[|;&]+\s*)env\s+(?:[A-Z_][A-Z0-9_]*=[^\s]+\s+)*(.+)"
     match = re.search(env_pattern, command)
     if match:
         inner_command = match.group(1)
@@ -536,6 +538,212 @@ def is_readonly_git_command(command: str) -> bool:
         if re.search(pattern, command, re.IGNORECASE):
             return True
     return False
+
+
+# ============================================================================
+# READ-ONLY SEARCH PIPELINE DETECTION
+# ============================================================================
+
+# Search commands whose arguments may contain dangerous-looking strings
+# (e.g., grep "helm upgrade" Makefile) that should NOT trigger bashToolPatterns.
+# Only the first command in a pipe chain is checked against this list.
+READONLY_SEARCH_COMMANDS = [
+    r"^\s*grep\b",
+    r"^\s*egrep\b",
+    r"^\s*fgrep\b",
+    r"^\s*rg\b",
+    r"^\s*ag\b",
+    r"^\s*ack\b",
+    r"^\s*git\s+grep\b",
+    r"^\s*git\s+log\b",
+    r"^\s*git\s+show\b",
+    r"^\s*git\s+diff\b",
+]
+
+# Safe pipe targets (read-only display/transform tools).
+# If a pipe target is NOT in this list, the whole pipeline is treated as non-read-only.
+READONLY_PIPE_TARGETS = [
+    r"^\s*head\b",
+    r"^\s*tail\b",
+    r"^\s*sort\b",
+    r"^\s*uniq\b",
+    r"^\s*wc\b",
+    r"^\s*less\b",
+    r"^\s*more\b",
+    r"^\s*cat\b",
+    r"^\s*cut\b",
+    r"^\s*tr\b",
+    r"^\s*awk\b",
+    r"^\s*sed\b",
+    r"^\s*column\b",
+    r"^\s*fmt\b",
+    r"^\s*fold\b",
+    r"^\s*nl\b",
+    r"^\s*tac\b",
+    r"^\s*rev\b",
+    r"^\s*grep\b",
+    r"^\s*egrep\b",
+    r"^\s*fgrep\b",
+    r"^\s*rg\b",
+    r"^\s*jq\b",
+    r"^\s*yq\b",
+    r"^\s*bat\b",
+]
+
+
+def _split_on_shell_operators(command: str) -> List[str]:
+    """Split command on &&, ||, ;, & respecting quoted strings.
+
+    Handles:
+    - ``&&`` (logical AND)
+    - ``||`` (logical OR)
+    - ``;``  (sequential)
+    - ``&``  (background — ``grep foo & rm bar`` runs both independently)
+
+    Returns independent command segments. Pipe chains (|) are kept intact
+    within each segment.
+    """
+    segments: List[str] = []
+    current: List[str] = []
+    i = 0
+    in_single = False
+    in_double = False
+
+    while i < len(command):
+        c = command[i]
+
+        # Handle escapes (not inside single quotes)
+        if c == "\\" and not in_single and i + 1 < len(command):
+            current.append(c)
+            current.append(command[i + 1])
+            i += 2
+            continue
+
+        if c == "'" and not in_double:
+            in_single = not in_single
+            current.append(c)
+        elif c == '"' and not in_single:
+            in_double = not in_double
+            current.append(c)
+        elif not in_single and not in_double:
+            if c == ";":
+                segments.append("".join(current).strip())
+                current = []
+            elif c == "&" and i + 1 < len(command) and command[i + 1] == "&":
+                segments.append("".join(current).strip())
+                current = []
+                i += 1  # skip second &
+            elif c == "&":
+                # Single & (background) — still a separate command
+                segments.append("".join(current).strip())
+                current = []
+            elif c == "|" and i + 1 < len(command) and command[i + 1] == "|":
+                segments.append("".join(current).strip())
+                current = []
+                i += 1  # skip second |
+            else:
+                current.append(c)
+        else:
+            current.append(c)
+
+        i += 1
+
+    if current:
+        segments.append("".join(current).strip())
+
+    return [s for s in segments if s]
+
+
+def _split_pipe_chain(segment: str) -> List[str]:
+    """Split a command segment on | (pipe) respecting quoted strings.
+
+    Must be called AFTER _split_on_shell_operators so that || is already removed.
+    """
+    parts: List[str] = []
+    current: List[str] = []
+    i = 0
+    in_single = False
+    in_double = False
+
+    while i < len(segment):
+        c = segment[i]
+
+        if c == "\\" and not in_single and i + 1 < len(segment):
+            current.append(c)
+            current.append(segment[i + 1])
+            i += 2
+            continue
+
+        if c == "'" and not in_double:
+            in_single = not in_single
+            current.append(c)
+        elif c == '"' and not in_single:
+            in_double = not in_double
+            current.append(c)
+        elif not in_single and not in_double and c == "|":
+            parts.append("".join(current).strip())
+            current = []
+        else:
+            current.append(c)
+
+        i += 1
+
+    if current:
+        parts.append("".join(current).strip())
+
+    return [p for p in parts if p]
+
+
+def _is_readonly_search_pipeline(segment: str) -> bool:
+    """Check if a pipe chain is a read-only search pipeline.
+
+    True when the first command is a search tool and all pipe targets
+    are safe read-only transformers.
+    """
+    pipe_parts = _split_pipe_chain(segment)
+    if not pipe_parts:
+        return False
+
+    # First command must be a search tool
+    first_cmd = pipe_parts[0]
+    if not any(
+        re.search(p, first_cmd, re.IGNORECASE) for p in READONLY_SEARCH_COMMANDS
+    ):
+        return False
+
+    # All subsequent pipe targets must be safe transformers
+    for target in pipe_parts[1:]:
+        if not any(
+            re.search(p, target, re.IGNORECASE) for p in READONLY_PIPE_TARGETS
+        ):
+            return False
+
+    return True
+
+
+def is_readonly_search_command(command: str) -> bool:
+    """Check if ALL segments of a command are read-only search pipelines.
+
+    Splits on &&, ||, ; and checks each segment. Returns True only when
+    every segment is a read-only search pipeline (search tool piped to
+    safe transformers). If ANY segment is not read-only, returns False
+    so the full command gets checked by bashToolPatterns as normal.
+
+    Examples that return True:
+        grep "helm upgrade" Makefile
+        grep -r "helm upgrade" . | head -20
+        rg "terraform destroy" . | sort | head
+
+    Examples that return False (correctly):
+        grep "helm upgrade" && helm upgrade release
+        grep "helm upgrade" | xargs helm upgrade
+        helm upgrade release
+    """
+    segments = _split_on_shell_operators(command)
+    if not segments:
+        return False
+
+    return all(_is_readonly_search_pipeline(seg) for seg in segments)
 
 
 # ============================================================================
@@ -1208,7 +1416,10 @@ def check_command(
 
     # 1. Check against patterns from YAML (may block or ask)
     # Skip if bashToolPatterns is relaxed in this context (e.g., documentation)
-    if "bashToolPatterns" not in relaxed_checks:
+    # Skip if the entire command is a read-only search pipeline (e.g., grep "helm upgrade" | head)
+    # to avoid false positives from dangerous-looking strings inside search arguments
+    is_readonly_search = is_readonly_search_command(unwrapped_cmd)
+    if "bashToolPatterns" not in relaxed_checks and not is_readonly_search:
         for idx, item in enumerate(compiled_patterns):
             compiled_regex = item.get("compiled")
             reason = item.get("reason", "Blocked by pattern")
