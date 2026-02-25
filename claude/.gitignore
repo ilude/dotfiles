@@ -1,5 +1,6 @@
 # Sensitive files - NEVER commit
 .credentials.json
+provider-config.json
 *.key
 *.pem
 *.env
@@ -8,10 +9,6 @@
 
 # Meta-configuration (auto-generated)
 .claude/
-.mcp.json
-
-# MCP tools (machine-specific installations)
-tools/
 
 # Session data and history
 history.jsonl
@@ -27,7 +24,20 @@ projects/
 todos/
 debug/
 shell-snapshots/
+session-env/
+paste-cache/
+shared/
 .specstory/
+
+# Runtime state (ephemeral, auto-generated)
+backups/
+cache/
+logs/
+tasks/
+teams/
+telemetry/
+toggle/
+settings.local.json
 
 # IDE and analytics
 ide/
@@ -65,7 +75,10 @@ war/
 
 # Plugins and cache
 plugins/marketplaces/
+plugins/cache/
 plugins/*.lock
 plugins/installed_plugins.json
+plugins/blocklist.json
+plugins/install-counts-cache.json
 !plugins/known_marketplaces.json
 stats-cache.json
