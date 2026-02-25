@@ -541,13 +541,87 @@ def is_readonly_git_command(command: str) -> bool:
 
 
 # ============================================================================
+# BASH COMMENT STRIPPING
+# ============================================================================
+
+
+def strip_bash_comments(command: str) -> str:
+    """Strip bash comments from a command string.
+
+    Removes:
+    - Full-line comments (lines starting with optional whitespace then #)
+    - Inline comments (# followed by space, outside of quotes)
+
+    Preserves:
+    - # inside quoted strings ("foo # bar", 'foo # bar')
+    - # in parameter expansion (${var#pattern})
+    - Shebang lines (#!/...)
+
+    Args:
+        command: Raw command string, possibly multi-line
+
+    Returns:
+        Command with comments removed, empty lines collapsed
+    """
+    lines = command.split("\n")
+    result_lines = []
+
+    for line in lines:
+        stripped = line.lstrip()
+        # Full-line comment (but not shebang)
+        if stripped.startswith("#") and not stripped.startswith("#!"):
+            continue
+
+        # Strip inline comments (# outside quotes)
+        cleaned = _strip_inline_comment(line)
+        if cleaned.strip():
+            result_lines.append(cleaned)
+
+    return "\n".join(result_lines)
+
+
+def _strip_inline_comment(line: str) -> str:
+    """Remove inline comment from a single line, respecting quotes.
+
+    Only strips # that is preceded by whitespace (or is at start)
+    and is outside of single/double quotes.
+    """
+    in_single = False
+    in_double = False
+    i = 0
+
+    while i < len(line):
+        c = line[i]
+
+        # Handle escapes
+        if c == "\\" and not in_single and i + 1 < len(line):
+            i += 2
+            continue
+
+        if c == "'" and not in_double:
+            in_single = not in_single
+        elif c == '"' and not in_single:
+            in_double = not in_double
+        elif c == "#" and not in_single and not in_double:
+            # Only treat as comment if preceded by whitespace or at start
+            if i == 0 or line[i - 1] in (" ", "\t"):
+                return line[:i].rstrip()
+
+        i += 1
+
+    return line
+
+
+# ============================================================================
 # READ-ONLY SEARCH PIPELINE DETECTION
 # ============================================================================
 
-# Search commands whose arguments may contain dangerous-looking strings
-# (e.g., grep "helm upgrade" Makefile) that should NOT trigger bashToolPatterns.
+# Read-only commands whose arguments may contain dangerous-looking strings
+# (e.g., grep "helm upgrade" Makefile, echo "kubectl scale ...") that should
+# NOT trigger bashToolPatterns. Includes search tools AND display-only commands.
 # Only the first command in a pipe chain is checked against this list.
 READONLY_SEARCH_COMMANDS = [
+    # Search tools
     r"^\s*grep\b",
     r"^\s*egrep\b",
     r"^\s*fgrep\b",
@@ -558,6 +632,30 @@ READONLY_SEARCH_COMMANDS = [
     r"^\s*git\s+log\b",
     r"^\s*git\s+show\b",
     r"^\s*git\s+diff\b",
+    # File search tools
+    r"^\s*find\b",
+    # Display-only commands (just print strings, never execute them)
+    r"^\s*echo\b",
+    r"^\s*printf\b",
+    r"^\s*cat\s*<<",  # cat with heredoc (display only)
+    # Read-only CLI subcommands (query only, no mutations)
+    r"^\s*kubectl\s+get\b",
+    r"^\s*kubectl\s+describe\b",
+    r"^\s*kubectl\s+logs?\b",
+    r"^\s*kubectl\s+top\b",
+    r"^\s*kubectl\s+cluster-info\b",
+    r"^\s*kubectl\s+api-resources\b",
+    r"^\s*kubectl\s+explain\b",
+    r"^\s*helm\s+list\b",
+    r"^\s*helm\s+ls\b",
+    r"^\s*helm\s+status\b",
+    r"^\s*helm\s+get\b",
+    r"^\s*helm\s+show\b",
+    r"^\s*helm\s+search\b",
+    r"^\s*terraform\s+show\b",
+    r"^\s*terraform\s+state\s+list\b",
+    r"^\s*terraform\s+output\b",
+    r"^\s*terraform\s+plan\b",
 ]
 
 # Safe pipe targets (read-only display/transform tools).
@@ -588,6 +686,8 @@ READONLY_PIPE_TARGETS = [
     r"^\s*jq\b",
     r"^\s*yq\b",
     r"^\s*bat\b",
+    r"^\s*echo\b",
+    r"^\s*printf\b",
 ]
 
 
@@ -1382,6 +1482,11 @@ def check_command(
 
     # Unwrap shell wrappers first to detect hidden commands
     unwrapped_cmd, was_unwrapped = unwrap_command(command)
+
+    # Strip bash comments — lines starting with # and inline # comments
+    # Comments may contain dangerous-looking strings (e.g., "# during the Helm upgrade")
+    # that should never trigger pattern matching
+    unwrapped_cmd = strip_bash_comments(unwrapped_cmd)
 
     # Semantic git analysis - check AFTER unwrapping, BEFORE regex patterns
     # Only skip if explicitly relaxed in context (unlikely for most contexts)
