@@ -13,8 +13,9 @@ description: Generate weekly activity reports (WAR) from git commits. Analyzes c
    - Determine Sunday-Saturday range for the week (e.g., "2026-01-12" to "2026-01-18 23:59:59")
 
 2. **Discover git repositories**
-   - Scan `C:\Projects\Work\` (or `CLAUDE_WAR_ROOT` env var if set) for all directories containing `.git/`
-   - Use: `find /c/Projects/Work/Gitlab /c/Projects/Work/Github -name ".git" -type d 2>/dev/null | sed 's|/.git$||'`
+   - Scan `C:\Projects\Work\Gitlab\` (or `CLAUDE_WAR_ROOT` env var if set) for all directories containing `.git/`
+   - Use: `find /c/Projects/Work/Gitlab -name ".git" -type d 2>/dev/null | sed 's|/.git$||'`
+   - **Only scan GitLab repositories.** GitHub repos (e.g., `C:\Projects\Work\Github\`) are personal/non-TEAMS projects and must NOT be included in WAR reports
    - This finds all active git projects automatically
 
 3. **Gather commits from each repo**
@@ -63,6 +64,16 @@ February 11: Fixed a routing error that caused the "Manage Apps" page to return 
 - Entries are ordered chronologically by date
 - Use past tense action verbs (Developed, Implemented, Refactored, Fixed, Integrated, Resolved)
 - Focus on WHAT was accomplished, not implementation details
+
+**Write for managers, not engineers.** The audience is leadership reviewing weekly accomplishments. Keep language high-level and outcome-focused:
+- NO version numbers (e.g., "v1.2.0", "3.8.1")
+- NO instance types or resource specs (e.g., "t3.xlarge", "m5.large")
+- NO plugin/package names (e.g., "fleeting-plugin-aws", "zsh-autosuggestions")
+- NO file paths, config keys, or CLI flags
+- NO Git internals (SHA hashes, branch names, submodule refs)
+- Say "upsized cluster nodes" not "migrated from t3.large to t3.xlarge"
+- Say "improved spot instance resilience" not "upgraded fleeting-plugin-aws to v1.2.0"
+- Say "standardized CI pipeline" not "renamed .gitlab-ci-repo.yml to .gitlab-ci.yml"
 
 ## Critical Rules
 
