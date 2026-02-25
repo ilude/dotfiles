@@ -1281,7 +1281,7 @@ zeroAccessPaths:
   # ADDITIONAL TOKENS & CREDENTIALS
   # ---------------------------------------------------------------------------
   # GitHub CLI
-  - "~/.config/gh/hosts.yml"
+  - "~/.config/gh/"
   # Vault
   - "~/.vault-token"
   # AWS Session
