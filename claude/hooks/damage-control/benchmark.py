@@ -15,12 +15,10 @@ Output:
 """
 
 import argparse
-import json
 import re
 import os
 import sys
 import time
-import fnmatch
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
@@ -33,21 +31,22 @@ import yaml
 # PATTERN MATCHING LOGIC (from bash-tool-damage-control.py)
 # ============================================================================
 
+
 def is_glob_pattern(pattern: str) -> bool:
     """Check if pattern contains glob wildcards."""
-    return '*' in pattern or '?' in pattern or '[' in pattern
+    return "*" in pattern or "?" in pattern or "[" in pattern
 
 
 def glob_to_regex(glob_pattern: str) -> str:
     """Convert a glob pattern to a regex pattern for matching in commands."""
     result = ""
     for char in glob_pattern:
-        if char == '*':
-            result += r'[^\s/]*'
-        elif char == '?':
-            result += r'[^\s/]'
-        elif char in r'\.^$+{}[]|()':
-            result += '\\' + char
+        if char == "*":
+            result += r"[^\s/]*"
+        elif char == "?":
+            result += r"[^\s/]"
+        elif char in r"\.^$+{}[]|()":
+            result += "\\" + char
         else:
             result += char
     return result
@@ -56,6 +55,7 @@ def glob_to_regex(glob_pattern: str) -> str:
 # ============================================================================
 # COMPILATION AND CACHING (Phase 1 optimizations)
 # ============================================================================
+
 
 def compile_regex_patterns(patterns: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Pre-compile regex patterns from bashToolPatterns config."""
@@ -128,59 +128,64 @@ def compile_config(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 WRITE_PATTERNS = [
-    (r'>\s*{path}', "write"),
-    (r'\btee\s+(?!.*-a).*{path}', "write"),
+    (r">\s*{path}", "write"),
+    (r"\btee\s+(?!.*-a).*{path}", "write"),
 ]
 
 APPEND_PATTERNS = [
-    (r'>>\s*{path}', "append"),
-    (r'\btee\s+-a\s+.*{path}', "append"),
-    (r'\btee\s+.*-a.*{path}', "append"),
+    (r">>\s*{path}", "append"),
+    (r"\btee\s+-a\s+.*{path}", "append"),
+    (r"\btee\s+.*-a.*{path}", "append"),
 ]
 
 EDIT_PATTERNS = [
-    (r'\bsed\s+-i.*{path}', "edit"),
-    (r'\bperl\s+-[^\s]*i.*{path}', "edit"),
-    (r'\bawk\s+-i\s+inplace.*{path}', "edit"),
+    (r"\bsed\s+-i.*{path}", "edit"),
+    (r"\bperl\s+-[^\s]*i.*{path}", "edit"),
+    (r"\bawk\s+-i\s+inplace.*{path}", "edit"),
 ]
 
 MOVE_COPY_PATTERNS = [
-    (r'\bmv\s+.*\s+{path}', "move"),
-    (r'\bcp\s+.*\s+{path}', "copy"),
+    (r"\bmv\s+.*\s+{path}", "move"),
+    (r"\bcp\s+.*\s+{path}", "copy"),
 ]
 
 DELETE_PATTERNS = [
-    (r'\brm\s+.*{path}', "delete"),
-    (r'\bunlink\s+.*{path}', "delete"),
-    (r'\brmdir\s+.*{path}', "delete"),
-    (r'\bshred\s+.*{path}', "delete"),
+    (r"\brm\s+.*{path}", "delete"),
+    (r"\bunlink\s+.*{path}", "delete"),
+    (r"\brmdir\s+.*{path}", "delete"),
+    (r"\bshred\s+.*{path}", "delete"),
 ]
 
 PERMISSION_PATTERNS = [
-    (r'\bchmod\s+.*{path}', "chmod"),
-    (r'\bchown\s+.*{path}', "chown"),
-    (r'\bchgrp\s+.*{path}', "chgrp"),
+    (r"\bchmod\s+.*{path}", "chmod"),
+    (r"\bchown\s+.*{path}", "chown"),
+    (r"\bchgrp\s+.*{path}", "chgrp"),
 ]
 
 TRUNCATE_PATTERNS = [
-    (r'\btruncate\s+.*{path}', "truncate"),
-    (r':\s*>\s*{path}', "truncate"),
+    (r"\btruncate\s+.*{path}", "truncate"),
+    (r":\s*>\s*{path}", "truncate"),
 ]
 
 READ_ONLY_BLOCKED = (
-    WRITE_PATTERNS +
-    APPEND_PATTERNS +
-    EDIT_PATTERNS +
-    MOVE_COPY_PATTERNS +
-    DELETE_PATTERNS +
-    PERMISSION_PATTERNS +
-    TRUNCATE_PATTERNS
+    WRITE_PATTERNS
+    + APPEND_PATTERNS
+    + EDIT_PATTERNS
+    + MOVE_COPY_PATTERNS
+    + DELETE_PATTERNS
+    + PERMISSION_PATTERNS
+    + TRUNCATE_PATTERNS
 )
 
 NO_DELETE_BLOCKED = DELETE_PATTERNS
 
 
-def check_path_patterns(command: str, path_obj: Dict[str, Any], patterns: List[Tuple[str, str]], path_type: str) -> Tuple[bool, str]:
+def check_path_patterns(
+    command: str,
+    path_obj: Dict[str, Any],
+    patterns: List[Tuple[str, str]],
+    path_type: str,
+) -> Tuple[bool, str]:
     """Check command against a list of patterns for a specific path (optimized version)."""
     path_str = path_obj["original"]
 
@@ -194,8 +199,13 @@ def check_path_patterns(command: str, path_obj: Dict[str, Any], patterns: List[T
         for pattern_template, operation in patterns:
             try:
                 cmd_prefix = pattern_template.replace("{path}", "")
-                if cmd_prefix and re.search(cmd_prefix + glob_regex_str, command, re.IGNORECASE):
-                    return True, f"Blocked: {operation} operation on {path_type} {path_str}"
+                if cmd_prefix and re.search(
+                    cmd_prefix + glob_regex_str, command, re.IGNORECASE
+                ):
+                    return (
+                        True,
+                        f"Blocked: {operation} operation on {path_type} {path_str}",
+                    )
             except re.error:
                 continue
     else:
@@ -209,8 +219,13 @@ def check_path_patterns(command: str, path_obj: Dict[str, Any], patterns: List[T
             pattern_expanded = pattern_template.replace("{path}", escaped_expanded)
             pattern_original = pattern_template.replace("{path}", escaped_original)
             try:
-                if re.search(pattern_expanded, command) or re.search(pattern_original, command):
-                    return True, f"Blocked: {operation} operation on {path_type} {path_str}"
+                if re.search(pattern_expanded, command) or re.search(
+                    pattern_original, command
+                ):
+                    return (
+                        True,
+                        f"Blocked: {operation} operation on {path_type} {path_str}",
+                    )
             except re.error:
                 continue
 
@@ -270,7 +285,11 @@ def check_command(command: str, config: Dict[str, Any]) -> Tuple[bool, bool, str
             if glob_regex_compiled:
                 try:
                     if glob_regex_compiled.search(command):
-                        return True, False, f"Blocked: zero-access pattern {path_obj['original']}"
+                        return (
+                            True,
+                            False,
+                            f"Blocked: zero-access pattern {path_obj['original']}",
+                        )
                 except re.error:
                     continue
         else:
@@ -278,19 +297,28 @@ def check_command(command: str, config: Dict[str, Any]) -> Tuple[bool, bool, str
             escaped_original = path_obj.get("escaped_original", "")
 
             if escaped_expanded or escaped_original:
-                if (escaped_expanded and re.search(escaped_expanded, command)) or \
-                   (escaped_original and re.search(escaped_original, command)):
-                    return True, False, f"Blocked: zero-access path {path_obj['original']}"
+                if (escaped_expanded and re.search(escaped_expanded, command)) or (
+                    escaped_original and re.search(escaped_original, command)
+                ):
+                    return (
+                        True,
+                        False,
+                        f"Blocked: zero-access path {path_obj['original']}",
+                    )
 
     # 3. Check for modifications to read-only paths
     for path_obj in compiled_read_only:
-        blocked, reason = check_path_patterns(command, path_obj, READ_ONLY_BLOCKED, "read-only path")
+        blocked, reason = check_path_patterns(
+            command, path_obj, READ_ONLY_BLOCKED, "read-only path"
+        )
         if blocked:
             return True, False, reason
 
     # 4. Check for deletions on no-delete paths
     for path_obj in compiled_no_delete:
-        blocked, reason = check_path_patterns(command, path_obj, NO_DELETE_BLOCKED, "no-delete path")
+        blocked, reason = check_path_patterns(
+            command, path_obj, NO_DELETE_BLOCKED, "no-delete path"
+        )
         if blocked:
             return True, False, reason
 
@@ -353,7 +381,6 @@ BASH_COMMANDS = [
     "git checkout -b feature-branch",
     "git merge main",
     "git rebase main",
-
     # Dangerous commands (should be blocked/asked)
     "rm -rf /",
     "rm -rf ~",
@@ -394,7 +421,6 @@ FILE_PATHS = [
     "config/settings.yaml",
     "lib/utils.js",
     "app/main.py",
-
     # Would-be-blocked paths (zero-access)
     ".env",
     ".env.local",
@@ -410,7 +436,6 @@ FILE_PATHS = [
     "cert.key",
     "terraform.tfstate",
     "firebase-adminsdk.json",
-
     # Read-only paths
     "package-lock.json",
     "yarn.lock",
@@ -426,7 +451,6 @@ FILE_PATHS = [
     "dist/bundle.min.js",
     "build/app.bundle.js",
     "node_modules/package/index.js",
-
     # No-delete paths
     "LICENSE",
     "LICENSE.md",
@@ -442,6 +466,7 @@ FILE_PATHS = [
 # BENCHMARKING
 # ============================================================================
 
+
 def load_patterns() -> Dict[str, Any]:
     """Load patterns.yaml from the same directory."""
     script_dir = Path(__file__).parent
@@ -455,7 +480,9 @@ def load_patterns() -> Dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
-def run_benchmark(config: Dict[str, Any], iterations: int = 1000, use_compiled: bool = False) -> Dict[str, Any]:
+def run_benchmark(
+    config: Dict[str, Any], iterations: int = 1000, use_compiled: bool = False
+) -> Dict[str, Any]:
     """Run benchmark on bash commands and path patterns.
 
     Args:
@@ -482,13 +509,11 @@ def run_benchmark(config: Dict[str, Any], iterations: int = 1000, use_compiled: 
             bash_times.append((end - start) * 1000)  # Convert to milliseconds
 
     # Benchmark path patterns (simulate checking paths in commands)
-    test_commands = [
-        f"cat {path}" for path in FILE_PATHS
-    ] + [
-        f"rm {path}" for path in FILE_PATHS
-    ] + [
-        f"vim {path}" for path in FILE_PATHS
-    ]
+    test_commands = (
+        [f"cat {path}" for path in FILE_PATHS]
+        + [f"rm {path}" for path in FILE_PATHS]
+        + [f"vim {path}" for path in FILE_PATHS]
+    )
 
     path_iterations = max(1, iterations // len(test_commands)) * len(test_commands)
     for _ in range(path_iterations // len(test_commands)):
@@ -530,7 +555,9 @@ def format_stats(stats: Dict[str, float]) -> str:
     )
 
 
-def append_to_benchmarks(config: Dict[str, Any], stats: Dict[str, Any], note: str = "") -> None:
+def append_to_benchmarks(
+    config: Dict[str, Any], stats: Dict[str, Any], note: str = ""
+) -> None:
     """Append benchmark results to BENCHMARKS.md."""
     script_dir = Path(__file__).parent
     benchmarks_path = script_dir / "BENCHMARKS.md"
@@ -539,24 +566,30 @@ def append_to_benchmarks(config: Dict[str, Any], stats: Dict[str, Any], note: st
     if not benchmarks_path.exists():
         with open(benchmarks_path, "w") as f:
             f.write("# Damage Control Benchmark History\n\n")
-            f.write("Track pattern matching performance over time. Run `uv run benchmark.py` to add entries.\n\n")
-            f.write("| Date | Bash Patterns | Path Patterns | Iterations | Avg (ms) | P50 (ms) | P95 (ms) | P99 (ms) | Notes |\n")
-            f.write("|------|---------------|---------------|------------|----------|----------|----------|----------|-------|\n")
+            f.write(
+                "Track pattern matching performance over time. Run `uv run benchmark.py` to add entries.\n\n"
+            )
+            f.write(
+                "| Date | Bash Patterns | Path Patterns | Iterations | Avg (ms) | P50 (ms) | P95 (ms) | P99 (ms) | Notes |\n"
+            )
+            f.write(
+                "|------|---------------|---------------|------------|----------|----------|----------|----------|-------|\n"
+            )
 
     # Append new row
     date = datetime.now().strftime("%Y-%m-%d %H:%M")
     bash_count = len(config.get("bashToolPatterns", []))
     path_count = (
-        len(config.get("zeroAccessPaths", [])) +
-        len(config.get("readOnlyPaths", [])) +
-        len(config.get("noDeletePaths", []))
+        len(config.get("zeroAccessPaths", []))
+        + len(config.get("readOnlyPaths", []))
+        + len(config.get("noDeletePaths", []))
     )
 
     # Combined average across bash and path checks
     total_checks = stats["bash"]["count"] + stats["path"]["count"]
     combined_avg = (
-        stats["bash"]["avg"] * stats["bash"]["count"] +
-        stats["path"]["avg"] * stats["path"]["count"]
+        stats["bash"]["avg"] * stats["bash"]["count"]
+        + stats["path"]["avg"] * stats["path"]["count"]
     ) / total_checks
     combined_p50 = (stats["bash"]["p50"] + stats["path"]["p50"]) / 2
     combined_p95 = (stats["bash"]["p95"] + stats["path"]["p95"]) / 2
@@ -581,15 +614,129 @@ def append_to_benchmarks(config: Dict[str, Any], stats: Dict[str, Any], note: st
 
 
 # ============================================================================
+# AST BENCHMARK CORPUS
+# ============================================================================
+
+# Commands where safe-command fast path applies — expect ~0ms AST overhead.
+AST_SAFE_COMMANDS = [
+    "ls -la",
+    "echo hello",
+    "cat README.md",
+    "grep -r pattern .",
+    "pwd",
+]
+
+# Commands that require full AST analysis.
+AST_ANALYSIS_COMMANDS = [
+    "bash -c 'rm -rf /'",
+    "(rm -rf /tmp/data)",
+    "echo hello | rm -rf /tmp",
+    "eval 'echo safe'",
+    "eval '$DYNAMIC'",
+    "git status && rm -rf /",
+]
+
+
+def run_ast_benchmark(config: Dict[str, Any], iterations: int = 100) -> Dict[str, Any]:
+    """Benchmark AST analysis: regex-only vs regex+AST per command.
+
+    Returns per-category timing dicts with avg ms for safe commands
+    (fast-path) and analysis commands (full AST pass).
+    """
+    # Lazy import — gracefully skip if tree-sitter not installed.
+    try:
+        import importlib.util
+        import sys as _sys
+
+        hook_dir = str(Path(__file__).parent)
+        if hook_dir not in _sys.path:
+            _sys.path.insert(0, hook_dir)
+
+        spec = importlib.util.spec_from_file_location(
+            "ast_analyzer", Path(__file__).parent / "ast_analyzer.py"
+        )
+        ast_mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+        spec.loader.exec_module(ast_mod)  # type: ignore[union-attr]
+        ASTAnalyzer = ast_mod.ASTAnalyzer
+    except Exception as e:
+        print(f"  (skipped — ast_analyzer import failed: {e})", file=sys.stderr)
+        return {}
+
+    analyzer = ASTAnalyzer()
+    if not analyzer.is_available():
+        print("  (skipped — tree-sitter not installed)", file=sys.stderr)
+        return {}
+
+    ast_config = {
+        **config,
+        "astAnalysis": {
+            "enabled": True,
+            "safeCommands": ["ls", "echo", "cat", "grep", "pwd"],
+            "dangerousCommands": ["rm", "eval"],
+        },
+    }
+
+    def time_commands(commands: List[str], n: int) -> Dict[str, float]:
+        times = []
+        for _ in range(n):
+            for cmd in commands:
+                t0 = time.perf_counter()
+                analyzer.analyze_command_ast(cmd, ast_config)
+                times.append((time.perf_counter() - t0) * 1000)
+        times.sort()
+        return {
+            "count": len(times),
+            "avg": sum(times) / len(times),
+            "min": min(times),
+            "max": max(times),
+        }
+
+    return {
+        "safe": time_commands(AST_SAFE_COMMANDS, iterations),
+        "analysis": time_commands(AST_ANALYSIS_COMMANDS, iterations),
+    }
+
+
+def format_ast_stats(label: str, stats: Dict[str, float]) -> str:
+    return (
+        f"  {label}: count={stats['count']}, "
+        f"avg={stats['avg']:.4f}ms, "
+        f"min={stats['min']:.4f}ms, "
+        f"max={stats['max']:.4f}ms"
+    )
+
+
+# ============================================================================
 # MAIN
 # ============================================================================
 
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Benchmark damage-control pattern matching")
-    parser.add_argument("--dry-run", action="store_true", help="Print results without appending to BENCHMARKS.md")
-    parser.add_argument("--note", type=str, default="", help="Optional note to include in benchmark table")
-    parser.add_argument("--iterations", type=int, default=1000, help="Number of iterations (default: 1000)")
-    parser.add_argument("--compiled", action="store_true", help="Use compiled patterns (Phase 1 optimizations)")
+    parser = argparse.ArgumentParser(
+        description="Benchmark damage-control pattern matching"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print results without appending to BENCHMARKS.md",
+    )
+    parser.add_argument(
+        "--note",
+        type=str,
+        default="",
+        help="Optional note to include in benchmark table",
+    )
+    parser.add_argument(
+        "--iterations",
+        type=int,
+        default=1000,
+        help="Number of iterations (default: 1000)",
+    )
+    parser.add_argument(
+        "--compiled",
+        action="store_true",
+        help="Use compiled patterns (Phase 1 optimizations)",
+    )
     args = parser.parse_args()
 
     print("Loading patterns...")
@@ -597,15 +744,17 @@ def main() -> None:
 
     bash_count = len(config.get("bashToolPatterns", []))
     path_count = (
-        len(config.get("zeroAccessPaths", [])) +
-        len(config.get("readOnlyPaths", [])) +
-        len(config.get("noDeletePaths", []))
+        len(config.get("zeroAccessPaths", []))
+        + len(config.get("readOnlyPaths", []))
+        + len(config.get("noDeletePaths", []))
     )
 
     mode = "compiled" if args.compiled else "raw"
     print(f"Patterns loaded: {bash_count} bash patterns, {path_count} path patterns")
     print(f"Mode: {mode}")
-    print(f"Test corpus: {len(BASH_COMMANDS)} bash commands, {len(FILE_PATHS)} file paths")
+    print(
+        f"Test corpus: {len(BASH_COMMANDS)} bash commands, {len(FILE_PATHS)} file paths"
+    )
     print(f"Running {args.iterations} iterations...\n")
 
     stats = run_benchmark(config, args.iterations, use_compiled=args.compiled)
@@ -615,6 +764,21 @@ def main() -> None:
     print()
     print("Path Pattern Matching:")
     print(format_stats(stats["path"]))
+
+    # AST benchmark: regex-only vs regex+AST comparison.
+    ast_iters = max(10, args.iterations // 10)
+    print(f"\nAST Analysis Benchmark ({ast_iters} iterations):")
+    ast_stats = run_ast_benchmark(config, ast_iters)
+    if ast_stats:
+        print(format_ast_stats("Safe cmds (fast-path)", ast_stats["safe"]))
+        print(format_ast_stats("Analysis cmds (full AST)", ast_stats["analysis"]))
+        safe_avg = ast_stats["safe"]["avg"]
+        analysis_avg = ast_stats["analysis"]["avg"]
+        print(
+            f"  AST overhead ratio: {analysis_avg / safe_avg:.1f}x"
+            if safe_avg > 0
+            else ""
+        )
 
     if not args.dry_run:
         append_to_benchmarks(config, stats, args.note)
