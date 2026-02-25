@@ -112,6 +112,27 @@ Understands git command structure and semantics:
 
 Example: `git push --force` -> matches git-force pattern -> blocks
 
+### Read-Only Search Pipeline Detection
+
+Prevents false positives from dangerous-looking strings inside search arguments (e.g., `grep "helm upgrade" Makefile` should NOT trigger the `helm upgrade` pattern).
+
+**How it works:**
+- Splits commands on `&&`, `||`, `;`, `&` (respecting quoted strings)
+- For each segment, checks if the entire pipe chain is read-only:
+  - First command must be a search tool (grep, rg, ag, ack, git grep, git log, git diff, git show)
+  - All pipe targets must be safe transformers (head, tail, sort, wc, jq, yq, etc.)
+- Only skips `bashToolPatterns` — path-based checks (zeroAccessPaths, readOnlyPaths, noDeletePaths) still apply
+- If ANY segment is not read-only, the full command is checked normally
+
+**Examples:**
+| Command | Result | Why |
+|---------|--------|-----|
+| `grep "helm upgrade" Makefile \| head -20` | Allow | Search piped to safe transformer |
+| `rg "terraform destroy" .` | Allow | Read-only search tool |
+| `grep "helm upgrade" && helm upgrade release` | Ask | Second segment is dangerous |
+| `grep "helm upgrade" \| xargs helm upgrade` | Ask | Pipe target `xargs` not in safe list |
+| `grep "pattern" & rm -rf /` | Block | Background `&` splits segments; `rm -rf /` is dangerous |
+
 ### Audit Logging
 
 Comprehensive JSON logging of all security decisions:
@@ -272,51 +293,67 @@ reason: "*.env file may contain secrets"
 
 ## Testing
 
-### Smoke Tests (Quick Validation)
+### Development Methodology: Red-Green-Refactor
 
-Fast validation of hook installation and basic functionality:
+All damage-control changes MUST follow red-green-refactor (TDD):
+
+1. **Red** — Write a failing test that demonstrates the bug or specifies the new behavior
+2. **Green** — Write the minimal code to make the test pass
+3. **Refactor** — Clean up while keeping tests green
+
+**Why this matters for security hooks:** A passing test suite is the proof that patterns work. If you can't write a test for a behavior, you can't prove it's protected.
+
+**Workflow:**
 ```bash
-cd ~/.dotfiles
-make test-damage-control
+# 1. Write your test in claude/hooks/damage-control/tests/
+# 2. Run it — confirm it fails (red)
+uv run pytest claude/hooks/damage-control/tests/test_your_file.py -v -k test_name
+
+# 3. Implement the fix
+# 4. Run it — confirm it passes (green)
+uv run pytest claude/hooks/damage-control/tests/test_your_file.py -v -k test_name
+
+# 5. Run full suite — confirm no regressions
+uv run pytest claude/hooks/damage-control/tests/ -v
 ```
 
-Individual smoke tests:
-```bash
-bats test/damage-control.bats
-```
+### Running Tests
 
-### Unit Tests (Comprehensive)
-
-94 pytest tests covering all edge cases and features:
 ```bash
+# Full unit test suite (pytest)
 cd ~/.dotfiles
 make test-damage-control-unit
 # or directly:
 uv run pytest claude/hooks/damage-control/tests/ -v
-```
 
-### Integration Tests (Full Test Runner)
+# Smoke tests (bats)
+make test-damage-control
+bats test/damage-control.bats
 
-42 integration test cases via the Python test runner:
-```bash
-cd ~/.dotfiles
+# Integration tests (Python test runner)
 make test-damage-control-integration
+
+# Test specific features
+uv run test-damage-control.py --test-suite unwrap   # Shell unwrapping
+uv run test-damage-control.py --test-suite git       # Git semantic analysis
+uv run test-damage-control.py --test-suite logging   # Audit logging
+uv run test-damage-control.py --test-suite all       # All features
 ```
 
-Test specific features:
-```bash
-# Test shell unwrapping
-uv run test-damage-control.py --test-suite unwrap
+### Test File Organization
 
-# Test git semantic analysis
-uv run test-damage-control.py --test-suite git
-
-# Test audit logging
-uv run test-damage-control.py --test-suite logging
-
-# Test all features
-uv run test-damage-control.py --test-suite all
-```
+| Test File | Covers |
+|-----------|--------|
+| `test_integration.py` | Git semantic + check_command integration |
+| `test_git_semantic.py` | Git command analysis |
+| `test_semantic_analysis.py` | Unwrapping, audit logging, end-to-end |
+| `test_readonly_search.py` | Read-only search pipeline detection |
+| `test_context_detection.py` | Context-aware relaxation |
+| `test_exfil_patterns.py` | Data exfiltration patterns |
+| `test_injection_detection.py` | Command injection detection |
+| `test_ast_analyzer.py` | AST-based analysis |
+| `test_sequence_detection.py` | Multi-step attack sequences |
+| `test_log_rotate.py` | Log rotation utility |
 
 ### Manual Testing with Test Prompts
 
