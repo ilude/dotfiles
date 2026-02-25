@@ -600,6 +600,40 @@ bashToolPatterns:
     reason: docker volume prune (removes unused volumes)
     ask: true
 
+  # docker compose destructive operations
+  - pattern: '\bdocker\s+compose\s+down\s+.*(-v\b|--volumes\b)'
+    reason: "docker compose down --volumes (removes containers AND volumes - DATA LOSS)"
+    ask: true
+
+  - pattern: '\bdocker\s+compose\s+down\s+.*--rmi\b'
+    reason: "docker compose down --rmi (removes containers and images)"
+    ask: true
+
+  - pattern: '\bdocker\s+compose\s+down\b'
+    reason: docker compose down (stops and removes containers)
+    ask: true
+
+  - pattern: '\bdocker\s+compose\s+rm\s+.*-f'
+    reason: "docker compose rm -f (force removes containers without confirmation)"
+    ask: true
+
+  # podman (Docker alternative) destructive operations
+  - pattern: '\bpodman\s+system\s+prune\b'
+    reason: podman system prune (removes unused containers, pods, networks)
+    ask: true
+
+  - pattern: '\bpodman\s+volume\s+(rm|prune)\b'
+    reason: podman volume rm/prune (data loss)
+    ask: true
+
+  - pattern: '\bpodman\s+machine\s+rm\b'
+    reason: podman machine rm (removes virtual machine)
+    ask: true
+
+  - pattern: '\bpodman\s+pod\s+rm\b'
+    reason: podman pod rm (removes pod and containers)
+    ask: true
+
   # ---------------------------------------------------------------------------
   # KUBERNETES (kubectl) DESTRUCTIVE OPERATIONS
   # ---------------------------------------------------------------------------
@@ -705,6 +739,19 @@ bashToolPatterns:
 
   - pattern: '\bmysqladmin\s+drop\b'
     reason: MySQL drop database
+
+  # SurrealDB destructive operations
+  - pattern: '\bREMOVE\s+(NAMESPACE|DATABASE)\b'
+    reason: "SurrealDB REMOVE NAMESPACE/DATABASE (destroys namespace or database and all data)"
+
+  - pattern: '\bREMOVE\s+TABLE\b'
+    reason: "SurrealDB REMOVE TABLE (deletes table and all data)"
+    ask: true
+
+  # PostgreSQL restore with --clean (drops objects before restoring)
+  - pattern: '\bpg_restore\s+.*--clean\b'
+    reason: "pg_restore --clean (drops all objects before restoring)"
+    ask: true
 
   # ---------------------------------------------------------------------------
   # INFRASTRUCTURE AS CODE DESTRUCTIVE OPERATIONS
@@ -857,6 +904,74 @@ bashToolPatterns:
     ask: true
 
   # ---------------------------------------------------------------------------
+  # LANGUAGE PACKAGE MANAGER OPERATIONS
+  # ---------------------------------------------------------------------------
+  # Go global cache clearing (affects ALL projects)
+  - pattern: '\bgo\s+clean\s+.*-modcache\b'
+    reason: "go clean -modcache (removes global module cache, affects ALL Go projects)"
+    ask: true
+
+  - pattern: '\bgo\s+clean\s+.*-cache\b'
+    reason: "go clean -cache (removes global build cache, affects ALL Go projects)"
+    ask: true
+
+  # uv (Python) destructive operations
+  - pattern: '\buv\s+cache\s+clean\b'
+    reason: "uv cache clean (removes all cached packages, slow rebuild)"
+    ask: true
+
+  - pattern: '\buv\s+python\s+uninstall\b'
+    reason: "uv python uninstall (removes managed Python installations)"
+    ask: true
+
+  # poetry environment removal
+  - pattern: '\bpoetry\s+env\s+remove\b'
+    reason: "poetry env remove (deletes virtual environment)"
+    ask: true
+
+  - pattern: '\bpoetry\s+cache\s+clear\b'
+    reason: "poetry cache clear (removes cached packages)"
+    ask: true
+
+  # ---------------------------------------------------------------------------
+  # INFRASTRUCTURE CONFIG MANAGEMENT
+  # ---------------------------------------------------------------------------
+  - pattern: '\bmolecule\s+destroy\b'
+    reason: "molecule destroy (destroys test infrastructure)"
+    ask: true
+
+  - pattern: '\bansible-galaxy\s+(role|collection)\s+remove\b'
+    reason: "ansible-galaxy remove (removes roles or collections)"
+    ask: true
+
+  # ---------------------------------------------------------------------------
+  # SYSTEM PACKAGE MANAGERS
+  # ---------------------------------------------------------------------------
+  - pattern: '\bbrew\s+(uninstall|remove|rm)\b'
+    reason: brew uninstall (removes package)
+    ask: true
+
+  - pattern: '\bbrew\s+autoremove\b'
+    reason: brew autoremove (removes unused dependencies)
+    ask: true
+
+  - pattern: '\bbrew\s+untap\b'
+    reason: brew untap (removes third-party repository)
+    ask: true
+
+  - pattern: '\bapt(-get)?\s+(remove|purge)\b'
+    reason: "apt remove/purge (removes system packages)"
+    ask: true
+
+  - pattern: '\bapt(-get)?\s+auto(remove|purge)\b'
+    reason: "apt autoremove/autopurge (removes unused dependencies)"
+    ask: true
+
+  - pattern: '\bdpkg\s+--purge\b'
+    reason: "dpkg --purge (removes package and config files)"
+    ask: true
+
+  # ---------------------------------------------------------------------------
   # GITHUB CLI DESTRUCTIVE OPERATIONS
   # ---------------------------------------------------------------------------
   - pattern: '\bgh\s+repo\s+delete\b'
@@ -932,6 +1047,58 @@ bashToolPatterns:
   # ---------------------------------------------------------------------------
   - pattern: '\bnpm\s+unpublish\b'
     reason: npm unpublish (removes package from registry)
+
+  - pattern: '\bnpm\s+publish\b'
+    reason: "npm publish (uploads package to registry, irreversible)"
+    ask: true
+
+  - pattern: '\bnpm\s+deprecate\b'
+    reason: "npm deprecate (marks package version as deprecated in registry)"
+    ask: true
+
+  - pattern: '\bnpm\s+dist-tag\s+rm\b'
+    reason: "npm dist-tag rm (removes distribution tag, affects install behavior)"
+    ask: true
+
+  - pattern: '\bnpm\s+owner\s+rm\b'
+    reason: "npm owner rm (removes package owner, revokes publish privileges)"
+    ask: true
+
+  - pattern: '\bbun\s+publish\b'
+    reason: "bun publish (uploads package to npm registry, irreversible)"
+    ask: true
+
+  - pattern: '\buv\s+publish\b'
+    reason: "uv publish (uploads Python package to PyPI, irreversible)"
+    ask: true
+
+  - pattern: '\bpoetry\s+publish\b'
+    reason: "poetry publish (uploads Python package to PyPI, irreversible)"
+    ask: true
+
+  - pattern: '\bcargo\s+publish\b'
+    reason: "cargo publish (uploads crate to crates.io, irreversible)"
+    ask: true
+
+  - pattern: '\bcargo\s+yank\b'
+    reason: "cargo yank (yanks crate version, risks namespace takeover if all versions yanked)"
+    ask: true
+
+  - pattern: '\bgem\s+push\b'
+    reason: "gem push (uploads gem to rubygems.org, irreversible)"
+    ask: true
+
+  - pattern: '\bgem\s+yank\b'
+    reason: "gem yank (yanks gem version, risks namespace takeover)"
+    ask: true
+
+  - pattern: '\bdotnet\s+nuget\s+push\b'
+    reason: "dotnet nuget push (uploads package to NuGet, irreversible)"
+    ask: true
+
+  - pattern: '\bdotnet\s+nuget\s+delete\b'
+    reason: "dotnet nuget delete (unlists/deletes package from NuGet)"
+    ask: true
 
   # ---------------------------------------------------------------------------
   # SQL DESTRUCTIVE OPERATIONS (catastrophic - no WHERE clause)
