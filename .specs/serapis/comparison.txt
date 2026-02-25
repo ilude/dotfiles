@@ -1,0 +1,108 @@
+  vs SOPS
+
+  ┌──────────────────────┬──────────────────────────────────────────────────────────────────────────┬────────────────────────────────────────────────────────────────────────────────┐
+  │         Area         │                                   SOPS                                   │                                    Serapis                                     │
+  ├──────────────────────┼──────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────┤
+  │ Zero-knowledge       │ Server/git host never sees plaintext — encryption happens client-side    │ Server sees plaintext during encryption. Server compromise = everything leaked │
+  ├──────────────────────┼──────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────┤
+  │ No infrastructure    │ Just a CLI + git repo. Nothing to host, nothing to back up (besides git) │ Requires running a server, Docker host, backups, KEK management                │
+  ├──────────────────────┼──────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────┤
+  │ Offline              │ Works completely offline, it's just files                                │ Requires network access to the vault                                           │
+  ├──────────────────────┼──────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────┤
+  │ Battle-tested crypto │ Uses age/AWS KMS/GCP KMS — mature, audited implementations               │ Custom Go crypto (HKDF, AES-GCM wrapping) — correct by design but unaudited    │
+  ├──────────────────────┼──────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────┤
+  │ Git integration      │ Encrypted files live in the repo, full diff/blame/history natively       │ Separate system from git, history lives in the vault's audit log               │
+  └──────────────────────┴──────────────────────────────────────────────────────────────────────────┴────────────────────────────────────────────────────────────────────────────────┘
+
+  Serapis's only real advantage over SOPS: push/pull UX and central sync without git. If you're comfortable with git-based workflows, SOPS is strictly more secure.
+
+  vs HashiCorp Vault
+
+  ┌─────────────────┬──────────────────────────────────────────────────────────────────────────────────────────────────────┬───────────────────────────────────────────────────────────────┐
+  │      Area       │                                                Vault                                                 │                            Serapis                            │
+  ├─────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────┤
+  │ Dynamic secrets │ Generates short-lived DB passwords, AWS credentials on demand — secrets that expire automatically    │ Static storage only. You rotate manually                      │
+  ├─────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────┤
+  │ Secret engines  │ PKI, SSH CA, TOTP, transit encryption, databases — entire categories of secrets Serapis can't handle │ Key-value store. That's it                                    │
+  ├─────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────┤
+  │ HA / clustering │ Multi-node Raft consensus, automatic failover                                                        │ Single SQLite instance. Server dies, you wait                 │
+  ├─────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────┤
+  │ Seal/unseal     │ Shamir's secret sharing, HSM auto-unseal, transit unseal — the KEK never exists in one place         │ KEK is a file on disk. One place, one copy (plus your backup) │
+  ├─────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────┤
+  │ Auth backends   │ LDAP, OIDC, Kubernetes SA, AppRole, AWS IAM, GitHub — dozens of options                              │ SSH keys only                                                 │
+  ├─────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────┤
+  │ Audit           │ Multiple audit backends (file, syslog, socket), HMAC-protected logs                                  │ Append-only SQLite table                                      │
+  ├─────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────┤
+  │ Ecosystem       │ Terraform provider, Kubernetes operator, CI/CD integrations everywhere                               │ Nothing. You're the ecosystem                                 │
+  └─────────────────┴──────────────────────────────────────────────────────────────────────────────────────────────────────┴───────────────────────────────────────────────────────────────┘
+
+  Serapis's only real advantage over Vault: operational simplicity. Vault is genuinely painful to run for small-scale use.
+
+  vs 1Password
+
+  ┌───────────────────┬─────────────────────────────────────────────────────────────────────────────────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │       Area        │                                    1Password                                    │                                                          Serapis                                                          │
+  ├───────────────────┼─────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Zero-knowledge    │ End-to-end encrypted. 1Password cannot read your secrets, even if compelled     │ Server holds plaintext (briefly) and the KEK. You can read your own secrets — and so can anyone who compromises the       │
+  │                   │                                                                                 │ server                                                                                                                    │
+  ├───────────────────┼─────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Key management    │ Account key + master password, SRP protocol, automatic key rotation             │ You manage the KEK file yourself. Lose it, lose everything                                                                │
+  ├───────────────────┼─────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Client apps       │ Native apps on every platform, browser extension, CLI, desktop app — polished   │ Go CLI only. No GUI, no browser extension                                                                                 │
+  │                   │ UX                                                                              │                                                                                                                           │
+  ├───────────────────┼─────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Sharing           │ Built-in vault sharing, guest accounts, link sharing with expiry                │ Nothing until v2                                                                                                          │
+  ├───────────────────┼─────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Secret types      │ Passwords, credit cards, SSH keys, API credentials, documents, secure notes     │ .env files only                                                                                                           │
+  ├───────────────────┼─────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ SOC 2 /           │ Independently audited, SOC 2 Type 2, published security model                   │ Unaudited personal project                                                                                                │
+  │ compliance        │                                                                                 │                                                                                                                           │
+  ├───────────────────┼─────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Uptime            │ SLA-backed cloud infrastructure, global CDN                                     │ Your Docker host on your network                                                                                          │
+  └───────────────────┴─────────────────────────────────────────────────────────────────────────────────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+  Serapis's advantages over 1Password: free, self-hosted (no third-party trust), .env-native workflow (shebang + push/pull vs. manual copy-paste from a vault UI).
+
+  vs Doppler
+
+  ┌─────────────────────────┬─────────────────────────────────────────────────────────────────────────────────────────────────────────────┬───────────────────────────────────────────────────────────────┐
+  │          Area           │                                                   Doppler                                                   │                            Serapis                            │
+  ├─────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────┤
+  │ CI/CD integration       │ Native integrations with GitHub Actions, Vercel, Netlify, AWS, Railway, Fly — inject secrets at deploy time │ Nothing. You'd envault pull in a CI script manually           │
+  ├─────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────┤
+  │ Environment inheritance │ Dev inherits from root, staging overrides specific keys, prod overrides others — cascading config           │ Flat. Each project/environment is independent. No inheritance │
+  ├─────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────┤
+  │ Change history          │ Full version history per secret, rollback to any point                                                      │ Whole-file versioning (v0), per-key audit (v1), no rollback   │
+  ├─────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────┤
+  │ Team UX                 │ Web dashboard, RBAC, SSO, service tokens for machines                                                       │ CLI only, no ACLs until v2                                    │
+  ├─────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────┤
+  │ SDK injection           │ doppler run -- node app.js injects secrets as env vars at runtime, no .env file needed                      │ File-based. You pull a .env and your app reads it             │
+  ├─────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────┤
+  │ Managed infrastructure  │ They run everything. Zero ops burden                                                                        │ You run everything. All ops burden is yours                   │
+  └─────────────────────────┴─────────────────────────────────────────────────────────────────────────────────────────────────────────────┴───────────────────────────────────────────────────────────────┘
+
+  Serapis's advantages over Doppler: free, self-hosted, no vendor lock-in, works fully offline after a pull.
+
+  ---
+  The Honest Summary
+
+  ┌─────────────────────────┬──────────┬─────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │        Weakness         │ Severity │                                           Mitigation                                            │
+  ├─────────────────────────┼──────────┼─────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Server sees plaintext   │ High     │ Accepted tradeoff. Could add client-side encryption later, but that's basically rebuilding SOPS │
+  ├─────────────────────────┼──────────┼─────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Single point of failure │ High     │ Backups + KEK backup procedure. Local .env files are the fallback                               │
+  ├─────────────────────────┼──────────┼─────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Unaudited crypto        │ Medium   │ Use only stdlib/x/crypto packages, stick to well-known patterns, but it's still your code       │
+  ├─────────────────────────┼──────────┼─────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ No CI/CD integration    │ Medium   │ Scriptable CLI (envault pull in CI), but no native integrations                                 │
+  ├─────────────────────────┼──────────┼─────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ No dynamic secrets      │ Low      │ Out of scope — Serapis is a static vault, not a secret engine                                   │
+  ├─────────────────────────┼──────────┼─────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ No GUI                  │ Low      │ By design — CLI-first for developers                                                            │
+  ├─────────────────────────┼──────────┼─────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Bus factor of 1         │ High     │ It's your project. If you stop maintaining it, it stops getting security patches                │
+  └─────────────────────────┴──────────┴─────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+  The recurring theme: every established tool has either more security (SOPS, 1Password) or more features (Vault, Doppler) than Serapis. What Serapis offers is a specific UX (shebang + push/pull + SSH keys) at zero cost with zero
+   third-party trust, at the expense of being less secure than client-side encryption and less featureful than managed platforms.
