@@ -330,6 +330,17 @@ bashToolPatterns:
     reason: aws ec2 terminate-instances
     ask: true
 
+  # Hard block: skip-final-snapshot bypasses safety net
+  - pattern: '\baws\s+rds\s+delete-db-instance\b.*--skip-final-snapshot'
+    reason: "aws rds delete-db-instance --skip-final-snapshot (no backup, IRREVERSIBLE)"
+
+  - pattern: '\baws\s+rds\s+delete-db-cluster\b.*--skip-final-snapshot'
+    reason: "aws rds delete-db-cluster --skip-final-snapshot (no backup, IRREVERSIBLE)"
+
+  # Hard block: immediate secret deletion with no recovery window
+  - pattern: '\baws\s+secretsmanager\s+delete-secret\b.*--force-delete-without-recovery'
+    reason: "aws secretsmanager delete-secret --force-delete-without-recovery (IMMEDIATE, no recovery)"
+
   - pattern: '\baws\s+rds\s+delete-db-instance\b'
     reason: aws rds delete-db-instance
     ask: true
@@ -381,6 +392,86 @@ bashToolPatterns:
 
   - pattern: '\baws\s+iam\s+delete-user\b'
     reason: aws iam delete-user
+    ask: true
+
+  - pattern: '\baws\s+rds\s+delete-db-cluster\b'
+    reason: aws rds delete-db-cluster (deletes entire DB cluster)
+    ask: true
+
+  - pattern: '\baws\s+ec2\s+delete-volume\b'
+    reason: aws ec2 delete-volume (permanently deletes EBS volume)
+    ask: true
+
+  - pattern: '\baws\s+kms\s+schedule-key-deletion\b'
+    reason: "aws kms schedule-key-deletion (all data encrypted with this key becomes unrecoverable)"
+    ask: true
+
+  - pattern: '\baws\s+secretsmanager\s+delete-secret\b'
+    reason: aws secretsmanager delete-secret
+    ask: true
+
+  - pattern: '\baws\s+organizations\s+delete-organization\b'
+    reason: aws organizations delete-organization
+    ask: true
+
+  - pattern: '\baws\s+organizations\s+close-account\b'
+    reason: aws organizations close-account
+    ask: true
+
+  - pattern: '\baws\s+iam\s+delete-policy\b'
+    reason: aws iam delete-policy
+    ask: true
+
+  - pattern: '\baws\s+iam\s+delete-access-key\b'
+    reason: aws iam delete-access-key
+    ask: true
+
+  - pattern: '\baws\s+iam\s+delete-group\b'
+    reason: aws iam delete-group
+    ask: true
+
+  - pattern: '\baws\s+route53\s+delete-hosted-zone\b'
+    reason: aws route53 delete-hosted-zone (deletes DNS zone)
+    ask: true
+
+  - pattern: '\baws\s+cloudfront\s+delete-distribution\b'
+    reason: aws cloudfront delete-distribution (deletes CDN distribution)
+    ask: true
+
+  - pattern: '\baws\s+sqs\s+delete-queue\b'
+    reason: aws sqs delete-queue (deletes queue and all messages)
+    ask: true
+
+  - pattern: '\baws\s+sqs\s+purge-queue\b'
+    reason: aws sqs purge-queue (purges all messages from queue)
+    ask: true
+
+  - pattern: '\baws\s+sns\s+delete-topic\b'
+    reason: aws sns delete-topic
+    ask: true
+
+  - pattern: '\baws\s+elasticache\s+delete-cache-cluster\b'
+    reason: aws elasticache delete-cache-cluster
+    ask: true
+
+  - pattern: '\baws\s+elasticache\s+delete-replication-group\b'
+    reason: aws elasticache delete-replication-group
+    ask: true
+
+  - pattern: '\baws\s+ecs\s+delete-service\b'
+    reason: aws ecs delete-service
+    ask: true
+
+  - pattern: '\baws\s+ecs\s+delete-cluster\b'
+    reason: aws ecs delete-cluster
+    ask: true
+
+  - pattern: '\baws\s+backup\s+delete-recovery-point\b'
+    reason: aws backup delete-recovery-point (deletes backup)
+    ask: true
+
+  - pattern: '\baws\s+backup\s+delete-backup-vault\b'
+    reason: aws backup delete-backup-vault (deletes backup vault)
     ask: true
 
   # ---------------------------------------------------------------------------
@@ -568,6 +659,32 @@ bashToolPatterns:
     reason: helm rollback (reverts release)
     ask: true
 
+  # Helm aliases and additional subcommands
+  - pattern: '\bhelm\s+delete\b'
+    reason: helm delete (alias for uninstall, removes release and resources)
+    ask: true
+
+  - pattern: '\bhelm\s+repo\s+remove\b'
+    reason: helm repo remove (removes chart repository reference)
+    ask: true
+
+  - pattern: '\bhelm\s+plugin\s+uninstall\b'
+    reason: helm plugin uninstall (removes plugin)
+    ask: true
+
+  # Helm dangerous flag combinations
+  - pattern: '\bhelm\s+uninstall\b.*--no-hooks'
+    reason: "helm uninstall --no-hooks (bypasses cleanup hooks, may orphan resources)"
+    ask: true
+
+  - pattern: '\bhelm\s+upgrade\b.*--reset-values'
+    reason: "helm upgrade --reset-values (discards all previous value customizations)"
+    ask: true
+
+  - pattern: '\bhelm\s+(upgrade|rollback)\b.*--force'
+    reason: "helm upgrade/rollback --force (forces resource replacement via delete/recreate)"
+    ask: true
+
   # ---------------------------------------------------------------------------
   # DATABASE CLI DESTRUCTIVE OPERATIONS
   # ---------------------------------------------------------------------------
@@ -592,8 +709,20 @@ bashToolPatterns:
   # ---------------------------------------------------------------------------
   # INFRASTRUCTURE AS CODE DESTRUCTIVE OPERATIONS
   # ---------------------------------------------------------------------------
+  # Hard block: unattended destruction (no confirmation prompt)
+  - pattern: '\bterraform\s+destroy\s+.*-auto-approve\b'
+    reason: "terraform destroy -auto-approve (unattended infrastructure destruction)"
+
+  - pattern: '\bterraform\s+apply\s+.*-destroy'
+    reason: "terraform apply -destroy (alternative destroy syntax)"
+    ask: true
+
   - pattern: '\bterraform\s+destroy\b'
     reason: terraform destroy (destroys all infrastructure)
+    ask: true
+
+  - pattern: '\bterraform\s+apply\s+.*-auto-approve\b'
+    reason: "terraform apply -auto-approve (unattended infrastructure changes)"
     ask: true
 
   - pattern: '\bterraform\s+apply\b'
@@ -614,6 +743,67 @@ bashToolPatterns:
 
   - pattern: '\bterraform\s+state\s+mv\b'
     reason: terraform state mv (moves resources in state)
+    ask: true
+
+  # Hard block: force workspace delete creates dangling resources
+  - pattern: '\bterraform\s+workspace\s+delete\s+.*-force\b'
+    reason: "terraform workspace delete -force (creates dangling unmanaged resources)"
+
+  - pattern: '\bterraform\s+workspace\s+delete\b'
+    reason: terraform workspace delete (deletes workspace)
+    ask: true
+
+  - pattern: '\bterraform\s+force-unlock\b'
+    reason: terraform force-unlock (removes state lock, risks concurrent modifications)
+    ask: true
+
+  # ---------------------------------------------------------------------------
+  # OPENTOFU (tofu) DESTRUCTIVE OPERATIONS
+  # ---------------------------------------------------------------------------
+  - pattern: '\btofu\s+destroy\s+.*-auto-approve\b'
+    reason: "tofu destroy -auto-approve (unattended infrastructure destruction)"
+
+  - pattern: '\btofu\s+destroy\b'
+    reason: tofu destroy (destroys all infrastructure)
+    ask: true
+
+  - pattern: '\btofu\s+apply\s+.*-destroy'
+    reason: "tofu apply -destroy (alternative destroy syntax)"
+    ask: true
+
+  - pattern: '\btofu\s+apply\s+.*-auto-approve\b'
+    reason: "tofu apply -auto-approve (unattended infrastructure changes)"
+    ask: true
+
+  - pattern: '\btofu\s+apply\b'
+    reason: tofu apply (modifies infrastructure)
+    ask: true
+
+  - pattern: '\btofu\s+import\b'
+    reason: tofu import (imports existing resources)
+    ask: true
+
+  - pattern: '\btofu\s+taint\b'
+    reason: tofu taint (marks resource for recreation)
+    ask: true
+
+  - pattern: '\btofu\s+state\s+rm\b'
+    reason: tofu state rm (removes from state file)
+    ask: true
+
+  - pattern: '\btofu\s+state\s+mv\b'
+    reason: tofu state mv (moves resources in state)
+    ask: true
+
+  - pattern: '\btofu\s+workspace\s+delete\s+.*-force\b'
+    reason: "tofu workspace delete -force (creates dangling unmanaged resources)"
+
+  - pattern: '\btofu\s+workspace\s+delete\b'
+    reason: tofu workspace delete (deletes workspace)
+    ask: true
+
+  - pattern: '\btofu\s+force-unlock\b'
+    reason: tofu force-unlock (removes state lock, risks concurrent modifications)
     ask: true
 
   - pattern: '\bpulumi\s+destroy\b'
@@ -671,6 +861,71 @@ bashToolPatterns:
   # ---------------------------------------------------------------------------
   - pattern: '\bgh\s+repo\s+delete\b'
     reason: gh repo delete (deletes repository)
+
+  # ---------------------------------------------------------------------------
+  # GITLAB CLI DESTRUCTIVE OPERATIONS
+  # ---------------------------------------------------------------------------
+  # Raw API DELETE - can target any resource (pipelines, projects, branches, etc.)
+  - pattern: '\bglab\b.*\bapi\b.*(-X\s+DELETE\b|--method\s+DELETE\b)'
+    reason: "glab api DELETE (destructive GitLab API call)"
+    ask: true
+
+  # --- Critical: project/repo deletion ---
+  - pattern: '\bglab\s+(project|repo)\s+delete\b'
+    reason: "glab project/repo delete (deletes entire GitLab project)"
+
+  # --- Critical: CI pipeline deletion (destroys builds, logs, artifacts) ---
+  - pattern: '\bglab\s+ci\s+delete\b'
+    reason: "glab ci delete (deletes pipelines, builds, logs, and artifacts)"
+
+  # --- High: merge request deletion ---
+  - pattern: '\bglab\s+mr\s+delete\b'
+    reason: "glab mr delete (permanently deletes merge requests)"
+
+  # --- High: issue deletion ---
+  - pattern: '\bglab\s+issue\s+delete\b'
+    reason: "glab issue delete (permanently deletes issues)"
+
+  # --- High: release deletion ---
+  - pattern: '\bglab\s+release\s+delete\b'
+    reason: "glab release delete (deletes release, may delete tag with --with-tag)"
+
+  # --- Medium: merge request merge (especially --force bypasses checks) ---
+  - pattern: '\bglab\s+mr\s+merge\b'
+    reason: "glab mr merge (merges MR, irreversible without revert)"
+    ask: true
+
+  # --- Medium: merge request approval ---
+  - pattern: '\bglab\s+mr\s+approve\b'
+    reason: "glab mr approve (approves MR, may trigger auto-merge)"
+    ask: true
+
+  # --- Medium: credential/access deletion ---
+  - pattern: '\bglab\s+ssh-key\s+delete\b'
+    reason: "glab ssh-key delete (removes SSH key access)"
+    ask: true
+
+  - pattern: '\bglab\s+token\s+revoke\b'
+    reason: "glab token revoke (revokes access token)"
+    ask: true
+
+  - pattern: '\bglab\s+deploy-key\s+delete\b'
+    reason: "glab deploy-key delete (removes deploy key)"
+    ask: true
+
+  # --- Lower: config/automation deletion ---
+  - pattern: '\bglab\s+(label|milestone|schedule|variable)\s+delete\b'
+    reason: "glab resource delete (removes labels, milestones, schedules, or variables)"
+    ask: true
+
+  # --- curl DELETE against GitLab API (URL before or after -X flag) ---
+  - pattern: '\bcurl\b.*(-X\s+DELETE\b|--request\s+DELETE\b).*gitlab'
+    reason: "curl DELETE against GitLab API (destructive)"
+    ask: true
+
+  - pattern: '\bcurl\b.*gitlab.*(-X\s+DELETE\b|--request\s+DELETE\b)'
+    reason: "curl DELETE against GitLab API (destructive)"
+    ask: true
 
   # ---------------------------------------------------------------------------
   # PACKAGE REGISTRY DESTRUCTIVE OPERATIONS

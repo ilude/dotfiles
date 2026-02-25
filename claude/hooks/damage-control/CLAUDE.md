@@ -214,6 +214,25 @@ This section defines the decision tree for handling user requests. Based on what
 | `readOnlyPaths`   | Yes  | No    | No   | No     | System configs, history |
 | `noDeletePaths`   | Yes  | Yes   | Yes  | No     | Important project files |
 
+### CLI Tool Coverage
+
+| Tool | Patterns | Risk Levels |
+|------|----------|-------------|
+| git | Force push, reset --hard, filter-branch, reflog, rm | Block + Ask |
+| glab | API DELETE, project/repo/MR/issue/CI/release delete, merge, approve | Block + Ask |
+| gh | repo delete | Block |
+| aws | S3, EC2, RDS, IAM, Lambda, EKS, DynamoDB, CloudFormation, KMS, Secrets Manager, Route53, SQS, SNS, ElastiCache, ECS, Backup, Organizations | Block + Ask |
+| helm | uninstall/delete, install, upgrade, rollback, repo remove, dangerous flags (--no-hooks, --reset-values, --force) | Ask |
+| kubectl | delete, apply, exec, drain, cordon, create secret | Ask |
+| terraform | destroy, apply, state rm/mv, import, taint, workspace delete, force-unlock, -auto-approve variants | Block + Ask |
+| tofu | Full parity with terraform patterns | Block + Ask |
+| pulumi | destroy | Ask |
+| serverless/sls | remove | Ask |
+| docker | system prune, rm -f, rmi -f, volume rm | Ask |
+| npm | unpublish | Block |
+| Database CLIs | redis FLUSHALL/FLUSHDB, mongo dropDatabase, dropdb, mysqladmin drop | Block |
+| SQL | DELETE without WHERE, TRUNCATE TABLE, DROP TABLE/DATABASE | Block + Ask |
+
 ### Runtime Requirements
 
 | Implementation | Runtime     | Install Command                                    |
