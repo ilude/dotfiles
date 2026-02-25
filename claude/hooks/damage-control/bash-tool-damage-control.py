@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.8"
-# dependencies = ["pyyaml"]
+# dependencies = ["pyyaml", "tree-sitter>=0.23.0", "tree-sitter-bash>=0.23.0"]
 # ///
 """
 Claude Code Security Firewall - Python/UV Implementation
@@ -89,7 +89,10 @@ def compile_regex_patterns(patterns: List[Dict[str, Any]]) -> List[Dict[str, Any
             compiled.append(compiled_item)
         except re.error as e:
             # Skip invalid patterns with warning (don't crash)
-            print(f"Warning: Invalid regex pattern at index {idx}: {pattern} - {e}", file=sys.stderr)
+            print(
+                f"Warning: Invalid regex pattern at index {idx}: {pattern} - {e}",
+                file=sys.stderr,
+            )
             continue
 
     return compiled
@@ -202,6 +205,7 @@ def get_compiled_config() -> Dict[str, Any]:
 # AUDIT LOGGING
 # ============================================================================
 
+
 def get_log_path() -> Path:
     """Get path to daily audit log file.
 
@@ -244,24 +248,24 @@ def redact_secrets(command: str) -> str:
     # List of patterns to redact, with optional character constraints
     patterns = [
         # API keys and tokens
-        (r'apikey\s*=\s*[\w\-\.]+', re.IGNORECASE),
-        (r'api_key\s*=\s*[\w\-\.]+', re.IGNORECASE),
-        (r'token\s*=\s*[\w\-\.]{20,}', re.IGNORECASE),
-        (r'bearer\s+[\w\-\.]+', re.IGNORECASE),
+        (r"apikey\s*=\s*[\w\-\.]+", re.IGNORECASE),
+        (r"api_key\s*=\s*[\w\-\.]+", re.IGNORECASE),
+        (r"token\s*=\s*[\w\-\.]{20,}", re.IGNORECASE),
+        (r"bearer\s+[\w\-\.]+", re.IGNORECASE),
         # Passwords (match any non-space after = or flag-attached like -pPassword)
-        (r'password\s*=\s*\S+', re.IGNORECASE),
-        (r'passwd\s*=\s*\S+', re.IGNORECASE),
-        (r'pwd\s*=\s*\S+', re.IGNORECASE),
-        (r'-p\S+', 0),  # MySQL -pPassword or similar
+        (r"password\s*=\s*\S+", re.IGNORECASE),
+        (r"passwd\s*=\s*\S+", re.IGNORECASE),
+        (r"pwd\s*=\s*\S+", re.IGNORECASE),
+        (r"-p\S+", 0),  # MySQL -pPassword or similar
         # AWS access keys
-        (r'AKIA[0-9A-Z]{16}', 0),
+        (r"AKIA[0-9A-Z]{16}", 0),
         # Secrets and credentials
-        (r'secret\s*=\s*\S+', re.IGNORECASE),
-        (r'credential\s*=\s*\S+', re.IGNORECASE),
+        (r"secret\s*=\s*\S+", re.IGNORECASE),
+        (r"credential\s*=\s*\S+", re.IGNORECASE),
         # Environment variables with sensitive values
-        (r'GITHUB_TOKEN\s*=\s*\S+', re.IGNORECASE),
-        (r'NPM_TOKEN\s*=\s*\S+', re.IGNORECASE),
-        (r'DOCKER_PASSWORD\s*=\s*\S+', re.IGNORECASE),
+        (r"GITHUB_TOKEN\s*=\s*\S+", re.IGNORECASE),
+        (r"NPM_TOKEN\s*=\s*\S+", re.IGNORECASE),
+        (r"DOCKER_PASSWORD\s*=\s*\S+", re.IGNORECASE),
     ]
 
     for pattern, flags in patterns:
@@ -370,6 +374,7 @@ def spawn_log_rotation() -> None:
 # SHELL WRAPPER UNWRAPPING
 # ============================================================================
 
+
 def extract_system_call(python_code: str) -> Optional[str]:
     """Extract shell commands from Python code strings.
 
@@ -400,7 +405,9 @@ def extract_system_call(python_code: str) -> Optional[str]:
             return match.group(1)
 
     # Pattern for subprocess with list arguments: ['cmd', 'arg1', 'arg2']
-    list_pattern = r'subprocess\.(?:run|call|check_call|check_output|Popen)\s*\(\s*\[([^\]]+)\]'
+    list_pattern = (
+        r"subprocess\.(?:run|call|check_call|check_output|Popen)\s*\(\s*\[([^\]]+)\]"
+    )
     match = re.search(list_pattern, python_code)
     if match:
         # Extract list contents and join as command
@@ -408,7 +415,7 @@ def extract_system_call(python_code: str) -> Optional[str]:
         # Remove quotes and commas, split by whitespace
         parts = re.findall(r'["\']([^"\']+)["\']', list_contents)
         if parts:
-            return ' '.join(parts)
+            return " ".join(parts)
 
     return None
 
@@ -446,12 +453,10 @@ def unwrap_command(command: str, depth: int = 0) -> Tuple[str, bool]:
     if not command or not command.strip():
         return command, False
 
-    original_command = command
     command = command.strip()
-    was_unwrapped = False
 
     # Pattern for shell -c wrappers: bash -c "command" or sh -c 'command'
-    shell_wrappers = ['bash', 'sh', 'zsh', 'ksh', 'dash']
+    shell_wrappers = ["bash", "sh", "zsh", "ksh", "dash"]
     for shell in shell_wrappers:
         # Match: shell -c "command" or shell -c 'command'
         # Handle both single and double quotes
@@ -463,7 +468,7 @@ def unwrap_command(command: str, depth: int = 0) -> Tuple[str, bool]:
             return unwrap_command(inner_command, depth + 1)
 
     # Pattern for Python -c wrappers: python -c "code"
-    python_wrappers = ['python', 'python2', 'python3']
+    python_wrappers = ["python", "python2", "python3"]
     for python_cmd in python_wrappers:
         pattern = rf'\b{python_cmd}\s+-c\s+(["\'])(.+?)\1'
         match = re.search(pattern, command)
@@ -479,7 +484,7 @@ def unwrap_command(command: str, depth: int = 0) -> Tuple[str, bool]:
             return unwrap_command(python_code, depth + 1)
 
     # Pattern for env wrappers: env VAR=val command
-    env_pattern = r'\benv\s+(?:[A-Z_][A-Z0-9_]*=[^\s]+\s+)*(.+)'
+    env_pattern = r"\benv\s+(?:[A-Z_][A-Z0-9_]*=[^\s]+\s+)*(.+)"
     match = re.search(env_pattern, command)
     if match:
         inner_command = match.group(1)
@@ -498,20 +503,20 @@ def unwrap_command(command: str, depth: int = 0) -> Tuple[str, bool]:
 # These can safely reference zero-access paths without triggering blocks
 READONLY_GIT_COMMANDS = [
     # Git info commands that don't read file contents
-    r'\bgit\s+check-ignore\b',      # Check .gitignore rules
-    r'\bgit\s+ls-files\b',          # List tracked files
-    r'\bgit\s+ls-tree\b',           # List tree contents
-    r'\bgit\s+status\b',            # Show working tree status
-    r'\bgit\s+diff\s+--name',       # Show changed file names only
-    r'\bgit\s+log\s+--name',        # Show log with file names only
-    r'\bgit\s+rev-parse\b',         # Parse revisions
-    r'\bgit\s+branch\b',            # List/manage branches (without -D)
-    r'\bgit\s+remote\b',            # List remotes
-    r'\bgit\s+config\b',            # Read/write config
-    r'\bgit\s+show-ref\b',          # List references
+    r"\bgit\s+check-ignore\b",  # Check .gitignore rules
+    r"\bgit\s+ls-files\b",  # List tracked files
+    r"\bgit\s+ls-tree\b",  # List tree contents
+    r"\bgit\s+status\b",  # Show working tree status
+    r"\bgit\s+diff\s+--name",  # Show changed file names only
+    r"\bgit\s+log\s+--name",  # Show log with file names only
+    r"\bgit\s+rev-parse\b",  # Parse revisions
+    r"\bgit\s+branch\b",  # List/manage branches (without -D)
+    r"\bgit\s+remote\b",  # List remotes
+    r"\bgit\s+config\b",  # Read/write config
+    r"\bgit\s+show-ref\b",  # List references
     # git rm --cached only removes from index, not filesystem
     # Must match various flag orderings: git rm --cached, git rm -r --cached, git rm --cached -r
-    r'\bgit\s+rm\s+.*--cached\b',   # Remove from index only (files stay on disk)
+    r"\bgit\s+rm\s+.*--cached\b",  # Remove from index only (files stay on disk)
 ]
 
 
@@ -536,6 +541,7 @@ def is_readonly_git_command(command: str) -> bool:
 # ============================================================================
 # GIT SEMANTIC ANALYSIS
 # ============================================================================
+
 
 def analyze_git_command(command: str) -> Tuple[bool, str]:
     """Analyze git commands for dangerous operations based on semantic understanding.
@@ -570,7 +576,7 @@ def analyze_git_command(command: str) -> Tuple[bool, str]:
     command = command.strip()
 
     # Check if it's a git command
-    if not command.startswith('git '):
+    if not command.startswith("git "):
         return False, ""
 
     # Parse command into parts
@@ -582,21 +588,21 @@ def analyze_git_command(command: str) -> Tuple[bool, str]:
     args = parts[2:] if len(parts) > 2 else []
 
     # Join args for easier pattern matching
-    args_str = ' '.join(args)
+    args_str = " ".join(args)
 
     # ========================================================================
     # GIT CHECKOUT
     # ========================================================================
-    if subcommand == 'checkout':
+    if subcommand == "checkout":
         # Safe: -b or --branch (creating new branch)
-        if '-b' in args or '--branch' in args:
+        if "-b" in args or "--branch" in args:
             return False, ""
 
         # Dangerous: -- with path arguments (discarding changes)
-        if '--' in args:
+        if "--" in args:
             # Find position of --
             try:
-                dash_idx = args.index('--')
+                dash_idx = args.index("--")
                 # If there are arguments after --, it's discarding changes
                 if dash_idx < len(args) - 1:
                     return True, "git checkout with -- discards uncommitted changes"
@@ -604,64 +610,73 @@ def analyze_git_command(command: str) -> Tuple[bool, str]:
                 pass
 
         # Dangerous: --force or -f
-        if '--force' in args or '-f' in args:
+        if "--force" in args or "-f" in args:
             return True, "git checkout --force discards uncommitted changes"
 
         # Check for combined short flags containing -f
         for arg in args:
-            if arg.startswith('-') and not arg.startswith('--') and len(arg) > 1:
+            if arg.startswith("-") and not arg.startswith("--") and len(arg) > 1:
                 # It's a short flag combination like -fb
-                if 'f' in arg[1:]:  # Skip the first '-'
+                if "f" in arg[1:]:  # Skip the first '-'
                     return True, "git checkout -f discards uncommitted changes"
 
     # ========================================================================
     # GIT PUSH
     # ========================================================================
-    elif subcommand == 'push':
+    elif subcommand == "push":
         # Safe: --force-with-lease (handled by patterns.yaml with ask: true)
-        if '--force-with-lease' in args_str:
-            return False, ''
+        if "--force-with-lease" in args_str:
+            return False, ""
 
         # Dangerous: --force (without lease)
-        if '--force' in args:
-            return True, "git push --force can overwrite remote history without safety checks"
+        if "--force" in args:
+            return (
+                True,
+                "git push --force can overwrite remote history without safety checks",
+            )
 
         # Dangerous: -f short flag
-        if '-f' in args:
-            return True, "git push -f can overwrite remote history without safety checks"
+        if "-f" in args:
+            return (
+                True,
+                "git push -f can overwrite remote history without safety checks",
+            )
 
         # Check for combined short flags containing -f
         for arg in args:
-            if arg.startswith('-') and not arg.startswith('--') and len(arg) > 1:
+            if arg.startswith("-") and not arg.startswith("--") and len(arg) > 1:
                 # It's a short flag combination like -fu
-                if 'f' in arg[1:]:  # Skip the first '-'
-                    return True, "git push -f can overwrite remote history without safety checks"
+                if "f" in arg[1:]:  # Skip the first '-'
+                    return (
+                        True,
+                        "git push -f can overwrite remote history without safety checks",
+                    )
 
     # ========================================================================
     # GIT RESET
     # ========================================================================
-    elif subcommand == 'reset':
+    elif subcommand == "reset":
         # Safe: --soft or --mixed (default)
-        if '--soft' in args or '--mixed' in args:
+        if "--soft" in args or "--mixed" in args:
             return False, ""
 
         # Dangerous: --hard
-        if '--hard' in args:
+        if "--hard" in args:
             return True, "git reset --hard permanently discards uncommitted changes"
 
     # ========================================================================
     # GIT CLEAN
     # ========================================================================
-    elif subcommand == 'clean':
+    elif subcommand == "clean":
         # Dangerous: -f or -d flags
-        if '-f' in args or '-d' in args:
+        if "-f" in args or "-d" in args:
             return True, "git clean removes untracked files permanently"
 
         # Check for combined short flags containing -f or -d
         for arg in args:
-            if arg.startswith('-') and not arg.startswith('--') and len(arg) > 1:
+            if arg.startswith("-") and not arg.startswith("--") and len(arg) > 1:
                 # It's a short flag combination like -fd
-                if 'f' in arg[1:] or 'd' in arg[1:]:
+                if "f" in arg[1:] or "d" in arg[1:]:
                     return True, "git clean removes untracked files permanently"
 
     # Not a dangerous git command or not a known subcommand
@@ -670,7 +685,7 @@ def analyze_git_command(command: str) -> Tuple[bool, str]:
 
 def is_glob_pattern(pattern: str) -> bool:
     """Check if pattern contains glob wildcards."""
-    return '*' in pattern or '?' in pattern or '[' in pattern
+    return "*" in pattern or "?" in pattern or "[" in pattern
 
 
 def glob_to_regex(glob_pattern: str) -> str:
@@ -678,15 +693,16 @@ def glob_to_regex(glob_pattern: str) -> str:
     # Escape special regex chars except * and ?
     result = ""
     for char in glob_pattern:
-        if char == '*':
-            result += r'[^\s/]*'  # Match any chars except whitespace and path sep
-        elif char == '?':
-            result += r'[^\s/]'   # Match single char except whitespace and path sep
-        elif char in r'\.^$+{}[]|()':
-            result += '\\' + char
+        if char == "*":
+            result += r"[^\s/]*"  # Match any chars except whitespace and path sep
+        elif char == "?":
+            result += r"[^\s/]"  # Match single char except whitespace and path sep
+        elif char in r"\.^$+{}[]|()":
+            result += "\\" + char
         else:
             result += char
     return result
+
 
 # ============================================================================
 # OPERATION PATTERNS - Edit these to customize what operations are blocked
@@ -695,54 +711,54 @@ def glob_to_regex(glob_pattern: str) -> str:
 
 # Operations blocked for READ-ONLY paths (all modifications)
 WRITE_PATTERNS = [
-    (r'>\s*{path}', "write"),
-    (r'\btee\s+(?!.*-a).*{path}', "write"),
+    (r">\s*{path}", "write"),
+    (r"\btee\s+(?!.*-a).*{path}", "write"),
 ]
 
 APPEND_PATTERNS = [
-    (r'>>\s*{path}', "append"),
-    (r'\btee\s+-a\s+.*{path}', "append"),
-    (r'\btee\s+.*-a.*{path}', "append"),
+    (r">>\s*{path}", "append"),
+    (r"\btee\s+-a\s+.*{path}", "append"),
+    (r"\btee\s+.*-a.*{path}", "append"),
 ]
 
 EDIT_PATTERNS = [
-    (r'\bsed\s+-i.*{path}', "edit"),
-    (r'\bperl\s+-[^\s]*i.*{path}', "edit"),
-    (r'\bawk\s+-i\s+inplace.*{path}', "edit"),
+    (r"\bsed\s+-i.*{path}", "edit"),
+    (r"\bperl\s+-[^\s]*i.*{path}", "edit"),
+    (r"\bawk\s+-i\s+inplace.*{path}", "edit"),
 ]
 
 MOVE_COPY_PATTERNS = [
-    (r'\bmv\s+.*\s+{path}', "move"),
-    (r'\bcp\s+.*\s+{path}', "copy"),
+    (r"\bmv\s+.*\s+{path}", "move"),
+    (r"\bcp\s+.*\s+{path}", "copy"),
 ]
 
 DELETE_PATTERNS = [
-    (r'\brm\s+.*{path}', "delete"),
-    (r'\bunlink\s+.*{path}', "delete"),
-    (r'\brmdir\s+.*{path}', "delete"),
-    (r'\bshred\s+.*{path}', "delete"),
+    (r"\brm\s+.*{path}", "delete"),
+    (r"\bunlink\s+.*{path}", "delete"),
+    (r"\brmdir\s+.*{path}", "delete"),
+    (r"\bshred\s+.*{path}", "delete"),
 ]
 
 PERMISSION_PATTERNS = [
-    (r'\bchmod\s+.*{path}', "chmod"),
-    (r'\bchown\s+.*{path}', "chown"),
-    (r'\bchgrp\s+.*{path}', "chgrp"),
+    (r"\bchmod\s+.*{path}", "chmod"),
+    (r"\bchown\s+.*{path}", "chown"),
+    (r"\bchgrp\s+.*{path}", "chgrp"),
 ]
 
 TRUNCATE_PATTERNS = [
-    (r'\btruncate\s+.*{path}', "truncate"),
-    (r':\s*>\s*{path}', "truncate"),
+    (r"\btruncate\s+.*{path}", "truncate"),
+    (r":\s*>\s*{path}", "truncate"),
 ]
 
 # Combined patterns for read-only paths (block ALL modifications)
 READ_ONLY_BLOCKED = (
-    WRITE_PATTERNS +
-    APPEND_PATTERNS +
-    EDIT_PATTERNS +
-    MOVE_COPY_PATTERNS +
-    DELETE_PATTERNS +
-    PERMISSION_PATTERNS +
-    TRUNCATE_PATTERNS
+    WRITE_PATTERNS
+    + APPEND_PATTERNS
+    + EDIT_PATTERNS
+    + MOVE_COPY_PATTERNS
+    + DELETE_PATTERNS
+    + PERMISSION_PATTERNS
+    + TRUNCATE_PATTERNS
 )
 
 # Patterns for no-delete paths (block ONLY delete operations)
@@ -752,12 +768,15 @@ NO_DELETE_BLOCKED = DELETE_PATTERNS
 # CONFIGURATION LOADING
 # ============================================================================
 
+
 def get_config_path() -> Path:
     """Get path to patterns.yaml, checking multiple locations."""
     # 1. Check project hooks directory (installed location)
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
     if project_dir:
-        project_config = Path(project_dir) / ".claude" / "hooks" / "damage-control" / "patterns.yaml"
+        project_config = (
+            Path(project_dir) / ".claude" / "hooks" / "damage-control" / "patterns.yaml"
+        )
         if project_config.exists():
             return project_config
 
@@ -781,7 +800,12 @@ def load_config() -> Dict[str, Any]:
 
     if not config_path.exists():
         print(f"Warning: Config not found at {config_path}", file=sys.stderr)
-        return {"bashToolPatterns": [], "zeroAccessPaths": [], "readOnlyPaths": [], "noDeletePaths": []}
+        return {
+            "bashToolPatterns": [],
+            "zeroAccessPaths": [],
+            "readOnlyPaths": [],
+            "noDeletePaths": [],
+        }
 
     with open(config_path, "r") as f:
         return yaml.safe_load(f) or {}
@@ -946,13 +970,15 @@ def extract_host_from_command(command: str) -> Optional[str]:
         Extracted hostname/IP or None if not found.
     """
     # URL pattern: http(s)://host(:port)(/path)
-    url_match = re.search(r'https?://([^/:]+)', command, re.IGNORECASE)
+    url_match = re.search(r"https?://([^/:]+)", command, re.IGNORECASE)
     if url_match:
         return url_match.group(1)
 
     # nc/netcat: nc [-flags] host port
     # Match: nc host port, nc -v host port, ncat host port, netcat host port
-    nc_match = re.search(r'\b(?:nc|ncat|netcat)\s+(?:-[^\s]+\s+)*([^\s-][^\s]*)\s+\d+', command)
+    nc_match = re.search(
+        r"\b(?:nc|ncat|netcat)\s+(?:-[^\s]+\s+)*([^\s-][^\s]*)\s+\d+", command
+    )
     if nc_match:
         host = nc_match.group(1)
         # Filter out flags that might have been captured
@@ -960,18 +986,22 @@ def extract_host_from_command(command: str) -> Optional[str]:
             return host
 
     # /dev/tcp/host/port or /dev/udp/host/port
-    dev_match = re.search(r'/dev/(?:tcp|udp)/([^/]+)/', command)
+    dev_match = re.search(r"/dev/(?:tcp|udp)/([^/]+)/", command)
     if dev_match:
         return dev_match.group(1)
 
     # dig/nslookup/host: dig @server domain or dig domain
-    dns_match = re.search(r'\b(?:dig|nslookup|host)\s+(?:@([^\s]+)|[^\s]+\.([^\s]+))', command)
+    dns_match = re.search(
+        r"\b(?:dig|nslookup|host)\s+(?:@([^\s]+)|[^\s]+\.([^\s]+))", command
+    )
     if dns_match:
         # Return the server if specified with @, otherwise the domain
-        return dns_match.group(1) or (dns_match.group(2) if dns_match.group(2) else None)
+        return dns_match.group(1) or (
+            dns_match.group(2) if dns_match.group(2) else None
+        )
 
     # ssh user@host or ssh host
-    ssh_match = re.search(r'\bssh\s+(?:[^\s]+@)?([^\s]+)', command)
+    ssh_match = re.search(r"\bssh\s+(?:[^\s]+@)?([^\s]+)", command)
     if ssh_match:
         host = ssh_match.group(1)
         if "@" in host:
@@ -987,7 +1017,10 @@ def extract_host_from_command(command: str) -> Optional[str]:
 # CONTEXT DETECTION
 # ============================================================================
 
-def detect_context(tool_name: str, tool_input: Dict[str, Any], config: Dict[str, Any]) -> Optional[str]:
+
+def detect_context(
+    tool_name: str, tool_input: Dict[str, Any], config: Dict[str, Any]
+) -> Optional[str]:
     """Detect if we're in a special context that allows relaxed checks.
 
     Contexts are defined in patterns.yaml and can relax certain security checks
@@ -1043,7 +1076,13 @@ def detect_context(tool_name: str, tool_input: Dict[str, Any], config: Dict[str,
 # PATH CHECKING
 # ============================================================================
 
-def check_path_patterns(command: str, path_obj: Dict[str, Any], patterns: List[Tuple[str, str]], path_type: str) -> Tuple[bool, str]:
+
+def check_path_patterns(
+    command: str,
+    path_obj: Dict[str, Any],
+    patterns: List[Tuple[str, str]],
+    path_type: str,
+) -> Tuple[bool, str]:
     """Check command against a list of patterns for a specific path.
 
     Uses pre-processed path objects from preprocess_path_list().
@@ -1074,8 +1113,13 @@ def check_path_patterns(command: str, path_obj: Dict[str, Any], patterns: List[T
                 # Build a regex that matches: operation ... glob_pattern
                 # Extract the command prefix from pattern_template (e.g., '\brm\s+.*' from '\brm\s+.*{path}')
                 cmd_prefix = pattern_template.replace("{path}", "")
-                if cmd_prefix and re.search(cmd_prefix + glob_regex_str, command, re.IGNORECASE):
-                    return True, f"Blocked: {operation} operation on {path_type} {path_str}"
+                if cmd_prefix and re.search(
+                    cmd_prefix + glob_regex_str, command, re.IGNORECASE
+                ):
+                    return (
+                        True,
+                        f"Blocked: {operation} operation on {path_type} {path_str}",
+                    )
             except re.error:
                 continue
     else:
@@ -1091,15 +1135,22 @@ def check_path_patterns(command: str, path_obj: Dict[str, Any], patterns: List[T
             pattern_expanded = pattern_template.replace("{path}", escaped_expanded)
             pattern_original = pattern_template.replace("{path}", escaped_original)
             try:
-                if re.search(pattern_expanded, command) or re.search(pattern_original, command):
-                    return True, f"Blocked: {operation} operation on {path_type} {path_str}"
+                if re.search(pattern_expanded, command) or re.search(
+                    pattern_original, command
+                ):
+                    return (
+                        True,
+                        f"Blocked: {operation} operation on {path_type} {path_str}",
+                    )
             except re.error:
                 continue
 
     return False, ""
 
 
-def check_command(command: str, config: Dict[str, Any], context: Optional[str] = None) -> Tuple[bool, bool, str, str, bool, bool]:
+def check_command(
+    command: str, config: Dict[str, Any], context: Optional[str] = None
+) -> Tuple[bool, bool, str, str, bool, bool]:
     """Check if command should be blocked or requires confirmation.
 
     Args:
@@ -1179,16 +1230,32 @@ def check_command(command: str, config: Dict[str, Any], context: Optional[str] =
 
                     pattern_id = f"yaml_pattern_{idx}"
                     if should_ask:
-                        return False, True, reason, pattern_id, was_unwrapped, False  # Ask for confirmation
+                        return (
+                            False,
+                            True,
+                            reason,
+                            pattern_id,
+                            was_unwrapped,
+                            False,
+                        )  # Ask for confirmation
                     else:
-                        return True, False, f"Blocked: {reason}", pattern_id, was_unwrapped, False  # Block
+                        return (
+                            True,
+                            False,
+                            f"Blocked: {reason}",
+                            pattern_id,
+                            was_unwrapped,
+                            False,
+                        )  # Block
             except re.error:
                 continue
 
     # 2. Check for ANY access to zero-access paths (including reads)
     # Skip only if explicitly relaxed in context (should NEVER be relaxed for security)
     # ALSO skip for read-only git commands that just query metadata (not file contents)
-    if "zeroAccessPaths" not in relaxed_checks and not is_readonly_git_command(unwrapped_cmd):
+    if "zeroAccessPaths" not in relaxed_checks and not is_readonly_git_command(
+        unwrapped_cmd
+    ):
         for path_obj in compiled_zero_access:
             if path_obj["is_glob"]:
                 # Use pre-compiled glob regex
@@ -1196,7 +1263,14 @@ def check_command(command: str, config: Dict[str, Any], context: Optional[str] =
                 if glob_regex_compiled:
                     try:
                         if glob_regex_compiled.search(unwrapped_cmd):
-                            return True, False, f"Blocked: zero-access pattern {path_obj['original']} (no operations allowed)", "zero_access_glob", was_unwrapped, False
+                            return (
+                                True,
+                                False,
+                                f"Blocked: zero-access pattern {path_obj['original']} (no operations allowed)",
+                                "zero_access_glob",
+                                was_unwrapped,
+                                False,
+                            )
                     except re.error:
                         continue
             else:
@@ -1211,24 +1285,44 @@ def check_command(command: str, config: Dict[str, Any], context: Optional[str] =
                     if is_directory:
                         # Directory path - match any file inside
                         # No suffix needed since the / already delimits
-                        pattern_expanded = escaped_expanded if escaped_expanded else None
-                        pattern_original = escaped_original if escaped_original else None
+                        pattern_expanded = (
+                            escaped_expanded if escaped_expanded else None
+                        )
+                        pattern_original = (
+                            escaped_original if escaped_original else None
+                        )
                     else:
                         # File path - use suffix to prevent partial matches
                         # This prevents .env from matching .env.example
-                        suffix = r'(?![a-zA-Z0-9_.-])'
-                        pattern_expanded = (escaped_expanded + suffix) if escaped_expanded else None
-                        pattern_original = (escaped_original + suffix) if escaped_original else None
+                        suffix = r"(?![a-zA-Z0-9_.-])"
+                        pattern_expanded = (
+                            (escaped_expanded + suffix) if escaped_expanded else None
+                        )
+                        pattern_original = (
+                            (escaped_original + suffix) if escaped_original else None
+                        )
 
-                    if (pattern_expanded and re.search(pattern_expanded, unwrapped_cmd)) or \
-                       (pattern_original and re.search(pattern_original, unwrapped_cmd)):
-                        return True, False, f"Blocked: zero-access path {path_obj['original']} (no operations allowed)", "zero_access_literal", was_unwrapped, False
+                    if (
+                        pattern_expanded and re.search(pattern_expanded, unwrapped_cmd)
+                    ) or (
+                        pattern_original and re.search(pattern_original, unwrapped_cmd)
+                    ):
+                        return (
+                            True,
+                            False,
+                            f"Blocked: zero-access path {path_obj['original']} (no operations allowed)",
+                            "zero_access_literal",
+                            was_unwrapped,
+                            False,
+                        )
 
     # 3. Check for modifications to read-only paths (reads allowed)
     # Skip only if explicitly relaxed in context
     if "readOnlyPaths" not in relaxed_checks:
         for path_obj in compiled_read_only:
-            blocked, reason = check_path_patterns(unwrapped_cmd, path_obj, READ_ONLY_BLOCKED, "read-only path")
+            blocked, reason = check_path_patterns(
+                unwrapped_cmd, path_obj, READ_ONLY_BLOCKED, "read-only path"
+            )
             if blocked:
                 return True, False, reason, "readonly_path", was_unwrapped, False
 
@@ -1236,9 +1330,48 @@ def check_command(command: str, config: Dict[str, Any], context: Optional[str] =
     # Skip only if explicitly relaxed in context
     if "noDeletePaths" not in relaxed_checks:
         for path_obj in compiled_no_delete:
-            blocked, reason = check_path_patterns(unwrapped_cmd, path_obj, NO_DELETE_BLOCKED, "no-delete path")
+            blocked, reason = check_path_patterns(
+                unwrapped_cmd, path_obj, NO_DELETE_BLOCKED, "no-delete path"
+            )
             if blocked:
                 return True, False, reason, "nodelete_path", was_unwrapped, False
+
+    # 5. AST analysis — veto-only second pass (may escalate allow→ask|block)
+    # Only called when all regex/path checks passed (allow path).
+    # Skipped when bashToolPatterns are relaxed (e.g., commit message context).
+    # Lazy import so tree-sitter absence doesn't affect normal operation.
+    if "bashToolPatterns" not in relaxed_checks:
+        try:
+            from ast_analyzer import ASTAnalyzer  # type: ignore[import-not-found]
+
+            _ast_analyzer = ASTAnalyzer()
+            if _ast_analyzer.is_available():
+                ast_result = _ast_analyzer.analyze_command_ast(unwrapped_cmd, config)
+                ast_decision = ast_result.get("decision", "allow")
+                if ast_decision == "block":
+                    ast_reason = ast_result.get("reason", "Blocked by AST analysis")
+                    return (
+                        True,
+                        False,
+                        f"Blocked: {ast_reason}",
+                        "ast_analysis",
+                        was_unwrapped,
+                        False,
+                    )
+                elif ast_decision == "ask":
+                    ast_reason = ast_result.get(
+                        "reason", "AST analysis requires confirmation"
+                    )
+                    return (
+                        False,
+                        True,
+                        ast_reason,
+                        "ast_analysis",
+                        was_unwrapped,
+                        False,
+                    )
+        except Exception:
+            pass  # AST errors fall through gracefully — allow the command
 
     return False, False, "", "", was_unwrapped, False
 
@@ -1246,6 +1379,7 @@ def check_command(command: str, config: Dict[str, Any], context: Optional[str] =
 # ============================================================================
 # MAIN
 # ============================================================================
+
 
 def main() -> None:
     # Check if hook is disabled
@@ -1280,7 +1414,9 @@ def main() -> None:
     context = detect_context(tool_name, tool_input, config)
 
     # Check the command with context awareness (uses compiled config)
-    is_blocked, should_ask, reason, pattern_matched, was_unwrapped, semantic_match = check_command(command, config, context=context)
+    is_blocked, should_ask, reason, pattern_matched, was_unwrapped, semantic_match = (
+        check_command(command, config, context=context)
+    )
 
     # Log the decision with all metadata
     decision = "blocked" if is_blocked else ("ask" if should_ask else "allowed")
@@ -1300,7 +1436,10 @@ def main() -> None:
 
     if is_blocked:
         print(f"SECURITY: {reason}", file=sys.stderr)
-        print(f"Command: {command[:100]}{'...' if len(command) > 100 else ''}", file=sys.stderr)
+        print(
+            f"Command: {command[:100]}{'...' if len(command) > 100 else ''}",
+            file=sys.stderr,
+        )
         sys.exit(2)
     elif should_ask:
         # Output JSON to trigger confirmation dialog
@@ -1308,7 +1447,7 @@ def main() -> None:
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
                 "permissionDecision": "ask",
-                "permissionDecisionReason": reason
+                "permissionDecisionReason": reason,
             }
         }
         print(json.dumps(output))
