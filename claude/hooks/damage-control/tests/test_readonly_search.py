@@ -614,3 +614,114 @@ class TestFindCommand:
             f"False positive: find piped to head\n"
             f"  blocked={blocked}, ask={ask}, reason={reason}"
         )
+
+
+# ============================================================================
+# --dry-run exemption
+# ============================================================================
+
+
+class TestDryRunExemption:
+    """Verify that --dry-run flag exempts commands from pattern matching.
+
+    Commands like 'helm upgrade --dry-run' and 'kubectl apply --dry-run'
+    are read-only simulation commands that should not trigger confirmation.
+    """
+
+    @pytest.mark.parametrize(
+        "command,description",
+        [
+            (
+                "helm upgrade gitlab gitlab/gitlab -f values.yaml --dry-run",
+                "helm upgrade with --dry-run at end",
+            ),
+            (
+                "helm upgrade gitlab gitlab/gitlab --dry-run -f values.yaml",
+                "helm upgrade with --dry-run in middle",
+            ),
+            (
+                "helm upgrade gitlab gitlab/gitlab -f values.yaml --dry-run 2>&1 | grep kind",
+                "helm upgrade --dry-run piped to grep",
+            ),
+            (
+                "helm install my-release chart/ --dry-run",
+                "helm install with --dry-run",
+            ),
+            (
+                "kubectl apply -f manifest.yaml --dry-run=client",
+                "kubectl apply with --dry-run=client",
+            ),
+            (
+                "kubectl apply -f manifest.yaml --dry-run=server",
+                "kubectl apply with --dry-run=server",
+            ),
+            (
+                "kubectl delete pod foo --dry-run=client",
+                "kubectl delete with --dry-run=client",
+            ),
+        ],
+    )
+    def test_dry_run_allowed(self, full_config, command, description):
+        """Commands with --dry-run must NOT trigger confirmation."""
+        blocked, ask, reason, pattern, _, _ = check_command(command, full_config)
+        assert not blocked and not ask, (
+            f"False positive: {description}\n"
+            f"  command: {command}\n"
+            f"  blocked={blocked}, ask={ask}, reason={reason}"
+        )
+
+    @pytest.mark.parametrize(
+        "command,description",
+        [
+            (
+                "helm upgrade gitlab gitlab/gitlab -f values.yaml",
+                "helm upgrade without --dry-run",
+            ),
+            (
+                "helm install my-release chart/",
+                "helm install without --dry-run",
+            ),
+            (
+                "kubectl apply -f manifest.yaml",
+                "kubectl apply without --dry-run",
+            ),
+            (
+                "kubectl delete pod foo",
+                "kubectl delete without --dry-run",
+            ),
+        ],
+    )
+    def test_real_commands_still_caught(self, full_config, command, description):
+        """Commands WITHOUT --dry-run must still be caught."""
+        blocked, ask, reason, pattern, _, _ = check_command(command, full_config)
+        assert blocked or ask, (
+            f"Dangerous command not caught: {description}\n"
+            f"  command: {command}\n"
+            f"  blocked={blocked}, ask={ask}"
+        )
+
+    @pytest.mark.parametrize(
+        "command,description",
+        [
+            (
+                "rm -rf / --dry-run",
+                "rm does not support --dry-run",
+            ),
+            (
+                "git push --force --dry-run",
+                "git push --dry-run is valid but git is handled by semantic analysis",
+            ),
+            (
+                "terraform apply --dry-run",
+                "terraform does not support --dry-run (uses 'plan' instead)",
+            ),
+        ],
+    )
+    def test_dry_run_ignored_for_unsupported_tools(self, full_config, command, description):
+        """--dry-run must NOT exempt tools that don't support it."""
+        blocked, ask, reason, pattern, _, _ = check_command(command, full_config)
+        assert blocked or ask, (
+            f"Dangerous command bypassed via fake --dry-run: {description}\n"
+            f"  command: {command}\n"
+            f"  blocked={blocked}, ask={ask}"
+        )
