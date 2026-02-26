@@ -85,6 +85,7 @@ CORE_PACKAGES=(
     "gpg:GPG"
     "ca-certificates:CA certificates"
     "jq:jq (JSON processor)"
+    "tmux:tmux (terminal multiplexer)"
 )
 
 for item in "${CORE_PACKAGES[@]}"; do
@@ -196,6 +197,38 @@ else
 fi
 
 # ============================================================================
+# Claude Code - native installer (Bun runtime, no Node.js dependency)
+# ============================================================================
+
+echo -e "\n${CYAN}Installing Claude Code...${NC}"
+
+if command_exists claude && [[ "$FORCE" != "true" ]]; then
+    echo -e "  claude: ${GREEN}already installed${NC}"
+else
+    echo -e "  claude: ${CYAN}installing...${NC}"
+    curl -fsSL https://claude.ai/install.sh | sh
+    echo -e "  claude: ${GREEN}done${NC}"
+fi
+
+# ============================================================================
+# Claude Code Hook Dependencies (pyyaml, tree-sitter for shared hooks)
+# ============================================================================
+
+echo -e "\n${CYAN}Installing Claude Code hook dependencies...${NC}"
+
+HOOK_DEPS=("pyyaml" "tree-sitter" "tree-sitter-bash")
+for dep in "${HOOK_DEPS[@]}"; do
+    module="${dep//-/_}"
+    if python -c "import ${module}" 2>/dev/null && [[ "$FORCE" != "true" ]]; then
+        echo -e "  ${dep}: ${GREEN}already installed${NC}"
+    else
+        echo -e "  ${dep}: ${CYAN}installing...${NC}"
+        pip install "${dep}" 2>/dev/null || pip3 install "${dep}" 2>/dev/null || echo -e "  ${dep}: ${YELLOW}failed (install python3-pip)${NC}"
+        echo -e "  ${dep}: ${GREEN}done${NC}"
+    fi
+done
+
+# ============================================================================
 # Set Zsh as Default Shell
 # ============================================================================
 
@@ -296,6 +329,8 @@ echo "  - ripgrep (rg)"
 echo "  - fd-find (fd)"
 echo "  - bat (cat replacement)"
 echo "  - oh-my-posh (prompt)"
+echo "  - tmux (terminal multiplexer)"
+echo "  - claude (Claude Code CLI)"
 echo ""
 echo "Next steps:"
 echo "  1. Restart WSL: wsl --shutdown (from Windows)"
