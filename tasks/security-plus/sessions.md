@@ -110,6 +110,33 @@ The 67% reflects drilling the hardest items from the priority queue. Core knowle
 
 ---
 
+## 2026-02-26: Gap Analysis Research (Day 2, Session 5)
+
+**Duration**: ~15m (research agents ran in parallel)
+**Phase**: Material gap analysis — no questions asked
+**Domains covered**: All 5
+
+### What happened
+Launched 4 parallel research agents to identify gaps in study material vs full SY0-701 exam objectives:
+1. **Missing acronyms** — found ~50 testable terms not in our notes (PAM, UEBA, FIM, CSPM, CWPP, IoC/IoA, TTP, BIA, MTTD/MTTR/MTBF/MTTF, agreement types, attack terminology, etc.)
+2. **Tricky question patterns** — 18 "best answer" distinction categories (IDS/IPS/WAF, control types, risk responses, cert pinning/stapling/transparency, etc.), 12 exam traps for experienced professionals, PBQ strategy
+3. **Persistent gap deep dive** — full decision trees and 10+ question variations each for SIEM vs XDR, SCAP vs STIX, Diamond Model indirect descriptions, reflected vs DOM-based XSS
+4. **Cloud/zero trust/DevSecOps** — shared responsibility model, CSPM/CWPP/CNAPP, zero trust (PDP/PEP), micro-segmentation, CI/CD security, supply chain, modern auth (PAM, JIT, conditional access, passkeys)
+
+### Key findings
+- **11 entirely new topic areas** identified that weren't in our materials at all (cloud posture tools, zero trust components, operations metrics, agreement types, modern auth methods, attack terminology updates)
+- **SY0-701 terminology changes**: DMZ → "screened subnet", MitM → "on-path attack" — exam uses new terms
+- **PBQ strategy**: skip PBQs initially, partial credit exists, know port numbers cold
+- **Exam traps compiled**: 12 specific areas where real-world experience leads to wrong exam answers
+
+### Files updated
+- `notes.md` — major expansion: new tricky distinctions, cloud/ZT section, exam traps, PBQ strategy, port numbers, ~40 new acronyms
+- `progress.md` — 11 new research-identified areas added to priority queue (items 18-28)
+
+**Next session**: Drill the 4 persistent gaps (SIEM vs XDR, SCAP vs STIX, Diamond Model, XSS types) with the new decision trees, then test the newly identified areas to see which ones the user actually knows vs which are real gaps.
+
+---
+
 <!--
 Template for new entries:
 

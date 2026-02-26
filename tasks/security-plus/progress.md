@@ -123,3 +123,31 @@ Ranked by domain weight × weakness severity. Items marked (acronym) are termino
 15. **1.4** (12%) — CRL/OCSP — previously no idea, not re-tested.
 16. **4.7** (28%) — SCIM (identity lifecycle automation) — new miss (acronym). SAML vs OAuth vs OIDC ✓.
 17. **5.1** (20%) — NIST SP 800-53 vs NIST CSF vs ISO 27001 vs CIS Controls — educated guess, needs lock-in.
+
+### New Areas Identified by Research (not yet tested)
+These came from gap analysis of study material vs full SY0-701 exam objectives:
+
+**Cloud/Zero Trust (high exam frequency for SY0-701):**
+18. **3.1** (18%) — CSPM vs CWPP vs CNAPP — new to SY0-701, heavily tested.
+19. **1.2** (12%) — Zero trust: PDP vs PEP, implicit trust zones, micro-segmentation.
+20. **3.1** (18%) — Container/serverless security, IaC scanning, supply chain (SBOM/SLSA).
+
+**Operations metrics and teams:**
+21. **4.4** (28%) — MTTD vs MTTR vs MTBF vs MTTF — knows concepts, needs to map acronyms.
+22. **4.3** (28%) — IoC vs IoA, TTP, Pyramid of Pain — likely known but not tested.
+
+**Agreements and governance:**
+23. **5.3** (20%) — MOU vs MSA vs SOW vs NDA vs BPA — agreement types for third-party risk.
+24. **5.2** (20%) — BIA as prerequisite for BCP/DRP. Quantitative formulas (SLE, ALE, EF, AV).
+
+**Authentication/identity:**
+25. **4.6** (28%) — PAM, JIT access, conditional access, adaptive/continuous auth.
+
+**Attack types (SY0-701 terminology changes):**
+26. **2.4** (22%) — On-path attacks (new term for MitM), password spraying, credential stuffing, kerberoasting, downgrade attacks.
+
+**Architecture:**
+27. **3.1** (18%) — SDN, NFV, ICS/SCADA/RTOS, HSM vs TPM, screened subnet (new term for DMZ).
+
+**Exam format:**
+28. PBQ topics and strategy — firewall rules, log analysis, wireless config, cert tasks, port numbers.
