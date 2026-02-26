@@ -11,29 +11,18 @@ import sys
 from pathlib import Path
 
 import httpx
-
 from api_config import get_api_base, get_api_host
 from signing import RequestSigner
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Fetch content from menos API by content ID"
+    parser = argparse.ArgumentParser(description="Fetch content from menos API by content ID")
+    parser.add_argument("content_id", help="Content ID to fetch")
+    parser.add_argument(
+        "--transcript-only", action="store_true", help="Print only the transcript text"
     )
     parser.add_argument(
-        "content_id",
-        help="Content ID to fetch"
-    )
-    parser.add_argument(
-        "--transcript-only",
-        action="store_true",
-        help="Print only the transcript text"
-    )
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        dest="json_output",
-        help="Output full JSON response"
+        "--json", action="store_true", dest="json_output", help="Output full JSON response"
     )
 
     args = parser.parse_args()

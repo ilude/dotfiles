@@ -50,14 +50,15 @@ HOOK_NAME = "path-normalization"
 BACKSLASH = chr(92)
 
 # Pre-compiled regex patterns for performance (~40% faster than inline re.match)
-WINDOWS_DRIVE_RE = re.compile(r'^([A-Za-z]):')
-MSYS_WSL_CYGWIN_RE = re.compile(r'^(?:/mnt|/cygdrive)?/([a-zA-Z])/(.*)')
-UNC_RE = re.compile(r'^[/\\]{2}')
+WINDOWS_DRIVE_RE = re.compile(r"^([A-Za-z]):")
+MSYS_WSL_CYGWIN_RE = re.compile(r"^(?:/mnt|/cygdrive)?/([a-zA-Z])/(.*)")
+UNC_RE = re.compile(r"^[/\\]{2}")
 
 
 # ============================================================================
 # AUDIT LOGGING
 # ============================================================================
+
 
 def get_log_path() -> Path:
     """Get path to daily audit log file.
@@ -117,11 +118,12 @@ def normalize_separators(path_str: str) -> str:
     because backslashes aren't recognized as separators. Normalizing first ensures
     Path operations work correctly regardless of input format.
     """
-    return path_str.replace(BACKSLASH, '/')
+    return path_str.replace(BACKSLASH, "/")
 
 
 def to_windows_path(path_str: str) -> str:
-    """Convert MSYS (/c/), WSL (/mnt/c/), Cygwin (/cygdrive/c/), or backslash paths to Windows (C:/).
+    """Convert MSYS (/c/), WSL (/mnt/c/), Cygwin (/cygdrive/c/), or backslash paths
+    to Windows (C:/).
 
     Also normalizes backslashes to forward slashes for consistent handling.
     """
@@ -146,32 +148,32 @@ def get_windows_home(win_path: str) -> Path:
     4. Fall back to os.path.expanduser('~')
     """
     # Try USERPROFILE first (Windows sets this)
-    userprofile = os.environ.get('USERPROFILE')
+    userprofile = os.environ.get("USERPROFILE")
     if userprofile:
         return Path(to_windows_path(userprofile)).resolve()
 
     # Try WINHOME (set by dotfiles zsh config for WSL)
-    winhome = os.environ.get('WINHOME')
+    winhome = os.environ.get("WINHOME")
     if winhome:
         return Path(to_windows_path(winhome)).resolve()
 
     # Extract from the path itself if it contains Windows user directory pattern
     # Matches: C:/Users/username/..., /mnt/c/Users/username/..., /c/Users/username/...
     normalized = normalize_separators(win_path)
-    user_match = re.match(r'^(?:[A-Za-z]:|/mnt/[a-z]|/[a-z])?/[Uu]sers/([^/]+)/', normalized)
+    user_match = re.match(r"^(?:[A-Za-z]:|/mnt/[a-z]|/[a-z])?/[Uu]sers/([^/]+)/", normalized)
     if user_match:
         username = user_match.group(1)
         # Determine the drive letter from the path
-        drive_match = re.match(r'^([A-Za-z]):', normalized)
+        drive_match = re.match(r"^([A-Za-z]):", normalized)
         if drive_match:
             drive = drive_match.group(1).upper()
         else:
             # Default to C: for MSYS/WSL paths
-            drive = 'C'
+            drive = "C"
         return Path(f"{drive}:/Users/{username}").resolve()
 
     # Fall back to standard expanduser (works correctly on native Windows)
-    return Path(os.path.expanduser('~')).resolve()
+    return Path(os.path.expanduser("~")).resolve()
 
 
 def is_unc_path(path: str) -> bool:
@@ -204,8 +206,7 @@ def is_within(child: Path, parent: Path) -> bool:
     try:
         child_norm = os.path.normcase(str(child.resolve()))
         parent_norm = os.path.normcase(str(parent.resolve()))
-        return (child_norm.startswith(parent_norm + os.sep) or
-                child_norm == parent_norm)
+        return child_norm.startswith(parent_norm + os.sep) or child_norm == parent_norm
     except (ValueError, OSError):
         return False
 
@@ -228,10 +229,10 @@ def fix_and_allow(tool_name: str, file_path: str, fixed_path: str, reason: str) 
             "hookEventName": "PreToolUse",
             "permissionDecision": "allow",
             "permissionDecisionReason": f"Path auto-corrected: {reason}",
-            "updatedInput": {
-                "file_path": fixed_path
-            },
-            "additionalContext": f"Path '{file_path}' was auto-corrected to '{fixed_path}' ({reason})."
+            "updatedInput": {"file_path": fixed_path},
+            "additionalContext": (
+                f"Path '{file_path}' was auto-corrected to '{fixed_path}' ({reason})."
+            ),
         }
     }
     print(json.dumps(output))
@@ -284,7 +285,7 @@ def main() -> None:
     # CASE 0: Plan files - ALLOW without normalization
     # Claude Code writes plan files with absolute paths; don't interfere
     normalized_check = normalize_separators(path_str)
-    if '.claude/plans/' in normalized_check or normalized_check.endswith('.claude/plans'):
+    if ".claude/plans/" in normalized_check or normalized_check.endswith(".claude/plans"):
         log_decision(tool_name, path_str, "allowed", "plan file path")
         sys.exit(0)
 
@@ -292,15 +293,15 @@ def main() -> None:
 
     # CASE 1: Home-relative paths (~/ or ~\) - ALLOW if using forward slashes
     # If backslashes, transparently fix (deterministic correction)
-    if path_str.startswith('~/') or path_str.startswith('~' + BACKSLASH):
+    if path_str.startswith("~/") or path_str.startswith("~" + BACKSLASH):
         if has_backslash:
-            fixed = path_str.replace(BACKSLASH, '/')
+            fixed = path_str.replace(BACKSLASH, "/")
             fix_and_allow(tool_name, path_str, fixed, "backslash in home-relative path")
         log_decision(tool_name, path_str, "allowed", "home-relative path")
         sys.exit(0)
 
     # CASE 2: Unix system paths - ALLOW (for WSL compatibility)
-    if path_str.startswith(('/dev/', '/proc/', '/tmp/', '/var/')):
+    if path_str.startswith(("/dev/", "/proc/", "/tmp/", "/var/")):
         log_decision(tool_name, path_str, "allowed", "unix system path")
         sys.exit(0)
 
@@ -308,13 +309,13 @@ def main() -> None:
 
     # CASE 3: UNC paths - BLOCK early to avoid network I/O from resolve()
     if is_unc_path(path_str):
-        filename = path_str.rsplit('/', 1)[-1].rsplit(BACKSLASH, 1)[-1]
+        filename = path_str.rsplit("/", 1)[-1].rsplit(BACKSLASH, 1)[-1]
         block(tool_name, path_str, "UNC path not supported", filename)
 
     # CASE 4: Relative path with backslashes - FIX transparently
     # This is a deterministic correction (just replace separators)
     if not is_abs and has_backslash:
-        fixed = path_str.replace(BACKSLASH, '/')
+        fixed = path_str.replace(BACKSLASH, "/")
         fix_and_allow(tool_name, path_str, fixed, "backslash in relative path")
 
     # CASE 5: Clean relative path (forward slashes, no absolute) - ALLOW
@@ -335,20 +336,20 @@ def main() -> None:
 
     # Check if within home directory - needed for prioritization
     if is_within(file_path, home):
-        home_relative = str(file_path.relative_to(home)).replace(BACKSLASH, '/')
+        home_relative = str(file_path.relative_to(home)).replace(BACKSLASH, "/")
 
         # Priority 1: Dotfiles in home (like ~/.dotfiles/...) should use home-relative
         # for portability, even if cwd is within the dotfiles directory
-        if home_relative.startswith('.'):
+        if home_relative.startswith("."):
             fixed = f"~/{home_relative}"
             fix_and_allow(tool_name, path_str, fixed, "absolute dotfile path")
 
         # Priority 2: If within cwd (and not a dotfile), use cwd-relative (shorter)
         if is_within(file_path, cwd):
-            relative = str(file_path.relative_to(cwd)).replace(BACKSLASH, '/')
+            relative = str(file_path.relative_to(cwd)).replace(BACKSLASH, "/")
             # If it's just a filename (no path separators), allow it - the message
             # "Use relative path: 'filename'" is confusing since that IS the relative path
-            if '/' not in relative:
+            if "/" not in relative:
                 log_decision(tool_name, path_str, "allowed", "file in cwd (filename only)")
                 sys.exit(0)
             fix_and_allow(tool_name, path_str, relative, "absolute path within project")
@@ -359,9 +360,9 @@ def main() -> None:
 
     # Within cwd but not home -> use cwd-relative
     if is_within(file_path, cwd):
-        relative = str(file_path.relative_to(cwd)).replace(BACKSLASH, '/')
+        relative = str(file_path.relative_to(cwd)).replace(BACKSLASH, "/")
         # If it's just a filename (no path separators), allow it
-        if '/' not in relative:
+        if "/" not in relative:
             log_decision(tool_name, path_str, "allowed", "file in cwd (filename only)")
             sys.exit(0)
         fix_and_allow(tool_name, path_str, relative, "absolute path within project")
@@ -370,7 +371,7 @@ def main() -> None:
     # Use string operations to extract filename since Path.name can fail with
     # cross-platform paths (e.g., Windows path on Unix)
     normalized = normalize_separators(path_str)
-    filename = normalized.rsplit('/', 1)[-1]
+    filename = normalized.rsplit("/", 1)[-1]
     block(tool_name, path_str, "absolute path outside project/home", filename)
 
 

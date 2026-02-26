@@ -11,14 +11,19 @@ import sys
 from pathlib import Path
 
 import httpx
-
 from api_config import get_api_base, get_api_host
 from job_utils import poll_job
 from signing import RequestSigner
 
 
-def get_job(client: httpx.Client, signer: RequestSigner, api_base: str, host: str,
-            job_id: str, verbose: bool = False) -> None:
+def get_job(
+    client: httpx.Client,
+    signer: RequestSigner,
+    api_base: str,
+    host: str,
+    job_id: str,
+    verbose: bool = False,
+) -> None:
     """Fetch and display job status."""
     job_path = f"/api/v1/jobs/{job_id}"
     if verbose:
@@ -48,8 +53,9 @@ def get_job(client: httpx.Client, signer: RequestSigner, api_base: str, host: st
         print(f"Status: {job_data.get('status', 'unknown')}")
 
 
-def cancel_job(client: httpx.Client, signer: RequestSigner, api_base: str, host: str,
-               job_id: str) -> None:
+def cancel_job(
+    client: httpx.Client, signer: RequestSigner, api_base: str, host: str, job_id: str
+) -> None:
     """Cancel a job."""
     cancel_path = f"/api/v1/jobs/{job_id}/cancel"
     cancel_url = f"{api_base}/jobs/{job_id}/cancel"
@@ -71,27 +77,16 @@ def cancel_job(client: httpx.Client, signer: RequestSigner, api_base: str, host:
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Check pipeline job status via menos API"
-    )
-    parser.add_argument(
-        "job_id",
-        help="Pipeline job ID"
-    )
+    parser = argparse.ArgumentParser(description="Check pipeline job status via menos API")
+    parser.add_argument("job_id", help="Pipeline job ID")
     parser.add_argument(
         "--verbose",
         action="store_true",
-        help="Show all fields including error details and metadata"
+        help="Show all fields including error details and metadata",
     )
+    parser.add_argument("--wait", action="store_true", help="Poll job status until completion")
     parser.add_argument(
-        "--wait",
-        action="store_true",
-        help="Poll job status until completion"
-    )
-    parser.add_argument(
-        "--cancel",
-        action="store_true",
-        help="Cancel the job instead of checking status"
+        "--cancel", action="store_true", help="Cancel the job instead of checking status"
     )
 
     args = parser.parse_args()
@@ -116,11 +111,9 @@ def main():
             if args.cancel:
                 cancel_job(client, signer, api_base, host, args.job_id)
             elif args.wait:
-                poll_job(client, signer, api_base, host, args.job_id,
-                         verbose=args.verbose)
+                poll_job(client, signer, api_base, host, args.job_id, verbose=args.verbose)
             else:
-                get_job(client, signer, api_base, host, args.job_id,
-                        verbose=args.verbose)
+                get_job(client, signer, api_base, host, args.job_id, verbose=args.verbose)
 
     except httpx.RequestError as e:
         print(f"Error: Request failed: {e}", file=sys.stderr)

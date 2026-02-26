@@ -2,7 +2,6 @@
 
 import re
 from base64 import b64decode
-from unittest.mock import patch
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -10,9 +9,7 @@ from cryptography.hazmat.primitives.serialization import (
     Encoding,
     NoEncryption,
     PrivateFormat,
-    ssh,
 )
-
 from signing import RequestSigner
 
 

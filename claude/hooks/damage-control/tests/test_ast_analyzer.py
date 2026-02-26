@@ -2,7 +2,7 @@
 
 import sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -500,9 +500,7 @@ class TestDeepCommandExtraction:
     def test_command_substitution_extraction_blocked(self):
         """bash -c 'rm -rf /' extracts inner command and blocks it."""
         analyzer = ASTAnalyzer()
-        result = analyzer.analyze_command_ast(
-            "bash -c 'rm -rf /'", self._RM_BLOCK_CONFIG
-        )
+        result = analyzer.analyze_command_ast("bash -c 'rm -rf /'", self._RM_BLOCK_CONFIG)
         assert result.get("decision") in ("block", "ask")
 
     @pytest.mark.skipif(
@@ -522,9 +520,7 @@ class TestDeepCommandExtraction:
     def test_pipeline_extraction_blocked(self):
         """echo hello | rm -rf / extracts rm from pipeline and blocks it."""
         analyzer = ASTAnalyzer()
-        result = analyzer.analyze_command_ast(
-            "echo hello | rm -rf /", self._RM_BLOCK_CONFIG
-        )
+        result = analyzer.analyze_command_ast("echo hello | rm -rf /", self._RM_BLOCK_CONFIG)
         assert result.get("decision") in ("block", "ask")
 
     @pytest.mark.skipif(
@@ -540,9 +536,7 @@ class TestDeepCommandExtraction:
     def test_safe_command_no_false_positive(self):
         """echo 'hello world' — safe command — is allowed."""
         analyzer = ASTAnalyzer()
-        result = analyzer.analyze_command_ast(
-            'echo "hello world"', self._RM_BLOCK_CONFIG
-        )
+        result = analyzer.analyze_command_ast('echo "hello world"', self._RM_BLOCK_CONFIG)
         assert result.get("decision") == "allow"
 
 
@@ -561,7 +555,6 @@ class TestVariableExpansionComprehensive:
         result = analyzer.analyze_command_ast("rm $DANGER", config)
         assert result.get("decision") == "ask"
 
-
     def test_variable_at_start(self):
         """Variable at start of argument asks."""
         analyzer = ASTAnalyzer()
@@ -574,7 +567,6 @@ class TestVariableExpansionComprehensive:
         result = analyzer.analyze_command_ast("rm $VAR file.txt", config)
         assert result.get("decision") == "ask"
 
-
     def test_variable_in_middle(self):
         """Variable in middle of path asks."""
         analyzer = ASTAnalyzer()
@@ -586,7 +578,6 @@ class TestVariableExpansionComprehensive:
         }
         result = analyzer.analyze_command_ast("rm /tmp/$VAR/file", config)
         assert result.get("decision") == "ask"
-
 
     def test_variable_in_safe_command_allowed(self):
         """Variable in safe command is allowed."""

@@ -32,18 +32,19 @@ Environment variables:
   └─────────────────────────────────────────────────────────────────────┘
 
 JSON output for ask patterns:
-  {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "ask", "permissionDecisionReason": "..."}}
+  {"hookSpecificOutput": {"hookEventName": "PreToolUse",
+    "permissionDecision": "ask", "permissionDecisionReason": "..."}}
 """
 
+import fnmatch
 import json
+import os
+import re
 import subprocess
 import sys
-import re
-import os
-import fnmatch
-from pathlib import Path
-from typing import Tuple, List, Dict, Any, Optional
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Optional
 
 import yaml
 
@@ -61,10 +62,10 @@ def is_hook_disabled() -> bool:
 # ============================================================================
 
 # Module-level cache for compiled configuration
-_compiled_config_cache: Optional[Dict[str, Any]] = None
+_compiled_config_cache: Optional[dict[str, Any]] = None
 
 
-def compile_regex_patterns(patterns: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def compile_regex_patterns(patterns: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Pre-compile regex patterns from bashToolPatterns config.
 
     Args:
@@ -98,7 +99,7 @@ def compile_regex_patterns(patterns: List[Dict[str, Any]]) -> List[Dict[str, Any
     return compiled
 
 
-def preprocess_path_list(paths: List[str]) -> List[Dict[str, Any]]:
+def preprocess_path_list(paths: list[str]) -> list[dict[str, Any]]:
     """Pre-process path list for fast matching.
 
     For glob patterns: pre-compile glob-to-regex conversion
@@ -150,7 +151,7 @@ def preprocess_path_list(paths: List[str]) -> List[Dict[str, Any]]:
     return processed
 
 
-def compile_config(config: Dict[str, Any]) -> Dict[str, Any]:
+def compile_config(config: dict[str, Any]) -> dict[str, Any]:
     """Compile configuration for fast pattern matching.
 
     Pre-processes all patterns and paths at load time:
@@ -182,7 +183,7 @@ def compile_config(config: Dict[str, Any]) -> Dict[str, Any]:
     return compiled
 
 
-def get_compiled_config() -> Dict[str, Any]:
+def get_compiled_config() -> dict[str, Any]:
     """Get compiled configuration, using module-level cache.
 
     Loads and compiles configuration once, then returns cached version
@@ -298,9 +299,11 @@ def log_decision(
         command: Full command that was checked.
         decision: Security decision ("blocked", "ask", or "allowed").
         reason: Human-readable reason for the decision.
-        pattern_matched: Pattern that matched (if any), e.g., "semantic_git" or "regex_pattern_name".
+        pattern_matched: Pattern that matched (if any), e.g., "semantic_git" or
+            "regex_pattern_name".
         unwrapped: True if command was unwrapped from a shell wrapper.
-        semantic_match: True if decision based on semantic analysis (e.g., git dangerous operations).
+        semantic_match: True if decision based on semantic analysis
+            (e.g., git dangerous operations).
         context: Context name if applicable (e.g., "documentation", "commit_message").
     """
     try:
@@ -359,9 +362,7 @@ def spawn_log_rotation() -> None:
             "stderr": subprocess.DEVNULL,
         }
         if sys.platform == "win32":
-            kwargs["creationflags"] = (
-                subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW
-            )
+            kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW
         else:
             kwargs["start_new_session"] = True
 
@@ -405,9 +406,7 @@ def extract_system_call(python_code: str) -> Optional[str]:
             return match.group(1)
 
     # Pattern for subprocess with list arguments: ['cmd', 'arg1', 'arg2']
-    list_pattern = (
-        r"subprocess\.(?:run|call|check_call|check_output|Popen)\s*\(\s*\[([^\]]+)\]"
-    )
+    list_pattern = r"subprocess\.(?:run|call|check_call|check_output|Popen)\s*\(\s*\[([^\]]+)\]"
     match = re.search(list_pattern, python_code)
     if match:
         # Extract list contents and join as command
@@ -420,7 +419,7 @@ def extract_system_call(python_code: str) -> Optional[str]:
     return None
 
 
-def unwrap_command(command: str, depth: int = 0) -> Tuple[str, bool]:
+def unwrap_command(command: str, depth: int = 0) -> tuple[str, bool]:
     """Recursively unwrap shell wrapper commands.
 
     Detects and unwraps commands hidden in shell wrappers:
@@ -621,11 +620,11 @@ def _strip_inline_comment(line: str) -> str:
 # Verified via --help or official docs — do NOT add tools that use different
 # flags (terraform uses "plan", ansible uses "--check", pulumi uses "preview").
 _DRY_RUN_TOOLS = [
-    r"^\s*helm\b",                  # helm upgrade/install/rollback/uninstall --dry-run
-    r"^\s*kubectl\b",               # kubectl apply/delete/scale --dry-run=client|server
-    r"^\s*docker\s+compose\b",      # docker compose up/down --dry-run
-    r"^\s*docker\b",                # docker (some subcommands)
-    r"^\s*argocd\s+app\s+sync\b",   # argocd app sync --dry-run (client-side only)
+    r"^\s*helm\b",  # helm upgrade/install/rollback/uninstall --dry-run
+    r"^\s*kubectl\b",  # kubectl apply/delete/scale --dry-run=client|server
+    r"^\s*docker\s+compose\b",  # docker compose up/down --dry-run
+    r"^\s*docker\b",  # docker (some subcommands)
+    r"^\s*argocd\s+app\s+sync\b",  # argocd app sync --dry-run (client-side only)
 ]
 
 
@@ -728,7 +727,7 @@ READONLY_PIPE_TARGETS = [
 ]
 
 
-def _split_on_shell_operators(command: str) -> List[str]:
+def _split_on_shell_operators(command: str) -> list[str]:
     """Split command on &&, ||, ;, & respecting quoted strings.
 
     Handles:
@@ -740,8 +739,8 @@ def _split_on_shell_operators(command: str) -> List[str]:
     Returns independent command segments. Pipe chains (|) are kept intact
     within each segment.
     """
-    segments: List[str] = []
-    current: List[str] = []
+    segments: list[str] = []
+    current: list[str] = []
     i = 0
     in_single = False
     in_double = False
@@ -791,13 +790,13 @@ def _split_on_shell_operators(command: str) -> List[str]:
     return [s for s in segments if s]
 
 
-def _split_pipe_chain(segment: str) -> List[str]:
+def _split_pipe_chain(segment: str) -> list[str]:
     """Split a command segment on | (pipe) respecting quoted strings.
 
     Must be called AFTER _split_on_shell_operators so that || is already removed.
     """
-    parts: List[str] = []
-    current: List[str] = []
+    parts: list[str] = []
+    current: list[str] = []
     i = 0
     in_single = False
     in_double = False
@@ -843,16 +842,12 @@ def _is_readonly_search_pipeline(segment: str) -> bool:
 
     # First command must be a search tool
     first_cmd = pipe_parts[0]
-    if not any(
-        re.search(p, first_cmd, re.IGNORECASE) for p in READONLY_SEARCH_COMMANDS
-    ):
+    if not any(re.search(p, first_cmd, re.IGNORECASE) for p in READONLY_SEARCH_COMMANDS):
         return False
 
     # All subsequent pipe targets must be safe transformers
     for target in pipe_parts[1:]:
-        if not any(
-            re.search(p, target, re.IGNORECASE) for p in READONLY_PIPE_TARGETS
-        ):
+        if not any(re.search(p, target, re.IGNORECASE) for p in READONLY_PIPE_TARGETS):
             return False
 
     return True
@@ -888,7 +883,7 @@ def is_readonly_search_command(command: str) -> bool:
 # ============================================================================
 
 
-def analyze_git_command(command: str) -> Tuple[bool, str]:
+def analyze_git_command(command: str) -> tuple[bool, str]:
     """Analyze git commands for dangerous operations based on semantic understanding.
 
     Distinguishes between safe and dangerous git operations:
@@ -1139,7 +1134,7 @@ def get_config_path() -> Path:
     return local_config  # Default, even if it doesn't exist
 
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """Load patterns from YAML config file."""
     config_path = get_config_path()
 
@@ -1152,7 +1147,7 @@ def load_config() -> Dict[str, Any]:
             "noDeletePaths": [],
         }
 
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         return yaml.safe_load(f) or {}
 
 
@@ -1161,7 +1156,7 @@ def load_config() -> Dict[str, Any]:
 # ============================================================================
 
 # Module-level cache for allowed hosts
-_allowed_hosts_cache: Optional[List[str]] = None
+_allowed_hosts_cache: Optional[list[str]] = None
 
 
 def get_allowed_hosts_path() -> Path:
@@ -1170,7 +1165,7 @@ def get_allowed_hosts_path() -> Path:
     return script_dir / "allowed-hosts.yaml"
 
 
-def load_allowed_hosts() -> List[str]:
+def load_allowed_hosts() -> list[str]:
     """Load allowed hosts from YAML config file.
 
     Returns:
@@ -1188,7 +1183,7 @@ def load_allowed_hosts() -> List[str]:
         return _allowed_hosts_cache
 
     try:
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             config = yaml.safe_load(f) or {}
             _allowed_hosts_cache = config.get("allowedHosts", [])
     except Exception as e:
@@ -1321,9 +1316,7 @@ def extract_host_from_command(command: str) -> Optional[str]:
 
     # nc/netcat: nc [-flags] host port
     # Match: nc host port, nc -v host port, ncat host port, netcat host port
-    nc_match = re.search(
-        r"\b(?:nc|ncat|netcat)\s+(?:-[^\s]+\s+)*([^\s-][^\s]*)\s+\d+", command
-    )
+    nc_match = re.search(r"\b(?:nc|ncat|netcat)\s+(?:-[^\s]+\s+)*([^\s-][^\s]*)\s+\d+", command)
     if nc_match:
         host = nc_match.group(1)
         # Filter out flags that might have been captured
@@ -1336,14 +1329,10 @@ def extract_host_from_command(command: str) -> Optional[str]:
         return dev_match.group(1)
 
     # dig/nslookup/host: dig @server domain or dig domain
-    dns_match = re.search(
-        r"\b(?:dig|nslookup|host)\s+(?:@([^\s]+)|[^\s]+\.([^\s]+))", command
-    )
+    dns_match = re.search(r"\b(?:dig|nslookup|host)\s+(?:@([^\s]+)|[^\s]+\.([^\s]+))", command)
     if dns_match:
         # Return the server if specified with @, otherwise the domain
-        return dns_match.group(1) or (
-            dns_match.group(2) if dns_match.group(2) else None
-        )
+        return dns_match.group(1) or (dns_match.group(2) if dns_match.group(2) else None)
 
     # ssh user@host or ssh host
     ssh_match = re.search(r"\bssh\s+(?:[^\s]+@)?([^\s]+)", command)
@@ -1364,7 +1353,7 @@ def extract_host_from_command(command: str) -> Optional[str]:
 
 
 def detect_context(
-    tool_name: str, tool_input: Dict[str, Any], config: Dict[str, Any]
+    tool_name: str, tool_input: dict[str, Any], config: dict[str, Any]
 ) -> Optional[str]:
     """Detect if we're in a special context that allows relaxed checks.
 
@@ -1424,10 +1413,10 @@ def detect_context(
 
 def check_path_patterns(
     command: str,
-    path_obj: Dict[str, Any],
-    patterns: List[Tuple[str, str]],
+    path_obj: dict[str, Any],
+    patterns: list[tuple[str, str]],
     path_type: str,
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """Check command against a list of patterns for a specific path.
 
     Uses pre-processed path objects from preprocess_path_list().
@@ -1456,11 +1445,10 @@ def check_path_patterns(
             # e.g., "rm *.lock" should match DELETE_PATTERNS with *.lock
             try:
                 # Build a regex that matches: operation ... glob_pattern
-                # Extract the command prefix from pattern_template (e.g., '\brm\s+.*' from '\brm\s+.*{path}')
+                # Extract the command prefix from pattern_template
+                # (e.g., '\brm\s+.*' from '\brm\s+.*{path}')
                 cmd_prefix = pattern_template.replace("{path}", "")
-                if cmd_prefix and re.search(
-                    cmd_prefix + glob_regex_str, command, re.IGNORECASE
-                ):
+                if cmd_prefix and re.search(cmd_prefix + glob_regex_str, command, re.IGNORECASE):
                     return (
                         True,
                         f"Blocked: {operation} operation on {path_type} {path_str}",
@@ -1480,9 +1468,7 @@ def check_path_patterns(
             pattern_expanded = pattern_template.replace("{path}", escaped_expanded)
             pattern_original = pattern_template.replace("{path}", escaped_original)
             try:
-                if re.search(pattern_expanded, command) or re.search(
-                    pattern_original, command
-                ):
+                if re.search(pattern_expanded, command) or re.search(pattern_original, command):
                     return (
                         True,
                         f"Blocked: {operation} operation on {path_type} {path_str}",
@@ -1494,22 +1480,26 @@ def check_path_patterns(
 
 
 def check_command(
-    command: str, config: Dict[str, Any], context: Optional[str] = None
-) -> Tuple[bool, bool, str, str, bool, bool]:
+    command: str, config: dict[str, Any], context: Optional[str] = None
+) -> tuple[bool, bool, str, str, bool, bool]:
     """Check if command should be blocked or requires confirmation.
 
     Args:
         command: Command string to check.
-        config: Configuration (either raw from load_config() or compiled from get_compiled_config()).
-        context: Optional context name (e.g., 'documentation', 'commit_message') that may relax certain checks.
+        config: Configuration (either raw from load_config() or compiled from
+            get_compiled_config()).
+        context: Optional context name (e.g., 'documentation', 'commit_message')
+            that may relax certain checks.
 
     Returns: (blocked, ask, reason, pattern_matched, was_unwrapped, semantic_match)
       - blocked=True, ask=False: Block the command
       - blocked=False, ask=True: Show confirmation dialog
       - blocked=False, ask=False: Allow the command
-      - pattern_matched: Pattern identifier that triggered decision (e.g., "semantic_git", "yaml_pattern_0")
+      - pattern_matched: Pattern identifier that triggered decision
+          (e.g., "semantic_git", "yaml_pattern_0")
       - was_unwrapped: True if command was unwrapped from shell wrapper
-      - semantic_match: True if decision based on semantic analysis (e.g., git dangerous operations)
+      - semantic_match: True if decision based on semantic analysis
+          (e.g., git dangerous operations)
     """
     # Get context configuration to determine which checks to relax
     context_config = {}
@@ -1608,9 +1598,7 @@ def check_command(
     # 2. Check for ANY access to zero-access paths (including reads)
     # Skip only if explicitly relaxed in context (should NEVER be relaxed for security)
     # ALSO skip for read-only git commands that just query metadata (not file contents)
-    if "zeroAccessPaths" not in relaxed_checks and not is_readonly_git_command(
-        unwrapped_cmd
-    ):
+    if "zeroAccessPaths" not in relaxed_checks and not is_readonly_git_command(unwrapped_cmd):
         for path_obj in compiled_zero_access:
             if path_obj["is_glob"]:
                 # Use pre-compiled glob regex
@@ -1621,7 +1609,10 @@ def check_command(
                             return (
                                 True,
                                 False,
-                                f"Blocked: zero-access pattern {path_obj['original']} (no operations allowed)",
+                                (
+                                    f"Blocked: zero-access pattern {path_obj['original']}"
+                                    " (no operations allowed)"
+                                ),
                                 "zero_access_glob",
                                 was_unwrapped,
                                 False,
@@ -1640,32 +1631,25 @@ def check_command(
                     if is_directory:
                         # Directory path - match any file inside
                         # No suffix needed since the / already delimits
-                        pattern_expanded = (
-                            escaped_expanded if escaped_expanded else None
-                        )
-                        pattern_original = (
-                            escaped_original if escaped_original else None
-                        )
+                        pattern_expanded = escaped_expanded if escaped_expanded else None
+                        pattern_original = escaped_original if escaped_original else None
                     else:
                         # File path - use suffix to prevent partial matches
                         # This prevents .env from matching .env.example
                         suffix = r"(?![a-zA-Z0-9_.-])"
-                        pattern_expanded = (
-                            (escaped_expanded + suffix) if escaped_expanded else None
-                        )
-                        pattern_original = (
-                            (escaped_original + suffix) if escaped_original else None
-                        )
+                        pattern_expanded = (escaped_expanded + suffix) if escaped_expanded else None
+                        pattern_original = (escaped_original + suffix) if escaped_original else None
 
-                    if (
-                        pattern_expanded and re.search(pattern_expanded, unwrapped_cmd)
-                    ) or (
+                    if (pattern_expanded and re.search(pattern_expanded, unwrapped_cmd)) or (
                         pattern_original and re.search(pattern_original, unwrapped_cmd)
                     ):
                         return (
                             True,
                             False,
-                            f"Blocked: zero-access path {path_obj['original']} (no operations allowed)",
+                            (
+                                f"Blocked: zero-access path {path_obj['original']}"
+                                " (no operations allowed)"
+                            ),
                             "zero_access_literal",
                             was_unwrapped,
                             False,
@@ -1716,9 +1700,7 @@ def check_command(
                         False,
                     )
                 elif ast_decision == "ask":
-                    ast_reason = ast_result.get(
-                        "reason", "AST analysis requires confirmation"
-                    )
+                    ast_reason = ast_result.get("reason", "AST analysis requires confirmation")
                     return (
                         False,
                         True,
@@ -1771,8 +1753,8 @@ def main() -> None:
     context = detect_context(tool_name, tool_input, config)
 
     # Check the command with context awareness (uses compiled config)
-    is_blocked, should_ask, reason, pattern_matched, was_unwrapped, semantic_match = (
-        check_command(command, config, context=context)
+    is_blocked, should_ask, reason, pattern_matched, was_unwrapped, semantic_match = check_command(
+        command, config, context=context
     )
 
     # Log the decision with all metadata

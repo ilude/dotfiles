@@ -84,9 +84,7 @@ ALIASES_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize(
-    "pattern,desc", ALIASES_PATTERNS, ids=[p[1] for p in ALIASES_PATTERNS]
-)
+@pytest.mark.parametrize("pattern,desc", ALIASES_PATTERNS, ids=[p[1] for p in ALIASES_PATTERNS])
 def test_aliases(pattern, desc):
     """Verify zsh/rc.d/06-aliases.zsh contains expected patterns."""
     content = (DOTFILES / "zsh/rc.d/06-aliases.zsh").read_text()
@@ -123,9 +121,7 @@ HELPERS_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize(
-    "pattern,desc", HELPERS_PATTERNS, ids=[p[1] for p in HELPERS_PATTERNS]
-)
+@pytest.mark.parametrize("pattern,desc", HELPERS_PATTERNS, ids=[p[1] for p in HELPERS_PATTERNS])
 def test_helpers(pattern, desc):
     """Verify zsh/rc.d/00-helpers.zsh contains expected patterns."""
     content = (DOTFILES / "zsh/rc.d/00-helpers.zsh").read_text()
@@ -166,9 +162,7 @@ WINHOME_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize(
-    "pattern,desc", WINHOME_PATTERNS, ids=[p[1] for p in WINHOME_PATTERNS]
-)
+@pytest.mark.parametrize("pattern,desc", WINHOME_PATTERNS, ids=[p[1] for p in WINHOME_PATTERNS])
 def test_winhome(pattern, desc):
     """Verify zsh/env.d/00-winhome.zsh contains expected patterns."""
     content = (DOTFILES / "zsh/env.d/00-winhome.zsh").read_text()
@@ -181,9 +175,7 @@ LOCALE_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize(
-    "pattern,desc", LOCALE_PATTERNS, ids=[p[1] for p in LOCALE_PATTERNS]
-)
+@pytest.mark.parametrize("pattern,desc", LOCALE_PATTERNS, ids=[p[1] for p in LOCALE_PATTERNS])
 def test_locale(pattern, desc):
     """Verify zsh/env.d/01-locale.zsh contains expected patterns."""
     content = (DOTFILES / "zsh/env.d/01-locale.zsh").read_text()
@@ -202,9 +194,7 @@ PATH_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize(
-    "pattern,desc", PATH_PATTERNS, ids=[p[1] for p in PATH_PATTERNS]
-)
+@pytest.mark.parametrize("pattern,desc", PATH_PATTERNS, ids=[p[1] for p in PATH_PATTERNS])
 def test_path(pattern, desc):
     """Verify zsh/env.d/02-path.zsh contains expected patterns."""
     content = (DOTFILES / "zsh/env.d/02-path.zsh").read_text()
@@ -280,9 +270,7 @@ EDITOR_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize(
-    "pattern,desc", EDITOR_PATTERNS, ids=[p[1] for p in EDITOR_PATTERNS]
-)
+@pytest.mark.parametrize("pattern,desc", EDITOR_PATTERNS, ids=[p[1] for p in EDITOR_PATTERNS])
 def test_editor(pattern, desc):
     """Verify zsh/rc.d/08-editor.zsh contains expected patterns."""
     content = (DOTFILES / "zsh/rc.d/08-editor.zsh").read_text()
@@ -333,9 +321,7 @@ PLUGINS_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize(
-    "pattern,desc", PLUGINS_PATTERNS, ids=[p[1] for p in PLUGINS_PATTERNS]
-)
+@pytest.mark.parametrize("pattern,desc", PLUGINS_PATTERNS, ids=[p[1] for p in PLUGINS_PATTERNS])
 def test_plugins(pattern, desc):
     """Verify zsh/rc.d/02-plugins.zsh contains expected patterns."""
     content = (DOTFILES / "zsh/rc.d/02-plugins.zsh").read_text()
@@ -357,9 +343,7 @@ HISTORY_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize(
-    "pattern,desc", HISTORY_PATTERNS, ids=[p[1] for p in HISTORY_PATTERNS]
-)
+@pytest.mark.parametrize("pattern,desc", HISTORY_PATTERNS, ids=[p[1] for p in HISTORY_PATTERNS])
 def test_history(pattern, desc):
     """Verify zsh/rc.d/03-history.zsh contains expected patterns."""
     content = (DOTFILES / "zsh/rc.d/03-history.zsh").read_text()
@@ -417,9 +401,7 @@ SSH_AGENT_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize(
-    "pattern,desc", SSH_AGENT_PATTERNS, ids=[p[1] for p in SSH_AGENT_PATTERNS]
-)
+@pytest.mark.parametrize("pattern,desc", SSH_AGENT_PATTERNS, ids=[p[1] for p in SSH_AGENT_PATTERNS])
 def test_ssh_agent(pattern, desc):
     """Verify zsh/rc.d/10-ssh-agent.zsh contains expected patterns."""
     content = (DOTFILES / "zsh/rc.d/10-ssh-agent.zsh").read_text()
@@ -531,10 +513,7 @@ def test_bashrc_self_contained():
     """.bashrc is self-contained fallback (no zsh dependencies)."""
     content = read_dotfile(".bashrc")
     # Should NOT depend on zsh-plugins
-    assert (
-        "zsh-plugins" not in content
-        or "source" not in content.split("zsh-plugins")[0][-50:]
-    )
+    assert "zsh-plugins" not in content or "source" not in content.split("zsh-plugins")[0][-50:]
 
 
 def test_bashrc_documents_fallback():
@@ -558,9 +537,7 @@ BASHRC_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize(
-    "pattern,desc", BASHRC_PATTERNS, ids=[p[1] for p in BASHRC_PATTERNS]
-)
+@pytest.mark.parametrize("pattern,desc", BASHRC_PATTERNS, ids=[p[1] for p in BASHRC_PATTERNS])
 def test_bashrc(pattern, desc):
     """Verify .bashrc contains expected patterns."""
     content = read_dotfile(".bashrc")
@@ -660,9 +637,7 @@ PROFILE_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize(
-    "pattern,desc", PROFILE_PATTERNS, ids=[p[1] for p in PROFILE_PATTERNS]
-)
+@pytest.mark.parametrize("pattern,desc", PROFILE_PATTERNS, ids=[p[1] for p in PROFILE_PATTERNS])
 def test_profile(pattern, desc):
     """Verify .profile contains expected patterns."""
     content = read_dotfile(".profile")
@@ -866,9 +841,7 @@ def test_install_conf_wsl_sync():
 
     # Check all main unconditional targets are in WSL
     missing_in_wsl = main_unconditional - wsl_all
-    assert not missing_in_wsl, (
-        f"WSL config missing these main targets: {sorted(missing_in_wsl)}"
-    )
+    assert not missing_in_wsl, f"WSL config missing these main targets: {sorted(missing_in_wsl)}"
 
     # Check no unexpected extra targets in WSL (besides ~/.dotfiles)
     assert wsl_only == expected_wsl_only, (

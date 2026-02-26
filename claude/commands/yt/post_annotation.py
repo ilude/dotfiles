@@ -11,7 +11,6 @@ import sys
 from pathlib import Path
 
 import httpx
-
 from api_config import get_api_base, get_api_host
 from signing import RequestSigner
 
@@ -20,24 +19,10 @@ def main():
     parser = argparse.ArgumentParser(
         description="Post an annotation to a content item via menos API"
     )
-    parser.add_argument(
-        "content_id",
-        help="Content ID to annotate"
-    )
-    parser.add_argument(
-        "title",
-        help="Annotation title"
-    )
-    parser.add_argument(
-        "text_file",
-        help="Path to text file containing annotation body"
-    )
-    parser.add_argument(
-        "--tags",
-        nargs="*",
-        default=[],
-        help="Tags to apply to the annotation"
-    )
+    parser.add_argument("content_id", help="Content ID to annotate")
+    parser.add_argument("title", help="Annotation title")
+    parser.add_argument("text_file", help="Path to text file containing annotation body")
+    parser.add_argument("--tags", nargs="*", default=[], help="Tags to apply to the annotation")
 
     args = parser.parse_args()
 

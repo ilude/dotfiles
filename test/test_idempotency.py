@@ -289,9 +289,7 @@ class TestClaudeLinkSetupBackupMerge:
     def test_appends_to_existing_history(self, tmp_home):
         """claude-link-setup appends to existing history.jsonl instead of overwriting."""
         # Pre-existing history in dotfiles
-        (tmp_home / ".dotfiles" / "claude" / "history.jsonl").write_text(
-            '{"session":"existing"}'
-        )
+        (tmp_home / ".dotfiles" / "claude" / "history.jsonl").write_text('{"session":"existing"}')
 
         # Create ~/.claude with additional history
         existing_claude = tmp_home / ".claude"
@@ -303,9 +301,7 @@ class TestClaudeLinkSetupBackupMerge:
             env={**os.environ, "HOME": str(tmp_home)},
         )
 
-        history_content = (
-            tmp_home / ".dotfiles" / "claude" / "history.jsonl"
-        ).read_text()
+        history_content = (tmp_home / ".dotfiles" / "claude" / "history.jsonl").read_text()
         assert "existing" in history_content
         assert "new" in history_content
 

@@ -14,7 +14,8 @@ Usage:
   uv run test-damage-control.py --interactive
 
   # CLI mode - test a single command
-  uv run test-damage-control.py <hook> <tool_name> <command_or_path> [--expect-blocked|--expect-allowed]
+  uv run test-damage-control.py <hook> <tool_name> <command_or_path>
+    [--expect-blocked|--expect-allowed]
 
   # Batch test suite mode
   uv run test-damage-control.py --test-suite all
@@ -43,26 +44,24 @@ Exit codes:
   1 = Test(s) failed (expectation not matched)
 """
 
-import subprocess
-import json
-import sys
-import os
-import re
-from pathlib import Path
-from typing import Dict, Any, List, Tuple, Optional
-
-import yaml
 import argparse
-
+import fnmatch
 
 # Import patterns and utilities from the bash tool script (avoid duplication)
 # Using importlib to import from hyphenated filename
 import importlib.util
-import fnmatch
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any, Optional
+
+import yaml
 
 spec = importlib.util.spec_from_file_location(
-    "bash_tool",
-    Path(__file__).parent / "bash-tool-damage-control.py"
+    "bash_tool", Path(__file__).parent / "bash-tool-damage-control.py"
 )
 bash_tool = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bash_tool)
@@ -73,7 +72,7 @@ NO_DELETE_BLOCKED = bash_tool.NO_DELETE_BLOCKED
 
 def is_glob_pattern(pattern: str) -> bool:
     """Check if pattern contains glob wildcards."""
-    return '*' in pattern or '?' in pattern or '[' in pattern
+    return "*" in pattern or "?" in pattern or "[" in pattern
 
 
 def match_path(file_path: str, pattern: str) -> bool:
@@ -100,7 +99,9 @@ def match_path(file_path: str, pattern: str) -> bool:
         return False
     else:
         # Prefix matching (original behavior for directories)
-        if expanded_normalized.startswith(expanded_pattern) or expanded_normalized == expanded_pattern.rstrip('/'):
+        if expanded_normalized.startswith(
+            expanded_pattern
+        ) or expanded_normalized == expanded_pattern.rstrip("/"):
             return True
         return False
 
@@ -109,12 +110,12 @@ def glob_to_regex(glob_pattern: str) -> str:
     """Convert a glob pattern to a regex pattern for matching in commands."""
     result = ""
     for char in glob_pattern:
-        if char == '*':
-            result += r'[^\s/]*'  # Match any chars except whitespace and path sep
-        elif char == '?':
-            result += r'[^\s/]'   # Match single char except whitespace and path sep
-        elif char in r'\.^$+{}[]|()':
-            result += '\\' + char
+        if char == "*":
+            result += r"[^\s/]*"  # Match any chars except whitespace and path sep
+        elif char == "?":
+            result += r"[^\s/]"  # Match single char except whitespace and path sep
+        elif char in r"\.^$+{}[]|()":
+            result += "\\" + char
         else:
             result += char
     return result
@@ -123,6 +124,7 @@ def glob_to_regex(glob_pattern: str) -> str:
 # ============================================================================
 # CONFIG LOADING
 # ============================================================================
+
 
 def get_script_dir() -> Path:
     return Path(__file__).parent
@@ -145,14 +147,19 @@ def get_config_path() -> Path:
     return local_config  # Default, even if it doesn't exist
 
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """Load patterns from YAML config file."""
     config_path = get_config_path()
 
     if not config_path.exists():
-        return {"bashToolPatterns": [], "zeroAccessPaths": [], "readOnlyPaths": [], "noDeletePaths": []}
+        return {
+            "bashToolPatterns": [],
+            "zeroAccessPaths": [],
+            "readOnlyPaths": [],
+            "noDeletePaths": [],
+        }
 
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         return yaml.safe_load(f) or {}
 
 
@@ -160,7 +167,8 @@ def load_config() -> Dict[str, Any]:
 # DIRECT CHECKING (for interactive mode - no subprocess needed)
 # ============================================================================
 
-def check_bash_command(command: str, config: Dict[str, Any]) -> Tuple[bool, List[str]]:
+
+def check_bash_command(command: str, config: dict[str, Any]) -> tuple[bool, list[str]]:
     """Check bash command against patterns. Returns (blocked, list of reasons)."""
     reasons = []
 
@@ -218,7 +226,7 @@ def check_bash_command(command: str, config: Dict[str, Any]) -> Tuple[bool, List
     return len(reasons) > 0, reasons
 
 
-def check_file_path(file_path: str, config: Dict[str, Any]) -> Tuple[bool, List[str]]:
+def check_file_path(file_path: str, config: dict[str, Any]) -> tuple[bool, list[str]]:
     """Check file path for Edit/Write tools. Returns (blocked, list of reasons)."""
     reasons = []
 
@@ -238,6 +246,7 @@ def check_file_path(file_path: str, config: Dict[str, Any]) -> Tuple[bool, List[
 # ============================================================================
 # INTERACTIVE MODE
 # ============================================================================
+
 
 def print_banner():
     """Print interactive mode banner."""
@@ -261,14 +270,14 @@ def prompt_tool_selection() -> Optional[str]:
     while True:
         choice = input("Tool [1/2/3/q]> ").strip().lower()
 
-        if choice in ('q', 'quit'):
+        if choice in ("q", "quit"):
             return None
-        elif choice == '1' or choice == 'bash':
-            return 'Bash'
-        elif choice == '2' or choice == 'edit':
-            return 'Edit'
-        elif choice == '3' or choice == 'write':
-            return 'Write'
+        elif choice == "1" or choice == "bash":
+            return "Bash"
+        elif choice == "2" or choice == "edit":
+            return "Edit"
+        elif choice == "3" or choice == "write":
+            return "Write"
         else:
             print("Invalid choice. Enter 1, 2, 3, or q.")
 
@@ -283,7 +292,10 @@ def run_interactive_mode():
     zero_paths = len(config.get("zeroAccessPaths", []))
     readonly_paths = len(config.get("readOnlyPaths", []))
     nodelete_paths = len(config.get("noDeletePaths", []))
-    print(f"Loaded: {bash_patterns} bash patterns, {zero_paths} zero-access, {readonly_paths} read-only, {nodelete_paths} no-delete paths\n")
+    print(
+        f"Loaded: {bash_patterns} bash patterns, {zero_paths} zero-access, "
+        f"{readonly_paths} read-only, {nodelete_paths} no-delete paths\n"
+    )
 
     while True:
         tool = prompt_tool_selection()
@@ -292,7 +304,7 @@ def run_interactive_mode():
             break
 
         print()
-        if tool == 'Bash':
+        if tool == "Bash":
             prompt_text = "Command> "
         else:
             prompt_text = "Path> "
@@ -304,12 +316,12 @@ def run_interactive_mode():
             print("\nGoodbye!")
             break
 
-        if not user_input or user_input.lower() in ('q', 'quit'):
+        if not user_input or user_input.lower() in ("q", "quit"):
             print("\nGoodbye!")
             break
 
         # Test the input
-        if tool == 'Bash':
+        if tool == "Bash":
             blocked, reasons = check_bash_command(user_input, config)
         else:
             blocked, reasons = check_file_path(user_input, config)
@@ -321,13 +333,14 @@ def run_interactive_mode():
             for reason in reasons:
                 print(f"   - {reason}")
         else:
-            print(f"\033[92mALLOWED\033[0m - No dangerous patterns matched")
+            print("\033[92mALLOWED\033[0m - No dangerous patterns matched")
         print()
 
 
 # ============================================================================
 # CLI MODE HELPERS
 # ============================================================================
+
 
 def get_hook_path(hook_type: str) -> Path:
     """Get path to hook script."""
@@ -353,7 +366,9 @@ def build_tool_input(tool_name: str, value: str) -> dict:
         return {"command": value}
 
 
-def run_test(hook_type: str, tool_name: str, value: str, expectation: str, verbose: bool = True) -> bool:
+def run_test(
+    hook_type: str, tool_name: str, value: str, expectation: str, verbose: bool = True
+) -> bool:
     """Run a single test and return True if passed.
 
     expectation can be: "blocked", "ask", or "allowed"
@@ -364,10 +379,7 @@ def run_test(hook_type: str, tool_name: str, value: str, expectation: str, verbo
     hook_path = get_hook_path(hook_type)
     tool_input = build_tool_input(tool_name, value)
 
-    input_json = json.dumps({
-        "tool_name": tool_name,
-        "tool_input": tool_input
-    })
+    input_json = json.dumps({"tool_name": tool_name, "tool_input": tool_input})
 
     try:
         # On Windows, hide console windows to avoid focus-stealing during tests
@@ -381,7 +393,7 @@ def run_test(hook_type: str, tool_name: str, value: str, expectation: str, verbo
             capture_output=True,
             text=True,
             timeout=10,
-            **kwargs
+            **kwargs,
         )
         exit_code = result.returncode
         stdout = result.stdout.strip()
@@ -428,13 +440,14 @@ def run_test(hook_type: str, tool_name: str, value: str, expectation: str, verbo
 # BATCH TEST SUITE MODE
 # ============================================================================
 
+
 def get_test_fixtures_path() -> Path:
     """Get path to test_fixtures.yaml."""
     script_dir = get_script_dir()
     return script_dir / "tests" / "test_fixtures.yaml"
 
 
-def load_test_fixtures() -> Dict[str, Any]:
+def load_test_fixtures() -> dict[str, Any]:
     """Load test fixtures from YAML file."""
     fixtures_path = get_test_fixtures_path()
 
@@ -442,7 +455,7 @@ def load_test_fixtures() -> Dict[str, Any]:
         print(f"Error: test_fixtures.yaml not found at {fixtures_path}")
         return {}
 
-    with open(fixtures_path, "r") as f:
+    with open(fixtures_path) as f:
         return yaml.safe_load(f) or {}
 
 
@@ -474,7 +487,7 @@ def run_test_suite(suite_name: str) -> int:
             suites_to_run = [suite_map[suite_name]]
         else:
             print(f"Unknown suite: {suite_name}")
-            print(f"Available: all, unwrap, git, logging")
+            print("Available: all, unwrap, git, logging")
             return 1
 
     total_tests = 0
@@ -503,9 +516,9 @@ def run_test_suite(suite_name: str) -> int:
                 print(f"    [{total_tests}] {reason}")
                 if run_test(hook, tool, command, "blocked", verbose=False):
                     passed_tests += 1
-                    print(f"         PASS")
+                    print("         PASS")
                 else:
-                    print(f"         FAIL")
+                    print("         FAIL")
 
         # Run allowed tests
         if "allowed" in suite_data:
@@ -520,13 +533,13 @@ def run_test_suite(suite_name: str) -> int:
                 print(f"    [{total_tests}] {reason}")
                 if run_test(hook, tool, command, "allowed", verbose=False):
                     passed_tests += 1
-                    print(f"         PASS")
+                    print("         PASS")
                 else:
-                    print(f"         FAIL")
+                    print("         FAIL")
 
     # Print summary
     print(f"\n{'=' * 60}")
-    print(f"Test Summary")
+    print("Test Summary")
     print(f"{'=' * 60}")
     print(f"Total: {total_tests}")
     print(f"Passed: {passed_tests}")
@@ -544,28 +557,40 @@ def main():
     parser = argparse.ArgumentParser(
         description="Damage Control Test Runner",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
+        epilog=__doc__,
     )
 
     # Create subcommands/modes
-    parser.add_argument('-i', '--interactive', action='store_true',
-                        help='Run interactive mode')
-    parser.add_argument('--test-suite', choices=['all', 'unwrap', 'git', 'logging'],
-                        help='Run batch test suite')
+    parser.add_argument("-i", "--interactive", action="store_true", help="Run interactive mode")
+    parser.add_argument(
+        "--test-suite", choices=["all", "unwrap", "git", "logging"], help="Run batch test suite"
+    )
 
     # Positional args for CLI mode (hook_type tool_name value)
-    parser.add_argument('hook_type', nargs='?', default=None,
-                        help='Hook type: bash, edit, write')
-    parser.add_argument('tool_name', nargs='?', default=None,
-                        help='Tool name: Bash, Edit, Write')
-    parser.add_argument('value', nargs='?', default=None,
-                        help='Command or path to test')
-    parser.add_argument('--expect-blocked', action='store_const', const='blocked', dest='expectation',
-                        help='Expect command to be blocked')
-    parser.add_argument('--expect-ask', action='store_const', const='ask', dest='expectation',
-                        help='Expect command to trigger confirmation dialog')
-    parser.add_argument('--expect-allowed', action='store_const', const='allowed', dest='expectation',
-                        help='Expect command to be allowed')
+    parser.add_argument("hook_type", nargs="?", default=None, help="Hook type: bash, edit, write")
+    parser.add_argument("tool_name", nargs="?", default=None, help="Tool name: Bash, Edit, Write")
+    parser.add_argument("value", nargs="?", default=None, help="Command or path to test")
+    parser.add_argument(
+        "--expect-blocked",
+        action="store_const",
+        const="blocked",
+        dest="expectation",
+        help="Expect command to be blocked",
+    )
+    parser.add_argument(
+        "--expect-ask",
+        action="store_const",
+        const="ask",
+        dest="expectation",
+        help="Expect command to trigger confirmation dialog",
+    )
+    parser.add_argument(
+        "--expect-allowed",
+        action="store_const",
+        const="allowed",
+        dest="expectation",
+        help="Expect command to be allowed",
+    )
 
     args = parser.parse_args()
 

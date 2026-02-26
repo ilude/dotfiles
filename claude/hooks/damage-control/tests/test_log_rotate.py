@@ -1,12 +1,10 @@
 """Tests for log_rotate.py - damage-control log rotation."""
 
 import json
-import os
 import sys
 import tarfile
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 import pytest
 
@@ -14,15 +12,14 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from log_rotate import (
-    get_logs_dir,
-    acquire_lock,
-    release_lock,
-    validate_log_filename,
-    safe_archive,
-    log_rotation_event,
-    rotate_logs,
     ARCHIVE_DAYS,
     DELETE_DAYS,
+    acquire_lock,
+    log_rotation_event,
+    release_lock,
+    rotate_logs,
+    safe_archive,
+    validate_log_filename,
 )
 
 
@@ -176,7 +173,9 @@ class TestRotateLogs:
 
         # Re-import to pick up new env var
         import importlib
+
         import log_rotate
+
         importlib.reload(log_rotate)
 
         log_rotate.rotate_logs()
@@ -199,7 +198,9 @@ class TestRotateLogs:
 
         # Re-import to pick up new env var
         import importlib
+
         import log_rotate
+
         importlib.reload(log_rotate)
 
         log_rotate.rotate_logs()
@@ -212,7 +213,9 @@ class TestRotateLogs:
 
         # Re-import to pick up new env var
         import importlib
+
         import log_rotate
+
         importlib.reload(log_rotate)
 
         log_rotate.rotate_logs()
@@ -243,7 +246,9 @@ class TestRotateLogs:
 
         # Re-import to pick up reset env vars
         import importlib
+
         import log_rotate
+
         importlib.reload(log_rotate)
 
         log_rotate.rotate_logs()

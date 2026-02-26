@@ -64,7 +64,7 @@ def get_instance_id() -> str:
     lock_file = Path(os.path.expanduser("~")) / ".claude" / "ide" / f"{port}.lock"
     if lock_file.exists():
         try:
-            with open(lock_file, "r", encoding="utf-8") as f:
+            with open(lock_file, encoding="utf-8") as f:
                 data = json.load(f)
                 auth_token = data.get("authToken", "")
                 if auth_token:
@@ -119,7 +119,7 @@ def validate_jsonl(file_path: Path) -> tuple[bool, list[str]]:
         return True, []
 
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             for line_num, line in enumerate(f, 1):
                 line = line.strip()
                 if not line:
@@ -147,7 +147,7 @@ def session_end_exists(history_path: Path, session_id: str) -> bool:
         return False
 
     try:
-        with open(history_path, "r", encoding="utf-8") as f:
+        with open(history_path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:

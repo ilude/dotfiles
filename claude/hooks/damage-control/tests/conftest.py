@@ -1,8 +1,6 @@
 """Pytest fixtures for damage-control hook tests."""
 
-import os
 import pytest
-from pathlib import Path
 
 
 @pytest.fixture
@@ -28,6 +26,7 @@ def tmp_log_dir(tmp_path, monkeypatch):
 
     # Monkey-patch os.path.expanduser to return our tmp_path for "~"
     original_expanduser = path_module.expanduser
+
     def mock_expanduser(path_str):
         if path_str.startswith("~"):
             return path_str.replace("~", str(tmp_path), 1)
@@ -57,7 +56,7 @@ def sample_commands():
             'zsh -c "dangerous command"',
         ],
         "wrapped_python": [
-            'python -c "import os; os.system(\'rm -rf /\')"',
+            "python -c \"import os; os.system('rm -rf /')\"",
             "python3 -c \"import subprocess; subprocess.run(['rm', '-rf', '/'])\"",
         ],
         "wrapped_env": [
@@ -65,8 +64,8 @@ def sample_commands():
             "env DEBUG=1 VAR=val dangerous_command",
         ],
         "nested": [
-            'bash -c "sh -c \'rm -rf /\'"',
-            'python -c "import os; os.system(\'bash -c \\\"rm -rf /\\\"\')"',
+            "bash -c \"sh -c 'rm -rf /'\"",
+            'python -c "import os; os.system(\'bash -c \\"rm -rf /\\"\')"',
         ],
         "git_safe": [
             "git checkout -b feature",
