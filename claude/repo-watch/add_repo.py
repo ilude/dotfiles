@@ -107,7 +107,9 @@ def detect_category(files: list[str], category_mappings: dict[str, Any]) -> tupl
     return best_cat, confidence
 
 
-def add_repo(url: str, category: str | None = None, description: str | None = None) -> dict[str, Any]:
+def add_repo(
+    url: str, category: str | None = None, description: str | None = None
+) -> dict[str, Any]:
     """Add repo to tracking.
 
     Returns dict with repo info for JSON output.
@@ -176,7 +178,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Add a repo to tracking")
     parser.add_argument("url", help="GitHub repo URL")
     parser.add_argument("--category", help="Category (auto-detected if not provided)")
-    parser.add_argument("--description", help="Description (uses GitHub description if not provided)")
+    parser.add_argument(
+        "--description", help="Description (uses GitHub description if not provided)"
+    )
     args = parser.parse_args()
 
     result = add_repo(args.url, args.category, args.description)

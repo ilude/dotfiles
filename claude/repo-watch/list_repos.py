@@ -47,7 +47,13 @@ def get_latest_commit(owner: str, repo: str) -> dict[str, Any] | None:
     """Get latest commit info from GitHub API."""
     try:
         result = subprocess.run(
-            ["gh", "api", f"repos/{owner}/{repo}/commits/HEAD", "--jq", ".sha,.commit.committer.date"],
+            [
+                "gh",
+                "api",
+                f"repos/{owner}/{repo}/commits/HEAD",
+                "--jq",
+                ".sha,.commit.committer.date",
+            ],
             capture_output=True,
             text=True,
             check=True,
@@ -124,8 +130,10 @@ def list_repos(json_output: bool = False) -> None:
         if len(name) > 38:
             name = name[:35] + "..."
 
-        status = "NEW" if r["has_updates"] and not r["last_reviewed_commit"] else (
-            "UPDATES" if r["has_updates"] else "current"
+        status = (
+            "NEW"
+            if r["has_updates"] and not r["last_reviewed_commit"]
+            else ("UPDATES" if r["has_updates"] else "current")
         )
 
         last_review = format_date(r["last_reviewed_at"])

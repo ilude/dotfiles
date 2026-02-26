@@ -25,13 +25,11 @@ Environment variables:
   NOTIFY_ENABLED - Set to "false" to disable (optional)
 """
 
-import json
 import os
 import platform
 import shutil
 import subprocess
 import sys
-from pathlib import Path
 from typing import Optional
 
 HOOK_NAME = "notify"
@@ -50,7 +48,9 @@ def get_platform() -> str:
         return "macos"
     elif system == "Linux":
         # Check if we're in WSL
-        if os.path.exists("/proc/sys/fs/binfmt_misc/WSLInterop") or os.environ.get("WSL_DISTRO_NAME"):
+        if os.path.exists("/proc/sys/fs/binfmt_misc/WSLInterop") or os.environ.get(
+            "WSL_DISTRO_NAME"
+        ):
             return "wsl"
         return "linux"
     elif system == "Windows":

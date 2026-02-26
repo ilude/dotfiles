@@ -10,7 +10,6 @@ import sys
 from pathlib import Path
 
 import httpx
-
 from api_config import get_api_base, get_api_host
 from job_utils import poll_job
 from signing import RequestSigner
@@ -20,24 +19,13 @@ def main():
     parser = argparse.ArgumentParser(
         description="Reprocess content through the unified pipeline via menos API"
     )
+    parser.add_argument("content_id", help="Content ID to reprocess")
     parser.add_argument(
-        "content_id",
-        help="Content ID to reprocess"
+        "--force", action="store_true", help="Force reprocessing even if already completed"
     )
+    parser.add_argument("--wait", action="store_true", help="Poll job status until completion")
     parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Force reprocessing even if already completed"
-    )
-    parser.add_argument(
-        "--wait",
-        action="store_true",
-        help="Poll job status until completion"
-    )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Show all fields when polling completes"
+        "--verbose", action="store_true", help="Show all fields when polling completes"
     )
 
     args = parser.parse_args()

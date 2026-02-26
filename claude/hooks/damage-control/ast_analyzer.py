@@ -15,8 +15,9 @@ Decision contract:
 """
 
 import re
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from typing import Any, List, Optional
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
+from typing import Any, Optional
 
 _TREE_SITTER_AVAILABLE: Optional[bool] = None
 
@@ -100,7 +101,7 @@ class ASTAnalyzer:
             return text[1:-1]
         return text
 
-    def _extract_all_commands(self, root: Any, _depth: int = 0) -> List[str]:
+    def _extract_all_commands(self, root: Any, _depth: int = 0) -> list[str]:
         """Walk the full AST and collect text for every command node.
 
         Extracts commands from all nested contexts:
@@ -116,7 +117,7 @@ class ASTAnalyzer:
         if _depth > 3:
             return []
 
-        commands: List[str] = []
+        commands: list[str] = []
 
         def walk(node: Any) -> None:
             if node.type == "command" and node.children:
@@ -149,9 +150,7 @@ class ASTAnalyzer:
                                     parser = self._get_parser()
                                     inner_tree = parser.parse(inner.encode("utf-8"))
                                     commands.extend(
-                                        self._extract_all_commands(
-                                            inner_tree.root_node, _depth + 1
-                                        )
+                                        self._extract_all_commands(inner_tree.root_node, _depth + 1)
                                     )
                                 except Exception:
                                     pass
@@ -164,7 +163,7 @@ class ASTAnalyzer:
         return commands
 
     def _check_extracted_commands(
-        self, commands: List[str], compiled_patterns: List[Any]
+        self, commands: list[str], compiled_patterns: list[Any]
     ) -> Optional[dict]:
         """Run a list of extracted command strings through compiled regex patterns.
 
@@ -187,7 +186,7 @@ class ASTAnalyzer:
                     continue
         return None
 
-    def _get_compiled_patterns(self, config: dict) -> List[Any]:
+    def _get_compiled_patterns(self, config: dict) -> list[Any]:
         """Return compiled bash tool patterns from config.
 
         Prefers already-compiled patterns (bashToolPatterns_compiled) for
@@ -268,7 +267,10 @@ class ASTAnalyzer:
             if all_variables and self._has_unsafe_variable(all_variables):
                 return {
                     "decision": "ask",
-                    "reason": f"Variable expansion in {cmd_name} arguments: {', '.join(sorted(all_variables))}",
+                    "reason": (
+                        f"Variable expansion in {cmd_name} arguments: "
+                        f"{', '.join(sorted(all_variables))}"
+                    ),
                 }
 
             return None
@@ -288,7 +290,7 @@ class ASTAnalyzer:
         return walk(root)
 
     def _check_eval_source(
-        self, root: Any, config: dict, compiled_patterns: List[Any], depth: int = 0
+        self, root: Any, config: dict, compiled_patterns: list[Any], depth: int = 0
     ) -> Optional[dict]:
         """Detect eval/source commands and recursively analyse their arguments.
 
@@ -329,7 +331,10 @@ class ASTAnalyzer:
                     var_name = self._node_text(arg)
                     return {
                         "decision": "ask",
-                        "reason": f"{cmd_name} with dynamic argument {var_name} — value unknown at analysis time",
+                        "reason": (
+                            f"{cmd_name} with dynamic argument {var_name}"
+                            " \u2014 value unknown at analysis time"
+                        ),
                     }
 
                 # Check for variable expansions embedded inside the argument
@@ -337,7 +342,10 @@ class ASTAnalyzer:
                 if embedded_vars and self._has_unsafe_variable(embedded_vars):
                     return {
                         "decision": "ask",
-                        "reason": f"{cmd_name} with dynamic argument containing {', '.join(sorted(embedded_vars))}",
+                        "reason": (
+                            f"{cmd_name} with dynamic argument containing "
+                            f"{', '.join(sorted(embedded_vars))}"
+                        ),
                     }
 
                 # String literal argument for eval → recursively analyse content

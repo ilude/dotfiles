@@ -5,16 +5,14 @@
 # ///
 """Test integration of git semantic analysis with check_command."""
 
-import sys
-import os
+# Import the hook module
+import importlib.util
 from pathlib import Path
 
 import pytest
 
-# Import the hook module
-import importlib.util
-
 HOOK_DIR = Path(__file__).parent.parent
+
 
 def load_module(name: str, filename: str):
     """Load a module with dashes in its filename."""
@@ -23,6 +21,7 @@ def load_module(name: str, filename: str):
     spec.loader.exec_module(module)
     return module
 
+
 bash_tool = load_module("bash_tool", "bash-tool-damage-control.py")
 check_command = bash_tool.check_command
 
@@ -30,36 +29,39 @@ check_command = bash_tool.check_command
 @pytest.fixture
 def minimal_config():
     """Minimal test configuration."""
-    return {
-        "bashToolPatterns": [],
-        "zeroAccessPaths": [],
-        "readOnlyPaths": [],
-        "noDeletePaths": []
-    }
+    return {"bashToolPatterns": [], "zeroAccessPaths": [], "readOnlyPaths": [], "noDeletePaths": []}
 
 
 class TestGitSemanticIntegration:
     """Integration tests for git semantic analysis with check_command."""
 
-    @pytest.mark.parametrize("command,expected_dangerous,description", [
-        # Git semantic analysis should catch these (blocked or ask)
-        ('git checkout -- .', True, 'Git semantic: checkout with --'),
-        ('git push --force', True, 'Git semantic: force push'),
-        ('git reset --hard', True, 'Git semantic: hard reset'),
-        ('git clean -fd', True, 'Git semantic: clean with flags'),
-        # These should pass (allowed)
-        ('git checkout -b feature', False, 'Git semantic: safe checkout -b'),
-        ('git push --force-with-lease', False, 'Git semantic: safe force with lease'),
-        ('git status', False, 'Git semantic: safe status'),
-        # Shell unwrapping + git semantic
-        ('bash -c "git push --force"', True, 'Unwrapped git force push'),
-        ('sh -c "git reset --hard"', True, 'Unwrapped git hard reset'),
-    ])
-    def test_git_semantic_integration(self, minimal_config, command, expected_dangerous, description):
+    @pytest.mark.parametrize(
+        "command,expected_dangerous,description",
+        [
+            # Git semantic analysis should catch these (blocked or ask)
+            ("git checkout -- .", True, "Git semantic: checkout with --"),
+            ("git push --force", True, "Git semantic: force push"),
+            ("git reset --hard", True, "Git semantic: hard reset"),
+            ("git clean -fd", True, "Git semantic: clean with flags"),
+            # These should pass (allowed)
+            ("git checkout -b feature", False, "Git semantic: safe checkout -b"),
+            ("git push --force-with-lease", False, "Git semantic: safe force with lease"),
+            ("git status", False, "Git semantic: safe status"),
+            # Shell unwrapping + git semantic
+            ('bash -c "git push --force"', True, "Unwrapped git force push"),
+            ('sh -c "git reset --hard"', True, "Unwrapped git hard reset"),
+        ],
+    )
+    def test_git_semantic_integration(
+        self, minimal_config, command, expected_dangerous, description
+    ):
         """Test that git semantic analysis integrates with check_command."""
         is_blocked, should_ask, reason, pattern, unwrapped, semantic = check_command(
             command, minimal_config
         )
         # Dangerous = blocked OR requires confirmation (ask)
         is_dangerous = is_blocked or should_ask
-        assert is_dangerous == expected_dangerous, f"{description}: expected dangerous={expected_dangerous}, got blocked={is_blocked}, ask={should_ask}"
+        assert is_dangerous == expected_dangerous, (
+            f"{description}: expected dangerous={expected_dangerous}, "
+            f"got blocked={is_blocked}, ask={should_ask}"
+        )

@@ -24,9 +24,8 @@ import os
 import re
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 import yaml
 
@@ -44,7 +43,7 @@ def get_config_path() -> Path:
     return script_dir / "sequence-patterns.yaml"
 
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """Load sequence detection configuration."""
     config_path = get_config_path()
 
@@ -58,11 +57,11 @@ def load_config() -> Dict[str, Any]:
             },
         }
 
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         return yaml.safe_load(f) or {}
 
 
-def get_state_path(config: Dict[str, Any]) -> Path:
+def get_state_path(config: dict[str, Any]) -> Path:
     """Get path to history state file."""
     cfg = config.get("config", {})
     state_file = cfg.get("state_file", "state/sequence-history.json")
@@ -77,7 +76,7 @@ def get_state_path(config: Dict[str, Any]) -> Path:
 # ============================================================================
 
 
-def load_history(config: Dict[str, Any]) -> List[Dict[str, Any]]:
+def load_history(config: dict[str, Any]) -> list[dict[str, Any]]:
     """Load tool invocation history from state file."""
     state_path = get_state_path(config)
 
@@ -85,14 +84,14 @@ def load_history(config: Dict[str, Any]) -> List[Dict[str, Any]]:
         return []
 
     try:
-        with open(state_path, "r") as f:
+        with open(state_path) as f:
             data = json.load(f)
             return data.get("history", [])
-    except (json.JSONDecodeError, IOError):
+    except (OSError, json.JSONDecodeError):
         return []
 
 
-def save_history(config: Dict[str, Any], history: List[Dict[str, Any]]) -> None:
+def save_history(config: dict[str, Any], history: list[dict[str, Any]]) -> None:
     """Save tool invocation history to state file."""
     state_path = get_state_path(config)
 
@@ -102,11 +101,11 @@ def save_history(config: Dict[str, Any], history: List[Dict[str, Any]]) -> None:
     try:
         with open(state_path, "w") as f:
             json.dump({"history": history, "updated": time.time()}, f, indent=2)
-    except IOError as e:
+    except OSError as e:
         print(f"Warning: Failed to save sequence history: {e}", file=sys.stderr)
 
 
-def cleanup_history(config: Dict[str, Any], history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def cleanup_history(config: dict[str, Any], history: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Remove expired and excess history entries."""
     cfg = config.get("config", {})
     expiry_seconds = cfg.get("history_expiry_seconds", DEFAULT_EXPIRY_SECONDS)
@@ -116,9 +115,7 @@ def cleanup_history(config: Dict[str, Any], history: List[Dict[str, Any]]) -> Li
 
     # Remove expired entries
     history = [
-        entry
-        for entry in history
-        if current_time - entry.get("timestamp", 0) < expiry_seconds
+        entry for entry in history if current_time - entry.get("timestamp", 0) < expiry_seconds
     ]
 
     # Trim to max entries (keep most recent)
@@ -133,9 +130,7 @@ def cleanup_history(config: Dict[str, Any], history: List[Dict[str, Any]]) -> Li
 # ============================================================================
 
 
-def matches_step(
-    entry: Dict[str, Any], step: Dict[str, Any]
-) -> bool:
+def matches_step(entry: dict[str, Any], step: dict[str, Any]) -> bool:
     """Check if a history entry matches a sequence step."""
     # Check tool type
     if entry.get("tool") != step.get("tool"):
@@ -170,10 +165,10 @@ def matches_step(
 
 
 def find_sequence_match(
-    history: List[Dict[str, Any]],
-    current_entry: Dict[str, Any],
-    sequence: Dict[str, Any],
-) -> Optional[Dict[str, Any]]:
+    history: list[dict[str, Any]],
+    current_entry: dict[str, Any],
+    sequence: dict[str, Any],
+) -> Optional[dict[str, Any]]:
     """Check if current entry completes a dangerous sequence.
 
     Args:
@@ -242,8 +237,8 @@ def find_sequence_match(
 
 def record_tool_use(
     tool: str,
-    input_data: Dict[str, Any],
-    config: Optional[Dict[str, Any]] = None,
+    input_data: dict[str, Any],
+    config: Optional[dict[str, Any]] = None,
 ) -> None:
     """Record a tool invocation in history.
 
@@ -271,9 +266,9 @@ def record_tool_use(
 
 def check_sequences(
     tool: str,
-    input_data: Dict[str, Any],
-    config: Optional[Dict[str, Any]] = None,
-) -> Tuple[bool, bool, str]:
+    input_data: dict[str, Any],
+    config: Optional[dict[str, Any]] = None,
+) -> tuple[bool, bool, str]:
     """Check if current tool invocation completes a dangerous sequence.
 
     Args:
@@ -318,7 +313,7 @@ def check_sequences(
     return False, False, ""
 
 
-def get_history(config: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+def get_history(config: Optional[dict[str, Any]] = None) -> list[dict[str, Any]]:
     """Get current tool invocation history.
 
     Returns:
@@ -331,7 +326,7 @@ def get_history(config: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]
     return cleanup_history(config, history)
 
 
-def clear_history(config: Optional[Dict[str, Any]] = None) -> None:
+def clear_history(config: Optional[dict[str, Any]] = None) -> None:
     """Clear tool invocation history."""
     if config is None:
         config = load_config()
@@ -373,7 +368,7 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    def build_input(args) -> Dict[str, Any]:
+    def build_input(args) -> dict[str, Any]:
         input_data = {}
         if args.file:
             input_data["file_path"] = args.file

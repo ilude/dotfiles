@@ -8,10 +8,8 @@ dependencies = [
 ///
 """
 
-import os
 import shutil
 import subprocess
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -142,9 +140,7 @@ def test_non_home_path_with_space_unchanged():
 def test_deeply_nested_path_under_home_with_space():
     """Non-WSL: deeply nested under home with space → ~/work/client projects/web app"""
     home = "/home/Mike Smith"
-    result = normalize_prompt_path(
-        f"{home}/work/client projects/web app", home, is_wsl=False
-    )
+    result = normalize_prompt_path(f"{home}/work/client projects/web app", home, is_wsl=False)
     assert result == "~/work/client projects/web app"
 
 
@@ -196,12 +192,15 @@ echo "$PS1"
         text=True,
         cwd=str(tmpdir),
     )
-    # PS1 should be in the output with the format: \[\e[32m\]path\[\e[0m\]\[\e[33m\][\[\e[36m\]branch\[\e[33m\]]\[\e[0m\]>
+    # PS1 should be in the output with the format:
+    # \[\e[32m\]path\[\e[0m\]\[\e[33m\][\[\e[36m\]branch\[\e[33m\]]\[\e[0m\]>
     # Look for the literal escape sequences that were echoed
     assert r"\[" in result.stdout, f"Expected PS1 output, got: {result.stdout}"
     # Check that branch info is present (cyan color code "36m" indicates branch)
     assert "36m" in result.stdout, f"Expected branch color code in PS1, got: {result.stdout}"
-    assert "[" in result.stdout and "]" in result.stdout, f"Expected brackets in PS1, got: {result.stdout}"
+    assert "[" in result.stdout and "]" in result.stdout, (
+        f"Expected brackets in PS1, got: {result.stdout}"
+    )
 
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="bash not available")
@@ -228,4 +227,6 @@ echo "$PS1"
     # PS1 without git branch should be: \[\e[32m\]path\[\e[0m\]>
     # Should NOT contain the cyan color code "36m" which indicates branch info
     assert r"\[" in result.stdout, f"Expected PS1 output, got: {result.stdout}"
-    assert "36m" not in result.stdout, f"Unexpected branch color code in PS1 outside repo, got: {result.stdout}"
+    assert "36m" not in result.stdout, (
+        f"Unexpected branch color code in PS1 outside repo, got: {result.stdout}"
+    )

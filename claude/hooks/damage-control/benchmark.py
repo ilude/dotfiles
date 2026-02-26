@@ -15,17 +15,16 @@ Output:
 """
 
 import argparse
-import re
 import os
+import re
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Tuple
 from statistics import median, quantiles
+from typing import Any
 
 import yaml
-
 
 # ============================================================================
 # PATTERN MATCHING LOGIC (from bash-tool-damage-control.py)
@@ -57,7 +56,7 @@ def glob_to_regex(glob_pattern: str) -> str:
 # ============================================================================
 
 
-def compile_regex_patterns(patterns: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def compile_regex_patterns(patterns: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Pre-compile regex patterns from bashToolPatterns config."""
     compiled = []
     for idx, item in enumerate(patterns):
@@ -76,7 +75,7 @@ def compile_regex_patterns(patterns: List[Dict[str, Any]]) -> List[Dict[str, Any
     return compiled
 
 
-def preprocess_path_list(paths: List[str]) -> List[Dict[str, Any]]:
+def preprocess_path_list(paths: list[str]) -> list[dict[str, Any]]:
     """Pre-process path list for fast matching."""
     processed = []
     for path in paths:
@@ -108,7 +107,7 @@ def preprocess_path_list(paths: List[str]) -> List[Dict[str, Any]]:
     return processed
 
 
-def compile_config(config: Dict[str, Any]) -> Dict[str, Any]:
+def compile_config(config: dict[str, Any]) -> dict[str, Any]:
     """Compile configuration for fast pattern matching."""
     compiled = config.copy()
 
@@ -182,10 +181,10 @@ NO_DELETE_BLOCKED = DELETE_PATTERNS
 
 def check_path_patterns(
     command: str,
-    path_obj: Dict[str, Any],
-    patterns: List[Tuple[str, str]],
+    path_obj: dict[str, Any],
+    patterns: list[tuple[str, str]],
     path_type: str,
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """Check command against a list of patterns for a specific path (optimized version)."""
     path_str = path_obj["original"]
 
@@ -199,9 +198,7 @@ def check_path_patterns(
         for pattern_template, operation in patterns:
             try:
                 cmd_prefix = pattern_template.replace("{path}", "")
-                if cmd_prefix and re.search(
-                    cmd_prefix + glob_regex_str, command, re.IGNORECASE
-                ):
+                if cmd_prefix and re.search(cmd_prefix + glob_regex_str, command, re.IGNORECASE):
                     return (
                         True,
                         f"Blocked: {operation} operation on {path_type} {path_str}",
@@ -219,9 +216,7 @@ def check_path_patterns(
             pattern_expanded = pattern_template.replace("{path}", escaped_expanded)
             pattern_original = pattern_template.replace("{path}", escaped_original)
             try:
-                if re.search(pattern_expanded, command) or re.search(
-                    pattern_original, command
-                ):
+                if re.search(pattern_expanded, command) or re.search(pattern_original, command):
                     return (
                         True,
                         f"Blocked: {operation} operation on {path_type} {path_str}",
@@ -232,7 +227,7 @@ def check_path_patterns(
     return False, ""
 
 
-def check_command(command: str, config: Dict[str, Any]) -> Tuple[bool, bool, str]:
+def check_command(command: str, config: dict[str, Any]) -> tuple[bool, bool, str]:
     """Check if command should be blocked or requires confirmation (optimized version).
 
     Returns: (blocked, ask, reason)
@@ -467,7 +462,7 @@ FILE_PATHS = [
 # ============================================================================
 
 
-def load_patterns() -> Dict[str, Any]:
+def load_patterns() -> dict[str, Any]:
     """Load patterns.yaml from the same directory."""
     script_dir = Path(__file__).parent
     config_path = script_dir / "patterns.yaml"
@@ -476,13 +471,13 @@ def load_patterns() -> Dict[str, Any]:
         print(f"Error: patterns.yaml not found at {config_path}", file=sys.stderr)
         sys.exit(1)
 
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         return yaml.safe_load(f) or {}
 
 
 def run_benchmark(
-    config: Dict[str, Any], iterations: int = 1000, use_compiled: bool = False
-) -> Dict[str, Any]:
+    config: dict[str, Any], iterations: int = 1000, use_compiled: bool = False
+) -> dict[str, Any]:
     """Run benchmark on bash commands and path patterns.
 
     Args:
@@ -524,7 +519,7 @@ def run_benchmark(
             path_times.append((end - start) * 1000)
 
     # Calculate statistics
-    def calc_stats(times: List[float]) -> Dict[str, float]:
+    def calc_stats(times: list[float]) -> dict[str, float]:
         times.sort()
         return {
             "count": len(times),
@@ -542,7 +537,7 @@ def run_benchmark(
     }
 
 
-def format_stats(stats: Dict[str, float]) -> str:
+def format_stats(stats: dict[str, float]) -> str:
     """Format statistics for display."""
     return (
         f"  Count: {stats['count']}\n"
@@ -555,9 +550,7 @@ def format_stats(stats: Dict[str, float]) -> str:
     )
 
 
-def append_to_benchmarks(
-    config: Dict[str, Any], stats: Dict[str, Any], note: str = ""
-) -> None:
+def append_to_benchmarks(config: dict[str, Any], stats: dict[str, Any], note: str = "") -> None:
     """Append benchmark results to BENCHMARKS.md."""
     script_dir = Path(__file__).parent
     benchmarks_path = script_dir / "BENCHMARKS.md"
@@ -567,10 +560,12 @@ def append_to_benchmarks(
         with open(benchmarks_path, "w") as f:
             f.write("# Damage Control Benchmark History\n\n")
             f.write(
-                "Track pattern matching performance over time. Run `uv run benchmark.py` to add entries.\n\n"
+                "Track pattern matching performance over time. "
+                "Run `uv run benchmark.py` to add entries.\n\n"
             )
             f.write(
-                "| Date | Bash Patterns | Path Patterns | Iterations | Avg (ms) | P50 (ms) | P95 (ms) | P99 (ms) | Notes |\n"
+                "| Date | Bash Patterns | Path Patterns | Iterations"
+                " | Avg (ms) | P50 (ms) | P95 (ms) | P99 (ms) | Notes |\n"
             )
             f.write(
                 "|------|---------------|---------------|------------|----------|----------|----------|----------|-------|\n"
@@ -637,7 +632,7 @@ AST_ANALYSIS_COMMANDS = [
 ]
 
 
-def run_ast_benchmark(config: Dict[str, Any], iterations: int = 100) -> Dict[str, Any]:
+def run_ast_benchmark(config: dict[str, Any], iterations: int = 100) -> dict[str, Any]:
     """Benchmark AST analysis: regex-only vs regex+AST per command.
 
     Returns per-category timing dicts with avg ms for safe commands
@@ -676,7 +671,7 @@ def run_ast_benchmark(config: Dict[str, Any], iterations: int = 100) -> Dict[str
         },
     }
 
-    def time_commands(commands: List[str], n: int) -> Dict[str, float]:
+    def time_commands(commands: list[str], n: int) -> dict[str, float]:
         times = []
         for _ in range(n):
             for cmd in commands:
@@ -697,7 +692,7 @@ def run_ast_benchmark(config: Dict[str, Any], iterations: int = 100) -> Dict[str
     }
 
 
-def format_ast_stats(label: str, stats: Dict[str, float]) -> str:
+def format_ast_stats(label: str, stats: dict[str, float]) -> str:
     return (
         f"  {label}: count={stats['count']}, "
         f"avg={stats['avg']:.4f}ms, "
@@ -712,9 +707,7 @@ def format_ast_stats(label: str, stats: Dict[str, float]) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Benchmark damage-control pattern matching"
-    )
+    parser = argparse.ArgumentParser(description="Benchmark damage-control pattern matching")
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -752,9 +745,7 @@ def main() -> None:
     mode = "compiled" if args.compiled else "raw"
     print(f"Patterns loaded: {bash_count} bash patterns, {path_count} path patterns")
     print(f"Mode: {mode}")
-    print(
-        f"Test corpus: {len(BASH_COMMANDS)} bash commands, {len(FILE_PATHS)} file paths"
-    )
+    print(f"Test corpus: {len(BASH_COMMANDS)} bash commands, {len(FILE_PATHS)} file paths")
     print(f"Running {args.iterations} iterations...\n")
 
     stats = run_benchmark(config, args.iterations, use_compiled=args.compiled)
@@ -774,11 +765,7 @@ def main() -> None:
         print(format_ast_stats("Analysis cmds (full AST)", ast_stats["analysis"]))
         safe_avg = ast_stats["safe"]["avg"]
         analysis_avg = ast_stats["analysis"]["avg"]
-        print(
-            f"  AST overhead ratio: {analysis_avg / safe_avg:.1f}x"
-            if safe_avg > 0
-            else ""
-        )
+        print(f"  AST overhead ratio: {analysis_avg / safe_avg:.1f}x" if safe_avg > 0 else "")
 
     if not args.dry_run:
         append_to_benchmarks(config, stats, args.note)

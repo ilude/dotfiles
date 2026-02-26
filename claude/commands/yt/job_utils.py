@@ -4,7 +4,6 @@ import sys
 import time
 
 import httpx
-
 from signing import RequestSigner
 
 TERMINAL_STATUSES = {"completed", "failed", "cancelled"}

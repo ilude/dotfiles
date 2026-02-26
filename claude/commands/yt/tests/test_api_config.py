@@ -4,7 +4,6 @@ import os
 from unittest.mock import patch
 
 import pytest
-
 from api_config import extract_video_id, get_api_base, get_api_host, load_secrets_file
 
 
@@ -69,7 +68,7 @@ class TestLoadSecretsFile:
         dotfiles = tmp_path / ".dotfiles"
         dotfiles.mkdir()
         secrets = dotfiles / ".env"
-        secrets.write_text('QUOTED_VAR="quoted_value"\nSINGLE_Q=\'single\'\n')
+        secrets.write_text("QUOTED_VAR=\"quoted_value\"\nSINGLE_Q='single'\n")
 
         with patch("api_config.Path.home", return_value=tmp_path):
             with patch.dict(os.environ, {}, clear=True):

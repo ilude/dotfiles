@@ -3,22 +3,15 @@
 Tests the multi-step attack pattern detection in sequence-detector.py.
 """
 
-import json
-import sys
-import time
-from pathlib import Path
-from unittest.mock import patch, MagicMock
-import tempfile
-
-import pytest
-import yaml
-
 # Import with hyphenated filename workaround
 import importlib.util
+import time
+from pathlib import Path
+
+import pytest
 
 spec = importlib.util.spec_from_file_location(
-    "sequence_detector",
-    Path(__file__).parent.parent / "sequence-detector.py"
+    "sequence_detector", Path(__file__).parent.parent / "sequence-detector.py"
 )
 sequence_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sequence_module)
@@ -48,6 +41,7 @@ def temp_state_dir(tmp_path, monkeypatch):
 
     # Mock expanduser to use temp directory
     import os.path as path_module
+
     original_expanduser = path_module.expanduser
 
     def mock_expanduser(path_str):
@@ -255,11 +249,13 @@ class TestSequenceMatching:
         ]
         # Pad history to push the read outside the window
         for i in range(10):
-            history.append({
-                "tool": "Bash",
-                "input": {"command": f"echo {i}"},
-                "timestamp": time.time() - (90 - i),
-            })
+            history.append(
+                {
+                    "tool": "Bash",
+                    "input": {"command": f"echo {i}"},
+                    "timestamp": time.time() - (90 - i),
+                }
+            )
 
         current = {
             "tool": "Bash",
@@ -450,7 +446,11 @@ class TestRealSequences:
 
         assert should_ask
         # The reason may be generic "sensitive file" or specific "terraform"
-        assert "sensitive" in reason.lower() or "terraform" in reason.lower() or "network" in reason.lower()
+        assert (
+            "sensitive" in reason.lower()
+            or "terraform" in reason.lower()
+            or "network" in reason.lower()
+        )
 
 
 # ============================================================================
@@ -465,9 +465,7 @@ class TestEdgeCases:
         """Should handle empty history gracefully."""
         config = load_config()
 
-        should_block, should_ask, reason = check_sequences(
-            "Bash", {"command": "ls"}, config
-        )
+        should_block, should_ask, reason = check_sequences("Bash", {"command": "ls"}, config)
 
         assert not should_block
         assert not should_ask

@@ -7,7 +7,6 @@ from datetime import datetime
 from pathlib import Path
 
 import httpx
-
 from api_config import get_api_base, get_api_host
 from signing import RequestSigner
 
@@ -26,18 +25,23 @@ def _fmt_date(iso_str: str | None) -> str:
 def main():
     parser = argparse.ArgumentParser(description="List recently ingested YouTube videos")
     parser.add_argument(
-        "limit", nargs="?", type=int, default=10,
+        "limit",
+        nargs="?",
+        type=int,
+        default=10,
         help="Number of videos to show (default: 10, max: 100)",
     )
 
     # Tag filtering flags
     tag_group = parser.add_mutually_exclusive_group()
     tag_group.add_argument(
-        "--all", action="store_true",
+        "--all",
+        action="store_true",
         help="Include test-tagged content (default: test content excluded)",
     )
     tag_group.add_argument(
-        "--test", action="store_true",
+        "--test",
+        action="store_true",
         help="Show only test-tagged content",
     )
 

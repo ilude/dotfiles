@@ -11,7 +11,6 @@ import json
 import re
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Dict, List, Tuple
 
 
 class PermissionRequest:
@@ -33,7 +32,7 @@ class PermissionRequest:
         return self.full_pattern == other.full_pattern
 
 
-def find_debug_logs(claude_dir: Path) -> List[Path]:
+def find_debug_logs(claude_dir: Path) -> list[Path]:
     """Find all debug log files in ~/.claude/debug/ directory."""
     debug_dir = claude_dir / "debug"
 
@@ -46,7 +45,7 @@ def find_debug_logs(claude_dir: Path) -> List[Path]:
     return log_files
 
 
-def extract_permissions_from_log(log_file: Path) -> List[PermissionRequest]:
+def extract_permissions_from_log(log_file: Path) -> list[PermissionRequest]:
     """
     Extract permission requests from a single log file.
 
@@ -64,7 +63,7 @@ def extract_permissions_from_log(log_file: Path) -> List[PermissionRequest]:
     permissions = []
 
     try:
-        with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
+        with open(log_file, encoding="utf-8", errors="ignore") as f:
             content = f.read()
 
         # Pattern to find permission suggestion blocks
@@ -72,7 +71,7 @@ def extract_permissions_from_log(log_file: Path) -> List[PermissionRequest]:
         pattern = r'\[DEBUG\] Permission suggestions for (\w+): \[\s*\{[^}]*"rules":\s*\[([^\]]*)\]'
 
         for match in re.finditer(pattern, content, re.DOTALL):
-            tool_type = match.group(1)
+            match.group(1)
             rules_json = match.group(2)
 
             # Extract individual rule objects
@@ -91,7 +90,7 @@ def extract_permissions_from_log(log_file: Path) -> List[PermissionRequest]:
     return permissions
 
 
-def extract_all_permissions(log_files: List[Path]) -> List[PermissionRequest]:
+def extract_all_permissions(log_files: list[Path]) -> list[PermissionRequest]:
     """Extract permissions from all log files."""
     all_permissions = []
 
@@ -103,7 +102,7 @@ def extract_all_permissions(log_files: List[Path]) -> List[PermissionRequest]:
     return all_permissions
 
 
-def analyze_patterns(permissions: List[PermissionRequest]) -> Dict[str, Dict]:
+def analyze_patterns(permissions: list[PermissionRequest]) -> dict[str, dict]:
     """
     Analyze permission patterns and group by tool and command.
 
@@ -119,27 +118,24 @@ def analyze_patterns(permissions: List[PermissionRequest]) -> Dict[str, Dict]:
             ...
         }
     """
-    tool_stats = defaultdict(lambda: {
-        'commands': Counter(),
-        'full_patterns': Counter(),
-        'total': 0,
-        'unique': 0
-    })
+    tool_stats = defaultdict(
+        lambda: {"commands": Counter(), "full_patterns": Counter(), "total": 0, "unique": 0}
+    )
 
     for perm in permissions:
         # Store full pattern
-        tool_stats[perm.tool_name]['full_patterns'][perm.rule_content] += 1
+        tool_stats[perm.tool_name]["full_patterns"][perm.rule_content] += 1
 
         # Extract command from rule_content (before the colon)
         # e.g., "git add:*" -> "git add"
-        command = perm.rule_content.split(':')[0] if ':' in perm.rule_content else perm.rule_content
+        command = perm.rule_content.split(":")[0] if ":" in perm.rule_content else perm.rule_content
 
-        tool_stats[perm.tool_name]['commands'][command] += 1
-        tool_stats[perm.tool_name]['total'] += 1
+        tool_stats[perm.tool_name]["commands"][command] += 1
+        tool_stats[perm.tool_name]["total"] += 1
 
     # Calculate unique counts
     for tool in tool_stats:
-        tool_stats[tool]['unique'] = len(tool_stats[tool]['commands'])
+        tool_stats[tool]["unique"] = len(tool_stats[tool]["commands"])
 
     return dict(tool_stats)
 
@@ -153,41 +149,89 @@ def get_safety_classification(pattern: str) -> str:
     """
     # Remove tool name to check command
     command = pattern.lower()
-    if '(' in command:
-        command = command.split('(')[1].rstrip(')')
+    if "(" in command:
+        command = command.split("(")[1].rstrip(")")
 
     # Dangerous patterns - never auto-approve
     dangerous = [
-        'git commit', 'git push', 'git rebase', 'git reset --hard',
-        'git push --force', 'rm ', 'rmdir', 'del ', 'sudo ',
-        'git rm -rf', 'git clean', 'docker rm', 'docker rmi',
-        'docker system prune', 'npm uninstall', 'pip uninstall',
-        'chown', 'chgrp', 'systemctl', 'service '
+        "git commit",
+        "git push",
+        "git rebase",
+        "git reset --hard",
+        "git push --force",
+        "rm ",
+        "rmdir",
+        "del ",
+        "sudo ",
+        "git rm -rf",
+        "git clean",
+        "docker rm",
+        "docker rmi",
+        "docker system prune",
+        "npm uninstall",
+        "pip uninstall",
+        "chown",
+        "chgrp",
+        "systemctl",
+        "service ",
     ]
 
     for d in dangerous:
         if d in command:
-            return 'dangerous'
+            return "dangerous"
 
     # Safe patterns - read-only operations
     safe = [
-        'ls', 'pwd', 'echo', 'whoami', 'date', 'uname', 'which', 'where',
-        'type', 'cat', 'head', 'tail', 'less', 'more', 'wc', 'grep',
-        'find', 'git status', 'git diff', 'git log', 'git show', 'git branch',
-        'docker ps', 'docker images', 'docker inspect', 'docker version',
-        'npm list', 'yarn list', 'pip list', 'uv pip list', 'env', 'printenv',
-        'history', 'jobs', 'ps', 'python --version', 'node --version'
+        "ls",
+        "pwd",
+        "echo",
+        "whoami",
+        "date",
+        "uname",
+        "which",
+        "where",
+        "type",
+        "cat",
+        "head",
+        "tail",
+        "less",
+        "more",
+        "wc",
+        "grep",
+        "find",
+        "git status",
+        "git diff",
+        "git log",
+        "git show",
+        "git branch",
+        "docker ps",
+        "docker images",
+        "docker inspect",
+        "docker version",
+        "npm list",
+        "yarn list",
+        "pip list",
+        "uv pip list",
+        "env",
+        "printenv",
+        "history",
+        "jobs",
+        "ps",
+        "python --version",
+        "node --version",
     ]
 
     for s in safe:
         if s in command:
-            return 'safe'
+            return "safe"
 
     # Everything else is risky
-    return 'risky'
+    return "risky"
 
 
-def suggest_wildcards(tool_stats: Dict[str, Dict], min_count: int = 3) -> List[Tuple[str, int, str, str]]:
+def suggest_wildcards(
+    tool_stats: dict[str, dict], min_count: int = 3
+) -> list[tuple[str, int, str, str]]:
     """
     Suggest wildcard patterns based on usage frequency.
 
@@ -197,10 +241,10 @@ def suggest_wildcards(tool_stats: Dict[str, Dict], min_count: int = 3) -> List[T
     suggestions = []
 
     for tool_name, stats in tool_stats.items():
-        full_patterns = stats['full_patterns']
-        commands = stats['commands']
-        total = stats['total']
-        unique = stats['unique']
+        full_patterns = stats["full_patterns"]
+        stats["commands"]
+        stats["total"]
+        stats["unique"]
 
         # Check each full pattern that was used
         for pattern, count in full_patterns.items():
@@ -209,38 +253,33 @@ def suggest_wildcards(tool_stats: Dict[str, Dict], min_count: int = 3) -> List[T
                 safety = get_safety_classification(full_pattern)
 
                 # Only suggest safe and risky patterns, never dangerous
-                if safety != 'dangerous':
-                    suggestions.append((
-                        full_pattern,
-                        count,
-                        f"Used {count} times",
-                        safety
-                    ))
+                if safety != "dangerous":
+                    suggestions.append((full_pattern, count, f"Used {count} times", safety))
 
     # Sort by count descending
     suggestions.sort(key=lambda x: x[1], reverse=True)
     return suggestions
 
 
-def print_statistics(tool_stats: Dict[str, Dict]):
+def print_statistics(tool_stats: dict[str, dict]):
     """Print usage statistics by tool."""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("PERMISSION USAGE STATISTICS")
-    print("="*70)
+    print("=" * 70)
 
     for tool_name in sorted(tool_stats.keys()):
         stats = tool_stats[tool_name]
         print(f"\n{tool_name}:")
         print(f"  Total requests: {stats['total']}")
         print(f"  Unique commands: {stats['unique']}")
-        print(f"  Top commands:")
+        print("  Top commands:")
 
-        for command, count in stats['commands'].most_common(10):
+        for command, count in stats["commands"].most_common(10):
             print(f"    {command:40s} {count:>3d}x")
 
-        if len(stats['full_patterns']) > 0:
-            print(f"  Full patterns:")
-            for pattern, count in stats['full_patterns'].most_common(10):
+        if len(stats["full_patterns"]) > 0:
+            print("  Full patterns:")
+            for pattern, count in stats["full_patterns"].most_common(10):
                 print(f"    {pattern:40s} {count:>3d}x")
 
 
@@ -251,21 +290,21 @@ def load_existing_settings(claude_dir: Path) -> set:
 
     if settings_file.exists():
         try:
-            with open(settings_file, 'r') as f:
+            with open(settings_file) as f:
                 settings = json.load(f)
-                if 'permissions' in settings and 'allow' in settings['permissions']:
-                    existing = set(settings['permissions']['allow'])
+                if "permissions" in settings and "allow" in settings["permissions"]:
+                    existing = set(settings["permissions"]["allow"])
         except Exception as e:
             print(f"Warning: Could not load existing settings: {e}")
 
     return existing
 
 
-def print_suggestions(suggestions: List[Tuple[str, int, str, str]], existing_permissions: set):
+def print_suggestions(suggestions: list[tuple[str, int, str, str]], existing_permissions: set):
     """Print wildcard pattern suggestions."""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("SUGGESTED WILDCARD PATTERNS")
-    print("="*70)
+    print("=" * 70)
 
     # Filter out already existing permissions
     new_suggestions = [(p, c, r, s) for p, c, r, s in suggestions if p not in existing_permissions]
@@ -275,8 +314,8 @@ def print_suggestions(suggestions: List[Tuple[str, int, str, str]], existing_per
         return
 
     # Group by safety level
-    safe_patterns = [(p, c, r) for p, c, r, s in new_suggestions if s == 'safe']
-    risky_patterns = [(p, c, r) for p, c, r, s in new_suggestions if s == 'risky']
+    safe_patterns = [(p, c, r) for p, c, r, s in new_suggestions if s == "safe"]
+    risky_patterns = [(p, c, r) for p, c, r, s in new_suggestions if s == "risky"]
 
     if safe_patterns:
         print("\n[SAFE] patterns (read-only, no side effects):")
@@ -292,12 +331,12 @@ def print_suggestions(suggestions: List[Tuple[str, int, str, str]], existing_per
         for pattern, count, reason in risky_patterns:
             print(f'      "{pattern}",  // {reason} - REVIEW')
 
-    print("\n" + "-"*70)
+    print("\n" + "-" * 70)
     print("Note: Patterns for git commit/push are excluded (require manual approval)")
-    print("-"*70)
+    print("-" * 70)
 
 
-def export_json(tool_stats: Dict, suggestions: List[Tuple], output_file: Path):
+def export_json(tool_stats: dict, suggestions: list[tuple], output_file: Path):
     """Export analysis results to JSON file."""
     data = {
         "statistics": {
@@ -305,22 +344,17 @@ def export_json(tool_stats: Dict, suggestions: List[Tuple], output_file: Path):
                 "total": stats["total"],
                 "unique": stats["unique"],
                 "commands": dict(stats["commands"]),
-                "patterns": dict(stats["full_patterns"])
+                "patterns": dict(stats["full_patterns"]),
             }
             for tool, stats in tool_stats.items()
         },
         "suggestions": [
-            {
-                "pattern": pattern,
-                "count": count,
-                "reason": reason,
-                "safety": safety
-            }
+            {"pattern": pattern, "count": count, "reason": reason, "safety": safety}
             for pattern, count, reason, safety in suggestions
-        ]
+        ],
     }
 
-    with open(output_file, 'w') as f:
+    with open(output_file, "w") as f:
         json.dump(data, f, indent=2)
 
     print(f"\nResults exported to: {output_file}")
@@ -344,27 +378,23 @@ Examples:
 
   # Use higher threshold for suggestions
   python3 permission-analyzer.py --min-count 5
-        """
+        """,
     )
 
     parser.add_argument(
-        '--claude-dir',
+        "--claude-dir",
         type=Path,
-        default=Path.home() / '.claude',
-        help='Path to .claude directory (default: ~/.claude)'
+        default=Path.home() / ".claude",
+        help="Path to .claude directory (default: ~/.claude)",
     )
 
-    parser.add_argument(
-        '--json',
-        type=Path,
-        help='Export results to JSON file'
-    )
+    parser.add_argument("--json", type=Path, help="Export results to JSON file")
 
     parser.add_argument(
-        '--min-count',
+        "--min-count",
         type=int,
         default=3,
-        help='Minimum usage count for wildcard suggestions (default: 3)'
+        help="Minimum usage count for wildcard suggestions (default: 3)",
     )
 
     args = parser.parse_args()
@@ -407,5 +437,5 @@ Examples:
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     exit(main())

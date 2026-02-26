@@ -10,7 +10,6 @@ from typing import Optional
 
 import pytest
 
-
 HOOK_DIR = Path(__file__).parent.parent
 HOOK_PATH = HOOK_DIR / "path-normalization-hook.py"
 

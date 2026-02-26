@@ -27,9 +27,8 @@ import os
 import re
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 import yaml
 
@@ -49,7 +48,7 @@ def get_config_path() -> Path:
     return script_dir / "taint-config.yaml"
 
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """Load taint tracking configuration."""
     config_path = get_config_path()
 
@@ -64,11 +63,11 @@ def load_config() -> Dict[str, Any]:
             },
         }
 
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         return yaml.safe_load(f) or {}
 
 
-def get_state_path(config: Dict[str, Any]) -> Path:
+def get_state_path(config: dict[str, Any]) -> Path:
     """Get path to session state file."""
     session_config = config.get("session", {})
     state_file = session_config.get("state_file", "state/taint-session.json")
@@ -83,7 +82,7 @@ def get_state_path(config: Dict[str, Any]) -> Path:
 # ============================================================================
 
 
-def load_state(config: Dict[str, Any]) -> Dict[str, Any]:
+def load_state(config: dict[str, Any]) -> dict[str, Any]:
     """Load session state from file."""
     state_path = get_state_path(config)
 
@@ -91,13 +90,13 @@ def load_state(config: Dict[str, Any]) -> Dict[str, Any]:
         return {"tainted_files": {}, "last_cleanup": time.time()}
 
     try:
-        with open(state_path, "r") as f:
+        with open(state_path) as f:
             return json.load(f)
-    except (json.JSONDecodeError, IOError):
+    except (OSError, json.JSONDecodeError):
         return {"tainted_files": {}, "last_cleanup": time.time()}
 
 
-def save_state(config: Dict[str, Any], state: Dict[str, Any]) -> None:
+def save_state(config: dict[str, Any], state: dict[str, Any]) -> None:
     """Save session state to file."""
     state_path = get_state_path(config)
 
@@ -107,11 +106,11 @@ def save_state(config: Dict[str, Any], state: Dict[str, Any]) -> None:
     try:
         with open(state_path, "w") as f:
             json.dump(state, f, indent=2)
-    except IOError as e:
+    except OSError as e:
         print(f"Warning: Failed to save taint state: {e}", file=sys.stderr)
 
 
-def cleanup_expired(config: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]:
+def cleanup_expired(config: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
     """Remove expired taint entries."""
     session_config = config.get("session", {})
     expiry_seconds = session_config.get("taint_expiry_seconds", DEFAULT_EXPIRY_SECONDS)
@@ -143,7 +142,7 @@ def cleanup_expired(config: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, 
 # ============================================================================
 
 
-def is_sensitive_path(file_path: str, config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def is_sensitive_path(file_path: str, config: dict[str, Any]) -> Optional[dict[str, Any]]:
     """Check if file path matches sensitive patterns.
 
     Returns pattern info if match found, None otherwise.
@@ -164,7 +163,7 @@ def is_sensitive_path(file_path: str, config: Dict[str, Any]) -> Optional[Dict[s
     return None
 
 
-def is_network_command(command: str, config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def is_network_command(command: str, config: dict[str, Any]) -> Optional[dict[str, Any]]:
     """Check if command matches network command patterns.
 
     Returns pattern info if match found, None otherwise.
@@ -195,7 +194,9 @@ def compute_content_hash(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
 
 
-def mark_tainted(file_path: str, content: str = "", config: Optional[Dict[str, Any]] = None) -> bool:
+def mark_tainted(
+    file_path: str, content: str = "", config: Optional[dict[str, Any]] = None
+) -> bool:
     """Mark a file as tainted after it has been read.
 
     Args:
@@ -233,7 +234,7 @@ def mark_tainted(file_path: str, content: str = "", config: Optional[Dict[str, A
     return True
 
 
-def check_exfiltration(command: str, config: Optional[Dict[str, Any]] = None) -> Tuple[bool, str]:
+def check_exfiltration(command: str, config: Optional[dict[str, Any]] = None) -> tuple[bool, str]:
     """Check if command could exfiltrate tainted data.
 
     Args:
@@ -263,9 +264,7 @@ def check_exfiltration(command: str, config: Optional[Dict[str, Any]] = None) ->
 
     # We have tainted files and a network command - potential exfiltration
     critical_files = [
-        path
-        for path, info in tainted.items()
-        if info.get("sensitivity") == "critical"
+        path for path, info in tainted.items() if info.get("sensitivity") == "critical"
     ]
 
     if critical_files:
@@ -283,7 +282,7 @@ def check_exfiltration(command: str, config: Optional[Dict[str, Any]] = None) ->
     return False, ""
 
 
-def get_tainted_files(config: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+def get_tainted_files(config: Optional[dict[str, Any]] = None) -> list[dict[str, Any]]:
     """Get list of currently tainted files.
 
     Returns:
@@ -297,13 +296,10 @@ def get_tainted_files(config: Optional[Dict[str, Any]] = None) -> List[Dict[str,
 
     tainted = state.get("tainted_files", {})
 
-    return [
-        {"file_path": path, **info}
-        for path, info in tainted.items()
-    ]
+    return [{"file_path": path, **info} for path, info in tainted.items()]
 
 
-def clear_session(config: Optional[Dict[str, Any]] = None) -> None:
+def clear_session(config: Optional[dict[str, Any]] = None) -> None:
     """Clear all taint tracking data."""
     if config is None:
         config = load_config()
