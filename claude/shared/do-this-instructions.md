@@ -93,8 +93,20 @@ For existing `.specs/*/plan.md` files:
    If a team exists, ask: "A team is already active. Cancel it first?"
 3. **Extract the slug** from the plan file path (e.g., `.specs/my-feature/plan.md` → `my-feature`).
 4. **Execute directly** — follow the orchestration steps from `/plan-with-team` Step 6 (TeamCreate, TaskCreate, set dependencies, spawn agents, monitor waves, handle validation).
-5. After completion, **archive the plan**: set `completed` date in frontmatter, move to `.specs/archive/{slug}/`.
-6. Go to **Step 7: Summary**.
+5. **Deployment Procedure gate** — after all waves pass validation, check whether
+   the plan contains a `## Deployment Procedure` section:
+   - **If present**: Present the deployment steps to the user verbatim. Use
+     AskUserQuestion with options:
+     - "Run the deployment procedure now" (Recommended)
+     - "Skip — I'll run the deployment manually later"
+     - "Cancel"
+     If "Run now": execute each numbered step in the procedure sequentially,
+     pausing after each step to show the output and confirm it matches the
+     expected output before proceeding. If any step fails, show the "If it
+     fails" guidance from the plan and ask the user how to proceed.
+   - **If absent**: Skip this step (pure code-change plans have no deployment).
+6. After completion, **archive the plan**: set `completed` date in frontmatter, move to `.specs/archive/{slug}/`.
+7. Go to **Step 7: Summary**.
 
 ## Step 4: Simple Route
 
@@ -125,74 +137,36 @@ Dispatch a single specialized agent. No team creation needed.
 
 ## Step 5: Medium Route
 
-Auto-generate a plan and execute with a team. No approval gate — execute immediately.
+Auto-generate a plan and execute with a team. Same plan quality as `/plan-with-team`
+but skips the user approval gate — execute immediately after clarifying questions.
 
-### 5a: Generate Plan
+### 5a: Clarify Constraints
+
+Run `/plan-with-team` Step 2.5 — ask the two clarifying questions (downtime tolerance,
+ruled-out approaches) before generating the plan. Record the answers.
+
+### 5b: Generate Plan
 
 Create a slug from the task description (lowercase, hyphens, max 30 chars).
 
-Write the plan to `.specs/{slug}/plan.md` using the same template as `/plan-with-team` Step 3:
+Write the plan to `.specs/{slug}/plan.md` using the **full template from `/plan-with-team`
+Step 3** — including Problem Statement, Constraints & Acceptable Trade-offs, Alternatives
+Considered, Deployment Procedure (if applicable), and Acceptance Criteria Guidelines with
+Zero-Context Executability. Do NOT use a stripped-down template — the plan must be
+reviewable by `/review-plan` and executable by `/do-this` Step 3.
 
-```
----
-created: {YYYY-MM-DD}
-completed:
----
+Use the agent from Step 2d (Medium column). Validator model rule: if wave contains
+sonnet/opus builder → `validator-heavy` (sonnet), otherwise → `validator` (haiku).
 
-# Team Plan: {task-name}
+### 5c: Orchestrate
 
-## Objective
-{What needs to be done and why}
+Execute immediately without asking for approval — follow `/plan-with-team` Step 6
+(TeamCreate, TaskCreate, set dependencies, spawn agents, monitor waves, handle
+validation, deployment procedure gate, shutdown, archive).
 
-## Project Context
-- **Language**: {detected from markers}
-- **Test command**: {detected or "none detected"}
-- **Lint command**: {detected or "none detected"}
-
-## Complexity Analysis
-
-| Task | Est. Files | Change Type | Model | Agent |
-|------|-----------|-------------|-------|-------|
-| {task name} | {count} | {mechanical/feature/architecture} | {model} | {agent} |
-
-## Team Members
-
-| Name | Agent | Model | Role |
-|------|-------|-------|------|
-| {slug}-builder-1 | {agent type} | {model} | {role description} |
-| {slug}-validator-1 | {validator or validator-heavy} | {model} | Wave validation |
-
-## Execution Waves
-
-### Wave 1 (parallel)
-- T1: {task name} [{model}] — {agent}
-
-### Wave 1 Validation
-- V1: Validate wave 1 [{validator model}] — {validator agent}, blockedBy: [T1]
-```
-
-Use the agent from Step 2d (Medium column). Validator model rule: if wave contains sonnet/opus builder → `validator-heavy` (sonnet), otherwise → `validator` (haiku).
-
-### 5b: Orchestrate
-
-Execute immediately without asking for approval:
-
-1. **Create team**: `TeamCreate(team_name="{slug}")`
-2. **Create ALL tasks** (builders + validators) via TaskCreate.
-3. **Set dependencies** via TaskUpdate:
-   - Wave 1 builders: no blockers
-   - Wave 1 validator: `addBlockedBy` all Wave 1 builder task IDs
-   - Wave N+1 builders: `addBlockedBy` Wave N validator task ID
-4. **Assign owners** via TaskUpdate.
-5. **Spawn Wave 1 builders in parallel** using Task tool with `team_name` and `name` parameters.
-6. **Monitor** — check TaskList. When all Wave 1 builders complete, spawn validator.
-7. **Handle validation**:
-   - **PASS** → spawn next wave (if any)
-   - **FAIL** → create fix task, assign to builder, re-validate after fix
-8. **Repeat** for each wave.
-9. **Complete**: shutdown agents (SendMessage type: "shutdown_request"), then TeamDelete.
-10. **Archive plan**: set `completed` date, move to `.specs/archive/{slug}/`.
-11. Go to **Step 7: Summary**.
+The only difference from the Complex Route is: Medium skips the "Execute this plan?"
+approval prompt. Everything else — clarifying questions, full template, deployment
+procedure gate — is identical.
 
 ## Step 6: Complex Route
 
