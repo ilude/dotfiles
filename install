@@ -111,6 +111,21 @@ if command -v uv &>/dev/null; then
 fi
 completed_steps+=("Python dev tools")
 
+current_step="Claude Code hook dependencies"
+# Hooks use bare python (not uv) to avoid console window flashing on Windows.
+# Since settings.json is shared cross-platform, Linux also needs these in system Python.
+hook_deps=("pyyaml" "tree-sitter" "tree-sitter-bash")
+for dep in "${hook_deps[@]}"; do
+    module="${dep//-/_}"
+    if python -c "import ${module}" 2>/dev/null; then
+        echo "${dep}: already installed"
+    else
+        echo "Installing ${dep}..."
+        pip install "${dep}" 2>/dev/null || uv pip install "${dep}" 2>/dev/null || echo "Warning: failed to install ${dep}"
+    fi
+done
+completed_steps+=("Claude Code hook dependencies")
+
 current_step="Homebrew packages"
 if [[ "$OSTYPE" == "darwin"* ]] && command -v brew &>/dev/null; then
     echo "Installing Homebrew packages..."

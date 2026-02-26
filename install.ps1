@@ -754,6 +754,26 @@ function Install-Packages {
         }
     }
 
+    # Python dependencies for Claude Code hooks
+    # Hooks use bare python (not uv) to avoid console window flashing on Windows
+    Write-Host "`n--- Claude Code Hook Dependencies ---" -ForegroundColor Cyan
+    $hookDeps = @('pyyaml', 'tree-sitter', 'tree-sitter-bash')
+    foreach ($dep in $hookDeps) {
+        Write-Host "  $dep..." -ForegroundColor Cyan -NoNewline
+        $installed = python -c "import importlib; importlib.import_module('$($dep.Replace('-', '_'))')" 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host " already installed" -ForegroundColor DarkGray
+        } else {
+            try {
+                pip install $dep 2>$null | Out-Null
+                Write-Host " installed" -ForegroundColor Green
+            } catch {
+                Write-Host " failed" -ForegroundColor Red
+                $script:failed += "pip:$dep"
+            }
+        }
+    }
+
     # MSYS2 packages (zsh for Git Bash - requires MSYS2 from core packages)
     Write-Host "`n--- MSYS2 Packages (Git Bash zsh) ---" -ForegroundColor Cyan
     $msys2Pacman = "$Msys2Root\usr\bin\pacman.exe"
