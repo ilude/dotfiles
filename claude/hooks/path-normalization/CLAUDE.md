@@ -196,7 +196,7 @@ filename = normalized.rsplit('/', 1)[-1]     # file.md
 ```bash
 # Test a path
 echo '{"tool_name":"Edit","tool_input":{"file_path":"your/test/path.py"}}' | \
-  uv run ~/.dotfiles/claude/hooks/path-normalization/path-normalization-hook.py
+  python ~/.dotfiles/claude/hooks/path-normalization/path-normalization-hook.py
 
 # Check exit code (0=allow, 2=block)
 echo $?

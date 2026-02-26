@@ -736,17 +736,15 @@ function Install-Packages {
         }
     }
 
-    # Claude Code (pinned version - see https://github.com/anthropics/claude-code/issues/14828)
-    # 2.1.45+ causes CMD window focus stealing on Windows. Remove pin when #14828 is fixed.
+    # Claude Code
     Write-Host "`n--- Claude Code ---" -ForegroundColor Cyan
-    $claudeCodeVersion = "2.1.42"
-    Write-Host "  Claude Code@$claudeCodeVersion..." -ForegroundColor Cyan -NoNewline
+    Write-Host "  Claude Code..." -ForegroundColor Cyan -NoNewline
     $installedVersion = npm list -g @anthropic-ai/claude-code 2>$null | Select-String '@anthropic-ai/claude-code@(\S+)' | ForEach-Object { $_.Matches[0].Groups[1].Value }
-    if ($installedVersion -eq $claudeCodeVersion) {
-        Write-Host " already installed" -ForegroundColor DarkGray
+    if ($installedVersion) {
+        Write-Host " already installed ($installedVersion)" -ForegroundColor DarkGray
     } else {
         try {
-            npm install -g "@anthropic-ai/claude-code@$claudeCodeVersion" 2>$null | Out-Null
+            npm install -g @anthropic-ai/claude-code 2>$null | Out-Null
             Write-Host " installed" -ForegroundColor Green
         } catch {
             Write-Host " failed" -ForegroundColor Red
