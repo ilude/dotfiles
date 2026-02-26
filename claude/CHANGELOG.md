@@ -4,6 +4,22 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
+## 2026-02-26: Fix Windows console window flashing caused by uv in hooks
+
+**Fixed:**
+- Replaced `uv run` with bare `python` in all hook commands in `settings.json` — `uv.exe` spawns visible `conhost.exe` windows on the hook execution path in Claude Code v2.1.45+
+- Removed redundant `bash -c` wrapper from all Python hook commands (was spawning an unnecessary extra bash layer)
+- Normalized outlier hook patterns: PermissionRequest no longer uses `-l` (login shell) or bare `python` without `uv`; statusLine uses `$HOME` instead of `~`
+- Added `pip install pyyaml tree-sitter tree-sitter-bash` to both `install` and `install.ps1` for hook dependencies
+- Updated tracking doc with diagnostic findings and posted follow-up comments to #28138 and #14828
+- Cleaned up duplicate uv binaries (orphaned pip installs shadowing WinGet version)
+
+**Root cause:** Claude Code v2.1.45+ lost `windowsHide: true` on the hook spawn path. Any hook command that launches a Windows console-subsystem binary (like `uv.exe`) allocates a visible `conhost.exe`. Bare `python` runs inside the existing bash process so no new console is allocated.
+
+**Files:** `claude/settings.json`, `claude/tracking/windows-console-flashing.md`, `install`, `install.ps1`
+
+---
+
 ## 2026-02-26: /review-plan file persistence — findings survive context compaction
 
 **Changed:**

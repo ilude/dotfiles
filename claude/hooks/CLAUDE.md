@@ -44,7 +44,7 @@ Dollar-dash: hB            <- No 'i' (interactive) or 'l' (login)
         "matcher": "Bash",
         "hooks": [{
           "type": "command",
-          "command": "bash -l -c 'uv run ~/.claude/hooks/my-hook.py'"
+          "command": "python $HOME/.claude/hooks/my-hook.py"
         }]
       }
     ]
@@ -52,15 +52,7 @@ Dollar-dash: hB            <- No 'i' (interactive) or 'l' (login)
 }
 ```
 
-**Alternative**: Add PATH directly in hook command:
-```json
-"command": "bash -c 'PATH=\"$HOME/.local/bin:$PATH\" uv run ~/.claude/hooks/my-hook.py'"
-```
-
-**Ensure WSL ~/.profile has:**
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-```
+**Why bare `python` instead of `uv run`**: On Windows, `uv.exe` is a console-subsystem binary that allocates a visible `conhost.exe` window. Claude Code v2.1.45+ lost `windowsHide: true` on the hook spawn path, so every `uv run` hook flashes a console window. Bare `python` runs inside the existing bash process and doesn't flash. Hook dependencies must be pre-installed in system Python (see `install.ps1` / `install`).
 
 ### 1. Shebang Lines
 
