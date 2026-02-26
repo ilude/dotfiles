@@ -33,6 +33,26 @@ Run these checks automatically to understand the project:
    ```
    If a team exists, ask: "A team is already active. Cancel it first?"
 
+## Step 2.5: Clarify Constraints Before Planning
+
+Before writing any plan, ask these two questions using AskUserQuestion (multiSelect: false,
+one question at a time):
+
+1. **Downtime / disruption tolerance**:
+   "What downtime or service disruption is acceptable during this change?
+   Examples: none (external customers 24/7), brief interruption OK (<2 min, off-peak),
+   full maintenance window acceptable."
+
+2. **Ruled-out approaches**:
+   "Are there any approaches you've already ruled out or tried?
+   (e.g., 'we tried blue/green but it doubles cost', 'rolling deploys not viable because
+   of stateful sessions')"
+
+Record the answers — they become the seed text for the Constraints & Acceptable
+Trade-offs and Alternatives Considered sections. Do NOT generate the plan until both
+questions are answered. If the user says "no constraints" or "no ruled-out approaches",
+that is a valid answer — record it as-is.
+
 ## Step 3: Generate Plan
 
 Create a slug from the task description (lowercase, hyphens, max 30 chars).
@@ -49,8 +69,31 @@ completed:
 
 # Team Plan: {task-name}
 
+## Problem Statement
+{What triggered this work? What is the actual pain point or user need?
+Be specific — "autoscaler can't scale down nodes because DaemonSet pins one pod per node"
+is better than "improve cluster efficiency."}
+
+## Constraints & Acceptable Trade-offs
+{What has the user explicitly accepted or rejected? This section prevents reviewers
+and builders from optimizing for constraints that don't exist.}
+
+Examples:
+- "Brief downtime (< 2 min) during off-peak maintenance window is acceptable"
+- "Zero downtime is mandatory — this serves external customers 24/7"
+- "Cost must not increase by more than $X/month"
+- "Solution must be reversible within 5 minutes"
+
+## Alternatives Considered
+{List 2-3 other approaches and why this one was chosen. Even a one-liner per alternative
+helps reviewers understand the decision space.}
+
+| Approach | Pros | Cons | Verdict |
+|----------|------|------|---------|
+| {approach 1} | {pros} | {cons} | **Selected** / Rejected |
+
 ## Objective
-{What needs to be done and why}
+{What needs to be done, how, and the expected outcome}
 
 ## Project Context
 - **Language**: {detected from markers}
@@ -106,6 +149,20 @@ Wave 1: T1, T2 (parallel) → V1 → Wave 2: T3 → V2
 
 Every task MUST have verifiable acceptance criteria. For methodology, the `planning` skill auto-activates with detailed guidance.
 
+### Zero-Context Executability
+
+Every command in this plan — in acceptance criteria, in the deployment procedure, or
+anywhere else — MUST specify three things:
+
+1. **WHERE it runs**: working directory, host type (local, bastion, pod exec), or
+   "any host with kubeconfig"
+2. **WHAT the expected output is**: a specific string, exit code, or resource state
+   that indicates success
+3. **WHAT to do if it fails**: retry, rollback, or escalate — do not leave the
+   operator guessing
+
+A plan that says "run the migration" without these three things is incomplete.
+
 **Quick rules:**
 - Each criterion must be specific and measurable (no "looks good" or "works correctly")
 - Include a verification method: exact command, test, API call, or file check
@@ -120,6 +177,23 @@ Every task MUST have verifiable acceptance criteria. For methodology, the `plann
 - T1: Add user endpoint
   - AC: `curl -s localhost:3000/api/users | jq '.status'` returns `200`
   - AC: `npm test -- users.test.ts` passes with 0 warnings
+
+## Deployment Procedure
+
+*(Include this section for any plan that involves running commands against live
+infrastructure, clusters, or services. Omit for pure code-change plans.)*
+
+A numbered sequence of commands the operator runs to execute this change. Each step
+MUST include:
+
+- **Where**: Working directory or host (e.g., `regions/us-east-2/gitlab-prod/`,
+  `kubectl exec -n gitlab`, local machine)
+- **Command**: The exact command to run (no placeholders unless the value is
+  documented elsewhere in this plan)
+- **Expected output**: What a successful run looks like (exit code, a specific
+  log line, a resource status)
+- **If it fails**: What to do — rollback command, support escalation path, or
+  "safe to retry" if idempotent
 ```
 
 For complex tasks, create multiple waves with parallel builders and validation gates between them.
@@ -127,6 +201,17 @@ For complex tasks, create multiple waves with parallel builders and validation g
 ## Step 4: Self-Validate Plan
 
 Before presenting, verify the plan has:
+- [ ] Problem Statement section: present AND contains specific pain point text, not
+      placeholder text like "{What triggered this work?}" or vague summaries like
+      "improve the system." If empty or placeholder → STOP, fill it in from Step 2.5
+      answers before continuing.
+- [ ] Constraints & Acceptable Trade-offs section: present AND contains at least one
+      explicit statement from the user (not the template examples). Acceptable entries
+      include "No constraints stated — brief downtime accepted per user confirmation."
+      If still shows template example text → STOP.
+- [ ] Alternatives Considered section: present AND contains at least 2 rows with real
+      Verdict entries ("Selected" or "Rejected" with a reason). A table with only the
+      header row or template placeholders → STOP.
 - [ ] Objective section
 - [ ] Complexity Analysis table with Model/Agent for every task
 - [ ] Team Members table (only lists agents actually needed)
@@ -195,10 +280,24 @@ Execute the plan using wave-based orchestration:
 
 8. **Repeat** steps 6-7 for each subsequent wave.
 
-9. **Complete** when all waves pass validation:
-   - Present summary to user
-   - SendMessage(type: "shutdown_request") to each agent
-   - After all agents confirm shutdown, run TeamDelete()
+9. **Deployment Procedure gate** — after all waves pass validation, check whether
+   the plan contains a `## Deployment Procedure` section:
+   - **If present**: Present the deployment steps to the user verbatim. Use
+     AskUserQuestion with options:
+     - "Run the deployment procedure now" (Recommended)
+     - "Skip — I'll run the deployment manually later"
+     - "Cancel"
+     If "Run now": execute each numbered step in the procedure sequentially,
+     pausing after each step to show the output and confirm it matches the
+     expected output before proceeding. If any step fails, show the "If it
+     fails" guidance from the plan and ask the user how to proceed.
+   - **If absent**: Skip this step (pure code-change plans have no deployment).
+
+10. **Complete** when all waves pass validation (and deployment procedure is
+    finished or skipped):
+    - Present summary to user
+    - SendMessage(type: "shutdown_request") to each agent
+    - After all agents confirm shutdown, run TeamDelete()
 
 ## Step 7: Archive Plan
 
