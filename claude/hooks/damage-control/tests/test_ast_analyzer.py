@@ -223,7 +223,6 @@ class TestFallbackWhenTreeSitterMissing:
 class TestVariableExpansionDetection:
     """Tests for variable expansion detection in dangerous commands."""
 
-    @pytest.mark.skip(reason="T6: variable expansion not yet implemented")
     def test_unsafe_variable_in_dangerous_command_asks(self):
         """Unknown variable in dangerous command escalates to ask."""
         analyzer = ASTAnalyzer()
@@ -239,7 +238,6 @@ class TestVariableExpansionDetection:
         assert result.get("decision") == "ask"
         assert "Variable expansion" in result.get("reason", "")
 
-    @pytest.mark.skip(reason="T6: variable expansion not yet implemented")
     def test_unsafe_variable_rm_with_flag(self):
         """rm with unknown variable escalates to ask."""
         analyzer = ASTAnalyzer()
@@ -551,7 +549,6 @@ class TestDeepCommandExtraction:
 class TestVariableExpansionComprehensive:
     """Comprehensive tests for variable expansion detection (T6 feature)."""
 
-    @pytest.mark.skip(reason="T6: variable expansion not yet implemented")
     def test_single_unsafe_variable(self):
         """Single unsafe variable in dangerous command asks."""
         analyzer = ASTAnalyzer()
@@ -564,7 +561,7 @@ class TestVariableExpansionComprehensive:
         result = analyzer.analyze_command_ast("rm $DANGER", config)
         assert result.get("decision") == "ask"
 
-    @pytest.mark.skip(reason="T6: variable expansion not yet implemented")
+
     def test_variable_at_start(self):
         """Variable at start of argument asks."""
         analyzer = ASTAnalyzer()
@@ -577,7 +574,7 @@ class TestVariableExpansionComprehensive:
         result = analyzer.analyze_command_ast("rm $VAR file.txt", config)
         assert result.get("decision") == "ask"
 
-    @pytest.mark.skip(reason="T6: variable expansion not yet implemented")
+
     def test_variable_in_middle(self):
         """Variable in middle of path asks."""
         analyzer = ASTAnalyzer()
@@ -590,7 +587,7 @@ class TestVariableExpansionComprehensive:
         result = analyzer.analyze_command_ast("rm /tmp/$VAR/file", config)
         assert result.get("decision") == "ask"
 
-    @pytest.mark.skip(reason="T6: variable expansion not yet implemented")
+
     def test_variable_in_safe_command_allowed(self):
         """Variable in safe command is allowed."""
         analyzer = ASTAnalyzer()
