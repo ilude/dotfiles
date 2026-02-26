@@ -1,7 +1,7 @@
 ---
 title: Windows Console Window Flashing Regression
 status: workaround-applied
-pinned_version: 2.1.42
+pinned_version: unpinned (was 2.1.42, bare python workaround eliminates need)
 primary_issue: https://github.com/anthropics/claude-code/issues/14828
 comment_posted: https://github.com/anthropics/claude-code/issues/28138#issuecomment-3959696822
 last_checked: 2026-02-26
@@ -108,3 +108,4 @@ Based on community investigation, the fix needs to ensure `windowsHide: true` (o
 | 2026-02-26 | Diagnostic testing on v2.1.59 | Isolated flashing to hook spawn path + `uv.exe` console allocation. Internal tool calls don't flash. `uvw.exe` also flashes. Bare `python` workaround eliminates flashing. |
 | 2026-02-26 | Workaround applied | Replaced `uv run` with `python` in all hook commands. Added pip install of hook deps to `install` and `install.ps1`. Branch: `fix/hooks-reduce-process-spawning`. |
 | 2026-02-26 | Follow-up comments posted | [#28138](https://github.com/anthropics/claude-code/issues/28138#issuecomment-3967258284), [#14828](https://github.com/anthropics/claude-code/issues/14828#issuecomment-3967259089). |
+| 2026-02-26 | Version unpinned | Removed `_version_pin`, `DISABLE_AUTOUPDATER` from `settings.json`. `install.ps1` now installs latest instead of 2.1.42. Bare `python` workaround makes the pin unnecessary. |
