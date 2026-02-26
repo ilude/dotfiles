@@ -283,6 +283,7 @@
   "terminal.integrated.persistentSessionScrollback": 1500,
   "terminal.integrated.scrollback": 2500,
   "python.analysis.typeCheckingMode": "standard",
+  "python.terminal.activateEnvironment": false,
   "security.allowedUNCHosts": [
     "pve.ilude.com"
   ],
