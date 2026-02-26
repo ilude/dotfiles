@@ -143,7 +143,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -l -c 'python $HOME/.claude/hooks/notify/notification-sound.py'",
+            "command": "bash -c 'uv run $HOME/.claude/hooks/notify/notification-sound.py'",
             "timeout": 2
           }
         ]
@@ -152,7 +152,7 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "bash ~/.claude/claude-status"
+    "command": "bash $HOME/.claude/claude-status"
   },
   "enabledPlugins": {
     "handbook-git-worktree@cc-handbook": true,
