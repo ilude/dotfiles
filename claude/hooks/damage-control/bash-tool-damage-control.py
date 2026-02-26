@@ -613,6 +613,43 @@ def _strip_inline_comment(line: str) -> str:
 
 
 # ============================================================================
+# DRY-RUN DETECTION
+# ============================================================================
+
+# Tools that support --dry-run as a valid simulation/preview flag.
+# Only these tools get the --dry-run exemption from bashToolPatterns.
+# Verified via --help or official docs — do NOT add tools that use different
+# flags (terraform uses "plan", ansible uses "--check", pulumi uses "preview").
+_DRY_RUN_TOOLS = [
+    r"^\s*helm\b",                  # helm upgrade/install/rollback/uninstall --dry-run
+    r"^\s*kubectl\b",               # kubectl apply/delete/scale --dry-run=client|server
+    r"^\s*docker\s+compose\b",      # docker compose up/down --dry-run
+    r"^\s*docker\b",                # docker (some subcommands)
+    r"^\s*argocd\s+app\s+sync\b",   # argocd app sync --dry-run (client-side only)
+]
+
+
+def _has_valid_dry_run(command: str) -> bool:
+    """Check if command uses --dry-run with a tool that actually supports it.
+
+    Only returns True when BOTH conditions are met:
+    1. The command contains --dry-run (or --dry-run=client, --dry-run=server)
+    2. The base command is a tool known to support --dry-run
+
+    This prevents 'rm -rf / --dry-run' from being exempted since rm does
+    not support --dry-run.
+    """
+    if not re.search(r"--dry-run\b", command):
+        return False
+
+    for pattern in _DRY_RUN_TOOLS:
+        if re.search(pattern, command, re.IGNORECASE):
+            return True
+
+    return False
+
+
+# ============================================================================
 # READ-ONLY SEARCH PIPELINE DETECTION
 # ============================================================================
 
@@ -1523,8 +1560,10 @@ def check_command(
     # Skip if bashToolPatterns is relaxed in this context (e.g., documentation)
     # Skip if the entire command is a read-only search pipeline (e.g., grep "helm upgrade" | head)
     # to avoid false positives from dangerous-looking strings inside search arguments
+    # Skip if the command uses --dry-run with a tool that supports it (simulation mode)
     is_readonly_search = is_readonly_search_command(unwrapped_cmd)
-    if "bashToolPatterns" not in relaxed_checks and not is_readonly_search:
+    has_dry_run = _has_valid_dry_run(unwrapped_cmd)
+    if "bashToolPatterns" not in relaxed_checks and not is_readonly_search and not has_dry_run:
         for idx, item in enumerate(compiled_patterns):
             compiled_regex = item.get("compiled")
             reason = item.get("reason", "Blocked by pattern")
