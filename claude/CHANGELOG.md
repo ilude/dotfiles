@@ -4,6 +4,36 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
+## 2026-02-25: Major /review-plan redesign — dynamic panels, outside-the-box expert, rebuttal round
+
+**Changed:**
+- Dynamic expert panel — main agent analyzes plan content and composes the reviewer panel (4-8 experts) instead of hardcoded 4
+- 3 mandatory reviewers (Completeness, Adversarial, Outside-the-Box) + dynamic selection from suggested pool
+- New "Outside-the-Box / Simplicity" mandatory reviewer — questions the approach itself, checks industry best practices via web search, evaluates proportionality of complexity to goal (`max_turns: 8`)
+- Suggested expert pool with 6 archetypes (Ops/SRE, Security, Database, Networking, Cost, Compliance) as starting points; pool is a reference, not a constraint — custom reviewers encouraged
+- Rebuttal round (Step 3) — after all reviewers complete, domain experts respond to OtB findings with AGREE/PARTIAL/DISAGREE. Uses haiku, `max_turns: 1` for speed. Consensus determines whether complexity is justified or the plan should simplify.
+- Enforce parallel launch — all Task calls must be in a single message (mandatory)
+- `max_turns: 5` for standard reviewers, `max_turns: 8` for Outside-the-Box
+- Cap findings at 8 per reviewer
+- Outside-the-Box assessment + rebuttal summary gets its own prominent section in output
+- Remove redundant "Suggested Plan Edits" section — findings already contain suggestions
+- Panel is presented to user before launch (but launched immediately, no approval wait)
+
+**Files:** `~/.dotfiles/claude/shared/review-plan-instructions.md`
+
+---
+
+## 2026-02-25: Create /review-plan command
+
+**Added:**
+- `/review-plan` command — launches 4 parallel expert reviewers (Ops/SRE, Security, Completeness, Adversarial/Red Team) against a plan file
+- Thin command file at `~/.dotfiles/claude/commands/review-plan.md`
+- Full instructions at `~/.dotfiles/claude/shared/review-plan-instructions.md`
+
+**Files:** `~/.dotfiles/claude/commands/review-plan.md`, `~/.dotfiles/claude/shared/review-plan-instructions.md`
+
+---
+
 ## 2026-02-21: Add workflow orchestration rules
 
 **Added:**
