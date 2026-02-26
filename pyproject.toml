@@ -6,6 +6,8 @@ dependencies = [
     "pytest",
     "pyyaml",
     "ruff",
+    "tree-sitter>=0.23.0",
+    "tree-sitter-bash>=0.23.0",
 ]
 
 [tool.pytest.ini_options]
