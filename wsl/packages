@@ -86,6 +86,7 @@ CORE_PACKAGES=(
     "ca-certificates:CA certificates"
     "jq:jq (JSON processor)"
     "tmux:tmux (terminal multiplexer)"
+    "python3-pip:pip (Python package manager)"
 )
 
 for item in "${CORE_PACKAGES[@]}"; do
@@ -202,11 +203,13 @@ fi
 
 echo -e "\n${CYAN}Installing Claude Code...${NC}"
 
-if command_exists claude && [[ "$FORCE" != "true" ]]; then
+# Check for native install specifically — ignore Windows shim on /mnt/c/
+CLAUDE_BIN="$HOME/.local/bin/claude"
+if [[ -x "$CLAUDE_BIN" ]] && [[ "$FORCE" != "true" ]]; then
     echo -e "  claude: ${GREEN}already installed${NC}"
 else
     echo -e "  claude: ${CYAN}installing...${NC}"
-    curl -fsSL https://claude.ai/install.sh | sh
+    curl -fsSL https://claude.ai/install.sh | bash
     echo -e "  claude: ${GREEN}done${NC}"
 fi
 
@@ -216,17 +219,31 @@ fi
 
 echo -e "\n${CYAN}Installing Claude Code hook dependencies...${NC}"
 
-HOOK_DEPS=("pyyaml" "tree-sitter" "tree-sitter-bash")
-for dep in "${HOOK_DEPS[@]}"; do
-    module="${dep//-/_}"
-    if python -c "import ${module}" 2>/dev/null && [[ "$FORCE" != "true" ]]; then
+# format: "pip-package:import_name"
+HOOK_DEPS=("pyyaml:yaml" "tree-sitter:tree_sitter" "tree-sitter-bash:tree_sitter_bash")
+MISSING_DEPS=()
+for item in "${HOOK_DEPS[@]}"; do
+    dep="${item%%:*}"
+    module="${item#*:}"
+    if python3 -c "import ${module}" 2>/dev/null && [[ "$FORCE" != "true" ]]; then
         echo -e "  ${dep}: ${GREEN}already installed${NC}"
     else
-        echo -e "  ${dep}: ${CYAN}installing...${NC}"
-        pip install "${dep}" 2>/dev/null || pip3 install "${dep}" 2>/dev/null || echo -e "  ${dep}: ${YELLOW}failed (install python3-pip)${NC}"
-        echo -e "  ${dep}: ${GREEN}done${NC}"
+        MISSING_DEPS+=("${dep}")
     fi
 done
+
+if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
+    echo -e "  Installing: ${MISSING_DEPS[*]}..."
+    if sudo uv pip install --system --break-system-packages "${MISSING_DEPS[@]}" 2>/dev/null; then
+        for dep in "${MISSING_DEPS[@]}"; do
+            echo -e "  ${dep}: ${GREEN}done${NC}"
+        done
+    else
+        for dep in "${MISSING_DEPS[@]}"; do
+            echo -e "  ${dep}: ${YELLOW}failed${NC}"
+        done
+    fi
+fi
 
 # ============================================================================
 # Set Zsh as Default Shell
@@ -302,8 +319,8 @@ echo -e "  Aliases file: ${GREEN}created${NC}"
 
 echo -e "\n${CYAN}Installing zsh plugins...${NC}"
 
-DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ZSH_PLUGINS_SCRIPT="$DOTFILES_DIR/zsh-plugins"
+DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ZSH_PLUGINS_SCRIPT="$DOTFILES_DIR/scripts/zsh-plugins"
 
 if [[ -x "$ZSH_PLUGINS_SCRIPT" ]]; then
     # Source zsh-plugins in bash mode (just clones repos, doesn't source .zsh files)
