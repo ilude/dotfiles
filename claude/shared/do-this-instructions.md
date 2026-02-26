@@ -42,6 +42,7 @@ Run these checks automatically:
    - `*.csproj` present → `dotnet test`
 
 4. **Detect lint command** based on markers:
+   - `Makefile` with `lint` target → `make lint`
    - `pyproject.toml` → `uv run ruff check`
    - `package.json` → `npx @biomejs/biome check`
    - `Makefile` with shellcheck → `shellcheck`
