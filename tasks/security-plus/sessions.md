@@ -86,6 +86,30 @@
 
 ---
 
+## 2026-02-26: Priority Queue Drilling (Day 1, Session 4)
+
+**Duration**: ~20m
+**Phase**: Priority queue drilling, no descriptions
+**Questions asked**: 12 (8 correct / 4 wrong = 67%)
+
+### Locked In (confirmed strong):
+- NAC (posture check + remediation VLAN), ATT&CK (T-numbers + matrix), CSRF (hidden form + auto cookie)
+- Kill Chain (sequential phases: delivery/exploitation/installation/C2), Stored XSS (persists in DB, hits all viewers)
+- ASV (PCI quarterly external scans), ZTNA (replaces VPN, per-app access)
+
+### Still Struggling:
+- **SIEM vs XDR** — missed TWICE. "SIEM collects, XDR connects." Must burn in.
+- **SCAP vs STIX** — keeps picking STIX for vuln scanning. "STIX = threat sharing, SCAP = vuln scanning."
+- **Diamond Model** — gets it when vertices are named, misses when described indirectly. Look for 4 relationship elements.
+- **Reflected vs DOM-based XSS** — server returns payload = reflected, client JS processes = DOM-based.
+
+### Trajectory: 85% → 54% → 70% → 67%
+The 67% reflects drilling the hardest items from the priority queue. Core knowledge solidifying, but 4 persistent gaps remain.
+
+**Next session**: Day 2. Hammer SIEM vs XDR, SCAP vs STIX, Diamond Model (indirect descriptions), reflected vs DOM XSS. Then broader drilling to build margin above 83%.
+
+---
+
 <!--
 Template for new entries:
 

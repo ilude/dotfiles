@@ -56,9 +56,14 @@ Additional pattern: real-world experience can conflict with exam answers. The ex
 
 ## Current Phase
 
-**Phase**: Day 2 — Priority Queue Drilling
-**Status**: Three sessions complete. Trajectory: 85% (soft) → 54% (hard) → 70% (hard). Improving but still below 83% passing threshold.
-**Next action**: Drill the 17-item priority queue in `progress.md`. Biggest risks are "reasoned wrong" items (XDR vs SIEM, fault tolerance vs HA, SCIM) — these feel right but aren't. Also continue acronym gap filling (ASV/QSA, SCAP sub-components, data governance roles). Target: 80%+ on hard questions without descriptions.
+**Phase**: Day 2 — Targeted Drilling on Persistent Gaps
+**Status**: Four sessions complete. Trajectory: 85% (soft) → 54% (hard) → 70% (hard) → 67% (priority queue). Many items now locked in, but 4 persistent gaps remain.
+**Next action**: Hammer these 4 items that have been missed multiple times:
+1. **SIEM vs XDR** — missed TWICE. "SIEM collects, XDR connects."
+2. **SCAP vs STIX** — keeps confusing. "STIX = threat sharing, SCAP = vuln scanning."
+3. **Diamond Model** — gets it when vertices named, misses indirect descriptions. Pattern-match "4 relationship elements."
+4. **Reflected vs DOM-based XSS** — "server returns payload = reflected, client JS processes = DOM-based."
+Then broaden drilling to build margin above 83% passing threshold.
 
 ## Quiz Instructions
 
