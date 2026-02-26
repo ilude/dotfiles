@@ -8,11 +8,56 @@ dependencies = [
 ///
 """
 
+import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
+
+# Derive bashrc path from repo root (works on any machine)
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_BASHRC = _REPO_ROOT / "home" / ".bashrc"
+
+
+def _git_bash_path() -> str:
+    """Return path to Git Bash executable, or empty string if not found."""
+    candidates = [
+        os.path.join(os.environ.get("PROGRAMFILES", ""), "Git", "bin", "bash.exe"),
+        os.path.join(os.environ.get("PROGRAMFILES(X86)", ""), "Git", "bin", "bash.exe"),
+        shutil.which("bash") or "",
+    ]
+    for c in candidates:
+        if c and os.path.isfile(c):
+            return c
+    return ""
+
+
+def _to_bash_path(win_path: Path) -> str:
+    """Convert a Windows Path to Git Bash /c/Users/... format."""
+    p = str(win_path).replace("\\", "/")
+    # D:/a/dotfiles/dotfiles -> /d/a/dotfiles/dotfiles
+    if len(p) >= 2 and p[1] == ":":
+        p = "/" + p[0].lower() + p[2:]
+    return p
+
+
+def _bash_tests_available() -> bool:
+    """Check if bash prompt tests can run in this environment."""
+    if sys.platform != "win32":
+        return False
+    if not _BASHRC.exists():
+        return False
+    if not _git_bash_path():
+        return False
+    return True
+
+
+_skip_bash = pytest.mark.skipif(
+    not _bash_tests_available(),
+    reason="Git Bash + dotfiles bashrc required",
+)
 
 
 def normalize_prompt_path(pwd: str, home: str, is_wsl: bool = False, user: str = "testuser") -> str:
@@ -147,7 +192,7 @@ def test_deeply_nested_path_under_home_with_space():
 # GIT BRANCH TESTS (Bash-dependent, skip on Windows)
 
 
-@pytest.mark.skipif(shutil.which("bash") is None, reason="bash not available")
+@_skip_bash
 def test_git_branch_appears_in_ps1(tmp_path):
     """Git branch appears in brackets in PS1"""
     tmpdir = str(tmp_path)
@@ -176,9 +221,8 @@ def test_git_branch_appears_in_ps1(tmp_path):
         capture_output=True,
     )
 
-    # Use bash -i with heredoc to make bash interactive
-    # Note: This will produce some "Cannot set terminal..." warnings but still works
-    dotfiles_bashrc = "/c/Users/Mike/.dotfiles/home/.bashrc"
+    # Use Git Bash explicitly to avoid WSL bash on Windows
+    dotfiles_bashrc = _to_bash_path(_BASHRC)
     bash_script = f"""
 source "{dotfiles_bashrc}"
 cd "{tmpdir}"
@@ -186,7 +230,7 @@ __set_prompt
 echo "$PS1"
 """
     result = subprocess.run(
-        ["bash", "-i"],
+        [_git_bash_path(), "-i"],
         input=bash_script,
         capture_output=True,
         text=True,
@@ -203,14 +247,14 @@ echo "$PS1"
     )
 
 
-@pytest.mark.skipif(shutil.which("bash") is None, reason="bash not available")
+@_skip_bash
 def test_no_git_branch_outside_repo(tmp_path):
     """No branch brackets in PS1 when not in git repo"""
     tmpdir = str(tmp_path)
     # Don't initialize git, just test the prompt
 
-    # Use bash -i with heredoc to make bash interactive
-    dotfiles_bashrc = "/c/Users/Mike/.dotfiles/home/.bashrc"
+    # Use Git Bash explicitly to avoid WSL bash on Windows
+    dotfiles_bashrc = _to_bash_path(_BASHRC)
     bash_script = f"""
 source "{dotfiles_bashrc}"
 cd "{tmpdir}"
@@ -218,7 +262,7 @@ __set_prompt
 echo "$PS1"
 """
     result = subprocess.run(
-        ["bash", "-i"],
+        [_git_bash_path(), "-i"],
         input=bash_script,
         capture_output=True,
         text=True,
