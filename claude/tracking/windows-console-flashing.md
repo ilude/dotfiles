@@ -1,23 +1,25 @@
 ---
 title: Windows Console Window Flashing Regression
-status: open
+status: workaround-applied
 pinned_version: 2.1.42
 primary_issue: https://github.com/anthropics/claude-code/issues/14828
 comment_posted: https://github.com/anthropics/claude-code/issues/28138#issuecomment-3959696822
-last_checked: 2026-02-25
+last_checked: 2026-02-26
 ---
 
 ## Windows: Console window flashing regression introduced in v2.1.45 (comprehensive tracking)
 
 ### Summary
 
-Since v2.1.45, every tool call, hook execution, and MCP server startup on Windows spawns a visible `cmd.exe`/`conhost.exe` window that flashes on screen and steals keyboard focus. **v2.1.42 is the last version without this behavior.**
+Since v2.1.45, hook execution on Windows spawns visible `cmd.exe`/`conhost.exe` windows that flash on screen and steal keyboard focus. **v2.1.42 is the last version without this behavior.**
 
-This has been reported independently by many users across 14+ issues over the past two months with no official response. Posting this as a consolidated comment with root cause analysis to hopefully get some traction.
+Testing on v2.1.59 (npm) confirmed that **internal tool calls (Bash, Read, Grep, Glob, Edit) do not flash** — the regression is specifically on the **hook execution spawn path** where `windowsHide: true` / `CREATE_NO_WINDOW` was lost in v2.1.45+. Hook commands that spawn separate Windows console-subsystem binaries (like `uv.exe`) trigger visible `conhost.exe` allocation. Commands that run inside the existing bash process (`echo`, `python`) do not flash because no new console is allocated.
+
+This has been reported independently by many users across 14+ issues over the past two months with no official response.
 
 ### What happens
 
-When Claude Code executes any tool (Bash, Grep, Glob, Read, etc.), runs a hook, or starts an MCP server, a black console window briefly appears and steals keyboard focus. If you're typing in another application, keystrokes get swallowed. If you have hooks running on every prompt or tool call, the flashing is nearly continuous. It makes Claude Code effectively unusable on Windows without pinning to v2.1.42.
+When Claude Code executes a hook command that spawns a Windows console-subsystem binary (e.g., `uv.exe`, `uvw.exe`), a black console window briefly appears and steals keyboard focus. If you're typing in another application, keystrokes get swallowed. With hooks running on every tool call, the flashing is nearly continuous. On v2.1.42, these console windows were suppressed via `windowsHide: true` on the hook spawn path; on v2.1.45+ that flag was lost.
 
 ### Root cause analysis
 
@@ -63,11 +65,27 @@ v2.1.47 made things worse with "Fixed hooks silently failing on Windows by using
 
 | Workaround | Effectiveness |
 |------------|--------------|
+| **Use bare `python` instead of `uv run` in hooks** | **Fully works on v2.1.59+. No version pin needed.** Pre-install deps via `pip install`. |
 | Pin to v2.1.42 + `DISABLE_AUTOUPDATER=1` | Fully works, but stuck on old version |
 | Custom COMSPEC wrapper ([details in #19012](https://github.com/anthropics/claude-code/issues/19012)) | Fully works, requires compiling a C++ GUI-subsystem exe |
 | Set `CLAUDE_CODE_GIT_BASH_PATH` to `C:\Program Files\Git\bin\bash.exe` | Works for some users |
 | Use WSL instead of native Windows | Works but changes the whole workflow |
 | Disable plugin hooks (claude-mem, etc.) | Reduces frequency but doesn't eliminate |
+| Use `uvw.exe` (uv's windowless wrapper) | **Does NOT work** — tested 0.9.7 and 0.10.5, still flashes |
+
+### Diagnostic results (2026-02-26, v2.1.59 npm)
+
+| Test | Flashing? | Why |
+|------|-----------|-----|
+| No hooks, tool calls only | No | Internal tool spawn path has `windowsHide` |
+| Hook: `echo hook-fired` | No | Runs inside existing bash process |
+| Hook: `python script.py` | No | Runs inside existing bash process |
+| Hook: `uv run script.py` | **Yes** | `uv.exe` is a console-subsystem binary, allocates new `conhost.exe` |
+| Hook: `uv run --no-sync script.py` | **Yes** | Same — `--no-sync` doesn't change process spawning |
+| Hook: `uvw run script.py` (0.9.7) | **Yes** | `uvw.exe` still spawns child `uv.exe` visibly |
+| Hook: `uvw run script.py` (0.10.5) | **Yes** | Same, even post-0.9.28 termination fix |
+
+**Key insight**: On v2.1.42, hooks calling `uv run` did NOT flash. The same hooks flash on v2.1.45+. This proves Claude Code's hook spawn path lost `windowsHide: true` / `CREATE_NO_WINDOW` in v2.1.45. The flag suppressed `uv.exe`'s console allocation on v2.1.42 but no longer does.
 
 ### What a fix probably looks like
 
@@ -87,3 +105,6 @@ Based on community investigation, the fix needs to ensure `windowsHide: true` (o
 | Date | Action | Notes |
 |------|--------|-------|
 | 2026-02-25 | Initial research & comment posted | Posted consolidated analysis to [#28138](https://github.com/anthropics/claude-code/issues/28138#issuecomment-3959696822). 14+ related issues identified, no official response on any. |
+| 2026-02-26 | Diagnostic testing on v2.1.59 | Isolated flashing to hook spawn path + `uv.exe` console allocation. Internal tool calls don't flash. `uvw.exe` also flashes. Bare `python` workaround eliminates flashing. |
+| 2026-02-26 | Workaround applied | Replaced `uv run` with `python` in all hook commands. Added pip install of hook deps to `install` and `install.ps1`. Branch: `fix/hooks-reduce-process-spawning`. |
+| 2026-02-26 | Follow-up comments posted | [#28138](https://github.com/anthropics/claude-code/issues/28138#issuecomment-3967258284), [#14828](https://github.com/anthropics/claude-code/issues/14828#issuecomment-3967259089). |
