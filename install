@@ -90,7 +90,7 @@ current_step="Zsh setup"
 completed_steps+=("Zsh setup")
 
 current_step="uv install"
-# Install uv (Python package manager) - required for Claude Code hooks
+# Install uv (Python package manager)
 if command -v uv &>/dev/null; then
     echo "uv: already installed"
 else
