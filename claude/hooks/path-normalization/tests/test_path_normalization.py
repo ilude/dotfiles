@@ -16,9 +16,7 @@ These tests verify the hook correctly:
 8. Uses USERPROFILE for home directory detection on Windows
 """
 
-import os
 import sys
-from pathlib import Path
 
 import pytest
 
@@ -65,8 +63,12 @@ class TestRelativePathsBackslashes:
     def test_backslash_fixed_transparently(self, run_hook, path, expected_fixed):
         """Relative paths with backslashes should be transparently fixed."""
         result = run_hook("Edit", path)
-        assert result.fixed, f"Expected fixed (exit 0 with updatedInput), got exit {result.exit_code}"
-        assert result.fixed_path == expected_fixed, f"Expected '{expected_fixed}', got '{result.fixed_path}'"
+        assert result.fixed, (
+            f"Expected fixed (exit 0 with updatedInput), got exit {result.exit_code}"
+        )
+        assert result.fixed_path == expected_fixed, (
+            f"Expected '{expected_fixed}', got '{result.fixed_path}'"
+        )
 
 
 class TestHomeRelativePaths:
@@ -157,10 +159,16 @@ class TestAbsoluteWithinProject:
         assert result.fixed, f"Expected fixed, got exit {result.exit_code}"
         # CRITICAL: Should NOT contain the full Windows path with drive letter
         assert result.fixed_path is not None
-        assert "C:/" not in result.fixed_path, f"Fixed path has full absolute path: {result.fixed_path}"
-        assert "C:\\" not in result.fixed_path, f"Fixed path has full absolute path: {result.fixed_path}"
+        assert "C:/" not in result.fixed_path, (
+            f"Fixed path has full absolute path: {result.fixed_path}"
+        )
+        assert "C:\\" not in result.fixed_path, (
+            f"Fixed path has full absolute path: {result.fixed_path}"
+        )
         # Should be the relative path
-        assert result.fixed_path == "scripts/Setup-AzureAD.ps1", f"Wrong fixed path: {result.fixed_path}"
+        assert result.fixed_path == "scripts/Setup-AzureAD.ps1", (
+            f"Wrong fixed path: {result.fixed_path}"
+        )
 
     def test_msys_project_windows_file_fixes_to_relative(self, run_hook):
         """MSYS-style project dir with Windows file path should be fixed to relative path."""
@@ -299,7 +307,10 @@ class TestAbsoluteOutsideAllowed:
 
         # Use a Windows backslash path that's outside home/project
         backslash = chr(92)
-        windows_path = f"C:{backslash}Projects{backslash}Work{backslash}Gitlab{backslash}docs{backslash}FILE.md"
+        windows_path = (
+            f"C:{backslash}Projects{backslash}Work"
+            f"{backslash}Gitlab{backslash}docs{backslash}FILE.md"
+        )
 
         result = run_hook(
             "Write",
@@ -472,8 +483,8 @@ class TestCrossDirectoryWrites:
             "Write",
             file_path,
             env={
-                "CLAUDE_PROJECT_DIR": str(project_dir).replace(chr(92), '/'),
-                "USERPROFILE": str(home_dir).replace(chr(92), '/'),
+                "CLAUDE_PROJECT_DIR": str(project_dir).replace(chr(92), "/"),
+                "USERPROFILE": str(home_dir).replace(chr(92), "/"),
             },
         )
         assert result.blocked, f"Expected blocked, got exit {result.exit_code}"
@@ -494,8 +505,8 @@ class TestCrossDirectoryWrites:
             "Write",
             file_path,
             env={
-                "CLAUDE_PROJECT_DIR": str(project_dir).replace(chr(92), '/'),
-                "USERPROFILE": str(home_dir).replace(chr(92), '/'),
+                "CLAUDE_PROJECT_DIR": str(project_dir).replace(chr(92), "/"),
+                "USERPROFILE": str(home_dir).replace(chr(92), "/"),
             },
         )
         assert result.fixed, f"Expected fixed, got exit {result.exit_code}"
@@ -556,7 +567,9 @@ class TestTypeErrors:
 
     def test_file_path_dict_allowed(self, run_hook_raw):
         """file_path as dict should not crash, should allow (exit 0)."""
-        result = run_hook_raw({"tool_name": "Edit", "tool_input": {"file_path": {"nested": "dict"}}})
+        result = run_hook_raw(
+            {"tool_name": "Edit", "tool_input": {"file_path": {"nested": "dict"}}}
+        )
         assert result.allowed
 
     def test_missing_tool_input_allowed(self, run_hook_raw):

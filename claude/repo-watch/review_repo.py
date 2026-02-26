@@ -182,7 +182,9 @@ def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Review a tracked repo")
     parser.add_argument("repo", help="Repo identifier (owner/repo or URL)")
-    parser.add_argument("--mark-reviewed", action="store_true", help="Mark as reviewed after output")
+    parser.add_argument(
+        "--mark-reviewed", action="store_true", help="Mark as reviewed after output"
+    )
     args = parser.parse_args()
 
     result = review_repo(args.repo, mark_reviewed=args.mark_reviewed)

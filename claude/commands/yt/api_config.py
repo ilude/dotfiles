@@ -26,11 +26,11 @@ def load_secrets_file() -> None:
         if not line or line.startswith("#"):
             continue
         # Parse: export VAR=value or VAR=value
-        match = re.match(r'^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$', line)
+        match = re.match(r"^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$", line)
         if match:
             name, value = match.groups()
             # Remove surrounding quotes if present
-            value = value.strip('\'"')
+            value = value.strip("'\"")
             # Only set if not already in environment
             if name not in os.environ:
                 os.environ[name] = value

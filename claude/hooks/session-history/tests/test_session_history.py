@@ -123,7 +123,9 @@ class TestValidateJsonl:
     def test_missing_summary_field(self, tmp_path: Path) -> None:
         """Should detect missing 'summary' field."""
         history_file = tmp_path / "test.jsonl"
-        history_file.write_text('{"ts":"2026-01-15T22:00:00Z","sid":"abc12345","type":"decision"}\n')
+        history_file.write_text(
+            '{"ts":"2026-01-15T22:00:00Z","sid":"abc12345","type":"decision"}\n'
+        )
         valid, errors = validate_jsonl(history_file)
         assert not valid
         assert any("missing 'summary' field" in e for e in errors)

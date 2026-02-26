@@ -4,7 +4,6 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from ingest_video import main
 from job_utils import poll_job
 
@@ -45,12 +44,14 @@ class TestMain:
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.post.return_value = mock_response_success
 
-        with patch.object(sys, "argv", ["ingest_video.py", "dQw4w9WgXcQ"]), \
-             patch("ingest_video.RequestSigner") as mock_signer_cls, \
-             patch("ingest_video.httpx.Client", return_value=mock_client), \
-             patch("ingest_video.Path") as mock_path_cls, \
-             patch("ingest_video.get_api_base", return_value="http://localhost:8000/api/v1"), \
-             patch("ingest_video.get_api_host", return_value="localhost:8000"):
+        with (
+            patch.object(sys, "argv", ["ingest_video.py", "dQw4w9WgXcQ"]),
+            patch("ingest_video.RequestSigner") as mock_signer_cls,
+            patch("ingest_video.httpx.Client", return_value=mock_client),
+            patch("ingest_video.Path") as mock_path_cls,
+            patch("ingest_video.get_api_base", return_value="http://localhost:8000/api/v1"),
+            patch("ingest_video.get_api_host", return_value="localhost:8000"),
+        ):
             mock_path_inst = MagicMock()
             mock_path_inst.exists.return_value = True
             mock_path_cls.home.return_value.__truediv__ = MagicMock(return_value=mock_path_inst)
@@ -83,12 +84,14 @@ class TestMain:
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.post.return_value = response
 
-        with patch.object(sys, "argv", ["ingest_video.py", "dQw4w9WgXcQ"]), \
-             patch("ingest_video.RequestSigner") as mock_signer_cls, \
-             patch("ingest_video.httpx.Client", return_value=mock_client), \
-             patch("ingest_video.Path") as mock_path_cls, \
-             patch("ingest_video.get_api_base", return_value="http://localhost:8000/api/v1"), \
-             patch("ingest_video.get_api_host", return_value="localhost:8000"):
+        with (
+            patch.object(sys, "argv", ["ingest_video.py", "dQw4w9WgXcQ"]),
+            patch("ingest_video.RequestSigner") as mock_signer_cls,
+            patch("ingest_video.httpx.Client", return_value=mock_client),
+            patch("ingest_video.Path") as mock_path_cls,
+            patch("ingest_video.get_api_base", return_value="http://localhost:8000/api/v1"),
+            patch("ingest_video.get_api_host", return_value="localhost:8000"),
+        ):
             mock_path_inst = MagicMock()
             mock_path_inst.exists.return_value = True
             mock_path_cls.home.return_value.__truediv__ = MagicMock(return_value=mock_path_inst)
@@ -127,8 +130,13 @@ class TestPollJob:
         mock_client.get.side_effect = [resp_processing, resp_completed]
 
         with patch("job_utils.time.sleep"):
-            poll_job(mock_client, mock_signer, "http://localhost:8000/api/v1",
-                     "localhost:8000", "job_123")
+            poll_job(
+                mock_client,
+                mock_signer,
+                "http://localhost:8000/api/v1",
+                "localhost:8000",
+                "job_123",
+            )
 
         captured = capsys.readouterr()
         assert "Status: processing" in captured.out
@@ -149,8 +157,13 @@ class TestPollJob:
         mock_client.get.side_effect = [resp_processing, resp_failed]
 
         with patch("job_utils.time.sleep"):
-            poll_job(mock_client, mock_signer, "http://localhost:8000/api/v1",
-                     "localhost:8000", "job_123")
+            poll_job(
+                mock_client,
+                mock_signer,
+                "http://localhost:8000/api/v1",
+                "localhost:8000",
+                "job_123",
+            )
 
         captured = capsys.readouterr()
         assert "Status: failed" in captured.out
@@ -169,8 +182,14 @@ class TestPollJob:
         mock_client.get.return_value = resp_completed
 
         with patch("job_utils.time.sleep"):
-            poll_job(mock_client, mock_signer, "http://localhost:8000/api/v1",
-                     "localhost:8000", "job_123", verbose=True)
+            poll_job(
+                mock_client,
+                mock_signer,
+                "http://localhost:8000/api/v1",
+                "localhost:8000",
+                "job_123",
+                verbose=True,
+            )
 
         # Verify verbose=true is appended to URL
         call_args = mock_client.get.call_args
@@ -191,6 +210,11 @@ class TestPollJob:
 
         with patch("job_utils.time.sleep"):
             with pytest.raises(SystemExit) as exc_info:
-                poll_job(mock_client, mock_signer, "http://localhost:8000/api/v1",
-                         "localhost:8000", "job_123")
+                poll_job(
+                    mock_client,
+                    mock_signer,
+                    "http://localhost:8000/api/v1",
+                    "localhost:8000",
+                    "job_123",
+                )
             assert exc_info.value.code == 1

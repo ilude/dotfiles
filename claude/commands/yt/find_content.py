@@ -10,19 +10,13 @@ import sys
 from pathlib import Path
 
 import httpx
-
 from api_config import extract_video_id, get_api_base, get_api_host
 from signing import RequestSigner
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Resolve a YouTube video ID to a menos content ID"
-    )
-    parser.add_argument(
-        "video_id",
-        help="YouTube video ID or URL"
-    )
+    parser = argparse.ArgumentParser(description="Resolve a YouTube video ID to a menos content ID")
+    parser.add_argument("video_id", help="YouTube video ID or URL")
 
     args = parser.parse_args()
 

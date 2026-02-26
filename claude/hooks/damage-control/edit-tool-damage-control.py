@@ -14,21 +14,21 @@ Exit codes:
   2 = Block edit (stderr fed back to Claude)
 """
 
+import fnmatch
 import json
+import os
 import subprocess
 import sys
-import os
-import fnmatch
-from pathlib import Path
-from typing import Dict, Any, List, Tuple, Optional
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Optional
 
 import yaml
-
 
 # ============================================================================
 # AUDIT LOGGING
 # ============================================================================
+
 
 def get_log_path() -> Path:
     """Get path to daily audit log file.
@@ -109,9 +109,7 @@ def spawn_log_rotation() -> None:
             "stderr": subprocess.DEVNULL,
         }
         if sys.platform == "win32":
-            kwargs["creationflags"] = (
-                subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW
-            )
+            kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW
         else:
             kwargs["start_new_session"] = True
 
@@ -122,7 +120,7 @@ def spawn_log_rotation() -> None:
 
 def is_glob_pattern(pattern: str) -> bool:
     """Check if pattern contains glob wildcards."""
-    return '*' in pattern or '?' in pattern or '[' in pattern
+    return "*" in pattern or "?" in pattern or "[" in pattern
 
 
 def match_path(file_path: str, pattern: str) -> bool:
@@ -151,13 +149,18 @@ def match_path(file_path: str, pattern: str) -> bool:
         # Exact match or directory prefix matching
         # .env should NOT match .env.example (different files)
         # ~/.ssh/ SHOULD match ~/.ssh/id_rsa (directory contains file)
-        if expanded_normalized == expanded_pattern or expanded_normalized == expanded_pattern.rstrip('/'):
+        if (
+            expanded_normalized == expanded_pattern
+            or expanded_normalized == expanded_pattern.rstrip("/")
+        ):
             return True
         # Only prefix match if pattern is a directory (ends with /)
-        if expanded_pattern.endswith('/') and expanded_normalized.startswith(expanded_pattern):
+        if expanded_pattern.endswith("/") and expanded_normalized.startswith(expanded_pattern):
             return True
         # Also match if path is inside the directory (pattern without trailing /)
-        if expanded_normalized.startswith(expanded_pattern + '/') or expanded_normalized.startswith(expanded_pattern + os.sep):
+        if expanded_normalized.startswith(expanded_pattern + "/") or expanded_normalized.startswith(
+            expanded_pattern + os.sep
+        ):
             return True
         return False
 
@@ -167,7 +170,9 @@ def get_config_path() -> Path:
     # 1. Check project hooks directory (installed location)
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
     if project_dir:
-        project_config = Path(project_dir) / ".claude" / "hooks" / "damage-control" / "patterns.yaml"
+        project_config = (
+            Path(project_dir) / ".claude" / "hooks" / "damage-control" / "patterns.yaml"
+        )
         if project_config.exists():
             return project_config
 
@@ -185,20 +190,22 @@ def get_config_path() -> Path:
     return local_config  # Default, even if it doesn't exist
 
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """Load config from YAML."""
     config_path = get_config_path()
 
     if not config_path.exists():
         return {"zeroAccessPaths": [], "readOnlyPaths": []}
 
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         config = yaml.safe_load(f) or {}
 
     return config
 
 
-def detect_context(tool_name: str, tool_input: Dict[str, Any], config: Dict[str, Any]) -> Optional[str]:
+def detect_context(
+    tool_name: str, tool_input: dict[str, Any], config: dict[str, Any]
+) -> Optional[str]:
     """Detect if we're in a special context that allows relaxed checks.
 
     For Edit/Write tools, this checks file extensions against documentation context.
@@ -226,7 +233,9 @@ def detect_context(tool_name: str, tool_input: Dict[str, Any], config: Dict[str,
     return None
 
 
-def check_path(file_path: str, config: Dict[str, Any], context: Optional[str] = None) -> Tuple[bool, str]:
+def check_path(
+    file_path: str, config: dict[str, Any], context: Optional[str] = None
+) -> tuple[bool, str]:
     """Check if file_path is blocked. Returns (blocked, reason).
 
     Args:

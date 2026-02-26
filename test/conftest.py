@@ -6,7 +6,6 @@
 Shared pytest fixtures for dotfiles tests.
 """
 
-import os
 import shutil
 from pathlib import Path
 

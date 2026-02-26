@@ -37,7 +37,7 @@ _is_readonly_search_pipeline = bash_tool._is_readonly_search_pipeline
 @pytest.fixture
 def full_config():
     """Load the real patterns.yaml config for integration testing."""
-    config = bash_tool.load_config()
+    bash_tool.load_config()
     return bash_tool.get_compiled_config()
 
 
@@ -358,39 +358,25 @@ class TestPathChecksStillEnforced:
 
     def test_grep_on_zero_access_path_blocked(self):
         """grep reading a zero-access file must still be blocked."""
-        config = self._make_config_with_zero_access(
-            ["/secrets/credentials.json"]
-        )
+        config = self._make_config_with_zero_access(["/secrets/credentials.json"])
         blocked, ask, reason, pattern, _, _ = check_command(
             "grep password /secrets/credentials.json", config
         )
-        assert blocked, (
-            f"grep on zero-access path should be blocked: reason={reason}"
-        )
+        assert blocked, f"grep on zero-access path should be blocked: reason={reason}"
 
     def test_grep_pipe_head_on_zero_access_blocked(self):
         """grep piped to head on a zero-access file must still be blocked."""
-        config = self._make_config_with_zero_access(
-            ["/secrets/api-keys.env"]
-        )
+        config = self._make_config_with_zero_access(["/secrets/api-keys.env"])
         blocked, ask, reason, pattern, _, _ = check_command(
             "grep API_KEY /secrets/api-keys.env | head -5", config
         )
-        assert blocked, (
-            f"grep|head on zero-access path should be blocked: reason={reason}"
-        )
+        assert blocked, f"grep|head on zero-access path should be blocked: reason={reason}"
 
     def test_rg_on_zero_access_dir_blocked(self):
         """rg searching inside a zero-access directory must still be blocked."""
-        config = self._make_config_with_zero_access(
-            ["/secrets/"]
-        )
-        blocked, ask, reason, pattern, _, _ = check_command(
-            "rg pattern /secrets/", config
-        )
-        assert blocked, (
-            f"rg on zero-access directory should be blocked: reason={reason}"
-        )
+        config = self._make_config_with_zero_access(["/secrets/"])
+        blocked, ask, reason, pattern, _, _ = check_command("rg pattern /secrets/", config)
+        assert blocked, f"rg on zero-access directory should be blocked: reason={reason}"
 
 
 # ============================================================================
@@ -406,7 +392,7 @@ class TestNewPipeTargets:
         [
             'grep "pattern" file.json | jq .field',
             'rg "key:" config.yaml | yq .metadata',
-            'git log --oneline | bat --style=plain',
+            "git log --oneline | bat --style=plain",
             'grep "error" log.json | jq -r .message | head',
         ],
     )
@@ -454,7 +440,7 @@ class TestEchoDisplayCommands:
         """Real-world command: kubectl get (safe) ; echo (display) ; echo (display)."""
         cmd = (
             "kubectl get deployment cluster-autoscaler -n kube-system "
-            '-o jsonpath=\'{.metadata.name}\' 2>/dev/null; '
+            "-o jsonpath='{.metadata.name}' 2>/dev/null; "
             'echo "---scale-replicas-command-would-be---"; '
             'echo "kubectl scale deployment cluster-autoscaler -n kube-system --replicas=0"'
         )
@@ -563,7 +549,7 @@ class TestBashCommentStripping:
 
     def test_inline_comment_after_command(self, full_config):
         """Inline comment after a safe command must not trigger."""
-        cmd = 'grep pattern file  # this searches for terraform destroy'
+        cmd = "grep pattern file  # this searches for terraform destroy"
         blocked, ask, reason, pattern, _, _ = check_command(cmd, full_config)
         assert not blocked and not ask, (
             f"False positive: inline comment with dangerous text\n"
@@ -575,8 +561,7 @@ class TestBashCommentStripping:
         cmd = "# helm upgrade release chart/"
         blocked, ask, reason, pattern, _, _ = check_command(cmd, full_config)
         assert not blocked and not ask, (
-            f"False positive: pure comment\n"
-            f"  blocked={blocked}, ask={ask}, reason={reason}"
+            f"False positive: pure comment\n  blocked={blocked}, ask={ask}, reason={reason}"
         )
 
     def test_dangerous_command_not_hidden_by_comment(self, full_config):
@@ -584,8 +569,7 @@ class TestBashCommentStripping:
         cmd = "# this is a comment\nhelm upgrade release chart/"
         blocked, ask, reason, pattern, _, _ = check_command(cmd, full_config)
         assert blocked or ask, (
-            f"Dangerous command hidden by comment\n"
-            f"  blocked={blocked}, ask={ask}"
+            f"Dangerous command hidden by comment\n  blocked={blocked}, ask={ask}"
         )
 
 
@@ -611,8 +595,7 @@ class TestFindCommand:
         cmd = 'find /path/terraform -name "*.tf" 2>/dev/null | head -20'
         blocked, ask, reason, pattern, _, _ = check_command(cmd, full_config)
         assert not blocked and not ask, (
-            f"False positive: find piped to head\n"
-            f"  blocked={blocked}, ask={ask}, reason={reason}"
+            f"False positive: find piped to head\n  blocked={blocked}, ask={ask}, reason={reason}"
         )
 
 

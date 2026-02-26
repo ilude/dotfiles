@@ -164,7 +164,7 @@ class TestMatchLanguage:
                 "extensions": [".py"],
                 "markers": ["pyproject.toml"],
                 "validators": [],
-            }
+            },
         }
         result = hook.match_language(file_path, config)
         assert result is not None
@@ -300,13 +300,18 @@ class TestMainFunction:
     def test_non_write_edit_tool_exits_silently(self):
         input_data = json.dumps({"tool_name": "Read", "tool_input": {"file_path": "/tmp/test.py"}})
         with patch("sys.stdin", MagicMock(read=MagicMock(return_value=input_data))):
-            with patch("json.load", return_value={"tool_name": "Read", "tool_input": {"file_path": "/tmp/test.py"}}):
+            with patch(
+                "json.load",
+                return_value={"tool_name": "Read", "tool_input": {"file_path": "/tmp/test.py"}},
+            ):
                 with pytest.raises(SystemExit) as exc_info:
                     hook.main()
                 assert exc_info.value.code == 0
 
     def test_empty_file_path_exits(self):
-        with patch("json.load", return_value={"tool_name": "Write", "tool_input": {"file_path": ""}}):
+        with patch(
+            "json.load", return_value={"tool_name": "Write", "tool_input": {"file_path": ""}}
+        ):
             with pytest.raises(SystemExit) as exc_info:
                 hook.main()
             assert exc_info.value.code == 0
@@ -318,7 +323,13 @@ class TestMainFunction:
             assert exc_info.value.code == 0
 
     def test_missing_file_exits(self):
-        with patch("json.load", return_value={"tool_name": "Write", "tool_input": {"file_path": "/nonexistent/file.py"}}):
+        with patch(
+            "json.load",
+            return_value={
+                "tool_name": "Write",
+                "tool_input": {"file_path": "/nonexistent/file.py"},
+            },
+        ):
             with patch("os.path.isfile", return_value=False):
                 with pytest.raises(SystemExit) as exc_info:
                     hook.main()
@@ -343,11 +354,13 @@ class TestMainFunction:
 
         input_data = {"tool_name": "Write", "tool_input": {"file_path": str(test_file)}}
 
-        with patch("json.load", return_value=input_data), \
-             patch.object(hook, "load_config", return_value=config), \
-             patch("shutil.which", return_value="/usr/bin/ruff"), \
-             patch.object(hook, "run_validator", return_value=(1, "bad.py:1: E401 unused import")), \
-             patch.object(hook, "load_skip_list", return_value=set()):
+        with (
+            patch("json.load", return_value=input_data),
+            patch.object(hook, "load_config", return_value=config),
+            patch("shutil.which", return_value="/usr/bin/ruff"),
+            patch.object(hook, "run_validator", return_value=(1, "bad.py:1: E401 unused import")),
+            patch.object(hook, "load_skip_list", return_value=set()),
+        ):
             with pytest.raises(SystemExit) as exc_info:
                 hook.main()
             assert exc_info.value.code == 0
@@ -375,9 +388,11 @@ class TestMainFunction:
 
         input_data = {"tool_name": "Edit", "tool_input": {"file_path": str(test_file)}}
 
-        with patch("json.load", return_value=input_data), \
-             patch.object(hook, "load_config", return_value=config), \
-             patch.object(hook, "load_skip_list", return_value={"ruff-check"}):
+        with (
+            patch("json.load", return_value=input_data),
+            patch.object(hook, "load_config", return_value=config),
+            patch.object(hook, "load_skip_list", return_value={"ruff-check"}),
+        ):
             with pytest.raises(SystemExit) as exc_info:
                 hook.main()
             assert exc_info.value.code == 0

@@ -3,11 +3,12 @@
 UserPromptSubmit hook to auto-inject session context for /pickup and /snapshot commands.
 Windows-safe using os.path for all file operations.
 """
+
 import json
-import sys
 import os
-from pathlib import Path
+import sys
 from datetime import datetime
+from pathlib import Path
 
 
 def parse_instances_from_current(current_file):
@@ -15,31 +16,27 @@ def parse_instances_from_current(current_file):
     instances = []
 
     try:
-        with open(current_file, 'r', encoding='utf-8') as f:
+        with open(current_file, encoding="utf-8") as f:
             content = f.read()
-            lines = content.split('\n')
+            lines = content.split("\n")
 
         current_instance = None
         in_right_now = False
 
         for i, line in enumerate(lines):
             # Check for instance section header: ## [instance:session] Title
-            if line.startswith('## [') and ']:' in line or line.startswith('## [') and ']' in line:
+            if line.startswith("## [") and "]:" in line or line.startswith("## [") and "]" in line:
                 # Extract instance:session tag
-                start = line.find('[')
-                end = line.find(']', start)
+                start = line.find("[")
+                end = line.find("]", start)
                 if start != -1 and end != -1:
-                    tag = line[start+1:end]
-                    title = line[end+1:].strip()
+                    tag = line[start + 1 : end]
+                    title = line[end + 1 :].strip()
 
                     if current_instance:
                         instances.append(current_instance)
 
-                    current_instance = {
-                        'tag': tag,
-                        'title': title,
-                        'right_now': None
-                    }
+                    current_instance = {"tag": tag, "title": title, "right_now": None}
                     in_right_now = False
 
             # Check for "### Right Now" within an instance section
@@ -47,8 +44,8 @@ def parse_instances_from_current(current_file):
                 in_right_now = True
 
             # Extract Right Now content
-            elif current_instance and in_right_now and line.strip() and not line.startswith('#'):
-                current_instance['right_now'] = line.strip()
+            elif current_instance and in_right_now and line.strip() and not line.startswith("#"):
+                current_instance["right_now"] = line.strip()
                 in_right_now = False
 
         # Don't forget the last instance
@@ -87,18 +84,20 @@ def find_sessions(base_dir):
                 if current_file.exists():
                     instances = parse_instances_from_current(current_file)
 
-                sessions.append({
-                    'name': item.name,
-                    'mtime': mtime,
-                    'instances': instances,
-                    'has_current': current_file.exists(),
-                    'has_status': status_file.exists()
-                })
-    except Exception as e:
+                sessions.append(
+                    {
+                        "name": item.name,
+                        "mtime": mtime,
+                        "instances": instances,
+                        "has_current": current_file.exists(),
+                        "has_status": status_file.exists(),
+                    }
+                )
+    except Exception:
         return []
 
     # Sort by modification time (most recent first)
-    sessions.sort(key=lambda x: x['mtime'] if x['mtime'] else datetime.min, reverse=True)
+    sessions.sort(key=lambda x: x["mtime"] if x["mtime"] else datetime.min, reverse=True)
     return sessions
 
 
@@ -112,20 +111,20 @@ def format_session_list(sessions):
     item_num = 1
     for session in sessions:
         # Show feature name
-        feature_name = session['name']
-        mtime_str = session['mtime'].strftime('%Y-%m-%d %H:%M') if session['mtime'] else 'unknown'
+        feature_name = session["name"]
+        mtime_str = session["mtime"].strftime("%Y-%m-%d %H:%M") if session["mtime"] else "unknown"
 
         # If no instances found, show legacy format
-        if not session['instances']:
+        if not session["instances"]:
             lines.append(f"{item_num}. **{feature_name}** (updated {mtime_str})")
             item_num += 1
         else:
             # Show each instance within the feature
-            for instance in session['instances']:
+            for instance in session["instances"]:
                 line = f"{item_num}. **{feature_name}** [{instance['tag']}]"
-                if instance['title']:
+                if instance["title"]:
                     line += f" - {instance['title']}"
-                if instance['right_now']:
+                if instance["right_now"]:
                     line += f" - {instance['right_now']}"
                 line += f" (updated {mtime_str})"
                 lines.append(line)
@@ -138,11 +137,11 @@ def main():
     try:
         # Read input from stdin
         data = json.load(sys.stdin)
-        prompt = data.get('prompt', '')
-        cwd = Path(data.get('cwd', os.getcwd()))
+        prompt = data.get("prompt", "")
+        cwd = Path(data.get("cwd", os.getcwd()))
 
         # Check if prompt starts with /pickup or /snapshot
-        if not (prompt.strip().startswith('/pickup') or prompt.strip().startswith('/snapshot')):
+        if not (prompt.strip().startswith("/pickup") or prompt.strip().startswith("/snapshot")):
             # Not relevant, pass through
             print(json.dumps({}))
             return
@@ -152,11 +151,7 @@ def main():
         context = format_session_list(sessions)
 
         # Return additional context
-        output = {
-            "hookSpecificOutput": {
-                "additionalContext": context
-            }
-        }
+        output = {"hookSpecificOutput": {"additionalContext": context}}
         print(json.dumps(output))
 
     except Exception as e:

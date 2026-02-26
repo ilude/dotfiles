@@ -16,7 +16,6 @@ from pathlib import Path
 
 import pytest
 
-
 # =============================================================================
 # Python implementations of bash functions (pure, no subprocess)
 # =============================================================================

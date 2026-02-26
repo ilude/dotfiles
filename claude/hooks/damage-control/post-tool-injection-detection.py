@@ -23,7 +23,7 @@ import re
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import yaml
 
@@ -61,7 +61,7 @@ def get_config_path() -> Path:
     return local_config  # Default, even if it doesn't exist
 
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """Load patterns from YAML config file."""
     config_path = get_config_path()
 
@@ -69,7 +69,7 @@ def load_config() -> Dict[str, Any]:
         print(f"Warning: Config not found at {config_path}", file=sys.stderr)
         return {"secretPatterns": [], "injectionPatterns": []}
 
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         return yaml.safe_load(f) or {}
 
 
@@ -129,9 +129,7 @@ def log_detection(
 # ============================================================================
 
 
-def compile_patterns(
-    patterns: List[Dict[str, Any]]
-) -> List[Tuple[re.Pattern, Dict[str, Any]]]:
+def compile_patterns(patterns: list[dict[str, Any]]) -> list[tuple[re.Pattern, dict[str, Any]]]:
     """Compile regex patterns from config."""
     compiled = []
     for item in patterns:
@@ -147,8 +145,8 @@ def compile_patterns(
 
 
 def check_for_secrets(
-    content: str, patterns: List[Tuple[re.Pattern, Dict[str, Any]]]
-) -> List[Dict[str, Any]]:
+    content: str, patterns: list[tuple[re.Pattern, dict[str, Any]]]
+) -> list[dict[str, Any]]:
     """Check content for secret patterns."""
     findings = []
 
@@ -176,8 +174,8 @@ def check_for_secrets(
 
 
 def check_for_injections(
-    content: str, patterns: List[Tuple[re.Pattern, Dict[str, Any]]]
-) -> List[Dict[str, Any]]:
+    content: str, patterns: list[tuple[re.Pattern, dict[str, Any]]]
+) -> list[dict[str, Any]]:
     """Check content for injection patterns."""
     findings = []
 

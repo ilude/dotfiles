@@ -15,22 +15,28 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 import yaml
 
 HOOK_DIR = Path(__file__).parent
 CONFIG_FILE = HOOK_DIR / "validators.yaml"
-SKIP_FILE = Path(os.path.expanduser("~")) / ".claude" / "hooks" / "quality-validation" / "skip-validators.txt"
+SKIP_FILE = (
+    Path(os.path.expanduser("~"))
+    / ".claude"
+    / "hooks"
+    / "quality-validation"
+    / "skip-validators.txt"
+)
 LOG_DIR = Path(os.path.expanduser("~")) / ".claude" / "logs" / "quality-validation"
 
 
-def load_config() -> Optional[Dict[str, Any]]:
+def load_config() -> Optional[dict[str, Any]]:
     """Load validators.yaml config. Returns None on error."""
     if not CONFIG_FILE.exists():
         return None
     try:
-        with open(CONFIG_FILE, "r") as f:
+        with open(CONFIG_FILE) as f:
             return yaml.safe_load(f)
     except yaml.YAMLError as e:
         log_error(f"Failed to parse validators.yaml: {e}")
@@ -42,7 +48,7 @@ def load_skip_list() -> set:
     if not SKIP_FILE.exists():
         return set()
     try:
-        with open(SKIP_FILE, "r") as f:
+        with open(SKIP_FILE) as f:
             return {line.strip() for line in f if line.strip() and not line.startswith("#")}
     except OSError:
         return set()
@@ -54,8 +60,11 @@ def normalize_path(file_path: str) -> str:
     return os.path.abspath(file_path)
 
 
-def find_project_root(file_dir: str, markers: List[str]) -> Optional[str]:
-    """Walk up from file_dir looking for any marker file. Returns directory containing marker, or None."""
+def find_project_root(file_dir: str, markers: list[str]) -> Optional[str]:
+    """Walk up from file_dir looking for any marker file.
+
+    Returns directory containing marker, or None.
+    """
     current = Path(file_dir).resolve()
     # Walk up, stopping at filesystem root
     while True:
@@ -69,7 +78,7 @@ def find_project_root(file_dir: str, markers: List[str]) -> Optional[str]:
     return None
 
 
-def match_language(file_path: str, config: Dict[str, Any]) -> Optional[Tuple[str, Dict[str, Any]]]:
+def match_language(file_path: str, config: dict[str, Any]) -> Optional[tuple[str, dict[str, Any]]]:
     """Match file extension to a language config entry.
 
     Only matches if at least one marker file is found in the ancestor chain.
@@ -105,7 +114,7 @@ def detect_package_manager() -> Optional[str]:
     return None
 
 
-def get_install_suggestion(lang_config: Dict[str, Any], validator_name: str) -> Optional[str]:
+def get_install_suggestion(lang_config: dict[str, Any], validator_name: str) -> Optional[str]:
     """Get install command for the current platform."""
     install_config = lang_config.get("install", {})
     if not install_config:
@@ -123,12 +132,12 @@ def get_install_suggestion(lang_config: Dict[str, Any], validator_name: str) -> 
     return None
 
 
-def build_command(cmd_template: List[str], file_path: str) -> List[str]:
+def build_command(cmd_template: list[str], file_path: str) -> list[str]:
     """Replace {file} placeholder in command list safely."""
     return [file_path if arg == "{file}" else arg for arg in cmd_template]
 
 
-def run_validator(cmd: List[str], timeout: int = 8) -> Tuple[int, str]:
+def run_validator(cmd: list[str], timeout: int = 8) -> tuple[int, str]:
     """Run validator command. Returns (returncode, combined output)."""
     try:
         result = subprocess.run(

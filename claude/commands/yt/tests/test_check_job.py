@@ -4,7 +4,6 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from check_job import cancel_job, get_job, main
 from job_utils import poll_job
 
@@ -30,8 +29,9 @@ class TestGetJob:
         resp.json.return_value = {"status": "completed", "job_id": "job_123"}
         mock_client.get.return_value = resp
 
-        get_job(mock_client, mock_signer, "http://localhost:8000/api/v1",
-                "localhost:8000", "job_123")
+        get_job(
+            mock_client, mock_signer, "http://localhost:8000/api/v1", "localhost:8000", "job_123"
+        )
 
         captured = capsys.readouterr()
         assert "Job: job_123" in captured.out
@@ -49,8 +49,14 @@ class TestGetJob:
         }
         mock_client.get.return_value = resp
 
-        get_job(mock_client, mock_signer, "http://localhost:8000/api/v1",
-                "localhost:8000", "job_123", verbose=True)
+        get_job(
+            mock_client,
+            mock_signer,
+            "http://localhost:8000/api/v1",
+            "localhost:8000",
+            "job_123",
+            verbose=True,
+        )
 
         # Verify verbose=true is appended to URL
         call_args = mock_client.get.call_args
@@ -68,8 +74,13 @@ class TestGetJob:
         mock_client.get.return_value = resp
 
         with pytest.raises(SystemExit) as exc_info:
-            get_job(mock_client, mock_signer, "http://localhost:8000/api/v1",
-                    "localhost:8000", "nonexistent_job")
+            get_job(
+                mock_client,
+                mock_signer,
+                "http://localhost:8000/api/v1",
+                "localhost:8000",
+                "nonexistent_job",
+            )
         assert exc_info.value.code == 1
 
 
@@ -90,8 +101,13 @@ class TestPollJob:
         mock_client.get.side_effect = [resp_processing, resp_completed]
 
         with patch("job_utils.time.sleep"):
-            poll_job(mock_client, mock_signer, "http://localhost:8000/api/v1",
-                     "localhost:8000", "job_123")
+            poll_job(
+                mock_client,
+                mock_signer,
+                "http://localhost:8000/api/v1",
+                "localhost:8000",
+                "job_123",
+            )
 
         captured = capsys.readouterr()
         assert "Status: processing" in captured.out
@@ -111,8 +127,14 @@ class TestPollJob:
         mock_client.get.return_value = resp_completed
 
         with patch("job_utils.time.sleep"):
-            poll_job(mock_client, mock_signer, "http://localhost:8000/api/v1",
-                     "localhost:8000", "job_123", verbose=True)
+            poll_job(
+                mock_client,
+                mock_signer,
+                "http://localhost:8000/api/v1",
+                "localhost:8000",
+                "job_123",
+                verbose=True,
+            )
 
         captured = capsys.readouterr()
         assert "result: ok" in captured.out
@@ -128,8 +150,9 @@ class TestCancelJob:
         resp.json.return_value = {"status": "cancelled", "job_id": "job_123"}
         mock_client.post.return_value = resp
 
-        cancel_job(mock_client, mock_signer, "http://localhost:8000/api/v1",
-                   "localhost:8000", "job_123")
+        cancel_job(
+            mock_client, mock_signer, "http://localhost:8000/api/v1", "localhost:8000", "job_123"
+        )
 
         # Verify POST to cancel endpoint
         call_args = mock_client.post.call_args
@@ -146,8 +169,13 @@ class TestCancelJob:
         mock_client.post.return_value = resp
 
         with pytest.raises(SystemExit) as exc_info:
-            cancel_job(mock_client, mock_signer, "http://localhost:8000/api/v1",
-                       "localhost:8000", "nonexistent_job")
+            cancel_job(
+                mock_client,
+                mock_signer,
+                "http://localhost:8000/api/v1",
+                "localhost:8000",
+                "nonexistent_job",
+            )
         assert exc_info.value.code == 1
 
 

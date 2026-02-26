@@ -11,7 +11,6 @@ import sys
 from pathlib import Path
 
 import httpx
-
 from api_config import get_api_base, get_api_host
 from signing import RequestSigner
 
@@ -20,22 +19,12 @@ def main():
     parser = argparse.ArgumentParser(
         description="Semantic search across ingested content via menos API"
     )
+    parser.add_argument("query", nargs="+", help="Search query text")
     parser.add_argument(
-        "query",
-        nargs="+",
-        help="Search query text"
+        "--limit", type=int, default=6, help="Maximum number of results (default: 6)"
     )
     parser.add_argument(
-        "--limit",
-        type=int,
-        default=6,
-        help="Maximum number of results (default: 6)"
-    )
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        dest="json_output",
-        help="Output full JSON response"
+        "--json", action="store_true", dest="json_output", help="Output full JSON response"
     )
 
     args = parser.parse_args()
@@ -69,9 +58,7 @@ def main():
 
     try:
         with httpx.Client(timeout=60.0) as client:
-            response = client.post(
-                f"{api_base}/search", content=body, headers=headers
-            )
+            response = client.post(f"{api_base}/search", content=body, headers=headers)
 
             if response.status_code != 200:
                 print(f"Error: API returned {response.status_code}", file=sys.stderr)
