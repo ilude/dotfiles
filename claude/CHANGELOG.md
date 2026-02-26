@@ -4,6 +4,25 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
+## 2026-02-26: /review-plan file persistence — findings survive context compaction
+
+**Changed:**
+- All reviewer agents now write findings to files at `.specs/{plan-name}/review-{N}/{reviewer-slug}.md`
+- Rebuttal agents read peer findings from files and write rebuttals to `rebuttal-{slug}.md`
+- Synthesis step reads from files (canonical source) rather than conversation context
+- Final synthesis written to `review-{N}/synthesis.md` for permanent record
+- New "Review Output Directory" section documents the file structure, naming conventions, and derivation rules
+- Step 1 now includes creating the output directory (`mkdir -p`)
+- Step 3 explicitly instructs main agent to re-read findings from files before rebuttal round
+- Step 4 explicitly instructs main agent to re-read from files before synthesis
+- Rebuttal prompt templates updated to use Read tool for file-based input
+
+**Why:** During a real review, context compaction between Step 2 (5 reviewer agents) and Step 3 (rebuttal round) caused all verbatim reviewer findings to be lost. The synthesis had to reconstruct from a compaction summary, skipping the formal rebuttal round entirely. File persistence eliminates this failure mode.
+
+**Files:** `~/.dotfiles/claude/shared/review-plan-instructions.md`
+
+---
+
 ## 2026-02-25: Major /review-plan redesign — dynamic panels, outside-the-box expert, rebuttal round
 
 **Changed:**
