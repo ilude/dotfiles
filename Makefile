@@ -1,4 +1,4 @@
-.PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all test test-quick test-parallel test-docker test-powershell test-pytest help lint format check install-hooks
+.PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all test test-quick test-parallel test-docker test-powershell test-pytest help lint lint-python format format-python check install-hooks
 
 # Shell scripts to check (excludes dotbot submodule and plugins)
 SHELL_SCRIPTS := home/.bashrc home/.zshrc install wsl/install scripts/git-ssh-setup scripts/claude-link-setup scripts/claude-mcp-setup scripts/copilot-link-setup scripts/zsh-setup scripts/zsh-plugins wsl/packages
@@ -14,8 +14,10 @@ help:
 	@echo "  make test-docker   - Run tests in Ubuntu 24.04 container (recommended)"
 	@echo "  make test-powershell - Run Pester tests for PowerShell code (Windows)"
 	@echo "  make test-quick    - Run only core tests locally"
-	@echo "  make lint          - Run shellcheck on shell scripts"
-	@echo "  make format        - Format shell scripts with shfmt"
+	@echo "  make lint          - Run shellcheck + ruff check"
+	@echo "  make lint-python   - Run ruff check on Python files"
+	@echo "  make format        - Format shell scripts (shfmt) + Python (ruff)"
+	@echo "  make format-python - Format Python files with ruff"
 	@echo "  make check         - Run all checks (lint + test)"
 	@echo "  make install-hooks - Install git pre-commit hook for testing"
 
@@ -111,7 +113,7 @@ test-powershell:
 	@powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Pester test/*.tests.ps1"
 
 # Lint shell scripts with shellcheck
-lint:
+lint: lint-python
 	@echo "Running shellcheck..."
 	@if ! command -v shellcheck >/dev/null 2>&1; then \
 		echo "ERROR: shellcheck not found."; \
@@ -132,8 +134,14 @@ lint:
 	fi
 	@echo "Lint passed."
 
+# Lint Python files with ruff
+lint-python:
+	@echo "Running ruff check..."
+	uv run ruff check
+	@echo "Ruff check passed."
+
 # Format shell scripts with shfmt
-format:
+format: format-python
 	@echo "Formatting shell scripts..."
 	@if ! command -v shfmt >/dev/null 2>&1; then \
 		echo "ERROR: shfmt not found."; \
@@ -143,6 +151,13 @@ format:
 	fi
 	shfmt -w -i 4 -ci $(SHELL_SCRIPTS)
 	@echo "Format complete."
+
+# Format Python files with ruff
+format-python:
+	@echo "Formatting Python files..."
+	uv run ruff format
+	uv run ruff check --fix
+	@echo "Python format complete."
 
 # Run all checks
 check: lint test

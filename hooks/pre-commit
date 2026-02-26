@@ -13,8 +13,9 @@ if [[ -z "$STAGED_FILES" ]]; then
     exit 0
 fi
 
-# Check if any staged file requires testing
+# Check if any staged file requires testing or linting
 needs_test=false
+needs_ruff=false
 
 while IFS= read -r file; do
     case "$file" in
@@ -34,7 +35,8 @@ while IFS= read -r file; do
             needs_test=true ;;
         # Python hooks (any .py in claude/hooks/)
         claude/hooks/*.py|claude/hooks/*/*.py|claude/hooks/*/*/*.py)
-            needs_test=true ;;
+            needs_test=true
+            needs_ruff=true ;;
         # Build system
         Makefile)
             needs_test=true ;;
@@ -44,12 +46,24 @@ while IFS= read -r file; do
         # PowerShell install script
         install.ps1)
             needs_test=true ;;
+        # Any Python file
+        *.py)
+            needs_ruff=true ;;
     esac
-    [[ "$needs_test" == "true" ]] && break
 done <<< "$STAGED_FILES"
 
+# Run ruff check on staged Python files
+if [[ "$needs_ruff" == "true" ]]; then
+    echo "Running ruff check on Python files..."
+    cd "$REPO_ROOT"
+    uv run ruff check
+    echo "Ruff check passed."
+fi
+
 if [[ "$needs_test" != "true" ]]; then
-    echo "No testable code changed, skipping tests."
+    if [[ "$needs_ruff" != "true" ]]; then
+        echo "No testable code changed, skipping tests."
+    fi
     exit 0
 fi
 
