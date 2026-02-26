@@ -54,6 +54,38 @@
 
 ---
 
+## 2026-02-26: Second Assessment — Realistic Baseline (Day 1, Session 3)
+
+**Duration**: ~30m
+**Phase**: Re-assessment without descriptions, mixed topics, confidence tracked
+**Questions asked**: 20 (14 correct / 6 wrong = 70%)
+
+### Correct (14):
+- Incident triage (reasoned), session hijacking (educated), DNS filtering (knew), NIST SP 800-53 (educated)
+- EDR (reasoned — previously missed NAC/EDR, now distinguishing correctly), insider threat (knew)
+- Emergency change (knew), stateful firewall (knew), known vuln exploitation (knew)
+- EAP-TLS (reasoned), forensic hashing (knew), directory traversal (knew)
+- FIDO2/WebAuthn (reasoned), hardware TOTP offline (knew)
+
+### Wrong (6):
+- **XDR vs SIEM** (reasoned wrong) — "unified detection across layers" = XDR, not SIEM
+- **Fault tolerance vs HA** (reasoned wrong) — "no user impact" = fault tolerance, "minimal downtime" = HA
+- **ASV vs QSA vs ISA** (lucky) — PCI quarterly scans = ASV, on-site audit = QSA, internal = ISA
+- **SCIM vs SAML** (reasoned wrong) — SAML stops login, SCIM removes the account. "Orphaned accounts" = SCIM
+- **CloudFront OAI** (educated wrong) — AWS-specific, lower exam priority
+- **Data owner vs custodian** (educated wrong) — owner decides policy, custodian implements
+
+### Key Takeaways:
+1. **Improvement is real** — 54% → 70% between drill rounds
+2. **"Reasoned wrong" is the biggest risk** — 3 of 6 misses were confident but wrong. Exam killers.
+3. **New gaps found**: SIEM vs XDR, fault tolerance vs HA, SCIM, data governance roles, ASV/QSA/ISA
+4. **Confirmed strong**: networking, forensics, IR, change mgmt, web vulns, MFA types
+5. **Pattern holds**: newer terminology and subtle exam distinctions are the gaps
+
+**Next session**: Day 2 drilling. Focus on 17-item priority queue. Target: 80%+ on hard questions.
+
+---
+
 <!--
 Template for new entries:
 

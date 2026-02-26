@@ -102,6 +102,44 @@ Script tag visible? → XSS. User unknowingly submits a request? → CSRF.
 - **RBAC (Role-Based Access Control)** — access by role (Admin, Editor, Viewer). AD (Active Directory) groups, application roles.
 - **ABAC (Attribute-Based Access Control)** — access by attributes (time, location, department, clearance). Most flexible/complex. Policy rules with conditions.
 
+### SIEM vs XDR vs SOAR
+- **SIEM (Security Information and Event Management)** — log aggregation + correlation. Data platform. "Shows you what happened." Analysts investigate.
+- **XDR (Extended Detection and Response)** — unified threat detection + response across endpoint/network/cloud/email. "Connects the dots and acts." Built-in automated response.
+- **SOAR (Security Orchestration, Automation, and Response)** — automates IR playbooks/workflows. Often sits on top of SIEM.
+- "Aggregates logs, analyst reviews" → SIEM. "Unified detection across multiple layers, correlates into incidents" → XDR. "Automates response playbooks" → SOAR.
+
+### HIDS vs EDR vs XDR
+- **HIDS (Host-based Intrusion Detection System)** — monitors + alerts only. Passive. Old school.
+- **EDR (Endpoint Detection and Response)** — monitors + detects + auto-responds (isolate, kill). Active. Endpoint-only.
+- **XDR (Extended Detection and Response)** — EDR across multiple layers (endpoint + network + cloud + email). Correlates whole stack.
+- "Agent + auto-response on endpoint" → EDR. Add "correlates network + cloud + email" → XDR.
+
+### Session hijacking vs fixation vs IDOR
+- **Session hijacking** — attacker *obtains* a valid session ID (via URL exposure, sniffing, XSS) and reuses it.
+- **Session fixation** — attacker *sets* the session ID before victim logs in, then uses it after victim authenticates.
+- **IDOR (Insecure Direct Object Reference)** — changing an object ID in the URL to access another user's *data*, not their session.
+
+### High availability vs. Fault tolerance vs. Disaster recovery
+- **Fault tolerance** — NO impact when failure occurs. Zero downtime, zero data loss. Synchronous replication. "No user impact" / "seamless" = fault tolerance.
+- **High availability** — MINIMAL downtime. Redundant, automatic failover, but brief blip possible. "99.99% uptime" / "automatic failover" = HA.
+- **Disaster recovery** — getting back up AFTER a failure. Has RTO (Recovery Time Objective)/RPO (Recovery Point Objective). Acknowledged downtime.
+- Exam tell: "no impact" → fault tolerance. "Minimal downtime" → HA. "Recover after" → DR.
+
+### Data governance roles
+- **Data owner** — decides classification, access policies, retention. Business leader. Makes the rules.
+- **Data custodian** — IT implements owner's decisions. Backups, patching, access provisioning, encryption.
+- **Data steward** — ensures data quality, consistency, metadata. "Data librarian."
+- **Data controller** (GDPR) — the *organization* that decides why/how data is processed.
+- **Data processor** (GDPR) — the *organization* that processes data on behalf of the controller.
+- Owner/custodian = individual roles. Controller/processor = organizational/GDPR roles.
+
+### Directory traversal vs LFI vs RFI vs SSRF
+- **Directory traversal** — `../` to READ files outside intended directory. Not execution.
+- **LFI (Local File Inclusion)** — path manipulation to EXECUTE a local file (e.g., PHP include()).
+- **RFI (Remote File Inclusion)** — like LFI but includes file from attacker's external URL.
+- **SSRF (Server-Side Request Forgery)** — tricks server into making requests to OTHER SYSTEMS (internal APIs, cloud metadata).
+- Reading = traversal. Executing local = LFI. Executing remote = RFI. Calling another system = SSRF.
+
 ---
 
 ## Acronym Quick Reference
@@ -143,5 +181,14 @@ Script tag visible? → XSS. User unknowingly submits a request? → CSRF.
 **CT** — Certificate Transparency. Public logs of issued certs (audit, detect mis-issuance).
 **CAA** — CA Authorization. DNS record specifying which CAs may issue certs for your domain.
 **HSTS** — HTTP Strict Transport Security. Forces browsers to use HTTPS only.
+**SCIM** — System for Cross-domain Identity Management. Automated user provisioning/deprovisioning across SaaS apps. "Disable in AD → auto-removed everywhere." Solves orphaned accounts.
+**SAML stops login. SCIM removes the account.** SAML = authentication. SCIM = lifecycle management.
+**ASV** — Approved Scanning Vendor. PCI-approved vendor for quarterly external vulnerability scans.
+**QSA** — Qualified Security Assessor. Performs on-site PCI DSS compliance audits.
+**ISA** — Internal Security Assessor. Employee trained by PCI SSC for internal assessments.
+**EAP-TLS** — Extensible Authentication Protocol - Transport Layer Security. Client cert + server cert for Wi-Fi. Most secure. "Each device gets a certificate" = EAP-TLS.
+**PEAP** — Protected EAP. Server cert only, client uses username/password in TLS tunnel. No client certs needed.
+**XDR** — Extended Detection and Response. EDR across multiple layers (endpoint + network + cloud + email). Correlates and responds across whole stack.
+**CNAPP** — Cloud-Native Application Protection Platform. Secures cloud workloads (container scanning, IaC scanning, posture).
 **SOC 1** — Financial controls (Sarbanes-Oxley context). **SOC 2** — Security/trust controls (vendor risk).
 **Type I** — Point-in-time snapshot. **Type II** — Over a period (6-12 months). "Worked consistently" > "exists today."

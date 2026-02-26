@@ -56,9 +56,9 @@ Additional pattern: real-world experience can conflict with exam answers. The ex
 
 ## Current Phase
 
-**Phase**: Day 2 — Continued Drilling
-**Status**: Initial assessment showed 85% (23/27), but harder drilling without descriptions revealed ~54% (13/24). True readiness is between these — probably 65-70% weighted, below passing threshold.
-**Next action**: Continue mixed drilling with focus on: newer acronyms (SCAP, SCA, CASB, ZTNA, MITRE ATT&CK, RoPA, OCSP, deception technology), XSS vs CSRF, access control models (MAC/DAC/RBAC/ABAC), kill chain phase mapping, pentest scope rules
+**Phase**: Day 2 — Priority Queue Drilling
+**Status**: Three sessions complete. Trajectory: 85% (soft) → 54% (hard) → 70% (hard). Improving but still below 83% passing threshold.
+**Next action**: Drill the 17-item priority queue in `progress.md`. Biggest risks are "reasoned wrong" items (XDR vs SIEM, fault tolerance vs HA, SCIM) — these feel right but aren't. Also continue acronym gap filling (ASV/QSA, SCAP sub-components, data governance roles). Target: 80%+ on hard questions without descriptions.
 
 ## Quiz Instructions
 
@@ -89,6 +89,14 @@ When quizzing the user:
 - **Moderate** (50-79%): Gets basics, misses details
 - **Weak** (<50%): Needs focused study
 - **Not assessed**: No questions asked yet
+
+## Branch Rule
+
+All Security+ study materials live on the `secplus` branch ONLY. Never merge to main. When studying is complete and the exam is passed, delete the branch and all evidence:
+```bash
+git push origin --delete secplus
+git branch -D secplus
+```
 
 ## File Purposes
 

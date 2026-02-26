@@ -2,13 +2,14 @@
 
 ## Overall Readiness
 
-**Status**: Assessment + first drill round complete
-**Estimated score**: ~65-70% (weighted) — below passing threshold (750/900 = ~83%)
+**Status**: Two assessment rounds + drilling complete
+**Estimated score**: ~70-75% (weighted) — improving but still below passing threshold (750/900 = ~83%)
 **Last updated**: 2026-02-26
 **Key gap**: Newer acronyms/frameworks (last ~10 years) — user knows the concepts but not the exam terminology. Recognizing the acronym IS the question on the real test.
 **Secondary gap**: Exam takes strict legalistic views that conflict with real-world experience (pentest scope, kill chain phase mapping)
 **Initial assessment**: 85% (23/27) with answer descriptions — inflated by context clues
-**Drill round**: ~54% (13/24) without descriptions, harder questions — more realistic
+**First drill round**: ~54% (13/24) without descriptions, harder questions — exposed real gaps
+**Second assessment**: 70% (14/20) without descriptions, mixed topics — real improvement, still below passing
 
 ---
 
@@ -88,22 +89,37 @@
 
 Ranked by domain weight × weakness severity. Items marked (acronym) are terminology gaps, not concept gaps.
 
-### High Priority (high-weight domains, wrong or lucky guess)
-1. **4.1** (28%) — NAC (Network Access Control) vs EDR vs MDM — wrong
-2. **4.2** (28%) — Deception technology vs honeynet vs honeypot — wrong (thought knew it)
-3. **4.5** (28%) — SCAP (Security Content Automation Protocol) and sub-components — lucky guess
-4. **2.1** (22%) — Threat frameworks: MITRE ATT&CK vs Kill Chain vs Diamond vs NIST CSF — wrong (acronym)
-5. **2.3** (22%) — XSS (stored/reflected/DOM) vs CSRF — wrong
-6. **2.5** (22%) — Kill chain phases: which controls map where — wrong
+### Confirmed Strong (no further drilling needed)
+- Incident triage, SYN scan, C2 beaconing, brute force classification (4.2, 2.4)
+- DNS filtering (knew cold), stateful firewall behavior (knew cold) (3.2, 4.1 networking)
+- Insider threat indicators (2.1 partial), forensic hashing (4.4)
+- Known vuln exploitation vs zero-day vs supply chain (2.3 partial)
+- Directory traversal vs LFI vs RFI vs SSRF (2.3)
+- Emergency/standard/normal change types (1.3)
+- FIDO2/WebAuthn, hardware TOTP for offline MFA (1.4, 4.7)
+- EAP-TLS for cert-based Wi-Fi (reasoned) (3.2)
+- Differential vs incremental backups, RPO vs RTO (3.4)
+- Legal hold, least privilege, CIA triad (5.4, 1.2)
 
-### Medium Priority (moderate-weight domains, wrong or lucky guess)
-7. **5.2** (20%) — Pentest scope: exam takes strict legalistic view — wrong (experience conflict)
-8. **5.5** (20%) — RoPA (Records of Processing Activities) vs PIA/DPIA — wrong (acronym)
-9. **3.1** (18%) — CASB / ZTNA / SWG / SASE distinctions — lucky guess (acronym)
-10. **3.2** (18%) — SCA / SAST / DAST / IAST / SBOM — lucky guess (acronym)
-11. **3.3** (18%) — PCI scope: hosted payment fields vs tokenization vs segmentation — wrong
+### High Priority — Still Needs Work
+1. **4.2** (28%) — SIEM vs XDR vs SOAR — wrong (chose SIEM over XDR). "Unified detection across layers" = XDR.
+2. **4.1** (28%) — NAC vs EDR vs MDM — previously wrong. EDR confirmed ✓ in re-test, but NAC not re-tested.
+3. **4.5** (28%) — SCAP and sub-components — still only lucky guess. ASV vs QSA vs ISA — new miss (lucky guess).
+4. **2.1** (22%) — Threat frameworks (ATT&CK/Kill Chain/Diamond/NIST CSF) — previously wrong, not re-tested.
+5. **2.3** (22%) — XSS vs CSRF — previously wrong, not re-tested. Session hijacking vs fixation ✓ (educated).
+6. **2.5** (22%) — Kill chain phase mapping — previously wrong, not re-tested.
 
-### Lower Priority (low-weight domain or educated guess)
-12. **1.1** (12%) — MAC / DAC / RBAC / ABAC access control models — lucky guess
-13. **1.4** (12%) — CRL / OCSP certificate revocation — no idea
-14. **5.3** (20%) — SOC 1 vs SOC 2, Type I vs Type II — educated guess (lock in)
+### Medium Priority — Terminology Gaps
+7. **5.5** (20%) — Data governance roles: data owner vs custodian vs steward vs controller/processor — new miss.
+8. **5.2** (20%) — Pentest scope legalism — previously wrong, not re-tested.
+9. **5.5** (20%) — RoPA vs PIA/DPIA — previously wrong, not re-tested.
+10. **3.1** (18%) — CASB/ZTNA/SWG/SASE — previously lucky, ZTNA confirmed ✓ (educated). CASB not re-tested.
+11. **3.2** (18%) — SCA/SAST/DAST/IAST/SBOM — previously lucky, not re-tested.
+12. **3.3** (18%) — PCI scope methods — previously wrong, not re-tested. CloudFront OAI missed (AWS-specific, lower priority).
+13. **3.4** (18%) — Fault tolerance vs HA vs DR — new miss. "No user impact" = FT, not HA.
+
+### Lower Priority
+14. **1.1** (12%) — MAC/DAC/RBAC/ABAC — previously lucky, not re-tested.
+15. **1.4** (12%) — CRL/OCSP — previously no idea, not re-tested.
+16. **4.7** (28%) — SCIM (identity lifecycle automation) — new miss (acronym). SAML vs OAuth vs OIDC ✓.
+17. **5.1** (20%) — NIST SP 800-53 vs NIST CSF vs ISO 27001 vs CIS Controls — educated guess, needs lock-in.
