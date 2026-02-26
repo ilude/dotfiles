@@ -1693,9 +1693,11 @@ def check_command(
 
     # 5. AST analysis — veto-only second pass (may escalate allow→ask|block)
     # Only called when all regex/path checks passed (allow path).
-    # Skipped when bashToolPatterns are relaxed (e.g., commit message context).
+    # Skipped when bashToolPatterns are relaxed (e.g., commit message context),
+    # and also skipped for read-only search pipelines and valid --dry-run commands
+    # (same exemptions as bashToolPatterns — AST must not re-flag what was skipped).
     # Lazy import so tree-sitter absence doesn't affect normal operation.
-    if "bashToolPatterns" not in relaxed_checks:
+    if "bashToolPatterns" not in relaxed_checks and not is_readonly_search and not has_dry_run:
         try:
             from ast_analyzer import ASTAnalyzer  # type: ignore[import-not-found]
 
