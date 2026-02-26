@@ -58,11 +58,17 @@ Additional pattern: real-world experience can conflict with exam answers. The ex
 
 **Phase**: Day 2 — Targeted Drilling on Persistent Gaps
 **Status**: Four sessions complete. Trajectory: 85% (soft) → 54% (hard) → 70% (hard) → 67% (priority queue). Many items now locked in, but 4 persistent gaps remain.
-**Next action**: Hammer these 4 items that have been missed multiple times:
+**Next action**: Hammer these persistent gaps plus new zero-knowledge items:
+
+**Persistent gaps (missed multiple times):**
 1. **SIEM vs XDR** — missed TWICE. "SIEM collects, XDR connects."
 2. **SCAP vs STIX** — keeps confusing. "STIX = threat sharing, SCAP = vuln scanning."
 3. **Diamond Model** — gets it when vertices named, misses indirect descriptions. Pattern-match "4 relationship elements."
 4. **Reflected vs DOM-based XSS** — "server returns payload = reflected, client JS processes = DOM-based."
+
+**Zero-knowledge items (never heard these before, need heavy drilling):**
+5. **CSPM / CWPP / CNAPP / CASB** — cloud security acronym group. User has zero prior exposure to any of these four terms. Drill as a group repeatedly with varied scenarios until consistently correct. See notes.md "CSPM vs CWPP vs CNAPP vs CASB" section for decision rules.
+
 Then broaden drilling to build margin above 83% passing threshold.
 
 ## Quiz Instructions
@@ -77,8 +83,8 @@ When quizzing the user:
 6. **Track per-objective** — map each question to its specific objective number
 7. **Keep it engaging** — vary question difficulty, use real-world scenarios, acknowledge good answers
 8. **No option descriptions** — answer options should be short labels only, no explanatory text. The real exam doesn't hand-hold with descriptions. Descriptions make educated guessing too easy.
-9. **Ask confidence after each question** — "Knew it cold / Reasoned it out / Educated guess / Lucky guess". Don't count lucky guesses as strong knowledge.
-10. **Always expand acronyms** — on first use in any explanation, spell out the full name: "SIEM (Security Information and Event Management)". The user knows the concepts but may not know newer acronym names. Write expanded forms into `notes.md` too.
+9. **Ask confidence BEFORE revealing the answer** — "Knew it cold / Reasoned it out / Educated guess / Lucky guess". Ask confidence immediately after the user answers, BEFORE saying whether they're right or wrong. Don't count lucky guesses as strong knowledge.
+10. **Always expand acronyms** — on first use in any explanation, spell out the full name: "SIEM (Security Information and Event Management)". The user knows the concepts but may not know newer acronym names. Write expanded forms into `notes.md` too. **On wrong answers involving acronym groups** (e.g., CASB/CSPM/CWPP/CNAPP), fully expand ALL acronyms in the group — not just the correct one. The user may not know what any of them stand for, so expand every option with a one-line definition and the decision rule for distinguishing them.
 11. **No priming** — do not explain rules of thumb or give hints before asking a question. Mix up topics so the user can't predict what's coming next.
 12. **Teach decision rules on wrong answers** — after a miss, explain the distinguishing pattern that reliably points to the correct answer on exam day. Save these to `notes.md`.
 

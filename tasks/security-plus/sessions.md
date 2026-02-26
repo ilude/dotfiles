@@ -137,6 +137,40 @@ Launched 4 parallel research agents to identify gaps in study material vs full S
 
 ---
 
+## 2026-02-26: Mixed Drill — Persistent Gaps + New Areas (Day 2, Session 6)
+
+**Duration**: ~15m
+**Phase**: Targeted drilling, mixed topics, no descriptions, confidence before reveal
+**Questions asked**: 11 (6 solid correct + 1 lucky = 7/11 total, 60% solid)
+
+### Correct (6 solid + 1 lucky):
+- Reflected XSS from log analysis (knew cold) — URL-encoded `<script>` in query param, visible in server log
+- Diamond Model indirect description (reasoned) — vertex pivoting: C2 → threat group → exploit kit → department
+- SCAP for CIS benchmark compliance (reasoned) — "automated, multi-vendor, common language" = SCAP
+- DOM-based XSS (knew cold) — URL hash, innerHTML, server logs show nothing
+- SCIM for orphaned accounts (reasoned) — "AD disabled but SaaS still active" = SCIM lifecycle
+- PAM with JIT access (educated) — "eliminate standing privileged accounts" + occasional access
+- STIX/TAXII for threat intel sharing (**lucky**) — ISACs + publish/subscribe + machine-readable IOCs
+
+### Wrong (4):
+- **XDR vs SOAR** — chose XDR, answer was SOAR. "Automate isolate + block + ticket across tools" = SOAR playbooks, not XDR. Said "knew it cold" — dangerous false confidence.
+- **Zero trust vs NAC** — chose NAC, answer was zero trust. Employee already ON the LAN still gets verified per-resource = zero trust. NAC = gate at the door only.
+- **CSPM vs CASB** — chose CASB, answer was CSPM. Open S3 bucket = cloud config problem = CSPM. CASB = user-to-SaaS bouncer. Lucky guess that was wrong.
+- **Firewall rule ordering** — chose A,C,D,B, answer was C,D,A,B. Most specific first. Exception (single host permit) must come before subnet-wide deny.
+
+### Key patterns:
+1. **Persistent gaps improving**: Diamond Model ✓ (previously persistent miss), SCAP vs STIX ✓, DOM XSS ✓. Decision trees from research are working.
+2. **SIEM/XDR/SOAR still dangerous**: Now missed XDR vs SOAR with false confidence. The trio remains the #1 risk.
+3. **New zero-knowledge areas confirmed**: CSPM/CWPP/CNAPP/CASB is a real gap. Firewall rule ordering needs practice.
+4. **Zero trust vs NAC**: subtle new gap — both do posture checks, but NAC = network gate, ZT = every resource request.
+
+### Trajectory: 85% → 54% → 70% → 67% → 60%
+The 60% reflects testing brand-new material (cloud tools, PBQ skills) alongside persistent gaps. Core knowledge solidifying but new exam territory still weak.
+
+**Next session**: Hammer SIEM/XDR/SOAR (3rd time — must lock in), drill CSPM/CWPP/CNAPP/CASB group, practice more firewall rule ordering, re-test zero trust vs NAC.
+
+---
+
 <!--
 Template for new entries:
 

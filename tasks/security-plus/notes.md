@@ -121,6 +121,11 @@ Script tag visible? → XSS. User unknowingly submits a request? → CSRF.
 - **SOAR (Security Orchestration, Automation, and Response)** — automates IR playbooks/workflows. Often sits on top of SIEM.
 - **UEBA (User and Entity Behavior Analytics)** — ML baselines of normal behavior, flags anomalies. Insider threat detection.
 
+**THE key XDR vs SOAR distinction (missed as "knew it cold"):**
+- XDR = unified detection + response **within one platform** (cross-layer correlation)
+- SOAR = automated workflows that **orchestrate multiple separate tools** (playbooks: isolate host + block IP + create ticket)
+- "Automate response to SIEM alerts" → SOAR. "Unified detection across layers" → XDR.
+
 **THE key SIEM vs XDR distinction (missed twice):**
 - Both "correlate." The difference: SIEM correlates **logs** and **alerts** (passive). XDR correlates **telemetry across layers** and **responds** (active, cross-layer).
 - "Correlates data and generates alerts for the SOC team to investigate" → **SIEM**
@@ -262,11 +267,18 @@ Script tag visible? → XSS. User unknowingly submits a request? → CSRF.
 - IaaS: customer manages everything from OS up. PaaS: customer manages app + data. SaaS: customer manages only data + access.
 - "Migrated to SaaS, what's still your responsibility?" → data classification, user access. Never "patching the OS."
 
-### CSPM vs CWPP vs CNAPP
+### CSPM vs CWPP vs CNAPP vs CASB (missed — chose CASB over CSPM)
 - **CSPM (Cloud Security Posture Management)** — monitors cloud **configurations** for misconfigurations and compliance drift. "Open S3 bucket" = CSPM.
 - **CWPP (Cloud Workload Protection Platform)** — protects **running workloads** (VMs, containers, serverless). Runtime threat detection. "Container running vulnerable image" = CWPP.
 - **CNAPP (Cloud-Native Application Protection Platform)** — unified: CSPM + CWPP + more. "Single platform for all cloud security" = CNAPP.
+- **CASB** = sits between **users and SaaS apps**. Shadow IT, cloud DLP, user access. "Cloud bouncer" for users.
+- CSPM = "cloud auditor" for configs. CASB = "cloud bouncer" for users. Don't confuse them.
 - CSPM = "Is cloud configured correctly?" CWPP = "Are workloads protected?" CNAPP = "Both in one."
+
+### NAC vs Zero trust (missed — chose NAC over zero trust)
+- **NAC** = posture check **to get on the network**. Gate at the door. Remediation VLAN if fail.
+- **Zero trust** = verification **for every resource request regardless of network location**. Already on LAN? Still verified.
+- "Already on corporate network but still checked per-resource" → **zero trust**, not NAC.
 
 ### Zero trust architecture (NIST SP 800-207)
 - "Never trust, always verify." No implicit trust based on network location.
@@ -302,6 +314,13 @@ Script tag visible? → XSS. User unknowingly submits a request? → CSRF.
 - **Adaptive/continuous authentication** — adjusts requirements based on real-time risk. Behavioral biometrics, impossible travel detection.
 - **Step-up authentication** — additional auth for high-risk actions within an existing session. Already logged in, but wire transfer requires biometric.
 - **Passkeys** — FIDO2 credentials synced across devices. Phishing-resistant (bound to specific domain).
+
+### Firewall rule ordering (PBQ — missed)
+- Rules process **top-down, first match wins**.
+- **Most specific first, most general last.** Deny-all always at bottom.
+- **Exceptions before denials** — if you want to allow one host through a subnet-wide deny, the allow must come FIRST.
+- Single host rule > subnet rule > any rule. Specific port > all ports.
+- Exam will try to trick you into putting the broad permit before the specific deny/allow.
 
 ### Cloud metadata attack
 - **169.254.169.254** — instance metadata endpoint (AWS/Azure/GCP). SSRF to this IP = credential theft.
