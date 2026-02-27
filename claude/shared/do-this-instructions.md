@@ -141,10 +141,11 @@ Dispatch a single specialized agent. No team creation needed.
 Auto-generate a plan and execute with a team. Same plan quality as `/plan-with-team`
 but skips the user approval gate — execute immediately after clarifying questions.
 
-### 5a: Clarify Constraints
+### 5a: Clarify Constraints and Verify Intent
 
-Run `/plan-with-team` Step 2.5 — ask the two clarifying questions (downtime tolerance,
-ruled-out approaches) before generating the plan. Record the answers.
+Run `/plan-with-team` Step 2.5 (classify the task and conditionally ask constraint
+questions based on deployment scope and complexity) and Step 2.75 (verify intent —
+check that What/Why/Scope are clear, using 1-3-1 to surface gaps). Record the answers.
 
 ### 5b: Generate Plan
 
