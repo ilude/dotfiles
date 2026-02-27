@@ -77,6 +77,41 @@ Trade-offs and Alternatives Considered sections. Do NOT generate the plan until 
 applicable questions are answered. If the user says "no constraints" or "no ruled-out
 approaches", that is a valid answer — record it as-is.
 
+## Step 2.75: Intent Verification
+
+**Applies to:** `complex` tasks only. Skip for `simple` tasks where intent is obvious.
+
+Before generating a plan, evaluate whether the task description clearly answers three
+dimensions:
+
+| Dimension | Question | Example of clear | Example of vague |
+|-----------|----------|------------------|------------------|
+| **What** | What specific change is being made? | "Add rate limiting to the /api/upload endpoint" | "Improve the API" |
+| **Why** | What problem does this solve? | "Unauthenticated users can flood uploads and exhaust storage" | "It needs to be better" |
+| **Scope** | What are the boundaries? | "Only the upload endpoint; auth endpoints are out of scope" | (no boundaries stated) |
+
+### Evaluation Rules
+
+1. **All three clear** → proceed to Step 3 (plan generation). No questions needed.
+2. **One or more vague** → surface each gap using 1-3-1 format, one at a time:
+   - State the **ambiguity** (what's unclear)
+   - Present 2-3 **interpretations** of what the user likely means (with pros/cons)
+   - **Recommend** one interpretation
+   - Wait for confirmation before asking the next question
+3. **Challenge naive approaches** — if the task description suggests an approach that has
+   a simpler or better-practice alternative, present the alternative as one of the
+   interpretations. Don't refuse the user's approach — just surface the trade-off.
+
+### Guardrails
+
+- **Max 3 questions total** — if you still have gaps after 3 rounds, proceed with your
+  best interpretation and document assumptions in the plan's Constraints section.
+- **One question at a time** — never present multiple ambiguities in a single message.
+- **Accept short answers** — the user saying "just the upload endpoint" is a valid scope
+  answer. Don't demand formal language.
+- **Don't re-ask Step 2.5 questions** — downtime and ruled-out approaches are already
+  handled. Intent verification covers What/Why/Scope only.
+
 ## Step 3: Generate Plan
 
 Create a slug from the task description (lowercase, hyphens, max 30 chars).
@@ -228,7 +263,10 @@ Before presenting, verify the plan has:
 - [ ] Problem Statement section: present AND contains specific pain point text, not
       placeholder text like "{What triggered this work?}" or vague summaries like
       "improve the system." If empty or placeholder → STOP, fill it in from Step 2.5
-      answers before continuing.
+      and Step 2.75 answers before continuing.
+- [ ] Intent verified (complex tasks only): What, Why, and Scope dimensions are all
+      addressed in the Problem Statement and Objective sections. Any assumptions from
+      Step 2.75 are documented in Constraints.
 - [ ] Constraints & Acceptable Trade-offs section: present AND contains at least one
       concrete statement (not the template examples). Acceptable entries include user
       answers from Step 2.5 OR "Local code change — no deployment or downtime
