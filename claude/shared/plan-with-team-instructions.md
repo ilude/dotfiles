@@ -35,23 +35,47 @@ Run these checks automatically to understand the project:
 
 ## Step 2.5: Clarify Constraints Before Planning
 
-Before writing any plan, ask these two questions using AskUserQuestion (multiSelect: false,
-one question at a time):
+Before writing any plan, classify the task and conditionally ask constraint questions.
 
-1. **Downtime / disruption tolerance**:
+### Task Classification
+
+Based on the task description and project analysis from Step 2, classify along two axes:
+
+**Deployment scope** — does this task touch live infrastructure or services?
+- `deployment`: task mentions deploy, migrate, release, rollout, infrastructure, cluster,
+  server, database migration, CI/CD pipeline changes, DNS, load balancer, or similar.
+  Also applies when the plan will include a `## Deployment Procedure` section.
+- `local`: pure code changes — refactoring, adding features, fixing bugs, writing tests,
+  config file edits that don't affect running services.
+
+**Complexity** — how many viable approaches exist?
+- `complex`: 6+ files, architectural decisions, multiple valid strategies, task description
+  mentions trade-offs or alternatives, or the task is ambiguous enough that the wrong
+  approach wastes significant effort.
+- `simple`: 1-5 files, clear single approach, mechanical or straightforward feature work.
+
+### Conditional Questions
+
+Ask only the questions that apply (using AskUserQuestion, multiSelect: false, one at a time):
+
+1. **Downtime / disruption tolerance** — ask ONLY if deployment scope is `deployment`:
    "What downtime or service disruption is acceptable during this change?
    Examples: none (external customers 24/7), brief interruption OK (<2 min, off-peak),
    full maintenance window acceptable."
 
-2. **Ruled-out approaches**:
+2. **Ruled-out approaches** — ask ONLY if complexity is `complex`:
    "Are there any approaches you've already ruled out or tried?
    (e.g., 'we tried blue/green but it doubles cost', 'rolling deploys not viable because
    of stateful sessions')"
 
-Record the answers — they become the seed text for the Constraints & Acceptable
-Trade-offs and Alternatives Considered sections. Do NOT generate the plan until both
-questions are answered. If the user says "no constraints" or "no ruled-out approaches",
-that is a valid answer — record it as-is.
+If neither question applies (local + simple), skip this step entirely. The Constraints
+section in the plan should note: "Local code change — no deployment or downtime
+considerations. Single viable approach identified."
+
+Record any answers — they become the seed text for the Constraints & Acceptable
+Trade-offs and Alternatives Considered sections. Do NOT generate the plan until all
+applicable questions are answered. If the user says "no constraints" or "no ruled-out
+approaches", that is a valid answer — record it as-is.
 
 ## Step 3: Generate Plan
 
@@ -206,8 +230,9 @@ Before presenting, verify the plan has:
       "improve the system." If empty or placeholder → STOP, fill it in from Step 2.5
       answers before continuing.
 - [ ] Constraints & Acceptable Trade-offs section: present AND contains at least one
-      explicit statement from the user (not the template examples). Acceptable entries
-      include "No constraints stated — brief downtime accepted per user confirmation."
+      concrete statement (not the template examples). Acceptable entries include user
+      answers from Step 2.5 OR "Local code change — no deployment or downtime
+      considerations." when Step 2.5 questions were skipped.
       If still shows template example text → STOP.
 - [ ] Alternatives Considered section: present AND contains at least 2 rows with real
       Verdict entries ("Selected" or "Rejected" with a reason). A table with only the
