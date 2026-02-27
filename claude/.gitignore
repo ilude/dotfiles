@@ -26,7 +26,6 @@ debug/
 shell-snapshots/
 session-env/
 paste-cache/
-shared/
 .specstory/
 
 # Runtime state (ephemeral, auto-generated)
