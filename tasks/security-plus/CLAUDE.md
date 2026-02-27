@@ -56,25 +56,27 @@ Additional pattern: real-world experience can conflict with exam answers. The ex
 
 ## Current Phase
 
-**Phase**: Day 2 — Broadening Drill Coverage
-**Status**: Eight sessions complete. Trajectory: 85% (soft) → 54% (hard) → 70% → 67% → 60% → 75% → 83%. All 4 original persistent gaps resolved. Approaching passing threshold.
-**Next action**: Lock in remaining shaky items, then test untested research areas:
+**Phase**: Day 2 — Final Gap Drilling
+**Status**: Nine sessions complete. Trajectory: 85% → 54% → 70% → 67% → 60% → 75% → 83% → 73% (new areas). S9 sampled 15 research areas — most already known. Gap is now narrow: 4 drillable items.
+**Next action**: Drill the 4 confirmed gaps, then sweep remaining untested items:
 
-**Still shaky (correct but lucky — need concept lock-in):**
-1. **CWPP / CNAPP** — correct but lucky both times (S7). CSPM now locked in. Need to distinguish CWPP (runtime workload protection) vs CNAPP (unified platform = CSPM + CWPP).
-2. **Kerberos attack types** — pass the ticket was lucky (S8). Need to distinguish pass-the-hash / pass-the-ticket / kerberoasting / credential stuffing.
+**Must drill (wrong or lucky in S9):**
+1. **ALE formula** — wrong S9. ALE = AV × EF × ARO. Ignore revenue distractors.
+2. **Pyramid of Pain** — wrong S9. TTPs at top (hardest), hashes at bottom (trivial).
+3. **Agreement types (MSA/SOW/MOU/BPA)** — lucky S9. "MSA = umbrella, SOW = specific deliverables."
+4. **CRL/OCSP/stapling/pinning** — lucky S9. "List = CRL, live query = OCSP, server includes = stapling."
 
-**New gaps (missed):**
-3. **PDP vs PEP** — missed S8. "PDP = brain (decides), PEP = bouncer (enforces)."
-4. **Zero trust vs NAC** — missed S6. NAC = gate at the door, ZT = verify every resource request.
+**Still shaky (not re-tested in S9):**
+5. **CWPP / CNAPP** — still lucky from S7. Need concept lock-in.
+6. **Zero trust vs NAC** — missed S6, not re-tested.
 
-**Not re-tested (medium priority):**
-5. CASB, SCA/DAST/IAST, stored XSS vs CSRF, fault tolerance vs HA, data governance roles, RoPA vs PIA, CRL/OCSP, MAC/DAC/RBAC/ABAC.
+**Medium priority (not re-tested):**
+7. CASB, SCA/DAST/IAST, stored XSS vs CSRF, data governance roles, RoPA vs PIA, PCI scope, kill chain phases, MAC/DAC/RBAC/ABAC, NIST frameworks.
 
-**Not yet tested (research areas):**
-6. Agreement types, IoC/IoA/TTP, quantitative risk formulas, on-path attacks, SDN/NFV/ICS, conditional access, PBQ topics.
+**Remaining research areas (not yet tested):**
+8. Container/serverless/IaC, conditional access, PBQ topics (log analysis, wireless, certs, ports).
 
-Then build margin above 83% passing threshold with broad coverage drilling.
+Then build margin above 83% passing threshold.
 
 ## Global Rule: Always Expand Acronyms
 

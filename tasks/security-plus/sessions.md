@@ -248,6 +248,47 @@ Strongest session yet on hard questions. Previously persistent gaps (deception t
 
 ---
 
+## 2026-02-26: Research Area Sampling (Day 2, Session 9)
+
+**Duration**: ~20m
+**Phase**: Triage sampling — testing research areas to find real gaps vs already-known
+**Questions asked**: 15 (11 solid correct + 2 lucky + 2 wrong = 73% solid, 87% total)
+
+### Correct — Confirmed Strong (11 solid):
+- UEBA behavioral anomaly (educated) — unusual time + never-used system + foreign IP
+- Pass the ticket (knew cold) — stolen Kerberos TGT from memory
+- Downgrade attack (knew cold) — force SSLv3 over TLS 1.3
+- DNS tunneling (educated) — encoded strings in subdomains, periodic queries
+- Compensating control for ICS (knew cold) — can't patch, use alternative protection
+- SDN (educated) — control plane decoupled from data plane, central controller
+- Credential stuffing (reasoned) — breached pairs from Site A tried on Site B
+- PDP (reasoned) — evaluates policies, returns allow/deny decision. **Recovered from S8 miss.**
+- Fault tolerance (knew cold) — zero interruption after component failure. **Recovered from S3 miss.**
+- Password spraying (reasoned) — one password across many accounts, spaced to avoid lockout
+- NIDS for ICS/SCADA (educated) — can't install agents on proprietary RTOS, monitor network
+
+### Correct but Lucky (2):
+- **MSA** — general terms without specific deliverables. Lucky guess — needs drilling.
+- **CRL** — downloads list of revoked serial numbers. Lucky guess — needs drilling with OCSP/stapling/pinning.
+
+### Wrong (2):
+- **ALE formula** — chose $40,000, answer was $16,000. Forgot the ARO step: ALE = AV × EF × ARO = $200k × 0.4 × 0.2 = $16k. Ignored the revenue distractor correctly but miscalculated.
+- **Pyramid of Pain** — chose hash values (bottom), answer was TTPs (top). "Hardest to change" = top of pyramid = TTPs. Hashes are trivial to change.
+
+### Key findings:
+1. **Most research areas are already known** — 11/15 solid from experience. Only 4 items need real work.
+2. **Previously missed items recovering**: PDP vs PEP ✓ (missed S8, correct S9), fault tolerance ✓ (missed S3, correct S9).
+3. **4 real gaps found**: ALE formula, Pyramid of Pain, agreement types, CRL/OCSP group.
+4. **Attack terminology is strong**: downgrade, credential stuffing, password spraying, DNS tunneling all correct.
+5. **Architecture/infrastructure strong**: SDN, ICS/SCADA protection both educated-correct.
+
+### Trajectory: 85% → 54% → 70% → 67% → 60% → 75% → 83% → 73%
+The 73% reflects sampling brand-new areas. Core is solidifying — the remaining gap is narrow: 4 drillable items + a few untested medium-priority topics.
+
+**Next session**: Drill the 4 gaps (ALE formula, Pyramid of Pain, agreement types, CRL/OCSP), then CWPP/CNAPP lock-in, then sweep remaining medium-priority untested items.
+
+---
+
 <!--
 Template for new entries:
 

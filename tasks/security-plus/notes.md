@@ -44,6 +44,14 @@ Running notes from study sessions. Grows over time. Review before exam.
 
 **#4 — Data De-identification ("Pseudo = sharing out, Token = keeping in")**: Both are reversible, context decides. Research/GDPR/healthcare + sharing externally = pseudonymization. PCI/payments + protecting internally = tokenization. "Can never re-link" = anonymization.
 
+**#5 — ALE Formula ("AV × EF × ARO")**: ALE (Annualized Loss Expectancy) = SLE (Single Loss Expectancy) × ARO (Annualized Rate of Occurrence). SLE = AV (Asset Value) × EF (Exposure Factor). So ALE = AV × EF × ARO. Ignore distractors like company revenue — ALE is calculated from the specific asset. "Once every 5 years" = ARO of 0.2.
+
+**#6 — Pyramid of Pain (bottom = trivial, top = painful)**: Hash values → IP addresses → Domain names → Network/Host artifacts → Tools → TTPs (Tactics, Techniques, and Procedures). TTPs are at the TOP = hardest for attackers to change. Hash values at the BOTTOM = trivial to change (just recompile). "Hardest to modify" = TTPs. "Easiest to change" = hashes.
+
+**#7 — Agreement Types ("MSA is the umbrella, SOW is the rain")**: MSA (Master Service Agreement) = umbrella contract with general terms (pricing, duration, renewal, liability). SOW (Statement of Work) = specific project details, deliverables, SLAs under the MSA. MOU (Memorandum of Understanding) = non-binding intent. BPA (Blanket Purchase Agreement) = recurring purchases at pre-negotiated prices. "General terms, no deliverables" = MSA. "Specific deliverables and SLAs" = SOW.
+
+**#8 — Certificate Revocation ("List = CRL, Live query = OCSP")**: CRL (Certificate Revocation List) = client downloads a complete signed list of revoked serial numbers. OCSP (Online Certificate Status Protocol) = client queries CA in real-time for one cert. OCSP stapling = server pre-fetches its own OCSP response and includes it in TLS handshake. Certificate pinning = client hard-codes expected cert/key. "Downloads a list" = CRL. "Real-time query" = OCSP. "Server includes in handshake" = stapling. "Hard-coded expected cert" = pinning.
+
 ---
 
 ## Tricky Distinctions

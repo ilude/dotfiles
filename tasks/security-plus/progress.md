@@ -2,17 +2,14 @@
 
 ## Overall Readiness
 
-**Status**: Day 2 drilling — 8 sessions complete, trajectory rising
-**Estimated score**: ~80% (weighted) — approaching passing threshold (750/900 = ~83%)
+**Status**: Day 2 drilling — 9 sessions complete, most research areas confirmed strong
+**Estimated score**: ~82% (weighted) — at passing threshold (750/900 = ~83%)
 **Last updated**: 2026-02-26
-**Key gap**: Cloud security tools (CSPM/CWPP/CNAPP/CASB) — correct but mostly lucky guesses. Need concept lock-in.
-**Secondary gap**: Zero trust components (PDP vs PEP), Kerberos attack types — new misses
-**Trajectory**: 85% (soft) → 54% (hard) → 70% → 67% → 60% → 75% → 83%
-**Initial assessment**: 85% (23/27) with answer descriptions — inflated by context clues
-**First drill round**: ~54% (13/24) without descriptions, harder questions — exposed real gaps
-**Second assessment**: 70% (14/20) without descriptions, mixed topics — real improvement
-**Session 7**: 75% (9/13 solid) — SIEM/XDR/SOAR finally clicking, cloud tools still lucky
+**Key gap**: 4 items need drilling: ALE formula, Pyramid of Pain, agreement types (MSA/SOW), CRL/OCSP group
+**Secondary gap**: CWPP/CNAPP still lucky, zero trust vs NAC
+**Trajectory**: 85% (soft) → 54% (hard) → 70% → 67% → 60% → 75% → 83% → 73% (sampling new areas)
 **Session 8**: 83% (10/12 solid) — deception tech ✓ (2x miss → correct), UEBA ✓, BIA ✓, SAST ✓
+**Session 9**: 73% solid (11/15) — sampled 15 research areas. Most already known from experience. 4 real gaps found: ALE formula (wrong), Pyramid of Pain (wrong), agreement types (lucky), CRL/OCSP (lucky)
 
 ---
 
@@ -23,7 +20,7 @@
 | 1.1 Compare security controls | Moderate | 2026-02-26 | Assessment ✓ but drill missed MAC vs DAC vs RBAC vs ABAC (lucky guess) |
 | 1.2 Summarize fundamental security concepts | Strong | 2026-02-26 | CIA triad — availability ✓ |
 | 1.3 Explain change management importance | Strong | 2026-02-26 | Impact analysis / peer review ✓ |
-| 1.4 Explain cryptographic solutions | Moderate | 2026-02-26 | Assessment ✓ (bcrypt) but drill: CRL/OCSP — no idea |
+| 1.4 Explain cryptographic solutions | Moderate | 2026-02-26 | Assessment ✓ (bcrypt). CRL correct but **lucky** (S9) — needs lock-in with OCSP/stapling/pinning group. |
 
 **Domain score**: Moderate — access control models and PKI revocation are gaps
 
@@ -36,10 +33,10 @@
 | 2.1 Compare threat actors and motivations | Moderate | 2026-02-26 | Assessment ✓ (APT) but drill missed MITRE ATT&CK vs Kill Chain vs Diamond vs NIST CSF (lucky guess) |
 | 2.2 Explain common threat vectors | Strong | 2026-02-26 | Drilled: attack type vs technique rule. Re-tested ✓ |
 | 2.3 Explain types of vulnerabilities | Moderate | 2026-02-26 | Assessment ✓ (SQLi) but drill missed stored XSS vs CSRF (educated guess) |
-| 2.4 Analyze indicators of malicious activity | Strong | 2026-02-26 | C2 beaconing ✓, SYN scan ✓ |
+| 2.4 Analyze indicators of malicious activity | Strong | 2026-02-26 | C2 beaconing ✓, SYN scan ✓. S9: credential stuffing ✓, password spraying ✓, downgrade attack ✓, DNS tunneling ✓. Pyramid of Pain missed (chose hashes, answer was TTPs). |
 | 2.5 Explain mitigation techniques | Moderate | 2026-02-26 | Assessment ✓ (segmentation) but drill missed kill chain phase for sandboxing (educated guess) |
 
-**Domain score**: Moderate — threat frameworks, XSS/CSRF, and kill chain mapping need work
+**Domain score**: Moderate-Strong — Diamond Model ✓, ATT&CK ✓, attack types strong (S9). Pyramid of Pain wrong (S9). Stored XSS vs CSRF and kill chain untested.
 
 ---
 
@@ -47,7 +44,7 @@
 
 | Objective | Score | Last Assessed | Notes |
 |-----------|-------|---------------|-------|
-| 3.1 Compare security architecture models | Moderate | 2026-02-26 | CSPM ✓ (S7, educated). CWPP/CNAPP correct but lucky (S7). CASB not re-tested. PDP vs PEP missed (S8). Zero trust vs NAC missed (S6). |
+| 3.1 Compare security architecture models | Moderate | 2026-02-26 | CSPM ✓. CWPP/CNAPP still lucky. PDP vs PEP: missed S8, correct S9 (reasoned — recovering). ZT vs NAC missed S6. SDN ✓ (S9, educated). ICS/SCADA/NIDS ✓ (S9, educated). |
 | 3.2 Apply security principles to infrastructure | Moderate-Strong | 2026-02-26 | SAST ✓ (S8, knew cold). Shared responsibility ✓ (S8, knew cold). Secret scanning ✓ (S7). SCA/SBOM not re-tested. |
 | 3.3 Compare data protection concepts | Strong | 2026-02-26 | Drilled: "Pseudo = sharing out, Token = keeping in." Re-tested ✓. But missed hosted payment fields vs tokenization for PCI scope. |
 | 3.4 Explain resilience and recovery | Strong | 2026-02-26 | RPO vs RTO ✓, differential vs incremental backup ✓ (knew it cold) |
@@ -79,12 +76,12 @@
 | Objective | Score | Last Assessed | Notes |
 |-----------|-------|---------------|-------|
 | 5.1 Summarize governance, risk, and compliance | Strong | 2026-02-26 | Drilled: "Matrix for the menu, ALE for the bill." Re-tested ✓ |
-| 5.2 Explain risk management processes | Strong | 2026-02-26 | Pentest scope ✓ (S7, knew cold). BIA ✓ (S8, knew cold). Quantitative risk formulas not re-tested. |
-| 5.3 Summarize third-party risk assessment | Strong | 2026-02-26 | SOC 2 Type I vs II ✓ (educated guess). Data retention addendum ✓ (reasoned). |
+| 5.2 Explain risk management processes | Moderate-Strong | 2026-02-26 | Pentest scope ✓ (S7). BIA ✓ (S8). ALE formula **wrong** (S9) — missed ARO step. Needs drilling. |
+| 5.3 Summarize third-party risk assessment | Moderate-Strong | 2026-02-26 | SOC 2 Type I vs II ✓. NDA ✓ (S7, reasoned). MSA correct but **lucky** (S9) — agreement types need drilling. |
 | 5.4 Summarize compliance and auditing | Strong | 2026-02-26 | Least privilege ✓, dual control vs separation of duties ✓ (educated guess), legal hold ✓ |
 | 5.5 Explain privacy and data protection | Moderate | 2026-02-26 | Assessment ✓ (GDPR erasure ✓) but drill missed RoPA vs PIA (educated guess) |
 
-**Domain score**: Moderate-Strong — pentest scope legalism, RoPA vs PIA need work
+**Domain score**: Moderate-Strong — ALE formula wrong (S9), agreement types lucky (S9), RoPA vs PIA untested. Pentest scope and BIA now strong.
 
 ---
 
@@ -124,34 +121,40 @@ Ranked by domain weight × weakness severity. Items marked (acronym) are termino
 - **NDA** — locked in S7. Sign before sharing proprietary docs. (5.3)
 - **Secret scanning** — locked in S7. AKIA prefix = AWS key in code. (3.2)
 
-### High Priority — Still Needs Work
-1. **3.1** (18%) — CWPP/CNAPP — correct but **lucky** both times (S7). Need concept lock-in, not just guessing.
-2. **3.1** (18%) — PDP vs PEP — missed S8 (lucky guess wrong). "PDP = brain, PEP = bouncer."
-3. **3.1** (18%) — Zero trust vs NAC — missed S6. NAC = gate at the door, ZT = every resource request.
-4. **2.4** (22%) — Kerberos attack types — pass the ticket correct but **lucky** (S8). Need to distinguish pass-the-hash/ticket/kerberoasting/credential stuffing.
-5. **4.1** (28%) — NAC vs EDR vs MDM — EDR ✓, but NAC not re-tested since S4.
+### High Priority — Needs Drilling (wrong or lucky in S9)
+1. **5.2** (20%) — ALE/SLE/ARO formula — **wrong** S9. ALE = AV × EF × ARO. Ignore revenue distractors.
+2. **2.4** (22%) — Pyramid of Pain — **wrong** S9. TTPs at top (hardest to change), hashes at bottom (trivial).
+3. **5.3** (20%) — Agreement types (MSA/SOW/MOU/BPA) — **lucky** S9. "MSA = umbrella, SOW = specific deliverables."
+4. **1.4** (12%) — CRL/OCSP/stapling/pinning — **lucky** S9. "List = CRL, live query = OCSP, server includes = stapling."
+5. **3.1** (18%) — CWPP/CNAPP — still **lucky** (S7, not re-tested S9). Need concept lock-in.
+6. **3.1** (18%) — Zero trust vs NAC — missed S6, not re-tested. NAC = gate at door, ZT = every resource.
 
-### Medium Priority — Terminology Gaps (not re-tested)
-6. **5.5** (20%) — Data governance roles: data owner vs custodian vs steward vs controller/processor.
-7. **5.5** (20%) — RoPA vs PIA/DPIA.
-8. **3.1** (18%) — CASB — not re-tested since lucky guess in S2. ZTNA ✓.
-9. **3.2** (18%) — SCA/DAST/IAST/SBOM — SAST ✓ but others not re-tested.
-10. **3.3** (18%) — PCI scope methods — not re-tested.
-11. **3.4** (18%) — Fault tolerance vs HA vs DR — missed S3. "No user impact" = FT.
+### Medium Priority — Not Re-tested
+7. **5.5** (20%) — Data governance roles: data owner vs custodian vs steward vs controller/processor.
+8. **5.5** (20%) — RoPA vs PIA/DPIA.
+9. **3.1** (18%) — CASB — not re-tested since lucky guess in S2.
+10. **3.2** (18%) — SCA/DAST/IAST/SBOM — SAST ✓ but others not re-tested.
+11. **3.3** (18%) — PCI scope methods — not re-tested.
 12. **2.3** (22%) — Stored XSS vs CSRF — not re-tested. Reflected/DOM XSS ✓.
 13. **2.5** (22%) — Kill chain phase mapping — not re-tested.
 
 ### Lower Priority (not re-tested)
 14. **1.1** (12%) — MAC/DAC/RBAC/ABAC.
-15. **1.4** (12%) — CRL/OCSP.
-16. **5.1** (20%) — NIST SP 800-53 vs NIST CSF vs ISO 27001 vs CIS Controls.
+15. **5.1** (20%) — NIST SP 800-53 vs NIST CSF vs ISO 27001 vs CIS Controls.
 
 ### Research Areas (not yet tested)
-17. **3.1** (18%) — Container/serverless security, IaC scanning, supply chain (SBOM/SLSA).
-18. **4.3** (28%) — IoC vs IoA, TTP, Pyramid of Pain.
-19. **5.3** (20%) — MOU vs MSA vs SOW vs BPA — agreement types.
-20. **5.2** (20%) — Quantitative formulas (SLE, ALE, EF, AV). BIA ✓.
-21. **2.4** (22%) — On-path attacks, password spraying, credential stuffing, downgrade attacks.
-22. **3.1** (18%) — SDN, NFV, ICS/SCADA/RTOS, HSM vs TPM, screened subnet.
-23. **4.6** (28%) — Conditional access, adaptive/continuous auth. PAM/JIT ✓.
-24. PBQ topics — log analysis, wireless config, cert tasks, port numbers. Firewall rules ✓.
+16. **3.1** (18%) — Container/serverless security, IaC scanning, supply chain (SBOM/SLSA).
+17. **4.6** (28%) — Conditional access, adaptive/continuous auth. PAM/JIT ✓.
+18. PBQ topics — log analysis, wireless config, cert tasks, port numbers. Firewall rules ✓.
+
+### Confirmed Strong from S9 Sampling (moved from research/untested)
+- **Downgrade attacks** — knew cold (2.4)
+- **Credential stuffing vs password spraying** — reasoned (2.4)
+- **DNS tunneling/exfiltration** — educated (2.4)
+- **SDN vs NFV** — educated (3.1)
+- **ICS/SCADA/RTOS + NIDS protection** — educated (3.1)
+- **PDP vs PEP** — reasoned, recovering from S8 miss (3.1)
+- **Fault tolerance vs HA** — knew cold, recovered from S3 miss (3.4)
+- **Compensating controls for ICS** — knew cold (1.1)
+- **Pass the ticket** — knew cold (2.4)
+- **UEBA** — educated (4.4)
