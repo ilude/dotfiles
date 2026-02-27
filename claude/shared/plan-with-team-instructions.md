@@ -112,6 +112,39 @@ dimensions:
 - **Don't re-ask Step 2.5 questions** — downtime and ruled-out approaches are already
   handled. Intent verification covers What/Why/Scope only.
 
+## Step 2.9: Feasibility & Determinism Pre-Checks
+
+**Applies to:** `complex` tasks OR any task classified as `deployment`. Skip for `local` + `simple` tasks where tooling is already detected in Step 2.
+
+Before generating the plan, run these checks and bake outcomes into the plan structure:
+
+1. **Tooling prerequisites**
+   - If any planned command requires a tool/runtime not already guaranteed by project markers
+     (e.g., git, jq, kubectl, helm, terraform, python, uv), add an explicit prerequisite task
+     OR explicitly state "assumed preinstalled" in Constraints.
+   - Do not leave required tooling implicit.
+
+2. **History-sensitive operations**
+   - If a task requires version-history operations (e.g., commit-range diff, changelog-from-hash,
+     rollback-to-sha), ensure history availability is guaranteed.
+   - Default: prefer full history for deterministic behavior.
+   - If using shallow history, plan must include an explicit deepen/unshallow fallback path.
+
+3. **Reference lifetime safety**
+   - If task B references a file/path/artifact for implementation guidance or migration input,
+     task A must not delete/move that artifact before B completes.
+   - Enforce with task ordering/dependencies.
+
+4. **Execution context clarity**
+   - Clearly label the execution context (host, shell, working directory) for each command.
+   - If multiple environments are needed (local + remote, pod exec + bastion), label each
+     explicitly rather than assuming a single context.
+
+5. **Command platform safety**
+   - Commands must be valid for the platform detected in Step 2.
+   - Avoid platform-specific anti-patterns (e.g., `nul` on Unix, `/dev/null` on Windows,
+     `sudo` on MSYS2). When in doubt, test the command mentally against the detected environment.
+
 ## Step 3: Generate Plan
 
 Create a slug from the task description (lowercase, hyphens, max 30 chars).
@@ -222,6 +255,16 @@ anywhere else — MUST specify three things:
 
 A plan that says "run the migration" without these three things is incomplete.
 
+**Environment Consistency Rules:**
+- Every verification command must be valid for the plan's detected platform/environment.
+- Mixed-shell commands are not allowed unless explicitly labeled as optional alternates.
+- Avoid ambiguous pseudo-commands ("grep this", "check logs") — use exact runnable commands.
+
+**Prerequisite & Fallback Rules:**
+- If a criterion uses a non-baseline tool, reference the prerequisite task that guarantees it.
+- Any network-dependent or history-dependent command must include a deterministic fallback or
+  explicit failure handling path.
+
 **Quick rules:**
 - Each criterion must be specific and measurable (no "looks good" or "works correctly")
 - Include a verification method: exact command, test, API call, or file check
@@ -286,8 +329,23 @@ Before presenting, verify the plan has:
 - [ ] Validator model matches wave rule (sonnet/opus builders → validator-heavy, haiku-only → validator)
 - [ ] Every task has Acceptance Criteria
 - [ ] Each Acceptance Criterion has a verification command or test
+- [ ] All tools/runtimes required by tasks are either (a) installed by prerequisite tasks or
+      (b) explicitly declared as preinstalled assumptions in Constraints
+- [ ] No task deletes/moves artifacts that are still referenced by later tasks
+- [ ] If any task depends on version history, history availability is guaranteed
+      (full history or explicit deepen/unshallow fallback)
+- [ ] Verification commands are valid for the detected platform/environment
+- [ ] Any alternate command forms are explicitly labeled optional and equivalent
+- [ ] Commands avoid platform-specific anti-patterns for the detected environment
 
 If validation fails, fix the plan before continuing.
+
+## Plan Invariants (Must Hold Before Approval)
+
+- Dependencies and validation gates reflect current task ordering (no stale blockedBy references).
+- Verification steps are executable without guessing shell/runtime.
+- Required tools and required history are available when tasks need them.
+- No task ordering invalidates downstream references.
 
 ## Step 5: Present and Approve
 
