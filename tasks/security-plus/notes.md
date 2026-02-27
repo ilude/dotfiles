@@ -859,3 +859,242 @@ Changes encryption? → POLYMORPHIC. Rewrites code? → METAMORPHIC
 | Hamada Question Bank | github.com/Hamada-khairi/Hamada-Security-Plus-Exam-Prep | 551 scenario questions in JSON |
 | Packt/Dion Labs | github.com/PacktPublishing/TOTAL-CompTIA-Security-Cert-SY0-701- | Hands-on labs (RAID, physical, WPA2) |
 | wilsonvs Study Guide | github.com/wilsonvs/CompTIA-Security-SY0-701 | Comprehensive markdown reference |
+
+---
+
+## Automation and Orchestration (4.7)
+
+**Automation** — Single task, no human. **Orchestration** — Coordinates multiple automated tasks across systems.
+- Exam tell: "single repetitive task" = automation. "coordinates multiple tools" = orchestration.
+
+### Use Cases
+- **User provisioning** — Auto-create/deactivate accounts from HR events
+- **Resource provisioning** — Auto-deploy infra (VMs, storage) via IaC (Infrastructure as Code)
+- **Guard rails** — Auto-block unsafe actions (e.g., opening port 22 to 0.0.0.0/0)
+- **Security groups** — Auto-enforce firewall rules across cloud VPCs (Virtual Private Clouds)
+- **Ticket creation** — SIEM alert → auto-create incident ticket
+- **Escalation** — Unacknowledged alert → auto-escalate to manager
+- **Enable/disable access** — Auto-disable VPN after failed MFA attempts
+- **CI/CD security** — Code commit triggers SAST scan, blocks merge on critical vuln
+- **Integrations/APIs** — Connect tools (vuln scanner → CMDB — Configuration Management Database)
+
+### Benefits
+Efficiency, enforcing baselines, standard configs, scaling securely, employee retention (less burnout), faster reaction time, workforce multiplier.
+
+### Risks/Downsides (exam tests these five specifically)
+**Complexity** — hard to build/debug. **Cost** — licensing + development. **Single point of failure** — platform down = no automation. **Technical debt** — undocumented scripts accumulate. **Ongoing supportability** — API changes break integrations.
+
+**Playbook** = automated workflow for a scenario. **Runbook** = manual step-by-step procedures. Modern SOAR (Security Orchestration, Automation, and Response) automates playbooks that used to be runbooks.
+
+---
+
+## Digital Forensics Procedures (4.9)
+
+### Legal Hold
+Formal order to preserve ALL potentially relevant data. Overrides normal retention/deletion policies. Issued by legal counsel or court.
+- **Spoliation** — destroying evidence after legal hold = sanctions, adverse inference, criminal contempt.
+- Exam tell: "anticipates lawsuit, what first?" → legal hold.
+
+### Chain of Custody
+Documents EVERY person who handled evidence: who, what, when, where. ANY break = evidence inadmissible.
+- Hash values (SHA-256) computed at acquisition, verified at every transfer. Mismatch = integrity compromised.
+
+### Order of Volatility (collect MOST volatile FIRST)
+1. CPU registers/cache (nanoseconds)
+2. RAM (seconds-minutes) — running processes, encryption keys, malware
+3. Swap/pagefile (minutes)
+4. Disk (hours-days)
+5. Logs (days-weeks)
+6. Network captures (transient)
+7. Backup media (months-years)
+
+**Mnemonic: "Real Researchers Should Document Logs, Not Backups"**
+
+"Power off the system" is almost always WRONG — destroys volatile evidence.
+
+### Preservation
+- **Write blockers** — read-only access to evidence media. MUST use before connecting to forensic workstation.
+- **Forensic image** — bit-for-bit copy including deleted files, slack space, unallocated space. NOT a file copy.
+- **Hash verification** — hash source BEFORE imaging, hash image AFTER. Must match.
+
+### Forensic Image vs Logical Copy
+
+| Feature | Forensic Image | Logical Copy |
+|---------|---------------|-------------|
+| Scope | Every bit (including deleted) | Visible files only |
+| Court-admissible | Yes (with hash + chain of custody) | Generally insufficient |
+| Use case | Legal proceedings | Quick triage |
+
+### E-Discovery (Electronic Discovery)
+Legal process for producing ESI (Electronically Stored Information) in litigation. Identification → preservation → collection → processing → review → production.
+
+### Forensic Tools
+- **FTK Imager** — disk imaging with auto-hashing. **EnCase** — "gold standard" court admissibility.
+- **Autopsy** — free, open-source disk forensics. **dd** — raw bitstream imaging (Linux).
+- **Volatility** — memory forensics (RAM dump analysis).
+- "Analyze memory dump for malware" → Volatility. "Free disk forensics" → Autopsy.
+
+---
+
+## Risk Appetite and Assessment Types (5.2)
+
+### Risk Appetite Types
+
+| Type | Posture | Example |
+|------|---------|---------|
+| **Expansionary** | Accept more risk for growth | Tech startups, crypto exchanges |
+| **Conservative** | Minimize risk, prioritize stability | Healthcare, banking, government |
+| **Neutral** | Balanced, moderate risk | Mature enterprises in stable markets |
+
+### Risk Appetite vs Risk Tolerance
+- **Appetite** = organization-wide attitude (strategic). "We like spicy food."
+- **Tolerance** = specific threshold for ONE risk (tactical). "We tolerate up to 4 hours downtime."
+
+### Risk Assessment Types
+
+| Type | When | Example |
+|------|------|---------|
+| **Ad hoc** | Triggered by event, reactive | "Assess after discovering zero-day" |
+| **Recurring** | Scheduled intervals | "Annual PCI risk assessment" |
+| **One-time** | Specific project/change | "Before cloud migration" |
+| **Continuous** | Ongoing, real-time | "Automated vuln scanning with live risk scoring" |
+
+### KRI (Key Risk Indicators)
+Forward-looking metrics signaling increasing risk. Early warning system.
+- KRI = forward-looking (where is risk heading?). KPI (Key Performance Indicator) = backward-looking (how did we perform?).
+- Examples: unpatched critical vulns trending up, security team turnover rising, failed logins up 300%.
+
+### Risk Register Fields
+Description, impact, likelihood, risk level (impact × likelihood), outcome, cost, risk owner, KRIs, risk threshold.
+
+### BIA (Business Impact Analysis) — Detail
+- **Mission-essential functions** — restored FIRST after disaster
+- **Single points of failure** — component failure takes down entire system
+- **Impact priority**: Life/safety ALWAYS first. Then property → finance → reputation.
+
+---
+
+## Steganography and Obfuscation (1.4)
+
+### Encryption vs Steganography vs Obfuscation
+
+| Concept | Goal | Detectable? |
+|---------|------|-------------|
+| **Encryption** | Make data UNREADABLE without key | Yes — ciphertext is obviously encrypted |
+| **Steganography** | HIDE data's existence inside other data | Not obvious — looks like normal file |
+| **Obfuscation** | Make data CONFUSING but still accessible | Yes — visible but unclear |
+
+### Steganography Techniques
+- **LSB (Least Significant Bit) insertion** — Modifies last bit of each pixel. Imperceptible to human eye. Images (PNG, BMP).
+- **Whitespace manipulation** — Invisible spaces/tabs in text files.
+- **Audio/video steganography** — Modify inaudible frequencies or video frame LSBs.
+- **DNS tunneling** — Encode data in DNS query subdomains. "Unusually long subdomain names" = DNS tunneling.
+- **Protocol tunneling** — Hide data in ICMP (Internet Control Message Protocol) or HTTP headers.
+
+### Steganalysis (Detection)
+Statistical analysis (chi-square), file size comparison, signature detection (known stego tool patterns), network traffic analysis.
+
+### Obfuscation Forms
+- **Tokenization** — Replace sensitive data with non-sensitive token. PCI/payments context.
+- **Data masking** — Substitute with fictional but structurally similar data. Dev/test environments.
+- **Code obfuscation** — Rename variables, minify. Malware evasion, IP protection.
+
+### Decision Rules
+| Scenario | Technique |
+|----------|-----------|
+| C2 address hidden in JPEG | Steganography |
+| Exfiltrated data encrypted before sending | Encryption |
+| Card numbers replaced with tokens | Obfuscation (tokenization) |
+| DNS queries with encoded long subdomains | Steganography (DNS tunneling) |
+| File scrambled, needs password | Encryption |
+
+---
+
+## IoT Protocols and Constraints (3.1)
+
+| Protocol | Range | Power | Primary Use |
+|----------|-------|-------|-------------|
+| **Zigbee** (IEEE 802.15.4) | 10-100m | Very low | Smart home (lights, sensors) |
+| **Z-Wave** (sub-GHz) | 30-100m | Very low | Home automation (locks, HVAC) |
+| **BLE (Bluetooth Low Energy)** | 10-100m | Ultra-low | Wearables, medical |
+| **NFC (Near-Field Communication)** | 4-10 cm | Passive | Contactless payments, badges |
+| **LoRaWAN (Long Range Wide Area Network)** | 2-15 km | Very low | Agricultural sensors, smart cities |
+| **Cellular IoT** (LTE-M/NB-IoT) | km+ | Moderate | Vehicle tracking, fleet |
+
+### IoT Security Constraints
+Limited CPU/memory, limited/no crypto, limited battery, inability to patch, default credentials, no built-in security, weak authentication.
+
+### IoT Security Controls
+- **Network segmentation** = almost always the best answer for "how to protect IoT"
+- Change default credentials, firmware updates, monitor traffic, disable UPnP (Universal Plug and Play)/Telnet
+- **Mirai botnet** — canonical IoT attack, exploited default credentials for DDoS
+
+---
+
+## Edge and Fog Computing (3.1)
+
+**Edge** — Processing at/near the device. Millisecond latency. Autonomous vehicle braking decision.
+**Fog** — Intermediate layer between edge and cloud. Aggregates/filters data from multiple edge devices. Factory floor aggregating 50 sensors.
+**Cloud** — Centralized. Higher latency acceptable. ML training on a year of data.
+
+Security concerns: distributed attack surface, physical access to edge devices, data in transit between layers, limited security controls on edge, inconsistent policies.
+
+---
+
+## VDI and Thin Client Security (3.1)
+
+**VDI (Virtual Desktop Infrastructure)** — Desktop OS runs on server. User connects via thin client/browser. Only pixels traverse network.
+**Thin client** — Minimal hardware, no local storage. Reduced attack surface.
+
+**Benefits:** Centralized patching, no data on endpoints, consistent config, easy reimage, data never leaves data center.
+**Concerns:** Single point of failure, network dependency, clipboard/USB redirection risks.
+
+**Non-persistent VDI** — Reverts to known-good state after each session. Malware wiped on reboot.
+**Persistent VDI** — Changes survive. Behaves like traditional workstation.
+
+---
+
+## Post-Quantum Cryptography (1.4)
+
+**Shor's Algorithm** — Breaks ALL asymmetric crypto (RSA, ECC, DH, DSA). These must be REPLACED.
+**Grover's Algorithm** — Halves symmetric strength (AES-128 → effectively 64-bit). Fix: use AES-256.
+- Quantum does NOT catastrophically break hashing (SHA-256 remains usable).
+
+**NIST PQC (Post-Quantum Cryptography) Standards:**
+- **CRYSTALS-Kyber** (ML-KEM) — key exchange. Lattice-based.
+- **CRYSTALS-Dilithium** (ML-DSA) — digital signatures. Lattice-based.
+- **SPHINCS+** (SLH-DSA) — backup signature algorithm. Hash-based.
+
+**Crypto agility** — Design systems to swap algorithms easily. Not hardcoded.
+**Harvest now, decrypt later** — Adversaries capture encrypted data today, decrypt when quantum arrives. Drives urgency for PQC migration NOW.
+
+**Homomorphic encryption** — Compute on encrypted data without decrypting. Cloud processes sensitive data without seeing plaintext.
+- Fully homomorphic = any operation (extremely slow). Partially = limited operations (more practical).
+
+---
+
+## Non-Persistence and Recovery (3.4)
+
+| Concept | What It Does |
+|---------|-------------|
+| **Non-persistent** | System reverts to known-good state on reboot. Malware wiped. |
+| **Revert to known state** | Snapshot rollback (VMware, Hyper-V checkpoints) |
+| **Last known-good config** | Windows boot with last working registry/drivers |
+| **Live boot media** | Boot from read-only USB. Host disk untouched. Forensic use. |
+| **Golden image** | Approved baseline image for consistent deployment |
+| **Immutable infrastructure** | Never patch in place. Build new image, redeploy, destroy old. Containers. |
+
+- Immutable ≠ non-persistent. Immutable = never modify deployed instance. Non-persistent = changes don't survive reboot.
+
+---
+
+## Data Sovereignty and Geographic Restrictions (3.3)
+
+**Data sovereignty** — Data subject to laws of the country where it is stored. German server = German law.
+**Data residency** — Policy/regulation on WHERE data may be stored.
+**Geographic restrictions** — Technical controls restricting data storage/access by location.
+
+- Sovereignty (legal) → creates residency requirements (policy) → enforced by geographic restrictions (technical)
+- **GDPR adequacy decisions** — EU Commission certifies countries with adequate data protection (Japan, UK, Canada). Transfers to non-adequate countries need SCCs (Standard Contractual Clauses) or BCRs (Binding Corporate Rules).
+- **US CLOUD Act** — US claims jurisdiction over data held by US companies even if stored abroad. Conflicts with other nations' sovereignty.
+- "Laws of the country where data is stored" = data sovereignty. "Configure cloud to specific region" = geographic restriction.

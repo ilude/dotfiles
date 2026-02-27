@@ -60,17 +60,17 @@
 
 | Objective | Score | Last Assessed | Notes |
 |-----------|-------|---------------|-------|
-| 4.1 Apply security techniques to computing resources | Moderate | 2026-02-26 | Assessment ✓ (immutable containers) but drill missed NAC vs EDR vs MDM |
-| 4.2 Explain security alerting and monitoring | Strong | 2026-02-26 | Deception tech vs honeypot ✓ (S8, after 2 misses). UEBA vs SIEM ✓ (S8, after S7 miss). SIEM/XDR/SOAR trio ✓ (S7). |
-| 4.3 Modify enterprise capabilities for incident response | Strong | 2026-02-26 | Network isolation ✓, API key revocation ✓ |
-| 4.4 Use appropriate tools for digital forensics | Strong | 2026-02-26 | Order of volatility ✓ |
-| 4.5 Explain vulnerability management | Strong | 2026-02-26 | SCAP ✓ (S6, reasoned). Compensating controls ✓ (S8, knew cold). ASV ✓ (S4). |
-| 4.6 Explain security awareness practices | Strong | 2026-02-26 | Training refinement vs. failure ✓ |
-| 4.7 Explain identity and access management | Strong | 2026-02-26 | Drilled: session vs token lifetime. Re-tested ✓. SAML vs OAuth vs OIDC: reasoned out. |
-| 4.8 Explain automation and orchestration | Strong | 2026-02-26 | SOAR ✓ (S7, multi-tool playbook). XDR vs SOAR distinction locked in (S7). |
-| 4.9 Explain appropriate incident response activities | Strong | 2026-02-26 | Lessons learned as final IR phase ✓ |
+| 4.1 Apply common security techniques to computing resources | Moderate | 2026-02-26 | Assessment ✓ (immutable containers) but drill missed NAC vs EDR vs MDM |
+| 4.2 Security implications of proper hardware, software, and data asset management | Not assessed | — | **[Corrected from 4.4]** Digital forensics moved to 4.9. This objective covers asset lifecycle, disposal, and management implications. |
+| 4.3 Various activities associated with vulnerability management | Strong | 2026-02-26 | **[Corrected from 4.5]** SCAP ✓ (S6, reasoned). Compensating controls ✓ (S8, knew cold). ASV ✓ (S4). |
+| 4.4 Security alerting and monitoring concepts and tools | Strong | 2026-02-26 | **[Corrected from 4.2]** Deception tech vs honeypot ✓ (S8, after 2 misses). UEBA vs SIEM ✓ (S8, after S7 miss). SIEM/XDR/SOAR trio ✓ (S7). |
+| 4.5 Modify enterprise capabilities to enhance security | Strong | 2026-02-26 | **[Corrected from 4.3]** Network isolation ✓, API key revocation ✓. Title clarified: "enhance security" (not just "incident response"). |
+| 4.6 Implement and maintain identity and access management | Strong | 2026-02-26 | **[Corrected from 4.7]** Drilled: session vs token lifetime. Re-tested ✓. SAML vs OAuth vs OIDC: reasoned out. PAM with JIT access locked in (S6). |
+| 4.7 Importance of automation and orchestration related to secure operations | Strong | 2026-02-26 | **[Corrected from 4.8]** SOAR ✓ (S7, multi-tool playbook). XDR vs SOAR distinction locked in (S7). Title clarified: "secure operations" scope. |
+| 4.8 Appropriate incident response activities | Strong | 2026-02-26 | **[Corrected from 4.9]** Lessons learned as final IR phase ✓. Scope clarified: IR activities (not data sources). |
+| 4.9 Use data sources to support an investigation | Not assessed | — | **[Corrected from 4.4]** Digital forensics moved here: order of volatility ✓. Also covers forensic evidence types and chain of custody. |
 
-**Domain score**: Strong — SIEM/XDR/SOAR, deception tech, UEBA, SCAP all locked in. NAC not re-tested.
+**Domain score**: Strong — SIEM/XDR/SOAR, deception tech, UEBA, SCAP all locked in. 4.2 (asset mgmt) and 4.9 (forensic data sources) not yet assessed.
 
 ---
 
