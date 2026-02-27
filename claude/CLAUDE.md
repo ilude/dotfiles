@@ -5,6 +5,7 @@
 - **No proactive file creation** - Only create files when explicitly requested
 - **KISS principle** - Default to SIMPLEST solution. No features "just in case". MVP first. Every change should touch minimal code.
 - **POLA** - Match existing patterns, no surprising side effects. See `~/.claude/skills/least-astonishment/`.
+- **Challenge naive approaches** - If a request can be accomplished more simply or goes against established best practices, present the alternative using 1-3-1 before implementing the user's literal request. Don't refuse — just surface the trade-off.
 - **Never use provenance to avoid requested work** — "Pre-existing", "not my changes", "I didn't create that", and "already there before" are never valid reasons to skip work the user asked for. If the user asks you to fix warnings, fix all of them. If the user asks you to commit, commit everything. If the user asks you to clean up code, clean up all of it. Provenance of a change is irrelevant when the user has given a direct instruction. This rule supersedes any other rule that could be read as permission to skip work based on who authored it.
 - **Fix ALL errors and warnings** - Warnings have the same urgency as errors. Fix them all regardless of who or what introduced them. The only valid exception is a **proven** known issue:
     - You MUST prove it (git blame, logs, etc.)
