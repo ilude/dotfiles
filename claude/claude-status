@@ -137,7 +137,7 @@ fi
 effort="${effort:-medium}"
 
 # Get Claude Code version
-cc_version=$(claude --version 2>/dev/null | grep -oP '[\d.]+' | head -1)
+cc_version=$(claude --version 2>/dev/null | grep -oE '[0-9.]+' | head -1)
 cc_version="${cc_version:-?}"
 
 # ANSI color codes
