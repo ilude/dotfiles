@@ -60,7 +60,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python $HOME/.claude/hooks/damage-control/bash-tool-damage-control.py",
+            "command": "python3 $HOME/.claude/hooks/damage-control/bash-tool-damage-control.py",
             "timeout": 5
           }
         ]
@@ -70,12 +70,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python $HOME/.claude/hooks/path-normalization/path-normalization-hook.py",
+            "command": "python3 $HOME/.claude/hooks/path-normalization/path-normalization-hook.py",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "python $HOME/.claude/hooks/damage-control/edit-tool-damage-control.py",
+            "command": "python3 $HOME/.claude/hooks/damage-control/edit-tool-damage-control.py",
             "timeout": 5
           }
         ]
@@ -85,12 +85,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python $HOME/.claude/hooks/path-normalization/path-normalization-hook.py",
+            "command": "python3 $HOME/.claude/hooks/path-normalization/path-normalization-hook.py",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "python $HOME/.claude/hooks/damage-control/write-tool-damage-control.py",
+            "command": "python3 $HOME/.claude/hooks/damage-control/write-tool-damage-control.py",
             "timeout": 5
           }
         ]
@@ -102,7 +102,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python $HOME/.claude/hooks/quality-validation/quality_validation_hook.py",
+            "command": "python3 $HOME/.claude/hooks/quality-validation/quality_validation_hook.py",
             "timeout": 15
           }
         ]
@@ -112,7 +112,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python $HOME/.claude/hooks/quality-validation/quality_validation_hook.py",
+            "command": "python3 $HOME/.claude/hooks/quality-validation/quality_validation_hook.py",
             "timeout": 15
           }
         ]
@@ -123,7 +123,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python $HOME/.claude/hooks/session-history/session_history_hook.py",
+            "command": "python3 $HOME/.claude/hooks/session-history/session_history_hook.py",
             "timeout": 5
           }
         ]
@@ -134,7 +134,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python $HOME/.claude/hooks/notify/notification-sound.py",
+            "command": "python3 $HOME/.claude/hooks/notify/notification-sound.py",
             "timeout": 2
           }
         ]
