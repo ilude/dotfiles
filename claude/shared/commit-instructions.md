@@ -28,6 +28,24 @@ If secrets are found, STOP immediately. Show details and suggest adding files to
 
 Commit ALL uncommitted changes in the working tree. Do not skip files because they were changed in a previous task, by the user manually, or by another agent. If a file is uncommitted and matches the auto-stage rules below, it gets committed. The "never revert user changes" rule applies to destructive actions (restore, checkout, discard) — not to committing via /commit.
 
+## Anti-patterns — DO NOT rationalize skipping files
+
+These are INVALID reasons to skip an untracked or modified file:
+- "Not my changes" / "I didn't create this file"
+- "Created by another agent" / "Created in a previous session"
+- "Not part of this task" / "Not related to the current work"
+- "Was already there before I started"
+- "The user didn't ask me to commit this specific file"
+
+The ONLY valid reasons to skip a file:
+- It matches an auto-ignore pattern (*.log, *.csv, *.db, etc.)
+- The user explicitly said to skip it when asked
+- It contains secrets (detected by the security scan)
+- It's in .gitignore
+
+If git status shows untracked source code, documentation, or config files after
+your commit, you have NOT finished the /commit workflow. Stage and commit them.
+
 Categorize uncommitted files using this approach:
 - Auto-ignore and add to .gitignore: *.log, *.csv, *.tsv, *.db, *.sqlite, *.sqlite3, large data files (*.json over 1MB, *.xml data dumps)
 - Auto-stage for commit: Source code files (*.py, *.js, *.ts, etc.), documentation (*.md, *.rst, *.txt), configuration files (pyproject.toml, package.json, Dockerfile, docker-compose.yml), small JSON/YAML configs, test files

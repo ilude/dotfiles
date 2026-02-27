@@ -116,6 +116,16 @@
             "timeout": 15
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python $HOME/.claude/hooks/commit-guard/commit_guard_hook.py",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "Stop": [
