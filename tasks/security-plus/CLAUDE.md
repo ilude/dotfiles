@@ -71,20 +71,24 @@ Additional pattern: real-world experience can conflict with exam answers. The ex
 
 Then broaden drilling to build margin above 83% passing threshold.
 
+## Global Rule: Always Expand Acronyms
+
+**Every acronym must be fully expanded on first use in EVERY response** — quizzes, coaching, explanations, casual discussion, all of it. Write "CSPM (Cloud Security Posture Management)", never bare "CSPM". This applies to ALL acronyms, not just unfamiliar ones. The user may encounter any acronym for the first time. Bare acronyms without expansions are useless if you don't know what the letters stand for.
+
 ## Quiz Instructions
 
 When quizzing the user:
 
-1. **Use AskUserQuestion** with 4 options per question (matches exam format)
-2. **One question at a time** — present question, evaluate answer, explain if wrong, then next
-3. **Exam-realistic questions** — scenario-based, not textbook definitions. Include distractor options that sound plausible
-4. **After each wrong answer** — brief explanation of correct answer + add to `notes.md`
-5. **After each domain** — update `progress.md` with score and assessment date
-6. **Track per-objective** — map each question to its specific objective number
-7. **Keep it engaging** — vary question difficulty, use real-world scenarios, acknowledge good answers
-8. **No option descriptions** — answer options should be short labels only, no explanatory text. The real exam doesn't hand-hold with descriptions. Descriptions make educated guessing too easy.
-9. **Ask confidence BEFORE revealing the answer** — "Knew it cold / Reasoned it out / Educated guess / Lucky guess". Ask confidence immediately after the user answers, BEFORE saying whether they're right or wrong. Don't count lucky guesses as strong knowledge.
-10. **Always expand acronyms** — on first use in any explanation, spell out the full name: "SIEM (Security Information and Event Management)". The user knows the concepts but may not know newer acronym names. Write expanded forms into `notes.md` too. **On wrong answers involving acronym groups** (e.g., CASB/CSPM/CWPP/CNAPP), fully expand ALL acronyms in the group — not just the correct one. The user may not know what any of them stand for, so expand every option with a one-line definition and the decision rule for distinguishing them.
+1. **ALWAYS EXPAND EVERY ACRONYM ON EVERY USE IN EXPLANATIONS** — This is the #1 rule. The user has 30+ years in IT but does NOT know many acronyms from the last 10 years. EVERY time you mention an acronym in an explanation, answer reveal, or coaching text, write it as "ACRONYM (Full Name)" — e.g., "CSPM (Cloud Security Posture Management)." No exceptions. No shorthand. If you've already expanded it once in the same message, expand it again anyway — repetition builds recognition. On wrong answers involving acronym groups, expand ALL acronyms in the group with one-line definitions. This rule has been violated repeatedly despite being stated — treat it as the highest priority instruction in this file.
+2. **Use AskUserQuestion** with 4 options per question (matches exam format)
+3. **One question at a time** — present question, evaluate answer, explain if wrong, then next
+4. **Exam-realistic questions** — scenario-based, not textbook definitions. Include distractor options that sound plausible
+5. **After each wrong answer** — brief explanation of correct answer + add to `notes.md`
+6. **After each domain** — update `progress.md` with score and assessment date
+7. **Track per-objective** — map each question to its specific objective number
+8. **Keep it engaging** — vary question difficulty, use real-world scenarios, acknowledge good answers
+9. **No option descriptions** — answer options should be short labels only, no explanatory text. The real exam doesn't hand-hold with descriptions. Descriptions make educated guessing too easy.
+10. **Ask confidence BEFORE revealing the answer** — "Knew it cold / Reasoned it out / Educated guess / Lucky guess". Ask confidence immediately after the user answers, BEFORE saying whether they're right or wrong. Don't count lucky guesses as strong knowledge.
 11. **No priming** — do not explain rules of thumb or give hints before asking a question. Mix up topics so the user can't predict what's coming next.
 12. **Teach decision rules on wrong answers** — after a miss, explain the distinguishing pattern that reliably points to the correct answer on exam day. Save these to `notes.md`.
 

@@ -171,6 +171,46 @@ The 60% reflects testing brand-new material (cloud tools, PBQ skills) alongside 
 
 ---
 
+## 2026-02-26: Mixed Drill — SIEM/XDR/SOAR + Cloud Tools + PBQ (Day 2, Session 7)
+
+**Duration**: ~15m
+**Phase**: Targeted drilling, mixed topics
+**Questions asked**: 13 (9 solid correct + 2 lucky = 11/13 total, 75% solid)
+
+### Correct (9 solid + 2 lucky):
+- XDR cross-layer detection (reasoned) — email + endpoint + network in one platform + auto-isolate
+- CSPM for cloud misconfigs (educated) — overly permissive security groups + public S3 + unencrypted RDS
+- SOAR for multi-tool playbook (educated) — SIEM alert → extract IP → check feeds → block → disable account → ticket
+- Pentest scope (knew cold) — document and request scope expansion, never exploit out-of-scope
+- CWPP for container runtime (**lucky**) — runtime agent detects container escape attempt
+- NDA before sharing docs (reasoned) — sign NDA before sharing proprietary architecture
+- Firewall rule ordering (reasoned) — most specific first, deny-all last. D,B,A,C ✓
+- Secret scanning (educated) — AKIA prefix = AWS key in code, caught at commit time
+- CNAPP for unified platform (**lucky**) — "single consolidated" + config monitoring + workload protection
+- MTTD (reasoned) — "how quickly SOC identifies intrusions" = Mean Time to Detect
+
+### Wrong (2):
+- **UEBA vs SIEM** — chose SIEM, answer was UEBA. "Outside normal work pattern" + "never used before" + unusual time/location = behavioral baseline anomaly = UEBA. SIEM = static rules, UEBA = behavioral deviation.
+- **Deception tech vs honeypot** — chose honeypot, answer was deception tech. "Fake credentials" + "production network" = deception tech. Honeypot = isolated fake system. This is the SECOND time missing this exact distinction.
+
+### Key improvements from Session 6 → 7:
+- **XDR vs SOAR**: Got BOTH right (was wrong last session). Decision rule working: one platform = XDR, orchestrate multiple tools = SOAR.
+- **CSPM**: Correctly identified cloud misconfigs (was wrong last session picking CASB).
+- **Firewall rule ordering**: Nailed it (was wrong last session). Most specific → least specific → deny-all.
+- **Pentest scope**: Locked in (knew cold).
+
+### Persistent problems:
+- Deception tech vs honeypot — missed twice across sessions. "Fake creds in production" = deception tech.
+- UEBA — new miss. Behavioral anomaly detection, not SIEM.
+- CWPP/CNAPP — correct but lucky both times. Needs concept lock-in.
+
+### Trajectory: 85% → 54% → 70% → 67% → 60% → 75%
+Strong rebound. Core SIEM/XDR/SOAR distinction finally clicking. Cloud tools still shaky (lucky guesses).
+
+**Next session**: Lock in CSPM/CWPP/CNAPP/CASB (zero-knowledge group), re-test deception tech vs honeypot, drill UEBA scenarios.
+
+---
+
 <!--
 Template for new entries:
 

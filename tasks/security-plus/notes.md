@@ -131,6 +131,11 @@ Script tag visible? → XSS. User unknowingly submits a request? → CSRF.
 - "Correlates data and generates alerts for the SOC team to investigate" → **SIEM**
 - "Correlates data from endpoints, network, and cloud and automatically isolates compromised systems" → **XDR**
 
+**THE key SIEM vs UEBA distinction (missed — chose SIEM over UEBA):**
+- SIEM = "match this specific rule/signature" (static correlation rules an analyst wrote)
+- UEBA = "this deviates from what's normal for THIS user" (ML behavioral baseline)
+- "Unusual time," "never used before," "outside normal pattern," "insider threat" → always **UEBA**
+
 **Keyword decision tree:**
 | Keyword | Answer |
 |---------|--------|
