@@ -56,20 +56,25 @@ Additional pattern: real-world experience can conflict with exam answers. The ex
 
 ## Current Phase
 
-**Phase**: Day 2 — Targeted Drilling on Persistent Gaps
-**Status**: Four sessions complete. Trajectory: 85% (soft) → 54% (hard) → 70% (hard) → 67% (priority queue). Many items now locked in, but 4 persistent gaps remain.
-**Next action**: Hammer these persistent gaps plus new zero-knowledge items:
+**Phase**: Day 2 — Broadening Drill Coverage
+**Status**: Eight sessions complete. Trajectory: 85% (soft) → 54% (hard) → 70% → 67% → 60% → 75% → 83%. All 4 original persistent gaps resolved. Approaching passing threshold.
+**Next action**: Lock in remaining shaky items, then test untested research areas:
 
-**Persistent gaps (missed multiple times):**
-1. **SIEM vs XDR** — missed TWICE. "SIEM collects, XDR connects."
-2. **SCAP vs STIX** — keeps confusing. "STIX = threat sharing, SCAP = vuln scanning."
-3. **Diamond Model** — gets it when vertices named, misses indirect descriptions. Pattern-match "4 relationship elements."
-4. **Reflected vs DOM-based XSS** — "server returns payload = reflected, client JS processes = DOM-based."
+**Still shaky (correct but lucky — need concept lock-in):**
+1. **CWPP / CNAPP** — correct but lucky both times (S7). CSPM now locked in. Need to distinguish CWPP (runtime workload protection) vs CNAPP (unified platform = CSPM + CWPP).
+2. **Kerberos attack types** — pass the ticket was lucky (S8). Need to distinguish pass-the-hash / pass-the-ticket / kerberoasting / credential stuffing.
 
-**Zero-knowledge items (never heard these before, need heavy drilling):**
-5. **CSPM / CWPP / CNAPP / CASB** — cloud security acronym group. User has zero prior exposure to any of these four terms. Drill as a group repeatedly with varied scenarios until consistently correct. See notes.md "CSPM vs CWPP vs CNAPP vs CASB" section for decision rules.
+**New gaps (missed):**
+3. **PDP vs PEP** — missed S8. "PDP = brain (decides), PEP = bouncer (enforces)."
+4. **Zero trust vs NAC** — missed S6. NAC = gate at the door, ZT = verify every resource request.
 
-Then broaden drilling to build margin above 83% passing threshold.
+**Not re-tested (medium priority):**
+5. CASB, SCA/DAST/IAST, stored XSS vs CSRF, fault tolerance vs HA, data governance roles, RoPA vs PIA, CRL/OCSP, MAC/DAC/RBAC/ABAC.
+
+**Not yet tested (research areas):**
+6. Agreement types, IoC/IoA/TTP, quantitative risk formulas, on-path attacks, SDN/NFV/ICS, conditional access, PBQ topics.
+
+Then build margin above 83% passing threshold with broad coverage drilling.
 
 ## Global Rule: Always Expand Acronyms
 
@@ -79,7 +84,7 @@ Then broaden drilling to build margin above 83% passing threshold.
 
 When quizzing the user:
 
-1. **ALWAYS EXPAND EVERY ACRONYM ON EVERY USE IN EXPLANATIONS** — This is the #1 rule. The user has 30+ years in IT but does NOT know many acronyms from the last 10 years. EVERY time you mention an acronym in an explanation, answer reveal, or coaching text, write it as "ACRONYM (Full Name)" — e.g., "CSPM (Cloud Security Posture Management)." No exceptions. No shorthand. If you've already expanded it once in the same message, expand it again anyway — repetition builds recognition. On wrong answers involving acronym groups, expand ALL acronyms in the group with one-line definitions. This rule has been violated repeatedly despite being stated — treat it as the highest priority instruction in this file.
+1. **ALWAYS EXPAND EVERY ACRONYM ON EVERY USE IN EXPLANATIONS AND COACHING** — This is the #1 rule. The user has 30+ years in IT but does NOT know many acronyms from the last 10 years. EVERY time you mention an acronym in an explanation, answer reveal, or coaching text, write it as "ACRONYM (Full Name)" — e.g., "CSPM (Cloud Security Posture Management)." No exceptions. No shorthand. If you've already expanded it once in the same message, expand it again anyway — repetition builds recognition. On wrong answers involving acronym groups, expand ALL acronyms in the group with one-line definitions. This rule has been violated repeatedly despite being stated — treat it as the highest priority instruction in this file. **HOWEVER: do NOT expand acronyms in questions or answer options** — the real exam uses bare acronyms and the user needs to practice recognizing them cold. Expand ONLY in the post-answer explanation/coaching.
 2. **Use AskUserQuestion** with 4 options per question (matches exam format)
 3. **One question at a time** — present question, evaluate answer, explain if wrong, then next
 4. **Exam-realistic questions** — scenario-based, not textbook definitions. Include distractor options that sound plausible

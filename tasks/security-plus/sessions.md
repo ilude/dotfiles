@@ -211,6 +211,43 @@ Strong rebound. Core SIEM/XDR/SOAR distinction finally clicking. Cloud tools sti
 
 ---
 
+## 2026-02-26: Mixed Drill — Persistent Gaps Resolved + New Areas (Day 2, Session 8)
+
+**Duration**: ~15m
+**Phase**: Targeted drilling, mixed topics
+**Questions asked**: 12 (10 solid correct + 1 lucky = 11/12 total, 83% solid)
+
+### Correct (10 solid + 1 lucky):
+- Deception tech vs honeypot (knew cold) — "fake credentials scattered across production servers" = deception tech. **Previously missed TWICE — now locked in.**
+- UEBA behavioral anomaly (knew cold) — "accessing systems never used before, outside work hours" = UEBA baseline deviation. **Previously missed S7 — now locked in.**
+- BIA prerequisite for BCP (knew cold) — identify critical processes before building continuity plan
+- SAST for code-level analysis (knew cold) — white-box, early in pipeline, finds SQLi/XSS in source
+- Data sovereignty (knew cold) — EU citizen data must stay in EU jurisdiction
+- Compensating controls (knew cold) — alternative measure when primary control isn't feasible
+- Shared responsibility model (knew cold) — customer always owns data classification + access control
+- Differential backup (knew cold) — everything since last full backup
+- Pass the ticket (**lucky**) — stolen Kerberos TGT used to move laterally without password
+- PDP vs PEP (lucky guess wrong → learned) — see Wrong below
+
+### Wrong (1):
+- **PDP vs PEP** — chose PEP, answer was PDP. "Evaluates policies and decides allow/deny" = PDP (Policy Decision Point = the brain). PEP (Policy Enforcement Point) = the bouncer that executes the decision. Lucky guess that was wrong.
+
+### Key improvements from Session 7 → 8:
+- **Deception tech**: Finally locked in after 2 previous misses. Decision rule working: "fake creds in production" = deception tech, "isolated fake system" = honeypot.
+- **UEBA**: Corrected after S7 miss. "Behavioral baseline deviation" = UEBA, "static correlation rules" = SIEM.
+- **8 items answered "knew cold"**: Strong core knowledge showing through on broader topics.
+
+### New gaps identified:
+- PDP vs PEP — zero trust architecture components need drilling
+- Kerberos attack types — pass the ticket was lucky, need to distinguish all four types
+
+### Trajectory: 85% → 54% → 70% → 67% → 60% → 75% → 83%
+Strongest session yet on hard questions. Previously persistent gaps (deception tech, UEBA, SIEM/XDR/SOAR) are now resolved. Remaining work: cloud tools lock-in (CWPP/CNAPP), zero trust components (PDP/PEP), Kerberos attacks, and untested research areas.
+
+**Next session**: Lock in CWPP/CNAPP/CASB (still lucky), drill PDP vs PEP, test Kerberos attack types, then start testing untested research areas (agreement types, attack terminology, architecture concepts).
+
+---
+
 <!--
 Template for new entries:
 

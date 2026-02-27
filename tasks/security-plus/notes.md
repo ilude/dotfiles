@@ -280,6 +280,18 @@ Script tag visible? → XSS. User unknowingly submits a request? → CSRF.
 - CSPM = "cloud auditor" for configs. CASB = "cloud bouncer" for users. Don't confuse them.
 - CSPM = "Is cloud configured correctly?" CWPP = "Are workloads protected?" CNAPP = "Both in one."
 
+### PDP vs PEP (missed — chose PEP over PDP)
+- **PDP (Policy Decision Point)** — the brain. Evaluates and **decides** allow/deny. P-**D**ecides-P.
+- **PEP (Policy Enforcement Point)** — the bouncer. **Enforces** the decision, blocks/allows traffic. P-**E**nforces-P.
+- Flow: User → PEP → forwards to PDP → PDP decides → PEP enforces.
+- "Which component decides?" → PDP. "Which component blocks traffic?" → PEP.
+
+### Kerberos/credential attack types (pass the ticket was lucky)
+- **Pass the ticket (PtT)** — replay a captured **Kerberos ticket**. "Ticket + replay" = PtT.
+- **Pass the hash (PtH)** — use a stolen **NTLM hash** to authenticate without cracking. "Hash + authenticate" = PtH.
+- **Kerberoasting** — request Kerberos service tickets from AD, **crack them offline**. "Extract + crack" = Kerberoasting.
+- **Credential stuffing** — stolen creds from one breach tried on **other services**. "Reuse across sites" = stuffing.
+
 ### NAC vs Zero trust (missed — chose NAC over zero trust)
 - **NAC** = posture check **to get on the network**. Gate at the door. Remediation VLAN if fail.
 - **Zero trust** = verification **for every resource request regardless of network location**. Already on LAN? Still verified.
@@ -494,3 +506,356 @@ Script tag visible? → XSS. User unknowingly submits a request? → CSRF.
 **Downgrade attack** — forces weaker protocol/cipher. SSL stripping forces HTTP instead of HTTPS.
 **JIT** — Just-in-Time access. No standing privileges. Time-limited, auto-revoked. "Reduce standing admin accounts."
 **SLSA** — Supply-chain Levels for Software Artifacts ("Salsa"). Framework for supply chain integrity levels.
+
+---
+
+## Physical Security (1.2)
+
+### Perimeter Controls
+
+**Bollards** — Short, sturdy vertical posts preventing vehicle access. Fixed, retractable, or decorative.
+- Exam tell: "vehicle threat" or "preventing cars from approaching" = bollards.
+
+**Fencing** — Perimeter boundary. Height: 3-4 ft = deterrent; 6-7 ft = difficult to climb; 8+ ft with barbed wire = high security.
+- "Perimeter boundary" = fencing. "Prevent vehicle access" = bollards (not fencing).
+
+**Lighting** — Deters intruders, enables CCTV (Closed-Circuit Television) to capture usable footage.
+
+### Entry Controls
+
+**Access Control Vestibule (formerly Mantrap)** — Double-door system, only one door opens at a time. Prevents tailgating/piggybacking.
+
+**Badge/Proximity Card Systems** — RFID (Radio Frequency Identification) / NFC (Near-Field Communication) contactless cards. Creates access logs.
+
+**Security Guards** — Human judgment and real-time response. Automated systems cannot make judgment calls.
+
+**Two-Person Integrity** — Two authorized individuals required for critical actions. Anti-insider-threat control.
+
+### Detection Controls
+
+**Sensors:** Infrared (PIR — heat/motion in dark), Pressure (weight on surface), Microwave (large areas, penetrates walls), Ultrasonic (enclosed spaces).
+
+### Data Protection Controls
+
+**Faraday Cage** — Conductive mesh blocking EM signals. Prevents data emanation. Used in SCIFs.
+**Air Gap** — Complete network isolation. USB can bridge (Stuxnet).
+**Screen Filters** — Narrow viewing angle, prevent shoulder surfing.
+**Cable Locks** — Tether laptops. Kensington slot.
+
+### Secure Areas
+- **Safe** — Small items, multiple locations. **Vault** — Entire room, centralized. **Cage** — Wire mesh in data center, specific racks.
+
+| Threat | Control |
+|--------|---------|
+| Vehicle attack | Bollards |
+| Tailgating | Access control vestibule |
+| Shoulder surfing | Privacy screen |
+| EM eavesdropping | Faraday cage |
+| Network attack on critical infra | Air gap |
+| Insider threat (single actor) | Two-person integrity |
+
+---
+
+## Disaster Recovery Site Types (3.4)
+
+| Feature | Hot | Warm | Cold | Mobile |
+|---------|-----|------|------|--------|
+| Hardware ready | All | Partial | None | Yes, portable |
+| Data current | Real-time | Hours old | Days+ | Varies |
+| RTO | Minutes | Hours-days | Days-weeks | Hours-days |
+| Cost | Highest | Moderate | Lowest | Moderate-high |
+
+- "Immediate failover, no downtime" = **hot site**
+- "Balance cost and recovery" = **warm site**
+- "Cheapest, days of downtime OK" = **cold site**
+- "Portable, deploy to temporary location" = **mobile site**
+- "Cost-effective DR without owning facilities" = **DRaaS (Disaster Recovery as a Service)**
+
+---
+
+## RAID Levels (3.4)
+
+**RAID (Redundant Array of Independent Disks)**
+
+| Level | Technique | Min Drives | Drives Can Fail | Usable Capacity |
+|-------|-----------|-----------|-----------------|-----------------|
+| 0 | Striping | 2 | 0 (none) | 100% |
+| 1 | Mirroring | 2 | 1 | 50% |
+| 5 | Stripe + parity | 3 | 1 | (N-1)/N |
+| 6 | Stripe + double parity | 4 | 2 | (N-2)/N |
+| 10 | Stripe of mirrors | 4 | 1 per pair | 50% |
+
+- No fault tolerance, max speed = **RAID 0**
+- Simple redundancy, exact copy = **RAID 1**
+- Balance performance/capacity/fault tolerance = **RAID 5**
+- Survive two simultaneous failures = **RAID 6**
+- Best performance WITH redundancy (databases) = **RAID 10**
+- Large arrays, rebuild-time concern = **RAID 6** (second failure during rebuild)
+
+---
+
+## Redundancy and Power (3.4)
+
+**UPS (Uninterruptible Power Supply)** — Short-term battery, bridges to generator (10-30s). Also conditions power.
+**Generator** — Long-term backup. Diesel/gas. Days/weeks with fuel.
+**PDU (Power Distribution Unit)** — Distributes power in rack. Dual PDUs = redundant paths.
+**Dual Power Supply** — Two PSUs per server on separate circuits.
+
+**NIC Teaming/Bonding** — Multiple NICs as one. Redundancy + bandwidth.
+**Multipath I/O (MPIO)** — Multiple paths to storage (SAN). Auto-reroute on failure.
+**Active/Active cluster** — All nodes handle traffic. **Active/Passive** — Standby takes over on failure.
+**Load Balancer** — Distributes traffic, health checks remove failed backends.
+
+---
+
+## Email Security Protocols (3.2, 4.5)
+
+**SPF (Sender Policy Framework)** — DNS TXT record listing authorized sending IPs. Checks envelope sender, NOT From: header. Breaks on forwarding.
+**DKIM (DomainKeys Identified Mail)** — Cryptographic signature in email header. Public key in DNS. Proves integrity + domain authenticity.
+**DMARC (Domain-based Message Authentication Reporting and Conformance)** — Ties SPF+DKIM with policy. Requires From: header alignment. Policies: none/quarantine/reject. Provides reporting.
+
+**S/MIME (Secure/Multipurpose Internet Mail Extensions)** — End-to-end email encryption + signing via PKI certificates. Per-user.
+
+| Question | Answer |
+|----------|--------|
+| Which IPs can send for this domain? | SPF |
+| Was the email modified in transit? | DKIM |
+| What happens when auth fails? | DMARC |
+| All three use what DNS record type? | TXT |
+| End-to-end email encryption? | S/MIME |
+| Checks envelope sender? | SPF |
+| Checks From: header alignment? | DMARC |
+
+---
+
+## DNS Security (3.2, 4.5)
+
+**DNSSEC (DNS Security Extensions)** — Cryptographic auth of DNS responses. Prevents cache poisoning. Integrity, NOT confidentiality.
+**DNS Filtering** — Blocks resolution for malicious domains.
+**DNS Sinkholing** — Redirects malicious DNS to internal server for analysis. Identifies compromised hosts.
+- Filtering = blocks. Sinkholing = redirects to capture intel.
+
+**DoH (DNS over HTTPS)** — Port 443. Indistinguishable from web traffic. Can bypass corporate DNS.
+**DoT (DNS over TLS)** — Port 853. Dedicated port, easier to firewall than DoH.
+
+---
+
+## Wireless Security (3.2)
+
+| Protocol | Encryption | Key Exchange | Status |
+|----------|-----------|-------------|--------|
+| WEP | RC4, 24-bit IV | Static | BROKEN |
+| WPA | RC4+TKIP | 4-way | Deprecated |
+| WPA2-Personal | AES-CCMP | PSK, 4-way | Current |
+| WPA2-Enterprise | AES-CCMP | 802.1X/EAP/RADIUS | Current |
+| WPA3-Personal | AES-CCMP/GCMP | SAE (Dragonfly) | Recommended |
+| WPA3-Enterprise | AES-GCMP-256 | 802.1X/EAP/RADIUS | Recommended |
+
+- SAE = forward secrecy, resistant to offline dictionary attacks
+- WPA3 = PMF (Protected Management Frames) mandatory, prevents deauth attacks
+- OWE (Opportunistic Wireless Encryption) = encrypts open Wi-Fi without password
+- EAP-TLS = client+server certs, most secure. PEAP = server cert only, username/password.
+
+**Attacks:** Rogue AP (unauthorized), Evil Twin (mimics SSID), Deauth (forged frames, fix: PMF), WPS (11K combos, fix: disable).
+**Site survey** = plan AP placement. **Heat map** = visual signal strength.
+
+---
+
+## Network Attacks (2.4)
+
+**ARP (Address Resolution Protocol) Poisoning** — Fake ARP replies associate attacker MAC with gateway. MITM on local subnet. Fix: DAI (Dynamic ARP Inspection).
+**DNS Poisoning** — False records in resolver cache. Redirects to malicious sites. Fix: DNSSEC.
+- ARP = Layer 2, local, MACs. DNS = application layer, domains.
+
+**MAC Flooding** — Overflow switch CAM table → switch acts like hub. Fix: port security.
+**MAC Cloning** — Change MAC to bypass MAC filtering. MAC filtering alone is NOT strong security.
+**Replay Attack** — Capture and retransmit valid traffic. Fix: timestamps, nonces.
+**Pass-the-Hash** — Extract hashes from memory (Mimikatz), authenticate without cracking. NTLM vuln. Fix: Kerberos, Credential Guard.
+- Replay = captured from network. Pass-the-hash = extracted from system memory.
+
+**VLAN Hopping** — Switch spoofing (negotiate trunk via DTP) or double tagging (two 802.1Q tags). Fix: disable DTP, change native VLAN.
+
+**DDoS types:** Volumetric (bandwidth, Gbps), Protocol (state tables, SYN flood), Application Layer 7 (legitimate-looking requests, Slowloris).
+**Amplification** — Spoofed source IP + small request → large response to victim. DNS ~50x, NTP ~556x.
+**SYN Flood** — Half-open TCP connections exhaust server. Fix: SYN cookies.
+
+---
+
+## Malware Types (2.4)
+
+**Virus** — Attached to host file, requires user action. **Worm** — Self-replicating, no user action, no host file.
+**Trojan** — Disguised as legitimate, no self-replication. **RAT (Remote Access Trojan)** — Trojan with remote control + C2.
+**Ransomware** — Encrypts/locks, demands payment. **Wiper** — Destroys data, no ransom. Wiper=destruction, Ransomware=extortion.
+**Spyware** — Covert data collection. **Adware** — Displays ads. **Scareware** — Fake security warnings.
+**Rootkit** — Hides at kernel/OS level. May require reimaging. **Keylogger** — Records keystrokes (software or hardware).
+**Logic Bomb** — Dormant until trigger (date, termination). Often insider.
+**Botnet** — Network of zombies via C2. DDoS, spam, mining.
+**Fileless** — Lives in RAM, no disk file. Evades traditional AV.
+**LOTL/LOLBins (Living off the Land Binaries)** — Abuses legitimate OS tools (PowerShell, WMI, rundll32). No malware binary.
+**Polymorphic** — Changes encryption/wrapper. **Metamorphic** — Rewrites actual code. Metamorphic > polymorphic in evasion.
+**Cryptojacker** — Hijacks CPU/GPU for mining. High CPU, no visible cause.
+**Backdoor** — Hidden auth bypass. **PUP/PUA** — Technically legal, user "agreed" via EULA.
+**Dropper** — Installs malware from within itself (no internet). **Downloader** — Retrieves malware from internet.
+**Bloatware** — Pre-installed by manufacturer. Increases attack surface.
+
+### Malware Decision Tree
+```
+Self-replicates? YES + network + no user action → WORM
+Self-replicates? YES + needs host file + user action → VIRUS
+Disguised as legitimate? → TROJAN (→ RAT / DROPPER / DOWNLOADER)
+Encrypts + ransom? → RANSOMWARE. Destroys, no ransom? → WIPER
+Hides at kernel? → ROOTKIT. Records keys? → KEYLOGGER
+Trigger condition? → LOGIC BOMB. Mines crypto? → CRYPTOJACKER
+Memory only? → FILELESS. Uses legit OS tools? → LOTL
+Changes encryption? → POLYMORPHIC. Rewrites code? → METAMORPHIC
+```
+
+### Malware IoC Patterns
+**C2 Beaconing** — Regular interval connections, small packets, continues when idle. Evasion: jitter, domain fronting, DNS tunneling.
+**Resource anomalies** — High CPU = cryptojacker. Memory spikes = fileless. Bandwidth = worm/exfiltration.
+**Unexpected processes** — Unknown services, executables in temp dirs, misspelled names (svch0st), shells spawned by non-admin processes.
+
+---
+
+## Memory/Buffer Vulnerabilities (2.3)
+
+**Buffer Overflow** — Writes beyond buffer boundary. Stack-based (overwrites return address) vs heap-based (corrupts dynamic memory).
+**Integer Overflow** — Wraps to small value, bypasses length checks.
+**Format String** — User input as printf() format string. %x reads, %n writes memory.
+**Use-After-Free** — Pointer used after memory freed. Freed space reallocated for attacker data.
+**Null Pointer Dereference** — Access address zero. Usually DoS (crash).
+
+| Mitigation | Effect |
+|-----------|--------|
+| ASLR (Address Space Layout Randomization) | Randomizes memory addresses |
+| DEP/NX (Data Execution Prevention) | Marks data regions non-executable |
+| Stack Canaries | Sentinel value detects overflow before return |
+| Bounds Checking | Validates input length before copying |
+
+---
+
+## Additional Vulnerability Types (2.3)
+
+**Privilege Escalation:** Vertical = user→admin (UP). Horizontal = user→other user (SIDEWAYS).
+**Improper Error Handling** — Crashes, info disclosure. **Verbose Errors** — Reveals DB/paths/queries. Fix: custom error pages.
+**Hard-Coded Credentials** — Embedded in code/firmware. **Side-Loading** — Apps from unofficial sources.
+**Jailbreaking** (iOS) / **Rooting** (Android) — Removes manufacturer restrictions.
+
+**XXE (XML External Entity)** — External entity in XML reads local files. **Insecure Deserialization** — Crafted serialized object executes code.
+
+| Clue | Injection Type |
+|------|---------------|
+| SQL query, tables | SQL injection |
+| XML, DOCTYPE, entity | XXE |
+| System/OS command, shell | Command injection |
+| LDAP, directory | LDAP injection |
+| MongoDB, JSON operators | NoSQL injection |
+
+---
+
+## Cryptographic Attacks (2.4)
+
+**Birthday Attack** — Probability-based hash collision finding. **Collision** — Two inputs, same hash (result of birthday attack).
+**Brute Force** — All combinations (slowest). **Dictionary** — Word list (medium). **Rainbow Table** — Precomputed hash lookup (fastest). Defense: salting.
+**Known Plaintext** — Attacker HAS pairs (passive). **Chosen Plaintext** — Attacker SELECTS what to encrypt (active).
+**Side-Channel** — Physical measurement (timing, power) leaks crypto info.
+
+**Key Stretching:** PBKDF2 (NIST recommended), bcrypt (Blowfish, work factor), scrypt (memory-hard), Argon2 (most modern, PHC winner).
+
+---
+
+## Social Engineering (2.2)
+
+| Channel/Method | Term |
+|---------------|------|
+| Email, mass | Phishing |
+| Email, targeted/personalized | Spear phishing |
+| Email, targeting executives | Whaling |
+| Phone/voice | Vishing |
+| SMS/text | Smishing |
+| DNS redirect, correct URL → fake site | Pharming |
+| Fabricated scenario/story | Pretexting |
+| Physical lure (USB drives) | Baiting |
+| Following through secured door | Tailgating (without knowledge) / Piggybacking (with consent) |
+| Observing screen/keyboard | Shoulder surfing |
+| Searching trash | Dumpster diving |
+| Compromising frequently visited site | Watering hole |
+| Large-scale disinformation | Influence campaign |
+
+**Principles:** Authority, Urgency (time), Scarcity (quantity), Consensus/Social Proof, Familiarity/Liking, Trust.
+
+---
+
+## Compliance Frameworks (5.4)
+
+| Regulation | Applies To | Protects | Key Requirement |
+|-----------|------------|---------|----------------|
+| GDPR | Any org, EU resident data | Personal data | 72-hr breach notification, DPO, right to erasure, opt-IN |
+| HIPAA | Healthcare, BAs | PHI | BAA with vendors, minimum necessary rule |
+| PCI DSS | Cardholder data handlers | Card data | 12 requirements, quarterly ASV scans |
+| SOX | Publicly traded US | Financial reporting | CEO/CFO certify, internal control audits |
+| CCPA | For-profit CA businesses | CA consumer info | Opt-OUT of data sale |
+| FERPA | Schools with DoEd funding | Student records | Written consent before disclosure |
+| FISMA | US federal + contractors | Federal systems | Must implement NIST (SP 800-53) |
+| COBIT | IT governance (any org) | IT/business alignment | ISACA framework |
+| ISO 27001 | International | ISMS | Only major framework with formal certification |
+| NIST SP 800-53 | US federal | Federal systems | ~1,150 security controls |
+| CSA STAR | Cloud providers | Cloud environments | CCM-based, multi-level certification |
+
+**GDPR = opt-in. CCPA = opt-out.** FISMA mandates NIST. ISO 27001 = certifiable. COBIT = governance, not controls.
+
+---
+
+## Asset Management Lifecycle (4.2)
+
+**Acquisition** → **Assignment** (tagging, inventory) → **Monitoring** (licensing, patching, EOL) → **Disposal** (sanitize, destroy, document)
+
+### Media Sanitization (NIST SP 800-88)
+
+| Method | Description | Reusable? |
+|--------|------------|-----------|
+| Clear | Overwrite with non-sensitive data | Yes |
+| Purge | Degaussing, crypto erase (lab-resistant) | Sometimes |
+| Destroy | Shredding, incineration | No |
+
+- **Degaussing does NOT work on SSD/flash** — magnetic media only (HDD, tape)
+- **Cryptographic erasure** — Destroy the key. Fast for SEDs (Self-Encrypting Drives).
+
+---
+
+## Hardening Techniques (2.5, 4.1)
+
+**Secure Baselines** — CIS Benchmarks (industry standard), Group Policy (GPO), SCAP automates compliance checking.
+- Disable unnecessary ports/protocols/services. Remove unnecessary software.
+- Change ALL default passwords. Update firmware (verify integrity).
+- Host-based firewall on ALL systems. Application allow list = "default deny" (stricter).
+- **Patch Management:** Identify → Evaluate → Test → Approve → Deploy → Verify → Document
+
+---
+
+## Penetration Testing (5.5)
+
+### SY0-701 Terms (exam uses NEW terminology)
+
+| Old | New | Tester Knowledge |
+|-----|-----|-----------------|
+| White box | **Known environment** | Full disclosure |
+| Gray box | **Partially known environment** | Partial info |
+| Black box | **Unknown environment** | Nothing |
+
+**Teams:** Red (offense), Blue (defense), Purple (integrated collaboration), White (referees/RoE enforcement).
+- Red team = extended, simulates real threat actor. Pentest = short, find vulns.
+
+**RoE (Rules of Engagement)** — Formal written doc BEFORE testing: scope, timing, authorization, contacts, techniques.
+**Reconnaissance:** Passive (OSINT, no target contact) vs Active (port scanning, leaves logs).
+**Bug Bounty** = ongoing, public crowd, pay per vuln. **Pentest** = contracted firm, fixed timeframe.
+
+---
+
+## Study Resources
+
+| Resource | URL | Best For |
+|----------|-----|----------|
+| Hamada Question Bank | github.com/Hamada-khairi/Hamada-Security-Plus-Exam-Prep | 551 scenario questions in JSON |
+| Packt/Dion Labs | github.com/PacktPublishing/TOTAL-CompTIA-Security-Cert-SY0-701- | Hands-on labs (RAID, physical, WPA2) |
+| wilsonvs Study Guide | github.com/wilsonvs/CompTIA-Security-SY0-701 | Comprehensive markdown reference |

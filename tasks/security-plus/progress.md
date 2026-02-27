@@ -2,14 +2,17 @@
 
 ## Overall Readiness
 
-**Status**: Two assessment rounds + drilling complete
-**Estimated score**: ~70-75% (weighted) — improving but still below passing threshold (750/900 = ~83%)
+**Status**: Day 2 drilling — 8 sessions complete, trajectory rising
+**Estimated score**: ~80% (weighted) — approaching passing threshold (750/900 = ~83%)
 **Last updated**: 2026-02-26
-**Key gap**: Newer acronyms/frameworks (last ~10 years) — user knows the concepts but not the exam terminology. Recognizing the acronym IS the question on the real test.
-**Secondary gap**: Exam takes strict legalistic views that conflict with real-world experience (pentest scope, kill chain phase mapping)
+**Key gap**: Cloud security tools (CSPM/CWPP/CNAPP/CASB) — correct but mostly lucky guesses. Need concept lock-in.
+**Secondary gap**: Zero trust components (PDP vs PEP), Kerberos attack types — new misses
+**Trajectory**: 85% (soft) → 54% (hard) → 70% → 67% → 60% → 75% → 83%
 **Initial assessment**: 85% (23/27) with answer descriptions — inflated by context clues
 **First drill round**: ~54% (13/24) without descriptions, harder questions — exposed real gaps
-**Second assessment**: 70% (14/20) without descriptions, mixed topics — real improvement, still below passing
+**Second assessment**: 70% (14/20) without descriptions, mixed topics — real improvement
+**Session 7**: 75% (9/13 solid) — SIEM/XDR/SOAR finally clicking, cloud tools still lucky
+**Session 8**: 83% (10/12 solid) — deception tech ✓ (2x miss → correct), UEBA ✓, BIA ✓, SAST ✓
 
 ---
 
@@ -44,12 +47,12 @@
 
 | Objective | Score | Last Assessed | Notes |
 |-----------|-------|---------------|-------|
-| 3.1 Compare security architecture models | Moderate | 2026-02-26 | Assessment ✓ (zero trust) but drill: CASB was lucky guess, ZTNA educated guess |
-| 3.2 Apply security principles to infrastructure | Moderate | 2026-02-26 | Assessment ✓ (immutable infra) but drill: SCA/image signing lucky guess |
+| 3.1 Compare security architecture models | Moderate | 2026-02-26 | CSPM ✓ (S7, educated). CWPP/CNAPP correct but lucky (S7). CASB not re-tested. PDP vs PEP missed (S8). Zero trust vs NAC missed (S6). |
+| 3.2 Apply security principles to infrastructure | Moderate-Strong | 2026-02-26 | SAST ✓ (S8, knew cold). Shared responsibility ✓ (S8, knew cold). Secret scanning ✓ (S7). SCA/SBOM not re-tested. |
 | 3.3 Compare data protection concepts | Strong | 2026-02-26 | Drilled: "Pseudo = sharing out, Token = keeping in." Re-tested ✓. But missed hosted payment fields vs tokenization for PCI scope. |
 | 3.4 Explain resilience and recovery | Strong | 2026-02-26 | RPO vs RTO ✓, differential vs incremental backup ✓ (knew it cold) |
 
-**Domain score**: Moderate — newer cloud/DevSecOps acronyms (CASB, ZTNA, SCA) are gaps
+**Domain score**: Moderate — cloud tools improving (CSPM ✓) but CWPP/CNAPP still lucky, PDP/PEP missed, zero trust vs NAC gap
 
 ---
 
@@ -58,16 +61,16 @@
 | Objective | Score | Last Assessed | Notes |
 |-----------|-------|---------------|-------|
 | 4.1 Apply security techniques to computing resources | Moderate | 2026-02-26 | Assessment ✓ (immutable containers) but drill missed NAC vs EDR vs MDM |
-| 4.2 Explain security alerting and monitoring | Moderate | 2026-02-26 | Assessment ✓ (brute force) but drill missed deception technology vs honeynet (thought knew it) |
+| 4.2 Explain security alerting and monitoring | Strong | 2026-02-26 | Deception tech vs honeypot ✓ (S8, after 2 misses). UEBA vs SIEM ✓ (S8, after S7 miss). SIEM/XDR/SOAR trio ✓ (S7). |
 | 4.3 Modify enterprise capabilities for incident response | Strong | 2026-02-26 | Network isolation ✓, API key revocation ✓ |
 | 4.4 Use appropriate tools for digital forensics | Strong | 2026-02-26 | Order of volatility ✓ |
-| 4.5 Explain vulnerability management | Moderate | 2026-02-26 | Assessment ✓ (compensating controls) but drill: SCAP was lucky guess |
+| 4.5 Explain vulnerability management | Strong | 2026-02-26 | SCAP ✓ (S6, reasoned). Compensating controls ✓ (S8, knew cold). ASV ✓ (S4). |
 | 4.6 Explain security awareness practices | Strong | 2026-02-26 | Training refinement vs. failure ✓ |
 | 4.7 Explain identity and access management | Strong | 2026-02-26 | Drilled: session vs token lifetime. Re-tested ✓. SAML vs OAuth vs OIDC: reasoned out. |
-| 4.8 Explain automation and orchestration | Strong | 2026-02-26 | SOAR (Security Orchestration, Automation, and Response) with human approval gates ✓ |
+| 4.8 Explain automation and orchestration | Strong | 2026-02-26 | SOAR ✓ (S7, multi-tool playbook). XDR vs SOAR distinction locked in (S7). |
 | 4.9 Explain appropriate incident response activities | Strong | 2026-02-26 | Lessons learned as final IR phase ✓ |
 
-**Domain score**: Moderate-Strong — NAC, deception tech, SCAP terminology are gaps
+**Domain score**: Strong — SIEM/XDR/SOAR, deception tech, UEBA, SCAP all locked in. NAC not re-tested.
 
 ---
 
@@ -76,7 +79,7 @@
 | Objective | Score | Last Assessed | Notes |
 |-----------|-------|---------------|-------|
 | 5.1 Summarize governance, risk, and compliance | Strong | 2026-02-26 | Drilled: "Matrix for the menu, ALE for the bill." Re-tested ✓ |
-| 5.2 Explain risk management processes | Moderate | 2026-02-26 | Assessment ✓ (risk mitigation) but drill missed pentest scope rules (thought knew it — exam is strict legalistic) |
+| 5.2 Explain risk management processes | Strong | 2026-02-26 | Pentest scope ✓ (S7, knew cold). BIA ✓ (S8, knew cold). Quantitative risk formulas not re-tested. |
 | 5.3 Summarize third-party risk assessment | Strong | 2026-02-26 | SOC 2 Type I vs II ✓ (educated guess). Data retention addendum ✓ (reasoned). |
 | 5.4 Summarize compliance and auditing | Strong | 2026-02-26 | Least privilege ✓, dual control vs separation of duties ✓ (educated guess), legal hold ✓ |
 | 5.5 Explain privacy and data protection | Moderate | 2026-02-26 | Assessment ✓ (GDPR erasure ✓) but drill missed RoPA vs PIA (educated guess) |
@@ -100,54 +103,55 @@ Ranked by domain weight × weakness severity. Items marked (acronym) are termino
 - EAP-TLS for cert-based Wi-Fi (reasoned) (3.2)
 - Differential vs incremental backups, RPO vs RTO (3.4)
 - Legal hold, least privilege, CIA triad (5.4, 1.2)
+- **SIEM vs XDR vs SOAR** — locked in S7 (both XDR and SOAR correct). Decision rule: one platform = XDR, orchestrate tools = SOAR. (4.2, 4.8)
+- **Deception tech vs honeypot** — locked in S8 after 2 misses. "Fake creds in production" = deception tech. (4.2)
+- **UEBA vs SIEM** — locked in S8 after S7 miss. Behavioral baseline = UEBA, static rules = SIEM. (4.2)
+- **SCAP vs STIX** — locked in S6. "Two separate worlds": SCAP = vuln scanning, STIX = threat sharing. (4.5)
+- **Diamond Model** — locked in S6. Indirect descriptions: look for 4 relationship elements (AVIC). (2.1)
+- **DOM-based vs Reflected XSS** — locked in S6. Server sees payload = reflected, client JS only = DOM. (2.3)
+- **SCIM** — locked in S6. "Orphaned accounts" = SCIM lifecycle. (4.7)
+- **Pentest scope** — locked in S7. Knew cold. Document + request expansion, never exploit OOS. (5.2)
+- **CSPM** — locked in S7. Cloud misconfigs (open S3, permissive SGs) = CSPM. (3.1)
+- **Firewall rule ordering** — locked in S7. Most specific first, deny-all last. (PBQ)
+- **ASV** — locked in S4. PCI quarterly external scans. (4.5)
+- **Compensating controls** — locked in S8. Knew cold. (4.5)
+- **SAST** — locked in S8. Knew cold. White-box, code-level, early in pipeline. (3.2)
+- **Shared responsibility model** — locked in S8. Knew cold. Customer always owns data + access. (3.1)
+- **BIA** — locked in S8. Knew cold. Prerequisite for BCP/DRP. (5.2)
+- **Data sovereignty** — locked in S8. Knew cold. (5.5)
+- **PAM with JIT access** — locked in S6. Eliminate standing privileged accounts. (4.6)
+- **MTTD** — locked in S7. "How quickly SOC identifies intrusions." (4.4)
+- **NDA** — locked in S7. Sign before sharing proprietary docs. (5.3)
+- **Secret scanning** — locked in S7. AKIA prefix = AWS key in code. (3.2)
 
 ### High Priority — Still Needs Work
-1. **4.2** (28%) — SIEM vs XDR vs SOAR — wrong (chose SIEM over XDR). "Unified detection across layers" = XDR.
-2. **4.1** (28%) — NAC vs EDR vs MDM — previously wrong. EDR confirmed ✓ in re-test, but NAC not re-tested.
-3. **4.5** (28%) — SCAP and sub-components — still only lucky guess. ASV vs QSA vs ISA — new miss (lucky guess).
-4. **2.1** (22%) — Threat frameworks (ATT&CK/Kill Chain/Diamond/NIST CSF) — previously wrong, not re-tested.
-5. **2.3** (22%) — XSS vs CSRF — previously wrong, not re-tested. Session hijacking vs fixation ✓ (educated).
-6. **2.5** (22%) — Kill chain phase mapping — previously wrong, not re-tested.
+1. **3.1** (18%) — CWPP/CNAPP — correct but **lucky** both times (S7). Need concept lock-in, not just guessing.
+2. **3.1** (18%) — PDP vs PEP — missed S8 (lucky guess wrong). "PDP = brain, PEP = bouncer."
+3. **3.1** (18%) — Zero trust vs NAC — missed S6. NAC = gate at the door, ZT = every resource request.
+4. **2.4** (22%) — Kerberos attack types — pass the ticket correct but **lucky** (S8). Need to distinguish pass-the-hash/ticket/kerberoasting/credential stuffing.
+5. **4.1** (28%) — NAC vs EDR vs MDM — EDR ✓, but NAC not re-tested since S4.
 
-### Medium Priority — Terminology Gaps
-7. **5.5** (20%) — Data governance roles: data owner vs custodian vs steward vs controller/processor — new miss.
-8. **5.2** (20%) — Pentest scope legalism — previously wrong, not re-tested.
-9. **5.5** (20%) — RoPA vs PIA/DPIA — previously wrong, not re-tested.
-10. **3.1** (18%) — CASB/ZTNA/SWG/SASE — previously lucky, ZTNA confirmed ✓ (educated). CASB not re-tested.
-11. **3.2** (18%) — SCA/SAST/DAST/IAST/SBOM — previously lucky, not re-tested.
-12. **3.3** (18%) — PCI scope methods — previously wrong, not re-tested. CloudFront OAI missed (AWS-specific, lower priority).
-13. **3.4** (18%) — Fault tolerance vs HA vs DR — new miss. "No user impact" = FT, not HA.
+### Medium Priority — Terminology Gaps (not re-tested)
+6. **5.5** (20%) — Data governance roles: data owner vs custodian vs steward vs controller/processor.
+7. **5.5** (20%) — RoPA vs PIA/DPIA.
+8. **3.1** (18%) — CASB — not re-tested since lucky guess in S2. ZTNA ✓.
+9. **3.2** (18%) — SCA/DAST/IAST/SBOM — SAST ✓ but others not re-tested.
+10. **3.3** (18%) — PCI scope methods — not re-tested.
+11. **3.4** (18%) — Fault tolerance vs HA vs DR — missed S3. "No user impact" = FT.
+12. **2.3** (22%) — Stored XSS vs CSRF — not re-tested. Reflected/DOM XSS ✓.
+13. **2.5** (22%) — Kill chain phase mapping — not re-tested.
 
-### Lower Priority
-14. **1.1** (12%) — MAC/DAC/RBAC/ABAC — previously lucky, not re-tested.
-15. **1.4** (12%) — CRL/OCSP — previously no idea, not re-tested.
-16. **4.7** (28%) — SCIM (identity lifecycle automation) — new miss (acronym). SAML vs OAuth vs OIDC ✓.
-17. **5.1** (20%) — NIST SP 800-53 vs NIST CSF vs ISO 27001 vs CIS Controls — educated guess, needs lock-in.
+### Lower Priority (not re-tested)
+14. **1.1** (12%) — MAC/DAC/RBAC/ABAC.
+15. **1.4** (12%) — CRL/OCSP.
+16. **5.1** (20%) — NIST SP 800-53 vs NIST CSF vs ISO 27001 vs CIS Controls.
 
-### New Areas Identified by Research (not yet tested)
-These came from gap analysis of study material vs full SY0-701 exam objectives:
-
-**Cloud/Zero Trust (high exam frequency for SY0-701):**
-18. **3.1** (18%) — CSPM vs CWPP vs CNAPP — new to SY0-701, heavily tested.
-19. **1.2** (12%) — Zero trust: PDP vs PEP, implicit trust zones, micro-segmentation.
-20. **3.1** (18%) — Container/serverless security, IaC scanning, supply chain (SBOM/SLSA).
-
-**Operations metrics and teams:**
-21. **4.4** (28%) — MTTD vs MTTR vs MTBF vs MTTF — knows concepts, needs to map acronyms.
-22. **4.3** (28%) — IoC vs IoA, TTP, Pyramid of Pain — likely known but not tested.
-
-**Agreements and governance:**
-23. **5.3** (20%) — MOU vs MSA vs SOW vs NDA vs BPA — agreement types for third-party risk.
-24. **5.2** (20%) — BIA as prerequisite for BCP/DRP. Quantitative formulas (SLE, ALE, EF, AV).
-
-**Authentication/identity:**
-25. **4.6** (28%) — PAM, JIT access, conditional access, adaptive/continuous auth.
-
-**Attack types (SY0-701 terminology changes):**
-26. **2.4** (22%) — On-path attacks (new term for MitM), password spraying, credential stuffing, kerberoasting, downgrade attacks.
-
-**Architecture:**
-27. **3.1** (18%) — SDN, NFV, ICS/SCADA/RTOS, HSM vs TPM, screened subnet (new term for DMZ).
-
-**Exam format:**
-28. PBQ topics and strategy — firewall rules, log analysis, wireless config, cert tasks, port numbers.
+### Research Areas (not yet tested)
+17. **3.1** (18%) — Container/serverless security, IaC scanning, supply chain (SBOM/SLSA).
+18. **4.3** (28%) — IoC vs IoA, TTP, Pyramid of Pain.
+19. **5.3** (20%) — MOU vs MSA vs SOW vs BPA — agreement types.
+20. **5.2** (20%) — Quantitative formulas (SLE, ALE, EF, AV). BIA ✓.
+21. **2.4** (22%) — On-path attacks, password spraying, credential stuffing, downgrade attacks.
+22. **3.1** (18%) — SDN, NFV, ICS/SCADA/RTOS, HSM vs TPM, screened subnet.
+23. **4.6** (28%) — Conditional access, adaptive/continuous auth. PAM/JIT ✓.
+24. PBQ topics — log analysis, wireless config, cert tasks, port numbers. Firewall rules ✓.
