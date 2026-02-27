@@ -1,0 +1,6 @@
+# Glob patterns for files the commit-guard hook should ignore.
+# One pattern per line. Lines starting with # are comments.
+# Examples:
+#   *.generated.ts
+#   fixtures/*.json
+#   tmp/*
