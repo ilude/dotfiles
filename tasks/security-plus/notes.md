@@ -215,6 +215,37 @@ Script tag visible? → XSS. User unknowingly submits a request? → CSRF.
 - "Is this about sharing threat intelligence between organizations?" → **STIX/TAXII**
 - STIX/TAXII never scan anything. SCAP never shares threat intel.
 
+### SaaS session persistence — IdP disable ≠ app session kill (wrong S1 + S11)
+- Disabling IdP (Active Directory) account prevents NEW logins only.
+- SaaS apps issue their OWN session cookies during authentication — these persist independently.
+- SSO/SAML tokens are short-lived (minutes) and expire quickly. The persistent access comes from the APP session.
+- Offboarding must revoke BOTH: (1) IdP account AND (2) active sessions in each downstream SaaS app.
+- Decision rule: "disabled account but still accessing SaaS days later" = app session wasn't killed, not SSO token.
+
+### DNS tunneling vs domain fronting vs beaconing (wrong S11)
+- **DNS tunneling** — data encoded in SUBDOMAIN labels. "Long encoded subdomains" + "periodic queries" = DNS tunneling.
+- **Domain fronting** — legitimate domain in TLS SNI/Host header, actual traffic goes to hidden service on same CDN. Disguises DESTINATION.
+- **Beaconing** — regular callbacks to C2 via normal HTTPS. Looks like regular web traffic, not weird subdomains.
+- Decision rule: weird subdomains = DNS tunneling. Legit domain as cover = domain fronting. Regular HTTPS check-ins = beaconing.
+
+### SBOM vs SLSA — supply chain security (lucky S11)
+- **SBOM (Software Bill of Materials)** — inventory of all components in software. "What's in it?" = SBOM. Ingredient list.
+- **SLSA (Supply-chain Levels for Software Artifacts)** — "salsa." Build pipeline integrity framework. Verifiable provenance. "How was it built?" = SLSA.
+- Decision rule: "what's inside" = SBOM. "How it was built / build integrity" = SLSA.
+
+### Kerberos attack cluster — pass the ticket vs pass the hash (wrong S11)
+- **Pass the ticket** — steal Kerberos TICKET (TGT/TGS) from memory, inject into session. "Kerberos" + "ticket" = pass the ticket.
+- **Pass the hash** — steal NTLM HASH, authenticate directly. No Kerberos. "NTLM" + "hash" = pass the hash.
+- **Golden ticket** — FORGE a TGT using stolen krbtgt hash. Unlimited domain access. "Forged" + "krbtgt" = golden ticket.
+- **Kerberoasting** — request service tickets, CRACK offline. "Offline cracking" + "service account" = Kerberoasting.
+- Decision rule: look for "ticket" vs "hash" in the scenario. They use different credential types entirely.
+
+### Adaptive auth vs conditional access vs zero trust (wrong 2x)
+- **Adaptive authentication** — system dynamically changes requirements based on real-time risk signals (location, device, behavior). "Same user, different context, different response" = adaptive.
+- **Conditional access** — admin-configured IF/THEN rules. "If unmanaged device, require MFA." More static, policy-based.
+- **Zero trust** — philosophy/architecture, not a specific technology. "Never trust, always verify."
+- Decision rule: "automatically adjusts to changing risk" = adaptive auth. "Admin sets rules" = conditional access. "Overall posture" = zero trust.
+
 ### CASB vs DLP vs SWG vs CSPM — persistent confusion (wrong 3x)
 - **CASB (Cloud Access Security Broker)** — which CLOUD APPS users access. "Shadow IT," "unauthorized SaaS," "personal Dropbox," "unapproved tools."
 - **DLP (Data Loss Prevention)** — the DATA itself leaving. "Sensitive data," "credit card numbers," "classified files on USB."

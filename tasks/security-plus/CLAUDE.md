@@ -59,25 +59,27 @@ Additional pattern: real-world experience can conflict with exam answers. The ex
 ## Current Phase
 
 **Phase**: Day 2 — Final Gap Drilling
-**Status**: Eleven sessions complete. Trajectory: 85% → 54% → 70% → 67% → 60% → 75% → 83% → 73% → 55% → 70%. S11 swept untested areas (containers, serverless, SASE/SSE, shared responsibility, ports) — mostly strong from experience, 3 new gaps found.
-**Next action**: Hammer persistent S10 gaps, then mop up remaining untested items.
+**Status**: Eleven sessions complete (32 questions in S11). Trajectory: 85% → 54% → 70% → 67% → 60% → 75% → 83% → 73% → 55% → 69%. Recovered 4 S10 misses (PCI, SCA, LDAPS, order of volatility). MAC/ABAC locked. New misses surfaced in Kerberos attacks, exfiltration techniques, and adaptive auth.
+**Next action**: Drill persistent gaps below, then final sweep of untested items.
 
-**Persistent gaps (missed 2x+ across sessions — highest priority):**
-1. **MSA** — wrong 3x total. "Legally binding + general terms + no deliverables" = MSA.
-2. **NIST CSF vs 800-53** — wrong 2x. "Five functions + board + strategic" = CSF, "control catalog" = 800-53.
-3. **DPIA/RoPA** — wrong 2x. "Ongoing record of all activities" = RoPA, "new project risk assessment" = DPIA.
-4. **CASB** — wrong 2x S10 (picked DLP, then CSPM). "Shadow IT / unauthorized apps" = CASB. Correct S11 (reasoned).
+**Persistent gaps (wrong 2x+ — highest priority):**
+1. **Adaptive auth** — wrong 2x (S10: zero trust, S11: conditional access). "Real-time risk adjustment" = adaptive. "Admin IF/THEN rules" = conditional access.
+2. **CASB** — wrong 3x + 1 voided (primed). Not yet cold-verified. "Named unauthorized cloud apps" = CASB.
+3. **NIST 800-53 vs 800-171** — wrong S11. "Federal + catalog" = 800-53. "Contractor + CUI" = 800-171.
 
-**New gaps from S11:**
-5. **SASE vs SSE** — wrong S11. SASE = networking + security. SSE = security only. SD-WAN = networking only.
-6. **Email ports** — wrong S11. Retrieval = 993 (IMAPS) + 995 (POP3S). Sending = 587 (SMTPS).
-7. **CSPM vs IaC static analysis** — wrong S11. "Before deployment" = static analysis. "Already deployed" = CSPM.
+**New gaps from S11 Part 3:**
+4. **DNS tunneling vs domain fronting** — wrong S11. "Encoded subdomains" = tunneling. "Legit domain as cover" = fronting.
+5. **Pass the ticket vs pass the hash** — wrong S11. "Kerberos ticket" vs "NTLM hash."
+6. **SaaS session persistence** — wrong S11. Disabling IdP ≠ killing app session. Same concept as S1 SAML miss.
 
-**Other gaps from S10 (not re-tested):**
-8. ABAC, adaptive auth, PCI scope, SCA, replay vs session hijacking, port 636 (LDAPS).
+**Recovering (correct but educated guesses):**
+7. MSA ✓ (first correct after 3x wrong), DPIA/RoPA ✓ (both educated), SASE/SSE components recovering.
+
+**Lucky — needs lock-in:**
+8. SLSA — "build provenance" = SLSA, "ingredient list" = SBOM.
 
 **Still untested:**
-9. SWG (never quizzed cold), SBOM/SLSA, PBQ topics (log analysis, wireless config, cert tasks).
+9. SWG (never quizzed cold), kill chain phases (lucky S10), PBQ topics (log analysis, cert tasks).
 
 Then build margin above 83% passing threshold.
 

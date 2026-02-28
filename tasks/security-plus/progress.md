@@ -9,8 +9,8 @@
 **Persistent gaps (missed 2x+ in S10)**: CASB (2x), NIST CSF (2x), DPIA/RoPA (2x), MSA (3x total)
 **Other gaps**: ABAC, adaptive auth, PCI scope, SCA, replay vs session hijacking, port numbers (LDAPS 636)
 **Newly confirmed strong**: Race condition, buffer overflow, fileless malware, RAID 10, IR phases, data states, WAF vs IPS, risk transference, governance docs, tabletop exercise, physical destruction, EOL/compensating controls
-**Trajectory**: 85% → 54% → 70% → 67% → 60% → 75% → 83% → 73% → 55% → 71% (sweep + gap drill)
-**Session 11**: 71% (12/17) — swept untested areas then drilled persistent gaps. Shared responsibility cold across IaaS/SaaS/FaaS. MSA recovering (correct first time after 3x wrong). DPIA/RoPA pair both correct (educated). CASB still missing (3x wrong total — picked SWG this time). NIST 800-53 vs 800-171 confused.
+**Trajectory**: 85% → 54% → 70% → 67% → 60% → 75% → 83% → 73% → 55% → 69%
+**Session 11**: 69% (22/32 solid) — large session: untested sweep + persistent gap drilling + mixed cold drill. Recovered 4 S10 misses (PCI scope, SCA, LDAPS 636, order of volatility). MAC locked cold. DPIA/RoPA/MSA recovering. CASB untestable (primed). New misses: adaptive auth (2x now), pass the ticket, DNS tunneling, SaaS session persistence.
 
 ---
 
@@ -18,7 +18,7 @@
 
 | Objective | Score | Last Assessed | Notes |
 |-----------|-------|---------------|-------|
-| 1.1 Compare security controls | Moderate | 2026-02-27 | MAC vs DAC missed S10 (picked DAC, answer MAC). Labels+no override=MAC, owner shares=DAC. |
+| 1.1 Compare security controls | Moderate-Strong | 2026-02-27 | MAC ✓ S11 (cold). ABAC ✓ S11 (reasoned). Both recovered from S10 misses. |
 | 1.2 Summarize fundamental security concepts | Strong | 2026-02-26 | CIA triad — availability ✓ |
 | 1.3 Explain change management importance | Strong | 2026-02-26 | Impact analysis / peer review ✓ |
 | 1.4 Explain cryptographic solutions | Moderate-Strong | 2026-02-27 | OCSP stapling ✓ (S10, educated). CRL/OCSP/stapling/pinning group now understood. |
@@ -34,7 +34,7 @@
 | 2.1 Compare threat actors and motivations | Moderate | 2026-02-26 | Assessment ✓ (APT) but drill missed MITRE ATT&CK vs Kill Chain vs Diamond vs NIST CSF (lucky guess) |
 | 2.2 Explain common threat vectors | Strong | 2026-02-26 | Drilled: attack type vs technique rule. Re-tested ✓ |
 | 2.3 Explain types of vulnerabilities | Moderate | 2026-02-26 | Assessment ✓ (SQLi) but drill missed stored XSS vs CSRF (educated guess) |
-| 2.4 Analyze indicators of malicious activity | Strong | 2026-02-27 | Pyramid of Pain ✓ (S10, knew cold — recovered from S9 miss). Password spraying ✓ (S10). SSL stripping ✓ (S10). All attack types strong. |
+| 2.4 Analyze indicators of malicious activity | Moderate-Strong | 2026-02-27 | Pyramid of Pain ✓, password spraying ✓, SSL stripping ✓. DNS tunneling wrong S11 (picked domain fronting). Pass the ticket wrong S11 (picked pass the hash). Kerberos + exfil technique clusters need drilling. |
 | 2.5 Explain mitigation techniques | Moderate | 2026-02-26 | Assessment ✓ (segmentation) but drill missed kill chain phase for sandboxing (educated guess) |
 
 **Domain score**: Moderate-Strong — Diamond Model ✓, ATT&CK ✓, attack types strong (S9). Pyramid of Pain wrong (S9). Stored XSS vs CSRF and kill chain untested.
@@ -46,7 +46,7 @@
 | Objective | Score | Last Assessed | Notes |
 |-----------|-------|---------------|-------|
 | 3.1 Compare security architecture models | Moderate-Strong | 2026-02-27 | CWPP ✓ (S10, reasoned). Zero trust vs NAC ✓ (S10). CSPM ✓, PDP ✓, SDN ✓, ICS/SCADA ✓. SASE vs SSE wrong S11 (didn't know either). CASB ✓ S11 (reasoned). ZTNA ✓ S11 (reasoned, but primed). SWG not yet tested individually. |
-| 3.2 Apply security principles to infrastructure | Moderate | 2026-02-27 | SAST ✓. SCA missed S10. IaC static analysis vs CSPM wrong S11 (picked CSPM, answer static analysis — "before deployment" = static). Container hardening ✓ S11 (reasoned). Admission controller ✓ S11 (educated). |
+| 3.2 Apply security principles to infrastructure | Moderate-Strong | 2026-02-27 | SAST ✓. SCA ✓ S11 (educated, recovered). IaC static analysis vs CSPM wrong S11. Container hardening ✓ (reasoned). Admission controller ✓ (educated). EAP-TLS ✓ (educated). SLSA lucky S11. |
 | 3.3 Compare data protection concepts | Strong | 2026-02-26 | Drilled: "Pseudo = sharing out, Token = keeping in." Re-tested ✓. But missed hosted payment fields vs tokenization for PCI scope. |
 | 3.4 Explain resilience and recovery | Strong | 2026-02-26 | RPO vs RTO ✓, differential vs incremental backup ✓ (knew it cold) |
 
@@ -63,7 +63,7 @@
 | 4.3 Various activities associated with vulnerability management | Strong | 2026-02-26 | **[Corrected from 4.5]** SCAP ✓ (S6, reasoned). Compensating controls ✓ (S8, knew cold). ASV ✓ (S4). |
 | 4.4 Security alerting and monitoring concepts and tools | Strong | 2026-02-26 | **[Corrected from 4.2]** Deception tech vs honeypot ✓ (S8, after 2 misses). UEBA vs SIEM ✓ (S8, after S7 miss). SIEM/XDR/SOAR trio ✓ (S7). |
 | 4.5 Modify enterprise capabilities to enhance security | Strong | 2026-02-26 | **[Corrected from 4.3]** Network isolation ✓, API key revocation ✓. Title clarified: "enhance security" (not just "incident response"). |
-| 4.6 Implement and maintain identity and access management | Strong | 2026-02-26 | **[Corrected from 4.7]** Drilled: session vs token lifetime. Re-tested ✓. SAML vs OAuth vs OIDC: reasoned out. PAM with JIT access locked in (S6). |
+| 4.6 Implement and maintain identity and access management | Moderate-Strong | 2026-02-27 | Adaptive auth wrong 2x (S10: zero trust, S11: conditional access). SaaS session persistence wrong S11 (picked SSO token). SAML/OAuth/OIDC ✓, PAM/JIT ✓. |
 | 4.7 Importance of automation and orchestration related to secure operations | Strong | 2026-02-26 | **[Corrected from 4.8]** SOAR ✓ (S7, multi-tool playbook). XDR vs SOAR distinction locked in (S7). Title clarified: "secure operations" scope. |
 | 4.8 Appropriate incident response activities | Strong | 2026-02-26 | **[Corrected from 4.9]** Lessons learned as final IR phase ✓. Scope clarified: IR activities (not data sources). |
 | 4.9 Use data sources to support an investigation | Not assessed | — | **[Corrected from 4.4]** Digital forensics moved here: order of volatility ✓. Also covers forensic evidence types and chain of custody. |
@@ -122,33 +122,36 @@ Ranked by domain weight × weakness severity. Items marked (acronym) are termino
 - **NDA** — locked in S7. Sign before sharing proprietary docs. (5.3)
 - **Secret scanning** — locked in S7. AKIA prefix = AWS key in code. (3.2)
 
-### High Priority — Persistent misses
-1. **3.1** (18%) — CASB — **wrong 3x total** (S10: DLP, CSPM; S11: SWG). "Named unauthorized cloud apps / shadow IT" = always CASB.
-2. **5.1** (20%) — NIST frameworks — CSF ✓ S11 (reasoned), but 800-53 vs 800-171 wrong S11. "Federal + catalog + impact levels" = 800-53, "contractor + CUI" = 800-171.
-3. **4.6** (28%) — Adaptive auth — wrong S10 (picked zero trust). Not re-tested S11.
-4. **3.3** (18%) — PCI scope — wrong S10. Not re-tested S11.
-5. **3.2** (18%) — SCA — wrong S10. IaC static analysis vs CSPM wrong S11. "Before deployment" = static analysis.
-6. **3.1** (18%) — SASE vs SSE — wrong S11. SASE = networking + security. SSE = security only.
+### High Priority — Persistent misses (wrong 2x+)
+1. **4.6** (28%) — Adaptive auth — **wrong 2x** (S10: picked zero trust, S11: picked conditional access). "Real-time risk adjustment" = adaptive. "Admin IF/THEN rules" = conditional access. "Philosophy" = zero trust.
+2. **3.1** (18%) — CASB — **wrong 3x + 1 voided** (S10: DLP, CSPM; S11: SWG; S11: primed). Still not cold-verified.
+3. **5.1** (20%) — NIST 800-53 vs 800-171 — wrong S11. "Federal + catalog" = 800-53, "contractor + CUI" = 800-171. CSF ✓ (reasoned).
+4. **2.4** (22%) — DNS tunneling vs domain fronting — wrong S11. "Encoded subdomains" = tunneling, "legit domain as cover" = fronting.
 
-### Recovering — Correct S11 but educated guesses
-7. **5.3** (20%) — MSA ✓ S11 (educated — first correct after 3x wrong). Needs cold confirmation.
-8. **5.5** (20%) — DPIA ✓ + RoPA ✓ S11 (both educated). Decision rule working but not cold.
-9. **1.1** (12%) — ABAC ✓ S11 (reasoned, recovering from S10 miss).
+### Recovering — Correct but needs cold confirmation
+5. **5.3** (20%) — MSA ✓ S11 (educated — first correct after 3x wrong).
+6. **5.5** (20%) — DPIA ✓ + RoPA ✓ S11 (both educated).
+7. **1.1** (12%) — ABAC ✓ S11 (reasoned). MAC ✓ S11 (cold).
+8. **3.1** (18%) — SASE vs SSE — wrong S11 but CASB/ZTNA individual components recovering.
+9. **4.6** (28%) — SaaS session persistence — wrong S11. IdP disable ≠ app session revocation.
 
 ### Medium Priority — Lucky or not re-tested
-10. **2.5** (22%) — Kill chain phases — correct but lucky S10. Needs solid re-test.
-11. **PBQ** — Email ports wrong S11 (retrieval = 993+995, sending = 587). Port 853 DoT ✓ educated.
+10. **2.5** (22%) — Kill chain phases — correct but lucky S10.
+11. **3.2** (18%) — SLSA — correct but lucky S11. "Build provenance" = SLSA, "ingredient list" = SBOM.
+12. **2.4** (22%) — Pass the ticket vs pass the hash — wrong S11. "Kerberos ticket" vs "NTLM hash."
+13. **PBQ** — Email ports wrong S11 (retrieval = 993+995, sending = 587).
 
 ### Confirmed Strong from S11
-- Container hardening (reasoned), serverless least privilege (cold), serverless shared responsibility (cold)
-- IaaS shared responsibility (cold), SaaS shared responsibility (cold)
-- Admission controller (educated), RDP port 3389 (cold), ABAC (reasoned)
+- Container hardening, serverless least privilege (cold), serverless shared responsibility (cold)
+- IaaS/SaaS shared responsibility (both cold), admission controller (educated)
+- RDP 3389 (cold), LDAPS 636 (reasoned, recovered), DoT 853 (educated)
+- PCI scope SAQ A (cold, recovered), SCA (educated, recovered)
+- Order of volatility (cold, recovered), MAC (cold), ABAC (reasoned)
+- Reflected XSS (cold), evil twin (reasoned), EAP-TLS (educated), replay attack (reasoned)
 
 ### Still Untested
 - SWG (never quizzed cold)
-- Supply chain (SBOM/SLSA)
-- Replay vs session hijacking, adaptive auth re-test, PCI scope re-test
-- PBQ topics — log analysis, wireless config, cert tasks. Firewall rules ✓.
+- PBQ topics — log analysis, cert tasks. Firewall rules ✓, wireless (evil twin ✓, EAP-TLS ✓).
 
 ### Confirmed Strong from S9 Sampling (moved from research/untested)
 - **Downgrade attacks** — knew cold (2.4)

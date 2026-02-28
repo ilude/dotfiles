@@ -401,9 +401,55 @@ The 54% reflects deliberately targeting every untested/weak area. Core knowledge
 5. **CASB still not sticking** — 3x wrong now (DLP, CSPM, SWG). Decision rule written to notes: "employees using named unauthorized cloud apps" = always CASB.
 6. **NIST framework cluster needs individual drilling** — CSF correct when functions named, but 800-53 vs 800-171 confused.
 
-### Trajectory: 85% → 54% → 70% → 67% → 60% → 75% → 83% → 73% → 55% → 71%
+### Part 3 — Mixed Cold Drilling (10/15 solid, 1 lucky, 1 voided):
 
-**Next session**: Re-test CASB cold (no priming), drill NIST 800-53 vs 800-171, test SWG individually, hit remaining gaps (adaptive auth, PCI scope, SCA, replay vs session hijacking).
+**Correct (10):**
+- Replay attack (reasoned) — "captures token, uses later" = replay. Distinct from session hijacking (real-time takeover).
+- PCI scope / SAQ A (knew cold) — hosted payment page reduces scope, never eliminates PCI. **Recovered from S10 miss.**
+- SCA (educated) — "open-source libraries + known vulnerabilities" = SCA. **Recovered from S10 miss.**
+- LDAPS port 636 (reasoned) — outbound 636 to external IP = suspicious. **Recovered from S10 miss.**
+- Evil twin (reasoned) — rogue AP with same SSID, intercepts traffic.
+- Order of volatility (knew cold) — CPU registers → RAM → network → disk. **Recovered from S10 miss.**
+- MAC (knew cold) — classification labels, clearance levels, compartments, no override = MAC.
+- Reflected XSS (knew cold) — payload in URL, server reflects, victim clicks crafted link.
+- EAP-TLS (educated) — "certificate on device" for Wi-Fi = EAP-TLS. Only EAP method requiring client certs.
+
+**Wrong (4):**
+- **Adaptive auth** — picked conditional access (2x wrong now). "System automatically adjusts requirements based on real-time risk" = adaptive auth. "Admin-configured IF/THEN rules" = conditional access.
+- **Pass the ticket** — picked pass the hash. "Kerberos ticket" = pass the ticket. "NTLM hash" = pass the hash. Look for credential TYPE.
+- **DNS tunneling** — picked domain fronting. "Encoded subdomains" = DNS tunneling. "Legit domain as cover" = domain fronting.
+- **SaaS session vs SSO token** — picked SSO token. Disabling IdP stops NEW logins, but existing SaaS app sessions persist independently. Must revoke app sessions too.
+
+**Lucky (1):**
+- SLSA — correct but lucky. "Build pipeline integrity / provenance" = SLSA. "Ingredient list" = SBOM.
+
+**Voided (1):**
+- CASB — correct but question was primed (announced "let me test CASB" before asking). Does not count.
+
+### Full Session 11 Totals: 22/32 solid = 69% (+ 1 lucky, 1 voided)
+
+### Trajectory: 85% → 54% → 70% → 67% → 60% → 75% → 83% → 73% → 55% → 69%
+
+### Key improvements S11:
+- **PCI scope** — recovered (cold). "Reduce, never eliminate."
+- **SCA** — recovered (educated). "Dependencies + known CVEs."
+- **LDAPS 636** — recovered (reasoned).
+- **Order of volatility** — recovered (cold). CPU > RAM > network > disk.
+- **MAC** — locked in (cold). Labels + no override.
+- **DPIA/RoPA** — both correct (educated). Decision rule working.
+- **MSA** — first correct after 3x wrong (educated). Needs cold confirmation.
+- **CASB** — untestable this session (primed). Still needs cold verification.
+
+### Persistent gaps after S11:
+- **Adaptive auth** — 2x wrong (S10 + S11). Keeps picking conditional access or zero trust.
+- **CASB** — 3x wrong + 1 voided. Decision rule written but not cold-verified.
+- **DNS tunneling vs domain fronting** — wrong S11. New confusion.
+- **Pass the ticket vs pass the hash** — wrong S11. Credential type distinction not sticking.
+- **SaaS session persistence** — wrong S11 (same concept as S1 SAML miss). IdP ≠ app session.
+- **NIST 800-53 vs 800-171** — wrong S11. Federal = 800-53, contractor/CUI = 800-171.
+- **SLSA** — lucky. Build provenance = SLSA, ingredient list = SBOM.
+
+**Next session**: CASB cold test (no announcement), adaptive auth re-test, DNS tunneling vs domain fronting, pass the ticket vs pass the hash. Then final sweep of remaining untested items.
 
 ---
 
