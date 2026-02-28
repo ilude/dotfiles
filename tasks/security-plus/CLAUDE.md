@@ -59,27 +59,25 @@ Additional pattern: real-world experience can conflict with exam answers. The ex
 ## Current Phase
 
 **Phase**: Day 2 — Final Gap Drilling
-**Status**: Eleven sessions complete (32 questions in S11). Trajectory: 85% → 54% → 70% → 67% → 60% → 75% → 83% → 73% → 55% → 69%. Recovered 4 S10 misses (PCI, SCA, LDAPS, order of volatility). MAC/ABAC locked. New misses surfaced in Kerberos attacks, exfiltration techniques, and adaptive auth.
-**Next action**: Drill persistent gaps below, then final sweep of untested items.
+**Status**: Eleven sessions complete (41 questions in S11). Trajectory: 85% → 54% → 70% → 67% → 60% → 75% → 83% → 73% → 55% → 73%. All objectives now assessed. Recovered 4 S10 misses. 4.9 forensic data sources confirmed strong. Gap is narrowing to ~8 specific items.
+**Next action**: Drill remaining gaps below, then practice exam readiness.
 
 **Persistent gaps (wrong 2x+ — highest priority):**
-1. **Adaptive auth** — wrong 2x (S10: zero trust, S11: conditional access). "Real-time risk adjustment" = adaptive. "Admin IF/THEN rules" = conditional access.
-2. **CASB** — wrong 3x + 1 voided (primed). Not yet cold-verified. "Named unauthorized cloud apps" = CASB.
-3. **NIST 800-53 vs 800-171** — wrong S11. "Federal + catalog" = 800-53. "Contractor + CUI" = 800-171.
+1. **Adaptive auth** — wrong 2x (S10: zero trust, S11: conditional access). "Real-time risk adjustment" = adaptive.
+2. **CASB** — wrong 3x + 1 voided. Not yet cold-verified. "Named unauthorized cloud apps" = CASB.
 
-**New gaps from S11 Part 3:**
-4. **DNS tunneling vs domain fronting** — wrong S11. "Encoded subdomains" = tunneling. "Legit domain as cover" = fronting.
-5. **Pass the ticket vs pass the hash** — wrong S11. "Kerberos ticket" vs "NTLM hash."
-6. **SaaS session persistence** — wrong S11. Disabling IdP ≠ killing app session. Same concept as S1 SAML miss.
+**Wrong once — needs re-test:**
+3. **NIST 800-53 vs 800-171** — "Federal + catalog" = 800-53. "Contractor + CUI" = 800-171.
+4. **DNS tunneling vs domain fronting** — "Encoded subdomains" = tunneling. "Legit domain as cover" = fronting.
+5. **Pass the ticket vs pass the hash** — "Kerberos ticket" vs "NTLM hash."
+6. **SaaS session persistence** — Disabling IdP ≠ killing app session.
+7. **Data sanitization** — "Reuse without encryption stated" = overwriting, not crypto erasure.
 
-**Recovering (correct but educated guesses):**
-7. MSA ✓ (first correct after 3x wrong), DPIA/RoPA ✓ (both educated), SASE/SSE components recovering.
-
-**Lucky — needs lock-in:**
-8. SLSA — "build provenance" = SLSA, "ingredient list" = SBOM.
+**Recovering (correct but educated):**
+8. MSA, DPIA/RoPA, SASE/SSE components, SCA, SLSA (lucky).
 
 **Still untested:**
-9. SWG (never quizzed cold), kill chain phases (lucky S10), PBQ topics (log analysis, cert tasks).
+9. SWG (never quizzed cold), PBQ cert tasks (CSR, chain of trust).
 
 Then build margin above 83% passing threshold.
 
@@ -101,7 +99,12 @@ When quizzing the user:
 8. **Keep it engaging** — vary question difficulty, use real-world scenarios, acknowledge good answers
 9. **No option descriptions** — answer options should be short labels only, no explanatory text. The real exam doesn't hand-hold with descriptions. Descriptions make educated guessing too easy.
 10. **Ask confidence BEFORE revealing the answer** — "Knew it cold / Reasoned it out / Educated guess / Lucky guess". Ask confidence immediately after the user answers, BEFORE saying whether they're right or wrong. Don't count lucky guesses as strong knowledge.
-11. **No priming** — do not explain rules of thumb or give hints before asking a question. Mix up topics so the user can't predict what's coming next.
+11. **CRITICAL: No priming** — This rule has been violated repeatedly and is now elevated to CRITICAL priority. It includes ALL of the following violations:
+    - **Do NOT announce what topic you're about to test** ("Let me test CASB now", "Switching to ports"). Just ask the question cold.
+    - **Do NOT explain a concept and then immediately quiz on it.** If you just taught the CASB/SWG/ZTNA distinction, do NOT ask a CASB question next. Interleave at least 2-3 unrelated questions first.
+    - **Do NOT use the answer term in the question stem.** If the answer is "replay attack," the scenario cannot contain the word "replays." If the answer is "firewall logs," the scenario cannot say "the analyst reviewed the firewall logs."
+    - **Do NOT use synonyms or obvious restatements of the answer** in the question stem.
+    - Mix up topics so the user can't predict what's coming next. Every question should feel cold.
 12. **Teach decision rules on wrong answers** — after a miss, explain the distinguishing pattern that reliably points to the correct answer on exam day. Save these to `notes.md`.
 
 ### Domain assessment order (heaviest weight first):

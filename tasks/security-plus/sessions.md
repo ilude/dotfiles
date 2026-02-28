@@ -451,6 +451,39 @@ The 54% reflects deliberately targeting every untested/weak area. Core knowledge
 
 **Next session**: CASB cold test (no announcement), adaptive auth re-test, DNS tunneling vs domain fronting, pass the ticket vs pass the hash. Then final sweep of remaining untested items.
 
+### Part 4 — Untested Objective Sweep (8/9 solid, 2 voided):
+
+**Correct (8):**
+- EOL software risk register (reasoned) — document + compensating controls FIRST, migrate later. (4.2)
+- Kill chain: delivery phase (reasoned) — sending phishing email = delivery, not weaponization. (2.5)
+- Chain of custody (knew cold) — who handled evidence, when, documented at every step. (4.9)
+- Data exfiltration from proxy logs (knew cold) — sensitive files to personal cloud, no business need. (4.9)
+- Unpatched MDM devices (reasoned) — 90-day stale devices with corporate data = biggest risk. (4.2)
+- Artifact evidence (reasoned) — file system metadata, timestamps, journaling = digital artifacts. (4.9)
+- NAC posture checks (knew cold) — OS version + encryption + endpoint agent at connection time. (4.1)
+- Memory dump first (reasoned) — running processes and network connections live in RAM, volatile. (4.9)
+
+**Wrong (1):**
+- **Data sanitization** — picked crypto erasure, answer overwriting. "Reuse/donate" = overwrite. Crypto erasure only works if drive was already encrypted (not stated). (4.2)
+
+**Voided (2):**
+- Firewall logs as data source — answer was in the question stem ("reviewed the firewall logs").
+- Kill chain lateral movement — "lateral movement" used in stem and as answer option.
+
+### Updated S11 Totals: 30/41 solid = 73% (+ 1 lucky, 3 voided)
+
+### Trajectory: 85% → 54% → 70% → 67% → 60% → 75% → 83% → 73% → 55% → 73%
+
+### Objectives newly assessed from Part 4:
+- **4.2** (asset management) — Moderate-Strong. EOL risk register ✓, MDM stale devices ✓, data sanitization wrong.
+- **4.9** (forensic data sources) — Strong. Chain of custody cold, exfiltration from logs cold, artifact evidence reasoned, memory dump reasoned.
+- **2.5** (kill chain) — Moderate. Delivery phase correct (reasoned), but only 1 clean question tested.
+
+### CRITICAL PROCESS NOTE:
+No-priming rule elevated to CRITICAL. Four violations this session: announced CASB test, used answer in question stem (replay, firewall logs), explained concept then immediately quizzed on it (ZTNA after SASE teaching). All future questions must be cold with no telegraphing.
+
+**Next session**: CASB cold (no announcement), adaptive auth, DNS tunneling vs domain fronting, pass the ticket vs pass the hash. Practice exam readiness check.
+
 ---
 
 <!--

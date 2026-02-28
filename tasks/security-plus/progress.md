@@ -9,8 +9,8 @@
 **Persistent gaps (missed 2x+ in S10)**: CASB (2x), NIST CSF (2x), DPIA/RoPA (2x), MSA (3x total)
 **Other gaps**: ABAC, adaptive auth, PCI scope, SCA, replay vs session hijacking, port numbers (LDAPS 636)
 **Newly confirmed strong**: Race condition, buffer overflow, fileless malware, RAID 10, IR phases, data states, WAF vs IPS, risk transference, governance docs, tabletop exercise, physical destruction, EOL/compensating controls
-**Trajectory**: 85% → 54% → 70% → 67% → 60% → 75% → 83% → 73% → 55% → 69%
-**Session 11**: 69% (22/32 solid) — large session: untested sweep + persistent gap drilling + mixed cold drill. Recovered 4 S10 misses (PCI scope, SCA, LDAPS 636, order of volatility). MAC locked cold. DPIA/RoPA/MSA recovering. CASB untestable (primed). New misses: adaptive auth (2x now), pass the ticket, DNS tunneling, SaaS session persistence.
+**Trajectory**: 85% → 54% → 70% → 67% → 60% → 75% → 83% → 73% → 55% → 73%
+**Session 11**: 73% (30/41 solid, 1 lucky, 3 voided) — largest session. Swept untested areas, drilled persistent gaps, assessed previously untouched objectives (4.2 asset mgmt, 4.9 forensic data sources). Recovered 4 S10 misses. New misses: adaptive auth (2x), pass the ticket, DNS tunneling, SaaS session persistence, data sanitization. No-priming rule elevated to CRITICAL after 4 violations.
 
 ---
 
@@ -59,16 +59,16 @@
 | Objective | Score | Last Assessed | Notes |
 |-----------|-------|---------------|-------|
 | 4.1 Apply common security techniques to computing resources | Moderate | 2026-02-26 | Assessment ✓ (immutable containers) but drill missed NAC vs EDR vs MDM |
-| 4.2 Security implications of proper hardware, software, and data asset management | Not assessed | — | **[Corrected from 4.4]** Digital forensics moved to 4.9. This objective covers asset lifecycle, disposal, and management implications. |
+| 4.2 Security implications of proper hardware, software, and data asset management | Moderate-Strong | 2026-02-27 | EOL risk register ✓ (reasoned). MDM stale devices ✓ (reasoned). Data sanitization wrong S11 (picked crypto erasure, answer overwriting — "reuse" without encryption stated = overwrite). |
 | 4.3 Various activities associated with vulnerability management | Strong | 2026-02-26 | **[Corrected from 4.5]** SCAP ✓ (S6, reasoned). Compensating controls ✓ (S8, knew cold). ASV ✓ (S4). |
 | 4.4 Security alerting and monitoring concepts and tools | Strong | 2026-02-26 | **[Corrected from 4.2]** Deception tech vs honeypot ✓ (S8, after 2 misses). UEBA vs SIEM ✓ (S8, after S7 miss). SIEM/XDR/SOAR trio ✓ (S7). |
 | 4.5 Modify enterprise capabilities to enhance security | Strong | 2026-02-26 | **[Corrected from 4.3]** Network isolation ✓, API key revocation ✓. Title clarified: "enhance security" (not just "incident response"). |
 | 4.6 Implement and maintain identity and access management | Moderate-Strong | 2026-02-27 | Adaptive auth wrong 2x (S10: zero trust, S11: conditional access). SaaS session persistence wrong S11 (picked SSO token). SAML/OAuth/OIDC ✓, PAM/JIT ✓. |
 | 4.7 Importance of automation and orchestration related to secure operations | Strong | 2026-02-26 | **[Corrected from 4.8]** SOAR ✓ (S7, multi-tool playbook). XDR vs SOAR distinction locked in (S7). Title clarified: "secure operations" scope. |
 | 4.8 Appropriate incident response activities | Strong | 2026-02-26 | **[Corrected from 4.9]** Lessons learned as final IR phase ✓. Scope clarified: IR activities (not data sources). |
-| 4.9 Use data sources to support an investigation | Not assessed | — | **[Corrected from 4.4]** Digital forensics moved here: order of volatility ✓. Also covers forensic evidence types and chain of custody. |
+| 4.9 Use data sources to support an investigation | Strong | 2026-02-27 | Chain of custody ✓ (cold). Data exfiltration from proxy logs ✓ (cold). Artifact evidence ✓ (reasoned). Memory dump first ✓ (reasoned). Order of volatility ✓ (cold, recovered S11). |
 
-**Domain score**: Strong — SIEM/XDR/SOAR, deception tech, UEBA, SCAP all locked in. 4.2 (asset mgmt) and 4.9 (forensic data sources) not yet assessed.
+**Domain score**: Strong — all objectives now assessed. SIEM/XDR/SOAR, deception tech, UEBA, SCAP locked in. 4.9 forensic data sources strong. 4.2 asset mgmt moderate-strong (data sanitization miss). Adaptive auth (4.6) and SaaS session persistence (4.6) are the remaining gaps.
 
 ---
 
@@ -149,9 +149,14 @@ Ranked by domain weight × weakness severity. Items marked (acronym) are termino
 - Order of volatility (cold, recovered), MAC (cold), ABAC (reasoned)
 - Reflected XSS (cold), evil twin (reasoned), EAP-TLS (educated), replay attack (reasoned)
 
+### Confirmed Strong from S11 Part 4
+- EOL risk register (reasoned), MDM stale devices (reasoned), chain of custody (cold)
+- Data exfiltration from logs (cold), artifact evidence (reasoned), memory dump first (reasoned)
+- Kill chain delivery phase (reasoned), NAC posture checks (cold)
+
 ### Still Untested
 - SWG (never quizzed cold)
-- PBQ topics — log analysis, cert tasks. Firewall rules ✓, wireless (evil twin ✓, EAP-TLS ✓).
+- PBQ topics — cert tasks (CSR, chain of trust). Log analysis ✓ (proxy logs cold). Firewall rules ✓, wireless (evil twin ✓, EAP-TLS ✓).
 
 ### Confirmed Strong from S9 Sampling (moved from research/untested)
 - **Downgrade attacks** — knew cold (2.4)

@@ -215,6 +215,13 @@ Script tag visible? → XSS. User unknowingly submits a request? → CSRF.
 - "Is this about sharing threat intelligence between organizations?" → **STIX/TAXII**
 - STIX/TAXII never scan anything. SCAP never shares threat intel.
 
+### Data sanitization methods — reuse vs destroy (wrong S11)
+- **Overwriting / verified wipe** — writes over all sectors, verifies. Drive REUSABLE. "Donate/reuse" = overwrite.
+- **Cryptographic erasure** — destroy encryption key. ONLY works if drive was already encrypted. "Encrypted + reuse" = crypto erasure.
+- **Degaussing** — magnetic field. Destroys HDD AND data. Not for SSDs. Device is DEAD.
+- **Physical destruction** — shred/incinerate. No reuse.
+- Decision rule: don't assume encryption unless stated. "Reuse" without encryption mentioned = overwriting.
+
 ### SaaS session persistence — IdP disable ≠ app session kill (wrong S1 + S11)
 - Disabling IdP (Active Directory) account prevents NEW logins only.
 - SaaS apps issue their OWN session cookies during authentication — these persist independently.
