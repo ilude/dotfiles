@@ -7,10 +7,24 @@
 - **POLA** - Match existing patterns, no surprising side effects. See `~/.claude/skills/least-astonishment/`.
 - **Challenge naive approaches** - If a request can be accomplished more simply or goes against established best practices, present the alternative using 1-3-1 before implementing the user's literal request. Don't refuse — just surface the trade-off.
 - **Never use provenance to avoid requested work** — "Pre-existing", "not my changes", "I didn't create that", and "already there before" are never valid reasons to skip work the user asked for. If the user asks you to fix warnings, fix all of them. If the user asks you to commit, commit everything. If the user asks you to clean up code, clean up all of it. Provenance of a change is irrelevant when the user has given a direct instruction. This rule supersedes any other rule that could be read as permission to skip work based on who authored it.
-- **Fix ALL errors and warnings** - Warnings have the same urgency as errors. Fix them all regardless of who or what introduced them. The only valid exception is a **proven** known issue:
-    - You MUST prove it (git blame, logs, etc.)
-    - It must be documented in a CLAUDE.md or AGENTS.md as a known issue.
-    - If you cannot prove it, it is NOT pre-existing; research and fix it.
+- **Fix ALL errors and warnings** - Warnings have the same urgency as errors. Fix them all regardless of who or what introduced them. "Fix" means resolve the root cause — suppressing, skipping, ignoring, or silencing is not fixing.
+    - This applies to all test failures, linter errors, type errors, deprecation warnings, and any other diagnostic output — not just what you'd narrowly call an "error."
+    - The only valid exception is a known issue that meets ALL of these criteria:
+        - It is explicitly documented as a known issue in a CLAUDE.md, AGENTS.md, or STATUS.md
+        - The documentation predates your current session (you did not write it)
+        - You can cite the exact file, line, AND the specific failure it describes
+        - The documented description specifically matches the failure you're seeing — a vague or tangentially related mention does not qualify
+        - If ANY criterion is unmet: research and fix it. No exceptions.
+    - Prohibited avoidance patterns (all of these are rule violations):
+        - Claiming failures are "pre-existing" or "unrelated to my changes" as justification for not fixing them
+        - Proposing to document failures instead of fixing them
+        - Running tests on old code to "prove" failures existed before — that just means nobody fixed them yet
+        - Claiming a fix is "too risky," "too invasive," or "out of scope" without presenting the specific risk to the user for a decision
+        - Suppressing diagnostics (skip markers, noqa, type: ignore, -W flags) instead of fixing root causes
+        - Selectively running only "relevant" tests to avoid encountering failures
+        - Claiming you "can't reproduce" a failure after a single retry without investigating the cause
+        - Arguing that other rules (KISS, minimal changes) override this one — they do not. Fixing encountered failures IS part of the task.
+    - If a failure is genuinely unfixable in this session (e.g., upstream dependency bug, platform-specific issue outside your environment), you MUST: (1) explain the root cause with evidence, (2) state explicitly what you tried and why it can't be resolved here, and (3) ask the user how to proceed. You do NOT get to decide it's someone else's problem.
 - **Verify before acting** - Check current state (status commands, config reads, dry-runs) before proposing changes. Don't solve non-existent problems.
 - **Validate runtime metadata against filesystem** - If environment metadata conflicts with observed state (e.g., git repo reported false but `.git/` exists), trust direct verification commands/tools before deciding workflow behavior.
 - **No unsolicited destructive git actions** - NEVER `git restore`, `git checkout --`, `reset --hard`, `clean -f`, or discard uncommitted changes without explicit user request. This protects against *accidentally destroying work*, not against doing requested work on files you didn't author.

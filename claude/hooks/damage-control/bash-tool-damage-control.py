@@ -692,6 +692,54 @@ READONLY_SEARCH_COMMANDS = [
     r"^\s*terraform\s+state\s+list\b",
     r"^\s*terraform\s+output\b",
     r"^\s*terraform\s+plan\b",
+    # Modern search tools
+    r"^\s*fd\b",
+    r"^\s*locate\b",
+    r"^\s*plocate\b",
+    # Directory/file info (read-only)
+    r"^\s*ls\b",
+    r"^\s*tree\b",
+    r"^\s*stat\b",
+    r"^\s*file\b",
+    r"^\s*du\b",
+    # Command lookup
+    r"^\s*which\b",
+    r"^\s*type\b",
+    r"^\s*command\s+-v\b",
+    # Path resolution
+    r"^\s*readlink\b",
+    r"^\s*realpath\b",
+    # File comparison/inspection
+    r"^\s*diff\b",
+    r"^\s*colordiff\b",
+    r"^\s*strings\b",
+    r"^\s*hexdump\b",
+    r"^\s*xxd\b",
+    # Additional git read-only
+    r"^\s*git\s+status\b",
+    r"^\s*git\s+branch\b",
+    r"^\s*git\s+remote\b",
+    r"^\s*git\s+tag\b",
+    r"^\s*git\s+stash\s+list\b",
+    r"^\s*git\s+config\b",
+    r"^\s*git\s+rev-parse\b",
+    r"^\s*git\s+ls-files\b",
+    r"^\s*git\s+ls-tree\b",
+    r"^\s*git\s+cat-file\b",
+    r"^\s*git\s+check-ignore\b",
+    r"^\s*git\s+name-rev\b",
+    r"^\s*git\s+describe\b",
+]
+
+# Commands with no filesystem side effects — transparent to the read-only check.
+# These are skipped when validating compound commands (e.g., "cd /path && find ...").
+INERT_COMMANDS = [
+    r"^\s*cd\b",
+    r"^\s*pushd\b",
+    r"^\s*popd\b",
+    r"^\s*export\b",
+    r"^\s*true\b",
+    r"^\s*:$",  # bash no-op
 ]
 
 # Safe pipe targets (read-only display/transform tools).
@@ -724,6 +772,20 @@ READONLY_PIPE_TARGETS = [
     r"^\s*bat\b",
     r"^\s*echo\b",
     r"^\s*printf\b",
+    r"^\s*paste\b",
+    r"^\s*strings\b",
+    r"^\s*sha256sum\b",
+    r"^\s*md5sum\b",
+    r"^\s*expand\b",
+    r"^\s*unexpand\b",
+    r"^\s*diff\b",
+    r"^\s*colordiff\b",
+    r"^\s*hexdump\b",
+    r"^\s*xxd\b",
+    r"^\s*file\b",
+    r"^\s*stat\b",
+    r"^\s*basename\b",
+    r"^\s*dirname\b",
 ]
 
 
@@ -854,28 +916,36 @@ def _is_readonly_search_pipeline(segment: str) -> bool:
 
 
 def is_readonly_search_command(command: str) -> bool:
-    """Check if ALL segments of a command are read-only search pipelines.
+    """Check if a compound command is a read-only search operation.
 
-    Splits on &&, ||, ; and checks each segment. Returns True only when
-    every segment is a read-only search pipeline (search tool piped to
-    safe transformers). If ANY segment is not read-only, returns False
-    so the full command gets checked by bashToolPatterns as normal.
+    Splits on &&, ||, ; and checks each segment. Returns True when every
+    segment is either a read-only search pipeline OR an inert command
+    (cd, pushd, export, etc.), provided at least one segment is an actual
+    search pipeline.
 
     Examples that return True:
         grep "helm upgrade" Makefile
         grep -r "helm upgrade" . | head -20
-        rg "terraform destroy" . | sort | head
+        cd /path && find . -name "*.env*" | head -50
 
     Examples that return False (correctly):
         grep "helm upgrade" && helm upgrade release
         grep "helm upgrade" | xargs helm upgrade
-        helm upgrade release
+        cd /tmp && cd /var  (inert-only, no search pipeline)
     """
     segments = _split_on_shell_operators(command)
     if not segments:
         return False
 
-    return all(_is_readonly_search_pipeline(seg) for seg in segments)
+    has_search = False
+    for seg in segments:
+        if _is_readonly_search_pipeline(seg):
+            has_search = True
+        elif any(re.search(p, seg.strip(), re.IGNORECASE) for p in INERT_COMMANDS):
+            continue
+        else:
+            return False
+    return has_search
 
 
 # ============================================================================
