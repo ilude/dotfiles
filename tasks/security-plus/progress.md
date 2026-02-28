@@ -9,8 +9,9 @@
 **Persistent gaps (missed 2x+ in S10)**: CASB (2x), NIST CSF (2x), DPIA/RoPA (2x), MSA (3x total)
 **Other gaps**: ABAC, adaptive auth, PCI scope, SCA, replay vs session hijacking, port numbers (LDAPS 636)
 **Newly confirmed strong**: Race condition, buffer overflow, fileless malware, RAID 10, IR phases, data states, WAF vs IPS, risk transference, governance docs, tabletop exercise, physical destruction, EOL/compensating controls
-**Trajectory**: 85% → 54% → 70% → 67% → 60% → 75% → 83% → 73% → 55% → 73%
-**Session 11**: 73% (30/41 solid, 1 lucky, 3 voided) — largest session. Swept untested areas, drilled persistent gaps, assessed previously untouched objectives (4.2 asset mgmt, 4.9 forensic data sources). Recovered 4 S10 misses. New misses: adaptive auth (2x), pass the ticket, DNS tunneling, SaaS session persistence, data sanitization. No-priming rule elevated to CRITICAL after 4 violations. 6 research agents compiled alternate question angles into notes.md for all gap areas + fragile-correct topics.
+**Trajectory**: 85% → 54% → 70% → 67% → 60% → 75% → 83% → 73% → 55% → 73% → 71%
+**Session 12**: 71% (10/14 solid, 1 lucky, 1 voided). CASB cold-verified (first clean hit after 3x wrong). Adaptive auth recovered. DNS tunneling, 800-171, data sanitization all recovered. New misses: CVE vs CVSS, ATT&CK vs Diamond. Persistent: pass the ticket (2x), DPIA vs RoPA (3x). 4 "knew cold" false-confidence misses — most dangerous pattern.
+**Session 11**: 73% (30/41 solid, 1 lucky, 3 voided) — largest session. Swept untested areas, drilled persistent gaps, assessed previously untouched objectives (4.2 asset mgmt, 4.9 forensic data sources). Recovered 4 S10 misses. 6 research agents compiled alternate question angles into notes.md.
 
 ---
 
@@ -123,23 +124,27 @@ Ranked by domain weight × weakness severity. Items marked (acronym) are termino
 - **Secret scanning** — locked in S7. AKIA prefix = AWS key in code. (3.2)
 
 ### High Priority — Persistent misses (wrong 2x+)
-1. **4.6** (28%) — Adaptive auth — **wrong 2x** (S10: picked zero trust, S11: picked conditional access). "Real-time risk adjustment" = adaptive. "Admin IF/THEN rules" = conditional access. "Philosophy" = zero trust.
-2. **3.1** (18%) — CASB — **wrong 3x + 1 voided** (S10: DLP, CSPM; S11: SWG; S11: primed). Still not cold-verified.
-3. **5.1** (20%) — NIST 800-53 vs 800-171 — wrong S11. "Federal + catalog" = 800-53, "contractor + CUI" = 800-171. CSF ✓ (reasoned).
-4. **2.4** (22%) — DNS tunneling vs domain fronting — wrong S11. "Encoded subdomains" = tunneling, "legit domain as cover" = fronting.
+1. **5.5** (20%) — DPIA vs RoPA — **wrong 3x** (S10, S11, S12: keeps picking RoPA). "Before launch + new system + evaluation" = DPIA. "Ongoing registry of all processing" = RoPA.
+2. **2.4** (22%) — Pass the ticket — **wrong 2x** (S11, S12: keeps picking pass the hash). Both with false "knew cold" confidence. "Kerberos TGT" = ticket = PtT. "NTLM hash" = PtH. Mimikatz extracts both — artifact determines attack, not tool.
+3. **2.4** (22%) — ATT&CK vs Diamond — wrong S12 (picked Diamond). "Compare techniques between groups" + "knowledge base" = ATT&CK. "Link by shared elements" = Diamond.
+4. **4.3** (28%) — CVE vs CVSS — wrong S12 (picked CVE, said "knew cold"). "Score of 9.1" = CVSS. "CVE-2024-XXXX" = CVE identifier. Read what's ASKED, not what appears in question.
 
 ### Recovering — Correct but needs cold confirmation
-5. **5.3** (20%) — MSA ✓ S11 (educated — first correct after 3x wrong).
-6. **5.5** (20%) — DPIA ✓ + RoPA ✓ S11 (both educated).
-7. **1.1** (12%) — ABAC ✓ S11 (reasoned). MAC ✓ S11 (cold).
-8. **3.1** (18%) — SASE vs SSE — wrong S11 but CASB/ZTNA individual components recovering.
-9. **4.6** (28%) — SaaS session persistence — wrong S11. IdP disable ≠ app session revocation.
+5. **3.1** (18%) — CASB ✓ S12 (knew cold — **first clean unprimed hit** after 3x wrong). Cold-verified.
+6. **4.6** (28%) — Adaptive auth ✓ S12 (educated — impossible travel). Recovered from 2x wrong.
+7. **2.4** (22%) — DNS tunneling ✓ S12 (knew cold). Recovered from S11 miss.
+8. **5.1** (20%) — NIST 800-171 ✓ S12 (knew cold). Recovered from S11 miss.
+9. **4.2** (28%) — Data sanitization/overwriting ✓ S12 (reasoned). Recovered from S11 miss.
+10. **5.3** (20%) — MSA ✓ S12 (reasoned). Continuing recovery from 3x wrong.
+11. **1.1** (12%) — ABAC ✓ S11 (reasoned). MAC ✓ S11 (cold).
+12. **3.1** (18%) — SASE vs SSE — wrong S11 but CASB/ZTNA individual components now solid.
+13. **4.6** (28%) — SaaS session persistence — wrong S11. IdP disable ≠ app session revocation.
 
 ### Medium Priority — Lucky or not re-tested
-10. **2.5** (22%) — Kill chain phases — correct but lucky S10.
-11. **3.2** (18%) — SLSA — correct but lucky S11. "Build provenance" = SLSA, "ingredient list" = SBOM.
-12. **2.4** (22%) — Pass the ticket vs pass the hash — wrong S11. "Kerberos ticket" vs "NTLM hash."
-13. **PBQ** — Email ports wrong S11 (retrieval = 993+995, sending = 587).
+14. **2.5** (22%) — Kill chain phases — correct but lucky S10.
+15. **3.2** (18%) — SLSA — correct but lucky S11. "Build provenance" = SLSA, "ingredient list" = SBOM.
+16. **2.4** (22%) — Domain fronting — correct but lucky S12. CDN + Host/SNI mismatch.
+17. **PBQ** — Email ports wrong S11 (retrieval = 993+995, sending = 587).
 
 ### Confirmed Strong from S11
 - Container hardening, serverless least privilege (cold), serverless shared responsibility (cold)

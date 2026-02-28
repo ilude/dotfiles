@@ -59,19 +59,14 @@ Additional pattern: real-world experience can conflict with exam answers. The ex
 ## Current Phase
 
 **Phase**: Day 2 — Final Gap Drilling
-**Status**: Eleven sessions complete (41 questions in S11). Trajectory: 85% → 54% → 70% → 67% → 60% → 75% → 83% → 73% → 55% → 73%. All objectives now assessed. Recovered 4 S10 misses. 4.9 forensic data sources confirmed strong. Gap is narrowing to ~8 specific items.
-**Next action**: Drill remaining gaps below, then practice exam readiness.
+**Status**: Twelve sessions complete. Trajectory: 85% → 54% → 70% → 67% → 60% → 75% → 83% → 73% → 55% → 73% → 71%. S12 cold-verified CASB and recovered adaptive auth, DNS tunneling, 800-171, data sanitization. New pattern: 4 "knew cold" false-confidence misses — most dangerous error type.
+**Next action**: Drill the 4 remaining high-priority gaps, then practice exam.
 
 **Persistent gaps (wrong 2x+ — highest priority):**
-1. **Adaptive auth** — wrong 2x (S10: zero trust, S11: conditional access). "Real-time risk adjustment" = adaptive.
-2. **CASB** — wrong 3x + 1 voided. Not yet cold-verified. "Named unauthorized cloud apps" = CASB.
-
-**Wrong once — needs re-test:**
-3. **NIST 800-53 vs 800-171** — "Federal + catalog" = 800-53. "Contractor + CUI" = 800-171.
-4. **DNS tunneling vs domain fronting** — "Encoded subdomains" = tunneling. "Legit domain as cover" = fronting.
-5. **Pass the ticket vs pass the hash** — "Kerberos ticket" vs "NTLM hash."
-6. **SaaS session persistence** — Disabling IdP ≠ killing app session.
-7. **Data sanitization** — "Reuse without encryption stated" = overwriting, not crypto erasure.
+1. **DPIA vs RoPA** — wrong 3x (S10, S11, S12). "Before launch + new system" = DPIA. "Ongoing registry" = RoPA.
+2. **Pass the ticket** — wrong 2x (S11, S12). Both false "knew cold." Artifact determines attack, not tool.
+3. **ATT&CK vs Diamond** — wrong S12. "Compare groups" = ATT&CK. "Link by shared elements" = Diamond.
+4. **CVE vs CVSS** — wrong S12 (false "knew cold"). "Score" = CVSS. "Identifier" = CVE.
 
 **Recovering (correct but educated):**
 8. MSA, DPIA/RoPA, SASE/SSE components, SCA, SLSA (lucky).

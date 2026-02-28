@@ -493,7 +493,55 @@ Launched 6 parallel research agents to find varied exam question angles for pers
 
 All compiled into `notes.md` under "Exam Question Angle Variations (Research — S11)."
 
-**Next session**: CASB cold (no announcement), adaptive auth, DNS tunneling vs domain fronting, pass the ticket vs pass the hash. Practice exam readiness check.
+---
+
+## 2026-02-27: Mixed Cold Drilling (Day 2, Session 12)
+
+**Duration**: ~20m
+**Phase**: Gap drilling + cold verification, mixed topics
+**Questions asked**: 15 (14 scored, 1 voided as repeat)
+
+### Correct (10 solid + 1 lucky):
+- CASB (knew cold) — **first clean unprimed hit**. Shadow IT + personal cloud + unauthorized SaaS.
+- Adaptive auth (educated) — impossible travel (NYC → Moscow in 32 min). **Recovered from 2x wrong.**
+- DNS tunneling (knew cold) — encoded subdomains + periodic intervals. **Recovered from S11 miss.**
+- NIST 800-171 (knew cold) — contractor + CUI + derived from larger catalog. **Recovered from S11 miss.**
+- Data sanitization/overwriting (reasoned) — donate + not encrypted = overwrite. **Recovered from S11 miss.**
+- CSPM (knew cold) — misconfigured buckets + overly permissive SGs across multi-cloud.
+- MSA (reasoned) — umbrella legal framework + individual projects defined separately.
+- ZTNA (reasoned) — replacing VPN, per-app access, not on corporate network.
+- Memory dump first (knew cold) — order of volatility, RAM before disk.
+- Domain fronting (**lucky**) — CDN + Host header mismatch + trusted SNI field.
+
+### Wrong (4):
+- **Pass the ticket** — picked pass the hash (2x wrong now). "Kerberos TGTs" = tickets = PtT. Mimikatz extracts BOTH. Confidence: "knew cold" — dangerous false confidence.
+- **DPIA vs RoPA** — picked RoPA (3x wrong now). "Before launch" + "evaluation" + "new system" = DPIA. RoPA = ongoing ledger.
+- **CVE vs CVSS** — picked CVE. "Score of 9.1" = CVSS. CVE is the identifier (CVE-2024-XXXX). Confidence: "knew cold."
+- **ATT&CK vs Diamond** — picked Diamond. "Compare techniques between APT groups" + "knowledge base" = ATT&CK. Diamond = relationships between elements.
+
+### Voided (1):
+- SaaS session persistence — repeat of S11 question concept.
+
+### Score: 10/14 solid = 71% (+ 1 lucky)
+
+### Trajectory: 85% → 54% → 70% → 67% → 60% → 75% → 83% → 73% → 55% → 73% → 71%
+
+### Key improvements:
+- **CASB** — cold-verified for first time after 3x wrong + 1 voided. Biggest win.
+- **Adaptive auth** — recovered from 2x wrong. Impossible travel = adaptive.
+- **DNS tunneling** — recovered from S11 miss. Encoded subdomains locked in.
+- **NIST 800-171** — recovered from S11 miss. Contractor + CUI = 800-171.
+- **Data sanitization** — recovered from S11 miss. Reuse + no encryption = overwrite.
+- **MSA** — continuing recovery. Reasoned correctly.
+
+### Persistent gaps after S12:
+- **Pass the ticket** — 2x wrong, both "knew cold" false confidence. Mimikatz trap: tool doesn't determine attack, ARTIFACT does.
+- **DPIA vs RoPA** — 3x wrong now (S10, S11, S12). "Before launch" = DPIA keeps being missed.
+- **CVE vs CVSS** — new miss. "Score" = CVSS, "identifier" = CVE. Read what's being asked, not what appears in the question.
+- **ATT&CK vs Diamond** — new confusion. "Compare groups" = ATT&CK. "Link by shared elements" = Diamond.
+- **Domain fronting** — correct but lucky. CDN + Host/SNI mismatch needs cold confirmation.
+
+**Next session**: Practice exam readiness. Re-drill: pass the ticket, DPIA, CVE vs CVSS, ATT&CK vs Diamond.
 
 ---
 

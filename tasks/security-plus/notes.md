@@ -66,7 +66,7 @@ Running notes from study sessions. Grows over time. Review before exam.
 
 **#7c — MAC/DAC/RBAC/ABAC ("who decides?")**: MAC (Mandatory Access Control) = system-enforced labels + clearances, NO user override. "Top Secret label" = MAC. DAC (Discretionary Access Control) = owner decides who gets access. Windows NTFS permissions = DAC. RBAC (Role-Based Access Control) = access by job role. "All HR staff get HR files." ABAC (Attribute-Based Access Control) = policy engine evaluates multiple attributes (time, location, device, department). Decision rule: "labels + no override" = MAC. "Owner shares" = DAC. "Job role" = RBAC. "Multiple conditions" = ABAC.
 
-**#7b — RoPA vs PIA/DPIA ("ledger vs assessment")**: RoPA (Record of Processing Activities) = mandatory GDPR ongoing registry of ALL data processing (what, why, retention, sharing). Article 30. PIA/DPIA (Privacy/Data Protection Impact Assessment) = one-time risk assessment BEFORE launching a new high-risk project. Decision rule: "ongoing record of all activities" = RoPA. "New project risk assessment" = PIA/DPIA.
+**#7b — RoPA vs PIA/DPIA ("ledger vs assessment") — wrong S10, S11, S12**: RoPA (Record of Processing Activities) = mandatory GDPR ongoing registry of ALL data processing (what, why, retention, sharing). Article 30. PIA/DPIA (Privacy/Data Protection Impact Assessment) = one-time risk assessment BEFORE launching a new high-risk project. Decision rule: "ongoing record of all activities" = RoPA. "New project risk assessment" = PIA/DPIA. **PERSISTENT TRAP**: "before launch" + "evaluation" + "new system" = ALWAYS DPIA. Do NOT pick RoPA just because data processing is involved. RoPA = what you ALREADY do. DPIA = risk of what you're ABOUT TO do. Biometric data explicitly triggers DPIA (GDPR Article 35).
 
 **#7a — CWPP vs CNAPP ("bodyguard vs command center")**: CWPP (Cloud Workload Protection Platform) = protects what's RUNNING (containers, VMs, serverless). Runtime protection, image scanning, process monitoring. CNAPP (Cloud-Native Application Protection Platform) = unified platform that COMBINES CSPM+CWPP+CASB into one console. Exam rule: if the scenario describes only workload protection → CWPP. If it says "single consolidated platform" → CNAPP. The exam wants the MOST SPECIFIC answer, not the umbrella term.
 
@@ -240,12 +240,13 @@ Script tag visible? → XSS. User unknowingly submits a request? → CSRF.
 - **SLSA (Supply-chain Levels for Software Artifacts)** — "salsa." Build pipeline integrity framework. Verifiable provenance. "How was it built?" = SLSA.
 - Decision rule: "what's inside" = SBOM. "How it was built / build integrity" = SLSA.
 
-### Kerberos attack cluster — pass the ticket vs pass the hash (wrong S11)
+### Kerberos attack cluster — pass the ticket vs pass the hash (wrong S11 + S12)
 - **Pass the ticket** — steal Kerberos TICKET (TGT/TGS) from memory, inject into session. "Kerberos" + "ticket" = pass the ticket.
 - **Pass the hash** — steal NTLM HASH, authenticate directly. No Kerberos. "NTLM" + "hash" = pass the hash.
 - **Golden ticket** — FORGE a TGT using stolen krbtgt hash. Unlimited domain access. "Forged" + "krbtgt" = golden ticket.
 - **Kerberoasting** — request service tickets, CRACK offline. "Offline cracking" + "service account" = Kerberoasting.
 - Decision rule: look for "ticket" vs "hash" in the scenario. They use different credential types entirely.
+- **TRAP: Mimikatz extracts BOTH hashes AND tickets.** Don't assume "Mimikatz = pass the hash." Read what artifact was extracted. "TGT" = ticket = pass the ticket. "NTLM hash" = pass the hash. The tool doesn't determine the attack — the ARTIFACT does.
 
 ### Adaptive auth vs conditional access vs zero trust (wrong 2x)
 - **Adaptive authentication** — system dynamically changes requirements based on real-time risk signals (location, device, behavior). "Same user, different context, different response" = adaptive.
@@ -1438,7 +1439,7 @@ Your current rule works. These are the tricky angles:
 | "Security configuration checklist/benchmark" | XCCDF (Extensible Configuration Checklist Description Format) |
 | "Automated compliance + scanning umbrella" | SCAP (Security Content Automation Protocol) |
 
-**CVE vs CVSS** — exam loves this pair. CVE = the IDENTIFIER. CVSS = the SCORE. "Assigned CVE-2024-12345" = CVE. "Scored 9.8 Critical" = CVSS.
+**CVE vs CVSS (wrong S12 — said "knew it cold")** — exam loves this pair. CVE = the IDENTIFIER. CVSS = the SCORE. "Assigned CVE-2024-12345" = CVE. "Scored 9.8 Critical" = CVSS. TRAP: The question may mention a CVE number AND a score in the same scenario. Read what's being ASKED — "what provides the severity rating?" = CVSS, even though CVE appears in the question.
 
 **STIX format vs TAXII transport** — independent standards. "Structure of threat data" = STIX. "Protocol that carries threat data" = TAXII. TAXII can carry non-STIX data.
 
