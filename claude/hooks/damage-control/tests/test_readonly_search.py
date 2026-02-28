@@ -600,6 +600,128 @@ class TestFindCommand:
 
 
 # ============================================================================
+# Inert command handling (cd, pushd, export, etc.)
+# ============================================================================
+
+
+class TestInertCommands:
+    """Verify that inert commands (cd, pushd, export, etc.) are transparent
+    to the read-only search check, allowing compound commands like
+    'cd /path && find ...' to pass.
+    """
+
+    def test_cd_then_find(self):
+        """cd followed by find must be recognized as read-only search."""
+        assert is_readonly_search_command(
+            'cd /c/Users/mglenn/.dotfiles && find onyx -type f -name ".env*" | head -50'
+        ) is True
+
+    def test_cd_then_grep(self):
+        assert is_readonly_search_command("cd /tmp && grep pattern file") is True
+
+    def test_pushd_then_rg(self):
+        assert is_readonly_search_command("pushd /src && rg pattern .") is True
+
+    def test_popd_then_find(self):
+        assert is_readonly_search_command('popd && find . -name "*.py"') is True
+
+    def test_export_then_grep(self):
+        assert is_readonly_search_command("export FOO=bar && grep FOO file") is True
+
+    def test_inert_only_no_search(self):
+        """Inert-only commands (no search pipeline) must NOT qualify."""
+        assert is_readonly_search_command("cd /tmp && export FOO=bar") is False
+
+    def test_cd_only(self):
+        """A lone cd is not a search command."""
+        assert is_readonly_search_command("cd /tmp") is False
+
+    def test_cd_then_dangerous(self):
+        """cd followed by a dangerous command must NOT be read-only."""
+        assert is_readonly_search_command("cd /tmp && rm -rf *") is False
+
+    def test_cd_then_cat_env(self):
+        """cd followed by cat .env must NOT be read-only (cat is not a search command)."""
+        assert is_readonly_search_command("cd /tmp && cat .env") is False
+
+    def test_multiple_cd_then_search(self):
+        assert is_readonly_search_command("cd /a && cd /b && grep pattern file") is True
+
+    def test_bash_noop_then_search(self):
+        assert is_readonly_search_command(": && grep foo bar") is True
+
+    def test_true_then_search(self):
+        assert is_readonly_search_command("true && find . -name '*.py'") is True
+
+    def test_cd_then_find_env_not_blocked(self, full_config):
+        """The original false positive: cd + find with .env in name pattern."""
+        cmd = 'cd /c/Users/mglenn/.dotfiles && find onyx -type f \\( -name "*.ts" -o -name ".env*" \\) 2>/dev/null | head -50'
+        blocked, ask, reason, pattern, _, _ = check_command(cmd, full_config)
+        assert not blocked and not ask, (
+            f"False positive: cd + find with .env pattern\n"
+            f"  blocked={blocked}, ask={ask}, reason={reason}"
+        )
+
+    def test_cd_then_dangerous_still_caught(self, full_config):
+        """cd followed by an actual dangerous command must still be caught."""
+        cmd = "cd /tmp && helm upgrade release chart/"
+        blocked, ask, reason, pattern, _, _ = check_command(cmd, full_config)
+        assert blocked or ask, (
+            f"Dangerous command not caught after cd\n"
+            f"  command: {cmd}\n"
+            f"  blocked={blocked}, ask={ask}"
+        )
+
+
+class TestNewSearchCommands:
+    """Verify newly added search commands are recognized."""
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "ls -la /tmp",
+            "tree src/",
+            "stat file.txt",
+            "file image.png",
+            "du -sh /var",
+            "which python",
+            "readlink /usr/bin/python",
+            "realpath ./relative/path",
+            "diff file1.txt file2.txt",
+            "fd pattern .",
+            "git status",
+            "git branch -a",
+            "git remote -v",
+            "git tag --list",
+            "git rev-parse HEAD",
+            "git ls-files",
+            "git check-ignore file",
+            "git describe --tags",
+        ],
+    )
+    def test_new_search_commands_recognized(self, command):
+        assert _is_readonly_search_pipeline(command) is True
+
+
+class TestNewPipeTargetsExtended:
+    """Verify newly added pipe targets are recognized."""
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "find . -name '*.py' | basename",
+            "find . -name '*.py' | dirname",
+            "grep pattern file | paste -sd,",
+            "find . -type f | sha256sum",
+            "grep pattern file | strings",
+            "ls -la | stat",
+        ],
+    )
+    def test_new_pipe_targets_recognized(self, command):
+        assert _is_readonly_search_pipeline(command) is True
+
+
+# ============================================================================
 # --dry-run exemption
 # ============================================================================
 
