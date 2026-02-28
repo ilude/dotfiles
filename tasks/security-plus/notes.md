@@ -485,6 +485,20 @@ Script tag visible? → XSS. User unknowingly submits a request? → CSRF.
 
 ---
 
+## Exam Day: False Confidence Trap
+
+**Pattern from S12**: All 4 misses were marked "knew it cold" — the most dangerous error type. When you're SURE of a wrong answer, you won't second-guess yourself on the exam.
+
+**Topics where this happens most:**
+- **Pass the ticket vs pass the hash** — Mimikatz association triggers "pass the hash" automatically. STOP and read what ARTIFACT was stolen (ticket vs hash).
+- **CVE vs CVSS** — seeing "CVE-2024-XXXX" in the question triggers "CVE" even when they're asking about the SCORE (CVSS). Read what's being ASKED.
+- **ATT&CK vs Diamond** — both involve adversary analysis. "Compare groups' techniques" = ATT&CK. "Link incidents by shared elements" = Diamond.
+- **DPIA vs RoPA** — both involve GDPR data processing. "Before launch" = DPIA. "Ongoing registry" = RoPA.
+
+**Exam strategy**: On ANY question involving these pairs, pause and re-read the question TWICE. Your first instinct has been wrong repeatedly. Ask: "What EXACTLY is the question asking?" not "What topic do I recognize?"
+
+---
+
 ## Commonly Tested Port Numbers
 
 | Port | Service | | Port | Service |
