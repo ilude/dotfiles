@@ -2,14 +2,15 @@
 
 ## Overall Readiness
 
-**Status**: Day 2 drilling — 9 sessions complete, most research areas confirmed strong
-**Estimated score**: ~82% (weighted) — at passing threshold (750/900 = ~83%)
-**Last updated**: 2026-02-26
-**Key gap**: 4 items need drilling: ALE formula, Pyramid of Pain, agreement types (MSA/SOW), CRL/OCSP group
-**Secondary gap**: CWPP/CNAPP still lucky, zero trust vs NAC
-**Trajectory**: 85% (soft) → 54% (hard) → 70% → 67% → 60% → 75% → 83% → 73% (sampling new areas)
-**Session 8**: 83% (10/12 solid) — deception tech ✓ (2x miss → correct), UEBA ✓, BIA ✓, SAST ✓
-**Session 9**: 73% solid (11/15) — sampled 15 research areas. Most already known from experience. 4 real gaps found: ALE formula (wrong), Pyramid of Pain (wrong), agreement types (lucky), CRL/OCSP (lucky)
+**Status**: Day 2 drilling — 11 sessions complete, untested areas being swept
+**Estimated score**: ~80% (weighted) — near passing threshold (750/900 = ~83%)
+**Last updated**: 2026-02-27
+**Resolved from S9**: ALE ✓, Pyramid of Pain ✓, OCSP stapling ✓, CWPP ✓, zero trust vs NAC ✓
+**Persistent gaps (missed 2x+ in S10)**: CASB (2x), NIST CSF (2x), DPIA/RoPA (2x), MSA (3x total)
+**Other gaps**: ABAC, adaptive auth, PCI scope, SCA, replay vs session hijacking, port numbers (LDAPS 636)
+**Newly confirmed strong**: Race condition, buffer overflow, fileless malware, RAID 10, IR phases, data states, WAF vs IPS, risk transference, governance docs, tabletop exercise, physical destruction, EOL/compensating controls
+**Trajectory**: 85% → 54% → 70% → 67% → 60% → 75% → 83% → 73% → 55% → 71% (sweep + gap drill)
+**Session 11**: 71% (12/17) — swept untested areas then drilled persistent gaps. Shared responsibility cold across IaaS/SaaS/FaaS. MSA recovering (correct first time after 3x wrong). DPIA/RoPA pair both correct (educated). CASB still missing (3x wrong total — picked SWG this time). NIST 800-53 vs 800-171 confused.
 
 ---
 
@@ -17,10 +18,10 @@
 
 | Objective | Score | Last Assessed | Notes |
 |-----------|-------|---------------|-------|
-| 1.1 Compare security controls | Moderate | 2026-02-26 | Assessment ✓ but drill missed MAC vs DAC vs RBAC vs ABAC (lucky guess) |
+| 1.1 Compare security controls | Moderate | 2026-02-27 | MAC vs DAC missed S10 (picked DAC, answer MAC). Labels+no override=MAC, owner shares=DAC. |
 | 1.2 Summarize fundamental security concepts | Strong | 2026-02-26 | CIA triad — availability ✓ |
 | 1.3 Explain change management importance | Strong | 2026-02-26 | Impact analysis / peer review ✓ |
-| 1.4 Explain cryptographic solutions | Moderate | 2026-02-26 | Assessment ✓ (bcrypt). CRL correct but **lucky** (S9) — needs lock-in with OCSP/stapling/pinning group. |
+| 1.4 Explain cryptographic solutions | Moderate-Strong | 2026-02-27 | OCSP stapling ✓ (S10, educated). CRL/OCSP/stapling/pinning group now understood. |
 
 **Domain score**: Moderate — access control models and PKI revocation are gaps
 
@@ -33,7 +34,7 @@
 | 2.1 Compare threat actors and motivations | Moderate | 2026-02-26 | Assessment ✓ (APT) but drill missed MITRE ATT&CK vs Kill Chain vs Diamond vs NIST CSF (lucky guess) |
 | 2.2 Explain common threat vectors | Strong | 2026-02-26 | Drilled: attack type vs technique rule. Re-tested ✓ |
 | 2.3 Explain types of vulnerabilities | Moderate | 2026-02-26 | Assessment ✓ (SQLi) but drill missed stored XSS vs CSRF (educated guess) |
-| 2.4 Analyze indicators of malicious activity | Strong | 2026-02-26 | C2 beaconing ✓, SYN scan ✓. S9: credential stuffing ✓, password spraying ✓, downgrade attack ✓, DNS tunneling ✓. Pyramid of Pain missed (chose hashes, answer was TTPs). |
+| 2.4 Analyze indicators of malicious activity | Strong | 2026-02-27 | Pyramid of Pain ✓ (S10, knew cold — recovered from S9 miss). Password spraying ✓ (S10). SSL stripping ✓ (S10). All attack types strong. |
 | 2.5 Explain mitigation techniques | Moderate | 2026-02-26 | Assessment ✓ (segmentation) but drill missed kill chain phase for sandboxing (educated guess) |
 
 **Domain score**: Moderate-Strong — Diamond Model ✓, ATT&CK ✓, attack types strong (S9). Pyramid of Pain wrong (S9). Stored XSS vs CSRF and kill chain untested.
@@ -44,12 +45,12 @@
 
 | Objective | Score | Last Assessed | Notes |
 |-----------|-------|---------------|-------|
-| 3.1 Compare security architecture models | Moderate | 2026-02-26 | CSPM ✓. CWPP/CNAPP still lucky. PDP vs PEP: missed S8, correct S9 (reasoned — recovering). ZT vs NAC missed S6. SDN ✓ (S9, educated). ICS/SCADA/NIDS ✓ (S9, educated). |
-| 3.2 Apply security principles to infrastructure | Moderate-Strong | 2026-02-26 | SAST ✓ (S8, knew cold). Shared responsibility ✓ (S8, knew cold). Secret scanning ✓ (S7). SCA/SBOM not re-tested. |
+| 3.1 Compare security architecture models | Moderate-Strong | 2026-02-27 | CWPP ✓ (S10, reasoned). Zero trust vs NAC ✓ (S10). CSPM ✓, PDP ✓, SDN ✓, ICS/SCADA ✓. SASE vs SSE wrong S11 (didn't know either). CASB ✓ S11 (reasoned). ZTNA ✓ S11 (reasoned, but primed). SWG not yet tested individually. |
+| 3.2 Apply security principles to infrastructure | Moderate | 2026-02-27 | SAST ✓. SCA missed S10. IaC static analysis vs CSPM wrong S11 (picked CSPM, answer static analysis — "before deployment" = static). Container hardening ✓ S11 (reasoned). Admission controller ✓ S11 (educated). |
 | 3.3 Compare data protection concepts | Strong | 2026-02-26 | Drilled: "Pseudo = sharing out, Token = keeping in." Re-tested ✓. But missed hosted payment fields vs tokenization for PCI scope. |
 | 3.4 Explain resilience and recovery | Strong | 2026-02-26 | RPO vs RTO ✓, differential vs incremental backup ✓ (knew it cold) |
 
-**Domain score**: Moderate — cloud tools improving (CSPM ✓) but CWPP/CNAPP still lucky, PDP/PEP missed, zero trust vs NAC gap
+**Domain score**: Moderate — SASE/SSE cluster new (SASE missed, CASB/ZTNA recovering). IaC static analysis vs CSPM timing rule needed. Container/serverless concepts solid.
 
 ---
 
@@ -76,12 +77,12 @@
 | Objective | Score | Last Assessed | Notes |
 |-----------|-------|---------------|-------|
 | 5.1 Summarize governance, risk, and compliance | Strong | 2026-02-26 | Drilled: "Matrix for the menu, ALE for the bill." Re-tested ✓ |
-| 5.2 Explain risk management processes | Moderate-Strong | 2026-02-26 | Pentest scope ✓ (S7). BIA ✓ (S8). ALE formula **wrong** (S9) — missed ARO step. Needs drilling. |
-| 5.3 Summarize third-party risk assessment | Moderate-Strong | 2026-02-26 | SOC 2 Type I vs II ✓. NDA ✓ (S7, reasoned). MSA correct but **lucky** (S9) — agreement types need drilling. |
+| 5.2 Explain risk management processes | Strong | 2026-02-27 | ALE formula ✓ (S10, reasoned — recovered from S9 miss). Pentest scope ✓ (S10, knew cold). BIA ✓ (S8). |
+| 5.3 Summarize third-party risk assessment | Moderate | 2026-02-27 | MSA ✓ S11 (educated — first correct after 3x wrong). SOW ✓ (S10). MOU ✓ (S10). Recovering but not cold yet. |
 | 5.4 Summarize compliance and auditing | Strong | 2026-02-26 | Least privilege ✓, dual control vs separation of duties ✓ (educated guess), legal hold ✓ |
-| 5.5 Explain privacy and data protection | Moderate | 2026-02-26 | Assessment ✓ (GDPR erasure ✓) but drill missed RoPA vs PIA (educated guess) |
+| 5.5 Explain privacy and data protection | Moderate-Strong | 2026-02-27 | DPIA ✓ S11 (educated). RoPA ✓ S11 (educated). Both correct after S10 misses — recovering. Data owner ✓ (S10). Decision rule: "new project risk" = DPIA, "ongoing record" = RoPA. |
 
-**Domain score**: Moderate-Strong — ALE formula wrong (S9), agreement types lucky (S9), RoPA vs PIA untested. Pentest scope and BIA now strong.
+**Domain score**: Moderate-Strong — ALE ✓ (recovered). MSA vs MOU and RoPA vs DPIA are remaining gaps. Data governance roles improving.
 
 ---
 
@@ -121,31 +122,33 @@ Ranked by domain weight × weakness severity. Items marked (acronym) are termino
 - **NDA** — locked in S7. Sign before sharing proprietary docs. (5.3)
 - **Secret scanning** — locked in S7. AKIA prefix = AWS key in code. (3.2)
 
-### High Priority — Needs Drilling (wrong or lucky in S9)
-1. **5.2** (20%) — ALE/SLE/ARO formula — **wrong** S9. ALE = AV × EF × ARO. Ignore revenue distractors.
-2. **2.4** (22%) — Pyramid of Pain — **wrong** S9. TTPs at top (hardest to change), hashes at bottom (trivial).
-3. **5.3** (20%) — Agreement types (MSA/SOW/MOU/BPA) — **lucky** S9. "MSA = umbrella, SOW = specific deliverables."
-4. **1.4** (12%) — CRL/OCSP/stapling/pinning — **lucky** S9. "List = CRL, live query = OCSP, server includes = stapling."
-5. **3.1** (18%) — CWPP/CNAPP — still **lucky** (S7, not re-tested S9). Need concept lock-in.
-6. **3.1** (18%) — Zero trust vs NAC — missed S6, not re-tested. NAC = gate at door, ZT = every resource.
+### High Priority — Persistent misses
+1. **3.1** (18%) — CASB — **wrong 3x total** (S10: DLP, CSPM; S11: SWG). "Named unauthorized cloud apps / shadow IT" = always CASB.
+2. **5.1** (20%) — NIST frameworks — CSF ✓ S11 (reasoned), but 800-53 vs 800-171 wrong S11. "Federal + catalog + impact levels" = 800-53, "contractor + CUI" = 800-171.
+3. **4.6** (28%) — Adaptive auth — wrong S10 (picked zero trust). Not re-tested S11.
+4. **3.3** (18%) — PCI scope — wrong S10. Not re-tested S11.
+5. **3.2** (18%) — SCA — wrong S10. IaC static analysis vs CSPM wrong S11. "Before deployment" = static analysis.
+6. **3.1** (18%) — SASE vs SSE — wrong S11. SASE = networking + security. SSE = security only.
 
-### Medium Priority — Not Re-tested
-7. **5.5** (20%) — Data governance roles: data owner vs custodian vs steward vs controller/processor.
-8. **5.5** (20%) — RoPA vs PIA/DPIA.
-9. **3.1** (18%) — CASB — not re-tested since lucky guess in S2.
-10. **3.2** (18%) — SCA/DAST/IAST/SBOM — SAST ✓ but others not re-tested.
-11. **3.3** (18%) — PCI scope methods — not re-tested.
-12. **2.3** (22%) — Stored XSS vs CSRF — not re-tested. Reflected/DOM XSS ✓.
-13. **2.5** (22%) — Kill chain phase mapping — not re-tested.
+### Recovering — Correct S11 but educated guesses
+7. **5.3** (20%) — MSA ✓ S11 (educated — first correct after 3x wrong). Needs cold confirmation.
+8. **5.5** (20%) — DPIA ✓ + RoPA ✓ S11 (both educated). Decision rule working but not cold.
+9. **1.1** (12%) — ABAC ✓ S11 (reasoned, recovering from S10 miss).
 
-### Lower Priority (not re-tested)
-14. **1.1** (12%) — MAC/DAC/RBAC/ABAC.
-15. **5.1** (20%) — NIST SP 800-53 vs NIST CSF vs ISO 27001 vs CIS Controls.
+### Medium Priority — Lucky or not re-tested
+10. **2.5** (22%) — Kill chain phases — correct but lucky S10. Needs solid re-test.
+11. **PBQ** — Email ports wrong S11 (retrieval = 993+995, sending = 587). Port 853 DoT ✓ educated.
 
-### Research Areas (not yet tested)
-16. **3.1** (18%) — Container/serverless security, IaC scanning, supply chain (SBOM/SLSA).
-17. **4.6** (28%) — Conditional access, adaptive/continuous auth. PAM/JIT ✓.
-18. PBQ topics — log analysis, wireless config, cert tasks, port numbers. Firewall rules ✓.
+### Confirmed Strong from S11
+- Container hardening (reasoned), serverless least privilege (cold), serverless shared responsibility (cold)
+- IaaS shared responsibility (cold), SaaS shared responsibility (cold)
+- Admission controller (educated), RDP port 3389 (cold), ABAC (reasoned)
+
+### Still Untested
+- SWG (never quizzed cold)
+- Supply chain (SBOM/SLSA)
+- Replay vs session hijacking, adaptive auth re-test, PCI scope re-test
+- PBQ topics — log analysis, wireless config, cert tasks. Firewall rules ✓.
 
 ### Confirmed Strong from S9 Sampling (moved from research/untested)
 - **Downgrade attacks** — knew cold (2.4)
@@ -158,3 +161,20 @@ Ranked by domain weight × weakness severity. Items marked (acronym) are termino
 - **Compensating controls for ICS** — knew cold (1.1)
 - **Pass the ticket** — knew cold (2.4)
 - **UEBA** — educated (4.4)
+- **ALE formula** — locked in S10. AV × EF = SLE, SLE × ARO = ALE. (5.2)
+- **Pyramid of Pain** — locked in S10. Knew cold. TTPs at top, hashes at bottom. (2.4)
+- **OCSP stapling** — locked in S10. Server pre-fetches OCSP response, eliminates client latency. (1.4)
+- **CWPP** — locked in S10. Reasoned. Runtime container/workload protection. "Most specific answer" over CNAPP. (3.1)
+- **Zero trust vs NAC** — locked in S10. Reasoned. "Already on network, no further checks" = ZT violation. (3.1)
+- **Stored XSS** — knew cold S10. Persists in DB, hits all viewers. (2.3)
+- **Password spraying** — knew cold S10. One password, many accounts, spaced out. (2.4)
+- **SSL stripping** — locked in S10. Reasoned. Downgrade HTTPS→HTTP. (2.2)
+- **Pentest scope** — re-confirmed S10. Knew cold. (5.2)
+- **SOW under MSA** — locked in S10. Reasoned. Specific deliverables under umbrella. (5.3)
+- **MOU** — locked in S10. Knew cold. Non-binding, government agencies, no payment. (5.3)
+- **Data owner** — locked in S10. Educated. Decides classification + retention. (5.5)
+- **CSRF** — locked in S10. Reasoned. "Rides victim's session from different site." (2.3)
+- **SSL stripping** — locked in S10. Reasoned. Downgrade HTTPS→HTTP. (2.2)
+- **DAST** — locked in S10. Reasoned. "Running app, from outside, no code." (3.2)
+- **CSPM** — re-confirmed S10. Educated. Cloud misconfigs. (3.1)
+- **MAC** — recovering S10. Wrong first, correct on re-test. Labels + no override. (1.1)

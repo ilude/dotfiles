@@ -48,6 +48,28 @@ Running notes from study sessions. Grows over time. Review before exam.
 
 **#6 — Pyramid of Pain (bottom = trivial, top = painful)**: Hash values → IP addresses → Domain names → Network/Host artifacts → Tools → TTPs (Tactics, Techniques, and Procedures). TTPs are at the TOP = hardest for attackers to change. Hash values at the BOTTOM = trivial to change (just recompile). "Hardest to modify" = TTPs. "Easiest to change" = hashes.
 
+**#7k — Port numbers ("know cold for PBQs")**: 21=FTP, 22=SSH, 23=Telnet, 25=SMTP, 53=DNS, 80=HTTP, 88=Kerberos, 110=POP3, 143=IMAP, 389=LDAP, 443=HTTPS, 445=SMB, 587=SMTP submission, **636=LDAPS**, 993=IMAPS, 995=POP3S, 1433=MSSQL, 3306=MySQL, **3389=RDP**. Pattern: secure versions add to the base port (389→636, 143→993, 110→995).
+
+**#7j — Replay vs session hijacking vs pass the hash**: Replay = captures auth token, resends it LATER. "Recorded and played back." Session hijacking = takes over a LIVE session in progress. "Steals active session cookie." Pass the hash = captured NTLM/Kerberos hash used to auth to Windows. Decision rule: "captures + resends later" = replay. "Takes over active session" = hijacking. "Windows auth hashes" = pass the hash.
+
+**#7i — Order of Volatility ("CPU first, tape last")**: Most volatile → least: CPU registers/cache → RAM → network state → swap/page file → hard drive → remote logs → archival media. Decision rule: start at CPU, work outward to disk then offsite. Swap file is ON DISK — less volatile than RAM. "Collect most volatile first" = CPU registers.
+
+**#7h — PCI scope ("reduced, never removed")**: If you accept card payments, PCI DSS compliance is NEVER eliminated — even with hosted payment fields (iframe from provider). Hosted fields = reduced scope (SAQ A, lightest level, ~22 questions). Tokenization = also reduces scope but differently. Liability is shared, never fully transferred. Decision rule: "Never touch card data" = reduced scope (SAQ A), NOT eliminated.
+
+**#7g — Adaptive auth vs zero trust ("mechanism vs philosophy")**: Adaptive authentication (aka risk-based / conditional access) = dynamically adjusts auth requirements + access level based on context (device, location, behavior). "Same user, different context → different experience." Zero trust = the broad architecture philosophy ("never trust, always verify"). Adaptive auth is a MECHANISM inside zero trust. Decision rule: "different access levels based on context signals" = adaptive auth. "Every resource always verified" (general philosophy) = zero trust.
+
+**#7f — CASB vs DLP ("apps vs data")**: CASB (Cloud Access Security Broker) = discovers + controls CLOUD APPS. Shadow IT, risk-score apps, block unauthorized SaaS. Sits between users and cloud. DLP (Data Loss Prevention) = prevents sensitive DATA from leaving. SSNs in email, PII uploads. Decision rule: "unauthorized apps / shadow IT" = CASB. "Sensitive data exfiltration" = DLP. CASB controls the apps, DLP controls the data.
+
+**#7e — NIST CSF vs 800-53 vs ISO 27001 vs CIS ("what level?")**: NIST CSF (Cybersecurity Framework) = voluntary, 5 functions (Identify/Protect/Detect/Respond/Recover), strategic risk language. NIST SP 800-53 = prescriptive catalog of 1000+ specific controls, mandatory for US federal (FISMA). ISO 27001 = certifiable international ISMS standard, auditable. CIS Controls = prioritized list of ~18 practical security actions. Decision rule: "five functions" = CSF. "Specific controls catalog" = 800-53. "Certification/audit" = ISO 27001. "Prioritized practical list" = CIS.
+
+**#7d — SCA/SAST/DAST/IAST ("what are you scanning?")**: SCA (Software Composition Analysis) = scans DEPENDENCIES for known CVEs. "Third-party libraries + NVD" = SCA. SAST (Static Application Security Testing) = scans YOUR source code, not running. White-box. DAST (Dynamic Application Security Testing) = attacks running app from outside. Black-box. IAST (Interactive Application Security Testing) = agent INSIDE running app during testing. Decision rule: dependencies = SCA, your code = SAST, running app from outside = DAST, agent inside running app = IAST.
+
+**#7c — MAC/DAC/RBAC/ABAC ("who decides?")**: MAC (Mandatory Access Control) = system-enforced labels + clearances, NO user override. "Top Secret label" = MAC. DAC (Discretionary Access Control) = owner decides who gets access. Windows NTFS permissions = DAC. RBAC (Role-Based Access Control) = access by job role. "All HR staff get HR files." ABAC (Attribute-Based Access Control) = policy engine evaluates multiple attributes (time, location, device, department). Decision rule: "labels + no override" = MAC. "Owner shares" = DAC. "Job role" = RBAC. "Multiple conditions" = ABAC.
+
+**#7b — RoPA vs PIA/DPIA ("ledger vs assessment")**: RoPA (Record of Processing Activities) = mandatory GDPR ongoing registry of ALL data processing (what, why, retention, sharing). Article 30. PIA/DPIA (Privacy/Data Protection Impact Assessment) = one-time risk assessment BEFORE launching a new high-risk project. Decision rule: "ongoing record of all activities" = RoPA. "New project risk assessment" = PIA/DPIA.
+
+**#7a — CWPP vs CNAPP ("bodyguard vs command center")**: CWPP (Cloud Workload Protection Platform) = protects what's RUNNING (containers, VMs, serverless). Runtime protection, image scanning, process monitoring. CNAPP (Cloud-Native Application Protection Platform) = unified platform that COMBINES CSPM+CWPP+CASB into one console. Exam rule: if the scenario describes only workload protection → CWPP. If it says "single consolidated platform" → CNAPP. The exam wants the MOST SPECIFIC answer, not the umbrella term.
+
 **#7 — Agreement Types ("MSA is the umbrella, SOW is the rain")**: MSA (Master Service Agreement) = umbrella contract with general terms (pricing, duration, renewal, liability). SOW (Statement of Work) = specific project details, deliverables, SLAs under the MSA. MOU (Memorandum of Understanding) = non-binding intent. BPA (Blanket Purchase Agreement) = recurring purchases at pre-negotiated prices. "General terms, no deliverables" = MSA. "Specific deliverables and SLAs" = SOW.
 
 **#8 — Certificate Revocation ("List = CRL, Live query = OCSP")**: CRL (Certificate Revocation List) = client downloads a complete signed list of revoked serial numbers. OCSP (Online Certificate Status Protocol) = client queries CA in real-time for one cert. OCSP stapling = server pre-fetches its own OCSP response and includes it in TLS handshake. Certificate pinning = client hard-codes expected cert/key. "Downloads a list" = CRL. "Real-time query" = OCSP. "Server includes in handshake" = stapling. "Hard-coded expected cert" = pinning.
@@ -192,6 +214,38 @@ Script tag visible? → XSS. User unknowingly submits a request? → CSRF.
 - "Is this about scanning/assessing/compliance?" → **SCAP** (always)
 - "Is this about sharing threat intelligence between organizations?" → **STIX/TAXII**
 - STIX/TAXII never scan anything. SCAP never shares threat intel.
+
+### CASB vs DLP vs SWG vs CSPM — persistent confusion (wrong 3x)
+- **CASB (Cloud Access Security Broker)** — which CLOUD APPS users access. "Shadow IT," "unauthorized SaaS," "personal Dropbox," "unapproved tools."
+- **DLP (Data Loss Prevention)** — the DATA itself leaving. "Sensitive data," "credit card numbers," "classified files on USB."
+- **SWG (Secure Web Gateway)** — WEB BROWSING control. "Malicious websites," "URL filtering." Doesn't distinguish approved vs personal cloud apps.
+- **CSPM (Cloud Security Posture Management)** — YOUR cloud infrastructure config. "Misconfigured S3," "open security groups."
+- **CASB trigger**: employees using specific named cloud services not approved by IT = always CASB.
+
+### NIST 800-53 vs 800-171 vs CSF — three different things
+- **NIST 800-53** — master control catalog for federal systems. "Impact levels (low/mod/high)" + "control baselines" + "federal" = 800-53.
+- **NIST 800-171** — subset of 800-53 for non-federal systems handling CUI. "Contractor" + "CUI" + "DFARS" + "CMMC" = 800-171.
+- **NIST CSF** — strategic framework, five functions (Identify/Protect/Detect/Respond/Recover). "Board" + "maturity" + "strategic" = CSF.
+- Decision rule: federal + catalog = 800-53. Contractor + CUI = 800-171. Board + five functions = CSF.
+
+### CSPM vs IaC static analysis — timing matters
+- **IaC static analysis** — scans templates BEFORE deployment (shift-left). Catches misconfigs in code.
+- **CSPM (Cloud Security Posture Management)** — monitors AFTER deployment. Detects misconfigs in running cloud environments.
+- Decision rule: "before deployment" / "in the pipeline" = static analysis. "cloud environment" / "detect drift" = CSPM.
+- **CWPP (Cloud Workload Protection Platform)** — protects running workloads (VMs, containers). Not template analysis.
+
+### Email ports — retrieval vs sending
+- **Retrieval** (pulling mail to client): IMAP 143/993(TLS), POP3 110/995(TLS)
+- **Sending** (submitting mail): SMTP 25/587(TLS)
+- Decision rule: "retrieval" = 993 + 995. "sending" = 587. Don't mix them.
+
+### SASE vs SSE vs SD-WAN — converged cloud security
+- **SASE (Secure Access Service Edge)** = networking + security converged in the cloud. The whole package.
+  - SASE = SSE + SD-WAN
+- **SSE (Security Service Edge)** = just the security half of SASE (CASB + ZTNA + SWG). No networking.
+- **SD-WAN (Software-Defined Wide Area Network)** = just the networking half. No security stack.
+- **NGFW (Next-Generation Firewall)** = a single device/service, not a converged platform.
+- **Decision rule**: If the question mentions BOTH networking AND security functions converged → SASE. If only security services (CASB, ZTNA, SWG) → SSE.
 
 ### IDS vs IPS vs Firewall vs WAF — "which is BEST?"
 - **Firewall** — blocking by port/protocol/IP at network boundary
@@ -1106,3 +1160,80 @@ Security concerns: distributed attack surface, physical access to edge devices, 
 - **GDPR adequacy decisions** — EU Commission certifies countries with adequate data protection (Japan, UK, Canada). Transfers to non-adequate countries need SCCs (Standard Contractual Clauses) or BCRs (Binding Corporate Rules).
 - **US CLOUD Act** — US claims jurisdiction over data held by US companies even if stored abroad. Conflicts with other nations' sovereignty.
 - "Laws of the country where data is stored" = data sovereignty. "Configure cloud to specific region" = geographic restriction.
+
+---
+
+## Memory Aids for Persistent Confusion Areas
+
+### Cloud Security Tools: CASB vs CSPM vs CWPP vs DLP
+
+**Mental Model — "Who / How / What / Where":**
+- **CASB (Cloud Access Security Broker)** = **WHO** is accessing the cloud? The bouncer at the door between users and cloud apps. Key word: "broker" = middleman. It's a policy enforcement checkpoint sitting between your users and SaaS (Software as a Service) apps.
+- **CSPM (Cloud Security Posture Management)** = **HOW** is the cloud configured? The auditor checking for misconfigurations. Key word: "posture" = how you're standing (configured). "Is the S3 bucket public? Is encryption enabled?"
+- **CWPP (Cloud Workload Protection Platform)** = **WHAT** is running in the cloud? The bodyguard protecting VMs (Virtual Machines), containers, serverless. Think "CWPP is EDR (Endpoint Detection and Response) for cloud workloads." Key word: "workload" = the actual compute.
+- **DLP (Data Loss Prevention)** = **WHERE** is sensitive data going? The data watchdog. Doesn't care about cloud config or access — only cares about sensitive data at rest, in motion, in use. Key word: "loss" = data leaving.
+
+**Exam Decision Tree — When the question says "cloud security":**
+1. "Employee using unauthorized SaaS apps" or "shadow IT" or "policy between user and cloud" → **CASB**
+2. "Misconfigured cloud storage" or "compliance scan of cloud infrastructure" → **CSPM**
+3. "Protecting containers/VMs/serverless functions" or "runtime protection" → **CWPP**
+4. "Sensitive data being emailed/copied/exfiltrated" (no mention of cloud access brokering) → **DLP**
+5. "Combines CWPP + CSPM into one platform" → **CNAPP (Cloud-Native Application Protection Platform)**
+
+**Why you keep picking DLP when it's CASB:** DLP watches data. CASB watches the *door to cloud apps*. If the question mentions a user accessing a cloud service and you need to enforce policy on that access, it's CASB even if data protection is mentioned. CASB *includes* some DLP-like features but the distinguishing factor is: CASB = user-to-cloud-app gateway. DLP = data-centric, works anywhere (email, USB, network), not just cloud.
+
+### Security Frameworks: NIST CSF vs NIST SP 800-53 vs ISO 27001 vs CIS Controls
+
+**Mental Model — "Building a House":**
+- **NIST CSF (Cybersecurity Framework)** = The **blueprint/floor plan**. High-level, voluntary, tells you what rooms you need (Govern, Identify, Protect, Detect, Respond, Recover) but not how to build them. Starting point for any org. Key word: "framework" = structure, not specifics.
+- **NIST SP 800-53** = The **building code**. 900+ specific controls. Mandatory for US federal agencies. Prescriptive and exhaustive. Key word: "federal" = government mandate.
+- **ISO 27001** = The **home inspection certificate**. International, certifiable (auditors come verify). Establishes an ISMS (Information Security Management System). Key word: "certification" = third-party audit. Key word: "international."
+- **CIS Controls (Critical Security Controls/CIS CSC)** = The **prioritized to-do list**. Non-governmental, community-driven. Three Implementation Groups (IG1/IG2/IG3) sized by org maturity. Key word: "prioritized" = tells you what to do FIRST.
+
+**Exam Trigger Words:**
+| You see... | Pick... |
+|-----------|---------|
+| "voluntary," "starting point," "functions," "Identify/Protect/Detect/Respond/Recover" | **NIST CSF** |
+| "federal agency," "mandatory," "900+ controls," "prescriptive" | **NIST 800-53** |
+| "international," "certification," "ISMS," "audit," "globally recognized" | **ISO 27001** |
+| "prioritized," "implementation groups," "practical," "community-driven" | **CIS Controls** |
+
+**Why you keep picking 800-53 when it's CSF:** Both are NIST. The trap: 800-53 is detailed and specific (900+ controls). CSF is the high-level strategic framework (6 functions). If the question says "organization wants to establish a cybersecurity program" or "communicate risk posture to leadership" or "voluntary framework" — that's CSF, not 800-53. 800-53 is for when you already know your strategy and need the specific control catalog to implement it.
+
+### GDPR Documents: DPIA vs RoPA
+
+**Mnemonic — "RoPA = Registry, DPIA = Danger":**
+- **RoPA (Records of Processing Activities)** = Your **inventory/registry** of ALL data processing. GDPR Article 30. Ongoing. Every org that processes personal data must maintain one. Think: "RoPA = Rolodex of Processing Activities" — it's your master list.
+- **DPIA (Data Protection Impact Assessment)** = A **risk assessment** for HIGH-RISK processing only. GDPR Article 35. Done BEFORE starting a new high-risk project. Think: "DPIA = Danger Probe In Advance" — you only do it when there's danger (high risk to individuals).
+
+**Decision Rule:**
+- "What data do we process and why?" → **RoPA** (the catalog)
+- "Is this new project risky for people's privacy?" → **DPIA** (the risk check)
+- "Maintain ongoing documentation of all processing" → **RoPA**
+- "Assess impact before launching large-scale profiling/surveillance" → **DPIA**
+
+**Analogy — "RoPA is the inventory, DPIA is the safety inspection":**
+- A warehouse keeps an inventory (RoPA) of everything stored — always maintained, covers everything.
+- When bringing in hazardous materials (high-risk processing), you do a safety inspection (DPIA) BEFORE accepting them.
+- You always have the inventory. You only do the safety inspection for dangerous items.
+
+### Agreement Types: MSA vs SOW vs MOU vs BPA
+
+**Mental Model — "Hiring a Contractor to Remodel Your House":**
+- **MOU (Memorandum of Understanding)** = The **handshake**. "We'd like to work together." Informal, broad goals, generally NOT legally binding. Think: "MOU = Mostly Our Understanding" — just mutual intent, no teeth.
+- **MSA (Master Service Agreement)** = The **umbrella contract**. Sets the legal framework for the ENTIRE relationship — liability, IP, disputes, confidentiality, termination. Covers ALL future projects. Think: "MSA = Master = the boss contract that governs everything." You sign it once and it covers years of work.
+- **SOW (Statement of Work)** = The **specific job order** under the MSA. "For THIS project: these deliverables, this timeline, this price." Think: "SOW = Specific Order of Work." Each new project gets its own SOW but they all live under the MSA umbrella.
+- **BPA (Business Partnership Agreement/Blanket Purchase Agreement)** = The **partnership charter**. Defines how partners share profits, losses, responsibilities. Think: "BPA = Business Partners' Arrangement" — who owns what, who does what.
+
+**The MSA-SOW Relationship (this is the key exam trap):**
+MSA = umbrella. SOW = specific project under the umbrella. You don't renegotiate the MSA for each project. The MSA says "here are the legal terms for our whole relationship." The SOW says "here's what we're doing this month." If a question describes an overarching contract governing multiple future engagements → MSA, not SOW.
+
+**Exam Trigger Words:**
+| You see... | Pick... |
+|-----------|---------|
+| "informal," "mutual intent," "broad goals," "not binding" | **MOU** |
+| "overarching terms," "umbrella," "governs the relationship," "multiple projects" | **MSA** |
+| "specific deliverables," "timeline," "scope of work," "particular project" | **SOW** |
+| "partnership," "profit sharing," "shared responsibilities" | **BPA** |
+
+**Why you keep picking MOU when it's MSA:** Both are "agreements between parties." The key distinction: MOU is informal and non-binding (a handshake). MSA is a formal, legally binding contract that establishes the framework for all future work. If the question mentions legal terms, liability, IP rights, or governing future projects — that's MSA.

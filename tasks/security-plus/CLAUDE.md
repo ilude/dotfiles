@@ -52,29 +52,32 @@ The user has 30+ years in IT (since 1995). Core security concepts are strong —
 
 **Exam-critical implication**: On the real test, recognizing the acronym IS the question. Drill acronym-to-concept mapping hard.
 
+**Acronym cluster rule**: Getting one acronym right in a group does NOT verify the others. Each acronym is an independent recall target. For example, correctly identifying "OCSP" does not mean "CRL", "stapling", or "pinning" are known. Test and score each acronym individually. Never mark a topic cluster "strong" based on a single member — verify every member separately.
+
 Additional pattern: real-world experience can conflict with exam answers. The exam takes a strict, legalistic view (e.g., pentest scope is exactly what the contract says — no following attack paths out of scope even if discoverable). Flag these "exam vs. real world" distinctions when they arise.
 
 ## Current Phase
 
 **Phase**: Day 2 — Final Gap Drilling
-**Status**: Nine sessions complete. Trajectory: 85% → 54% → 70% → 67% → 60% → 75% → 83% → 73% (new areas). S9 sampled 15 research areas — most already known. Gap is now narrow: 4 drillable items.
-**Next action**: Drill the 4 confirmed gaps, then sweep remaining untested items:
+**Status**: Eleven sessions complete. Trajectory: 85% → 54% → 70% → 67% → 60% → 75% → 83% → 73% → 55% → 70%. S11 swept untested areas (containers, serverless, SASE/SSE, shared responsibility, ports) — mostly strong from experience, 3 new gaps found.
+**Next action**: Hammer persistent S10 gaps, then mop up remaining untested items.
 
-**Must drill (wrong or lucky in S9):**
-1. **ALE formula** — wrong S9. ALE = AV × EF × ARO. Ignore revenue distractors.
-2. **Pyramid of Pain** — wrong S9. TTPs at top (hardest), hashes at bottom (trivial).
-3. **Agreement types (MSA/SOW/MOU/BPA)** — lucky S9. "MSA = umbrella, SOW = specific deliverables."
-4. **CRL/OCSP/stapling/pinning** — lucky S9. "List = CRL, live query = OCSP, server includes = stapling."
+**Persistent gaps (missed 2x+ across sessions — highest priority):**
+1. **MSA** — wrong 3x total. "Legally binding + general terms + no deliverables" = MSA.
+2. **NIST CSF vs 800-53** — wrong 2x. "Five functions + board + strategic" = CSF, "control catalog" = 800-53.
+3. **DPIA/RoPA** — wrong 2x. "Ongoing record of all activities" = RoPA, "new project risk assessment" = DPIA.
+4. **CASB** — wrong 2x S10 (picked DLP, then CSPM). "Shadow IT / unauthorized apps" = CASB. Correct S11 (reasoned).
 
-**Still shaky (not re-tested in S9):**
-5. **CWPP / CNAPP** — still lucky from S7. Need concept lock-in.
-6. **Zero trust vs NAC** — missed S6, not re-tested.
+**New gaps from S11:**
+5. **SASE vs SSE** — wrong S11. SASE = networking + security. SSE = security only. SD-WAN = networking only.
+6. **Email ports** — wrong S11. Retrieval = 993 (IMAPS) + 995 (POP3S). Sending = 587 (SMTPS).
+7. **CSPM vs IaC static analysis** — wrong S11. "Before deployment" = static analysis. "Already deployed" = CSPM.
 
-**Medium priority (not re-tested):**
-7. CASB, SCA/DAST/IAST, stored XSS vs CSRF, data governance roles, RoPA vs PIA, PCI scope, kill chain phases, MAC/DAC/RBAC/ABAC, NIST frameworks.
+**Other gaps from S10 (not re-tested):**
+8. ABAC, adaptive auth, PCI scope, SCA, replay vs session hijacking, port 636 (LDAPS).
 
-**Remaining research areas (not yet tested):**
-8. Container/serverless/IaC, conditional access, PBQ topics (log analysis, wireless, certs, ports).
+**Still untested:**
+9. SWG (never quizzed cold), SBOM/SLSA, PBQ topics (log analysis, wireless config, cert tasks).
 
 Then build margin above 83% passing threshold.
 
@@ -87,7 +90,7 @@ Then build margin above 83% passing threshold.
 When quizzing the user:
 
 1. **ALWAYS EXPAND EVERY ACRONYM ON EVERY USE IN EXPLANATIONS AND COACHING** — This is the #1 rule. The user has 30+ years in IT but does NOT know many acronyms from the last 10 years. EVERY time you mention an acronym in an explanation, answer reveal, or coaching text, write it as "ACRONYM (Full Name)" — e.g., "CSPM (Cloud Security Posture Management)." No exceptions. No shorthand. If you've already expanded it once in the same message, expand it again anyway — repetition builds recognition. On wrong answers involving acronym groups, expand ALL acronyms in the group with one-line definitions. This rule has been violated repeatedly despite being stated — treat it as the highest priority instruction in this file. **HOWEVER: do NOT expand acronyms in questions or answer options** — the real exam uses bare acronyms and the user needs to practice recognizing them cold. Expand ONLY in the post-answer explanation/coaching.
-2. **Use AskUserQuestion** with 4 options per question (matches exam format)
+2. **Use AskUserQuestion** with 4 options per question (matches exam format). **Put the ENTIRE question scenario inside the `question` field** — text outside the tool call (in the assistant message) is not visible to the user in the UI. The question field must be self-contained.
 3. **One question at a time** — present question, evaluate answer, explain if wrong, then next
 4. **Exam-realistic questions** — scenario-based, not textbook definitions. Include distractor options that sound plausible
 5. **After each wrong answer** — brief explanation of correct answer + add to `notes.md`

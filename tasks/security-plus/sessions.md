@@ -289,6 +289,124 @@ The 73% reflects sampling brand-new areas. Core is solidifying — the remaining
 
 ---
 
+## 2026-02-27: Full Sweep Drilling (Day 2, Session 10)
+
+**Duration**: ~30m
+**Phase**: Gap drilling + medium-priority sweep
+**Questions asked**: 29 (14 solid + 2 lucky correct + 11 wrong + 2 voided = ~54% solid)
+
+### S9 Gaps — Resolved (5/6):
+- ALE formula ✓ (reasoned) — recovered from S9 miss
+- Pyramid of Pain ✓ (knew cold) — recovered from S9 miss
+- OCSP stapling ✓ (educated) — recovered from S9 lucky
+- CWPP ✓ (reasoned) — no longer lucky, confirmed with re-test
+- Zero trust vs NAC ✓ (reasoned) — recovered from S6 miss
+- MSA vs MOU — still struggling (wrong twice this session, picked MOU then BPA)
+
+### Newly Confirmed Strong:
+- Stored XSS, CSRF, password spraying, SSL stripping, pentest scope, MOU, data owner, CSPM, DAST, MAC (on re-test)
+
+### New Gaps Surfaced (wrong or lucky):
+- **MSA** — wrong TWICE (picked MOU, then BPA). "Legally binding + general terms + no deliverables" = MSA.
+- **ABAC** — wrong (picked DAC). "Multiple conditions must all be true" = ABAC.
+- **CASB** — wrong (picked DLP). "Shadow IT / unauthorized apps" = CASB.
+- **Adaptive auth** — wrong (picked zero trust). "Same user, different context → different experience" = adaptive auth.
+- **NIST CSF** — wrong (picked 800-53). "Five functions" = CSF, "control catalog" = 800-53.
+- **PCI scope** — wrong (picked eliminated). PCI is NEVER eliminated, only reduced (SAQ A).
+- **SCA** — wrong (picked IAST). "Dependencies + CVEs" = SCA.
+- **MAC/DAC** — wrong first, correct on re-test. Recovering.
+- **RoPA vs DPIA** — wrong. "Ongoing record" = RoPA.
+- **Kill chain** — correct but lucky. Needs re-test.
+
+### Trajectory: 85% → 54% → 70% → 67% → 60% → 75% → 83% → 73% → 54%
+The 54% reflects deliberately targeting every untested/weak area. Core knowledge (attacks, forensics, networking, IR) remains strong. The gap is now well-mapped: ~10 specific terminology/concept clusters need lock-in.
+
+### Continuation — Untested Area Sweep (18 more questions, 12/18 = 67%):
+
+**Correct (12)**:
+- Physical destruction (educated), EOL compensating controls (reasoned), race condition (knew cold)
+- Buffer overflow (knew cold), fileless malware (educated), risk transference (educated)
+- WAF vs IPS (knew cold), data states (reasoned), RAID 10 (knew cold)
+- IR phases - eradication (reasoned), governance docs - standard (reasoned), tabletop exercise (educated)
+
+**Wrong (6)**:
+- Order of volatility (picked swap, answer CPU registers) — swap is on disk, less volatile than CPU/RAM
+- Replay vs session hijacking (picked hijacking, answer replay) — "captures + resends later" = replay
+- LDAPS port (picked 3389/RDP, answer 636) — port numbers need drilling
+- CASB re-test (picked CSPM) — CASB = user-to-app, CSPM = infra config. Still not clicking.
+- NIST CSF re-test (picked ISO 27001) — "five functions + strategic + board" = CSF. 2x wrong today.
+- DPIA re-test (picked privacy policy) — "new project + risk assessment + before launch" = DPIA. 2x wrong today.
+
+### Full Session 10 Totals: 26/47 solid = ~55%
+
+### Persistent gaps (2x+ wrong in S10 — highest priority for S11):
+1. **CASB** — 2x wrong (picked DLP, then CSPM). "Shadow IT / unauthorized apps" = CASB.
+2. **NIST CSF** — 2x wrong (picked 800-53, then ISO 27001). "Five functions + board + strategic" = CSF.
+3. **DPIA** — 2x wrong (picked DPIA when RoPA, picked privacy policy when DPIA). Whole RoPA/DPIA cluster confused.
+4. **MSA** — 3x wrong total (S9 lucky + S10 twice). "Binding + general terms + no deliverables" = MSA.
+
+### Other gaps from S10:
+- ABAC, adaptive auth, PCI scope, SCA, replay vs session hijacking, order of volatility, port numbers (636/LDAPS)
+
+### Newly confirmed strong from sweep:
+- Race condition, buffer overflow, fileless malware, RAID 10, IR phases, data states at rest/transit/use
+- WAF vs IPS vs IDS, risk transference, governance doc hierarchy, tabletop exercise, physical destruction, EOL compensating controls
+
+**Next session**: Hammer the 4 persistent gaps (CASB, NIST CSF, DPIA/RoPA, MSA) from fresh angles — these keep missing. Then re-test replay, ports, ABAC, adaptive auth. Finally hit remaining untested: container/serverless, SASE/SSE, IaaS/PaaS/SaaS distinction.
+
+---
+
+## 2026-02-27: Untested Area Sweep (Day 2, Session 11)
+
+**Duration**: ~25m
+**Phase**: Untested area sweep + persistent gap drilling
+**Questions asked**: 17 (12 correct / 5 wrong = 71%)
+
+### Part 1 — Untested Area Sweep (7/10):
+
+**Correct (7):**
+- Container hardening (reasoned) — hardened base images + non-root users solves both CVEs and root-running
+- IaaS shared responsibility (knew cold) — EC2 guest OS patching = customer
+- SaaS shared responsibility (knew cold) — platform vulnerability = provider's problem
+- Serverless least privilege (knew cold) — over-permissioned Lambda function
+- Serverless shared responsibility (knew cold) — no guest OS in FaaS, provider handles it
+- CASB (reasoned) — shadow IT + DLP + cloud app visibility = CASB
+- Admission controller (educated) — only approved images in K8s = admission controller
+- RDP port 3389 (knew cold)
+- DNS over TLS port 853 (educated)
+
+**Wrong (3):**
+- **SASE vs SSE** — didn't know either. SASE = networking + security converged. SSE = security half only. SD-WAN = networking half.
+- **Email ports** — picked 993 + 587 (sending), answer 993 + 995 (retrieval). "Retrieval" = IMAP/POP3 = 993/995. 587 is SMTP sending.
+- **CSPM vs IaC static analysis** — picked CSPM, answer static analysis. "Before deployment" = static analysis (shift-left). CSPM monitors already-deployed environments.
+
+### Part 2 — Persistent Gap Drilling (5/7):
+
+**Correct (5):**
+- MSA (educated) — "general legal terms, no specific deliverables" = MSA. Recovering from 3x wrong.
+- NIST CSF (reasoned) — "five functions + board communication" = CSF. Question named the functions explicitly.
+- DPIA (educated) — "new patient portal, evaluate risks before launch" = DPIA.
+- RoPA (educated) — "comprehensive document listing every processing activity" = RoPA.
+- ABAC (reasoned) — "time + role + training completion all required" = ABAC. Multiple attribute conditions.
+
+**Wrong (2):**
+- **NIST 800-53 vs 800-171** — picked 800-171, answer 800-53. "Federal system + control catalog + impact levels" = 800-53. 800-171 = contractors + CUI only.
+- **CASB** — picked SWG, answer CASB. 3x wrong total. "Personal Dropbox + unauthorized SaaS tools" = CASB. SWG = web browsing/URL filtering only.
+
+### Key findings:
+1. **Shared responsibility model is cold** across all three service models (IaaS/SaaS/FaaS) — no further drilling needed.
+2. **SASE/SSE is a new cluster** — SASE itself was unknown, but sub-components (CASB, ZTNA) are recognizable.
+3. **MSA recovering** — correct for first time after 3 prior misses, but only educated guess.
+4. **DPIA/RoPA pair both correct** — educated guesses, but the decision rule is clicking: "new project risk" = DPIA, "ongoing record" = RoPA.
+5. **CASB still not sticking** — 3x wrong now (DLP, CSPM, SWG). Decision rule written to notes: "employees using named unauthorized cloud apps" = always CASB.
+6. **NIST framework cluster needs individual drilling** — CSF correct when functions named, but 800-53 vs 800-171 confused.
+
+### Trajectory: 85% → 54% → 70% → 67% → 60% → 75% → 83% → 73% → 55% → 71%
+
+**Next session**: Re-test CASB cold (no priming), drill NIST 800-53 vs 800-171, test SWG individually, hit remaining gaps (adaptive auth, PCI scope, SCA, replay vs session hijacking).
+
+---
+
 <!--
 Template for new entries:
 
