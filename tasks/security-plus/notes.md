@@ -1275,3 +1275,177 @@ MSA = umbrella. SOW = specific project under the umbrella. You don't renegotiate
 | "partnership," "profit sharing," "shared responsibilities" | **BPA** |
 
 **Why you keep picking MOU when it's MSA:** Both are "agreements between parties." The key distinction: MOU is informal and non-binding (a handshake). MSA is a formal, legally binding contract that establishes the framework for all future work. If the question mentions legal terms, liability, IP rights, or governing future projects — that's MSA.
+
+---
+
+## Exam Question Angle Variations (Research — S11)
+
+Compiled from 6 parallel research agents. These are alternate framings the exam uses to test concepts you know from non-obvious directions. Organized by topic cluster.
+
+### CASB (Cloud Access Security Broker) — 8 Angles Beyond Shadow IT
+
+Your default: "shadow IT = CASB." The exam also tests these CASB scenarios:
+1. **Tokenization before cloud** — CASB encrypts/tokenizes data BEFORE it reaches SaaS. "Protect PII in Salesforce without trusting Salesforce" = CASB.
+2. **BYOD reverse proxy mode** — CASB as reverse proxy for unmanaged devices. "Contractor's laptop accessing corporate SaaS" = CASB (not MDM).
+3. **API-mode retroactive scanning** — CASB scans files ALREADY in cloud storage. "Audit existing OneDrive for PII" = CASB (not DLP).
+4. **Compliance enforcement** — CASB checks if SaaS apps meet compliance. "Which cloud apps are HIPAA-compliant?" = CASB.
+5. **OAuth token abuse** — third-party app requests too many OAuth permissions. "Rogue app with broad API access" = CASB.
+6. **Multi-cloud visibility** — "single pane across AWS, Azure, GCP SaaS usage" = CASB (not CSPM — CSPM is infra config).
+7. **Sanctioned vs unsanctioned** — CASB governs BOTH approved AND unapproved apps. "Enforce DLP on approved Slack" = CASB.
+8. **Inline vs API deployment** — inline = real-time blocking, API = retroactive scanning. Both are CASB modes.
+
+**CASB vs DLP trap**: CASB has DLP capabilities FOR cloud apps. Standalone DLP covers email/USB/printing. "DLP specifically for cloud" = CASB.
+
+### Adaptive Auth — Decision Tree (Wrong 2x)
+
+The exam uses "policy-driven access control" (SY0-701 term) rather than "conditional access" (Microsoft term).
+
+| Signal | Answer |
+|--------|--------|
+| "Automatically adjusts," "real-time risk," "dynamic," "step-up" | Adaptive auth |
+| "Admin configures rules," "IF device THEN require," "policy engine" | Policy-driven access control |
+| "Never trust, always verify," "every request," "micro-segmentation" | Zero trust |
+| "Posture check at connection time," "remediation VLAN" | NAC (Network Access Control) |
+
+**Step-up authentication** = adaptive auth mechanism. User starts with password, system detects risk → adds MFA. "Dynamically escalates requirements" = adaptive auth.
+
+**Impossible travel** = adaptive auth trigger. "Login from NYC, then London 30 min later" → adaptive auth flags and requires step-up.
+
+### Kerberos Attack Cluster — Artifact-Based Decision Tree
+
+| What was stolen/used? | Attack name |
+|----------------------|-------------|
+| Kerberos TGT (Ticket Granting Ticket) from memory | Pass the ticket |
+| NTLM hash from SAM/LSASS | Pass the hash |
+| krbtgt account hash → forge TGT | Golden ticket |
+| Service account hash → forge TGS | Silver ticket |
+| Request TGS tickets → crack offline | Kerberoasting |
+| AS-REP (Authentication Service Reply) without pre-auth → crack offline | AS-REP roasting |
+
+**Golden vs Silver**: Golden = domain-wide (forged TGT from krbtgt). Silver = single service (forged TGS from service account hash). "Unlimited domain access" = golden. "Access specific service" = silver.
+
+**Kerberoasting vs brute force**: Kerberoasting is OFFLINE cracking of legitimately requested service tickets. No lockout risk. "Offline" + "service account" = Kerberoasting.
+
+### Exfiltration Technique Cluster — Protocol Layer Decision Tree
+
+| Protocol layer | Technique | Signal words |
+|---------------|-----------|--------------|
+| DNS (port 53) | DNS tunneling | "Encoded subdomains," "TXT records," "periodic DNS queries" |
+| HTTPS (port 443) | Domain fronting | "CDN," "legitimate domain header," "different backend" |
+| HTTPS (port 443) | Beaconing | "Regular intervals," "check-in," "C2 callback" |
+| ICMP | ICMP tunneling | "Ping packets," "echo request payload" |
+| Steganography | Data hiding | "Image file," "embedded in media," "hidden in picture" |
+
+**DNS tunneling vs DNS exfiltration**: Same technique. "Tunneling" = bidirectional C2 channel. "Exfiltration" = one-way data theft. Both use encoded subdomains.
+
+**Domain fronting vs CDN abuse**: Domain fronting specifically uses a trusted domain in the TLS SNI field while routing to a different backend on the same CDN. It exploits how CDNs route traffic.
+
+### NIST Framework Cluster — Expanded Decision Tree
+
+| Signal | Framework |
+|--------|-----------|
+| "Five functions" (ID/PR/DE/RS/RC), "board communication," "maturity tiers" | NIST CSF (Cybersecurity Framework) |
+| "Control catalog," "federal systems," "FISMA," "impact levels (low/mod/high)" | NIST SP 800-53 |
+| "Contractors," "CUI (Controlled Unclassified Information)," "DFARS," "CMMC" | NIST SP 800-171 |
+| "Risk management lifecycle," "6 steps," "categorize/select/implement/assess/authorize/monitor" | NIST RMF (Risk Management Framework) |
+| "Certifiable," "international," "ISMS (Information Security Management System)," "audit" | ISO 27001 |
+| "Prioritized list," "18 controls," "practical," "implementation groups" | CIS Controls |
+
+**RMF (Risk Management Framework)** is new — not the same as CSF. RMF = 6-step process for federal system authorization. CSF = 5-function strategic framework. "Authorize a system to operate" = RMF. "Communicate risk to the board" = CSF.
+
+### Data Sanitization — NIST SP 800-88 Levels
+
+| Level | Method | Result |
+|-------|--------|--------|
+| Clear | Overwrite with zeros/patterns | Data unrecoverable by standard tools. Drive REUSABLE. |
+| Purge | Crypto erasure, block erase, secure erase firmware | Data unrecoverable even by lab techniques. Drive REUSABLE. |
+| Destroy | Degauss, shred, incinerate, disintegrate | Drive DESTROYED. Not reusable. |
+
+**SSD gotcha**: Degaussing does NOT work on SSDs (no magnetic media). For SSDs: crypto erasure or physical destruction.
+
+**The "reuse" decision tree**:
+- Reuse internally + no prior encryption stated → **overwrite (Clear)**
+- Reuse internally + was encrypted → **crypto erasure (Purge)**
+- Leave organization (donate/sell) → **Purge minimum**
+- Classified/highly sensitive disposal → **Destroy**
+
+### DPIA vs RoPA — 6 Alternate Angles
+
+Beyond "new project = DPIA, ongoing record = RoPA":
+1. **Who requires it?** — DPIA = required when processing is "likely to result in high risk." RoPA = required for ALL organizations with 250+ employees (GDPR Article 30).
+2. **When created?** — DPIA = BEFORE starting new processing. RoPA = maintained continuously.
+3. **Scope** — DPIA = one specific processing activity. RoPA = ALL processing across the entire organization.
+4. **Supervisory authority** — DPIA may need to be submitted to the DPA (Data Protection Authority) if high risk remains. RoPA must be available on request.
+5. **Content** — DPIA includes risk mitigation measures. RoPA lists purposes, categories, recipients, retention, transfers.
+6. **Trigger** — DPIA triggered by profiling, large-scale monitoring, systematic evaluation. RoPA is always mandatory (no trigger).
+
+### SCA/SAST/DAST/IAST — Alternate Angles
+
+Beyond "what are you scanning?":
+1. **IAST vs DAST deployment**: IAST requires an agent INSIDE the app (instrumented testing). DAST is purely external. "Agent deployed alongside app during QA" = IAST.
+2. **SCA vs SAST overlap**: Both scan code, but SCA looks at DEPENDENCIES (package.json, pom.xml). SAST looks at YOUR code. "Third-party library vulnerability" = SCA, never SAST.
+3. **RASP (Runtime Application Self-Protection)** = IAST's production cousin. IAST = testing only. RASP = same agent concept but in production, can block attacks.
+4. **License compliance** — SCA also checks open-source LICENSE compliance (GPL, MIT). "License risk in dependencies" = SCA.
+
+### EAP (Extensible Authentication Protocol) Types — Alternate Angles
+
+1. **EAP-TLS**: BOTH client AND server have certificates. Most secure. "Mutual authentication" = EAP-TLS.
+2. **PEAP (Protected EAP)**: Server cert only, creates TLS tunnel, then inner auth (MSCHAPv2). "Server cert + username/password inside tunnel" = PEAP.
+3. **EAP-FAST (Flexible Authentication via Secure Tunneling)**: Cisco proprietary. Uses PAC (Protected Access Credential) instead of server cert. "No PKI infrastructure" = EAP-FAST.
+4. **EAP-TTLS (Tunneled TLS)**: Like PEAP but supports more inner methods. Mostly interchangeable with PEAP on the exam.
+5. **Key distinction**: "Client certificate required" = EAP-TLS. "Only server certificate" = PEAP or EAP-TTLS. "No certificates at all" = EAP-FAST.
+
+### SLSA vs SBOM — Supply Chain Security Angles
+
+1. **SBOM format standards**: CycloneDX and SPDX (Software Package Data Exchange) are SBOM formats. If the exam names them → SBOM.
+2. **SLSA levels**: L0 (no guarantees) → L3 (hardened build platform). Higher = more build integrity assurance.
+3. **Executive Order 14028** — requires SBOMs for software sold to the US government. "Federal software procurement" + "component transparency" = SBOM.
+4. **SLSA prevents**: Compromised build systems, tampered source code, modified dependencies during build. "Build tampering" = SLSA.
+5. **SBOM prevents**: Using components with known vulnerabilities or license conflicts. "Component inventory" = SBOM.
+
+### SIEM vs XDR vs SOAR — Edge Cases Beyond Basic Distinction
+
+Your current rule works. These are the tricky angles:
+1. **SIEM for compliance** — "retain logs for 7 years," "audit reports for PCI" = SIEM (not XDR). XDR doesn't do long-term log storage.
+2. **MDR (Managed Detection and Response)** — "no internal security staff + 24/7 monitoring" = MDR. It's a SERVICE with PEOPLE, not a tool. "Outsourced" + "lack staff" = MDR.
+3. **SOAR vs XDR multi-vendor** — SOAR orchestrates across DIFFERENT vendor tools. XDR automates within its OWN platform. "Jira + Palo Alto + CrowdStrike coordinated" = SOAR.
+4. **UEBA as SIEM feature** — modern SIEMs include UEBA. "What capability detects behavioral anomalies?" = UEBA. "What platform aggregates logs including behavioral analytics?" = SIEM.
+
+### Deception Technology — Granularity Hierarchy
+
+1. **Honeytoken vs honeyfile** — honeytoken = fake DATA (credential, API key) that alerts on USE. Honeyfile = fake FILE that alerts on ACCESS. "File opened" = honeyfile. "Credential used to authenticate" = honeytoken.
+2. **Honeypot = ISOLATED. Honeytoken = EMBEDDED.** Honeypots live separate from production. Honeytokens are planted inside production systems. "Found in production DB" = honeytoken.
+3. **Honeynet = MULTIPLE honeypots.** Network of decoy systems. Single system = honeypot.
+4. **Deception technology = PLATFORM** that manages all of the above at scale. "Enterprise-wide decoy management" = deception technology.
+5. **Canary tokens** = specific honeytoken implementation. URL/DNS entry that phones home when accessed. "Tripwire in document" = canary/honeytoken.
+
+### Tokenization vs Pseudonymization vs Masking — Regulatory Context
+
+1. **Pseudonymized data IS still personal data under GDPR** (reversible with mapping key). "Still requires GDPR compliance" = pseudonymization.
+2. **Anonymized data is OUTSIDE GDPR scope** (irreversible). "No longer subject to GDPR" = anonymization.
+3. **Tokenization is NOT encryption** — token has no mathematical relationship to original. "Reduces PCI scope" = tokenization (encrypted data doesn't reduce scope).
+4. **Masking for dev/test** — "realistic data for developers that cannot be reversed" = masking. Developers don't need to recover originals.
+5. **Pseudonymization for research** — "researchers may need to contact patients for follow-up" = pseudonymization (not anonymization — can't re-identify from anonymized data).
+
+### SCAP Components — Individual Decision Rules
+
+| Signal | Component |
+|--------|-----------|
+| "Standardized vulnerability identifier" (CVE-XXXX-YYYY) | CVE (Common Vulnerabilities and Exposures) |
+| "Severity score" (0-10, Critical/High/Med/Low) | CVSS (Common Vulnerability Scoring System) |
+| "Identifies affected software version/platform" | CPE (Common Platform Enumeration) |
+| "Defines how to check if system is vulnerable" | OVAL (Open Vulnerability and Assessment Language) |
+| "Security configuration checklist/benchmark" | XCCDF (Extensible Configuration Checklist Description Format) |
+| "Automated compliance + scanning umbrella" | SCAP (Security Content Automation Protocol) |
+
+**CVE vs CVSS** — exam loves this pair. CVE = the IDENTIFIER. CVSS = the SCORE. "Assigned CVE-2024-12345" = CVE. "Scored 9.8 Critical" = CVSS.
+
+**STIX format vs TAXII transport** — independent standards. "Structure of threat data" = STIX. "Protocol that carries threat data" = TAXII. TAXII can carry non-STIX data.
+
+### Kill Chain vs ATT&CK vs Diamond — Edge Cases
+
+1. **Kill chain = LINEAR + defensive.** "Sequential phases," "break the chain at stage X" = kill chain. Designed for defenders to place countermeasures.
+2. **ATT&CK = UNORDERED + adversary catalog.** Tactics are NOT sequential. "Compare two APT (Advanced Persistent Threat) groups' techniques" = ATT&CK.
+3. **Diamond = RELATIONSHIPS.** Four nodes: Adversary, Victim, Infrastructure, Capability (AVIC). "Link incidents by shared C2 infrastructure" = Diamond Model.
+4. **ATT&CK tactics vs techniques**: "Lateral Movement" = tactic (the WHY). "Pass the Hash" = technique (the HOW). Tactics = columns. Techniques = rows.
+5. **Diamond for clustering**: "Three incidents used same C2 and targeted same industry" = Diamond Model (links related events by shared elements).

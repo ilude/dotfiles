@@ -10,7 +10,7 @@
 **Other gaps**: ABAC, adaptive auth, PCI scope, SCA, replay vs session hijacking, port numbers (LDAPS 636)
 **Newly confirmed strong**: Race condition, buffer overflow, fileless malware, RAID 10, IR phases, data states, WAF vs IPS, risk transference, governance docs, tabletop exercise, physical destruction, EOL/compensating controls
 **Trajectory**: 85% → 54% → 70% → 67% → 60% → 75% → 83% → 73% → 55% → 73%
-**Session 11**: 73% (30/41 solid, 1 lucky, 3 voided) — largest session. Swept untested areas, drilled persistent gaps, assessed previously untouched objectives (4.2 asset mgmt, 4.9 forensic data sources). Recovered 4 S10 misses. New misses: adaptive auth (2x), pass the ticket, DNS tunneling, SaaS session persistence, data sanitization. No-priming rule elevated to CRITICAL after 4 violations.
+**Session 11**: 73% (30/41 solid, 1 lucky, 3 voided) — largest session. Swept untested areas, drilled persistent gaps, assessed previously untouched objectives (4.2 asset mgmt, 4.9 forensic data sources). Recovered 4 S10 misses. New misses: adaptive auth (2x), pass the ticket, DNS tunneling, SaaS session persistence, data sanitization. No-priming rule elevated to CRITICAL after 4 violations. 6 research agents compiled alternate question angles into notes.md for all gap areas + fragile-correct topics.
 
 ---
 

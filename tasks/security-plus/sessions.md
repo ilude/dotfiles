@@ -482,6 +482,17 @@ The 54% reflects deliberately targeting every untested/weak area. Core knowledge
 ### CRITICAL PROCESS NOTE:
 No-priming rule elevated to CRITICAL. Four violations this session: announced CASB test, used answer in question stem (replay, firewall logs), explained concept then immediately quizzed on it (ZTNA after SASE teaching). All future questions must be cold with no telegraphing.
 
+### Research Agents (end of S11):
+Launched 6 parallel research agents to find varied exam question angles for persistent gap areas and fragile-correct topics:
+1. **CASB** — 8 alternate angles beyond shadow IT (tokenization, BYOD reverse proxy, API scanning, OAuth abuse)
+2. **Adaptive auth** — decision tree; SY0-701 says "policy-driven access control" not "conditional access"
+3. **Kerberos + exfiltration** — artifact-based decision trees, added golden/silver ticket, AS-REP roasting
+4. **NIST + data sanitization** — added RMF, NIST SP 800-88 levels, SSD degaussing gotcha
+5. **Fragile-correct topics** — DPIA/RoPA 6 angles, IAST/RASP, EAP mutual auth, SLSA/SBOM EO 14028
+6. **Locked-in edge cases** — SIEM compliance, MDR as service, deception granularity, SCAP components, kill chain vs ATT&CK linearity
+
+All compiled into `notes.md` under "Exam Question Angle Variations (Research — S11)."
+
 **Next session**: CASB cold (no announcement), adaptive auth, DNS tunneling vs domain fronting, pass the ticket vs pass the hash. Practice exam readiness check.
 
 ---
