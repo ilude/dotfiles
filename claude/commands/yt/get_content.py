@@ -15,6 +15,17 @@ from api_config import get_api_base, get_api_host
 from signing import RequestSigner
 
 
+def fetch_transcript(client, signer, api_base, host, content_id):
+    """Fetch transcript text via the /download endpoint."""
+    download_path = f"/api/v1/content/{content_id}/download"
+    download_url = f"{api_base}/content/{content_id}/download"
+    sig_headers = signer.sign_request("GET", download_path, host)
+    resp = client.get(download_url, headers=sig_headers)
+    if resp.status_code == 200:
+        return resp.text
+    return ""
+
+
 def main():
     parser = argparse.ArgumentParser(description="Fetch content from menos API by content ID")
     parser.add_argument("content_id", help="Content ID to fetch")
@@ -64,28 +75,27 @@ def main():
             if args.json_output:
                 print(json.dumps(data, indent=2))
             elif args.transcript_only:
-                transcript = data.get("transcript", "")
+                transcript = fetch_transcript(client, signer, api_base, host, args.content_id)
                 if not transcript:
                     print("No transcript available.", file=sys.stderr)
                     sys.exit(1)
                 print(transcript)
             else:
-                # Default: print transcript text
-                transcript = data.get("transcript", "")
+                # Default: print metadata summary, then transcript
+                print(f"Title: {data.get('title', 'N/A')}")
+                print(f"Content Type: {data.get('content_type', 'N/A')}")
+                metadata = data.get("metadata", {})
+                if metadata.get("video_id"):
+                    print(f"Video ID: {metadata['video_id']}")
+                if data.get("summary"):
+                    print(f"\nSummary: {data['summary']}")
+                print()
+
+                transcript = fetch_transcript(client, signer, api_base, host, args.content_id)
                 if transcript:
                     print(transcript)
                 else:
-                    # Fall back to showing key fields
-                    print(f"Content ID: {data.get('id', args.content_id)}")
-                    print(f"Title: {data.get('title', 'N/A')}")
-                    print(f"Status: {data.get('status', 'N/A')}")
-                    print(f"Content Type: {data.get('content_type', 'N/A')}")
-                    metadata = data.get("metadata", {})
-                    if metadata.get("video_id"):
-                        print(f"Video ID: {metadata['video_id']}")
-                    chunks = data.get("chunk_count", 0)
-                    print(f"Chunks: {chunks}")
-                    print("\nNo transcript text available in response.")
+                    print("No transcript text available.")
 
     except httpx.RequestError as e:
         print(f"Error: Request failed: {e}", file=sys.stderr)
