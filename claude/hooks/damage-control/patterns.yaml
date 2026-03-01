@@ -612,12 +612,10 @@ bashToolPatterns:
   - pattern: '\bdocker\s+compose\s+down\b'
     reason: docker compose down (stops and removes containers)
     ask: true
-    sessionScope: true
 
   - pattern: '\bdocker\s+compose\s+rm\s+.*-f'
     reason: "docker compose rm -f (force removes containers without confirmation)"
     ask: true
-    sessionScope: true
 
   # podman (Docker alternative) destructive operations
   - pattern: '\bpodman\s+system\s+prune\b'
@@ -654,7 +652,6 @@ bashToolPatterns:
   - pattern: '\bkubectl\s+apply\b'
     reason: kubectl apply (modifies cluster resources)
     ask: true
-    sessionScope: true
 
   - pattern: '\bkubectl\s+delete\s+(?!namespace|all)'
     reason: kubectl delete (removes resources)
@@ -671,7 +668,6 @@ bashToolPatterns:
   - pattern: '\bkubectl\s+exec\b'
     reason: kubectl exec (shell access to pod)
     ask: true
-    sessionScope: true
 
   - pattern: '\bkubectl\s+port-forward\b'
     reason: kubectl port-forward (network access)
@@ -688,17 +684,14 @@ bashToolPatterns:
   - pattern: '\bhelm\s+install\b'
     reason: helm install (deploys to cluster)
     ask: true
-    sessionScope: true
 
   - pattern: '\bhelm\s+upgrade\b'
     reason: helm upgrade (modifies deployment)
     ask: true
-    sessionScope: true
 
   - pattern: '\bhelm\s+rollback\b'
     reason: helm rollback (reverts release)
     ask: true
-    sessionScope: true
 
   # Helm aliases and additional subcommands
   - pattern: '\bhelm\s+delete\b'
@@ -1509,12 +1502,13 @@ bashToolPatterns:
 # ---------------------------------------------------------------------------
 # .env files typically contain API keys, database passwords, JWT secrets
 # Using ask: true to allow legitimate access with user approval
+# .env.example and .env.template are safe template files (no real secrets)
 
-  - pattern: '\.env\b'
+  - pattern: '\.env(?!\.(?:example|template))\b'
     reason: .env file may contain secrets (API keys, passwords)
     ask: true
 
-  - pattern: '\.env\.[a-zA-Z]+'
+  - pattern: '\.env\.(?!example\b|template\b)[a-zA-Z]+'
     reason: .env.* file may contain secrets (API keys, passwords)
     ask: true
 
