@@ -74,7 +74,6 @@ def log_decision(
         # Get context information
         user = os.getenv("USER", "unknown")
         cwd = os.getcwd()
-        session_id = os.getenv("CLAUDE_SESSION_ID", "")
 
         # Build JSONL record
         log_entry = {
@@ -86,7 +85,6 @@ def log_decision(
             "context": context,
             "user": user,
             "cwd": cwd,
-            "session_id": session_id,
         }
 
         # Write as JSONL (one JSON object per line)

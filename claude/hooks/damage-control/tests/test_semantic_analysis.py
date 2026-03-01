@@ -842,9 +842,8 @@ class TestAuditLogging:
         assert isinstance(timestamp, datetime)
 
     def test_log_decision_includes_context(self, tmp_log_dir, tmp_path, monkeypatch):
-        """Test that log entry includes user, cwd, and session_id."""
+        """Test that log entry includes user and cwd."""
         monkeypatch.setenv("USER", "testuser")
-        monkeypatch.setenv("CLAUDE_SESSION_ID", "test-session-123")
 
         log_decision(
             tool_name="Bash",
@@ -863,7 +862,6 @@ class TestAuditLogging:
 
         assert entry["user"] == "testuser"
         assert entry["cwd"] == os.getcwd()
-        assert entry["session_id"] == "test-session-123"
 
     def test_log_decision_multiple_entries_jsonl(self, tmp_log_dir, tmp_path):
         """Test that multiple log_decision calls append to same daily JSONL file."""

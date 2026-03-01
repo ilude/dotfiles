@@ -114,7 +114,6 @@ def log_detection(
             "matched_text": matched_truncated,
             "user": os.getenv("USER", "unknown"),
             "cwd": os.getcwd(),
-            "session_id": os.getenv("CLAUDE_SESSION_ID", ""),
         }
 
         with open(log_path, "a") as f:

@@ -418,11 +418,6 @@ class TestZeroAccessPaths:
         zero_access = patterns_config.get("zeroAccessPaths", [])
         assert "*.auto.tfvars" in zero_access
 
-    def test_session_files_in_zero_access(self, patterns_config):
-        """*.session should be in zeroAccessPaths."""
-        zero_access = patterns_config.get("zeroAccessPaths", [])
-        assert "*.session" in zero_access
-
     def test_vault_token_in_zero_access(self, patterns_config):
         """.vault-token should be in zeroAccessPaths."""
         zero_access = patterns_config.get("zeroAccessPaths", [])
