@@ -1635,8 +1635,12 @@ def check_command(
                 # Use pre-compiled regex (already has IGNORECASE flag)
                 if compiled_regex.search(unwrapped_cmd):
                     # For exfil patterns, check if destination host is allowed
+                    # Try unwrapped first, fall back to original (unwrapping
+                    # can truncate the URL when it's inside nested quotes)
                     if is_exfil:
                         host = extract_host_from_command(unwrapped_cmd)
+                        if not host and was_unwrapped:
+                            host = extract_host_from_command(command)
                         if host and is_allowed_host(host):
                             # Host is allowed, skip this pattern
                             continue
