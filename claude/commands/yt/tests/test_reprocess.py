@@ -27,17 +27,6 @@ def _make_client(response):
     return mock_client
 
 
-def _base_patches(argv, mock_client):
-    """Return the standard set of patches used by every test."""
-    return (
-        patch.object(sys, "argv", argv),
-        patch("reprocess.RequestSigner") as _signer_cls,
-        patch("reprocess.httpx.Client", return_value=mock_client),
-        patch("reprocess.Path") as _path_cls,
-        patch("reprocess.get_api_base", return_value="http://localhost:8000/api/v1"),
-        patch("reprocess.get_api_host", return_value="localhost:8000"),
-    )
-
 
 def _setup_signer_and_path(mock_signer_cls, mock_path_cls):
     """Wire up the mock signer and Path stubs shared by all tests."""

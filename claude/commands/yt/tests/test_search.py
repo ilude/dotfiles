@@ -179,7 +179,9 @@ class TestMain:
             main()
 
         captured = capsys.readouterr()
-        parsed = json.loads(captured.out)
+        # Output starts with "Searching: ...\n\n" before the JSON block
+        json_part = captured.out.split("\n", 2)[-1].strip()
+        parsed = json.loads(json_part)
         assert parsed == api_data
 
     def test_non_200_exits_1(self, capsys):
