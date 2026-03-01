@@ -25,6 +25,7 @@ This hook provides:
 ├── bash-tool-damage-control.py      # Bash command hook
 ├── edit-tool-damage-control.py      # File edit hook
 ├── write-tool-damage-control.py     # File write hook
+├── dc-allow.py                      # Session pre-approval helper (/dc-allow)
 ├── test-damage-control.py           # Integration test runner
 ├── test-hook                        # Quick hook test script
 ├── benchmark.py                     # Performance benchmarking
@@ -147,6 +148,37 @@ cat ~/.claude/logs/damage-control/*.log | jq
 ```
 
 For detailed analysis examples, see [cookbook/view_audit_logs.md](cookbook/view_audit_logs.md).
+
+### Session Allowlist
+
+Reduces approval fatigue for repeated operations within a single Claude Code session. Two complementary mechanisms:
+
+**1. Explicit pre-approval (`/dc-allow`):**
+```
+/dc-allow docker compose down
+```
+Identifies the matching ask pattern and writes it to the session file. All subsequent invocations of matching commands skip the confirmation prompt.
+
+**2. Auto-remember (`sessionScope: true`):**
+Patterns marked with `sessionScope: true` in `patterns.yaml` auto-allow after the first ask. On first encounter, the hook records the pattern. After 5 seconds, subsequent matches auto-allow without prompting.
+
+**Safety guarantees:**
+- Session allowlist can only downgrade `ask → allow`, never override a `block`
+- The session check runs AFTER `check_command()` — all path checks, semantic analysis, and pattern matching still execute
+- `docker compose down` approval does NOT cover `docker compose down --volumes` (different pattern)
+- Session files are per-session and auto-cleaned after 24 hours
+
+**Adding `sessionScope` to a pattern:**
+```yaml
+- pattern: '\bkubectl\s+apply\b'
+  reason: kubectl apply modifies cluster resources
+  ask: true
+  sessionScope: true   # Auto-allow after first approval
+```
+
+**Session file location:** `~/.claude/damage-control-sessions/{session_id}.json`
+
+Stale session files (>24h) are cleaned up by the SessionStart hook (`team-cleanup.sh`).
 
 ---
 
