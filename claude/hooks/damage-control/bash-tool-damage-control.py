@@ -37,6 +37,7 @@ JSON output for ask patterns:
 """
 
 import fnmatch
+import hashlib
 import json
 import os
 import re
@@ -1418,6 +1419,235 @@ def extract_host_from_command(command: str) -> Optional[str]:
 
 
 # ============================================================================
+# SESSION ALLOWLIST (Session-Scoped Command Approval)
+# ============================================================================
+
+# Module-level cache for session data
+_session_data_cache: Optional[dict[str, Any]] = None
+
+SESSION_AUTO_ALLOW_DELAY = 5  # seconds before session memory auto-allows
+
+
+def get_session_dir() -> Path:
+    """Get path to session allowlist directory.
+
+    Returns:
+        Path to ~/.claude/damage-control-sessions/
+    """
+    return Path(os.path.expanduser("~")) / ".claude" / "damage-control-sessions"
+
+
+def get_session_file() -> Optional[Path]:
+    """Get path to current session's allowlist file.
+
+    Returns:
+        Path to {session_dir}/{CLAUDE_SESSION_ID}.json, or None if
+        CLAUDE_SESSION_ID is not set.
+    """
+    session_id = os.environ.get("CLAUDE_SESSION_ID")
+    if not session_id:
+        return None
+    return get_session_dir() / f"{session_id}.json"
+
+
+def load_session_data() -> dict[str, Any]:
+    """Load session allowlist data from file.
+
+    Uses module-level cache. Returns empty structure on missing/error.
+
+    Returns:
+        Session data dict with explicit_allows and session_memory lists.
+    """
+    global _session_data_cache
+
+    if _session_data_cache is not None:
+        return _session_data_cache
+
+    empty: dict[str, Any] = {"explicit_allows": [], "session_memory": []}
+
+    session_file = get_session_file()
+    if not session_file or not session_file.exists():
+        _session_data_cache = empty
+        return _session_data_cache
+
+    try:
+        with open(session_file) as f:
+            data = json.load(f)
+            if not isinstance(data, dict):
+                _session_data_cache = empty
+                return _session_data_cache
+            # Ensure required keys exist
+            data.setdefault("explicit_allows", [])
+            data.setdefault("session_memory", [])
+            _session_data_cache = data
+    except (json.JSONDecodeError, OSError, ValueError):
+        _session_data_cache = empty
+
+    return _session_data_cache
+
+
+def write_session_data(data: dict[str, Any]) -> bool:
+    """Write session data to file, invalidating cache.
+
+    Creates the session directory and file if they don't exist.
+
+    Args:
+        data: Session data dict to write.
+
+    Returns:
+        True if write succeeded, False on error.
+    """
+    global _session_data_cache
+
+    session_file = get_session_file()
+    if not session_file:
+        return False
+
+    try:
+        session_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(session_file, "w") as f:
+            json.dump(data, f, indent=2)
+        _session_data_cache = data
+        return True
+    except OSError:
+        return False
+
+
+def record_session_ask(pattern_id: str, pattern_text: str, command: str) -> None:
+    """Record an ask pattern encounter for session auto-remember.
+
+    Appends to session_memory if the pattern_id is not already present
+    (deduplicates by pattern_id). Stores first_seen timestamp and a
+    hash of the command for audit purposes.
+
+    Args:
+        pattern_id: Pattern identifier (e.g., "yaml_pattern_42").
+        pattern_text: The regex pattern string.
+        command: The command that triggered the ask.
+    """
+    data = load_session_data()
+
+    # Deduplicate by pattern_id
+    for entry in data["session_memory"]:
+        if entry.get("pattern_id") == pattern_id:
+            return
+
+    data["session_memory"].append({
+        "pattern_id": pattern_id,
+        "pattern_text": pattern_text,
+        "first_seen": datetime.now().isoformat(),
+        "command_hash": hashlib.sha256(command.encode()).hexdigest()[:16],
+    })
+
+    # Ensure session metadata
+    session_id = os.environ.get("CLAUDE_SESSION_ID", "")
+    data.setdefault("session_id", session_id)
+    data.setdefault("created", datetime.now().isoformat())
+
+    write_session_data(data)
+
+
+def check_session_allowlist(command: str, config: dict[str, Any]) -> Optional[str]:
+    """Check if command is pre-approved via session allowlist.
+
+    Checks two sources:
+    1. explicit_allows — patterns added via /dc-allow (always match)
+    2. session_memory — auto-remembered patterns (match only after
+       SESSION_AUTO_ALLOW_DELAY seconds since first_seen)
+
+    Args:
+        command: Command string to check.
+        config: Compiled configuration dict.
+
+    Returns:
+        Pattern ID if command is session-allowed, None otherwise.
+    """
+    data = load_session_data()
+    now = datetime.now()
+
+    # Check explicit allows
+    for entry in data.get("explicit_allows", []):
+        pattern_text = entry.get("pattern_text", "")
+        if not pattern_text:
+            continue
+        try:
+            if re.search(pattern_text, command, re.IGNORECASE):
+                return entry.get("pattern_id", "explicit_allow")
+        except re.error:
+            continue
+
+    # Check session memory (auto-remember, with delay)
+    for entry in data.get("session_memory", []):
+        pattern_text = entry.get("pattern_text", "")
+        first_seen_str = entry.get("first_seen", "")
+        if not pattern_text or not first_seen_str:
+            continue
+        try:
+            first_seen = datetime.fromisoformat(first_seen_str)
+            elapsed = (now - first_seen).total_seconds()
+            if elapsed < SESSION_AUTO_ALLOW_DELAY:
+                continue
+            if re.search(pattern_text, command, re.IGNORECASE):
+                return entry.get("pattern_id", "session_memory")
+        except (re.error, ValueError):
+            continue
+
+    return None
+
+
+def _pattern_has_session_scope(pattern_id: str, config: dict[str, Any]) -> bool:
+    """Check if a pattern has sessionScope: true in config.
+
+    Args:
+        pattern_id: Pattern identifier (e.g., "yaml_pattern_42" or "semantic_git").
+        config: Configuration dict.
+
+    Returns:
+        True if the pattern has sessionScope enabled.
+    """
+    if not pattern_id.startswith("yaml_pattern_"):
+        return False
+
+    try:
+        idx = int(pattern_id.split("_")[-1])
+    except (ValueError, IndexError):
+        return False
+
+    # Check compiled patterns first, fall back to raw
+    patterns = config.get("bashToolPatterns_compiled", config.get("bashToolPatterns", []))
+    if 0 <= idx < len(patterns):
+        return bool(patterns[idx].get("sessionScope", False))
+
+    return False
+
+
+def _get_pattern_text(pattern_id: str, config: dict[str, Any]) -> Optional[str]:
+    """Extract regex string from pattern config by pattern ID.
+
+    Args:
+        pattern_id: Pattern identifier (e.g., "yaml_pattern_42").
+        config: Configuration dict.
+
+    Returns:
+        Regex pattern string, or None if not found.
+    """
+    if not pattern_id.startswith("yaml_pattern_"):
+        return None
+
+    try:
+        idx = int(pattern_id.split("_")[-1])
+    except (ValueError, IndexError):
+        return None
+
+    # Check compiled patterns first, fall back to raw
+    patterns = config.get("bashToolPatterns_compiled", config.get("bashToolPatterns", []))
+    if 0 <= idx < len(patterns):
+        return patterns[idx].get("pattern")
+
+    return None
+
+
+# ============================================================================
 # CONTEXT DETECTION
 # ============================================================================
 
@@ -1826,6 +2056,22 @@ def main() -> None:
     is_blocked, should_ask, reason, pattern_matched, was_unwrapped, semantic_match = check_command(
         command, config, context=context
     )
+
+    # Session allowlist: convert ask → allow for pre-approved patterns
+    # Never overrides a block — only downgrades ask to allow
+    if should_ask and not is_blocked:
+        session_pattern = check_session_allowlist(command, config)
+        if session_pattern:
+            should_ask = False
+            reason = ""
+            pattern_matched = f"session_allowed:{session_pattern}"
+
+    # Record ask patterns with sessionScope for auto-remember
+    if should_ask and not is_blocked:
+        if _pattern_has_session_scope(pattern_matched, config):
+            pattern_text = _get_pattern_text(pattern_matched, config)
+            if pattern_text:
+                record_session_ask(pattern_matched, pattern_text, command)
 
     # Log the decision with all metadata
     decision = "blocked" if is_blocked else ("ask" if should_ask else "allowed")
