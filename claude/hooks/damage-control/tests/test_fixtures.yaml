@@ -4,12 +4,15 @@
 #
 # Structure:
 #   <suite_name>:
-#     blocked:     # Tests that should be blocked
+#     blocked:     # Tests that should be blocked (exit 2)
 #       - command: "actual command"
 #         reason: "Human-readable reason"
 #         hook: "bash|edit|write" (default: bash)
 #         tool: "Bash|Edit|Write" (default: Bash)
-#     allowed:     # Tests that should be allowed
+#     ask:         # Tests that should prompt for confirmation (exit 0 + permissionDecision: ask)
+#       - command: "actual command"
+#         reason: "Human-readable reason"
+#     allowed:     # Tests that should be allowed (exit 0, no ask)
 #       - command: "actual command"
 #         reason: "Human-readable reason"
 #         hook: "bash|edit|write" (default: bash)
@@ -26,14 +29,15 @@ shellUnwrapping:
     - command: "bash -c 'rm -rf /'"
       reason: "Shell wrapper bash -c with recursive rm on root"
 
-    - command: "sh -c 'git reset --hard'"
-      reason: "Shell wrapper sh -c with destructive git"
-
     - command: "bash -c 'sudo rm -rf /'"
       reason: "Shell wrapper with sudo destruction"
 
     - command: "bash -c 'chmod 777 ~/.ssh/id_rsa'"
       reason: "Shell wrapper with permission changes"
+
+  ask:
+    - command: "sh -c 'git reset --hard'"
+      reason: "Shell wrapper sh -c with destructive git"
 
   allowed:
     # Safe shell commands without wrappers
@@ -63,6 +67,14 @@ shellUnwrapping:
 # ============================================================================
 gitSemantic:
   blocked:
+    # History destruction
+    - command: "git reflog expire --expire=now --all"
+      reason: "Destroying recovery mechanism"
+
+    - command: "git gc --prune=now"
+      reason: "Aggressive garbage collection can lose commits"
+
+  ask:
     # Force push without lease
     - command: "git push --force"
       reason: "Force push without safety (use --force-with-lease)"
@@ -80,25 +92,18 @@ gitSemantic:
     - command: "git reset --hard HEAD~1"
       reason: "Hard reset to previous commit"
 
-    # History destruction
-    - command: "git reflog expire --expire=now --all"
-      reason: "Destroying recovery mechanism"
-
-    - command: "git gc --prune=now"
-      reason: "Aggressive garbage collection can lose commits"
-
     # Stash operations
     - command: "git stash clear"
       reason: "Clear all stashes (permanent deletion)"
 
-  allowed:
-    # Safe force with lease
+    # Force with lease (safer but still rewrites remote history)
     - command: "git push --force-with-lease"
       reason: "Safe force push variant"
 
     - command: "git push origin main --force-with-lease"
       reason: "Safe force push to specific branch"
 
+  allowed:
     # Safe checkout/restore
     - command: "git checkout feature-branch"
       reason: "Safe branch checkout"
@@ -138,15 +143,16 @@ backwardCompat:
     - command: "dropdb production"
       reason: "PostgreSQL drop entire database"
 
-    # Cloud provider operations
+    - command: "terraform destroy -auto-approve"
+      reason: "Terraform destroy infrastructure"
+
+  ask:
+    # Cloud provider operations (prompt for confirmation)
     - command: "aws s3 rm s3://prod-bucket --recursive"
       reason: "AWS S3 recursive delete"
 
     - command: "gcloud projects delete my-prod-project"
       reason: "GCloud delete entire project"
-
-    - command: "terraform destroy -auto-approve"
-      reason: "Terraform destroy infrastructure"
 
     - command: "kubectl delete all --all --all-namespaces"
       reason: "Kubernetes delete everything"
