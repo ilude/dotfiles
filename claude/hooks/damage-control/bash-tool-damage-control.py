@@ -1109,6 +1109,8 @@ def glob_to_regex(glob_pattern: str) -> str:
             result += "\\" + char
         else:
             result += char
+    # Prevent matching method names like json.dumps when pattern is *.dump
+    result += r"(?!\w)"
     return result
 
 

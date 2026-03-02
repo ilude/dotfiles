@@ -388,7 +388,7 @@ def run_test(
             kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
 
         result = subprocess.run(
-            ["uv", "run", str(hook_path)],
+            [sys.executable, str(hook_path)],
             input=input_json,
             capture_output=True,
             text=True,
@@ -515,6 +515,23 @@ def run_test_suite(suite_name: str) -> int:
                 total_tests += 1
                 print(f"    [{total_tests}] {reason}")
                 if run_test(hook, tool, command, "blocked", verbose=False):
+                    passed_tests += 1
+                    print("         PASS")
+                else:
+                    print("         FAIL")
+
+        # Run ask tests
+        if "ask" in suite_data:
+            print(f"\n  Testing {len(suite_data['ask'])} ask cases:")
+            for test_case in suite_data["ask"]:
+                command = test_case.get("command", "")
+                reason = test_case.get("reason", "")
+                hook = test_case.get("hook", "bash")
+                tool = test_case.get("tool", "Bash")
+
+                total_tests += 1
+                print(f"    [{total_tests}] {reason}")
+                if run_test(hook, tool, command, "ask", verbose=False):
                     passed_tests += 1
                     print("         PASS")
                 else:
