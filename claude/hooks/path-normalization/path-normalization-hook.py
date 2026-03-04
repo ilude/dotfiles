@@ -21,9 +21,11 @@ BEHAVIOR:
 
 SIMPLE RULES:
 1. ~\\... → ~/...  (fix backslashes in home-relative paths)
-2. Absolute within cwd → relative to cwd (transparent fix)
-3. Absolute within home → ~/ path (transparent fix)
-4. Absolute outside both → block with filename suggestion
+2. UNC within project → relative to cwd (string-based, no network I/O)
+3. UNC outside project → block with filename suggestion
+4. Absolute within cwd → relative to cwd (transparent fix)
+5. Absolute within home → ~/ path (transparent fix)
+6. Absolute outside both → block with filename suggestion
 
 This hook uses the PreToolUse `updatedInput` feature to transparently fix paths
 where the correction is unambiguous, avoiding retry loops. For ambiguous cases,
@@ -307,10 +309,23 @@ def main() -> None:
 
     is_abs = is_absolute(path_str)
 
-    # CASE 3: UNC paths - BLOCK early to avoid network I/O from resolve()
+    # CASE 3: UNC paths - use string comparison to avoid network I/O from resolve()
+    # If the UNC path is within CLAUDE_PROJECT_DIR, make it relative. Otherwise block.
     if is_unc_path(path_str):
-        filename = path_str.rsplit("/", 1)[-1].rsplit(BACKSLASH, 1)[-1]
-        block(tool_name, path_str, "UNC path not supported", filename)
+        normalized = normalize_separators(path_str)
+        cwd_str = normalize_separators(
+            os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+        ).rstrip("/")
+        # Case-insensitive comparison (Windows shares are case-insensitive)
+        if normalized.lower().startswith(cwd_str.lower() + "/"):
+            relative = normalized[len(cwd_str) + 1 :]
+            if not relative or relative == "/":
+                log_decision(tool_name, path_str, "allowed", "UNC path is project root")
+                sys.exit(0)
+            fix_and_allow(tool_name, path_str, relative, "UNC path within project")
+        # Outside project - block with filename suggestion
+        filename = normalized.rsplit("/", 1)[-1]
+        block(tool_name, path_str, "UNC path outside project", filename)
 
     # CASE 4: Relative path with backslashes - FIX transparently
     # This is a deterministic correction (just replace separators)

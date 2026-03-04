@@ -393,8 +393,8 @@ class TestEdgeCases:
         result = run_hook("Edit", "/dev/null")
         assert result.allowed
 
-    def test_unc_path_blocked(self, run_hook, tmp_path):
-        """UNC network paths should be blocked."""
+    def test_unc_path_outside_project_blocked(self, run_hook, tmp_path):
+        """UNC network paths outside project should be blocked."""
         home_dir = tmp_path / "Users" / "TestUser"
         home_dir.mkdir(parents=True)
 
@@ -579,10 +579,14 @@ class TestTypeErrors:
 
 
 class TestUNCPaths:
-    """Test UNC network path handling - must block without network I/O."""
+    """Test UNC network path handling.
 
-    def test_unc_forward_slash_blocked(self, run_hook, tmp_path):
-        """UNC path with forward slashes should be blocked."""
+    UNC paths within the project directory should be fixed to relative paths.
+    UNC paths outside the project should be blocked (same as other absolute paths).
+    """
+
+    def test_unc_outside_project_blocked(self, run_hook, tmp_path):
+        """UNC path outside project should be blocked."""
         home_dir = tmp_path / "Users" / "TestUser"
         home_dir.mkdir(parents=True)
 
@@ -595,10 +599,9 @@ class TestUNCPaths:
             },
         )
         assert result.blocked
-        assert "UNC" in result.stderr or "relative path" in result.stderr.lower()
 
-    def test_unc_backslash_blocked(self, run_hook, tmp_path):
-        """UNC path with backslashes should be blocked."""
+    def test_unc_backslash_outside_project_blocked(self, run_hook, tmp_path):
+        """UNC path with backslashes outside project should be blocked."""
         home_dir = tmp_path / "Users" / "TestUser"
         home_dir.mkdir(parents=True)
 
@@ -612,18 +615,59 @@ class TestUNCPaths:
         )
         assert result.blocked
 
-    def test_unc_suggests_filename(self, run_hook, tmp_path):
-        """UNC path error should suggest the filename."""
+    def test_unc_outside_suggests_filename(self, run_hook, tmp_path):
+        """UNC path outside project should suggest the filename."""
         home_dir = tmp_path / "Users" / "TestUser"
         home_dir.mkdir(parents=True)
 
         result = run_hook(
             "Edit",
             "//fileserver/documents/report.docx",
-            env={"USERPROFILE": str(home_dir).replace("\\", "/")},
+            env={
+                "USERPROFILE": str(home_dir).replace("\\", "/"),
+                "CLAUDE_PROJECT_DIR": str(tmp_path / "project").replace("\\", "/"),
+            },
         )
         assert result.blocked
         assert "report.docx" in result.stderr
+
+    def test_unc_within_project_fixed_to_relative(self, run_hook, tmp_path):
+        """UNC path within project dir should be fixed to relative path.
+
+        Regression test for: when CWD is a UNC path (e.g., NFS/SMB mount like
+        //pve.ilude.com/tank/obsidian/), all file writes get UNC prefixes.
+        The hook should convert these to relative paths, not block them.
+        """
+        project = "//pve.ilude.com/tank/obsidian"
+        result = run_hook(
+            "Write",
+            f"{project}/.claude/skills/test/SKILL.md",
+            env={"CLAUDE_PROJECT_DIR": project},
+        )
+        assert result.fixed, f"Expected fixed, got exit {result.exit_code}: {result.stderr}"
+        assert result.fixed_path == ".claude/skills/test/SKILL.md"
+
+    def test_unc_project_root_file_fixed(self, run_hook):
+        """UNC path to a file at project root should be fixed to just the filename."""
+        project = "//server/share/myproject"
+        result = run_hook(
+            "Write",
+            f"{project}/CLAUDE.md",
+            env={"CLAUDE_PROJECT_DIR": project},
+        )
+        assert result.fixed, f"Expected fixed, got exit {result.exit_code}: {result.stderr}"
+        assert result.fixed_path == "CLAUDE.md"
+
+    def test_unc_nested_path_fixed(self, run_hook):
+        """Deeply nested UNC path within project should be fixed to relative."""
+        project = "//nas/vault"
+        result = run_hook(
+            "Edit",
+            f"{project}/a/b/c/deep.py",
+            env={"CLAUDE_PROJECT_DIR": project},
+        )
+        assert result.fixed
+        assert result.fixed_path == "a/b/c/deep.py"
 
 
 class TestCygwinPaths:
