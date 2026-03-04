@@ -213,7 +213,7 @@ uv run pytest -v
 
 - **Do NOT** assume the bug is in this hook when you see "unexpectedly modified" - first check the logs to see what path was actually passed
 - **Do NOT** use `Path.name` on cross-platform paths - use string operations after normalizing separators
-- **Do NOT** call `Path.resolve()` on UNC paths - it triggers network I/O
+- **Do NOT** call `Path.resolve()` on UNC paths - it triggers network I/O (CASE 3 uses string comparison instead)
 - **Do NOT** mutate `tool_input` - always create new objects for `updatedInput`
 
 ## References
