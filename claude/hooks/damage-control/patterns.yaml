@@ -756,6 +756,14 @@ bashToolPatterns:
   # ---------------------------------------------------------------------------
   # INFRASTRUCTURE AS CODE DESTRUCTIVE OPERATIONS
   # ---------------------------------------------------------------------------
+  # Terraform commands referencing .tfvars files (overrides zeroAccessPaths)
+  # bashToolPatterns are checked BEFORE zeroAccessPaths, so ask: true here
+  # lets terraform plan/apply with -var-file through with a prompt instead
+  # of hard-blocking on the *.tfvars zero-access glob.
+  - pattern: '\bterraform\s+(?:plan|apply|destroy|import|refresh|console)\b.*\.tfvars\b'
+    reason: "terraform command references .tfvars file (contains variables/secrets)"
+    ask: true
+
   # Hard block: unattended destruction (no confirmation prompt)
   - pattern: '\bterraform\s+destroy\s+.*-auto-approve\b'
     reason: "terraform destroy -auto-approve (unattended infrastructure destruction)"
@@ -807,6 +815,11 @@ bashToolPatterns:
   # ---------------------------------------------------------------------------
   # OPENTOFU (tofu) DESTRUCTIVE OPERATIONS
   # ---------------------------------------------------------------------------
+  # Tofu commands referencing .tfvars files (overrides zeroAccessPaths)
+  - pattern: '\btofu\s+(?:plan|apply|destroy|import|refresh|console)\b.*\.tfvars\b'
+    reason: "tofu command references .tfvars file (contains variables/secrets)"
+    ask: true
+
   - pattern: '\btofu\s+destroy\s+.*-auto-approve\b'
     reason: "tofu destroy -auto-approve (unattended infrastructure destruction)"
 
