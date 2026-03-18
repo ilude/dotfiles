@@ -830,3 +830,63 @@ class TestDryRunExemption:
             f"  command: {command}\n"
             f"  blocked={blocked}, ask={ask}"
         )
+
+
+# ============================================================================
+# Terraform .tfvars override tests
+# ============================================================================
+
+
+class TestTfvarsOverride:
+    """Terraform/tofu commands with .tfvars should ask, not hard-block.
+
+    bashToolPatterns are checked before zeroAccessPaths, so an ask: true
+    pattern for terraform commands referencing .tfvars overrides the
+    zero-access hard block.
+    """
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "terraform plan -var-file=../prod.tfvars",
+            "terraform plan -var-file=environments/dev/terraform.tfvars",
+            "terraform apply -var-file=prod.tfvars -target=aws_wafv2_web_acl.gitlab",
+            "terraform apply -var-file=common.tfvars -var-file=dev.tfvars",
+            "terraform destroy -var-file=prod.tfvars",
+            "terraform import -var-file=prod.tfvars aws_instance.foo i-1234",
+            "cd regions/us-east-2 && terraform plan -var-file=../prod.tfvars",
+            "tofu plan -var-file=prod.tfvars",
+            "tofu apply -var-file=prod.tfvars",
+        ],
+    )
+    def test_terraform_tfvars_asks_instead_of_blocking(self, full_config, command):
+        """terraform/tofu with -var-file=*.tfvars should prompt, not hard-block."""
+        blocked, ask, reason, pattern, _, _ = check_command(command, full_config)
+        assert ask, (
+            f"terraform .tfvars command should ask, not block:\n"
+            f"  command: {command}\n"
+            f"  blocked={blocked}, ask={ask}, reason={reason}"
+        )
+        assert not blocked, (
+            f"terraform .tfvars command was hard-blocked instead of asking:\n"
+            f"  command: {command}\n"
+            f"  reason={reason}"
+        )
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "cat prod.tfvars",
+            "head -5 terraform.tfvars",
+            "cp prod.tfvars /tmp/",
+            "echo 'secret' > prod.tfvars",
+        ],
+    )
+    def test_non_terraform_tfvars_still_blocked(self, full_config, command):
+        """Non-terraform access to .tfvars should still be hard-blocked."""
+        blocked, ask, reason, pattern, _, _ = check_command(command, full_config)
+        assert blocked, (
+            f"Non-terraform .tfvars access should be blocked:\n"
+            f"  command: {command}\n"
+            f"  blocked={blocked}, ask={ask}, reason={reason}"
+        )

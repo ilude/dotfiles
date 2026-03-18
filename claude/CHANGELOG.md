@@ -4,6 +4,16 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
+## 2026-03-18: Improve war-report specificity and formatting
+
+**Changed:**
+- Added explicit rule requiring specific entries (name the feature/component/system) — generic statements like "fixed a bug" are never acceptable
+- Added bad example section showing what NOT to write
+- Enforced active voice and no trailing periods on entries
+- Updated good examples to match new formatting rules
+
+**Files:** claude/skills/war-report/SKILL.md
+
 ## 2026-02-26: Fix Windows console window flashing caused by uv in hooks
 
 **Fixed:**

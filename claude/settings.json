@@ -31,7 +31,6 @@
       "Bash(git reset --hard:*)"
     ]
   },
-  "model": "opus",
   "enableAllProjectMcpServers": false,
   "hooks": {
     "SessionStart": [
@@ -165,7 +164,7 @@
     "superpowers@superpowers-marketplace": true
   },
   "alwaysThinkingEnabled": true,
+  "effortLevel": "medium",
   "companyAnnouncements": [],
-  "skipDangerousModePermissionPrompt": true,
-  "effortLevel": "medium"
+  "skipDangerousModePermissionPrompt": true
 }

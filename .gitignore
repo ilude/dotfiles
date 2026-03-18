@@ -31,6 +31,7 @@ claude/*.env
 claude/*secret*
 claude/*password*
 claude/.mcp.json
+claude/policy-limits.json
 
 # Session and state data
 claude/provider-config.json
@@ -41,6 +42,7 @@ claude/.session/
 claude/.update.lock
 claude/history.jsonl
 claude/stats-cache.json
+claude/sessions/
 
 # Working directories
 claude/cache/
