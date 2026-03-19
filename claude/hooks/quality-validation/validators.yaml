@@ -19,17 +19,29 @@ python:
     pip: "uv tool install ruff"
 
 typescript:
-  extensions: [".ts", ".tsx", ".js", ".jsx"]
+  extensions: [".ts", ".tsx"]
   markers: ["package.json", "tsconfig.json"]
+  # detect: pick first validator whose config files exist in project root.
+  # Falls back to the last entry if none match.
+  validators:
+    - name: eslint
+      command: ["{project_root}/node_modules/.bin/eslint.exe", "--config", "{project_root}/.eslintrc.json", "{file}"]
+      env:
+        ESLINT_USE_FLAT_CONFIG: "false"
+      detect: [".eslintrc", ".eslintrc.js", ".eslintrc.json", ".eslintrc.yml", ".eslintrc.yaml", ".eslintrc.cjs", "eslint.config.js", "eslint.config.mjs", "eslint.config.cjs", "eslint.config.ts", "eslint.config.mts"]
+    - name: biome
+      command: ["biome", "check", "{file}"]
+      check: "biome"
+      detect: ["biome.json", "biome.jsonc"]
+
+javascript:
+  extensions: [".js", ".jsx"]
+  markers: ["package.json"]
   validators:
     - name: biome
-      command: ["bunx", "--bun", "@biomejs/biome", "check", "{file}"]
-      check: "bun"
-  install:
-    winget: "winget install Oven-sh.Bun"
-    brew: "brew install oven-sh/bun/bun"
-    apt: "curl -fsSL https://bun.sh/install | bash"
-    npm: "bun add -D @biomejs/biome"
+      command: ["biome", "check", "{file}"]
+      check: "biome"
+      detect: ["biome.json", "biome.jsonc"]
 
 shell:
   extensions: [".sh", ".bash"]

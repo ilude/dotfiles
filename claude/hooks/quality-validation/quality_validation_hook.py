@@ -78,11 +78,13 @@ def find_project_root(file_dir: str, markers: list[str]) -> Optional[str]:
     return None
 
 
-def match_language(file_path: str, config: dict[str, Any]) -> Optional[tuple[str, dict[str, Any]]]:
+def match_language(
+    file_path: str, config: dict[str, Any]
+) -> Optional[tuple[str, dict[str, Any], str]]:
     """Match file extension to a language config entry.
 
     Only matches if at least one marker file is found in the ancestor chain.
-    Returns (language_name, language_config) or None.
+    Returns (language_name, language_config, project_root) or None.
     """
     ext = os.path.splitext(file_path)[1].lower()
     file_dir = os.path.dirname(file_path)
@@ -98,9 +100,33 @@ def match_language(file_path: str, config: dict[str, Any]) -> Optional[tuple[str
             continue
         project_root = find_project_root(file_dir, markers)
         if project_root is not None:
-            return lang_name, lang_config
+            return lang_name, lang_config, project_root
 
     return None
+
+
+def filter_validators_by_detection(validators: list[dict], project_root: str) -> list[dict]:
+    """Filter validators using detect fields.
+
+    If any validator has a 'detect' field with config files found in the
+    project root, only validators whose config files are detected are used.
+    Validators without a 'detect' field are included only if no detection
+    matches are found (fallback behavior).
+    """
+    detected = []
+    fallbacks = []
+
+    for validator in validators:
+        detect_files = validator.get("detect", [])
+        if not detect_files:
+            fallbacks.append(validator)
+            continue
+        for config_file in detect_files:
+            if (Path(project_root) / config_file).exists():
+                detected.append(validator)
+                break
+
+    return detected if detected else fallbacks
 
 
 def detect_package_manager() -> Optional[str]:
@@ -132,19 +158,30 @@ def get_install_suggestion(lang_config: dict[str, Any], validator_name: str) -> 
     return None
 
 
-def build_command(cmd_template: list[str], file_path: str) -> list[str]:
-    """Replace {file} placeholder in command list safely."""
-    return [file_path if arg == "{file}" else arg for arg in cmd_template]
+def build_command(cmd_template: list[str], file_path: str, project_root: str = "") -> list[str]:
+    """Replace {file} and {project_root} placeholders in command list safely."""
+    result = []
+    for arg in cmd_template:
+        arg = arg.replace("{file}", file_path)
+        arg = arg.replace("{project_root}", project_root)
+        result.append(arg)
+    return result
 
 
-def run_validator(cmd: list[str], timeout: int = 8) -> tuple[int, str]:
+def run_validator(
+    cmd: list[str], timeout: int = 8, env: Optional[dict[str, str]] = None
+) -> tuple[int, str]:
     """Run validator command. Returns (returncode, combined output)."""
     try:
+        run_env = None
+        if env:
+            run_env = {**os.environ, **env}
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=run_env,
         )
         output = ""
         if result.stdout:
@@ -205,10 +242,13 @@ def main() -> None:
     if not match:
         sys.exit(0)
 
-    lang_name, lang_config = match
+    lang_name, lang_config, project_root = match
     validators = lang_config.get("validators", [])
     if not validators:
         sys.exit(0)
+
+    # Filter validators by project config detection
+    validators = filter_validators_by_detection(validators, project_root)
 
     # Load skip list
     skip_list = load_skip_list()
@@ -238,8 +278,9 @@ def main() -> None:
             continue
 
         # Build and run command
-        cmd = build_command(cmd_template, file_path)
-        returncode, output = run_validator(cmd)
+        cmd = build_command(cmd_template, file_path, project_root)
+        validator_env = validator.get("env", None)
+        returncode, output = run_validator(cmd, env=validator_env)
 
         if returncode != 0 and output:
             # Truncate output
