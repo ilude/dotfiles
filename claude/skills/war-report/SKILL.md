@@ -45,31 +45,31 @@ description: Generate weekly activity reports (WAR) from git commits. Analyzes c
 
 Date-prefixed chronological entries in active voice with no trailing periods. Each entry is a self-contained summary of related work for that day. Group related commits from the same day into a single entry. Multiple entries per day are fine when the work is distinct. Every entry must be specific — name the feature, component, or system affected.
 
-**Format:** `Month DD: Summary sentence(s)` (no trailing period)
+**Format:** `DD Mon: Summary sentence(s)` (no trailing period, no zero-padded days)
 
 **Good example:**
 ```
-February 09: Developed edit models for onboarding applications and implemented update functionality with improvements to data parsing and service calls
-February 09: Resolved unit test failures caused by dirty state persistence and null group handling in the onboarding workflow
-February 09: Refactored AppSettings configuration to consolidate redundant entries across multiple files, improving clarity and maintainability
-February 10: Developed a typeahead filter box for transaction log actions and integrated Angular spec test coverage for the new component
-February 10: Rewrote the Trusted Agent data deletion action to use GUID identifiers and implemented a corresponding retrieval function
-February 11: Fixed a routing misconfiguration that caused the "Manage Apps" page to return a 404 by correcting the route mapping in the application config
+9 Feb: Developed edit models for onboarding applications and implemented update functionality with improvements to data parsing and service calls
+9 Feb: Resolved unit test failures caused by dirty state persistence and null group handling in the onboarding workflow
+9 Feb: Refactored AppSettings configuration to consolidate redundant entries across multiple files, improving clarity and maintainability
+10 Feb: Developed a typeahead filter box for transaction log actions and integrated Angular spec test coverage for the new component
+10 Feb: Rewrote the Trusted Agent data deletion action to use GUID identifiers and implemented a corresponding retrieval function
+11 Feb: Fixed a routing misconfiguration that caused the "Manage Apps" page to return a 404 by correcting the route mapping in the application config
 ```
 
 **Bad example (too generic — never write entries like these):**
 ```
-February 09: Troubleshot and resolved a bug
-February 10: Made improvements to the codebase
-February 10: Fixed several issues
-February 11: Updated configuration files
+9 Feb: Troubleshot and resolved a bug
+10 Feb: Made improvements to the codebase
+10 Feb: Fixed several issues
+11 Feb: Updated configuration files
 ```
 These are useless because they don't say WHAT was fixed, WHERE, or WHY it mattered. Every entry must name the specific thing worked on and the specific outcome.
 
 **Formatting rules:**
 - No project grouping headers
 - No indentation or bullet characters
-- Each line starts with the date (e.g., "February 11:")
+- Each line starts with the date (e.g., "11 Feb:")
 - Each entry is 1-2 sentences describing what was accomplished
 - **No periods at the end of entries**
 - Entries are ordered chronologically by date

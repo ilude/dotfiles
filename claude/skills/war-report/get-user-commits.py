@@ -3,7 +3,7 @@
 Get git commits for the current user with exact email matching.
 
 Output format: date<TAB>hash subject (one per line)
-Example output: February 09\ta1b2c3d Fixed routing error
+Example output: 9 Feb\ta1b2c3d Fixed routing error
 
 Usage:
     python get-user-commits.py <repo_path> <since_date> <until_date>
@@ -45,7 +45,7 @@ def get_commits(repo_path: Path, since: str, until: str, user_email: str) -> lis
             f"--until={until}",
             "--all",
             "--format=%h\t%ae\t%ad\t%s",
-            "--date=format:%B %d",
+            "--date=format:%-d %b",
         ],
         cwd=repo_path,
         capture_output=True,
@@ -74,7 +74,10 @@ def get_commits(repo_path: Path, since: str, until: str, user_email: str) -> lis
 
 def main():
     if len(sys.argv) != 4:
-        print("Usage: get-user-commits.py <repo_path> <since_date> <until_date>", file=sys.stderr)
+        print(
+            "Usage: get-user-commits.py <repo_path> <since_date> <until_date>",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     repo_path = Path(sys.argv[1])
