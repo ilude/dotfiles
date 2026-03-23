@@ -1,0 +1,2 @@
+# Validator names to skip (one per line)
+# Example: eslint-flat
