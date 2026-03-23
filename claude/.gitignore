@@ -81,3 +81,7 @@ plugins/blocklist.json
 plugins/install-counts-cache.json
 !plugins/known_marketplaces.json
 stats-cache.json
+
+# MCP and tools (runtime)
+mcp-needs-auth-cache.json
+tools/
