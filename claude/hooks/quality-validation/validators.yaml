@@ -24,11 +24,14 @@ typescript:
   # detect: pick first validator whose config files exist in project root.
   # Falls back to the last entry if none match.
   validators:
-    - name: eslint
+    - name: eslint-flat
+      command: ["{project_root}/node_modules/.bin/eslint.exe", "{file}"]
+      detect: ["eslint.config.js", "eslint.config.mjs", "eslint.config.cjs", "eslint.config.ts", "eslint.config.mts"]
+    - name: eslint-legacy
       command: ["{project_root}/node_modules/.bin/eslint.exe", "--config", "{project_root}/.eslintrc.json", "{file}"]
       env:
         ESLINT_USE_FLAT_CONFIG: "false"
-      detect: [".eslintrc", ".eslintrc.js", ".eslintrc.json", ".eslintrc.yml", ".eslintrc.yaml", ".eslintrc.cjs", "eslint.config.js", "eslint.config.mjs", "eslint.config.cjs", "eslint.config.ts", "eslint.config.mts"]
+      detect: [".eslintrc", ".eslintrc.js", ".eslintrc.json", ".eslintrc.yml", ".eslintrc.yaml", ".eslintrc.cjs"]
     - name: biome
       command: ["biome", "check", "{file}"]
       check: "biome"
