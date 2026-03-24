@@ -26,24 +26,49 @@ LOG_DIR = Path(os.path.expanduser("~")) / ".claude" / "logs" / "commit-guard"
 
 # Extensions considered auto-stageable (source, docs, config)
 AUTO_STAGE_EXTENSIONS = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".md", ".rst", ".txt",
-    ".yaml", ".yml", ".toml", ".json",
-    ".sh", ".bash",
-    ".css", ".html",
-    ".go", ".rs", ".tf", ".sql",
-    ".rb", ".cs", ".csproj", ".sln",
+    ".py",
+    ".js",
+    ".ts",
+    ".tsx",
+    ".jsx",
+    ".md",
+    ".rst",
+    ".txt",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".json",
+    ".sh",
+    ".bash",
+    ".css",
+    ".html",
+    ".go",
+    ".rs",
+    ".tf",
+    ".sql",
+    ".rb",
+    ".cs",
+    ".csproj",
+    ".sln",
 }
 
 # Patterns that should stay untracked (never auto-stage)
 EXCLUDE_PATTERNS = [
-    ".env", ".env.*",
+    ".env",
+    ".env.*",
     "*.log",
-    "*.csv", "*.tsv",
-    "*.db", "*.sqlite", "*.sqlite3",
+    "*.csv",
+    "*.tsv",
+    "*.db",
+    "*.sqlite",
+    "*.sqlite3",
     "node_modules/*",
-    ".venv/*", "__pycache__/*", "*.pyc",
-    "*.egg-info/*", "dist/*", "build/*",
+    ".venv/*",
+    "__pycache__/*",
+    "*.pyc",
+    "*.egg-info/*",
+    "dist/*",
+    "build/*",
 ]
 
 
@@ -53,11 +78,7 @@ def load_skip_patterns():
         return []
     try:
         with open(SKIP_FILE) as f:
-            return [
-                line.strip()
-                for line in f
-                if line.strip() and not line.startswith("#")
-            ]
+            return [line.strip() for line in f if line.strip() and not line.startswith("#")]
     except OSError:
         return []
 
@@ -131,6 +152,10 @@ def main():
     tool_input = input_data.get("tool_input", {})
     command = tool_input.get("command", "")
     if "git commit" not in command:
+        sys.exit(0)
+
+    # Batch mode: skip check when COMMIT_GUARD_BATCH=1 is set in the command
+    if "COMMIT_GUARD_BATCH=1" in command:
         sys.exit(0)
 
     # Get working directory from hook input

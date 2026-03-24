@@ -62,6 +62,7 @@ For each group of related files:
 4. Brief summary line with optional detailed body
 5. Use HEREDOC format for multi-line messages: git commit --no-verify -m "$(cat <<'EOF'\ntype: summary\n\nOptional details\nEOF\n)"
 6. Create the commit (use --no-verify since tests already ran in the pre-commit optimization step)
+7. For intermediate commits (more groups remain after this one), prefix with `COMMIT_GUARD_BATCH=1` to suppress the commit-guard hook. Only the FINAL commit should run without this prefix so the guard can verify no files were missed.
 
 After each commit, run git status again. If legitimate files remain (not matching the auto-ignore patterns), categorize and group them, then commit. Repeat this loop until git status shows only ignored files or working tree is clean.
 
