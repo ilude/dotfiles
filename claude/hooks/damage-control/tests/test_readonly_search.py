@@ -351,7 +351,8 @@ class TestPathChecksStillEnforced:
     @staticmethod
     def _make_config_with_zero_access(paths):
         """Build a compiled config with custom zeroAccessPaths (list of strings)."""
-        compiled = bash_tool.get_compiled_config()
+        # Copy to avoid mutating the module-level _compiled_config_cache
+        compiled = dict(bash_tool.get_compiled_config())
         # Override zeroAccessPaths with our test paths
         compiled["zeroAccessPaths_compiled"] = bash_tool.preprocess_path_list(paths)
         return compiled
@@ -655,7 +656,10 @@ class TestInertCommands:
 
     def test_cd_then_find_env_not_blocked(self, full_config):
         """The original false positive: cd + find with .env in name pattern."""
-        cmd = 'cd /c/Users/mglenn/.dotfiles && find onyx -type f \\( -name "*.ts" -o -name ".env*" \\) 2>/dev/null | head -50'
+        cmd = (
+            'cd /c/Users/mglenn/.dotfiles && find onyx -type f'
+            r' \( -name "*.ts" -o -name ".env*" \) 2>/dev/null | head -50'
+        )
         blocked, ask, reason, pattern, _, _ = check_command(cmd, full_config)
         assert not blocked and not ask, (
             f"False positive: cd + find with .env pattern\n"

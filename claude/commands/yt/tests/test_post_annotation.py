@@ -29,7 +29,9 @@ class TestMain:
         mock_client.post.return_value = response
         return mock_client
 
-    def _base_patches(self, mock_client, mock_signer_cls, mock_path_cls, text_exists=True, ssh_exists=True):
+    def _base_patches(
+        self, mock_client, mock_signer_cls, mock_path_cls, text_exists=True, ssh_exists=True
+    ):
         """Set up standard Path and signer mocks."""
         # Mock Path(text_file)
         mock_text_path = MagicMock()
@@ -40,7 +42,9 @@ class TestMain:
         # Mock Path.home() / ".ssh" / "id_ed25519"
         mock_ssh_path = MagicMock()
         mock_ssh_path.exists.return_value = ssh_exists
-        mock_path_cls.home.return_value.__truediv__.return_value.__truediv__.return_value = mock_ssh_path
+        mock_path_cls.home.return_value.__truediv__.return_value.__truediv__.return_value = (
+            mock_ssh_path
+        )
 
         mock_signer_cls.from_file.return_value = mock_signer_cls.instance
         mock_signer_cls.instance.sign_request.return_value = {
@@ -61,7 +65,11 @@ class TestMain:
         mock_client = self._make_mock_client(response)
 
         with (
-            patch.object(sys, "argv", ["post_annotation.py", "content_123", "My Screenshot", "note.txt", "--tags", "python", "testing"]),
+            patch.object(
+                sys, "argv",
+                ["post_annotation.py", "content_123", "My Screenshot", "note.txt",
+                 "--tags", "python", "testing"],
+            ),
             patch("post_annotation.RequestSigner") as mock_signer_cls,
             patch("post_annotation.httpx.Client", return_value=mock_client),
             patch("post_annotation.Path") as mock_path_cls,
@@ -83,7 +91,10 @@ class TestMain:
         mock_client = self._make_mock_client(response)
 
         with (
-            patch.object(sys, "argv", ["post_annotation.py", "content_456", "Test Title", "body.txt", "--tags", "tag1"]),
+            patch.object(
+                sys, "argv",
+                ["post_annotation.py", "content_456", "Test Title", "body.txt", "--tags", "tag1"],
+            ),
             patch("post_annotation.RequestSigner") as mock_signer_cls,
             patch("post_annotation.httpx.Client", return_value=mock_client),
             patch("post_annotation.Path") as mock_path_cls,
@@ -151,7 +162,10 @@ class TestMain:
         mock_client.__exit__ = MagicMock(return_value=False)
 
         with (
-            patch.object(sys, "argv", ["post_annotation.py", "content_123", "Title", "missing.txt"]),
+            patch.object(
+                sys, "argv",
+                ["post_annotation.py", "content_123", "Title", "missing.txt"],
+            ),
             patch("post_annotation.RequestSigner") as mock_signer_cls,
             patch("post_annotation.httpx.Client", return_value=mock_client),
             patch("post_annotation.Path") as mock_path_cls,

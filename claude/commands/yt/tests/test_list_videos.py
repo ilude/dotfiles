@@ -28,7 +28,9 @@ def _make_item(i, created_at="2024-01-15T10:30:00Z", published_at="2024-01-10T00
     }
 
 
-def _run_main(argv, mock_client, *, api_base="http://localhost:8000/api/v1", api_host="localhost:8000"):
+def _run_main(
+    argv, mock_client, *, api_base="http://localhost:8000/api/v1", api_host="localhost:8000"
+):
     """Patch all external dependencies and call main()."""
     with (
         patch.object(sys, "argv", argv),

@@ -689,7 +689,7 @@ READONLY_SEARCH_COMMANDS = [
     r"^\s*terraform\s+show\b",
     r"^\s*terraform\s+state\s+list\b",
     r"^\s*terraform\s+output\b",
-    r"^\s*terraform\s+plan\b",
+    r"^\s*terraform\s+plan\b(?!.*-var-file=\S*\.tfvars)",
     # Modern search tools
     r"^\s*fd\b",
     r"^\s*locate\b",
