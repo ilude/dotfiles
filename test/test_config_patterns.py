@@ -52,7 +52,7 @@ def read_dotfile(name: str) -> str:
 ALIASES_PATTERNS = [
     # Claude Code aliases
     (
-        "alias ccyl='clear && claude --dangerously-skip-permissions'",
+        "alias ccyl='clear && claude --dangerously-skip-permissions --chrome'",
         "ccyl alias clears screen and uses dangerously-skip-permissions",
     ),
     (
