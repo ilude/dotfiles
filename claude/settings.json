@@ -31,6 +31,7 @@
       "Bash(git reset --hard:*)"
     ]
   },
+  "model": "haiku",
   "enableAllProjectMcpServers": false,
   "hooks": {
     "SessionStart": [
