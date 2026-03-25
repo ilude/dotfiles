@@ -166,7 +166,9 @@ class TestMain:
             mock_path_inst.exists.return_value = False
             # Path.home() / ".ssh" / "id_ed25519" chains two __truediv__ calls;
             # configure the whole chain to return our mock with exists() = False
-            mock_path_cls.home.return_value.__truediv__.return_value.__truediv__.return_value = mock_path_inst
+            mock_path_cls.home.return_value.__truediv__.return_value.__truediv__.return_value = (
+                mock_path_inst
+            )
 
             with pytest.raises(SystemExit) as exc_info:
                 main()

@@ -20,11 +20,11 @@ class TestFetchTranscript:
         resp.text = "Hello, this is the transcript."
         mock_client.get.return_value = resp
 
-        result = fetch_transcript(mock_client, mock_signer, "http://localhost:8000/api/v1", "localhost:8000", "abc123")
+        result = fetch_transcript(
+            mock_client, mock_signer, "http://localhost:8000/api/v1", "localhost:8000", "abc123"
+        )
 
         assert result == "Hello, this is the transcript."
-
-    def test_returns_empty_on_non_200(self):
         mock_client = MagicMock()
         mock_signer = MagicMock()
         mock_signer.sign_request.return_value = {"signature": "sig1=:dGVzdA==:"}
@@ -33,7 +33,9 @@ class TestFetchTranscript:
         resp.status_code = 404
         mock_client.get.return_value = resp
 
-        result = fetch_transcript(mock_client, mock_signer, "http://localhost:8000/api/v1", "localhost:8000", "abc123")
+        result = fetch_transcript(
+            mock_client, mock_signer, "http://localhost:8000/api/v1", "localhost:8000", "abc123"
+        )
 
         assert result == ""
 
@@ -44,7 +46,9 @@ class TestMain:
     def test_json_flag_prints_json(self, capsys):
         content_resp = MagicMock()
         content_resp.status_code = 200
-        content_resp.json.return_value = {"id": "abc123", "title": "Test Video", "content_type": "youtube"}
+        content_resp.json.return_value = {
+            "id": "abc123", "title": "Test Video", "content_type": "youtube"
+        }
 
         mock_client = MagicMock()
         mock_client.__enter__ = MagicMock(return_value=mock_client)
@@ -76,7 +80,9 @@ class TestMain:
     def test_transcript_only_prints_transcript(self, capsys):
         content_resp = MagicMock()
         content_resp.status_code = 200
-        content_resp.json.return_value = {"id": "abc123", "title": "Test Video", "content_type": "youtube"}
+        content_resp.json.return_value = {
+            "id": "abc123", "title": "Test Video", "content_type": "youtube"
+        }
 
         download_resp = MagicMock()
         download_resp.status_code = 200
@@ -111,7 +117,9 @@ class TestMain:
     def test_transcript_only_exits_1_when_empty(self, capsys):
         content_resp = MagicMock()
         content_resp.status_code = 200
-        content_resp.json.return_value = {"id": "abc123", "title": "Test Video", "content_type": "youtube"}
+        content_resp.json.return_value = {
+            "id": "abc123", "title": "Test Video", "content_type": "youtube"
+        }
 
         download_resp = MagicMock()
         download_resp.status_code = 404
