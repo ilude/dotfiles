@@ -152,7 +152,9 @@ class TestMain:
         assert body["limit"] == 3
 
     def test_json_flag_prints_raw(self, capsys):
-        api_data = {"total": 1, "results": [{"score": 0.75, "id": "xyz789", "snippet": "some text"}]}
+        api_data = {
+            "total": 1, "results": [{"score": 0.75, "id": "xyz789", "snippet": "some text"}]
+        }
         response = MagicMock()
         response.status_code = 200
         response.json.return_value = api_data
