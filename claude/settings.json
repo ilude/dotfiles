@@ -31,7 +31,6 @@
       "Bash(git reset --hard:*)"
     ]
   },
-  "model": "sonnet",
   "enableAllProjectMcpServers": false,
   "hooks": {
     "SessionStart": [
@@ -162,7 +161,7 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "python $HOME/.claude/claude-status"
+    "command": "$HOME/.claude/claude-status.exe"
   },
   "enabledPlugins": {
     "handbook-git-worktree@cc-handbook": true,
