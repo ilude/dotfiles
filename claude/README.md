@@ -1,87 +1,67 @@
 # Claude Code Configuration
 
-Personal Claude Code configuration files for synchronizing settings, custom commands, and rulesets across multiple machines.
+Claude Code-specific configuration subtree inside the dotfiles monorepo. This directory is linked to `~/.claude` by the repo installer and related setup scripts.
+
+This is not a standalone Git repository workflow. Manage changes from the root dotfiles repo.
 
 ## Contents
 
-- **CLAUDE.md** - Personal ruleset with preferences and patterns that apply to all projects
-- **commands/** - Custom slash commands for Claude Code
-  - `commit.md` - Enhanced git commit workflow
-- **COMMANDS-QUICKSTART.md** - Documentation for using custom commands
-- **settings.json** - Claude Code global settings
+- **CLAUDE.md** - Claude-specific repo guidance
+- **commands/** - Claude command definitions; this is also the canonical shared command source for OpenCode overlays
+- **COMMANDS-QUICKSTART.md** - Documentation for custom commands
+- **settings.json** - Claude Code runtime settings
+- **hooks/** - Claude hook implementations
+- **agents/** - Claude agent definitions
 
 ## Installation
 
-### Initial Setup (New Machine)
-
-1. **Clone this repository:**
-   ```bash
-   git clone https://github.com/YOUR-USERNAME/claude-code-config.git ~/claude-code-config-temp
-   ```
-
-2. **Run the setup script:**
-   ```bash
-   cd ~/claude-code-config-temp
-   ./setup.sh
-   ```
-
-   Or manually:
-   ```bash
-   # Backup existing .claude directory if it exists
-   mv ~/.claude ~/.claude.backup.$(date +%Y%m%d-%H%M%S)
-
-   # Copy configuration files
-   mkdir -p ~/.claude
-   cp -r ~/claude-code-config-temp/* ~/.claude/
-
-   # Clean up
-   rm -rf ~/claude-code-config-temp
-   ```
-
-3. **Verify installation:**
-   ```bash
-   ls -la ~/.claude
-   ```
-
-### Updating Configuration
-
-To pull the latest changes on any machine:
+The top-level repo installer handles the normal setup flow:
 
 ```bash
-cd ~/.claude
-git pull origin main
+~/.dotfiles/install
 ```
 
-### Pushing Changes
+Or on Windows PowerShell:
 
-After making changes to your configuration:
-
-```bash
-cd ~/.claude
-git add CLAUDE.md commands/ settings.json COMMANDS-QUICKSTART.md
-git commit -m "Update configuration"
-git push origin main
+```powershell
+~\.dotfiles\install.ps1
 ```
+
+Relevant helper scripts:
+
+- `scripts/claude-link-setup` migrates or links an existing `~/.claude` into this repo layout.
+- `scripts/claude-mcp-setup` configures Claude MCP integration.
+- `scripts/claude-plugins-setup` configures Claude plugins.
+
+### Existing Claude Home Migration
+
+If you already have a populated `~/.claude`, `scripts/claude-link-setup` will:
+
+1. back it up,
+2. merge selected machine-specific files into `claude/`,
+3. replace `~/.claude` with a link to this directory.
+
+Make changes from the root repo, not by treating `~/.claude` as an independent checkout.
 
 ## File Structure
 
-```
-.claude/
+```text
+claude/
 ├── .gitignore              # Protects sensitive files
 ├── README.md               # This file
-├── CLAUDE.md               # Personal ruleset (global)
+├── CLAUDE.md               # Claude-specific repo guidance
 ├── COMMANDS-QUICKSTART.md  # Command documentation
 ├── settings.json           # Claude Code settings
-└── commands/               # Custom slash commands
-    ├── commit.md
-    └── README.md
+├── commands/               # Shared command source for Claude and OpenCode
+├── hooks/                  # Claude hooks
+└── agents/                 # Claude agents
 ```
 
 ### Excluded from Version Control
 
-The following files/directories are automatically excluded via `.gitignore`:
+The following files and directories are automatically excluded via `.gitignore`:
 
-- `.credentials.json` - API credentials (sensitive)
+- `.credentials.json` - API credentials
 - `history.jsonl` - Session history
 - `file-history/` - File version history
 - `projects/` - Project-specific session data
@@ -93,22 +73,15 @@ The following files/directories are automatically excluded via `.gitignore`:
 
 ## Usage
 
-### Personal Ruleset
+### Guidance Layers
 
-The `CLAUDE.md` file contains your personal preferences that apply to ALL Claude Code sessions. It includes:
-
-- Communication style preferences
-- Code quality standards
-- Tool usage patterns
-- Python project conventions
-- Git workflow preferences
-- Todo list management guidelines
-
-**Important:** This personal ruleset is overridden by project-specific rulesets (`.claude/CLAUDE.md` in project directories).
+- Root `AGENTS.md` contains repo-wide rules for all coding agents.
+- `CLAUDE.md` contains Claude-specific runtime guidance for this repo.
+- Nested `.claude/CLAUDE.md` files still take precedence inside subprojects such as `menos/`.
 
 ### Custom Commands
 
-Available custom slash commands:
+Available custom slash commands include:
 
 - `/commit [push]` - Create logical git commits with optional push
 
@@ -118,95 +91,43 @@ See `COMMANDS-QUICKSTART.md` for detailed usage instructions.
 
 ### Before Committing Changes
 
-1. **Review your changes:**
+1. Review your changes:
    ```bash
-   cd ~/.claude
+   cd ~/.dotfiles
    git status
    git diff
    ```
-
-2. **Ensure no sensitive data:**
-   - Check that `.credentials.json` is not staged
-   - Verify no API keys or secrets are in committed files
-
-3. **Test on current machine:**
-   - Restart Claude Code session
-   - Verify ruleset is applied correctly
-   - Test custom commands
+2. Ensure no sensitive data is staged.
+3. Restart Claude Code and verify rules, hooks, and custom commands behave as expected on the current machine.
 
 ### Syncing Across Machines
 
-1. **Machine A (make changes):**
-   ```bash
-   cd ~/.claude
-   git add -A
-   git commit -m "Update ruleset: description of changes"
-   git push
-   ```
-
-2. **Machine B (pull changes):**
-   ```bash
-   cd ~/.claude
-   git pull
-   ```
-
-3. **Verify sync:**
-   - Check that files match
-   - Restart Claude Code if needed
+Sync the root dotfiles repository, then rerun the installer or the relevant setup helpers if needed.
 
 ## Troubleshooting
 
-### Git says directory is not a repository
-
-```bash
-cd ~/.claude
-git init
-git remote add origin https://github.com/YOUR-USERNAME/claude-code-config.git
-git fetch
-git checkout main
-```
-
 ### Changes not being applied
 
-- Restart Claude Code session
-- Check file permissions: `ls -la ~/.claude`
-- Verify file contents match repository
+- Restart Claude Code.
+- Check file permissions with `ls -la ~/.claude`.
+- Verify the linked files match the root dotfiles repository.
 
 ### Accidentally committed sensitive data
 
-1. **Remove from history:**
-   ```bash
-   git filter-branch --force --index-filter \
-     "git rm --cached --ignore-unmatch .credentials.json" \
-     --prune-empty --tag-name-filter cat -- --all
-   ```
-
-2. **Force push (CAUTION):**
-   ```bash
-   git push origin --force --all
-   ```
-
-3. **Rotate compromised credentials immediately**
-
-## Contributing
-
-This is a personal configuration repository. If you're setting up your own:
-
-1. Fork or create your own repository
-2. Update `YOUR-USERNAME` in this README
-3. Customize `CLAUDE.md` with your preferences
-4. Add your own custom commands
+1. Remove the data from history.
+2. Force-push only if you understand the impact.
+3. Rotate compromised credentials immediately.
 
 ## Security Notes
 
-- **NEVER commit** `.credentials.json` or any files with API keys
-- The `.gitignore` is configured to prevent common sensitive files
-- Review all changes before pushing
-- Use private repository if it contains any identifying information
+- **NEVER commit** `.credentials.json` or any files with API keys.
+- The `.gitignore` is configured to prevent common sensitive files.
+- Review all changes before pushing.
+- Use a private repository if it contains identifying information.
 
 ## License
 
-Personal configuration - use as you see fit for your own Claude Code setup.
+Personal configuration inside the dotfiles repo.
 
 ## Related Resources
 

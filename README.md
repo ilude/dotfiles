@@ -2,13 +2,15 @@
 
 Cross-platform dotfiles for Linux, Windows (PowerShell, Git Bash/MSYS2), and WSL.
 
+For contributor and coding-agent onboarding, start with `AGENTS.md`.
+
 ## Features
 
 - **Unified zsh experience** - All terminals use zsh with autosuggestions, syntax highlighting, and fuzzy completion
 - **Automatic Git identity** - Directory-based and URL-based identity switching with SSH key detection
 - **Dotbot symlinks** - Declarative symlink management, idempotent installation
-- **Claude Code integration** - Skills, hooks, and damage control security system
-- **OpenCode command sharing** - Uses `claude/commands/` as the single source of truth for both tools
+- **Agent integrations** - Claude Code, OpenCode, and Copilot-specific surfaces live alongside the shared repo config
+- **Shared command overlay** - `claude/commands/` is the canonical shared command source, with OpenCode overrides layered on top
 
 ## Prerequisites
 
@@ -64,7 +66,7 @@ When installing Git for Windows, select:
 
 If using MSYS2's zsh from Git Bash, the `nsswitch.conf` must have `db_home` configured correctly:
 
-```
+```text
 # C:\msys64\etc\nsswitch.conf
 db_home: env windows cygwin desc
 ```
@@ -75,12 +77,14 @@ The `install.ps1` script automatically detects and fixes this if needed. Without
 
 All terminals (Git Bash, WSL, Linux) transition to zsh for a consistent experience:
 
-```
-.bash_profile → sets ZDOTDIR → exec zsh
-                                  ↓
-                             .zshenv → zsh/env.d/*.zsh (WINHOME, locale, PATH)
-                                  ↓
-                             .zshrc → zsh/rc.d/*.zsh (completions, plugins, prompt, aliases)
+```text
+.bash_profile -> sets ZDOTDIR -> exec zsh
+                                |
+                                v
+                           .zshenv -> zsh/env.d/*.zsh (WINHOME, locale, PATH)
+                                |
+                                v
+                           .zshrc -> zsh/rc.d/*.zsh (completions, plugins, prompt, aliases)
 ```
 
 ### Why Zsh Everywhere
@@ -94,7 +98,7 @@ All terminals (Git Bash, WSL, Linux) transition to zsh for a consistent experien
 
 Automatic identity switching based on directory or remote URL:
 
-- **Directory-based** (Windows): `C:/Projects/Work/` → professional identity
+- **Directory-based** (Windows): `C:/Projects/Work/` -> professional identity
 - **URL-based** (universal): GitHub org matching via `includeIf hasconfig:remote.*.url`
 - **SSH keys**: Auto-detected by `git-ssh-setup`, written to gitignored local configs
 
@@ -111,12 +115,20 @@ Automatic identity switching based on directory or remote URL:
 | `powershell/profile.ps1` | PowerShell profile |
 | `config/git/` | Git config and global ignore (XDG-compliant) |
 | `config/ohmyposh/` | Oh My Posh prompt theme |
-| `claude/` | Claude/OpenCode shared commands, Claude skills, hooks, damage control |
+| `claude/` | Claude Code-specific runtime config, hooks, commands, and local state |
 | `opencode/` | OpenCode global config (linked to `~/.config/opencode`) |
-| `copilot/` | GitHub Copilot instructions |
+| `copilot/` | GitHub Copilot instructions and prompts |
 | `test/` | Bats test files |
 | `plugins/` | Zsh plugins (auto-downloaded) |
 | `dotbot/` | Dotbot submodule |
+
+## Agent Surfaces
+
+- `AGENTS.md` is the neutral repo-wide onboarding file for coding agents.
+- `CLAUDE.md` contains Claude-specific runtime guidance for this repo.
+- `claude/commands/` is the canonical shared command source.
+- `opencode/commands/` contains OpenCode-specific overrides and symlinks to shared commands.
+- `copilot/` contains Copilot-specific prompts and instructions.
 
 ## Development
 
