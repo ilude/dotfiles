@@ -1,17 +1,32 @@
 #!/usr/bin/env bash
-# Build claude-status.exe via Docker and install to ~/.claude/
+# Build claude-status binary via Docker and install to ~/.claude/
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OUTPUT="$HOME/.claude/claude-status.exe"
 
-echo "Building claude-status.exe..."
-docker build -t claude-status-builder "$SCRIPT_DIR"
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+        GOOS=windows; GOARCH=amd64; BINARY=claude-status.exe ;;
+    Darwin)
+        GOOS=darwin;  GOARCH=amd64; BINARY=claude-status-bin ;;
+    *)
+        GOOS=linux;   GOARCH=amd64; BINARY=claude-status-bin ;;
+esac
+
+OUTPUT="$HOME/.claude/$BINARY"
+
+echo "Building for $GOOS/$GOARCH -> $BINARY..."
+docker build \
+    --build-arg GOOS="$GOOS" \
+    --build-arg GOARCH="$GOARCH" \
+    --build-arg BINARY="$BINARY" \
+    -t claude-status-builder "$SCRIPT_DIR"
 
 echo "Extracting binary..."
 id=$(docker create claude-status-builder)
-docker cp "$id:/build/claude-status.exe" "$OUTPUT"
+docker cp "$id:/build/$BINARY" "$OUTPUT"
 docker rm "$id" >/dev/null
 
+chmod +x "$OUTPUT"
 echo "Installed: $OUTPUT"
 echo "Size: $(du -sh "$OUTPUT" | cut -f1)"

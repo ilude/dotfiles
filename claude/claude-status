@@ -9,6 +9,16 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Fast path: delegate to compiled Go binary if available
+def _try_go_binary() -> None:
+    here = Path(os.path.realpath(__file__)).parent
+    for candidate in (here / "claude-status.exe", here / "claude-status-bin"):
+        if candidate.is_file():
+            result = subprocess.run([str(candidate)])
+            sys.exit(result.returncode)
+
+_try_go_binary()
+
 
 def run(args: list, cwd: str = None) -> str:
     try:
