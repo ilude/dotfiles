@@ -31,7 +31,7 @@
       "Bash(git reset --hard:*)"
     ]
   },
-  "model": "haiku",
+  "model": "sonnet",
   "enableAllProjectMcpServers": false,
   "hooks": {
     "SessionStart": [
@@ -39,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash $HOME/.claude/hooks/team-cleanup.sh",
+            "command": "python $HOME/.claude/hooks/team_cleanup.py",
             "timeout": 5
           }
         ]
@@ -48,7 +48,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash $HOME/.claude/hooks/git-pull-check.sh",
+            "command": "python $HOME/.claude/hooks/git_pull_check.py",
             "timeout": 15
           }
         ]
@@ -144,6 +144,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "python $HOME/.claude/hooks/allow-claude-dir.py",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
             "command": "python $HOME/.claude/hooks/notify/notification-sound.py",
             "timeout": 2
           }
@@ -153,7 +162,7 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "bash $HOME/.claude/claude-status"
+    "command": "python $HOME/.claude/claude-status"
   },
   "enabledPlugins": {
     "handbook-git-worktree@cc-handbook": true,
