@@ -1247,6 +1247,26 @@ try {
         # Generate Git Bash PATH configuration
         Write-Host "`nGenerating Git Bash PATH..." -ForegroundColor Cyan
         Write-GitBashPath
+
+        # Build claude-status Go binary if not present
+        Write-Host "`nBuilding claude-status binary..." -ForegroundColor Cyan
+        $claudeStatusExe = "$env:USERPROFILE\.claude\claude-status.exe"
+        if (Test-Path $claudeStatusExe) {
+            Write-Host "  claude-status.exe: already built" -ForegroundColor DarkGray
+        } elseif (Get-Command docker -ErrorAction SilentlyContinue) {
+            $buildScript = Join-Path $BASEDIR "claude\claude-status-go\build.sh"
+            if (Test-Path $buildScript) {
+                $bashPath = ConvertTo-GitBashPath $buildScript
+                & $gitBash "$bashPath"
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "  claude-status.exe: built successfully" -ForegroundColor Green
+                } else {
+                    Write-Host "  claude-status.exe: build failed (Python fallback active)" -ForegroundColor Yellow
+                }
+            }
+        } else {
+            Write-Host "  Docker not found - skipping build (Python fallback active)" -ForegroundColor Yellow
+        }
     }
 
     # ========================================================================

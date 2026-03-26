@@ -143,6 +143,24 @@ if [[ -z "$HEADLESS" ]]; then
 fi
 completed_steps+=("GUI tool setup")
 
+current_step="claude-status binary"
+if [[ -z "$HEADLESS" ]]; then
+    if is_windows; then
+        _status_bin="claude-status.exe"
+    else
+        _status_bin="claude-status-bin"
+    fi
+    if [[ -f "$HOME/.claude/$_status_bin" ]]; then
+        echo "claude-status binary: already built"
+    elif command -v docker &>/dev/null; then
+        echo "Building claude-status binary..."
+        bash "${BASEDIR}/claude/claude-status-go/build.sh"
+    else
+        echo "claude-status: docker not found, skipping (Python fallback active)"
+    fi
+fi
+completed_steps+=("claude-status binary")
+
 current_step="Credential lockdown"
 # Lock down sensitive credential files
 [[ -f "$HOME/.claude/.credentials.json" ]] && chmod 600 "$HOME/.claude/.credentials.json"
