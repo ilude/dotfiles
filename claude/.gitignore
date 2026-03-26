@@ -71,6 +71,7 @@ tmp/
 
 # Compiled binaries (built via claude-status-go/build.sh)
 claude-status.exe
+claude-status-bin
 
 # Weekly activity reports (personal working notes)
 war/
