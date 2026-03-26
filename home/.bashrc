@@ -94,7 +94,7 @@ PROMPT_COMMAND=__set_prompt
 ############################################################################
 
 # Claude Code YOLO mode
-alias ccyl='clear && claude --dangerously-skip-permissions'
+alias ccyl='clear && claude --dangerously-skip-permissions --chrome'
 alias claude-install='npm install -g @anthropic-ai/claude-code'
 
 # Modern tool fallback chains (eza, bat, ripgrep)
