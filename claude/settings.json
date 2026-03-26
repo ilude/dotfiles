@@ -161,7 +161,7 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "$HOME/.claude/claude-status.exe"
+    "command": "$HOME/.claude/claude-status"
   },
   "enabledPlugins": {
     "handbook-git-worktree@cc-handbook": true,
