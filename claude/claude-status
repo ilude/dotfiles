@@ -1,157 +1,133 @@
-#!/usr/bin/env bash
+#!/usr/bin/env python
 # Claude Code status line script - cross-platform (Linux/macOS/Windows Git Bash/WSL)
 # Reads JSON from stdin with model and workspace info, outputs formatted status
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
 
-# Read stdin into variable
-stdin_input=$(cat)
 
-# Parse JSON - try jq first, fall back to python
-if command -v jq &>/dev/null; then
-    model=$(echo "$stdin_input" | jq -r '.model.display_name // "unknown"' 2>/dev/null)
-    cwd=$(echo "$stdin_input" | jq -r '.workspace.current_dir // ""' 2>/dev/null)
-else
-    # Python fallback (try python3 first, then python)
-    PYTHON_CMD=$(command -v python3 || command -v python)
-    # Pass JSON via stdin to avoid quoting issues
-    # Use tab as delimiter to handle spaces in values
-    IFS=$'\t' read -r model cwd <<< $(echo "$stdin_input" | $PYTHON_CMD -c "
-import json, sys
-try:
-    data = json.load(sys.stdin)
-    model = data.get('model', {}).get('display_name', 'unknown')
-    cwd = data.get('workspace', {}).get('current_dir', '')
-    print(model + '\t' + cwd)
-except:
-    print('parse-error\t')
-" 2>/dev/null)
-fi
+def run(args: list, cwd: str = None) -> str:
+    try:
+        r = subprocess.run(
+            args, capture_output=True, text=True, cwd=cwd, timeout=5
+        )
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except Exception:
+        return ""
 
-# Use cwd from JSON, or fall back to current directory
-current_path="${cwd:-$(pwd)}"
 
-# Self-contained platform detection (intentionally not sourcing rc.d/00-helpers.zsh)
-is_wsl() {
-    [[ -n "$WSL_DISTRO_NAME" || -f /proc/sys/fs/binfmt_misc/WSLInterop ]] || \
-    grep -qi microsoft /proc/version 2>/dev/null
-}
+def is_wsl() -> bool:
+    if os.environ.get("WSL_DISTRO_NAME"):
+        return True
+    try:
+        with open("/proc/version") as f:
+            return "microsoft" in f.read().lower()
+    except OSError:
+        return False
 
-# Convert Windows path to WSL path for filesystem access
-# C:/Users/... or C:\Users\... -> /mnt/c/Users/...
-to_wsl_path() {
-    local p="$1"
-    # Convert backslashes to forward slashes
-    p="${p//\\//}"
-    # Convert C:/ to /mnt/c/
-    if [[ "$p" =~ ^([A-Za-z]):/(.*) ]]; then
-        local drive="${BASH_REMATCH[1],,}"  # lowercase
-        local rest="${BASH_REMATCH[2]}"
-        echo "/mnt/$drive/$rest"
-    else
-        echo "$p"
-    fi
-}
 
-# Normalize Windows paths for display (removes drive prefix)
-normalize_path() {
-    local p="$1"
-    # Convert backslashes to forward slashes
-    p="${p//\\//}"
-    # Remove drive letter prefix like C: or /c/ or /mnt/c/
-    p="${p#[A-Za-z]:}"
-    p="${p#/[a-z]/}"
-    p="${p#/mnt/[a-z]/}"
-    echo "$p"
-}
+def to_wsl_path(p: str) -> str:
+    p = p.replace("\\", "/")
+    m = re.match(r"^([A-Za-z]):/(.*)$", p)
+    if m:
+        return f"/mnt/{m.group(1).lower()}/{m.group(2)}"
+    return p
 
-# Get home directory path (normalized for display comparison)
-get_home_pattern() {
-    # For WSL, use Users/<username> pattern to match normalized Windows paths (no leading /)
-    if is_wsl; then
-        echo "Users/$USER"
-    else
-        normalize_path "${HOME:-$USERPROFILE}"
-    fi
-}
 
-# Get path for git commands (WSL needs /mnt/c/ paths)
-if is_wsl; then
-    git_path=$(to_wsl_path "$current_path")
-else
-    git_path="$current_path"
-fi
+def normalize_path(p: str) -> str:
+    p = p.replace("\\", "/")
+    p = re.sub(r"^[A-Za-z]:", "", p)       # strip C:
+    p = re.sub(r"^/[a-z]/", "/", p)        # strip /c/
+    p = re.sub(r"^/mnt/[a-z]/", "/", p)    # strip /mnt/c/
+    return p
 
-normalized_path=$(normalize_path "$current_path")
-home_pattern=$(get_home_pattern)
 
-# Try to find git root using the appropriate path format
-git_repo_path=""
-if [[ -n "$git_path" ]]; then
-    if git -C "$git_path" rev-parse --git-dir &>/dev/null; then
-        git_repo_path=$(git -C "$git_path" rev-parse --show-toplevel 2>/dev/null)
-    fi
-fi
+def get_home_pattern() -> str:
+    if is_wsl():
+        return f"Users/{os.environ.get('USER', '')}"
+    home = os.environ.get("HOME") or os.environ.get("USERPROFILE", "")
+    return normalize_path(home)
 
-# Determine directory name to display
-if [[ -n "$git_repo_path" ]]; then
-    normalized_repo=$(normalize_path "$git_repo_path")
-    basename=$(basename "$normalized_repo")
 
-    # Check if repo is in home directory
-    if [[ "$normalized_repo" == "$home_pattern"* ]]; then
-        dir="~/$basename"
-    else
-        dir="$basename"
-    fi
-else
-    # No git repo - show path relative to home
-    if [[ "$normalized_path" == "$home_pattern"* ]]; then
-        relative_path="${normalized_path#$home_pattern}"
-        if [[ -n "$relative_path" ]]; then
-            dir="~$relative_path"
-        else
-            dir="~"
-        fi
-    else
-        dir="$normalized_path"
-    fi
-fi
+def main() -> None:
+    try:
+        data = json.load(sys.stdin)
+        model = data.get("model", {}).get("display_name", "unknown")
+        cwd = data.get("workspace", {}).get("current_dir", "")
+    except Exception:
+        model = "unknown"
+        cwd = ""
 
-# Get git branch
-branch=""
-if [[ -n "$git_repo_path" || -n "$git_path" ]]; then
-    branch_name=$(git -C "$git_path" branch --show-current 2>/dev/null)
-    if [[ -n "$branch_name" ]]; then
-        # ANSI: Yellow brackets, Blue branch name
-        branch="\033[33m[\033[34m${branch_name}\033[33m]\033[0m"
-    fi
-fi
+    current_path = cwd or os.getcwd()
+    git_path = to_wsl_path(current_path) if is_wsl() else current_path
+    normalized = normalize_path(current_path)
+    home_pat = get_home_pattern()
 
-# Read effort level from settings.json
-effort=""
-settings_file="${HOME}/.claude/settings.json"
-if [[ -f "$settings_file" ]]; then
-    if command -v jq &>/dev/null; then
-        effort=$(jq -r '.effortLevel // "medium"' "$settings_file" 2>/dev/null)
-    fi
-fi
-effort="${effort:-medium}"
+    git_root = run(["git", "-C", git_path, "rev-parse", "--show-toplevel"])
 
-# Get Claude Code version
-cc_version=$(claude --version 2>/dev/null | grep -oE '[0-9.]+' | head -1)
-cc_version="${cc_version:-?}"
+    if git_root:
+        norm_root = normalize_path(git_root)
+        basename = os.path.basename(norm_root.rstrip("/"))
+        display_dir = f"~/{basename}" if norm_root.startswith(home_pat) else basename
+    else:
+        if normalized.startswith(home_pat):
+            rel = normalized[len(home_pat):]
+            display_dir = f"~{rel}" if rel else "~"
+        else:
+            display_dir = normalized
 
-# ANSI color codes
-GREEN="\033[32m"
-ORANGE="\033[38;5;208m"
-CYAN="\033[36m"
-DIM="\033[2m"
-RESET="\033[0m"
+    branch_name = run(["git", "-C", git_path, "branch", "--show-current"])
+    branch = (
+        f"\033[33m[\033[34m{branch_name}\033[33m]\033[0m" if branch_name else ""
+    )
 
-# Output formatted status line: dir[branch] | model [effort] | vX.X.X
-effort_label="\033[37m[\033[36m${effort}\033[37m]\033[0m"
-version_label="${DIM}v${cc_version}${RESET}"
-if [[ -n "$branch" ]]; then
-    echo -e "${GREEN}${dir}${RESET}${branch} | ${ORANGE}${model}${RESET}${effort_label} | ${version_label}"
-else
-    echo -e "${GREEN}${dir}${RESET} | ${ORANGE}${model}${RESET}${effort_label} | ${version_label}"
-fi
+    effort = "medium"
+    settings_path = Path(os.path.expanduser("~")) / ".claude" / "settings.json"
+    try:
+        with open(settings_path) as f:
+            effort = json.load(f).get("effortLevel", "medium")
+    except Exception:
+        pass
+
+    claude_bin = shutil.which("claude") or "claude"
+    cc_version = run([claude_bin, "--version"])
+    if not cc_version:
+        # Try npm global location as fallback on Windows/WSL
+        npm_bin = run(["npm", "root", "-g"])
+        if npm_bin:
+            candidate = str(Path(npm_bin).parent / "bin" / "claude")
+            cc_version = run([candidate, "--version"])
+    m = re.search(r"[\d.]+", cc_version)
+    cc_version = m.group(0) if m else "?"
+
+    GREEN = "\033[32m"
+    ORANGE = "\033[38;5;208m"
+    DIM = "\033[2m"
+    RESET = "\033[0m"
+
+    effort_label = f"\033[37m[\033[36m{effort}\033[37m]\033[0m"
+    version_label = f"{DIM}v{cc_version}{RESET}"
+
+    if branch:
+        line = (
+            f"{GREEN}{display_dir}{RESET}{branch}"
+            f" | {ORANGE}{model}{RESET}{effort_label} | {version_label}"
+        )
+    else:
+        line = (
+            f"{GREEN}{display_dir}{RESET}"
+            f" | {ORANGE}{model}{RESET}{effort_label} | {version_label}"
+        )
+
+    sys.stdout.write(line + "\n")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception:
+        sys.stdout.write("~/.claude | unknown\n")
