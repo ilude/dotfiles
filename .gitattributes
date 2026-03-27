@@ -1,10 +1,8 @@
 # Auto detect text files and ensure LF line endings
 * text=auto eol=lf
-
 # Shell scripts - MUST have LF endings for shebangs to work
 *.sh text eol=lf
 *.bash text eol=lf
-
 # Executable scripts without extensions
 git-ssh-setup text eol=lf
 claude-link-setup text eol=lf
@@ -13,19 +11,16 @@ zsh-plugins text eol=lf
 wsl/install text eol=lf
 wsl/packages text eol=lf
 zsh-setup text eol=lf
-
 # Python scripts
 *.py text eol=lf
-
 # Windows batch files - LF works fine
 *.bat text eol=lf
 *.cmd text eol=lf
-
 # PowerShell handles LF fine
 *.ps1 text eol=lf
 *.psm1 text eol=lf
-
 # Binary files
 *.png binary
 *.jpg binary
 *.ico binary
+patches/msys2-runtime/*.dll filter=lfs diff=lfs merge=lfs -text
