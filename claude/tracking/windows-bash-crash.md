@@ -1,6 +1,6 @@
 ---
 title: MSYS2 Bash Crash (add_item Race Condition)
-status: mitigated
+status: fixed-locally
 primary_issue: https://github.com/anthropics/claude-code/issues/30165
 related_issues:
   - https://github.com/anthropics/claude-code/issues/37920
@@ -64,13 +64,20 @@ Contributing factors:
    max once per hour instead of every tool call)
 9. **Install script** now fixes Git nsswitch.conf and warns about VS DLL conflict
 
+### Fix Verified (2026-03-27)
+
+Patched `msys-2.0.dll` built from Cygwin 3.6.7 source with both fixes
+applied and installed to `C:\Program Files\Git\usr\bin\msys-2.0.dll`.
+Backup at `msys-2.0.dll.bak`. Stress tested: 5 parallel bash commands
+with 13 hooks active, zero crashes.
+
+Build source: `C:\projects\personal\msys2-runtime-fix\MSYS2-packages\`
+
 ### Still Needed
 
+- [ ] Submit PR to msys2/msys2-runtime or git-for-windows/msys2-runtime
+- [ ] Comment on claude-code#30165 with root cause analysis and fix
 - [ ] Configure VS to use system Git (Tools -> Options -> Source Control)
-- [ ] Evaluate switching hooks to PowerShell shell (eliminates all hook MSYS2 spawns)
-- [ ] Add retry wrapper for bash crashes (detect 0xC0000005, retry 3x)
-- [ ] Comment on claude-code#30165 with root cause analysis
-- [ ] Advocate for CLAUDE_CODE_SHELL fix on Windows (#25558)
 - [ ] Consider removing standalone MSYS2 at C:\msys64 if not needed
 
 ### References
