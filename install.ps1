@@ -1492,9 +1492,9 @@ try {
     $patchedDll = Join-Path $BASEDIR "patches\msys2-runtime\msys-2.0.dll"
     $targetDll = "C:\Program Files\Git\usr\bin\msys-2.0.dll"
     if ($isAdmin -and (Test-Path $patchedDll) -and (Test-Path $targetDll)) {
-        $patchedSize = (Get-Item $patchedDll).Length
-        $currentSize = (Get-Item $targetDll).Length
-        if ($currentSize -ne $patchedSize) {
+        $patchedHash = (Get-FileHash $patchedDll -Algorithm SHA256).Hash
+        $currentHash = (Get-FileHash $targetDll -Algorithm SHA256).Hash
+        if ($currentHash -ne $patchedHash) {
             $backupDll = "$targetDll.patched-backup"
             if (-not (Test-Path $backupDll)) {
                 Copy-Item $targetDll $backupDll -Force
