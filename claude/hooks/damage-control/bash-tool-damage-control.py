@@ -42,6 +42,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -350,10 +351,25 @@ def log_decision(
 
 
 def spawn_log_rotation() -> None:
-    """Fire-and-forget log rotation. Non-blocking, cross-platform."""
+    """Fire-and-forget log rotation. Non-blocking, cross-platform.
+
+    Debounced: only spawns the rotation subprocess if >1 hour has elapsed
+    since the last rotation attempt. This prevents spawning dozens of
+    useless processes per hour (logs only rotate after 30 days).
+    """
     rotate_script = Path(__file__).parent / "log_rotate.py"
     if not rotate_script.exists():
         return
+    # Debounce: check timestamp file to avoid spawning on every hook call
+    ts_file = Path(__file__).parent / ".last-rotation"
+    try:
+        if ts_file.exists():
+            age = time.time() - ts_file.stat().st_mtime
+            if age < 3600:  # 1 hour
+                return
+        ts_file.touch()
+    except OSError:
+        pass  # Continue even if timestamp check fails
     try:
         kwargs = {
             "stdout": subprocess.DEVNULL,
