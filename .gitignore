@@ -94,6 +94,7 @@ logs/
 tmpclaude-*
 last-context.txt
 hook-debug*.*
+.last-rotation
 InstallationLog.txt
 *.7z
 
