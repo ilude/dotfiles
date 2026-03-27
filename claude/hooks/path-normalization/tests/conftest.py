@@ -67,6 +67,7 @@ def run_hook():
         tool_name: str,
         file_path: str,
         env: Optional[dict] = None,
+        cwd: Optional[str] = None,
     ) -> HookResult:
         """Run the path normalization hook.
 
@@ -74,6 +75,7 @@ def run_hook():
             tool_name: The Claude tool name (Edit, Write, Read, etc.)
             file_path: The file path to validate
             env: Optional environment variable overrides
+            cwd: Optional working directory for the subprocess
 
         Returns:
             HookResult with exit_code, stdout, and stderr
@@ -100,6 +102,7 @@ def run_hook():
             text=True,
             timeout=10,
             env=run_env,
+            cwd=cwd,
             **kwargs,
         )
 
