@@ -1527,6 +1527,50 @@ try {
     }
 
     # ========================================================================
+    # Git for Windows nsswitch.conf Fix (requires admin - system file)
+    # ========================================================================
+    # Remove 'windows' from db_home to prevent domain controller lookups
+    # during bash startup. On domain-joined machines, the 'windows' provider
+    # triggers DsGetDcName which can hang 15-20s, holding the MSYS2 shared
+    # memory spinlock and causing add_item race conditions in concurrent
+    # bash processes. HOME env var resolves first anyway, so 'windows' is
+    # redundant. See: git-for-windows/git#493, git-for-windows/git#4830
+    $gitNsswitchPath = "C:\Program Files\Git\etc\nsswitch.conf"
+    if ($isAdmin -and (Test-Path $gitNsswitchPath)) {
+        $gitNsContent = Get-Content $gitNsswitchPath -Raw
+        if ($gitNsContent -match 'db_home:\s+env\s+windows\s+cygwin\s+desc') {
+            Write-Host "`nFixing Git nsswitch.conf (removing 'windows' from db_home)..." -ForegroundColor Yellow
+            $newGitNsContent = $gitNsContent -replace 'db_home:\s+env\s+windows\s+cygwin\s+desc', 'db_home: env cygwin desc'
+            Copy-Item $gitNsswitchPath "$gitNsswitchPath.bak" -Force
+            $newGitNsContent = $newGitNsContent -replace "`r`n", "`n"
+            [System.IO.File]::WriteAllText($gitNsswitchPath, $newGitNsContent)
+            Write-Host "  Fixed (backup at $gitNsswitchPath.bak)" -ForegroundColor Green
+        } else {
+            Write-Host "`nGit nsswitch.conf: already correct" -ForegroundColor DarkGray
+        }
+    } elseif (-not $isAdmin) {
+        Write-Host "`nGit nsswitch.conf: skipped (requires admin)" -ForegroundColor Yellow
+    }
+
+    # ========================================================================
+    # Visual Studio: Configure to use system Git (avoids DLL conflicts)
+    # ========================================================================
+    # VS ships its own msys-2.0.dll (different version than Git for Windows).
+    # When VS does background Git operations, its MSYS2 runtime writes to the
+    # same per-user shared memory as Git Bash, but with a different struct
+    # layout. This corrupts the mount table and causes add_item crashes.
+    # Setting VS to use system Git prevents this DLL version conflict.
+    $vsGitConfig = "$env:LOCALAPPDATA\Microsoft\VisualStudio"
+    $vsGitDll = Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -Recurse -Filter 'msys-2.0.dll' -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($vsGitDll) {
+        Write-Host "`n--- Visual Studio Git Configuration ---" -ForegroundColor Cyan
+        Write-Host "  WARNING: VS ships its own msys-2.0.dll that conflicts with Git for Windows." -ForegroundColor Yellow
+        Write-Host "  To prevent bash crashes, configure VS to use system Git:" -ForegroundColor Yellow
+        Write-Host "    VS -> Tools -> Options -> Source Control -> Git Global Settings" -ForegroundColor White
+        Write-Host "    Set 'Git executable path' to: C:\Program Files\Git\bin\git.exe" -ForegroundColor White
+    }
+
+    # ========================================================================
     # PowerShell Completion Cache (for fast profile startup)
     # ========================================================================
     Write-Host "`nGenerating PowerShell completion cache..." -ForegroundColor Cyan
