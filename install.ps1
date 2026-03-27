@@ -42,7 +42,7 @@ param(
 # ============================================================================
 
 $corePackages = @(
-    @{ Id = 'Git.Git'; Name = 'Git'; Version = '2.48.1' },
+    @{ Id = 'Git.Git'; Name = 'Git' },
     @{ Id = 'Microsoft.PowerShell'; Name = 'PowerShell 7' },
     @{ Id = 'Microsoft.WindowsTerminal'; Name = 'Windows Terminal' },
     @{ Id = 'Microsoft.DotNet.SDK.8'; Name = '.NET 8 SDK' },
@@ -1483,6 +1483,30 @@ try {
     # ========================================================================
     Write-Host "`nConfiguring Windows Terminal (Shift+Enter)..." -ForegroundColor Cyan
     $null = Ensure-WindowsTerminalShiftEnter
+
+    # ========================================================================
+    # Patched msys-2.0.dll (add_item race condition fix)
+    # ========================================================================
+    # Install patched DLL until fix ships upstream in Git for Windows.
+    # PR: https://github.com/msys2/msys2-runtime/pull/333
+    $patchedDll = Join-Path $BASEDIR "patches\msys2-runtime\msys-2.0.dll"
+    $targetDll = "C:\Program Files\Git\usr\bin\msys-2.0.dll"
+    if ($isAdmin -and (Test-Path $patchedDll) -and (Test-Path $targetDll)) {
+        $patchedSize = (Get-Item $patchedDll).Length
+        $currentSize = (Get-Item $targetDll).Length
+        if ($currentSize -ne $patchedSize) {
+            $backupDll = "$targetDll.patched-backup"
+            if (-not (Test-Path $backupDll)) {
+                Copy-Item $targetDll $backupDll -Force
+            }
+            Copy-Item $patchedDll $targetDll -Force
+            Write-Host "  Patched msys-2.0.dll installed (add_item race fix)" -ForegroundColor Green
+        } else {
+            Write-Host "  Patched msys-2.0.dll: already installed" -ForegroundColor DarkGray
+        }
+    } elseif (-not $isAdmin) {
+        Write-Host "  Patched msys-2.0.dll: skipped (requires admin)" -ForegroundColor Yellow
+    }
 
     # ========================================================================
     # Windows Defender Exclusion for Git MSYS2 runtime (requires admin)
