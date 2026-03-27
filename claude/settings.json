@@ -38,6 +38,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash -c true",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
             "command": "python $HOME/.claude/hooks/team_cleanup.py",
             "timeout": 5
           }
