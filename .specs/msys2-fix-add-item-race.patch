@@ -1,0 +1,116 @@
+Fix add_item race in user_info::create: use created flag from CreateFileMappingW
+
+When multiple MSYS2 processes start concurrently, a race condition in
+user_info::initialize() can cause add_item() in create_root_entry()
+to fail with EPERM (errno 1), producing:
+
+  fatal error - add_item ("\??\C:\Program Files\Git", "/", ...) failed
+
+Root cause: user_info::create() calls open_shared() which returns a
+`created` boolean from CreateFileMappingW. However, create() uses the
+overload that DISCARDS this flag. It relies on a spinlock in
+initialize() instead, which has a 15-second timeout. If the initializer
+is slow (nsswitch DC lookups, passwd resolution), waiters time out and
+re-initialize -- finding an existing immutable "/" mount entry.
+
+Fix: Use the `created` flag (OS-authoritative, exactly one winner) to
+gate initialization. Non-creators wait, then fall back to spinlock.
+
+Refs: claude-code#30165, git-for-windows/git#493, #4076, #3870
+
+==========================================================================
+OPTION A: Proper fix in shared.cc (recommended)
+==========================================================================
+
+--- a/winsup/cygwin/mm/shared.cc
++++ b/winsup/cygwin/mm/shared.cc
+
+In user_info::create(), change open_shared call to use created overload:
+
+  void
+  user_info::create (bool reinit)
+  {
+    WCHAR name[UNLEN + 1] = L"";
++   bool created;
+
+    ...
+
+-   user_shared = (user_info *) open_shared (name, USER_VERSION,
+-                    cygwin_user_h, sizeof (user_info),
+-                    SH_USER_SHARED, &sec_none);
++   user_shared = (user_info *) open_shared (name, USER_VERSION,
++                    cygwin_user_h, sizeof (user_info),
++                    SH_USER_SHARED, created, &sec_none);
+
+    debug_printf ("opening user shared for '%W' at %p", name, user_shared);
+    ProtectHandleINH (cygwin_user_h);
+-   debug_printf ("user shared version %x", user_shared->version);
+-   if (reinit)
++   debug_printf ("user shared version %x, created %d", user_shared->version,
++                 created);
++   if (reinit || created)
+      user_shared->initialize ();
+    cygheap->shared_regions.user_shared_addr = user_shared;
+  }
+
+
+The key insight: open_shared already has both overloads:
+
+  void *open_shared (..., PSECURITY_ATTRIBUTES psa, ...);          // discards created
+  void *open_shared (..., bool &created, PSECURITY_ATTRIBUTES psa, ...);  // returns created
+
+Currently create() uses the first (discarding). Switch to the second.
+
+The `created` flag comes from:
+  created = true;
+  shared_h = CreateFileMappingW(INVALID_HANDLE_VALUE, ...);
+  if (GetLastError() == ERROR_ALREADY_EXISTS)
+    created = false;
+
+The OS guarantees exactly one process gets created=true. No race.
+
+When created=false (opened existing), the spinlock in initialize() will
+see version==CURR_USER_MAGIC (set by creator) and skip initialization.
+No timeout, no re-initialization, no add_item collision.
+
+
+==========================================================================
+OPTION B: Minimal 1-line fix in mount.cc (bandaid)
+==========================================================================
+
+--- a/winsup/cygwin/mount.cc
++++ b/winsup/cygwin/mount.cc
+
+In create_root_entry(), add MOUNT_OVERRIDE flag:
+
+-   if (add_item (native_root, "/",
+-       MOUNT_SYSTEM | MOUNT_IMMUTABLE | MOUNT_AUTOMATIC | MOUNT_NOACL)
++   if (add_item (native_root, "/",
++       MOUNT_SYSTEM | MOUNT_IMMUTABLE | MOUNT_AUTOMATIC | MOUNT_NOACL
++       | MOUNT_OVERRIDE)
+
+Makes add_item overwrite an existing "/" instead of EPERM.
+Simpler, but masks the race instead of fixing it.
+
+
+==========================================================================
+Build & Test Instructions
+==========================================================================
+
+1. Clone:
+   git clone git://sourceware.org/git/newlib-cygwin.git msys2-runtime
+   cd msys2-runtime && git checkout cygwin-3.6.7
+
+2. Apply MSYS2 patches (0001-0039) then this fix
+
+3. Build (in MSYS2 shell):
+   cd winsup && ./autogen.sh && cd ..
+   mkdir build && cd build
+   ../msys2-runtime/configure --prefix=/usr --build=x86_64-pc-msys --sysconfdir=/etc
+   LC_ALL=C make
+
+4. Test: Copy msys0.dll to C:\Program Files\Git\usr\bin\msys-2.0.dll
+   (close all MSYS2 processes first, use cmd.exe to copy)
+
+5. Stress test:
+   for i in $(seq 1 50); do bash -c "echo ok_$i" & done; wait
