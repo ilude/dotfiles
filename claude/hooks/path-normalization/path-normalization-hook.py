@@ -313,9 +313,9 @@ def main() -> None:
     # If the UNC path is within CLAUDE_PROJECT_DIR, make it relative. Otherwise block.
     if is_unc_path(path_str):
         normalized = normalize_separators(path_str)
-        cwd_str = normalize_separators(
-            os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
-        ).rstrip("/")
+        cwd_str = normalize_separators(os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())).rstrip(
+            "/"
+        )
         # Case-insensitive comparison (Windows shares are case-insensitive)
         if normalized.lower().startswith(cwd_str.lower() + "/"):
             relative = normalized[len(cwd_str) + 1 :]
@@ -347,7 +347,30 @@ def main() -> None:
     # Use get_windows_home() to handle WSL environment where expanduser('~')
     # returns /home/user instead of the Windows home directory
     home = get_windows_home(win_path)
-    cwd = Path(to_windows_path(os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd()))).resolve()
+
+    # Build list of valid project roots. When working in a git worktree,
+    # CLAUDE_PROJECT_DIR points to the original repo but os.getcwd() is the
+    # worktree. Check both so worktree files aren't falsely blocked.
+    project_dir = os.environ.get("CLAUDE_PROJECT_DIR", "")
+    actual_cwd = os.getcwd()
+    project_roots = []
+    if project_dir:
+        project_roots.append(Path(to_windows_path(project_dir)).resolve())
+    cwd_resolved = Path(to_windows_path(actual_cwd)).resolve()
+    if not project_roots or cwd_resolved != project_roots[0]:
+        project_roots.append(cwd_resolved)
+    # Primary cwd for relative path computation (prefer actual cwd for worktrees)
+    cwd = cwd_resolved
+
+    def is_within_any_project(fp: Path) -> bool:
+        return any(is_within(fp, root) for root in project_roots)
+
+    def best_project_root(fp: Path) -> Path:
+        """Return the project root that contains fp, preferring actual cwd."""
+        for root in reversed(project_roots):  # reversed so cwd_resolved wins
+            if is_within(fp, root):
+                return root
+        return cwd
 
     # Check if within home directory - needed for prioritization
     if is_within(file_path, home):
@@ -359,11 +382,10 @@ def main() -> None:
             fixed = f"~/{home_relative}"
             fix_and_allow(tool_name, path_str, fixed, "absolute dotfile path")
 
-        # Priority 2: If within cwd (and not a dotfile), use cwd-relative (shorter)
-        if is_within(file_path, cwd):
-            relative = str(file_path.relative_to(cwd)).replace(BACKSLASH, "/")
-            # If it's just a filename (no path separators), allow it - the message
-            # "Use relative path: 'filename'" is confusing since that IS the relative path
+        # Priority 2: If within any project root (and not a dotfile), use relative (shorter)
+        if is_within_any_project(file_path):
+            root = best_project_root(file_path)
+            relative = str(file_path.relative_to(root)).replace(BACKSLASH, "/")
             if "/" not in relative:
                 log_decision(tool_name, path_str, "allowed", "file in cwd (filename only)")
                 sys.exit(0)
@@ -373,10 +395,10 @@ def main() -> None:
         fixed = f"~/{home_relative}"
         fix_and_allow(tool_name, path_str, fixed, "absolute path within home")
 
-    # Within cwd but not home -> use cwd-relative
-    if is_within(file_path, cwd):
-        relative = str(file_path.relative_to(cwd)).replace(BACKSLASH, "/")
-        # If it's just a filename (no path separators), allow it
+    # Within any project root but not home -> use relative to best root
+    if is_within_any_project(file_path):
+        root = best_project_root(file_path)
+        relative = str(file_path.relative_to(root)).replace(BACKSLASH, "/")
         if "/" not in relative:
             log_decision(tool_name, path_str, "allowed", "file in cwd (filename only)")
             sys.exit(0)

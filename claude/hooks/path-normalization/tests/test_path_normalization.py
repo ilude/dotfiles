@@ -670,6 +670,135 @@ class TestUNCPaths:
         assert result.fixed_path == "a/b/c/deep.py"
 
 
+class TestGitWorktree:
+    """Test git worktree scenario where CLAUDE_PROJECT_DIR differs from cwd.
+
+    When Claude Code works in a git worktree, CLAUDE_PROJECT_DIR points to the
+    original repo root but os.getcwd() is the worktree path. Files in the worktree
+    should be fixed to relative paths, not blocked.
+    """
+
+    def test_worktree_file_fixed_to_relative(self, run_hook, tmp_path):
+        """Absolute path within worktree cwd (but outside CLAUDE_PROJECT_DIR) should be fixed."""
+        original_repo = tmp_path / "original-repo"
+        worktree = tmp_path / "worktrees" / "feature-branch"
+        original_repo.mkdir(parents=True)
+        worktree.mkdir(parents=True)
+
+        file_path = str(worktree / "src" / "app" / "file.ts").replace("\\", "/")
+
+        result = run_hook(
+            "Edit",
+            file_path,
+            env={"CLAUDE_PROJECT_DIR": str(original_repo).replace("\\", "/")},
+            cwd=str(worktree),
+        )
+        assert result.fixed, f"Expected fixed, got exit {result.exit_code}: {result.stderr}"
+        assert result.fixed_path == "src/app/file.ts"
+
+    def test_worktree_nested_path_fixed(self, run_hook, tmp_path):
+        """Deeply nested worktree file should be fixed to relative path."""
+        original_repo = tmp_path / "repos" / "main"
+        worktree = tmp_path / "worktrees" / "fix-bug"
+        original_repo.mkdir(parents=True)
+        worktree.mkdir(parents=True)
+
+        file_path = str(
+            worktree / "Services" / "DbServices" / "Extensions" / "QueryExtensions.cs"
+        ).replace("\\", "/")
+
+        result = run_hook(
+            "Edit",
+            file_path,
+            env={"CLAUDE_PROJECT_DIR": str(original_repo).replace("\\", "/")},
+            cwd=str(worktree),
+        )
+        assert result.fixed
+        assert result.fixed_path == "Services/DbServices/Extensions/QueryExtensions.cs"
+
+    def test_worktree_file_in_original_repo_still_works(self, run_hook, tmp_path):
+        """Files in the original repo should still be fixed when cwd is a worktree."""
+        original_repo = tmp_path / "original-repo"
+        worktree = tmp_path / "worktrees" / "feature"
+        original_repo.mkdir(parents=True)
+        worktree.mkdir(parents=True)
+
+        file_path = str(original_repo / "config" / "settings.json").replace("\\", "/")
+
+        result = run_hook(
+            "Edit",
+            file_path,
+            env={"CLAUDE_PROJECT_DIR": str(original_repo).replace("\\", "/")},
+            cwd=str(worktree),
+        )
+        assert result.fixed
+        assert result.fixed_path == "config/settings.json"
+
+    def test_worktree_file_outside_both_still_blocked(self, run_hook, tmp_path):
+        """Files outside both CLAUDE_PROJECT_DIR and cwd should still be blocked."""
+        original_repo = tmp_path / "original-repo"
+        worktree = tmp_path / "worktrees" / "feature"
+        unrelated = tmp_path / "unrelated" / "project"
+        original_repo.mkdir(parents=True)
+        worktree.mkdir(parents=True)
+        unrelated.mkdir(parents=True)
+
+        home_dir = tmp_path / "Users" / "TestUser"
+        home_dir.mkdir(parents=True)
+
+        file_path = str(unrelated / "secret.py").replace("\\", "/")
+
+        result = run_hook(
+            "Edit",
+            file_path,
+            env={
+                "CLAUDE_PROJECT_DIR": str(original_repo).replace("\\", "/"),
+                "USERPROFILE": str(home_dir).replace("\\", "/"),
+            },
+            cwd=str(worktree),
+        )
+        assert result.blocked, f"Expected blocked, got exit {result.exit_code}"
+        assert "secret.py" in result.stderr
+
+    def test_worktree_windows_backslash_path_fixed(self, run_hook, tmp_path):
+        """Windows backslash path within worktree cwd should be fixed."""
+        original_repo = tmp_path / "original-repo"
+        worktree = tmp_path / "worktrees" / "feature"
+        original_repo.mkdir(parents=True)
+        worktree.mkdir(parents=True)
+
+        # Use native path (backslashes on Windows)
+        file_path = str(worktree / "Controllers" / "MainController.cs")
+        if "/" not in file_path or "\\" in file_path:
+            result = run_hook(
+                "Edit",
+                file_path,
+                env={"CLAUDE_PROJECT_DIR": str(original_repo).replace("\\", "/")},
+                cwd=str(worktree),
+            )
+            assert result.fixed
+            assert result.fixed_path == "Controllers/MainController.cs"
+        else:
+            pytest.skip("Platform uses forward slashes natively")
+
+    def test_worktree_same_as_project_dir_no_duplicate(self, run_hook, tmp_path):
+        """When cwd equals CLAUDE_PROJECT_DIR, should behave as before (no regression)."""
+        project_dir = tmp_path / "myproject"
+        project_dir.mkdir(parents=True)
+
+        file_path = str(project_dir / "src" / "main.py").replace("\\", "/")
+        project_str = str(project_dir).replace("\\", "/")
+
+        result = run_hook(
+            "Edit",
+            file_path,
+            env={"CLAUDE_PROJECT_DIR": project_str},
+            cwd=str(project_dir),
+        )
+        assert result.fixed
+        assert result.fixed_path == "src/main.py"
+
+
 class TestCygwinPaths:
     """Test Cygwin /cygdrive/c/ path handling."""
 
