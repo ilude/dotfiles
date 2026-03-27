@@ -42,7 +42,7 @@ param(
 # ============================================================================
 
 $corePackages = @(
-    @{ Id = 'Git.Git'; Name = 'Git' },
+    @{ Id = 'Git.Git'; Name = 'Git'; Version = '2.48.1' },
     @{ Id = 'Microsoft.PowerShell'; Name = 'PowerShell 7' },
     @{ Id = 'Microsoft.WindowsTerminal'; Name = 'Windows Terminal' },
     @{ Id = 'Microsoft.DotNet.SDK.8'; Name = '.NET 8 SDK' },
@@ -331,11 +331,14 @@ acl = private
 }
 
 function Install-WingetPackage {
-    param([string]$Id, [string]$Name)
+    param([string]$Id, [string]$Name, [string]$Version)
 
-    Write-Host "  Installing $Name..." -ForegroundColor Cyan -NoNewline
+    $displayName = if ($Version) { "$Name ($Version)" } else { $Name }
+    Write-Host "  Installing $displayName..." -ForegroundColor Cyan -NoNewline
 
-    $result = winget install --id $Id -e --accept-package-agreements --accept-source-agreements 2>&1
+    $cmd = @('install', '--id', $Id, '-e', '--accept-package-agreements', '--accept-source-agreements')
+    if ($Version) { $cmd += '--version'; $cmd += $Version }
+    $result = & winget @cmd 2>&1
     $exitCode = $LASTEXITCODE
 
     # Exit codes:
@@ -684,8 +687,17 @@ function Install-Packages {
     # Core packages
     Write-Host "`n--- Core Packages ---" -ForegroundColor Cyan
     foreach ($pkg in $corePackages) {
-        if (-not (Install-WingetPackage -Id $pkg.Id -Name $pkg.Name)) {
+        $splat = @{ Id = $pkg.Id; Name = $pkg.Name }
+        if ($pkg.Version) { $splat.Version = $pkg.Version }
+        if (-not (Install-WingetPackage @splat)) {
             $script:failed += $pkg.Name
+        }
+    }
+
+    # Pin version-locked packages to prevent winget upgrade from overriding
+    foreach ($pkg in $corePackages) {
+        if ($pkg.Version) {
+            winget pin add --id $pkg.Id --version "$($pkg.Version).*" --force 2>$null | Out-Null
         }
     }
 
@@ -1471,6 +1483,24 @@ try {
     # ========================================================================
     Write-Host "`nConfiguring Windows Terminal (Shift+Enter)..." -ForegroundColor Cyan
     $null = Ensure-WindowsTerminalShiftEnter
+
+    # ========================================================================
+    # Windows Defender Exclusion for Git MSYS2 runtime (requires admin)
+    # ========================================================================
+    # Defender scanning msys-2.0.dll during rapid bash spawning can delay
+    # shared-memory initialization and trigger the add_item race condition.
+    $gitUsrBin = "C:\Program Files\Git\usr\bin"
+    if ($isAdmin -and (Test-Path $gitUsrBin)) {
+        $existing = (Get-MpPreference).ExclusionPath
+        if ($existing -notcontains $gitUsrBin) {
+            Add-MpPreference -ExclusionPath $gitUsrBin -ErrorAction SilentlyContinue
+            Write-Host "  Defender exclusion: added $gitUsrBin" -ForegroundColor Green
+        } else {
+            Write-Host "  Defender exclusion: already set" -ForegroundColor DarkGray
+        }
+    } elseif (-not $isAdmin) {
+        Write-Host "  Defender exclusion: skipped (requires admin)" -ForegroundColor Yellow
+    }
 
     # ========================================================================
     # MSYS2 nsswitch.conf Fix (requires admin - system file)
