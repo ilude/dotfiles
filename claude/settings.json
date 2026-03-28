@@ -183,7 +183,6 @@
     "superpowers@superpowers-marketplace": true
   },
   "alwaysThinkingEnabled": true,
-  "effortLevel": "medium",
   "companyAnnouncements": [],
   "skipDangerousModePermissionPrompt": true
 }
