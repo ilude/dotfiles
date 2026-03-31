@@ -31,6 +31,7 @@
       "Bash(git reset --hard:*)"
     ]
   },
+  "model": "sonnet",
   "enableAllProjectMcpServers": false,
   "hooks": {
     "SessionStart": [
