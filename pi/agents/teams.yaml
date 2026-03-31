@@ -1,0 +1,30 @@
+orchestrator:
+  name: orchestrator
+  file: .pi/agents/orchestrator.md
+
+planning:
+  name: planning-lead
+  file: .pi/agents/planning-lead.md
+  team:
+    - name: product-manager
+      file: .pi/agents/product-manager.md
+    - name: ux-researcher
+      file: .pi/agents/ux-researcher.md
+
+engineering:
+  name: engineering-lead
+  file: .pi/agents/engineering-lead.md
+  team:
+    - name: frontend-dev
+      file: .pi/agents/frontend-dev.md
+    - name: backend-dev
+      file: .pi/agents/backend-dev.md
+
+validation:
+  name: validation-lead
+  file: .pi/agents/validation-lead.md
+  team:
+    - name: qa-engineer
+      file: .pi/agents/qa-engineer.md
+    - name: security-reviewer
+      file: .pi/agents/security-reviewer.md
