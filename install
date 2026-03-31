@@ -133,6 +133,17 @@ if [[ "$OSTYPE" == "darwin"* ]] && command -v brew &>/dev/null; then
 fi
 completed_steps+=("Homebrew packages")
 
+current_step="Pi coding agent install"
+if command -v npm &>/dev/null; then
+    if npm list -g @mariozechner/pi-coding-agent &>/dev/null; then
+        echo "pi-coding-agent: already installed"
+    else
+        echo "Installing pi-coding-agent..."
+        npm install -g @mariozechner/pi-coding-agent
+    fi
+fi
+completed_steps+=("Pi coding agent install")
+
 current_step="GUI tool setup"
 if [[ -z "$HEADLESS" ]]; then
     "${BASEDIR}/scripts/claude-link-setup"
@@ -140,6 +151,7 @@ if [[ -z "$HEADLESS" ]]; then
     "${BASEDIR}/scripts/claude-mcp-setup"
     "${BASEDIR}/scripts/claude-plugins-setup"
     "${BASEDIR}/scripts/copilot-link-setup"
+    "${BASEDIR}/scripts/pi-link-setup"
 fi
 completed_steps+=("GUI tool setup")
 

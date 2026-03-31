@@ -1248,6 +1248,34 @@ try {
             & $gitBash "$bashPath"
         }
 
+        # Install Pi coding agent
+        Write-Host "`nInstalling Pi coding agent..." -ForegroundColor Cyan
+        if (Get-Command npm -ErrorAction SilentlyContinue) {
+            # Check if already installed
+            $piInstalled = npm list -g @mariozechner/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
+            if ($piInstalled) {
+                Write-Host "  pi-coding-agent: already installed" -ForegroundColor DarkGray
+            } else {
+                Write-Host "  Installing pi-coding-agent..." -ForegroundColor Cyan
+                npm install -g @mariozechner/pi-coding-agent
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "  pi-coding-agent: installed successfully" -ForegroundColor Green
+                } else {
+                    Write-Host "  pi-coding-agent: installation failed" -ForegroundColor Red
+                }
+            }
+
+            # Set up Pi directory link
+            Write-Host "`nSetting up Pi directory..." -ForegroundColor Cyan
+            $piLinkSetup = Join-Path $BASEDIR "scripts" "pi-link-setup"
+            if (Test-Path $piLinkSetup) {
+                $bashPath = ConvertTo-GitBashPath $piLinkSetup
+                & $gitBash "$bashPath"
+            }
+        } else {
+            Write-Host "  npm not found - skipping Pi installation" -ForegroundColor Yellow
+        }
+
         # Configure Claude MCP servers
         Write-Host "`nConfiguring Claude MCP servers..." -ForegroundColor Cyan
         $claudeMcpSetup = Join-Path $BASEDIR "scripts" "claude-mcp-setup"
