@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+
+# Create ~/.pi/agent junction/symlink pointing to dotfiles pi/ directory
+# Windows: uses junction (no admin required)
+# Linux/WSL: uses symlink
+#
+# If ~/.pi/agent is an existing directory (not a link), this script will:
+# 1. Create a backup archive in ~/
+# 2. Remove the original directory
+# 3. Create the junction/symlink
+
+DOTFILES_DIR="${HOME}/.dotfiles"
+PI_SOURCE="${DOTFILES_DIR}/pi"
+PI_TARGET="${HOME}/.pi/agent"
+
+# Self-contained platform detection (intentionally not sourcing rc.d/00-helpers.zsh)
+is_windows() {
+    [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ -n "$WINDIR" ]]
+}
+
+# Check if path is a junction (Windows) or symlink
+is_link() {
+    local path="$1"
+    if is_windows; then
+        # Check for junction or symlink on Windows
+        if [[ -L "$path" ]]; then
+            return 0
+        fi
+        # Check Windows junction via cmd
+        local win_path
+        win_path=$(cygpath -w "$path" 2>/dev/null)
+        if [[ -n "$win_path" ]] && cmd //c "dir /AL \"$(dirname "$win_path")\"" 2>/dev/null | grep -q "$(basename "$path")"; then
+            return 0
+        fi
+        return 1
+    else
+        [[ -L "$path" ]]
+    fi
+}
+
+# Create backup archive
+create_backup() {
+    local source="$1"
+    local timestamp
+    timestamp=$(date +%Y%m%d-%H%M%S)
+    local backup_name="pi-agent-backup-${timestamp}"
+
+    echo "  Creating backup archive..."
+
+    # Prefer 7z if available, fallback to tar.gz
+    if command -v 7z &>/dev/null; then
+        local archive="${HOME}/${backup_name}.7z"
+        if is_windows; then
+            local win_source win_archive
+            win_source=$(cygpath -w "$source")
+            win_archive=$(cygpath -w "$archive")
+            if 7z a -mx=5 "$win_archive" "$win_source" >/dev/null 2>&1; then
+                echo "  Backup created: ~/${backup_name}.7z"
+                return 0
+            fi
+        else
+            if 7z a -mx=5 "$archive" "$source" >/dev/null 2>&1; then
+                echo "  Backup created: ~/${backup_name}.7z"
+                return 0
+            fi
+        fi
+    fi
+
+    # Fallback to tar.gz
+    local archive="${HOME}/${backup_name}.tar.gz"
+    if tar -czf "$archive" -C "$(dirname "$source")" "$(basename "$source")" 2>/dev/null; then
+        echo "  Backup created: ~/${backup_name}.tar.gz"
+        return 0
+    fi
+
+    echo "  Warning: Failed to create backup archive"
+    return 1
+}
+
+echo "Setting up Pi agent directory link..."
+
+# Check if source exists
+if [[ ! -d "$PI_SOURCE" ]]; then
+    echo "  Error: Source directory not found: $PI_SOURCE"
+    exit 1
+fi
+
+# Ensure parent directory exists
+mkdir -p "$(dirname "$PI_TARGET")"
+
+# Check if target is already a correct link
+if is_link "$PI_TARGET"; then
+    current_target=$(readlink -f "$PI_TARGET" 2>/dev/null || readlink "$PI_TARGET")
+    expected_target=$(readlink -f "$PI_SOURCE" 2>/dev/null || echo "$PI_SOURCE")
+    if [[ "$current_target" == "$expected_target" ]] || [[ "$current_target" == "$PI_SOURCE" ]]; then
+        echo "  ~/.pi/agent: Already linked correctly"
+        exit 0
+    fi
+    echo "  Removing incorrect link..."
+    rm -f "$PI_TARGET"
+fi
+
+# Handle existing directory (not a link)
+if [[ -d "$PI_TARGET" ]] && ! is_link "$PI_TARGET"; then
+    echo "  Found existing ~/.pi/agent directory"
+
+    # Create backup
+    create_backup "$PI_TARGET"
+
+    # Remove the original directory
+    echo "  Removing original ~/.pi/agent directory..."
+    rm -rf "$PI_TARGET"
+fi
+
+# Remove any remaining target
+if [[ -e "$PI_TARGET" ]] || [[ -L "$PI_TARGET" ]]; then
+    rm -rf "$PI_TARGET"
+fi
+
+# Create link
+if is_windows; then
+    # Windows: use junction (doesn't require admin)
+    win_target=$(cygpath -w "$PI_TARGET")
+    win_source=$(cygpath -w "$PI_SOURCE")
+    if cmd //c "mklink /J $win_target $win_source" > /dev/null 2>&1; then
+        echo "  ~/.pi/agent: Junction created -> ~/.dotfiles/pi"
+    else
+        echo "  Error: Failed to create junction"
+        exit 1
+    fi
+else
+    # Linux/WSL: use symlink
+    ln -s "$PI_SOURCE" "$PI_TARGET"
+    echo "  ~/.pi/agent: Symlink created -> ~/.dotfiles/pi"
+fi
+
+echo "  Done"

@@ -1,0 +1,116 @@
+/**
+ * Quality Gates Extension
+ *
+ * Intercepts tool_result events for write and edit operations,
+ * runs the appropriate linter for the file's language, and
+ * prepends a warning to the result content if the linter fails.
+ *
+ * Validators are configured in:
+ *   $HOME/.dotfiles/claude/hooks/quality-validation/validators.yaml
+ */
+
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { parse as parseYaml } from "yaml";
+import {
+	type ExtensionAPI,
+	type ToolResultEvent,
+} from "@mariozechner/pi-coding-agent";
+
+interface ValidatorConfig {
+	name: string;
+	command: string[];
+	check?: string;
+	detect?: string[];
+}
+
+interface LanguageConfig {
+	extensions: string[];
+	validators: ValidatorConfig[];
+}
+
+interface ValidatorsYaml {
+	[language: string]: LanguageConfig;
+}
+
+// Load validators.yaml once at module init
+const VALIDATORS_PATH = path.join(
+	os.homedir(),
+	".dotfiles/claude/hooks/quality-validation/validators.yaml"
+);
+
+function loadValidators(): ValidatorsYaml {
+	try {
+		const content = fs.readFileSync(VALIDATORS_PATH, "utf-8");
+		return parseYaml(content) as ValidatorsYaml;
+	} catch {
+		return {};
+	}
+}
+
+const validators = loadValidators();
+
+// Build extension-to-language lookup from the loaded config
+function buildExtMap(config: ValidatorsYaml): Map<string, LanguageConfig> {
+	const map = new Map<string, LanguageConfig>();
+	for (const langConfig of Object.values(config)) {
+		for (const ext of langConfig.extensions) {
+			map.set(ext, langConfig);
+		}
+	}
+	return map;
+}
+
+const extMap = buildExtMap(validators);
+
+export default function (pi: ExtensionAPI) {
+	pi.on("tool_result", async (event: ToolResultEvent) => {
+		if (event.toolName !== "write" && event.toolName !== "edit") {
+			return undefined;
+		}
+
+		// Get the file path from input — write uses "path", edit uses "file_path"
+		const filePath =
+			(event.input as { path?: string }).path ??
+			(event.input as { file_path?: string }).file_path;
+
+		if (!filePath) return undefined;
+
+		const ext = path.extname(filePath).toLowerCase();
+		const langConfig = extMap.get(ext);
+		if (!langConfig) return undefined;
+
+		// Try each validator in order; use first one whose binary is on PATH
+		for (const validator of langConfig.validators) {
+			const checkBin = validator.check ?? validator.command[0];
+
+			// Skip if linter not installed
+			const whichResult = await pi.exec(`which ${checkBin}`);
+			if (whichResult.exitCode !== 0) continue;
+
+			// Build command, substituting {file} placeholder
+			const cmd = validator.command
+				.map((part) => (part === "{file}" ? filePath : part))
+				.join(" ");
+
+			const result = await pi.exec(cmd);
+
+			if (result.exitCode !== 0) {
+				const output = (result.stdout + result.stderr).trim();
+				const warningText = `\u26a0 Quality gate: ${validator.name} reported issues in ${path.basename(filePath)}:\n${output}`;
+				return {
+					content: [
+						{ type: "text" as const, text: warningText },
+						...event.content,
+					],
+				};
+			}
+
+			// Linter passed — no need to try further validators
+			return undefined;
+		}
+
+		return undefined;
+	});
+}
