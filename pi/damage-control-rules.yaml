@@ -1,0 +1,33 @@
+dangerous_commands:
+  - pattern: "rm -rf"
+    reason: "Recursive force delete can cause irreversible data loss"
+  - pattern: "git reset --hard"
+    reason: "Discards uncommitted changes permanently"
+  - pattern: "git push --force"
+    reason: "Force push can overwrite upstream history shared with others"
+  - pattern: "DROP TABLE"
+    reason: "Drops a database table and all its data"
+  - pattern: "DROP DATABASE"
+    reason: "Drops an entire database irreversibly"
+  - pattern: "git clean -f"
+    reason: "Removes untracked files without recovery"
+  - pattern: "chmod 777"
+    reason: "Grants world-readable/writable/executable permissions — security risk"
+
+zero_access_paths:
+  - "~/.ssh/*"
+  - "*.pem"
+  - "*.key"
+  - ".env"
+  - "*credentials*"
+  - "*secret*"
+
+no_delete_paths:
+  - "package.json"
+  - "Cargo.toml"
+  - "pyproject.toml"
+  - "Makefile"
+
+domain_constraints:
+  # placeholder - populated by agent persona files
+  note: "Domain constraints are loaded from individual agent persona files by agent-team extension"

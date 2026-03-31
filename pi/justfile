@@ -1,0 +1,30 @@
+# Pi extension stacking recipes
+# Recipes for launching Pi with different extension configurations
+
+# Default recipe — launches Pi with all auto-discovered extensions
+default:
+    pi
+
+# Solo mode — Pi with no extensions, clean slate
+solo:
+    pi --no-extensions
+
+# Damage control only (safety rules, no chain or team)
+safe:
+    pi --no-extensions -e ~/.dotfiles/pi/extensions/damage-control.ts
+
+# Agent chain mode (plan-build-review pipeline)
+chain:
+    pi --no-extensions -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/agent-chain.ts
+
+# Team mode (full dispatcher + safety)
+team:
+    pi --no-extensions -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/agent-team.ts
+
+# Full stack (all three extensions)
+full:
+    pi --no-extensions -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/agent-chain.ts -e ~/.dotfiles/pi/extensions/agent-team.ts -e ~/.dotfiles/pi/extensions/quality-gates.ts -e ~/.dotfiles/pi/extensions/session-hooks.ts
+
+# guard: full stack + commit message enforcement
+guard:
+    pi --no-extensions -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/agent-chain.ts -e ~/.dotfiles/pi/extensions/agent-team.ts -e ~/.dotfiles/pi/extensions/quality-gates.ts -e ~/.dotfiles/pi/extensions/session-hooks.ts -e ~/.dotfiles/pi/extensions/commit-guard.ts
