@@ -1,0 +1,96 @@
+schema_version: 1
+last_updated: 2026-03-31
+
+system_overview:
+  project: prompt-routing classifier
+  location: C:/Users/mglenn/.dotfiles/pi/prompt-routing/
+  purpose: Routes prompts to Haiku/Sonnet/Opus based on complexity tier
+
+key_files:
+  prompt-routing/evaluate.py:
+    role: Holdout evaluation harness with full acceptance gate
+    notes: >
+      Acceptance gate criteria (all must pass):
+        - Accuracy >= 85% on holdout
+        - HIGH->LOW inversions (base) = 0
+        - HIGH->LOW inversions (floor) = 0  [after P(high)>0.2 floor]
+        - Brier(HIGH) < 0.10
+        - Mean inference < 1ms
+      Uses softmax(decision_function) for probabilities since model is LinearSVC.
+      HIGH_FLOOR_THRESHOLD = 0.20 must match router.py constant.
+  prompt-routing/router.py:
+    role: Production routing interface
+    notes: >
+      HIGH_FLOOR_THRESHOLD = 0.20. Uses _proba() = softmax(decision_function)
+      to get approximate P(high). Floor: if raw_pred==low and P(high)>0.20 -> mid.
+      route_with_proba() returns (tier, proba_dict) for callers needing scores.
+  prompt-routing/tests/test_model.py:
+    role: Model correctness + confidence floor tests
+    notes: >
+      TestConfidenceFloor: 5 tests covering floor behavior, proba distribution,
+      threshold consistency between router.py and evaluate.py, P(high) on clear
+      HIGH prompts, and floor escalation on ambiguous prompts.
+      Timing tests use 5ms budget (loose) -- hard 1ms SLA enforced by evaluate.py.
+
+patterns:
+  - name: "Inference timing: test suite vs evaluate.py discrepancy"
+    description: >
+      On Windows, timing tests in the full pytest suite show 2-3x higher latency
+      than evaluate.py --holdout on the same model. Cause: OS scheduler jitter
+      under combined test suite load. Solution: evaluate.py uses 2000 runs with
+      warm loaded model (authoritative). Tests use 5ms loose budget to avoid
+      false failures.
+
+  - name: "Probability approximation: softmax(decision_function)"
+    description: >
+      LinearSVC doesn't expose predict_proba(). CalibratedClassifierCV and
+      LogisticRegression are both too slow on this corpus+machine (>1ms).
+      softmax(decision_function) gives Brier(HIGH)=0.044, monotonically correct,
+      sufficient for a 0.20 threshold. Not perfectly calibrated (Platt scaling
+      would improve Brier to ~0.007) but passes the <0.10 gate.
+
+  - name: "Confidence floor semantics"
+    description: >
+      P(high) > 0.20 floor escalates predicted=low to mid. This affects ~3% of
+      traffic (8/317 in holdout). Safety-adjusted accuracy = 90.85% (escalations
+      from low->mid that were correct count as right). The floor cannot create
+      inversions (it only moves predictions up, never down).
+
+strong_decisions:
+  - decision: "LinearSVC + softmax(decision_function) for probability approximation"
+    why_good: >
+      The alternatives were benchmarked exhaustively:
+        CalibratedClassifierCV(ensemble=False): Brier 0.007 but 900-1400us (borderline)
+        LogisticRegression(lbfgs,C=10):         Brier 0.014 but 1500-2000us (over budget)
+        LinearSVC + softmax(df):                Brier 0.044 but 600us (well under budget)
+      Brier 0.044 passes the <0.10 calibration gate and is sufficient for a 0.20
+      threshold because softmax(df) is monotonically ordered -- higher score always
+      means higher true probability.
+    session: 2026-03-31
+
+  - decision: "HIGH_FLOOR_THRESHOLD = 0.20 for confidence floor"
+    why_good: >
+      Threshold sweep on holdout (317 examples):
+        0.10: 60 escalations (19%), acc=0.833 -- too aggressive
+        0.15:  20 escalations  (6%), acc=0.902 -- still significant
+        0.20:   8 escalations  (3%), acc=0.909 -- good balance
+        0.25:   7 escalations  (2%), acc=0.912 -- diminishing returns
+      0.20 is the recommended value. Zero inversions at all thresholds.
+      Constant defined in both router.py and evaluate.py, tested for consistency.
+    session: 2026-03-31
+
+  - decision: "Timing tests use 5ms loose budget, evaluate.py uses 1ms hard gate"
+    why_good: >
+      Under full pytest suite load on Windows, OS scheduler jitter makes the 1ms
+      budget unreliable in tests. The hard 1ms SLA is enforced by evaluate.py
+      which loads the warm model.pkl and times 2000 runs. Tests verify correctness,
+      evaluate.py verifies SLA.
+    session: 2026-03-31
+
+open_questions:
+  - "CalibratedClassifierCV(ensemble=False) gave Brier 0.007 but borderline timing.
+    On a Linux production host, re-benchmark -- if inference is reliably <800us,
+    switching would halve the Brier score for essentially no accuracy cost."
+  - "The P(high) floor escalates 3% of traffic from low->mid. Monitor audit.py
+    reports: if floor_applied=True correlates with true tier=high, the threshold
+    is well-placed. If it mainly catches true-low prompts, consider raising to 0.25."

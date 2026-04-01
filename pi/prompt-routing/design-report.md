@@ -300,3 +300,92 @@ If a bad `model.pkl` is deployed (wrong accuracy, regression in inversions), the
 - [ ] OOV and unicode handling tested
 - [ ] Linux p99 benchmark completed
 - [ ] Model versioning / rollback procedure documented
+
+---
+
+## 14. Research Findings — Routing Strategy Literature Review
+
+**Date**: 2026-03-31  
+**Trigger**: Three external findings reviewed against empirical model data.
+
+---
+
+### Finding 1 — Uncertainty-Based Routing (AutoMix, "Uncertainty-Based Two-Tier Selection")
+
+**What the papers say:** Route based on the confidence score, not just the predicted class. Rather than hard class boundaries, use: if P(high) > 0.7 → Opus, elif P(mid) > 0.6 → Sonnet, else → Haiku. The claim is this directly addresses HIGH→LOW inversions, since uncertain cases default down to the cheapest model.
+
+**What our data shows:** Tested exhaustively on the 317-example holdout.
+
+| Scheme | Accuracy | Inversions | Notes |
+|--------|----------|-----------|-------|
+| Current: argmax + P(high)>0.20 floor | **90.9%** | **0** | Production |
+| P(high)>0.70 → Opus, P(mid)>0.60 → Sonnet, else Haiku | 72.9% | **38** | Paper's exact scheme |
+| P(high)>0.60 → Opus, P(mid)>0.60 → Sonnet, else Haiku | 80.4% | **14** | More permissive |
+| P(high)>0.60 → Opus, P(low)>0.50 → Haiku, else Sonnet | 86.4% | **0** | Better formulation |
+
+The paper's scheme (P(high)>0.70) creates **38 inversions** — worse than baseline.
+
+**Root cause:** The paper assumes well-calibrated probabilities (Brier < 0.01). Our `softmax(decision_function)` approximation has Brier = 0.044. With this calibration, 31% of true-HIGH prompts have P(high) < 0.70 — they land in the "else → Haiku" bucket.
+
+P(high) distribution for true-HIGH examples:
+
+| Percentile | P(high) value |
+|-----------|--------------|
+| p25 | 0.679 |
+| p50 | 0.787 |
+| p75 | 0.843 |
+| p90 | 0.896 |
+| > 0.70 | 69% |
+
+Crucially: **P(high) > 0.50 = 0% of true-LOW** and **0% of true-MID**. This means the correct uncertainty formulation for our model is not the paper's scheme but a *confident-LOW-to-Haiku* rule:
+
+> if P(high) > T_high → Opus, elif P(low) > T_low → Haiku, else → Sonnet
+
+This routes uncertain cases to **Sonnet** (the middle tier), not Haiku. With T_high=0.60, T_low=0.50 this achieves 86.4% accuracy and zero inversions — but is still 4.5 points below the current argmax+floor scheme.
+
+**Conclusion:** The paper's technique requires properly calibrated probabilities to outperform argmax + conservative floor. With Brier ≈ 0.007 (CalibratedClassifierCV), the uncertainty thresholds would likely work as described. With Brier ≈ 0.044 (softmax approximation), argmax + P(high)>0.20 floor is already optimal.
+
+**Recommendation:** Re-evaluate uncertainty routing after switching to CalibratedClassifierCV (pending Linux inference benchmark). The confident-LOW-to-Haiku formulation (P(high)>T, P(low)>T, else Sonnet) is the correct implementation for safety-first routing regardless of calibration quality.
+
+---
+
+### Finding 2 — KNN Over TF-IDF for Hard Cases
+
+**What the paper suggests:** Store labeled example embeddings; route by nearest-neighbor label. KNN would outperform TF-IDF for ambiguous mid/high prompts where vocabulary alone doesn't signal complexity (e.g., `"apply the terraform changes"` — short, imperative, no complexity markers).
+
+**Assessment:** Correct diagnosis, wrong scope for v1.
+
+The chat-log corpus analysis confirmed this: TF-IDF accuracy on DevOps/infrastructure chat prompts was 58% vs 91% on coding prompts, precisely because operational prompts lack vocabulary-level complexity signals. A KNN router over sentence embeddings would handle `"apply the terraform changes"` correctly — it would find the nearest labeled example by semantic similarity, not by n-gram overlap.
+
+**Why not v1:** Requires an embedding model. Even the smallest viable model (all-MiniLM-L6-v2, 22MB) runs at 5–15ms on CPU — 10× over the 1ms inference budget. ONNX-quantized variants may reach 3–5ms.
+
+**v2 upgrade path:**
+1. If the inference budget is relaxed to 10ms (acceptable for per-session routing, not per-turn), all-MiniLM-L6-v2 becomes viable
+2. The KNN router would use the existing labeled corpus as the reference set — no retraining needed, just embedding the 1,582 examples
+3. A hybrid approach (TF-IDF for high-confidence cases, KNN for low-confidence cases) would keep mean inference near 1ms while improving accuracy on the hard cases
+
+**Corpus implication:** The KNN router's quality depends directly on the diversity of labeled examples. The DevOps/infrastructure prompts in `labeled_history.csv` (594 examples, currently excluded from training) would become the most valuable part of the KNN reference set — they cover operational vocabulary that the coding-focused JSON files don't.
+
+---
+
+### Finding 3 — RouteLLM Generalization: Task Complexity vs. Model Identity
+
+**What the paper found:** A BERT classifier trained on GPT-3.5 vs GPT-4 preference data transferred to other model pairs (e.g., Claude Haiku vs Opus) without retraining. Routers generalize when they learn *task complexity* rather than *model-specific response quality*.
+
+**How this applies to the current corpus:** The current `training_corpus.json` labels are already aligned with this principle:
+
+- `low` = "simple factual lookups, syntax questions, single-step tasks" — complexity-based
+- `mid` = "multi-step tasks, moderate analysis, code with context" — complexity-based
+- `high` = "architecture decisions, security, distributed systems, scale" — complexity-based
+
+Labels are **not** anchored to Haiku/Sonnet/Opus by name or capability. They describe what kind of reasoning the prompt requires. This means:
+
+1. When Anthropic releases claude-haiku-4 or claude-opus-5, the routing labels remain valid — we're routing by task complexity, not by "what haiku-3 can handle"
+2. The classifier transfers to other provider pairs (e.g., GPT-4o-mini vs GPT-4o) without retraining, by the RouteLLM finding
+3. The corpus growth strategy should preserve this property: new examples should be labeled by what they require, not by testing them against a specific model
+
+**One gap:** The current HIGH tier is over-indexed toward distributed systems / architecture vocabulary (the handcrafted corpus and the `coding_prompts_high.json` files). HIGH prompts from other domains (legal analysis, scientific reasoning, creative direction) are absent. A RouteLLM-style classifier trained on preference data would capture these naturally; ours would mis-route them to LOW. This is the primary argument for eventually incorporating `routellm/gpt4_dataset` into the training corpus.
+
+**Corpus labeling principle to enforce going forward:**
+
+> Label by "what reasoning does this require?", not "which model should handle it?". A prompt should be HIGH if it requires architectural thinking, multi-constraint reasoning, or expert judgment — regardless of whether the current Opus can answer it well.

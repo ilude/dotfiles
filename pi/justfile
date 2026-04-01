@@ -17,20 +17,24 @@ safe:
 
 # Agent chain mode (plan-build-review pipeline)
 chain:
-    pi --no-extensions -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/agent-chain.ts
+    pi --no-extensions -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/agent-chain.ts -e ~/.dotfiles/pi/extensions/web-tools.ts
 
 # Team mode (full dispatcher + safety)
 team:
-    pi --no-extensions -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/agent-team.ts
+    pi --no-extensions -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/agent-team.ts -e ~/.dotfiles/pi/extensions/web-tools.ts
 
-# Full stack (all three extensions)
+# Full stack (all extensions)
 full:
-    pi --no-extensions -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/agent-chain.ts -e ~/.dotfiles/pi/extensions/agent-team.ts -e ~/.dotfiles/pi/extensions/quality-gates.ts -e ~/.dotfiles/pi/extensions/session-hooks.ts
+    pi --no-extensions -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/agent-chain.ts -e ~/.dotfiles/pi/extensions/agent-team.ts -e ~/.dotfiles/pi/extensions/quality-gates.ts -e ~/.dotfiles/pi/extensions/session-hooks.ts -e ~/.dotfiles/pi/extensions/web-tools.ts -e ~/.dotfiles/pi/extensions/prompt-router.ts
 
-# Web tools (search + fetch)
+# Web tools only (search + fetch)
 web:
     pi --no-extensions -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/web-tools.ts
 
+# Prompt routing only (classify prompts, auto-switch models)
+route:
+    pi --no-extensions -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/prompt-router.ts
+
 # guard: full stack + commit message enforcement
 guard:
-    pi --no-extensions -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/agent-chain.ts -e ~/.dotfiles/pi/extensions/agent-team.ts -e ~/.dotfiles/pi/extensions/quality-gates.ts -e ~/.dotfiles/pi/extensions/session-hooks.ts -e ~/.dotfiles/pi/extensions/commit-guard.ts
+    pi --no-extensions -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/agent-chain.ts -e ~/.dotfiles/pi/extensions/agent-team.ts -e ~/.dotfiles/pi/extensions/quality-gates.ts -e ~/.dotfiles/pi/extensions/session-hooks.ts -e ~/.dotfiles/pi/extensions/web-tools.ts -e ~/.dotfiles/pi/extensions/commit-guard.ts -e ~/.dotfiles/pi/extensions/prompt-router.ts
