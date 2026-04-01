@@ -148,6 +148,89 @@ Registers shared skill-backed slash commands:
 
 Skills are loaded from `~/.dotfiles/pi/skills/workflow/`.
 
+### `prompt-router.ts`
+
+Classifies every user prompt with a local TF-IDF + LinearSVC model and switches
+the active Claude model accordingly before the agent starts.
+
+| Tier | Model | When |
+|------|-------|------|
+| `low` | `claude-haiku-4-5` | Factual lookups, syntax questions, single-step tasks |
+| `mid` | `claude-sonnet-4-6` | Multi-step tasks, code with context, moderate analysis |
+| `high` | `claude-opus-4-6` | Architecture decisions, security, distributed systems |
+
+**Never-downgrade rule:** once a session escalates to a higher tier, it stays
+there for the rest of the session.
+
+**Footer indicator:** `▸ Haiku` / `▸▸ Sonnet` / `▸▸▸ Opus` after each routed prompt.
+
+**Slash commands:**
+```
+/router-status   # show current tier, session max, last classification
+/router-reset    # reset session max back to low
+/router-off      # disable routing (keep current model)
+/router-on       # re-enable routing
+```
+
+Classifier: `~/.dotfiles/pi/prompt-routing/model.pkl` (92% accuracy on OOD eval, 0 inversions).
+Audit log: `~/.dotfiles/pi/prompt-routing/logs/routing_log.jsonl`.
+See `~/.dotfiles/pi/prompt-routing/` for the full classifier project.
+
+---
+
+## Prompt Routing
+
+The `prompt-routing/` directory contains a local complexity classifier that
+automates model selection. The `prompt-router.ts` extension integrates it
+transparently into every Pi session.
+
+### How it works
+
+```
+You type a prompt
+        ↓
+prompt-router.ts intercepts (input event)
+        ↓
+classify.py calls model.pkl (~200ms)
+        ↓
+route() returns low | mid | high
+        ↓
+pi.setModel() switches the model
+        ↓
+Agent runs on the right model
+```
+
+### Corpus and retraining
+
+The classifier was built by a multi-agent ML team (ML Research Lead,
+Data Engineer, Model Engineer, Eval Engineer) using 1,582 labeled examples
+across three domains. The corpus is in `prompt-routing/data/training_corpus.json`.
+
+To retrain after adding examples to the corpus:
+
+```bash
+cd ~/.dotfiles/pi/prompt-routing
+python train.py
+python evaluate.py --holdout   # must pass all gates
+python -m pytest tests/         # 64 tests
+```
+
+To label new training data from your Claude history:
+
+```bash
+python label_history.py --signal high,low --resume
+python merge_labels.py --dry-run
+python merge_labels.py --cap <N>
+```
+
+To run the daily audit (compare live routing against Opus labels):
+
+```bash
+python audit.py
+```
+
+Full documentation: `~/.dotfiles/pi/prompt-routing/AGENTS.md`
+
 ---
 
 ## Agent Architecture

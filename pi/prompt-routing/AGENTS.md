@@ -30,15 +30,20 @@ Claude model tiers based on complexity:
 | Item | Value |
 |------|-------|
 | Algorithm | TF-IDF (ngram 1-2, sublinear_tf, max_features=7000) + LinearSVC (C=1.0) |
+| Probability | softmax(decision_function) -- Brier(HIGH)=0.044, passes <0.10 gate |
+| Confidence floor | P(high) > 0.20 -> escalate low to mid (3% traffic, 0 inversions) |
 | Training corpus | 1,582 examples -- 508 low / 462 mid / 612 high |
-| Corpus source | `data/training_corpus.json` v2.2 (6 JSON files + handcrafted originals) |
-| Holdout accuracy | 92.1% (317-example stratified holdout) |
-| HIGH->LOW inversions | 0 |
-| Mean inference | ~560 us |
-| model.pkl SHA256 | `fc1f8914dc56c87fa5510598e9655752f5ed4bb2db02d73a84535971593f23f1` |
+| Corpus source | `data/training_corpus.json` v2.2 |
+| Holdout accuracy | 92.1% base / 90.9% safety-adjusted (317-example holdout) |
+| HIGH->LOW inversions | 0 (base) / 0 (after floor) |
+| Brier(HIGH) | 0.0442 (gate: < 0.10) |
+| Mean inference | ~610 us |
+| model.pkl SHA256 | `934190784b7561257879821cf6ab8f02d9036a76209ed2ac9f1fa510d904a2cb` |
 
-`data.py` is now a thin loader -- reads from `data/training_corpus.json`.
-To add examples: edit the JSON directly, or run `build_corpus.py`, then retrain.
+`data.py` is a thin loader -- reads from `data/training_corpus.json`.
+Routing uses a P(high) > 0.20 confidence floor (router.py `HIGH_FLOOR_THRESHOLD`).
+To change the threshold: update both `router.py` and `evaluate.py`, then re-run
+`evaluate.py --holdout` to verify the threshold analysis table.
 
 ## Corpus Expansion — What Was Tried and Why It Failed
 
@@ -239,3 +244,35 @@ matrix for inversion regressions before committing.
 
 `*.pkl` files are gitignored (or should be). Never commit `model.pkl` to the
 repo — it changes every retrain and contains serialised Python objects.
+
+---
+
+## Pi Extension
+
+The router is wired into Pi as an automatic extension.
+
+**Location:** `~/.dotfiles/pi/extensions/prompt-router.ts`
+(symlinked to `~/.pi/agent/extensions/prompt-router.ts` via dotfiles)
+
+**Behavior:**
+- Every interactive prompt is classified before the agent starts
+- Model switches automatically: Haiku / Sonnet / Opus based on tier
+- Never-downgrade rule: session stays at the highest tier reached
+- Slash commands (`/commit`, `/yt`, etc.) are not classified -- model unchanged
+
+**Commands:**
+| Command | Effect |
+|---------|--------|
+| `/router-status` | Show current tier, session max, last classification |
+| `/router-reset` | Reset session max back to low, re-enable routing |
+| `/router-off` | Disable routing (keep current model) |
+| `/router-on` | Re-enable routing |
+
+**Footer indicator:** A status item shows the active tier after each prompt.
+- `▸ Haiku` -- low tier
+- `▸▸ Sonnet` -- mid tier
+- `▸▸▸ Opus` -- high tier
+
+**Routing log:** Every classified prompt is appended to
+`prompt-routing/logs/routing_log.jsonl` with tier, probabilities, and
+floor-applied flag. Run `python audit.py` to compare against Opus labels.
