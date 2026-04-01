@@ -1,6 +1,8 @@
 # Pi extension stacking recipes
 # Recipes for launching Pi with different extension configurations
 
+set windows-shell := ["pwsh.exe", "-Command"]
+
 # Default recipe — launches Pi with all auto-discovered extensions
 default:
     pi
@@ -24,6 +26,10 @@ team:
 # Full stack (all three extensions)
 full:
     pi --no-extensions -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/agent-chain.ts -e ~/.dotfiles/pi/extensions/agent-team.ts -e ~/.dotfiles/pi/extensions/quality-gates.ts -e ~/.dotfiles/pi/extensions/session-hooks.ts
+
+# Web tools (search + fetch)
+web:
+    pi --no-extensions -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/web-tools.ts
 
 # guard: full stack + commit message enforcement
 guard:
