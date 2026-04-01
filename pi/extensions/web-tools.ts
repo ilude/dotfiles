@@ -16,29 +16,60 @@ import { Type } from "@mariozechner/pi-ai";
 import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 const SEARXNG_URL = "http://192.168.16.241:8888/search";
-const WEB_FETCH_SCRIPT = path.join(os.homedir(), ".dotfiles", "pi", "tools", "web-fetch", "fetch.js");
+const WEB_FETCH_SCRIPT = path.join(os.homedir(), ".dotfiles", "pi", "extensions", "web-fetch", "fetch.js");
 
-// ── Load ~/.env ───────────────────────────────────────────────────────────────
-// Parses KEY=VALUE pairs and injects into process.env.
-// Shell environment takes precedence (existing vars are not overwritten).
+// ── .env parsing ────────────────────────────────────────────────────────────
+
+export interface EnvEntry { key: string; value: string }
+
+/** Parse KEY=VALUE content. Skips comments, blank lines, lines without '='. Strips surrounding quotes. */
+export function parseDotEnv(content: string): EnvEntry[] {
+	const entries: EnvEntry[] = [];
+	for (const line of content.split("\n")) {
+		const trimmed = line.trim();
+		if (!trimmed || trimmed.startsWith("#")) continue;
+		const eq = trimmed.indexOf("=");
+		if (eq === -1) continue;
+		const key = trimmed.slice(0, eq).trim();
+		const value = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, "");
+		if (key) entries.push({ key, value });
+	}
+	return entries;
+}
+
 function loadDotEnv(): void {
 	const envPath = path.join(os.homedir(), ".env");
 	try {
 		const content = fs.readFileSync(envPath, "utf-8");
-		for (const line of content.split("\n")) {
-			const trimmed = line.trim();
-			if (!trimmed || trimmed.startsWith("#")) continue;
-			const eq = trimmed.indexOf("=");
-			if (eq === -1) continue;
-			const key = trimmed.slice(0, eq).trim();
-			const val = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, "");
-			if (key && !(key in process.env)) {
-				process.env[key] = val;
+		for (const { key, value } of parseDotEnv(content)) {
+			if (!(key in process.env)) {
+				process.env[key] = value;
 			}
 		}
 	} catch {
 		// No ~/.env — silently skip
 	}
+}
+
+export interface SearchResult {
+	title: string;
+	url: string;
+	content?: string;
+	publishedDate?: string;
+	engine?: string;
+}
+
+/** Format a single search result for LLM consumption. */
+export function formatSearchResult(r: SearchResult, index: number): string {
+	const lines = [
+		`--- Result ${index} ---`,
+		`Title: ${r.title}`,
+		`URL: ${r.url}`,
+	];
+	if (r.publishedDate) lines.push(`Date: ${r.publishedDate}`);
+	if (r.engine) lines.push(`Engine: ${r.engine}`);
+	lines.push(`Snippet: ${r.content ?? "(no snippet)"}`);
+	return lines.join("\n");
 }
 
 loadDotEnv();
@@ -85,17 +116,7 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			const text = results
-				.map((r, i) => {
-					const lines = [
-						`--- Result ${i + 1} ---`,
-						`Title: ${r.title}`,
-						`URL: ${r.url}`,
-					];
-					if (r.publishedDate) lines.push(`Date: ${r.publishedDate}`);
-					if (r.engine) lines.push(`Engine: ${r.engine}`);
-					lines.push(`Snippet: ${r.content ?? "(no snippet)"}`);
-					return lines.join("\n");
-				})
+				.map((r, i) => formatSearchResult(r, i + 1))
 				.join("\n\n");
 
 			return { content: [{ type: "text" as const, text }] };
