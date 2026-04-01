@@ -3,3 +3,18 @@ expertise/*-expertise-log.jsonl
 multi-team/sessions/
 multi-team/expertise/*-expertise-log.jsonl
 skills/pi-skills/
+
+# Runtime session logs
+sessions/
+
+# Tool dependencies
+tools/web-fetch/node_modules/
+
+# Prompt routing — generated artifacts
+prompt-routing/logs/
+prompt-routing/model.pkl
+prompt-routing/test_set.pkl
+prompt-routing/training-log.txt
+prompt-routing/labeled_history.csv
+prompt-routing/__pycache__/
+prompt-routing/data/__pycache__/
