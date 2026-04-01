@@ -3,6 +3,20 @@
 
 set windows-shell := ["pwsh.exe", "-Command"]
 
+# Test recipes
+
+# Run all extension tests
+test:
+    cd ~/.dotfiles/pi/tests && bun vitest run
+
+# Run tests in watch mode
+test-watch:
+    cd ~/.dotfiles/pi/tests && bun vitest
+
+# Run tests with coverage report
+test-coverage:
+    cd ~/.dotfiles/pi/tests && bun vitest run --coverage
+
 # Default recipe — launches Pi with all auto-discovered extensions
 default:
     pi

@@ -6,9 +6,13 @@ skills/pi-skills/
 
 # Runtime session logs
 sessions/
+history/
 
 # Tool dependencies
-tools/web-fetch/node_modules/
+node_modules/
+extensions/web-fetch/node_modules/
+tests/node_modules/
+tests/coverage/
 
 # Prompt routing — generated artifacts
 prompt-routing/logs/
