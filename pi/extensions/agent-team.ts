@@ -238,30 +238,37 @@ export default function (pi: ExtensionAPI) {
 				? path.join(agentDir, teamEntry.file.slice(".pi/".length))
 				: path.join(agentDir, teamEntry.file);
 
-			const agentFileExists = fs.existsSync(agentFilePath);
+			if (!fs.existsSync(agentFilePath)) {
+				ctx.ui.notify(
+					`Agent file not found: ${agentFilePath}\nCheck that the agent persona file exists.`,
+					"warning",
+				);
+				return;
+			}
 
-			// Build worker context for the lead
-			const workerList = teamEntry.team
-				? teamEntry.team.map((m) => `  - ${m.name}`).join("\n")
+			// Build worker file paths for the lead's context
+			const workerPaths = teamEntry.team
+				? teamEntry.team
+					.map((m) => {
+						const workerPath = m.file.startsWith(".pi/")
+							? path.join(agentDir, m.file.slice(".pi/".length))
+							: path.join(agentDir, m.file);
+						return `  - ${m.name}: ${workerPath}`;
+					})
+					.join("\n")
 				: "  (no direct reports configured)";
 
-			const dispatchInstructions = [
-				`Dispatching task to team: ${teamKey} (lead: ${teamEntry.name})`,
-				`Lead agent file: ${agentFilePath}${agentFileExists ? "" : " [FILE NOT FOUND]"}`,
+			const message = [
+				`Use the subagent tool to dispatch this task to the ${teamEntry.name} at ${agentFilePath}.`,
 				"",
-				"Workers in this team:",
-				workerList,
+				`The lead has the following workers available (delegate to them sequentially via subagent):`,
+				workerPaths,
 				"",
-				"Task:",
+				`Task for ${teamEntry.name}:`,
 				task,
-				"",
-				"To dispatch this task, use the subagent tool:",
-				`  subagent({ agent: "${agentFilePath}", prompt: "<your task instructions>" })`,
-				"",
-				"The lead should delegate to workers sequentially using their own subagent calls.",
 			].join("\n");
 
-			ctx.ui.notify(dispatchInstructions, "info");
+			await pi.sendUserMessage(message);
 		},
 	});
 }
