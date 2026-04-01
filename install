@@ -133,6 +133,21 @@ if [[ "$OSTYPE" == "darwin"* ]] && command -v brew &>/dev/null; then
 fi
 completed_steps+=("Homebrew packages")
 
+current_step="just install"
+if command -v just &>/dev/null; then
+    echo "just: already installed"
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    if command -v apt-get &>/dev/null; then
+        echo "Installing just..."
+        curl -fsSL https://just.systems/install.sh | bash -s -- --to ~/.local/bin
+    elif command -v cargo &>/dev/null; then
+        cargo install just
+    else
+        echo "Warning: cannot install just (no apt-get or cargo)"
+    fi
+fi
+completed_steps+=("just install")
+
 current_step="Pi coding agent install"
 if command -v npm &>/dev/null; then
     if npm list -g @mariozechner/pi-coding-agent &>/dev/null; then
@@ -143,6 +158,18 @@ if command -v npm &>/dev/null; then
     fi
 fi
 completed_steps+=("Pi coding agent install")
+
+current_step="pi web-fetch deps"
+WEB_FETCH_DIR="${BASEDIR}/pi/tools/web-fetch"
+if [[ -d "$WEB_FETCH_DIR" ]]; then
+    if [[ ! -d "$WEB_FETCH_DIR/node_modules" ]]; then
+        echo "Installing pi web-fetch dependencies..."
+        npm install --prefix "$WEB_FETCH_DIR"
+    else
+        echo "pi web-fetch deps: already installed"
+    fi
+fi
+completed_steps+=("pi web-fetch deps")
 
 current_step="GUI tool setup"
 if [[ -z "$HEADLESS" ]]; then

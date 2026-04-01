@@ -67,6 +67,7 @@ $corePackages = @(
     @{ Id = 'tldr-pages.tlrc'; Name = 'tldr (man pages)' },
     @{ Id = 'koalaman.shellcheck'; Name = 'shellcheck (shell linter)' },
     @{ Id = 'mvdan.shfmt'; Name = 'shfmt (shell formatter)' },
+    @{ Id = 'Casey.Just'; Name = 'just (command runner)' },
     @{ Id = 'astral-sh.uv'; Name = 'uv (Python package manager)' },
     @{ Id = 'MSYS2.MSYS2'; Name = 'MSYS2 (provides zsh for Git Bash)' },
     @{ Id = 'Rclone.Rclone'; Name = 'rclone (cloud sync)' },
@@ -1271,6 +1272,17 @@ try {
             if (Test-Path $piLinkSetup) {
                 $bashPath = ConvertTo-GitBashPath $piLinkSetup
                 & $gitBash "$bashPath"
+            }
+            # Install pi web-fetch dependencies
+            $webFetchDir = Join-Path $BASEDIR "pi" "tools" "web-fetch"
+            if (Test-Path $webFetchDir) {
+                $nodeModules = Join-Path $webFetchDir "node_modules"
+                if (Test-Path $nodeModules) {
+                    Write-Host "  pi web-fetch deps: already installed" -ForegroundColor DarkGray
+                } else {
+                    Write-Host "  Installing pi web-fetch dependencies..." -ForegroundColor Cyan
+                    npm install --prefix $webFetchDir
+                }
             }
         } else {
             Write-Host "  npm not found - skipping Pi installation" -ForegroundColor Yellow

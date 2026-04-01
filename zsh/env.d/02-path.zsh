@@ -2,6 +2,9 @@
 # Use WINHOME on Windows platforms (set in 00-winhome.zsh), fall back to HOME
 export PATH="${WINHOME:-$HOME}/.local/bin:$PATH"
 
+# Dotfiles scripts (pi-scaffold, pi-link-setup, etc.)
+export PATH="${ZDOTDIR:-$HOME}/.dotfiles/scripts:$PATH"
+
 # WSL: also add native HOME/.local/bin (WINHOME points to /mnt/c/...,
 # but native tools like Claude Code install to /home/<user>/.local/bin)
 if [[ -n "$WINHOME" && "$HOME" != "$WINHOME" ]]; then
