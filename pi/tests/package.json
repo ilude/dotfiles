@@ -1,0 +1,15 @@
+{
+  "name": "pi-extension-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun vitest run",
+    "test:watch": "bun vitest",
+    "test:coverage": "bun vitest run --coverage"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.2",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.0"
+  }
+}
