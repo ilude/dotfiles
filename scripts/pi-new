@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# pi-new — initialize a directory for Pi agent work
+#
+# Usage:
+#   pi-new <name>   Create and initialize a new directory
+#   pi-new .        Initialize the current directory
+
+set -e
+
+# ── Args ────────────────────────────────────────────────────────────────────
+
+if [[ $# -lt 1 ]]; then
+    echo "Usage: pi-new <directory-name|.>"
+    exit 1
+fi
+
+TARGET_ARG="$1"
+
+# ── Resolve target directory ─────────────────────────────────────────────────
+
+if [[ "$TARGET_ARG" == "." ]]; then
+    TARGET_DIR="$PWD"
+    DIR_NAME="$(basename "$TARGET_DIR")"
+    echo "Initializing current directory: $TARGET_DIR"
+else
+    TARGET_DIR="$PWD/$TARGET_ARG"
+    DIR_NAME="$TARGET_ARG"
+    if [[ -e "$TARGET_DIR" ]]; then
+        echo "Error: '$TARGET_ARG' already exists"
+        exit 1
+    fi
+    mkdir -p "$TARGET_DIR"
+    echo "Created directory: $TARGET_DIR"
+fi
+
+cd "$TARGET_DIR"
+
+# ── Git init ─────────────────────────────────────────────────────────────────
+
+if [[ ! -d ".git" ]]; then
+    git init
+    echo "  git init: done"
+else
+    echo "  git: already initialized"
+fi
+
+# ── justfile ─────────────────────────────────────────────────────────────────
+
+EXT_DIR="$HOME/.dotfiles/pi/extensions"
+
+if [[ -f "justfile" ]]; then
+    echo "  justfile: already exists, skipping"
+else
+    cat > justfile <<EOF
+# Pi agent recipes for ${DIR_NAME}
+# Extensions from ~/.dotfiles/pi/extensions/
+
+# Default — Pi with all auto-discovered extensions
+default:
+    pi
+
+# Solo mode — Pi with no extensions
+solo:
+    pi --no-extensions
+
+# Safety only (damage-control)
+safe:
+    pi --no-extensions -e ${EXT_DIR}/damage-control.ts
+
+# Plan-build-review pipeline
+chain:
+    pi --no-extensions \\
+        -e ${EXT_DIR}/damage-control.ts \\
+        -e ${EXT_DIR}/agent-chain.ts
+
+# Team dispatcher
+team:
+    pi --no-extensions \\
+        -e ${EXT_DIR}/damage-control.ts \\
+        -e ${EXT_DIR}/agent-team.ts
+
+# Full stack (all extensions)
+full:
+    pi --no-extensions \\
+        -e ${EXT_DIR}/damage-control.ts \\
+        -e ${EXT_DIR}/agent-chain.ts \\
+        -e ${EXT_DIR}/agent-team.ts \\
+        -e ${EXT_DIR}/quality-gates.ts \\
+        -e ${EXT_DIR}/session-hooks.ts
+
+# Full stack + commit message enforcement
+guard:
+    pi --no-extensions \\
+        -e ${EXT_DIR}/damage-control.ts \\
+        -e ${EXT_DIR}/agent-chain.ts \\
+        -e ${EXT_DIR}/agent-team.ts \\
+        -e ${EXT_DIR}/quality-gates.ts \\
+        -e ${EXT_DIR}/session-hooks.ts \\
+        -e ${EXT_DIR}/commit-guard.ts
+EOF
+    echo "  justfile: created"
+fi
+
+# ── .gitignore ───────────────────────────────────────────────────────────────
+
+if [[ -f ".gitignore" ]]; then
+    echo "  .gitignore: already exists, skipping"
+else
+    cat > .gitignore <<'EOF'
+# Pi agent
+auth.json
+*.expertise-log.jsonl
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+EOF
+    echo "  .gitignore: created"
+fi
+
+# ── Done ─────────────────────────────────────────────────────────────────────
+
+echo ""
+echo "Done. To start:"
+echo "  cd ${TARGET_DIR}"
+echo "  just        # Pi with all extensions"
+echo "  just guard  # + commit enforcement"
