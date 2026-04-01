@@ -1,0 +1,84 @@
+strong_decisions:
+  - decision: "LinearSVC direct (no CalibratedClassifierCV wrapper) in production pipeline"
+    why_good: >
+      cv='prefit' was removed in sklearn 1.8.0. CalibratedClassifierCV(cv=5) runs 5 SVMs
+      at inference (~3700us). ensemble=False still ~1557us. LinearSVC direct hits ~490us mean,
+      well within the 1ms budget. CalibratedClassifierCV retained in grid search only (for
+      stable CV score computation during C selection).
+    session: 2026-03-31
+
+  - decision: "TF-IDF ngram_range=(1,2) + sublinear_tf=True for complexity classification"
+    why_good: >
+      Bigrams capture multi-word complexity signals: 'distributed consensus', 'race conditions',
+      'zero downtime', 'multi-tenant'. Unigrams alone miss these. sublinear_tf dampens
+      high-frequency term dominance. Actual vocabulary was 1635 tokens on 181-example corpus
+      (max_features=10000 cap was not the limiting factor).
+    session: 2026-03-31
+
+  - decision: "Stratified 80/20 holdout, random_state=42"
+    why_good: >
+      181 examples, 60/60/61 per class. Stratified split gives 12/12/13 in test set.
+      Reproducible via fixed random_state. test_set.pkl saved separately for evaluate.py
+      to load independently from train.py artifacts.
+    session: 2026-03-31
+
+  - decision: "Best C=1.0 from grid search [0.01, 0.1, 1.0, 10.0]"
+    why_good: >
+      C=1.0 and C=10.0 both achieved 90.94% CV accuracy. Selected C=1.0 (lower value,
+      more regularization, less overfitting risk) as the tie-breaker. Holdout accuracy
+      was 100% -- classes are well-separated in TF-IDF space.
+    session: 2026-03-31
+
+patterns:
+  - name: "Corpus vocabulary capping"
+    description: >
+      max_features=10000 in TfidfVectorizer is a cap, not a guarantee. Actual vocabulary
+      is limited by the corpus itself. 181 examples -> 1635 unique token ngrams. Always
+      log actual vocab size after fitting to understand true feature dimensionality.
+
+  - name: "Inference timing on Windows"
+    description: >
+      Windows process scheduler introduces jitter making p99 exceed p50 by 2-3x.
+      Mean and median are the reliable inference metrics. Report both but gate on mean.
+      p99 on Windows is not representative of Linux production performance.
+
+  - name: "CalibratedClassifierCV API evolution"
+    description: >
+      sklearn 1.2: cv='prefit' deprecated. sklearn 1.6+: cv='prefit' removed.
+      In sklearn 1.8.0, valid cv values are: int >= 2, CV splitter, iterable, or None.
+      ensemble parameter added: True (default k calibrators), False (single calibrator,
+      still ~1.5x slower than bare LinearSVC due to decision_function + sigmoid overhead).
+
+key_files:
+  prompt-routing/data.py:
+    role: "Labeled training corpus, 181 examples (60 low, 60 mid, 61 high)"
+    notes: "get_examples() returns list of (text, label) tuples. get_label_counts() for stats."
+  prompt-routing/train.py:
+    role: "Full training pipeline: TF-IDF fit, grid search, production model train, serialize"
+    notes: "Outputs model.pkl, model.pkl.sha256, test_set.pkl, training-log.txt"
+  prompt-routing/model.pkl:
+    role: "Serialized sklearn Pipeline: TfidfVectorizer + LinearSVC"
+    notes: "Call pipeline.predict(list_of_texts) for routing. SHA256: c563c0e3..."
+  prompt-routing/model.pkl.sha256:
+    role: "SHA256 integrity sidecar for model.pkl"
+    notes: "Must be verified before pickle.load(). evaluate.py enforces this."
+  prompt-routing/test_set.pkl:
+    role: "Held-out test split (37 examples, 12/12/13 per class)"
+    notes: "dict with 'texts' and 'labels' keys. Used by evaluate.py --holdout"
+  prompt-routing/evaluate.py:
+    role: "Holdout evaluation harness with acceptance gate"
+    notes: "Run with --holdout flag. Exits 0 on pass, 1 on fail."
+  prompt-routing/training-log.txt:
+    role: "CV scores, best hyperparameters, holdout results from last train.py run"
+  prompt-routing/eval-report.md:
+    role: "Eval engineer's full acceptance gate report"
+  prompt-routing/design-report.md:
+    role: "ML Research Lead's architecture decisions and post-build notes"
+
+open_questions:
+  - "In production, should we add a confidence threshold? LinearSVC provides decision_function
+    values (distance to hyperplane) that could flag low-confidence predictions for manual review."
+  - "With only 181 training examples, novel prompt patterns not in the corpus vocabulary
+    may be misclassified. Monitor production accuracy and retrain monthly."
+  - "p99 inference on Linux (vs Windows with scheduler jitter) needs verification before
+    committing to SLA. Expected to be well under 1ms on Linux."
