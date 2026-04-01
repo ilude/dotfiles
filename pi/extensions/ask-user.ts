@@ -1,0 +1,113 @@
+/**
+ * AskUser Tool — Structured mid-turn user prompts
+ *
+ * Lets the LLM pause and ask the user a question during tool execution.
+ * Supports three modes:
+ *   - text:    free-form text input
+ *   - select:  pick from a list of options
+ *   - confirm: yes/no question
+ */
+import { Type } from "@sinclair/typebox";
+import { Text } from "@mariozechner/pi-tui";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
+export default function (pi: ExtensionAPI) {
+  pi.registerTool({
+    name: "ask_user",
+    label: "Ask User",
+    description:
+      "Ask the user a question mid-turn and get their response. " +
+      "Use when you need clarification, a decision, or confirmation before proceeding. " +
+      'Modes: "text" for free-form input, "select" for choosing from options, "confirm" for yes/no.',
+    promptSnippet: "Ask the user a question mid-turn (text input, selection, or confirmation)",
+    promptGuidelines: [
+      "Use ask_user when you need user input to proceed — don't guess at ambiguous requirements.",
+      "Prefer 'select' mode when there are 2-6 concrete options to choose from.",
+      "Prefer 'confirm' mode for yes/no decisions.",
+      "Use 'text' mode for open-ended questions.",
+      "Keep questions concise. Provide context in the question, not in a separate message.",
+    ],
+    parameters: Type.Object({
+      question: Type.String({ description: "The question to ask the user" }),
+      mode: Type.Optional(
+        Type.Union(
+          [Type.Literal("text"), Type.Literal("select"), Type.Literal("confirm")],
+          { description: 'Input mode: "text" (default), "select", or "confirm"', default: "text" }
+        )
+      ),
+      options: Type.Optional(
+        Type.Array(Type.String(), { description: 'Options for "select" mode' })
+      ),
+      placeholder: Type.Optional(
+        Type.String({ description: 'Placeholder text for "text" mode' })
+      ),
+    }),
+
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const mode = params.mode ?? "text";
+
+      if (!ctx.hasUI) {
+        return {
+          content: [{ type: "text", text: "(no UI available — cannot prompt user)" }],
+          isError: true,
+        };
+      }
+
+      let answer: string | boolean | undefined;
+
+      switch (mode) {
+        case "confirm":
+          answer = await ctx.ui.confirm("Question", params.question);
+          break;
+
+        case "select":
+          if (!params.options || params.options.length === 0) {
+            return {
+              content: [{ type: "text", text: 'Error: "select" mode requires a non-empty options array.' }],
+              isError: true,
+            };
+          }
+          answer = await ctx.ui.select(params.question, params.options);
+          break;
+
+        case "text":
+        default:
+          answer = await ctx.ui.input(params.question, params.placeholder);
+          break;
+      }
+
+      if (answer === undefined) {
+        return {
+          content: [{ type: "text", text: "(user dismissed the prompt without answering)" }],
+          details: { mode, dismissed: true },
+        };
+      }
+
+      const text = typeof answer === "boolean" ? (answer ? "yes" : "no") : answer;
+
+      return {
+        content: [{ type: "text", text }],
+        details: { mode, dismissed: false },
+      };
+    },
+
+    renderCall(args, theme, _context) {
+      const mode = args.mode ?? "text";
+      const icon = mode === "confirm" ? "?" : mode === "select" ? "☰" : "✎";
+      const preview = args.question.length > 60 ? args.question.slice(0, 60) + "…" : args.question;
+      let text = theme.fg("accent", `${icon} `) + theme.fg("toolTitle", preview);
+      if (mode === "select" && args.options?.length) {
+        text += theme.fg("dim", ` [${args.options.length} options]`);
+      }
+      return new Text(text, 0, 0);
+    },
+
+    renderResult(result, _options, theme, _context) {
+      const dismissed = result.details?.dismissed;
+      const text = dismissed
+        ? theme.fg("warning", "(dismissed)")
+        : theme.fg("success", result.content[0]?.text ?? "");
+      return new Text(text, 0, 0);
+    },
+  });
+}
