@@ -31,6 +31,9 @@ export default defineConfig({
       include: [
         "extensions/pwsh.ts",
         "extensions/web-tools.ts",
+        "extensions/ask-user.ts",
+        "extensions/tool-search.ts",
+        "extensions/todo.ts",
       ],
       reportsDirectory: "tests/coverage",
     },
