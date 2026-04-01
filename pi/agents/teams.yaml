@@ -28,3 +28,14 @@ validation:
       file: .pi/agents/qa-engineer.md
     - name: security-reviewer
       file: .pi/agents/security-reviewer.md
+
+ml-team:
+  name: ml-research-lead
+  file: .pi/agents/ml-research-lead.md
+  team:
+    - name: data-engineer
+      file: .pi/agents/data-engineer.md
+    - name: model-engineer
+      file: .pi/agents/model-engineer.md
+    - name: eval-engineer
+      file: .pi/agents/eval-engineer.md

@@ -1,0 +1,20 @@
+ml-team:
+  name: ml-research-lead
+  file: .pi/agents/ml-research-lead.md
+  pipeline: sequential
+  team:
+    - name: data-engineer
+      file: .pi/agents/data-engineer.md
+      stage: 1
+      input: task description + design spec from ml-research-lead
+      output: prompt-routing/data.py, prompt-routing/train.py
+    - name: model-engineer
+      file: .pi/agents/model-engineer.md
+      stage: 2
+      input: data.py + train.py from data-engineer
+      output: prompt-routing/model.pkl, prompt-routing/model.pkl.sha256, prompt-routing/training-log.txt
+    - name: eval-engineer
+      file: .pi/agents/eval-engineer.md
+      stage: 3
+      input: model.pkl + test_set.pkl from model-engineer
+      output: prompt-routing/evaluate.py, prompt-routing/eval-report.md
