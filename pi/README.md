@@ -2,7 +2,7 @@
 
 Pi is a minimal terminal coding agent (`@mariozechner/pi-coding-agent`) configured here with a multi-agent orchestration system, safety enforcement, and knowledge compounding via expertise files.
 
-**Pi site:** shittycodingagent.ai | **GitHub:** github.com/badlogic/pi-mono
+**Pi site:** [shittycodingagent.ai](https://shittycodingagent.ai) | **GitHub:** [badlogic/pi-mono](https://github.com/badlogic/pi-mono)
 
 ---
 
@@ -60,7 +60,8 @@ just solo     # bare Pi, no extensions
 just safe     # damage-control only (safety rules)
 just chain    # damage-control + plan-build-review pipeline
 just team     # damage-control + team dispatcher
-just full     # all three extensions
+just full     # all extensions (damage-control + chain + team + quality-gates + session-hooks)
+just guard    # full stack + conventional commit enforcement
 ```
 
 Or invoke Pi directly:
@@ -75,7 +76,7 @@ pi -e ~/.dotfiles/pi/extensions/damage-control.ts   # explicit load
 
 ## Extensions
 
-Three TypeScript extensions are auto-discovered from `~/.dotfiles/pi/extensions/`:
+Seven TypeScript extensions live in `~/.dotfiles/pi/extensions/` and are auto-discovered (or loaded explicitly via `-e`):
 
 ### `damage-control.ts`
 
@@ -112,6 +113,41 @@ Dispatcher pattern routing work to specialist team leads.
 /team <lead|agent> <task>     # dispatch a task to a specific agent
 ```
 
+### `quality-gates.ts`
+
+Intercepts tool results for write and edit operations, runs the appropriate linter for the file's language, and prepends a warning if the linter fails.
+
+Validators are configured in `~/.dotfiles/claude/hooks/quality-validation/validators.yaml` — shared with the Claude Code quality-validation hook.
+
+### `session-hooks.ts`
+
+Runs lifecycle actions at session boundaries:
+
+- **session_start** — runs `git fetch` and notifies if the branch is behind remote
+- **session_shutdown** — archives the session conversation log to `~/.pi/agent/history/YYYY-MM-DD-<sessionId>.jsonl`
+
+### `commit-guard.ts`
+
+Intercepts `git commit` bash calls and enforces safe commit practices:
+
+- Blocks `--no-verify` (pre-commit hook bypass)
+- Blocks commits missing `-m`
+- Enforces conventional commit message format (`feat:`, `fix:`, `chore:`, etc.)
+
+### `workflow-commands.ts`
+
+Registers shared skill-backed slash commands:
+
+```
+/commit        # smart git commit with secret scanning
+/plan-it       # crystallize conversation context into an executable plan
+/review-plan   # adversarial review of a plan file
+/do-this       # smart task routing by complexity
+/research      # parallel multi-angle research on a topic
+```
+
+Skills are loaded from `~/.dotfiles/pi/skills/workflow/`.
+
 ---
 
 ## Agent Architecture
@@ -126,9 +162,13 @@ Orchestrator (Opus)
 ├── Engineering Lead (Sonnet)
 │   ├── Frontend Dev
 │   └── Backend Dev
-└── Validation Lead (Sonnet)
-    ├── QA Engineer
-    └── Security Reviewer
+├── Validation Lead (Sonnet)
+│   ├── QA Engineer
+│   └── Security Reviewer
+└── ML Research Lead (Sonnet)
+    ├── Data Engineer
+    ├── Model Engineer
+    └── Eval Engineer
 ```
 
 Plus standalone chain agents: **Planner**, **Builder**, **Reviewer**.
