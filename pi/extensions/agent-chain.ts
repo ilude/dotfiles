@@ -183,8 +183,6 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			ctx.ui.notify("Starting plan-build-review chain...", "info");
-
 			const agentsDir = path.join(multiTeamDir, "agents");
 			const agentFiles: Record<string, string> = {
 				planner: path.join(agentsDir, "planner.md"),
@@ -205,10 +203,18 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			ctx.ui.notify(
-				`Chain ready. Agents: planner → builder → reviewer.\nTask: ${args.trim()}\n\nUse the subagent tool to dispatch each agent in sequence with chain mode.`,
-				"info",
-			);
+			const message = [
+				`Run the plan-build-review chain for this task: ${args.trim()}`,
+				"",
+				"Use the subagent tool to execute each stage sequentially, passing the previous output as input to the next:",
+				`1. Planner: ${agentFiles.planner}`,
+				`2. Builder: ${agentFiles.builder} (receives planner output)`,
+				`3. Reviewer: ${agentFiles.reviewer} (receives builder output)`,
+				"",
+				"Do not proceed to the next stage until the current one completes.",
+			].join("\n");
+
+			await pi.sendUserMessage(message);
 		},
 	});
 }
