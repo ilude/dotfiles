@@ -31,7 +31,6 @@
       "Bash(git reset --hard:*)"
     ]
   },
-  "model": "opus",
   "enableAllProjectMcpServers": false,
   "hooks": {
     "SessionStart": [
@@ -182,6 +181,7 @@
     "aws-agentic-ai@aws-skills": true,
     "superpowers@superpowers-marketplace": true
   },
+  "releaseChannel": "latest",
   "alwaysThinkingEnabled": true,
   "companyAnnouncements": [],
   "skipDangerousModePermissionPrompt": true
