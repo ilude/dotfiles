@@ -1,1 +1,1 @@
-C:/Users/mglenn/.dotfiles/claude/commands/plan-it.md
+/Users/mglenn/.dotfiles/claude/commands/plan-it.md

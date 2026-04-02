@@ -1,1 +1,1 @@
-C:/Users/mglenn/.dotfiles/claude/commands/dc-audit.md
+/Users/mglenn/.dotfiles/claude/commands/dc-audit.md

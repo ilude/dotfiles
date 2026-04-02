@@ -1,1 +1,1 @@
-C:/Users/mglenn/.dotfiles/claude/commands/review-plan.md
+/Users/mglenn/.dotfiles/claude/commands/review-plan.md
