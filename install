@@ -76,7 +76,7 @@ fi
 completed_steps+=("MSYS2 zsh bootstrap")
 
 # Skip GUI tools on headless Linux servers
-if [[ -z "$DISPLAY" ]] && [[ -z "$WAYLAND_DISPLAY" ]] && [[ -z "$WSL_DISTRO_NAME" ]] && ! is_windows; then
+if [[ "$OSTYPE" != "darwin"* ]] && [[ -z "$DISPLAY" ]] && [[ -z "$WAYLAND_DISPLAY" ]] && [[ -z "$WSL_DISTRO_NAME" ]] && ! is_windows; then
     echo "Headless server detected - skipping GUI tool setup"
     HEADLESS=1
 fi
@@ -129,7 +129,7 @@ completed_steps+=("Claude Code hook dependencies")
 current_step="Homebrew packages"
 if [[ "$OSTYPE" == "darwin"* ]] && command -v brew &>/dev/null; then
     echo "Installing Homebrew packages..."
-    brew bundle --file="${BASEDIR}/Brewfile" --no-lock
+    brew bundle --file="${BASEDIR}/Brewfile" || echo "Warning: some Homebrew packages failed to install"
 fi
 completed_steps+=("Homebrew packages")
 
@@ -162,7 +162,14 @@ fi
 completed_steps+=("just install")
 
 current_step="Pi coding agent install"
-if command -v npm &>/dev/null; then
+if command -v bun &>/dev/null; then
+    if [[ -x "$HOME/.bun/bin/pi" ]]; then
+        echo "pi-coding-agent: already installed"
+    else
+        echo "Installing pi-coding-agent..."
+        bun install -g @mariozechner/pi-coding-agent
+    fi
+elif command -v npm &>/dev/null; then
     if npm list -g @mariozechner/pi-coding-agent &>/dev/null; then
         echo "pi-coding-agent: already installed"
     else
@@ -177,7 +184,11 @@ WEB_FETCH_DIR="${BASEDIR}/pi/tools/web-fetch"
 if [[ -d "$WEB_FETCH_DIR" ]]; then
     if [[ ! -d "$WEB_FETCH_DIR/node_modules" ]]; then
         echo "Installing pi web-fetch dependencies..."
-        npm install --prefix "$WEB_FETCH_DIR"
+        if command -v bun &>/dev/null; then
+            bun install --cwd "$WEB_FETCH_DIR"
+        elif command -v npm &>/dev/null; then
+            npm install --prefix "$WEB_FETCH_DIR"
+        fi
     else
         echo "pi web-fetch deps: already installed"
     fi
