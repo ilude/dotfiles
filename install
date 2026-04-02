@@ -133,6 +133,19 @@ if [[ "$OSTYPE" == "darwin"* ]] && command -v brew &>/dev/null; then
 fi
 completed_steps+=("Homebrew packages")
 
+current_step="Claude Code install"
+if command -v bun &>/dev/null; then
+    if [[ -x "$HOME/.bun/bin/claude" ]]; then
+        echo "claude-code: already installed ($(claude --version 2>/dev/null || echo 'unknown'))"
+    else
+        echo "Installing claude-code via bun..."
+        bun install -g @anthropic-ai/claude-code
+    fi
+else
+    echo "claude-code: bun not found, skipping"
+fi
+completed_steps+=("Claude Code install")
+
 current_step="just install"
 if command -v just &>/dev/null; then
     echo "just: already installed"
