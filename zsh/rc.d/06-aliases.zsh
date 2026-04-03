@@ -1,8 +1,52 @@
 # Aliases (interactive shells)
 
+# Git repo sync check — warn before launching coding agents
+_git_sync_check() {
+    # Skip if not in a git repo
+    git rev-parse --is-inside-work-tree &>/dev/null || return 0
+
+    local branch
+    branch=$(git symbolic-ref --short HEAD 2>/dev/null) || return 0
+
+    # Uncommitted changes
+    local staged unstaged untracked parts=()
+    staged=$(git diff --cached --name-only 2>/dev/null | wc -l)
+    unstaged=$(git diff --name-only 2>/dev/null | wc -l)
+    untracked=$(git ls-files --others --exclude-standard 2>/dev/null | wc -l)
+    (( staged > 0 )) && parts+=("${staged} staged")
+    (( unstaged > 0 )) && parts+=("${unstaged} modified")
+    (( untracked > 0 )) && parts+=("${untracked} untracked")
+    if (( ${#parts} > 0 )); then
+        printf '\e[33m⚠️  Uncommitted changes on %s: %s\e[0m\n' "'${branch}'" "${(j:, :)parts}"
+    fi
+
+    # Fetch and check behind/ahead (5s timeout to avoid blocking)
+    git fetch --quiet 2>/dev/null &
+    local fetch_pid=$!
+    ( sleep 5 && kill $fetch_pid 2>/dev/null ) &>/dev/null &
+    wait $fetch_pid 2>/dev/null
+
+    local upstream
+    upstream=$(git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null) || return 0
+    local behind ahead
+    behind=$(git rev-list --count "HEAD..${upstream}" 2>/dev/null)
+    ahead=$(git rev-list --count "${upstream}..HEAD" 2>/dev/null)
+
+    if (( behind > 0 && ahead > 0 )); then
+        printf '\e[33m⚠️  Branch %s has diverged from %s (%d ahead, %d behind). Consider: git pull --rebase\e[0m\n' "'${branch}'" "'${upstream}'" "$ahead" "$behind"
+    elif (( behind > 0 )); then
+        printf '\e[33m⚠️  Branch %s is %d commit(s) behind %s. Run: git pull\e[0m\n' "'${branch}'" "$behind" "'${upstream}'"
+    fi
+}
+
+# Coding agent wrappers — sync check before launch
+claude() { _git_sync_check; command claude "$@"; }
+opencode() { _git_sync_check; command opencode "$@"; }
+pi() { _git_sync_check; command pi "$@"; }
+
 # Claude Code YOLO mode
 alias ccyl='clear && claude --dangerously-skip-permissions --chrome'
-alias claude-install='npm install -g @anthropic-ai/claude-code'
+alias claude-install='bun install -g @anthropic-ai/claude-code'
 
 # NixOS
 alias nix-gc='nix-store --gc'
