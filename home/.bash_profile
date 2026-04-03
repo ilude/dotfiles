@@ -47,3 +47,7 @@ fi
 
 # Source uv environment if available (added by uv installer)
 [[ -f "$HOME/.local/bin/env" ]] && . "$HOME/.local/bin/env"
+
+# bun (for bash-only sessions; zsh uses env.d/02-path.zsh)
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
