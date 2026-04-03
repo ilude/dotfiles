@@ -56,7 +56,7 @@ ALIASES_PATTERNS = [
         "ccyl alias clears screen and uses dangerously-skip-permissions",
     ),
     (
-        "alias claude-install='npm install -g @anthropic-ai/claude-code'",
+        "alias claude-install='bun install -g @anthropic-ai/claude-code'",
         "claude-install alias",
     ),
     # NixOS aliases

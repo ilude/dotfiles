@@ -51,15 +51,6 @@
             "timeout": 5
           }
         ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python $HOME/.claude/hooks/git_pull_check.py",
-            "timeout": 15
-          }
-        ]
       }
     ],
     "PreToolUse": [
