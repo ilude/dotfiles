@@ -95,7 +95,7 @@ if command -v uv &>/dev/null; then
     echo "uv: already installed"
 else
     echo "Installing uv..."
-    curl -LsSf https://astral.sh/uv/0.6.6/install.sh | sh
+    curl -LsSf https://astral.sh/uv/install.sh | sh
 fi
 completed_steps+=("uv install")
 
@@ -157,9 +157,34 @@ if [[ "$OSTYPE" == "darwin"* ]] && command -v brew &>/dev/null; then
 fi
 completed_steps+=("Homebrew packages")
 
+current_step="Bun install"
+# Bun is the JS runtime for claude-code, pi-coding-agent, and pi web-fetch deps.
+# Windows installs bun via install.ps1; Linux/macOS install it here.
+if ! is_windows; then
+    # Check PATH and ~/.bun/bin directly (bun may not be on PATH in bash sessions)
+    if command -v bun &>/dev/null; then
+        echo "bun: already installed ($(bun --version 2>/dev/null))"
+    elif [[ -x "$HOME/.bun/bin/bun" ]]; then
+        echo "bun: already installed ($("$HOME/.bun/bin/bun" --version 2>/dev/null))"
+        export BUN_INSTALL="$HOME/.bun"
+        export PATH="$BUN_INSTALL/bin:$PATH"
+    else
+        echo "Installing bun..."
+        curl -fsSL https://bun.sh/install | bash
+        export BUN_INSTALL="$HOME/.bun"
+        export PATH="$BUN_INSTALL/bin:$PATH"
+    fi
+    # Ensure node symlink exists so #!/usr/bin/env node shebangs resolve to bun
+    if [[ -x "$HOME/.bun/bin/bun" ]] && [[ ! -e "$HOME/.bun/bin/node" ]]; then
+        ln -sf "$HOME/.bun/bin/bun" "$HOME/.bun/bin/node"
+        echo "bun: created node symlink"
+    fi
+fi
+completed_steps+=("Bun install")
+
 current_step="Claude Code install"
 if command -v bun &>/dev/null; then
-    if [[ -x "$HOME/.bun/bin/claude" ]]; then
+    if command -v claude &>/dev/null; then
         echo "claude-code: already installed ($(claude --version 2>/dev/null || echo 'unknown'))"
     else
         echo "Installing claude-code via bun..."
