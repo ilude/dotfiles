@@ -99,6 +99,24 @@ else
 fi
 completed_steps+=("uv install")
 
+current_step="Python shim"
+# Install Python 3.14 via uv and shim 'python' into ~/.local/bin
+# Hooks use bare 'python' (not python3) cross-platform; this ensures it resolves.
+if command -v uv &>/dev/null; then
+    uv python install 3.14 2>/dev/null || true
+    py314="$(uv python find --system 3.14 2>/dev/null || true)"
+    if [[ -n "$py314" ]]; then
+        mkdir -p "$HOME/.local/bin"
+        ln -sf "$py314" "$HOME/.local/bin/python"
+        echo "python: shimmed to $py314"
+    else
+        echo "Warning: could not locate Python 3.14 after install"
+    fi
+else
+    echo "Warning: uv not found, skipping Python shim"
+fi
+completed_steps+=("Python shim")
+
 current_step="Python dev tools"
 if command -v uv &>/dev/null; then
     # Install ruff globally via uv tool
@@ -115,15 +133,21 @@ current_step="Claude Code hook dependencies"
 # Hooks use bare python (not uv) to avoid console window flashing on Windows.
 # Since settings.json is shared cross-platform, Linux also needs these in system Python.
 hook_deps=("pyyaml" "tree-sitter" "tree-sitter-bash")
-for dep in "${hook_deps[@]}"; do
-    module="${dep//-/_}"
-    if python -c "import ${module}" 2>/dev/null; then
-        echo "${dep}: already installed"
-    else
-        echo "Installing ${dep}..."
-        pip install "${dep}" 2>/dev/null || uv pip install "${dep}" 2>/dev/null || echo "Warning: failed to install ${dep}"
-    fi
-done
+# Use the shimmed python, fall back to python3
+_py="$(command -v python 2>/dev/null || command -v python3 2>/dev/null || true)"
+if [[ -z "$_py" ]]; then
+    echo "Warning: no python found, skipping hook deps"
+else
+    for dep in "${hook_deps[@]}"; do
+        module="${dep//-/_}"
+        if "$_py" -c "import ${module}" 2>/dev/null; then
+            echo "${dep}: already installed"
+        else
+            echo "Installing ${dep}..."
+            uv pip install --python "$_py" --break-system-packages "${dep}" 2>/dev/null || "$_py" -m pip install --break-system-packages "${dep}" 2>/dev/null || echo "Warning: failed to install ${dep}"
+        fi
+    done
+fi
 completed_steps+=("Claude Code hook dependencies")
 
 current_step="Homebrew packages"
