@@ -33,6 +33,7 @@ analyze_git_command = damage_control.analyze_git_command
 redact_secrets = damage_control.redact_secrets
 get_log_path = damage_control.get_log_path
 log_decision = damage_control.log_decision
+DecisionFlags = damage_control.DecisionFlags
 
 
 # ============================================================================
@@ -676,8 +677,7 @@ class TestAuditLogging:
             decision="blocked",
             reason="Dangerous command",
             pattern_matched="yaml_pattern_0",
-            unwrapped=False,
-            semantic_match=False,
+            flags=DecisionFlags(unwrapped=False, semantic_match=False),
         )
 
         # Find the log file created - look in the tmp_path
@@ -705,8 +705,7 @@ class TestAuditLogging:
             decision="allowed",
             reason="",
             pattern_matched="",
-            unwrapped=False,
-            semantic_match=False,
+            flags=DecisionFlags(unwrapped=False, semantic_match=False),
         )
 
         claude_logs = tmp_path / ".claude" / "logs" / "damage-control"
@@ -727,8 +726,7 @@ class TestAuditLogging:
             decision="ask",
             reason="Force push requires confirmation",
             pattern_matched="yaml_pattern_5",
-            unwrapped=False,
-            semantic_match=False,
+            flags=DecisionFlags(unwrapped=False, semantic_match=False),
         )
 
         claude_logs = tmp_path / ".claude" / "logs" / "damage-control"
@@ -749,8 +747,7 @@ class TestAuditLogging:
             decision="blocked",
             reason="Dangerous command",
             pattern_matched="semantic_git",
-            unwrapped=True,
-            semantic_match=False,
+            flags=DecisionFlags(unwrapped=True, semantic_match=False),
         )
 
         claude_logs = tmp_path / ".claude" / "logs" / "damage-control"
@@ -768,8 +765,7 @@ class TestAuditLogging:
             decision="blocked",
             reason="git reset --hard permanently discards uncommitted changes",
             pattern_matched="semantic_git",
-            unwrapped=False,
-            semantic_match=True,
+            flags=DecisionFlags(unwrapped=False, semantic_match=True),
         )
 
         claude_logs = tmp_path / ".claude" / "logs" / "damage-control"
@@ -788,8 +784,7 @@ class TestAuditLogging:
             decision="allowed",
             reason="",
             pattern_matched="",
-            unwrapped=False,
-            semantic_match=False,
+            flags=DecisionFlags(unwrapped=False, semantic_match=False),
         )
 
         claude_logs = tmp_path / ".claude" / "logs" / "damage-control"
@@ -808,8 +803,7 @@ class TestAuditLogging:
             decision="allowed",
             reason="",
             pattern_matched="",
-            unwrapped=False,
-            semantic_match=False,
+            flags=DecisionFlags(unwrapped=False, semantic_match=False),
         )
 
         claude_logs = tmp_path / ".claude" / "logs" / "damage-control"
@@ -828,8 +822,7 @@ class TestAuditLogging:
             decision="allowed",
             reason="",
             pattern_matched="",
-            unwrapped=False,
-            semantic_match=False,
+            flags=DecisionFlags(unwrapped=False, semantic_match=False),
         )
 
         claude_logs = tmp_path / ".claude" / "logs" / "damage-control"
@@ -851,8 +844,7 @@ class TestAuditLogging:
             decision="allowed",
             reason="",
             pattern_matched="",
-            unwrapped=False,
-            semantic_match=False,
+            flags=DecisionFlags(unwrapped=False, semantic_match=False),
         )
 
         claude_logs = tmp_path / ".claude" / "logs" / "damage-control"
@@ -873,8 +865,7 @@ class TestAuditLogging:
                 decision="allowed",
                 reason="",
                 pattern_matched="",
-                unwrapped=False,
-                semantic_match=False,
+                flags=DecisionFlags(unwrapped=False, semantic_match=False),
             )
 
         # All entries go to the same daily file (JSONL format)
@@ -941,8 +932,7 @@ class TestIntegration:
             decision="allowed",
             reason="API call",
             pattern_matched="",
-            unwrapped=was_unwrapped,
-            semantic_match=False,
+            flags=DecisionFlags(unwrapped=was_unwrapped, semantic_match=False),
         )
 
         claude_logs = tmp_path / ".claude" / "logs" / "damage-control"
