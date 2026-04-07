@@ -1,6 +1,39 @@
 # Quality Validation Configuration
 # Add a language by adding a block. No code changes needed.
 # Install commands use platform detection: winget (Windows), brew (macOS), apt (Debian/Ubuntu)
+#
+# Validators for the same file run in parallel (ThreadPoolExecutor, capped at
+# MAX_PARALLEL_VALIDATORS=4). Per-language entries reference the shared
+# anchors below to keep the file readable.
+#
+# Markers may be literal filenames (e.g. "go.mod") or globs (e.g. "*.csproj").
+# `find_project_root` walks up from the edited file until it finds any marker.
+#
+# Languages without a slam-dunk native linter get lizard-only — that still
+# enforces CCN ≤ 8, length ≤ 250, and parameters ≤ 7 on every edit.
+
+# ---- Shared anchors (skipped by the hook because they aren't dicts) -------
+
+_lizard_command: &lizard_command
+  ["lizard", "-C", "8", "-L", "250", "-a", "7", "-w", "{file}"]
+
+_lizard_excludes: &lizard_excludes
+  - "*/dotbot/lib/*"
+  - "*/.svelte-kit/*"
+  - "*/node_modules/*"
+  - "*/playwright-report/*"
+  - "*/vendor/*"
+  - "*/target/*"
+  - "*/build/*"
+  - "*/dist/*"
+  - "*/.venv/*"
+
+_lizard_install: &lizard_install
+  pip: "uv tool install lizard"
+
+# ===========================================================================
+# Existing languages (preserved at top for git-blame stability)
+# ===========================================================================
 
 python:
   extensions: [".py"]
@@ -9,33 +42,22 @@ python:
     - name: ruff-check
       command: ["ruff", "check", "{file}"]
       check: "ruff"
-      exclude_paths:
-        - "*/dotbot/lib/*"
-        - "*/node_modules/*"
+      exclude_paths: *lizard_excludes
     - name: ruff-format
       command: ["ruff", "format", "--check", "{file}"]
       check: "ruff"
-      exclude_paths:
-        - "*/dotbot/lib/*"
-        - "*/node_modules/*"
+      exclude_paths: *lizard_excludes
     - name: lizard-complexity
-      command: ["lizard", "-C", "8", "-L", "250", "-a", "7", "-w", "{file}"]
+      command: *lizard_command
       check: "lizard"
-      exclude_paths:
-        - "*/dotbot/lib/*"
-        - "*/.svelte-kit/*"
-        - "*/node_modules/*"
-        - "*/playwright-report/*"
+      exclude_paths: *lizard_excludes
   install:
-    winget: null
-    brew: null
-    apt: null
     pip: "uv tool install ruff lizard"
 
 typescript:
   extensions: [".ts", ".tsx"]
   markers: ["package.json", "tsconfig.json"]
-  # detect: pick first validator whose config files exist in project root.
+  # detect: pick the first validator whose config files exist in project root.
   # Falls back to the last entry if none match.
   validators:
     - name: eslint-flat
@@ -51,16 +73,12 @@ typescript:
       check: "biome"
       detect: ["biome.json", "biome.jsonc"]
     - name: lizard-complexity
-      command: ["lizard", "-C", "8", "-L", "250", "-a", "7", "-w", "{file}"]
+      command: *lizard_command
       check: "lizard"
-      exclude_paths:
-        - "*/dotbot/lib/*"
-        - "*/.svelte-kit/*"
-        - "*/node_modules/*"
-        - "*/playwright-report/*"
+      exclude_paths: *lizard_excludes
 
 javascript:
-  extensions: [".js", ".jsx"]
+  extensions: [".js", ".jsx", ".mjs", ".cjs"]
   markers: ["package.json"]
   validators:
     - name: biome
@@ -68,13 +86,9 @@ javascript:
       check: "biome"
       detect: ["biome.json", "biome.jsonc"]
     - name: lizard-complexity
-      command: ["lizard", "-C", "8", "-L", "250", "-a", "7", "-w", "{file}"]
+      command: *lizard_command
       check: "lizard"
-      exclude_paths:
-        - "*/dotbot/lib/*"
-        - "*/.svelte-kit/*"
-        - "*/node_modules/*"
-        - "*/playwright-report/*"
+      exclude_paths: *lizard_excludes
 
 shell:
   extensions: [".sh", ".bash"]
@@ -95,14 +109,281 @@ go:
     - name: go-vet
       command: ["go", "vet", "{file}"]
       check: "go"
+    - name: gofmt
+      command: ["gofmt", "-l", "{file}"]
+      check: "gofmt"
     - name: lizard-complexity
-      command: ["lizard", "-C", "8", "-L", "250", "-a", "7", "-w", "{file}"]
+      command: *lizard_command
       check: "lizard"
-      exclude_paths:
-        - "*/dotbot/lib/*"
-        - "*/.svelte-kit/*"
-        - "*/node_modules/*"
+      exclude_paths: *lizard_excludes
   install:
     winget: "winget install GoLang.Go"
     brew: "brew install go"
     apt: "sudo apt install golang-go"
+
+# ===========================================================================
+# New languages (full lizard coverage + native linter where slam-dunk)
+# ===========================================================================
+
+cpp:
+  extensions: [".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx"]
+  markers: ["CMakeLists.txt", "Makefile", "meson.build", "conanfile.txt", "compile_commands.json"]
+  validators:
+    - name: clang-format
+      command: ["clang-format", "--dry-run", "--Werror", "{file}"]
+      check: "clang-format"
+      exclude_paths: *lizard_excludes
+    - name: lizard-complexity
+      command: *lizard_command
+      check: "lizard"
+      exclude_paths: *lizard_excludes
+  install:
+    winget: "winget install LLVM.LLVM"
+    brew: "brew install clang-format"
+    apt: "sudo apt install clang-format"
+
+csharp:
+  extensions: [".cs"]
+  markers: ["global.json", "Directory.Build.props", "Directory.Packages.props", "*.csproj", "*.sln"]
+  validators:
+    - name: dotnet-format
+      command: ["dotnet", "format", "--verify-no-changes", "--include", "{file}"]
+      check: "dotnet"
+      exclude_paths: *lizard_excludes
+    - name: lizard-complexity
+      command: *lizard_command
+      check: "lizard"
+      exclude_paths: *lizard_excludes
+  install:
+    winget: "winget install Microsoft.DotNet.SDK.8"
+    brew: "brew install dotnet-sdk"
+    apt: "sudo apt install dotnet-sdk-8.0"
+
+erlang:
+  extensions: [".erl", ".hrl"]
+  markers: ["rebar.config", "rebar.lock", "Emakefile", "*.app.src"]
+  validators:
+    - name: lizard-complexity
+      command: *lizard_command
+      check: "lizard"
+      exclude_paths: *lizard_excludes
+  install: *lizard_install
+
+fortran:
+  extensions: [".f", ".f90", ".f95", ".f03", ".f08", ".for", ".ftn"]
+  markers: ["fpm.toml", "CMakeLists.txt", "Makefile"]
+  validators:
+    - name: lizard-complexity
+      command: *lizard_command
+      check: "lizard"
+      exclude_paths: *lizard_excludes
+  install: *lizard_install
+
+gdscript:
+  extensions: [".gd"]
+  markers: ["project.godot"]
+  validators:
+    - name: lizard-complexity
+      command: *lizard_command
+      check: "lizard"
+      exclude_paths: *lizard_excludes
+  install: *lizard_install
+
+java:
+  extensions: [".java"]
+  markers: ["pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"]
+  validators:
+    - name: lizard-complexity
+      command: *lizard_command
+      check: "lizard"
+      exclude_paths: *lizard_excludes
+  install: *lizard_install
+
+kotlin:
+  extensions: [".kt", ".kts"]
+  markers: ["build.gradle.kts", "settings.gradle.kts", "build.gradle", "pom.xml"]
+  validators:
+    - name: ktlint
+      command: ["ktlint", "--color=never", "{file}"]
+      check: "ktlint"
+      exclude_paths: *lizard_excludes
+    - name: lizard-complexity
+      command: *lizard_command
+      check: "lizard"
+      exclude_paths: *lizard_excludes
+  install:
+    brew: "brew install ktlint"
+
+lua:
+  extensions: [".lua"]
+  markers: [".luarc.json", ".luacheckrc", "stylua.toml", "*.rockspec"]
+  validators:
+    - name: luacheck
+      command: ["luacheck", "{file}"]
+      check: "luacheck"
+      exclude_paths: *lizard_excludes
+    - name: stylua
+      command: ["stylua", "--check", "{file}"]
+      check: "stylua"
+      exclude_paths: *lizard_excludes
+    - name: lizard-complexity
+      command: *lizard_command
+      check: "lizard"
+      exclude_paths: *lizard_excludes
+  install:
+    brew: "brew install luacheck stylua"
+    apt: "sudo apt install lua-check"
+
+objectivec:
+  extensions: [".m", ".mm"]
+  markers: ["Podfile", "*.xcodeproj", "*.xcworkspace"]
+  validators:
+    - name: clang-format
+      command: ["clang-format", "--dry-run", "--Werror", "{file}"]
+      check: "clang-format"
+      exclude_paths: *lizard_excludes
+    - name: lizard-complexity
+      command: *lizard_command
+      check: "lizard"
+      exclude_paths: *lizard_excludes
+  install:
+    winget: "winget install LLVM.LLVM"
+    brew: "brew install clang-format"
+
+php:
+  extensions: [".php"]
+  markers: ["composer.json", "composer.lock"]
+  validators:
+    - name: phpcs
+      command: ["phpcs", "--standard=PSR12", "{file}"]
+      check: "phpcs"
+      exclude_paths: *lizard_excludes
+    - name: lizard-complexity
+      command: *lizard_command
+      check: "lizard"
+      exclude_paths: *lizard_excludes
+  install:
+    winget: "winget install PHP.PHP"
+    brew: "brew install php-code-sniffer"
+    apt: "sudo apt install php-codesniffer"
+
+ruby:
+  extensions: [".rb", ".rake", ".gemspec"]
+  markers: ["Gemfile", "Rakefile", ".rubocop.yml", "*.gemspec"]
+  validators:
+    - name: rubocop
+      command: ["rubocop", "--no-color", "--format", "simple", "{file}"]
+      check: "rubocop"
+      exclude_paths: *lizard_excludes
+    - name: lizard-complexity
+      command: *lizard_command
+      check: "lizard"
+      exclude_paths: *lizard_excludes
+  install:
+    brew: "brew install rubocop"
+    apt: "sudo gem install rubocop"
+
+rust:
+  extensions: [".rs"]
+  markers: ["Cargo.toml"]
+  validators:
+    - name: rustfmt
+      command: ["rustfmt", "--check", "{file}"]
+      check: "rustfmt"
+      exclude_paths: *lizard_excludes
+    - name: lizard-complexity
+      command: *lizard_command
+      check: "lizard"
+      exclude_paths: *lizard_excludes
+  install:
+    winget: "winget install Rustlang.Rustup"
+    brew: "brew install rustup"
+    apt: "sudo apt install rustup"
+
+scala:
+  extensions: [".scala", ".sc"]
+  markers: ["build.sbt", "build.sc", "project/build.properties"]
+  validators:
+    - name: scalafmt
+      command: ["scalafmt", "--test", "{file}"]
+      check: "scalafmt"
+      exclude_paths: *lizard_excludes
+    - name: lizard-complexity
+      command: *lizard_command
+      check: "lizard"
+      exclude_paths: *lizard_excludes
+  install:
+    brew: "brew install scalafmt"
+
+solidity:
+  extensions: [".sol"]
+  markers: ["hardhat.config.js", "hardhat.config.ts", "foundry.toml", "truffle-config.js"]
+  validators:
+    - name: solhint
+      command: ["solhint", "{file}"]
+      check: "solhint"
+      exclude_paths: *lizard_excludes
+    - name: lizard-complexity
+      command: *lizard_command
+      check: "lizard"
+      exclude_paths: *lizard_excludes
+  install:
+    npm: "npm install -g solhint"
+
+swift:
+  extensions: [".swift"]
+  markers: ["Package.swift", "Podfile", "*.xcodeproj"]
+  validators:
+    - name: swiftlint
+      command: ["swiftlint", "lint", "--quiet", "{file}"]
+      check: "swiftlint"
+      exclude_paths: *lizard_excludes
+    - name: swift-format
+      command: ["swift-format", "lint", "{file}"]
+      check: "swift-format"
+      exclude_paths: *lizard_excludes
+    - name: lizard-complexity
+      command: *lizard_command
+      check: "lizard"
+      exclude_paths: *lizard_excludes
+  install:
+    brew: "brew install swiftlint swift-format"
+
+ttcn:
+  extensions: [".ttcn", ".ttcn3", ".ttcnpp"]
+  markers: ["Makefile"]
+  validators:
+    - name: lizard-complexity
+      command: *lizard_command
+      check: "lizard"
+      exclude_paths: *lizard_excludes
+  install: *lizard_install
+
+vue:
+  extensions: [".vue"]
+  markers: ["vue.config.js", "vite.config.js", "vite.config.ts", "package.json"]
+  validators:
+    - name: biome
+      command: ["biome", "check", "{file}"]
+      check: "biome"
+      detect: ["biome.json", "biome.jsonc"]
+    - name: lizard-complexity
+      command: *lizard_command
+      check: "lizard"
+      exclude_paths: *lizard_excludes
+
+zig:
+  extensions: [".zig"]
+  markers: ["build.zig", "build.zig.zon"]
+  validators:
+    - name: zig-fmt
+      command: ["zig", "fmt", "--check", "{file}"]
+      check: "zig"
+      exclude_paths: *lizard_excludes
+    - name: lizard-complexity
+      command: *lizard_command
+      check: "lizard"
+      exclude_paths: *lizard_excludes
+  install:
+    winget: "winget install zig.zig"
+    brew: "brew install zig"

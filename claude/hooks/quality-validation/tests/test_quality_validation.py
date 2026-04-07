@@ -111,6 +111,104 @@ class TestFindProjectRoot:
         result = hook.find_project_root(str(sub_pkg), ["package.json"])
         assert result == str(sub_pkg.resolve())
 
+    def test_glob_marker_matches_csproj(self, tmp_path):
+        """Glob markers like *.csproj should resolve via Path.glob()."""
+        (tmp_path / "MyApp.csproj").write_text("<Project/>\n")
+        sub_dir = tmp_path / "src" / "Models"
+        sub_dir.mkdir(parents=True)
+        result = hook.find_project_root(str(sub_dir), ["*.csproj"])
+        assert result == str(tmp_path.resolve())
+
+    def test_glob_marker_no_match(self, tmp_path):
+        """Glob markers should still return None when no file matches."""
+        sub_dir = tmp_path / "src"
+        sub_dir.mkdir()
+        result = hook.find_project_root(str(sub_dir), ["*.csproj"])
+        assert result is None
+
+    def test_glob_marker_falls_back_to_literal(self, tmp_path):
+        """Mixed literal+glob marker list — first match wins, regardless of type."""
+        (tmp_path / "go.mod").write_text("module foo\n")
+        sub_dir = tmp_path / "internal"
+        sub_dir.mkdir()
+        # Try a glob first that won't match, then a literal that will.
+        result = hook.find_project_root(str(sub_dir), ["*.csproj", "go.mod"])
+        assert result == str(tmp_path.resolve())
+
+
+class TestParallelValidatorRunner:
+    """Tests for _run_validators_parallel() and _run_one_validator()."""
+
+    def test_parallel_preserves_submission_order(self, tmp_path):
+        """Errors come back in the order validators were submitted, not completion."""
+        # Two failing validators with different sleep times — slower one is first.
+        runnable = [
+            {
+                "name": "slow-fail",
+                "command": [
+                    "python",
+                    "-c",
+                    "import sys, time; time.sleep(0.3); sys.stderr.write('SLOW'); sys.exit(1)",
+                ],
+            },
+            {
+                "name": "fast-fail",
+                "command": [
+                    "python",
+                    "-c",
+                    "import sys; sys.stderr.write('FAST'); sys.exit(1)",
+                ],
+            },
+        ]
+        results = hook._run_validators_parallel(runnable, "/tmp/x.py", "/tmp")
+        # Submission order: slow-fail first, fast-fail second.
+        assert len(results) == 2
+        assert "slow-fail" in results[0]
+        assert "fast-fail" in results[1]
+
+    def test_parallel_filters_successful_validators(self, tmp_path):
+        """Successful validators contribute no error string."""
+        runnable = [
+            {"name": "ok1", "command": ["python", "-c", "pass"]},
+            {
+                "name": "fail",
+                "command": [
+                    "python",
+                    "-c",
+                    "import sys; sys.stderr.write('boom'); sys.exit(1)",
+                ],
+            },
+            {"name": "ok2", "command": ["python", "-c", "pass"]},
+        ]
+        results = hook._run_validators_parallel(runnable, "/tmp/x.py", "/tmp")
+        assert len(results) == 1
+        assert "fail" in results[0]
+
+    def test_run_one_validator_returns_none_on_success(self):
+        """Successful validator returns None, not empty string."""
+        validator = {"name": "ok", "command": ["python", "-c", "pass"]}
+        result = hook._run_one_validator(validator, "/tmp/x.py", "/tmp")
+        assert result is None
+
+    def test_underscore_prefixed_keys_skipped(self, tmp_path):
+        """match_language must skip underscore-prefixed YAML anchor keys."""
+        # Build a fake config that includes an anchor-shaped dict.
+        config = {
+            "_lizard_install": {"pip": "uv tool install lizard"},
+            "python": {
+                "extensions": [".py"],
+                "markers": ["pyproject.toml"],
+                "validators": [],
+            },
+        }
+        (tmp_path / "pyproject.toml").write_text("[project]\n")
+        target = tmp_path / "x.py"
+        target.write_text("")
+        match = hook.match_language(str(target), config)
+        # Should match python, not the underscore key.
+        assert match is not None
+        assert match[0] == "python"
+
 
 class TestMatchLanguage:
     """Tests for match_language()."""
