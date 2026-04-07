@@ -396,6 +396,112 @@ class TestSensitiveNetwork:
 
 
 # ============================================================================
+# CLOUD METADATA SERVICE (IMDS) EXFILTRATION TESTS
+# ============================================================================
+
+
+class TestCloudMetadataExfiltration:
+    """Test cloud instance metadata service (IMDS) exfiltration patterns.
+
+    The link-local metadata endpoints expose IAM credentials, instance identity,
+    and user-data to anything running on the instance. They are universally
+    dangerous in prompt-injection scenarios and should be blocked regardless of
+    the HTTP method or client tool used.
+    """
+
+    def test_curl_imds_aws(self, bash_patterns):
+        """curl to AWS IMDS (169.254.169.254) should be HARD BLOCKED."""
+        matched, is_ask, _ = check_command(
+            "curl http://169.254.169.254/latest/meta-data/", bash_patterns
+        )
+        assert matched and not is_ask
+
+    def test_curl_imds_aws_with_path(self, bash_patterns):
+        """curl to IMDS IAM credentials path should be HARD BLOCKED."""
+        matched, is_ask, _ = check_command(
+            "curl http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+            bash_patterns,
+        )
+        assert matched and not is_ask
+
+    def test_curl_imdsv2_token(self, bash_patterns):
+        """IMDSv2 token request (PUT api/token) should be HARD BLOCKED."""
+        matched, is_ask, _ = check_command(
+            'curl -X PUT "http://169.254.169.254/latest/api/token" '
+            '-H "X-aws-ec2-metadata-token-ttl-seconds: 21600"',
+            bash_patterns,
+        )
+        assert matched and not is_ask
+
+    def test_wget_imds(self, bash_patterns):
+        """wget to IMDS should be HARD BLOCKED."""
+        matched, is_ask, _ = check_command(
+            "wget -qO- http://169.254.169.254/latest/meta-data/", bash_patterns
+        )
+        assert matched and not is_ask
+
+    def test_gcp_metadata_internal(self, bash_patterns):
+        """curl to GCP metadata.google.internal should be HARD BLOCKED."""
+        matched, is_ask, _ = check_command(
+            'curl -H "Metadata-Flavor: Google" '
+            "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+            bash_patterns,
+        )
+        assert matched and not is_ask
+
+    def test_azure_imds(self, bash_patterns):
+        """curl to Azure IMDS path should be HARD BLOCKED."""
+        matched, is_ask, _ = check_command(
+            'curl -H "Metadata: true" '
+            '"http://169.254.169.254/metadata/instance?api-version=2021-02-01"',
+            bash_patterns,
+        )
+        assert matched and not is_ask
+
+    def test_alibaba_metadata(self, bash_patterns):
+        """curl to Alibaba Cloud metadata (100.100.100.200) should be HARD BLOCKED."""
+        matched, is_ask, _ = check_command(
+            "curl http://100.100.100.200/latest/meta-data/", bash_patterns
+        )
+        assert matched and not is_ask
+
+    def test_python_requests_imds(self, bash_patterns):
+        """Python one-liner requesting IMDS should be HARD BLOCKED."""
+        matched, is_ask, _ = check_command(
+            'python -c "import urllib.request; print(urllib.request.urlopen('
+            "'http://169.254.169.254/latest/meta-data/').read())\"",
+            bash_patterns,
+        )
+        assert matched and not is_ask
+
+    def test_bash_tcp_imds(self, bash_patterns):
+        """Bash /dev/tcp backdoor to IMDS should be HARD BLOCKED."""
+        matched, is_ask, _ = check_command(
+            "echo 'GET / HTTP/1.0' > /dev/tcp/169.254.169.254/80", bash_patterns
+        )
+        assert matched and not is_ask
+
+    # False positive tests — verify IMDS patterns are specifically scoped
+    def test_local_169_unrelated_not_imds(self, bash_patterns):
+        """Non-IMDS link-local IP should not trip the IMDS-specific pattern.
+
+        Other patterns (e.g., ping hostname exfil) may legitimately match —
+        we only assert that the IMDS/metadata reason is not the one firing.
+        """
+        _, _, reason = check_command("ping 169.254.0.1", bash_patterns)
+        imds_markers = ("imds", "metadata endpoint", "cloud imds")
+        assert not any(m in reason.lower() for m in imds_markers)
+
+    def test_curl_normal_url_not_imds(self, bash_patterns):
+        """Normal curl to a public site should not trip the IMDS-specific pattern."""
+        _, _, reason = check_command(
+            "curl https://api.github.com/repos/anthropics/claude-code", bash_patterns
+        )
+        imds_markers = ("imds", "metadata endpoint", "cloud imds")
+        assert not any(m in reason.lower() for m in imds_markers)
+
+
+# ============================================================================
 # ZERO ACCESS PATH TESTS
 # ============================================================================
 
