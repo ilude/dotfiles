@@ -112,6 +112,17 @@ def get_history_path(project: str) -> Path:
     return history_dir / f"{project}.jsonl"
 
 
+def _validate_entry(line_num: int, line: str, errors: list[str]) -> None:
+    """Validate a single JSONL entry, appending any errors."""
+    try:
+        entry = json.loads(line)
+        for field in ("ts", "type", "summary"):
+            if field not in entry:
+                errors.append(f"Line {line_num}: missing '{field}' field")
+    except json.JSONDecodeError as e:
+        errors.append(f"Line {line_num}: invalid JSON - {e}")
+
+
 def validate_jsonl(file_path: Path) -> tuple[bool, list[str]]:
     """Validate JSONL file format. Returns (valid, errors)."""
     errors: list[str] = []
@@ -124,17 +135,7 @@ def validate_jsonl(file_path: Path) -> tuple[bool, list[str]]:
                 line = line.strip()
                 if not line:
                     continue
-                try:
-                    entry = json.loads(line)
-                    # Validate required fields
-                    if "ts" not in entry:
-                        errors.append(f"Line {line_num}: missing 'ts' field")
-                    if "type" not in entry:
-                        errors.append(f"Line {line_num}: missing 'type' field")
-                    if "summary" not in entry:
-                        errors.append(f"Line {line_num}: missing 'summary' field")
-                except json.JSONDecodeError as e:
-                    errors.append(f"Line {line_num}: invalid JSON - {e}")
+                _validate_entry(line_num, line, errors)
     except Exception as e:
         errors.append(f"File read error: {e}")
 
