@@ -1,3 +1,8 @@
+---
+name: least-astonishment
+description: "Principle of Least Astonishment (POLA) for edit-time code changes. Activate when modifying, editing, refactoring, fixing, patching, extending, or adding to existing code — any time Claude is about to change code in an established codebase. Trigger keywords: edit, modify, change, update, refactor, fix, patch, extend, add to, integrate with, wire into, match the existing, follow the pattern, in this file, in this module, in this codebase, alongside, similar to. Do NOT activate for: greenfield, from scratch, new project, prototype, scaffold, throwaway."
+---
+
 # Principle of Least Astonishment (POLA)
 
 **Every change should be predictable to someone familiar with the codebase.**
@@ -159,3 +164,30 @@ Sometimes breaking POLA is necessary. When it is:
 ## TL;DR
 
 **Do what the code reader expects. Match existing patterns. Keep changes focused. No surprises.**
+
+---
+
+## AI-Assistant-Specific Anti-Patterns
+
+LLM coding agents have a distinct set of POLA failure modes. Run this checklist before committing an edit:
+
+1. **Drive-by reformatting** — don't touch whitespace, quote style, or import order in regions you weren't asked to change.
+2. **Opportunistic renaming** — don't rename variables/functions across files when the user asked for one local fix.
+3. **Idiom substitution** — don't rewrite `for` → comprehension (or vice versa) if the surrounding file uses the other style.
+4. **Unrequested abstraction** — don't extract a helper/base class/config object on the first occurrence of duplication. Three similar lines beat a premature abstraction.
+5. **New dependency for solved problems** — don't add a library when the file already uses a stdlib equivalent.
+6. **Error-handling style drift** — don't introduce `Result`/exceptions/early-returns mid-file when the surrounding code uses a different convention.
+7. **Logging vs print divergence** — don't use `print` in a module that uses a structured logger (or vice versa).
+8. **Test framework drift** — don't write `unittest.TestCase` tests in a `pytest` codebase (or mix `assert` and `expect`).
+9. **Silent default changes** — don't flip a kwarg default, timeout, or retry count "to be safer" without being asked.
+10. **Cross-file collateral** — don't modify call sites, types, or fixtures beyond the file the user pointed at without flagging it first.
+
+If you catch yourself about to do any of these, stop and either (a) make the smaller edit, or (b) surface the broader change to the user before proceeding.
+
+---
+
+## References
+
+- Raymond, E. S. *The Art of Unix Programming* — Rule of Least Surprise: <https://www.catb.org/~esr/writings/taoup/html/ch11s01.html>
+- Wikipedia — *Principle of least astonishment*: <https://en.wikipedia.org/wiki/Principle_of_least_astonishment>
+- DevIQ — *Principle of Least Astonishment*: <https://deviq.com/principles/principle-of-least-astonishment/>
