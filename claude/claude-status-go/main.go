@@ -128,10 +128,8 @@ func claudeVersion() string {
 	return "?"
 }
 
-func main() {
-	model := "unknown"
-	cwd := ""
-
+func parseStdin() (model string, cwd string) {
+	model = "unknown"
 	raw, err := io.ReadAll(os.Stdin)
 	if err == nil && len(raw) > 0 {
 		var in input
@@ -145,61 +143,64 @@ func main() {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
 	}
+	return model, cwd
+}
 
-	wsl := isWSL()
+func resolveDisplayDir(cwd string, wsl bool) string {
 	gitPath := cwd
 	if wsl {
 		gitPath = toWSLPath(cwd)
 	}
 	normalized := normalizePath(cwd)
 	homePat := homePattern()
-
 	gitRoot := runCmd("git", "-C", gitPath, "rev-parse", "--show-toplevel")
 
-	var displayDir string
 	if gitRoot != "" {
 		normRoot := normalizePath(gitRoot)
 		basename := filepath.Base(strings.TrimRight(normRoot, "/"))
 		if strings.HasPrefix(normRoot, homePat) {
-			displayDir = "~/" + basename
-		} else {
-			displayDir = basename
+			return "~/" + basename
 		}
-	} else {
-		if strings.HasPrefix(normalized, homePat) {
-			rel := normalized[len(homePat):]
-			if rel == "" {
-				displayDir = "~"
-			} else {
-				displayDir = "~" + rel
-			}
-		} else {
-			displayDir = normalized
-		}
+		return basename
 	}
 
-	branchName := runCmd("git", "-C", gitPath, "branch", "--show-current")
-	branch := ""
-	if branchName != "" {
-		branch = yellow + "[" + blue + branchName + yellow + "]" + reset
+	if strings.HasPrefix(normalized, homePat) {
+		rel := normalized[len(homePat):]
+		if rel == "" {
+			return "~"
+		}
+		return "~" + rel
 	}
+	return normalized
+}
 
-	effort := effortLevel()
-	ver := claudeVersion()
+func branchLabel(gitPath string) string {
+	name := runCmd("git", "-C", gitPath, "branch", "--show-current")
+	if name == "" {
+		return ""
+	}
+	return yellow + "[" + blue + name + yellow + "]" + reset
+}
 
-	effortLabel := white + "[" + cyan + effort + white + "]" + reset
-	versionLabel := dim + "v" + ver + reset
-
-	var line string
+func formatLine(displayDir, branch, model string) string {
+	effortLabel := white + "[" + cyan + effortLevel() + white + "]" + reset
+	versionLabel := dim + "v" + claudeVersion() + reset
+	prefix := green + displayDir + reset
+	suffix := " | " + orange + model + reset + effortLabel + " | " + versionLabel
 	if branch != "" {
-		line = green + displayDir + reset + branch +
-			" | " + orange + model + reset + effortLabel +
-			" | " + versionLabel
-	} else {
-		line = green + displayDir + reset +
-			" | " + orange + model + reset + effortLabel +
-			" | " + versionLabel
+		return prefix + branch + suffix
 	}
+	return prefix + suffix
+}
 
-	fmt.Println(line)
+func main() {
+	model, cwd := parseStdin()
+	wsl := isWSL()
+	gitPath := cwd
+	if wsl {
+		gitPath = toWSLPath(cwd)
+	}
+	displayDir := resolveDisplayDir(cwd, wsl)
+	branch := branchLabel(gitPath)
+	fmt.Println(formatLine(displayDir, branch, model))
 }

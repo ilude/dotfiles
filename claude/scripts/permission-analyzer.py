@@ -300,36 +300,41 @@ def load_existing_settings(claude_dir: Path) -> set:
     return existing
 
 
+def _print_pattern_group(label: str, header: str, patterns: list[tuple], suffix: str = "") -> None:
+    if not patterns:
+        return
+    print(f"\n{label}")
+    print(f"{header}\n")
+    for pattern, _count, reason in patterns:
+        print(f'      "{pattern}",  // {reason}{suffix}')
+
+
 def print_suggestions(suggestions: list[tuple[str, int, str, str]], existing_permissions: set):
     """Print wildcard pattern suggestions."""
     print("\n" + "=" * 70)
     print("SUGGESTED WILDCARD PATTERNS")
     print("=" * 70)
 
-    # Filter out already existing permissions
     new_suggestions = [(p, c, r, s) for p, c, r, s in suggestions if p not in existing_permissions]
 
     if not new_suggestions:
         print("\nNo new patterns to suggest (all frequent patterns already approved)")
         return
 
-    # Group by safety level
     safe_patterns = [(p, c, r) for p, c, r, s in new_suggestions if s == "safe"]
     risky_patterns = [(p, c, r) for p, c, r, s in new_suggestions if s == "risky"]
 
-    if safe_patterns:
-        print("\n[SAFE] patterns (read-only, no side effects):")
-        print("\nAdd these to ~/.claude/settings.json under permissions.allow:\n")
-
-        for pattern, count, reason in safe_patterns:
-            print(f'      "{pattern}",  // {reason}')
-
-    if risky_patterns:
-        print("\n[REVIEW NEEDED] patterns (may have side effects):")
-        print("Review these carefully before adding:\n")
-
-        for pattern, count, reason in risky_patterns:
-            print(f'      "{pattern}",  // {reason} - REVIEW')
+    _print_pattern_group(
+        "[SAFE] patterns (read-only, no side effects):",
+        "Add these to ~/.claude/settings.json under permissions.allow:",
+        safe_patterns,
+    )
+    _print_pattern_group(
+        "[REVIEW NEEDED] patterns (may have side effects):",
+        "Review these carefully before adding:",
+        risky_patterns,
+        suffix=" - REVIEW",
+    )
 
     print("\n" + "-" * 70)
     print("Note: Patterns for git commit/push are excluded (require manual approval)")
