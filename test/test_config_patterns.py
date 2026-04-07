@@ -42,7 +42,7 @@ def get_dotfile_path(name: str) -> Path:
 
 def read_dotfile(name: str) -> str:
     """Read canonical dotfile content."""
-    return get_dotfile_path(name).read_text()
+    return get_dotfile_path(name).read_text(encoding="utf-8")
 
 
 # =============================================================================
@@ -87,7 +87,7 @@ ALIASES_PATTERNS = [
 @pytest.mark.parametrize("pattern,desc", ALIASES_PATTERNS, ids=[p[1] for p in ALIASES_PATTERNS])
 def test_aliases(pattern, desc):
     """Verify zsh/rc.d/06-aliases.zsh contains expected patterns."""
-    content = (DOTFILES / "zsh/rc.d/06-aliases.zsh").read_text()
+    content = (DOTFILES / "zsh/rc.d/06-aliases.zsh").read_text(encoding="utf-8")
     assert re.search(pattern, content), f"Pattern not found: {pattern}"
 
 
@@ -124,13 +124,13 @@ HELPERS_PATTERNS = [
 @pytest.mark.parametrize("pattern,desc", HELPERS_PATTERNS, ids=[p[1] for p in HELPERS_PATTERNS])
 def test_helpers(pattern, desc):
     """Verify zsh/rc.d/00-helpers.zsh contains expected patterns."""
-    content = (DOTFILES / "zsh/rc.d/00-helpers.zsh").read_text()
+    content = (DOTFILES / "zsh/rc.d/00-helpers.zsh").read_text(encoding="utf-8")
     assert re.search(pattern, content), f"Pattern not found: {pattern}"
 
 
 def test_helpers_winhome_wsl_check():
     """00-winhome.zsh also checks WSL_DISTRO_NAME."""
-    content = (DOTFILES / "zsh/env.d/00-winhome.zsh").read_text()
+    content = (DOTFILES / "zsh/env.d/00-winhome.zsh").read_text(encoding="utf-8")
     assert "WSL_DISTRO_NAME" in content
 
 
@@ -165,7 +165,7 @@ WINHOME_PATTERNS = [
 @pytest.mark.parametrize("pattern,desc", WINHOME_PATTERNS, ids=[p[1] for p in WINHOME_PATTERNS])
 def test_winhome(pattern, desc):
     """Verify zsh/env.d/00-winhome.zsh contains expected patterns."""
-    content = (DOTFILES / "zsh/env.d/00-winhome.zsh").read_text()
+    content = (DOTFILES / "zsh/env.d/00-winhome.zsh").read_text(encoding="utf-8")
     assert re.search(pattern, content), f"Pattern not found: {pattern}"
 
 
@@ -178,7 +178,7 @@ LOCALE_PATTERNS = [
 @pytest.mark.parametrize("pattern,desc", LOCALE_PATTERNS, ids=[p[1] for p in LOCALE_PATTERNS])
 def test_locale(pattern, desc):
     """Verify zsh/env.d/01-locale.zsh contains expected patterns."""
-    content = (DOTFILES / "zsh/env.d/01-locale.zsh").read_text()
+    content = (DOTFILES / "zsh/env.d/01-locale.zsh").read_text(encoding="utf-8")
     assert re.search(pattern, content), f"Pattern not found: {pattern}"
 
 
@@ -197,13 +197,13 @@ PATH_PATTERNS = [
 @pytest.mark.parametrize("pattern,desc", PATH_PATTERNS, ids=[p[1] for p in PATH_PATTERNS])
 def test_path(pattern, desc):
     """Verify zsh/env.d/02-path.zsh contains expected patterns."""
-    content = (DOTFILES / "zsh/env.d/02-path.zsh").read_text()
+    content = (DOTFILES / "zsh/env.d/02-path.zsh").read_text(encoding="utf-8")
     assert re.search(pattern, content), f"Pattern not found: {pattern}"
 
 
 def test_path_windows_conditional():
     """Windows path sourcing is conditional on OSTYPE."""
-    content = (DOTFILES / "zsh/env.d/02-path.zsh").read_text()
+    content = (DOTFILES / "zsh/env.d/02-path.zsh").read_text(encoding="utf-8")
     # Find context around path-windows-local
     assert "msys" in content or "cygwin" in content
 
@@ -244,7 +244,7 @@ CLI_COMPLETIONS_PATTERNS = [
 )
 def test_cli_completions(pattern, desc):
     """Verify zsh/rc.d/07-cli-completions.zsh contains expected patterns."""
-    content = (DOTFILES / "zsh/rc.d/07-cli-completions.zsh").read_text()
+    content = (DOTFILES / "zsh/rc.d/07-cli-completions.zsh").read_text(encoding="utf-8")
     assert re.search(pattern, content), f"Pattern not found: {pattern}"
 
 
@@ -273,7 +273,7 @@ EDITOR_PATTERNS = [
 @pytest.mark.parametrize("pattern,desc", EDITOR_PATTERNS, ids=[p[1] for p in EDITOR_PATTERNS])
 def test_editor(pattern, desc):
     """Verify zsh/rc.d/08-editor.zsh contains expected patterns."""
-    content = (DOTFILES / "zsh/rc.d/08-editor.zsh").read_text()
+    content = (DOTFILES / "zsh/rc.d/08-editor.zsh").read_text(encoding="utf-8")
     assert re.search(pattern, content), f"Pattern not found: {pattern}"
 
 
@@ -294,13 +294,13 @@ COMPLETIONS_PATTERNS = [
 )
 def test_completions(pattern, desc):
     """Verify zsh/rc.d/01-completions.zsh contains expected patterns."""
-    content = (DOTFILES / "zsh/rc.d/01-completions.zsh").read_text()
+    content = (DOTFILES / "zsh/rc.d/01-completions.zsh").read_text(encoding="utf-8")
     assert re.search(pattern, content), f"Pattern not found: {pattern}"
 
 
 def test_completions_zwc_gitignored():
     """zwc files are gitignored."""
-    content = (DOTFILES / ".gitignore").read_text()
+    content = (DOTFILES / ".gitignore").read_text(encoding="utf-8")
     assert ".zwc" in content
 
 
@@ -324,7 +324,7 @@ PLUGINS_PATTERNS = [
 @pytest.mark.parametrize("pattern,desc", PLUGINS_PATTERNS, ids=[p[1] for p in PLUGINS_PATTERNS])
 def test_plugins(pattern, desc):
     """Verify zsh/rc.d/02-plugins.zsh contains expected patterns."""
-    content = (DOTFILES / "zsh/rc.d/02-plugins.zsh").read_text()
+    content = (DOTFILES / "zsh/rc.d/02-plugins.zsh").read_text(encoding="utf-8")
     assert re.search(pattern, content), f"Pattern not found: {pattern}"
 
 
@@ -346,7 +346,7 @@ HISTORY_PATTERNS = [
 @pytest.mark.parametrize("pattern,desc", HISTORY_PATTERNS, ids=[p[1] for p in HISTORY_PATTERNS])
 def test_history(pattern, desc):
     """Verify zsh/rc.d/03-history.zsh contains expected patterns."""
-    content = (DOTFILES / "zsh/rc.d/03-history.zsh").read_text()
+    content = (DOTFILES / "zsh/rc.d/03-history.zsh").read_text(encoding="utf-8")
     assert re.search(pattern, content), f"Pattern not found: {pattern}"
 
 
@@ -366,7 +366,7 @@ KEYBINDINGS_PATTERNS = [
 )
 def test_keybindings(pattern, desc):
     """Verify zsh/rc.d/04-keybindings.zsh contains expected patterns."""
-    content = (DOTFILES / "zsh/rc.d/04-keybindings.zsh").read_text()
+    content = (DOTFILES / "zsh/rc.d/04-keybindings.zsh").read_text(encoding="utf-8")
     assert re.search(pattern, content), f"Pattern not found: {pattern}"
 
 
@@ -388,7 +388,7 @@ VERSION_MANAGERS_PATTERNS = [
 )
 def test_version_managers(pattern, desc):
     """Verify zsh/rc.d/09-version-managers.zsh contains expected patterns."""
-    content = (DOTFILES / "zsh/rc.d/09-version-managers.zsh").read_text()
+    content = (DOTFILES / "zsh/rc.d/09-version-managers.zsh").read_text(encoding="utf-8")
     assert re.search(pattern, content), f"Pattern not found: {pattern}"
 
 
@@ -404,7 +404,7 @@ SSH_AGENT_PATTERNS = [
 @pytest.mark.parametrize("pattern,desc", SSH_AGENT_PATTERNS, ids=[p[1] for p in SSH_AGENT_PATTERNS])
 def test_ssh_agent(pattern, desc):
     """Verify zsh/rc.d/10-ssh-agent.zsh contains expected patterns."""
-    content = (DOTFILES / "zsh/rc.d/10-ssh-agent.zsh").read_text()
+    content = (DOTFILES / "zsh/rc.d/10-ssh-agent.zsh").read_text(encoding="utf-8")
     assert re.search(pattern, content), f"Pattern not found: {pattern}"
 
 
@@ -460,7 +460,7 @@ ZSH_PLUGINS_PATTERNS = [
 )
 def test_zsh_plugins(pattern, desc):
     """Verify zsh-plugins script contains expected patterns."""
-    content = (DOTFILES / "scripts" / "zsh-plugins").read_text()
+    content = (DOTFILES / "scripts" / "zsh-plugins").read_text(encoding="utf-8")
     assert re.search(pattern, content), f"Pattern not found: {pattern}"
 
 
@@ -485,7 +485,7 @@ def test_zshrc_local_override():
 
 def test_zshrc_local_gitignored():
     """.zshrc.local is gitignored."""
-    content = (DOTFILES / ".gitignore").read_text()
+    content = (DOTFILES / ".gitignore").read_text(encoding="utf-8")
     assert ".zshrc.local" in content
 
 
@@ -554,37 +554,37 @@ def test_bashrc_uv_env_conditional():
 def test_wsl_packages_zsh():
     """wsl/packages installs zsh on Linux/WSL."""
     assert (DOTFILES / "wsl" / "packages").exists()
-    content = (DOTFILES / "wsl" / "packages").read_text()
+    content = (DOTFILES / "wsl" / "packages").read_text(encoding="utf-8")
     assert "zsh" in content
 
 
 def test_wsl_packages_default_shell():
     """wsl/packages sets zsh as default shell."""
-    content = (DOTFILES / "wsl" / "packages").read_text()
+    content = (DOTFILES / "wsl" / "packages").read_text(encoding="utf-8")
     assert re.search(r"chsh.*zsh|default.*zsh", content)
 
 
 def test_wsl_packages_apt():
     """wsl/packages uses apt for zsh."""
-    content = (DOTFILES / "wsl" / "packages").read_text()
+    content = (DOTFILES / "wsl" / "packages").read_text(encoding="utf-8")
     assert re.search(r"apt.*install|apt-get.*install", content)
 
 
 def test_wsl_packages_fzf():
     """wsl/packages installs fzf."""
-    content = (DOTFILES / "wsl" / "packages").read_text()
+    content = (DOTFILES / "wsl" / "packages").read_text(encoding="utf-8")
     assert "fzf" in content
 
 
 def test_wsl_packages_wsl_conf():
     """wsl/packages configures wsl.conf."""
-    content = (DOTFILES / "wsl" / "packages").read_text()
+    content = (DOTFILES / "wsl" / "packages").read_text(encoding="utf-8")
     assert re.search(r"wsl\.conf|metadata", content)
 
 
 def test_wsl_packages_zsh_plugins():
     """wsl/packages installs zsh plugins."""
-    content = (DOTFILES / "wsl" / "packages").read_text()
+    content = (DOTFILES / "wsl" / "packages").read_text(encoding="utf-8")
     assert re.search(r"zsh-plugins|Zsh Plugins|zsh plugins", content)
 
 
@@ -659,7 +659,7 @@ def test_prompt_shows_git_branch_bashrc():
 
 def test_prompt_shows_git_branch_zsh():
     """zsh prompt shows git branch."""
-    content = (DOTFILES / "zsh/rc.d/05-prompt.zsh").read_text()
+    content = (DOTFILES / "zsh/rc.d/05-prompt.zsh").read_text(encoding="utf-8")
     assert re.search(r"git.*branch|symbolic-ref", content)
 
 
@@ -671,107 +671,107 @@ def test_bashrc_normalizes_home():
 
 def test_zsh_prompt_uses_home():
     """zsh prompt module handles home normalization."""
-    content = (DOTFILES / "zsh/rc.d/05-prompt.zsh").read_text()
+    content = (DOTFILES / "zsh/rc.d/05-prompt.zsh").read_text(encoding="utf-8")
     assert re.search(r"HOME|ZDOTDIR|home", content)
 
 
 # Install script tests
 def test_install_msys2():
     """install.ps1 installs MSYS2 for Git Bash zsh support."""
-    content = (DOTFILES / "install.ps1").read_text()
+    content = (DOTFILES / "install.ps1").read_text(encoding="utf-8")
     assert "MSYS2" in content
 
 
 def test_install_pacman_zsh():
     """install.ps1 installs zsh via pacman."""
-    content = (DOTFILES / "install.ps1").read_text()
+    content = (DOTFILES / "install.ps1").read_text(encoding="utf-8")
     assert re.search(r"pacman.*zsh|msys2Packages.*zsh", content)
 
 
 def test_install_pacman_noconfirm():
     """install.ps1 uses noconfirm for pacman."""
-    content = (DOTFILES / "install.ps1").read_text()
+    content = (DOTFILES / "install.ps1").read_text(encoding="utf-8")
     assert re.search(r"--noconfirm|noconfirm", content)
 
 
 def test_install_msys2_check():
     """install.ps1 checks for MSYS2 before pacman."""
-    content = (DOTFILES / "install.ps1").read_text()
+    content = (DOTFILES / "install.ps1").read_text(encoding="utf-8")
     assert re.search(r"Test-Path.*msys64|msys2Pacman", content)
 
 
 def test_install_zsh_plugins():
     """install.ps1 installs zsh plugins for Git Bash."""
-    content = (DOTFILES / "install.ps1").read_text()
+    content = (DOTFILES / "install.ps1").read_text(encoding="utf-8")
     assert "zsh-plugins" in content
     assert "Zsh Plugins" in content
 
 
 def test_install_idempotent():
     """install script uses cmp for idempotent bootstrap."""
-    content = (DOTFILES / "install").read_text()
+    content = (DOTFILES / "install").read_text(encoding="utf-8")
     assert "cmp -s" in content
 
 
 def test_install_headless_detection():
     """install script detects headless servers."""
-    content = (DOTFILES / "install").read_text()
+    content = (DOTFILES / "install").read_text(encoding="utf-8")
     assert re.search(r"DISPLAY|HEADLESS", content)
 
 
 def test_install_headless_skip_gui():
     """install script skips GUI tools on headless."""
-    content = (DOTFILES / "install").read_text()
+    content = (DOTFILES / "install").read_text(encoding="utf-8")
     assert re.search(r"HEADLESS.*claude-link|if.*HEADLESS", content)
 
 
 def test_install_nsswitch():
     """install.ps1 has nsswitch.conf fix."""
-    content = (DOTFILES / "install.ps1").read_text()
+    content = (DOTFILES / "install.ps1").read_text(encoding="utf-8")
     assert "nsswitch.conf" in content
 
 
 def test_install_nsswitch_backup():
     """install.ps1 creates nsswitch.conf backup."""
-    content = (DOTFILES / "install.ps1").read_text()
+    content = (DOTFILES / "install.ps1").read_text(encoding="utf-8")
     assert re.search(r"nsswitchPath.*\.bak", content)
 
 
 def test_install_wsl_yaml():
     """wsl/install.conf.yaml symlinks ~/.dotfiles to Windows mount."""
-    content = (DOTFILES / "wsl" / "install.conf.yaml").read_text()
+    content = (DOTFILES / "wsl" / "install.conf.yaml").read_text(encoding="utf-8")
     assert "~/.dotfiles" in content
 
 
 def test_install_wsl_from_mount():
     """install.ps1 runs wsl/install from Windows mount."""
-    content = (DOTFILES / "install.ps1").read_text()
+    content = (DOTFILES / "install.ps1").read_text(encoding="utf-8")
     assert re.search(r"cd.*wslBasedir.*wsl/install", content)
 
 
 # Git delta configuration (from git_ssh_setup.bats)
 def test_gitconfig_pager_delta():
     """git config pager section uses delta."""
-    content = (DOTFILES / "config" / "git" / "config").read_text()
+    content = (DOTFILES / "config" / "git" / "config").read_text(encoding="utf-8")
     assert "[pager]" in content
     assert "diff = delta" in content
 
 
 def test_gitconfig_delta_section():
     """git config delta section configured."""
-    content = (DOTFILES / "config" / "git" / "config").read_text()
+    content = (DOTFILES / "config" / "git" / "config").read_text(encoding="utf-8")
     assert "[delta]" in content
 
 
 def test_gitconfig_delta_line_numbers():
     """git config delta has line-numbers enabled."""
-    content = (DOTFILES / "config" / "git" / "config").read_text()
+    content = (DOTFILES / "config" / "git" / "config").read_text(encoding="utf-8")
     assert "line-numbers = true" in content
 
 
 def test_gitconfig_delta_diff_filter():
     """git config interactive diffFilter uses delta."""
-    content = (DOTFILES / "config" / "git" / "config").read_text()
+    content = (DOTFILES / "config" / "git" / "config").read_text(encoding="utf-8")
     assert "diffFilter = delta" in content
 
 
