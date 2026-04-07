@@ -36,7 +36,7 @@ class TestCorpusFormat:
     def test_all_labels_are_valid(self):
         invalid = [(text, label) for text, label in get_examples() if label not in VALID_LABELS]
         assert not invalid, (
-            f"Invalid labels found: {[(t[:40], l) for t, l in invalid]}\n"
+            f"Invalid labels found: {[(t[:40], lb) for t, lb in invalid]}\n"
             f"Valid labels: {VALID_LABELS}"
         )
 
@@ -58,7 +58,8 @@ class TestCorpusBalance:
         values = [counts.get(lb, 0) for lb in VALID_LABELS]
         ratio = max(values) / min(values)
         assert ratio <= MAX_IMBALANCE_RATIO, (
-            f"Class imbalance ratio {ratio:.2f} exceeds {MAX_IMBALANCE_RATIO}. Counts: {dict(counts)}"
+            f"Class imbalance ratio {ratio:.2f} exceeds {MAX_IMBALANCE_RATIO}. "
+            f"Counts: {dict(counts)}"
         )
 
     def test_label_counts_sum_to_total(self):
@@ -77,9 +78,8 @@ class TestCorpusUniqueness:
             if normalized in seen:
                 duplicates.append(text)
             seen.add(normalized)
-        assert not duplicates, (
-            f"Duplicate prompts found ({len(duplicates)}):\n"
-            + "\n".join(f"  {t!r}" for t in duplicates[:5])
+        assert not duplicates, f"Duplicate prompts found ({len(duplicates)}):\n" + "\n".join(
+            f"  {t!r}" for t in duplicates[:5]
         )
 
     def test_no_prompt_appears_in_multiple_classes(self):
@@ -90,9 +90,7 @@ class TestCorpusUniqueness:
             if normalized in label_by_text and label_by_text[normalized] != label:
                 conflicts.append((text, label_by_text[normalized], label))
             label_by_text[normalized] = label
-        assert not conflicts, (
-            f"Same prompt appears with different labels: {conflicts[:3]}"
-        )
+        assert not conflicts, f"Same prompt appears with different labels: {conflicts[:3]}"
 
 
 class TestLabelSemantics:
@@ -104,23 +102,29 @@ class TestLabelSemantics:
     def _label(self, text: str) -> str | None:
         return self.label_map.get(text.strip().lower())
 
-    @pytest.mark.parametrize("prompt", [
-        "What is Python?",
-        "What does len() return in Python?",
-        "What is a variable?",
-        "What is a boolean?",
-    ])
+    @pytest.mark.parametrize(
+        "prompt",
+        [
+            "What is Python?",
+            "What does len() return in Python?",
+            "What is a variable?",
+            "What is a boolean?",
+        ],
+    )
     def test_definitional_prompts_are_low(self, prompt):
         label = self._label(prompt)
         if label is None:
             pytest.skip(f"Prompt not in corpus: {prompt!r}")
         assert label == "low", f"Expected 'low' for {prompt!r}, got {label!r}"
 
-    @pytest.mark.parametrize("prompt", [
-        "Design the authentication architecture for a multi-tenant SaaS platform handling 1M concurrent users.",
-        "Analyze the security vulnerabilities in this cryptographic implementation and propose fixes.",
-        "Design a distributed consensus protocol for a payment processing system requiring sub-100ms latency.",
-    ])
+    @pytest.mark.parametrize(
+        "prompt",
+        [
+            "Design the authentication architecture for a multi-tenant SaaS platform handling 1M concurrent users.",  # noqa: E501
+            "Analyze the security vulnerabilities in this cryptographic implementation and propose fixes.",  # noqa: E501
+            "Design a distributed consensus protocol for a payment processing system requiring sub-100ms latency.",  # noqa: E501
+        ],
+    )
     def test_architecture_prompts_are_high(self, prompt):
         label = self._label(prompt)
         if label is None:

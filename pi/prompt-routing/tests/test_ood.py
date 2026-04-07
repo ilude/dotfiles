@@ -22,7 +22,7 @@ Required by Validation Lead before > 10% production traffic.
 
 import json
 import sys
-from collections import Counter, defaultdict
+from collections import defaultdict
 from pathlib import Path
 
 import pytest
@@ -50,21 +50,14 @@ def ood_results(model):
     decision including the P(high) confidence floor. Also records the raw
     model prediction (before floor) for diagnostic reporting.
     """
-    from router import route_with_proba, HIGH_FLOOR_THRESHOLD
-    from scipy.special import softmax
-    import numpy as np
+    from router import route_with_proba
 
     examples = load_ood()
     texts = [p for p, _ in examples]
-    true_labels = [l for _, l in examples]
+    true_labels = [lb for _, lb in examples]
 
     # Raw model predictions (before floor) for comparison
     raw_preds = list(model.predict(texts))
-    df = model.decision_function(texts)
-    from scipy.special import softmax as _sm
-    proba_matrix = _sm(df, axis=1)
-    classes = list(model.classes_)
-    hi_idx = classes.index("high")
 
     results = []
     for i, (prompt, true) in enumerate(zip(texts, true_labels)):
@@ -73,17 +66,19 @@ def ood_results(model):
         raw_pred = raw_preds[i]
         floor_applied = routed_tier != raw_pred
 
-        results.append({
-            "prompt": prompt,
-            "true": true,
-            "pred": routed_tier,       # what production would actually do
-            "raw_pred": raw_pred,      # what model alone would do
-            "floor_applied": floor_applied,
-            "correct": true == routed_tier,
-            "inversion": true == "high" and routed_tier == "low",
-            "proba": proba,
-            "p_high": proba.get("high", 0.0),
-        })
+        results.append(
+            {
+                "prompt": prompt,
+                "true": true,
+                "pred": routed_tier,  # what production would actually do
+                "raw_pred": raw_pred,  # what model alone would do
+                "floor_applied": floor_applied,
+                "correct": true == routed_tier,
+                "inversion": true == "high" and routed_tier == "low",
+                "proba": proba,
+                "p_high": proba.get("high", 0.0),
+            }
+        )
 
     return results
 
@@ -91,6 +86,7 @@ def ood_results(model):
 # ---------------------------------------------------------------------------
 # Hard gate
 # ---------------------------------------------------------------------------
+
 
 class TestOODInversions:
     def test_zero_high_to_low_inversions(self, ood_results):
@@ -107,6 +103,47 @@ class TestOODInversions:
 # Accuracy reporting (informational — not hard failures)
 # ---------------------------------------------------------------------------
 
+
+def _accuracy_by_class(ood_results: list[dict]) -> dict[str, dict]:
+    by_class: dict[str, dict] = defaultdict(lambda: {"correct": 0, "total": 0})
+    for r in ood_results:
+        by_class[r["true"]]["total"] += 1
+        if r["correct"]:
+            by_class[r["true"]]["correct"] += 1
+    return by_class
+
+
+def _print_class_breakdown(by_class: dict[str, dict]) -> None:
+    for label in ("low", "mid", "high"):
+        d = by_class[label]
+        acc = d["correct"] / d["total"] if d["total"] else 0
+        print(f"  {label:4}: {acc:.1%}  ({d['correct']}/{d['total']})")
+
+
+def _print_misses(ood_results: list[dict]) -> None:
+    misses = [r for r in ood_results if not r["correct"]]
+    if not misses:
+        return
+    print(f"\nMisclassifications ({len(misses)}):")
+    for r in misses:
+        inv = " *** INVERSION ***" if r["inversion"] else ""
+        floor_note = f" [floor: {r['raw_pred']}->{r['pred']}]" if r["floor_applied"] else ""
+        print(f"  true={r['true']} pred={r['pred']} P(hi)={r['p_high']:.2f}{inv}{floor_note}")
+        print(f"    {r['prompt'][:85]}")
+
+
+def _print_floor_count(ood_results: list[dict]) -> None:
+    floor_count = sum(1 for r in ood_results if r["floor_applied"])
+    if floor_count:
+        print(f"  (floor applied to {floor_count} prompts — raw model would have sent them lower)")
+
+
+def _print_accuracy_warning(accuracy: float) -> None:
+    if accuracy < 0.75:
+        print(f"\nWARNING: OOD accuracy {accuracy:.1%} is below 75%.")
+        print("  Consider expanding training corpus with more domain diversity.")
+
+
 class TestOODAccuracy:
     def test_overall_accuracy_reported(self, ood_results):
         """Print overall OOD accuracy. Does not fail on any number."""
@@ -114,40 +151,16 @@ class TestOODAccuracy:
         correct = sum(1 for r in ood_results if r["correct"])
         accuracy = correct / total
 
-        by_class: dict[str, dict] = defaultdict(lambda: {"correct": 0, "total": 0})
-        for r in ood_results:
-            by_class[r["true"]]["total"] += 1
-            if r["correct"]:
-                by_class[r["true"]]["correct"] += 1
-
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print("OOD EVALUATION RESULTS")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print(f"Overall accuracy: {accuracy:.1%}  ({correct}/{total})")
         print()
-        for label in ("low", "mid", "high"):
-            d = by_class[label]
-            acc = d["correct"] / d["total"] if d["total"] else 0
-            print(f"  {label:4}: {acc:.1%}  ({d['correct']}/{d['total']})")
-
-        floor_count = sum(1 for r in ood_results if r["floor_applied"])
-        if floor_count:
-            print(f"  (floor applied to {floor_count} prompts — raw model would have sent them lower)")
-
-        misses = [r for r in ood_results if not r["correct"]]
-        if misses:
-            print(f"\nMisclassifications ({len(misses)}):")
-            for r in misses:
-                inv = " *** INVERSION ***" if r["inversion"] else ""
-                floor_note = f" [floor: {r['raw_pred']}->{ r['pred']}]" if r["floor_applied"] else ""
-                print(f"  true={r['true']} pred={r['pred']} P(hi)={r['p_high']:.2f}{inv}{floor_note}")
-                print(f"    {r['prompt'][:85]}")
-
-        # Soft warning (not a failure) if accuracy drops below 75%
-        if accuracy < 0.75:
-            print(f"\nWARNING: OOD accuracy {accuracy:.1%} is below 75%.")
-            print("  Consider expanding training corpus with more domain diversity.")
-        print(f"{'='*60}\n")
+        _print_class_breakdown(_accuracy_by_class(ood_results))
+        _print_floor_count(ood_results)
+        _print_misses(ood_results)
+        _print_accuracy_warning(accuracy)
+        print(f"{'=' * 60}\n")
 
         # This test always passes — it's a reporting test
         assert total == 75, f"Expected 75 OOD examples, got {total}"
@@ -190,6 +203,7 @@ class TestOODAccuracy:
         not_low = sum(1 for r in high_results if r["pred"] != "low")
         recall = not_low / len(high_results)
         assert recall >= 0.80, (
-            f"HIGH OOD prompts reaching Opus or Sonnet: {recall:.1%} ({not_low}/{len(high_results)}). "
+            f"HIGH OOD prompts reaching Opus or Sonnet: {recall:.1%} "
+            f"({not_low}/{len(high_results)}). "
             f"More than 20% of hard prompts are being under-routed."
         )

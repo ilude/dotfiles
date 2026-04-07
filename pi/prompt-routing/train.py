@@ -25,13 +25,18 @@ import time
 from pathlib import Path
 
 import numpy as np
+from scipy.special import softmax as _softmax
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.metrics import (
+    accuracy_score,
+    brier_score_loss,
+    classification_report,
+    confusion_matrix,
+)
 from sklearn.model_selection import StratifiedKFold, cross_val_score, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.svm import LinearSVC
-from scipy.special import softmax as _softmax
 
 ARTIFACT_DIR = Path(__file__).parent
 sys.path.insert(0, str(ARTIFACT_DIR))
@@ -45,6 +50,11 @@ RANDOM_STATE = 42
 CV_FOLDS = 5
 MAX_ITER = 2000
 TFIDF_KWARGS = dict(max_features=7000, ngram_range=(1, 2), sublinear_tf=True)
+
+
+# ---------------------------------------------------------------------------
+# Pipelines
+# ---------------------------------------------------------------------------
 
 
 def build_search_pipeline(C: float) -> Pipeline:
@@ -89,14 +99,26 @@ def build_production_pipeline(best_C: float) -> Pipeline:
     )
 
 
-def main() -> None:
-    log_lines: list[str] = []
+# ---------------------------------------------------------------------------
+# Logging helper
+# ---------------------------------------------------------------------------
 
-    def log(msg: str = "") -> None:
+
+class _Logger:
+    def __init__(self) -> None:
+        self.lines: list[str] = []
+
+    def __call__(self, msg: str = "") -> None:
         print(msg)
-        log_lines.append(msg)
+        self.lines.append(msg)
 
-    # -- 1. Load corpus -------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Training stages
+# ---------------------------------------------------------------------------
+
+
+def _load_corpus(log: _Logger) -> tuple[list[str], list[str]]:
     examples = get_examples()
     texts = [t for t, _ in examples]
     labels = [lb for _, lb in examples]
@@ -108,8 +130,12 @@ def main() -> None:
     counts = get_label_counts()
     for label in LABEL_ORDER:
         log(f"  {label}: {counts.get(label, 0)}")
+    return texts, labels
 
-    # -- 2. Stratified 80/20 split --------------------------------------------
+
+def _split_and_save_holdout(
+    texts: list[str], labels: list[str], log: _Logger
+) -> tuple[list[str], list[str], list[str], list[str]]:
     X_train, X_test, y_train, y_test = train_test_split(
         texts,
         labels,
@@ -122,17 +148,18 @@ def main() -> None:
         f"(stratified {int((1 - TEST_SIZE) * 100)}/{int(TEST_SIZE * 100)})"
     )
 
-    # Save holdout for evaluate.py
     test_set_path = ARTIFACT_DIR / "test_set.pkl"
     with open(test_set_path, "wb") as f:
         pickle.dump({"texts": X_test, "labels": y_test}, f)
     log("Saved test_set.pkl")
+    return X_train, X_test, y_train, y_test
 
-    # -- 3. Grid search over C (search pipeline uses CalibratedClassifierCV) --
+
+def _grid_search_C(X_train: list[str], y_train: list[str], log: _Logger) -> float:
     log(f"\n{'-' * 40}")
     log(f"Grid search: LinearSVC C in {C_VALUES}")
     log(f"Cross-validation: {CV_FOLDS}-fold stratified")
-    log(f"Search pipeline: CalibratedClassifierCV(cv=5) for stable CV scores")
+    log("Search pipeline: CalibratedClassifierCV(cv=5) for stable CV scores")
     log(f"{'-' * 40}")
 
     cv = StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=RANDOM_STATE)
@@ -150,18 +177,26 @@ def main() -> None:
             best_C = C
 
     log(f"\nBest C: {best_C}  (CV accuracy: {best_score:.4f})")
+    return best_C
 
-    # -- 4. Build production model (calibrated, with predict_proba) ----------
+
+def _fit_production_model(
+    best_C: float, X_train: list[str], y_train: list[str], log: _Logger
+) -> Pipeline:
     log(f"\n{'-' * 40}")
     log("Building production model (LinearSVC with softmax probability approximation)...")
-    log(f"  Inference path: TF-IDF + LinearSVC.decision_function() + softmax(3 scores)")
-    log(f"  P(high) floor in router.py uses softmax(df)[high] > 0.20")
-    log(f"  Brier(HIGH) target: <0.10 (softmax baseline ~0.044)")
+    log("  Inference path: TF-IDF + LinearSVC.decision_function() + softmax(3 scores)")
+    log("  P(high) floor in router.py uses softmax(df)[high] > 0.20")
+    log("  Brier(HIGH) target: <0.10 (softmax baseline ~0.044)")
     pipeline = build_production_pipeline(best_C)
     pipeline.fit(X_train, y_train)
     log("Done.")
+    return pipeline
 
-    # -- 5. Holdout evaluation ------------------------------------------------
+
+def _holdout_evaluation(
+    pipeline: Pipeline, X_test: list[str], y_test: list[str], log: _Logger
+) -> tuple[float, int]:
     y_pred = pipeline.predict(X_test)
     accuracy = accuracy_score(y_test, y_pred)
     inversions = sum(1 for t, p in zip(y_test, y_pred) if t == "high" and p == "low")
@@ -177,38 +212,59 @@ def main() -> None:
     cm = confusion_matrix(y_test, y_pred, labels=LABEL_ORDER)
     for i, row_label in enumerate(LABEL_ORDER):
         log(f"  {row_label:>6}: {'  '.join(f'{cm[i, j]:>6}' for j in range(len(LABEL_ORDER)))}")
+    return accuracy, inversions
 
-    # -- 6. Brier score calibration check ------------------------------------
-    from sklearn.metrics import brier_score_loss
-    # Use softmax(decision_function) as the probability approximation.
-    # Brier score ~0.044 for HIGH class -- passes the <0.10 calibration gate.
-    df_scores = pipeline.decision_function(X_test)   # shape (n, 3)
+
+def _brier_calibration(
+    pipeline: Pipeline, X_test: list[str], y_test: list[str], log: _Logger
+) -> tuple[float, np.ndarray, int]:
+    df_scores = pipeline.decision_function(X_test)  # shape (n, 3)
     proba = _softmax(df_scores, axis=1)
     classes = list(pipeline.classes_)
     hi_idx = classes.index("high")
     y_high_bin = [1 if y == "high" else 0 for y in y_test]
     brier_high = brier_score_loss(y_high_bin, proba[:, hi_idx])
     log(f"\nCalibration (Brier score, HIGH class): {brier_high:.4f}  (lower=better; <0.05 good)")
+    return brier_high, proba, hi_idx
 
-    # -- 7. Threshold analysis ------------------------------------------------
-    log(f"\nP(high) confidence-floor threshold analysis:")
-    log(f"  (router.py will escalate predicted=low to mid when P(high) > threshold)")
+
+def _apply_floor(base_preds: list[str], proba: np.ndarray, hi_idx: int, thresh: float) -> list[str]:
+    return [
+        "mid" if pred == "low" and proba[i, hi_idx] > thresh else pred
+        for i, pred in enumerate(base_preds)
+    ]
+
+
+def _score_floored(
+    base_preds: list[str], floored: list[str], y_test: list[str]
+) -> tuple[float, int, int]:
+    acc_f = accuracy_score(y_test, floored)
+    inv_f = sum(1 for a, b in zip(y_test, floored) if a == "high" and b == "low")
+    n_esc = sum(1 for p, fl in zip(base_preds, floored) if p != fl)
+    return acc_f, inv_f, n_esc
+
+
+def _threshold_analysis(
+    pipeline: Pipeline,
+    X_test: list[str],
+    y_test: list[str],
+    proba: np.ndarray,
+    hi_idx: int,
+    log: _Logger,
+) -> None:
+    log("\nP(high) confidence-floor threshold analysis:")
+    log("  (router.py will escalate predicted=low to mid when P(high) > threshold)")
     log(f"  {'thresh':>8}  {'escalated':>10}  {'acc':>7}  {'inv':>5}")
     base_preds = list(pipeline.predict(X_test))
     for thresh in [0.10, 0.15, 0.20, 0.25, 0.30]:
-        floored = [
-            "mid" if pred == "low" and proba[i, hi_idx] > thresh else pred
-            for i, pred in enumerate(base_preds)
-        ]
-        acc_f = accuracy_score(y_test, floored)
-        inv_f = sum(1 for a, b in zip(y_test, floored) if a == "high" and b == "low")
-        n_esc = sum(1 for p, f in zip(base_preds, floored) if p != f)
-        log(f"  {thresh:>8.2f}  {n_esc:>10} ({n_esc/len(y_test):.0%})  {acc_f:>7.4f}  {inv_f:>5}")
-    log(f"  Selected: P(high) > 0.20 (router.py HIGH_FLOOR_THRESHOLD)")
+        floored = _apply_floor(base_preds, proba, hi_idx, thresh)
+        acc_f, inv_f, n_esc = _score_floored(base_preds, floored, y_test)
+        log(f"  {thresh:>8.2f}  {n_esc:>10} ({n_esc / len(y_test):.0%})  {acc_f:>7.4f}  {inv_f:>5}")
+    log("  Selected: P(high) > 0.20 (router.py HIGH_FLOOR_THRESHOLD)")
 
-    # -- 8. Inference timing --------------------------------------------------
+
+def _measure_inference_timing(pipeline: Pipeline, log: _Logger) -> float:
     sample = ["Design a distributed consensus protocol for a payment system."]
-    # Warm-up
     for _ in range(20):
         pipeline.predict(sample)
     times_us: list[float] = []
@@ -218,28 +274,33 @@ def main() -> None:
         times_us.append((time.perf_counter() - t0) * 1e6)
     mean_us = float(np.mean(times_us))
     p99_us = float(np.percentile(times_us, 99))
-    log(f"\nInference timing (2000 runs after 20x warm-up):")
+    log("\nInference timing (2000 runs after 20x warm-up):")
     log(f"  Mean: {mean_us:.1f} us  ({mean_us / 1000:.3f} ms)")
     log(f"  p99:  {p99_us:.1f} us  ({p99_us / 1000:.3f} ms)")
+    return mean_us
 
-    # -- 9. Save model --------------------------------------------------------
+
+def _save_model_artifacts(pipeline: Pipeline, log: _Logger) -> None:
     model_path = ARTIFACT_DIR / "model.pkl"
     with open(model_path, "wb") as f:
         pickle.dump(pipeline, f)
-    log(f"\nSaved model.pkl")
+    log("\nSaved model.pkl")
 
-    # -- 10. SHA256 sidecar ---------------------------------------------------
     sha256 = hashlib.sha256(model_path.read_bytes()).hexdigest()
     (ARTIFACT_DIR / "model.pkl.sha256").write_text(sha256)
     log(f"SHA256: {sha256}")
     log("Saved model.pkl.sha256")
 
-    # -- 11. Write training log -----------------------------------------------
+
+def _write_log(log: _Logger) -> None:
     log_path = ARTIFACT_DIR / "training-log.txt"
-    log_path.write_text("\n".join(log_lines), encoding="utf-8")
+    log_path.write_text("\n".join(log.lines), encoding="utf-8")
     print("\nTraining log written to training-log.txt")
 
-    # -- 12. Constraint gate --------------------------------------------------
+
+def _check_constraint_gate(
+    accuracy: float, inversions: int, mean_us: float, brier_high: float
+) -> None:
     print(f"\n{'=' * 40}")
     failures = []
     if accuracy < 0.85:
@@ -256,9 +317,32 @@ def main() -> None:
         for f in failures:
             print(f"  x {f}")
         sys.exit(1)
-    else:
-        print("TRAINING GATE PASSED -- all constraints satisfied.")
-        print("Ready for evaluate.py --holdout")
+    print("TRAINING GATE PASSED -- all constraints satisfied.")
+    print("Ready for evaluate.py --holdout")
+
+
+# ---------------------------------------------------------------------------
+# Orchestration
+# ---------------------------------------------------------------------------
+
+
+def run() -> None:
+    log = _Logger()
+    texts, labels = _load_corpus(log)
+    X_train, X_test, y_train, y_test = _split_and_save_holdout(texts, labels, log)
+    best_C = _grid_search_C(X_train, y_train, log)
+    pipeline = _fit_production_model(best_C, X_train, y_train, log)
+    accuracy, inversions = _holdout_evaluation(pipeline, X_test, y_test, log)
+    brier_high, proba, hi_idx = _brier_calibration(pipeline, X_test, y_test, log)
+    _threshold_analysis(pipeline, X_test, y_test, proba, hi_idx, log)
+    mean_us = _measure_inference_timing(pipeline, log)
+    _save_model_artifacts(pipeline, log)
+    _write_log(log)
+    _check_constraint_gate(accuracy, inversions, mean_us, brier_high)
+
+
+def main() -> None:
+    run()
 
 
 if __name__ == "__main__":

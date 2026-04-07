@@ -67,15 +67,12 @@ logger = logging.getLogger(__name__)
 # Model loading -- once at import time
 # ---------------------------------------------------------------------------
 
+
 def _verify_and_load():
     if not _MODEL_PATH.exists():
-        raise FileNotFoundError(
-            f"model.pkl not found at {_MODEL_PATH}. Run train.py first."
-        )
+        raise FileNotFoundError(f"model.pkl not found at {_MODEL_PATH}. Run train.py first.")
     if not _HASH_PATH.exists():
-        raise FileNotFoundError(
-            f"model.pkl.sha256 not found at {_HASH_PATH}. Run train.py first."
-        )
+        raise FileNotFoundError(f"model.pkl.sha256 not found at {_HASH_PATH}. Run train.py first.")
     expected = _HASH_PATH.read_text().strip()
     actual = hashlib.sha256(_MODEL_PATH.read_bytes()).hexdigest()
     if actual != expected:
@@ -96,16 +93,16 @@ _classes: list[str] = list(_model.classes_)
 _hi_idx: int = _classes.index("high")
 
 
-def _proba(text_list: list[str]) -> "np.ndarray":
+def _proba(text_list: list[str]):
     """Return softmax(decision_function) as an approximate probability matrix.
 
     Not perfectly calibrated (Brier ~0.044 for HIGH class) but monotonically
     ordered -- higher score always means higher true probability, which is
     sufficient for the 0.20 threshold rule.
     """
-    import numpy as np  # local import to keep module-level overhead minimal
     df = _model.decision_function(text_list)
     return _softmax(df, axis=1)
+
 
 # ---------------------------------------------------------------------------
 # Log setup -- append-only JSONL, best-effort (never raises)
@@ -130,9 +127,9 @@ def _log(
             "ts": time.time(),
             "prompt": prompt,
             "tier": tier,
-            "raw_pred": raw_pred,           # prediction before floor applied
+            "raw_pred": raw_pred,  # prediction before floor applied
             "floor_applied": tier != raw_pred,
-            "proba": proba,                  # calibrated probabilities
+            "proba": proba,  # calibrated probabilities
             "elapsed_us": round(elapsed_us, 1),
             "reviewed": False,
         }
@@ -146,6 +143,7 @@ def _log(
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def route(prompt: str, *, log: bool = True) -> Tier:
     """

@@ -79,33 +79,42 @@ class TestRoutingCorrectness:
     not edge cases. If these fail, the model has a serious regression.
     """
 
-    @pytest.mark.parametrize("prompt", [
-        "What is Python?",
-        "What does len() return in Python?",
-        "What is a variable?",
-        "What is a boolean?",
-        "How do I append to a list?",
-    ])
+    @pytest.mark.parametrize(
+        "prompt",
+        [
+            "What is Python?",
+            "What does len() return in Python?",
+            "What is a variable?",
+            "What is a boolean?",
+            "How do I append to a list?",
+        ],
+    )
     def test_definitional_prompts_route_to_low(self, model, prompt):
         pred = model.predict([prompt])[0]
         assert pred == "low", f"Expected 'low' for {prompt!r}, got {pred!r}"
 
-    @pytest.mark.parametrize("prompt", [
-        "Write a REST API endpoint in FastAPI that returns a list of users.",
-        "Implement a binary search algorithm in Python.",
-        "Write unit tests for a REST API endpoint that creates and updates records.",
-        "How do I configure nginx as a reverse proxy for a Node.js app?",
-    ])
+    @pytest.mark.parametrize(
+        "prompt",
+        [
+            "Write a REST API endpoint in FastAPI that returns a list of users.",
+            "Implement a binary search algorithm in Python.",
+            "Write unit tests for a REST API endpoint that creates and updates records.",
+            "How do I configure nginx as a reverse proxy for a Node.js app?",
+        ],
+    )
     def test_engineering_prompts_route_to_mid(self, model, prompt):
         pred = model.predict([prompt])[0]
         assert pred == "mid", f"Expected 'mid' for {prompt!r}, got {pred!r}"
 
-    @pytest.mark.parametrize("prompt", [
-        "Design the authentication architecture for a multi-tenant SaaS platform handling 1M concurrent users.",
-        "Analyze the security vulnerabilities in this cryptographic implementation and propose fixes.",
-        "Design a distributed consensus protocol for a payment processing system requiring sub-100ms latency.",
-        "Architect a zero-downtime database migration strategy for a table with 500M rows.",
-    ])
+    @pytest.mark.parametrize(
+        "prompt",
+        [
+            "Design the authentication architecture for a multi-tenant SaaS platform handling 1M concurrent users.",  # noqa: E501
+            "Analyze the security vulnerabilities in this cryptographic implementation and propose fixes.",  # noqa: E501
+            "Design a distributed consensus protocol for a payment processing system requiring sub-100ms latency.",  # noqa: E501
+            "Architect a zero-downtime database migration strategy for a table with 500M rows.",
+        ],
+    )
     def test_architecture_prompts_route_to_high(self, model, prompt):
         pred = model.predict([prompt])[0]
         assert pred == "high", f"Expected 'high' for {prompt!r}, got {pred!r}"
@@ -117,8 +126,10 @@ class TestConfidenceFloor:
     def test_floor_never_routes_high_signal_to_low(self):
         """Prompts with obvious HIGH signals must never route to Haiku."""
         import sys
+
         sys.path.insert(0, str(Path(__file__).parent.parent))
-        from router import route, route_with_proba, HIGH_FLOOR_THRESHOLD
+        from router import route
+
         high_prompts = [
             "Design the authentication architecture for a multi-tenant SaaS platform.",
             "Analyze this distributed system for race conditions and deadlock scenarios.",
@@ -131,8 +142,10 @@ class TestConfidenceFloor:
     def test_route_with_proba_returns_valid_distribution(self, model):
         """route_with_proba() must return probabilities that sum to ~1."""
         import sys
+
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from router import route_with_proba
+
         tier, proba = route_with_proba("What is Python?", log=False)
         assert tier in ("low", "mid", "high")
         assert set(proba.keys()) == {"low", "mid", "high"}
@@ -142,9 +155,11 @@ class TestConfidenceFloor:
     def test_p_high_threshold_consistency(self):
         """The floor threshold in router.py and evaluate.py must match."""
         import sys
+
         sys.path.insert(0, str(Path(__file__).parent.parent))
-        from router import HIGH_FLOOR_THRESHOLD
         import evaluate
+        from router import HIGH_FLOOR_THRESHOLD
+
         assert HIGH_FLOOR_THRESHOLD == evaluate.HIGH_FLOOR_THRESHOLD, (
             f"Threshold mismatch: router.py={HIGH_FLOOR_THRESHOLD}, "
             f"evaluate.py={evaluate.HIGH_FLOOR_THRESHOLD}"
@@ -153,7 +168,7 @@ class TestConfidenceFloor:
     def test_clear_high_prompts_have_high_p_high(self, model):
         """Unambiguous Opus-tier prompts should have P(high) well above the floor."""
         from scipy.special import softmax
-        import numpy as np
+
         prompts = [
             "Design a distributed consensus protocol for a payment system.",
             "Analyze this multi-region database replication setup for consistency guarantees.",
@@ -164,16 +179,16 @@ class TestConfidenceFloor:
         classes = list(model.classes_)
         hi_idx = classes.index("high")
         for prompt, p_high in zip(prompts, proba[:, hi_idx]):
-            assert p_high > 0.5, (
-                f"Clear HIGH prompt has P(high)={p_high:.3f} < 0.5: {prompt!r}"
-            )
+            assert p_high > 0.5, f"Clear HIGH prompt has P(high)={p_high:.3f} < 0.5: {prompt!r}"
 
     def test_floor_applied_to_ambiguous_low(self):
         """A prompt predicted as 'low' but with P(high) just above threshold
         should be escalated to 'mid' by the floor."""
         import sys
+
         sys.path.insert(0, str(Path(__file__).parent.parent))
-        from router import route_with_proba, HIGH_FLOOR_THRESHOLD
+        from router import HIGH_FLOOR_THRESHOLD, route_with_proba
+
         # This prompt was identified as a borderline case during corpus analysis:
         # "what does cross platform compatibility look like for various language choices?"
         # If it routes low with P(high) > threshold, floor should escalate it.
@@ -212,6 +227,7 @@ class TestInversionSafety:
     def test_no_high_to_low_inversions_on_full_corpus(self, model):
         """Run the inversion check on the entire labeled corpus, not just holdout."""
         import sys
+
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from data import get_examples
 
@@ -219,9 +235,7 @@ class TestInversionSafety:
         high_prompts = [text for text, label in examples if label == "high"]
         predictions = model.predict(high_prompts)
         inversions = [
-            (pred, text)
-            for pred, text in zip(predictions, high_prompts)
-            if pred == "low"
+            (pred, text) for pred, text in zip(predictions, high_prompts) if pred == "low"
         ]
         assert len(inversions) == 0, (
             f"HIGH->LOW inversions on full corpus ({len(inversions)}):\n"
@@ -234,14 +248,12 @@ class TestInversionSafety:
             "Design a service mesh architecture for a 200-microservice platform.",
             "Analyze this distributed transaction pattern and identify the failure modes.",
             "Evaluate the consistency guarantees of this multi-region database replication setup.",
-            "Design an access control system that enforces least privilege across a 200-service platform.",
+            "Design an access control system that enforces least privilege across a 200-service platform.",  # noqa: E501
             "Architect a real-time collaborative editing system similar to Google Docs.",
         ]
         predictions = model.predict(high_prompts)
         for prompt, pred in zip(high_prompts, predictions):
-            assert pred != "low", (
-                f"HIGH->LOW inversion: {prompt!r} routed to 'low'"
-            )
+            assert pred != "low", f"HIGH->LOW inversion: {prompt!r} routed to 'low'"
 
 
 class TestInferenceTiming:
