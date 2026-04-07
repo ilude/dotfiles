@@ -34,7 +34,12 @@ from pathlib import Path
 
 import numpy as np
 from scipy.special import softmax as _softmax
-from sklearn.metrics import accuracy_score, brier_score_loss, classification_report, confusion_matrix
+from sklearn.metrics import (
+    accuracy_score,
+    brier_score_loss,
+    classification_report,
+    confusion_matrix,
+)
 
 ARTIFACT_DIR = Path(__file__).parent
 MODEL_PATH = ARTIFACT_DIR / "model.pkl"
@@ -42,9 +47,9 @@ HASH_PATH = ARTIFACT_DIR / "model.pkl.sha256"
 TEST_SET_PATH = ARTIFACT_DIR / "test_set.pkl"
 
 ACCURACY_THRESHOLD = 0.85
-MAX_INFERENCE_US = 1000.0       # 1ms
-BRIER_HIGH_THRESHOLD = 0.10     # calibration gate for HIGH class
-HIGH_FLOOR_THRESHOLD = 0.20     # must match router.py HIGH_FLOOR_THRESHOLD
+MAX_INFERENCE_US = 1000.0  # 1ms
+BRIER_HIGH_THRESHOLD = 0.10  # calibration gate for HIGH class
+HIGH_FLOOR_THRESHOLD = 0.20  # must match router.py HIGH_FLOOR_THRESHOLD
 LABEL_ORDER = ["low", "mid", "high"]
 TIMING_RUNS = 2000
 WARMUP_RUNS = 20
@@ -101,32 +106,8 @@ def apply_floor(
     return floored
 
 
-def run_holdout() -> None:
-    """Full holdout evaluation with calibration metrics and acceptance gate."""
-    if not MODEL_PATH.exists():
-        print(f"ERROR: {MODEL_PATH} not found. Run train.py first.")
-        sys.exit(1)
-    if not TEST_SET_PATH.exists():
-        print(f"ERROR: {TEST_SET_PATH} not found. Run train.py first.")
-        sys.exit(1)
-
-    model = load_model()
-    X_test, y_test = load_test_set()
-
-    # Determine probability method: prefer predict_proba, fall back to softmax(decision_function)
-    has_decision_fn = hasattr(model, "decision_function")
-    has_proba = has_decision_fn or hasattr(model, "predict_proba")
-    if not has_proba:
-        print("WARNING: model supports neither decision_function() nor predict_proba().")
-        print("  Confidence floor and Brier score checks will be skipped.")
-
-    print(f"\nHoldout set: {len(X_test)} examples")
-    label_counts = {lb: y_test.count(lb) for lb in LABEL_ORDER}
-    for lb in LABEL_ORDER:
-        print(f"  {lb}: {label_counts.get(lb, 0)}")
-
-    # -- Inference timing (warm-up then timed runs) ---------------------------
-    sample = [X_test[0]]
+def _run_inference_timing(model, sample: list) -> tuple[float, float, float]:
+    """Warm up model and return (mean_us, median_us, p99_us)."""
     for _ in range(WARMUP_RUNS):
         model.predict(sample)
 
@@ -136,78 +117,111 @@ def run_holdout() -> None:
         model.predict(sample)
         times_us.append((time.perf_counter() - t0) * 1e6)
 
-    mean_us = float(np.mean(times_us))
-    median_us = float(np.median(times_us))
-    p99_us = float(np.percentile(times_us, 99))
+    return (
+        float(np.mean(times_us)),
+        float(np.median(times_us)),
+        float(np.percentile(times_us, 99)),
+    )
 
-    # -- Base predictions -----------------------------------------------------
-    y_pred = list(model.predict(X_test))
-    accuracy = accuracy_score(y_test, y_pred)
-    report = classification_report(y_test, y_pred, labels=LABEL_ORDER, target_names=LABEL_ORDER)
-    cm = confusion_matrix(y_test, y_pred, labels=LABEL_ORDER)
-    inversions_base = [
-        (t, p, x) for t, p, x in zip(y_test, y_pred, X_test)
-        if t == "high" and p == "low"
+
+def _get_raw_proba(model, X_test):
+    """Return (proba, classes) using decision_function or predict_proba."""
+    if hasattr(model, "decision_function"):
+        proba = _softmax(model.decision_function(X_test), axis=1)
+    else:
+        proba = model.predict_proba(X_test)
+    return proba, list(model.classes_)
+
+
+def _is_safety_correct(true: str, base: str, floored: str) -> bool:
+    """Return True if the floored prediction is safe (correct or a valid escalation)."""
+    if floored == true:
+        return True
+    return base == "low" and floored == "mid" and true != "low"
+
+
+def _thresh_row(y_test, y_pred, proba, classes, thresh):
+    """Compute one row of the threshold sweep table."""
+    floored = apply_floor(y_pred, proba, classes, thresh)
+    n_esc = sum(1 for p, f in zip(y_pred, floored) if p != f)
+    acc_f = accuracy_score(y_test, floored)
+    inv_f = sum(1 for a, b in zip(y_test, floored) if a == "high" and b == "low")
+    return thresh, n_esc, inv_f, acc_f
+
+
+def _compute_floor_metrics(y_test, y_pred, proba, classes):
+    """Compute threshold table, floored predictions, and safety accuracy."""
+    threshold_table = [
+        _thresh_row(y_test, y_pred, proba, classes, t) for t in [0.10, 0.15, 0.20, 0.25, 0.30]
+    ]
+    y_floored = apply_floor(y_pred, proba, classes, HIGH_FLOOR_THRESHOLD)
+    safety_correct = sum(
+        1 for true, base, fp in zip(y_test, y_pred, y_floored) if _is_safety_correct(true, base, fp)
+    )
+    return threshold_table, y_floored, safety_correct / len(y_test)
+
+
+def _compute_proba_metrics(model, X_test, y_test, y_pred):
+    """Compute probability-based metrics. Returns None if model lacks probability support."""
+    if not (hasattr(model, "decision_function") or hasattr(model, "predict_proba")):
+        return None
+
+    proba, classes = _get_raw_proba(model, X_test)
+    hi_idx = classes.index("high")
+    y_high_bin = [1 if y == "high" else 0 for y in y_test]
+    brier_high = float(brier_score_loss(y_high_bin, proba[:, hi_idx]))
+
+    threshold_table, y_floored, safety_acc = _compute_floor_metrics(y_test, y_pred, proba, classes)
+    inversions_floored = [
+        (t, p, x) for t, p, x in zip(y_test, y_floored, X_test) if t == "high" and p == "low"
     ]
 
-    # -- Calibrated probabilities + floor -------------------------------------
-    proba = None
-    brier_high = None
-    y_floored = y_pred
-    inversions_floored = inversions_base
-    threshold_table: list[tuple[float, int, int, float]] = []
+    return {
+        "proba": proba,
+        "classes": classes,
+        "brier_high": brier_high,
+        "threshold_table": threshold_table,
+        "y_floored": y_floored,
+        "inversions_floored": inversions_floored,
+        "safety_acc": safety_acc,
+    }
 
-    if has_proba:
-        if has_decision_fn:
-            # softmax(decision_function) -- Brier ~0.044, fast, monotonically correct
-            proba = _softmax(model.decision_function(X_test), axis=1)
-        else:
-            proba = model.predict_proba(X_test)
-        classes = list(model.classes_)
-        hi_idx = classes.index("high")
-        y_high_bin = [1 if y == "high" else 0 for y in y_test]
-        brier_high = float(brier_score_loss(y_high_bin, proba[:, hi_idx]))
 
-        # Threshold sweep
-        for thresh in [0.10, 0.15, 0.20, 0.25, 0.30]:
-            floored = apply_floor(y_pred, proba, classes, thresh)
-            n_esc = sum(1 for p, f in zip(y_pred, floored) if p != f)
-            acc_f = accuracy_score(y_test, floored)
-            inv_f = sum(1 for a, b in zip(y_test, floored) if a == "high" and b == "low")
-            threshold_table.append((thresh, n_esc, inv_f, acc_f))
-
-        # Apply the live floor (must match router.py)
-        y_floored = apply_floor(y_pred, proba, classes, HIGH_FLOOR_THRESHOLD)
-        inversions_floored = [
-            (t, p, x) for t, p, x in zip(y_test, y_floored, X_test)
-            if t == "high" and p == "low"
-        ]
-
-        # Safety-adjusted accuracy: escalations from low->mid count as correct
-        # when the true label is NOT low (i.e. model was conservatively right)
-        safety_correct = sum(
-            1 for true, base, floored_pred in zip(y_test, y_pred, y_floored)
-            if floored_pred == true                         # correct after floor
-            or (base == "low" and floored_pred == "mid" and true != "low")  # escalation was right
-        )
-        safety_acc = safety_correct / len(y_test)
-
-    # -- Print results --------------------------------------------------------
-    sep = "=" * 64
-    print(f"\n{sep}")
-    print("PROMPT ROUTING CLASSIFIER -- HOLDOUT EVALUATION")
-    print(sep)
-
-    print(f"\nAccuracy (base predictions):  {accuracy:.4f}  (threshold >= {ACCURACY_THRESHOLD:.2f})")
+def _print_metrics_header(accuracy, inversions_base, timing_us, proba_metrics):
+    """Print the top-level metrics summary block. timing_us = (mean, median, p99)."""
+    mean_us, median_us, p99_us = timing_us
+    print(
+        f"\nAccuracy (base predictions):  {accuracy:.4f}  (threshold >= {ACCURACY_THRESHOLD:.2f})"
+    )
     print(f"HIGH->LOW inversions (base):  {len(inversions_base)}  (must be 0)")
-    if has_proba:
-        print(f"HIGH->LOW inversions (floor): {len(inversions_floored)}  (after P(high)>{HIGH_FLOOR_THRESHOLD} floor)")
-        print(f"Brier score -- HIGH class:    {brier_high:.4f}  (threshold < {BRIER_HIGH_THRESHOLD:.2f}; lower=better)")
-        print(f"Safety-adjusted accuracy:     {safety_acc:.4f}  (escalations to mid counted as correct)")
-    print(f"Mean inference:               {mean_us:.1f} us  ({mean_us / 1000:.3f} ms, threshold < 1ms)")
+    if proba_metrics:
+        inv_floor = proba_metrics["inversions_floored"]
+        brier_high = proba_metrics["brier_high"]
+        safety_acc = proba_metrics["safety_acc"]
+        print(
+            f"HIGH->LOW inversions (floor): {len(inv_floor)}"
+            f"  (after P(high)>{HIGH_FLOOR_THRESHOLD} floor)"
+        )
+        print(
+            f"Brier score -- HIGH class:    {brier_high:.4f}"
+            f"  (threshold < {BRIER_HIGH_THRESHOLD:.2f}; lower=better)"
+        )
+        print(
+            f"Safety-adjusted accuracy:     {safety_acc:.4f}"
+            f"  (escalations to mid counted as correct)"
+        )
+    print(
+        f"Mean inference:               {mean_us:.1f} us"
+        f"  ({mean_us / 1000:.3f} ms, threshold < 1ms)"
+    )
     print(f"Median inference:             {median_us:.1f} us  ({median_us / 1000:.3f} ms)")
     print(f"p99  inference:               {p99_us:.1f} us  ({p99_us / 1000:.3f} ms)")
 
+
+def _print_classification_details(y_test, y_pred, inversions_base, proba_metrics):
+    """Print report, confusion matrix, inversions, and threshold table."""
+    report = classification_report(y_test, y_pred, labels=LABEL_ORDER, target_names=LABEL_ORDER)
+    cm = confusion_matrix(y_test, y_pred, labels=LABEL_ORDER)
     print(f"\n{'-' * 64}")
     print("Classification Report (base predictions):")
     print(report)
@@ -224,16 +238,56 @@ def run_holdout() -> None:
         for true_label, pred_label, prompt in inversions_base:
             print(f"  true={true_label} pred={pred_label}: {prompt[:80]}")
 
-    if has_proba and threshold_table:
-        print(f"\n{'-' * 64}")
-        print(f"P(high) confidence-floor threshold analysis:")
-        print(f"  {'thresh':>8}  {'escalated':>12}  {'base_inv':>8}  {'floor_inv':>9}  {'acc':>7}")
-        for thresh, n_esc, inv_f, acc_f in threshold_table:
-            pct = n_esc / len(y_test)
-            marker = " <-- active" if thresh == HIGH_FLOOR_THRESHOLD else ""
-            print(f"  {thresh:>8.2f}  {n_esc:>5} ({pct:.0%})     {len(inversions_base):>8}  {inv_f:>9}  {acc_f:>7.4f}{marker}")
+    if proba_metrics and proba_metrics["threshold_table"]:
+        _print_threshold_table(proba_metrics["threshold_table"], inversions_base, y_test)
 
-    # -- Acceptance gate ------------------------------------------------------
+
+def _print_results(y_test, y_pred, accuracy, timing_us, inversions_base, proba_metrics):
+    """Print all evaluation results to stdout. timing_us = (mean, median, p99)."""
+    sep = "=" * 64
+    print(f"\n{sep}")
+    print("PROMPT ROUTING CLASSIFIER -- HOLDOUT EVALUATION")
+    print(sep)
+    _print_metrics_header(accuracy, inversions_base, timing_us, proba_metrics)
+    _print_classification_details(y_test, y_pred, inversions_base, proba_metrics)
+
+
+def _print_threshold_table(threshold_table, inversions_base, y_test):
+    """Print the P(high) confidence-floor threshold analysis table."""
+    print(f"\n{'-' * 64}")
+    print("P(high) confidence-floor threshold analysis:")
+    print(f"  {'thresh':>8}  {'escalated':>12}  {'base_inv':>8}  {'floor_inv':>9}  {'acc':>7}")
+    for thresh, n_esc, inv_f, acc_f in threshold_table:
+        pct = n_esc / len(y_test)
+        marker = " <-- active" if thresh == HIGH_FLOOR_THRESHOLD else ""
+        print(
+            f"  {thresh:>8.2f}  {n_esc:>5} ({pct:.0%})"
+            f"     {len(inversions_base):>8}  {inv_f:>9}  {acc_f:>7.4f}{marker}"
+        )
+
+
+def _check_proba_gate(proba_metrics, failures):
+    """Append proba-dependent gate failures to failures list."""
+    inv_floor = proba_metrics["inversions_floored"]
+    inv_floor_pass = len(inv_floor) == 0
+    status = "PASS" if inv_floor_pass else "FAIL"
+    print(f"  [{status}] HIGH->LOW inversions (floor) = 0:  {len(inv_floor)}")
+    if not inv_floor_pass:
+        failures.append(f"{len(inv_floor)} HIGH->LOW inversion(s) after floor")
+
+    brier_high = proba_metrics["brier_high"]
+    brier_pass = brier_high < BRIER_HIGH_THRESHOLD
+    print(
+        f"  [{'PASS' if brier_pass else 'FAIL'}] Brier(HIGH) < {BRIER_HIGH_THRESHOLD:.2f}:"
+        f"              {brier_high:.4f}"
+    )
+    if not brier_pass:
+        failures.append(f"Brier(HIGH) {brier_high:.4f} >= {BRIER_HIGH_THRESHOLD}")
+
+
+def _check_acceptance_gate(accuracy, inversions_base, mean_us, proba_metrics) -> list[str]:
+    """Evaluate acceptance criteria and return list of failure messages."""
+    sep = "=" * 64
     print(f"\n{sep}")
     print("ACCEPTANCE GATE")
     print(sep)
@@ -241,32 +295,80 @@ def run_holdout() -> None:
     failures: list[str] = []
 
     acc_pass = accuracy >= ACCURACY_THRESHOLD
-    print(f"  [{'PASS' if acc_pass else 'FAIL'}] Accuracy >= {ACCURACY_THRESHOLD:.0%}:               {accuracy:.4f}")
+    print(
+        f"  [{'PASS' if acc_pass else 'FAIL'}] Accuracy >= {ACCURACY_THRESHOLD:.0%}:"
+        f"               {accuracy:.4f}"
+    )
     if not acc_pass:
         failures.append(f"Accuracy {accuracy:.4f} < {ACCURACY_THRESHOLD}")
 
     inv_pass = len(inversions_base) == 0
-    print(f"  [{'PASS' if inv_pass else 'FAIL'}] HIGH->LOW inversions (base) = 0:   {len(inversions_base)}")
+    print(
+        f"  [{'PASS' if inv_pass else 'FAIL'}] HIGH->LOW inversions (base) = 0:"
+        f"   {len(inversions_base)}"
+    )
     if not inv_pass:
         failures.append(f"{len(inversions_base)} HIGH->LOW inversion(s) in base predictions")
 
-    if has_proba:
-        inv_floor_pass = len(inversions_floored) == 0
-        print(f"  [{'PASS' if inv_floor_pass else 'FAIL'}] HIGH->LOW inversions (floor) = 0:  {len(inversions_floored)}")
-        if not inv_floor_pass:
-            failures.append(f"{len(inversions_floored)} HIGH->LOW inversion(s) after floor")
-
-        brier_pass = brier_high < BRIER_HIGH_THRESHOLD
-        print(f"  [{'PASS' if brier_pass else 'FAIL'}] Brier(HIGH) < {BRIER_HIGH_THRESHOLD:.2f}:              {brier_high:.4f}")
-        if not brier_pass:
-            failures.append(f"Brier(HIGH) {brier_high:.4f} >= {BRIER_HIGH_THRESHOLD}")
+    if proba_metrics:
+        _check_proba_gate(proba_metrics, failures)
 
     inf_pass = mean_us < MAX_INFERENCE_US
-    print(f"  [{'PASS' if inf_pass else 'FAIL'}] Mean inference < 1ms:              {mean_us / 1000:.3f} ms")
+    print(
+        f"  [{'PASS' if inf_pass else 'FAIL'}] Mean inference < 1ms:"
+        f"              {mean_us / 1000:.3f} ms"
+    )
     if not inf_pass:
         failures.append(f"Mean inference {mean_us:.1f} us >= {MAX_INFERENCE_US:.0f} us")
 
-    print(f"  [PASS] SHA256 sidecar verified")
+    print("  [PASS] SHA256 sidecar verified")
+    return failures
+
+
+def _check_artifacts() -> None:
+    """Exit with an error message if required artifact files are missing."""
+    if not MODEL_PATH.exists():
+        print(f"ERROR: {MODEL_PATH} not found. Run train.py first.")
+        sys.exit(1)
+    if not TEST_SET_PATH.exists():
+        print(f"ERROR: {TEST_SET_PATH} not found. Run train.py first.")
+        sys.exit(1)
+
+
+def _print_label_counts(y_test: list[str]) -> None:
+    """Print per-label example counts."""
+    print(f"\nHoldout set: {len(y_test)} examples")
+    label_counts = {lb: y_test.count(lb) for lb in LABEL_ORDER}
+    for lb in LABEL_ORDER:
+        print(f"  {lb}: {label_counts.get(lb, 0)}")
+
+
+def run_holdout() -> None:
+    """Full holdout evaluation with calibration metrics and acceptance gate."""
+    _check_artifacts()
+
+    model = load_model()
+    X_test, y_test = load_test_set()
+
+    if not (hasattr(model, "decision_function") or hasattr(model, "predict_proba")):
+        print("WARNING: model supports neither decision_function() nor predict_proba().")
+        print("  Confidence floor and Brier score checks will be skipped.")
+
+    _print_label_counts(y_test)
+    mean_us, median_us, p99_us = _run_inference_timing(model, [X_test[0]])
+
+    y_pred = list(model.predict(X_test))
+    accuracy = accuracy_score(y_test, y_pred)
+    inversions_base = [
+        (t, p, x) for t, p, x in zip(y_test, y_pred, X_test) if t == "high" and p == "low"
+    ]
+    proba_metrics = _compute_proba_metrics(model, X_test, y_test, y_pred)
+
+    _print_results(
+        y_test, y_pred, accuracy, (mean_us, median_us, p99_us), inversions_base, proba_metrics
+    )
+
+    failures = _check_acceptance_gate(accuracy, inversions_base, mean_us, proba_metrics)
 
     print()
     if failures:
