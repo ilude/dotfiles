@@ -32,113 +32,104 @@ export function getAgentDir(): string {
 	return path.join(os.homedir(), ".pi", "agent");
 }
 
-function getTeamsConfigPath(): string {
+export function getTeamsConfigPath(): string {
 	return path.join(getAgentDir(), "agents", "teams.yaml");
 }
 
-export function parseYaml(content: string): TeamsConfig {
-	// Minimal YAML parser sufficient for teams.yaml structure (no deps required).
-	// Handles top-level keys, nested name/file/description, and team arrays.
-	const result: TeamsConfig = {};
-	const lines = content.split("\n");
+// ── Minimal YAML parser ──────────────────────────────────────────────────────
+// Sufficient for teams.yaml structure: top-level keys, name/file/description,
+// and team arrays. No external dependencies required.
 
-	let currentKey: string | null = null;
-	let inTeamArray = false;
-	let currentTeamMember: Partial<TeamMember> | null = null;
+class TeamsYamlParser {
+	private result: TeamsConfig = {};
+	private currentKey: string | null = null;
+	private inTeamArray = false;
+	private currentMember: Partial<TeamMember> | null = null;
 
-	for (const rawLine of lines) {
-		// Skip comments and blank lines
-		if (rawLine.trimStart().startsWith("#") || rawLine.trim() === "") {
-			continue;
+	private parseKV(line: string): [string, string] | null {
+		const idx = line.indexOf(":");
+		if (idx === -1) return null;
+		return [line.slice(0, idx).trim(), line.slice(idx + 1).trim()];
+	}
+
+	private applyMemberField(k: string, v: string): void {
+		if (!this.currentMember) return;
+		if (k === "name") this.currentMember.name = v;
+		else if (k === "file") this.currentMember.file = v;
+	}
+
+	private flushMember(): void {
+		if (!this.currentKey || !this.currentMember?.name) return;
+		this.result[this.currentKey].team = this.result[this.currentKey].team ?? [];
+		this.result[this.currentKey].team!.push(this.currentMember as TeamMember);
+		this.currentMember = null;
+	}
+
+	private processTopLevel(line: string): void {
+		if (!line.endsWith(":")) return;
+		this.flushMember();
+		this.currentKey = line.slice(0, -1);
+		this.result[this.currentKey] = { name: "", file: "" };
+		this.inTeamArray = false;
+	}
+
+	private processEntry(line: string): void {
+		this.flushMember();
+		if (line === "team:") {
+			this.inTeamArray = true;
+			return;
 		}
+		this.inTeamArray = false;
+		const kv = this.parseKV(line);
+		if (!kv) return;
+		const [k, v] = kv;
+		const entry = this.result[this.currentKey!];
+		if (k === "name") entry.name = v;
+		else if (k === "file") entry.file = v;
+		else if (k === "description") entry.description = v;
+	}
 
+	private processTeamLine(line: string): void {
+		if (line.startsWith("- ")) {
+			this.flushMember();
+			this.currentMember = {};
+			const kv = this.parseKV(line.slice(2).trim());
+			if (kv) this.applyMemberField(kv[0], kv[1]);
+			return;
+		}
+		const kv = this.parseKV(line);
+		if (kv) this.applyMemberField(kv[0], kv[1]);
+	}
+
+	private processLine(rawLine: string): void {
+		if (rawLine.trimStart().startsWith("#") || rawLine.trim() === "") return;
 		const indent = rawLine.length - rawLine.trimStart().length;
 		const line = rawLine.trim();
-
-		if (indent === 0 && line.endsWith(":")) {
-			// Flush pending team member
-			if (currentKey && currentTeamMember?.name) {
-				result[currentKey].team = result[currentKey].team ?? [];
-				result[currentKey].team!.push(currentTeamMember as TeamMember);
-				currentTeamMember = null;
-			}
-			currentKey = line.slice(0, -1);
-			result[currentKey] = { name: "", file: "" };
-			inTeamArray = false;
-		} else if (indent === 2 && currentKey) {
-			// Flush pending team member before next sibling key
-			if (currentTeamMember?.name) {
-				result[currentKey].team = result[currentKey].team ?? [];
-				result[currentKey].team!.push(currentTeamMember as TeamMember);
-				currentTeamMember = null;
-			}
-
-			if (line === "team:") {
-				inTeamArray = true;
-			} else {
-				inTeamArray = false;
-				const colonIdx = line.indexOf(":");
-				if (colonIdx !== -1) {
-					const k = line.slice(0, colonIdx).trim();
-					const v = line.slice(colonIdx + 1).trim();
-					if (k === "name") result[currentKey].name = v;
-					else if (k === "file") result[currentKey].file = v;
-					else if (k === "description") result[currentKey].description = v;
-				}
-			}
-		} else if (indent === 4 && currentKey && inTeamArray) {
-			// Team array entries start with "- " at indent 4
-			if (line.startsWith("- ")) {
-				// Flush previous member
-				if (currentTeamMember?.name) {
-					result[currentKey].team = result[currentKey].team ?? [];
-					result[currentKey].team!.push(currentTeamMember as TeamMember);
-				}
-				currentTeamMember = {};
-				const rest = line.slice(2).trim();
-				const colonIdx = rest.indexOf(":");
-				if (colonIdx !== -1) {
-					const k = rest.slice(0, colonIdx).trim();
-					const v = rest.slice(colonIdx + 1).trim();
-					if (k === "name") currentTeamMember.name = v;
-					else if (k === "file") currentTeamMember.file = v;
-				}
-			} else {
-				// Continuation key/value inside team member (indent 6)
-				const colonIdx = line.indexOf(":");
-				if (colonIdx !== -1 && currentTeamMember) {
-					const k = line.slice(0, colonIdx).trim();
-					const v = line.slice(colonIdx + 1).trim();
-					if (k === "name") currentTeamMember.name = v;
-					else if (k === "file") currentTeamMember.file = v;
-				}
-			}
-		} else if (indent === 6 && currentKey && inTeamArray && currentTeamMember) {
-			// name/file continuation inside a "- " block
-			const colonIdx = line.indexOf(":");
-			if (colonIdx !== -1) {
-				const k = line.slice(0, colonIdx).trim();
-				const v = line.slice(colonIdx + 1).trim();
-				if (k === "name") currentTeamMember.name = v;
-				else if (k === "file") currentTeamMember.file = v;
-			}
+		if (indent === 0) {
+			this.processTopLevel(line);
+		} else if (indent === 2 && this.currentKey) {
+			this.processEntry(line);
+		} else if ((indent === 4 || indent === 6) && this.currentKey && this.inTeamArray) {
+			this.processTeamLine(line);
 		}
 	}
 
-	// Flush final pending team member
-	if (currentKey && currentTeamMember?.name) {
-		result[currentKey].team = result[currentKey].team ?? [];
-		result[currentKey].team!.push(currentTeamMember as TeamMember);
+	parse(content: string): TeamsConfig {
+		for (const rawLine of content.split("\n")) {
+			this.processLine(rawLine);
+		}
+		this.flushMember();
+		return this.result;
 	}
-
-	return result;
 }
 
-function loadTeamsConfig(): TeamsConfig | null {
-	const configPath = getTeamsConfigPath();
+export function parseYaml(content: string): TeamsConfig {
+	return new TeamsYamlParser().parse(content);
+}
+
+export function loadTeamsConfig(): TeamsConfig | null {
 	try {
-		const content = fs.readFileSync(configPath, "utf-8");
-		return parseYaml(content);
+		return parseYaml(fs.readFileSync(getTeamsConfigPath(), "utf-8"));
 	} catch {
 		return null;
 	}
@@ -146,18 +137,14 @@ function loadTeamsConfig(): TeamsConfig | null {
 
 // Find a team entry by key or by lead name
 export function resolveTeam(teams: TeamsConfig, target: string): [string, TeamEntry] | null {
-	// Try direct key match first (e.g. "engineering")
 	if (teams[target]) return [target, teams[target]];
-
-	// Try matching by lead name (e.g. "engineering-lead")
 	for (const [key, entry] of Object.entries(teams)) {
 		if (entry.name === target) return [key, entry];
 	}
-
 	return null;
 }
 
-function formatTeamList(teams: TeamsConfig): string {
+export function formatTeamList(teams: TeamsConfig): string {
 	const lines: string[] = ["Available teams:"];
 	for (const [key, entry] of Object.entries(teams)) {
 		const workers = entry.team?.map((m) => m.name).join(", ");
@@ -165,6 +152,41 @@ function formatTeamList(teams: TeamsConfig): string {
 		lines.push(`  ${key} → ${entry.name}${workerStr}`);
 	}
 	return lines.join("\n");
+}
+
+export function resolveAgentPath(filePath: string, agentDir: string): string {
+	return filePath.startsWith(".pi/")
+		? path.join(agentDir, filePath.slice(".pi/".length))
+		: path.join(agentDir, filePath);
+}
+
+export function buildWorkerPaths(team: TeamMember[] | undefined, agentDir: string): string {
+	if (!team) return "  (no direct reports configured)";
+	return team.map((m) => `  - ${m.name}: ${resolveAgentPath(m.file, agentDir)}`).join("\n");
+}
+
+export function buildDispatchMessage(teamEntry: TeamEntry, agentFilePath: string, task: string): string {
+	const agentDir = getAgentDir();
+	return [
+		`Use the subagent tool to dispatch this task to the ${teamEntry.name} at ${agentFilePath}.`,
+		"",
+		"The lead has the following workers available (delegate to them sequentially via subagent):",
+		buildWorkerPaths(teamEntry.team, agentDir),
+		"",
+		`Task for ${teamEntry.name}:`,
+		task,
+	].join("\n");
+}
+
+const USAGE_MSG =
+	"Usage: /team <team-key|lead-name> <task description>\nRun /team list to see available teams.";
+
+export function parseTeamArgs(trimmed: string): { target: string; task: string } | null {
+	const spaceIdx = trimmed.indexOf(" ");
+	if (spaceIdx === -1) return null;
+	const task = trimmed.slice(spaceIdx + 1).trim();
+	if (!task) return null;
+	return { target: trimmed.slice(0, spaceIdx), task };
 }
 
 export default function (pi: ExtensionAPI) {
@@ -191,24 +213,9 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			// Split into: /team <target> <task...>
-			const spaceIdx = trimmed.indexOf(" ");
-			if (spaceIdx === -1) {
-				ctx.ui.notify(
-					"Usage: /team <team-key|lead-name> <task description>\nRun /team list to see available teams.",
-					"warning",
-				);
-				return;
-			}
-
-			const target = trimmed.slice(0, spaceIdx);
-			const task = trimmed.slice(spaceIdx + 1).trim();
-
-			if (!task) {
-				ctx.ui.notify(
-					"Usage: /team <team-key|lead-name> <task description>\nRun /team list to see available teams.",
-					"warning",
-				);
+			const parsed = parseTeamArgs(trimmed);
+			if (!parsed) {
+				ctx.ui.notify(USAGE_MSG, "warning");
 				return;
 			}
 
@@ -221,22 +228,14 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			const resolved = resolveTeam(teams, target);
+			const resolved = resolveTeam(teams, parsed.target);
 			if (!resolved) {
-				ctx.ui.notify(
-					`Team "${target}" not found.\n\n${formatTeamList(teams)}`,
-					"warning",
-				);
+				ctx.ui.notify(`Team "${parsed.target}" not found.\n\n${formatTeamList(teams)}`, "warning");
 				return;
 			}
 
-			const [teamKey, teamEntry] = resolved;
-			const agentDir = getAgentDir();
-
-			// Resolve agent file path: strip leading ".pi/" and join from agentDir
-			const agentFilePath = teamEntry.file.startsWith(".pi/")
-				? path.join(agentDir, teamEntry.file.slice(".pi/".length))
-				: path.join(agentDir, teamEntry.file);
+			const [, teamEntry] = resolved;
+			const agentFilePath = resolveAgentPath(teamEntry.file, getAgentDir());
 
 			if (!fs.existsSync(agentFilePath)) {
 				ctx.ui.notify(
@@ -246,29 +245,7 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			// Build worker file paths for the lead's context
-			const workerPaths = teamEntry.team
-				? teamEntry.team
-					.map((m) => {
-						const workerPath = m.file.startsWith(".pi/")
-							? path.join(agentDir, m.file.slice(".pi/".length))
-							: path.join(agentDir, m.file);
-						return `  - ${m.name}: ${workerPath}`;
-					})
-					.join("\n")
-				: "  (no direct reports configured)";
-
-			const message = [
-				`Use the subagent tool to dispatch this task to the ${teamEntry.name} at ${agentFilePath}.`,
-				"",
-				`The lead has the following workers available (delegate to them sequentially via subagent):`,
-				workerPaths,
-				"",
-				`Task for ${teamEntry.name}:`,
-				task,
-			].join("\n");
-
-			await pi.sendUserMessage(message);
+			await pi.sendUserMessage(buildDispatchMessage(teamEntry, agentFilePath, parsed.task));
 		},
 	});
 }
