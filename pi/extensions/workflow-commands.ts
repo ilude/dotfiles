@@ -6,8 +6,8 @@
  *
  *   /commit        — smart git commit with secret scanning
  *   /plan-it       — crystallize conversation context into an executable plan
- *   /review-plan   — adversarial review of a plan file
- *   /do-this       — smart task routing by complexity
+ *   /review-it     — adversarial review of a plan file
+ *   /do-it         — smart task routing by complexity
  *   /research      — parallel multi-angle research on a topic
  */
 
@@ -46,20 +46,20 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	// ── Command: /review-plan ───────────────────────────────────────────────────
-	pi.registerCommand("review-plan", {
+	// ── Command: /review-it ─────────────────────────────────────────────────────
+	pi.registerCommand("review-it", {
 		description: "Adversarial review of a plan file — finds bugs, gaps, and failure modes",
 		handler: async (args, ctx) => {
-			const template = loadSkill("review-plan.md");
+			const template = loadSkill("review-it.md");
 			await pi.sendUserMessage(template.replace("$ARGUMENTS", args.trim()) + (args.trim() ? `\n\nArgs: ${args}` : ""));
 		},
 	});
 
-	// ── Command: /do-this ───────────────────────────────────────────────────────
-	pi.registerCommand("do-this", {
+	// ── Command: /do-it ─────────────────────────────────────────────────────────
+	pi.registerCommand("do-it", {
 		description: "Smart task routing — implements directly, delegates, or plans based on complexity",
 		handler: async (args, ctx) => {
-			const template = loadSkill("do-this.md");
+			const template = loadSkill("do-it.md");
 			await pi.sendUserMessage(template.replace("$ARGUMENTS", args.trim()) + (args.trim() ? `\n\nArgs: ${args}` : ""));
 		},
 	});
