@@ -62,6 +62,57 @@ interface RouterState {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+export function isValidTier(raw: string): raw is Tier {
+  return raw === "low" || raw === "mid" || raw === "high";
+}
+
+export function applyNeverDowngrade(raw: Tier, state: RouterState): Tier {
+  if (TIER_ORDER[raw] > TIER_ORDER[state.sessionMax]) {
+    state.sessionMax = raw;
+  }
+  return TIER_ORDER[raw] >= TIER_ORDER[state.sessionMax] ? raw : state.sessionMax;
+}
+
+export function buildStatusLabel(effective: Tier, raw: Tier, sessionMax: Tier): string {
+  const target = TIER_MODELS[effective];
+  const icon = TIER_ICON[effective];
+  const upgraded = effective !== raw ? ` (kept ${effective} from ${sessionMax})` : "";
+  return `${icon} ${target.label}${upgraded}`;
+}
+
+async function classifyAndRoute(
+  pi: ExtensionAPI,
+  text: string,
+  state: RouterState,
+  ctx: any
+): Promise<void> {
+  const result = await pi.exec("python", [CLASSIFY_SCRIPT, text], { timeout: 5000 });
+  const raw = result.stdout.trim();
+
+  if (!isValidTier(raw)) return;
+
+  state.lastRaw = raw;
+  state.lastPromptSnippet = text.slice(0, 60) + (text.length > 60 ? "…" : "");
+
+  const effective = applyNeverDowngrade(raw, state);
+  state.lastEffective = effective;
+
+  const target = TIER_MODELS[effective];
+  const model = ctx.modelRegistry.find(target.provider, target.id);
+
+  if (!model) {
+    ctx.ui.setStatus("router", `router: ${target.id} not found`);
+    return;
+  }
+
+  await pi.setModel(model);
+  ctx.ui.setStatus("router", buildStatusLabel(effective, raw, state.sessionMax));
+}
+
+// ---------------------------------------------------------------------------
 // Extension
 // ---------------------------------------------------------------------------
 
@@ -84,57 +135,15 @@ export default function (pi: ExtensionAPI) {
 
   // ── Classify and route every user prompt ───────────────────────────────
   pi.on("input", async (event, ctx) => {
-    // Skip slash commands, empty input, and non-interactive sources
     const text = event.text?.trim() ?? "";
     if (!text || text.startsWith("/") || !state.enabled) {
       return { action: "continue" };
     }
 
     try {
-      // Call the Python classifier (~100–300ms including startup)
-      const result = await pi.exec("python", [CLASSIFY_SCRIPT, text], {
-        timeout: 5000,
-      });
-
-      const raw = result.stdout.trim() as Tier;
-      if (!["low", "mid", "high"].includes(raw)) {
-        return { action: "continue" };
-      }
-
-      state.lastRaw = raw;
-      state.lastPromptSnippet = text.slice(0, 60) + (text.length > 60 ? "…" : "");
-
-      // Apply never-downgrade rule
-      const effective: Tier =
-        TIER_ORDER[raw] >= TIER_ORDER[state.sessionMax] ? raw : state.sessionMax;
-
-      if (TIER_ORDER[raw] > TIER_ORDER[state.sessionMax]) {
-        state.sessionMax = raw;
-      }
-
-      state.lastEffective = effective;
-
-      // Switch model if needed
-      const target = TIER_MODELS[effective];
-      const model = ctx.modelRegistry.find(target.provider, target.id);
-
-      if (model) {
-        await pi.setModel(model);
-      } else {
-        ctx.ui.setStatus("router", `router: ${target.id} not found`);
-        return { action: "continue" };
-      }
-
-      // Update footer status
-      const icon = TIER_ICON[effective];
-      const upgraded = effective !== raw
-        ? ` (kept ${effective} from ${state.sessionMax})`
-        : "";
-      ctx.ui.setStatus("router", `${icon} ${target.label}${upgraded}`);
-
+      await classifyAndRoute(pi, text, state, ctx);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      // Non-fatal — log to status but don't block the prompt
       ctx.ui.setStatus("router", "router: err");
       ctx.ui.notify(`Prompt router error (non-fatal): ${msg}`, "warning");
     }
