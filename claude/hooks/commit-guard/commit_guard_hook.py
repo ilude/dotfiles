@@ -137,50 +137,30 @@ def log_error(message):
         pass
 
 
-def main():
-    try:
-        input_data = json.load(sys.stdin)
-    except (json.JSONDecodeError, Exception):
-        sys.exit(0)
-
-    # Only trigger on Bash tool calls
-    tool_name = input_data.get("tool_name", "")
-    if tool_name != "Bash":
-        sys.exit(0)
-
-    # Only trigger when command contains 'git commit'
-    tool_input = input_data.get("tool_input", {})
-    command = tool_input.get("command", "")
-    if "git commit" not in command:
-        sys.exit(0)
-
-    # Batch mode: skip check when COMMIT_GUARD_BATCH=1 is set in the command
-    if "COMMIT_GUARD_BATCH=1" in command:
-        sys.exit(0)
-
-    # Get working directory from hook input
+def _should_trigger(input_data):
+    """Return (command, cwd) if hook should run, else None."""
+    if input_data.get("tool_name") != "Bash":
+        return None
+    command = input_data.get("tool_input", {}).get("command", "")
+    if "git commit" not in command or "COMMIT_GUARD_BATCH=1" in command:
+        return None
     cwd = input_data.get("cwd", os.getcwd())
+    return command, cwd
 
-    # Get untracked files
+
+def _find_missed_files(cwd):
+    """Return auto-stageable untracked files not in skip list."""
     untracked = get_untracked_files(cwd)
     if not untracked:
-        sys.exit(0)
-
-    # Load user skip patterns
+        return []
     skip_patterns = load_skip_patterns()
+    return [
+        f for f in untracked if not is_excluded(f, skip_patterns) and has_auto_stage_extension(f)
+    ]
 
-    # Filter to auto-stageable files that aren't excluded
-    missed_files = []
-    for file_path in untracked:
-        if is_excluded(file_path, skip_patterns):
-            continue
-        if has_auto_stage_extension(file_path):
-            missed_files.append(file_path)
 
-    if not missed_files:
-        sys.exit(0)
-
-    # Build block message
+def _build_block_result(missed_files):
+    """Build JSON block decision for missed files."""
     file_list = "\n".join(f"- {f}" for f in sorted(missed_files))
     reason = (
         f"commit-guard: Untracked auto-stageable files remain after commit:\n"
@@ -190,9 +170,25 @@ def main():
         f"Either: (1) stage and commit them now, or "
         f"(2) ask the user if they should be .gitignored."
     )
+    return {"decision": "block", "reason": reason}
 
-    result = {"decision": "block", "reason": reason}
-    print(json.dumps(result))
+
+def main():
+    try:
+        input_data = json.load(sys.stdin)
+    except (json.JSONDecodeError, Exception):
+        sys.exit(0)
+
+    trigger = _should_trigger(input_data)
+    if trigger is None:
+        sys.exit(0)
+
+    _command, cwd = trigger
+    missed_files = _find_missed_files(cwd)
+    if not missed_files:
+        sys.exit(0)
+
+    print(json.dumps(_build_block_result(missed_files)))
     sys.exit(0)
 
 

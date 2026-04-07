@@ -11,57 +11,85 @@ from datetime import datetime
 from pathlib import Path
 
 
+def _parse_instance_header(line):
+    """Extract (tag, title) from a ## [tag] title header line, or None."""
+    if not line.startswith("## ["):
+        return None
+    if "]" not in line:
+        return None
+    start = line.find("[")
+    end = line.find("]", start)
+    if start == -1 or end == -1:
+        return None
+    return line[start + 1 : end], line[end + 1 :].strip()
+
+
+def _process_line(line, current_instance, in_right_now, instances):
+    """Process one CURRENT.md line; returns (current_instance, in_right_now)."""
+    header = _parse_instance_header(line)
+    if header is not None:
+        if current_instance:
+            instances.append(current_instance)
+        return {"tag": header[0], "title": header[1], "right_now": None}, False
+
+    if current_instance is None:
+        return current_instance, in_right_now
+
+    if line.strip() == "### Right Now":
+        return current_instance, True
+
+    if in_right_now and line.strip() and not line.startswith("#"):
+        current_instance["right_now"] = line.strip()
+        return current_instance, False
+
+    return current_instance, in_right_now
+
+
 def parse_instances_from_current(current_file):
     """Parse all [instance:session] sections from CURRENT.md"""
     instances = []
-
     try:
         with open(current_file, encoding="utf-8") as f:
-            content = f.read()
-            lines = content.split("\n")
+            lines = f.read().split("\n")
 
         current_instance = None
         in_right_now = False
-
-        for i, line in enumerate(lines):
-            # Check for instance section header: ## [instance:session] Title
-            if line.startswith("## [") and "]:" in line or line.startswith("## [") and "]" in line:
-                # Extract instance:session tag
-                start = line.find("[")
-                end = line.find("]", start)
-                if start != -1 and end != -1:
-                    tag = line[start + 1 : end]
-                    title = line[end + 1 :].strip()
-
-                    if current_instance:
-                        instances.append(current_instance)
-
-                    current_instance = {"tag": tag, "title": title, "right_now": None}
-                    in_right_now = False
-
-            # Check for "### Right Now" within an instance section
-            elif current_instance and line.strip() == "### Right Now":
-                in_right_now = True
-
-            # Extract Right Now content
-            elif current_instance and in_right_now and line.strip() and not line.startswith("#"):
-                current_instance["right_now"] = line.strip()
-                in_right_now = False
-
-        # Don't forget the last instance
+        for line in lines:
+            current_instance, in_right_now = _process_line(
+                line, current_instance, in_right_now, instances
+            )
         if current_instance:
             instances.append(current_instance)
-
     except Exception:
         pass
-
     return instances
+
+
+def _build_session_entry(item):
+    """Build a session dict for a feature directory item."""
+    current_file = item / "CURRENT.md"
+    status_file = item / "STATUS.md"
+
+    mtime = None
+    if current_file.exists():
+        mtime = datetime.fromtimestamp(current_file.stat().st_mtime)
+    elif status_file.exists():
+        mtime = datetime.fromtimestamp(status_file.stat().st_mtime)
+
+    instances = parse_instances_from_current(current_file) if current_file.exists() else []
+
+    return {
+        "name": item.name,
+        "mtime": mtime,
+        "instances": instances,
+        "has_current": current_file.exists(),
+        "has_status": status_file.exists(),
+    }
 
 
 def find_sessions(base_dir):
     """Find all active sessions in .session/feature/ (multi-instance aware)"""
     feature_dir = base_dir / ".session" / "feature"
-
     if not feature_dir.exists():
         return []
 
@@ -69,34 +97,10 @@ def find_sessions(base_dir):
     try:
         for item in feature_dir.iterdir():
             if item.is_dir():
-                current_file = item / "CURRENT.md"
-                status_file = item / "STATUS.md"
-
-                # Get last modified time
-                mtime = None
-                if current_file.exists():
-                    mtime = datetime.fromtimestamp(current_file.stat().st_mtime)
-                elif status_file.exists():
-                    mtime = datetime.fromtimestamp(status_file.stat().st_mtime)
-
-                # Parse all instance sections from CURRENT.md
-                instances = []
-                if current_file.exists():
-                    instances = parse_instances_from_current(current_file)
-
-                sessions.append(
-                    {
-                        "name": item.name,
-                        "mtime": mtime,
-                        "instances": instances,
-                        "has_current": current_file.exists(),
-                        "has_status": status_file.exists(),
-                    }
-                )
+                sessions.append(_build_session_entry(item))
     except Exception:
         return []
 
-    # Sort by modification time (most recent first)
     sessions.sort(key=lambda x: x["mtime"] if x["mtime"] else datetime.min, reverse=True)
     return sessions
 
@@ -110,16 +114,13 @@ def format_session_list(sessions):
 
     item_num = 1
     for session in sessions:
-        # Show feature name
         feature_name = session["name"]
         mtime_str = session["mtime"].strftime("%Y-%m-%d %H:%M") if session["mtime"] else "unknown"
 
-        # If no instances found, show legacy format
         if not session["instances"]:
             lines.append(f"{item_num}. **{feature_name}** (updated {mtime_str})")
             item_num += 1
         else:
-            # Show each instance within the feature
             for instance in session["instances"]:
                 line = f"{item_num}. **{feature_name}** [{instance['tag']}]"
                 if instance["title"]:
@@ -135,27 +136,21 @@ def format_session_list(sessions):
 
 def main():
     try:
-        # Read input from stdin
         data = json.load(sys.stdin)
         prompt = data.get("prompt", "")
         cwd = Path(data.get("cwd", os.getcwd()))
 
-        # Check if prompt starts with /pickup or /snapshot
         if not (prompt.strip().startswith("/pickup") or prompt.strip().startswith("/snapshot")):
-            # Not relevant, pass through
             print(json.dumps({}))
             return
 
-        # Find sessions
         sessions = find_sessions(cwd)
         context = format_session_list(sessions)
 
-        # Return additional context
         output = {"hookSpecificOutput": {"additionalContext": context}}
         print(json.dumps(output))
 
     except Exception as e:
-        # On error, pass through silently
         print(json.dumps({"error": str(e)}), file=sys.stderr)
         print(json.dumps({}))
 

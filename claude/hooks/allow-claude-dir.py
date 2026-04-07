@@ -14,13 +14,17 @@ def main() -> None:
     path = tool_input.get("file_path") or tool_input.get("command") or ""
 
     if ".claude" in path.lower():
-        print(json.dumps({
-            "hookSpecificOutput": {
-                "hookEventName": "PermissionRequest",
-                "permissionDecision": "allow",
-                "permissionDecisionReason": "Auto-approved: .claude directory write",
-            }
-        }))
+        print(
+            json.dumps(
+                {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PermissionRequest",
+                        "permissionDecision": "allow",
+                        "permissionDecisionReason": "Auto-approved: .claude directory write",
+                    }
+                }
+            )
+        )
 
     sys.exit(0)
 

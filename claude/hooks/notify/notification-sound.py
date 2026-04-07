@@ -156,36 +156,36 @@ def play_terminal_bell():
         pass
 
 
+_PLATFORM_PLAYERS = {
+    "macos": lambda sf: play_sound_macos(sf),
+    "linux": lambda sf: play_sound_linux(sf) or play_sound_windows(sf),
+    "wsl": lambda sf: play_sound_linux(sf) or play_sound_windows(sf),
+    "windows": lambda sf: play_sound_windows(sf),
+}
+
+
+def _play_sound_for_platform(platform_name: str, sound_file: str) -> bool:
+    """Dispatch sound playback by platform. Returns True on success."""
+    player = _PLATFORM_PLAYERS.get(platform_name)
+    if player is None or not sound_file:
+        return False
+    return player(sound_file)
+
+
 def main():
     """Main entry point for the notification hook."""
     try:
-        # Check if hook is disabled
         if is_hook_disabled():
             sys.exit(0)
 
-        # Get custom sound file or platform default
         platform_name = get_platform()
         sound_file = os.environ.get("NOTIFY_SOUND") or get_default_sound(platform_name)
-
-        # Try to play sound
-        success = False
-        if sound_file:
-            if platform_name == "macos":
-                success = play_sound_macos(sound_file)
-            elif platform_name in ["linux", "wsl"]:
-                success = play_sound_linux(sound_file) or play_sound_windows(sound_file)
-            elif platform_name == "windows":
-                success = play_sound_windows(sound_file)
-
-        # Fallback to terminal bell
-        if not success:
+        if not _play_sound_for_platform(platform_name, sound_file or ""):
             play_terminal_bell()
 
-        # Always exit successfully to avoid breaking Claude Code
         sys.exit(0)
 
     except Exception as e:
-        # Silent failure - write to stderr but don't break Claude Code
         print(f"Notify hook error: {e}", file=sys.stderr)
         sys.exit(0)
 

@@ -168,61 +168,62 @@ def load_config() -> dict[str, Any]:
 # ============================================================================
 
 
-def check_bash_command(command: str, config: dict[str, Any]) -> tuple[bool, list[str]]:
-    """Check bash command against patterns. Returns (blocked, list of reasons)."""
+def _check_bash_patterns(command: str, config: dict) -> list[str]:
+    """Return reasons matched by bashToolPatterns."""
     reasons = []
-
-    # 1. Check bashToolPatterns
     for item in config.get("bashToolPatterns", []):
         pattern = item.get("pattern", "")
-        reason = item.get("reason", "Blocked by pattern")
         try:
             if re.search(pattern, command, re.IGNORECASE):
-                reasons.append(reason)
+                reasons.append(item.get("reason", "Blocked by pattern"))
         except re.error:
             continue
+    return reasons
 
-    # 2. Check zeroAccessPaths (any access blocked) - supports glob patterns
+
+def _check_zero_access(command: str, config: dict) -> list[str]:
+    """Return reasons matched by zeroAccessPaths."""
+    reasons = []
     for zero_path in config.get("zeroAccessPaths", []):
         if is_glob_pattern(zero_path):
-            # Convert glob to regex for command matching
-            glob_regex = glob_to_regex(zero_path)
             try:
-                if re.search(glob_regex, command, re.IGNORECASE):
+                if re.search(glob_to_regex(zero_path), command, re.IGNORECASE):
                     reasons.append(f"zero-access pattern: {zero_path}")
             except re.error:
                 continue
         else:
-            # Original literal path matching
             expanded = os.path.expanduser(zero_path)
-            escaped = re.escape(expanded)
-            if re.search(escaped, command) or re.search(re.escape(zero_path), command):
+            if re.search(re.escape(expanded), command) or re.search(re.escape(zero_path), command):
                 reasons.append(f"zero-access path: {zero_path}")
+    return reasons
 
-    # 3. Check readOnlyPaths (modifications blocked)
-    for readonly in config.get("readOnlyPaths", []):
-        expanded = os.path.expanduser(readonly)
-        escaped = re.escape(expanded)
-        for pattern_template, operation in READ_ONLY_BLOCKED:
-            pattern = pattern_template.replace("{path}", escaped)
+
+def _check_path_list(command: str, paths: list, blocked_patterns: list, label: str) -> list[str]:
+    """Return reasons matched by a path list against blocked_patterns."""
+    reasons = []
+    for path in paths:
+        escaped = re.escape(os.path.expanduser(path))
+        for pattern_template, operation in blocked_patterns:
             try:
-                if re.search(pattern, command):
-                    reasons.append(f"{operation} on read-only path: {readonly}")
+                if re.search(pattern_template.replace("{path}", escaped), command):
+                    reasons.append(f"{operation} on {label}: {path}")
             except re.error:
                 continue
+    return reasons
 
-    # 4. Check noDeletePaths (deletions blocked)
-    for no_delete in config.get("noDeletePaths", []):
-        expanded = os.path.expanduser(no_delete)
-        escaped = re.escape(expanded)
-        for pattern_template, operation in NO_DELETE_BLOCKED:
-            pattern = pattern_template.replace("{path}", escaped)
-            try:
-                if re.search(pattern, command):
-                    reasons.append(f"{operation} on no-delete path: {no_delete}")
-            except re.error:
-                continue
 
+def check_bash_command(command: str, config: dict[str, Any]) -> tuple[bool, list[str]]:
+    """Check bash command against patterns. Returns (blocked, list of reasons)."""
+    reasons = (
+        _check_bash_patterns(command, config)
+        + _check_zero_access(command, config)
+        + _check_path_list(
+            command, config.get("readOnlyPaths", []), READ_ONLY_BLOCKED, "read-only path"
+        )
+        + _check_path_list(
+            command, config.get("noDeletePaths", []), NO_DELETE_BLOCKED, "no-delete path"
+        )
+    )
     return len(reasons) > 0, reasons
 
 
@@ -258,6 +259,18 @@ def print_banner():
     print("=" * 60 + "\n")
 
 
+_TOOL_CHOICE_MAP = {
+    "q": None,
+    "quit": None,
+    "1": "Bash",
+    "bash": "Bash",
+    "2": "Edit",
+    "edit": "Edit",
+    "3": "Write",
+    "write": "Write",
+}
+
+
 def prompt_tool_selection() -> Optional[str]:
     """Prompt user to select which tool to test."""
     print("Select tool to test:")
@@ -269,17 +282,40 @@ def prompt_tool_selection() -> Optional[str]:
 
     while True:
         choice = input("Tool [1/2/3/q]> ").strip().lower()
+        if choice in _TOOL_CHOICE_MAP:
+            return _TOOL_CHOICE_MAP[choice]
+        print("Invalid choice. Enter 1, 2, 3, or q.")
 
-        if choice in ("q", "quit"):
-            return None
-        elif choice == "1" or choice == "bash":
-            return "Bash"
-        elif choice == "2" or choice == "edit":
-            return "Edit"
-        elif choice == "3" or choice == "write":
-            return "Write"
-        else:
-            print("Invalid choice. Enter 1, 2, 3, or q.")
+
+def _run_one_test_cycle(tool: str, config: dict) -> bool:
+    """Run one interactive test cycle. Returns False if user wants to quit."""
+    prompt_text = "Command> " if tool == "Bash" else "Path> "
+    print()
+    try:
+        user_input = input(prompt_text).strip()
+    except (EOFError, KeyboardInterrupt):
+        print("\nGoodbye!")
+        return False
+
+    if not user_input or user_input.lower() in ("q", "quit"):
+        print("\nGoodbye!")
+        return False
+
+    blocked, reasons = (
+        check_bash_command(user_input, config)
+        if tool == "Bash"
+        else check_file_path(user_input, config)
+    )
+
+    print()
+    if blocked:
+        print(f"\033[91mBLOCKED\033[0m - {len(reasons)} pattern(s) matched:")
+        for reason in reasons:
+            print(f"   - {reason}")
+    else:
+        print("\033[92mALLOWED\033[0m - No dangerous patterns matched")
+    print()
+    return True
 
 
 def run_interactive_mode():
@@ -302,39 +338,8 @@ def run_interactive_mode():
         if tool is None:
             print("\nGoodbye!")
             break
-
-        print()
-        if tool == "Bash":
-            prompt_text = "Command> "
-        else:
-            prompt_text = "Path> "
-
-        # Get input
-        try:
-            user_input = input(prompt_text).strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\nGoodbye!")
+        if not _run_one_test_cycle(tool, config):
             break
-
-        if not user_input or user_input.lower() in ("q", "quit"):
-            print("\nGoodbye!")
-            break
-
-        # Test the input
-        if tool == "Bash":
-            blocked, reasons = check_bash_command(user_input, config)
-        else:
-            blocked, reasons = check_file_path(user_input, config)
-
-        # Print result
-        print()
-        if blocked:
-            print(f"\033[91mBLOCKED\033[0m - {len(reasons)} pattern(s) matched:")
-            for reason in reasons:
-                print(f"   - {reason}")
-        else:
-            print("\033[92mALLOWED\033[0m - No dangerous patterns matched")
-        print()
 
 
 # ============================================================================
@@ -366,27 +371,12 @@ def build_tool_input(tool_name: str, value: str) -> dict:
         return {"command": value}
 
 
-def run_test(
-    hook_type: str, tool_name: str, value: str, expectation: str, verbose: bool = True
-) -> bool:
-    """Run a single test and return True if passed.
-
-    expectation can be: "blocked", "ask", or "allowed"
-    - blocked: exit code 2
-    - ask: exit code 0 with JSON containing permissionDecision: "ask"
-    - allowed: exit code 0 without ask JSON
-    """
-    hook_path = get_hook_path(hook_type)
-    tool_input = build_tool_input(tool_name, value)
-
-    input_json = json.dumps({"tool_name": tool_name, "tool_input": tool_input})
-
+def _invoke_hook(hook_path: Path, input_json: str, verbose: bool) -> Optional[tuple[int, str, str]]:
+    """Run hook subprocess. Returns (exit_code, stdout, stderr) or None on error."""
+    kwargs: dict = {}
+    if sys.platform == "win32":
+        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
     try:
-        # On Windows, hide console windows to avoid focus-stealing during tests
-        kwargs = {}
-        if sys.platform == "win32":
-            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-
         result = subprocess.run(
             [sys.executable, str(hook_path)],
             input=input_json,
@@ -395,34 +385,31 @@ def run_test(
             timeout=10,
             **kwargs,
         )
-        exit_code = result.returncode
-        stdout = result.stdout.strip()
-        stderr = result.stderr.strip()
+        return result.returncode, result.stdout.strip(), result.stderr.strip()
     except subprocess.TimeoutExpired:
         if verbose:
             print("TIMEOUT")
-        return False
+        return None
     except Exception as e:
         if verbose:
             print(f"ERROR: {e}")
+        return None
+
+
+def run_test(
+    hook_type: str, tool_name: str, value: str, expectation: str, verbose: bool = True
+) -> bool:
+    """Run a single test and return True if passed."""
+    hook_path = get_hook_path(hook_type)
+    tool_input = build_tool_input(tool_name, value)
+    input_json = json.dumps({"tool_name": tool_name, "tool_input": tool_input})
+
+    invocation = _invoke_hook(hook_path, input_json, verbose)
+    if invocation is None:
         return False
 
-    # Determine actual result: blocked (exit 2), ask (exit 0 + JSON), or allowed (exit 0)
-    if exit_code == 2:
-        actual = "blocked"
-    elif exit_code == 0 and stdout:
-        # Check for ask JSON in stdout
-        try:
-            output = json.loads(stdout)
-            if output.get("hookSpecificOutput", {}).get("permissionDecision") == "ask":
-                actual = "ask"
-            else:
-                actual = "allowed"
-        except json.JSONDecodeError:
-            actual = "allowed"
-    else:
-        actual = "allowed"
-
+    exit_code, stdout, stderr = invocation
+    actual = _determine_actual_result(exit_code, stdout)
     passed = actual == expectation
 
     if verbose:
@@ -434,6 +421,20 @@ def run_test(
                 print(f"  stderr: {stderr[:200]}")
 
     return passed
+
+
+def _determine_actual_result(exit_code: int, stdout: str) -> str:
+    """Map exit code and stdout to 'blocked', 'ask', or 'allowed'."""
+    if exit_code == 2:
+        return "blocked"
+    if exit_code == 0 and stdout:
+        try:
+            output = json.loads(stdout)
+            if output.get("hookSpecificOutput", {}).get("permissionDecision") == "ask":
+                return "ask"
+        except json.JSONDecodeError:
+            pass
+    return "allowed"
 
 
 # ============================================================================
@@ -497,64 +498,14 @@ def run_test_suite(suite_name: str) -> int:
         if suite_key not in fixtures:
             print(f"Warning: Suite '{suite_key}' not found in fixtures")
             continue
-
         suite_data = fixtures[suite_key]
         print(f"\n{'=' * 60}")
         print(f"Test Suite: {suite_key}")
         print(f"{'=' * 60}\n")
+        ran, passed = _run_suite_categories(suite_data, total_tests)
+        total_tests += ran
+        passed_tests += passed
 
-        # Run blocked tests
-        if "blocked" in suite_data:
-            print(f"  Testing {len(suite_data['blocked'])} blocked cases:")
-            for test_case in suite_data["blocked"]:
-                command = test_case.get("command", "")
-                reason = test_case.get("reason", "")
-                hook = test_case.get("hook", "bash")
-                tool = test_case.get("tool", "Bash")
-
-                total_tests += 1
-                print(f"    [{total_tests}] {reason}")
-                if run_test(hook, tool, command, "blocked", verbose=False):
-                    passed_tests += 1
-                    print("         PASS")
-                else:
-                    print("         FAIL")
-
-        # Run ask tests
-        if "ask" in suite_data:
-            print(f"\n  Testing {len(suite_data['ask'])} ask cases:")
-            for test_case in suite_data["ask"]:
-                command = test_case.get("command", "")
-                reason = test_case.get("reason", "")
-                hook = test_case.get("hook", "bash")
-                tool = test_case.get("tool", "Bash")
-
-                total_tests += 1
-                print(f"    [{total_tests}] {reason}")
-                if run_test(hook, tool, command, "ask", verbose=False):
-                    passed_tests += 1
-                    print("         PASS")
-                else:
-                    print("         FAIL")
-
-        # Run allowed tests
-        if "allowed" in suite_data:
-            print(f"\n  Testing {len(suite_data['allowed'])} allowed cases:")
-            for test_case in suite_data["allowed"]:
-                command = test_case.get("command", "")
-                reason = test_case.get("reason", "")
-                hook = test_case.get("hook", "bash")
-                tool = test_case.get("tool", "Bash")
-
-                total_tests += 1
-                print(f"    [{total_tests}] {reason}")
-                if run_test(hook, tool, command, "allowed", verbose=False):
-                    passed_tests += 1
-                    print("         PASS")
-                else:
-                    print("         FAIL")
-
-    # Print summary
     print(f"\n{'=' * 60}")
     print("Test Summary")
     print(f"{'=' * 60}")
@@ -562,11 +513,51 @@ def run_test_suite(suite_name: str) -> int:
     print(f"Passed: {passed_tests}")
     print(f"Failed: {total_tests - passed_tests}")
     if total_tests > 0:
-        pass_rate = (passed_tests / total_tests) * 100
-        print(f"Pass Rate: {pass_rate:.1f}%")
+        print(f"Pass Rate: {(passed_tests / total_tests) * 100:.1f}%")
     print()
 
     return 0 if passed_tests == total_tests else 1
+
+
+def _run_suite_category(
+    suite_data: dict, category: str, expectation: str, test_num_offset: int
+) -> tuple[int, int]:
+    """Run one category (blocked/ask/allowed) from a suite. Returns (ran, passed)."""
+    cases = suite_data.get(category, [])
+    if not cases:
+        return 0, 0
+    prefix = "\n  " if category != "blocked" else "  "
+    print(f"{prefix}Testing {len(cases)} {category} cases:")
+    ran = passed = 0
+    for test_case in cases:
+        ran += 1
+        num = test_num_offset + ran
+        reason = test_case.get("reason", "")
+        print(f"    [{num}] {reason}")
+        if run_test(
+            test_case.get("hook", "bash"),
+            test_case.get("tool", "Bash"),
+            test_case.get("command", ""),
+            expectation,
+            verbose=False,
+        ):
+            passed += 1
+            print("         PASS")
+        else:
+            print("         FAIL")
+    return ran, passed
+
+
+def _run_suite_categories(suite_data: dict, test_num_offset: int) -> tuple[int, int]:
+    """Run all categories in a suite. Returns (total_ran, total_passed)."""
+    total_ran = total_passed = 0
+    for category, expectation in (("blocked", "blocked"), ("ask", "ask"), ("allowed", "allowed")):
+        ran, passed = _run_suite_category(
+            suite_data, category, expectation, test_num_offset + total_ran
+        )
+        total_ran += ran
+        total_passed += passed
+    return total_ran, total_passed
 
 
 def main():
