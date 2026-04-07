@@ -15,10 +15,15 @@ import os
 import shutil
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Optional
 
 import yaml
+
+# Cap for parallel validator execution. Each validator runs in its own thread
+# (subprocess work is I/O-bound), so we don't need many workers.
+MAX_PARALLEL_VALIDATORS = 4
 
 HOOK_DIR = Path(__file__).parent
 CONFIG_FILE = HOOK_DIR / "validators.yaml"
@@ -61,16 +66,24 @@ def normalize_path(file_path: str) -> str:
     return os.path.abspath(file_path)
 
 
-def find_project_root(file_dir: str, markers: list[str]) -> Optional[str]:
-    """Walk up from file_dir looking for any marker file.
+def _marker_matches(directory: Path, marker: str) -> bool:
+    """Return True if `directory` contains `marker` (literal path or glob)."""
+    if "*" in marker or "?" in marker:
+        return any(directory.glob(marker))
+    return (directory / marker).exists()
 
-    Returns directory containing marker, or None.
+
+def find_project_root(file_dir: str, markers: list[str]) -> Optional[str]:
+    """Walk up from file_dir looking for any marker file or matching glob.
+
+    Markers may be literal filenames (e.g. "go.mod") or glob patterns
+    (e.g. "*.csproj"). Returns the directory containing the first marker
+    match, or None if nothing matches before filesystem root.
     """
     current = Path(file_dir).resolve()
-    # Walk up, stopping at filesystem root
     while True:
         for marker in markers:
-            if (current / marker).exists():
+            if _marker_matches(current, marker):
                 return str(current)
         parent = current.parent
         if parent == current:
@@ -92,6 +105,10 @@ def match_language(
 
     for lang_name, lang_config in config.items():
         if not isinstance(lang_config, dict):
+            continue
+        if lang_name.startswith("_"):
+            # Convention: underscore-prefixed top-level keys are YAML anchors,
+            # not language definitions. Skip them even if they happen to be dicts.
             continue
         extensions = lang_config.get("extensions", [])
         if ext not in extensions:
@@ -268,6 +285,51 @@ def format_validator_error(name: str, file_path: str, output: str) -> str:
     return f"{name} errors in {os.path.basename(file_path)}:\n{output}"
 
 
+def _filter_runnable_validators(
+    validators: list[dict],
+    file_path: str,
+    lang_config: dict[str, Any],
+    skip_list: set,
+) -> list[dict]:
+    """Return the subset of validators that should actually run on this file."""
+    runnable = []
+    for validator in validators:
+        name = validator.get("name", "unknown")
+        if name in skip_list:
+            continue
+        if not validator.get("command"):
+            continue
+        if is_path_excluded(validator, file_path):
+            continue
+        if not check_validator_available(validator, lang_config):
+            continue
+        runnable.append(validator)
+    return runnable
+
+
+def _run_one_validator(validator: dict, file_path: str, project_root: str) -> Optional[str]:
+    """Run a single validator and return its formatted error (or None on success)."""
+    cmd = build_command(validator.get("command", []), file_path, project_root)
+    returncode, output = run_validator(cmd, env=validator.get("env"))
+    if returncode != 0 and output:
+        return format_validator_error(validator.get("name", "unknown"), file_path, output)
+    return None
+
+
+def _run_validators_parallel(runnable: list[dict], file_path: str, project_root: str) -> list[str]:
+    """Run multiple validators concurrently; preserve submission order in results."""
+    results: list[Optional[str]] = [None] * len(runnable)
+    max_workers = min(len(runnable), MAX_PARALLEL_VALIDATORS)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_index = {
+            executor.submit(_run_one_validator, v, file_path, project_root): i
+            for i, v in enumerate(runnable)
+        }
+        for future in as_completed(future_to_index):
+            results[future_to_index[future]] = future.result()
+    return [r for r in results if r is not None]
+
+
 def run_validator_suite(
     validators: list[dict],
     file_path: str,
@@ -275,28 +337,14 @@ def run_validator_suite(
     lang_config: dict[str, Any],
     skip_list: set,
 ) -> list[str]:
-    """Run each validator and collect formatted error messages."""
-    errors = []
-    for validator in validators:
-        name = validator.get("name", "unknown")
-        if name in skip_list:
-            continue
-
-        cmd_template = validator.get("command", [])
-        if not cmd_template:
-            continue
-
-        if is_path_excluded(validator, file_path):
-            continue
-
-        if not check_validator_available(validator, lang_config):
-            continue
-
-        cmd = build_command(cmd_template, file_path, project_root)
-        returncode, output = run_validator(cmd, env=validator.get("env"))
-        if returncode != 0 and output:
-            errors.append(format_validator_error(name, file_path, output))
-    return errors
+    """Filter and run all applicable validators (parallel when more than one)."""
+    runnable = _filter_runnable_validators(validators, file_path, lang_config, skip_list)
+    if not runnable:
+        return []
+    if len(runnable) == 1:
+        err = _run_one_validator(runnable[0], file_path, project_root)
+        return [err] if err else []
+    return _run_validators_parallel(runnable, file_path, project_root)
 
 
 def main() -> None:
