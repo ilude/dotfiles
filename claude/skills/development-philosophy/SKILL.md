@@ -15,7 +15,7 @@ description: Personal development philosophy emphasizing experiment-driven, fail
 1. **Autonomous Execution (Post-Clarification)** - Complete tasks fully once intent and validation criteria are clear; defer ask/execute boundaries to `claude/CLAUDE.md`
 2. **Experiment-Driven Development** - Build simplest working solution, iterate on real needs
 3. **Fail-Fast Learning** - Short cycles, expect to pivot, document learnings
-4. **Least Astonishment** - Changes should be predictable; match existing patterns (see [least-astonishment.md](least-astonishment.md))
+4. **Least Astonishment** - Changes should be predictable; match existing patterns (see the [least-astonishment skill](../least-astonishment/SKILL.md))
 5. **Security-First Design** - Evaluate security implications before implementation, avoid security theater (see [security-first.md](security-first.md))
 
 **Related principles:**
