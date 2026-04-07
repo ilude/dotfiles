@@ -28,7 +28,7 @@ interface TeamEntry {
 
 type TeamsConfig = Record<string, TeamEntry>;
 
-function getAgentDir(): string {
+export function getAgentDir(): string {
 	return path.join(os.homedir(), ".pi", "agent");
 }
 
@@ -36,7 +36,7 @@ function getTeamsConfigPath(): string {
 	return path.join(getAgentDir(), "agents", "teams.yaml");
 }
 
-function parseYaml(content: string): TeamsConfig {
+export function parseYaml(content: string): TeamsConfig {
 	// Minimal YAML parser sufficient for teams.yaml structure (no deps required).
 	// Handles top-level keys, nested name/file/description, and team arrays.
 	const result: TeamsConfig = {};
@@ -145,7 +145,7 @@ function loadTeamsConfig(): TeamsConfig | null {
 }
 
 // Find a team entry by key or by lead name
-function resolveTeam(teams: TeamsConfig, target: string): [string, TeamEntry] | null {
+export function resolveTeam(teams: TeamsConfig, target: string): [string, TeamEntry] | null {
 	// Try direct key match first (e.g. "engineering")
 	if (teams[target]) return [target, teams[target]];
 
