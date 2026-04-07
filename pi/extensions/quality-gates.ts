@@ -52,7 +52,7 @@ function loadValidators(): ValidatorsYaml {
 const validators = loadValidators();
 
 // Build extension-to-language lookup from the loaded config
-function buildExtMap(config: ValidatorsYaml): Map<string, LanguageConfig> {
+export function buildExtMap(config: ValidatorsYaml): Map<string, LanguageConfig> {
 	const map = new Map<string, LanguageConfig>();
 	for (const langConfig of Object.values(config)) {
 		for (const ext of langConfig.extensions) {
@@ -64,53 +64,58 @@ function buildExtMap(config: ValidatorsYaml): Map<string, LanguageConfig> {
 
 const extMap = buildExtMap(validators);
 
+export function getFilePath(event: ToolResultEvent): string | undefined {
+	return (
+		(event.input as { path?: string }).path ??
+		(event.input as { file_path?: string }).file_path
+	);
+}
+
+async function runFirstAvailableValidator(
+	pi: ExtensionAPI,
+	langConfig: LanguageConfig,
+	filePath: string
+): Promise<{ name: string; output: string } | undefined> {
+	for (const validator of langConfig.validators) {
+		const checkBin = validator.check ?? validator.command[0];
+		const whichResult = await pi.exec(`which ${checkBin}`);
+		if (whichResult.exitCode !== 0) continue;
+
+		const cmd = validator.command
+			.map((part) => (part === "{file}" ? filePath : part))
+			.join(" ");
+
+		const result = await pi.exec(cmd);
+		if (result.exitCode !== 0) {
+			return { name: validator.name, output: (result.stdout + result.stderr).trim() };
+		}
+		return undefined;
+	}
+	return undefined;
+}
+
 export default function (pi: ExtensionAPI) {
 	pi.on("tool_result", async (event: ToolResultEvent) => {
 		if (event.toolName !== "write" && event.toolName !== "edit") {
 			return undefined;
 		}
 
-		// Get the file path from input — write uses "path", edit uses "file_path"
-		const filePath =
-			(event.input as { path?: string }).path ??
-			(event.input as { file_path?: string }).file_path;
-
+		const filePath = getFilePath(event);
 		if (!filePath) return undefined;
 
 		const ext = path.extname(filePath).toLowerCase();
 		const langConfig = extMap.get(ext);
 		if (!langConfig) return undefined;
 
-		// Try each validator in order; use first one whose binary is on PATH
-		for (const validator of langConfig.validators) {
-			const checkBin = validator.check ?? validator.command[0];
+		const failure = await runFirstAvailableValidator(pi, langConfig, filePath);
+		if (!failure) return undefined;
 
-			// Skip if linter not installed
-			const whichResult = await pi.exec(`which ${checkBin}`);
-			if (whichResult.exitCode !== 0) continue;
-
-			// Build command, substituting {file} placeholder
-			const cmd = validator.command
-				.map((part) => (part === "{file}" ? filePath : part))
-				.join(" ");
-
-			const result = await pi.exec(cmd);
-
-			if (result.exitCode !== 0) {
-				const output = (result.stdout + result.stderr).trim();
-				const warningText = `\u26a0 Quality gate: ${validator.name} reported issues in ${path.basename(filePath)}:\n${output}`;
-				return {
-					content: [
-						{ type: "text" as const, text: warningText },
-						...event.content,
-					],
-				};
-			}
-
-			// Linter passed — no need to try further validators
-			return undefined;
-		}
-
-		return undefined;
+		const warningText = `\u26a0 Quality gate: ${failure.name} reported issues in ${path.basename(filePath)}:\n${failure.output}`;
+		return {
+			content: [
+				{ type: "text" as const, text: warningText },
+				...event.content,
+			],
+		};
 	});
 }

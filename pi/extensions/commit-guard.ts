@@ -16,6 +16,37 @@ import {
 const GIT_COMMIT_RE = /\bgit\s+commit\b/;
 const CONVENTIONAL_COMMIT_RE = /^(feat|fix|docs|chore|refactor|test|perf|ci|build)(\(.+\))?: .+/;
 
+type BlockResult = { block: true; reason: string } | undefined;
+
+function checkNoVerify(command: string): BlockResult {
+	if (!command.includes("--no-verify")) return undefined;
+	return {
+		block: true,
+		reason: "Pre-commit hooks are a safety net — don't bypass with --no-verify",
+	};
+}
+
+function checkMissingMessage(command: string): BlockResult {
+	if (command.includes("-m")) return undefined;
+	return {
+		block: true,
+		reason: "Commit message required. Use: git commit -m 'type(scope): description'",
+	};
+}
+
+function checkMessageFormat(command: string): BlockResult {
+	const msgMatch = command.match(/-m\s+["']([^"']+)["']/);
+	if (!msgMatch) return undefined;
+	const message = msgMatch[1];
+	if (CONVENTIONAL_COMMIT_RE.test(message)) return undefined;
+	return {
+		block: true,
+		reason:
+			`Commit message "${message}" does not follow conventional format. ` +
+			"Use: type(scope): description — where type is one of feat|fix|docs|chore|refactor|test|perf|ci|build",
+	};
+}
+
 export default function (pi: ExtensionAPI) {
 	pi.on("tool_call", (event, _ctx) => {
 		if (event.toolName !== "bash") return undefined;
@@ -25,39 +56,15 @@ export default function (pi: ExtensionAPI) {
 
 		if (!GIT_COMMIT_RE.test(command)) return undefined;
 
-		// --no-verify bypasses safety hooks — always block
-		if (command.includes("--no-verify")) {
-			return {
-				block: true,
-				reason: "Pre-commit hooks are a safety net — don't bypass with --no-verify",
-			};
-		}
+		const noVerifyResult = checkNoVerify(command);
+		if (noVerifyResult) return noVerifyResult;
 
 		// --amend without -m is legitimate; skip the -m and format checks
 		if (command.includes("--amend")) return undefined;
 
-		// Require -m flag
-		if (!command.includes("-m")) {
-			return {
-				block: true,
-				reason: "Commit message required. Use: git commit -m 'type(scope): description'",
-			};
-		}
+		const missingMsgResult = checkMissingMessage(command);
+		if (missingMsgResult) return missingMsgResult;
 
-		// Extract message after -m " or -m '
-		const msgMatch = command.match(/-m\s+["']([^"']+)["']/);
-		if (msgMatch) {
-			const message = msgMatch[1];
-			if (!CONVENTIONAL_COMMIT_RE.test(message)) {
-				return {
-					block: true,
-					reason:
-						`Commit message "${message}" does not follow conventional format. ` +
-						"Use: type(scope): description — where type is one of feat|fix|docs|chore|refactor|test|perf|ci|build",
-				};
-			}
-		}
-
-		return undefined;
+		return checkMessageFormat(command);
 	});
 }

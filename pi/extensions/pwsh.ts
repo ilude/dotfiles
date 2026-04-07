@@ -209,7 +209,7 @@ async function executePwsh(
   });
 }
 
-function renderCall(
+export function renderCall(
   args: { command: string; timeout?: number },
   theme: any,
   _context: any
@@ -223,7 +223,33 @@ function renderCall(
   return new Text(content, 0, 0);
 }
 
-function renderResult(
+export function selectDisplayLines(lines: string[], options: { expanded: boolean; isPartial: boolean }, elapsed: string, theme: any): string[] {
+  if (options.isPartial) {
+    const result = lines.slice(-5);
+    result.push(theme.fg("dim", `… [${elapsed}s]`));
+    return result;
+  }
+  if (!options.expanded) {
+    const result = lines.slice(0, 10);
+    const moreLines = Math.max(0, lines.length - 10);
+    if (moreLines > 0) result.push(theme.fg("dim", `… ${moreLines} more lines`));
+    result.push(`[${elapsed}s]`);
+    return result;
+  }
+  const result = [...lines];
+  result.push(`[${elapsed}s]`);
+  return result;
+}
+
+export function colorOutputLine(line: string, theme: any): string {
+  const kind = classifyOutputLine(line);
+  if (kind === "verbose" || kind === "debug") return theme.fg("dim", line);
+  if (kind === "warning") return theme.fg("warning", line);
+  if (kind === "error") return theme.fg("error", line);
+  return line;
+}
+
+export function renderResult(
   result: any,
   options: { expanded: boolean; isPartial: boolean },
   theme: any,
@@ -235,42 +261,17 @@ function renderResult(
   const truncated = result.details?.truncated;
   const tempFile = result.details?.tempFile;
 
-  let displayLines: string[] = [];
-
-  if (options.isPartial) {
-    const lastFive = lines.slice(-5);
-    displayLines = lastFive;
-    displayLines.push(theme.fg("dim", `… [${elapsed}s]`));
-  } else if (!options.expanded) {
-    const firstTen = lines.slice(0, 10);
-    displayLines = firstTen;
-    const moreLines = Math.max(0, lines.length - 10);
-    if (moreLines > 0) {
-      displayLines.push(theme.fg("dim", `… ${moreLines} more lines`));
-    }
-    displayLines.push(`[${elapsed}s]`);
-  } else {
-    displayLines = lines;
-    displayLines.push(`[${elapsed}s]`);
-  }
-
-  displayLines = displayLines.map((line) => {
-    const kind = classifyOutputLine(line);
-    if (kind === "verbose" || kind === "debug") return theme.fg("dim", line);
-    if (kind === "warning") return theme.fg("warning", line);
-    if (kind === "error") return theme.fg("error", line);
-    return line;
-  });
+  const displayLines = selectDisplayLines(lines, options, elapsed, theme)
+    .map((line) => colorOutputLine(line, theme));
 
   if (truncated && tempFile) {
     displayLines.push(theme.fg("dim", `[truncated — see ${tempFile} for full output]`));
   }
 
-  const content = displayLines.join("\n");
-  return new Text(content, 0, 0);
+  return new Text(displayLines.join("\n"), 0, 0);
 }
 
-function registerPlatformHook(pi: ExtensionAPI) {
+export function registerPlatformHook(pi: ExtensionAPI) {
   pi.on("before_agent_start", async (event, _ctx) => {
     const platformNote =
       "Both bash and pwsh tools are available. Prefer pwsh for Windows-native tasks (cmdlets, registry, WMI, .NET, COM). Use bash for git, npm, POSIX text tools.";

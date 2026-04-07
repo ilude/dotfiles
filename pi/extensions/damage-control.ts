@@ -74,29 +74,34 @@ function canonicalize(filePath: string, cwd: string): string {
 	}
 }
 
-// Expand a glob-style rule pattern (supports * and leading ~/) to a plain prefix or suffix check.
-function matchesPattern(filePath: string, pattern: string): boolean {
-	// Expand ~/... → /home/user/...
-	const expanded = pattern.startsWith("~/")
+function expandPattern(pattern: string): string {
+	return pattern.startsWith("~/")
 		? path.join(os.homedir(), pattern.slice(2))
 		: pattern;
+}
 
-	// Leading * = suffix match (e.g. *.pem, *.key)
-	if (expanded.startsWith("*")) {
-		const suffix = expanded.slice(1);
-		return filePath.endsWith(suffix);
-	}
-	// Trailing /* = directory prefix match
-	if (expanded.endsWith("/*")) {
-		const prefix = expanded.slice(0, -2);
-		return filePath === prefix || filePath.startsWith(prefix + path.sep) || filePath.startsWith(prefix + "/");
-	}
-	// Mid-string * = convert to regex
-	if (expanded.includes("*")) {
-		const regexStr = expanded.split("*").map((s) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*");
-		return new RegExp(regexStr).test(filePath);
-	}
-	// Exact match, basename match, or substring match for things like "credentials"
+function matchesSuffix(filePath: string, expanded: string): boolean {
+	return filePath.endsWith(expanded.slice(1));
+}
+
+function matchesPrefix(filePath: string, expanded: string): boolean {
+	const prefix = expanded.slice(0, -2);
+	return filePath === prefix || filePath.startsWith(prefix + path.sep) || filePath.startsWith(prefix + "/");
+}
+
+function matchesGlob(filePath: string, expanded: string): boolean {
+	const regexStr = expanded.split("*").map((s) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*");
+	return new RegExp(regexStr).test(filePath);
+}
+
+// Expand a glob-style rule pattern (supports * and leading ~/) to a plain prefix or suffix check.
+export function matchesPattern(filePath: string, pattern: string): boolean {
+	const expanded = expandPattern(pattern);
+
+	if (expanded.startsWith("*")) return matchesSuffix(filePath, expanded);
+	if (expanded.endsWith("/*")) return matchesPrefix(filePath, expanded);
+	if (expanded.includes("*")) return matchesGlob(filePath, expanded);
+
 	return (
 		filePath === expanded ||
 		path.basename(filePath) === expanded ||
@@ -104,11 +109,23 @@ function matchesPattern(filePath: string, pattern: string): boolean {
 	);
 }
 
+function checkZeroAccess(canonical: string, patterns: string[]): { block: true; reason: string } | undefined {
+	for (const pattern of patterns) {
+		if (matchesPattern(canonical, pattern)) {
+			return {
+				block: true,
+				reason: `Blocked access to zero-access path (matched "${pattern}"): ${canonical}`,
+			};
+		}
+	}
+	return undefined;
+}
+
 export default function (pi: ExtensionAPI) {
 	const rules = loadRules();
 
 	// ── Handler 1: bash tool — check command string for dangerous patterns ───────
-	pi.on("tool_call", (event, ctx) => {
+	pi.on("tool_call", (event, _ctx) => {
 		if (event.toolName !== "bash") return undefined;
 		const bashEvent = event as BashToolCallEvent;
 		const command = bashEvent.input.command ?? "";
@@ -134,29 +151,6 @@ export default function (pi: ExtensionAPI) {
 		if (!rawPath) return undefined;
 
 		const canonical = canonicalize(rawPath, ctx.cwd);
-
-		// Zero-access path check (block read + write)
-		for (const pattern of rules.zero_access_paths) {
-			if (matchesPattern(canonical, pattern)) {
-				return {
-					block: true,
-					reason: `Blocked access to zero-access path (matched "${pattern}"): ${canonical}`,
-				};
-			}
-		}
-
-		// No-delete check (block write/delete to protected files)
-		const isWriteOp = event.toolName === "write" || event.toolName === "edit";
-		if (isWriteOp) {
-			const filename = path.basename(canonical);
-			for (const noDeletePattern of rules.no_delete_paths) {
-				if (filename === noDeletePattern || matchesPattern(canonical, noDeletePattern)) {
-					// For write/edit, we allow it unless it's a destructive overwrite
-					// No-delete is enforced at deletion, not modification
-				}
-			}
-		}
-
-		return undefined;
+		return checkZeroAccess(canonical, rules.zero_access_paths);
 	});
 }

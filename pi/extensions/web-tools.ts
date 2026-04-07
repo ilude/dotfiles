@@ -22,17 +22,23 @@ const WEB_FETCH_SCRIPT = path.join(os.homedir(), ".dotfiles", "pi", "extensions"
 
 export interface EnvEntry { key: string; value: string }
 
+function parseEnvLine(line: string): EnvEntry | null {
+	const trimmed = line.trim();
+	if (!trimmed || trimmed.startsWith("#")) return null;
+	const eq = trimmed.indexOf("=");
+	if (eq === -1) return null;
+	const key = trimmed.slice(0, eq).trim();
+	if (!key) return null;
+	const value = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, "");
+	return { key, value };
+}
+
 /** Parse KEY=VALUE content. Skips comments, blank lines, lines without '='. Strips surrounding quotes. */
 export function parseDotEnv(content: string): EnvEntry[] {
 	const entries: EnvEntry[] = [];
 	for (const line of content.split("\n")) {
-		const trimmed = line.trim();
-		if (!trimmed || trimmed.startsWith("#")) continue;
-		const eq = trimmed.indexOf("=");
-		if (eq === -1) continue;
-		const key = trimmed.slice(0, eq).trim();
-		const value = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, "");
-		if (key) entries.push({ key, value });
+		const entry = parseEnvLine(line);
+		if (entry) entries.push(entry);
 	}
 	return entries;
 }
