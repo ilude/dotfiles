@@ -126,6 +126,13 @@ if command -v uv &>/dev/null; then
         echo "Installing ruff..."
         uv tool install ruff
     fi
+    # Install lizard (cyclomatic complexity analyzer) globally via uv tool
+    if command -v lizard &>/dev/null; then
+        echo "lizard: already installed"
+    else
+        echo "Installing lizard..."
+        uv tool install lizard
+    fi
 fi
 completed_steps+=("Python dev tools")
 
