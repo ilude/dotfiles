@@ -164,68 +164,50 @@ def matches_step(entry: dict[str, Any], step: dict[str, Any]) -> bool:
         return False
 
 
+def _build_match_result(sequence: dict[str, Any], matched_steps: list) -> dict[str, Any]:
+    """Build the match result dict."""
+    return {
+        "sequence_name": sequence.get("name", "unknown"),
+        "reason": sequence.get("reason", "Dangerous sequence detected"),
+        "action": sequence.get("action", "ask"),
+        "severity": sequence.get("severity", "high"),
+        "matched_steps": matched_steps,
+    }
+
+
+def _match_previous_steps(history: list, remaining_steps: list, window: int) -> Optional[list]:
+    """Return matched history entries if all remaining_steps found in order, else None."""
+    recent_history = history[-window:] if len(history) > window else history
+    matched_entries = []
+    step_idx = 0
+    for entry in recent_history:
+        if step_idx >= len(remaining_steps):
+            break
+        if matches_step(entry, remaining_steps[step_idx]):
+            matched_entries.append(entry)
+            step_idx += 1
+    return matched_entries if step_idx == len(remaining_steps) else None
+
+
 def find_sequence_match(
     history: list[dict[str, Any]],
     current_entry: dict[str, Any],
     sequence: dict[str, Any],
 ) -> Optional[dict[str, Any]]:
-    """Check if current entry completes a dangerous sequence.
-
-    Args:
-        history: List of previous tool invocations
-        current_entry: Current tool invocation being checked
-        sequence: Sequence pattern to check against
-
-    Returns:
-        Match info dict if sequence completed, None otherwise
-    """
+    """Check if current entry completes a dangerous sequence."""
     steps = sequence.get("steps", [])
     if not steps:
         return None
 
-    window = sequence.get("window", 10)
-
-    # Current entry should match the last step
-    last_step = steps[-1]
-    if not matches_step(current_entry, last_step):
+    if not matches_step(current_entry, steps[-1]):
         return None
 
-    # Check if previous steps are in history (in order, within window)
     if len(steps) == 1:
-        # Single-step sequence (just the current entry)
-        return {
-            "sequence_name": sequence.get("name", "unknown"),
-            "reason": sequence.get("reason", "Dangerous sequence detected"),
-            "action": sequence.get("action", "ask"),
-            "severity": sequence.get("severity", "high"),
-            "matched_steps": [current_entry],
-        }
+        return _build_match_result(sequence, [current_entry])
 
-    # Look for previous steps in recent history
-    remaining_steps = steps[:-1]  # All steps except the last one
-    recent_history = history[-window:] if len(history) > window else history
-
-    matched_entries = []
-    step_idx = 0
-
-    for entry in recent_history:
-        if step_idx >= len(remaining_steps):
-            break
-
-        if matches_step(entry, remaining_steps[step_idx]):
-            matched_entries.append(entry)
-            step_idx += 1
-
-    # Check if all steps were matched
-    if step_idx == len(remaining_steps):
-        matched_entries.append(current_entry)
-        return {
-            "sequence_name": sequence.get("name", "unknown"),
-            "reason": sequence.get("reason", "Dangerous sequence detected"),
-            "action": sequence.get("action", "ask"),
-            "severity": sequence.get("severity", "high"),
-            "matched_steps": matched_entries,
-        }
+    matched = _match_previous_steps(history, steps[:-1], sequence.get("window", 10))
+    if matched is not None:
+        return _build_match_result(sequence, matched + [current_entry])
 
     return None
 

@@ -198,88 +198,82 @@ def check_for_injections(
 # ============================================================================
 
 
+def _extract_content(tool_name: str, tool_result: dict) -> tuple[str, str]:
+    """Extract (content, file_path) from tool result."""
+    if tool_name == "Read":
+        return tool_result.get("content", ""), tool_result.get("file_path", "")
+    if tool_name in ("Glob", "Grep"):
+        content = str(tool_result.get("output", "")) + str(tool_result.get("matches", ""))
+        return content, ""
+    return "", ""
+
+
+def _build_warnings(
+    tool_name: str, file_path: str, secret_findings: list, injection_findings: list
+) -> list:
+    """Log detections and return warning strings."""
+    warnings = []
+    for finding in secret_findings:
+        log_detection(
+            tool_name=tool_name,
+            detection_type="secret",
+            pattern_type=finding["type"],
+            severity=finding["severity"],
+            file_path=file_path,
+            matched_text=finding["sample"],
+        )
+        warnings.append(
+            f"SECURITY WARNING: Detected {finding['type']} "
+            f"(severity: {finding['severity']}, count: {finding['count']})"
+        )
+    for finding in injection_findings:
+        log_detection(
+            tool_name=tool_name,
+            detection_type="injection",
+            pattern_type=finding["type"],
+            severity=finding["severity"],
+            file_path=file_path,
+            matched_text=finding["sample"],
+        )
+        warnings.append(
+            f"INJECTION WARNING: Detected {finding['type']} attempt "
+            f"(severity: {finding['severity']})"
+        )
+    return warnings
+
+
 def main() -> None:
-    # Check if hook is disabled
     if is_hook_disabled():
         sys.exit(0)
 
-    # Load configuration
     config = load_config()
-
-    # Compile patterns
     secret_patterns = compile_patterns(config.get("secretPatterns", []))
     injection_patterns = compile_patterns(config.get("injectionPatterns", []))
 
-    # Read hook input from stdin
     try:
         input_data = json.load(sys.stdin)
     except json.JSONDecodeError as e:
         print(f"Error: Invalid JSON input: {e}", file=sys.stderr)
-        sys.exit(0)  # Don't block on parse errors
+        sys.exit(0)
     except Exception as e:
         print(f"Error reading input: {e}", file=sys.stderr)
         sys.exit(0)
 
     tool_name = input_data.get("tool_name", "")
-    tool_result = input_data.get("tool_result", {})
-
-    # Only check Read/Glob/Grep tools
     if tool_name not in ("Read", "Glob", "Grep"):
         sys.exit(0)
 
-    # Extract content to scan
-    content = ""
-    file_path = ""
-
-    if tool_name == "Read":
-        content = tool_result.get("content", "")
-        file_path = tool_result.get("file_path", "")
-    elif tool_name in ("Glob", "Grep"):
-        # For Glob/Grep, check the output which may contain file contents
-        content = str(tool_result.get("output", ""))
-        content += str(tool_result.get("matches", ""))
-
+    content, file_path = _extract_content(tool_name, input_data.get("tool_result", {}))
     if not content:
         sys.exit(0)
 
-    # Check for secrets and injections
-    secret_findings = check_for_secrets(content, secret_patterns)
-    injection_findings = check_for_injections(content, injection_patterns)
+    warnings = _build_warnings(
+        tool_name,
+        file_path,
+        check_for_secrets(content, secret_patterns),
+        check_for_injections(content, injection_patterns),
+    )
 
-    # Build warning context if issues found
-    warnings = []
-
-    if secret_findings:
-        for finding in secret_findings:
-            log_detection(
-                tool_name=tool_name,
-                detection_type="secret",
-                pattern_type=finding["type"],
-                severity=finding["severity"],
-                file_path=file_path,
-                matched_text=finding["sample"],
-            )
-            warnings.append(
-                f"SECURITY WARNING: Detected {finding['type']} "
-                f"(severity: {finding['severity']}, count: {finding['count']})"
-            )
-
-    if injection_findings:
-        for finding in injection_findings:
-            log_detection(
-                tool_name=tool_name,
-                detection_type="injection",
-                pattern_type=finding["type"],
-                severity=finding["severity"],
-                file_path=file_path,
-                matched_text=finding["sample"],
-            )
-            warnings.append(
-                f"INJECTION WARNING: Detected {finding['type']} attempt "
-                f"(severity: {finding['severity']})"
-            )
-
-    # Output result
     if warnings:
         output = {
             "hookSpecificOutput": {

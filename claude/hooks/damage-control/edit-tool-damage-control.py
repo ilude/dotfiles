@@ -137,46 +137,35 @@ def is_glob_pattern(pattern: str) -> bool:
     return "*" in pattern or "?" in pattern or "[" in pattern
 
 
+def _match_glob_path(expanded_normalized: str, pattern: str, expanded_pattern: str) -> bool:
+    """Glob match: check basename and full path (case-insensitive)."""
+    basename_lower = os.path.basename(expanded_normalized).lower()
+    expanded_pattern_lower = expanded_pattern.lower()
+    return (
+        fnmatch.fnmatch(basename_lower, expanded_pattern_lower)
+        or fnmatch.fnmatch(basename_lower, pattern.lower())
+        or fnmatch.fnmatch(expanded_normalized.lower(), expanded_pattern_lower)
+    )
+
+
+def _match_exact_path(expanded_normalized: str, expanded_pattern: str) -> bool:
+    """Exact or directory-prefix match."""
+    if expanded_normalized in (expanded_pattern, expanded_pattern.rstrip("/")):
+        return True
+    if expanded_pattern.endswith("/") and expanded_normalized.startswith(expanded_pattern):
+        return True
+    return expanded_normalized.startswith(expanded_pattern + "/") or expanded_normalized.startswith(
+        expanded_pattern + os.sep
+    )
+
+
 def match_path(file_path: str, pattern: str) -> bool:
     """Match file path against pattern, supporting both prefix and glob matching."""
     expanded_pattern = os.path.expanduser(pattern)
-    normalized = os.path.normpath(file_path)
-    expanded_normalized = os.path.expanduser(normalized)
-
+    expanded_normalized = os.path.expanduser(os.path.normpath(file_path))
     if is_glob_pattern(pattern):
-        # Glob pattern matching (case-insensitive for security)
-        basename = os.path.basename(expanded_normalized)
-        basename_lower = basename.lower()
-        pattern_lower = pattern.lower()
-        expanded_pattern_lower = expanded_pattern.lower()
-
-        # Match against basename for patterns like *.pem, .env*
-        if fnmatch.fnmatch(basename_lower, expanded_pattern_lower):
-            return True
-        if fnmatch.fnmatch(basename_lower, pattern_lower):
-            return True
-        # Also try full path match for patterns like /path/*.pem
-        if fnmatch.fnmatch(expanded_normalized.lower(), expanded_pattern_lower):
-            return True
-        return False
-    else:
-        # Exact match or directory prefix matching
-        # .env should NOT match .env.example (different files)
-        # ~/.ssh/ SHOULD match ~/.ssh/id_rsa (directory contains file)
-        if (
-            expanded_normalized == expanded_pattern
-            or expanded_normalized == expanded_pattern.rstrip("/")
-        ):
-            return True
-        # Only prefix match if pattern is a directory (ends with /)
-        if expanded_pattern.endswith("/") and expanded_normalized.startswith(expanded_pattern):
-            return True
-        # Also match if path is inside the directory (pattern without trailing /)
-        if expanded_normalized.startswith(expanded_pattern + "/") or expanded_normalized.startswith(
-            expanded_pattern + os.sep
-        ):
-            return True
-        return False
+        return _match_glob_path(expanded_normalized, pattern, expanded_pattern)
+    return _match_exact_path(expanded_normalized, expanded_pattern)
 
 
 def get_config_path() -> Path:

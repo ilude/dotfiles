@@ -121,87 +121,91 @@ def log_rotation_event(logs_dir: Path, event: dict) -> None:
         pass  # Don't fail rotation if logging fails
 
 
+def _archive_old_logs(logs_dir: Path, archive_cutoff: datetime, errors: list) -> int:
+    """Archive .log files older than archive_cutoff. Returns count archived."""
+    archived_count = 0
+    for log_file in logs_dir.glob("*.log"):
+        if log_file.name == "rotation.log":
+            continue
+        if not validate_log_filename(log_file, logs_dir):
+            continue
+        try:
+            file_date = datetime.strptime(log_file.stem, "%Y-%m-%d")
+            if file_date >= archive_cutoff:
+                continue
+            archive_path = log_file.with_suffix(".log.tar.gz")
+            if DRY_RUN:
+                print(f"WOULD archive: {log_file}")
+                continue
+            if safe_archive(log_file, archive_path):
+                log_file.unlink()
+                archived_count += 1
+            else:
+                errors.append(f"Failed to archive {log_file}")
+        except (ValueError, OSError) as e:
+            errors.append(f"{log_file}: {e}")
+    return archived_count
+
+
+def _delete_old_archives(logs_dir: Path, delete_cutoff: datetime, errors: list) -> int:
+    """Delete archives older than delete_cutoff. Returns count deleted."""
+    if DELETE_DAYS <= 0:
+        return 0
+    deleted_count = 0
+    for archive in logs_dir.glob("*.log.tar.gz"):
+        if archive.is_symlink():
+            continue
+        try:
+            file_date = datetime.strptime(archive.name[:10], "%Y-%m-%d")
+            if file_date >= delete_cutoff:
+                continue
+            if DRY_RUN:
+                print(f"WOULD delete: {archive}")
+                continue
+            archive.unlink()
+            deleted_count += 1
+        except (ValueError, OSError) as e:
+            errors.append(f"{archive}: {e}")
+    return deleted_count
+
+
+def _rotation_disabled(logs_dir: Path) -> bool:
+    """Return True if rotation should be skipped."""
+    return DISABLED or not logs_dir.exists() or (logs_dir / ".no-rotation").exists()
+
+
+def _run_rotation(logs_dir: Path) -> None:
+    """Execute archive and delete passes and log the result."""
+    now = datetime.now()
+    errors: list = []
+    archived_count = _archive_old_logs(logs_dir, now - timedelta(days=ARCHIVE_DAYS), errors)
+    deleted_count = _delete_old_archives(logs_dir, now - timedelta(days=DELETE_DAYS), errors)
+
+    if archived_count > 0 or deleted_count > 0 or errors:
+        log_rotation_event(
+            logs_dir,
+            {
+                "timestamp": now.isoformat(),
+                "archived": archived_count,
+                "deleted": deleted_count,
+                "errors": errors,
+                "dry_run": DRY_RUN,
+            },
+        )
+
+
 def rotate_logs() -> None:
     """Main rotation logic."""
     logs_dir = get_logs_dir()
-
-    # Kill switch: .no-rotation file
-    if (logs_dir / ".no-rotation").exists():
+    if _rotation_disabled(logs_dir):
         return
 
-    # Env var disable
-    if DISABLED:
-        return
-
-    if not logs_dir.exists():
-        return
-
-    # Acquire lock (exit if another process is rotating)
     lock_fd = acquire_lock(logs_dir)
     if lock_fd is None:
-        return  # Another rotation in progress
+        return
 
     try:
-        now = datetime.now()
-        archive_cutoff = now - timedelta(days=ARCHIVE_DAYS)
-        delete_cutoff = now - timedelta(days=DELETE_DAYS)
-        archived_count = 0
-        deleted_count = 0
-        errors = []
-
-        # Archive old .log files
-        for log_file in logs_dir.glob("*.log"):
-            if log_file.name == "rotation.log":
-                continue  # Never rotate the rotation log
-            if not validate_log_filename(log_file, logs_dir):
-                continue
-            try:
-                file_date = datetime.strptime(log_file.stem, "%Y-%m-%d")
-                if file_date < archive_cutoff:
-                    archive_path = log_file.with_suffix(".log.tar.gz")
-                    if DRY_RUN:
-                        print(f"WOULD archive: {log_file}")
-                        continue
-                    if safe_archive(log_file, archive_path):
-                        log_file.unlink()
-                        archived_count += 1
-                    else:
-                        errors.append(f"Failed to archive {log_file}")
-            except (ValueError, OSError) as e:
-                errors.append(f"{log_file}: {e}")
-
-        # Delete old archives (only if DELETE_DAYS > 0)
-        if DELETE_DAYS > 0:
-            for archive in logs_dir.glob("*.log.tar.gz"):
-                if archive.is_symlink():
-                    continue
-                try:
-                    # Archive filename: YYYY-MM-DD.log.tar.gz
-                    # Extract date from first 10 characters
-                    date_str = archive.name[:10]
-                    file_date = datetime.strptime(date_str, "%Y-%m-%d")
-                    if file_date < delete_cutoff:
-                        if DRY_RUN:
-                            print(f"WOULD delete: {archive}")
-                            continue
-                        archive.unlink()
-                        deleted_count += 1
-                except (ValueError, OSError) as e:
-                    errors.append(f"{archive}: {e}")
-
-        # Log rotation status (only if something happened or errors occurred)
-        if archived_count > 0 or deleted_count > 0 or errors:
-            log_rotation_event(
-                logs_dir,
-                {
-                    "timestamp": now.isoformat(),
-                    "archived": archived_count,
-                    "deleted": deleted_count,
-                    "errors": errors,
-                    "dry_run": DRY_RUN,
-                },
-            )
-
+        _run_rotation(logs_dir)
     finally:
         release_lock(lock_fd)
 
