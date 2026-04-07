@@ -785,6 +785,41 @@ function Install-Packages {
         }
     }
 
+    # Python dev tools (uv-managed) - mirrors the unix install script
+    # ruff: linter/formatter for Python files in this repo and the quality
+    #       validation hook
+    # lizard: cyclomatic complexity analyzer used by the quality validation
+    #         hook across ALL supported languages (Python, TS, Go, Rust,
+    #         Java, Ruby, ...). Language-specific tools (clippy, biome,
+    #         rubocop, etc.) are expected to be provided by their own
+    #         project setup, not this dotfiles bootstrap.
+    Write-Host "`n--- Python Dev Tools (uv-managed) ---" -ForegroundColor Cyan
+    if (Get-Command uv -ErrorAction SilentlyContinue) {
+        $uvTools = @('ruff', 'lizard')
+        foreach ($tool in $uvTools) {
+            Write-Host "  $tool..." -ForegroundColor Cyan -NoNewline
+            if (Get-Command $tool -ErrorAction SilentlyContinue) {
+                Write-Host " already installed" -ForegroundColor DarkGray
+            } else {
+                try {
+                    uv tool install $tool 2>&1 | Out-Null
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Host " installed" -ForegroundColor Green
+                    } else {
+                        Write-Host " failed (uv tool install exit $LASTEXITCODE)" -ForegroundColor Red
+                        $script:failed += "uv-tool:$tool"
+                    }
+                } catch {
+                    Write-Host " failed" -ForegroundColor Red
+                    $script:failed += "uv-tool:$tool"
+                }
+            }
+        }
+    } else {
+        Write-Host "  uv not found - skipping ruff/lizard install" -ForegroundColor Yellow
+        Write-Host "  (uv comes from core winget packages; rerun installer)" -ForegroundColor DarkGray
+    }
+
     # MSYS2 packages (zsh for Git Bash - requires MSYS2 from core packages)
     Write-Host "`n--- MSYS2 Packages (Git Bash zsh) ---" -ForegroundColor Cyan
     $msys2Pacman = "$Msys2Root\usr\bin\pacman.exe"
