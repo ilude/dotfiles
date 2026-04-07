@@ -262,154 +262,173 @@ def block(tool_name: str, file_path: str, reason: str, suggested: str) -> None:
     sys.exit(2)
 
 
-def main() -> None:
-    if is_hook_disabled():
-        sys.exit(0)
-
-    try:
-        data = json.load(sys.stdin)
-    except json.JSONDecodeError:
-        sys.exit(1)
-
-    tool_name = data.get("tool_name", "")
-    if tool_name not in ("Edit", "Write"):
-        sys.exit(0)
-
-    # Type validation - handle malformed input gracefully
-    tool_input = data.get("tool_input")
-    if not isinstance(tool_input, dict):
-        sys.exit(0)
-
-    path_str = tool_input.get("file_path", "")
-    if not path_str or not isinstance(path_str, str):
-        sys.exit(0)
-
-    # CASE 0: Plan files - ALLOW without normalization
-    # Claude Code writes plan files with absolute paths; don't interfere
-    normalized_check = normalize_separators(path_str)
-    if ".claude/plans/" in normalized_check or normalized_check.endswith(".claude/plans"):
-        log_decision(tool_name, path_str, "allowed", "plan file path")
-        sys.exit(0)
-
-    has_backslash = BACKSLASH in path_str
-
-    # CASE 1: Home-relative paths (~/ or ~\) - ALLOW if using forward slashes
-    # If backslashes, transparently fix (deterministic correction)
-    if path_str.startswith("~/") or path_str.startswith("~" + BACKSLASH):
-        if has_backslash:
-            fixed = path_str.replace(BACKSLASH, "/")
-            fix_and_allow(tool_name, path_str, fixed, "backslash in home-relative path")
-        log_decision(tool_name, path_str, "allowed", "home-relative path")
-        sys.exit(0)
-
-    # CASE 2: Unix system paths - ALLOW (for WSL compatibility)
-    if path_str.startswith(("/dev/", "/proc/", "/tmp/", "/var/")):
-        log_decision(tool_name, path_str, "allowed", "unix system path")
-        sys.exit(0)
-
-    is_abs = is_absolute(path_str)
-
-    # CASE 3: UNC paths - use string comparison to avoid network I/O from resolve()
-    # If the UNC path is within CLAUDE_PROJECT_DIR, make it relative. Otherwise block.
-    if is_unc_path(path_str):
-        normalized = normalize_separators(path_str)
-        cwd_str = normalize_separators(os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())).rstrip(
-            "/"
-        )
-        # Case-insensitive comparison (Windows shares are case-insensitive)
-        if normalized.lower().startswith(cwd_str.lower() + "/"):
-            relative = normalized[len(cwd_str) + 1 :]
-            if not relative or relative == "/":
-                log_decision(tool_name, path_str, "allowed", "UNC path is project root")
-                sys.exit(0)
-            fix_and_allow(tool_name, path_str, relative, "UNC path within project")
-        # Outside project - block with filename suggestion
-        filename = normalized.rsplit("/", 1)[-1]
-        block(tool_name, path_str, "UNC path outside project", filename)
-
-    # CASE 4: Relative path with backslashes - FIX transparently
-    # This is a deterministic correction (just replace separators)
-    if not is_abs and has_backslash:
-        fixed = path_str.replace(BACKSLASH, "/")
-        fix_and_allow(tool_name, path_str, fixed, "backslash in relative path")
-
-    # CASE 5: Clean relative path (forward slashes, no absolute) - ALLOW
-    if not is_abs:
-        log_decision(tool_name, path_str, "allowed", "clean relative path")
-        sys.exit(0)
-
-    # CASE 6: Absolute path - FIX if within project/home, BLOCK if outside
-    # This is the key fix: absolute paths cause Claude Code Edit bugs
-    # We transparently fix deterministic cases (within project or home)
-    # and only block ambiguous cases (outside both)
-    win_path = to_windows_path(path_str)
-    file_path = Path(win_path).resolve()
-    # Use get_windows_home() to handle WSL environment where expanduser('~')
-    # returns /home/user instead of the Windows home directory
-    home = get_windows_home(win_path)
-
-    # Build list of valid project roots. When working in a git worktree,
-    # CLAUDE_PROJECT_DIR points to the original repo but os.getcwd() is the
-    # worktree. Check both so worktree files aren't falsely blocked.
+def _build_project_roots() -> tuple[list[Path], Path]:
+    """Return (project_roots, cwd_resolved) for absolute path resolution."""
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR", "")
     actual_cwd = os.getcwd()
-    project_roots = []
+    roots: list[Path] = []
     if project_dir:
-        project_roots.append(Path(to_windows_path(project_dir)).resolve())
+        roots.append(Path(to_windows_path(project_dir)).resolve())
     cwd_resolved = Path(to_windows_path(actual_cwd)).resolve()
-    if not project_roots or cwd_resolved != project_roots[0]:
-        project_roots.append(cwd_resolved)
-    # Primary cwd for relative path computation (prefer actual cwd for worktrees)
-    cwd = cwd_resolved
+    if not roots or cwd_resolved != roots[0]:
+        roots.append(cwd_resolved)
+    return roots, cwd_resolved
 
-    def is_within_any_project(fp: Path) -> bool:
-        return any(is_within(fp, root) for root in project_roots)
 
-    def best_project_root(fp: Path) -> Path:
-        """Return the project root that contains fp, preferring actual cwd."""
-        for root in reversed(project_roots):  # reversed so cwd_resolved wins
-            if is_within(fp, root):
-                return root
-        return cwd
+def _is_within_any(fp: Path, roots: list[Path]) -> bool:
+    return any(is_within(fp, root) for root in roots)
 
-    # Check if within home directory - needed for prioritization
+
+def _best_root(fp: Path, roots: list[Path], fallback: Path) -> Path:
+    for root in reversed(roots):
+        if is_within(fp, root):
+            return root
+    return fallback
+
+
+def _handle_unc(tool_name: str, path_str: str) -> None:
+    """CASE 3: UNC paths — fix if within project, block otherwise."""
+    normalized = normalize_separators(path_str)
+    cwd_str = normalize_separators(os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())).rstrip("/")
+    if normalized.lower().startswith(cwd_str.lower() + "/"):
+        relative = normalized[len(cwd_str) + 1 :]
+        if not relative or relative == "/":
+            log_decision(tool_name, path_str, "allowed", "UNC path is project root")
+            sys.exit(0)
+        fix_and_allow(tool_name, path_str, relative, "UNC path within project")
+    filename = normalized.rsplit("/", 1)[-1]
+    block(tool_name, path_str, "UNC path outside project", filename)
+
+
+def _handle_absolute_in_home(
+    tool_name: str,
+    path_str: str,
+    file_path: Path,
+    home: Path,
+    roots: list[Path],
+    cwd: Path,
+) -> None:
+    """Handle absolute path that is within the home directory."""
+    home_relative = str(file_path.relative_to(home)).replace(BACKSLASH, "/")
+    if home_relative.startswith("."):
+        fix_and_allow(tool_name, path_str, f"~/{home_relative}", "absolute dotfile path")
+    if _is_within_any(file_path, roots):
+        root = _best_root(file_path, roots, cwd)
+        relative = str(file_path.relative_to(root)).replace(BACKSLASH, "/")
+        if "/" not in relative:
+            log_decision(tool_name, path_str, "allowed", "file in cwd (filename only)")
+            sys.exit(0)
+        fix_and_allow(tool_name, path_str, relative, "absolute path within project")
+    fix_and_allow(tool_name, path_str, f"~/{home_relative}", "absolute path within home")
+
+
+def _handle_absolute(tool_name: str, path_str: str) -> None:
+    """CASE 6: Absolute path — fix if within project/home, block if outside."""
+    win_path = to_windows_path(path_str)
+    file_path = Path(win_path).resolve()
+    home = get_windows_home(win_path)
+    roots, cwd = _build_project_roots()
+
     if is_within(file_path, home):
-        home_relative = str(file_path.relative_to(home)).replace(BACKSLASH, "/")
+        _handle_absolute_in_home(tool_name, path_str, file_path, home, roots, cwd)
 
-        # Priority 1: Dotfiles in home (like ~/.dotfiles/...) should use home-relative
-        # for portability, even if cwd is within the dotfiles directory
-        if home_relative.startswith("."):
-            fixed = f"~/{home_relative}"
-            fix_and_allow(tool_name, path_str, fixed, "absolute dotfile path")
-
-        # Priority 2: If within any project root (and not a dotfile), use relative (shorter)
-        if is_within_any_project(file_path):
-            root = best_project_root(file_path)
-            relative = str(file_path.relative_to(root)).replace(BACKSLASH, "/")
-            if "/" not in relative:
-                log_decision(tool_name, path_str, "allowed", "file in cwd (filename only)")
-                sys.exit(0)
-            fix_and_allow(tool_name, path_str, relative, "absolute path within project")
-
-        # Priority 3: Within home but not cwd -> use home-relative
-        fixed = f"~/{home_relative}"
-        fix_and_allow(tool_name, path_str, fixed, "absolute path within home")
-
-    # Within any project root but not home -> use relative to best root
-    if is_within_any_project(file_path):
-        root = best_project_root(file_path)
+    if _is_within_any(file_path, roots):
+        root = _best_root(file_path, roots, cwd)
         relative = str(file_path.relative_to(root)).replace(BACKSLASH, "/")
         if "/" not in relative:
             log_decision(tool_name, path_str, "allowed", "file in cwd (filename only)")
             sys.exit(0)
         fix_and_allow(tool_name, path_str, relative, "absolute path within project")
 
-    # Outside allowed areas -> BLOCK with filename suggestion (ambiguous - can't auto-fix)
-    # Use string operations to extract filename since Path.name can fail with
-    # cross-platform paths (e.g., Windows path on Unix)
     normalized = normalize_separators(path_str)
     filename = normalized.rsplit("/", 1)[-1]
     block(tool_name, path_str, "absolute path outside project/home", filename)
+
+
+def _parse_hook_input() -> tuple[str, str]:
+    """Parse stdin JSON and return (tool_name, path_str), or exit on invalid input."""
+    try:
+        data = json.load(sys.stdin)
+    except json.JSONDecodeError:
+        sys.exit(1)
+    tool_name = data.get("tool_name", "")
+    if tool_name not in ("Edit", "Write"):
+        sys.exit(0)
+    tool_input = data.get("tool_input")
+    if not isinstance(tool_input, dict):
+        sys.exit(0)
+    path_str = tool_input.get("file_path", "")
+    if not path_str or not isinstance(path_str, str):
+        sys.exit(0)
+    return tool_name, path_str
+
+
+def _handle_plan_file(tool_name: str, path_str: str, normalized: str) -> None:
+    """CASE 0: Allow plan files without normalization."""
+    if ".claude/plans/" in normalized or normalized.endswith(".claude/plans"):
+        log_decision(tool_name, path_str, "allowed", "plan file path")
+        sys.exit(0)
+
+
+def _handle_home_relative(tool_name: str, path_str: str, has_backslash: bool) -> None:
+    """CASE 1: Home-relative paths (~/ or ~\\)."""
+    if not (path_str.startswith("~/") or path_str.startswith("~" + BACKSLASH)):
+        return
+    if has_backslash:
+        fix_and_allow(
+            tool_name,
+            path_str,
+            path_str.replace(BACKSLASH, "/"),
+            "backslash in home-relative path",
+        )
+    log_decision(tool_name, path_str, "allowed", "home-relative path")
+    sys.exit(0)
+
+
+def _handle_unix_system(tool_name: str, path_str: str) -> None:
+    """CASE 2: Unix system paths — allow for WSL compatibility."""
+    if path_str.startswith(("/dev/", "/proc/", "/tmp/", "/var/")):
+        log_decision(tool_name, path_str, "allowed", "unix system path")
+        sys.exit(0)
+
+
+def _handle_relative_backslash(
+    tool_name: str, path_str: str, is_abs: bool, has_backslash: bool
+) -> None:
+    """CASE 4: Relative path with backslashes — fix transparently."""
+    if not is_abs and has_backslash:
+        fix_and_allow(
+            tool_name,
+            path_str,
+            path_str.replace(BACKSLASH, "/"),
+            "backslash in relative path",
+        )
+
+
+def main() -> None:
+    if is_hook_disabled():
+        sys.exit(0)
+
+    tool_name, path_str = _parse_hook_input()
+    normalized = normalize_separators(path_str)
+    has_backslash = BACKSLASH in path_str
+
+    _handle_plan_file(tool_name, path_str, normalized)
+    _handle_home_relative(tool_name, path_str, has_backslash)
+    _handle_unix_system(tool_name, path_str)
+
+    is_abs = is_absolute(path_str)
+
+    if is_unc_path(path_str):
+        _handle_unc(tool_name, path_str)
+
+    _handle_relative_backslash(tool_name, path_str, is_abs, has_backslash)
+
+    if not is_abs:
+        log_decision(tool_name, path_str, "allowed", "clean relative path")
+        sys.exit(0)
+
+    _handle_absolute(tool_name, path_str)
 
 
 if __name__ == "__main__":
