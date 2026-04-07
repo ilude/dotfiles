@@ -1,2 +1,24 @@
 # Validator names to skip (one per line)
 # Example: eslint-flat
+commit-guard.ts
+damage-control.ts
+prompt-router.ts
+pwsh.ts
+quality-gates.ts
+agents.ts
+web-tools.ts
+signature.py
+content.py
+entities.py
+ingest.py
+jobs.py
+usage.py
+callbacks.py
+chunking.py
+docling.py
+pipeline_orchestrator.py
+reranker.py
+resource_key.py
+storage.py
+url_detector.py
+youtube.py
