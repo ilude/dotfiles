@@ -43,9 +43,10 @@ import re
 import subprocess
 import sys
 import time
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import yaml
 
@@ -100,55 +101,46 @@ def compile_regex_patterns(patterns: list[dict[str, Any]]) -> list[dict[str, Any
     return compiled
 
 
+def _build_glob_path_obj(path: str) -> Optional[dict[str, Any]]:
+    """Build pre-processed glob path object, or None if invalid."""
+    path_obj: dict[str, Any] = {"original": path, "is_glob": True}
+    try:
+        glob_regex_str = glob_to_regex(path)
+        path_obj["glob_regex"] = re.compile(glob_regex_str, re.IGNORECASE)
+        return path_obj
+    except re.error as e:
+        print(f"Warning: Invalid glob pattern: {path} - {e}", file=sys.stderr)
+        return None
+
+
+def _build_literal_path_obj(path: str) -> Optional[dict[str, Any]]:
+    """Build pre-processed literal path object, or None if invalid."""
+    path_obj: dict[str, Any] = {"original": path, "is_glob": False}
+    try:
+        expanded = os.path.expanduser(path)
+        path_obj["expanded"] = expanded
+        path_obj["escaped_expanded"] = re.escape(expanded)
+        path_obj["escaped_original"] = re.escape(path)
+        return path_obj
+    except Exception as e:
+        print(f"Warning: Failed to process path: {path} - {e}", file=sys.stderr)
+        return None
+
+
 def preprocess_path_list(paths: list[str]) -> list[dict[str, Any]]:
     """Pre-process path list for fast matching.
 
     For glob patterns: pre-compile glob-to-regex conversion
     For literal paths: pre-compute expanded path and escaped forms
-
-    Args:
-        paths: List of path strings (may contain globs like *.pem or literals like ~/.ssh/)
-
-    Returns:
-        List of path dictionaries with pre-computed data:
-        - is_glob: bool
-        - original: str (original path string)
-        - glob_regex: compiled regex (only for globs)
-        - expanded: str (only for literals)
-        - escaped_expanded: str (only for literals)
-        - escaped_original: str (only for literals)
     """
     processed = []
     for path in paths:
         if not path:
             continue
-
-        path_obj = {
-            "original": path,
-            "is_glob": is_glob_pattern(path),
-        }
-
-        if path_obj["is_glob"]:
-            # Pre-compile glob-to-regex for command matching
-            try:
-                glob_regex_str = glob_to_regex(path)
-                path_obj["glob_regex"] = re.compile(glob_regex_str, re.IGNORECASE)
-            except re.error as e:
-                print(f"Warning: Invalid glob pattern: {path} - {e}", file=sys.stderr)
-                continue
-        else:
-            # Pre-compute expanded path and escaped forms for literal paths
-            try:
-                expanded = os.path.expanduser(path)
-                path_obj["expanded"] = expanded
-                path_obj["escaped_expanded"] = re.escape(expanded)
-                path_obj["escaped_original"] = re.escape(path)
-            except Exception as e:
-                print(f"Warning: Failed to process path: {path} - {e}", file=sys.stderr)
-                continue
-
-        processed.append(path_obj)
-
+        builder = _build_glob_path_obj if is_glob_pattern(path) else _build_literal_path_obj
+        path_obj = builder(path)
+        if path_obj is not None:
+            processed.append(path_obj)
     return processed
 
 
@@ -158,45 +150,22 @@ def compile_config(config: dict[str, Any]) -> dict[str, Any]:
     Pre-processes all patterns and paths at load time:
     - Compiles all regex patterns with IGNORECASE
     - Pre-processes all path lists (glob-to-regex, expanduser, re.escape)
-
-    Args:
-        config: Raw configuration from load_config()
-
-    Returns:
-        Compiled configuration with pre-computed data added
     """
     compiled = config.copy()
-
-    # Compile bashToolPatterns regex patterns
-    patterns = config.get("bashToolPatterns", [])
-    compiled["bashToolPatterns_compiled"] = compile_regex_patterns(patterns)
-
-    # Pre-process all path lists
-    zero_access = config.get("zeroAccessPaths", [])
-    compiled["zeroAccessPaths_compiled"] = preprocess_path_list(zero_access)
-
-    read_only = config.get("readOnlyPaths", [])
-    compiled["readOnlyPaths_compiled"] = preprocess_path_list(read_only)
-
-    no_delete = config.get("noDeletePaths", [])
-    compiled["noDeletePaths_compiled"] = preprocess_path_list(no_delete)
-
+    compiled["bashToolPatterns_compiled"] = compile_regex_patterns(
+        config.get("bashToolPatterns", [])
+    )
+    compiled["zeroAccessPaths_compiled"] = preprocess_path_list(config.get("zeroAccessPaths", []))
+    compiled["readOnlyPaths_compiled"] = preprocess_path_list(config.get("readOnlyPaths", []))
+    compiled["noDeletePaths_compiled"] = preprocess_path_list(config.get("noDeletePaths", []))
     return compiled
 
 
 def get_compiled_config() -> dict[str, Any]:
-    """Get compiled configuration, using module-level cache.
-
-    Loads and compiles configuration once, then returns cached version
-    on subsequent calls. Cache persists for the lifetime of the process.
-
-    Returns:
-        Compiled configuration dictionary
-    """
+    """Get compiled configuration, using module-level cache."""
     global _compiled_config_cache
 
     if _compiled_config_cache is None:
-        # Load and compile configuration once
         raw_config = load_config()
         _compiled_config_cache = compile_config(raw_config)
 
@@ -213,71 +182,60 @@ def get_log_path() -> Path:
 
     Creates ~/.claude/logs/damage-control/ directory if it doesn't exist.
     Returns path in format: ~/.claude/logs/damage-control/YYYY-MM-DD.log
-
-    All entries for a given day are appended to the same file (JSONL format).
-
-    Returns:
-        Path object for the daily log file.
     """
     logs_dir = Path(os.path.expanduser("~")) / ".claude" / "logs" / "damage-control"
     logs_dir.mkdir(parents=True, exist_ok=True)
 
-    # Use date-only for daily log files
     date_str = datetime.now().strftime("%Y-%m-%d")
-    filename = f"{date_str}.log"
+    return logs_dir / f"{date_str}.log"
 
-    return logs_dir / filename
+
+# Secret-redaction patterns: (regex, flags)
+_REDACTION_PATTERNS: list[tuple[str, int]] = [
+    (r"apikey\s*=\s*[\w\-\.]+", re.IGNORECASE),
+    (r"api_key\s*=\s*[\w\-\.]+", re.IGNORECASE),
+    (r"token\s*=\s*[\w\-\.]{20,}", re.IGNORECASE),
+    (r"bearer\s+[\w\-\.]+", re.IGNORECASE),
+    (r"password\s*=\s*\S+", re.IGNORECASE),
+    (r"passwd\s*=\s*\S+", re.IGNORECASE),
+    (r"pwd\s*=\s*\S+", re.IGNORECASE),
+    (r"-p\S+", 0),  # MySQL -pPassword or similar
+    (r"AKIA[0-9A-Z]{16}", 0),
+    (r"secret\s*=\s*\S+", re.IGNORECASE),
+    (r"credential\s*=\s*\S+", re.IGNORECASE),
+    (r"GITHUB_TOKEN\s*=\s*\S+", re.IGNORECASE),
+    (r"NPM_TOKEN\s*=\s*\S+", re.IGNORECASE),
+    (r"DOCKER_PASSWORD\s*=\s*\S+", re.IGNORECASE),
+]
 
 
 def redact_secrets(command: str) -> str:
     """Redact sensitive information from command string.
 
-    Patterns redacted (case-insensitive):
-    - API keys: apikey=, api_key=, token= (20+ chars), bearer
-    - Passwords: password=, passwd=, pwd=
-    - AWS keys: AKIA[0-9A-Z]{16}
-    - Secrets: secret=, credential=
-    - Env vars: GITHUB_TOKEN=, NPM_TOKEN=, DOCKER_PASSWORD=
-
-    Args:
-        command: Command string that may contain secrets.
-
-    Returns:
-        Command string with secrets replaced by ***REDACTED***.
+    Returns the command with secrets replaced by ***REDACTED***.
     """
     redacted = command
-
-    # List of patterns to redact, with optional character constraints
-    patterns = [
-        # API keys and tokens
-        (r"apikey\s*=\s*[\w\-\.]+", re.IGNORECASE),
-        (r"api_key\s*=\s*[\w\-\.]+", re.IGNORECASE),
-        (r"token\s*=\s*[\w\-\.]{20,}", re.IGNORECASE),
-        (r"bearer\s+[\w\-\.]+", re.IGNORECASE),
-        # Passwords (match any non-space after = or flag-attached like -pPassword)
-        (r"password\s*=\s*\S+", re.IGNORECASE),
-        (r"passwd\s*=\s*\S+", re.IGNORECASE),
-        (r"pwd\s*=\s*\S+", re.IGNORECASE),
-        (r"-p\S+", 0),  # MySQL -pPassword or similar
-        # AWS access keys
-        (r"AKIA[0-9A-Z]{16}", 0),
-        # Secrets and credentials
-        (r"secret\s*=\s*\S+", re.IGNORECASE),
-        (r"credential\s*=\s*\S+", re.IGNORECASE),
-        # Environment variables with sensitive values
-        (r"GITHUB_TOKEN\s*=\s*\S+", re.IGNORECASE),
-        (r"NPM_TOKEN\s*=\s*\S+", re.IGNORECASE),
-        (r"DOCKER_PASSWORD\s*=\s*\S+", re.IGNORECASE),
-    ]
-
-    for pattern, flags in patterns:
+    for pattern, flags in _REDACTION_PATTERNS:
         try:
             redacted = re.sub(pattern, "***REDACTED***", redacted, flags=flags)
         except re.error:
-            # Skip invalid patterns
             pass
-
     return redacted
+
+
+def _truncate_for_log(text: str, limit: int = 200) -> str:
+    """Truncate text to limit chars, appending ellipsis when truncated."""
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "..."
+
+
+@dataclass
+class DecisionFlags:
+    """Metadata flags accompanying a security decision log entry."""
+
+    unwrapped: bool = False
+    semantic_match: bool = False
 
 
 def log_decision(
@@ -286,103 +244,78 @@ def log_decision(
     decision: str,
     reason: str,
     pattern_matched: str = "",
-    unwrapped: bool = False,
-    semantic_match: bool = False,
+    flags: Optional[DecisionFlags] = None,
     context: Optional[str] = None,
 ) -> None:
     """Log security decision to audit log in JSONL format.
 
     One JSON object per line, containing timestamp, tool, command (truncated),
     redacted command, decision (blocked/ask/allowed), reason, flags, and context.
-
-    Args:
-        tool_name: Name of the tool (e.g., "Bash").
-        command: Full command that was checked.
-        decision: Security decision ("blocked", "ask", or "allowed").
-        reason: Human-readable reason for the decision.
-        pattern_matched: Pattern that matched (if any), e.g., "semantic_git" or
-            "regex_pattern_name".
-        unwrapped: True if command was unwrapped from a shell wrapper.
-        semantic_match: True if decision based on semantic analysis
-            (e.g., git dangerous operations).
-        context: Context name if applicable (e.g., "documentation", "commit_message").
     """
+    flags = flags or DecisionFlags()
     try:
-        log_path = get_log_path()
-
-        # Truncate command to 200 chars for display
-        command_truncated = command[:200]
-        if len(command) > 200:
-            command_truncated += "..."
-
-        # Create redacted version for logging
-        command_redacted = redact_secrets(command)
-        command_redacted_truncated = command_redacted[:200]
-        if len(command_redacted) > 200:
-            command_redacted_truncated += "..."
-
-        # Get context information
-        user = os.getenv("USER", "unknown")
-        cwd = os.getcwd()
-
-        # Build JSONL record
         log_entry = {
             "timestamp": datetime.now().isoformat(),
             "tool": tool_name,
-            "command": command_truncated,
-            "command_redacted": command_redacted_truncated,
+            "command": _truncate_for_log(command),
+            "command_redacted": _truncate_for_log(redact_secrets(command)),
             "decision": decision,
             "reason": reason,
             "pattern_matched": pattern_matched,
-            "user": user,
-            "cwd": cwd,
-            "unwrapped": unwrapped,
-            "semantic_match": semantic_match,
+            "user": os.getenv("USER", "unknown"),
+            "cwd": os.getcwd(),
+            "unwrapped": flags.unwrapped,
+            "semantic_match": flags.semantic_match,
             "context": context,
         }
-
-        # Write as JSONL (one JSON object per line)
-        with open(log_path, "a") as f:
+        with open(get_log_path(), "a") as f:
             f.write(json.dumps(log_entry) + "\n")
-
     except Exception as e:
-        # Never crash the hook due to logging failure
         print(f"Warning: Failed to write audit log: {e}", file=sys.stderr)
+
+
+def _build_rotation_kwargs() -> dict[str, Any]:
+    """Build platform-specific subprocess kwargs for fire-and-forget rotation."""
+    kwargs: dict[str, Any] = {
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
+    if sys.platform == "win32":
+        kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW
+    else:
+        kwargs["start_new_session"] = True
+    return kwargs
+
+
+def _rotation_recently_ran(ts_file: Path) -> bool:
+    """Return True if rotation has run within the last hour (debounce)."""
+    try:
+        if ts_file.exists() and (time.time() - ts_file.stat().st_mtime) < 3600:
+            return True
+        ts_file.touch()
+    except OSError:
+        pass
+    return False
 
 
 def spawn_log_rotation() -> None:
     """Fire-and-forget log rotation. Non-blocking, cross-platform.
 
     Debounced: only spawns the rotation subprocess if >1 hour has elapsed
-    since the last rotation attempt. This prevents spawning dozens of
-    useless processes per hour (logs only rotate after 30 days).
+    since the last rotation attempt.
     """
     rotate_script = Path(__file__).parent / "log_rotate.py"
     if not rotate_script.exists():
         return
-    # Debounce: check timestamp file to avoid spawning on every hook call
-    ts_file = Path(__file__).parent / ".last-rotation"
+    if _rotation_recently_ran(Path(__file__).parent / ".last-rotation"):
+        return
     try:
-        if ts_file.exists():
-            age = time.time() - ts_file.stat().st_mtime
-            if age < 3600:  # 1 hour
-                return
-        ts_file.touch()
+        subprocess.Popen(
+            [sys.executable, str(rotate_script)],
+            **_build_rotation_kwargs(),
+        )
     except OSError:
-        pass  # Continue even if timestamp check fails
-    try:
-        kwargs = {
-            "stdout": subprocess.DEVNULL,
-            "stderr": subprocess.DEVNULL,
-        }
-        if sys.platform == "win32":
-            kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW
-        else:
-            kwargs["start_new_session"] = True
-
-        subprocess.Popen([sys.executable, str(rotate_script)], **kwargs)
-    except OSError:
-        pass  # Don't crash hook if rotation fails to spawn
+        pass
 
 
 # ============================================================================
@@ -393,74 +326,70 @@ def spawn_log_rotation() -> None:
 def extract_system_call(python_code: str) -> Optional[str]:
     """Extract shell commands from Python code strings.
 
-    Detects patterns like:
-    - os.system('cmd')
-    - subprocess.run(['cmd', 'args'])
-    - subprocess.call(['cmd'])
-    - subprocess.Popen(['cmd'])
-
-    Args:
-        python_code: Python code string to analyze
-
-    Returns:
-        Extracted command string or None if no system call found
+    Detects patterns like os.system('cmd'), subprocess.run(['cmd', 'args']), etc.
     """
     if not python_code:
         return None
 
-    # Pattern for os.system('command') or os.system("command")
-    system_patterns = [
+    string_patterns = [
         r'os\.system\s*\(\s*["\']([^"\']+)["\']\s*\)',
         r'subprocess\.(?:run|call|check_call|check_output|Popen)\s*\(\s*["\']([^"\']+)["\']\s*\)',
     ]
-
-    for pattern in system_patterns:
+    for pattern in string_patterns:
         match = re.search(pattern, python_code)
         if match:
             return match.group(1)
 
-    # Pattern for subprocess with list arguments: ['cmd', 'arg1', 'arg2']
     list_pattern = r"subprocess\.(?:run|call|check_call|check_output|Popen)\s*\(\s*\[([^\]]+)\]"
     match = re.search(list_pattern, python_code)
     if match:
-        # Extract list contents and join as command
-        list_contents = match.group(1)
-        # Remove quotes and commas, split by whitespace
-        parts = re.findall(r'["\']([^"\']+)["\']', list_contents)
+        parts = re.findall(r'["\']([^"\']+)["\']', match.group(1))
         if parts:
             return " ".join(parts)
 
     return None
 
 
+_SHELL_WRAPPERS = ("bash", "sh", "zsh", "ksh", "dash")
+_PYTHON_WRAPPERS = ("python", "python2", "python3")
+
+
+def _try_unwrap_shell_dash_c(command: str) -> Optional[str]:
+    """If command is `<shell> -c "..."`, return the inner command."""
+    for shell in _SHELL_WRAPPERS:
+        pattern = rf'\b{shell}\s+-c\s+(["\'])(.+?)\1'
+        match = re.search(pattern, command)
+        if match:
+            return match.group(2)
+    return None
+
+
+def _try_unwrap_python_dash_c(command: str) -> Optional[str]:
+    """If command is `<python> -c "..."`, return the extracted shell call or code."""
+    for python_cmd in _PYTHON_WRAPPERS:
+        pattern = rf'\b{python_cmd}\s+-c\s+(["\'])(.+?)\1'
+        match = re.search(pattern, command)
+        if match:
+            python_code = match.group(2)
+            return extract_system_call(python_code) or python_code
+    return None
+
+
+def _try_unwrap_env(command: str) -> Optional[str]:
+    """If command is an `env VAR=val ...` invocation, return the inner command."""
+    # Anchor to start (or after | ; &) to avoid matching `poetry env remove` etc.
+    env_pattern = r"(?:^|[|;&]+\s*)env\s+(?:[A-Z_][A-Z0-9_]*=[^\s]+\s+)*(.+)"
+    match = re.search(env_pattern, command)
+    return match.group(1) if match else None
+
+
 def unwrap_command(command: str, depth: int = 0) -> tuple[str, bool]:
     """Recursively unwrap shell wrapper commands.
 
-    Detects and unwraps commands hidden in shell wrappers:
-    - bash/sh/zsh/ksh/dash -c "command"
-    - python/python2/python3 -c "code"
-    - env VAR=val command
-    - Nested wrappers up to depth 5
-
-    Args:
-        command: Command string to unwrap
-        depth: Current recursion depth (max 5)
-
-    Returns:
-        Tuple of (unwrapped_command, was_unwrapped)
-        - unwrapped_command: The innermost command found
-        - was_unwrapped: True if any unwrapping occurred
-
-    Examples:
-        >>> unwrap_command('bash -c "rm -rf /"')
-        ('rm -rf /', True)
-        >>> unwrap_command('python -c "import os; os.system(\\"rm -rf /\\")"')
-        ('rm -rf /', True)
-        >>> unwrap_command('bash -c "sh -c \'rm -rf /\'"')
-        ('rm -rf /', True)
+    Detects bash/sh/zsh/ksh/dash -c, python -c, and env VAR=val wrappers.
+    Returns (unwrapped_command, was_unwrapped). Recursion is capped at depth 5.
     """
     if depth >= 5:
-        # Max recursion depth reached, return what we have
         return command, depth > 0
 
     if not command or not command.strip():
@@ -468,45 +397,11 @@ def unwrap_command(command: str, depth: int = 0) -> tuple[str, bool]:
 
     command = command.strip()
 
-    # Pattern for shell -c wrappers: bash -c "command" or sh -c 'command'
-    shell_wrappers = ["bash", "sh", "zsh", "ksh", "dash"]
-    for shell in shell_wrappers:
-        # Match: shell -c "command" or shell -c 'command'
-        # Handle both single and double quotes
-        pattern = rf'\b{shell}\s+-c\s+(["\'])(.+?)\1'
-        match = re.search(pattern, command)
-        if match:
-            inner_command = match.group(2)
-            # Recursively unwrap in case of nested wrappers
-            return unwrap_command(inner_command, depth + 1)
+    for unwrapper in (_try_unwrap_shell_dash_c, _try_unwrap_python_dash_c, _try_unwrap_env):
+        inner = unwrapper(command)
+        if inner is not None:
+            return unwrap_command(inner, depth + 1)
 
-    # Pattern for Python -c wrappers: python -c "code"
-    python_wrappers = ["python", "python2", "python3"]
-    for python_cmd in python_wrappers:
-        pattern = rf'\b{python_cmd}\s+-c\s+(["\'])(.+?)\1'
-        match = re.search(pattern, command)
-        if match:
-            python_code = match.group(2)
-            # Extract system calls from Python code
-            extracted = extract_system_call(python_code)
-            if extracted:
-                # Recursively unwrap in case of nested wrappers
-                return unwrap_command(extracted, depth + 1)
-            # If no system call found, return the Python code itself
-            # (it might still contain dangerous operations)
-            return unwrap_command(python_code, depth + 1)
-
-    # Pattern for env wrappers: env VAR=val command
-    # Anchor to start of command (or after | ; && ||) to avoid matching
-    # "env" as a subcommand of other tools (e.g., "poetry env remove")
-    env_pattern = r"(?:^|[|;&]+\s*)env\s+(?:[A-Z_][A-Z0-9_]*=[^\s]+\s+)*(.+)"
-    match = re.search(env_pattern, command)
-    if match:
-        inner_command = match.group(1)
-        # Recursively unwrap in case of nested wrappers
-        return unwrap_command(inner_command, depth + 1)
-
-    # No wrapper found
     return command, depth > 0
 
 
@@ -517,40 +412,25 @@ def unwrap_command(command: str, depth: int = 0) -> tuple[str, bool]:
 # Commands that only read/query information and don't access file contents
 # These can safely reference zero-access paths without triggering blocks
 READONLY_GIT_COMMANDS = [
-    # Git info commands that don't read file contents
-    r"\bgit\s+check-ignore\b",  # Check .gitignore rules
-    r"\bgit\s+ls-files\b",  # List tracked files
-    r"\bgit\s+ls-tree\b",  # List tree contents
-    r"\bgit\s+status\b",  # Show working tree status
-    r"\bgit\s+diff\s+--name",  # Show changed file names only
-    r"\bgit\s+log\s+--name",  # Show log with file names only
-    r"\bgit\s+rev-parse\b",  # Parse revisions
-    r"\bgit\s+branch\b",  # List/manage branches (without -D)
-    r"\bgit\s+remote\b",  # List remotes
-    r"\bgit\s+config\b",  # Read/write config
-    r"\bgit\s+show-ref\b",  # List references
+    r"\bgit\s+check-ignore\b",
+    r"\bgit\s+ls-files\b",
+    r"\bgit\s+ls-tree\b",
+    r"\bgit\s+status\b",
+    r"\bgit\s+diff\s+--name",
+    r"\bgit\s+log\s+--name",
+    r"\bgit\s+rev-parse\b",
+    r"\bgit\s+branch\b",
+    r"\bgit\s+remote\b",
+    r"\bgit\s+config\b",
+    r"\bgit\s+show-ref\b",
     # git rm --cached only removes from index, not filesystem
-    # Must match various flag orderings: git rm --cached, git rm -r --cached, git rm --cached -r
-    r"\bgit\s+rm\s+.*--cached\b",  # Remove from index only (files stay on disk)
+    r"\bgit\s+rm\s+.*--cached\b",
 ]
 
 
 def is_readonly_git_command(command: str) -> bool:
-    """Check if command is a read-only git command that doesn't access file contents.
-
-    These commands can safely reference zero-access paths (like .terraform/)
-    because they only query git metadata, not actual file contents.
-
-    Args:
-        command: Command string to check
-
-    Returns:
-        True if command is a read-only git info command
-    """
-    for pattern in READONLY_GIT_COMMANDS:
-        if re.search(pattern, command, re.IGNORECASE):
-            return True
-    return False
+    """Check if command is a read-only git command that doesn't access file contents."""
+    return any(re.search(p, command, re.IGNORECASE) for p in READONLY_GIT_COMMANDS)
 
 
 # ============================================================================
@@ -561,36 +441,41 @@ def is_readonly_git_command(command: str) -> bool:
 def strip_bash_comments(command: str) -> str:
     """Strip bash comments from a command string.
 
-    Removes:
-    - Full-line comments (lines starting with optional whitespace then #)
-    - Inline comments (# followed by space, outside of quotes)
-
-    Preserves:
-    - # inside quoted strings ("foo # bar", 'foo # bar')
-    - # in parameter expansion (${var#pattern})
-    - Shebang lines (#!/...)
-
-    Args:
-        command: Raw command string, possibly multi-line
-
-    Returns:
-        Command with comments removed, empty lines collapsed
+    Removes full-line and inline comments while preserving #-in-quotes,
+    parameter expansion (${var#pattern}) and shebang lines.
     """
-    lines = command.split("\n")
     result_lines = []
-
-    for line in lines:
+    for line in command.split("\n"):
         stripped = line.lstrip()
-        # Full-line comment (but not shebang)
         if stripped.startswith("#") and not stripped.startswith("#!"):
             continue
-
-        # Strip inline comments (# outside quotes)
         cleaned = _strip_inline_comment(line)
         if cleaned.strip():
             result_lines.append(cleaned)
-
     return "\n".join(result_lines)
+
+
+@dataclass
+class _QuoteState:
+    """Tracks single/double quote state during a left-to-right scan."""
+
+    in_single: bool = False
+    in_double: bool = False
+
+    def update(self, ch: str) -> None:
+        if ch == "'" and not self.in_double:
+            self.in_single = not self.in_single
+        elif ch == '"' and not self.in_single:
+            self.in_double = not self.in_double
+
+    @property
+    def in_quotes(self) -> bool:
+        return self.in_single or self.in_double
+
+
+def _is_comment_start(line: str, i: int) -> bool:
+    """Return True if `#` at position i begins an inline comment."""
+    return i == 0 or line[i - 1] in (" ", "\t")
 
 
 def _strip_inline_comment(line: str) -> str:
@@ -599,29 +484,18 @@ def _strip_inline_comment(line: str) -> str:
     Only strips # that is preceded by whitespace (or is at start)
     and is outside of single/double quotes.
     """
-    in_single = False
-    in_double = False
+    state = _QuoteState()
     i = 0
-
     while i < len(line):
         c = line[i]
-
-        # Handle escapes
-        if c == "\\" and not in_single and i + 1 < len(line):
+        # Handle escape (not inside single quotes)
+        if c == "\\" and not state.in_single and i + 1 < len(line):
             i += 2
             continue
-
-        if c == "'" and not in_double:
-            in_single = not in_single
-        elif c == '"' and not in_single:
-            in_double = not in_double
-        elif c == "#" and not in_single and not in_double:
-            # Only treat as comment if preceded by whitespace or at start
-            if i == 0 or line[i - 1] in (" ", "\t"):
-                return line[:i].rstrip()
-
+        if c == "#" and not state.in_quotes and _is_comment_start(line, i):
+            return line[:i].rstrip()
+        state.update(c)
         i += 1
-
     return line
 
 
@@ -630,36 +504,20 @@ def _strip_inline_comment(line: str) -> str:
 # ============================================================================
 
 # Tools that support --dry-run as a valid simulation/preview flag.
-# Only these tools get the --dry-run exemption from bashToolPatterns.
-# Verified via --help or official docs — do NOT add tools that use different
-# flags (terraform uses "plan", ansible uses "--check", pulumi uses "preview").
 _DRY_RUN_TOOLS = [
-    r"^\s*helm\b",  # helm upgrade/install/rollback/uninstall --dry-run
-    r"^\s*kubectl\b",  # kubectl apply/delete/scale --dry-run=client|server
-    r"^\s*docker\s+compose\b",  # docker compose up/down --dry-run
-    r"^\s*docker\b",  # docker (some subcommands)
-    r"^\s*argocd\s+app\s+sync\b",  # argocd app sync --dry-run (client-side only)
+    r"^\s*helm\b",
+    r"^\s*kubectl\b",
+    r"^\s*docker\s+compose\b",
+    r"^\s*docker\b",
+    r"^\s*argocd\s+app\s+sync\b",
 ]
 
 
 def _has_valid_dry_run(command: str) -> bool:
-    """Check if command uses --dry-run with a tool that actually supports it.
-
-    Only returns True when BOTH conditions are met:
-    1. The command contains --dry-run (or --dry-run=client, --dry-run=server)
-    2. The base command is a tool known to support --dry-run
-
-    This prevents 'rm -rf / --dry-run' from being exempted since rm does
-    not support --dry-run.
-    """
+    """Check if command uses --dry-run with a tool that actually supports it."""
     if not re.search(r"--dry-run\b", command):
         return False
-
-    for pattern in _DRY_RUN_TOOLS:
-        if re.search(pattern, command, re.IGNORECASE):
-            return True
-
-    return False
+    return any(re.search(pattern, command, re.IGNORECASE) for pattern in _DRY_RUN_TOOLS)
 
 
 # ============================================================================
@@ -667,9 +525,8 @@ def _has_valid_dry_run(command: str) -> bool:
 # ============================================================================
 
 # Read-only commands whose arguments may contain dangerous-looking strings
-# (e.g., grep "helm upgrade" Makefile, echo "kubectl scale ...") that should
-# NOT trigger bashToolPatterns. Includes search tools AND display-only commands.
-# Only the first command in a pipe chain is checked against this list.
+# that should NOT trigger bashToolPatterns. Only the first command in a pipe
+# chain is checked against this list.
 READONLY_SEARCH_COMMANDS = [
     # Search tools
     r"^\s*grep\b",
@@ -684,11 +541,11 @@ READONLY_SEARCH_COMMANDS = [
     r"^\s*git\s+diff\b",
     # File search tools
     r"^\s*find\b",
-    # Display-only commands (just print strings, never execute them)
+    # Display-only commands
     r"^\s*echo\b",
     r"^\s*printf\b",
-    r"^\s*cat\s*<<",  # cat with heredoc (display only)
-    # Read-only CLI subcommands (query only, no mutations)
+    r"^\s*cat\s*<<",
+    # Read-only CLI subcommands
     r"^\s*kubectl\s+get\b",
     r"^\s*kubectl\s+describe\b",
     r"^\s*kubectl\s+logs?\b",
@@ -710,7 +567,7 @@ READONLY_SEARCH_COMMANDS = [
     r"^\s*fd\b",
     r"^\s*locate\b",
     r"^\s*plocate\b",
-    # Directory/file info (read-only)
+    # Directory/file info
     r"^\s*ls\b",
     r"^\s*tree\b",
     r"^\s*stat\b",
@@ -746,18 +603,16 @@ READONLY_SEARCH_COMMANDS = [
 ]
 
 # Commands with no filesystem side effects — transparent to the read-only check.
-# These are skipped when validating compound commands (e.g., "cd /path && find ...").
 INERT_COMMANDS = [
     r"^\s*cd\b",
     r"^\s*pushd\b",
     r"^\s*popd\b",
     r"^\s*export\b",
     r"^\s*true\b",
-    r"^\s*:$",  # bash no-op
+    r"^\s*:$",
 ]
 
 # Safe pipe targets (read-only display/transform tools).
-# If a pipe target is NOT in this list, the whole pipeline is treated as non-read-only.
 READONLY_PIPE_TARGETS = [
     r"^\s*head\b",
     r"^\s*tail\b",
@@ -803,67 +658,88 @@ READONLY_PIPE_TARGETS = [
 ]
 
 
+def _flush_segment(current: list[str], segments: list[str]) -> list[str]:
+    """Flush the in-progress char buffer into segments and return a fresh buffer."""
+    segments.append("".join(current).strip())
+    return []
+
+
+def _consume_escape(buf: list[str], text: str, i: int, state: _QuoteState) -> Optional[int]:
+    """If text[i] starts a backslash escape, append the pair to buf and return new i."""
+    if text[i] == "\\" and not state.in_single and i + 1 < len(text):
+        buf.append(text[i])
+        buf.append(text[i + 1])
+        return i + 2
+    return None
+
+
+def _try_split_operator(
+    command: str,
+    i: int,
+    current: list[str],
+    segments: list[str],
+) -> tuple[list[str], int]:
+    """Handle a potential operator at command[i].
+
+    Returns ``(buffer, advance)`` where ``buffer`` is the next ``current`` list
+    (a fresh list when an operator was consumed) and ``advance`` is the number
+    of characters to step over.
+    """
+    consumed = _consume_operator(command, i, command[i])
+    if consumed == 0:
+        current.append(command[i])
+        return current, 1
+    return _flush_segment(current, segments), consumed
+
+
 def _split_on_shell_operators(command: str) -> list[str]:
     """Split command on &&, ||, ;, & respecting quoted strings.
 
-    Handles:
-    - ``&&`` (logical AND)
-    - ``||`` (logical OR)
-    - ``;``  (sequential)
-    - ``&``  (background — ``grep foo & rm bar`` runs both independently)
-
-    Returns independent command segments. Pipe chains (|) are kept intact
-    within each segment.
+    Handles ``&&``, ``||``, ``;``, and ``&`` (background). Pipe chains (|)
+    are kept intact within each segment.
     """
     segments: list[str] = []
     current: list[str] = []
+    state = _QuoteState()
     i = 0
-    in_single = False
-    in_double = False
+    n = len(command)
 
-    while i < len(command):
-        c = command[i]
-
-        # Handle escapes (not inside single quotes)
-        if c == "\\" and not in_single and i + 1 < len(command):
-            current.append(c)
-            current.append(command[i + 1])
-            i += 2
+    while i < n:
+        new_i = _consume_escape(current, command, i, state)
+        if new_i is not None:
+            i = new_i
             continue
 
-        if c == "'" and not in_double:
-            in_single = not in_single
+        c = command[i]
+        if state.in_quotes or c not in (";", "&", "|"):
             current.append(c)
-        elif c == '"' and not in_single:
-            in_double = not in_double
-            current.append(c)
-        elif not in_single and not in_double:
-            if c == ";":
-                segments.append("".join(current).strip())
-                current = []
-            elif c == "&" and i + 1 < len(command) and command[i + 1] == "&":
-                segments.append("".join(current).strip())
-                current = []
-                i += 1  # skip second &
-            elif c == "&":
-                # Single & (background) — still a separate command
-                segments.append("".join(current).strip())
-                current = []
-            elif c == "|" and i + 1 < len(command) and command[i + 1] == "|":
-                segments.append("".join(current).strip())
-                current = []
-                i += 1  # skip second |
-            else:
-                current.append(c)
-        else:
-            current.append(c)
+            state.update(c)
+            i += 1
+            continue
 
-        i += 1
+        current, advance = _try_split_operator(command, i, current, segments)
+        i += advance
 
     if current:
         segments.append("".join(current).strip())
 
     return [s for s in segments if s]
+
+
+def _consume_operator(command: str, i: int, c: str) -> int:
+    """Return number of chars consumed if a shell operator starts at i, else 0.
+
+    Recognises ``;``, ``&``, ``&&``, ``||``. A bare ``|`` is NOT a segment
+    operator (pipes stay intact within segments) and returns 0.
+    """
+    next_c = command[i + 1] if i + 1 < len(command) else ""
+    if c == ";":
+        return 1
+    if c == "&":
+        return 2 if next_c == "&" else 1
+    if c == "|" and next_c == "|":
+        return 2
+    return 0
 
 
 def _split_pipe_chain(segment: str) -> list[str]:
@@ -873,31 +749,21 @@ def _split_pipe_chain(segment: str) -> list[str]:
     """
     parts: list[str] = []
     current: list[str] = []
+    state = _QuoteState()
     i = 0
-    in_single = False
-    in_double = False
+    n = len(segment)
 
-    while i < len(segment):
-        c = segment[i]
-
-        if c == "\\" and not in_single and i + 1 < len(segment):
-            current.append(c)
-            current.append(segment[i + 1])
-            i += 2
+    while i < n:
+        new_i = _consume_escape(current, segment, i, state)
+        if new_i is not None:
+            i = new_i
             continue
-
-        if c == "'" and not in_double:
-            in_single = not in_single
-            current.append(c)
-        elif c == '"' and not in_single:
-            in_double = not in_double
-            current.append(c)
-        elif not in_single and not in_double and c == "|":
-            parts.append("".join(current).strip())
-            current = []
+        c = segment[i]
+        if not state.in_quotes and c == "|":
+            current = _flush_segment(current, parts)
         else:
             current.append(c)
-
+            state.update(c)
         i += 1
 
     if current:
@@ -906,47 +772,23 @@ def _split_pipe_chain(segment: str) -> list[str]:
     return [p for p in parts if p]
 
 
-def _is_readonly_search_pipeline(segment: str) -> bool:
-    """Check if a pipe chain is a read-only search pipeline.
+def _matches_any(text: str, patterns: list[str]) -> bool:
+    """Return True if any regex in patterns matches text (case-insensitive)."""
+    return any(re.search(p, text, re.IGNORECASE) for p in patterns)
 
-    True when the first command is a search tool and all pipe targets
-    are safe read-only transformers.
-    """
+
+def _is_readonly_search_pipeline(segment: str) -> bool:
+    """Check if a pipe chain is a read-only search pipeline."""
     pipe_parts = _split_pipe_chain(segment)
     if not pipe_parts:
         return False
-
-    # First command must be a search tool
-    first_cmd = pipe_parts[0]
-    if not any(re.search(p, first_cmd, re.IGNORECASE) for p in READONLY_SEARCH_COMMANDS):
+    if not _matches_any(pipe_parts[0], READONLY_SEARCH_COMMANDS):
         return False
-
-    # All subsequent pipe targets must be safe transformers
-    for target in pipe_parts[1:]:
-        if not any(re.search(p, target, re.IGNORECASE) for p in READONLY_PIPE_TARGETS):
-            return False
-
-    return True
+    return all(_matches_any(target, READONLY_PIPE_TARGETS) for target in pipe_parts[1:])
 
 
 def is_readonly_search_command(command: str) -> bool:
-    """Check if a compound command is a read-only search operation.
-
-    Splits on &&, ||, ; and checks each segment. Returns True when every
-    segment is either a read-only search pipeline OR an inert command
-    (cd, pushd, export, etc.), provided at least one segment is an actual
-    search pipeline.
-
-    Examples that return True:
-        grep "helm upgrade" Makefile
-        grep -r "helm upgrade" . | head -20
-        cd /path && find . -name "*.env*" | head -50
-
-    Examples that return False (correctly):
-        grep "helm upgrade" && helm upgrade release
-        grep "helm upgrade" | xargs helm upgrade
-        cd /tmp && cd /var  (inert-only, no search pipeline)
-    """
+    """Check if a compound command is a read-only search operation."""
     segments = _split_on_shell_operators(command)
     if not segments:
         return False
@@ -955,7 +797,7 @@ def is_readonly_search_command(command: str) -> bool:
     for seg in segments:
         if _is_readonly_search_pipeline(seg):
             has_search = True
-        elif any(re.search(p, seg.strip(), re.IGNORECASE) for p in INERT_COMMANDS):
+        elif _matches_any(seg.strip(), INERT_COMMANDS):
             continue
         else:
             return False
@@ -967,144 +809,107 @@ def is_readonly_search_command(command: str) -> bool:
 # ============================================================================
 
 
+def _has_combined_short_flag(args: list[str], flag_chars: str) -> bool:
+    """Return True if any short-flag bundle (e.g. ``-fb``) contains any of flag_chars."""
+    for arg in args:
+        if arg.startswith("-") and not arg.startswith("--") and len(arg) > 1:
+            if any(ch in arg[1:] for ch in flag_chars):
+                return True
+    return False
+
+
+def _checkout_discards_via_dash(args: list[str]) -> bool:
+    """True if `git checkout -- <paths>` form is present (discards local changes)."""
+    if "--" not in args:
+        return False
+    dash_idx = args.index("--")
+    return dash_idx < len(args) - 1
+
+
+def _analyze_git_checkout(args: list[str]) -> tuple[bool, str]:
+    """Semantic analysis for `git checkout ...`."""
+    # Safe: -b or --branch creates a new branch
+    if "-b" in args or "--branch" in args:
+        return False, ""
+
+    if _checkout_discards_via_dash(args):
+        return True, "git checkout with -- discards uncommitted changes"
+
+    if "--force" in args or "-f" in args or _has_combined_short_flag(args, "f"):
+        return True, "git checkout --force discards uncommitted changes"
+
+    return False, ""
+
+
+def _analyze_git_push(args: list[str], args_str: str) -> tuple[bool, str]:
+    """Semantic analysis for `git push ...`."""
+    # Safe: --force-with-lease (handled by patterns.yaml with ask: true)
+    if "--force-with-lease" in args_str:
+        return False, ""
+
+    if "--force" in args or "-f" in args:
+        return True, "git push --force can overwrite remote history without safety checks"
+
+    if _has_combined_short_flag(args, "f"):
+        return True, "git push -f can overwrite remote history without safety checks"
+
+    return False, ""
+
+
+def _analyze_git_reset(args: list[str]) -> tuple[bool, str]:
+    """Semantic analysis for `git reset ...`."""
+    if "--soft" in args or "--mixed" in args:
+        return False, ""
+    if "--hard" in args:
+        return True, "git reset --hard permanently discards uncommitted changes"
+    return False, ""
+
+
+def _analyze_git_clean(args: list[str]) -> tuple[bool, str]:
+    """Semantic analysis for `git clean ...`."""
+    if "-f" in args or "-d" in args:
+        return True, "git clean removes untracked files permanently"
+    if _has_combined_short_flag(args, "fd"):
+        return True, "git clean removes untracked files permanently"
+    return False, ""
+
+
+# Dispatch table mapping git subcommand → analyzer.
+# Each analyzer accepts (args, args_str) and returns (is_dangerous, reason).
+_GIT_ANALYZERS: dict[str, Callable[[list[str], str], tuple[bool, str]]] = {
+    "checkout": lambda args, _s: _analyze_git_checkout(args),
+    "push": _analyze_git_push,
+    "reset": lambda args, _s: _analyze_git_reset(args),
+    "clean": lambda args, _s: _analyze_git_clean(args),
+}
+
+
 def analyze_git_command(command: str) -> tuple[bool, str]:
     """Analyze git commands for dangerous operations based on semantic understanding.
 
     Distinguishes between safe and dangerous git operations:
-    - Safe: git checkout -b feature (creating branch)
-    - Dangerous: git checkout -- . (discard changes)
-    - Safe: git push --force-with-lease (safe force push)
-    - Dangerous: git push --force (unsafe force push)
+    - Safe: git checkout -b feature, git push --force-with-lease
+    - Dangerous: git checkout -- ., git reset --hard, git push --force
 
-    Args:
-        command: Command string to analyze
-
-    Returns:
-        Tuple of (is_dangerous, reason)
-        - is_dangerous: True if command is dangerous
-        - reason: Human-readable explanation of why it's dangerous
-
-    Examples:
-        >>> analyze_git_command('git checkout -b feature')
-        (False, '')
-        >>> analyze_git_command('git checkout -- .')
-        (True, 'git checkout with -- discards uncommitted changes')
-        >>> analyze_git_command('git push --force-with-lease')
-        (False, '')
-        >>> analyze_git_command('git push --force')
-        (True, 'git push --force can overwrite remote history')
+    Returns (is_dangerous, reason) — reason is empty when is_dangerous is False.
     """
     if not command or not command.strip():
         return False, ""
 
     command = command.strip()
-
-    # Check if it's a git command
     if not command.startswith("git "):
         return False, ""
 
-    # Parse command into parts
     parts = command.split()
     if len(parts) < 2:
-        return False, ""  # Just "git" with no subcommand
+        return False, ""
 
     subcommand = parts[1]
-    args = parts[2:] if len(parts) > 2 else []
-
-    # Join args for easier pattern matching
-    args_str = " ".join(args)
-
-    # ========================================================================
-    # GIT CHECKOUT
-    # ========================================================================
-    if subcommand == "checkout":
-        # Safe: -b or --branch (creating new branch)
-        if "-b" in args or "--branch" in args:
-            return False, ""
-
-        # Dangerous: -- with path arguments (discarding changes)
-        if "--" in args:
-            # Find position of --
-            try:
-                dash_idx = args.index("--")
-                # If there are arguments after --, it's discarding changes
-                if dash_idx < len(args) - 1:
-                    return True, "git checkout with -- discards uncommitted changes"
-            except ValueError:
-                pass
-
-        # Dangerous: --force or -f
-        if "--force" in args or "-f" in args:
-            return True, "git checkout --force discards uncommitted changes"
-
-        # Check for combined short flags containing -f
-        for arg in args:
-            if arg.startswith("-") and not arg.startswith("--") and len(arg) > 1:
-                # It's a short flag combination like -fb
-                if "f" in arg[1:]:  # Skip the first '-'
-                    return True, "git checkout -f discards uncommitted changes"
-
-    # ========================================================================
-    # GIT PUSH
-    # ========================================================================
-    elif subcommand == "push":
-        # Safe: --force-with-lease (handled by patterns.yaml with ask: true)
-        if "--force-with-lease" in args_str:
-            return False, ""
-
-        # Dangerous: --force (without lease)
-        if "--force" in args:
-            return (
-                True,
-                "git push --force can overwrite remote history without safety checks",
-            )
-
-        # Dangerous: -f short flag
-        if "-f" in args:
-            return (
-                True,
-                "git push -f can overwrite remote history without safety checks",
-            )
-
-        # Check for combined short flags containing -f
-        for arg in args:
-            if arg.startswith("-") and not arg.startswith("--") and len(arg) > 1:
-                # It's a short flag combination like -fu
-                if "f" in arg[1:]:  # Skip the first '-'
-                    return (
-                        True,
-                        "git push -f can overwrite remote history without safety checks",
-                    )
-
-    # ========================================================================
-    # GIT RESET
-    # ========================================================================
-    elif subcommand == "reset":
-        # Safe: --soft or --mixed (default)
-        if "--soft" in args or "--mixed" in args:
-            return False, ""
-
-        # Dangerous: --hard
-        if "--hard" in args:
-            return True, "git reset --hard permanently discards uncommitted changes"
-
-    # ========================================================================
-    # GIT CLEAN
-    # ========================================================================
-    elif subcommand == "clean":
-        # Dangerous: -f or -d flags
-        if "-f" in args or "-d" in args:
-            return True, "git clean removes untracked files permanently"
-
-        # Check for combined short flags containing -f or -d
-        for arg in args:
-            if arg.startswith("-") and not arg.startswith("--") and len(arg) > 1:
-                # It's a short flag combination like -fd
-                if "f" in arg[1:] or "d" in arg[1:]:
-                    return True, "git clean removes untracked files permanently"
-
-    # Not a dangerous git command or not a known subcommand
-    return False, ""
+    args = parts[2:]
+    analyzer = _GIT_ANALYZERS.get(subcommand)
+    if analyzer is None:
+        return False, ""
+    return analyzer(args, " ".join(args))
 
 
 def is_glob_pattern(pattern: str) -> bool:
@@ -1114,13 +919,12 @@ def is_glob_pattern(pattern: str) -> bool:
 
 def glob_to_regex(glob_pattern: str) -> str:
     """Convert a glob pattern to a regex pattern for matching in commands."""
-    # Escape special regex chars except * and ?
     result = ""
     for char in glob_pattern:
         if char == "*":
-            result += r"[^\s/]*"  # Match any chars except whitespace and path sep
+            result += r"[^\s/]*"
         elif char == "?":
-            result += r"[^\s/]"  # Match single char except whitespace and path sep
+            result += r"[^\s/]"
         elif char in r"\.^$+{}[]|()":
             result += "\\" + char
         else:
@@ -1135,7 +939,6 @@ def glob_to_regex(glob_pattern: str) -> str:
 # ============================================================================
 # {path} will be replaced with the escaped path at runtime
 
-# Operations blocked for READ-ONLY paths (all modifications)
 WRITE_PATTERNS = [
     (r">\s*{path}", "write"),
     (r"\btee\s+(?!.*-a).*{path}", "write"),
@@ -1247,23 +1050,17 @@ _allowed_hosts_cache: Optional[list[str]] = None
 
 def get_allowed_hosts_path() -> Path:
     """Get path to allowed-hosts.yaml."""
-    script_dir = Path(__file__).parent
-    return script_dir / "allowed-hosts.yaml"
+    return Path(__file__).parent / "allowed-hosts.yaml"
 
 
 def load_allowed_hosts() -> list[str]:
-    """Load allowed hosts from YAML config file.
-
-    Returns:
-        List of allowed host patterns (exact or wildcard).
-    """
+    """Load allowed hosts from YAML config file."""
     global _allowed_hosts_cache
 
     if _allowed_hosts_cache is not None:
         return _allowed_hosts_cache
 
     config_path = get_allowed_hosts_path()
-
     if not config_path.exists():
         _allowed_hosts_cache = []
         return _allowed_hosts_cache
@@ -1279,157 +1076,124 @@ def load_allowed_hosts() -> list[str]:
     return _allowed_hosts_cache
 
 
-def is_private_ip(host: str) -> bool:
-    """Check if host is a private/local IP address (RFC1918 + localhost).
-
-    These are allowed by default for exfil patterns because the threat model
-    is prompt injection sending data to attacker-controlled external servers,
-    not internal network hosts.
-
-    Args:
-        host: IP address or hostname to check.
-
-    Returns:
-        True if host is a private/local IP address.
-    """
-    # Localhost
-    if host in ("localhost", "127.0.0.1", "::1"):
-        return True
-    if host.startswith("127."):
-        return True
-
-    # Check for IP-like pattern
+def _parse_ipv4_octets(host: str) -> Optional[list[int]]:
+    """Return the four octets of an IPv4 address, or None if `host` isn't IPv4."""
     parts = host.split(".")
     if len(parts) != 4:
-        return False
-
+        return None
     try:
         octets = [int(p) for p in parts]
     except ValueError:
-        return False
-
-    # Validate octets
+        return None
     if not all(0 <= o <= 255 for o in octets):
-        return False
+        return None
+    return octets
 
-    # 10.0.0.0/8
+
+def _is_rfc1918(octets: list[int]) -> bool:
+    """Return True if octets are in 10/8, 172.16/12, or 192.168/16."""
     if octets[0] == 10:
         return True
-
-    # 172.16.0.0/12 (172.16.x.x - 172.31.x.x)
     if octets[0] == 172 and 16 <= octets[1] <= 31:
         return True
-
-    # 192.168.0.0/16
     if octets[0] == 192 and octets[1] == 168:
         return True
-
     return False
+
+
+def is_private_ip(host: str) -> bool:
+    """Check if host is a private/local IP address (RFC1918 + localhost)."""
+    if host in ("localhost", "127.0.0.1", "::1") or host.startswith("127."):
+        return True
+    octets = _parse_ipv4_octets(host)
+    if octets is None:
+        return False
+    return _is_rfc1918(octets)
 
 
 def host_matches_pattern(host: str, pattern: str) -> bool:
     """Check if host matches an allowed pattern.
 
-    Supports:
-        - Exact match: "api.example.com"
-        - Wildcard prefix: "*.example.com" matches "api.example.com"
-        - Wildcard suffix: "192.168.*" matches "192.168.1.1"
-
-    Args:
-        host: Hostname or IP to check.
-        pattern: Pattern to match against.
-
-    Returns:
-        True if host matches the pattern.
+    Supports exact match, wildcard prefix (`*.example.com`), and wildcard
+    suffix (`192.168.*`).
     """
     host = host.lower()
     pattern = pattern.lower()
-
-    # Exact match
     if host == pattern:
         return True
-
-    # Wildcard matching using fnmatch
     if "*" in pattern:
         return fnmatch.fnmatch(host, pattern)
-
     return False
 
 
 def is_allowed_host(host: str) -> bool:
-    """Check if host is allowed (private IP or in allowedHosts list).
-
-    Args:
-        host: Hostname or IP address to check.
-
-    Returns:
-        True if host is allowed for network operations.
-    """
+    """Check if host is allowed (private IP or in allowedHosts list)."""
     if not host:
         return False
-
-    # Private IPs are always allowed
     if is_private_ip(host):
         return True
+    return any(host_matches_pattern(host, p) for p in load_allowed_hosts())
 
-    # Check against allowed hosts list
-    allowed_hosts = load_allowed_hosts()
-    for pattern in allowed_hosts:
-        if host_matches_pattern(host, pattern):
-            return True
 
-    return False
+def _extract_url_host(command: str) -> Optional[str]:
+    """Extract host from `http(s)://host[:port]/path`."""
+    match = re.search(r"https?://([^/:]+)", command, re.IGNORECASE)
+    return match.group(1) if match else None
+
+
+def _extract_nc_host(command: str) -> Optional[str]:
+    """Extract host from `nc/ncat/netcat [-flags] host port`."""
+    match = re.search(r"\b(?:nc|ncat|netcat)\s+(?:-[^\s]+\s+)*([^\s-][^\s]*)\s+\d+", command)
+    if not match:
+        return None
+    host = match.group(1)
+    return host if not host.startswith("-") else None
+
+
+def _extract_dev_tcp_host(command: str) -> Optional[str]:
+    """Extract host from `/dev/tcp/host/port` or `/dev/udp/host/port`."""
+    match = re.search(r"/dev/(?:tcp|udp)/([^/]+)/", command)
+    return match.group(1) if match else None
+
+
+def _extract_dns_host(command: str) -> Optional[str]:
+    """Extract host from `dig/nslookup/host` invocations."""
+    match = re.search(r"\b(?:dig|nslookup|host)\s+(?:@([^\s]+)|[^\s]+\.([^\s]+))", command)
+    if not match:
+        return None
+    return match.group(1) or (match.group(2) if match.group(2) else None)
+
+
+def _extract_ssh_host(command: str) -> Optional[str]:
+    """Extract host from `ssh [user@]host`."""
+    match = re.search(r"\bssh\s+(?:[^\s]+@)?([^\s]+)", command)
+    if not match:
+        return None
+    host = match.group(1)
+    if "@" in host:
+        host = host.split("@")[1]
+    return host if not host.startswith("-") else None
+
+
+_HOST_EXTRACTORS: tuple[Callable[[str], Optional[str]], ...] = (
+    _extract_url_host,
+    _extract_nc_host,
+    _extract_dev_tcp_host,
+    _extract_dns_host,
+    _extract_ssh_host,
+)
 
 
 def extract_host_from_command(command: str) -> Optional[str]:
     """Extract destination host from network commands.
 
-    Handles various command formats:
-        - URLs: http://host:port/path, https://host/path
-        - nc/netcat: nc host port
-        - /dev/tcp: /dev/tcp/host/port
-
-    Args:
-        command: Command string to parse.
-
-    Returns:
-        Extracted hostname/IP or None if not found.
+    Tries URL, nc/netcat, /dev/tcp, dig/nslookup/host, and ssh forms in order
+    and returns the first match.
     """
-    # URL pattern: http(s)://host(:port)(/path)
-    url_match = re.search(r"https?://([^/:]+)", command, re.IGNORECASE)
-    if url_match:
-        return url_match.group(1)
-
-    # nc/netcat: nc [-flags] host port
-    # Match: nc host port, nc -v host port, ncat host port, netcat host port
-    nc_match = re.search(r"\b(?:nc|ncat|netcat)\s+(?:-[^\s]+\s+)*([^\s-][^\s]*)\s+\d+", command)
-    if nc_match:
-        host = nc_match.group(1)
-        # Filter out flags that might have been captured
-        if not host.startswith("-"):
+    for extractor in _HOST_EXTRACTORS:
+        host = extractor(command)
+        if host:
             return host
-
-    # /dev/tcp/host/port or /dev/udp/host/port
-    dev_match = re.search(r"/dev/(?:tcp|udp)/([^/]+)/", command)
-    if dev_match:
-        return dev_match.group(1)
-
-    # dig/nslookup/host: dig @server domain or dig domain
-    dns_match = re.search(r"\b(?:dig|nslookup|host)\s+(?:@([^\s]+)|[^\s]+\.([^\s]+))", command)
-    if dns_match:
-        # Return the server if specified with @, otherwise the domain
-        return dns_match.group(1) or (dns_match.group(2) if dns_match.group(2) else None)
-
-    # ssh user@host or ssh host
-    ssh_match = re.search(r"\bssh\s+(?:[^\s]+@)?([^\s]+)", command)
-    if ssh_match:
-        host = ssh_match.group(1)
-        if "@" in host:
-            host = host.split("@")[1]
-        # Filter out flags
-        if not host.startswith("-"):
-            return host
-
     return None
 
 
@@ -1438,57 +1202,50 @@ def extract_host_from_command(command: str) -> Optional[str]:
 # ============================================================================
 
 
+def _detect_documentation_context(
+    tool_input: dict[str, Any], contexts_config: dict[str, Any]
+) -> Optional[str]:
+    """Detect documentation context for Edit/Write tools by file extension."""
+    doc_ctx = contexts_config.get("documentation", {})
+    if not doc_ctx.get("enabled", False):
+        return None
+    file_path = tool_input.get("file_path", "")
+    extensions = doc_ctx.get("detection", {}).get("file_extensions", [])
+    if any(file_path.endswith(ext) for ext in extensions):
+        return "documentation"
+    return None
+
+
+def _detect_commit_message_context(
+    tool_input: dict[str, Any], contexts_config: dict[str, Any]
+) -> Optional[str]:
+    """Detect commit-message context for Bash tool by command pattern."""
+    commit_ctx = contexts_config.get("commit_message", {})
+    if not commit_ctx.get("enabled", False):
+        return None
+    command = tool_input.get("command", "")
+    for pattern in commit_ctx.get("detection", {}).get("command_patterns", []):
+        try:
+            if re.search(pattern, command, re.IGNORECASE):
+                return "commit_message"
+        except re.error:
+            continue
+    return None
+
+
 def detect_context(
     tool_name: str, tool_input: dict[str, Any], config: dict[str, Any]
 ) -> Optional[str]:
     """Detect if we're in a special context that allows relaxed checks.
 
     Contexts are defined in patterns.yaml and can relax certain security checks
-    when operating in specific scenarios (e.g., writing documentation with
-    command examples, or committing messages that mention dangerous commands).
-
-    Args:
-        tool_name: Name of the tool being invoked ("Bash", "Edit", "Write").
-        tool_input: Tool input parameters (command, file_path, etc.).
-        config: Loaded configuration from patterns.yaml.
-
-    Returns:
-        Context name (e.g., 'documentation', 'commit_message') or None if no context detected.
-
-    Examples:
-        >>> detect_context("Edit", {"file_path": "README.md"}, config)
-        'documentation'
-        >>> detect_context("Bash", {"command": "git commit -m 'test'"}, config)
-        'commit_message'
-        >>> detect_context("Write", {"file_path": "script.py"}, config)
-        None
+    when operating in specific scenarios.
     """
     contexts_config = config.get("contexts", {})
-
-    # Check Edit/Write tools for documentation context (file extension based)
     if tool_name in ("Edit", "Write"):
-        doc_ctx = contexts_config.get("documentation", {})
-        if doc_ctx.get("enabled", False):
-            file_path = tool_input.get("file_path", "")
-            extensions = doc_ctx.get("detection", {}).get("file_extensions", [])
-            for ext in extensions:
-                if file_path.endswith(ext):
-                    return "documentation"
-
-    # Check Bash tool for commit message context (command pattern based)
-    elif tool_name == "Bash":
-        commit_ctx = contexts_config.get("commit_message", {})
-        if commit_ctx.get("enabled", False):
-            command = tool_input.get("command", "")
-            patterns = commit_ctx.get("detection", {}).get("command_patterns", [])
-            for pattern in patterns:
-                try:
-                    if re.search(pattern, command, re.IGNORECASE):
-                        return "commit_message"
-                except re.error:
-                    # Skip invalid regex patterns
-                    continue
-
+        return _detect_documentation_context(tool_input, contexts_config)
+    if tool_name == "Bash":
+        return _detect_commit_message_context(tool_input, contexts_config)
     return None
 
 
@@ -1497,72 +1254,364 @@ def detect_context(
 # ============================================================================
 
 
+def _check_glob_path_patterns(
+    command: str,
+    path_obj: dict[str, Any],
+    patterns: list[tuple[str, str]],
+    path_type: str,
+) -> tuple[bool, str]:
+    """Check command against patterns for a glob path object."""
+    glob_regex_compiled = path_obj.get("glob_regex")
+    if not glob_regex_compiled:
+        return False, ""
+
+    glob_regex_str = glob_regex_compiled.pattern
+    path_str = path_obj["original"]
+
+    for pattern_template, operation in patterns:
+        try:
+            cmd_prefix = pattern_template.replace("{path}", "")
+            if cmd_prefix and re.search(cmd_prefix + glob_regex_str, command, re.IGNORECASE):
+                return True, f"Blocked: {operation} operation on {path_type} {path_str}"
+        except re.error:
+            continue
+    return False, ""
+
+
+def _check_literal_path_patterns(
+    command: str,
+    path_obj: dict[str, Any],
+    patterns: list[tuple[str, str]],
+    path_type: str,
+) -> tuple[bool, str]:
+    """Check command against patterns for a literal path object."""
+    escaped_expanded = path_obj.get("escaped_expanded", "")
+    escaped_original = path_obj.get("escaped_original", "")
+    if not escaped_expanded or not escaped_original:
+        return False, ""
+
+    path_str = path_obj["original"]
+    for pattern_template, operation in patterns:
+        pattern_expanded = pattern_template.replace("{path}", escaped_expanded)
+        pattern_original = pattern_template.replace("{path}", escaped_original)
+        try:
+            if re.search(pattern_expanded, command) or re.search(pattern_original, command):
+                return True, f"Blocked: {operation} operation on {path_type} {path_str}"
+        except re.error:
+            continue
+    return False, ""
+
+
 def check_path_patterns(
     command: str,
     path_obj: dict[str, Any],
     patterns: list[tuple[str, str]],
     path_type: str,
 ) -> tuple[bool, str]:
-    """Check command against a list of patterns for a specific path.
-
-    Uses pre-processed path objects from preprocess_path_list().
-
-    Args:
-        command: Command string to check
-        path_obj: Pre-processed path object with compiled regex/escaped forms
-        patterns: List of (pattern_template, operation) tuples
-        path_type: Human-readable path type for error messages
-
-    Returns:
-        Tuple of (is_blocked, reason)
-    """
-    path_str = path_obj["original"]
-
+    """Check command against a list of patterns for a specific path."""
     if path_obj["is_glob"]:
-        # Use pre-compiled glob regex
-        glob_regex_compiled = path_obj.get("glob_regex")
-        if not glob_regex_compiled:
-            return False, ""
+        return _check_glob_path_patterns(command, path_obj, patterns, path_type)
+    return _check_literal_path_patterns(command, path_obj, patterns, path_type)
 
-        glob_regex_str = glob_regex_compiled.pattern
 
-        for pattern_template, operation in patterns:
-            # For glob patterns, we check if the operation + glob appears in command
-            # e.g., "rm *.lock" should match DELETE_PATTERNS with *.lock
-            try:
-                # Build a regex that matches: operation ... glob_pattern
-                # Extract the command prefix from pattern_template
-                # (e.g., '\brm\s+.*' from '\brm\s+.*{path}')
-                cmd_prefix = pattern_template.replace("{path}", "")
-                if cmd_prefix and re.search(cmd_prefix + glob_regex_str, command, re.IGNORECASE):
-                    return (
-                        True,
-                        f"Blocked: {operation} operation on {path_type} {path_str}",
-                    )
-            except re.error:
-                continue
-    else:
-        # Use pre-computed escaped forms for literal paths
-        escaped_expanded = path_obj.get("escaped_expanded", "")
-        escaped_original = path_obj.get("escaped_original", "")
+# ============================================================================
+# COMMAND CHECKING
+# ============================================================================
 
-        if not escaped_expanded or not escaped_original:
-            return False, ""
 
-        for pattern_template, operation in patterns:
-            # Check both expanded path (/Users/x/.ssh/) and original tilde form (~/.ssh/)
-            pattern_expanded = pattern_template.replace("{path}", escaped_expanded)
-            pattern_original = pattern_template.replace("{path}", escaped_original)
-            try:
-                if re.search(pattern_expanded, command) or re.search(pattern_original, command):
-                    return (
-                        True,
-                        f"Blocked: {operation} operation on {path_type} {path_str}",
-                    )
-            except re.error:
-                continue
+@dataclass
+class CheckResult:
+    """Result of evaluating a command against the security firewall."""
 
-    return False, ""
+    blocked: bool = False
+    ask: bool = False
+    reason: str = ""
+    pattern_matched: str = ""
+    was_unwrapped: bool = False
+    semantic_match: bool = False
+
+    def as_tuple(self) -> tuple[bool, bool, str, str, bool, bool]:
+        """Return the legacy 6-tuple representation used by callers/tests."""
+        return (
+            self.blocked,
+            self.ask,
+            self.reason,
+            self.pattern_matched,
+            self.was_unwrapped,
+            self.semantic_match,
+        )
+
+
+@dataclass
+class CompiledRules:
+    """Pre-compiled rules grouped by check stage."""
+
+    patterns: list[dict[str, Any]] = field(default_factory=list)
+    zero_access: list[dict[str, Any]] = field(default_factory=list)
+    read_only: list[dict[str, Any]] = field(default_factory=list)
+    no_delete: list[dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
+class CommandContext:
+    """Per-command state shared across the check pipeline."""
+
+    original: str
+    unwrapped: str
+    was_unwrapped: bool
+    relaxed_checks: set[str]
+    is_readonly_search: bool = False
+    has_dry_run: bool = False
+
+
+def _extract_compiled_rules(config: dict[str, Any]) -> CompiledRules:
+    """Pull compiled rules out of config, compiling on the fly if needed."""
+    if "bashToolPatterns_compiled" in config:
+        return CompiledRules(
+            patterns=config.get("bashToolPatterns_compiled", []),
+            zero_access=config.get("zeroAccessPaths_compiled", []),
+            read_only=config.get("readOnlyPaths_compiled", []),
+            no_delete=config.get("noDeletePaths_compiled", []),
+        )
+    # Backward compatibility: tests pass raw configs
+    return CompiledRules(
+        patterns=compile_regex_patterns(config.get("bashToolPatterns", [])),
+        zero_access=preprocess_path_list(config.get("zeroAccessPaths", [])),
+        read_only=preprocess_path_list(config.get("readOnlyPaths", [])),
+        no_delete=preprocess_path_list(config.get("noDeletePaths", [])),
+    )
+
+
+def _resolve_exfil_host(ctx: CommandContext) -> Optional[str]:
+    """Best-effort host extraction; falls back to original if unwrapping truncated."""
+    host = extract_host_from_command(ctx.unwrapped)
+    if not host and ctx.was_unwrapped:
+        host = extract_host_from_command(ctx.original)
+    return host
+
+
+def _evaluate_yaml_pattern(
+    item: dict[str, Any], idx: int, ctx: CommandContext
+) -> Optional[CheckResult]:
+    """Apply a single compiled YAML pattern to ctx; return CheckResult on match."""
+    compiled_regex = item.get("compiled")
+    if not compiled_regex:
+        return None
+    try:
+        if not compiled_regex.search(ctx.unwrapped):
+            return None
+    except re.error:
+        return None
+
+    if item.get("exfil", False):
+        host = _resolve_exfil_host(ctx)
+        if host and is_allowed_host(host):
+            return None  # Allowed host — skip this pattern
+
+    reason = item.get("reason", "Blocked by pattern")
+    pattern_id = f"yaml_pattern_{idx}"
+    if item.get("ask", False):
+        return CheckResult(
+            ask=True, reason=reason, pattern_matched=pattern_id, was_unwrapped=ctx.was_unwrapped
+        )
+    return CheckResult(
+        blocked=True,
+        reason=f"Blocked: {reason}",
+        pattern_matched=pattern_id,
+        was_unwrapped=ctx.was_unwrapped,
+    )
+
+
+def _stage_yaml_patterns(rules: CompiledRules, ctx: CommandContext) -> Optional[CheckResult]:
+    """Stage 1: scan compiled YAML patterns. Skipped for read-only/dry-run/relaxed."""
+    if "bashToolPatterns" in ctx.relaxed_checks or ctx.is_readonly_search or ctx.has_dry_run:
+        return None
+
+    for idx, item in enumerate(rules.patterns):
+        result = _evaluate_yaml_pattern(item, idx, ctx)
+        if result is not None:
+            return result
+    return None
+
+
+def _zero_access_glob_match(path_obj: dict[str, Any], ctx: CommandContext) -> Optional[CheckResult]:
+    """Check a single zero-access glob path object against the unwrapped command."""
+    glob_regex_compiled = path_obj.get("glob_regex")
+    if not glob_regex_compiled:
+        return None
+    try:
+        if not glob_regex_compiled.search(ctx.unwrapped):
+            return None
+    except re.error:
+        return None
+    return CheckResult(
+        blocked=True,
+        reason=(f"Blocked: zero-access pattern {path_obj['original']} (no operations allowed)"),
+        pattern_matched="zero_access_glob",
+        was_unwrapped=ctx.was_unwrapped,
+    )
+
+
+def _build_zero_access_literal_patterns(
+    path_obj: dict[str, Any],
+) -> tuple[Optional[str], Optional[str]]:
+    """Return (expanded, original) regex strings for a literal zero-access path.
+
+    File paths get a non-word suffix to prevent ``.env`` from matching ``.env.example``.
+    Directory paths use no suffix because the trailing ``/`` already delimits.
+    """
+    escaped_expanded = path_obj.get("escaped_expanded", "")
+    escaped_original = path_obj.get("escaped_original", "")
+    if not escaped_expanded and not escaped_original:
+        return None, None
+    is_directory = path_obj.get("original", "").endswith("/")
+    suffix = "" if is_directory else r"(?![a-zA-Z0-9_.-])"
+    pattern_expanded = (escaped_expanded + suffix) if escaped_expanded else None
+    pattern_original = (escaped_original + suffix) if escaped_original else None
+    return pattern_expanded, pattern_original
+
+
+def _zero_access_literal_match(
+    path_obj: dict[str, Any], ctx: CommandContext
+) -> Optional[CheckResult]:
+    """Check a single zero-access literal path object against the unwrapped command."""
+    pattern_expanded, pattern_original = _build_zero_access_literal_patterns(path_obj)
+    if pattern_expanded is None and pattern_original is None:
+        return None
+
+    matched = (pattern_expanded and re.search(pattern_expanded, ctx.unwrapped)) or (
+        pattern_original and re.search(pattern_original, ctx.unwrapped)
+    )
+    if not matched:
+        return None
+    return CheckResult(
+        blocked=True,
+        reason=(f"Blocked: zero-access path {path_obj['original']} (no operations allowed)"),
+        pattern_matched="zero_access_literal",
+        was_unwrapped=ctx.was_unwrapped,
+    )
+
+
+def _stage_zero_access(rules: CompiledRules, ctx: CommandContext) -> Optional[CheckResult]:
+    """Stage 2: enforce zero-access paths (skipped for read-only git metadata queries)."""
+    if "zeroAccessPaths" in ctx.relaxed_checks or is_readonly_git_command(ctx.unwrapped):
+        return None
+
+    for path_obj in rules.zero_access:
+        if path_obj["is_glob"]:
+            result = _zero_access_glob_match(path_obj, ctx)
+        else:
+            result = _zero_access_literal_match(path_obj, ctx)
+        if result is not None:
+            return result
+    return None
+
+
+def _stage_read_only(rules: CompiledRules, ctx: CommandContext) -> Optional[CheckResult]:
+    """Stage 3: enforce read-only paths (block all modifications)."""
+    if "readOnlyPaths" in ctx.relaxed_checks:
+        return None
+    for path_obj in rules.read_only:
+        blocked, reason = check_path_patterns(
+            ctx.unwrapped, path_obj, READ_ONLY_BLOCKED, "read-only path"
+        )
+        if blocked:
+            return CheckResult(
+                blocked=True,
+                reason=reason,
+                pattern_matched="readonly_path",
+                was_unwrapped=ctx.was_unwrapped,
+            )
+    return None
+
+
+def _stage_no_delete(rules: CompiledRules, ctx: CommandContext) -> Optional[CheckResult]:
+    """Stage 4: enforce no-delete paths (block deletions only)."""
+    if "noDeletePaths" in ctx.relaxed_checks:
+        return None
+    for path_obj in rules.no_delete:
+        blocked, reason = check_path_patterns(
+            ctx.unwrapped, path_obj, NO_DELETE_BLOCKED, "no-delete path"
+        )
+        if blocked:
+            return CheckResult(
+                blocked=True,
+                reason=reason,
+                pattern_matched="nodelete_path",
+                was_unwrapped=ctx.was_unwrapped,
+            )
+    return None
+
+
+def _run_ast_analyzer(unwrapped: str, config: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """Lazy-load and run the AST analyzer; return raw result dict or None on any failure."""
+    try:
+        from ast_analyzer import ASTAnalyzer  # type: ignore[import-not-found]
+    except Exception:
+        return None
+    try:
+        analyzer = ASTAnalyzer()
+        if not analyzer.is_available():
+            return None
+        return analyzer.analyze_command_ast(unwrapped, config)
+    except Exception:
+        return None
+
+
+def _ast_result_to_check_result(
+    ast_result: dict[str, Any], was_unwrapped: bool
+) -> Optional[CheckResult]:
+    """Translate an AST analyzer result dict into a CheckResult (or None for allow)."""
+    decision = ast_result.get("decision", "allow")
+    if decision == "block":
+        reason = ast_result.get("reason", "Blocked by AST analysis")
+        return CheckResult(
+            blocked=True,
+            reason=f"Blocked: {reason}",
+            pattern_matched="ast_analysis",
+            was_unwrapped=was_unwrapped,
+        )
+    if decision == "ask":
+        reason = ast_result.get("reason", "AST analysis requires confirmation")
+        return CheckResult(
+            ask=True,
+            reason=reason,
+            pattern_matched="ast_analysis",
+            was_unwrapped=was_unwrapped,
+        )
+    return None
+
+
+def _stage_ast_analysis(config: dict[str, Any], ctx: CommandContext) -> Optional[CheckResult]:
+    """Stage 5: AST-based veto pass. Lazy import keeps tree-sitter optional."""
+    if "bashToolPatterns" in ctx.relaxed_checks or ctx.is_readonly_search or ctx.has_dry_run:
+        return None
+    ast_result = _run_ast_analyzer(ctx.unwrapped, config)
+    if ast_result is None:
+        return None
+    return _ast_result_to_check_result(ast_result, ctx.was_unwrapped)
+
+
+def _build_command_context(
+    command: str, config: dict[str, Any], context: Optional[str]
+) -> CommandContext:
+    """Unwrap, strip comments, and compute per-command flags."""
+    context_config: dict[str, Any] = {}
+    if context:
+        context_config = config.get("contexts", {}).get(context, {})
+    relaxed_checks = set(context_config.get("relaxed_checks", []))
+
+    unwrapped_cmd, was_unwrapped = unwrap_command(command)
+    unwrapped_cmd = strip_bash_comments(unwrapped_cmd)
+
+    return CommandContext(
+        original=command,
+        unwrapped=unwrapped_cmd,
+        was_unwrapped=was_unwrapped,
+        relaxed_checks=relaxed_checks,
+        is_readonly_search=is_readonly_search_command(unwrapped_cmd),
+        has_dry_run=_has_valid_dry_run(unwrapped_cmd),
+    )
 
 
 def check_command(
@@ -1570,239 +1619,41 @@ def check_command(
 ) -> tuple[bool, bool, str, str, bool, bool]:
     """Check if command should be blocked or requires confirmation.
 
-    Args:
-        command: Command string to check.
-        config: Configuration (either raw from load_config() or compiled from
-            get_compiled_config()).
-        context: Optional context name (e.g., 'documentation', 'commit_message')
-            that may relax certain checks.
-
     Returns: (blocked, ask, reason, pattern_matched, was_unwrapped, semantic_match)
       - blocked=True, ask=False: Block the command
       - blocked=False, ask=True: Show confirmation dialog
       - blocked=False, ask=False: Allow the command
-      - pattern_matched: Pattern identifier that triggered decision
-          (e.g., "semantic_git", "yaml_pattern_0")
-      - was_unwrapped: True if command was unwrapped from shell wrapper
-      - semantic_match: True if decision based on semantic analysis
-          (e.g., git dangerous operations)
     """
-    # Get context configuration to determine which checks to relax
-    context_config = {}
-    if context:
-        context_config = config.get("contexts", {}).get(context, {})
-    relaxed_checks = set(context_config.get("relaxed_checks", []))
+    ctx = _build_command_context(command, config, context)
+    rules = _extract_compiled_rules(config)
 
-    # Unwrap shell wrappers first to detect hidden commands
-    unwrapped_cmd, was_unwrapped = unwrap_command(command)
-
-    # Strip bash comments — lines starting with # and inline # comments
-    # Comments may contain dangerous-looking strings (e.g., "# during the Helm upgrade")
-    # that should never trigger pattern matching
-    unwrapped_cmd = strip_bash_comments(unwrapped_cmd)
-
-    # Semantic git analysis - check AFTER unwrapping, BEFORE regex patterns
-    # Only skip if explicitly relaxed in context (unlikely for most contexts)
-    if "semantic_git" not in relaxed_checks:
-        is_dangerous_git, git_reason = analyze_git_command(unwrapped_cmd)
+    # Semantic git analysis runs first (after unwrapping, before regex patterns).
+    if "semantic_git" not in ctx.relaxed_checks:
+        is_dangerous_git, git_reason = analyze_git_command(ctx.unwrapped)
         if is_dangerous_git:
-            return False, True, git_reason, "semantic_git", was_unwrapped, True
+            return CheckResult(
+                ask=True,
+                reason=git_reason,
+                pattern_matched="semantic_git",
+                was_unwrapped=ctx.was_unwrapped,
+                semantic_match=True,
+            ).as_tuple()
 
-    # Check if config is compiled (has _compiled keys) or raw
-    # For backward compatibility with tests that pass raw configs
-    has_compiled = "bashToolPatterns_compiled" in config
+    for stage in (
+        _stage_yaml_patterns,
+        _stage_zero_access,
+        _stage_read_only,
+        _stage_no_delete,
+    ):
+        result = stage(rules, ctx)
+        if result is not None:
+            return result.as_tuple()
 
-    if has_compiled:
-        # Use pre-compiled patterns from config
-        compiled_patterns = config.get("bashToolPatterns_compiled", [])
-        compiled_zero_access = config.get("zeroAccessPaths_compiled", [])
-        compiled_read_only = config.get("readOnlyPaths_compiled", [])
-        compiled_no_delete = config.get("noDeletePaths_compiled", [])
-    else:
-        # Compile on the fly for backward compatibility (slower path)
-        raw_patterns = config.get("bashToolPatterns", [])
-        compiled_patterns = compile_regex_patterns(raw_patterns)
+    ast_result = _stage_ast_analysis(config, ctx)
+    if ast_result is not None:
+        return ast_result.as_tuple()
 
-        raw_zero_access = config.get("zeroAccessPaths", [])
-        compiled_zero_access = preprocess_path_list(raw_zero_access)
-
-        raw_read_only = config.get("readOnlyPaths", [])
-        compiled_read_only = preprocess_path_list(raw_read_only)
-
-        raw_no_delete = config.get("noDeletePaths", [])
-        compiled_no_delete = preprocess_path_list(raw_no_delete)
-
-    # 1. Check against patterns from YAML (may block or ask)
-    # Skip if bashToolPatterns is relaxed in this context (e.g., documentation)
-    # Skip if the entire command is a read-only search pipeline (e.g., grep "helm upgrade" | head)
-    # to avoid false positives from dangerous-looking strings inside search arguments
-    # Skip if the command uses --dry-run with a tool that supports it (simulation mode)
-    is_readonly_search = is_readonly_search_command(unwrapped_cmd)
-    has_dry_run = _has_valid_dry_run(unwrapped_cmd)
-    if "bashToolPatterns" not in relaxed_checks and not is_readonly_search and not has_dry_run:
-        for idx, item in enumerate(compiled_patterns):
-            compiled_regex = item.get("compiled")
-            reason = item.get("reason", "Blocked by pattern")
-            should_ask = item.get("ask", False)
-            is_exfil = item.get("exfil", False)
-
-            if not compiled_regex:
-                continue
-
-            try:
-                # Use pre-compiled regex (already has IGNORECASE flag)
-                if compiled_regex.search(unwrapped_cmd):
-                    # For exfil patterns, check if destination host is allowed
-                    # Try unwrapped first, fall back to original (unwrapping
-                    # can truncate the URL when it's inside nested quotes)
-                    if is_exfil:
-                        host = extract_host_from_command(unwrapped_cmd)
-                        if not host and was_unwrapped:
-                            host = extract_host_from_command(command)
-                        if host and is_allowed_host(host):
-                            # Host is allowed, skip this pattern
-                            continue
-
-                    pattern_id = f"yaml_pattern_{idx}"
-                    if should_ask:
-                        return (
-                            False,
-                            True,
-                            reason,
-                            pattern_id,
-                            was_unwrapped,
-                            False,
-                        )  # Ask for confirmation
-                    else:
-                        return (
-                            True,
-                            False,
-                            f"Blocked: {reason}",
-                            pattern_id,
-                            was_unwrapped,
-                            False,
-                        )  # Block
-            except re.error:
-                continue
-
-    # 2. Check for ANY access to zero-access paths (including reads)
-    # Skip only if explicitly relaxed in context (should NEVER be relaxed for security)
-    # ALSO skip for read-only git commands that just query metadata (not file contents)
-    if "zeroAccessPaths" not in relaxed_checks and not is_readonly_git_command(unwrapped_cmd):
-        for path_obj in compiled_zero_access:
-            if path_obj["is_glob"]:
-                # Use pre-compiled glob regex
-                glob_regex_compiled = path_obj.get("glob_regex")
-                if glob_regex_compiled:
-                    try:
-                        if glob_regex_compiled.search(unwrapped_cmd):
-                            return (
-                                True,
-                                False,
-                                (
-                                    f"Blocked: zero-access pattern {path_obj['original']}"
-                                    " (no operations allowed)"
-                                ),
-                                "zero_access_glob",
-                                was_unwrapped,
-                                False,
-                            )
-                    except re.error:
-                        continue
-            else:
-                # Use pre-computed escaped forms for literal paths
-                escaped_expanded = path_obj.get("escaped_expanded", "")
-                escaped_original = path_obj.get("escaped_original", "")
-
-                if escaped_expanded or escaped_original:
-                    original_path = path_obj.get("original", "")
-                    is_directory = original_path.endswith("/")
-
-                    if is_directory:
-                        # Directory path - match any file inside
-                        # No suffix needed since the / already delimits
-                        pattern_expanded = escaped_expanded if escaped_expanded else None
-                        pattern_original = escaped_original if escaped_original else None
-                    else:
-                        # File path - use suffix to prevent partial matches
-                        # This prevents .env from matching .env.example
-                        suffix = r"(?![a-zA-Z0-9_.-])"
-                        pattern_expanded = (escaped_expanded + suffix) if escaped_expanded else None
-                        pattern_original = (escaped_original + suffix) if escaped_original else None
-
-                    if (pattern_expanded and re.search(pattern_expanded, unwrapped_cmd)) or (
-                        pattern_original and re.search(pattern_original, unwrapped_cmd)
-                    ):
-                        return (
-                            True,
-                            False,
-                            (
-                                f"Blocked: zero-access path {path_obj['original']}"
-                                " (no operations allowed)"
-                            ),
-                            "zero_access_literal",
-                            was_unwrapped,
-                            False,
-                        )
-
-    # 3. Check for modifications to read-only paths (reads allowed)
-    # Skip only if explicitly relaxed in context
-    if "readOnlyPaths" not in relaxed_checks:
-        for path_obj in compiled_read_only:
-            blocked, reason = check_path_patterns(
-                unwrapped_cmd, path_obj, READ_ONLY_BLOCKED, "read-only path"
-            )
-            if blocked:
-                return True, False, reason, "readonly_path", was_unwrapped, False
-
-    # 4. Check for deletions on no-delete paths (read/write/edit allowed)
-    # Skip only if explicitly relaxed in context
-    if "noDeletePaths" not in relaxed_checks:
-        for path_obj in compiled_no_delete:
-            blocked, reason = check_path_patterns(
-                unwrapped_cmd, path_obj, NO_DELETE_BLOCKED, "no-delete path"
-            )
-            if blocked:
-                return True, False, reason, "nodelete_path", was_unwrapped, False
-
-    # 5. AST analysis — veto-only second pass (may escalate allow→ask|block)
-    # Only called when all regex/path checks passed (allow path).
-    # Skipped when bashToolPatterns are relaxed (e.g., commit message context),
-    # and also skipped for read-only search pipelines and valid --dry-run commands
-    # (same exemptions as bashToolPatterns — AST must not re-flag what was skipped).
-    # Lazy import so tree-sitter absence doesn't affect normal operation.
-    if "bashToolPatterns" not in relaxed_checks and not is_readonly_search and not has_dry_run:
-        try:
-            from ast_analyzer import ASTAnalyzer  # type: ignore[import-not-found]
-
-            _ast_analyzer = ASTAnalyzer()
-            if _ast_analyzer.is_available():
-                ast_result = _ast_analyzer.analyze_command_ast(unwrapped_cmd, config)
-                ast_decision = ast_result.get("decision", "allow")
-                if ast_decision == "block":
-                    ast_reason = ast_result.get("reason", "Blocked by AST analysis")
-                    return (
-                        True,
-                        False,
-                        f"Blocked: {ast_reason}",
-                        "ast_analysis",
-                        was_unwrapped,
-                        False,
-                    )
-                elif ast_decision == "ask":
-                    ast_reason = ast_result.get("reason", "AST analysis requires confirmation")
-                    return (
-                        False,
-                        True,
-                        ast_reason,
-                        "ast_analysis",
-                        was_unwrapped,
-                        False,
-                    )
-        except Exception:
-            pass  # AST errors fall through gracefully — allow the command
-
-    return False, False, "", "", was_unwrapped, False
+    return CheckResult(was_unwrapped=ctx.was_unwrapped).as_tuple()
 
 
 # ============================================================================
@@ -1810,17 +1661,10 @@ def check_command(
 # ============================================================================
 
 
-def main() -> None:
-    # Check if hook is disabled
-    if is_hook_disabled():
-        sys.exit(0)
-
-    # Get compiled configuration (uses module-level cache)
-    config = get_compiled_config()
-
-    # Read hook input from stdin
+def _read_hook_input() -> dict[str, Any]:
+    """Read JSON hook input from stdin, exiting non-zero on parse failure."""
     try:
-        input_data = json.load(sys.stdin)
+        return json.load(sys.stdin)
     except json.JSONDecodeError as e:
         print(f"Error: Invalid JSON input: {e}", file=sys.stderr)
         sys.exit(1)
@@ -1828,10 +1672,47 @@ def main() -> None:
         print(f"Error reading input: {e}", file=sys.stderr)
         sys.exit(1)
 
+
+def _decision_label(is_blocked: bool, should_ask: bool) -> str:
+    """Map boolean decision flags to a log label."""
+    if is_blocked:
+        return "blocked"
+    return "ask" if should_ask else "allowed"
+
+
+def _emit_block(reason: str, command: str) -> None:
+    """Print block reason to stderr and exit with code 2."""
+    print(f"SECURITY: {reason}", file=sys.stderr)
+    print(
+        f"Command: {command[:100]}{'...' if len(command) > 100 else ''}",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+
+def _emit_ask(reason: str) -> None:
+    """Emit JSON to trigger Claude Code's confirmation dialog and exit cleanly."""
+    output = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "ask",
+            "permissionDecisionReason": reason,
+        }
+    }
+    print(json.dumps(output))
+    sys.exit(0)
+
+
+def main() -> None:
+    if is_hook_disabled():
+        sys.exit(0)
+
+    config = get_compiled_config()
+    input_data = _read_hook_input()
+
     tool_name = input_data.get("tool_name", "")
     tool_input = input_data.get("tool_input", {})
 
-    # Only check Bash commands
     if tool_name != "Bash":
         sys.exit(0)
 
@@ -1839,50 +1720,28 @@ def main() -> None:
     if not command:
         sys.exit(0)
 
-    # Detect context (e.g., documentation, commit_message)
     context = detect_context(tool_name, tool_input, config)
-
-    # Check the command with context awareness (uses compiled config)
     is_blocked, should_ask, reason, pattern_matched, was_unwrapped, semantic_match = check_command(
         command, config, context=context
     )
 
-    # Log the decision with all metadata
-    decision = "blocked" if is_blocked else ("ask" if should_ask else "allowed")
     log_decision(
         tool_name=tool_name,
         command=command,
-        decision=decision,
+        decision=_decision_label(is_blocked, should_ask),
         reason=reason,
         pattern_matched=pattern_matched,
-        unwrapped=was_unwrapped,
-        semantic_match=semantic_match,
+        flags=DecisionFlags(unwrapped=was_unwrapped, semantic_match=semantic_match),
         context=context,
     )
 
-    # Spawn log rotation (fire-and-forget)
     spawn_log_rotation()
 
     if is_blocked:
-        print(f"SECURITY: {reason}", file=sys.stderr)
-        print(
-            f"Command: {command[:100]}{'...' if len(command) > 100 else ''}",
-            file=sys.stderr,
-        )
-        sys.exit(2)
-    elif should_ask:
-        # Output JSON to trigger confirmation dialog
-        output = {
-            "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "ask",
-                "permissionDecisionReason": reason,
-            }
-        }
-        print(json.dumps(output))
-        sys.exit(0)
-    else:
-        sys.exit(0)
+        _emit_block(reason, command)
+    if should_ask:
+        _emit_ask(reason)
+    sys.exit(0)
 
 
 if __name__ == "__main__":
