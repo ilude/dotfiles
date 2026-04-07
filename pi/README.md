@@ -141,8 +141,8 @@ Registers shared skill-backed slash commands:
 ```
 /commit        # smart git commit with secret scanning
 /plan-it       # crystallize conversation context into an executable plan
-/review-plan   # adversarial review of a plan file
-/do-this       # smart task routing by complexity
+/review-it     # adversarial review of a plan file
+/do-it         # smart task routing by complexity
 /research      # parallel multi-angle research on a topic
 ```
 

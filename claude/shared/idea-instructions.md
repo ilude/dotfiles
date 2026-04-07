@@ -26,7 +26,7 @@ Ask ONE question at a time to extract:
 └── [other files as needed]
 ```
 
-This aligns with `.specs/` used by `/do-this` and `/plan-with-team`. If the idea becomes actionable, a `plan.md` can be added alongside `IDEA.md` in the same directory.
+This aligns with `.specs/` used by `/do-it` and `/plan-with-team`. If the idea becomes actionable, a `plan.md` can be added alongside `IDEA.md` in the same directory.
 
 **Slug naming:**
 - Use descriptive slug: `voice-memo-ingest/`, `shared-command-pattern/`

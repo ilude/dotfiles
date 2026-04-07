@@ -5,7 +5,7 @@ Launch parallel expert reviewers against a plan file to identify risks, ambiguit
 ## Parameters
 
 ```
-/review-plan <path-to-plan-file>
+/review-it <path-to-plan-file>
 ```
 
 - `<path-to-plan-file>` (required): Path to the plan file (markdown, YAML, or any text format)
@@ -15,7 +15,7 @@ If no path is provided, use AskUserQuestion to ask: "Which plan file should I re
 ## Architecture — Delegated Coordinator
 
 ```
-User runs /review-plan .specs/my-plan/plan.md
+User runs /review-it .specs/my-plan/plan.md
          │
          ▼
     Primary (you) reads plan, composes expert panel

@@ -3,4 +3,4 @@ description: "Adversarial plan review — launches parallel expert reviewers to 
 argument-hint: <path to plan file>
 ---
 
-@~/.dotfiles/claude/shared/review-plan-instructions.md
+@~/.dotfiles/claude/shared/review-it-instructions.md

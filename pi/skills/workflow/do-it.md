@@ -65,9 +65,9 @@ Wait for the engineering lead to complete the work, then report the outcome to t
 1. Invoke `/plan-it {full task description}` to crystallize a plan
 2. Wait for the plan to be written to `.specs/`
 3. Report the plan path and summary to the user
-4. Ask: "Plan is ready. Execute it now, or review it first with `/review-plan`?"
+4. Ask: "Plan is ready. Execute it now, or review it first with `/review-it`?"
 5. If the user says execute: proceed wave by wave following the plan's task breakdown
-6. If the user says review: dispatch `/review-plan {plan path}` before executing
+6. If the user says review: dispatch `/review-it {plan path}` before executing
 
 ## Step 3: Report
 

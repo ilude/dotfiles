@@ -155,7 +155,7 @@ Write the plan to `.specs/{slug}/plan.md` using the **full template from `/plan-
 Step 3** — including Problem Statement, Constraints & Acceptable Trade-offs, Alternatives
 Considered, Deployment Procedure (if applicable), and Acceptance Criteria Guidelines with
 Zero-Context Executability. Do NOT use a stripped-down template — the plan must be
-reviewable by `/review-plan` and executable by `/do-this` Step 3.
+reviewable by `/review-it` and executable by `/do-it` Step 3.
 
 Use the agent from Step 2d (Medium column). Validator model rule: if wave contains
 sonnet/opus builder → `validator-heavy` (sonnet), otherwise → `validator` (haiku).
