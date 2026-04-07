@@ -243,4 +243,4 @@ Show the user:
 3. The dependency graph
 4. The file path where the plan was written
 
-Then ask: "Want to review/edit the plan, execute it with `/do-this .specs/{slug}/plan.md`, or send it through `/review-plan` first?"
+Then ask: "Want to review/edit the plan, execute it with `/do-it .specs/{slug}/plan.md`, or send it through `/review-it` first?"

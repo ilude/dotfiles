@@ -108,7 +108,7 @@ Key principle: every task in a PRD must have acceptance criteria that follow the
 ### With `/plan-with-team`
 Plans require acceptance criteria for every task. The plan validation checklist includes: "Every task has Acceptance Criteria." Use the methodology above to write them.
 
-### With `/do-this`
+### With `/do-it`
 The smart router uses acceptance criteria to validate agent output. Better criteria = better autonomous execution.
 
 ### With `/ptc`
@@ -136,7 +136,7 @@ PTC (Programmatic Tool Calling) can be used during planning phases for:
 | Convert vague → testable | Use methodology above inline |
 | Generate PRD template | `/prd` |
 | Plan with team orchestration | `/plan-with-team` |
-| Smart task routing | `/do-this` |
+| Smart task routing | `/do-it` |
 | Multi-tool research | `/ptc` |
 
 ---
