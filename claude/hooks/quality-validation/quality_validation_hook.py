@@ -208,91 +208,105 @@ def log_error(message: str) -> None:
         pass  # Never crash on log failure
 
 
-def main() -> None:
-    # Read stdin JSON
-    try:
-        input_data = json.load(sys.stdin)
-    except (json.JSONDecodeError, Exception):
-        sys.exit(0)
+def parse_hook_input(input_data: dict[str, Any]) -> Optional[str]:
+    """Extract and validate the target file path from the hook payload.
 
-    # Guard: only trigger on Write/Edit
+    Returns a normalized, existing file path, or None if the hook should no-op.
+    """
     tool_name = input_data.get("tool_name", "")
     if tool_name not in ("Write", "Edit"):
-        sys.exit(0)
+        return None
 
-    tool_input = input_data.get("tool_input", {})
-    file_path = tool_input.get("file_path", "")
+    file_path = input_data.get("tool_input", {}).get("file_path", "")
     if not file_path:
-        sys.exit(0)
+        return None
 
-    # Normalize path immediately
     file_path = normalize_path(file_path)
-
-    # Guard: file must exist
     if not os.path.isfile(file_path):
+        return None
+
+    return file_path
+
+
+def check_validator_available(validator: dict, lang_config: dict[str, Any]) -> bool:
+    """Return True if the validator's tool is installed (or no check is required).
+
+    On missing tools, prints an install hint to stderr and returns False.
+    """
+    check_tool = validator.get("check", "")
+    if not check_tool:
+        return True
+    if shutil.which(check_tool):
+        return True
+
+    name = validator.get("name", "unknown")
+    hint = f"[quality-validation] {check_tool} not found, skipping {name}."
+    install_suggestion = get_install_suggestion(lang_config, name)
+    if install_suggestion:
+        hint += f" Install with: {install_suggestion}"
+    print(hint, file=sys.stderr)
+    return False
+
+
+def format_validator_error(name: str, file_path: str, output: str) -> str:
+    """Format a validator failure message, truncating long output."""
+    if len(output) > 2000:
+        output = output[:2000] + "\n... (truncated)"
+    return f"{name} errors in {os.path.basename(file_path)}:\n{output}"
+
+
+def run_validator_suite(
+    validators: list[dict],
+    file_path: str,
+    project_root: str,
+    lang_config: dict[str, Any],
+    skip_list: set,
+) -> list[str]:
+    """Run each validator and collect formatted error messages."""
+    errors = []
+    for validator in validators:
+        name = validator.get("name", "unknown")
+        if name in skip_list:
+            continue
+
+        cmd_template = validator.get("command", [])
+        if not cmd_template:
+            continue
+
+        if not check_validator_available(validator, lang_config):
+            continue
+
+        cmd = build_command(cmd_template, file_path, project_root)
+        returncode, output = run_validator(cmd, env=validator.get("env"))
+        if returncode != 0 and output:
+            errors.append(format_validator_error(name, file_path, output))
+    return errors
+
+
+def main() -> None:
+    try:
+        input_data = json.load(sys.stdin)
+    except Exception:
         sys.exit(0)
 
-    # Load config
+    file_path = parse_hook_input(input_data)
+    if file_path is None:
+        sys.exit(0)
+
     config = load_config()
     if not config:
         sys.exit(0)
 
-    # Match language
     match = match_language(file_path, config)
     if not match:
         sys.exit(0)
 
-    lang_name, lang_config, project_root = match
-    validators = lang_config.get("validators", [])
-    if not validators:
-        sys.exit(0)
+    _, lang_config, project_root = match
+    validators = filter_validators_by_detection(lang_config.get("validators", []), project_root)
+    errors = run_validator_suite(validators, file_path, project_root, lang_config, load_skip_list())
 
-    # Filter validators by project config detection
-    validators = filter_validators_by_detection(validators, project_root)
-
-    # Load skip list
-    skip_list = load_skip_list()
-
-    # Run validators
-    errors = []
-    for validator in validators:
-        name = validator.get("name", "unknown")
-
-        # Skip if in skip list
-        if name in skip_list:
-            continue
-
-        check_tool = validator.get("check", "")
-        cmd_template = validator.get("command", [])
-
-        if not cmd_template:
-            continue
-
-        # Check tool availability - warn but don't block for missing linters
-        if check_tool and not shutil.which(check_tool):
-            install_suggestion = get_install_suggestion(lang_config, name)
-            hint = f"[quality-validation] {check_tool} not found, skipping {name}."
-            if install_suggestion:
-                hint += f" Install with: {install_suggestion}"
-            print(hint, file=sys.stderr)
-            continue
-
-        # Build and run command
-        cmd = build_command(cmd_template, file_path, project_root)
-        validator_env = validator.get("env", None)
-        returncode, output = run_validator(cmd, env=validator_env)
-
-        if returncode != 0 and output:
-            # Truncate output
-            if len(output) > 2000:
-                output = output[:2000] + "\n... (truncated)"
-            errors.append(f"{name} errors in {os.path.basename(file_path)}:\n{output}")
-
-    # Output results
     if errors:
-        reason = "\n\n".join(errors)
-        result = {"decision": "block", "reason": reason}
-        print(json.dumps(result))
+        print(json.dumps({"decision": "block", "reason": "\n\n".join(errors)}))
 
     sys.exit(0)
 

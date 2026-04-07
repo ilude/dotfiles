@@ -12,11 +12,14 @@ python:
     - name: ruff-format
       command: ["ruff", "format", "--check", "{file}"]
       check: "ruff"
+    - name: lizard-complexity
+      command: ["lizard", "-C", "8", "-L", "250", "-a", "7", "-w", "{file}"]
+      check: "lizard"
   install:
     winget: null
     brew: null
     apt: null
-    pip: "uv tool install ruff"
+    pip: "uv tool install ruff lizard"
 
 typescript:
   extensions: [".ts", ".tsx"]
@@ -36,6 +39,9 @@ typescript:
       command: ["biome", "check", "{file}"]
       check: "biome"
       detect: ["biome.json", "biome.jsonc"]
+    - name: lizard-complexity
+      command: ["lizard", "-C", "8", "-L", "250", "-a", "7", "-w", "{file}"]
+      check: "lizard"
 
 javascript:
   extensions: [".js", ".jsx"]
@@ -45,6 +51,9 @@ javascript:
       command: ["biome", "check", "{file}"]
       check: "biome"
       detect: ["biome.json", "biome.jsonc"]
+    - name: lizard-complexity
+      command: ["lizard", "-C", "8", "-L", "250", "-a", "7", "-w", "{file}"]
+      check: "lizard"
 
 shell:
   extensions: [".sh", ".bash"]
@@ -65,6 +74,9 @@ go:
     - name: go-vet
       command: ["go", "vet", "{file}"]
       check: "go"
+    - name: lizard-complexity
+      command: ["lizard", "-C", "8", "-L", "250", "-a", "7", "-w", "{file}"]
+      check: "lizard"
   install:
     winget: "winget install GoLang.Go"
     brew: "brew install go"
