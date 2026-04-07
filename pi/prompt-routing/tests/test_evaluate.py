@@ -177,7 +177,8 @@ class TestAcceptanceGate:
         pred_labels = (
             ["low"] * n_per_class
             + ["mid"] * n_per_class
-            + ["mid"] * 1 + ["high"] * (n_per_class - 1)
+            + ["mid"] * 1
+            + ["high"] * (n_per_class - 1)
         )
         texts = [f"prompt {i}" for i in range(3 * n_per_class)]
         # accuracy = 59/60 = 98.3% -- above 85%, no HIGH->LOW inversions

@@ -12,6 +12,7 @@ Output:
 
 Exits 0 on success, 1 on any error (extension will fall back silently).
 """
+
 import os
 import sys
 

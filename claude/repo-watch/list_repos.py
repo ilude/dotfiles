@@ -77,80 +77,78 @@ def format_date(date_str: str | None) -> str:
         return str(date_str)
 
 
+def _repo_has_updates(latest: dict[str, Any] | None, last_reviewed: str | None) -> bool:
+    if latest and last_reviewed:
+        return latest["sha"] != last_reviewed
+    return bool(latest)
+
+
+def _build_repo_result(repo_config: dict[str, Any]) -> dict[str, Any]:
+    url = repo_config["url"]
+    owner, repo = parse_repo_url(url)
+    latest = get_latest_commit(owner, repo)
+    last_reviewed = repo_config.get("last_reviewed_commit")
+    return {
+        "owner": owner,
+        "repo": repo,
+        "url": url,
+        "category": repo_config.get("category", "unknown"),
+        "description": repo_config.get("description", ""),
+        "last_reviewed_commit": last_reviewed,
+        "last_reviewed_at": repo_config.get("last_reviewed_at"),
+        "latest_commit": latest["sha"][:8] if latest else None,
+        "latest_commit_date": latest["date"] if latest else None,
+        "has_updates": _repo_has_updates(latest, last_reviewed),
+        "ignored_features_count": len(repo_config.get("ignored_features", [])),
+    }
+
+
+_STATUS_COLORS = {
+    "NEW": "\033[33m",
+    "UPDATES": "\033[36m",
+}
+_COLOR_GREEN = "\033[32m"
+_COLOR_RESET = "\033[0m"
+
+
+def _status_str(r: dict[str, Any]) -> str:
+    if r["has_updates"] and not r["last_reviewed_commit"]:
+        label = "NEW"
+    elif r["has_updates"]:
+        label = "UPDATES"
+    else:
+        label = "current"
+    color = _STATUS_COLORS.get(label, _COLOR_GREEN)
+    return f"{color}{label:<12}{_COLOR_RESET}"
+
+
+def _print_table(results: list[dict[str, Any]]) -> None:
+    if not results:
+        print("No repos tracked. Use 'add_repo.py' to add repos.")
+        return
+    print(f"{'Repo':<40} {'Category':<15} {'Status':<12} {'Last Review':<12} {'Latest':<12}")
+    print("-" * 95)
+    for r in results:
+        name = f"{r['owner']}/{r['repo']}"
+        if len(name) > 38:
+            name = name[:35] + "..."
+        last_review = format_date(r["last_reviewed_at"])
+        latest = format_date(r["latest_commit_date"])
+        print(f"{name:<40} {r['category']:<15} {_status_str(r)} {last_review:<12} {latest:<12}")
+    print()
+    print(f"Total: {len(results)} repos tracked")
+
+
 def list_repos(json_output: bool = False) -> None:
     """List all tracked repos with status."""
     config = load_repos()
-    repos = config.get("repos", [])
-
-    results = []
-
-    for repo_config in repos:
-        url = repo_config["url"]
-        owner, repo = parse_repo_url(url)
-
-        # Get latest commit from GitHub
-        latest = get_latest_commit(owner, repo)
-
-        last_reviewed = repo_config.get("last_reviewed_commit")
-        has_updates = False
-        if latest and last_reviewed:
-            has_updates = latest["sha"] != last_reviewed
-        elif latest:
-            has_updates = True
-
-        result = {
-            "owner": owner,
-            "repo": repo,
-            "url": url,
-            "category": repo_config.get("category", "unknown"),
-            "description": repo_config.get("description", ""),
-            "last_reviewed_commit": last_reviewed,
-            "last_reviewed_at": repo_config.get("last_reviewed_at"),
-            "latest_commit": latest["sha"][:8] if latest else None,
-            "latest_commit_date": latest["date"] if latest else None,
-            "has_updates": has_updates,
-            "ignored_features_count": len(repo_config.get("ignored_features", [])),
-        }
-        results.append(result)
+    results = [_build_repo_result(rc) for rc in config.get("repos", [])]
 
     if json_output:
         print(json.dumps(results, indent=2))
         return
 
-    # Table output
-    if not results:
-        print("No repos tracked. Use 'add_repo.py' to add repos.")
-        return
-
-    print(f"{'Repo':<40} {'Category':<15} {'Status':<12} {'Last Review':<12} {'Latest':<12}")
-    print("-" * 95)
-
-    for r in results:
-        name = f"{r['owner']}/{r['repo']}"
-        if len(name) > 38:
-            name = name[:35] + "..."
-
-        status = (
-            "NEW"
-            if r["has_updates"] and not r["last_reviewed_commit"]
-            else ("UPDATES" if r["has_updates"] else "current")
-        )
-
-        last_review = format_date(r["last_reviewed_at"])
-        latest = format_date(r["latest_commit_date"])
-
-        # Color coding for terminal
-        if status == "NEW":
-            status_str = f"\033[33m{status:<12}\033[0m"  # Yellow
-        elif status == "UPDATES":
-            status_str = f"\033[36m{status:<12}\033[0m"  # Cyan
-        else:
-            status_str = f"\033[32m{status:<12}\033[0m"  # Green
-
-        print(f"{name:<40} {r['category']:<15} {status_str} {last_review:<12} {latest:<12}")
-
-    print()
-    print(f"Total: {len(results)} repos tracked")
+    _print_table(results)
 
 
 def main() -> None:

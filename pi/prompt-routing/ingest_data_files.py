@@ -102,6 +102,9 @@ def _candidates_from_section(key: str, val: list, fname: str) -> list[dict] | No
 
 def _candidates_from_file(f: Path) -> list[dict]:
     raw = json.loads(f.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        print(f"  WARNING: {f.name} is not a dict (got {type(raw).__name__}), skipping")
+        return []
     out: list[dict] = []
     for key, val in raw.items():
         if key == "metadata" or not isinstance(val, list):

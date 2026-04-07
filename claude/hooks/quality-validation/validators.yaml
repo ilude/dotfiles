@@ -9,12 +9,23 @@ python:
     - name: ruff-check
       command: ["ruff", "check", "{file}"]
       check: "ruff"
+      exclude_paths:
+        - "*/dotbot/lib/*"
+        - "*/node_modules/*"
     - name: ruff-format
       command: ["ruff", "format", "--check", "{file}"]
       check: "ruff"
+      exclude_paths:
+        - "*/dotbot/lib/*"
+        - "*/node_modules/*"
     - name: lizard-complexity
       command: ["lizard", "-C", "8", "-L", "250", "-a", "7", "-w", "{file}"]
       check: "lizard"
+      exclude_paths:
+        - "*/dotbot/lib/*"
+        - "*/.svelte-kit/*"
+        - "*/node_modules/*"
+        - "*/playwright-report/*"
   install:
     winget: null
     brew: null
@@ -42,6 +53,11 @@ typescript:
     - name: lizard-complexity
       command: ["lizard", "-C", "8", "-L", "250", "-a", "7", "-w", "{file}"]
       check: "lizard"
+      exclude_paths:
+        - "*/dotbot/lib/*"
+        - "*/.svelte-kit/*"
+        - "*/node_modules/*"
+        - "*/playwright-report/*"
 
 javascript:
   extensions: [".js", ".jsx"]
@@ -54,6 +70,11 @@ javascript:
     - name: lizard-complexity
       command: ["lizard", "-C", "8", "-L", "250", "-a", "7", "-w", "{file}"]
       check: "lizard"
+      exclude_paths:
+        - "*/dotbot/lib/*"
+        - "*/.svelte-kit/*"
+        - "*/node_modules/*"
+        - "*/playwright-report/*"
 
 shell:
   extensions: [".sh", ".bash"]
@@ -77,6 +98,10 @@ go:
     - name: lizard-complexity
       command: ["lizard", "-C", "8", "-L", "250", "-a", "7", "-w", "{file}"]
       check: "lizard"
+      exclude_paths:
+        - "*/dotbot/lib/*"
+        - "*/.svelte-kit/*"
+        - "*/node_modules/*"
   install:
     winget: "winget install GoLang.Go"
     brew: "brew install go"

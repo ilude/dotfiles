@@ -9,6 +9,7 @@ Runs linters on files after Write/Edit operations.
 Loads validator config from validators.yaml.
 """
 
+import fnmatch
 import json
 import os
 import shutil
@@ -228,6 +229,18 @@ def parse_hook_input(input_data: dict[str, Any]) -> Optional[str]:
     return file_path
 
 
+def is_path_excluded(validator: dict, file_path: str) -> bool:
+    """Return True if file_path matches any of the validator's exclude_paths globs."""
+    patterns = validator.get("exclude_paths", [])
+    if not patterns:
+        return False
+    normalized = file_path.replace("\\", "/")
+    for pattern in patterns:
+        if fnmatch.fnmatch(normalized, pattern):
+            return True
+    return False
+
+
 def check_validator_available(validator: dict, lang_config: dict[str, Any]) -> bool:
     """Return True if the validator's tool is installed (or no check is required).
 
@@ -271,6 +284,9 @@ def run_validator_suite(
 
         cmd_template = validator.get("command", [])
         if not cmd_template:
+            continue
+
+        if is_path_excluded(validator, file_path):
             continue
 
         if not check_validator_available(validator, lang_config):

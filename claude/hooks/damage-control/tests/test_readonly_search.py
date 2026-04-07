@@ -613,9 +613,12 @@ class TestInertCommands:
 
     def test_cd_then_find(self):
         """cd followed by find must be recognized as read-only search."""
-        assert is_readonly_search_command(
-            'cd /c/Users/mglenn/.dotfiles && find onyx -type f -name ".env*" | head -50'
-        ) is True
+        assert (
+            is_readonly_search_command(
+                'cd /c/Users/mglenn/.dotfiles && find onyx -type f -name ".env*" | head -50'
+            )
+            is True
+        )
 
     def test_cd_then_grep(self):
         assert is_readonly_search_command("cd /tmp && grep pattern file") is True
@@ -657,7 +660,7 @@ class TestInertCommands:
     def test_cd_then_find_env_not_blocked(self, full_config):
         """The original false positive: cd + find with .env in name pattern."""
         cmd = (
-            'cd /c/Users/mglenn/.dotfiles && find onyx -type f'
+            "cd /c/Users/mglenn/.dotfiles && find onyx -type f"
             r' \( -name "*.ts" -o -name ".env*" \) 2>/dev/null | head -50'
         )
         blocked, ask, reason, pattern, _, _ = check_command(cmd, full_config)
