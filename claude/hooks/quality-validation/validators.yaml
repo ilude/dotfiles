@@ -18,7 +18,7 @@ _lizard_command: &lizard_command
   ["lizard", "-C", "8", "-L", "250", "-a", "7", "-w", "{file}"]
 
 _lizard_excludes: &lizard_excludes
-  - "*/dotbot/lib/*"
+  - "*/dotbot/*"  # third-party vendored submodule - never refactor
   - "*/.svelte-kit/*"
   - "*/node_modules/*"
   - "*/playwright-report/*"
