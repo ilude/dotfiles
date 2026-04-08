@@ -16,6 +16,10 @@
 .PARAMETER Work
     Include work-related packages (AWS, Helm, Terraform, etc.)
 
+.PARAMETER Dev
+    Include heavy developer toolchains (Docker Desktop, .NET SDKs, Node.js).
+    Without this flag, npm-based steps (Claude Code, pi-coding-agent) will skip.
+
 .PARAMETER ITAdmin
     Include IT Admin modules (Graph, ExchangeOnline, Az, etc.)
 
@@ -32,6 +36,7 @@ param(
     [switch]$SkipPackages,
     [switch]$ForcePackages,
     [switch]$Work,
+    [switch]$Dev,
     [switch]$ITAdmin,
     [switch]$ListPackages,
     [switch]$NoElevate
@@ -45,9 +50,6 @@ $corePackages = @(
     @{ Id = 'Git.Git'; Name = 'Git' },
     @{ Id = 'Microsoft.PowerShell'; Name = 'PowerShell 7' },
     @{ Id = 'Microsoft.WindowsTerminal'; Name = 'Windows Terminal' },
-    @{ Id = 'Microsoft.DotNet.SDK.8'; Name = '.NET 8 SDK' },
-    @{ Id = 'Microsoft.DotNet.SDK.9'; Name = '.NET 9 SDK' },
-    @{ Id = 'OpenJS.NodeJS'; Name = 'Node.js' },
     @{ Id = 'Oven-sh.Bun'; Name = 'Bun' },
     @{ Id = 'Python.Python.3.14'; Name = 'Python 3.14' },
     @{ Id = 'ezwinports.make'; Name = 'GNU Make' },
@@ -55,8 +57,6 @@ $corePackages = @(
     @{ Id = 'junegunn.fzf'; Name = 'fzf (fuzzy finder)' },
     @{ Id = 'eza-community.eza'; Name = 'eza (modern ls)' },
     @{ Id = 'ajeetdsouza.zoxide'; Name = 'zoxide (smart cd)' },
-    @{ Id = 'Docker.DockerDesktop'; Name = 'Docker Desktop' },
-    @{ Id = 'GitHub.cli'; Name = 'GitHub CLI' },
     @{ Id = 'JanDeDobbeleer.OhMyPosh'; Name = 'Oh My Posh' },
     @{ Id = 'jqlang.jq'; Name = 'jq (JSON processor)' },
     @{ Id = 'BurntSushi.ripgrep.MSVC'; Name = 'ripgrep (rg)' },
@@ -64,7 +64,6 @@ $corePackages = @(
     @{ Id = 'sharkdp.bat'; Name = 'bat (cat replacement)' },
     @{ Id = 'dandavison.delta'; Name = 'git-delta (diff pager)' },
     @{ Id = 'aristocratos.btop4win'; Name = 'btop (system monitor)' },
-    @{ Id = 'tldr-pages.tlrc'; Name = 'tldr (man pages)' },
     @{ Id = 'koalaman.shellcheck'; Name = 'shellcheck (shell linter)' },
     @{ Id = 'mvdan.shfmt'; Name = 'shfmt (shell formatter)' },
     @{ Id = 'Casey.Just'; Name = 'just (command runner)' },
@@ -81,6 +80,17 @@ $workPackages = @(
     @{ Id = 'GLab.GLab'; Name = 'GitLab CLI' },
     @{ Id = 'WireGuard.WireGuard'; Name = 'WireGuard VPN' },
     @{ Id = 'Tailscale.Tailscale'; Name = 'Tailscale' }
+)
+
+# Heavy developer toolchains - opt-in via -Dev.
+# Without -Dev, npm-based steps (Claude Code, pi-coding-agent, bats) skip.
+$devPackages = @(
+    @{ Id = 'Docker.DockerDesktop'; Name = 'Docker Desktop' },
+    @{ Id = 'Microsoft.DotNet.SDK.8'; Name = '.NET 8 SDK' },
+    @{ Id = 'Microsoft.DotNet.SDK.9'; Name = '.NET 9 SDK' },
+    @{ Id = 'OpenJS.NodeJS'; Name = 'Node.js' },
+    @{ Id = 'GitHub.cli'; Name = 'GitHub CLI' },
+    @{ Id = 'tldr-pages.tlrc'; Name = 'tldr (man pages)' }
 )
 
 $itAdminModules = @(
@@ -110,6 +120,9 @@ if ($ListPackages) {
 
     Write-Host "`n=== Work Packages (-Work) ===" -ForegroundColor Yellow
     $workPackages | ForEach-Object { Write-Host "  $($_.Id) - $($_.Name)" }
+
+    Write-Host "`n=== Developer Packages (-Dev) ===" -ForegroundColor Green
+    $devPackages | ForEach-Object { Write-Host "  $($_.Id) - $($_.Name)" }
 
     Write-Host "`n=== IT Admin Modules (-ITAdmin) ===" -ForegroundColor Magenta
     $itAdminModules | ForEach-Object { Write-Host "  $_" }
@@ -152,6 +165,7 @@ if (-not $isAdmin -and -not $NoElevate -and -not $DevModeEarly) {
     if ($SkipPackages) { $argList += "-SkipPackages" }
     if ($ForcePackages) { $argList += "-ForcePackages" }
     if ($Work) { $argList += "-Work" }
+    if ($Dev) { $argList += "-Dev" }
     if ($ITAdmin) { $argList += "-ITAdmin" }
 
     try {
@@ -676,7 +690,7 @@ function New-WinGetLink {
 }
 
 function Install-Packages {
-    param([switch]$Work, [switch]$ITAdmin)
+    param([switch]$Work, [switch]$Dev, [switch]$ITAdmin)
 
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
         Write-Host "winget not found. Please install App Installer from Microsoft Store." -ForegroundColor Red
@@ -699,6 +713,18 @@ function Install-Packages {
     foreach ($pkg in $corePackages) {
         if ($pkg.Version) {
             winget pin add --id $pkg.Id --version "$($pkg.Version).*" --force 2>$null | Out-Null
+        }
+    }
+
+    # Developer packages (heavy toolchains - opt-in via -Dev)
+    if ($Dev) {
+        Write-Host "`n--- Developer Packages ---" -ForegroundColor Green
+        foreach ($pkg in $devPackages) {
+            $splat = @{ Id = $pkg.Id; Name = $pkg.Name }
+            if ($pkg.Version) { $splat.Version = $pkg.Version }
+            if (-not (Install-WingetPackage @splat)) {
+                $script:failed += $pkg.Name
+            }
         }
     }
 
@@ -730,39 +756,44 @@ function Install-Packages {
         }
     }
 
-    # npm global packages (requires Node.js from core packages)
-    Write-Host "`n--- npm Global Packages ---" -ForegroundColor Cyan
-    $npmPackages = @('bats')
-    foreach ($pkg in $npmPackages) {
-        Write-Host "  $pkg..." -ForegroundColor Cyan -NoNewline
-        $installed = npm list -g $pkg 2>$null | Select-String $pkg
-        if ($installed) {
-            Write-Host " already installed" -ForegroundColor DarkGray
+    # npm global packages + Claude Code (requires Node.js from -Dev packages)
+    if (Get-Command npm -ErrorAction SilentlyContinue) {
+        Write-Host "`n--- npm Global Packages ---" -ForegroundColor Cyan
+        $npmPackages = @('bats')
+        foreach ($pkg in $npmPackages) {
+            Write-Host "  $pkg..." -ForegroundColor Cyan -NoNewline
+            $installed = npm list -g $pkg 2>$null | Select-String $pkg
+            if ($installed) {
+                Write-Host " already installed" -ForegroundColor DarkGray
+            } else {
+                try {
+                    npm install -g $pkg 2>$null | Out-Null
+                    Write-Host " installed" -ForegroundColor Green
+                } catch {
+                    Write-Host " failed" -ForegroundColor Red
+                    $script:failed += "npm:$pkg"
+                }
+            }
+        }
+
+        # Claude Code
+        Write-Host "`n--- Claude Code ---" -ForegroundColor Cyan
+        Write-Host "  Claude Code..." -ForegroundColor Cyan -NoNewline
+        $installedVersion = npm list -g @anthropic-ai/claude-code 2>$null | Select-String '@anthropic-ai/claude-code@(\S+)' | ForEach-Object { $_.Matches[0].Groups[1].Value }
+        if ($installedVersion) {
+            Write-Host " already installed ($installedVersion)" -ForegroundColor DarkGray
         } else {
             try {
-                npm install -g $pkg 2>$null | Out-Null
+                npm install -g @anthropic-ai/claude-code 2>$null | Out-Null
                 Write-Host " installed" -ForegroundColor Green
             } catch {
                 Write-Host " failed" -ForegroundColor Red
-                $script:failed += "npm:$pkg"
+                $script:failed += "npm:claude-code"
             }
         }
-    }
-
-    # Claude Code
-    Write-Host "`n--- Claude Code ---" -ForegroundColor Cyan
-    Write-Host "  Claude Code..." -ForegroundColor Cyan -NoNewline
-    $installedVersion = npm list -g @anthropic-ai/claude-code 2>$null | Select-String '@anthropic-ai/claude-code@(\S+)' | ForEach-Object { $_.Matches[0].Groups[1].Value }
-    if ($installedVersion) {
-        Write-Host " already installed ($installedVersion)" -ForegroundColor DarkGray
     } else {
-        try {
-            npm install -g @anthropic-ai/claude-code 2>$null | Out-Null
-            Write-Host " installed" -ForegroundColor Green
-        } catch {
-            Write-Host " failed" -ForegroundColor Red
-            $script:failed += "npm:claude-code"
-        }
+        Write-Host "`n--- npm/Claude Code ---" -ForegroundColor DarkGray
+        Write-Host "  npm not found - skipping (rerun with -Dev for Node.js)" -ForegroundColor DarkGray
     }
 
     # Python dependencies for Claude Code hooks
@@ -1458,13 +1489,14 @@ try {
 
     # Install packages
     if ($shouldInstallPackages) {
-        Install-Packages -Work:$Work -ITAdmin:$ITAdmin
+        Install-Packages -Work:$Work -Dev:$Dev -ITAdmin:$ITAdmin
 
         # Update lock file
         $lockData = @{
             installed_at = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
             install_reason = $installReason
             work = $Work.IsPresent
+            dev = $Dev.IsPresent
             itadmin = $ITAdmin.IsPresent
         }
         $lockData | ConvertTo-Json | Set-Content $LOCKFILE -Force
