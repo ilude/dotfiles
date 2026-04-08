@@ -1,0 +1,120 @@
+# Eval harness query set for menos-knowledge-compiler.
+#
+# These queries are the baseline for measuring retrieval quality across plan
+# changes. The harness runs each query against menos, records the top-10 results
+# (content_id, title, score, snippet) as a deterministic snapshot, and compares
+# future runs to detect regression.
+#
+# No hand-labeled ground truth is required — regression is measured as:
+#   - Result set overlap between runs (Jaccard@5, Jaccard@10)
+#   - Score drift per query (delta in top-1 similarity)
+#   - Ordering stability (Kendall tau on top-5)
+#
+# Categories:
+#   menos-arch:   menos architecture / API (answers live in code + docs)
+#   dotfiles:     dotfiles / hooks (answers live in CLAUDE.md + hook code)
+#   workflow:     cross-project workflow patterns (answers live in session_logs)
+#   decisions:    recent decisions (answers live in session_logs + specs)
+#   gotchas:      debugging / bugs (answers live in session_logs + commits)
+
+queries:
+  # menos architecture / API
+  - id: menos-001
+    category: menos-arch
+    text: "How does pipeline_job resource_key dedup work, and what's the format for a YouTube video key?"
+
+  - id: menos-002
+    category: menos-arch
+    text: "What's the RFC 9421 signing flow for menos API calls — which key does the client use?"
+
+  - id: menos-003
+    category: menos-arch
+    text: "Where does LinkExtractor run in the menos request path, and why doesn't storage.py call it?"
+
+  - id: menos-004
+    category: menos-arch
+    text: "What's the _run_purge retention policy for pipeline_job records?"
+
+  - id: menos-005
+    category: menos-arch
+    text: "How does the UnifiedPipelineService produce tier and quality_score on a content item?"
+
+  # dotfiles / hooks
+  - id: dotfiles-001
+    category: dotfiles
+    text: "How did I work around the Windows console window flashing issue in Claude Code hooks?"
+
+  - id: dotfiles-002
+    category: dotfiles
+    text: "Why do damage-control and quality-validation hooks have their own .venv dirs while the rule says use bare python?"
+
+  - id: dotfiles-003
+    category: dotfiles
+    text: "What's the PreToolUse vs PostToolUse JSON output format for blocking vs advisory hooks?"
+
+  - id: dotfiles-004
+    category: dotfiles
+    text: "How does the quality-validation hook find project root across menos submodules?"
+
+  - id: dotfiles-005
+    category: dotfiles
+    text: "What's the timeout pattern for PreToolUse (5s) vs PostToolUse (15s) hooks and why?"
+
+  # cross-project workflow patterns
+  - id: workflow-001
+    category: workflow
+    text: "When do I reach for a builder agent vs doing a task myself?"
+
+  - id: workflow-002
+    category: workflow
+    text: "What's my pattern for handling git submodule changes that span both the submodule and the parent repo?"
+
+  - id: workflow-003
+    category: workflow
+    text: "How do I structure a new Claude Code hook from scratch — what files, what order?"
+
+  - id: workflow-004
+    category: workflow
+    text: "What's my typical lint + test command sequence for menos vs dotfiles?"
+
+  - id: workflow-005
+    category: workflow
+    text: "When do I use plan-with-team vs do-it vs doing work directly?"
+
+  # recent decisions (expected to live in session_logs once capture is running)
+  - id: decisions-001
+    category: decisions
+    text: "Why did I choose APScheduler over Ansible cron for the menos knowledge compiler?"
+
+  - id: decisions-002
+    category: decisions
+    text: "What was my reasoning for picking the Stop hook event over alternatives?"
+
+  - id: decisions-003
+    category: decisions
+    text: "Why are concept and connection bodies capped at 8000 chars?"
+
+  - id: decisions-004
+    category: decisions
+    text: "What made me pick hybrid LLM-only then cluster-first concept extraction instead of committing to one?"
+
+  - id: decisions-005
+    category: decisions
+    text: "Why is the post-capture eval baseline the yardstick instead of the pre-capture one?"
+
+  # debugging / gotchas
+  - id: gotchas-001
+    category: gotchas
+    text: "What's the recursion-guard env var for the memory hook subprocess and why is it critical?"
+
+  - id: gotchas-002
+    category: gotchas
+    text: "Why does menos need WEB_CONCURRENCY=1 for APScheduler to work correctly?"
+
+  - id: gotchas-003
+    category: gotchas
+    text: "What's the cosine threshold for concept dedup and where is it enforced?"
+
+  - id: gotchas-004
+    category: gotchas
+    text: "How does the circuit breaker distinguish a connect-timeout from a read-timeout case?"
