@@ -208,7 +208,7 @@
   "security.workspace.trust.untrustedFiles": "open",
   "terminal.integrated.allowChords": false,
   "terminal.integrated.defaultProfile.linux": "zsh",
-  "terminal.integrated.defaultProfile.windows": "PowerShell",
+  "terminal.integrated.defaultProfile.windows": "pwsh",
   "terminal.integrated.enableMultiLinePasteWarning": "never",
   "terminal.integrated.fontSize": 16,
   "terminal.integrated.persistentSessionReviveProcess": "never",
@@ -237,6 +237,15 @@
         "-l"
       ],
       "path": "zsh"
+    }
+  },
+  "terminal.integrated.profiles.windows": {
+    "pwsh": {
+      "args": [
+        "-NoLogo"
+      ],
+      "icon": "terminal-powershell",
+      "path": "pwsh"
     }
   },
   "todo-tree.general.tags": [
