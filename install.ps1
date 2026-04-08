@@ -18,7 +18,7 @@
 
 .PARAMETER Dev
     Include heavy developer toolchains (Docker Desktop, .NET SDKs, Node.js).
-    Without this flag, npm-based steps (Claude Code, pi-coding-agent) will skip.
+    Without this flag, npm-based steps (pi-coding-agent, bats) will skip.
 
 .PARAMETER ITAdmin
     Include IT Admin modules (Graph, ExchangeOnline, Az, etc.)
@@ -83,7 +83,7 @@ $workPackages = @(
 )
 
 # Heavy developer toolchains - opt-in via -Dev.
-# Without -Dev, npm-based steps (Claude Code, pi-coding-agent, bats) skip.
+# Without -Dev, npm-based steps (pi-coding-agent, bats) skip.
 $devPackages = @(
     @{ Id = 'Docker.DockerDesktop'; Name = 'Docker Desktop' },
     @{ Id = 'Microsoft.DotNet.SDK.8'; Name = '.NET 8 SDK' },
@@ -756,7 +756,7 @@ function Install-Packages {
         }
     }
 
-    # npm global packages + Claude Code (requires Node.js from -Dev packages)
+    # npm global packages (requires Node.js from -Dev packages)
     if (Get-Command npm -ErrorAction SilentlyContinue) {
         Write-Host "`n--- npm Global Packages ---" -ForegroundColor Cyan
         $npmPackages = @('bats')
@@ -775,25 +775,70 @@ function Install-Packages {
                 }
             }
         }
+    } else {
+        Write-Host "`n--- npm Global Packages ---" -ForegroundColor DarkGray
+        Write-Host "  npm not found - skipping (rerun with -Dev for Node.js)" -ForegroundColor DarkGray
+    }
 
-        # Claude Code
-        Write-Host "`n--- Claude Code ---" -ForegroundColor Cyan
-        Write-Host "  Claude Code..." -ForegroundColor Cyan -NoNewline
-        $installedVersion = npm list -g @anthropic-ai/claude-code 2>$null | Select-String '@anthropic-ai/claude-code@(\S+)' | ForEach-Object { $_.Matches[0].Groups[1].Value }
-        if ($installedVersion) {
-            Write-Host " already installed ($installedVersion)" -ForegroundColor DarkGray
-        } else {
-            try {
-                npm install -g @anthropic-ai/claude-code 2>$null | Out-Null
-                Write-Host " installed" -ForegroundColor Green
-            } catch {
-                Write-Host " failed" -ForegroundColor Red
-                $script:failed += "npm:claude-code"
+    # Claude Code (prefer Bun, fall back to WinGet)
+    Write-Host "`n--- Claude Code ---" -ForegroundColor Cyan
+    $claudeVersion = $null
+    $claudeCommand = Get-Command claude -ErrorAction SilentlyContinue
+    if ($claudeCommand) {
+        $claudeVersionOutput = & $claudeCommand.Source --version 2>$null | Select-Object -First 1
+        if ($LASTEXITCODE -eq 0 -and $claudeVersionOutput) {
+            $claudeVersionMatch = [regex]::Match($claudeVersionOutput, '[0-9]+(?:\.[0-9]+)+')
+            if ($claudeVersionMatch.Success) {
+                $claudeVersion = $claudeVersionMatch.Value
             }
         }
+    }
+
+    if ($claudeVersion) {
+        Write-Host "  Claude Code: already installed ($claudeVersion)" -ForegroundColor DarkGray
+    } elseif ($claudeCommand) {
+        Write-Host "  Claude Code: already installed" -ForegroundColor DarkGray
     } else {
-        Write-Host "`n--- npm/Claude Code ---" -ForegroundColor DarkGray
-        Write-Host "  npm not found - skipping (rerun with -Dev for Node.js)" -ForegroundColor DarkGray
+        $claudeInstalled = $false
+
+        if (Get-Command bun -ErrorAction SilentlyContinue) {
+            $bunBinDir = Join-Path $env:USERPROFILE '.bun\bin'
+            $userPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
+            if ($userPath -notlike "*$bunBinDir*") {
+                $newUserPath = if ([string]::IsNullOrWhiteSpace($userPath)) { $bunBinDir } else { "$bunBinDir;$userPath" }
+                [Environment]::SetEnvironmentVariable('PATH', $newUserPath, 'User')
+            }
+            if ($env:PATH -notlike "*$bunBinDir*") {
+                $env:PATH = "$bunBinDir;$env:PATH"
+            }
+
+            Write-Host "  Bun install..." -ForegroundColor Cyan -NoNewline
+            try {
+                bun install -g @anthropic-ai/claude-code 2>$null | Out-Null
+                if ($LASTEXITCODE -eq 0) {
+                    $claudeInstalled = $true
+                    Write-Host " installed" -ForegroundColor Green
+                } else {
+                    Write-Host " failed" -ForegroundColor Yellow
+                }
+            } catch {
+                Write-Host " failed" -ForegroundColor Yellow
+            }
+        } else {
+            Write-Host "  Bun install... skipped (bun not found)" -ForegroundColor DarkGray
+        }
+
+        if (-not $claudeInstalled -and (Get-Command winget -ErrorAction SilentlyContinue)) {
+            Write-Host "  Bun unavailable or failed; trying WinGet..." -ForegroundColor DarkGray
+            if (Install-WingetPackage -Id 'Anthropic.ClaudeCode' -Name 'Claude Code') {
+                $claudeInstalled = $true
+            } else {
+                $script:failed += 'winget:claude-code'
+            }
+        } elseif (-not $claudeInstalled) {
+            Write-Host "  WinGet not found - unable to install Claude Code" -ForegroundColor Red
+            $script:failed += 'claude-code'
+        }
     }
 
     # Python dependencies for Claude Code hooks
@@ -1533,6 +1578,45 @@ try {
 
     # Regenerate Git Bash PATH after optimization (idempotent - skips if unchanged)
     Write-GitBashPath
+
+    # ========================================================================
+    # PowerShell Profile Symlink/Copy
+    # ========================================================================
+    Write-Host "`nConfiguring PowerShell profile..." -ForegroundColor Cyan
+    $pwshProfileSource = Join-Path $BASEDIR "powershell\profile.ps1"
+    $pwshProfileDir = Join-Path $env:USERPROFILE "Documents\PowerShell"
+    $pwshProfileDest = Join-Path $pwshProfileDir "Microsoft.PowerShell_profile.ps1"
+    if (Test-Path $pwshProfileSource) {
+        if (-not (Test-Path $pwshProfileDir)) {
+            New-Item -ItemType Directory -Path $pwshProfileDir -Force | Out-Null
+        }
+
+        $profileInstalled = $false
+        if (Test-Path $pwshProfileDest) {
+            $item = Get-Item $pwshProfileDest -Force
+            if ($item.LinkType -eq "SymbolicLink" -and $item.Target -eq $pwshProfileSource) {
+                Write-Host "  Microsoft.PowerShell_profile.ps1: already linked" -ForegroundColor DarkGray
+                $profileInstalled = $true
+            } elseif ((Get-Content $pwshProfileDest -Raw -ErrorAction SilentlyContinue) -eq (Get-Content $pwshProfileSource -Raw)) {
+                Write-Host "  Microsoft.PowerShell_profile.ps1: already up to date" -ForegroundColor DarkGray
+                $profileInstalled = $true
+            } else {
+                Remove-Item $pwshProfileDest -Force
+            }
+        }
+
+        if (-not $profileInstalled) {
+            try {
+                New-Item -ItemType SymbolicLink -Path $pwshProfileDest -Target $pwshProfileSource -Force | Out-Null
+                Write-Host "  Microsoft.PowerShell_profile.ps1: linked" -ForegroundColor Green
+            } catch {
+                Write-Host "  Microsoft.PowerShell_profile.ps1: symlink failed, copying instead" -ForegroundColor Yellow
+                Copy-Item $pwshProfileSource $pwshProfileDest -Force
+            }
+        }
+    } else {
+        Write-Host "  PowerShell profile source not found, skipping" -ForegroundColor DarkGray
+    }
 
     # ========================================================================
     # VS Code Settings Symlinks (admin required for symlinks without Developer Mode)
