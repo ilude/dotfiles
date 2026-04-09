@@ -145,6 +145,7 @@ Shared command ownership:
 
 - `install`, `install.ps1`: primary installers
 - `install.conf.yaml`: Dotbot symlink configuration
+- `winget/configuration/`: WinGet Configuration (DSC) YAML files defining the Windows package set. Edit `core.dsc.yaml`, `work.dsc.yaml`, or `dev.dsc.yaml` to add/remove packages — install.ps1 invokes `winget configure` against them. Preserve the comment format `id: <id>  # <Display Name>` (two spaces before `#`) so `-ListPackages` keeps working.
 - `wsl/`: WSL installer, packages, validation, and WSL-specific Dotbot config
 - `zsh/env.d/`, `zsh/rc.d/`: shell modules
 - `config/git/`: XDG Git config

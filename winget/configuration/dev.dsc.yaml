@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=https://aka.ms/configuration-dsc-schema/0.2
+# Developer packages - heavy toolchains installed when install.ps1 is run with -Dev.
+# Display names on `id:` lines (two spaces before `#`) are parsed by -ListPackages.
+properties:
+  configurationVersion: 0.2.0
+  resources:
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Docker Desktop
+      settings:
+        id: Docker.DockerDesktop  # Docker Desktop
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install .NET 8 SDK
+      settings:
+        id: Microsoft.DotNet.SDK.8  # .NET 8 SDK
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install .NET 9 SDK
+      settings:
+        id: Microsoft.DotNet.SDK.9  # .NET 9 SDK
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Node.js
+      settings:
+        id: OpenJS.NodeJS  # Node.js
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install GitHub CLI
+      settings:
+        id: GitHub.cli  # GitHub CLI
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install tldr
+      settings:
+        id: tldr-pages.tlrc  # tldr (man pages)
+        source: winget

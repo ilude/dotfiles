@@ -23,6 +23,12 @@ When invoking the self-elevating Windows installer from Claude, run:
 ~/.dotfiles/install.ps1 -NoElevate   # Skip elevation (Developer Mode)
 ```
 
+Windows packages are declared in `winget/configuration/{core,work,dev}.dsc.yaml`
+(WinGet Configuration / DSC). `install.ps1` calls `winget configure -f <file>` per
+selected group. To add or remove a package, edit the YAML — not `install.ps1`. The
+`id: <id>  # <Display Name>` comment format (two spaces before `#`) is load-bearing
+for `-ListPackages` and must be preserved.
+
 > **Note for Claude:** Self-elevating scripts like `install.ps1` can be run directly via `pwsh -File install.ps1`. They spawn an elevated admin window automatically, so you will not see output in the current session. Wrap in a 90 second timeout to avoid hanging: `timeout 90 pwsh -File install.ps1 -SkipPackages`
 
 ## Claude Surfaces In This Repo
