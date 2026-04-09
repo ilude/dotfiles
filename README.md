@@ -44,6 +44,11 @@ git clone --recursive https://github.com/ilude/dotfiles.git $HOME\.dotfiles
 ~\.dotfiles\install.ps1 -ListPackages  # Show available packages
 ```
 
+Windows packages are defined declaratively in `winget/configuration/{core,work,dev}.dsc.yaml`
+(WinGet Configuration / DSC). Add or remove packages by editing those files — `install.ps1`
+invokes `winget configure` on each selected group. Preserve the comment format
+`id: <id>  # <Display Name>` (two spaces before `#`) so `-ListPackages` keeps working.
+
 ### WSL (from Windows)
 
 ```bash

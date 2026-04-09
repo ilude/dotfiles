@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=https://aka.ms/configuration-dsc-schema/0.2
+# Work packages - installed when install.ps1 is run with -Work.
+# Display names on `id:` lines (two spaces before `#`) are parsed by -ListPackages.
+properties:
+  configurationVersion: 0.2.0
+  resources:
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install AWS CLI v2
+      settings:
+        id: Amazon.AWSCLI  # AWS CLI v2
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Helm
+      settings:
+        id: Helm.Helm  # Helm
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Terraform
+      settings:
+        id: Hashicorp.Terraform  # Terraform
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install GitLab CLI
+      settings:
+        id: GLab.GLab  # GitLab CLI
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install WireGuard VPN
+      settings:
+        id: WireGuard.WireGuard  # WireGuard VPN
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Tailscale
+      settings:
+        id: Tailscale.Tailscale  # Tailscale
+        source: winget
