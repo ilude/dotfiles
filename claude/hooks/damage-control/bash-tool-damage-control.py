@@ -434,6 +434,50 @@ def is_readonly_git_command(command: str) -> bool:
 
 
 # ============================================================================
+# SSH IDENTITY COMMAND DETECTION
+# ============================================================================
+
+# Commands that reference ~/.ssh/ paths without exposing key contents to Claude.
+# ssh/scp/sftp -i just tells the binary which key to use internally;
+# ls/stat/file only list metadata. None of these leak private key material.
+SSH_SAFE_COMMANDS = [
+    # ssh -i ~/.ssh/keyname user@host ...
+    r"\bssh\s+.*-i\s+",
+    # scp -i ~/.ssh/keyname ...
+    r"\bscp\s+.*-i\s+",
+    # sftp -i ~/.ssh/keyname ...
+    r"\bsftp\s+.*-i\s+",
+    # git operations that pass SSH key via GIT_SSH_COMMAND or -c core.sshCommand
+    r"\bGIT_SSH_COMMAND\s*=\s*",
+    # ls / stat / file on ~/.ssh (directory listing, no content access)
+    r"^\s*ls\s+",
+    r"^\s*stat\s+",
+    r"^\s*file\s+",
+    # ssh-keygen -l (fingerprint, doesn't print private key)
+    r"\bssh-keygen\s+.*-l\b",
+    # ssh-keyscan (fetches server public keys, not private)
+    r"\bssh-keyscan\b",
+]
+
+_SSH_DIR_PATTERN = re.compile(r"[~$].*\.ssh[/\\]", re.IGNORECASE)
+
+
+def is_ssh_safe_command(command: str) -> bool:
+    """Check if command safely references ~/.ssh/ without exposing key contents.
+
+    Returns True for commands like ssh -i, scp -i, ls, stat that reference
+    SSH key paths but don't leak private key material to Claude's context.
+    """
+    return any(re.search(p, command, re.IGNORECASE) for p in SSH_SAFE_COMMANDS)
+
+
+def _is_ssh_dir_path(path_obj: dict[str, Any]) -> bool:
+    """Check if a zero-access path object represents ~/.ssh/."""
+    original = path_obj.get("original", "")
+    return original.rstrip("/\\") in ("~/.ssh", "$HOME/.ssh") or original == "~/.ssh/"
+
+
+# ============================================================================
 # BASH COMMENT STRIPPING
 # ============================================================================
 
@@ -1497,7 +1541,14 @@ def _stage_zero_access(rules: CompiledRules, ctx: CommandContext) -> Optional[Ch
     if "zeroAccessPaths" in ctx.relaxed_checks or is_readonly_git_command(ctx.unwrapped):
         return None
 
+    # Pre-compute: does this command safely reference ~/.ssh/?
+    ssh_safe = is_ssh_safe_command(ctx.unwrapped)
+
     for path_obj in rules.zero_access:
+        # Skip ~/.ssh/ check for commands that reference keys without exposing contents
+        if ssh_safe and _is_ssh_dir_path(path_obj):
+            continue
+
         if path_obj["is_glob"]:
             result = _zero_access_glob_match(path_obj, ctx)
         else:
