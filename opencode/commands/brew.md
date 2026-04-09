@@ -1,1 +1,1 @@
-/Users/mglenn/.dotfiles/claude/commands/brew.md
+C:/Users/mglenn/.dotfiles/claude/commands/brew.md
