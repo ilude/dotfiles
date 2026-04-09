@@ -416,7 +416,15 @@ After the coordinator returns its summary:
 1. Present the summary to the user with the review panel table, bugs, hardening, and
    dismissed findings.
 2. Note where the full synthesis is: `{review_dir}/synthesis.md`
-3. Ask the user:
+3. Output the next-step command verbatim so the user can copy it to execute the plan
+   after fixes are applied:
+
+   ```
+   /do-it <plan-path>
+   ```
+
+   (Substitute the actual plan path that was reviewed.)
+4. Ask the user:
    - "Apply bug fixes to the plan?" (Recommended — bugs only)
    - "Apply bug fixes + selected hardening — I'll choose which"
    - "Apply everything (bugs + all hardening)"
