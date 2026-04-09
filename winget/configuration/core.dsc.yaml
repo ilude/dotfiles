@@ -1,0 +1,150 @@
+# yaml-language-server: $schema=https://aka.ms/configuration-dsc-schema/0.2
+# Core packages installed by install.ps1 on every run.
+# Display names on `id:` lines (two spaces before `#`) are parsed by -ListPackages.
+properties:
+  configurationVersion: 0.2.0
+  resources:
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Git
+      settings:
+        id: Git.Git  # Git
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install PowerShell 7
+      settings:
+        id: Microsoft.PowerShell  # PowerShell 7
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Windows Terminal
+      settings:
+        id: Microsoft.WindowsTerminal  # Windows Terminal
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Bun
+      settings:
+        id: Oven-sh.Bun  # Bun
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Python 3.14
+      settings:
+        id: Python.Python.3.14  # Python 3.14
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install GNU Make
+      settings:
+        id: ezwinports.make  # GNU Make
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install curl
+      settings:
+        id: cURL.cURL  # curl
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install fzf
+      settings:
+        id: junegunn.fzf  # fzf (fuzzy finder)
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install eza
+      settings:
+        id: eza-community.eza  # eza (modern ls)
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install zoxide
+      settings:
+        id: ajeetdsouza.zoxide  # zoxide (smart cd)
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Oh My Posh
+      settings:
+        id: JanDeDobbeleer.OhMyPosh  # Oh My Posh
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install jq
+      settings:
+        id: jqlang.jq  # jq (JSON processor)
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install ripgrep
+      settings:
+        id: BurntSushi.ripgrep.MSVC  # ripgrep (rg)
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install fd
+      settings:
+        id: sharkdp.fd  # fd (find replacement)
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install bat
+      settings:
+        id: sharkdp.bat  # bat (cat replacement)
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install git-delta
+      settings:
+        id: dandavison.delta  # git-delta (diff pager)
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install btop
+      settings:
+        id: aristocratos.btop4win  # btop (system monitor)
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install shellcheck
+      settings:
+        id: koalaman.shellcheck  # shellcheck (shell linter)
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install shfmt
+      settings:
+        id: mvdan.shfmt  # shfmt (shell formatter)
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install just
+      settings:
+        id: Casey.Just  # just (command runner)
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install uv
+      settings:
+        id: astral-sh.uv  # uv (Python package manager)
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install MSYS2
+      settings:
+        id: MSYS2.MSYS2  # MSYS2 (provides zsh for Git Bash)
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install rclone
+      settings:
+        id: Rclone.Rclone  # rclone (cloud sync)
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install WinFsp
+      settings:
+        id: WinFsp.WinFsp  # WinFsp (FUSE for Windows)
+        source: winget

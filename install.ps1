@@ -45,53 +45,34 @@ param(
 # ============================================================================
 # PACKAGE DEFINITIONS
 # ============================================================================
+# winget package definitions live in winget/configuration/{core,work,dev}.dsc.yaml
+# as WinGet Configuration (DSC) files. Install-Packages invokes
+# `winget configure` on each selected file. -ListPackages reads them via
+# Get-DscYamlPackages.
 
-$corePackages = @(
-    @{ Id = 'Git.Git'; Name = 'Git' },
-    @{ Id = 'Microsoft.PowerShell'; Name = 'PowerShell 7' },
-    @{ Id = 'Microsoft.WindowsTerminal'; Name = 'Windows Terminal' },
-    @{ Id = 'Oven-sh.Bun'; Name = 'Bun' },
-    @{ Id = 'Python.Python.3.14'; Name = 'Python 3.14' },
-    @{ Id = 'ezwinports.make'; Name = 'GNU Make' },
-    @{ Id = 'cURL.cURL'; Name = 'curl' },
-    @{ Id = 'junegunn.fzf'; Name = 'fzf (fuzzy finder)' },
-    @{ Id = 'eza-community.eza'; Name = 'eza (modern ls)' },
-    @{ Id = 'ajeetdsouza.zoxide'; Name = 'zoxide (smart cd)' },
-    @{ Id = 'JanDeDobbeleer.OhMyPosh'; Name = 'Oh My Posh' },
-    @{ Id = 'jqlang.jq'; Name = 'jq (JSON processor)' },
-    @{ Id = 'BurntSushi.ripgrep.MSVC'; Name = 'ripgrep (rg)' },
-    @{ Id = 'sharkdp.fd'; Name = 'fd (find replacement)' },
-    @{ Id = 'sharkdp.bat'; Name = 'bat (cat replacement)' },
-    @{ Id = 'dandavison.delta'; Name = 'git-delta (diff pager)' },
-    @{ Id = 'aristocratos.btop4win'; Name = 'btop (system monitor)' },
-    @{ Id = 'koalaman.shellcheck'; Name = 'shellcheck (shell linter)' },
-    @{ Id = 'mvdan.shfmt'; Name = 'shfmt (shell formatter)' },
-    @{ Id = 'Casey.Just'; Name = 'just (command runner)' },
-    @{ Id = 'astral-sh.uv'; Name = 'uv (Python package manager)' },
-    @{ Id = 'MSYS2.MSYS2'; Name = 'MSYS2 (provides zsh for Git Bash)' },
-    @{ Id = 'Rclone.Rclone'; Name = 'rclone (cloud sync)' },
-    @{ Id = 'WinFsp.WinFsp'; Name = 'WinFsp (FUSE for Windows)' }
-)
+$wingetConfigDir = Join-Path $PSScriptRoot "winget\configuration"
 
-$workPackages = @(
-    @{ Id = 'Amazon.AWSCLI'; Name = 'AWS CLI v2' },
-    @{ Id = 'Helm.Helm'; Name = 'Helm' },
-    @{ Id = 'Hashicorp.Terraform'; Name = 'Terraform' },
-    @{ Id = 'GLab.GLab'; Name = 'GitLab CLI' },
-    @{ Id = 'WireGuard.WireGuard'; Name = 'WireGuard VPN' },
-    @{ Id = 'Tailscale.Tailscale'; Name = 'Tailscale' }
-)
-
-# Heavy developer toolchains - opt-in via -Dev.
-# Without -Dev, npm-based steps (pi-coding-agent, bats) skip.
-$devPackages = @(
-    @{ Id = 'Docker.DockerDesktop'; Name = 'Docker Desktop' },
-    @{ Id = 'Microsoft.DotNet.SDK.8'; Name = '.NET 8 SDK' },
-    @{ Id = 'Microsoft.DotNet.SDK.9'; Name = '.NET 9 SDK' },
-    @{ Id = 'OpenJS.NodeJS'; Name = 'Node.js' },
-    @{ Id = 'GitHub.cli'; Name = 'GitHub CLI' },
-    @{ Id = 'tldr-pages.tlrc'; Name = 'tldr (man pages)' }
-)
+function Get-DscYamlPackages {
+    <#
+    .SYNOPSIS
+        Parse a WinGet Configuration DSC YAML file for package entries.
+    .DESCRIPTION
+        Returns one object per package (Id, Name). The display name is parsed
+        from the locked comment format emitted by the YAML files:
+            id: <PackageId>  # <Display Name>
+        (two spaces before #, one space after).
+    #>
+    param([Parameter(Mandatory)][string]$Path)
+    if (-not (Test-Path $Path)) { return @() }
+    $results = @()
+    Select-String -Path $Path -Pattern '^\s*id:\s+(\S+)\s{2}#\s+(.+?)\s*$' | ForEach-Object {
+        $results += [pscustomobject]@{
+            Id   = $_.Matches[0].Groups[1].Value
+            Name = $_.Matches[0].Groups[2].Value
+        }
+    }
+    return $results
+}
 
 $itAdminModules = @(
     'Microsoft.Graph',
@@ -116,13 +97,16 @@ $userModules = @(
 
 if ($ListPackages) {
     Write-Host "`n=== Core Packages ===" -ForegroundColor Cyan
-    $corePackages | ForEach-Object { Write-Host "  $($_.Id) - $($_.Name)" }
+    Get-DscYamlPackages -Path (Join-Path $wingetConfigDir 'core.dsc.yaml') |
+        ForEach-Object { Write-Host "  $($_.Id) - $($_.Name)" }
 
     Write-Host "`n=== Work Packages (-Work) ===" -ForegroundColor Yellow
-    $workPackages | ForEach-Object { Write-Host "  $($_.Id) - $($_.Name)" }
+    Get-DscYamlPackages -Path (Join-Path $wingetConfigDir 'work.dsc.yaml') |
+        ForEach-Object { Write-Host "  $($_.Id) - $($_.Name)" }
 
     Write-Host "`n=== Developer Packages (-Dev) ===" -ForegroundColor Green
-    $devPackages | ForEach-Object { Write-Host "  $($_.Id) - $($_.Name)" }
+    Get-DscYamlPackages -Path (Join-Path $wingetConfigDir 'dev.dsc.yaml') |
+        ForEach-Object { Write-Host "  $($_.Id) - $($_.Name)" }
 
     Write-Host "`n=== IT Admin Modules (-ITAdmin) ===" -ForegroundColor Magenta
     $itAdminModules | ForEach-Object { Write-Host "  $_" }
@@ -345,39 +329,43 @@ acl = private
     Write-Host "  rclone config: created $rcloneConf" -ForegroundColor Green
 }
 
-function Install-WingetPackage {
-    param([string]$Id, [string]$Name, [string]$Version)
+function Invoke-WingetConfigure {
+    <#
+    .SYNOPSIS
+        Apply a WinGet Configuration (DSC) YAML file.
+    .DESCRIPTION
+        Runs `winget configure test` first as a pre-flight state diff, then
+        `winget configure` to apply. Non-zero exit from the apply step
+        appends "winget-configure:<GroupName>" to $script:failed.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$GroupName,
+        [Parameter(Mandatory)][string]$ConfigFile,
+        [System.ConsoleColor]$Color = [System.ConsoleColor]::Cyan
+    )
 
-    $displayName = if ($Version) { "$Name ($Version)" } else { $Name }
-    Write-Host "  Installing $displayName..." -ForegroundColor Cyan -NoNewline
+    Write-Host "`n--- $GroupName Packages (DSC) ---" -ForegroundColor $Color
 
-    $cmd = @('install', '--id', $Id, '-e', '--accept-package-agreements', '--accept-source-agreements')
-    if ($Version) { $cmd += '--version'; $cmd += $Version }
-    $result = & winget @cmd 2>&1
+    if (-not (Test-Path $ConfigFile)) {
+        Write-Host "  Configuration file not found: $ConfigFile" -ForegroundColor Red
+        $script:failed += "winget-configure:$GroupName (missing $ConfigFile)"
+        return
+    }
+
+    # Pre-flight state check (no --dry-run flag exists; `test` is the real diff)
+    Write-Host "  Pre-flight state check..." -ForegroundColor DarkGray
+    & winget configure test --accept-configuration-agreements -f $ConfigFile 2>&1 | Out-Host
+
+    # Apply
+    Write-Host "  Applying configuration..." -ForegroundColor Cyan
+    & winget configure --accept-configuration-agreements -f $ConfigFile 2>&1 | Out-Host
     $exitCode = $LASTEXITCODE
 
-    # Exit codes:
-    # 0 = success
-    # -1978335189 = already installed
-    # -1978335226 = no applicable update (already at latest)
-    # -1978335212 = no matching package found
-    switch ($exitCode) {
-        0 {
-            Write-Host " installed" -ForegroundColor Green
-            return $true
-        }
-        -1978335189 {
-            Write-Host " already installed" -ForegroundColor DarkGray
-            return $true
-        }
-        -1978335226 {
-            Write-Host " up to date" -ForegroundColor DarkGray
-            return $true
-        }
-        default {
-            Write-Host " failed (exit: $exitCode)" -ForegroundColor Red
-            return $false
-        }
+    if ($exitCode -ne 0) {
+        Write-Host "  ${GroupName}: winget configure failed (exit: $exitCode)" -ForegroundColor Red
+        $script:failed += "winget-configure:$GroupName"
+    } else {
+        Write-Host "  ${GroupName}: configuration applied" -ForegroundColor Green
     }
 }
 
@@ -697,35 +685,36 @@ function Install-Packages {
         return $false
     }
 
+    # Verify minimum winget version (DSC configure requires >= 1.6)
+    $wingetVersionRaw = ((& winget --version) -replace '^v','').Trim()
+    try {
+        if ([version]$wingetVersionRaw -lt [version]'1.6') {
+            throw "winget >= 1.6 required for DSC configure; found $wingetVersionRaw"
+        }
+    } catch [System.InvalidCastException] {
+        Write-Host "Could not parse winget version '$wingetVersionRaw', continuing..." -ForegroundColor Yellow
+    }
+
     $script:failed = @()
 
-    # Core packages
-    Write-Host "`n--- Core Packages ---" -ForegroundColor Cyan
-    foreach ($pkg in $corePackages) {
-        $splat = @{ Id = $pkg.Id; Name = $pkg.Name }
-        if ($pkg.Version) { $splat.Version = $pkg.Version }
-        if (-not (Install-WingetPackage @splat)) {
-            $script:failed += $pkg.Name
-        }
-    }
+    # Update winget sources once (mitigates per-source agreement prompts)
+    Write-Host "`nUpdating winget sources..." -ForegroundColor Cyan
+    & winget source update --accept-source-agreements 2>&1 | Out-Host
 
-    # Pin version-locked packages to prevent winget upgrade from overriding
-    foreach ($pkg in $corePackages) {
-        if ($pkg.Version) {
-            winget pin add --id $pkg.Id --version "$($pkg.Version).*" --force 2>$null | Out-Null
-        }
-    }
+    # Core packages (DSC)
+    Invoke-WingetConfigure -GroupName 'Core' -ConfigFile (Join-Path $wingetConfigDir 'core.dsc.yaml') -Color Cyan
+
+    # Pin version-locked packages to prevent winget upgrade from overriding.
+    # DSC `WinGetPackage` `version:` is an install-time target, NOT an upgrade
+    # pin (winget-cli#3401, #5244). Pinning stays in a separate loop. The loop
+    # is dead code today (no packages carry a version) but preserved for future
+    # use — when a version: key is added to a YAML entry, extend Get-DscYamlPackages
+    # to surface it and feed this loop.
+    # Placeholder: no-op. Fill in Version parsing in Get-DscYamlPackages when needed.
 
     # Developer packages (heavy toolchains - opt-in via -Dev)
     if ($Dev) {
-        Write-Host "`n--- Developer Packages ---" -ForegroundColor Green
-        foreach ($pkg in $devPackages) {
-            $splat = @{ Id = $pkg.Id; Name = $pkg.Name }
-            if ($pkg.Version) { $splat.Version = $pkg.Version }
-            if (-not (Install-WingetPackage @splat)) {
-                $script:failed += $pkg.Name
-            }
-        }
+        Invoke-WingetConfigure -GroupName 'Developer' -ConfigFile (Join-Path $wingetConfigDir 'dev.dsc.yaml') -Color Green
     }
 
     # WinGet Links setup (some packages don't auto-create symlinks)
@@ -1003,14 +992,9 @@ function Install-Packages {
         }
     }
 
-    # Work packages
+    # Work packages (DSC)
     if ($Work) {
-        Write-Host "`n--- Work Packages ---" -ForegroundColor Yellow
-        foreach ($pkg in $workPackages) {
-            if (-not (Install-WingetPackage -Id $pkg.Id -Name $pkg.Name)) {
-                $script:failed += $pkg.Name
-            }
-        }
+        Invoke-WingetConfigure -GroupName 'Work' -ConfigFile (Join-Path $wingetConfigDir 'work.dsc.yaml') -Color Yellow
     }
 
     # IT Admin modules
