@@ -4,6 +4,14 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
+## 2026-04-08: plan-it and review-it emit next-step commands
+
+**Changed:**
+- `/plan-it` now outputs both `/review-it` and `/do-it` commands with the concrete `.specs/{slug}/plan.md` path so the user can copy either
+- `/review-it` now outputs a `/do-it <plan-path>` command after the review summary
+
+**Files:** claude/shared/plan-it-instructions.md, claude/shared/review-it-instructions.md
+
 ## 2026-03-18: Improve war-report specificity and formatting
 
 **Changed:**
