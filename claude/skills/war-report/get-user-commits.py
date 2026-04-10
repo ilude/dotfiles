@@ -45,7 +45,7 @@ def get_commits(repo_path: Path, since: str, until: str, user_email: str) -> lis
             f"--until={until}",
             "--all",
             "--format=%h\t%ae\t%ad\t%s",
-            "--date=format:%-d %b",
+            "--date=format:%d %b",
         ],
         cwd=repo_path,
         capture_output=True,
@@ -67,6 +67,8 @@ def get_commits(repo_path: Path, since: str, until: str, user_email: str) -> lis
 
         # Exact email match only
         if author_email == user_email:
+            # Strip leading zero from day (Windows %d always zero-pads)
+            commit_date = commit_date.lstrip("0")
             commits.append(f"{commit_date}\t{commit_hash} {subject}")
 
     return commits
