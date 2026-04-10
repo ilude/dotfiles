@@ -72,4 +72,13 @@ export default function (pi: ExtensionAPI) {
 			await pi.sendUserMessage(template.replace("$ARGUMENTS", args.trim()) + (args.trim() ? `\n\nArgs: ${args}` : ""));
 		},
 	});
+
+	// ── Command: /gitlab-ticket ─────────────────────────────────────────────────
+	pi.registerCommand("gitlab-ticket", {
+		description: "Generate a structured GitLab issue from context or description, review, then file via glab",
+		handler: async (args, ctx) => {
+			const template = loadSkill("gitlab-ticket.md");
+			await pi.sendUserMessage(template + (args.trim() ? `\n\nArgs: ${args}` : ""));
+		},
+	});
 }
