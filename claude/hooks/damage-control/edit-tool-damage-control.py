@@ -236,6 +236,17 @@ def detect_context(
     return None
 
 
+def _check_zero_access(file_path: str, config: dict[str, Any]) -> tuple[bool, str]:
+    """Check if file_path matches a zero-access pattern (after exclusions)."""
+    exclusions = config.get("zeroAccessExclusions", [])
+    if any(match_path(file_path, excl) for excl in exclusions):
+        return False, ""
+    for zero_path in config.get("zeroAccessPaths", []):
+        if match_path(file_path, zero_path):
+            return True, f"zero-access path {zero_path} (no operations allowed)"
+    return False, ""
+
+
 def check_path(
     file_path: str, config: dict[str, Any], context: Optional[str] = None
 ) -> tuple[bool, str]:
@@ -246,21 +257,16 @@ def check_path(
         config: Loaded configuration from patterns.yaml.
         context: Optional context name that may relax certain checks.
     """
-    # Get context configuration to determine which checks to relax
     context_config = {}
     if context:
         context_config = config.get("contexts", {}).get(context, {})
     relaxed_checks = set(context_config.get("relaxed_checks", []))
 
-    # Check zero-access paths first (no access at all)
-    # Skip only if explicitly relaxed (should NEVER be relaxed for security)
     if "zeroAccessPaths" not in relaxed_checks:
-        for zero_path in config.get("zeroAccessPaths", []):
-            if match_path(file_path, zero_path):
-                return True, f"zero-access path {zero_path} (no operations allowed)"
+        blocked, reason = _check_zero_access(file_path, config)
+        if blocked:
+            return True, reason
 
-    # Check read-only paths (edits not allowed)
-    # Skip only if explicitly relaxed
     if "readOnlyPaths" not in relaxed_checks:
         for readonly in config.get("readOnlyPaths", []):
             if match_path(file_path, readonly):
