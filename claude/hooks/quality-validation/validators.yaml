@@ -72,10 +72,16 @@ typescript:
       command: ["biome", "check", "{file}"]
       check: "biome"
       detect: ["biome.json", "biome.jsonc"]
+    - name: tsc-check
+      command: ["python", "{project_root}/tsc-check.py"]
+      check: "tsc"
+      detect: ["tsconfig.json", "tsc-check.py"]
     - name: lizard-complexity
       command: *lizard_command
       check: "lizard"
       exclude_paths: *lizard_excludes
+  install:
+    npm: "npm install -g typescript"
 
 javascript:
   extensions: [".js", ".jsx", ".mjs", ".cjs"]
