@@ -55,6 +55,7 @@ const validators = loadValidators();
 export function buildExtMap(config: ValidatorsYaml): Map<string, LanguageConfig> {
 	const map = new Map<string, LanguageConfig>();
 	for (const langConfig of Object.values(config)) {
+		if (!Array.isArray(langConfig?.extensions)) continue;
 		for (const ext of langConfig.extensions) {
 			map.set(ext, langConfig);
 		}
@@ -78,15 +79,15 @@ async function runFirstAvailableValidator(
 ): Promise<{ name: string; output: string } | undefined> {
 	for (const validator of langConfig.validators) {
 		const checkBin = validator.check ?? validator.command[0];
-		const whichResult = await pi.exec(`which ${checkBin}`);
-		if (whichResult.exitCode !== 0) continue;
+		const whichResult = await pi.exec("which", [checkBin]);
+		if (whichResult.code !== 0) continue;
 
-		const cmd = validator.command
-			.map((part) => (part === "{file}" ? filePath : part))
-			.join(" ");
+		const args = validator.command
+			.slice(1)
+			.map((part) => (part === "{file}" ? filePath : part));
 
-		const result = await pi.exec(cmd);
-		if (result.exitCode !== 0) {
+		const result = await pi.exec(validator.command[0], args);
+		if (result.code !== 0) {
 			return { name: validator.name, output: (result.stdout + result.stderr).trim() };
 		}
 		return undefined;

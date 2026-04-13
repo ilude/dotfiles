@@ -49,7 +49,7 @@ export default function (pi: ExtensionAPI) {
       if (!ctx.hasUI) {
         return {
           content: [{ type: "text", text: "(no UI available — cannot prompt user)" }],
-          isError: true,
+          details: undefined,
         };
       }
 
@@ -64,7 +64,7 @@ export default function (pi: ExtensionAPI) {
           if (!params.options || params.options.length === 0) {
             return {
               content: [{ type: "text", text: 'Error: "select" mode requires a non-empty options array.' }],
-              isError: true,
+              details: undefined,
             };
           }
           answer = await ctx.ui.select(params.question, params.options);
@@ -103,10 +103,11 @@ export default function (pi: ExtensionAPI) {
     },
 
     renderResult(result, _options, theme, _context) {
-      const dismissed = result.details?.dismissed;
-      const text = dismissed
+      const details = result.details as { dismissed?: boolean } | undefined;
+      const firstContent = result.content[0] as { text?: string } | undefined;
+      const text = details?.dismissed
         ? theme.fg("warning", "(dismissed)")
-        : theme.fg("success", result.content[0]?.text ?? "");
+        : theme.fg("success", firstContent?.text ?? "");
       return new Text(text, 0, 0);
     },
   });
