@@ -198,7 +198,7 @@ export default function (pi: ExtensionAPI) {
           if (!params.title) {
             return Promise.resolve({
               content: [{ type: "text" as const, text: 'Error: "add" requires a title.' }],
-              isError: true,
+              isError: true, details: undefined,
             });
           }
           const deps = params.depends_on ?? [];
@@ -207,7 +207,7 @@ export default function (pi: ExtensionAPI) {
             if (!state.items.find((i) => i.id === depId)) {
               return Promise.resolve({
                 content: [{ type: "text" as const, text: `Error: dependency "${depId}" not found.` }],
-                isError: true,
+                isError: true, details: undefined,
               });
             }
           }
@@ -232,14 +232,14 @@ export default function (pi: ExtensionAPI) {
           if (!params.id) {
             return Promise.resolve({
               content: [{ type: "text" as const, text: 'Error: "update" requires an id.' }],
-              isError: true,
+              isError: true, details: undefined,
             });
           }
           const item = state.items.find((i) => i.id === params.id);
           if (!item) {
             return Promise.resolve({
               content: [{ type: "text" as const, text: `Error: task "${params.id}" not found.` }],
-              isError: true,
+              isError: true, details: undefined,
             });
           }
           if (params.title) item.title = params.title;
@@ -251,20 +251,20 @@ export default function (pi: ExtensionAPI) {
               if (!state.items.find((i) => i.id === depId)) {
                 return Promise.resolve({
                   content: [{ type: "text" as const, text: `Error: dependency "${depId}" not found.` }],
-                  isError: true,
+                  isError: true, details: undefined,
                 });
               }
               if (depId === item.id) {
                 return Promise.resolve({
                   content: [{ type: "text" as const, text: "Error: a task cannot depend on itself." }],
-                  isError: true,
+                  isError: true, details: undefined,
                 });
               }
               const cycle = detectCycle(state.items, item.id, depId);
               if (cycle) {
                 return Promise.resolve({
                   content: [{ type: "text" as const, text: `Error: circular dependency: ${cycle.join(" ")}` }],
-                  isError: true,
+                  isError: true, details: undefined,
                 });
               }
             }
@@ -282,14 +282,14 @@ export default function (pi: ExtensionAPI) {
           if (!params.id) {
             return Promise.resolve({
               content: [{ type: "text" as const, text: 'Error: "remove" requires an id.' }],
-              isError: true,
+              isError: true, details: undefined,
             });
           }
           const idx = state.items.findIndex((i) => i.id === params.id);
           if (idx === -1) {
             return Promise.resolve({
               content: [{ type: "text" as const, text: `Error: task "${params.id}" not found.` }],
-              isError: true,
+              isError: true, details: undefined,
             });
           }
           // Remove from other tasks' dependencies
@@ -335,7 +335,7 @@ export default function (pi: ExtensionAPI) {
         default:
           return Promise.resolve({
             content: [{ type: "text" as const, text: `Unknown action: ${params.action}` }],
-            isError: true,
+            isError: true, details: undefined,
           });
       }
     },
@@ -354,9 +354,11 @@ export default function (pi: ExtensionAPI) {
     },
 
     renderResult(result, _options, theme, _context) {
-      const text = result.content[0]?.text ?? "";
+      const firstContent = result.content[0] as { text?: string } | undefined;
+      const text = firstContent?.text ?? "";
       const firstLine = text.split("\n")[0];
-      return new Text(result.isError ? theme.fg("error", firstLine) : firstLine, 0, 0);
+      const isError = (result as { isError?: boolean }).isError;
+      return new Text(isError ? theme.fg("error", firstLine) : firstLine, 0, 0);
     },
   });
 }

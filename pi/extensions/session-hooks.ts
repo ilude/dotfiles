@@ -19,10 +19,10 @@ export default function (pi: ExtensionAPI) {
 		try {
 			// Silently skip if fetch fails (no remote, not a repo, no network, etc.)
 			const fetchResult = await pi.exec("git", ["fetch", "--quiet"], { cwd: ctx.cwd });
-			if (fetchResult.exitCode !== 0) return;
+			if (fetchResult.code !== 0) return;
 
 			const behindResult = await pi.exec("git", ["rev-list", "--count", "HEAD..@{u}"], { cwd: ctx.cwd });
-			if (behindResult.exitCode !== 0) return;
+			if (behindResult.code !== 0) return;
 
 			const count = parseInt(behindResult.stdout.trim(), 10);
 			if (!isNaN(count) && count > 0) {

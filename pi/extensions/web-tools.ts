@@ -118,14 +118,14 @@ export default function (pi: ExtensionAPI) {
 			const results = (data.results ?? []).slice(0, n);
 
 			if (results.length === 0) {
-				return { content: [{ type: "text" as const, text: "No results found." }] };
+				return { content: [{ type: "text" as const, text: "No results found." }], details: undefined };
 			}
 
 			const text = results
 				.map((r, i) => formatSearchResult(r, i + 1))
 				.join("\n\n");
 
-			return { content: [{ type: "text" as const, text }] };
+			return { content: [{ type: "text" as const, text }], details: undefined };
 		},
 	});
 
@@ -152,7 +152,7 @@ export default function (pi: ExtensionAPI) {
 
 			const text = result.stdout.trim() || result.stderr.trim() || "(no content extracted)";
 
-			return { content: [{ type: "text" as const, text }] };
+			return { content: [{ type: "text" as const, text }], details: undefined };
 		},
 	});
 }
