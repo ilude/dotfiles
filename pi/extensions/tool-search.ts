@@ -99,7 +99,7 @@ export default function (pi: ExtensionAPI) {
       for (let i = 0; i < results.length; i++) {
         const t = results[i];
         const active = activeNames.has(t.name) ? "" : " (inactive)";
-        const source = t.sourceInfo?.type === "extension"
+        const source = t.sourceInfo?.origin === "top-level"
           ? `extension${active}`
           : `built-in${active}`;
 
@@ -134,10 +134,11 @@ export default function (pi: ExtensionAPI) {
     },
 
     renderResult(result, _options, theme, _context) {
-      const matched = result.details?.matched ?? 0;
-      const total = result.details?.total ?? 0;
-      const summary = result.details?.query
-        ? `${matched}/${total} tools match "${result.details.query}"`
+      const details = result.details as { matched?: number; total?: number; query?: string } | undefined;
+      const matched = details?.matched ?? 0;
+      const total = details?.total ?? 0;
+      const summary = details?.query
+        ? `${matched}/${total} tools match "${details.query}"`
         : `${total} tools available`;
       return new Text(theme.fg("dim", summary), 0, 0);
     },
