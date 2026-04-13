@@ -1083,7 +1083,7 @@ def load_config() -> dict[str, Any]:
             "noDeletePaths": [],
         }
 
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
 
 
@@ -1113,7 +1113,7 @@ def load_allowed_hosts() -> list[str]:
         return _allowed_hosts_cache
 
     try:
-        with open(config_path) as f:
+        with open(config_path, encoding="utf-8") as f:
             config = yaml.safe_load(f) or {}
             _allowed_hosts_cache = config.get("allowedHosts", [])
     except Exception as e:

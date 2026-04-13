@@ -1,6 +1,11 @@
 """Pytest fixtures for damage-control hook tests."""
 
+import os
+
 import pytest
+
+# Set UTF-8 encoding for YAML parsing on Windows
+os.environ["PYTHONIOENCODING"] = "utf-8"
 
 
 @pytest.fixture
