@@ -237,6 +237,36 @@ bashToolPatterns:
     reason: clearing shell history
 
   # ---------------------------------------------------------------------------
+  # PERSISTENCE MECHANISMS (MITRE T1053)
+  # ---------------------------------------------------------------------------
+  # Scheduled tasks, cron jobs, and launch agents create persistent execution
+  # outside the agent session. Ask for confirmation since legitimate use exists.
+
+  - pattern: '\bcrontab\b'
+    reason: "crontab modifies scheduled tasks (persistence mechanism)"
+    ask: true
+
+  - pattern: '\bat\s+'
+    reason: "at command schedules future execution (persistence mechanism)"
+    ask: true
+
+  - pattern: '\bschtasks\b'
+    reason: "schtasks creates/modifies Windows scheduled tasks (persistence)"
+    ask: true
+
+  - pattern: '\bsystemd-run\b'
+    reason: "systemd-run creates transient service units (persistence)"
+    ask: true
+
+  - pattern: '\blaunchctl\s+(load|submit|bootstrap)\b'
+    reason: "launchctl loads launch agents/daemons (macOS persistence)"
+    ask: true
+
+  - pattern: '\b(New|Register|Set)-ScheduledTask\b'
+    reason: "PowerShell scheduled task cmdlet (Windows persistence)"
+    ask: true
+
+  # ---------------------------------------------------------------------------
   # FIND DELETE OPERATIONS
   # ---------------------------------------------------------------------------
   # find -delete permanently removes files without confirmation
@@ -281,6 +311,24 @@ bashToolPatterns:
   # TMPDIR pointing to Windows system paths
   - pattern: '\bTMPDIR=[''"]?[Cc]:[/\\](Windows|Users|Program)'
     reason: TMPDIR redirected to Windows system path - dangerous
+
+  # ---------------------------------------------------------------------------
+  # LIBRARY INJECTION
+  # ---------------------------------------------------------------------------
+  # LD_PRELOAD and similar environment variables hijack dynamic linking to
+  # inject arbitrary code into any subsequent process.
+
+  - pattern: '\bLD_PRELOAD\s*='
+    reason: "LD_PRELOAD hijacks dynamic linker to inject shared libraries"
+    ask: true
+
+  - pattern: '\bDYLD_INSERT_LIBRARIES\s*='
+    reason: "DYLD_INSERT_LIBRARIES injects libraries on macOS (same as LD_PRELOAD)"
+    ask: true
+
+  - pattern: '\bLD_LIBRARY_PATH\s*='
+    reason: "LD_LIBRARY_PATH override may redirect library loading to attacker-controlled paths"
+    ask: true
 
   # ---------------------------------------------------------------------------
   # INTERPRETER ONE-LINER OPERATIONS
@@ -2149,6 +2197,29 @@ injectionPatterns:
   - pattern: '###\s*(Instruction|System)'
     type: hidden_instruction
     severity: medium
+
+
+  # ---------------------------------------------------------------------------
+  # HIDDEN UNICODE / STEGANOGRAPHY
+  # ---------------------------------------------------------------------------
+  # Invisible Unicode characters used to embed hidden instructions that
+  # humans cannot see but LLMs process. (Pillar Security disclosure, 2025)
+
+  - pattern: "[​‌‍‎‏﻿]"
+    type: hidden_unicode
+    severity: high
+
+  - pattern: "[‪-‮⁦-⁩]"
+    type: hidden_unicode
+    severity: high
+
+  - pattern: "[￹-￼]"
+    type: hidden_unicode
+    severity: high
+
+  - pattern: "[󠀁-󠁿]"
+    type: hidden_unicode
+    severity: high
 
 # ── AST Analysis Configuration ──────────────────────────────────────────────
 # Tree-sitter based AST analysis runs as a veto-only second pass after regex.

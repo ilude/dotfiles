@@ -200,7 +200,7 @@ def load_config() -> dict[str, Any]:
     if not config_path.exists():
         return {"zeroAccessPaths": [], "readOnlyPaths": []}
 
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         config = yaml.safe_load(f) or {}
 
     return config

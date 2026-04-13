@@ -749,6 +749,81 @@ class TestEvalSourceDetection:
         assert "decision" in result
 
 
+class TestTimeoutBehavior:
+    """Tests for timeout fallback behavior in _run_with_timeout."""
+
+    def test_timeout_returns_ask(self):
+        """_run_with_timeout returns ask decision on timeout."""
+        import time
+
+        analyzer = ASTAnalyzer()
+        config = {"astAnalysis": {"enabled": True}}
+        # Mock _run_analysis to sleep longer than timeout
+        original_run = analyzer._run_analysis
+
+        def slow_analysis(*args, **kwargs):
+            time.sleep(0.5)
+            return {"decision": "allow"}
+
+        analyzer._run_analysis = slow_analysis
+        try:
+            result = analyzer._run_with_timeout("echo test", config, 0.001)
+            assert result.get("decision") == "ask"
+            assert "timeout" in result.get("reason", "").lower()
+        finally:
+            analyzer._run_analysis = original_run
+
+    def test_timeout_reason_message(self):
+        """Timeout reason message is present and descriptive."""
+        import time
+
+        analyzer = ASTAnalyzer()
+        config = {"astAnalysis": {"enabled": True}}
+        original_run = analyzer._run_analysis
+
+        def slow_analysis(*args, **kwargs):
+            time.sleep(0.5)
+            return {"decision": "allow"}
+
+        analyzer._run_analysis = slow_analysis
+        try:
+            result = analyzer._run_with_timeout("echo test", config, 0.001)
+            assert result.get("decision") == "ask"
+            reason = result.get("reason", "")
+            assert "Command too complex to analyze within timeout" in reason
+        finally:
+            analyzer._run_analysis = original_run
+
+    def test_exception_returns_ask(self):
+        """_run_with_timeout returns ask decision on analysis error."""
+        analyzer = ASTAnalyzer()
+        config = {"astAnalysis": {"enabled": True}}
+        # Mock _run_analysis to raise an exception
+        original_run = analyzer._run_analysis
+        analyzer._run_analysis = MagicMock(side_effect=Exception("test error"))
+        try:
+            result = analyzer._run_with_timeout("echo test", config, 1.0)
+            assert result.get("decision") == "ask"
+            assert "AST analysis error" in result.get("reason", "")
+        finally:
+            analyzer._run_analysis = original_run
+
+    def test_exception_reason_message(self):
+        """Exception reason message is present and descriptive."""
+        analyzer = ASTAnalyzer()
+        config = {"astAnalysis": {"enabled": True}}
+        # Mock _run_analysis to raise an exception
+        original_run = analyzer._run_analysis
+        analyzer._run_analysis = MagicMock(side_effect=RuntimeError("parse error"))
+        try:
+            result = analyzer._run_with_timeout("echo test", config, 1.0)
+            assert result.get("decision") == "ask"
+            reason = result.get("reason", "")
+            assert "AST analysis error — confirm command is safe" in reason
+        finally:
+            analyzer._run_analysis = original_run
+
+
 class TestConfigurationEdgeCases:
     """Tests for configuration edge cases and error handling."""
 

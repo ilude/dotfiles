@@ -368,15 +368,15 @@ class ASTAnalyzer:
         return cmd_name in safe_commands
 
     def _run_with_timeout(self, command: str, config: dict, timeout_sec: float) -> dict:
-        """Run analysis in a thread with a timeout, returning allow on timeout/error."""
+        """Run analysis in a thread with a timeout, escalating to ask on timeout/error."""
         try:
             with ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(self._run_analysis, command, config)
                 return future.result(timeout=timeout_sec)
         except FuturesTimeoutError:
-            return {"decision": "allow"}
+            return {"decision": "ask", "reason": "Command too complex to analyze within timeout"}
         except Exception:
-            return {"decision": "allow"}
+            return {"decision": "ask", "reason": "AST analysis error — confirm command is safe"}
 
     def _get_timeout_sec(self, ast_config: dict) -> Optional[float]:
         """Return timeout in seconds from config, or None if not set."""
