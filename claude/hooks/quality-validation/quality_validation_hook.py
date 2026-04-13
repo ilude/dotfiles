@@ -55,7 +55,9 @@ def load_skip_list() -> set:
         return set()
     try:
         with open(SKIP_FILE) as f:
-            return {line.strip() for line in f if line.strip() and not line.startswith("#")}
+            return {
+                line.strip() for line in f if line.strip() and not line.startswith("#")
+            }
     except OSError:
         return set()
 
@@ -123,7 +125,9 @@ def match_language(
     return None
 
 
-def filter_validators_by_detection(validators: list[dict], project_root: str) -> list[dict]:
+def filter_validators_by_detection(
+    validators: list[dict], project_root: str
+) -> list[dict]:
     """Filter validators using detect fields.
 
     If any validator has a 'detect' field with config files found in the
@@ -158,7 +162,9 @@ def detect_package_manager() -> Optional[str]:
     return None
 
 
-def get_install_suggestion(lang_config: dict[str, Any], validator_name: str) -> Optional[str]:
+def get_install_suggestion(
+    lang_config: dict[str, Any], validator_name: str
+) -> Optional[str]:
     """Get install command for the current platform."""
     install_config = lang_config.get("install", {})
     if not install_config:
@@ -176,7 +182,9 @@ def get_install_suggestion(lang_config: dict[str, Any], validator_name: str) -> 
     return None
 
 
-def build_command(cmd_template: list[str], file_path: str, project_root: str = "") -> list[str]:
+def build_command(
+    cmd_template: list[str], file_path: str, project_root: str = ""
+) -> list[str]:
     """Replace {file} and {project_root} placeholders in command list safely."""
     result = []
     for arg in cmd_template:
@@ -307,16 +315,23 @@ def _filter_runnable_validators(
     return runnable
 
 
-def _run_one_validator(validator: dict, file_path: str, project_root: str) -> Optional[str]:
+def _run_one_validator(
+    validator: dict, file_path: str, project_root: str
+) -> Optional[str]:
     """Run a single validator and return its formatted error (or None on success)."""
     cmd = build_command(validator.get("command", []), file_path, project_root)
-    returncode, output = run_validator(cmd, env=validator.get("env"))
+    timeout = validator.get("timeout", 8)
+    returncode, output = run_validator(cmd, timeout=timeout, env=validator.get("env"))
     if returncode != 0 and output:
-        return format_validator_error(validator.get("name", "unknown"), file_path, output)
+        return format_validator_error(
+            validator.get("name", "unknown"), file_path, output
+        )
     return None
 
 
-def _run_validators_parallel(runnable: list[dict], file_path: str, project_root: str) -> list[str]:
+def _run_validators_parallel(
+    runnable: list[dict], file_path: str, project_root: str
+) -> list[str]:
     """Run multiple validators concurrently; preserve submission order in results."""
     results: list[Optional[str]] = [None] * len(runnable)
     max_workers = min(len(runnable), MAX_PARALLEL_VALIDATORS)
@@ -338,7 +353,9 @@ def run_validator_suite(
     skip_list: set,
 ) -> list[str]:
     """Filter and run all applicable validators (parallel when more than one)."""
-    runnable = _filter_runnable_validators(validators, file_path, lang_config, skip_list)
+    runnable = _filter_runnable_validators(
+        validators, file_path, lang_config, skip_list
+    )
     if not runnable:
         return []
     if len(runnable) == 1:
@@ -366,8 +383,12 @@ def main() -> None:
         sys.exit(0)
 
     _, lang_config, project_root = match
-    validators = filter_validators_by_detection(lang_config.get("validators", []), project_root)
-    errors = run_validator_suite(validators, file_path, project_root, lang_config, load_skip_list())
+    validators = filter_validators_by_detection(
+        lang_config.get("validators", []), project_root
+    )
+    errors = run_validator_suite(
+        validators, file_path, project_root, lang_config, load_skip_list()
+    )
 
     if errors:
         print(json.dumps({"decision": "block", "reason": "\n\n".join(errors)}))

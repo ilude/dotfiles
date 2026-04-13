@@ -144,11 +144,12 @@ cpp:
 
 csharp:
   extensions: [".cs"]
-  markers: ["global.json", "Directory.Build.props", "Directory.Packages.props", "*.csproj", "*.sln"]
+  markers: ["*.csproj"]
   validators:
     - name: dotnet-format
-      command: ["dotnet", "format", "--verify-no-changes", "--include", "{file}"]
+      command: ["dotnet", "format", "{project_root}", "--verify-no-changes", "--include", "{file}"]
       check: "dotnet"
+      timeout: 60
       exclude_paths: *lizard_excludes
     - name: lizard-complexity
       command: *lizard_command
