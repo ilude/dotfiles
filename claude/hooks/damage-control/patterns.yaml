@@ -1619,6 +1619,14 @@ zeroAccessPaths:
   - "*.session"
   - ".vault-token"
 
+# ---------------------------------------------------------------------------
+# ZERO ACCESS EXCLUSIONS - Paths that should NOT be blocked by zeroAccessPaths
+# ---------------------------------------------------------------------------
+# Use when a broad glob (e.g. *.session) causes false positives on legitimate
+# directories or files. Exclusions are checked before zero-access enforcement.
+zeroAccessExclusions:
+  - ".session/"
+
   # ---------------------------------------------------------------------------
   # PLATFORM TOKENS (Vercel, Netlify, etc.)
   # ---------------------------------------------------------------------------

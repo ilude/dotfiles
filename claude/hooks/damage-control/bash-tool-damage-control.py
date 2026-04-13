@@ -156,6 +156,9 @@ def compile_config(config: dict[str, Any]) -> dict[str, Any]:
         config.get("bashToolPatterns", [])
     )
     compiled["zeroAccessPaths_compiled"] = preprocess_path_list(config.get("zeroAccessPaths", []))
+    compiled["zeroAccessExclusions_compiled"] = preprocess_path_list(
+        config.get("zeroAccessExclusions", [])
+    )
     compiled["readOnlyPaths_compiled"] = preprocess_path_list(config.get("readOnlyPaths", []))
     compiled["noDeletePaths_compiled"] = preprocess_path_list(config.get("noDeletePaths", []))
     return compiled
@@ -1392,6 +1395,7 @@ class CompiledRules:
 
     patterns: list[dict[str, Any]] = field(default_factory=list)
     zero_access: list[dict[str, Any]] = field(default_factory=list)
+    zero_access_exclusions: list[dict[str, Any]] = field(default_factory=list)
     read_only: list[dict[str, Any]] = field(default_factory=list)
     no_delete: list[dict[str, Any]] = field(default_factory=list)
 
@@ -1414,6 +1418,7 @@ def _extract_compiled_rules(config: dict[str, Any]) -> CompiledRules:
         return CompiledRules(
             patterns=config.get("bashToolPatterns_compiled", []),
             zero_access=config.get("zeroAccessPaths_compiled", []),
+            zero_access_exclusions=config.get("zeroAccessExclusions_compiled", []),
             read_only=config.get("readOnlyPaths_compiled", []),
             no_delete=config.get("noDeletePaths_compiled", []),
         )
@@ -1421,6 +1426,7 @@ def _extract_compiled_rules(config: dict[str, Any]) -> CompiledRules:
     return CompiledRules(
         patterns=compile_regex_patterns(config.get("bashToolPatterns", [])),
         zero_access=preprocess_path_list(config.get("zeroAccessPaths", [])),
+        zero_access_exclusions=preprocess_path_list(config.get("zeroAccessExclusions", [])),
         read_only=preprocess_path_list(config.get("readOnlyPaths", [])),
         no_delete=preprocess_path_list(config.get("noDeletePaths", [])),
     )
@@ -1536,17 +1542,49 @@ def _zero_access_literal_match(
     )
 
 
+def _excl_matches_glob(excl: dict[str, Any], command: str) -> bool:
+    """Check if a glob exclusion matches the command."""
+    glob_regex = excl.get("glob_regex")
+    return bool(glob_regex and glob_regex.search(command))
+
+
+def _excl_matches_literal(excl: dict[str, Any], command: str) -> bool:
+    """Check if a literal exclusion matches the command."""
+    try:
+        for key in ("escaped_expanded", "escaped_original"):
+            pattern = excl.get(key, "")
+            if pattern and re.search(pattern, command, re.IGNORECASE):
+                return True
+    except re.error:
+        pass
+    return False
+
+
+def _command_matches_exclusion(exclusions: list[dict[str, Any]], command: str) -> bool:
+    """Check if command references any excluded path."""
+    matcher = {True: _excl_matches_glob, False: _excl_matches_literal}
+    return any(matcher[excl["is_glob"]](excl, command) for excl in exclusions)
+
+
+def _should_skip_zero_access(path_obj: dict[str, Any], ssh_safe: bool, has_exclusion: bool) -> bool:
+    """Check if a zero-access path should be skipped due to exemptions."""
+    if ssh_safe and _is_ssh_dir_path(path_obj):
+        return True
+    return has_exclusion
+
+
 def _stage_zero_access(rules: CompiledRules, ctx: CommandContext) -> Optional[CheckResult]:
     """Stage 2: enforce zero-access paths (skipped for read-only git metadata queries)."""
     if "zeroAccessPaths" in ctx.relaxed_checks or is_readonly_git_command(ctx.unwrapped):
         return None
 
-    # Pre-compute: does this command safely reference ~/.ssh/?
     ssh_safe = is_ssh_safe_command(ctx.unwrapped)
+    has_exclusion = bool(rules.zero_access_exclusions) and _command_matches_exclusion(
+        rules.zero_access_exclusions, ctx.unwrapped
+    )
 
     for path_obj in rules.zero_access:
-        # Skip ~/.ssh/ check for commands that reference keys without exposing contents
-        if ssh_safe and _is_ssh_dir_path(path_obj):
+        if _should_skip_zero_access(path_obj, ssh_safe, has_exclusion):
             continue
 
         if path_obj["is_glob"]:
