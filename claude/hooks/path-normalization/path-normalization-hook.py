@@ -49,6 +49,9 @@ from datetime import datetime
 from pathlib import Path
 
 HOOK_NAME = "path-normalization"
+
+# Module-level storage for original tool_input (used by fix_and_allow)
+_original_tool_input: dict = {}
 BACKSLASH = chr(92)
 
 # Pre-compiled regex patterns for performance (~40% faster than inline re.match)
@@ -231,7 +234,7 @@ def fix_and_allow(tool_name: str, file_path: str, fixed_path: str, reason: str) 
             "hookEventName": "PreToolUse",
             "permissionDecision": "allow",
             "permissionDecisionReason": f"Path auto-corrected: {reason}",
-            "updatedInput": {"file_path": fixed_path},
+            "updatedInput": {**_original_tool_input, "file_path": fixed_path},
             "additionalContext": (
                 f"Path '{file_path}' was auto-corrected to '{fixed_path}' ({reason})."
             ),
@@ -360,6 +363,8 @@ def _parse_hook_input() -> tuple[str, str]:
     path_str = tool_input.get("file_path", "")
     if not path_str or not isinstance(path_str, str):
         sys.exit(0)
+    global _original_tool_input
+    _original_tool_input = tool_input
     return tool_name, path_str
 
 
