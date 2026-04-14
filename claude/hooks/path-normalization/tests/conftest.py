@@ -54,6 +54,17 @@ class HookResult:
         except (json.JSONDecodeError, KeyError, TypeError):
             return None
 
+    @property
+    def updated_input(self) -> Optional[dict]:
+        """Get the full updatedInput dict, or None if not fixed."""
+        if not self.fixed:
+            return None
+        try:
+            output = json.loads(self.stdout)
+            return output["hookSpecificOutput"]["updatedInput"]
+        except (json.JSONDecodeError, KeyError, TypeError):
+            return None
+
 
 @pytest.fixture
 def run_hook():
@@ -68,6 +79,7 @@ def run_hook():
         file_path: str,
         env: Optional[dict] = None,
         cwd: Optional[str] = None,
+        extra_input: Optional[dict] = None,
     ) -> HookResult:
         """Run the path normalization hook.
 
@@ -76,13 +88,17 @@ def run_hook():
             file_path: The file path to validate
             env: Optional environment variable overrides
             cwd: Optional working directory for the subprocess
+            extra_input: Optional extra fields for tool_input (e.g. content, old_string)
 
         Returns:
             HookResult with exit_code, stdout, and stderr
         """
+        tool_input = {"file_path": file_path}
+        if extra_input:
+            tool_input.update(extra_input)
         input_data = {
             "tool_name": tool_name,
-            "tool_input": {"file_path": file_path},
+            "tool_input": tool_input,
         }
 
         # Build environment

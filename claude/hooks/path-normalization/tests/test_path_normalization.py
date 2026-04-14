@@ -900,3 +900,89 @@ class TestPathTraversal:
         """Mixed ./ and ../ traversal is allowed."""
         result = run_hook("Edit", "./src/../lib/../../other/file.py")
         assert result.allowed
+
+
+class TestUpdatedInputPreservesFields:
+    """Regression tests: updatedInput must preserve all original tool_input fields.
+
+    Bug: fix_and_allow previously sent updatedInput with only {"file_path": fixed},
+    which caused Claude Code to replace the entire tool_input â€” dropping content
+    (Write) and old_string/new_string (Edit). This produced:
+      - Write: 'The "data" argument must be of type string... Received undefined'
+      - Edit: 'Cannot read properties of undefined (reading "replaceAll")'
+    """
+
+    def test_write_content_preserved_on_backslash_fix(self, run_hook):
+        """Write tool content must survive path normalization."""
+        result = run_hook(
+            "Write",
+            r"src\components\App.tsx",
+            extra_input={"content": "export default function App() {}"},
+        )
+        assert result.fixed
+        assert result.fixed_path == "src/components/App.tsx"
+        assert result.updated_input["content"] == "export default function App() {}"
+
+    def test_edit_old_new_string_preserved_on_backslash_fix(self, run_hook):
+        """Edit tool old_string and new_string must survive path normalization."""
+        result = run_hook(
+            "Edit",
+            r"lib\utils\helper.py",
+            extra_input={"old_string": "def foo():", "new_string": "def bar():"},
+        )
+        assert result.fixed
+        assert result.fixed_path == "lib/utils/helper.py"
+        assert result.updated_input["old_string"] == "def foo():"
+        assert result.updated_input["new_string"] == "def bar():"
+
+    def test_write_content_preserved_on_absolute_path_fix(self, run_hook, tmp_path):
+        """Write content preserved when absolute path is fixed to relative."""
+        project_dir = tmp_path / "myproject"
+        project_dir.mkdir(parents=True)
+
+        file_path = str(project_dir / "src" / "main.py").replace("\\", "/")
+        content = "import os\nprint('hello')\n"
+
+        result = run_hook(
+            "Write",
+            file_path,
+            env={"CLAUDE_PROJECT_DIR": str(project_dir).replace("\\", "/")},
+            cwd=str(project_dir),
+            extra_input={"content": content},
+        )
+        assert result.fixed
+        assert result.fixed_path == "src/main.py"
+        assert result.updated_input["content"] == content
+
+    def test_edit_replace_all_preserved(self, run_hook):
+        """Edit tool replace_all flag must survive path normalization."""
+        result = run_hook(
+            "Edit",
+            r"src\config.json",
+            extra_input={
+                "old_string": "localhost",
+                "new_string": "0.0.0.0",
+                "replace_all": True,
+            },
+        )
+        assert result.fixed
+        assert result.updated_input["replace_all"] is True
+        assert result.updated_input["old_string"] == "localhost"
+        assert result.updated_input["new_string"] == "0.0.0.0"
+
+    def test_write_multiline_content_preserved(self, run_hook):
+        """Large multiline content must not be truncated or corrupted."""
+        content = "# Plan\n\n" + "\n".join(f"- Step {i}: do thing {i}" for i in range(50))
+        result = run_hook(
+            "Write",
+            r"docs\plan.md",
+            extra_input={"content": content},
+        )
+        assert result.fixed
+        assert result.updated_input["content"] == content
+
+    def test_no_extra_fields_when_none_provided(self, run_hook):
+        """When tool_input only has file_path, updatedInput should only have file_path."""
+        result = run_hook("Edit", r"src\file.py")
+        assert result.fixed
+        assert result.updated_input == {"file_path": "src/file.py"}
