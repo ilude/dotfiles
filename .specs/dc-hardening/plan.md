@@ -1,7 +1,7 @@
 ---
 created: 2026-04-13
-status: reviewed
-completed:
+status: completed
+completed: 2026-04-14
 ---
 
 # Plan: Damage-Control Hook Hardening

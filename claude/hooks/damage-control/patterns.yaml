@@ -1605,6 +1605,22 @@ bashToolPatterns:
     ask: true
 
 # ---------------------------------------------------------------------------
+# CONTENT SCAN PATHS - Paths where written content is scanned for injection
+# ---------------------------------------------------------------------------
+# When writing to these paths, the content is checked against injectionPatterns.
+# This prevents memory poisoning attacks where malicious content gets persisted.
+# IMPORTANT: Do NOT include .claude/hooks/ — it contains injection pattern strings
+# in comments and test data that would cause false positives.
+contentScanPaths:
+  - ".claude/memory/"
+  - ".claude/commands/"
+  - "CLAUDE.md"
+  - "AGENTS.md"
+  - ".cursor/"
+  - ".cursorrules"
+  - ".vscode/"
+
+# ---------------------------------------------------------------------------
 # ZERO ACCESS PATHS - No read, write, or any access allowed
 # ---------------------------------------------------------------------------
 # These contain secrets/credentials - block ALL operations including reads
@@ -1805,6 +1821,23 @@ zeroAccessExclusions:
   - "~/.vault-token"
   # AWS Session
   - "~/.aws/sso/cache/"
+
+# ---------------------------------------------------------------------------
+# WRITE CONFIRM PATHS - Soft-ask confirmation for sensitive config files
+# ---------------------------------------------------------------------------
+# Writes to these paths trigger a confirmation prompt instead of silent allow.
+# Unlike readOnlyPaths (which hard-blocks), these allow the write after user confirms.
+# Protects against config poisoning attacks (CVE-2026-21852, CVE-2025-53773).
+writeConfirmPaths:
+  - "~/.claude/settings.json"
+  - ".claude/settings.json"
+  - ".claude/settings.local.json"
+  - ".vscode/settings.json"
+  - ".cursor/mcp.json"
+  - ".cursorrules"
+  - "CLAUDE.md"
+  - "AGENTS.md"
+  - "~/.claude/commands/"
 
 # ---------------------------------------------------------------------------
 # READ-ONLY PATHS - Can read, but not write/edit/delete
