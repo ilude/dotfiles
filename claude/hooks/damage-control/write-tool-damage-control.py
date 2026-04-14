@@ -150,9 +150,11 @@ def _match_glob_path(expanded_normalized: str, pattern: str, expanded_pattern: s
 
 def _match_exact_path(expanded_normalized: str, expanded_pattern: str) -> bool:
     """Exact or directory-prefix match."""
-    if expanded_normalized in (expanded_pattern, expanded_pattern.rstrip("/")):
+    stripped = expanded_pattern.rstrip("/").rstrip(os.sep)
+    if expanded_normalized in (expanded_pattern, stripped):
         return True
-    if expanded_pattern.endswith("/") and expanded_normalized.startswith(expanded_pattern):
+    has_trailing_sep = expanded_pattern.endswith("/") or expanded_pattern.endswith(os.sep)
+    if has_trailing_sep and expanded_normalized.startswith(expanded_pattern):
         return True
     return expanded_normalized.startswith(expanded_pattern + "/") or expanded_normalized.startswith(
         expanded_pattern + os.sep
@@ -165,6 +167,12 @@ def match_path(file_path: str, pattern: str) -> bool:
     expanded_normalized = os.path.expanduser(os.path.normpath(file_path))
     if is_glob_pattern(pattern):
         return _match_glob_path(expanded_normalized, pattern, expanded_pattern)
+    # Normalize pattern path separators (Windows: forward slash -> backslash).
+    # Preserve trailing-slash semantics by re-appending sep after normpath strips it.
+    trailing_sep = expanded_pattern.endswith("/") or expanded_pattern.endswith(os.sep)
+    expanded_pattern = os.path.normpath(expanded_pattern)
+    if trailing_sep:
+        expanded_pattern += os.sep
     return _match_exact_path(expanded_normalized, expanded_pattern)
 
 
@@ -247,6 +255,58 @@ def _check_zero_access(file_path: str, config: dict[str, Any]) -> tuple[bool, st
     return False, ""
 
 
+def _path_matches_content_scan(file_path: str, config: dict[str, Any]) -> bool:
+    """Check if file_path is in contentScanPaths (should have content scanned)."""
+    for scan_path in config.get("contentScanPaths", []):
+        if match_path(file_path, scan_path):
+            return True
+    return False
+
+
+def _scan_content_for_injections(content: str, config: dict[str, Any]) -> Optional[str]:
+    """Scan content for injection patterns. Returns reason string or None."""
+    import re
+
+    if not content:
+        return None
+    for pattern_info in config.get("injectionPatterns", []):
+        pattern_str = pattern_info.get("pattern", "")
+        if not pattern_str:
+            continue
+        try:
+            if re.search(pattern_str, content, re.IGNORECASE | re.MULTILINE):
+                ptype = pattern_info.get("type", "unknown")
+                return f"Injection pattern detected ({ptype}) in content being written"
+        except re.error:
+            continue
+    return None
+
+
+def _check_content_injection(
+    file_path: str,
+    content: str,
+    config: dict[str, Any],
+    context: Optional[str],
+) -> None:
+    """If content matches an injection pattern in a scan path, emit ask and exit."""
+    if not content or not _path_matches_content_scan(file_path, config):
+        return
+    reason = _scan_content_for_injections(content, config)
+    if reason:
+        log_decision("Write", file_path, "ask", reason, context)
+        spawn_log_rotation()
+        print(json.dumps({"permissionDecision": "ask", "reason": reason}))
+        sys.exit(0)
+
+
+def _check_write_confirm(file_path: str, config: dict[str, Any]) -> Optional[str]:
+    """Check if file_path matches a writeConfirmPaths pattern. Returns reason or None."""
+    for confirm_path in config.get("writeConfirmPaths", []):
+        if match_path(file_path, confirm_path):
+            return f"Config file {confirm_path} \u2014 confirm write"
+    return None
+
+
 def check_path(
     file_path: str, config: dict[str, Any], context: Optional[str] = None
 ) -> tuple[bool, str]:
@@ -297,6 +357,18 @@ def main() -> None:
 
     # Detect context (e.g., documentation)
     context = detect_context(tool_name, tool_input, config)
+
+    # Config sentinel: soft-ask for sensitive config files
+    confirm_reason = _check_write_confirm(file_path, config)
+    if confirm_reason:
+        log_decision("Write", file_path, "ask", confirm_reason, context)
+        spawn_log_rotation()
+        print(json.dumps({"permissionDecision": "ask", "reason": confirm_reason}))
+        sys.exit(0)
+
+    # Content injection scanning for sensitive paths (T6)
+    # Runs after writeConfirmPaths check (T5) to avoid double-prompting.
+    _check_content_injection(file_path, tool_input.get("content", ""), config, context)
 
     # Check if file is blocked with context awareness
     blocked, reason = check_path(file_path, config, context=context)

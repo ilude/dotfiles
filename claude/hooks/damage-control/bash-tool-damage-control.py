@@ -1448,7 +1448,11 @@ def _evaluate_yaml_pattern(
     if not compiled_regex:
         return None
     try:
-        if not compiled_regex.search(ctx.unwrapped):
+        # Check both unwrapped and original command; original is needed to detect
+        # environment variable injections like 'env VAR=val cmd' which unwrap to just 'cmd'
+        unwrapped_match = compiled_regex.search(ctx.unwrapped)
+        original_match = ctx.was_unwrapped and compiled_regex.search(ctx.original)
+        if not (unwrapped_match or original_match):
             return None
     except re.error:
         return None
@@ -1473,11 +1477,31 @@ def _evaluate_yaml_pattern(
 
 
 def _stage_yaml_patterns(rules: CompiledRules, ctx: CommandContext) -> Optional[CheckResult]:
-    """Stage 1: scan compiled YAML patterns. Skipped for read-only/dry-run/relaxed."""
-    if "bashToolPatterns" in ctx.relaxed_checks or ctx.is_readonly_search or ctx.has_dry_run:
-        return None
+    """Stage 1: scan compiled YAML patterns.
+
+    Skipped for relaxed contexts. However, environment-variable-based attacks
+    (LD_PRELOAD, DYLD_INSERT_LIBRARIES, etc.) are ALWAYS checked even if the
+    underlying command is readonly, because they affect arbitrary processes.
+    """
+    skip_patterns = "bashToolPatterns" in ctx.relaxed_checks or ctx.has_dry_run
 
     for idx, item in enumerate(rules.patterns):
+        # Skip readonly/dry-run relaxation for environment injection patterns
+        pattern_str = item.get("pattern", "")
+        is_env_injection = any(
+            x in pattern_str
+            for x in [
+                r"LD_PRELOAD",
+                r"DYLD_INSERT_LIBRARIES",
+                r"LD_LIBRARY_PATH",
+            ]
+        )
+
+        if skip_patterns and not is_env_injection:
+            continue
+        if ctx.is_readonly_search and not is_env_injection:
+            continue
+
         result = _evaluate_yaml_pattern(item, idx, ctx)
         if result is not None:
             return result
