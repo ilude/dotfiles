@@ -378,6 +378,52 @@ impl SafeBuffer {
 
 ---
 
+## No Magic Values
+
+MUST NOT use literal strings, numbers, or booleans inline when they represent a domain concept, configuration, or repeated value. Extract to `const`, enums, or associated constants.
+
+### Patterns
+
+```rust
+// BAD: magic values
+if user.role == "admin" { /* ... */ }
+let timeout = Duration::from_secs(30);
+let addr = "127.0.0.1:8080";
+
+// GOOD: enums (preferred for fixed sets)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Role {
+    Admin,
+    User,
+    Guest,
+}
+
+// GOOD: const for primitives and &str
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_ADDR: &str = "127.0.0.1:8080";
+const MAX_RETRIES: u32 = 3;
+
+// GOOD: associated constants on types
+impl Config {
+    pub const DEFAULT_PORT: u16 = 8080;
+}
+```
+
+### const vs static
+
+| Use | When |
+|-----|------|
+| `const` | Compile-time values, inlined at each use site |
+| `static` | Single allocation, interior mutability (`Mutex`, `OnceLock`), FFI |
+
+### When Literals Are Fine
+
+- Array indices (`0`, `1`), boolean flags, empty strings/collections
+- Test assertions and fixture data
+- Single-use format strings and log messages
+- Well-known protocol values used once
+
+---
 ## Common Patterns
 
 ### Builder Pattern

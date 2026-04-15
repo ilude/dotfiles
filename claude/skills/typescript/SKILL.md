@@ -192,6 +192,37 @@ const MAX_RETRIES = 3;
 function useUserData(userId: string) { /* ... */ }
 ```
 
+
+## No Magic Values
+
+MUST NOT use literal strings, numbers, or booleans inline when they represent a domain concept, configuration, or repeated value. Extract to named constants or enums.
+
+### Patterns
+
+```typescript
+// BAD: magic values
+if (user.role === 'admin') { /* ... */ }
+const timeout = 30000;
+fetch('/api/users');
+
+// GOOD: named constants
+const ROLES = { Admin: 'admin', User: 'user', Guest: 'guest' } as const;
+type Role = typeof ROLES[keyof typeof ROLES];
+
+const TIMEOUT_MS = 30_000;
+
+const API = { Users: '/api/users', Posts: '/api/posts' } as const;
+
+if (user.role === ROLES.Admin) { /* ... */ }
+```
+
+### When Literals Are Fine
+
+- Array indices (`0`, `1`), boolean flags, empty strings/collections
+- Test assertions and fixture data
+- Single-use format strings and log messages
+- Well-known protocol values (HTTP methods, status codes) used once
+
 ## Type Safety
 
 ### Type Hints
