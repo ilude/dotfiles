@@ -130,10 +130,9 @@ def filter_validators_by_detection(
 ) -> list[dict]:
     """Filter validators using detect fields.
 
-    If any validator has a 'detect' field with config files found in the
-    project root, only validators whose config files are detected are used.
-    Validators without a 'detect' field are included only if no detection
-    matches are found (fallback behavior).
+    A validator with a 'detect' field is included only when ALL listed files
+    exist in the project root.  Validators without a 'detect' field are
+    included only if no detection matches are found (fallback behavior).
     """
     detected = []
     fallbacks = []
@@ -143,10 +142,8 @@ def filter_validators_by_detection(
         if not detect_files:
             fallbacks.append(validator)
             continue
-        for config_file in detect_files:
-            if (Path(project_root) / config_file).exists():
-                detected.append(validator)
-                break
+        if all((Path(project_root) / f).exists() for f in detect_files):
+            detected.append(validator)
 
     return detected if detected else fallbacks
 
