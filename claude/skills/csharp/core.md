@@ -111,6 +111,46 @@ builder.Services.AddKeyedSingleton<ICache, MemoryCache>("memory");
 
 ---
 
+## No Magic Values
+
+MUST NOT use literal strings, numbers, or booleans inline when they represent a domain concept, configuration, or repeated value. Extract to `const`, `static readonly`, or `enum`.
+
+### Patterns
+
+```csharp
+// BAD: magic values
+if (user.Role == "admin") { /* ... */ }
+var timeout = TimeSpan.FromSeconds(30);
+
+// GOOD: const for compile-time values
+public static class Timeouts
+{
+    public const int DefaultSeconds = 30;
+    public static readonly TimeSpan Default = TimeSpan.FromSeconds(DefaultSeconds);
+}
+
+// GOOD: enum for fixed sets
+public enum UserRole { Admin, User, Guest }
+
+if (user.Role == UserRole.Admin) { /* ... */ }
+```
+
+### const vs static readonly
+
+| Use | When |
+|-----|------|
+| `const` | Compile-time primitives and strings (`int`, `string`, `bool`) |
+| `static readonly` | Runtime-computed values, `TimeSpan`, arrays, complex types |
+
+### When Literals Are Fine
+
+- Array indices (`0`, `1`), boolean flags, empty strings/collections
+- Test assertions and fixture data
+- Single-use string interpolations and log messages
+- Well-known framework values (HTTP methods, status codes) used once
+
+---
+
 ## Naming Conventions
 
 ### General Rules
