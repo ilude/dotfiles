@@ -101,6 +101,44 @@ def fetch_user(repo: Repository, user_id: str) -> User | None:
     return User(**data) if data else None
 ```
 
+## No Magic Values
+
+MUST NOT use literal strings, numbers, or booleans inline when they represent a domain concept, configuration, or repeated value. Extract to named constants, `Enum`, or `Final` annotations.
+
+### Patterns
+
+```python
+from enum import StrEnum
+from typing import Final
+
+# BAD: magic values
+if user.role == "admin":
+    ...
+timeout = 30000
+conn = connect("localhost", 5432)
+
+# GOOD: named constants and enums
+class Role(StrEnum):
+    ADMIN = "admin"
+    USER = "user"
+    GUEST = "guest"
+
+TIMEOUT_MS: Final = 30_000
+DEFAULT_HOST: Final = "localhost"
+DEFAULT_PORT: Final = 5432
+
+if user.role == Role.ADMIN:
+    ...
+conn = connect(DEFAULT_HOST, DEFAULT_PORT)
+```
+
+### When Literals Are Fine
+
+- Array indices (`0`, `1`), boolean flags, empty strings/collections
+- Test assertions and fixture data
+- Single-use f-strings and log messages
+- Well-known protocol values (HTTP methods, status codes) used once
+
 ## Naming Conventions
 
 ### Standard Conventions

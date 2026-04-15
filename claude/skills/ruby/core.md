@@ -125,6 +125,36 @@ All Ruby commands MUST use `bundle exec` prefix to ensure correct gem versions.
 | Dangerous | trailing `!` | `save!`, `destroy!` |
 | Setters | trailing `=` | `name=` |
 
+### No Magic Values
+
+MUST NOT use literal strings, numbers, or booleans inline when they represent a domain concept, configuration, or repeated value. Extract to named constants with `freeze`.
+
+```ruby
+# BAD: magic values
+if user.role == "admin"
+  # ...
+end
+sleep(30)
+
+# GOOD: frozen constants
+ROLES = { admin: "admin", user: "user", guest: "guest" }.freeze
+DEFAULT_TIMEOUT = 30
+MAX_RETRIES = 3
+
+# GOOD: module namespace for related constants
+module Roles
+  ADMIN = "admin".freeze
+  USER  = "user".freeze
+  GUEST = "guest".freeze
+end
+
+if user.role == Roles::ADMIN
+  # ...
+end
+```
+
+**When literals are fine:** array indices, test assertions, single-use strings, log messages.
+
 ### Method Naming
 
 - Predicate methods MUST return boolean and end with `?`

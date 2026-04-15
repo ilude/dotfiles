@@ -344,6 +344,54 @@ func main() {
 
 ---
 
+## No Magic Values
+
+You MUST NOT use literal strings, numbers, or booleans inline when they represent a domain concept, configuration, or repeated value. Extract to typed constants or `const` blocks.
+
+### Patterns
+
+```go
+// BAD: magic values
+if user.Role == "admin" { /* ... */ }
+time.Sleep(30 * time.Second)
+http.ListenAndServe(":8080", nil)
+
+// GOOD: typed constants
+type Role string
+
+const (
+    RoleAdmin Role = "admin"
+    RoleUser  Role = "user"
+    RoleGuest Role = "guest"
+)
+
+const (
+    DefaultTimeout    = 30 * time.Second
+    DefaultListenAddr = ":8080"
+)
+
+if user.Role == RoleAdmin { /* ... */ }
+
+// GOOD: iota for sequential values
+type LogLevel int
+
+const (
+    LogDebug LogLevel = iota
+    LogInfo
+    LogWarn
+    LogError
+)
+```
+
+### When Literals Are Fine
+
+- Array indices (`0`, `1`), boolean flags, empty strings/slices
+- Test assertions and fixture data
+- Single-use format strings and log messages
+- Well-known protocol values (HTTP methods, status codes) used once
+
+---
+
 ## Naming Conventions
 
 ### General Rules

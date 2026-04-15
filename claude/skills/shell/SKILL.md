@@ -87,6 +87,8 @@ Arrays MUST use proper expansion:
 | Local/Script | lower_case | `file_count`, `temp_dir` |
 | Constants | UPPER_CASE + readonly | `readonly MAX_RETRIES=3` |
 
+**No magic values:** MUST NOT use literal strings or numbers inline when they represent a domain concept, configuration, or repeated value. Extract to `readonly` constants at the top of the script. Literals are fine for array indices, test assertions, single-use messages, and well-known exit codes (0, 1, 2).
+
 ---
 
 ## Test Syntax
