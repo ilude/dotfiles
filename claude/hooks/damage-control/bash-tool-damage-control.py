@@ -1440,6 +1440,14 @@ def _resolve_exfil_host(ctx: CommandContext) -> Optional[str]:
     return host
 
 
+def _check_exfil_bypass(item: dict[str, Any], ctx: CommandContext) -> bool:
+    """Return True if this exfil pattern should be bypassed (allowed host)."""
+    if not item.get("exfil", False):
+        return False
+    host = _resolve_exfil_host(ctx)
+    return bool(host and is_allowed_host(host))
+
+
 def _evaluate_yaml_pattern(
     item: dict[str, Any], idx: int, ctx: CommandContext
 ) -> Optional[CheckResult]:
@@ -1457,10 +1465,8 @@ def _evaluate_yaml_pattern(
     except re.error:
         return None
 
-    if item.get("exfil", False):
-        host = _resolve_exfil_host(ctx)
-        if host and is_allowed_host(host):
-            return None  # Allowed host — skip this pattern
+    if _check_exfil_bypass(item, ctx):
+        return None  # Allowed host — skip this pattern
 
     reason = item.get("reason", "Blocked by pattern")
     pattern_id = f"yaml_pattern_{idx}"
@@ -1476,6 +1482,14 @@ def _evaluate_yaml_pattern(
     )
 
 
+def _is_env_injection(pattern_str: str) -> bool:
+    """Return True if pattern targets environment-variable injection vectors."""
+    return any(
+        x in pattern_str
+        for x in ("LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "LD_LIBRARY_PATH")
+    )
+
+
 def _stage_yaml_patterns(rules: CompiledRules, ctx: CommandContext) -> Optional[CheckResult]:
     """Stage 1: scan compiled YAML patterns.
 
@@ -1488,14 +1502,7 @@ def _stage_yaml_patterns(rules: CompiledRules, ctx: CommandContext) -> Optional[
     for idx, item in enumerate(rules.patterns):
         # Skip readonly/dry-run relaxation for environment injection patterns
         pattern_str = item.get("pattern", "")
-        is_env_injection = any(
-            x in pattern_str
-            for x in [
-                r"LD_PRELOAD",
-                r"DYLD_INSERT_LIBRARIES",
-                r"LD_LIBRARY_PATH",
-            ]
-        )
+        is_env_injection = _is_env_injection(pattern_str)
 
         if skip_patterns and not is_env_injection:
             continue
