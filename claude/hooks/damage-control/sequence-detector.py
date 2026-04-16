@@ -321,6 +321,51 @@ def clear_history(config: Optional[dict[str, Any]] = None) -> None:
 # ============================================================================
 
 
+def _build_input(args: Any) -> dict[str, Any]:
+    """Build input_data dict from argparse namespace."""
+    input_data = {}
+    if args.file:
+        input_data["file_path"] = args.file
+    if args.pattern:
+        input_data["pattern"] = args.pattern
+    if args.cmd:
+        input_data["command"] = args.cmd
+    return input_data
+
+
+def _cmd_record(args: Any) -> None:
+    """Handle the 'record' subcommand."""
+    record_tool_use(args.tool, _build_input(args))
+    print(f"Recorded: {args.tool}")
+
+
+def _cmd_check(args: Any) -> None:
+    """Handle the 'check' subcommand."""
+    should_block, should_ask, reason = check_sequences(args.tool, _build_input(args))
+    print(f"Block: {should_block}")
+    print(f"Ask: {should_ask}")
+    if reason:
+        print(f"Reason: {reason}")
+
+
+def _cmd_history() -> None:
+    """Handle the 'history' subcommand."""
+    history = get_history()
+    if history:
+        for i, entry in enumerate(history):
+            age = time.time() - entry.get("timestamp", 0)
+            print(f"  [{i}] {entry.get('tool')} ({age:.0f}s ago)")
+            print(f"      Input: {entry.get('input')}")
+    else:
+        print("No history")
+
+
+def _cmd_clear() -> None:
+    """Handle the 'clear' subcommand."""
+    clear_history()
+    print("History cleared")
+
+
 def main() -> None:
     """CLI interface for sequence detector testing."""
     import argparse
@@ -350,43 +395,15 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    def build_input(args) -> dict[str, Any]:
-        input_data = {}
-        if args.file:
-            input_data["file_path"] = args.file
-        if args.pattern:
-            input_data["pattern"] = args.pattern
-        if args.cmd:
-            input_data["command"] = args.cmd
-        return input_data
-
-    if args.command == "record":
-        input_data = build_input(args)
-        record_tool_use(args.tool, input_data)
-        print(f"Recorded: {args.tool}")
-
-    elif args.command == "check":
-        input_data = build_input(args)
-        should_block, should_ask, reason = check_sequences(args.tool, input_data)
-        print(f"Block: {should_block}")
-        print(f"Ask: {should_ask}")
-        if reason:
-            print(f"Reason: {reason}")
-
-    elif args.command == "history":
-        history = get_history()
-        if history:
-            for i, entry in enumerate(history):
-                age = time.time() - entry.get("timestamp", 0)
-                print(f"  [{i}] {entry.get('tool')} ({age:.0f}s ago)")
-                print(f"      Input: {entry.get('input')}")
-        else:
-            print("No history")
-
-    elif args.command == "clear":
-        clear_history()
-        print("History cleared")
-
+    dispatch = {
+        "record": lambda: _cmd_record(args),
+        "check": lambda: _cmd_check(args),
+        "history": _cmd_history,
+        "clear": _cmd_clear,
+    }
+    handler = dispatch.get(args.command)
+    if handler:
+        handler()
     else:
         parser.print_help()
 

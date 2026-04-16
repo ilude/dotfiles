@@ -142,27 +142,26 @@ def validate_jsonl(file_path: Path) -> tuple[bool, list[str]]:
     return len(errors) == 0, errors
 
 
-def session_end_exists(history_path: Path, session_id: str) -> bool:
-    """Check if session_end entry already exists for this session."""
-    if not history_path.exists():
+def _line_is_session_end(line: str, session_id: str) -> bool:
+    """Return True if a stripped JSONL line is a session_end for this session."""
+    if not line:
+        return False
+    try:
+        entry = json.loads(line)
+        return entry.get("sid") == session_id and entry.get("type") == "session_end"
+    except json.JSONDecodeError:
         return False
 
+
+def session_end_exists(history_path: Path, session_id: str) -> bool:
+    """Check if a session_end entry already exists for this session."""
+    if not history_path.exists():
+        return False
     try:
         with open(history_path, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    entry = json.loads(line)
-                    if entry.get("sid") == session_id and entry.get("type") == "session_end":
-                        return True
-                except json.JSONDecodeError:
-                    continue
+            return any(_line_is_session_end(line.strip(), session_id) for line in f)
     except Exception:
-        pass
-
-    return False
+        return False
 
 
 def append_session_end(history_path: Path, session_id: str, project: str) -> None:
