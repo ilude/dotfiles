@@ -4,6 +4,15 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
+## 2026-04-15: Add no-magic-values guidance to all language skills
+
+**Added:**
+- "No Magic Values" section to 7 language skills (TypeScript, Python, C#, Go, Rust, Ruby, Shell) with idiomatic patterns per language and consistent "When Literals Are Fine" exceptions
+
+**Files:** claude/skills/typescript/SKILL.md, claude/skills/python/SKILL.md, claude/skills/csharp/core.md, claude/skills/go/core.md, claude/skills/rust/core.md, claude/skills/ruby/core.md, claude/skills/shell/SKILL.md
+
+---
+
 ## 2026-04-08: plan-it and review-it emit next-step commands
 
 **Changed:**
