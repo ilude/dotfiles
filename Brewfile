@@ -21,9 +21,9 @@ brew "zoxide"
 brew "zsh"
 
 # GUI apps
-cask "anydesk"
 cask "applite"
 cask "autoraiseapp"
+cask "claude-code"
 cask "discord"
 cask "ghostty"
 cask "keyclu"

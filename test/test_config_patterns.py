@@ -52,12 +52,32 @@ def read_dotfile(name: str) -> str:
 ALIASES_PATTERNS = [
     # Claude Code aliases
     (
-        "alias ccyl='clear && claude --dangerously-skip-permissions --chrome'",
-        "ccyl alias clears screen and uses dangerously-skip-permissions",
+        r"ccyl\(\)",
+        "ccyl shell function defined",
     ),
     (
-        "alias claude-install='bun install -g @anthropic-ai/claude-code'",
-        "claude-install alias",
+        r"_run_claude\(\)",
+        "claude launcher helper defined",
+    ),
+    (
+        r"bun \"\$claude_bin\"",
+        "claude launcher falls back to bun",
+    ),
+    (
+        r"--dangerously-skip-permissions --chrome",
+        "ccyl uses dangerously-skip-permissions and chrome",
+    ),
+    (
+        r"claude-install\(\)",
+        "claude-install helper defined",
+    ),
+    (
+        r"brew install --cask claude-code",
+        "claude-install uses Homebrew on macOS",
+    ),
+    (
+        r"curl -fsSL https://claude.ai/install.sh \| bash",
+        "claude-install uses native installer fallback",
     ),
     # NixOS aliases
     ("alias nix-gc=", "nix-gc alias defined"),

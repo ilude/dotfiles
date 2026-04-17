@@ -119,7 +119,23 @@ Add-PathIfNotExists -PathToAdd "$env:USERPROFILE\.local\bin"
 #region Aliases
 
 # Claude Code YOLO mode
-function ccyl { Clear-Host; claude --dangerously-skip-permissions --chrome @args }
+function Invoke-Claude {
+  $claudePath = (Get-Command claude -ErrorAction Stop).Source
+
+  if (Get-Command node -ErrorAction SilentlyContinue) {
+    & $claudePath @args
+    return
+  }
+
+  if (Get-Command bun -ErrorAction SilentlyContinue) {
+    & bun $claudePath @args
+    return
+  }
+
+  & $claudePath @args
+}
+
+function ccyl { Clear-Host; Invoke-Claude --dangerously-skip-permissions --chrome @args }
 function claude-install { npm install -g @anthropic-ai/claude-code }
 
 #endregion
