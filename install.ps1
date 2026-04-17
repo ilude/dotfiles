@@ -1346,14 +1346,24 @@ try {
 
         # Install Pi coding agent
         Write-Host "`nInstalling Pi coding agent..." -ForegroundColor Cyan
-        if (Get-Command npm -ErrorAction SilentlyContinue) {
-            # Check if already installed
-            $piInstalled = npm list -g @mariozechner/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
-            if ($piInstalled) {
-                Write-Host "  pi-coding-agent: already installed" -ForegroundColor DarkGray
+        if (Get-Command bun -ErrorAction SilentlyContinue) {
+            $bunBinDir = Join-Path $env:USERPROFILE '.bun\bin'
+            $userPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
+            if ($userPath -notlike "*$bunBinDir*") {
+                $newUserPath = if ([string]::IsNullOrWhiteSpace($userPath)) { $bunBinDir } else { "$bunBinDir;$userPath" }
+                [Environment]::SetEnvironmentVariable('PATH', $newUserPath, 'User')
+            }
+            if ($env:PATH -notlike "*$bunBinDir*") {
+                $env:PATH = "$bunBinDir;$env:PATH"
+            }
+
+            $bunPi = Join-Path $bunBinDir 'pi'
+            $bunPiCmd = Get-Command $bunPi -ErrorAction SilentlyContinue
+            if ($bunPiCmd -or (Test-Path $bunPi) -or (Test-Path "${bunPi}.exe")) {
+                Write-Host "  pi-coding-agent: already installed via Bun" -ForegroundColor DarkGray
             } else {
-                Write-Host "  Installing pi-coding-agent..." -ForegroundColor Cyan
-                npm install -g @mariozechner/pi-coding-agent
+                Write-Host "  Installing pi-coding-agent via Bun..." -ForegroundColor Cyan
+                bun install -g @mariozechner/pi-coding-agent
                 if ($LASTEXITCODE -eq 0) {
                     Write-Host "  pi-coding-agent: installed successfully" -ForegroundColor Green
                 } else {
@@ -1361,26 +1371,56 @@ try {
                 }
             }
 
-            # Set up Pi directory link
-            Write-Host "`nSetting up Pi directory..." -ForegroundColor Cyan
-            $piLinkSetup = Join-Path $BASEDIR "scripts" "pi-link-setup"
-            if (Test-Path $piLinkSetup) {
-                $bashPath = ConvertTo-GitBashPath $piLinkSetup
-                & $gitBash "$bashPath"
+            if (Get-Command npm -ErrorAction SilentlyContinue) {
+                $legacyPi = npm list -g @mariozechner/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
+                if ($legacyPi) {
+                    Write-Host "  Removing legacy npm-installed pi-coding-agent..." -ForegroundColor DarkGray
+                    npm uninstall -g @mariozechner/pi-coding-agent 2>$null | Out-Null
+                }
             }
-            # Install pi web-fetch dependencies
-            $webFetchDir = Join-Path $BASEDIR "pi" "tools" "web-fetch"
-            if (Test-Path $webFetchDir) {
-                $nodeModules = Join-Path $webFetchDir "node_modules"
-                if (Test-Path $nodeModules) {
-                    Write-Host "  pi web-fetch deps: already installed" -ForegroundColor DarkGray
+        } elseif (Get-Command npm -ErrorAction SilentlyContinue) {
+            $piInstalled = npm list -g @mariozechner/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
+            if ($piInstalled) {
+                Write-Host "  pi-coding-agent: already installed" -ForegroundColor DarkGray
+            } else {
+                Write-Host "  Installing pi-coding-agent via npm fallback..." -ForegroundColor Cyan
+                npm install -g @mariozechner/pi-coding-agent
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "  pi-coding-agent: installed successfully" -ForegroundColor Green
                 } else {
-                    Write-Host "  Installing pi web-fetch dependencies..." -ForegroundColor Cyan
-                    npm install --prefix $webFetchDir
+                    Write-Host "  pi-coding-agent: installation failed" -ForegroundColor Red
                 }
             }
         } else {
-            Write-Host "  npm not found - skipping Pi installation" -ForegroundColor Yellow
+            Write-Host "  bun and npm not found - skipping Pi installation" -ForegroundColor Yellow
+        }
+
+        # Set up Pi directory link
+        Write-Host "`nSetting up Pi directory..." -ForegroundColor Cyan
+        $piLinkSetup = Join-Path $BASEDIR "scripts" "pi-link-setup"
+        if (Test-Path $piLinkSetup) {
+            $bashPath = ConvertTo-GitBashPath $piLinkSetup
+            & $gitBash "$bashPath"
+        }
+
+        # Install pi web-fetch dependencies
+        $webFetchDir = Join-Path $BASEDIR "pi" "tools" "web-fetch"
+        if (Test-Path $webFetchDir) {
+            $nodeModules = Join-Path $webFetchDir "node_modules"
+            if (Test-Path $nodeModules) {
+                Write-Host "  pi web-fetch deps: already installed" -ForegroundColor DarkGray
+            } else {
+                Write-Host "  Installing pi web-fetch dependencies..." -ForegroundColor Cyan
+                if (Get-Command bun -ErrorAction SilentlyContinue) {
+                    bun install --cwd $webFetchDir
+                } elseif (Get-Command npm -ErrorAction SilentlyContinue) {
+                    npm install --prefix $webFetchDir
+                } else {
+                    Write-Host "  bun and npm not found - skipping pi web-fetch deps" -ForegroundColor Yellow
+                }
+            }
+        } else {
+            Write-Host "  pi web-fetch dir not found - skipping" -ForegroundColor DarkGray
         }
 
         # Configure Claude MCP servers

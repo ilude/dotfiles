@@ -42,7 +42,12 @@ _git_sync_check() {
 # Coding agent wrappers — sync check before launch
 claude() { _git_sync_check; command claude "$@"; }
 opencode() { _git_sync_check; command opencode "$@"; }
-pi() { _git_sync_check; command pi "$@"; }
+pi() {
+    _git_sync_check
+    # Bun-backed pi can fail if TMPDIR points at a restricted temp location.
+    # Scope the override to pi only instead of changing TMPDIR globally.
+    TMPDIR=/tmp command pi "$@"
+}
 
 # Claude Code YOLO mode
 _run_claude() {

@@ -9,6 +9,7 @@
  *   /review-it     — adversarial review of a plan file
  *   /do-it         — smart task routing by complexity
  *   /research      — parallel multi-angle research on a topic
+ *   /exit          — gracefully quit pi
  */
 
 import * as fs from "node:fs";
@@ -79,6 +80,14 @@ export default function (pi: ExtensionAPI) {
 		handler: async (args, ctx) => {
 			const template = loadSkill("gitlab-ticket.md");
 			await pi.sendUserMessage(template + (args.trim() ? `\n\nArgs: ${args}` : ""));
+		},
+	});
+
+	// ── Command: /exit ──────────────────────────────────────────────────────────
+	pi.registerCommand("exit", {
+		description: "Gracefully quit pi",
+		handler: async (_args, ctx) => {
+			ctx.shutdown();
 		},
 	});
 }

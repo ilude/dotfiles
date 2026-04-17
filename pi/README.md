@@ -18,12 +18,12 @@ Pi is installed automatically by the dotfiles installer:
 ~/.dotfiles/install.ps1
 ```
 
-This runs `npm install -g @mariozechner/pi-coding-agent` and `scripts/pi-link-setup` (which junctions `~/.dotfiles/pi/` → `~/.pi/agent/` on Windows, symlinks on Linux).
+This runs `bun install -g @mariozechner/pi-coding-agent` and `scripts/pi-link-setup` (which junctions `~/.dotfiles/pi/` → `~/.pi/agent/` on Windows, symlinks on Linux).
 
 ### Manual install
 
 ```bash
-npm install -g @mariozechner/pi-coding-agent
+bun install -g @mariozechner/pi-coding-agent
 ~/.dotfiles/scripts/pi-link-setup
 ```
 
