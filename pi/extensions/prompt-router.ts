@@ -140,13 +140,15 @@ export default function (pi: ExtensionAPI) {
       return { action: "continue" };
     }
 
-    try {
-      await classifyAndRoute(pi, text, state, ctx);
-    } catch (err: unknown) {
+    // Fire-and-forget: classify in background so the input hook returns
+    // immediately (~160ms latency savings). The model switch may race with
+    // the first LLM call, but subsequent turns benefit from the updated
+    // tier, and the never-downgrade rule keeps the session safe.
+    classifyAndRoute(pi, text, state, ctx).catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
       ctx.ui.setStatus("router", "router: err");
       ctx.ui.notify(`Prompt router error (non-fatal): ${msg}`, "warning");
-    }
+    });
 
     return { action: "continue" };
   });
