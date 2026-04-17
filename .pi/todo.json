@@ -1,0 +1,22 @@
+{
+  "items": [
+    {
+      "id": "tmo31sjbp-1",
+      "title": "Fix prompt-router.ts: make input hook non-blocking",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-17T15:13:15.733Z",
+      "updated": "2026-04-17T15:14:34.030Z",
+      "notes": "The pi.on(\"input\") hook currently awaits classifyAndRoute() which spawns Python (~160ms). Fix: return { action: \"continue\" } immediately, run classification + model switch in background (fire-and-forget). The model switch may race with the first LLM call, but that's acceptable — the alternative is blocking every submit."
+    },
+    {
+      "id": "tmo31smzn-2",
+      "title": "Fix pwsh.ts: sanitize temp filename to remove illegal chars",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-17T15:13:20.483Z",
+      "updated": "2026-04-17T15:14:34.033Z",
+      "notes": "Line ~186: `tempFile = join(tmpdir(), \\`pi-pwsh-${toolCallId}.txt\\`);` — toolCallId comes from the LLM and can contain pipe chars (|) which are illegal in Windows filenames. Fix: sanitize toolCallId by replacing non-alphanumeric chars before using in filename."
+    }
+  ]
+}
