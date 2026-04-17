@@ -1,5 +1,5 @@
 {
-  "defaultModel": "claude-opus-4-6",
+  "defaultModel": "claude-haiku-4-5",
   "lastChangelogVersion": "0.67.6",
   "defaultProvider": "anthropic",
   "defaultThinkingLevel": "medium"
