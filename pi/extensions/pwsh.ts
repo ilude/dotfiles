@@ -182,7 +182,8 @@ async function executePwsh(
         let tempFile: string | undefined;
 
         if (truncResult.truncated) {
-          tempFile = join(tmpdir(), `pi-pwsh-${toolCallId}.txt`);
+          const safeId = toolCallId.replace(/[^a-zA-Z0-9_-]/g, "_");
+          tempFile = join(tmpdir(), `pi-pwsh-${safeId}.txt`);
           await writeFile(tempFile, output, "utf8");
           finalOutput += buildTruncationNotice(truncResult, tempFile);
         }
