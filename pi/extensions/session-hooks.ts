@@ -1,8 +1,9 @@
 /**
  * Session Hooks Extension
  *
- * session_start: runs git pre-flight checks (fetch + behind-count).
- *   Notifies if branch is behind remote. Silently skips if not a git repo.
+ * session_start: on reload, restores the configured default model; then runs
+ *   git pre-flight checks (fetch + behind-count). Notifies if branch is behind
+ *   remote. Silently skips if not a git repo.
  *
  * session_shutdown: archives the session conversation log to
  *   $HOME/.pi/agent/history/YYYY-MM-DD-<sessionId>.jsonl
@@ -14,8 +15,26 @@ import * as path from "node:path";
 import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 export default function (pi: ExtensionAPI) {
-	// ── session_start: git pre-flight ──────────────────────────────────────────
-	pi.on("session_start", async (_event, ctx) => {
+	// ── session_start: restore default model on reload + git pre-flight ───────
+	pi.on("session_start", async (event, ctx) => {
+		if (event.reason === "reload") {
+			try {
+				const settingsPath = path.join(os.homedir(), ".pi", "agent", "settings.json");
+				const settings = JSON.parse(await fs.promises.readFile(settingsPath, "utf-8")) as {
+					defaultProvider?: string;
+					defaultModel?: string;
+				};
+				if (settings.defaultProvider && settings.defaultModel) {
+					const model = ctx.modelRegistry.find(settings.defaultProvider, settings.defaultModel);
+					if (model) {
+						await pi.setModel(model);
+					}
+				}
+			} catch {
+				// Silently skip — invalid/missing settings should not break reload
+			}
+		}
+
 		try {
 			// Silently skip if fetch fails (no remote, not a repo, no network, etc.)
 			const fetchResult = await pi.exec("git", ["fetch", "--quiet"], { cwd: ctx.cwd });
