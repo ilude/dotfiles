@@ -4,9 +4,9 @@
  * Classifies every user prompt with the local TF-IDF + LinearSVC classifier
  * (prompt-routing/model.pkl) and switches the active model accordingly:
  *
- *   low  → claude-haiku-4-5    (simple factual, syntax, single-step)
- *   mid  → claude-sonnet-4-6   (multi-step, code tasks, moderate analysis)
- *   high → claude-opus-4-6     (architecture, security, distributed systems)
+ *   low  → gpt-5.4-mini       (simple factual, syntax, single-step)
+ *   mid  → gpt-5.3-codex      (multi-step, code tasks, moderate analysis)
+ *   high → gpt-5.4            (architecture, security, distributed systems)
  *
  * Never-downgrade rule: once a session escalates to a higher tier, it stays
  * there. A follow-up "now make it production-ready" won't drop back to Haiku
@@ -34,9 +34,9 @@ const CLASSIFY_SCRIPT = path.join(
 );
 
 const TIER_MODELS: Record<string, { provider: string; id: string; label: string }> = {
-  low:  { provider: "anthropic", id: "claude-haiku-4-5",   label: "Haiku"  },
-  mid:  { provider: "anthropic", id: "claude-sonnet-4-6",  label: "Sonnet" },
-  high: { provider: "anthropic", id: "claude-opus-4-6",    label: "Opus"   },
+  low:  { provider: "openai-codex", id: "gpt-5.4-mini",   label: "GPT-5.4 Mini"  },
+  mid:  { provider: "openai-codex", id: "gpt-5.3-codex",  label: "GPT-5.3 Codex" },
+  high: { provider: "openai-codex", id: "gpt-5.4",        label: "GPT-5.4"       },
 };
 
 const TIER_ORDER: Record<string, number> = { low: 0, mid: 1, high: 2 };
