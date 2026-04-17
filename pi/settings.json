@@ -1,15 +1,6 @@
 {
-  "defaultModel": "claude-opus-4-6",
-  "lastChangelogVersion": "0.64.0",
-  "enabledModels": [
-    "openai-codex/gpt-5.4",
-    "anthropic/claude-opus-4-6",
-    "anthropic/claude-sonnet-4-6",
-    "anthropic/claude-haiku-4-5",
-    "openai-codex/gpt-5.4-mini",
-    "openai-codex/gpt-5.3-codex-spark",
-    "openai-codex/gpt-5.3-codex"
-  ],
+  "defaultModel": "anthropic/claude-sonnet-4-20250514",
+  "lastChangelogVersion": "0.67.3",
   "defaultProvider": "anthropic",
   "defaultThinkingLevel": "medium"
 }

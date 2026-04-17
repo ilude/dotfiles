@@ -17,7 +17,6 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { parse as parseYaml } from "yaml";
 import {
 	type ExtensionAPI,
 	type BashToolCallEvent,
@@ -38,6 +37,79 @@ interface DamageControlRules {
 	domain_constraints?: unknown;
 }
 
+function stripQuotes(value: string): string {
+	if (
+		(value.startsWith('"') && value.endsWith('"')) ||
+		(value.startsWith("'") && value.endsWith("'"))
+	) {
+		return value.slice(1, -1);
+	}
+	return value;
+}
+
+function parseDamageControlRules(content: string): DamageControlRules {
+	const rules: DamageControlRules = {
+		dangerous_commands: [],
+		zero_access_paths: [],
+		no_delete_paths: [],
+	};
+
+	let section: keyof DamageControlRules | null = null;
+	let pendingCommand: Partial<DangerousCommand> | null = null;
+	let inDomainConstraints = false;
+
+	const flushCommand = () => {
+		if (pendingCommand?.pattern && pendingCommand.reason) {
+			rules.dangerous_commands.push({
+				pattern: pendingCommand.pattern,
+				reason: pendingCommand.reason,
+			});
+		}
+		pendingCommand = null;
+	};
+
+	for (const rawLine of content.split("\n")) {
+		const trimmed = rawLine.trim();
+		if (!trimmed || trimmed.startsWith("#")) continue;
+
+		const indent = rawLine.length - rawLine.trimStart().length;
+		if (indent === 0 && trimmed.endsWith(":")) {
+			flushCommand();
+			section = trimmed.slice(0, -1) as keyof DamageControlRules;
+			inDomainConstraints = section === "domain_constraints";
+			continue;
+		}
+
+		if (!section || inDomainConstraints) continue;
+
+		if (section === "dangerous_commands") {
+			if (indent === 2 && trimmed.startsWith("- pattern:")) {
+				flushCommand();
+				pendingCommand = {
+					pattern: stripQuotes(trimmed.slice("- pattern:".length).trim()),
+				};
+				continue;
+			}
+			if (indent === 4 && trimmed.startsWith("reason:") && pendingCommand) {
+				pendingCommand.reason = stripQuotes(trimmed.slice("reason:".length).trim());
+			}
+			continue;
+		}
+
+		if (indent === 2 && trimmed.startsWith("- ")) {
+			const value = stripQuotes(trimmed.slice(2).trim());
+			if (section === "zero_access_paths") {
+				rules.zero_access_paths.push(value);
+			} else if (section === "no_delete_paths") {
+				rules.no_delete_paths.push(value);
+			}
+		}
+	}
+
+	flushCommand();
+	return rules;
+}
+
 // Resolve the rules file: project-local .pi/ takes priority, then ~/.pi/agent/
 function loadRules(): DamageControlRules {
 	const candidates = [
@@ -48,7 +120,7 @@ function loadRules(): DamageControlRules {
 	for (const candidate of candidates) {
 		try {
 			const content = fs.readFileSync(candidate, "utf-8");
-			return parseYaml(content) as DamageControlRules;
+			return parseDamageControlRules(content);
 		} catch {
 			// try next
 		}
