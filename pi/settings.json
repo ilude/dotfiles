@@ -1,6 +1,6 @@
 {
-  "defaultModel": "anthropic/claude-sonnet-4-20250514",
+  "defaultModel": "gpt-5.4",
   "lastChangelogVersion": "0.67.6",
-  "defaultProvider": "anthropic",
+  "defaultProvider": "openai-codex",
   "defaultThinkingLevel": "medium"
 }
