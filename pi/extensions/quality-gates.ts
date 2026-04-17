@@ -12,11 +12,11 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { parse as parseYaml } from "yaml";
 import {
 	type ExtensionAPI,
 	type ToolResultEvent,
 } from "@mariozechner/pi-coding-agent";
+import { loadYamlViaPython } from "./yaml-helpers";
 
 interface ValidatorConfig {
 	name: string;
@@ -43,7 +43,7 @@ const VALIDATORS_PATH = path.join(
 function loadValidators(): ValidatorsYaml {
 	try {
 		const content = fs.readFileSync(VALIDATORS_PATH, "utf-8");
-		return parseYaml(content) as ValidatorsYaml;
+		return loadYamlViaPython<ValidatorsYaml>(content) ?? {};
 	} catch {
 		return {};
 	}
