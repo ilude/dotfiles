@@ -1555,6 +1555,15 @@ try {
     }
 
     # ========================================================================
+    # Dynamic shim refresh (runs every install.ps1 invocation)
+    # ========================================================================
+    $shimsScript = Join-Path $BASEDIR "scripts\winget-shims\Install-WinGetShims.ps1"
+    if (Test-Path $shimsScript) {
+        Write-Host "`nRefreshing WinGet dynamic shims..." -ForegroundColor Cyan
+        & pwsh -NoProfile -File $shimsScript
+    }
+
+    # ========================================================================
     # PATH Optimization (remove duplicates, empty entries, redundant WinGet paths)
     # ========================================================================
     Write-Host "`nOptimizing User PATH..." -ForegroundColor Cyan
