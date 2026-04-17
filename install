@@ -160,7 +160,9 @@ completed_steps+=("Claude Code hook dependencies")
 current_step="Homebrew packages"
 if [[ "$OSTYPE" == "darwin"* ]] && command -v brew &>/dev/null; then
     echo "Installing Homebrew packages..."
-    brew bundle --file="${BASEDIR}/Brewfile" || echo "Warning: some Homebrew packages failed to install"
+    if ! brew bundle --file="${BASEDIR}/Brewfile"; then
+        echo "Warning: some Homebrew packages failed to install"
+    fi
 fi
 completed_steps+=("Homebrew packages")
 
@@ -190,15 +192,38 @@ fi
 completed_steps+=("Bun install")
 
 current_step="Claude Code install"
-if command -v bun &>/dev/null; then
-    if command -v claude &>/dev/null; then
-        echo "claude-code: already installed ($(claude --version 2>/dev/null || echo 'unknown'))"
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    if command -v brew &>/dev/null; then
+        if brew list --cask claude-code &>/dev/null || brew list --cask claude-code@latest &>/dev/null; then
+            echo "claude-code: already installed via Homebrew ($(claude --version 2>/dev/null || echo 'unknown'))"
+        else
+            echo "Installing claude-code via Homebrew..."
+            if ! brew install --cask claude-code; then
+                echo "Warning: failed to install claude-code via Homebrew"
+            fi
+        fi
+
+        if [[ -L "$HOME/.bun/bin/claude" || -f "$HOME/.bun/bin/claude" ]]; then
+            echo "Removing legacy bun-installed claude..."
+            if command -v bun &>/dev/null; then
+                bun uninstall -g @anthropic-ai/claude-code &>/dev/null || true
+            fi
+            rm -f "$HOME/.bun/bin/claude"
+        fi
     else
-        echo "Installing claude-code via bun..."
-        bun install -g @anthropic-ai/claude-code
+        echo "claude-code: Homebrew not found, skipping"
     fi
 else
-    echo "claude-code: bun not found, skipping"
+    if command -v claude &>/dev/null; then
+        echo "claude-code: already installed ($(claude --version 2>/dev/null || echo 'unknown'))"
+    elif command -v curl &>/dev/null; then
+        echo "Installing claude-code via native installer..."
+        if ! curl -fsSL https://claude.ai/install.sh | bash; then
+            echo "Warning: failed to install claude-code via native installer"
+        fi
+    else
+        echo "claude-code: curl not found, skipping"
+    fi
 fi
 completed_steps+=("Claude Code install")
 
@@ -273,7 +298,9 @@ if [[ -z "$HEADLESS" ]]; then
         echo "claude-status binary: already built"
     elif command -v docker &>/dev/null; then
         echo "Building claude-status binary..."
-        bash "${BASEDIR}/claude/claude-status-go/build.sh"
+        if ! bash "${BASEDIR}/claude/claude-status-go/build.sh"; then
+            echo "Warning: claude-status build failed (Python fallback active)"
+        fi
     else
         echo "claude-status: docker not found, skipping (Python fallback active)"
     fi

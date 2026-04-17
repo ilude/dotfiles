@@ -45,8 +45,35 @@ opencode() { _git_sync_check; command opencode "$@"; }
 pi() { _git_sync_check; command pi "$@"; }
 
 # Claude Code YOLO mode
-alias ccyl='clear && claude --dangerously-skip-permissions --chrome'
-alias claude-install='bun install -g @anthropic-ai/claude-code'
+_run_claude() {
+    local claude_bin
+    claude_bin="$(whence -p claude 2>/dev/null)" || return 127
+
+    if (( ${+commands[node]} )); then
+        command "$claude_bin" "$@"
+        return
+    fi
+
+    if (( ${+commands[bun]} )); then
+        bun "$claude_bin" "$@"
+        return
+    fi
+
+    command "$claude_bin" "$@"
+}
+
+ccyl() {
+    clear
+    _run_claude --dangerously-skip-permissions --chrome "$@"
+}
+claude-install() {
+    if [[ "$OSTYPE" == "darwin"* ]] && (( ${+commands[brew]} )); then
+        brew install --cask claude-code
+        return
+    fi
+
+    curl -fsSL https://claude.ai/install.sh | bash
+}
 
 # NixOS
 alias nix-gc='nix-store --gc'
