@@ -16,7 +16,7 @@ import {
 	type ExtensionAPI,
 	type ToolResultEvent,
 } from "@mariozechner/pi-coding-agent";
-import { loadYamlViaPython } from "./yaml-helpers";
+import { loadYamlViaPython } from "../lib/yaml-helpers";
 
 interface ValidatorConfig {
 	name: string;
