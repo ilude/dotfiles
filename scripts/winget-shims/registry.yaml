@@ -1,0 +1,28 @@
+- package_id: SST.opencode
+  commands:
+    - command_name: opencode
+      target_exe: opencode.exe
+- package_id: astral-sh.uv
+  commands:
+    - command_name: uv
+      target_exe: uv.exe
+    - command_name: uvx
+      target_exe: uvx.exe
+    - command_name: uvw
+      target_exe: uvw.exe
+- package_id: Oven-sh.Bun
+  commands:
+    - command_name: bun
+      target_exe: bun.exe
+      relative_path: bun-windows-x64
+    - command_name: bunx
+      target_exe: bun.exe
+      relative_path: bun-windows-x64
+- package_id: BiomeJS.Biome
+  commands:
+    - command_name: biome
+      target_exe: biome.exe
+- package_id: AquaSecurity.Trivy
+  commands:
+    - command_name: trivy
+      target_exe: trivy.exe
