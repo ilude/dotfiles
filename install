@@ -243,39 +243,30 @@ fi
 completed_steps+=("just install")
 
 current_step="Pi coding agent install"
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    if command -v brew &>/dev/null; then
-        if brew list pi-coding-agent &>/dev/null; then
-            echo "pi-coding-agent: already installed via Homebrew ($(pi --version 2>/dev/null || echo 'unknown'))"
-        else
-            echo "Installing pi-coding-agent via Homebrew..."
-            if ! brew install pi-coding-agent; then
-                echo "Warning: failed to install pi-coding-agent via Homebrew"
-            fi
-        fi
-
-        if [[ -L "$HOME/.bun/bin/pi" || -f "$HOME/.bun/bin/pi" ]]; then
-            echo "Removing legacy bun-installed pi..."
-            if command -v bun &>/dev/null; then
-                bun uninstall -g @mariozechner/pi-coding-agent &>/dev/null || true
-            fi
-            rm -f "$HOME/.bun/bin/pi"
-        fi
-    else
-        echo "pi-coding-agent: Homebrew not found, skipping"
-    fi
-elif command -v bun &>/dev/null; then
+if command -v bun &>/dev/null; then
     if [[ -x "$HOME/.bun/bin/pi" ]]; then
         echo "pi-coding-agent: already installed"
     else
         echo "Installing pi-coding-agent..."
         bun install -g @mariozechner/pi-coding-agent
     fi
+
+    if [[ "$OSTYPE" == "darwin"* ]] && command -v brew &>/dev/null && brew list pi-coding-agent &>/dev/null; then
+        echo "Removing Homebrew-installed pi-coding-agent to prefer Bun-managed updates..."
+        if ! brew uninstall pi-coding-agent; then
+            echo "Warning: failed to uninstall Homebrew pi-coding-agent"
+        fi
+    fi
+
+    if command -v npm &>/dev/null && npm list -g @mariozechner/pi-coding-agent &>/dev/null; then
+        echo "Removing legacy npm-installed pi-coding-agent..."
+        npm uninstall -g @mariozechner/pi-coding-agent &>/dev/null || true
+    fi
 elif command -v npm &>/dev/null; then
     if npm list -g @mariozechner/pi-coding-agent &>/dev/null; then
         echo "pi-coding-agent: already installed"
     else
-        echo "Installing pi-coding-agent..."
+        echo "Installing pi-coding-agent via npm fallback..."
         npm install -g @mariozechner/pi-coding-agent
     fi
 fi
