@@ -28,6 +28,9 @@ import {
 interface DangerousCommand {
 	pattern: string;
 	reason: string;
+	action?: "block" | "ask";
+	platforms?: string[];
+	exclude_platforms?: string[];
 }
 
 interface DamageControlRules {
@@ -92,6 +95,32 @@ function parseDamageControlRules(content: string): DamageControlRules {
 			}
 			if (indent === 4 && trimmed.startsWith("reason:") && pendingCommand) {
 				pendingCommand.reason = stripQuotes(trimmed.slice("reason:".length).trim());
+				continue;
+			}
+			if (indent === 4 && trimmed.startsWith("action:") && pendingCommand) {
+				pendingCommand.action = stripQuotes(trimmed.slice("action:".length).trim()) as "block" | "ask";
+				continue;
+			}
+			if (indent === 4 && trimmed.startsWith("platforms:") && pendingCommand) {
+				pendingCommand.platforms = trimmed
+					.slice("platforms:".length)
+					.trim()
+					.replace(/^\[/, "")
+					.replace(/\]$/, "")
+					.split(",")
+					.map((value) => stripQuotes(value.trim()))
+					.filter(Boolean);
+				continue;
+			}
+			if (indent === 4 && trimmed.startsWith("exclude_platforms:") && pendingCommand) {
+				pendingCommand.exclude_platforms = trimmed
+					.slice("exclude_platforms:".length)
+					.trim()
+					.replace(/^\[/, "")
+					.replace(/\]$/, "")
+					.split(",")
+					.map((value) => stripQuotes(value.trim()))
+					.filter(Boolean);
 			}
 			continue;
 		}
@@ -193,24 +222,69 @@ function checkZeroAccess(canonical: string, patterns: string[]): { block: true; 
 	return undefined;
 }
 
+function currentPlatformAliases(): Set<string> {
+	const current = process.platform;
+	const aliases = new Set([current]);
+	if (current === "linux") aliases.add("linux");
+	if (current === "darwin") {
+		aliases.add("macos");
+		aliases.add("mac");
+		aliases.add("osx");
+	}
+	if (current === "win32") {
+		aliases.add("windows");
+		aliases.add("win");
+	}
+	return aliases;
+}
+
+export function commandAppliesToCurrentPlatform(command: DangerousCommand): boolean {
+	const aliases = currentPlatformAliases();
+	if (command.platforms?.length) {
+		const wanted = new Set(command.platforms.map((value) => value.toLowerCase()));
+		if (![...aliases].some((value) => wanted.has(value))) return false;
+	}
+	if (command.exclude_platforms?.length) {
+		const banned = new Set(command.exclude_platforms.map((value) => value.toLowerCase()));
+		if ([...aliases].some((value) => banned.has(value))) return false;
+	}
+	return true;
+}
+
+export async function evaluateDangerousCommand(
+	command: string,
+	rules: DangerousCommand[],
+	ctx?: { ui?: { confirm?: (title: string, message: string) => Promise<boolean> }; hasUI?: boolean },
+): Promise<{ block: true; reason: string } | undefined> {
+	for (const rule of rules) {
+		if (!commandAppliesToCurrentPlatform(rule) || !command.includes(rule.pattern)) continue;
+		if (rule.action === "ask") {
+			if (ctx?.hasUI && ctx.ui?.confirm) {
+				const ok = await ctx.ui.confirm("Confirm dangerous command", rule.reason);
+				if (ok) return undefined;
+			}
+			return {
+				block: true,
+				reason: `Confirmation required for dangerous command (matched "${rule.pattern}"): ${rule.reason}`,
+			};
+		}
+		return {
+			block: true,
+			reason: `Blocked dangerous command (matched "${rule.pattern}"): ${rule.reason}`,
+		};
+	}
+	return undefined;
+}
+
 export default function (pi: ExtensionAPI) {
 	const rules = loadRules();
 
 	// ── Handler 1: bash tool — check command string for dangerous patterns ───────
-	pi.on("tool_call", (event, _ctx) => {
+	pi.on("tool_call", async (event, ctx) => {
 		if (event.toolName !== "bash") return undefined;
 		const bashEvent = event as BashToolCallEvent;
 		const command = bashEvent.input.command ?? "";
-
-		for (const { pattern, reason } of rules.dangerous_commands) {
-			if (command.includes(pattern)) {
-				return {
-					block: true,
-					reason: `Blocked dangerous command (matched "${pattern}"): ${reason}`,
-				};
-			}
-		}
-		return undefined;
+		return evaluateDangerousCommand(command, rules.dangerous_commands, ctx as any);
 	});
 
 	// ── Handler 2: file tools — check path for zero-access and no-delete rules ──

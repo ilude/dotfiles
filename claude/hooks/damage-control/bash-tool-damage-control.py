@@ -1448,12 +1448,44 @@ def _check_exfil_bypass(item: dict[str, Any], ctx: CommandContext) -> bool:
     return bool(host and is_allowed_host(host))
 
 
+def _normalized_platform_aliases() -> set[str]:
+    """Return current platform aliases understood by YAML pattern metadata."""
+    current = sys.platform.lower()
+    aliases = {current}
+    if current.startswith("linux"):
+        aliases.update({"linux"})
+    elif current == "darwin":
+        aliases.update({"macos", "mac", "osx"})
+    elif current in {"win32", "cygwin", "msys"}:
+        aliases.update({"windows", "win"})
+    return aliases
+
+
+def _pattern_applies_to_current_platform(item: dict[str, Any]) -> bool:
+    """Return True when a YAML pattern should apply on the current OS."""
+    aliases = _normalized_platform_aliases()
+
+    platforms = item.get("platforms")
+    if platforms:
+        wanted = {str(platform).lower() for platform in platforms}
+        if aliases.isdisjoint(wanted):
+            return False
+
+    excluded = item.get("exclude_platforms")
+    if excluded:
+        banned = {str(platform).lower() for platform in excluded}
+        if not aliases.isdisjoint(banned):
+            return False
+
+    return True
+
+
 def _evaluate_yaml_pattern(
     item: dict[str, Any], idx: int, ctx: CommandContext
 ) -> Optional[CheckResult]:
     """Apply a single compiled YAML pattern to ctx; return CheckResult on match."""
     compiled_regex = item.get("compiled")
-    if not compiled_regex:
+    if not compiled_regex or not _pattern_applies_to_current_platform(item):
         return None
     try:
         # Check both unwrapped and original command; original is needed to detect
