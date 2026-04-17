@@ -167,7 +167,7 @@ fi
 completed_steps+=("Homebrew packages")
 
 current_step="Bun install"
-# Bun is the JS runtime for claude-code, pi-coding-agent, and pi web-fetch deps.
+# Bun is the JS runtime for pi web-fetch deps and other JS tooling.
 # Windows installs bun via install.ps1; Linux/macOS install it here.
 if ! is_windows; then
     # Check PATH and ~/.bun/bin directly (bun may not be on PATH in bash sessions)
@@ -243,7 +243,28 @@ fi
 completed_steps+=("just install")
 
 current_step="Pi coding agent install"
-if command -v bun &>/dev/null; then
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    if command -v brew &>/dev/null; then
+        if brew list pi-coding-agent &>/dev/null; then
+            echo "pi-coding-agent: already installed via Homebrew ($(pi --version 2>/dev/null || echo 'unknown'))"
+        else
+            echo "Installing pi-coding-agent via Homebrew..."
+            if ! brew install pi-coding-agent; then
+                echo "Warning: failed to install pi-coding-agent via Homebrew"
+            fi
+        fi
+
+        if [[ -L "$HOME/.bun/bin/pi" || -f "$HOME/.bun/bin/pi" ]]; then
+            echo "Removing legacy bun-installed pi..."
+            if command -v bun &>/dev/null; then
+                bun uninstall -g @mariozechner/pi-coding-agent &>/dev/null || true
+            fi
+            rm -f "$HOME/.bun/bin/pi"
+        fi
+    else
+        echo "pi-coding-agent: Homebrew not found, skipping"
+    fi
+elif command -v bun &>/dev/null; then
     if [[ -x "$HOME/.bun/bin/pi" ]]; then
         echo "pi-coding-agent: already installed"
     else
