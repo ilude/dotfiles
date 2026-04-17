@@ -676,17 +676,36 @@ bashToolPatterns:
     ask: true
 
   # docker compose destructive operations
+  # Linux only: on Windows/macOS these are allowed; on Linux they prompt for confirmation.
   - pattern: '\bdocker\s+compose\s+down\s+.*(-v\b|--volumes\b)'
     reason: "docker compose down --volumes (removes containers AND volumes - DATA LOSS)"
     ask: true
+    platforms: [linux]
 
   - pattern: '\bdocker\s+compose\s+down\s+.*--rmi\b'
     reason: "docker compose down --rmi (removes containers and images)"
     ask: true
+    platforms: [linux]
 
   - pattern: '\bdocker\s+compose\s+down\b'
     reason: docker compose down (stops and removes containers)
     ask: true
+    platforms: [linux]
+
+  - pattern: '\bdocker\s+down\s+.*(-v\b|--volumes\b)'
+    reason: "docker down --volumes (removes containers AND volumes - DATA LOSS)"
+    ask: true
+    platforms: [linux]
+
+  - pattern: '\bdocker\s+down\s+.*--rmi\b'
+    reason: "docker down --rmi (removes containers and images)"
+    ask: true
+    platforms: [linux]
+
+  - pattern: '\bdocker\s+down\b'
+    reason: docker down (stops and removes containers)
+    ask: true
+    platforms: [linux]
 
   - pattern: '\bdocker\s+compose\s+rm\s+.*-f'
     reason: "docker compose rm -f (force removes containers without confirmation)"
