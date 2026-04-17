@@ -13,6 +13,15 @@ dangerous_commands:
     reason: "Removes untracked files without recovery"
   - pattern: "chmod 777"
     reason: "Grants world-readable/writable/executable permissions — security risk"
+  # Linux only: on Windows/macOS these are allowed; on Linux they require confirmation.
+  - pattern: "docker compose down"
+    reason: "docker compose down stops and removes containers"
+    action: "ask"
+    platforms: ["linux"]
+  - pattern: "docker down"
+    reason: "docker down stops and removes containers"
+    action: "ask"
+    platforms: ["linux"]
 
 zero_access_paths:
   - "~/.ssh/*"
