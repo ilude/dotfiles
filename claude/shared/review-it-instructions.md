@@ -101,11 +101,18 @@ primary context clean. This solves two problems:
 
 ## Step 2: Launch Coordinator Agent
 
+### Model Selection Policy
+
+- **Claude Code**: use `sonnet` for routine reviewers, reserve `opus` for the coordinator and other heavier synthesis roles, and use `haiku` only for lightweight rebuttals or classification passes.
+- **OpenCode / Pi**: keep subagents in the **same family as the parent model**.
+  - GPT parent: use `gpt` for routine reviewers and coordinator work, `gpt-codex` for code-focused verification, and `gpt-mini` for lightweight rebuttals or simple follow-ups.
+  - Claude parent: use `sonnet` for routine reviewers, `opus` for the coordinator and other heavier synthesis roles, and `haiku` for lightweight rebuttals or simple follow-ups.
+
 Launch a **single** coordinator agent that will manage the entire review process:
 
 ```
-subagent_type: general-purpose
-model: sonnet
+subagent_type: runtime-appropriate coordinator
+model: see Model Selection Policy above
 max_turns: 25
 ```
 
@@ -128,8 +135,11 @@ You are a review coordinator. Your job is to:
 
 1. LAUNCH ALL REVIEWERS in a SINGLE message using the Task tool (parallel).
    Each reviewer gets: their persona prompt + the severity calibration block +
-   the plan text + the output budget rule. Use subagent_type: general-purpose,
-   model: sonnet, max_turns: 5 for each (except OtB which gets max_turns: 8).
+   the plan text + the output budget rule. Choose reviewer subagents using the
+   Model Selection Policy above. Default to routine-reviewer models for the
+   mandatory and domain reviewers. Use the heavier model only for the coordinator,
+   unusually complex reviewer roles, or rebuttal/synthesis passes that clearly need it.
+   Use max_turns: 5 for each reviewer (except OtB which gets max_turns: 8).
 
 2. COLLECT FINDINGS — all reviewer responses land in your context.
 

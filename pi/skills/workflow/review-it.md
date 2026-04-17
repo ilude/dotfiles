@@ -20,6 +20,13 @@ Read the plan file at the path provided in args. Extract:
 
 Dispatch three subagents in parallel using the `subagent` tool, each with a different review lens. Pass the full plan text to each.
 
+Choose subagents from the same family as the current parent model:
+
+- GPT parent: use `gpt` for routine reviewers, `gpt-codex` when a reviewer needs code-focused verification, and `gpt-mini` only for lightweight rebuttals or simple follow-ups.
+- Claude parent: use `sonnet` for routine reviewers, reserve `opus` for heavier synthesis or unusually complex follow-up analysis, and use `haiku` only for lightweight rebuttals or simple follow-ups.
+
+For this three-reviewer pass, default to the routine-reviewer model for all three reviewers unless the plan clearly requires code-heavy verification, in which case upgrade only the relevant reviewer to the code-focused option.
+
 ### Subagent A — Completeness Reviewer
 
 Focus: What is missing or assumed without evidence?

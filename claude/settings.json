@@ -172,8 +172,9 @@
     "aws-agentic-ai@aws-skills": true,
     "superpowers@superpowers-marketplace": true
   },
-  "releaseChannel": "latest",
   "alwaysThinkingEnabled": true,
   "companyAnnouncements": [],
-  "skipDangerousModePermissionPrompt": true
+  "skipDangerousModePermissionPrompt": true,
+  "releaseChannel": "latest",
+  "model": "sonnet"
 }
