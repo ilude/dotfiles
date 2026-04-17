@@ -38,6 +38,15 @@ Indicators (any two or more):
 
 ## Step 2: Route
 
+### Model Selection Policy
+
+When this workflow delegates to subagents or follow-up commands, keep them in the same family as the current parent model:
+
+- GPT parent: use `gpt` for routine implementation and validation work, `gpt-codex` for code-focused verification or code-heavy execution, and `gpt-mini` only for lightweight classification or simple follow-ups.
+- Claude parent: use `sonnet` for routine implementation and validation work, reserve `opus` for heavier orchestration or unusually complex reasoning, and use `haiku` only for lightweight classification or simple follow-ups.
+
+Default to the routine model unless the delegated work clearly needs the code-focused or heavy option.
+
 ### Simple route — implement directly
 
 1. Identify the specific files to change

@@ -1,3 +1,19 @@
+## 2026-04-16: Ban em-dashes / en-dashes in file content
+
+**Added:**
+- Critical rule: never write em-dash or en-dash characters into code, comments, docs, or commit messages. Use ASCII `--` or `-` instead. Triggered by a session where an Edit-then-Read round-trip on a Windows host turned in-file em-dashes into mojibake, which then broke subsequent Edit string-matching and forced a full Write rewrite of the file. Chat replies to the user are unaffected.
+
+**Files:** ~/.dotfiles/claude/CLAUDE.md
+
+---
+
+## 2026-04-16: Add validate-before-committing rule
+
+**Added:**
+- Critical rule: NEVER commit unverified fixes. Must run the code path and confirm broken->working before git commit. Added to CLAUDE.md after a session where multiple cert/infra fixes were committed before being validated end-to-end, causing wasted cycles.
+
+**Files:** ~/.claude/CLAUDE.md
+
 # Personal Ruleset Changelog
 
 This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.md`) and associated skills/commands.

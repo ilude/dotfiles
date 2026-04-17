@@ -13,6 +13,15 @@ Determine the input type:
 
 ## Step 2: Analyze & Triage
 
+### Model Selection Policy
+
+- **Claude Code**: use `sonnet` for routine implementation and validation work, reserve `opus` for heavier orchestration, synthesis, or unusually complex reasoning, and use `haiku` only for lightweight classification or simple follow-ups.
+- **OpenCode / Pi**: keep subagents in the **same family as the parent model**.
+  - GPT parent: use `gpt` for routine implementation and validation work, `gpt-codex` for code-focused verification or code-heavy execution, and `gpt-mini` only for lightweight classification or simple follow-ups.
+  - Claude parent: use `sonnet` for routine implementation and validation work, `opus` for heavier orchestration or unusually complex reasoning, and `haiku` only for lightweight classification or simple follow-ups.
+
+When this workflow dispatches a generic coordinator, validator, or follow-up subagent, choose the runtime-appropriate model using the policy above instead of hardcoding a cross-family default.
+
 ### 2a: Scan Project
 
 Run these checks automatically:
@@ -157,8 +166,11 @@ Considered, Deployment Procedure (if applicable), and Acceptance Criteria Guidel
 Zero-Context Executability. Do NOT use a stripped-down template — the plan must be
 reviewable by `/review-it` and executable by `/do-it` Step 3.
 
-Use the agent from Step 2d (Medium column). Validator model rule: if wave contains
-sonnet/opus builder → `validator-heavy` (sonnet), otherwise → `validator` (haiku).
+Use the agent from Step 2d (Medium column). Validator model rule: if the work uses
+heavier builders or unusually complex validation, use the heavier validator path with
+the runtime-appropriate heavy model from the Model Selection Policy above. Otherwise,
+use the routine validator path with the runtime-appropriate routine model. Use the
+lightweight model only for clearly simple validation or classification passes.
 
 ### 5c: Orchestrate
 
