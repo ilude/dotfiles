@@ -223,6 +223,11 @@ async function generateCommitPlanWithLlm(
 	return plan;
 }
 
+function shouldLogGitCommand(args: string[]) {
+	const command = args[0];
+	return command !== "diff" && command !== "ls-files" && command !== "rev-parse";
+}
+
 function runGit(cwd: string, args: string[], activity?: CommitActivity): GitRunResult {
 	const result = spawnSync("git", args, { cwd, encoding: "utf8" });
 	const gitResult = {
@@ -230,7 +235,9 @@ function runGit(cwd: string, args: string[], activity?: CommitActivity): GitRunR
 		stdout: result.stdout ?? "",
 		stderr: result.stderr ?? "",
 	};
-	activity?.logCommand(`git ${args.join(" ")}`, gitResult);
+	if (shouldLogGitCommand(args)) {
+		activity?.logCommand(`git ${args.join(" ")}`, gitResult);
+	}
 	return gitResult;
 }
 
