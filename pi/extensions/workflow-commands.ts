@@ -637,7 +637,7 @@ export default function (pi: ExtensionAPI) {
 					return theme.bold(theme.fg("text", line));
 				})
 				.join("\n");
-			return new Text(theme.fg("accent", "[/commit] ") + styled, 0, 0);
+			return new Text(theme.bold(theme.fg("success", "> ")) + styled, 0, 0);
 		});
 	}
 
