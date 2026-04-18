@@ -310,6 +310,140 @@
       "created": "2026-04-18T03:21:08.205Z",
       "updated": "2026-04-18T03:24:18.312Z",
       "notes": "Replaced /commit's regex-only secret blocking with hybrid scanning: deterministic candidate extraction plus small-model LLM adjudication over file-context snippets. Commit now blocks only on likely_secret or ambiguous findings. Updated workflow prompt text and added tests covering doc/example false positives and real secret-like content."
+    },
+    {
+      "id": "tmo3s13zx-1",
+      "title": "Tighten /do-it for plan-file execution and dynamic routing",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-18T03:27:45.789Z",
+      "updated": "2026-04-18T03:49:23.006Z",
+      "notes": "Rewrote /do-it to explicitly distinguish raw-task vs plan-file inputs, execute .specs/*/plan.md wave by wave, use specialist-first routing, and keep dynamic modelSize/modelPolicy guidance central to delegation."
+    },
+    {
+      "id": "tmo3s15mb-2",
+      "title": "Tighten /plan-it task sizing and validation guidance",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-18T03:27:47.891Z",
+      "updated": "2026-04-18T03:49:26.243Z",
+      "notes": "Rewrote /plan-it to assign explicit Agents alongside small/medium/large model sizes, strengthened wave/dependency rules, and added a formal self-validation checklist before presenting the generated plan."
+    },
+    {
+      "id": "tmo3s17e0-3",
+      "title": "Add workflow/docs coverage for dynamic routing and commit secret review",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-18T03:27:50.184Z",
+      "updated": "2026-04-18T03:49:29.732Z",
+      "notes": "Updated pi/README.md to document dynamic model ladders, richer workflow behavior for /plan-it /review-it /do-it, and the hybrid LLM-adjudicated /commit secret review flow."
+    },
+    {
+      "id": "tmo3s19kv-4",
+      "title": "Improve model-router status visibility and add smoke coverage for review-it",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-18T03:27:53.023Z",
+      "updated": "2026-04-18T03:49:33.031Z",
+      "notes": "Improved /router-status to show the detected current model in addition to the resolved low/mid/high ladder, and added workflow prompt contract tests covering /do-it, /plan-it, /review-it, and /commit as smoke coverage."
+    },
+    {
+      "id": "tmo3sbwf8-1",
+      "title": "Inspect Pi workflow command files for /do-it, router status, and model observability",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-18T03:36:09.187Z",
+      "updated": "2026-04-18T03:40:21.837Z",
+      "notes": "Audited pi/skills/workflow/do-it.md, pi/extensions/workflow-commands.ts, pi/extensions/prompt-router.ts, pi/extensions/subagent/index.ts, pi/lib/model-routing.ts, and .specs/pi-subagent-routing-policy docs. Key gaps: /do-it lacks explicit plan-file mode, dynamic modelSize/modelPolicy guidance is non-operational because actual routes still use /team and /plan-it, and routing observability stops at classifier-tier visibility without actual current model / resolved subagent metadata."
+    },
+    {
+      "id": "tmo3scqiv-1",
+      "title": "Audit /plan-it, /review-it, /commit docs and tests for doc gaps",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-18T03:36:48.198Z",
+      "updated": "2026-04-18T03:37:34.583Z",
+      "notes": "Reviewed requested workflow docs, implementation, model routing, and tests. Prepared file-level doc/spec edit recommendations covering /plan-it agent/validation/wave consistency and README/workflow docs for dynamic model ladders, /review-it coordination, and /commit secret review."
+    },
+    {
+      "id": "tmo3sdw3z-1",
+      "title": "Inspect /review-it implementation and existing workflow tests",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-18T03:37:42.095Z",
+      "updated": "2026-04-18T03:40:47.817Z",
+      "notes": "Reviewed workflow-commands.ts, review-it.md, prompt-router.ts, mock-pi helpers, subagent tests, and existing workflow/prompt-router tests. Confirmed there is no review-it-specific handler or prompt contract coverage today."
+    },
+    {
+      "id": "tmo3sdxa1-2",
+      "title": "Assess lightweight smoke/contract harness options",
+      "status": "done",
+      "depends_on": [
+        "tmo3sdw3z-1"
+      ],
+      "created": "2026-04-18T03:37:43.609Z",
+      "updated": "2026-04-18T03:41:16.396Z",
+      "notes": "Confirmed a lightweight non-LLM harness is feasible: register workflow-commands on createMockPi, invoke review-it handler, assert sendUserMessage payload against the real review-it.md contract. Existing mock-pi is sufficient; no production changes required."
+    },
+    {
+      "id": "tmo3sdxur-1",
+      "title": "Inspect review-it prompt file for guardrail gaps",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-18T03:37:44.355Z",
+      "updated": "2026-04-18T03:39:02.731Z",
+      "notes": "Reviewed review-it.md; identified gaps around input validation, project-agent trust, evidence requirements, and repo-context verification"
+    },
+    {
+      "id": "tmo3sdyfe-3",
+      "title": "Summarize file-level test recommendations and coverage gaps",
+      "status": "done",
+      "depends_on": [
+        "tmo3sdw3z-1",
+        "tmo3sdxa1-2"
+      ],
+      "created": "2026-04-18T03:37:45.098Z",
+      "updated": "2026-04-18T03:41:18.745Z",
+      "notes": "Prepared concise recommendation: prefer dedicated /review-it contract smoke around workflow-commands + real review-it.md content, with optional explicit prompt-router /review-it skip test. Identified untested prompt invariants and current lack of handler coverage."
+    },
+    {
+      "id": "tmo3sdz4x-2",
+      "title": "Trace workflow command plumbing for /review-it",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-18T03:37:46.017Z",
+      "updated": "2026-04-18T03:39:04.353Z",
+      "notes": "Reviewed workflow-commands.ts handler; found raw prompt interpolation and duplicate unsanitized Args injection with no path validation"
+    },
+    {
+      "id": "tmo3se1vq-3",
+      "title": "Synthesize concise findings and recommended edits",
+      "status": "done",
+      "depends_on": [
+        "tmo3sdxur-1",
+        "tmo3sdz4x-2"
+      ],
+      "created": "2026-04-18T03:37:49.574Z",
+      "updated": "2026-04-18T03:39:24.759Z",
+      "notes": "Prepared concise findings with severity, locations, and recommended file-level edits"
+    },
+    {
+      "id": "tmo3sfe51-1",
+      "title": "Audit /plan-it workflow guidance for agent assignment, self-validation, and wave/dependency consistency",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-18T03:38:52.117Z",
+      "updated": "2026-04-18T03:38:58.445Z",
+      "notes": "Reviewed pi/skills/workflow/plan-it.md plus supporting docs and identified gaps around agent assignment, self-validation, and wave/dependency invariants."
+    },
+    {
+      "id": "tmo3sfhjb-2",
+      "title": "Audit user-facing Pi docs for dynamic model ladders, /review-it coordination, and /commit secret review",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-18T03:38:56.519Z",
+      "updated": "2026-04-18T03:39:00.070Z",
+      "notes": "Reviewed pi/README.md, workflow skill docs, workflow command descriptions, model routing helper, and tests; identified user-facing doc gaps and file-level recommendations."
     }
   ]
 }

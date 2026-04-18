@@ -139,34 +139,47 @@ Intercepts `git commit` bash calls and enforces safe commit practices:
 Registers shared skill-backed slash commands:
 
 ```
-/commit        # smart git commit with secret scanning
+/commit        # smart git commit with LLM-adjudicated secret review
 /plan-it       # crystallize conversation context into an executable plan
-/review-it     # adversarial review of a plan file
-/do-it         # smart task routing by complexity
+/review-it     # adversarial multi-reviewer coordination for a plan file
+/do-it         # smart task routing by complexity or plan-file execution
 /research      # parallel multi-angle research on a topic
 ```
 
 Skills are loaded from `~/.dotfiles/pi/skills/workflow/`.
 
+Workflow highlights:
+- `/plan-it` writes plans with explicit `small` / `medium` / `large` model sizing and agent assignments.
+- `/review-it` coordinates a fixed 3-reviewer core plus at least 3 persona-seeded domain reviewers, with targeted rebuttal only when disagreement matters.
+- `/do-it` can route a raw task **or** execute an existing `.specs/*/plan.md` file wave by wave.
+- `/commit` uses deterministic candidate extraction plus a small-model LLM review to distinguish real secrets from docs/examples/tests before blocking.
+
 ### `prompt-router.ts`
 
 Classifies every user prompt with a local TF-IDF + LinearSVC model and switches
-the active Claude model accordingly before the agent starts.
+the active model accordingly before the agent starts.
 
-| Tier | Model | When |
-|------|-------|------|
-| `low` | `claude-haiku-4-5` | Factual lookups, syntax questions, single-step tasks |
-| `mid` | `claude-sonnet-4-6` | Multi-step tasks, code with context, moderate analysis |
-| `high` | `claude-opus-4-6` | Architecture decisions, security, distributed systems |
+Routing is now **dynamic**: `low` / `mid` / `high` map onto the current provider/model ladder using same-family resolution when possible.
+
+| Tier | Target rung | When |
+|------|-------------|------|
+| `low` | small model | Factual lookups, syntax questions, single-step tasks |
+| `mid` | medium model | Multi-step tasks, code with context, moderate analysis |
+| `high` | large model | Architecture decisions, security, distributed systems |
+
+Examples:
+- OpenAI Codex session → `gpt-5.4-mini` / `gpt-5.4-fast` / `gpt-5.4`
+- Anthropic session → `haiku` / `sonnet` / `opus`
+- GitHub Copilot session → best available GitHub-backed small / medium / large rung in the current family or nearest same-provider equivalent
 
 **Never-downgrade rule:** once a session escalates to a higher tier, it stays
 there for the rest of the session.
 
-**Footer indicator:** `▸ Haiku` / `▸▸ Sonnet` / `▸▸▸ Opus` after each routed prompt.
+**Footer indicator:** `▸ <small model>` / `▸▸ <medium model>` / `▸▸▸ <large model>` after each routed prompt.
 
 **Slash commands:**
 ```
-/router-status   # show current tier, session max, last classification
+/router-status   # show current tier, detected current model, and resolved low/mid/high ladder
 /router-reset    # reset session max back to low
 /router-off      # disable routing (keep current model)
 /router-on       # re-enable routing
@@ -195,7 +208,9 @@ classify.py calls model.pkl (~200ms)
         ↓
 route() returns low | mid | high
         ↓
-pi.setModel() switches the model
+resolve current provider/model ladder
+        ↓
+pi.setModel() switches to the resolved small / medium / large rung
         ↓
 Agent runs on the right model
 ```
@@ -296,7 +311,7 @@ Skills are SKILL.md files — read them to activate their guidance and tools.
 
 | File | Purpose |
 |------|---------|
-| `~/.dotfiles/pi/settings.json` | Default model (`claude-sonnet-4-6`) |
+| `~/.dotfiles/pi/settings.json` | Default provider/model for session startup |
 | `~/.dotfiles/pi/AGENTS.md` | Global agent instructions (auto-loaded by Pi) |
 | `~/.dotfiles/pi/damage-control-rules.yaml` | Safety rules for damage-control extension |
 | `~/.dotfiles/pi/agents/teams.yaml` | Team roster and hierarchy |
