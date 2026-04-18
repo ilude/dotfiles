@@ -136,7 +136,7 @@ export default function (pi: ExtensionAPI) {
   // ── Classify and route every user prompt ───────────────────────────────
   pi.on("input", async (event, ctx) => {
     const text = event.text?.trim() ?? "";
-    if (!text || text.startsWith("/") || !state.enabled) {
+    if (!text || text.startsWith("/") || event.source === "extension" || !state.enabled) {
       return { action: "continue" };
     }
 
