@@ -19,6 +19,7 @@ import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { completeSimple, type TextContent } from "@mariozechner/pi-ai";
+import { Text } from "@mariozechner/pi-tui";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
 
 const SKILLS_DIR = path.join(os.homedir(), ".dotfiles", "pi", "skills", "workflow");
@@ -81,6 +82,8 @@ interface CommitActivity {
 	logCommand(command: string, result?: GitRunResult): void;
 	finish(): void;
 }
+
+const COMMIT_ACTIVITY_TYPE = "workflow-commit-activity";
 
 function extractJsonObject(text: string) {
 	const start = text.indexOf("{");
@@ -454,42 +457,37 @@ function formatGitOutput(result?: GitRunResult) {
 	return outputLines;
 }
 
-function createCommitActivity(ctx: any, commandText: string): CommitActivity {
-	const lines: string[] = [`> ${commandText}`];
-	let phase = "starting";
-	let clearTimer: ReturnType<typeof setTimeout> | undefined;
-	const VIEWPORT_LINES = 10;
-
-	const render = () => {
-		if (clearTimer) {
-			clearTimeout(clearTimer);
-			clearTimer = undefined;
+function createCommitActivity(pi: ExtensionAPI, ctx: any, commandText: string): CommitActivity {
+	const fallbackLines: string[] = [];
+	const emit = (content: string) => {
+		if (typeof pi.sendMessage === "function") {
+			pi.sendMessage({
+				customType: COMMIT_ACTIVITY_TYPE,
+				content,
+				display: true,
+			});
+			return;
 		}
-		const snapshot = ["/commit activity", ...lines, `status: ${phase}`];
-		const hasOverflow = snapshot.length > VIEWPORT_LINES;
-		const tail = snapshot.slice(-VIEWPORT_LINES);
-		const visibleLines = hasOverflow ? ["...", ...tail.slice(1)] : tail;
-		ctx.ui.setWidget?.("commit-progress", visibleLines, { placement: "belowEditor" });
+		fallbackLines.push(content);
+		ctx.ui.setWidget?.("commit-progress", fallbackLines.slice(-10), { placement: "aboveEditor" });
 	};
 
-	render();
+	emit(`> ${commandText}`);
+
 	return {
 		setPhase(message?: string) {
-			phase = message ?? "done";
-			render();
+			const phase = message ?? "done";
+			emit(`phase: ${phase}`);
 		},
 		logCommand(command: string, result?: GitRunResult) {
-			if (lines.length > 1 && lines[lines.length - 1] !== "") lines.push("");
-			lines.push(`$ ${command}`);
-			for (const line of formatGitOutput(result)) lines.push(`  ${line}`);
-			render();
+			const output = formatGitOutput(result)
+				.map((line) => `  ${line}`)
+				.join("\n");
+			const content = output ? `$ ${command}\n${output}` : `$ ${command}`;
+			emit(content);
 		},
 		finish() {
-			phase = "done";
-			render();
-			clearTimer = setTimeout(() => {
-				ctx.ui.setWidget?.("commit-progress", undefined, { placement: "belowEditor" });
-			}, 3000);
+			emit("phase: done");
 		},
 	};
 }
@@ -519,7 +517,7 @@ async function prepareCommitSelection(args: string, ctx: any, activity?: CommitA
 
 async function executeCommitCommand(pi: ExtensionAPI, args: string, ctx: any) {
 	const commandText = `/commit${args.trim() ? ` ${args.trim()}` : ""}`;
-	const activity = createCommitActivity(ctx, commandText);
+	const activity = createCommitActivity(pi, ctx, commandText);
 	ctx.ui.notify(`Starting ${commandText}…`, "info");
 	activity.setPhase("preparing");
 	try {
@@ -620,6 +618,13 @@ async function executeCommitCommand(pi: ExtensionAPI, args: string, ctx: any) {
 }
 
 export default function (pi: ExtensionAPI) {
+	if (typeof pi.registerMessageRenderer === "function") {
+		pi.registerMessageRenderer(COMMIT_ACTIVITY_TYPE, (message, _options, theme) => {
+			const text = typeof message.content === "string" ? message.content : String(message.content ?? "");
+			return new Text(theme.fg("accent", "[/commit] ") + theme.fg("toolOutput", text), 0, 0);
+		});
+	}
+
 	pi.registerCommand("commit", {
 		description: "Smart git commit with LLM grouping + deterministic execution",
 		handler: async (args, ctx) => {
