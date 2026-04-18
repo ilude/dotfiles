@@ -17,6 +17,17 @@ If no topic is provided, ask: "What topic should I research?"
 
 Dispatch three subagents in parallel using the `subagent` tool. Pass the full topic string to each.
 
+Use dynamic same-provider reviewer sizing for the research pass:
+- `modelSize: "medium"`
+- `modelPolicy: "same-family"`
+
+This keeps the three research passes on the current provider/model ladder when possible:
+- OpenAI Codex session → medium research model such as `gpt-5.4-fast` or nearest routine same-family model
+- Anthropic session → `sonnet`
+- GitHub Copilot session → best available GitHub-backed medium model in the same family/provider
+
+If you run a follow-up synthesis or contradiction-resolution pass that is unusually complex, you may use `modelSize: "large"` with `modelPolicy: "same-family"` for that final arbitration step.
+
 ### Subagent A — Primary Source Researcher
 
 Focus: What do authoritative sources say?

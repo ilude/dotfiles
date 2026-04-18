@@ -40,12 +40,23 @@ Indicators (any two or more):
 
 ### Model Selection Policy
 
-When this workflow delegates to subagents or follow-up commands, keep them in the same family as the current parent model:
+When this workflow delegates to subagents or follow-up commands, keep them in the **same provider/model family as the current session model when possible**.
 
-- GPT parent: use `gpt` for routine implementation and validation work, `gpt-codex` for code-focused verification or code-heavy execution, and `gpt-mini` only for lightweight classification or simple follow-ups.
-- Claude parent: use `sonnet` for routine implementation and validation work, reserve `opus` for heavier orchestration or unusually complex reasoning, and use `haiku` only for lightweight classification or simple follow-ups.
+Use abstract size tiers, not hardcoded vendor names:
+- `small` → lightweight classification, mechanical changes, simple follow-ups
+- `medium` → routine implementation and validation work
+- `large` → orchestration, architectural reasoning, unusually complex or risky work
 
-Default to the routine model unless the delegated work clearly needs the code-focused or heavy option.
+Interpret them dynamically at runtime based on the selected provider/model:
+- OpenAI Codex example: `small → gpt-5.4-mini`, `medium → gpt-5.4-fast` or nearest routine model, `large → gpt-5.4`
+- Anthropic example: `small → haiku`, `medium → sonnet`, `large → opus`
+- GitHub Copilot example: choose the best available GitHub-backed `small` / `medium` / `large` rung from the current family or nearest same-provider equivalent
+
+If the `subagent` tool is used directly, request dynamic routing with:
+- `modelSize: "small" | "medium" | "large"`
+- `modelPolicy: "same-provider"` or `"same-family"`
+
+Default to `medium` unless the delegated work clearly needs `small` or `large`.
 
 ### Simple route — implement directly
 
@@ -62,6 +73,8 @@ Default to the routine model unless the delegated work clearly needs the code-fo
 
 Dispatch: `/team engineering-lead {full task description}`
 
+Prefer a `medium` same-provider model for this route.
+
 Include in the dispatch:
 - The original task description verbatim
 - Any constraints you noticed from the project environment (platform, test command, lint command)
@@ -71,7 +84,7 @@ Wait for the engineering lead to complete the work, then report the outcome to t
 
 ### Complex route — plan first, then execute
 
-1. Invoke `/plan-it {full task description}` to crystallize a plan
+1. Invoke `/plan-it {full task description}` to crystallize a plan using dynamic `small` / `medium` / `large` model sizing
 2. Wait for the plan to be written to `.specs/`
 3. Report the plan path and summary to the user
 4. Ask: "Plan is ready. Execute it now, or review it first with `/review-it`?"
