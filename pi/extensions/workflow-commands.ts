@@ -631,7 +631,7 @@ export default function (pi: ExtensionAPI) {
 			const styled = text
 				.split("\n")
 				.map((line) => {
-					if (line.startsWith("$ ") || line.startsWith("  ") || line.startsWith("stderr:")) {
+					if (line.startsWith("  ") || line.startsWith("stderr:")) {
 						return theme.fg("toolOutput", line);
 					}
 					return theme.bold(theme.fg("text", line));
