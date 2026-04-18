@@ -628,7 +628,7 @@ export default function (pi: ExtensionAPI) {
 	if (typeof pi.registerMessageRenderer === "function") {
 		pi.registerMessageRenderer(COMMIT_ACTIVITY_TYPE, (message, _options, theme) => {
 			const text = typeof message.content === "string" ? message.content : String(message.content ?? "");
-			return new Text(theme.fg("accent", "[/commit] ") + theme.fg("toolOutput", text), 0, 0);
+			return new Text(theme.fg("accent", "[/commit] ") + theme.bold(theme.fg("text", text)), 0, 0);
 		});
 	}
 
