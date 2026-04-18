@@ -47,9 +47,12 @@ vi.mock("@mariozechner/pi-ai", () => ({
 // ── Git mock helpers ──────────────────────────────────────────────────────────
 
 import { spawnSync } from "node:child_process";
+import * as fs from "node:fs";
 import { completeSimple } from "@mariozechner/pi-ai";
 const mockSpawnSync = spawnSync as ReturnType<typeof vi.fn>;
 const mockCompleteSimple = completeSimple as ReturnType<typeof vi.fn>;
+const mockReadFileSync = fs.readFileSync as ReturnType<typeof vi.fn>;
+const mockStatSync = fs.statSync as ReturnType<typeof vi.fn>;
 
 /**
  * Wire up spawnSync so every git sub-command returns plausible output.
@@ -106,6 +109,29 @@ function makeAssistantMessage(text: string) {
 }
 
 /**
+ * Base ctx used by /commit command tests.
+ */
+function createBaseCtx() {
+	return {
+		cwd: "/test/repo",
+		model: "claude-opus-4-5",
+		modelRegistry: {
+			models: [],
+			getApiKeyAndHeaders: vi.fn(async () => ({ ok: true, apiKey: "test-key", headers: {} })),
+		},
+		sessionManager: { buildSessionContext: vi.fn(() => ({ messages: [] })) },
+		getSystemPrompt: vi.fn(() => "test system prompt"),
+		waitForIdle: vi.fn(async () => {}),
+		ui: {
+			notify: vi.fn(),
+			confirm: vi.fn(async () => false),
+			input: vi.fn(async () => null),
+			select: vi.fn(async () => null),
+		},
+	};
+}
+
+/**
  * Create a mock ctx whose internal planner call returns the supplied LLM text.
  * ui.confirm defaults to false so the commit is always cancelled after any
  * fallback, keeping tests from needing real git commits.
@@ -129,24 +155,7 @@ function createMockCtxWithLlmResponse(llmResponseText: string) {
 		timestamp: Date.now(),
 	});
 
-	return {
-		cwd: "/test/repo",
-		model: "claude-opus-4-5",
-		modelRegistry: {
-			models: [],
-			getApiKeyAndHeaders: vi.fn(async () => ({ ok: true, apiKey: "test-key", headers: {} })),
-		},
-		sessionManager: { buildSessionContext: vi.fn(() => ({ messages: [] })) },
-		getSystemPrompt: vi.fn(() => "test system prompt"),
-		waitForIdle: vi.fn(async () => {}),
-		ui: {
-			notify: vi.fn(),
-			// Return false to cancel the confirm dialogs — avoids real git ops.
-			confirm: vi.fn(async () => false),
-			input: vi.fn(async () => null),
-			select: vi.fn(async () => null),
-		},
-	};
+	return createBaseCtx();
 }
 
 // ── Test suite ────────────────────────────────────────────────────────────────
@@ -156,6 +165,13 @@ describe("/commit command flow – plan validation rejection", () => {
 
 	beforeEach(async () => {
 		vi.clearAllMocks();
+		mockReadFileSync.mockImplementation((filePath: string, _enc?: any) => {
+			if (typeof filePath === "string" && filePath.includes("commit-instructions")) {
+				return "# Commit instructions (test stub)";
+			}
+			return "// test stub";
+		});
+		mockStatSync.mockImplementation(() => ({ isFile: () => false }));
 		mockPi = createMockPi() as any;
 		// setModel is not in the shared mock factory; add it here.
 		(mockPi as any).setModel = vi.fn(async () => {});
@@ -238,6 +254,107 @@ describe("/commit command flow – plan validation rejection", () => {
 	});
 
 	// ── plan with unknown file ──────────────────────────────────────────────────
+
+	it("does not block commit when secret reviewer classifies doc examples as examples", async () => {
+		setupGitMocks(["pi/skills/workflow/commit.md"]);
+		mockStatSync.mockImplementation(() => ({ isFile: () => true }));
+		mockReadFileSync.mockImplementation((filePath: string, _enc?: any) => {
+			if (typeof filePath === "string" && filePath.includes("commit-instructions")) {
+				return "# Commit instructions (test stub)";
+			}
+			if (typeof filePath === "string" && filePath.includes("pi/skills/workflow/commit.md")) {
+				return "- `PASSWORD=` (hardcoded passwords)\n- `TOKEN=` (hardcoded tokens)";
+			}
+			return "// test stub";
+		});
+		mockCompleteSimple
+			.mockResolvedValueOnce({
+				role: "assistant",
+				content: makeAssistantMessage(JSON.stringify({
+					findings: [
+						{
+							path: "pi/skills/workflow/commit.md",
+							label: "Hardcoded password",
+							classification: "example",
+							reason: "This is documentation text describing a pattern, not an assigned secret.",
+							match: "PASSWORD=",
+						},
+						{
+							path: "pi/skills/workflow/commit.md",
+							label: "Hardcoded token",
+							classification: "example",
+							reason: "This is documentation text describing a pattern, not a real token.",
+							match: "TOKEN=",
+						},
+					],
+				})).content,
+				api: "openai-responses",
+				provider: "openai",
+				model: "gpt-4o-mini",
+				usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+				stopReason: "stop",
+				timestamp: Date.now(),
+			})
+			.mockResolvedValueOnce({
+				role: "assistant",
+				content: makeAssistantMessage(JSON.stringify({
+					groups: [{ files: ["pi/skills/workflow/commit.md"], subject: "docs(pi): update commit workflow" }],
+				})).content,
+				api: "openai-responses",
+				provider: "openai",
+				model: "gpt-4o-mini",
+				usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+				stopReason: "stop",
+				timestamp: Date.now(),
+			});
+		const ctx = createBaseCtx();
+
+		await getCommitHandler()("", ctx);
+
+		const notifyCalls: [string, string][] = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls;
+		expect(notifyCalls.some(([msg]) => msg.includes("Potential secrets detected"))).toBe(false);
+	});
+
+	it("blocks commit when secret reviewer classifies a finding as likely_secret", async () => {
+		setupGitMocks([".env.example"]);
+		mockStatSync.mockImplementation(() => ({ isFile: () => true }));
+		mockReadFileSync.mockImplementation((filePath: string, _enc?: any) => {
+			if (typeof filePath === "string" && filePath.includes("commit-instructions")) {
+				return "# Commit instructions (test stub)";
+			}
+			if (typeof filePath === "string" && filePath.includes(".env.example")) {
+				return "OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz123456";
+			}
+			return "// test stub";
+		});
+		mockCompleteSimple.mockResolvedValueOnce({
+			role: "assistant",
+			content: makeAssistantMessage(JSON.stringify({
+				findings: [
+					{
+						path: ".env.example",
+						label: "OpenAI-style key",
+						classification: "likely_secret",
+						reason: "Looks like a real API key value assigned in a config-style file.",
+						match: "sk-abcdefghijklmnopqrstuvwxyz123456",
+					},
+				],
+			})).content,
+			api: "openai-responses",
+			provider: "openai",
+			model: "gpt-4o-mini",
+			usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+			stopReason: "stop",
+			timestamp: Date.now(),
+		});
+		const ctx = createBaseCtx();
+
+		await getCommitHandler()("", ctx);
+
+		const notifyCalls: [string, string][] = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls;
+		const errorCall = notifyCalls.find(([msg, level]) => level === "error" && msg.includes("Potential secrets detected after review"));
+		expect(errorCall).toBeDefined();
+	});
 
 	it("notifies fallback warning when LLM plan references a file not in the changed set", async () => {
 		setupGitMocks(["a.ts"]);
