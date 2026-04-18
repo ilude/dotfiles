@@ -1,11 +1,21 @@
 You are performing a smart git commit. Follow these steps exactly.
 
+When commit planning uses an LLM, prefer a small/mini model by default. Commit planning should stay cheap and deterministic unless there is a concrete reason to escalate.
+
 ## Step 1: Understand the current state
 
 Run `git status` to see what is staged, unstaged, and untracked.
 Run `git diff --stat HEAD` to understand the scope of changes.
 
 ## Step 2: Secret scan
+
+Before staging or committing anything, run a two-step secret review:
+
+1. Use deterministic pattern matching to extract candidate secret findings from staged and modified files.
+2. Use a small/mini LLM to evaluate each candidate in context and classify it as:
+   - likely real secret
+   - example / documentation / test fixture
+   - ambiguous and needs confirmation
 
 Before staging or committing anything, scan all staged and modified files for these patterns:
 
@@ -21,8 +31,8 @@ Before staging or committing anything, scan all staged and modified files for th
 - `PASSWORD=` (hardcoded passwords)
 - `TOKEN=` (hardcoded tokens)
 
-If ANY of these patterns are found in files that would be included in the commit, STOP immediately.
-Warn the user with the file name and matched pattern. Do not proceed until the user explicitly
+If the LLM-reviewed result says a candidate is a likely real secret, or the finding is still ambiguous after review, STOP immediately.
+Warn the user with the file name, matched pattern, and short reason. Do not proceed until the user explicitly
 resolves the finding and confirms it is safe to continue.
 
 ## Step 3: Stage changes carefully
