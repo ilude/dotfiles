@@ -19,6 +19,7 @@ import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { completeSimple, type TextContent } from "@mariozechner/pi-ai";
+import { wrapTextWithAnsi } from "@mariozechner/pi-tui";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
 
 const SKILLS_DIR = path.join(os.homedir(), ".dotfiles", "pi", "skills", "workflow");
@@ -459,10 +460,21 @@ function createCommitActivity(ctx: any, commandText: string): CommitActivity {
 	let phase = "starting";
 
 	const render = () => {
-		ctx.ui.setStatus?.("commit", phase ? `commit: ${phase}` : undefined);
-		ctx.ui.setWorkingMessage?.(phase ? `/commit: ${phase}` : undefined);
-		const visibleLines = [...lines, `status: ${phase}`].slice(-32);
-		ctx.ui.setWidget?.("commit-progress", visibleLines, { placement: "belowEditor" });
+		const visibleLines = [...lines, `status: ${phase}`].slice(-80);
+		ctx.ui.setWidget?.(
+			"commit-progress",
+			(_tui: any, theme: any) => ({
+				render(width: number) {
+					const contentWidth = Math.max(20, width - 2);
+					const header = theme.fg("accent", theme.bold("/commit activity"));
+					const statusLine = theme.fg("dim", `status: ${phase}`);
+					const body = visibleLines.flatMap((line) => wrapTextWithAnsi(line, contentWidth));
+					return [header, statusLine, ...body];
+				},
+				invalidate() {},
+			}),
+			{ placement: "aboveEditor" },
+		);
 	};
 
 	render();
@@ -478,9 +490,7 @@ function createCommitActivity(ctx: any, commandText: string): CommitActivity {
 		},
 		finish() {
 			phase = "done";
-			ctx.ui.setStatus?.("commit", undefined);
-			ctx.ui.setWorkingMessage?.();
-			ctx.ui.setWidget?.("commit-progress", [...lines, "status: done"].slice(-32), { placement: "belowEditor" });
+			render();
 		},
 	};
 }
