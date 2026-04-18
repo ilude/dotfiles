@@ -437,12 +437,21 @@ function summarizeCommit(hash: string, subject: string, pushed: boolean) {
 	return pushed ? `${hash} ${subject}\nPushed to remote` : `${hash} ${subject}`;
 }
 
-function summarizeGitOutput(result?: GitRunResult) {
-	if (!result) return undefined;
-	const text = (result.stderr || result.stdout).trim();
-	if (!text) return result.code === 0 ? "ok" : `exit ${result.code}`;
-	const lines = text.split(/\r?\n/).filter(Boolean);
-	return lines.slice(0, 3).join("\n") + (lines.length > 3 ? "\n…" : "");
+function formatGitOutput(result?: GitRunResult) {
+	if (!result) return ["ok"];
+	const outputLines: string[] = [];
+	const stdout = result.stdout.trim();
+	const stderr = result.stderr.trim();
+	if (stdout) {
+		for (const line of stdout.split(/\r?\n/)) outputLines.push(line);
+	}
+	if (stderr) {
+		for (const line of stderr.split(/\r?\n/)) outputLines.push(`stderr: ${line}`);
+	}
+	if (outputLines.length === 0) {
+		outputLines.push(result.code === 0 ? "ok" : `exit ${result.code}`);
+	}
+	return outputLines;
 }
 
 function createCommitActivity(ctx: any, commandText: string): CommitActivity {
@@ -458,11 +467,7 @@ function createCommitActivity(ctx: any, commandText: string): CommitActivity {
 		},
 		logCommand(command: string, result?: GitRunResult) {
 			lines.push(`$ ${command}`);
-			const summary = summarizeGitOutput(result);
-			if (summary) {
-				for (const line of summary.split(/\r?\n/)) lines.push(`  ${line}`);
-			}
-			while (lines.length > 18) lines.splice(1, 1);
+			for (const line of formatGitOutput(result)) lines.push(`  ${line}`);
 			render();
 		},
 		finish() {
