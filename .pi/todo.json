@@ -205,6 +205,111 @@
       "created": "2026-04-17T23:57:47.963Z",
       "updated": "2026-04-17T23:59:17.966Z",
       "notes": "Created .specs/pi-workflow-borrowed-features/implementation-checklist.md with phased tasks, likely files, dependency order, manual trial script, and MVP exit criteria. Updated plan.md to reference it."
+    },
+    {
+      "id": "tmo3pil43-b",
+      "title": "Inspect current Pi /review-it workflow",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-18T02:17:22.275Z",
+      "updated": "2026-04-18T02:25:56.313Z",
+      "notes": "Inspected current review-it workflow and available Pi agents. Identified standard reviewers as reviewer, security-reviewer, and product-manager; mapped domain-specific experts from existing project-local Pi agents."
+    },
+    {
+      "id": "tmo3piqcr-c",
+      "title": "Update /review-it to require standard reviewers plus domain-specific reviewer suggestions",
+      "status": "done",
+      "depends_on": [
+        "tmo3pil43-b"
+      ],
+      "created": "2026-04-18T02:17:29.067Z",
+      "updated": "2026-04-18T02:26:01.013Z",
+      "notes": "Rewrote pi/skills/workflow/review-it.md so /review-it now instructs Pi to always launch three standard reviewers, select at least three additional topic-specific reviewers from available Pi agents, and use targeted rebuttal/discussion only when disagreement or severity warrants it."
+    },
+    {
+      "id": "tmo3q61xj-d",
+      "title": "Compare Pi /plan-it and /do-it workflows against Claude equivalents",
+      "status": "pending",
+      "depends_on": [],
+      "created": "2026-04-18T02:35:37.159Z",
+      "updated": "2026-04-18T02:35:37.159Z",
+      "notes": "Inspect current Pi prompts and Claude command/shared instruction files for plan-it and do-it, then recommend whether Pi should be updated similarly."
+    },
+    {
+      "id": "tmo3qf0t1-e",
+      "title": "Implement dynamic same-provider model ladder resolver",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-18T02:42:35.605Z",
+      "updated": "2026-04-18T02:49:35.693Z",
+      "notes": "Added shared dynamic model-routing logic in pi/lib/model-routing.ts. It now resolves small/medium/large models from the current session provider/model and available registry models, with same-provider and same-family policies plus best-effort current-model detection from ctx."
+    },
+    {
+      "id": "tmo3qf2hl-f",
+      "title": "Add subagent model-size override support",
+      "status": "done",
+      "depends_on": [
+        "tmo3qf0t1-e"
+      ],
+      "created": "2026-04-18T02:42:37.785Z",
+      "updated": "2026-04-18T02:49:38.296Z",
+      "notes": "Extended the subagent tool to accept modelSize and modelPolicy and to override agent-frontmatter model pins at spawn time with a dynamically resolved same-provider/same-family model when requested."
+    },
+    {
+      "id": "tmo3qf4do-g",
+      "title": "Update workflow prompts and prompt router to use dynamic model ladder",
+      "status": "done",
+      "depends_on": [
+        "tmo3qf2hl-f"
+      ],
+      "created": "2026-04-18T02:42:40.236Z",
+      "updated": "2026-04-18T02:49:43.210Z",
+      "notes": "Updated /plan-it, /do-it, and /review-it prompts to use abstract small/medium/large model sizing tied to the current provider/model ladder. Updated prompt-router to resolve low/mid/high tiers dynamically via same-family routing. Added/updated tests for model routing and prompt router behavior."
+    },
+    {
+      "id": "tmo3riedp-1",
+      "title": "Audit remaining subagent-using Pi workflows and lead agents for dynamic model sizing",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-18T03:13:12.781Z",
+      "updated": "2026-04-18T03:15:14.051Z",
+      "notes": "Updated /research and both standard + multi-team orchestrator/engineering-lead/planning-lead/validation-lead prompts to recommend dynamic modelSize/modelPolicy usage for subagent delegation, with medium-by-default and large-for-heavy-synthesis guidance."
+    },
+    {
+      "id": "tmo3rih3i-2",
+      "title": "Improve /router-status to show resolved current ladder",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-18T03:13:16.302Z",
+      "updated": "2026-04-18T03:15:17.185Z",
+      "notes": "Updated prompt-router /router-status to show the actual currently resolved low/mid/high ladder from the active session provider/model context, and added test coverage for the status output."
+    },
+    {
+      "id": "tmo3rlskq-3",
+      "title": "Audit remaining pi/skills/workflow prompts for dynamic model routing adoption",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-18T03:15:51.146Z",
+      "updated": "2026-04-18T03:16:09.283Z",
+      "notes": "Scanned all workflow skills. Only /research, /plan-it, /do-it, and /review-it needed dynamic routing guidance and were already updated. /commit and /gitlab-ticket do not use subagents or dynamic multi-model delegation, so no workflow prompt changes were needed there."
+    },
+    {
+      "id": "tmo3rnfct-4",
+      "title": "Update /commit planning to prefer small/mini dynamic routing",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-18T03:17:07.325Z",
+      "updated": "2026-04-18T03:18:16.925Z",
+      "notes": "Updated /commit planning to prefer a dynamic small/mini model from the current provider/model family when possible, with fallback to the previous OpenAI/GitHub mini preferences and then best-available small model. Updated commit workflow prompt text and expanded model-routing tests."
+    },
+    {
+      "id": "tmo3rsl7x-1",
+      "title": "Implement LLM-adjudicated secret review in /commit",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-18T03:21:08.205Z",
+      "updated": "2026-04-18T03:24:18.312Z",
+      "notes": "Replaced /commit's regex-only secret blocking with hybrid scanning: deterministic candidate extraction plus small-model LLM adjudication over file-context snippets. Commit now blocks only on likely_secret or ambiguous findings. Updated workflow prompt text and added tests covering doc/example false positives and real secret-like content."
     }
   ]
 }
