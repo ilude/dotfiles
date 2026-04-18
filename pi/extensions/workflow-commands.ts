@@ -628,7 +628,16 @@ export default function (pi: ExtensionAPI) {
 	if (typeof pi.registerMessageRenderer === "function") {
 		pi.registerMessageRenderer(COMMIT_ACTIVITY_TYPE, (message, _options, theme) => {
 			const text = typeof message.content === "string" ? message.content : String(message.content ?? "");
-			return new Text(theme.fg("accent", "[/commit] ") + theme.bold(theme.fg("text", text)), 0, 0);
+			const styled = text
+				.split("\n")
+				.map((line) => {
+					if (line.startsWith("$ ") || line.startsWith("  ") || line.startsWith("stderr:")) {
+						return theme.fg("toolOutput", line);
+					}
+					return theme.bold(theme.fg("text", line));
+				})
+				.join("\n");
+			return new Text(theme.fg("accent", "[/commit] ") + styled, 0, 0);
 		});
 	}
 
