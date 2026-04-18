@@ -55,70 +55,25 @@ describe("validateCommitPlan", () => {
 // ---------------------------------------------------------------------------
 
 describe("confirmCommitMessage", () => {
-	function makeCtx(uiOverrides: Record<string, any> = {}) {
-		return {
-			ui: {
-				notify: vi.fn(),
-				confirm: vi.fn(async () => true),
-				input: vi.fn(async (): Promise<string | undefined> => undefined),
-				select: vi.fn(async (): Promise<string | undefined> => undefined),
-				...uiOverrides,
-			},
-		};
-	}
-
 	const baseMessage = { subject: "feat(pi): add something" };
 	const files = ["a.ts"];
 	const stat = "a.ts | 5 ++-";
 
-	it("returns the original message when user confirms", async () => {
-		const ctx = makeCtx({ confirm: vi.fn(async () => true) });
-		const result = await confirmCommitMessage(ctx, baseMessage, files, stat, stat);
+	it("returns the original message without prompting", async () => {
+		const result = await confirmCommitMessage({}, baseMessage, files, stat, stat);
 		expect(result).toEqual(baseMessage);
-		expect(ctx.ui.input).not.toHaveBeenCalled();
 	});
 
-	it("returns null when user declines and then cancels revision input", async () => {
-		// Declining confirmation triggers a revision prompt; cancelling that (undefined) = abort
-		const ctx = makeCtx({
-			confirm: vi.fn(async () => false),
-			input: vi.fn(async (): Promise<string | undefined> => undefined),
-		});
-		const result = await confirmCommitMessage(ctx, baseMessage, files, stat, stat);
-		// null signals "do not proceed with commit"
-		expect(result).toBeNull();
-	});
-
-	it("returns revised message when user declines but provides a valid subject", async () => {
-		const revisedSubject = "fix(pi): correct behaviour";
-		const ctx = makeCtx({
-			confirm: vi.fn(async () => false),
-			input: vi.fn(async (): Promise<string | undefined> => revisedSubject),
-		});
-		const result = await confirmCommitMessage(ctx, baseMessage, files, stat, stat);
-		expect(result?.subject).toBe(revisedSubject);
-	});
-
-	it("throws when revised subject violates conventional commit format", async () => {
-		const ctx = makeCtx({
-			confirm: vi.fn(async () => false),
-			input: vi.fn(async (): Promise<string | undefined> => "This is not conventional"),
-		});
-		await expect(confirmCommitMessage(ctx, baseMessage, files, stat, stat)).rejects.toThrow(
-			/conventional commit format/i,
-		);
-	});
-
-	it("preserves original body when user revises subject only", async () => {
+	it("preserves body without prompting", async () => {
 		const withBody = { subject: "feat(pi): original", body: "Detailed context." };
-		const revisedSubject = "feat(pi): revised subject";
-		const ctx = makeCtx({
-			confirm: vi.fn(async () => false),
-			input: vi.fn(async (): Promise<string | undefined> => revisedSubject),
-		});
-		const result = await confirmCommitMessage(ctx, withBody, files, stat, stat);
-		expect(result?.subject).toBe(revisedSubject);
-		expect(result?.body).toBe("Detailed context.");
+		const result = await confirmCommitMessage({}, withBody, files, stat, stat);
+		expect(result).toEqual(withBody);
+	});
+
+	it("throws when subject violates conventional commit format", async () => {
+		await expect(
+			confirmCommitMessage({}, { subject: "This is not conventional" }, files, stat, stat),
+		).rejects.toThrow(/conventional commit format/i);
 	});
 });
 
@@ -127,70 +82,25 @@ describe("confirmCommitMessage", () => {
 // ---------------------------------------------------------------------------
 
 describe("chooseFilesToCommit", () => {
-	function makeCtx(selectResponse: string | undefined) {
-		return {
-			ui: {
-				notify: vi.fn(),
-				confirm: vi.fn(async () => true),
-				input: vi.fn(async (): Promise<string | undefined> => undefined),
-				select: vi.fn(async (): Promise<string | undefined> => selectResponse),
-			},
-		};
-	}
-
 	const changed = ["a.ts", "b.ts", "c.ts"];
 	const staged = ["a.ts"];
 
-	it("returns requested files without prompting when files are explicitly specified", async () => {
-		const ctx = makeCtx(undefined);
-		const result = await chooseFilesToCommit(ctx, changed, staged, ["b.ts"]);
+	it("returns requested files when files are explicitly specified", async () => {
+		const result = await chooseFilesToCommit({}, changed, staged, ["b.ts"]);
 		expect(result.cancelled).toBe(false);
 		expect(result.files).toEqual(["b.ts"]);
-		expect(ctx.ui.select).not.toHaveBeenCalled();
+		expect(result.stageAll).toBe(true);
 	});
 
-	it("returns all changed files without prompting when nothing is staged", async () => {
-		const ctx = makeCtx(undefined);
-		const result = await chooseFilesToCommit(ctx, changed, [], []);
+	it("returns all changed files when nothing is staged", async () => {
+		const result = await chooseFilesToCommit({}, changed, [], []);
 		expect(result.cancelled).toBe(false);
 		expect(result.files).toEqual(changed);
-		expect(ctx.ui.select).not.toHaveBeenCalled();
+		expect(result.stageAll).toBe(true);
 	});
 
-	it("returns staged files without prompting when all changed files are already staged", async () => {
-		const ctx = makeCtx(undefined);
-		const result = await chooseFilesToCommit(ctx, staged, staged, []);
-		expect(result.cancelled).toBe(false);
-		expect(result.files).toEqual(staged);
-		expect(ctx.ui.select).not.toHaveBeenCalled();
-	});
-
-	it("returns cancelled when user explicitly picks Cancel from the scope dialog", async () => {
-		const ctx = makeCtx("Cancel");
-		const result = await chooseFilesToCommit(ctx, changed, staged, []);
-		expect(result.cancelled).toBe(true);
-		expect(result.files).toHaveLength(0);
-	});
-
-	it("returns cancelled when user dismisses the scope dialog without choosing", async () => {
-		const ctx = makeCtx(undefined);
-		const result = await chooseFilesToCommit(ctx, changed, staged, []);
-		expect(result.cancelled).toBe(true);
-		expect(result.files).toHaveLength(0);
-	});
-
-	it("returns staged-only files and stageAll=false when user picks staged-only scope", async () => {
-		// The choice label is dynamic — match it starts-with "Use already staged"
-		const ctx = makeCtx(`Use already staged changes (${staged.length} file)`);
-		const result = await chooseFilesToCommit(ctx, changed, staged, []);
-		expect(result.cancelled).toBe(false);
-		expect(result.files).toEqual(staged);
-		expect(result.stageAll).toBe(false);
-	});
-
-	it("returns all changed files and stageAll=true when user picks stage-all scope", async () => {
-		const ctx = makeCtx(`Stage all changed files (${changed.length} files)`);
-		const result = await chooseFilesToCommit(ctx, changed, staged, []);
+	it("returns all changed files even when some files are already staged", async () => {
+		const result = await chooseFilesToCommit({}, changed, staged, []);
 		expect(result.cancelled).toBe(false);
 		expect(result.files).toEqual(changed);
 		expect(result.stageAll).toBe(true);

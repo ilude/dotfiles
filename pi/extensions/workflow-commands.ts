@@ -18,6 +18,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { completeSimple, type TextContent } from "@mariozechner/pi-ai";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
 
 const SKILLS_DIR = path.join(os.homedir(), ".dotfiles", "pi", "skills", "workflow");
@@ -120,11 +121,11 @@ export function validateCommitPlan(plan: CommitPlan, changedFiles: string[]) {
 	}
 }
 
-function extractAssistantText(message: any) {
-	if (!message || message.role !== "assistant" || !Array.isArray(message.content)) return "";
-	return message.content
-		.filter((block: any) => block.type === "text")
-		.map((block: any) => block.text)
+function extractAssistantText(content: unknown) {
+	if (!Array.isArray(content)) return "";
+	return content
+		.filter((block): block is TextContent => !!block && typeof block === "object" && "type" in block && block.type === "text")
+		.map((block) => block.text)
 		.join("\n");
 }
 
@@ -172,7 +173,7 @@ ${JSON.stringify(payload, null, 2)}`;
 }
 
 async function generateCommitPlanWithLlm(
-	pi: ExtensionAPI,
+	_ctxPi: ExtensionAPI,
 	ctx: any,
 	context: { files: string[]; diffStat: string; cachedStat: string; cachedDiff: string; hint: string },
 ) {
@@ -180,21 +181,25 @@ async function generateCommitPlanWithLlm(
 	if (!model) {
 		throw new Error("No OpenAI/GitHub mini model available for commit planning");
 	}
-	const previousModel = ctx.model;
-	const planningPrompt = buildCommitPlanningPrompt(loadClaudeCommitInstructions(), context);
-	const beforeMessages = ctx.sessionManager.buildSessionContext().messages.length;
-	await pi.setModel(model);
-	try {
-		await pi.sendUserMessage(planningPrompt);
-		await ctx.waitForIdle();
-	} finally {
-		if (previousModel) {
-			await pi.setModel(previousModel);
-		}
+	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+	if (!auth?.ok) {
+		throw new Error(auth?.error || "No configured auth available for commit planning model");
 	}
-	const messages = ctx.sessionManager.buildSessionContext().messages.slice(beforeMessages);
-	const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
-	const planText = extractAssistantText(lastAssistant);
+	const planningPrompt = buildCommitPlanningPrompt(loadClaudeCommitInstructions(), context);
+	const response = await completeSimple(
+		model,
+		{
+			systemPrompt: ctx.getSystemPrompt?.(),
+			messages: [{ role: "user", content: planningPrompt, timestamp: Date.now() }],
+		},
+		{
+			apiKey: auth.apiKey,
+			headers: auth.headers,
+			reasoning: "minimal",
+			signal: ctx.signal,
+		},
+	);
+	const planText = extractAssistantText(response.content);
 	if (!planText.trim()) {
 		throw new Error("Commit planner returned no assistant text");
 	}
@@ -366,26 +371,14 @@ function isValidConventionalCommit(subject: string) {
 	return CONVENTIONAL_COMMIT_RE.test(subject);
 }
 
-async function confirmSecretScan(ctx: any, findings: Array<{ path: string; label: string; match: string }>) {
+async function confirmSecretScan(_ctx: any, findings: Array<{ path: string; label: string; match: string }>) {
 	if (findings.length === 0) return true;
 	const preview = findings.slice(0, 8).map((finding) => `- ${finding.path}: ${finding.label} (${finding.match})`).join("\n");
-	return ctx.ui.confirm("Secret scan findings", `${preview}${findings.length > 8 ? "\n- ..." : ""}\n\nContinue anyway?`);
+	throw new Error(`Potential secrets detected:\n${preview}${findings.length > 8 ? "\n- ..." : ""}\n\nRemove the secrets or ignore the files before committing.`);
 }
 
-export async function chooseFilesToCommit(ctx: any, changedFiles: string[], stagedFiles: string[], requestedFiles: string[]) {
+export async function chooseFilesToCommit(_ctx: any, changedFiles: string[], _stagedFiles: string[], requestedFiles: string[]) {
 	if (requestedFiles.length > 0) return { files: requestedFiles, stageAll: true, cancelled: false };
-	if (stagedFiles.length === 0) return { files: changedFiles, stageAll: true, cancelled: false };
-
-	const unstagedOrUntracked = changedFiles.filter((file) => !stagedFiles.includes(file));
-	if (unstagedOrUntracked.length === 0) return { files: stagedFiles, stageAll: false, cancelled: false };
-
-	const choice = await ctx.ui.select("Commit scope", [
-		`Use already staged changes (${stagedFiles.length} file${stagedFiles.length === 1 ? "" : "s"})`,
-		`Stage all changed files (${changedFiles.length} file${changedFiles.length === 1 ? "" : "s"})`,
-		"Cancel",
-	]);
-	if (!choice || choice === "Cancel") return { files: [], stageAll: false, cancelled: true };
-	if (choice.startsWith("Use already staged changes")) return { files: stagedFiles, stageAll: false, cancelled: false };
 	return { files: changedFiles, stageAll: true, cancelled: false };
 }
 
@@ -400,22 +393,16 @@ function unstageFiles(cwd: string, files: string[]) {
 }
 
 export async function confirmCommitMessage(
-	ctx: any,
+	_ctx: any,
 	commitMessage: { subject: string; body?: string },
-	filesToCommit: string[],
-	cachedStat: string,
-	diffStat: string,
+	_filesToCommit: string[],
+	_cachedStat: string,
+	_diffStat: string,
 ) {
-	const details = `${formatCommitMessage(commitMessage)}\n\nFiles:\n${filesToCommit.join("\n")}\n\nDiff stat:\n${cachedStat || diffStat}`;
-	if (await ctx.ui.confirm("Proposed commit message", details)) return commitMessage;
-
-	const revisedSubject = await ctx.ui.input("Revise commit message", commitMessage.subject);
-	if (!revisedSubject) return null;
-	const subject = revisedSubject.trim();
-	if (!isValidConventionalCommit(subject)) {
+	if (!isValidConventionalCommit(commitMessage.subject)) {
 		throw new Error("Commit message must match conventional commit format: type(scope): description");
 	}
-	return { subject, body: commitMessage.body };
+	return commitMessage;
 }
 
 function commitCurrentChanges(cwd: string, commitMessage: { subject: string; body?: string }) {
@@ -460,12 +447,14 @@ async function prepareCommitSelection(args: string, ctx: any) {
 }
 
 async function executeCommitCommand(pi: ExtensionAPI, args: string, ctx: any) {
+	ctx.ui.setStatus?.("commit", "commit: preparing");
 	const status = gitOrThrow(ctx.cwd, ["status", "--short"]);
 	if (!status.trim()) return ctx.ui.notify("Working tree is clean", "info");
 	if (hasMergeConflicts(status)) return ctx.ui.notify("Resolve merge conflicts before committing", "error");
 
 	const prepared = await prepareCommitSelection(args, ctx);
 	if (!prepared) return ctx.ui.notify("Commit cancelled", "warning");
+	ctx.ui.setStatus?.("commit", "commit: planning");
 
 	let plan: CommitPlan | undefined;
 	try {
@@ -484,6 +473,7 @@ async function executeCommitCommand(pi: ExtensionAPI, args: string, ctx: any) {
 	}
 
 	if (!plan) {
+		ctx.ui.setStatus?.("commit", "commit: committing");
 		const proposed = proposeCommitMessage(prepared.selection.files, prepared.parsedArgs.hint, prepared.cachedDiff);
 		const commitMessage = await confirmCommitMessage(
 			ctx,
@@ -502,6 +492,7 @@ async function executeCommitCommand(pi: ExtensionAPI, args: string, ctx: any) {
 	}
 
 	const commitSummaries: string[] = [];
+	ctx.ui.setStatus?.("commit", "commit: committing");
 	unstageFiles(ctx.cwd, prepared.selection.files);
 	for (const group of plan.groups) {
 		stageFiles(ctx.cwd, group.files);
@@ -521,6 +512,7 @@ async function executeCommitCommand(pi: ExtensionAPI, args: string, ctx: any) {
 		commitSummaries.push(`${hash} ${commitMessage.subject}`);
 	}
 	if (prepared.parsedArgs.push) pushCurrentBranch(ctx.cwd);
+	ctx.ui.setStatus?.("commit", prepared.parsedArgs.push ? "commit: pushed" : "commit: done");
 	return ctx.ui.notify(
 		`${commitSummaries.join("\n")}${prepared.parsedArgs.push ? "\nPushed to remote" : ""}`,
 		"info",
