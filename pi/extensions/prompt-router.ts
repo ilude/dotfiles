@@ -26,7 +26,7 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { resolveDynamicModelFromRegistry, resolveModelTierLabel } from "../lib/model-routing.js";
+import { getCurrentModelHint, resolveDynamicModelFromRegistry, resolveModelTierLabel } from "../lib/model-routing.js";
 
 function getResolvedTierMap(ctx: any) {
   return {
@@ -168,9 +168,12 @@ export default function (pi: ExtensionAPI) {
       const max = state.sessionMax;
 
       const resolved = getResolvedTierMap(ctx);
+      const current = getCurrentModelHint(ctx, ctx.modelRegistry.getAvailable());
+      const currentLabel = current ? `${current.provider}/${current.id}` : "(unknown)";
       const lines = [
         `Prompt Router`,
         `  Enabled:          ${state.enabled}`,
+        `  Current model:    ${currentLabel}`,
         `  Session max tier: ${max}`,
         `  Last classified:  ${raw ?? "—"} → applied: ${eff ?? "—"}`,
         `  Last prompt:      "${state.lastPromptSnippet}"`,

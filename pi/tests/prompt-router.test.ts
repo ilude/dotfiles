@@ -179,6 +179,10 @@ describe("prompt-router extension — command registration", () => {
     await statusCmd.handler([], ctx);
 
     expect((ctx.ui as any).notify).toHaveBeenCalledWith(
+      expect.stringContaining("Current model:    openai-codex/gpt-5.4"),
+      "info"
+    );
+    expect((ctx.ui as any).notify).toHaveBeenCalledWith(
       expect.stringContaining("low  → gpt-5.4-mini"),
       "info"
     );
