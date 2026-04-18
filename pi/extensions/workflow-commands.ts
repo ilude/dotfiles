@@ -77,6 +77,26 @@ interface GitRunResult {
 	stderr: string;
 }
 
+interface SecretCandidate {
+	path: string;
+	label: string;
+	match: string;
+	line: number;
+	context: string;
+}
+
+interface SecretReviewFinding {
+	path: string;
+	label: string;
+	classification: "likely_secret" | "example" | "ambiguous";
+	reason: string;
+	match?: string;
+}
+
+interface SecretReviewResult {
+	findings: SecretReviewFinding[];
+}
+
 interface CommitActivity {
 	setPhase(message?: string): void;
 	logCommand(command: string, result?: GitRunResult): void;
@@ -193,9 +213,9 @@ async function generateCommitPlanWithLlm(
 	ctx: any,
 	context: { files: string[]; diffStat: string; cachedStat: string; cachedDiff: string; hint: string },
 ) {
-	const model = await resolveCommitPlanningModelFromRegistry(ctx.modelRegistry);
+	const model = await resolveCommitPlanningModelFromRegistry(ctx.modelRegistry, ctx);
 	if (!model) {
-		throw new Error("No OpenAI/GitHub mini model available for commit planning");
+		throw new Error("No small/mini model available for commit planning");
 	}
 	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
 	if (!auth?.ok) {
@@ -290,7 +310,24 @@ function parseCommitArgs(rawArgs: string, changedFiles: string[]) {
 	};
 }
 
-function scanFileForSecrets(cwd: string, relativePath: string) {
+function buildSecretContext(content: string, index: number) {
+	const lineStarts = [0];
+	for (let i = 0; i < content.length; i++) {
+		if (content[i] === "\n") lineStarts.push(i + 1);
+	}
+	let lineIndex = 0;
+	for (let i = 0; i < lineStarts.length; i++) {
+		if (lineStarts[i] <= index) lineIndex = i;
+		else break;
+	}
+	const startLine = Math.max(0, lineIndex - 1);
+	const endLine = Math.min(lineStarts.length - 1, lineIndex + 1);
+	const lines = content.split(/\r?\n/);
+	const snippet = lines.slice(startLine, endLine + 1).join("\n");
+	return { line: lineIndex + 1, context: snippet.slice(0, 400) };
+}
+
+function scanFileForSecrets(cwd: string, relativePath: string): SecretCandidate[] {
 	const absolutePath = path.resolve(cwd, relativePath);
 	try {
 		if (!fs.statSync(absolutePath).isFile()) return [];
@@ -298,20 +335,25 @@ function scanFileForSecrets(cwd: string, relativePath: string) {
 		return [];
 	}
 
-	let content;
+	let content: string;
 	try {
 		content = fs.readFileSync(absolutePath, "utf8");
 	} catch {
 		return [];
 	}
 
-	const findings: Array<{ path: string; label: string; match: string }> = [];
+	const findings: SecretCandidate[] = [];
 	for (const pattern of SECRET_PATTERNS) {
 		for (const match of content.matchAll(pattern.regex)) {
+			const raw = String(match[0]);
+			const index = match.index ?? 0;
+			const { line, context } = buildSecretContext(content, index);
 			findings.push({
 				path: relativePath,
 				label: pattern.label,
-				match: String(match[0]).slice(0, 80),
+				match: raw.slice(0, 80),
+				line,
+				context,
 			});
 		}
 	}
@@ -396,10 +438,85 @@ function isValidConventionalCommit(subject: string) {
 	return CONVENTIONAL_COMMIT_RE.test(subject);
 }
 
-async function confirmSecretScan(_ctx: any, findings: Array<{ path: string; label: string; match: string }>) {
+function buildSecretReviewPrompt(findings: SecretCandidate[]) {
+	const payload = findings.map((finding) => ({
+		path: finding.path,
+		label: finding.label,
+		match: finding.match,
+		line: finding.line,
+		context: finding.context,
+	}));
+	return `You are reviewing candidate secret findings for Pi's /commit workflow.
+
+Classify each candidate as exactly one of:
+- likely_secret → appears to be a real credential, private key, token, password assignment, or other sensitive secret that should block commit
+- example → documentation, sample text, test fixture, placeholder, redacted value, or obviously non-secret instructional content
+- ambiguous → unclear from context; may be real, should require human confirmation
+
+Be skeptical of false positives in markdown docs, comments, tests, examples, and instructional text.
+Only mark likely_secret when the content looks like an actual usable secret or credential-bearing assignment.
+
+Return JSON only in this schema:
+{
+  "findings": [
+    {
+      "path": "file",
+      "label": "pattern label",
+      "classification": "likely_secret|example|ambiguous",
+      "reason": "short reason",
+      "match": "matched text preview"
+    }
+  ]
+}
+
+Candidate findings JSON:
+${JSON.stringify(payload, null, 2)}`;
+}
+
+function parseSecretReviewResult(text: string): SecretReviewResult {
+	const jsonText = extractJsonObject(text);
+	if (!jsonText) throw new Error("Secret reviewer did not return JSON");
+	const parsed = JSON.parse(jsonText) as SecretReviewResult;
+	if (!parsed || !Array.isArray(parsed.findings)) throw new Error("Secret reviewer returned invalid findings");
+	return parsed;
+}
+
+async function reviewSecretFindingsWithLlm(ctx: any, findings: SecretCandidate[]): Promise<SecretReviewFinding[]> {
+	if (findings.length === 0) return [];
+	const model = await resolveCommitPlanningModelFromRegistry(ctx.modelRegistry, ctx);
+	if (!model) throw new Error("No small/mini model available for secret review");
+	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+	if (!auth?.ok) throw new Error(auth?.error || "No configured auth available for secret review model");
+	const response = await completeSimple(
+		model,
+		{
+			systemPrompt: ctx.getSystemPrompt?.(),
+			messages: [{ role: "user", content: buildSecretReviewPrompt(findings), timestamp: Date.now() }],
+		},
+		{
+			apiKey: auth.apiKey,
+			headers: auth.headers,
+			reasoning: "minimal",
+			signal: ctx.signal,
+		},
+	);
+	const text = extractAssistantText(response.content);
+	if (!text.trim()) throw new Error("Secret reviewer returned no assistant text");
+	return parseSecretReviewResult(text).findings;
+}
+
+async function confirmSecretScan(ctx: any, findings: SecretCandidate[]) {
 	if (findings.length === 0) return true;
-	const preview = findings.slice(0, 8).map((finding) => `- ${finding.path}: ${finding.label} (${finding.match})`).join("\n");
-	throw new Error(`Potential secrets detected:\n${preview}${findings.length > 8 ? "\n- ..." : ""}\n\nRemove the secrets or ignore the files before committing.`);
+	const reviewed = await reviewSecretFindingsWithLlm(ctx, findings);
+	const blocking = reviewed.filter((finding) => finding.classification === "likely_secret" || finding.classification === "ambiguous");
+	if (blocking.length === 0) return true;
+	const preview = blocking
+		.slice(0, 8)
+		.map((finding) => `- ${finding.path}: ${finding.label} [${finding.classification}]${finding.match ? ` (${finding.match})` : ""} — ${finding.reason}`)
+		.join("\n");
+	throw new Error(
+		`Potential secrets detected after review:\n${preview}${blocking.length > 8 ? "\n- ..." : ""}\n\nRemove the secrets, redact them, or exclude the files before committing.`,
+	);
 }
 
 export async function chooseFilesToCommit(_ctx: any, changedFiles: string[], _stagedFiles: string[], requestedFiles: string[]) {
