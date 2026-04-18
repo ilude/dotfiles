@@ -80,6 +80,7 @@ interface GitRunResult {
 interface CommitActivity {
 	setPhase(message?: string): void;
 	logCommand(command: string, result?: GitRunResult): void;
+	logInfo(message: string): void;
 	finish(): void;
 }
 
@@ -479,7 +480,7 @@ function createCommitActivity(pi: ExtensionAPI, ctx: any, commandText: string): 
 		ctx.ui.setWidget?.("commit-progress", fallbackLines.slice(-10), { placement: "aboveEditor" });
 	};
 
-	emit(`> ${commandText}`);
+	emit(commandText);
 
 	return {
 		setPhase(message?: string) {
@@ -492,6 +493,9 @@ function createCommitActivity(pi: ExtensionAPI, ctx: any, commandText: string): 
 				.join("\n");
 			const content = output ? `$ ${command}\n${output}` : `$ ${command}`;
 			emit(content);
+		},
+		logInfo(message: string) {
+			emit(message);
 		},
 		finish() {
 			emit("phase: done");
@@ -612,12 +616,10 @@ async function executeCommitCommand(pi: ExtensionAPI, args: string, ctx: any) {
 		if (prepared.parsedArgs.push) {
 			activity.setPhase("pushing");
 			pushCurrentBranch(ctx.cwd, activity);
+			activity.logInfo("Pushed to remote");
 		}
 		activity.finish();
-		return ctx.ui.notify(
-			`${commitSummaries.join("\n")}${prepared.parsedArgs.push ? "\nPushed to remote" : ""}`,
-			"info",
-		);
+		return ctx.ui.notify(commitSummaries.join("\n"), "info");
 	} catch (err) {
 		activity.finish();
 		throw err;
@@ -631,6 +633,9 @@ export default function (pi: ExtensionAPI) {
 			const styled = text
 				.split("\n")
 				.map((line) => {
+					if (line === "Pushed to remote") {
+						return theme.bold(theme.fg("success", line));
+					}
 					if (line.startsWith("  ") || line.startsWith("stderr:")) {
 						return theme.fg("toolOutput", line);
 					}
