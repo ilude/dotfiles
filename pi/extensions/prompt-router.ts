@@ -2,15 +2,18 @@
  * prompt-router.ts — Automatic prompt complexity routing for Pi.
  *
  * Classifies every user prompt with the local TF-IDF + LinearSVC classifier
- * (prompt-routing/model.pkl) and switches the active model accordingly:
+ * (prompt-routing/model.pkl) and switches the active model accordingly.
  *
- *   low  → gpt-5.4-mini       (simple factual, syntax, single-step)
- *   mid  → gpt-5.3-codex      (multi-step, code tasks, moderate analysis)
- *   high → gpt-5.4            (architecture, security, distributed systems)
+ * Routing is dynamic: low/mid/high are mapped onto the currently selected
+ * provider/model ladder using same-family resolution when possible.
+ *
+ *   low  → small model   (simple factual, syntax, single-step)
+ *   mid  → medium model  (multi-step, code tasks, moderate analysis)
+ *   high → large model   (architecture, security, distributed systems)
  *
  * Never-downgrade rule: once a session escalates to a higher tier, it stays
- * there. A follow-up "now make it production-ready" won't drop back to Haiku
- * just because the phrase is short.
+ * there. A follow-up "now make it production-ready" won't drop back to a
+ * smaller model just because the phrase is short.
  *
  * Commands:
  *   /router-status   — show current tier, session max, and last classification
@@ -23,6 +26,15 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { resolveDynamicModelFromRegistry, resolveModelTierLabel } from "../lib/model-routing.js";
+
+function getResolvedTierMap(ctx: any) {
+  return {
+    low: resolveDynamicModelFromRegistry(ctx.modelRegistry, ctx, "small", "same-family"),
+    mid: resolveDynamicModelFromRegistry(ctx.modelRegistry, ctx, "medium", "same-family"),
+    high: resolveDynamicModelFromRegistry(ctx.modelRegistry, ctx, "large", "same-family"),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Config
@@ -32,12 +44,6 @@ const CLASSIFY_SCRIPT = path.join(
   os.homedir(),
   ".dotfiles/pi/prompt-routing/classify.py"
 );
-
-const TIER_MODELS: Record<string, { provider: string; id: string; label: string }> = {
-  low:  { provider: "openai-codex", id: "gpt-5.4-mini",   label: "GPT-5.4 Mini"  },
-  mid:  { provider: "openai-codex", id: "gpt-5.3-codex",  label: "GPT-5.3 Codex" },
-  high: { provider: "openai-codex", id: "gpt-5.4",        label: "GPT-5.4"       },
-};
 
 const TIER_ORDER: Record<string, number> = { low: 0, mid: 1, high: 2 };
 
@@ -76,11 +82,11 @@ export function applyNeverDowngrade(raw: Tier, state: RouterState): Tier {
   return TIER_ORDER[raw] >= TIER_ORDER[state.sessionMax] ? raw : state.sessionMax;
 }
 
-export function buildStatusLabel(effective: Tier, raw: Tier, sessionMax: Tier): string {
-  const target = TIER_MODELS[effective];
+export function buildStatusLabel(effective: Tier, raw: Tier, sessionMax: Tier, targetLabel?: string): string {
+  const fallbackLabel = effective === "low" ? "Small model" : effective === "mid" ? "Medium model" : "Large model";
   const icon = TIER_ICON[effective];
   const upgraded = effective !== raw ? ` (kept ${effective} from ${sessionMax})` : "";
-  return `${icon} ${target.label}${upgraded}`;
+  return `${icon} ${targetLabel || fallbackLabel}${upgraded}`;
 }
 
 async function classifyAndRoute(
@@ -100,16 +106,16 @@ async function classifyAndRoute(
   const effective = applyNeverDowngrade(raw, state);
   state.lastEffective = effective;
 
-  const target = TIER_MODELS[effective];
-  const model = ctx.modelRegistry.find(target.provider, target.id);
+  const size = effective === "low" ? "small" : effective === "mid" ? "medium" : "large";
+  const model = resolveDynamicModelFromRegistry(ctx.modelRegistry, ctx, size, "same-family");
 
   if (!model) {
-    ctx.ui.setStatus("router", `router: ${target.id} not found`);
+    ctx.ui.setStatus("router", `router: no ${size} model available`);
     return;
   }
 
   await pi.setModel(model);
-  ctx.ui.setStatus("router", buildStatusLabel(effective, raw, state.sessionMax));
+  ctx.ui.setStatus("router", buildStatusLabel(effective, raw, state.sessionMax, resolveModelTierLabel(model, size)));
 }
 
 // ---------------------------------------------------------------------------
@@ -161,17 +167,18 @@ export default function (pi: ExtensionAPI) {
       const raw = state.lastRaw;
       const max = state.sessionMax;
 
+      const resolved = getResolvedTierMap(ctx);
       const lines = [
         `Prompt Router`,
         `  Enabled:          ${state.enabled}`,
-        `  Session max tier: ${max} (${TIER_MODELS[max].label})`,
+        `  Session max tier: ${max}`,
         `  Last classified:  ${raw ?? "—"} → applied: ${eff ?? "—"}`,
         `  Last prompt:      "${state.lastPromptSnippet}"`,
         ``,
         `  Tier map:`,
-        `    low  → ${TIER_MODELS.low.id}`,
-        `    mid  → ${TIER_MODELS.mid.id}`,
-        `    high → ${TIER_MODELS.high.id}`,
+        `    low  → ${resolveModelTierLabel(resolved.low, "small")}`,
+        `    mid  → ${resolveModelTierLabel(resolved.mid, "medium")}`,
+        `    high → ${resolveModelTierLabel(resolved.high, "large")}`,
         ``,
         `  Classifier: ${CLASSIFY_SCRIPT}`,
         `  Audit log:  ~/.dotfiles/pi/prompt-routing/logs/routing_log.jsonl`,
