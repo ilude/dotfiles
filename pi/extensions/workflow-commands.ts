@@ -70,6 +70,18 @@ interface CommitPlan {
 	warnings?: string[];
 }
 
+interface GitRunResult {
+	code: number;
+	stdout: string;
+	stderr: string;
+}
+
+interface CommitActivity {
+	setPhase(message?: string): void;
+	logCommand(command: string, result?: GitRunResult): void;
+	finish(): void;
+}
+
 function extractJsonObject(text: string) {
 	const start = text.indexOf("{");
 	const end = text.lastIndexOf("}");
@@ -208,17 +220,19 @@ async function generateCommitPlanWithLlm(
 	return plan;
 }
 
-function runGit(cwd: string, args: string[]) {
+function runGit(cwd: string, args: string[], activity?: CommitActivity): GitRunResult {
 	const result = spawnSync("git", args, { cwd, encoding: "utf8" });
-	return {
+	const gitResult = {
 		code: result.status ?? 1,
 		stdout: result.stdout ?? "",
 		stderr: result.stderr ?? "",
 	};
+	activity?.logCommand(`git ${args.join(" ")}`, gitResult);
+	return gitResult;
 }
 
-function gitOrThrow(cwd: string, args: string[]) {
-	const result = runGit(cwd, args);
+function gitOrThrow(cwd: string, args: string[], activity?: CommitActivity) {
+	const result = runGit(cwd, args, activity);
 	if (result.code !== 0) {
 		throw new Error((result.stderr || result.stdout || `git ${args.join(" ")} failed`).trim());
 	}
@@ -243,10 +257,10 @@ function hasMergeConflicts(statusOutput: string) {
 	});
 }
 
-function listChangedFiles(cwd: string) {
-	const headDiff = parseLines(gitOrThrow(cwd, ["diff", "--name-only", "HEAD"]));
-	const untracked = parseLines(gitOrThrow(cwd, ["ls-files", "--others", "--exclude-standard"]));
-	const staged = parseLines(gitOrThrow(cwd, ["diff", "--cached", "--name-only"]));
+function listChangedFiles(cwd: string, activity?: CommitActivity) {
+	const headDiff = parseLines(gitOrThrow(cwd, ["diff", "--name-only", "HEAD"], activity));
+	const untracked = parseLines(gitOrThrow(cwd, ["ls-files", "--others", "--exclude-standard"], activity));
+	const staged = parseLines(gitOrThrow(cwd, ["diff", "--cached", "--name-only"], activity));
 	return {
 		all: uniqueSorted([...headDiff, ...untracked]),
 		staged: uniqueSorted(staged),
@@ -382,13 +396,13 @@ export async function chooseFilesToCommit(_ctx: any, changedFiles: string[], _st
 	return { files: changedFiles, stageAll: true, cancelled: false };
 }
 
-function stageFiles(cwd: string, files: string[]) {
-	const addResult = runGit(cwd, ["add", "--", ...files]);
+function stageFiles(cwd: string, files: string[], activity?: CommitActivity) {
+	const addResult = runGit(cwd, ["add", "--", ...files], activity);
 	if (addResult.code !== 0) throw new Error((addResult.stderr || addResult.stdout).trim() || "git add failed");
 }
 
-function unstageFiles(cwd: string, files: string[]) {
-	const resetResult = runGit(cwd, ["reset", "HEAD", "--", ...files]);
+function unstageFiles(cwd: string, files: string[], activity?: CommitActivity) {
+	const resetResult = runGit(cwd, ["reset", "HEAD", "--", ...files], activity);
 	if (resetResult.code !== 0) throw new Error((resetResult.stderr || resetResult.stdout).trim() || "git reset failed");
 }
 
@@ -405,17 +419,17 @@ export async function confirmCommitMessage(
 	return commitMessage;
 }
 
-function commitCurrentChanges(cwd: string, commitMessage: { subject: string; body?: string }) {
+function commitCurrentChanges(cwd: string, commitMessage: { subject: string; body?: string }, activity?: CommitActivity) {
 	const commitArgs = commitMessage.body
 		? ["commit", "-m", commitMessage.subject, "-m", commitMessage.body]
 		: ["commit", "-m", commitMessage.subject];
-	const commitResult = runGit(cwd, commitArgs);
+	const commitResult = runGit(cwd, commitArgs, activity);
 	if (commitResult.code !== 0) throw new Error((commitResult.stderr || commitResult.stdout).trim() || "git commit failed");
-	return gitOrThrow(cwd, ["rev-parse", "--short", "HEAD"]);
+	return gitOrThrow(cwd, ["rev-parse", "--short", "HEAD"], activity);
 }
 
-function pushCurrentBranch(cwd: string) {
-	const pushResult = runGit(cwd, ["push"]);
+function pushCurrentBranch(cwd: string, activity?: CommitActivity) {
+	const pushResult = runGit(cwd, ["push"], activity);
 	if (pushResult.code !== 0) throw new Error((pushResult.stderr || pushResult.stdout).trim() || "git push failed");
 }
 
@@ -423,100 +437,165 @@ function summarizeCommit(hash: string, subject: string, pushed: boolean) {
 	return pushed ? `${hash} ${subject}\nPushed to remote` : `${hash} ${subject}`;
 }
 
-function getCommitContext(cwd: string) {
-	const diffStat = gitOrThrow(cwd, ["diff", "--stat", "HEAD"]);
-	const { all: changedFiles, staged: stagedFiles } = listChangedFiles(cwd);
+function summarizeGitOutput(result?: GitRunResult) {
+	if (!result) return undefined;
+	const text = (result.stderr || result.stdout).trim();
+	if (!text) return result.code === 0 ? "ok" : `exit ${result.code}`;
+	const lines = text.split(/\r?\n/).filter(Boolean);
+	return lines.slice(0, 3).join("\n") + (lines.length > 3 ? "\n…" : "");
+}
+
+function createCommitActivity(ctx: any, commandText: string): CommitActivity {
+	const lines: string[] = [`> ${commandText}`];
+	const render = (phase?: string) => {
+		ctx.ui.setStatus?.("commit", phase ? `commit: ${phase}` : undefined);
+		ctx.ui.setWorkingMessage?.(phase ? `/commit: ${phase}` : undefined);
+		ctx.ui.setWidget?.("commit-progress", phase ? [...lines, `status: ${phase}`] : [...lines], { placement: "above" });
+	};
+	return {
+		setPhase(message?: string) {
+			render(message);
+		},
+		logCommand(command: string, result?: GitRunResult) {
+			lines.push(`$ ${command}`);
+			const summary = summarizeGitOutput(result);
+			if (summary) {
+				for (const line of summary.split(/\r?\n/)) lines.push(`  ${line}`);
+			}
+			while (lines.length > 18) lines.splice(1, 1);
+			render();
+		},
+		finish() {
+			ctx.ui.setStatus?.("commit", undefined);
+			ctx.ui.setWorkingMessage?.();
+			ctx.ui.setWidget?.("commit-progress", undefined);
+		},
+	};
+}
+
+function getCommitContext(cwd: string, activity?: CommitActivity) {
+	const diffStat = gitOrThrow(cwd, ["diff", "--stat", "HEAD"], activity);
+	const { all: changedFiles, staged: stagedFiles } = listChangedFiles(cwd, activity);
 	if (changedFiles.length === 0) throw new Error("No changed files found");
 	return { diffStat, changedFiles, stagedFiles };
 }
 
-async function prepareCommitSelection(args: string, ctx: any) {
-	const { diffStat, changedFiles, stagedFiles } = getCommitContext(ctx.cwd);
+async function prepareCommitSelection(args: string, ctx: any, activity?: CommitActivity) {
+	const { diffStat, changedFiles, stagedFiles } = getCommitContext(ctx.cwd, activity);
 	const findings = scanFilesForSecrets(ctx.cwd, changedFiles);
 	if (!(await confirmSecretScan(ctx, findings))) return null;
 
 	const parsedArgs = parseCommitArgs(args, changedFiles);
 	const selection = await chooseFilesToCommit(ctx, changedFiles, stagedFiles, parsedArgs.files);
 	if (selection.cancelled || selection.files.length === 0) return null;
-	if (selection.stageAll) stageFiles(ctx.cwd, selection.files);
+	if (selection.stageAll) stageFiles(ctx.cwd, selection.files, activity);
 
-	const cachedStat = gitOrThrow(ctx.cwd, ["diff", "--cached", "--stat"]);
+	const cachedStat = gitOrThrow(ctx.cwd, ["diff", "--cached", "--stat"], activity);
 	if (!cachedStat.trim()) throw new Error("Nothing is staged for commit");
-	const cachedDiff = gitOrThrow(ctx.cwd, ["diff", "--cached", "--no-color"]);
+	const cachedDiff = gitOrThrow(ctx.cwd, ["diff", "--cached", "--no-color"], activity);
 	return { parsedArgs, selection, diffStat, cachedStat, cachedDiff };
 }
 
 async function executeCommitCommand(pi: ExtensionAPI, args: string, ctx: any) {
-	ctx.ui.setStatus?.("commit", "commit: preparing");
-	const status = gitOrThrow(ctx.cwd, ["status", "--short"]);
-	if (!status.trim()) return ctx.ui.notify("Working tree is clean", "info");
-	if (hasMergeConflicts(status)) return ctx.ui.notify("Resolve merge conflicts before committing", "error");
-
-	const prepared = await prepareCommitSelection(args, ctx);
-	if (!prepared) return ctx.ui.notify("Commit cancelled", "warning");
-	ctx.ui.setStatus?.("commit", "commit: planning");
-
-	let plan: CommitPlan | undefined;
+	const commandText = `/commit${args.trim() ? ` ${args.trim()}` : ""}`;
+	const activity = createCommitActivity(ctx, commandText);
+	ctx.ui.notify(`Starting ${commandText}…`, "info");
+	activity.setPhase("preparing");
 	try {
-		plan = await generateCommitPlanWithLlm(pi, ctx, {
-			files: prepared.selection.files,
-			diffStat: prepared.diffStat,
-			cachedStat: prepared.cachedStat,
-			cachedDiff: prepared.cachedDiff,
-			hint: prepared.parsedArgs.hint,
-		});
-	} catch (err) {
-		ctx.ui.notify(
-			`Commit planner unavailable, falling back to single commit: ${err instanceof Error ? err.message : String(err)}`,
-			"warning",
-		);
-	}
-
-	if (!plan) {
-		ctx.ui.setStatus?.("commit", "commit: committing");
-		const proposed = proposeCommitMessage(prepared.selection.files, prepared.parsedArgs.hint, prepared.cachedDiff);
-		const commitMessage = await confirmCommitMessage(
-			ctx,
-			proposed,
-			prepared.selection.files,
-			prepared.cachedStat,
-			prepared.diffStat,
-		);
-		if (!commitMessage) return ctx.ui.notify("Commit cancelled", "warning");
-		if (!isValidConventionalCommit(commitMessage.subject)) {
-			return ctx.ui.notify("Proposed commit message does not match conventional commit format", "error");
+		const status = gitOrThrow(ctx.cwd, ["status", "--short"], activity);
+		if (!status.trim()) {
+			activity.finish();
+			return ctx.ui.notify("Working tree is clean", "info");
 		}
-		const hash = commitCurrentChanges(ctx.cwd, commitMessage);
-		if (prepared.parsedArgs.push) pushCurrentBranch(ctx.cwd);
-		return ctx.ui.notify(summarizeCommit(hash, commitMessage.subject, prepared.parsedArgs.push), "info");
-	}
+		if (hasMergeConflicts(status)) {
+			activity.finish();
+			return ctx.ui.notify("Resolve merge conflicts before committing", "error");
+		}
 
-	const commitSummaries: string[] = [];
-	ctx.ui.setStatus?.("commit", "commit: committing");
-	unstageFiles(ctx.cwd, prepared.selection.files);
-	for (const group of plan.groups) {
-		stageFiles(ctx.cwd, group.files);
-		const stagedStat = gitOrThrow(ctx.cwd, ["diff", "--cached", "--stat"]);
-		const commitMessage = await confirmCommitMessage(
-			ctx,
-			{ subject: group.subject.trim(), body: group.body?.trim() || undefined },
-			group.files,
-			stagedStat,
-			prepared.diffStat,
-		);
-		if (!commitMessage) {
-			unstageFiles(ctx.cwd, group.files);
+		const prepared = await prepareCommitSelection(args, ctx, activity);
+		if (!prepared) {
+			activity.finish();
 			return ctx.ui.notify("Commit cancelled", "warning");
 		}
-		const hash = commitCurrentChanges(ctx.cwd, commitMessage);
-		commitSummaries.push(`${hash} ${commitMessage.subject}`);
+		activity.setPhase("planning commits");
+
+		let plan: CommitPlan | undefined;
+		try {
+			plan = await generateCommitPlanWithLlm(pi, ctx, {
+				files: prepared.selection.files,
+				diffStat: prepared.diffStat,
+				cachedStat: prepared.cachedStat,
+				cachedDiff: prepared.cachedDiff,
+				hint: prepared.parsedArgs.hint,
+			});
+		} catch (err) {
+			ctx.ui.notify(
+				`Commit planner unavailable, falling back to single commit: ${err instanceof Error ? err.message : String(err)}`,
+				"warning",
+			);
+		}
+
+		if (!plan) {
+			activity.setPhase("creating commit");
+			const proposed = proposeCommitMessage(prepared.selection.files, prepared.parsedArgs.hint, prepared.cachedDiff);
+			const commitMessage = await confirmCommitMessage(
+				ctx,
+				proposed,
+				prepared.selection.files,
+				prepared.cachedStat,
+				prepared.diffStat,
+			);
+			if (!commitMessage) {
+				activity.finish();
+				return ctx.ui.notify("Commit cancelled", "warning");
+			}
+			if (!isValidConventionalCommit(commitMessage.subject)) {
+				activity.finish();
+				return ctx.ui.notify("Proposed commit message does not match conventional commit format", "error");
+			}
+			const hash = commitCurrentChanges(ctx.cwd, commitMessage, activity);
+			if (prepared.parsedArgs.push) {
+				activity.setPhase("pushing");
+				pushCurrentBranch(ctx.cwd, activity);
+			}
+			activity.finish();
+			return ctx.ui.notify(summarizeCommit(hash, commitMessage.subject, prepared.parsedArgs.push), "info");
+		}
+
+		const commitSummaries: string[] = [];
+		unstageFiles(ctx.cwd, prepared.selection.files, activity);
+		for (const [index, group] of plan.groups.entries()) {
+			activity.setPhase(`creating commit ${index + 1}/${plan.groups.length}`);
+			stageFiles(ctx.cwd, group.files, activity);
+			const stagedStat = gitOrThrow(ctx.cwd, ["diff", "--cached", "--stat"], activity);
+			const commitMessage = await confirmCommitMessage(
+				ctx,
+				{ subject: group.subject.trim(), body: group.body?.trim() || undefined },
+				group.files,
+				stagedStat,
+				prepared.diffStat,
+			);
+			if (!commitMessage) {
+				unstageFiles(ctx.cwd, group.files, activity);
+				activity.finish();
+				return ctx.ui.notify("Commit cancelled", "warning");
+			}
+			const hash = commitCurrentChanges(ctx.cwd, commitMessage, activity);
+			commitSummaries.push(`${hash} ${commitMessage.subject}`);
+		}
+		if (prepared.parsedArgs.push) {
+			activity.setPhase("pushing");
+			pushCurrentBranch(ctx.cwd, activity);
+		}
+		activity.finish();
+		return ctx.ui.notify(
+			`${commitSummaries.join("\n")}${prepared.parsedArgs.push ? "\nPushed to remote" : ""}`,
+			"info",
+		);
+	} catch (err) {
+		activity.finish();
+		throw err;
 	}
-	if (prepared.parsedArgs.push) pushCurrentBranch(ctx.cwd);
-	ctx.ui.setStatus?.("commit", prepared.parsedArgs.push ? "commit: pushed" : "commit: done");
-	return ctx.ui.notify(
-		`${commitSummaries.join("\n")}${prepared.parsedArgs.push ? "\nPushed to remote" : ""}`,
-		"info",
-	);
 }
 
 export default function (pi: ExtensionAPI) {
