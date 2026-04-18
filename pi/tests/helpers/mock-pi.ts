@@ -60,6 +60,8 @@ export function createMockCtx(overrides: Record<string, any> = {}) {
     ui: {
       notify: vi.fn(),
       confirm: vi.fn(async () => true),
+      input: vi.fn(async () => undefined as string | undefined),
+      select: vi.fn(async () => undefined as string | undefined),
     },
     hasUI: true,
     ...overrides,

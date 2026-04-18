@@ -175,6 +175,5 @@
   "alwaysThinkingEnabled": true,
   "companyAnnouncements": [],
   "skipDangerousModePermissionPrompt": true,
-  "releaseChannel": "latest",
-  "model": "sonnet"
+  "releaseChannel": "latest"
 }

@@ -50,6 +50,7 @@ export default function (pi: ExtensionAPI) {
         return {
           content: [{ type: "text", text: "(no UI available — cannot prompt user)" }],
           details: undefined,
+          isError: true,
         };
       }
 
@@ -65,6 +66,7 @@ export default function (pi: ExtensionAPI) {
             return {
               content: [{ type: "text", text: 'Error: "select" mode requires a non-empty options array.' }],
               details: undefined,
+              isError: true,
             };
           }
           answer = await ctx.ui.select(params.question, params.options);

@@ -17,6 +17,194 @@
       "created": "2026-04-17T15:13:20.483Z",
       "updated": "2026-04-17T15:14:34.033Z",
       "notes": "Line ~186: `tempFile = join(tmpdir(), \\`pi-pwsh-${toolCallId}.txt\\`);` — toolCallId comes from the LLM and can contain pipe chars (|) which are illegal in Windows filenames. Fix: sanitize toolCallId by replacing non-alphanumeric chars before using in filename."
+    },
+    {
+      "id": "tmo376p54-1",
+      "title": "T1: current-state routing boundaries + target architecture API",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-17T17:44:14.536Z",
+      "updated": "2026-04-17T17:46:19.159Z",
+      "notes": "Created current-state.md and target-architecture.md; verified command/classifier boundary refs and target API sections/open questions."
+    },
+    {
+      "id": "tmo3795cx-2",
+      "title": "T2: define per-command subagent routing policy matrix",
+      "status": "done",
+      "depends_on": [
+        "tmo376p54-1"
+      ],
+      "created": "2026-04-17T17:46:08.865Z",
+      "updated": "2026-04-17T17:47:14.202Z",
+      "notes": "Created subagent-policy-matrix.md and verified coverage for /research, /review-it, /do-it plus explicit routed-not-classified rule."
+    },
+    {
+      "id": "tmo3799cy-3",
+      "title": "T3: write rollout and migration plan for command handlers",
+      "status": "done",
+      "depends_on": [
+        "tmo3795cx-2"
+      ],
+      "created": "2026-04-17T17:46:14.050Z",
+      "updated": "2026-04-17T17:47:57.471Z",
+      "notes": "Created rollout-plan.md with staged adoption path from /commit to /research, /review-it, /do-it and stage-specific verification."
+    },
+    {
+      "id": "tmo37oolz-1",
+      "title": "Inspect external codebase in Downloads/src and identify notable workflow features",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-17T17:58:13.655Z",
+      "updated": "2026-04-17T18:12:32.802Z",
+      "notes": "Reviewed external src structure with parallel subagents and spot-checked key command files (commands.ts, review, tasks, memory, status, cost, permissions, plugin, ultraplan)."
+    },
+    {
+      "id": "tmo37oq18-2",
+      "title": "Audit current Pi workflow capabilities in this dotfiles/Pi setup",
+      "status": "done",
+      "depends_on": [
+        "tmo37oolz-1"
+      ],
+      "created": "2026-04-17T17:58:15.500Z",
+      "updated": "2026-04-17T18:12:58.343Z",
+      "notes": "Compared external workflow features against current Pi capabilities in pi/README.md, pi/extensions/*, and routing specs. Filtered out overlaps such as prompt routing, subagents, team dispatch, skills, safety hooks, quality gates, and workflow slash commands."
+    },
+    {
+      "id": "tmo37vrzv-1",
+      "title": "Export proposeCommitMessage from workflow-commands.ts",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-17T18:03:44.635Z",
+      "updated": "2026-04-17T18:05:12.062Z",
+      "notes": "Minimal export: add `export` keyword to proposeCommitMessage function so pure tests can import it"
+    },
+    {
+      "id": "tmo37vud3-2",
+      "title": "Add planner-failure fallback tests to workflow-commands-pure.test.ts",
+      "status": "done",
+      "depends_on": [
+        "tmo37vrzv-1"
+      ],
+      "created": "2026-04-17T18:03:47.702Z",
+      "updated": "2026-04-17T18:05:12.064Z",
+      "notes": "Test proposeCommitMessage for: docs-only, test-only, pi/ files, hint override, >3 files body, always valid conventional commit. Also test parseCommitPlan error paths that trigger fallback."
+    },
+    {
+      "id": "tmo37vxg7-3",
+      "title": "Run targeted tests and report results",
+      "status": "done",
+      "depends_on": [
+        "tmo37vud3-2"
+      ],
+      "created": "2026-04-17T18:03:51.703Z",
+      "updated": "2026-04-17T18:05:12.067Z"
+    },
+    {
+      "id": "tmo3cfh1c-3",
+      "title": "Create spec docs for Pi workflow features to borrow",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-17T20:11:02.016Z",
+      "updated": "2026-04-17T20:11:46.110Z",
+      "notes": "Created .specs/pi-workflow-borrowed-features/plan.md and research-notes.md documenting all 7 shortlisted features, priorities, distinctness, and research questions for the top 3."
+    },
+    {
+      "id": "tmo3cfj8z-4",
+      "title": "Research external solutions for features 1-3",
+      "status": "done",
+      "depends_on": [
+        "tmo3cfh1c-3"
+      ],
+      "created": "2026-04-17T20:11:04.882Z",
+      "updated": "2026-04-17T20:14:30.849Z",
+      "notes": "Launched parallel subagents for top-3 research and supplemented with direct web research. Documented external references and borrowable patterns in .specs/pi-workflow-borrowed-features/research-notes.md."
+    },
+    {
+      "id": "tmo3cgz54-4",
+      "title": "Review parallel-agent test changes for /commit and prompt-router",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-17T20:12:12.136Z",
+      "updated": "2026-04-17T20:12:39.339Z",
+      "notes": "Reviewed new/expanded tests and supporting exports in pi/extensions/workflow-commands.ts and pi/tests/helpers/mock-pi.ts. Changes are coherent and test-focused."
+    },
+    {
+      "id": "tmo3ch2kz-5",
+      "title": "Run targeted and full Pi tests after integrating agent changes",
+      "status": "done",
+      "depends_on": [
+        "tmo3cgz54-4"
+      ],
+      "created": "2026-04-17T20:12:16.595Z",
+      "updated": "2026-04-17T20:13:07.034Z",
+      "notes": "Targeted /commit + prompt-router tests passed (60 tests). Full Pi test suite passed: 15 files, 215 tests."
+    },
+    {
+      "id": "tmo3ch55l-6",
+      "title": "Measure updated coverage and lizard complexity",
+      "status": "done",
+      "depends_on": [
+        "tmo3ch2kz-5"
+      ],
+      "created": "2026-04-17T20:12:19.929Z",
+      "updated": "2026-04-17T20:14:10.706Z",
+      "notes": "Configured coverage unchanged because vitest config excludes new /commit files. Targeted commit-related coverage improved to workflow-commands 73.7% stmts / 56.8% branch, prompt-router 84.12% stmts / 68.96% branch, model-routing 88.88% stmts / 91.66% branch. Lizard still reports 0 warnings."
+    },
+    {
+      "id": "tmo3conn8-5",
+      "title": "Research Pi-native and Pi-adjacent implementations for features 1-3",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-17T20:18:10.484Z",
+      "updated": "2026-04-17T20:21:48.089Z",
+      "notes": "Ran Pi-specific web research across GitHub/package index for status/doctor, tasks dashboards, and permissions UX. Found multiple Pi-native implementations and Pi-adjacent forks/companions worth borrowing from."
+    },
+    {
+      "id": "tmo3coq7g-6",
+      "title": "Update Pi borrowed-features spec with Pi-specific web findings",
+      "status": "done",
+      "depends_on": [
+        "tmo3conn8-5"
+      ],
+      "created": "2026-04-17T20:18:13.804Z",
+      "updated": "2026-04-17T20:21:53.225Z",
+      "notes": "Updated .specs/pi-workflow-borrowed-features/research-notes.md with a new section for Pi-native and Pi-adjacent implementations already on the web, including classification and revised recommendations."
+    },
+    {
+      "id": "tmo3cy6jb-7",
+      "title": "Draft user stories and problem statements for Pi workflow features",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-17T20:25:34.871Z",
+      "updated": "2026-04-17T20:26:51.935Z",
+      "notes": "Added .specs/pi-workflow-borrowed-features/user-stories.md with personas, problem statements, user stories, functional requirements, acceptance criteria, non-goals, and delivery phases for features 1-3. Updated plan.md to reference the requirements docs."
+    },
+    {
+      "id": "tmo3d7h7x-8",
+      "title": "Review current Claude Code status bar implementation",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-17T20:32:48.621Z",
+      "updated": "2026-04-17T20:33:09.610Z",
+      "notes": "Reviewed claude/settings.json statusLine config, claude/claude-status Python wrapper, claude-status-go/main.go implementation, cross-platform hook guidance, and tracking/changelog notes for Windows/WSL behavior."
+    },
+    {
+      "id": "tmo3f2rq0-9",
+      "title": "Draft MVP spec for Pi workflow operator features",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-17T21:25:08.184Z",
+      "updated": "2026-04-17T21:26:18.831Z",
+      "notes": "Created .specs/pi-workflow-borrowed-features/mvp-spec.md with concrete MVP scope, build order, acceptance criteria, and trial checklist for status bar + doctor, task registry + /tasks, and /permissions inspect/reset/retry. Updated plan.md to reference it."
+    },
+    {
+      "id": "tmo3kj3gb-a",
+      "title": "Create implementation checklist for Pi workflow operator MVP",
+      "status": "done",
+      "depends_on": [],
+      "created": "2026-04-17T23:57:47.963Z",
+      "updated": "2026-04-17T23:59:17.966Z",
+      "notes": "Created .specs/pi-workflow-borrowed-features/implementation-checklist.md with phased tasks, likely files, dependency order, manual trial script, and MVP exit criteria. Updated plan.md to reference it."
     }
   ]
 }
