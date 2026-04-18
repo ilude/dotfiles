@@ -467,6 +467,28 @@ function formatGitOutput(result?: GitRunResult) {
 
 function createCommitActivity(pi: ExtensionAPI, ctx: any, commandText: string): CommitActivity {
 	const fallbackLines: string[] = [];
+	const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+	let spinnerIndex = 0;
+	let spinnerTimer: ReturnType<typeof setInterval> | undefined;
+
+	const stopSpinner = () => {
+		if (spinnerTimer) {
+			clearInterval(spinnerTimer);
+			spinnerTimer = undefined;
+		}
+		ctx.ui.setStatus?.("commit-spinner", undefined);
+	};
+
+	const startSpinner = (phase: string) => {
+		stopSpinner();
+		const tick = () => {
+			ctx.ui.setStatus?.("commit-spinner", `${spinnerFrames[spinnerIndex]} ${phase}`);
+			spinnerIndex = (spinnerIndex + 1) % spinnerFrames.length;
+		};
+		tick();
+		spinnerTimer = setInterval(tick, 120);
+	};
+
 	const emit = (content: string) => {
 		if (typeof pi.sendMessage === "function") {
 			pi.sendMessage({
@@ -486,6 +508,8 @@ function createCommitActivity(pi: ExtensionAPI, ctx: any, commandText: string): 
 		setPhase(message?: string) {
 			const phase = message ?? "done";
 			emit(`phase: ${phase}`);
+			if (phase === "planning commits") startSpinner(phase);
+			else stopSpinner();
 		},
 		logCommand(command: string, result?: GitRunResult) {
 			const output = formatGitOutput(result)
@@ -498,6 +522,7 @@ function createCommitActivity(pi: ExtensionAPI, ctx: any, commandText: string): 
 			emit(message);
 		},
 		finish() {
+			stopSpinner();
 			emit("phase: done");
 		},
 	};
