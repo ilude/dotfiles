@@ -54,13 +54,18 @@ Break the work into discrete tasks. For each task, determine:
 
 ### Agent Sizing
 
-Assign each task based on scope:
+Assign each task based on scope using a **dynamic same-provider size ladder** derived from the currently selected session model/provider.
 
 | Scope | Indicators | Model |
 |-------|-----------|-------|
-| 1-2 files, mechanical | rename, config change, add test, fix typo | haiku |
-| 3-5 files, feature work | implement, refactor, integrate, extend | sonnet |
-| 6+ files, architectural | migrate, redesign, coordinate, cross-cutting | opus |
+| 1-2 files, mechanical | rename, config change, add test, fix typo | small |
+| 3-5 files, feature work | implement, refactor, integrate, extend | medium |
+| 6+ files, architectural | migrate, redesign, coordinate, cross-cutting | large |
+
+Interpret these size tiers relative to the current provider/model family:
+- OpenAI Codex example: `small → gpt-5.4-mini`, `medium → gpt-5.4-fast` (or nearest routine model), `large → gpt-5.4`
+- Anthropic example: `small → haiku`, `medium → sonnet`, `large → opus`
+- GitHub Copilot example: choose the best available GitHub-backed `small` / `medium` / `large` model in the current family or nearest same-provider equivalent
 
 Research-only tasks (no code changes) use an Explore agent type.
 
@@ -72,7 +77,7 @@ Group tasks into execution waves:
 - **Next wave** = depends on a previous wave's output — runs after validation gate
 - **Every wave ends with a validation gate** — a validator task that checks all builders in that wave
 
-Validator sizing: if wave contains any sonnet/opus task, use a heavier validator (sonnet); if haiku-only, use a lighter validator (haiku).
+Validator sizing: if a wave contains any medium/large task, use a medium validator by default; if it contains especially risky or architectural work, use a large validator. If the wave is small-only, use a small validator.
 
 ## Step 6: Write Plan to `.specs/`
 
@@ -123,7 +128,7 @@ understand what triggered this plan and why it matters.}
 
 | # | Task | Files | Type | Model | Depends On |
 |---|------|-------|------|-------|------------|
-| T1 | {task name} | {count} | {mechanical/feature/architecture} | {haiku/sonnet/opus} | — |
+| T1 | {task name} | {count} | {mechanical/feature/architecture} | {small/medium/large} | — |
 | T2 | {task name} | {count} | {type} | {model} | — |
 | T3 | {task name} | {count} | {type} | {model} | T1, T2 |
 | V1 | Validate wave 1 | — | validation | {model} | T1, T2 |
@@ -203,6 +208,8 @@ Wave 2: T3 → V2
 {Anything the executor needs to know that isn't captured above — environment setup,
 credentials needed, sequencing gotchas, known flaky areas. If nothing, write "None."}
 ````
+
+When writing the plan, always describe model assignments as `small`, `medium`, or `large` relative to the current session provider/model family — not as hardcoded vendor-specific names. Executors can then map those sizes dynamically at runtime.
 
 After writing the file, show the user:
 1. A brief summary of what was crystallized (2-3 sentences)
