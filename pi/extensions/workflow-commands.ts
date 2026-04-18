@@ -19,7 +19,6 @@ import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { completeSimple, type TextContent } from "@mariozechner/pi-ai";
-import { Key, matchesKey, wrapTextWithAnsi } from "@mariozechner/pi-tui";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
 
 const SKILLS_DIR = path.join(os.homedir(), ".dotfiles", "pi", "skills", "workflow");
@@ -82,8 +81,6 @@ interface CommitActivity {
 	logCommand(command: string, result?: GitRunResult): void;
 	finish(): void;
 }
-
-let closeActiveCommitOverlay: (() => void) | undefined;
 
 function extractJsonObject(text: string) {
 	const start = text.indexOf("{");
@@ -458,107 +455,32 @@ function formatGitOutput(result?: GitRunResult) {
 }
 
 function createCommitActivity(ctx: any, commandText: string): CommitActivity {
-	closeActiveCommitOverlay?.();
-	closeActiveCommitOverlay = undefined;
-
 	const lines: string[] = [`> ${commandText}`];
 	let phase = "starting";
-	let finished = false;
-	let scrollOffset = 0;
-	let requestRender: (() => void) | undefined;
-	let closeOverlay: (() => void) | undefined;
 
-	const renderWidget = () => {
+	const render = () => {
 		ctx.ui.setStatus?.("commit", phase ? `commit: ${phase}` : undefined);
 		ctx.ui.setWorkingMessage?.(phase ? `/commit: ${phase}` : undefined);
-		if (!ctx.ui.custom) {
-			ctx.ui.setWidget?.("commit-progress", phase ? [...lines, `status: ${phase}`] : [...lines], { placement: "above" });
-		}
+		const visibleLines = [...lines, `status: ${phase}`].slice(-32);
+		ctx.ui.setWidget?.("commit-progress", visibleLines, { placement: "belowEditor" });
 	};
 
-	if (ctx.hasUI && ctx.ui.custom) {
-		void ctx.ui
-			.custom(
-				(tui, theme, _kb, done) => {
-					closeOverlay = () => done(undefined);
-					closeActiveCommitOverlay = closeOverlay;
-					const component = {
-						render(width: number) {
-							const panelWidth = Math.max(20, width - 4);
-							const bodyLines = lines.flatMap((line) => wrapTextWithAnsi(line, panelWidth - 2));
-							const header = theme.fg("accent", theme.bold("/commit activity"));
-							const statusLine = theme.fg("dim", `status: ${phase}`);
-							const helpLine = theme.fg(
-								"dim",
-								finished ? "↑↓ scroll • Enter/Esc close" : "↑↓ scroll • logs stay visible while command runs",
-							);
-							const viewportSize = 18;
-							const maxOffset = Math.max(0, bodyLines.length - viewportSize);
-							scrollOffset = Math.max(0, Math.min(scrollOffset, maxOffset));
-							const visible = bodyLines.slice(scrollOffset, scrollOffset + viewportSize);
-							const scrollLine =
-								bodyLines.length > viewportSize
-									? theme.fg("dim", `lines ${scrollOffset + 1}-${scrollOffset + visible.length} of ${bodyLines.length}`)
-									: theme.fg("dim", `lines ${bodyLines.length}`);
-							return [header, statusLine, scrollLine, "", ...visible, "", helpLine];
-						},
-						invalidate() {
-							tui.requestRender();
-						},
-						handleInput(data: string) {
-							const panelWidth = Math.max(20, (tui as any).terminal?.width ? (tui as any).terminal.width - 4 : 76);
-							const bodyLines = lines.flatMap((line) => wrapTextWithAnsi(line, panelWidth - 2));
-							const viewportSize = 18;
-							const maxOffset = Math.max(0, bodyLines.length - viewportSize);
-							if (matchesKey(data, Key.up) && scrollOffset > 0) {
-								scrollOffset -= 1;
-								tui.requestRender();
-								return true;
-							}
-							if (matchesKey(data, Key.down) && scrollOffset < maxOffset) {
-								scrollOffset += 1;
-								tui.requestRender();
-								return true;
-							}
-							if ((matchesKey(data, Key.enter) || matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c"))) && finished) {
-								done(undefined);
-								return true;
-							}
-							return true;
-						},
-					};
-					requestRender = () => component.invalidate();
-					return component;
-				},
-				{ overlay: true, overlayOptions: { anchor: "right-center", width: "70%", maxHeight: "80%", margin: 1 } },
-			)
-			.finally(() => {
-				if (closeActiveCommitOverlay === closeOverlay) closeActiveCommitOverlay = undefined;
-			});
-	}
-
-	renderWidget();
+	render();
 	return {
 		setPhase(message?: string) {
 			phase = message ?? "done";
-			renderWidget();
-			requestRender?.();
+			render();
 		},
 		logCommand(command: string, result?: GitRunResult) {
 			lines.push(`$ ${command}`);
 			for (const line of formatGitOutput(result)) lines.push(`  ${line}`);
-			renderWidget();
-			requestRender?.();
+			render();
 		},
 		finish() {
-			finished = true;
 			phase = "done";
 			ctx.ui.setStatus?.("commit", undefined);
 			ctx.ui.setWorkingMessage?.();
-			if (!ctx.ui.custom) {
-				ctx.ui.setWidget?.("commit-progress", [...lines, "status: done"], { placement: "above" });
-			}
-			requestRender?.();
+			ctx.ui.setWidget?.("commit-progress", [...lines, "status: done"].slice(-32), { placement: "belowEditor" });
 		},
 	};
 }
