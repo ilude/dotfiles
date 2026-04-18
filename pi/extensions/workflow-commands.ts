@@ -18,6 +18,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
 
 const SKILLS_DIR = path.join(os.homedir(), ".dotfiles", "pi", "skills", "workflow");
 const CONVENTIONAL_TYPES = ["feat", "fix", "docs", "chore", "refactor", "test", "perf", "ci", "build"];
@@ -46,6 +47,160 @@ function loadSkill(name: string) {
 	} catch (err) {
 		throw new Error(`Failed to load skill ${name} from ${skillPath}: ${err}`);
 	}
+}
+
+function loadClaudeCommitInstructions() {
+	const instructionsPath = path.join(os.homedir(), ".dotfiles", "claude", "shared", "commit-instructions.md");
+	try {
+		return fs.readFileSync(instructionsPath, "utf-8");
+	} catch (err) {
+		throw new Error(`Failed to load Claude commit instructions from ${instructionsPath}: ${err}`);
+	}
+}
+
+interface CommitPlanGroup {
+	files: string[];
+	subject: string;
+	body?: string;
+}
+
+interface CommitPlan {
+	groups: CommitPlanGroup[];
+	warnings?: string[];
+}
+
+function extractJsonObject(text: string) {
+	const start = text.indexOf("{");
+	const end = text.lastIndexOf("}");
+	if (start === -1 || end === -1 || end < start) return undefined;
+	return text.slice(start, end + 1);
+}
+
+export function parseCommitPlan(text: string): CommitPlan {
+	const jsonText = extractJsonObject(text);
+	if (!jsonText) throw new Error("Planner did not return JSON");
+	const parsed = JSON.parse(jsonText) as CommitPlan;
+	if (!parsed || !Array.isArray(parsed.groups) || parsed.groups.length === 0) {
+		throw new Error("Planner returned no commit groups");
+	}
+	for (const group of parsed.groups) {
+		if (!Array.isArray(group.files) || group.files.length === 0 || !group.files.every((file) => typeof file === "string")) {
+			throw new Error("Planner returned a group without valid files");
+		}
+		if (typeof group.subject !== "string" || !group.subject.trim()) {
+			throw new Error("Planner returned a group without a commit subject");
+		}
+		if (group.body !== undefined && typeof group.body !== "string") {
+			throw new Error("Planner returned a non-string commit body");
+		}
+	}
+	return parsed;
+}
+
+export function validateCommitPlan(plan: CommitPlan, changedFiles: string[]) {
+	const changedSet = new Set(changedFiles);
+	const seen = new Set<string>();
+	for (const group of plan.groups) {
+		for (const file of group.files) {
+			if (!changedSet.has(file)) {
+				throw new Error(`Planner referenced unknown file: ${file}`);
+			}
+			if (seen.has(file)) {
+				throw new Error(`Planner assigned file to multiple groups: ${file}`);
+			}
+			seen.add(file);
+		}
+		if (!isValidConventionalCommit(group.subject.trim())) {
+			throw new Error(`Planner produced invalid conventional commit subject: ${group.subject}`);
+		}
+	}
+	const missing = changedFiles.filter((file) => !seen.has(file));
+	if (missing.length > 0) {
+		throw new Error(`Planner omitted changed files: ${missing.join(", ")}`);
+	}
+}
+
+function extractAssistantText(message: any) {
+	if (!message || message.role !== "assistant" || !Array.isArray(message.content)) return "";
+	return message.content
+		.filter((block: any) => block.type === "text")
+		.map((block: any) => block.text)
+		.join("\n");
+}
+
+function buildCommitPlanningPrompt(
+	claudeInstructions: string,
+	context: { files: string[]; diffStat: string; cachedStat: string; cachedDiff: string; hint: string },
+) {
+	const payload = {
+		files: context.files,
+		diffStat: context.diffStat,
+		cachedStat: context.cachedStat,
+		hint: context.hint,
+		cachedDiff: context.cachedDiff,
+	};
+	return `${claudeInstructions}
+
+You are helping Pi's deterministic /commit command.
+
+Your ONLY job is to plan logical commit groups and produce conventional commit messages.
+Do NOT tell the user to run shell commands.
+Do NOT describe a workflow.
+Do NOT omit any listed files.
+All files must be assigned to exactly one group.
+Return JSON only with this schema:
+{
+  "groups": [
+    {
+      "files": ["path"],
+      "subject": "type(scope): description",
+      "body": "optional body"
+    }
+  ],
+  "warnings": ["optional warning"]
+}
+
+Rules:
+- Group files into atomic commits.
+- Use conventional commit subjects.
+- Keep descriptions specific and human.
+- If only one commit makes sense, return one group.
+- Prefer no body unless it adds useful why/context.
+
+Commit planning context (JSON):
+${JSON.stringify(payload, null, 2)}`;
+}
+
+async function generateCommitPlanWithLlm(
+	pi: ExtensionAPI,
+	ctx: any,
+	context: { files: string[]; diffStat: string; cachedStat: string; cachedDiff: string; hint: string },
+) {
+	const model = await resolveCommitPlanningModelFromRegistry(ctx.modelRegistry);
+	if (!model) {
+		throw new Error("No OpenAI/GitHub mini model available for commit planning");
+	}
+	const previousModel = ctx.model;
+	const planningPrompt = buildCommitPlanningPrompt(loadClaudeCommitInstructions(), context);
+	const beforeMessages = ctx.sessionManager.buildSessionContext().messages.length;
+	await pi.setModel(model);
+	try {
+		await pi.sendUserMessage(planningPrompt);
+		await ctx.waitForIdle();
+	} finally {
+		if (previousModel) {
+			await pi.setModel(previousModel);
+		}
+	}
+	const messages = ctx.sessionManager.buildSessionContext().messages.slice(beforeMessages);
+	const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
+	const planText = extractAssistantText(lastAssistant);
+	if (!planText.trim()) {
+		throw new Error("Commit planner returned no assistant text");
+	}
+	const plan = parseCommitPlan(planText);
+	validateCommitPlan(plan, context.files);
+	return plan;
 }
 
 function runGit(cwd: string, args: string[]) {
@@ -196,7 +351,7 @@ function toConventionalDescription(input: string) {
 	return input.trim().toLowerCase().replace(/[.]+$/g, "").replace(/\s+/g, " ").slice(0, 72);
 }
 
-function proposeCommitMessage(files: string[], hint: string, diffText: string) {
+export function proposeCommitMessage(files: string[], hint: string, diffText: string) {
 	const scope = detectScope(files);
 	const type = detectType(files, diffText);
 	const subject = `${type}(${scope}): ${toConventionalDescription(hint || detectDescription(files, diffText))}`;
@@ -217,7 +372,7 @@ async function confirmSecretScan(ctx: any, findings: Array<{ path: string; label
 	return ctx.ui.confirm("Secret scan findings", `${preview}${findings.length > 8 ? "\n- ..." : ""}\n\nContinue anyway?`);
 }
 
-async function chooseFilesToCommit(ctx: any, changedFiles: string[], stagedFiles: string[], requestedFiles: string[]) {
+export async function chooseFilesToCommit(ctx: any, changedFiles: string[], stagedFiles: string[], requestedFiles: string[]) {
 	if (requestedFiles.length > 0) return { files: requestedFiles, stageAll: true, cancelled: false };
 	if (stagedFiles.length === 0) return { files: changedFiles, stageAll: true, cancelled: false };
 
@@ -239,7 +394,12 @@ function stageFiles(cwd: string, files: string[]) {
 	if (addResult.code !== 0) throw new Error((addResult.stderr || addResult.stdout).trim() || "git add failed");
 }
 
-async function confirmCommitMessage(
+function unstageFiles(cwd: string, files: string[]) {
+	const resetResult = runGit(cwd, ["reset", "HEAD", "--", ...files]);
+	if (resetResult.code !== 0) throw new Error((resetResult.stderr || resetResult.stdout).trim() || "git reset failed");
+}
+
+export async function confirmCommitMessage(
 	ctx: any,
 	commitMessage: { subject: string; body?: string },
 	filesToCommit: string[],
@@ -299,7 +459,7 @@ async function prepareCommitSelection(args: string, ctx: any) {
 	return { parsedArgs, selection, diffStat, cachedStat, cachedDiff };
 }
 
-async function executeCommitCommand(args: string, ctx: any) {
+async function executeCommitCommand(pi: ExtensionAPI, args: string, ctx: any) {
 	const status = gitOrThrow(ctx.cwd, ["status", "--short"]);
 	if (!status.trim()) return ctx.ui.notify("Working tree is clean", "info");
 	if (hasMergeConflicts(status)) return ctx.ui.notify("Resolve merge conflicts before committing", "error");
@@ -307,30 +467,72 @@ async function executeCommitCommand(args: string, ctx: any) {
 	const prepared = await prepareCommitSelection(args, ctx);
 	if (!prepared) return ctx.ui.notify("Commit cancelled", "warning");
 
-	const proposed = proposeCommitMessage(prepared.selection.files, prepared.parsedArgs.hint, prepared.cachedDiff);
-	const commitMessage = await confirmCommitMessage(
-		ctx,
-		proposed,
-		prepared.selection.files,
-		prepared.cachedStat,
-		prepared.diffStat,
-	);
-	if (!commitMessage) return ctx.ui.notify("Commit cancelled", "warning");
-	if (!isValidConventionalCommit(commitMessage.subject)) {
-		return ctx.ui.notify("Proposed commit message does not match conventional commit format", "error");
+	let plan: CommitPlan | undefined;
+	try {
+		plan = await generateCommitPlanWithLlm(pi, ctx, {
+			files: prepared.selection.files,
+			diffStat: prepared.diffStat,
+			cachedStat: prepared.cachedStat,
+			cachedDiff: prepared.cachedDiff,
+			hint: prepared.parsedArgs.hint,
+		});
+	} catch (err) {
+		ctx.ui.notify(
+			`Commit planner unavailable, falling back to single commit: ${err instanceof Error ? err.message : String(err)}`,
+			"warning",
+		);
 	}
 
-	const hash = commitCurrentChanges(ctx.cwd, commitMessage);
+	if (!plan) {
+		const proposed = proposeCommitMessage(prepared.selection.files, prepared.parsedArgs.hint, prepared.cachedDiff);
+		const commitMessage = await confirmCommitMessage(
+			ctx,
+			proposed,
+			prepared.selection.files,
+			prepared.cachedStat,
+			prepared.diffStat,
+		);
+		if (!commitMessage) return ctx.ui.notify("Commit cancelled", "warning");
+		if (!isValidConventionalCommit(commitMessage.subject)) {
+			return ctx.ui.notify("Proposed commit message does not match conventional commit format", "error");
+		}
+		const hash = commitCurrentChanges(ctx.cwd, commitMessage);
+		if (prepared.parsedArgs.push) pushCurrentBranch(ctx.cwd);
+		return ctx.ui.notify(summarizeCommit(hash, commitMessage.subject, prepared.parsedArgs.push), "info");
+	}
+
+	const commitSummaries: string[] = [];
+	unstageFiles(ctx.cwd, prepared.selection.files);
+	for (const group of plan.groups) {
+		stageFiles(ctx.cwd, group.files);
+		const stagedStat = gitOrThrow(ctx.cwd, ["diff", "--cached", "--stat"]);
+		const commitMessage = await confirmCommitMessage(
+			ctx,
+			{ subject: group.subject.trim(), body: group.body?.trim() || undefined },
+			group.files,
+			stagedStat,
+			prepared.diffStat,
+		);
+		if (!commitMessage) {
+			unstageFiles(ctx.cwd, group.files);
+			return ctx.ui.notify("Commit cancelled", "warning");
+		}
+		const hash = commitCurrentChanges(ctx.cwd, commitMessage);
+		commitSummaries.push(`${hash} ${commitMessage.subject}`);
+	}
 	if (prepared.parsedArgs.push) pushCurrentBranch(ctx.cwd);
-	return ctx.ui.notify(summarizeCommit(hash, commitMessage.subject, prepared.parsedArgs.push), "info");
+	return ctx.ui.notify(
+		`${commitSummaries.join("\n")}${prepared.parsedArgs.push ? "\nPushed to remote" : ""}`,
+		"info",
+	);
 }
 
 export default function (pi: ExtensionAPI) {
 	pi.registerCommand("commit", {
-		description: "Smart git commit with secret scanning",
+		description: "Smart git commit with LLM grouping + deterministic execution",
 		handler: async (args, ctx) => {
 			try {
-				await executeCommitCommand(args, ctx);
+				await executeCommitCommand(pi, args, ctx);
 			} catch (err) {
 				ctx.ui.notify(err instanceof Error ? err.message : String(err), "error");
 			}
