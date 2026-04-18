@@ -19,7 +19,6 @@ import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { completeSimple, type TextContent } from "@mariozechner/pi-ai";
-import { wrapTextWithAnsi } from "@mariozechner/pi-tui";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
 
 const SKILLS_DIR = path.join(os.homedir(), ".dotfiles", "pi", "skills", "workflow");
@@ -458,23 +457,19 @@ function formatGitOutput(result?: GitRunResult) {
 function createCommitActivity(ctx: any, commandText: string): CommitActivity {
 	const lines: string[] = [`> ${commandText}`];
 	let phase = "starting";
+	let clearTimer: ReturnType<typeof setTimeout> | undefined;
+	const VIEWPORT_LINES = 10;
 
 	const render = () => {
-		const visibleLines = [...lines, `status: ${phase}`].slice(-80);
-		ctx.ui.setWidget?.(
-			"commit-progress",
-			(_tui: any, theme: any) => ({
-				render(width: number) {
-					const contentWidth = Math.max(20, width - 2);
-					const header = theme.fg("accent", theme.bold("/commit activity"));
-					const statusLine = theme.fg("dim", `status: ${phase}`);
-					const body = visibleLines.flatMap((line) => wrapTextWithAnsi(line, contentWidth));
-					return [header, statusLine, ...body];
-				},
-				invalidate() {},
-			}),
-			{ placement: "aboveEditor" },
-		);
+		if (clearTimer) {
+			clearTimeout(clearTimer);
+			clearTimer = undefined;
+		}
+		const snapshot = ["/commit activity", ...lines, `status: ${phase}`];
+		const hasOverflow = snapshot.length > VIEWPORT_LINES;
+		const tail = snapshot.slice(-VIEWPORT_LINES);
+		const visibleLines = hasOverflow ? ["...", ...tail.slice(1)] : tail;
+		ctx.ui.setWidget?.("commit-progress", visibleLines, { placement: "belowEditor" });
 	};
 
 	render();
@@ -484,6 +479,7 @@ function createCommitActivity(ctx: any, commandText: string): CommitActivity {
 			render();
 		},
 		logCommand(command: string, result?: GitRunResult) {
+			if (lines.length > 1 && lines[lines.length - 1] !== "") lines.push("");
 			lines.push(`$ ${command}`);
 			for (const line of formatGitOutput(result)) lines.push(`  ${line}`);
 			render();
@@ -491,6 +487,9 @@ function createCommitActivity(ctx: any, commandText: string): CommitActivity {
 		finish() {
 			phase = "done";
 			render();
+			clearTimer = setTimeout(() => {
+				ctx.ui.setWidget?.("commit-progress", undefined, { placement: "belowEditor" });
+			}, 3000);
 		},
 	};
 }
