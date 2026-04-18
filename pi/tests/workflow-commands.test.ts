@@ -40,10 +40,16 @@ vi.mock("../lib/model-routing", () => ({
 	})),
 }));
 
+vi.mock("@mariozechner/pi-ai", () => ({
+	completeSimple: vi.fn(),
+}));
+
 // ── Git mock helpers ──────────────────────────────────────────────────────────
 
 import { spawnSync } from "node:child_process";
+import { completeSimple } from "@mariozechner/pi-ai";
 const mockSpawnSync = spawnSync as ReturnType<typeof vi.fn>;
+const mockCompleteSimple = completeSimple as ReturnType<typeof vi.fn>;
 
 /**
  * Wire up spawnSync so every git sub-command returns plausible output.
@@ -100,28 +106,38 @@ function makeAssistantMessage(text: string) {
 }
 
 /**
- * Create a mock ctx whose sessionManager returns the LLM response on the
- * second call to buildSessionContext() (simulating sendUserMessage + idle).
+ * Create a mock ctx whose internal planner call returns the supplied LLM text.
  * ui.confirm defaults to false so the commit is always cancelled after any
  * fallback, keeping tests from needing real git commits.
  */
 function createMockCtxWithLlmResponse(llmResponseText: string) {
-	const initialMessages = [{ role: "user", content: "prior context" }];
-	const messagesAfterLlm = [...initialMessages, makeAssistantMessage(llmResponseText)];
-
-	let callCount = 0;
-	const buildSessionContext = vi.fn(() => {
-		callCount++;
-		return callCount <= 1
-			? { messages: initialMessages }
-			: { messages: messagesAfterLlm };
+	mockCompleteSimple.mockResolvedValue({
+		role: "assistant",
+		content: makeAssistantMessage(llmResponseText).content,
+		api: "openai-responses",
+		provider: "openai",
+		model: "gpt-4o-mini",
+		usage: {
+			input: 1,
+			output: 1,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 2,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		},
+		stopReason: "stop",
+		timestamp: Date.now(),
 	});
 
 	return {
 		cwd: "/test/repo",
 		model: "claude-opus-4-5",
-		modelRegistry: { models: [] },
-		sessionManager: { buildSessionContext },
+		modelRegistry: {
+			models: [],
+			getApiKeyAndHeaders: vi.fn(async () => ({ ok: true, apiKey: "test-key", headers: {} })),
+		},
+		sessionManager: { buildSessionContext: vi.fn(() => ({ messages: [] })) },
+		getSystemPrompt: vi.fn(() => "test system prompt"),
 		waitForIdle: vi.fn(async () => {}),
 		ui: {
 			notify: vi.fn(),
