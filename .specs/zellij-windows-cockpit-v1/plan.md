@@ -12,7 +12,7 @@ The goal is to turn the broader `zellij_micro_pi_windows_cockpit` concept into a
 
 During review, the key decision was to trim v1 down to the part that is executable and useful immediately: one project/worktree, one Pi pane, repo-managed installation/configuration, and helper commands that make the layout a daily driver. The user also asked to preserve the remaining ideas from the original spec as reference material, rather than losing that research.
 
-This plan therefore captures a cockpit-only v1 and intentionally defers the agent-manager architecture. That keeps the implementation aligned with the repo's current Windows install flow and avoids blocking on Zellij PTY/session-switching limitations.
+This plan therefore captures a cockpit-only v1 and intentionally defers the agent-manager architecture. It also adopts a simpler v1 launch contract after review: keep Zellij config repo-managed, but do not require global Dotbot-linked Zellij config for first launch. Instead, `zproj` should launch the repo-owned layout explicitly so v1 remains self-contained, lower-risk, and easier to validate from the existing install flow. That keeps the implementation aligned with the repo's current Windows install flow and avoids blocking on Zellij PTY/session-switching limitations.
 
 ## Constraints
 
@@ -21,8 +21,10 @@ This plan therefore captures a cockpit-only v1 and intentionally defers the agen
 - Repo install flow must remain centered on `install.ps1` + WinGet DSC YAML; no parallel installer path.
 - Preserve the `id: <id>  # <Display Name>` comment format in WinGet DSC YAML so `install.ps1 -ListPackages` keeps working.
 - Keep Pi as an npm-installed package after Node.js is present; do not model Pi as a WinGet package.
-- Zellij config should be repo-managed and linked through existing dotfiles mechanisms, not written ad hoc at runtime.
+- Zellij config should be repo-managed under the repo; v1 should prefer an explicit launch path from `zproj` over a required global Zellij config link.
 - V1 must exclude multi-agent orchestration, dynamic roster UI, and Pi session switching in a shared viewport.
+- Validation must distinguish file-presence checks from actual Windows runtime checks; a task is not complete if it only passes `rg` checks.
+- PowerShell helper commands must handle Windows paths with spaces safely.
 - Existing source material in `.specs/zellij_micro_pi_windows_cockpit.md` should remain intact; the new plan should be self-contained.
 
 ## Alternatives Considered
@@ -48,10 +50,10 @@ Produce a repo-managed, Windows-native terminal cockpit v1 that lets a user fuzz
 | # | Task | Files | Type | Model | Agent | Depends On |
 |---|------|-------|------|-------|-------|------------|
 | T1 | Add Windows cockpit packages to WinGet DSC config | 1 | mechanical | small | shell-config-specialist | — |
-| T2 | Add PowerShell cockpit helper functions and environment setup | 1 | feature | medium | powershell-specialist | — |
+| T2 | Add PowerShell cockpit helper functions, tool readiness checks, and explicit `zproj` launch contract | 1 | feature | medium | powershell-specialist | — |
 | T3 | Add repo-managed Zellij config and dev layout | 2 | feature | medium | terminal-workflow-builder | — |
 | V1 | Validate wave 1 | — | validation | medium | validation-lead | T1, T2, T3 |
-| T4 | Link Zellij config into dotfiles install flow and document v1 boundaries in pane text | 1-2 | feature | medium | dotbot-config-specialist | V1 |
+| T4 | Polish pane/help text and first-run guidance for cockpit-only v1 | 1 | feature | small | ux-researcher | V1 |
 | V2 | Validate wave 2 | — | validation | medium | validation-lead | T4 |
 
 ## Execution Waves
@@ -67,8 +69,8 @@ Produce a repo-managed, Windows-native terminal cockpit v1 that lets a user fuzz
      - Pass: all three package IDs appear exactly once in the expected section
      - Fail: any package is missing, duplicated, or lacks the `id: <id>  # <Display Name>` format; fix the YAML before continuing
 
-**T2: Add PowerShell cockpit helper functions and environment setup** [medium] — powershell-specialist
-- Description: Extend `powershell/profile.ps1` (or a repo-owned sourced module if the profile already uses one) with the v1 cockpit helpers: environment variables, Yazi cwd wrapper, fuzzy file/project helpers, and `zproj` launcher.
+**T2: Add PowerShell cockpit helper functions, tool readiness checks, and explicit `zproj` launch contract** [medium] — powershell-specialist
+- Description: Extend `powershell/profile.ps1` (or a repo-owned sourced module if the profile already uses one) with the v1 cockpit helpers: environment variables, Yazi cwd wrapper, fuzzy file/project helpers, and a `zproj` launcher that explicitly launches the repo-owned Zellij layout/config rather than depending on a pre-linked global Zellij config. Include clear Pi/tool readiness behavior so the launch contract is self-contained.
 - Files: `powershell/profile.ps1` (and only a sourced module if needed)
 - Acceptance Criteria:
   1. [ ] The profile defines `y`, `yf`, `ff`, `cproj`, and `zproj` using PowerShell 7-compatible syntax.
@@ -79,9 +81,21 @@ Produce a repo-managed, Windows-native terminal cockpit v1 that lets a user fuzz
      - Verify: `rg -n "EDITOR|FZF_DEFAULT_COMMAND|FZF_CTRL_T_COMMAND|FZF_ALT_C_COMMAND|YAZI_FILE_ONE" powershell/profile.ps1`
      - Pass: all required environment setup lines are present
      - Fail: missing environment setup or unguarded Windows-specific path logic; correct the profile block
+  3. [ ] `zproj` encodes the v1 launch contract explicitly and does not rely on an ambient Zellij config link.
+     - Verify: `rg -n "zellij .*layout|config/zellij|layouts/dev\.kdl|ZELLIJ" powershell/profile.ps1`
+     - Pass: the launcher clearly references the repo-owned layout/config path or an equivalent explicit launch mechanism
+     - Fail: `zproj` still assumes a pre-linked global Zellij config without documenting or enforcing it; fix the launcher
+  4. [ ] The profile includes readiness/diagnostic behavior for external tools and Pi.
+     - Verify: `rg -n "Get-Command .*zellij|Get-Command .*micro|Get-Command .*yazi|Get-Command .*pi|Pi not found|npm install -g @mariozechner/pi-coding-agent" powershell/profile.ps1`
+     - Pass: the profile or launcher explicitly checks or surfaces required tool availability, including Pi install guidance
+     - Fail: the launch path assumes tools exist without diagnostics; add readiness checks
+  5. [ ] The helper flow is robust to Windows paths with spaces.
+     - Verify: `pwsh -NoProfile -Command "Set-StrictMode -Version Latest; . ./powershell/profile.ps1; 'loaded'"`
+     - Pass: the profile loads without syntax/runtime errors in PowerShell
+     - Fail: profile load errors, quoting issues, or command-definition failures; fix before continuing
 
 **T3: Add repo-managed Zellij config and dev layout** [medium] — terminal-workflow-builder
-- Description: Add a minimal Zellij config tree under the repo with a Windows-friendly `config.kdl` and a `layouts/dev.kdl` file implementing the v1 four-pane cockpit: Yazi, Micro, one Pi terminal, and a static help pane.
+- Description: Add a minimal Zellij config tree under the repo with a Windows-friendly `config.kdl` and a `layouts/dev.kdl` file implementing the v1 four-pane cockpit: Yazi, Micro, one Pi terminal, and a static help pane. The layout must match the explicit launch contract used by `zproj`.
 - Files: `config/zellij/config.kdl`, `config/zellij/layouts/dev.kdl`
 - Acceptance Criteria:
   1. [ ] The config file sets only the minimal documented defaults needed for the cockpit.
@@ -89,9 +103,13 @@ Produce a repo-managed, Windows-native terminal cockpit v1 that lets a user fuzz
      - Pass: the expected settings are present and there are no obviously speculative extras
      - Fail: required settings are missing or unnecessary unsupported keys are added; simplify the file
   2. [ ] The `dev.kdl` layout launches Yazi, Micro, Pi, and a static right-side pane using `pwsh.exe` commands.
-     - Verify: `rg -n "Yazi|Micro|Pi|Agents|pwsh\.exe" config/zellij/layouts/dev.kdl`
-     - Pass: the layout contains all four panes and uses `pwsh.exe` commands/args
-     - Fail: pane layout is incomplete, commands are missing, or it still encodes deferred multi-agent behavior; revise the layout
+     - Verify: `rg -n "Yazi|Micro|Pi|Agents|pwsh\.exe|focus=true" config/zellij/layouts/dev.kdl`
+     - Pass: the layout contains all four panes, uses `pwsh.exe` commands/args, and clearly sets the intended initial focus behavior
+     - Fail: pane layout is incomplete, commands are missing, or initial focus behavior is undefined; revise the layout
+  3. [ ] The pane text is explicit that v1 has one active Pi pane and no dynamic agent switching.
+     - Verify: `rg -n "static|single Pi|v1|Ctrl\+g|not found|no dynamic" config/zellij/layouts/dev.kdl`
+     - Pass: the right-side/help text accurately describes the v1 scope and first-run behavior
+     - Fail: pane text implies deferred multi-agent behavior is implemented; rewrite the text
 
 ### Wave 1 — Validation Gate
 
@@ -101,24 +119,26 @@ Produce a repo-managed, Windows-native terminal cockpit v1 that lets a user fuzz
   1. Run acceptance criteria for T1, T2, and T3
   2. `make test-quick` — all targeted tests pass
   3. `make lint` — no new warnings or lint failures introduced
-  4. Cross-task integration: confirm helper names, layout commands, and install package names are consistent with each other (`zproj` launches layout `dev`; layout expects `pwsh.exe`, `micro`, `yazi`, and `pi` naming used by install/profile assumptions)
+  4. `pwsh -NoProfile -Command "Set-StrictMode -Version Latest; . ./powershell/profile.ps1; Get-Command y,yf,ff,cproj,zproj | Select-Object Name"` — helper functions load successfully
+  5. Cross-task integration: confirm helper names, explicit launch mechanism, layout name (`dev`), and binary names (`zellij`, `micro`, `yazi`, `pi`) are consistent with each other and with the install assumptions
+  6. Manual runtime note: if a Windows environment is available, perform one real launch from a fresh PowerShell 7 session and record whether `zproj` reaches the four-pane cockpit; if Windows runtime is not available, leave this as an explicit follow-up validation requirement rather than treating grep checks as equivalent
 - On failure: create a fix task, re-validate after fix
 
 ### Wave 2
 
-**T4: Link Zellij config into dotfiles install flow and document v1 boundaries in pane text** [medium] — dotbot-config-specialist
+**T4: Polish pane/help text and first-run guidance for cockpit-only v1** [small] — ux-researcher
 - Blocked by: V1
-- Description: Update the relevant Dotbot config so the repo-managed Zellij config is linked into the expected Windows location, and ensure the static right pane text/documentation reflects the trimmed v1 scope rather than promising dynamic agent switching.
-- Files: `install.conf.yaml` (and `wsl/install.conf.yaml` only if a mirrored cross-platform link is actually required by repo rules), plus any small pane-text adjustment in `config/zellij/layouts/dev.kdl` if needed
+- Description: Tighten the user-facing pane/help text and first-run guidance so the cockpit does not imply dynamic agent behavior, clearly explains `Ctrl+g`, and tells the user what to do when tools or Pi are missing. This task is intentionally limited to UX clarity and does not add Dotbot-linked global Zellij config in v1.
+- Files: `config/zellij/layouts/dev.kdl` (and `powershell/profile.ps1` only if a short first-run guidance comment/help line is needed)
 - Acceptance Criteria:
-  1. [ ] Dotbot links the repo-managed Zellij config into the Windows config path using existing repo conventions.
-     - Verify: `rg -n "Zellij|zellij|config/zellij" install.conf.yaml wsl/install.conf.yaml`
-     - Pass: the install config clearly links the Zellij config in the appropriate place, with WSL mirrored only if applicable
-     - Fail: no link exists, the target path is inconsistent with the plan, or WSL mirroring rules are violated; fix the install config
-  2. [ ] The pane/help text reflects cockpit-only v1 scope and documents lock/unlock behavior.
-     - Verify: `rg -n "Ctrl\+g|Pi not found|v1|placeholder|single Pi|cockpit" config/zellij/layouts/dev.kdl`
+  1. [ ] The pane/help text reflects cockpit-only v1 scope and documents lock/unlock behavior.
+     - Verify: `rg -n "Ctrl\+g|Pi not found|v1|static|single Pi|cockpit|no dynamic" config/zellij/layouts/dev.kdl`
      - Pass: the help text explains `Ctrl+g`, Pi installation fallback, and static roster limitations without implying dynamic agent management
      - Fail: text is misleading or still references deferred architecture as if implemented; revise the pane text
+  2. [ ] First-run guidance makes the shell/session expectations explicit.
+     - Verify: `rg -n "new PowerShell|PowerShell 7|PATH|install Pi|npm install -g @mariozechner/pi-coding-agent" config/zellij/layouts/dev.kdl powershell/profile.ps1`
+     - Pass: the user can infer the required shell and next steps when tools are missing or a new session is required
+     - Fail: first-run expectations remain implicit; add concise guidance
 
 ### Wave 2 — Validation Gate
 
@@ -128,7 +148,8 @@ Produce a repo-managed, Windows-native terminal cockpit v1 that lets a user fuzz
   1. Run acceptance criteria for T4
   2. `make test-quick` — all targeted tests pass
   3. `make lint` — no new warnings or lint failures introduced
-  4. Cross-task integration: verify the install flow, profile helpers, and Zellij layout now form one coherent v1 story from install to `zproj`
+  4. Cross-task integration: verify the install flow, profile helpers, and Zellij layout now form one coherent v1 story from package install to new PowerShell session to `zproj`
+  5. Manual runtime note: if Windows runtime is available, verify first-run usability from a fresh PowerShell 7 session, including tool discovery, `Ctrl+g` understanding, and the static nature of the right pane
 - On failure: create a fix task, re-validate after fix
 
 ## Dependency Graph
@@ -140,15 +161,21 @@ Wave 2: T4 → V2
 
 ## Success Criteria
 
-1. [ ] The repo contains a self-consistent Windows cockpit v1 implementation path covering install, profile helpers, and Zellij layout.
-   - Verify: `rg -n "Zellij.Zellij|zyedidia.micro|sxyazi.yazi|function zproj|layout|pwsh\.exe" winget/configuration/core.dsc.yaml powershell/profile.ps1 config/zellij/config.kdl config/zellij/layouts/dev.kdl install.conf.yaml`
-   - Pass: all key implementation points are present and consistent
-2. [ ] A Windows user following the repo conventions can perform the documented flow: install packages, install Pi, open a new PowerShell session, run `zproj`, and land in the four-pane cockpit.
-   - Verify: manual review against the final file set and pane text
-   - Pass: no missing config link, missing helper, or misleading layout assumption remains
+1. [ ] The repo contains a self-consistent Windows cockpit v1 implementation path covering package install, profile helpers, explicit `zproj` launch behavior, and Zellij layout.
+   - Verify: `rg -n "Zellij.Zellij|zyedidia.micro|sxyazi.yazi|function zproj|layouts/dev\.kdl|pwsh\.exe|npm install -g @mariozechner/pi-coding-agent" winget/configuration/core.dsc.yaml powershell/profile.ps1 config/zellij/config.kdl config/zellij/layouts/dev.kdl`
+   - Pass: all key implementation points are present and consistent, including the explicit launch contract and Pi guidance
+2. [ ] PowerShell profile changes are loadable and expose the expected helpers.
+   - Verify: `pwsh -NoProfile -Command "Set-StrictMode -Version Latest; . ./powershell/profile.ps1; Get-Command y,yf,ff,cproj,zproj | Select-Object Name"`
+   - Pass: PowerShell loads the profile cleanly and reports all helper commands
+3. [ ] A Windows user following the repo conventions can perform the documented flow: install packages, install Pi, open a new PowerShell 7 session, run `zproj`, and understand the four-pane cockpit on first launch.
+   - Verify: manual runtime validation on Windows when available
+   - Pass: the cockpit launches, Micro focus/locking behavior is understandable, and no missing config link or misleading pane assumption remains
 
 ## Handoff Notes
 
-- The feature target is Windows, but validation in this session occurs from macOS; prefer file-level verification and repo tests/lint unless a Windows runtime is explicitly available.
+- The feature target is Windows, but validation in this session occurs from macOS; use file-level verification and repo tests/lint as partial checks only, and keep at least one explicit Windows runtime validation step in the plan.
+- V1 intentionally avoids Dotbot-linked global Zellij config; if a later revision needs that integration, it should be justified by real usage rather than assumed upfront.
+- WSL mirroring is out of scope for v1 unless a concrete cross-platform need is established; do not add speculative WSL link plumbing.
+- If profile changes break shell startup during implementation, revert the added cockpit block first before broader debugging.
 - Preserve `.specs/zellij_micro_pi_windows_cockpit.md` as source research; this plan is the executable subset.
 - Deferred material that should not leak back into v1 implementation belongs in the companion `extra-notes.md` file for this slug.
