@@ -369,6 +369,45 @@ function Invoke-WingetConfigure {
     }
 }
 
+function Remove-GitShellExtensions {
+    <#
+    .SYNOPSIS
+        Remove "Open Git GUI Here" and "Open Git Bash Here" context menu entries.
+    .DESCRIPTION
+        Git for Windows re-selects the ext\shellhere and ext\guihere Inno Setup
+        components on every (re)install, which recreates these registry keys.
+        WinGet's DSC WinGetPackage resource does not expose installer overrides
+        for /COMPONENTS, so the reliable fix is to delete the keys after
+        `winget configure` applies the Core group. Idempotent.
+    #>
+    $keys = @(
+        'Registry::HKEY_CLASSES_ROOT\Directory\shell\git_gui',
+        'Registry::HKEY_CLASSES_ROOT\Directory\shell\git_shell',
+        'Registry::HKEY_CLASSES_ROOT\Directory\Background\shell\git_gui',
+        'Registry::HKEY_CLASSES_ROOT\Directory\Background\shell\git_shell',
+        'Registry::HKEY_CLASSES_ROOT\LibraryFolder\background\shell\git_gui',
+        'Registry::HKEY_CLASSES_ROOT\LibraryFolder\background\shell\git_shell'
+    )
+
+    $removed = 0
+    foreach ($key in $keys) {
+        if (Test-Path $key) {
+            try {
+                Remove-Item -Path $key -Recurse -Force -ErrorAction Stop
+                $removed++
+            } catch {
+                Write-Host "  Failed to remove ${key}: $_" -ForegroundColor Yellow
+            }
+        }
+    }
+
+    if ($removed -gt 0) {
+        Write-Host "  Removed $removed Git context-menu registry key(s)" -ForegroundColor Green
+    } else {
+        Write-Host "  Git context-menu entries already absent" -ForegroundColor DarkGray
+    }
+}
+
 function Install-PSModule {
     param([string]$Name)
 
@@ -412,9 +451,40 @@ function Ensure-WinGetLinksInPath {
     return $false
 }
 
+function Get-MissingConfiguredPackages {
+    param([switch]$Work, [switch]$Dev)
+
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        return @()
+    }
+
+    $configFiles = @(
+        Join-Path $wingetConfigDir 'core.dsc.yaml'
+    )
+    if ($Work) {
+        $configFiles += Join-Path $wingetConfigDir 'work.dsc.yaml'
+    }
+    if ($Dev) {
+        $configFiles += Join-Path $wingetConfigDir 'dev.dsc.yaml'
+    }
+
+    $missing = @()
+    foreach ($configFile in $configFiles) {
+        foreach ($package in Get-DscYamlPackages -Path $configFile) {
+            $listOutput = & winget list --exact --id $package.Id 2>$null
+            $isInstalled = $LASTEXITCODE -eq 0 -and ($listOutput | Select-String -SimpleMatch $package.Id -Quiet)
+            if (-not $isInstalled) {
+                $missing += $package
+            }
+        }
+    }
+
+    return $missing
+}
+
 function Optimize-UserPath {
-    # Clean up User PATH: remove duplicates, empty entries, and WinGet Packages
-    # paths whose executables are all covered by WinGet Links shims
+    # Clean up User PATH: remove duplicates, empty entries, missing directories,
+    # and WinGet Packages paths whose executables are all covered by WinGet Links shims
     $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
     $entries = $userPath -split ";"
 
@@ -425,6 +495,7 @@ function Optimize-UserPath {
     $cleaned = @()
     $removedDupes = 0
     $removedEmpty = 0
+    $removedMissing = @()
     $removedCovered = @()
 
     foreach ($entry in $entries) {
@@ -442,22 +513,26 @@ function Optimize-UserPath {
         }
         $seen[$normalized] = $true
 
+        # Skip missing directories
+        if (-not (Test-Path $entry -PathType Container)) {
+            $removedMissing += $entry
+            continue
+        }
+
         # Check WinGet Packages paths for Links coverage
         if ($normalized.StartsWith($packagesDirLower)) {
-            if (Test-Path $entry -PathType Container) {
-                $exes = Get-ChildItem -Path $entry -Filter "*.exe" -File -ErrorAction SilentlyContinue
-                if ($exes) {
-                    $allCovered = $true
-                    foreach ($exe in $exes) {
-                        if (-not (Test-Path (Join-Path $linksDir $exe.Name))) {
-                            $allCovered = $false
-                            break
-                        }
+            $exes = Get-ChildItem -Path $entry -Filter "*.exe" -File -ErrorAction SilentlyContinue
+            if ($exes) {
+                $allCovered = $true
+                foreach ($exe in $exes) {
+                    if (-not (Test-Path (Join-Path $linksDir $exe.Name))) {
+                        $allCovered = $false
+                        break
                     }
-                    if ($allCovered) {
-                        $removedCovered += $entry
-                        continue
-                    }
+                }
+                if ($allCovered) {
+                    $removedCovered += $entry
+                    continue
                 }
             }
         }
@@ -465,7 +540,7 @@ function Optimize-UserPath {
         $cleaned += $entry
     }
 
-    $totalRemoved = $removedDupes + $removedEmpty + $removedCovered.Count
+    $totalRemoved = $removedDupes + $removedEmpty + $removedMissing.Count + $removedCovered.Count
     if ($totalRemoved -gt 0) {
         $newPath = $cleaned -join ";"
         [Environment]::SetEnvironmentVariable("PATH", $newPath, "User")
@@ -473,8 +548,12 @@ function Optimize-UserPath {
         $details = @()
         if ($removedDupes) { $details += "$removedDupes duplicates" }
         if ($removedEmpty) { $details += "$removedEmpty empty" }
+        if ($removedMissing.Count) { $details += "$($removedMissing.Count) missing directories" }
         if ($removedCovered.Count) { $details += "$($removedCovered.Count) covered by WinGet Links" }
         Write-Host "  Removed $totalRemoved entries ($($details -join ', '))" -ForegroundColor Green
+        foreach ($entry in $removedMissing) {
+            Write-Host "    missing: $entry" -ForegroundColor DarkGray
+        }
         foreach ($entry in $removedCovered) {
             $leaf = Split-Path $entry -Leaf
             # Trim WinGet source suffix for readability
@@ -765,10 +844,16 @@ function Install-Packages {
 
     # Update winget sources once (mitigates per-source agreement prompts)
     Write-Host "`nUpdating winget sources..." -ForegroundColor Cyan
-    & winget source update --accept-source-agreements 2>&1 | Out-Host
+    & winget source update --disable-interactivity 2>&1 | Out-Host
 
     # Core packages (DSC)
     Invoke-WingetConfigure -GroupName 'Core' -ConfigFile (Join-Path $wingetConfigDir 'core.dsc.yaml') -Color Cyan
+
+    # Git for Windows re-adds "Open Git GUI/Bash Here" context menu entries on
+    # every (re)install. DSC can't pass /COMPONENTS overrides, so strip the
+    # registry keys post-apply.
+    Write-Host "`n--- Git Context Menu Cleanup ---" -ForegroundColor Cyan
+    Remove-GitShellExtensions
 
     # Pin version-locked packages to prevent winget upgrade from overriding.
     # DSC `WinGetPackage` `version:` is an install-time target, NOT an upgrade
@@ -1104,12 +1189,12 @@ function Install-Packages {
     # Summary
     if ($script:failed.Count -eq 0) {
         Write-Host "`nAll packages installed successfully!" -ForegroundColor Green
+        return $true
     } else {
         Write-Host "`nFailed packages:" -ForegroundColor Red
         $script:failed | ForEach-Object { Write-Host "  - $_" -ForegroundColor Red }
+        return $false
     }
-
-    return $true
 }
 
 # ============================================================================
@@ -1347,8 +1432,12 @@ try {
 
     # Update dotbot submodule
     Write-Host "`nUpdating dotbot submodule..." -ForegroundColor Cyan
-    git -C $DOTBOT_DIR submodule sync --quiet --recursive
-    git submodule update --init --recursive $DOTBOT_DIR
+    if (Get-Command git -ErrorAction SilentlyContinue) {
+        git -C $DOTBOT_DIR submodule sync --quiet --recursive
+        git submodule update --init --recursive $DOTBOT_DIR
+    } else {
+        Write-Host "  git not found - skipping submodule refresh until core packages are repaired" -ForegroundColor Yellow
+    }
 
     # Run dotbot
     Write-Host "`nRunning dotbot..." -ForegroundColor Cyan
@@ -1627,24 +1716,40 @@ try {
         }
     }
 
+    if (-not $SkipPackages -and -not $shouldInstallPackages) {
+        $missingPackages = Get-MissingConfiguredPackages -Work:$Work -Dev:$Dev
+        if ($missingPackages.Count -gt 0) {
+            Write-Host "`nConfigured packages are missing - reinstalling packages..." -ForegroundColor Yellow
+            foreach ($package in $missingPackages) {
+                Write-Host "  missing: $($package.Name) [$($package.Id)]" -ForegroundColor DarkGray
+            }
+            $shouldInstallPackages = $true
+            $installReason = "repair_missing_packages"
+        }
+    }
+
     # Install packages
     if ($shouldInstallPackages) {
-        Install-Packages -Work:$Work -Dev:$Dev -ITAdmin:$ITAdmin
+        $packagesInstalled = Install-Packages -Work:$Work -Dev:$Dev -ITAdmin:$ITAdmin
 
-        # Update lock file
-        $lockData = @{
-            installed_at = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
-            install_reason = $installReason
-            work = $Work.IsPresent
-            dev = $Dev.IsPresent
-            itadmin = $ITAdmin.IsPresent
+        if ($packagesInstalled) {
+            # Update lock file
+            $lockData = @{
+                installed_at = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+                install_reason = $installReason
+                work = $Work.IsPresent
+                dev = $Dev.IsPresent
+                itadmin = $ITAdmin.IsPresent
+            }
+            $lockData | ConvertTo-Json | Set-Content $LOCKFILE -Force
+            Write-Host "`nLock file updated: $LOCKFILE" -ForegroundColor Green
+
+            # Configure rclone for MinIO (after rclone is installed)
+            Write-Host "`nConfiguring rclone..." -ForegroundColor Cyan
+            Configure-Rclone
+        } else {
+            Write-Host "`nLock file not updated because package installation had failures" -ForegroundColor Yellow
         }
-        $lockData | ConvertTo-Json | Set-Content $LOCKFILE -Force
-        Write-Host "`nLock file updated: $LOCKFILE" -ForegroundColor Green
-
-        # Configure rclone for MinIO (after rclone is installed)
-        Write-Host "`nConfiguring rclone..." -ForegroundColor Cyan
-        Configure-Rclone
     }
 
     # ========================================================================
