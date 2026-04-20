@@ -221,6 +221,8 @@ agentctl attach tester
 
 The active agent terminal below Micro shows the selected session.
 
+> Implementation constraint: a Zellij pane is bound to a single PTY for its lifetime. "Show the selected session in the bottom pane" cannot be done by swapping pane contents. Concrete mechanisms are discussed in section 8 (dtach/abduco, a Zellij WASM plugin, or parallel panes with focus).
+
 ### v3: real agent roster
 
 The right column becomes a real TUI:
@@ -232,7 +234,7 @@ Agents
   reviewer     waiting   review diff
 ```
 
-Selecting a row switches the active terminal viewport.
+Selecting a row switches the active terminal viewport (subject to the PTY constraint noted above).
 
 ### v4: Pi-aware coordination
 
@@ -295,280 +297,140 @@ Example `agents.json`:
 
 ---
 
-## 5. Windows install script
+## 5. Windows install integration
 
-Save the following as:
+This repo installs Windows packages via WinGet DSC: `install.ps1` runs `winget configure -f winget/configuration/<group>.dsc.yaml`. Package lists live in YAML, not ad-hoc scripts. The cockpit integrates with that flow rather than running a parallel installer.
 
-```text
-setup-dev-cockpit.ps1
+### 5.1 Packages to add to `winget/configuration/core.dsc.yaml`
+
+Most of the cockpit stack is already in `core.dsc.yaml`: `Git.Git`, `Microsoft.PowerShell`, `Microsoft.WindowsTerminal`, `junegunn.fzf`, `sharkdp.fd`, `BurntSushi.ripgrep.MSVC`, `sharkdp.bat`, `ajeetdsouza.zoxide`. `OpenJS.NodeJS` is already in `dev.dsc.yaml`. Only three entries are new:
+
+```yaml
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Zellij terminal multiplexer
+      settings:
+        id: Zellij.Zellij  # Zellij (terminal workspace)
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Micro editor
+      settings:
+        id: zyedidia.micro  # Micro (non-modal editor)
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Yazi file manager
+      settings:
+        id: sxyazi.yazi  # Yazi (file manager)
+        source: winget
 ```
 
-Run from PowerShell 7:
+Notes:
+
+- Use `Zellij.Zellij` (upstream package) rather than `arndawg.zellij-windows` (community Windows fork, trails upstream).
+- Preserve the `id: <id>  # <Display Name>` comment format (two spaces before `#`); `install.ps1 -ListPackages` parses it.
+- Do not add `Microsoft.VCRedist.*`; nothing in the cockpit stack requires an explicit VCRedist pin, and dependent packages pull it transitively.
+
+### 5.2 Pi coding agent
+
+Pi is an npm package, not a WinGet package. After `install.ps1 -Dev` has installed Node.js, install Pi once:
 
 ```powershell
-pwsh -ExecutionPolicy Bypass -File .\setup-dev-cockpit.ps1
+npm install -g @mariozechner/pi-coding-agent
 ```
 
-> Note: the Zellij Winget package used here is currently `arndawg.zellij-windows`. If that package is unavailable or stale, install Zellij from its official Windows release/launcher and rerun the script.
+Verified at time of writing: the package publishes a `pi` binary on PATH.
+
+### 5.3 Helpers in `powershell/profile.ps1`
+
+The repo links `powershell/profile.ps1` via Dotbot. Cockpit helpers go into that file (or a sourced module), not into `$PROFILE.CurrentUserAllHosts` at runtime, so Dotbot remains the single owner of the profile.
+
+Add a section like this to `powershell/profile.ps1`:
 
 ```powershell
-# setup-dev-cockpit.ps1
-#Requires -Version 7.0
+# region Dev cockpit helpers
 
-[CmdletBinding()]
-param(
-    [string]$DevRoot = "$HOME\src",
-    [switch]$SkipPi
-)
+$script:DevRoot = Join-Path $HOME 'src'
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
+$env:EDITOR = 'micro'
+$env:FZF_DEFAULT_COMMAND = 'fd --type f --hidden --follow --exclude .git'
+$env:FZF_CTRL_T_COMMAND  = $env:FZF_DEFAULT_COMMAND
+$env:FZF_ALT_C_COMMAND   = 'fd --type d --hidden --follow --exclude .git'
 
-function Write-Step {
-    param([string]$Message)
-    Write-Host "`n==> $Message" -ForegroundColor Cyan
-}
+# Yazi on Windows uses Git's file.exe for better previews.
+$gitFile = Join-Path $env:ProgramFiles 'Git\usr\bin\file.exe'
+if (Test-Path $gitFile) { $env:YAZI_FILE_ONE = $gitFile }
 
-function Refresh-Path {
-    $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
-    $userPath    = [Environment]::GetEnvironmentVariable("Path", "User")
-    $env:Path    = "$machinePath;$userPath"
-}
-
-function Install-WingetPackage {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Id,
-
-        [string]$Name = $Id
-    )
-
-    Write-Step "Installing/checking $Name [$Id]"
-
-    $installed = winget list --id $Id -e --accept-source-agreements 2>$null
-
-    if ($LASTEXITCODE -eq 0 -and $installed -match [regex]::Escape($Id)) {
-        Write-Host "Already installed: $Name" -ForegroundColor Green
-        return
-    }
-
-    winget install `
-        --exact `
-        --id $Id `
-        --accept-package-agreements `
-        --accept-source-agreements
-
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning "winget failed for $Name [$Id]. Continuing."
-    }
-}
-
-if ($PSVersionTable.PSEdition -ne "Core") {
-    throw "Run this from PowerShell Core / pwsh, not Windows PowerShell 5.1."
-}
-
-Write-Step "Installing base packages with winget"
-
-$packages = @(
-    @{ Id = "Microsoft.PowerShell";              Name = "PowerShell 7" },
-    @{ Id = "Microsoft.WindowsTerminal";        Name = "Windows Terminal" },
-    @{ Id = "Git.Git";                          Name = "Git for Windows" },
-    @{ Id = "Microsoft.VCRedist.2015+.x64";     Name = "VC++ Redistributable x64" },
-
-    # Cockpit / editor / file manager
-    @{ Id = "arndawg.zellij-windows";           Name = "Zellij for Windows" },
-    @{ Id = "zyedidia.micro";                   Name = "Micro editor" },
-    @{ Id = "sxyazi.yazi";                      Name = "Yazi file manager" },
-
-    # Fuzzy/search stack
-    @{ Id = "junegunn.fzf";                     Name = "fzf" },
-    @{ Id = "sharkdp.fd";                       Name = "fd" },
-    @{ Id = "BurntSushi.ripgrep.MSVC";         Name = "ripgrep" },
-    @{ Id = "sharkdp.bat";                      Name = "bat" },
-    @{ Id = "ajeetdsouza.zoxide";               Name = "zoxide" },
-
-    # Needed for Pi install via npm
-    @{ Id = "OpenJS.NodeJS.LTS";                Name = "Node.js LTS" }
-)
-
-foreach ($pkg in $packages) {
-    Install-WingetPackage -Id $pkg.Id -Name $pkg.Name
-}
-
-Refresh-Path
-
-Write-Step "Creating dev root: $DevRoot"
-New-Item -ItemType Directory -Force -Path $DevRoot | Out-Null
-
-Write-Step "Setting user environment defaults"
-
-[Environment]::SetEnvironmentVariable("EDITOR", "micro", "User")
-$env:EDITOR = "micro"
-
-# Yazi on Windows wants file.exe from Git for better file detection/previews.
-$gitFile = Join-Path $env:ProgramFiles "Git\usr\bin\file.exe"
-if (Test-Path $gitFile) {
-    [Environment]::SetEnvironmentVariable("YAZI_FILE_ONE", $gitFile, "User")
-    $env:YAZI_FILE_ONE = $gitFile
-    Write-Host "Set YAZI_FILE_ONE=$gitFile" -ForegroundColor Green
-} else {
-    Write-Warning "Could not find Git file.exe at $gitFile. Yazi will still run, but file previews may be weaker."
-}
-
-if (-not $SkipPi) {
-    Write-Step "Installing Pi coding agent via npm"
-
-    $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
-    if (-not $npm) {
-        Write-Warning "npm not found in current PATH. Open a new PowerShell 7 window and run:"
-        Write-Warning "npm install -g @mariozechner/pi-coding-agent"
-    } else {
-        npm install -g @mariozechner/pi-coding-agent
-    }
-}
-
-Write-Step "Writing PowerShell profile helpers"
-
-$profilePath = $PROFILE.CurrentUserAllHosts
-$profileDir = Split-Path $profilePath -Parent
-New-Item -ItemType Directory -Force -Path $profileDir | Out-Null
-
-$profileBlockStart = "# >>> dev-cockpit bootstrap >>>"
-$profileBlockEnd   = "# <<< dev-cockpit bootstrap <<<"
-
-$profileBlock = @"
-$profileBlockStart
-
-# Dev cockpit defaults
-`$env:EDITOR = "micro"
-`$env:FZF_DEFAULT_COMMAND = "fd --type f --hidden --follow --exclude .git"
-`$env:FZF_CTRL_T_COMMAND = `$env:FZF_DEFAULT_COMMAND
-`$env:FZF_ALT_C_COMMAND = "fd --type d --hidden --follow --exclude .git"
-
-# zoxide smarter cd
-if (Get-Command zoxide -ErrorAction SilentlyContinue) {
-    Invoke-Expression (& { (zoxide init powershell | Out-String) })
-}
-
-# Yazi wrapper: run `y`, browse with Yazi, and cd to the directory you exited from.
+# Yazi wrapper: browse, then cd to the directory you exited from.
 function y {
-    `$tmp = Join-Path `$env:TEMP ("yazi-cwd-" + [guid]::NewGuid().ToString())
-
-    yazi @args --cwd-file="`$tmp"
-
-    if (Test-Path `$tmp) {
-        `$cwd = (Get-Content `$tmp -Raw).Trim()
-        Remove-Item `$tmp -Force -ErrorAction SilentlyContinue
-
-        if (`$cwd -and (Test-Path `$cwd) -and `$cwd -ne (Get-Location).Path) {
-            Set-Location `$cwd
+    $tmp = Join-Path $env:TEMP ("yazi-cwd-" + [guid]::NewGuid().ToString())
+    yazi @args --cwd-file="$tmp"
+    if (Test-Path $tmp) {
+        $cwd = (Get-Content $tmp -Raw).Trim()
+        Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+        if ($cwd -and (Test-Path $cwd) -and $cwd -ne (Get-Location).Path) {
+            Set-Location $cwd
         }
     }
 }
 
 # Fuzzy-open a file in Micro from the current directory.
 function ff {
-    `$file = fd --type f --hidden --exclude .git | fzf --prompt "file> " --preview "bat --style=numbers --color=always --line-range :200 {}"
-    if (`$file) {
-        micro `$file
-    }
+    $file = fd --type f --hidden --exclude .git |
+        fzf --prompt 'file> ' --preview 'bat --style=numbers --color=always --line-range :200 {}'
+    if ($file) { micro $file }
 }
 
 # Fuzzy-cd into a directory under the dev root.
 function cproj {
-    param(
-        [string]`$Root = "$DevRoot"
-    )
-
-    if (-not (Test-Path `$Root)) {
-        New-Item -ItemType Directory -Force -Path `$Root | Out-Null
-    }
-
-    `$dir = fd . `$Root --type d --hidden --exclude .git --max-depth 4 | fzf --prompt "cd project> "
-    if (`$dir) {
-        Set-Location `$dir
-    }
+    param([string]$Root = $script:DevRoot)
+    if (-not (Test-Path $Root)) { New-Item -ItemType Directory -Force -Path $Root | Out-Null }
+    $dir = fd . $Root --type d --hidden --exclude .git --max-depth 4 | fzf --prompt 'cd project> '
+    if ($dir) { Set-Location $dir }
 }
 
-# Fuzzy-pick a project/worktree directory and launch the Zellij cockpit layout.
+# Fuzzy-pick a project/worktree and launch the Zellij cockpit layout.
 function zproj {
-    param(
-        [string]`$Root = "$DevRoot"
-    )
-
-    if (-not (Test-Path `$Root)) {
-        New-Item -ItemType Directory -Force -Path `$Root | Out-Null
-    }
-
-    `$dir = fd . `$Root --type d --hidden --exclude .git --max-depth 4 | fzf --prompt "zellij project> "
-    if (-not `$dir) {
-        return
-    }
-
-    `$leaf = Split-Path `$dir -Leaf
-    `$session = (`$leaf -replace '[^A-Za-z0-9_.-]', '-')
-
-    Push-Location `$dir
-    try {
-        zellij --session `$session --layout dev
-    } finally {
-        Pop-Location
-    }
+    param([string]$Root = $script:DevRoot)
+    if (-not (Test-Path $Root)) { New-Item -ItemType Directory -Force -Path $Root | Out-Null }
+    $dir = fd . $Root --type d --hidden --exclude .git --max-depth 4 | fzf --prompt 'zellij project> '
+    if (-not $dir) { return }
+    $leaf = Split-Path $dir -Leaf
+    $session = ($leaf -replace '[^A-Za-z0-9_.-]', '-')
+    if ($session.Length -gt 40) { $session = $session.Substring(0, 40) }
+    Push-Location $dir
+    try { zellij --session $session --layout dev }
+    finally { Pop-Location }
 }
 
 # Fuzzy-open Yazi in a selected directory under the current directory.
 function yf {
-    `$dir = fd . . --type d --hidden --exclude .git --max-depth 5 | fzf --prompt "yazi dir> "
-    if (`$dir) {
-        y `$dir
-    }
+    $dir = fd . . --type d --hidden --exclude .git --max-depth 5 | fzf --prompt 'yazi dir> '
+    if ($dir) { y $dir }
 }
 
-$profileBlockEnd
-"@
+# endregion
+```
 
-if (Test-Path $profilePath) {
-    $existing = Get-Content $profilePath -Raw
+### 5.4 Zellij config and layout
 
-    if ($existing -match [regex]::Escape($profileBlockStart)) {
-        $pattern = "(?s)" + [regex]::Escape($profileBlockStart) + ".*?" + [regex]::Escape($profileBlockEnd)
-        $updated = [regex]::Replace($existing, $pattern, [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $profileBlock })
-        Set-Content -Path $profilePath -Value $updated -Encoding UTF8
-    } else {
-        Add-Content -Path $profilePath -Value "`n$profileBlock" -Encoding UTF8
-    }
-} else {
-    Set-Content -Path $profilePath -Value $profileBlock -Encoding UTF8
-}
+Place the Zellij config tree under the repo (e.g., `config/zellij/`) and link it via `install.conf.yaml` to `%APPDATA%\Zellij\config` so it is managed the same way as the rest of the dotfiles. The layout is deliberately minimal; only documented config keys are used.
 
-Write-Step "Writing Zellij config and layout"
+`config/zellij/config.kdl`:
 
-# On Windows native Zellij, AppData\Roaming\Zellij\config is commonly used.
-# We also set ZELLIJ_CONFIG_DIR in the user environment so the path is explicit.
-$zellijConfigDir = Join-Path $env:APPDATA "Zellij\config"
-$zellijLayoutDir = Join-Path $zellijConfigDir "layouts"
-
-New-Item -ItemType Directory -Force -Path $zellijLayoutDir | Out-Null
-
-[Environment]::SetEnvironmentVariable("ZELLIJ_CONFIG_DIR", $zellijConfigDir, "User")
-$env:ZELLIJ_CONFIG_DIR = $zellijConfigDir
-
-$configKdl = @'
+```kdl
 default_shell "pwsh.exe"
 default_mode "locked"
 pane_frames true
 simplified_ui true
-show_startup_tips false
-'@
+```
 
-Set-Content -Path (Join-Path $zellijConfigDir "config.kdl") -Value $configKdl -Encoding UTF8
+> `default_mode "locked"` means Micro and Pi receive raw keys (arrow keys, Ctrl+S, etc.). Press `Ctrl+g` to unlock Zellij controls and navigate panes, then `Ctrl+g` again to re-lock. The layout's Agents pane surfaces this as a reminder.
 
-# Layout shape:
-# left: Yazi file manager
-# middle top: Micro editor
-# middle bottom: active Pi terminal
-# right: placeholder agent roster/status pane
-$layoutKdl = @'
+`config/zellij/layouts/dev.kdl` (split directions: `vertical` = side-by-side columns, `horizontal` = top/bottom rows):
+
+```kdl
 layout {
     default_tab_template {
         pane size=1 borderless=true {
@@ -577,12 +439,12 @@ layout {
         children
     }
 
-    tab name="workspace" split_direction="horizontal" {
+    tab name="workspace" split_direction="vertical" {
         pane name="FM: Yazi" size="22%" command="pwsh.exe" {
             args "-NoLogo" "-NoExit" "-Command" "y"
         }
 
-        pane split_direction="vertical" size="58%" {
+        pane split_direction="horizontal" size="58%" {
             pane name="Editor: Micro" size="72%" command="pwsh.exe" focus=true {
                 args "-NoLogo" "-NoExit" "-Command" "micro ."
             }
@@ -593,40 +455,32 @@ layout {
         }
 
         pane name="Agents" size="20%" command="pwsh.exe" {
-            args "-NoLogo" "-NoExit" "-Command" "Write-Host 'Agents'; Write-Host '------'; Write-Host '> coordinator'; Write-Host '  implementer'; Write-Host '  tester'; Write-Host '  reviewer'; Write-Host ''; Write-Host 'v1: roster/status placeholder'; Write-Host 'v2: agent manager / selector'"
+            args "-NoLogo" "-NoExit" "-Command" "Write-Host 'Agents'; Write-Host '------'; Write-Host '> coordinator'; Write-Host '  implementer'; Write-Host '  tester'; Write-Host '  reviewer'; Write-Host ''; Write-Host 'Ctrl+g toggles Zellij controls.'; Write-Host 'v1: roster/status placeholder'; Write-Host 'v2: agent manager / selector'"
         }
     }
 }
-'@
-
-Set-Content -Path (Join-Path $zellijLayoutDir "dev.kdl") -Value $layoutKdl -Encoding UTF8
-
-Write-Step "Done"
-
-Write-Host @"
-
-Open a NEW PowerShell 7 tab/window so PATH and profile changes load.
-
-Try:
-
-    cd $DevRoot
-    git clone <repo-url>
-    zproj
-
-Useful commands:
-
-    y       # Yazi file manager, cd-on-exit
-    yf      # fzf-pick a directory, open Yazi there
-    ff      # fzf-pick a file, open in Micro
-    cproj   # fzf-pick a project directory and cd into it
-    zproj   # fzf-pick a project/worktree and open Zellij layout
-
-Inside Zellij:
-    Ctrl+g unlocks Zellij controls
-    Micro/Pi get normal keys when Zellij is locked
-
-"@ -ForegroundColor Green
 ```
+
+### 5.5 Install flow
+
+```powershell
+~\.dotfiles\install.ps1 -Dev        # installs cockpit packages + Node.js via DSC
+npm install -g @mariozechner/pi-coding-agent
+# open a new PowerShell 7 window so profile + PATH reload
+zproj
+```
+
+Useful commands exposed by the profile:
+
+```text
+y       # Yazi file manager, cd-on-exit
+yf      # fzf-pick a directory, open Yazi there
+ff      # fzf-pick a file, open in Micro
+cproj   # fzf-pick a project directory and cd into it
+zproj   # fzf-pick a project/worktree and open the Zellij cockpit
+```
+
+> Inside Zellij: `Ctrl+g` unlocks Zellij controls. Micro and Pi get normal keys while Zellij is locked.
 
 ---
 
@@ -643,7 +497,8 @@ Yazi     → macOS supported
 fzf/fd/rg/bat/zoxide → macOS supported
 Git      → macOS supported
 Node/npm → macOS supported
-Pi       → npm package, likely portable where Node works
+Pi       → npm package (@mariozechner/pi-coding-agent); runs where Node runs,
+           but verify on the target macOS version before adopting
 ```
 
 The main differences are install and path/config locations.
@@ -761,12 +616,12 @@ layout {
         children
     }
 
-    tab name="workspace" split_direction="horizontal" {
+    tab name="workspace" split_direction="vertical" {
         pane name="FM: Yazi" size="22%" command="zsh" {
             args "-lc" "yazi"
         }
 
-        pane split_direction="vertical" size="58%" {
+        pane split_direction="horizontal" size="58%" {
             pane name="Editor: Micro" size="72%" command="zsh" focus=true {
                 args "-lc" "micro ."
             }
@@ -777,7 +632,7 @@ layout {
         }
 
         pane name="Agents" size="20%" command="zsh" {
-            args "-lc" "printf 'Agents\n------\n> coordinator\n  implementer\n  tester\n  reviewer\n\nv1: roster/status placeholder\nv2: agent manager / selector\n'; exec zsh"
+            args "-lc" "printf 'Agents\n------\n> coordinator\n  implementer\n  tester\n  reviewer\n\nCtrl+g toggles Zellij controls.\nv1: roster/status placeholder\nv2: agent manager / selector\n'; exec zsh"
         }
     }
 }
@@ -849,7 +704,13 @@ many persistent Pi sessions
 right roster selects which one appears below Micro
 ```
 
-This likely requires an Agent Manager.
+This is the hardest unresolved piece of the design. A Zellij pane is bound to a single PTY for its lifetime; there is no "swap the session shown in this pane" primitive. Three realistic mechanisms:
+
+1. **dtach / abduco attach-detach.** The bottom pane runs a thin wrapper that `dtach -a`s to a socket whose path comes from a shared state file (e.g., `.agent/active`). Selecting a role in the right-column roster rewrites the state file and signals the wrapper to detach-and-reattach. Pros: POSIX-standard, works today on macOS and WSL, minimal code. Cons: no native Windows `dtach`; need MSYS2/WSL or a Windows port.
+2. **Custom Zellij WASM plugin.** Zellij plugins can own a pane and dispatch commands. A plugin could render the agent roster and spawn/attach to sessions via `zellij action new-pane`/`close-pane`. Pros: first-class Zellij integration. Cons: WASM plugin effort, still constrained by one-PTY-per-pane (plugin would have to close and respawn panes).
+3. **Parallel panes with focus-switching.** Skip pane reuse. Each role gets its own bottom pane, stacked or tabbed; the roster sends `zellij action focus-pane-with-name <role>`. Pros: trivial to implement, works on every platform. Cons: loses the "one viewport" UX promise from section 1.
+
+Recommended path: start with (3) for v2, evaluate (1) for v3 once the `.agent/` state contract stabilizes, and only reach for (2) if neither is sufficient.
 
 ### Agent awareness
 
@@ -871,7 +732,88 @@ Each Pi instance reads/writes shared local state.
 
 ---
 
-## 9. Current recommended v1
+## 9. Prior art and ecosystem context
+
+The "terminal IDE for humans" half of this design is well-trodden ground. The "multi-agent cockpit" half is an active area of community work, mostly on tmux rather than Zellij.
+
+### 9.1 Terminal IDE stacks (Zellij + file manager + editor)
+
+- **Yazelix** ([luccahuguet/yazelix](https://github.com/luccahuguet/yazelix)) -- Nix flake that bundles Zellij + Yazi + Helix/Neovim with pre-solved pane/layout orchestration, sidebar toggle, zellij/helix keybinding deconfliction, starship, zoxide, carapace, and lazygit. Directly addresses the "Yazi opens in the existing editor pane" problem flagged in section 8.
+- **"Turning Helix into an IDE with Zellij"** ([Guillermo Aguirre](https://www.guillermoaguirre.dev/articles/helix-to-ide-with-zellij)) -- canonical article on the pattern.
+- **Yazi-inside-Helix** ([mrpbennett.dev](https://www.mrpbennett.dev/2026/02/helix-with-yazi)) -- a 2026 technique using `%{buffer_name}` and `\x1b[?1049h` to embed Yazi as a Helix command without a multiplexer at all.
+- **g5becks/helix-ide** ([helix-ide](https://github.com/g5becks/helix-ide)) -- Ghostty split where the bottom half runs a Zellij tab with lazygit, yazi, scooter, lazysql, lazyssh.
+
+The community standardizes on **Helix** (or Neovim) as the editor in this stack. Micro is a legitimate choice for non-modal + mouse, but loses LSP and the recipes above.
+
+### 9.2 Multi-agent cockpits (tmux is the de facto runtime)
+
+Claude Code's Agent Teams ships with split-pane support for **tmux and iTerm2 only**. Zellij support is open:
+
+- [claude-code #24122](https://github.com/anthropics/claude-code/issues/24122) -- Agent Teams: add Zellij split-pane support.
+- [claude-code #31901](https://github.com/anthropics/claude-code/issues/31901) -- Native Zellij support for Agent Teams and `/terminal-setup`.
+- [claude-code #26572](https://github.com/anthropics/claude-code/issues/26572) -- `CustomPaneBackend` protocol proposal to decouple agent teams from tmux CLI so Zellij/WezTerm/Ghostty/KILD can implement independently.
+
+Mature tmux-based orchestrators (worth studying regardless of whether we adopt tmux):
+
+- **CAO** ([awslabs/cli-agent-orchestrator](https://github.com/awslabs/cli-agent-orchestrator)) -- supervisor + workers in isolated tmux sessions, MCP for inter-agent comms.
+- **agtx** ([fynnfluegge/agtx](https://github.com/fynnfluegge/agtx)) -- kanban board + one git worktree + one tmux window per task; closest spiritual cousin to this design and it is already built.
+- **Batty** -- state-machine supervisor with zone-based tmux layout (architects/managers/engineers in columns), `pipe-pane` logging, `Active → Ready → Idle → PaneDead` FSM.
+- **vibe-switch** ([brianjhang/vibe-switch](https://github.com/brianjhang/vibe-switch)) -- tmux-backed multi-agent switcher for Codex/Gemini/Claude.
+- **IttyBitty** -- minimalist bash + tmux, Managers spawn Workers.
+- **Agent Orchestrator** ([ComposioHQ/agent-orchestrator](https://github.com/ComposioHQ/agent-orchestrator)) -- fleet mode: worktree per agent, CI auto-fix, PR-aware.
+- **claude-squad**, **crystal**, **clideck**, **multi-agent-shogun** -- all cataloged in [awesome-agent-orchestrators](https://github.com/andyrewlee/awesome-agent-orchestrators).
+- Background read: [How tmux Became the Runtime for AI Agent Teams](https://dev.to/battyterm/how-tmux-became-the-runtime-for-ai-agent-teams-gmi).
+
+### 9.3 Zellij-specific helpers (much smaller pool)
+
+- **claude-code-zellij-status** ([thoo/claude-code-zellij-status](https://github.com/thoo/claude-code-zellij-status)) -- zjstatus plugin streaming Claude activity across Zellij panes with color-coded status symbols. Directly applicable to v3's agent roster.
+- **zviewer** ([JosephPeters/zviewer](https://github.com/JosephPeters/zviewer)) -- web UI over Zellij sessions; "works for Claude Code, Gemini CLI, OpenCode."
+- Community **Zellij MCP server** -- session/pane/tab/plugin/layout management exposed over MCP, with an `llm_wrapper` that wraps `claude chat` with completion detection markers.
+
+### 9.4 Pi specifics that matter here
+
+- Pi is the minimal engine inside OpenClaw (~14K stars on `pi-mono`, ~160K on OpenClaw). Reference: Armin Ronacher's write-up ([Pi: The Minimal Agent Within OpenClaw](https://lucumr.pocoo.org/2026/1/31/pi/)), the [pi-mono README](https://github.com/badlogic/pi-mono), and the [setup gist](https://gist.github.com/schpet/85531b6a05a5d8119e859bdec6b0e0b8).
+- Config dir: `~/.pi/agent/` (override via `PI_CODING_AGENT_DIR`). Skills live under `~/.pi/agent/skills/`; MCP config at `~/.pi/agent/mcp.json`.
+- Three run modes: **Interactive** (default TUI), **Print** (`-p`, non-interactive stdout), and **RPC** (`--rpc`, headless JSON protocol on stdin/stdout for embedding in other applications). The RPC mode is the important hook for a custom Agent Manager: it sidesteps the Zellij-pane-PTY problem entirely because the manager owns the session, not a terminal pane.
+
+---
+
+## 10. Design assessment
+
+Honest read after comparing this design to the ecosystem:
+
+### What this design gets right
+
+- **Worktree-per-agent-task** is the dominant pattern (agtx, Composio, Batty all converge on it).
+- **`.agent/` as shared workspace state** is a pragmatic inter-agent coordination primitive that aligns with the MCP-based approaches in CAO and the Zellij MCP server.
+- **Separating roster/status from active pane** is the correct mental model, even if the implementation is unresolved.
+
+### Where this design swims upstream
+
+1. **Zellij is the minority choice for agent runtimes.** Every mature multi-agent cockpit runs on tmux. Claude Code's Agent Teams does not yet ship Zellij support. Choosing Zellij means building on the less-supported multiplexer for this specific use case and diverging from the ecosystem's muscle memory.
+2. **Micro is unusual in this stack.** The Zellij+Yazi community has standardized on Helix. Non-modal + mouse + tabs is Micro's real appeal, but it costs LSP and excludes the ready-made integration recipes (Yazi floating picker, `%{buffer_name}` bridging, Helix/Zellij keybinding deconflict).
+3. **The headline UX is the ecosystem's open problem, not a solved thing we're assembling.** "One pane, swap which agent you see" is exactly what the proposed Claude Code `CustomPaneBackend` is trying to standardize. Nobody has a clean Zellij solution today.
+4. **Pi's `--rpc` mode is not reflected in the architecture.** Section 4's v2 treats Pi as an interactive blob to wrap with dtach. A cleaner path is a custom TUI Agent Manager that speaks Pi RPC directly and owns sessions in-process -- no PTY swap required.
+
+### Three viable paths forward
+
+The "terminal IDE for humans" half (Zellij + Yazi + editor + fzf) can ship in days and is low-risk. The "multi-agent cockpit" half needs a call:
+
+1. **Stay on Zellij, commit to Pi RPC.** Build a bespoke Agent Manager TUI that speaks `pi --rpc` and renders the roster + active-agent view itself (no Zellij pane swap). Most original; most work. Matches this spec's existing bias.
+2. **Move the multi-agent half to tmux.** Inherit the mature ecosystem (agtx, CAO, claude-squad). Keep Zellij for the human-IDE workspace or drop it. Fastest to working; least original.
+3. **Wait on `CustomPaneBackend`.** Ship v0/v1 (single Pi terminal, static roster) on Zellij now, and defer v2+ until the Claude Code protocol lands. Cheapest; depends on upstream.
+
+Recommendation: split the spec into **Cockpit-IDE** (ships now, option-independent) and **Agent Manager** (gated on a path choice above). Pick option 1 only if building a bespoke TUI is the actual goal; otherwise 3 → 2 is the pragmatic default.
+
+### Concrete integrations worth borrowing regardless
+
+- Borrow Yazelix's Yazi-picks-file-then-opens-in-managed-editor recipe for section 8's first open question.
+- Port `claude-code-zellij-status`'s zjstatus role/status display to Pi for v3's roster.
+- Crib the `.agent/agents.json` schema from Claude Code's Agent Teams task list semantics (self-claim, peer unblock, direct peer messaging) rather than inventing one.
+
+---
+
+## 11. Current recommended v1
 
 Use this stack first:
 
@@ -882,7 +824,7 @@ Micro
 Yazi
 fzf + fd + ripgrep + bat
 Git for Windows
-Node.js LTS
+Node.js
 Pi
 ```
 
@@ -908,7 +850,7 @@ Micro receives opened files from Yazi/fzf
 
 ---
 
-## 10. Summary
+## 12. Summary
 
 The current idea is viable on Windows and should be portable to macOS.
 
