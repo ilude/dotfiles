@@ -323,3 +323,23 @@ current_step="Credential lockdown"
 # Lock down sensitive credential files
 [[ -f "$HOME/.claude/.credentials.json" ]] && chmod 600 "$HOME/.claude/.credentials.json"
 completed_steps+=("Credential lockdown")
+
+current_step="install.d hooks"
+# Run drop-in install.d/*.sh scripts in lexical order. Each script must be
+# idempotent; a nonzero exit is treated as a soft failure so one broken hook
+# does not brick the whole install.
+INSTALL_D="${BASEDIR}/install.d"
+if [[ -d "$INSTALL_D" ]]; then
+    export DOTFILES_ROOT="$BASEDIR"
+    shopt -s nullglob
+    for hook in "$INSTALL_D"/*.sh; do
+        [[ -f "$hook" ]] || continue
+        hook_name="$(basename "$hook")"
+        echo "Running install.d/$hook_name"
+        if ! bash "$hook"; then
+            echo "Warning: install.d/$hook_name exited $?; continuing" >&2
+        fi
+    done
+    shopt -u nullglob
+fi
+completed_steps+=("install.d hooks")

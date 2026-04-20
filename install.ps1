@@ -370,64 +370,27 @@ function Invoke-WingetConfigure {
 }
 
 function Remove-GitShellExtensions {
-    <#
-    .SYNOPSIS
-        Remove "Open Git GUI Here" and "Open Git Bash Here" context menu entries.
-    .DESCRIPTION
-        Git for Windows re-selects the ext\shellhere and ext\guihere Inno Setup
-        components on every (re)install, which recreates these registry keys.
-        WinGet's DSC WinGetPackage resource does not expose installer overrides
-        for /COMPONENTS, so the reliable fix is to delete the keys after
-        `winget configure` applies the Core group. Idempotent.
-    #>
-    # Target both HKLM (where Git installs by default) and HKCU (per-user
-    # install fallback). HKCR is a merged view; writes through it mis-route,
-    # so write to the backing hives directly. Remove-Item via the PowerShell
-    # registry provider throws on access denial (the .NET DeleteSubKeyTree
-    # API silently no-ops for non-admin writes to HKLM).
+    # Git for Windows re-adds "Open Git GUI/Bash Here" on every (re)install
+    # because the installer always selects ext\shellhere and ext\guihere.
+    # DSC can't pass /COMPONENTS overrides, so strip the keys post-apply.
+    # Requires admin (install.ps1 self-elevates).
     $paths = @(
         'HKLM:\Software\Classes\Directory\shell\git_gui',
         'HKLM:\Software\Classes\Directory\shell\git_shell',
         'HKLM:\Software\Classes\Directory\Background\shell\git_gui',
         'HKLM:\Software\Classes\Directory\Background\shell\git_shell',
         'HKLM:\Software\Classes\LibraryFolder\background\shell\git_gui',
-        'HKLM:\Software\Classes\LibraryFolder\background\shell\git_shell',
-        'HKCU:\Software\Classes\Directory\shell\git_gui',
-        'HKCU:\Software\Classes\Directory\shell\git_shell',
-        'HKCU:\Software\Classes\Directory\Background\shell\git_gui',
-        'HKCU:\Software\Classes\Directory\Background\shell\git_shell',
-        'HKCU:\Software\Classes\LibraryFolder\background\shell\git_gui',
-        'HKCU:\Software\Classes\LibraryFolder\background\shell\git_shell'
+        'HKLM:\Software\Classes\LibraryFolder\background\shell\git_shell'
     )
-
     $removed = 0
-    $failed = 0
     foreach ($p in $paths) {
         if (-not (Test-Path $p)) { continue }
-        try {
-            Remove-Item -Path $p -Recurse -Force -ErrorAction Stop
-        } catch {
-            Write-Host "  Failed to remove ${p}: $($_.Exception.Message)" -ForegroundColor Yellow
-            $failed++
-            continue
-        }
-        # Post-check: some Windows registry paths accept the call but don't
-        # actually delete (e.g., non-admin writes to HKLM get virtualized).
-        if (Test-Path $p) {
-            Write-Host "  Remove reported success but still present: $p (need elevation?)" -ForegroundColor Yellow
-            $failed++
-        } else {
-            $removed++
-        }
+        Remove-Item -Path $p -Recurse -Force -ErrorAction SilentlyContinue
+        if (-not (Test-Path $p)) { $removed++ }
     }
-
     if ($removed -gt 0) {
         Write-Host "  Removed $removed Git context-menu registry key(s)" -ForegroundColor Green
-    }
-    if ($failed -gt 0) {
-        Write-Host "  Failed to remove $failed key(s); rerun elevated to retry" -ForegroundColor Yellow
-    }
-    if ($removed -eq 0 -and $failed -eq 0) {
+    } else {
         Write-Host "  Git context-menu entries already absent" -ForegroundColor DarkGray
     }
 }
@@ -2072,6 +2035,29 @@ try {
     Write-Host "    git config --unset core.symlinks" -ForegroundColor White
     Write-Host "    git checkout -- <symlinked-files>" -ForegroundColor White
     Write-Host "  Or re-clone the repo." -ForegroundColor Yellow
+
+    # ========================================================================
+    # install.d hooks (drop-in self-heal / cleanup scripts)
+    # Each script must be idempotent. Nonzero/throwing scripts degrade to a
+    # warning so one broken hook does not brick the whole install.
+    # ========================================================================
+    $installD = Join-Path $PSScriptRoot 'install.d'
+    if (Test-Path $installD) {
+        $hooks = Get-ChildItem -Path $installD -Filter '*.ps1' -File |
+            Sort-Object Name
+        if ($hooks) {
+            Write-Host "`nRunning install.d hooks..." -ForegroundColor Cyan
+            foreach ($hook in $hooks) {
+                Write-Host "  install.d/$($hook.Name)" -ForegroundColor DarkCyan
+                try {
+                    & $hook.FullName -DotfilesRoot $PSScriptRoot
+                }
+                catch {
+                    Write-Warning "install.d/$($hook.Name) failed: $($_.Exception.Message); continuing"
+                }
+            }
+        }
+    }
 
     Write-Host "`nInstallation complete." -ForegroundColor Green
 
