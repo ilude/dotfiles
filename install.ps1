@@ -677,6 +677,67 @@ function New-WinGetLink {
     }
 }
 
+function Initialize-BunGlobalConfig {
+    # Pin Bun's global install dir so `bun install -g` never defaults to
+    # %USERPROFILE%. Without this, globals land in %USERPROFILE%\node_modules
+    # alongside any stray home-dir package.json, where a later `npm install`
+    # or `bun install` prunes packages not in that manifest. That pruning
+    # dangled the claude shim previously.
+    $globalDir    = Join-Path $env:USERPROFILE '.bun\install\global'
+    $globalBinDir = Join-Path $env:USERPROFILE '.bun\bin'
+    $bunfig       = Join-Path $env:USERPROFILE '.bunfig.toml'
+
+    New-Item -ItemType Directory -Path $globalDir -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -ItemType Directory -Path $globalBinDir -Force -ErrorAction SilentlyContinue | Out-Null
+
+    # Paths in bunfig use forward slashes (TOML-safe, works on Windows).
+    $globalDirToml    = ($globalDir -replace '\\', '/')
+    $globalBinDirToml = ($globalBinDir -replace '\\', '/')
+    $desired = @"
+[install]
+globalDir = "$globalDirToml"
+globalBinDir = "$globalBinDirToml"
+"@
+
+    $existing = if (Test-Path $bunfig) { Get-Content $bunfig -Raw } else { '' }
+    if ($existing.Trim() -ne $desired.Trim()) {
+        # Write BOM-less UTF-8. PS 5.1's `-Encoding UTF8` prepends a BOM,
+        # which Bun's TOML parser tolerates but some tools do not.
+        [System.IO.File]::WriteAllText($bunfig, $desired, [System.Text.UTF8Encoding]::new($false))
+        Write-Host "  .bunfig.toml: pinned globalDir to $globalDir" -ForegroundColor Green
+    } else {
+        Write-Host "  .bunfig.toml: already pinned" -ForegroundColor DarkGray
+    }
+
+    # Warn on the stray home-dir manifest/tree that caused the original break.
+    # Don't auto-delete: may contain user-intended installs.
+    $strayPkg = Join-Path $env:USERPROFILE 'package.json'
+    $strayNm  = Join-Path $env:USERPROFILE 'node_modules'
+    if ((Test-Path $strayPkg) -or (Test-Path $strayNm)) {
+        Write-Host "  WARNING: $env:USERPROFILE contains package.json and/or node_modules." -ForegroundColor Yellow
+        Write-Host "           These collide with Bun globals. Review and remove after confirming" -ForegroundColor Yellow
+        Write-Host "           nothing depends on them, then re-run this installer." -ForegroundColor Yellow
+    }
+}
+
+function Test-ClaudeSmoke {
+    # Verify claude actually launches after install. A stale shim pointing at
+    # a pruned node_modules will fail here -- that's the whole point.
+    $cmd = Get-Command claude -ErrorAction SilentlyContinue
+    if (-not $cmd) {
+        Write-Host "  claude: NOT on PATH" -ForegroundColor Red
+        $script:failed += 'claude-smoke:not-on-path'
+        return
+    }
+    $null = & $cmd.Source --version 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "  claude: smoke test ok ($($cmd.Source))" -ForegroundColor Green
+    } else {
+        Write-Host "  claude: FAILED to launch ($($cmd.Source), exit $LASTEXITCODE)" -ForegroundColor Red
+        $script:failed += 'claude-smoke:launch-failed'
+    }
+}
+
 function Install-Packages {
     param([switch]$Work, [switch]$Dev, [switch]$ITAdmin)
 
@@ -696,6 +757,11 @@ function Install-Packages {
     }
 
     $script:failed = @()
+
+    # Bun global isolation: pin globalDir/globalBinDir via ~/.bunfig.toml so
+    # `bun install -g` never writes into %USERPROFILE% (a stray package.json
+    # there causes pruning and dangling shims on subsequent installs).
+    Initialize-BunGlobalConfig
 
     # Update winget sources once (mitigates per-source agreement prompts)
     Write-Host "`nUpdating winget sources..." -ForegroundColor Cyan
@@ -1029,6 +1095,11 @@ function Install-Packages {
             }
         }
     }
+
+    # Smoke test: verify claude actually launches. Catches stale shims that
+    # point at pruned node_modules paths before the user hits them later.
+    Write-Host "`n--- Claude Code Smoke Test ---" -ForegroundColor Cyan
+    Test-ClaudeSmoke
 
     # Summary
     if ($script:failed.Count -eq 0) {
