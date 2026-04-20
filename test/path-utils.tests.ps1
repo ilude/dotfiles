@@ -155,4 +155,15 @@ Describe "Get-GitBash WSL filtering" {
         $result = Get-GitBash
         $result | Should BeNullOrEmpty
     }
+
+    It "should return null when only System32 bash is available" {
+        Mock Get-Command {
+            @(
+                [PSCustomObject]@{ Source = "C:\Windows\System32\bash.exe" }
+            )
+        }
+        Mock Test-Path { return $false }
+        $result = Get-GitBash
+        $result | Should BeNullOrEmpty
+    }
 }
