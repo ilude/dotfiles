@@ -380,30 +380,54 @@ function Remove-GitShellExtensions {
         for /COMPONENTS, so the reliable fix is to delete the keys after
         `winget configure` applies the Core group. Idempotent.
     #>
-    $keys = @(
-        'Registry::HKEY_CLASSES_ROOT\Directory\shell\git_gui',
-        'Registry::HKEY_CLASSES_ROOT\Directory\shell\git_shell',
-        'Registry::HKEY_CLASSES_ROOT\Directory\Background\shell\git_gui',
-        'Registry::HKEY_CLASSES_ROOT\Directory\Background\shell\git_shell',
-        'Registry::HKEY_CLASSES_ROOT\LibraryFolder\background\shell\git_gui',
-        'Registry::HKEY_CLASSES_ROOT\LibraryFolder\background\shell\git_shell'
+    # Target both HKLM (where Git installs by default) and HKCU (per-user
+    # install fallback). HKCR is a merged view; writes through it mis-route,
+    # so write to the backing hives directly. Remove-Item via the PowerShell
+    # registry provider throws on access denial (the .NET DeleteSubKeyTree
+    # API silently no-ops for non-admin writes to HKLM).
+    $paths = @(
+        'HKLM:\Software\Classes\Directory\shell\git_gui',
+        'HKLM:\Software\Classes\Directory\shell\git_shell',
+        'HKLM:\Software\Classes\Directory\Background\shell\git_gui',
+        'HKLM:\Software\Classes\Directory\Background\shell\git_shell',
+        'HKLM:\Software\Classes\LibraryFolder\background\shell\git_gui',
+        'HKLM:\Software\Classes\LibraryFolder\background\shell\git_shell',
+        'HKCU:\Software\Classes\Directory\shell\git_gui',
+        'HKCU:\Software\Classes\Directory\shell\git_shell',
+        'HKCU:\Software\Classes\Directory\Background\shell\git_gui',
+        'HKCU:\Software\Classes\Directory\Background\shell\git_shell',
+        'HKCU:\Software\Classes\LibraryFolder\background\shell\git_gui',
+        'HKCU:\Software\Classes\LibraryFolder\background\shell\git_shell'
     )
 
     $removed = 0
-    foreach ($key in $keys) {
-        if (Test-Path $key) {
-            try {
-                Remove-Item -Path $key -Recurse -Force -ErrorAction Stop
-                $removed++
-            } catch {
-                Write-Host "  Failed to remove ${key}: $_" -ForegroundColor Yellow
-            }
+    $failed = 0
+    foreach ($p in $paths) {
+        if (-not (Test-Path $p)) { continue }
+        try {
+            Remove-Item -Path $p -Recurse -Force -ErrorAction Stop
+        } catch {
+            Write-Host "  Failed to remove ${p}: $($_.Exception.Message)" -ForegroundColor Yellow
+            $failed++
+            continue
+        }
+        # Post-check: some Windows registry paths accept the call but don't
+        # actually delete (e.g., non-admin writes to HKLM get virtualized).
+        if (Test-Path $p) {
+            Write-Host "  Remove reported success but still present: $p (need elevation?)" -ForegroundColor Yellow
+            $failed++
+        } else {
+            $removed++
         }
     }
 
     if ($removed -gt 0) {
         Write-Host "  Removed $removed Git context-menu registry key(s)" -ForegroundColor Green
-    } else {
+    }
+    if ($failed -gt 0) {
+        Write-Host "  Failed to remove $failed key(s); rerun elevated to retry" -ForegroundColor Yellow
+    }
+    if ($removed -eq 0 -and $failed -eq 0) {
         Write-Host "  Git context-menu entries already absent" -ForegroundColor DarkGray
     }
 }
