@@ -346,5 +346,5 @@
   "specstory.cloudSync.enabled": "never",
   "workbench.editor.enablePreview": false,
   "claudeCode.preferredLocation": "panel",
-  "editor.accessibilitySupport": "on"
+  "editor.accessibilitySupport": "off"
 }
