@@ -178,4 +178,5 @@ Wave 2: T4 → V2
 - WSL mirroring is out of scope for v1 unless a concrete cross-platform need is established; do not add speculative WSL link plumbing.
 - If profile changes break shell startup during implementation, revert the added cockpit block first before broader debugging.
 - Preserve `.specs/zellij_micro_pi_windows_cockpit.md` as source research; this plan is the executable subset.
+- The follow-on UX/discoverability work inspired by Warp-like ergonomics is tracked separately in `.specs/zellij-cockpit-v1-1-ux/plan.md` so v1 implementation scope stays stable.
 - Deferred material that should not leak back into v1 implementation belongs in the companion `extra-notes.md` file for this slug.
