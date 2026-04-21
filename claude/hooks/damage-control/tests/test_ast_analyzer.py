@@ -9,6 +9,7 @@ import pytest
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import ast_analyzer
 from ast_analyzer import ASTAnalyzer, _check_tree_sitter
 
 
@@ -747,6 +748,50 @@ class TestEvalSourceDetection:
         result = analyzer.analyze_command_ast("source /tmp/script.sh", config)
         assert isinstance(result, dict)
         assert "decision" in result
+
+
+class TestPlatformAwarePatterns:
+    """Tests for platform-aware pattern handling in AST extraction."""
+
+    def test_platform_limited_pattern_skipped_on_non_matching_platform(self, monkeypatch):
+        """AST extraction respects YAML platforms metadata on non-Linux hosts."""
+        analyzer = ASTAnalyzer()
+        config = {
+            "bashToolPatterns": [
+                {
+                    "pattern": r"\bdocker\s+compose\s+down\b",
+                    "reason": "docker compose down",
+                    "ask": True,
+                    "platforms": ["linux"],
+                }
+            ]
+        }
+        compiled = analyzer._get_compiled_patterns(config)
+
+        monkeypatch.setattr(ast_analyzer.sys, "platform", "win32")
+        result = analyzer._check_extracted_commands(["docker compose down"], compiled)
+
+        assert result is None
+
+    def test_platform_limited_pattern_applies_on_matching_platform(self, monkeypatch):
+        """AST extraction still applies the same pattern on Linux."""
+        analyzer = ASTAnalyzer()
+        config = {
+            "bashToolPatterns": [
+                {
+                    "pattern": r"\bdocker\s+compose\s+down\b",
+                    "reason": "docker compose down",
+                    "ask": True,
+                    "platforms": ["linux"],
+                }
+            ]
+        }
+        compiled = analyzer._get_compiled_patterns(config)
+
+        monkeypatch.setattr(ast_analyzer.sys, "platform", "linux")
+        result = analyzer._check_extracted_commands(["docker compose down"], compiled)
+
+        assert result == {"decision": "ask", "reason": "docker compose down"}
 
 
 class TestTimeoutBehavior:

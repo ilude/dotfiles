@@ -15,6 +15,7 @@ Decision contract:
 """
 
 import re
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Any, Optional
@@ -56,6 +57,38 @@ def _check_tree_sitter() -> bool:
         return True
     except ImportError:
         return False
+
+
+def _normalized_platform_aliases() -> set[str]:
+    """Return current platform aliases understood by YAML pattern metadata."""
+    current = sys.platform.lower()
+    aliases = {current}
+    if current.startswith("linux"):
+        aliases.add("linux")
+    elif current == "darwin":
+        aliases.update({"macos", "mac", "osx"})
+    elif current in {"win32", "cygwin", "msys"}:
+        aliases.update({"windows", "win"})
+    return aliases
+
+
+def _pattern_applies_to_current_platform(item: dict[str, Any]) -> bool:
+    """Return True when a YAML pattern should apply on the current OS."""
+    aliases = _normalized_platform_aliases()
+
+    platforms = item.get("platforms")
+    if platforms:
+        wanted = {str(platform).lower() for platform in platforms}
+        if aliases.isdisjoint(wanted):
+            return False
+
+    excluded = item.get("exclude_platforms")
+    if excluded:
+        banned = {str(platform).lower() for platform in excluded}
+        if not aliases.isdisjoint(banned):
+            return False
+
+    return True
 
 
 class ASTAnalyzer:
@@ -151,7 +184,7 @@ class ASTAnalyzer:
         for cmd in commands:
             for item in compiled_patterns:
                 compiled_regex = item.get("compiled")
-                if not compiled_regex:
+                if not compiled_regex or not _pattern_applies_to_current_platform(item):
                     continue
                 try:
                     if compiled_regex.search(cmd):
