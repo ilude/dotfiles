@@ -339,6 +339,16 @@ function env {
   Get-ChildItem Env: | ForEach-Object { "$($_.Name)=$($_.Value)" }
 }
 
+function dps {
+  $lines = @(docker ps --format 'table {{.Names}}\t{{.ID}}\t{{.Image}}\t{{.RunningFor}}\t{{.State}}\t{{.Status}}')
+  if ($LASTEXITCODE -ne 0 -or -not $lines) {
+    return
+  }
+
+  $lines | Select-Object -First 1
+  $lines | Select-Object -Skip 1 | Sort-Object
+}
+
 function which {
   param(
     [Parameter(Mandatory=$true, Position=0)][string]$Command,
