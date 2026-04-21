@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# Seed repo-local Pi workflow files from ~/.dotfiles templates.
+#
+# Usage:
+#   ~/.dotfiles/scripts/pi-project-bootstrap --list
+#   ~/.dotfiles/scripts/pi-project-bootstrap /path/to/repo
+#   ~/.dotfiles/scripts/pi-project-bootstrap --template eisa-playwright-e2e /path/to/repo
+#   ~/.dotfiles/scripts/pi-project-bootstrap --force /path/to/repo
+
+set -euo pipefail
+
+DOTFILES_DIR="${HOME}/.dotfiles"
+TEMPLATES_DIR="${DOTFILES_DIR}/pi/project-templates"
+FORCE=0
+TEMPLATE_NAME=""
+TARGET_DIR=""
+
+usage() {
+    cat <<'EOF'
+Usage:
+  ~/.dotfiles/scripts/pi-project-bootstrap --list
+  ~/.dotfiles/scripts/pi-project-bootstrap [--force] [--template NAME] <target-dir>
+
+Behavior:
+  - Uses <target-dir>'s basename as the template name by default.
+  - Copies template contents into the target repo.
+  - Skips existing files unless --force is set.
+EOF
+}
+
+list_templates() {
+    if [[ ! -d "$TEMPLATES_DIR" ]]; then
+        echo "No project templates found at $TEMPLATES_DIR"
+        return 0
+    fi
+
+    find "$TEMPLATES_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort
+}
+
+copy_tree() {
+    local source_root="$1"
+    local target_root="$2"
+    local copied=0
+    local skipped=0
+
+    while IFS= read -r -d '' entry; do
+        local rel="${entry#${source_root}/}"
+        local dest="${target_root}/${rel}"
+
+        if [[ -d "$entry" ]]; then
+            mkdir -p "$dest"
+            continue
+        fi
+
+        mkdir -p "$(dirname "$dest")"
+
+        if [[ -e "$dest" && "$FORCE" -ne 1 ]]; then
+            echo "skip  $rel"
+            skipped=$((skipped + 1))
+            continue
+        fi
+
+        cp -p "$entry" "$dest"
+        echo "copy  $rel"
+        copied=$((copied + 1))
+    done < <(find "$source_root" -mindepth 1 -print0)
+
+    echo
+    echo "Template applied. copied=$copied skipped=$skipped target=$target_root"
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --list)
+            list_templates
+            exit 0
+            ;;
+        --force)
+            FORCE=1
+            shift
+            ;;
+        --template)
+            [[ $# -ge 2 ]] || { usage; exit 1; }
+            TEMPLATE_NAME="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        --)
+            shift
+            break
+            ;;
+        -*)
+            echo "Unknown option: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+        *)
+            if [[ -n "$TARGET_DIR" ]]; then
+                echo "Unexpected extra argument: $1" >&2
+                usage >&2
+                exit 1
+            fi
+            TARGET_DIR="$1"
+            shift
+            ;;
+    esac
+
+done
+
+if [[ -z "$TARGET_DIR" ]]; then
+    usage >&2
+    exit 1
+fi
+
+TARGET_DIR="$(cd "$TARGET_DIR" && pwd)"
+[[ -d "$TARGET_DIR" ]] || { echo "Target directory not found: $TARGET_DIR" >&2; exit 1; }
+
+if [[ -z "$TEMPLATE_NAME" ]]; then
+    TEMPLATE_NAME="$(basename "$TARGET_DIR")"
+fi
+
+SOURCE_DIR="${TEMPLATES_DIR}/${TEMPLATE_NAME}"
+[[ -d "$SOURCE_DIR" ]] || {
+    echo "Template not found: $SOURCE_DIR" >&2
+    echo "Available templates:" >&2
+    list_templates >&2 || true
+    exit 1
+}
+
+echo "Bootstrapping Pi project files"
+echo "  template: $TEMPLATE_NAME"
+echo "  source:   $SOURCE_DIR"
+echo "  target:   $TARGET_DIR"
+echo "  mode:     $([[ "$FORCE" -eq 1 ]] && echo force || echo safe-skip)"
+echo
+
+copy_tree "$SOURCE_DIR" "$TARGET_DIR"

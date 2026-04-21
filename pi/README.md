@@ -20,6 +20,25 @@ Pi is installed automatically by the dotfiles installer:
 
 This runs `bun install -g @mariozechner/pi-coding-agent` and `scripts/pi-link-setup` (which junctions `~/.dotfiles/pi/` → `~/.pi/agent/` on Windows, symlinks on Linux).
 
+### Project-local Pi bootstrap
+
+Some repos use ignored repo-local `.pi/` files for project-specific Pi workflows. Seed them from dotfiles templates with:
+
+```bash
+~/.dotfiles/scripts/pi-project-bootstrap --list
+~/.dotfiles/scripts/pi-project-bootstrap /path/to/repo
+# or explicitly
+~/.dotfiles/scripts/pi-project-bootstrap --template eisa-playwright-e2e /path/to/repo
+```
+
+Behavior:
+- defaults the template name to the target repo directory name
+- copies template contents into the repo root
+- skips existing files unless `--force` is passed
+
+Current template example:
+- `pi/project-templates/eisa-playwright-e2e/` seeds the ignored `.pi/` Playwright orchestrator files for the EISA E2E repo
+
 ### Manual install
 
 ```bash

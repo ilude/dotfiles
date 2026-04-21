@@ -202,10 +202,30 @@ Rules:
 - Use conventional commit subjects.
 - Keep descriptions specific and human.
 - If only one commit makes sense, return one group.
+- If you are uncertain, cannot infer a split, or think no split is justified, return one group containing all listed files.
+- You MUST return a non-empty plain-text response containing exactly one valid JSON object.
+- Never return an empty response.
 - Prefer no body unless it adds useful why/context.
 
 Commit planning context (JSON):
 ${JSON.stringify(payload, null, 2)}`;
+}
+
+function buildSingleGroupCommitPlan(
+	context: { files: string[]; diffStat: string; cachedStat: string; cachedDiff: string; hint: string },
+	warning?: string,
+): CommitPlan {
+	const message = proposeCommitMessage(context.files, context.hint, context.cachedDiff);
+	return {
+		groups: [
+			{
+				files: context.files,
+				subject: message.subject,
+				...(message.body ? { body: message.body } : {}),
+			},
+		],
+		warnings: warning ? [warning] : undefined,
+	};
 }
 
 async function generateCommitPlanWithLlm(
@@ -237,7 +257,7 @@ async function generateCommitPlanWithLlm(
 	);
 	const planText = extractAssistantText(response.content);
 	if (!planText.trim()) {
-		throw new Error("Commit planner returned no assistant text");
+		return buildSingleGroupCommitPlan(context, "Commit planner returned empty response; used single-commit fallback.");
 	}
 	const plan = parseCommitPlan(planText);
 	validateCommitPlan(plan, context.files);
@@ -832,10 +852,11 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("gitlab-ticket", {
-		description: "Generate a structured GitLab issue from context or description, review, then file via glab",
+		description: "Generate a structured GitLab issue, then optionally create an issue-numbered branch and draft MR",
 		handler: async (args, ctx) => {
 			const template = loadSkill("gitlab-ticket.md");
-			await pi.sendUserMessage(template + (args.trim() ? `\n\nArgs: ${args}` : ""));
+			const followOn = "\n\nFollow the full GitLab workflow in the skill: issue first, then if the user wants follow-on work, prefer an <issue-number>-<kebab-case-title> branch name and a draft MR by default.";
+			await pi.sendUserMessage(template + followOn + (args.trim() ? `\n\nArgs: ${args}` : ""));
 		},
 	});
 

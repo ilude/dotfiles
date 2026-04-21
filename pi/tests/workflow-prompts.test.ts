@@ -38,4 +38,12 @@ describe("workflow prompt contracts", () => {
 		expect(prompt).toContain("small/mini LLM");
 		expect(prompt).toContain("likely real secret");
 	});
+
+	it("/gitlab-ticket documents issue-numbered branch naming and draft MR follow-on", () => {
+		const prompt = readPrompt("skills/workflow/gitlab-ticket.md");
+		expect(prompt).toContain("<issue-number>-<kebab-case-title>");
+		expect(prompt).toContain("474-migrate-e2e-coverage-to-playwright");
+		expect(prompt).toContain("Default to a **draft** MR");
+		expect(prompt).toContain("Want me to create a branch and draft MR for this issue too?");
+	});
 });

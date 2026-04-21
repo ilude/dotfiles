@@ -84,6 +84,51 @@ After filing, ask once: "Want to add any labels?" If the user provides labels:
 glab issue update <number> --label "label1,label2" --hostname <hostname> -R <project/path>
 ```
 
+## Step 7: Branch naming + MR follow-on (optional)
+
+After labels are handled, ask once:
+
+```text
+Want me to create a branch and draft MR for this issue too?
+```
+
+If the user says yes:
+
+1. Use this branch naming convention:
+
+```text
+<issue-number>-<kebab-case-title>
+```
+
+Example:
+
+```text
+474-migrate-e2e-coverage-to-playwright
+```
+
+2. Prefer the issue-numbered branch even if the current working branch has a generic name. Reuse a nonconforming branch only if the user explicitly asks.
+3. Default to a **draft** MR unless the user explicitly asks for a ready MR.
+4. Prefer targeting the current feature's parent/integration branch when the user specifies one; otherwise use the repo's normal target branch.
+5. Always push the branch before creating the MR.
+
+Suggested commands:
+
+```bash
+git switch -c <issue-number>-<kebab-case-title>
+git push -u origin <issue-number>-<kebab-case-title>
+
+glab mr create \
+  --title "<title>" \
+  --description "<body>" \
+  --draft \
+  --source-branch <issue-number>-<kebab-case-title> \
+  --target-branch <target-branch> \
+  --hostname <hostname> \
+  -R <project/path>
+```
+
+If an MR already exists from a nonstandard branch, prefer creating the correctly named branch and a replacement MR, then offer to close the old MR/branch.
+
 ## Rules
 
 - Never add commentary outside the structured format in the issue body
@@ -92,3 +137,4 @@ glab issue update <number> --label "label1,label2" --hostname <hostname> -R <pro
 - Technical Design must reference the actual architecture (Angular components, C# controllers/services)
 - Always confirm with the user before filing
 - Always use `--hostname` with glab commands
+- For issue-linked follow-on work, prefer issue-numbered branch names and draft MRs by default
