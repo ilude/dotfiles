@@ -290,6 +290,8 @@ Session conversation logs: `~/.dotfiles/pi/multi-team/sessions/{session_id}/conv
 
 ## Skills
 
+Shared repo skills from `~/.dotfiles/claude/skills/` are referenced into `~/.dotfiles/pi/skills/shared/` so Pi can auto-discover the same `SKILL.md` packages without duplicating them.
+
 Community pi-skills installed at `~/.dotfiles/pi/skills/pi-skills/`:
 
 | Skill | Purpose |

@@ -224,7 +224,7 @@ function checkZeroAccess(canonical: string, patterns: string[]): { block: true; 
 
 function currentPlatformAliases(): Set<string> {
 	const current = process.platform;
-	const aliases = new Set([current]);
+	const aliases = new Set<string>([current]);
 	if (current === "linux") aliases.add("linux");
 	if (current === "darwin") {
 		aliases.add("macos");

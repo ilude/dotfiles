@@ -117,11 +117,11 @@ function pickBestModel<T extends ModelLike>(models: readonly T[], size: ModelSiz
 		.sort(compareScoredModels)[0]?.model;
 }
 
-function findExact(models: readonly ModelLike[], provider: string, id: string) {
+function findExact<T extends ModelLike>(models: readonly T[], provider: string, id: string): T | undefined {
 	return models.find((model) => model.provider === provider && model.id === id);
 }
 
-function findFirstMini(models: readonly ModelLike[], provider: string) {
+function findFirstMini<T extends ModelLike>(models: readonly T[], provider: string): T | undefined {
 	return models.find((model) => isProvider(model, provider) && isMiniModel(model));
 }
 
