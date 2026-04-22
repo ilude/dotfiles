@@ -17,8 +17,9 @@
     Include work-related packages (AWS, Helm, Terraform, etc.)
 
 .PARAMETER Dev
-    Include heavy developer toolchains (Docker Desktop, .NET SDKs, Node.js).
-    Without this flag, npm-based steps (pi-coding-agent, bats) will skip.
+    Include heavy developer toolchains (Docker Desktop, .NET SDKs).
+    Node.js now comes from the core package set so Windows can install Pi via npm.
+    Without this flag, heavy extras stay skipped.
 
 .PARAMETER ITAdmin
     Include IT Admin modules (Graph, ExchangeOnline, Az, etc.)
@@ -883,7 +884,7 @@ function Install-Packages {
         }
     }
 
-    # npm global packages (requires Node.js from -Dev packages)
+    # npm global packages for Node-based extras (Node.js comes from core packages)
     if (Get-Command npm -ErrorAction SilentlyContinue) {
         Write-Host "`n--- npm Global Packages ---" -ForegroundColor Cyan
         $npmPackages = @('bats')
@@ -904,7 +905,7 @@ function Install-Packages {
         }
     } else {
         Write-Host "`n--- npm Global Packages ---" -ForegroundColor DarkGray
-        Write-Host "  npm not found - skipping (rerun with -Dev for Node.js)" -ForegroundColor DarkGray
+        Write-Host "  npm not found - skipping (rerun installer after core packages finish)" -ForegroundColor DarkGray
     }
 
     # Claude Code (prefer Bun, fall back to WinGet)
@@ -1504,36 +1505,44 @@ try {
                 $env:PATH = "$bunBinDir;$env:PATH"
             }
 
-            $bunPi = Join-Path $bunBinDir 'pi'
-            $bunPiCmd = Get-Command $bunPi -ErrorAction SilentlyContinue
-            if ($bunPiCmd -or (Test-Path $bunPi) -or (Test-Path "${bunPi}.exe")) {
-                Write-Host "  pi-coding-agent: already installed via Bun" -ForegroundColor DarkGray
-            } else {
-                Write-Host "  Installing pi-coding-agent via Bun..." -ForegroundColor Cyan
-                bun install -g @mariozechner/pi-coding-agent
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Host "  pi-coding-agent: installed successfully" -ForegroundColor Green
-                } else {
-                    Write-Host "  pi-coding-agent: installation failed" -ForegroundColor Red
-                }
-            }
-
             if (Get-Command npm -ErrorAction SilentlyContinue) {
-                $legacyPi = npm list -g @mariozechner/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
-                if ($legacyPi) {
-                    Write-Host "  Removing legacy npm-installed pi-coding-agent..." -ForegroundColor DarkGray
-                    npm uninstall -g @mariozechner/pi-coding-agent 2>$null | Out-Null
+                $piInstalled = npm list -g @mariozechner/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
+                if ($piInstalled) {
+                    Write-Host "  pi-coding-agent: already installed via npm" -ForegroundColor DarkGray
+                } else {
+                    Write-Host "  Installing pi-coding-agent via npm..." -ForegroundColor Cyan
+                    npm install -g @mariozechner/pi-coding-agent
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Host "  pi-coding-agent: installed successfully via npm" -ForegroundColor Green
+                    } else {
+                        Write-Host "  pi-coding-agent: installation failed" -ForegroundColor Red
+                    }
+                }
+
+                $bunPi = Join-Path $bunBinDir 'pi'
+                $bunPiCmd = Get-Command $bunPi -ErrorAction SilentlyContinue
+                if ($bunPiCmd -or (Test-Path $bunPi) -or (Test-Path "${bunPi}.exe")) {
+                    Write-Host "  Removing legacy Bun-installed pi-coding-agent to keep npm on the latest Windows release path..." -ForegroundColor DarkGray
+                    bun uninstall -g @mariozechner/pi-coding-agent 2>$null | Out-Null
+                }
+            } else {
+                $bunPi = Join-Path $bunBinDir 'pi'
+                $bunPiCmd = Get-Command $bunPi -ErrorAction SilentlyContinue
+                if ($bunPiCmd -or (Test-Path $bunPi) -or (Test-Path "${bunPi}.exe")) {
+                    Write-Host "  pi-coding-agent: npm unavailable; retaining existing Bun install" -ForegroundColor Yellow
+                } else {
+                    Write-Host "  npm not found - skipping Pi installation (Windows keeps Pi on npm because Bun can lag latest Pi releases)" -ForegroundColor Yellow
                 }
             }
         } elseif (Get-Command npm -ErrorAction SilentlyContinue) {
             $piInstalled = npm list -g @mariozechner/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
             if ($piInstalled) {
-                Write-Host "  pi-coding-agent: already installed" -ForegroundColor DarkGray
+                Write-Host "  pi-coding-agent: already installed via npm" -ForegroundColor DarkGray
             } else {
-                Write-Host "  Installing pi-coding-agent via npm fallback..." -ForegroundColor Cyan
+                Write-Host "  Installing pi-coding-agent via npm..." -ForegroundColor Cyan
                 npm install -g @mariozechner/pi-coding-agent
                 if ($LASTEXITCODE -eq 0) {
-                    Write-Host "  pi-coding-agent: installed successfully" -ForegroundColor Green
+                    Write-Host "  pi-coding-agent: installed successfully via npm" -ForegroundColor Green
                 } else {
                     Write-Host "  pi-coding-agent: installation failed" -ForegroundColor Red
                 }
