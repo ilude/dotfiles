@@ -1,0 +1,4 @@
+jsonschema
+ruff
+pytest
+portalocker

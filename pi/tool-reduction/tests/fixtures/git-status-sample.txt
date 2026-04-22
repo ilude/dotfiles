@@ -1,0 +1,26 @@
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	new file:   pi/tool-reduction/pipeline.py
+	new file:   pi/tool-reduction/guards.py
+	new file:   pi/tool-reduction/corpus.py
+	new file:   pi/tool-reduction/scrub.py
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   pi/tool-reduction/reduce.py
+	modified:   home/.bashrc
+	modified:   home/.zshenv
+
+Untracked files:
+  (use "git status --show-stashed" to also view stashed changes)
+  (use "git add..." to track)
+	pi/tool-reduction/tests/
+	pi/tool-reduction/pyproject.toml
+	pi/tool-reduction/requirements.txt
+	.specs/pi-tool-reduction/
+
+no changes added to commit (use "git add" and/or "git commit -a")
