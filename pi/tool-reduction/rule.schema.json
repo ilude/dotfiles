@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tokenjuice.dev/schema/rule.json",
+  "title": "Tokenjuice Rule",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "family", "match"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "family": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "onEmpty": {
+      "type": "string",
+      "minLength": 1
+    },
+    "counterSource": {
+      "type": "string",
+      "enum": ["postKeep", "preKeep"]
+    },
+    "matchOutput": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["pattern", "message"],
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "minLength": 1
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          },
+          "flags": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "priority": {
+      "type": "number"
+    },
+    "match": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "toolNames": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "argv0": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "gitSubcommands": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "argvIncludes": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "argvIncludesAny": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "commandIncludes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "commandIncludesAny": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "filters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "skipPatterns": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "keepPatterns": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "transforms": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "stripAnsi": { "type": "boolean" },
+        "prettyPrintJson": { "type": "boolean" },
+        "dedupeAdjacent": { "type": "boolean" },
+        "trimEmptyEdges": { "type": "boolean" }
+      }
+    },
+    "summarize": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "head": { "type": "number" },
+        "tail": { "type": "number" }
+      }
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "preserveOnFailure": { "type": "boolean" },
+        "head": { "type": "number" },
+        "tail": { "type": "number" }
+      }
+    },
+    "counters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "pattern"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "pattern": {
+            "type": "string",
+            "minLength": 1
+          },
+          "flags": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
