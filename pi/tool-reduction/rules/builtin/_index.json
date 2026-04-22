@@ -1,0 +1,238 @@
+{
+  "argv0_to_files": {
+    "apt": [
+      "package/apt-install.json",
+      "package/apt-upgrade.json"
+    ],
+    "apt-get": [
+      "package/apt-install.json",
+      "package/apt-upgrade.json"
+    ],
+    "aws": [
+      "cloud/aws.json"
+    ],
+    "az": [
+      "cloud/az.json"
+    ],
+    "brew": [
+      "package/brew-install.json",
+      "package/brew-upgrade.json"
+    ],
+    "bun": [
+      "install/bun-install.json",
+      "tests/bun-test.json"
+    ],
+    "bunx": [
+      "tests/playwright.json"
+    ],
+    "cargo": [
+      "tests/cargo-test.json"
+    ],
+    "curl": [
+      "network/curl.json"
+    ],
+    "df": [
+      "system/df.json"
+    ],
+    "dig": [
+      "network/dig.json"
+    ],
+    "dnf": [
+      "package/dnf-install.json"
+    ],
+    "docker": [
+      "devops/docker-build.json",
+      "devops/docker-compose.json",
+      "devops/docker-images.json",
+      "devops/docker-logs.json",
+      "devops/docker-ps.json"
+    ],
+    "du": [
+      "system/du.json"
+    ],
+    "fd": [
+      "filesystem/fd.json"
+    ],
+    "fdfind": [
+      "filesystem/fd.json"
+    ],
+    "ffmpeg": [
+      "media/ffmpeg.json"
+    ],
+    "file": [
+      "system/file.json"
+    ],
+    "find": [
+      "filesystem/find.json"
+    ],
+    "fly": [
+      "cloud/flyctl.json"
+    ],
+    "flyctl": [
+      "cloud/flyctl.json"
+    ],
+    "free": [
+      "observability/free.json"
+    ],
+    "gcloud": [
+      "cloud/gcloud.json"
+    ],
+    "gh": [
+      "cloud/gh.json"
+    ],
+    "git": [
+      "filesystem/git-ls-files.json",
+      "git/branch.json",
+      "git/diff-name-only.json",
+      "git/diff-stat.json",
+      "git/log-oneline.json",
+      "git/remote-v.json",
+      "git/show.json",
+      "git/stash-list.json",
+      "git/status.json",
+      "git/worktree-list.json",
+      "search/git-grep.json"
+    ],
+    "go": [
+      "tests/go-test.json"
+    ],
+    "grep": [
+      "search/grep.json"
+    ],
+    "htop": [
+      "observability/htop.json"
+    ],
+    "iostat": [
+      "observability/iostat.json"
+    ],
+    "journalctl": [
+      "service/journalctl.json"
+    ],
+    "just": [
+      "task/just.json"
+    ],
+    "kubectl": [
+      "devops/kubectl-describe.json",
+      "devops/kubectl-get.json",
+      "devops/kubectl-logs.json"
+    ],
+    "launchctl": [
+      "service/launchctl.json"
+    ],
+    "ls": [
+      "filesystem/ls.json"
+    ],
+    "lsof": [
+      "service/lsof.json"
+    ],
+    "make": [
+      "task/make.json"
+    ],
+    "mediainfo": [
+      "media/mediainfo.json"
+    ],
+    "mongosh": [
+      "database/mongosh.json"
+    ],
+    "mysql": [
+      "database/mysql.json"
+    ],
+    "netstat": [
+      "service/netstat.json"
+    ],
+    "npm": [
+      "install/npm-ci.json",
+      "install/npm-install.json",
+      "tests/npm-test.json",
+      "tests/playwright.json"
+    ],
+    "npx": [
+      "tests/playwright.json"
+    ],
+    "nslookup": [
+      "network/nslookup.json"
+    ],
+    "ping": [
+      "network/ping.json"
+    ],
+    "playwright": [
+      "tests/playwright.json"
+    ],
+    "pnpm": [
+      "build/pnpm-build.json",
+      "install/pnpm-install.json",
+      "tests/playwright.json",
+      "tests/pnpm-test.json"
+    ],
+    "ps": [
+      "system/ps.json"
+    ],
+    "psql": [
+      "database/psql.json"
+    ],
+    "redis-cli": [
+      "database/redis-cli.json"
+    ],
+    "rg": [
+      "filesystem/rg-files.json",
+      "search/rg.json"
+    ],
+    "rsync": [
+      "transfer/rsync.json"
+    ],
+    "scp": [
+      "transfer/scp.json"
+    ],
+    "service": [
+      "service/service.json"
+    ],
+    "sqlite3": [
+      "database/sqlite3.json"
+    ],
+    "ss": [
+      "service/ss.json"
+    ],
+    "ssh": [
+      "network/ssh.json"
+    ],
+    "swift": [
+      "build/swift-build.json",
+      "tests/swift-test.json"
+    ],
+    "systemctl": [
+      "service/systemctl-status.json"
+    ],
+    "tar": [
+      "archive/tar.json"
+    ],
+    "top": [
+      "observability/top.json"
+    ],
+    "traceroute": [
+      "network/traceroute.json"
+    ],
+    "unzip": [
+      "archive/unzip.json"
+    ],
+    "vercel": [
+      "cloud/vercel.json"
+    ],
+    "vmstat": [
+      "observability/vmstat.json"
+    ],
+    "wget": [
+      "network/wget.json"
+    ],
+    "yarn": [
+      "install/yarn-install.json",
+      "tests/playwright.json",
+      "tests/yarn-test.json"
+    ],
+    "yum": [
+      "package/yum-install.json"
+    ],
+    "zip": [
+      "archive/zip.json"
+    ]
+  }
+}
