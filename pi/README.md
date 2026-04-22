@@ -18,7 +18,15 @@ Pi is installed automatically by the dotfiles installer:
 ~/.dotfiles/install.ps1
 ```
 
-This runs `bun install -g @mariozechner/pi-coding-agent` and `scripts/pi-link-setup` (which junctions `~/.dotfiles/pi/` → `~/.pi/agent/` on Windows, symlinks on Linux).
+On Linux, macOS, and Git Bash, this uses `bun install -g @mariozechner/pi-coding-agent`. On Windows, `install.ps1` installs Pi via `npm install -g @mariozechner/pi-coding-agent`, then runs `scripts/pi-link-setup` (which junctions `~/.dotfiles/pi/` → `~/.pi/agent/` on Windows, symlinks on Linux).
+
+### Windows package-manager note
+
+Windows intentionally keeps Pi on **npm**, not Bun, for now.
+
+Reason: Bun currently limits Windows to older Pi installs because `bun install -g @mariozechner/pi-coding-agent` fails to resolve the latest Pi dependency graph cleanly. In local verification, Bun failed on transitive AWS SDK packages even though those versions exist on npm. Using npm keeps Windows on the current/latest Pi release path instead of getting stranded behind.
+
+Bun is still installed on Windows for other JS tooling in this repo; this note only applies to the global `pi` package.
 
 ### Project-local Pi bootstrap
 
@@ -42,7 +50,12 @@ Current template example:
 ### Manual install
 
 ```bash
+# Linux / macOS / Git Bash
 bun install -g @mariozechner/pi-coding-agent
+~/.dotfiles/scripts/pi-link-setup
+
+# Windows PowerShell
+npm install -g @mariozechner/pi-coding-agent
 ~/.dotfiles/scripts/pi-link-setup
 ```
 
@@ -74,7 +87,7 @@ All recipes live in `~/.dotfiles/pi/justfile`. Run from any directory with `just
 ```bash
 cd ~/.dotfiles/pi
 
-just          # default — Pi with all auto-discovered extensions
+just          # default -- Pi with all auto-discovered extensions
 just solo     # bare Pi, no extensions
 just safe     # damage-control only (safety rules)
 just chain    # damage-control + plan-build-review pipeline
@@ -101,11 +114,11 @@ Seven TypeScript extensions live in `~/.dotfiles/pi/extensions/` and are auto-di
 
 Intercepts tool calls and blocks dangerous operations before they execute.
 
-- **Dangerous commands** — blocks `rm -rf`, `git reset --hard`, `dd if=`, etc.
-- **Zero-access paths** — blocks read/write to `~/.ssh/*`, `*.pem`, `*.key`, `.env`
-- **No-delete paths** — protects `package.json`, `Makefile`, `pyproject.toml`
+- **Dangerous commands** -- blocks `rm -rf`, `git reset --hard`, `dd if=`, etc.
+- **Zero-access paths** -- blocks read/write to `~/.ssh/*`, `*.pem`, `*.key`, `.env`
+- **No-delete paths** -- protects `package.json`, `Makefile`, `pyproject.toml`
 
-Rules file: `~/.dotfiles/pi/damage-control-rules.yaml` — edit to customize.
+Rules file: `~/.dotfiles/pi/damage-control-rules.yaml` -- edit to customize.
 
 ### `agent-chain.ts`
 
@@ -118,9 +131,9 @@ Implements the plan-build-review pipeline and the expertise system.
 Sequences planner → builder → reviewer agents. Each agent's output feeds the next.
 
 **Tools registered for agents:**
-- `append_expertise` — appends a discovery to `{agent}-expertise-log.jsonl`
-- `read_expertise` — reads all accumulated discoveries for an agent
-- `log_exchange` — records messages to the session `conversation.jsonl`
+- `append_expertise` -- appends a discovery to `{agent}-expertise-log.jsonl` (append-only source of truth)
+- `read_expertise` -- reads the compact expertise snapshot / mental model for an agent, rebuilding from raw history if needed
+- `log_exchange` -- records messages to the session `conversation.jsonl`
 
 ### `agent-team.ts`
 
@@ -136,14 +149,14 @@ Dispatcher pattern routing work to specialist team leads.
 
 Intercepts tool results for write and edit operations, runs the appropriate linter for the file's language, and prepends a warning if the linter fails.
 
-Validators are configured in `~/.dotfiles/claude/hooks/quality-validation/validators.yaml` — shared with the Claude Code quality-validation hook.
+Validators are configured in `~/.dotfiles/claude/hooks/quality-validation/validators.yaml` -- shared with the Claude Code quality-validation hook.
 
 ### `session-hooks.ts`
 
 Runs lifecycle actions at session boundaries:
 
-- **session_start** — runs `git fetch` and notifies if the branch is behind remote
-- **session_shutdown** — archives the session conversation log to `~/.pi/agent/history/YYYY-MM-DD-<sessionId>.jsonl`
+- **session_start** -- runs `git fetch` and notifies if the branch is behind remote
+- **session_shutdown** -- archives the session conversation log to `~/.pi/agent/history/YYYY-MM-DD-<sessionId>.jsonl`
 
 ### `commit-guard.ts`
 
@@ -295,13 +308,146 @@ Team configuration: `~/.dotfiles/pi/agents/teams.yaml`
 
 ### Knowledge Compounding
 
-Each agent maintains a YAML expertise file (their mental model):
+Each agent maintains a two-layer expertise system: a **global layer** (reusable cross-project
+knowledge) and a **project-local layer** (repo-scoped knowledge keyed by a deterministic
+compact repo ID).
 
-```
-~/.dotfiles/pi/multi-team/expertise/{agent}-mental-model.yaml
+Full layering spec: `pi/docs/expertise-layering.md`
+
+#### Storage layout
+
+```text
+~/.pi/agent/multi-team/expertise/
+  {agent}-expertise-log.jsonl          # global layer (append-only source of truth)
+  {agent}-mental-model.json            # global snapshot
+  {agent}-mental-model.state.json      # global snapshot state
+  {repo-id-slug}/                      # project-local layer (one dir per repo)
+    repo-id.json                       # persisted remote identity for drift detection
+    {agent}-expertise-log.jsonl        # project-local log
+    {agent}-mental-model.json          # project-local snapshot
+    {agent}-mental-model.state.json    # project-local snapshot state
 ```
 
-At task start, an agent reads its expertise file to recall what it already knows. After completing work, it appends new discoveries via `append_expertise` (JSONL — safe for concurrent agents). Knowledge compounds across sessions — Session 20 is smarter than Session 1.
+#### Remote precedence
+
+The repo ID slug is derived from the canonical remote, selected in this order:
+
+1. Configured `preferredRemote` in `.pi/settings.json` (if set and present)
+2. `origin` (if it exists)
+3. Lexically-first remote name (deterministic fallback)
+4. No-remote fallback: `local/<cwd-slug>` (git repo with no remotes)
+5. Non-git fallback: slug `global` (expertise goes to global layer only)
+
+#### Compact repo ID format
+
+Short provider-prefix slugs: `gh/owner/repo`, `gl/group/subgroup/repo`, `bb/owner/repo`,
+`az/org/project/repo`, `ext/example.com/owner/repo`. Supports HTTPS, SSH, and SCP-style
+remotes. Handles nested GitLab groups, optional ports, and `.git` suffix stripping.
+
+Windows normalization rules (reserved names, case-folding, trailing dots/spaces,
+path-length pressure, deterministic hash suffix on collision) are applied to all slugs.
+See decision tables in `pi/docs/expertise-layering.md`.
+
+#### Read semantics: project-local first
+
+`read_expertise` merges both layers with project-local first, then global appended after
+deduplication. Dedupe/conflict precedence: project-local wins on matching summary keys.
+Global entries that duplicate a project-local entry are suppressed from the rendered output
+(not deleted from disk). This reduces cross-project pollution without losing reusable global
+knowledge.
+
+See `pi/docs/expertise-layering.md` for the full dedupe/conflict rule table.
+
+#### Write semantics
+
+Inside a git repo (and not `sensitive_repo`): `append_expertise` writes to the project-local
+layer. Outside a git repo, or when `sensitive_repo: true` is set: writes go to the global
+layer.
+
+#### Migration: mixed legacy global state
+
+Existing global `{agent}-expertise-log.jsonl` files are never moved or deleted. They remain
+the global layer permanently. No manual migration is required -- `read_expertise` dual-reads
+both layers from the first session after deployment.
+
+#### Drift and rename handling
+
+If the repo remote URL or `preferredRemote` config changes, the derived repo ID slug may
+drift. Drift is detected via `repo-id.json`. On drift: old directory is kept as a read-only
+dual-read source; new writes go to the new slug directory. No expertise is silently orphaned.
+
+#### Safety
+
+- **Secret redaction**: entries matching API key / private key / high-entropy secret patterns
+  are blocked at write time. The entire entry is rejected; no partial write.
+- **Sensitive-repo disable**: `sensitive_repo: true` in `.pi/settings.json` or
+  `SENSITIVE_REPO=true` routes all writes to the global layer and disables project-local reads.
+- **Snapshot invalidation**: any new append marks the snapshot stale; rebuilt synchronously
+  on the next `read_expertise` call. Last-known-good snapshot retained on rebuild failure.
+
+The JSONL log is the append-only source of truth. Every `append_expertise` call adds a
+historical record there and never rewrites prior entries. The mental-model snapshot is a
+derived, compact view used by `read_expertise` so agents recall durable knowledge without
+replaying the entire raw history every session.
+
+At task start, an agent reads its mental model to recall what it already knows. If the
+snapshot is missing, stale, or a prior rebuild failed, `read_expertise` must rebuild or
+return the documented safe fallback instead of silently returning misleading stale state.
+Knowledge compounds across sessions -- Session 20 is smarter than Session 1.
+
+#### Optional provider-gated similarity policy
+
+The expertise snapshot remains **deterministic by default**. Any future model-assisted similarity pass is optional, **disabled by default**, and must run only inside the synchronous snapshot rebuild path -- never as background orchestration.
+
+Reserved config surface for that future path:
+- feature flag: `expertise_similarity.enabled=false` by default
+- provider/model selection: `expertise_similarity.provider`, `expertise_similarity.model`
+- bounded execution: `expertise_similarity.timeout_ms`
+- merge acceptance gate: `expertise_similarity.min_confidence`
+
+To enable it locally, add an `expertise_similarity` block to `~/.pi/agent/settings.json`. Example:
+
+```json
+{
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-5.4",
+  "defaultThinkingLevel": "medium",
+  "expertise_similarity": {
+    "enabled": true,
+    "provider": "openai-codex",
+    "model": "gpt-5.4-mini",
+    "timeout_ms": 3000,
+    "min_confidence": 0.75
+  }
+}
+```
+
+Notes:
+- `expertise_similarity.enabled` must be `true` or the tie-breaker stays off.
+- The configured provider/model must exist in Pi's model registry and have working auth.
+- If the provider is unavailable, times out, returns malformed JSON, omits required fields, or returns low confidence, rebuilds still fall back to deterministic compaction.
+- Provider-assisted merges are annotated in the snapshot with provenance metadata (`merge_metadata.method`, confidence, merged-from count).
+- Snapshot rebuilds also record similarity usage stats (`attempted`, `merged`, `kept_separate`, `skipped_for_low_confidence`, `malformed`, `failed`) plus an activation reason.
+
+Troubleshooting when enabled but not active:
+- `reason=disabled` → feature flag is off.
+- `reason=missing_provider` / `missing_model` → config is incomplete.
+- `reason=registry_unavailable` → current read path does not have a model registry available.
+- `reason=model_not_found` → Pi cannot resolve that provider/model pair.
+- `reason=auth_unavailable` → the provider exists, but Pi has no usable auth.
+- `reason=ready` with zero attempts → the feature is configured correctly, but no ambiguous `observation` / `pattern` / `open_question` candidates were found in that rebuild.
+
+Debug surfaces:
+- `read_expertise` tool results now include a `details.similarity` object with the activation reason and usage counters.
+- The rendered snapshot text now includes a one-line similarity status summary for quick inspection.
+
+Safety contract:
+- Raw JSONL remains the source of truth; no provider pass may mutate or delete history.
+- Deterministic pre-grouping must narrow candidates before any model call.
+- Only `observation`, `pattern`, and `open_question` are eligible unless the docs explicitly expand the allowlist later.
+- `strong_decision` and `key_file` are prohibited from model-assisted similarity.
+- Low-confidence results, scores below the configured threshold, provider unavailability, rate limits, malformed responses, or timeout must all fall back to deterministic compaction.
+- Deterministic compaction remains both the default path and the required fallback path.
 
 Session conversation logs: `~/.dotfiles/pi/multi-team/sessions/{session_id}/conversation.jsonl`
 
@@ -324,7 +470,7 @@ Community pi-skills installed at `~/.dotfiles/pi/skills/pi-skills/`:
 | `transcribe` | Audio transcription |
 | `vscode` | VS Code integration |
 
-Skills are SKILL.md files — read them to activate their guidance and tools.
+Skills are SKILL.md files -- read them to activate their guidance and tools.
 
 ---
 
@@ -367,9 +513,12 @@ just full
 ### Inspect expertise (what agents know)
 
 ```bash
-cat ~/.pi/agent/multi-team/expertise/backend-dev-mental-model.yaml
+cat ~/.pi/agent/multi-team/expertise/backend-dev-mental-model.json
+cat ~/.pi/agent/multi-team/expertise/backend-dev-expertise-log.jsonl
 # Or from within Pi, ask an agent to read_expertise
 ```
+
+`read_expertise` should prefer the compact snapshot when it is fresh. If the snapshot is missing, stale, or the last rebuild failed, it must rebuild or return the documented safe fallback rather than silently using outdated knowledge.
 
 ### Reset expertise for an agent
 

@@ -2,5 +2,12 @@
   "defaultModel": "gpt-5.4",
   "lastChangelogVersion": "0.68.0",
   "defaultProvider": "github-copilot",
-  "defaultThinkingLevel": "medium"
+  "defaultThinkingLevel": "medium",
+  "expertise_similarity": {
+    "enabled": true,
+    "provider": "openai-codex",
+    "model": "gpt-5.4-mini",
+    "timeout_ms": 3000,
+    "min_confidence": 0.75
+  }
 }

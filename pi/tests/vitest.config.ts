@@ -16,7 +16,9 @@ function resolvePiNodeModules() {
     path.join(process.env.APPDATA || "", "npm/node_modules"),
   ].filter(Boolean);
 
-  const match = candidates.find((candidate) => fs.existsSync(candidate));
+  const match = candidates.find((candidate) =>
+    fs.existsSync(path.join(candidate, "@mariozechner", "pi-coding-agent"))
+  );
   if (!match) {
     throw new Error(
       `Could not locate pi-coding-agent node_modules. Checked: ${candidates.join(", ")}`
@@ -25,8 +27,11 @@ function resolvePiNodeModules() {
   return match;
 }
 
-const piNodeModules = resolvePiNodeModules();
-const piPackageRoot = path.join(piNodeModules, "@mariozechner/pi-coding-agent");
+const globalNodeModules = resolvePiNodeModules();
+const piPackageRoot = path.join(globalNodeModules, "@mariozechner/pi-coding-agent");
+const piNodeModules = fs.existsSync(path.join(piPackageRoot, "node_modules"))
+  ? path.join(piPackageRoot, "node_modules")
+  : globalNodeModules;
 
 export default defineConfig({
   root: agentDir,
@@ -44,6 +49,7 @@ export default defineConfig({
     environment: "node",
     include: ["tests/**/*.test.ts"],
     mockReset: true,
+    hookTimeout: 30000,
     coverage: {
       provider: "v8",
       include: [
@@ -54,6 +60,7 @@ export default defineConfig({
         "extensions/todo.ts",
         "extensions/workflow-commands.ts",
         "extensions/prompt-router.ts",
+        "extensions/agent-chain.ts",
         "lib/model-routing.ts",
       ],
       reportsDirectory: "tests/coverage",
