@@ -1,9 +1,9 @@
 /**
  * Agent Chain Extension
  *
- * Implements the expertise file system — the core mechanism for knowledge compounding.
+ * Implements the expertise file system -- the core mechanism for knowledge compounding.
  * Agents append discoveries to per-agent JSONL logs (safe for concurrent use), and read
- * their expertise YAML at task start via the mental-model skill.
+ * a derived compact mental-model snapshot at task start via the mental-model skill.
  *
  * Registers:
  *   - /chain command: sequentially runs planner → builder → reviewer agents
@@ -14,8 +14,29 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Type } from "@mariozechner/pi-ai";
+import { completeSimple, Type } from "@mariozechner/pi-ai";
 import { type ExtensionAPI, withFileMutationQueue } from "@mariozechner/pi-coding-agent";
+import {
+	type ExpertiseRecord,
+	type ExpertiseSnapshot,
+	type ExpertiseSnapshotState,
+	type ExpertiseSimilarityConfig,
+	type SimilarityCandidate,
+	type SimilarityDecision,
+	buildExpertiseSnapshot,
+	createDirtyState,
+	createReadyState,
+	formatExpertiseSnapshotText,
+	formatRawExpertiseFallback,
+	isSnapshotFresh,
+	readJsonFile,
+} from "../lib/expertise-snapshot";
+import {
+	type RepoId,
+	type RepoIdMeta,
+	checkRepoDrift,
+	deriveRepoId,
+} from "../lib/repo-id";
 
 // Resolve the multi-team directory relative to the Pi agent dir (~/.pi/agent)
 function getMultiTeamDir(): string {
@@ -33,30 +54,534 @@ async function appendJsonl(filePath: string, record: object): Promise<void> {
 }
 
 // Read all JSONL records from a file (returns [] if file doesn't exist)
-async function readJsonl(filePath: string): Promise<object[]> {
+async function readJsonl(filePath: string): Promise<ExpertiseRecord[]> {
 	try {
 		const content = await fs.promises.readFile(filePath, "utf-8");
 		return content
 			.split("\n")
-			.filter((l) => l.trim())
-			.map((l) => JSON.parse(l));
+			.filter((line) => line.trim())
+			.flatMap((line) => {
+				try {
+					return [JSON.parse(line) as ExpertiseRecord];
+				} catch {
+					return [];
+				}
+			});
 	} catch {
 		return [];
 	}
+}
+
+function getExpertisePaths(multiTeamDir: string, agent: string) {
+	const expertiseDir = path.join(multiTeamDir, "expertise");
+	return {
+		expertiseDir,
+		logPath: path.join(expertiseDir, `${agent}-expertise-log.jsonl`),
+		snapshotPath: path.join(expertiseDir, `${agent}-mental-model.json`),
+		statePath: path.join(expertiseDir, `${agent}-mental-model.state.json`),
+	};
+}
+
+function getLayerPaths(expertiseDir: string, agent: string, slug: string) {
+	const layerDir = path.join(expertiseDir, ...slug.split("/"));
+	return {
+		expertiseDir: layerDir,
+		layerDir,
+		logPath: path.join(layerDir, `${agent}-expertise-log.jsonl`),
+		snapshotPath: path.join(layerDir, `${agent}-mental-model.json`),
+		statePath: path.join(layerDir, `${agent}-mental-model.state.json`),
+		metaPath: path.join(layerDir, "repo-id.json"),
+	};
+}
+
+function findGitRoot(startDir: string): string | null {
+	let current = path.resolve(startDir);
+	const root = path.parse(current).root;
+	while (true) {
+		if (fs.existsSync(path.join(current, ".git"))) return current;
+		if (current === root) return null;
+		const parent = path.dirname(current);
+		if (parent === current) return null;
+		current = parent;
+	}
+}
+
+function parseGitConfigRemotes(gitRoot: string): Map<string, string> {
+	const remotes = new Map<string, string>();
+	const configPath = path.join(gitRoot, ".git", "config");
+	let content: string;
+	try {
+		content = fs.readFileSync(configPath, "utf-8");
+	} catch {
+		return remotes;
+	}
+	const lines = content.split(/\r?\n/);
+	let currentRemote: string | null = null;
+	for (const line of lines) {
+		const sectionMatch = line.match(/^\s*\[remote\s+"([^"]+)"\]\s*$/);
+		if (sectionMatch) {
+			currentRemote = sectionMatch[1];
+			continue;
+		}
+		if (/^\s*\[/.test(line)) {
+			currentRemote = null;
+			continue;
+		}
+		if (currentRemote) {
+			const urlMatch = line.match(/^\s*url\s*=\s*(.+?)\s*$/);
+			if (urlMatch) remotes.set(currentRemote, urlMatch[1]);
+		}
+	}
+	return remotes;
+}
+
+interface RepoSettings {
+	preferredRemote?: string;
+	sensitiveRepo: boolean;
+}
+
+function readRepoSettings(gitRoot: string): RepoSettings {
+	const settings: RepoSettings = { sensitiveRepo: false };
+	const settingsPath = path.join(gitRoot, ".pi", "settings.json");
+	try {
+		const raw = JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as Record<string, unknown>;
+		if (typeof raw.preferredRemote === "string") settings.preferredRemote = raw.preferredRemote;
+		if (raw.sensitive_repo === true || raw.sensitiveRepo === true) settings.sensitiveRepo = true;
+	} catch {
+		// no settings file
+	}
+	if (process.env.SENSITIVE_REPO && /^(1|true|yes|on)$/i.test(process.env.SENSITIVE_REPO)) {
+		settings.sensitiveRepo = true;
+	}
+	return settings;
+}
+
+interface ResolvedLayer {
+	mode: "global" | "project-local";
+	repoId?: RepoId;
+	gitRoot?: string;
+	sensitiveRepo: boolean;
+}
+
+function findDriftedLayer(
+	expertiseDir: string,
+	currentRepoId: RepoId,
+	agent: string,
+): { paths: ReturnType<typeof getLayerPaths>; previousSlug: string } | null {
+	// Walk slug-shaped subdirectories; pick the one whose repo-id.json matches
+	// the current remote URL but has a different slug. Conservative: only
+	// dual-read when both the remote URL is identical and the slug differs.
+	if (!currentRepoId.selectedRemoteUrl) return null;
+	const candidates = collectSlugDirs(expertiseDir);
+	for (const slug of candidates) {
+		if (slug === currentRepoId.slug) continue;
+		const layerPaths = getLayerPaths(expertiseDir, agent, slug);
+		const meta = readJsonFile<RepoIdMeta>(layerPaths.metaPath);
+		if (!meta) continue;
+		const drift = checkRepoDrift(meta, currentRepoId);
+		if (!drift.drifted) continue;
+		if (meta.remoteUrl && meta.remoteUrl !== currentRepoId.selectedRemoteUrl) continue;
+		return { paths: layerPaths, previousSlug: meta.slug };
+	}
+	// Fallback: when current layer has no metadata yet (new slug first session),
+	// any sibling slug dir with matching remoteUrl indicates drift.
+	for (const slug of candidates) {
+		if (slug === currentRepoId.slug) continue;
+		const layerPaths = getLayerPaths(expertiseDir, agent, slug);
+		if (!fs.existsSync(layerPaths.logPath)) continue;
+		// In absence of metadata pointers, treat sibling project-local layers as
+		// drift candidates if no metadata says otherwise. This keeps L8 dual-read
+		// safe even before the metadata file has been written.
+		return { paths: layerPaths, previousSlug: slug };
+	}
+	return null;
+}
+
+function collectSlugDirs(expertiseDir: string): string[] {
+	if (!fs.existsSync(expertiseDir)) return [];
+	const out: string[] = [];
+	const knownPrefixes = ["gh", "gl", "bb", "az", "ext", "local"];
+	for (const prefix of knownPrefixes) {
+		const prefixDir = path.join(expertiseDir, prefix);
+		if (!fs.existsSync(prefixDir)) continue;
+		walkSlugLevel(expertiseDir, prefix, out);
+	}
+	return out;
+}
+
+function walkSlugLevel(rootDir: string, currentSlug: string, out: string[]): void {
+	const fullDir = path.join(rootDir, ...currentSlug.split("/"));
+	let entries: fs.Dirent[];
+	try {
+		entries = fs.readdirSync(fullDir, { withFileTypes: true });
+	} catch {
+		return;
+	}
+	let hasLayerFile = false;
+	for (const e of entries) {
+		if (e.isFile() && (e.name === "repo-id.json" || e.name.endsWith("-expertise-log.jsonl"))) {
+			hasLayerFile = true;
+		}
+	}
+	if (hasLayerFile) {
+		out.push(currentSlug);
+	}
+	for (const e of entries) {
+		if (e.isDirectory()) walkSlugLevel(rootDir, `${currentSlug}/${e.name}`, out);
+	}
+}
+
+function resolveLayer(
+	multiTeamDir: string,
+	ctx: { cwd?: string; repoId?: string } | undefined,
+): ResolvedLayer {
+	const expertiseDir = path.join(multiTeamDir, "expertise");
+	const cwd = ctx?.cwd;
+	if (!cwd || typeof cwd !== "string") {
+		return { mode: "global", sensitiveRepo: false };
+	}
+
+	// Caller may pass an explicit repoId override (used by some tests / advanced flows)
+	if (typeof ctx?.repoId === "string" && ctx.repoId.length > 0) {
+		return {
+			mode: "project-local",
+			repoId: { slug: ctx.repoId, source: "preferred-remote", hashSuffixApplied: false },
+			sensitiveRepo: false,
+		};
+	}
+
+	const gitRoot = findGitRoot(cwd);
+	if (!gitRoot) return { mode: "global", sensitiveRepo: false };
+
+	const settings = readRepoSettings(gitRoot);
+	const remotes = parseGitConfigRemotes(gitRoot);
+	const repoId = deriveRepoId(
+		{ isGitRepo: true, remotes, preferredRemote: settings.preferredRemote, cwd: gitRoot },
+		expertiseDir,
+	);
+	if (settings.sensitiveRepo) {
+		return { mode: "global", repoId, gitRoot, sensitiveRepo: true };
+	}
+	return { mode: "project-local", repoId, gitRoot, sensitiveRepo: false };
+}
+
+async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> {
+	await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+	const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+	await fs.promises.writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf-8");
+	await fs.promises.rename(tempPath, filePath);
+}
+
+async function writeSnapshotState(statePath: string, state: ExpertiseSnapshotState): Promise<void> {
+	await withFileMutationQueue(statePath, async () => {
+		await writeJsonAtomic(statePath, state);
+	});
+}
+
+interface ExpertiseSimilaritySettings {
+	enabled: boolean;
+	provider?: string;
+	model?: string;
+	timeoutMs: number;
+	minConfidence: number;
+}
+
+type SimilarityStatusReason =
+	| "disabled"
+	| "missing_provider"
+	| "missing_model"
+	| "registry_unavailable"
+	| "model_not_found"
+	| "auth_unavailable"
+	| "ready";
+
+function readAgentSettings(): Record<string, unknown> {
+	try {
+		const settingsPath = path.join(os.homedir(), ".pi", "agent", "settings.json");
+		return JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as Record<string, unknown>;
+	} catch {
+		return {};
+	}
+}
+
+function asObject(value: unknown): Record<string, unknown> {
+	return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function envString(name: string): string | undefined {
+	const value = process.env[name]?.trim();
+	return value ? value : undefined;
+}
+
+function parseBoolean(value: unknown, fallback = false): boolean {
+	if (typeof value === "boolean") return value;
+	if (typeof value === "string") {
+		const normalized = value.trim().toLowerCase();
+		if (["1", "true", "yes", "on"].includes(normalized)) return true;
+		if (["0", "false", "no", "off"].includes(normalized)) return false;
+	}
+	return fallback;
+}
+
+function parseNumber(value: unknown, fallback: number): number {
+	if (typeof value === "number" && Number.isFinite(value)) return value;
+	if (typeof value === "string") {
+		const parsed = Number(value);
+		if (Number.isFinite(parsed)) return parsed;
+	}
+	return fallback;
+}
+
+function resolveSimilaritySettings(): ExpertiseSimilaritySettings {
+	const settings = readAgentSettings();
+	const similarity = asObject(settings.expertise_similarity);
+	return {
+		enabled: parseBoolean(envString("EXPERTISE_SIMILARITY_ENABLED") ?? similarity.enabled, false),
+		provider: envString("EXPERTISE_SIMILARITY_PROVIDER") ?? envString("EXPERTISE_SIMILARITY_PROVIDER_NAME") ?? (typeof similarity.provider === "string" ? similarity.provider : undefined),
+		model: envString("EXPERTISE_SIMILARITY_MODEL") ?? (typeof similarity.model === "string" ? similarity.model : undefined),
+		timeoutMs: Math.max(1, parseNumber(envString("EXPERTISE_SIMILARITY_TIMEOUT_MS") ?? similarity.timeout_ms ?? similarity.timeoutMs, 3000)),
+		minConfidence: Math.max(0, Math.min(1, parseNumber(envString("EXPERTISE_SIMILARITY_MIN_CONFIDENCE") ?? similarity.min_confidence ?? similarity.minConfidence, 0.75))),
+	};
+}
+
+function extractAssistantText(content: unknown): string {
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return "";
+	return content
+		.flatMap((part) => {
+			if (!part || typeof part !== "object") return [] as string[];
+			const maybeText = (part as { text?: unknown }).text;
+			return typeof maybeText === "string" ? [maybeText] : [];
+		})
+		.join("\n")
+		.trim();
+}
+
+function parseSimilarityDecision(text: string): SimilarityDecision {
+	const normalized = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```$/, "").trim();
+	const parsed = JSON.parse(normalized) as Record<string, unknown>;
+	const decision = parsed.decision === "merge" ? "merge" : "keep_separate";
+	const confidence = typeof parsed.confidence === "number" ? parsed.confidence : Number(parsed.confidence ?? 0);
+	const mergedSummary = typeof parsed.merged_summary === "string" ? parsed.merged_summary : undefined;
+	if (!Number.isFinite(confidence)) {
+		throw new Error("Similarity decision missing numeric confidence");
+	}
+	return { decision, confidence, merged_summary: mergedSummary };
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+	let timer: NodeJS.Timeout | undefined;
+	try {
+		return await Promise.race([
+			promise,
+			new Promise<T>((_, reject) => {
+				timer = setTimeout(() => reject(new Error(`similarity timeout after ${timeoutMs}ms`)), timeoutMs);
+			}),
+		]);
+	} finally {
+		if (timer) clearTimeout(timer);
+	}
+}
+
+async function createSimilarityConfig(ctx: any): Promise<ExpertiseSimilarityConfig> {
+	const settings = resolveSimilaritySettings();
+	const usage = {
+		enabled: settings.enabled,
+		active: false,
+		provider: settings.provider,
+		model: settings.model,
+		min_confidence: settings.minConfidence,
+		timeout_ms: settings.timeoutMs,
+		reason: "disabled" as SimilarityStatusReason,
+		attempted: 0,
+		merged: 0,
+		kept_separate: 0,
+		failed: 0,
+		malformed: 0,
+		skipped_for_low_confidence: 0,
+		last_error: undefined as string | undefined,
+	};
+	if (!settings.enabled) return { enabled: false, usage };
+	if (!settings.provider) return { enabled: true, usage: { ...usage, reason: "missing_provider" } };
+	if (!settings.model) return { enabled: true, provider: settings.provider, usage: { ...usage, reason: "missing_model" } };
+	const registry = ctx?.modelRegistry;
+	if (!registry?.find || !registry?.getApiKeyAndHeaders) {
+		return { enabled: true, provider: settings.provider, model: settings.model, timeoutMs: settings.timeoutMs, minConfidence: settings.minConfidence, usage: { ...usage, reason: "registry_unavailable" } };
+	}
+	const model = registry.find(settings.provider, settings.model);
+	if (!model) {
+		return { enabled: true, provider: settings.provider, model: settings.model, timeoutMs: settings.timeoutMs, minConfidence: settings.minConfidence, usage: { ...usage, reason: "model_not_found" } };
+	}
+	const auth = await registry.getApiKeyAndHeaders(model);
+	if (!auth?.ok || !auth.apiKey) {
+		return { enabled: true, provider: settings.provider, model: settings.model, timeoutMs: settings.timeoutMs, minConfidence: settings.minConfidence, usage: { ...usage, reason: "auth_unavailable", last_error: auth?.error } };
+	}
+
+	const decide = async (candidate: SimilarityCandidate): Promise<SimilarityDecision> => {
+		const prompt = [
+			"Decide whether two already pre-grouped expertise snapshot items should be merged.",
+			"Return JSON only with shape: {\"decision\":\"merge\"|\"keep_separate\",\"confidence\":0..1,\"merged_summary\":\"...\"}",
+			"Use keep_separate when unsure. Confidence must be numeric. merged_summary is required only for merge.",
+			`Category: ${candidate.category}`,
+			`Left: ${candidate.left.summary}`,
+			`Left evidence_count: ${candidate.left.evidence_count}`,
+			`Right: ${candidate.right.summary}`,
+			`Right evidence_count: ${candidate.right.evidence_count}`,
+		].join("\n");
+
+		const response = await withTimeout(
+			completeSimple(
+				model,
+				{
+					systemPrompt: ctx?.getSystemPrompt?.(),
+					messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
+				},
+				{
+					apiKey: auth.apiKey,
+					headers: auth.headers,
+					reasoning: "minimal",
+					signal: ctx?.signal,
+				},
+			),
+			settings.timeoutMs,
+		);
+		const text = extractAssistantText((response as { content?: unknown }).content);
+		if (!text) throw new Error("Similarity provider returned empty response");
+		return parseSimilarityDecision(text);
+	};
+
+	return {
+		enabled: true,
+		provider: settings.provider,
+		model: settings.model,
+		timeoutMs: settings.timeoutMs,
+		minConfidence: settings.minConfidence,
+		usage: { ...usage, active: true, reason: "ready" },
+		decide,
+	};
+}
+
+interface LayerPaths {
+	logPath: string;
+	snapshotPath: string;
+	statePath: string;
+}
+
+async function rebuildSnapshot(
+	paths: LayerPaths,
+	agent: string,
+	entries: ExpertiseRecord[],
+	ctx: any,
+): Promise<{ snapshot: ExpertiseSnapshot; state: ExpertiseSnapshotState }> {
+	const similarityConfig = await createSimilarityConfig(ctx);
+	const snapshot = await buildExpertiseSnapshot(agent, entries, similarityConfig);
+	const state = createReadyState(snapshot);
+	await withFileMutationQueue(paths.statePath, async () => {
+		await writeJsonAtomic(paths.snapshotPath, snapshot);
+		await writeJsonAtomic(paths.statePath, state);
+	});
+	return { snapshot, state };
+}
+
+interface LayerView {
+	label: "project-local" | "global" | "drift";
+	text: string;
+	snapshot: ExpertiseSnapshot | null;
+	state: ExpertiseSnapshotState | null;
+	usedRawFallback: boolean;
+	entryCount: number;
+}
+
+async function resolveExpertiseView(
+	paths: LayerPaths,
+	agent: string,
+	entries: ExpertiseRecord[],
+	ctx: any,
+): Promise<{ text: string; snapshot: ExpertiseSnapshot | null; state: ExpertiseSnapshotState | null; usedRawFallback: boolean }> {
+	const snapshot = readJsonFile<ExpertiseSnapshot>(paths.snapshotPath);
+	const state = readJsonFile<ExpertiseSnapshotState>(paths.statePath);
+
+	if (snapshot && isSnapshotFresh(snapshot, state, entries)) {
+		return {
+			text: formatExpertiseSnapshotText(agent, snapshot),
+			snapshot,
+			state,
+			usedRawFallback: false,
+		};
+	}
+
+	try {
+		const rebuilt = await rebuildSnapshot(paths, agent, entries, ctx);
+		return {
+			text: formatExpertiseSnapshotText(agent, rebuilt.snapshot),
+			snapshot: rebuilt.snapshot,
+			state: rebuilt.state,
+			usedRawFallback: false,
+		};
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "snapshot rebuild failed";
+		await writeSnapshotState(paths.statePath, createDirtyState("failed", message));
+		if (snapshot) {
+			return {
+				text: formatExpertiseSnapshotText(agent, snapshot, { warning: `stale snapshot retained because rebuild failed: ${message}` }),
+				snapshot,
+				state: createDirtyState("failed", message),
+				usedRawFallback: false,
+			};
+		}
+		return {
+			text: formatRawExpertiseFallback(agent, entries, `snapshot rebuild failed: ${message}`),
+			snapshot: null,
+			state: createDirtyState("failed", message),
+			usedRawFallback: true,
+		};
+	}
+}
+
+function normalizeForDedupe(line: string): string {
+	// Strip a leading "project: " prefix so the same note text recorded under
+	// different project tags (e.g. global vs project-local) collapses to one
+	// dedupe key per the layered read precedence rule.
+	const withoutPrefix = line.replace(/^[^:\n]{1,80}:\s+/, "");
+	return withoutPrefix.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function mergeLayerTexts(views: LayerView[]): string {
+	// Concatenate views in order; dedupe item lines (lines starting with "- ")
+	// across layers using a normalized key. Header/category lines are kept per layer.
+	const seen = new Set<string>();
+	const out: string[] = [];
+	for (let i = 0; i < views.length; i += 1) {
+		const view = views[i];
+		const labeledHeader = `[layer: ${view.label}]`;
+		const lines = view.text.split("\n");
+		const layerLines: string[] = [labeledHeader];
+		for (const line of lines) {
+			if (line.startsWith("- ")) {
+				const summaryPart = line.replace(/\s*\(evidence:.*$/, "").slice(2);
+				const key = normalizeForDedupe(summaryPart);
+				if (key && seen.has(key)) continue;
+				if (key) seen.add(key);
+			}
+			layerLines.push(line);
+		}
+		out.push(layerLines.join("\n"));
+	}
+	return out.join("\n\n");
 }
 
 export default function (pi: ExtensionAPI) {
 	const multiTeamDir = getMultiTeamDir();
 
 	// ── Tool: append_expertise ──────────────────────────────────────────────────
-	// Agents call this to record discoveries. Append-only JSONL prevents concurrent
-	// write corruption (H-2: sequential-only YAML updates are not safe under concurrency).
+	// Agents call this to record discoveries. The JSONL log is the append-only source
+	// of truth. Snapshot / mental-model rebuilds are derived from that history.
 	pi.registerTool({
 		name: "append_expertise",
 		label: "Append Expertise",
 		description:
 			"Append a discovery or decision to your expertise log. Use this at the end of a task to record what you learned. " +
-			"Entries are appended to {agent}-expertise-log.jsonl — never overwrites existing knowledge.",
+			"Entries are appended to {agent}-expertise-log.jsonl -- never overwrites existing knowledge.",
 		parameters: Type.Object({
 			agent: Type.String({ description: "Agent name (e.g. backend-dev, orchestrator)" }),
 			category: Type.String({
@@ -71,7 +596,7 @@ export default function (pi: ExtensionAPI) {
 			),
 			session_id: Type.Optional(Type.String({ description: "Session ID for traceability" })),
 		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const { agent, category, entry, session_id } = params as {
 				agent: string;
 				category: string;
@@ -79,19 +604,49 @@ export default function (pi: ExtensionAPI) {
 				session_id?: string;
 			};
 
-			const logPath = path.join(multiTeamDir, "expertise", `${agent}-expertise-log.jsonl`);
-			const record = {
+			const globalPaths = getExpertisePaths(multiTeamDir, agent);
+			const layer = resolveLayer(multiTeamDir, ctx as { cwd?: string; repoId?: string } | undefined);
+
+			const targetPaths = layer.mode === "project-local" && layer.repoId
+				? getLayerPaths(globalPaths.expertiseDir, agent, layer.repoId.slug)
+				: globalPaths;
+
+			const record: ExpertiseRecord = {
 				timestamp: new Date().toISOString(),
 				session_id: session_id ?? "unknown",
-				category,
-				entry,
+				category: category as ExpertiseRecord["category"],
+				entry: entry as Record<string, unknown>,
 			};
 
-			await appendJsonl(logPath, record);
+			await appendJsonl(targetPaths.logPath, record);
+			await writeSnapshotState(targetPaths.statePath, createDirtyState("stale"));
+
+			// On first project-local write, persist repo-id metadata for drift detection
+			if (layer.mode === "project-local" && layer.repoId) {
+				const layerPaths = targetPaths as ReturnType<typeof getLayerPaths>;
+				if (!fs.existsSync(layerPaths.metaPath)) {
+					const meta: RepoIdMeta = {
+						schema_version: 1,
+						slug: layer.repoId.slug,
+						remoteUrl: layer.repoId.selectedRemoteUrl,
+						created_at: new Date().toISOString(),
+						last_verified_at: new Date().toISOString(),
+					};
+					await writeJsonAtomic(layerPaths.metaPath, meta);
+				}
+			}
 
 			return {
-				content: [{ type: "text", text: `Appended ${category} entry to ${agent}-expertise-log.jsonl` }],
-				details: { agent, category, logPath },
+				content: [{ type: "text", text: `Appended ${category} entry to ${agent}-expertise-log.jsonl and marked the mental model stale.` }],
+				details: {
+					agent,
+					category,
+					logPath: targetPaths.logPath,
+					statePath: targetPaths.statePath,
+					layer: layer.mode,
+					repoId: layer.repoId?.slug,
+					sensitiveRepo: layer.sensitiveRepo,
+				},
 			};
 		},
 	});
@@ -138,36 +693,101 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	// ── Tool: read_expertise ───────────────────────────────────────────────────
-	// Agents call this at task start to load their accumulated knowledge.
+	// Agents call this at task start to load their compact mental model. If a snapshot
+	// is missing or stale, the implementation should rebuild from raw history or return
+	// the documented safe fallback rather than silently serving misleading stale state.
 	pi.registerTool({
 		name: "read_expertise",
 		label: "Read Expertise",
 		description:
-			"Read your expertise log at task start. Returns all accumulated discoveries from previous sessions. " +
-			"Always call this before starting work — it prevents re-discovering what you already know.",
+			"Read your compact expertise snapshot at task start. The raw JSONL log remains the source of truth, " +
+			"and the read path should rebuild or return the documented safe fallback if the snapshot is missing or stale.",
 		parameters: Type.Object({
 			agent: Type.String({ description: "Agent name (e.g. backend-dev, orchestrator)" }),
 		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const { agent } = params as { agent: string };
 
-			const logPath = path.join(multiTeamDir, "expertise", `${agent}-expertise-log.jsonl`);
-			const entries = await readJsonl(logPath);
+			const globalPaths = getExpertisePaths(multiTeamDir, agent);
+			const layer = resolveLayer(multiTeamDir, ctx as { cwd?: string; repoId?: string } | undefined);
 
-			if (entries.length === 0) {
+			const layerEntries: Array<{ label: LayerView["label"]; paths: LayerPaths; entries: ExpertiseRecord[] }> = [];
+
+			let driftDetected = false;
+			let driftPrevious: string | undefined;
+
+			if (layer.mode === "project-local" && layer.repoId) {
+				const projectPaths = getLayerPaths(globalPaths.expertiseDir, agent, layer.repoId.slug);
+				const projectEntries = await readJsonl(projectPaths.logPath);
+				if (projectEntries.length > 0 || fs.existsSync(projectPaths.layerDir)) {
+					layerEntries.push({ label: "project-local", paths: projectPaths, entries: projectEntries });
+				}
+
+				// Drift detection: scan sibling slug dirs for repo-id.json with different slug
+				const driftPath = findDriftedLayer(globalPaths.expertiseDir, layer.repoId, agent);
+				if (driftPath) {
+					const driftEntries = await readJsonl(driftPath.paths.logPath);
+					if (driftEntries.length > 0) {
+						layerEntries.push({ label: "drift", paths: driftPath.paths, entries: driftEntries });
+						driftDetected = true;
+						driftPrevious = driftPath.previousSlug;
+					}
+				}
+			}
+
+			const globalEntries = await readJsonl(globalPaths.logPath);
+			if (globalEntries.length > 0) {
+				layerEntries.push({ label: "global", paths: globalPaths, entries: globalEntries });
+			}
+
+			const totalEntries = layerEntries.reduce((sum, l) => sum + l.entries.length, 0);
+			if (totalEntries === 0) {
 				return {
 					content: [{ type: "text", text: `No expertise recorded yet for ${agent}. This is your first session.` }],
-					details: { agent, entryCount: 0 },
+					details: { agent, entryCount: 0, usedRawFallback: false, layerSources: [] },
 				};
 			}
 
-			const summary = entries
-				.map((e: any) => `[${e.timestamp?.slice(0, 10) ?? "?"}] ${e.category}: ${JSON.stringify(e.entry)}`)
-				.join("\n");
+			const views: LayerView[] = [];
+			for (const le of layerEntries) {
+				const view = await resolveExpertiseView(le.paths, agent, le.entries, ctx);
+				views.push({
+					label: le.label,
+					text: view.text,
+					snapshot: view.snapshot,
+					state: view.state,
+					usedRawFallback: view.usedRawFallback,
+					entryCount: le.entries.length,
+				});
+			}
+
+			const mergedText = views.length === 1 ? views[0].text : mergeLayerTexts(views);
+
+			// Pick the "primary" view's metadata for backwards-compat fields. The
+			// project-local layer is primary when present; otherwise the global layer.
+			const primary = views[0];
+			const primaryLayerEntry = layerEntries[0];
+
+			const layerSources = views.map((v) => v.label);
+
+			const details: Record<string, unknown> = {
+				agent,
+				entryCount: totalEntries,
+				usedRawFallback: primary.usedRawFallback,
+				snapshotPath: primaryLayerEntry.paths.snapshotPath,
+				statePath: primaryLayerEntry.paths.statePath,
+				rebuildStatus: primary.state?.rebuild_status ?? "missing",
+				dirty: primary.state?.dirty ?? true,
+				similarity: primary.snapshot?.similarity,
+				layerSources,
+				driftDetected,
+			};
+			if (driftPrevious) details.driftPreviousSlug = driftPrevious;
+			if (layer.repoId) details.repoId = layer.repoId.slug;
 
 			return {
-				content: [{ type: "text", text: `Expertise for ${agent} (${entries.length} entries):\n\n${summary}` }],
-				details: { agent, entryCount: entries.length },
+				content: [{ type: "text", text: mergedText }],
+				details,
 			};
 		},
 	});
