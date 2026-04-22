@@ -246,7 +246,7 @@ bashToolPatterns:
     reason: "crontab modifies scheduled tasks (persistence mechanism)"
     ask: true
 
-  - pattern: '\bat\s+'
+  - pattern: '(?:^|[;&|]\s*|&&\s*|\|\|\s*)(?:sudo\s+)?at\s+[-0-9A-Za-z+]'
     reason: "at command schedules future execution (persistence mechanism)"
     ask: true
 
