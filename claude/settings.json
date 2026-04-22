@@ -175,5 +175,6 @@
   "alwaysThinkingEnabled": true,
   "companyAnnouncements": [],
   "skipDangerousModePermissionPrompt": true,
-  "releaseChannel": "latest"
+  "releaseChannel": "latest",
+  "effortLevel": "medium"
 }
