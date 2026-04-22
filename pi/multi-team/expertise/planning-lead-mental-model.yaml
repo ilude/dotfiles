@@ -1,9 +1,15 @@
 schema_version: 1
-last_updated: SESSION_ID
+last_updated: 2026-04-21
 
 system_overview: {}
 key_files: {}
-patterns: {}
+patterns:
+  - name: "Optional model-assisted expertise similarity"
+    description: >
+      Keep deterministic compaction as the default/fallback. If model assistance is
+      used, restrict provider scope to observation, pattern, and open_question after
+      deterministic pre-grouping. Do not use strong_decision or key_file entries in
+      the similarity path.
 strong_decisions: {}
 observations: {}
 open_questions: {}

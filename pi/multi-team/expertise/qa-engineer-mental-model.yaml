@@ -1,9 +1,20 @@
 schema_version: 1
-last_updated: SESSION_ID
+last_updated: 2026-04-21
 
-system_overview: {}
-key_files: {}
-patterns: {}
+system_overview:
+  pi-agent-tests:
+    summary: Pi extension tests can safely encode pre-implementation branch coverage with skipped cases while keeping Wave 1 green.
+key_files:
+  pi/tests/agent-chain.test.ts:
+    role: Agent-chain expertise and snapshot behavior test matrix.
+    notes: Use passing deterministic-baseline assertions plus skipped provider-assisted expectations until the provider path is implemented.
+patterns:
+  similarity-wave-1-matrix:
+    summary: For deterministic-first features with future provider branches, add explicit current-behavior assertions and mark future provider/fallback branches skipped instead of failing.
 strong_decisions: {}
-observations: {}
+observations:
+  provider-assisted-similarity:
+    summary: Wave 1 coverage now includes deterministic-only baseline and durable-category guardrails, with skipped cases for provider-enabled merge approval, rejection, low-confidence fallback, timeout/failure fallback, and strong_decision/key_file provider bypass.
+  layered-expertise-test-gap:
+    summary: For storage-scope changes, output-order assertions are insufficient; require filesystem fixtures covering per-layer log/snapshot/state paths plus stale/missing/failing snapshot combinations, or tests can pass while persistence and fallback semantics regress.
 open_questions: {}

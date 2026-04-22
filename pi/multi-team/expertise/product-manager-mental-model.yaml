@@ -1,9 +1,13 @@
 schema_version: 1
-last_updated: SESSION_ID
+last_updated: 2026-04-21
 
 system_overview: {}
 key_files: {}
 patterns: {}
 strong_decisions: {}
-observations: {}
+observations:
+  plan_review_2026_04_21:
+    summary: "For expertise snapshotting, favor minimal deterministic compaction over persisted abstractions, provider-assisted similarity, or unrelated repo-wide validation gates unless evidence shows those are necessary."
+  project_scoped_expertise_review_2026_04_21:
+    summary: "When reducing cross-project expertise pollution, test simpler shapes first: reuse existing project-scoped .pi patterns or current entry.project tagging before adding repo-ID alias layers, merged storage trees, and broad repo-wide validation." 
 open_questions: {}
