@@ -32,6 +32,8 @@ Windows PowerShell:
 ~\.dotfiles\install.ps1 -ListPackages
 ```
 
+For the Windows Pi package-manager decision (`npm` instead of Bun for the global `pi` install), see `pi/README.md`.
+
 WSL:
 
 ```bash

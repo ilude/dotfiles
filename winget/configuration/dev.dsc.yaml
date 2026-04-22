@@ -24,12 +24,6 @@ properties:
         source: winget
     - resource: Microsoft.WinGet.DSC/WinGetPackage
       directives:
-        description: Install Node.js
-      settings:
-        id: OpenJS.NodeJS  # Node.js
-        source: winget
-    - resource: Microsoft.WinGet.DSC/WinGetPackage
-      directives:
         description: Install GitHub CLI
       settings:
         id: GitHub.cli  # GitHub CLI
