@@ -857,8 +857,12 @@ function formatPathList(paths: string[], repoRoot: string, limit = 8): string[] 
 	return paths.slice(0, limit).map((item) => `- ${path.relative(repoRoot, item).replace(/\\/g, "/")}`);
 }
 
-function targetCompletions(ctx: ExtensionContext, prefix: string): Array<{ value: string; label: string }> | null {
-	const adapter = loadAdapter(ctx);
+function loadAdapterForCurrentCwd(): LoadedAdapter | null {
+	return loadAdapter({ cwd: process.cwd() } as ExtensionContext);
+}
+
+function targetCompletions(prefix: string): Array<{ value: string; label: string }> | null {
+	const adapter = loadAdapterForCurrentCwd();
 	if (!adapter) return null;
 	const values = discoverTargets(adapter)
 		.filter((target) => target.name.startsWith(prefix) || target.path.startsWith(prefix))
@@ -867,8 +871,8 @@ function targetCompletions(ctx: ExtensionContext, prefix: string): Array<{ value
 	return values.length > 0 ? values : null;
 }
 
-function recoveryCompletions(ctx: ExtensionContext, prefix: string): Array<{ value: string; label: string }> | null {
-	const adapter = loadAdapter(ctx);
+function recoveryCompletions(prefix: string): Array<{ value: string; label: string }> | null {
+	const adapter = loadAdapterForCurrentCwd();
 	if (!adapter) return null;
 	const values = Object.keys(adapter.config.recoveryActions)
 		.filter((name) => name.startsWith(prefix))
@@ -1094,7 +1098,7 @@ export default function testOrchestratorExtension(pi: ExtensionAPI) {
 
 	pi.registerCommand("test-run", {
 		description: "Run one discovered test target by filename or repo-relative path",
-		getArgumentCompletions: (prefix, ctx) => targetCompletions(ctx, prefix),
+		getArgumentCompletions: (prefix: string) => targetCompletions(prefix),
 		handler: async (args, ctx) => {
 			const adapter = loadAdapter(ctx);
 			if (!adapter) {
@@ -1164,7 +1168,7 @@ export default function testOrchestratorExtension(pi: ExtensionAPI) {
 
 	pi.registerCommand("test-recover", {
 		description: "Run a named recovery action from the project adapter. Usage: /test-recover <action>",
-		getArgumentCompletions: (prefix, ctx) => recoveryCompletions(ctx, prefix),
+		getArgumentCompletions: (prefix: string) => recoveryCompletions(prefix),
 		handler: async (args, ctx) => {
 			const adapter = loadAdapter(ctx);
 			if (!adapter) {

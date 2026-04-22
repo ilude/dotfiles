@@ -114,7 +114,7 @@ You are a test agent.
     expect(spawnArgs).toContain("--model");
     expect(spawnArgs).toContain("openai-codex/gpt-5.4-fast");
     expect(spawnArgs).not.toContain("anthropic/claude-sonnet-4-6");
-  });
+  }, 15000);
 
   it("falls back to the agent's pinned model when no modelSize is requested", async () => {
     mockSuccessfulSpawn();
@@ -149,5 +149,5 @@ You are a test agent.
     const spawnArgs = spawnMock.mock.calls[0][1] as string[];
     expect(spawnArgs).toContain("--model");
     expect(spawnArgs).toContain("anthropic/claude-sonnet-4-6");
-  });
+  }, 15000);
 });

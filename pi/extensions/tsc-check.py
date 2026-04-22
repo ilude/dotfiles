@@ -45,7 +45,8 @@ def resolve_pi_agent_dir() -> Path:
 
     pi_bin = find_bin("pi")
     if pi_bin:
-        candidates.append(Path(pi_bin).resolve().parent.parent)
+        pi_parent = Path(pi_bin).resolve().parent
+        candidates.append(pi_parent / "node_modules" / "@mariozechner" / "pi-coding-agent")
 
     npm = find_bin("npm")
     if npm:
@@ -120,11 +121,26 @@ def main():
         config = {
             "extends": "./tsconfig.json",
             "compilerOptions": {
+                "baseUrl": ".",
+                "ignoreDeprecations": "6.0",
+                "types": ["node"],
                 "paths": {
-                    "@mariozechner/pi-coding-agent": [pi_agent],
-                    "@mariozechner/pi-ai": [f"{pi_nm}/@mariozechner/pi-ai"],
-                    "@mariozechner/pi-agent-core": [f"{pi_nm}/@mariozechner/pi-agent-core"],
-                    "@mariozechner/pi-tui": [f"{pi_nm}/@mariozechner/pi-tui"],
+                    "@mariozechner/pi-coding-agent": [
+                        pi_agent,
+                        f"{pi_agent}/dist/index.js",
+                    ],
+                    "@mariozechner/pi-ai": [
+                        f"{pi_nm}/@mariozechner/pi-ai",
+                        f"{pi_nm}/@mariozechner/pi-ai/dist/index.js",
+                    ],
+                    "@mariozechner/pi-agent-core": [
+                        f"{pi_nm}/@mariozechner/pi-agent-core",
+                        f"{pi_nm}/@mariozechner/pi-agent-core/dist/index.js",
+                    ],
+                    "@mariozechner/pi-tui": [
+                        f"{pi_nm}/@mariozechner/pi-tui",
+                        f"{pi_nm}/@mariozechner/pi-tui/dist/index.js",
+                    ],
                     "@sinclair/typebox": [f"{pi_nm}/@sinclair/typebox"],
                     "yaml": [f"{pi_nm}/yaml"],
                 },
