@@ -1,0 +1,14 @@
+{
+  "totals_before": {
+    "seed": 958,
+    "history": 140,
+    "relabel": 741,
+    "synthetic": 1216
+  },
+  "totals_after": {
+    "seed": 958,
+    "history": 140,
+    "relabel": 741,
+    "synthetic": 1216
+  }
+}

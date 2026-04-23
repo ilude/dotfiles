@@ -1,0 +1,9 @@
+{
+  "queue_size": 32,
+  "decision_counts": {
+    "CLARIFY": 22,
+    "KEEP": 3,
+    "DOWNGRADE_TO_HAIKU": 7
+  },
+  "downgrade_rate": 0.2188
+}

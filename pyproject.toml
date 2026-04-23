@@ -13,7 +13,7 @@ dependencies = [
 [tool.ruff]
 line-length = 100
 target-version = "py39"
-exclude = ["dotbot/", "menos/", ".venv/"]
+exclude = ["dotbot/", "menos/", ".venv/", "pi/prompt-routing/data/synthetic_shards/", "pi/prompt-routing/tools/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]

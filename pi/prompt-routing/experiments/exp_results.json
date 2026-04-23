@@ -1,0 +1,47 @@
+{
+  "experiments": [
+    {
+      "name": "lightgbm_tfidf_svd_plus_hand_features",
+      "top1": 0.6631,
+      "catastrophic": 23,
+      "per_tier_recall": {
+        "Haiku": 0.8865,
+        "Sonnet": 0.8101,
+        "Opus": 0.9103
+      },
+      "notes": "LightGBM n_estimators=400, TF-IDF 6000 features -> SVD(150) + 25 hand features. Train time 51.5s."
+    },
+    {
+      "name": "histgb_tfidf_svd_plus_hand_features",
+      "top1": 0.6454,
+      "catastrophic": 27,
+      "per_tier_recall": {
+        "Haiku": 0.8646,
+        "Sonnet": 0.7821,
+        "Opus": 0.9295
+      },
+      "notes": "HistGradientBoosting max_iter=400, TF-IDF 6000 features -> SVD(100) + hand features. Train time 196.2s."
+    },
+    {
+      "name": "t2_svc_haiku_margin_sweep",
+      "top1": 0.4504,
+      "catastrophic": 0,
+      "per_tier_recall": {
+        "Haiku": 0.0306,
+        "Sonnet": 0.8883,
+        "Opus": 0.8974
+      },
+      "notes": "T2-equivalent LinearSVC with Haiku confidence threshold=0.55. Haiku predictions below threshold are promoted to best Sonnet. Full sweep: [{\"haiku_threshold\": 0.55, \"top1\": 0.4504, \"catastrophic\": 0, \"per_tier_recall\": {\"Haiku\": 0.0306, \"Sonnet\": 0.8883, \"Opus\": 0.8974}}, {\"haiku_threshold\": 0.6, \"top1\": 0.4468, \"catastrophic\": 0, \"per_tier_recall\": {\"Haiku\": 0.0218, \"Sonnet\": 0.8883, \"Opus\": 0.8974}}, {\"haiku_threshold\": 0.65, \"top1\": 0.4397, \"catastrophic\": 0, \"per_tier_recall\": {\"Haiku\": 0.0, \"Sonnet\": 0.8883, \"Opus\": 0.8974}}, {\"haiku_threshold\": 0.7, \"top1\": 0.4397, \"catastrophic\": 0, \"per_tier_recall\": {\"Haiku\": 0.0, \"Sonnet\": 0.8883, \"Opus\": 0.8974}}, {\"haiku_threshold\": 0.75, \"top1\": 0.4397, \"catastrophic\": 0, \"per_tier_recall\": {\"Haiku\": 0.0, \"Sonnet\": 0.8883, \"Opus\": 0.8974}}]"
+    }
+  ],
+  "baseline_reference": {
+    "top1": 0.6241,
+    "catastrophic": 38,
+    "per_tier_recall": {
+      "Haiku": 0.8603,
+      "Sonnet": 0.6872,
+      "Opus": 0.8974
+    },
+    "source": "T2 production (LinearSVC, train+dev corpus, eval_v3.jsonl n=564)"
+  }
+}

@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ilude.com/schemas/pi/router-v3-output.schema.json",
+  "title": "Router v3 Classifier Output",
+  "description": "Frozen wire format for the v3 Pi prompt router classifier. One JSON object per classify.py invocation, serialized as a single line and terminated with a trailing newline. Consumed by pi/extensions/prompt-router.ts at the TypeScript boundary.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "primary",
+    "candidates",
+    "confidence"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "description": "Semver of this output contract. TypeScript router compares against a known-good set and falls back gracefully on mismatch.",
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "primary": {
+      "description": "The cheapest acceptable route the classifier predicts for this prompt. The router dispatches the first attempt to this route.",
+      "$ref": "#/$defs/route"
+    },
+    "candidates": {
+      "description": "Candidate routes with calibrated marginal confidence. Ordered by ascending ordinal cost (model_tier first, then effort). MUST include the primary route. Used by the runtime for uncertainty fallback and by /router-explain for observability.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": {
+        "$ref": "#/$defs/candidate"
+      }
+    },
+    "confidence": {
+      "description": "Calibrated probability that primary is the cheapest acceptable route for this prompt (top-1 calibrated confidence). Consumers may apply an UNCERTAIN_THRESHOLD below which the router biases toward a costlier candidate.",
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0
+    },
+    "reason": {
+      "description": "Short human-readable explanation of the route choice. Observability only; MUST NOT drive dispatch.",
+      "type": "string",
+      "maxLength": 512
+    },
+    "ambiguity_flag": {
+      "description": "Echo of the predicted ambiguity level, mirroring the corpus ambiguity field. Observability only; runtime uncertainty handling is driven by confidence, not this flag.",
+      "type": "string",
+      "enum": ["clear", "borderline", "ambiguous"]
+    },
+    "predicted_domain": {
+      "description": "Classifier's best-guess domain tag. Observability only; the runtime does not dispatch on this.",
+      "type": "string",
+      "maxLength": 64
+    },
+    "model_version": {
+      "description": "SHA of the classifier artifact that produced this output. Required in production; optional in contract-schema terms because offline tools may omit it.",
+      "type": "string",
+      "maxLength": 128
+    },
+    "ensemble_rule": {
+      "description": "For ensemble/confgate classifiers: which combination rule fired (lgb-confident | agree | t2-overrides | lgb-fallback | veto). Observability only; MUST NOT drive dispatch.",
+      "type": "string",
+      "maxLength": 64
+    }
+  },
+  "$defs": {
+    "model_tier": {
+      "type": "string",
+      "enum": ["Haiku", "Sonnet", "Opus"],
+      "description": "Ordinal model tier. Ordering: Haiku < Sonnet < Opus."
+    },
+    "effort": {
+      "type": "string",
+      "enum": ["none", "low", "medium", "high"],
+      "description": "Ordinal reasoning effort tier. Ordering: none < low < medium < high."
+    },
+    "route": {
+      "type": "object",
+      "required": ["model_tier", "effort"],
+      "additionalProperties": false,
+      "properties": {
+        "model_tier": { "$ref": "#/$defs/model_tier" },
+        "effort": { "$ref": "#/$defs/effort" }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "required": ["model_tier", "effort", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "model_tier": { "$ref": "#/$defs/model_tier" },
+        "effort": { "$ref": "#/$defs/effort" },
+        "confidence": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Calibrated marginal probability that this candidate route is acceptable for the prompt."
+        }
+      }
+    }
+  }
+}

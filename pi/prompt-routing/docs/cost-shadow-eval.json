@@ -1,0 +1,27 @@
+{
+  "verdict": "FAIL",
+  "uncertain_threshold": 0.55,
+  "source": "pi\\prompt-routing\\data\\eval_v3.jsonl",
+  "rows_replayed": 564,
+  "rows_skipped": 0,
+  "n_sessions": 71,
+  "session_size": 8,
+  "projected_cost_delta": 4.340711,
+  "total_legacy_cost_usd": 8.706929,
+  "total_v3_cost_usd": 13.04764,
+  "catastrophic_under_routing_delta": 10,
+  "legacy_catastrophic_count": 0,
+  "v3_catastrophic_count": 10,
+  "session_catastrophic_delta": 10,
+  "session_legacy_catastrophic": 0,
+  "session_v3_catastrophic": 10,
+  "thrash_count": 119,
+  "legacy_thrash_count": 242,
+  "v3_thrash_count": 119,
+  "thrash_delta": -123,
+  "gates": {
+    "cost_non_regression": false,
+    "per_prompt_catastrophic_delta_lte_zero": false,
+    "session_catastrophic_delta_lte_zero": false
+  }
+}

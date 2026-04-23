@@ -1,0 +1,47 @@
+{
+  "n": 564,
+  "top1_accuracy": 0.6382978723404256,
+  "catastrophic_under_routing": 16,
+  "over_routing_rate": 0.22695035460992907,
+  "cost_weighted_quality": 0.7590465828497744,
+  "per_tier_recall": {
+    "Haiku": 0.8078602620087336,
+    "Sonnet": 0.776536312849162,
+    "Opus": 0.9358974358974359
+  },
+  "per_tier_precision": {
+    "Haiku": 0.9203980099502488,
+    "Sonnet": 0.7315789473684211,
+    "Opus": 0.8439306358381503
+  },
+  "per_tier_f1": {
+    "Haiku": 0.8604651162790699,
+    "Sonnet": 0.7533875338753389,
+    "Opus": 0.8875379939209727
+  },
+  "per_tier_total": {
+    "Haiku": 229,
+    "Sonnet": 179,
+    "Opus": 156
+  },
+  "inference_timing_us": {
+    "mean_us": 0.0,
+    "p50_us": 0.0,
+    "p95_us": 0.0,
+    "p99_us": 0.0,
+    "n_runs": 0,
+    "note": "timing not measured for ensemble (two-model path)"
+  },
+  "classifier": "ensemble_t2_lgbm_veto",
+  "thresholds": {
+    "top1_gate": 0.75,
+    "catastrophic_gate": 0,
+    "recall_gate": 0.6
+  },
+  "baseline": {
+    "top1_accuracy": 0.5745,
+    "catastrophic_under_routing": 14,
+    "over_routing_rate": 0.2092,
+    "cost_weighted_quality": 0.7704
+  }
+}

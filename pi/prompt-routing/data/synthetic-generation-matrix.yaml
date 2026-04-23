@@ -1,0 +1,180 @@
+# Synthetic generation matrix
+# Maps prompt families to model sizes, generators, and adjudicators.
+# B5: generator_model and adjudicator_model must be different model families on every row.
+
+prompt_families:
+
+  - family_id: F01
+    name: greetings-and-trivia
+    size: small
+    complexity_band: small
+    purpose: >
+      Mechanical, factual lookup, and one-liner prompts with deterministic cheapest routes.
+      High volume, low cost to generate and adjudicate.
+    generator_model: gpt-5-mini
+    adjudicator_model: claude-haiku-4-5
+    expected_volume: 120
+    cheapest_route_prior: "haiku/low"
+
+  - family_id: F02
+    name: text-formatting
+    size: small
+    complexity_band: small
+    purpose: >
+      Mechanical text reformatting tasks -- capitalization, sorting, filtering, simple
+      templating. Prompt structure is repetitive so diversity sampling is critical.
+    generator_model: gpt-5-mini
+    adjudicator_model: claude-haiku-4-5
+    expected_volume: 130
+    cheapest_route_prior: "haiku/low"
+
+  - family_id: F03
+    name: simple-arithmetic
+    size: small
+    complexity_band: small
+    purpose: >
+      Numeric calculation, unit conversion, and basic algebra. Deterministic ground truth
+      makes adjudication straightforward and fast.
+    generator_model: gpt-5-mini
+    adjudicator_model: claude-haiku-4-5
+    expected_volume: 100
+    cheapest_route_prior: "haiku/low"
+
+  - family_id: F04
+    name: short-qa
+    size: small
+    complexity_band: small
+    purpose: >
+      Simple factual questions with unambiguous, verifiable answers. Corpus anchor for
+      the cheapest route tier.
+    generator_model: gpt-5-mini
+    adjudicator_model: claude-haiku-4-5
+    expected_volume: 110
+    cheapest_route_prior: "haiku/low"
+
+  - family_id: F05
+    name: code-snippet-debug
+    size: medium
+    complexity_band: medium
+    purpose: >
+      Debugging short functions (<50 LOC) and interpreting error messages. Requires
+      understanding program state and common failure modes across languages.
+    generator_model: claude-haiku-4-5
+    adjudicator_model: gpt-5-mini
+    expected_volume: 90
+    cheapest_route_prior: "haiku/medium"
+
+  - family_id: F06
+    name: code-generation
+    size: medium
+    complexity_band: medium
+    purpose: >
+      Generating small to medium code from a specification. Tests whether a cheaper model
+      tier can correctly implement a well-specified function vs. needing deeper reasoning.
+    generator_model: claude-haiku-4-5
+    adjudicator_model: gpt-5-mini
+    expected_volume: 100
+    cheapest_route_prior: "haiku/medium"
+
+  - family_id: F07
+    name: integration-patterns
+    size: medium
+    complexity_band: medium
+    purpose: >
+      Connecting services, API wiring, and config generation tasks. Moderate complexity
+      where the cheapest acceptable route varies by whether the integration has ambiguity.
+    generator_model: claude-haiku-4-5
+    adjudicator_model: gpt-5-mini
+    expected_volume: 80
+    cheapest_route_prior: "sonnet/low"
+
+  - family_id: F08
+    name: data-transformation
+    size: medium
+    complexity_band: medium
+    purpose: >
+      ETL logic, data reshaping, and format conversion. Debugging and coding prompts that
+      involve structured data rather than open-ended reasoning.
+    generator_model: claude-haiku-4-5
+    adjudicator_model: gpt-5-mini
+    expected_volume: 90
+    cheapest_route_prior: "haiku/medium"
+
+  - family_id: F09
+    name: architecture-design
+    size: large
+    complexity_band: large
+    purpose: >
+      System design, component trade-off analysis, and architecture decision records.
+      High adjudication cost; requires large model generation to produce realistic,
+      non-trivial prompts.
+    generator_model: claude-sonnet-4-6
+    adjudicator_model: gpt-5-mini
+    expected_volume: 50
+    cheapest_route_prior: "sonnet/high"
+
+  - family_id: F10
+    name: security-review
+    size: large
+    complexity_band: large
+    purpose: >
+      Threat modeling, secret scanning, auth design review, and security policy analysis.
+      Prompts where insufficient routes produce dangerous outputs -- a core test of the
+      catastrophic under-routing zero-tolerance gate.
+    generator_model: claude-sonnet-4-6
+    adjudicator_model: gpt-5-mini
+    expected_volume: 55
+    cheapest_route_prior: "sonnet/high"
+
+  - family_id: F11
+    name: hard-ambiguity
+    size: large
+    complexity_band: large
+    purpose: >
+      Prompts with missing context, conflicting requirements, or underspecified goals.
+      Tests the router's ability to distinguish genuinely hard ambiguity from solvable
+      ambiguity where a cheaper route with clarifying behavior is still acceptable.
+    generator_model: claude-sonnet-4-6
+    adjudicator_model: gpt-5-mini
+    expected_volume: 45
+    cheapest_route_prior: "sonnet/medium"
+
+  - family_id: F12
+    name: multi-step-reasoning
+    size: large
+    complexity_band: large
+    purpose: >
+      Long-horizon reasoning chains, research synthesis, and multi-part analysis tasks.
+      Distinguishes prompts where the cheapest acceptable route with high effort is
+      sufficient from those that require a stronger model tier.
+    generator_model: claude-sonnet-4-6
+    adjudicator_model: gpt-5-mini
+    expected_volume: 50
+    cheapest_route_prior: "opus/low"
+
+# Volume summary
+# Band       Families    Target prompts    Generator            Adjudicator
+# small      F01-F04     460               gpt-5-mini           claude-haiku-4-5
+# medium     F05-F08     360               claude-haiku-4-5     gpt-5-mini
+# large      F09-F12     200               claude-sonnet-4-6    gpt-5-mini
+# total      F01-F12     1020
+
+# Adjudication settings (applied to every row)
+adjudication:
+  temperature: 0
+  prompt_version_tracked: true
+  prompt_version_hash_field: prompt_version_hash
+  generator_adjudicator_same_family_allowed: false
+  empirical_anchor_set_required: true
+  empirical_anchor_min_prompts: 20
+  empirical_anchor_max_prompts: 40
+  anchor_pass_threshold_per_band: 0.80
+
+# Anti-collapse safeguards
+anti_collapse:
+  min_domains_per_small_family_batch: 6
+  max_same_seed_variants: 20
+  max_language_share_medium_band: 0.40
+  similarity_reject_threshold: 0.85
+  max_same_route_share_large_band: 0.15
+  self_affirming_loops_allowed: false
