@@ -39,8 +39,13 @@ from pathlib import Path
 ARTIFACT_DIR = Path(__file__).parent
 DATA_DIR = ARTIFACT_DIR / "data"
 CORPUS_PATH = DATA_DIR / "training_corpus.json"
+CORPUS_V3_PATH = DATA_DIR / "training_corpus_v3.jsonl"
 HISTORY_CSV = ARTIFACT_DIR / "labeled_history.csv"
 LABEL_ORDER = ["low", "mid", "high"]
+
+# v3 schema constants -- keep in sync with tools/validate_corpus.py
+VALID_MODEL_TIERS = {"Haiku", "Sonnet", "Opus"}
+VALID_EFFORT_TIERS = {"none", "low", "medium", "high"}
 
 TIER_MAP = {
     "small": "low",
@@ -237,10 +242,117 @@ def _load_dict_corpus(raw: dict, fname: str) -> list[tuple[str, str, str]]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# v3 row-based corpus support
+# ---------------------------------------------------------------------------
+
+
+def load_v3_jsonl(path: Path) -> list[dict]:
+    """Load a JSONL file of v3 row objects. Returns an empty list if the file does not exist."""
+    if not path.exists():
+        return []
+    rows: list[dict] = []
+    with open(path, encoding="utf-8") as f:
+        for lineno, line in enumerate(f, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError as e:
+                print(f"  WARNING: {path.name} line {lineno}: {e} -- skipping")
+    return rows
+
+
+def v3_row_to_legacy(row: dict) -> tuple[str, str, str] | None:
+    """Convert a v3 row object to a legacy (prompt, label, source) tuple.
+
+    Uses complexity_tier if present; otherwise maps cheapest_acceptable_route
+    model_tier to the legacy label. Returns None if the row cannot be mapped.
+    """
+    prompt = row.get("prompt", "").strip()
+    if not prompt:
+        return None
+
+    source = row.get("source", "v3")
+
+    # Prefer preserved legacy label
+    ct = row.get("complexity_tier")
+    if ct in ("low", "mid", "high"):
+        return (" ".join(prompt.split()), ct, source)
+
+    # Derive from cheapest_acceptable_route model_tier
+    car = row.get("cheapest_acceptable_route") or {}
+    model_tier = car.get("model_tier", "")
+    legacy_label = {"Haiku": "low", "Sonnet": "mid", "Opus": "high"}.get(model_tier)
+    if legacy_label:
+        return (" ".join(prompt.split()), legacy_label, source)
+
+    return None
+
+
+def load_v3_as_legacy(data_dir: Path) -> list[tuple[str, str, str]]:
+    """Load all v3 JSONL files and convert to legacy (prompt, label, source) triples.
+
+    Scans data_dir for files matching *_v3*.jsonl (excluding example fixtures).
+    Preserves complexity_tier as the label when available so v3 rows can
+    participate in legacy classifier training without losing the tier signal.
+    """
+    examples: list[tuple[str, str, str]] = []
+    skip_patterns = {"example"}
+
+    for path in sorted(data_dir.glob("*_v3*.jsonl")):
+        if any(pat in path.name for pat in skip_patterns):
+            continue
+        rows = load_v3_jsonl(path)
+        converted = 0
+        for row in rows:
+            entry = v3_row_to_legacy(row)
+            if entry:
+                examples.append(entry)
+                converted += 1
+        if rows:
+            print(f"  {path.name}: {converted}/{len(rows)} v3 rows converted to legacy format")
+
+    return examples
+
+
+def write_v3_corpus(rows: list[dict], path: Path) -> None:
+    """Write a list of v3 row dicts as JSONL. Skips rows missing required v3 fields."""
+    required = {
+        "prompt_id",
+        "family_id",
+        "prompt",
+        "source",
+        "domain",
+        "task_type",
+        "ambiguity",
+        "cheapest_acceptable_route",
+    }
+    written = 0
+    skipped = 0
+    with open(path, "w", encoding="utf-8") as f:
+        for row in rows:
+            car = row.get("cheapest_acceptable_route") or {}
+            if (
+                not required.issubset(row.keys())
+                or car.get("model_tier") not in VALID_MODEL_TIERS
+                or car.get("effort") not in VALID_EFFORT_TIERS
+            ):
+                skipped += 1
+                continue
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+            written += 1
+    if skipped:
+        print(f"  WARNING: skipped {skipped} rows with incomplete v3 fields")
+    print(f"  Written {written} v3 rows to {path}")
+
+
 def load_json_files(data_dir: Path) -> list[tuple[str, str, str]]:
     """Returns list of (prompt, label, source)."""
     examples: list[tuple[str, str, str]] = []
-    skip = {"training_corpus.json"}  # don't re-read the output file
+    # skip output files and v3 example fixtures (v3 JSONL handled separately)
+    skip = {"training_corpus.json", "training_corpus_v3.example.json"}
 
     for f in sorted(data_dir.glob("*.json")):
         if f.name in skip:
@@ -458,6 +570,15 @@ def run(args: argparse.Namespace) -> None:
     print("Loading data/*.json files...")
     json_examples = load_json_files(DATA_DIR)
     _print_source_summary(json_examples)
+
+    print("\nLoading v3 row-based examples (training_corpus_v3|cheapest_acceptable_route)...")
+    v3_examples = load_v3_as_legacy(DATA_DIR)
+    if v3_examples:
+        v3_dist = Counter(lb for _, lb, _ in v3_examples)
+        print(f"  v3 examples: {len(v3_examples)} -- {dict(v3_dist)}")
+    else:
+        print("  No v3 JSONL files found (expected after T5/T6 populate data/)")
+    json_examples = json_examples + v3_examples
 
     print("\nLoading chat log prompts (labeled_history.csv)...")
     chat_examples = load_chat_logs(HISTORY_CSV)

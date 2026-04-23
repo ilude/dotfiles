@@ -276,3 +276,68 @@ The router is wired into Pi as an automatic extension.
 **Routing log:** Every classified prompt is appended to
 `prompt-routing/logs/routing_log.jsonl` with tier, probabilities, and
 floor-applied flag. Run `python audit.py` to compare against Opus labels.
+
+---
+
+## v3 ConfGate Classifier Live (SUPERSEDES Phase 0)
+
+Phase 0 (static tier->effort bridge) is **superseded** by the v3 ConfGate
+shipment. The live extension at `pi/extensions/prompt-router.ts` now consumes
+the v3 route-level classifier directly and applies the simplified runtime
+policy described below.
+
+### Classifier: ConfGate (default)
+
+`classify.py` defaults to `--classifier confgate`. ConfGate uses LightGBM as
+the primary route predictor and consults T2 (LinearSVC) only when LGB's
+confidence falls below `CONF_GATE = 0.50`. Implementation:
+`classifier_confgate.py`. Both backing joblibs are SHA256-verified at load:
+`models/router_v3_lgbm.joblib` and `models/router_v3.joblib`.
+
+Wire output conforms to `docs/router-v3-output.schema.json` (schema_version
+`3.0.0`) and carries an optional `ensemble_rule` field for observability
+(values: `lgb-confident`, `agree`, `t2-overrides`, `lgb-fallback`).
+
+Fallback on classifier failure: malformed JSON, unknown `schema_version`, or
+missing required fields all route through the TypeScript null-fallback path.
+The router keeps the previous applied route, logs a warning via
+`ctx.ui.notify`, and does not crash.
+
+### Runtime policy (ship config)
+
+The session-wide permanent escalation rule (`applyNeverDowngrade`) was retired.
+The hysteresis state machine remains in the code but is effectively disabled
+under ship settings:
+
+| Knob | Ship value | Meaning |
+|------|------------|---------|
+| `router.policy.N_HOLD` | `0` | Hysteresis hold disabled -- any hold inflated cost in shadow-eval |
+| `router.policy.K_CONSEC` | `1` | Coupled to `N_HOLD` |
+| `router.policy.COOLDOWN_TURNS` | `2` | Runtime escalation cooldown on failure signals |
+| `router.policy.UNCERTAIN_THRESHOLD` | `0.55` | Dormant; retained for future use |
+| `router.policy.UNCERTAIN_FALLBACK_ENABLED` | `false` | Disabled -- fallback blocked legitimate downgrades |
+| `router.policy.DOWNGRADE_THRESHOLD` | `0.85` | Downgrade confidence gate (dormant at N_HOLD=0) |
+| `router.effort.maxLevel` | `high` | Effort cap -- blocks `xhigh` regardless of classifier output |
+
+Full per-key reference in `docs/settings-doc.md`.
+
+### Known trade-off
+
+Shadow-eval on the synthetic `eval_v3` benchmark showed both the v3 classifier
+(ConfGate and T2) routing more expensive than legacy-oracle in absolute terms.
+The benchmark is structurally biased toward legacy: it derives prompts from
+`complexity_tier`, which is itself the oracle the legacy router uses. Real
+traffic is expected to be cheaper because:
+
+1. Legacy routes `mid` -> Sonnet uniformly with no effort control; real-world
+   Sonnet/low prompts get the same cost as Sonnet/high.
+2. ConfGate's joint `(tier, effort)` predictions capture the easy Haiku-tier
+   and low-effort slices that legacy flattens.
+
+Re-measure on real `routing_log.jsonl` once 30 days of traffic accumulates.
+
+### Legacy files (retained)
+
+The earlier `low/mid/high` TF-IDF + LinearSVC classifier (`model.pkl`,
+`router.py route()`, `data/training_corpus.json`) is retained as the P0 bridge
+fallback but is not on the runtime path under the v3 shipment.

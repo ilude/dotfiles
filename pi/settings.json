@@ -1,7 +1,7 @@
 {
-  "defaultModel": "gpt-5.4",
-  "lastChangelogVersion": "0.68.0",
-  "defaultProvider": "github-copilot",
+  "defaultModel": "gpt-5.3-codex",
+  "lastChangelogVersion": "0.68.1",
+  "defaultProvider": "openai-codex",
   "defaultThinkingLevel": "medium",
   "expertise_similarity": {
     "enabled": true,
@@ -9,5 +9,19 @@
     "model": "gpt-5.4-mini",
     "timeout_ms": 3000,
     "min_confidence": 0.75
+  },
+  "hideThinkingBlock": false,
+  "router": {
+    "policy": {
+      "N_HOLD": 0,
+      "DOWNGRADE_THRESHOLD": 0.85,
+      "K_CONSEC": 1,
+      "COOLDOWN_TURNS": 2,
+      "UNCERTAIN_THRESHOLD": 0.55,
+      "UNCERTAIN_FALLBACK_ENABLED": false
+    },
+    "effort": {
+      "maxLevel": "high"
+    }
   }
 }

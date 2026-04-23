@@ -20,6 +20,8 @@ Pi is installed automatically by the dotfiles installer:
 
 On Linux, macOS, and Git Bash, this uses `bun install -g @mariozechner/pi-coding-agent`. On Windows, `install.ps1` installs Pi via `npm install -g @mariozechner/pi-coding-agent`, then runs `scripts/pi-link-setup` (which junctions `~/.dotfiles/pi/` → `~/.pi/agent/` on Windows, symlinks on Linux).
 
+The local dotfiles install also defaults `PI_CACHE_RETENTION=long` in the installed shell profiles (`zsh`, `bash`, `sh`, and PowerShell) unless you have already set a different value. That prefers extended provider-side prompt caching where Pi supports it (currently documented by Pi as Anthropic 1h and OpenAI 24h for direct API calls).
+
 ### Windows package-manager note
 
 Windows intentionally keeps Pi on **npm**, not Bun, for now.
@@ -188,38 +190,90 @@ Workflow highlights:
 
 ### `prompt-router.ts`
 
-Classifies every user prompt with a local TF-IDF + LinearSVC model and switches
-the active model accordingly before the agent starts.
+Classifies every user prompt and switches **both model tier and thinking
+effort** per turn. The live classifier is ConfGate (LightGBM primary, T2
+LinearSVC consulted as a low-confidence fallback), trained on the v3
+route-level corpus under `~/.dotfiles/pi/prompt-routing/`.
 
-Routing is now **dynamic**: `low` / `mid` / `high` map onto the current provider/model ladder using same-family resolution when possible.
+Routing is **dynamic**: predicted model tier (`Haiku` / `Sonnet` / `Opus`)
+maps onto the current provider/model ladder using same-family resolution, and
+the predicted effort (`none` / `low` / `medium` / `high`) is applied via
+`pi.setThinkingLevel()`.
 
 | Tier | Target rung | When |
 |------|-------------|------|
-| `low` | small model | Factual lookups, syntax questions, single-step tasks |
-| `mid` | medium model | Multi-step tasks, code with context, moderate analysis |
-| `high` | large model | Architecture decisions, security, distributed systems |
+| Haiku | small model | Factual lookups, syntax questions, single-step tasks |
+| Sonnet | medium model | Multi-step tasks, code with context, moderate analysis |
+| Opus | large model | Architecture decisions, security, distributed systems |
 
 Examples:
 - OpenAI Codex session → `gpt-5.4-mini` / `gpt-5.4-fast` / `gpt-5.4`
 - Anthropic session → `haiku` / `sonnet` / `opus`
 - GitHub Copilot session → best available GitHub-backed small / medium / large rung in the current family or nearest same-provider equivalent
 
-**Never-downgrade rule:** once a session escalates to a higher tier, it stays
-there for the rest of the session.
+#### Runtime policy (ship config)
+
+The session-wide never-downgrade rule was retired. Policy lives in
+`pi/settings.json` under `router.policy.*` and `router.effort.*`; see
+`pi/prompt-routing/docs/settings-doc.md` for the per-key reference.
+
+| Knob | Ship value | Meaning |
+|------|------------|---------|
+| `router.effort.maxLevel` | `high` | Hard cap on applied thinking level; blocks `xhigh` |
+| `router.policy.N_HOLD` | `0` | Hysteresis hold disabled -- shadow-eval showed hold inflated cost |
+| `router.policy.K_CONSEC` | `1` | Tied to `N_HOLD` |
+| `router.policy.COOLDOWN_TURNS` | `2` | Runtime escalation cooldown (e.g. after tool failure) |
+| `router.policy.UNCERTAIN_THRESHOLD` | `0.55` | Dormant; retained for future use |
+| `router.policy.UNCERTAIN_FALLBACK_ENABLED` | `false` | Disabled -- fallback blocked legitimate downgrades |
+| `router.policy.DOWNGRADE_THRESHOLD` | `0.85` | Hysteresis downgrade gate (dormant at N_HOLD=0) |
 
 **Footer indicator:** `▸ <small model>` / `▸▸ <medium model>` / `▸▸▸ <large model>` after each routed prompt.
 
 **Slash commands:**
 ```
-/router-status   # show current tier, detected current model, and resolved low/mid/high ladder
-/router-reset    # reset session max back to low
-/router-off      # disable routing (keep current model)
-/router-on       # re-enable routing
+/router-status    # current tier, effort, policy snapshot, resolved model ladder
+/router-explain   # full decision trail for the last turn
+/router-reset     # clear session state
+/router-off       # disable routing (keep current model)
+/router-on        # re-enable routing
 ```
 
-Classifier: `~/.dotfiles/pi/prompt-routing/model.pkl` (92% accuracy on OOD eval, 0 inversions).
-Audit log: `~/.dotfiles/pi/prompt-routing/logs/routing_log.jsonl`.
-See `~/.dotfiles/pi/prompt-routing/` for the full classifier project.
+`/router-explain` output format:
+
+```
+Last turn decision:
+  Prompt: "<first ~80 chars>..."
+  Classifier: confgate
+    schema_version: 3.0.0
+    primary: {model: Sonnet, effort: medium}
+    confidence: 0.82
+    ensemble_rule: lgb-confident
+    candidates: [Haiku/low@0.1, Sonnet/medium@0.82]
+  Applied route: Sonnet/medium
+  Rule fired: classifier
+  Current state: model=openai-codex/gpt-5.4-fast, effort=medium, cap=high
+```
+
+`Rule fired` is one of: `classifier`, `hysteresis-hold`, `cooldown`,
+`uncertainty-fallback`, `effort-cap`, `null-fallback`.
+
+**Where the classifier lives.** `~/.dotfiles/pi/prompt-routing/` -- see the
+README/AGENTS.md there for the training pipeline. `classify.py` is the CLI
+wrapper the extension spawns per turn; ConfGate is implemented in
+`classifier_confgate.py` (LGB primary, T2 fallback when LGB conf < CONF_GATE).
+Artifacts: `models/router_v3.joblib` (T2) and `models/router_v3_lgbm.joblib`
+(LGB), both SHA256-verified at load.
+
+**Troubleshooting:**
+
+- Routing decisions are logged to
+  `~/.dotfiles/pi/prompt-routing/logs/routing_log.jsonl` (classifier-side
+  audit log when Python logging is enabled).
+- If `/router-explain` shows `Rule fired: null-fallback`, the classifier
+  failed or returned garbage; the router kept the previous route. Reproduce
+  with `python ~/.dotfiles/pi/prompt-routing/classify.py "test prompt"`.
+- If `effort-cap` fires often, raise `router.effort.maxLevel`. If `cooldown`
+  is stuck, call `/router-reset`.
 
 ---
 

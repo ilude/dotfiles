@@ -1,0 +1,227 @@
+prompt_id,source,exclusion_reason,prompt_preview
+lh-0000,labeled_history.csv,Conversational context about an ongoing issue in another instance,it may have been fixed already... we are running the install.ps1 in another inst
+lh-0007,labeled_history.csv,"Answering a clarifying question, not a standalone task",Diagnostic tests that run on-demand to check if the current shell environment is
+lh-0008,labeled_history.csv,Fragment answering a scope question from prior context,"Multiple shell types, all shells on both linux and windows"
+lh-0009,labeled_history.csv,Conversational fragment selecting all options,all of the above
+lh-0011,labeled_history.csv,Short conversational directive needing prior context,Just report status
+lh-0016,labeled_history.csv,Conversational follow-up sharing a link about known issue,it apparently has windows compat issues as well: https://github.com/kenryu42/cla
+lh-0017,labeled_history.csv,Clarifying question about assistant's prior research method,"have you reviewed how the code in this new repo works, or are you taking the ""ho"
+lh-0018,labeled_history.csv,Follow-up question referencing features from prior context,what about the Audit logging and Secret redaction features?
+lh-0022,labeled_history.csv,context-dependent fragment - requires prior session context to interpret,"what about these:
+claude\hooks\ensure-mcp-config.sh
+claude\hooks\hooks.json
+clau"
+lh-0024,labeled_history.csv,"Conversational fragment about a crash, not a task",you crashed
+lh-0027,labeled_history.csv,context-dependent fragment - requires prior session context to interpret,yes add logging to edit and write hooks
+lh-0040,labeled_history.csv,Follow-up fragment needing prior context,as part of a normal build or something?
+lh-0043,labeled_history.csv,Vague follow-up needing prior context,does that setup paths as needed?
+lh-0046,labeled_history.csv,Confirmation response to assistant's question,Want me to add a pre-check that skips if the tool is already available on PATH? 
+lh-0050,labeled_history.csv,Conversational fragment requiring prior context,no commit and add them to this branch
+lh-0052,labeled_history.csv,Conversational continuation needing prior context,yes extend it for docker and dotnet too
+lh-0057,labeled_history.csv,Affirmative conversational fragment,yes please
+lh-0058,labeled_history.csv,Short directive requiring prior context,test that new flag
+lh-0061,labeled_history.csv,Contextual fragment clarifying prior question,its installed using winget
+lh-0063,labeled_history.csv,Conversational suggestion needing prior context,shouldn't it be in /c/Users/mglenn/AppData/Local/Microsoft/WinGet/Links/
+lh-0068,labeled_history.csv,Scoping directive needing prior context,only worry about the files you changed
+lh-0072,labeled_history.csv,Conversational complaint needing prior context,why do you keep recreating README.old.md
+lh-0073,labeled_history.csv,Directive fragment referencing prior conversation,just don't restore it when I tell you to commit
+lh-0074,labeled_history.csv,Frustrated conversational fragment about git staging,its already deleted... I do not understand git add . should stage and then you c
+lh-0076,labeled_history.csv,Follow-up question requiring prior conversation context,do we need to update other entries in settings.json ?
+lh-0078,labeled_history.csv,Short directive fragment needing prior context,use browsermcp
+lh-0081,labeled_history.csv,"Simple git command, not a classifiable prompt",git co dev
+lh-0085,labeled_history.csv,Correction referencing prior conversation context,we are on windows... run install.ps1 not install
+lh-0088,labeled_history.csv,Follow-up referencing unspecified prior addition,add it to the install.ps1 as well
+lh-0091,labeled_history.csv,Follow-up request needing prior context,read the README.md and docs/ too please
+lh-0093,labeled_history.csv,Conversational follow-up about tool auth state,check if you need me to log back in for any of those tools
+lh-0094,labeled_history.csv,Retry directive after prior failed attempt,try kubectl again I activated the wireguard vpn
+lh-0097,labeled_history.csv,Follow-up referencing unspecified prior service context,can you check the logs first before restarting it?
+lh-0099,labeled_history.csv,Bare URL without actionable instruction,https://directory.llmstxt.cloud/?search=claude
+lh-0101,labeled_history.csv,context-dependent fragment - requires prior session context to interpret,and why if it was unhealthy was it not restarted automaticly after some amount o
+lh-0103,labeled_history.csv,Conversational fragment referencing prior plan context,this should be the first part of the current plan
+lh-0109,labeled_history.csv,Conversational directive referencing prior context,lets investigate the wireguard drift first
+lh-0111,labeled_history.csv,Conversational directive to reorder prior plan steps,can we apply the wireguard change first I want to keep state in line
+lh-0115,labeled_history.csv,Conversational acknowledgment and pacing guidance,its ok.. we are not on a production setup... lets figure out what is going on sl
+lh-0119,labeled_history.csv,Conversational fragment asking about next step,should we do a plan first?
+lh-0122,labeled_history.csv,context-dependent fragment - requires prior session context to interpret,and make sure its clear that you should be using make targets when possible to m
+lh-0124,labeled_history.csv,Conversational retraction with simple directive,nevermind... I see it now.. yes make tf-eks
+lh-0126,labeled_history.csv,Conversational fragment referencing prior context,show them the repo since everything is setup from that anyway
+lh-0134,labeled_history.csv,"Selection from prior options, no standalone meaning",A and C in whatever order makes sense
+lh-0139,labeled_history.csv,context-dependent fragment - requires prior session context to interpret,ok what about helm state?
+lh-0142,labeled_history.csv,context-dependent fragment - requires prior session context to interpret,yes fix the IMDS hop limit
+lh-0148,labeled_history.csv,Directive narrowing prior discussion scope,ignore multi-az and other single point of failure issues... we are not doing tho
+lh-0149,labeled_history.csv,"Correction to prior conversation, no standalone task",1.34 is not wrong... it is the latest version
+lh-0155,labeled_history.csv,Context-dependent question referencing prior conversation state,in our current context do you still have info on the redeploy dns issues we had?
+lh-0161,labeled_history.csv,Conversational fragment requiring prior context,oh we are revisiting it right now
+lh-0162,labeled_history.csv,Ambiguous conversational fragment needing prior context,can we do both?
+lh-0171,labeled_history.csv,Conversational continuation requiring prior context,yes update the plan using a sub agent with the found issues
+lh-0173,labeled_history.csv,Short confirmation referencing prior context,yes update structured-analysis too
+lh-0175,labeled_history.csv,"Just a URL, no actionable prompt",https://code.claude.com/docs/en/chrome
+lh-0181,labeled_history.csv,Conversational acknowledgment needing prior context,its working
+lh-0184,labeled_history.csv,Conversational retry referencing prior failed attempt,try again... browsermcp is available and working
+lh-0185,labeled_history.csv,Conversational retry referencing prior context,try browsermcp now
+lh-0186,labeled_history.csv,Conversational fragment needing prior context,ok.. and now?
+lh-0187,labeled_history.csv,Conversational instruction referencing prior UI state,its loaded.. you need to select something from the side menu
+lh-0188,labeled_history.csv,context-dependent fragment - requires prior session context to interpret,stop the app
+lh-0191,labeled_history.csv,Conversational response referencing prior context,you can give me the command that needs run in powershell in admin mode
+lh-0195,labeled_history.csv,Conversational status check needing prior context,so where are we at this point?
+lh-0202,labeled_history.csv,Conversational pushback referencing prior context,cannot access cluster is not what I would call working
+lh-0203,labeled_history.csv,Contextual clarification about prior debugging session,aws CLI isn't in PATH there. The script correctly reports this rather than crash
+lh-0205,labeled_history.csv,"Tool output pasted as context, not a prompt","- Git Bash: ✓ Found at /c/Program Files/Amazon/AWSCLIV2/aws
+  - PowerShell: ✓ Fo"
+lh-0207,labeled_history.csv,"Pasted tool/script output, not a question or task","--- CloudWatch Alarms ---
+  [X] Alarms: 12 OK, 1 ALARM (13 total)
+
+  Alarms in A"
+lh-0210,labeled_history.csv,Conversational clarification about VPN status,"VPN is working fine, just not reporting health"
+lh-0218,labeled_history.csv,"Acknowledgment fragment, no actionable request",ok...I see now
+lh-0221,labeled_history.csv,context-dependent fragment - requires prior session context to interpret,yes implement all three
+lh-0226,labeled_history.csv,Conversational fragment referencing prior context,this was from the last run
+lh-0231,labeled_history.csv,"Feedback on prior output, no actionable prompt",you are being way to detailed
+lh-0233,labeled_history.csv,Conversational correction referencing prior action,try using a relative file path please
+lh-0235,labeled_history.csv,"Instruction fragment correcting prior behavior, no task","Use relative paths: projectfolder/... instead of E:/Projects/projectfolder/...
+U"
+lh-0239,labeled_history.csv,"Conversational meta-instruction, not a task","so we are going to be planning until I tell you otherwise, is that clear?"
+lh-0240,labeled_history.csv,"Conversational permission grant, not a task",you can build investigatory tools if needed for planning
+lh-0242,labeled_history.csv,Conversational correction of a typo,sorry word docs not work docs
+lh-0243,labeled_history.csv,"Answers to prior clarifying questions, needs context","1. more than one, does it really matter beyond that?
+2. no, they will need to be"
+lh-0244,labeled_history.csv,"Single naming directive, needs prior context",call this project Warmachine
+lh-0245,labeled_history.csv,"Approval fragment, no actionable task",that looks good for now
+lh-0248,labeled_history.csv,"Conversational response to prior question, not a task","Does the customer require Word format, or is PDF acceptable as the deliverable?
+"
+lh-0256,labeled_history.csv,"Confirmation of prior suggestion, needs context",yes update the PRD and implementation plan
+lh-0258,labeled_history.csv,Confirmation to launch previously discussed reviews,yes launch the three reviews
+lh-0260,labeled_history.csv,"Informational fragment providing a URL, no task",repo.teams-sddc-dev.com is the current prod gitlab
+lh-0261,labeled_history.csv,"Informational fragment providing a URL, no task",prod.teams-sddc-dev.com is the new instance
+lh-0264,labeled_history.csv,Filter instruction referencing prior context,include all but andrew.vasilenko/personal
+lh-0265,labeled_history.csv,Follow-up filter instruction needing prior context,exclude the infra ones as well for now
+lh-0268,labeled_history.csv,"Numbered reply to prior discussion, needs context","1. no, they will be used because we will be converting these projects to access "
+lh-0269,labeled_history.csv,"Numbered follow-up about placeholder values, needs context",2. can we set these up with placeholder values for now and I will find out what 
+lh-0277,labeled_history.csv,Conversational fragment referencing prior context,"do we even need the (given: windows absolute path with drive letter, backslashes"
+lh-0280,labeled_history.csv,context-dependent fragment - requires prior session context to interpret,"yes, but read what I put in the .env and use that naming convention please. Upda"
+lh-0283,labeled_history.csv,Conversational question referencing prior plan context,should we just create - [ ] Create `app/docker/` directory with Dockerfile and d
+lh-0286,labeled_history.csv,Conversational acknowledgment of misunderstanding,FastAPI is fine.. I just misunderstood
+lh-0287,labeled_history.csv,Short confirmation requiring prior plan context,yes update the implementation plan
+lh-0289,labeled_history.csv,context-dependent fragment - requires prior session context to interpret,yes update eisa dockerfile to ironbank
+lh-0290,labeled_history.csv,"Short confirmation with constraint, needs prior context","yes, do not push"
+lh-0297,labeled_history.csv,"Conversational musing, not an actionable request",I kinda feel like I should test the web interface
+lh-0312,labeled_history.csv,"Raw error output, not a classifiable prompt","{""detail"":""OAuth not configured""}"
+lh-0322,labeled_history.csv,context-dependent fragment - requires prior session context to interpret,"what about claude\hooks\path-normalization\test-path-normalization.py, does that"
+lh-0331,labeled_history.csv,Conversational directive narrowing prior analysis scope,we do not need to move teams/mps/ei or teams/ui/sql-generator to ironbank images
+lh-0334,labeled_history.csv,Conversational fragment referencing prior UI instructions,I don't see this option: Enable Direct Transfer: Admin > Settings > General > Vi
+lh-0342,labeled_history.csv,Conversational follow-up requiring prior context,yes... and why didn't we do this from the start?
+lh-0345,labeled_history.csv,Approval to proceed with prior suggestion,yes implement the simplified version
+lh-0347,labeled_history.csv,Conversational continuation with no standalone task,continue... I fixed the path hook
+lh-0349,labeled_history.csv,Conversational quote reference needing prior context,"what about ""The final output feeds into your existing frontend-design skill for "
+lh-0351,labeled_history.csv,Conversational follow-up providing context to prior exchange,"ya the generic issues are:
+  - ""Use stdlib before custom implementations""
+  - ""I"
+lh-0353,labeled_history.csv,Conversational question referencing prior context,did you add tests for the issues I presented to you when we started here?
+lh-0354,labeled_history.csv,context-dependent fragment - requires prior session context to interpret,also please review all git logs related to path-normalization and put together a
+lh-0355,labeled_history.csv,"Clarifying statement providing context, not a task",it is a Claude Code bug related to how it handles absolute vs relative paths int
+lh-0356,labeled_history.csv,Informational clarification about path separators,"the path seperator is important too, it must use a forward slash / not a backsla"
+lh-0357,labeled_history.csv,"User stating their understanding, not requesting work",I believe that using ~/ paths for accessing files within the users home director
+lh-0358,labeled_history.csv,Simple confirmation of prior statement,"to my understanding of the issue, yes that is correct"
+lh-0360,labeled_history.csv,Simple affirmative response to prior proposal,yes I want these
+lh-0362,labeled_history.csv,Follow-up instruction requiring prior conversation context,I want you to fire two more instance of each of these sub agents again. one usin
+lh-0363,labeled_history.csv,Conversational check-in referencing prior context,do you have a clear picture of the recent agent reviews and issues we need to ad
+lh-0365,labeled_history.csv,Simple approval to proceed with prior plan,yes implement the plan
+lh-0367,labeled_history.csv,Simple confirmation of correctness,yes that is the correct answer and behavior
+lh-0370,labeled_history.csv,Follow-up question requiring prior conversation context,so why are we conserned with it at all
+lh-0375,labeled_history.csv,Conversational fragment referencing prior option B with context,B. because I would like to make changes to the gitlab ci if needed to get things
+lh-0376,labeled_history.csv,Conversational correction referencing prior discussion,"you are assuming, stop that... the bats tests for damage control are not accepta"
+lh-0380,labeled_history.csv,context-dependent fragment - requires prior session context to interpret,"yes, but can we consider how many of these tests could be converted to pytests a"
+lh-0384,labeled_history.csv,Approval of a suggested file path,docs/PORTING_PROGRESS.md sounds good
+lh-0388,labeled_history.csv,Conversational selection referencing prior list of repos,lets start with esia since that's the one I know the best
+lh-0390,labeled_history.csv,Short follow-up requesting dual-access instructions,if we can keep access to both... show me how
+lh-0392,labeled_history.csv,Conversational selection of option C with path detail,"C, skill should be created in ~/.claude/skills/ if not already there since this "
+lh-0401,labeled_history.csv,Contextual redirect instruction referencing prior conversation,try updating powershell/profile.ps1 instead
+lh-0402,labeled_history.csv,"Correction referencing prior failed attempt, needs context","do what I asked, stop trying to hack around the issue... use forward slashes ins"
+lh-0407,labeled_history.csv,"Mode-switching command fragment, not a classifiable task",enter plan mode for eisa porting
+lh-0409,labeled_history.csv,"Contextual clarification about symlink paths, not a task","$HOME/.claude/hooks but the actual hooks are in $HOME/.dotfiles/claude/hooks
+$HO"
+lh-0410,labeled_history.csv,Correction/frustration referencing prior conversation failures,stop you are flaling and making up problems that do not exists... this was worki
+lh-0412,labeled_history.csv,"Contextual clarification about a path, needs prior context",it fires for this path: claude\skills\youtube-transcript\fetch_transcript.py
+lh-0414,labeled_history.csv,Correction about tool behavior referencing ongoing conversation,can you please update your tool calls to update tool to use forward slashes inst
+lh-0417,labeled_history.csv,Bug report referencing tool output from current session,"WTF? ● Write(claude\hooks\path-normalization\CLAUDE.md)
+  ⎿  Wrote 1 lines to cl"
+lh-0422,labeled_history.csv,Follow-up question needing prior search context,is that search case insensitive?
+lh-0425,labeled_history.csv,Conversational fragment acknowledging a choice,A for now is fine...
+lh-0431,labeled_history.csv,Terminal output pasted without a question,"ssh -T git@ssh.gitlab.prod.teams-sddc-dev.com
+The authenticity of host 'ssh.gitl"
+lh-0435,labeled_history.csv,Short corrective instruction fragment,changes should be in branches not dev
+lh-0443,labeled_history.csv,Short continuation directive needing prior context,continue monitoring and report when done
+lh-0452,labeled_history.csv,Workflow instruction fragment requiring prior context,make each completed as its completed and commit then. do not wait till the end o
+lh-0454,labeled_history.csv,Contextual instruction about a specific repo port,"teams.services.sharedkernel can be ported... no changes are needed, this repo is"
+lh-0455,labeled_history.csv,Continuation reference needing prior context,then do tmot/apim as well
+lh-0456,labeled_history.csv,Contextual question about prior conversation decision,why are we skipping the sql-generator?
+lh-0457,labeled_history.csv,Ordering instruction requiring prior task context,do the teams/mps that do not have ci files first
+lh-0459,labeled_history.csv,Conversational fragment responding to prior options,"1. no
+C. can we discuss how this is done?"
+lh-0462,labeled_history.csv,"Feedback about a bad code review, needs prior context","way to go genius you made me look like an idiot:
+
+```
+Mike, I just got back to t"
+lh-0467,labeled_history.csv,Clarification on prior research instruction,if it was not clear I expected the sub agents to look for papers that were writt
+lh-0468,labeled_history.csv,Brief instruction modifier for ongoing task,keep reference urls to were info came from in the notes file
+lh-0483,labeled_history.csv,Conversational continuation referencing prior plan context,"just run the plan, then we can evaluate any additional work that is still needed"
+lh-0487,labeled_history.csv,context-dependent fragment - requires prior session context to interpret,"yes, how about claude\skills\youtube-transcript, claude\skills\ruleset-optimizat"
+lh-0494,labeled_history.csv,File path fragment answering a prior question,"probably ""C:\Projects\Personal\agent-spike\.claude\"""
+lh-0503,labeled_history.csv,Conversational confirmation asking about committing,you want to create a commit for this change with the added context we have here 
+lh-0504,labeled_history.csv,Short confirmation to push code,yes push it
+lh-0511,labeled_history.csv,Short confirmation to commit,yes commit it
+lh-0513,labeled_history.csv,Conversational correction pointing to a file path,yes you do: claude\skills\claude-code-workflow\youtube-transcript.md
+lh-0520,labeled_history.csv,Conversational reference to prior conversation context,you told me the other day that file should not be tracked
+lh-0554,labeled_history.csv,context-dependent fragment - requires prior session context to interpret,"Yes, proceed with adding the AWS, Helm, and Terraform patterns now using a team "
+lh-0555,labeled_history.csv,Conversational correction referencing prior context,"no, I miss understood the architecture, I thought the autoscaler brought up more"
+lh-0570,labeled_history.csv,Conversational correction referencing prior discussion,"but you said identify missing patches, and report compliance             status "
+lh-0581,labeled_history.csv,context-dependent fragment - requires prior session context to interpret,what about java security validation tooling to check for bad or outdated depende
+lh-0600,labeled_history.csv,Conversational fragment requiring prior context,what is the next step
+lh-0601,labeled_history.csv,Requires prior conversation context about migration work,what are the next things we need to do for the migration work?
+lh-0603,labeled_history.csv,Conversational fragment needing prior context,"what are we missing, if anything?"
+lh-0605,labeled_history.csv,Requires prior context about a specific user issue,"what is the issue with Mike Glenn
+michael.glenn@eagletg.com"
+lh-0607,labeled_history.csv,Conversational fragment about an in-progress commit,during the commit you wanted to delete some things and I am conserned about what
+lh-0608,labeled_history.csv,"Meta-conversational feedback, not a task prompt","what is going to make you stop using that phrase, you will forget all about this"
+lh-0614,labeled_history.csv,Requires prior context about what is in progress,what is in in-progress?
+lh-0623,labeled_history.csv,Conversational fragment needing prior context about separation,"what does this gain us, why should I seperate it?"
+lh-0627,labeled_history.csv,Requires prior context about what 'it' and 'spec' refer to,how does it fit/apply to  what we have spec'd here?
+lh-0632,labeled_history.csv,Ambiguous without context about what status refers to,what is the status?
+lh-0633,labeled_history.csv,Conversational fragment asking agent about its own state,what is your status
+lh-0635,labeled_history.csv,Follow-up question requiring prior conversation context,but why is the header missing in the first place?
+lh-0637,labeled_history.csv,Context-dependent question about running agents in session,what are the two running agents doing?
+lh-0642,labeled_history.csv,Completely ambiguous without prior context,what is this?
+lh-0644,labeled_history.csv,context-dependent fragment - requires prior session context to interpret,yes check what is deployed
+lh-0671,labeled_history.csv,Conversational fragment requesting status of current work,can you explain what you are upto? I feel you might be going off the rails?
+lh-0673,labeled_history.csv,Context-dependent question requiring prior conversation state,what is not implemented and should we implement it now?
+lh-0676,labeled_history.csv,context-dependent fragment - requires prior session context to interpret,"yes, update the backlog with the research findings. Then explain the difference "
+lh-0677,labeled_history.csv,Requires prior context about what update is being discussed,so what is the risk of doing this update and applying it?
+lh-0678,labeled_history.csv,"Off-topic hypothetical, not a software task",what would you do if you had a gun?
+lh-0679,labeled_history.csv,Conversational fragment requiring prior context,how does that work?
+lh-0686,labeled_history.csv,Requires prior context about what 'it' refers to,is there any reason to set it up? what does it do for devtool use?
+lh-0688,labeled_history.csv,Conversational fragment asking about current action,wait what are you doing now?
+lh-0689,labeled_history.csv,Requires prior context about what operation is planned,what is the downtime risk?
+lh-0691,labeled_history.csv,Conversational fragment reacting to agent behavior,"you are conserning me a bit, what is going on?"
+lh-0692,labeled_history.csv,Requires prior context about what task needs PowerShell,nope... what is the powershell commands I should run
+lh-0698,labeled_history.csv,Requires prior context about which plan is referenced,what is the downtime risk to applying this plan
+lh-0699,labeled_history.csv,Conversational fragment asking about remaining tasks,so what is left to do?
+lh-0706,labeled_history.csv,Conversational fragment requiring prior context,what are the 3 options?
+lh-0711,labeled_history.csv,Conversational follow-up referencing prior context,"1, how does all this affect our 8 open questions?"
+lh-0718,labeled_history.csv,Conversational fragment needing prior error context,why is this error happening?
+lh-0728,labeled_history.csv,Conversational pushback referencing prior context,what does any of this have to do with adding a runner instance to gitlab?
+lh-0730,labeled_history.csv,Conversational fragment requiring prior context,what are we doing here?
+lh-0731,labeled_history.csv,Refers to a prior command with no context provided,what does that command do?
+lh-0732,labeled_history.csv,Status check on a plan from prior context,what is the status of the plan?
+lh-0733,labeled_history.csv,References tier 2 from prior conversation context,what does tier 2 changes look like?
+lh-0737,labeled_history.csv,References specific prior context about damage control feature,what does the ask prompt look like for damage control?
+lh-0740,labeled_history.csv,References something from prior context without specifics,what is exploding the size so muchn
+lh-0741,labeled_history.csv,References UI elements from prior visual context,what are these triangles suppose to show?
+lh-0742,labeled_history.csv,References visual elements from a prior rendering,planets seem to have purple rings near them... what are these showing?
+lh-0745,labeled_history.csv,References x/y values from prior output context,what are these x/y position numbers representative of?
+lh-0746,labeled_history.csv,Follow-up question about orbital mechanics from prior context,but how does that put us in an offset  clockwise orbital path?
+lh-0749,labeled_history.csv,Conversational fragment about a regression needing context,"why is that such an issue all the sudden, this was working fine for days?"
+lh-0753,labeled_history.csv,Asks about prior conversation context not available,so can you explain what you came up with last night for the production chains an
+lh-0764,labeled_history.csv,Requires prior conversation context to determine next task,what is the next thing we should address?
+lh-0765,labeled_history.csv,Fragment requiring prior context about task list,what is left?
+lh-0771,labeled_history.csv,Requires prior conversation context about someone's work,can you explain to me your view of what he has built so I know you have enough c
+lh-0774,labeled_history.csv,Requires prior conversation context about existing plan,what is left for the plan to complete?

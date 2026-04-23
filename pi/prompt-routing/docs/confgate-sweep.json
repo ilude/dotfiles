@@ -1,0 +1,99 @@
+{
+  "sweep_param": "CONF_GATE",
+  "sweep_values": [0.30, 0.40, 0.50, 0.60, 0.70],
+  "policy": {
+    "N_HOLD": 0,
+    "UNCERTAIN_FALLBACK_ENABLED": false,
+    "MAX_EFFORT_LEVEL": "high",
+    "UNCERTAIN_THRESHOLD": 0.55
+  },
+  "baseline_t2_alone": {
+    "v3_catastrophic_count": 10,
+    "session_v3_catastrophic": 10,
+    "projected_cost_delta": 4.340711,
+    "source": "cost-shadow-eval.json (N_HOLD=3)"
+  },
+  "lgb_confidence_distribution": {
+    "note": "LGB is very high confidence on eval_v3 corpus. Median conf=0.997, 91% above 0.70. Gate rarely triggers.",
+    "pct_below_0.30": 0.0,
+    "pct_below_0.40": 0.0,
+    "pct_below_0.50": 2.0,
+    "pct_below_0.60": 4.5,
+    "pct_below_0.70": 9.0
+  },
+  "sweep": [
+    {
+      "conf_gate": 0.30,
+      "verdict": "FAIL",
+      "cost_delta": 2.539205,
+      "v3_cost": 11.246133,
+      "legacy_cost": 8.706929,
+      "cat_delta": 8,
+      "v3_cat": 8,
+      "session_cat": 7,
+      "thrash": 145,
+      "cost_pass": false,
+      "cat_pass": false,
+      "session_cat_pass": false
+    },
+    {
+      "conf_gate": 0.40,
+      "verdict": "FAIL",
+      "cost_delta": 2.539205,
+      "v3_cost": 11.246133,
+      "legacy_cost": 8.706929,
+      "cat_delta": 8,
+      "v3_cat": 8,
+      "session_cat": 7,
+      "thrash": 145,
+      "cost_pass": false,
+      "cat_pass": false,
+      "session_cat_pass": false
+    },
+    {
+      "conf_gate": 0.50,
+      "verdict": "FAIL",
+      "cost_delta": 2.539205,
+      "v3_cost": 11.246133,
+      "legacy_cost": 8.706929,
+      "cat_delta": 8,
+      "v3_cat": 8,
+      "session_cat": 7,
+      "thrash": 145,
+      "cost_pass": false,
+      "cat_pass": false,
+      "session_cat_pass": false
+    },
+    {
+      "conf_gate": 0.60,
+      "verdict": "FAIL",
+      "cost_delta": 2.539205,
+      "v3_cost": 11.246133,
+      "legacy_cost": 8.706929,
+      "cat_delta": 8,
+      "v3_cat": 8,
+      "session_cat": 7,
+      "thrash": 145,
+      "cost_pass": false,
+      "cat_pass": false,
+      "session_cat_pass": false
+    },
+    {
+      "conf_gate": 0.70,
+      "verdict": "FAIL",
+      "cost_delta": 2.539205,
+      "v3_cost": 11.246133,
+      "legacy_cost": 8.706929,
+      "cat_delta": 8,
+      "v3_cat": 8,
+      "session_cat": 7,
+      "thrash": 145,
+      "cost_pass": false,
+      "cat_pass": false,
+      "session_cat_pass": false
+    }
+  ],
+  "best_conf_gate": 0.30,
+  "best_verdict": "FAIL",
+  "recommendation": "keep-t2"
+}
