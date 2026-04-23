@@ -7,6 +7,9 @@
 # Add user local bin
 export PATH="$HOME/.local/bin:$PATH"
 
+# Prefer extended provider prompt caching in pi when supported.
+export PI_CACHE_RETENTION="${PI_CACHE_RETENTION:-long}"
+
 # Nix installer (for NixOS/nix-shell users)
 if [[ -e "$HOME/.nix-profile/etc/profile.d/nix.sh" ]]; then
     source "$HOME/.nix-profile/etc/profile.d/nix.sh"

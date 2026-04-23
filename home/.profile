@@ -9,6 +9,9 @@ fi
 # Add user local bin
 export PATH="$HOME/.local/bin:$PATH"
 
+# Prefer extended provider prompt caching in pi when supported.
+export PI_CACHE_RETENTION="${PI_CACHE_RETENTION:-long}"
+
 # Switch to zsh if available and running interactively
 if [ -t 1 ] && command -v zsh >/dev/null 2>&1; then
     export SHELL=$(command -v zsh)
