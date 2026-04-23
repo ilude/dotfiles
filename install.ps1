@@ -969,6 +969,16 @@ function Install-Packages {
         }
     }
 
+    # Enable the built-in PowerShell tool in Claude Code (Windows-only opt-in)
+    $powershellToolFlag = [Environment]::GetEnvironmentVariable('CLAUDE_CODE_USE_POWERSHELL_TOOL', 'User')
+    if ($powershellToolFlag -ne '1') {
+        [Environment]::SetEnvironmentVariable('CLAUDE_CODE_USE_POWERSHELL_TOOL', '1', 'User')
+        Write-Host "  CLAUDE_CODE_USE_POWERSHELL_TOOL=1 (User) set" -ForegroundColor Green
+    } else {
+        Write-Host "  CLAUDE_CODE_USE_POWERSHELL_TOOL=1 (User) already set" -ForegroundColor DarkGray
+    }
+    $env:CLAUDE_CODE_USE_POWERSHELL_TOOL = '1'
+
     # Python dependencies for Claude Code hooks
     # Hooks use bare python (not uv) to avoid console window flashing on Windows
     Write-Host "`n--- Claude Code Hook Dependencies ---" -ForegroundColor Cyan
