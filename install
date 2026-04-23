@@ -59,6 +59,16 @@ git submodule update --init --recursive "${DOTBOT_DIR}"
 "${BASEDIR}/${DOTBOT_DIR}/${DOTBOT_BIN}" -d "${BASEDIR}" -c "${CONFIG}" "${@}"
 completed_steps+=("Dotbot symlinks")
 
+current_step="Git filters"
+if command -v jq &>/dev/null; then
+    git config filter.json-sort.clean "jq --sort-keys ."
+    git config filter.json-sort.smudge "cat"
+    echo "git: json-sort filter configured"
+else
+    echo "git: jq not found, skipping json-sort filter"
+fi
+completed_steps+=("Git filters")
+
 current_step="MSYS2 zsh bootstrap"
 # MSYS2 zsh bootstrap: create redirect from /home/$USER to Windows home
 # This fixes the HOME mismatch between Git Bash and MSYS2's zsh
@@ -214,10 +224,8 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
         echo "claude-code: Homebrew not found, skipping"
     fi
 else
-    if command -v claude &>/dev/null; then
-        echo "claude-code: already installed ($(claude --version 2>/dev/null || echo 'unknown'))"
-    elif command -v curl &>/dev/null; then
-        echo "Installing claude-code via native installer..."
+    if command -v curl &>/dev/null; then
+        echo "Installing/updating claude-code via native installer..."
         if ! curl -fsSL https://claude.ai/install.sh | bash; then
             echo "Warning: failed to install claude-code via native installer"
         fi
