@@ -11,16 +11,18 @@
  *   confidence          -- 0.0..1.0 calibrated probability
  *   candidates[]        -- ranked route alternatives
  *
- * Hysteresis rule (T3, settings-driven thresholds):
- *   - After upgrading, stay at the higher tier for at least N_HOLD turns.
- *   - Downgrade only after K_CONSEC consecutive turns where classifier
- *     confidence for the lower tier exceeds DOWNGRADE_THRESHOLD.
- *   - Downgrade is at most one tier per eligible turn (no free-fall).
- *   - Uncertainty fallback (opt-in via UNCERTAIN_FALLBACK_ENABLED): if
- *     confidence < UNCERTAIN_THRESHOLD, apply max(classifier_primary,
- *     current_applied) to stay safe. Disabled by default -- shadow-eval
- *     showed it increased cost without meaningfully reducing catastrophic
- *     under-routing.
+ * Runtime policy (T3, settings-driven thresholds):
+ *   - Ship default: N_HOLD=0, UNCERTAIN_FALLBACK_ENABLED=false. Hysteresis
+ *     and uncertainty fallback are dormant -- the classifier drives every
+ *     turn, with effort cap and cooldown as the only active safety nets.
+ *     Shadow-eval showed both policies hurt cost without meaningfully
+ *     reducing catastrophic under-routing on this corpus.
+ *   - When N_HOLD > 0: after an upgrade, stay at the higher tier for at
+ *     least N_HOLD turns. Downgrade only after K_CONSEC consecutive turns
+ *     where classifier confidence for the lower tier exceeds
+ *     DOWNGRADE_THRESHOLD. One tier step per eligible turn (no free-fall).
+ *   - When UNCERTAIN_FALLBACK_ENABLED=true: confidence < UNCERTAIN_THRESHOLD
+ *     clamps to max(classifier_primary, current_applied).
  *   - Temporary escalation (e.g. after tool failure) lasts COOLDOWN_TURNS
  *     turns then decays toward the classifier recommendation.
  *
@@ -61,9 +63,9 @@ const TIER_ORDER: Record<string, number> = { low: 0, mid: 1, high: 2 };
 const TIER_KEYS: Tier[] = ["low", "mid", "high"];
 
 const TIER_ICON: Record<string, string> = {
-  low: "â–¸",
-  mid: "â–¸â–¸",
-  high: "â–¸â–¸â–¸",
+  low: ">",
+  mid: ">>",
+  high: ">>>",
 };
 
 // Static tier->effort mapping -- fallback when classifier returns null.
@@ -291,9 +293,9 @@ export function applyHysteresis(raw: Tier, state: RouterState, policy: RouterPol
 /**
  * Safely parse and schema-validate classifier stdout.
  *
- * Accepts legacy flat-tier strings ("low"|"mid"|"high") as a P0 bridge.
- * For v3 JSON, accepts only known schema_version values.
- * Returns null on parse failure, version mismatch, or missing fields.
+ * Accepts v3 JSON with a known schema_version only. Returns null on parse
+ * failure, version mismatch, missing required fields, or out-of-range values.
+ * Callers treat null as "keep current applied route" (null-fallback path).
  */
 export function safeParseClassifierOutput(raw: string): ClassifierRecommendation | null {
   const trimmed = raw.trim();
