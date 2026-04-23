@@ -37,9 +37,10 @@ def main() -> None:
     home = Path(os.path.expanduser("~"))
     claude = home / ".claude"
 
-    remove_old_dirs(claude / "teams")
-    remove_old_dirs(claude / "tasks")
-    remove_old_files(claude / "damage-control-sessions")
+    max_age = 72 * 3600  # 72 hours
+    remove_old_dirs(claude / "teams", max_age_secs=max_age)
+    remove_old_dirs(claude / "tasks", max_age_secs=max_age)
+    remove_old_files(claude / "damage-control-sessions", max_age_secs=max_age)
 
 
 if __name__ == "__main__":
