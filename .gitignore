@@ -33,6 +33,9 @@ claude/*password*
 claude/.mcp.json
 claude/policy-limits.json
 
+# Machine-specific generated scripts
+claude/chrome/chrome-native-host
+
 # Session and state data
 claude/provider-config.json
 claude/toggle/
