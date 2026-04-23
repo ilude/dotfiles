@@ -8,6 +8,11 @@
 # See: https://github.com/anthropics/claude-code/issues/10375
 [Console]::Write("`e[?1003l`e[?1006l")
 
+# Prefer extended provider prompt caching in pi when supported.
+if (-not $env:PI_CACHE_RETENTION) {
+  $env:PI_CACHE_RETENTION = 'long'
+}
+
 #region Module Auto-Installation
 
 $script:RequiredModules = @(

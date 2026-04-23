@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "agent": "orchestrator",
+  "rebuilt_at": "2026-04-22T23:37:26.098Z",
+  "covers_through_timestamp": "2026-04-22T17:53:08.792Z",
+  "source_entry_count": 1,
+  "similarity": {
+    "enabled": true,
+    "active": true,
+    "provider": "openai-codex",
+    "model": "gpt-5.4-mini",
+    "min_confidence": 0.75,
+    "timeout_ms": 3000,
+    "reason": "ready",
+    "attempted": 0,
+    "merged": 0,
+    "kept_separate": 0,
+    "failed": 0,
+    "malformed": 0,
+    "skipped_for_low_confidence": 0
+  },
+  "categories": {
+    "strong_decision": [],
+    "key_file": [],
+    "pattern": [],
+    "observation": [
+      {
+        "summary": "dotfiles: For pi agent caching research: installed pi docs show PI_CACHE_RETENTION=long enables extended prompt cache only for direct Anthropic/OpenAI API calls (Anthropic 1h, OpenAI 24h), while pi’s built-in context management remains AGENTS.md/SYSTEM.md loading plus auto-compaction. I found no package-level references to Gemini cachedContent/cached_content, suggesting no native explicit Gemini context-cache wiring in current pi package.",
+        "evidence_count": 1,
+        "first_seen": "2026-04-22T17:53:08.792Z",
+        "last_seen": "2026-04-22T17:53:08.792Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      }
+    ],
+    "open_question": [],
+    "system_overview": []
+  }
+}

@@ -14,6 +14,9 @@
 # This ensures tools like uv are available in Claude Code hooks
 export PATH="$HOME/.local/bin:$PATH"
 
+# Prefer extended provider prompt caching in pi when supported.
+export PI_CACHE_RETENTION="${PI_CACHE_RETENTION:-long}"
+
 # Early exit if not running interactively
 case $- in
     *i*) ;;

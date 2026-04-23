@@ -789,6 +789,17 @@ async function executeCommitCommand(pi: ExtensionAPI, args: string, ctx: any) {
 }
 
 export default function (pi: ExtensionAPI) {
+	pi.on("input", async (event, ctx) => {
+		if (event.source === "extension") {
+			return { action: "continue" };
+		}
+		if (event.text.trim().toLowerCase() === "exit") {
+			ctx.shutdown();
+			return { action: "handled" };
+		}
+		return { action: "continue" };
+	});
+
 	if (typeof pi.registerMessageRenderer === "function") {
 		pi.registerMessageRenderer(COMMIT_ACTIVITY_TYPE, (message, _options, theme) => {
 			const text = typeof message.content === "string" ? message.content : String(message.content ?? "");

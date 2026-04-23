@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "agent": "backend-dev",
+  "rebuilt_at": "2026-04-22T01:46:06.391Z",
+  "covers_through_timestamp": "2026-04-22T00:30:17.987Z",
+  "source_entry_count": 9,
+  "similarity": {
+    "enabled": true,
+    "active": true,
+    "provider": "openai-codex",
+    "model": "gpt-5.4-mini",
+    "min_confidence": 0.75,
+    "timeout_ms": 3000,
+    "reason": "ready",
+    "attempted": 0,
+    "merged": 0,
+    "kept_separate": 0,
+    "failed": 0,
+    "malformed": 0,
+    "skipped_for_low_confidence": 0
+  },
+  "categories": {
+    "strong_decision": [],
+    "key_file": [],
+    "pattern": [],
+    "observation": [
+      {
+        "summary": "Local Keycloak startup instability in eisa-playwright-e2e was a readiness-budget problem, not evidence that the Keycloak 26.5.2 image is broken. Under full-stack cold starts, the container sometimes took well over 180s before opening port 8080 and beginning realm import, while faster runs became ready around 50-75s. The robust local-dev fix was to use Keycloak’s official `/health/ready` endpoint on the main HTTP port by setting `KC_HTTP_MANAGEMENT_HEALTH_ENABLED=false`, then widen the health budget (`start_period: 180s`, `retries: 24`). This validated across 3/3 full-stack cold starts.",
+        "evidence_count": 1,
+        "first_seen": "2026-04-22T00:30:17.987Z",
+        "last_seen": "2026-04-22T00:30:17.987Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "GitHub Actions Windows failures in dotfiles Shell Tests were caused by claude/hooks/damage-control/ast_analyzer.py reapplying compiled bashToolPatterns without honoring YAML platform metadata. The main regex path already respected `platforms`/`exclude_platforms`, but AST extraction did not, so Linux-only Docker-down prompts still fired on Windows. Fix was to add shared platform-alias checks inside the AST pattern pass and cover it with tests in test_ast_analyzer.py.",
+        "evidence_count": 1,
+        "first_seen": "2026-04-21T19:33:17.007Z",
+        "last_seen": "2026-04-21T19:33:17.007Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "In eisa-playwright-e2e Playwright auth reuse is coupled to backend/session trust more than the plan implies: eisa-ng/e2e/playwright/fixtures/auth.ts treats cached storage state as fresh by file mtime only (5 minutes), reopens new contexts with ignoreHTTPSErrors, and CAC reuse still depends on per-context clientCertificates for KEYCLOAK_URL; meanwhile Makefile test-auth-preflight exports the Keycloak signing cert and explicitly restarts .NET services before auth tests, showing TLS trust propagation/backend token validation is a first-class prerequisite rather than a browser-only concern.",
+        "evidence_count": 1,
+        "first_seen": "2026-04-21T19:20:14.926Z",
+        "last_seen": "2026-04-21T19:20:14.926Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "In eisa-playwright-e2e, the client-settings protected-route gap came from app-routing loading AdminModule directly at `/admin/client-settings`, which rendered the module default route instead of the guarded `client-settings-table` child. Redirecting the parent path to `/admin/client-settings/client-settings-table` preserves the existing `id: 'client-settings'` guard. Validation also showed several first-test cold-start `page.goto(APP_URL)` timeouts/aborts across Playwright specs, so auth/anonymous bootstrap paths benefit from explicit root-navigation retries and less rigid landing assertions (`/`, `/home`, or `/login`).",
+        "evidence_count": 1,
+        "first_seen": "2026-04-21T16:47:00.799Z",
+        "last_seen": "2026-04-21T16:47:00.799Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "PowerShell profile aliases and shell helper functions live in powershell/profile.ps1 under the 'Aliases and Functions' region; zsh alias parity can be added there as native PowerShell functions, such as a dps wrapper around `docker ps --format` that preserves the header and sorts container rows.",
+        "evidence_count": 1,
+        "first_seen": "2026-04-21T14:13:14.443Z",
+        "last_seen": "2026-04-21T14:13:14.443Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "In eisa-playwright-e2e, FAQ E2E failures had three layered causes: (1) ClientSettings:HelpSupportApi was mis-seeded to the reporting API path in Services/Eisa.SqlDbServices/Migrations/20250401152121_ClientSettingNameUpdate.cs, which broke /faq loading until the DB/runtime value was corrected to /helpsupportapi/api/helpsupport/v1.0/; (2) eisa-ng/src/app/faq/faq-add-dialog/faq-add-dialog.component.ts initialized roles as null, which can trigger API 400s on create/update, so roles/tags should default to arrays; (3) faq.spec.ts assumed a visible Edit button after create and optional publish-confirm handling, but new answers start in edit mode and the publish dialog must be explicitly confirmed.",
+        "evidence_count": 1,
+        "first_seen": "2026-04-20T20:23:42.635Z",
+        "last_seen": "2026-04-20T20:23:42.635Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "In the eisa-playwright-e2e linked worktree, branch playwright-e2e-migration has no upstream configured; `.pi/` is currently untracked, absent from HEAD, absent from all refs/reflog-reachable history checked with `git log/rev-list ... -- .pi`, and the common repo `.git/info/exclude` contains patterns for `.specstory/`, `.github/`, `.claude/`, and `.specs/` but not `.pi/`.",
+        "evidence_count": 1,
+        "first_seen": "2026-04-20T14:38:37.953Z",
+        "last_seen": "2026-04-20T14:38:37.953Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "Pi /do-it currently forwards a static skill prompt from pi/extensions/workflow-commands.ts and the skill only says to wait for a .specs/ plan output; it does not detect .specs/**/plan.md inputs, route plan execution by wave/task, or enforce subagent modelSize/modelPolicy usage. Prompt/router observability is also split: pi/extensions/prompt-router.ts exposes only classifier-tier status, while pi/extensions/subagent/index.ts resolves dynamic models without surfacing routing metadata or fallbacks in a shared diagnostic view.",
+        "evidence_count": 1,
+        "first_seen": "2026-04-18T03:39:26.885Z",
+        "last_seen": "2026-04-18T03:39:26.885Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "Pi test coverage config in pi/tests/vitest.config.ts only includes ask-user.ts, pwsh.ts, web-tools.ts, tool-search.ts, and todo.ts by default; new /commit files require explicit coverage.include overrides to measure.",
+        "evidence_count": 1,
+        "first_seen": "2026-04-17T18:00:59.006Z",
+        "last_seen": "2026-04-17T18:00:59.006Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      }
+    ],
+    "open_question": [],
+    "system_overview": []
+  }
+}

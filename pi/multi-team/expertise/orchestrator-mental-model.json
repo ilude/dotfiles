@@ -1,9 +1,24 @@
 {
   "schema_version": 1,
   "agent": "orchestrator",
-  "rebuilt_at": "2026-04-21T23:00:42.786Z",
-  "covers_through_timestamp": "2026-04-21T22:43:43.660Z",
-  "source_entry_count": 42,
+  "rebuilt_at": "2026-04-22T15:25:07.413Z",
+  "covers_through_timestamp": "2026-04-21T23:27:48.960Z",
+  "source_entry_count": 43,
+  "similarity": {
+    "enabled": true,
+    "active": true,
+    "provider": "openai-codex",
+    "model": "gpt-5.4-mini",
+    "min_confidence": 0.75,
+    "timeout_ms": 3000,
+    "reason": "ready",
+    "attempted": 0,
+    "merged": 0,
+    "kept_separate": 0,
+    "failed": 0,
+    "malformed": 0,
+    "skipped_for_low_confidence": 0
+  },
   "categories": {
     "strong_decision": [
       {
@@ -60,7 +75,7 @@
         "path": "pi/lib/expertise-snapshot.ts",
         "role": "Builds compact expertise snapshots and now hosts the deterministic-first similarity tie-breaker contract and merge logic.",
         "notes": "Allowed categories are pattern/observation/open_question only; provider decisions require confidence and fall back safely on low-confidence or errors.",
-        "summary": "pi/lib/expertise-snapshot.ts — Builds compact expertise snapshots and now hosts the deterministic-first similarity tie-breaker contract and merge logic. — Allowed categories are pattern/observation/open_question only; provider decisions require confidence and fall back safely on low-confidence or errors.",
+        "summary": "pi/lib/expertise-snapshot.ts -- Builds compact expertise snapshots and now hosts the deterministic-first similarity tie-breaker contract and merge logic. -- Allowed categories are pattern/observation/open_question only; provider decisions require confidence and fall back safely on low-confidence or errors.",
         "evidence_count": 1,
         "first_seen": "2026-04-21T22:43:40.565Z",
         "last_seen": "2026-04-21T22:43:40.565Z"
@@ -68,7 +83,7 @@
       {
         "path": "C:/Projects/Work/Gitlab/eisa/.specs/self-edit-scim-local-testing.md",
         "role": "Planning note for decoupling self-edit from SCIM in local development; captures current dependency chain, local Keycloak gap, tooling options, and recommended next implementation slice.",
-        "summary": "C:/Projects/Work/Gitlab/eisa/.specs/self-edit-scim-local-testing.md — Planning note for decoupling self-edit from SCIM in local development; captures current dependency chain, local Keycloak gap, tooling options, and recommended next implementation slice.",
+        "summary": "C:/Projects/Work/Gitlab/eisa/.specs/self-edit-scim-local-testing.md -- Planning note for decoupling self-edit from SCIM in local development; captures current dependency chain, local Keycloak gap, tooling options, and recommended next implementation slice.",
         "evidence_count": 1,
         "first_seen": "2026-04-21T21:01:31.908Z",
         "last_seen": "2026-04-21T21:01:31.908Z"
@@ -79,207 +94,353 @@
         "summary": "Before documenting workflow commands, a small Makefile cleanup is enough: centralize repeated Playwright compose args, real-backend drive args, and EXIT teardown wrapper, then update `make help` and README/workflow docs against that stable surface. A larger Makefile architecture rewrite is unnecessary overhead.",
         "evidence_count": 1,
         "first_seen": "2026-04-21T14:51:33.123Z",
-        "last_seen": "2026-04-21T14:51:33.123Z"
+        "last_seen": "2026-04-21T14:51:33.123Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "Conservative post-test cleanup can safely remove `eisa-ng/e2e/playwright/test-results/*` and `.auth/*.json` while preserving `.specs/pi-test-orchestrator-runtime/{recoveries.jsonl,state/*}` for resume/audit continuity. This keeps git clean without destroying orchestrator history unless the user explicitly wants a full reset.",
         "evidence_count": 1,
         "first_seen": "2026-04-21T14:31:04.789Z",
-        "last_seen": "2026-04-21T14:31:04.789Z"
+        "last_seen": "2026-04-21T14:31:04.789Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       }
     ],
     "observation": [
       {
+        "summary": "dotfiles: Reviewing the project-scoped expertise plan surfaced four must-fix planning gaps before execution: repo ID parsing/Windows-safe slug rules are underspecified, global-vs-project merge semantics and migration ordering are undefined, alias/remap rollback behavior needs explicit drift handling, and current acceptance criteria rely too heavily on grep/string checks instead of fixture-backed behavioral validation.",
+        "evidence_count": 1,
+        "first_seen": "2026-04-21T23:27:48.960Z",
+        "last_seen": "2026-04-21T23:27:48.960Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
         "summary": "dotfiles: Full Pi Vitest runs on this Windows npm-managed setup can push pi/tests/subagent.test.ts close to the default 5s timeout even when it is healthy in isolation, so that test now needs a higher per-test timeout to avoid false negatives under suite-wide load.",
         "evidence_count": 1,
         "first_seen": "2026-04-21T22:43:43.660Z",
-        "last_seen": "2026-04-21T22:43:43.660Z"
+        "last_seen": "2026-04-21T22:43:43.660Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "dotfiles: Executing .specs/pi-expertise-snapshotting/plan.md required two pieces of supporting infrastructure hardening beyond the core snapshot feature: pi/tests/vitest.config.ts had to resolve nested npm-installed Pi dependencies instead of choosing Bun's node_modules blindly, and pi/extensions/tsc-check.py needed npm-aware package resolution plus Node/baseUrl config to make TypeScript validation work on this Windows npm-managed Pi setup.",
         "evidence_count": 1,
         "first_seen": "2026-04-21T22:26:00.347Z",
-        "last_seen": "2026-04-21T22:26:00.347Z"
+        "last_seen": "2026-04-21T22:26:00.347Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "dotfiles: `pi/extensions/agent-chain.ts` currently makes `read_expertise` read the full `{agent}-expertise-log.jsonl` and return every entry as plain text. Current logs are still modest for most agents, but orchestrator is already 37 entries / ~22KB, so token cost is trending upward. The right optimization target is bounded/summarized read output, not deleting the append-only log.",
         "evidence_count": 1,
         "first_seen": "2026-04-21T21:11:50.864Z",
-        "last_seen": "2026-04-21T21:11:50.864Z"
+        "last_seen": "2026-04-21T21:11:50.864Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "dotfiles: Windows Pi install flow in install.ps1 was already Bun-first because core winget packages include Oven-sh.Bun and the Pi block preferred `bun install -g`. However, live migration on Windows exposed a real Bun resolver failure for `@mariozechner/pi-coding-agent` (Bun 1.3.12 and 1.3.13 both failed on transitive `@aws-sdk/core@^3.974.3` and `@aws-sdk/nested-clients@^3.997.1`). Installer was updated to keep/npm-fallback rather than uninstall a working npm Pi when Bun install fails; pi/README now documents Bun preference with npm fallback on Windows.",
         "evidence_count": 1,
         "first_seen": "2026-04-21T20:54:14.576Z",
-        "last_seen": "2026-04-21T20:54:14.576Z"
+        "last_seen": "2026-04-21T20:54:14.576Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "eisa-playwright-e2e: Playwright perf review found the biggest repo-specific bottlenecks are not just global workers=1/fullyParallel=false but also auth/bootstrap patterns: auth state cache is only 5 minutes old before forcing re-login, cached-role logins still navigate to APP_URL and wait for authenticated shell before each test, and acceptDialogIfNeeded waits up to 10s for an absent dialog yet is redundantly called in 32 test sites (notably 26x in protected-routes.spec.ts) even though login helpers already call it. The suite also has 29 networkidle waits, 26 of them in registration-workflow.spec.ts, where Playwright docs explicitly discourage networkidle for test readiness.",
         "evidence_count": 1,
         "first_seen": "2026-04-21T19:04:16.052Z",
-        "last_seen": "2026-04-21T19:04:16.052Z"
+        "last_seen": "2026-04-21T19:04:16.052Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "dotfiles: `/gitlab-ticket` now carries the issue-to-branch-to-draft-MR workflow more consistently at both skill and command layers: `workflow-commands.ts` description now mentions issue-numbered branch + draft MR follow-on, the injected prompt explicitly reminds the model to prefer `<issue-number>-<kebab-case-title>` and draft MRs by default, and `workflow-prompts.test.ts` now asserts the GitLab ticket skill includes this contract.",
         "evidence_count": 1,
         "first_seen": "2026-04-21T18:18:05.460Z",
-        "last_seen": "2026-04-21T18:18:05.460Z"
+        "last_seen": "2026-04-21T18:18:05.460Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "dotfiles: Updated `pi/skills/workflow/gitlab-ticket.md` to extend the GitLab workflow beyond issue filing: after creating the issue (and optional labels), it now asks whether to create a branch + draft MR, prefers `<issue-number>-<kebab-case-title>` branch names, defaults MRs to draft, requires explicit `--hostname`, and prefers replacing nonstandard branch/MR naming when the user wants the standard issue-linked flow.",
         "evidence_count": 1,
         "first_seen": "2026-04-21T18:13:07.425Z",
-        "last_seen": "2026-04-21T18:13:07.425Z"
+        "last_seen": "2026-04-21T18:13:07.425Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "eisa-playwright-e2e: After backporting the multi-phase bootstrap fix to 466, the Playwright branch only needed one additional keycloak alignment change: switch `keycloak/setup.ts` default `KEYCLOAK_URL` back to `https://localhost:8443` for host-invoked Make targets like `test-auth-preflight` and `keycloak-reset`. Remaining diff vs 466 in `docker-compose.override.yml` is intentional Caddy/`eisa-net` topology, not auth drift.",
         "evidence_count": 1,
         "first_seen": "2026-04-21T18:01:41.917Z",
-        "last_seen": "2026-04-21T18:01:41.917Z"
+        "last_seen": "2026-04-21T18:01:41.917Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "eisa-playwright-e2e: Merging 466 auth-hardening into the Playwright migration branch produced only three textual conflicts: `docker-compose.override.yml`, `keycloak/setup.ts`, and `eisa-ng/bun.lock`. Correct resolution preserved this branch’s Caddy/Playwright topology and chained `keycloak-provision` users+export invocation, while taking 466’s stronger DoD-PKI-aware `keycloak/setup.ts`; regenerating `eisa-ng/bun.lock` from merged `package.json` was simpler and valid, with `bunx playwright test --list` and `.pi` orchestrator status still working afterward.",
         "evidence_count": 1,
         "first_seen": "2026-04-21T17:33:12.985Z",
-        "last_seen": "2026-04-21T17:33:12.985Z"
+        "last_seen": "2026-04-21T17:33:12.985Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "eisa-playwright-e2e: Refactored mixed Playwright specs so real-backend subset membership now matches actual `E2E_REAL_BACKEND` gating exactly. Split backend-dependent cases into `*.real-backend.spec.ts` files for navigation-guards, profile, registration-anonymous, reports, and user-search; kept `user-edit.spec.ts` whole-file gated; updated `docs/workflows/real-backend-required*.{txt,json}` accordingly. Result: suite remains 173 tests total, but is now partitioned as 151 non-subset vs 22 real-backend-subset tests across 28 files.",
         "evidence_count": 1,
         "first_seen": "2026-04-21T16:58:26.176Z",
-        "last_seen": "2026-04-21T16:58:26.176Z"
+        "last_seen": "2026-04-21T16:58:26.176Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "dotfiles: Added a reusable dotfiles-owned repo bootstrap pattern for ignored project-local Pi files: `~/.dotfiles/scripts/pi-project-bootstrap` copies from `~/.dotfiles/pi/project-templates/<repo-name>/` into a target repo, defaulting the template name from the target basename and skipping existing files unless `--force` is passed. Seeded the first template at `pi/project-templates/eisa-playwright-e2e/.pi/...` for the EISA Playwright orchestrator files.",
         "evidence_count": 1,
         "first_seen": "2026-04-21T16:31:02.349Z",
-        "last_seen": "2026-04-21T16:31:02.349Z"
+        "last_seen": "2026-04-21T16:31:02.349Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "eisa-playwright-e2e: Pi-specific Playwright orchestrator scripts can also live under ignored `.pi/scripts/`; tracked Make targets can point there and still work locally, but that intentionally makes those commands clone-local rather than shared unless each clone bootstraps its own `.pi/` contents.",
         "evidence_count": 1,
         "first_seen": "2026-04-21T16:27:07.190Z",
-        "last_seen": "2026-04-21T16:27:07.190Z"
+        "last_seen": "2026-04-21T16:27:07.190Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "eisa-playwright-e2e: Repo-local Playwright test orchestrator config/docs can be moved out of tracked `docs/workflows/` into ignored `.pi/` without runtime changes because both `scripts/test-orchestrator-drive.mjs` and `scripts/test-orchestrator-infra-research.mjs` already search `.pi/test-orchestrator.config.json` first. To make that portable across clones, add `/.pi/` to committed `.gitignore`; no `~/.dotfiles` changes are required for basic operation.",
         "evidence_count": 1,
         "first_seen": "2026-04-21T16:14:53.158Z",
-        "last_seen": "2026-04-21T16:14:53.158Z"
+        "last_seen": "2026-04-21T16:14:53.158Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "eisa-playwright-e2e: Final validation is now wired as an explicit three-step path instead of being implicit: run the dynamic one-file-at-a-time drive, assert its persisted state is completed, then invoke the full Playwright suite. The new Make entrypoints are `test-e2e-drive-validate` and `test-e2e-resume-validate`; `assert-complete` is state-name aware so the same pattern works for subset drives too.",
         "evidence_count": 1,
         "first_seen": "2026-04-21T14:28:17.161Z",
-        "last_seen": "2026-04-21T14:28:17.161Z"
+        "last_seen": "2026-04-21T14:28:17.161Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "eisa-playwright-e2e: admin-crud.spec.ts required three kinds of fixes: stale selectors/routes (client-settings real route is /admin/client-settings/client-settings-table; row-scoped Edit buttons were more reliable), an app bug in EmailTemplateFormComponent add mode (`this.template?.parameters.map(...)` crashed when data.emailTemplate was `{}`), and a spec-level protected-route retry helper because direct admin page loads intermittently landed on login despite prior auth. api-privilege-boundaries.spec.ts expectations were stale relative to Eisa.MvcWeb.Areas.System.Controllers.AdvisoryController: /api/system/advisory is a PrivilegeAppIds(SimpleSystemManagement) management endpoint returning 403 for SuperAdmin/Admin/Banner in the current env, while /api/system/advisory/teams-ui-auth and /teams-ui-banner-auth are authenticated display/filter endpoints that return 200 with arrays for authenticated callers, including User and HelpDesk.",
         "evidence_count": 1,
         "first_seen": "2026-04-21T14:03:34.828Z",
-        "last_seen": "2026-04-21T14:03:34.828Z"
+        "last_seen": "2026-04-21T14:03:34.828Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "eisa-playwright-e2e: Local suite completion required separating true backend-dependent AM-panel/user-management flows from stale-spec issues. Support Queries depends on IHttpSupportApp.GetQueries() and fails locally on the same Keycloak TLS PartialChain trust path as SCIM/MPS. User Search result retrieval and admin user-edit target acquisition are not reliable in local compose even after fixing SearchController's transaction-log overflow bug; they need trusted SCIM/MPS connectivity or dedicated stubs/seed data. Authorized registration create flow was recoverable locally by making ApplicationAccessController.GetAllAuthorizedAsync and ApplicationInfoController.GetUserAppInfoAsync(create=true) degrade gracefully when SCIM claims are unavailable.",
         "evidence_count": 1,
         "first_seen": "2026-04-21T02:57:44.444Z",
-        "last_seen": "2026-04-21T02:57:44.444Z"
+        "last_seen": "2026-04-21T02:57:44.444Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "eisa-playwright-e2e: Self-edit/profile edit is still hard-coupled to SCIM in both load and save flows: Angular self route calls GET profile/user/edit, which maps to Areas/Profile/Controllers/UserController.GetRequestAuthorizedAsync -> GetUserAppInfoAsync -> _scimUserService.GetUserClaimsAsync(userId); save path hits registration/request/self, which also calls _httpScimUserService.GetUserClaimsAsync for email/cert update flow. Local Keycloak mode (EISA_LOCAL_KEYCLOAK=true) only overlays auth/token settings via appsettings.Keycloak.json and DefaultConfiguration; it does not override scimUserApi/userSearch/identityClaims endpoints, so it is not a full local replacement for SCIM-backed self-edit.",
         "evidence_count": 1,
         "first_seen": "2026-04-20T22:43:40.198Z",
-        "last_seen": "2026-04-20T22:43:40.198Z"
+        "last_seen": "2026-04-20T22:43:40.198Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "eisa-playwright-e2e: Infra incident 2026-04-20 auth-smoke was most strongly evidenced as a server-side TLS trust propagation failure, not pure Keycloak startup failure: Eisa.MvcWeb logged POST to https://keycloak:8443/.../token followed by AuthenticationException PartialChain. Local compose mounts cert files into .NET services but does not update the container trust store, while wait-for-keycloak.sh uses curl -sk and can mask exactly this class of failure. Secondary fragility comes from Compose using mostly service_started gating plus Playwright auth-state reuse by file mtime.",
         "evidence_count": 1,
         "first_seen": "2026-04-20T17:30:24.588Z",
-        "last_seen": "2026-04-20T17:30:24.588Z"
+        "last_seen": "2026-04-20T17:30:24.588Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "dotfiles: Locked down .specs/menos-knowledge-compiler/plan.md for zero-context resume quality by adding resolved Persona Policy Defaults, Retrieval Semantics, Migration/Legacy Content Behavior, an explicit Honcho decision (borrow ideas, do not add a second backend), example session/concept payloads, and an out-of-scope note clarifying Pi UX work stays in follow-on specs.",
         "evidence_count": 1,
         "first_seen": "2026-04-20T15:14:29.944Z",
-        "last_seen": "2026-04-20T15:14:29.944Z"
+        "last_seen": "2026-04-20T15:14:29.944Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "dotfiles: Further strengthened .specs/menos-knowledge-compiler/plan.md into an executable persona-v1 plan by adding concrete implementation tasks for persona metadata schema/storage, persona-aware retrieval filters, deterministic hook-side persona classification config, compile-time promotion policy/gating, updated validation gates, and dependency graph changes. The plan now operationalizes explicit > repo > tag > heuristic > LLM-fallback precedence instead of leaving persona handling as an abstract requirement.",
         "evidence_count": 1,
         "first_seen": "2026-04-20T14:58:08.681Z",
-        "last_seen": "2026-04-20T14:58:08.681Z"
+        "last_seen": "2026-04-20T14:58:08.681Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "dotfiles: Scaffolded extension-first core at ~/.pi/agent/extensions/test-orchestrator.ts. Current MVP scaffold loads adapter configs from .pi/, .specs/, or docs/workflows/, validates schemaVersion=1 and repo-local prerequisites, resolves state/artifact paths, ensures state directories exist, exposes /test-status, /test-debug, and /test-adapter-validate, and sets a footer status when an adapter is found. Execution/recovery remains intentionally unimplemented in this scaffold.",
         "evidence_count": 1,
         "first_seen": "2026-04-20T14:49:50.525Z",
-        "last_seen": "2026-04-20T14:49:50.525Z"
+        "last_seen": "2026-04-20T14:49:50.525Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "dotfiles: Updated .specs/menos-knowledge-compiler/plan.md with a bounded Option A architecture revision: kept menos as backend/compiler, added a Persona & Client Model section, made Claude the first implemented capture client rather than the only client, established persona_scope values work/workflow/hobby/shared with hobby isolation by default, and threaded persona-aware metadata/retrieval/preview language through capture, compile, digest, success criteria, and handoff notes without rewriting the plan into a Pi-UX spec.",
         "evidence_count": 1,
         "first_seen": "2026-04-20T14:39:42.531Z",
-        "last_seen": "2026-04-20T14:39:42.531Z"
+        "last_seen": "2026-04-20T14:39:42.531Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "dotfiles: Canonical long-term spec for generalized Pi test orchestration now lives at ~/.dotfiles/.specs/pi-test-orchestrator/plan.md. The plan is now extension-first and freezes reusable MVP contracts for adapter config, attempt records, lock state, recovery logs, and conservative classification, with EISA as the first concrete project adapter.",
         "evidence_count": 1,
         "first_seen": "2026-04-20T14:32:41.733Z",
-        "last_seen": "2026-04-20T14:32:41.733Z"
+        "last_seen": "2026-04-20T14:32:41.733Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "eisa-playwright-e2e: For Pi troubleshooting/build-out research, the most actionable official debugging surfaces are local docs: /debug writes ~/.pi/agent/pi-debug.log with rendered TUI lines + last LLM messages; extensions expose before_provider_request and after_provider_response hooks for payload/header inspection; session JSONL files under ~/.pi/agent/sessions support root-cause inspection of poisoned history; PI_TUI_WRITE_LOG captures raw ANSI output; community references like awesome-pi-agent, pi-agent-toolkit, pi-hooks permission, and toolwatch show common patterns for guardrails, auditing, mode systems, and session diagnostics.",
         "evidence_count": 1,
         "first_seen": "2026-04-20T13:46:33.432Z",
-        "last_seen": "2026-04-20T13:46:33.432Z"
+        "last_seen": "2026-04-20T13:46:33.432Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "dotfiles: Completed the next workflow hardening pass: /do-it now explicitly handles .specs/*/plan.md execution and specialist-first routing, /plan-it now requires Agent assignments plus self-validation, README documents the dynamic model ladder and hybrid /commit secret review, /router-status shows the detected current model, and workflow prompt contract tests cover /do-it /plan-it /review-it /commit.",
         "evidence_count": 1,
         "first_seen": "2026-04-18T03:49:36.905Z",
-        "last_seen": "2026-04-18T03:49:36.905Z"
+        "last_seen": "2026-04-18T03:49:36.905Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "dotfiles: Pi /commit now uses hybrid secret review in workflow-commands.ts: regex candidate extraction with line-context snippets plus small-model LLM adjudication. This prevents markdown/example false positives like `PASSWORD=` docs while still blocking likely real secrets or unresolved ambiguity.",
         "evidence_count": 1,
         "first_seen": "2026-04-18T03:24:24.018Z",
-        "last_seen": "2026-04-18T03:24:24.018Z"
+        "last_seen": "2026-04-18T03:24:24.018Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "dotfiles: After dynamic model ladder support landed, the main remaining consistency work was prompt-level adoption. Updated /research and both standard + multi-team lead/orchestrator agent prompts to explicitly request modelSize/modelPolicy on subagent delegation. /router-status now reports the resolved low/mid/high models for the current session instead of only abstract tier descriptions.",
         "evidence_count": 1,
         "first_seen": "2026-04-18T03:15:20.625Z",
-        "last_seen": "2026-04-18T03:15:20.625Z"
+        "last_seen": "2026-04-18T03:15:20.625Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "dotfiles: Pi now supports dynamic same-provider/same-family model sizing for workflow-driven delegation. Shared resolver lives in pi/lib/model-routing.ts; subagent tool accepts modelSize + modelPolicy and can override agent frontmatter model pins at spawn time; prompt-router now maps low/mid/high to dynamic small/medium/large models based on the current session model/provider.",
         "evidence_count": 1,
         "first_seen": "2026-04-18T02:49:47.502Z",
-        "last_seen": "2026-04-18T02:49:47.502Z"
+        "last_seen": "2026-04-18T02:49:47.502Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "dotfiles: Pi-specific web research found that features 1-3 are already represented in the public Pi ecosystem. Pi-native status surfaces exist in sids/pi-extensions status, nicobailon/pi-powerline-footer, and rytswd/pi-agent-extensions statusline; task/background coordination exists in kirang89/pi-todo, tmustier tab-status/usage-extension, nicobailon/pi-messenger, and pi-interactive-shell; permission UX exists in prateekmedia/pi-hooks permission, kcosr toolwatch, and official permission-gate examples. The remaining gap is mainly an integrated repo-local control center, especially for a unified doctor command and combined permissions inspect/retry/audit UX.",
         "evidence_count": 1,
         "first_seen": "2026-04-17T20:21:58.305Z",
-        "last_seen": "2026-04-17T20:21:58.305Z"
+        "last_seen": "2026-04-17T20:21:58.305Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "dotfiles: Created .specs/pi-workflow-borrowed-features with plan and research notes. External research strongly supports adding `/status` + `/doctor`, a durable `/tasks` dashboard, and `/permissions` with provenance logging and retry UX. Useful precedents: Homebrew/Flutter/Basecamp/Gemini doctor flows; lazyactions/Oban Web/gh-dash/Backlog.md task dashboards; Copilot CLI, VS Code agent tools, and Claude Code permission docs/issues for layered approvals and auditability.",
         "evidence_count": 1,
         "first_seen": "2026-04-17T20:14:35.027Z",
-        "last_seen": "2026-04-17T20:14:35.027Z"
+        "last_seen": "2026-04-17T20:14:35.027Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "dotfiles: Compared C:/Users/mglenn/Downloads/src against current Pi workflow. High-value gaps in Pi are consolidated diagnostics/status UX, persistent background-task dashboarding, interactive permission management/retry UX, plugin/marketplace management for extensions/skills, and remote detached long-running plan/review flows. Existing Pi already covers prompt routing, subagents, team dispatch, skills, safety hooks, workflow commands, and quality gates, so those should not be re-suggested as net-new capabilities.",
         "evidence_count": 1,
         "first_seen": "2026-04-17T18:13:02.511Z",
-        "last_seen": "2026-04-17T18:13:02.511Z"
+        "last_seen": "2026-04-17T18:13:02.511Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       },
       {
         "summary": "dotfiles: Claude damage-control patterns now support optional OS gating via YAML fields like platforms/exclude_platforms in bash-tool-damage-control.py; Pi damage-control extension supports action + platforms metadata for dangerous_commands with Linux-only confirmation flows. OpenCode in this repo has agent permission metadata but no repo-local damage-control hook/plugin surface equivalent to Claude/Pi.",
         "evidence_count": 1,
         "first_seen": "2026-04-17T14:49:24.339Z",
-        "last_seen": "2026-04-17T14:49:24.339Z"
+        "last_seen": "2026-04-17T14:49:24.339Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
       }
     ],
     "open_question": [],
