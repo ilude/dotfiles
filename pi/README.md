@@ -110,7 +110,7 @@ pi -e ~/.dotfiles/pi/extensions/damage-control.ts   # explicit load
 
 ## Extensions
 
-Seven TypeScript extensions live in `~/.dotfiles/pi/extensions/` and are auto-discovered (or loaded explicitly via `-e`):
+Ten TypeScript extensions live in `~/.dotfiles/pi/extensions/` and are auto-discovered (or loaded explicitly via `-e`):
 
 ### `damage-control.ts`
 
@@ -187,6 +187,47 @@ Workflow highlights:
 - `/review-it` coordinates a fixed 3-reviewer core plus at least 3 persona-seeded domain reviewers, with targeted rebuttal only when disagreement matters.
 - `/do-it` can route a raw task **or** execute an existing `.specs/*/plan.md` file wave by wave.
 - `/commit` uses deterministic candidate extraction plus a small-model LLM review to distinguish real secrets from docs/examples/tests before blocking.
+
+### `provider.ts`
+
+Manages provider credentials in `~/.pi/agent/auth.json`.
+
+**Slash command:**
+```
+/provider
+/provider <provider>
+/provider remove <provider>
+/provider list
+```
+
+Behavior:
+- Interactive mode (`/provider`) supports setting API keys, removing provider auth, and listing configured providers.
+- Direct mode (`/provider <provider>`) prompts for API key providers and saves credentials to `auth.json`.
+- OAuth providers are guided to `/login`.
+
+### `refresh-models.ts`
+
+Refreshes available model lists for active subscription providers **without relogging**.
+
+**Slash command:**
+```
+/refresh-models [provider]
+```
+
+Behavior:
+- No provider: refreshes all currently authenticated **supported** subscription providers (OAuth entries in `auth.json`).
+- Provider argument: refreshes only that provider (currently `anthropic`, `openai-codex`, and `github-copilot`).
+- Unsupported providers are skipped with a warning.
+- Uses existing session credentials and updates in-session model availability immediately.
+- Prints per-provider diffs with model IDs that were added/removed.
+
+### `model-visibility.ts`
+
+Applies startup model-list cleanup for noisy provider catalogs.
+
+Behavior:
+- Hides date/version-suffixed and preview snapshot models for `openai-codex`, `github-copilot`, `opencode`, `opencode-go`, and `openrouter`.
+- Applies provider-specific blocklists (including internal/legacy model IDs) before `/model` selection.
 
 ### `prompt-router.ts`
 
