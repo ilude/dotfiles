@@ -78,6 +78,9 @@ const TIER_EFFORT: Record<Tier, string> = {
 // Known accepted schema versions for the v3 classifier output.
 const KNOWN_SCHEMA_VERSIONS = new Set(["3.0.0"]);
 
+// Providers that don't have cost/model size mappings yet -- router skips them.
+const SKIP_PROVIDERS = new Set(["opencode", "opencode-go", "openrouter"]);
+
 // Effort ordering for clamping and comparison.
 const EFFORT_ORDER: Record<string, number> = {
   off: 0,
@@ -476,6 +479,12 @@ async function classifyAndRoute(
 
   if (!model) {
     ctx.ui.setStatus("router", `router: no ${modelSize} model available`);
+    return;
+  }
+
+  // Skip routing for providers without cost/size mappings.
+  if (model.provider && SKIP_PROVIDERS.has(model.provider)) {
+    ctx.ui.setStatus("router", `router: skipped (${model.provider})`);
     return;
   }
 
