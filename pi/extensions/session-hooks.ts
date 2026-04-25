@@ -3,16 +3,28 @@
  *
  * session_start: on reload, restores the configured default model; then runs
  *   git pre-flight checks (fetch + behind-count). Notifies if branch is behind
- *   remote. Silently skips if not a git repo.
+ *   remote. Silently skips if not a git repo. Also runs an idempotent
+ *   transcript retention sweep when the per-user transcript toggle is enabled
+ *   in ~/.pi/agent/settings.json. Initializes the transcript writer (when
+ *   enabled), parses any inherited W3C TRACEPARENT, and emits a
+ *   `session_start` event so the sidecar trace begins with lifecycle context.
  *
  * session_shutdown: archives the session conversation log to
- *   $HOME/.pi/agent/history/YYYY-MM-DD-<sessionId>.jsonl
+ *   $HOME/.pi/agent/history/YYYY-MM-DD-<sessionId>.jsonl and emits a
+ *   `session_shutdown` event into the sidecar trace.
  */
 
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { loadSettings as loadTranscriptSettings, sweepRetention as sweepTranscriptRetention } from "../lib/transcript.js";
+import {
+	emit as emitTranscript,
+	getWriter as getTranscriptWriter,
+	initializeRuntime as initializeTranscriptRuntime,
+} from "./transcript-runtime.js";
 
 export default function (pi: ExtensionAPI) {
 	// ── session_start: restore default model on reload + git pre-flight ───────
@@ -51,12 +63,62 @@ export default function (pi: ExtensionAPI) {
 				);
 			}
 		} catch {
-			// Not a git repo, no remote, or other git failure — silently skip
+			// Not a git repo, no remote, or other git failure -- silently skip
+		}
+
+		// Transcript retention sweep (opt-in via ~/.pi/agent/settings.json).
+		// Reads the runtime toggle from the per-user settings file ONLY --
+		// the repo-tracked pi/settings.json must NOT enable tracing.
+		try {
+			const transcriptSettings = loadTranscriptSettings();
+			if (transcriptSettings.enabled) {
+				await sweepTranscriptRetention(transcriptSettings.path, transcriptSettings.retentionDays);
+			}
+		} catch {
+			// Sweep is best-effort -- never crash session_start.
+		}
+
+		// Transcript writer init + session_start emit. initializeTranscriptRuntime
+		// returns null when transcript.enabled is false, so the emit() call below
+		// is a safe no-op in the default-off configuration. The runtime parses
+		// W3C TRACEPARENT internally so subagent processes inherit parent_trace_id
+		// without any extra wiring here.
+		try {
+			const sessionId = ctx.sessionManager.getSessionId() ?? `pi-${crypto.randomUUID()}`;
+			initializeTranscriptRuntime(sessionId);
+			if (getTranscriptWriter()) {
+				await emitTranscript(
+					{ event_type: "session_start", turn_id: "turn-0" },
+					{
+						agent_name: "pi",
+						pid: process.pid,
+						reason: event.reason,
+						traceparent_inherited: Boolean(process.env.TRACEPARENT),
+					},
+				);
+			}
+		} catch {
+			// Never crash session_start on transcript wiring failure.
 		}
 	});
 
 	// ── session_shutdown: archive conversation log ─────────────────────────────
-	pi.on("session_shutdown", async (_event, ctx) => {
+	pi.on("session_shutdown", async (event, ctx) => {
+		// Best-effort transcript flush before the writer goes out of scope.
+		try {
+			if (getTranscriptWriter()) {
+				await emitTranscript(
+					{ event_type: "session_shutdown" },
+					{
+						reason: event.reason,
+						target_session_file: event.targetSessionFile,
+					},
+				);
+			}
+		} catch {
+			// Continue with archival even when transcript emit fails.
+		}
+
 		try {
 			const sessionId = ctx.sessionManager.getSessionId();
 			const sessionFile = ctx.sessionManager.getSessionFile();

@@ -23,7 +23,20 @@ import { type ExtensionAPI, getMarkdownTheme, withFileMutationQueue } from "@mar
 import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { resolveDynamicModelFromRegistry, type ModelPolicy, type ModelSize } from "../../lib/model-routing.js";
+import { formatTraceparent, getTraceId, newSpanId, newTraceId } from "../transcript-runtime.js";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.js";
+
+/**
+ * Build a W3C `TRACEPARENT` value for a child subagent process. The parent
+ * span id is freshly generated for each subagent invocation so parallel
+ * children do not share spans. When the parent has no active trace (tracing
+ * disabled), a new trace id is fabricated so a child that opts in still
+ * records consistent W3C-shaped ids on its own side.
+ */
+function buildSubagentTraceparent(): string {
+	const parentTraceId = getTraceId() || newTraceId();
+	return formatTraceparent(parentTraceId, newSpanId());
+}
 
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;
@@ -305,10 +318,19 @@ async function runSingleAgent(
 
 		const exitCode = await new Promise<number>((resolve) => {
 			const invocation = getPiInvocation(args);
+			// W3C Trace Context propagation: inject TRACEPARENT so the spawned
+			// child Pi process carries the parent's trace and treats this
+			// subagent's span as its parent. Spread process.env first so all
+			// existing env vars (PATH, HOME, OAUTH tokens, etc.) are preserved.
+			const childEnv = {
+				...process.env,
+				TRACEPARENT: buildSubagentTraceparent(),
+			};
 			const proc = spawn(invocation.command, invocation.args, {
 				cwd: cwd ?? defaultCwd,
 				shell: false,
 				stdio: ["ignore", "pipe", "pipe"],
+				env: childEnv,
 			});
 			let buffer = "";
 
@@ -400,6 +422,8 @@ async function runSingleAgent(
 			}
 	}
 }
+
+type TaskParams = { agent: string; task: string; cwd?: string };
 
 const TaskItem = Type.Object({
 	agent: Type.String({ description: "Name of the agent to invoke" }),
@@ -573,26 +597,27 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			if (params.tasks && params.tasks.length > 0) {
-				if (params.tasks.length > MAX_PARALLEL_TASKS)
+				const tasks = params.tasks as TaskParams[];
+				if (tasks.length > MAX_PARALLEL_TASKS)
 					return {
 						content: [
 							{
 								type: "text",
-								text: `Too many parallel tasks (${params.tasks.length}). Max is ${MAX_PARALLEL_TASKS}.`,
+								text: `Too many parallel tasks (${tasks.length}). Max is ${MAX_PARALLEL_TASKS}.`,
 							},
 						],
 						details: makeDetails("parallel")([]),
 					};
 
 				// Track all results for streaming updates
-				const allResults: SingleResult[] = new Array(params.tasks.length);
+				const allResults: SingleResult[] = new Array(tasks.length);
 
 				// Initialize placeholder results
-				for (let i = 0; i < params.tasks.length; i++) {
+				for (let i = 0; i < tasks.length; i++) {
 					allResults[i] = {
-						agent: params.tasks[i].agent,
+						agent: tasks[i].agent,
 						agentSource: "unknown",
-						task: params.tasks[i].task,
+						task: tasks[i].task,
 						exitCode: -1, // -1 = still running
 						messages: [],
 						stderr: "",
@@ -613,7 +638,7 @@ export default function (pi: ExtensionAPI) {
 					}
 				};
 
-				const results = await mapWithConcurrencyLimit(params.tasks, MAX_CONCURRENCY, async (t, index) => {
+				const results = await mapWithConcurrencyLimit(tasks, MAX_CONCURRENCY, async (t, index) => {
 					const result = await runSingleAgent(
 						ctx.cwd,
 						agents,

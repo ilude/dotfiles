@@ -110,7 +110,7 @@ pi -e ~/.dotfiles/pi/extensions/damage-control.ts   # explicit load
 
 ## Extensions
 
-Ten TypeScript extensions live in `~/.dotfiles/pi/extensions/` and are auto-discovered (or loaded explicitly via `-e`):
+TypeScript extensions live in `~/.dotfiles/pi/extensions/` and are auto-discovered (or loaded explicitly via `-e`):
 
 ### `damage-control.ts`
 
@@ -566,6 +566,125 @@ Community pi-skills installed at `~/.dotfiles/pi/skills/pi-skills/`:
 | `vscode` | VS Code integration |
 
 Skills are SKILL.md files -- read them to activate their guidance and tools.
+
+---
+
+## Sidecar Trace
+
+Pi can record a high-fidelity, append-only sidecar trace of every session alongside (not inside) the normal session JSONL. This is an opt-in observability feature -- it is **default off** and must be explicitly enabled by the user.
+
+### Scope
+
+The sidecar trace captures:
+
+- Exact provider request payloads sent before each LLM call (`llm_request` events).
+- Assistant message content returned at turn end, including **visible thinking** blocks that the model exposes (`assistant_message`, one record per turn at `message_end` -- never one per streaming token).
+- Tool-call inputs and outputs as Pi received them, including truncation metadata and a `full_output_path` reference when output is spilled to disk (`tool_call`, `tool_result`).
+- Prompt-router classifier output, the applied route, confidence, rule fired, and policy/cap/hysteresis metadata (`routing_decision`).
+- Model-selection changes (`model_select`).
+- Session lifecycle (`session_start`, `session_shutdown`).
+- Nested subagent events correlated to their parent via `parent_trace_id` (W3C Trace Context `TRACEPARENT` propagation).
+
+**Hidden chain-of-thought is explicitly excluded.** Provider-internal reasoning that is not surfaced in the API response is never captured, regardless of whether a future provider exposes it. Only visible thinking blocks returned in the message content are persisted.
+
+### Storage
+
+Trace files are written to `~/.pi/agent/traces/<session-id>.jsonl` by default -- outside the repo and outside any synced project tree. The directory is created with mode 0700; each trace file is written with mode 0600 on Linux/WSL (Windows relies on user-profile ACL).
+
+When a single payload field exceeds the configured `maxInlineBytes` limit, the oversized content is moved to a **spill file** at `~/.pi/agent/traces/<session-id>.spill/<event-id>-<field>.json.gz`. The main trace event records a spill reference with the relative path, SHA-256 hash, and uncompressed byte count so the field can be reconstructed exactly.
+
+### Retention
+
+Default retention window: **14 days** (`transcript.retentionDays`). At `session_start`, the writer sweeps the trace directory and removes trace and spill files whose modification time is older than `retentionDays`. The sweep is idempotent. Maximum JSONL file size before rotation: **64 MiB** (`transcript.maxFileBytes`).
+
+To remove all trace files immediately, run:
+
+```
+/transcript-purge
+```
+
+Or with an age argument (removes files older than N days):
+
+```
+/transcript-purge 7
+```
+
+### Enabling
+
+Tracing is **default off**. To enable, add a `transcript` block to `~/.pi/agent/settings.json` (the per-user runtime settings file -- do NOT add this to the repo-tracked `pi/settings.json`):
+
+```json
+{
+  "transcript": {
+    "enabled": true,
+    "path": "~/.pi/agent/traces",
+    "retentionDays": 14,
+    "maxFileBytes": 67108864,
+    "maxInlineBytes": 65536
+  }
+}
+```
+
+The loader reads `~/.pi/agent/settings.json` only. The repo-tracked `pi/settings.json` is intentionally never consulted for this toggle -- enabling tracing there would silently activate it for every dotfiles user.
+
+### Secret redaction
+
+The writer applies three-tier redaction before anything reaches disk:
+
+1. **Header redaction** -- `authorization`, `proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`, `x-auth-token`, `x-amz-security-token`, `x-goog-api-key`, `x-anthropic-api-key`, `openai-organization`, and any header name matching `/(api[-_]?key|token|secret|cred|auth)/i` are replaced with `[REDACTED]` on both request and response sides.
+2. **Field-name redaction** -- the same pattern is applied recursively to all payload object keys.
+3. **Free-text scanning** -- `tool_result.content[*].text` and `tool_result.details` fields are scanned for AWS access keys (`AKIA...`), Anthropic tokens (`sk-ant-...`), OpenAI tokens (`sk-...`), GitHub PATs (`ghp_...`), Bearer-prefixed values, `api_key=...` assignments, and PEM private-key blocks. Matches are replaced with `[REDACTED]`.
+
+Source objects are never mutated; redaction always operates on a deep clone.
+
+The writer also refuses to write into directories that resolve (via `fs.realpath`) into known cloud-sync paths (`OneDrive`, `Dropbox`, `iCloudDrive`, `Google Drive`). A single warning is emitted and tracing is disabled for the remainder of the session.
+
+### Wiring
+
+Each Pi extension hook emits exactly one event family into the sidecar trace. The mapping is:
+
+| Pi hook | Emitted event | Notes |
+|---------|---------------|-------|
+| `session_start` (in `session-hooks.ts`) | `session_start` | Initializes the writer, parses `TRACEPARENT`, runs the retention sweep |
+| `turn_start` (in `transcript-provider.ts`) | (none -- advances internal turn counter) | Drives `turn_id` for all subsequent events |
+| `before_provider_request` | `llm_request` | Cloned + redacted payload; `payload_unserializable` on circular refs |
+| `after_provider_response` | `llm_response` | Status + redacted response headers (`set-cookie`, `authorization`, etc.) |
+| `message_start` | `message_start` | Notes `message_id` for correlation |
+| `message_update` | (none -- intentional no-op) | Per-token streaming is NEVER emitted; one `assistant_message` per turn |
+| `message_end` | `assistant_message` | Exactly ONE per turn at `message_end`; visible thinking + tool-call requests |
+| `model_select` | `model_select` | Records previous and current model identity |
+| `tool_call` (in `transcript-tools.ts`) | `tool_call` | Cloned + redacted parameters |
+| `tool_execution_start` | `tool_execution_start` | Records start time for duration computation |
+| `tool_execution_end` | `tool_execution_end` | Carries `duration_ms` and `is_error` |
+| `tool_result` | `tool_result` | Content, details, error state, truncation metadata |
+| `routing_decision` (in `prompt-router.ts`) | `routing_decision` | `prompt_hash` joins to `routing_log.jsonl` |
+| `session_shutdown` | `session_shutdown` | Final event before archival |
+
+### Streaming discipline
+
+Pi fires `message_update` per token during assistant message streaming. The transcript extension intentionally does NOT emit a record per token -- doing so would explode trace size on long responses. Instead:
+
+- `message_update` is registered as a no-op hook.
+- `message_end` emits exactly ONE `assistant_message` record with the final aggregated content, OTel usage attributes (`gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`), and `stop_reason`.
+- A per-turn dedupe flag guards against duplicate emission when Pi fires `message_end` for tool-result messages in the same turn.
+
+An optional `assistant_streaming` heartbeat (one record per N seconds during long generations) is documented in the schema but disabled by default.
+
+### Routing decision hash-link
+
+`routing_decision` records carry `prompt_hash = sha256(prompt_text)`. The same hash is logged by the Python-side classifier into `~/.dotfiles/pi/prompt-routing/logs/routing_log.jsonl`. The two logs are kept independently and can be joined post-hoc by `prompt_hash` -- the TypeScript sidecar trace captures the runtime envelope (turn, session, applied route, policy decision) while the Python log captures classifier internals (TF-IDF features, candidate scores). Neither log is modified by the other.
+
+### Subagent correlation (W3C TRACEPARENT)
+
+When `subagent` spawns a child Pi process via `child_process.spawn`, it injects a W3C Trace Context env var:
+
+```
+TRACEPARENT=00-<parent-trace-id>-<subagent-span-id>-01
+```
+
+The child Pi's `session_start` handler parses `TRACEPARENT`, adopts the parent's 32-hex `trace_id`, and writes the parent's 16-hex span id into `parent_trace_id` on every event it emits. This means a child trace file under `~/.pi/agent/traces/<child-session-id>.jsonl` can be stitched to its parent's trace by trace_id, and the originating subagent invocation can be located by parent_trace_id.
+
+A fresh span id is generated for each subagent invocation (single, parallel, or chain step) so concurrent children do not share spans. When the parent has no active trace (transcript disabled), a new trace id is fabricated and propagated so the child can still record consistent W3C-shaped ids on its own side.
 
 ---
 
