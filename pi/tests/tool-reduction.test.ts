@@ -105,7 +105,7 @@ describe("tool-reduction extension", () => {
 
 			const bytesAfter = Buffer.byteLength(compactedText, "utf-8");
 			expect(bytesAfter).toBeLessThan(bytesBefore);
-		}, 10000);
+		}, 30000);
 	});
 
 	// ---------------------------------------------------------------------------

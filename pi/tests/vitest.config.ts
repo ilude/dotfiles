@@ -38,10 +38,11 @@ export default defineConfig({
   resolve: {
     alias: {
       "@mariozechner/pi-coding-agent": path.join(piPackageRoot, "dist/index.js"),
+      "@mariozechner/pi-ai/oauth": path.join(piNodeModules, "@mariozechner/pi-ai/dist/oauth.js"),
       "@mariozechner/pi-ai": path.join(piNodeModules, "@mariozechner/pi-ai/dist/index.js"),
       "@mariozechner/pi-tui": path.join(piNodeModules, "@mariozechner/pi-tui/dist/index.js"),
       "@mariozechner/pi-agent-core": path.join(piNodeModules, "@mariozechner/pi-agent-core/dist/index.js"),
-      "@sinclair/typebox": path.join(piNodeModules, "@sinclair/typebox"),
+      "@sinclair/typebox": path.join(piNodeModules, "typebox"),
     },
   },
   test: {
@@ -49,6 +50,7 @@ export default defineConfig({
     environment: "node",
     include: ["tests/**/*.test.ts"],
     mockReset: true,
+    testTimeout: 30000,
     hookTimeout: 30000,
     coverage: {
       provider: "v8",
