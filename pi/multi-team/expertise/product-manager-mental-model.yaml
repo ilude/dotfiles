@@ -1,5 +1,5 @@
 schema_version: 1
-last_updated: 2026-04-21
+last_updated: 2026-04-24
 
 system_overview: {}
 key_files: {}
@@ -9,5 +9,7 @@ observations:
   plan_review_2026_04_21:
     summary: "For expertise snapshotting, favor minimal deterministic compaction over persisted abstractions, provider-assisted similarity, or unrelated repo-wide validation gates unless evidence shows those are necessary."
   project_scoped_expertise_review_2026_04_21:
-    summary: "When reducing cross-project expertise pollution, test simpler shapes first: reuse existing project-scoped .pi patterns or current entry.project tagging before adding repo-ID alias layers, merged storage trees, and broad repo-wide validation." 
+    summary: "When reducing cross-project expertise pollution, test simpler shapes first: reuse existing project-scoped .pi patterns or current entry.project tagging before adding repo-ID alias layers, merged storage trees, and broad repo-wide validation."
+  pi_full_interaction_trace_review_2026_04_24:
+    summary: "For Pi tracing, spec the smallest delta from the existing session JSONL first: provider payloads + tool inputs/results + clear spill/reference behavior. Treat streaming events, subagent spans, extra extension splits, and bespoke fixture harnesses as follow-ons unless a concrete debugging need proves them necessary."
 open_questions: {}

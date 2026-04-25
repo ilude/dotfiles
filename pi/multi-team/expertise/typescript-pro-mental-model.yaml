@@ -1,4 +1,11 @@
 schema_version: 1
-last_updated: SESSION_ID
-system_overview: {}
-key_files: {}
+last_updated: 2026-04-24
+system_overview:
+  pi_extensions:
+    notes:
+      - before_provider_request payloads are load-order-sensitive and passed through as mutable values; logging must deep-clone and avoid in-place redaction.
+      - mock-pi helper tests do not emulate ExtensionRunner/AgentSession ordering, tool_result chaining, or session replacement semantics.
+      - subagent tracing is special because pi/extensions/subagent/index.ts spawns a separate pi process, so parent hooks cannot see child internals unless they are forwarded explicitly.
+key_files:
+  "C:/Users/mglenn/.dotfiles/pi/tests/helpers/mock-pi.ts": "Unit helper only; insufficient for hook-order or runtime-semantic integration tests."
+  "C:/Users/mglenn/.dotfiles/pi/extensions/subagent/index.ts": "Runs child pi in --mode json --no-session; nested traces need explicit forwarding/correlation."

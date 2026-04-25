@@ -1,4 +1,18 @@
 schema_version: 1
-last_updated: SESSION_ID
-system_overview: {}
-key_files: {}
+last_updated: 2026-04-24
+system_overview:
+  pi_runtime_data_layout:
+    summary: Runtime data under ~/.pi/agent may land inside the dotfiles repo in this setup because scripts/pi-link-setup makes ~/.pi/agent a junction/symlink to ~/.dotfiles/pi.
+  trace_logging_operational_hazards:
+    summary: For persistent Pi traces, avoid writing new runtime logs under ~/.pi/agent/* without checking link targets, gitignore coverage, retention, and multi-process append behavior.
+  pi_full_interaction_trace_review:
+    summary: The plan's highest rollout risks are (1) writing sensitive traces to ~/.pi/agent/traces without a matching pi/.gitignore entry even though ~/.pi/agent resolves into the repo, (2) relying on append-only JSONL without cross-process locking despite subagent runs spawning separate pi processes, and (3) lacking explicit retention, failure signaling, and kill-switch requirements for an audit-grade trace.
+key_files:
+  scripts/pi-link-setup:
+    role: Creates ~/.pi/agent as a junction/symlink to ~/.dotfiles/pi, so runtime paths under ~/.pi/agent can resolve into the repo worktree.
+  pi/.gitignore:
+    role: Ignores sessions/ and history/ runtime logs but currently has no traces/ ignore entry.
+  pi/extensions/session-hooks.ts:
+    role: Archives session logs by copyFile to ~/.pi/agent/history/YYYY-MM-DD-<sessionId>.jsonl and silently ignores failures; reuse with care for audit traces.
+  C:/Users/mglenn/AppData/Roaming/npm/node_modules/@mariozechner/pi-coding-agent/dist/core/tools/file-mutation-queue.js:
+    role: withFileMutationQueue is process-local serialization only; it does not make shared JSONL append safe across subagent child processes.

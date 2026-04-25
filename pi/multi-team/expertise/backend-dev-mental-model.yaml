@@ -39,6 +39,18 @@ observations:
     note: SystemControllerAuthorizationAttributeTests asserts ApplicationRoleController uses TEAMSPolicy_3 but does not assert RequiredRole.SuperAdmin, leaving a regression gap for the privilege model.
   app_role_plan_staleness:
     note: Current branch HEAD already contains an origin/dev merge and newer auth/test file changes than the .specs/mr419-role-mgr-conflict/plan.md assumptions, so executing the plan verbatim risks redundant or regressive work.
+  pi_trace_turn_index_reset:
+    note: Pi extension turnIndex is runtime-local and resets to 0 on each agent_start in dist/core/agent-session.js, so any sidecar trace needs a higher-level agent_run/prompt correlation id; turnIndex alone is not stable across prompts, reloads, or resumed sessions.
+  pi_parallel_tool_trace_ordering:
+    note: In Pi parallel tool mode, tool_call preflight is sequential but sibling tools execute concurrently; tool_result and tool_execution_end interleave in completion order while final toolResult message events are emitted later in assistant source order, so traces must key on toolCallId rather than infer causality from event order alone.
+  pi_tool_trace_requested_vs_executed_args:
+    note: Pi tool_call inputs are mutable across extension handlers and tool_result content can be rewritten by later extensions, so an audit trace must distinguish assistant-requested tool args, executed args at the runner boundary, and final result content exposed back to the model.
+  pi_subagent_extension_inheritance_gap:
+    note: pi/extensions/subagent/index.ts respawns child agents with `pi --mode json -p --no-session` and does not propagate the parent's explicit `-e ~/.dotfiles/pi/extensions/...` stack from pi/justfile, so repo-local tracing/safety extensions will not automatically run inside subagent child processes unless they are auto-discovered or explicitly forwarded.
+  pi_session_trace_transition_semantics:
+    note: Session replacement flows emit session_shutdown on the old runtime before session_start on the new one, with reason/previousSessionFile/targetSessionFile carrying the handoff; a sidecar trace must record that linkage explicitly or reload/new/resume/fork transitions will look like unrelated sessions.
+  pi_trace_self_contained_reconstruction_gap:
+    note: A plan cannot honestly promise exact reconstruction from a single trace JSONL file if the same design also uses bounded inline payload sizing plus truncation/full-output spill metadata; once bytes can be spilled out of line, the JSONL is an authoritative index, not a self-contained exact record, unless provider requests are explicitly exempted or chunked within the same file.
 
 open_questions:
   cert_test_harness:

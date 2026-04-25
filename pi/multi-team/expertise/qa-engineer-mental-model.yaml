@@ -1,5 +1,5 @@
 schema_version: 1
-last_updated: 2026-04-21
+last_updated: 2026-04-24
 
 system_overview:
   pi-agent-tests:
@@ -19,4 +19,8 @@ observations:
     summary: For storage-scope changes, output-order assertions are insufficient; require filesystem fixtures covering per-layer log/snapshot/state paths plus stale/missing/failing snapshot combinations, or tests can pass while persistence and fallback semantics regress.
   strict-auth-endpoint-validation-gap:
     summary: Keycloak password-grant tokens are BasicAuth-mode and cannot prove behavior of default [Authenticate] (TEAMSPolicy_3) endpoints; use controller reflection tests plus server-side integration tests with explicit auth-method claims/role claims, or a plan can go green while strict auth and role gating remain unverified.
+  transcript-trace-validation-gap:
+    summary: Transcript/logging plans go false-green when they rely on snapshot fixtures, grep/manual newest-file checks, or single-turn happy paths. Require temp-home runtime smoke plus semantic assertions for multi-turn correlation/order, real truncation paths, secret-seeded redaction, and existing session-hook regressions.
+  transcript-plan-review-gap:
+    summary: The pi-full-interaction-trace plan still needs automated coverage for multi-turn/subagent correlation, append-only/interleaved writes, runtime redaction and truncation paths, provider/tool failure modes, and archived-session non-regression; otherwise V1/V2 can pass while the trace is incomplete or mis-correlated in real sessions.
 open_questions: {}

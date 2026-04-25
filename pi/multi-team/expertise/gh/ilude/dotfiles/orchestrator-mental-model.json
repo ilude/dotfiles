@@ -1,9 +1,10 @@
 {
   "schema_version": 1,
+  "summary_format_version": 2,
   "agent": "orchestrator",
-  "rebuilt_at": "2026-04-24T16:19:09.633Z",
-  "covers_through_timestamp": "2026-04-24T02:01:59.078Z",
-  "source_entry_count": 14,
+  "rebuilt_at": "2026-04-25T13:56:43.632Z",
+  "covers_through_timestamp": "2026-04-25T13:47:11.339Z",
+  "source_entry_count": 22,
   "similarity": {
     "enabled": true,
     "active": true,
@@ -24,7 +25,37 @@
     "key_file": [],
     "pattern": [
       {
-        "summary": "{\"topic\":\"provider-scoped model blocklists\",\"details\":\"For aggressive /model cleanup requests, implement provider-scoped exact-ID and prefix blocklists inside a session_start model-visibility extension, layered on top of generic date/pre...",
+        "summary": "domain-specific strong decisions in concise expertise: Concise expertise should filter strong decisions that are clearly tied to a specific domain/tool stack (for example Playwright, SCIM, MPS, Keycloak, or E2E drive mechanics). Keep them available in full/debug mode unless rewritten as a general principle.",
+        "evidence_count": 1,
+        "first_seen": "2026-04-25T13:47:11.339Z",
+        "last_seen": "2026-04-25T13:47:11.339Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "project-aware concise expertise: Concise expertise reads should suppress project-prefixed observations whose project does not match the current repo. Cross-project details belong in full/debug mode unless rewritten as a general principle.",
+        "evidence_count": 1,
+        "first_seen": "2026-04-25T13:44:31.830Z",
+        "last_seen": "2026-04-25T13:44:31.830Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "expertise read defaults: Default expertise reads should present durable working memory, not changelog history. Keep complete history available through an explicit full/debug mode, and hide task-specific implementation breadcrumbs from the default LLM-facing output.",
+        "evidence_count": 1,
+        "first_seen": "2026-04-25T13:37:17.254Z",
+        "last_seen": "2026-04-25T13:37:17.254Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "provider-scoped model blocklists: For aggressive /model cleanup requests, implement provider-scoped exact-ID and prefix blocklists inside a session_start model-visibility extension, layered on top of generic date/preview heuristics. This allows targeted hiding for openrouter catalogs while preserving modern keepers.",
         "evidence_count": 1,
         "first_seen": "2026-04-24T01:54:44.849Z",
         "last_seen": "2026-04-24T01:54:44.849Z",
@@ -34,7 +65,7 @@
         }
       },
       {
-        "summary": "{\"topic\":\"startup model pruning for noisy providers\",\"details\":\"A lightweight session_start extension can prune noisy model catalogs by re-registering target providers with filtered model lists. Current rule hides date/version-suffixed a...",
+        "summary": "startup model pruning for noisy providers: A lightweight session_start extension can prune noisy model catalogs by re-registering target providers with filtered model lists. Current rule hides date/version-suffixed and preview snapshots (plus internal IDs) for github-copilot/opencode providers, improving /model UX without core TUI changes.",
         "evidence_count": 1,
         "first_seen": "2026-04-24T01:32:07.159Z",
         "last_seen": "2026-04-24T01:32:07.159Z",
@@ -44,7 +75,7 @@
         }
       },
       {
-        "summary": "{\"topic\":\"provider credential management command\",\"details\":\"A repo-local /provider command can safely manage credentials by writing through ctx.modelRegistry.authStorage.set/remove, which persists to ~/.pi/agent/auth.json and updates li...",
+        "summary": "provider credential management command: A repo-local /provider command can safely manage credentials by writing through ctx.modelRegistry.authStorage.set/remove, which persists to ~/.pi/agent/auth.json and updates live session auth state. Include direct and interactive flows plus OAuth guidance to /login.",
         "evidence_count": 1,
         "first_seen": "2026-04-24T00:39:29.392Z",
         "last_seen": "2026-04-24T00:39:29.392Z",
@@ -54,7 +85,7 @@
         }
       },
       {
-        "summary": "{\"topic\":\"copilot model filtering in refresh-models\",\"details\":\"Copilot /models includes internal router IDs and hidden legacy entries. A robust refresh strategy is: parse only picker-enabled entries for newly discovered models, exclude ...",
+        "summary": "copilot model filtering in refresh-models: Copilot /models includes internal router IDs and hidden legacy entries. A robust refresh strategy is: parse only picker-enabled entries for newly discovered models, exclude internal accounts/* IDs, but preserve existing known models unless remote policy explicitly marks them disabled. This avoids polluting lists while not dropping known usable models like gpt-4.1/gpt-5.",
         "evidence_count": 1,
         "first_seen": "2026-04-23T23:56:41.084Z",
         "last_seen": "2026-04-23T23:56:41.084Z",
@@ -64,7 +95,7 @@
         }
       },
       {
-        "summary": "{\"topic\":\"refresh-models diff output UX\",\"details\":\"For /refresh-models, returning addedIds/removedIds from provider refresh and emitting follow-up notify lines (with capped ID list formatting) gives users actionable model-list diffs bey...",
+        "summary": "refresh-models diff output UX: For /refresh-models, returning addedIds/removedIds from provider refresh and emitting follow-up notify lines (with capped ID list formatting) gives users actionable model-list diffs beyond count-only before/after summaries.",
         "evidence_count": 1,
         "first_seen": "2026-04-23T23:50:31.886Z",
         "last_seen": "2026-04-23T23:50:31.886Z",
@@ -74,7 +105,7 @@
         }
       },
       {
-        "summary": "{\"topic\":\"github-copilot /models refresh 400 handling\",\"details\":\"GitHub Copilot model discovery can return HTTP 400 'missing Editor-Version header for IDE auth' when provider models in registry lack Copilot IDE headers. /refresh-models ...",
+        "summary": "github-copilot /models refresh 400 handling: GitHub Copilot model discovery can return HTTP 400 'missing Editor-Version header for IDE auth' when provider models in registry lack Copilot IDE headers. /refresh-models should merge fallback headers from pi-ai built-in github-copilot model metadata before calling GET {baseUrl}/models, and include response-body snippets in errors for faster diagnosis.",
         "evidence_count": 1,
         "first_seen": "2026-04-23T23:36:25.072Z",
         "last_seen": "2026-04-23T23:36:25.072Z",
@@ -84,7 +115,7 @@
         }
       },
       {
-        "summary": "{\"topic\":\"pi custom slash command for subscription model refresh\",\"details\":\"A repo-local extension can register /refresh-models and use ctx.modelRegistry.authStorage + getApiKeyForProvider + registerProvider to refresh OAuth subscriptio...",
+        "summary": "pi custom slash command for subscription model refresh: A repo-local extension can register /refresh-models and use ctx.modelRegistry.authStorage + getApiKeyForProvider + registerProvider to refresh OAuth subscription availability without relogin. For each provider, fetch /models (provider-specific candidates), intersect ids with existing built-in provider models, then registerProvider with kept model defs and oauth provider callbacks.",
         "evidence_count": 1,
         "first_seen": "2026-04-23T23:09:56.213Z",
         "last_seen": "2026-04-23T23:09:56.213Z",
@@ -96,7 +127,57 @@
     ],
     "observation": [
       {
-        "summary": "{\"topic\":\"openrouter curated hide-list extension\",\"details\":\"Model-visibility extension now supports provider-scoped exact-ID and prefix blocklists, allowing iterative user-driven pruning of noisy OpenRouter catalogs (e.g., audio/search/...",
+        "summary": "dotfiles: read_expertise LLM-facing output cleanup: read_expertise text should be distilled expertise only: no rebuild/similarity/layer/evidence metadata, no repeated category headings, and generic entries should summarize topic/details/discovery fields as prose instead of raw JSON. Diagnostics remain available in tool details and snapshot JSON.",
+        "evidence_count": 1,
+        "first_seen": "2026-04-25T13:28:33.950Z",
+        "last_seen": "2026-04-25T13:28:33.950Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "dotfiles: read_expertise layered output compaction: pi/extensions/agent-chain.ts now formats multi-layer read_expertise results as a compact merged snapshot: one shared header, then layer sections in precedence order, with duplicate summaries deduped across all categories before lower-priority layers are printed. Raw fallback keeps the older concatenation path.",
+        "evidence_count": 1,
+        "first_seen": "2026-04-25T13:24:03.238Z",
+        "last_seen": "2026-04-25T13:24:03.238Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "dotfiles: pi /context expertise bucket: pi/extensions/context.ts now breaks read_expertise usage out into an Expertise bucket by detecting assistant toolCall blocks with name read_expertise and toolResult messages with toolName read_expertise, excluding those tokens from generic Tool calls/Tool results.",
+        "evidence_count": 1,
+        "first_seen": "2026-04-25T13:20:50.268Z",
+        "last_seen": "2026-04-25T13:20:50.268Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "dotfiles: pi /context output UX: pi/extensions/context.ts /context now emits a normal scrollback custom message (filtered from LLM context via context hook), removes Suggestions/Notes from report output, and aligns session spend values by padding value columns even without detail text.",
+        "evidence_count": 1,
+        "first_seen": "2026-04-25T13:11:52.129Z",
+        "last_seen": "2026-04-25T13:11:52.129Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "dotfiles: Added a Pi extension command at pi/extensions/context.ts for Claude Code-style /context reporting. Pi exposes exact total context usage via ctx.getContextUsage(); component-level breakdown requires approximation from ctx.getSystemPrompt() and current session branch entries.",
+        "evidence_count": 1,
+        "first_seen": "2026-04-25T12:48:02.225Z",
+        "last_seen": "2026-04-25T12:48:02.225Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "openrouter curated hide-list extension: Model-visibility extension now supports provider-scoped exact-ID and prefix blocklists, allowing iterative user-driven pruning of noisy OpenRouter catalogs (e.g., audio/search/legacy/vendor families) while retaining selected modern IDs.",
         "evidence_count": 1,
         "first_seen": "2026-04-24T02:01:59.078Z",
         "last_seen": "2026-04-24T02:01:59.078Z",
@@ -106,7 +187,7 @@
         }
       },
       {
-        "summary": "{\"topic\":\"codex hidden model filtering\",\"details\":\"OpenAI Codex /codex/models can include hidden internal entries (e.g., codex-auto-review with visibility: hide). Filtering parseOpenAICodexRemoteModels by visibility hide/hidden and suppo...",
+        "summary": "codex hidden model filtering: OpenAI Codex /codex/models can include hidden internal entries (e.g., codex-auto-review with visibility: hide). Filtering parseOpenAICodexRemoteModels by visibility hide/hidden and supported_in_api=false prevents these from showing up in Pi model selection after refresh.",
         "evidence_count": 1,
         "first_seen": "2026-04-24T00:26:51.807Z",
         "last_seen": "2026-04-24T00:26:51.807Z",
@@ -116,7 +197,7 @@
         }
       },
       {
-        "summary": "{\"topic\":\"copilot model list contains non-usable entries\",\"details\":\"GitHub Copilot /models can include embeddings (text-embedding-*), internal router IDs (accounts/*), and synthetic oswe-* entries that are poor fits for Pi model selecti...",
+        "summary": "copilot model list contains non-usable entries: GitHub Copilot /models can include embeddings (text-embedding-*), internal router IDs (accounts/*), and synthetic oswe-* entries that are poor fits for Pi model selection. Refresh filtering now excludes those and keeps picker-enabled model entries (even when supported_endpoints is omitted), while still removing models explicitly marked policy.disabled.",
         "evidence_count": 1,
         "first_seen": "2026-04-24T00:04:52.530Z",
         "last_seen": "2026-04-24T00:04:52.530Z",
@@ -126,7 +207,7 @@
         }
       },
       {
-        "summary": "{\"topic\":\"anthropic subscription model discovery\",\"details\":\"Anthropic subscription tokens can be used to list models via GET https://api.anthropic.com/v1/models?limit=100 when sent as x-api-key with anthropic-version: 2023-06-01 (and Cl...",
+        "summary": "anthropic subscription model discovery: Anthropic subscription tokens can be used to list models via GET https://api.anthropic.com/v1/models?limit=100 when sent as x-api-key with anthropic-version: 2023-06-01 (and Claude-Code beta headers optional). Using Authorization Bearer alone returns OAuth-not-supported errors on /v1/models.",
         "evidence_count": 1,
         "first_seen": "2026-04-23T23:46:55.271Z",
         "last_seen": "2026-04-23T23:46:55.271Z",
@@ -136,7 +217,7 @@
         }
       },
       {
-        "summary": "{\"topic\":\"refresh-models endpoint details\",\"details\":\"For OpenAI Codex subscriptions, live model discovery requires GET {baseUrl}/codex/models with a semver client_version query (high values like 999.0.0 work), plus Authorization bearer,...",
+        "summary": "refresh-models endpoint details: For OpenAI Codex subscriptions, live model discovery requires GET {baseUrl}/codex/models with a semver client_version query (high values like 999.0.0 work), plus Authorization bearer, originator, and chatgpt-account-id headers (account id extracted from JWT claim https://api.openai.com/auth.chatgpt_account_id). GitHub Copilot discovery works via GET {baseUrl}/models with bearer + Copilot headers; response includes policy/capability metadata usable for dynamic model defs.",
         "evidence_count": 1,
         "first_seen": "2026-04-23T23:25:40.236Z",
         "last_seen": "2026-04-23T23:25:40.236Z",
@@ -146,7 +227,7 @@
         }
       },
       {
-        "summary": "{\"topic\":\"pi model list updates\",\"details\":\"Pi built-in provider model catalogs are shipped with each release (docs/providers.md and README). User-level updates should use ~/.pi/agent/models.json for custom providers/models, modelOverrid...",
+        "summary": "pi model list updates: Pi built-in provider model catalogs are shipped with each release (docs/providers.md and README). User-level updates should use ~/.pi/agent/models.json for custom providers/models, modelOverrides for built-ins, and /model or pi --list-models to verify. /model reloads models.json when opened, so no restart is needed.",
         "evidence_count": 1,
         "first_seen": "2026-04-23T22:56:37.929Z",
         "last_seen": "2026-04-23T22:56:37.929Z",
