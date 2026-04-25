@@ -13,6 +13,15 @@
  *   /exit          — gracefully quit pi
  */
 
+// Convention exception: direct ctx.ui.notify calls in slash-command flows.
+// Risk: notification wording could drift from the rest of the extension set
+//   if helper format changes; today uiNotify only adds an extension prefix
+//   that would be redundant since the user typed the slash command to trigger
+//   each flow.
+// Why shared helper is inappropriate: a `[workflow-commands]` prefix on every
+//   /commit / /plan-it / /review-it status line would echo back the slash
+//   command name and add visual noise to user-facing command output.
+
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";

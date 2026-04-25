@@ -9,6 +9,18 @@
  * Shell environment takes precedence — existing vars are never overwritten.
  */
 
+// Convention exception: no extension-utils helpers apply directly.
+// Risk: helper API drifts and this file is not visited by future refactors;
+//   web-tools.ts has its own dedicated test file (web-tools.test.ts, 163
+//   lines) covering happy-path and error-path behavior.
+// Why shared helper is inappropriate: the file's tool returns are not
+//   "errors" in the formatToolError sense -- they are normal tool results
+//   carrying SearXNG / fetched markdown content. canonicalize does not
+//   apply because the file does not handle filesystem paths beyond the
+//   home-relative .env load. uiNotify does not apply because the file
+//   surfaces results through the tool result envelope, not UI
+//   notifications.
+
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";

@@ -8,6 +8,16 @@
  *
  * State persisted to .pi/todo.json in the project root.
  */
+// Convention exception: 10 inline { content, isError, details } error returns
+//   colocated with their switch-case error messages.
+// Risk: drift between sites if a future refactor changes the helper's shape;
+//   the existing todo-pure.test.ts forced-error coverage and the V3 audit
+//   provide the safety net.
+// Why shared helper is inappropriate: each switch arm is a tight 3-line
+//   error block whose readability benefits from inline content + message
+//   colocation; refactoring to formatToolError(...) would split each
+//   branch's intent across two locations without behavioral change.
+
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Type } from "@sinclair/typebox";

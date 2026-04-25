@@ -4,6 +4,17 @@
  * As the tool count grows, this lets the LLM find the right tool
  * without needing all descriptions in the system prompt.
  */
+// Convention exception: no extension-utils helpers apply directly.
+// Risk: helper API drifts and this file is not visited by future refactors;
+//   tool-search.ts has its own dedicated test file (tool-search.test.ts,
+//   103 lines) covering registration, search, include_params, and
+//   renderCall.
+// Why shared helper is inappropriate: the file's only output is a tool
+//   result envelope carrying matching tool descriptions. formatToolError
+//   does not apply because no operation is fallible at the search-text
+//   layer. canonicalize and uiNotify are not relevant -- the file does
+//   not handle filesystem paths or UI notifications.
+
 import { Type } from "@sinclair/typebox";
 import { Text } from "@mariozechner/pi-tui";
 import type { ExtensionAPI, ToolInfo } from "@mariozechner/pi-coding-agent";

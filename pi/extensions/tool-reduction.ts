@@ -12,6 +12,18 @@
  * all fall through to returning the raw tool output unchanged.
  */
 
+// Convention exception: no extension-utils helpers apply directly.
+// Risk: helper API drifts and this file is not visited by future refactors;
+//   tool-reduction.ts has its own dedicated test file with end-to-end
+//   compaction coverage and helper-function unit tests.
+// Why shared helper is inappropriate: the file augments tool_result content
+//   in place rather than producing a tool error result, so formatToolError
+//   does not apply. canonicalize does not apply because the only path
+//   handled is REDUCE_SCRIPT which is resolved once at module init via
+//   path.resolve. uiNotify does not apply because the file does not
+//   surface user-facing messages -- it transparently rewrites the bash
+//   tool result the LLM consumes.
+
 import * as child_process from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
