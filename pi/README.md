@@ -188,6 +188,23 @@ Workflow highlights:
 - `/do-it` can route a raw task **or** execute an existing `.specs/*/plan.md` file wave by wave.
 - `/commit` uses deterministic candidate extraction plus a small-model LLM review to distinguish real secrets from docs/examples/tests before blocking.
 
+### `context.ts`
+
+Shows Claude Code-style context usage for Pi.
+
+**Slash command:**
+```
+/context         # full report in normal scrollback
+/context widget  # optional persistent widget; may truncate in narrow terminals
+/context clear   # hide the widget
+```
+
+Behavior:
+- Displays current context usage from Pi's `ctx.getContextUsage()` API.
+- Estimates per-component buckets for system prompt, user messages, assistant text/thinking, tool calls, tool results, bash output, injected context, and summaries.
+- Shows cumulative session token spend, cache reads/writes, cost, and component breakdown.
+- Emits the full report as a normal transcript message so it scrolls with the conversation; the extension filters those report messages back out of future LLM context.
+
 ### `provider.ts`
 
 Manages provider credentials in `~/.pi/agent/auth.json`.
