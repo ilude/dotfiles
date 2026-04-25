@@ -41,13 +41,11 @@ Key decisions already locked in during the conversation:
 - **Thresholds**: `-C 8 -L 250 -a 7` — immutable for this plan.
 - **Validator**: `claude/hooks/quality-validation/validators.yaml`
   already enforces the thresholds on every edit via PostToolUse.
-- **Menos AND onyx are both git submodules** (`git@github.com:ilude/menos.git`
-  and `git@github.com:ilude/onyx.git`). The original plan only documented
-  menos — onyx was missed. Both follow the same flow: refactors land as
-  commits inside the submodule, then push the refactor branch, then bump
-  the parent repo's pointer. Never edit menos or onyx files without
-  committing to the submodule and pushing the branch — otherwise the
-  parent pointer bump references a SHA only present locally and breaks
+- **Menos is a git submodule** (`git@github.com:ilude/menos.git`).
+  Refactors land as commits inside the submodule, then push the refactor
+  branch, then bump the parent repo's pointer. Never edit menos files
+  without committing to the submodule and pushing the branch -- otherwise
+  the parent pointer bump references a SHA only present locally and breaks
   fresh clones / CI.
 - **Submodule integration branch pattern (IMPORTANT — defect caught in
   Wave 1 V1)**: Within a single submodule, tasks MUST NOT branch off the

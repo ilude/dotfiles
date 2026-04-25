@@ -387,7 +387,7 @@ function scanFilesForSecrets(cwd: string, files: string[]) {
 function classifyScopeRoot(file: string) {
 	if (["install", "install.ps1", "Brewfile"].includes(file)) return "dotfiles";
 	const root = file.split("/")[0] ?? file;
-	if (["zsh", "pi", "claude", "opencode", "onyx", "menos"].includes(root)) return root;
+	if (["zsh", "pi", "claude", "opencode", "menos"].includes(root)) return root;
 	return "repo";
 }
 
