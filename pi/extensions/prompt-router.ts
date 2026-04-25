@@ -119,6 +119,15 @@ const SIZE_TO_TIER: Record<string, Tier> = {
 // Default effort cap -- prevent xhigh unless explicitly configured.
 const DEFAULT_MAX_EFFORT = "high";
 
+// GPT-5.5 on openai-codex is strong enough that routine prompts should stay
+// cheap/fast. Let the classifier request medium/high for genuinely complex
+// prompts, but bias medium back down to low unless confidence is high. xhigh is
+// never selected by the router because the global default cap remains "high";
+// if the user manually sets xhigh, classifyAndRoute preserves it.
+const CODEX_GPT55_PROVIDER = "openai-codex";
+const CODEX_GPT55_MODEL = "gpt-5.5";
+const CODEX_GPT55_MEDIUM_CONFIDENCE_FLOOR = 0.8;
+
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
@@ -226,6 +235,18 @@ function getResolvedTierMap(ctx: any) {
     mid: resolveDynamicModelFromRegistry(ctx.modelRegistry, ctx, "medium", "same-family"),
     high: resolveDynamicModelFromRegistry(ctx.modelRegistry, ctx, "large", "same-family"),
   };
+}
+
+function isCodexGpt55(model: unknown): boolean {
+  if (!model || typeof model !== "object") return false;
+  const m = model as { provider?: unknown; id?: unknown };
+  return m.provider === CODEX_GPT55_PROVIDER && m.id === CODEX_GPT55_MODEL;
+}
+
+function applyModelEffortBias(effort: string, rec: ClassifierRecommendation, model: unknown): string {
+  if (!isCodexGpt55(model)) return effort;
+  if (effort === "medium" && rec.confidence < CODEX_GPT55_MEDIUM_CONFIDENCE_FLOOR) return "low";
+  return effort;
 }
 
 export function isValidTier(raw: string): raw is Tier {
@@ -511,10 +532,8 @@ async function classifyAndRoute(
   const prevTier = state.lastEffective;
   const prevEffort = state.lastAppliedEffort;
   const applied = applyPolicy(rec, state, policy);
-  const { tier: effectiveTier, effort, ruleFired } = applied;
-
-  state.lastRuleFired = ruleFired;
-  state.lastAppliedEffort = effort;
+  const { tier: effectiveTier, ruleFired } = applied;
+  let { effort } = applied;
 
   const modelSize =
     effectiveTier === "low" ? "small" : effectiveTier === "mid" ? "medium" : "large";
@@ -533,6 +552,15 @@ async function classifyAndRoute(
     return;
   }
 
+  effort = applyModelEffortBias(effort, rec, model);
+  const currentThinkingLevel = typeof (pi as any).getThinkingLevel === "function" ? (pi as any).getThinkingLevel() : undefined;
+  if (isCodexGpt55(model) && currentThinkingLevel === "xhigh") {
+    effort = "xhigh";
+  }
+  const finalApplied = { ...applied, effort };
+  state.lastRuleFired = ruleFired;
+  state.lastAppliedEffort = effort;
+
   // Only switch model/effort when route actually changes.
   if (effectiveTier !== prevTier || effort !== prevEffort) {
     if (effectiveTier !== prevTier) {
@@ -548,7 +576,7 @@ async function classifyAndRoute(
 
   const modelLabel = resolveModelTierLabel(model, modelSize);
   ctx.ui.setStatus("router", buildStatusLabel(effectiveTier, rawTier, modelLabel, effort));
-  await emitRoutingDecision(text, rec, applied, policy);
+  await emitRoutingDecision(text, rec, finalApplied, policy);
 }
 
 // ---------------------------------------------------------------------------
