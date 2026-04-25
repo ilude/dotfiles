@@ -1,9 +1,45 @@
 schema_version: 1
-last_updated: SESSION_ID
+last_updated: 2026-04-24
 
-system_overview: {}
-key_files: {}
-patterns: {}
-strong_decisions: {}
-observations: {}
-open_questions: {}
+system_overview:
+  auth_migration:
+    summary: ASP.NET controllers are being migrated from legacy [Authorize(Policy = "CertificateOrFIDO")] to [Authenticate] plus [RequirePrivilege(...)] in Teams.Services.SharedKernel.FilterAttribute.
+
+key_files:
+  application_role_controller:
+    path: Eisa.MvcWeb/Areas/System/Controllers/ApplicationRoleController.cs
+    why: Current merge hotspot between MR 466 auth-attribute migration and dev's issue 457 super-admin role-manager rewrite.
+  require_privilege_attribute:
+    path: Teams.Services.SharedKernel/FilterAttribute/RequirePrivilegeAttribute.cs
+    why: Role-mode authorization resolves IAppAccessManagement and ILogger<RequirePrivilegeAttribute> from HttpContext.RequestServices, not from controller constructors.
+  mvc_auth_attribute_tests:
+    path: Tests/Eisa.MvcWeb.Tests/Areas/System/Controllers/SystemControllerAuthorizationAttributeTests.cs
+    why: Pins Authenticate policies for system controllers but currently does not assert ApplicationRoleController's RequiredRole.SuperAdmin wiring.
+  keycloak_auth_enforcement:
+    path: keycloak/auth-enforcement.test.ts
+    why: Existing Keycloak enforcement coverage uses password-grant tokens and proves TEAMSPolicy_3 endpoints reject BasicAuth tokens with 403.
+
+patterns:
+  strict_vs_any_auth:
+    description: TEAMSPolicy_3 means default [Authenticate] (CAC or FIDO). TEAMSPolicy_7 means [Authenticate(TEAMSPolicy.Any)] and is what current Keycloak password-grant tests can successfully exercise.
+  controller_auth_gap:
+    description: Generic filter unit tests cover RequirePrivilege behavior, but controller-specific tests must still assert the chosen RequirePrivilege attribute/flags or the wrong privilege model can slip through.
+
+strong_decisions:
+  application_role_superadmin_gate:
+    decision: ApplicationRoleController should use [RequirePrivilege(RequiredRole.SuperAdmin)] rather than UserPrivilegeLevel.SystemManagement.
+    why_good: Issue 457 narrowed the feature to super-admin-only role management; app-scoped SystemManagement would widen access to non-superadmin app admins/SAs.
+
+observations:
+  app_role_keycloak_limit:
+    note: Current keycloak/auth-enforcement.test.ts password-grant tokens cannot produce a 200 on TEAMSPolicy_3 endpoints, so they cannot validate ApplicationRoleController's superadmin-vs-user distinction unless the test harness gains cert/FIDO-capable requests or the endpoint auth policy changes.
+  app_role_keycloak_false_positive:
+    note: A 403 from ApplicationRoleController under the current Basic-token harness is ambiguous because TEAMSPolicy_3 rejects the token before RequirePrivilege role checks run; such a test does not prove SuperAdmin gating.
+  app_role_test_gap:
+    note: SystemControllerAuthorizationAttributeTests asserts ApplicationRoleController uses TEAMSPolicy_3 but does not assert RequiredRole.SuperAdmin, leaving a regression gap for the privilege model.
+  app_role_plan_staleness:
+    note: Current branch HEAD already contains an origin/dev merge and newer auth/test file changes than the .specs/mr419-role-mgr-conflict/plan.md assumptions, so executing the plan verbatim risks redundant or regressive work.
+
+open_questions:
+  cert_test_harness:
+    question: Is there an existing automated helper for making cert-authenticated requests in the Keycloak/dev stack, or would end-to-end coverage of TEAMSPolicy_3 endpoints require new test harness work?

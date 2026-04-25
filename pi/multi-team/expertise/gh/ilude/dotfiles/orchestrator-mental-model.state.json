@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
-  "dirty": true,
-  "rebuild_status": "stale",
-  "last_attempt_at": "2026-04-24T02:01:59.082Z"
+  "dirty": false,
+  "rebuild_status": "ready",
+  "last_attempt_at": "2026-04-24T16:19:09.633Z",
+  "last_success_at": "2026-04-24T16:19:09.633Z"
 }

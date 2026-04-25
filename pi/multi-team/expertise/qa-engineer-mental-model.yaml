@@ -17,4 +17,6 @@ observations:
     summary: Wave 1 coverage now includes deterministic-only baseline and durable-category guardrails, with skipped cases for provider-enabled merge approval, rejection, low-confidence fallback, timeout/failure fallback, and strong_decision/key_file provider bypass.
   layered-expertise-test-gap:
     summary: For storage-scope changes, output-order assertions are insufficient; require filesystem fixtures covering per-layer log/snapshot/state paths plus stale/missing/failing snapshot combinations, or tests can pass while persistence and fallback semantics regress.
+  strict-auth-endpoint-validation-gap:
+    summary: Keycloak password-grant tokens are BasicAuth-mode and cannot prove behavior of default [Authenticate] (TEAMSPolicy_3) endpoints; use controller reflection tests plus server-side integration tests with explicit auth-method claims/role claims, or a plan can go green while strict auth and role gating remain unverified.
 open_questions: {}

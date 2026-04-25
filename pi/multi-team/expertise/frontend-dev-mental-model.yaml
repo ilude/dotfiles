@@ -1,9 +1,33 @@
 schema_version: 1
-last_updated: SESSION_ID
+last_updated: 2026-04-24
 
-system_overview: {}
-key_files: {}
-patterns: {}
+system_overview:
+  app_links_module:
+    summary: "The Angular app-links area is now centered on AppLinksPageComponent -> AppEditTabPageComponent / AppRolesManagerComponent, while a legacy EditAppTileComponent tree remains declared but appears unrendered from current templates/routes."
+
+key_files:
+  app_links_routing:
+    path: "eisa-ng/src/app/admin/app-links/app-links-routing.module.ts"
+    role: "Defines app-links routes; currently imports ForwardCanDeactivateGuard but does not register any canDeactivate guard on app-links routes."
+  app_questions_page:
+    path: "eisa-ng/src/app/admin/app-links/app-questions-page/app-questions-page.component.ts"
+    role: "Implements CanDeactivateForward and dirty-dialog logic, but the route is not guard-wired and the template lacks the referenced dirtyDialogTmpl."
+  admin_service_spec:
+    path: "eisa-ng/src/app/services/admin/admin.service.spec.ts"
+    role: "Contains live getRoles() tests that must be accounted for if AdminService.getRoles() is removed."
+
+patterns:
+  dead_code_review_for_angular:
+    summary: "Selector absence alone is not sufficient proof of safe deletion; also check module declarations, dynamic component creation, service/spec references, route wiring, and whether replacement operator-facing flows are explicitly validated."
+
 strong_decisions: {}
-observations: {}
-open_questions: {}
+
+observations:
+  app_links_dead_tree_review_2026_04_24:
+    summary: "For .specs/mr419-role-mgr-conflict/plan.md, the EditAppTile/EditLinkDlg/EditAppPocDlg tree looks runtime-unreachable from current templates and no dynamic createComponent/ngComponentOutlet usage was found, but T5 still missed a live hidden ref in admin.service.spec.ts and proposed a canDeactivate() semantic change that current route wiring cannot validate."
+  app_links_replacement_flows:
+    summary: "Current operator-facing app-link editing appears to live in AppEditTabPageComponent -> EditApplicationLinkPageComponent -> AppLinkDetailPageComponent, while point-of-contact editing is handled in AppEditGeneralComponent. Cleanup plans should cite and smoke these replacement flows explicitly."
+
+open_questions:
+  should_t5_be_split:
+    summary: "Unclear whether unrelated Angular cleanup should remain on the critical path for the ApplicationRoleController merge-conflict resolution, since current validation gates block the backend/auth fix on T5 success."
