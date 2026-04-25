@@ -1,12 +1,23 @@
 auth.json
 expertise/*-expertise-log.jsonl
 multi-team/sessions/
+multi-team/logs/
 multi-team/expertise/*-expertise-log.jsonl
 skills/pi-skills/
 
 # Runtime session logs
 sessions/
 history/
+
+# Project-local expertise (per-repo runtime state). May contain
+# CUI-adjacent project context. Only this repo's own slug is allowlisted;
+# top-level *-mental-model.{yaml,json} stay tracked as the global layer.
+multi-team/expertise/*/
+!multi-team/expertise/gh/
+multi-team/expertise/gh/*
+!multi-team/expertise/gh/ilude/
+multi-team/expertise/gh/ilude/*
+!multi-team/expertise/gh/ilude/dotfiles/
 
 # Tool dependencies
 node_modules/
