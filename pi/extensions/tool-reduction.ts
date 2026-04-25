@@ -15,11 +15,7 @@
 import * as child_process from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	type ExtensionAPI,
-	type BashToolResultEvent,
-	type ToolResultEvent,
-} from "@mariozechner/pi-coding-agent";
+import { isBashToolResult, type ExtensionAPI, type ToolResultEvent } from "@mariozechner/pi-coding-agent";
 
 const REDUCE_SCRIPT = path.resolve(
 	os.homedir(),
@@ -53,9 +49,7 @@ function splitArgv(command: string): string[] {
 	return command.trim().split(/\s+/).filter(Boolean);
 }
 
-function extractTextContent(
-	content: BashToolResultEvent["content"],
-): { stdout: string; stderr: string } {
+function extractTextContent(content: ToolResultEvent["content"]): { stdout: string; stderr: string } {
 	const texts = content
 		.filter((c): c is { type: "text"; text: string } => c.type === "text")
 		.map((c) => c.text);
@@ -128,15 +122,14 @@ export const EXTENSION_NAME = "tool-reduction";
 
 export default function (pi: ExtensionAPI) {
 	pi.on("tool_result", async (event: ToolResultEvent) => {
-		if (event.toolName !== "bash") return undefined;
+		if (!isBashToolResult(event)) return undefined;
 
-		const bashEvent = event as BashToolResultEvent;
-		const command = (bashEvent.input as { command?: string }).command ?? "";
-		const { stdout, stderr } = extractTextContent(bashEvent.content);
+		const command = (event.input as { command?: string }).command ?? "";
+		const { stdout, stderr } = extractTextContent(event.content);
 
 		const request: ReduceRequest = {
 			argv: splitArgv(command),
-			exit_code: bashEvent.isError ? 1 : 0,
+			exit_code: event.isError ? 1 : 0,
 			stdout,
 			stderr,
 		};
