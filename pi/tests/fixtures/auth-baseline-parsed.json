@@ -1,0 +1,61 @@
+{
+  "round_trip": {
+    "anthropic": {
+      "type": "oauth",
+      "refresh": "REDACTED-PLACEHOLDER-REFRESH-TOKEN-ANTHROPIC",
+      "access": "REDACTED-PLACEHOLDER-ACCESS-TOKEN-ANTHROPIC",
+      "expires": 1735689600000
+    },
+    "github-copilot": {
+      "type": "oauth",
+      "refresh": "REDACTED-PLACEHOLDER-REFRESH-TOKEN-COPILOT",
+      "access": "REDACTED-PLACEHOLDER-ACCESS-TOKEN-COPILOT",
+      "expires": 1735689600000
+    },
+    "openai-codex": {
+      "type": "oauth",
+      "access": "REDACTED-PLACEHOLDER-ACCESS-TOKEN-CODEX",
+      "refresh": "REDACTED-PLACEHOLDER-REFRESH-TOKEN-CODEX",
+      "expires": 1735689600000,
+      "accountId": "REDACTED-PLACEHOLDER-ACCOUNT-ID"
+    },
+    "opencode": {
+      "type": "api_key",
+      "key": "REDACTED-PLACEHOLDER-API-KEY-OPENCODE"
+    },
+    "openrouter": {
+      "type": "api_key",
+      "key": "REDACTED-PLACEHOLDER-API-KEY-OPENROUTER"
+    }
+  },
+  "describe": "Configured providers: anthropic (oauth), github-copilot (oauth), openai-codex (oauth), opencode (api_key), openrouter (api_key)",
+  "per_provider": {
+    "anthropic": {
+      "type": "oauth",
+      "refresh": "REDACTED-PLACEHOLDER-REFRESH-TOKEN-ANTHROPIC",
+      "access": "REDACTED-PLACEHOLDER-ACCESS-TOKEN-ANTHROPIC",
+      "expires": 1735689600000
+    },
+    "github-copilot": {
+      "type": "oauth",
+      "refresh": "REDACTED-PLACEHOLDER-REFRESH-TOKEN-COPILOT",
+      "access": "REDACTED-PLACEHOLDER-ACCESS-TOKEN-COPILOT",
+      "expires": 1735689600000
+    },
+    "openai-codex": {
+      "type": "oauth",
+      "access": "REDACTED-PLACEHOLDER-ACCESS-TOKEN-CODEX",
+      "refresh": "REDACTED-PLACEHOLDER-REFRESH-TOKEN-CODEX",
+      "expires": 1735689600000,
+      "accountId": "REDACTED-PLACEHOLDER-ACCOUNT-ID"
+    },
+    "opencode": {
+      "type": "api_key",
+      "key": "REDACTED-PLACEHOLDER-API-KEY-OPENCODE"
+    },
+    "openrouter": {
+      "type": "api_key",
+      "key": "REDACTED-PLACEHOLDER-API-KEY-OPENROUTER"
+    }
+  }
+}
