@@ -159,6 +159,15 @@ format-python:
 	uv run ruff check --fix
 	@echo "Python format complete."
 
+# Pi extension validation: tsc-check + Vitest suite + runtime smoke
+# See pi/extensions/README.md for the full extension conventions.
+check-pi-extensions:
+	@echo "==> Type-checking Pi extensions"
+	python pi/extensions/tsc-check.py
+	@echo "==> Running Pi Vitest suite (includes runtime smoke checks)"
+	cd pi/tests && bun vitest run
+	@echo "Pi extension checks passed."
+
 # Run all checks
 check: lint test
 	@echo "All checks passed."

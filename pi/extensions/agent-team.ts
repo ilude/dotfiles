@@ -1,8 +1,9 @@
 /**
  * Agent Team Extension
  *
- * Implements the dispatcher pattern — routes work to specialist team leads
- * based on named team routing. Loads team config from teams.yaml.
+ * Implements the dispatcher pattern -- routes work to specialist team leads
+ * based on named team routing. Loads team config from teams.yaml using the
+ * shared TS-native yaml-mini loader.
  *
  * Registers:
  *   - /team command: dispatch task to a named team lead
@@ -10,9 +11,10 @@
  */
 
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { getAgentDir } from "../lib/extension-utils.js";
+import { parseYamlMini } from "../lib/yaml-mini.js";
 
 interface TeamMember {
 	name: string;
@@ -28,103 +30,53 @@ interface TeamEntry {
 
 type TeamsConfig = Record<string, TeamEntry>;
 
-export function getAgentDir(): string {
-	return path.join(os.homedir(), ".pi", "agent");
-}
+export { getAgentDir };
 
 export function getTeamsConfigPath(): string {
 	return path.join(getAgentDir(), "agents", "teams.yaml");
 }
 
-// ── Minimal YAML parser ──────────────────────────────────────────────────────
-// Sufficient for teams.yaml structure: top-level keys, name/file/description,
-// and team arrays. No external dependencies required.
+function asString(value: unknown): string {
+	return typeof value === "string" ? value : "";
+}
 
-class TeamsYamlParser {
-	private result: TeamsConfig = {};
-	private currentKey: string | null = null;
-	private inTeamArray = false;
-	private currentMember: Partial<TeamMember> | null = null;
+function asTeamMember(value: unknown): TeamMember | null {
+	if (!value || typeof value !== "object") return null;
+	const obj = value as Record<string, unknown>;
+	const name = asString(obj.name);
+	if (!name) return null;
+	return { name, file: asString(obj.file) };
+}
 
-	private parseKV(line: string): [string, string] | null {
-		const idx = line.indexOf(":");
-		if (idx === -1) return null;
-		return [line.slice(0, idx).trim(), line.slice(idx + 1).trim()];
+function asTeamEntry(value: unknown): TeamEntry {
+	if (!value || typeof value !== "object") {
+		return { name: "", file: "" };
 	}
-
-	private applyMemberField(k: string, v: string): void {
-		if (!this.currentMember) return;
-		if (k === "name") this.currentMember.name = v;
-		else if (k === "file") this.currentMember.file = v;
-	}
-
-	private flushMember(): void {
-		if (!this.currentKey || !this.currentMember?.name) return;
-		this.result[this.currentKey].team = this.result[this.currentKey].team ?? [];
-		this.result[this.currentKey].team!.push(this.currentMember as TeamMember);
-		this.currentMember = null;
-	}
-
-	private processTopLevel(line: string): void {
-		if (!line.endsWith(":")) return;
-		this.flushMember();
-		this.currentKey = line.slice(0, -1);
-		this.result[this.currentKey] = { name: "", file: "" };
-		this.inTeamArray = false;
-	}
-
-	private processEntry(line: string): void {
-		this.flushMember();
-		if (line === "team:") {
-			this.inTeamArray = true;
-			return;
+	const obj = value as Record<string, unknown>;
+	const entry: TeamEntry = {
+		name: asString(obj.name),
+		file: asString(obj.file),
+	};
+	if (typeof obj.description === "string") entry.description = obj.description;
+	if (Array.isArray(obj.team)) {
+		const members: TeamMember[] = [];
+		for (const raw of obj.team) {
+			const m = asTeamMember(raw);
+			if (m) members.push(m);
 		}
-		this.inTeamArray = false;
-		const kv = this.parseKV(line);
-		if (!kv) return;
-		const [k, v] = kv;
-		const entry = this.result[this.currentKey!];
-		if (k === "name") entry.name = v;
-		else if (k === "file") entry.file = v;
-		else if (k === "description") entry.description = v;
+		if (members.length > 0) entry.team = members;
 	}
-
-	private processTeamLine(line: string): void {
-		if (line.startsWith("- ")) {
-			this.flushMember();
-			this.currentMember = {};
-			const kv = this.parseKV(line.slice(2).trim());
-			if (kv) this.applyMemberField(kv[0], kv[1]);
-			return;
-		}
-		const kv = this.parseKV(line);
-		if (kv) this.applyMemberField(kv[0], kv[1]);
-	}
-
-	private processLine(rawLine: string): void {
-		if (rawLine.trimStart().startsWith("#") || rawLine.trim() === "") return;
-		const indent = rawLine.length - rawLine.trimStart().length;
-		const line = rawLine.trim();
-		if (indent === 0) {
-			this.processTopLevel(line);
-		} else if (indent === 2 && this.currentKey) {
-			this.processEntry(line);
-		} else if ((indent === 4 || indent === 6) && this.currentKey && this.inTeamArray) {
-			this.processTeamLine(line);
-		}
-	}
-
-	parse(content: string): TeamsConfig {
-		for (const rawLine of content.split("\n")) {
-			this.processLine(rawLine);
-		}
-		this.flushMember();
-		return this.result;
-	}
+	return entry;
 }
 
 export function parseYaml(content: string): TeamsConfig {
-	return new TeamsYamlParser().parse(content);
+	const root = parseYamlMini(content);
+	const out: TeamsConfig = {};
+	if (!root || typeof root !== "object" || Array.isArray(root)) return out;
+	for (const [key, value] of Object.entries(root as Record<string, unknown>)) {
+		out[key] = asTeamEntry(value);
+	}
+	return out;
 }
 
 export function loadTeamsConfig(): TeamsConfig | null {
@@ -135,7 +87,6 @@ export function loadTeamsConfig(): TeamsConfig | null {
 	}
 }
 
-// Find a team entry by key or by lead name
 export function resolveTeam(teams: TeamsConfig, target: string): [string, TeamEntry] | null {
 	if (teams[target]) return [target, teams[target]];
 	for (const [key, entry] of Object.entries(teams)) {
@@ -149,7 +100,7 @@ export function formatTeamList(teams: TeamsConfig): string {
 	for (const [key, entry] of Object.entries(teams)) {
 		const workers = entry.team?.map((m) => m.name).join(", ");
 		const workerStr = workers ? ` [workers: ${workers}]` : "";
-		lines.push(`  ${key} → ${entry.name}${workerStr}`);
+		lines.push(`  ${key} -> ${entry.name}${workerStr}`);
 	}
 	return lines.join("\n");
 }
@@ -190,9 +141,6 @@ export function parseTeamArgs(trimmed: string): { target: string; task: string }
 }
 
 export default function (pi: ExtensionAPI) {
-	// ── Command: /team ──────────────────────────────────────────────────────────
-	// Dispatches a task to a named team lead. The lead can then use the subagent
-	// tool to delegate to workers in their team.
 	pi.registerCommand("team", {
 		description:
 			"Dispatch a task to a specialist team lead. Usage: /team <team-key|lead-name> <task>. " +
