@@ -17,19 +17,23 @@ import * as path from "node:path";
 import { completeSimple, Type } from "@mariozechner/pi-ai";
 import { type ExtensionAPI, withFileMutationQueue } from "@mariozechner/pi-coding-agent";
 import {
+	type ExpertiseReadMode,
 	type ExpertiseRecord,
 	type ExpertiseSnapshot,
 	type ExpertiseSnapshotState,
 	type ExpertiseSimilarityConfig,
 	type SimilarityCandidate,
 	type SimilarityDecision,
+	EXPERTISE_CATEGORY_ORDER,
 	buildExpertiseSnapshot,
 	createDirtyState,
 	createReadyState,
+	formatExpertiseItem,
 	formatExpertiseSnapshotText,
 	formatRawExpertiseFallback,
 	isSnapshotFresh,
 	readJsonFile,
+	shouldShowExpertiseItem,
 } from "../lib/expertise-snapshot";
 import {
 	type RepoId,
@@ -497,13 +501,14 @@ async function resolveExpertiseView(
 	agent: string,
 	entries: ExpertiseRecord[],
 	ctx: any,
+	mode: ExpertiseReadMode,
 ): Promise<{ text: string; snapshot: ExpertiseSnapshot | null; state: ExpertiseSnapshotState | null; usedRawFallback: boolean }> {
 	const snapshot = readJsonFile<ExpertiseSnapshot>(paths.snapshotPath);
 	const state = readJsonFile<ExpertiseSnapshotState>(paths.statePath);
 
 	if (snapshot && isSnapshotFresh(snapshot, state, entries)) {
 		return {
-			text: formatExpertiseSnapshotText(agent, snapshot),
+			text: formatExpertiseSnapshotText(agent, snapshot, { mode, currentProjects: getCurrentProjectNames(ctx) }),
 			snapshot,
 			state,
 			usedRawFallback: false,
@@ -513,7 +518,7 @@ async function resolveExpertiseView(
 	try {
 		const rebuilt = await rebuildSnapshot(paths, agent, entries, ctx);
 		return {
-			text: formatExpertiseSnapshotText(agent, rebuilt.snapshot),
+			text: formatExpertiseSnapshotText(agent, rebuilt.snapshot, { mode, currentProjects: getCurrentProjectNames(ctx) }),
 			snapshot: rebuilt.snapshot,
 			state: rebuilt.state,
 			usedRawFallback: false,
@@ -523,7 +528,7 @@ async function resolveExpertiseView(
 		await writeSnapshotState(paths.statePath, createDirtyState("failed", message));
 		if (snapshot) {
 			return {
-				text: formatExpertiseSnapshotText(agent, snapshot, { warning: `stale snapshot retained because rebuild failed: ${message}` }),
+				text: formatExpertiseSnapshotText(agent, snapshot, { mode, currentProjects: getCurrentProjectNames(ctx), warning: `stale snapshot retained because rebuild failed: ${message}` }),
 				snapshot,
 				state: createDirtyState("failed", message),
 				usedRawFallback: false,
@@ -546,9 +551,70 @@ function normalizeForDedupe(line: string): string {
 	return withoutPrefix.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-function mergeLayerTexts(views: LayerView[]): string {
-	// Concatenate views in order; dedupe item lines (lines starting with "- ")
-	// across layers using a normalized key. Header/category lines are kept per layer.
+function getCurrentProjectNames(ctx: any): string[] {
+	const names = new Set<string>();
+	const cwd = typeof ctx?.cwd === "string" ? ctx.cwd : undefined;
+	if (cwd) {
+		const gitRoot = findGitRoot(cwd) ?? cwd;
+		const base = path.basename(gitRoot);
+		if (base) names.add(base);
+	}
+	const repoId = typeof ctx?.repoId === "string" ? ctx.repoId : undefined;
+	if (repoId) {
+		const parts = repoId.split(/[\\/]/).filter(Boolean);
+		const last = parts[parts.length - 1];
+		if (last) names.add(last);
+	}
+	return [...names];
+}
+
+function formatMergedLayerSnapshots(agent: string, views: LayerView[], mode: ExpertiseReadMode, currentProjects: string[]): string | null {
+	if (views.some((view) => !view.snapshot || view.usedRawFallback)) return null;
+
+	const totalEntries = views.reduce((sum, view) => sum + view.entryCount, 0);
+	const lines = mode === "debug"
+		? [`Expertise for ${agent} (${totalEntries} raw entries, merged snapshot)`]
+		: [`Expertise for ${agent}`];
+
+	const seen = new Set<string>();
+	const sections = new Map<keyof ExpertiseSnapshot["categories"], { heading: string; itemLines: string[] }>();
+	const sectionFor = (heading: string, category: keyof ExpertiseSnapshot["categories"]) => {
+		let section = sections.get(category);
+		if (!section) {
+			section = { heading, itemLines: [] };
+			sections.set(category, section);
+		}
+		return section;
+	};
+
+	for (const view of views) {
+		for (const [heading, category] of EXPERTISE_CATEGORY_ORDER) {
+			const items = view.snapshot!.categories[category]
+				.filter((item) => shouldShowExpertiseItem(category, item, mode, { currentProjects }))
+				.slice(0, 8);
+			for (const item of items) {
+				const key = normalizeForDedupe(item.summary);
+				if (key && seen.has(key)) continue;
+				if (key) seen.add(key);
+				sectionFor(heading, category).itemLines.push(formatExpertiseItem(item, mode));
+			}
+		}
+	}
+
+	for (const section of sections.values()) {
+		lines.push("", `${section.heading}:`, ...section.itemLines);
+	}
+
+	return lines.join("\n");
+}
+
+function mergeLayerTexts(agent: string, views: LayerView[], mode: ExpertiseReadMode, currentProjects: string[]): string {
+	const mergedSnapshotText = formatMergedLayerSnapshots(agent, views, mode, currentProjects);
+	if (mergedSnapshotText) return mergedSnapshotText;
+
+	// Raw fallback path: concatenate views in order; dedupe item lines across
+	// layers. Header/category lines are kept because raw fallback has no
+	// structured categories to merge safely.
 	const seen = new Set<string>();
 	const out: string[] = [];
 	for (let i = 0; i < views.length; i += 1) {
@@ -704,9 +770,11 @@ export default function (pi: ExtensionAPI) {
 			"and the read path should rebuild or return the documented safe fallback if the snapshot is missing or stale.",
 		parameters: Type.Object({
 			agent: Type.String({ description: "Agent name (e.g. backend-dev, orchestrator)" }),
+			mode: Type.Optional(Type.String({ description: "Output mode: concise (default) | full | debug" })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const { agent } = params as { agent: string };
+			const { agent, mode: rawMode } = params as { agent: string; mode?: string };
+			const mode: ExpertiseReadMode = rawMode === "full" || rawMode === "debug" ? rawMode : "concise";
 
 			const globalPaths = getExpertisePaths(multiTeamDir, agent);
 			const layer = resolveLayer(multiTeamDir, ctx as { cwd?: string; repoId?: string } | undefined);
@@ -744,13 +812,13 @@ export default function (pi: ExtensionAPI) {
 			if (totalEntries === 0) {
 				return {
 					content: [{ type: "text", text: `No expertise recorded yet for ${agent}. This is your first session.` }],
-					details: { agent, entryCount: 0, usedRawFallback: false, layerSources: [] },
+					details: { agent, mode, entryCount: 0, usedRawFallback: false, layerSources: [] },
 				};
 			}
 
 			const views: LayerView[] = [];
 			for (const le of layerEntries) {
-				const view = await resolveExpertiseView(le.paths, agent, le.entries, ctx);
+				const view = await resolveExpertiseView(le.paths, agent, le.entries, ctx, mode);
 				views.push({
 					label: le.label,
 					text: view.text,
@@ -761,7 +829,8 @@ export default function (pi: ExtensionAPI) {
 				});
 			}
 
-			const mergedText = views.length === 1 ? views[0].text : mergeLayerTexts(views);
+			const currentProjects = getCurrentProjectNames(ctx);
+			const mergedText = views.length === 1 ? views[0].text : mergeLayerTexts(agent, views, mode, currentProjects);
 
 			// Pick the "primary" view's metadata for backwards-compat fields. The
 			// project-local layer is primary when present; otherwise the global layer.
@@ -772,6 +841,7 @@ export default function (pi: ExtensionAPI) {
 
 			const details: Record<string, unknown> = {
 				agent,
+				mode,
 				entryCount: totalEntries,
 				usedRawFallback: primary.usedRawFallback,
 				snapshotPath: primaryLayerEntry.paths.snapshotPath,

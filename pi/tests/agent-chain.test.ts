@@ -246,7 +246,7 @@ describe("agent-chain extension", () => {
       {},
     );
 
-    const result = await readTool.execute("id", { agent: "qa-engineer" }, undefined, undefined, {});
+    const result = await readTool.execute("id", { agent: "qa-engineer", mode: "full" }, undefined, undefined, {});
     expect(result.content[0].text).toContain("first observation");
     expect(result.content[0].text).toContain("second observation");
     expect(result.details.rebuildStatus).toBe("ready");
@@ -280,6 +280,80 @@ describe("agent-chain extension", () => {
     expect(result.details.usedRawFallback).toBe(false);
   });
 
+  it("defaults read_expertise to concise output while full mode keeps task-specific history", async () => {
+    await appendTool.execute(
+      "id",
+      { agent: "concise-agent", category: "observation", entry: { project: "dotfiles", note: "Added temporary debug logging for issue 123" }, session_id: "s1" },
+      undefined,
+      undefined,
+      {},
+    );
+    await appendTool.execute(
+      "id",
+      { agent: "concise-agent", category: "strong_decision", entry: { decision: "Prefer durable expertise over changelog entries", why_good: "reduces noise" }, session_id: "s2" },
+      undefined,
+      undefined,
+      {},
+    );
+
+    const concise = await readTool.execute("id", { agent: "concise-agent" }, undefined, undefined, {});
+    const full = await readTool.execute("id", { agent: "concise-agent", mode: "full" }, undefined, undefined, {});
+
+    expect(concise.details.mode).toBe("concise");
+    expect(concise.content[0].text).toContain("Prefer durable expertise over changelog entries");
+    expect(concise.content[0].text).not.toContain("temporary debug logging");
+    expect(full.details.mode).toBe("full");
+    expect(full.content[0].text).toContain("temporary debug logging");
+  });
+
+  it("concise mode hides observations from other projects", async () => {
+    await appendTool.execute(
+      "id",
+      { agent: "project-filter-agent", category: "observation", entry: { project: "eisa-playwright-e2e", note: "Prefer the explicit three-step validation strategy for Playwright drives" }, session_id: "s1" },
+      undefined,
+      undefined,
+      {},
+    );
+    await appendTool.execute(
+      "id",
+      { agent: "project-filter-agent", category: "observation", entry: { project: "dotfiles", note: "Prefer concise expertise reads for agent startup" }, session_id: "s2" },
+      undefined,
+      undefined,
+      {},
+    );
+
+    const concise = await readTool.execute("id", { agent: "project-filter-agent" }, undefined, undefined, { cwd: path.join(tmpHome, "dotfiles") });
+    const full = await readTool.execute("id", { agent: "project-filter-agent", mode: "full" }, undefined, undefined, { cwd: path.join(tmpHome, "dotfiles") });
+
+    expect(concise.content[0].text).toContain("Prefer concise expertise reads");
+    expect(concise.content[0].text).not.toContain("Playwright drives");
+    expect(full.content[0].text).toContain("Playwright drives");
+  });
+
+  it("concise mode hides domain-specific strong decisions", async () => {
+    await appendTool.execute(
+      "id",
+      { agent: "decision-filter-agent", category: "strong_decision", entry: { decision: "Change the durable Playwright drive from a one-time snapshotted ordered target list to dynamic discovery plus a persisted completed-target set.", why_good: "project-specific" }, session_id: "s1" },
+      undefined,
+      undefined,
+      {},
+    );
+    await appendTool.execute(
+      "id",
+      { agent: "decision-filter-agent", category: "strong_decision", entry: { decision: "Prefer deterministic snapshot rebuilds over mutable raw history rewrites.", why_good: "general agent behavior" }, session_id: "s2" },
+      undefined,
+      undefined,
+      {},
+    );
+
+    const concise = await readTool.execute("id", { agent: "decision-filter-agent" }, undefined, undefined, { cwd: path.join(tmpHome, "dotfiles") });
+    const full = await readTool.execute("id", { agent: "decision-filter-agent", mode: "full" }, undefined, undefined, { cwd: path.join(tmpHome, "dotfiles") });
+
+    expect(concise.content[0].text).toContain("Prefer deterministic snapshot rebuilds");
+    expect(concise.content[0].text).not.toContain("Playwright drive");
+    expect(full.content[0].text).toContain("Playwright drive");
+  });
+
   it("deduplicates repeated observations while preserving strong_decision and key_file entries", async () => {
     await appendTool.execute(
       "id",
@@ -310,10 +384,10 @@ describe("agent-chain extension", () => {
       {},
     );
 
-    const result = await readTool.execute("id", { agent: "orchestrator" }, undefined, undefined, {});
+    const result = await readTool.execute("id", { agent: "orchestrator", mode: "full" }, undefined, undefined, {});
 
     expect(result.content[0].text).toContain("dotfiles: same noisy fact");
-    expect(result.content[0].text).toContain("evidence: 2");
+    expect(result.content[0].text).not.toContain("evidence:");
     expect(result.content[0].text).toContain("keep npm on Windows");
     expect(result.content[0].text).toContain("pi/extensions/agent-chain.ts -- expertise tools");
   });
@@ -388,7 +462,7 @@ describe("agent-chain extension", () => {
       const snapshot = readSnapshot("approval-tester");
 
       expect(result.content[0].text).toContain("Expertise for approval-tester");
-      expect(result.content[0].text).toContain("Similarity: active (ready) -- attempted 1, merged 1");
+      expect(result.content[0].text).not.toContain("Similarity:");
       expect(result.details.usedRawFallback).toBe(false);
       expect(result.details.similarity).toMatchObject({
         active: true,
@@ -646,7 +720,7 @@ describe("agent-chain extension", () => {
       );
       const snapshot = readSnapshot("inactive-provider-tester");
 
-      expect(result.content[0].text).toContain("Similarity: inactive (model_not_found)");
+      expect(result.content[0].text).not.toContain("Similarity:");
       expect(result.details.similarity).toMatchObject({
         enabled: true,
         active: false,
@@ -778,7 +852,7 @@ describe("agent-chain extension", () => {
 
       const result = await readTool.execute(
         "id",
-        { agent: "layered-agent" },
+        { agent: "layered-agent", mode: "full" },
         undefined,
         undefined,
         // Pass a cwd that resolves to repoId -- T3 will implement this detection
@@ -807,7 +881,7 @@ describe("agent-chain extension", () => {
 
       const result = await readTool.execute(
         "id",
-        { agent: "order-agent" },
+        { agent: "order-agent", mode: "full" },
         undefined,
         undefined,
         { cwd: path.join(tmpHome, "testrepo"), repoId },
@@ -870,7 +944,7 @@ describe("agent-chain extension", () => {
 
       const result = await readTool.execute(
         "id",
-        { agent: "snapshot-drift-agent" },
+        { agent: "snapshot-drift-agent", mode: "full" },
         undefined,
         undefined,
         { cwd: path.join(tmpHome, "testrepo"), repoId: newRepoId },

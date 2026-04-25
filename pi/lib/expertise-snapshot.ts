@@ -64,8 +64,11 @@ export interface SimilarityUsageSummary {
   last_error?: string;
 }
 
+const SNAPSHOT_SUMMARY_FORMAT_VERSION = 2;
+
 export interface ExpertiseSnapshot {
   schema_version: 1;
+  summary_format_version: number;
   agent: string;
   rebuilt_at: string;
   covers_through_timestamp: string | null;
@@ -136,7 +139,13 @@ function firstNonEmpty(...values: unknown[]): string {
 }
 
 function summarizeEntry(entry: Record<string, unknown>): string {
-  const priorityKeys = ["decision", "path", "role", "name", "question", "summary", "note", "notes", "description"];
+  const topic = firstNonEmpty(entry.topic, entry.name);
+  const detail = firstNonEmpty(entry.details, entry.discovery, entry.summary, entry.note, entry.notes, entry.description);
+  if (topic && detail) return `${topic}: ${detail}`;
+  if (topic) return topic;
+  if (detail) return detail;
+
+  const priorityKeys = ["decision", "path", "role", "question"];
   const parts = priorityKeys
     .map((key) => firstNonEmpty(entry[key]))
     .filter(Boolean);
@@ -232,7 +241,7 @@ function buildGenericCategory(records: ExpertiseRecord[], category: ExpertiseCat
   const merged = new Map<string, SnapshotItem>();
   for (const record of records) {
     const entry = asObject(record.entry);
-    const project = firstNonEmpty(entry.project);
+    const project = firstNonEmpty(entry.project, entry.repo);
     const baseSummary = summarizeEntry(entry);
     const keyParts = category === "observation" ? [project, normalizeText(baseSummary)] : [normalizeText(baseSummary)];
     const key = keyParts.filter(Boolean).join("::");
@@ -422,6 +431,7 @@ export async function buildExpertiseSnapshot(
 
   return {
     schema_version: 1,
+    summary_format_version: SNAPSHOT_SUMMARY_FORMAT_VERSION,
     agent,
     rebuilt_at: rebuiltAt,
     covers_through_timestamp: timestamps.length > 0 ? timestamps[timestamps.length - 1] : null,
@@ -465,6 +475,7 @@ export function isSnapshotFresh(
 ): boolean {
   if (!snapshot || !state) return false;
   if (state.dirty || state.rebuild_status !== "ready") return false;
+  if (snapshot.summary_format_version !== SNAPSHOT_SUMMARY_FORMAT_VERSION) return false;
   if (snapshot.source_entry_count !== records.filter((record) => record.category && record.entry).length) return false;
   const latest = records.length > 0 ? timestampOrFallback(records[records.length - 1], "1970-01-01T00:00:00.000Z") : null;
   return snapshot.covers_through_timestamp === latest;
@@ -478,44 +489,104 @@ export function readJsonFile<T>(filePath: string): T | null {
   }
 }
 
+export type ExpertiseReadMode = "concise" | "full" | "debug";
+
+export const EXPERTISE_CATEGORY_ORDER: Array<[string, keyof ExpertiseSnapshot["categories"]]> = [
+  ["Strong decisions", "strong_decision"],
+  ["Key files", "key_file"],
+  ["Patterns", "pattern"],
+  ["Observations", "observation"],
+  ["Open questions", "open_question"],
+  ["System overview", "system_overview"],
+];
+
+const CONCISE_LIMITS: Record<keyof ExpertiseSnapshot["categories"], number> = {
+  strong_decision: 5,
+  key_file: 5,
+  pattern: 8,
+  observation: 5,
+  open_question: 5,
+  system_overview: 3,
+};
+
+function isHistoricalOrTaskSpecific(summary: string): boolean {
+  const text = summary.toLowerCase();
+  return /\b(added|updated|changed|implemented|executing|reviewing|currently|current logs|live migration|was already|now carries|now breaks|now emits)\b/.test(text)
+    || /\b(http 400|endpoint details|headers?|get https?:|response-body|this session)\b/.test(text)
+    || /\/[a-z][\w-]+\b/i.test(summary)
+    || /\b[\w./-]+\.(ts|py|md|yaml|json|ps1)\b/i.test(summary)
+    || /\b\.specs\//.test(text);
+}
+
+function isDomainSpecificStrongDecision(summary: string): boolean {
+  return /\b(playwright|scim|mps|keycloak|e2e|real-backend|compose stack|make targets?)\b/i.test(summary);
+}
+
+function getObservationProject(summary: string): string | null {
+  const match = summary.match(/^([^:]{2,80}):\s+/);
+  return match ? normalizeText(match[1]) : null;
+}
+
+export function shouldShowExpertiseItem(
+  category: keyof ExpertiseSnapshot["categories"],
+  item: SnapshotItem,
+  mode: ExpertiseReadMode,
+  options: { currentProjects?: string[] } = {},
+): boolean {
+  if (mode !== "concise") return true;
+  if (category === "strong_decision") return !isHistoricalOrTaskSpecific(item.summary) && !isDomainSpecificStrongDecision(item.summary);
+  if (category === "system_overview") return true;
+  if (category === "key_file") return !/^[a-z]:\//i.test(item.summary);
+  if (isHistoricalOrTaskSpecific(item.summary)) return false;
+  if (category === "observation") {
+    const project = getObservationProject(item.summary);
+    const allowedProjects = new Set((options.currentProjects ?? []).map(normalizeText).filter(Boolean));
+    if (project && !allowedProjects.has(project)) return false;
+    return /\b(prefer|avoid|should|must|rule|strategy|principle|pattern|can safely|bottleneck)\b/i.test(item.summary);
+  }
+  return true;
+}
+
+export function formatExpertiseItem(item: SnapshotItem, mode: ExpertiseReadMode): string {
+  if (mode !== "debug") return `- ${item.summary}`;
+  const mergeSuffix = item.merge_metadata?.method === "provider"
+    ? `; provider merge (${item.merge_metadata.confidence?.toFixed(2) ?? "?"})`
+    : "";
+  return `- ${item.summary} (evidence: ${item.evidence_count}${mergeSuffix})`;
+}
+
 export function formatExpertiseSnapshotText(
   agent: string,
   snapshot: ExpertiseSnapshot,
-  options: { warning?: string } = {},
+  options: { warning?: string; mode?: ExpertiseReadMode; currentProjects?: string[] } = {},
 ): string {
-  const lines = [
-    `Expertise for ${agent} (${snapshot.source_entry_count} raw entries, snapshot)`,
-    `Rebuilt: ${snapshot.rebuilt_at}`,
-    `Covers through: ${snapshot.covers_through_timestamp ?? "n/a"}`,
-  ];
+  const mode = options.mode ?? "concise";
+  const lines = mode === "debug"
+    ? [
+      `Expertise for ${agent} (${snapshot.source_entry_count} raw entries, snapshot)`,
+      `Rebuilt: ${snapshot.rebuilt_at}`,
+      `Covers through: ${snapshot.covers_through_timestamp ?? "n/a"}`,
+    ]
+    : [`Expertise for ${agent}`];
 
   if (options.warning) {
     lines.push(`Warning: ${options.warning}`);
   }
 
-  if (snapshot.similarity) {
+  if (mode === "debug" && snapshot.similarity) {
     lines.push(
       `Similarity: ${snapshot.similarity.active ? "active" : "inactive"} (${snapshot.similarity.reason}) -- attempted ${snapshot.similarity.attempted}, merged ${snapshot.similarity.merged}, kept ${snapshot.similarity.kept_separate}, low-confidence ${snapshot.similarity.skipped_for_low_confidence}, malformed ${snapshot.similarity.malformed}, failed ${snapshot.similarity.failed}`,
     );
   }
 
-  const categories: Array<[string, SnapshotItem[] | StrongDecisionItem[] | KeyFileItem[]]> = [
-    ["Strong decisions", snapshot.categories.strong_decision],
-    ["Key files", snapshot.categories.key_file],
-    ["Patterns", snapshot.categories.pattern],
-    ["Observations", snapshot.categories.observation],
-    ["Open questions", snapshot.categories.open_question],
-    ["System overview", snapshot.categories.system_overview],
-  ];
-
-  for (const [heading, items] of categories) {
+  for (const [heading, category] of EXPERTISE_CATEGORY_ORDER) {
+    const items = snapshot.categories[category]
+      .filter((item) => shouldShowExpertiseItem(category, item, mode, { currentProjects: options.currentProjects }))
+      .slice(0, mode === "concise" ? CONCISE_LIMITS[category] : 8);
     if (items.length === 0) continue;
     lines.push("", `${heading}:`);
-    for (const item of items.slice(0, 8)) {
-      const mergeSuffix = item.merge_metadata?.method === "provider"
-        ? `; provider merge (${item.merge_metadata.confidence?.toFixed(2) ?? "?"})`
-        : "";
-      lines.push(`- ${item.summary} (evidence: ${item.evidence_count}${mergeSuffix})`);
+    for (const item of items) {
+      lines.push(formatExpertiseItem(item, mode));
     }
   }
 
