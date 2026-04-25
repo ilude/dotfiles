@@ -1,8 +1,8 @@
 {
-  "defaultModel": "minimax-m2.5-free",
-  "lastChangelogVersion": "0.69.0",
-  "defaultProvider": "opencode",
-  "defaultThinkingLevel": "low",
+  "defaultModel": "gpt-5.4-mini",
+  "lastChangelogVersion": "0.70.2",
+  "defaultProvider": "openai-codex",
+  "defaultThinkingLevel": "xhigh",
   "expertise_similarity": {
     "enabled": true,
     "provider": "openai-codex",
