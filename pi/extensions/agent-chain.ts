@@ -11,11 +11,20 @@
  *   - log_exchange tool: records all agent exchanges to the shared session JSONL
  */
 
+// Convention exception: direct ctx.ui.notify calls in /chain command flow.
+// Risk: notification wording could drift from the rest of the extension set
+//   if the helper format changes; today uiNotify only adds an extension prefix
+//   that would be redundant since the user typed /chain to trigger this flow.
+// Why shared helper is inappropriate: the prefix `[agent-chain]` would echo
+//   back the slash-command name the user just typed and add visual noise to
+//   the chain progress narrative.
+
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { completeSimple, Type } from "@mariozechner/pi-ai";
 import { type ExtensionAPI, withFileMutationQueue } from "@mariozechner/pi-coding-agent";
+import { getAgentDir } from "../lib/extension-utils.js";
 import {
 	type ExpertiseReadMode,
 	type ExpertiseRecord,
@@ -44,8 +53,7 @@ import {
 
 // Resolve the multi-team directory relative to the Pi agent dir (~/.pi/agent)
 function getMultiTeamDir(): string {
-	const agentDir = path.join(os.homedir(), ".pi", "agent");
-	return path.join(agentDir, "multi-team");
+	return path.join(getAgentDir(), "multi-team");
 }
 
 // Append a single JSONL record to a file, using withFileMutationQueue to prevent corruption
@@ -301,7 +309,7 @@ type SimilarityStatusReason =
 
 function readAgentSettings(): Record<string, unknown> {
 	try {
-		const settingsPath = path.join(os.homedir(), ".pi", "agent", "settings.json");
+		const settingsPath = path.join(getAgentDir(), "settings.json");
 		return JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as Record<string, unknown>;
 	} catch {
 		return {};

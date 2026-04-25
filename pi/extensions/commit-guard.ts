@@ -8,6 +8,18 @@
  *   - Allows --amend without -m (legitimate use case)
  */
 
+// Convention exception: no extension-utils helpers apply.
+// Risk: helper API drifts and this file is not visited by future refactors;
+//   the structural shape (`{ block: true, reason: string }`) is the
+//   pi-coding-agent ToolCallEventResult contract, not an extension-local
+//   shape, so no parity concern.
+// Why shared helper is inappropriate: this file returns ToolCallEventResult
+//   block decisions, not tool result envelopes; formatToolError applies to
+//   tool execute() handlers, not pre-execution intercept hooks. uiNotify
+//   does not apply because the file does not surface user-facing messages;
+//   the block reason field is the surfaced text. canonicalize does not
+//   apply because the file inspects bash command strings, not paths.
+
 import {
 	type ExtensionAPI,
 	type BashToolCallEvent,

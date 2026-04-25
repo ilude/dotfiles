@@ -1,3 +1,15 @@
+// Convention exception: 2 direct ctx.ui.notify calls for /context widget
+//   visibility toggles ("widget hidden" / "widget shown above the editor").
+// Risk: notification wording could drift from the rest of the extension set
+//   if helper format changes; today uiNotify only adds an extension prefix
+//   that would echo the slash command name back to the user.
+// Why shared helper is inappropriate: a `[context]` prefix on a 1-line
+//   widget toggle status is visual noise for a flow the user just initiated
+//   by typing /context. The extension also self-filters its own report
+//   messages out of future LLM context via CONTEXT_REPORT_MESSAGE_TYPE,
+//   which is the file-internal mechanism that makes this extension safe to
+//   run in the conversation log.
+
 import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 const CONTEXT_REPORT_MESSAGE_TYPE = "context-report";
@@ -8,7 +20,7 @@ type ContextUsage = {
 	contextWindow: number;
 	percent: number | null;
 } | undefined;
-type Bucket = {
+export type Bucket = {
 	label: string;
 	tokens: number;
 	details: string;
@@ -108,7 +120,7 @@ function entriesThatContributeToContext(branch: AnyEntry[]): AnyEntry[] {
 	return [compaction, ...keptBeforeCompaction, ...afterCompaction];
 }
 
-function buildContextBuckets(entries: AnyEntry[], systemPrompt: string): Bucket[] {
+export function buildContextBuckets(entries: AnyEntry[], systemPrompt: string): Bucket[] {
 	let userTokens = 0;
 	let assistantTokens = 0;
 	let toolCallTokens = 0;

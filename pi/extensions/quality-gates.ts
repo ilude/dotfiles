@@ -9,6 +9,19 @@
  *   $HOME/.dotfiles/claude/hooks/quality-validation/validators.yaml
  */
 
+// Convention exception: no extension-utils helpers apply directly.
+// Risk: helper API drifts and this file is not visited; mitigated because
+//   the file already uses the shared yaml-helpers loader (Phase 1 helper)
+//   and its only output is `tool_result` content augmentation, not a tool
+//   error envelope.
+// Why shared helper is inappropriate: tool_result handlers return
+//   ToolResultEventResult (content augmentation), not the
+//   tool-execute-error shape that formatToolError produces. canonicalize
+//   does not apply because the file uses path.extname and path.basename,
+//   not absolute-path safety checks. uiNotify does not apply because the
+//   warning is appended inline to the tool result content where the LLM
+//   will see it, not surfaced as a UI notification.
+
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
