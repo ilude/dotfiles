@@ -4,14 +4,20 @@
  * Intercepts tool_call events and enforces safety rules:
  *   - Blocks dangerous shell commands (rm -rf, git reset --hard, etc.)
  *   - Blocks access to zero-access paths (~/.ssh/*, *.pem, .env, etc.)
- *   - Blocks deletes on no-delete paths (package.json, Makefile, etc.)
+ *   - Blocks deletes/truncates of no-delete paths (package.json, Makefile, etc.)
  *
- * Rules are loaded from ~/.pi/agent/damage-control-rules.yaml (or project-local .pi/damage-control-rules.yaml).
- * Path canonicalization via fs.realpathSync prevents traversal escapes (H-4).
+ * Rules are loaded from ~/.pi/agent/damage-control-rules.yaml (or project-local
+ * .pi/damage-control-rules.yaml).
  *
- * Uses two separate handlers per Reviewer 6 guidance:
- *   1. bash tool_call — checks event.input.command for dangerous patterns
- *   2. file tool_calls (read/write/edit/find) — checks event.input.path for zero-access/no-delete
+ * Path canonicalization via the shared canonicalize helper resolves symlinks
+ * (preventing traversal escapes) and rejects NUL bytes; on rejection,
+ * canonicalizeOrBlock surfaces a block decision instead of throwing.
+ *
+ * Handlers:
+ *   1. bash tool_call -- dangerous commands + no_delete_paths via extractors
+ *   1b. pwsh tool_call -- no_delete_paths via PowerShell-aware extractors
+ *   2. file tool_calls (read/write/edit/find/ls) -- zero-access paths +
+ *      truncating Edit/Write detection
  */
 
 import * as fs from "node:fs";
@@ -24,6 +30,7 @@ import {
 	type WriteToolCallEvent,
 	type EditToolCallEvent,
 } from "@mariozechner/pi-coding-agent";
+import { canonicalize as sharedCanonicalize } from "../lib/extension-utils.js";
 
 interface DangerousCommand {
 	pattern: string;
@@ -139,7 +146,6 @@ function parseDamageControlRules(content: string): DamageControlRules {
 	return rules;
 }
 
-// Resolve the rules file: project-local .pi/ takes priority, then ~/.pi/agent/
 function loadRules(): DamageControlRules {
 	const candidates = [
 		path.join(".pi", "damage-control-rules.yaml"),
@@ -155,7 +161,6 @@ function loadRules(): DamageControlRules {
 		}
 	}
 
-	// Minimal fallback if no rules file found
 	return {
 		dangerous_commands: [],
 		zero_access_paths: [],
@@ -163,15 +168,18 @@ function loadRules(): DamageControlRules {
 	};
 }
 
-// Canonicalize a path using realpathSync where possible; fall back to path.resolve.
-// realpathSync (not path.resolve) resolves symlinks, preventing traversal escapes (H-4).
-function canonicalize(filePath: string, cwd: string): string {
-	const resolved = path.isAbsolute(filePath) ? filePath : path.join(cwd, filePath);
+function canonicalizeOrBlock(
+	filePath: string,
+	cwd: string,
+): { canonical: string } | { block: true; reason: string } {
 	try {
-		return fs.realpathSync(resolved);
-	} catch {
-		// Path may not exist yet (e.g. a file about to be created) — normalize without resolving
-		return path.normalize(resolved);
+		return { canonical: sharedCanonicalize(filePath, cwd) };
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		return {
+			block: true,
+			reason: `Blocked malformed path (${message}): ${filePath.slice(0, 64)}`,
+		};
 	}
 }
 
@@ -195,7 +203,6 @@ function matchesGlob(filePath: string, expanded: string): boolean {
 	return new RegExp(regexStr).test(filePath);
 }
 
-// Expand a glob-style rule pattern (supports * and leading ~/) to a plain prefix or suffix check.
 export function matchesPattern(filePath: string, pattern: string): boolean {
 	const expanded = expandPattern(pattern);
 
@@ -276,18 +283,191 @@ export async function evaluateDangerousCommand(
 	return undefined;
 }
 
+// no_delete_paths enforcement
+//
+// Phase 1 covers the operations enumerated in
+// .specs/extensions-consistency/plan.md "Covered Operations": rm/rmdir/unlink,
+// find -delete, truncating > redirection, git rm, git clean -f, plus
+// PowerShell Remove-Item/Clear-Content/Set-Content/Out-File -Force/
+// [System.IO.File]::Delete, plus Edit/Write empty-content cases.
+//
+// Out of scope: symlink races, hardlink redirection, recursive directory
+// manipulation through indirection.
+
+const BASH_DELETE_PROGRAMS = new Set(["rm", "rmdir", "unlink"]);
+
+function tokenize(command: string): string[] {
+	return command.trim().split(/\s+/).filter(Boolean);
+}
+
+function isFlagToken(token: string): boolean {
+	return token.startsWith("-") && token !== "-";
+}
+
+export function extractBashDeleteTargets(command: string): string[] {
+	const tokens = tokenize(command);
+	if (tokens.length === 0) return [];
+
+	const targets: string[] = [];
+	const head = tokens[0];
+
+	if (BASH_DELETE_PROGRAMS.has(head)) {
+		for (const token of tokens.slice(1)) {
+			if (!isFlagToken(token)) targets.push(token);
+		}
+	}
+
+	if (head === "git" && tokens[1] === "rm") {
+		for (const token of tokens.slice(2)) {
+			if (!isFlagToken(token)) targets.push(token);
+		}
+	}
+
+	if (head === "git" && tokens[1] === "clean" && tokens.slice(2).some((t) => /^-[a-z]*f/.test(t))) {
+		targets.push(".");
+	}
+
+	if (head === "find" && tokens.includes("-delete")) {
+		for (const token of tokens.slice(1)) {
+			if (token === "-delete") break;
+			if (!isFlagToken(token) && !token.startsWith("(") && !token.startsWith(")")) {
+				targets.push(token);
+				break;
+			}
+		}
+	}
+
+	// Truncating redirection: detect single `>` (not `>>` which appends).
+	const redirectMatches = command.match(/(?:^|[^>])>\s*([^\s|>;&]+)/g);
+	if (redirectMatches) {
+		for (const m of redirectMatches) {
+			const target = m.replace(/^.*?>\s*/, "").trim();
+			if (target && target !== "/dev/null") targets.push(target);
+		}
+	}
+
+	if (head === "cp" && tokens[1] === "/dev/null" && tokens[2]) {
+		targets.push(tokens[2]);
+	}
+
+	if (head === "mv" && tokens[2] === "/dev/null" && tokens[1]) {
+		targets.push(tokens[1]);
+	}
+
+	return targets;
+}
+
+const PWSH_DELETE_CMDLETS = new Set([
+	"remove-item",
+	"clear-content",
+	"clear-item",
+	"set-content",
+]);
+
+export function extractPwshDeleteTargets(command: string): string[] {
+	const targets: string[] = [];
+	const lower = command.toLowerCase();
+
+	const fileDeleteMatches = command.match(/\[System\.IO\.File\]::Delete\(\s*["']([^"']+)["']\s*\)/g);
+	if (fileDeleteMatches) {
+		for (const m of fileDeleteMatches) {
+			const inner = m.match(/["']([^"']+)["']/);
+			if (inner) targets.push(inner[1]);
+		}
+	}
+
+	const tokens = command.split(/\s+/).filter(Boolean);
+	for (let i = 0; i < tokens.length; i += 1) {
+		const cmdlet = tokens[i].toLowerCase();
+		if (!PWSH_DELETE_CMDLETS.has(cmdlet)) continue;
+		for (let j = i + 1; j < tokens.length; j += 1) {
+			const t = tokens[j];
+			if (t.toLowerCase() === "-path" && tokens[j + 1]) {
+				targets.push(stripQuotes(tokens[j + 1]));
+				break;
+			}
+			if (!isFlagToken(t)) {
+				targets.push(stripQuotes(t));
+				break;
+			}
+		}
+	}
+
+	const outFileMatch = lower.match(/out-file\b[^|;]*?-force\b[^|;]*?(?:-filepath|-path)?\s+([^\s|;]+)/);
+	if (outFileMatch) {
+		targets.push(stripQuotes(outFileMatch[1]));
+	}
+
+	return targets;
+}
+
+export function extractTruncatingEditWriteTarget(
+	toolName: string,
+	input: { path?: string; content?: string; new_string?: string; old_string?: string } | undefined,
+): string | undefined {
+	if (!input?.path) return undefined;
+
+	if (toolName === "write") {
+		const content = input.content ?? "";
+		if (content.trim() === "") return input.path;
+	}
+
+	if (toolName === "edit") {
+		const newString = input.new_string ?? "";
+		const oldString = input.old_string ?? "";
+		if (newString === "" && oldString.trim() !== "") return input.path;
+	}
+
+	return undefined;
+}
+
+export function checkNoDeletePaths(
+	targets: string[],
+	patterns: string[],
+	cwd: string,
+): { block: true; reason: string } | undefined {
+	if (patterns.length === 0 || targets.length === 0) return undefined;
+	for (const target of targets) {
+		const result = canonicalizeOrBlock(target, cwd);
+		if ("block" in result) return result;
+		const canonical = result.canonical;
+		for (const pattern of patterns) {
+			if (matchesPattern(canonical, pattern)) {
+				return {
+					block: true,
+					reason: `Blocked delete/truncate of no-delete path (matched "${pattern}"): ${canonical}`,
+				};
+			}
+		}
+	}
+	return undefined;
+}
+
 export default function (pi: ExtensionAPI) {
 	const rules = loadRules();
 
-	// ── Handler 1: bash tool — check command string for dangerous patterns ───────
+	// Handler 1: bash -- dangerous patterns + no-delete enforcement.
 	pi.on("tool_call", async (event, ctx) => {
 		if (event.toolName !== "bash") return undefined;
 		const bashEvent = event as BashToolCallEvent;
 		const command = bashEvent.input.command ?? "";
-		return evaluateDangerousCommand(command, rules.dangerous_commands, ctx as any);
+
+		const dangerous = await evaluateDangerousCommand(command, rules.dangerous_commands, ctx as any);
+		if (dangerous) return dangerous;
+
+		const targets = extractBashDeleteTargets(command);
+		return checkNoDeletePaths(targets, rules.no_delete_paths, ctx.cwd);
 	});
 
-	// ── Handler 2: file tools — check path for zero-access and no-delete rules ──
+	// Handler 1b: pwsh -- PowerShell-aware no-delete enforcement.
+	pi.on("tool_call", (event, ctx) => {
+		if (event.toolName !== "pwsh") return undefined;
+		const command = (event.input as { command?: string }).command ?? "";
+		const targets = extractPwshDeleteTargets(command);
+		return checkNoDeletePaths(targets, rules.no_delete_paths, ctx.cwd);
+	});
+
+	// Handler 2: file tools -- zero-access paths + truncating Edit/Write.
 	pi.on("tool_call", (event, ctx) => {
 		const FILE_TOOLS = new Set(["read", "write", "edit", "find", "ls"]);
 		if (!FILE_TOOLS.has(event.toolName)) return undefined;
@@ -296,7 +476,17 @@ export default function (pi: ExtensionAPI) {
 		const rawPath = (fileEvent.input as { path?: string }).path ?? "";
 		if (!rawPath) return undefined;
 
-		const canonical = canonicalize(rawPath, ctx.cwd);
-		return checkZeroAccess(canonical, rules.zero_access_paths);
+		const canonResult = canonicalizeOrBlock(rawPath, ctx.cwd);
+		if ("block" in canonResult) return canonResult;
+		const canonical = canonResult.canonical;
+
+		const zeroAccess = checkZeroAccess(canonical, rules.zero_access_paths);
+		if (zeroAccess) return zeroAccess;
+
+		const truncatingTarget = extractTruncatingEditWriteTarget(event.toolName, fileEvent.input as any);
+		if (truncatingTarget) {
+			return checkNoDeletePaths([truncatingTarget], rules.no_delete_paths, ctx.cwd);
+		}
+		return undefined;
 	});
 }

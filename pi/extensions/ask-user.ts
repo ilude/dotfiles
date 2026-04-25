@@ -1,5 +1,5 @@
 /**
- * AskUser Tool — Structured mid-turn user prompts
+ * AskUser Tool -- Structured mid-turn user prompts
  *
  * Lets the LLM pause and ask the user a question during tool execution.
  * Supports three modes:
@@ -10,6 +10,7 @@
 import { Type } from "@sinclair/typebox";
 import { Text } from "@mariozechner/pi-tui";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { formatToolError } from "../lib/extension-utils.js";
 
 export default function (pi: ExtensionAPI) {
   pi.registerTool({
@@ -21,7 +22,7 @@ export default function (pi: ExtensionAPI) {
       'Modes: "text" for free-form input, "select" for choosing from options, "confirm" for yes/no.',
     promptSnippet: "Ask the user a question mid-turn (text input, selection, or confirmation)",
     promptGuidelines: [
-      "Use ask_user when you need user input to proceed — don't guess at ambiguous requirements.",
+      "Use ask_user when you need user input to proceed -- don't guess at ambiguous requirements.",
       "Prefer 'select' mode when there are 2-6 concrete options to choose from.",
       "Prefer 'confirm' mode for yes/no decisions.",
       "Use 'text' mode for open-ended questions.",
@@ -47,11 +48,7 @@ export default function (pi: ExtensionAPI) {
       const mode = params.mode ?? "text";
 
       if (!ctx.hasUI) {
-        return {
-          content: [{ type: "text", text: "(no UI available — cannot prompt user)" }],
-          details: undefined,
-          isError: true,
-        };
+        return formatToolError("(no UI available -- cannot prompt user)");
       }
 
       let answer: string | boolean | undefined;
@@ -63,11 +60,7 @@ export default function (pi: ExtensionAPI) {
 
         case "select":
           if (!params.options || params.options.length === 0) {
-            return {
-              content: [{ type: "text", text: 'Error: "select" mode requires a non-empty options array.' }],
-              details: undefined,
-              isError: true,
-            };
+            return formatToolError('Error: "select" mode requires a non-empty options array.');
           }
           answer = await ctx.ui.select(params.question, params.options);
           break;
@@ -95,8 +88,8 @@ export default function (pi: ExtensionAPI) {
 
     renderCall(args, theme, _context) {
       const mode = args.mode ?? "text";
-      const icon = mode === "confirm" ? "?" : mode === "select" ? "☰" : "✎";
-      const preview = args.question.length > 60 ? args.question.slice(0, 60) + "…" : args.question;
+      const icon = mode === "confirm" ? "?" : mode === "select" ? "S" : "T";
+      const preview = args.question.length > 60 ? args.question.slice(0, 60) + "..." : args.question;
       let text = theme.fg("accent", `${icon} `) + theme.fg("toolTitle", preview);
       if (mode === "select" && args.options?.length) {
         text += theme.fg("dim", ` [${args.options.length} options]`);

@@ -1,0 +1,62 @@
+/**
+ * Pi Extension Template
+ *
+ * Copy this file to pi/extensions/<my-feature>.ts (drop the .example suffix
+ * once it is a real extension; the .example suffix exists so this scaffold
+ * is NOT auto-discovered by Pi as an extension at the top level of
+ * pi/extensions/).
+ *
+ * Replace the placeholder name, description, and the registered tool /
+ * command body with your implementation. See pi/extensions/README.md for
+ * conventions: shared helpers under pi/lib/extension-utils.ts, the
+ * formatToolError shape, the uiNotify wrapper, and the Documented
+ * Exception format.
+ */
+
+import { Type } from "@sinclair/typebox";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { formatToolError, uiNotify } from "../lib/extension-utils.js";
+
+const EXTENSION_NAME = "my-feature";
+
+export default function (pi: ExtensionAPI) {
+	// â”€â”€ Example tool registration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+	pi.registerTool({
+		name: "my_feature",
+		label: "My Feature",
+		description: "One-line description of what this tool does and when to use it.",
+		promptSnippet: "Short hint shown to the model alongside the tool list.",
+		promptGuidelines: [
+			"When to call this tool.",
+			"What arguments to pass.",
+			"What to do with the result.",
+		],
+		parameters: Type.Object({
+			query: Type.String({ description: "The query the tool operates on." }),
+		}),
+
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			if (!ctx.hasUI) {
+				return formatToolError("(no UI available)");
+			}
+
+			// Implement the tool body here.
+			const result = `processed: ${params.query}`;
+
+			uiNotify(ctx, "info", `${EXTENSION_NAME} ran successfully`, { prefix: EXTENSION_NAME });
+
+			return {
+				content: [{ type: "text", text: result }],
+				details: { source: EXTENSION_NAME },
+			};
+		},
+	});
+
+	// â”€â”€ Example slash command registration (optional) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+	// pi.registerCommand("my-feature", {
+	// 	description: "Optional /my-feature command. Usage: /my-feature <args>",
+	// 	handler: async (args, ctx) => {
+	// 		uiNotify(ctx, "info", `args: ${args}`, { prefix: EXTENSION_NAME });
+	// 	},
+	// });
+}
