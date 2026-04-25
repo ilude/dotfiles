@@ -216,7 +216,7 @@ describe("expertise layering -- project-local vs global writes", () => {
 
     const result = await readTool.execute(
       "id",
-      { agent: "reader-agent" },
+      { agent: "reader-agent", mode: "full" },
       undefined,
       undefined,
       { cwd: tmpRepo },
@@ -230,6 +230,31 @@ describe("expertise layering -- project-local vs global writes", () => {
     expect(globalPos).toBeGreaterThanOrEqual(0);
     // project-local must appear before global in the output
     expect(projectPos).toBeLessThan(globalPos);
+  });
+
+  it("read output merges layer categories without provenance metadata", async () => {
+    const repoId = "gh/testorg/testrepo";
+
+    writeLegacyGlobalLog(tmpHome, "compact-agent", [
+      { timestamp: "2024-01-01T00:00:00.000Z", session_id: "g1", category: "observation", entry: { repo: "testrepo", note: "global observation" } },
+    ]);
+    writeProjectLocalLog(tmpHome, repoId, "compact-agent", [
+      { timestamp: "2024-06-01T00:00:00.000Z", session_id: "p1", category: "observation", entry: { repo: "testrepo", note: "project observation" } },
+    ]);
+
+    const result = await readTool.execute(
+      "id",
+      { agent: "compact-agent", mode: "full" },
+      undefined,
+      undefined,
+      { cwd: tmpRepo },
+    );
+
+    const text: string = result.content[0].text;
+    expect((text.match(/^Observations:$/gm) ?? [])).toHaveLength(1);
+    expect(text).not.toContain("[layer:");
+    expect(text).not.toContain("evidence:");
+    expect(text).not.toContain("Rebuilt:");
   });
 
   // -------------------------------------------------------------------------
@@ -294,7 +319,7 @@ describe("expertise layering -- project-local vs global writes", () => {
 
     const result = await readTool.execute(
       "id",
-      { agent: "drift-agent" },
+      { agent: "drift-agent", mode: "full" },
       undefined,
       undefined,
       { cwd: tmpRepo },
@@ -334,7 +359,7 @@ describe("expertise layering -- project-local vs global writes", () => {
 
     const result = await readTool.execute(
       "id",
-      { agent: "drift-agent" },
+      { agent: "drift-agent", mode: "full" },
       undefined,
       undefined,
       { cwd: tmpRepo },
@@ -368,7 +393,7 @@ describe("expertise layering -- project-local vs global writes", () => {
 
     const result = await readTool.execute(
       "id",
-      { agent: "dedupe-agent" },
+      { agent: "dedupe-agent", mode: "full" },
       undefined,
       undefined,
       { cwd: tmpRepo },
@@ -401,7 +426,7 @@ describe("expertise layering -- project-local vs global writes", () => {
 
     const result = await readTool.execute(
       "id",
-      { agent: "dual-agent" },
+      { agent: "dual-agent", mode: "full" },
       undefined,
       undefined,
       { cwd: tmpRepo },
