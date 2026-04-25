@@ -46,6 +46,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { makeExcerpt, sha256Hex } from "../lib/transcript.js";
+import { emit, getWriter } from "./transcript-runtime.js";
 import { getCurrentModelHint, resolveDynamicModelFromRegistry, resolveModelTierLabel } from "../lib/model-routing.js";
 
 // ---------------------------------------------------------------------------
@@ -436,6 +438,46 @@ async function classifyWithV3(
   return rec;
 }
 
+/**
+ * Emit a `routing_decision` event into the sidecar transcript.
+ *
+ * The `prompt_hash` is a stable sha256(prompt_text) so this event can be
+ * post-hoc joined to the existing Python-side log at
+ * `~/.dotfiles/pi/prompt-routing/logs/routing_log.jsonl`. Both logs are
+ * intentionally kept (the Python log captures classifier internals; this
+ * sidecar log captures the runtime envelope and policy decision) -- they
+ * are not duplicated.
+ *
+ * Safe no-op when transcript tracing is disabled.
+ */
+export async function emitRoutingDecision(
+  promptText: string,
+  rec: ClassifierRecommendation | null,
+  applied: { tier: Tier; effort: string; ruleFired: RuleFired } | null,
+  policy: RouterPolicy,
+): Promise<void> {
+  if (!getWriter()) return;
+  try {
+    const payload = {
+      prompt_hash: sha256Hex(promptText),
+      prompt_excerpt: makeExcerpt(promptText),
+      raw_classifier_output: rec,
+      applied_route: applied ? `${applied.tier}:${applied.effort}` : null,
+      confidence: rec?.confidence ?? null,
+      rule_fired: applied?.ruleFired ?? "null-fallback",
+      fallback_metadata: {
+        cap: applied?.ruleFired === "effort-cap" ? policy.maxEffortLevel : null,
+        hysteresis: applied?.ruleFired === "hysteresis-hold" ? "active" : null,
+        cooldown: applied?.ruleFired === "cooldown" ? "active" : null,
+        uncertainty: applied?.ruleFired === "uncertainty-fallback" ? "active" : null,
+      },
+    };
+    await emit({ event_type: "routing_decision" }, payload);
+  } catch {
+    // Tracing must never break the routing path.
+  }
+}
+
 async function classifyAndRoute(
   pi: ExtensionAPI,
   text: string,
@@ -456,6 +498,7 @@ async function classifyAndRoute(
     const model = resolveDynamicModelFromRegistry(ctx.modelRegistry, ctx, size, "same-family");
     const label = resolveModelTierLabel(model, size);
     ctx.ui.setStatus("router", buildStatusLabel(state.currentTier, state.currentTier, label, effort));
+    await emitRoutingDecision(text, null, { tier: state.currentTier, effort, ruleFired: "null-fallback" }, policy);
     return;
   }
 
@@ -479,12 +522,14 @@ async function classifyAndRoute(
 
   if (!model) {
     ctx.ui.setStatus("router", `router: no ${modelSize} model available`);
+    await emitRoutingDecision(text, rec, applied, policy);
     return;
   }
 
   // Skip routing for providers without cost/size mappings.
   if (model.provider && SKIP_PROVIDERS.has(model.provider)) {
     ctx.ui.setStatus("router", `router: skipped (${model.provider})`);
+    await emitRoutingDecision(text, rec, applied, policy);
     return;
   }
 
@@ -503,6 +548,7 @@ async function classifyAndRoute(
 
   const modelLabel = resolveModelTierLabel(model, modelSize);
   ctx.ui.setStatus("router", buildStatusLabel(effectiveTier, rawTier, modelLabel, effort));
+  await emitRoutingDecision(text, rec, applied, policy);
 }
 
 // ---------------------------------------------------------------------------
