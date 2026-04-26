@@ -27,6 +27,10 @@ import {
 	type TranscriptSettings,
 } from "../lib/transcript.js";
 
+// Convention exception: this module is pure shared runtime state (writer, turn counter, trace IDs) -- no tool execute() handlers, no UI notifications, no path inputs.
+// Risk: if a tool or command handler is added here and uses an ad-hoc error shape or direct ctx.ui.notify, it will be invisible to downstream consistency checks.
+// Why shared helper is inappropriate: formatToolError and uiNotify have no call sites in this file; the module exports its own public API consumed by other transcript extensions.
+
 /**
  * No-op Pi extension factory.
  *

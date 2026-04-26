@@ -5,6 +5,10 @@ import {
   DEFAULT_MAX_BYTES,
   formatSize,
 } from "@mariozechner/pi-coding-agent";
+// Convention exception: pwsh uses ctx.ui.notify directly for the "tool disabled" warning.
+// Risk: if notify signature changes, this call silently breaks without compile-time guidance.
+// Why shared helper is inappropriate: the message is modal-style user feedback about a missing
+// system binary -- adding a [pwsh] prefix would be redundant with "pwsh not found" in the text.
 import { Type } from "@sinclair/typebox";
 import { Text } from "@mariozechner/pi-tui";
 import { spawn } from "node:child_process";

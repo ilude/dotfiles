@@ -19,6 +19,10 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { clonePayload } from "../lib/transcript.js";
+
+// Convention exception: this file emits structured trace events and never returns user-facing tool errors or shows UI notifications.
+// Risk: if a tool execute() handler is added here and uses an ad-hoc error shape, downstream filtering breaks.
+// Why shared helper is inappropriate: formatToolError and uiNotify have no call sites in this file; importing them for unused symbols adds noise.
 import {
 	advanceTurn,
 	claimAssistantMessageEmission,
