@@ -1,3 +1,17 @@
+// Convention exception: the router emits structured multi-line status output
+//   (router-status, router-explain) and per-turn `setStatus("router", ...)`
+//   indicators alongside warning notifications when classifier exec or JSON
+//   parsing fails. Several existing test assertions match exact substrings
+//   like "classifier output invalid" and "router: ready" without an
+//   extension prefix.
+// Risk: rerouting every notify through uiNotify with a `[prompt-router]`
+//   prefix would force test churn in prompt-router.test.ts and add noise to
+//   the multi-line `/router-status` and `/router-explain` outputs that are
+//   the user's primary debugging surface.
+// Why shared helper is inappropriate: setStatus has no helper analogue, and
+//   the multi-line `router-status`/`router-explain` text is a structured
+//   report whose `Prompt Router\n  Enabled: ...` heading already self-
+//   identifies the source.
 /**
  * prompt-router.ts -- Automatic prompt complexity routing for Pi.
  *

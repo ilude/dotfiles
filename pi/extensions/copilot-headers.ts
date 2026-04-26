@@ -1,5 +1,6 @@
 import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { getOAuthProvider } from "@mariozechner/pi-ai/oauth";
+import { uiNotify } from "../lib/extension-utils.js";
 
 type ModelLike = {
 	provider: string;
@@ -68,7 +69,9 @@ export default function registerCopilotHeadersExtension(pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
 		const result = applyCopilotHeaders(ctx);
 		if (result) {
-			ctx.ui.notify(`Copilot API headers injected (${result.updated} models)`, "info");
+			uiNotify(ctx, "info", `Copilot API headers injected (${result.updated} models)`, {
+				prefix: "copilot-headers",
+			});
 		}
 	});
 }

@@ -1,3 +1,13 @@
+// Convention exception: provider auth flows are user-initiated modal commands;
+//   `ctx.ui.notify(...)` calls in this file are short status/error/cancel
+//   messages presented inside the command's own UI flow.
+// Risk: prefixing every message with `[provider]` would be redundant in modal
+//   contexts and would also de-couple the wording from the verbatim shape the
+//   provider.test.ts suite asserts (e.g. "Saved API key for ..." substring
+//   match), forcing test churn for no UX benefit.
+// Why shared helper is inappropriate: `uiNotify`'s prefix wrapper exists for
+//   ambient/background notifications; it is not the right surface for
+//   command-handler messaging where the user already knows the context.
 import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 type ProviderAuthType = "api_key" | "oauth";
@@ -81,14 +91,14 @@ function describeConfiguredProviders(authStorage: any): string {
 
 async function promptProviderSelection(ctx: any, auth: ProviderAuthType): Promise<ProviderEntry | undefined> {
 	const options = PROVIDERS.filter((provider) => provider.auth === auth).map(
-		(provider) => `${provider.id} — ${provider.label}`,
+		(provider) => `${provider.id} -- ${provider.label}`,
 	);
 	const selected = await ctx.ui.select(
 		auth === "api_key" ? "Select API-key provider" : "Select OAuth provider",
 		options,
 	);
 	if (!selected) return undefined;
-	const providerId = selected.split(" — ")[0];
+	const providerId = selected.split(" -- ")[0];
 	return providerId ? BY_ID.get(providerId) : undefined;
 }
 

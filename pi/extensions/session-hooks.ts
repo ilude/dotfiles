@@ -19,6 +19,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { uiNotify } from "../lib/extension-utils.js";
 import { loadSettings as loadTranscriptSettings, sweepRetention as sweepTranscriptRetention } from "../lib/transcript.js";
 import {
 	emit as emitTranscript,
@@ -27,7 +28,7 @@ import {
 } from "./transcript-runtime.js";
 
 export default function (pi: ExtensionAPI) {
-	// ── session_start: restore default model on reload + git pre-flight ───────
+	// -- session_start: restore default model on reload + git pre-flight -------
 	pi.on("session_start", async (event, ctx) => {
 		if (event.reason === "reload") {
 			try {
@@ -43,7 +44,7 @@ export default function (pi: ExtensionAPI) {
 					}
 				}
 			} catch {
-				// Silently skip — invalid/missing settings should not break reload
+				// Silently skip -- invalid/missing settings should not break reload
 			}
 		}
 
@@ -57,9 +58,11 @@ export default function (pi: ExtensionAPI) {
 
 			const count = parseInt(behindResult.stdout.trim(), 10);
 			if (!isNaN(count) && count > 0) {
-				ctx.ui.notify(
-					`⚠ Branch is ${count} commit${count === 1 ? "" : "s"} behind remote. Consider git pull before starting.`,
+				uiNotify(
+					ctx,
 					"warning",
+					`⚠ Branch is ${count} commit${count === 1 ? "" : "s"} behind remote. Consider git pull before starting.`,
+					{ prefix: "session-hooks" },
 				);
 			}
 		} catch {
@@ -102,7 +105,7 @@ export default function (pi: ExtensionAPI) {
 		}
 	});
 
-	// ── session_shutdown: archive conversation log ─────────────────────────────
+	// -- session_shutdown: archive conversation log -----------------------------
 	pi.on("session_shutdown", async (event, ctx) => {
 		// Best-effort transcript flush before the writer goes out of scope.
 		try {
@@ -133,7 +136,7 @@ export default function (pi: ExtensionAPI) {
 			await fs.promises.mkdir(historyDir, { recursive: true });
 			await fs.promises.copyFile(sessionFile, archivePath);
 		} catch {
-			// Silently skip — never crash Pi on shutdown
+			// Silently skip -- never crash Pi on shutdown
 		}
 	});
 }
