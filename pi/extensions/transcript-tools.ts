@@ -21,6 +21,10 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { clonePayload } from "../lib/transcript.js";
 import { emit, getWriter } from "./transcript-runtime.js";
 
+// Convention exception: this file hooks tool lifecycle events and emits structured trace records -- it returns no user-facing tool errors and shows no UI notifications.
+// Risk: if a tool execute() handler is added here with an ad-hoc error shape, downstream filtering breaks silently.
+// Why shared helper is inappropriate: formatToolError and uiNotify have no call sites in this file; adding the import solely for future-proofing contradicts KISS.
+
 /**
  * In-memory map of toolCallId -> wallclock start (epoch ms) so tool_execution_end
  * can compute duration_ms. The map is bounded by Pi's concurrent-tool ceiling

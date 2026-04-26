@@ -14,6 +14,7 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { loadSettings, sweepRetention } from "../lib/transcript.js";
+import { uiNotify } from "../lib/extension-utils.js";
 
 const UNIT_MS: Record<string, number> = {
 	ms: 1,
@@ -56,7 +57,7 @@ export default function (pi: ExtensionAPI) {
 				`transcript-purge: removed ${result.removedFiles} trace file(s) and ${result.removedSpillDirs} spill dir(s) ` +
 				`from ${settings.path}` +
 				(maxAgeMs === null ? " (all)" : ` (older than ${args.trim()})`);
-			ctx.ui.notify(summary, "info");
+			uiNotify(ctx, "info", summary, { prefix: "transcript-purge" });
 		},
 	});
 }

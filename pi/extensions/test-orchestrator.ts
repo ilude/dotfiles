@@ -5,6 +5,11 @@
  * resolves runtime state paths, discovers targets, executes one test run at a time,
  * persists attempt/recovery state to disk, and exposes status/debug commands.
  */
+// Convention exception: test-orchestrator routes all output through pi.sendMessage with
+// structured customType payloads rather than ctx.ui.notify or formatToolError shapes.
+// Risk: if sendMessage signature changes, all report calls break without shared-helper guidance.
+// Why shared helper is inappropriate: the entire output model is command-report messages, not
+// tool error returns or UI toasts -- uiNotify/formatToolError do not map to this pattern.
 
 import * as fs from "node:fs";
 import * as os from "node:os";
