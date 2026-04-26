@@ -1,5 +1,6 @@
 import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { getOAuthProvider } from "@mariozechner/pi-ai/oauth";
+import { uiNotify } from "../lib/extension-utils.js";
 
 type ModelLike = {
 	provider: string;
@@ -279,7 +280,9 @@ export default function registerModelVisibilityExtension(pi: ExtensionAPI) {
 			}
 		}
 		if (messages.length > 0) {
-			ctx.ui.notify(`Hidden older/blocked models (${messages.join(", ")})`, "info");
+			uiNotify(ctx, "info", `Hidden older/blocked models (${messages.join(", ")})`, {
+				prefix: "model-visibility",
+			});
 		}
 	});
 }

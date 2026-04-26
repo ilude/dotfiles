@@ -1,3 +1,17 @@
+// Convention exception: this extension is a single user-initiated slash
+//   command (`/refresh-models`) whose UI is a sequence of progress messages
+//   followed by a per-provider success/error summary; the messages are part
+//   of the command's own output flow, not ambient notifications.
+// Risk: a future reader assumes uiNotify is required and either swaps every
+//   site (breaking the existing assertion shapes in refresh-models.test.ts
+//   like `expect.stringContaining("Done. Refreshed 2")`) or splits the call
+//   sites between the helper and direct ctx.ui.notify, producing inconsistent
+//   prefix behavior inside one command flow.
+// Why shared helper is inappropriate: the helper's prefix wrapper exists for
+//   ambient/background notifications. A user who just typed `/refresh-models`
+//   already knows the source; a `[refresh-models]` prefix on every progress
+//   line would only add noise. The handler's own `notify(...)` closure
+//   already centralizes the call site.
 import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { getModels } from "@mariozechner/pi-ai";
 import { getOAuthProvider } from "@mariozechner/pi-ai/oauth";
@@ -605,7 +619,7 @@ function isRefreshSupportedProvider(provider: string): boolean {
 function formatModelIdList(ids: string[], maxItems = 12): string {
 	if (ids.length <= maxItems) return ids.join(", ");
 	const shown = ids.slice(0, maxItems);
-	return `${shown.join(", ")} … (+${ids.length - maxItems} more)`;
+	return `${shown.join(", ")} ... (+${ids.length - maxItems} more)`;
 }
 
 export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
@@ -694,7 +708,7 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 					outcomes.push({
 						provider,
 						ok: true,
-						message: `${provider}: ${result.before} → ${result.after} models (added ${result.added}, removed ${result.removed})`,
+						message: `${provider}: ${result.before} -> ${result.after} models (added ${result.added}, removed ${result.removed})`,
 						addedIds: result.addedIds,
 						removedIds: result.removedIds,
 					});
