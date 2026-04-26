@@ -199,4 +199,30 @@ describe("todo extension", () => {
       expect(theme.fg).toHaveBeenCalledWith("toolTitle", "add");
     });
   });
+
+  describe("error shape (AC#3 -- formatToolError parity)", () => {
+    it("add without title returns isError=true with text content block", async () => {
+      const result = await tool.execute("id", { action: "add" }, undefined, undefined, ctx);
+      expect(result.isError).toBe(true);
+      expect(result.content[0].type).toBe("text");
+    });
+
+    it("update without id returns isError=true with text content block", async () => {
+      const result = await tool.execute("id", { action: "update", status: "done" }, undefined, undefined, ctx);
+      expect(result.isError).toBe(true);
+      expect(result.content[0].type).toBe("text");
+    });
+
+    it("remove with unknown id returns isError=true with text content block", async () => {
+      const result = await tool.execute("id", { action: "remove", id: "nonexistent-id" }, undefined, undefined, ctx);
+      expect(result.isError).toBe(true);
+      expect(result.content[0].type).toBe("text");
+    });
+
+    it("add with invalid dependency id returns isError=true with text content block", async () => {
+      const result = await tool.execute("id", { action: "add", title: "Task", depends_on: ["bogus"] }, undefined, undefined, ctx);
+      expect(result.isError).toBe(true);
+      expect(result.content[0].type).toBe("text");
+    });
+  });
 });
