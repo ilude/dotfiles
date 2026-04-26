@@ -1,9 +1,9 @@
 ---
 created: 2026-04-25
-status: draft
+status: completed
 revision: 2
 revision_reason: Incorporated review-1 findings -- corrected file count (17 -> 22), distinguished extend vs add for existing test files, replaced gameable "at least one it() block" ACs with specific assertions, pinned provider.ts notify policy and added pre-refactor auth fixture capture, added trace-continuity smoke and pi/lib reverse-import checks to V2/V3, clarified Documented Exception placement rule, added opus-unavailable fallback for T4.
-completed:
+completed: 2026-04-25
 ---
 
 # Plan: Standardize Pi Extensions (Phase 2)
