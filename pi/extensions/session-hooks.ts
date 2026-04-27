@@ -20,6 +20,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { uiNotify } from "../lib/extension-utils.js";
+import { readMergedSettings } from "../lib/settings-loader.js";
 import { loadSettings as loadTranscriptSettings, sweepRetention as sweepTranscriptRetention } from "../lib/transcript.js";
 import {
 	emit as emitTranscript,
@@ -32,8 +33,10 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_start", async (event, ctx) => {
 		if (event.reason === "reload") {
 			try {
-				const settingsPath = path.join(os.homedir(), ".pi", "agent", "settings.json");
-				const settings = JSON.parse(await fs.promises.readFile(settingsPath, "utf-8")) as {
+				// User-level only: model defaults belong to the user profile,
+				// not the project. skipProject + skipLocal preserves the
+				// pre-cascade semantics of the original ad-hoc read.
+				const settings = readMergedSettings({ skipProject: true, skipLocal: true }) as {
 					defaultProvider?: string;
 					defaultModel?: string;
 				};
