@@ -25,6 +25,28 @@ import * as path from "node:path";
 import { completeSimple, Type } from "@mariozechner/pi-ai";
 import { type ExtensionAPI, withFileMutationQueue } from "@mariozechner/pi-coding-agent";
 import { getAgentDir } from "../lib/extension-utils.js";
+import { createTask, transitionTask } from "../lib/task-registry.js";
+
+/**
+ * Operator task registry: record /chain dispatch as durable work. Underlying
+ * planner/builder/reviewer subagent invocations track themselves via
+ * subagent/index.ts. Defensive try/catch so registry I/O never breaks /chain.
+ */
+function safeRecordChainDispatch(task: string): void {
+	try {
+		const preview = task.length > 200 ? `${task.slice(0, 200)}...` : task;
+		const record = createTask({
+			origin: "team",
+			summary: "Dispatched /chain (planner -> builder -> reviewer)",
+			agentName: "chain",
+			prompt: preview,
+			state: "running",
+		});
+		transitionTask(record.id, "completed");
+	} catch {
+		// ignore -- registry should never block /chain
+	}
+}
 import {
 	type ExpertiseReadMode,
 	type ExpertiseRecord,
@@ -912,6 +934,7 @@ export default function (pi: ExtensionAPI) {
 				"Do not proceed to the next stage until the current one completes.",
 			].join("\n");
 
+			safeRecordChainDispatch(args.trim());
 			await pi.sendUserMessage(message);
 		},
 	});
