@@ -31,6 +31,7 @@ import {
 	type EditToolCallEvent,
 } from "@mariozechner/pi-coding-agent";
 import { canonicalize as sharedCanonicalize } from "../lib/extension-utils.js";
+import { recordEvent } from "../lib/metrics.js";
 import {
 	type DecisionProvenance,
 	recordDecision,
@@ -64,6 +65,11 @@ function safeRecordDeny(
 			provenance: DENY_PROVENANCE,
 			summary: reason,
 			rule,
+		});
+		// T14: structured metrics event for analytics streams.
+		recordEvent({
+			event: "permission_decision",
+			data: { tool: toolName, outcome: "deny", provenance: DENY_PROVENANCE, rule, summary: reason },
 		});
 	} catch {
 		// ignore -- registry must never block damage-control flow

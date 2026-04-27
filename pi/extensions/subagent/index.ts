@@ -22,6 +22,7 @@ import { StringEnum } from "@mariozechner/pi-ai";
 import { type ExtensionAPI, getMarkdownTheme, withFileMutationQueue } from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
+import { recordEvent } from "../../lib/metrics.js";
 import { resolveDynamicModelFromRegistry, type ModelPolicy, type ModelSize } from "../../lib/model-routing.js";
 import { createTask, transitionTask, updateTask } from "../../lib/task-registry.js";
 import { formatTraceparent, getTraceId, newSpanId, newTraceId } from "../transcript-runtime.js";
@@ -56,6 +57,20 @@ function safeCreateSubagentTask(
 			prompt: preview,
 			metadata,
 		});
+		// T14: structured metrics event mirrors the registry write so
+		// downstream analytics can stream events without polling registry
+		// state. Recording errors are silently dropped by recordEvent.
+		recordEvent({
+			event: "task_status_change",
+			data: {
+				taskId: record.id,
+				origin: "subagent",
+				agentName,
+				from: null,
+				to: "pending",
+				step,
+			},
+		});
 		return record.id;
 	} catch {
 		return undefined;
@@ -69,7 +84,17 @@ function safeTransitionTask(
 ): void {
 	if (!id) return;
 	try {
-		transitionTask(id, target, opts);
+		const before = transitionTask(id, target, opts);
+		recordEvent({
+			event: "task_status_change",
+			data: {
+				taskId: id,
+				to: target,
+				retryCount: before.retryCount,
+				errorReason: opts.errorReason,
+				usage: opts.usage,
+			},
+		});
 	} catch {
 		// ignore -- registry should never block subagent flow
 	}
