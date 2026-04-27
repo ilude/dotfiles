@@ -25,6 +25,7 @@ import * as path from "node:path";
 import { completeSimple, Type } from "@mariozechner/pi-ai";
 import { type ExtensionAPI, withFileMutationQueue } from "@mariozechner/pi-coding-agent";
 import { getAgentDir } from "../lib/extension-utils.js";
+import { readMergedSettings } from "../lib/settings-loader.js";
 import { createTask, transitionTask } from "../lib/task-registry.js";
 
 /**
@@ -176,14 +177,11 @@ interface RepoSettings {
 
 function readRepoSettings(gitRoot: string): RepoSettings {
 	const settings: RepoSettings = { sensitiveRepo: false };
-	const settingsPath = path.join(gitRoot, ".pi", "settings.json");
-	try {
-		const raw = JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as Record<string, unknown>;
-		if (typeof raw.preferredRemote === "string") settings.preferredRemote = raw.preferredRemote;
-		if (raw.sensitive_repo === true || raw.sensitiveRepo === true) settings.sensitiveRepo = true;
-	} catch {
-		// no settings file
-	}
+	// Project-level settings only; user/local layers do not inform repo
+	// trust posture, so the cascade is restricted here.
+	const raw = readMergedSettings({ projectRoot: gitRoot, skipUser: true, skipLocal: true });
+	if (typeof raw.preferredRemote === "string") settings.preferredRemote = raw.preferredRemote;
+	if (raw.sensitive_repo === true || raw.sensitiveRepo === true) settings.sensitiveRepo = true;
 	if (process.env.SENSITIVE_REPO && /^(1|true|yes|on)$/i.test(process.env.SENSITIVE_REPO)) {
 		settings.sensitiveRepo = true;
 	}
@@ -330,12 +328,9 @@ type SimilarityStatusReason =
 	| "ready";
 
 function readAgentSettings(): Record<string, unknown> {
-	try {
-		const settingsPath = path.join(getAgentDir(), "settings.json");
-		return JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as Record<string, unknown>;
-	} catch {
-		return {};
-	}
+	// User-level settings only; project/local would shadow user defaults
+	// without an explicit opt-in, which is not the existing semantic.
+	return readMergedSettings({ skipProject: true, skipLocal: true });
 }
 
 function asObject(value: unknown): Record<string, unknown> {

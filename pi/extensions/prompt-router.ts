@@ -56,11 +56,11 @@
  * the Python router's built-in logging.
  */
 
-import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { makeExcerpt, sha256Hex } from "../lib/transcript.js";
+import { readMergedSettings } from "../lib/settings-loader.js";
 import { emit, getWriter } from "./transcript-runtime.js";
 import { getCurrentModelHint, resolveDynamicModelFromRegistry, resolveModelTierLabel } from "../lib/model-routing.js";
 
@@ -217,13 +217,20 @@ const POLICY_DEFAULTS: RouterPolicy = {
 
 function loadRouterPolicy(): RouterPolicy {
   try {
-    const raw = fs.readFileSync(SETTINGS_PATH, "utf-8");
-    const s = JSON.parse(raw);
-    const p = s?.router?.policy ?? {};
-    const e = s?.router?.effort ?? {};
+    // Router settings live in ~/.dotfiles/pi/settings.json today (a non-default
+    // user location); use the userPath override so the cascade reads it as the
+    // user layer. skipProject + skipLocal preserves the pre-cascade scope --
+    // router thresholds are not project-overridable in MVP.
+    const s = readMergedSettings({
+      userPath: SETTINGS_PATH,
+      skipProject: true,
+      skipLocal: true,
+    });
+    const p = (s?.router as Record<string, unknown>)?.policy as Record<string, unknown> | undefined ?? {};
+    const e = (s?.router as Record<string, unknown>)?.effort as Record<string, unknown> | undefined ?? {};
     const maxLevel =
-      typeof e.maxLevel === "string" && EFFORT_ORDER[e.maxLevel] !== undefined
-        ? e.maxLevel
+      typeof e.maxLevel === "string" && EFFORT_ORDER[e.maxLevel as string] !== undefined
+        ? (e.maxLevel as string)
         : POLICY_DEFAULTS.maxEffortLevel;
     return {
       N_HOLD:              typeof p.N_HOLD === "number"              ? p.N_HOLD              : POLICY_DEFAULTS.N_HOLD,
