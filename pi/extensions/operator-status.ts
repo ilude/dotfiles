@@ -1,0 +1,271 @@
+/**
+ * Operator Status Extension
+ *
+ * Adds three status bar slots and the `/doctor` command surface for the
+ * operator layer. Owned by .specs/pi-operator-layer-mvp/plan.md (T3).
+ *
+ * Status bar slots:
+ *   - "pi" -- always shown, format: `pi vX.Y.Z`
+ *   - "task" -- shown only when non-terminal tasks exist, e.g. `task 3 (1 blocked)`
+ *   - "elevated" -- shown only when session approvals exist, e.g. `elevated (2)`
+ *
+ * Healthy default keeps the bar quiet (no `OK` token, no zero counters). The
+ * other slots (model/provider/router/effort) are owned by other extensions
+ * (prompt-router, etc.); this extension only fills the operator-specific
+ * gaps.
+ *
+ * Commands:
+ *   /doctor               -- compact health check
+ *   /doctor --verbose     -- expanded diagnostic output
+ *   /doctor --json        -- machine-readable JSON
+ */
+
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { listRecentDecisions, listSessionApprovals } from "../lib/permission-registry.js";
+import { listTasks, type TaskRecordV1 } from "../lib/task-registry.js";
+
+interface DoctorCheck {
+	name: string;
+	ok: boolean;
+	detail: string;
+}
+
+interface DoctorReport {
+	piVersion: string | null;
+	checks: DoctorCheck[];
+	taskCounts: Record<string, number>;
+	sessionApprovals: number;
+	recentDecisions: number;
+	cwd: string;
+	platform: string;
+}
+
+const PI_PACKAGE_NAME = "@mariozechner/pi-coding-agent";
+
+/**
+ * Locate the active pi-coding-agent install and return its package.json
+ * version. Returns null when the install cannot be found (e.g., bundled
+ * differently or running from source).
+ */
+export function resolvePiVersion(): string | null {
+	const candidates = [
+		path.join(process.env.BUN_INSTALL || path.join(os.homedir(), ".bun"), "install/global/node_modules"),
+		path.join(process.env.APPDATA || "", "npm/node_modules"),
+		"/usr/local/lib/node_modules",
+		"/usr/lib/node_modules",
+		path.join(os.homedir(), ".npm-global/lib/node_modules"),
+	].filter((c) => c.length > 0);
+
+	for (const root of candidates) {
+		const pkgPath = path.join(root, PI_PACKAGE_NAME, "package.json");
+		try {
+			const raw = fs.readFileSync(pkgPath, "utf-8");
+			const parsed = JSON.parse(raw) as { version?: string };
+			if (parsed.version) return parsed.version;
+		} catch {
+			// try next
+		}
+	}
+	return null;
+}
+
+interface TaskCounts {
+	pending: number;
+	running: number;
+	blocked: number;
+	failed: number;
+	completed: number;
+	cancelled: number;
+	nonTerminal: number;
+	urgent: number; // blocked + failed
+}
+
+export function summarizeTaskCounts(records: TaskRecordV1[]): TaskCounts {
+	const counts: TaskCounts = {
+		pending: 0,
+		running: 0,
+		blocked: 0,
+		failed: 0,
+		completed: 0,
+		cancelled: 0,
+		nonTerminal: 0,
+		urgent: 0,
+	};
+	for (const t of records) {
+		counts[t.state]++;
+	}
+	counts.nonTerminal = counts.pending + counts.running + counts.blocked + counts.failed;
+	counts.urgent = counts.blocked + counts.failed;
+	return counts;
+}
+
+export function formatTaskStatus(counts: TaskCounts): string | null {
+	if (counts.nonTerminal === 0) return null;
+	const parts: string[] = [`task ${counts.nonTerminal}`];
+	const flags: string[] = [];
+	if (counts.blocked > 0) flags.push(`${counts.blocked} blocked`);
+	if (counts.failed > 0) flags.push(`${counts.failed} failed`);
+	if (flags.length > 0) parts.push(`(${flags.join(", ")})`);
+	return parts.join(" ");
+}
+
+export function formatElevatedStatus(approvalCount: number): string | null {
+	if (approvalCount === 0) return null;
+	return `elevated (${approvalCount})`;
+}
+
+function refreshOperatorStatus(ctx: { ui?: { setStatus?: (key: string, value: string) => void } }): void {
+	if (!ctx.ui?.setStatus) return;
+	try {
+		const counts = summarizeTaskCounts(listTasks());
+		const taskLabel = formatTaskStatus(counts);
+		ctx.ui.setStatus("task", taskLabel ?? "");
+	} catch {
+		// ignore
+	}
+	try {
+		const approvals = listSessionApprovals();
+		const elevatedLabel = formatElevatedStatus(approvals.length);
+		ctx.ui.setStatus("elevated", elevatedLabel ?? "");
+	} catch {
+		// ignore
+	}
+}
+
+function buildDoctorReport(cwd: string): DoctorReport {
+	const checks: DoctorCheck[] = [];
+	const piVersion = resolvePiVersion();
+	checks.push({
+		name: "pi runtime",
+		ok: piVersion !== null,
+		detail: piVersion ? `pi v${piVersion}` : "pi-coding-agent install not found in known npm/bun locations",
+	});
+
+	let taskRegistryOk = false;
+	let taskCounts: Record<string, number> = {};
+	try {
+		const records = listTasks();
+		taskCounts = summarizeTaskCounts(records) as unknown as Record<string, number>;
+		taskRegistryOk = true;
+	} catch (err) {
+		checks.push({
+			name: "task registry",
+			ok: false,
+			detail: err instanceof Error ? err.message : String(err),
+		});
+	}
+	if (taskRegistryOk) {
+		checks.push({
+			name: "task registry",
+			ok: true,
+			detail: `${taskCounts.nonTerminal ?? 0} active, ${taskCounts.completed ?? 0} completed`,
+		});
+	}
+
+	let sessionApprovals = 0;
+	let recentDecisions = 0;
+	let permissionRegistryOk = false;
+	try {
+		sessionApprovals = listSessionApprovals().length;
+		recentDecisions = listRecentDecisions({ limit: 50 }).length;
+		permissionRegistryOk = true;
+	} catch (err) {
+		checks.push({
+			name: "permission registry",
+			ok: false,
+			detail: err instanceof Error ? err.message : String(err),
+		});
+	}
+	if (permissionRegistryOk) {
+		checks.push({
+			name: "permission registry",
+			ok: true,
+			detail: `${sessionApprovals} session approvals, ${recentDecisions} recent decisions`,
+		});
+	}
+
+	return {
+		piVersion,
+		checks,
+		taskCounts,
+		sessionApprovals,
+		recentDecisions,
+		cwd,
+		platform: `${process.platform} ${process.arch}`,
+	};
+}
+
+function formatDoctorCompact(report: DoctorReport): string {
+	const failures = report.checks.filter((c) => !c.ok);
+	if (failures.length === 0) {
+		const version = report.piVersion ? `pi v${report.piVersion}` : "pi (version unknown)";
+		return `${version} - all checks passed (${report.checks.length})`;
+	}
+	const lines = [`${failures.length} check(s) failed:`];
+	for (const f of failures) lines.push(`  ! ${f.name}: ${f.detail}`);
+	return lines.join("\n");
+}
+
+function formatDoctorVerbose(report: DoctorReport): string {
+	const lines: string[] = ["doctor:"];
+	if (report.piVersion) lines.push(`  pi: v${report.piVersion}`);
+	else lines.push(`  pi: (version unknown -- pi-coding-agent install not found)`);
+	lines.push(`  cwd: ${report.cwd}`);
+	lines.push(`  platform: ${report.platform}`);
+	lines.push("  checks:");
+	for (const c of report.checks) {
+		lines.push(`    [${c.ok ? "ok" : "fail"}] ${c.name}: ${c.detail}`);
+	}
+	if (Object.keys(report.taskCounts).length > 0) {
+		lines.push("  tasks:");
+		for (const [state, count] of Object.entries(report.taskCounts)) {
+			if (typeof count === "number" && count > 0) lines.push(`    ${state}: ${count}`);
+		}
+	}
+	lines.push("  permissions:");
+	lines.push(`    session approvals: ${report.sessionApprovals}`);
+	lines.push(`    recent decisions: ${report.recentDecisions}`);
+	return lines.join("\n");
+}
+
+function formatDoctorJson(report: DoctorReport): string {
+	return JSON.stringify(report, null, 2);
+}
+
+export default function (pi: ExtensionAPI) {
+	pi.on("session_start", async (_event, ctx) => {
+		const piVersion = resolvePiVersion();
+		ctx.ui.setStatus("pi", piVersion ? `pi v${piVersion}` : "pi");
+		refreshOperatorStatus(ctx);
+	});
+
+	pi.on("tool_result", async (_event, ctx) => {
+		// Refresh task/elevated counts after each tool result. Cheap because
+		// listTasks just enumerates a single directory and registry I/O is
+		// already non-blocking from the producer side.
+		refreshOperatorStatus(ctx);
+	});
+
+	pi.registerCommand("doctor", {
+		description:
+			"Operator layer health check. Usage: /doctor [--verbose | --json]. " +
+			"Reports pi runtime version, registry availability, task and permission state.",
+		handler: async (args, ctx) => {
+			const trimmed = args.trim();
+			const report = buildDoctorReport(ctx.cwd);
+			let output: string;
+			if (trimmed === "--json") {
+				output = formatDoctorJson(report);
+			} else if (trimmed === "--verbose" || trimmed === "-v") {
+				output = formatDoctorVerbose(report);
+			} else {
+				output = formatDoctorCompact(report);
+			}
+			const failed = report.checks.some((c) => !c.ok);
+			ctx.ui.notify(output, failed ? "warning" : "info");
+		},
+	});
+}
