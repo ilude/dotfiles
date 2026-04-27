@@ -18,6 +18,10 @@ skills:
     use-when: Always. You are a leader — delegate, never execute.
   - path: .pi/multi-team/skills/high-autonomy.md
     use-when: Always. Act autonomously, zero questions.
+isolation: none
+memory: project
+effort: high
+maxTurns: 50
 tools: read, grep, find, ls, subagent
 domain:
   - path: .pi/multi-team/

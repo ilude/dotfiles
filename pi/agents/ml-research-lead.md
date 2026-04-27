@@ -12,6 +12,10 @@ skills:
     use-when: Read at task start. Update after completing work.
   - path: .pi/multi-team/skills/precise-worker.md
     use-when: Always. Execute exactly what was assigned.
+isolation: none
+memory: project
+effort: high
+maxTurns: 50
 tools: read, write, edit, bash, grep
 domain:
   - path: .

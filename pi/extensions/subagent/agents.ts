@@ -8,6 +8,17 @@ import { getAgentDir, parseFrontmatter } from "@mariozechner/pi-coding-agent";
 
 export type AgentScope = "user" | "project" | "both";
 
+/**
+ * Claude Code-compatible execution constraints. These are documented in
+ * pi/AGENTS.md and parsed here additively. The pi runtime does not yet
+ * apply isolation/memory; effort and maxTurns are surfaced on task records
+ * via the operator-layer registry so /tasks can show them. Future runtime
+ * support can pick these up without further frontmatter changes.
+ */
+export type AgentIsolation = "none" | "worktree";
+export type AgentMemory = "user" | "project" | "session";
+export type AgentEffort = "low" | "medium" | "high";
+
 export interface AgentConfig {
 	name: string;
 	description: string;
@@ -16,6 +27,10 @@ export interface AgentConfig {
 	systemPrompt: string;
 	source: "user" | "project";
 	filePath: string;
+	isolation?: AgentIsolation;
+	memory?: AgentMemory;
+	effort?: AgentEffort;
+	maxTurns?: number;
 }
 
 export interface AgentDiscoveryResult {
@@ -29,6 +44,29 @@ function readDirEntries(dir: string): fs.Dirent[] {
 	} catch {
 		return [];
 	}
+}
+
+const VALID_ISOLATION = new Set<AgentIsolation>(["none", "worktree"]);
+const VALID_MEMORY = new Set<AgentMemory>(["user", "project", "session"]);
+const VALID_EFFORT = new Set<AgentEffort>(["low", "medium", "high"]);
+
+function asIsolation(value: string | undefined): AgentIsolation | undefined {
+	if (!value) return undefined;
+	return VALID_ISOLATION.has(value as AgentIsolation) ? (value as AgentIsolation) : undefined;
+}
+function asMemory(value: string | undefined): AgentMemory | undefined {
+	if (!value) return undefined;
+	return VALID_MEMORY.has(value as AgentMemory) ? (value as AgentMemory) : undefined;
+}
+function asEffort(value: string | undefined): AgentEffort | undefined {
+	if (!value) return undefined;
+	return VALID_EFFORT.has(value as AgentEffort) ? (value as AgentEffort) : undefined;
+}
+function asMaxTurns(value: string | number | undefined): number | undefined {
+	if (value === undefined || value === null) return undefined;
+	const n = typeof value === "number" ? value : Number(value);
+	if (!Number.isFinite(n) || n <= 0) return undefined;
+	return Math.floor(n);
 }
 
 function parseAgentFile(filePath: string, source: "user" | "project"): AgentConfig | null {
@@ -47,7 +85,7 @@ function parseAgentFile(filePath: string, source: "user" | "project"): AgentConf
 		.map((t: string) => t.trim())
 		.filter(Boolean);
 
-	return {
+	const config: AgentConfig = {
 		name: frontmatter.name,
 		description: frontmatter.description,
 		tools: tools && tools.length > 0 ? tools : undefined,
@@ -56,6 +94,17 @@ function parseAgentFile(filePath: string, source: "user" | "project"): AgentConf
 		source,
 		filePath,
 	};
+
+	const isolation = asIsolation(frontmatter.isolation);
+	if (isolation) config.isolation = isolation;
+	const memory = asMemory(frontmatter.memory);
+	if (memory) config.memory = memory;
+	const effort = asEffort(frontmatter.effort);
+	if (effort) config.effort = effort;
+	const maxTurns = asMaxTurns(frontmatter.maxTurns);
+	if (maxTurns) config.maxTurns = maxTurns;
+
+	return config;
 }
 
 export function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig[] {

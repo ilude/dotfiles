@@ -16,6 +16,10 @@ skills:
     use-when: Always. Read the conversation log before every response.
   - path: .pi/multi-team/skills/zero-micro-management.md
     use-when: Always. You are a lead — delegate to frontend-dev and backend-dev, never execute.
+isolation: none
+memory: project
+effort: high
+maxTurns: 50
 tools: read, grep, find, ls, subagent
 domain:
   - path: .pi/multi-team/

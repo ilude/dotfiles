@@ -39,16 +39,22 @@ function safeCreateSubagentTask(
 	task: string,
 	cwd: string,
 	step: number | undefined,
+	agentConfig?: AgentConfig,
 ): string | undefined {
 	try {
 		const preview = task.length > 200 ? `${task.slice(0, 200)}...` : task;
 		const summary = step ? `${agentName} step ${step}` : agentName;
+		const metadata: Record<string, unknown> = { cwd };
+		if (agentConfig?.effort) metadata.effort = agentConfig.effort;
+		if (agentConfig?.maxTurns) metadata.maxTurns = agentConfig.maxTurns;
+		if (agentConfig?.isolation) metadata.isolation = agentConfig.isolation;
+		if (agentConfig?.memory) metadata.memory = agentConfig.memory;
 		const record = createTask({
 			origin: "subagent",
 			summary,
 			agentName,
 			prompt: preview,
-			metadata: { cwd },
+			metadata,
 		});
 		return record.id;
 	} catch {
@@ -359,7 +365,7 @@ async function runSingleAgent(
 
 	// Operator task registry: track this subagent invocation as durable work.
 	// Lifecycle: pending -> running (before spawn) -> completed/failed/cancelled.
-	const taskId = safeCreateSubagentTask(agentName, task, cwd ?? defaultCwd, step);
+	const taskId = safeCreateSubagentTask(agentName, task, cwd ?? defaultCwd, step, agent);
 	safeTransitionTask(taskId, "running");
 	let taskFinalized = false;
 
