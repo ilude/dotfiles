@@ -246,6 +246,73 @@ Behavior:
 - Hides date/version-suffixed and preview snapshot models for `openai-codex`, `github-copilot`, `opencode`, `opencode-go`, and `openrouter`.
 - Applies provider-specific blocklists (including internal/legacy model IDs) before `/model` selection.
 
+### Operator Layer
+
+Three companion extensions surface durable task and permission state for
+long-running work. They share the registries in `pi/lib/task-registry.ts`
+and `pi/lib/permission-registry.ts`, which are the canonical owners of
+`TaskRecordV1` and `PermissionDecision` for any extension that needs to
+record subagent runs or permission decisions.
+
+Storage location: `~/.pi/agent/operator/{tasks,permissions}/`. Override
+with `PI_OPERATOR_DIR` (used by tests).
+
+Producer wiring: `subagent`, `agent-team`, and `damage-control` write to the
+registries automatically; producers are wrapped in defensive try/catch so
+registry I/O failure (disk full, permission error, etc.) never breaks the
+producer flow.
+
+#### `operator-status.ts`
+
+Adds three status bar slots and the `/doctor` command.
+
+Slots:
+- `pi` -- always shown, format `pi vX.Y.Z`
+- `task` -- shown only when non-terminal tasks exist, format `task N (M blocked, K failed)`
+- `elevated` -- shown only when session approvals exist, format `elevated (N)`
+
+Healthy default keeps the bar quiet (no `OK` token, no zero counters). Slots
+populate at `session_start` and refresh after every `tool_result`.
+
+Commands:
+- `/doctor` -- compact health summary
+- `/doctor --verbose` -- multi-line diagnostic (pi version, registry health, cwd, platform, task counts, permission counts)
+- `/doctor --json` -- machine-readable structured output
+
+#### `tasks.ts`
+
+Operator surface for the durable task registry.
+
+Commands:
+- `/tasks` -- urgency-grouped list (blocked > failed > running > pending > completed > cancelled), compact rows with short id + summary + relative time + retry count
+- `/tasks <id-prefix>` -- detail view (id, state, origin, agent, summary, prompt/preview, timestamps, retries, blockReason/errorReason, usage tokens). Prefix matching needs >=4 chars and rejects ambiguous matches
+- `/tasks cancel <id>` -- transitions `running`/`blocked`/`pending` -> `cancelled`; preserves the final summary
+- `/tasks retry <id>` -- transitions `failed` -> `running`; the registry bumps `retryCount` and clears `errorReason`. Does not re-execute the work; you re-issue the original action through normal channels.
+
+Lifecycle (defined in `pi/lib/operator-state.ts`):
+```
+pending  -> running, cancelled, failed
+running  -> blocked, completed, failed, cancelled
+blocked  -> running, failed, cancelled
+failed   -> running              (retry only)
+completed, cancelled = terminal
+```
+
+#### `permissions.ts`
+
+Operator surface for the permission registry.
+
+Commands:
+- `/permissions` -- summary (session approvals + last 20 allow/deny decisions)
+- `/permissions allows` / `/permissions denies` -- filtered views
+- `/permissions reset` -- clear all session approvals
+- `/permissions retry <id>` -- replay attempt for a denied decision when a `replayPayload` was captured. Records the replay as a new `manual_once` decision linking back to the original via `metadata.replayOf`. Does not re-issue the underlying tool call -- replay through normal channels.
+
+Decision provenance categories: `rule` (config-driven, what damage-control
+emits today), `manual_once` (user one-shot approval/denial via `/permissions
+retry` or interactive confirm), `session` (session-scoped trust),
+`unknown` (uninstrumented paths).
+
 ### `prompt-router.ts`
 
 Classifies every user prompt and switches **both model tier and thinking
