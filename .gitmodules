@@ -5,3 +5,4 @@
 [submodule "menos"]
 	path = menos
 	url = git@github.com:ilude/menos.git
+	branch = main
