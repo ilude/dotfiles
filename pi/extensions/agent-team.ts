@@ -14,7 +14,32 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { getAgentDir } from "../lib/extension-utils.js";
+import { createTask, transitionTask } from "../lib/task-registry.js";
 import { parseYamlMini } from "../lib/yaml-mini.js";
+
+/**
+ * Operator task registry integration -- record team dispatches as durable
+ * work. The dispatch action itself is what is recorded; child subagent
+ * invocations register their own tasks. Failures are silently dropped so
+ * registry I/O never breaks the /team flow.
+ */
+function safeRecordTeamDispatch(teamName: string, task: string): void {
+	try {
+		const preview = task.length > 200 ? `${task.slice(0, 200)}...` : task;
+		const record = createTask({
+			origin: "team",
+			summary: `Dispatched to ${teamName}`,
+			agentName: teamName,
+			prompt: preview,
+			state: "running",
+		});
+		// The dispatch itself completes once sendUserMessage returns; child
+		// subagent runs are tracked as separate task records.
+		transitionTask(record.id, "completed");
+	} catch {
+		// ignore -- registry should never block /team
+	}
+}
 
 interface TeamMember {
 	name: string;
@@ -193,6 +218,7 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
+			safeRecordTeamDispatch(teamEntry.name, parsed.task);
 			await pi.sendUserMessage(buildDispatchMessage(teamEntry, agentFilePath, parsed.task));
 		},
 	});

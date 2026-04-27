@@ -13,6 +13,7 @@ vi.mock("node:child_process", () => ({
 
 describe("subagent model override routing", () => {
   let tmpDir: string;
+  let prevOperatorDir: string | undefined;
 
   beforeEach(async () => {
     tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "pi-subagent-test-"));
@@ -30,10 +31,14 @@ You are a test agent.
 `,
       "utf8",
     );
+    prevOperatorDir = process.env.PI_OPERATOR_DIR;
+    process.env.PI_OPERATOR_DIR = path.join(tmpDir, "operator");
     spawnMock.mockReset();
   });
 
   afterEach(async () => {
+    if (prevOperatorDir === undefined) delete process.env.PI_OPERATOR_DIR;
+    else process.env.PI_OPERATOR_DIR = prevOperatorDir;
     await fs.promises.rm(tmpDir, { recursive: true, force: true });
     vi.clearAllMocks();
   });
@@ -149,5 +154,84 @@ You are a test agent.
     const spawnArgs = spawnMock.mock.calls[0][1] as string[];
     expect(spawnArgs).toContain("--model");
     expect(spawnArgs).toContain("anthropic/claude-sonnet-4-6");
+  }, 15000);
+
+  it("registers the subagent run as a TaskRecordV1 with completed lifecycle", async () => {
+    mockSuccessfulSpawn();
+    const { tool } = await loadTool();
+
+    const { listTasks } = await import("../lib/task-registry.ts");
+
+    const before = listTasks();
+    expect(before.length).toBe(0);
+
+    const ctx = createMockCtx({
+      cwd: tmpDir,
+      model: { provider: "anthropic", id: "claude-sonnet-4-6" },
+    });
+
+    await tool.execute(
+      "call-task-record",
+      {
+        agent: "tester",
+        task: "Check the thing",
+        agentScope: "project",
+        confirmProjectAgents: false,
+      },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    const after = listTasks();
+    expect(after.length).toBe(1);
+    const record = after[0];
+    expect(record.origin).toBe("subagent");
+    expect(record.agentName).toBe("tester");
+    expect(record.state).toBe("completed");
+    expect(record.startedAt).toBeDefined();
+    expect(record.endedAt).toBeDefined();
+    expect(record.usage?.inputTokens).toBe(10);
+    expect(record.usage?.outputTokens).toBe(5);
+  }, 15000);
+
+  it("registers a subagent failure as state=failed with errorReason", async () => {
+    spawnMock.mockImplementation(() => {
+      const proc = new EventEmitter() as any;
+      proc.stdout = new EventEmitter();
+      proc.stderr = new EventEmitter();
+      proc.kill = vi.fn();
+      proc.killed = false;
+      queueMicrotask(() => {
+        proc.stderr.emit("data", "agent crashed: simulated failure\n");
+        proc.emit("close", 1);
+      });
+      return proc;
+    });
+    const { tool } = await loadTool();
+    const { listTasks } = await import("../lib/task-registry.ts");
+
+    const ctx = createMockCtx({
+      cwd: tmpDir,
+      model: { provider: "anthropic", id: "claude-sonnet-4-6" },
+    });
+
+    await tool.execute(
+      "call-fail",
+      {
+        agent: "tester",
+        task: "Will fail",
+        agentScope: "project",
+        confirmProjectAgents: false,
+      },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    const records = listTasks();
+    expect(records.length).toBe(1);
+    expect(records[0].state).toBe("failed");
+    expect(records[0].errorReason).toContain("simulated failure");
   }, 15000);
 });

@@ -23,8 +23,60 @@ import { type ExtensionAPI, getMarkdownTheme, withFileMutationQueue } from "@mar
 import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { resolveDynamicModelFromRegistry, type ModelPolicy, type ModelSize } from "../../lib/model-routing.js";
+import { createTask, transitionTask, updateTask } from "../../lib/task-registry.js";
 import { formatTraceparent, getTraceId, newSpanId, newTraceId } from "../transcript-runtime.js";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.js";
+
+/**
+ * Operator task registry integration -- defensive wrappers.
+ *
+ * Subagent execution must never crash because the operator-layer registry
+ * fails to write (disk full, permission error, etc.). All registry calls go
+ * through these helpers; failures are silently dropped.
+ */
+function safeCreateSubagentTask(
+	agentName: string,
+	task: string,
+	cwd: string,
+	step: number | undefined,
+): string | undefined {
+	try {
+		const preview = task.length > 200 ? `${task.slice(0, 200)}...` : task;
+		const summary = step ? `${agentName} step ${step}` : agentName;
+		const record = createTask({
+			origin: "subagent",
+			summary,
+			agentName,
+			prompt: preview,
+			metadata: { cwd },
+		});
+		return record.id;
+	} catch {
+		return undefined;
+	}
+}
+
+function safeTransitionTask(
+	id: string | undefined,
+	target: "running" | "completed" | "failed" | "cancelled",
+	opts: { errorReason?: string; usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number } } = {},
+): void {
+	if (!id) return;
+	try {
+		transitionTask(id, target, opts);
+	} catch {
+		// ignore -- registry should never block subagent flow
+	}
+}
+
+function safeUpdateTaskPreview(id: string | undefined, preview: string): void {
+	if (!id) return;
+	try {
+		updateTask(id, { preview: preview.slice(0, 200) });
+	} catch {
+		// ignore
+	}
+}
 
 /**
  * Build a W3C `TRACEPARENT` value for a child subagent process. The parent
@@ -305,6 +357,12 @@ async function runSingleAgent(
 		}
 	};
 
+	// Operator task registry: track this subagent invocation as durable work.
+	// Lifecycle: pending -> running (before spawn) -> completed/failed/cancelled.
+	const taskId = safeCreateSubagentTask(agentName, task, cwd ?? defaultCwd, step);
+	safeTransitionTask(taskId, "running");
+	let taskFinalized = false;
+
 	try {
 		if (agent.systemPrompt.trim()) {
 			const tmp = await writePromptToTempFile(agent.name, agent.systemPrompt);
@@ -405,8 +463,35 @@ async function runSingleAgent(
 		});
 
 		currentResult.exitCode = exitCode;
-		if (wasAborted) throw new Error("Subagent was aborted");
+		const taskUsage = {
+			inputTokens: currentResult.usage.input,
+			outputTokens: currentResult.usage.output,
+			totalTokens:
+				currentResult.usage.contextTokens || currentResult.usage.input + currentResult.usage.output,
+		};
+		if (wasAborted) {
+			safeTransitionTask(taskId, "cancelled", { usage: taskUsage });
+			taskFinalized = true;
+			throw new Error("Subagent was aborted");
+		}
+		if (exitCode === 0) {
+			safeUpdateTaskPreview(taskId, getFinalOutput(currentResult.messages));
+			safeTransitionTask(taskId, "completed", { usage: taskUsage });
+		} else {
+			const errorReason =
+				currentResult.errorMessage || currentResult.stderr.slice(-500) || `exit code ${exitCode}`;
+			safeTransitionTask(taskId, "failed", { errorReason, usage: taskUsage });
+		}
+		taskFinalized = true;
 		return currentResult;
+	} catch (err) {
+		// Aborts already record cancelled above and set taskFinalized; this
+		// catches unexpected runtime errors only.
+		if (!taskFinalized) {
+			const errorReason = err instanceof Error ? err.message : String(err);
+			safeTransitionTask(taskId, "failed", { errorReason });
+		}
+		throw err;
 	} finally {
 		if (tmpPromptPath)
 			try {
