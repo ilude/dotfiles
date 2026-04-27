@@ -16,6 +16,10 @@ skills:
     use-when: Always. Read the conversation log before every response.
   - path: .pi/multi-team/skills/precise-worker.md
     use-when: Always. Execute exactly what your lead assigned — no improvising.
+isolation: none
+memory: project
+effort: medium
+maxTurns: 25
 tools: read, write, edit, bash, grep
 domain:
   - path: .pi/multi-team/

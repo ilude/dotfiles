@@ -14,6 +14,10 @@ skills:
     use-when: Read at task start. Update after completing work.
   - path: .pi/multi-team/skills/zero-micro-management.md
     use-when: Always. You are a planner — produce a plan, then stop. Do not implement.
+isolation: none
+memory: project
+effort: medium
+maxTurns: 25
 tools: read, grep
 domain:
   - path: .pi/multi-team/
