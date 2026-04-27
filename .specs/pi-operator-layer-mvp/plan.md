@@ -6,6 +6,29 @@ completed:
 
 # Plan: Pi operator layer MVP
 
+## Related Plans
+
+This plan is the **canonical owner of the durable task registry and the permission decision registry**. Other plans should consume `pi/lib/task-registry.ts` and `pi/lib/permission-registry.ts` from this plan rather than defining parallel abstractions.
+
+- `.specs/pi-platform-alignment/plan.md` -- Platform/contracts alignment (settings cascade, skill auto-discovery, agent frontmatter). Its former T11 task-tracker has been folded into this plan's T1 registry. Phase 2 (config-driven hook engine) is deferred there; this plan does not depend on it.
+- `.specs/pi-tool-reduction/plan.md` -- Phase 1 shipped 2026-04-22 (deterministic reduction pipeline, scrubber, eval harness). Phase 2 (LLM codegen + classifier) is intentionally deferred. No dependency between this plan and tool-reduction.
+
+## Codebase Reality (as of 2026-04-27)
+
+`pi/lib/` is **not greenfield**. Existing modules to coordinate with:
+
+- `pi/lib/expertise-snapshot.ts` -- mental-model serialization and dedupe
+- `pi/lib/transcript.ts` -- session log parsing and correlation
+- `pi/lib/repo-id.ts` -- deterministic git remote -> slug mapping (reuse for scoping registry storage per-repo)
+- `pi/lib/model-routing.ts` -- provider/model ladder resolution
+- `pi/lib/extension-utils.ts` -- shared validation/settings/path helpers
+- `pi/lib/yaml-mini.ts` -- lightweight YAML parser (reuse for any registry config)
+- `pi/lib/yaml-helpers.ts` -- YAML utilities
+
+T1 must add new modules **alongside** these without naming collisions. Treat `repo-id.ts` and `extension-utils.ts` as reusable; do not duplicate their helpers.
+
+Existing extensions that will be wired in T2: `pi/extensions/subagent/index.ts`, `pi/extensions/agent-team.ts`, `pi/extensions/damage-control.ts`. These already work via hardcoded logic; integration must be additive (do not break current subagent/team/damage-control behavior).
+
 ## Context & Motivation
 
 This repo’s Pi setup already has strong workflow capabilities — prompt routing, subagents, team dispatch, workflow commands, damage-control, quality gates, and session hooks — but the operator experience is fragmented.
@@ -77,12 +100,15 @@ Implement a testable repo-local Pi operator layer MVP that:
 
 ### Wave 1
 
-**T1: Build shared operator registries** [opus]
-- Description: Create the shared durable state layer for the MVP. This includes a `task-registry` and `permission-registry` that match the already-defined MVP spec and user-story constraints. The task registry must support `TaskRecordV1`, allowed lifecycle states, state transitions, timestamps, preview metadata, and durable persistence. The permission registry must record recent decisions, session approvals, provenance, and replayable-denial references when safe.
-- Files: 
-  - `pi/lib/task-registry.ts`
-  - `pi/lib/permission-registry.ts`
-  - `pi/lib/operator-state.ts` *(or equivalent shared helper/constants file)*
+**T1: Add shared operator registries to pi/lib/** [opus]
+- Description: Add the durable state layer for the MVP **alongside the existing modules in `pi/lib/`** (see "Codebase Reality" above). Introduce `task-registry.ts` and `permission-registry.ts`. The task registry must define `TaskRecordV1`, the six-state lifecycle (`pending`, `running`, `blocked`, `completed`, `failed`, `cancelled`), state transitions, timestamps, preview metadata, and durable persistence. The permission registry must record recent decisions, session approvals, provenance, and replayable-denial references when safe.
+  - **This plan owns the canonical `TaskRecordV1` schema.** Any other plan needing task tracking (notably the former `pi-platform-alignment` T11 task-tracker) must consume this registry, not define a parallel one.
+  - **Reuse existing pi/lib/ helpers**: use `repo-id.ts` for per-repo storage scoping, `extension-utils.ts` for path/settings helpers, `yaml-mini.ts` if a config file is added. Do not duplicate these.
+  - **Storage location**: write to `~/.pi/agent/tasks/` and `~/.pi/agent/permissions/` (aligns with the existing `~/.pi/agent/` convention used by expertise/logs).
+- Files:
+  - `pi/lib/task-registry.ts` *(new)*
+  - `pi/lib/permission-registry.ts` *(new)*
+  - `pi/lib/operator-state.ts` *(new; shared constants and storage-path helpers)*
 - Acceptance Criteria:
   1. [ ] Task registry can create, update, transition, and list tasks with the agreed six-state lifecycle.
      - Verify: `rg -n "TaskRecordV1|pending|blocked|cancelled" pi/lib/task-registry.ts && make lint-python`

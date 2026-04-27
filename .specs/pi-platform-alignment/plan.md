@@ -6,6 +6,24 @@ completed:
 
 # Plan: Pi Platform Alignment with Claude Code Tooling Patterns
 
+## Related Plans
+
+This plan covers structural/contract alignment. Two adjacent plans own related territory:
+
+- `.specs/pi-operator-layer-mvp/plan.md` -- **Canonical owner of the durable task registry (`pi/lib/task-registry.ts`) and permission decision registry (`pi/lib/permission-registry.ts`).** This plan's task-lifecycle work (T11/T12) consumes that registry rather than defining a parallel `task-tracker.ts`. Operator-layer-mvp also owns the status bar, `/doctor`, `/tasks`, `/permissions` surfaces.
+- `.specs/pi-tool-reduction/plan.md` -- Phase 1 shipped 2026-04-22. Phase 2 deferred. No dependency.
+
+## Codebase Reality (as of 2026-04-27)
+
+Several Phase tasks were originally framed as greenfield. The codebase has moved on; this plan is now scoped against the actual state:
+
+- `pi/lib/` already contains `expertise-snapshot.ts`, `transcript.ts`, `repo-id.ts`, `model-routing.ts`, `extension-utils.ts`, `yaml-mini.ts`, `yaml-helpers.ts` (~2.3 KLOC). New modules from this plan must coexist; reuse `extension-utils.ts` for path/settings helpers and `yaml-mini.ts` for YAML parsing.
+- `pi/settings.json` exists; settings are currently read ad hoc by extensions via `pi.getConfig()`. T3 (settings cascade) is therefore a **centralization refactor**, not a greenfield build.
+- `pi/skills/` has skill files with frontmatter. `pi/extensions/workflow-commands.ts` (~31 KB) hardcodes skill loading. T7/T8 (skill auto-discovery) is therefore a **refactor that replaces hardcoded loading**, not a greenfield build.
+- `pi/agents/` has 24 agent definitions with `tools`, `domain`, `expertise`, `skills`. T9 adds `isolation`, `memory`, `effort`, `maxTurns` **additively**.
+- `pi/extensions/damage-control.ts`, `session-hooks.ts`, `tool-reduction.ts`, etc. already implement hardcoded hook logic that is stable and tested. **Phase 2 (hook engine) is deferred** -- see Phase 2 section below.
+- `pi/prompt-routing/` (Python) ships a LightGBM classifier in production with daily audit. Out of scope for this plan but worth noting as established platform reality.
+
 ## Context & Motivation
 
 A deep analysis of Claude Code's source (`src/`) was performed alongside a full audit of the pi/ platform. Pi already has feature parity work tracked in `.specs/pi-claude-parity/` (quality-gates, workflow commands, agents, behavioral rules). This plan addresses a different gap: **structural and tooling alignment** — making pi/ extensions, config, and developer experience follow the same contracts and patterns as Claude Code's extensibility architecture.
@@ -73,25 +91,31 @@ Align pi/'s extension model, configuration, and developer experience with Claude
 |---|------|-------------|-------|------|---------|
 | T1 | Define shared hook schema | Create `pi/lib/hook-schema.ts` — TypeScript types and a YAML/JSON schema that mirrors Claude Code's `HookCommandSchema`. Supports event → matcher → command[] with `type: command|prompt`, `if:` matcher, `timeout`, `async`. Pi extensions can read this format. | `pi/lib/hook-schema.ts` | feature | — |
 | T2 | Define shared permission rule syntax | Create `pi/lib/permission-rules.ts` — Parser for Claude Code's `Bash(git *)`, `Read(*.ts)` pattern syntax. Used by damage-control and hook matchers. Migrate `damage-control-rules.yaml` patterns to this syntax. | `pi/lib/permission-rules.ts`, `pi/damage-control-rules.yaml` | feature | — |
-| T3 | Settings cascade loader | Create `pi/lib/settings-loader.ts` — Loads settings from 3 sources: user (`~/.pi/agent/settings.json`) → project (`.pi/settings.json`) → local (`.pi/settings.local.json`). Array-append for hooks/permissions, last-writer-wins for scalars. Falls back gracefully when sources missing. | `pi/lib/settings-loader.ts` | feature | T1 |
+| T3 | Settings cascade loader | **Centralize existing ad-hoc settings reads behind a loader.** Today extensions call `pi.getConfig()` directly against a single `pi/settings.json`. The new loader cascades 3 sources: user (`~/.pi/agent/settings.json`) -> project (`.pi/settings.json`) -> local (`.pi/settings.local.json`). Array-append for hooks/permissions, last-writer-wins for scalars. Falls back gracefully when sources missing. As part of T3, identify ad-hoc settings call sites in existing extensions and migrate them to the loader -- otherwise the cascade has no consumers. Reuse `pi/lib/extension-utils.ts` helpers where applicable. | `pi/lib/settings-loader.ts`, call-site migrations across `pi/extensions/*.ts` | refactor | T1 |
 | V1 | Validate phase 1 | Unit-test the schema parser, permission rule matcher, and settings cascade with edge cases. Verify backwards-compatibility with existing `damage-control-rules.yaml` patterns. | — | validation | T1, T2, T3 |
 
-### Phase 2: Hook Engine (config-driven hooks)
+### Phase 2: Hook Engine (config-driven hooks) -- **DEFERRED**
 
-| # | Task | Description | Files | Type | Depends |
-|---|------|-------------|-------|------|---------|
-| T4 | Hook engine | Create `pi/lib/hook-engine.ts` — Reads `hooks:` from cascaded settings. On pi events (`tool_call`, `tool_result`, `session_start`, `session_shutdown`), evaluates matching hooks. Supports `type: command` (spawn process) and `type: prompt` (inject system message). Existing hardcoded extensions continue to work alongside config-driven hooks. | `pi/lib/hook-engine.ts` | feature | V1 |
-| T5 | Hook loader extension | Create `pi/extensions/hook-loader.ts` — Thin extension that registers pi event handlers which delegate to the hook engine. Loaded like any other extension via `-e`. This is the bridge between pi's event system and the config-driven hook engine. | `pi/extensions/hook-loader.ts` | feature | T4 |
-| T6 | Migrate damage-control to hybrid mode | Update `pi/extensions/damage-control.ts` to read permission rules from settings cascade (via `permissions:` key) in addition to `damage-control-rules.yaml`. YAML file becomes the fallback; settings.json rules take precedence. No behavior change for existing users. | `pi/extensions/damage-control.ts` | refactor | T3, T4 |
-| V2 | Validate phase 2 | Test config-driven hooks fire correctly on tool events. Test damage-control reads from both YAML and settings. Verify existing extensions unaffected. | — | validation | T4, T5, T6 |
+**Status: deferred** (decision recorded 2026-04-27).
+
+**Rationale:** Pi already has hardcoded hook logic in `damage-control.ts`, `session-hooks.ts`, `tool-reduction.ts`, `quality-gates.ts`, and others. These hooks are stable, tested, and shipping. A parallel config-driven hook engine adds a second hook path that risks double-firing, priority conflicts between hardcoded and config hooks, and additional maintenance with no concrete user-driven need today.
+
+**Revisit when** any of these are true:
+- 5+ users want to customize hook behavior without writing TypeScript
+- A pi-third-party extension ecosystem emerges and needs declarative hooks
+- The hardcoded hook path becomes a bottleneck for new hook types
+
+**Out of scope for this plan:** T4 hook-engine, T5 hook-loader, T6 damage-control hybrid mode, V2 validation gate. Phase 1 V1 now feeds Phase 3 directly.
+
+**Permission rules note:** T2 (permission rule syntax in `pi/lib/permission-rules.ts`) still ships in Phase 1; damage-control can adopt the parser without needing the broader hook engine.
 
 ### Phase 3: Skill Auto-Discovery & Agent Alignment
 
 | # | Task | Description | Files | Type | Depends |
 |---|------|-------------|-------|------|---------|
-| T7 | Skill auto-discovery | Create `pi/lib/skill-discovery.ts` — Scans `pi/skills/*/SKILL.md` and `~/.pi/agent/skills/*/SKILL.md`. Parses frontmatter. Returns skill commands compatible with `pi.registerCommand()`. Supports `paths:` for conditional activation. Variable substitution (`${CLAUDE_SKILL_DIR}`, `${args}`). | `pi/lib/skill-discovery.ts` | feature | — |
-| T8 | Skill loader extension | Create `pi/extensions/skill-loader.ts` — On `session_start`, discovers skills and registers them as slash commands. Replaces manual registration in `workflow-commands.ts`. | `pi/extensions/skill-loader.ts` | feature | T7 |
-| T9 | Agent frontmatter alignment | Update agent `.md` files in `pi/agents/` to include Claude Code-compatible fields: `isolation`, `memory`, `effort`, `maxTurns`. These are additive — pi's `expertise`, `domain`, and `skills` fields remain. Document the merged schema in `pi/AGENTS.md`. | `pi/agents/*.md`, `pi/AGENTS.md` | mechanical | — |
+| T7 | Skill auto-discovery | **Replace hardcoded skill loading.** Today `pi/extensions/workflow-commands.ts` (~31 KB) registers skills via hardcoded calls. Create `pi/lib/skill-discovery.ts` that scans `pi/skills/*/SKILL.md` and `~/.pi/agent/skills/*/SKILL.md`, parses frontmatter, returns skill commands compatible with `pi.registerCommand()`. Supports `paths:` for conditional activation and variable substitution (`${CLAUDE_SKILL_DIR}`, `${args}`). Reuse `pi/lib/yaml-mini.ts` for frontmatter parsing. | `pi/lib/skill-discovery.ts` | feature | — |
+| T8 | Skill loader extension | Create `pi/extensions/skill-loader.ts` -- on `session_start` discovers skills via T7 and registers them as slash commands. **Migration**: remove hardcoded skill registration from `workflow-commands.ts` once skill-loader is verified at parity. Both extensions must not register the same skill twice during the transition. | `pi/extensions/skill-loader.ts`, `pi/extensions/workflow-commands.ts` | refactor | T7 |
+| T9 | Agent frontmatter alignment | Pi agents already define `tools`, `domain`, `expertise`, `skills`. Add Claude Code-compatible fields **additively**: `isolation`, `memory`, `effort`, `maxTurns`. Existing fields remain. Document the merged schema (existing pi fields + new Claude Code fields) in `pi/AGENTS.md` -- this becomes the single source of truth for agent frontmatter. | `pi/agents/*.md`, `pi/AGENTS.md` | mechanical | -- |
 | T10 | Agent loader reads new fields | Update `pi/extensions/agent-team.ts` and `pi/extensions/agent-chain.ts` to read and respect `effort` and `maxTurns` from agent frontmatter. `isolation` and `memory` are documented but deferred until pi runtime supports them. | `pi/extensions/agent-team.ts`, `pi/extensions/agent-chain.ts` | feature | T9 |
 | V3 | Validate phase 3 | Test skill auto-discovery finds and registers skills. Test agent frontmatter parsing with new fields. Verify `/chain` and `/team` still work. | — | validation | T7, T8, T9, T10 |
 
@@ -99,8 +123,8 @@ Align pi/'s extension model, configuration, and developer experience with Claude
 
 | # | Task | Description | Files | Type | Depends |
 |---|------|-------------|-------|------|---------|
-| T11 | Task lifecycle tracker | Create `pi/lib/task-tracker.ts` — Lightweight task model: `{id, type, status, description, startTime, endTime, outputFile}`. Status lifecycle: pending → running → completed/failed. Used by `/chain` and `/team` to track pipeline stages. Writes status to `~/.pi/agent/tasks/`. | `pi/lib/task-tracker.ts` | feature | — |
-| T12 | Integrate task tracker into chain/team | Update `agent-chain.ts` and `agent-team.ts` to create/update tasks as pipeline stages execute. Each stage (planner, builder, reviewer) becomes a tracked task. | `pi/extensions/agent-chain.ts`, `pi/extensions/agent-team.ts` | feature | T11 |
+| T11 | Consume operator-layer task registry | **Do not create a parallel task-tracker.** The canonical task registry is `pi/lib/task-registry.ts` defined by `.specs/pi-operator-layer-mvp/plan.md` T1 (`TaskRecordV1`, six-state lifecycle, durable storage in `~/.pi/agent/tasks/`). T11 in this plan is a thin import/wiring task: confirm the registry API meets `/chain` and `/team` needs, file gaps as issues against operator-layer-mvp, and add no schema of its own. **Blocks on**: operator-layer-mvp T1 shipping. | (no new files) | integration | operator-layer-mvp T1 |
+| T12 | Wire chain/team into the registry | Update `agent-chain.ts` and `agent-team.ts` to create/update `TaskRecordV1` entries via the operator-layer registry as pipeline stages execute. Each stage (planner, builder, reviewer) becomes a tracked task. Use the registry already integrated in operator-layer-mvp T2 (subagent + agent-team) -- avoid duplicating the integration logic. | `pi/extensions/agent-chain.ts`, `pi/extensions/agent-team.ts` | feature | T11 |
 | T13 | Structured metrics logger | Create `pi/lib/metrics.ts` — JSON-line structured event logger. Events: `tool_use`, `hook_fired`, `skill_invoked`, `task_status_change`, `routing_decision`. Writes to `~/.pi/agent/logs/metrics.jsonl`. Replaces ad-hoc logging across extensions. | `pi/lib/metrics.ts` | feature | — |
 | T14 | Wire metrics into extensions | Update existing extensions to emit structured events via the metrics logger instead of ad-hoc console.log or custom JSONL. | `pi/extensions/*.ts` | refactor | T13 |
 | V4 | Validate phase 4 | Test task lifecycle transitions. Verify metrics JSONL format. Confirm `/chain` creates and completes tasks correctly. | — | validation | T11, T12, T13, T14 |
@@ -117,27 +141,29 @@ Each phase has a validation gate (V1–V4). Validation checks:
 
 ## Acceptance Criteria
 
-- [ ] `pi/lib/` contains shared contracts: hook-schema, permission-rules, settings-loader, skill-discovery, task-tracker, metrics
-- [ ] `pi/extensions/hook-loader.ts` fires config-driven hooks on pi events
-- [ ] `pi/extensions/skill-loader.ts` auto-discovers skills from `pi/skills/*/SKILL.md`
-- [ ] `damage-control.ts` reads permission rules from both YAML and settings cascade
-- [ ] Agent `.md` frontmatter is a documented superset of Claude Code's schema
-- [ ] `/chain` and `/team` pipeline stages are tracked as tasks with lifecycle status
-- [ ] Structured metrics JSONL replaces ad-hoc logging
+- [ ] `pi/lib/` contains the shipped contracts: `hook-schema.ts`, `permission-rules.ts`, `settings-loader.ts`, `skill-discovery.ts`, `metrics.ts`
+- [ ] `pi/extensions/skill-loader.ts` auto-discovers skills from `pi/skills/*/SKILL.md`; hardcoded skill registration in `workflow-commands.ts` is removed
+- [ ] `damage-control.ts` reads permission rules from settings cascade via `pi/lib/permission-rules.ts` (YAML remains the fallback source until rules are migrated)
+- [ ] Agent `.md` frontmatter is a documented superset of Claude Code's schema (existing fields preserved + `isolation`, `memory`, `effort`, `maxTurns` added)
+- [ ] `/chain` and `/team` pipeline stages are tracked as `TaskRecordV1` entries via the operator-layer task registry (no parallel task-tracker exists)
+- [ ] Structured metrics JSONL replaces ad-hoc logging across extensions
 - [ ] All existing `just` recipes pass without behavior changes
 - [ ] A skill `.md` file with standard frontmatter works in both Claude Code and pi
+- [ ] Phase 2 (config-driven hook engine) remains deferred; no `pi/lib/hook-engine.ts` or `pi/extensions/hook-loader.ts` ships from this plan
 
 ## Dependency Graph
 
 ```
-Phase 1 (foundation)          Phase 2 (hooks)              Phase 3 (skills/agents)     Phase 4 (lifecycle)
-T1 hook-schema ──────────┐
-T2 permission-rules ─────┤    T4 hook-engine ──┐
-T3 settings-loader ──────┤    T5 hook-loader ──┤           T7 skill-discovery ──┐
-                         V1   T6 dc-hybrid ────V2          T8 skill-loader ─────┤      T11 task-tracker ──┐
-                                                           T9 agent-frontmatter ┤      T12 chain/team ────┤
-                                                           T10 agent-loader ────V3     T13 metrics ───────┤
-                                                                                       T14 wire-metrics ──V4
+Phase 1 (foundation)          Phase 2 (DEFERRED)           Phase 3 (skills/agents)     Phase 4 (lifecycle)
+T1 hook-schema ----------+
+T2 permission-rules -----+
+T3 settings-loader ------+    (T4/T5/T6 deferred --       T7 skill-discovery ----+
+                         V1    revisit when needed)        T8 skill-loader -------+    T11 consume registry --+
+                                                           T9 agent-frontmatter --+    T12 chain/team --------+
+                                                           T10 agent-loader ------V3   T13 metrics -----------+
+                                                                                       T14 wire-metrics ------V4
+
+T11 blocks on operator-layer-mvp T1 (canonical task registry).
 ```
 
 ## Risk Register

@@ -7,6 +7,13 @@ completed: 2026-04-22
 
 # Plan: pi tool-output reduction (tokenjuice-seeded)
 
+## Related Plans
+
+- `.specs/pi-operator-layer-mvp/plan.md` -- Owns durable task registry and operator surfaces. No dependency from this plan.
+- `.specs/pi-platform-alignment/plan.md` -- Owns settings cascade, skill discovery, agent frontmatter. No dependency from this plan.
+
+Phase 1 of tool-reduction shipped 2026-04-22 (deterministic reducer + scrubber + eval harness). Phase 2 (LLM codegen + classifier router) remains intentionally deferred until corpus diversity supports it.
+
 ## Context & Motivation
 
 Pi agent sessions burn context on verbose bash tool output (`git status`, `pnpm test`, `docker build`, etc.). Investigation of `github.com/vincentkoc/tokenjuice` showed a well-designed JSON-rule compaction model: per-command rules with `skipPatterns` / `keepPatterns` / `headTail` / `counters`, a 3-layer overlay (builtin < user < project), and a `selectInlineText` passthrough guard that refuses to compact when it would not actually help.
