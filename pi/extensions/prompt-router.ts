@@ -256,10 +256,29 @@ function getResolvedTierMap(ctx: any) {
   };
 }
 
+function modelNameMatchesCodexGpt55(model: Record<string, unknown>): boolean {
+  const names = new Set([model.id, model.model, model.name]);
+  return names.has(CODEX_GPT55_MODEL);
+}
+
 function isCodexGpt55(model: unknown): boolean {
   if (!model || typeof model !== "object") return false;
-  const m = model as { provider?: unknown; id?: unknown };
-  return m.provider === CODEX_GPT55_PROVIDER && m.id === CODEX_GPT55_MODEL;
+  const m = model as Record<string, unknown>;
+  return m.provider === CODEX_GPT55_PROVIDER && modelNameMatchesCodexGpt55(m);
+}
+
+function isConfiguredDefaultCodexGpt55(): boolean {
+  try {
+    const settings = readMergedSettings({ userPath: SETTINGS_PATH, skipProject: true, skipLocal: true }) as Record<string, unknown>;
+    return settings.defaultProvider === CODEX_GPT55_PROVIDER && settings.defaultModel === CODEX_GPT55_MODEL;
+  } catch {
+    return false;
+  }
+}
+
+function shouldForceLowThinkingOnSessionStart(ctx: unknown): boolean {
+  const currentModel = (ctx as { model?: unknown } | null)?.model;
+  return isCodexGpt55(currentModel) || currentModel === CODEX_GPT55_MODEL || isConfiguredDefaultCodexGpt55();
 }
 
 function applyModelEffortBias(effort: string, rec: ClassifierRecommendation, model: unknown): string {
@@ -646,8 +665,7 @@ export default function (pi: ExtensionAPI) {
     state.lastAppliedEffort = null;
     state.lastRuleFired = null;
     state.cooldownTurnsRemaining = 0;
-    const currentModel = (ctx as { model?: unknown }).model;
-    if (isCodexGpt55(currentModel) && typeof (pi as any).setThinkingLevel === "function") {
+    if (shouldForceLowThinkingOnSessionStart(ctx) && typeof (pi as any).setThinkingLevel === "function") {
       (pi as any).setThinkingLevel("low");
       state.lastAppliedEffort = "low";
     }

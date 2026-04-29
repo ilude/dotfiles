@@ -748,6 +748,23 @@ describe("prompt-router extension -- session_start hook", () => {
     await sessionHooks[0].handler({}, ctx);
     expect((ctx.ui as any).setStatus).toHaveBeenCalledWith("router", "router: ready");
   });
+
+  it("forces low thinking for configured GPT-5.5 default even when ctx.model is missing", async () => {
+    const pi = createMockPi();
+    (pi as any).setThinkingLevel = vi.fn();
+    promptRouter(pi as any);
+
+    const sessionHooks = pi._getHook("session_start");
+    const ctx = createMockCtx({
+      model: undefined,
+      ui: { ...createMockCtx().ui, setStatus: vi.fn() },
+    });
+
+    await sessionHooks[0].handler({}, ctx);
+
+    expect((pi as any).setThinkingLevel).toHaveBeenCalledWith("low");
+    expect((ctx.ui as any).setStatus).toHaveBeenCalledWith("router", "router: ready");
+  });
 });
 
 // ---------------------------------------------------------------------------
