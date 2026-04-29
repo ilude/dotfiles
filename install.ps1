@@ -18,7 +18,7 @@
 
 .PARAMETER Dev
     Include heavy developer toolchains (Docker Desktop, .NET SDKs).
-    Node.js now comes from the core package set so Windows can install Pi via npm.
+    Node.js and pnpm come from the core package set so Windows can install Pi via pnpm.
     Without this flag, heavy extras stay skipped.
 
 .PARAMETER ITAdmin
@@ -787,6 +787,44 @@ globalBinDir = "$globalBinDirToml"
     }
 }
 
+function Initialize-PnpmGlobalConfig {
+    # pnpm requires PNPM_HOME and PNPM_HOME on PATH for `pnpm add -g` to work.
+    # `pnpm setup` does this on first run; we replicate it idempotently so the
+    # current process can immediately invoke `pnpm add -g` without a shell restart.
+    if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
+        return
+    }
+
+    $pnpmHome = Join-Path $env:LOCALAPPDATA 'pnpm'
+    New-Item -ItemType Directory -Path $pnpmHome -Force -ErrorAction SilentlyContinue | Out-Null
+
+    $userPnpmHome = [Environment]::GetEnvironmentVariable('PNPM_HOME', 'User')
+    if ($userPnpmHome -ne $pnpmHome) {
+        [Environment]::SetEnvironmentVariable('PNPM_HOME', $pnpmHome, 'User')
+        Write-Host "  PNPM_HOME: set to $pnpmHome" -ForegroundColor Green
+    } else {
+        Write-Host "  PNPM_HOME: already set" -ForegroundColor DarkGray
+    }
+    $env:PNPM_HOME = $pnpmHome
+
+    $userPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
+    if ($userPath -notlike "*$pnpmHome*" -and $userPath -notlike '*%PNPM_HOME%*') {
+        $newUserPath = if ([string]::IsNullOrWhiteSpace($userPath)) { $pnpmHome } else { "$pnpmHome;$userPath" }
+        [Environment]::SetEnvironmentVariable('PATH', $newUserPath, 'User')
+        Write-Host "  PATH: added pnpm dir" -ForegroundColor Green
+    }
+    if ($env:PATH -notlike "*$pnpmHome*") {
+        $env:PATH = "$pnpmHome;$env:PATH"
+    }
+
+    # Run `pnpm setup` to populate the .tools/pnpm-exe shim. Idempotent.
+    try {
+        pnpm setup 2>&1 | Out-Null
+    } catch {
+        Write-Host "  pnpm setup: warning -- $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+}
+
 function Test-ClaudeSmoke {
     # Verify claude actually launches after install. A stale shim pointing at
     # a pruned node_modules will fail here -- that's the whole point.
@@ -837,6 +875,12 @@ function Install-Packages {
     # Core packages (DSC)
     Invoke-WingetConfigure -GroupName 'Core' -ConfigFile (Join-Path $wingetConfigDir 'core.dsc.yaml') -Color Cyan
 
+    # pnpm: ensure PNPM_HOME + PATH so `pnpm add -g` can install (and the resulting
+    # binaries resolve in fresh shells). Must run AFTER core DSC since that's
+    # what installs pnpm in the first place.
+    Write-Host "`n--- pnpm Setup ---" -ForegroundColor Cyan
+    Initialize-PnpmGlobalConfig
+
     # Git for Windows re-adds "Open Git GUI/Bash Here" context menu entries on
     # every (re)install. DSC can't pass /COMPONENTS overrides, so strip the
     # registry keys post-apply.
@@ -884,28 +928,28 @@ function Install-Packages {
         }
     }
 
-    # npm global packages for Node-based extras (Node.js comes from core packages)
-    if (Get-Command npm -ErrorAction SilentlyContinue) {
-        Write-Host "`n--- npm Global Packages ---" -ForegroundColor Cyan
-        $npmPackages = @('bats')
-        foreach ($pkg in $npmPackages) {
+    # pnpm global packages for Node-based extras (Node.js + pnpm come from core packages)
+    if (Get-Command pnpm -ErrorAction SilentlyContinue) {
+        Write-Host "`n--- pnpm Global Packages ---" -ForegroundColor Cyan
+        $pnpmPackages = @('bats')
+        foreach ($pkg in $pnpmPackages) {
             Write-Host "  $pkg..." -ForegroundColor Cyan -NoNewline
-            $installed = npm list -g $pkg 2>$null | Select-String $pkg
+            $installed = pnpm list -g $pkg 2>$null | Select-String $pkg
             if ($installed) {
                 Write-Host " already installed" -ForegroundColor DarkGray
             } else {
                 try {
-                    npm install -g $pkg 2>$null | Out-Null
+                    pnpm add -g $pkg 2>$null | Out-Null
                     Write-Host " installed" -ForegroundColor Green
                 } catch {
                     Write-Host " failed" -ForegroundColor Red
-                    $script:failed += "npm:$pkg"
+                    $script:failed += "pnpm:$pkg"
                 }
             }
         }
     } else {
-        Write-Host "`n--- npm Global Packages ---" -ForegroundColor DarkGray
-        Write-Host "  npm not found - skipping (rerun installer after core packages finish)" -ForegroundColor DarkGray
+        Write-Host "`n--- pnpm Global Packages ---" -ForegroundColor DarkGray
+        Write-Host "  pnpm not found - skipping (rerun installer after core packages finish)" -ForegroundColor DarkGray
     }
 
     # Claude Code (prefer Bun, fall back to WinGet)
@@ -1506,63 +1550,43 @@ try {
             & $gitBash "$bashPath"
         }
 
-        # Install Pi coding agent
+        # Install Pi coding agent (Windows uses pnpm; Bun's resolver fails on
+        # Pi's transitive AWS SDK deps on Windows -- see pi/README.md).
         Write-Host "`nInstalling Pi coding agent..." -ForegroundColor Cyan
-        if (Get-Command bun -ErrorAction SilentlyContinue) {
-            $bunBinDir = Join-Path $env:USERPROFILE '.bun\bin'
-            $userPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
-            if ($userPath -notlike "*$bunBinDir*") {
-                $newUserPath = if ([string]::IsNullOrWhiteSpace($userPath)) { $bunBinDir } else { "$bunBinDir;$userPath" }
-                [Environment]::SetEnvironmentVariable('PATH', $newUserPath, 'User')
-            }
-            if ($env:PATH -notlike "*$bunBinDir*") {
-                $env:PATH = "$bunBinDir;$env:PATH"
-            }
-
-            if (Get-Command npm -ErrorAction SilentlyContinue) {
-                $piInstalled = npm list -g @mariozechner/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
-                if ($piInstalled) {
-                    Write-Host "  pi-coding-agent: already installed via npm" -ForegroundColor DarkGray
-                } else {
-                    Write-Host "  Installing pi-coding-agent via npm..." -ForegroundColor Cyan
-                    npm install -g @mariozechner/pi-coding-agent
-                    if ($LASTEXITCODE -eq 0) {
-                        Write-Host "  pi-coding-agent: installed successfully via npm" -ForegroundColor Green
-                    } else {
-                        Write-Host "  pi-coding-agent: installation failed" -ForegroundColor Red
-                    }
-                }
-
-                $bunPi = Join-Path $bunBinDir 'pi'
-                $bunPiCmd = Get-Command $bunPi -ErrorAction SilentlyContinue
-                if ($bunPiCmd -or (Test-Path $bunPi) -or (Test-Path "${bunPi}.exe")) {
-                    Write-Host "  Removing legacy Bun-installed pi-coding-agent to keep npm on the latest Windows release path..." -ForegroundColor DarkGray
-                    bun uninstall -g @mariozechner/pi-coding-agent 2>$null | Out-Null
-                }
-            } else {
-                $bunPi = Join-Path $bunBinDir 'pi'
-                $bunPiCmd = Get-Command $bunPi -ErrorAction SilentlyContinue
-                if ($bunPiCmd -or (Test-Path $bunPi) -or (Test-Path "${bunPi}.exe")) {
-                    Write-Host "  pi-coding-agent: npm unavailable; retaining existing Bun install" -ForegroundColor Yellow
-                } else {
-                    Write-Host "  npm not found - skipping Pi installation (Windows keeps Pi on npm because Bun can lag latest Pi releases)" -ForegroundColor Yellow
-                }
-            }
-        } elseif (Get-Command npm -ErrorAction SilentlyContinue) {
-            $piInstalled = npm list -g @mariozechner/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
+        if (Get-Command pnpm -ErrorAction SilentlyContinue) {
+            $piInstalled = pnpm list -g @mariozechner/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
             if ($piInstalled) {
-                Write-Host "  pi-coding-agent: already installed via npm" -ForegroundColor DarkGray
+                Write-Host "  pi-coding-agent: already installed via pnpm" -ForegroundColor DarkGray
             } else {
-                Write-Host "  Installing pi-coding-agent via npm..." -ForegroundColor Cyan
-                npm install -g @mariozechner/pi-coding-agent
+                Write-Host "  Installing pi-coding-agent via pnpm..." -ForegroundColor Cyan
+                pnpm add -g --allow-build=koffi --allow-build=protobufjs @mariozechner/pi-coding-agent
                 if ($LASTEXITCODE -eq 0) {
-                    Write-Host "  pi-coding-agent: installed successfully via npm" -ForegroundColor Green
+                    Write-Host "  pi-coding-agent: installed successfully via pnpm" -ForegroundColor Green
                 } else {
                     Write-Host "  pi-coding-agent: installation failed" -ForegroundColor Red
                 }
             }
+
+            # Migrate: remove any legacy npm-installed Pi so pnpm owns the binary.
+            if (Get-Command npm -ErrorAction SilentlyContinue) {
+                $legacyNpmPi = npm list -g @mariozechner/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
+                if ($legacyNpmPi) {
+                    Write-Host "  Removing legacy npm-installed pi-coding-agent..." -ForegroundColor DarkGray
+                    npm uninstall -g @mariozechner/pi-coding-agent 2>$null | Out-Null
+                }
+            }
+
+            # Migrate: remove any legacy Bun-installed Pi for the same reason.
+            if (Get-Command bun -ErrorAction SilentlyContinue) {
+                $bunBinDir = Join-Path $env:USERPROFILE '.bun\bin'
+                $bunPi = Join-Path $bunBinDir 'pi'
+                if ((Test-Path $bunPi) -or (Test-Path "${bunPi}.exe")) {
+                    Write-Host "  Removing legacy Bun-installed pi-coding-agent..." -ForegroundColor DarkGray
+                    bun uninstall -g @mariozechner/pi-coding-agent 2>$null | Out-Null
+                }
+            }
         } else {
-            Write-Host "  bun and npm not found - skipping Pi installation" -ForegroundColor Yellow
+            Write-Host "  pnpm not found - skipping Pi installation (Windows installs Pi via pnpm because Bun's resolver fails on Pi's AWS SDK deps)" -ForegroundColor Yellow
         }
 
         # Set up Pi directory link
@@ -1590,10 +1614,10 @@ try {
                 Write-Host "  Installing pi web-fetch dependencies..." -ForegroundColor Cyan
                 if (Get-Command bun -ErrorAction SilentlyContinue) {
                     bun install --cwd $webFetchDir
-                } elseif (Get-Command npm -ErrorAction SilentlyContinue) {
-                    npm install --prefix $webFetchDir
+                } elseif (Get-Command pnpm -ErrorAction SilentlyContinue) {
+                    pnpm install --dir $webFetchDir
                 } else {
-                    Write-Host "  bun and npm not found - skipping pi web-fetch deps" -ForegroundColor Yellow
+                    Write-Host "  bun and pnpm not found - skipping pi web-fetch deps" -ForegroundColor Yellow
                 }
             }
         } else {

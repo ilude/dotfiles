@@ -268,9 +268,30 @@ if command -v bun &>/dev/null; then
         echo "Removing legacy npm-installed pi-coding-agent..."
         npm uninstall -g @mariozechner/pi-coding-agent &>/dev/null || true
     fi
-elif command -v npm &>/dev/null; then
-    echo "Installing/updating pi-coding-agent via npm fallback..."
-    npm install -g @mariozechner/pi-coding-agent@latest
+
+    if command -v pnpm &>/dev/null && pnpm list -g @mariozechner/pi-coding-agent 2>/dev/null | grep -q pi-coding-agent; then
+        echo "Removing legacy pnpm-installed pi-coding-agent..."
+        pnpm remove -g @mariozechner/pi-coding-agent &>/dev/null || true
+    fi
+else
+    if ! command -v pnpm &>/dev/null; then
+        echo "Bootstrapping pnpm via official installer..."
+        curl -fsSL https://get.pnpm.io/install.sh | env SHELL="$SHELL" sh -
+        export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"
+        export PATH="$PNPM_HOME:$PATH"
+    fi
+
+    if command -v pnpm &>/dev/null; then
+        echo "Installing/updating pi-coding-agent via pnpm fallback..."
+        pnpm add -g --allow-build=koffi --allow-build=protobufjs @mariozechner/pi-coding-agent@latest
+
+        if command -v npm &>/dev/null && npm list -g @mariozechner/pi-coding-agent &>/dev/null; then
+            echo "Removing legacy npm-installed pi-coding-agent..."
+            npm uninstall -g @mariozechner/pi-coding-agent &>/dev/null || true
+        fi
+    else
+        echo "Warning: bun and pnpm both unavailable; skipping pi-coding-agent install"
+    fi
 fi
 completed_steps+=("Pi coding agent install")
 
@@ -285,8 +306,10 @@ if [[ -d "$WEB_FETCH_DIR" ]]; then
         echo "Installing pi web-fetch dependencies..."
         if command -v bun &>/dev/null; then
             bun install --cwd "$WEB_FETCH_DIR"
-        elif command -v npm &>/dev/null; then
-            npm install --prefix "$WEB_FETCH_DIR"
+        elif command -v pnpm &>/dev/null; then
+            pnpm install --dir "$WEB_FETCH_DIR"
+        else
+            echo "Warning: bun and pnpm both unavailable; skipping pi web-fetch deps"
         fi
     else
         echo "pi web-fetch deps: already installed"

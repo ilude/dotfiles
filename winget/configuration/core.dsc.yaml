@@ -36,6 +36,12 @@ properties:
         source: winget
     - resource: Microsoft.WinGet.DSC/WinGetPackage
       directives:
+        description: Install pnpm
+      settings:
+        id: pnpm.pnpm  # pnpm
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
         description: Install Python 3.14
       settings:
         id: Python.Python.3.14  # Python 3.14
