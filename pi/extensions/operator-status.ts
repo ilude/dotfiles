@@ -20,10 +20,11 @@
  *   /doctor --json        -- machine-readable JSON
  */
 
+import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { type ExtensionAPI, type ExtensionContext, type ReadonlyFooterDataProvider } from "@mariozechner/pi-coding-agent";
 import { listRecentDecisions, listSessionApprovals } from "../lib/permission-registry.js";
 import { listTasks, type TaskRecordV1 } from "../lib/task-registry.js";
 
@@ -44,6 +45,129 @@ interface DoctorReport {
 }
 
 const PI_PACKAGE_NAME = "@mariozechner/pi-coding-agent";
+
+const ANSI = {
+	blue: "\x1b[34m",
+	cyan: "\x1b[36m",
+	dim: "\x1b[2m",
+	green: "\x1b[32m",
+	orange: "\x1b[38;5;208m",
+	reset: "\x1b[0m",
+	white: "\x1b[37m",
+	yellow: "\x1b[33m",
+} as const;
+
+function runCommand(args: string[], cwd?: string): string {
+	try {
+		const result = childProcess.spawnSync(args[0], args.slice(1), {
+			cwd,
+			encoding: "utf-8",
+			timeout: 1000,
+		});
+		return result.status === 0 ? result.stdout.trim() : "";
+	} catch {
+		return "";
+	}
+}
+
+function normalizePathForDisplay(inputPath: string): string {
+	return inputPath
+		.replace(/\\/g, "/")
+		.replace(/^[A-Za-z]:/, "")
+		.replace(/^\/[a-z]\//, "/")
+		.replace(/^\/mnt\/[a-z]\//, "/");
+}
+
+function homePattern(): string {
+	const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
+	return normalizePathForDisplay(home);
+}
+
+export function formatPiStatusDirectory(cwd: string): string {
+	const normalizedCwd = normalizePathForDisplay(cwd);
+	const home = homePattern();
+	const gitRoot = runCommand(["git", "-C", cwd, "rev-parse", "--show-toplevel"]);
+	if (gitRoot) {
+		const normalizedRoot = normalizePathForDisplay(gitRoot).replace(/\/$/, "");
+		const basename = path.basename(normalizedRoot);
+		return normalizedRoot.startsWith(home) ? `~/${basename}` : basename;
+	}
+	if (normalizedCwd.startsWith(home)) {
+		const relative = normalizedCwd.slice(home.length);
+		return relative ? `~${relative}` : "~";
+	}
+	return normalizedCwd;
+}
+
+function colorBranch(branchName: string | null): string {
+	if (!branchName) return "";
+	return `${ANSI.yellow}[${ANSI.blue}${branchName}${ANSI.yellow}]${ANSI.reset}`;
+}
+
+function formatModelName(model: { id?: string; name?: string } | undefined): string {
+	return model?.id || model?.name || "no-model";
+}
+
+function formatThinkingLevel(pi: ExtensionAPI): string {
+	try {
+		return pi.getThinkingLevel?.() || "off";
+	} catch {
+		return "off";
+	}
+}
+
+function sanitizeSingleLine(text: string): string {
+	return text.replace(/[\r\n\t]/g, " ").replace(/ +/g, " ").trim();
+}
+
+function formatExtensionStatuses(footerData: ReadonlyFooterDataProvider): string | null {
+	const statuses = Array.from(footerData.getExtensionStatuses().entries())
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([, text]) => sanitizeSingleLine(text))
+		.filter(Boolean);
+	return statuses.length > 0 ? statuses.join(" ") : null;
+}
+
+export function formatPiStatusLine(options: {
+	cwd: string;
+	branch: string | null;
+	model: { id?: string; name?: string } | undefined;
+	pi: ExtensionAPI;
+	piVersion: string | null;
+}): string {
+	const directory = formatPiStatusDirectory(options.cwd);
+	const branch = colorBranch(options.branch);
+	const model = formatModelName(options.model);
+	const thinking = formatThinkingLevel(options.pi);
+	const thinkingLabel = `${ANSI.white}[${ANSI.cyan}${thinking}${ANSI.white}]${ANSI.reset}`;
+	const versionLabel = `${ANSI.dim}v${options.piVersion ?? "?"}${ANSI.reset}`;
+	return `${ANSI.green}${directory}${ANSI.reset}${branch} | ${ANSI.orange}${model}${ANSI.reset}${thinkingLabel} | ${versionLabel}`;
+}
+
+function installClaudeStyleFooter(ctx: ExtensionContext, pi: ExtensionAPI): boolean {
+	if (typeof ctx.ui.setFooter !== "function") return false;
+	const footerFactory: Parameters<ExtensionContext["ui"]["setFooter"]>[0] = (
+		_tui,
+		_theme,
+		footerData: ReadonlyFooterDataProvider,
+	) => ({
+		invalidate: () => {},
+		render: () => {
+			const piVersion = resolvePiVersion();
+			const statusLine = formatPiStatusLine({
+				cwd: ctx.cwd,
+				branch: footerData.getGitBranch(),
+				model: ctx.model,
+				pi,
+				piVersion,
+			});
+			const extensionStatuses = formatExtensionStatuses(footerData);
+			return extensionStatuses ? [statusLine, extensionStatuses] : [statusLine];
+		},
+	});
+	ctx.ui.setFooter(footerFactory);
+	return true;
+}
 
 /**
  * Locate the active pi-coding-agent install and return its package.json
@@ -237,8 +361,11 @@ function formatDoctorJson(report: DoctorReport): string {
 
 export default function (pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
-		const piVersion = resolvePiVersion();
-		ctx.ui.setStatus("pi", piVersion ? `pi v${piVersion}` : "pi");
+		const footerInstalled = installClaudeStyleFooter(ctx, pi);
+		if (!footerInstalled) {
+			const piVersion = resolvePiVersion();
+			ctx.ui.setStatus("pi", piVersion ? `pi v${piVersion}` : "pi");
+		}
 		refreshOperatorStatus(ctx);
 	});
 
