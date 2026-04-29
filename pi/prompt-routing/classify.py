@@ -6,11 +6,16 @@ Reads the prompt from argv[1] or stdin, classifies it, and prints
 a single-line JSON object to stdout.
 
 Usage:
-    python classify.py "your prompt here"
-    echo "your prompt" | python classify.py
-    python classify.py --classifier ensemble "your prompt here"
-    python classify.py --classifier t2 "your prompt here"
-    python classify.py --classifier lgbm "your prompt here"
+    uv run --project ~/.dotfiles/pi/prompt-routing python \
+        ~/.dotfiles/pi/prompt-routing/classify.py "your prompt here"
+    echo "your prompt" | uv run --project ~/.dotfiles/pi/prompt-routing python \
+        ~/.dotfiles/pi/prompt-routing/classify.py
+    uv run --project ~/.dotfiles/pi/prompt-routing python \
+        ~/.dotfiles/pi/prompt-routing/classify.py --classifier ensemble "your prompt here"
+    uv run --project ~/.dotfiles/pi/prompt-routing python \
+        ~/.dotfiles/pi/prompt-routing/classify.py --classifier t2 "your prompt here"
+    uv run --project ~/.dotfiles/pi/prompt-routing python \
+        ~/.dotfiles/pi/prompt-routing/classify.py --classifier lgbm "your prompt here"
 
 Flags:
     --classifier t2|ensemble|lgbm|confgate

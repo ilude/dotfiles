@@ -63,6 +63,24 @@ npm install -g @mariozechner/pi-coding-agent
 
 ---
 
+## Source vs. runtime state
+
+This repository keeps curated Pi source/config trackable and leaves generated runtime
+state local. Commit changes to maintained config such as `pi/agents/`,
+`pi/multi-team/agents/`, `pi/multi-team/skills/`, `pi/skills/`, `pi/extensions/`,
+`pi/lib/`, `pi/tests/`, `pi/settings.json`, prompt-router source/docs/data/models that
+are intentionally versioned, and lockfiles such as `pi/prompt-routing/uv.lock`.
+
+Do not delete or commit local runtime state unless a separate migration explicitly
+approves it. Treat these as generated/local: `pi/history/`, `pi/sessions/`,
+`pi/multi-team/sessions/`, `pi/multi-team/logs/`, `*-expertise-log.jsonl`,
+project-local expertise directories under `pi/multi-team/expertise/*/`, local caches,
+logs, virtualenvs, and `node_modules/`. Tracked global mental-model snapshots and
+curated prompt-router data/models may remain versioned; classify them deliberately
+rather than hiding broad directories.
+
+---
+
 ## Authentication
 
 **API key (preferred):**
@@ -432,27 +450,32 @@ The classifier was built by a multi-agent ML team (ML Research Lead,
 Data Engineer, Model Engineer, Eval Engineer) using 1,582 labeled examples
 across three domains. The corpus is in `prompt-routing/data/training_corpus.json`.
 
+`prompt-routing/` is a uv project. Dependency source of truth is
+`pi/prompt-routing/pyproject.toml` plus the tracked
+`pi/prompt-routing/uv.lock`; `requirements.txt` is export-only compatibility
+output, not an input for local installs.
+
 To retrain after adding examples to the corpus:
 
 ```bash
-cd ~/.dotfiles/pi/prompt-routing
-uv run python train.py
-uv run python evaluate.py --holdout   # must pass all gates
-uv run python -m pytest tests/         # 64 tests
+uv sync --project ~/.dotfiles/pi/prompt-routing --locked
+uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/train.py
+uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/evaluate.py --holdout   # must pass all gates
+uv run --project ~/.dotfiles/pi/prompt-routing python -m pytest ~/.dotfiles/pi/prompt-routing/tests/
 ```
 
 To label new training data from your Claude history:
 
 ```bash
-uv run python label_history.py --signal high,low --resume
-uv run python merge_labels.py --dry-run
-uv run python merge_labels.py --cap <N>
+uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/label_history.py --signal high,low --resume
+uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/merge_labels.py --dry-run
+uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/merge_labels.py --cap <N>
 ```
 
 To run the daily audit (compare live routing against Opus labels):
 
 ```bash
-uv run python audit.py
+uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/audit.py
 ```
 
 Full documentation: `~/.dotfiles/pi/prompt-routing/AGENTS.md`

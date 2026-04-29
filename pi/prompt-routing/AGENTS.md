@@ -25,6 +25,25 @@ Claude model tiers based on complexity:
 
 ---
 
+
+## Dependency and Artifact Policy
+
+This directory is an explicit uv project. The authoritative dependency inputs
+are `pyproject.toml` and the tracked `uv.lock`. Use `uv sync --locked` for
+reproducible setup and `uv run --project ~/.dotfiles/pi/prompt-routing ...` for
+execution from Pi or docs. `requirements.txt` is generated/export-only
+compatibility output for external tools; do not edit it as a dependency source.
+
+Artifact ownership:
+
+- Tracked source/config: Python scripts, tests, corpus data, docs,
+  `pyproject.toml`, and `uv.lock`.
+- Generated-but-tracked model artifacts: `models/*.joblib`, `models/*.sha256`,
+  and the legacy `model.pkl.sha256`. Do not delete or untrack these without a
+  separate migration decision.
+- Ignored local state: `.venv/`, `__pycache__/`, `.pytest_cache/`,
+  `.ruff_cache/`, and `logs/`.
+
 ## Current Model State
 
 | Item | Value |
@@ -197,10 +216,10 @@ Every call is logged to `logs/routing_log.jsonl`. Set `LOG_ROUTING=0` to disable
 
 **Daily audit workflow:**
 ```bash
-python audit.py                        # audit unreviewed entries, write report
-python audit.py --model sonnet         # faster / cheaper
-python audit.py --since 2026-04-01     # only recent entries
-python audit.py --dry-run              # preview without API calls
+uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/audit.py                        # audit unreviewed entries, write report
+uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/audit.py --model sonnet         # faster / cheaper
+uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/audit.py --since 2026-04-01     # only recent entries
+uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/audit.py --dry-run              # preview without API calls
 ```
 Outputs `logs/audit_YYYY-MM-DD.json` and `logs/audit_YYYY-MM-DD_divergences.csv`.
 CRITICAL divergences (router=low, opus=high) are printed prominently -- these
@@ -209,22 +228,22 @@ are production HIGH->LOW inversions, the worst failure mode.
 **Corpus feedback loop:**
 ```bash
 # 1. Audit, review divergences CSV, remove rows you disagree with
-python audit.py
+uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/audit.py
 
 # 2. Merge reviewed divergences
-python merge_labels.py --source logs/audit_YYYY-MM-DD_divergences.csv --dry-run
-python merge_labels.py --source logs/audit_YYYY-MM-DD_divergences.csv
+uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/merge_labels.py --source logs/audit_YYYY-MM-DD_divergences.csv --dry-run
+uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/merge_labels.py --source logs/audit_YYYY-MM-DD_divergences.csv
 
 # 3. Retrain and verify
-python train.py && python evaluate.py --holdout && python -m pytest tests/
+uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/train.py && uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/evaluate.py --holdout && uv run --project ~/.dotfiles/pi/prompt-routing python -m pytest ~/.dotfiles/pi/prompt-routing/tests/
 ```
 
 **history.jsonl labeling workflow:**
 ```bash
-python label_history.py --signal high,low --resume
-python merge_labels.py --cap <N> --dry-run
-python merge_labels.py --cap <N>
-python train.py && python evaluate.py --holdout && python -m pytest tests/
+uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/label_history.py --signal high,low --resume
+uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/merge_labels.py --cap <N> --dry-run
+uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/merge_labels.py --cap <N>
+uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/train.py && uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/evaluate.py --holdout && uv run --project ~/.dotfiles/pi/prompt-routing python -m pytest ~/.dotfiles/pi/prompt-routing/tests/
 ```
 
 **Do not merge** without reviewing samples first. Bulk import without curation
@@ -242,8 +261,9 @@ matrix for inversion regressions before committing.
 | `labeled_history.csv` | Append-only output of `label_history.py` — safe to grow |
 | `data.py` | Core training corpus — validate syntax after any edit |
 
-`*.pkl` files are gitignored (or should be). Never commit `model.pkl` to the
-repo — it changes every retrain and contains serialised Python objects.
+Legacy `model.pkl` is not tracked, but current `models/*.joblib` and matching
+SHA256 files are tracked generated artifacts for Pi runtime. Never delete tracked
+model files as part of dependency cleanup; make a separate migration decision.
 
 ---
 
@@ -275,7 +295,7 @@ The router is wired into Pi as an automatic extension.
 
 **Routing log:** Every classified prompt is appended to
 `prompt-routing/logs/routing_log.jsonl` with tier, probabilities, and
-floor-applied flag. Run `python audit.py` to compare against Opus labels.
+floor-applied flag. Run `uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/audit.py` to compare against Opus labels.
 
 ---
 
