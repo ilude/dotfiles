@@ -341,7 +341,9 @@
   "remote.SSH.remotePlatform": {
     "10.0.65.36": "linux",
     "rearden.ilude.com": "linux",
-    "patriot-onramp.ilude.com": "linux"
+    "patriot-onramp.ilude.com": "linux",
+    "ollama": "linux",
+    "stg-docker-1": "linux"
   },
   "specstory.cloudSync.enabled": "never",
   "workbench.editor.enablePreview": false,
