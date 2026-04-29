@@ -149,14 +149,16 @@ completed_steps+=("Python dev tools")
 current_step="Claude Code hook dependencies"
 # Hooks use bare python (not uv) to avoid console window flashing on Windows.
 # Since settings.json is shared cross-platform, Linux also needs these in system Python.
-hook_deps=("pyyaml" "tree-sitter" "tree-sitter-bash")
+# Map: pip package name -> Python import name
+hook_deps=("pyyaml:yaml" "tree-sitter:tree_sitter" "tree-sitter-bash:tree_sitter_bash")
 # Use the shimmed python, fall back to python3
 _py="$(command -v python 2>/dev/null || command -v python3 2>/dev/null || true)"
 if [[ -z "$_py" ]]; then
     echo "Warning: no python found, skipping hook deps"
 else
-    for dep in "${hook_deps[@]}"; do
-        module="${dep//-/_}"
+    for entry in "${hook_deps[@]}"; do
+        dep="${entry%%:*}"
+        module="${entry##*:}"
         if "$_py" -c "import ${module}" 2>/dev/null; then
             echo "${dep}: already installed"
         else

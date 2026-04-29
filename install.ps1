@@ -982,10 +982,14 @@ function Install-Packages {
     # Python dependencies for Claude Code hooks
     # Hooks use bare python (not uv) to avoid console window flashing on Windows
     Write-Host "`n--- Claude Code Hook Dependencies ---" -ForegroundColor Cyan
-    $hookDeps = @('pyyaml', 'tree-sitter', 'tree-sitter-bash')
-    foreach ($dep in $hookDeps) {
+    $hookDeps = [ordered]@{
+        'pyyaml'           = 'yaml'
+        'tree-sitter'      = 'tree_sitter'
+        'tree-sitter-bash' = 'tree_sitter_bash'
+    }
+    foreach ($dep in $hookDeps.Keys) {
         Write-Host "  $dep..." -ForegroundColor Cyan -NoNewline
-        $installed = python -c "import importlib; importlib.import_module('$($dep.Replace('-', '_'))')" 2>$null
+        $installed = python -c "import importlib; importlib.import_module('$($hookDeps[$dep])')" 2>$null
         if ($LASTEXITCODE -eq 0) {
             Write-Host " already installed" -ForegroundColor DarkGray
         } else {
