@@ -13,9 +13,9 @@ If the working tree is clean or merge conflicts exist, exit with an appropriate 
 
 Skip git-crypt encrypted paths: read `.gitattributes` if it exists and ignore any path whose pattern carries `filter=git-crypt`. Those files are encrypted before push.
 
-Two-step secret review on the remaining staged and modified files:
+two-step secret review on the remaining staged and modified files:
 
-1. Deterministic pattern matching to extract candidate findings.
+1. deterministic pattern matching to extract candidate findings.
 2. A small/mini LLM evaluates each candidate in context and classifies it as: likely real secret / example or fixture / ambiguous.
 
 Patterns to match:
