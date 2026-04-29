@@ -29,6 +29,7 @@ _run_claude() {
 
 ccyl() {
     clear
+    printf '\033]0;%s\007' "${PWD:t}"
     _run_claude --dangerously-skip-permissions --chrome "$@"
 }
 claude-install() {
