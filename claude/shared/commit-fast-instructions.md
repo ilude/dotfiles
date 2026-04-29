@@ -24,7 +24,20 @@ If a likely real secret is found, STOP. Show file, pattern, and reason. Do not p
 
 ## Step 3: Stage
 
-If the user named files in $ARGUMENTS, stage only those. Otherwise stage what is already in the index plus the modified-tracked files reviewed in Step 1. Do NOT run `git add .` or `git add -A`. Do NOT auto-stage untracked files in this fast path -- if there are untracked files that should be committed, tell the user and suggest `/commit` instead.
+If the user named files in $ARGUMENTS, stage only those.
+
+Otherwise auto-stage everything in the working tree (modified, deleted, AND untracked) EXCEPT files matching industry-standard ignore patterns. Those go into `.gitignore` instead of being committed.
+
+Industry-standard ignore patterns (add to `.gitignore`, do not stage):
+
+- Build/output: `node_modules/`, `dist/`, `build/`, `target/`, `out/`, `.next/`, `.nuxt/`, `.cache/`, `.parcel-cache/`, `coverage/`, `*.pyc`, `__pycache__/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `.tox/`, `*.class`, `*.o`, `*.obj`, `*.exe`, `*.dll`, `*.so`, `*.dylib`
+- Env/IDE: `.env`, `.env.*` (except `.env.example`), `.venv/`, `venv/`, `.idea/`, `.vscode/` (unless project commits it), `*.swp`, `*.swo`, `.DS_Store`, `Thumbs.db`
+- Logs/data: `*.log`, `*.csv`, `*.tsv`, `*.db`, `*.sqlite`, `*.sqlite3`, `npm-debug.log*`, `yarn-debug.log*`, `yarn-error.log*`, `pnpm-debug.log*`
+- Lock-adjacent noise: `.turbo/`, `.eslintcache`, `.stylelintcache`
+
+Do NOT run `git add .` or `git add -A`. Stage by explicit path list. If you add anything to `.gitignore`, stage `.gitignore` itself with the commit.
+
+If a file is genuinely ambiguous (binary, unfamiliar extension, possible fixture vs. user data), ask the user before staging or ignoring.
 
 ## Step 4: Message
 
