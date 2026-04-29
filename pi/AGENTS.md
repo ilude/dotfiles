@@ -15,6 +15,10 @@ Expertise files: `~/.pi/agent/multi-team/expertise/`
 Shared skills: `~/.pi/agent/multi-team/skills/`
 Session logs: `~/.pi/agent/multi-team/sessions/`
 
+Source-vs-runtime policy: keep curated source/config trackable, but leave generated
+history, sessions, expertise logs, caches, and local tool state uncommitted. See
+`pi/README.md#source-vs-runtime-state` for the canonical policy.
+
 ## Agent Frontmatter Schema
 
 Pi agent `.md` files use YAML frontmatter that is a **superset** of Claude Code's agent schema. Pi-specific fields (`expertise`, `domain`, `skills`) coexist with Claude Code-compatible execution constraints (`isolation`, `memory`, `effort`, `maxTurns`). Both platforms ignore unknown fields, so a single agent file is portable.

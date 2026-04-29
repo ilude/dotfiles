@@ -83,6 +83,17 @@ claude/.specstory/
 __pycache__/
 *.pyc
 uv.lock
+!pi/prompt-routing/uv.lock
+
+# Prompt-router local Python/runtime artifacts
+pi/prompt-routing/.venv/
+pi/prompt-routing/__pycache__/
+pi/prompt-routing/.pytest_cache/
+pi/prompt-routing/.ruff_cache/
+pi/prompt-routing/logs/
+
+# Atomic-write leftovers from pi expertise/state writers
+*.tmp-*
 
 # =============================================================================
 # Research worktrees (cloned repos for analysis)
