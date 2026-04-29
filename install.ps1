@@ -135,7 +135,7 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
 # Check Developer Mode early (before elevation decision)
 $DevModeEarly = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -Name AllowDevelopmentWithoutDevLicense -ErrorAction SilentlyContinue).AllowDevelopmentWithoutDevLicense -eq 1
 
-if (-not $isAdmin -and -not $NoElevate -and -not $DevModeEarly) {
+if (-not $isAdmin -and -not $NoElevate -and (-not $DevModeEarly -or $Work -or $Dev -or $ITAdmin)) {
     Write-Host "Requesting Administrator privileges..." -ForegroundColor Yellow
 
     # Determine PowerShell executable
