@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "1177971c-9a6f-4bca-9ab7-2fb89f57f21e",
+  "origin": "subagent",
+  "state": "completed",
+  "summary": "reviewer",
+  "createdAt": "2026-04-29T03:13:48.141Z",
+  "updatedAt": "2026-04-29T03:14:05.651Z",
+  "retryCount": 0,
+  "agentName": "reviewer",
+  "prompt": "Return your complete review of .specs/pi-setup-refactor/plan.md in exactly 6 bullets max. Each bullet: Severity — Issue — Evidence from plan — Fix. No intro.",
+  "metadata": {
+    "cwd": "/Users/mglenn/.dotfiles",
+    "effort": "medium",
+    "maxTurns": 25,
+    "isolation": "none",
+    "memory": "project"
+  },
+  "startedAt": "2026-04-29T03:13:48.142Z",
+  "preview": "- High — Parallel Wave 2 has likely edit conflicts — Evidence from plan: T3 and T4 both modify `pi/README.md`, `.gitignore and/or pi/.gitignore`, and prompt-routing/runtime policy docs — Fix: sequence",
+  "endedAt": "2026-04-29T03:14:05.651Z",
+  "usage": {
+    "inputTokens": 3722,
+    "outputTokens": 728,
+    "totalTokens": 10844
+  }
+}

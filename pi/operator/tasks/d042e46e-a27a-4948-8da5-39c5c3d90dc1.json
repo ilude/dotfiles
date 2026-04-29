@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "d042e46e-a27a-4948-8da5-39c5c3d90dc1",
+  "origin": "subagent",
+  "state": "completed",
+  "summary": "typescript-pro",
+  "createdAt": "2026-04-29T03:13:08.842Z",
+  "updatedAt": "2026-04-29T03:13:44.700Z",
+  "retryCount": 0,
+  "agentName": "typescript-pro",
+  "prompt": "Return your TypeScript/Pi extension toolchain review of .specs/pi-setup-refactor/plan.md in <=500 words. Include only concrete findings with severity and fix. Focus module boundaries, auto-discovery, ...",
+  "metadata": {
+    "cwd": "/Users/mglenn/.dotfiles",
+    "effort": "medium",
+    "maxTurns": 25,
+    "isolation": "none",
+    "memory": "project"
+  },
+  "startedAt": "2026-04-29T03:13:08.842Z",
+  "preview": "## Findings\n\n- **High — `tsc-check` may miss extracted `pi/lib/*` modules.**  \n  `pi/extensions/tsconfig.json` includes only `pi/extensions/**/*.ts`; `pi/lib` is checked only when reachable from an ex",
+  "endedAt": "2026-04-29T03:13:44.700Z",
+  "usage": {
+    "inputTokens": 35568,
+    "outputTokens": 1455,
+    "totalTokens": 18757
+  }
+}
