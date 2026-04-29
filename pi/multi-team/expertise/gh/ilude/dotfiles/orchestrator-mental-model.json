@@ -2,9 +2,9 @@
   "schema_version": 1,
   "summary_format_version": 2,
   "agent": "orchestrator",
-  "rebuilt_at": "2026-04-25T13:56:43.632Z",
-  "covers_through_timestamp": "2026-04-25T13:47:11.339Z",
-  "source_entry_count": 22,
+  "rebuilt_at": "2026-04-29T02:37:12.993Z",
+  "covers_through_timestamp": "2026-04-25T16:44:46.126Z",
+  "source_entry_count": 24,
   "similarity": {
     "enabled": true,
     "active": true,
@@ -126,6 +126,26 @@
       }
     ],
     "observation": [
+      {
+        "summary": "Prompt router now has openai-codex/gpt-5.5-specific effort bias: medium is demoted to low unless classifier confidence >=0.8; high remains available; global max effort cap remains high, and manually-set xhigh is preserved when detected via pi.getThinkingLevel().",
+        "evidence_count": 1,
+        "first_seen": "2026-04-25T16:44:46.126Z",
+        "last_seen": "2026-04-25T16:44:46.126Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "Pi auto-discovers every top-level `*.ts` in `~/.pi/agent/extensions/`; helper modules placed there must either move under a non-entry path or export a no-op default factory to avoid `Extension does not export a valid factory function`.",
+        "evidence_count": 1,
+        "first_seen": "2026-04-25T16:07:30.219Z",
+        "last_seen": "2026-04-25T16:07:30.219Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
       {
         "summary": "dotfiles: read_expertise LLM-facing output cleanup: read_expertise text should be distilled expertise only: no rebuild/similarity/layer/evidence metadata, no repeated category headings, and generic entries should summarize topic/details/discovery fields as prose instead of raw JSON. Diagnostics remain available in tool details and snapshot JSON.",
         "evidence_count": 1,

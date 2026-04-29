@@ -396,7 +396,7 @@ Artifacts: `models/router_v3.joblib` (T2) and `models/router_v3_lgbm.joblib`
   audit log when Python logging is enabled).
 - If `/router-explain` shows `Rule fired: null-fallback`, the classifier
   failed or returned garbage; the router kept the previous route. Reproduce
-  with `python ~/.dotfiles/pi/prompt-routing/classify.py "test prompt"`.
+  with `uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/classify.py --classifier t2 "test prompt"`.
 - If `effort-cap` fires often, raise `router.effort.maxLevel`. If `cooldown`
   is stuck, call `/router-reset`.
 
@@ -436,23 +436,23 @@ To retrain after adding examples to the corpus:
 
 ```bash
 cd ~/.dotfiles/pi/prompt-routing
-python train.py
-python evaluate.py --holdout   # must pass all gates
-python -m pytest tests/         # 64 tests
+uv run python train.py
+uv run python evaluate.py --holdout   # must pass all gates
+uv run python -m pytest tests/         # 64 tests
 ```
 
 To label new training data from your Claude history:
 
 ```bash
-python label_history.py --signal high,low --resume
-python merge_labels.py --dry-run
-python merge_labels.py --cap <N>
+uv run python label_history.py --signal high,low --resume
+uv run python merge_labels.py --dry-run
+uv run python merge_labels.py --cap <N>
 ```
 
 To run the daily audit (compare live routing against Opus labels):
 
 ```bash
-python audit.py
+uv run python audit.py
 ```
 
 Full documentation: `~/.dotfiles/pi/prompt-routing/AGENTS.md`

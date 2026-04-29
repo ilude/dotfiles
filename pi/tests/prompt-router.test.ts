@@ -613,8 +613,14 @@ describe("prompt-router extension -- input hook", () => {
 
     expect(result).toEqual({ action: "continue" });
     expect(pi.exec).toHaveBeenCalledWith(
-      "python",
-      expect.arrayContaining([expect.stringContaining("classify.py")]),
+      "uv",
+      expect.arrayContaining([
+        "run",
+        "--project",
+        expect.stringContaining("prompt-routing"),
+        "python",
+        expect.stringContaining("classify.py"),
+      ]),
       expect.objectContaining({ timeout: 5000 })
     );
 

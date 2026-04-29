@@ -29,59 +29,60 @@ export interface ThinkingLevelProbeResult {
   report: string;
 }
 
-export function runThinkingLevelProbe(pi: ExtensionAPI): ThinkingLevelProbeResult {
-  const api = pi as unknown as {
-    setThinkingLevel?: (level: string) => void;
-    getThinkingLevel?: () => string;
-  };
+type ThinkingApi = {
+  setThinkingLevel?: (level: string) => void;
+  getThinkingLevel?: () => string;
+};
 
+function readThinkingLevel(api: ThinkingApi): string {
+  return api.getThinkingLevel?.() ?? "(no getter)";
+}
+
+function probeSetLevel(api: ThinkingApi, level: string): { after: string | null; line: string } {
+  try {
+    api.setThinkingLevel?.(level);
+    const after = readThinkingLevel(api);
+    const resultLabel = level === "xhigh" ? "clamped_to" : "now";
+    return { after, line: `probe: setThinkingLevel("${level}") OK, ${resultLabel}=${after}` };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { after: null, line: `probe: setThinkingLevel("${level}") threw: ${msg}` };
+  }
+}
+
+export function runThinkingLevelProbe(pi: ExtensionAPI): ThinkingLevelProbeResult {
+  const api = pi as unknown as ThinkingApi;
   const hasSet = typeof api.setThinkingLevel === "function";
   const hasGet = typeof api.getThinkingLevel === "function";
-  const before = hasGet ? api.getThinkingLevel!() : "(no getter)";
+  const before = readThinkingLevel(api);
+  const lines = [`probe: hasSetThinkingLevel=${hasSet}`, `probe: hasGetThinkingLevel=${hasGet}`, `probe: before=${before}`];
 
-  const lines: string[] = [
-    `probe: hasSetThinkingLevel=${hasSet}`,
-    `probe: hasGetThinkingLevel=${hasGet}`,
-    `probe: before=${before}`,
-  ];
+  const minimal = hasSet ? probeSetLevel(api, "minimal") : { after: null, line: "" };
+  const xhigh = hasSet ? probeSetLevel(api, "xhigh") : { after: null, line: "" };
+  if (hasSet) lines.push(minimal.line, xhigh.line);
 
-  let afterMinimal: string | null = null;
-  let afterXhigh: string | null = null;
-
-  if (hasSet) {
-    try {
-      api.setThinkingLevel!("minimal");
-      afterMinimal = hasGet ? api.getThinkingLevel!() : "(no getter)";
-      lines.push(`probe: setThinkingLevel("minimal") OK, now=${afterMinimal}`);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      lines.push(`probe: setThinkingLevel("minimal") threw: ${msg}`);
-    }
-
-    try {
-      api.setThinkingLevel!("xhigh");
-      afterXhigh = hasGet ? api.getThinkingLevel!() : "(no getter)";
-      lines.push(`probe: setThinkingLevel("xhigh") OK, clamped_to=${afterXhigh}`);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      lines.push(`probe: setThinkingLevel("xhigh") threw: ${msg}`);
-    }
-  }
-
-  return {
-    hasSet,
-    hasGet,
-    before,
-    afterMinimal,
-    afterXhigh,
-    report: lines.join("\n"),
-  };
+  return { hasSet, hasGet, before, afterMinimal: minimal.after, afterXhigh: xhigh.after, report: lines.join("\n") };
 }
 
 export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
-    const result = runThinkingLevelProbe(pi);
-    ctx.ui.setStatus("probe-thinking", result.hasSet ? "probe: ok" : "probe: missing");
-    ctx.ui.notify(result.report, "info");
+    const api = pi as unknown as {
+      getThinkingLevel?: () => string;
+      setThinkingLevel?: (level: string) => void;
+    };
+    const hasSet = typeof api.setThinkingLevel === "function";
+    const hasGet = typeof api.getThinkingLevel === "function";
+    const current = hasGet ? api.getThinkingLevel!() : "(no getter)";
+
+    ctx.ui.setStatus("probe-thinking", hasSet ? "probe: ok" : "probe: missing");
+    ctx.ui.notify(
+      [
+        `probe: hasSetThinkingLevel=${hasSet}`,
+        `probe: hasGetThinkingLevel=${hasGet}`,
+        `probe: current=${current}`,
+        "probe: non-mutating session_start; runThinkingLevelProbe is test/manual-only",
+      ].join("\n"),
+      "info",
+    );
   });
 }
