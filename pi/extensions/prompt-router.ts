@@ -56,22 +56,28 @@
  * the Python router's built-in logging.
  */
 
-import * as os from "node:os";
-import * as path from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { makeExcerpt, sha256Hex } from "../lib/transcript.js";
-import { readMergedSettings } from "../lib/settings-loader.js";
 import { emit, getWriter } from "./transcript-runtime.js";
 import { getCurrentModelHint, resolveDynamicModelFromRegistry, resolveModelTierLabel } from "../lib/model-routing.js";
+import {
+  type ClassifierRecommendation,
+  classifyWithV3,
+  safeParseClassifierOutput,
+} from "../lib/prompt-router/classifier.js";
+import {
+  CLASSIFY_SCRIPT,
+  POLICY_DEFAULTS,
+  type RouterPolicy,
+  loadRouterPolicy,
+  readPromptRouterSettings,
+} from "../lib/prompt-router/config.js";
+
+export { safeParseClassifierOutput };
 
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
-
-const PROMPT_ROUTING_DIR = path.join(os.homedir(), ".dotfiles/pi/prompt-routing");
-const CLASSIFY_SCRIPT = path.join(PROMPT_ROUTING_DIR, "classify.py");
-
-const SETTINGS_PATH = path.join(os.homedir(), ".dotfiles/pi/settings.json");
 
 const TIER_ORDER: Record<string, number> = { low: 0, mid: 1, high: 2 };
 const TIER_KEYS: Tier[] = ["low", "mid", "high"];
@@ -88,9 +94,6 @@ const TIER_EFFORT: Record<Tier, string> = {
   mid: "medium",
   high: "high",
 };
-
-// Known accepted schema versions for the v3 classifier output.
-const KNOWN_SCHEMA_VERSIONS = new Set(["3.0.0"]);
 
 // Providers that don't have cost/model size mappings yet -- router skips them.
 const SKIP_PROVIDERS = new Set(["opencode", "opencode-go", "openrouter"]);
@@ -170,78 +173,10 @@ interface RouterState {
   cooldownTurnsRemaining: number;
 }
 
-// ---------------------------------------------------------------------------
-// V3 classifier types
-// ---------------------------------------------------------------------------
-
-interface ClassifierRecommendation {
-  schema_version: string;
-  primary: { model_tier: string; effort: string };
-  candidates: Array<{ model_tier: string; effort: string; confidence: number }>;
-  confidence: number;
-  reason?: string;
-  ensemble_rule?: string;
-}
-
 interface AppliedRoute {
   tier: Tier;
   effort: string;
   ruleFired: RuleFired;
-}
-
-// ---------------------------------------------------------------------------
-// Settings loader
-// ---------------------------------------------------------------------------
-
-interface RouterPolicy {
-  N_HOLD: number;
-  DOWNGRADE_THRESHOLD: number;
-  K_CONSEC: number;
-  COOLDOWN_TURNS: number;
-  UNCERTAIN_THRESHOLD: number;
-  UNCERTAIN_FALLBACK_ENABLED: boolean;
-  maxEffortLevel: string;
-}
-
-const POLICY_DEFAULTS: RouterPolicy = {
-  N_HOLD: 3,
-  DOWNGRADE_THRESHOLD: 0.85,
-  K_CONSEC: 2,
-  COOLDOWN_TURNS: 2,
-  UNCERTAIN_THRESHOLD: 0.55,
-  UNCERTAIN_FALLBACK_ENABLED: false,
-  maxEffortLevel: "high",
-};
-
-function loadRouterPolicy(): RouterPolicy {
-  try {
-    // Router settings live in ~/.dotfiles/pi/settings.json today (a non-default
-    // user location); use the userPath override so the cascade reads it as the
-    // user layer. skipProject + skipLocal preserves the pre-cascade scope --
-    // router thresholds are not project-overridable in MVP.
-    const s = readMergedSettings({
-      userPath: SETTINGS_PATH,
-      skipProject: true,
-      skipLocal: true,
-    });
-    const p = (s?.router as Record<string, unknown>)?.policy as Record<string, unknown> | undefined ?? {};
-    const e = (s?.router as Record<string, unknown>)?.effort as Record<string, unknown> | undefined ?? {};
-    const maxLevel =
-      typeof e.maxLevel === "string" && EFFORT_ORDER[e.maxLevel as string] !== undefined
-        ? (e.maxLevel as string)
-        : POLICY_DEFAULTS.maxEffortLevel;
-    return {
-      N_HOLD:              typeof p.N_HOLD === "number"              ? p.N_HOLD              : POLICY_DEFAULTS.N_HOLD,
-      DOWNGRADE_THRESHOLD: typeof p.DOWNGRADE_THRESHOLD === "number" ? p.DOWNGRADE_THRESHOLD : POLICY_DEFAULTS.DOWNGRADE_THRESHOLD,
-      K_CONSEC:            typeof p.K_CONSEC === "number"            ? p.K_CONSEC            : POLICY_DEFAULTS.K_CONSEC,
-      COOLDOWN_TURNS:      typeof p.COOLDOWN_TURNS === "number"      ? p.COOLDOWN_TURNS      : POLICY_DEFAULTS.COOLDOWN_TURNS,
-      UNCERTAIN_THRESHOLD: typeof p.UNCERTAIN_THRESHOLD === "number" ? p.UNCERTAIN_THRESHOLD : POLICY_DEFAULTS.UNCERTAIN_THRESHOLD,
-      UNCERTAIN_FALLBACK_ENABLED: typeof p.UNCERTAIN_FALLBACK_ENABLED === "boolean" ? p.UNCERTAIN_FALLBACK_ENABLED : POLICY_DEFAULTS.UNCERTAIN_FALLBACK_ENABLED,
-      maxEffortLevel: maxLevel,
-    };
-  } catch {
-    return { ...POLICY_DEFAULTS };
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -268,12 +203,8 @@ function isCodexGpt55(model: unknown): boolean {
 }
 
 function isConfiguredDefaultCodexGpt55(): boolean {
-  try {
-    const settings = readMergedSettings({ userPath: SETTINGS_PATH, skipProject: true, skipLocal: true }) as Record<string, unknown>;
-    return settings.defaultProvider === CODEX_GPT55_PROVIDER && settings.defaultModel === CODEX_GPT55_MODEL;
-  } catch {
-    return false;
-  }
+  const settings = readPromptRouterSettings();
+  return settings?.defaultProvider === CODEX_GPT55_PROVIDER && settings.defaultModel === CODEX_GPT55_MODEL;
 }
 
 function shouldForceLowThinkingOnSessionStart(ctx: unknown): boolean {
@@ -355,56 +286,6 @@ export function applyHysteresis(raw: Tier, state: RouterState, policy: RouterPol
 }
 
 /**
- * Safely parse and schema-validate classifier stdout.
- *
- * Accepts v3 JSON with a known schema_version only. Returns null on parse
- * failure, version mismatch, missing required fields, or out-of-range values.
- * Callers treat null as "keep current applied route" (null-fallback path).
- */
-export function safeParseClassifierOutput(raw: string): ClassifierRecommendation | null {
-  const trimmed = raw.trim();
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch {
-    return null;
-  }
-
-  if (typeof parsed !== "object" || parsed === null) return null;
-  const obj = parsed as Record<string, unknown>;
-
-  if (typeof obj["schema_version"] !== "string") return null;
-  if (!KNOWN_SCHEMA_VERSIONS.has(obj["schema_version"])) return null;
-
-  if (typeof obj["primary"] !== "object" || obj["primary"] === null) return null;
-  const primary = obj["primary"] as Record<string, unknown>;
-  if (typeof primary["model_tier"] !== "string") return null;
-  if (typeof primary["effort"] !== "string") return null;
-
-  if (!Array.isArray(obj["candidates"]) || obj["candidates"].length === 0) return null;
-
-  if (typeof obj["confidence"] !== "number") return null;
-  if (obj["confidence"] < 0 || obj["confidence"] > 1) return null;
-
-  return {
-    schema_version: obj["schema_version"],
-    primary: {
-      model_tier: primary["model_tier"] as string,
-      effort: primary["effort"] as string,
-    },
-    candidates: (obj["candidates"] as any[]).map((c) => ({
-      model_tier: String(c.model_tier ?? ""),
-      effort: String(c.effort ?? ""),
-      confidence: Number(c.confidence ?? 0),
-    })),
-    confidence: obj["confidence"],
-    reason: typeof obj["reason"] === "string" ? obj["reason"] : undefined,
-    ensemble_rule: typeof obj["ensemble_rule"] === "string" ? obj["ensemble_rule"] : undefined,
-  };
-}
-
-/**
  * Applies the full T3 runtime policy: uncertainty fallback, cooldown,
  * hysteresis (settings-driven thresholds), and effort cap.
  */
@@ -469,36 +350,6 @@ export function buildStatusLabel(
   const effortPart = currentEffort ? ` [${currentEffort}]` : "";
   const held = effective !== raw ? ` (held from ${effective})` : "";
   return `${icon} ${modelPart}${effortPart}${held}`;
-}
-
-async function classifyWithV3(
-  pi: ExtensionAPI,
-  text: string,
-  ctx: any
-): Promise<ClassifierRecommendation | null> {
-  let result: { stdout: string; stderr: string; code: number };
-  try {
-    result = await pi.exec(
-      "uv",
-      ["run", "--project", PROMPT_ROUTING_DIR, "python", CLASSIFY_SCRIPT, "--classifier", "t2", text],
-      { timeout: 5000 }
-    );
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    ctx.ui.notify(`router: classifier exec failed (non-fatal): ${msg}`, "warning");
-    return null;
-  }
-
-  const rec = safeParseClassifierOutput(result.stdout.trim());
-  if (rec === null) {
-    ctx.ui.notify(
-      `router: classifier output invalid, keeping current route. stdout=${result.stdout.trim().slice(0, 120)}`,
-      "warning"
-    );
-    return null;
-  }
-
-  return rec;
 }
 
 /**
@@ -622,7 +473,7 @@ async function classifyAndRoute(
 // ---------------------------------------------------------------------------
 
 export default function (pi: ExtensionAPI) {
-  const policy = loadRouterPolicy();
+  const policy = loadRouterPolicy(EFFORT_ORDER);
 
   const state: RouterState = {
     currentTier: "low",
