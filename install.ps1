@@ -353,11 +353,6 @@ function Invoke-WingetConfigure {
         return
     }
 
-    # Pre-flight state check (no --dry-run flag exists; `test` is the real diff)
-    Write-Host "  Pre-flight state check..." -ForegroundColor DarkGray
-    & winget configure test --accept-configuration-agreements -f $ConfigFile 2>&1 | Out-Host
-
-    # Apply
     Write-Host "  Applying configuration..." -ForegroundColor Cyan
     & winget configure --accept-configuration-agreements -f $ConfigFile 2>&1 | Out-Host
     $exitCode = $LASTEXITCODE
