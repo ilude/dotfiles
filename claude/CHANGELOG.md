@@ -1,3 +1,17 @@
+## 2026-04-29: Vendor three skills from mattpocock/skills
+
+**Added:**
+- `claude/skills/grill-me/` -- aggressive plan interrogation skill; one question at a time, model provides recommended answer with each, prefers exploring the codebase over asking
+- `claude/skills/zoom-out/` -- "map modules + callers at a higher abstraction" one-shot
+- `claude/skills/caveman/` -- toggleable ultra-terse reply mode (~75% token cut), persists until "stop caveman"
+- `claude/skills/UPSTREAM.md` -- provenance manifest pinning upstream repo + commit SHA + import date so we can diff against future upstream changes
+
+Upstream: https://github.com/mattpocock/skills @ `f71bb975bfae2dc0d31c529c7dd4a8479ecc3748` (2026-04-29). All three SKILL.md files copied verbatim.
+
+**Files:** ~/.dotfiles/claude/skills/grill-me/SKILL.md, ~/.dotfiles/claude/skills/zoom-out/SKILL.md, ~/.dotfiles/claude/skills/caveman/SKILL.md, ~/.dotfiles/claude/skills/UPSTREAM.md
+
+---
+
 ## 2026-04-29: Adopt personal-preferences ruleset (over-scope guard, command discipline, package-manager policy)
 
 **Added:**
