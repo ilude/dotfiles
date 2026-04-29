@@ -1,3 +1,13 @@
+## 2026-04-29: Add commit-fast slash command
+
+**Added:**
+- `/commit-fast` -- ceremony-light single-commit path for working trees that are already one logical change. Skips the file grouping, sub-task loop, and pre-commit-hook optimization that `/commit` performs.
+- Pi-side parity at `pi/skills/workflow/commit-fast.md` (same instructions adapted for Pi's skill conventions).
+
+**Files:** ~/.dotfiles/claude/commands/commit-fast.md, ~/.dotfiles/claude/shared/commit-fast-instructions.md, ~/.dotfiles/pi/skills/workflow/commit-fast.md
+
+---
+
 ## 2026-04-29: Vendor three skills from mattpocock/skills
 
 **Added:**
