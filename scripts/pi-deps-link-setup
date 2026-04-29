@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+
+# Link Bun-global @mariozechner and @sinclair scopes into pi/node_modules so
+# extensions in ~/.dotfiles/pi/{extensions,lib}/*.ts can resolve
+# @mariozechner/pi-coding-agent, @mariozechner/pi-ai, and @sinclair/typebox.
+#
+# pi (the binary) is installed via `bun install -g @mariozechner/pi-coding-agent`,
+# which puts those packages in $BUN_INSTALL/install/global/node_modules/. Bun's
+# resolver, walking up from a file under ~/.dotfiles/pi/, never reaches that
+# global path -- so we plant the scopes inside pi/node_modules ourselves.
+
+DOTFILES_DIR="${HOME}/.dotfiles"
+PI_DIR="${DOTFILES_DIR}/pi"
+PI_NODE_MODULES="${PI_DIR}/node_modules"
+BUN_INSTALL="${BUN_INSTALL:-${HOME}/.bun}"
+BUN_GLOBAL_NODE_MODULES="${BUN_INSTALL}/install/global/node_modules"
+
+# Scopes to link (each is a directory under BUN_GLOBAL_NODE_MODULES)
+SCOPES=("@mariozechner" "@sinclair")
+
+is_windows() {
+    [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ -n "$WINDIR" ]]
+}
+
+is_link() {
+    local path="$1"
+    if is_windows; then
+        if [[ -L "$path" ]]; then
+            return 0
+        fi
+        local win_path
+        win_path=$(cygpath -w "$path" 2>/dev/null)
+        if [[ -n "$win_path" ]] && cmd //c "dir /AL \"$(dirname "$win_path")\"" 2>/dev/null | grep -q "$(basename "$path")"; then
+            return 0
+        fi
+        return 1
+    else
+        [[ -L "$path" ]]
+    fi
+}
+
+resolve_link_target() {
+    local path="$1"
+    if is_windows; then
+        # readlink -f works for symlinks; junctions are reported by `dir` but
+        # have no readlink target. For idempotency we accept either form as
+        # "linked" and just verify the path resolves into the bun global tree.
+        readlink -f "$path" 2>/dev/null || readlink "$path" 2>/dev/null || echo ""
+    else
+        readlink -f "$path" 2>/dev/null || readlink "$path" 2>/dev/null || echo ""
+    fi
+}
+
+create_link() {
+    local source="$1"
+    local target="$2"
+    if is_windows; then
+        local win_target win_source
+        win_target=$(cygpath -w "$target")
+        win_source=$(cygpath -w "$source")
+        cmd //c "mklink /J $win_target $win_source" > /dev/null 2>&1
+    else
+        ln -s "$source" "$target"
+    fi
+}
+
+echo "Setting up Pi extension dependency links..."
+
+if [[ ! -d "$PI_DIR" ]]; then
+    echo "  Error: Pi source directory not found: $PI_DIR"
+    exit 1
+fi
+
+if [[ ! -d "$BUN_GLOBAL_NODE_MODULES" ]]; then
+    echo "  Skipping: Bun global node_modules not found at $BUN_GLOBAL_NODE_MODULES"
+    echo "  (install pi-coding-agent first: bun install -g @mariozechner/pi-coding-agent)"
+    exit 0
+fi
+
+mkdir -p "$PI_NODE_MODULES"
+
+for scope in "${SCOPES[@]}"; do
+    source_path="${BUN_GLOBAL_NODE_MODULES}/${scope}"
+    target_path="${PI_NODE_MODULES}/${scope}"
+
+    if [[ ! -d "$source_path" ]]; then
+        echo "  Skipping ${scope}: not present in ${BUN_GLOBAL_NODE_MODULES}"
+        continue
+    fi
+
+    if is_link "$target_path"; then
+        current=$(resolve_link_target "$target_path")
+        expected=$(readlink -f "$source_path" 2>/dev/null || echo "$source_path")
+        if [[ "$current" == "$expected" ]] || [[ "$current" == "$source_path" ]]; then
+            echo "  ${scope}: already linked"
+            continue
+        fi
+        echo "  ${scope}: replacing stale link"
+        rm -f "$target_path"
+    elif [[ -e "$target_path" ]]; then
+        echo "  Error: ${target_path} exists and is not a link; refusing to overwrite"
+        exit 1
+    fi
+
+    if create_link "$source_path" "$target_path"; then
+        echo "  ${scope}: linked -> ${source_path}"
+    else
+        echo "  Error: failed to link ${scope}"
+        exit 1
+    fi
+done
+
+echo "  Done"

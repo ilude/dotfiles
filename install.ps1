@@ -1569,8 +1569,15 @@ try {
             & $gitBash "$bashPath"
         }
 
+        # Link Bun-global @scopes into pi/node_modules so extensions can resolve them
+        $piDepsLinkSetup = Join-Path $BASEDIR "scripts" "pi-deps-link-setup"
+        if (Test-Path $piDepsLinkSetup) {
+            $bashPath = ConvertTo-GitBashPath $piDepsLinkSetup
+            & $gitBash "$bashPath"
+        }
+
         # Install pi web-fetch dependencies
-        $webFetchDir = Join-Path $BASEDIR "pi" "tools" "web-fetch"
+        $webFetchDir = Join-Path $BASEDIR "pi" "extensions" "web-fetch"
         if (Test-Path $webFetchDir) {
             $nodeModules = Join-Path $webFetchDir "node_modules"
             if (Test-Path $nodeModules) {
