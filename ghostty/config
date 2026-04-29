@@ -1,0 +1,11 @@
+# Ghostty configuration.
+#
+# Run `ghostty +show-config --default --docs` to view all available options
+# and their default values. Each option is also documented at
+# https://ghostty.org/docs/config.
+#
+# Reload at runtime with Cmd+Shift+, (macOS) or Ctrl+Shift+, (other).
+
+# Copy selected text directly to the system clipboard so Cmd+V / Ctrl+Shift+V
+# pastes the selection. Plain `true` only writes to the PRIMARY selection.
+copy-on-select = clipboard
