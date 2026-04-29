@@ -1,3 +1,14 @@
+## 2026-04-29: Adopt personal-preferences ruleset (over-scope guard, command discipline, package-manager policy)
+
+**Added:**
+- Critical rule "Stop when over-scoped": if a request bundles too much work, STOP and propose a sequenced 1-3-1 breakdown rather than silently attempting the whole thing.
+- TypeScript skill section "Command Discipline": do not start dev servers or run builds during edit/verify work; default to typecheck/lint/test for verification.
+- TypeScript skill section "Package Manager: pnpm or bun, never npm/yarn": pick from lockfile, do not silently migrate, flag when CI pins differently.
+
+**Files:** ~/.dotfiles/claude/CLAUDE.md, ~/.dotfiles/claude/skills/typescript/SKILL.md
+
+---
+
 ## 2026-04-16: Ban em-dashes / en-dashes in file content
 
 **Added:**

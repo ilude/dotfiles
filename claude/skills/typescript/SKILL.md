@@ -26,7 +26,31 @@ Guidelines for working with TypeScript and JavaScript projects using Bun as the 
 | CSS and styling | [css.md](css.md) |
 | Bun testing | [testing.md](testing.md) |
 
-## CRITICAL: Bun Package Manager
+## Command Discipline
+
+When working in a TS/JS project, default to **inspecting, not running**:
+
+- **Do NOT start dev servers** (`bun run dev`, `pnpm dev`, `npm start`, etc.). Assume one is already running in another terminal. If output suggests it isn't, ask the user before starting one.
+- **Do NOT run build commands** (`bun run build`, `next build`, `tsc -b`, etc.) unless explicitly asked. Builds are slow, side-effectful (write to `dist/`, `.next/`), and rarely the right verification step during edits.
+- **DO run typecheck and lint** to verify edits: `bun run typecheck` (or `tsc --noEmit`), `bun run lint`, `bun run biome check .`. These are fast, side-effect-free, and catch most regressions edits introduce.
+- **DO run tests** when relevant to the change: `bun test`, `pnpm test`, `vitest run`.
+
+**Exception:** if the task is explicitly "ship a build" or "verify the production bundle," running build is correct.
+
+## Package Manager: pnpm or bun, never npm/yarn
+
+Pick the manager from the project's lockfile:
+
+| Lockfile present | Manager | Commands |
+|------------------|---------|----------|
+| `bun.lock` / `bun.lockb` | bun | `bun install`, `bun add <pkg>`, `bun run <script>`, `bun test` |
+| `pnpm-lock.yaml` | pnpm | `pnpm install`, `pnpm add <pkg>`, `pnpm <script>`, `pnpm test` |
+| neither (greenfield) | bun | as above |
+| `package-lock.json` or `yarn.lock` only | ask before doing anything | do not silently migrate; flag the mismatch |
+
+Do **not** run `npm` or `yarn` commands. If a project's CI or Docker image pins one of those, follow that pin, but flag it.
+
+## Bun Project Commands
 
 **You MUST use Bun commands** for all package and runtime operations in Bun projects:
 
