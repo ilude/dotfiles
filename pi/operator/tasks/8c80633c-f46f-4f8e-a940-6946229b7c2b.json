@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "8c80633c-f46f-4f8e-a940-6946229b7c2b",
+  "origin": "subagent",
+  "state": "completed",
+  "summary": "typescript-pro",
+  "createdAt": "2026-04-29T03:42:10.350Z",
+  "updatedAt": "2026-04-29T03:44:00.276Z",
+  "retryCount": 0,
+  "agentName": "typescript-pro",
+  "prompt": "Execute Wave 1 / T1 from .specs/pi-setup-refactor/plan.md only. Baseline: focused tests passed (75 passed); python pi/extensions/tsc-check.py has pre-existing diagnostics around task-registry export a...",
+  "metadata": {
+    "cwd": "/Users/mglenn/.dotfiles",
+    "effort": "medium",
+    "maxTurns": 25,
+    "isolation": "none",
+    "memory": "project"
+  },
+  "startedAt": "2026-04-29T03:42:10.351Z",
+  "preview": "Implemented Wave 1 / T1 only.\n\nFiles changed:\n- `pi/extensions/prompt-router.ts`\n- `pi/lib/prompt-router/config.ts`\n- `pi/lib/prompt-router/classifier.ts`\n- `pi/tests/prompt-router.test.ts`\n\nWhat chan",
+  "endedAt": "2026-04-29T03:44:00.276Z",
+  "usage": {
+    "inputTokens": 43140,
+    "outputTokens": 6822,
+    "totalTokens": 36139
+  }
+}

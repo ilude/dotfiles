@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "summary_format_version": 2,
+  "agent": "planner",
+  "rebuilt_at": "2026-04-29T03:51:37.890Z",
+  "covers_through_timestamp": "2026-04-29T03:51:37.889Z",
+  "source_entry_count": 5,
+  "similarity": {
+    "enabled": true,
+    "active": false,
+    "provider": "openai-codex",
+    "model": "gpt-5.4-mini",
+    "min_confidence": 0.75,
+    "timeout_ms": 3000,
+    "reason": "registry_unavailable",
+    "attempted": 0,
+    "merged": 0,
+    "kept_separate": 0,
+    "failed": 0,
+    "malformed": 0,
+    "skipped_for_low_confidence": 0
+  },
+  "categories": {
+    "strong_decision": [],
+    "key_file": [],
+    "pattern": [
+      {
+        "summary": "{\"pattern\":\"When reviewing implementation plans, check whether installer/link-path decisions are treated as late wiring tasks even though launcher commands and layout files already depend on them; this often indicates a hidden prerequisi...",
+        "evidence_count": 1,
+        "first_seen": "2026-04-20T03:35:09.417Z",
+        "last_seen": "2026-04-20T03:35:09.417Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      }
+    ],
+    "observation": [
+      {
+        "summary": "same fact",
+        "evidence_count": 4,
+        "first_seen": "2026-04-29T03:50:40.546Z",
+        "last_seen": "2026-04-29T03:51:37.889Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      }
+    ],
+    "open_question": [],
+    "system_overview": []
+  }
+}

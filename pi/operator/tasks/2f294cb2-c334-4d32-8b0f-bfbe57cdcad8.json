@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "2f294cb2-c334-4d32-8b0f-bfbe57cdcad8",
+  "origin": "subagent",
+  "state": "completed",
+  "summary": "backend-dev",
+  "createdAt": "2026-04-29T03:49:16.001Z",
+  "updatedAt": "2026-04-29T03:49:57.840Z",
+  "retryCount": 0,
+  "agentName": "backend-dev",
+  "prompt": "Execute only Wave 4 / T4 from .specs/pi-setup-refactor/plan.md in /Users/mglenn/.dotfiles. Make minimal documentation/ignore changes: document conservative Pi source-vs-runtime policy in one primary l...",
+  "metadata": {
+    "cwd": "/Users/mglenn/.dotfiles",
+    "effort": "medium",
+    "maxTurns": 25,
+    "isolation": "none",
+    "memory": "project"
+  },
+  "startedAt": "2026-04-29T03:49:16.002Z",
+  "preview": "Implemented Wave 4 / T4 only.\n\n### Files changed\n\n- `pi/README.md`\n  - Added canonical **Source vs. runtime state** policy.\n  - Documents curated trackable Pi source/config vs generated/local runtime ",
+  "endedAt": "2026-04-29T03:49:57.840Z",
+  "usage": {
+    "inputTokens": 35769,
+    "outputTokens": 2227,
+    "totalTokens": 34065
+  }
+}

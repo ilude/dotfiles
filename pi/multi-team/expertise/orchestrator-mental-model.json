@@ -2,17 +2,17 @@
   "schema_version": 1,
   "summary_format_version": 2,
   "agent": "orchestrator",
-  "rebuilt_at": "2026-04-29T02:37:13.006Z",
-  "covers_through_timestamp": "2026-04-21T02:56:44.205Z",
-  "source_entry_count": 6,
+  "rebuilt_at": "2026-04-29T03:51:37.920Z",
+  "covers_through_timestamp": "2026-04-29T03:51:37.920Z",
+  "source_entry_count": 16,
   "similarity": {
     "enabled": true,
-    "active": true,
+    "active": false,
     "provider": "openai-codex",
     "model": "gpt-5.4-mini",
     "min_confidence": 0.75,
     "timeout_ms": 3000,
-    "reason": "ready",
+    "reason": "registry_unavailable",
     "attempted": 0,
     "merged": 0,
     "kept_separate": 0,
@@ -23,6 +23,22 @@
   "categories": {
     "strong_decision": [
       {
+        "decision": "keep npm on Windows",
+        "why_good": "latest Pi",
+        "summary": "keep npm on Windows",
+        "evidence_count": 2,
+        "first_seen": "2026-04-29T03:50:40.645Z",
+        "last_seen": "2026-04-29T03:51:37.920Z"
+      },
+      {
+        "decision": "prefer snapshot reads",
+        "why_good": "reduces token use",
+        "summary": "prefer snapshot reads",
+        "evidence_count": 2,
+        "first_seen": "2026-04-29T03:50:40.540Z",
+        "last_seen": "2026-04-29T03:51:37.881Z"
+      },
+      {
         "decision": "Implement /commit as a real extension command in pi/extensions/workflow-commands.ts instead of a prompt-template wrapper.",
         "why_good": "This removes chatty back-and-forth, lets the command use ctx.ui confirm/select/input directly, and keeps the commit workflow deterministic while preserving explicit confirmation before commit/push.",
         "summary": "Implement /commit as a real extension command in pi/extensions/workflow-commands.ts instead of a prompt-template wrapper.",
@@ -32,6 +48,14 @@
       }
     ],
     "key_file": [
+      {
+        "path": "pi/extensions/agent-chain.ts",
+        "role": "expertise tools",
+        "summary": "pi/extensions/agent-chain.ts -- expertise tools",
+        "evidence_count": 2,
+        "first_seen": "2026-04-29T03:50:40.645Z",
+        "last_seen": "2026-04-29T03:51:37.920Z"
+      },
       {
         "path": "pi/extensions/workflow-commands.ts",
         "role": "Registers shared Pi slash commands; adding a command here makes it available in sessions where this extension is loaded.",
@@ -74,6 +98,16 @@
       }
     ],
     "observation": [
+      {
+        "summary": "dotfiles: same noisy fact",
+        "evidence_count": 4,
+        "first_seen": "2026-04-29T03:50:40.643Z",
+        "last_seen": "2026-04-29T03:51:37.919Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
       {
         "summary": "Pi 0.68.0 breaking changes are concentrated in SDK/tool factory exports and explicit cwd/resource-loader inputs. This dotfiles repo's Pi customizations are extension-based and already use tool-name allowlists in subagent spawning, so no mandatory compatibility edits were found.",
         "evidence_count": 1,

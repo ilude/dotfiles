@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "summary_format_version": 2,
+  "agent": "reviewer",
+  "rebuilt_at": "2026-04-29T03:51:37.895Z",
+  "covers_through_timestamp": "2026-04-29T03:51:37.893Z",
+  "source_entry_count": 4,
+  "similarity": {
+    "enabled": true,
+    "active": false,
+    "provider": "openai-codex",
+    "model": "gpt-5.4-mini",
+    "min_confidence": 0.75,
+    "timeout_ms": 3000,
+    "reason": "registry_unavailable",
+    "attempted": 0,
+    "merged": 0,
+    "kept_separate": 0,
+    "failed": 0,
+    "malformed": 0,
+    "skipped_for_low_confidence": 0
+  },
+  "categories": {
+    "strong_decision": [
+      {
+        "decision": "prefer bounded reads",
+        "why_good": "cheaper prompts",
+        "summary": "prefer bounded reads",
+        "evidence_count": 2,
+        "first_seen": "2026-04-29T03:50:40.561Z",
+        "last_seen": "2026-04-29T03:51:37.893Z"
+      }
+    ],
+    "key_file": [],
+    "pattern": [
+      {
+        "summary": "{\"pattern\":\"Plan reviews for terminal-workflow features should reject grep-only acceptance criteria when they can be satisfied by comments or static text instead of proving executable behavior, especially for layout files and shell helpe...",
+        "evidence_count": 1,
+        "first_seen": "2026-04-20T03:24:57.365Z",
+        "last_seen": "2026-04-20T03:24:57.365Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "{\"pattern\":\"When reviewing execution plans for Windows-targeted dotfiles features, check for hidden runtime prerequisites (Node/npm, config-path conventions, Windows-only validation) because static grep-based acceptance criteria can pass...",
+        "evidence_count": 1,
+        "first_seen": "2026-04-20T03:21:25.059Z",
+        "last_seen": "2026-04-20T03:21:25.059Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      }
+    ],
+    "observation": [],
+    "open_question": [],
+    "system_overview": []
+  }
+}

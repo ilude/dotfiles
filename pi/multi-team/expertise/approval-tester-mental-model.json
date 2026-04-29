@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "summary_format_version": 2,
+  "agent": "approval-tester",
+  "rebuilt_at": "2026-04-29T03:51:37.926Z",
+  "covers_through_timestamp": "2026-04-29T03:51:37.926Z",
+  "source_entry_count": 4,
+  "similarity": {
+    "enabled": true,
+    "active": true,
+    "provider": "openai-codex",
+    "model": "gpt-5.4-mini",
+    "min_confidence": 0.75,
+    "timeout_ms": 3000,
+    "reason": "ready",
+    "attempted": 1,
+    "merged": 1,
+    "kept_separate": 0,
+    "failed": 0,
+    "malformed": 0,
+    "skipped_for_low_confidence": 0
+  },
+  "categories": {
+    "strong_decision": [],
+    "key_file": [],
+    "pattern": [],
+    "observation": [
+      {
+        "summary": "dotfiles: Windows Pi global install uses npm instead of Bun",
+        "evidence_count": 4,
+        "first_seen": "2026-04-29T03:50:40.656Z",
+        "last_seen": "2026-04-29T03:51:37.926Z",
+        "merge_metadata": {
+          "method": "provider",
+          "confidence": 0.93,
+          "merged_from_count": 2
+        }
+      }
+    ],
+    "open_question": [],
+    "system_overview": []
+  }
+}

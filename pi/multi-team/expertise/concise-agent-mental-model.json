@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "summary_format_version": 2,
+  "agent": "concise-agent",
+  "rebuilt_at": "2026-04-29T03:51:37.910Z",
+  "covers_through_timestamp": "2026-04-29T03:51:37.909Z",
+  "source_entry_count": 4,
+  "similarity": {
+    "enabled": true,
+    "active": false,
+    "provider": "openai-codex",
+    "model": "gpt-5.4-mini",
+    "min_confidence": 0.75,
+    "timeout_ms": 3000,
+    "reason": "registry_unavailable",
+    "attempted": 0,
+    "merged": 0,
+    "kept_separate": 0,
+    "failed": 0,
+    "malformed": 0,
+    "skipped_for_low_confidence": 0
+  },
+  "categories": {
+    "strong_decision": [
+      {
+        "decision": "Prefer durable expertise over changelog entries",
+        "why_good": "reduces noise",
+        "summary": "Prefer durable expertise over changelog entries",
+        "evidence_count": 2,
+        "first_seen": "2026-04-29T03:50:40.617Z",
+        "last_seen": "2026-04-29T03:51:37.909Z"
+      }
+    ],
+    "key_file": [],
+    "pattern": [],
+    "observation": [
+      {
+        "summary": "dotfiles: Added temporary debug logging for issue 123",
+        "evidence_count": 2,
+        "first_seen": "2026-04-29T03:50:40.616Z",
+        "last_seen": "2026-04-29T03:51:37.908Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      }
+    ],
+    "open_question": [],
+    "system_overview": []
+  }
+}

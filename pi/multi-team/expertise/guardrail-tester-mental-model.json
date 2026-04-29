@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "summary_format_version": 2,
+  "agent": "guardrail-tester",
+  "rebuilt_at": "2026-04-29T03:51:37.945Z",
+  "covers_through_timestamp": "2026-04-29T03:51:37.945Z",
+  "source_entry_count": 8,
+  "similarity": {
+    "enabled": true,
+    "active": true,
+    "provider": "openai-codex",
+    "model": "gpt-5.4-mini",
+    "min_confidence": 0.75,
+    "timeout_ms": 3000,
+    "reason": "ready",
+    "attempted": 0,
+    "merged": 0,
+    "kept_separate": 0,
+    "failed": 0,
+    "malformed": 0,
+    "skipped_for_low_confidence": 0
+  },
+  "categories": {
+    "strong_decision": [
+      {
+        "decision": "keep Bun for Linux bootstrap only",
+        "why_good": "separate platform decision",
+        "summary": "keep Bun for Linux bootstrap only",
+        "evidence_count": 2,
+        "first_seen": "2026-04-29T03:50:40.736Z",
+        "last_seen": "2026-04-29T03:51:37.944Z"
+      },
+      {
+        "decision": "keep npm on Windows for Pi",
+        "why_good": "matches documented package manager choice",
+        "summary": "keep npm on Windows for Pi",
+        "evidence_count": 2,
+        "first_seen": "2026-04-29T03:50:40.724Z",
+        "last_seen": "2026-04-29T03:51:37.944Z"
+      }
+    ],
+    "key_file": [
+      {
+        "path": "pi/extensions/agent-chain.ts",
+        "role": "expertise tools",
+        "notes": "mental-model read/write path",
+        "summary": "pi/extensions/agent-chain.ts -- expertise tools -- mental-model read/write path",
+        "evidence_count": 2,
+        "first_seen": "2026-04-29T03:50:40.741Z",
+        "last_seen": "2026-04-29T03:51:37.945Z"
+      },
+      {
+        "path": "pi/README.md",
+        "role": "Pi install docs",
+        "notes": "Windows package-manager guidance",
+        "summary": "pi/README.md -- Pi install docs -- Windows package-manager guidance",
+        "evidence_count": 2,
+        "first_seen": "2026-04-29T03:50:40.740Z",
+        "last_seen": "2026-04-29T03:51:37.945Z"
+      }
+    ],
+    "pattern": [],
+    "observation": [],
+    "open_question": [],
+    "system_overview": []
+  }
+}

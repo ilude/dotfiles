@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "summary_format_version": 2,
+  "agent": "malformed-tester",
+  "rebuilt_at": "2026-04-29T03:51:37.940Z",
+  "covers_through_timestamp": "2026-04-29T03:51:37.939Z",
+  "source_entry_count": 4,
+  "similarity": {
+    "enabled": true,
+    "active": true,
+    "provider": "openai-codex",
+    "model": "gpt-5.4-mini",
+    "min_confidence": 0.75,
+    "timeout_ms": 3000,
+    "reason": "ready",
+    "attempted": 1,
+    "merged": 0,
+    "kept_separate": 0,
+    "failed": 1,
+    "malformed": 0,
+    "skipped_for_low_confidence": 0,
+    "last_error": "JSON Parse error: Unexpected identifier \"not\""
+  },
+  "categories": {
+    "strong_decision": [],
+    "key_file": [],
+    "pattern": [],
+    "observation": [
+      {
+        "summary": "dotfiles: Windows Pi global install prefers npm over Bun",
+        "evidence_count": 2,
+        "first_seen": "2026-04-29T03:50:40.709Z",
+        "last_seen": "2026-04-29T03:51:37.939Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "dotfiles: Windows Pi install uses npm for the global package",
+        "evidence_count": 2,
+        "first_seen": "2026-04-29T03:50:40.696Z",
+        "last_seen": "2026-04-29T03:51:37.939Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      }
+    ],
+    "open_question": [],
+    "system_overview": []
+  }
+}

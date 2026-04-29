@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "summary_format_version": 2,
+  "agent": "qa-engineer",
+  "rebuilt_at": "2026-04-29T03:51:37.901Z",
+  "covers_through_timestamp": "2026-04-29T03:51:37.901Z",
+  "source_entry_count": 5,
+  "similarity": {
+    "enabled": true,
+    "active": false,
+    "provider": "openai-codex",
+    "model": "gpt-5.4-mini",
+    "min_confidence": 0.75,
+    "timeout_ms": 3000,
+    "reason": "registry_unavailable",
+    "attempted": 0,
+    "merged": 0,
+    "kept_separate": 0,
+    "failed": 0,
+    "malformed": 0,
+    "skipped_for_low_confidence": 0
+  },
+  "categories": {
+    "strong_decision": [],
+    "key_file": [],
+    "pattern": [],
+    "observation": [
+      {
+        "summary": "second observation",
+        "evidence_count": 2,
+        "first_seen": "2026-04-29T03:50:40.582Z",
+        "last_seen": "2026-04-29T03:51:37.901Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "first observation",
+        "evidence_count": 2,
+        "first_seen": "2026-04-29T03:50:40.567Z",
+        "last_seen": "2026-04-29T03:51:37.897Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "In this repo, `make test-quick` only runs `test/test_config_patterns.py` and does not exercise PowerShell profile behavior or Windows runtime integration; `make test-powershell` is the separate Pester path for PowerShell verification.",
+        "evidence_count": 1,
+        "first_seen": "2026-04-20T03:20:55.384Z",
+        "last_seen": "2026-04-20T03:20:55.384Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      }
+    ],
+    "open_question": [],
+    "system_overview": []
+  }
+}

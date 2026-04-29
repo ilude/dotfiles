@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "summary_format_version": 2,
+  "agent": "frontend-dev",
+  "rebuilt_at": "2026-04-29T03:50:40.525Z",
+  "covers_through_timestamp": "2026-04-20T03:35:09.533Z",
+  "source_entry_count": 1,
+  "similarity": {
+    "enabled": true,
+    "active": false,
+    "provider": "openai-codex",
+    "model": "gpt-5.4-mini",
+    "min_confidence": 0.75,
+    "timeout_ms": 3000,
+    "reason": "registry_unavailable",
+    "attempted": 0,
+    "merged": 0,
+    "kept_separate": 0,
+    "failed": 0,
+    "malformed": 0,
+    "skipped_for_low_confidence": 0
+  },
+  "categories": {
+    "strong_decision": [],
+    "key_file": [],
+    "pattern": [],
+    "observation": [
+      {
+        "summary": "For terminal-UI plans, grep-based acceptance checks are insufficient for user-facing behavior; plans should explicitly validate focus, lock/unlock discoverability, pane labeling, and that placeholder text does not imply unimplemented interaction models.",
+        "evidence_count": 1,
+        "first_seen": "2026-04-20T03:35:09.533Z",
+        "last_seen": "2026-04-20T03:35:09.533Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      }
+    ],
+    "open_question": [],
+    "system_overview": []
+  }
+}

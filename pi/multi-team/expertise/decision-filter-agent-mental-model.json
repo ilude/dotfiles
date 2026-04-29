@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "summary_format_version": 2,
+  "agent": "decision-filter-agent",
+  "rebuilt_at": "2026-04-29T03:51:37.917Z",
+  "covers_through_timestamp": "2026-04-29T03:51:37.914Z",
+  "source_entry_count": 4,
+  "similarity": {
+    "enabled": true,
+    "active": false,
+    "provider": "openai-codex",
+    "model": "gpt-5.4-mini",
+    "min_confidence": 0.75,
+    "timeout_ms": 3000,
+    "reason": "registry_unavailable",
+    "attempted": 0,
+    "merged": 0,
+    "kept_separate": 0,
+    "failed": 0,
+    "malformed": 0,
+    "skipped_for_low_confidence": 0
+  },
+  "categories": {
+    "strong_decision": [
+      {
+        "decision": "Change the durable Playwright drive from a one-time snapshotted ordered target list to dynamic discovery plus a persisted completed-target set.",
+        "why_good": "project-specific",
+        "summary": "Change the durable Playwright drive from a one-time snapshotted ordered target list to dynamic discovery plus a persisted completed-target set.",
+        "evidence_count": 2,
+        "first_seen": "2026-04-29T03:50:40.635Z",
+        "last_seen": "2026-04-29T03:51:37.914Z"
+      },
+      {
+        "decision": "Prefer deterministic snapshot rebuilds over mutable raw history rewrites.",
+        "why_good": "general agent behavior",
+        "summary": "Prefer deterministic snapshot rebuilds over mutable raw history rewrites.",
+        "evidence_count": 2,
+        "first_seen": "2026-04-29T03:50:40.636Z",
+        "last_seen": "2026-04-29T03:51:37.914Z"
+      }
+    ],
+    "key_file": [],
+    "pattern": [],
+    "observation": [],
+    "open_question": [],
+    "system_overview": []
+  }
+}
