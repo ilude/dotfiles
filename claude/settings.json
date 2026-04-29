@@ -1,12 +1,147 @@
 {
+  "alwaysThinkingEnabled": true,
+  "companyAnnouncements": [],
+  "effortLevel": "medium",
+  "enableAllProjectMcpServers": false,
+  "enabledPlugins": {
+    "aws-agentic-ai@aws-skills": true,
+    "aws-cdk@aws-skills": true,
+    "aws-cost-ops@aws-skills": true,
+    "handbook-git-worktree@cc-handbook": true,
+    "handbook-glab@cc-handbook": true,
+    "serverless-eda@aws-skills": true,
+    "superpowers@superpowers-marketplace": true
+  },
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
     "DISABLE_ERROR_REPORTING": "1",
     "DISABLE_TELEMETRY": "1"
   },
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "command": "python $HOME/.claude/hooks/allow-claude-dir.py",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "python $HOME/.claude/hooks/notify/notification-sound.py",
+            "timeout": 2,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "python $HOME/.claude/hooks/quality-validation/quality_validation_hook.py",
+            "timeout": 15,
+            "type": "command"
+          }
+        ],
+        "matcher": "Write"
+      },
+      {
+        "hooks": [
+          {
+            "command": "python $HOME/.claude/hooks/quality-validation/quality_validation_hook.py",
+            "timeout": 15,
+            "type": "command"
+          }
+        ],
+        "matcher": "Edit"
+      },
+      {
+        "hooks": [
+          {
+            "command": "python $HOME/.claude/hooks/commit-guard/commit_guard_hook.py",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "python $HOME/.claude/hooks/damage-control/bash-tool-damage-control.py",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash"
+      },
+      {
+        "hooks": [
+          {
+            "command": "python $HOME/.claude/hooks/path-normalization/path-normalization-hook.py",
+            "timeout": 5,
+            "type": "command"
+          },
+          {
+            "command": "python $HOME/.claude/hooks/damage-control/edit-tool-damage-control.py",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "Edit"
+      },
+      {
+        "hooks": [
+          {
+            "command": "python $HOME/.claude/hooks/path-normalization/path-normalization-hook.py",
+            "timeout": 5,
+            "type": "command"
+          },
+          {
+            "command": "python $HOME/.claude/hooks/damage-control/write-tool-damage-control.py",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "Write"
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "python $HOME/.claude/hooks/team_cleanup.py",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "command": "python $HOME/.claude/hooks/session-history/session_history_hook.py",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
+    ]
+  },
   "includeCoAuthoredBy": false,
   "permissions": {
     "allow": [],
+    "ask": [
+      "Bash(git push --force:*)",
+      "Bash(git reset --hard:*)"
+    ],
     "deny": [
       "Bash(rm -rf /*:*)",
       "Bash(rm -rf ~/*:*)",
@@ -25,147 +160,12 @@
       "Edit(~/.zshrc)",
       "Edit(~/.bash_profile)",
       "Edit(~/.profile)"
-    ],
-    "ask": [
-      "Bash(git push --force:*)",
-      "Bash(git reset --hard:*)"
     ]
   },
-  "enableAllProjectMcpServers": false,
-  "hooks": {
-    "PermissionRequest": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python $HOME/.claude/hooks/allow-claude-dir.py",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python $HOME/.claude/hooks/notify/notification-sound.py",
-            "timeout": 2
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python $HOME/.claude/hooks/quality-validation/quality_validation_hook.py",
-            "timeout": 15
-          }
-        ]
-      },
-      {
-        "matcher": "Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python $HOME/.claude/hooks/quality-validation/quality_validation_hook.py",
-            "timeout": 15
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python $HOME/.claude/hooks/commit-guard/commit_guard_hook.py",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python $HOME/.claude/hooks/damage-control/bash-tool-damage-control.py",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python $HOME/.claude/hooks/path-normalization/path-normalization-hook.py",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "python $HOME/.claude/hooks/damage-control/edit-tool-damage-control.py",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python $HOME/.claude/hooks/path-normalization/path-normalization-hook.py",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "python $HOME/.claude/hooks/damage-control/write-tool-damage-control.py",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python $HOME/.claude/hooks/team_cleanup.py",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python $HOME/.claude/hooks/session-history/session_history_hook.py",
-            "timeout": 5
-          }
-        ]
-      }
-    ]
-  },
-  "statusLine": {
-    "type": "command",
-    "command": "python $HOME/.claude/claude-status"
-  },
-  "enabledPlugins": {
-    "aws-agentic-ai@aws-skills": true,
-    "aws-cdk@aws-skills": true,
-    "aws-cost-ops@aws-skills": true,
-    "handbook-git-worktree@cc-handbook": true,
-    "handbook-glab@cc-handbook": true,
-    "serverless-eda@aws-skills": true,
-    "superpowers@superpowers-marketplace": true
-  },
-  "alwaysThinkingEnabled": true,
-  "companyAnnouncements": [],
-  "skipDangerousModePermissionPrompt": true,
   "releaseChannel": "latest",
-  "effortLevel": "medium"
+  "skipDangerousModePermissionPrompt": true,
+  "statusLine": {
+    "command": "python $HOME/.claude/claude-status",
+    "type": "command"
+  }
 }
