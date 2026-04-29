@@ -60,7 +60,6 @@ def reduce_execution(
     stderr: str,
 ) -> CompactResult:
     """Run the deterministic reduction pipeline on one bash tool result."""
-    import corpus
     import guards
     import pipeline
 
@@ -109,6 +108,8 @@ def reduce_execution(
     )
 
     try:
+        import corpus
+
         corpus.log_reduction({
             "ts": datetime.now(timezone.utc).isoformat(),
             "argv": argv,

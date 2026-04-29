@@ -29,13 +29,13 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { isBashToolResult, type ExtensionAPI, type ToolResultEvent } from "@mariozechner/pi-coding-agent";
 
-const REDUCE_SCRIPT = path.resolve(
-	os.homedir(),
-	".dotfiles",
-	"pi",
-	"tool-reduction",
-	"reduce.py",
-);
+function getHomeDir(): string {
+	return process.env.HOME ?? process.env.USERPROFILE ?? os.homedir();
+}
+
+function getReduceScriptPath(): string {
+	return path.resolve(getHomeDir(), ".dotfiles", "pi", "tool-reduction", "reduce.py");
+}
 
 const TIMEOUT_MS = 3000;
 
@@ -146,7 +146,7 @@ export default function (pi: ExtensionAPI) {
 			stderr,
 		};
 
-		const result = await callReducer(request, REDUCE_SCRIPT);
+		const result = await callReducer(request, getReduceScriptPath());
 
 		if (result === null) {
 			return undefined;

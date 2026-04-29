@@ -34,14 +34,18 @@ export const SCHEMA_VERSION = "1.0.0";
 /** Major version derived from SCHEMA_VERSION; used by `isCompatibleSchemaVersion`. */
 const SCHEMA_MAJOR = SCHEMA_VERSION.split(".")[0];
 
+function getHomeDir(): string {
+	return process.env.HOME ?? process.env.USERPROFILE ?? os.homedir();
+}
+
 /** Default trace location (per-user, outside repo). */
-export const DEFAULT_TRACE_DIR = path.join(os.homedir(), ".pi", "agent", "traces");
+export const DEFAULT_TRACE_DIR = path.join(getHomeDir(), ".pi", "agent", "traces");
 
 /** Repo-tracked settings path. Loader MUST NOT read from this file. */
-export const REPO_SETTINGS_PATH = path.join(os.homedir(), ".dotfiles", "pi", "settings.json");
+export const REPO_SETTINGS_PATH = path.join(getHomeDir(), ".dotfiles", "pi", "settings.json");
 
 /** Per-user runtime settings path. The ONLY allowed source for the toggle. */
-export const USER_SETTINGS_PATH = path.join(os.homedir(), ".pi", "agent", "settings.json");
+export const USER_SETTINGS_PATH = path.join(getHomeDir(), ".pi", "agent", "settings.json");
 
 /** Cloud-sync directory name fragments rejected by the symlink defense. */
 const BANNED_PATH_SEGMENTS = ["OneDrive", "Dropbox", "iCloudDrive", "Google Drive"];
@@ -173,7 +177,7 @@ export interface TranscriptSettings {
 export function defaultSettings(): TranscriptSettings {
 	return {
 		enabled: false,
-		path: DEFAULT_TRACE_DIR,
+		path: path.join(getHomeDir(), ".pi", "agent", "traces"),
 		maxInlineBytes: DEFAULT_MAX_INLINE_BYTES,
 		maxFileBytes: DEFAULT_MAX_FILE_BYTES,
 		retentionDays: DEFAULT_RETENTION_DAYS,
@@ -187,7 +191,7 @@ export function defaultSettings(): TranscriptSettings {
  * would let any dotfiles user accidentally enable tracing for everyone.
  * Missing/invalid files yield defaults (enabled: false).
  */
-export function loadSettings(homeDir: string = os.homedir()): TranscriptSettings {
+export function loadSettings(homeDir: string = getHomeDir()): TranscriptSettings {
 	const defaults = defaultSettings();
 	defaults.path = path.join(homeDir, ".pi", "agent", "traces");
 	const settingsPath = path.join(homeDir, ".pi", "agent", "settings.json");
