@@ -1,3 +1,5 @@
+import * as os from "node:os";
+import * as path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import promptRouter, {
   isValidTier,
@@ -614,13 +616,16 @@ describe("prompt-router extension -- input hook", () => {
     expect(result).toEqual({ action: "continue" });
     expect(pi.exec).toHaveBeenCalledWith(
       "uv",
-      expect.arrayContaining([
+      [
         "run",
         "--project",
-        expect.stringContaining("prompt-routing"),
+        path.join(os.homedir(), ".dotfiles/pi/prompt-routing"),
         "python",
-        expect.stringContaining("classify.py"),
-      ]),
+        path.join(os.homedir(), ".dotfiles/pi/prompt-routing/classify.py"),
+        "--classifier",
+        "t2",
+        "explain the architecture of this system",
+      ],
       expect.objectContaining({ timeout: 5000 })
     );
 

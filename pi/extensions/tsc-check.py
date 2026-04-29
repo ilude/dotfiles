@@ -123,6 +123,7 @@ def main():
             "compilerOptions": {
                 "baseUrl": ".",
                 "ignoreDeprecations": "6.0",
+                "allowImportingTsExtensions": True,
                 "types": ["node"],
                 "paths": {
                     "@mariozechner/pi-coding-agent": [
