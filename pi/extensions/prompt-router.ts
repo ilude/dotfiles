@@ -68,10 +68,8 @@ import { getCurrentModelHint, resolveDynamicModelFromRegistry, resolveModelTierL
 // Config
 // ---------------------------------------------------------------------------
 
-const CLASSIFY_SCRIPT = path.join(
-  os.homedir(),
-  ".dotfiles/pi/prompt-routing/classify.py"
-);
+const PROMPT_ROUTING_DIR = path.join(os.homedir(), ".dotfiles/pi/prompt-routing");
+const CLASSIFY_SCRIPT = path.join(PROMPT_ROUTING_DIR, "classify.py");
 
 const SETTINGS_PATH = path.join(os.homedir(), ".dotfiles/pi/settings.json");
 
@@ -461,7 +459,11 @@ async function classifyWithV3(
 ): Promise<ClassifierRecommendation | null> {
   let result: { stdout: string; stderr: string; code: number };
   try {
-    result = await pi.exec("python", [CLASSIFY_SCRIPT, text], { timeout: 5000 });
+    result = await pi.exec(
+      "uv",
+      ["run", "--project", PROMPT_ROUTING_DIR, "python", CLASSIFY_SCRIPT, "--classifier", "t2", text],
+      { timeout: 5000 }
+    );
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     ctx.ui.notify(`router: classifier exec failed (non-fatal): ${msg}`, "warning");
@@ -574,10 +576,6 @@ async function classifyAndRoute(
   }
 
   effort = applyModelEffortBias(effort, rec, model);
-  const currentThinkingLevel = typeof (pi as any).getThinkingLevel === "function" ? (pi as any).getThinkingLevel() : undefined;
-  if (isCodexGpt55(model) && currentThinkingLevel === "xhigh") {
-    effort = "xhigh";
-  }
   const finalApplied = { ...applied, effort };
   state.lastRuleFired = ruleFired;
   state.lastAppliedEffort = effort;
@@ -648,6 +646,11 @@ export default function (pi: ExtensionAPI) {
     state.lastAppliedEffort = null;
     state.lastRuleFired = null;
     state.cooldownTurnsRemaining = 0;
+    const currentModel = (ctx as { model?: unknown }).model;
+    if (isCodexGpt55(currentModel) && typeof (pi as any).setThinkingLevel === "function") {
+      (pi as any).setThinkingLevel("low");
+      state.lastAppliedEffort = "low";
+    }
     ctx.ui.setStatus("router", "router: ready");
   });
 
