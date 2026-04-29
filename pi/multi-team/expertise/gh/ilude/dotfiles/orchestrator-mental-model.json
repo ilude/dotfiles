@@ -2,9 +2,9 @@
   "schema_version": 1,
   "summary_format_version": 2,
   "agent": "orchestrator",
-  "rebuilt_at": "2026-04-29T02:37:12.993Z",
-  "covers_through_timestamp": "2026-04-25T16:44:46.126Z",
-  "source_entry_count": 24,
+  "rebuilt_at": "2026-04-29T03:01:09.258Z",
+  "covers_through_timestamp": "2026-04-29T02:53:03.404Z",
+  "source_entry_count": 26,
   "similarity": {
     "enabled": true,
     "active": true,
@@ -126,6 +126,16 @@
       }
     ],
     "observation": [
+      {
+        "summary": "Pi GPT-5.5 startup thinking level: pi/extensions/*.ts are auto-discovered. probe-thinking-level.ts previously mutated thinking level on session_start by setting minimal then xhigh, leaving sessions at xhigh. prompt-router.ts also had a GPT-5.5 special case that preserved current xhigh instead of lowering it. Fix pattern: keep session_start probes non-mutating, set pi/settings.json defaultThinkingLevel low, and avoid preserving xhigh for openai-codex/gpt-5.5.",
+        "evidence_count": 1,
+        "first_seen": "2026-04-29T02:39:35.369Z",
+        "last_seen": "2026-04-29T02:39:35.369Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
       {
         "summary": "Prompt router now has openai-codex/gpt-5.5-specific effort bias: medium is demoted to low unless classifier confidence >=0.8; high remains available; global max effort cap remains high, and manually-set xhigh is preserved when detected via pi.getThinkingLevel().",
         "evidence_count": 1,

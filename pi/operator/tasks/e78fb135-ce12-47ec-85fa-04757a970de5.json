@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "e78fb135-ce12-47ec-85fa-04757a970de5",
+  "origin": "subagent",
+  "state": "completed",
+  "summary": "qa-engineer",
+  "createdAt": "2026-04-29T03:13:21.719Z",
+  "updatedAt": "2026-04-29T03:13:34.211Z",
+  "retryCount": 0,
+  "agentName": "qa-engineer",
+  "prompt": "Return your QA/validation review of .specs/pi-setup-refactor/plan.md in <=500 words. Include only concrete findings with severity and fix. Focus false-positive acceptance criteria, missing regression ...",
+  "metadata": {
+    "cwd": "/Users/mglenn/.dotfiles",
+    "effort": "medium",
+    "maxTurns": 25,
+    "isolation": "none",
+    "memory": "project"
+  },
+  "startedAt": "2026-04-29T03:13:21.720Z",
+  "preview": "## QA/Validation Findings\n\n- **High — False-positive refactor acceptance criteria.**  \n  T1/T2 accept “meaningfully reduced” line counts and “helper modules contain pure logic,” which is subjective an",
+  "endedAt": "2026-04-29T03:13:34.211Z",
+  "usage": {
+    "inputTokens": 17578,
+    "outputTokens": 652,
+    "totalTokens": 11057
+  }
+}
