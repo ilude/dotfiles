@@ -18,17 +18,17 @@ Pi is installed automatically by the dotfiles installer:
 ~/.dotfiles/install.ps1
 ```
 
-On Linux, macOS, and Git Bash, this uses `bun install -g @mariozechner/pi-coding-agent`. On Windows, `install.ps1` installs Pi via `npm install -g @mariozechner/pi-coding-agent`, then runs `scripts/pi-link-setup` (which junctions `~/.dotfiles/pi/` → `~/.pi/agent/` on Windows, symlinks on Linux).
+On Linux, macOS, and Git Bash, this uses `bun install -g @mariozechner/pi-coding-agent`. On Windows, `install.ps1` installs Pi via `pnpm add -g @mariozechner/pi-coding-agent`, then runs `scripts/pi-link-setup` (which junctions `~/.dotfiles/pi/` → `~/.pi/agent/` on Windows, symlinks on Linux).
 
 The local dotfiles install also defaults `PI_CACHE_RETENTION=long` in the installed shell profiles (`zsh`, `bash`, `sh`, and PowerShell) unless you have already set a different value. That prefers extended provider-side prompt caching where Pi supports it (currently documented by Pi as Anthropic 1h and OpenAI 24h for direct API calls).
 
 ### Windows package-manager note
 
-Windows intentionally keeps Pi on **npm**, not Bun, for now.
+Windows intentionally installs Pi with **pnpm**, not Bun, for now.
 
-Reason: Bun currently limits Windows to older Pi installs because `bun install -g @mariozechner/pi-coding-agent` fails to resolve the latest Pi dependency graph cleanly. In local verification, Bun failed on transitive AWS SDK packages even though those versions exist on npm. Using npm keeps Windows on the current/latest Pi release path instead of getting stranded behind.
+Reason: Bun currently limits Windows to older Pi installs because `bun install -g @mariozechner/pi-coding-agent` fails to resolve the latest Pi dependency graph cleanly. In local verification, Bun failed on transitive AWS SDK packages even though those versions exist on the npm registry. pnpm resolves the same graph cleanly and keeps Windows on the current/latest Pi release path. pnpm is preferred over npm for the strict resolver, the content-addressable global store, and the explicit build-script approval model -- the install command passes `--allow-build=koffi --allow-build=protobufjs` to whitelist the two native postinstall steps Pi requires.
 
-Bun is still installed on Windows for other JS tooling in this repo; this note only applies to the global `pi` package.
+Bun is still installed on Windows for other JS tooling in this repo; this note only applies to the global `pi` package. pnpm is declared in `winget/configuration/core.dsc.yaml` so the installer pulls it in alongside Node.js.
 
 ### Project-local Pi bootstrap
 
@@ -57,7 +57,7 @@ bun install -g @mariozechner/pi-coding-agent
 ~/.dotfiles/scripts/pi-link-setup
 
 # Windows PowerShell
-npm install -g @mariozechner/pi-coding-agent
+pnpm add -g --allow-build=koffi --allow-build=protobufjs @mariozechner/pi-coding-agent
 ~/.dotfiles/scripts/pi-link-setup
 ```
 
