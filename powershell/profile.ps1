@@ -140,7 +140,11 @@ function Invoke-Claude {
   & $claudePath @args
 }
 
-function ccyl { Clear-Host; Invoke-Claude --dangerously-skip-permissions --chrome @args }
+function ccyl {
+    Clear-Host
+    Write-Host -NoNewline ("`e]0;{0}`a" -f (Split-Path -Leaf $PWD.Path))
+    Invoke-Claude --dangerously-skip-permissions --chrome @args
+}
 function claude-install { npm install -g @anthropic-ai/claude-code }
 
 #endregion
