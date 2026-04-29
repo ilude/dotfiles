@@ -24,6 +24,8 @@ import {
 	isAllowedTransition,
 } from "./operator-state.ts";
 
+export type { TaskState } from "./operator-state.ts";
+
 /**
  * Origin classifier. Distinguishes durable producer types so /tasks can
  * filter trivial inline work out of the urgency-grouped view.

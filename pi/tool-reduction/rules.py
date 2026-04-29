@@ -10,7 +10,10 @@ import os
 from pathlib import Path
 from typing import Optional
 
-import jsonschema
+try:
+    import jsonschema
+except ImportError:  # keep reducer usable from bare system Python
+    jsonschema = None
 
 from regex_guard import ReDoSRejected, safe_compile
 
@@ -169,12 +172,16 @@ def load_rules(
                 logger.warning("Failed to read rule file %s: %s", json_path, exc)
                 continue
 
-            try:
-                jsonschema.validate(rule, schema)
-            except jsonschema.ValidationError as exc:
-                logger.warning(
-                    "Skipping malformed rule in %s: %s", json_path, exc.message
-                )
+            if jsonschema is not None:
+                try:
+                    jsonschema.validate(rule, schema)
+                except jsonschema.ValidationError as exc:
+                    logger.warning(
+                        "Skipping malformed rule in %s: %s", json_path, exc.message
+                    )
+                    continue
+            elif not isinstance(rule.get("id"), str):
+                logger.warning("Skipping malformed rule in %s: missing string id", json_path)
                 continue
 
             rule_id: str = rule["id"]
