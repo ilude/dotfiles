@@ -141,7 +141,7 @@ export function formatPiStatusLine(options: {
 	const model = formatModelName(options.model);
 	const thinking = formatThinkingLevel(options.pi);
 	const thinkingLabel = `${ANSI.white}[${ANSI.cyan}${thinking}${ANSI.white}]${ANSI.reset}`;
-	const versionLabel = `${ANSI.dim}v${options.piVersion ?? "?"}${ANSI.reset}`;
+	const versionLabel = `${ANSI.dim}π v${options.piVersion ?? "?"}${ANSI.reset}`;
 	return `${ANSI.green}${directory}${ANSI.reset}${branch} | ${ANSI.orange}${model}${ANSI.reset}${thinkingLabel} | ${versionLabel}`;
 }
 
@@ -355,7 +355,7 @@ export default function (pi: ExtensionAPI) {
 		const footerInstalled = installClaudeStyleFooter(ctx, pi);
 		if (!footerInstalled) {
 			const piVersion = resolvePiVersion();
-			ctx.ui.setStatus("pi", piVersion ? `pi v${piVersion}` : "pi");
+			ctx.ui.setStatus("pi", piVersion ? `π v${piVersion}` : "π");
 		}
 		refreshOperatorStatus(ctx);
 	});
