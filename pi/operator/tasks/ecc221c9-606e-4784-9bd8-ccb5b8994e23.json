@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "ecc221c9-606e-4784-9bd8-ccb5b8994e23",
+  "origin": "subagent",
+  "state": "completed",
+  "summary": "planner",
+  "createdAt": "2026-04-30T03:38:56.840Z",
+  "updatedAt": "2026-04-30T03:39:11.348Z",
+  "retryCount": 0,
+  "agentName": "planner",
+  "prompt": "As dependency ordering/scope reviewer for .specs/host-state-capture/plan.md, return ONLY 8 concise bullets max: ordering/parallelization/executability bugs and hardening. Keep under 1200 chars.",
+  "metadata": {
+    "cwd": "C:\\Projects\\Work\\Github\\network-iac",
+    "effort": "medium",
+    "maxTurns": 25,
+    "isolation": "none",
+    "memory": "project"
+  },
+  "startedAt": "2026-04-30T03:38:56.842Z",
+  "preview": "- T8 must not wait until Wave 3: site.yml/Goss post_tasks are needed for V1/V2 validation; split into T8a orchestration skeleton in Wave 1 and T8b final ordering in Wave 3.\n- T13 depends on site.yml h",
+  "endedAt": "2026-04-30T03:39:11.348Z",
+  "usage": {
+    "inputTokens": 13904,
+    "outputTokens": 350,
+    "totalTokens": 14054
+  }
+}

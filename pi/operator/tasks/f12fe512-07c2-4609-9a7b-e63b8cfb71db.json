@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "f12fe512-07c2-4609-9a7b-e63b8cfb71db",
+  "origin": "subagent",
+  "state": "completed",
+  "summary": "reviewer",
+  "createdAt": "2026-04-30T03:37:27.658Z",
+  "updatedAt": "2026-04-30T03:37:43.720Z",
+  "retryCount": 0,
+  "agentName": "reviewer",
+  "prompt": "For .specs/host-state-capture/plan.md, return ONLY 8 concise bullets max: top must-fix gaps and hardening. Be adversarial/actionable. Keep under 1200 chars.",
+  "metadata": {
+    "cwd": "C:\\Projects\\Work\\Github\\network-iac",
+    "effort": "medium",
+    "maxTurns": 25,
+    "isolation": "none",
+    "memory": "project"
+  },
+  "startedAt": "2026-04-30T03:37:27.662Z",
+  "preview": "- Firewall is too vague: specify exact allowed CIDRs/interfaces/ports and default-deny behavior before T9; otherwise `DOCKER-USER` could silently break prod or still expose ports.\n- Tailscale auth key",
+  "endedAt": "2026-04-30T03:37:43.720Z",
+  "usage": {
+    "inputTokens": 9033,
+    "outputTokens": 486,
+    "totalTokens": 14255
+  }
+}

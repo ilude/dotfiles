@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "277dd67e-26c0-460a-98ae-c2267ac079ca",
+  "origin": "subagent",
+  "state": "completed",
+  "summary": "planner",
+  "createdAt": "2026-04-30T03:35:58.133Z",
+  "updatedAt": "2026-04-30T03:36:37.350Z",
+  "retryCount": 0,
+  "agentName": "planner",
+  "prompt": "Act as a dependency ordering and scope-control reviewer for .specs/host-state-capture/plan.md. Why selected: the plan has 14 tasks across waves with live-host pre-flight capture, multiple roles, and c...",
+  "metadata": {
+    "cwd": "C:\\Projects\\Work\\Github\\network-iac",
+    "effort": "medium",
+    "maxTurns": 25,
+    "isolation": "none",
+    "memory": "project"
+  },
+  "startedAt": "2026-04-30T03:35:58.136Z",
+  "preview": "## Dependency / Scope-Control Review: `.specs/host-state-capture/plan.md`\n\n### Verdict\n\nThe plan is directionally strong, but **not yet safely executable by parallel agents**. Main risks are shared-fi",
+  "endedAt": "2026-04-30T03:36:37.350Z",
+  "usage": {
+    "inputTokens": 14039,
+    "outputTokens": 2154,
+    "totalTokens": 15925
+  }
+}
