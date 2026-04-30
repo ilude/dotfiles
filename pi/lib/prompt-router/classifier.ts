@@ -92,14 +92,58 @@ export async function classifyWithV3(
     );
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
+    const low = msg.toLowerCase();
+    if (low.includes("timed out") || low.includes("timeout")) {
+      ctx.ui.notify(
+        "router: classifier timed out (likely first-run dependency/model setup). Run: uv sync --project prompt-routing, then warm once: uv run --project prompt-routing python prompt-routing/classify.py --classifier t2 \"warmup\"",
+        "warning"
+      );
+      return null;
+    }
     ctx.ui.notify(`router: classifier exec failed (non-fatal): ${msg}`, "warning");
     return null;
   }
 
-  const rec = safeParseClassifierOutput(result.stdout.trim());
-  if (rec === null) {
+  const stdout = result.stdout.trim();
+  const stderr = result.stderr.trim();
+  const combined = `${stdout}\n${stderr}`.toLowerCase();
+
+  if (result.code !== 0) {
+    if (
+      combined.includes("no module named") ||
+      combined.includes("modulenotfounderror") ||
+      combined.includes("could not find") ||
+      combined.includes("failed to build") ||
+      combined.includes("resolution failed")
+    ) {
+      ctx.ui.notify(
+        "router: classifier dependencies missing/broken. Run: uv sync --project prompt-routing",
+        "warning"
+      );
+      return null;
+    }
     ctx.ui.notify(
-      `router: classifier output invalid, keeping current route. stdout=${result.stdout.trim().slice(0, 120)}`,
+      `router: classifier failed (exit ${result.code}), keeping current route. stderr=${stderr.slice(0, 160)}`,
+      "warning"
+    );
+    return null;
+  }
+
+  const rec = safeParseClassifierOutput(stdout);
+  if (rec === null) {
+    if (
+      combined.includes("downloading") ||
+      combined.includes("installing") ||
+      combined.includes("collecting")
+    ) {
+      ctx.ui.notify(
+        "router: classifier emitted setup logs instead of JSON (likely first run). Warm once: uv run --project prompt-routing python prompt-routing/classify.py --classifier t2 \"warmup\"",
+        "warning"
+      );
+      return null;
+    }
+    ctx.ui.notify(
+      `router: classifier output invalid, keeping current route. stdout=${stdout.slice(0, 120)}`,
       "warning"
     );
     return null;

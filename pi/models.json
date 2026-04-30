@@ -1,0 +1,14 @@
+{
+  "providers": {
+    "opencode": {
+      "modelOverrides": {
+        "minimax-m2.5-free": {
+          "compat": {
+            "supportsEagerToolInputStreaming": false,
+            "supportsLongCacheRetention": false
+          }
+        }
+      }
+    }
+  }
+}
