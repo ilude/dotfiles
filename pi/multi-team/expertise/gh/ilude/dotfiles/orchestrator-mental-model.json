@@ -2,9 +2,9 @@
   "schema_version": 1,
   "summary_format_version": 2,
   "agent": "orchestrator",
-  "rebuilt_at": "2026-04-29T03:01:09.258Z",
-  "covers_through_timestamp": "2026-04-29T02:53:03.404Z",
-  "source_entry_count": 26,
+  "rebuilt_at": "2026-04-30T04:01:36.351Z",
+  "covers_through_timestamp": "2026-04-29T07:59:23.658Z",
+  "source_entry_count": 27,
   "similarity": {
     "enabled": true,
     "active": true,
@@ -126,6 +126,16 @@
       }
     ],
     "observation": [
+      {
+        "summary": "{\"task\":\"pi setup refactor and test failure cleanup\",\"outcome\":\"Working tree is clean on main and origin/main at ed9f78d after commits through 4587f30/521ded2/bb5167f; make check-pi-extensions and make lint-python pass.\",\"key_fixes\":[\"ex...",
+        "evidence_count": 1,
+        "first_seen": "2026-04-29T07:59:23.658Z",
+        "last_seen": "2026-04-29T07:59:23.658Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
       {
         "summary": "Pi GPT-5.5 startup thinking level: pi/extensions/*.ts are auto-discovered. probe-thinking-level.ts previously mutated thinking level on session_start by setting minimal then xhigh, leaving sessions at xhigh. prompt-router.ts also had a GPT-5.5 special case that preserved current xhigh instead of lowering it. Fix pattern: keep session_start probes non-mutating, set pi/settings.json defaultThinkingLevel low, and avoid preserving xhigh for openai-codex/gpt-5.5.",
         "evidence_count": 1,
