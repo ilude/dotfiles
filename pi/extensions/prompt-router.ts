@@ -526,6 +526,13 @@ export default function (pi: ExtensionAPI) {
   // -- Classify and route every user prompt --
   pi.on("input", async (event, ctx) => {
     const text = event.text?.trim() ?? "";
+
+    // Convenience: treat plain "exit" as a graceful shutdown.
+    if (event.source !== "extension" && text.toLowerCase() === "exit") {
+      ctx.shutdown();
+      return { action: "handled" };
+    }
+
     if (!text || text.startsWith("/") || event.source === "extension" || !state.enabled) {
       return { action: "continue" };
     }
