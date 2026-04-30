@@ -5,7 +5,9 @@
         "minimax-m2.5-free": {
           "compat": {
             "supportsEagerToolInputStreaming": false,
-            "supportsLongCacheRetention": false
+            "supportsLongCacheRetention": false,
+            "supportsPromptCaching": false,
+            "supportsToolCacheControl": false
           }
         }
       }
