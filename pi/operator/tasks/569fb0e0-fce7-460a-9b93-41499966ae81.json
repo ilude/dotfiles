@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "569fb0e0-fce7-460a-9b93-41499966ae81",
+  "origin": "subagent",
+  "state": "completed",
+  "summary": "security-reviewer",
+  "createdAt": "2026-04-30T03:36:44.137Z",
+  "updatedAt": "2026-04-30T03:37:01.743Z",
+  "retryCount": 0,
+  "agentName": "security-reviewer",
+  "prompt": "For .specs/host-state-capture/plan.md, return ONLY concise bullets: top 6 realistic security/safety/operational must-fix risks and top 3 hardening items. Be adversarial and actionable.",
+  "metadata": {
+    "cwd": "C:\\Projects\\Work\\Github\\network-iac",
+    "effort": "medium",
+    "maxTurns": 25,
+    "isolation": "none",
+    "memory": "project"
+  },
+  "startedAt": "2026-04-30T03:36:44.139Z",
+  "preview": "- **Must-fix:** Do not commit a Tailscale auth key, even single-use; pass via Ansible Vault/runner env now, with Infisical later.\n- **Must-fix:** Firewall rollout needs an allowlist and console-tested",
+  "endedAt": "2026-04-30T03:37:01.743Z",
+  "usage": {
+    "inputTokens": 14101,
+    "outputTokens": 377,
+    "totalTokens": 14185
+  }
+}

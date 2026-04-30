@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "464f5eeb-e852-4bf9-ab93-fdc96ce79344",
+  "origin": "subagent",
+  "state": "completed",
+  "summary": "security-reviewer",
+  "createdAt": "2026-04-30T03:35:12.786Z",
+  "updatedAt": "2026-04-30T03:35:58.460Z",
+  "retryCount": 0,
+  "agentName": "security-reviewer",
+  "prompt": "Adversarially review plan .specs/host-state-capture/plan.md for realistic failure modes, safety issues, permission risks, rollback gaps, and operational hazards. Prefer realistic breakage over hypothe...",
+  "metadata": {
+    "cwd": "C:\\Projects\\Work\\Github\\network-iac",
+    "effort": "medium",
+    "maxTurns": 25,
+    "isolation": "none",
+    "memory": "project"
+  },
+  "startedAt": "2026-04-30T03:35:12.790Z",
+  "preview": "## Adversarial Review: `.specs/host-state-capture/plan.md`\n\n### Executive Summary\n\n- The plan is directionally sound but still has several realistic operational hazards: firewall lockout, SSH hardenin",
+  "endedAt": "2026-04-30T03:35:58.460Z",
+  "usage": {
+    "inputTokens": 14148,
+    "outputTokens": 2512,
+    "totalTokens": 16350
+  }
+}
