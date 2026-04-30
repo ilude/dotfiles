@@ -804,6 +804,13 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
+	pi.registerCommand("clear", {
+		description: "Alias to /new",
+		handler: async (_args, _ctx) => {
+			await pi.sendUserMessage("/new");
+		},
+	});
+
 	pi.registerCommand("exit", {
 		description: "Gracefully quit pi",
 		handler: async (_args, ctx) => {
