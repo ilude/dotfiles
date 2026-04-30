@@ -24,6 +24,7 @@ import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { type ExtensionAPI, type ExtensionContext, type ReadonlyFooterDataProvider } from "@mariozechner/pi-coding-agent";
 import { listRecentDecisions, listSessionApprovals } from "../lib/permission-registry.js";
 import { listTasks, type TaskRecordV1 } from "../lib/task-registry.js";
@@ -44,7 +45,7 @@ interface DoctorReport {
 	platform: string;
 }
 
-const PI_PACKAGE_NAME = "@mariozechner/pi-coding-agent";
+let cachedPiVersion: string | null | undefined;
 
 const ANSI = {
 	blue: "\x1b[34m",
@@ -170,30 +171,20 @@ function installClaudeStyleFooter(ctx: ExtensionContext, pi: ExtensionAPI): bool
 }
 
 /**
- * Locate the active pi-coding-agent install and return its package.json
- * version. Returns null when the install cannot be found (e.g., bundled
- * differently or running from source).
+ * Resolve Pi version from the CLI once, then cache for the session.
  */
 export function resolvePiVersion(): string | null {
-	const candidates = [
-		path.join(process.env.BUN_INSTALL || path.join(os.homedir(), ".bun"), "install/global/node_modules"),
-		path.join(process.env.APPDATA || "", "npm/node_modules"),
-		"/usr/local/lib/node_modules",
-		"/usr/lib/node_modules",
-		path.join(os.homedir(), ".npm-global/lib/node_modules"),
-	].filter((c) => c.length > 0);
-
-	for (const root of candidates) {
-		const pkgPath = path.join(root, PI_PACKAGE_NAME, "package.json");
-		try {
-			const raw = fs.readFileSync(pkgPath, "utf-8");
-			const parsed = JSON.parse(raw) as { version?: string };
-			if (parsed.version) return parsed.version;
-		} catch {
-			// try next
-		}
+	if (cachedPiVersion !== undefined) return cachedPiVersion;
+	try {
+		const here = path.dirname(fileURLToPath(import.meta.url));
+		const settingsPath = path.resolve(here, "../settings.json");
+		const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as { lastChangelogVersion?: string };
+		cachedPiVersion = settings.lastChangelogVersion?.trim() || null;
+		return cachedPiVersion;
+	} catch {
+		cachedPiVersion = null;
+		return cachedPiVersion;
 	}
-	return null;
 }
 
 interface TaskCounts {
