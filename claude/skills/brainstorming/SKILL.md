@@ -69,6 +69,8 @@ Force yourself to list at least 3 options:
 
 ### 3. Compare Trade-offs
 
+Score each option against the criteria *independently* before deciding the recommendation. Order the final presentation by independent assessment, not by the order options came to mind. This guards against first-idea anchoring.
+
 | Criteria | A | B | C |
 |----------|---|---|---|
 | Complexity | | | |
@@ -95,6 +97,7 @@ Document why you chose the approach:
 | API design | Yes |
 | Simple CRUD endpoint | No |
 | Security implementation | Yes |
+| User-proposed cause hypothesis ("I think it's X") | Yes -- see [debugging.md](../analysis-workflow/debugging.md) |
 
 ## Brainstorming Prompts
 
@@ -106,6 +109,10 @@ When stuck generating alternatives:
 - "What if we had unlimited time?"
 - "What would break if we did nothing?"
 - "How did similar projects solve this?"
+
+## Trend Bias Check
+
+Before recommending an industry-popular pattern (microservices, GraphQL, NoSQL, event-driven, monorepo, etc.), name one specific scenario in this project's context where the opposite choice would be correct. If you cannot, the recommendation is trend-driven, not context-driven.
 
 ## Example
 
@@ -129,6 +136,7 @@ When stuck generating alternatives:
 - Spend hours on trivial decisions
 - Let analysis paralysis prevent action
 - Ignore the obvious solution because it's obvious
+- Propose a "best of both" solution without verifying the tradeoff is real. If you cannot name a specific cost the compromise pays, pick a side instead.
 
 **Do:**
 - Time-box brainstorming (5-15 min)

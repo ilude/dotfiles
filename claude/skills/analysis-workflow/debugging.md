@@ -6,7 +6,7 @@
 
 ## Core Principle: Scientific Method for Software
 
-**From Andreas Zeller's "Why Programs Fail"**: Debugging is not a black art—it's a systematic discipline that follows the scientific method.
+**From Andreas Zeller's "Why Programs Fail"**: Debugging is not a black art -- it's a systematic discipline that follows the scientific method.
 
 Research shows **hypothesis-driven debugging** produces:
 - **5x improvement** in success rate for fixing defects
@@ -14,6 +14,22 @@ Research shows **hypothesis-driven debugging** produces:
 - Better root-cause discovery vs. symptom masking
 
 > **The key insight**: Expert debuggers form explicit hypotheses and test them systematically. Novices try random permutations.
+
+---
+
+## Hypothesis Validation
+
+When the user proposes a debugging hypothesis with hedged language -- "I think", "seems like", "probably", "maybe", "I suspect", "might be", "could be", "looks like", "pretty sure" -- generate 2-3 alternative causes *independently* before evaluating their theory.
+
+**Rule (from `claude/CLAUDE.md` user-certainty-calibration):** if the user is not sure, the agent must not be sure.
+
+Procedure:
+1. List 2-3 candidate causes that fit the observed evidence, generated without reference to the user's hypothesis.
+2. Score each against available evidence (logs, types, recent changes, test output).
+3. *Then* evaluate the user's hypothesis as one of the candidates, with the same scoring rigor.
+4. Report the ranked list with confidence tiers (high / medium / low). If the user's hypothesis ranks below another candidate, say so.
+
+Skip this when the user is *not* hedging and is reporting an observed fact ("the test fails with X error"), or when the cause is verifiable in one read.
 
 ---
 
@@ -52,7 +68,7 @@ If you've spent **10 minutes** on ad-hoc inspection without progress:
 - **Delta debugging**: Automatically reduce failing test cases to minimal examples
 - **Eliminate variables**: Fresh environment? Different input? Different path?
 
-**Cognitive principle**: Expert debuggers use "chunking"—grouping code into functional units to narrow the search space efficiently.
+**Cognitive principle**: Expert debuggers use "chunking" -- grouping code into functional units to narrow the search space efficiently.
 
 ### 3. Hypothesize
 
@@ -65,7 +81,7 @@ Good hypothesis: "The path normalization fails when input contains backslashes"
 - "What would I expect to see if this hypothesis is WRONG?"
 - "What other hypotheses could explain the same symptoms?"
 
-This counters confirmation bias—the most common bias in debugging.
+This counters confirmation bias -- the most common bias in debugging.
 
 ### 4. Test
 
