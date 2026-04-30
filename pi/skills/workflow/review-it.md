@@ -50,13 +50,13 @@ If the plan is empty, stubbed, or too short to review meaningfully, say so direc
 
 You must always launch these three reviewers in parallel:
 
-1. **`reviewer`** — Completeness & explicitness reviewer
+1. **`reviewer`** -- Completeness & explicitness reviewer
    - Focus: missing assumptions, gaps, ambiguous instructions, untestable acceptance criteria
 
-2. **`security-reviewer`** — Adversarial / red-team reviewer
+2. **`security-reviewer`** -- Adversarial / red-team reviewer
    - Focus: failure modes, safety issues, security risks, rollback gaps, realistic operational breakage
 
-3. **`product-manager`** — Outside-the-box / simplicity reviewer
+3. **`product-manager`** -- Outside-the-box / simplicity reviewer
    - Focus: simpler solutions, over-engineering, missed reuse, disproportionate complexity, scope mismatch
 
 ### 2B. Additional domain-specific reviewers (must choose at least 3)
@@ -90,23 +90,29 @@ This means additional reviewers must be expressed as:
 
 Prefer the following built-in Pi agents when relevant:
 
-- `backend-dev` — backend, APIs, services, databases, integration contracts
-- `frontend-dev` — UI, flows, interaction design, frontend implementation risks
-- `qa-engineer` — testing strategy, acceptance criteria, regression coverage
-- `devops-pro` — deployment, automation, CI/CD, reliability, operational rollout
-- `terraform-pro` — infra-as-code, cloud provisioning, state, rollout safety
-- `python-pro` — Python-specific correctness, tooling, packaging, tests
-- `typescript-pro` — TypeScript-specific correctness, types, build/tooling
-- `rust-pro` — Rust-specific correctness and build/runtime concerns
-- `ux-researcher` — user-facing friction, workflow usability, operator experience
-- `planner` — plan structure, dependency ordering, milestone coherence
-- `planning-lead` — broader plan-level critique and cross-cutting planning gaps
+- `backend-dev` -- backend, APIs, services, databases, integration contracts
+- `frontend-dev` -- UI, flows, interaction design, frontend implementation risks
+- `qa-engineer` -- testing strategy, acceptance criteria, regression coverage
+- `devops-pro` -- deployment, automation, CI/CD, reliability, operational rollout
+- `terraform-pro` -- infra-as-code, cloud provisioning, state, rollout safety
+- `python-pro` -- Python-specific correctness, tooling, packaging, tests
+- `typescript-pro` -- TypeScript-specific correctness, types, build/tooling
+- `rust-pro` -- Rust-specific correctness and build/runtime concerns
+- `ux-researcher` -- user-facing friction, workflow usability, operator experience
+- `planner` -- plan structure, dependency ordering, milestone coherence
+- `planning-lead` -- broader plan-level critique and cross-cutting planning gaps
 
-If more than three domain reviewers are clearly warranted, you may launch more — but keep the panel proportionate. Most plans should use **6 total reviewers** (3 standard + 3 domain-specific). Use more only for clearly cross-cutting plans.
+If more than three domain reviewers are clearly warranted, you may launch more -- but keep the panel proportionate. Most plans should use **6 total reviewers** (3 standard + 3 domain-specific). Use more only for clearly cross-cutting plans.
 
 If a perfect matching agent does not exist, choose the closest available agent and explicitly compensate by making the assigned expert persona and review focus more specific.
 
 ---
+
+### Pre-Review Bias Check
+
+Before launching reviewers, the coordinator must NOT preview their own opinion of the plan in the dispatch prompts. Reviewer dispatch prompts must be neutral.
+
+When reviewers converge unanimously on a popular pattern (microservices, GraphQL, NoSQL, event-driven, etc.), dispatch one targeted contrarian follow-up asking a reviewer to argue the opposite position with concrete evidence before final synthesis. Suspicious unanimity often reflects shared training bias rather than genuine consensus.
 
 ## Step 3: Launch Independent Reviews First
 
@@ -132,19 +138,19 @@ Each reviewer must receive:
 
 ### Reviewer task templates
 
-#### Standard reviewer 1 — `reviewer`
+#### Standard reviewer 1 -- `reviewer`
 Task shape:
 - review the plan for missing assumptions, hidden prerequisites, ambiguous instructions, and weak verification
 - identify where the plan cannot be executed safely by someone with no conversation context
 - flag acceptance criteria that are vague or pass without proving behavior
 
-#### Standard reviewer 2 — `security-reviewer`
+#### Standard reviewer 2 -- `security-reviewer`
 Task shape:
 - review the plan adversarially for realistic failure modes, safety issues, permission risks, rollback gaps, and operational hazards
 - prefer realistic breakage over hypothetical theater
 - identify where the plan could damage state, widen permissions, or fail under realistic conditions
 
-#### Standard reviewer 3 — `product-manager`
+#### Standard reviewer 3 -- `product-manager`
 Task shape:
 - challenge whether the plan is the right size and shape for the problem
 - look for smaller solutions, simpler implementation paths, or reuse of what already exists
@@ -285,9 +291,9 @@ Use this structure:
 - ...
 
 ## Suggested Additional Reviewers
-- <agent> — <why relevant>
-- <agent> — <why relevant>
-- <agent> — <why relevant>
+- <agent> -- <why relevant>
+- <agent> -- <why relevant>
+- <agent> -- <why relevant>
 
 ## Bugs (must fix before execution)
 1. ...
