@@ -440,44 +440,94 @@ def is_readonly_git_command(command: str) -> bool:
 # SSH IDENTITY COMMAND DETECTION
 # ============================================================================
 
-# Commands that reference ~/.ssh/ paths without exposing key contents to Claude.
-# ssh/scp/sftp -i just tells the binary which key to use internally;
-# ls/stat/file only list metadata. None of these leak private key material.
-SSH_SAFE_COMMANDS = [
-    # ssh -i ~/.ssh/keyname user@host ...
+# Commands that USE an SSH key without exposing its contents.
+# ssh/scp/sftp -i tell the binary which key to use internally; the contents
+# never reach the caller's context. ssh-keygen -l prints only a fingerprint.
+# ssh-keyscan fetches server public keys, never private material. These are
+# silent-allowed against ssh-protected zeroAccessPaths patterns.
+SSH_USE_COMMANDS = [
+    # ssh -i path/to/key user@host ...
     r"\bssh\s+.*-i\s+",
-    # scp -i ~/.ssh/keyname ...
+    # scp -i path/to/key ...
     r"\bscp\s+.*-i\s+",
-    # sftp -i ~/.ssh/keyname ...
+    # sftp -i path/to/key ...
     r"\bsftp\s+.*-i\s+",
     # git operations that pass SSH key via GIT_SSH_COMMAND or -c core.sshCommand
     r"\bGIT_SSH_COMMAND\s*=\s*",
-    # ls / stat / file on ~/.ssh (directory listing, no content access)
-    r"^\s*ls\s+",
-    r"^\s*stat\s+",
-    r"^\s*file\s+",
     # ssh-keygen -l (fingerprint, doesn't print private key)
     r"\bssh-keygen\s+.*-l\b",
     # ssh-keyscan (fetches server public keys, not private)
     r"\bssh-keyscan\b",
 ]
 
-_SSH_DIR_PATTERN = re.compile(r"[~$].*\.ssh[/\\]", re.IGNORECASE)
+# Commands that INSPECT metadata of an SSH-protected path.
+# ls/stat/file return filenames, sizes, mtimes -- not key contents, but enough
+# metadata that an explicit confirmation gate is appropriate. These ASK rather
+# than silent-allow against ssh-protected zeroAccessPaths patterns.
+SSH_INSPECT_COMMANDS = [
+    r"^\s*ls\s+",
+    r"^\s*stat\s+",
+    r"^\s*file\s+",
+]
+
+# Backward-compat union for any caller that doesn't care about the split.
+SSH_SAFE_COMMANDS = SSH_USE_COMMANDS + SSH_INSPECT_COMMANDS
+
+# zeroAccessPaths globs that are SSH-related and therefore eligible for the
+# USE silent-allow / INSPECT ask treatment. Includes ~/.ssh/ canonical key
+# directory and the cert globs covering keys placed elsewhere (AWS .pem,
+# PuTTY .ppk, PKCS#12 .p12/.pfx).
+_SSH_PROTECTED_PATTERN_ORIGINALS = frozenset(
+    {
+        "~/.ssh/",
+        "~/.ssh",
+        "$HOME/.ssh/",
+        "$HOME/.ssh",
+        "*.pem",
+        "*.ppk",
+        "*.p12",
+        "*.pfx",
+    }
+)
+
+
+def is_ssh_use_command(command: str) -> bool:
+    """True if command USES an SSH key without exposing contents (silent-allow)."""
+    return any(re.search(p, command, re.IGNORECASE) for p in SSH_USE_COMMANDS)
+
+
+def is_ssh_inspect_command(command: str) -> bool:
+    """True if command inspects path metadata (ask, not silent-allow)."""
+    return any(re.search(p, command, re.IGNORECASE) for p in SSH_INSPECT_COMMANDS)
 
 
 def is_ssh_safe_command(command: str) -> bool:
-    """Check if command safely references ~/.ssh/ without exposing key contents.
+    """Backward-compat: True if command is USE or INSPECT.
 
-    Returns True for commands like ssh -i, scp -i, ls, stat that reference
-    SSH key paths but don't leak private key material to Claude's context.
+    Prefer is_ssh_use_command / is_ssh_inspect_command in new code.
     """
-    return any(re.search(p, command, re.IGNORECASE) for p in SSH_SAFE_COMMANDS)
+    return is_ssh_use_command(command) or is_ssh_inspect_command(command)
+
+
+def _is_ssh_protected_pattern(path_obj: dict[str, Any]) -> bool:
+    """True if a zeroAccessPaths entry represents an SSH-related path/glob."""
+    original = path_obj.get("original", "")
+    if not original:
+        return False
+    if original in _SSH_PROTECTED_PATTERN_ORIGINALS:
+        return True
+    return original.rstrip("/\\") in {
+        s.rstrip("/\\") for s in _SSH_PROTECTED_PATTERN_ORIGINALS
+    }
 
 
 def _is_ssh_dir_path(path_obj: dict[str, Any]) -> bool:
-    """Check if a zero-access path object represents ~/.ssh/."""
-    original = path_obj.get("original", "")
-    return original.rstrip("/\\") in ("~/.ssh", "$HOME/.ssh") or original == "~/.ssh/"
+    """Backward-compat alias.
+
+    Originally narrow (~/.ssh/ only); now covers *.pem/*.ppk/*.p12/*.pfx
+    too, since those are equivalent SSH-related zero-access patterns.
+    """
+    return _is_ssh_protected_pattern(path_obj)
 
 
 # ============================================================================
@@ -1629,34 +1679,84 @@ def _command_matches_exclusion(exclusions: list[dict[str, Any]], command: str) -
     return any(matcher[excl["is_glob"]](excl, command) for excl in exclusions)
 
 
-def _should_skip_zero_access(path_obj: dict[str, Any], ssh_safe: bool, has_exclusion: bool) -> bool:
-    """Check if a zero-access path should be skipped due to exemptions."""
-    if ssh_safe and _is_ssh_dir_path(path_obj):
-        return True
-    return has_exclusion
+def _check_single_zero_access(
+    path_obj: dict[str, Any], ctx: CommandContext
+) -> Optional[CheckResult]:
+    """Run the appropriate zero-access matcher for one path_obj/ctx pair."""
+    if path_obj["is_glob"]:
+        return _zero_access_glob_match(path_obj, ctx)
+    return _zero_access_literal_match(path_obj, ctx)
+
+
+def _segment_context(segment: str, parent: CommandContext) -> CommandContext:
+    """Build a CommandContext scoped to one segment of a compound command."""
+    return CommandContext(
+        original=segment,
+        unwrapped=segment,
+        was_unwrapped=parent.was_unwrapped,
+        relaxed_checks=parent.relaxed_checks,
+        is_readonly_search=False,
+        has_dry_run=False,
+    )
 
 
 def _stage_zero_access(rules: CompiledRules, ctx: CommandContext) -> Optional[CheckResult]:
-    """Stage 2: enforce zero-access paths (skipped for read-only git metadata queries)."""
+    """Stage 2: enforce zero-access paths (skipped for read-only git metadata queries).
+
+    SSH-protected patterns (~/.ssh/, *.pem, *.ppk, *.p12, *.pfx) are evaluated
+    per command segment so a compound like `ssh -i key.pem && cat key.pem`
+    correctly blocks on the second segment. Per-segment rules:
+    - segment is USE (ssh -i, scp -i, sftp -i, GIT_SSH_COMMAND=,
+      ssh-keygen -l, ssh-keyscan)        -> silent allow
+    - segment is INSPECT (ls, stat, file) -> queue ask (block wins later)
+    - any other segment touching the protected path -> block
+
+    Non-ssh patterns retain the original whole-command behavior.
+    """
     if "zeroAccessPaths" in ctx.relaxed_checks or is_readonly_git_command(ctx.unwrapped):
         return None
 
-    ssh_safe = is_ssh_safe_command(ctx.unwrapped)
     has_exclusion = bool(rules.zero_access_exclusions) and _command_matches_exclusion(
         rules.zero_access_exclusions, ctx.unwrapped
     )
 
+    segments: list[str] = _split_on_shell_operators(ctx.unwrapped) or [ctx.unwrapped]
+    pending_ask: Optional[CheckResult] = None
+
     for path_obj in rules.zero_access:
-        if _should_skip_zero_access(path_obj, ssh_safe, has_exclusion):
+        if has_exclusion:
             continue
 
-        if path_obj["is_glob"]:
-            result = _zero_access_glob_match(path_obj, ctx)
-        else:
-            result = _zero_access_literal_match(path_obj, ctx)
-        if result is not None:
-            return result
-    return None
+        if not _is_ssh_protected_pattern(path_obj):
+            result = _check_single_zero_access(path_obj, ctx)
+            if result is not None:
+                return result
+            continue
+
+        # SSH-protected pattern: per-segment classification.
+        for seg in segments:
+            seg_ctx = _segment_context(seg, ctx)
+            seg_result = _check_single_zero_access(path_obj, seg_ctx)
+            if seg_result is None:
+                continue
+            if is_ssh_use_command(seg):
+                continue  # silent allow this segment
+            if is_ssh_inspect_command(seg):
+                if pending_ask is None:
+                    original = path_obj.get("original", "")
+                    pending_ask = CheckResult(
+                        ask=True,
+                        reason=(
+                            f"Inspecting {original} reveals filenames/metadata; "
+                            "confirm before proceeding."
+                        ),
+                        pattern_matched="ssh_inspect_ask",
+                        was_unwrapped=ctx.was_unwrapped,
+                    )
+                continue
+            return seg_result
+
+    return pending_ask
 
 
 def _stage_read_only(rules: CompiledRules, ctx: CommandContext) -> Optional[CheckResult]:
