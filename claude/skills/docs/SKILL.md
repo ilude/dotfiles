@@ -9,9 +9,9 @@ description: Technical documentation, writing guides, and documentation patterns
 
 | Task | Tool | Command |
 |------|------|---------|
-| Lint | markdownlint | `npx markdownlint-cli2 "**/*.md"` |
-| Format | Prettier | `npx prettier --write "**/*.md"` |
-| Link check | markdown-link-check | `npx markdown-link-check README.md` |
+| Lint | markdownlint | `bunx markdownlint-cli2 "**/*.md"` |
+| Format | Prettier | `bunx prettier --write "**/*.md"` |
+| Link check | markdown-link-check | `bunx markdown-link-check README.md` |
 
 ## Markdown Standards
 
@@ -159,8 +159,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: npx markdownlint-cli2 "**/*.md"
-      - run: npx markdown-link-check README.md
+      - run: bunx markdownlint-cli2 "**/*.md"
+      - run: bunx markdown-link-check README.md
 ```
 
 Configuration (`.markdownlint.json`):

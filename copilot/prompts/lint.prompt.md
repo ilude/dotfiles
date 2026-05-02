@@ -26,11 +26,18 @@ uv run ruff check .
 uv run flake8 src/ tests/
 ```
 
-**JavaScript/TypeScript:**
+**JavaScript/TypeScript (Bun default):**
 ```bash
-npm run lint
+bun run lint
 # or
-npx eslint .
+bunx eslint .
+```
+
+**JavaScript/TypeScript (pnpm-locked projects):**
+```bash
+pnpm lint
+# or
+pnpm exec eslint .
 ```
 
 **Go:**
@@ -45,9 +52,14 @@ golangci-lint run
 uv run ruff check --fix .
 ```
 
-**ESLint:**
+**ESLint (Bun default):**
 ```bash
-npm run lint -- --fix
+bun run lint -- --fix
+```
+
+**ESLint (pnpm-locked projects):**
+```bash
+pnpm lint -- --fix
 ```
 
 ### Step 3: Manually Fix Remaining Issues

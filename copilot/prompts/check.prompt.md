@@ -32,9 +32,14 @@ uv run pytest -q
 pytest
 ```
 
-**Node.js:**
+**JavaScript/TypeScript (Bun default):**
 ```bash
-npm test
+bun test
+```
+
+**JavaScript/TypeScript (pnpm-locked projects):**
+```bash
+pnpm test
 ```
 
 **Result:**
@@ -53,9 +58,14 @@ uv run ruff check .
 uv run flake8 src/ tests/
 ```
 
-**JavaScript/TypeScript:**
+**JavaScript/TypeScript (Bun default):**
 ```bash
-npm run lint
+bun run lint
+```
+
+**JavaScript/TypeScript (pnpm-locked projects):**
+```bash
+pnpm lint
 ```
 
 **Result:**
@@ -69,9 +79,14 @@ npm run lint
 uv run mypy src/
 ```
 
-**TypeScript:**
+**TypeScript (Bun default):**
 ```bash
-npm run type-check
+bun run type-check
+```
+
+**TypeScript (pnpm-locked projects):**
+```bash
+pnpm type-check
 ```
 
 **Result:**

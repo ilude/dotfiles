@@ -29,7 +29,7 @@ selected group. To add or remove a package, edit the YAML — not `install.ps1`.
 `id: <id>  # <Display Name>` comment format (two spaces before `#`) is load-bearing
 for `-ListPackages` and must be preserved.
 
-For the Windows Pi package-manager decision (`npm` instead of Bun for the global `pi` install), see `pi/README.md`.
+For the Windows Pi package-manager decision (`pnpm` instead of Bun for the global `pi` install), see `pi/README.md`. Do not use `npm` in this repo; prefer `bun`, or `pnpm` where documented/locked.
 
 > **Note for Claude:** Self-elevating scripts like `install.ps1` can be run directly via `pwsh -File install.ps1`. They spawn an elevated admin window automatically, so you will not see output in the current session. Wrap in a 90 second timeout to avoid hanging: `timeout 90 pwsh -File install.ps1 -SkipPackages`
 

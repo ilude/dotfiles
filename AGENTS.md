@@ -32,7 +32,7 @@ Windows PowerShell:
 ~\.dotfiles\install.ps1 -ListPackages
 ```
 
-For the Windows Pi package-manager decision (`npm` instead of Bun for the global `pi` install), see `pi/README.md`.
+For the Windows Pi package-manager decision (`pnpm` instead of Bun for the global `pi` install), see `pi/README.md`.
 
 WSL:
 
@@ -57,6 +57,7 @@ just update
 Tooling expectations:
 
 - Python tooling uses `uv`.
+- JavaScript/TypeScript package-manager policy: prefer `bun`; use `pnpm` where Bun cannot resolve the Pi package graph or where a package already has `pnpm-lock.yaml`; never use `npm` or create/commit `package-lock.json`.
 - Tests use `pytest`.
 - Python lint and format use `ruff`.
 - Shell lint and format use `shellcheck` and `shfmt`.

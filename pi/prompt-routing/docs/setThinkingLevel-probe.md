@@ -21,8 +21,9 @@ existing `settings.defaultThinkingLevel` key (already set to `"medium"` in
 
 ## Static evidence
 
-Installed Pi package (global npm): `@mariozechner/pi-coding-agent` at
+Historical probe environment: Pi was installed globally via npm at the time of this probe:
 `C:/Users/mglenn/AppData/Roaming/npm/node_modules/@mariozechner/pi-coding-agent`.
+Current repo policy is Bun first and pnpm where required; do not use npm for new work.
 
 Type declaration (authoritative):
 

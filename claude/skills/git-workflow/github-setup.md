@@ -93,8 +93,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: npm ci
-      - run: npm test
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun test
 ```
 
 Common triggers: `push`, `pull_request`, `schedule` (cron), `workflow_dispatch` (manual).

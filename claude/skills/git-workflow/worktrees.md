@@ -74,7 +74,7 @@ git worktree prune       # Periodic cleanup
 `git worktree add` creates `.worktrees/` automatically. Do not pre-create it with `mkdir`.
 
 ### Untracked files are absent
-Worktrees only contain tracked files from the checked-out branch. Gitignored files like `.env`, `.venv/`, `node_modules/`, and build artifacts are NOT present. Run any local setup (e.g., `uv sync`, `npm install`) in the new worktree if needed.
+Worktrees only contain tracked files from the checked-out branch. Gitignored files like `.env`, `.venv/`, `node_modules/`, and build artifacts are NOT present. Run any local setup (e.g., `uv sync`, `bun install`, or `pnpm install` for pnpm-locked projects) in the new worktree if needed.
 
 ### Global config symlinks
 If your project uses `~/.claude/` or `~/.config/opencode/` via symlinks pointing to the main worktree (e.g., `~/.claude -> ~/.dotfiles/claude`), edits to those files in a secondary worktree won't affect the live global config until merged back to the branch the main worktree has checked out.
