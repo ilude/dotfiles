@@ -367,7 +367,7 @@ status: synthesis-complete
 
 Then present the same synthesis in chat. The first line of the chat response must be one of:
 
-```text
+```markdown
 ✅ REVIEW COMPLETE: plan is ready to execute.
 ❌ REVIEW COMPLETE: plan is not ready to execute until bugs are fixed.
 ⚠️ REVIEW COMPLETE: plan can execute, but hardening is recommended.
@@ -397,7 +397,7 @@ How do you want to proceed?
 
 The final line of the review response must be one of:
 
-```text
+```markdown
 FINAL STATUS: READY TO EXECUTE — no must-fix bugs found.
 FINAL STATUS: NOT READY TO EXECUTE — must-fix bugs remain.
 FINAL STATUS: READY WITH HARDENING RECOMMENDED — no must-fix bugs, but hardening remains.
