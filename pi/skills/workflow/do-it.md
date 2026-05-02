@@ -119,25 +119,52 @@ If the input is an existing `.specs/*/plan.md` file:
    - do not start the next wave until the current validation gate passes
 5. For each task, use the plan's `small` / `medium` / `large` sizing guidance and keep delegated work on the same provider/model ladder when possible.
 6. Report progress against the plan structure, not just a flat summary.
-7. Deployment Procedure gate -- after all waves pass validation, check whether the plan contains a `## Deployment Procedure` section:
+7. Manual Validation Procedure gate -- after implementation/automated validation, check whether the plan contains a `## Manual Validation Procedure` section or manual/live validation steps in `## Validation`, `## Success Criteria`, or phase gates:
+   - If present, classify each step as agent-runnable or user/manual.
+   - Run agent-runnable safe checks directly.
+   - For user/manual checks (service restarts, real deployments, external accounts, hardware, browser actions, production data, or anything requiring user judgment), present the exact steps verbatim or reconstruct exact steps from the plan.
+   - Ask whether the user wants to run them now and report results, skip them for later, or cancel.
+   - If skipped or not yet confirmed passed, do **not** archive; update `## Execution Status` as described below.
+8. Deployment Procedure gate -- after all waves pass validation, check whether the plan contains a `## Deployment Procedure` section:
    - If present, present the deployment steps to the user verbatim.
    - Ask the user whether to run the deployment procedure now, skip it for manual execution later, or cancel.
    - If the user chooses to run it, execute each numbered step sequentially.
    - Pause after each deployment step to show output and confirm it matches the expected output before continuing.
    - If any deployment step fails, show the plan's failure guidance for that step and ask the user how to proceed.
    - If absent, skip this step; pure code-change plans usually have no deployment procedure.
-8. After all waves pass validation and any requested deployment procedure is complete or explicitly skipped, archive the completed plan:
+9. Assign a final completion classification before reporting:
+   - `completed-and-archived` -- all implementation, validation, manual validation, and deployment gates passed; plan was archived.
+   - `implemented-awaiting-manual-validation` -- code/automated validation passed, but user/manual validation remains.
+   - `blocked-by-failure` -- an implementation, test, lint, validation, deployment, or archive step failed.
+   - `blocked-by-user-decision` -- execution paused because the user chose to skip/cancel/decide later.
+10. If execution cannot be fully completed or the plan cannot be archived in this run, **update the plan file before reporting**:
+   - Add or update a `## Execution Status` section near the validation/success criteria area.
+   - Include the completion classification, current date, last completed wave/gate, next wave/gate to run, what was implemented, and why the plan is not archived.
+   - Record commands already run and their results.
+   - Record commands/checks still needed.
+   - List exact remaining user/manual steps needed to complete validation, including concrete commands, service start/stop actions, files/logs to inspect, expected success signals, and what to do if a step fails.
+   - State explicitly whether `/do-it <plan-path>` should be rerun after those steps pass.
+   - Do not leave partial execution state only in chat.
+11. Archive preflight -- before archiving, verify all are true:
+   - completion classification is `completed-and-archived` candidate: all implementation, automated validation, manual validation, and deployment gates are passed or explicitly not applicable.
+   - no unresolved `## Execution Status` pending/manual items remain, or they have been updated as completed.
+   - the final report will include the archive path.
+   - if any preflight item fails, do not archive; update `## Execution Status` and classify appropriately.
+12. After archive preflight passes, archive the completed plan:
    - Set `completed` in frontmatter to the current date (`YYYY-MM-DD`).
    - Set `status: completed` if the plan uses a status field.
    - Move `.specs/{slug}/plan.md` to `.specs/archive/{slug}/plan.md`.
    - Move any sibling plan artifacts that belong to the same spec, such as review directories or design notes, to `.specs/archive/{slug}/` unless the user asks to keep them active.
    - Create `.specs/archive/{slug}/` if needed.
    - If archive target already exists, ask the user before overwriting or choose a collision-safe suffix.
-9. When execution finishes, summarize:
+13. When execution finishes, summarize:
+   - completion classification
    - tasks completed
    - validation results
-   - archive path
+   - archive path, or `Not archived` with the reason from `## Execution Status`
+   - exact remaining user/manual steps, if any
    - remaining follow-up items, if any
+   - do **not** recommend rerunning `/do-it <original-plan-path>` after successful execution and archiving; `/do-it <plan-path>` is only useful for failed, blocked, incomplete, or manually gated active plans
 
 If the user gave a plan path and also asked to review first, route to `/review-it <path>` before execution.
 
@@ -188,19 +215,35 @@ Use `engineering-lead` only when the task genuinely spans multiple engineering d
 
 ## Step 5: Report
 
-After completion, report:
+After completion, report with an unmistakable status. **The first line and the last line must both state whether the task fully completed.** Do not rely on the status bar, tool output, or indirect wording.
+
+Use one of these exact first-line forms:
+- `✅ COMPLETE: <one-sentence outcome>` only when validation passed and, for plan files, the plan was archived.
+- `❌ NOT COMPLETE: <one-sentence blocker>` when validation failed, manual validation remains, archiving did not happen, or any required gate failed.
+- `⏸ BLOCKED: <one-sentence user decision needed>` when paused on an explicit user decision.
+
+Then include a required `## Outcome` section before the detailed bullets:
+- **Status:** `COMPLETE`, `NOT COMPLETE`, or `BLOCKED`
+- **Reason:** one sentence naming the completion condition or blocker
+- **Plan state:** archived path when complete, or active path plus whether `## Execution Status` was updated
+- **Recommended next action:** `None` if complete; exact command/action if not complete
+
+Then include:
 
 1. **Route taken** — Simple / Medium / Complex / Execute Plan File — and why
-2. **What was done** — specific files changed, commands run, or delegation dispatched
-3. **Verification** — test results, lint output, validation gate results, or behavior confirmation
-4. **Next steps** — follow-up tasks surfaced during implementation
-5. **Copy/paste commands** — when there is a useful follow-up command, print it verbatim in a fenced code block:
+2. **Completion classification** — one of `completed-and-archived`, `implemented-awaiting-manual-validation`, `blocked-by-failure`, or `blocked-by-user-decision`. For Simple/Medium raw tasks without a plan, use `completed` or `blocked` if the plan classifications do not apply.
+3. **What was done** — specific files changed, commands run, or delegation dispatched
+4. **Verification** — test results, lint output, validation gate results, or behavior confirmation. If any required validation failed, this section must say `Required validation failed` and name the failing command(s).
+5. **Next steps** — follow-up tasks surfaced during implementation. If the plan was not archived, provide exact user steps to unblock completion: commands to run, services to start/stop, files/logs to inspect, expected success signals, and what to do if a step fails.
+6. **Plan state note** — if a plan file was executed but not archived, explicitly say that `## Execution Status` was updated in the plan file and summarize what it records, including last completed wave/gate and next gate.
+7. **Copy/paste commands** — when there is a useful follow-up command, print it verbatim in a fenced code block:
    - Plan created but not executed:
      ```text
      /review-it <plan-path>
      /do-it <plan-path>
      ```
-   - Plan executed and archived:
+   - Plan executed successfully and archived with no specific follow-up needed: write `None.`
+   - Plan executed successfully and archived, but follow-up review is specifically useful:
      ```text
      /review-it .specs/archive/<slug>/plan.md
      ```
@@ -208,10 +251,18 @@ After completion, report:
      ```text
      /review-it <plan-path>
      ```
-   - Validation failed and the same plan should be retried after fixes:
+   - Validation failed, live/manual validation remains, or the same active plan should be retried after user steps:
      ```text
      /do-it <plan-path>
      ```
+
+Never print `/do-it <plan-path>` as the next-step command after a successful archived plan. It is a retry/resume command for failed validation, incomplete execution, blocked user/manual validation, or active unarchived plans only.
+
    - No follow-up command is useful: write `None.`
+
+End with one of these exact final-line forms:
+- `FINAL STATUS: COMPLETE — archived at <archive-path or n/a>.`
+- `FINAL STATUS: NOT COMPLETE — <required validation/manual/archive gate still failing>.`
+- `FINAL STATUS: BLOCKED — <user decision needed>.`
 
 Keep the report concise. Use bullet points, not paragraphs.

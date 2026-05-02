@@ -365,12 +365,26 @@ status: synthesis-complete
 ---
 ```
 
-Then present the same synthesis in chat. After the synthesized review, always end with the Pi action prompt below. Substitute the actual counts and plan path from the review. If there are no bugs or no hardening suggestions, set that count to 0 and keep the same option shape. If the user chooses an apply option and the plan is edited successfully, the follow-up output must recommend `/do-it <plan-path>` rather than another `/review-it` pass unless the user explicitly asks to re-review.
+Then present the same synthesis in chat. The first line of the chat response must be one of:
+
+```text
+✅ REVIEW COMPLETE: plan is ready to execute.
+❌ REVIEW COMPLETE: plan is not ready to execute until bugs are fixed.
+⚠️ REVIEW COMPLETE: plan can execute, but hardening is recommended.
+```
+
+After the synthesized review, include a required `## Outcome` section with:
+- **Status:** `READY TO EXECUTE`, `NOT READY TO EXECUTE`, or `READY WITH HARDENING RECOMMENDED`
+- **Reason:** short reason based on bug/hardening counts and verdict
+- **Plan state:** active at `<plan-path>`; review artifact written to `{review_dir}/synthesis.md`
+- **Recommended next action:** apply fixes first if bugs exist; otherwise `/do-it <plan-path>`
+
+Then always end with the Pi action prompt below. Substitute the actual counts and plan path from the review. If there are no bugs or no hardening suggestions, set that count to 0 and keep the same option shape. If the user chooses an apply option and the plan is edited successfully, the follow-up output must recommend `/do-it <plan-path>` rather than another `/review-it` pass unless the user explicitly asks to re-review.
 
 ```markdown
 Apply options:
 
-1. Apply bugs only (Recommended — <N> fixes, all mechanical edits to the plan)
+1. Apply bugs only (Recommended when bugs > 0 — <N> fixes, required before `/do-it`)
 2. Apply bugs + selected hardening — pick which
 3. Apply everything (bugs + <M> hardening)
 4. No changes — review only
@@ -379,6 +393,14 @@ Next-step command:
 /do-it <plan-path>
 
 How do you want to proceed?
+```
+
+The final line of the review response must be one of:
+
+```text
+FINAL STATUS: READY TO EXECUTE — no must-fix bugs found.
+FINAL STATUS: NOT READY TO EXECUTE — must-fix bugs remain.
+FINAL STATUS: READY WITH HARDENING RECOMMENDED — no must-fix bugs, but hardening remains.
 ```
 
 If the user chooses an apply option, read the review findings/synthesis carefully and edit only the reviewed plan file. Do not apply code changes during `/review-it`; this command only updates the plan when requested.

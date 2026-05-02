@@ -25,6 +25,8 @@ type RefreshScope = {
 
 type InputKind = "text" | "image";
 
+type ThinkingLevelMap = Record<string, string | null>;
+
 type ModelLike = {
 	provider: string;
 	id: string;
@@ -37,6 +39,7 @@ type ModelLike = {
 	contextWindow: number;
 	maxTokens: number;
 	headers?: Record<string, string>;
+	thinkingLevelMap?: ThinkingLevelMap;
 	compat?: unknown;
 };
 
@@ -50,6 +53,7 @@ type ProviderModelDef = {
 	contextWindow: number;
 	maxTokens: number;
 	headers?: Record<string, string>;
+	thinkingLevelMap?: ThinkingLevelMap;
 	compat?: unknown;
 };
 
@@ -61,6 +65,7 @@ type RemoteModelInfo = {
 	input?: InputKind[];
 	contextWindow?: number;
 	maxTokens?: number;
+	thinkingLevelMap?: ThinkingLevelMap;
 	disabled?: boolean;
 	eligible?: boolean;
 };
@@ -131,6 +136,31 @@ function defaultCopilotCompat(api: string) {
 		supportsDeveloperRole: false,
 		supportsReasoningEffort: false,
 	};
+}
+
+const PI_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
+
+function buildThinkingLevelMap(supportedLevels: string[]): ThinkingLevelMap | undefined {
+	const supported = new Set(supportedLevels.filter(Boolean));
+	if (supported.size === 0) return undefined;
+	return Object.fromEntries(
+		PI_THINKING_LEVELS.map((level) => [level, supported.has(level) ? level : null]),
+	) as ThinkingLevelMap;
+}
+
+function compatWithoutReasoningEffortMap(compat: unknown): unknown {
+	if (!compat || typeof compat !== "object" || Array.isArray(compat)) return compat;
+	const { reasoningEffortMap: _reasoningEffortMap, ...rest } = compat as Record<string, unknown>;
+	return Object.keys(rest).length > 0 ? rest : undefined;
+}
+
+function getThinkingLevelMap(existing?: ModelLike, remote?: RemoteModelInfo): ThinkingLevelMap | undefined {
+	const compat = existing?.compat as { reasoningEffortMap?: unknown } | undefined;
+	const legacyMap =
+		compat?.reasoningEffortMap && typeof compat.reasoningEffortMap === "object" && !Array.isArray(compat.reasoningEffortMap)
+			? (compat.reasoningEffortMap as ThinkingLevelMap)
+			: undefined;
+	return remote?.thinkingLevelMap ?? existing?.thinkingLevelMap ?? legacyMap;
 }
 
 function decodeJwtPayload(token: string): Record<string, unknown> | undefined {
@@ -313,6 +343,7 @@ function parseOpenAICodexRemoteModels(payload: unknown): RemoteModelInfo[] {
 			reasoning,
 			input,
 			contextWindow: asNumber(record.context_window) ?? asNumber(record.max_context_window),
+			thinkingLevelMap: buildThinkingLevelMap(supportedReasoning),
 		});
 	}
 	return parsed;
@@ -349,9 +380,8 @@ function parseGitHubCopilotRemoteModels(payload: unknown): RemoteModelInfo[] {
 				? (record.policy as Record<string, unknown>)
 				: undefined;
 
-		const reasoningEffort = Array.isArray(supports?.reasoning_effort)
-			? supports.reasoning_effort.length > 0
-			: false;
+		const supportedReasoningEffort = asStringArray(supports?.reasoning_effort);
+		const reasoningEffort = supportedReasoningEffort.length > 0;
 		const reasoning = reasoningEffort || Boolean(supports?.adaptive_thinking);
 		const vision = Boolean(supports?.vision);
 		const disabled = asString(policy?.state)?.toLowerCase() === "disabled";
@@ -372,6 +402,7 @@ function parseGitHubCopilotRemoteModels(payload: unknown): RemoteModelInfo[] {
 			input: vision ? ["text", "image"] : ["text"],
 			contextWindow: asNumber(limits?.max_context_window_tokens),
 			maxTokens: asNumber(limits?.max_output_tokens) ?? asNumber(limits?.max_non_streaming_output_tokens),
+			thinkingLevelMap: buildThinkingLevelMap(supportedReasoningEffort),
 			disabled,
 			eligible,
 		});
@@ -492,7 +523,8 @@ function buildProviderModelDefinitions(
 			const api = remote?.api ?? existing?.api ?? template.api;
 			const contextWindow = remote?.contextWindow ?? existing?.contextWindow ?? template.contextWindow ?? 128000;
 			const maxTokens = remote?.maxTokens ?? existing?.maxTokens ?? template.maxTokens ?? Math.min(16384, contextWindow);
-			const compat = existing?.compat ?? defaultCopilotCompat(api);
+			const compat = compatWithoutReasoningEffortMap(existing?.compat) ?? defaultCopilotCompat(api);
+			const thinkingLevelMap = getThinkingLevelMap(existing, remote);
 
 			return {
 				id,
@@ -504,6 +536,7 @@ function buildProviderModelDefinitions(
 				contextWindow,
 				maxTokens,
 				headers: existing?.headers ?? template.headers,
+				thinkingLevelMap,
 				compat,
 			};
 		});
@@ -515,7 +548,9 @@ function buildProviderModelDefinitions(
 		const contextWindow = remote.contextWindow ?? existing?.contextWindow ?? template.contextWindow ?? 128000;
 		const maxTokens = remote.maxTokens ?? existing?.maxTokens ?? template.maxTokens ?? Math.min(16384, contextWindow);
 		const compat =
-			existing?.compat ?? (provider === "github-copilot" ? defaultCopilotCompat(api) : undefined);
+			compatWithoutReasoningEffortMap(existing?.compat) ??
+			(provider === "github-copilot" ? defaultCopilotCompat(api) : undefined);
+		const thinkingLevelMap = getThinkingLevelMap(existing, remote);
 
 		return {
 			id: remote.id,
@@ -527,6 +562,7 @@ function buildProviderModelDefinitions(
 			contextWindow,
 			maxTokens,
 			headers: existing?.headers ?? template.headers,
+			thinkingLevelMap,
 			compat,
 		};
 	});

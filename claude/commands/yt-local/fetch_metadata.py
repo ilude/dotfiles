@@ -62,6 +62,23 @@ def write_output_file(video_id: str, filename: str, content: str) -> Path:
     return output_path
 
 
+def update_complete_marker(video_id: str, *, transcript: bool = False, metadata: bool = False) -> None:
+    """Update ~/.dotfiles/yt/<video_id>/.complete after successful writes."""
+    marker = output_dir_for(video_id) / ".complete"
+    try:
+        payload = json.loads(marker.read_text(encoding="utf-8"))
+    except Exception:
+        payload = {}
+    if transcript:
+        payload["transcript"] = True
+    if metadata:
+        payload["metadata"] = True
+    payload.setdefault("transcript", False)
+    payload.setdefault("metadata", False)
+    payload["completed_at"] = datetime.now().astimezone().isoformat()
+    marker.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
 def extract_video_id(url_or_id: str) -> str:
     """Extract video ID from YouTube URL or return as-is if already an ID."""
     if re.match(r'^[0-9A-Za-z_-]{11}$', url_or_id):
@@ -306,6 +323,8 @@ def main():
         metadata_path = write_output_file(video_id, "metadata.json", metadata_json + "\n")
         description_path = write_output_file(video_id, "description.txt", metadata["description"] + "\n")
         urls_path = write_output_file(video_id, "description_urls.txt", "\n".join(metadata["description_urls"]) + ("\n" if metadata["description_urls"] else ""))
+
+        update_complete_marker(video_id, metadata=True)
 
         if args.urls_only:
             urls = metadata["description_urls"]

@@ -106,6 +106,19 @@ export default function (pi: ExtensionAPI) {
 		} catch {
 			// Never crash session_start on transcript wiring failure.
 		}
+
+		// menos circuit breaker probe/backfill. Best-effort only; never fail session_start.
+		try {
+			if (process.env.MENOS_CIRCUIT_DISABLED !== "1") {
+				const home = os.homedir();
+				const probePath = path.join(home, ".claude", "hooks", "menos-circuit", "probe.py");
+				const backfillPath = path.join(home, ".claude", "hooks", "menos-circuit", "backfill.py");
+				await pi.exec("python", [probePath], { timeoutMs: 3000 }).catch(() => undefined);
+				void pi.exec("python", [backfillPath, "--detach"], { detached: true }).catch(() => undefined);
+			}
+		} catch {
+			// menos hooks are best-effort.
+		}
 	});
 
 	// -- session_shutdown: archive conversation log -----------------------------

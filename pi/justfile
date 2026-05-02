@@ -17,6 +17,14 @@ test-watch:
 test-coverage:
     cd ~/.dotfiles/pi/tests && bun vitest run --coverage
 
+# Run deterministic memory eval scaffold (baseline mode)
+eval-memory:
+    cd ~/.dotfiles/pi/tests && bun memory-eval/runner.ts --memoryMode=baseline
+
+# Rebuild local JSONL-derived in-memory expertise index
+memory-rebuild:
+    cd ~/.dotfiles && bun pi/scripts/memory-rebuild.ts
+
 # Default recipe — launches Pi with all auto-discovered extensions
 default:
     pi

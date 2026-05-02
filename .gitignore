@@ -110,7 +110,7 @@ pi/prompt-routing/logs/
 # =============================================================================
 backups/
 logs/
-yt/
+/yt/
 tmpclaude-*
 last-context.txt
 hook-debug*.*

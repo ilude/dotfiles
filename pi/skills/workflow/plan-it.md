@@ -257,13 +257,24 @@ If any check fails, fix it before continuing.
 
 ## Step 8: Present
 
-After writing the file, show the user:
+After writing the file, the first line of the response must be:
+
+```text
+✅ PLAN CREATED: no code was executed.
+```
+
+Then show the user:
 
 1. A brief summary of what was crystallized (2-3 sentences)
 2. The task breakdown table
 3. The dependency graph
 4. The file path where the plan was written
-5. **Next-step commands** -- output both commands verbatim in a fenced code block so the user can copy either:
+5. A required `## Outcome` section with:
+   - **Status:** `PLAN CREATED`
+   - **Reason:** plan file was written; implementation has not run
+   - **Plan state:** active draft at `.specs/{slug}/plan.md`
+   - **Recommended next action:** review first unless the task is low-risk and the user explicitly wants execution
+6. **Next-step commands** -- output both commands verbatim in a fenced code block so the user can copy either:
 
    ```text
    /review-it .specs/{slug}/plan.md
@@ -271,3 +282,9 @@ After writing the file, show the user:
    ```
 
 Then ask: "Want to review/edit the plan first, send it through `/review-it`, or execute it with `/do-it`?"
+
+The final line of the response must be:
+
+```text
+FINAL STATUS: PLAN CREATED — no code executed.
+```

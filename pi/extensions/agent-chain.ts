@@ -28,6 +28,7 @@ import { type ExtensionAPI, withFileMutationQueue } from "@mariozechner/pi-codin
 import { getAgentDir } from "../lib/extension-utils.js";
 import { readMergedSettings } from "../lib/settings-loader.js";
 import { createTask, transitionTask } from "../lib/task-registry.js";
+import { retrieve, renderRelevantPriorExpertise } from "./memory-retrieve";
 
 /**
  * Operator task registry: record /chain dispatch as durable work. Underlying
@@ -809,6 +810,19 @@ function formatMergedLayerSnapshots(agent: string, views: LayerView[], mode: Exp
 	return lines.join("\n");
 }
 
+export async function buildRelevantPriorExpertiseBlock(options: { task?: string; agent: string; repoId: string; maxTokens?: number; mode?: "semantic" | "recency" }): Promise<string> {
+	const results = await retrieve({
+		task: options.task,
+		agent: options.agent,
+		repoId: options.repoId,
+		k: options.mode === "recency" ? 20 : 5,
+		maxTokens: options.maxTokens ?? 1500,
+		crossRepo: "policies-only",
+		mode: options.task?.trim() ? "semantic" : "recency",
+	});
+	return results.length ? renderRelevantPriorExpertise(results, options.maxTokens ?? 1500) : "";
+}
+
 function mergeLayerTexts(agent: string, views: LayerView[], mode: ExpertiseReadMode, currentProjects: string[]): string {
 	const mergedSnapshotText = formatMergedLayerSnapshots(agent, views, mode, currentProjects);
 	if (mergedSnapshotText) return mergedSnapshotText;
@@ -1113,16 +1127,20 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
+			const repo = resolveLayer(multiTeamDir, ctx as { cwd?: string; repoId?: string } | undefined).repoId?.slug ?? "global";
+			const memoryBlock = await buildRelevantPriorExpertiseBlock({ task: args.trim(), agent: "orchestrator", repoId: repo });
 			const message = [
 				`Run the plan-build-review chain for this task: ${args.trim()}`,
 				"",
+				memoryBlock,
+				memoryBlock ? "" : undefined,
 				"Use the subagent tool to execute each stage sequentially, passing the previous output as input to the next:",
 				`1. Planner: ${agentFiles.planner}`,
 				`2. Builder: ${agentFiles.builder} (receives planner output)`,
 				`3. Reviewer: ${agentFiles.reviewer} (receives builder output)`,
 				"",
 				"Do not proceed to the next stage until the current one completes.",
-			].join("\n");
+			].filter((line): line is string => typeof line === "string").join("\n");
 
 			safeRecordChainDispatch(args.trim());
 			await pi.sendUserMessage(message);

@@ -1,0 +1,282 @@
+{
+  "memoryMode": "baseline",
+  "tasks": [
+    {
+      "id": "control-01",
+      "stratum": "control",
+      "success": true,
+      "tokens": 18,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "control-02",
+      "stratum": "control",
+      "success": true,
+      "tokens": 18,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "control-03",
+      "stratum": "control",
+      "success": true,
+      "tokens": 18,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "control-04",
+      "stratum": "control",
+      "success": true,
+      "tokens": 18,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "control-05",
+      "stratum": "control",
+      "success": true,
+      "tokens": 18,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "control-06",
+      "stratum": "control",
+      "success": true,
+      "tokens": 18,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "control-07",
+      "stratum": "control",
+      "success": true,
+      "tokens": 18,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "control-08",
+      "stratum": "control",
+      "success": true,
+      "tokens": 18,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "control-09",
+      "stratum": "control",
+      "success": true,
+      "tokens": 18,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "positive-01",
+      "stratum": "positive",
+      "success": false,
+      "tokens": 11,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "positive-02",
+      "stratum": "positive",
+      "success": false,
+      "tokens": 11,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "positive-03",
+      "stratum": "positive",
+      "success": false,
+      "tokens": 11,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "positive-04",
+      "stratum": "positive",
+      "success": false,
+      "tokens": 11,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "positive-05",
+      "stratum": "positive",
+      "success": false,
+      "tokens": 11,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "positive-06",
+      "stratum": "positive",
+      "success": false,
+      "tokens": 11,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "positive-07",
+      "stratum": "positive",
+      "success": false,
+      "tokens": 11,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "positive-08",
+      "stratum": "positive",
+      "success": false,
+      "tokens": 11,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "positive-09",
+      "stratum": "positive",
+      "success": false,
+      "tokens": 11,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "positive-10",
+      "stratum": "positive",
+      "success": false,
+      "tokens": 11,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "positive-11",
+      "stratum": "positive",
+      "success": false,
+      "tokens": 11,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "positive-12",
+      "stratum": "positive",
+      "success": false,
+      "tokens": 11,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "positive-13",
+      "stratum": "positive",
+      "success": false,
+      "tokens": 11,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "positive-14",
+      "stratum": "positive",
+      "success": false,
+      "tokens": 11,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "positive-15",
+      "stratum": "positive",
+      "success": false,
+      "tokens": 11,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "negative-01",
+      "stratum": "negative",
+      "success": true,
+      "tokens": 18,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "negative-02",
+      "stratum": "negative",
+      "success": true,
+      "tokens": 18,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "negative-03",
+      "stratum": "negative",
+      "success": true,
+      "tokens": 18,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "negative-04",
+      "stratum": "negative",
+      "success": true,
+      "tokens": 18,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "negative-05",
+      "stratum": "negative",
+      "success": true,
+      "tokens": 18,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    },
+    {
+      "id": "negative-06",
+      "stratum": "negative",
+      "success": true,
+      "tokens": 18,
+      "wall_ms": 0,
+      "retrieved_ids": []
+    }
+  ],
+  "summary": {
+    "count": 30,
+    "success_rate": 0.5,
+    "per_stratum": {
+      "control": {
+        "count": 9,
+        "success_rate": 1
+      },
+      "positive": {
+        "count": 15,
+        "success_rate": 0
+      },
+      "negative": {
+        "count": 6,
+        "success_rate": 1
+      }
+    },
+    "ci_lower": 0.3333333333333333,
+    "ci_upper": 0.6666666666666666,
+    "per_stratum_ci": {
+      "control": {
+        "mean": 1,
+        "ci_lower": 1,
+        "ci_upper": 1
+      },
+      "positive": {
+        "mean": 0,
+        "ci_lower": 0,
+        "ci_upper": 0
+      },
+      "negative": {
+        "mean": 1,
+        "ci_lower": 1,
+        "ci_upper": 1
+      }
+    }
+  }
+}

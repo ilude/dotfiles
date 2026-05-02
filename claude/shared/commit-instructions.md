@@ -57,12 +57,59 @@ Group files by logical change using commit types: feat (new features), fix (bug 
 
 For each group of related files:
 1. Stage the files with git add
-2. Write a commit message that is human-style with natural grammar
-3. NO emojis in commit messages
-4. Brief summary line with optional detailed body
-5. Use HEREDOC format for multi-line messages: git commit --no-verify -m "$(cat <<'EOF'\ntype: summary\n\nOptional details\nEOF\n)"
-6. Create the commit (use --no-verify since tests already ran in the pre-commit optimization step)
-7. For intermediate commits (more groups remain after this one), prefix with `COMMIT_GUARD_BATCH=1` to suppress the commit-guard hook. Only the FINAL commit should run without this prefix so the guard can verify no files were missed.
+2. If `git add` exits non-zero, follow **Staging Failure Handling** below immediately. Do not run `git commit` after a non-zero `git add` unless the user explicitly resolves the failure and chooses to retry or skip-and-continue.
+3. Write a commit message that is human-style with natural grammar
+4. NO emojis in commit messages
+5. Brief summary line with optional detailed body
+6. Use HEREDOC format for multi-line messages: git commit --no-verify -m "$(cat <<'EOF'\ntype: summary\n\nOptional details\nEOF\n)"
+7. Create the commit (use --no-verify since tests already ran in the pre-commit optimization step)
+8. For intermediate commits (more groups remain after this one), prefix with `COMMIT_GUARD_BATCH=1` to suppress the commit-guard hook. Only the FINAL commit should run without this prefix so the guard can verify no files were missed.
+
+## Staging Failure Handling
+
+If any `git add` command exits non-zero, stop the commit workflow before creating a commit. Do not commit whatever subset may already be staged from the failed command unless the user explicitly chooses to skip-and-continue or otherwise approves continuing with the partial staged state.
+
+When staging fails:
+1. Capture and show the `git add` error.
+2. Run and summarize:
+   - `git status --short`
+   - `git diff --cached --name-status`
+   - `git log -1 --oneline`
+3. If the error mentions an ignored path or ignored file, explain that force-adding ignored files with `git add -f` may commit generated, private, or intentionally excluded files.
+4. Ask the user to choose exactly one recovery action:
+   - force-add the listed paths with `git add -f` and retry staging
+   - skip the listed paths and skip-and-continue with the remaining intended files
+   - abort and leave the staged/working-tree state unchanged
+5. Do not run `git reset`, `git restore`, checkout, unstage, or cleanup commands unless the user explicitly asks for that destructive or state-mutating recovery.
+
+Use this failure report template for staging failures:
+
+```text
+Committed: no
+Pushed: no
+Staged changes remain: yes/no — summarize `git diff --cached --name-status`
+Blocked by: <git add error, ignored path, or other staging failure>
+Next choices: force-add listed paths / skip-and-continue / abort and leave state unchanged
+```
+
+Example ignored-path failure:
+
+```text
+Committed: no
+Pushed: no
+Staged changes remain: yes — some files were staged before git rejected an ignored path
+Blocked by: git add refused ignored path claude/commands/yt/ingest_video.py
+Next choices: force-add listed paths with git add -f after confirmation / skip-and-continue without that ignored path / abort and leave state unchanged
+```
+
+## Outcome Reporting
+
+Distinguish prepared/staged, committed, and pushed states in the final report:
+- `prepared` or `staged` means files are in the index only; it does not mean they were committed.
+- `committed` means `git commit` succeeded and a commit hash was produced or verified with `git log -1 --oneline`.
+- `pushed` means `git push` succeeded after the commits were created.
+
+Report commit hashes only for commits that actually succeeded. If commit succeeds but push fails, list the commit hashes and report the push status separately as failed. If staging or preparation fails before any commit, say that no commit or push occurred unless command output proves otherwise.
 
 After each commit, run git status again. If legitimate files remain (not matching the auto-ignore patterns), categorize and group them, then commit. Repeat this loop until git status shows only ignored files or working tree is clean.
 
