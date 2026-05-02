@@ -1,0 +1,5 @@
+pi-memory-retrieval T3 deterministic local placeholder artifact v1
+model: local-placeholder-384
+dim: 384
+source: generated locally by embed-smoke.ts; no network
+revision: 2026-05-02

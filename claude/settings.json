@@ -121,6 +121,24 @@
             "type": "command"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "python $HOME/.claude/hooks/menos-circuit/probe.py",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "python $HOME/.claude/hooks/menos-circuit/backfill.py --detach",
+            "timeout": 2,
+            "type": "command"
+          }
+        ]
       }
     ],
     "Stop": [

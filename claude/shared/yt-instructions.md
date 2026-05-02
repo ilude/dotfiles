@@ -10,7 +10,7 @@ Parse the arguments to determine the subcommand:
 
 ### Subcommand: `list [n]`
 
-If the first argument is `list`, show recently ingested videos.
+If the first argument is `list`, show recently ingested videos. If menos is unreachable, report that this operation has no local fallback and suggest retrying later.
 
 - **Optional**: number of videos to show (default: 10, max: 100)
 - **Optional flags**: `--all` (include test content), `--test` (only test content)
@@ -26,7 +26,7 @@ Stop after displaying. No further steps needed.
 
 ### Subcommand: `search <query>`
 
-If the first argument is `search`, perform semantic search across all ingested content.
+If the first argument is `search`, perform semantic search across all ingested content. If menos is unreachable, report that this operation has no local fallback and suggest retrying later.
 
 Run:
 ```bash
@@ -39,7 +39,7 @@ Stop after displaying. No further steps needed.
 
 ### Subcommand: `transcript <video_id_or_url>`
 
-If the first argument is `transcript`, fetch the transcript for a previously ingested video from menos.
+If the first argument is `transcript`, fetch the transcript for a previously ingested video from menos. If menos is unreachable and `~/.dotfiles/yt/<video_id>/transcript.txt` exists, read and display that local transcript instead.
 
 This is a two-step pipeline: resolve the video_id to a content_id, then fetch the content.
 
@@ -59,7 +59,7 @@ If the video has not been ingested yet, tell the user and suggest running `/yt {
 
 ### Subcommand: `content <content_id>`
 
-If the first argument is `content`, fetch full content details by menos content_id.
+If the first argument is `content`, fetch full content details by menos content_id. If menos is unreachable, report that this operation has no local fallback and suggest retrying later.
 
 ```bash
 cd ~/.claude/commands/yt && unset VIRTUAL_ENV && uv run get_content.py {content_id} --json
@@ -80,7 +80,9 @@ If the first argument is NOT one of the above subcommands, treat it as an ingest
 
 Extract the 11-character video ID from the URL or use directly if already an ID.
 
-### 2. Call menos API
+### 2. Call menos API, then locally fall back only on reachability/server failure
+
+Always attempt menos directly first; do not gate on the status file. The status file at `~/.claude/state/menos_status.json` is only a user-facing hint such as "menos last seen up/down at <checked_at>".
 
 ```bash
 cd ~/.claude/commands/yt && unset VIRTUAL_ENV && uv run ingest_video.py "{url_or_video_id}"
@@ -88,8 +90,17 @@ cd ~/.claude/commands/yt && unset VIRTUAL_ENV && uv run ingest_video.py "{url_or
 
 This command calls the unified ingest endpoint: `POST /api/v1/ingest`.
 
+On connection errors or 5xx responses only, fall back to local fetch:
+
+```bash
+cd ~/.claude/commands/yt-local && uv run fetch_transcript.py "{url_or_video_id}"
+cd ~/.claude/commands/yt-local && uv run fetch_metadata.py "{url_or_video_id}"
+```
+
+The local fetchers write `~/.dotfiles/yt/<video_id>/` and update `.complete` only after successful writes. Tell the user menos is unreachable and the video was cached locally for future background backfill. Do not use local fallback for 4xx auth/validation errors.
+
 The API will:
-- Fetch the transcript via server-side proxy
+- Fetch the transcript via server-side proxy unless `--from-local` is used by backfill/manual upload
 - Store transcript and metadata in S3 (Garage)
 - Enqueue unified pipeline processing (summary/tags/entities/quality are asynchronous)
 

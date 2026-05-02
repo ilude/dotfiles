@@ -1,9 +1,10 @@
 ---
 created: 2026-05-02
-status: draft
-completed:
+status: completed
+completed: 2026-05-02
 review:
   - review-1/synthesis.md (applied: 14 bugs, 8 hardening)
+  - review-2/synthesis.md (applied: 5 bugs, 8 hardening)
 ---
 
 # Plan: Pi Expertise Memory v2 -- Retrieval over JSONL
@@ -51,8 +52,8 @@ rebuildable.
 `query` parameter with lexical scoring, retrieval cache, and an explicit privacy
 clause: "External embedding providers, vector databases, or network calls are
 disabled for this feature unless a future approved design adds explicit opt-in
-configuration." The in-flight (untracked) `pi/tests/read-expertise-retrieval.test.ts`
-is the test surface for that work.
+configuration." The tracked `pi/tests/read-expertise-retrieval.test.ts`
+is the current test surface for that work.
 
 **This plan extends, does not replace, that lexical retrieval.** Specifically:
 
@@ -65,8 +66,8 @@ is the test surface for that work.
   retrieval API contract from `read_expertise` (parameter shape, response
   shape) is preserved; this plan adds an internal scoring layer behind it.
 - T0a is a prerequisite gate: until `expertise-layering.md` is updated and the
-  in-flight `read-expertise-retrieval.test.ts` is committed or rebased on top
-  of this plan, T1-T8 do not start.
+  tracked `read-expertise-retrieval.test.ts` surface is extended or rebased for
+  this plan, T1-T8 do not start.
 
 If the user later decides the lexical scorer is sufficient, this plan's Phase 1
 (in-memory cosine) can be deleted and the lexical scorer kept. The eval gate
@@ -78,16 +79,16 @@ The verified expertise corpus is currently dozens of rows total
 (34 lines in the largest log sampled). DuckDB+vss+HNSW with experimental
 persistence is over-engineered for that scale. The plan ships in two phases:
 
-- **Phase 1 (this plan, T0a-T10):** in-memory cosine over a `Float32Array`
+- **Phase 1 MVP (this plan, T0a-T8):** in-memory cosine over a `Float32Array`
   buffer, rebuilt on agent startup from JSONL. ~30 LOC of retrieval. Same
   `retrieve()` interface as Phase 2 will use. Eval-gates the architecture
   before adding any new infra.
-- **Phase 2 (deferred, T11):** swap the in-memory backend for DuckDB+vss when
+- **Phase 2 (deferred):** swap the in-memory backend for DuckDB+vss when
   the corpus crosses a measured threshold (>2000 rows OR retrieval p99 > 100ms
   on the eval). `retrieve()` interface unchanged. T11 is documented but not
   scheduled in this plan; it is triggered by metrics, not calendar.
 
-If Phase 1 fails the eval (HALT), Phase 2 is moot.
+If Phase 1 fails the eval (HALT), Phase 2 is moot. Promotion detection and snapshot deletion are also deferred to follow-up plans unless V3 produces PROCEED and the user explicitly approves those follow-ups.
 
 ## Constraints
 
@@ -140,6 +141,12 @@ If Phase 1 fails the eval (HALT), Phase 2 is moot.
   PROCEED gate to "point estimate >= 0 AND CI lower >= -0.05" with
   documented rationale, or (c) one-sided test rather than CI inclusion of
   zero. T8 records the chosen power calculation.
+- Eval mode isolation: T7/T8 must use an explicit `memoryMode` switch with exactly two values: `baseline` (snapshot + lexical read_expertise; semantic retrieval disabled) and `semantic` (same procedural/snapshot behavior plus opt-in semantic retrieval). No other memory behavior may differ between paired runs.
+- Seeded positive eval fixtures must name `expected_memory_ids` or deterministic `expected_facts`; non-empty retrieval traces alone are not evidence of useful retrieval.
+- Model supply-chain rule: embedding packages, model source, model revision, resolved URL/path, lockfile entry, and SHA256 are recorded before use. A checksum mismatch fails closed before embedding any corpus row.
+- Promotion candidates are local/private review artifacts. `~/.pi/agent/index/policy-candidates.md` must not be committed by default and may contain cross-repo facts.
+- Stable ID canonicalization: ids are computed from canonical repo id, repo-relative POSIX path, LF-normalized JSONL bytes, and line number/byte offset policy documented in T4. Windows path case and separator differences must not change ids.
+- Concurrent rebuilds must be safe: multiple Pi sessions starting at once cannot serve a half-built index or corrupt `fingerprint.json`.
 
 ## Alternatives Considered
 
@@ -172,11 +179,10 @@ When complete, pi has:
    chosen; otherwise N=30-50 with the loosened gate documented), reporting
    Memory Lift overall AND per-stratum, plus cost-adjusted lift, runnable via
    `just eval-memory`.
-5. The `mental-model.json` and `mental-model.state.json` snapshot machinery
-   archived to `~/.pi/agent/index/archive/{ts}/` (H-04) and removed from the
-   live tree -- but only after the eval shows the retrieval system non-regresses
-   AND the T1 audit-manifest dispositions are executed AND the
-   `pi/tests/expertise-layering.test.ts` test deltas are explicit (B-11).
+5. A V3 decision record that either HALTs or recommends follow-up work for
+   promotion detection and snapshot archival/deletion. Snapshot deletion is not
+   part of the MVP execution path; it requires explicit user approval after V3
+   PROCEED, executed as T10 follow-up.
 
 ## Project Context
 
@@ -190,8 +196,8 @@ When complete, pi has:
   point for agent-startup memory loading.
 - **Existing storage**: `pi/multi-team/expertise/gh/{owner}/{repo}/` per repo;
   flat `pi/multi-team/expertise/` for the global layer (verified).
-- **In-flight work**: `pi/tests/read-expertise-retrieval.test.ts` (untracked).
-  T0a coordinates with this.
+- **Existing retrieval test surface**: `pi/tests/read-expertise-retrieval.test.ts` is tracked.
+  T0a coordinates with this by extending/rebasing the tracked tests as needed.
 
 ## Task Breakdown
 
@@ -209,10 +215,10 @@ When complete, pi has:
 | T7  | Baseline eval (snapshot system + lexical `read_expertise`) | 1 | feature | sonnet | builder | V2 |
 | T8  | Retrieval eval; compute overall + per-stratum Memory Lift with chosen power-calc strategy | 1 | feature | sonnet | builder | V2 |
 | V3  | Validate wave 3 (decision: PROCEED or HALT) | -- | validation | sonnet | validator-heavy | T7, T8 |
-| T9  | Frequency-threshold promotion detector with greedy single-link clustering, medoid canonical | 2-3 | feature | sonnet | builder | V3 |
-| T10 | Snapshot archival + deletion (conditional); enumerate test deltas in `expertise-layering.test.ts` | 6-8 | architecture | opus | builder-heavy | V3 |
-| V4  | Validate wave 4 | -- | validation | sonnet | validator-heavy | T9, T10 |
-| T11 | (Deferred) Phase 2 -- DuckDB+vss backend swap; same `retrieve()` interface | -- | architecture | opus | builder-heavy | corpus > 2000 rows OR retrieval p99 > 100ms |
+| T9  | (Deferred follow-up) Frequency-threshold promotion detector with greedy single-link clustering, medoid canonical | 2-3 | feature | sonnet | builder | V3 + user approval |
+| T10 | (Deferred follow-up) Snapshot archival + deletion; enumerate test deltas in `expertise-layering.test.ts` | 6-8 | architecture | opus | builder-heavy | V3 + user approval |
+| V4  | (Deferred follow-up) Validate promotion/deletion work | -- | validation | sonnet | validator-heavy | T9, T10 |
+| T11 | (Deferred follow-up) Phase 2 -- DuckDB+vss backend swap; same `retrieve()` interface | -- | architecture | opus | builder-heavy | corpus > 2000 rows OR retrieval p99 > 100ms |
 
 ## Execution Waves
 
@@ -225,11 +231,11 @@ When complete, pi has:
   `~/.pi/agent/settings.json` `expertise.semanticRetrieval = true`. When false,
   retrieval falls back to lexical-only (current behavior). When true, the
   lexical and semantic scorers are blended (lexical primary; semantic boosts
-  ties and surfaces synonym/phrasing variants). Confirm whether the in-flight
-  `pi/tests/read-expertise-retrieval.test.ts` should be committed first or
-  rebased on top of this work; if first, gate this plan's V1 on its commit.
+  ties and surfaces synonym/phrasing variants). Confirm how the tracked
+  `pi/tests/read-expertise-retrieval.test.ts` should be extended or rebased on
+  top of this work; V1 is gated on the updated tests passing.
 - Files: `pi/docs/expertise-layering.md` (privacy clause + retrieval section),
-  potentially `pi/tests/read-expertise-retrieval.test.ts` coordination.
+  potentially `pi/tests/read-expertise-retrieval.test.ts` updates.
 - Acceptance Criteria:
   1. [ ] `expertise-layering.md` privacy clause updated to add explicit opt-in
         for local-only semantic retrieval; no network at runtime
@@ -283,7 +289,9 @@ When complete, pi has:
 
 **T2: Eval harness + determinism + power calc** [sonnet] -- builder
 - Description: Create `pi/tests/memory-eval/` containing:
-  - `fixtures.json` with stratified tasks. Strata ratio: control / positive /
+  - `fixtures.json` with stratified tasks. Each fixture includes `id`, `stratum`,
+    `prompt`, `scoring`, `provenance`, and, for seeded positives,
+    `expected_memory_ids` or `expected_facts`. Strata ratio: control / positive /
     negative = 30 / 50 / 20. **Sample size N is determined by the chosen
     power-calc strategy from B-06**: if (a), N >= 100; if (b), N may be 30-50
     with the loosened gate; if (c), one-sided test. T2 records the chosen
@@ -309,9 +317,9 @@ When complete, pi has:
      - Verify (pwsh): `Set-Location pi; just eval-memory; (Get-Content tests/memory-eval/results-baseline.json | ConvertFrom-Json).summary.per_stratum`
      - Pass: shows all three strata with success rates
      - Fail: missing strata -- check stratification
-  2. [ ] Fixtures meet stratification AND provenance criteria
+  2. [ ] Fixtures meet stratification, provenance, and seeded-positive criteria
      - Verify: jq pipeline asserting control >= 30%, positive >= 50%, negative
-        >= 20% AND `provenance == "session"` count >= 30% of total
+        >= 20%, `provenance == "session"` count >= 30% of total, and every seeded positive has `expected_memory_ids` or `expected_facts`
      - Pass: all conditions
      - Fail: any condition unmet
   3. [ ] vitest unit tests cover scoring + bootstrap + per-stratum aggregation
@@ -334,17 +342,17 @@ When complete, pi has:
   with `Xenova/bge-small-en-v1.5` at `dtype: 'q8'` (384-dim, ~33MB), and
   (b) Ollama embeddings via HTTP if Ollama is installed. Time the embed of
   100 sample log entries on the user's machine, **including first-run
-  download time**. Pin the chosen model artifact to
-  `~/.pi/agent/models/{model-id}/{file}` and verify SHA256 on every load
+  download time**. Pin the chosen package version, model source, model revision, resolved URL/path, lockfile entry, and model artifact to
+  `~/.pi/agent/models/{model-id}/{file}`. Verify SHA256 before first use and on every load
   (H-02). Choose the winner on cold-start latency + bundle size + offline
   reliability (H-02).
 - Files: `.specs/pi-memory-retrieval/embedder.md` (decision + numbers + SHA256),
   `.specs/pi-memory-retrieval/spikes/embed-smoke.ts`, possibly
   `pi/extensions/package.json` for the chosen lib dep.
 - Acceptance Criteria:
-  1. [ ] `embedder.md` records the choice, cold-start latency (first-run
+  1. [ ] `embedder.md` records the choice, package version, source/revision, resolved URL/path, cold-start latency (first-run
         download + first-embed), warm-start latency (subsequent embeds),
-        bundle size, AND model file SHA256
+        bundle size, lockfile entry, AND model file SHA256
      - Verify (bash): `grep -E 'choice:|first-run:|warm:|MB|SHA256:' .specs/pi-memory-retrieval/embedder.md | wc -l`
      - Verify (pwsh): `(Select-String -Path .specs/pi-memory-retrieval/embedder.md -Pattern 'choice:|first-run:|warm:|MB|SHA256:' | Measure-Object -Line).Lines`
      - Pass: count >= 5 (one line per element)
@@ -387,7 +395,7 @@ When complete, pi has:
 - Description: Implement `pi/extensions/memory-index.ts`. Phase 1 is in-memory:
   walk `pi/multi-team/expertise/**/*-expertise-log.jsonl` (using a glob library
   available under both bash and pwsh -- e.g., Bun's built-in glob), parse each
-  line, embed `text` with the T3 embedder, build an in-process
+  line, canonicalize stable-id inputs (repo id, repo-relative POSIX path, LF-normalized JSONL bytes, line number/byte offset policy), embed `text` with the T3 embedder, build an in-process
   `Float32Array[]` keyed by stable id (`jsonl_path` + line offset SHA-1).
   **Tag global-layer entries with a sentinel** distinct from the non-git
   fallback slug `global` (B-03): use `__global-layer__` for entries from the
@@ -395,7 +403,7 @@ When complete, pi has:
   a fingerprint with `model_id`, `dtype`, `model_sha256`, `chunker_v`,
   `schema_v`, `embedder_lib_v`. Store the fingerprint to
   `~/.pi/agent/index/fingerprint.json`. **Mismatch** (compared to disk-state
-  on next start) **triggers full rebuild** before retrieval is served.
+  on next start) **triggers full rebuild** before retrieval is served. Rebuilds use a lockfile plus build-to-temp-then-atomic-rename so concurrent Pi sessions cannot serve a half-built index or corrupt `fingerprint.json`.
 - Files: `pi/extensions/memory-index.ts`,
   `pi/scripts/memory-rebuild.ts`,
   `pi/justfile` (add `memory-rebuild` recipe).
@@ -535,13 +543,13 @@ When complete, pi has:
 
 **T7: Baseline eval** [sonnet] -- builder
 - Blocked by: V2
-- Description: Run the T2 eval harness with the **existing snapshot system +
-  lexical `read_expertise`** as the baseline (no semantic retrieval).
+- Description: Run the T2 eval harness with `memoryMode=baseline`: **existing snapshot system +
+  lexical `read_expertise`** only (semantic retrieval disabled). The paired T8 run uses the same fixture order, procedural inputs, snapshot behavior, model routing, and scoring; only semantic retrieval differs.
   Determinism strategy from T2 applied. Results recorded to
   `.specs/pi-memory-retrieval/eval-baseline.json` -- per-task outcome,
   per-stratum success rate, total tokens, wall-clock per task.
-- Files: `.specs/pi-memory-retrieval/eval-baseline.json`, runner flag for
-  memory mode.
+- Files: `.specs/pi-memory-retrieval/eval-baseline.json`, runner flag/config for
+  `memoryMode=baseline|semantic`.
 - Acceptance Criteria:
   1. [ ] eval-baseline.json contains one entry per fixture task AND
         per-stratum aggregates
@@ -566,7 +574,7 @@ When complete, pi has:
   - **Power-calc strategy**: per T2 `power-calc.md` -- the gate uses the
     chosen formulation (raised N, loosened gate, or one-sided test).
   - **Retrieval traces**: which memory ids fired per task, for post-hoc
-    eRAG-style diagnosis.
+    eRAG-style diagnosis. Seeded positives must retrieve an expected memory id or satisfy the deterministic `expected_facts` assertion.
   - Output: `.specs/pi-memory-retrieval/eval-retrieval.json` and
     `eval-summary.md`.
 - Files: as above.
@@ -576,12 +584,10 @@ When complete, pi has:
      - Verify (bash): `grep -E 'Overall Lift|Negative Lift|Positive Lift|Control Lift|Cost-Adjusted|decision: (PROCEED|HALT)' .specs/pi-memory-retrieval/eval-summary.md | wc -l`
      - Pass: count >= 6
      - Fail: missing rows -- regenerate
-  2. [ ] Retrieval traces stored per task (`retrieved_ids` non-empty for
-        positive stratum, may be empty for negative stratum where retrieval
-        should not fire)
-     - Verify (bash): `jq '.tasks | map(select(.stratum=="positive" and (.retrieved_ids|length)==0)) | length' eval-retrieval.json`
-     - Pass: 0 (no positive task with empty trace)
-     - Fail: > 0 -- positive tasks should have retrieved something
+  2. [ ] Retrieval traces stored per task and seeded positives retrieve expected evidence
+     - Verify (bash): jq asserts no seeded positive task is missing all `expected_memory_ids` from `retrieved_ids` unless its deterministic `expected_facts` assertion passed
+     - Pass: 0 seeded positives missing expected evidence
+     - Fail: > 0 -- retrieval may be irrelevant despite non-empty traces
   3. [ ] Decision matches data:
         PROCEED requires (overall CI per power-calc gate) AND
         `negative_lift >= -0.05`
@@ -766,8 +772,8 @@ When complete, pi has:
 Wave 1: T0a, T1, T2, T3 (parallel) -> V1
 Wave 2: T4, T5, T6 (parallel) -> V2
 Wave 3: T7, T8 (parallel) -> V3
-Wave 4: T9, T10 (parallel, conditional on V3 = PROCEED) -> V4
-T11: deferred; trigger on metrics, not calendar
+Wave 4: deferred follow-up only; T9/T10 require V3 = PROCEED plus explicit user approval
+T11: deferred follow-up; trigger on metrics, not calendar
 ```
 
 ## Success Criteria
@@ -798,11 +804,11 @@ T11: deferred; trigger on metrics, not calendar
       loads unconditionally; retrieval block is additive, not a replacement
    - Verify: agent prompt snapshot test from T6
    - Pass: both blocks present
-6. [ ] Snapshot archive is preserved at `~/.pi/agent/index/archive/{ts}/`
-      with a working `restore.md` recipe (H-04)
-   - Verify: smoke-restore one archived snapshot to a tmp dir using the
-     restore.md instructions; assert it parses
-   - Pass: round-trip succeeds
+6. [ ] V3 decision explicitly records whether T9/T10 follow-ups are approved,
+      deferred, or halted
+   - Verify: `grep -E 'T9|T10|approved|deferred|HALT' .specs/pi-memory-retrieval/eval-summary.md`
+   - Pass: decision is explicit
+   - Fail: no follow-up decision recorded
 
 ## Handoff Notes
 
@@ -810,9 +816,9 @@ T11: deferred; trigger on metrics, not calendar
   (DuckDB+vss) is documented in T11 and triggered by metrics (>2000 rows OR
   p99 > 100ms). Do not pre-build Phase 2; it is a measured upgrade, not a
   scheduled one.
-- **Existing in-flight work**: `pi/tests/read-expertise-retrieval.test.ts` is
-  untracked. T0a coordinates with this; either commit/rebase before V1 or
-  document the rebase plan in T0a's deliverable.
+- **Existing retrieval test surface**: `pi/tests/read-expertise-retrieval.test.ts` is
+  tracked. T0a coordinates with this; extend/rebase it before V1 and document
+  the test delta in T0a's deliverable.
 - **Privacy clause**: the local-only opt-in is added to
   `pi/docs/expertise-layering.md` in T0a; do not skip it -- the embedder is
   local but the clause must be explicit per the existing spec.

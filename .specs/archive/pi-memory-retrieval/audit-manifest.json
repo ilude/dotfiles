@@ -1,0 +1,106 @@
+[
+  {
+    "field": "schema_version",
+    "source_file": "pi/multi-team/expertise/gh/ilude/dotfiles/orchestrator-mental-model.json",
+    "disposition": "config",
+    "target_file": "pi/multi-team/agents/orchestrator.md",
+    "target_anchor": "frontmatter:schema_version",
+    "notes": "Snapshot schema identifier is structural configuration, not learned memory. Preserve any required schema/version contract outside the deletable snapshot before archival."
+  },
+  {
+    "field": "summary_format_version",
+    "source_file": "pi/multi-team/expertise/gh/ilude/dotfiles/orchestrator-mental-model.json",
+    "disposition": "config",
+    "target_file": "pi/multi-team/agents/orchestrator.md",
+    "target_anchor": "frontmatter:summary_format_version",
+    "notes": "Controls how the summary snapshot is interpreted/rendered. If still needed after snapshot removal, it belongs with agent/procedural configuration rather than retrieved facts."
+  },
+  {
+    "field": "agent",
+    "source_file": "pi/multi-team/expertise/gh/ilude/dotfiles/orchestrator-mental-model.json",
+    "disposition": "config",
+    "target_file": "pi/multi-team/agents/orchestrator.md",
+    "target_anchor": "frontmatter:name",
+    "notes": "Stable agent identity. Must remain in the agent definition and should not depend on retrieval."
+  },
+  {
+    "field": "rebuilt_at",
+    "source_file": "pi/multi-team/expertise/gh/ilude/dotfiles/orchestrator-mental-model.json",
+    "disposition": "unused",
+    "target_file": null,
+    "target_anchor": null,
+    "notes": "Snapshot build timestamp. Once snapshots are deleted, this derived maintenance timestamp has no semantic value."
+  },
+  {
+    "field": "covers_through_timestamp",
+    "source_file": "pi/multi-team/expertise/gh/ilude/dotfiles/orchestrator-mental-model.json",
+    "disposition": "unused",
+    "target_file": null,
+    "target_anchor": null,
+    "notes": "Derived watermark for snapshot generation. Retrieval over JSONL truth should compute freshness from source logs/index fingerprint instead."
+  },
+  {
+    "field": "source_entry_count",
+    "source_file": "pi/multi-team/expertise/gh/ilude/dotfiles/orchestrator-mental-model.json",
+    "disposition": "unused",
+    "target_file": null,
+    "target_anchor": null,
+    "notes": "Derived count from the JSONL source. Future rebuild/stat commands can recompute it; it should not block snapshot deletion."
+  },
+  {
+    "field": "similarity",
+    "source_file": "pi/multi-team/expertise/gh/ilude/dotfiles/orchestrator-mental-model.json",
+    "disposition": "config",
+    "target_file": "pi/multi-team/agents/orchestrator.md",
+    "target_anchor": "frontmatter:expertise.similarity",
+    "notes": "Contains provider/model thresholds/timeouts and counters for similarity-assisted compaction. Provider/model/min_confidence/timeout are configuration; operational counters are derived. Move only active configuration needed by the replacement retrieval system."
+  },
+  {
+    "field": "categories",
+    "source_file": "pi/multi-team/expertise/gh/ilude/dotfiles/orchestrator-mental-model.json",
+    "disposition": "learned",
+    "target_file": ".specs/pi-memory-retrieval/retrieval-index",
+    "target_anchor": "jsonl-derived semantic/lexical retrieval entries",
+    "notes": "Contains learned decisions, key files, patterns, observations, questions, and overviews. Replace with retrieval over authoritative JSONL log entries."
+  },
+  {
+    "field": "schema_version",
+    "source_file": "pi/multi-team/expertise/gh/ilude/dotfiles/orchestrator-mental-model.state.json",
+    "disposition": "config",
+    "target_file": "pi/multi-team/agents/orchestrator.md",
+    "target_anchor": "frontmatter:state_schema_version",
+    "notes": "State-file schema identifier. If state survives snapshot deletion, versioning belongs with the new state/index contract rather than the old snapshot state file."
+  },
+  {
+    "field": "dirty",
+    "source_file": "pi/multi-team/expertise/gh/ilude/dotfiles/orchestrator-mental-model.state.json",
+    "disposition": "unused",
+    "target_file": null,
+    "target_anchor": null,
+    "notes": "Snapshot rebuild dirty bit. The new retrieval index should use its own fingerprint/rebuild lock state."
+  },
+  {
+    "field": "rebuild_status",
+    "source_file": "pi/multi-team/expertise/gh/ilude/dotfiles/orchestrator-mental-model.state.json",
+    "disposition": "unused",
+    "target_file": null,
+    "target_anchor": null,
+    "notes": "Operational status for snapshot generation. Superseded by retrieval index rebuild status/fingerprint."
+  },
+  {
+    "field": "last_attempt_at",
+    "source_file": "pi/multi-team/expertise/gh/ilude/dotfiles/orchestrator-mental-model.state.json",
+    "disposition": "unused",
+    "target_file": null,
+    "target_anchor": null,
+    "notes": "Snapshot rebuild telemetry. Not needed for learned recall or procedural config."
+  },
+  {
+    "field": "last_success_at",
+    "source_file": "pi/multi-team/expertise/gh/ilude/dotfiles/orchestrator-mental-model.state.json",
+    "disposition": "unused",
+    "target_file": null,
+    "target_anchor": null,
+    "notes": "Snapshot rebuild telemetry. Future index health should expose its own timestamps if needed."
+  }
+]

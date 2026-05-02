@@ -1,0 +1,10 @@
+{
+  "model_id": "local-placeholder-384",
+  "dtype": "float32",
+  "model_sha256": "bec3125ffd49b8e836c05fa3041f3df56ca8ec438e03d8d2810ac9bc48225590",
+  "chunker_v": 1,
+  "schema_v": 1,
+  "embedder_lib_v": "placeholder-v1",
+  "dim": 384,
+  "active": 153
+}

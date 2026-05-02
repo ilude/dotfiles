@@ -72,6 +72,23 @@ def write_output_file(video_id: str, filename: str, content: str) -> Path:
     return output_path
 
 
+def update_complete_marker(video_id: str, *, transcript: bool = False, metadata: bool = False) -> None:
+    """Update ~/.dotfiles/yt/<video_id>/.complete after successful writes."""
+    marker = output_dir_for(video_id) / ".complete"
+    try:
+        payload = json.loads(marker.read_text(encoding="utf-8"))
+    except Exception:
+        payload = {}
+    if transcript:
+        payload["transcript"] = True
+    if metadata:
+        payload["metadata"] = True
+    payload.setdefault("transcript", False)
+    payload.setdefault("metadata", False)
+    payload["completed_at"] = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat().replace("+00:00", "Z")
+    marker.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
 def extract_video_id(url_or_id: str) -> str:
     """Extract video ID from YouTube URL or return as-is if already an ID."""
     # If it's already an 11-character ID, return it
@@ -221,6 +238,7 @@ def main():
                 saved_path = write_output_file(video_id, "transcript.txt", result + "\n")
                 print(result)
 
+        update_complete_marker(video_id, transcript=True)
         print(f"Saved transcript to {saved_path}", file=sys.stderr)
 
     except ValueError as e:

@@ -1,6 +1,6 @@
 {
   "defaultModel": "gpt-5.5",
-  "lastChangelogVersion": "0.71.1",
+  "lastChangelogVersion": "0.72.1",
   "defaultProvider": "openai-codex",
   "defaultThinkingLevel": "low",
   "expertise_similarity": {

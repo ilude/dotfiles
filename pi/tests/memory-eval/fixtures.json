@@ -1,0 +1,392 @@
+[
+  {
+    "id": "control-01",
+    "stratum": "control",
+    "prompt": "Run deterministic control task 1 with no memory dependency.",
+    "scoring": {
+      "type": "contains",
+      "text": "control-ok-1"
+    },
+    "provenance": "session"
+  },
+  {
+    "id": "control-02",
+    "stratum": "control",
+    "prompt": "Run deterministic control task 2 with no memory dependency.",
+    "scoring": {
+      "type": "contains",
+      "text": "control-ok-2"
+    },
+    "provenance": "session"
+  },
+  {
+    "id": "control-03",
+    "stratum": "control",
+    "prompt": "Run deterministic control task 3 with no memory dependency.",
+    "scoring": {
+      "type": "contains",
+      "text": "control-ok-3"
+    },
+    "provenance": "session"
+  },
+  {
+    "id": "control-04",
+    "stratum": "control",
+    "prompt": "Run deterministic control task 4 with no memory dependency.",
+    "scoring": {
+      "type": "contains",
+      "text": "control-ok-4"
+    },
+    "provenance": "synthetic"
+  },
+  {
+    "id": "control-05",
+    "stratum": "control",
+    "prompt": "Run deterministic control task 5 with no memory dependency.",
+    "scoring": {
+      "type": "contains",
+      "text": "control-ok-5"
+    },
+    "provenance": "synthetic"
+  },
+  {
+    "id": "control-06",
+    "stratum": "control",
+    "prompt": "Run deterministic control task 6 with no memory dependency.",
+    "scoring": {
+      "type": "contains",
+      "text": "control-ok-6"
+    },
+    "provenance": "synthetic"
+  },
+  {
+    "id": "control-07",
+    "stratum": "control",
+    "prompt": "Run deterministic control task 7 with no memory dependency.",
+    "scoring": {
+      "type": "contains",
+      "text": "control-ok-7"
+    },
+    "provenance": "synthetic"
+  },
+  {
+    "id": "control-08",
+    "stratum": "control",
+    "prompt": "Run deterministic control task 8 with no memory dependency.",
+    "scoring": {
+      "type": "contains",
+      "text": "control-ok-8"
+    },
+    "provenance": "synthetic"
+  },
+  {
+    "id": "control-09",
+    "stratum": "control",
+    "prompt": "Run deterministic control task 9 with no memory dependency.",
+    "scoring": {
+      "type": "contains",
+      "text": "control-ok-9"
+    },
+    "provenance": "synthetic"
+  },
+  {
+    "id": "positive-01",
+    "stratum": "positive",
+    "prompt": "Answer using seeded project memory fact 1.",
+    "scoring": {
+      "type": "contains",
+      "text": "fact-1"
+    },
+    "provenance": "session",
+    "expected_memory_ids": [
+      "mem-01"
+    ],
+    "expected_facts": [
+      "fact-1"
+    ]
+  },
+  {
+    "id": "positive-02",
+    "stratum": "positive",
+    "prompt": "Answer using seeded project memory fact 2.",
+    "scoring": {
+      "type": "contains",
+      "text": "fact-2"
+    },
+    "provenance": "session",
+    "expected_memory_ids": [
+      "mem-02"
+    ],
+    "expected_facts": [
+      "fact-2"
+    ]
+  },
+  {
+    "id": "positive-03",
+    "stratum": "positive",
+    "prompt": "Answer using seeded project memory fact 3.",
+    "scoring": {
+      "type": "contains",
+      "text": "fact-3"
+    },
+    "provenance": "session",
+    "expected_memory_ids": [
+      "mem-03"
+    ],
+    "expected_facts": [
+      "fact-3"
+    ]
+  },
+  {
+    "id": "positive-04",
+    "stratum": "positive",
+    "prompt": "Answer using seeded project memory fact 4.",
+    "scoring": {
+      "type": "contains",
+      "text": "fact-4"
+    },
+    "provenance": "session",
+    "expected_memory_ids": [
+      "mem-04"
+    ],
+    "expected_facts": [
+      "fact-4"
+    ]
+  },
+  {
+    "id": "positive-05",
+    "stratum": "positive",
+    "prompt": "Answer using seeded project memory fact 5.",
+    "scoring": {
+      "type": "contains",
+      "text": "fact-5"
+    },
+    "provenance": "session",
+    "expected_memory_ids": [
+      "mem-05"
+    ],
+    "expected_facts": [
+      "fact-5"
+    ]
+  },
+  {
+    "id": "positive-06",
+    "stratum": "positive",
+    "prompt": "Answer using seeded project memory fact 6.",
+    "scoring": {
+      "type": "contains",
+      "text": "fact-6"
+    },
+    "provenance": "session",
+    "expected_memory_ids": [
+      "mem-06"
+    ],
+    "expected_facts": [
+      "fact-6"
+    ]
+  },
+  {
+    "id": "positive-07",
+    "stratum": "positive",
+    "prompt": "Answer using seeded project memory fact 7.",
+    "scoring": {
+      "type": "contains",
+      "text": "fact-7"
+    },
+    "provenance": "synthetic",
+    "expected_memory_ids": [
+      "mem-07"
+    ],
+    "expected_facts": [
+      "fact-7"
+    ]
+  },
+  {
+    "id": "positive-08",
+    "stratum": "positive",
+    "prompt": "Answer using seeded project memory fact 8.",
+    "scoring": {
+      "type": "contains",
+      "text": "fact-8"
+    },
+    "provenance": "synthetic",
+    "expected_memory_ids": [
+      "mem-08"
+    ],
+    "expected_facts": [
+      "fact-8"
+    ]
+  },
+  {
+    "id": "positive-09",
+    "stratum": "positive",
+    "prompt": "Answer using seeded project memory fact 9.",
+    "scoring": {
+      "type": "contains",
+      "text": "fact-9"
+    },
+    "provenance": "synthetic",
+    "expected_memory_ids": [
+      "mem-09"
+    ],
+    "expected_facts": [
+      "fact-9"
+    ]
+  },
+  {
+    "id": "positive-10",
+    "stratum": "positive",
+    "prompt": "Answer using seeded project memory fact 10.",
+    "scoring": {
+      "type": "contains",
+      "text": "fact-10"
+    },
+    "provenance": "synthetic",
+    "expected_memory_ids": [
+      "mem-10"
+    ],
+    "expected_facts": [
+      "fact-10"
+    ]
+  },
+  {
+    "id": "positive-11",
+    "stratum": "positive",
+    "prompt": "Answer using seeded project memory fact 11.",
+    "scoring": {
+      "type": "contains",
+      "text": "fact-11"
+    },
+    "provenance": "synthetic",
+    "expected_memory_ids": [
+      "mem-11"
+    ],
+    "expected_facts": [
+      "fact-11"
+    ]
+  },
+  {
+    "id": "positive-12",
+    "stratum": "positive",
+    "prompt": "Answer using seeded project memory fact 12.",
+    "scoring": {
+      "type": "contains",
+      "text": "fact-12"
+    },
+    "provenance": "synthetic",
+    "expected_memory_ids": [
+      "mem-12"
+    ],
+    "expected_facts": [
+      "fact-12"
+    ]
+  },
+  {
+    "id": "positive-13",
+    "stratum": "positive",
+    "prompt": "Answer using seeded project memory fact 13.",
+    "scoring": {
+      "type": "contains",
+      "text": "fact-13"
+    },
+    "provenance": "synthetic",
+    "expected_memory_ids": [
+      "mem-13"
+    ],
+    "expected_facts": [
+      "fact-13"
+    ]
+  },
+  {
+    "id": "positive-14",
+    "stratum": "positive",
+    "prompt": "Answer using seeded project memory fact 14.",
+    "scoring": {
+      "type": "contains",
+      "text": "fact-14"
+    },
+    "provenance": "synthetic",
+    "expected_memory_ids": [
+      "mem-14"
+    ],
+    "expected_facts": [
+      "fact-14"
+    ]
+  },
+  {
+    "id": "positive-15",
+    "stratum": "positive",
+    "prompt": "Answer using seeded project memory fact 15.",
+    "scoring": {
+      "type": "contains",
+      "text": "fact-15"
+    },
+    "provenance": "synthetic",
+    "expected_memory_ids": [
+      "mem-15"
+    ],
+    "expected_facts": [
+      "fact-15"
+    ]
+  },
+  {
+    "id": "negative-01",
+    "stratum": "negative",
+    "prompt": "Ignore unrelated memory and complete negative guard task 1.",
+    "scoring": {
+      "type": "contains",
+      "text": "negative-ok-1"
+    },
+    "provenance": "synthetic"
+  },
+  {
+    "id": "negative-02",
+    "stratum": "negative",
+    "prompt": "Ignore unrelated memory and complete negative guard task 2.",
+    "scoring": {
+      "type": "contains",
+      "text": "negative-ok-2"
+    },
+    "provenance": "synthetic"
+  },
+  {
+    "id": "negative-03",
+    "stratum": "negative",
+    "prompt": "Ignore unrelated memory and complete negative guard task 3.",
+    "scoring": {
+      "type": "contains",
+      "text": "negative-ok-3"
+    },
+    "provenance": "synthetic"
+  },
+  {
+    "id": "negative-04",
+    "stratum": "negative",
+    "prompt": "Ignore unrelated memory and complete negative guard task 4.",
+    "scoring": {
+      "type": "contains",
+      "text": "negative-ok-4"
+    },
+    "provenance": "synthetic"
+  },
+  {
+    "id": "negative-05",
+    "stratum": "negative",
+    "prompt": "Ignore unrelated memory and complete negative guard task 5.",
+    "scoring": {
+      "type": "contains",
+      "text": "negative-ok-5"
+    },
+    "provenance": "synthetic"
+  },
+  {
+    "id": "negative-06",
+    "stratum": "negative",
+    "prompt": "Ignore unrelated memory and complete negative guard task 6.",
+    "scoring": {
+      "type": "contains",
+      "text": "negative-ok-6"
+    },
+    "provenance": "synthetic"
+  }
+]

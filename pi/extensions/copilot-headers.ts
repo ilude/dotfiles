@@ -14,6 +14,7 @@ type ModelLike = {
 	contextWindow: number;
 	maxTokens: number;
 	headers?: Record<string, string>;
+	thinkingLevelMap?: Record<string, string | null>;
 	compat?: unknown;
 };
 
@@ -23,6 +24,21 @@ const COPILOT_HEADERS: Record<string, string> = {
 };
 
 const TARGET_PROVIDER = "github-copilot";
+
+function compatWithoutReasoningEffortMap(compat: unknown): unknown {
+	if (!compat || typeof compat !== "object" || Array.isArray(compat)) return compat;
+	const { reasoningEffortMap: _reasoningEffortMap, ...rest } = compat as Record<string, unknown>;
+	return Object.keys(rest).length > 0 ? rest : undefined;
+}
+
+function getThinkingLevelMap(model: ModelLike): Record<string, string | null> | undefined {
+	const compat = model.compat as { reasoningEffortMap?: unknown } | undefined;
+	const legacyMap =
+		compat?.reasoningEffortMap && typeof compat.reasoningEffortMap === "object" && !Array.isArray(compat.reasoningEffortMap)
+			? (compat.reasoningEffortMap as Record<string, string | null>)
+			: undefined;
+	return model.thinkingLevelMap ?? legacyMap;
+}
 
 function toProviderModelDefWithHeaders(model: ModelLike) {
 	return {
@@ -38,7 +54,8 @@ function toProviderModelDefWithHeaders(model: ModelLike) {
 			...COPILOT_HEADERS,
 			...model.headers,
 		},
-		compat: model.compat as any,
+		thinkingLevelMap: getThinkingLevelMap(model),
+		compat: compatWithoutReasoningEffortMap(model.compat) as any,
 	};
 }
 

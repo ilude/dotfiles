@@ -2,9 +2,9 @@
   "schema_version": 1,
   "summary_format_version": 2,
   "agent": "orchestrator",
-  "rebuilt_at": "2026-05-02T17:09:33.260Z",
-  "covers_through_timestamp": "2026-05-02T05:46:54.473Z",
-  "source_entry_count": 34,
+  "rebuilt_at": "2026-05-02T18:32:29.687Z",
+  "covers_through_timestamp": "2026-05-02T18:17:55.285Z",
+  "source_entry_count": 41,
   "similarity": {
     "enabled": true,
     "active": true,
@@ -168,6 +168,76 @@
       }
     ],
     "observation": [
+      {
+        "summary": "{\"task\":\"harden do-it workflow\",\"learned\":\"do-it workflow now has a Manual Validation Procedure gate, final completion classifications, resumability checklist requirements in Execution Status, archive preflight, and report fields for cla...",
+        "evidence_count": 1,
+        "first_seen": "2026-05-02T18:17:55.285Z",
+        "last_seen": "2026-05-02T18:17:55.285Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "{\"task\":\"update do-it workflow partial plan state\",\"learned\":\"do-it workflow now requires updating plan.md with an Execution Status section whenever execution cannot archive the plan, including exact remaining manual/user steps and rerun...",
+        "evidence_count": 1,
+        "first_seen": "2026-05-02T18:13:34.520Z",
+        "last_seen": "2026-05-02T18:13:34.520Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "{\"task\":\"do-it menos circuit breaker\",\"learned\":\"Implemented menos circuit breaker plan: additive local transcript ingest in menos, stdlib Python probe/backfill hooks, --from-local ingestion, local .complete markers, Claude/Pi hook wirin...",
+        "evidence_count": 1,
+        "first_seen": "2026-05-02T18:05:07.165Z",
+        "last_seen": "2026-05-02T18:05:07.165Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "Executed pi-memory-retrieval MVP plan through V3 and archived it. Implemented tracked docs/tests/eval scaffold, deterministic placeholder embedder, in-memory expertise index/retrieve modules, agent-chain retrieval wiring, just memory-rebuild/eval-memory recipes, and eval summary. T9/T10/T11 remain deferred follow-ups requiring explicit user approval; targeted memory-eval and memory-retrieve tests passed.",
+        "evidence_count": 1,
+        "first_seen": "2026-05-02T17:55:38.842Z",
+        "last_seen": "2026-05-02T17:55:38.842Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "{\"task\":\"review-it apply everything for .specs/menos-circuit-breaker/plan.md\",\"learned\":\"Applied review-2 findings by correcting Claude nested hook schema, deferring timed transcript upload, specifying backfill locks/content verification...",
+        "evidence_count": 1,
+        "first_seen": "2026-05-02T17:54:50.781Z",
+        "last_seen": "2026-05-02T17:54:50.781Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "Pi #3208 migration: repo-local model re-registration extensions must preserve model-level thinkingLevelMap and strip legacy compat.reasoningEffortMap. Updated refresh-models to derive thinkingLevelMap from OpenAI Codex supported_reasoning_levels and GitHub Copilot capabilities.supports.reasoning_effort, while model-visibility/copilot-headers carry maps through when re-registering providers.",
+        "evidence_count": 1,
+        "first_seen": "2026-05-02T17:19:18.685Z",
+        "last_seen": "2026-05-02T17:19:18.685Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
+      {
+        "summary": "Windows Pi self-update via pnpm: A stale pnpm-installed Pi 0.71.1 reported 'pi cannot self-update this installation' after `pi update`, but `pi update pi --force` successfully upgraded to 0.72.1 and `pi update` then worked. install.ps1 now always runs `pnpm add -g --allow-build=koffi --allow-build=protobufjs @mariozechner/pi-coding-agent` for existing pnpm installs instead of treating them as already installed, making dotfiles bootstrap an idempotent repair/upgrade path.",
+        "evidence_count": 1,
+        "first_seen": "2026-05-02T17:13:19.529Z",
+        "last_seen": "2026-05-02T17:13:19.529Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
       {
         "summary": "Pi slash-command echo bug: extension commands are executed by core prompt() via _tryExecuteExtensionCommand before input hooks are emitted, so an echo implementation based on pi.on(\"input\") cannot see handled extension slash commands. Fix by wrapping pi.registerCommand early (echo-slash-commands.ts) and rendering a slash-echo custom message; workflow-commands.ts includes a fallback echo for key workflow commands when the wrapper was not installed first.",
         "evidence_count": 1,

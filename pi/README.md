@@ -20,7 +20,21 @@ Pi is installed automatically by the dotfiles installer:
 
 On Linux, macOS, and Git Bash, this uses `bun install -g @mariozechner/pi-coding-agent`. On Windows, `install.ps1` installs Pi via `pnpm add -g @mariozechner/pi-coding-agent`, then runs `scripts/pi-link-setup` (which junctions `~/.dotfiles/pi/` → `~/.pi/agent/` on Windows, symlinks on Linux).
 
-The local dotfiles install also defaults `PI_CACHE_RETENTION=long` in the installed shell profiles (`zsh`, `bash`, `sh`, and PowerShell) unless you have already set a different value. That prefers extended provider-side prompt caching where Pi supports it (currently documented by Pi as Anthropic 1h and OpenAI 24h for direct API calls).
+The local dotfiles install also defaults `PI_CACHE_RETENTION=long` in the installed shell profiles (`zsh`, `bash`, `sh`, and PowerShell) unless you have already set a different value. That prefers extended provider-side prompt caching where Pi supports it (currently documented by Pi as Anthropic 1h and OpenAI 24h for direct API calls). OpenAI and OpenRouter-hosted OpenAI prompt caching are automatic for eligible long prompts; provider-specific `cache_control` markers are only for models/providers that require Anthropic-style caching semantics.
+
+### Direct personality for GPT-5+
+
+Pi can opt into a direct communication style without relying on Codex's `personality` config or an unsupported OpenAI `personality` API parameter. Add this to the per-user runtime settings file `~/.pi/agent/settings.json`:
+
+```json
+{
+  "personality": "direct"
+}
+```
+
+When enabled, `pi/extensions/direct-personality.ts` appends concise/direct style guidance to Pi's system prompt. For direct OpenAI/OpenAI-Codex GPT-5-family Responses payloads, the extension also requests `text.verbosity: "low"` when the provider payload supports that shape. Unsupported providers are left unchanged.
+
+Rollback: remove the `personality` key or set it to `"default"`/`"none"`. The repo-tracked `pi/settings.json` does not enable direct mode by default; the setting is intentionally per-user opt-in.
 
 ### Windows package-manager note
 

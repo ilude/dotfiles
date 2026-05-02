@@ -59,14 +59,14 @@ The breaker is named "menos" (not "yt"): future menos-backed content types (PDFs
 class IngestRequest(BaseModel):
     url: AnyHttpUrl                                          # unchanged, required
     transcript_text: str | None = None                       # NEW -- short-circuits server fetch
-    transcript_format: Literal["plain", "timed"] = "plain"   # NEW
-    metadata: dict | None = None                             # NEW -- merged with server-fetched
+    transcript_format: Literal["plain"] = "plain"            # NEW -- timed upload deferred until a JSON contract exists
+    metadata: dict | None = None                             # NEW -- merged with server-fetched; use menos field names (`channel_title`, not `channel`)
 ```
 
 **Behavior:**
 - `video_id` continues to be extracted server-side from `url` (no client-supplied video_id).
 - If `transcript_text` is present, skip the server-side `youtube-transcript-api` call and use the supplied transcript verbatim. Transcript content is bounded server-side at **5 MB** -- requests over the cap return `413 Payload Too Large`. (H6 applied.)
-- If `metadata` is present, merge with any server-fetched metadata, preferring client values for canonical fields (`title`, `channel`, `published_at`, `description`).
+- If `metadata` is present, merge with any server-fetched metadata, preferring client values for canonical menos fields (`title`, `channel_title`, `published_at`, `description`, and other documented keys after explicit mapping).
 - Existing flow (no `transcript_text`) is unchanged.
 
 **Files:**
@@ -82,16 +82,16 @@ class IngestRequest(BaseModel):
 
 **Files:**
 - `probe.py` -- pings `GET /health` **unsigned** (the endpoint takes no auth; verified in `menos/api/menos/routers/health.py`). 3s timeout. Writes status file. Exit 0 always. **Independent of SSH key state** -- works on machines without `~/.ssh/id_ed25519`. (B2 applied.)
-- `backfill.py` -- signed (loads SSH key like existing `signing.py`). Reads status file; aborts if `available=false`. Scans `~/.dotfiles/yt/<video_id>/` for directories containing a `.complete` marker file (B5). For each: validates `transcript.txt` non-empty + `metadata.json` parseable, uploads via `POST /api/v1/ingest` with override fields, verifies via `GET /api/v1/content/{id}` polling until `processing_status == "completed"` (B6), deletes local dir on success. Logs to `~/.dotfiles/yt/.backfill.log` via `RotatingFileHandler` (1 MB, 3 backups). (H2.) Wall-clock cap **5 minutes** -- exits cleanly, next session picks up remainder. (H4.)
+- `backfill.py` -- signed (loads SSH key like existing `signing.py`). Reads status file as a hint; aborts this run if `available=false`, but `available=true` never replaces real signed API error handling. Scans `~/.dotfiles/yt/<video_id>/` for directories containing a valid `.complete` marker file (B5). For each video it first acquires a per-video claim file `~/.dotfiles/yt/<video_id>/.backfill.lock` using exclusive create; if the lock already exists and is younger than 30 minutes, skip; if stale, replace it. It validates `transcript.txt` is non-empty. `metadata.json` is optional: if present it must parse; if absent, upload proceeds with `metadata: null` and logs that metadata was unavailable. Uploads via `POST /api/v1/ingest` with override fields, verifies via `GET /api/v1/content/{id}` polling until `processing_status == "completed"` (B6), then fetches the menos content/transcript detail needed to confirm the stored transcript length/hash and metadata keys match the local upload. Deletes local dir only after that verification succeeds. Logs to `~/.dotfiles/yt/.backfill.log` via `RotatingFileHandler` (1 MB, 3 backups). (H2.) Wall-clock cap **5 minutes** -- exits cleanly, next session picks up remainder. (H4.)
 - `backfill.py --detach` -- when invoked with `--detach`, re-execs itself as a fully detached child via `subprocess.Popen` with `creationflags=DETACHED_PROCESS|CREATE_NEW_PROCESS_GROUP` on win32 / `start_new_session=True` on POSIX, then exits the parent. (B4 applied -- replaces `bash -c '... &'`.)
-- `lib.py` -- shared helpers: status-file atomic write + `chmod 600`, mkdir-parent, read-with-retry-on-ENOENT, signing wrapper (used by backfill only), http client, atomic delete (move to `.deleted/` then unlink).
+- `lib.py` -- shared helpers: status-file atomic write + `chmod 600`, mkdir-parent, read-with-retry-on-ENOENT, signing wrapper (used by backfill only), http client, atomic delete (rename claimed dir to a unique `.deleted/<video_id>-<timestamp>-<pid>/` path on the same filesystem, then unlink; on cross-device or collision errors, leave original dir in place and log).
 - `tests/test_probe.py` -- probe success, probe timeout, probe network error, missing SSH key DOES NOT fail probe.
-- `tests/test_backfill.py` -- skip-when-status-down, skip-dir-without-.complete, skip-dir-with-empty-transcript, upload-success-then-poll-then-delete, upload-success-but-pipeline-fails-keeps-local, verify-poll-times-out-keeps-local, runtime-cap-exits-cleanly.
-- Both scripts use PEP 723 inline metadata (per the recently-applied yt-local pattern) so `python <abs-path>` works without project context.
+- `tests/test_backfill.py` -- skip-when-status-down, skip-dir-without-.complete, corrupt-.complete-skips, transcript-true-metadata-false-uploads-with-null-metadata, metadata-true-but-missing-or-malformed-skips, skip-dir-with-empty-transcript, simultaneous-backfill-processes-one-claims-video, existing-content-job-id-none-still-polls-content, upload-success-then-poll-then-verify-content-then-delete, upload-success-but-pipeline-fails-keeps-local, verify-poll-times-out-keeps-local, runtime-cap-exits-cleanly.
+- Hook scripts must run with bare `python <abs-path>` and therefore may only depend on the Python standard library plus modules already vendored/importable from this repo. Do not rely on PEP 723 metadata for hook execution; if future dependencies are required, change hook commands explicitly to `uv run --script` and update both Claude/Pi hook tests.
 
 **Behavior contracts:**
 - `probe.py` is idempotent and side-effect-free except for the status file. Safe on every session start. Never crashes session start (exit 0 on all errors).
-- `backfill.py` is idempotent: re-running re-uploads any locally-present videos. Already-deleted dirs are skipped silently. Concurrent invocations across runtimes are safe -- menos dedups on `resource_key=yt:<video_id>` (verified via `ingest.py:_resolve_existing_youtube`).
+- `backfill.py` is idempotent: re-running re-uploads any locally-present videos. Already-deleted dirs are skipped silently. Concurrent invocations across runtimes are safe through two layers: a local per-video exclusive `.backfill.lock` prevents simultaneous local upload/delete work, and menos dedups server records on `resource_key=yt:<video_id>` (verified via `ingest.py:_resolve_existing_youtube`).
 - Backfill failure for one video logs and skips; never aborts the whole run.
 - Local deletion happens **only after** `GET /api/v1/content/{id}` returns `processing_status == "completed"`. Poll up to 60s with exponential backoff (250ms, 500ms, 1s, 2s, 4s, 8s, 16s, 30s caps). On timeout: leave local copy, log, move on.
 
@@ -105,9 +105,9 @@ uv run ingest_video.py <video_id_or_url> --from-local
 
 When `--from-local`:
 - Resolve `video_id` from input.
-- Read `~/.dotfiles/yt/<video_id>/transcript.txt` (and `.timed.json` if present).
+- Read `~/.dotfiles/yt/<video_id>/transcript.txt`. Timed transcript upload is explicitly out of scope for this pass: if `.timed.json` exists, ignore it for menos upload and send `transcript_format: "plain"`.
 - Read `~/.dotfiles/yt/<video_id>/metadata.json` if present.
-- POST to `/api/v1/ingest` with `{"url": "https://youtube.com/watch?v=<id>", "transcript_text": "...", "transcript_format": "plain"|"timed", "metadata": {...}}`. (B1 applied -- still sends `url`, the new fields are siblings.)
+- POST to `/api/v1/ingest` with `{"url": "https://youtube.com/watch?v=<id>", "transcript_text": "...", "transcript_format": "plain", "metadata": {...}}`. (B1 applied -- still sends `url`, the new fields are siblings.)
 - Fail loudly if local files are missing or `.complete` marker absent (no silent fallback to server fetch).
 
 ### 4. Claude SessionStart hook -- `claude/settings.json`
@@ -116,8 +116,24 @@ When `--from-local`:
 {
   "hooks": {
     "SessionStart": [
-      { "command": "python $HOME/.claude/hooks/menos-circuit/probe.py", "timeout": 5000 },
-      { "command": "python $HOME/.claude/hooks/menos-circuit/backfill.py --detach", "timeout": 2000 }
+      {
+        "hooks": [
+          {
+            "command": "python $HOME/.claude/hooks/menos-circuit/probe.py",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "python $HOME/.claude/hooks/menos-circuit/backfill.py --detach",
+            "timeout": 2,
+            "type": "command"
+          }
+        ]
+      }
     ]
   }
 }
@@ -178,7 +194,7 @@ After all writes succeed (and only then), write a marker file `.complete` contai
 {"completed_at": "2026-05-02T18:00:00Z", "transcript": true, "metadata": true}
 ```
 
-Both fetchers read+update the same marker (so a transcript-only run sets `transcript: true`; later metadata run sets `metadata: true`). Backfill requires `transcript: true` at minimum; `metadata: true` is preferred but not required.
+Both fetchers read+update the same marker (so a transcript-only run sets `transcript: true`; later metadata run sets `metadata: true`). Backfill requires `transcript: true` at minimum. If `metadata: true`, `metadata.json` must exist and parse; if `metadata: false` or absent, backfill proceeds with `metadata: null`. Corrupt `.complete` means skip and log.
 
 ## File Inventory
 
@@ -217,15 +233,15 @@ Both fetchers read+update the same marker (so a transcript-only run sets `transc
 3. Tests: existing URL-only flow unchanged; URL + transcript_text skips fetch; oversize â†’ 413; malformed â†’ 422; metadata merge precedence.
 4. Deploy menos. Verify via curl:
    ```bash
-   curl -X POST $MENOS/api/v1/ingest \
+   curl -X POST ${MENOS_BASE_URL}/api/v1/ingest \
      -H "Content-Type: application/json" \
      -d '{"url":"https://youtube.com/watch?v=dQw4w9WgXcQ","transcript_text":"hello","transcript_format":"plain"}'
    ```
-*Gate:* menos accepts the additive payload; existing URL-only ingestion unaffected.
+*Gate:* menos accepts the additive payload; existing URL-only ingestion unaffected. `MENOS_BASE_URL` is the normalized endpoint source of truth (scheme + host + port, no trailing slash); the status file `endpoint` is display-only.
 
 **Phase 1 -- probe + status file**
 1. Implement `probe.py` (unsigned `GET /health`), `lib.py` (atomic write, chmod 600, mkdir-parent, read-with-retry).
-2. Add Claude SessionStart probe hook (probe only, no backfill yet).
+2. Add Claude SessionStart probe hook (probe only, no backfill yet) using the existing nested Claude hook schema (`SessionStart[] -> hooks[] -> command/timeout/type`), not the simplified direct command shape.
 3. Amend Pi `session-hooks.ts` to invoke the same probe.
 4. Update `/yt` instructions (Claude + Pi) to attempt menos directly and fall back on error.
 5. Manual test: stop menos service, start session, run `/yt <url>` -- confirm yt-local path runs and `.complete` marker is written.
@@ -238,9 +254,9 @@ Both fetchers read+update the same marker (so a transcript-only run sets `transc
 
 **Phase 3 -- backfill**
 1. Implement `backfill.py` with `--detach`, scan + `.complete` check + upload + processing_status poll + delete.
-2. Wire into Claude SessionStart and Pi session-hooks (both call `--detach`).
+2. Wire into Claude SessionStart and Pi session-hooks (both call `--detach`). Also add an emergency disable switch: if `MENOS_CIRCUIT_DISABLED=1` is present, probe/backfill exit 0 without work; document this as the rollback path.
 3. Add `RotatingFileHandler` for `.backfill.log`.
-4. Test: pre-populate `~/.dotfiles/yt/` with 2-3 completed videos, start session, confirm uploads + `processing_status=completed` polls + deletions + log entries within the 5-min cap.
+4. Test: pre-populate `~/.dotfiles/yt/` with 2-3 completed videos, start session, confirm uploads + `processing_status=completed` polls + post-completion transcript/metadata verification + deletions + log entries within the 5-min cap.
 *Gate:* full circle -- offline fetch, then online backfill, leaves no local copies; pipeline failure leaves the local copy intact.
 
 **Phase 4 -- Pi /yt parity**
@@ -265,7 +281,7 @@ test -f ~/.dotfiles/yt/<id>/.complete
 # Backfill
 # (start menos service, start new session)
 tail -f ~/.dotfiles/yt/.backfill.log
-# Confirm: log shows upload + poll + processing_status=completed + deletion
+# Confirm: log shows claim-lock acquisition + upload + poll + processing_status=completed + transcript/metadata verification + deletion
 test ! -d ~/.dotfiles/yt/<id>    # dir gone
 
 # Cross-runtime
@@ -274,31 +290,50 @@ test ! -d ~/.dotfiles/yt/<id>    # dir gone
 
 Lint/type/test gates per `AGENTS.md`. New tests: `pytest claude/hooks/menos-circuit/tests/`.
 
+## Execution Status
+
+Partial execution completed on 2026-05-02.
+
+Implemented code changes and automated validation passed:
+- `cd menos/api && uv run pytest tests/unit/test_ingest_router.py -q` -- `27 passed`
+- `cd menos/api && uv run ruff check menos/routers/ingest.py tests/unit/test_ingest_router.py` -- passed
+- `python -m py_compile` for the new hook scripts and modified yt scripts -- passed
+- `python -m json.tool claude/settings.json` -- passed
+- Smoke checks: `python claude/hooks/menos-circuit/probe.py` and `MENOS_CIRCUIT_DISABLED=1 python claude/hooks/menos-circuit/backfill.py` -- passed
+
+Remaining live/manual validation before archive:
+- Stop menos and confirm `/yt <url>` in Claude falls back to yt-local and writes `~/.dotfiles/yt/<id>/transcript.txt` plus `.complete`.
+- Restart menos and confirm probe/backfill uploads the local cache, verifies `processing_status == "completed"` plus transcript/metadata, then deletes the local directory.
+- Verify the same fallback/backfill behavior from a Pi session.
+
+Do not archive this plan until the remaining live/manual validation passes.
+
 ## Risks & Mitigations
 
 | Risk | Mitigation |
 |---|---|
 | Status file stale (menos went down mid-session) | `/yt` attempts menos directly and falls back on error -- status file is hint-only. (H1) |
-| Backfill races with manual `/yt` (same video uploaded twice) | menos dedups on `resource_key=yt:<video_id>`; second ingest returns existing content_id. Backfill skips video_ids whose dir is missing the `.complete` marker. |
+| Backfill races with manual `/yt` or another runtime | Local exclusive `.backfill.lock` ensures only one backfill process owns upload/delete for a video; menos also dedups on `resource_key=yt:<video_id>` and second ingest returns existing content_id. Backfill skips video_ids whose dir is missing a valid `.complete` marker. |
 | Verify-poll hangs forever on a stuck pipeline | 60s exponential-backoff cap per video; 5-min wall-clock cap on the whole run. On timeout, leave local copy in place and log. |
-| Local delete loses data if menos pipeline corrupts | Verify step requires `processing_status == "completed"`. Pipeline failures before that point keep the local copy. (B6) |
-| Partial local fetch uploaded as truth | Backfill skips dirs without `.complete` marker; validates transcript non-empty + metadata parseable before upload. (B5) |
-| Probe falsely reports down on host without SSH key | Probe is unsigned; doesn't load the key. (B2) |
+| Local delete loses data if menos pipeline corrupts | Verify step requires `processing_status == "completed"` plus a post-completion content/transcript/metadata check against menos. Pipeline or verification failures keep the local copy. (B6) |
+| Partial local fetch uploaded as truth | Backfill skips dirs without a valid `.complete` marker; validates transcript non-empty; requires parseable `metadata.json` only when marker says `metadata: true`; otherwise uploads with `metadata: null`. (B5) |
+| Probe falsely reports down on host without SSH key | Probe is unsigned; doesn't load the key. Status is display/cache hint only, never authorization for deletion. (B2) |
 | Hook adds session-start latency | Probe 3s timeout in 5s hook; backfill self-detaches in <100ms. |
 | Windows console flashing on hook spawn | Bare `python`, no `bash -c`, no `&`. Backfill self-detaches via `subprocess.Popen(creationflags=DETACHED_PROCESS|...)`. (B4) |
 | Two runtimes race the status file write | Atomic rename + read-with-retry-once on ENOENT. (H3) |
 | `.backfill.log` grows unbounded | `RotatingFileHandler` 1 MB, 3 backups. (H2) |
-| Pi vs Claude shell-out drift | Both use absolute path `$HOME/.claude/hooks/menos-circuit/<script>.py` and bare `python`. No symlinks. (B3) |
+| Pi vs Claude shell-out drift | Both use absolute path `$HOME/.claude/hooks/menos-circuit/<script>.py` and bare `python`. The repo installer links `~/.claude` to the tracked `claude/` tree; no additional menos-specific symlink is created. (B3) |
 | `~/.claude/state/` doesn't exist | `lib.py` does `mkdir -p` of the parent on every status-file write. (H5) |
 | Status file world-readable | `chmod 0600` after atomic rename. (H7) |
 | Oversized transcript_text DoS | Server-side 5 MB cap â†’ 413. (H6) |
 
 ## Open Questions
-None pending after review-1.
+None pending after review-2; timed transcript upload is intentionally deferred until a concrete JSON contract is designed.
 
 ## Out of Scope
 
 - Generalizing the breaker beyond menos. Status file is named for menos; current consumer is `/yt` only. Future content types reuse this file when added.
 - Retry policy beyond "next session retries failed backfills." If volume grows, revisit with a `.backfill_failed` ledger and exponential backoff.
+- Timed transcript upload from `.timed.json`; this pass uploads plain transcript text only.
 - UI/notification surface for "menos came back online, X videos imported." User reads `.backfill.log` if curious.
 - Multi-host coordination (e.g., backfill from one host's local cache to a peer's). Single-host model only.

@@ -266,9 +266,30 @@ Missing, stale, corrupt, partial, or invalid-version indexes are rebuilt; if reb
 safe fallback reason.
 
 Focused retrieval is private and local by default. External embedding providers, vector
-databases, or network calls are disabled for this feature unless a future approved design adds
-explicit opt-in configuration. Do not edit `.env` files, secrets, keys, or provider credentials
-for retrieval.
+databases, or network calls are disabled for this feature. The only approved semantic
+retrieval mode is explicit opt-in local semantic retrieval via `~/.pi/agent/settings.json`
+`expertise.semanticRetrieval = true`; it must use a local, pinned embedding model and a
+local derived index with no network calls at runtime. When `expertise.semanticRetrieval`
+is absent or false, `read_expertise` stays lexical-only and preserves current behavior.
+Do not edit `.env` files, secrets, keys, or provider credentials for retrieval.
+
+## Composition with semantic retrieval
+
+Semantic retrieval is an optional internal scoring layer behind the existing `read_expertise`
+`query` contract, not a replacement API. Callers keep using the same `{ agent, mode, query,
+max_results }` shape and receive the same baseline snapshot plus focused retrieval text.
+
+When `expertise.semanticRetrieval` is false or unavailable, retrieval uses the existing local
+lexical scorer only. When it is true, the lexical scorer remains primary and semantic scores
+only augment ranking: exact lexical/category matches retain priority, while semantic similarity
+may boost ties and surface synonym or phrasing variants that lexical matching would miss. The
+focused section still deduplicates results, applies `max_results`, hides scores and source
+metadata from LLM-facing text, and reports implementation diagnostics only under
+`details.retrieval` for debug contexts.
+
+The semantic index is derived from canonical expertise JSONL and is disposable cache state. A
+missing, stale, corrupt, or unavailable semantic index must fail closed to lexical-only
+retrieval rather than blocking `read_expertise` or attempting provider/network fallback.
 
 Targeted TypeScript validation for retrieval behavior:
 
