@@ -2,9 +2,9 @@
   "schema_version": 1,
   "summary_format_version": 2,
   "agent": "orchestrator",
-  "rebuilt_at": "2026-05-01T13:37:25.284Z",
-  "covers_through_timestamp": "2026-05-01T13:28:07.325Z",
-  "source_entry_count": 30,
+  "rebuilt_at": "2026-05-02T05:39:34.313Z",
+  "covers_through_timestamp": "2026-05-02T01:23:03.739Z",
+  "source_entry_count": 33,
   "similarity": {
     "enabled": true,
     "active": true,
@@ -21,7 +21,24 @@
     "skipped_for_low_confidence": 0
   },
   "categories": {
-    "strong_decision": [],
+    "strong_decision": [
+      {
+        "decision": "Align Pi /review-it and /do-it with Claude workflow parity for review artifacts and deployment gates",
+        "why_good": "Pi now mirrors Claude's key workflow semantics: /do-it includes a Deployment Procedure gate before archive, and /review-it creates review-{N}/synthesis.md artifacts plus verifies HIGH/CRITICAL findings before accepting them as bugs.",
+        "summary": "Align Pi /review-it and /do-it with Claude workflow parity for review artifacts and deployment gates",
+        "evidence_count": 1,
+        "first_seen": "2026-05-02T01:23:03.739Z",
+        "last_seen": "2026-05-02T01:23:03.739Z"
+      },
+      {
+        "decision": "Pi /do-it should archive completed plans like Claude Code /do-it",
+        "why_good": "Keeps workflow parity between Pi and Claude command surfaces and prevents completed specs from remaining in the active .specs/{slug}/ namespace. Updated pi/skills/workflow/do-it.md to set completed date/status and move completed plans to .specs/archive/{slug}/.",
+        "summary": "Pi /do-it should archive completed plans like Claude Code /do-it",
+        "evidence_count": 1,
+        "first_seen": "2026-05-02T01:20:06.102Z",
+        "last_seen": "2026-05-02T01:20:06.102Z"
+      }
+    ],
     "key_file": [
       {
         "path": "pi/skills/workflow/do-it.md",
@@ -151,6 +168,16 @@
       }
     ],
     "observation": [
+      {
+        "summary": "read_expertise focused retrieval implementation: Implemented optional local lexical focused retrieval for read_expertise in pi/extensions/agent-chain.ts with query/max_results, bounded deterministic ranking/dedup, disposable retrieval-index cache, provider-disabled fallback, and behavioral Vitest coverage in pi/tests/read-expertise-retrieval.test.ts.",
+        "evidence_count": 1,
+        "first_seen": "2026-05-02T01:02:41.384Z",
+        "last_seen": "2026-05-02T01:02:41.384Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
       {
         "summary": "{\"task\":\"pi setup refactor and test failure cleanup\",\"outcome\":\"Working tree is clean on main and origin/main at ed9f78d after commits through 4587f30/521ded2/bb5167f; make check-pi-extensions and make lint-python pass.\",\"key_fixes\":[\"ex...",
         "evidence_count": 1,

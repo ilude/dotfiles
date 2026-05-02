@@ -1,0 +1,8 @@
+{
+  "index_version": 1,
+  "agent": "orchestrator",
+  "source_identity": "project-local:C:\\Users\\mglenn\\.pi\\agent\\multi-team\\expertise\\gh\\ilude\\dotfiles\\orchestrator-expertise-log.jsonl:1777684983819.4014:15381:cf82bc2b3074e2b12e30decf754f67b759075cf15e4b28aa828473467a7ca5d8|drift:C:\\Users\\mglenn\\.pi\\agent\\multi-team\\expertise\\ext\\ssh.gitlab.prod.teams-sddc-dev.com\\teams\\ui\\eisa\\orchestrator-expertise-log.jsonl:1777668737583.1404:410:69eedd3a8c08e83facd70fbffa1b6475d8af757331d9609959dfb53f47d27bb6|global:C:\\Users\\mglenn\\.pi\\agent\\multi-team\\expertise\\orchestrator-expertise-log.jsonl:1776814069002.0842:25210:b5ab2320f6e1ea8d0e4e2b05f5e6081056122ecf54bb5b0c276fb4528015f298",
+  "built_at": "2026-05-02T05:39:34.781Z",
+  "entry_count": 77,
+  "entries": []
+}
