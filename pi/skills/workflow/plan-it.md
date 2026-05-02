@@ -263,5 +263,11 @@ After writing the file, show the user:
 2. The task breakdown table
 3. The dependency graph
 4. The file path where the plan was written
+5. **Next-step commands** -- output both commands verbatim in a fenced code block so the user can copy either:
 
-Then ask: "Want to review/edit the plan, execute it, or send it through a review pass first?"
+   ```text
+   /review-it .specs/{slug}/plan.md
+   /do-it .specs/{slug}/plan.md
+   ```
+
+Then ask: "Want to review/edit the plan first, send it through `/review-it`, or execute it with `/do-it`?"

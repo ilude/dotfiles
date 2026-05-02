@@ -108,16 +108,35 @@ If the input is an existing `.specs/*/plan.md` file:
    - a **Task Breakdown** section
    - an **Execution Waves** section
    - a **Success Criteria** section
-3. If the plan is too incomplete to execute safely, say so directly and recommend revising it or running `/review-it` first.
+3. If the plan is too incomplete to execute safely, say so directly and recommend revising it or running `/review-it` first. Include copy/paste commands:
+   ```text
+   /review-it <plan-path>
+   /plan-it <brief description of missing plan details>
+   ```
 4. Otherwise, execute the plan **wave by wave**:
    - respect dependencies exactly as written
    - complete all tasks in a wave before the validation gate
    - do not start the next wave until the current validation gate passes
 5. For each task, use the plan's `small` / `medium` / `large` sizing guidance and keep delegated work on the same provider/model ladder when possible.
 6. Report progress against the plan structure, not just a flat summary.
-7. When execution finishes, summarize:
+7. Deployment Procedure gate -- after all waves pass validation, check whether the plan contains a `## Deployment Procedure` section:
+   - If present, present the deployment steps to the user verbatim.
+   - Ask the user whether to run the deployment procedure now, skip it for manual execution later, or cancel.
+   - If the user chooses to run it, execute each numbered step sequentially.
+   - Pause after each deployment step to show output and confirm it matches the expected output before continuing.
+   - If any deployment step fails, show the plan's failure guidance for that step and ask the user how to proceed.
+   - If absent, skip this step; pure code-change plans usually have no deployment procedure.
+8. After all waves pass validation and any requested deployment procedure is complete or explicitly skipped, archive the completed plan:
+   - Set `completed` in frontmatter to the current date (`YYYY-MM-DD`).
+   - Set `status: completed` if the plan uses a status field.
+   - Move `.specs/{slug}/plan.md` to `.specs/archive/{slug}/plan.md`.
+   - Move any sibling plan artifacts that belong to the same spec, such as review directories or design notes, to `.specs/archive/{slug}/` unless the user asks to keep them active.
+   - Create `.specs/archive/{slug}/` if needed.
+   - If archive target already exists, ask the user before overwriting or choose a collision-safe suffix.
+9. When execution finishes, summarize:
    - tasks completed
    - validation results
+   - archive path
    - remaining follow-up items, if any
 
 If the user gave a plan path and also asked to review first, route to `/review-it <path>` before execution.
@@ -156,9 +175,14 @@ Use `engineering-lead` only when the task genuinely spans multiple engineering d
 1. Invoke `/plan-it {full task description}` to crystallize a plan using dynamic `small` / `medium` / `large` model sizing.
 2. Wait for the plan to be written to `.specs/`.
 3. Report the plan path and summary to the user.
-4. Ask: "Plan is ready. Execute it now, or review it first with `/review-it`?"
-5. If the user says execute: proceed wave by wave following the plan's task breakdown.
-6. If the user says review: dispatch `/review-it {plan path}` before executing.
+4. Output next-step commands verbatim so the user can copy either:
+   ```text
+   /review-it <plan-path>
+   /do-it <plan-path>
+   ```
+5. Ask: "Plan is ready. Execute it now with `/do-it <plan-path>`, or review it first with `/review-it <plan-path>`?"
+6. If the user says execute: proceed wave by wave following the plan's task breakdown.
+7. If the user says review: dispatch `/review-it {plan path}` before executing.
 
 ---
 
@@ -170,5 +194,24 @@ After completion, report:
 2. **What was done** — specific files changed, commands run, or delegation dispatched
 3. **Verification** — test results, lint output, validation gate results, or behavior confirmation
 4. **Next steps** — follow-up tasks surfaced during implementation
+5. **Copy/paste commands** — when there is a useful follow-up command, print it verbatim in a fenced code block:
+   - Plan created but not executed:
+     ```text
+     /review-it <plan-path>
+     /do-it <plan-path>
+     ```
+   - Plan executed and archived:
+     ```text
+     /review-it .specs/archive/<slug>/plan.md
+     ```
+   - Plan executed but follow-up review is recommended before archiving:
+     ```text
+     /review-it <plan-path>
+     ```
+   - Validation failed and the same plan should be retried after fixes:
+     ```text
+     /do-it <plan-path>
+     ```
+   - No follow-up command is useful: write `None.`
 
 Keep the report concise. Use bullet points, not paragraphs.
