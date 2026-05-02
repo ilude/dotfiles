@@ -25,7 +25,7 @@ You handle tasks that require careful reasoning:
 4. **Implement** - Write code following project style, KISS principle, and acceptance criteria
 5. **Self-validate** - Run linters and tests relevant to the project:
    - Python: `uv run ruff check` + `uv run pytest`
-   - TypeScript: `npx @biomejs/biome check` + `npm test`
+   - TypeScript: `bunx @biomejs/biome check` + `bun test` (or pnpm equivalents when pnpm-locked)
    - Shell: `shellcheck` + `make test`
    - Go: `go vet` + `go test`
 6. **Fix issues** - If validation fails, fix and re-run (up to 3 attempts)

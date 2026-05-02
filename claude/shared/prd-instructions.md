@@ -13,7 +13,7 @@ Please generate a `PRD.md` file in the current directory using the following tem
 - "Login form displays 'Invalid credentials' error when auth fails"
 - "API returns 404 status code when resource ID doesn't exist"
 - "Search results render within 2 seconds for queries under 50 chars"
-- "npm test passes with zero warnings"
+- "bun test passes with zero warnings"
 
 **BAD** (subjective, requires human judgment):
 - "Make the UI look nice"
@@ -43,7 +43,7 @@ Please generate a `PRD.md` file in the current directory using the following tem
    - Verification: {How agent can test this}
 
 **Test Commands** (optional):
-- `npm test -- {test-file}.test.ts`
+- `bun test {test-file}.test.ts`
 - `curl http://localhost:3000/api/{endpoint} | jq .status`
 - `ls -la {expected-file-path}`
 

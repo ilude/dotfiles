@@ -20,7 +20,7 @@ Best practices for designing and implementing command-line interface (CLI) appli
 ```
 git add <file>           # verb: add, noun: file
 docker run <image>       # verb: run, noun: image
-npm install <package>    # verb: install, noun: package
+bun add <package>        # verb: add, noun: package
 ```
 
 #### Subcommands vs Flags
@@ -61,7 +61,7 @@ cloud provider storage list all buckets
 | Type | Description | Example |
 |------|-------------|---------|
 | Positional (required) | Primary input/object | `cp <source> <dest>` |
-| Positional (optional) | With defaults | `npm install [dir]` |
+| Positional (optional) | With defaults | `bun install [dir]` |
 | Short flags | Frequent operations | `-l`, `-r`, `-v` |
 | Long flags | Self-documenting | `--verbose`, `--recursive` |
 

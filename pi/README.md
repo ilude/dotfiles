@@ -36,11 +36,23 @@ When enabled, `pi/extensions/direct-personality.ts` appends concise/direct style
 
 Rollback: remove the `personality` key or set it to `"default"`/`"none"`. The repo-tracked `pi/settings.json` does not enable direct mode by default; the setting is intentionally per-user opt-in.
 
+### JavaScript package-manager policy
+
+Do not use `npm` in this repository. Do not create or commit `package-lock.json`.
+
+Package-manager priority:
+
+1. Prefer `bun` for JavaScript/TypeScript tooling when no package-specific lockfile or note says otherwise.
+2. Use `pnpm` where Bun cannot resolve the Pi package graph, for the Windows global Pi install, or where a package already has `pnpm-lock.yaml`.
+3. If npm artifacts are accidentally created, remove `package-lock.json` and reinstall with the correct manager.
+
+`pi/extensions/` uses `pnpm` for extension type-check dependencies.
+
 ### Windows package-manager note
 
 Windows intentionally installs Pi with **pnpm**, not Bun, for now.
 
-Reason: Bun currently limits Windows to older Pi installs because `bun install -g @mariozechner/pi-coding-agent` fails to resolve the latest Pi dependency graph cleanly. In local verification, Bun failed on transitive AWS SDK packages even though those versions exist on the npm registry. pnpm resolves the same graph cleanly and keeps Windows on the current/latest Pi release path. pnpm is preferred over npm for the strict resolver, the content-addressable global store, and the explicit build-script approval model -- the install command passes `--allow-build=koffi --allow-build=protobufjs` to whitelist the two native postinstall steps Pi requires.
+Reason: Bun currently limits Windows to older Pi installs because `bun install -g @mariozechner/pi-coding-agent` fails to resolve the latest Pi dependency graph cleanly. In local verification, Bun failed on transitive AWS SDK packages even though those versions exist on the package registry. pnpm resolves the same graph cleanly and keeps Windows on the current/latest Pi release path. pnpm is preferred for the strict resolver, the content-addressable global store, and the explicit build-script approval model -- the install command passes `--allow-build=koffi --allow-build=protobufjs` to whitelist the two native postinstall steps Pi requires.
 
 Bun is still installed on Windows for other JS tooling in this repo; this note only applies to the global `pi` package. pnpm is declared in `winget/configuration/core.dsc.yaml` so the installer pulls it in alongside Node.js.
 

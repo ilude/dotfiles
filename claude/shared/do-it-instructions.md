@@ -45,7 +45,7 @@ Run these checks automatically:
 3. **Detect test command** based on markers:
    - `Makefile` present → `make test`
    - `pyproject.toml` present → `uv run pytest`
-   - `package.json` present → `npm test`
+   - `package.json` present → `bun test` by default, or `pnpm test` when pnpm-locked
    - `go.mod` present → `go test ./...`
    - `Cargo.toml` present → `cargo test`
    - `*.csproj` present → `dotnet test`
@@ -53,7 +53,7 @@ Run these checks automatically:
 4. **Detect lint command** based on markers:
    - `Makefile` with `lint` target → `make lint`
    - `pyproject.toml` → `uv run ruff check`
-   - `package.json` → `npx @biomejs/biome check`
+   - `package.json` → `bunx @biomejs/biome check` by default, or `pnpm exec @biomejs/biome check` when pnpm-locked
    - `Makefile` with shellcheck → `shellcheck`
    - `go.mod` → `go vet`
    - `*.csproj` → `dotnet format --verify-no-changes`

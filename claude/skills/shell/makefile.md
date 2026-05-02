@@ -19,7 +19,7 @@
 |--------------|---------|
 | Echo spam | "Starting...", "Now doing...", "Done!" adds noise |
 | Flag accumulation | `pytest -v --tb=short --strict-markers --durations=0` |
-| Wrapper theater | `make lint` just calls `npm run lint` |
+| Wrapper theater | `make lint` just calls `bun run lint` |
 | Unnecessary platform detection | When cross-platform isn't needed |
 
 ---

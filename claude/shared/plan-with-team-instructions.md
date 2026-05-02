@@ -17,13 +17,13 @@ Run these checks automatically to understand the project:
 2. **Detect test command** based on markers found:
    - `Makefile` present → `make test`
    - `pyproject.toml` present → `uv run pytest`
-   - `package.json` present → `npm test`
+   - `package.json` present → `bun test` by default, or `pnpm test` when pnpm-locked
    - `go.mod` present → `go test ./...`
    - `Cargo.toml` present → `cargo test`
 
 3. **Detect lint command** based on markers:
    - `pyproject.toml` → `uv run ruff check`
-   - `package.json` → `npx @biomejs/biome check`
+   - `package.json` → `bunx @biomejs/biome check` by default, or `pnpm exec @biomejs/biome check` when pnpm-locked
    - `Makefile` with shellcheck → `shellcheck`
    - `go.mod` → `go vet`
 
@@ -278,7 +278,7 @@ A plan that says "run the migration" without these three things is incomplete.
 **Example:**
 - T1: Add user endpoint
   - AC: `curl -s localhost:3000/api/users | jq '.status'` returns `200`
-  - AC: `npm test -- users.test.ts` passes with 0 warnings
+  - AC: `bun test users.test.ts` passes with 0 warnings
 
 ## Deployment Procedure
 

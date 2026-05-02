@@ -150,7 +150,7 @@ applyTo: "**/*.go"
 ### For Different Build Tools
 
 **Poetry:** Update `python.instructions.md` to use poetry commands
-**npm/yarn/pnpm:** Create `nodejs.instructions.md`
+**bun/pnpm:** Create `nodejs.instructions.md`
 **Gradle/Maven:** Create `java.instructions.md`
 
 ## Best Practices

@@ -378,8 +378,9 @@ Guidelines for modern JavaScript/TypeScript web projects.
 
 ### Package Managers
 - Check `package.json` for dependencies and scripts
-- Detect from lock files: `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`
-- Respect the project's package manager (npm, yarn, pnpm, bun)
+- Detect from lock files: `bun.lock`, `bun.lockb`, `pnpm-lock.yaml`, `package-lock.json`, `yarn.lock`
+- Use Bun for Bun/greenfield projects and pnpm for pnpm-locked projects
+- Do not run npm or yarn; if only `package-lock.json`/`yarn.lock` exists or CI/Docker pins npm/yarn, stop and flag the mismatch instead of silently migrating
 
 ### Framework Detection
 Look for framework-specific configuration files:

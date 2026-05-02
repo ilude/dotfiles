@@ -26,7 +26,7 @@ Run these checks to ground the plan in the actual project:
 
 1. **Scan for marker files**: `{pyproject.toml,package.json,go.mod,Cargo.toml,Makefile,tsconfig.json,.gitattributes}`
 2. **Detect platform**: Check the runtime environment (Windows/Linux/macOS, shell type)
-3. **Detect test command**: Match markers → test runner (pytest, npm test, go test, cargo test, make test)
+3. **Detect test command**: Match markers → test runner (pytest, bun test/pnpm test, go test, cargo test, make test)
 4. **Detect lint command**: Match markers → linter (ruff, biome, go vet, shellcheck)
 5. **Check for existing specs**: `ls .specs/ 2>/dev/null` — avoid slug collisions
 

@@ -51,7 +51,7 @@ Each acceptance criterion follows this structure:
 - "Login form displays 'Invalid credentials' error when auth fails"
 - "API returns 404 status code when resource ID doesn't exist"
 - "Search results render within 2 seconds for queries under 50 chars"
-- "npm test passes with zero warnings"
+- "bun test passes with zero warnings"
 
 **Bad** (subjective, requires human judgment):
 - "Make the UI look nice"
@@ -78,7 +78,7 @@ Each acceptance criterion follows this structure:
 **UI Components:**
 ```
 1. [ ] Error modal displays with red border and close button
-   - Verification: E2E test snapshot or `npm run test:e2e -- modal.spec.ts`
+   - Verification: E2E test snapshot or `bun run test:e2e -- modal.spec.ts`
    - Expected result: Modal visible, CSS class error-modal, close button present
 ```
 
@@ -145,7 +145,7 @@ PTC (Programmatic Tool Calling) can be used during planning phases for:
 
 1. **Start with "What would a test look like?"** — If you can't write a test, it's too vague
 2. **Use examples** — Show concrete input/output pairs
-3. **Include the command** — Don't say "run tests", say `npm test -- specific.test.ts`
+3. **Include the command** — Don't say "run tests", say `bun test specific.test.ts`
 4. **Avoid ranges** — Not "fast", but "< 2 seconds"
 5. **Specify error messages** — Exact text the user sees
 

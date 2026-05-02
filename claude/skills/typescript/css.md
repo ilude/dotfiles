@@ -6,9 +6,9 @@ Patterns for CSS and styling in TypeScript/JavaScript projects.
 
 | Task | Tool | Command |
 |------|------|---------|
-| Lint | Stylelint | `npx stylelint "**/*.css"` |
-| Format | Prettier | `npx prettier --write "**/*.css"` |
-| Dead code | PurgeCSS | `npx purgecss --css *.css --content *.html` |
+| Lint | Stylelint | `bunx stylelint "**/*.css"` |
+| Format | Prettier | `bunx prettier --write "**/*.css"` |
+| Dead code | PurgeCSS | `bunx purgecss --css *.css --content *.html` |
 
 ## Tailwind CSS
 

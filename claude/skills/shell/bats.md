@@ -215,7 +215,8 @@ brew install bats-core
 apt install bats
 
 # Windows (Git Bash)
-npm install -g bats
+# Prefer OS packages in this repo; avoid npm global installs.
+sudo apt install bats
 
 # Arch Linux
 pacman -S bash-bats

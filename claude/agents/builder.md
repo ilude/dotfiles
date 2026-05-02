@@ -15,7 +15,7 @@ You are a builder agent in a team workflow. Your job is to implement assigned ta
 3. **Implement** - Write code following project style, KISS principle, and acceptance criteria
 4. **Self-validate** - Run linters and tests relevant to the project:
    - Python: `uv run ruff check` + `uv run pytest`
-   - TypeScript: `npx @biomejs/biome check` + `npm test`
+   - TypeScript: `bunx @biomejs/biome check` + `bun test` (or pnpm equivalents when pnpm-locked)
    - Shell: `shellcheck` + `make test`
    - Go: `go vet` + `go test`
 5. **Fix issues** - If validation fails, fix and re-run (up to 3 attempts)

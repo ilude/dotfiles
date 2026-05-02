@@ -26,9 +26,14 @@ uv run pytest -q
 pytest
 ```
 
-**Node.js:**
+**JavaScript/TypeScript (Bun default):**
 ```bash
-npm test
+bun test
+```
+
+**JavaScript/TypeScript (pnpm-locked projects):**
+```bash
+pnpm test
 ```
 
 **Ruby:**

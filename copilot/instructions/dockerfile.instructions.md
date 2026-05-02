@@ -253,9 +253,13 @@ CMD ["python", "run.py"]
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r requirements.txt
 
-# Cache npm packages
-RUN --mount=type=cache,target=/root/.npm \
-    npm install
+# Cache Bun packages
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    bun install --frozen-lockfile
+
+# Cache pnpm packages in pnpm-locked projects
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile
 ```
 
 ### Multi-platform Builds
