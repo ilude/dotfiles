@@ -1,1 +1,1 @@
-../../claude/commands/commit-fast.md
+C:/Users/mglenn/.dotfiles/claude/commands/commit-fast.md
