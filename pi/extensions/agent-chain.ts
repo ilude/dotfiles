@@ -28,7 +28,7 @@ import { type ExtensionAPI, withFileMutationQueue } from "@mariozechner/pi-codin
 import { getAgentDir } from "../lib/extension-utils.js";
 import { readMergedSettings } from "../lib/settings-loader.js";
 import { createTask, transitionTask } from "../lib/task-registry.js";
-import { retrieve, renderRelevantPriorExpertise } from "./memory-retrieve";
+import { retrieve, renderRelevantPriorExpertise } from "../lib/memory-retrieve";
 
 /**
  * Operator task registry: record /chain dispatch as durable work. Underlying
@@ -668,6 +668,7 @@ async function createSimilarityConfig(ctx: any): Promise<ExpertiseSimilarityConf
 }
 
 interface LayerPaths {
+	expertiseDir: string;
 	logPath: string;
 	snapshotPath: string;
 	statePath: string;

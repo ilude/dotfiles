@@ -46,6 +46,7 @@ interface DoctorReport {
 }
 
 let cachedPiVersion: string | null | undefined;
+let currentSessionStartedAt: string | null = null;
 
 const ANSI = {
 	blue: "\x1b[34m",
@@ -105,6 +106,25 @@ function colorBranch(branchName: string | null): string {
 	return `${ANSI.yellow}[${ANSI.blue}${branchName}${ANSI.yellow}]${ANSI.reset}`;
 }
 
+function sanitizeSingleLine(text: string): string {
+	return text.replace(/[\r\n\t]/g, " ").replace(/ +/g, " ").trim();
+}
+
+function stripAnsi(text: string): string {
+	return text.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
+function visibleLength(text: string): number {
+	return stripAnsi(text).length;
+}
+
+function rightAnchor(left: string, right: string | null, width: number): string {
+	if (!right) return left;
+	const gap = width - visibleLength(left) - visibleLength(right);
+	if (gap < 2) return left;
+	return `${left}${" ".repeat(gap)}${right}`;
+}
+
 function formatModelName(model: { id?: string; name?: string } | undefined): string {
 	return model?.id || model?.name || "no-model";
 }
@@ -117,12 +137,14 @@ function formatThinkingLevel(pi: ExtensionAPI): string {
 	}
 }
 
-function sanitizeSingleLine(text: string): string {
-	return text.replace(/[\r\n\t]/g, " ").replace(/ +/g, " ").trim();
+function routerStatus(footerData: ReadonlyFooterDataProvider): string | null {
+	const raw = footerData.getExtensionStatuses().get("router");
+	return raw ? sanitizeSingleLine(raw) : null;
 }
 
 function formatExtensionStatuses(footerData: ReadonlyFooterDataProvider): string | null {
 	const statuses = Array.from(footerData.getExtensionStatuses().entries())
+		.filter(([key]) => key !== "router")
 		.sort(([a], [b]) => a.localeCompare(b))
 		.map(([, text]) => sanitizeSingleLine(text))
 		.filter(Boolean);
@@ -135,6 +157,8 @@ export function formatPiStatusLine(options: {
 	model: { id?: string; name?: string } | undefined;
 	pi: ExtensionAPI;
 	piVersion: string | null;
+	router: string | null;
+	width: number;
 }): string {
 	const directory = formatPiStatusDirectory(options.cwd);
 	const branch = colorBranch(options.branch);
@@ -142,7 +166,8 @@ export function formatPiStatusLine(options: {
 	const thinking = formatThinkingLevel(options.pi);
 	const thinkingLabel = `${ANSI.white}[${ANSI.cyan}${thinking}${ANSI.white}]${ANSI.reset}`;
 	const versionLabel = `${ANSI.dim}π v${options.piVersion ?? "?"}${ANSI.reset}`;
-	return `${ANSI.green}${directory}${ANSI.reset}${branch} | ${ANSI.orange}${model}${ANSI.reset}${thinkingLabel} | ${versionLabel}`;
+	const left = `${ANSI.green}${directory}${ANSI.reset}${branch} | ${ANSI.orange}${model}${ANSI.reset}${thinkingLabel} | ${versionLabel}`;
+	return rightAnchor(left, options.router, options.width);
 }
 
 function installClaudeStyleFooter(ctx: ExtensionContext, pi: ExtensionAPI): boolean {
@@ -153,7 +178,7 @@ function installClaudeStyleFooter(ctx: ExtensionContext, pi: ExtensionAPI): bool
 		footerData: ReadonlyFooterDataProvider,
 	) => ({
 		invalidate: () => {},
-		render: () => {
+		render: (width: number) => {
 			const piVersion = resolvePiVersion();
 			const statusLine = formatPiStatusLine({
 				cwd: ctx.cwd,
@@ -161,6 +186,8 @@ function installClaudeStyleFooter(ctx: ExtensionContext, pi: ExtensionAPI): bool
 				model: ctx.model,
 				pi,
 				piVersion,
+				router: routerStatus(footerData),
+				width,
 			});
 			const extensionStatuses = formatExtensionStatuses(footerData);
 			return extensionStatuses ? [statusLine, extensionStatuses] : [statusLine];
@@ -217,12 +244,22 @@ export function summarizeTaskCounts(records: TaskRecordV1[]): TaskCounts {
 	return counts;
 }
 
+export function filterCurrentSessionActiveTasks(records: TaskRecordV1[], sessionStartedAt: string | null): TaskRecordV1[] {
+	const sessionStartMs = sessionStartedAt ? Date.parse(sessionStartedAt) : Number.NEGATIVE_INFINITY;
+	return records.filter((task) => {
+		if (task.state !== "running" && task.state !== "blocked") return false;
+		const createdMs = Date.parse(task.createdAt);
+		return Number.isFinite(createdMs) && createdMs >= sessionStartMs;
+	});
+}
+
 export function formatTaskStatus(counts: TaskCounts): string | null {
-	if (counts.nonTerminal === 0) return null;
-	const parts: string[] = [`task ${counts.nonTerminal}`];
+	const active = counts.running + counts.blocked;
+	if (active === 0) return null;
+	const parts: string[] = [`tasks ${active}`];
 	const flags: string[] = [];
+	if (counts.running > 0) flags.push(`${counts.running} running`);
 	if (counts.blocked > 0) flags.push(`${counts.blocked} blocked`);
-	if (counts.failed > 0) flags.push(`${counts.failed} failed`);
 	if (flags.length > 0) parts.push(`(${flags.join(", ")})`);
 	return parts.join(" ");
 }
@@ -235,7 +272,7 @@ export function formatElevatedStatus(approvalCount: number): string | null {
 function refreshOperatorStatus(ctx: { ui?: { setStatus?: (key: string, value: string) => void } }): void {
 	if (!ctx.ui?.setStatus) return;
 	try {
-		const counts = summarizeTaskCounts(listTasks());
+		const counts = summarizeTaskCounts(filterCurrentSessionActiveTasks(listTasks(), currentSessionStartedAt));
 		const taskLabel = formatTaskStatus(counts);
 		ctx.ui.setStatus("task", taskLabel ?? "");
 	} catch {
@@ -352,6 +389,7 @@ function formatDoctorJson(report: DoctorReport): string {
 
 export default function (pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
+		currentSessionStartedAt = new Date().toISOString();
 		const footerInstalled = installClaudeStyleFooter(ctx, pi);
 		if (!footerInstalled) {
 			const piVersion = resolvePiVersion();

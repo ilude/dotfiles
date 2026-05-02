@@ -14,7 +14,7 @@ function writeLog(root: string, repo: string, agent: string, rows: any[]) {
 }
 
 async function rebuild(root: string) {
-  const mod = await import("../extensions/memory-index.ts");
+  const mod = await import("../lib/memory-index.ts");
   return mod.rebuildMemoryIndex(root);
 }
 
@@ -40,7 +40,7 @@ describe("memory retrieval phase 1", () => {
     writeLog(root, "gh/b/repo", "orchestrator", [{ id: "b", timestamp: "2026-01-02T00:00:00Z", entry: { summary: "postgres secret other repo" } }]);
     writeLog(root, "__global-layer__", "orchestrator", [{ id: "p", timestamp: "2026-01-03T00:00:00Z", kind: "policy", entry: { summary: "postgres policy" } }]);
     await rebuild(root);
-    const { retrieve } = await import("../extensions/memory-retrieve.ts");
+    const { retrieve } = await import("../lib/memory-retrieve.ts");
     const results = await retrieve({ task: "postgres", agent: "orchestrator", repoId: "gh/a/repo", k: 10, maxTokens: 1000 });
     expect(new Set(results.map((r: any) => r.repo_id))).toEqual(new Set(["gh/a/repo"]));
     expect(results.every((r: any) => typeof r.lexicalScore === "number" && typeof r.similarity === "number")).toBe(true);
@@ -52,7 +52,7 @@ describe("memory retrieval phase 1", () => {
     writeLog(root, "gh/b/repo", "orchestrator", [{ id: "b", timestamp: "2026-01-02T00:00:00Z", entry: { summary: "cache raw private" } }]);
     writeLog(root, "__global-layer__", "orchestrator", [{ id: "p", timestamp: "2026-01-03T00:00:00Z", kind: "policy", entry: { summary: "cache policy" } }, { id: "np", timestamp: "2026-01-04T00:00:00Z", entry: { summary: "cache non policy" } }]);
     await rebuild(root);
-    const { retrieve } = await import("../extensions/memory-retrieve.ts");
+    const { retrieve } = await import("../lib/memory-retrieve.ts");
     const ids = (await retrieve({ task: "cache", agent: "orchestrator", repoId: "gh/a/repo", k: 10, crossRepo: "policies-only", maxTokens: 1000 })).map((r: any) => r.id);
     expect(ids).toContain("p"); expect(ids).not.toContain("b"); expect(ids).not.toContain("np");
   });
@@ -66,7 +66,7 @@ describe("memory retrieval phase 1", () => {
       { id: "long", timestamp: "2026-01-04T00:00:00Z", entry: { summary: "x".repeat(3000) } },
     ]);
     await rebuild(root);
-    const { retrieve, renderRelevantPriorExpertise, estimateTokens } = await import("../extensions/memory-retrieve.ts");
+    const { retrieve, renderRelevantPriorExpertise, estimateTokens } = await import("../lib/memory-retrieve.ts");
     const results = await retrieve({ task: "chain", agent: "orchestrator", repoId: "gh/a/repo", k: 2, maxTokens: 512 });
     expect(results.map((r: any) => r.id)).toContain("C");
     expect(results.map((r: any) => r.id)).not.toContain("A"); expect(results.map((r: any) => r.id)).not.toContain("B");

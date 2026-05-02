@@ -26,6 +26,21 @@ function ctxWithStatus() {
 }
 
 describe("summarizeTaskCounts / formatTaskStatus", () => {
+	it("filters status bar tasks to running/blocked tasks from current session", async () => {
+		const mod = await import("../extensions/operator-status.ts");
+		const sessionStartedAt = "2026-01-01T00:00:00.000Z";
+		const records = [
+			{ state: "failed", createdAt: "2026-01-01T00:01:00.000Z" },
+			{ state: "completed", createdAt: "2026-01-01T00:01:00.000Z" },
+			{ state: "running", createdAt: "2025-12-31T23:59:00.000Z" },
+			{ state: "running", createdAt: "2026-01-01T00:01:00.000Z" },
+			{ state: "blocked", createdAt: "2026-01-01T00:02:00.000Z" },
+		] as any[];
+
+		const filtered = mod.filterCurrentSessionActiveTasks(records, sessionStartedAt);
+		expect(filtered.map((t) => t.state)).toEqual(["running", "blocked"]);
+	});
+
 	it("returns null label when nothing is in flight", async () => {
 		const mod = await import("../extensions/operator-status.ts");
 		const counts = mod.summarizeTaskCounts([]);
@@ -52,7 +67,8 @@ describe("summarizeTaskCounts / formatTaskStatus", () => {
 		expect(counts.urgent).toBe(1);
 
 		const label = mod.formatTaskStatus(counts);
-		expect(label).toContain("task 2");
+		expect(label).toContain("tasks 2");
+		expect(label).toContain("1 running");
 		expect(label).toContain("1 blocked");
 	});
 });
@@ -85,7 +101,7 @@ describe("session_start hook", () => {
 		expect(piCall).toBeDefined();
 		// pi version may not be resolvable in CI / hermetic env; both forms ok.
 		const value = piCall?.[1] as string;
-		expect(value === "pi" || /^pi v\d+\.\d+\.\d+/.test(value)).toBe(true);
+		expect(value === "π" || /^π v\d+\.\d+\.\d+/.test(value)).toBe(true);
 
 		const taskCall = calls.find(([k]: string[]) => k === "task");
 		const elevatedCall = calls.find(([k]: string[]) => k === "elevated");
@@ -93,20 +109,22 @@ describe("session_start hook", () => {
 		expect(elevatedCall?.[1]).toBe("");
 	});
 
-	it("populates the task slot when a task is running", async () => {
-		const { createTask } = await import("../lib/task-registry.ts");
-		createTask({ origin: "subagent", summary: "x", state: "running" });
-
+	it("populates the task slot only for current-session running tasks", async () => {
 		const pi = createMockPi();
 		const mod = await import("../extensions/operator-status.ts");
 		mod.default(pi as any);
-		const hook = pi._getHook("session_start")[0];
+		const sessionHook = pi._getHook("session_start")[0];
+		const toolHook = pi._getHook("tool_result")[0];
 		const ctx = ctxWithStatus();
-		await hook.handler({}, ctx);
+		await sessionHook.handler({}, ctx);
+
+		const { createTask } = await import("../lib/task-registry.ts");
+		createTask({ origin: "subagent", summary: "x", state: "running" });
+		await toolHook.handler({}, ctx);
 
 		const calls = (ctx.ui.setStatus as ReturnType<typeof vi.fn>).mock.calls;
-		const taskCall = calls.find(([k]: string[]) => k === "task");
-		expect(taskCall?.[1]).toContain("task 1");
+		const taskCall = calls.filter(([k]: string[]) => k === "task").at(-1);
+		expect(taskCall?.[1]).toContain("tasks 1");
 	});
 });
 

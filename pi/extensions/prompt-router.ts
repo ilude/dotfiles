@@ -337,19 +337,14 @@ export function applyPolicy(
 
 export function buildStatusLabel(
   effective: Tier,
-  raw: Tier,
-  currentModel?: string,
-  currentEffort?: string,
+  _raw: Tier,
+  _currentModel?: string,
+  _currentEffort?: string,
   _cap?: string,
   _ruleFired?: RuleFired
 ): string {
-  const fallbackLabel =
-    effective === "low" ? "Small model" : effective === "mid" ? "Medium model" : "Large model";
-  const icon = TIER_ICON[effective];
-  const modelPart = currentModel || fallbackLabel;
-  const effortPart = currentEffort ? ` [${currentEffort}]` : "";
-  const held = effective !== raw ? ` (held from ${effective})` : "";
-  return `${icon} ${modelPart}${effortPart}${held}`;
+  const size = effective === "low" ? "small" : effective === "mid" ? "medium" : "large";
+  return `route: ${size}`;
 }
 
 /**
