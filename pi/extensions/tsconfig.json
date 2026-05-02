@@ -6,7 +6,14 @@
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "types": ["node"],
+    "allowImportingTsExtensions": true,
+    "baseUrl": ".",
+    "paths": {
+      "@mariozechner/*": ["node_modules/@mariozechner/*"],
+      "@sinclair/*": ["node_modules/@sinclair/*"]
+    }
   },
   "include": ["**/*.ts"],
   "exclude": ["web-fetch/**"]

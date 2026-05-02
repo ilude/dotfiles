@@ -206,29 +206,16 @@ describe("safeParseClassifierOutput", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildStatusLabel", () => {
-  it("returns label with model and effort", () => {
-    const label = buildStatusLabel("low", "low", "gpt-5.4-mini", "minimal");
-    expect(label).toContain("gpt-5.4-mini");
-    expect(label).toContain("minimal");
-    expect(label).not.toContain("held");
+  it("shows only route size for small", () => {
+    expect(buildStatusLabel("low", "low", "gpt-5.4-mini", "minimal")).toBe("route: small");
   });
 
-  it("appends held annotation when effective differs from raw", () => {
-    const label = buildStatusLabel("high", "low", "claude-opus-4-6", "high");
-    expect(label).toContain("claude-opus-4-6");
-    expect(label).toContain("held from high");
+  it("shows only route size for medium", () => {
+    expect(buildStatusLabel("mid", "mid", "gpt-5.4-fast", "medium", "medium", "classifier")).toBe("route: medium");
   });
 
-  it("shows cap when cap differs from applied effort", () => {
-    const label = buildStatusLabel("high", "high", "claude-opus-4-6", "medium", "high", "effort-cap");
-    expect(label).toContain("claude-opus-4-6");
-    expect(label).toContain("medium");
-  });
-
-  it("shows rule when ruleFired is supplied", () => {
-    const label = buildStatusLabel("mid", "mid", "gpt-5.4-fast", "medium", "medium", "classifier");
-    expect(label).toContain("gpt-5.4-fast");
-    expect(label).toContain("medium");
+  it("shows only route size for large", () => {
+    expect(buildStatusLabel("high", "low", "claude-opus-4-6", "high")).toBe("route: large");
   });
 });
 
@@ -631,10 +618,7 @@ describe("prompt-router extension -- input hook", () => {
 
     await new Promise((r) => setTimeout(r, 0));
     expect((pi as any).setModel).toHaveBeenCalledWith({ provider: "openai-codex", id: "gpt-5.4-fast" });
-    expect((ctx.ui as any).setStatus).toHaveBeenCalledWith(
-      "router",
-      expect.stringContaining("gpt-5.4-fast")
-    );
+    expect((ctx.ui as any).setStatus).toHaveBeenCalledWith("router", "route: medium");
   });
 
   it("passes the trimmed prompt text to the classifier", async () => {

@@ -17,7 +17,14 @@ import { getModels } from "@mariozechner/pi-ai";
 import { getOAuthProvider } from "@mariozechner/pi-ai/oauth";
 
 const CODEX_CLIENT_VERSION_CANDIDATES = ["999.0.0", "1.0.0", "0.99.0"];
-const SUPPORTED_SUBSCRIPTION_PROVIDERS = new Set(["anthropic", "openai-codex", "github-copilot"]);
+const SUPPORTED_REFRESH_PROVIDERS = new Set([
+	"anthropic",
+	"openai-codex",
+	"github-copilot",
+	"openrouter",
+	"opencode",
+	"opencode-go",
+]);
 
 type RefreshScope = {
 	provider?: string;
@@ -80,15 +87,17 @@ export function parseRefreshModelsArgs(raw: string): RefreshScope {
 	return { provider: parts[0] };
 }
 
-export function getCurrentSubscriptionProviders(modelRegistry: any): string[] {
+export function getCurrentRefreshableProviders(modelRegistry: any): string[] {
 	const authStorage = modelRegistry?.authStorage;
 	if (!authStorage || typeof authStorage.list !== "function" || typeof authStorage.get !== "function") {
 		return [];
 	}
 	return authStorage
 		.list()
-		.filter((provider: string) => authStorage.get(provider)?.type === "oauth");
+		.filter((provider: string) => ["oauth", "api_key"].includes(authStorage.get(provider)?.type));
 }
+
+export const getCurrentSubscriptionProviders = getCurrentRefreshableProviders;
 
 function normalizeBaseUrl(raw: string): string {
 	return raw.replace(/\/+$/, "");
@@ -607,23 +616,23 @@ async function refreshProviderAvailability(
 		throw new Error("Could not build refreshed model definitions");
 	}
 
-	const oauthProvider = getOAuthProvider(provider);
-	if (!oauthProvider) {
-		throw new Error(`Provider \"${provider}\" is not an OAuth subscription provider`);
-	}
-
-	ctx.modelRegistry.registerProvider(provider, {
+	const providerDefinition: Record<string, unknown> = {
 		baseUrl: allModels[0].baseUrl,
-		oauth: {
+		models: refreshedModels,
+	};
+	const oauthProvider = getOAuthProvider(provider);
+	if (oauthProvider) {
+		providerDefinition.oauth = {
 			name: oauthProvider.name,
 			login: oauthProvider.login,
 			refreshToken: oauthProvider.refreshToken,
 			getApiKey: oauthProvider.getApiKey,
 			usesCallbackServer: oauthProvider.usesCallbackServer,
 			modifyModels: oauthProvider.modifyModels,
-		},
-		models: refreshedModels,
-	});
+		};
+	}
+
+	ctx.modelRegistry.registerProvider(provider, providerDefinition);
 
 	const beforeIds = new Set(allModels.map((model) => model.id));
 	const afterIds = new Set(refreshedModels.map((model) => model.id));
@@ -649,7 +658,7 @@ function resolveProvider(requestedProvider: string, knownProviders: string[]): s
 }
 
 function isRefreshSupportedProvider(provider: string): boolean {
-	return SUPPORTED_SUBSCRIPTION_PROVIDERS.has(provider);
+	return SUPPORTED_REFRESH_PROVIDERS.has(provider);
 }
 
 function formatModelIdList(ids: string[], maxItems = 12): string {
@@ -658,9 +667,17 @@ function formatModelIdList(ids: string[], maxItems = 12): string {
 	return `${shown.join(", ")} ... (+${ids.length - maxItems} more)`;
 }
 
+export function formatRefreshFailure(provider: string, error: unknown): string {
+	const detail = error instanceof Error ? error.message : String(error);
+	if (/HTTP 401|authentication_error|invalid x-api-key|invalid api key/i.test(detail)) {
+		return `${provider}: authentication failed (token may be expired or invalid); re-authenticate this provider and retry. Details: ${detail}`;
+	}
+	return `${provider}: ${detail}`;
+}
+
 export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 	pi.registerCommand("refresh-models", {
-		description: "Refresh available subscription models for one provider or all current subscriptions",
+		description: "Refresh available models for one configured provider or all configured providers",
 		handler: async (args, ctx) => {
 			const notify = (message: string, level: "info" | "warning" | "error" = "info") => {
 				ctx.ui.notify(message, level);
@@ -674,22 +691,22 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 				return;
 			}
 
-			const activeSubscriptions = getCurrentSubscriptionProviders(ctx.modelRegistry);
-			if (activeSubscriptions.length === 0) {
-				notify("No active subscription providers found in auth.json", "warning");
+			const configuredProviders = getCurrentRefreshableProviders(ctx.modelRegistry);
+			if (configuredProviders.length === 0) {
+				notify("No configured OAuth or API-key providers found in auth.json", "warning");
 				return;
 			}
 
 			const requestedProviders = parsed.provider
 				? (() => {
-					const resolved = resolveProvider(parsed.provider!, activeSubscriptions);
+					const resolved = resolveProvider(parsed.provider!, configuredProviders);
 					return resolved ? [resolved] : [];
 				  })()
-				: activeSubscriptions;
+				: configuredProviders;
 
 			if (parsed.provider && requestedProviders.length === 0) {
 				notify(
-					`Provider \"${parsed.provider}\" is not an active subscription. Active: ${activeSubscriptions.join(", ")}`,
+					`Provider \"${parsed.provider}\" is not configured. Configured: ${configuredProviders.join(", ")}`,
 					"error",
 				);
 				return;
@@ -700,8 +717,8 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 
 			if (parsed.provider && providers.length === 0) {
 				notify(
-					`Provider \"${requestedProviders[0]}\" is active but not yet supported by /refresh-models. Supported: ${[
-						...SUPPORTED_SUBSCRIPTION_PROVIDERS,
+					`Provider \"${requestedProviders[0]}\" is configured but not yet supported by /refresh-models. Supported: ${[
+						...SUPPORTED_REFRESH_PROVIDERS,
 					].join(", ")}`,
 					"error",
 				);
@@ -711,14 +728,14 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 			if (skipped.length > 0) {
 				notify(
 					`Skipping unsupported providers: ${skipped.join(", ")} (supported: ${[
-						...SUPPORTED_SUBSCRIPTION_PROVIDERS,
+						...SUPPORTED_REFRESH_PROVIDERS,
 					].join(", ")})`,
 					"warning",
 				);
 			}
 
 			if (providers.length === 0) {
-				notify("No supported subscription providers to refresh.", "warning");
+				notify("No supported configured providers to refresh.", "warning");
 				return;
 			}
 
@@ -752,7 +769,7 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 					outcomes.push({
 						provider,
 						ok: false,
-						message: `${provider}: ${error instanceof Error ? error.message : String(error)}`,
+						message: formatRefreshFailure(provider, error),
 					});
 				}
 			}
@@ -769,10 +786,10 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 					notify(`${success.provider} removed: ${formatModelIdList(success.removedIds)}`, "info");
 				}
 			}
-			for (const failure of failures) notify(failure.message, "error");
+			for (const failure of failures) notify(failure.message, "warning");
 
 			if (failures.length === 0) {
-				notify(`Done. Refreshed ${successes.length} subscription provider(s).`, "info");
+				notify(`Done. Refreshed ${successes.length} provider(s).`, "info");
 			} else {
 				notify(
 					`Refresh completed with errors (${successes.length} succeeded, ${failures.length} failed).`,
