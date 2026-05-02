@@ -21,17 +21,17 @@ from pathlib import Path
 from typing import Optional
 
 
-def load_secrets_file() -> None:
-    """Load secrets from ~/.dotfiles/.secrets if env vars not set.
+def load_env_file() -> None:
+    """Load env vars from ~/.dotfiles/.env if env vars are not already set.
 
     Parses bash-style export VAR=value lines and sets them as env vars.
-    This allows the script to work even when not run from a shell that sourced .secrets.
+    This allows the script to work even when not run from a shell that sourced .env.
     """
-    secrets_path = Path.home() / ".dotfiles" / ".secrets"
-    if not secrets_path.exists():
+    env_path = Path.home() / ".dotfiles" / ".env"
+    if not env_path.exists():
         return
 
-    for line in secrets_path.read_text().splitlines():
+    for line in env_path.read_text().splitlines():
         line = line.strip()
         # Skip comments and empty lines
         if not line or line.startswith("#"):
@@ -47,8 +47,22 @@ def load_secrets_file() -> None:
                 os.environ[name] = value
 
 
-# Load secrets before anything else
-load_secrets_file()
+# Load env vars before anything else
+load_env_file()
+
+
+def output_dir_for(video_id: str) -> Path:
+    """Return and create ~/.dotfiles/yt/<video_id>/ for fetched outputs."""
+    output_dir = Path.home() / ".dotfiles" / "yt" / video_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir
+
+
+def write_output_file(video_id: str, filename: str, content: str) -> Path:
+    """Write fetched output under ~/.dotfiles/yt/<video_id>/ and return the path."""
+    output_path = output_dir_for(video_id) / filename
+    output_path.write_text(content, encoding="utf-8")
+    return output_path
 
 
 def extract_video_id(url_or_id: str) -> str:
@@ -183,16 +197,24 @@ def main():
         if args.timed:
             result = service.fetch_timed_transcript(video_id, languages)
             if args.json:
-                print(json.dumps(result, indent=2))
+                output = json.dumps(result, indent=2)
+                saved_path = write_output_file(video_id, "transcript.timed.json", output + "\n")
+                print(output)
             else:
-                for segment in result:
-                    print(f"[{segment['start']:.1f}s] {segment['text']}")
+                output = "\n".join(f"[{segment['start']:.1f}s] {segment['text']}" for segment in result)
+                saved_path = write_output_file(video_id, "transcript.timed.txt", output + "\n")
+                print(output)
         else:
             result = service.fetch_transcript(video_id, languages)
             if args.json:
-                print(json.dumps({"video_id": video_id, "transcript": result}))
+                output = json.dumps({"video_id": video_id, "transcript": result}, indent=2)
+                saved_path = write_output_file(video_id, "transcript.json", output + "\n")
+                print(output)
             else:
+                saved_path = write_output_file(video_id, "transcript.txt", result + "\n")
                 print(result)
+
+        print(f"Saved transcript to {saved_path}", file=sys.stderr)
 
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
