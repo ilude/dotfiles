@@ -19,6 +19,7 @@
 //   back the slash-command name the user just typed and add visual noise to
 //   the chain progress narrative.
 
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -127,6 +128,181 @@ function getLayerPaths(expertiseDir: string, agent: string, slug: string) {
 		statePath: path.join(layerDir, `${agent}-mental-model.state.json`),
 		metaPath: path.join(layerDir, "repo-id.json"),
 	};
+}
+
+type RetrievalFallbackReason = "none" | "missing_index" | "stale_index" | "corrupt_index" | "partial_index" | "rebuild_failed" | "provider_disabled" | "no_matches" | "invalid_cache_version";
+type RetrievalLayerLabel = "project-local" | "drift" | "global";
+type RetrievalLayerEntry = { label: RetrievalLayerLabel; paths: LayerPaths; entries: ExpertiseRecord[] };
+
+interface RetrievalDetails {
+	query: string;
+	max_results: number;
+	strategy: "lexical";
+	entry_count_considered: number;
+	result_count: number;
+	used_index: boolean;
+	rebuilt_index: boolean;
+	fallback_reason: RetrievalFallbackReason;
+}
+
+interface FocusedItem {
+	text: string;
+	score: number;
+	categoryRank: number;
+	layerRank: number;
+	timestamp: string;
+	ordinal: number;
+	dedupKey: string;
+}
+
+const RETRIEVAL_INDEX_VERSION = 1;
+const CATEGORY_RANK: Record<string, number> = {
+	strong_decision: 0,
+	key_file: 1,
+	pattern: 2,
+	observation: 3,
+	open_question: 4,
+	system_overview: 5,
+};
+const LAYER_RANK: Record<RetrievalLayerLabel, number> = { "project-local": 0, drift: 1, global: 2 };
+const STOPWORDS = new Set(["a", "an", "and", "are", "as", "for", "in", "is", "of", "on", "or", "the", "to", "with"]);
+
+function validateReadExpertiseInput(agent: string, query?: string, maxResults?: unknown): void {
+	if (typeof agent !== "string" || !agent.trim()) throw new Error("agent must be a non-empty string");
+	if (query !== undefined && typeof query === "string" && query.trim().length > 500) throw new Error("query must be 500 characters or fewer");
+	if (query !== undefined && typeof query !== "string") throw new Error("query must be a string");
+	const hasQuery = typeof query === "string" && query.trim().length > 0;
+	if (!hasQuery) return;
+	if (maxResults === undefined) return;
+	if (!Number.isInteger(maxResults) || (maxResults as number) < 1 || (maxResults as number) > 20) {
+		throw new Error("max_results must be an integer from 1 to 20");
+	}
+}
+
+function normalizeRetrievalText(value: string): string {
+	return value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim().replace(/\s+/g, " ");
+}
+
+function retrievalTokens(value: string): string[] {
+	return normalizeRetrievalText(value).split(" ").filter((token) => token.length > 1 && !STOPWORDS.has(token));
+}
+
+function collectStringLeaves(value: unknown): string[] {
+	if (typeof value === "string" && value.trim()) return [value.trim()];
+	if (Array.isArray(value)) return value.flatMap(collectStringLeaves);
+	if (value && typeof value === "object") return Object.values(value as Record<string, unknown>).flatMap(collectStringLeaves);
+	return [];
+}
+
+function firstString(...values: unknown[]): string {
+	for (const value of values) if (typeof value === "string" && value.trim()) return value.trim();
+	return "";
+}
+
+function renderFocusedRecord(record: ExpertiseRecord): string {
+	const entry = record.entry ?? {};
+	if (record.category === "strong_decision") return firstString(entry.decision, entry.summary, entry.note) || JSON.stringify(entry);
+	if (record.category === "key_file") return [firstString(entry.path), firstString(entry.role), firstString(entry.notes, entry.note, entry.summary)].filter(Boolean).join(" -- ");
+	return firstString(entry.topic, entry.name, entry.details, entry.discovery, entry.summary, entry.note, entry.notes, entry.description) || JSON.stringify(entry);
+}
+
+function sourceIdentity(layers: RetrievalLayerEntry[]): string {
+	return layers.map((layer) => {
+		try {
+			const stat = fs.statSync(layer.paths.logPath);
+			const content = fs.readFileSync(layer.paths.logPath);
+			return `${layer.label}:${layer.paths.logPath}:${stat.mtimeMs}:${stat.size}:${crypto.createHash("sha256").update(content).digest("hex")}`;
+		} catch {
+			return `${layer.label}:${layer.paths.logPath}:missing`;
+		}
+	}).join("|");
+}
+
+function getRetrievalIndexPath(agent: string, layers: RetrievalLayerEntry[]): string {
+	const globalLayer = layers.find((layer) => layer.label === "global") ?? layers[0];
+	return path.join(globalLayer.paths.expertiseDir, `${agent}-retrieval-index.json`);
+}
+
+function classifyIndexState(indexPath: string, expectedSource: string): { usedIndex: boolean; rebuiltIndex: boolean; reason: RetrievalFallbackReason } {
+	if (!fs.existsSync(indexPath)) return { usedIndex: false, rebuiltIndex: true, reason: "missing_index" };
+	try {
+		const parsed = JSON.parse(fs.readFileSync(indexPath, "utf-8")) as Record<string, unknown>;
+		if (!Array.isArray(parsed.entries)) return { usedIndex: false, rebuiltIndex: true, reason: "partial_index" };
+		if (parsed.index_version !== RETRIEVAL_INDEX_VERSION) return { usedIndex: false, rebuiltIndex: true, reason: "stale_index" };
+		if (parsed.source_identity !== expectedSource) return { usedIndex: false, rebuiltIndex: true, reason: "stale_index" };
+		return { usedIndex: true, rebuiltIndex: false, reason: "none" };
+	} catch {
+		return { usedIndex: false, rebuiltIndex: true, reason: "corrupt_index" };
+	}
+}
+
+async function writeRetrievalIndex(indexPath: string, agent: string, source: string, entryCount: number): Promise<void> {
+	await fs.promises.mkdir(path.dirname(indexPath), { recursive: true });
+	const tmp = `${indexPath}.${process.pid}.${Date.now()}.tmp`;
+	const payload = { index_version: RETRIEVAL_INDEX_VERSION, agent, source_identity: source, built_at: new Date().toISOString(), entry_count: entryCount, entries: [] };
+	await fs.promises.writeFile(tmp, JSON.stringify(payload, null, 2), "utf-8");
+	await fs.promises.rename(tmp, indexPath);
+}
+
+function scoreRecord(query: string, record: ExpertiseRecord): number {
+	const entry = record.entry ?? {};
+	const weighted = [firstString(entry.topic, entry.decision, entry.path), firstString(entry.summary, entry.details, entry.discovery, entry.note, entry.notes), ...collectStringLeaves(entry)].join(" ");
+	const haystack = normalizeRetrievalText(weighted);
+	const normalizedQuery = normalizeRetrievalText(query);
+	let score = haystack.includes(normalizedQuery) && normalizedQuery ? 100 : 0;
+	for (const token of retrievalTokens(query)) {
+		if (haystack.includes(token)) score += 5;
+	}
+	return score;
+}
+
+function createEmptyRetrievalDetails(query: string, maxResults: number, fallbackReason: RetrievalFallbackReason): RetrievalDetails {
+	return { query, max_results: maxResults, strategy: "lexical", entry_count_considered: 0, result_count: 0, used_index: false, rebuilt_index: false, fallback_reason: fallbackReason };
+}
+
+async function retrieveFocusedExpertise(agent: string, query: string, maxResults: number, layers: RetrievalLayerEntry[], ctx: unknown): Promise<{ items: FocusedItem[]; details: RetrievalDetails }> {
+	const source = sourceIdentity(layers);
+	const indexPath = getRetrievalIndexPath(agent, layers);
+	const indexState = classifyIndexState(indexPath, source);
+	try {
+		if (indexState.rebuiltIndex) await writeRetrievalIndex(indexPath, agent, source, layers.reduce((sum, layer) => sum + layer.entries.length, 0));
+	} catch {
+		indexState.reason = "rebuild_failed";
+	}
+	const providerRequested = Boolean((ctx as { retrievalProviderRequested?: unknown } | undefined)?.retrievalProviderRequested);
+	let ordinal = 0;
+	const candidates: FocusedItem[] = [];
+	for (const layer of layers) {
+		for (const record of layer.entries) {
+			const score = scoreRecord(query, record);
+			if (score <= 0) { ordinal += 1; continue; }
+			const text = renderFocusedRecord(record);
+			const dedupKey = normalizeRetrievalText(text);
+			candidates.push({ text, score, categoryRank: CATEGORY_RANK[record.category ?? ""] ?? 99, layerRank: LAYER_RANK[layer.label], timestamp: record.timestamp ?? "", ordinal, dedupKey });
+			ordinal += 1;
+		}
+	}
+	const deduped = new Map<string, FocusedItem>();
+	for (const item of candidates.sort(compareFocusedItems)) {
+		if (!deduped.has(item.dedupKey)) deduped.set(item.dedupKey, item);
+	}
+	const items = [...deduped.values()].sort(compareFocusedItems).slice(0, maxResults);
+	const fallbackReason: RetrievalFallbackReason = providerRequested ? "provider_disabled" : items.length === 0 ? "no_matches" : indexState.reason;
+	return {
+		items,
+		details: { query, max_results: maxResults, strategy: "lexical", entry_count_considered: ordinal, result_count: items.length, used_index: indexState.usedIndex, rebuilt_index: indexState.rebuiltIndex, fallback_reason: fallbackReason },
+	};
+}
+
+function compareFocusedItems(a: FocusedItem, b: FocusedItem): number {
+	return b.score - a.score || a.layerRank - b.layerRank || a.categoryRank - b.categoryRank || b.timestamp.localeCompare(a.timestamp) || a.ordinal - b.ordinal;
+}
+
+function appendFocusedRetrievalText(baseline: string, query: string, items: string[]): string {
+	const lines = [baseline, "", `Focused retrieval for: ${query}`];
+	if (items.length === 0) lines.push("No focused matches found; using baseline expertise only.");
+	else for (const item of items) lines.push(`- ${item}`);
+	return lines.join("\n");
 }
 
 function findGitRoot(startDir: string): string | null {
@@ -796,10 +972,15 @@ export default function (pi: ExtensionAPI) {
 		parameters: Type.Object({
 			agent: Type.String({ description: "Agent name (e.g. backend-dev, orchestrator)" }),
 			mode: Type.Optional(Type.String({ description: "Output mode: concise (default) | full | debug" })),
+			query: Type.Optional(Type.String({ description: "Optional topic/query for focused local expertise retrieval" })),
+			max_results: Type.Optional(Type.Number({ description: "Maximum focused retrieval results when query is present (1-20, default 5)" })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const { agent, mode: rawMode } = params as { agent: string; mode?: string };
+			const { agent, mode: rawMode, query: rawQuery, max_results: rawMaxResults } = params as { agent: string; mode?: string; query?: string; max_results?: unknown };
+			validateReadExpertiseInput(agent, rawQuery, rawMaxResults);
 			const mode: ExpertiseReadMode = rawMode === "full" || rawMode === "debug" ? rawMode : "concise";
+			const query = typeof rawQuery === "string" && rawQuery.trim() ? rawQuery.trim() : undefined;
+			const maxResults = query ? (rawMaxResults === undefined ? 5 : rawMaxResults as number) : undefined;
 
 			const globalPaths = getExpertisePaths(multiTeamDir, agent);
 			const layer = resolveLayer(multiTeamDir, ctx as { cwd?: string; repoId?: string } | undefined);
@@ -835,9 +1016,16 @@ export default function (pi: ExtensionAPI) {
 
 			const totalEntries = layerEntries.reduce((sum, l) => sum + l.entries.length, 0);
 			if (totalEntries === 0) {
+				const details: Record<string, unknown> = { agent, mode, entryCount: 0, usedRawFallback: false, layerSources: [] };
+				let text = `No expertise recorded yet for ${agent}. This is your first session.`;
+				if (query && maxResults !== undefined) {
+					const retrieval = createEmptyRetrievalDetails(query, maxResults, "no_matches");
+					details.retrieval = retrieval;
+					text = appendFocusedRetrievalText(text, query, []);
+				}
 				return {
-					content: [{ type: "text", text: `No expertise recorded yet for ${agent}. This is your first session.` }],
-					details: { agent, mode, entryCount: 0, usedRawFallback: false, layerSources: [] },
+					content: [{ type: "text", text }],
+					details,
 				};
 			}
 
@@ -880,8 +1068,15 @@ export default function (pi: ExtensionAPI) {
 			if (driftPrevious) details.driftPreviousSlug = driftPrevious;
 			if (layer.repoId) details.repoId = layer.repoId.slug;
 
+			let outputText = mergedText;
+			if (query && maxResults !== undefined) {
+				const focused = await retrieveFocusedExpertise(agent, query, maxResults, layerEntries, ctx);
+				details.retrieval = focused.details;
+				outputText = appendFocusedRetrievalText(mergedText, query, focused.items.map((item) => item.text));
+			}
+
 			return {
-				content: [{ type: "text", text: mergedText }],
+				content: [{ type: "text", text: outputText }],
 				details,
 			};
 		},

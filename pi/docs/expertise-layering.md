@@ -235,6 +235,50 @@ Input remote -- Expected repo ID slug
 When neither layer exists, the behavior is the same as the existing single-layer system
 (return empty / first-session message).
 
+### Focused retrieval with `query`
+
+`read_expertise` remains backward compatible for existing `{ agent, mode }` callers. Callers
+may also pass `query` to append a focused, deterministic local retrieval section after the
+baseline merged snapshot. `query` is trimmed and must be 1-500 characters; an empty trimmed
+query is treated as omitted. When `query` is present, `max_results` defaults to `5` and must be
+an integer from `1` through `20`.
+
+Focused output order is stable:
+
+1. Normal compact snapshot text for the selected mode and layers.
+2. Blank line.
+3. `Focused retrieval for: <query>`.
+4. Up to `max_results` deduplicated bullets, or `No focused matches found; using baseline expertise only.`
+
+Retrieval uses local lexical scoring over canonical JSONL records, then deduplicates before
+applying `max_results`. It does not expose scores, cache paths, hashes, raw JSON, or source
+file metadata in LLM-facing text. In debug contexts, implementation diagnostics may appear in
+`details.retrieval` with fields such as `strategy`, `entry_count_considered`, `result_count`,
+`used_index`, `rebuilt_index`, and `fallback_reason`.
+
+### Retrieval cache, fallback, and privacy policy
+
+Expertise JSONL logs are the source of truth. Mental-model snapshots and retrieval indexes are
+disposable cache state: rebuildable, gitignored, and never staged. Retrieval cache invalidation
+must account for cache version, source path identity, JSONL mtime/size/hash, and entry count.
+Missing, stale, corrupt, partial, or invalid-version indexes are rebuilt; if rebuild fails,
+`read_expertise` falls back to a direct JSONL lexical scan, then to the baseline snapshot with a
+safe fallback reason.
+
+Focused retrieval is private and local by default. External embedding providers, vector
+databases, or network calls are disabled for this feature unless a future approved design adds
+explicit opt-in configuration. Do not edit `.env` files, secrets, keys, or provider credentials
+for retrieval.
+
+Targeted TypeScript validation for retrieval behavior:
+
+```bash
+cd pi/tests && bun vitest run read-expertise-retrieval.test.ts
+```
+
+A broader check is `cd pi/tests && bun vitest run`, but that suite may include pre-existing
+dependency failures outside this feature.
+
 When only the global layer exists (legacy state), the behavior is identical to the
 current single-layer system. No migration is required before reads work.
 
