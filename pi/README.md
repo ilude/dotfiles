@@ -152,8 +152,19 @@ Sequences planner → builder → reviewer agents. Each agent's output feeds the
 
 **Tools registered for agents:**
 - `append_expertise` -- appends a discovery to `{agent}-expertise-log.jsonl` (append-only source of truth)
-- `read_expertise` -- reads the compact expertise snapshot / mental model for an agent, rebuilding from raw history if needed
+- `read_expertise` -- reads the compact expertise snapshot / mental model for an agent, rebuilding from raw history if needed. Optional `query` enables deterministic local focused retrieval, and optional `max_results` caps focused matches.
 - `log_exchange` -- records messages to the session `conversation.jsonl`
+
+`read_expertise` parameters:
+
+| Parameter | Default | Notes |
+|---|---:|---|
+| `agent` | required | Non-empty agent name. |
+| `mode` | `concise` | `concise`, `full`, or `debug`; unknown modes fall back to concise behavior. |
+| `query` | omitted | Trimmed string, 1-500 characters. When present, appends a focused retrieval section after the baseline snapshot. |
+| `max_results` | `5` with `query` | Integer 1-20. Caps deduplicated focused bullets. Invalid values return a validation error. |
+
+With `query`, output keeps the normal snapshot first, then adds `Focused retrieval for: <query>` and up to `max_results` deterministic lexical matches. If nothing matches, it says `No focused matches found; using baseline expertise only.` Debug-only retrieval diagnostics live in `details.retrieval`; LLM-facing text does not expose cache paths, hashes, raw JSON, or source file metadata.
 
 ### `agent-team.ts`
 
@@ -586,16 +597,33 @@ dual-read source; new writes go to the new slug directory. No expertise is silen
   `SENSITIVE_REPO=true` routes all writes to the global layer and disables project-local reads.
 - **Snapshot invalidation**: any new append marks the snapshot stale; rebuilt synchronously
   on the next `read_expertise` call. Last-known-good snapshot retained on rebuild failure.
+- **Focused retrieval fallback**: optional `read_expertise` retrieval is local lexical search by default. Missing, stale, corrupt, partial, or wrong-version retrieval caches are rebuilt or bypassed with a direct JSONL scan; failures fall back to the baseline snapshot instead of throwing an unhandled cache error.
 
 The JSONL log is the append-only source of truth. Every `append_expertise` call adds a
-historical record there and never rewrites prior entries. The mental-model snapshot is a
-derived, compact view used by `read_expertise` so agents recall durable knowledge without
-replaying the entire raw history every session.
+historical record there and never rewrites prior entries. The mental-model snapshot and any
+retrieval index/cache are derived, disposable views used by `read_expertise` so agents recall
+durable knowledge without replaying the entire raw history every session. Generated retrieval
+caches must remain rebuildable, gitignored, and unstaged.
 
 At task start, an agent reads its mental model to recall what it already knows. If the
 snapshot is missing, stale, or a prior rebuild failed, `read_expertise` must rebuild or
 return the documented safe fallback instead of silently returning misleading stale state.
 Knowledge compounds across sessions -- Session 20 is smarter than Session 1.
+
+#### Focused retrieval privacy and validation
+
+Focused retrieval for `read_expertise(query, max_results)` is deterministic and local by
+default. External embedding providers, vector databases, and network calls are not used by
+this feature unless a later approved design adds an explicit opt-in. Do not edit `.env`,
+secrets, keys, or provider credentials for retrieval. The targeted TypeScript validation
+command for this behavior is:
+
+```bash
+cd pi/tests && bun vitest run read-expertise-retrieval.test.ts
+```
+
+The broader TypeScript suite can be run with `cd pi/tests && bun vitest run`, but it may have
+pre-existing dependency failures unrelated to focused retrieval.
 
 #### Optional provider-gated similarity policy
 

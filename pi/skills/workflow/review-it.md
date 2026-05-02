@@ -114,7 +114,25 @@ Before launching reviewers, the coordinator must NOT preview their own opinion o
 
 When reviewers converge unanimously on a popular pattern (microservices, GraphQL, NoSQL, event-driven, etc.), dispatch one targeted contrarian follow-up asking a reviewer to argue the opposite position with concrete evidence before final synthesis. Suspicious unanimity often reflects shared training bias rather than genuine consensus.
 
-## Step 3: Launch Independent Reviews First
+## Step 3: Determine Review Output Directory
+
+Before launching reviewers, derive and create a persistent review output directory:
+
+1. Derive `plan-name`:
+   - If the plan path is under `.specs/`, use the directory name immediately under `.specs/`.
+   - Example: `.specs/update-cve-checker/plan.md` -> `update-cve-checker`.
+   - Otherwise, use the plan file stem or parent directory name.
+2. Derive `review-{N}`:
+   - Count existing `review-*` directories inside `.specs/{plan-name}/`.
+   - Use the next number: first review is `review-1`, second is `review-2`, etc.
+3. Create `.specs/{plan-name}/review-{N}/`.
+4. The final synthesized review must be written to `.specs/{plan-name}/review-{N}/synthesis.md`.
+
+If the plan has already been archived under `.specs/archive/{plan-name}/`, write the review directory next to the archived plan at `.specs/archive/{plan-name}/review-{N}/`.
+
+---
+
+## Step 4: Launch Independent Reviews First
 
 Use the `subagent` tool in **parallel** mode to launch the full review panel.
 
@@ -175,7 +193,7 @@ Do not launch an extra reviewer with only a generic task like "review this plan 
 
 ---
 
-## Step 4: Targeted Rebuttal / Discussion Stage
+## Step 5: Targeted Rebuttal / Discussion Stage
 
 Do **not** start with an open-ended reviewer discussion.
 
@@ -201,9 +219,23 @@ If no meaningful disagreement exists, skip rebuttals and synthesize directly.
 
 ---
 
-## Step 5: Synthesize the Review
+## Step 6: Verify High-Severity Findings
 
-After collecting all reviewer outputs (and any targeted rebuttals), produce a final synthesis.
+Before accepting any **CRITICAL** or **HIGH** finding into the final Bugs section, verify the claim against the plan and, when relevant, the actual codebase using available tools such as `read`, `bash`, `grep`/`git grep`, or targeted test commands.
+
+For each high-severity finding:
+
+- **Confirmed**: include it with the evidence or command that supports it.
+- **Incorrect**: move it to Contested or Dismissed Findings as a false positive, with the reason.
+- **Unverifiable in this session**: downgrade it unless the plan itself clearly proves the issue; label it `needs human confirmation`.
+
+Do not report speculative high-severity findings as confirmed bugs without this verification pass.
+
+---
+
+## Step 7: Synthesize the Review
+
+After collecting all reviewer outputs, any targeted rebuttals, and high-severity verification results, produce a final synthesis.
 
 ### Required output sections
 
@@ -239,7 +271,10 @@ Improvements that are not strictly required for basic success but materially imp
 What the outside-the-box reviewer identified as overbuilt, replaceable, or unnecessarily complex.
 
 ## Contested or Dismissed Findings
-Include findings that were rejected, downgraded, or disputed after rebuttal/discussion, with a short reason.
+Include findings that were rejected, downgraded, or disputed after rebuttal/discussion or high-severity verification, with a short reason.
+
+## Verification Notes
+For each CRITICAL/HIGH finding that survived into Bugs, cite the concrete plan section, file, command, or code evidence used to verify it.
 
 ## Overall Verdict
 Choose one:
@@ -307,6 +342,12 @@ Use this structure:
 ## Contested or Dismissed Findings
 1. ...
 
+## Verification Notes
+1. ...
+
+## Review Artifact
+Wrote full synthesis to: `{review_dir}/synthesis.md`
+
 ## Overall Verdict
 **Fix bugs first**
 
@@ -315,6 +356,33 @@ Use this structure:
 - rerun `/review-it <path>`
 - then execute via `/do-it <path>`
 ```
+
+Before presenting the synthesized review to the user, write the full synthesis to `{review_dir}/synthesis.md` using this frontmatter:
+
+```markdown
+---
+date: YYYY-MM-DD
+status: synthesis-complete
+---
+```
+
+Then present the same synthesis in chat. After the synthesized review, always end with the Pi action prompt below. Substitute the actual counts and plan path from the review. If there are no bugs or no hardening suggestions, set that count to 0 and keep the same option shape.
+
+```markdown
+Apply options:
+
+1. Apply bugs only (Recommended — <N> fixes, all mechanical edits to the plan)
+2. Apply bugs + selected hardening — pick which
+3. Apply everything (bugs + <M> hardening)
+4. No changes — review only
+
+Next-step command:
+/do-it <plan-path>
+
+How do you want to proceed?
+```
+
+If the user chooses an apply option, read the review findings/synthesis carefully and edit only the reviewed plan file. Do not apply code changes during `/review-it`; this command only updates the plan when requested.
 
 ---
 
