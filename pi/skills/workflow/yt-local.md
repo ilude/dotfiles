@@ -19,7 +19,7 @@ The scripts live at `~/.claude/commands/yt-local/` (cross-platform; `~/.dotfiles
 - `fetch_transcript.py` -- transcript via `youtube-transcript-api`, optional Webshare proxy
 - `fetch_metadata.py` -- video metadata + description URLs via YouTube Data API v3
 
-Both scripts auto-load env vars from `~/.dotfiles/.secrets`:
+Both scripts auto-load env vars from `~/.dotfiles/.env` without overriding already-set environment variables:
 
 - `WEBSHARE_PROXY_USERNAME` / `WEBSHARE_PROXY_PASSWORD` -- optional, avoids transcript rate limits
 - `YOUTUBE_API_KEY` -- required for metadata
@@ -42,7 +42,36 @@ Both scripts auto-load env vars from `~/.dotfiles/.secrets`:
 
    Add `--urls-only` to extract only URLs from the description, or `--json` for the full payload.
 
-3. Summarize transcript content and surface any URLs found in the description.
+3. After each script runs, prefer reading the saved files under `~/.dotfiles/yt/<video_id>/` for summarization, especially for long transcripts. Stdout is still available as a quick preview.
+4. Summarize transcript content and surface any URLs from `description_urls.txt` when metadata was fetched.
+
+## Persisted Output
+
+The scripts persist fetched data under:
+
+```text
+~/.dotfiles/yt/<video_id>/
+```
+
+Transcript outputs, depending on flags:
+
+```text
+transcript.txt
+transcript.json
+transcript.timed.txt
+transcript.timed.json
+```
+
+Metadata outputs:
+
+```text
+metadata.json
+metadata.txt
+description.txt
+description_urls.txt
+```
+
+The `yt/` directory is gitignored and should be treated as local fetched data.
 
 ## When to use
 
@@ -50,4 +79,4 @@ Both scripts auto-load env vars from `~/.dotfiles/.secrets`:
 - Working offline / on a machine without menos credentials.
 - Quick one-off transcript or URL extraction without ingesting into the vault.
 
-If menos is available, prefer `/yt` -- it ingests into the content vault and runs the full processing pipeline. `/yt-local` is a fallback that returns transcript text only and does not persist anything.
+If menos is available, prefer `/yt` -- it ingests into the content vault and runs the full processing pipeline. `/yt-local` is a fallback that persists local fetched artifacts but does not ingest into the menos vault.

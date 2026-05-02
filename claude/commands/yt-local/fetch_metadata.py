@@ -20,13 +20,13 @@ from pathlib import Path
 from typing import Optional
 
 
-def load_secrets_file() -> None:
-    """Load secrets from ~/.dotfiles/.secrets if env vars not set."""
-    secrets_path = Path.home() / ".dotfiles" / ".secrets"
-    if not secrets_path.exists():
+def load_env_file() -> None:
+    """Load env vars from ~/.dotfiles/.env if env vars are not already set."""
+    env_path = Path.home() / ".dotfiles" / ".env"
+    if not env_path.exists():
         return
 
-    for line in secrets_path.read_text().splitlines():
+    for line in env_path.read_text().splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
@@ -38,8 +38,22 @@ def load_secrets_file() -> None:
                 os.environ[name] = value
 
 
-# Load secrets before anything else
-load_secrets_file()
+# Load env vars before anything else
+load_env_file()
+
+
+def output_dir_for(video_id: str) -> Path:
+    """Return and create ~/.dotfiles/yt/<video_id>/ for fetched outputs."""
+    output_dir = Path.home() / ".dotfiles" / "yt" / video_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir
+
+
+def write_output_file(video_id: str, filename: str, content: str) -> Path:
+    """Write fetched output under ~/.dotfiles/yt/<video_id>/ and return the path."""
+    output_path = output_dir_for(video_id) / filename
+    output_path.write_text(content, encoding="utf-8")
+    return output_path
 
 
 def extract_video_id(url_or_id: str) -> str:
@@ -281,6 +295,12 @@ def main():
             print(f"Error: {error}", file=sys.stderr)
             sys.exit(1)
 
+        # Always persist the complete machine-readable metadata plus convenient extracts.
+        metadata_json = json.dumps(metadata, indent=2)
+        metadata_path = write_output_file(video_id, "metadata.json", metadata_json + "\n")
+        description_path = write_output_file(video_id, "description.txt", metadata["description"] + "\n")
+        urls_path = write_output_file(video_id, "description_urls.txt", "\n".join(metadata["description_urls"]) + ("\n" if metadata["description_urls"] else ""))
+
         if args.urls_only:
             urls = metadata["description_urls"]
             if args.json:
@@ -288,6 +308,8 @@ def main():
             else:
                 for url in urls:
                     print(url)
+            print(f"Saved metadata to {metadata_path}", file=sys.stderr)
+            print(f"Saved description URLs to {urls_path}", file=sys.stderr)
             return
 
         if args.description_only:
@@ -299,28 +321,39 @@ def main():
                 }, indent=2))
             else:
                 print(metadata["description"])
+            print(f"Saved metadata to {metadata_path}", file=sys.stderr)
+            print(f"Saved description to {description_path}", file=sys.stderr)
             return
 
         if args.json:
-            print(json.dumps(metadata, indent=2))
+            print(metadata_json)
         else:
             # Human-readable output
-            print(f"Title: {metadata['title']}")
-            print(f"Channel: {metadata['channel_title']}")
-            print(f"Duration: {metadata['duration_formatted']}")
-            print(f"Views: {metadata['view_count']:,}")
+            lines = [
+                f"Title: {metadata['title']}",
+                f"Channel: {metadata['channel_title']}",
+                f"Duration: {metadata['duration_formatted']}",
+                f"Views: {metadata['view_count']:,}",
+            ]
             if metadata['like_count']:
-                print(f"Likes: {metadata['like_count']:,}")
-            print(f"Published: {metadata['published_at']}")
+                lines.append(f"Likes: {metadata['like_count']:,}")
+            lines.append(f"Published: {metadata['published_at']}")
             if metadata['tags']:
-                print(f"Tags: {', '.join(metadata['tags'][:10])}")
-            print(f"\nDescription:\n{metadata['description'][:500]}...")
+                lines.append(f"Tags: {', '.join(metadata['tags'][:10])}")
+            lines.append(f"\nDescription:\n{metadata['description'][:500]}...")
             if metadata['description_urls']:
-                print(f"\nURLs in description ({len(metadata['description_urls'])}):")
+                lines.append(f"\nURLs in description ({len(metadata['description_urls'])}):")
                 for url in metadata['description_urls'][:10]:
-                    print(f"  {url}")
+                    lines.append(f"  {url}")
                 if len(metadata['description_urls']) > 10:
-                    print(f"  ... and {len(metadata['description_urls']) - 10} more")
+                    lines.append(f"  ... and {len(metadata['description_urls']) - 10} more")
+            output = "\n".join(lines)
+            write_output_file(video_id, "metadata.txt", output + "\n")
+            print(output)
+
+        print(f"Saved metadata to {metadata_path}", file=sys.stderr)
+        print(f"Saved description to {description_path}", file=sys.stderr)
+        print(f"Saved description URLs to {urls_path}", file=sys.stderr)
 
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
