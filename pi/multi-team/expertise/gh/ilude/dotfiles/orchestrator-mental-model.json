@@ -2,9 +2,9 @@
   "schema_version": 1,
   "summary_format_version": 2,
   "agent": "orchestrator",
-  "rebuilt_at": "2026-04-30T04:01:36.351Z",
-  "covers_through_timestamp": "2026-04-29T07:59:23.658Z",
-  "source_entry_count": 27,
+  "rebuilt_at": "2026-05-01T13:37:25.284Z",
+  "covers_through_timestamp": "2026-05-01T13:28:07.325Z",
+  "source_entry_count": 30,
   "similarity": {
     "enabled": true,
     "active": true,
@@ -22,7 +22,32 @@
   },
   "categories": {
     "strong_decision": [],
-    "key_file": [],
+    "key_file": [
+      {
+        "path": "pi/skills/workflow/do-it.md",
+        "role": "Pi /do-it workflow; now asks reports to include copy/paste next-step commands for plan review, execution retry, and created-but-not-executed plan flows.",
+        "summary": "pi/skills/workflow/do-it.md -- Pi /do-it workflow; now asks reports to include copy/paste next-step commands for plan review, execution retry, and created-but-not-executed plan flows.",
+        "evidence_count": 1,
+        "first_seen": "2026-05-01T13:28:07.325Z",
+        "last_seen": "2026-05-01T13:28:07.325Z"
+      },
+      {
+        "path": "pi/skills/workflow/plan-it.md",
+        "role": "Pi /plan-it workflow; final presentation now includes copy/paste `/review-it .specs/{slug}/plan.md` and `/do-it .specs/{slug}/plan.md` next-step commands.",
+        "summary": "pi/skills/workflow/plan-it.md -- Pi /plan-it workflow; final presentation now includes copy/paste `/review-it .specs/{slug}/plan.md` and `/do-it .specs/{slug}/plan.md` next-step commands.",
+        "evidence_count": 1,
+        "first_seen": "2026-05-01T13:28:05.150Z",
+        "last_seen": "2026-05-01T13:28:05.150Z"
+      },
+      {
+        "path": "pi/skills/workflow/review-it.md",
+        "role": "Pi workflow skill for /review-it; final output now requires an Apply options prompt with bug/hardening counts and `/do-it <plan-path>` next-step command.",
+        "summary": "pi/skills/workflow/review-it.md -- Pi workflow skill for /review-it; final output now requires an Apply options prompt with bug/hardening counts and `/do-it <plan-path>` next-step command.",
+        "evidence_count": 1,
+        "first_seen": "2026-05-01T13:26:32.337Z",
+        "last_seen": "2026-05-01T13:26:32.337Z"
+      }
+    ],
     "pattern": [
       {
         "summary": "domain-specific strong decisions in concise expertise: Concise expertise should filter strong decisions that are clearly tied to a specific domain/tool stack (for example Playwright, SCIM, MPS, Keycloak, or E2E drive mechanics). Keep them available in full/debug mode unless rewritten as a general principle.",
