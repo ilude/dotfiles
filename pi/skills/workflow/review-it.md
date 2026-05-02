@@ -352,9 +352,8 @@ Wrote full synthesis to: `{review_dir}/synthesis.md`
 **Fix bugs first**
 
 ## Recommended Next Step
-- revise the plan
-- rerun `/review-it <path>`
-- then execute via `/do-it <path>`
+- apply selected review fixes to the plan if requested
+- execute via `/do-it <path>`
 ```
 
 Before presenting the synthesized review to the user, write the full synthesis to `{review_dir}/synthesis.md` using this frontmatter:
@@ -366,7 +365,7 @@ status: synthesis-complete
 ---
 ```
 
-Then present the same synthesis in chat. After the synthesized review, always end with the Pi action prompt below. Substitute the actual counts and plan path from the review. If there are no bugs or no hardening suggestions, set that count to 0 and keep the same option shape.
+Then present the same synthesis in chat. After the synthesized review, always end with the Pi action prompt below. Substitute the actual counts and plan path from the review. If there are no bugs or no hardening suggestions, set that count to 0 and keep the same option shape. If the user chooses an apply option and the plan is edited successfully, the follow-up output must recommend `/do-it <plan-path>` rather than another `/review-it` pass unless the user explicitly asks to re-review.
 
 ```markdown
 Apply options:
