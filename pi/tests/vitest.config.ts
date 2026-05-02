@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,14 +8,39 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const agentDir = path.resolve(__dirname, "..").replace(/\\/g, "/");
 
+function pnpmGlobalRoot(): string | undefined {
+  // Windows: pi-coding-agent is installed via `pnpm install -g` per pi/README.md.
+  // Probe `pnpm root -g` so this config supports pnpm-managed installs alongside
+  // the bun and npm globals. spawnSync uses shell:true on Windows because pnpm
+  // is exposed as pnpm.cmd; the call is bounded by a 2s timeout to keep config
+  // load fast when pnpm isn't installed.
+  try {
+    const result = spawnSync("pnpm", ["root", "-g"], {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 2000,
+      shell: process.platform === "win32",
+    });
+    if (result.status === 0) {
+      const out = (result.stdout ?? "").trim();
+      if (out) return out;
+    }
+  } catch {
+    // pnpm not installed or call failed -- fall through.
+  }
+  return undefined;
+}
+
 function resolvePiNodeModules() {
+  const pnpmRoot = pnpmGlobalRoot();
   const candidates = [
     path.join(
       process.env.BUN_INSTALL || path.join(os.homedir(), ".bun"),
       "install/global/node_modules"
     ),
     path.join(process.env.APPDATA || "", "npm/node_modules"),
-  ].filter(Boolean);
+    pnpmRoot,
+  ].filter((c): c is string => Boolean(c));
 
   const match = candidates.find((candidate) =>
     fs.existsSync(path.join(candidate, "@mariozechner", "pi-coding-agent"))
