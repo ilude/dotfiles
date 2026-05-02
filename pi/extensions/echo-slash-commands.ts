@@ -1,60 +1,53 @@
 /**
  * Echo Slash Commands Extension
  *
- * Pi treats `/<cmd>` registered via `pi.registerCommand` as out-of-band
- * control invocations: they execute immediately in the same code path and
- * never get appended to the conversation transcript (see core/agent-session.ts
- * `prompt()` -- the `_tryExecuteExtensionCommand` early-return). The user
- * never sees `/commit` or `/review-it` echoed back as a chat entry.
- *
- * Skill invocations (`/skill:foo`) and prompt-template invocations are
- * expanded inline into a normal user message, so they ARE visible. Only
- * extension-registered commands are silent.
- *
- * This extension restores parity by emitting a custom-typed message with the
- * raw invocation text whenever an input maps to a `source: "extension"`
- * slash command, before pi runs it. The original input continues unchanged
- * so the underlying command still executes normally.
- *
- * Skip cases:
- *   - non-slash input (skip)
- *   - input.source === "extension" (recursion guard, matches workflow-commands.ts)
- *   - command name resolves to a "prompt" or "skill" source (already visible)
- *   - command name does not resolve at all (let pi handle it as text or error)
+ * Pi executes extension commands before normal input hooks, so an `on("input")`
+ * listener cannot see handled slash commands. Wrap `registerCommand` instead:
+ * every subsequently registered extension command echoes the raw invocation to
+ * the visible transcript immediately before its handler runs.
  */
 
 import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Text } from "@mariozechner/pi-tui";
 
 const ECHO_TYPE = "slash-echo";
+const WRAPPED_FLAG = "__slashEchoRegisterCommandWrapped";
 
-function commandNameOf(text: string): string {
-	const trimmed = text.trim();
-	if (!trimmed.startsWith("/")) return "";
-	const space = trimmed.search(/\s/);
-	return space === -1 ? trimmed.slice(1) : trimmed.slice(1, space);
+function formatInvocation(command: string, args: string) {
+	const trimmedArgs = args.trim();
+	return trimmedArgs ? `/${command} ${trimmedArgs}` : `/${command}`;
+}
+
+function emitEcho(pi: ExtensionAPI, command: string, args: string) {
+	if (typeof pi.sendMessage !== "function") return;
+	pi.sendMessage({
+		customType: ECHO_TYPE,
+		content: formatInvocation(command, args),
+		display: true,
+	});
 }
 
 export default function (pi: ExtensionAPI) {
-	pi.on("input", async (event, _ctx) => {
-		// Recursion guard: don't echo inputs that other extensions injected.
-		if (event.source === "extension") return { action: "continue" };
+	if (typeof pi.registerMessageRenderer === "function") {
+		pi.registerMessageRenderer(ECHO_TYPE, (message, _options, theme) => {
+			const text = typeof message.content === "string" ? message.content : String(message.content ?? "");
+			return new Text(theme.bold(theme.fg("success", "> ")) + theme.bold(theme.fg("text", text)), 0, 0);
+		});
+	}
 
-		const name = commandNameOf(event.text);
-		if (!name) return { action: "continue" };
+	const target = pi as ExtensionAPI & { [WRAPPED_FLAG]?: boolean };
+	if (target[WRAPPED_FLAG] || typeof pi.registerCommand !== "function") return;
 
-		// Only echo when the command resolves to a registered extension command.
-		// "prompt" and "skill" sources expand inline and are already visible.
-		if (typeof pi.getCommands !== "function") return { action: "continue" };
-		const match = pi.getCommands().find((c) => c.name === name);
-		if (!match || match.source !== "extension") return { action: "continue" };
-
-		if (typeof pi.sendMessage === "function") {
-			pi.sendMessage({
-				customType: ECHO_TYPE,
-				content: event.text.trim(),
-				display: true,
-			});
-		}
-		return { action: "continue" };
-	});
+	const originalRegisterCommand = pi.registerCommand.bind(pi);
+	target[WRAPPED_FLAG] = true;
+	pi.registerCommand = ((name: string, command: any) => {
+		const originalHandler = command.handler;
+		return originalRegisterCommand(name, {
+			...command,
+			handler: async (args: string, ctx: any) => {
+				emitEcho(pi, name, args ?? "");
+				return originalHandler(args, ctx);
+			},
+		});
+	}) as typeof pi.registerCommand;
 }
