@@ -285,14 +285,63 @@ export function matchesPattern(filePath: string, pattern: string): boolean {
 	);
 }
 
-function checkZeroAccess(canonical: string, patterns: string[]): { block: true; reason: string } | undefined {
+// SSH-related zero-access globs. When one of these is matched AND the tool is
+// metadata-only (ls, find), checkZeroAccess prompts via ctx.ui.confirm rather
+// than blocking outright. read/write/edit always block (content exposure).
+//
+// Mirrors the SSH USE/INSPECT split in
+// claude/hooks/damage-control/bash-tool-damage-control.py. Pi's bash handler
+// does NOT run zero_access (so `bash: ssh -i ./key.pem ...` is unaffected),
+// hence no SSH_USE_COMMANDS analog here -- only the metadata-tool ask path.
+const SSH_PROTECTED_PATTERNS = new Set([
+	"~/.ssh/",
+	"~/.ssh",
+	"~/.ssh/*",
+	"$HOME/.ssh/",
+	"$HOME/.ssh",
+	"$HOME/.ssh/*",
+	"*.pem",
+	"*.ppk",
+	"*.p12",
+	"*.pfx",
+]);
+
+const METADATA_ONLY_TOOLS = new Set(["ls", "find"]);
+
+export function isSshProtectedPattern(pattern: string): boolean {
+	if (!pattern) return false;
+	if (SSH_PROTECTED_PATTERNS.has(pattern)) return true;
+	const trimmed = pattern.replace(/[/\\]+$/, "");
+	return SSH_PROTECTED_PATTERNS.has(trimmed) || SSH_PROTECTED_PATTERNS.has(`${trimmed}/`);
+}
+
+export async function checkZeroAccess(
+	canonical: string,
+	patterns: string[],
+	toolName: string,
+	ctx?: { ui?: { confirm?: (title: string, message: string) => Promise<boolean> }; hasUI?: boolean },
+): Promise<{ block: true; reason: string } | undefined> {
 	for (const pattern of patterns) {
-		if (matchesPattern(canonical, pattern)) {
+		if (!matchesPattern(canonical, pattern)) continue;
+
+		if (isSshProtectedPattern(pattern) && METADATA_ONLY_TOOLS.has(toolName)) {
+			if (ctx?.hasUI && ctx.ui?.confirm) {
+				const ok = await ctx.ui.confirm(
+					"Confirm SSH path inspection",
+					`${toolName} on ${canonical} reveals filenames/metadata for an SSH-protected path (matched "${pattern}").`,
+				);
+				if (ok) return undefined;
+			}
 			return {
 				block: true,
-				reason: `Blocked access to zero-access path (matched "${pattern}"): ${canonical}`,
+				reason: `Confirmation required for SSH path inspection (matched "${pattern}"): ${canonical}`,
 			};
 		}
+
+		return {
+			block: true,
+			reason: `Blocked access to zero-access path (matched "${pattern}"): ${canonical}`,
+		};
 	}
 	return undefined;
 }
@@ -547,7 +596,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	// Handler 2: file tools -- zero-access paths + truncating Edit/Write.
-	pi.on("tool_call", (event, ctx) => {
+	pi.on("tool_call", async (event, ctx) => {
 		const FILE_TOOLS = new Set(["read", "write", "edit", "find", "ls"]);
 		if (!FILE_TOOLS.has(event.toolName)) return undefined;
 
@@ -562,7 +611,12 @@ export default function (pi: ExtensionAPI) {
 		}
 		const canonical = canonResult.canonical;
 
-		const zeroAccess = checkZeroAccess(canonical, rules.zero_access_paths);
+		const zeroAccess = await checkZeroAccess(
+			canonical,
+			rules.zero_access_paths,
+			event.toolName,
+			ctx as any,
+		);
 		if (zeroAccess) {
 			safeRecordDeny(event.toolName, rawPath, zeroAccess.reason, extractRulePattern(zeroAccess.reason));
 			return zeroAccess;
