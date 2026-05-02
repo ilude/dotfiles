@@ -259,7 +259,7 @@ If any check fails, fix it before continuing.
 
 After writing the file, the first line of the response must be:
 
-```text
+```markdown
 ✅ PLAN CREATED: no code was executed.
 ```
 
@@ -276,7 +276,7 @@ Then show the user:
    - **Recommended next action:** review first unless the task is low-risk and the user explicitly wants execution
 6. **Next-step commands** -- output both commands verbatim in a fenced code block so the user can copy either:
 
-   ```text
+   ```bash
    /review-it .specs/{slug}/plan.md
    /do-it .specs/{slug}/plan.md
    ```
@@ -285,6 +285,6 @@ Then ask: "Want to review/edit the plan first, send it through `/review-it`, or 
 
 The final line of the response must be:
 
-```text
+```markdown
 FINAL STATUS: PLAN CREATED — no code executed.
 ```

@@ -109,7 +109,7 @@ If the input is an existing `.specs/*/plan.md` file:
    - an **Execution Waves** section
    - a **Success Criteria** section
 3. If the plan is too incomplete to execute safely, say so directly and recommend revising it or running `/review-it` first. Include copy/paste commands:
-   ```text
+   ```bash
    /review-it <plan-path>
    /plan-it <brief description of missing plan details>
    ```
@@ -203,7 +203,7 @@ Use `engineering-lead` only when the task genuinely spans multiple engineering d
 2. Wait for the plan to be written to `.specs/`.
 3. Report the plan path and summary to the user.
 4. Output next-step commands verbatim so the user can copy either:
-   ```text
+   ```bash
    /review-it <plan-path>
    /do-it <plan-path>
    ```
@@ -238,21 +238,21 @@ Then include:
 6. **Plan state note** — if a plan file was executed but not archived, explicitly say that `## Execution Status` was updated in the plan file and summarize what it records, including last completed wave/gate and next gate.
 7. **Copy/paste commands** — when there is a useful follow-up command, print it verbatim in a fenced code block:
    - Plan created but not executed:
-     ```text
+     ```bash
      /review-it <plan-path>
      /do-it <plan-path>
      ```
    - Plan executed successfully and archived with no specific follow-up needed: write `None.`
    - Plan executed successfully and archived, but follow-up review is specifically useful:
-     ```text
+     ```bash
      /review-it .specs/archive/<slug>/plan.md
      ```
    - Plan executed but follow-up review is recommended before archiving:
-     ```text
+     ```bash
      /review-it <plan-path>
      ```
    - Validation failed, live/manual validation remains, or the same active plan should be retried after user steps:
-     ```text
+     ```bash
      /do-it <plan-path>
      ```
 

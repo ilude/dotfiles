@@ -202,7 +202,7 @@ callers can implement their own confidence threshold.
 | `evaluate.py --holdout` | Acceptance gate -- must exit 0 before shipping |
 | `label_history.py` | Batch-label history.jsonl via `claude -p --model opus` |
 | `merge_labels.py` | Merge labeled CSV into `data.py` -- supports `--source` for audit CSVs |
-| `tests/` | 54 unit tests -- run with `python -m pytest tests/` |
+| `tests/` | 54 unit tests -- run with `uv run --project ~/.dotfiles/pi/prompt-routing python -m pytest tests/` |
 
 **Using the router:**
 ```python
