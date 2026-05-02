@@ -1,4 +1,11 @@
 #!/usr/bin/env python
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "youtube-transcript-api>=0.6.3",
+#     "google-api-python-client>=2.0.0",
+# ]
+# ///
 """YouTube transcript fetcher with Webshare proxy support.
 
 Usage:

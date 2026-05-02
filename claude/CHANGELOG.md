@@ -1,3 +1,13 @@
+## 2026-05-02: yt-local scripts use PEP 723 inline metadata
+
+**Why:** `uv run <abs-path>/fetch_transcript.py` from any cwd other than `claude/commands/yt-local` failed with `No module named 'youtube_transcript_api'` because uv resolves deps from cwd, not script location.
+
+**Fix:** Added `# /// script` inline metadata blocks to both scripts so uv resolves deps per-script regardless of cwd. Project `pyproject.toml` retained for the test entry points.
+
+**Files:** ~/.dotfiles/claude/commands/yt-local/fetch_transcript.py, ~/.dotfiles/claude/commands/yt-local/fetch_metadata.py
+
+---
+
 ## 2026-04-29: Add commit-fast slash command
 
 **Added:**
