@@ -111,13 +111,21 @@ Distinguish prepared/staged, committed, and pushed states in the final report:
 
 Report commit hashes only for commits that actually succeeded. If commit succeeds but push fails, list the commit hashes and report the push status separately as failed. If staging or preparation fails before any commit, say that no commit or push occurred unless command output proves otherwise.
 
-After each commit, run git status again. If legitimate files remain (not matching the auto-ignore patterns), categorize and group them, then commit. Repeat this loop until git status shows only ignored files or working tree is clean.
+After each commit, run `git status --short` again. If legitimate files remain (not matching the auto-ignore patterns), categorize and group them, then commit. Repeat this loop until git status shows only ignored files or working tree is clean.
+
+Before declaring the workflow done, run a final completion check:
+
+```bash
+git status --short
+```
+
+You must include the result in the final report. If it prints anything, do not say the commit workflow is done. Instead, say outstanding changes remain, summarize each remaining path/category, and either continue committing them or ask the user what to do with any ambiguous files. The final report may say the workflow is complete only when this final `git status --short` check is empty, or when the only remaining paths are explicitly user-approved skips/ignored files.
 
 Exit the loop when:
-- Working tree is clean
-- Only files matching .gitignore patterns remain
-- User says to stop when prompted about unclear files
+- Working tree is clean, confirmed by an empty final `git status --short`
+- Only files matching .gitignore patterns remain, and the final report lists them
+- User says to stop when prompted about unclear files, and the final report lists the remaining paths
 
-Show a brief summary of commits created with commit hashes and messages.
+Show a brief summary of commits created with commit hashes and messages, plus the final `git status --short` result.
 
 If $ARGUMENTS contains "push", run git push after all commits are complete. Otherwise, stop after creating commits without pushing.
