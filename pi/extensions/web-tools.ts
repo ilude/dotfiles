@@ -77,6 +77,55 @@ export interface SearchResult {
 	engine?: string;
 }
 
+interface StructuredSearchParams {
+	query: string;
+	exactPhrases?: string[];
+	exact_phrases?: string[];
+	excludeTerms?: string[];
+	exclude_terms?: string[];
+	site?: string;
+	num_results?: number;
+	count?: number;
+}
+
+function cleanSearchItems(values?: string[]): string[] {
+	return (values ?? [])
+		.map((value) => value.trim().replace(/^\"|\"$/g, "").replace(/\s+/g, " "))
+		.filter(Boolean);
+}
+
+function normalizeSite(site?: string): string | undefined {
+	if (!site) return undefined;
+	let value = site.trim().replace(/^site:/i, "").trim();
+	if (!value) return undefined;
+	try {
+		const candidate = /^[a-z]+:\/\//i.test(value) ? value : `https://${value}`;
+		const parsed = new URL(candidate);
+		return parsed.hostname.replace(/^www\./, "") + parsed.pathname.replace(/\/$/, "");
+	} catch {
+		return value.replace(/^www\./, "");
+	}
+}
+
+function buildSearxngQuery(params: StructuredSearchParams): string {
+	const parts = [params.query.trim().replace(/\s+/g, " ")].filter(Boolean);
+	const exact = [
+		...cleanSearchItems(params.exactPhrases),
+		...cleanSearchItems(params.exact_phrases),
+	];
+	for (const phrase of exact) parts.push(`"${phrase.replace(/"/g, "\\\"")}"`);
+	const excluded = [
+		...cleanSearchItems(params.excludeTerms),
+		...cleanSearchItems(params.exclude_terms),
+	];
+	for (const term of excluded) {
+		parts.push(term.includes(" ") ? `-"${term.replace(/"/g, "\\\"")}"` : `-${term}`);
+	}
+	const site = normalizeSite(params.site);
+	if (site) parts.push(`site:${site}`);
+	return parts.join(" ");
+}
+
 /** Format a single search result for LLM consumption. */
 export function formatSearchResult(r: SearchResult, index: number): string {
 	const lines = [
@@ -101,16 +150,23 @@ export default function (pi: ExtensionAPI) {
 			"Search the web via SearXNG. Returns titles, URLs, snippets, and dates. " +
 			"Use for finding documentation, current information, or researching any topic.",
 		parameters: Type.Object({
-			query: Type.String({ description: "Search query" }),
+			query: Type.String({ description: "Base search query" }),
+			exactPhrases: Type.Optional(Type.Array(Type.String(), { description: "Exact phrases to require; each becomes a quoted phrase" })),
+			exact_phrases: Type.Optional(Type.Array(Type.String(), { description: "Alias for exactPhrases" })),
+			excludeTerms: Type.Optional(Type.Array(Type.String(), { description: "Terms or phrases to exclude" })),
+			exclude_terms: Type.Optional(Type.Array(Type.String(), { description: "Alias for excludeTerms" })),
+			site: Type.Optional(Type.String({ description: "Optional site/domain restriction, e.g. example.com" })),
 			num_results: Type.Optional(
 				Type.Number({ description: "Number of results to return (default: 5, max: 20)" }),
 			),
+			count: Type.Optional(Type.Number({ description: "Alias for num_results" })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-			const { query, num_results } = params as { query: string; num_results?: number };
-			const n = Math.min(num_results ?? 5, 20);
+			const search = params as StructuredSearchParams;
+			const n = Math.min(search.num_results ?? search.count ?? 5, 20);
+			const composedQuery = buildSearxngQuery(search);
 
-			const url = `${SEARXNG_URL}?q=${encodeURIComponent(query)}&format=json&pageno=1`;
+			const url = `${SEARXNG_URL}?q=${encodeURIComponent(composedQuery)}&format=json&pageno=1`;
 
 			const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
 			if (!resp.ok) {
@@ -137,7 +193,7 @@ export default function (pi: ExtensionAPI) {
 				.map((r, i) => formatSearchResult(r, i + 1))
 				.join("\n\n");
 
-			return { content: [{ type: "text" as const, text }], details: undefined };
+			return { content: [{ type: "text" as const, text }], details: { composedQuery, resultCount: results.length } };
 		},
 	});
 
