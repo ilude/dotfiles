@@ -112,6 +112,10 @@ All terminals are expected to converge on zsh:
 - Work key priority is `id_ed25519-work` then `id_ed25519-eagletg`.
 - Work does not fall back to generic `id_ed25519`.
 
+### Pi Expertise Retrieval Note
+
+`read_expertise` currently uses layered snapshots plus optional focused local retrieval (`query` / `max_results`). Option 3 -- a retrieval-first expertise system -- is future-only and not implemented in this plan. Revisit it only if the layered snapshot-plus-retrieval approach cannot keep outputs focused and bounded without losing critical stable knowledge.
+
 ### Submodule Rules
 
 - Never force-push submodule repos.
