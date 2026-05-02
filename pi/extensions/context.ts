@@ -72,6 +72,25 @@ function line(label: string, value: string, detail = ""): string {
 	return detail ? `${padded} ${alignedValue}  ${detail}` : `${padded} ${alignedValue}`;
 }
 
+const BUCKET_MARKS = ["█", "▓", "▒", "░", "■", "●", "◆", "▲", "◇", "○"];
+
+function buildTokenMap(buckets: Bucket[], total: number | null | undefined): string[] {
+	const denominator = total || buckets.reduce((sum, item) => sum + item.tokens, 0);
+	if (!denominator) return [];
+	const sorted = buckets.filter((item) => item.tokens > 0).sort((a, b) => b.tokens - a.tokens);
+	const width = 48;
+	const segments = sorted.map((item, index) => {
+		const cells = Math.max(1, Math.round((item.tokens / denominator) * width));
+		return BUCKET_MARKS[index % BUCKET_MARKS.length].repeat(cells);
+	});
+	const bar = segments.join("").slice(0, width).padEnd(width, "·");
+	return [
+		"Token map",
+		bar,
+		...sorted.map((item, index) => `${BUCKET_MARKS[index % BUCKET_MARKS.length]} ${item.label}: ${formatTokens(item.tokens)} (${pct(item.tokens, denominator)})`),
+	];
+}
+
 function bucket(label: string, tokens: number, details: string): Bucket {
 	return { label, tokens, details };
 }
@@ -211,6 +230,8 @@ function buildReport(ctx: any): string[] {
 	const percent = usage?.percent;
 	const sessionFile = ctx.sessionManager.getSessionFile?.() ?? "in-memory";
 
+	const tokenMap = buildTokenMap(buckets, displayTotal);
+
 	return [
 		"Pi Context Usage",
 		"────────────────",
@@ -222,6 +243,7 @@ function buildReport(ctx: any): string[] {
 			percent === null || percent === undefined ? "exact usage unknown; component totals are estimates" : `${percent.toFixed(1)}%`,
 		),
 		line("Estimated breakdown", formatTokens(estimatedTotal), "~1 token per 4 chars for component buckets"),
+		...(tokenMap.length ? ["", ...tokenMap] : []),
 		"",
 		"Breakdown",
 		...buckets
