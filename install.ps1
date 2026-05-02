@@ -1551,15 +1551,23 @@ try {
         if (Get-Command pnpm -ErrorAction SilentlyContinue) {
             $piInstalled = pnpm list -g @mariozechner/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
             if ($piInstalled) {
-                Write-Host "  pi-coding-agent: already installed via pnpm" -ForegroundColor DarkGray
+                Write-Host "  Updating pi-coding-agent via pnpm..." -ForegroundColor Cyan
             } else {
                 Write-Host "  Installing pi-coding-agent via pnpm..." -ForegroundColor Cyan
-                pnpm add -g --allow-build=koffi --allow-build=protobufjs @mariozechner/pi-coding-agent
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Host "  pi-coding-agent: installed successfully via pnpm" -ForegroundColor Green
+            }
+
+            # Always run pnpm for Pi. Older Pi releases have had self-update bugs,
+            # so treating dotfiles bootstrap as an idempotent upgrade path keeps
+            # `pi update` healthy instead of leaving a stale global install behind.
+            pnpm add -g --allow-build=koffi --allow-build=protobufjs @mariozechner/pi-coding-agent
+            if ($LASTEXITCODE -eq 0) {
+                if ($piInstalled) {
+                    Write-Host "  pi-coding-agent: updated successfully via pnpm" -ForegroundColor Green
                 } else {
-                    Write-Host "  pi-coding-agent: installation failed" -ForegroundColor Red
+                    Write-Host "  pi-coding-agent: installed successfully via pnpm" -ForegroundColor Green
                 }
+            } else {
+                Write-Host "  pi-coding-agent: installation/update failed" -ForegroundColor Red
             }
 
             # Migrate: remove any legacy npm-installed Pi so pnpm owns the binary.
