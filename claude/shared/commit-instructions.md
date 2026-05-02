@@ -1,5 +1,78 @@
 Run git status to check uncommitted files. If working tree is clean or merge conflicts exist, exit with appropriate message.
 
+# Mode Selection
+
+If the command input begins with `fast`, use **Fast Mode** below and do not use the Standard Mode grouping workflow. Interpret remaining arguments after `fast` as optional `push` and/or explicit paths.
+
+If the command input does not begin with `fast`, use **Standard Mode** below.
+
+# Fast Mode: single conventional commit
+
+Use Fast Mode when the working tree is one logical change and the user wants minimum ceremony. For dirty trees with multiple unrelated changes, stop and tell the user to run `/commit` without `fast`.
+
+## Fast Step 1: State
+
+Run `git status --short` and `git diff --stat HEAD`. If the tree is clean or merge conflicts exist, exit with a message.
+
+## Fast Step 2: Secret scan
+
+Skip git-crypt encrypted paths from `.gitattributes`. Scan staged, modified, deleted, and untracked files that would be committed for:
+
+- Secret files: `.env`, `credentials.json`, `secrets.yaml`, `*.pem`, `*.key`, `*.p12`, `*.pfx`
+- AWS keys: `AKIA`, `ABIA`, `ACCA`, `ASIA`
+- GitHub tokens: `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`
+- Anthropic keys: `sk-ant-`
+- OpenAI keys: `sk-proj-`, `sk-`
+- Slack tokens: `xoxb-`, `xoxp-`
+- npm tokens: `npm_`
+- JWTs: `eyJ`
+- Generic: `API_KEY=`, `TOKEN=`, `PASSWORD=`, `Bearer`
+- Private keys: `-----BEGIN`
+- Connection strings: `mongodb://`, `postgres://`, `mysql://`
+
+Triage candidates as real secret / fixture / ambiguous. If real or ambiguous, STOP. Show the file, pattern, and reason.
+
+## Fast Step 3: Stage
+
+If explicit paths were provided after `fast`/`push`, stage only those paths. Otherwise auto-stage everything in the working tree (modified, deleted, and untracked) except files matching the auto-ignore patterns in Standard Mode. Add auto-ignore patterns to `.gitignore` instead of committing them.
+
+Do not run `git add .` or `git add -A`; stage by explicit path list. If a file is ambiguous, ask before staging or ignoring it.
+
+## Fast Step 4: Verify single logical change
+
+Review `git diff --cached --stat` and `git diff --cached --name-status`. If the staged set contains multiple unrelated logical changes, STOP and tell the user to run `/commit` without `fast`.
+
+## Fast Step 5: Message and confirm
+
+Review `git diff --cached`. Build a conventional commit message:
+
+```text
+type(scope): short description
+```
+
+Valid types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `perf`, `ci`, `build`.
+
+Use imperative mood, lowercase, no trailing period, under 72 characters. Scope is optional but preferred when localized. Add a body only when the why is non-obvious. No emojis and no AI-attribution lines.
+
+Show the proposed message and ask: `Confirm? (yes / no / revise)`. Do not commit until the user confirms.
+
+## Fast Step 6: Commit and final status
+
+Run `git commit -m "<message>"` using HEREDOC for multi-line bodies. Do not pass `--no-verify`.
+
+After commit, run:
+
+```bash
+git status --short
+```
+
+If it prints anything, report that outstanding changes remain and do not claim the workflow is complete. If `push` was requested and the commit succeeded, run `git push` after the final status check unless outstanding changes require user attention.
+
+Report the commit hash, summary line, push status if applicable, and final `git status --short` result.
+
+# Standard Mode: logical grouped commits
+
+
 ## Pre-commit Hook Optimization
 
 Before creating any commits, check if a pre-commit hook exists and will run tests:
