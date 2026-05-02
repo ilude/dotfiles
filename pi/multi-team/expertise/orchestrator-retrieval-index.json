@@ -1,8 +1,8 @@
 {
   "index_version": 1,
   "agent": "orchestrator",
-  "source_identity": "project-local:C:\\Users\\mglenn\\.pi\\agent\\multi-team\\expertise\\gh\\ilude\\dotfiles\\orchestrator-expertise-log.jsonl:1777745875484.391:19375:d689b52ab3f26f11638cc04cfd33f59602479e9751a0c83b02f50f906098713d|drift:C:\\Users\\mglenn\\.pi\\agent\\multi-team\\expertise\\ext\\ssh.gitlab.prod.teams-sddc-dev.com\\teams\\ui\\eisa\\orchestrator-expertise-log.jsonl:1777668737583.1404:410:69eedd3a8c08e83facd70fbffa1b6475d8af757331d9609959dfb53f47d27bb6|global:C:\\Users\\mglenn\\.pi\\agent\\multi-team\\expertise\\orchestrator-expertise-log.jsonl:1776814069002.0842:25210:b5ab2320f6e1ea8d0e4e2b05f5e6081056122ecf54bb5b0c276fb4528015f298",
-  "built_at": "2026-05-02T18:32:29.706Z",
-  "entry_count": 85,
+  "source_identity": "project-local:C:\\Users\\mglenn\\.pi\\agent\\multi-team\\expertise\\gh\\ilude\\dotfiles\\orchestrator-expertise-log.jsonl:1777756841888.494:21043:614e41d3877b1a040502061729289f03fc190323d4bb585c4bdf5c2dd3aee6fe|drift:C:\\Users\\mglenn\\.pi\\agent\\multi-team\\expertise\\ext\\ssh.gitlab.prod.teams-sddc-dev.com\\teams\\ui\\eisa\\orchestrator-expertise-log.jsonl:1777668737583.1404:410:69eedd3a8c08e83facd70fbffa1b6475d8af757331d9609959dfb53f47d27bb6|global:C:\\Users\\mglenn\\.pi\\agent\\multi-team\\expertise\\orchestrator-expertise-log.jsonl:1776814069002.0842:25210:b5ab2320f6e1ea8d0e4e2b05f5e6081056122ecf54bb5b0c276fb4528015f298",
+  "built_at": "2026-05-02T22:09:41.118Z",
+  "entry_count": 89,
   "entries": []
 }
