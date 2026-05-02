@@ -120,6 +120,7 @@ interface CommitActivity {
 }
 
 const COMMIT_ACTIVITY_TYPE = "workflow-commit-activity";
+const SLASH_ECHO_TYPE = "slash-echo";
 
 function extractJsonObject(text: string) {
 	const start = text.indexOf("{");
@@ -536,6 +537,19 @@ function formatGitOutput(result?: GitRunResult) {
 	return outputLines;
 }
 
+function echoSlashCommand(pi: ExtensionAPI, command: string, args: string) {
+	if ((pi as any).__slashEchoRegisterCommandWrapped) return undefined;
+	const text = args.trim() ? `/${command} ${args.trim()}` : `/${command}`;
+	if (typeof pi.sendMessage === "function") {
+		pi.sendMessage({
+			customType: SLASH_ECHO_TYPE,
+			content: text,
+			display: true,
+		});
+	}
+	return text;
+}
+
 function createCommitActivity(pi: ExtensionAPI, ctx: any, commandText: string): CommitActivity {
 	const fallbackLines: string[] = [];
 	const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -735,6 +749,11 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	if (typeof pi.registerMessageRenderer === "function") {
+		pi.registerMessageRenderer(SLASH_ECHO_TYPE, (message, _options, theme) => {
+			const text = typeof message.content === "string" ? message.content : String(message.content ?? "");
+			return new Text(theme.bold(theme.fg("success", "> ")) + theme.bold(theme.fg("text", text)), 0, 0);
+		});
+
 		pi.registerMessageRenderer(COMMIT_ACTIVITY_TYPE, (message, _options, theme) => {
 			const text = typeof message.content === "string" ? message.content : String(message.content ?? "");
 			const styled = text
@@ -767,6 +786,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("plan-it", {
 		description: "Crystallize conversation context into an executable plan document",
 		handler: async (args, ctx) => {
+			echoSlashCommand(pi, "plan-it", args);
 			const template = loadSkill("plan-it.md");
 			await pi.sendUserMessage(buildSkillPrompt(template, args));
 		},
@@ -775,6 +795,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("review-it", {
 		description: "Adversarial review of a plan file — finds bugs, gaps, and failure modes",
 		handler: async (args, ctx) => {
+			echoSlashCommand(pi, "review-it", args);
 			const template = loadSkill("review-it.md");
 			await pi.sendUserMessage(buildSkillPrompt(template, args, { replaceArguments: true }));
 		},
@@ -783,6 +804,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("do-it", {
 		description: "Smart task routing — implements directly, delegates, or plans based on complexity",
 		handler: async (args, ctx) => {
+			echoSlashCommand(pi, "do-it", args);
 			const template = loadSkill("do-it.md");
 			await pi.sendUserMessage(buildSkillPrompt(template, args, { replaceArguments: true }));
 		},
@@ -791,6 +813,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("research", {
 		description: "Parallel multi-angle research — primary sources, practical guidance, and alternatives",
 		handler: async (args, ctx) => {
+			echoSlashCommand(pi, "research", args);
 			const template = loadSkill("research.md");
 			await pi.sendUserMessage(buildSkillPrompt(template, args, { replaceArguments: true }));
 		},
@@ -799,6 +822,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("gitlab-ticket", {
 		description: "Generate a structured GitLab issue, then optionally create an issue-numbered branch and draft MR",
 		handler: async (args, ctx) => {
+			echoSlashCommand(pi, "gitlab-ticket", args);
 			const template = loadSkill("gitlab-ticket.md");
 			await pi.sendUserMessage(buildGitlabTicketPrompt(template, args));
 		},
