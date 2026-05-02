@@ -2,9 +2,9 @@
   "schema_version": 1,
   "summary_format_version": 2,
   "agent": "orchestrator",
-  "rebuilt_at": "2026-05-02T05:39:34.313Z",
-  "covers_through_timestamp": "2026-05-02T01:23:03.739Z",
-  "source_entry_count": 33,
+  "rebuilt_at": "2026-05-02T17:09:33.260Z",
+  "covers_through_timestamp": "2026-05-02T05:46:54.473Z",
+  "source_entry_count": 34,
   "similarity": {
     "enabled": true,
     "active": true,
@@ -168,6 +168,16 @@
       }
     ],
     "observation": [
+      {
+        "summary": "Pi slash-command echo bug: extension commands are executed by core prompt() via _tryExecuteExtensionCommand before input hooks are emitted, so an echo implementation based on pi.on(\"input\") cannot see handled extension slash commands. Fix by wrapping pi.registerCommand early (echo-slash-commands.ts) and rendering a slash-echo custom message; workflow-commands.ts includes a fallback echo for key workflow commands when the wrapper was not installed first.",
+        "evidence_count": 1,
+        "first_seen": "2026-05-02T05:46:54.473Z",
+        "last_seen": "2026-05-02T05:46:54.473Z",
+        "merge_metadata": {
+          "method": "deterministic",
+          "merged_from_count": 1
+        }
+      },
       {
         "summary": "read_expertise focused retrieval implementation: Implemented optional local lexical focused retrieval for read_expertise in pi/extensions/agent-chain.ts with query/max_results, bounded deterministic ranking/dedup, disposable retrieval-index cache, provider-disabled fallback, and behavioral Vitest coverage in pi/tests/read-expertise-retrieval.test.ts.",
         "evidence_count": 1,
