@@ -1,4 +1,10 @@
 #!/usr/bin/env python
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "google-api-python-client>=2.0.0",
+# ]
+# ///
 """YouTube metadata fetcher using YouTube Data API v3.
 
 Usage:
