@@ -5,6 +5,7 @@
  * Supports three modes:
  *   - text:    free-form text input
  *   - select:  pick from a list of options
+ *   - multi_select: pick multiple options, then Done
  *   - confirm: yes/no question
  */
 import { Type } from "@sinclair/typebox";
@@ -19,7 +20,7 @@ export default function (pi: ExtensionAPI) {
     description:
       "Ask the user a question mid-turn and get their response. " +
       "Use when you need clarification, a decision, or confirmation before proceeding. " +
-      'Modes: "text" for free-form input, "select" for choosing from options, "confirm" for yes/no.',
+      'Modes: "text" for free-form input, "select" for one option, "multi_select" for multiple options, "confirm" for yes/no.',
     promptSnippet: "Ask the user a question mid-turn (text input, selection, or confirmation)",
     promptGuidelines: [
       "Use ask_user when you need user input to proceed -- don't guess at ambiguous requirements.",
@@ -32,12 +33,12 @@ export default function (pi: ExtensionAPI) {
       question: Type.String({ description: "The question to ask the user" }),
       mode: Type.Optional(
         Type.Union(
-          [Type.Literal("text"), Type.Literal("select"), Type.Literal("confirm")],
-          { description: 'Input mode: "text" (default), "select", or "confirm"', default: "text" }
+          [Type.Literal("text"), Type.Literal("select"), Type.Literal("multi_select"), Type.Literal("confirm")],
+          { description: 'Input mode: "text" (default), "select", "multi_select", or "confirm"', default: "text" }
         )
       ),
       options: Type.Optional(
-        Type.Array(Type.String(), { description: 'Options for "select" mode' })
+        Type.Array(Type.String(), { description: 'Options for "select" or "multi_select" mode' })
       ),
       placeholder: Type.Optional(
         Type.String({ description: 'Placeholder text for "text" mode' })
@@ -62,8 +63,50 @@ export default function (pi: ExtensionAPI) {
           if (!params.options || params.options.length === 0) {
             return formatToolError('Error: "select" mode requires a non-empty options array.');
           }
-          answer = await ctx.ui.select(params.question, params.options);
+          answer = await ctx.ui.select(params.question, [...params.options, "Other (custom answer)"]);
+          if (answer === "Other (custom answer)") {
+            answer = await ctx.ui.input(`${params.question}\nOther:`, params.placeholder);
+          }
           break;
+
+        case "multi_select": {
+          if (!params.options || params.options.length === 0) {
+            return formatToolError('Error: "multi_select" mode requires a non-empty options array.');
+          }
+          const selected: string[] = [];
+          while (true) {
+            const remaining = params.options.filter((option) => !selected.includes(option));
+            const choices = [
+              ...remaining.map((option) => `+ ${option}`),
+              "Other (custom answer)",
+              "Done",
+            ];
+            const suffix = selected.length ? `\nSelected: ${selected.join(", ")}` : "";
+            const choice = await ctx.ui.select(`${params.question}${suffix}`, choices);
+            if (choice === undefined) {
+              answer = undefined;
+              break;
+            }
+            if (choice === "Done") {
+              answer = selected.join("\n");
+              break;
+            }
+            if (choice === "Other (custom answer)") {
+              const custom = await ctx.ui.input("Other:", params.placeholder);
+              if (custom) selected.push(custom);
+              continue;
+            }
+            selected.push(choice.replace(/^\+ /, ""));
+            if (selected.length === params.options.length) {
+              const addMore = await ctx.ui.confirm("Question", "All listed options selected. Add a custom answer?");
+              if (!addMore) {
+                answer = selected.join("\n");
+                break;
+              }
+            }
+          }
+          break;
+        }
 
         case "text":
         default:
@@ -88,10 +131,10 @@ export default function (pi: ExtensionAPI) {
 
     renderCall(args, theme, _context) {
       const mode = args.mode ?? "text";
-      const icon = mode === "confirm" ? "?" : mode === "select" ? "S" : "T";
+      const icon = mode === "confirm" ? "?" : mode === "multi_select" ? "M" : mode === "select" ? "S" : "T";
       const preview = args.question.length > 60 ? args.question.slice(0, 60) + "..." : args.question;
       let text = theme.fg("accent", `${icon} `) + theme.fg("toolTitle", preview);
-      if (mode === "select" && args.options?.length) {
+      if ((mode === "select" || mode === "multi_select") && args.options?.length) {
         text += theme.fg("dim", ` [${args.options.length} options]`);
       }
       return new Text(text, 0, 0);
