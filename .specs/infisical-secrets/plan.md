@@ -356,34 +356,53 @@ Wave 4:  T7, T8, T9 (parallel) -> V4
 
 ## Execution Status
 
-- **Completion classification**: `blocked-by-failure`
+- **Completion classification**: `blocked-by-user-decision`
 - **Date**: 2026-05-03
-- **Last completed wave/gate**: Wave 1 implementation partially completed; V1 did not pass.
-- **Next wave/gate to run**: Finish T0 and rerun V1 before starting Wave 2.
+- **Last completed wave/gate**: V1 passed. Wave 2 code/runbook implementation completed, but V2 live/manual validation was intentionally not run.
+- **Next wave/gate to run**: Wave 2 live deployment and V2 validation.
 - **Implemented**:
-  - Created `.specs/infisical-secrets/compose-design.md` for T1.
-  - Created `menos/infra/ansible/roles/infisical/` role skeleton for T2 with compose, Caddyfile, runtime-env template, defaults, handlers, metadata, and README.
-  - Created placeholder `.specs/infisical-secrets/gitleaks-baseline.json` and `.specs/infisical-secrets/gitleaks-baseline.md` documenting that the required history audit is blocked.
+  - T0: Ran full-history gitleaks scan via the Ansible Docker image. Wrote `.specs/infisical-secrets/gitleaks-baseline.json` and classified 37 findings in `.specs/infisical-secrets/gitleaks-baseline.md`; all classified as test/planning fixtures or false positives for live-secret inventory, with no active credentials identified.
+  - T1: Created `.specs/infisical-secrets/compose-design.md`.
+  - T2: Created `menos/infra/ansible/roles/infisical/` with compose, Caddyfile, runtime-env template, defaults, handlers, metadata, README, and backup task/script templates.
+  - T3: Created `menos/infra/ansible/playbooks/deploy-infisical.yml` and `.specs/infisical-secrets/runbook-bootstrap.md`.
+  - T4: Created `menos/infra/ansible/roles/infisical/tasks/backup.yml`, `menos/infra/ansible/roles/infisical/templates/backup.sh.j2`, and `.specs/infisical-secrets/runbook-restore.md`.
 - **Commands run and results**:
-  - `command -v gitleaks` -> not found.
-  - `command -v ansible-lint` -> not found.
+  - `docker compose -f menos/infra/ansible/docker-compose.yml build ansible` -> passed after adding `gitleaks` and `ansible-lint` to the Ansible image.
+  - `gitleaks detect --no-banner --redact --report-format json --log-opts="--all" -r .specs/infisical-secrets/gitleaks-baseline.json` in container -> completed; 37 redacted findings recorded and classified.
   - `grep -c '^## ' .specs/infisical-secrets/compose-design.md` -> `6`.
   - `grep -E 'postgres:1[0-9]+\.' .specs/infisical-secrets/compose-design.md` -> matched `postgres:16.4-alpine`.
-  - `ANSIBLE_ROLES_PATH=menos/infra/ansible/roles ansible-playbook --syntax-check /tmp/infisical-role-harness.yml` -> failed before syntax checking with Windows Ansible launcher error `OSError: [WinError 87] The parameter is incorrect`.
-- **Why not archived**: Required Wave 1 validation failed because `gitleaks` and `ansible-lint` are unavailable, and `ansible-playbook --syntax-check` fails in this Windows shell before executing Ansible.
+  - `ansible-lint roles/infisical/` in container -> passed.
+  - `ANSIBLE_ROLES_PATH=/ansible/roles ansible-playbook --syntax-check /tmp/infisical-role-harness.yml` in container -> passed.
+  - `ansible-lint roles/infisical/ playbooks/deploy-infisical.yml` in container -> passed.
+  - `ANSIBLE_ROLES_PATH=/ansible/roles ansible-playbook --syntax-check playbooks/deploy-infisical.yml` in container -> passed with inventory warnings only because syntax check was run without live inventory.
+- **Why not archived**: The user chose to stop before live deployment/manual validation. V2 requires real deploy, valid DNS/TLS, root admin signup, backup artifact verification, restore drill, and container-hardening evidence.
 - **Checks still needed**:
-  1. Install or expose `gitleaks`, then run:
+  1. Dry-run deploy from `menos/infra/ansible/` and inspect expected diffs:
      ```bash
-     gitleaks detect --no-banner --redact --report-format json --log-opts="--all" -r .specs/infisical-secrets/gitleaks-baseline.json
+     docker compose run --rm ansible ansible-playbook -i inventory/hosts.yml playbooks/deploy-infisical.yml --check --diff
      ```
-  2. Classify every finding in `.specs/infisical-secrets/gitleaks-baseline.md`, including owner and target date for any active credential.
-  3. Install or run `ansible-lint`, then run:
+  2. Run live deploy:
      ```bash
-     ansible-lint menos/infra/ansible/roles/infisical/
+     docker compose run --rm ansible ansible-playbook -i inventory/hosts.yml playbooks/deploy-infisical.yml
      ```
-  4. Run the role syntax harness from an environment where Ansible works, preferably the repo's Ansible-in-Docker pattern, and confirm syntax passes.
-- **Remaining manual/user steps**: Provide working `gitleaks`, `ansible-lint`, and Ansible execution environment; no live Infisical deployment or secret handling has started.
-- **Resume instruction**: Rerun `/do-it C:/Users/mglenn/.dotfiles/.specs/infisical-secrets/plan.md` after the toolchain issues are fixed.
+  3. Verify HTTPS status without `--insecure`:
+     ```bash
+     curl -fsS https://infisical.<host-domain>/api/status
+     ```
+  4. Complete root admin signup at `https://infisical.<host-domain>/signup` and store credentials in the password manager.
+  5. Trigger and verify backup artifact contents: decrypt and confirm both `infisical-postgres.sql` and `infisical.env` are present.
+  6. Verify 14-day pruning and df warning behavior.
+  7. Complete V2 restore drill into throwaway containers and update `.specs/infisical-secrets/runbook-restore.md` with `Drill completed: <date>` and round-trip evidence.
+  8. Capture container-hardening evidence with:
+     ```bash
+     docker inspect infisical | jq '.[0].Config.User, .[0].HostConfig.ReadonlyRootfs'
+     ```
+  9. Confirm no Infisical secrets are tracked:
+     ```bash
+     git ls-files | xargs grep -liE 'infisical_jwt|encryption_key' || true
+     ```
+- **Remaining manual/user steps**: Provide the real `infisical.<host-domain>` DNS value and required Ansible vault variables, run or approve the live deployment, create the root admin account, verify backup/restore, and record V2 evidence.
+- **Resume instruction**: Rerun `/do-it C:/Users/mglenn/.dotfiles/.specs/infisical-secrets/plan.md` after Wave 2 live/manual validation is ready to proceed.
 
 ## Handoff Notes
 
