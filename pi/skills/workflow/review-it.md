@@ -170,12 +170,22 @@ Each reviewer must receive:
 - strict output budget: return a compact machine-readable list of at most 5 findings; each finding must include `severity`, `evidence`, and `required_fix`; do not restate the whole plan, include praise, or include more than 120 words per finding
 
 Reviewer failure/truncation handling:
+
+Definitions:
+- **Preview truncation**: tool output preview is abbreviated, but reviewer call completed and includes usable findings.
+- **Reviewer failure**: reviewer call errors, times out, returns empty output, or output is non-actionable for required fields.
+- **Genuinely unusable**: missing actionable finding structure (`severity`/`evidence`/`required_fix`) or semantically empty.
+
+Rules:
+- Do **not** treat preview truncation as reviewer failure.
+- If panel status indicates success (for example `Parallel: N/N succeeded`), assume success first and synthesize from available findings unless a reviewer is genuinely unusable.
 - Do **not** rerun the full review panel just because one reviewer output is verbose.
 - If a reviewer output is verbose but still contains usable findings, synthesize from it directly; do not run recovery.
-- If exactly one reviewer fails or is genuinely truncated/unusable, ask only that reviewer for a compact recovery response: `Return only your top 5 actionable findings as Severity | Evidence | Required fix`.
-- If two or more reviewers fail due to the same infrastructure/model issue, stop and report the review as blocked rather than launching another full panel.
+- If exactly one reviewer fails or is genuinely unusable, ask only that reviewer for a compact recovery response: `Return only your top 5 actionable findings as Severity | Evidence | Required fix`.
+- If two or more reviewers are genuinely unusable with shared infrastructure/model symptoms, stop and report the review as blocked rather than launching another full panel.
+- Never run broad compact recovery across all reviewers unless **all** reviewer outputs are unusable.
 - A second full independent review panel is only allowed if the plan file changed materially after the first review, or if the user explicitly asks for a fresh review.
-- Do not run compact recovery for every reviewer unless every reviewer response is unusable; that is considered an infrastructure failure and should be reported as blocked.
+- In synthesis, explicitly record whether truncation was preview-only vs genuine failure, and why recovery was or was not invoked.
 
 Timing capture:
 - Prefer Pi timing/observability events when available (`timing_span` metrics for subagent/reviewer/panel/recovery/command spans).
