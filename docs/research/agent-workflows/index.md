@@ -19,11 +19,14 @@ What concrete implementation ideas can we borrow from recent agent tooling while
 - [[patterns/markdown-skills-memory]]
 - [[patterns/agent-friendly-platforms]]
 - [[patterns/sandboxed-agent-runtimes]]
+- [[patterns/pi-observability-timing]]
 
 ## Specs synthesis
 
 - [[specs-workflow-trajectory]] — where active and archived specs show the workflow has been heading.
 - [[workflow-ideas/specs-derived-roadmap]] — concrete roadmap ideas from specs + ecosystem research.
+- [[workflow-ideas/pipelines-and-policies]] — run ledgers, first-class artifacts, resumability, and policy-as-code gates.
+- [[workflow-ideas/code-intelligence]] — Graphify/SCIP/code-intel ideas for semantic navigation and architecture orientation.
 - [[workflow-ideas/backlog]] — candidate next slices.
 
 ## KISS recommendations
