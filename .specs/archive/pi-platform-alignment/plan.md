@@ -1,7 +1,8 @@
 ---
 created: 2026-03-31
-status: draft
-completed:
+status: completed
+completed: 2026-05-03
+
 ---
 
 # Plan: Pi Platform Alignment with Claude Code Tooling Patterns

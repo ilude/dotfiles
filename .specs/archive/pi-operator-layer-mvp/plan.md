@@ -1,7 +1,8 @@
 ---
 created: 2026-04-17
-status: draft
-completed:
+status: completed
+completed: 2026-05-03
+
 ---
 
 # Plan: Pi operator layer MVP

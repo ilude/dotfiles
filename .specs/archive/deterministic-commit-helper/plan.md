@@ -1,7 +1,8 @@
 ---
 created: 2026-05-02
-status: draft
-completed:
+status: completed
+completed: 2026-05-03
+
 ---
 
 # Plan: Deterministic Commit Helper for Slash Commit
