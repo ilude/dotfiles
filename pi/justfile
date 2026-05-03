@@ -25,6 +25,22 @@ eval-memory:
 memory-rebuild:
     cd ~/.dotfiles && bun pi/scripts/memory-rebuild.ts
 
+# Scan memory index for cross-repo promotion candidates (writes to ~/.pi/agent/index/, never tracked)
+memory-promote-scan:
+    cd ~/.dotfiles && bun pi/scripts/memory-promote-scan.ts
+
+# Show what a snapshot archive would write (no side effects)
+memory-snapshot-archive-dry-run:
+    cd ~/.dotfiles && bun pi/scripts/memory-snapshot-archive.ts
+
+# Actually write a snapshot archive under ~/.pi/agent/index/archive/{ts}/
+memory-snapshot-archive-confirm:
+    cd ~/.dotfiles && bun pi/scripts/memory-snapshot-archive.ts --confirm
+
+# Restore-smoke an archive: copy mirrored snapshots to temp + parse + assert legacy shape
+memory-snapshot-restore-smoke:
+    cd ~/.dotfiles && bun pi/scripts/snapshot-restore-smoke.ts
+
 # Default recipe — launches Pi with all auto-discovered extensions
 default:
     pi

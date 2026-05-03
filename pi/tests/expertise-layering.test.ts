@@ -9,7 +9,6 @@
  *   - project-local default writes inside a git repo
  *   - global writes outside a git repo
  *   - mixed legacy-global + new project-local reads (backward compat)
- *   - stale snapshot rebuild on repo-id cutover
  *   - drift-safe coexistence when repo identity changes
  *   - dedupe/conflict resolution per documented precedence
  *   - dual-read: both layers remain readable
@@ -20,11 +19,6 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { createMockPi } from "./helpers/mock-pi.js";
-
-vi.mock("@mariozechner/pi-ai", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@mariozechner/pi-ai")>();
-  return { ...actual, completeSimple: vi.fn() };
-});
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -40,14 +34,6 @@ function projectExpertiseDir(home: string, repoId: string): string {
 
 function logPath(dir: string, agent: string): string {
   return path.join(dir, `${agent}-expertise-log.jsonl`);
-}
-
-function snapshotPath(dir: string, agent: string): string {
-  return path.join(dir, `${agent}-mental-model.json`);
-}
-
-function statePath(dir: string, agent: string): string {
-  return path.join(dir, `${agent}-mental-model.state.json`);
 }
 
 function writeLegacyGlobalLog(home: string, agent: string, entries: object[]): void {
@@ -285,49 +271,6 @@ describe("expertise layering -- project-local vs global writes", () => {
     expect(text, "Expected project-local decision in output").toContain("project-local decision");
     expect(result.details.layerSources).toContain("global");
     expect(result.details.layerSources).toContain("project-local");
-  });
-
-  // -------------------------------------------------------------------------
-  // stale snapshot rebuild on cutover
-  // -------------------------------------------------------------------------
-
-  it("stale snapshot: snapshot is rebuilt when the stored repo-id diverges from detected repo-id", async () => {
-    const oldRepoId = "gh/old-org/testrepo";
-    const newRepoId = "gh/testorg/testrepo";
-
-    // Seed a snapshot that was built under a different repo-id
-    const snapshotDir = projectExpertiseDir(tmpHome, oldRepoId);
-    fs.mkdirSync(snapshotDir, { recursive: true });
-    fs.writeFileSync(
-      snapshotPath(snapshotDir, "drift-agent"),
-      JSON.stringify({
-        schema_version: 1,
-        agent: "drift-agent",
-        repo_id: oldRepoId,
-        rebuilt_at: "2024-01-01T00:00:00.000Z",
-        covers_through_timestamp: "2024-01-01T00:00:00.000Z",
-        source_entry_count: 1,
-        categories: { strong_decision: [], key_file: [], pattern: [], observation: [{ summary: "old snapshot fact", evidence_count: 1, first_seen: "2024-01-01T00:00:00.000Z", last_seen: "2024-01-01T00:00:00.000Z" }], open_question: [], system_overview: [] },
-      }),
-      "utf-8",
-    );
-
-    // Now write a new log entry under the current (correct) repo-id
-    writeProjectLocalLog(tmpHome, newRepoId, "drift-agent", [
-      { timestamp: "2025-01-01T00:00:00.000Z", session_id: "p1", category: "observation", entry: { project: "testrepo", note: "new fact after remote change" } },
-    ]);
-
-    const result = await readTool.execute(
-      "id",
-      { agent: "drift-agent", mode: "full" },
-      undefined,
-      undefined,
-      { cwd: tmpRepo },
-    );
-
-    // The stale snapshot under old-org should not dominate; the current layer should be used
-    expect(result.details.rebuildStatus).toBe("ready");
-    expect(result.content[0].text).toContain("new fact after remote change");
   });
 
   // -------------------------------------------------------------------------

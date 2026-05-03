@@ -7,13 +7,13 @@ const STOP = new Set(["a", "an", "and", "are", "as", "for", "in", "is", "of", "o
 export function estimateTokens(s: string): number { return Math.ceil(s.length / 4); }
 function toks(s: string): Set<string> { return new Set((s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).filter(t => t.length > 1 && !STOP.has(t))); }
 function lexical(q: string, text: string): number { const a = toks(q), b = toks(text); if (!a.size || !b.size) return 0; let hit = 0; for (const t of a) if (b.has(t)) hit++; return hit / Math.sqrt(a.size * b.size); }
-function cosine(a: Float32Array, b: Float32Array): number { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; }
+export function cosine(a: Float32Array, b: Float32Array): number { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; }
 function isVisible(row: MemoryRow, args: RetrieveArgs): boolean {
   if (args.agent && row.agent !== args.agent) return false;
   if (row.repo_id === args.repoId) return true;
   return args.crossRepo === "policies-only" && row.repo_id === GLOBAL_LAYER_REPO_ID && row.kind === "policy";
 }
-function chainTail(rows: MemoryRow[]): MemoryRow[] {
+export function chainTail(rows: MemoryRow[]): MemoryRow[] {
   const by = new Map(rows.map(r => [r.id, r]));
   const superseded = new Set<string>();
   for (const r of rows) if (r.superseded_by && by.has(r.superseded_by)) superseded.add(r.id);
