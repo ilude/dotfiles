@@ -139,14 +139,19 @@ git submodule update --init --recursive
 
 ## Agent Surfaces
 
+For command ownership and client-specific command locations, see `docs/agent-command-surfaces.md`.
+
 - `claude/` is Claude Code-specific runtime config, hooks, commands, and local session data linked to `~/.claude`.
 - `opencode/` is OpenCode config linked to `~/.config/opencode`.
 - `copilot/` contains Copilot prompts and instructions.
+- `pi/skills/workflow/` contains Pi workflow skills such as Pi's `/do-it`.
 
 Shared command ownership:
 
-- `claude/commands/` is the canonical shared command source.
+- `claude/commands/` is the canonical shared command source for Claude/OpenCode command wrappers.
+- `claude/shared/` contains shared command bodies used by Claude, OpenCode, and some Copilot prompts.
 - `opencode/commands/` is an overlay: OpenCode-specific overrides live there, and the remaining commands are symlinked from `claude/commands/`.
+- Pi does not load `claude/commands/`; update `pi/skills/workflow/` for Pi-specific workflow behavior.
 
 ## Key Paths
 
