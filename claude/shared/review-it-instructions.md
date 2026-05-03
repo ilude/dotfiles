@@ -1,6 +1,8 @@
-# Review Plan — Adversarial Expert Review Command
+# Review Plan -- Adversarial Expert Review Command
 
-Launch parallel expert reviewers against a plan file to identify risks, ambiguities, and missing validation gates. The expert panel is dynamically composed based on the plan's content — 3 mandatory reviewers plus domain-specific experts selected to match the technologies and workflows involved.
+Launch parallel expert reviewers against a plan file to identify risks, ambiguities, and missing validation gates. The expert panel is dynamically composed based on the plan's content -- 3 mandatory reviewers plus domain-specific worker experts selected to match the technologies and workflows involved.
+
+Pi routing context: lead agents are team coordinators, not general-purpose reviewers. Do not use `planning-lead`, `engineering-lead`, `validation-lead`, `ml-research-lead`, or `orchestrator` as ordinary review panel members. Use worker/domain/tier agents directly unless the review itself genuinely needs a nested coordination layer.
 
 ## Parameters
 
@@ -12,35 +14,35 @@ Launch parallel expert reviewers against a plan file to identify risks, ambiguit
 
 If no path is provided, use AskUserQuestion to ask: "Which plan file should I review?"
 
-## Architecture — Delegated Coordinator
+## Architecture -- Delegated Coordinator
 
 ```
 User runs /review-it .specs/my-plan/plan.md
-         │
-         ▼
+         |
+         v
     Primary (you) reads plan, composes expert panel
-         │
-         ▼
+         |
+         v
     Primary launches ONE coordinator agent (general-purpose, sonnet)
     with: plan text, panel composition, all reviewer prompts, full instructions
-         │
-         ▼
+         |
+         v
     Coordinator launches ALL reviewers in parallel (Task tool)
     Reviewers return findings as response text into coordinator's context
-         │
-         ▼
+         |
+         v
     Coordinator holds all findings in its context (no files needed)
     Coordinator runs rebuttals internally or via sub-agents
-         │
-         ▼
+         |
+         v
     Coordinator verifies CRITICAL/HIGH findings against codebase
     Coordinator deduplicates, classifies bugs vs hardening
-         │
-         ▼
+         |
+         v
     Coordinator writes ONLY synthesis.md to review-{N}/ directory
     Coordinator returns clean summary to primary context
-         │
-         ▼
+         |
+         v
     Primary presents summary to user + offers to apply fixes
 ```
 
@@ -49,17 +51,17 @@ User runs /review-it .specs/my-plan/plan.md
 The coordinator agent absorbs all raw reviewer output in its own context, keeping the
 primary context clean. This solves two problems:
 
-- **No context pollution** — primary context never sees 4-8 verbose reviewer reports
-- **No intermediate files** — findings live in coordinator's context, not on disk
-- **One synthesis file** — only `synthesis.md` is written, as the audit trail
-- **Rebuttals are internal** — coordinator has all findings in context, can cross-pollinate
+- **No context pollution** -- primary context never sees 4-8 verbose reviewer reports
+- **No intermediate files** -- findings live in coordinator's context, not on disk
+- **One synthesis file** -- only `synthesis.md` is written, as the audit trail
+- **Rebuttals are internal** -- coordinator has all findings in context, can cross-pollinate
   without launching additional agents or writing/reading files
 
 ---
 
 ## Review Output Directory
 
-**Directory structure** (minimal — only synthesis is persisted):
+**Directory structure** (minimal -- only synthesis is persisted):
 ```
 .specs/{plan-name}/
   plan.md                          # the plan being reviewed
@@ -71,12 +73,12 @@ primary context clean. This solves two problems:
 
 **Deriving `plan-name`**:
 - If the plan path is under `.specs/`, use the directory name immediately under `.specs/`
-  (e.g., `.specs/update-cve-checker/plan.md` → `update-cve-checker`)
+  (e.g., `.specs/update-cve-checker/plan.md` -> `update-cve-checker`)
 - Otherwise, use the stem of the plan file name or the parent directory name
 
 **Deriving `review-{N}`**:
 - Count existing `review-*` directories inside `.specs/{plan-name}/` and use the next number
-- First review → `review-1`, second → `review-2`, etc.
+- First review -> `review-1`, second -> `review-2`, etc.
 
 ---
 
@@ -89,13 +91,15 @@ primary context clean. This solves two problems:
 3. **Analyze the plan** to determine which domains it touches
 4. **Compose the expert panel**:
    - Always include the 3 mandatory reviewers (Completeness, Adversarial, Outside-the-Box)
-   - Select additional dynamic reviewers. Use the **Suggested Expert Pool** (below) as a
-     starting point, but invent reviewers if the plan needs coverage the pool doesn't provide.
+   - Select additional dynamic worker/domain reviewers. Use the **Suggested Expert Pool**
+     (below) as a starting point, but invent reviewer personas if the plan needs coverage
+     the pool doesn't provide.
+   - Do not select lead agents as routine reviewers; use the specific workers beneath them.
    - Target 4-6 total reviewers for most plans; up to 8 for complex cross-cutting plans
 5. **Determine the review output directory**: Derive `plan-name` and `review-{N}`.
    Create the directory with `mkdir -p`.
 6. **Present the panel to the user** with one-line justifications. Include the output
-   directory path. Then launch the coordinator immediately — do not wait for approval.
+   directory path. Then launch the coordinator immediately -- do not wait for approval.
 
 ---
 
@@ -124,7 +128,7 @@ The coordinator prompt MUST include:
 5. The **coordinator instructions** (below)
 6. The **review output directory path** for writing synthesis.md
 7. The **output budget rule**: every reviewer prompt must include
-   `"Keep your total response under 15,000 characters. Do not quote the plan text back — reference sections by heading name instead."`
+   `"Keep your total response under 15,000 characters. Do not quote the plan text back -- reference sections by heading name instead."`
 
 ### Coordinator Instructions
 
@@ -141,23 +145,23 @@ You are a review coordinator. Your job is to:
    unusually complex reviewer roles, or rebuttal/synthesis passes that clearly need it.
    Use max_turns: 5 for each reviewer (except OtB which gets max_turns: 8).
 
-2. COLLECT FINDINGS — all reviewer responses land in your context.
+2. COLLECT FINDINGS -- all reviewer responses land in your context.
 
-3. CROSS-POLLINATE (rebuttals) — you now have all findings in context.
+3. CROSS-POLLINATE (rebuttals) -- you now have all findings in context.
    For each domain expert finding, assess proportionality (would OtB call it
    OVERKILL?). For each OtB recommendation, assess whether domain experts
    would AGREE, PARTIAL, or DISAGREE. You can do this yourself since you
-   have all perspectives — only launch rebuttal sub-agents if the findings
+   have all perspectives -- only launch rebuttal sub-agents if the findings
    are complex enough to warrant it (8+ HIGH/CRITICAL findings across reviewers).
 
-4. VERIFY CRITICAL/HIGH findings — before accepting any CRITICAL or HIGH finding,
+4. VERIFY CRITICAL/HIGH findings -- before accepting any CRITICAL or HIGH finding,
    use tools (Read, Grep, Glob, Bash) to verify the claim against the actual
    codebase. Reviewers frequently make false positive claims. For each:
-   - If confirmed → include as-is
-   - If incorrect → mark as DISMISSED (false positive) with reason
-   - If unverifiable → downgrade to HIGH with "needs human confirmation"
+   - If confirmed -> include as-is
+   - If incorrect -> mark as DISMISSED (false positive) with reason
+   - If unverifiable -> downgrade to HIGH with "needs human confirmation"
 
-5. SYNTHESIZE — classify into Bugs vs Hardening:
+5. SYNTHESIZE -- classify into Bugs vs Hardening:
    - Bugs: plan is wrong, will fail if executed as written
    - Hardening: plan works but could be more resilient
    Deduplicate across reviewers. Sort bugs by severity.
@@ -177,7 +181,7 @@ You are a review coordinator. Your job is to:
    [table of reviewers with finding counts and how many survived verification]
 
    ## Outside-the-Box Assessment
-   [OtB overall verdict — is the approach sound?]
+   [OtB overall verdict -- is the approach sound?]
 
    ## Bugs (must fix before executing)
    [Verified bugs only, sorted by severity. Each with: who flagged it,
@@ -187,7 +191,7 @@ You are a review coordinator. Your job is to:
    [Sorted by priority. Each with proportionality assessment]
 
    ## Dismissed Findings
-   [False positives with reasons — shows verification rigor]
+   [False positives with reasons -- shows verification rigor]
 
    ## Positive Notes
    [What the plan gets right]
@@ -207,7 +211,7 @@ You are a review coordinator. Your job is to:
    [numbered list: one line per dismissal]
 
    Keep the returned summary under 3000 characters. The full details are
-   in synthesis.md — the summary just needs enough for the user to decide
+   in synthesis.md -- the summary just needs enough for the user to decide
    whether to apply fixes.
 ```
 
@@ -220,14 +224,14 @@ Include this verbatim in the coordinator prompt (it passes it to each reviewer):
 ```
 ## Severity Calibration
 
-Rate findings by LIKELIHOOD × IMPACT, not worst-case impact alone:
+Rate findings by LIKELIHOOD x IMPACT, not worst-case impact alone:
 
 - **CRITICAL**: Will cause failure, data loss, or outage if the plan is executed as written.
-  Not theoretical — you can point to the specific line/command that is wrong.
+  Not theoretical -- you can point to the specific line/command that is wrong.
   **Verification required**: Before reporting any CRITICAL finding, you MUST verify
   your claim using tools (Read, Grep, Glob, Bash) against the actual codebase or the
   plan's own code blocks. If you cannot verify the claim directly, downgrade it to
-  HIGH and add a note: "Unverified — needs human confirmation."
+  HIGH and add a note: "Unverified -- needs human confirmation."
 - **HIGH**: Likely to cause the migration to fail or leave the system in a bad state
   under realistic conditions.
 - **MEDIUM**: Could cause issues under specific but plausible conditions.
@@ -251,18 +255,18 @@ Do NOT flag:
 
 ```
 You are a staff engineer reviewing a plan that will be executed by someone with a
-COMPLETELY CLEAR context window — they have never seen this codebase, this cluster,
+COMPLETELY CLEAR context window -- they have never seen this codebase, this cluster,
 or this conversation. The plan is ALL they have.
 
 Your job is to find every place where the plan assumes knowledge it doesn't provide.
-You may use tools (Read, Grep, Glob, Bash) to verify specific claims the plan makes —
+You may use tools (Read, Grep, Glob, Bash) to verify specific claims the plan makes --
 check that referenced files exist, resource names are correct, commands will work, and
 config values match reality. Do not modify any existing files.
 
 Before evaluating, read every code block, YAML snippet, and command example in the
 plan. Filing a finding the plan already addresses is a false positive.
 
-Keep your total response under 15,000 characters. Do not quote the plan text back —
+Keep your total response under 15,000 characters. Do not quote the plan text back --
 reference sections by heading name instead.
 
 ## Evaluation Criteria
@@ -281,7 +285,7 @@ Return your **top 8 findings**, ordered by severity. For each:
 - **Gap**: What is missing or ambiguous (1-2 sentences)
 - **Severity**: CRITICAL / HIGH / MEDIUM / LOW
 - **Phase**: Which step(s) are affected
-- **Suggestion**: Specific fix text (brief — exact addition to the plan)
+- **Suggestion**: Specific fix text (brief -- exact addition to the plan)
 
 {SEVERITY_CALIBRATION}
 
@@ -306,7 +310,7 @@ assumptions. Do not modify any existing files.
 Before evaluating, read every code block and command example in the plan. Filing a
 finding the plan already addresses is a false positive.
 
-Keep your total response under 15,000 characters. Do not quote the plan text back —
+Keep your total response under 15,000 characters. Do not quote the plan text back --
 reference sections by heading name instead.
 
 ## Evaluation Approach
@@ -340,7 +344,7 @@ Return your **top 8 findings**, ordered by severity. For each:
 **Prompt template:**
 
 ```
-You are a principal engineer challenging whether this plan is the RIGHT approach —
+You are a principal engineer challenging whether this plan is the RIGHT approach --
 not just whether it's executed correctly.
 
 Start by reading the "Problem Statement", "Constraints", and "Alternatives Considered"
@@ -353,7 +357,7 @@ Do not modify any existing files.
 **Citation discipline**: Only cite sources that apply to THIS plan's specific
 configuration. State why it applies.
 
-Keep your total response under 15,000 characters. Do not quote the plan text back —
+Keep your total response under 15,000 characters. Do not quote the plan text back --
 reference sections by heading name instead.
 
 ## Evaluation Approach
@@ -387,7 +391,16 @@ End with a brief **Overall Assessment** (3-5 sentences).
 
 ## Suggested Expert Pool (starting points, not exhaustive)
 
-These are common reviewer archetypes. Use as-is, adapt, or invent new ones.
+These are common reviewer archetypes. Use as-is, adapt, or invent new worker-reviewer personas.
+
+### Agent Selection Rule
+
+Use direct worker/domain/tier agents for the review panel. Lead agents are coordination roles and should not be selected for ordinary review slots:
+
+- Use `planner`, `product-manager`, or `ux-researcher` instead of `planning-lead` for planning/product/UX critique.
+- Use `backend-dev`, `frontend-dev`, language specialists, `coding-light`, or `coding-medium` instead of `engineering-lead` for implementation/architecture critique.
+- Use `qa-engineer` and/or `security-reviewer` instead of `validation-lead` for validation/security critique.
+- Do not use `orchestrator` as a reviewer; `/review-it` already coordinates the panel.
 
 ### Operational Risk / SRE
 **Select when**: Infrastructure migrations, deployments, scaling changes, uptime risk.
@@ -435,10 +448,10 @@ After the coordinator returns its summary:
 
    (Substitute the actual plan path that was reviewed.)
 4. Ask the user:
-   - "Apply bug fixes to the plan?" (Recommended — bugs only)
-   - "Apply bug fixes + selected hardening — I'll choose which"
+   - "Apply bug fixes to the plan?" (Recommended -- bugs only)
+   - "Apply bug fixes + selected hardening -- I'll choose which"
    - "Apply everything (bugs + all hardening)"
-   - "No changes — review only"
+   - "No changes -- review only"
 
 If the user chooses to apply edits, **read synthesis.md** for the full fix text
 (the coordinator's returned summary is intentionally brief), then use Edit tool
@@ -449,8 +462,8 @@ to update the plan file.
 ## Edge Cases
 
 1. **Plan file doesn't exist**: Report error, ask for correct path
-2. **Plan is very short (<20 lines)**: Still review — Completeness will flag gaps
-3. **Plan is very long (>500 lines)**: Still send full text — reviewers need full context
+2. **Plan is very short (<20 lines)**: Still review -- Completeness will flag gaps
+3. **Plan is very long (>500 lines)**: Still send full text -- reviewers need full context
 4. **No issues found**: Report clean review. A clean review from all experts is meaningful
 5. **Reviewers disagree**: Coordinator presents both perspectives in synthesis
 6. **Coordinator hits token limit**: If the plan is extremely long (>800 lines), split
