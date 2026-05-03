@@ -47,6 +47,37 @@ After this plan:
 4. Infisical secret source, required keys, and token redaction policy are documented and reviewable.
 5. A dedicated runbook records migration steps and rollback for the `.env` workflow change.
 
+## Operator Prerequisites (clean-session execution)
+
+Before running any task/gate, ensure these inputs are explicitly set and available:
+
+- **Required deploy targets**
+  - `ansible_host`: `192.168.16.241`
+  - `deploy_path`: `/apps/menos`
+- **Required Infisical selectors**
+  - `menos_infisical_project`
+  - `menos_infisical_environment`
+  - `menos_infisical_path`
+- **Required secret-auth inputs (vault-backed)**
+  - Vault-backed machine identity values (for example `vault_menos_infisical_machine_client_id`, `vault_menos_infisical_machine_client_secret`) must be resolvable at runtime.
+  - Use one explicit vault auth mode per run:
+    - `--ask-vault-pass`, or
+    - `--vault-password-file <path>`, or
+    - equivalent documented non-interactive vault flow.
+- **Container/tooling baseline**
+  - Build Ansible container first: `docker compose -f menos/infra/ansible/docker-compose.yml build ansible`
+  - Python validations use `uv run ...` (not raw `python`).
+
+**Minimum execution sequence in a clean session**
+1. Run Wave 1 tasks (`T0`, `T1`, `T2`) and pass `V1`.
+2. Run Wave 2 tasks (`T3`, `T4`, `T5`), then `T6`.
+3. Run `V2` checks (without `--diff` for secret-bearing preflight).
+4. Record evidence artifacts:
+   - `.specs/menos-infisical-runtime/validation-wave2.md`
+   - `.specs/menos-infisical-runtime/migration-report.md`
+   - `.specs/menos-infisical-runtime/redaction-checklist.md`
+5. Execute implementation via `/do-it .specs/menos-infisical-runtime/plan.md` once bugs/hardening are applied and validations pass.
+
 ## Project Context
 
 - **Language/Stack**: YAML/Jinja2 (Ansible), Bash/Python (helper utility), Docker Compose
@@ -107,7 +138,7 @@ After this plan:
 
   CLI example:
   ```bash
-  python scripts/menos-infisical-env.py \
+  uv run python scripts/menos-infisical-env.py \
     --project dotfiles \
     --environment prod \
     --path /menos \
@@ -116,17 +147,17 @@ After this plan:
 - Files: `scripts/menos-infisical-env.py`, `test/menos_infisical_env_test.py`, `menos/infra/ansible/Dockerfile`
 - Acceptance Criteria:
   1. [ ] Renderer validates-only mode works in tests.
-     - Verify: `python scripts/menos-infisical-env.py --project dotfiles --environment prod --path /menos --validate --secrets-json test/fixtures/menos-secrets.json`
+     - Verify: `uv run python scripts/menos-infisical-env.py --project dotfiles --environment prod --path /menos --validate --secrets-json test/fixtures/menos-secrets.json`
      - Pass: exit 0 and printed output does not include secret values.
   2. [ ] Renderer write mode writes all required keys and enforces mode bits.
-     - Verify: `python scripts/menos-infisical-env.py --out /tmp/menos.env --write --secrets-json test/fixtures/menos-secrets.json`
+     - Verify: `uv run python scripts/menos-infisical-env.py --out /tmp/menos.env --write --secrets-json test/fixtures/menos-secrets.json`
      - Pass: command exits 0, file exists with all required keys, and `stat -c '%a' /tmp/menos.env` is `600`.
-  3. [ ] Missing key or placeholder values are rejected.
-     - Verify: fixture test with one missing key returns non-zero and marks exact key.
+  3. [ ] Missing key or weak/placeholder values are rejected.
+     - Verify: fixture tests with missing key, empty value, placeholder (`changeme`/`REPLACE_ME`), and invalid format/short-token return non-zero and mark exact key.
   4. [ ] No raw secret values appear in stdout/stderr.
      - Verify: capture output and assert regex redaction for all fixture secret values.
   5. [ ] Dependency strategy is explicit and executable in container.
-     - Verify: running `python scripts/menos-infisical-env.py --help` succeeds inside the Ansible container image.
+     - Verify: running `uv run python scripts/menos-infisical-env.py --help` succeeds inside the Ansible container image.
 
 **T2: Add ansible fetch settings and allow-list** [haiku] -- builder-light
 - Description: Add `menos/infra/ansible/playbooks/group_vars/all.yml` (and `.example` for documentation) with:
@@ -157,22 +188,8 @@ After this plan:
   1. Run T0 acceptance criteria.
   2. Run T1 acceptance criteria.
   3. Run T2 acceptance criteria.
-  4. Structural check: `python -m pytest test/menos_infisical_env_test.py -q` (or equivalent targeted command).
+  4. Structural check: `uv run python -m pytest test/menos_infisical_env_test.py -q` (or equivalent targeted command).
 - On failure: fix the failing task and re-run V1.
-
-**T6: Add validation helpers for plan-level structural checks** [haiku] -- validator
-- Blocked by: T3, T4
-- Description: Add `.specs/menos-infisical-runtime/validation-helpers.py` (or equivalent command snippets) and `validation-wave2.md` updates that:
-  - parse `menos/infra/ansible/playbooks/deploy.yml` and `menos/infra/ansible/files/menos/docker-compose.yml` for explicit forbidden/required patterns,
-  - verify no `/project/.env` task exists and no required-secrets placeholders remain,
-  - verify preflight block ordering appears before `docker compose` tasks,
-  - verify `.env` tasks are tagged/scoped and `no_log`/`diff` are set.
-- Files: `.specs/menos-infisical-runtime/validation-helpers.py`, `.specs/menos-infisical-runtime/validation-wave2.md`
-- Acceptance Criteria:
-  1. [ ] Script-level checks can run locally in CI-like fashion with no external secrets.
-     - Verify: command exits 0 in clean repo checkout.
-  2. [ ] Validation output is deterministic and non-secret.
-     - Verify: repeated runs produce identical pass/fail summaries.
 
 ### Wave 2
 
@@ -204,6 +221,9 @@ After this plan:
      - Verify: running without vault pass/token fails before contact with compose actions with explicit remediation.
   4. [ ] `.env` installation is atomic and cleaned up.
      - Verify: both success/failure paths remove `{{ menos_infisical_tmp_dir }}/*` and preserve old `.env` backup semantics on failure.
+     - Verify: deploy task writes to temp path then atomically renames into `{{ deploy_path }}/.env`.
+  5. [ ] Compose interpolation preflight is explicit before compose actions.
+     - Verify: preflight runs `cd {{ deploy_path }} && docker compose -f docker-compose.yml config` before any `docker compose pull`/`build` task.
 
 **T4: Make env loading deterministic in menos compose** [sonnet] -- builder
 - Blocked by: V1
@@ -248,6 +268,21 @@ After this plan:
   3. [ ] Migration report template lists source path, destination path, status, and verification command.
      - Verify: grep for those headers.
 
+**T6: Add validation helpers for plan-level structural checks** [haiku] -- validator
+- Blocked by: T3, T4
+- Description: Add `.specs/menos-infisical-runtime/validation-helpers.py` (or equivalent command snippets) and `validation-wave2.md` updates that:
+  - parse `menos/infra/ansible/playbooks/deploy.yml` and `menos/infra/ansible/files/menos/docker-compose.yml` for explicit forbidden/required patterns,
+  - verify no `/project/.env` task exists and no required-secrets placeholders remain,
+  - verify preflight block ordering appears before `docker compose` tasks,
+  - verify `.env` tasks are tagged/scoped and `no_log`/`diff` are set,
+  - verify redaction checklist artifact exists and is non-empty.
+- Files: `.specs/menos-infisical-runtime/validation-helpers.py`, `.specs/menos-infisical-runtime/validation-wave2.md`, `.specs/menos-infisical-runtime/redaction-checklist.md`
+- Acceptance Criteria:
+  1. [ ] Script-level checks can run locally in CI-like fashion with no external secrets.
+     - Verify: command exits 0 in clean repo checkout.
+  2. [ ] Validation output is deterministic and non-secret.
+     - Verify: repeated runs produce identical pass/fail summaries.
+
 ### Wave 2 -- Validation Gate
 
 **V2: Validate wave 2** [sonnet] -- validator-heavy
@@ -257,8 +292,9 @@ After this plan:
   2. `ansible-lint` + syntax checks from container context:
      - `MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W)/menos/infra/ansible:/ansible" -w /ansible ansible-ansible:latest ansible-lint playbooks/deploy.yml`
      - `MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W)/menos/infra/ansible:/ansible" -w /ansible ansible-ansible:latest ansible-playbook --syntax-check playbooks/deploy.yml`
-  3. Non-regression on startup flow: run `ansible-playbook playbooks/deploy.yml --check --tags preflight --diff` and validate preflight task pass.
+  3. Non-regression on startup flow: run `ansible-playbook playbooks/deploy.yml --check --tags preflight` and validate preflight task pass.
      - Requirement: preflight tasks that use `command`/`shell` must set `check_mode: false` (with strict `changed_when`/`failed_when`) or provide an equivalent non-check preflight command path so validation actually executes.
+     - Requirement: secret-bearing preflight tasks must keep `no_log: true` and `diff: false`; do not run preflight with `--diff`.
   4. Manual/live check on a staging menos deploy:
      - generated env file exists at `{{deploy_path}}/.env` and is mode `0600`,
      - services start and `curl -fsS http://{{ ansible_host }}:8000/health` returns valid JSON,
@@ -301,6 +337,14 @@ Wave 2: T3, T4, T5 (parallel where ordering permits), then T6 -> V2
 Evidence should be written in:
 - `.specs/menos-infisical-runtime/validation-wave2.md`
 - `.specs/menos-infisical-runtime/migration-report.md`
+- `.specs/menos-infisical-runtime/redaction-checklist.md`
+
+Minimum redaction checklist content:
+- command(s) executed
+- confirmation that secret-bearing tasks used `no_log: true` and `diff: false`
+- confirmation that no plaintext secret values appeared in captured output
+- temp artifact cleanup confirmation (`{{ menos_infisical_tmp_dir }}` empty/removed)
+
 
 ## Handoff Notes
 
