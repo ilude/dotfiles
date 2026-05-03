@@ -139,13 +139,15 @@ Use the `subagent` tool in **parallel** mode to launch the full review panel.
 Use:
 - `agentScope: "both"`
 - `confirmProjectAgents: false`
-- `modelSize: "medium"`
+- `modelSize: "small"` for the independent reviewers by default
 - `modelPolicy: "same-family"`
 
+Escalate independent reviewers to `modelSize: "medium"` only when the plan is unusually large, security-critical, or architecturally risky. Keep synthesis/verification in the main coordinator context unless a targeted rebuttal truly needs a subagent. This keeps the mandatory 6-reviewer model while avoiding routine 6x medium-model latency.
+
 This means reviewer subagents should attempt to stay on the same provider/model ladder as the current session by default. Example mappings:
-- OpenAI Codex session → medium reviewer models such as `gpt-5.4-fast` or nearest routine same-family model
-- Anthropic session → `sonnet`
-- GitHub Copilot session → best available GitHub-backed medium model in the same family/provider
+- OpenAI Codex session → small reviewer models for routine reviews, medium only for high-risk plans
+- Anthropic session → haiku for routine reviewers, sonnet only for high-risk plans
+- GitHub Copilot session → best available GitHub-backed small reviewer model, medium only for high-risk plans
 
 Each reviewer must receive:
 - the plan path
@@ -153,13 +155,20 @@ Each reviewer must receive:
 - explicit instruction to be **skeptical, evidence-seeking, and somewhat adversarial**
 - instruction to avoid praise-heavy or approval-heavy output
 - instruction to focus on actionable findings, not generic commentary
-- strict output budget: return at most 5 findings, each with severity, evidence from the plan, and required fix; do not restate the whole plan
+- strict output budget: return a compact machine-readable list of at most 5 findings; each finding must include `severity`, `evidence`, and `required_fix`; do not restate the whole plan, include praise, or include more than 120 words per finding
 
 Reviewer failure/truncation handling:
-- Do **not** rerun the full review panel just because one reviewer output is truncated or verbose.
-- If one reviewer fails or truncates, ask only that reviewer for a compact recovery response: `Return only your top 5 actionable findings as Severity | Evidence | Required fix`.
+- Do **not** rerun the full review panel just because one reviewer output is verbose.
+- If a reviewer output is verbose but still contains usable findings, synthesize from it directly; do not run recovery.
+- If exactly one reviewer fails or is genuinely truncated/unusable, ask only that reviewer for a compact recovery response: `Return only your top 5 actionable findings as Severity | Evidence | Required fix`.
 - If two or more reviewers fail due to the same infrastructure/model issue, stop and report the review as blocked rather than launching another full panel.
 - A second full independent review panel is only allowed if the plan file changed materially after the first review, or if the user explicitly asks for a fresh review.
+- Do not run compact recovery for every reviewer unless every reviewer response is unusable; that is considered an infrastructure failure and should be reported as blocked.
+
+Coarse timing until observability tooling exists:
+- Record wall-clock start/end times for the initial panel, any recovery call, verification, and synthesis.
+- Include these coarse durations in the synthesis under `## Timing Notes`.
+- If per-reviewer durations are unavailable, explicitly write `per-reviewer timing unavailable` rather than guessing.
 
 ### Reviewer task templates
 
@@ -210,17 +219,19 @@ Instead:
 3. run a **targeted rebuttal stage only when needed**
 
 ### Trigger a rebuttal/discussion only if at least one of these is true:
-- two reviewers disagree materially about severity or whether something is a real issue
-- a HIGH/CRITICAL finding looks weakly supported or possibly false-positive
-- the simplicity reviewer proposes a smaller solution that conflicts with domain-specific caution
-- multiple reviewers find overlapping issues but imply different fixes
+- two reviewers disagree materially about a finding that would change the final verdict or required fixes
+- a HIGH/CRITICAL finding looks weakly supported or possibly false-positive and would otherwise be listed as a must-fix bug
+- the simplicity reviewer proposes a smaller solution that conflicts with a domain-specific safety concern and the choice changes execution scope
+- multiple reviewers find overlapping issues but imply incompatible fixes
+
+Do not run rebuttal just to improve wording, gather more examples, or resolve low/medium hardening disagreements.
 
 ### Rebuttal rules
 - limit rebuttal to the specific contested findings
 - involve only the relevant reviewers
 - keep it short and focused
 - use it to resolve outcome-changing disagreements, not to create debate for its own sake
-- when launching rebuttal follow-ups, prefer `modelSize: "large"` with `modelPolicy: "same-family"` because disputed high-severity synthesis benefits from the strongest available same-provider model
+- when launching rebuttal follow-ups, prefer `modelSize: "medium"` with `modelPolicy: "same-family"`; use `large` only for contested critical/security findings where the verdict depends on the answer
 
 If no meaningful disagreement exists, skip rebuttals and synthesize directly.
 
@@ -228,7 +239,7 @@ If no meaningful disagreement exists, skip rebuttals and synthesize directly.
 
 ## Step 6: Verify High-Severity Findings
 
-Before accepting any **CRITICAL** or **HIGH** finding into the final Bugs section, verify the claim against the plan and, when relevant, the actual codebase using available tools such as `read`, `bash`, `grep`/`git grep`, or targeted test commands.
+Before accepting any **CRITICAL** or **HIGH** finding into the final Bugs section, verify the claim against the plan and, when relevant, the actual codebase using the cheapest adequate tool: `read` first, targeted `grep`/`git grep` second, and test commands only when static inspection cannot verify the claim.
 
 For each high-severity finding:
 
@@ -236,7 +247,7 @@ For each high-severity finding:
 - **Incorrect**: move it to Contested or Dismissed Findings as a false positive, with the reason.
 - **Unverifiable in this session**: downgrade it unless the plan itself clearly proves the issue; label it `needs human confirmation`.
 
-Do not report speculative high-severity findings as confirmed bugs without this verification pass.
+Do not report speculative high-severity findings as confirmed bugs without this verification pass. Verify only findings that would become Bugs or materially change the verdict; do not spend extra tool calls verifying hardening-only suggestions unless they are easy to check.
 
 ---
 
@@ -282,6 +293,16 @@ Include findings that were rejected, downgraded, or disputed after rebuttal/disc
 
 ## Verification Notes
 For each CRITICAL/HIGH finding that survived into Bugs, cite the concrete plan section, file, command, or code evidence used to verify it.
+
+## Timing Notes
+| Step | Duration | Notes |
+|------|----------|-------|
+| Initial review panel | {duration or unknown} | {reviewer count/status} |
+| Recovery calls | {duration or not run} | {only failed/truncated reviewers, if any} |
+| Verification | {duration or unknown} | {commands/tools used} |
+| Synthesis | {duration or unknown} | {artifact path} |
+
+If per-reviewer timings are unavailable, write `per-reviewer timing unavailable`.
 
 ## Overall Verdict
 Choose one:
@@ -351,6 +372,14 @@ Use this structure:
 
 ## Verification Notes
 1. ...
+
+## Timing Notes
+| Step | Duration | Notes |
+|------|----------|-------|
+| Initial review panel | ... | ... |
+| Recovery calls | ... | ... |
+| Verification | ... | ... |
+| Synthesis | ... | ... |
 
 ## Review Artifact
 Wrote full synthesis to: `{review_dir}/synthesis.md`
