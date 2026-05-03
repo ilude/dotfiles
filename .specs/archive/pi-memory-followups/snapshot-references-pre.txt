@@ -1,0 +1,107 @@
+pi/extensions/agent-chain.ts:6: * a derived compact mental-model snapshot at task start via the mental-model skill.
+pi/extensions/agent-chain.ts:56:	type ExpertiseSnapshot,
+pi/extensions/agent-chain.ts:57:	type ExpertiseSnapshotState,
+pi/extensions/agent-chain.ts:62:	buildExpertiseSnapshot,
+pi/extensions/agent-chain.ts:66:	formatExpertiseSnapshotText,
+pi/extensions/agent-chain.ts:71:} from "../lib/expertise-snapshot";
+pi/extensions/agent-chain.ts:117:		snapshotPath: path.join(expertiseDir, `${agent}-mental-model.json`),
+pi/extensions/agent-chain.ts:118:		statePath: path.join(expertiseDir, `${agent}-mental-model.state.json`),
+pi/extensions/agent-chain.ts:128:		snapshotPath: path.join(layerDir, `${agent}-mental-model.json`),
+pi/extensions/agent-chain.ts:129:		statePath: path.join(layerDir, `${agent}-mental-model.state.json`),
+pi/extensions/agent-chain.ts:484:async function writeSnapshotState(statePath: string, state: ExpertiseSnapshotState): Promise<void> {
+pi/extensions/agent-chain.ts:485:	await withFileMutationQueue(statePath, async () => {
+pi/extensions/agent-chain.ts:486:		await writeJsonAtomic(statePath, state);
+pi/extensions/agent-chain.ts:673:	snapshotPath: string;
+pi/extensions/agent-chain.ts:674:	statePath: string;
+pi/extensions/agent-chain.ts:682:): Promise<{ snapshot: ExpertiseSnapshot; state: ExpertiseSnapshotState }> {
+pi/extensions/agent-chain.ts:684:	const snapshot = await buildExpertiseSnapshot(agent, entries, similarityConfig);
+pi/extensions/agent-chain.ts:686:	await withFileMutationQueue(paths.statePath, async () => {
+pi/extensions/agent-chain.ts:687:		await writeJsonAtomic(paths.snapshotPath, snapshot);
+pi/extensions/agent-chain.ts:688:		await writeJsonAtomic(paths.statePath, state);
+pi/extensions/agent-chain.ts:696:	snapshot: ExpertiseSnapshot | null;
+pi/extensions/agent-chain.ts:697:	state: ExpertiseSnapshotState | null;
+pi/extensions/agent-chain.ts:708:): Promise<{ text: string; snapshot: ExpertiseSnapshot | null; state: ExpertiseSnapshotState | null; usedRawFallback: boolean }> {
+pi/extensions/agent-chain.ts:709:	const snapshot = readJsonFile<ExpertiseSnapshot>(paths.snapshotPath);
+pi/extensions/agent-chain.ts:710:	const state = readJsonFile<ExpertiseSnapshotState>(paths.statePath);
+pi/extensions/agent-chain.ts:714:			text: formatExpertiseSnapshotText(agent, snapshot, { mode, currentProjects: getCurrentProjectNames(ctx) }),
+pi/extensions/agent-chain.ts:724:			text: formatExpertiseSnapshotText(agent, rebuilt.snapshot, { mode, currentProjects: getCurrentProjectNames(ctx) }),
+pi/extensions/agent-chain.ts:731:		await writeSnapshotState(paths.statePath, createDirtyState("failed", message));
+pi/extensions/agent-chain.ts:734:				text: formatExpertiseSnapshotText(agent, snapshot, { mode, currentProjects: getCurrentProjectNames(ctx), warning: `stale snapshot retained because rebuild failed: ${message}` }),
+pi/extensions/agent-chain.ts:783:	const sections = new Map<keyof ExpertiseSnapshot["categories"], { heading: string; itemLines: string[] }>();
+pi/extensions/agent-chain.ts:784:	const sectionFor = (heading: string, category: keyof ExpertiseSnapshot["categories"]) => {
+pi/extensions/agent-chain.ts:860:	// of truth. Snapshot / mental-model rebuilds are derived from that history.
+pi/extensions/agent-chain.ts:904:			await writeSnapshotState(targetPaths.statePath, createDirtyState("stale"));
+pi/extensions/agent-chain.ts:927:					statePath: targetPaths.statePath,
+pi/extensions/agent-chain.ts:1075:				snapshotPath: primaryLayerEntry.paths.snapshotPath,
+pi/extensions/agent-chain.ts:1076:				statePath: primaryLayerEntry.paths.statePath,
+pi/extensions/README.md:21:`extension-utils.ts`, `transcript.ts`, `expertise-snapshot.ts`,
+pi/lib/expertise-snapshot.ts:69:export interface ExpertiseSnapshot {
+pi/lib/expertise-snapshot.ts:87:export interface ExpertiseSnapshotState {
+pi/lib/expertise-snapshot.ts:420:export async function buildExpertiseSnapshot(
+pi/lib/expertise-snapshot.ts:424:): Promise<ExpertiseSnapshot> {
+pi/lib/expertise-snapshot.ts:451:export function createDirtyState(status: ExpertiseSnapshotState["rebuild_status"] = "stale", lastError?: string): ExpertiseSnapshotState {
+pi/lib/expertise-snapshot.ts:461:export function createReadyState(snapshot: ExpertiseSnapshot): ExpertiseSnapshotState {
+pi/lib/expertise-snapshot.ts:472:  snapshot: ExpertiseSnapshot | null,
+pi/lib/expertise-snapshot.ts:473:  state: ExpertiseSnapshotState | null,
+pi/lib/expertise-snapshot.ts:494:export const EXPERTISE_CATEGORY_ORDER: Array<[string, keyof ExpertiseSnapshot["categories"]]> = [
+pi/lib/expertise-snapshot.ts:503:const CONCISE_LIMITS: Record<keyof ExpertiseSnapshot["categories"], number> = {
+pi/lib/expertise-snapshot.ts:531:  category: keyof ExpertiseSnapshot["categories"],
+pi/lib/expertise-snapshot.ts:558:export function formatExpertiseSnapshotText(
+pi/lib/expertise-snapshot.ts:560:  snapshot: ExpertiseSnapshot,
+pi/lib/memory-snapshot-archive.ts:20: * Returns absolute paths for all *-mental-model*.json files under
+pi/lib/memory-snapshot-archive.ts:39:      entry.name.includes("-mental-model") &&
+pi/lib/memory-snapshot-archive.ts:207:  return `# Restore mental-model snapshots from archive ${isoTs}
+pi/lib/memory-snapshot-archive.ts:215:- Mirrored \`pi/multi-team/expertise/**/*-mental-model*.json\` files under their
+pi/tests/agent-chain.test.ts:35:      snapshotPath: path.join(expertiseDir, `${agent}-mental-model.json`),
+pi/tests/agent-chain.test.ts:36:      statePath: path.join(expertiseDir, `${agent}-mental-model.state.json`),
+pi/tests/agent-chain.test.ts:55:    const { snapshotPath } = pathsFor(agent);
+pi/tests/agent-chain.test.ts:56:    return JSON.parse(fs.readFileSync(snapshotPath, "utf-8"));
+pi/tests/agent-chain.test.ts:134:    const { logPath, statePath } = pathsFor("backend-dev");
+pi/tests/agent-chain.test.ts:137:    expect(fs.existsSync(statePath)).toBe(true);
+pi/tests/agent-chain.test.ts:147:    const state = JSON.parse(fs.readFileSync(statePath, "utf-8"));
+pi/tests/agent-chain.test.ts:174:    const { snapshotPath, statePath } = pathsFor("orchestrator");
+pi/tests/agent-chain.test.ts:176:    expect(fs.existsSync(snapshotPath)).toBe(true);
+pi/tests/agent-chain.test.ts:177:    expect(fs.existsSync(statePath)).toBe(true);
+pi/tests/agent-chain.test.ts:185:  it("preserves raw-log history while reading from a fresh mental-model snapshot", async () => {
+pi/tests/agent-chain.test.ts:203:    const { logPath, snapshotPath } = pathsFor("planner");
+pi/tests/agent-chain.test.ts:205:    expect(fs.existsSync(snapshotPath)).toBe(true);
+pi/tests/agent-chain.test.ts:766:        { path: "pi/extensions/agent-chain.ts", role: "expertise tools", notes: "mental-model read/write path" },
+pi/tests/agent-chain.test.ts:940:        path.join(oldProjectDir, "snapshot-drift-agent-mental-model.state.json"),
+pi/tests/expertise-layering.test.ts:45:function snapshotPath(dir: string, agent: string): string {
+pi/tests/expertise-layering.test.ts:46:  return path.join(dir, `${agent}-mental-model.json`);
+pi/tests/expertise-layering.test.ts:49:function statePath(dir: string, agent: string): string {
+pi/tests/expertise-layering.test.ts:50:  return path.join(dir, `${agent}-mental-model.state.json`);
+pi/tests/expertise-layering.test.ts:302:      snapshotPath(snapshotDir, "drift-agent"),
+pi/tests/memory-snapshot-archive.test.ts:51:  it("finds both *-mental-model.json and *-mental-model.state.json, ignores .yaml", () => {
+pi/tests/memory-snapshot-archive.test.ts:55:        { rel: "pi/multi-team/expertise/foo-mental-model.json", content: "{}" },
+pi/tests/memory-snapshot-archive.test.ts:56:        { rel: "pi/multi-team/expertise/foo-mental-model.state.json", content: "{}" },
+pi/tests/memory-snapshot-archive.test.ts:57:        { rel: "pi/multi-team/expertise/foo-mental-model.yaml", content: "key: val" },
+pi/tests/memory-snapshot-archive.test.ts:58:        { rel: "pi/multi-team/expertise/bar-mental-model.json", content: "{}" },
+pi/tests/memory-snapshot-archive.test.ts:59:        { rel: "pi/multi-team/expertise/sub/baz-mental-model.json", content: "{}" },
+pi/tests/memory-snapshot-archive.test.ts:61:        { rel: "pi/other/foo-mental-model.json", content: "{}" },
+pi/tests/memory-snapshot-archive.test.ts:67:      expect(names).toContain("foo-mental-model.json");
+pi/tests/memory-snapshot-archive.test.ts:68:      expect(names).toContain("foo-mental-model.state.json");
+pi/tests/memory-snapshot-archive.test.ts:69:      expect(names).toContain("bar-mental-model.json");
+pi/tests/memory-snapshot-archive.test.ts:70:      expect(names).toContain("baz-mental-model.json");
+pi/tests/memory-snapshot-archive.test.ts:71:      expect(names).not.toContain("foo-mental-model.yaml");
+pi/tests/memory-snapshot-archive.test.ts:83:        { rel: "pi/multi-team/expertise/zzz-mental-model.json", content: "{}" },
+pi/tests/memory-snapshot-archive.test.ts:84:        { rel: "pi/multi-team/expertise/aaa-mental-model.json", content: "{}" },
+pi/tests/memory-snapshot-archive.test.ts:85:        { rel: "pi/multi-team/expertise/mmm-mental-model.json", content: "{}" },
+pi/tests/memory-snapshot-archive.test.ts:127:        { rel: "pi/multi-team/expertise/foo/bar-mental-model.json", content: "{}" },
+pi/tests/memory-snapshot-archive.test.ts:135:      expect(entry.src).toBe("pi/multi-team/expertise/foo/bar-mental-model.json");
+pi/tests/memory-snapshot-archive.test.ts:137:      expect(entry.dst).toBe("pi/multi-team/expertise/foo/bar-mental-model.json");
+pi/tests/memory-snapshot-archive.test.ts:171:        { rel: "pi/multi-team/expertise/alpha-mental-model.json", content: '{"a":1}' },
+pi/tests/memory-snapshot-archive.test.ts:172:        { rel: "pi/multi-team/expertise/beta-mental-model.state.json", content: '{"b":2}' },
+pi/tests/memory-snapshot-archive.test.ts:210:        { rel: "pi/multi-team/expertise/foo-mental-model.json", content: '{"ok":true}' },
+pi/tests/memory-snapshot-archive.test.ts:261:        { rel: "pi/multi-team/expertise/x-mental-model.json", content: '{"x":1}' },
+pi/tests/memory-snapshot-archive.test.ts:262:        { rel: "pi/multi-team/expertise/y-mental-model.state.json", content: '{"y":2}' },
+pi/tests/memory-snapshot-archive.test.ts:282:        { rel: "pi/multi-team/expertise/good-mental-model.json", content: '{"ok":true}' },
+pi/tests/runtime-smoke.test.ts:62:			"expertise-snapshot.ts",
+pi/tests/snapshot-restore-smoke.test.ts:5: *   - known-good archive restore + parse + ExpertiseSnapshot shape pass
+pi/tests/snapshot-restore-smoke.test.ts:7: *   - non-snapshot-shape mental-model JSON -> smoke throws
+pi/tests/snapshot-restore-smoke.test.ts:85:        relPath: "pi/multi-team/expertise/agent-a-mental-model.json",
+pi/tests/snapshot-restore-smoke.test.ts:89:        relPath: "pi/multi-team/expertise/agent-a-mental-model.state.json",
+pi/tests/snapshot-restore-smoke.test.ts:103:        relPath: "pi/multi-team/expertise/agent-b-mental-model.json",
+pi/tests/snapshot-restore-smoke.test.ts:111:  it("throws when a mental-model file lacks ExpertiseSnapshot top-level keys", () => {
+pi/tests/snapshot-restore-smoke.test.ts:115:        relPath: "pi/multi-team/expertise/agent-c-mental-model.json",
+pi/tests/snapshot-restore-smoke.test.ts:121:    expect(() => runRestoreSmoke(archiveDir)).toThrow(/ExpertiseSnapshot shape/);

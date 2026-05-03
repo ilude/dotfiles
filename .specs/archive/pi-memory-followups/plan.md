@@ -1,7 +1,7 @@
 ---
 created: 2026-05-02
-status: draft
-completed:
+status: completed
+completed: 2026-05-03
 review:
   - review-1/synthesis.md (applied: 5 bugs, 8 hardening)
 ---

@@ -1,0 +1,46 @@
+pi/extensions/agent-chain.ts:8: * legacy mental-model snapshot machinery has been retired.
+pi/extensions/agent-chain.ts:64:// (The legacy lib/expertise-snapshot.ts module that previously exported this
+pi/extensions/README.md:27:The legacy `*-mental-model.json` snapshot loader/regenerator has been
+pi/extensions/README.md:33:mental-model snapshots; it renders a category-grouped raw view directly
+pi/extensions/README.md:47:just memory-snapshot-restore-smoke   # parse + ExpertiseSnapshot shape check
+pi/lib/memory-snapshot-archive.ts:20: * Returns absolute paths for all *-mental-model*.json files under
+pi/lib/memory-snapshot-archive.ts:39:      entry.name.includes("-mental-model") &&
+pi/lib/memory-snapshot-archive.ts:207:  return `# Restore mental-model snapshots from archive ${isoTs}
+pi/lib/memory-snapshot-archive.ts:215:- Mirrored \`pi/multi-team/expertise/**/*-mental-model*.json\` files under their
+pi/tests/agent-chain.test.ts:4: * The legacy mental-model snapshot loader/regenerator has been retired; these
+pi/tests/agent-chain.test.ts:91:    // No mental-model.state.json sidecar should exist anywhere under the
+pi/tests/agent-chain.test.ts:93:    const statePath = path.join(path.dirname(logPath), "backend-dev-mental-model.state.json");
+pi/tests/agent-chain.test.ts:94:    expect(fs.existsSync(statePath)).toBe(false);
+pi/tests/memory-snapshot-archive.test.ts:51:  it("finds both *-mental-model.json and *-mental-model.state.json, ignores .yaml", () => {
+pi/tests/memory-snapshot-archive.test.ts:55:        { rel: "pi/multi-team/expertise/foo-mental-model.json", content: "{}" },
+pi/tests/memory-snapshot-archive.test.ts:56:        { rel: "pi/multi-team/expertise/foo-mental-model.state.json", content: "{}" },
+pi/tests/memory-snapshot-archive.test.ts:57:        { rel: "pi/multi-team/expertise/foo-mental-model.yaml", content: "key: val" },
+pi/tests/memory-snapshot-archive.test.ts:58:        { rel: "pi/multi-team/expertise/bar-mental-model.json", content: "{}" },
+pi/tests/memory-snapshot-archive.test.ts:59:        { rel: "pi/multi-team/expertise/sub/baz-mental-model.json", content: "{}" },
+pi/tests/memory-snapshot-archive.test.ts:61:        { rel: "pi/other/foo-mental-model.json", content: "{}" },
+pi/tests/memory-snapshot-archive.test.ts:67:      expect(names).toContain("foo-mental-model.json");
+pi/tests/memory-snapshot-archive.test.ts:68:      expect(names).toContain("foo-mental-model.state.json");
+pi/tests/memory-snapshot-archive.test.ts:69:      expect(names).toContain("bar-mental-model.json");
+pi/tests/memory-snapshot-archive.test.ts:70:      expect(names).toContain("baz-mental-model.json");
+pi/tests/memory-snapshot-archive.test.ts:71:      expect(names).not.toContain("foo-mental-model.yaml");
+pi/tests/memory-snapshot-archive.test.ts:83:        { rel: "pi/multi-team/expertise/zzz-mental-model.json", content: "{}" },
+pi/tests/memory-snapshot-archive.test.ts:84:        { rel: "pi/multi-team/expertise/aaa-mental-model.json", content: "{}" },
+pi/tests/memory-snapshot-archive.test.ts:85:        { rel: "pi/multi-team/expertise/mmm-mental-model.json", content: "{}" },
+pi/tests/memory-snapshot-archive.test.ts:127:        { rel: "pi/multi-team/expertise/foo/bar-mental-model.json", content: "{}" },
+pi/tests/memory-snapshot-archive.test.ts:135:      expect(entry.src).toBe("pi/multi-team/expertise/foo/bar-mental-model.json");
+pi/tests/memory-snapshot-archive.test.ts:137:      expect(entry.dst).toBe("pi/multi-team/expertise/foo/bar-mental-model.json");
+pi/tests/memory-snapshot-archive.test.ts:171:        { rel: "pi/multi-team/expertise/alpha-mental-model.json", content: '{"a":1}' },
+pi/tests/memory-snapshot-archive.test.ts:172:        { rel: "pi/multi-team/expertise/beta-mental-model.state.json", content: '{"b":2}' },
+pi/tests/memory-snapshot-archive.test.ts:210:        { rel: "pi/multi-team/expertise/foo-mental-model.json", content: '{"ok":true}' },
+pi/tests/memory-snapshot-archive.test.ts:261:        { rel: "pi/multi-team/expertise/x-mental-model.json", content: '{"x":1}' },
+pi/tests/memory-snapshot-archive.test.ts:262:        { rel: "pi/multi-team/expertise/y-mental-model.state.json", content: '{"y":2}' },
+pi/tests/memory-snapshot-archive.test.ts:282:        { rel: "pi/multi-team/expertise/good-mental-model.json", content: '{"ok":true}' },
+pi/tests/runtime-smoke.test.ts:62:			"expertise-snapshot.ts",
+pi/tests/snapshot-restore-smoke.test.ts:5: *   - known-good archive restore + parse + ExpertiseSnapshot shape pass
+pi/tests/snapshot-restore-smoke.test.ts:7: *   - non-snapshot-shape mental-model JSON -> smoke throws
+pi/tests/snapshot-restore-smoke.test.ts:85:        relPath: "pi/multi-team/expertise/agent-a-mental-model.json",
+pi/tests/snapshot-restore-smoke.test.ts:89:        relPath: "pi/multi-team/expertise/agent-a-mental-model.state.json",
+pi/tests/snapshot-restore-smoke.test.ts:103:        relPath: "pi/multi-team/expertise/agent-b-mental-model.json",
+pi/tests/snapshot-restore-smoke.test.ts:111:  it("throws when a mental-model file lacks ExpertiseSnapshot top-level keys", () => {
+pi/tests/snapshot-restore-smoke.test.ts:115:        relPath: "pi/multi-team/expertise/agent-c-mental-model.json",
+pi/tests/snapshot-restore-smoke.test.ts:121:    expect(() => runRestoreSmoke(archiveDir)).toThrow(/ExpertiseSnapshot shape/);
