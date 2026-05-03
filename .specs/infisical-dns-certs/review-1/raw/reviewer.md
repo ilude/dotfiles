@@ -1,0 +1,7 @@
+Severity | Evidence | Required fix
+--- | --- | ---
+High | `plan.md:104` allows rendering Cloudflare token into `infisical.env`; `plan.md:113` expects `{env.CLOUDFLARE_API_TOKEN}` for Caddy. | Require a separate Caddy-only env file mounted only by the `caddy` service, mode `0600`; do not put Cloudflare token in shared Infisical env.
+High | `plan.md:82`/`121` use only `coredns.host.name={{ infisical_domain }}`; fallback explicitly maps to `192.168.16.241` at `plan.md:83`. | Specify how Joyride label records resolve to the host IP, not an unreachable Docker bridge/container IP; add required label/static override for `192.168.16.241`.
+Medium | `plan.md:98-100` says build with `xcaddy` and pinned runtime, but does not require pinning the builder image, Caddy version, or `github.com/caddy-dns/cloudflare` version. | Pin builder/runtime Caddy versions and the Cloudflare DNS module version or commit for reproducible builds.
+Medium | `plan.md:123` says keep ports 80/443 bound, but DNS-01 does not require inbound port 80 and host may already have conflicts. | Add an explicit port-conflict/preflight check and clarify that 443 is required for clients while 80 is optional unless HTTP redirect/public reachability is desired.
+Medium | Validation only checks local DNS for `infisical.ilude.com`; `DNS_UNKNOWN_ACTION=drop` risk is only documented. | Add a validation command proving upstream/non-local names still resolve with acceptable latency through the intended client resolver path.
