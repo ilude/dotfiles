@@ -46,7 +46,7 @@ Package-manager priority:
 2. Use `pnpm` where Bun cannot resolve the Pi package graph, for the Windows global Pi install, or where a package already has `pnpm-lock.yaml`.
 3. If npm artifacts are accidentally created, remove `package-lock.json` and reinstall with the correct manager.
 
-`pi/extensions/` uses `pnpm` for extension type-check dependencies.
+`pi/extensions/` uses `pnpm` for extension type-check dependencies. `pi/tests/` uses Bun with `bun.lock` for the Vitest suite; do not replace it with `package-lock.json`.
 
 ### Windows package-manager note
 

@@ -95,7 +95,7 @@ Choose the agent based on detected language:
 
 For existing `.specs/*/plan.md` files:
 
-1. **Read the plan file** and validate it has the required sections (Objective, Team Members, Execution Waves).
+1. **Read the plan file** and validate it has the required sections (Objective, Task Breakdown, Execution Waves).
 2. **Check for existing active teams**:
    ```bash
    ls ~/.claude/teams/ 2>/dev/null

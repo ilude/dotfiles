@@ -142,6 +142,14 @@ The extension exposes structured commit tools:
 
 The older Python `scripts/commit-helper` remains a compatibility/parity reference for non-Pi consumers. Pi behavior is canonical going forward.
 
+### Direct-tool vs. slash-command usage
+
+**Agents must not call `commit_stage` or `commit_create` directly outside of the `/commit` slash-command flow.**
+
+The token-safety model is centralized in `/commit`: the command orchestrates `commit_plan`, presents the plan to the user for explicit approval, and only then passes the confirmation tokens to `commit_stage` and `commit_create`. Calling the mutating tools directly bypasses user review of the staged-path set and the commit message, eliminating the safety guarantee the token system provides.
+
+`commit_plan` and `commit_validate_message` are non-mutating and may be called directly for inspection or validation purposes.
+
 ## Validation
 
 `make check-pi-extensions` runs the full extension validation pipeline:

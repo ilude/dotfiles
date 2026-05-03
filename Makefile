@@ -169,7 +169,7 @@ check-pi-extensions:
 	@echo "Pi extension checks passed."
 
 # Run all checks
-check: lint test
+check: lint test check-pi-extensions
 	@echo "All checks passed."
 
 # Install git hooks (enables pre-commit testing)

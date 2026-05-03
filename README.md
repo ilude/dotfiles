@@ -150,7 +150,7 @@ make test-quick    # Run core tests only
 ```bash
 make lint          # Run shellcheck
 make format        # Format with shfmt
-make check         # Run lint + test
+make check         # Run lint + test + Pi extension validation
 ```
 
 ### Updating

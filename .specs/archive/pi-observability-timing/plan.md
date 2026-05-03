@@ -317,3 +317,7 @@ If deployment becomes required and is skipped, cancelled, or fails, `/do-it` mus
 - **Manual validation:** confirmed passed by user on 2026-05-02, including six-reviewer `/review-it`/equivalent validation, recovery/retry path, timing summary confirmation, and generated artifact check.
 - **Automated validation:** targeted observability/review prompt tests, extension typecheck, and `make check` passed.
 - **Archive status:** ready; this plan is archived under `.specs/archive/pi-observability-timing/plan.md`.
+
+## Post-Archive Addendum
+
+The observability instrumentation originally scoped to subagent and workflow-command surfaces was extended in a follow-on review pass. Timing spans for `commit_stage` and `commit_create` -- the two latency-sensitive mutation tools in `pi/extensions/commit.ts` -- landed as task T9 (M1) under [.specs/pi-review-2026-05-03/plan.md](../../pi-review-2026-05-03/plan.md). Both handlers are wrapped with `withTimingSpan` using category `"tool"` and span names `commit.stage` and `commit.create`, matching the naming convention established by the subagent and slash-command spans above. Tests covering span emission for both success and failure paths were added to `pi/tests/observability.test.ts`.
