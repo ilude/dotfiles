@@ -18,9 +18,38 @@ Pi auto-discovers extensions from `~/.dotfiles/pi/extensions/*.ts` (see
 
 **Do not put helpers, libraries, or scaffolds at the top level of
 `pi/extensions/`.** Put them under `pi/lib/` (this is where
-`extension-utils.ts`, `transcript.ts`, `expertise-snapshot.ts`,
-`yaml-helpers.ts`, and friends live). Templates intended for copy-paste
-should use the `.ts.example` suffix so auto-discovery skips them.
+`extension-utils.ts`, `transcript.ts`, `yaml-helpers.ts`, and friends
+live). Templates intended for copy-paste should use the `.ts.example`
+suffix so auto-discovery skips them.
+
+## Snapshot retirement
+
+The legacy `*-mental-model.json` snapshot loader/regenerator has been
+retired. Per-agent JSONL logs at
+`pi/multi-team/expertise/**/*-expertise-log.jsonl` are now the single
+source of truth, and startup memory hydration uses procedural files plus
+the JSONL-backed retrieval block in `pi/lib/memory-retrieve.ts`. The
+read path in `pi/extensions/agent-chain.ts` no longer rebuilds or writes
+mental-model snapshots; it renders a category-grouped raw view directly
+from JSONL.
+
+Historical snapshots are preserved offline:
+
+- Archive location: `~/.pi/agent/index/archive/{ISO-ts}/` (timestamped).
+- Each archive carries `manifest.json` (file list + SHA256s),
+  `restore.md`, and `transcript.log`.
+- Retention: keep each archive at least 30 days unless explicitly
+  deleted.
+
+Restore workflow:
+
+```bash
+just memory-snapshot-restore-smoke   # parse + ExpertiseSnapshot shape check
+# or, to actually restore the files in place:
+cp -R ~/.pi/agent/index/archive/<ts>/pi/multi-team/expertise pi/multi-team/expertise
+```
+
+(Windows / pwsh: `Copy-Item -Path ... -Destination ... -Recurse -Force`.)
 
 Subdirectories under `pi/extensions/` (such as `pi/extensions/subagent/` and
 `pi/extensions/web-fetch/`) are not auto-discovered; only top-level `*.ts`

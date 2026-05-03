@@ -1,5 +1,20 @@
 # Expertise Layering -- Normative Spec
 
+> **Snapshot retirement update (T4).** The `*-mental-model.json` snapshot
+> loader/regenerator has been retired. The JSONL `*-expertise-log.jsonl`
+> files are the single source of truth, and startup memory hydration uses
+> procedural memory plus the JSONL-backed retrieval block in
+> `pi/lib/memory-retrieve.ts`. The `read_expertise` tool now renders a
+> category-grouped raw view directly from JSONL records; it no longer
+> rebuilds, writes, reads, or freshness-checks any `mental-model.json` or
+> `mental-model.state.json` file. Sections below that describe snapshot
+> rebuild, snapshot dedupe keys, snapshot state files, or stale-snapshot
+> rebuild-on-read are retained for historical context only and do not
+> describe current runtime behavior. See
+> `pi/extensions/README.md#snapshot-retirement` and
+> `~/.pi/agent/index/archive/{ts}/restore.md` for the archive/restore
+> recipe.
+
 This document is the authoritative contract for the two-layer Pi expertise system.
 It defines repo ID derivation, layer storage layout, merge/read semantics, migration
 ordering, and safety rules. Implementation (T3) must match this spec exactly.
@@ -37,15 +52,16 @@ Tests (T2) must use the fixture tables in this document as their source of truth
 
 ```
 ~/.pi/agent/multi-team/expertise/
-  {agent}-expertise-log.jsonl          # global layer (legacy path, remains authoritative for global entries)
-  {agent}-mental-model.json            # global snapshot
-  {agent}-mental-model.state.json      # global snapshot state
+  {agent}-expertise-log.jsonl          # global layer JSONL log (source of truth)
   {repo-id-slug}/                      # project-local layer (one directory per repo ID)
     repo-id.json                       # persisted RepoIdMeta for drift detection
-    {agent}-expertise-log.jsonl        # project-local log
-    {agent}-mental-model.json          # project-local snapshot
-    {agent}-mental-model.state.json    # project-local snapshot state
+    {agent}-expertise-log.jsonl        # project-local JSONL log (source of truth)
 ```
+
+(Snapshot retirement -- T4: the `{agent}-mental-model.json` and
+`{agent}-mental-model.state.json` files that previously lived alongside
+each JSONL log have been removed. Historical copies are preserved under
+`~/.pi/agent/index/archive/{ts}/`.)
 
 The flat `{agent}-expertise-log.jsonl` files in the expertise root are the **global layer**
 (legacy path). They are never moved or deleted. New project-local entries are written to
