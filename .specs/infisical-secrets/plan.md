@@ -21,12 +21,13 @@ These secrets must be:
 - Never present in the repo, in `.env` files committed by accident, or baked into Docker images
 - Pulled at runtime, with short-lived service tokens rather than long-lived static keys
 
-There is an existing in-flight design for a custom secret vault at `.specs/serapis-env-vault/` (Serapis -- Go binary + SQLite + ed25519 SSH-key auth). The user explicitly chose Infisical for THIS plan. Rationale:
+There is an archived design for a custom secret vault at `.specs/archive/serapis-env-vault/` (Serapis -- Go binary + SQLite + ed25519 SSH-key auth). The user explicitly chose Infisical for THIS plan. Rationale:
 - Off-the-shelf, OSS, audited; no custom code to maintain
 - Native Python SDK (`infisical-python` on PyPI), REST API, and a CLI
 - Native concept of "machine identities" with short-lived service tokens
 - Self-hostable via Docker Compose; matches the existing menos host deployment pattern
 - Web UI for non-CLI rotations
+- Avoids Serapis custom-server/custom-crypto maintenance risk; the archived Serapis materials are also internally inconsistent about whether the server is zero-knowledge or sees plaintext, so Serapis should not be revived without a fresh design review
 
 This plan deploys a self-hosted Infisical instance, integrates it with `pi` and the X-research service, and provides a path for migrating any existing scattered secrets into it. It deliberately stays narrow.
 
@@ -42,6 +43,9 @@ This plan deploys a self-hosted Infisical instance, integrates it with `pi` and 
 - Machine-identity client secrets: surfaced ONCE by the bootstrap script via `--secrets-out=<tmpfs path>`. Operator copies into password manager + Docker secret on the menos host, then shreds the tmpfs file.
 - The Infisical service token used by the deployed FastAPI service must be mounted as a Docker secret or a runtime-injected env var, NEVER baked into the image.
 - Cache encryption (T6): use plain JSON with `chmod 600` (Git Bash on Windows translates to NTFS ACLs via msys; not perfect but non-zero). Threat model is already "user-level FS read = game over"; bespoke age-encryption keyed off the client_secret was rejected (rotation would brick the cache and the encrypted file lives next to the only thing that decrypts it). If threat model later includes backups/cloud-sync exfiltration, swap to OS keyring (Windows Credential Manager / macOS Keychain / libsecret).
+- Secure output/logging policy: code, scripts, tests, runbooks, and validation evidence must never print secret values. Logs may include secret paths, key names, identity names, HTTP status codes, cache state, and redacted fingerprints only. Exceptions must redact values before rendering. Bootstrap may print machine-identity client IDs, but never client secrets outside the `--secrets-out` file.
+- Local stub marker convention: when a migrated local file is replaced with a stub, the stub may include non-secret comments pointing to the Infisical project/environment/path, but must not include values, tokens, passwords, or auth headers. Treat this as the Infisical equivalent of Serapis's self-describing `.env` origin marker without preserving any credential material.
+- Post-deploy audit/rate-limit review: after Infisical is live, review available OSS audit logs, machine identity activity events, failed-auth visibility, and any configurable rate-limit/session settings. Document what exists and any gaps; do not add SIEM shipping or paid-tier features in this plan.
 - No AI mentions in code/comments. ASCII punctuation only.
 - KISS: single project ("dotfiles") with environments `dev`, `prod`. Folders for grouping. Do NOT prematurely build elaborate RBAC schemes.
 - Out of scope: SSO/SAML, audit-log shipping to a SIEM, multi-org setup, bring-your-own-KMS, migrating menos-api behind Caddy.
@@ -53,7 +57,7 @@ This plan deploys a self-hosted Infisical instance, integrates it with `pi` and 
 | HashiCorp Vault (self-hosted) | Industry standard; rich auth methods | Heavy operational burden; UX overkill for personal/small-team use | Rejected -- too much for the scope |
 | Bitwarden Secrets Manager (self-hosted) | Familiar UI; integrated with existing Bitwarden | Less mature programmatic story than Infisical for service tokens | Rejected -- Infisical's machine-identity model is closer to fit |
 | Doppler / 1Password Secrets Automation (managed) | Zero ops | SaaS, recurring cost, secrets leave the host | Rejected -- self-hosted requirement |
-| `serapis-env-vault` (custom design in `.specs/serapis-env-vault/`) | Tailored to user's mental model; SSH-key auth | Brand-new code to maintain; no existing audit | Rejected for THIS plan; `pi/secrets/` package boundary is the swap point |
+| `serapis-env-vault` (archived custom design in `.specs/archive/serapis-env-vault/`) | Tailored to user's mental model; SSH-key auth; `.env`-native push/pull ideas | Brand-new code to maintain; custom crypto/server risk; archived docs are inconsistent about zero-knowledge vs server-sees-plaintext behavior | Rejected for THIS plan; borrow only safe hardening ideas, and keep `pi/secrets/` as the future swap point |
 | `.env` files synced via `serapis push/pull` | Simple | No rotation, no machine identities, no audit log, no per-environment scoping | Rejected -- doesn't meet rotation/audit needs |
 | **Self-hosted Infisical via Docker Compose + Caddy + Ansible** | **OSS, native Python SDK, machine identities, web UI, fits compose+Ansible pattern** | **Postgres dependency; Caddy added as new infra; one more service to back up** | **Selected** |
 
@@ -68,9 +72,10 @@ When complete:
 5. A machine identity `pi-developer` exists with read access to `dev` and `prod` for hands-on debugging (1h token TTL).
 6. A small Python helper (`pi/secrets/infisical.py`) wraps the Infisical SDK with `chmod 600` plain-JSON last-known-good cache, defaulting ON in service deploys with a metric/log line emitted when serving from stale cache.
 7. The X-research FastAPI service uses the same helper at startup to load all credentials.
-8. Documented runbooks: rotate X account credential, rotate Webshare creds, revoke a machine identity, recover root admin password (DB-edit dance -- no SMTP), restore from backup, rotate Infisical bootstrap encryption keys.
+8. Documented runbooks: rotate X account credential, rotate Webshare creds, revoke a machine identity, recover root admin password (DB-edit dance -- no SMTP), restore from backup, rotate Infisical bootstrap encryption keys, secure output/logging, local stub marker format, and audit/rate-limit review.
 9. Backups run nightly (Postgres dump + Infisical .env in one encrypted bundle), 14-day retention, with at least one restore drill documented.
 10. Pre-commit secret scanner installed; HEAD is clean. Existing git history has been audited and any active credentials rotated; history rewrite is explicitly out of scope unless an active credential is discovered.
+11. Migrated local secret files use non-secret stub markers that point operators to Infisical paths without exposing values.
 
 ## Project Context
 
@@ -214,7 +219,7 @@ When complete:
 - Blocked by: V2 (and the interactive root signup from T3 must be complete)
 - Description: A Python script `scripts/infisical_bootstrap.py` that, given root admin credentials interactively (or via `INFISICAL_ADMIN_TOKEN` env var), creates: project `dotfiles`; environments `dev`, `prod`; folders `/x-research/accounts`, `/x-research/webshare`, `/x-research/fallback-apis`, `/shared/`; machine identities `x-research-service` (read-only `/x-research/**` in prod) and `pi-developer` (read on dev + prod). Both identities have token TTL = 3600s. Idempotent: re-running on an already-bootstrapped instance is a no-op or safe update.
 
-  Machine-identity client_id printed to stdout. Client_secret values written ONCE to the path supplied via `--secrets-out=<path>` (script REJECTS paths not under `/run/`, `/tmp/`, or `/dev/shm/` to discourage persistent storage). The output file is structured: one identity per line, format `IDENTITY_NAME=client_id:client_secret`. The script prints a banner instructing the operator to (1) copy values into the password manager, (2) install the appropriate value into the Docker secret on the menos host, (3) shred the tmpfs file with `shred -u`.
+  Machine-identity client_id printed to stdout. Client_secret values written ONCE to the path supplied via `--secrets-out=<path>` (script REJECTS paths not under `/run/`, `/tmp/`, or `/dev/shm/` to discourage persistent storage). The output file is structured: one identity per line, format `IDENTITY_NAME=client_id:client_secret`. The script prints a banner instructing the operator to (1) copy values into the password manager, (2) install the appropriate value into the Docker secret on the menos host, (3) shred the tmpfs file with `shred -u`. The script must implement the secure output/logging policy: stdout/stderr may include resource names, identity names, client IDs, file paths, and redacted fingerprints, but must never echo client secrets, admin tokens, passwords, or secret values.
 - Files: `scripts/infisical_bootstrap.py`, `scripts/tests/test_infisical_bootstrap.py` (mocked SDK).
 - Acceptance Criteria:
   1. [ ] First run creates all documented resources
@@ -230,6 +235,9 @@ When complete:
      - Verify: `uv run pytest scripts/tests/test_infisical_bootstrap.py -k secrets_out_handling`
      - Pass: green
   5. [ ] Banner instructs operator on copy + shred steps
+  6. [ ] stdout/stderr never include client_secret values, admin tokens, passwords, or secret values
+     - Verify: `uv run pytest scripts/tests/test_infisical_bootstrap.py -k no_secret_output`
+     - Pass: green
 
 **T6: `pi/secrets/infisical.py` helper (chmod 600 cache, default ON, refresh@75%)** [sonnet] -- builder
 - Blocked by: V2
@@ -238,6 +246,8 @@ When complete:
   Cache: plain JSON at `~/.cache/dotfiles/infisical-cache.json`, chmod 600, last-known-good model. Cache is DEFAULT ON in both dev and service deploys (resolves contradiction with Success Criterion 5). Fresh-cache TTL: 5 minutes. Stale-cache (older than TTL but < 24h) usage emits a structured log line `cache_stale=true` so observability picks it up. Cache older than 24h is treated as missing.
 
   Token refresh: re-auth at 75% of remaining service-token TTL, with 60s clock-skew tolerance. Single in-flight refresh (asyncio lock).
+
+  Secure output/logging: helper logs must never include secret values, client secrets, access tokens, auth headers, or cache payload contents. Allowed structured fields: `secret_path`, `env`, `cache_hit`, `cache_stale`, `error_type`, `http_status`, and redacted request IDs/fingerprints. Exceptions must not interpolate provider response bodies unless redacted.
 - Files: `pi/secrets/__init__.py`, `pi/secrets/infisical.py`, `pi/secrets/cache.py`, `pi/secrets/tests/test_infisical.py`, plus a stanza in `pi/pyproject.toml` adding `infisical-python` to dependencies.
 - Acceptance Criteria:
   1. [ ] `uv run pytest pi/secrets/` runs from repo root and passes
@@ -255,6 +265,9 @@ When complete:
   5. [ ] Token refresh fires at 75% of TTL with 60s skew tolerance, single in-flight at a time
      - Verify: `uv run pytest pi/secrets/tests/test_infisical.py -k token_refresh`
      - Pass: green
+  6. [ ] Error/log paths redact secret values, client secrets, tokens, auth headers, provider response bodies, and cache payload contents
+     - Verify: `uv run pytest pi/secrets/tests/test_infisical.py -k redaction`
+     - Pass: green
 
 ### Wave 3 -- Validation Gate
 
@@ -266,6 +279,7 @@ When complete:
   3. Live integration: from the menos host (or a container on it), authenticate as `x-research-service`, attempt to read `/x-research/accounts/*` -> success; attempt to read `/shared/*` -> denied (verifies least-privilege). Log the actual HTTP status to `.specs/infisical-secrets/v3-deny-evidence.txt`.
   4. Live integration: stop the Infisical container; call `get_secret` against a key fetched within the last 5 minutes -> success with `cache_stale=false`; advance system clock 6 minutes (or wait); call again -> success with `cache_stale=true` log line; advance clock 25 hours; call again -> raises `SecretsUnavailable`. Restart Infisical container.
   5. `uv run ruff check pi/secrets/ scripts/` -- clean.
+  6. Audit/rate-limit review: inspect available Infisical OSS audit logs, machine identity activity events, failed-auth visibility, service-token/session TTL settings, and any configurable rate-limit controls. Document findings and gaps in `.specs/infisical-secrets/audit-hardening.md`; do not require paid-tier SIEM shipping.
 - On failure: file fix task; re-validate.
 
 ### Wave 4 (parallel)
@@ -292,19 +306,22 @@ When complete:
   4. Recover root admin password without SMTP (Postgres-edit dance: exec into infisical-postgres, find admin user row, set password reset token, complete reset via UI). NOTE: SMTP is intentionally not configured per Constraints; this is the only path.
   5. Full disaster restore from backup (links to `runbook-restore.md`)
   6. Rotate Infisical bootstrap encryption keys (`ENCRYPTION_KEY`, `AUTH_SECRET`) -- documented as a once-a-year manual procedure: take downtime, decrypt every secret with old key, re-encrypt with new key, update password manager, redeploy.
-  Each section is step-by-step with copy-pasteable commands.
+  7. Secure output/logging policy -- what may be logged, what must be redacted, and how to report failures without exposing values.
+  8. Local stub marker convention -- examples of non-secret stub files that point to Infisical project/environment/path without containing credential values.
+  9. Audit/rate-limit review -- where to inspect audit/activity events and how to record gaps found during V3.
+  Each section is step-by-step with copy-pasteable commands where commands are appropriate.
 - Files: `.specs/infisical-secrets/runbooks.md`.
 - Acceptance Criteria:
-  1. [ ] All six runbooks present
+  1. [ ] All nine runbooks present
      - Verify: `grep -c '^## ' .specs/infisical-secrets/runbooks.md`
-     - Pass: >= 6
+     - Pass: >= 9
   2. [ ] Recover-root runbook explicitly states the no-SMTP DB-edit path with concrete SQL
      - Verify: `grep -A2 'recover root' .specs/infisical-secrets/runbooks.md | grep -i -E 'UPDATE|psql'`
      - Pass: at least one match
 
 **T9: Migrate scattered secrets** [sonnet] -- builder
 - Blocked by: V3
-- Description: Audit the repo (especially the `.env` at repo root flagged by T0) and the user's home dir for existing secrets that should now live in Infisical. For each: move into Infisical (and replace on-disk file with a stub pointing at the Infisical path), rotate if T0 flagged it as exposed in history, or document why it should NOT move (e.g. GitHub PAT in `gh`'s keychain is fine). Report findings in `.specs/infisical-secrets/migration-report.md`.
+- Description: Audit the repo (especially the `.env` at repo root flagged by T0) and the user's home dir for existing secrets that should now live in Infisical. For each: move into Infisical (and replace on-disk file with a non-secret stub marker pointing at the Infisical project/environment/path), rotate if T0 flagged it as exposed in history, or document why it should NOT move (e.g. GitHub PAT in `gh`'s keychain is fine). Stub markers may include comments such as `# Managed in Infisical: project=dotfiles env=prod path=/x-research/accounts` but must not include values, tokens, passwords, auth headers, or one-time client secrets. Report findings in `.specs/infisical-secrets/migration-report.md`.
 - Files: `.specs/infisical-secrets/migration-report.md`, plus targeted edits to any consumer that currently reads moved secrets from disk; potentially deletion or stub replacement of repo-root `.env`.
 - Acceptance Criteria:
   1. [ ] Migration report lists every secret found, its T0-baseline cross-reference, decision, Infisical path (if moved), and rotation status (if T0 flagged active-exposure)
@@ -313,6 +330,9 @@ When complete:
   2. [ ] Any consumer touched by a move still works
      - Verify: run the consumer; confirm Infisical pull succeeds
      - Pass: green per consumer
+  3. [ ] Stub markers are non-secret and point to Infisical locations only
+     - Verify: inspect stubs and run `gitleaks detect --no-banner --redact --report-format json` on HEAD
+     - Pass: stubs contain no credential values and HEAD scan is clean
 
 ### Wave 4 -- Validation Gate
 
@@ -324,6 +344,8 @@ When complete:
   3. Cross-check migration report against actual filesystem: every entry marked "moved" has its on-disk file either deleted or replaced with a stub.
   4. Cross-check T0 baseline: every "currently active" credential is rotated (status field in baseline.md updated).
   5. Spot-check one runbook (rotation) end-to-end: rotate a test secret, confirm consumers pick up the new value within 5 minutes (cache TTL).
+  6. Confirm `.specs/infisical-secrets/audit-hardening.md` exists and records available audit/activity/rate-limit controls plus gaps.
+  7. Confirm secure-output tests passed for bootstrap and helper redaction paths.
 - On failure: file fix task; re-validate.
 
 ## Dependency Graph
@@ -353,6 +375,15 @@ Wave 4:  T7, T8, T9 (parallel) -> V4
    - Verify: stop the Infisical container; `pi/secrets/infisical.py:get_secret` against a recently-fetched key still succeeds; emits `cache_stale=true` log when serving from stale cache; restart container; confirm next call refreshes
    - Pass: all three behaviors observed
 6. [ ] Pre-commit hook blocks new credentials and is documented as a setup step in AGENTS.md
+7. [ ] Secure output/logging policy is enforced by tests and documented in runbooks
+   - Verify: `uv run pytest scripts/tests/test_infisical_bootstrap.py -k no_secret_output` and `uv run pytest pi/secrets/tests/test_infisical.py -k redaction`
+   - Pass: both green
+8. [ ] Audit/activity/rate-limit posture is reviewed after deploy
+   - Verify: `.specs/infisical-secrets/audit-hardening.md` documents available controls and gaps
+   - Pass: review exists and names follow-up items, if any
+9. [ ] Migrated local secret files use non-secret stub markers only
+   - Verify: inspect stubs and run HEAD gitleaks scan
+   - Pass: no credential values in stubs and scan is clean
 
 ## Execution Status
 
@@ -377,37 +408,48 @@ Wave 4:  T7, T8, T9 (parallel) -> V4
   - `ANSIBLE_ROLES_PATH=/ansible/roles ansible-playbook --syntax-check playbooks/deploy-infisical.yml` in container -> passed with inventory warnings only because syntax check was run without live inventory.
 - **Why not archived**: The user chose to stop before live deployment/manual validation. V2 requires real deploy, valid DNS/TLS, root admin signup, backup artifact verification, restore drill, and container-hardening evidence.
 - **Checks still needed**:
-  1. Dry-run deploy from `menos/infra/ansible/` and inspect expected diffs:
+  1. Confirm Joyride DNS on menos (`192.168.16.241`) with static host entry `192.168.16.241 infisical.ilude.com` and validate resolver behavior:
      ```bash
-     docker compose run --rm ansible ansible-playbook -i inventory/hosts.yml playbooks/deploy-infisical.yml --check --diff
+     dig @192.168.16.241 -p 54 infisical.ilude.com A
+     dig infisical.ilude.com A
+     dig example.com A
      ```
-  2. Run live deploy:
+  2. Create a Cloudflare API token limited to `ilude.com` with `Zone:Read` and `DNS:Edit`; store it only in Ansible vault as `vault_infisical_cloudflare_api_token`.
+  3. Dry-run deploy from `menos/infra/ansible/` after confirming token tasks use `no_log: true` and `diff: false`:
      ```bash
-     docker compose run --rm ansible ansible-playbook -i inventory/hosts.yml playbooks/deploy-infisical.yml
+     docker compose run --rm ansible ansible-playbook -i inventory/hosts.yml playbooks/deploy-infisical.yml --check --diff --ask-vault-pass
      ```
-  3. Verify HTTPS status without `--insecure`:
+  4. Run live deploy with Let's Encrypt staging enabled:
      ```bash
-     curl -fsS https://infisical.<host-domain>/api/status
+     docker compose run --rm ansible ansible-playbook -i inventory/hosts.yml playbooks/deploy-infisical.yml --ask-vault-pass
      ```
-  4. Complete root admin signup at `https://infisical.<host-domain>/signup` and store credentials in the password manager.
-  5. Trigger and verify backup artifact contents: decrypt and confirm both `infisical-postgres.sql` and `infisical.env` are present.
-  6. Verify 14-day pruning and df warning behavior.
-  7. Complete V2 restore drill into throwaway containers and update `.specs/infisical-secrets/runbook-restore.md` with `Drill completed: <date>` and round-trip evidence.
-  8. Capture container-hardening evidence with:
+  5. Verify DNS-01 and HTTPS without `--insecure`:
      ```bash
-     docker inspect infisical | jq '.[0].Config.User, .[0].HostConfig.ReadonlyRootfs'
+     dig @1.1.1.1 _acme-challenge.infisical.ilude.com TXT
+     docker logs infisical-caddy --tail=200
+     curl --resolve infisical.ilude.com:443:192.168.16.241 -fsS https://infisical.ilude.com/api/status
+     openssl s_client -connect infisical.ilude.com:443 -servername infisical.ilude.com </dev/null 2>/dev/null | openssl x509 -noout -issuer -subject -ext subjectAltName
      ```
-  9. Confirm no Infisical secrets are tracked:
-     ```bash
-     git ls-files | xargs grep -liE 'infisical_jwt|encryption_key' || true
-     ```
-- **Remaining manual/user steps**: Provide the real `infisical.<host-domain>` DNS value and required Ansible vault variables, run or approve the live deployment, create the root admin account, verify backup/restore, and record V2 evidence.
+  6. Switch `infisical_caddy_letsencrypt_staging` to false, redeploy, and repeat HTTPS/certificate validation for production Let's Encrypt.
+  7. Complete root admin signup at `https://infisical.ilude.com/signup` and store credentials in the password manager.
+  8. Trigger and verify backup artifact contents: decrypt and confirm both `infisical-postgres.sql` and `infisical.env` are present.
+  9. Verify 14-day pruning and df warning behavior.
+  10. Complete V2 restore drill into throwaway containers and update `.specs/infisical-secrets/runbook-restore.md` with `Drill completed: <date>` and round-trip evidence.
+  11. Capture container-hardening evidence with:
+      ```bash
+      docker inspect infisical | jq '.[0].Config.User, .[0].HostConfig.ReadonlyRootfs'
+      ```
+  12. Confirm no Infisical secrets are tracked:
+      ```bash
+      git ls-files | xargs grep -liE 'infisical_jwt|encryption_key' || true
+      ```
+- **Remaining manual/user steps**: Create/store required Ansible vault variables including the Cloudflare token, validate Joyride DNS, run or approve live deployment, create the root admin account, verify backup/restore, and record V2 evidence.
 - **Resume instruction**: Rerun `/do-it C:/Users/mglenn/.dotfiles/.specs/infisical-secrets/plan.md` after Wave 2 live/manual validation is ready to proceed.
 
 ## Handoff Notes
 
 - Prerequisite for `.specs/x-research-pipeline/plan.md` task T3 (twscrape backend reads accounts from Infisical). Run this plan to V3 before starting that one in earnest. T1-V2 of this plan can run in parallel with T1-V1 of the X-research plan since the X-research interface stub doesn't yet need Infisical.
-- The existing `.specs/serapis-env-vault/` design is NOT being deleted. If the user later prefers the custom Serapis vault, the swap point is the `pi/secrets/` package boundary -- swap implementations behind the same API.
+- The archived `.specs/archive/serapis-env-vault/` design is NOT being deleted, but it should stay archived unless a fresh design review resolves the custom crypto/server maintenance risk and the zero-knowledge inconsistency in the archived materials. Safe Serapis ideas carried forward here: no secrets in repo, short-lived tokens, backup encryption material with data, local fallback/cache, stub origin markers, secure output policy, and audit/rate-limit review. If the user later prefers a custom vault, the swap point is the `pi/secrets/` package boundary -- swap implementations behind the same API.
 - Bootstrap secrets (root admin credentials, `ENCRYPTION_KEY`, `AUTH_SECRET`, `vault_*` Ansible passphrase) live in the user's password manager (1Password / equivalent), NOT in this repo or in Infisical itself. They are also captured in the encrypted backup bundle (the `.env` half) so a password-manager loss alone doesn't lose the cluster.
 - Machine-identity client_secrets are surfaced ONCE via `--secrets-out=<tmpfs path>` from the bootstrap script, then copied to (a) the password manager and (b) the Docker secret on the menos host, then shredded.
 - Infisical's free OSS tier is sufficient for this scope. Paid tier (SAML, audit-log retention) is out of scope.
