@@ -2,6 +2,8 @@
 name: rust-pro
 description: Expert Rust developer for autonomous multi-step tasks. Activate for Rust files, async/await, concurrency, workspaces, and performance optimization work.
 model: anthropic/claude-sonnet-4-6
+roleType: specialist
+routingUse: "Use for direct Rust implementation, debugging, build, and review."
 expertise:
   - path: .pi/multi-team/expertise/rust-pro-mental-model.yaml
     use-when: "Read at task start to recall patterns. Update after completing work."

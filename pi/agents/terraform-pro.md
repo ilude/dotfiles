@@ -2,6 +2,8 @@
 name: terraform-pro
 description: Expert Terraform engineer for autonomous infrastructure as code tasks. Activate for IaC, multi-cloud provisioning, module development, and state management work.
 model: anthropic/claude-sonnet-4-6
+roleType: specialist
+routingUse: "Use for direct Terraform/IaC, cloud provisioning, state, and module work."
 expertise:
   - path: .pi/multi-team/expertise/terraform-pro-mental-model.yaml
     use-when: "Read at task start to recall patterns. Update after completing work."

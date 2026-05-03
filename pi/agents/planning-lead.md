@@ -2,6 +2,9 @@
 name: planning-lead
 description: Team lead for coordinated product planning; delegates to product-manager and ux-researcher, not for general-purpose planning
 model: anthropic/claude-sonnet-4-6
+roleType: lead
+routingUse: "Use only for coordinated product planning across product-manager and ux-researcher."
+team: [product-manager, ux-researcher]
 expertise:
   - path: .pi/multi-team/expertise/planning-lead-mental-model.yaml
     use-when: "Track planning decisions, scope choices, priority frameworks, and product direction patterns."

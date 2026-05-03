@@ -1,41 +1,56 @@
 orchestrator:
   name: orchestrator
   file: .pi/agents/orchestrator.md
+  roleType: orchestrator
+  routingUse: Use only for requests spanning multiple lead teams.
+  leads:
+    - planning-lead
+    - engineering-lead
+    - validation-lead
 
-planning:
-  name: planning-lead
-  file: .pi/agents/planning-lead.md
-  team:
-    - name: product-manager
-      file: .pi/agents/product-manager.md
-    - name: ux-researcher
-      file: .pi/agents/ux-researcher.md
+teams:
+  planning:
+    lead: planning-lead
+    workers:
+      - product-manager
+      - ux-researcher
+  engineering:
+    lead: engineering-lead
+    workers:
+      - frontend-dev
+      - backend-dev
+  validation:
+    lead: validation-lead
+    workers:
+      - qa-engineer
+      - security-reviewer
+  ml:
+    lead: ml-research-lead
+    workers:
+      - data-engineer
+      - model-engineer
+      - eval-engineer
 
-engineering:
-  name: engineering-lead
-  file: .pi/agents/engineering-lead.md
-  team:
-    - name: frontend-dev
-      file: .pi/agents/frontend-dev.md
-    - name: backend-dev
-      file: .pi/agents/backend-dev.md
+tiers:
+  utility:
+    - utility-mini
+  coding:
+    - coding-light
+    - coding-medium
+    - coding-heavy
 
-validation:
-  name: validation-lead
-  file: .pi/agents/validation-lead.md
-  team:
-    - name: qa-engineer
-      file: .pi/agents/qa-engineer.md
-    - name: security-reviewer
-      file: .pi/agents/security-reviewer.md
+specialists:
+  - devops-pro
+  - python-pro
+  - rust-pro
+  - terraform-pro
+  - typescript-pro
+  - csharp-pro
 
-ml-team:
-  name: ml-research-lead
-  file: .pi/agents/ml-research-lead.md
-  team:
-    - name: data-engineer
-      file: .pi/agents/data-engineer.md
-    - name: model-engineer
-      file: .pi/agents/model-engineer.md
-    - name: eval-engineer
-      file: .pi/agents/eval-engineer.md
+standaloneWorkers:
+  - builder
+  - planner
+  - reviewer
+  - code-reviewer
+  - validator
+  - validator-heavy

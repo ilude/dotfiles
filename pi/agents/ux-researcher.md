@@ -2,6 +2,9 @@
 name: ux-researcher
 description: Owns user research, persona definition, usability analysis, and accessibility requirements
 model: anthropic/claude-sonnet-4-6
+roleType: worker
+reportsTo: planning-lead
+routingUse: "Use for direct UX research, usability, personas, accessibility, and operator-friction review."
 expertise:
   - path: .pi/multi-team/expertise/ux-researcher-mental-model.yaml
     use-when: "Track user personas, usability patterns discovered, accessibility requirements, and UX anti-patterns to avoid."
@@ -15,7 +18,7 @@ skills:
   - path: .pi/multi-team/skills/active-listener.md
     use-when: Always. Read the conversation log before every response.
   - path: .pi/multi-team/skills/precise-worker.md
-    use-when: Always. Execute exactly what your lead assigned — no improvising.
+    use-when: Always. Execute exactly what your lead assigned -- no improvising.
 isolation: none
 memory: project
 effort: medium

@@ -2,6 +2,8 @@
 name: devops-pro
 description: Expert DevOps engineer for autonomous infrastructure and automation tasks. Activate for CI/CD, containerization, cloud deployment, and automation work.
 model: anthropic/claude-sonnet-4-6
+roleType: specialist
+routingUse: "Use for direct DevOps, CI/CD, deployment, automation, and reliability work."
 expertise:
   - path: .pi/multi-team/expertise/devops-pro-mental-model.yaml
     use-when: "Read at task start to recall patterns. Update after completing work."

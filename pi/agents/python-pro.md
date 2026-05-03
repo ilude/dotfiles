@@ -2,6 +2,8 @@
 name: python-pro
 description: Expert Python developer for autonomous multi-step tasks. Activate for Python files, uv projects, pytest, FastAPI, Pydantic, and type-safe Python work.
 model: anthropic/claude-sonnet-4-6
+roleType: specialist
+routingUse: "Use for direct Python-specific implementation, debugging, tests, and review."
 expertise:
   - path: .pi/multi-team/expertise/python-pro-mental-model.yaml
     use-when: "Read at task start to recall patterns. Update after completing work."

@@ -2,6 +2,9 @@
 name: ml-research-lead
 description: Team lead for prompt-routing ML work; coordinates data-engineer, model-engineer, and eval-engineer, not for general-purpose ML tasks.
 model: anthropic/claude-sonnet-4-6
+roleType: lead
+routingUse: "Use only for coordinated prompt-routing ML work across data-engineer, model-engineer, and eval-engineer."
+team: [data-engineer, model-engineer, eval-engineer]
 expertise:
   - path: .pi/multi-team/expertise/ml-research-lead-mental-model.yaml
     use-when: "Read at task start to recall ML patterns and prior decisions. Update after completing work."

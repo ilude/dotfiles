@@ -2,6 +2,9 @@
 name: engineering-lead
 description: Team lead for coordinated engineering work; delegates to frontend-dev and backend-dev, not for general-purpose coding
 model: anthropic/claude-sonnet-4-6
+roleType: lead
+routingUse: "Use only for coordinated engineering across frontend-dev and backend-dev."
+team: [frontend-dev, backend-dev]
 expertise:
   - path: .pi/multi-team/expertise/engineering-lead-mental-model.yaml
     use-when: "Track architecture decisions, tech stack choices, implementation patterns, and cross-team engineering constraints."
