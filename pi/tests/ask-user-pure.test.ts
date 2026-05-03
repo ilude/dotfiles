@@ -67,7 +67,12 @@ describe("ask-user extension", () => {
         undefined, undefined, ctx
       );
 
-      expect(ctx.ui.select).toHaveBeenCalledWith("Pick one:", ["option A", "option B", "option C"]);
+      expect(ctx.ui.select).toHaveBeenCalledWith("Pick one:", [
+        "option A",
+        "option B",
+        "option C",
+        "Other (custom answer)",
+      ]);
       expect(result.content[0].text).toBe("option B");
     });
 

@@ -1,3 +1,8 @@
+---
+status: completed
+completed: 2026-05-03
+---
+
 # menos Circuit Breaker -- Plan
 
 > **Revised after review-1.** All 6 bugs and 7 hardening suggestions applied. See `review-1/synthesis.md` for the verification trail.
@@ -292,21 +297,21 @@ Lint/type/test gates per `AGENTS.md`. New tests: `pytest claude/hooks/menos-circ
 
 ## Execution Status
 
-Partial execution completed on 2026-05-02.
+Completion classification: `completed-and-archived`
 
-Implemented code changes and automated validation passed:
-- `cd menos/api && uv run pytest tests/unit/test_ingest_router.py -q` -- `27 passed`
-- `cd menos/api && uv run ruff check menos/routers/ingest.py tests/unit/test_ingest_router.py` -- passed
-- `python -m py_compile` for the new hook scripts and modified yt scripts -- passed
-- `python -m json.tool claude/settings.json` -- passed
-- Smoke checks: `python claude/hooks/menos-circuit/probe.py` and `MENOS_CIRCUIT_DISABLED=1 python claude/hooks/menos-circuit/backfill.py` -- passed
+Completed on 2026-05-03. Implementation through Phase 4 is present, repo-wide validation passed, and the user confirmed the required Claude + Pi live/manual validation passed.
 
-Remaining live/manual validation before archive:
-- Stop menos and confirm `/yt <url>` in Claude falls back to yt-local and writes `~/.dotfiles/yt/<id>/transcript.txt` plus `.complete`.
-- Restart menos and confirm probe/backfill uploads the local cache, verifies `processing_status == "completed"` plus transcript/metadata, then deletes the local directory.
-- Verify the same fallback/backfill behavior from a Pi session.
+Completed gates:
+- Targeted validation from prior implementation passed:
+  - `cd menos/api && uv run pytest tests/unit/test_ingest_router.py -q` -- `27 passed`
+  - `cd menos/api && uv run ruff check menos/routers/ingest.py tests/unit/test_ingest_router.py` -- passed
+  - `python -m py_compile` for hook scripts and modified yt scripts -- passed
+  - `python -m json.tool claude/settings.json` -- passed
+  - `python claude/hooks/menos-circuit/probe.py` and `MENOS_CIRCUIT_DISABLED=1 python claude/hooks/menos-circuit/backfill.py` -- passed
+- Repo-wide validation on 2026-05-03: `make check` -- passed.
+- Manual/live validation on 2026-05-03: user confirmed Claude and Pi fallback/backfill validation passed.
 
-Do not archive this plan until the remaining live/manual validation passes.
+No remaining validation, deployment, or archive blockers.
 
 ## Risks & Mitigations
 

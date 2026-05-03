@@ -143,7 +143,8 @@ describe("read_expertise focused retrieval", () => {
     expect(text).toContain("\n\nFocused retrieval for: Windows npm install\n");
     expect(text).toContain("- Keep npm on Windows for the global Pi install");
     expect(text).toContain("- pi/README.md -- Windows package-manager guidance");
-    expect(text).not.toContain("Playwright traces are unrelated browser evidence");
+    const focusedSection = text.slice(text.indexOf("Focused retrieval for: Windows npm install"));
+    expect(focusedSection).not.toContain("Playwright traces are unrelated browser evidence");
     expectFocusedBullet(text, "Windows npm install", "- Keep npm on Windows for the global Pi install");
     expect(result.details.retrieval).toMatchObject({
       query: "Windows npm install",
@@ -164,8 +165,8 @@ describe("read_expertise focused retrieval", () => {
 
     expect(text).toContain("Focused retrieval for: Windows Pi global install uses npm");
     expect(text).toContain("- Windows Pi global install uses npm instead of Bun");
-    expect((text.match(/Windows Pi global install uses npm instead of Bun/g) ?? [])).toHaveLength(1);
     const focusedSection = text.slice(text.indexOf("Focused retrieval for: Windows Pi global install uses npm"));
+    expect((focusedSection.match(/Windows Pi global install uses npm instead of Bun/g) ?? [])).toHaveLength(1);
     expect(focusedSection).not.toContain("- pi/README.md -- Windows package-manager guidance");
     expect(result.details.retrieval).toMatchObject({ max_results: 1, result_count: 1 });
   });

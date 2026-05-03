@@ -46,7 +46,17 @@ Package-manager priority:
 2. Use `pnpm` where Bun cannot resolve the Pi package graph, for the Windows global Pi install, or where a package already has `pnpm-lock.yaml`.
 3. If npm artifacts are accidentally created, remove `package-lock.json` and reinstall with the correct manager.
 
-`pi/extensions/` uses `pnpm` for extension type-check dependencies. `pi/tests/` uses Bun with `bun.lock` for the Vitest suite; do not replace it with `package-lock.json`.
+Pi-specific package-manager boundaries:
+
+- `pi/extensions/` is pnpm-managed (`package.json` + `pnpm-lock.yaml`) and owns Pi TypeScript dependencies such as `@mariozechner/pi-coding-agent`, `@mariozechner/pi-ai`, `@mariozechner/pi-agent-core`, and `@mariozechner/pi-tui`.
+- Do **not** run `bun add` for Pi extension/runtime packages, do not add those packages to `pi/tests/package.json`, and do not point tests at global Pi package internals for type/runtime resolution.
+- Type-check extensions with:
+  ```bash
+  cd pi/extensions && pnpm install --frozen-lockfile && pnpm run typecheck
+  ```
+- `pi/tests/` is pnpm-managed for Vitest (`package.json` + `pnpm-lock.yaml`). Use `cd pi/tests && pnpm install --frozen-lockfile && pnpm run test`.
+- Do **not** use Bun for Pi TypeScript validation: no `bun add`, `bun install`, `bun run`, or `bun test` in `pi/extensions/` or `pi/tests/`. This avoids ambiguity between Bun's built-in test runner and Vitest, and keeps Pi package resolution on the pnpm lockfiles.
+- `Makefile` target `check-pi-extensions` is the canonical combined Pi validation: pnpm extension typecheck first, then pnpm/Vitest tests.
 
 ### Windows package-manager note
 
@@ -645,11 +655,10 @@ secrets, keys, or provider credentials for retrieval. The targeted TypeScript va
 command for this behavior is:
 
 ```bash
-cd pi/tests && bun vitest run read-expertise-retrieval.test.ts
+cd pi/tests && pnpm run test -- read-expertise-retrieval.test.ts
 ```
 
-The broader TypeScript suite can be run with `cd pi/tests && bun vitest run`, but it may have
-pre-existing dependency failures unrelated to focused retrieval.
+Run the broader TypeScript suite with `cd pi/tests && pnpm run test`. The full repo gate is `make check`.
 
 #### Optional provider-gated similarity policy
 

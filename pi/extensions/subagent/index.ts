@@ -18,7 +18,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { Message } from "@mariozechner/pi-ai";
-import { StringEnum } from "@mariozechner/pi-ai";
 import { type ExtensionAPI, getMarkdownTheme, withFileMutationQueue } from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
@@ -608,16 +607,16 @@ const ChainItem = Type.Object({
 	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
 });
 
-const AgentScopeSchema = StringEnum(["user", "project", "both"] as const, {
+const AgentScopeSchema = Type.Union([Type.Literal("user"), Type.Literal("project"), Type.Literal("both")], {
 	description: 'Which agent directories to use. Default: "user". Use "both" to include project-local agents.',
 	default: "user",
 });
 
-const ModelSizeSchema = StringEnum(["small", "medium", "large"] as const, {
+const ModelSizeSchema = Type.Union([Type.Literal("small"), Type.Literal("medium"), Type.Literal("large")], {
 	description: 'Dynamic model size override. Resolves against the current session model/provider and available registry models.',
 });
 
-const ModelPolicySchema = StringEnum(["same-provider", "same-family"] as const, {
+const ModelPolicySchema = Type.Union([Type.Literal("same-provider"), Type.Literal("same-family")], {
 	description: 'How to resolve dynamic model sizes. same-provider prefers the current provider; same-family prefers the current series first, then the provider.',
 	default: "same-provider",
 });
@@ -650,9 +649,9 @@ export default function (pi: ExtensionAPI) {
 		parameters: SubagentParams,
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
-			const agentScope: AgentScope = params.agentScope ?? "user";
-			const modelSize = params.modelSize as ModelSize | undefined;
-			const modelPolicy = (params.modelPolicy as ModelPolicy | undefined) ?? "same-provider";
+			const agentScope = (params.agentScope as unknown as AgentScope | undefined) ?? "user";
+			const modelSize = params.modelSize as unknown as ModelSize | undefined;
+			const modelPolicy = (params.modelPolicy as unknown as ModelPolicy | undefined) ?? "same-provider";
 			const resolvedModel = modelSize ? resolveDynamicModelFromRegistry(ctx.modelRegistry, ctx, modelSize, modelPolicy) : undefined;
 			const resolvedModelId = resolvedModel ? `${resolvedModel.provider}/${resolvedModel.id}` : undefined;
 			const discovery = discoverAgents(ctx.cwd, agentScope);

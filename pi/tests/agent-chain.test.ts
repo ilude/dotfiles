@@ -164,11 +164,11 @@ describe("agent-chain extension", () => {
 
   describe("layered expertise -- legacy global + project-local coexistence", () => {
     // Helper: write a raw JSONL log directly to the global expertise dir
-    const writeLegacyEntry = (agent: string, entry: Record<string, unknown>, sessionId: string) => {
+    const writeLegacyEntry = (agent: string, entry: Record<string, unknown>, sessionId: string, category = "strong_decision") => {
       const expertiseDir = path.join(tmpHome, ".pi", "agent", "multi-team", "expertise");
       fs.mkdirSync(expertiseDir, { recursive: true });
       const logFile = path.join(expertiseDir, `${agent}-expertise-log.jsonl`);
-      const record = JSON.stringify({ timestamp: new Date().toISOString(), session_id: sessionId, category: "strong_decision", entry });
+      const record = JSON.stringify({ timestamp: new Date().toISOString(), session_id: sessionId, category, entry });
       fs.appendFileSync(logFile, record + "\n", "utf-8");
     };
 
@@ -214,8 +214,9 @@ describe("agent-chain extension", () => {
 
       writeLegacyEntry(
         "order-agent",
-        { decision: "global decision comes second", why_good: "cross-project" },
+        { project: "global", note: "global decision comes second" },
         "g1",
+        "observation",
       );
       writeProjectLocalEntry(
         repoId,

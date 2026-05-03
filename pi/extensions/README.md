@@ -1,5 +1,7 @@
 # Pi Extensions
 
+This directory is pnpm-managed. Use `pnpm install --frozen-lockfile` and `pnpm run typecheck` here for Pi TypeScript dependencies. Do not use Bun for Pi TypeScript packages or tests: no `bun add`, `bun install`, `bun run`, or `bun test` in `pi/extensions/` or `pi/tests/`. Tests resolve Pi packages from `pi/extensions/node_modules` and are run with pnpm/Vitest.
+
 This directory contains the TypeScript extensions Pi auto-discovers at startup.
 Every top-level `*.ts` file here is loaded by Pi as an extension module via its
 `export default function (pi: ExtensionAPI) { ... }` factory.
@@ -183,12 +185,8 @@ The token-safety model is centralized in `/commit`: the command orchestrates `co
 
 `make check-pi-extensions` runs the full extension validation pipeline:
 
-1. `python pi/extensions/tsc-check.py` -- strict TypeScript type-check across
-   every top-level extension file.
-2. `cd pi/tests && bun vitest run` -- the Vitest suite, including helper
-   tests and per-extension behavioral tests.
-3. Pi runtime smoke -- launches Pi with a controlled extension flag and
-   asserts no helper file from `pi/lib/` is auto-discovered.
+1. `cd pi/extensions && pnpm install --frozen-lockfile && pnpm run typecheck` -- strict TypeScript type-check using the pnpm-managed Pi dependency graph.
+2. `cd pi/tests && pnpm install --frozen-lockfile && pnpm run test` -- the Vitest suite, including helper tests, per-extension behavioral tests, and runtime smoke checks.
 
 Run this target after any extension or helper change.
 

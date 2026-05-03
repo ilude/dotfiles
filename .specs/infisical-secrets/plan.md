@@ -354,6 +354,37 @@ Wave 4:  T7, T8, T9 (parallel) -> V4
    - Pass: all three behaviors observed
 6. [ ] Pre-commit hook blocks new credentials and is documented as a setup step in AGENTS.md
 
+## Execution Status
+
+- **Completion classification**: `blocked-by-failure`
+- **Date**: 2026-05-03
+- **Last completed wave/gate**: Wave 1 implementation partially completed; V1 did not pass.
+- **Next wave/gate to run**: Finish T0 and rerun V1 before starting Wave 2.
+- **Implemented**:
+  - Created `.specs/infisical-secrets/compose-design.md` for T1.
+  - Created `menos/infra/ansible/roles/infisical/` role skeleton for T2 with compose, Caddyfile, runtime-env template, defaults, handlers, metadata, and README.
+  - Created placeholder `.specs/infisical-secrets/gitleaks-baseline.json` and `.specs/infisical-secrets/gitleaks-baseline.md` documenting that the required history audit is blocked.
+- **Commands run and results**:
+  - `command -v gitleaks` -> not found.
+  - `command -v ansible-lint` -> not found.
+  - `grep -c '^## ' .specs/infisical-secrets/compose-design.md` -> `6`.
+  - `grep -E 'postgres:1[0-9]+\.' .specs/infisical-secrets/compose-design.md` -> matched `postgres:16.4-alpine`.
+  - `ANSIBLE_ROLES_PATH=menos/infra/ansible/roles ansible-playbook --syntax-check /tmp/infisical-role-harness.yml` -> failed before syntax checking with Windows Ansible launcher error `OSError: [WinError 87] The parameter is incorrect`.
+- **Why not archived**: Required Wave 1 validation failed because `gitleaks` and `ansible-lint` are unavailable, and `ansible-playbook --syntax-check` fails in this Windows shell before executing Ansible.
+- **Checks still needed**:
+  1. Install or expose `gitleaks`, then run:
+     ```bash
+     gitleaks detect --no-banner --redact --report-format json --log-opts="--all" -r .specs/infisical-secrets/gitleaks-baseline.json
+     ```
+  2. Classify every finding in `.specs/infisical-secrets/gitleaks-baseline.md`, including owner and target date for any active credential.
+  3. Install or run `ansible-lint`, then run:
+     ```bash
+     ansible-lint menos/infra/ansible/roles/infisical/
+     ```
+  4. Run the role syntax harness from an environment where Ansible works, preferably the repo's Ansible-in-Docker pattern, and confirm syntax passes.
+- **Remaining manual/user steps**: Provide working `gitleaks`, `ansible-lint`, and Ansible execution environment; no live Infisical deployment or secret handling has started.
+- **Resume instruction**: Rerun `/do-it C:/Users/mglenn/.dotfiles/.specs/infisical-secrets/plan.md` after the toolchain issues are fixed.
+
 ## Handoff Notes
 
 - Prerequisite for `.specs/x-research-pipeline/plan.md` task T3 (twscrape backend reads accounts from Infisical). Run this plan to V3 before starting that one in earnest. T1-V2 of this plan can run in parallel with T1-V1 of the X-research plan since the X-research interface stub doesn't yet need Infisical.

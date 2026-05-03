@@ -54,9 +54,9 @@ describe("memory-promote-scan privacy", () => {
       const expected = path.join(sandbox, ".pi", "agent", "index", "policy-candidates.md");
       expect(fs.existsSync(expected)).toBe(true);
 
-      // No file under the repo root was touched.
-      const inRepo = path.join(REPO_ROOT, ".pi");
-      expect(fs.existsSync(inRepo)).toBe(false);
+      // No scanner output under the repo root was touched; the repo may have its own .pi metadata.
+      const inRepoOutput = path.join(REPO_ROOT, ".pi", "agent", "index", "policy-candidates.md");
+      expect(fs.existsSync(inRepoOutput)).toBe(false);
     } finally {
       try { fs.rmSync(sandbox, { recursive: true, force: true }); } catch { /* best effort */ }
     }
