@@ -1,4 +1,9 @@
 auth.json
+*.log
+*.state.*
+*.jsonl
+!prompt-routing/data/**/*.jsonl
+!tool-reduction/tests/fixtures/*.jsonl
 expertise/*-expertise-log.jsonl
 multi-team/sessions/
 multi-team/logs/
