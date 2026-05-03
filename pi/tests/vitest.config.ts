@@ -59,6 +59,14 @@ const piNodeModules = fs.existsSync(path.join(piPackageRoot, "node_modules"))
   ? path.join(piPackageRoot, "node_modules")
   : globalNodeModules;
 
+// typebox is a dependency of pi/extensions (typecheck project) and lives in
+// pi/extensions/node_modules/@sinclair/typebox. The pi-coding-agent bundle
+// does not re-export it, so we resolve directly from the extensions install.
+const extensionsNodeModules = path.resolve(__dirname, "../extensions/node_modules");
+const typeboxDir = fs.existsSync(path.join(extensionsNodeModules, "@sinclair/typebox"))
+  ? path.join(extensionsNodeModules, "@sinclair/typebox")
+  : path.join(piNodeModules, "typebox");
+
 export default defineConfig({
   root: agentDir,
   resolve: {
@@ -68,7 +76,7 @@ export default defineConfig({
       "@mariozechner/pi-ai": path.join(piNodeModules, "@mariozechner/pi-ai/dist/index.js"),
       "@mariozechner/pi-tui": path.join(piNodeModules, "@mariozechner/pi-tui/dist/index.js"),
       "@mariozechner/pi-agent-core": path.join(piNodeModules, "@mariozechner/pi-agent-core/dist/index.js"),
-      "@sinclair/typebox": path.join(piNodeModules, "typebox"),
+      "@sinclair/typebox": typeboxDir,
     },
   },
   test: {
@@ -90,6 +98,8 @@ export default defineConfig({
         "extensions/prompt-router.ts",
         "extensions/agent-chain.ts",
         "lib/model-routing.ts",
+        "lib/commit/**",
+        "lib/observability.ts",
       ],
       reportsDirectory: "tests/coverage",
     },
