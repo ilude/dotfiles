@@ -121,7 +121,11 @@ def main():
         "--verbose", action="store_true", help="Show all fields when polling completes"
     )
     parser.add_argument("--test", action="store_true", help="Tag this video as test content")
-    parser.add_argument("--from-local", action="store_true", help="Upload transcript/metadata from ~/.dotfiles/yt/<video_id>/")
+    parser.add_argument(
+        "--from-local",
+        action="store_true",
+        help="Upload transcript/metadata from ~/.dotfiles/yt/<video_id>/",
+    )
     run(parser.parse_args())
 
 

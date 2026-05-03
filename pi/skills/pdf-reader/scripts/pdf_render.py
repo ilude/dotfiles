@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Render PDF pages to PNG images for visual inspection."""
 
-import sys
-import os
-import hashlib
 import argparse
+import hashlib
+import os
+
 import pymupdf
 
 

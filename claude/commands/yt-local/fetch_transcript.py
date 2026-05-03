@@ -72,7 +72,9 @@ def write_output_file(video_id: str, filename: str, content: str) -> Path:
     return output_path
 
 
-def update_complete_marker(video_id: str, *, transcript: bool = False, metadata: bool = False) -> None:
+def update_complete_marker(
+    video_id: str, *, transcript: bool = False, metadata: bool = False
+) -> None:
     """Update ~/.dotfiles/yt/<video_id>/.complete after successful writes."""
     marker = output_dir_for(video_id) / ".complete"
     try:
@@ -85,7 +87,12 @@ def update_complete_marker(video_id: str, *, transcript: bool = False, metadata:
         payload["metadata"] = True
     payload.setdefault("transcript", False)
     payload.setdefault("metadata", False)
-    payload["completed_at"] = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat().replace("+00:00", "Z")
+    datetime_module = __import__("datetime")
+    payload["completed_at"] = (
+        datetime_module.datetime.now(datetime_module.timezone.utc)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
     marker.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
@@ -117,7 +124,6 @@ class YouTubeTranscriptService:
         proxy_password: Optional[str] = None,
         use_proxy: Optional[bool] = None,
     ):
-        from youtube_transcript_api import YouTubeTranscriptApi
         from youtube_transcript_api.proxies import WebshareProxyConfig
 
         self.proxy_username = proxy_username or os.getenv("WEBSHARE_PROXY_USERNAME")
@@ -225,7 +231,9 @@ def main():
                 saved_path = write_output_file(video_id, "transcript.timed.json", output + "\n")
                 print(output)
             else:
-                output = "\n".join(f"[{segment['start']:.1f}s] {segment['text']}" for segment in result)
+                output = "\n".join(
+                    f"[{segment['start']:.1f}s] {segment['text']}" for segment in result
+                )
                 saved_path = write_output_file(video_id, "transcript.timed.txt", output + "\n")
                 print(output)
         else:

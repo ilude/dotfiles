@@ -12,13 +12,11 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from urllib.parse import urlparse
 
 from lib import (
     TRANSCRIPT_LIMIT_BYTES,
     YT_ROOT,
     api_base,
-    api_host,
     atomic_delete_dir,
     disabled,
     http_request,
@@ -35,7 +33,9 @@ def setup_logging() -> logging.Logger:
     logger = logging.getLogger("menos-backfill")
     logger.setLevel(logging.INFO)
     if not logger.handlers:
-        handler = logging.handlers.RotatingFileHandler(LOG_PATH, maxBytes=1_000_000, backupCount=3)
+        handler = logging.handlers.RotatingFileHandler(
+            LOG_PATH, maxBytes=1_000_000, backupCount=3
+        )
         handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
         logger.addHandler(handler)
     return logger
@@ -43,9 +43,16 @@ def setup_logging() -> logging.Logger:
 
 def detach() -> int:
     args = [sys.executable, str(Path(__file__).resolve())]
-    kwargs = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL, "close_fds": True}
+    kwargs = {
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "close_fds": True,
+    }
     if os.name == "nt":
-        flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
+            subprocess, "CREATE_NEW_PROCESS_GROUP", 0
+        )
         subprocess.Popen(args, creationflags=flags, **kwargs)
     else:
         subprocess.Popen(args, start_new_session=True, **kwargs)
@@ -101,7 +108,9 @@ def load_local(video_dir: Path, logger: logging.Logger) -> tuple[str, dict | Non
         try:
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
         except Exception:
-            logger.warning("skip %s: metadata marked complete but missing/malformed", video_dir.name)
+            logger.warning(
+                "skip %s: metadata marked complete but missing/malformed", video_dir.name
+            )
             return None
     elif metadata_path.exists():
         try:
@@ -111,7 +120,9 @@ def load_local(video_dir: Path, logger: logging.Logger) -> tuple[str, dict | Non
     return transcript, metadata
 
 
-def signed_json(method: str, url: str, path: str, payload: dict | None, timeout: float = 30.0) -> tuple[int, dict]:
+def signed_json(
+    method: str, url: str, path: str, payload: dict | None, timeout: float = 30.0
+) -> tuple[int, dict]:
     body = json.dumps(payload).encode("utf-8") if payload is not None else None
     headers = {"Content-Type": "application/json", **signed_headers(method, path, body)}
     status, raw = http_request(method, url, body=body, headers=headers, timeout=timeout)

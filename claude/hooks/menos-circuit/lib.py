@@ -77,7 +77,14 @@ def read_status() -> dict[str, Any] | None:
     return None
 
 
-def http_request(method: str, url: str, *, body: bytes | None = None, headers: dict[str, str] | None = None, timeout: float = 10.0) -> tuple[int, bytes]:
+def http_request(
+    method: str,
+    url: str,
+    *,
+    body: bytes | None = None,
+    headers: dict[str, str] | None = None,
+    timeout: float = 10.0,
+) -> tuple[int, bytes]:
     req = urllib.request.Request(url, data=body, headers=headers or {}, method=method)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as response:

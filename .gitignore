@@ -98,6 +98,7 @@ pi/prompt-routing/logs/
 
 # Pi generated expertise/runtime state (source/config remains tracked under pi/)
 pi/multi-team/expertise/
+pi/index/
 
 # =============================================================================
 # Research worktrees (cloned repos for analysis)

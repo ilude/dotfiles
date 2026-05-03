@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """PDF metadata and per-page analysis. Always run this first to triage a PDF."""
 
-import sys
 import json
+import sys
+
 import pymupdf
 
 

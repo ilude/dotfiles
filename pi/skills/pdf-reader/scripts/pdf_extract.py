@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Extract text from PDF pages. Supports page ranges."""
 
-import sys
 import argparse
+
 import pymupdf
 
 

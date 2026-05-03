@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Search within PDF text content by keyword or regex."""
 
-import sys
-import re
 import argparse
+import re
+import sys
+
 import pymupdf
 
 
@@ -49,7 +50,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Search within PDF text")
     parser.add_argument("path", help="Path to PDF file")
     parser.add_argument("query", help="Search query (regex or literal)")
-    parser.add_argument("--context", type=int, default=3, help="Context lines around match (default: 3)")
+    parser.add_argument(
+        "--context",
+        type=int,
+        default=3,
+        help="Context lines around match (default: 3)",
+    )
     parser.add_argument("--literal", action="store_true", help="Treat query as literal string")
     args = parser.parse_args()
 

@@ -62,7 +62,9 @@ def write_output_file(video_id: str, filename: str, content: str) -> Path:
     return output_path
 
 
-def update_complete_marker(video_id: str, *, transcript: bool = False, metadata: bool = False) -> None:
+def update_complete_marker(
+    video_id: str, *, transcript: bool = False, metadata: bool = False
+) -> None:
     """Update ~/.dotfiles/yt/<video_id>/.complete after successful writes."""
     marker = output_dir_for(video_id) / ".complete"
     try:
@@ -221,7 +223,6 @@ class YouTubeMetadataService:
             HttpError: If API request fails
             ValueError: If video not found
         """
-        from googleapiclient.errors import HttpError
 
         request = self.youtube.videos().list(
             part="snippet,statistics,contentDetails",
@@ -254,7 +255,9 @@ class YouTubeMetadataService:
             "duration_formatted": format_duration(duration_iso),
             "view_count": int(statistics.get("viewCount", 0)),
             "like_count": int(statistics["likeCount"]) if "likeCount" in statistics else None,
-            "comment_count": int(statistics["commentCount"]) if "commentCount" in statistics else None,
+            "comment_count": (
+                int(statistics["commentCount"]) if "commentCount" in statistics else None
+            ),
             "tags": snippet.get("tags", []),
             "category_id": snippet.get("categoryId"),
             "thumbnails": snippet.get("thumbnails", {}),
@@ -321,8 +324,13 @@ def main():
         # Always persist the complete machine-readable metadata plus convenient extracts.
         metadata_json = json.dumps(metadata, indent=2)
         metadata_path = write_output_file(video_id, "metadata.json", metadata_json + "\n")
-        description_path = write_output_file(video_id, "description.txt", metadata["description"] + "\n")
-        urls_path = write_output_file(video_id, "description_urls.txt", "\n".join(metadata["description_urls"]) + ("\n" if metadata["description_urls"] else ""))
+        description_path = write_output_file(
+            video_id, "description.txt", metadata["description"] + "\n"
+        )
+        urls_content = "\n".join(metadata["description_urls"])
+        if metadata["description_urls"]:
+            urls_content += "\n"
+        urls_path = write_output_file(video_id, "description_urls.txt", urls_content)
 
         update_complete_marker(video_id, metadata=True)
 
