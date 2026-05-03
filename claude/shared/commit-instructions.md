@@ -6,6 +6,29 @@ If the command input begins with `fast`, use **Fast Mode** below and do not use 
 
 If the command input does not begin with `fast`, use **Standard Mode** below.
 
+# Deterministic Commit Helper
+
+Before staging in any mode, run the non-mutating helper to classify Git state:
+
+```bash
+uv run python scripts/commit-helper status-json
+uv run python scripts/commit-helper stage-plan
+```
+
+Use the helper output as the staging source of truth:
+- If an entry has `safe_to_git_add: false`, do not run `git add` for that path.
+- If an entry has `classification: staged_deletion` and `recommended_action: keep_staged`, leave the index deletion as-is. This is the expected state for tracked files removed with `git rm --cached` after being added to `.gitignore`.
+- Stage only entries with `recommended_action: stage` after secret/ambiguity checks pass.
+- Treat `recommended_action: block` as a stop condition requiring user resolution.
+
+Before every `git commit`, validate the proposed subject:
+
+```bash
+uv run python scripts/commit-helper validate-message "type(scope): subject"
+```
+
+If validation fails, revise the message before running `git commit`. The helper does not commit, push, force-add ignored files, or replace the secret scan; it only plans and validates.
+
 # Fast Mode: single conventional commit
 
 Use Fast Mode when the working tree is one logical change and the user wants minimum ceremony. For dirty trees with multiple unrelated changes, stop and tell the user to run `/commit` without `fast`.
@@ -34,9 +57,9 @@ Triage candidates as real secret / fixture / ambiguous. If real or ambiguous, ST
 
 ## Fast Step 3: Stage
 
-If explicit paths were provided after `fast`/`push`, stage only those paths. Otherwise auto-stage everything in the working tree (modified, deleted, and untracked) except files matching the auto-ignore patterns in Standard Mode. Add auto-ignore patterns to `.gitignore` instead of committing them.
+If explicit paths were provided after `fast`/`push`, run `uv run python scripts/commit-helper stage-plan --paths <paths...>` and stage only paths where the helper returns `recommended_action: stage`. Otherwise run `uv run python scripts/commit-helper stage-plan` and auto-stage everything with `recommended_action: stage` except files matching the auto-ignore patterns in Standard Mode. Add auto-ignore patterns to `.gitignore` instead of committing them.
 
-Do not run `git add .` or `git add -A`; stage by explicit path list. If a file is ambiguous, ask before staging or ignoring it.
+Do not run `git add .` or `git add -A`; stage by explicit path list. Never run `git add` for entries with `safe_to_git_add: false`, including `staged_deletion` / `keep_staged` entries. If a file is ambiguous, ask before staging or ignoring it.
 
 ## Fast Step 4: Verify single logical change
 
@@ -54,7 +77,7 @@ Valid types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `perf`, `ci`, `
 
 Use imperative mood, lowercase, no trailing period, under 72 characters. Scope is optional but preferred when localized. Add a body only when the why is non-obvious. No emojis and no AI-attribution lines.
 
-Show the proposed message and ask: `Confirm? (yes / no / revise)`. Do not commit until the user confirms.
+Validate the proposed subject with `uv run python scripts/commit-helper validate-message "<subject>"`, then show the proposed message and ask: `Confirm? (yes / no / revise)`. Do not commit until the helper accepts the subject and the user confirms.
 
 ## Fast Step 6: Commit and final status
 
@@ -129,14 +152,15 @@ When asking about unclear files, use batch prompting if there are multiple files
 Group files by logical change using commit types: feat (new features), fix (bug fixes), docs (documentation), test (tests), refactor (code improvements), perf (performance), style (formatting), chore (maintenance), build (build system), ci (CI/CD), deps (dependencies), revert (undo previous). Related functionality changes go together. Don't mix unrelated changes. Each commit should do ONE thing (atomic commits).
 
 For each group of related files:
-1. Stage the files with git add
+1. Run `uv run python scripts/commit-helper stage-plan` or `stage-plan --paths <paths...>` and stage only entries with `recommended_action: stage` and `safe_to_git_add: true`. Keep `staged_deletion` / `keep_staged` entries as-is; do not add them.
 2. If `git add` exits non-zero, follow **Staging Failure Handling** below immediately. Do not run `git commit` after a non-zero `git add` unless the user explicitly resolves the failure and chooses to retry or skip-and-continue.
 3. Write a commit message that is human-style with natural grammar
 4. NO emojis in commit messages
 5. Brief summary line with optional detailed body
-6. Use HEREDOC format for multi-line messages: git commit --no-verify -m "$(cat <<'EOF'\ntype: summary\n\nOptional details\nEOF\n)"
-7. Create the commit (use --no-verify since tests already ran in the pre-commit optimization step)
-8. For intermediate commits (more groups remain after this one), prefix with `COMMIT_GUARD_BATCH=1` to suppress the commit-guard hook. Only the FINAL commit should run without this prefix so the guard can verify no files were missed.
+6. Validate the subject with `uv run python scripts/commit-helper validate-message "<subject>"`; revise until it passes.
+7. Use HEREDOC format for multi-line messages: git commit --no-verify -m "$(cat <<'EOF'\ntype: summary\n\nOptional details\nEOF\n)"
+8. Create the commit (use --no-verify since tests already ran in the pre-commit optimization step)
+9. For intermediate commits (more groups remain after this one), prefix with `COMMIT_GUARD_BATCH=1` to suppress the commit-guard hook. Only the FINAL commit should run without this prefix so the guard can verify no files were missed.
 
 ## Staging Failure Handling
 
@@ -201,4 +225,12 @@ Exit the loop when:
 
 Show a brief summary of commits created with commit hashes and messages, plus the final `git status --short` result.
 
-If $ARGUMENTS contains "push", run git push after all commits are complete. Otherwise, stop after creating commits without pushing.
+If $ARGUMENTS contains "push", run git push after all commits are complete. The helper does not perform pushes. If push failed because no upstream is configured, a non-fast-forward rejection occurred, the current branch is detached, or the network failed, report `Pushed: no` with the exact error and do not claim completion. Otherwise, stop after creating commits without pushing.
+
+Final reports must explicitly include:
+
+```text
+Prepared: yes/no
+Committed: yes/no
+Pushed: yes/no/not requested
+```

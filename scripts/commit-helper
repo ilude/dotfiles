@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""Deterministic Git commit planning helper for agent workflows."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+SCHEMA_VERSION = 1
+VALID_MESSAGE_RE = re.compile(
+    r"^(feat|fix|docs|chore|refactor|test|perf|ci|build)(\([a-z0-9._-]+\))?: [a-z0-9].{0,68}$"
+)
+
+
+def run_git(
+    args: list[str], *, cwd: Path | None = None, check: bool = True
+) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+        check=False,
+    )
+    if check and result.returncode != 0:
+        message = result.stderr.strip() or result.stdout.strip() or f"git {' '.join(args)} failed"
+        raise RuntimeError(message)
+    return result
+
+
+def repo_root() -> Path:
+    result = run_git(["rev-parse", "--show-toplevel"])
+    return Path(result.stdout.strip()).resolve()
+
+
+def normalize_path(path: str) -> str:
+    return path.replace("\\", "/")
+
+
+def is_ignored(root: Path, path: str) -> bool:
+    result = run_git(["check-ignore", "-q", "--", path], cwd=root, check=False)
+    return result.returncode == 0
+
+
+def parse_porcelain_record(record: str) -> tuple[str, str, str]:
+    index = record[0]
+    worktree = record[1]
+    raw_path = record[3:]
+    return index, worktree, normalize_path(raw_path)
+
+
+def classify(index: str, worktree: str, ignored: bool) -> tuple[str, bool, str, str]:
+    if index == "U" or worktree == "U" or (index, worktree) in {("A", "A"), ("D", "D")}:
+        return "unmerged", False, "block", "Unmerged path requires manual conflict resolution"
+    if index == "D" and worktree == " ":
+        return (
+            "staged_deletion",
+            False,
+            "keep_staged",
+            "Deletion is already staged; do not run git add for this path",
+        )
+    if index in {"M", "A"} and worktree == " ":
+        return "staged", False, "keep_staged", "Change is already staged"
+    if index == "R":
+        return "renamed", False, "keep_staged", "Rename is already staged"
+    if index == "C":
+        return "copied", False, "keep_staged", "Copy is already staged"
+    if index == "?" and worktree == "?":
+        if ignored:
+            return "ignored", False, "skip", "Untracked path is ignored"
+        return "untracked", True, "stage", "Untracked path can be staged"
+    if ignored:
+        return "ignored", False, "skip", "Path is ignored"
+    if worktree == "M":
+        return "modified", True, "stage", "Tracked modification can be staged"
+    if worktree == "D":
+        return "deleted", True, "stage", "Tracked deletion can be staged"
+    if index != " ":
+        return "staged", False, "keep_staged", "Change is already staged"
+    return "unknown", False, "none", "No staging recommendation available"
+
+
+def entries(root: Path, requested_paths: set[str] | None = None) -> list[dict[str, Any]]:
+    result = run_git(["status", "--porcelain=v1", "-z", "--untracked-files=all"], cwd=root)
+    parsed: list[dict[str, Any]] = []
+    records = [record for record in result.stdout.split("\0") if record]
+    index = 0
+    while index < len(records):
+        record = records[index]
+        status_index, worktree, path = parse_porcelain_record(record)
+        if status_index in {"R", "C"} and index + 1 < len(records):
+            index += 1
+        index += 1
+        if requested_paths is not None and path not in requested_paths:
+            continue
+        ignored = is_ignored(root, path)
+        classification, safe, action, reason = classify(status_index, worktree, ignored)
+        if classification == "staged_deletion" and ignored:
+            reason = "Deletion is already staged; local path is ignored and must not be re-added"
+        parsed.append(
+            {
+                "path": path,
+                "index": status_index,
+                "worktree": worktree,
+                "classification": classification,
+                "ignored": ignored,
+                "safe_to_git_add": safe,
+                "recommended_action": action,
+                "reason": reason,
+            }
+        )
+    return parsed
+
+
+def document(root: Path, command: str, requested_paths: set[str] | None = None) -> dict[str, Any]:
+    path_entries = entries(root, requested_paths)
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "command": command,
+        "repo_root": str(root),
+        "clean": not path_entries,
+        "entries": path_entries,
+        "warnings": [],
+        "errors": [],
+    }
+
+
+def validate_message(message: str) -> tuple[bool, str]:
+    if len(message) > 72:
+        return False, "Commit subject must be 72 characters or fewer"
+    if not VALID_MESSAGE_RE.match(message):
+        return False, "Use conventional format: type(scope): lowercase description"
+    if message.endswith("."):
+        return False, "Commit subject must not end with a period"
+    return True, "ok"
+
+
+def print_json(payload: dict[str, Any]) -> None:
+    print(json.dumps(payload, indent=2, sort_keys=True))
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Deterministic Git commit planning helper")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers.add_parser("status-json")
+    plan_parser = subparsers.add_parser("stage-plan")
+    plan_parser.add_argument("--paths", nargs="*", default=None)
+    message_parser = subparsers.add_parser("validate-message")
+    message_parser.add_argument("message")
+    args = parser.parse_args(argv)
+
+    if args.command == "validate-message":
+        valid, reason = validate_message(args.message)
+        if valid:
+            return 0
+        print(reason, file=sys.stderr)
+        return 1
+
+    try:
+        root = repo_root()
+        requested = (
+            {normalize_path(path) for path in args.paths}
+            if args.command == "stage-plan" and args.paths
+            else None
+        )
+        print_json(document(root, args.command, requested))
+        return 0
+    except RuntimeError as exc:
+        print_json(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "command": args.command,
+                "repo_root": None,
+                "clean": False,
+                "entries": [],
+                "warnings": [],
+                "errors": [str(exc)],
+            }
+        )
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
