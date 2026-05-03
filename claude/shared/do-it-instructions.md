@@ -103,7 +103,12 @@ For existing `.specs/*/plan.md` files:
    If a team exists, ask: "A team is already active. Cancel it first?"
 3. **Extract the slug** from the plan file path (e.g., `.specs/my-feature/plan.md` → `my-feature`).
 4. **Execute directly** — follow the orchestration steps from `/plan-with-team` Step 6 (TeamCreate, TaskCreate, set dependencies, spawn agents, monitor waves, handle validation).
-5. **Deployment Procedure gate** — after all waves pass validation, check whether
+5. **Repo-wide completion validation gate** — after all implementation and automated wave validation pass, run the project's full repo-wide validation suite. This includes tests, linting, formatting checks, and any project-defined aggregate check command. Use the strongest project-defined aggregate command when available; in this repository that command is:
+   ```bash
+   make check
+   ```
+   Other projects may use commands such as `make test`, `just check`, `pnpm test`, `cargo test`, `go test ./...`, or separate lint/format/test commands. `/do-it` completion requires all required repo-wide validation commands to pass. If any required validation command fails for any reason, including failures outside the files changed by the task or failures that appear pre-existing, the task is **not complete**, the plan must **not** be archived, and the failure must be reported. Targeted tests and changed-file lint checks are useful during implementation, but they do not replace this final gate.
+6. **Deployment Procedure gate** — after all waves and repo-wide completion validation pass, check whether
    the plan contains a `## Deployment Procedure` section:
    - **If present**: Present the deployment steps to the user verbatim. Use
      AskUserQuestion with options:
@@ -115,8 +120,8 @@ For existing `.specs/*/plan.md` files:
      expected output before proceeding. If any step fails, show the "If it
      fails" guidance from the plan and ask the user how to proceed.
    - **If absent**: Skip this step (pure code-change plans have no deployment).
-6. After completion, **archive the plan**: set `completed` date in frontmatter, move to `.specs/archive/{slug}/`.
-7. Go to **Step 7: Summary**.
+7. After completion, **archive the plan** only if all implementation, validation, repo-wide tests/lint/format/check commands, and manual/deployment gates pass: set `completed` date in frontmatter, move to `.specs/archive/{slug}/`.
+8. Go to **Step 7: Summary**.
 
 ## Step 4: Simple Route
 
