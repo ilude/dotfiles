@@ -4,8 +4,23 @@ import * as path from "node:path";
 
 export interface GitResult { code: number; stdout: string; stderr: string }
 
+let _gitBin: string | undefined;
+function resolveGit(): string {
+	if (_gitBin !== undefined) return _gitBin;
+	if (process.platform !== "win32") return (_gitBin = "git");
+	const candidates = [
+		process.env.ProgramFiles ? `${process.env.ProgramFiles}\\Git\\mingw64\\bin\\git.exe` : undefined,
+		process.env["ProgramFiles(x86)"] ? `${process.env["ProgramFiles(x86)"]}\\Git\\mingw64\\bin\\git.exe` : undefined,
+		process.env.LOCALAPPDATA ? `${process.env.LOCALAPPDATA}\\Programs\\Git\\mingw64\\bin\\git.exe` : undefined,
+	].filter((c): c is string => Boolean(c));
+	for (const c of candidates) {
+		try { if (fs.existsSync(c)) return (_gitBin = c); } catch { /* ignore */ }
+	}
+	return (_gitBin = "git");
+}
+
 export function git(cwd: string, args: string[]): GitResult {
-	const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+	const result = spawnSync(resolveGit(), args, { cwd, encoding: "utf8", windowsHide: true });
 	return { code: result.status ?? 1, stdout: result.stdout ?? "", stderr: result.stderr ?? String(result.error ?? "") };
 }
 

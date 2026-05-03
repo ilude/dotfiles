@@ -457,6 +457,7 @@ async function runSingleAgent(
 				shell: false,
 				stdio: ["ignore", "pipe", "pipe"],
 				env: childEnv,
+				windowsHide: true,
 			});
 			let buffer = "";
 

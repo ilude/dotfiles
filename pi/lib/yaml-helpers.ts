@@ -14,6 +14,7 @@ export function loadYamlViaPython<T>(content: string): T | undefined {
 				{
 					input: content,
 					encoding: "utf-8",
+					windowsHide: true,
 				},
 			);
 			if (result.status === 0 && result.stdout.trim()) {

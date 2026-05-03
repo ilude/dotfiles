@@ -76,7 +76,7 @@ export default function (pi: ExtensionAPI) {
 function killProc(pid: number | undefined): void {
   if (pid === undefined) return;
   try {
-    spawn("taskkill", ["/F", "/T", "/PID", String(pid)], { stdio: "ignore" });
+    spawn("taskkill", ["/F", "/T", "/PID", String(pid)], { stdio: "ignore", windowsHide: true });
   } catch {
     // Process may have already exited
   }

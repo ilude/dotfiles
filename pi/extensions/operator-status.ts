@@ -26,6 +26,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { type ExtensionAPI, type ExtensionContext, type ReadonlyFooterDataProvider } from "@mariozechner/pi-coding-agent";
+import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { listRecentDecisions, listSessionApprovals } from "../lib/permission-registry.js";
 import { listTasks, type TaskRecordV1 } from "../lib/task-registry.js";
 
@@ -65,6 +66,7 @@ function runCommand(args: string[], cwd?: string): string {
 			cwd,
 			encoding: "utf-8",
 			timeout: 1000,
+			windowsHide: true,
 		});
 		return result.status === 0 ? result.stdout.trim() : "";
 	} catch {
@@ -110,17 +112,9 @@ function sanitizeSingleLine(text: string): string {
 	return text.replace(/[\r\n\t]/g, " ").replace(/ +/g, " ").trim();
 }
 
-function stripAnsi(text: string): string {
-	return text.replace(/\x1b\[[0-9;]*m/g, "");
-}
-
-function visibleLength(text: string): number {
-	return stripAnsi(text).length;
-}
-
 function rightAnchor(left: string, right: string | null, width: number): string {
 	if (!right) return left;
-	const gap = width - visibleLength(left) - visibleLength(right);
+	const gap = width - visibleWidth(left) - visibleWidth(right);
 	if (gap < 2) return left;
 	return `${left}${" ".repeat(gap)}${right}`;
 }
@@ -167,7 +161,8 @@ export function formatPiStatusLine(options: {
 	const thinkingLabel = `${ANSI.white}[${ANSI.cyan}${thinking}${ANSI.white}]${ANSI.reset}`;
 	const versionLabel = `${ANSI.dim}π v${options.piVersion ?? "?"}${ANSI.reset}`;
 	const left = `${ANSI.green}${directory}${ANSI.reset}${branch} | ${ANSI.orange}${model}${ANSI.reset}${thinkingLabel} | ${versionLabel}`;
-	return rightAnchor(left, options.router, options.width);
+	const composed = rightAnchor(left, options.router, options.width);
+	return visibleWidth(composed) > options.width ? truncateToWidth(composed, options.width) : composed;
 }
 
 function installClaudeStyleFooter(ctx: ExtensionContext, pi: ExtensionAPI): boolean {
@@ -190,7 +185,9 @@ function installClaudeStyleFooter(ctx: ExtensionContext, pi: ExtensionAPI): bool
 				width,
 			});
 			const extensionStatuses = formatExtensionStatuses(footerData);
-			return extensionStatuses ? [statusLine, extensionStatuses] : [statusLine];
+			if (!extensionStatuses) return [statusLine];
+			const fitted = visibleWidth(extensionStatuses) > width ? truncateToWidth(extensionStatuses, width) : extensionStatuses;
+			return [statusLine, fitted];
 		},
 	});
 	ctx.ui.setFooter(footerFactory);

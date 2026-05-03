@@ -92,7 +92,8 @@ async function runFirstAvailableValidator(
 ): Promise<{ name: string; output: string } | undefined> {
 	for (const validator of langConfig.validators) {
 		const checkBin = validator.check ?? validator.command[0];
-		const whichResult = await pi.exec("which", [checkBin]);
+		const lookup = process.platform === "win32" ? "where.exe" : "which";
+		const whichResult = await pi.exec(lookup, [checkBin]);
 		if (whichResult.code !== 0) continue;
 
 		const args = validator.command
