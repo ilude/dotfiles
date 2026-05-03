@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { recordEvent, type MetricsEvent } from "./metrics.js";
 
@@ -47,10 +48,19 @@ const SAFE_METADATA_KEYS = new Set([
 	"status",
 	"modelSize",
 	"modelPolicy",
+	"resolvedModel",
+	"workflow",
+	"phase",
+	"planPath",
+	"reviewDir",
+	"failureReason",
+	"retryCount",
+	"attempt",
 ]);
 
 function randomId(): string {
-	return Math.random().toString(16).slice(2, 10) + Date.now().toString(16).slice(-8);
+	// Preserve 16-char hex shape for backward compat with existing log filters/dashboards
+	return randomUUID().replace(/-/g, "").slice(0, 16);
 }
 
 export function sanitizeTimingMetadata(input: Record<string, unknown> | undefined): TimingSpanRecord["metadata"] | undefined {

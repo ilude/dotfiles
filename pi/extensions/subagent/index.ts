@@ -332,6 +332,22 @@ function getPiInvocation(args: string[]): { command: string; args: string[] } {
 
 type OnUpdateCallback = (partial: AgentToolResult<SubagentDetails>) => void;
 
+function extractPlanPath(task: string): string | undefined {
+	const match = task.match(/(\.specs\/[A-Za-z0-9._\/-]+\/plan\.md)/);
+	return match?.[1];
+}
+
+function inferWorkflow(task: string): string | undefined {
+	const normalized = task.toLowerCase();
+	if (normalized.includes("/review-it") || (normalized.includes("review") && normalized.includes("plan.md"))) {
+		return "review-it";
+	}
+	if (normalized.includes("/plan-it") || normalized.includes("plan crystallizer")) return "plan-it";
+	if (normalized.includes("/do-it") || normalized.includes("execute plan file")) return "do-it";
+	if (normalized.includes("/commit") || normalized.includes("commit workflow")) return "commit";
+	return undefined;
+}
+
 async function runSingleAgent(
 	defaultCwd: string,
 	agents: AgentConfig[],
@@ -343,6 +359,8 @@ async function runSingleAgent(
 	onUpdate: OnUpdateCallback | undefined,
 	makeDetails: (results: SingleResult[]) => SubagentDetails,
 	modelOverride: string | undefined,
+	modelSizeHint: ModelSize | undefined,
+	modelPolicyHint: ModelPolicy | undefined,
 ): Promise<SingleResult> {
 	const agent = agents.find((a) => a.name === agentName);
 
@@ -392,10 +410,23 @@ async function runSingleAgent(
 	// Operator task registry: track this subagent invocation as durable work.
 	// Lifecycle: pending -> running (before spawn) -> completed/failed/cancelled.
 	const taskId = safeCreateSubagentTask(agentName, task, cwd ?? defaultCwd, step, agent);
+	const planPath = extractPlanPath(task);
+	const workflow = inferWorkflow(task);
 	const timingSpan = new TimingSpan({
 		name: "subagent.run",
 		category: "subagent",
-		metadata: { agent: agentName, agentSource: agent.source, step },
+		metadata: {
+			agent: agentName,
+			agentSource: agent.source,
+			step,
+			modelSize: modelSizeHint,
+			modelPolicy: modelPolicyHint,
+			resolvedModel: modelOverride || agent.model,
+			workflow,
+			phase: step ? "chain-step" : "run",
+			planPath,
+			reviewer: workflow === "review-it" ? agentName : undefined,
+		},
 	});
 	safeTransitionTask(taskId, "running");
 	let taskFinalized = false;
@@ -510,19 +541,25 @@ async function runSingleAgent(
 		if (wasAborted) {
 			safeTransitionTask(taskId, "cancelled", { usage: taskUsage });
 			taskFinalized = true;
-			timingSpan.finish("cancelled", { exitCode });
+			timingSpan.finish("cancelled", { exitCode, workflow, phase: "run", planPath });
 			timingFinished = true;
 			throw new Error("Subagent was aborted");
 		}
 		if (exitCode === 0) {
 			safeUpdateTaskPreview(taskId, getFinalOutput(currentResult.messages));
 			safeTransitionTask(taskId, "completed", { usage: taskUsage });
-			timingSpan.finish("ok", { exitCode });
+			timingSpan.finish("ok", { exitCode, workflow, phase: "run", planPath });
 		} else {
 			const errorReason =
 				currentResult.errorMessage || currentResult.stderr.slice(-500) || `exit code ${exitCode}`;
 			safeTransitionTask(taskId, "failed", { errorReason, usage: taskUsage });
-			timingSpan.finish("error", { exitCode });
+			timingSpan.finish("error", {
+				exitCode,
+				workflow,
+				phase: "run",
+				planPath,
+				failureReason: errorReason,
+			});
 		}
 		timingFinished = true;
 		taskFinalized = true;
@@ -536,7 +573,8 @@ async function runSingleAgent(
 		}
 		if (!timingFinished) {
 			const status = err instanceof Error && /abort|cancel/i.test(err.message) ? "cancelled" : "error";
-			timingSpan.finish(status, {}, err);
+			const failureReason = err instanceof Error ? err.message : String(err);
+			timingSpan.finish(status, { workflow, phase: "run", planPath, failureReason }, err);
 			timingFinished = true;
 		}
 		throw err;
@@ -707,6 +745,8 @@ export default function (pi: ExtensionAPI) {
 						chainUpdate,
 						makeDetails("chain"),
 						resolvedModelId,
+						modelSize,
+						modelPolicy,
 					);
 					results.push(result);
 
@@ -789,6 +829,8 @@ export default function (pi: ExtensionAPI) {
 						},
 						makeDetails("parallel"),
 						resolvedModelId,
+						modelSize,
+						modelPolicy,
 					);
 					allResults[index] = result;
 					emitParallelUpdate();
@@ -824,6 +866,8 @@ export default function (pi: ExtensionAPI) {
 					onUpdate,
 					makeDetails("single"),
 					resolvedModelId,
+					modelSize,
+					modelPolicy,
 				);
 				const isError = result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted";
 				if (isError) {

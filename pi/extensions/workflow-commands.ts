@@ -44,7 +44,7 @@ const CONVENTIONAL_COMMIT_RE = new RegExp(
 	`^(${CONVENTIONAL_TYPES.join("|")})(\\([^)]+\\))?: [a-z0-9].{0,71}$`,
 );
 
-const SECRET_PATTERNS = [
+export const SECRET_PATTERNS = [
 	{ label: "OpenAI-style key", regex: /\bsk-[A-Za-z0-9_-]{10,}\b/g },
 	{ label: "AWS access key", regex: /\bAKIA[A-Z0-9]{16}\b/g },
 	{ label: "Private key / certificate", regex: /-----BEGIN(?: [A-Z]+)?-----/g },
@@ -54,8 +54,7 @@ const SECRET_PATTERNS = [
 	{ label: "Slack bot token", regex: /\bxoxb-[A-Za-z0-9-]{10,}\b/g },
 	{ label: "Slack user token", regex: /\bxoxp-[A-Za-z0-9-]{10,}\b/g },
 	{ label: "JWT", regex: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9._-]+\.[A-Za-z0-9._-]+\b/g },
-	{ label: "Hardcoded password", regex: /\bPASSWORD\s*=\s*.+/g },
-	{ label: "Hardcoded token", regex: /\bTOKEN\s*=\s*.+/g },
+	{ label: "Hardcoded password/token/secret/key", regex: /(?:^|[^A-Za-z0-9])[A-Za-z_]*(?:PASSWORD|TOKEN|SECRET|API[_-]?KEY)[A-Za-z_]*\s*[:=]/gim },
 ];
 
 function loadSkill(name: string) {
@@ -279,8 +278,9 @@ function hasMergeConflicts(statusOutput: string) {
 	});
 }
 
-function listChangedFiles(cwd: string, activity?: CommitActivity) {
-	const headDiff = parseLines(gitOrThrow(cwd, ["diff", "--name-only", "HEAD"], activity));
+export function listChangedFiles(cwd: string, activity?: CommitActivity) {
+	const hasHead = runGit(cwd, ["rev-parse", "--verify", "HEAD"]).code === 0;
+	const headDiff = hasHead ? parseLines(gitOrThrow(cwd, ["diff", "--name-only", "HEAD"], activity)) : [];
 	const untracked = parseLines(gitOrThrow(cwd, ["ls-files", "--others", "--exclude-standard"], activity));
 	const staged = parseLines(gitOrThrow(cwd, ["diff", "--cached", "--name-only"], activity));
 	return {
@@ -480,7 +480,7 @@ export async function chooseFilesToCommit(_ctx: any, changedFiles: string[], _st
 	return { files: changedFiles, stageAll: true, cancelled: false };
 }
 
-function stageFiles(cwd: string, files: string[], activity?: CommitActivity) {
+export function stageFiles(cwd: string, files: string[], activity?: CommitActivity) {
 	const addResult = runGit(cwd, ["add", "--", ...files], activity);
 	if (addResult.code !== 0) throw new Error((addResult.stderr || addResult.stdout).trim() || "git add failed");
 }
@@ -708,21 +708,27 @@ async function executeCommitCommand(pi: ExtensionAPI, args: string, ctx: any) {
 		for (const [index, group] of plan.groups.entries()) {
 			activity.setPhase(`creating commit ${index + 1}/${plan.groups.length}`);
 			stageFiles(ctx.cwd, group.files, activity);
-			const stagedStat = gitOrThrow(ctx.cwd, ["diff", "--cached", "--stat"], activity);
-			const commitMessage = await confirmCommitMessage(
-				ctx,
-				{ subject: group.subject.trim(), body: group.body?.trim() || undefined },
-				group.files,
-				stagedStat,
-				prepared.diffStat,
-			);
-			if (!commitMessage) {
+			let hash: string;
+			try {
+				const stagedStat = gitOrThrow(ctx.cwd, ["diff", "--cached", "--stat"], activity);
+				const commitMessage = await confirmCommitMessage(
+					ctx,
+					{ subject: group.subject.trim(), body: group.body?.trim() || undefined },
+					group.files,
+					stagedStat,
+					prepared.diffStat,
+				);
+				if (!commitMessage) {
+					unstageFiles(ctx.cwd, group.files, activity);
+					activity.finish();
+					return ctx.ui.notify("Commit cancelled", "warning");
+				}
+				hash = commitCurrentChanges(ctx.cwd, commitMessage, activity);
+				commitSummaries.push(`${hash} ${commitMessage.subject}`);
+			} catch (groupErr) {
 				unstageFiles(ctx.cwd, group.files, activity);
-				activity.finish();
-				return ctx.ui.notify("Commit cancelled", "warning");
+				throw groupErr;
 			}
-			const hash = commitCurrentChanges(ctx.cwd, commitMessage, activity);
-			commitSummaries.push(`${hash} ${commitMessage.subject}`);
 		}
 		if (prepared.parsedArgs.push) {
 			activity.setPhase("pushing");
@@ -787,31 +793,57 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("plan-it", {
 		description: "Crystallize conversation context into an executable plan document",
 		handler: async (args, ctx) => {
-			echoSlashCommand(pi, "plan-it", args);
-			const template = loadSkill("plan-it.md");
-			await pi.sendUserMessage(buildSkillPrompt(template, args));
+			const planPath = args.trim().match(/(\.specs\/[A-Za-z0-9._\/-]+\/plan\.md)/)?.[1];
+			await withTimingSpan(
+				{
+					name: "slash.plan-it",
+					category: "command",
+					metadata: { command: "plan-it", workflow: "plan-it", phase: "dispatch", planPath },
+				},
+				async () => {
+					echoSlashCommand(pi, "plan-it", args);
+					const template = loadSkill("plan-it.md");
+					await pi.sendUserMessage(buildSkillPrompt(template, args));
+				},
+			);
 		},
 	});
 
 	pi.registerCommand("review-it", {
 		description: "Adversarial review of a plan file — finds bugs, gaps, and failure modes",
 		handler: async (args, ctx) => {
-			await withTimingSpan({ name: "slash.review-it", category: "command", metadata: { command: "review-it" } }, async () => {
-				echoSlashCommand(pi, "review-it", args);
-				const template = loadSkill("review-it.md");
-				await pi.sendUserMessage(buildSkillPrompt(template, args, { replaceArguments: true }));
-			});
+			const planPath = args.trim().match(/(\.specs\/[A-Za-z0-9._\/-]+\/plan\.md)/)?.[1];
+			await withTimingSpan(
+				{
+					name: "slash.review-it",
+					category: "command",
+					metadata: { command: "review-it", workflow: "review-it", phase: "dispatch", planPath },
+				},
+				async () => {
+					echoSlashCommand(pi, "review-it", args);
+					const template = loadSkill("review-it.md");
+					await pi.sendUserMessage(buildSkillPrompt(template, args, { replaceArguments: true }));
+				},
+			);
 		},
 	});
 
 	pi.registerCommand("do-it", {
 		description: "Smart task routing — implements directly, delegates, or plans based on complexity",
 		handler: async (args, ctx) => {
-			await withTimingSpan({ name: "slash.do-it", category: "command", metadata: { command: "do-it" } }, async () => {
-				echoSlashCommand(pi, "do-it", args);
-				const template = loadSkill("do-it.md");
-				await pi.sendUserMessage(buildSkillPrompt(template, args, { replaceArguments: true }));
-			});
+			const planPath = args.trim().match(/(\.specs\/[A-Za-z0-9._\/-]+\/plan\.md)/)?.[1];
+			await withTimingSpan(
+				{
+					name: "slash.do-it",
+					category: "command",
+					metadata: { command: "do-it", workflow: "do-it", phase: "dispatch", planPath },
+				},
+				async () => {
+					echoSlashCommand(pi, "do-it", args);
+					const template = loadSkill("do-it.md");
+					await pi.sendUserMessage(buildSkillPrompt(template, args, { replaceArguments: true }));
+				},
+			);
 		},
 	});
 
@@ -830,13 +862,6 @@ export default function (pi: ExtensionAPI) {
 			echoSlashCommand(pi, "gitlab-ticket", args);
 			const template = loadSkill("gitlab-ticket.md");
 			await pi.sendUserMessage(buildGitlabTicketPrompt(template, args));
-		},
-	});
-
-	pi.registerCommand("new", {
-		description: "Start a new session",
-		handler: async (_args, ctx) => {
-			await ctx.newSession();
 		},
 	});
 
