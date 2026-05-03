@@ -176,6 +176,19 @@ Intercepts tool calls and blocks dangerous operations before they execute.
 
 Rules file: `~/.dotfiles/pi/damage-control-rules.yaml` -- edit to customize.
 
+### `auto-resume-watchdog.ts`
+
+Observes Pi agent liveness and provides safe recovery from suspected transient interruptions.
+
+- **Feasibility decision:** `extension-observe-only`. Pi extension events expose lifecycle/activity signals, but no public transport-level `WebSocket error` event.
+- **Default mode:** `observe-only`; configure `autoResumeWatchdog.mode` in `~/.pi/agent/settings.json` / tracked `pi/settings.json` (`disabled`, `observe-only`, or `auto`). `PI_AUTO_RESUME_WATCHDOG_MODE=...` is still supported as an environment override.
+- **Defaults:** stale threshold `90s`, cooldown `5m`, max auto-resumes `1 per user prompt` and `3 per session`.
+- **Safe continuation:** `/resume-safe` sends: “Continue after the transient interruption. First verify whether the last tool/file operation completed before repeating it. Do not repeat irreversible operations without verification.”
+- **Auto mode:** explicitly opt-in only; it sends the same guarded prompt and never replays tools directly. It does not resume while a tool is active, while Pi built-in `auto_retry` is active, during active user steering/follow-up, or after limits/cooldown are reached.
+- **Toggle shortcut:** `alt+w` toggles between `disabled` and `observe-only` and persists the setting. `/watchdog-toggle` does the same.
+- **Rollback/disable:** set `autoResumeWatchdog.mode` to `disabled` (or use `alt+w` / `/watchdog-toggle`), set `PI_AUTO_RESUME_WATCHDOG_MODE=disabled`, or remove/stop loading the extension; reload Pi and verify the `watchdog ...` status and watchdog notifications no longer appear.
+- **Limits:** this is idle-stall detection, not literal WebSocket-error detection. Runtime/client patches are required if Pi needs direct transport error observability.
+
 ### `agent-chain.ts`
 
 Implements the plan-build-review pipeline and the expertise system.
