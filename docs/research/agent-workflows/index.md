@@ -4,6 +4,13 @@
 
 What concrete implementation ideas can we borrow from recent agent tooling while keeping our Pi workflow simple, local, and maintainable?
 
+## Vault operating model
+
+- [[AGENTS]] — purpose, KISS rules, promotion filter, and maintenance guidance.
+- [[_templates/research-note]] — default template for new notes.
+
+This vault is a context pool, not a build mandate. Promote ideas only when they solve repeated workflow friction with a small reversible slice.
+
 ## Strongest signals
 
 1. [[projects/browser-use-browser-harness]] shows a minimal, editable browser harness where agents can add helpers and domain skills as they learn.
@@ -11,6 +18,7 @@ What concrete implementation ideas can we borrow from recent agent tooling while
 3. [[projects/openclaw]] appears directly related to Pi and validates Markdown-first skills/memory as a practical agent substrate.
 4. [[projects/convex-agent-plugins]] packages platform expertise as rules, skills, subagents, hooks, and MCP access.
 5. [[projects/daytona]] provides the sandbox/runtime layer for safer long-running agent execution.
+6. [[projects/menos]] is the local durable memory/search backend that can support compiled session memory, graph research, and pipeline receipts.
 
 ## Patterns
 
@@ -23,10 +31,15 @@ What concrete implementation ideas can we borrow from recent agent tooling while
 
 ## Specs synthesis
 
-- [[specs-workflow-trajectory]] — where active and archived specs show the workflow has been heading.
+- [[workflow-ideas/specs-workflow-trajectory]] — where active and archived specs show the workflow has been heading.
 - [[workflow-ideas/specs-derived-roadmap]] — concrete roadmap ideas from specs + ecosystem research.
 - [[workflow-ideas/pipelines-and-policies]] — run ledgers, first-class artifacts, resumability, and policy-as-code gates.
 - [[workflow-ideas/code-intelligence]] — Graphify/SCIP/code-intel ideas for semantic navigation and architecture orientation.
+- [[workflow-ideas/menos-knowledge-compiler]] — persona-scoped session capture, concept compilation, previews, lint, and digests on menos.
+- [[workflow-ideas/multipass-yolo-sandboxes]] — Multipass + Infisical design for safer YOLO/bypass-permissions agent runs.
+- [[workflow-ideas/x-research-pipeline]] — X.com read-only research graph pipeline using twscrape/Webshare/menos.
+- [[projects/zellij-windows-cockpit]] — Windows-native terminal cockpit for one project, one Pi pane, and repo-managed Zellij layout.
+- [[projects/menos]] — self-hosted content vault, semantic search, graph, and unified pipeline backend.
 - [[workflow-ideas/backlog]] — candidate next slices.
 
 ## KISS recommendations

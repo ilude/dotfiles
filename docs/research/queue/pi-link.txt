@@ -1,0 +1,137 @@
+:49 AM]Monday, March 23, 2026 1:49 AM 
+OP
+Original Poster 🌘: A WebSocket-based inter-terminal communication system that creates a local network between multiple Pi coding agent terminals. Enables terminals to discover each other, exchange messages, and orchestrate work across agents — all automatically on localhost.
+
+https://github.com/alvivar/pi-link
+https://www.npmjs.com/package/pi-link
+GitHub
+GitHub - alvivar/pi-link: A WebSocket-based inter-terminal communic...
+A WebSocket-based inter-terminal communication system that creates a local network between multiple Pi coding agent terminals. Enables terminals to discover each other, exchange messages, and orche...
+
+:wave:
+Click to react
+:thumbsup:
+Click to react
+:rofl:
+Click to react
+Add Reaction
+Reply
+Forward
+More
+
+16
+Add Reaction
+
+Follow
+Add this post to your channel list and receive notifications about it.
+Copy Link
+[1:49 AM]Monday, March 23, 2026 1:49 AM 
+OP
+Original Poster 🌘: Let me know your thoughts!
+[1:29 PM]Monday, March 23, 2026 1:29 PMZoe [OC], OC: so cool, i think it is the basic function of agents.
+[1:40 PM]Monday, March 23, 2026 1:40 PM 
+OP
+Original Poster 🌘: That's what I'm looking for, the minimum amount of tools for smart models to cooperate.
+
+1
+Add Reaction
+[1:41 PM]Monday, March 23, 2026 1:41 PM 
+OP
+Original Poster 🌘: The simplest link between Pi terminals.
+[2:10 PM]Monday, March 23, 2026 2:10 PM 
+OP
+Original Poster 🌘: ...and my thoughts about "orchestration", is that maybe with a simple extension with simple tools to connect pi terminals, orchestration is basically a "skill" with the how to work together kind of instructions... different skills for variations of different types or orchestrations...
+[2:11 PM]Monday, March 23, 2026 2:11 PM 
+OP
+Original Poster 🌘: But with just the extension, it is enough for them to communicate as you instruct them without making things complicated... the "skill" idea (a bigger directed prompt) is just how I'm experimenting to move forward. (edited)Monday, March 23, 2026 2:27 PM
+March 24, 2026
+[12:37 AM]Tuesday, March 24, 2026 12:37 AMFaceroll: noice.
+[12:38 AM]Tuesday, March 24, 2026 12:38 AMFaceroll: i've been meaning to try out pi-mesh, but i want to give this a go too
+
+1
+Add Reaction
+[2:33 AM]Tuesday, March 24, 2026 2:33 AMZoe [OC], OC: yes, the function separation is flexible and solid. At start, every agent is equal, and the orchestration make them diff or have diff roles. The next question is if agents could know their status(model and context pressure), if status can be others changed or create a new terminal agent.
+
+1
+Add Reaction
+[1:49 PM]Tuesday, March 24, 2026 1:49 PM 
+OP
+Original Poster 🌘: The idea of status could be useful. Right now when an agent tries to communicate with another and can't, but that other is on the network list, the agent puts itself to sleep to check again in a few seconds (LLMs do this naturally, they assume that if they are on the list but can't answer, they should be working).
+[1:51 PM]Tuesday, March 24, 2026 1:51 PM 
+OP
+Original Poster 🌘: Not sure about changing status through a tool, but maybe using Pi hooks to communicate naturally whether an agent is answering, working, or idle may be useful and other useful data like context pressure. I'll experiment with this. (edited)Tuesday, March 24, 2026 1:51 PM
+
+1
+Add Reaction
+[1:51 PM]Tuesday, March 24, 2026 1:51 PM 
+OP
+Original Poster 🌘: 
+[10:22 PM]Tuesday, March 24, 2026 10:22 PM 
+OP
+Original Poster 🌘: Just added this:
+[10:22 PM]Tuesday, March 24, 2026 10:22 PM 
+OP
+Original Poster 🌘:
+idle (2m) – Waiting for user input,
+thinking (3s) – LLM is generating,
+tool:bash (12s) – Running a specific tool,
+ (edited)Tuesday, March 24, 2026 10:23 PM
+[10:24 PM]Tuesday, March 24, 2026 10:24 PM 
+OP
+Original Poster 🌘: link_list now returns the status of other pi terminals, and the time on that status
+[10:25 PM]Tuesday, March 24, 2026 10:25 PM 
+OP
+Original Poster 🌘: It doesn't affect that llm context, the status come from Pi internal hooks and stuff
+[10:36 PM]Tuesday, March 24, 2026 10:36 PM 
+OP
+Original Poster 🌘:
+
+March 25, 2026
+[12:01 AM]Wednesday, March 25, 2026 12:01 AMyecechi: interesting, subagent -> agent teams -> multi pi. So, what's the final version? (edited)Wednesday, March 25, 2026 12:02 AM
+@yecechi
+interesting, subagent -> agent teams -> multi pi. So, what's the final version? (edited)Wednesday, March 25, 2026 12:02 AM
+[5:49 PM]Wednesday, March 25, 2026 5:49 PM 
+OP
+Original Poster 🌘: It's funny, with just those 3 tools and prompting, I have been able to create cool collaboration loops between agents.
+
+Basic things like a builder (Opus) that, after finishing a coding task, calls a reviewer (GPT-4) for feedback. They iterate until completion, and then the builder calls a documentation agent (Haiku) to update the documentation. Then it's my turn as a human to review and commit.
+
+Or more complex things like agents optimizing something, testing and branching until some test score wins after certain conditions are met.
+[5:50 PM]Wednesday, March 25, 2026 5:50 PM 
+OP
+Original Poster 🌘: ---
+[5:51 PM]Wednesday, March 25, 2026 5:51 PM 
+OP
+Original Poster 🌘: I'll be experimenting with something bigger, which includes testing and deploying, to see the limits of what we currently have here, to see what else may be needed.
+[5:52 PM]Wednesday, March 25, 2026 5:52 PM 
+OP
+Original Poster 🌘: ---
+🌘
+Click to see attachment
+[5:53 PM]Wednesday, March 25, 2026 5:53 PM 
+OP
+Original Poster 🌘: Another cool thing is that by naming the terminals like role@project, as in the image, agents will write to their respective builder in the respective domain when needed. So, I don't think that grouping agents makes sense either.
+
+I'm having so much fun with this.
+
+1
+Add Reaction
+March 27, 2026
+[2:00 AM]Friday, March 27, 2026 2:00 AM 
+OP
+Original Poster 🌘: A new small feature (update):
+Link names are saved into your session, so when you resume, they are persistent.,
+
+I'm also exploring the idea of adding a couple of new features:
+
+A description for agents, besides the name (optional), maybe by using /link-description:
+  link_list →
+  • builder@adaptive-bop — "writes TypeScript code, runs tests" — idle (30s)
+  • reviewer@adaptive-bop — "code review, security analysis" — idle (1m),
+
+A shared context, a scratchpad, a lightweight shared key-value store with a couple new tools:
+ • link_set("auth_plan", "...stuff...")
+ • link_get("auth_plan"),
+
+ 
+[2:38 AM]Friday, March 27, 2026 2:38 AMZoe [OC], OC: how to better use session name  and link name 
