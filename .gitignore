@@ -38,6 +38,7 @@ claude/chrome/chrome-native-host
 
 # Session and state data
 claude/provider-config.json
+claude/state/menos_status.json
 claude/toggle/
 claude/CHECKPOINT
 claude/.checkpoints/
