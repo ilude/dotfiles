@@ -130,6 +130,18 @@ A bare TODO or a comment without all three lines is NOT a documented
 exception and fails review. Reviewers should reject any deviation from the
 shared conventions that is not documented this way.
 
+## Pi `/commit` extension
+
+Pi owns `/commit` through the existing `pi/extensions/workflow-commands.ts` command registration. The Pi-native commit tools live in `pi/extensions/commit.ts` as their own auto-discovered extension, so there is still exactly one slash-command owner for `commit`.
+
+The extension exposes structured commit tools:
+
+- `commit_plan` and `commit_validate_message` are non-mutating.
+- `commit_stage` and `commit_create` are mutating and require confirmation tokens generated from the exact path set shown by `commit_plan`.
+- `commit_create` re-reads the staged set immediately before `git commit` and reports `pushed: false`; push/grouped-commit mutation is deferred.
+
+The older Python `scripts/commit-helper` remains a compatibility/parity reference for non-Pi consumers. Pi behavior is canonical going forward.
+
 ## Validation
 
 `make check-pi-extensions` runs the full extension validation pipeline:

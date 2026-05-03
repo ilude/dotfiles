@@ -30,6 +30,7 @@ import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { completeSimple, type TextContent } from "@mariozechner/pi-ai";
 import { Text } from "@mariozechner/pi-tui";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
+import { withTimingSpan } from "../lib/observability";
 import {
 	buildCommitPlanningPrompt,
 	buildGitlabTicketPrompt,
@@ -795,18 +796,22 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("review-it", {
 		description: "Adversarial review of a plan file — finds bugs, gaps, and failure modes",
 		handler: async (args, ctx) => {
-			echoSlashCommand(pi, "review-it", args);
-			const template = loadSkill("review-it.md");
-			await pi.sendUserMessage(buildSkillPrompt(template, args, { replaceArguments: true }));
+			await withTimingSpan({ name: "slash.review-it", category: "command", metadata: { command: "review-it" } }, async () => {
+				echoSlashCommand(pi, "review-it", args);
+				const template = loadSkill("review-it.md");
+				await pi.sendUserMessage(buildSkillPrompt(template, args, { replaceArguments: true }));
+			});
 		},
 	});
 
 	pi.registerCommand("do-it", {
 		description: "Smart task routing — implements directly, delegates, or plans based on complexity",
 		handler: async (args, ctx) => {
-			echoSlashCommand(pi, "do-it", args);
-			const template = loadSkill("do-it.md");
-			await pi.sendUserMessage(buildSkillPrompt(template, args, { replaceArguments: true }));
+			await withTimingSpan({ name: "slash.do-it", category: "command", metadata: { command: "do-it" } }, async () => {
+				echoSlashCommand(pi, "do-it", args);
+				const template = loadSkill("do-it.md");
+				await pi.sendUserMessage(buildSkillPrompt(template, args, { replaceArguments: true }));
+			});
 		},
 	});
 
@@ -828,10 +833,17 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
+	pi.registerCommand("new", {
+		description: "Start a new session",
+		handler: async (_args, ctx) => {
+			await ctx.newSession();
+		},
+	});
+
 	pi.registerCommand("clear", {
 		description: "Alias to /new",
-		handler: async (_args, _ctx) => {
-			await pi.sendUserMessage("/new");
+		handler: async (_args, ctx) => {
+			await ctx.newSession();
 		},
 	});
 

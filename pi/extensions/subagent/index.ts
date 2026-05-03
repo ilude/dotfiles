@@ -23,6 +23,7 @@ import { type ExtensionAPI, getMarkdownTheme, withFileMutationQueue } from "@mar
 import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { recordEvent } from "../../lib/metrics.js";
+import { TimingSpan } from "../../lib/observability.js";
 import { resolveDynamicModelFromRegistry, type ModelPolicy, type ModelSize } from "../../lib/model-routing.js";
 import { createTask, transitionTask, updateTask } from "../../lib/task-registry.js";
 import { formatTraceparent, getTraceId, newSpanId, newTraceId } from "../transcript-runtime.js";
@@ -391,8 +392,14 @@ async function runSingleAgent(
 	// Operator task registry: track this subagent invocation as durable work.
 	// Lifecycle: pending -> running (before spawn) -> completed/failed/cancelled.
 	const taskId = safeCreateSubagentTask(agentName, task, cwd ?? defaultCwd, step, agent);
+	const timingSpan = new TimingSpan({
+		name: "subagent.run",
+		category: "subagent",
+		metadata: { agent: agentName, agentSource: agent.source, step },
+	});
 	safeTransitionTask(taskId, "running");
 	let taskFinalized = false;
+	let timingFinished = false;
 
 	try {
 		if (agent.systemPrompt.trim()) {
@@ -503,16 +510,21 @@ async function runSingleAgent(
 		if (wasAborted) {
 			safeTransitionTask(taskId, "cancelled", { usage: taskUsage });
 			taskFinalized = true;
+			timingSpan.finish("cancelled", { exitCode });
+			timingFinished = true;
 			throw new Error("Subagent was aborted");
 		}
 		if (exitCode === 0) {
 			safeUpdateTaskPreview(taskId, getFinalOutput(currentResult.messages));
 			safeTransitionTask(taskId, "completed", { usage: taskUsage });
+			timingSpan.finish("ok", { exitCode });
 		} else {
 			const errorReason =
 				currentResult.errorMessage || currentResult.stderr.slice(-500) || `exit code ${exitCode}`;
 			safeTransitionTask(taskId, "failed", { errorReason, usage: taskUsage });
+			timingSpan.finish("error", { exitCode });
 		}
+		timingFinished = true;
 		taskFinalized = true;
 		return currentResult;
 	} catch (err) {
@@ -521,6 +533,11 @@ async function runSingleAgent(
 		if (!taskFinalized) {
 			const errorReason = err instanceof Error ? err.message : String(err);
 			safeTransitionTask(taskId, "failed", { errorReason });
+		}
+		if (!timingFinished) {
+			const status = err instanceof Error && /abort|cancel/i.test(err.message) ? "cancelled" : "error";
+			timingSpan.finish(status, {}, err);
+			timingFinished = true;
 		}
 		throw err;
 	} finally {

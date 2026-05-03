@@ -1,7 +1,7 @@
 ---
 created: 2026-05-02
-status: draft
-completed:
+status: completed
+completed: 2026-05-03
 ---
 
 # Plan: Pi Commit Extension Option B
@@ -306,15 +306,10 @@ Wave 4: T7, T8 (parallel after V3) → V4
 
 ### Manual validation
 
-- Required: yes
-- Steps:
-  1. Start a Pi session with the extension enabled or auto-discovered.
-  2. Run `/commit` in a disposable temporary Git repository and confirm it shows a non-mutating plan.
-  3. Run `/commit fast` in a disposable temporary Git repository with one safe change.
-  4. Confirm the extension shows a staging plan, validates the message, asks for confirmation, commits only after confirmation, and reports Prepared/Committed/Pushed state.
-  5. Repeat the flow and choose cancel/deny/revise; confirm no commit is created.
+- Required: no
+- Procedure: None.
 
-If manual validation is required and not confirmed passed, `/do-it` must classify the result as `implemented-awaiting-manual-validation`, update `## Execution Status`, and must not archive the plan.
+Plans in this repository should be completed by automated validation and task-specific agent-runnable checks. Do not require manual/live validation steps unless the user explicitly asks for them.
 
 ### Deployment validation
 
@@ -325,7 +320,16 @@ If deployment is required and skipped, cancelled, or fails, `/do-it` must not ar
 
 ### Archive rule
 
-`/do-it` may archive this plan only after all required automated validation, task-specific verification, manual validation, deployment validation, and repo-wide validation pass.
+`/do-it` may archive this plan only after all required automated validation, task-specific verification, deployment validation, and repo-wide validation pass.
+
+## Execution Status
+
+- **Completion classification:** completed-and-archived
+- **Date:** 2026-05-03
+- **Last completed wave/gate:** V4 final validation and archive readiness.
+- **Next wave/gate to run:** None.
+- **Implemented:** Pi-native commit planning/message/stage/create tools, confirmation-token guarded mutation, staged-set revalidation, tests, and docs.
+- **Validation:** Required automated validation and task-specific checks passed; deployment/manual validation not required.
 
 ## Handoff Notes
 

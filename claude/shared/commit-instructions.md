@@ -8,6 +8,8 @@ If the command input does not begin with `fast`, use **Standard Mode** below.
 
 # Deterministic Commit Helper
 
+Pi compatibility note: Pi's canonical workflow is the TypeScript Pi commit extension (`pi/extensions/workflow-commands.ts` and `pi/extensions/commit.ts`). These Claude/OpenCode instructions continue to use `scripts/commit-helper` as a compatibility and parity helper until those clients migrate.
+
 Before staging in any mode, run the non-mutating helper to classify Git state:
 
 ```bash

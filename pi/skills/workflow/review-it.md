@@ -165,9 +165,10 @@ Reviewer failure/truncation handling:
 - A second full independent review panel is only allowed if the plan file changed materially after the first review, or if the user explicitly asks for a fresh review.
 - Do not run compact recovery for every reviewer unless every reviewer response is unusable; that is considered an infrastructure failure and should be reported as blocked.
 
-Coarse timing until observability tooling exists:
-- Record wall-clock start/end times for the initial panel, any recovery call, verification, and synthesis.
-- Include these coarse durations in the synthesis under `## Timing Notes`.
+Timing capture:
+- Prefer Pi timing/observability events when available (`timing_span` metrics for subagent/reviewer/panel/recovery/command spans).
+- Record wall-clock start/end times for the initial panel, any recovery call, verification, and synthesis as a fallback.
+- Include these durations in the synthesis under `## Timing Notes`.
 - If per-reviewer durations are unavailable, explicitly write `per-reviewer timing unavailable` rather than guessing.
 
 ### Reviewer task templates

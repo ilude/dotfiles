@@ -1,7 +1,7 @@
 ---
 created: 2026-05-02
-status: draft
-completed:
+status: completed
+completed: 2026-05-02
 ---
 
 # Plan: Pi Observability Timing Instrumentation
@@ -16,13 +16,16 @@ This plan adds **Pi-native timing/observability instrumentation** across applica
 
 - Pi-first implementation policy: prefer Pi extensions/runtime code and TypeScript for workflow/tooling changes.
 - No code implementation in this planning artifact.
-- First implementation step must inspect existing Pi session JSONL/logs for recoverable timings and event shapes.
+- First implementation step must inspect existing Pi session JSONL/logs for recoverable timings and event shapes, using metadata-only inspection with explicit minimization/redaction rules.
 - Runtime timing logs, session JSONL, trace files, caches, and generated observability output are local/generated state and must not be committed.
 - Preserve existing review behavior; instrumentation must be low-overhead and must not change review decisions.
 - Timing should use monotonic clocks for durations where available; wall-clock timestamps are for correlation only.
-- Do not record secrets, prompt bodies, command output bodies, API keys, or private file contents in timing logs.
+- Do not record secrets, prompt bodies, command output bodies, API keys, or private file contents in timing logs. Existing log inspection must document only event names, timestamp fields, span boundaries, and sanitized path patterns; do not copy prompt/output bodies, file contents, raw session IDs, API keys, or secret-like values into notes or artifacts.
 - Support degraded behavior: if timing persistence fails, workflows continue and report a warning.
 - Keep summaries bounded so review synthesis remains readable.
+- T1 must produce the exact targeted Pi test command(s) or an explicit documented fallback/manual-validation status; T1 must write `.specs/pi-observability-timing/test-commands.md` with `OBSERVABILITY_TEST_COMMAND` and `REVIEW_IT_TEST_COMMAND`; if either command cannot be discovered, the file must state `MANUAL_VALIDATION_REQUIRED` and later validation must use that status explicitly.
+- Before writing generated timing artifacts, the implementation must name the runtime path and verify it is ignored/untracked with `git check-ignore` or an equivalent tracking check.
+- Timing helpers must define a concrete TypeScript clock contract: monotonic API, duration units, wall-clock correlation fields, fallback behavior, and fake-clock injection for deterministic tests.
 
 ## Alternatives Considered
 
@@ -77,8 +80,8 @@ Implement a Pi-native timing/observability layer that:
 - Description: Before adding instrumentation, inspect existing Pi session JSONL/logs and local runtime files to identify recoverable event timestamps, subagent boundaries, tool call boundaries, recovery markers, command names, and review synthesis markers. Do not modify or commit logs.
 - Files: read-only inspection of `.pi/`, `pi/`, and user-local Pi runtime/session locations as applicable.
 - Acceptance Criteria:
-  1. [ ] Existing log/session sources and event shapes are documented.
-     - Verify: notes include file/path patterns, event names, timestamp fields, and gaps.
+  1. [ ] Existing log/session sources and event shapes are documented with metadata-only minimization.
+     - Verify: notes include sanitized file/path patterns, event names, timestamp fields, and gaps; notes do not include prompt bodies, command/tool output bodies, private file contents, raw session IDs, API keys, or secret-like values.
      - Pass: implementers know exactly what can be recovered from current JSONL/logs.
      - Fail: instrumentation starts without checking existing data.
   2. [ ] Privacy and commit-safety implications are documented.
@@ -91,9 +94,13 @@ Implement a Pi-native timing/observability layer that:
 - Files: `pi/`, `.pi/APPEND_SYSTEM.md`, applicable workflow skill files.
 - Acceptance Criteria:
   1. [ ] Surface map identifies each instrumentation hook point and owner.
-     - Verify: `grep -R "subagent\|review-it\|registerCommand\|registerTool\|recovery\|synthesis" pi .pi 2>/dev/null | head -80`
-     - Pass: each required timing category has a proposed hook point.
+     - Verify: `grep -R "subagent\|review-it\|registerCommand\|registerTool\|recovery\|synthesis" pi .pi 2>/dev/null | head -80` plus written surface-map notes.
+     - Pass: each required timing category has a proposed hook point and compatibility notes for preserving existing tool/subagent contracts.
      - Fail: reviewer/panel/recovery/tool timing cannot be traced to code or workflow locations.
+  2. [ ] Exact targeted Pi test commands are discovered or a fallback is documented.
+     - Verify: T1 notes include concrete commands for observability and review-it tests, or explicitly state no automated command exists and manual validation is required.
+     - Pass: later tasks use the commands recorded in `.specs/pi-observability-timing/test-commands.md` or explicitly carry `MANUAL_VALIDATION_REQUIRED`.
+     - Fail: validation remains non-executable or placeholder-based.
 
 **T2: Design timing event schema and local persistence policy** [medium] -- engineering-lead
 - Description: Define event schema, correlation IDs, run/review/panel/reviewer spans, parent-child relationships, monotonic duration fields, wall-clock fields, status/error classification, redaction rules, and local persistence location.
@@ -104,9 +111,13 @@ Implement a Pi-native timing/observability layer that:
      - Pass: all required timing categories have fields and correlation strategy.
      - Fail: one or more required durations cannot be represented.
   2. [ ] Persistence policy keeps timing logs generated/local and ignored.
-     - Verify: design names runtime path and required `.gitignore`/source-vs-runtime behavior.
-     - Pass: no generated timing logs are committed.
+     - Verify: design names runtime path and required `.gitignore`/source-vs-runtime behavior; before any test writes timing artifacts, run `git check-ignore -v <runtime-timing-path>` or an equivalent check proving the path is ignored/untracked.
+     - Pass: no generated timing logs are committed or accidentally written to a trackable source path.
      - Fail: generated observability files could be tracked by default.
+  3. [ ] Design includes a post-discovery scope checkpoint.
+     - Verify: design states which timings are recovered from existing logs and which gaps require new instrumentation.
+     - Pass: implementation instruments only proven gaps for V1 scope.
+     - Fail: plan builds broad instrumentation without using T0 findings.
 
 ### Wave 1 -- Validation Gate
 
@@ -123,16 +134,16 @@ Implement a Pi-native timing/observability layer that:
 **T3: Implement shared TypeScript timing helper and tests** [medium] -- typescript-pro
 - Description: Add reusable timing helpers for span start/finish, nested spans, safe serialization, bounded summaries, and persistence failure tolerance.
 - Acceptance Criteria:
-  1. [ ] Tests prove positive durations, nested correlation, status capture, and redaction.
-     - Verify: `{exact Pi test command from T1} -- observability`
+  1. [ ] Tests prove positive durations, nested correlation, status capture, redaction, deterministic fake-clock behavior, and retention/rotation or explicitly deferred retention behavior.
+     - Verify: the `OBSERVABILITY_TEST_COMMAND` recorded in `.specs/pi-observability-timing/test-commands.md`
      - Pass: helper tests pass without writing committed artifacts.
      - Fail: timing helper is untested or leaks sensitive fields.
 
 **T4: Instrument subagent, tool, and command timing surfaces** [medium] -- typescript-pro
 - Description: Wrap applicable Pi subagent calls, tool invocations, and command execution paths with timing spans while preserving behavior and errors.
 - Acceptance Criteria:
-  1. [ ] Tests prove timings are emitted for success, failure, and cancellation paths.
-     - Verify: `{exact Pi test command from T1} -- observability`
+  1. [ ] Tests prove timings are emitted for success, failure, and cancellation paths without changing returned results or thrown errors.
+     - Verify: the `OBSERVABILITY_TEST_COMMAND` recorded in `.specs/pi-observability-timing/test-commands.md`
      - Pass: each path emits bounded timing metadata and preserves original result/error.
      - Fail: instrumentation changes behavior or misses failure timings.
 
@@ -153,7 +164,7 @@ Implement a Pi-native timing/observability layer that:
 - Description: Add review-specific spans for per-reviewer duration, whole panel duration, retry/recovery duration, and recovery outcome.
 - Acceptance Criteria:
   1. [ ] `/review-it` tests or fixtures prove per-reviewer, panel, and recovery durations are captured.
-     - Verify: `{exact Pi test command from T1} -- review-it`
+     - Verify: the `REVIEW_IT_TEST_COMMAND` recorded in `.specs/pi-observability-timing/test-commands.md`
      - Pass: timings exist for normal and recovery scenarios.
      - Fail: review timing remains inferential or missing.
 
@@ -161,7 +172,7 @@ Implement a Pi-native timing/observability layer that:
 - Description: Update review synthesis to include concise timing summaries: total panel time, reviewer durations, slowest reviewer/tool/command, recovery time, and caveat when timings are partially unavailable.
 - Acceptance Criteria:
   1. [ ] Review synthesis includes bounded timing summary when timing data exists.
-     - Verify: `{exact Pi test command from T1} -- review-it`
+     - Verify: the `REVIEW_IT_TEST_COMMAND` recorded in `.specs/pi-observability-timing/test-commands.md`
      - Pass: summary is present, concise, and stable in tests.
      - Fail: synthesis omits timing or becomes noisy.
 
@@ -228,7 +239,7 @@ Wave 4: T7 -> V4
 - **Risk: instrumentation changes workflow behavior.** Mitigation: wrappers must preserve results/errors; tests cover success/failure/cancel paths. Rollback: disable instrumentation feature flag or remove wrapper calls.
 - **Risk: sensitive data leakage.** Mitigation: schema stores metadata only; redaction tests; no prompt/output bodies. Rollback: stop persistence and purge local generated traces.
 - **Risk: noisy synthesis.** Mitigation: bounded summaries and top-N slow items. Rollback: keep timing capture but hide synthesis section.
-- **Risk: runtime log growth.** Mitigation: local retention/rotation policy. Rollback: reduce retention or disable persistence while keeping in-memory summaries.
+- **Risk: runtime log growth.** Mitigation: local retention/rotation policy included in T3 acceptance criteria, or an explicit V1 deferral with rationale. Rollback: reduce retention or disable persistence while keeping in-memory summaries.
 
 ## Out of Scope
 
@@ -255,7 +266,7 @@ Wave 4: T7 -> V4
    - Fail: do not archive; update execution status with failing command and next fix.
 
 2. [ ] Run targeted Pi observability/review tests.
-   - Command: `{exact Pi test command from T1} -- observability && {exact Pi test command from T1} -- review-it`
+   - Command: run the `OBSERVABILITY_TEST_COMMAND` and `REVIEW_IT_TEST_COMMAND` recorded in `.specs/pi-observability-timing/test-commands.md`; if either is marked `MANUAL_VALIDATION_REQUIRED`, complete the Manual validation section and do not archive until it passes
    - Pass: all timing and synthesis tests pass.
    - Fail: fix instrumentation/tests, then rerun targeted tests and `make check`.
 
@@ -273,7 +284,7 @@ Wave 4: T7 -> V4
 
 - Required: yes, unless automated Pi integration tests fully simulate a multi-reviewer `/review-it` run including recovery.
 - Steps:
-  1. Run a disposable `/review-it` flow with at least two reviewers.
+  1. Run a disposable `/review-it` flow with the standard six-reviewer panel, or document why an automated fixture fully covers six-reviewer fan-out timing.
   2. Trigger or simulate one recovery/retry path.
   3. Confirm review synthesis reports panel duration, per-reviewer durations, recovery duration, and slowest relevant tool/command when available.
   4. Confirm generated timing files remain local and are not shown as committable source.
@@ -297,3 +308,12 @@ If deployment becomes required and is skipped, cancelled, or fails, `/do-it` mus
 - Prefer TypeScript in Pi extension/runtime code.
 - Treat timing logs as generated local runtime state, never source.
 - Keep review synthesis timing concise and caveated when data is partial.
+
+## Execution Status
+
+- **Classification:** completed-and-archived
+- **Date:** 2026-05-02
+- **Last completed wave/gate:** V4 final validation and archive readiness.
+- **Manual validation:** confirmed passed by user on 2026-05-02, including six-reviewer `/review-it`/equivalent validation, recovery/retry path, timing summary confirmation, and generated artifact check.
+- **Automated validation:** targeted observability/review prompt tests, extension typecheck, and `make check` passed.
+- **Archive status:** ready; this plan is archived under `.specs/archive/pi-observability-timing/plan.md`.

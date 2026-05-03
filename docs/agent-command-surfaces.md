@@ -2,6 +2,14 @@
 
 This repository supports multiple coding-agent clients. Keep shared behavior aligned, but edit the command source that each client actually loads.
 
+## `/commit` locations
+
+- **Pi**: `pi/extensions/workflow-commands.ts` owns the `/commit` slash command; `pi/extensions/commit.ts` is the auto-discovered Pi-native commit tools extension.
+  - `commit_plan` and `commit_validate_message` are non-mutating planning/message tools.
+  - `commit_stage` and `commit_create` are guarded mutating tools that require confirmation tokens and exact staged-set revalidation.
+  - Pi is the canonical commit workflow; the Python `scripts/commit-helper` is a compatibility/parity reference for non-Pi consumers.
+- **Claude/OpenCode/Copilot**: continue to use their command/prompt surfaces and shared commit instructions unless explicitly migrated to Pi tooling.
+
 ## `/do-it` locations
 
 - **Pi**: `pi/skills/workflow/do-it.md`

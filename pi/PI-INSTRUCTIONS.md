@@ -19,6 +19,8 @@ Source-vs-runtime policy: keep curated source/config trackable, including `pi/se
 
 Pi-first implementation policy: for future workflow/tooling work, prefer Pi-native solutions (Pi skills, Pi extensions, and TypeScript where Pi extension/runtime code is appropriate) unless the user explicitly asks for a cross-client or non-Pi implementation. Cross-client shims can wrap Pi-first behavior when needed, but Pi should be the default target going forward.
 
+Pi `/commit` policy: Pi owns the primary commit workflow through `pi/extensions/workflow-commands.ts`, with structured commit tools in `pi/extensions/commit.ts`. Use `commit_plan`/`commit_validate_message` for non-mutating checks and guarded `commit_stage`/`commit_create` only after explicit confirmation-token approval. `scripts/commit-helper` remains a compatibility/parity reference for non-Pi consumers, not the canonical Pi implementation.
+
 ## Agent Frontmatter Schema
 
 Pi agent `.md` files use YAML frontmatter that is a **superset** of Claude Code's agent schema. Pi-specific fields (`expertise`, `domain`, `skills`) coexist with Claude Code-compatible execution constraints (`isolation`, `memory`, `effort`, `maxTurns`). Both platforms ignore unknown fields, so a single agent file is portable.

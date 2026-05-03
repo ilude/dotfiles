@@ -1,6 +1,8 @@
 # Commit Helper Contract
 
-`uv run python scripts/commit-helper ...` provides deterministic, machine-readable planning for the `/commit` workflow.
+`uv run python scripts/commit-helper ...` provides deterministic, machine-readable planning for non-Pi `/commit` consumers and parity checks.
+
+Pi now owns the canonical commit workflow through the TypeScript Pi commit extension (`pi/extensions/workflow-commands.ts` plus `pi/extensions/commit.ts`). The Python helper is retained for compatibility, regression comparison, and clients that have not migrated to the Pi commit extension.
 
 ## Goals
 
