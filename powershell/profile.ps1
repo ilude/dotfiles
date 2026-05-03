@@ -558,3 +558,5 @@ $env:COMPOSE_CONVERT_WINDOWS_PATHS = 1
 $env:DOCKER_BUILDKIT = 1
 
 #endregion
+
+. 'C:\Users\mglenn\AppData\Roaming\dystroy\broot\config\launcher\powershell\br.ps1'

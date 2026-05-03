@@ -125,3 +125,5 @@ command -v fd &>/dev/null && alias find='fd'
 # Source uv environment if installed (conditional to avoid errors when not present)
 # shellcheck source=/dev/null
 [[ -f "$HOME/.local/bin/env" ]] && . "$HOME/.local/bin/env"
+
+source C:\Users\mglenn\AppData\Roaming\dystroy\broot\config\launcher\bash\br

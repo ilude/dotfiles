@@ -54,3 +54,5 @@ fi
 # bun (for bash-only sessions; zsh uses env.d/02-path.zsh)
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
+
+source C:\Users\mglenn\AppData\Roaming\dystroy\broot\config\launcher\bash\br

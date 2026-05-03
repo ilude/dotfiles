@@ -48,3 +48,5 @@ debug_report
 
 # Print zprof report when DEBUG=1
 [[ -n "$DEBUG" ]] && zprof
+
+source C:\Users\mglenn\AppData\Roaming\dystroy\broot\config\launcher\bash\br
