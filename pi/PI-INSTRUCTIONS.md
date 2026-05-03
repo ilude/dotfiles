@@ -15,7 +15,9 @@ Expertise files: `~/.pi/agent/multi-team/expertise/`
 Shared skills: `~/.pi/agent/multi-team/skills/`
 Session logs: `~/.pi/agent/multi-team/sessions/`
 
-Source-vs-runtime policy: keep curated source/config trackable, but leave generated history, sessions, expertise logs, caches, and local tool state uncommitted. See `pi/README.md#source-vs-runtime-state` for the canonical policy.
+Source-vs-runtime policy: keep curated source/config trackable, including `pi/settings.json`, but leave generated history, sessions, expertise logs, caches, and local tool state uncommitted. See `pi/README.md#source-vs-runtime-state` for the canonical policy.
+
+Pi-first implementation policy: for future workflow/tooling work, prefer Pi-native solutions (Pi skills, Pi extensions, and TypeScript where Pi extension/runtime code is appropriate) unless the user explicitly asks for a cross-client or non-Pi implementation. Cross-client shims can wrap Pi-first behavior when needed, but Pi should be the default target going forward.
 
 ## Agent Frontmatter Schema
 

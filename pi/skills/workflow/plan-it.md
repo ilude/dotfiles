@@ -223,6 +223,41 @@ Wave 2: T3 → V2
    - Verify: `{command or manual check}`
    - Pass: {expected}
 
+## Validation Contract
+
+`/do-it` must satisfy this contract before reporting the plan complete or archiving it.
+
+### Required automated validation
+
+1. [ ] Run the strongest repo-wide validation command or command set for this project.
+   - Command: `{repo-wide validation command, e.g. make check; or explicit test/lint/format commands}`
+   - Pass: exits 0 with no errors or warnings
+   - Fail: do not archive; update `## Execution Status` with the failing command and next fix
+
+2. [ ] Run task-specific verification from every acceptance criterion above.
+   - Command: see each task's `Verify:` command
+   - Pass: every acceptance criterion passes exactly as written
+   - Fail: create/fix a task, rerun affected checks, then rerun repo-wide validation
+
+### Manual validation
+
+- Required: {yes/no}
+- Steps:
+  1. {If required, exact user/manual step with expected success signal. If not required, write "None."}
+
+If manual validation is required and not confirmed passed, `/do-it` must classify the result as `implemented-awaiting-manual-validation`, update `## Execution Status`, and must not archive the plan.
+
+### Deployment validation
+
+- Required: {yes/no}
+- Procedure: {If required, reference `## Deployment Procedure`; otherwise write "None."}
+
+If deployment is required and skipped, cancelled, or fails, `/do-it` must not archive the plan.
+
+### Archive rule
+
+`/do-it` may archive this plan only after all required automated validation, task-specific verification, manual validation, deployment validation, and repo-wide validation pass.
+
 ## Handoff Notes
 
 {Anything the executor needs to know that isn't captured above -- environment setup,
@@ -249,6 +284,11 @@ Before presenting the plan, verify all of the following:
 - [ ] The dependency graph text matches the task table
 - [ ] No task references files/artifacts deleted or invalidated by an earlier task
 - [ ] Success Criteria verifies the end-to-end outcome, not just individual tasks
+- [ ] Plan includes a `## Validation Contract` section
+- [ ] Validation Contract names the required repo-wide validation command or command set
+- [ ] Validation Contract states whether manual validation is required
+- [ ] Validation Contract states whether deployment validation is required
+- [ ] Validation Contract explicitly says `/do-it` must not archive unless all required validation passes
 - [ ] Every task classified as `medium` or `large` has at least one concrete alternative in `Alternatives Considered` with a specific rejected-because tradeoff. Generic rejections like "more complex" or "less flexible" do not count -- the rejection must cite a specific tradeoff against the project's stated constraints.
 
 If any check fails, fix it before continuing.

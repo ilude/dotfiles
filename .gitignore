@@ -96,6 +96,9 @@ pi/prompt-routing/logs/
 # Atomic-write leftovers from pi expertise/state writers
 *.tmp-*
 
+# Pi generated expertise/runtime state (source/config remains tracked under pi/)
+pi/multi-team/expertise/
+
 # =============================================================================
 # Research worktrees (cloned repos for analysis)
 # =============================================================================

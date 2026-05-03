@@ -113,36 +113,40 @@ If the input is an existing `.specs/*/plan.md` file:
    /review-it <plan-path>
    /plan-it <brief description of missing plan details>
    ```
-4. Otherwise, execute the plan **wave by wave**:
+4. Check whether the plan contains a `## Validation Contract` section.
+   - If present, treat it as authoritative for completion and archiving requirements.
+   - Extract required automated validation commands, task-specific verification, whether manual validation is required, whether deployment validation is required, and the archive rule.
+   - If absent, continue using the legacy gates below, but do not reject older plans solely for missing this section.
+5. Otherwise, execute the plan **wave by wave**:
    - respect dependencies exactly as written
    - complete all tasks in a wave before the validation gate
    - do not start the next wave until the current validation gate passes
-5. For each task, use the plan's `small` / `medium` / `large` sizing guidance and keep delegated work on the same provider/model ladder when possible.
-6. Report progress against the plan structure, not just a flat summary.
-7. Manual Validation Procedure gate -- after implementation/automated validation, check whether the plan contains a `## Manual Validation Procedure` section or manual/live validation steps in `## Validation`, `## Success Criteria`, or phase gates:
+6. For each task, use the plan's `small` / `medium` / `large` sizing guidance and keep delegated work on the same provider/model ladder when possible.
+7. Report progress against the plan structure, not just a flat summary.
+8. Manual Validation Procedure gate -- after implementation/automated validation, check whether the plan contains manual/live validation requirements in `## Validation Contract`, `## Manual Validation Procedure`, `## Validation`, `## Success Criteria`, or phase gates:
    - If present, classify each step as agent-runnable or user/manual.
    - Run agent-runnable safe checks directly.
    - For user/manual checks (service restarts, real deployments, external accounts, hardware, browser actions, production data, or anything requiring user judgment), present the exact steps verbatim or reconstruct exact steps from the plan.
    - Ask whether the user wants to run them now and report results, skip them for later, or cancel.
    - If skipped or not yet confirmed passed, do **not** archive; update `## Execution Status` as described below.
-8. Repo-wide completion validation gate -- after implementation, automated wave validation, and any agent-runnable manual checks pass, run the project's full repo-wide validation suite. This includes tests, linting, formatting checks, and any project-defined aggregate check command. Use the strongest project-defined aggregate command when available; in this repository that command is:
+9. Repo-wide completion validation gate -- after implementation, automated wave validation, and any agent-runnable manual checks pass, run the project's full repo-wide validation suite. If the plan has a `## Validation Contract`, run the repo-wide validation command or command set named there. If it does not, use the strongest project-defined aggregate command when available; in this repository that command is:
    ```bash
    make check
    ```
    Other projects may use commands such as `make test`, `just check`, `pnpm test`, `cargo test`, `go test ./...`, or separate lint/format/test commands. `/do-it` completion requires all required repo-wide validation commands to pass. If any required validation command fails for any reason, including failures outside the files changed by the task or failures that appear pre-existing, the task is **not complete**, the plan must **not** be archived, and `## Execution Status` must record the failing command and remaining fixes. Targeted tests and changed-file lint checks are useful during implementation, but they do not replace this final gate.
-9. Deployment Procedure gate -- after all waves and repo-wide completion validation pass, check whether the plan contains a `## Deployment Procedure` section:
+10. Deployment Procedure gate -- after all waves and repo-wide completion validation pass, check whether the plan contains deployment requirements in `## Validation Contract` or a `## Deployment Procedure` section:
    - If present, present the deployment steps to the user verbatim.
    - Ask the user whether to run the deployment procedure now, skip it for manual execution later, or cancel.
    - If the user chooses to run it, execute each numbered step sequentially.
    - Pause after each deployment step to show output and confirm it matches the expected output before continuing.
    - If any deployment step fails, show the plan's failure guidance for that step and ask the user how to proceed.
    - If absent, skip this step; pure code-change plans usually have no deployment procedure.
-10. Assign a final completion classification before reporting:
+11. Assign a final completion classification before reporting:
    - `completed-and-archived` -- all implementation, validation, manual validation, and deployment gates passed; plan was archived.
    - `implemented-awaiting-manual-validation` -- code/automated validation passed, but user/manual validation remains.
    - `blocked-by-failure` -- an implementation, test, lint, validation, deployment, or archive step failed.
    - `blocked-by-user-decision` -- execution paused because the user chose to skip/cancel/decide later.
-11. If execution cannot be fully completed or the plan cannot be archived in this run, **update the plan file before reporting**:
+12. If execution cannot be fully completed or the plan cannot be archived in this run, **update the plan file before reporting**:
    - Add or update a `## Execution Status` section near the validation/success criteria area.
    - Include the completion classification, current date, last completed wave/gate, next wave/gate to run, what was implemented, and why the plan is not archived.
    - Record commands already run and their results.
@@ -150,19 +154,19 @@ If the input is an existing `.specs/*/plan.md` file:
    - List exact remaining user/manual steps needed to complete validation, including concrete commands, service start/stop actions, files/logs to inspect, expected success signals, and what to do if a step fails.
    - State explicitly whether `/do-it <plan-path>` should be rerun after those steps pass.
    - Do not leave partial execution state only in chat.
-12. Archive preflight -- before archiving, verify all are true:
+13. Archive preflight -- before archiving, verify all are true:
    - completion classification is `completed-and-archived` candidate: all implementation, automated validation, repo-wide tests/lint/format/check commands, manual validation, and deployment gates are passed or explicitly not applicable.
    - no unresolved `## Execution Status` pending/manual items remain, or they have been updated as completed.
    - the final report will include the archive path.
    - if any preflight item fails, do not archive; update `## Execution Status` and classify appropriately.
-13. After archive preflight passes, archive the completed plan:
+14. After archive preflight passes, archive the completed plan:
    - Set `completed` in frontmatter to the current date (`YYYY-MM-DD`).
    - Set `status: completed` if the plan uses a status field.
    - Move `.specs/{slug}/plan.md` to `.specs/archive/{slug}/plan.md`.
    - Move any sibling plan artifacts that belong to the same spec, such as review directories or design notes, to `.specs/archive/{slug}/` unless the user asks to keep them active.
    - Create `.specs/archive/{slug}/` if needed.
    - If archive target already exists, ask the user before overwriting or choose a collision-safe suffix.
-14. When execution finishes, summarize:
+15. When execution finishes, summarize:
    - completion classification
    - tasks completed
    - validation results

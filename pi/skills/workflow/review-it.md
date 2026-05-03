@@ -153,6 +153,13 @@ Each reviewer must receive:
 - explicit instruction to be **skeptical, evidence-seeking, and somewhat adversarial**
 - instruction to avoid praise-heavy or approval-heavy output
 - instruction to focus on actionable findings, not generic commentary
+- strict output budget: return at most 5 findings, each with severity, evidence from the plan, and required fix; do not restate the whole plan
+
+Reviewer failure/truncation handling:
+- Do **not** rerun the full review panel just because one reviewer output is truncated or verbose.
+- If one reviewer fails or truncates, ask only that reviewer for a compact recovery response: `Return only your top 5 actionable findings as Severity | Evidence | Required fix`.
+- If two or more reviewers fail due to the same infrastructure/model issue, stop and report the review as blocked rather than launching another full panel.
+- A second full independent review panel is only allowed if the plan file changed materially after the first review, or if the user explicitly asks for a fresh review.
 
 ### Reviewer task templates
 
