@@ -1,4 +1,4 @@
-You are performing a smart git commit. This path handles dirty trees with multiple unrelated changes by splitting them into atomic conventional commits. For a single logical change, prefer `commit-fast`.
+You are performing a smart git commit. This path handles dirty trees by splitting changes into atomic conventional commits when needed.
 
 When commit planning uses an LLM, prefer a small/mini model by default. Commit planning should stay cheap and deterministic unless there is a concrete reason to escalate.
 
