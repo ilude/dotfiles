@@ -95,7 +95,8 @@ ${JSON.stringify(payload, null, 2)}`;
 export function buildSkillPrompt(template: string, args: string, options: { replaceArguments?: boolean } = {}) {
 	const trimmedArgs = args.trim();
 	const resolvedTemplate = options.replaceArguments ? template.replace("$ARGUMENTS", trimmedArgs) : template;
-	return resolvedTemplate + (trimmedArgs ? `\n\nArgs: ${args}` : "");
+	const appendSuffix = !options.replaceArguments && trimmedArgs;
+	return resolvedTemplate + (appendSuffix ? `\n\nArgs: ${args}` : "");
 }
 
 export function buildGitlabTicketPrompt(template: string, args: string) {

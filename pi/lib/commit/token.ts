@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 
 export function normalizeCommitPaths(paths: string[]): string[] {
 	return [...new Set(paths.map((path) => path.replace(/\\/g, "/")))].sort();
@@ -11,6 +11,11 @@ export function createConfirmationToken(repoRoot: string, paths: string[], purpo
 		.digest("hex");
 }
 
-export function timingSafeTokenEqual(a: string | undefined, b: string): boolean {
-	return typeof a === "string" && a.length === b.length && a === b;
+export function timingSafeTokenEqual(a: unknown, b: unknown): boolean {
+	if (typeof a !== "string" || typeof b !== "string") return false;
+	if (a.length !== b.length) return false;
+	const ab = Buffer.from(a, "hex");
+	const bb = Buffer.from(b, "hex");
+	if (ab.length !== bb.length || ab.length === 0) return false;
+	return timingSafeEqual(ab, bb);
 }

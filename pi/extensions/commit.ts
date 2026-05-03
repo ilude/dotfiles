@@ -5,6 +5,8 @@ import { buildCommitPlan } from "../lib/commit/plan";
 import { validateCommitMessage } from "../lib/commit/message";
 import { stagePaths } from "../lib/commit/stage";
 import { createCommit } from "../lib/commit/create";
+import { formatToolError } from "../lib/extension-utils";
+import { withTimingSpan } from "../lib/observability";
 
 const CommitPlanParams = Type.Object({ cwd: Type.Optional(Type.String({ description: "Repository directory; defaults to session cwd." })) });
 const CommitValidateMessageParams = Type.Object({ message: Type.String() });
@@ -60,8 +62,14 @@ export function registerCommitTools(pi: ExtensionAPI) {
 		promptSnippet: "Use only after showing commit_plan output and receiving explicit approval.",
 		parameters: CommitStageParams,
 		execute: async (_toolCallId, params: CommitStageParams, _signal, _onUpdate, ctx: { cwd?: string }) => {
-			const result = stagePaths(params.cwd || ctx.cwd || process.cwd(), params.paths, params.confirmationToken);
-			return toolResult(`Staged ${result.staged.length} path(s).`, result);
+			return withTimingSpan({ name: "commit.stage", category: "tool" }, async () => {
+				try {
+					const result = stagePaths(params.cwd || ctx.cwd || process.cwd(), params.paths, params.confirmationToken);
+					return toolResult(`Staged ${result.staged.length} path(s).`, result);
+				} catch (err) {
+					return formatToolError(err instanceof Error ? err.message : String(err));
+				}
+			});
 		},
 	});
 
@@ -72,8 +80,14 @@ export function registerCommitTools(pi: ExtensionAPI) {
 		promptSnippet: "Use only after commit_stage/user staging and explicit approval of the exact staged set and message.",
 		parameters: CommitCreateParams,
 		execute: async (_toolCallId, params: CommitCreateParams, _signal, _onUpdate, ctx: { cwd?: string }) => {
-			const result = createCommit(params.cwd || ctx.cwd || process.cwd(), params.message, params.expectedStagedPaths, params.confirmationToken);
-			return toolResult(`Committed ${result.hash}; pushed=false.`, result);
+			return withTimingSpan({ name: "commit.create", category: "tool" }, async () => {
+				try {
+					const result = createCommit(params.cwd || ctx.cwd || process.cwd(), params.message, params.expectedStagedPaths, params.confirmationToken);
+					return toolResult(`Committed ${result.hash}; pushed=false.`, result);
+				} catch (err) {
+					return formatToolError(err instanceof Error ? err.message : String(err));
+				}
+			});
 		},
 	});
 }
