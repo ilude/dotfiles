@@ -327,10 +327,40 @@ Wave 2: T3, T4, T5 (parallel where ordering permits), then T6 -> V2
 
 ## Execution Status
 
-- **Completion classification**: `not-started`
+- **Completion classification**: `blocked-by-failure`
 - **Date**: 2026-05-03
-- **Last completed wave/gate**: none
-- **Remaining blockers**: live menos deploy and secrets path in Infisical must be ready (machine identity/token and source folder paths).
+- **Last completed wave/gate**: Wave 1 implementation and targeted V1 checks; Wave 2 implementation and structural helper checks.
+- **Next wave/gate to run**: V2 ansible-lint remediation, then live/manual menos deploy validation.
+- **Implemented**:
+  - Added `.specs/menos-infisical-runtime/secret-contract.md` with source, required/optional keys, rotation, validation, and failure policy.
+  - Added `scripts/menos-infisical-env.py`, fixture-backed tests, and `test/menos_infisical_env_test.py`.
+  - Added Ansible group vars under `menos/infra/ansible/playbooks/group_vars/`.
+  - Replaced the playbook repo-root `.env` copy path with Infisical validate/render/install tasks and compose interpolation preflight.
+  - Added explicit compose `env_file: [.env]` usage for services that read runtime env values.
+  - Added runbook, migration report template, validation helper, validation evidence template, and redaction checklist.
+- **Commands already run**:
+  - `uv run ruff check scripts/menos-infisical-env.py test/menos_infisical_env_test.py .specs/menos-infisical-runtime/validation-helpers.py --fix` - passed.
+  - `uv run ruff format scripts/menos-infisical-env.py test/menos_infisical_env_test.py .specs/menos-infisical-runtime/validation-helpers.py` - passed.
+  - `uv run python -m pytest test/menos_infisical_env_test.py -q` - passed, 4 tests.
+  - `uv run python .specs/menos-infisical-runtime/validation-helpers.py` - passed.
+  - `MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W)/menos/infra/ansible:/ansible" -w /ansible ansible-ansible:latest ansible-playbook --syntax-check playbooks/deploy.yml` - passed with inventory warnings.
+  - `MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W)/menos/infra/ansible:/ansible" -w /ansible ansible-ansible:latest ansible-lint playbooks/deploy.yml` - failed.
+- **Why not archived**: required V2 ansible-lint failed and live/manual deploy validation remains incomplete.
+- **Failing validation**:
+  - `ansible-lint playbooks/deploy.yml` reports existing/basic issues in `deploy.yml`: `command-instead-of-module` for git/rsync tasks, `risky-shell-pipe` in git-dir detection, one line-length issue, and `no-relative-paths` for the compose file copy source.
+- **Checks still needed**:
+  - Fix or refactor the ansible-lint findings without suppressing diagnostics, then rerun ansible-lint and syntax-check.
+  - Run repo-wide completion validation after V2 passes.
+  - Run live/manual menos validation with vault-backed Infisical machine identity.
+- **Remaining manual/live validation steps**:
+  1. Build the Ansible image: `docker compose -f menos/infra/ansible/docker-compose.yml build ansible`.
+  2. From `menos/infra/ansible`, run preflight without `--diff` using exactly one vault auth mode, for example `ansible-playbook playbooks/deploy.yml --check --tags preflight --ask-vault-pass`.
+  3. Run the deploy with vault auth after preflight passes.
+  4. On `192.168.16.241`, confirm `/apps/menos/.env` exists and mode is `0600`.
+  5. Confirm `curl -fsS http://192.168.16.241:8000/health` returns valid JSON.
+  6. Redeploy without repo-root `.env` and confirm the health check still passes.
+  7. If any step fails, restore `/apps/menos/.env.bak` to `/apps/menos/.env`, remove controller temp dir `{{ menos_infisical_tmp_dir }}`, inspect `docker compose ps`, and rerun `/do-it .specs/menos-infisical-runtime/plan.md` after fixing the issue.
+- **Rerun guidance**: rerun `/do-it .specs/menos-infisical-runtime/plan.md` after ansible-lint is fixed and live validation prerequisites are available.
 
 ## Validation Contract
 
