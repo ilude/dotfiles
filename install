@@ -254,8 +254,8 @@ completed_steps+=("just install")
 
 current_step="Pi coding agent install"
 if command -v bun &>/dev/null; then
-    echo "Installing/updating pi-coding-agent to latest..."
-    bun add -g @mariozechner/pi-coding-agent@latest
+    echo "Installing/updating pi-coding-agent to pinned version 0.72.0..."
+    bun add -g @mariozechner/pi-coding-agent@0.72.0
 
     if [[ "$OSTYPE" == "darwin"* ]] && command -v brew &>/dev/null && brew list pi-coding-agent &>/dev/null; then
         echo "Removing Homebrew-installed pi-coding-agent to prefer Bun-managed updates..."
@@ -282,8 +282,8 @@ else
     fi
 
     if command -v pnpm &>/dev/null; then
-        echo "Installing/updating pi-coding-agent via pnpm fallback..."
-        pnpm add -g --allow-build=koffi --allow-build=protobufjs @mariozechner/pi-coding-agent@latest
+        echo "Installing/updating pi-coding-agent via pnpm fallback (pinned 0.72.0)..."
+        pnpm add -g --allow-build=koffi --allow-build=protobufjs @mariozechner/pi-coding-agent@0.72.0
 
         if command -v npm &>/dev/null && npm list -g @mariozechner/pi-coding-agent &>/dev/null; then
             echo "Removing legacy npm-installed pi-coding-agent..."
