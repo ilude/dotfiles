@@ -10,6 +10,7 @@
  *   /review-it     — adversarial review of a plan file
  *   /do-it         — smart task routing by complexity
  *   /research      — parallel multi-angle research on a topic
+ *   /summarize     — concise session recap and workflow friction notes
  *   /exit          — gracefully quit pi
  */
 
@@ -121,6 +122,13 @@ interface CommitActivity {
 
 const COMMIT_ACTIVITY_TYPE = "workflow-commit-activity";
 const SLASH_ECHO_TYPE = "slash-echo";
+const SUMMARIZE_PROMPT = `Summarize the work done in this session in 3 bullets or fewer.
+Include only:
+- what changed or was decided
+- current status / validation if important
+- any workflow issue worth considering later
+
+Be terse. Skip routine details.`;
 
 interface BranchLaunchPlan {
 	executable?: string;
@@ -998,6 +1006,15 @@ export default function (pi: ExtensionAPI) {
 					sendHiddenWorkflowPrompt(pi, prompt);
 				},
 			);
+		},
+	});
+
+	pi.registerCommand("summarize", {
+		description: "Concise recap of this session and notable workflow friction",
+		handler: async (args, _ctx) => {
+			echoSlashCommand(pi, "summarize", args);
+			const extraContext = args.trim() ? `\n\nAdditional focus: ${args.trim()}` : "";
+			sendHiddenWorkflowPrompt(pi, `${SUMMARIZE_PROMPT}${extraContext}`);
 		},
 	});
 
