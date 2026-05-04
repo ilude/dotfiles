@@ -84,6 +84,8 @@ Assign each task using a dynamic same-provider size ladder derived from the curr
 | 6+ files, architectural | migrate, redesign, coordinate, cross-cutting | large | coordinating lead / heavy builder equivalent |
 
 Use `small`, `medium`, and `large` only; the runtime maps those tiers to the current provider/model family. Use explicit **Agent** assignments in the plan, not just model sizes.
+Every task has both a **Model** and an **Agent** assigned.
+Use this task table shape in the generated plan: `| # | Task | Files | Type | Model | Agent | Depends On |`.
 Research-only tasks (no code changes) should name an exploration-oriented or planning-oriented agent.
 
 ---
