@@ -48,14 +48,12 @@ let cachedPiVersion: string | null | undefined;
 let currentSessionStartedAt: string | null = null;
 
 const ANSI = {
-	blue: "\x1b[34m",
 	cyan: "\x1b[36m",
 	dim: "\x1b[2m",
 	green: "\x1b[32m",
 	orange: "\x1b[38;5;208m",
 	reset: "\x1b[0m",
 	white: "\x1b[37m",
-	yellow: "\x1b[33m",
 } as const;
 
 function runCommand(args: string[], cwd?: string): string {
@@ -112,7 +110,7 @@ export function formatPiStatusDirectory(cwd: string): string {
 
 function colorBranch(branchName: string | null): string {
 	if (!branchName) return "";
-	return `${ANSI.yellow}[${ANSI.blue}${branchName}${ANSI.yellow}]${ANSI.reset}`;
+	return `${ANSI.white}[${ANSI.cyan}${branchName}${ANSI.white}]${ANSI.reset}`;
 }
 
 function sanitizeSingleLine(text: string): string {
