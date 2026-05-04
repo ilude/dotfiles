@@ -11,9 +11,6 @@
     "min_confidence": 0.75
   },
   "hideThinkingBlock": false,
-  "autoResumeWatchdog": {
-    "mode": "observe-only"
-  },
   "router": {
     "policy": {
       "N_HOLD": 0,
