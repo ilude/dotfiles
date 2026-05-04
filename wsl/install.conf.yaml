@@ -41,6 +41,11 @@
     ~/.config/ohmyposh/prompt.json:
       path: config/ohmyposh/prompt.json
 
+# Neovim config
+- link:
+    ~/.config/nvim/init.lua:
+      path: config/nvim/init.lua
+
 # Claude Code config
 - link:
     ~/.claude: claude

@@ -31,6 +31,15 @@
 - link:
     ~/.config/ohmyposh/prompt.json: config/ohmyposh/prompt.json
 
+# Neovim config
+- link:
+    ~/.config/nvim/init.lua:
+      path: config/nvim/init.lua
+      if: '[ -z "$WINDIR" ]'
+    ~/AppData/Local/nvim/init.lua:
+      path: config/nvim/init.lua
+      if: '[ "$OSTYPE" = "msys" ] || [ "$OSTYPE" = "cygwin" ] || [ -n "$WINDIR" ]'
+
 # Git Bash prompt (Windows) - copied by install.ps1, symlinks don't work reliably
 
 # Windows-specific: PowerShell profile
