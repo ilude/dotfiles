@@ -28,6 +28,23 @@ Scan the full conversation and extract:
 
 If `$ARGUMENTS` is non-empty, integrate it as additional constraints or context -- it may refine the goal, add requirements, or override earlier decisions.
 
+### Worktree mode
+
+If `$ARGUMENTS` contains `worktree` or `wt` as a standalone parameter, enable **worktree mode** for the generated plan. Treat that parameter as workflow control, not as part of the task goal.
+
+In worktree mode, the plan must:
+
+1. Start execution with a preflight that creates a dedicated git branch and git worktree before any implementation or validation work.
+   - Use a task slug to name both, for example branch `plan/{slug}` and worktree path `../{repo-name}-{slug}` unless the repository's conventions indicate a better local pattern.
+   - Include commands that first verify the repository has no blocking unresolved merge/rebase state and that the target branch/worktree do not already exist.
+   - Do not require the current working tree to be clean unless the specific plan needs uncommitted local changes copied into the worktree.
+2. Require all subsequent implementation, test, lint, and validation commands to run inside the new worktree path, not the original checkout.
+3. End with a final local commit on that branch only after all required automated validation, task-specific verification, manual validation, deployment validation, and repo-wide validation pass.
+   - The commit must be local only unless the user separately requests a push.
+   - Do not merge, rebase, cherry-pick, or fast-forward changes back into the original checkout or base branch.
+   - If validation fails or manual/deployment validation is still pending, the plan must leave changes uncommitted or explicitly mark the commit step blocked.
+4. Reflect this in `Automation Plan`, `Execution Waves`, `Success Criteria`, `Validation Contract`, and `Handoff Notes`.
+
 ---
 
 ## Step 2: Detect Project Environment
