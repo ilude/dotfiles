@@ -1559,7 +1559,11 @@ try {
             # Always run pnpm for Pi. Older Pi releases have had self-update bugs,
             # so treating dotfiles bootstrap as an idempotent upgrade path keeps
             # `pi update` healthy instead of leaving a stale global install behind.
-            pnpm add -g --allow-build=koffi --allow-build=protobufjs @mariozechner/pi-coding-agent@0.72.0
+            pnpm add -g --allow-build=koffi --allow-build=protobufjs `
+                '@mariozechner/pi-coding-agent@0.72.0' `
+                '@mariozechner/pi-agent-core@0.72.0' `
+                '@mariozechner/pi-ai@0.72.0' `
+                '@mariozechner/pi-tui@0.72.0'
             if ($LASTEXITCODE -eq 0) {
                 if ($piInstalled) {
                     Write-Host "  pi-coding-agent: updated successfully via pnpm" -ForegroundColor Green
