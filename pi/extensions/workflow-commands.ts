@@ -650,6 +650,28 @@ function echoSlashCommand(pi: ExtensionAPI, command: string, args: string) {
 	return text;
 }
 
+function sendHiddenWorkflowPrompt(
+	sender: Pick<ExtensionAPI, "sendMessage">,
+	content: string,
+	options: { deliverAs?: "steer" | "followUp" | "nextTurn" } = {},
+) {
+	sender.sendMessage(
+		{
+			customType: "workflow.hiddenPrompt",
+			content,
+			display: false,
+		},
+		{
+			triggerTurn: true,
+			deliverAs: options.deliverAs ?? "nextTurn",
+		},
+	);
+}
+
+function isPlanFileInput(args: string) {
+	return /(?:^|\s)(?:\.specs\/[A-Za-z0-9._/-]+\/plan\.md|[^\s]+plan\.md)(?:\s|$)/.test(args.trim());
+}
+
 function createCommitActivity(pi: ExtensionAPI, ctx: any, commandText: string): CommitActivity {
 	const fallbackLines: string[] = [];
 	const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -902,8 +924,8 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerCommand("plan-it", {
 		description: "Crystallize conversation context into an executable plan document",
-		handler: async (args, ctx) => {
-			const planPath = args.trim().match(/(\.specs\/[A-Za-z0-9._\/-]+\/plan\.md)/)?.[1];
+		handler: async (args, _ctx) => {
+			const planPath = args.trim().match(/(\.specs\/[A-Za-z0-9._/-]+\/plan\.md)/)?.[1];
 			await withTimingSpan(
 				{
 					name: "slash.plan-it",
@@ -913,7 +935,7 @@ export default function (pi: ExtensionAPI) {
 				async () => {
 					echoSlashCommand(pi, "plan-it", args);
 					const template = loadSkill("plan-it.md");
-					await pi.sendUserMessage(buildSkillPrompt(template, args));
+					sendHiddenWorkflowPrompt(pi, buildSkillPrompt(template, args));
 				},
 			);
 		},
@@ -921,8 +943,8 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerCommand("review-it", {
 		description: "Adversarial review of a plan file — finds bugs, gaps, and failure modes",
-		handler: async (args, ctx) => {
-			const planPath = args.trim().match(/(\.specs\/[A-Za-z0-9._\/-]+\/plan\.md)/)?.[1];
+		handler: async (args, _ctx) => {
+			const planPath = args.trim().match(/(\.specs\/[A-Za-z0-9._/-]+\/plan\.md)/)?.[1];
 			await withTimingSpan(
 				{
 					name: "slash.review-it",
@@ -932,7 +954,7 @@ export default function (pi: ExtensionAPI) {
 				async () => {
 					echoSlashCommand(pi, "review-it", args);
 					const template = loadSkill("review-it.md");
-					await pi.sendUserMessage(buildSkillPrompt(template, args, { replaceArguments: true }));
+					sendHiddenWorkflowPrompt(pi, buildSkillPrompt(template, args, { replaceArguments: true }));
 				},
 			);
 		},
@@ -941,7 +963,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("do-it", {
 		description: "Smart task routing — implements directly, delegates, or plans based on complexity",
 		handler: async (args, ctx) => {
-			const planPath = args.trim().match(/(\.specs\/[A-Za-z0-9._\/-]+\/plan\.md)/)?.[1];
+			const planPath = args.trim().match(/(\.specs\/[A-Za-z0-9._/-]+\/plan\.md)/)?.[1];
 			await withTimingSpan(
 				{
 					name: "slash.do-it",
@@ -951,7 +973,23 @@ export default function (pi: ExtensionAPI) {
 				async () => {
 					echoSlashCommand(pi, "do-it", args);
 					const template = loadSkill("do-it.md");
-					await pi.sendUserMessage(buildSkillPrompt(template, args, { replaceArguments: true }));
+					const prompt = buildSkillPrompt(template, args, { replaceArguments: true });
+					if (isPlanFileInput(args)) {
+						await ctx.newSession({
+							withSession: async (newCtx) => {
+								await newCtx.sendMessage(
+									{
+										customType: "workflow.hiddenPrompt",
+										content: prompt,
+										display: false,
+									},
+									{ triggerTurn: true, deliverAs: "nextTurn" },
+								);
+							},
+						});
+						return;
+					}
+					sendHiddenWorkflowPrompt(pi, prompt);
 				},
 			);
 		},

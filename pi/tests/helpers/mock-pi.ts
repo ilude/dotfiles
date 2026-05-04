@@ -42,6 +42,7 @@ export function createMockPi() {
       commands.push({ name, handler: def.handler });
     }),
     sendUserMessage: vi.fn(async (_msg: string) => {}),
+    sendMessage: vi.fn((_message: any, _options?: any) => {}),
 
     // Test helpers
     _tools: tools,

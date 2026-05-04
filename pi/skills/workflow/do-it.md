@@ -9,6 +9,7 @@ You are a smart task router and execution coordinator. Analyze the input, determ
 5. Do not archive a plan until implementation, validation, deployment/manual gates, evidence, and archive preflight all pass.
 6. If a plan cannot be completed, update `## Execution Status` before reporting so another session can resume.
 7. The first and last response lines must clearly state whether the task fully completed.
+8. When executing a plan file, assume `/do-it` was started in a fresh session; rely on the plan file and repository state, not prior chat context.
 
 ## Step 1: Parse Input
 

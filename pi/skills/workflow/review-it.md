@@ -9,14 +9,23 @@ You are an adversarial plan review coordinator. Your job is to stress-test a pla
 5. Check whether the plan is automation-ready for `/do-it`: commands/wrappers, credential flow, evidence, and archive gates must be clear.
 6. Preserve reviewer outputs: do not rerun the full panel for preview truncation or verbosity when findings are usable.
 7. Write the synthesis to the plan's review directory before responding.
+8. By default, apply all reviewer bug fixes and hardening to the plan without asking; use `ask` / `--ask` only when the user wants interactive apply choices.
+9. In default mode, run a final standalone-readiness reviewer and update the plan so `/do-it` can run it in a brand-new session.
 
 Important routing context: Pi lead agents are team coordinators, not general-purpose reviewers. Do not select `planning-lead`, `engineering-lead`, `validation-lead`, `ml-research-lead`, or `orchestrator` as ordinary review panel members. Use leads only if the review itself needs a nested coordination layer across that lead's worker team; most `/review-it` runs should use worker/domain/tier agents directly.
 
 ## Input
 
-**Plan file path**: $ARGUMENTS
+**Plan file path and optional mode**: $ARGUMENTS
 
 If no path is provided, ask the user: "Which plan file should I review? Provide the path to the .specs/{slug}/plan.md file."
+
+Mode parsing:
+- Default mode is **auto-apply**.
+- If the args include `ask` or `--ask`, use **ask mode**.
+- Remove `ask` / `--ask` from the plan path before reading the file.
+
+Default auto-apply means: after synthesis, apply all must-fix bugs, all hardening recommendations, and all automation-readiness fixes to the reviewed plan file without asking. Do not edit implementation/code files. Ask mode preserves the older interactive apply-options flow.
 
 ## Core Behavioral Contract
 
@@ -263,7 +272,7 @@ Do not report speculative high-severity findings as confirmed bugs without this 
 
 ## Step 7: Synthesize the Review
 
-After collecting all reviewer outputs, any targeted rebuttals, and high-severity verification results, produce a final synthesis.
+After collecting all reviewer outputs, any targeted rebuttals, and high-severity verification results, produce a final synthesis. Then apply findings according to the selected mode.
 
 ### Required output sections
 
@@ -370,7 +379,37 @@ After the synthesized review, include a required `## Outcome` section with:
 - **Plan state:** active at `<plan-path>`; review artifact written to `{review_dir}/synthesis.md`
 - **Recommended next action:** apply fixes first if bugs exist; otherwise `/do-it <plan-path>`
 
-Then always end with the Pi action prompt below. Substitute the actual counts and plan path from the review. If there are no bugs or no hardening suggestions, set that count to 0 and keep the same option shape. If the user chooses an apply option and the plan is edited successfully, the follow-up output must recommend `/do-it <plan-path>` rather than another `/review-it` pass unless the user explicitly asks to re-review.
+## Apply Mode
+
+### Default auto-apply mode
+
+Unless the args included `ask` or `--ask`, do not ask which findings to apply. After writing `{review_dir}/synthesis.md`, edit only the reviewed plan file and apply:
+
+1. all Bugs / must-fix findings
+2. all Hardening findings
+3. all Automation Readiness fixes
+4. any necessary plan-clarity updates implied by verified reviewer findings
+
+Do not apply code or implementation changes during `/review-it`; this command only updates the plan.
+
+After editing the plan, launch one final reviewer subagent with `agentScope: "both"`, `confirmProjectAgents: false`, `modelSize: "small"`, and `modelPolicy: "same-family"`.
+
+The final reviewer must act as a standalone-readiness verifier with this exact goal:
+
+> Pretend you are starting a brand-new Pi session with no prior conversation. Is this plan sufficient to execute safely and completely with `/do-it <plan-path>`? Verify that the updated plan includes all necessary context, commands/wrappers, assumptions, evidence gates, validation gates, credential/manual-operation guidance, and archive criteria. Return only concrete missing items or `STANDALONE READY`.
+
+If the final reviewer returns concrete missing items, update only the plan file again to make it standalone-runnable. Do not rerun the full review panel unless the user explicitly asks.
+
+The final chat response in default mode must be concise and include:
+- review artifact path
+- plan path updated
+- bug and hardening counts applied
+- final standalone-readiness result
+- next-step command: `/do-it <plan-path>`
+
+### Ask mode
+
+If the args included `ask` or `--ask`, end with the Pi action prompt below instead of auto-applying. Substitute the actual counts and plan path from the review. If there are no bugs or no hardening suggestions, set that count to 0 and keep the same option shape. If the user chooses an apply option and the plan is edited successfully, the follow-up output must recommend `/do-it <plan-path>` rather than another `/review-it` pass unless the user explicitly asks to re-review.
 
 ```markdown
 Apply options:

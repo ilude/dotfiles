@@ -29,6 +29,8 @@ describe("workflow prompt contracts", () => {
 		expect(prompt).toContain("modelSize: \"medium\"");
 		expect(prompt).toContain("modelPolicy: \"same-family\"");
 		expect(prompt).toContain("Contested or Dismissed Findings");
+		expect(prompt).toContain("Default mode is **auto-apply**");
+		expect(prompt).toContain("final standalone-readiness reviewer");
 	});
 
 	it("/commit documents hybrid candidate extraction plus LLM adjudication", () => {
