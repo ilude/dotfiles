@@ -261,9 +261,21 @@ current_step="Pi coding agent install"
 if ! command -v pnpm &>/dev/null; then
     echo "Bootstrapping pnpm via official installer..."
     curl -fsSL https://get.pnpm.io/install.sh | env SHELL="$SHELL" sh -
-    export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"
-    export PATH="$PNPM_HOME:$PATH"
 fi
+
+# Ensure pnpm's global bin is on PATH even when pnpm was installed by another
+# manager (brew, corepack, etc.) and PNPM_HOME was never exported in this shell.
+if [[ -z "${PNPM_HOME:-}" ]]; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        export PNPM_HOME="$HOME/Library/pnpm"
+    else
+        export PNPM_HOME="$HOME/.local/share/pnpm"
+    fi
+fi
+case ":$PATH:" in
+    *":$PNPM_HOME/bin:"*) ;;
+    *) export PATH="$PNPM_HOME/bin:$PATH" ;;
+esac
 
 if command -v pnpm &>/dev/null; then
     echo "Installing/updating pi-coding-agent to pinned version 0.72.0..."
