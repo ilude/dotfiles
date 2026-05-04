@@ -669,7 +669,7 @@ function sendHiddenWorkflowPrompt(
 		},
 		{
 			triggerTurn: true,
-			deliverAs: options.deliverAs ?? "nextTurn",
+			deliverAs: options.deliverAs ?? "followUp",
 		},
 	);
 }
@@ -989,7 +989,7 @@ export default function (pi: ExtensionAPI) {
 										content: prompt,
 										display: false,
 									},
-									{ triggerTurn: true, deliverAs: "nextTurn" },
+									{ triggerTurn: true, deliverAs: "followUp" },
 								);
 							},
 						});
