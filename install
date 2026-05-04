@@ -195,10 +195,12 @@ if ! is_windows; then
         export BUN_INSTALL="$HOME/.bun"
         export PATH="$BUN_INSTALL/bin:$PATH"
     fi
-    # Ensure node symlink exists so #!/usr/bin/env node shebangs resolve to bun
-    if [[ -x "$HOME/.bun/bin/bun" ]] && [[ ! -e "$HOME/.bun/bin/node" ]]; then
-        ln -sf "$HOME/.bun/bin/bun" "$HOME/.bun/bin/node"
-        echo "bun: created node symlink"
+    # Remove legacy bun->node symlink. It used to redirect #!/usr/bin/env node
+    # shebangs to bun, but it shadows real Node.js (required by pnpm and other
+    # node CLIs). Real node comes from Brewfile / winget instead.
+    if [[ -L "$HOME/.bun/bin/node" ]] && [[ "$(readlink "$HOME/.bun/bin/node")" == *bun* ]]; then
+        rm -f "$HOME/.bun/bin/node"
+        echo "bun: removed legacy node symlink"
     fi
 fi
 completed_steps+=("Bun install")
@@ -253,45 +255,43 @@ fi
 completed_steps+=("just install")
 
 current_step="Pi coding agent install"
-if command -v bun &>/dev/null; then
+# Pi installs via pnpm on all platforms. pnpm's strict resolver pins transitive
+# pi packages cleanly; bun's looser resolution let pi-agent-core/pi-ai/pi-tui
+# drift to newer patch versions even when pi-coding-agent itself was pinned.
+if ! command -v pnpm &>/dev/null; then
+    echo "Bootstrapping pnpm via official installer..."
+    curl -fsSL https://get.pnpm.io/install.sh | env SHELL="$SHELL" sh -
+    export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"
+    export PATH="$PNPM_HOME:$PATH"
+fi
+
+if command -v pnpm &>/dev/null; then
     echo "Installing/updating pi-coding-agent to pinned version 0.72.0..."
-    bun add -g @mariozechner/pi-coding-agent@0.72.0
+    pnpm add -g --allow-build=koffi --allow-build=protobufjs \
+        @mariozechner/pi-coding-agent@0.72.0 \
+        @mariozechner/pi-agent-core@0.72.0 \
+        @mariozechner/pi-ai@0.72.0 \
+        @mariozechner/pi-tui@0.72.0
 
     if [[ "$OSTYPE" == "darwin"* ]] && command -v brew &>/dev/null && brew list pi-coding-agent &>/dev/null; then
-        echo "Removing Homebrew-installed pi-coding-agent to prefer Bun-managed updates..."
+        echo "Removing Homebrew-installed pi-coding-agent to prefer pnpm-managed updates..."
         if ! brew uninstall pi-coding-agent; then
             echo "Warning: failed to uninstall Homebrew pi-coding-agent"
         fi
+    fi
+
+    if command -v bun &>/dev/null && [[ -L "$HOME/.bun/bin/pi" || -f "$HOME/.bun/bin/pi" ]]; then
+        echo "Removing legacy bun-installed pi-coding-agent..."
+        bun uninstall -g @mariozechner/pi-coding-agent &>/dev/null || true
+        rm -f "$HOME/.bun/bin/pi"
     fi
 
     if command -v npm &>/dev/null && npm list -g @mariozechner/pi-coding-agent &>/dev/null; then
         echo "Removing legacy npm-installed pi-coding-agent..."
         npm uninstall -g @mariozechner/pi-coding-agent &>/dev/null || true
     fi
-
-    if command -v pnpm &>/dev/null && pnpm list -g @mariozechner/pi-coding-agent 2>/dev/null | grep -q pi-coding-agent; then
-        echo "Removing legacy pnpm-installed pi-coding-agent..."
-        pnpm remove -g @mariozechner/pi-coding-agent &>/dev/null || true
-    fi
 else
-    if ! command -v pnpm &>/dev/null; then
-        echo "Bootstrapping pnpm via official installer..."
-        curl -fsSL https://get.pnpm.io/install.sh | env SHELL="$SHELL" sh -
-        export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"
-        export PATH="$PNPM_HOME:$PATH"
-    fi
-
-    if command -v pnpm &>/dev/null; then
-        echo "Installing/updating pi-coding-agent via pnpm fallback (pinned 0.72.0)..."
-        pnpm add -g --allow-build=koffi --allow-build=protobufjs @mariozechner/pi-coding-agent@0.72.0
-
-        if command -v npm &>/dev/null && npm list -g @mariozechner/pi-coding-agent &>/dev/null; then
-            echo "Removing legacy npm-installed pi-coding-agent..."
-            npm uninstall -g @mariozechner/pi-coding-agent &>/dev/null || true
-        fi
-    else
-        echo "Warning: bun and pnpm both unavailable; skipping pi-coding-agent install"
-    fi
+    echo "Warning: pnpm unavailable; skipping pi-coding-agent install"
 fi
 completed_steps+=("Pi coding agent install")
 
