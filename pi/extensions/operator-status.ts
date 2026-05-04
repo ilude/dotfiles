@@ -21,11 +21,9 @@
  */
 
 import * as childProcess from "node:child_process";
-import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
-import { type ExtensionAPI, type ExtensionContext, type ReadonlyFooterDataProvider } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ReadonlyFooterDataProvider } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { listRecentDecisions, listSessionApprovals } from "../lib/permission-registry.js";
 import { listTasks, type TaskRecordV1 } from "../lib/task-registry.js";
@@ -62,13 +60,22 @@ const ANSI = {
 
 function runCommand(args: string[], cwd?: string): string {
 	try {
-		const result = childProcess.spawnSync(args[0], args.slice(1), {
-			cwd,
-			encoding: "utf-8",
-			timeout: 1000,
-			windowsHide: true,
-		});
-		return result.status === 0 ? result.stdout.trim() : "";
+		const useWindowsShellShim = process.platform === "win32" && args[0] === "pi";
+		const result = useWindowsShellShim
+			? childProcess.spawnSync("pi --version", {
+					cwd,
+					encoding: "utf-8",
+					shell: true,
+					timeout: 3000,
+					windowsHide: true,
+				})
+			: childProcess.spawnSync(args[0], args.slice(1), {
+					cwd,
+					encoding: "utf-8",
+					timeout: 3000,
+					windowsHide: true,
+				});
+		return result.status === 0 ? `${result.stdout ?? ""}${result.stderr ?? ""}`.trim() : "";
 	} catch {
 		return "";
 	}
@@ -195,20 +202,17 @@ function installClaudeStyleFooter(ctx: ExtensionContext, pi: ExtensionAPI): bool
 }
 
 /**
- * Resolve Pi version from the CLI once, then cache for the session.
+ * Resolve the running Pi CLI version once, then cache it for the session.
+ *
+ * Do not read settings.lastChangelogVersion here: that value tracks the last
+ * changelog the user saw, not necessarily the installed/runtime version.
  */
 export function resolvePiVersion(): string | null {
 	if (cachedPiVersion !== undefined) return cachedPiVersion;
-	try {
-		const here = path.dirname(fileURLToPath(import.meta.url));
-		const settingsPath = path.resolve(here, "../settings.json");
-		const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as { lastChangelogVersion?: string };
-		cachedPiVersion = settings.lastChangelogVersion?.trim() || null;
-		return cachedPiVersion;
-	} catch {
-		cachedPiVersion = null;
-		return cachedPiVersion;
-	}
+	const output = runCommand(["pi", "--version"]);
+	const match = output.match(/\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/);
+	cachedPiVersion = match?.[0] ?? null;
+	return cachedPiVersion;
 }
 
 interface TaskCounts {
