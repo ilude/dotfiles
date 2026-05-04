@@ -19,7 +19,8 @@ function makeTempDir(): string {
 }
 
 afterEach(() => {
-	for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+	for (const dir of tempDirs.splice(0))
+		fs.rmSync(dir, { recursive: true, force: true });
 });
 
 describe("reload status detector", () => {
@@ -29,7 +30,13 @@ describe("reload status detector", () => {
 		fs.writeFileSync(candidate, "export {};\n");
 		const state = createReloadStatusState(Date.now() + 60_000);
 
-		expect(needsPiReload({ state, roots: [{ path: dir, recursive: true }], nowMs: 3_000 })).toBe(false);
+		expect(
+			needsPiReload({
+				state,
+				roots: [{ path: dir, recursive: true }],
+				nowMs: 3_000,
+			}),
+		).toBe(false);
 	});
 
 	it("flags changed candidates", () => {
@@ -38,7 +45,13 @@ describe("reload status detector", () => {
 		fs.writeFileSync(candidate, "export {};\n");
 		const state = createReloadStatusState(0);
 
-		expect(needsPiReload({ state, roots: [{ path: dir, recursive: true }], nowMs: 6_000 })).toBe(true);
+		expect(
+			needsPiReload({
+				state,
+				roots: [{ path: dir, recursive: true }],
+				nowMs: 6_000,
+			}),
+		).toBe(true);
 	});
 
 	it("uses cached state inside the throttle window", () => {
@@ -47,11 +60,23 @@ describe("reload status detector", () => {
 		fs.writeFileSync(candidate, "export {};\n");
 		const state = createReloadStatusState(0);
 
-		expect(needsPiReload({ state, roots: [{ path: dir, recursive: true }], nowMs: 10_000 })).toBe(true);
+		expect(
+			needsPiReload({
+				state,
+				roots: [{ path: dir, recursive: true }],
+				nowMs: 10_000,
+			}),
+		).toBe(true);
 		resetReloadStatusBaseline(state, Date.now() + 60_000);
 		state.lastScanMs = 10_000;
 		state.cachedNeedsReload = true;
-		expect(needsPiReload({ state, roots: [{ path: dir, recursive: true }], nowMs: 10_000 + RELOAD_SCAN_INTERVAL_MS - 1 })).toBe(true);
+		expect(
+			needsPiReload({
+				state,
+				roots: [{ path: dir, recursive: true }],
+				nowMs: 10_000 + RELOAD_SCAN_INTERVAL_MS - 1,
+			}),
+		).toBe(true);
 	});
 
 	it("resets after reload baseline update", () => {
@@ -60,9 +85,79 @@ describe("reload status detector", () => {
 		fs.writeFileSync(candidate, "export {};\n");
 		const state = createReloadStatusState(0);
 
-		expect(needsPiReload({ state, roots: [{ path: dir, recursive: true }], nowMs: 6_000 })).toBe(true);
+		expect(
+			needsPiReload({
+				state,
+				roots: [{ path: dir, recursive: true }],
+				nowMs: 6_000,
+			}),
+		).toBe(true);
 		resetReloadStatusBaseline(state, Date.now() + 60_000);
-		expect(needsPiReload({ state, roots: [{ path: dir, recursive: true }], nowMs: 20_000 })).toBe(false);
+		expect(
+			needsPiReload({
+				state,
+				roots: [{ path: dir, recursive: true }],
+				nowMs: 20_000,
+			}),
+		).toBe(false);
+	});
+
+	it("ignores settings changes limited to model, provider, thinking, and changelog keys", () => {
+		const dir = makeTempDir();
+		const candidate = path.join(dir, "settings.json");
+		fs.writeFileSync(
+			candidate,
+			JSON.stringify({
+				defaultModel: "gpt-5",
+				defaultProvider: "openai",
+				defaultThinkingLevel: "high",
+				hooks: ["keep"],
+			}),
+		);
+		const state = createReloadStatusState(0);
+		state.settingsBaselineFingerprintByPath.set(
+			path.resolve(candidate),
+			JSON.stringify({ hooks: ["keep"] }),
+		);
+
+		fs.writeFileSync(
+			candidate,
+			JSON.stringify({
+				defaultModel: "gpt-6",
+				defaultProvider: "anthropic",
+				defaultThinkingLevel: "low",
+				hooks: ["keep"],
+			}),
+		);
+
+		expect(
+			needsPiReload({
+				state,
+				roots: [{ path: candidate, recursive: false }],
+				nowMs: 6_000,
+			}),
+		).toBe(false);
+	});
+
+	it("still flags reload-relevant settings changes", () => {
+		const dir = makeTempDir();
+		const candidate = path.join(dir, "settings.json");
+		fs.writeFileSync(candidate, JSON.stringify({ hooks: ["before"] }));
+		const state = createReloadStatusState(0);
+		state.settingsBaselineFingerprintByPath.set(
+			path.resolve(candidate),
+			JSON.stringify({ hooks: ["before"] }),
+		);
+
+		fs.writeFileSync(candidate, JSON.stringify({ hooks: ["after"] }));
+
+		expect(
+			needsPiReload({
+				state,
+				roots: [{ path: candidate, recursive: false }],
+				nowMs: 6_000,
+			}),
+		).toBe(true);
 	});
 
 	it("bounds traversal to explicit reload roots and excludes generated state", () => {
@@ -70,9 +165,17 @@ describe("reload status detector", () => {
 		const roots = defaultReloadCandidateRoots(home);
 		const rootPaths = roots.map((root) => root.path.replaceAll("\\", "/"));
 
-		expect(rootPaths).toContain(`${home.replaceAll("\\", "/")}/.dotfiles/pi/extensions`);
-		expect(rootPaths).toContain(`${home.replaceAll("\\", "/")}/.dotfiles/pi/settings.json`);
-		expect(rootPaths.some((root) => root.endsWith("/.dotfiles/pi"))).toBe(false);
-		expect(rootPaths.some((root) => root.includes("prompt-routing"))).toBe(false);
+		expect(rootPaths).toContain(
+			`${home.replaceAll("\\", "/")}/.dotfiles/pi/extensions`,
+		);
+		expect(rootPaths).toContain(
+			`${home.replaceAll("\\", "/")}/.dotfiles/pi/settings.json`,
+		);
+		expect(rootPaths.some((root) => root.endsWith("/.dotfiles/pi"))).toBe(
+			false,
+		);
+		expect(rootPaths.some((root) => root.includes("prompt-routing"))).toBe(
+			false,
+		);
 	});
 });
