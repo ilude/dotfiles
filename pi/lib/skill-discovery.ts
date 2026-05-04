@@ -22,8 +22,9 @@
  * Discovery roots searched in order (later sources override earlier on
  * name collision; the loader records both for visibility):
  *
- *   1. Built-in: ~/.dotfiles/pi/skills/*  (pi-skills, workflow, shared)
- *   2. User:     ~/.pi/agent/skills/*
+ *   1. Built-in: ~/.dotfiles/claude/skills/*  (shared Claude Code-style skills)
+ *   2. Built-in: ~/.dotfiles/pi/skills/*      (Pi-specific overrides, pi-skills, workflow, shared)
+ *   3. User:     ~/.pi/agent/skills/*
  *
  * Frontmatter parsing reuses pi/lib/yaml-mini.ts; we deliberately accept a
  * loose superset of Claude Code's schema (extra keys are passed through
@@ -67,6 +68,10 @@ const SKILL_FILE = "SKILL.md";
 function defaultRoots(): Array<{ path: string; source: SkillSource }> {
 	const home = os.homedir();
 	return [
+		{
+			path: path.join(home, ".dotfiles", "claude", "skills"),
+			source: "builtin",
+		},
 		{ path: path.join(home, ".dotfiles", "pi", "skills"), source: "builtin" },
 		{ path: path.join(home, ".pi", "agent", "skills"), source: "user" },
 	];
@@ -177,7 +182,10 @@ function readSkillRecord(
 	return record;
 }
 
-function discoverSubdirSkills(rootPath: string, source: SkillSource): SkillRecord[] {
+function discoverSubdirSkills(
+	rootPath: string,
+	source: SkillSource,
+): SkillRecord[] {
 	const out: SkillRecord[] = [];
 	let entries: string[];
 	try {
@@ -201,7 +209,10 @@ function discoverSubdirSkills(rootPath: string, source: SkillSource): SkillRecor
 			}
 			continue;
 		}
-		if (entry.toLowerCase().endsWith(".md") && entry.toLowerCase() !== "readme.md") {
+		if (
+			entry.toLowerCase().endsWith(".md") &&
+			entry.toLowerCase() !== "readme.md"
+		) {
 			const defaultName = entry.replace(/\.md$/i, "");
 			const record = readSkillRecord(sub, source, defaultName);
 			if (record) out.push(record);
@@ -215,7 +226,9 @@ function discoverSubdirSkills(rootPath: string, source: SkillSource): SkillRecor
  * override earlier ones on name collision -- the override is captured by
  * filtering the final list to one record per name (last wins).
  */
-export function discoverSkills(opts: DiscoverSkillsOptions = {}): SkillRecord[] {
+export function discoverSkills(
+	opts: DiscoverSkillsOptions = {},
+): SkillRecord[] {
 	const roots = opts.roots ?? defaultRoots();
 	const collected: SkillRecord[] = [];
 	for (const root of roots) {
@@ -234,11 +247,10 @@ export function discoverSkills(opts: DiscoverSkillsOptions = {}): SkillRecord[] 
 			const sub = path.join(root.path, entry);
 			try {
 				if (fs.statSync(sub).isDirectory()) {
-					for (const inner of discoverSubdirSkills(sub, root.source)) nested.push(inner);
+					for (const inner of discoverSubdirSkills(sub, root.source))
+						nested.push(inner);
 				}
-			} catch {
-				continue;
-			}
+			} catch {}
 		}
 		collected.push(...direct, ...nested);
 	}
@@ -251,7 +263,9 @@ export function discoverSkills(opts: DiscoverSkillsOptions = {}): SkillRecord[] 
 	// Conditional activation via paths:
 	if (opts.cwd) {
 		const cwd = opts.cwd.replace(/\\/g, "/");
-		return final.filter((s) => !s.paths || s.paths.length === 0 || matchesAnyPath(s.paths, cwd));
+		return final.filter(
+			(s) => !s.paths || s.paths.length === 0 || matchesAnyPath(s.paths, cwd),
+		);
 	}
 	return final;
 }
