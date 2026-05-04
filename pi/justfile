@@ -63,7 +63,7 @@ team:
 
 # Full stack (all extensions)
 full:
-    pi --no-extensions -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/agent-chain.ts -e ~/.dotfiles/pi/extensions/agent-team.ts -e ~/.dotfiles/pi/extensions/quality-gates.ts -e ~/.dotfiles/pi/extensions/session-hooks.ts -e ~/.dotfiles/pi/extensions/web-tools.ts -e ~/.dotfiles/pi/extensions/prompt-router.ts
+    pi --no-extensions -e ~/.dotfiles/pi/extensions/persistent-defaults.ts -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/agent-chain.ts -e ~/.dotfiles/pi/extensions/agent-team.ts -e ~/.dotfiles/pi/extensions/quality-gates.ts -e ~/.dotfiles/pi/extensions/session-hooks.ts -e ~/.dotfiles/pi/extensions/web-tools.ts -e ~/.dotfiles/pi/extensions/prompt-router.ts
 
 # Web tools only (search + fetch)
 web:
@@ -71,12 +71,12 @@ web:
 
 # Prompt routing only (classify prompts, auto-switch models)
 route:
-    pi --no-extensions -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/prompt-router.ts
+    pi --no-extensions -e ~/.dotfiles/pi/extensions/persistent-defaults.ts -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/prompt-router.ts
 
 # guard: full stack + commit message enforcement
 guard:
-    pi --no-extensions -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/agent-chain.ts -e ~/.dotfiles/pi/extensions/agent-team.ts -e ~/.dotfiles/pi/extensions/quality-gates.ts -e ~/.dotfiles/pi/extensions/session-hooks.ts -e ~/.dotfiles/pi/extensions/web-tools.ts -e ~/.dotfiles/pi/extensions/commit-guard.ts -e ~/.dotfiles/pi/extensions/prompt-router.ts
+    pi --no-extensions -e ~/.dotfiles/pi/extensions/persistent-defaults.ts -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/agent-chain.ts -e ~/.dotfiles/pi/extensions/agent-team.ts -e ~/.dotfiles/pi/extensions/quality-gates.ts -e ~/.dotfiles/pi/extensions/session-hooks.ts -e ~/.dotfiles/pi/extensions/web-tools.ts -e ~/.dotfiles/pi/extensions/commit-guard.ts -e ~/.dotfiles/pi/extensions/prompt-router.ts
 
 # transcript: opt-in sidecar interaction trace + purge command
 transcript:
-    pi --no-extensions -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/session-hooks.ts -e ~/.dotfiles/pi/extensions/transcript-purge.ts -e ~/.dotfiles/pi/extensions/prompt-router.ts
+    pi --no-extensions -e ~/.dotfiles/pi/extensions/persistent-defaults.ts -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/session-hooks.ts -e ~/.dotfiles/pi/extensions/transcript-purge.ts -e ~/.dotfiles/pi/extensions/prompt-router.ts
