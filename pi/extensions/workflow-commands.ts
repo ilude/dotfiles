@@ -141,8 +141,14 @@ export function msysPathToWindows(cwd: string): string {
 	return `${drive.toUpperCase()}:\\${rest.replace(/\//g, "\\")}`;
 }
 
+export function extractSessionId(sessionFile: string): string {
+	const basename = path.basename(sessionFile);
+	const match = basename.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+	return match?.[0] ?? sessionFile;
+}
+
 export function buildPiResumeArgs(sessionFile: string): string[] {
-	return ["--session", sessionFile];
+	return ["--session", extractSessionId(sessionFile)];
 }
 
 export function buildManualResumeCommand(sessionFile: string): string {

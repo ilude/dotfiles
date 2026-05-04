@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import workflowCommands, {
 	buildBranchLaunchPlan,
 	defaultBranchTitle,
+	extractSessionId,
 	msysPathToWindows,
 } from "../extensions/workflow-commands";
 import { createMockPi } from "./helpers/mock-pi.js";
@@ -49,7 +50,10 @@ describe("/branch", () => {
 		expect(command).toBeTruthy();
 		if (!command) throw new Error("branch command not registered");
 		const notify = vi.fn();
-		const createBranchedSession = vi.fn(() => "C:/Users/me/.pi/branch.jsonl");
+		const createBranchedSession = vi.fn(
+			() =>
+				"C:/Users/me/.pi/agent/sessions/project/2026-05-04T18-58-02-760Z_019df45a-c587-70ae-bf94-c74cd681715c.jsonl",
+		);
 
 		await command.handler("custom title", {
 			cwd: "/c/Users/me/project dir",
@@ -68,7 +72,7 @@ describe("/branch", () => {
 				"custom title",
 				"pi",
 				"--session",
-				"C:/Users/me/.pi/branch.jsonl",
+				"019df45a-c587-70ae-bf94-c74cd681715c",
 			]),
 			expect.objectContaining({ shell: false }),
 		);
@@ -93,6 +97,14 @@ describe("/branch", () => {
 });
 
 describe("branch path helpers", () => {
+	it("extracts the Pi session guid from timestamp-prefixed session files", () => {
+		expect(
+			extractSessionId(
+				"C:/Users/me/.pi/agent/sessions/project/2026-05-04T18-58-02-760Z_019df45a-c587-70ae-bf94-c74cd681715c.jsonl",
+			),
+		).toBe("019df45a-c587-70ae-bf94-c74cd681715c");
+	});
+
 	it("converts MSYS drive paths for native terminal launchers", () => {
 		expect(msysPathToWindows("/c/Users/Example User/project dir")).toBe(
 			"C:\\Users\\Example User\\project dir",
