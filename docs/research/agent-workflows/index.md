@@ -11,6 +11,10 @@ What concrete implementation ideas can we borrow from recent agent tooling while
 
 This vault is a context pool, not a build mandate. Promote ideas only when they solve repeated workflow friction with a small reversible slice.
 
+## Source captures
+
+- [[claude_prompts]] — source-based extraction of Claude Code system-prompt text and prompt-selection rules.
+
 ## Strongest signals
 
 1. [[projects/browser-use-browser-harness]] shows a minimal, editable browser harness where agents can add helpers and domain skills as they learn.

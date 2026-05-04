@@ -21,6 +21,7 @@ Obsidian-style research vault for recent agent workflow tools, repos, videos, an
 - [[workflow-ideas/x-research-pipeline]] — X.com research graph pipeline backed by menos
 - [[projects/zellij-windows-cockpit]] — Windows terminal cockpit for Pi workflows
 - [[projects/menos]] — self-hosted content vault and semantic search backend
+- [[claude_prompts]] — extracted Claude Code system-prompt text from downloaded source
 - [[workflow-ideas/backlog]] — candidate next slices
 
 ## Source videos
