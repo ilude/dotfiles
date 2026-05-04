@@ -31,11 +31,19 @@ Guidelines for working with TypeScript and JavaScript projects using Bun as the 
 When working in a TS/JS project, default to **inspecting, not running**:
 
 - **Do NOT start dev servers** (`bun run dev`, `pnpm dev`, `npm start`, etc.). Assume one is already running in another terminal. If output suggests it isn't, ask the user before starting one.
-- **Do NOT run build commands** (`bun run build`, `next build`, `tsc -b`, etc.) unless explicitly asked. Builds are slow, side-effectful (write to `dist/`, `.next/`), and rarely the right verification step during edits.
-- **DO run typecheck and lint** to verify edits: `bun run typecheck` (or `tsc --noEmit`), `bun run lint`, `bun run biome check .`. These are fast, side-effect-free, and catch most regressions edits introduce.
+- **Do NOT run build commands** (`bun run build`, `next build`, `tsc -b`, etc.) as a first edit-time check. Builds are slow and side-effectful (write to `dist/`, `.next/`).
+- **DO run typecheck and lint** to verify edits: `bun run typecheck` (or `tsc --noEmit`), `bun run lint`, `bun run biome check .`. These catch most regressions edits introduce.
 - **DO run tests** when relevant to the change: `bun test`, `pnpm test`, `vitest run`.
 
-**Exception:** if the task is explicitly "ship a build" or "verify the production bundle," running build is correct.
+**Build prerequisite exception:** in TypeScript monorepos, especially npm/pnpm/bun workspaces where package `types` or `exports` point at `dist/*.d.ts`, a fresh clone/worktree may need a build before repo-wide checks can resolve sibling package types. If `tsc --noEmit` reports `TS2307 Cannot find module` for local workspace packages and their package metadata points to `dist`, verify whether the documented setup is:
+
+```bash
+<package-manager> install
+<package-manager> run build
+<package-manager> run check
+```
+
+Do not declare repo-wide checks broken until testing the documented build/setup step or proving the missing declarations are unrelated to unbuilt workspace outputs. Running build is also correct when the task is explicitly "ship a build" or "verify the production bundle."
 
 ## Package Manager: pnpm or bun, never npm/yarn
 
