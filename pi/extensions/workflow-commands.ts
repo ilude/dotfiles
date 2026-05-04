@@ -23,12 +23,17 @@
 //   /commit / /plan-it / /review-it status line would echo back the slash
 //   command name and add visual noise to user-facing command output.
 
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { spawnSync } from "node:child_process";
-import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { completeSimple, type TextContent } from "@mariozechner/pi-ai";
+import {
+	type Api,
+	completeSimple,
+	type Model,
+	type TextContent,
+} from "@mariozechner/pi-ai";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
 import { withTimingSpan } from "../lib/observability";
@@ -39,8 +44,24 @@ import {
 	buildSkillPrompt,
 } from "../lib/workflow-commands/prompts";
 
-const SKILLS_DIR = path.join(os.homedir(), ".dotfiles", "pi", "skills", "workflow");
-const CONVENTIONAL_TYPES = ["feat", "fix", "docs", "chore", "refactor", "test", "perf", "ci", "build"];
+const SKILLS_DIR = path.join(
+	os.homedir(),
+	".dotfiles",
+	"pi",
+	"skills",
+	"workflow",
+);
+const CONVENTIONAL_TYPES = [
+	"feat",
+	"fix",
+	"docs",
+	"chore",
+	"refactor",
+	"test",
+	"perf",
+	"ci",
+	"build",
+];
 const CONVENTIONAL_COMMIT_RE = new RegExp(
 	`^(${CONVENTIONAL_TYPES.join("|")})(\\([^)]+\\))?: [a-z0-9].{0,71}$`,
 );
@@ -50,12 +71,22 @@ export const SECRET_PATTERNS = [
 	{ label: "AWS access key", regex: /\bAKIA[A-Z0-9]{16}\b/g },
 	{ label: "Private key / certificate", regex: /-----BEGIN(?: [A-Z]+)?-----/g },
 	{ label: "GitHub PAT", regex: /\bghp_[A-Za-z0-9]{20,}\b/g },
-	{ label: "GitHub fine-grained PAT", regex: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g },
+	{
+		label: "GitHub fine-grained PAT",
+		regex: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g,
+	},
 	{ label: "npm token", regex: /\bnpm_[A-Za-z0-9]{20,}\b/g },
 	{ label: "Slack bot token", regex: /\bxoxb-[A-Za-z0-9-]{10,}\b/g },
 	{ label: "Slack user token", regex: /\bxoxp-[A-Za-z0-9-]{10,}\b/g },
-	{ label: "JWT", regex: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9._-]+\.[A-Za-z0-9._-]+\b/g },
-	{ label: "Hardcoded password/token/secret/key", regex: /(?:^|[^A-Za-z0-9])[A-Za-z_]*(?:PASSWORD|TOKEN|SECRET|API[_-]?KEY)[A-Za-z_]*\s*[:=]/gim },
+	{
+		label: "JWT",
+		regex: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9._-]+\.[A-Za-z0-9._-]+\b/g,
+	},
+	{
+		label: "Hardcoded password/token/secret/key",
+		regex:
+			/(?:^|[^A-Za-z0-9])[A-Za-z_]*(?:PASSWORD|TOKEN|SECRET|API[_-]?KEY)[A-Za-z_]*\s*[:=]/gim,
+	},
 ];
 
 function loadSkill(name: string) {
@@ -68,11 +99,19 @@ function loadSkill(name: string) {
 }
 
 function loadClaudeCommitInstructions() {
-	const instructionsPath = path.join(os.homedir(), ".dotfiles", "claude", "shared", "commit-instructions.md");
+	const instructionsPath = path.join(
+		os.homedir(),
+		".dotfiles",
+		"claude",
+		"shared",
+		"commit-instructions.md",
+	);
 	try {
 		return fs.readFileSync(instructionsPath, "utf-8");
 	} catch (err) {
-		throw new Error(`Failed to load Claude commit instructions from ${instructionsPath}: ${err}`);
+		throw new Error(
+			`Failed to load Claude commit instructions from ${instructionsPath}: ${err}`,
+		);
 	}
 }
 
@@ -120,6 +159,44 @@ interface CommitActivity {
 	finish(): void;
 }
 
+interface WorkflowUi {
+	notify(message: string, level?: string): void;
+	setStatus?(key: string, value: string | undefined): void;
+	setWidget?(
+		key: string,
+		value: string[],
+		options?: { placement?: string },
+	): void;
+}
+
+interface WorkflowSessionManager {
+	getLeafId?(): string | null | undefined;
+	createBranchedSession?(leafId: string): string | null | undefined;
+}
+
+interface WorkflowModelRegistry {
+	getAvailable(): Model<Api>[];
+	getApiKeyAndHeaders(model: Model<Api>): Promise<{
+		ok?: boolean;
+		error?: string;
+		apiKey?: string;
+		headers?: Record<string, string>;
+	}>;
+}
+
+interface WorkflowContext {
+	cwd: string;
+	ui: WorkflowUi;
+	modelRegistry: WorkflowModelRegistry;
+	getSystemPrompt?: () => string | undefined;
+	signal?: AbortSignal;
+	sessionManager?: WorkflowSessionManager;
+}
+
+interface SlashEchoExtensionAPI extends ExtensionAPI {
+	__slashEchoRegisterCommandWrapped?: boolean;
+}
+
 const COMMIT_ACTIVITY_TYPE = "workflow-commit-activity";
 const SLASH_ECHO_TYPE = "slash-echo";
 const SUMMARIZE_PROMPT = `Summarize the work done in this session in 3 bullets or fewer.
@@ -151,7 +228,9 @@ export function msysPathToWindows(cwd: string): string {
 
 export function extractSessionId(sessionFile: string): string {
 	const basename = path.basename(sessionFile);
-	const match = basename.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+	const match = basename.match(
+		/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+	);
 	return match?.[0] ?? sessionFile;
 }
 
@@ -181,43 +260,83 @@ export function buildBranchLaunchPlan(input: {
 	if (platform === "win32" || env.WT_SESSION) {
 		return {
 			executable: "wt",
-			args: ["-w", "0", "new-tab", "--title", input.title, "-d", msysPathToWindows(input.cwd), "pi", ...resumeArgs],
+			args: [
+				"-w",
+				"0",
+				"new-tab",
+				"--title",
+				input.title,
+				"-d",
+				msysPathToWindows(input.cwd),
+				"pi",
+				...resumeArgs,
+			],
 			manualCommand,
 		};
 	}
 	return {
 		args: [],
 		manualCommand,
-		reason: "No supported terminal tab launcher detected. Open a new terminal in this cwd and run the command below.",
+		reason:
+			"No supported terminal tab launcher detected. Open a new terminal in this cwd and run the command below.",
 	};
 }
 
-export function launchBranch(plan: BranchLaunchPlan): { launched: boolean; error?: string } {
+export function launchBranch(plan: BranchLaunchPlan): {
+	launched: boolean;
+	error?: string;
+} {
 	if (!plan.executable) return { launched: false };
-	const result = spawnSync(plan.executable, plan.args, { shell: false, stdio: "ignore", windowsHide: true });
+	const result = spawnSync(plan.executable, plan.args, {
+		shell: false,
+		stdio: "ignore",
+		windowsHide: true,
+	});
 	if (result.error) return { launched: false, error: result.error.message };
-	if (typeof result.status === "number" && result.status !== 0) return { launched: false, error: `${plan.executable} exited ${result.status}` };
+	if (typeof result.status === "number" && result.status !== 0)
+		return {
+			launched: false,
+			error: `${plan.executable} exited ${result.status}`,
+		};
 	return { launched: true };
 }
 
-async function executeBranchCommand(args: string, ctx: any) {
+async function executeBranchCommand(args: string, ctx: WorkflowContext) {
 	const sessionManager = ctx.sessionManager;
 	const leafId = sessionManager?.getLeafId?.();
 	if (!sessionManager?.createBranchedSession || !leafId) {
-		return ctx.ui.notify("Cannot branch this session yet: no persisted session leaf is available.", "error");
+		return ctx.ui.notify(
+			"Cannot branch this session yet: no persisted session leaf is available.",
+			"error",
+		);
 	}
 	const branchSessionFile = sessionManager.createBranchedSession(leafId);
 	if (!branchSessionFile) {
-		return ctx.ui.notify("Cannot branch this session: session persistence is unavailable.", "error");
+		return ctx.ui.notify(
+			"Cannot branch this session: session persistence is unavailable.",
+			"error",
+		);
 	}
 	const title = args.trim() || defaultBranchTitle(ctx.cwd ?? process.cwd());
-	const plan = buildBranchLaunchPlan({ cwd: ctx.cwd ?? process.cwd(), title, sessionFile: branchSessionFile });
+	const plan = buildBranchLaunchPlan({
+		cwd: ctx.cwd ?? process.cwd(),
+		title,
+		sessionFile: branchSessionFile,
+	});
 	const launched = launchBranch(plan);
 	if (launched.launched) {
-		return ctx.ui.notify(`Opened branched Pi session in a new terminal tab: ${title}`, "info");
+		return ctx.ui.notify(
+			`Opened branched Pi session in a new terminal tab: ${title}`,
+			"info",
+		);
 	}
-	const details = launched.error ? `Terminal launch failed: ${launched.error}` : plan.reason;
-	return ctx.ui.notify(`${details}\nManual resume command:\n${plan.manualCommand}`, launched.error ? "warning" : "info");
+	const details = launched.error
+		? `Terminal launch failed: ${launched.error}`
+		: plan.reason;
+	return ctx.ui.notify(
+		`${details}\nManual resume command:\n${plan.manualCommand}`,
+		launched.error ? "warning" : "info",
+	);
 }
 
 function extractJsonObject(text: string) {
@@ -235,7 +354,11 @@ export function parseCommitPlan(text: string): CommitPlan {
 		throw new Error("Planner returned no commit groups");
 	}
 	for (const group of parsed.groups) {
-		if (!Array.isArray(group.files) || group.files.length === 0 || !group.files.every((file) => typeof file === "string")) {
+		if (
+			!Array.isArray(group.files) ||
+			group.files.length === 0 ||
+			!group.files.every((file) => typeof file === "string")
+		) {
 			throw new Error("Planner returned a group without valid files");
 		}
 		if (typeof group.subject !== "string" || !group.subject.trim()) {
@@ -262,7 +385,9 @@ export function validateCommitPlan(plan: CommitPlan, changedFiles: string[]) {
 			seen.add(file);
 		}
 		if (!isValidConventionalCommit(group.subject.trim())) {
-			throw new Error(`Planner produced invalid conventional commit subject: ${group.subject}`);
+			throw new Error(
+				`Planner produced invalid conventional commit subject: ${group.subject}`,
+			);
 		}
 	}
 	const missing = changedFiles.filter((file) => !seen.has(file));
@@ -274,16 +399,32 @@ export function validateCommitPlan(plan: CommitPlan, changedFiles: string[]) {
 function extractAssistantText(content: unknown) {
 	if (!Array.isArray(content)) return "";
 	return content
-		.filter((block): block is TextContent => !!block && typeof block === "object" && "type" in block && block.type === "text")
+		.filter(
+			(block): block is TextContent =>
+				!!block &&
+				typeof block === "object" &&
+				"type" in block &&
+				block.type === "text",
+		)
 		.map((block) => block.text)
 		.join("\n");
 }
 
 function buildSingleGroupCommitPlan(
-	context: { files: string[]; diffStat: string; cachedStat: string; cachedDiff: string; hint: string },
+	context: {
+		files: string[];
+		diffStat: string;
+		cachedStat: string;
+		cachedDiff: string;
+		hint: string;
+	},
 	warning?: string,
 ): CommitPlan {
-	const message = proposeCommitMessage(context.files, context.hint, context.cachedDiff);
+	const message = proposeCommitMessage(
+		context.files,
+		context.hint,
+		context.cachedDiff,
+	);
 	return {
 		groups: [
 			{
@@ -298,23 +439,39 @@ function buildSingleGroupCommitPlan(
 
 async function generateCommitPlanWithLlm(
 	_ctxPi: ExtensionAPI,
-	ctx: any,
-	context: { files: string[]; diffStat: string; cachedStat: string; cachedDiff: string; hint: string },
+	ctx: WorkflowContext,
+	context: {
+		files: string[];
+		diffStat: string;
+		cachedStat: string;
+		cachedDiff: string;
+		hint: string;
+	},
 ) {
-	const model = await resolveCommitPlanningModelFromRegistry(ctx.modelRegistry, ctx);
+	const model = await resolveCommitPlanningModelFromRegistry(
+		ctx.modelRegistry,
+		ctx,
+	);
 	if (!model) {
 		throw new Error("No small/mini model available for commit planning");
 	}
 	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
 	if (!auth?.ok) {
-		throw new Error(auth?.error || "No configured auth available for commit planning model");
+		throw new Error(
+			auth?.error || "No configured auth available for commit planning model",
+		);
 	}
-	const planningPrompt = buildCommitPlanningPrompt(loadClaudeCommitInstructions(), context);
+	const planningPrompt = buildCommitPlanningPrompt(
+		loadClaudeCommitInstructions(),
+		context,
+	);
 	const response = await completeSimple(
 		model,
 		{
 			systemPrompt: ctx.getSystemPrompt?.(),
-			messages: [{ role: "user", content: planningPrompt, timestamp: Date.now() }],
+			messages: [
+				{ role: "user", content: planningPrompt, timestamp: Date.now() },
+			],
 		},
 		{
 			apiKey: auth.apiKey,
@@ -325,7 +482,10 @@ async function generateCommitPlanWithLlm(
 	);
 	const planText = extractAssistantText(response.content);
 	if (!planText.trim()) {
-		return buildSingleGroupCommitPlan(context, "Commit planner returned empty response; used single-commit fallback.");
+		return buildSingleGroupCommitPlan(
+			context,
+			"Commit planner returned empty response; used single-commit fallback.",
+		);
 	}
 	const plan = parseCommitPlan(planText);
 	validateCommitPlan(plan, context.files);
@@ -334,26 +494,53 @@ async function generateCommitPlanWithLlm(
 
 function shouldLogGitCommand(args: string[]) {
 	const command = args[0];
-	return command !== "diff" && command !== "ls-files" && command !== "rev-parse";
+	return (
+		command !== "diff" && command !== "ls-files" && command !== "rev-parse"
+	);
 }
 
 let _gitBin: string | undefined;
 function resolveGit(): string {
 	if (_gitBin !== undefined) return _gitBin;
-	if (process.platform !== "win32") return (_gitBin = "git");
+	if (process.platform !== "win32") {
+		_gitBin = "git";
+		return _gitBin;
+	}
 	const candidates = [
-		process.env.ProgramFiles ? `${process.env.ProgramFiles}\\Git\\mingw64\\bin\\git.exe` : undefined,
-		process.env["ProgramFiles(x86)"] ? `${process.env["ProgramFiles(x86)"]}\\Git\\mingw64\\bin\\git.exe` : undefined,
-		process.env.LOCALAPPDATA ? `${process.env.LOCALAPPDATA}\\Programs\\Git\\mingw64\\bin\\git.exe` : undefined,
+		process.env.ProgramFiles
+			? `${process.env.ProgramFiles}\\Git\\mingw64\\bin\\git.exe`
+			: undefined,
+		process.env["ProgramFiles(x86)"]
+			? `${process.env["ProgramFiles(x86)"]}\\Git\\mingw64\\bin\\git.exe`
+			: undefined,
+		process.env.LOCALAPPDATA
+			? `${process.env.LOCALAPPDATA}\\Programs\\Git\\mingw64\\bin\\git.exe`
+			: undefined,
 	].filter((c): c is string => Boolean(c));
 	for (const c of candidates) {
-		try { if (fs.existsSync(c)) return (_gitBin = c); } catch { /* ignore */ }
+		try {
+			if (fs.existsSync(c)) {
+				_gitBin = c;
+				return _gitBin;
+			}
+		} catch {
+			/* ignore */
+		}
 	}
-	return (_gitBin = "git");
+	_gitBin = "git";
+	return _gitBin;
 }
 
-function runGit(cwd: string, args: string[], activity?: CommitActivity): GitRunResult {
-	const result = spawnSync(resolveGit(), args, { cwd, encoding: "utf8", windowsHide: true });
+function runGit(
+	cwd: string,
+	args: string[],
+	activity?: CommitActivity,
+): GitRunResult {
+	const result = spawnSync(resolveGit(), args, {
+		cwd,
+		encoding: "utf8",
+		windowsHide: true,
+	});
 	const gitResult = {
 		code: result.status ?? 1,
 		stdout: result.stdout ?? "",
@@ -368,7 +555,9 @@ function runGit(cwd: string, args: string[], activity?: CommitActivity): GitRunR
 function gitOrThrow(cwd: string, args: string[], activity?: CommitActivity) {
 	const result = runGit(cwd, args, activity);
 	if (result.code !== 0) {
-		throw new Error((result.stderr || result.stdout || `git ${args.join(" ")} failed`).trim());
+		throw new Error(
+			(result.stderr || result.stdout || `git ${args.join(" ")} failed`).trim(),
+		);
 	}
 	return result.stdout.trim();
 }
@@ -381,7 +570,9 @@ function parseLines(output: string) {
 }
 
 function uniqueSorted(values: string[]) {
-	return [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
+	return [...new Set(values.filter(Boolean))].sort((a, b) =>
+		a.localeCompare(b),
+	);
 }
 
 function hasMergeConflicts(statusOutput: string) {
@@ -393,9 +584,15 @@ function hasMergeConflicts(statusOutput: string) {
 
 export function listChangedFiles(cwd: string, activity?: CommitActivity) {
 	const hasHead = runGit(cwd, ["rev-parse", "--verify", "HEAD"]).code === 0;
-	const headDiff = hasHead ? parseLines(gitOrThrow(cwd, ["diff", "--name-only", "HEAD"], activity)) : [];
-	const untracked = parseLines(gitOrThrow(cwd, ["ls-files", "--others", "--exclude-standard"], activity));
-	const staged = parseLines(gitOrThrow(cwd, ["diff", "--cached", "--name-only"], activity));
+	const headDiff = hasHead
+		? parseLines(gitOrThrow(cwd, ["diff", "--name-only", "HEAD"], activity))
+		: [];
+	const untracked = parseLines(
+		gitOrThrow(cwd, ["ls-files", "--others", "--exclude-standard"], activity),
+	);
+	const staged = parseLines(
+		gitOrThrow(cwd, ["diff", "--cached", "--name-only"], activity),
+	);
 	return {
 		all: uniqueSorted([...headDiff, ...untracked]),
 		staged: uniqueSorted(staged),
@@ -410,7 +607,10 @@ function parseCommitArgs(rawArgs: string, changedFiles: string[]) {
 	return {
 		push,
 		files: remaining.filter((token) => changedSet.has(token)),
-		hint: remaining.filter((token) => !changedSet.has(token)).join(" ").trim(),
+		hint: remaining
+			.filter((token) => !changedSet.has(token))
+			.join(" ")
+			.trim(),
 	};
 }
 
@@ -431,7 +631,10 @@ function buildSecretContext(content: string, index: number) {
 	return { line: lineIndex + 1, context: snippet.slice(0, 400) };
 }
 
-function scanFileForSecrets(cwd: string, relativePath: string): SecretCandidate[] {
+function scanFileForSecrets(
+	cwd: string,
+	relativePath: string,
+): SecretCandidate[] {
 	const absolutePath = path.resolve(cwd, relativePath);
 	try {
 		if (!fs.statSync(absolutePath).isFile()) return [];
@@ -490,7 +693,9 @@ function isTestFile(file: string) {
 }
 
 function isConfigFile(file: string) {
-	return ["install", "install.ps1", "Brewfile", "settings.json"].some((name) => file.endsWith(name));
+	return ["install", "install.ps1", "Brewfile", "settings.json"].some((name) =>
+		file.endsWith(name),
+	);
 }
 
 function diffIncludesAny(diffText: string, snippets: string[]) {
@@ -500,42 +705,80 @@ function diffIncludesAny(diffText: string, snippets: string[]) {
 function detectType(files: string[], diffText: string) {
 	if (files.length > 0 && files.every(isDocsFile)) return "docs";
 	if (files.length > 0 && files.every(isTestFile)) return "test";
-	if (files.every((file) => isDocsFile(file) || isTestFile(file)) && files.some(isDocsFile)) return "docs";
-	if (diffIncludesAny(diffText, ["registerCommand(", "registerTool(", "+\t/exit", "+\t/commit"])) return "feat";
-	if (diffIncludesAny(diffText, ["fix", "error", "failed", "bug", "prevent", "correct"])) return "fix";
+	if (
+		files.every((file) => isDocsFile(file) || isTestFile(file)) &&
+		files.some(isDocsFile)
+	)
+		return "docs";
+	if (
+		diffIncludesAny(diffText, [
+			"registerCommand(",
+			"registerTool(",
+			"+\t/exit",
+			"+\t/commit",
+		])
+	)
+		return "feat";
+	if (
+		diffIncludesAny(diffText, [
+			"fix",
+			"error",
+			"failed",
+			"bug",
+			"prevent",
+			"correct",
+		])
+	)
+		return "fix";
 	if (files.every(isConfigFile)) return "chore";
 	return "chore";
 }
 
 function detectDescription(files: string[], diffText: string) {
 	if (files.includes("pi/extensions/workflow-commands.ts")) {
-		if (diffIncludesAny(diffText, ["executeCommitCommand", "confirmCommitMessage", "chooseFilesToCommit"])) {
+		if (
+			diffIncludesAny(diffText, [
+				"executeCommitCommand",
+				"confirmCommitMessage",
+				"chooseFilesToCommit",
+			])
+		) {
 			return "improve commit workflow";
 		}
 		if (diffText.includes('registerCommand("exit"')) return "add exit command";
 		return "update workflow commands";
 	}
 	if (files.every(isDocsFile)) return "update documentation";
-	if (files.every((file) => file.startsWith("pi/"))) return "update pi configuration";
-	if (files.some((file) => ["install", "install.ps1", "Brewfile"].includes(file))) {
+	if (files.every((file) => file.startsWith("pi/")))
+		return "update pi configuration";
+	if (
+		files.some((file) => ["install", "install.ps1", "Brewfile"].includes(file))
+	) {
 		return "update install and shell configuration";
 	}
 	return "update tracked changes";
 }
 
 function toConventionalDescription(input: string) {
-	return input.trim().toLowerCase().replace(/[.]+$/g, "").replace(/\s+/g, " ").slice(0, 72);
+	return input
+		.trim()
+		.toLowerCase()
+		.replace(/[.]+$/g, "")
+		.replace(/\s+/g, " ")
+		.slice(0, 72);
 }
 
-export function proposeCommitMessage(files: string[], hint: string, diffText: string) {
+export function proposeCommitMessage(
+	files: string[],
+	hint: string,
+	diffText: string,
+) {
 	const scope = detectScope(files);
 	const type = detectType(files, diffText);
 	const subject = `${type}(${scope}): ${toConventionalDescription(hint || detectDescription(files, diffText))}`;
-	return files.length > 3 ? { subject, body: `Update ${files.length} tracked paths across ${scope}.` } : { subject };
-}
-
-function formatCommitMessage(message: { subject: string; body?: string }) {
-	return message.body ? `${message.subject}\n\n${message.body}` : message.subject;
+	return files.length > 3
+		? { subject, body: `Update ${files.length} tracked paths across ${scope}.` }
+		: { subject };
 }
 
 function isValidConventionalCommit(subject: string) {
@@ -546,21 +789,38 @@ function parseSecretReviewResult(text: string): SecretReviewResult {
 	const jsonText = extractJsonObject(text);
 	if (!jsonText) throw new Error("Secret reviewer did not return JSON");
 	const parsed = JSON.parse(jsonText) as SecretReviewResult;
-	if (!parsed || !Array.isArray(parsed.findings)) throw new Error("Secret reviewer returned invalid findings");
+	if (!parsed || !Array.isArray(parsed.findings))
+		throw new Error("Secret reviewer returned invalid findings");
 	return parsed;
 }
 
-async function reviewSecretFindingsWithLlm(ctx: any, findings: SecretCandidate[]): Promise<SecretReviewFinding[]> {
+async function reviewSecretFindingsWithLlm(
+	ctx: WorkflowContext,
+	findings: SecretCandidate[],
+): Promise<SecretReviewFinding[]> {
 	if (findings.length === 0) return [];
-	const model = await resolveCommitPlanningModelFromRegistry(ctx.modelRegistry, ctx);
-	if (!model) throw new Error("No small/mini model available for secret review");
+	const model = await resolveCommitPlanningModelFromRegistry(
+		ctx.modelRegistry,
+		ctx,
+	);
+	if (!model)
+		throw new Error("No small/mini model available for secret review");
 	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-	if (!auth?.ok) throw new Error(auth?.error || "No configured auth available for secret review model");
+	if (!auth?.ok)
+		throw new Error(
+			auth?.error || "No configured auth available for secret review model",
+		);
 	const response = await completeSimple(
 		model,
 		{
 			systemPrompt: ctx.getSystemPrompt?.(),
-			messages: [{ role: "user", content: buildSecretReviewPrompt(findings), timestamp: Date.now() }],
+			messages: [
+				{
+					role: "user",
+					content: buildSecretReviewPrompt(findings),
+					timestamp: Date.now(),
+				},
+			],
 		},
 		{
 			apiKey: auth.apiKey,
@@ -570,64 +830,104 @@ async function reviewSecretFindingsWithLlm(ctx: any, findings: SecretCandidate[]
 		},
 	);
 	const text = extractAssistantText(response.content);
-	if (!text.trim()) throw new Error("Secret reviewer returned no assistant text");
+	if (!text.trim())
+		throw new Error("Secret reviewer returned no assistant text");
 	return parseSecretReviewResult(text).findings;
 }
 
-async function confirmSecretScan(ctx: any, findings: SecretCandidate[]) {
+async function confirmSecretScan(
+	ctx: WorkflowContext,
+	findings: SecretCandidate[],
+) {
 	if (findings.length === 0) return true;
 	const reviewed = await reviewSecretFindingsWithLlm(ctx, findings);
-	const blocking = reviewed.filter((finding) => finding.classification === "likely_secret" || finding.classification === "ambiguous");
+	const blocking = reviewed.filter(
+		(finding) =>
+			finding.classification === "likely_secret" ||
+			finding.classification === "ambiguous",
+	);
 	if (blocking.length === 0) return true;
 	const preview = blocking
 		.slice(0, 8)
-		.map((finding) => `- ${finding.path}: ${finding.label} [${finding.classification}]${finding.match ? ` (${finding.match})` : ""} — ${finding.reason}`)
+		.map(
+			(finding) =>
+				`- ${finding.path}: ${finding.label} [${finding.classification}]${finding.match ? ` (${finding.match})` : ""} — ${finding.reason}`,
+		)
 		.join("\n");
 	throw new Error(
 		`Potential secrets detected after review:\n${preview}${blocking.length > 8 ? "\n- ..." : ""}\n\nRemove the secrets, redact them, or exclude the files before committing.`,
 	);
 }
 
-export async function chooseFilesToCommit(_ctx: any, changedFiles: string[], _stagedFiles: string[], requestedFiles: string[]) {
-	if (requestedFiles.length > 0) return { files: requestedFiles, stageAll: true, cancelled: false };
+export async function chooseFilesToCommit(
+	_ctx: WorkflowContext,
+	changedFiles: string[],
+	_stagedFiles: string[],
+	requestedFiles: string[],
+) {
+	if (requestedFiles.length > 0)
+		return { files: requestedFiles, stageAll: true, cancelled: false };
 	return { files: changedFiles, stageAll: true, cancelled: false };
 }
 
-export function stageFiles(cwd: string, files: string[], activity?: CommitActivity) {
+export function stageFiles(
+	cwd: string,
+	files: string[],
+	activity?: CommitActivity,
+) {
 	const addResult = runGit(cwd, ["add", "--", ...files], activity);
-	if (addResult.code !== 0) throw new Error((addResult.stderr || addResult.stdout).trim() || "git add failed");
+	if (addResult.code !== 0)
+		throw new Error(
+			(addResult.stderr || addResult.stdout).trim() || "git add failed",
+		);
 }
 
 function unstageFiles(cwd: string, files: string[], activity?: CommitActivity) {
 	const resetResult = runGit(cwd, ["reset", "HEAD", "--", ...files], activity);
-	if (resetResult.code !== 0) throw new Error((resetResult.stderr || resetResult.stdout).trim() || "git reset failed");
+	if (resetResult.code !== 0)
+		throw new Error(
+			(resetResult.stderr || resetResult.stdout).trim() || "git reset failed",
+		);
 }
 
 export async function confirmCommitMessage(
-	_ctx: any,
+	_ctx: WorkflowContext,
 	commitMessage: { subject: string; body?: string },
 	_filesToCommit: string[],
 	_cachedStat: string,
 	_diffStat: string,
 ) {
 	if (!isValidConventionalCommit(commitMessage.subject)) {
-		throw new Error("Commit message must match conventional commit format: type(scope): description");
+		throw new Error(
+			"Commit message must match conventional commit format: type(scope): description",
+		);
 	}
 	return commitMessage;
 }
 
-function commitCurrentChanges(cwd: string, commitMessage: { subject: string; body?: string }, activity?: CommitActivity) {
+function commitCurrentChanges(
+	cwd: string,
+	commitMessage: { subject: string; body?: string },
+	activity?: CommitActivity,
+) {
 	const commitArgs = commitMessage.body
 		? ["commit", "-m", commitMessage.subject, "-m", commitMessage.body]
 		: ["commit", "-m", commitMessage.subject];
 	const commitResult = runGit(cwd, commitArgs, activity);
-	if (commitResult.code !== 0) throw new Error((commitResult.stderr || commitResult.stdout).trim() || "git commit failed");
+	if (commitResult.code !== 0)
+		throw new Error(
+			(commitResult.stderr || commitResult.stdout).trim() ||
+				"git commit failed",
+		);
 	return gitOrThrow(cwd, ["rev-parse", "--short", "HEAD"], activity);
 }
 
 function pushCurrentBranch(cwd: string, activity?: CommitActivity) {
 	const pushResult = runGit(cwd, ["push"], activity);
-	if (pushResult.code !== 0) throw new Error((pushResult.stderr || pushResult.stdout).trim() || "git push failed");
+	if (pushResult.code !== 0)
+		throw new Error(
+			(pushResult.stderr || pushResult.stdout).trim() || "git push failed",
+		);
 }
 
 function summarizeCommit(hash: string, subject: string, pushed: boolean) {
@@ -643,7 +943,8 @@ function formatGitOutput(result?: GitRunResult) {
 		for (const line of stdout.split(/\r?\n/)) outputLines.push(line);
 	}
 	if (stderr) {
-		for (const line of stderr.split(/\r?\n/)) outputLines.push(`stderr: ${line}`);
+		for (const line of stderr.split(/\r?\n/))
+			outputLines.push(`stderr: ${line}`);
 	}
 	if (outputLines.length === 0) {
 		outputLines.push(result.code === 0 ? "ok" : `exit ${result.code}`);
@@ -652,7 +953,8 @@ function formatGitOutput(result?: GitRunResult) {
 }
 
 function echoSlashCommand(pi: ExtensionAPI, command: string, args: string) {
-	if ((pi as any).__slashEchoRegisterCommandWrapped) return undefined;
+	if ((pi as SlashEchoExtensionAPI).__slashEchoRegisterCommandWrapped)
+		return undefined;
 	const text = args.trim() ? `/${command} ${args.trim()}` : `/${command}`;
 	if (typeof pi.sendMessage === "function") {
 		pi.sendMessage({
@@ -683,10 +985,16 @@ function sendHiddenWorkflowPrompt(
 }
 
 function isPlanFileInput(args: string) {
-	return /(?:^|\s)(?:\.specs\/[A-Za-z0-9._/-]+\/plan\.md|[^\s]+plan\.md)(?:\s|$)/.test(args.trim());
+	return /(?:^|\s)(?:\.specs\/[A-Za-z0-9._/-]+\/plan\.md|[^\s]+plan\.md)(?:\s|$)/.test(
+		args.trim(),
+	);
 }
 
-function createCommitActivity(pi: ExtensionAPI, ctx: any, commandText: string): CommitActivity {
+function createCommitActivity(
+	pi: ExtensionAPI,
+	ctx: WorkflowContext,
+	commandText: string,
+): CommitActivity {
 	const fallbackLines: string[] = [];
 	const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 	let spinnerIndex = 0;
@@ -703,7 +1011,10 @@ function createCommitActivity(pi: ExtensionAPI, ctx: any, commandText: string): 
 	const startSpinner = (phase: string) => {
 		stopSpinner();
 		const tick = () => {
-			ctx.ui.setStatus?.("commit-spinner", `${spinnerFrames[spinnerIndex]} ${phase}`);
+			ctx.ui.setStatus?.(
+				"commit-spinner",
+				`${spinnerFrames[spinnerIndex]} ${phase}`,
+			);
 			spinnerIndex = (spinnerIndex + 1) % spinnerFrames.length;
 		};
 		tick();
@@ -720,7 +1031,9 @@ function createCommitActivity(pi: ExtensionAPI, ctx: any, commandText: string): 
 			return;
 		}
 		fallbackLines.push(content);
-		ctx.ui.setWidget?.("commit-progress", fallbackLines.slice(-10), { placement: "aboveEditor" });
+		ctx.ui.setWidget?.("commit-progress", fallbackLines.slice(-10), {
+			placement: "aboveEditor",
+		});
 	};
 
 	emit(commandText);
@@ -751,28 +1064,55 @@ function createCommitActivity(pi: ExtensionAPI, ctx: any, commandText: string): 
 
 function getCommitContext(cwd: string, activity?: CommitActivity) {
 	const diffStat = gitOrThrow(cwd, ["diff", "--stat", "HEAD"], activity);
-	const { all: changedFiles, staged: stagedFiles } = listChangedFiles(cwd, activity);
+	const { all: changedFiles, staged: stagedFiles } = listChangedFiles(
+		cwd,
+		activity,
+	);
 	if (changedFiles.length === 0) throw new Error("No changed files found");
 	return { diffStat, changedFiles, stagedFiles };
 }
 
-async function prepareCommitSelection(args: string, ctx: any, activity?: CommitActivity) {
-	const { diffStat, changedFiles, stagedFiles } = getCommitContext(ctx.cwd, activity);
+async function prepareCommitSelection(
+	args: string,
+	ctx: WorkflowContext,
+	activity?: CommitActivity,
+) {
+	const { diffStat, changedFiles, stagedFiles } = getCommitContext(
+		ctx.cwd,
+		activity,
+	);
 	const findings = scanFilesForSecrets(ctx.cwd, changedFiles);
 	if (!(await confirmSecretScan(ctx, findings))) return null;
 
 	const parsedArgs = parseCommitArgs(args, changedFiles);
-	const selection = await chooseFilesToCommit(ctx, changedFiles, stagedFiles, parsedArgs.files);
+	const selection = await chooseFilesToCommit(
+		ctx,
+		changedFiles,
+		stagedFiles,
+		parsedArgs.files,
+	);
 	if (selection.cancelled || selection.files.length === 0) return null;
 	if (selection.stageAll) stageFiles(ctx.cwd, selection.files, activity);
 
-	const cachedStat = gitOrThrow(ctx.cwd, ["diff", "--cached", "--stat"], activity);
+	const cachedStat = gitOrThrow(
+		ctx.cwd,
+		["diff", "--cached", "--stat"],
+		activity,
+	);
 	if (!cachedStat.trim()) throw new Error("Nothing is staged for commit");
-	const cachedDiff = gitOrThrow(ctx.cwd, ["diff", "--cached", "--no-color"], activity);
+	const cachedDiff = gitOrThrow(
+		ctx.cwd,
+		["diff", "--cached", "--no-color"],
+		activity,
+	);
 	return { parsedArgs, selection, diffStat, cachedStat, cachedDiff };
 }
 
-async function executeCommitCommand(pi: ExtensionAPI, args: string, ctx: any) {
+async function executeCommitCommand(
+	pi: ExtensionAPI,
+	args: string,
+	ctx: WorkflowContext,
+) {
 	const commandText = `/commit${args.trim() ? ` ${args.trim()}` : ""}`;
 	const activity = createCommitActivity(pi, ctx, commandText);
 	ctx.ui.notify(`Starting ${commandText}…`, "info");
@@ -785,7 +1125,10 @@ async function executeCommitCommand(pi: ExtensionAPI, args: string, ctx: any) {
 		}
 		if (hasMergeConflicts(status)) {
 			activity.finish();
-			return ctx.ui.notify("Resolve merge conflicts before committing", "error");
+			return ctx.ui.notify(
+				"Resolve merge conflicts before committing",
+				"error",
+			);
 		}
 
 		const prepared = await prepareCommitSelection(args, ctx, activity);
@@ -813,7 +1156,11 @@ async function executeCommitCommand(pi: ExtensionAPI, args: string, ctx: any) {
 
 		if (!plan) {
 			activity.setPhase("creating commit");
-			const proposed = proposeCommitMessage(prepared.selection.files, prepared.parsedArgs.hint, prepared.cachedDiff);
+			const proposed = proposeCommitMessage(
+				prepared.selection.files,
+				prepared.parsedArgs.hint,
+				prepared.cachedDiff,
+			);
 			const commitMessage = await confirmCommitMessage(
 				ctx,
 				proposed,
@@ -827,7 +1174,10 @@ async function executeCommitCommand(pi: ExtensionAPI, args: string, ctx: any) {
 			}
 			if (!isValidConventionalCommit(commitMessage.subject)) {
 				activity.finish();
-				return ctx.ui.notify("Proposed commit message does not match conventional commit format", "error");
+				return ctx.ui.notify(
+					"Proposed commit message does not match conventional commit format",
+					"error",
+				);
 			}
 			const hash = commitCurrentChanges(ctx.cwd, commitMessage, activity);
 			if (prepared.parsedArgs.push) {
@@ -835,7 +1185,10 @@ async function executeCommitCommand(pi: ExtensionAPI, args: string, ctx: any) {
 				pushCurrentBranch(ctx.cwd, activity);
 			}
 			activity.finish();
-			return ctx.ui.notify(summarizeCommit(hash, commitMessage.subject, prepared.parsedArgs.push), "info");
+			return ctx.ui.notify(
+				summarizeCommit(hash, commitMessage.subject, prepared.parsedArgs.push),
+				"info",
+			);
 		}
 
 		const commitSummaries: string[] = [];
@@ -845,10 +1198,17 @@ async function executeCommitCommand(pi: ExtensionAPI, args: string, ctx: any) {
 			stageFiles(ctx.cwd, group.files, activity);
 			let hash: string;
 			try {
-				const stagedStat = gitOrThrow(ctx.cwd, ["diff", "--cached", "--stat"], activity);
+				const stagedStat = gitOrThrow(
+					ctx.cwd,
+					["diff", "--cached", "--stat"],
+					activity,
+				);
 				const commitMessage = await confirmCommitMessage(
 					ctx,
-					{ subject: group.subject.trim(), body: group.body?.trim() || undefined },
+					{
+						subject: group.subject.trim(),
+						body: group.body?.trim() || undefined,
+					},
 					group.files,
 					stagedStat,
 					prepared.diffStat,
@@ -892,26 +1252,40 @@ export default function (pi: ExtensionAPI) {
 
 	if (typeof pi.registerMessageRenderer === "function") {
 		pi.registerMessageRenderer(SLASH_ECHO_TYPE, (message, _options, theme) => {
-			const text = typeof message.content === "string" ? message.content : String(message.content ?? "");
-			return new Text(theme.bold(theme.fg("success", "> ")) + theme.bold(theme.fg("text", text)), 0, 0);
+			const text =
+				typeof message.content === "string"
+					? message.content
+					: String(message.content ?? "");
+			return new Text(
+				theme.bold(theme.fg("success", "> ")) +
+					theme.bold(theme.fg("text", text)),
+				0,
+				0,
+			);
 		});
 
-		pi.registerMessageRenderer(COMMIT_ACTIVITY_TYPE, (message, _options, theme) => {
-			const text = typeof message.content === "string" ? message.content : String(message.content ?? "");
-			const styled = text
-				.split("\n")
-				.map((line) => {
-					if (line === "Pushed to remote") {
-						return theme.bold(theme.fg("success", line));
-					}
-					if (line.startsWith("  ") || line.startsWith("stderr:")) {
-						return theme.fg("toolOutput", line);
-					}
-					return theme.bold(theme.fg("text", line));
-				})
-				.join("\n");
-			return new Text(theme.bold(theme.fg("success", "> ")) + styled, 0, 0);
-		});
+		pi.registerMessageRenderer(
+			COMMIT_ACTIVITY_TYPE,
+			(message, _options, theme) => {
+				const text =
+					typeof message.content === "string"
+						? message.content
+						: String(message.content ?? "");
+				const styled = text
+					.split("\n")
+					.map((line) => {
+						if (line === "Pushed to remote") {
+							return theme.bold(theme.fg("success", line));
+						}
+						if (line.startsWith("  ") || line.startsWith("stderr:")) {
+							return theme.fg("toolOutput", line);
+						}
+						return theme.bold(theme.fg("text", line));
+					})
+					.join("\n");
+				return new Text(theme.bold(theme.fg("success", "> ")) + styled, 0, 0);
+			},
+		);
 	}
 
 	pi.registerCommand("commit", {
@@ -920,31 +1294,46 @@ export default function (pi: ExtensionAPI) {
 			try {
 				await executeCommitCommand(pi, args, ctx);
 			} catch (err) {
-				ctx.ui.notify(err instanceof Error ? err.message : String(err), "error");
+				ctx.ui.notify(
+					err instanceof Error ? err.message : String(err),
+					"error",
+				);
 			}
 		},
 	});
 
 	pi.registerCommand("branch", {
-		description: "Open a branched copy of this Pi session in a new terminal tab",
+		description:
+			"Open a branched copy of this Pi session in a new terminal tab",
 		handler: async (args, ctx) => {
 			try {
 				await executeBranchCommand(args, ctx);
 			} catch (err) {
-				ctx.ui.notify(err instanceof Error ? err.message : String(err), "error");
+				ctx.ui.notify(
+					err instanceof Error ? err.message : String(err),
+					"error",
+				);
 			}
 		},
 	});
 
 	pi.registerCommand("plan-it", {
-		description: "Crystallize conversation context into an executable plan document",
+		description:
+			"Crystallize conversation context into an executable plan document; pass worktree/wt to require isolated branch work",
 		handler: async (args, _ctx) => {
-			const planPath = args.trim().match(/(\.specs\/[A-Za-z0-9._/-]+\/plan\.md)/)?.[1];
+			const planPath = args
+				.trim()
+				.match(/(\.specs\/[A-Za-z0-9._/-]+\/plan\.md)/)?.[1];
 			await withTimingSpan(
 				{
 					name: "slash.plan-it",
 					category: "command",
-					metadata: { command: "plan-it", workflow: "plan-it", phase: "dispatch", planPath },
+					metadata: {
+						command: "plan-it",
+						workflow: "plan-it",
+						phase: "dispatch",
+						planPath,
+					},
 				},
 				async () => {
 					echoSlashCommand(pi, "plan-it", args);
@@ -956,38 +1345,59 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("review-it", {
-		description: "Adversarial review of a plan file — finds bugs, gaps, and failure modes",
+		description:
+			"Adversarial review of a plan file — finds bugs, gaps, and failure modes",
 		handler: async (args, _ctx) => {
-			const planPath = args.trim().match(/(\.specs\/[A-Za-z0-9._/-]+\/plan\.md)/)?.[1];
+			const planPath = args
+				.trim()
+				.match(/(\.specs\/[A-Za-z0-9._/-]+\/plan\.md)/)?.[1];
 			await withTimingSpan(
 				{
 					name: "slash.review-it",
 					category: "command",
-					metadata: { command: "review-it", workflow: "review-it", phase: "dispatch", planPath },
+					metadata: {
+						command: "review-it",
+						workflow: "review-it",
+						phase: "dispatch",
+						planPath,
+					},
 				},
 				async () => {
 					echoSlashCommand(pi, "review-it", args);
 					const template = loadSkill("review-it.md");
-					sendHiddenWorkflowPrompt(pi, buildSkillPrompt(template, args, { replaceArguments: true }));
+					sendHiddenWorkflowPrompt(
+						pi,
+						buildSkillPrompt(template, args, { replaceArguments: true }),
+					);
 				},
 			);
 		},
 	});
 
 	pi.registerCommand("do-it", {
-		description: "Smart task routing — implements directly, delegates, or plans based on complexity",
+		description:
+			"Smart task routing — implements directly, delegates, or plans based on complexity",
 		handler: async (args, ctx) => {
-			const planPath = args.trim().match(/(\.specs\/[A-Za-z0-9._/-]+\/plan\.md)/)?.[1];
+			const planPath = args
+				.trim()
+				.match(/(\.specs\/[A-Za-z0-9._/-]+\/plan\.md)/)?.[1];
 			await withTimingSpan(
 				{
 					name: "slash.do-it",
 					category: "command",
-					metadata: { command: "do-it", workflow: "do-it", phase: "dispatch", planPath },
+					metadata: {
+						command: "do-it",
+						workflow: "do-it",
+						phase: "dispatch",
+						planPath,
+					},
 				},
 				async () => {
 					echoSlashCommand(pi, "do-it", args);
 					const template = loadSkill("do-it.md");
-					const prompt = buildSkillPrompt(template, args, { replaceArguments: true });
+					const prompt = buildSkillPrompt(template, args, {
+						replaceArguments: true,
+					});
 					if (isPlanFileInput(args)) {
 						await ctx.newSession({
 							withSession: async (newCtx) => {
@@ -1013,23 +1423,29 @@ export default function (pi: ExtensionAPI) {
 		description: "Concise recap of this session and notable workflow friction",
 		handler: async (args, _ctx) => {
 			echoSlashCommand(pi, "summarize", args);
-			const extraContext = args.trim() ? `\n\nAdditional focus: ${args.trim()}` : "";
+			const extraContext = args.trim()
+				? `\n\nAdditional focus: ${args.trim()}`
+				: "";
 			sendHiddenWorkflowPrompt(pi, `${SUMMARIZE_PROMPT}${extraContext}`);
 		},
 	});
 
 	pi.registerCommand("research", {
-		description: "Parallel multi-angle research — primary sources, practical guidance, and alternatives",
-		handler: async (args, ctx) => {
+		description:
+			"Parallel multi-angle research — primary sources, practical guidance, and alternatives",
+		handler: async (args, _ctx) => {
 			echoSlashCommand(pi, "research", args);
 			const template = loadSkill("research.md");
-			await pi.sendUserMessage(buildSkillPrompt(template, args, { replaceArguments: true }));
+			await pi.sendUserMessage(
+				buildSkillPrompt(template, args, { replaceArguments: true }),
+			);
 		},
 	});
 
 	pi.registerCommand("gitlab-ticket", {
-		description: "Generate a structured GitLab issue, then optionally create an issue-numbered branch and draft MR",
-		handler: async (args, ctx) => {
+		description:
+			"Generate a structured GitLab issue, then optionally create an issue-numbered branch and draft MR",
+		handler: async (args, _ctx) => {
 			echoSlashCommand(pi, "gitlab-ticket", args);
 			const template = loadSkill("gitlab-ticket.md");
 			await pi.sendUserMessage(buildGitlabTicketPrompt(template, args));
