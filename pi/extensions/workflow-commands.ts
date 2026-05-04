@@ -122,6 +122,90 @@ interface CommitActivity {
 const COMMIT_ACTIVITY_TYPE = "workflow-commit-activity";
 const SLASH_ECHO_TYPE = "slash-echo";
 
+interface BranchLaunchPlan {
+	executable?: string;
+	args: string[];
+	manualCommand: string;
+	reason?: string;
+}
+
+function quoteCliArg(value: string): string {
+	return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+export function msysPathToWindows(cwd: string): string {
+	const match = cwd.match(/^\/([a-zA-Z])\/(.*)$/);
+	const drive = match?.[1];
+	const rest = match?.[2];
+	if (!drive || rest === undefined) return cwd;
+	return `${drive.toUpperCase()}:\\${rest.replace(/\//g, "\\")}`;
+}
+
+export function buildPiResumeArgs(sessionFile: string): string[] {
+	return ["--session", sessionFile];
+}
+
+export function buildManualResumeCommand(sessionFile: string): string {
+	return ["pi", ...buildPiResumeArgs(sessionFile)].map(quoteCliArg).join(" ");
+}
+
+export function defaultBranchTitle(cwd: string): string {
+	return path.basename(cwd.replace(/[\\/]$/, "")) || "pi";
+}
+
+export function buildBranchLaunchPlan(input: {
+	cwd: string;
+	title: string;
+	sessionFile: string;
+	env?: NodeJS.ProcessEnv;
+	platform?: NodeJS.Platform;
+}): BranchLaunchPlan {
+	const env = input.env ?? process.env;
+	const platform = input.platform ?? process.platform;
+	const resumeArgs = buildPiResumeArgs(input.sessionFile);
+	const manualCommand = buildManualResumeCommand(input.sessionFile);
+	if (platform === "win32" || env.WT_SESSION) {
+		return {
+			executable: "wt",
+			args: ["-w", "0", "new-tab", "--title", input.title, "-d", msysPathToWindows(input.cwd), "pi", ...resumeArgs],
+			manualCommand,
+		};
+	}
+	return {
+		args: [],
+		manualCommand,
+		reason: "No supported terminal tab launcher detected. Open a new terminal in this cwd and run the command below.",
+	};
+}
+
+export function launchBranch(plan: BranchLaunchPlan): { launched: boolean; error?: string } {
+	if (!plan.executable) return { launched: false };
+	const result = spawnSync(plan.executable, plan.args, { shell: false, stdio: "ignore", windowsHide: true });
+	if (result.error) return { launched: false, error: result.error.message };
+	if (typeof result.status === "number" && result.status !== 0) return { launched: false, error: `${plan.executable} exited ${result.status}` };
+	return { launched: true };
+}
+
+async function executeBranchCommand(args: string, ctx: any) {
+	const sessionManager = ctx.sessionManager;
+	const leafId = sessionManager?.getLeafId?.();
+	if (!sessionManager?.createBranchedSession || !leafId) {
+		return ctx.ui.notify("Cannot branch this session yet: no persisted session leaf is available.", "error");
+	}
+	const branchSessionFile = sessionManager.createBranchedSession(leafId);
+	if (!branchSessionFile) {
+		return ctx.ui.notify("Cannot branch this session: session persistence is unavailable.", "error");
+	}
+	const title = args.trim() || defaultBranchTitle(ctx.cwd ?? process.cwd());
+	const plan = buildBranchLaunchPlan({ cwd: ctx.cwd ?? process.cwd(), title, sessionFile: branchSessionFile });
+	const launched = launchBranch(plan);
+	if (launched.launched) {
+		return ctx.ui.notify(`Opened branched Pi session in a new terminal tab: ${title}`, "info");
+	}
+	const details = launched.error ? `Terminal launch failed: ${launched.error}` : plan.reason;
+	return ctx.ui.notify(`${details}\nManual resume command:\n${plan.manualCommand}`, launched.error ? "warning" : "info");
+}
+
 function extractJsonObject(text: string) {
 	const start = text.indexOf("{");
 	const end = text.lastIndexOf("}");
@@ -799,6 +883,17 @@ export default function (pi: ExtensionAPI) {
 		handler: async (args, ctx) => {
 			try {
 				await executeCommitCommand(pi, args, ctx);
+			} catch (err) {
+				ctx.ui.notify(err instanceof Error ? err.message : String(err), "error");
+			}
+		},
+	});
+
+	pi.registerCommand("branch", {
+		description: "Open a branched copy of this Pi session in a new terminal tab",
+		handler: async (args, ctx) => {
+			try {
+				await executeBranchCommand(args, ctx);
 			} catch (err) {
 				ctx.ui.notify(err instanceof Error ? err.message : String(err), "error");
 			}
