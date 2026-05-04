@@ -73,6 +73,42 @@ describe("summarizeTaskCounts / formatTaskStatus", () => {
 	});
 });
 
+describe("formatPiStatusLine", () => {
+	it("omits reload suffix when reload is not needed", async () => {
+		const mod = await import("../extensions/operator-status.ts");
+		const line = mod.formatPiStatusLine({
+			cwd: tmpRoot,
+			branch: null,
+			model: { id: "test-model" },
+			pi: createMockPi() as any,
+			piVersion: "0.72.0",
+			reloadNeeded: false,
+			router: null,
+			width: 120,
+		});
+
+		expect(line).toContain("π v0.72.0");
+		expect(line).not.toContain("reload");
+	});
+
+	it("appends pink reload suffix when reload is needed", async () => {
+		const mod = await import("../extensions/operator-status.ts");
+		const line = mod.formatPiStatusLine({
+			cwd: tmpRoot,
+			branch: null,
+			model: { id: "test-model" },
+			pi: createMockPi() as any,
+			piVersion: "0.72.0",
+			reloadNeeded: true,
+			router: null,
+			width: 120,
+		});
+
+		expect(line).toContain("π v0.72.0");
+		expect(line).toContain("\x1b[37m[\x1b[38;5;205mreload\x1b[37m]\x1b[0m");
+	});
+});
+
 describe("formatElevatedStatus", () => {
 	it("returns null when no approvals", async () => {
 		const mod = await import("../extensions/operator-status.ts");
@@ -143,10 +179,15 @@ describe("/doctor command", () => {
 		return { text: text as string, level };
 	}
 
-	it("compact mode reports a single passing line when registries are healthy", async () => {
+	it("compact mode reports registry health and optional pi version availability", async () => {
 		const { text, level } = await runDoctor("");
-		expect(level).toBe("info");
-		expect(text).toContain("checks passed");
+		if (text.includes("pi runtime")) {
+			expect(level).toBe("warning");
+			expect(text).toContain("pi-coding-agent install not found");
+		} else {
+			expect(level).toBe("info");
+			expect(text).toContain("checks passed");
+		}
 	});
 
 	it("--verbose prints multi-line diagnostic output", async () => {

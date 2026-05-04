@@ -27,6 +27,12 @@ import type { ExtensionAPI, ExtensionContext, ReadonlyFooterDataProvider } from 
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { listRecentDecisions, listSessionApprovals } from "../lib/permission-registry.js";
 import { listTasks, type TaskRecordV1 } from "../lib/task-registry.js";
+import {
+	createReloadStatusState,
+	needsPiReload,
+	resetReloadStatusBaseline,
+	type ReloadStatusState,
+} from "../lib/reload-status.js";
 
 interface DoctorCheck {
 	name: string;
@@ -46,12 +52,14 @@ interface DoctorReport {
 
 let cachedPiVersion: string | null | undefined;
 let currentSessionStartedAt: string | null = null;
+const reloadStatus = createReloadStatusState();
 
 const ANSI = {
 	cyan: "\x1b[36m",
 	dim: "\x1b[2m",
 	green: "\x1b[32m",
 	orange: "\x1b[38;5;208m",
+	pink: "\x1b[38;5;205m",
 	reset: "\x1b[0m",
 	white: "\x1b[37m",
 } as const;
@@ -113,6 +121,10 @@ function colorBranch(branchName: string | null): string {
 	return `${ANSI.white}[${ANSI.cyan}${branchName}${ANSI.white}]${ANSI.reset}`;
 }
 
+export function formatReloadIndicator(needsReload: boolean): string {
+	return needsReload ? `${ANSI.white}[${ANSI.pink}reload${ANSI.white}]${ANSI.reset}` : "";
+}
+
 function sanitizeSingleLine(text: string): string {
 	return text.replace(/[\r\n\t]/g, " ").replace(/ +/g, " ").trim();
 }
@@ -156,6 +168,7 @@ export function formatPiStatusLine(options: {
 	model: { id?: string; name?: string } | undefined;
 	pi: ExtensionAPI;
 	piVersion: string | null;
+	reloadNeeded?: boolean;
 	router: string | null;
 	width: number;
 }): string {
@@ -164,7 +177,7 @@ export function formatPiStatusLine(options: {
 	const model = formatModelName(options.model);
 	const thinking = formatThinkingLevel(options.pi);
 	const thinkingLabel = `${ANSI.white}[${ANSI.cyan}${thinking}${ANSI.white}]${ANSI.reset}`;
-	const versionLabel = `${ANSI.dim}π v${options.piVersion ?? "?"}${ANSI.reset}`;
+	const versionLabel = `${ANSI.dim}π v${options.piVersion ?? "?"}${ANSI.reset}${formatReloadIndicator(Boolean(options.reloadNeeded))}`;
 	const left = `${ANSI.green}${directory}${ANSI.reset}${branch} | ${ANSI.orange}${model}${ANSI.reset}${thinkingLabel} | ${versionLabel}`;
 	const composed = rightAnchor(left, options.router, options.width);
 	return visibleWidth(composed) > options.width ? truncateToWidth(composed, options.width) : composed;
@@ -180,12 +193,14 @@ function installClaudeStyleFooter(ctx: ExtensionContext, pi: ExtensionAPI): bool
 		invalidate: () => {},
 		render: (width: number) => {
 			const piVersion = resolvePiVersion();
+			const reloadNeeded = needsPiReload({ state: reloadStatus });
 			const statusLine = formatPiStatusLine({
 				cwd: ctx.cwd,
 				branch: footerData.getGitBranch(),
 				model: ctx.model,
 				pi,
 				piVersion,
+				reloadNeeded,
 				router: routerStatus(footerData),
 				width,
 			});
@@ -386,9 +401,14 @@ function formatDoctorJson(report: DoctorReport): string {
 	return JSON.stringify(report, null, 2);
 }
 
+export function resetOperatorReloadStatus(state: ReloadStatusState = reloadStatus, nowMs = Date.now()): void {
+	resetReloadStatusBaseline(state, nowMs);
+}
+
 export default function (pi: ExtensionAPI) {
-	pi.on("session_start", async (_event, ctx) => {
+	pi.on("session_start", async (event, ctx) => {
 		currentSessionStartedAt = new Date().toISOString();
+		if (event.reason === "reload") resetOperatorReloadStatus();
 		const footerInstalled = installClaudeStyleFooter(ctx, pi);
 		if (!footerInstalled) {
 			const piVersion = resolvePiVersion();
