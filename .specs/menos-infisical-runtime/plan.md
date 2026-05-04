@@ -99,8 +99,9 @@ Before running any task/gate, ensure these inputs are explicitly set and availab
 | T4 | Make menos env loading explicit and deterministic in compose | `menos/infra/ansible/files/menos/docker-compose.yml` | feature | sonnet | builder | T3 |
 | T5 | Document migration + rollback runbook for the new workflow | `.specs/menos-infisical-runtime/runbook.md`, `.specs/menos-infisical-runtime/migration-report.md` | docs | haiku | builder-light | T3 |
 | T6 | Add verification helpers for plan-level checks | `.specs/menos-infisical-runtime/validation-helpers.py`, `.specs/menos-infisical-runtime/validation-wave2.md` | mechanical | haiku | validator | T3, T4 |
+| T7 | Add automated deploy/validation runner series | `menos/infra/ansible/run-infisical-preflight`, `menos/infra/ansible/run-infisical-deploy`, `menos/infra/ansible/run-infisical-verify`, `menos/infra/ansible/run-infisical-redeploy-check`, `menos/infra/ansible/.gitignore`, `.specs/menos-infisical-runtime/runbook.md` | feature | sonnet | builder | T3, T6 |
 | V1 | Validate wave 1 | -- | validation | haiku | validator | T0, T1, T2 |
-| V2 | Validate wave 2 | -- | validation | sonnet | validator-heavy | T3, T4, T5, T6 |
+| V2 | Validate wave 2 | -- | validation | sonnet | validator-heavy | T3, T4, T5, T6, T7 |
 
 ## Execution Waves
 
@@ -283,22 +284,69 @@ Before running any task/gate, ensure these inputs are explicitly set and availab
   2. [ ] Validation output is deterministic and non-secret.
      - Verify: repeated runs produce identical pass/fail summaries.
 
+**T7: Add automated deploy/validation runner series** [sonnet] -- builder
+- Blocked by: T3, T6
+- Description: Add deterministic Ansible-container wrappers so operators and `/do-it` do not rely on ad hoc `docker run` commands. The runner series must leave the deployment in a useful, archive-ready state when all commands pass.
+
+  Required scripts under `menos/infra/ansible/`:
+  1. `run-infisical-preflight`
+     - fail before invoking Ansible if `infisical.secret` is missing,
+     - use the existing `docker-compose.yml` Ansible service rather than raw `docker run`,
+     - pass `-i inventory/hosts.yml`, `--check`, `--tags preflight`, and `--vault-password-file infisical.secret`,
+     - never pass `--diff`.
+  2. `run-infisical-deploy`
+     - use the same compose service and inventory,
+     - run `playbooks/deploy.yml` with `--vault-password-file infisical.secret`,
+     - avoid `--check` and `--diff`,
+     - fail fast if `infisical.secret` is missing.
+  3. `run-infisical-verify`
+     - perform non-secret post-deploy checks: remote `/apps/menos/.env` exists, mode is `0600`, controller temp dir is absent/empty, and `curl -fsS http://192.168.16.241:8000/health` returns JSON,
+     - write non-secret evidence to `.specs/menos-infisical-runtime/validation-wave2.md` and `.specs/menos-infisical-runtime/redaction-checklist.md`,
+     - never print or persist secret values.
+  4. `run-infisical-redeploy-check`
+     - prove decoupling from repo-root `.env` by running the same deploy path without relying on `/project/.env`,
+     - rerun health verification,
+     - append non-secret evidence to `.specs/menos-infisical-runtime/validation-wave2.md`.
+
+  Shared requirements:
+  - `infisical.secret` must be gitignored and never printed.
+  - Scripts must be idempotent and safe to rerun.
+  - Scripts must use the existing Ansible compose service, not raw `docker run`.
+  - Runbook must document generating `infisical.secret` locally without exposing the value.
+  - Evidence files must contain command names, pass/fail status, timestamps, and redaction/cleanup confirmations only.
+- Files: `menos/infra/ansible/run-infisical-preflight`, `menos/infra/ansible/run-infisical-deploy`, `menos/infra/ansible/run-infisical-verify`, `menos/infra/ansible/run-infisical-redeploy-check`, `menos/infra/ansible/.gitignore`, `.specs/menos-infisical-runtime/runbook.md`, `.specs/menos-infisical-runtime/validation-wave2.md`, `.specs/menos-infisical-runtime/redaction-checklist.md`
+- Acceptance Criteria:
+  1. [ ] Wrappers are executable and contain no secret values.
+     - Verify: `grep -R "infisical.secret" menos/infra/ansible/.gitignore menos/infra/ansible/run-infisical-*` shows paths only, not values.
+  2. [ ] Preflight/deploy wrappers use the playbook and existing compose service, not raw `docker run`.
+     - Verify: scripts contain `docker compose run --rm ansible ansible-playbook` and `-i inventory/hosts.yml`.
+  3. [ ] Missing local secret file fails fast with non-secret remediation.
+     - Verify: temporarily move `infisical.secret` aside and run preflight/deploy wrappers; they exit non-zero before Ansible with instructions to create the file.
+  4. [ ] Credentialed preflight and deploy are one command each.
+     - Verify: `cd menos/infra/ansible && ./run-infisical-preflight && ./run-infisical-deploy` runs the preflight and deploy through the Ansible container.
+  5. [ ] Verification and redeploy proof are one command each and update non-secret evidence.
+     - Verify: `cd menos/infra/ansible && ./run-infisical-verify && ./run-infisical-redeploy-check` completes and updates `validation-wave2.md` plus `redaction-checklist.md` without secret values.
+
 ### Wave 2 -- Validation Gate
 
 **V2: Validate wave 2** [sonnet] -- validator-heavy
-- Blocked by: T3, T4, T5, T6
+- Blocked by: T3, T4, T5, T6, T7
 - Checks:
-  1. Run all acceptance criteria from T3, T4, T5, T6.
+  1. Run all acceptance criteria from T3, T4, T5, T6, T7.
   2. `ansible-lint` + syntax checks from container context:
      - `MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W)/menos/infra/ansible:/ansible" -w /ansible ansible-ansible:latest ansible-lint playbooks/deploy.yml`
      - `MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W)/menos/infra/ansible:/ansible" -w /ansible ansible-ansible:latest ansible-playbook --syntax-check playbooks/deploy.yml`
-  3. Non-regression on startup flow: run `ansible-playbook playbooks/deploy.yml --check --tags preflight` and validate preflight task pass.
+  3. Non-regression on startup flow: run `cd menos/infra/ansible && ./run-infisical-preflight` and validate preflight task pass.
      - Requirement: preflight tasks that use `command`/`shell` must set `check_mode: false` (with strict `changed_when`/`failed_when`) or provide an equivalent non-check preflight command path so validation actually executes.
-     - Requirement: secret-bearing preflight tasks must keep `no_log: true` and `diff: false`; do not run preflight with `--diff`.
-  4. Manual/live check on a staging menos deploy:
-     - generated env file exists at `{{deploy_path}}/.env` and is mode `0600`,
-     - services start and `curl -fsS http://{{ ansible_host }}:8000/health` returns valid JSON,
-     - redeploy without source `.env` in repo root (prove decoupling).
+     - Requirement: secret-bearing preflight tasks must keep `no_log: true` and `diff: false`; the wrapper must not pass `--diff`.
+  4. Live deploy and evidence series:
+     - run `cd menos/infra/ansible && ./run-infisical-deploy`,
+     - run `cd menos/infra/ansible && ./run-infisical-verify`,
+     - run `cd menos/infra/ansible && ./run-infisical-redeploy-check`,
+     - verify generated env file exists at `{{deploy_path}}/.env` and is mode `0600`,
+     - verify services start and `curl -fsS http://{{ ansible_host }}:8000/health` returns valid JSON,
+     - verify redeploy does not depend on source `.env` in repo root,
+     - verify evidence artifacts contain non-secret pass/fail summaries and cleanup/redaction confirmations.
   5. Optional: if Infisical runtime auth is unavailable, deployment fails fast with a clear remediation line, and does not copy partial secrets.
      - Verify `ansible-playbook playbooks/deploy.yml --tags preflight` fails with non-secret remediation text.
 - On failure: implement the required fix task and re-run V2.
@@ -307,7 +355,7 @@ Before running any task/gate, ensure these inputs are explicitly set and availab
 
 ```text
 Wave 1: T0, T1, T2 (parallel where ordering permits) -> V1
-Wave 2: T3, T4, T5 (parallel where ordering permits), then T6 -> V2
+Wave 2: T3, T4, T5 (parallel where ordering permits), then T6 and T7 -> V2
 ```
 
 ## Success Criteria
@@ -327,40 +375,65 @@ Wave 2: T3, T4, T5 (parallel where ordering permits), then T6 -> V2
 
 ## Execution Status
 
-- **Completion classification**: `blocked-by-failure`
+- **Completion classification**: `implemented-awaiting-manual-validation`
 - **Date**: 2026-05-03
-- **Last completed wave/gate**: Wave 1 implementation and targeted V1 checks; Wave 2 implementation and structural helper checks.
-- **Next wave/gate to run**: V2 ansible-lint remediation, then live/manual menos deploy validation.
-- **Implemented**:
-  - Added `.specs/menos-infisical-runtime/secret-contract.md` with source, required/optional keys, rotation, validation, and failure policy.
-  - Added `scripts/menos-infisical-env.py`, fixture-backed tests, and `test/menos_infisical_env_test.py`.
-  - Added Ansible group vars under `menos/infra/ansible/playbooks/group_vars/`.
-  - Replaced the playbook repo-root `.env` copy path with Infisical validate/render/install tasks and compose interpolation preflight.
-  - Added explicit compose `env_file: [.env]` usage for services that read runtime env values.
-  - Added runbook, migration report template, validation helper, validation evidence template, and redaction checklist.
+- **Last completed wave/gate**: Wave 1 implementation and targeted V1 checks; Wave 2 implementation through T6, structural helper checks, ansible-lint, and syntax-check.
+- **Next wave/gate to run**: implement T7 automated deploy/validation runner series, then run V2 live deployment validation.
+
+### Task Completion Matrix
+
+| Item | Status | Notes |
+| --- | --- | --- |
+| T0 | completed | Secret contract exists and maps required keys. |
+| T1 | completed | Renderer, fixture, and tests exist; targeted pytest passed. |
+| T2 | completed | Ansible group vars and example vars exist. |
+| V1 | passed | Targeted ruff, pytest, and structural prerequisites passed. |
+| T3 | completed | `/project/.env` copy path replaced with Infisical validate/render/install flow. |
+| T4 | completed | Compose services now explicitly use `.env` where runtime env is required. |
+| T5 | completed | Runbook and migration report template exist. |
+| T6 | completed | Validation helper, wave evidence template, and redaction checklist exist. |
+| V2 automated static checks | passed | `ansible-lint`, syntax-check, pytest, and structural helper passed after lint repair. |
+| T7 | pending | Automated preflight/deploy/verify/redeploy runner series still needs implementation. |
+| V2 live runner series | pending | Must run T7 wrappers against vault-backed Infisical credentials and `192.168.16.241`. |
+| Repo-wide completion validation | pending | Run after T7 and live validation pass. |
+| Archive preflight | pending | Plan must remain active until all validation and evidence gates pass. |
+
+### Review Scope Guidance
+
+`/review-it` should treat T0-T6, V1, and V2 automated static checks as already implemented/passed unless the reviewer finds regressions in the current diff. The intended review focus is T7, V2 live runner validation, evidence completeness, repo-wide validation, and archive readiness.
+
+### Implemented Details
+
+- Added `.specs/menos-infisical-runtime/secret-contract.md` with source, required/optional keys, rotation, validation, and failure policy.
+- Added `scripts/menos-infisical-env.py`, fixture-backed tests, and `test/menos_infisical_env_test.py`.
+- Added Ansible group vars under `menos/infra/ansible/playbooks/group_vars/`.
+- Replaced the playbook repo-root `.env` copy path with Infisical validate/render/install tasks and compose interpolation preflight.
+- Added explicit compose `env_file: [.env]` usage for services that read runtime env values.
+- Added runbook, migration report template, validation helper, validation evidence template, and redaction checklist.
+- Added a new required T7 plan task for a proper automated preflight/deploy/verify/redeploy runner series using the existing Ansible compose service.
 - **Commands already run**:
   - `uv run ruff check scripts/menos-infisical-env.py test/menos_infisical_env_test.py .specs/menos-infisical-runtime/validation-helpers.py --fix` - passed.
   - `uv run ruff format scripts/menos-infisical-env.py test/menos_infisical_env_test.py .specs/menos-infisical-runtime/validation-helpers.py` - passed.
   - `uv run python -m pytest test/menos_infisical_env_test.py -q` - passed, 4 tests.
   - `uv run python .specs/menos-infisical-runtime/validation-helpers.py` - passed.
   - `MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W)/menos/infra/ansible:/ansible" -w /ansible ansible-ansible:latest ansible-playbook --syntax-check playbooks/deploy.yml` - passed with inventory warnings.
-  - `MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W)/menos/infra/ansible:/ansible" -w /ansible ansible-ansible:latest ansible-lint playbooks/deploy.yml` - failed.
-- **Why not archived**: required V2 ansible-lint failed and live/manual deploy validation remains incomplete.
-- **Failing validation**:
-  - `ansible-lint playbooks/deploy.yml` reports existing/basic issues in `deploy.yml`: `command-instead-of-module` for git/rsync tasks, `risky-shell-pipe` in git-dir detection, one line-length issue, and `no-relative-paths` for the compose file copy source.
+  - `MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W)/menos/infra/ansible:/ansible" -w /ansible ansible-ansible:latest ansible-lint playbooks/deploy.yml` - initially failed, then passed after refactoring lint findings.
+- **Why not archived**: live/manual deploy validation was skipped for later by user decision, so archive preflight cannot pass.
+- **Failing validation**: none in agent-runnable automated checks currently run.
 - **Checks still needed**:
-  - Fix or refactor the ansible-lint findings without suppressing diagnostics, then rerun ansible-lint and syntax-check.
-  - Run repo-wide completion validation after V2 passes.
-  - Run live/manual menos validation with vault-backed Infisical machine identity.
+  - Implement and validate T7 (`run-infisical-preflight`, `run-infisical-deploy`, `run-infisical-verify`, `run-infisical-redeploy-check`, `.gitignore`, and runbook/evidence updates).
+  - Run live menos validation with vault-backed Infisical machine identity through the wrapper series.
+  - Run repo-wide completion validation after manual/live validation passes if required by the active `/do-it` gate.
 - **Remaining manual/live validation steps**:
   1. Build the Ansible image: `docker compose -f menos/infra/ansible/docker-compose.yml build ansible`.
-  2. From `menos/infra/ansible`, run preflight without `--diff` using exactly one vault auth mode, for example `ansible-playbook playbooks/deploy.yml --check --tags preflight --ask-vault-pass`.
-  3. Run the deploy with vault auth after preflight passes.
-  4. On `192.168.16.241`, confirm `/apps/menos/.env` exists and mode is `0600`.
-  5. Confirm `curl -fsS http://192.168.16.241:8000/health` returns valid JSON.
-  6. Redeploy without repo-root `.env` and confirm the health check still passes.
+  2. Create `menos/infra/ansible/infisical.secret` locally if missing; it must be gitignored and contain the Ansible vault password only.
+  3. From `menos/infra/ansible`, run preflight without `--diff`: `./run-infisical-preflight`.
+  4. Run the deploy wrapper: `./run-infisical-deploy`.
+  5. Run post-deploy verification and evidence capture: `./run-infisical-verify`.
+  6. Run redeploy proof without repo-root `.env`: `./run-infisical-redeploy-check`.
+  7. Confirm evidence artifacts contain only non-secret pass/fail summaries, timestamps, and redaction/cleanup confirmations.
   7. If any step fails, restore `/apps/menos/.env.bak` to `/apps/menos/.env`, remove controller temp dir `{{ menos_infisical_tmp_dir }}`, inspect `docker compose ps`, and rerun `/do-it .specs/menos-infisical-runtime/plan.md` after fixing the issue.
-- **Rerun guidance**: rerun `/do-it .specs/menos-infisical-runtime/plan.md` after ansible-lint is fixed and live validation prerequisites are available.
+- **Rerun guidance**: rerun `/do-it .specs/menos-infisical-runtime/plan.md` after live validation prerequisites are available and the manual/live steps pass.
 
 ## Validation Contract
 
