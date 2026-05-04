@@ -18,7 +18,7 @@ Pi is installed automatically by the dotfiles installer:
 ~/.dotfiles/install.ps1
 ```
 
-On Linux, macOS, and Git Bash, this uses `bun install -g @mariozechner/pi-coding-agent`. On Windows, `install.ps1` installs Pi via `pnpm add -g @mariozechner/pi-coding-agent`, then runs `scripts/pi-link-setup` (which junctions `~/.dotfiles/pi/` → `~/.pi/agent/` on Windows, symlinks on Linux).
+On all platforms, this uses `pnpm add -g --allow-build=koffi --allow-build=protobufjs @mariozechner/pi-coding-agent` (plus pinned versions of `pi-agent-core`, `pi-ai`, and `pi-tui` so transitive deps cannot drift), then runs `scripts/pi-link-setup` (which junctions `~/.dotfiles/pi/` -> `~/.pi/agent/` on Windows, symlinks on Linux/macOS).
 
 The local dotfiles install also defaults `PI_CACHE_RETENTION=long` in the installed shell profiles (`zsh`, `bash`, `sh`, and PowerShell) unless you have already set a different value. That prefers extended provider-side prompt caching where Pi supports it (currently documented by Pi as Anthropic 1h and OpenAI 24h for direct API calls). OpenAI and OpenRouter-hosted OpenAI prompt caching are automatic for eligible long prompts; provider-specific `cache_control` markers are only for models/providers that require Anthropic-style caching semantics.
 
@@ -42,8 +42,8 @@ Do not use `npm` in this repository. Do not create or commit `package-lock.json`
 
 Package-manager priority:
 
-1. Prefer `bun` for JavaScript/TypeScript tooling when no package-specific lockfile or note says otherwise.
-2. Use `pnpm` where Bun cannot resolve the Pi package graph, for the Windows global Pi install, or where a package already has `pnpm-lock.yaml`.
+1. Use `pnpm` for the global `pi` install on every platform and for any package that already has `pnpm-lock.yaml`.
+2. Prefer `bun` for other JavaScript/TypeScript tooling when no package-specific lockfile or note says otherwise.
 3. If npm artifacts are accidentally created, remove `package-lock.json` and reinstall with the correct manager.
 
 Pi-specific package-manager boundaries:
@@ -58,13 +58,13 @@ Pi-specific package-manager boundaries:
 - Do **not** use Bun for Pi TypeScript validation: no `bun add`, `bun install`, `bun run`, or `bun test` in `pi/extensions/` or `pi/tests/`. This avoids ambiguity between Bun's built-in test runner and Vitest, and keeps Pi package resolution on the pnpm lockfiles.
 - `Makefile` target `check-pi-extensions` is the canonical combined Pi validation: pnpm extension typecheck first, then pnpm/Vitest tests.
 
-### Windows package-manager note
+### Why pnpm for the global `pi` install
 
-Windows intentionally installs Pi with **pnpm**, not Bun, for now.
+The global `pi` package is installed with pnpm on every platform.
 
-Reason: Bun currently limits Windows to older Pi installs because `bun install -g @mariozechner/pi-coding-agent` fails to resolve the latest Pi dependency graph cleanly. In local verification, Bun failed on transitive AWS SDK packages even though those versions exist on the package registry. pnpm resolves the same graph cleanly and keeps Windows on the current/latest Pi release path. pnpm is preferred for the strict resolver, the content-addressable global store, and the explicit build-script approval model -- the install command passes `--allow-build=koffi --allow-build=protobufjs` to whitelist the two native postinstall steps Pi requires.
+Reason: bun's looser resolver let pi's transitive deps (`pi-agent-core`, `pi-ai`, `pi-tui`) drift to newer patch versions even when `pi-coding-agent` itself was pinned, so a pinned `pi-coding-agent@0.72.0` would still ship `pi-agent-core@0.72.1` in the TUI banner. pnpm's strict resolver respects the pin, its content-addressable global store keeps installs reproducible, and its explicit build-script approval model is satisfied by passing `--allow-build=koffi --allow-build=protobufjs` for the two native postinstall steps Pi requires. Bun previously also failed on transitive AWS SDK packages on Windows.
 
-Bun is still installed on Windows for other JS tooling in this repo; this note only applies to the global `pi` package. pnpm is declared in `winget/configuration/core.dsc.yaml` so the installer pulls it in alongside Node.js.
+Bun stays installed for other JS tooling in this repo (`pi/extensions/web-fetch`, ad-hoc `bun` scripts); this policy only applies to the global `pi` binary. pnpm is declared in `Brewfile` (macOS) and `winget/configuration/core.dsc.yaml` (Windows) alongside Node.js.
 
 ### Project-local Pi bootstrap
 
@@ -88,12 +88,12 @@ Current template example:
 ### Manual install
 
 ```bash
-# Linux / macOS / Git Bash
-bun install -g @mariozechner/pi-coding-agent
-~/.dotfiles/scripts/pi-link-setup
-
-# Windows PowerShell
-pnpm add -g --allow-build=koffi --allow-build=protobufjs @mariozechner/pi-coding-agent
+# All platforms
+pnpm add -g --allow-build=koffi --allow-build=protobufjs \
+    @mariozechner/pi-coding-agent@0.72.0 \
+    @mariozechner/pi-agent-core@0.72.0 \
+    @mariozechner/pi-ai@0.72.0 \
+    @mariozechner/pi-tui@0.72.0
 ~/.dotfiles/scripts/pi-link-setup
 ```
 
