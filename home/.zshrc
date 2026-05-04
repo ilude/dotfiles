@@ -50,3 +50,11 @@ debug_report
 [[ -n "$DEBUG" ]] && zprof
 
 source C:\Users\mglenn\AppData\Roaming\dystroy\broot\config\launcher\bash\br
+
+# pnpm
+export PNPM_HOME="/Users/mglenn/Library/pnpm"
+case ":$PATH:" in
+  *":$PNPM_HOME/bin:"*) ;;
+  *) export PATH="$PNPM_HOME/bin:$PATH" ;;
+esac
+# pnpm end
