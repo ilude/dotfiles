@@ -23,6 +23,7 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 4. [[projects/convex-agent-plugins]] packages platform expertise as rules, skills, subagents, hooks, and MCP access.
 5. [[projects/daytona]] provides the sandbox/runtime layer for safer long-running agent execution.
 6. [[projects/menos]] is the local durable memory/search backend that can support compiled session memory, graph research, and pipeline receipts.
+7. [[projects/windmill-automation]] points local scheduled automation toward Windmill when agents need API/UI-managed jobs with Infisical-backed secrets.
 
 ## Patterns
 
@@ -44,6 +45,8 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 - [[workflow-ideas/x-research-pipeline]] — X.com read-only research graph pipeline using twscrape/Webshare/menos.
 - [[projects/zellij-windows-cockpit]] — Windows-native terminal cockpit for one project, one Pi pane, and repo-managed Zellij layout.
 - [[projects/menos]] — self-hosted content vault, semantic search, graph, and unified pipeline backend.
+- [[projects/windmill-automation]] — Windmill as the preferred local automation control plane for scheduled agent-manageable jobs.
+- [[projects/pi-mono-fork-sync-automation]] — concrete plan for syncing `ilude/pi-mono` from `badlogic/pi-mono` without dirtying fork `main`.
 - [[workflow-ideas/backlog]] — candidate next slices.
 
 ## KISS recommendations
