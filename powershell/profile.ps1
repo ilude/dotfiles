@@ -13,6 +13,11 @@ if (-not $env:PI_CACHE_RETENTION) {
   $env:PI_CACHE_RETENTION = 'long'
 }
 
+# Hide pi startup version update notifications.
+if (-not $env:PI_SKIP_VERSION_CHECK) {
+  $env:PI_SKIP_VERSION_CHECK = '1'
+}
+
 #region Module Auto-Installation
 
 $script:RequiredModules = @(
