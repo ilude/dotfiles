@@ -1078,11 +1078,17 @@ function createCommitActivity(
 
 	emit(commandText);
 
+	const shouldSpinForPhase = (phase: string) =>
+		phase === "preparing" ||
+		phase === "planning commits" ||
+		phase.startsWith("creating commit") ||
+		phase === "pushing";
+
 	return {
 		setPhase(message?: string) {
 			const phase = message ?? "done";
 			emit(`phase: ${phase}`);
-			if (phase === "planning commits") startSpinner(phase);
+			if (shouldSpinForPhase(phase)) startSpinner(phase);
 			else stopSpinner();
 		},
 		logCommand(command: string, result?: GitRunResult) {
