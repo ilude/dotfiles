@@ -212,6 +212,7 @@ const SUMMARIZE_PROMPT = `Summarize the work done in this session in 3 bullets o
 Include only:
 - what changed or was decided
 - current status / validation if important
+- unfinished work, open questions, or follow-ups worth carrying forward
 - any workflow issue worth considering later
 
 Be terse. Skip routine details.`;
