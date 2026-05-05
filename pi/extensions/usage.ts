@@ -359,7 +359,7 @@ function aggregate(
 }
 
 function money(value: number): string {
-	return value >= 1000 ? `$${value.toFixed(2)}` : `$${value.toFixed(4)}`;
+	return `$${(Math.ceil(value * 100) / 100).toFixed(2)}`;
 }
 
 function row(item: Aggregate): string {
