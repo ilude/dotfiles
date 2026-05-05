@@ -16,12 +16,12 @@ A minimal browser automation harness for LLM agents. It connects directly to Chr
 
 ## Source video
 
-- [[../videos/browser-harness-video]]
+- ../videos/browser-harness-video.md
 
 ## Patterns
 
-- [[../patterns/self-healing-harnesses]]
-- [[../patterns/markdown-skills-memory]]
+- ../patterns/self-healing-harnesses.md
+- ../patterns/markdown-skills-memory.md
 
 ## KISS takeaways for Pi
 

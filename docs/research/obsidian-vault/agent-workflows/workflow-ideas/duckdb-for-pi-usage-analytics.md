@@ -36,5 +36,5 @@ Do not build this yet. If usage analysis outgrows fixed reports, first prototype
 
 ## Related notes
 
-- [[workflow-ideas/pipelines-and-policies]]
-- [[patterns/pi-observability-timing]]
+- [pipelines-and-policies](pipelines-and-policies.md)
+- [pi-observability-timing](../patterns/pi-observability-timing.md)

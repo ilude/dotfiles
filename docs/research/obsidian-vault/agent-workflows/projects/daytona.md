@@ -18,11 +18,11 @@ Secure, elastic infrastructure for running AI-generated code and agent workflows
 
 ## Source video
 
-- [[../videos/smart-pi-daytona-convex-video]]
+- ../videos/smart-pi-daytona-convex-video.md
 
 ## Patterns
 
-- [[../patterns/sandboxed-agent-runtimes]]
+- ../patterns/sandboxed-agent-runtimes.md
 
 ## KISS takeaways for Pi
 

@@ -28,4 +28,4 @@ The smallest reasonable next step, or an explicit recommendation not to build ye
 
 ## Related notes
 
-- [[some-related-note]]
+- [some-related-note](some-related-note.md)

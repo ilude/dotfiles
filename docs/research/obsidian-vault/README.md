@@ -8,9 +8,9 @@ it needs more specific guidance.
 
 ## Start here
 
-- [[index]] — vault map and topic list
-- [[AGENTS]] — vault-wide guidance for agents
-- [[agent-workflows/index]] — agent workflow research and Pi/dotfiles ideas
+- [index](index.md) — vault map and topic list
+- [AGENTS](AGENTS.md) — vault-wide guidance for agents
+- [agent-workflows/index](agent-workflows/index.md) — agent workflow research and Pi/dotfiles ideas
 
 ## Current topics
 

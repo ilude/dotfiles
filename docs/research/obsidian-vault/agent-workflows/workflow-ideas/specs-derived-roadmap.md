@@ -18,9 +18,9 @@ Add one command that prints active tasks, blockers, changed files, and validatio
 
 Related:
 
-- [[../patterns/agent-terminal-workspaces]]
-- [[../projects/manaflow-cmux]]
-- [[../specs-workflow-trajectory]]
+- [agent-terminal-workspaces](../patterns/agent-terminal-workspaces.md)
+- [manaflow-cmux](../projects/manaflow-cmux.md)
+- [specs-workflow-trajectory](specs-workflow-trajectory.md)
 
 ## 2. Reviewed learned helpers
 
@@ -34,8 +34,8 @@ KISS slice:
 
 Related:
 
-- [[../patterns/self-healing-harnesses]]
-- [[../projects/browser-use-browser-harness]]
+- [self-healing-harnesses](../patterns/self-healing-harnesses.md)
+- [browser-use-browser-harness](../projects/browser-use-browser-harness.md)
 
 ## 3. One memory promotion lane
 
@@ -56,8 +56,8 @@ docs/research/<topic>/rejected.md
 
 Related:
 
-- [[../patterns/markdown-skills-memory]]
-- [[../projects/openclaw]]
+- [markdown-skills-memory](../patterns/markdown-skills-memory.md)
+- [openclaw](../projects/openclaw.md)
 
 ## 4. Commit workflow remains the model for dangerous actions
 
@@ -85,8 +85,8 @@ Use sandboxing for:
 
 Related:
 
-- [[../patterns/sandboxed-agent-runtimes]]
-- [[../projects/daytona]]
+- [sandboxed-agent-runtimes](../patterns/sandboxed-agent-runtimes.md)
+- [daytona](../projects/daytona.md)
 
 ## 6. Platform packs, not giant prompts
 
@@ -105,8 +105,8 @@ Only after the docs stabilize should we add a Pi skill or extension.
 
 Related:
 
-- [[../patterns/agent-friendly-platforms]]
-- [[../projects/convex-agent-plugins]]
+- [agent-friendly-platforms](../patterns/agent-friendly-platforms.md)
+- [convex-agent-plugins](../projects/convex-agent-plugins.md)
 
 ## 7. Windows process safety is a first-class workflow feature
 

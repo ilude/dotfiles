@@ -71,4 +71,4 @@ Use **Windmill as the preferred local automation control plane** when the goal i
 
 ## Related notes
 
-- [[projects/pi-mono-fork-sync-automation]]
+- projects/pi-mono-fork-sync-automation.md

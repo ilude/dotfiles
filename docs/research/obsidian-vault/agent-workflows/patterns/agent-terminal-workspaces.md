@@ -6,7 +6,7 @@ When multiple agents/tasks run in parallel, the main UX problem becomes attentio
 
 ## Seen in
 
-- [[../projects/manaflow-cmux]]
+- ../projects/manaflow-cmux.md
 
 ## Useful primitives
 

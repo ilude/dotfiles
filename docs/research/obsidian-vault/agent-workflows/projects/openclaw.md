@@ -32,7 +32,7 @@ OpenClaw docs/search results also reference `pi-coding-agent` for skill prompt f
 
 ## Patterns
 
-- [[../patterns/markdown-skills-memory]]
+- ../patterns/markdown-skills-memory.md
 
 ## KISS takeaways for Pi
 

@@ -18,7 +18,7 @@ A Ghostty/libghostty-based macOS terminal built for multitasking coding agents.
 
 ## Source video
 
-- [[../videos/cmux-video]]
+- ../videos/cmux-video.md
 
 ## Related repo
 
@@ -26,7 +26,7 @@ A Ghostty/libghostty-based macOS terminal built for multitasking coding agents.
 
 ## Patterns
 
-- [[../patterns/agent-terminal-workspaces]]
+- ../patterns/agent-terminal-workspaces.md
 
 ## KISS takeaways for Pi
 

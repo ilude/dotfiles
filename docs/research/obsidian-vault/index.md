@@ -5,12 +5,12 @@ a roadmap or commitment to build everything captured here.
 
 ## Vault guidance
 
-- [[README]] — human entry point
-- [[AGENTS]] — vault-wide agent guidance
+- [README](README.md) — human entry point
+- [AGENTS](AGENTS.md) — vault-wide agent guidance
 
 ## Topics
 
-- [[agent-workflows/index]] — agent workflow tools, patterns, projects, videos,
+- [agent-workflows/index](agent-workflows/index.md) — agent workflow tools, patterns, projects, videos,
   and KISS ideas applicable to Pi/dotfiles.
 
 ## Topic convention

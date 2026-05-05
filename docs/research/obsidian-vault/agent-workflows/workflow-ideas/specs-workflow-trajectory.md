@@ -137,7 +137,7 @@ The cockpit vision predates the cmux research and points in the same direction:
 - keyboard-driven navigation;
 - avoid custom heavy TUI in early versions.
 
-This maps directly to [[patterns/agent-terminal-workspaces]].
+This maps directly to [agent-terminal-workspaces](../patterns/agent-terminal-workspaces.md).
 
 ### 7. Research pipelines and content vault
 
@@ -174,8 +174,8 @@ The specs collectively point to this product thesis:
 
 ## Links
 
-- [[workflow-ideas/kiss-pi-workflow-ideas]]
-- [[workflow-ideas/specs-derived-roadmap]]
-- [[patterns/agent-terminal-workspaces]]
-- [[patterns/markdown-skills-memory]]
-- [[patterns/sandboxed-agent-runtimes]]
+- [kiss-pi-workflow-ideas](kiss-pi-workflow-ideas.md)
+- [specs-derived-roadmap](specs-derived-roadmap.md)
+- [agent-terminal-workspaces](../patterns/agent-terminal-workspaces.md)
+- [markdown-skills-memory](../patterns/markdown-skills-memory.md)
+- [sandboxed-agent-runtimes](../patterns/sandboxed-agent-runtimes.md)

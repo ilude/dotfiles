@@ -70,10 +70,10 @@ This is a good model for future Pi run ledgers and policy gates: job-first autho
 
 menos is the natural backend for several notes in this vault:
 
-- [[../workflow-ideas/menos-knowledge-compiler]] — session capture, concepts, digests, and persona-scoped memory
-- [[../workflow-ideas/x-research-pipeline]] — harvested users/tweets/edges as content and graph data
-- [[../workflow-ideas/code-intelligence]] — possible repository graphs and architecture reports
-- [[../workflow-ideas/pipelines-and-policies]] — job-ledger and receipt patterns borrowed from menos pipeline jobs
+- ../workflow-ideas/menos-knowledge-compiler.md — session capture, concepts, digests, and persona-scoped memory
+- ../workflow-ideas/x-research-pipeline.md — harvested users/tweets/edges as content and graph data
+- ../workflow-ideas/code-intelligence.md — possible repository graphs and architecture reports
+- ../workflow-ideas/pipelines-and-policies.md — job-ledger and receipt patterns borrowed from menos pipeline jobs
 
 ## KISS recommendation
 

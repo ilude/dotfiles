@@ -55,4 +55,4 @@ Generated observability files, session JSONL, traces, caches, and local logs rem
 
 ## Workflow relevance
 
-This pattern complements [[../workflow-ideas/pipelines-and-policies]]: run ledgers and policy gates need enough observability to debug workflow cost and failures, but should preserve Pi's source-vs-runtime boundary and avoid content capture.
+This pattern complements ../workflow-ideas/pipelines-and-policies.md: run ledgers and policy gates need enough observability to debug workflow cost and failures, but should preserve Pi's source-vs-runtime boundary and avoid content capture.

@@ -8,7 +8,7 @@ source: .specs/x-research-pipeline/
 
 ## Core idea
 
-Give Claude Code and Pi programmatic read-only access to X.com data for topic research and expert-network mapping. The target use case is building graph-shaped research corpora, such as AI-coding influencer networks, and storing users, tweets, and edges in [[../projects/menos]].
+Give Claude Code and Pi programmatic read-only access to X.com data for topic research and expert-network mapping. The target use case is building graph-shaped research corpora, such as AI-coding influencer networks, and storing users, tweets, and edges in [menos](../projects/menos.md).
 
 ## Selected architecture
 

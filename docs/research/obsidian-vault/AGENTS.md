@@ -28,10 +28,17 @@ notes.
 
 ## Linking Conventions
 
-- Use Obsidian wiki links for notes inside the vault.
-- From vault-root docs, link topic indexes like `[[agent-workflows/index]]`.
-- Inside a topic folder, prefer links relative to that topic unless linking across
+Use GitHub-compatible relative Markdown links for notes inside the vault so links
+work in both Obsidian and GitHub's Markdown viewer.
+
+- Prefer `[Readable title](relative/path.md)` over Obsidian wiki links like
+  `[[relative/path]]`.
+- From vault-root docs, link topic indexes like
+  `[Agent workflow research](agent-workflows/index.md)`.
+- Inside a topic folder, prefer relative `.md` links unless linking across
   topics is clearer.
+- Keep deliberate references to wiki-link syntax only when documenting the syntax
+  itself.
 
 ## KISS Recommendation
 

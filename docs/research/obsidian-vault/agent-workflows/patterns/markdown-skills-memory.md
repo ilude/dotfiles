@@ -6,10 +6,10 @@ Use Markdown files as the durable interface between humans, agents, and projects
 
 ## Seen in
 
-- [[../projects/openclaw]]
-- [[../projects/convex-agent-plugins]]
-- [[../projects/browser-use-browser-harness]]
-- [[../videos/codex-replaced-claude-video]]
+- ../projects/openclaw.md
+- ../projects/convex-agent-plugins.md
+- ../projects/browser-use-browser-harness.md
+- ../videos/codex-replaced-claude-video.md
 
 ## What belongs in skills
 

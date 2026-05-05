@@ -6,7 +6,7 @@ Give the agent a tiny stable core plus a clearly writable helper surface. When t
 
 ## Seen in
 
-- [[../projects/browser-use-browser-harness]]
+- ../projects/browser-use-browser-harness.md
 
 ## Why it works
 

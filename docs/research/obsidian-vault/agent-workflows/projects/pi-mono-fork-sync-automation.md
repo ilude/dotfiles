@@ -106,4 +106,4 @@ Use **Windmill** for this automation because it keeps `ilude/pi-mono:main` clean
 
 ## Related notes
 
-- [[projects/windmill-automation]]
+- projects/windmill-automation.md

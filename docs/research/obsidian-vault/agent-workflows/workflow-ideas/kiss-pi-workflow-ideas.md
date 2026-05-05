@@ -10,11 +10,11 @@ Do not start by designing a perfect skill. Instead:
 4. Add verification criteria.
 5. Link it from an index.
 
-Related: [[../patterns/markdown-skills-memory]]
+Related: [markdown-skills-memory](../patterns/markdown-skills-memory.md)
 
 ## 2. Add one writable helper surface per domain
 
-Borrow from [[../projects/browser-use-browser-harness]]:
+Borrow from [browser-use-browser-harness](../projects/browser-use-browser-harness.md):
 
 ```text
 .pi/domain-workflows/<name>/
@@ -26,7 +26,7 @@ Borrow from [[../projects/browser-use-browser-harness]]:
 
 Keep core harnesses protected; let agents propose helper additions in a narrow directory.
 
-Related: [[../patterns/self-healing-harnesses]]
+Related: [self-healing-harnesses](../patterns/self-healing-harnesses.md)
 
 ## 3. Build status before orchestration
 
@@ -40,7 +40,7 @@ Before adding more parallel subagent automation, add better visibility:
 - needs user input
 - validation status
 
-Related: [[../patterns/agent-terminal-workspaces]]
+Related: [agent-terminal-workspaces](../patterns/agent-terminal-workspaces.md)
 
 ## 4. Treat AGENTS.md as the stable contract
 
@@ -61,7 +61,7 @@ Examples:
 
 Sandbox unknown or risky work, not every edit. Dotfiles work should stay local unless running untrusted code.
 
-Related: [[../patterns/sandboxed-agent-runtimes]]
+Related: [sandboxed-agent-runtimes](../patterns/sandboxed-agent-runtimes.md)
 
 ## 7. Human review gates for learned behavior
 

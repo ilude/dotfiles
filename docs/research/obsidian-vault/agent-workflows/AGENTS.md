@@ -61,7 +61,7 @@ The smallest reasonable next step, or an explicit recommendation not to build ye
 
 ## Related notes
 
-- [[some-related-note]]
+- [some-related-note](some-related-note.md)
 ```
 
 ## Promotion Filter
@@ -78,7 +78,13 @@ If the answer is mostly no, keep it as research.
 
 ## Linking Conventions
 
-- Use Obsidian wiki links for notes in this vault: `[[projects/menos]]`.
+Use GitHub-compatible relative Markdown links so links work in both Obsidian and
+GitHub's Markdown viewer.
+
+- Prefer `[Readable title](relative/path.md)` over Obsidian wiki links like
+  `[[relative/path]]`.
+- For notes in this topic, use links such as `[Menos](projects/menos.md)` from
+  the topic root or `[Menos](../projects/menos.md)` from a sibling folder.
 - Prefer relative conceptual links over raw paths in prose.
 - Keep source paths/URLs in frontmatter or a short source section.
 - When moving a note, update `README.md`, `index.md`, and obvious backlinks.

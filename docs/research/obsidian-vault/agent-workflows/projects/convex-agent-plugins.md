@@ -27,12 +27,12 @@ Weak direct support, but strong adaptation value. The structure maps cleanly to 
 
 ## Source video
 
-- [[../videos/smart-pi-daytona-convex-video]]
+- ../videos/smart-pi-daytona-convex-video.md
 
 ## Patterns
 
-- [[../patterns/agent-friendly-platforms]]
-- [[../patterns/markdown-skills-memory]]
+- ../patterns/agent-friendly-platforms.md
+- ../patterns/markdown-skills-memory.md
 
 ## KISS takeaways for Pi
 
