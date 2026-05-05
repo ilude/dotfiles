@@ -16,6 +16,7 @@ Obsidian-style research vault for recent agent workflow tools, repos, videos, an
 - [[workflow-ideas/specs-derived-roadmap]] — roadmap ideas derived from specs + ecosystem research
 - [[workflow-ideas/pipelines-and-policies]] — run ledgers, artifacts, resumability, and policy gates
 - [[workflow-ideas/code-intelligence]] — Graphify/SCIP/code-intel ideas
+- [[workflow-ideas/duckdb-for-pi-usage-analytics]] — optional DuckDB backend idea for Pi usage/session analytics
 - [[workflow-ideas/menos-knowledge-compiler]] — persona-scoped agent session memory on menos
 - [[workflow-ideas/multipass-yolo-sandboxes]] — Multipass + Infisical YOLO sandbox design
 - [[workflow-ideas/x-research-pipeline]] — X.com research graph pipeline backed by menos

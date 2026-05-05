@@ -40,6 +40,7 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 - [[workflow-ideas/specs-derived-roadmap]] — concrete roadmap ideas from specs + ecosystem research.
 - [[workflow-ideas/pipelines-and-policies]] — run ledgers, first-class artifacts, resumability, and policy-as-code gates.
 - [[workflow-ideas/code-intelligence]] — Graphify/SCIP/code-intel ideas for semantic navigation and architecture orientation.
+- [[workflow-ideas/duckdb-for-pi-usage-analytics]] — optional DuckDB backend idea for Pi usage/session analytics.
 - [[workflow-ideas/menos-knowledge-compiler]] — persona-scoped session capture, concept compilation, previews, lint, and digests on menos.
 - [[workflow-ideas/multipass-yolo-sandboxes]] — Multipass + Infisical design for safer YOLO/bypass-permissions agent runs.
 - [[workflow-ideas/x-research-pipeline]] — X.com read-only research graph pipeline using twscrape/Webshare/menos.
