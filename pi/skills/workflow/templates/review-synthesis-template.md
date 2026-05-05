@@ -1,8 +1,8 @@
 # Review: <plan title>
 
 ## Review Panel
-| Reviewer | Base Agent | Assigned Expert Persona | Why selected | Adversarial angle |
-|----------|------------|-------------------------|--------------|-------------------|
+| Reviewer | Base Agent | Assigned Expert Persona | Why selected | Adversarial angle | Artifact |
+|----------|------------|-------------------------|--------------|-------------------|----------|
 
 ## Standard Reviewer Findings
 ### reviewer
@@ -42,10 +42,16 @@
 ## Verification Notes
 1. ...
 
+## Reviewer Artifact Status
+| Reviewer | Artifact | Status | Notes |
+|----------|----------|--------|-------|
+| ... | `{review_dir}/reviewer.md` | read | preview truncation, if any, was ignored because artifact was usable |
+
 ## Timing Notes
 | Step | Duration | Notes |
 |------|----------|-------|
 | Initial review panel | ... | ... |
+| Artifact reads | ... | all expected reviewer artifacts read / list missing or unusable artifacts |
 | Recovery calls | ... | ... |
 | Verification | ... | ... |
 | Synthesis | ... | ... |
