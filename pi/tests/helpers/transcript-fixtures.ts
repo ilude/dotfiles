@@ -370,6 +370,9 @@ export function makeRoutingDecisionEvent(
       ensemble_rule: "lgb-confident",
     },
     applied_route: overrides.appliedRoute ?? "mid:medium",
+    selected_model_size: "medium",
+    actual_model: { provider: "anthropic", id: "claude-sonnet-4-5", name: "Sonnet" },
+    model_switch_applied: true,
     confidence: overrides.confidence ?? 0.81,
     rule_fired: overrides.ruleFired ?? "classifier",
     fallback_metadata: {

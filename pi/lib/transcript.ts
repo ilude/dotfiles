@@ -38,6 +38,13 @@ function getHomeDir(): string {
 	return process.env.HOME ?? process.env.USERPROFILE ?? os.homedir();
 }
 
+export function expandHomePath(value: string, homeDir: string = getHomeDir()): string {
+	if (value === "~") return homeDir;
+	if (value.startsWith(`~${path.sep}`)) return path.join(homeDir, value.slice(2));
+	if (value.startsWith("~/") || value.startsWith("~\\")) return path.join(homeDir, value.slice(2));
+	return value;
+}
+
 /** Default trace location (per-user, outside repo). */
 export const DEFAULT_TRACE_DIR = path.join(getHomeDir(), ".pi", "agent", "traces");
 
@@ -101,6 +108,14 @@ export interface RoutingDecisionPayload {
 	prompt_excerpt: string;
 	raw_classifier_output: unknown;
 	applied_route: string;
+	selected_model_size?: "small" | "medium" | "large" | null;
+	actual_model?: {
+		provider?: string;
+		id?: string;
+		name?: string;
+		model?: string;
+	} | null;
+	model_switch_applied?: boolean | null;
 	confidence: number | null;
 	rule_fired: string | null;
 	fallback_metadata: {
@@ -207,7 +222,7 @@ export function loadSettings(homeDir: string = getHomeDir()): TranscriptSettings
 	const t = transcript as Record<string, unknown>;
 	const out: TranscriptSettings = { ...defaults };
 	if (typeof t.enabled === "boolean") out.enabled = t.enabled;
-	if (typeof t.path === "string" && t.path.length > 0) out.path = t.path;
+	if (typeof t.path === "string" && t.path.length > 0) out.path = expandHomePath(t.path, homeDir);
 	if (typeof t.maxInlineBytes === "number" && t.maxInlineBytes > 0) out.maxInlineBytes = t.maxInlineBytes;
 	if (typeof t.maxFileBytes === "number" && t.maxFileBytes > 0) out.maxFileBytes = t.maxFileBytes;
 	if (typeof t.retentionDays === "number" && t.retentionDays >= 0) out.retentionDays = t.retentionDays;

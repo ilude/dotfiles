@@ -22,6 +22,7 @@ import {
 	clonePayload,
 	defaultSettings,
 	isCloudSyncedPath,
+	expandHomePath,
 	isCompatibleSchemaVersion,
 	isSecretKey,
 	loadSettings,
@@ -351,6 +352,25 @@ describe("settings loader", () => {
 		expect(settings.enabled).toBe(false);
 	});
 
+	it("expands transcript.path starting with ~ against the runtime home directory", () => {
+		const settingsPath = path.join(tmpHome, ".pi", "agent", "settings.json");
+		fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+		fs.writeFileSync(
+			settingsPath,
+			JSON.stringify({ transcript: { enabled: true, path: "~/.pi/agent/traces" } }),
+			"utf-8",
+		);
+		const settings = loadSettings(tmpHome);
+		expect(settings.path).toBe(path.join(tmpHome, ".pi", "agent", "traces"));
+	});
+
+	it("expands bare ~ paths for callers that need path normalization", () => {
+		expect(expandHomePath("~", tmpHome)).toBe(tmpHome);
+		expect(expandHomePath("~/logs", tmpHome)).toBe(path.join(tmpHome, "logs"));
+		expect(expandHomePath("~\\logs", tmpHome)).toBe(path.join(tmpHome, "logs"));
+		expect(expandHomePath("/tmp/logs", tmpHome)).toBe("/tmp/logs");
+	});
+
 	it("reads transcript.enabled from ~/.pi/agent/settings.json when present", () => {
 		const settingsPath = path.join(tmpHome, ".pi", "agent", "settings.json");
 		fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
@@ -611,6 +631,9 @@ describe("routing decision schema and purge command", () => {
 			prompt_excerpt: makeExcerpt(promptText),
 			raw_classifier_output: { primary: { model_tier: "Sonnet", effort: "medium" }, confidence: 0.81 },
 			applied_route: "mid:medium",
+			selected_model_size: "medium",
+			actual_model: { provider: "anthropic", id: "claude-sonnet-4-5", name: "Sonnet" },
+			model_switch_applied: true,
 			confidence: 0.81,
 			rule_fired: "classifier",
 			fallback_metadata: { cap: null, hysteresis: null },
@@ -630,6 +653,9 @@ describe("routing decision schema and purge command", () => {
 		expect(payload.prompt_hash).toBe(decision.prompt_hash);
 		expect(payload.prompt_excerpt).toBe(decision.prompt_excerpt);
 		expect(payload.applied_route).toBe("mid:medium");
+		expect(payload.selected_model_size).toBe("medium");
+		expect(payload.actual_model).toEqual({ provider: "anthropic", id: "claude-sonnet-4-5", name: "Sonnet" });
+		expect(payload.model_switch_applied).toBe(true);
 		expect(payload.confidence).toBe(0.81);
 		expect(payload.rule_fired).toBe("classifier");
 		expect(payload.raw_classifier_output).toBeDefined();

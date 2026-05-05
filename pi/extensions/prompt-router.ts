@@ -52,8 +52,9 @@
  *   /router-off      -- disable automatic routing
  *   /router-on       -- re-enable automatic routing
  *
- * Logs every routing decision to prompt-routing/logs/routing_log.jsonl via
- * the Python router's built-in logging.
+ * Logs classifier decisions to prompt-routing/logs/routing_log.jsonl via the
+ * Python router, and logs runtime/applied routing details to transcript JSONL
+ * when transcript tracing is enabled.
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -148,6 +149,7 @@ const CODEX_GPT55_MEDIUM_CONFIDENCE_FLOOR = 0.8;
 // ---------------------------------------------------------------------------
 
 type Tier = "low" | "mid" | "high";
+type RuntimeModelSize = "small" | "medium" | "large";
 
 // Which policy rule fired on the last turn (for /router-explain).
 type RuleFired =
@@ -335,6 +337,20 @@ export function applyPolicy(
   return { tier: effectiveTier, effort: thinkingEffort, ruleFired };
 }
 
+function modelSizeForTier(tier: Tier): RuntimeModelSize {
+  return tier === "low" ? "small" : tier === "mid" ? "medium" : "large";
+}
+
+function serializeModelForLog(model: unknown): Record<string, string> | null {
+  if (!model || typeof model !== "object") return null;
+  const m = model as Record<string, unknown>;
+  const out: Record<string, string> = {};
+  for (const key of ["provider", "id", "name", "model"] as const) {
+    if (typeof m[key] === "string" && m[key]) out[key] = m[key];
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 export function buildStatusLabel(
   effective: Tier,
   _raw: Tier,
@@ -343,7 +359,7 @@ export function buildStatusLabel(
   _cap?: string,
   _ruleFired?: RuleFired
 ): string {
-  const size = effective === "low" ? "small" : effective === "mid" ? "medium" : "large";
+  const size = modelSizeForTier(effective);
   return `route: ${size}`;
 }
 
@@ -364,6 +380,11 @@ export async function emitRoutingDecision(
   rec: ClassifierRecommendation | null,
   applied: { tier: Tier; effort: string; ruleFired: RuleFired } | null,
   policy: RouterPolicy,
+  runtime: {
+    selectedModelSize?: RuntimeModelSize | null;
+    actualModel?: unknown;
+    modelSwitchApplied?: boolean | null;
+  } = {},
 ): Promise<void> {
   if (!getWriter()) return;
   try {
@@ -372,6 +393,9 @@ export async function emitRoutingDecision(
       prompt_excerpt: makeExcerpt(promptText),
       raw_classifier_output: rec,
       applied_route: applied ? `${applied.tier}:${applied.effort}` : null,
+      selected_model_size: runtime.selectedModelSize ?? (applied ? modelSizeForTier(applied.tier) : null),
+      actual_model: serializeModelForLog(runtime.actualModel),
+      model_switch_applied: runtime.modelSwitchApplied ?? null,
       confidence: rec?.confidence ?? null,
       rule_fired: applied?.ruleFired ?? "null-fallback",
       fallback_metadata: {
@@ -402,12 +426,17 @@ async function classifyAndRoute(
     const effort = state.lastAppliedEffort ?? TIER_EFFORT[state.currentTier];
     state.lastClassifierRec = null;
     state.lastRuleFired = "null-fallback";
-    const size =
-      state.currentTier === "low" ? "small" : state.currentTier === "mid" ? "medium" : "large";
+    const size = modelSizeForTier(state.currentTier);
     const model = resolveDynamicModelFromRegistry(ctx.modelRegistry, ctx, size, "same-family");
     const label = resolveModelTierLabel(model, size);
     ctx.ui.setStatus("router", buildStatusLabel(state.currentTier, state.currentTier, label, effort));
-    await emitRoutingDecision(text, null, { tier: state.currentTier, effort, ruleFired: "null-fallback" }, policy);
+    await emitRoutingDecision(
+      text,
+      null,
+      { tier: state.currentTier, effort, ruleFired: "null-fallback" },
+      policy,
+      { selectedModelSize: size, actualModel: model, modelSwitchApplied: false },
+    );
     return;
   }
 
@@ -423,20 +452,28 @@ async function classifyAndRoute(
   const { tier: effectiveTier, ruleFired } = applied;
   let { effort } = applied;
 
-  const modelSize =
-    effectiveTier === "low" ? "small" : effectiveTier === "mid" ? "medium" : "large";
+  const modelSize = modelSizeForTier(effectiveTier);
   const model = resolveDynamicModelFromRegistry(ctx.modelRegistry, ctx, modelSize, "same-family");
 
   if (!model) {
     ctx.ui.setStatus("router", `router: no ${modelSize} model available`);
-    await emitRoutingDecision(text, rec, applied, policy);
+    await emitRoutingDecision(text, rec, applied, policy, {
+      selectedModelSize: modelSize,
+      actualModel: null,
+      modelSwitchApplied: false,
+    });
     return;
   }
 
   // Skip routing for providers without cost/size mappings.
   if (model.provider && SKIP_PROVIDERS.has(model.provider)) {
+    const current = getCurrentModelHint(ctx, ctx.modelRegistry?.getAvailable?.() ?? []);
     ctx.ui.setStatus("router", `router: skipped (${model.provider})`);
-    await emitRoutingDecision(text, rec, applied, policy);
+    await emitRoutingDecision(text, rec, applied, policy, {
+      selectedModelSize: modelSize,
+      actualModel: current,
+      modelSwitchApplied: false,
+    });
     return;
   }
 
@@ -445,9 +482,12 @@ async function classifyAndRoute(
   state.lastRuleFired = ruleFired;
   state.lastAppliedEffort = effort;
 
+  const modelSwitchApplied = effectiveTier !== prevTier;
+  const effortSwitchApplied = effort !== prevEffort;
+
   // Only switch model/effort when route actually changes.
-  if (effectiveTier !== prevTier || effort !== prevEffort) {
-    if (effectiveTier !== prevTier) {
+  if (modelSwitchApplied || effortSwitchApplied) {
+    if (modelSwitchApplied) {
       await pi.setModel(model);
     }
     try {
@@ -460,7 +500,11 @@ async function classifyAndRoute(
 
   const modelLabel = resolveModelTierLabel(model, modelSize);
   ctx.ui.setStatus("router", buildStatusLabel(effectiveTier, rawTier, modelLabel, effort));
-  await emitRoutingDecision(text, rec, finalApplied, policy);
+  await emitRoutingDecision(text, rec, finalApplied, policy, {
+    selectedModelSize: modelSize,
+    actualModel: model,
+    modelSwitchApplied,
+  });
 }
 
 // ---------------------------------------------------------------------------

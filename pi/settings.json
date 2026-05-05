@@ -23,5 +23,9 @@
     "effort": {
       "maxLevel": "high"
     }
+  },
+  "transcript": {
+    "enabled": true,
+    "path": "~/.pi/agent/traces"
   }
 }
