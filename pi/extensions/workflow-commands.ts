@@ -66,6 +66,15 @@ const CONVENTIONAL_COMMIT_RE = new RegExp(
 	`^(${CONVENTIONAL_TYPES.join("|")})(\\([^)]+\\))?: [a-z0-9].{0,71}$`,
 );
 
+const COMMIT_RUNTIME_PATH_PATTERNS = [
+	{ label: "Pi runtime cache", regex: /^pi\/cache(?:\/|$)/ },
+	{ label: "runtime log directory", regex: /(?:^|\/)logs?\// },
+	{ label: "runtime trace directory", regex: /(?:^|\/)traces?\// },
+	{ label: "JSONL runtime log", regex: /\.jsonl$/ },
+	{ label: "log file", regex: /\.log$/ },
+	{ label: "DuckDB database", regex: /\.(?:duckdb|db)$/ },
+];
+
 export const SECRET_PATTERNS = [
 	{ label: "OpenAI-style key", regex: /\bsk-[A-Za-z0-9_-]{10,}\b/g },
 	{ label: "AWS access key", regex: /\bAKIA[A-Z0-9]{16}\b/g },
@@ -582,6 +591,26 @@ function hasMergeConflicts(statusOutput: string) {
 	});
 }
 
+export function getCommitRuntimePathReason(file: string): string | null {
+	const normalized = file.replace(/\\/g, "/");
+	return (
+		COMMIT_RUNTIME_PATH_PATTERNS.find((pattern) =>
+			pattern.regex.test(normalized),
+		)?.label ?? null
+	);
+}
+
+export function filterCommitSafeFiles(files: string[]) {
+	const included: string[] = [];
+	const excluded: Array<{ file: string; reason: string }> = [];
+	for (const file of files) {
+		const reason = getCommitRuntimePathReason(file);
+		if (reason) excluded.push({ file, reason });
+		else included.push(file);
+	}
+	return { included: uniqueSorted(included), excluded };
+}
+
 export function listChangedFiles(cwd: string, activity?: CommitActivity) {
 	const hasHead = runGit(cwd, ["rev-parse", "--verify", "HEAD"]).code === 0;
 	const headDiff = hasHead
@@ -875,6 +904,12 @@ export function stageFiles(
 	files: string[],
 	activity?: CommitActivity,
 ) {
+	const unsafe = filterCommitSafeFiles(files).excluded;
+	if (unsafe.length > 0) {
+		throw new Error(
+			`Refusing to stage runtime/generated paths:\n${formatExcludedCommitPaths(unsafe)}`,
+		);
+	}
 	const addResult = runGit(cwd, ["add", "--", ...files], activity);
 	if (addResult.code !== 0)
 		throw new Error(
@@ -934,11 +969,16 @@ function summarizeCommit(hash: string, subject: string, pushed: boolean) {
 	return pushed ? `${hash} ${subject}\nPushed to remote` : `${hash} ${subject}`;
 }
 
+function truncateForCommitOutput(value: string, maxChars = 4000) {
+	if (value.length <= maxChars) return value;
+	return `${value.slice(0, maxChars)}\n... [truncated ${value.length - maxChars} chars]`;
+}
+
 function formatGitOutput(result?: GitRunResult) {
 	if (!result) return ["ok"];
 	const outputLines: string[] = [];
-	const stdout = result.stdout.trim();
-	const stderr = result.stderr.trim();
+	const stdout = truncateForCommitOutput(result.stdout.trim());
+	const stderr = truncateForCommitOutput(result.stderr.trim());
 	if (stdout) {
 		for (const line of stdout.split(/\r?\n/)) outputLines.push(line);
 	}
@@ -949,7 +989,7 @@ function formatGitOutput(result?: GitRunResult) {
 	if (outputLines.length === 0) {
 		outputLines.push(result.code === 0 ? "ok" : `exit ${result.code}`);
 	}
-	return outputLines;
+	return outputLines.slice(0, 80);
 }
 
 function echoSlashCommand(pi: ExtensionAPI, command: string, args: string) {
@@ -1062,14 +1102,41 @@ function createCommitActivity(
 	};
 }
 
+function formatExcludedCommitPaths(
+	excluded: Array<{ file: string; reason: string }>,
+) {
+	return excluded
+		.slice(0, 12)
+		.map((item) => `- ${item.file} (${item.reason})`)
+		.join("\n");
+}
+
 function getCommitContext(cwd: string, activity?: CommitActivity) {
-	const diffStat = gitOrThrow(cwd, ["diff", "--stat", "HEAD"], activity);
-	const { all: changedFiles, staged: stagedFiles } = listChangedFiles(
+	const { all, staged } = listChangedFiles(cwd, activity);
+	const changed = filterCommitSafeFiles(all);
+	const stagedSafe = filterCommitSafeFiles(staged);
+	if (changed.excluded.length > 0) {
+		activity?.logInfo(
+			`Excluded runtime/generated paths from commit planning:\n${formatExcludedCommitPaths(changed.excluded)}`,
+		);
+	}
+	if (stagedSafe.excluded.length > 0) {
+		throw new Error(
+			`Unsafe runtime/generated paths are already staged. Unstage them before committing:\n${formatExcludedCommitPaths(stagedSafe.excluded)}`,
+		);
+	}
+	if (changed.included.length === 0)
+		throw new Error("No committable changed files found");
+	const diffStat = gitOrThrow(
 		cwd,
+		["diff", "--stat", "HEAD", "--", ...changed.included],
 		activity,
 	);
-	if (changedFiles.length === 0) throw new Error("No changed files found");
-	return { diffStat, changedFiles, stagedFiles };
+	return {
+		diffStat,
+		changedFiles: changed.included,
+		stagedFiles: stagedSafe.included,
+	};
 }
 
 async function prepareCommitSelection(

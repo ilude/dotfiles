@@ -101,6 +101,7 @@ pi/prompt-routing/logs/
 *.state.*
 
 # Pi generated expertise/runtime state (source/config remains tracked under pi/)
+pi/cache/
 pi/multi-team/expertise/
 pi/index/
 pi/**/*.jsonl

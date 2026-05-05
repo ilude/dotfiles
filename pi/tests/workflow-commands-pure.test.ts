@@ -1,5 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
-import { parseCommitPlan, validateCommitPlan, confirmCommitMessage, chooseFilesToCommit, proposeCommitMessage } from "../extensions/workflow-commands.ts";
+import { describe, expect, it } from "vitest";
+import {
+	chooseFilesToCommit,
+	confirmCommitMessage,
+	filterCommitSafeFiles,
+	getCommitRuntimePathReason,
+	parseCommitPlan,
+	proposeCommitMessage,
+	validateCommitPlan,
+} from "../extensions/workflow-commands.ts";
 
 describe("parseCommitPlan", () => {
 	it("parses JSON wrapped in assistant prose", () => {
@@ -80,6 +88,26 @@ describe("confirmCommitMessage", () => {
 // ---------------------------------------------------------------------------
 // chooseFilesToCommit — cancellation safety
 // ---------------------------------------------------------------------------
+
+describe("commit runtime path filters", () => {
+	it("excludes runtime cache, logs, traces, jsonl, and database files", () => {
+		const files = [
+			"pi/cache/models-dev-api.json",
+			"pi/prompt-routing/logs/routing_log.jsonl",
+			"pi/prompt-routing/router.py",
+			"tmp/session.duckdb",
+			"notes/change.md",
+		];
+		const result = filterCommitSafeFiles(files);
+		expect(result.included).toEqual(["notes/change.md", "pi/prompt-routing/router.py"]);
+		expect(result.excluded.map((item) => item.file)).toEqual([
+			"pi/cache/models-dev-api.json",
+			"pi/prompt-routing/logs/routing_log.jsonl",
+			"tmp/session.duckdb",
+		]);
+		expect(getCommitRuntimePathReason("pi/cache/models-dev-api.json")).toBe("Pi runtime cache");
+	});
+});
 
 describe("chooseFilesToCommit", () => {
 	const changed = ["a.ts", "b.ts", "c.ts"];
