@@ -252,6 +252,18 @@ export function buildManualResumeCommand(sessionFile: string): string {
 	return ["pi", ...buildPiResumeArgs(sessionFile)].map(quoteCliArg).join(" ");
 }
 
+function quotePowerShellArg(value: string): string {
+	return `'${value.replace(/'/g, "''")}'`;
+}
+
+export function buildPowerShellResumeCommand(sessionFile: string): string {
+	return [
+		"&",
+		"pi",
+		...buildPiResumeArgs(sessionFile).map(quotePowerShellArg),
+	].join(" ");
+}
+
 export function defaultBranchTitle(cwd: string): string {
 	return path.basename(cwd.replace(/[\\/]$/, "")) || "pi";
 }
@@ -265,8 +277,8 @@ export function buildBranchLaunchPlan(input: {
 }): BranchLaunchPlan {
 	const env = input.env ?? process.env;
 	const platform = input.platform ?? process.platform;
-	const resumeArgs = buildPiResumeArgs(input.sessionFile);
 	const manualCommand = buildManualResumeCommand(input.sessionFile);
+	const powerShellCommand = buildPowerShellResumeCommand(input.sessionFile);
 	if (platform === "win32" || env.WT_SESSION) {
 		return {
 			executable: "wt",
@@ -278,8 +290,10 @@ export function buildBranchLaunchPlan(input: {
 				input.title,
 				"-d",
 				msysPathToWindows(input.cwd),
-				"pi",
-				...resumeArgs,
+				"pwsh",
+				"-NoExit",
+				"-Command",
+				powerShellCommand,
 			],
 			manualCommand,
 		};

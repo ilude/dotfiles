@@ -20,7 +20,7 @@ describe("/branch", () => {
 		mockSpawnSync.mockReturnValue({ status: 0, stdout: "", stderr: "" });
 	});
 
-	it("builds Windows Terminal argv without shell interpolation", () => {
+	it("builds Windows Terminal argv through PowerShell in the requested cwd", () => {
 		const plan = buildBranchLaunchPlan({
 			cwd: "/c/Users/Example User/project dir",
 			title: "feat/$HOME && nope",
@@ -37,9 +37,10 @@ describe("/branch", () => {
 			"feat/$HOME && nope",
 			"-d",
 			"C:\\Users\\Example User\\project dir",
-			"pi",
-			"--session",
-			"C:/Users/Example User/.pi/session file.jsonl",
+			"pwsh",
+			"-NoExit",
+			"-Command",
+			"& pi '--session' 'C:/Users/Example User/.pi/session file.jsonl'",
 		]);
 	});
 
@@ -70,9 +71,9 @@ describe("/branch", () => {
 			expect.arrayContaining([
 				"--title",
 				"custom title",
-				"pi",
-				"--session",
-				"019df45a-c587-70ae-bf94-c74cd681715c",
+				"pwsh",
+				"-Command",
+				"& pi '--session' '019df45a-c587-70ae-bf94-c74cd681715c'",
 			]),
 			expect.objectContaining({ shell: false }),
 		);
