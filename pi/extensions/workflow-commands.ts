@@ -173,7 +173,7 @@ interface WorkflowUi {
 	setStatus?(key: string, value: string | undefined): void;
 	setWidget?(
 		key: string,
-		value: string[],
+		value: string[] | undefined,
 		options?: { placement?: string },
 	): void;
 }
@@ -1045,15 +1045,18 @@ function createCommitActivity(
 			clearInterval(spinnerTimer);
 			spinnerTimer = undefined;
 		}
-		ctx.ui.setStatus?.("commit-spinner", undefined);
+		ctx.ui.setWidget?.("commit-spinner", undefined);
 	};
 
 	const startSpinner = (phase: string) => {
 		stopSpinner();
 		const tick = () => {
-			ctx.ui.setStatus?.(
+			ctx.ui.setWidget?.(
 				"commit-spinner",
-				`${spinnerFrames[spinnerIndex]} ${phase}`,
+				[`${spinnerFrames[spinnerIndex]} ${phase}`],
+				{
+					placement: "aboveEditor",
+				},
 			);
 			spinnerIndex = (spinnerIndex + 1) % spinnerFrames.length;
 		};
