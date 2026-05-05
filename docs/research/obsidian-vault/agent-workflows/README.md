@@ -1,6 +1,6 @@
 # Agent Workflow Research
 
-Obsidian-style research vault for recent agent workflow tools, repos, videos, and KISS ideas applicable to our Pi/dotfiles workflow.
+Topic folder inside the broader [[../index|Research Obsidian Vault]] for recent agent workflow tools, repos, videos, and KISS ideas applicable to our Pi/dotfiles workflow.
 
 ## Start here
 

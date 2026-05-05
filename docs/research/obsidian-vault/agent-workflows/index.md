@@ -1,5 +1,7 @@
 # Agent Workflow Research Index
 
+This is one topic folder inside the broader [[../index|Research Obsidian Vault]].
+
 ## Core question
 
 What concrete implementation ideas can we borrow from recent agent tooling while keeping our Pi workflow simple, local, and maintainable?

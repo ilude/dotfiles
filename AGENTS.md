@@ -164,7 +164,7 @@ Shared command ownership:
 - `config/git/`: XDG Git config
 - `powershell/profile.ps1`: PowerShell profile
 - `test/`: repo tests
-- `docs/research/agent-workflows/`: Obsidian-style idea garden for agent-workflow research and possible Pi/dotfiles adaptations; follow its local `AGENTS.md`.
+- `docs/research/obsidian-vault/`: Obsidian-style research vault for multi-topic idea gardens; follow its local `AGENTS.md` and topic-specific guidance such as `agent-workflows/AGENTS.md`.
 - `plugins/`: zsh plugins
 - `dotbot/`: Dotbot submodule
 
