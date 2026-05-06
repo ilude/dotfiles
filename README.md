@@ -49,6 +49,22 @@ Windows packages are defined declaratively in `winget/configuration/{core,work,d
 invokes `winget configure` on each selected group. Preserve the comment format
 `id: <id>  # <Display Name>` (two spaces before `#`) so `-ListPackages` keeps working.
 
+### Temporary install hooks
+
+End-of-install temporary fixes live in root `install.d/` and run in lexical order:
+
+- `install` runs `install.d/*.sh` and common `install.d/*.py` hooks.
+- `install.ps1` runs `install.d/*.ps1` and common `install.d/*.py` hooks.
+- Move a hook to `install.d/disabled/` to turn it off.
+
+Hook rules:
+
+- Name hooks `NN-short-description.{sh,ps1,py}`.
+- Prefer `*.py` for common cross-platform logic; use `*.sh`/`*.ps1` only for platform-specific behavior.
+- Hooks must be idempotent, safe to skip, and must not replace core installer steps.
+- Hooks are soft-fail by design: failures warn and the installer continues.
+- Temporary hooks should include an `install.d` metadata comment with `reason`, `remove_when`, `safe_to_skip`, and `idempotent`.
+
 ### WSL (from Windows)
 
 ```bash
@@ -113,6 +129,7 @@ Automatic identity switching based on directory or remote URL:
 |------|---------|
 | `install` | Main installer (bash) |
 | `install.ps1` | Windows installer with package management |
+| `install.d/` | End-of-install temporary hooks (`*.py` common, `*.sh`/`*.ps1` platform-specific) |
 | `wsl/` | WSL installer, packages, and validation |
 | `install.conf.yaml` | Dotbot symlink configuration |
 | `zsh/env.d/` | Environment modules (WINHOME, locale, PATH) |

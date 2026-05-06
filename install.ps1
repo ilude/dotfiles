@@ -2099,19 +2099,34 @@ try {
 
     # ========================================================================
     # install.d hooks (drop-in self-heal / cleanup scripts)
-    # Each script must be idempotent. Nonzero/throwing scripts degrade to a
-    # warning so one broken hook does not brick the whole install.
+    # PowerShell installs run *.ps1 plus common *.py hooks; move a hook to
+    # install.d/disabled/ to turn it off. Each script must be idempotent.
+    # Nonzero/throwing scripts degrade to a warning so one broken hook does not
+    # brick the whole install.
     # ========================================================================
     $installD = Join-Path $PSScriptRoot 'install.d'
     if (Test-Path $installD) {
-        $hooks = Get-ChildItem -Path $installD -Filter '*.ps1' -File |
+        $hooks = Get-ChildItem -Path $installD -File |
+            Where-Object { $_.Extension -in @('.ps1', '.py') } |
             Sort-Object Name
         if ($hooks) {
             Write-Host "`nRunning install.d hooks..." -ForegroundColor Cyan
             foreach ($hook in $hooks) {
                 Write-Host "  install.d/$($hook.Name)" -ForegroundColor DarkCyan
                 try {
-                    & $hook.FullName -DotfilesRoot $PSScriptRoot
+                    if ($hook.Extension -eq '.ps1') {
+                        & $hook.FullName -DotfilesRoot $PSScriptRoot
+                    } elseif ($hook.Extension -eq '.py') {
+                        $python = Get-Command python -ErrorAction SilentlyContinue | Select-Object -First 1
+                        if ($python) {
+                            & $python.Source $hook.FullName
+                            if ($LASTEXITCODE -ne 0) {
+                                Write-Warning "install.d/$($hook.Name) failed with exit code $LASTEXITCODE; continuing"
+                            }
+                        } else {
+                            Write-Warning "python unavailable; skipping install.d/$($hook.Name)"
+                        }
+                    }
                 }
                 catch {
                     Write-Warning "install.d/$($hook.Name) failed: $($_.Exception.Message); continuing"

@@ -366,21 +366,40 @@ current_step="Credential lockdown"
 completed_steps+=("Credential lockdown")
 
 current_step="install.d hooks"
-# Run drop-in install.d/*.sh scripts in lexical order. Each script must be
-# idempotent; a nonzero exit is treated as a soft failure so one broken hook
-# does not brick the whole install.
+# Run drop-in install.d hooks in lexical order. Bash installs run *.sh plus
+# common *.py hooks; move a hook to install.d/disabled/ to turn it off. Each
+# script must be idempotent; a nonzero exit is treated as a soft failure so one
+# broken hook does not brick the whole install.
 INSTALL_D="${BASEDIR}/install.d"
 if [[ -d "$INSTALL_D" ]]; then
     export DOTFILES_ROOT="$BASEDIR"
     shopt -s nullglob
-    for hook in "$INSTALL_D"/*.sh; do
-        [[ -f "$hook" ]] || continue
-        hook_name="$(basename "$hook")"
-        echo "Running install.d/$hook_name"
-        if ! bash "$hook"; then
-            echo "Warning: install.d/$hook_name exited $?; continuing" >&2
-        fi
-    done
+    hooks=("$INSTALL_D"/*.sh "$INSTALL_D"/*.py)
+    if ((${#hooks[@]} > 0)); then
+        IFS=$'\n' read -r -d '' -a hooks < <(printf '%s\n' "${hooks[@]}" | sort && printf '\0')
+        for hook in "${hooks[@]}"; do
+            [[ -f "$hook" ]] || continue
+            hook_name="$(basename "$hook")"
+            echo "Running install.d/$hook_name"
+            case "$hook" in
+                *.sh) runner=(bash "$hook") ;;
+                *.py)
+                    if command -v python3 >/dev/null 2>&1; then
+                        runner=(python3 "$hook")
+                    elif command -v python >/dev/null 2>&1; then
+                        runner=(python "$hook")
+                    else
+                        echo "Warning: python unavailable; skipping install.d/$hook_name" >&2
+                        continue
+                    fi
+                    ;;
+                *) continue ;;
+            esac
+            if ! "${runner[@]}"; then
+                echo "Warning: install.d/$hook_name failed; continuing" >&2
+            fi
+        done
+    fi
     shopt -u nullglob
 fi
 completed_steps+=("install.d hooks")
