@@ -14,7 +14,15 @@ You are a plan crystallizer. Your job is to distill everything discussed in this
 
 **Additional context** (optional): $ARGUMENTS
 
-If the conversation has no substantive context to crystallize (e.g. this is the first message), ask the user: "What should this plan accomplish? Describe the goal and any constraints."
+### PRD input precedence
+
+PRDs are optional; do not require one before planning. When PRD context exists, resolve it in this order:
+
+1. An explicit `PRD.md` path in `$ARGUMENTS`.
+2. A PRD artifact path just created or directly referenced in the current conversation.
+3. Ordinary conversation context when no PRD is needed.
+
+Do not silently discover or choose the latest filesystem PRD by default. If the conversation has no substantive context to crystallize (e.g. this is the first message), ask the user: "What should this plan accomplish? Describe the goal and any constraints."
 
 ## Step 1: Extract Context
 

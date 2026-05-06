@@ -52,9 +52,18 @@ Every review must explicitly evaluate whether `/do-it` can execute the plan with
 
 ---
 
-## Step 1: Read and Analyze the Plan
+## Step 1: Read and Analyze the Artifact
 
-Read the plan file at the path provided in args. Extract:
+First classify the artifact type from the explicit path:
+
+| Artifact type | Branch behavior |
+|---------------|-----------------|
+| `plan.md` | Run the full adversarial plan review workflow below. |
+| `PRD.md` | Run PRD readiness review instead of treating it as an execution plan. |
+
+For `PRD.md` review, check ambiguity, goals/non-goals, testability, hidden assumptions, scope boundaries, contradictions, and readiness for `/plan-it`. The output should identify must-fix PRD gaps, hardening suggestions, simpler scope alternatives, and whether the PRD is ready to hand off with `/plan-it <path-to-PRD.md>`. Do not require task breakdown, execution waves, or archive gates for a PRD.
+
+For `plan.md`, read the plan file at the path provided in args. Extract:
 
 1. **Goal and objective**
 2. **Task list**

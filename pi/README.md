@@ -62,7 +62,7 @@ Pi-specific package-manager boundaries:
 
 The global `pi` package is installed with pnpm on every platform.
 
-Reason: bun's looser resolver let pi's transitive deps (`pi-agent-core`, `pi-ai`, `pi-tui`) drift to newer patch versions even when `pi-coding-agent` itself was pinned, so a pinned `pi-coding-agent@0.72.0` would still ship `pi-agent-core@0.72.1` in the TUI banner. pnpm's strict resolver respects the pin, its content-addressable global store keeps installs reproducible, and its explicit build-script approval model is satisfied by passing `--allow-build=koffi --allow-build=protobufjs` for the two native postinstall steps Pi requires. Bun previously also failed on transitive AWS SDK packages on Windows.
+Reason: bun's looser resolver let pi's transitive deps (`pi-agent-core`, `pi-ai`, `pi-tui`) drift to newer patch versions even when `pi-coding-agent` itself was pinned; for example, a pinned `pi-coding-agent@0.72.0` could still ship `pi-agent-core@0.72.1` in the TUI banner. pnpm's strict resolver respects the pin, its content-addressable global store keeps installs reproducible, and its explicit build-script approval model is satisfied by passing `--allow-build=koffi --allow-build=protobufjs` for the two native postinstall steps Pi requires. Bun previously also failed on transitive AWS SDK packages on Windows.
 
 Bun stays installed for other JS tooling in this repo (`pi/extensions/web-fetch`, ad-hoc `bun` scripts); this policy only applies to the global `pi` binary. pnpm is declared in `Brewfile` (macOS) and `winget/configuration/core.dsc.yaml` (Windows) alongside Node.js.
 
@@ -90,10 +90,10 @@ Current template example:
 ```bash
 # All platforms
 pnpm add -g --allow-build=koffi --allow-build=protobufjs \
-    @mariozechner/pi-coding-agent@0.72.0 \
-    @mariozechner/pi-agent-core@0.72.0 \
-    @mariozechner/pi-ai@0.72.0 \
-    @mariozechner/pi-tui@0.72.0
+    @mariozechner/pi-coding-agent@0.73.0 \
+    @mariozechner/pi-agent-core@0.73.0 \
+    @mariozechner/pi-ai@0.73.0 \
+    @mariozechner/pi-tui@0.73.0
 ~/.dotfiles/scripts/pi-link-setup
 ```
 

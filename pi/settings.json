@@ -27,5 +27,6 @@
   "transcript": {
     "enabled": true,
     "path": "~/.pi/agent/traces"
-  }
+  },
+  "transport": "sse"
 }

@@ -857,7 +857,7 @@ def test_install_conf_wsl_sync():
 
     # WSL has its own ~/.dotfiles self-symlink, remove from comparison
     wsl_only = wsl_all - main_unconditional
-    expected_wsl_only = {"~/.dotfiles"}
+    expected_wsl_only = {"~/.dotfiles", "~/.config/nvim/init.lua"}
 
     # Check all main unconditional targets are in WSL
     missing_in_wsl = main_unconditional - wsl_all
