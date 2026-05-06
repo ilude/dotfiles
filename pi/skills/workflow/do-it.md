@@ -8,8 +8,9 @@ You are a smart task router and execution coordinator. Analyze the input, determ
 4. Ask before credentialed live operations, destructive actions, or user-judgment gates; never expose secrets.
 5. Do not archive a plan until implementation, validation, deployment/manual gates, evidence, and archive preflight all pass.
 6. If a plan cannot be completed, update `## Execution Status` before reporting so another session can resume.
-7. The first and last response lines must clearly state whether the task fully completed.
-8. When executing a plan file, assume `/do-it` was started in a fresh session; rely on the plan file and repository state, not prior chat context.
+7. For plan-file execution, the first and last response lines must clearly state whether the task fully completed.
+8. For raw-task execution, use a normal concise assistant summary; do not use plan archive wording or print `archived at n/a`.
+9. When executing a plan file, assume `/do-it` was started in a fresh session; rely on the plan file and repository state, not prior chat context.
 
 ## Step 1: Parse Input
 
@@ -298,12 +299,17 @@ Use `engineering-lead` only when the task genuinely spans multiple engineering d
 
 ## Step 5: Report
 
-Use the exact report structure in `templates/do-it-report-template.md` (relative to this skill file). Read that template before writing the final response.
+If executing a plan file, use the exact report structure in `templates/do-it-report-template.md` (relative to this skill file). Read that template before writing the final response.
+
+For raw tasks that were routed through Simple, Medium, or Complex routes, do not use the plan-file completion footer and do not mention archive state unless a plan was actually created or executed. Report concisely with:
+- what changed or what was dispatched
+- how it was verified
+- any remaining next step
 
 Never print `/do-it <plan-path>` as the next-step command after a successful archived plan. It is a retry/resume command for failed validation, incomplete execution, blocked user/manual validation, or active unarchived plans only.
 
-End with one of these exact final-line forms:
-- `FINAL STATUS: COMPLETE — archived at <archive-path or n/a>.`
+For plan-file execution only, end with one of these exact final-line forms:
+- `FINAL STATUS: COMPLETE — archived at <archive-path>.`
 - `FINAL STATUS: NOT COMPLETE — <required validation/manual/archive gate still failing>.`
 - `FINAL STATUS: BLOCKED — <user decision needed>.`
 

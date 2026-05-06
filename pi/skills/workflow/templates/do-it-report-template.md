@@ -1,7 +1,9 @@
-After completion, report with an unmistakable status. **The first line and the last line must both state whether the task fully completed.** Do not rely on the status bar, tool output, or indirect wording.
+For plan-file execution, report with an unmistakable status. **The first line and the last line must both state whether the task fully completed.** Do not rely on the status bar, tool output, or indirect wording.
+
+Do not use this template for raw Simple/Medium task execution unless a plan was actually created or executed.
 
 Use one of these exact first-line forms:
-- `✅ COMPLETE: <one-sentence outcome>` only when validation passed and, for plan files, the plan was archived.
+- `✅ COMPLETE: <one-sentence outcome>` only when validation passed and the plan was archived.
 - `❌ NOT COMPLETE: <one-sentence blocker>` when validation failed, manual validation remains, archiving did not happen, or any required gate failed.
 - `⏸ BLOCKED: <one-sentence user decision needed>` when paused on an explicit user decision.
 
