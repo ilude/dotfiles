@@ -106,6 +106,43 @@ Use `engineering-lead` when the task spans multiple implementation domains or re
 
 ---
 
+## Failure Research and Exploration Procedure
+
+When execution, validation, deployment, or infrastructure work fails, do not give up
+just because the first fix is not obvious. Before reporting a blocker:
+
+1. Preserve sanitized evidence:
+   - capture the failing command, exit code, relevant stack trace/log excerpt, and
+     changed file context
+   - redact secrets, tokens, private URLs, credentials, and sensitive user data
+   - record evidence in `## Execution Status` for plan-file runs when the task
+     cannot complete in-session
+2. Research local sources first:
+   - read nearby code, tests, docs, READMEs, AGENTS/CLAUDE guidance, package
+     scripts, issue notes, and existing wrappers
+   - prefer project-documented commands and recovery procedures over ad hoc fixes
+3. Research external sources when local evidence is insufficient:
+   - prefer official docs, release notes, migration guides, and authoritative
+     issue trackers for the tool/framework/service involved
+   - avoid copying untrusted commands directly; adapt only the minimal safe fix
+4. Validate candidate fixes safely:
+   - use staging, read-only checks, dry-runs, targeted tests, temporary local
+     reproductions, or non-production fixtures where possible
+   - apply the smallest reversible change that directly addresses the evidence
+   - re-run the failing command and any nearby targeted validation
+5. Keep trying while both are true:
+   - the candidate fix is testable with available evidence/commands
+   - the next attempt is safe, reversible, non-secret-touching, and within scope
+6. Stop only at a real blocker:
+   - further action would be destructive, credentialed, secret-exposing, or
+     production-impacting without explicit user approval
+   - no rollback path exists or the rollback is unknown
+   - unknown credentials, account access, hardware, or user judgment is required
+   - an attempted fix worsens service health or risks widening the blast radius
+   - the needed change is clearly outside the approved task/plan scope
+
+---
+
 ## Step 3: Execute Plan File
 
 If the input is an existing `.specs/*/plan.md` file:
@@ -156,6 +193,7 @@ If the input is an existing `.specs/*/plan.md` file:
    - If skipped or not yet confirmed passed, do **not** archive; update `## Execution Status` as described below.
 12. Validation Failure Repair Loop -- linting, formatting, type-checking, syntax-checking, static-analysis, and test failures are not terminal blockers by themselves when they are agent-runnable.
    - Treat any agent-runnable validation failure as implementation feedback first, not as a reason to stop.
+   - Use the Failure Research and Exploration Procedure before declaring the cause unknown or reporting a blocker.
    - Diagnose the failure, apply the smallest safe fix, and re-run the failing command.
    - Repeat the repair loop until the command passes or a real blocker is reached.
    - A real blocker means one of these is true:
