@@ -20,7 +20,8 @@
  *      `name`, falling back to the file basename without extension.
  *
  * Discovery roots searched in order (later sources override earlier on
- * name collision; the loader records both for visibility):
+ * name collision). Within the same source priority, top-level skills override
+ * skills/shared entries; shared skills are fallback-only.
  *
  *   1. Built-in: ~/.dotfiles/claude/skills/*  (shared Claude Code-style skills)
  *   2. Built-in: ~/.dotfiles/pi/skills/*      (Pi-specific overrides, pi-skills, workflow, shared)
@@ -182,83 +183,117 @@ function readSkillRecord(
 	return record;
 }
 
+function readDirectoryEntries(rootPath: string): string[] {
+	try {
+		return fs.readdirSync(rootPath);
+	} catch {
+		return [];
+	}
+}
+
+function statOrNull(targetPath: string): fs.Stats | null {
+	try {
+		return fs.statSync(targetPath);
+	} catch {
+		return null;
+	}
+}
+
+function discoverSkillEntry(
+	rootPath: string,
+	entry: string,
+	source: SkillSource,
+): SkillRecord | null {
+	const sub = path.join(rootPath, entry);
+	const stat = statOrNull(sub);
+	if (!stat) return null;
+	if (stat.isDirectory()) {
+		const skillPath = path.join(sub, SKILL_FILE);
+		return fs.existsSync(skillPath)
+			? readSkillRecord(skillPath, source, entry)
+			: null;
+	}
+	const lowerEntry = entry.toLowerCase();
+	if (!lowerEntry.endsWith(".md") || lowerEntry === "readme.md") return null;
+	return readSkillRecord(sub, source, entry.replace(/\.md$/i, ""));
+}
+
 function discoverSubdirSkills(
 	rootPath: string,
 	source: SkillSource,
 ): SkillRecord[] {
 	const out: SkillRecord[] = [];
-	let entries: string[];
-	try {
-		entries = fs.readdirSync(rootPath);
-	} catch {
-		return out;
+	for (const entry of readDirectoryEntries(rootPath)) {
+		const record = discoverSkillEntry(rootPath, entry, source);
+		if (record) out.push(record);
 	}
-	for (const entry of entries) {
+	return out;
+}
+
+function isSharedSkillPath(filePath: string): boolean {
+	return filePath.replace(/\\/g, "/").includes("/shared/");
+}
+
+function skillPriority(filePath: string): number {
+	return isSharedSkillPath(filePath) ? 0 : 1;
+}
+
+interface SkillCandidate {
+	record: SkillRecord;
+	priority: number;
+}
+
+function discoverNestedSkills(rootPath: string, source: SkillSource): SkillRecord[] {
+	const out: SkillRecord[] = [];
+	for (const entry of readDirectoryEntries(rootPath)) {
 		const sub = path.join(rootPath, entry);
-		let stat: fs.Stats;
-		try {
-			stat = fs.statSync(sub);
-		} catch {
-			continue;
-		}
-		if (stat.isDirectory()) {
-			const skillPath = path.join(sub, SKILL_FILE);
-			if (fs.existsSync(skillPath)) {
-				const record = readSkillRecord(skillPath, source, entry);
-				if (record) out.push(record);
-			}
-			continue;
-		}
-		if (
-			entry.toLowerCase().endsWith(".md") &&
-			entry.toLowerCase() !== "readme.md"
-		) {
-			const defaultName = entry.replace(/\.md$/i, "");
-			const record = readSkillRecord(sub, source, defaultName);
-			if (record) out.push(record);
+		if (!statOrNull(sub)?.isDirectory()) continue;
+		out.push(...discoverSubdirSkills(sub, source));
+	}
+	return out;
+}
+
+function collectSkillCandidates(
+	roots: Array<{ path: string; source: SkillSource }>,
+): SkillCandidate[] {
+	const out: SkillCandidate[] = [];
+	for (const [rootIndex, root] of roots.entries()) {
+		if (!fs.existsSync(root.path)) continue;
+		const records = [
+			...discoverSubdirSkills(root.path, root.source),
+			...discoverNestedSkills(root.path, root.source),
+		];
+		for (const record of records) {
+			out.push({
+				record,
+				priority: rootIndex * 2 + skillPriority(record.filePath),
+			});
 		}
 	}
 	return out;
 }
 
+function dedupeSkillCandidates(candidates: SkillCandidate[]): SkillRecord[] {
+	const byName = new Map<string, SkillCandidate>();
+	for (const candidate of candidates) {
+		const existing = byName.get(candidate.record.name);
+		if (!existing || candidate.priority >= existing.priority) {
+			byName.set(candidate.record.name, candidate);
+		}
+	}
+	return [...byName.values()].map((candidate) => candidate.record);
+}
+
 /**
  * Scan one or more roots and return all discovered skills. Later sources
- * override earlier ones on name collision -- the override is captured by
- * filtering the final list to one record per name (last wins).
+ * override earlier ones on name collision. Within the same source priority,
+ * skills/shared entries are fallback-only and lose to top-level skill entries.
  */
 export function discoverSkills(
 	opts: DiscoverSkillsOptions = {},
 ): SkillRecord[] {
 	const roots = opts.roots ?? defaultRoots();
-	const collected: SkillRecord[] = [];
-	for (const root of roots) {
-		if (!fs.existsSync(root.path)) continue;
-		// Direct subdir scan
-		const direct = discoverSubdirSkills(root.path, root.source);
-		// One level deeper (e.g., pi/skills/pi-skills/<name>/SKILL.md or pi/skills/workflow/<file>.md)
-		let entries: string[];
-		try {
-			entries = fs.readdirSync(root.path);
-		} catch {
-			entries = [];
-		}
-		const nested: SkillRecord[] = [];
-		for (const entry of entries) {
-			const sub = path.join(root.path, entry);
-			try {
-				if (fs.statSync(sub).isDirectory()) {
-					for (const inner of discoverSubdirSkills(sub, root.source))
-						nested.push(inner);
-				}
-			} catch {}
-		}
-		collected.push(...direct, ...nested);
-	}
-
-	// Dedupe by name with last-wins semantics. Roots later in the list win.
-	const byName = new Map<string, SkillRecord>();
-	for (const record of collected) byName.set(record.name, record);
-	const final = [...byName.values()];
+	const final = dedupeSkillCandidates(collectSkillCandidates(roots));
 
 	// Conditional activation via paths:
 	if (opts.cwd) {

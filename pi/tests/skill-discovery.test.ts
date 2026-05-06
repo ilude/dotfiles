@@ -104,6 +104,61 @@ describe("discoverSkills (nested layout)", () => {
 });
 
 describe("discoverSkills (last-wins on collision)", () => {
+	it("top-level skill overrides shared fallback in the same root", () => {
+		writeFile(
+			"python/SKILL.md",
+			"---\nname: python\ndescription: top-level\n---\ntop-level",
+		);
+		writeFile(
+			"shared/python/SKILL.md",
+			"---\nname: python\ndescription: shared\n---\nshared",
+		);
+
+		const skills = discoverSkills({ roots: [{ path: tmpRoot, source: "user" }] });
+		expect(skills.length).toBe(1);
+		expect(skills[0].description).toBe("top-level");
+	});
+
+	it("uses shared skill as fallback when no top-level skill exists", () => {
+		writeFile(
+			"shared/python/SKILL.md",
+			"---\nname: python\ndescription: shared\n---\nshared",
+		);
+
+		const skills = discoverSkills({ roots: [{ path: tmpRoot, source: "user" }] });
+		expect(skills.length).toBe(1);
+		expect(skills[0].description).toBe("shared");
+	});
+
+	it("later root shared skill overrides earlier root top-level skill", () => {
+		const builtinRoot = path.join(tmpRoot, "builtin");
+		const userRoot = path.join(tmpRoot, "user");
+		fs.mkdirSync(builtinRoot, { recursive: true });
+		fs.mkdirSync(userRoot, { recursive: true });
+
+		fs.mkdirSync(path.join(builtinRoot, "python"), { recursive: true });
+		fs.writeFileSync(
+			path.join(builtinRoot, "python", "SKILL.md"),
+			"---\nname: python\ndescription: builtin top-level\n---\nbuiltin",
+			"utf-8",
+		);
+		fs.mkdirSync(path.join(userRoot, "shared", "python"), { recursive: true });
+		fs.writeFileSync(
+			path.join(userRoot, "shared", "python", "SKILL.md"),
+			"---\nname: python\ndescription: user shared\n---\nuser",
+			"utf-8",
+		);
+
+		const skills = discoverSkills({
+			roots: [
+				{ path: builtinRoot, source: "builtin" },
+				{ path: userRoot, source: "user" },
+			],
+		});
+		expect(skills.length).toBe(1);
+		expect(skills[0].description).toBe("user shared");
+	});
+
 	it("user root overrides builtin root for the same skill name", () => {
 		const builtinRoot = path.join(tmpRoot, "builtin");
 		const userRoot = path.join(tmpRoot, "user");
