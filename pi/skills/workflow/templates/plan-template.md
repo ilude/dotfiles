@@ -47,6 +47,51 @@ List every operational step required to complete this plan and how it is automat
 | Verify | `{command}` | `{source}` | `{artifact}` |
 | Rollback | `{command/manual step}` | `{source}` | `{artifact}` |
 
+## Execution Checklist
+
+This checklist is the durable resume ledger for `/do-it`. Every executable task, validation gate, and final completion gate has exactly one matching checkbox. Checked means verified complete; unchecked means pending, in-progress, blocked, or invalidated.
+
+`/do-it` must mark each item `[x]` immediately after that item passes its required verification and before starting any dependent or next sequential step. `/review-it` must preserve checked state, add unchecked items for new executable work, and never mark implementation or validation work complete.
+
+### Wave 1
+
+- [ ] T1: {task name}
+  - Status: pending
+  - Evidence: --
+- [ ] T2: {task name}
+  - Status: pending
+  - Evidence: --
+- [ ] V1: Validate wave 1
+  - Status: pending
+  - Evidence: --
+
+### Wave 2
+
+- [ ] T3: {task name}
+  - Status: pending
+  - Evidence: --
+- [ ] V2: Validate wave 2
+  - Status: pending
+  - Evidence: --
+
+### Final Gates
+
+- [ ] F1: Task-specific verification complete
+  - Status: pending
+  - Evidence: --
+- [ ] F2: Repo-wide validation complete
+  - Status: pending
+  - Evidence: --
+- [ ] F3: Manual validation complete or not required
+  - Status: pending
+  - Evidence: --
+- [ ] F4: Deployment validation complete or not required
+  - Status: pending
+  - Evidence: --
+- [ ] F5: Archive preflight complete
+  - Status: pending
+  - Evidence: --
+
 ## Task Breakdown
 
 | # | Task | Files | Type | Model | Agent | Depends On |

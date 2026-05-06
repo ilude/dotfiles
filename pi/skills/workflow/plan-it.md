@@ -149,12 +149,24 @@ The template includes these required sections:
 - Objective
 - Project Context
 - Automation Plan
+- Execution Checklist
 - Task Breakdown
 - Execution Waves
 - Dependency Graph
 - Success Criteria
 - Validation Contract
 - Handoff Notes
+
+### Execution checklist requirements
+
+Generate a canonical `## Execution Checklist` as the durable resume ledger for `/do-it`:
+
+1. Add exactly one checkbox item for every executable task and validation gate in `Task Breakdown` / `Execution Waves`.
+2. Add final gate checkbox items for task-specific verification, repo-wide validation, manual validation, deployment validation, and archive preflight. If a gate is not required, keep the checkbox but word it as "complete or not required" so `/do-it` can mark it after verifying non-applicability.
+3. Keep task/gate IDs stable and identical across `Execution Checklist`, `Task Breakdown`, `Execution Waves`, and `Dependency Graph`.
+4. Every checklist item must include `Status: pending` and `Evidence: --` when the plan is created.
+5. Include the checklist invariant in the section text: checked means verified complete; unchecked means pending, in-progress, blocked, or invalidated.
+6. Include the transactional `/do-it` rule: mark an item `[x]` immediately after its required verification passes and before starting any dependent or next sequential step.
 
 When writing the plan, always describe model assignments as `small`, `medium`, or `large` relative to the current session provider/model family -- not as hardcoded vendor-specific names.
 
@@ -167,6 +179,7 @@ Before presenting the plan, verify all of the following:
 - [ ] Context & Motivation contains real findings from this conversation, not template filler.
 - [ ] Constraints and Alternatives Considered include concrete project-specific trade-offs.
 - [ ] Every task has a Model, Agent, dependency, and at least one Verify / Pass / Fail acceptance criterion.
+- [ ] `## Execution Checklist` exists, includes exactly one checkbox per executable task/gate/final gate, uses matching IDs, initializes all items unchecked with `Status: pending` and `Evidence: --`, and states the transactional `/do-it` marking rule.
 - [ ] Wave dependencies are coherent: same-wave tasks do not depend on each other, each wave has exactly one validation gate, next-wave tasks depend on the previous gate, and the dependency graph matches the task table.
 - [ ] Automation Plan covers every operational/deployment/credentialed step with commands, credential source, and evidence; manual-only steps are justified.
 - [ ] Success Criteria verify the end-to-end outcome, not just individual tasks.

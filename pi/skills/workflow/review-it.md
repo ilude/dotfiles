@@ -49,6 +49,19 @@ Every review must explicitly evaluate whether `/do-it` can execute the plan with
 - manual-only steps are justified with exact user actions and expected success signals
 - evidence artifacts are named and contain non-secret pass/fail signals
 - archive conditions are explicit enough for `/do-it` to decide completion
+- `## Execution Checklist` exists and can be used as `/do-it`'s durable resume ledger
+
+## Execution Checklist Maintenance
+
+When `/review-it` edits a `plan.md`, it must maintain checklist consistency but must not execute or complete implementation work:
+
+1. Preserve existing checked boxes and evidence unless a plan edit materially invalidates that evidence.
+2. Never mark executable implementation, validation, deployment, or archive-gate checklist items `[x]`.
+3. If review fixes add new executable tasks, acceptance criteria requiring separate verification, validation gates, or final gates, add matching unchecked checklist items before returning.
+4. If review fixes remove executable work, remove or clearly retire the matching unchecked checklist item. If the matching item was already checked, leave an explanation in the review synthesis and plan status before unchecking/removing it.
+5. If review fixes materially change already-completed work so prior evidence is no longer valid, uncheck that item, reset its status to pending or invalidated, and explain why in the review synthesis and/or `## Execution Status`.
+6. Keep task/gate IDs aligned across `Execution Checklist`, `Task Breakdown`, `Execution Waves`, and `Dependency Graph`.
+7. Preserve the invariant: checked means verified complete; unchecked means pending, in-progress, blocked, or invalidated.
 
 ---
 
@@ -323,7 +336,7 @@ Improvements that are not strictly required for basic success but materially imp
 What the outside-the-box reviewer identified as overbuilt, replaceable, or unnecessarily complex.
 
 ## Automation Readiness
-Whether `/do-it` can execute the plan without hidden manual assumptions: commands/wrappers, credential flow, evidence artifacts, and archive gates.
+Whether `/do-it` can execute the plan without hidden manual assumptions: commands/wrappers, credential flow, evidence artifacts, archive gates, and a consistent `## Execution Checklist` resume ledger.
 
 ## Contested or Dismissed Findings
 Include findings that were rejected, downgraded, or disputed after rebuttal/discussion or high-severity verification, with a short reason.
@@ -404,14 +417,15 @@ Unless the args included `ask` or `--ask`, do not ask which findings to apply. A
 2. all Hardening findings
 3. all Automation Readiness fixes
 4. any necessary plan-clarity updates implied by verified reviewer findings
+5. any `## Execution Checklist` maintenance needed to keep one unchecked-or-checked item per executable task/gate/final gate
 
-Do not apply code or implementation changes during `/review-it`; this command only updates the plan.
+Do not apply code or implementation changes during `/review-it`; this command only updates the plan. Checklist edits must preserve execution truth: `/review-it` may add unchecked work or invalidate stale checked work, but it must never mark executable work complete.
 
 After editing the plan, launch one final reviewer subagent with `agentScope: "both"`, `confirmProjectAgents: false`, `modelSize: "small"`, and `modelPolicy: "same-family"`.
 
 The final reviewer must act as a standalone-readiness verifier with this exact goal:
 
-> Pretend you are starting a brand-new Pi session with no prior conversation. Is this plan sufficient to execute safely and completely with `/do-it <plan-path>`? Verify that the updated plan includes all necessary context, commands/wrappers, assumptions, evidence gates, validation gates, credential/manual-operation guidance, and archive criteria. Return only concrete missing items or `STANDALONE READY`.
+> Pretend you are starting a brand-new Pi session with no prior conversation. Is this plan sufficient to execute safely and completely with `/do-it <plan-path>`? Verify that the updated plan includes all necessary context, commands/wrappers, assumptions, evidence gates, validation gates, credential/manual-operation guidance, archive criteria, and a consistent `## Execution Checklist` with one item per executable task/gate/final gate. Return only concrete missing items or `STANDALONE READY`.
 
 If the final reviewer returns concrete missing items, update only the plan file again to make it standalone-runnable. Do not rerun the full review panel unless the user explicitly asks.
 
