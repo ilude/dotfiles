@@ -8,6 +8,8 @@ vi.mock("node:fs", async (importOriginal) => {
 		readFileSync: vi.fn((filePath: string) => {
 			if (String(filePath).endsWith("plan-it.md"))
 				return "Plan skill body $ARGUMENTS";
+			if (String(filePath).endsWith("prd-it.md"))
+				return "PRD skill body $ARGUMENTS";
 			if (String(filePath).endsWith("review-it.md"))
 				return "Review skill body $ARGUMENTS";
 			if (String(filePath).endsWith("do-it.md"))
@@ -47,6 +49,25 @@ describe("workflow slash command dispatch", () => {
 			([message]) => message.customType === "workflow.hiddenPrompt",
 		);
 		expect(hiddenPromptCall).toBeDefined();
+		expect(hiddenPromptCall?.[1]).toEqual({
+			triggerTurn: true,
+			deliverAs: "followUp",
+		});
+	});
+
+	it("/prd-it sends its hidden workflow prompt as a follow-up turn", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+
+		await getHandler(mockPi, "prd-it")("fuzzy idea", {});
+
+		const hiddenPromptCall = mockPi.sendMessage.mock.calls.find(
+			([message]) => message.customType === "workflow.hiddenPrompt",
+		);
+		expect(hiddenPromptCall?.[0].content).toContain(
+			"PRD skill body fuzzy idea",
+		);
 		expect(hiddenPromptCall?.[1]).toEqual({
 			triggerTurn: true,
 			deliverAs: "followUp",

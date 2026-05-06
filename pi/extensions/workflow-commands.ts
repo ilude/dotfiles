@@ -7,6 +7,7 @@
  *
  *   /commit        — smart git commit with secret scanning
  *   /plan-it       — crystallize conversation context into an executable plan
+ *   /prd-it        — refine fuzzy ideas into an optional PRD artifact
  *   /review-it     — adversarial review of a plan file
  *   /do-it         — smart task routing by complexity
  *   /research      — parallel multi-angle research on a topic
@@ -1430,6 +1431,32 @@ export default function (pi: ExtensionAPI) {
 					echoSlashCommand(pi, "plan-it", args);
 					const template = loadSkill("plan-it.md");
 					sendHiddenWorkflowPrompt(pi, buildSkillPrompt(template, args));
+				},
+			);
+		},
+	});
+
+	pi.registerCommand("prd-it", {
+		description:
+			"Refine a fuzzy product/workflow idea into an optional PRD artifact",
+		handler: async (args, _ctx) => {
+			await withTimingSpan(
+				{
+					name: "slash.prd-it",
+					category: "command",
+					metadata: {
+						command: "prd-it",
+						workflow: "prd-it",
+						phase: "dispatch",
+					},
+				},
+				async () => {
+					echoSlashCommand(pi, "prd-it", args);
+					const template = loadSkill("prd-it.md");
+					sendHiddenWorkflowPrompt(
+						pi,
+						buildSkillPrompt(template, args, { replaceArguments: true }),
+					);
 				},
 			);
 		},
