@@ -1,7 +1,7 @@
 ---
 name: builder
 description: "Implements tasks by following a plan exactly. Executes each step, validates it, then moves to the next."
-model: anthropic/claude-sonnet-4-6
+model: openai-codex/gpt-5.5
 roleType: worker
 routingUse: "Use for direct implementation from an existing plan."
 expertise:

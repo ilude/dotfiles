@@ -1,7 +1,7 @@
 ---
 name: typescript-pro
 description: Expert TypeScript developer for autonomous multi-step tasks. Activate for TypeScript/JavaScript files, full-stack type safety, and modern build tooling work.
-model: anthropic/claude-sonnet-4-6
+model: openai-codex/gpt-5.5
 roleType: specialist
 routingUse: "Use for direct TypeScript/JavaScript implementation, debugging, typecheck, and review."
 expertise:

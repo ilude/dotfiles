@@ -1,7 +1,7 @@
 ---
 name: planning-lead
 description: Leads product planning, defines specs and priorities, delegates to product-manager and ux-researcher
-model: anthropic/claude-sonnet-4-6
+model: openai-codex/gpt-5.5
 expertise:
   - path: .pi/multi-team/expertise/planning-lead-mental-model.yaml
     use-when: "Track planning decisions, scope choices, priority frameworks, and product direction patterns."

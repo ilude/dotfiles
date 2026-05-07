@@ -1,7 +1,7 @@
 ---
 name: backend-dev
 description: Builds and maintains backend API, database, and infrastructure for assigned projects
-model: anthropic/claude-sonnet-4-6
+model: openai-codex/gpt-5.5
 expertise:
   - path: .pi/multi-team/expertise/backend-dev-mental-model.yaml
     use-when: "Track API design decisions, database patterns, infrastructure choices, security patterns, and scaling observations."

@@ -1,7 +1,7 @@
 ---
 name: csharp-pro
 description: Expert C#/.NET specialist for autonomous multi-step tasks, .NET build/test/debugging, ASP.NET, NuGet, and type-safe C# work.
-model: anthropic/claude-sonnet-4-6
+model: openai-codex/gpt-5.5
 roleType: specialist
 routingUse: "Use for direct C#/.NET implementation, debugging, build, test, and review tasks."
 expertise:

@@ -1,7 +1,7 @@
 ---
 name: ml-research-lead
 description: Team lead for prompt-routing ML work; coordinates data-engineer, model-engineer, and eval-engineer, not for general-purpose ML tasks.
-model: anthropic/claude-sonnet-4-6
+model: openai-codex/gpt-5.5
 roleType: lead
 routingUse: "Use only for coordinated prompt-routing ML work across data-engineer, model-engineer, and eval-engineer."
 team: [data-engineer, model-engineer, eval-engineer]
@@ -50,10 +50,10 @@ ML Research Lead (design + data spec)
 
 ## Classifier Requirements
 
-- **Target**: Route prompts to Haiku (low), Sonnet (mid), Opus (high) based on complexity
+- **Target**: Route prompts to mini (low), core (mid), large (high) based on complexity
 - **Model**: TF-IDF + LinearSVC + CalibratedClassifierCV (consensus from board review)
 - **Threshold**: 85%+ accuracy on holdout set
-- **Hard constraint**: ZERO HIGH->LOW inversions (routing Opus-complexity prompts to Haiku)
+- **Hard constraint**: ZERO HIGH->LOW inversions (routing large-complexity prompts to mini)
 - **Inference**: <1ms per prompt (no remote calls, pure local sklearn)
 
 ## Board Review Context

@@ -1,7 +1,7 @@
 ---
 name: planner
 description: "Plans tasks by breaking them into clear steps and success criteria before any implementation begins."
-model: anthropic/claude-sonnet-4-6
+model: openai-codex/gpt-5.5
 roleType: worker
 routingUse: "Use for standalone implementation plans; not team orchestration."
 expertise:

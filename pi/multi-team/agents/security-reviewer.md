@@ -1,7 +1,7 @@
 ---
 name: security-reviewer
 description: Owns threat modeling, vulnerability scanning, and compliance checks; read-only auditor
-model: anthropic/claude-sonnet-4-6
+model: openai-codex/gpt-5.5
 expertise:
   - path: .pi/multi-team/expertise/security-reviewer-mental-model.yaml
     use-when: "Track vulnerability patterns found, security decisions made, threat models, and recurring risk areas in the codebase."

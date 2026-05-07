@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: "Reviews completed work against the original plan. Verifies each success criterion and flags gaps."
-model: anthropic/claude-sonnet-4-6
+model: openai-codex/gpt-5.5
 expertise:
   - path: .pi/multi-team/expertise/reviewer-mental-model.yaml
     use-when: "Track review patterns, common failure modes, and verification strategies."

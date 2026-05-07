@@ -1,7 +1,7 @@
 ---
 name: qa-engineer
 description: Owns functional testing, regression suites, and acceptance criteria verification
-model: anthropic/claude-sonnet-4-6
+model: openai-codex/gpt-5.5
 expertise:
   - path: .pi/multi-team/expertise/qa-engineer-mental-model.yaml
     use-when: "Track test strategies, recurring failure modes, flaky test patterns, and coverage gaps discovered across sessions."

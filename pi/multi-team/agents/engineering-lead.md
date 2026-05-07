@@ -1,7 +1,7 @@
 ---
 name: engineering-lead
 description: Leads engineering execution, owns architecture decisions, delegates to frontend-dev and backend-dev
-model: anthropic/claude-sonnet-4-6
+model: openai-codex/gpt-5.5
 expertise:
   - path: .pi/multi-team/expertise/engineering-lead-mental-model.yaml
     use-when: "Track architecture decisions, tech stack choices, implementation patterns, and cross-team engineering constraints."

@@ -1,7 +1,7 @@
 ---
 name: product-manager
 description: Owns feature definition, acceptance criteria, and roadmap prioritization; writes specs
-model: anthropic/claude-sonnet-4-6
+model: openai-codex/gpt-5.5
 expertise:
   - path: .pi/multi-team/expertise/product-manager-mental-model.yaml
     use-when: "Track product decisions, feature prioritization rationale, user needs discovered, and scope boundary decisions."

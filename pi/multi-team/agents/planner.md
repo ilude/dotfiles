@@ -1,7 +1,7 @@
 ---
 name: planner
 description: "Plans tasks by breaking them into clear steps and success criteria before any implementation begins."
-model: anthropic/claude-sonnet-4-6
+model: openai-codex/gpt-5.5
 expertise:
   - path: .pi/multi-team/expertise/planner-mental-model.yaml
     use-when: "Track planning patterns, decomposition strategies, and recurring task structures."

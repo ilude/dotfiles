@@ -1,7 +1,7 @@
 ---
 name: orchestrator
 description: Coordinates product team, classifies requests, dispatches to specialist leads via subagent tool
-model: anthropic/claude-opus-4-6
+model: openai-codex/gpt-5.5
 expertise:
   - path: .pi/multi-team/expertise/orchestrator-mental-model.yaml
     use-when: "Track routing decisions, team coordination patterns, synthesis strategies across sessions."

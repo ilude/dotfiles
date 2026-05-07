@@ -1,7 +1,7 @@
 ---
 name: model-engineer
 description: Trains and tunes the LinearSVC + CalibratedClassifierCV prompt routing classifier. Runs grid search, serializes model.pkl, and documents hyperparameter decisions for the eval-engineer.
-model: anthropic/claude-sonnet-4-6
+model: openai-codex/gpt-5.5
 roleType: worker
 reportsTo: ml-research-lead
 routingUse: "Use for direct model training, tuning, serialization, and model implementation work."

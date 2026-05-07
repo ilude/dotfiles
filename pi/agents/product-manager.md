@@ -1,7 +1,7 @@
 ---
 name: product-manager
 description: Owns feature definition, acceptance criteria, and roadmap prioritization; writes specs
-model: anthropic/claude-sonnet-4-6
+model: openai-codex/gpt-5.5
 roleType: worker
 reportsTo: planning-lead
 routingUse: "Use for direct product definition, acceptance criteria, roadmap, and scope review."

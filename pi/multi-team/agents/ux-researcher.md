@@ -1,7 +1,7 @@
 ---
 name: ux-researcher
 description: Owns user research, persona definition, usability analysis, and accessibility requirements
-model: anthropic/claude-sonnet-4-6
+model: openai-codex/gpt-5.5
 expertise:
   - path: .pi/multi-team/expertise/ux-researcher-mental-model.yaml
     use-when: "Track user personas, usability patterns discovered, accessibility requirements, and UX anti-patterns to avoid."

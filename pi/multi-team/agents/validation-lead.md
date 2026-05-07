@@ -1,7 +1,7 @@
 ---
 name: validation-lead
 description: Leads quality assurance and security review, owns validation gate, delegates to qa-engineer and security-reviewer
-model: anthropic/claude-sonnet-4-6
+model: openai-codex/gpt-5.5
 expertise:
   - path: .pi/multi-team/expertise/validation-lead-mental-model.yaml
     use-when: "Track quality standards, test strategies, security review patterns, and recurring failure modes."

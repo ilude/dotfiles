@@ -1,7 +1,7 @@
 ---
 name: terraform-pro
 description: Expert Terraform engineer for autonomous infrastructure as code tasks. Activate for IaC, multi-cloud provisioning, module development, and state management work.
-model: anthropic/claude-sonnet-4-6
+model: openai-codex/gpt-5.5
 roleType: specialist
 routingUse: "Use for direct Terraform/IaC, cloud provisioning, state, and module work."
 expertise:

@@ -1,7 +1,7 @@
 ---
 name: frontend-dev
 description: Builds and maintains UI layer, components, client-side logic, and styling
-model: anthropic/claude-sonnet-4-6
+model: openai-codex/gpt-5.5
 roleType: worker
 reportsTo: engineering-lead
 routingUse: "Use for direct frontend/UI/component/client-side implementation and review."

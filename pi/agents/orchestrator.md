@@ -1,7 +1,7 @@
 ---
 name: orchestrator
 description: Coordinates multi-team work; dispatches to specialist leads only when team-level orchestration is needed
-model: anthropic/claude-opus-4-6
+model: openai-codex/gpt-5.5
 roleType: orchestrator
 routingUse: "Use only for requests spanning multiple lead teams; not a direct worker."
 leads: [planning-lead, engineering-lead, validation-lead]

@@ -1,7 +1,7 @@
 ---
 name: frontend-dev
 description: Builds and maintains UI layer, components, client-side logic, and styling
-model: anthropic/claude-sonnet-4-6
+model: openai-codex/gpt-5.5
 expertise:
   - path: .pi/multi-team/expertise/frontend-dev-mental-model.yaml
     use-when: "Track UI patterns, component architecture, state management decisions, and browser compatibility issues."
