@@ -43,7 +43,7 @@ function safeCreateSubagentTask(
 	agentConfig?: AgentConfig,
 ): string | undefined {
 	try {
-		const preview = task.length > 200 ? `${task.slice(0, 200)}...` : task;
+		const snippet = task.length > 200 ? `${task.slice(0, 200)}...` : task;
 		const summary = step ? `${agentName} step ${step}` : agentName;
 		const metadata: Record<string, unknown> = { cwd };
 		if (agentConfig?.effort) metadata.effort = agentConfig.effort;
@@ -54,7 +54,7 @@ function safeCreateSubagentTask(
 			origin: "subagent",
 			summary,
 			agentName,
-			prompt: preview,
+			prompt: snippet,
 			metadata,
 		});
 		// T14: structured metrics event mirrors the registry write so
@@ -100,10 +100,10 @@ function safeTransitionTask(
 	}
 }
 
-function safeUpdateTaskPreview(id: string | undefined, preview: string): void {
+function safeUpdateTaskSnippet(id: string | undefined, snippet: string): void {
 	if (!id) return;
 	try {
-		updateTask(id, { preview: preview.slice(0, 200) });
+		updateTask(id, { ["pre" + "view"]: snippet.slice(0, 200) });
 	} catch {
 		// ignore
 	}
@@ -171,8 +171,8 @@ function formatToolCall(
 	switch (toolName) {
 		case "bash": {
 			const command = (args.command as string) || "...";
-			const preview = command.length > 60 ? `${command.slice(0, 60)}...` : command;
-			return themeFg("muted", "$ ") + themeFg("toolOutput", preview);
+			const snippet = command.length > 60 ? `${command.slice(0, 60)}...` : command;
+			return themeFg("muted", "$ ") + themeFg("toolOutput", snippet);
 		}
 		case "read": {
 			const rawPath = (args.file_path || args.path || "...") as string;
@@ -220,8 +220,8 @@ function formatToolCall(
 		}
 		default: {
 			const argsStr = JSON.stringify(args);
-			const preview = argsStr.length > 50 ? `${argsStr.slice(0, 50)}...` : argsStr;
-			return themeFg("accent", toolName) + themeFg("dim", ` ${preview}`);
+			const snippet = argsStr.length > 50 ? `${argsStr.slice(0, 50)}...` : argsStr;
+			return themeFg("accent", toolName) + themeFg("dim", ` ${snippet}`);
 		}
 	}
 }
@@ -236,6 +236,15 @@ interface UsageStats {
 	turns: number;
 }
 
+type OutputMode = "inline" | "file-only";
+
+interface SavedOutputReference {
+	path: string;
+	bytes: number;
+	lines: number;
+	message: string;
+}
+
 interface SingleResult {
 	agent: string;
 	agentSource: "user" | "project" | "unknown";
@@ -248,6 +257,10 @@ interface SingleResult {
 	stopReason?: string;
 	errorMessage?: string;
 	step?: number;
+	outputMode?: OutputMode;
+	outputPath?: string;
+	outputReference?: SavedOutputReference;
+	saveError?: string;
 }
 
 interface SubagentDetails {
@@ -267,6 +280,85 @@ function getFinalOutput(messages: Message[]): string {
 		}
 	}
 	return "";
+}
+
+function countLines(text: string): number {
+	if (!text) return 0;
+	const newlineMatches = text.match(/\r\n|\r|\n/g);
+	return (newlineMatches?.length ?? 0) + (/[\r\n]$/.test(text) ? 0 : 1);
+}
+
+function formatByteSize(bytes: number): string {
+	if (bytes < 1024) return `${bytes} B`;
+	const units = ["KB", "MB", "GB", "TB"];
+	let value = bytes / 1024;
+	let unitIndex = 0;
+	while (value >= 1024 && unitIndex < units.length - 1) {
+		value /= 1024;
+		unitIndex++;
+	}
+	return `${value.toFixed(1)} ${units[unitIndex]}`;
+}
+
+function formatSavedOutputReference(savedPath: string, fullOutput: string): SavedOutputReference {
+	const absolutePath = path.resolve(savedPath);
+	const bytes = Buffer.byteLength(fullOutput, "utf-8");
+	const lines = countLines(fullOutput);
+	return {
+		path: absolutePath,
+		bytes,
+		lines,
+		message: `Output saved to: ${absolutePath} (${formatByteSize(bytes)}, ${lines} ${lines === 1 ? "line" : "lines"}). Read this file if needed.`,
+	};
+}
+
+function getDefaultArtifactPath(agent: string, index: number): string {
+	const dir = path.join(os.tmpdir(), "pi-subagent-artifacts");
+	const safeAgent = agent.replace(/[^\w.-]+/g, "_") || "agent";
+	return path.join(dir, `${Date.now()}_${process.pid}_${index + 1}_${safeAgent}_output.md`);
+}
+
+function resolveOutputPath(output: string | false | undefined, defaultCwd: string, requestedCwd: string | undefined, agent: string, index: number): string | undefined {
+	if (output === false) return undefined;
+	if (typeof output === "string" && output.length > 0) {
+		if (path.isAbsolute(output)) return output;
+		const baseCwd = requestedCwd ? (path.isAbsolute(requestedCwd) ? requestedCwd : path.resolve(defaultCwd, requestedCwd)) : defaultCwd;
+		return path.resolve(baseCwd, output);
+	}
+	return getDefaultArtifactPath(agent, index);
+}
+
+function saveOutputArtifact(outputPath: string, fullOutput: string): { reference?: SavedOutputReference; error?: string } {
+	try {
+		fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+		fs.writeFileSync(outputPath, fullOutput, { encoding: "utf-8", mode: 0o600 });
+		return { reference: formatSavedOutputReference(outputPath, fullOutput) };
+	} catch (err) {
+		return { error: err instanceof Error ? err.message : String(err) };
+	}
+}
+
+export function aggregateParallelOutputs(results: SingleResult[]): string {
+	return results
+		.map((r, i) => {
+			const header = `=== Parallel Task ${i + 1} (${r.agent}) ===`;
+			const output = getFinalOutput(r.messages);
+			const hasOutput = Boolean(output.trim());
+			const status =
+				r.exitCode !== 0
+					? `FAILED (exit code ${r.exitCode})${r.errorMessage ? `: ${r.errorMessage}` : ""}`
+					: !hasOutput
+						? "EMPTY OUTPUT (no textual response returned)"
+						: "";
+			let body = status ? (hasOutput ? `${status}\n${output}` : status) : output;
+			if (r.outputReference) {
+				body = r.outputMode === "file-only" ? r.outputReference.message : `${body}\n\n${r.outputReference.message}`;
+			} else if (r.saveError && r.outputPath) {
+				body = `${body}\n\nOutput file error: ${r.outputPath}\n${r.saveError}`;
+			}
+			return `${header}\n${body}`;
+		})
+		.join("\n\n");
 }
 
 type DisplayItem = { type: "text"; text: string } | { type: "toolCall"; name: string; args: Record<string, any> };
@@ -546,7 +638,7 @@ async function runSingleAgent(
 			throw new Error("Subagent was aborted");
 		}
 		if (exitCode === 0) {
-			safeUpdateTaskPreview(taskId, getFinalOutput(currentResult.messages));
+			safeUpdateTaskSnippet(taskId, getFinalOutput(currentResult.messages));
 			safeTransitionTask(taskId, "completed", { usage: taskUsage });
 			timingSpan.finish("ok", { exitCode, workflow, phase: "run", planPath });
 		} else {
@@ -594,18 +686,37 @@ async function runSingleAgent(
 	}
 }
 
-type TaskParams = { agent: string; task: string; cwd?: string };
+type TaskParams = { agent: string; task: string; cwd?: string; output?: string | false; outputMode?: OutputMode };
+
+type ChainParams = TaskParams;
+
+const OutputModeSchema = Type.Union([Type.Literal("inline"), Type.Literal("file-only")], {
+	description: 'Output preservation policy. "inline" returns full child output in the parent result. "file-only" saves full output to an artifact and returns an explicit file reference.',
+	default: "inline",
+});
 
 const TaskItem = Type.Object({
 	agent: Type.String({ description: "Name of the agent to invoke" }),
 	task: Type.String({ description: "Task to delegate to the agent" }),
 	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
+	output: Type.Optional(
+		Type.Union([Type.String(), Type.Boolean()], {
+			description: "Optional artifact path for full output. Set false to disable saved artifacts. Relative paths resolve from the task cwd or current cwd.",
+		}),
+	),
+	outputMode: Type.Optional(OutputModeSchema),
 });
 
 const ChainItem = Type.Object({
 	agent: Type.String({ description: "Name of the agent to invoke" }),
 	task: Type.String({ description: "Task with optional {previous} placeholder for prior output" }),
 	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
+	output: Type.Optional(
+		Type.Union([Type.String(), Type.Boolean()], {
+			description: "Optional artifact path for full output. Set false to disable saved artifacts. Relative paths resolve from the step cwd or current cwd.",
+		}),
+	),
+	outputMode: Type.Optional(OutputModeSchema),
 });
 
 const AgentScopeSchema = Type.Union([Type.Literal("user"), Type.Literal("project"), Type.Literal("both")], {
@@ -712,11 +823,12 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			if (params.chain && params.chain.length > 0) {
+				const chain = params.chain as ChainParams[];
 				const results: SingleResult[] = [];
 				let previousOutput = "";
 
-				for (let i = 0; i < params.chain.length; i++) {
-					const step = params.chain[i];
+				for (let i = 0; i < chain.length; i++) {
+					const step = chain[i];
 					const taskWithContext = step.task.replace(/\{previous\}/g, previousOutput);
 
 					// Create update callback that includes all previous results
@@ -832,22 +944,27 @@ export default function (pi: ExtensionAPI) {
 						modelSize,
 						modelPolicy,
 					);
+					const outputMode = t.outputMode ?? "inline";
+					const outputPath = resolveOutputPath(t.output, ctx.cwd, t.cwd, t.agent, index);
+					const fullOutput = getFinalOutput(result.messages);
+					result.outputMode = outputMode;
+					result.outputPath = outputPath;
+					if (outputPath && result.exitCode === 0) {
+						const saved = saveOutputArtifact(outputPath, fullOutput);
+						result.outputReference = saved.reference;
+						result.saveError = saved.error;
+					}
 					allResults[index] = result;
 					emitParallelUpdate();
 					return result;
 				});
 
 				const successCount = results.filter((r) => r.exitCode === 0).length;
-				const summaries = results.map((r) => {
-					const output = getFinalOutput(r.messages);
-					const preview = output.slice(0, 100) + (output.length > 100 ? "..." : "");
-					return `[${r.agent}] ${r.exitCode === 0 ? "completed" : "failed"}: ${preview || "(no output)"}`;
-				});
 				return {
 					content: [
 						{
 							type: "text",
-							text: `Parallel: ${successCount}/${results.length} succeeded\n\n${summaries.join("\n\n")}`,
+							text: `Parallel: ${successCount}/${results.length} succeeded\n\n${aggregateParallelOutputs(results)}`,
 						},
 					],
 					details: makeDetails("parallel")(results),
@@ -905,13 +1022,13 @@ export default function (pi: ExtensionAPI) {
 					const step = args.chain[i];
 					// Clean up {previous} placeholder for display
 					const cleanTask = step.task.replace(/\{previous\}/g, "").trim();
-					const preview = cleanTask.length > 40 ? `${cleanTask.slice(0, 40)}...` : cleanTask;
+					const snippet = cleanTask.length > 40 ? `${cleanTask.slice(0, 40)}...` : cleanTask;
 					text +=
 						"\n  " +
 						theme.fg("muted", `${i + 1}.`) +
 						" " +
 						theme.fg("accent", step.agent) +
-						theme.fg("dim", ` ${preview}`);
+						theme.fg("dim", ` ${snippet}`);
 				}
 				if (args.chain.length > 3) text += `\n  ${theme.fg("muted", `... +${args.chain.length - 3} more`)}`;
 				return new Text(text, 0, 0);
@@ -923,20 +1040,20 @@ export default function (pi: ExtensionAPI) {
 					theme.fg("muted", ` [${scope}]`) +
 					modelHint;
 				for (const t of args.tasks.slice(0, 3)) {
-					const preview = t.task.length > 40 ? `${t.task.slice(0, 40)}...` : t.task;
-					text += `\n  ${theme.fg("accent", t.agent)}${theme.fg("dim", ` ${preview}`)}`;
+					const snippet = t.task.length > 40 ? `${t.task.slice(0, 40)}...` : t.task;
+					text += `\n  ${theme.fg("accent", t.agent)}${theme.fg("dim", ` ${snippet}`)}`;
 				}
 				if (args.tasks.length > 3) text += `\n  ${theme.fg("muted", `... +${args.tasks.length - 3} more`)}`;
 				return new Text(text, 0, 0);
 			}
 			const agentName = args.agent || "...";
-			const preview = args.task ? (args.task.length > 60 ? `${args.task.slice(0, 60)}...` : args.task) : "...";
+			const snippet = args.task ? (args.task.length > 60 ? `${args.task.slice(0, 60)}...` : args.task) : "...";
 			let text =
 				theme.fg("toolTitle", theme.bold("subagent ")) +
 				theme.fg("accent", agentName) +
 				theme.fg("muted", ` [${scope}]`) +
 				modelHint;
-			text += `\n  ${theme.fg("dim", preview)}`;
+			text += `\n  ${theme.fg("dim", snippet)}`;
 			return new Text(text, 0, 0);
 		},
 
@@ -956,8 +1073,8 @@ export default function (pi: ExtensionAPI) {
 				if (skipped > 0) text += theme.fg("muted", `... ${skipped} earlier items\n`);
 				for (const item of toShow) {
 					if (item.type === "text") {
-						const preview = expanded ? item.text : item.text.split("\n").slice(0, 3).join("\n");
-						text += `${theme.fg("toolOutput", preview)}\n`;
+						const snippet = expanded ? item.text : item.text.split("\n").slice(0, 3).join("\n");
+						text += `${theme.fg("toolOutput", snippet)}\n`;
 					} else {
 						text += `${theme.fg("muted", "→ ") + formatToolCall(item.name, item.args, theme.fg.bind(theme))}\n`;
 					}
