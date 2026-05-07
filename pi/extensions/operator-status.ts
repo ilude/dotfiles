@@ -23,8 +23,8 @@
 import * as childProcess from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ExtensionAPI, ExtensionContext, ReadonlyFooterDataProvider } from "@mariozechner/pi-coding-agent";
-import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ExtensionContext, ReadonlyFooterDataProvider } from "@earendil-works/pi-coding-agent";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { listRecentDecisions, listSessionApprovals } from "../lib/permission-registry.js";
 import { listTasks, type TaskRecordV1 } from "../lib/task-registry.js";
 import {

@@ -1549,7 +1549,7 @@ try {
         # Pi's transitive AWS SDK deps on Windows -- see pi/README.md).
         Write-Host "`nInstalling Pi coding agent..." -ForegroundColor Cyan
         if (Get-Command pnpm -ErrorAction SilentlyContinue) {
-            $piInstalled = pnpm list -g @mariozechner/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
+            $piInstalled = pnpm list -g @earendil-works/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
             if ($piInstalled) {
                 Write-Host "  Updating pi-coding-agent via pnpm..." -ForegroundColor Cyan
             } else {
@@ -1560,10 +1560,10 @@ try {
             # so treating dotfiles bootstrap as an idempotent upgrade path keeps
             # `pi update` healthy instead of leaving a stale global install behind.
             pnpm add -g --allow-build=koffi --allow-build=protobufjs `
-                '@mariozechner/pi-coding-agent@0.73.0' `
-                '@mariozechner/pi-agent-core@0.73.0' `
-                '@mariozechner/pi-ai@0.73.0' `
-                '@mariozechner/pi-tui@0.73.0'
+                '@earendil-works/pi-coding-agent@0.74.0' `
+                '@earendil-works/pi-agent-core@0.74.0' `
+                '@earendil-works/pi-ai@0.74.0' `
+                '@earendil-works/pi-tui@0.74.0'
             if ($LASTEXITCODE -eq 0) {
                 if ($piInstalled) {
                     Write-Host "  pi-coding-agent: updated successfully via pnpm" -ForegroundColor Green
@@ -1576,9 +1576,11 @@ try {
 
             # Migrate: remove any legacy npm-installed Pi so pnpm owns the binary.
             if (Get-Command npm -ErrorAction SilentlyContinue) {
-                $legacyNpmPi = npm list -g @mariozechner/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
-                if ($legacyNpmPi) {
+                $legacyNpmPi = npm list -g @earendil-works/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
+                $legacyMarioNpmPi = npm list -g @mariozechner/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
+                if ($legacyNpmPi -or $legacyMarioNpmPi) {
                     Write-Host "  Removing legacy npm-installed pi-coding-agent..." -ForegroundColor DarkGray
+                    npm uninstall -g @earendil-works/pi-coding-agent 2>$null | Out-Null
                     npm uninstall -g @mariozechner/pi-coding-agent 2>$null | Out-Null
                 }
             }
@@ -1589,6 +1591,7 @@ try {
                 $bunPi = Join-Path $bunBinDir 'pi'
                 if ((Test-Path $bunPi) -or (Test-Path "${bunPi}.exe")) {
                     Write-Host "  Removing legacy Bun-installed pi-coding-agent..." -ForegroundColor DarkGray
+                    bun uninstall -g @earendil-works/pi-coding-agent 2>$null | Out-Null
                     bun uninstall -g @mariozechner/pi-coding-agent 2>$null | Out-Null
                 }
             }
@@ -1604,7 +1607,7 @@ try {
             & $gitBash "$bashPath"
         }
 
-        # Link Bun-global @scopes into pi/node_modules so extensions can resolve them
+        # Link pnpm-global @scopes into pi/node_modules so extensions can resolve them
         $piDepsLinkSetup = Join-Path $BASEDIR "scripts" "pi-deps-link-setup"
         if (Test-Path $piDepsLinkSetup) {
             $bashPath = ConvertTo-GitBashPath $piDepsLinkSetup

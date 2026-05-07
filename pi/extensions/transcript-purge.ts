@@ -12,7 +12,7 @@
  *   /transcript-purge 30m      -- keep only files newer than 30 minutes
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadSettings, sweepRetention } from "../lib/transcript.js";
 import { uiNotify } from "../lib/extension-utils.js";
 

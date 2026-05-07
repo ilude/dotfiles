@@ -24,8 +24,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Type } from "@mariozechner/pi-ai";
-import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Type } from "@earendil-works/pi-ai";
+import { type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const SEARXNG_URL = "http://192.168.16.241:8888/search";
 const WEB_FETCH_SCRIPT = path.join(os.homedir(), ".dotfiles", "pi", "extensions", "web-fetch", "fetch.js");

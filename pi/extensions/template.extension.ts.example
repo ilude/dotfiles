@@ -14,7 +14,7 @@
  */
 
 import { Type } from "@sinclair/typebox";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { formatToolError, uiNotify } from "../lib/extension-utils.js";
 
 const EXTENSION_NAME = "my-feature";

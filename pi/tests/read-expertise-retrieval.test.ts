@@ -13,7 +13,7 @@ import { createMockPi } from "./helpers/mock-pi.js";
 
 const mockCompleteSimple = vi.hoisted(() => vi.fn());
 
-vi.mock("@mariozechner/pi-ai", () => ({
+vi.mock("@earendil-works/pi-ai", () => ({
   completeSimple: mockCompleteSimple,
   Type: {
     Object: (schema: unknown) => ({ type: "object", properties: schema }),

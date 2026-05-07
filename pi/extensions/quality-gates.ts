@@ -28,7 +28,7 @@ import * as path from "node:path";
 import {
 	type ExtensionAPI,
 	type ToolResultEvent,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import { loadYamlViaPython } from "../lib/yaml-helpers";
 
 interface ValidatorConfig {

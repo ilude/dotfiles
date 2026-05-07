@@ -23,7 +23,7 @@
 import type {
 	BashToolCallEvent,
 	ExtensionAPI,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 
 const GIT_COMMIT_RE = /\bgit\s+commit\b/;
 const CONVENTIONAL_COMMIT_RE =

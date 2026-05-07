@@ -1,22 +1,25 @@
 #!/usr/bin/env bash
 
-# Link Bun-global @mariozechner and @sinclair scopes into pi/node_modules so
+# Link pnpm-global @earendil-works and @sinclair scopes into pi/node_modules so
 # extensions in ~/.dotfiles/pi/{extensions,lib}/*.ts can resolve
-# @mariozechner/pi-coding-agent, @mariozechner/pi-ai, and @sinclair/typebox.
+# @earendil-works/pi-coding-agent, @earendil-works/pi-ai, and @sinclair/typebox.
 #
-# pi (the binary) is installed via `bun install -g @mariozechner/pi-coding-agent`,
-# which puts those packages in $BUN_INSTALL/install/global/node_modules/. Bun's
+# pi (the binary) is installed via `pnpm add -g @earendil-works/pi-coding-agent`,
+# which puts those packages in the pnpm global node_modules directory. Node's
 # resolver, walking up from a file under ~/.dotfiles/pi/, never reaches that
 # global path -- so we plant the scopes inside pi/node_modules ourselves.
 
 DOTFILES_DIR="${HOME}/.dotfiles"
 PI_DIR="${DOTFILES_DIR}/pi"
 PI_NODE_MODULES="${PI_DIR}/node_modules"
-BUN_INSTALL="${BUN_INSTALL:-${HOME}/.bun}"
-BUN_GLOBAL_NODE_MODULES="${BUN_INSTALL}/install/global/node_modules"
+PNPM_GLOBAL_NODE_MODULES="${PNPM_GLOBAL_NODE_MODULES:-}"
 
-# Scopes to link (each is a directory under BUN_GLOBAL_NODE_MODULES)
-SCOPES=("@mariozechner" "@sinclair")
+if [[ -z "$PNPM_GLOBAL_NODE_MODULES" ]] && command -v pnpm >/dev/null 2>&1; then
+    PNPM_GLOBAL_NODE_MODULES=$(pnpm root -g 2>/dev/null || true)
+fi
+
+# Scopes to link (each is a directory under PNPM_GLOBAL_NODE_MODULES)
+SCOPES=("@earendil-works" "@sinclair")
 
 is_windows() {
     [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ -n "$WINDIR" ]]
@@ -44,7 +47,7 @@ resolve_link_target() {
     if is_windows; then
         # readlink -f works for symlinks; junctions are reported by `dir` but
         # have no readlink target. For idempotency we accept either form as
-        # "linked" and just verify the path resolves into the bun global tree.
+        # "linked" and just verify the path resolves into the pnpm global tree.
         readlink -f "$path" 2>/dev/null || readlink "$path" 2>/dev/null || echo ""
     else
         readlink -f "$path" 2>/dev/null || readlink "$path" 2>/dev/null || echo ""
@@ -71,20 +74,20 @@ if [[ ! -d "$PI_DIR" ]]; then
     exit 1
 fi
 
-if [[ ! -d "$BUN_GLOBAL_NODE_MODULES" ]]; then
-    echo "  Skipping: Bun global node_modules not found at $BUN_GLOBAL_NODE_MODULES"
-    echo "  (install pi-coding-agent first: bun install -g @mariozechner/pi-coding-agent)"
+if [[ -z "$PNPM_GLOBAL_NODE_MODULES" || ! -d "$PNPM_GLOBAL_NODE_MODULES" ]]; then
+    echo "  Skipping: pnpm global node_modules not found"
+    echo "  (install pi-coding-agent first: pnpm add -g @earendil-works/pi-coding-agent)"
     exit 0
 fi
 
 mkdir -p "$PI_NODE_MODULES"
 
 for scope in "${SCOPES[@]}"; do
-    source_path="${BUN_GLOBAL_NODE_MODULES}/${scope}"
+    source_path="${PNPM_GLOBAL_NODE_MODULES}/${scope}"
     target_path="${PI_NODE_MODULES}/${scope}"
 
     if [[ ! -d "$source_path" ]]; then
-        echo "  Skipping ${scope}: not present in ${BUN_GLOBAL_NODE_MODULES}"
+        echo "  Skipping ${scope}: not present in ${PNPM_GLOBAL_NODE_MODULES}"
         continue
     fi
 

@@ -1,5 +1,5 @@
-import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { getOAuthProvider } from "@mariozechner/pi-ai/oauth";
+import { type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { getOAuthProvider } from "@earendil-works/pi-ai/oauth";
 import { uiNotify } from "../lib/extension-utils.js";
 
 type ModelLike = {

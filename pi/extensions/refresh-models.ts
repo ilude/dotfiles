@@ -12,9 +12,9 @@
 //   already knows the source; a `[refresh-models]` prefix on every progress
 //   line would only add noise. The handler's own `notify(...)` closure
 //   already centralizes the call site.
-import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { getModels } from "@mariozechner/pi-ai";
-import { getOAuthProvider } from "@mariozechner/pi-ai/oauth";
+import { type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { getModels } from "@earendil-works/pi-ai";
+import { getOAuthProvider } from "@earendil-works/pi-ai/oauth";
 
 const CODEX_CLIENT_VERSION_CANDIDATES = ["999.0.0", "1.0.0", "0.99.0"];
 const SUPPORTED_REFRESH_PROVIDERS = new Set([

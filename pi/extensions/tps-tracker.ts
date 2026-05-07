@@ -9,7 +9,7 @@
  * final TPS statistics at the end of each agent run.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export default function (pi: ExtensionAPI) {
 	/** Timestamp when the current assistant message event started. Used as a fallback. */

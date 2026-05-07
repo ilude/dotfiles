@@ -21,8 +21,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Type } from "@sinclair/typebox";
-import { Text } from "@mariozechner/pi-tui";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 

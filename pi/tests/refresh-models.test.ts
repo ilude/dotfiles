@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockPi } from "./helpers/mock-pi";
 
-vi.mock("@mariozechner/pi-ai/oauth", () => ({
+vi.mock("@earendil-works/pi-ai/oauth", () => ({
 	getOAuthProvider: vi.fn((provider: string) => {
 		if (["openrouter", "opencode", "opencode-go"].includes(provider)) return undefined;
 		return {
@@ -14,7 +14,7 @@ vi.mock("@mariozechner/pi-ai/oauth", () => ({
 	}),
 }));
 
-vi.mock("@mariozechner/pi-ai", () => ({
+vi.mock("@earendil-works/pi-ai", () => ({
 	getModels: vi.fn((provider: string) => {
 		if (provider !== "github-copilot") return [];
 		return [

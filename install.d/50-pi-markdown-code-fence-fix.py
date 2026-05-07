@@ -9,8 +9,8 @@
 Pi's TUI Markdown renderer currently renders fenced-code delimiters (```)
 as visible code-block border lines. This local patch makes the renderer output
 only the code content. The script is intentionally idempotent and narrow: it
-only edits @mariozechner/pi-tui/dist/components/markdown.js files found in the
-active pnpm global install/store.
+only edits pi-tui/dist/components/markdown.js files found in the active pnpm
+global install/store.
 """
 
 from __future__ import annotations
@@ -22,6 +22,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+ACTIVE_SCOPE = "@earendil-works"
+LEGACY_SCOPE = "@mariozechner"
+PACKAGE_NAME = "pi-tui"
 PATCH_MARKER = "Rendering them as codeBlockBorder leaks literal ``` lines into Pi output."
 BACKUP_SUFFIX = ".bak-dotfiles-markdown-fence"
 
@@ -58,14 +61,45 @@ def pnpm_global_root() -> Path | None:
     return Path(output.splitlines()[-1]).expanduser()
 
 
-def candidate_paths() -> list[Path]:
+def add_package_paths(root: Path, scope: str, found: list[Path], seen: set[Path]) -> None:
+    direct_path = root / scope / PACKAGE_NAME / "dist" / "components" / "markdown.js"
+    add_candidate(direct_path, found, seen)
+
+    store_root = root.parent / ".pnpm"
+    if not store_root.exists():
+        return
+
+    encoded_scope = scope.removeprefix("@").replace("/", "+")
+    for package_dir in store_root.glob(f"@{encoded_scope}+{PACKAGE_NAME}@*"):
+        add_candidate(
+            package_dir
+            / "node_modules"
+            / scope
+            / PACKAGE_NAME
+            / "dist"
+            / "components"
+            / "markdown.js",
+            found,
+            seen,
+        )
+
+
+def add_candidate(path: Path, found: list[Path], seen: set[Path]) -> None:
+    if not path.is_file():
+        return
+    resolved = path.resolve()
+    if resolved in seen:
+        return
+    seen.add(resolved)
+    found.append(resolved)
+
+
+def candidate_paths(include_legacy: bool) -> list[Path]:
     node_modules_roots: list[Path] = []
-    pnpm_store_roots: list[Path] = []
 
     pnpm_root = pnpm_global_root()
     if pnpm_root:
         node_modules_roots.append(pnpm_root)
-        pnpm_store_roots.append(pnpm_root.parent / ".pnpm")
 
     global_bases: list[Path] = []
     local_appdata = os.environ.get("LOCALAPPDATA")
@@ -82,39 +116,16 @@ def candidate_paths() -> list[Path]:
         if not base.exists():
             continue
         for version_dir in base.iterdir():
-            if not version_dir.is_dir():
-                continue
-            node_modules_roots.append(version_dir / "node_modules")
-            pnpm_store_roots.append(version_dir / ".pnpm")
+            if version_dir.is_dir():
+                node_modules_roots.append(version_dir / "node_modules")
 
     found: list[Path] = []
     seen: set[Path] = set()
-
-    def add(path: Path) -> None:
-        if not path.is_file():
-            return
-        resolved = path.resolve()
-        if resolved in seen:
-            return
-        seen.add(resolved)
-        found.append(resolved)
+    scopes = [ACTIVE_SCOPE, LEGACY_SCOPE] if include_legacy else [ACTIVE_SCOPE]
 
     for root in node_modules_roots:
-        add(root / "@mariozechner" / "pi-tui" / "dist" / "components" / "markdown.js")
-
-    for root in pnpm_store_roots:
-        if not root.exists():
-            continue
-        for package_dir in root.glob("@mariozechner+pi-tui@*"):
-            add(
-                package_dir
-                / "node_modules"
-                / "@mariozechner"
-                / "pi-tui"
-                / "dist"
-                / "components"
-                / "markdown.js"
-            )
+        for scope in scopes:
+            add_package_paths(root, scope, found, seen)
 
     return sorted(found)
 
@@ -159,11 +170,16 @@ def patch_file(path: Path, dry_run: bool) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="report changes without writing")
+    parser.add_argument(
+        "--include-legacy-scope",
+        action="store_true",
+        help="also patch deprecated @mariozechner/pi-tui installs during migration",
+    )
     args = parser.parse_args()
 
-    paths = candidate_paths()
+    paths = candidate_paths(include_legacy=args.include_legacy_scope)
     if not paths:
-        print("No pnpm-global @mariozechner/pi-tui markdown.js files found.", file=sys.stderr)
+        print("No pnpm-global @earendil-works/pi-tui markdown.js files found.", file=sys.stderr)
         return 1
 
     statuses = [patch_file(path, args.dry_run) for path in paths]

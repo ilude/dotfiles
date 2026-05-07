@@ -40,7 +40,7 @@ vi.mock("../lib/model-routing", () => ({
 	})),
 }));
 
-vi.mock("@mariozechner/pi-ai", () => ({
+vi.mock("@earendil-works/pi-ai", () => ({
 	completeSimple: vi.fn(),
 }));
 
@@ -48,7 +48,7 @@ vi.mock("@mariozechner/pi-ai", () => ({
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
-import { completeSimple } from "@mariozechner/pi-ai";
+import { completeSimple } from "@earendil-works/pi-ai";
 const mockSpawnSync = spawnSync as ReturnType<typeof vi.fn>;
 const mockCompleteSimple = completeSimple as ReturnType<typeof vi.fn>;
 const mockReadFileSync = fs.readFileSync as ReturnType<typeof vi.fn>;

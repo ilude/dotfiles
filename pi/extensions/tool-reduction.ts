@@ -27,7 +27,7 @@
 import * as child_process from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
-import { isBashToolResult, type ExtensionAPI, type ToolResultEvent } from "@mariozechner/pi-coding-agent";
+import { isBashToolResult, type ExtensionAPI, type ToolResultEvent } from "@earendil-works/pi-coding-agent";
 
 function getHomeDir(): string {
 	return process.env.HOME ?? process.env.USERPROFILE ?? os.homedir();

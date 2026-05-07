@@ -6,9 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 // Stub out pi packages so importing workflow-commands.ts does not require
 // the globally installed pi-coding-agent runtime.
-vi.mock("@mariozechner/pi-coding-agent", () => ({ ExtensionAPI: class {} }));
-vi.mock("@mariozechner/pi-ai", () => ({ completeSimple: vi.fn(), TextContent: {} }));
-vi.mock("@mariozechner/pi-tui", () => ({ Text: class {} }));
+vi.mock("@earendil-works/pi-coding-agent", () => ({ ExtensionAPI: class {} }));
+vi.mock("@earendil-works/pi-ai", () => ({ completeSimple: vi.fn(), TextContent: {} }));
+vi.mock("@earendil-works/pi-tui", () => ({ Text: class {} }));
 
 import { buildCommitPlan } from "../lib/commit/plan.ts";
 import { stagePaths } from "../lib/commit/stage.ts";

@@ -27,7 +27,7 @@ vi.mock("../lib/model-routing", () => ({
 	resolveCommitPlanningModelFromRegistry: vi.fn(),
 }));
 
-vi.mock("@mariozechner/pi-ai", () => ({
+vi.mock("@earendil-works/pi-ai", () => ({
 	completeSimple: vi.fn(),
 }));
 

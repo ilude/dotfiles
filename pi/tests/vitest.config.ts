@@ -9,7 +9,7 @@ const agentDir = path.resolve(__dirname, "..").replace(/\\/g, "/");
 // Pi TypeScript dependencies are managed by pi/extensions/pnpm-lock.yaml.
 // Keep tests pointed at that pnpm install instead of global runtime packages.
 const extensionsNodeModules = path.resolve(__dirname, "../extensions/node_modules");
-const piPackageRoot = path.join(extensionsNodeModules, "@mariozechner/pi-coding-agent");
+const piPackageRoot = path.join(extensionsNodeModules, "@earendil-works/pi-coding-agent");
 const piNodeModules = extensionsNodeModules;
 const typeboxDir = path.join(extensionsNodeModules, "@sinclair/typebox");
 
@@ -23,11 +23,11 @@ export default defineConfig({
   root: agentDir,
   resolve: {
     alias: {
-      "@mariozechner/pi-coding-agent": path.join(piPackageRoot, "dist/index.js"),
-      "@mariozechner/pi-ai/oauth": path.join(piNodeModules, "@mariozechner/pi-ai/dist/oauth.js"),
-      "@mariozechner/pi-ai": path.join(piNodeModules, "@mariozechner/pi-ai/dist/index.js"),
-      "@mariozechner/pi-tui": path.join(piNodeModules, "@mariozechner/pi-tui/dist/index.js"),
-      "@mariozechner/pi-agent-core": path.join(piNodeModules, "@mariozechner/pi-agent-core/dist/index.js"),
+      "@earendil-works/pi-coding-agent": path.join(piPackageRoot, "dist/index.js"),
+      "@earendil-works/pi-ai/oauth": path.join(piNodeModules, "@earendil-works/pi-ai/dist/oauth.js"),
+      "@earendil-works/pi-ai": path.join(piNodeModules, "@earendil-works/pi-ai/dist/index.js"),
+      "@earendil-works/pi-tui": path.join(piNodeModules, "@earendil-works/pi-tui/dist/index.js"),
+      "@earendil-works/pi-agent-core": path.join(piNodeModules, "@earendil-works/pi-agent-core/dist/index.js"),
       "@sinclair/typebox": typeboxDir,
     },
   },

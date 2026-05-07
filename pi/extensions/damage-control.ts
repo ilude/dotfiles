@@ -29,7 +29,7 @@ import {
 	type ReadToolCallEvent,
 	type WriteToolCallEvent,
 	type EditToolCallEvent,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import { canonicalize as sharedCanonicalize } from "../lib/extension-utils.js";
 import { recordEvent } from "../lib/metrics.js";
 import {

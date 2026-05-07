@@ -66,7 +66,7 @@ def resolve_pi_agent_dir() -> Path:
 
     checked = "\n  - ".join(str(path) for path in seen)
     print(
-        "tsc-check: could not locate @mariozechner/pi-coding-agent. Checked:\n"
+        "tsc-check: could not locate @earendil-works/pi-coding-agent. Checked:\n"
         f"  - {checked}",
         file=sys.stderr,
     )
@@ -126,25 +126,25 @@ def main():
                 "allowImportingTsExtensions": True,
                 "types": ["node"],
                 "paths": {
-                    "@mariozechner/pi-coding-agent": [
+                    "@earendil-works/pi-coding-agent": [
                         pi_agent,
                         f"{pi_agent}/dist/index.js",
                     ],
-                    "@mariozechner/pi-ai": [
-                        f"{pi_nm}/@mariozechner/pi-ai",
-                        f"{pi_nm}/@mariozechner/pi-ai/dist/index.js",
+                    "@earendil-works/pi-ai": [
+                        f"{pi_nm}/@earendil-works/pi-ai",
+                        f"{pi_nm}/@earendil-works/pi-ai/dist/index.js",
                     ],
-                    "@mariozechner/pi-ai/oauth": [
-                        f"{pi_nm}/@mariozechner/pi-ai/dist/oauth",
-                        f"{pi_nm}/@mariozechner/pi-ai/dist/oauth.js",
+                    "@earendil-works/pi-ai/oauth": [
+                        f"{pi_nm}/@earendil-works/pi-ai/dist/oauth",
+                        f"{pi_nm}/@earendil-works/pi-ai/dist/oauth.js",
                     ],
-                    "@mariozechner/pi-agent-core": [
-                        f"{pi_nm}/@mariozechner/pi-agent-core",
-                        f"{pi_nm}/@mariozechner/pi-agent-core/dist/index.js",
+                    "@earendil-works/pi-agent-core": [
+                        f"{pi_nm}/@earendil-works/pi-agent-core",
+                        f"{pi_nm}/@earendil-works/pi-agent-core/dist/index.js",
                     ],
-                    "@mariozechner/pi-tui": [
-                        f"{pi_nm}/@mariozechner/pi-tui",
-                        f"{pi_nm}/@mariozechner/pi-tui/dist/index.js",
+                    "@earendil-works/pi-tui": [
+                        f"{pi_nm}/@earendil-works/pi-tui",
+                        f"{pi_nm}/@earendil-works/pi-tui/dist/index.js",
                     ],
                     "typebox": [f"{pi_nm}/typebox"],
                     "typebox/compile": [f"{pi_nm}/typebox/compile"],

@@ -17,7 +17,7 @@
  * false in ~/.pi/agent/settings.json, every handler short-circuits.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { clonePayload } from "../lib/transcript.js";
 
 // Convention exception: this file emits structured trace events and never returns user-facing tool errors or shows UI notifications.

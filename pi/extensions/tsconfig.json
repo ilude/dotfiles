@@ -11,7 +11,7 @@
     "allowImportingTsExtensions": true,
     "baseUrl": ".",
     "paths": {
-      "@mariozechner/*": ["node_modules/@mariozechner/*"],
+      "@earendil-works/*": ["node_modules/@earendil-works/*"],
       "@sinclair/*": ["node_modules/@sinclair/*"]
     }
   },

@@ -16,8 +16,8 @@
 //   not handle filesystem paths or UI notifications.
 
 import { Type } from "@sinclair/typebox";
-import { Text } from "@mariozechner/pi-tui";
-import type { ExtensionAPI, ToolInfo } from "@mariozechner/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
+import type { ExtensionAPI, ToolInfo } from "@earendil-works/pi-coding-agent";
 
 /** Score a tool against search terms. Higher = better match. */
 export function scoreTool(tool: { name: string; description: string }, terms: string[]): number {

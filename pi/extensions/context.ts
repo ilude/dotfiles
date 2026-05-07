@@ -10,7 +10,7 @@
 //   which is the file-internal mechanism that makes this extension safe to
 //   run in the conversation log.
 
-import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const CONTEXT_REPORT_MESSAGE_TYPE = "context-report";
 

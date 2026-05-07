@@ -1,6 +1,6 @@
 import { Type } from "@sinclair/typebox";
 import type { Static } from "@sinclair/typebox";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { buildCommitPlan } from "../lib/commit/plan";
 import { validateCommitMessage } from "../lib/commit/message";
 import { stagePaths } from "../lib/commit/stage";

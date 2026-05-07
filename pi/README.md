@@ -1,6 +1,6 @@
 # Pi Agent Setup
 
-Pi is a minimal terminal coding agent (`@mariozechner/pi-coding-agent`) configured here with a multi-agent orchestration system, safety enforcement, and knowledge compounding via expertise files.
+Pi is a minimal terminal coding agent (`@earendil-works/pi-coding-agent`) configured here with a multi-agent orchestration system, safety enforcement, and knowledge compounding via expertise files.
 
 **Pi site:** [shittycodingagent.ai](https://shittycodingagent.ai) | **GitHub:** [badlogic/pi-mono](https://github.com/badlogic/pi-mono)
 
@@ -18,7 +18,7 @@ Pi is installed automatically by the dotfiles installer:
 ~/.dotfiles/install.ps1
 ```
 
-On all platforms, this uses `pnpm add -g --allow-build=koffi --allow-build=protobufjs @mariozechner/pi-coding-agent` (plus pinned versions of `pi-agent-core`, `pi-ai`, and `pi-tui` so transitive deps cannot drift), then runs `scripts/pi-link-setup` (which junctions `~/.dotfiles/pi/` -> `~/.pi/agent/` on Windows, symlinks on Linux/macOS). Final temporary install-time patches live in root `install.d/`; bash installs run `*.sh` plus common `*.py`, PowerShell installs run `*.ps1` plus common `*.py`, and moving a hook to `install.d/disabled/` turns it off.
+On all platforms, this uses `pnpm add -g --allow-build=koffi --allow-build=protobufjs @earendil-works/pi-coding-agent` (plus pinned versions of `pi-agent-core`, `pi-ai`, and `pi-tui` so transitive deps cannot drift), then runs `scripts/pi-link-setup` (which junctions `~/.dotfiles/pi/` -> `~/.pi/agent/` on Windows, symlinks on Linux/macOS). Final temporary install-time patches live in root `install.d/`; bash installs run `*.sh` plus common `*.py`, PowerShell installs run `*.ps1` plus common `*.py`, and moving a hook to `install.d/disabled/` turns it off.
 
 The local dotfiles install also defaults `PI_CACHE_RETENTION=long` in the installed shell profiles (`zsh`, `bash`, `sh`, and PowerShell) unless you have already set a different value. That prefers extended provider-side prompt caching where Pi supports it (currently documented by Pi as Anthropic 1h and OpenAI 24h for direct API calls). OpenAI and OpenRouter-hosted OpenAI prompt caching are automatic for eligible long prompts; provider-specific `cache_control` markers are only for models/providers that require Anthropic-style caching semantics.
 
@@ -48,7 +48,7 @@ Package-manager priority:
 
 Pi-specific package-manager boundaries:
 
-- `pi/extensions/` is pnpm-managed (`package.json` + `pnpm-lock.yaml`) and owns Pi TypeScript dependencies such as `@mariozechner/pi-coding-agent`, `@mariozechner/pi-ai`, `@mariozechner/pi-agent-core`, and `@mariozechner/pi-tui`.
+- `pi/extensions/` is pnpm-managed (`package.json` + `pnpm-lock.yaml`) and owns Pi TypeScript dependencies such as `@earendil-works/pi-coding-agent`, `@earendil-works/pi-ai`, `@earendil-works/pi-agent-core`, and `@earendil-works/pi-tui`.
 - Do **not** run `bun add` for Pi extension/runtime packages, do not add those packages to `pi/tests/package.json`, and do not point tests at global Pi package internals for type/runtime resolution.
 - Type-check extensions with:
   ```bash
@@ -90,10 +90,10 @@ Current template example:
 ```bash
 # All platforms
 pnpm add -g --allow-build=koffi --allow-build=protobufjs \
-    @mariozechner/pi-coding-agent@0.73.0 \
-    @mariozechner/pi-agent-core@0.73.0 \
-    @mariozechner/pi-ai@0.73.0 \
-    @mariozechner/pi-tui@0.73.0
+    @earendil-works/pi-coding-agent@0.74.0 \
+    @earendil-works/pi-agent-core@0.74.0 \
+    @earendil-works/pi-ai@0.74.0 \
+    @earendil-works/pi-tui@0.74.0
 ~/.dotfiles/scripts/pi-link-setup
 ```
 
