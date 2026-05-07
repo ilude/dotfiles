@@ -20,15 +20,27 @@
 //   the block reason field is the surfaced text. canonicalize does not
 //   apply because the file inspects bash command strings, not paths.
 
-import {
-	type ExtensionAPI,
-	type BashToolCallEvent,
+import type {
+	BashToolCallEvent,
+	ExtensionAPI,
 } from "@mariozechner/pi-coding-agent";
 
 const GIT_COMMIT_RE = /\bgit\s+commit\b/;
-const CONVENTIONAL_COMMIT_RE = /^(feat|fix|docs|chore|refactor|test|perf|ci|build)(\(.+\))?: .+/;
+const CONVENTIONAL_COMMIT_RE =
+	/^(feat|fix|docs|chore|refactor|test|perf|ci|build)(\(.+\))?: .+/;
+const MUTATING_EDIT_RE =
+	/(python\s+-\s*<<[\s\S]*(write_text|open\([^)]*,\s*['"]w['"])|\bsed\s+-i\b|\bperl\s+-pi\b|\bcat\s*>)/;
 
 type BlockResult = { block: true; reason: string } | undefined;
+
+export function checkUnsafeShellEdit(command: string): BlockResult {
+	if (!MUTATING_EDIT_RE.test(command)) return undefined;
+	return {
+		block: true,
+		reason:
+			"Prefer Pi safe edit tools for tracked repo edits: use text_edit for text replacements/newlines or structured_edit for JSON instead of mutating Python heredocs, sed -i, perl -pi, or cat >.",
+	};
+}
 
 function checkNoVerify(command: string): BlockResult {
 	if (!command.includes("--no-verify")) return undefined;
@@ -42,7 +54,8 @@ function checkMissingMessage(command: string): BlockResult {
 	if (command.includes("-m")) return undefined;
 	return {
 		block: true,
-		reason: "Commit message required. Use: git commit -m 'type(scope): description'",
+		reason:
+			"Commit message required. Use: git commit -m 'type(scope): description'",
 	};
 }
 
@@ -65,6 +78,9 @@ export default function (pi: ExtensionAPI) {
 
 		const bashEvent = event as BashToolCallEvent;
 		const command = bashEvent.input.command ?? "";
+
+		const unsafeEditResult = checkUnsafeShellEdit(command);
+		if (unsafeEditResult) return unsafeEditResult;
 
 		if (!GIT_COMMIT_RE.test(command)) return undefined;
 
