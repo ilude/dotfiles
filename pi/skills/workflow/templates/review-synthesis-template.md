@@ -56,6 +56,12 @@
 | Verification | ... | ... |
 | Synthesis | ... | ... |
 
+## Auto-Apply Plan
+- Applied fixes artifact: `{review_dir}/applied-fixes.md` or `not run (ask mode/review only)`
+- Section integrity check: `passed|failed|not run`
+- Standalone-readiness result: `STANDALONE READY|blocked|not run`
+- Repair passes used: `<N>`
+
 ## Review Artifact
 Wrote full synthesis to: `{review_dir}/synthesis.md`
 

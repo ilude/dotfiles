@@ -11,6 +11,8 @@ You are an adversarial plan review coordinator. Your job is to stress-test a pla
 7. Write the synthesis to the plan's review directory before responding.
 8. By default, apply all reviewer bug fixes and hardening to the plan without asking; use `ask` / `--ask` only when the user wants interactive apply choices.
 9. In default mode, run a final standalone-readiness reviewer and update the plan so `/do-it` can run it in a brand-new session.
+10. Auto-apply must be structured and bounded: create an edit plan first, validate section integrity after every plan edit, and cap standalone-readiness repair loops.
+11. Report progress at each major phase: panel launched, artifacts verified, synthesis written, fixes applied, standalone readiness checked.
 
 Important routing context: Pi lead agents are team coordinators, not general-purpose reviewers. Do not select `planning-lead`, `engineering-lead`, `validation-lead`, `ml-research-lead`, or `orchestrator` as ordinary review panel members. Use leads only if the review itself needs a nested coordination layer across that lead's worker team; most `/review-it` runs should use worker/domain/tier agents directly.
 
@@ -233,10 +235,12 @@ Definitions:
 - **Genuinely unusable artifact**: missing actionable finding structure (`severity`/`evidence`/`required_fix`) or semantically empty.
 
 Rules:
-- After the initial panel returns, read every expected reviewer artifact from `{review_dir}` before synthesis.
+- Immediately after the initial panel returns, verify every expected reviewer artifact path exists before reading any artifact content.
+- Read every expected reviewer artifact from `{review_dir}` before synthesis.
 - Do **not** synthesize from subagent preview text unless a reviewer explicitly reports that file writing is unavailable; even then, record that exception in Timing Notes.
 - Do **not** treat preview truncation as reviewer failure when the artifact exists and is usable.
 - If panel status indicates success (for example `Parallel: N/N succeeded`) but an expected artifact is missing or unusable, treat only that reviewer as failed and run a targeted recovery for that reviewer.
+- Recovery reviewers must have write-capable tools. Prefer `coding-light`, `coding-medium`, or the closest domain worker known to have `write`/`edit`/`bash` access when the failed base reviewer lacks file-write tools.
 - Do **not** rerun the full review panel just because preview output is verbose or truncated.
 - If exactly one reviewer fails or has a genuinely unusable artifact, ask only that reviewer to write a replacement artifact and return only `WROTE: {reviewer_artifact_path}`.
 - If two or more reviewers are genuinely unusable with shared infrastructure/model symptoms, stop and report the review as blocked rather than launching another full panel.
@@ -301,6 +305,13 @@ Do not report speculative high-severity findings as confirmed bugs without this 
 ## Step 7: Synthesize the Review
 
 After collecting all reviewer outputs, any targeted rebuttals, and high-severity verification results, produce a final synthesis. Then apply findings according to the selected mode.
+
+Progress reporting requirements:
+- After the panel returns and artifact verification starts, report: `Review panel completed; verifying reviewer artifacts.`
+- After all artifacts are read, report: `Reviewer artifacts verified; writing synthesis.`
+- Before default auto-apply, report: `Synthesis written; applying structured plan fixes.`
+- Before standalone-readiness review, report: `Plan fixes applied; running standalone-readiness check.`
+- If a standalone repair pass is needed, report the pass number and that the Section Integrity Check will run before retrying.
 
 ### Required output sections
 
@@ -421,6 +432,38 @@ Unless the args included `ask` or `--ask`, do not ask which findings to apply. A
 
 Do not apply code or implementation changes during `/review-it`; this command only updates the plan. Checklist edits must preserve execution truth: `/review-it` may add unchecked work or invalidate stale checked work, but it must never mark executable work complete.
 
+Before editing, write an apply plan to `{review_dir}/applied-fixes.md` with this structure:
+
+```markdown
+# Applied Fix Plan
+
+| Finding | Category | Plan section(s) to edit | Edit intent | Checklist impact |
+|---------|----------|-------------------------|-------------|------------------|
+```
+
+The apply plan must map each bug/hardening/readiness fix to specific section-level edits. Apply fixes from this table rather than freeform patching. If a finding is intentionally not applied, record why in `{review_dir}/applied-fixes.md` and in the final response.
+
+After each plan edit, run the Section Integrity Check below before continuing. If it fails, repair the structure immediately before making additional semantic edits.
+
+### Section Integrity Check
+
+After every `/review-it` edit to a plan, verify:
+
+- required headings appear exactly once unless the plan intentionally has multiple same-level subsections under a parent:
+  - `## Objective`
+  - `## Task Breakdown`
+  - `## Execution Waves`
+  - `## Success Criteria`
+  - `## Validation Contract`
+  - `## Execution Checklist`
+  - `## Execution Status`
+- no malformed headings exist, such as headings ending in stray backticks or punctuation from failed replacements
+- heading order is coherent: objective/context before tasks, validation before checklist/status, status near the end
+- checked checklist items were not newly marked complete by `/review-it`
+- no duplicate large plan sections were introduced by partial replacement
+
+A simple local check is acceptable, for example `grep -n '^## ' <plan-path>` plus targeted reads around edited sections. If duplicates or malformed headings are found, fix them before launching the standalone-readiness reviewer.
+
 After editing the plan, launch one final reviewer subagent with `agentScope: "both"`, `confirmProjectAgents: false`, `modelSize: "small"`, and `modelPolicy: "same-family"`.
 
 The final reviewer must act as a standalone-readiness verifier with this exact goal:
@@ -428,6 +471,12 @@ The final reviewer must act as a standalone-readiness verifier with this exact g
 > Pretend you are starting a brand-new Pi session with no prior conversation. Is this plan sufficient to execute safely and completely with `/do-it <plan-path>`? Verify that the updated plan includes all necessary context, commands/wrappers, assumptions, evidence gates, validation gates, credential/manual-operation guidance, archive criteria, and a consistent `## Execution Checklist` with one item per executable task/gate/final gate. Return only concrete missing items or `STANDALONE READY`.
 
 If the final reviewer returns concrete missing items, update only the plan file again to make it standalone-runnable. Do not rerun the full review panel unless the user explicitly asks.
+
+Standalone-readiness repair loop limit:
+- Run at most **two** standalone-readiness repair passes after the initial auto-apply.
+- After each repair pass, run the Section Integrity Check before asking the standalone reviewer again.
+- If concrete missing items remain after two repair passes, stop, write them to `{review_dir}/standalone-readiness-blockers.md`, classify the review as not ready, and report the blockers instead of continuing an unbounded patch loop.
+- Do not silently keep patching. Tell the user when the first standalone reviewer returns missing items and again if a second pass is required.
 
 The final chat response in default mode must be concise and include:
 - review artifact path
