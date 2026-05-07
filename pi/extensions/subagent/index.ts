@@ -344,9 +344,10 @@ export function aggregateParallelOutputs(results: SingleResult[]): string {
 			const header = `=== Parallel Task ${i + 1} (${r.agent}) ===`;
 			const output = getFinalOutput(r.messages);
 			const hasOutput = Boolean(output.trim());
+			const isModelError = r.stopReason === "error" || Boolean(r.errorMessage);
 			const status =
-				r.exitCode !== 0
-					? `FAILED (exit code ${r.exitCode})${r.errorMessage ? `: ${r.errorMessage}` : ""}`
+				r.exitCode !== 0 || isModelError
+					? `FAILED (${isModelError ? "model error" : `exit code ${r.exitCode}`})${r.errorMessage ? `: ${r.errorMessage}` : ""}`
 					: !hasOutput
 						? "EMPTY OUTPUT (no textual response returned)"
 						: "";
@@ -637,13 +638,16 @@ async function runSingleAgent(
 			timingFinished = true;
 			throw new Error("Subagent was aborted");
 		}
-		if (exitCode === 0) {
+		const isModelError = currentResult.stopReason === "error";
+		if (exitCode === 0 && !isModelError) {
 			safeUpdateTaskSnippet(taskId, getFinalOutput(currentResult.messages));
 			safeTransitionTask(taskId, "completed", { usage: taskUsage });
 			timingSpan.finish("ok", { exitCode, workflow, phase: "run", planPath });
 		} else {
 			const errorReason =
-				currentResult.errorMessage || currentResult.stderr.slice(-500) || `exit code ${exitCode}`;
+				currentResult.errorMessage ||
+				currentResult.stderr.slice(-500) ||
+				(isModelError ? "model returned stopReason=error" : `exit code ${exitCode}`);
 			safeTransitionTask(taskId, "failed", { errorReason, usage: taskUsage });
 			timingSpan.finish("error", {
 				exitCode,
@@ -949,7 +953,7 @@ export default function (pi: ExtensionAPI) {
 					const fullOutput = getFinalOutput(result.messages);
 					result.outputMode = outputMode;
 					result.outputPath = outputPath;
-					if (outputPath && result.exitCode === 0) {
+					if (outputPath && result.exitCode === 0 && result.stopReason !== "error") {
 						const saved = saveOutputArtifact(outputPath, fullOutput);
 						result.outputReference = saved.reference;
 						result.saveError = saved.error;
@@ -959,7 +963,9 @@ export default function (pi: ExtensionAPI) {
 					return result;
 				});
 
-				const successCount = results.filter((r) => r.exitCode === 0).length;
+				const isSuccessfulResult = (r: SingleResult) =>
+					r.exitCode === 0 && r.stopReason !== "error" && r.stopReason !== "aborted";
+				const successCount = results.filter(isSuccessfulResult).length;
 				return {
 					content: [
 						{

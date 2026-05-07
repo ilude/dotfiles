@@ -13,6 +13,12 @@ const MINI_HINT_RE = /(mini|small|haiku)/i;
 const FAST_HINT_RE = /(fast|turbo|flash|lite)/i;
 const LARGE_HINT_RE = /(opus|large|xl|thinking|reasoning)/i;
 const VERSION_RE = /(\d+(?:[.-]\d+)*)/;
+const CODEX_DEFAULTS: Record<ModelSize, string[]> = {
+	small: ["gpt-5.4-mini"],
+	medium: ["gpt-5.5", "gpt-5.3-codex"],
+	large: ["gpt-5.5", "gpt-5.3-codex"],
+};
+const CODEX_MAX_RE = /codex-max/i;
 
 function isProvider(model: ModelLike, provider: string) {
 	return model.provider === provider;
@@ -112,13 +118,26 @@ function compareScoredModels<T extends ModelLike>(a: { model: T; score: number }
 
 function pickBestModel<T extends ModelLike>(models: readonly T[], size: ModelSize, current?: ModelLike): T | undefined {
 	if (models.length === 0) return undefined;
+	const codexDefault = pickCodexDefault(models, size);
+	if (codexDefault) return codexDefault;
 	return models
+		.filter((model) => !CODEX_MAX_RE.test(model.id))
 		.map((model) => ({ model, score: scoreModelForSize(model, size, current) }))
 		.sort(compareScoredModels)[0]?.model;
 }
 
 function findExact<T extends ModelLike>(models: readonly T[], provider: string, id: string): T | undefined {
 	return models.find((model) => model.provider === provider && model.id === id);
+}
+
+function pickCodexDefault<T extends ModelLike>(models: readonly T[], size: ModelSize): T | undefined {
+	const codexModels = models.filter((model) => model.provider === "openai-codex");
+	if (codexModels.length === 0) return undefined;
+	for (const id of CODEX_DEFAULTS[size]) {
+		const model = findExact(codexModels, "openai-codex", id);
+		if (model) return model;
+	}
+	return undefined;
 }
 
 function findFirstMini<T extends ModelLike>(models: readonly T[], provider: string): T | undefined {

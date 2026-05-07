@@ -86,12 +86,13 @@ You are a test agent.
 
     const ctx = createMockCtx({
       cwd: tmpDir,
-      model: { provider: "openai-codex", id: "gpt-5.4" },
+      model: { provider: "openai-codex", id: "gpt-5.5" },
       modelRegistry: {
         getAvailable: vi.fn(() => [
           { provider: "openai-codex", id: "gpt-5.4-mini" },
-          { provider: "openai-codex", id: "gpt-5.4-fast" },
-          { provider: "openai-codex", id: "gpt-5.4" },
+          { provider: "openai-codex", id: "gpt-5.3-codex" },
+          { provider: "openai-codex", id: "gpt-5.5" },
+          { provider: "openai-codex", id: "gpt-5.1-codex-max" },
           { provider: "anthropic", id: "claude-sonnet-4-6" },
         ]),
       },
@@ -117,7 +118,8 @@ You are a test agent.
 
     const spawnArgs = spawnMock.mock.calls[0][1] as string[];
     expect(spawnArgs).toContain("--model");
-    expect(spawnArgs).toContain("openai-codex/gpt-5.4-fast");
+    expect(spawnArgs).toContain("openai-codex/gpt-5.5");
+    expect(spawnArgs).not.toContain("openai-codex/gpt-5.1-codex-max");
     expect(spawnArgs).not.toContain("anthropic/claude-sonnet-4-6");
   }, 15000);
 
@@ -233,5 +235,64 @@ You are a test agent.
     expect(records.length).toBe(1);
     expect(records[0].state).toBe("failed");
     expect(records[0].errorReason).toContain("simulated failure");
+  }, 15000);
+
+  it("treats stopReason=error as a parallel failure", async () => {
+    spawnMock.mockImplementation(() => {
+      const proc = new EventEmitter() as any;
+      proc.stdout = new EventEmitter();
+      proc.stderr = new EventEmitter();
+      proc.kill = vi.fn();
+      proc.killed = false;
+      queueMicrotask(() => {
+        proc.stdout.emit(
+          "data",
+          `${JSON.stringify({
+            type: "message_end",
+            message: {
+              role: "assistant",
+              content: [],
+              stopReason: "error",
+              errorMessage:
+                '{"detail":"The \'gpt-5.1-codex-max\' model is not supported when using Codex with a ChatGPT account."}',
+            },
+          })}\n`,
+        );
+        proc.emit("close", 0);
+      });
+      return proc;
+    });
+    const { tool } = await loadTool();
+    const { listTasks } = await import("../lib/task-registry.ts");
+
+    const ctx = createMockCtx({
+      cwd: tmpDir,
+      model: { provider: "openai-codex", id: "gpt-5.5" },
+    });
+
+    const result = await tool.execute(
+      "call-parallel-model-error",
+      {
+        tasks: [
+          {
+            agent: "tester",
+            task: "Will model-error",
+            output: false,
+          },
+        ],
+        agentScope: "project",
+        confirmProjectAgents: false,
+      },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    expect(result.content[0].text).toContain("Parallel: 0/1 succeeded");
+    expect(result.content[0].text).toContain("FAILED (model error)");
+    const records = listTasks();
+    expect(records.length).toBe(1);
+    expect(records[0].state).toBe("failed");
+    expect(records[0].errorReason).toContain("not supported");
   }, 15000);
 });
