@@ -15,7 +15,10 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+} from "@mariozechner/pi-coding-agent";
 
 type AuthEntry = {
 	access: string;
@@ -290,20 +293,53 @@ export async function fetchCodexUsage(): Promise<{
 	return { auth, usage: (await response.json()) as ApiUsage };
 }
 
+async function showCodexStatus(ctx: ExtensionContext): Promise<void> {
+	try {
+		const { auth, usage } = await fetchCodexUsage();
+		ctx.ui.notify(formatUsage(usage, auth, { color: true }), "info");
+	} catch (error) {
+		ctx.ui.notify(
+			error instanceof Error ? error.message : String(error),
+			"error",
+		);
+	}
+}
+
+function shouldShowStatusOnSessionStart(reason: string): boolean {
+	return reason === "startup" || reason === "new";
+}
+
+function isClearCommand(text: string): boolean {
+	return text.trim() === "/clear";
+}
+
+function showCodexStatusAfterInitialRender(ctx: ExtensionContext): void {
+	// session_start fires before interactive mode renders the initial transcript.
+	// Defer the notification so startup/new-session rendering does not overwrite it.
+	setTimeout(() => {
+		void showCodexStatus(ctx);
+	}, 0);
+}
+
 export default function registerCodexStatusCommand(pi: ExtensionAPI) {
+	pi.on("session_start", async (event, ctx) => {
+		if (shouldShowStatusOnSessionStart(String(event.reason))) {
+			showCodexStatusAfterInitialRender(ctx);
+		}
+	});
+
+	pi.on("input", async (event, ctx) => {
+		if (isClearCommand(event.text)) {
+			await showCodexStatus(ctx);
+		}
+		return { action: "continue" };
+	});
+
 	pi.registerCommand("status", {
 		description:
 			"Show ChatGPT Codex quota status using existing Pi/Codex OAuth credentials",
 		handler: async (_args, ctx) => {
-			try {
-				const { auth, usage } = await fetchCodexUsage();
-				ctx.ui.notify(formatUsage(usage, auth, { color: true }), "info");
-			} catch (error) {
-				ctx.ui.notify(
-					error instanceof Error ? error.message : String(error),
-					"error",
-				);
-			}
+			await showCodexStatus(ctx);
 		},
 	});
 }

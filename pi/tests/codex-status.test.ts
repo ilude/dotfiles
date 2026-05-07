@@ -10,7 +10,7 @@ import registerCodexStatusCommand, {
 	resolveAuth,
 	USAGE_ENDPOINT,
 } from "../extensions/codex-status";
-import { createMockPi } from "./helpers/mock-pi";
+import { createMockCtx, createMockPi } from "./helpers/mock-pi";
 
 const OLD_HOME = process.env.HOME;
 const OLD_USERPROFILE = process.env.USERPROFILE;
@@ -185,5 +185,89 @@ describe("/status command", () => {
 		expect(
 			mockPi._commands.find((command) => command.name === "status"),
 		).toBeDefined();
+	});
+
+	it("shows status on startup and new sessions", async () => {
+		const home = tempHome();
+		await mkdir(join(home, ".pi", "agent"), { recursive: true });
+		await writeFile(
+			join(home, ".pi", "agent", "auth.json"),
+			JSON.stringify({
+				"openai-codex": { access: fakeJwt({}), accountId: "acct-session" },
+			}),
+		);
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => ({
+				ok: true,
+				json: async () => ({
+					rate_limit: { primary_window: { used_percent: 12 } },
+				}),
+			})),
+		);
+		const mockPi = createMockPi();
+		registerCodexStatusCommand(
+			mockPi as Parameters<typeof registerCodexStatusCommand>[0],
+		);
+		const hook = mockPi._getHook("session_start")[0];
+
+		for (const reason of ["startup", "new"]) {
+			const ctx = createMockCtx();
+			await hook.handler({ reason }, ctx);
+			await vi.waitFor(() => {
+				expect(ctx.ui.notify).toHaveBeenCalledWith(
+					expect.stringContaining("Codex:"),
+					"info",
+				);
+			});
+		}
+	});
+
+	it("shows status when /clear input passes through", async () => {
+		const home = tempHome();
+		await mkdir(join(home, ".pi", "agent"), { recursive: true });
+		await writeFile(
+			join(home, ".pi", "agent", "auth.json"),
+			JSON.stringify({
+				"openai-codex": { access: fakeJwt({}), accountId: "acct-clear" },
+			}),
+		);
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => ({
+				ok: true,
+				json: async () => ({
+					rate_limit: { primary_window: { used_percent: 12 } },
+				}),
+			})),
+		);
+		const mockPi = createMockPi();
+		registerCodexStatusCommand(
+			mockPi as Parameters<typeof registerCodexStatusCommand>[0],
+		);
+		const hook = mockPi._getHook("input")[0];
+		const ctx = createMockCtx();
+
+		await expect(hook.handler({ text: " /clear " }, ctx)).resolves.toEqual({
+			action: "continue",
+		});
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			expect.stringContaining("Codex:"),
+			"info",
+		);
+	});
+
+	it("does not auto-show status on reload or resume", async () => {
+		const mockPi = createMockPi();
+		registerCodexStatusCommand(
+			mockPi as Parameters<typeof registerCodexStatusCommand>[0],
+		);
+		const hook = mockPi._getHook("session_start")[0];
+
+		for (const reason of ["reload", "resume", "fork", "clear"]) {
+			const ctx = createMockCtx();
+			await hook.handler({ reason }, ctx);
+			expect(ctx.ui.notify).not.toHaveBeenCalled();
+		}
 	});
 });
