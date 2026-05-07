@@ -1,3 +1,8 @@
+---
+name: upstream
+description: "Vendored skill provenance and upstream audit notes. Use when importing, refreshing, or checking third-party skills against their upstream repositories."
+---
+
 # Vendored Skills Provenance
 
 This file tracks skills imported verbatim from third-party repos so we can audit them against upstream changes.

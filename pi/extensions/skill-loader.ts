@@ -24,7 +24,7 @@
  * registration step.
  */
 
-import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { discoverSkills, type SkillRecord } from "../lib/skill-discovery.js";
 
 /**
@@ -92,7 +92,8 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("skills", {
-		description: "List auto-discovered skills (excludes hardcoded workflow commands).",
+		description:
+			"List auto-discovered skills (excludes hardcoded workflow commands).",
 		handler: async (_args, ctx) => {
 			if (state.skills.length === 0) {
 				ctx.ui.notify(
@@ -103,7 +104,9 @@ export default function (pi: ExtensionAPI) {
 			}
 			const lines: string[] = ["Discovered skills:"];
 			for (const s of state.skills) {
-				const tag = isReservedName(s.name) ? " (overridden by hardcoded command)" : "";
+				const tag = isReservedName(s.name)
+					? " (overridden by hardcoded command)"
+					: "";
 				const desc = s.description ? ` -- ${s.description.slice(0, 80)}` : "";
 				lines.push(`  /${s.name} [${s.source}]${desc}${tag}`);
 			}
