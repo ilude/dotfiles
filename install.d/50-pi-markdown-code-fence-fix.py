@@ -31,6 +31,11 @@ OPENING_PUSH_EXACT = (
     + "```"
     + "${token.lang || \"\"}`));"
 )
+OPENING_PUSH_ESCAPED = (
+    "                lines.push(this.theme.codeBlockBorder(`"
+    + r"\`\`\`"
+    + "${token.lang || \"\"}`));"
+)
 CLOSING_PUSH_EXACT = "                lines.push(this.theme.codeBlockBorder(\"```\"));"
 OPENING_COMMENT = (
     "                // Fenced code block delimiters are Markdown syntax, not rendered content.\n"
@@ -115,13 +120,17 @@ def candidate_paths() -> list[Path]:
 
 
 def patch_text(text: str) -> tuple[str, bool]:
-    if PATCH_MARKER in text and CLOSING_PUSH_EXACT not in text:
+    opening_patterns = (OPENING_PUSH_EXACT, OPENING_PUSH_ESCAPED)
+    if PATCH_MARKER in text and CLOSING_PUSH_EXACT not in text and not any(
+        pattern in text for pattern in opening_patterns
+    ):
         return text, False
 
     changed = False
-    if OPENING_PUSH_EXACT in text:
-        text = text.replace(OPENING_PUSH_EXACT, OPENING_COMMENT, 2)
-        changed = True
+    for opening_push in opening_patterns:
+        if opening_push in text:
+            text = text.replace(opening_push, OPENING_COMMENT, 2)
+            changed = True
     if CLOSING_PUSH_EXACT in text:
         text = text.replace(CLOSING_PUSH_EXACT + "\n", "", 2)
         changed = True
