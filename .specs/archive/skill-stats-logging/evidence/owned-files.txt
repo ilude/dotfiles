@@ -1,0 +1,6 @@
+pi/extensions/skill-stats.ts
+pi/lib
+pi/tests
+.specs/skill-stats-logging/plan.md
+.specs/skill-stats-logging/evidence
+.specs/skill-stats-logging/fixtures

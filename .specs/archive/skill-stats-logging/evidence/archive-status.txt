@@ -1,0 +1,81 @@
+R  pi/extensions/echo-slash-commands.ts -> pi/extensions/00-echo-slash-commands.ts
+ M pi/extensions/extension-stats.ts
+ M pi/extensions/prompt-router.ts
+ M pi/extensions/skill-loader.ts
+ M pi/extensions/transcript-provider.ts
+ M pi/skills/workflow/review-it.md
+ M pi/skills/workflow/templates/review-synthesis-template.md
+ M pi/tests/helpers/mock-pi.ts
+?? .specs/skill-stats-logging/evidence/archive-status.txt
+?? .specs/skill-stats-logging/evidence/diff-check.txt
+?? .specs/skill-stats-logging/evidence/implementation.diff
+?? .specs/skill-stats-logging/evidence/make-check.txt
+?? .specs/skill-stats-logging/evidence/owned-files.txt
+?? .specs/skill-stats-logging/evidence/preflight-status-current.txt
+?? .specs/skill-stats-logging/evidence/preflight-status.txt
+?? .specs/skill-stats-logging/evidence/redaction-classification.md
+?? .specs/skill-stats-logging/evidence/redaction-scan.txt
+?? .specs/skill-stats-logging/evidence/research-analogues.md
+?? .specs/skill-stats-logging/evidence/research-local-api.md
+?? .specs/skill-stats-logging/evidence/research-pi-hooks.md
+?? .specs/skill-stats-logging/evidence/research-synthesis.md
+?? .specs/skill-stats-logging/evidence/smoke.txt
+?? .specs/skill-stats-logging/evidence/typecheck.txt
+?? .specs/skill-stats-logging/plan.md
+?? .specs/skill-stats-logging/review-1/applied-fixes.md
+?? .specs/skill-stats-logging/review-1/devops-pro-output.txt
+?? .specs/skill-stats-logging/review-1/devops-pro.md
+?? .specs/skill-stats-logging/review-1/product-manager-output.txt
+?? .specs/skill-stats-logging/review-1/product-manager.md
+?? .specs/skill-stats-logging/review-1/qa-engineer-output.txt
+?? .specs/skill-stats-logging/review-1/qa-engineer.md
+?? .specs/skill-stats-logging/review-1/reviewer-output.txt
+?? .specs/skill-stats-logging/review-1/reviewer.md
+?? .specs/skill-stats-logging/review-1/security-reviewer-output.txt
+?? .specs/skill-stats-logging/review-1/security-reviewer.md
+?? .specs/skill-stats-logging/review-1/standalone-readiness-blockers.md
+?? .specs/skill-stats-logging/review-1/synthesis.md
+?? .specs/skill-stats-logging/review-1/typescript-pro-output.txt
+?? .specs/skill-stats-logging/review-1/typescript-pro.md
+?? .specs/skill-stats-logging/review-2/applied-fixes.md
+?? .specs/skill-stats-logging/review-2/devops-output.txt
+?? .specs/skill-stats-logging/review-2/devops-pro.md
+?? .specs/skill-stats-logging/review-2/devops-recovery-output.txt
+?? .specs/skill-stats-logging/review-2/pm-output.txt
+?? .specs/skill-stats-logging/review-2/product-manager.md
+?? .specs/skill-stats-logging/review-2/qa-engineer.md
+?? .specs/skill-stats-logging/review-2/qa-output.txt
+?? .specs/skill-stats-logging/review-2/reviewer-output.txt
+?? .specs/skill-stats-logging/review-2/reviewer-recovery2-output.txt
+?? .specs/skill-stats-logging/review-2/reviewer.md
+?? .specs/skill-stats-logging/review-2/security-output.txt
+?? .specs/skill-stats-logging/review-2/security-recovery-output.txt
+?? .specs/skill-stats-logging/review-2/security-reviewer.md
+?? .specs/skill-stats-logging/review-2/standalone-readiness-blockers.md
+?? .specs/skill-stats-logging/review-2/synthesis.md
+?? .specs/skill-stats-logging/review-2/typescript-output.txt
+?? .specs/skill-stats-logging/review-2/typescript-pro.md
+?? .specs/skill-stats-logging/review-2/typescript-recovery-output.txt
+?? .specs/skill-stats-logging/review-3/applied-fixes.md
+?? .specs/skill-stats-logging/review-3/devops-output.txt
+?? .specs/skill-stats-logging/review-3/devops-pro.md
+?? .specs/skill-stats-logging/review-3/known-blocker-fixes.md
+?? .specs/skill-stats-logging/review-3/pi-api-observer.md
+?? .specs/skill-stats-logging/review-3/pi-api-output.txt
+?? .specs/skill-stats-logging/review-3/pm-output.txt
+?? .specs/skill-stats-logging/review-3/product-manager.md
+?? .specs/skill-stats-logging/review-3/qa-engineer.md
+?? .specs/skill-stats-logging/review-3/qa-output.txt
+?? .specs/skill-stats-logging/review-3/reviewer-output.txt
+?? .specs/skill-stats-logging/review-3/reviewer-recovery-output.txt
+?? .specs/skill-stats-logging/review-3/reviewer.md
+?? .specs/skill-stats-logging/review-3/security-output.txt
+?? .specs/skill-stats-logging/review-3/security-recovery-output.txt
+?? .specs/skill-stats-logging/review-3/security-reviewer.md
+?? .specs/skill-stats-logging/review-3/standalone-readiness-pass1.md
+?? .specs/skill-stats-logging/review-3/standalone-readiness.md
+?? .specs/skill-stats-logging/review-3/synthesis.md
+?? .specs/skill-stats-logging/review-3/typescript-output.txt
+?? .specs/skill-stats-logging/review-3/typescript-pro.md
+?? pi/extensions/skill-stats.ts
+?? pi/tests/skill-stats.test.ts

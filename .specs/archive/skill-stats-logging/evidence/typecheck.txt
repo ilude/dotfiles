@@ -1,0 +1,4 @@
+
+> pi-extensions-typecheck@ typecheck C:\Users\mglenn\.dotfiles\pi\extensions
+> tsc --noEmit
+

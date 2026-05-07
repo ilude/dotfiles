@@ -58,6 +58,7 @@
 
 ## Auto-Apply Plan
 - Applied fixes artifact: `{review_dir}/applied-fixes.md` or `not run (ask mode/review only)`
+- Known-blocker fixes artifact: `{review_dir}/known-blocker-fixes.md` or `not run/no prior blockers`
 - Section integrity check: `passed|failed|not run`
 - Standalone-readiness result: `STANDALONE READY|blocked|not run`
 - Repair passes used: `<N>`

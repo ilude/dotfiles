@@ -1,0 +1,123 @@
+
+> pi-extension-tests@ test C:\Users\mglenn\.dotfiles\pi\tests
+> vitest run "--" "skill-stats"
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.5 [39m[90mC:/Users/mglenn/.dotfiles/pi[39m
+
+ [32m✓[39m tests/pwsh.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 6908[2mms[22m[39m
+       [33m[2m✓[22m[39m should register as 'pwsh' with PowerShell label [33m 6866[2mms[22m[39m
+ [32m✓[39m tests/read-expertise-retrieval.test.ts [2m([22m[2m16 tests[22m[2m)[22m[33m 7237[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps no-query compatibility: unchanged text and no retrieval details [33m 6541[2mms[22m[39m
+ [32m✓[39m tests/expertise-layering.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 7382[2mms[22m[39m
+     [33m[2m✓[22m[39m project-local: append_expertise writes to project-local dir when cwd is inside a git repo [33m 6664[2mms[22m[39m
+ [32m✓[39m tests/subagent.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 7612[2mms[22m[39m
+     [33m[2m✓[22m[39m uses modelSize/modelPolicy to override pinned agent models [33m 7261[2mms[22m[39m
+ [32m✓[39m tests/memory-promote-scan.privacy.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 8269[2mms[22m[39m
+     [33m[2m✓[22m[39m running with a sandboxed HOME writes only inside that sandbox [33m 3514[2mms[22m[39m
+     [33m[2m✓[22m[39m emits explicit no-qualifying-candidates section when corpus has no qualifying clusters [33m 4742[2mms[22m[39m
+ [32m✓[39m tests/tool-reduction.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 9558[2mms[22m[39m
+       [33m[2m✓[22m[39m compacts git status sample to fewer bytes [33m 9516[2mms[22m[39m
+ [32m✓[39m tests/memory-snapshot-archive.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 10918[2mms[22m[39m
+     [33m[2m✓[22m[39m dry-run mode prints mode=dry-run and writes nothing under sandbox HOME archive root [33m 3157[2mms[22m[39m
+     [33m[2m✓[22m[39m confirm mode writes the archive, prints mode=confirm + archive_complete, restore_smoke matches file count [33m 4485[2mms[22m[39m
+     [33m[2m✓[22m[39m omitting --confirm does NOT write the archive (dry-run is the default gate) [33m 3061[2mms[22m[39m
+ [32m✓[39m tests/web-tools.test.ts [2m([22m[2m15 tests[22m[2m)[22m[33m 1342[2mms[22m[39m
+     [33m[2m✓[22m[39m should register both tools [33m 1306[2mms[22m[39m
+ [32m✓[39m tests/text-edit.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 1856[2mms[22m[39m
+     [33m[2m✓[22m[39m dryRun returns preview and does not write [33m 716[2mms[22m[39m
+     [33m[2m✓[22m[39m rejects .env, gitignored, glob, and symlink escape paths [33m 1129[2mms[22m[39m
+ [32m✓[39m tests/structured-edit.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 1664[2mms[22m[39m
+     [33m[2m✓[22m[39m writes pretty JSON with finalNewline [33m 850[2mms[22m[39m
+     [33m[2m✓[22m[39m rejects .env and unsupported formats [33m 797[2mms[22m[39m
+ [32m✓[39m tests/todo.test.ts [2m([22m[2m24 tests[22m[2m)[22m[33m 899[2mms[22m[39m
+     [33m[2m✓[22m[39m should register todo tool [33m 645[2mms[22m[39m
+ [32m✓[39m tests/commit-extension.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 11708[2mms[22m[39m
+     [33m[2m✓[22m[39m commit_stage succeeds with a valid plan and returns staged paths [33m 11669[2mms[22m[39m
+ [32m✓[39m tests/operator-status.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 4192[2mms[22m[39m
+     [33m[2m✓[22m[39m filters status bar tasks to running/blocked tasks from current session [33m 332[2mms[22m[39m
+     [33m[2m✓[22m[39m omits reload suffix when reload is not needed [33m 318[2mms[22m[39m
+     [33m[2m✓[22m[39m sets the pi version slot and clears task/elevated when registries are empty [33m 3085[2mms[22m[39m
+ [32m✓[39m tests/ask-user-pure.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 1062[2mms[22m[39m
+     [33m[2m✓[22m[39m should register ask_user tool [33m 1033[2mms[22m[39m
+ [32m✓[39m tests/tool-search.test.ts [2m([22m[2m11 tests[22m[2m)[22m[33m 818[2mms[22m[39m
+     [33m[2m✓[22m[39m should register tool_search [33m 785[2mms[22m[39m
+ [32m✓[39m tests/agent-chain.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 5570[2mms[22m[39m
+     [33m[2m✓[22m[39m registers expertise and session-log tools [33m 5110[2mms[22m[39m
+ [32m✓[39m tests/test-orchestrator.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 567[2mms[22m[39m
+       [33m[2m✓[22m[39m session_start handler runs and calls ctx.ui.setStatus with the expected key [33m 500[2mms[22m[39m
+ [32m✓[39m tests/task-registry.test.ts [2m([22m[2m24 tests[22m[2m)[22m[33m 409[2mms[22m[39m
+ [32m✓[39m tests/codex-status.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 298[2mms[22m[39m
+ [32m✓[39m tests/workflow-dispatch.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 511[2mms[22m[39m
+     [33m[2m✓[22m[39m /plan-it sends its hidden workflow prompt as a follow-up turn [33m 494[2mms[22m[39m
+ [32m✓[39m tests/permission-registry.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 200[2mms[22m[39m
+ [32m✓[39m tests/memory-retrieve.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 273[2mms[22m[39m
+ [32m✓[39m tests/workflow-commands.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 250[2mms[22m[39m
+ [32m✓[39m tests/tasks.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 206[2mms[22m[39m
+ [32m✓[39m tests/permissions.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 148[2mms[22m[39m
+ [32m✓[39m tests/settings-loader.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 150[2mms[22m[39m
+ [32m✓[39m tests/skill-discovery.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 157[2mms[22m[39m
+ [32m✓[39m tests/transcript-log.test.ts [2m([22m[2m30 tests[22m[2m)[22m[33m 684[2mms[22m[39m
+ [32m✓[39m tests/snapshot-restore-smoke.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 90[2mms[22m[39m
+ [32m✓[39m tests/transcript-correlation.test.ts [2m([22m[2m17 tests[22m[2m)[22m[33m 758[2mms[22m[39m
+ [32m✓[39m tests/metrics.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 125[2mms[22m[39m
+ [32m✓[39m tests/transcript-integration.test.ts [2m([22m[2m16 tests[22m[2m)[22m[33m 1241[2mms[22m[39m
+     [33m[2m✓[22m[39m correlates out-of-order parallel completions by tool_call_id [33m 303[2mms[22m[39m
+     [33m[2m✓[22m[39m a single turn with routing + tool call produces all expected event families with redacted secrets [33m 392[2mms[22m[39m
+ [32m✓[39m tests/repo-id.test.ts [2m([22m[2m70 tests[22m[2m)[22m[32m 88[2mms[22m[39m
+ [32m✓[39m tests/operator-state.test.ts [2m([22m[2m28 tests[22m[2m)[22m[32m 86[2mms[22m[39m
+ [32m✓[39m tests/damage-control.test.ts [2m([22m[2m46 tests[22m[2m)[22m[32m 94[2mms[22m[39m
+ [32m✓[39m tests/transcript-fixtures.test.ts [2m([22m[2m23 tests[22m[2m)[22m[33m 784[2mms[22m[39m
+ [32m✓[39m tests/reload-status.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 48[2mms[22m[39m
+ [32m✓[39m tests/commit-guard.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 35[2mms[22m[39m
+ [32m✓[39m tests/refresh-models.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 39[2mms[22m[39m
+ [32m✓[39m tests/prompt-router.test.ts [2m([22m[2m56 tests[22m[2m)[22m[32m 294[2mms[22m[39m
+ [32m✓[39m tests/model-routing.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 42[2mms[22m[39m
+ [32m✓[39m tests/provider.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 29[2mms[22m[39m
+ [32m✓[39m tests/runtime-smoke.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 63[2mms[22m[39m
+ [32m✓[39m tests/skill-stats.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 137[2mms[22m[39m
+ [32m✓[39m tests/persistent-defaults.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m tests/memory-promote-scan.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m tests/extension-utils.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+ [32m✓[39m tests/agent-team.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m tests/permission-rules.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m tests/direct-personality.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+ [32m✓[39m tests/workflow-commands-pure.test.ts [2m([22m[2m27 tests[22m[2m)[22m[32m 32[2mms[22m[39m
+ [32m✓[39m tests/web-tools-pure.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m tests/hook-schema.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m tests/todo-pure.test.ts [2m([22m[2m27 tests[22m[2m)[22m[32m 28[2mms[22m[39m
+ [32m✓[39m tests/observability.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 22626[2mms[22m[39m
+     [33m[2m✓[22m[39m commit_stage emits a commit.stage timing span [33m 11366[2mms[22m[39m
+     [33m[2m✓[22m[39m commit_create emits a commit.create timing span [33m 11203[2mms[22m[39m
+ [32m✓[39m tests/commit-message.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m tests/branch-command.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+ [32m✓[39m tests/context.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m tests/workflow-prompts.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m tests/skill-loader.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m tests/session-hooks.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 189[2mms[22m[39m
+ [32m✓[39m tests/memory-eval/bootstrap.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m tests/shell-edit-guard.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m tests/model-visibility.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m tests/tool-search-pure.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m tests/memory-eval/score.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m tests/quality-gates.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m tests/skill-prompt.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m tests/pwsh-pure.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m tests/commit-mutation.test.ts [2m([22m[2m18 tests[22m[2m)[22m[33m 28554[2mms[22m[39m
+     [33m[2m✓[22m[39m commit_stage rejects missing token and never stages unsafe ignored paths [33m 14002[2mms[22m[39m
+     [33m[2m✓[22m[39m commit_create revalidates staged set and message immediately before commit [33m 13132[2mms[22m[39m
+     [33m[2m✓[22m[39m returns untracked files without throwing on a repo with no commits [33m 618[2mms[22m[39m
+     [33m[2m✓[22m[39m leaves no staged files after commitCurrentChanges throws via a failing pre-commit hook [33m 797[2mms[22m[39m
+ [32m✓[39m tests/commit-planning.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 29756[2mms[22m[39m
+     [33m[2m✓[22m[39m preserves tracked file -> ignored -> git rm --cached staged deletion [33m 7655[2mms[22m[39m
+     [33m[2m✓[22m[39m marks ignored untracked files unsafe to add [33m 5292[2mms[22m[39m
+     [33m[2m✓[22m[39m blocks detached HEAD before mutation [33m 4670[2mms[22m[39m
+     [33m[2m✓[22m[39m blocks mergeInProgress [33m 6761[2mms[22m[39m
+     [33m[2m✓[22m[39m blocks rebaseInProgress [33m 3750[2mms[22m[39m
+     [33m[2m✓[22m[39m blocks hasUnmergedPaths [33m 1625[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m71 passed[39m[22m[90m (71)[39m
+[2m      Tests [22m [1m[32m928 passed[39m[22m[90m (928)[39m
+[2m   Start at [22m 11:46:11
+[2m   Duration [22m 30.94s[2m (transform 9.36s, setup 0ms, import 52.63s, tests 176.30s, environment 26ms)[22m
+

@@ -1,0 +1,7 @@
+pi/extensions/extension-stats.ts
+pi/extensions/prompt-router.ts
+pi/extensions/skill-loader.ts
+pi/extensions/transcript-provider.ts
+pi/skills/workflow/review-it.md
+pi/skills/workflow/templates/review-synthesis-template.md
+pi/tests/helpers/mock-pi.ts

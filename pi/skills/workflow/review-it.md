@@ -310,6 +310,7 @@ Progress reporting requirements:
 - After the panel returns and artifact verification starts, report: `Review panel completed; verifying reviewer artifacts.`
 - After all artifacts are read, report: `Reviewer artifacts verified; writing synthesis.`
 - Before default auto-apply, report: `Synthesis written; applying structured plan fixes.`
+- Before the known-blocker quick-fix pass, report: `Synthesis written; checking prior standalone blockers before final readiness.`
 - Before standalone-readiness review, report: `Plan fixes applied; running standalone-readiness check.`
 - If a standalone repair pass is needed, report the pass number and that the Section Integrity Check will run before retrying.
 
@@ -464,19 +465,33 @@ After every `/review-it` edit to a plan, verify:
 
 A simple local check is acceptable, for example `grep -n '^## ' <plan-path>` plus targeted reads around edited sections. If duplicates or malformed headings are found, fix them before launching the standalone-readiness reviewer.
 
-After editing the plan, launch one final reviewer subagent with `agentScope: "both"`, `confirmProjectAgents: false`, `modelSize: "small"`, and `modelPolicy: "same-family"`.
+Before launching the standalone-readiness reviewer, run a **known-blocker quick-fix pass** when applicable:
+
+1. Check the previous review directory for `standalone-readiness-blockers.md`.
+2. If it exists, read it and apply only the listed blocker fixes to the reviewed plan file before standalone review.
+3. Do not launch another full review panel for this quick-fix pass.
+4. Write `{review_dir}/known-blocker-fixes.md` with:
+   - source blocker file path
+   - each blocker addressed
+   - exact plan sections edited
+   - any blocker intentionally not applied and why
+5. Run the Section Integrity Check after the quick-fix pass.
+6. If a listed blocker cannot be fixed safely without product/user scope input, stop and ask the user; do not proceed to standalone-readiness review.
+
+After the known-blocker quick-fix pass and Section Integrity Check, launch one final reviewer subagent with `agentScope: "both"`, `confirmProjectAgents: false`, `modelSize: "small"`, and `modelPolicy: "same-family"`.
 
 The final reviewer must act as a standalone-readiness verifier with this exact goal:
 
-> Pretend you are starting a brand-new Pi session with no prior conversation. Is this plan sufficient to execute safely and completely with `/do-it <plan-path>`? Verify that the updated plan includes all necessary context, commands/wrappers, assumptions, evidence gates, validation gates, credential/manual-operation guidance, archive criteria, and a consistent `## Execution Checklist` with one item per executable task/gate/final gate. Return only concrete missing items or `STANDALONE READY`.
+> Pretend you are starting a brand-new Pi session with no prior conversation. Is this plan sufficient to execute safely and completely with `/do-it <plan-path>`? Verify that the updated plan includes all necessary context, commands/wrappers, assumptions, evidence gates, validation gates, credential/manual-operation guidance, archive criteria, and a consistent `## Execution Checklist` with one item per executable task/gate/final gate. Classify each issue as `blocker`, `hardening`, or `nit`. Return `STANDALONE READY` if there are no blockers. If there are blockers, return only concrete blocker items with required fixes. Do not block on hardening or nits; list them only if no blockers exist, under `NON-BLOCKING`.
 
-If the final reviewer returns concrete missing items, update only the plan file again to make it standalone-runnable. Do not rerun the full review panel unless the user explicitly asks.
+If the final reviewer returns blocker items, update only the plan file again to make it standalone-runnable. Do not rerun the full review panel unless the user explicitly asks.
 
 Standalone-readiness repair loop limit:
-- Run at most **two** standalone-readiness repair passes after the initial auto-apply.
+- Run at most **two** standalone-readiness repair passes after the known-blocker quick-fix pass and initial standalone-readiness review.
 - After each repair pass, run the Section Integrity Check before asking the standalone reviewer again.
-- If concrete missing items remain after two repair passes, stop, write them to `{review_dir}/standalone-readiness-blockers.md`, classify the review as not ready, and report the blockers instead of continuing an unbounded patch loop.
-- Do not silently keep patching. Tell the user when the first standalone reviewer returns missing items and again if a second pass is required.
+- On each retry, instruct the standalone reviewer again to classify findings as `blocker`, `hardening`, or `nit`, and to return `STANDALONE READY` when no blockers remain.
+- If blocker items remain after two repair passes, stop, write them to `{review_dir}/standalone-readiness-blockers.md`, classify the review as not ready, and report the blockers instead of continuing an unbounded patch loop.
+- Do not silently keep patching. Tell the user when the first standalone reviewer returns blockers and again if a second pass is required.
 
 The final chat response in default mode must be concise and include:
 - review artifact path

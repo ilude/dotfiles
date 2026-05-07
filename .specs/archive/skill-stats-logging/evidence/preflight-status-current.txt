@@ -1,0 +1,8 @@
+main
+R  pi/extensions/echo-slash-commands.ts -> pi/extensions/00-echo-slash-commands.ts
+ M pi/extensions/extension-stats.ts
+ M pi/extensions/prompt-router.ts
+ M pi/extensions/transcript-provider.ts
+ M pi/skills/workflow/review-it.md
+ M pi/skills/workflow/templates/review-synthesis-template.md
+?? .specs/skill-stats-logging/

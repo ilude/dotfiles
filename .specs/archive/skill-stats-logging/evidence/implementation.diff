@@ -1,0 +1,930 @@
+diff --git a/pi/extensions/extension-stats.ts b/pi/extensions/extension-stats.ts
+index 34b90a3..e637648 100644
+--- a/pi/extensions/extension-stats.ts
++++ b/pi/extensions/extension-stats.ts
+@@ -8,7 +8,7 @@
+  *
+  * Shows rolling lookback windows (1/7/30/90d) with two sections:
+  * - aggregates by extension
+- * - aggregates by extension/tool (native tools are annotated as Pi/<tool>)
++ * - aggregates by extension/tool or extension/command (native tools are annotated as Pi/<tool>)
+  *
+  * Controls:
+  * - m: toggle calls vs token-estimate attribution
+@@ -94,6 +94,7 @@ interface UsageRow {
+ 
+ interface ToolOwnershipDiscovery {
+ 	ownersByTool: Map<string, Set<string>>;
++	ownersByCommand: Map<string, Set<string>>;
+ 	ownerNames: string[];
+ 	packageScanRoots: number;
+ }
+@@ -111,6 +112,10 @@ const DEFAULT_REPORT_DAYS = [1, 7, 30] as const;
+ const PAGE_SIZE = 10;
+ 
+ const BUILTIN_TOOL_NAMES = new Set(["bash", "read", "edit", "write", "grep", "find", "ls"]);
++const LEGACY_TOOL_OWNERS = new Map([
++	["search", "Pi"],
++	["think", "Pi"],
++]);
+ 
+ function getAgentDir(): string {
+ 	return process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), ".pi", "agent");
+@@ -265,6 +270,14 @@ function extractRegisteredToolNames(source: string): string[] {
+ 	return [...names];
+ }
+ 
++function extractRegisteredCommandNames(source: string): string[] {
++	const names = new Set<string>();
++	for (const match of source.matchAll(/registerCommand\s*\(\s*["'`]([^"'`]+)["'`]/g)) {
++		addExtractedToolName(names, match[1]);
++	}
++	return [...names];
++}
++
+ async function walkCodeFiles(rootPath: string, signal?: AbortSignal): Promise<string[]> {
+ 	const files: string[] = [];
+ 	const stack = [rootPath];
+@@ -429,8 +442,9 @@ async function collectConfiguredNpmPackageTargets(
+ 	return [...deduped.values()];
+ }
+ 
+-async function collectToolOwnersFromRoot(
++async function collectOwnersFromRoot(
+ 	ownersByTool: Map<string, Set<string>>,
++	ownersByCommand: Map<string, Set<string>>,
+ 	rootPath: string,
+ 	resolveOwner: (filePath: string) => string,
+ 	signal?: AbortSignal,
+@@ -457,19 +471,31 @@ async function collectToolOwnersFromRoot(
+ 			set.add(owner);
+ 			ownersByTool.set(toolName, set);
+ 		}
++		for (const commandName of extractRegisteredCommandNames(source)) {
++			const set = ownersByCommand.get(commandName) ?? new Set<string>();
++			set.add(owner);
++			ownersByCommand.set(commandName, set);
++		}
+ 	}
+ }
+ 
+ async function discoverExtensionToolOwners(cwd: string, signal?: AbortSignal): Promise<ToolOwnershipDiscovery> {
+ 	const ownersByTool = new Map<string, Set<string>>();
++	const ownersByCommand = new Map<string, Set<string>>();
+ 
+ 	const extensionRoot = getExtensionRoot();
+-	await collectToolOwnersFromRoot(ownersByTool, extensionRoot, (filePath) => ownerFromExtensionFilePath(filePath, extensionRoot), signal);
++	await collectOwnersFromRoot(
++		ownersByTool,
++		ownersByCommand,
++		extensionRoot,
++		(filePath) => ownerFromExtensionFilePath(filePath, extensionRoot),
++		signal,
++	);
+ 
+ 	const packageTargets = await collectConfiguredNpmPackageTargets(cwd, signal);
+ 	for (const target of packageTargets) {
+ 		if (signal?.aborted) break;
+-		await collectToolOwnersFromRoot(ownersByTool, target.rootPath, () => target.owner, signal);
++		await collectOwnersFromRoot(ownersByTool, ownersByCommand, target.rootPath, () => target.owner, signal);
+ 	}
+ 
+ 	for (const nativeTool of BUILTIN_TOOL_NAMES) {
+@@ -478,10 +504,13 @@ async function discoverExtensionToolOwners(cwd: string, signal?: AbortSignal): P
+ 		ownersByTool.set(nativeTool, existing);
+ 	}
+ 
+-	const ownerNames = [...new Set([...ownersByTool.values()].flatMap((s) => [...s]))].sort((a, b) => a.localeCompare(b));
++	const ownerNames = [...new Set([...ownersByTool.values(), ...ownersByCommand.values()].flatMap((s) => [...s]))].sort((a, b) =>
++		a.localeCompare(b),
++	);
+ 
+ 	return {
+ 		ownersByTool,
++		ownersByCommand,
+ 		ownerNames,
+ 		packageScanRoots: packageTargets.length,
+ 	};
+@@ -498,6 +527,9 @@ function resolveToolOwner(toolName: string, ownersByTool: Map<string, Set<string
+ 
+ 	if (BUILTIN_TOOL_NAMES.has(toolName)) return "Pi";
+ 
++	const legacyOwner = LEGACY_TOOL_OWNERS.get(toolName);
++	if (legacyOwner) return legacyOwner;
++
+ 	if (toolName.startsWith("mcp__") || toolName.startsWith("server__")) {
+ 		const mcpOwner = firstSortedOwner(ownersByTool.get("mcp"));
+ 		return mcpOwner ?? "pi-mcp-adapter";
+@@ -506,6 +538,16 @@ function resolveToolOwner(toolName: string, ownersByTool: Map<string, Set<string
+ 	return "unknown-extension";
+ }
+ 
++function resolveCommandOwner(commandName: string, ownersByCommand: Map<string, Set<string>>): string {
++	return firstSortedOwner(ownersByCommand.get(commandName)) ?? "unknown-extension";
++}
++
++function parseSlashEchoCommand(content: unknown): string | null {
++	if (typeof content !== "string" || !content.startsWith("/")) return null;
++	const command = content.slice(1).trim().split(/\s+/, 1)[0];
++	return command && command.length > 0 ? command : null;
++}
++
+ async function walkSessionFiles(root: string, signal?: AbortSignal): Promise<string[]> {
+ 	const out: string[] = [];
+ 	const stack: string[] = [root];
+@@ -553,12 +595,21 @@ function extractUsageTokens(usage: any): number {
+ 	const output = toFiniteNumber(usage.output);
+ 	const cacheRead = toFiniteNumber(usage.cacheRead);
+ 	const cacheWrite = toFiniteNumber(usage.cacheWrite);
+-	return input + output + cacheRead + cacheWrite;
++	const otelInput = toFiniteNumber(usage["gen_ai.usage.input_tokens"]);
++	const otelOutput = toFiniteNumber(usage["gen_ai.usage.output_tokens"]);
++	const otelCacheRead = toFiniteNumber(usage["gen_ai.usage.cache_read_tokens"]);
++	const otelCacheWrite = toFiniteNumber(usage["gen_ai.usage.cache_write_tokens"]);
++	return input + output + cacheRead + cacheWrite + otelInput + otelOutput + otelCacheRead + otelCacheWrite;
++}
++
++function estimateTextTokens(text: unknown): number {
++	return typeof text === "string" && text.length > 0 ? Math.ceil(text.length / 4) : 0;
+ }
+ 
+ async function parseSessionFile(
+ 	filePath: string,
+ 	ownersByTool: Map<string, Set<string>>,
++	ownersByCommand: Map<string, Set<string>>,
+ 	signal?: AbortSignal,
+ ): Promise<ParsedSession | null> {
+ 	const fileName = path.basename(filePath);
+@@ -572,6 +623,7 @@ async function parseSessionFile(
+ 	const sessionsByExtension = new Set<string>();
+ 	let toolCalls = 0;
+ 	let estimatedToolTokens = 0;
++	const pendingCommandKeys: string[] = [];
+ 
+ 	const stream = createReadStream(filePath, { encoding: "utf8" });
+ 	const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+@@ -598,6 +650,38 @@ async function parseSessionFile(
+ 				continue;
+ 			}
+ 
++			if (obj?.type === "custom_message" && obj?.customType === "extension-stats") {
++				const commandName = "extension-stats";
++				const owner = resolveCommandOwner(commandName, ownersByCommand);
++				const commandKey = `${owner}/${commandName}`;
++				const tokens = estimateTextTokens(obj.content);
++
++				toolCalls += 1;
++				estimatedToolTokens += tokens;
++				callsByToolKey.set(commandKey, (callsByToolKey.get(commandKey) ?? 0) + 1);
++				tokensByToolKey.set(commandKey, (tokensByToolKey.get(commandKey) ?? 0) + tokens);
++				callsByExtension.set(owner, (callsByExtension.get(owner) ?? 0) + 1);
++				tokensByExtension.set(owner, (tokensByExtension.get(owner) ?? 0) + tokens);
++				sessionsByToolKey.add(commandKey);
++				sessionsByExtension.add(owner);
++				continue;
++			}
++
++			if (obj?.type === "custom_message" && obj?.customType === "slash-echo") {
++				const commandName = parseSlashEchoCommand(obj.content);
++				if (!commandName) continue;
++				const owner = resolveCommandOwner(commandName, ownersByCommand);
++				const commandKey = `${owner}/${commandName}`;
++
++				toolCalls += 1;
++				callsByToolKey.set(commandKey, (callsByToolKey.get(commandKey) ?? 0) + 1);
++				callsByExtension.set(owner, (callsByExtension.get(owner) ?? 0) + 1);
++				sessionsByToolKey.add(commandKey);
++				sessionsByExtension.add(owner);
++				pendingCommandKeys.push(commandKey);
++				continue;
++			}
++
+ 			if (obj?.type !== "message") continue;
+ 			const message = obj?.message;
+ 			if (message?.role !== "assistant" || !Array.isArray(message?.content)) continue;
+@@ -609,6 +693,15 @@ async function parseSessionFile(
+ 			if (toolNames.length === 0) continue;
+ 
+ 			const usageTokens = extractUsageTokens(extractMessageUsage(obj));
++			if (usageTokens > 0 && pendingCommandKeys.length > 0) {
++				const tokensPerCommand = usageTokens / pendingCommandKeys.length;
++				for (const commandKey of pendingCommandKeys.splice(0)) {
++					const owner = commandKey.split("/", 1)[0] || "unknown-extension";
++					estimatedToolTokens += tokensPerCommand;
++					tokensByToolKey.set(commandKey, (tokensByToolKey.get(commandKey) ?? 0) + tokensPerCommand);
++					tokensByExtension.set(owner, (tokensByExtension.get(owner) ?? 0) + tokensPerCommand);
++				}
++			}
+ 			const tokensPerToolCall = usageTokens > 0 ? usageTokens / toolNames.length : 0;
+ 
+ 			for (const toolName of toolNames) {
+@@ -734,6 +827,116 @@ function addSessionToRange(range: RangeAgg, session: ParsedSession): void {
+ 	}
+ }
+ 
++function addTokensToRange(range: RangeAgg, dayKeyLocal: string, owner: string, toolKey: string, tokens: number): void {
++	const day = range.dayByKey.get(dayKeyLocal);
++	if (!day || tokens <= 0) return;
++	range.estimatedToolTokens += tokens;
++	day.estimatedToolTokens += tokens;
++	range.tokensByToolKey.set(toolKey, (range.tokensByToolKey.get(toolKey) ?? 0) + tokens);
++	day.tokensByToolKey.set(toolKey, (day.tokensByToolKey.get(toolKey) ?? 0) + tokens);
++	range.tokensByExtension.set(owner, (range.tokensByExtension.get(owner) ?? 0) + tokens);
++	day.tokensByExtension.set(owner, (day.tokensByExtension.get(owner) ?? 0) + tokens);
++}
++
++async function addPromptRouterTraceTokensToRanges(ranges: Map<number, RangeAgg>, signal?: AbortSignal): Promise<void> {
++	const traceRoot = path.join(getAgentDir(), "traces");
++	if (!(await pathExists(traceRoot))) return;
++	const traceFiles = await walkSessionFiles(traceRoot, signal);
++	for (const filePath of traceFiles) {
++		if (signal?.aborted) return;
++		const byTurn = new Map<string, { routedAt?: Date; tokens: number }>();
++		const stream = createReadStream(filePath, { encoding: "utf8" });
++		const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
++		try {
++			for await (const line of rl) {
++				if (!line.trim()) continue;
++				let obj: any;
++				try {
++					obj = JSON.parse(line);
++				} catch {
++					continue;
++				}
++				const turnId = typeof obj?.turn_id === "string" ? obj.turn_id : "turn-unknown";
++				const current = byTurn.get(turnId) ?? { tokens: 0 };
++				if (obj?.event_type === "routing_decision") {
++					const d = new Date(obj.timestamp);
++					if (Number.isFinite(d.getTime())) current.routedAt = d;
++				}
++				if (obj?.event_type === "assistant_message") {
++					current.tokens += extractUsageTokens(obj?.payload?.usage);
++				}
++				byTurn.set(turnId, current);
++			}
++		} catch {
++			// Ignore malformed or concurrently-rotated trace files.
++		} finally {
++			rl.close();
++			stream.destroy();
++		}
++		for (const { routedAt, tokens } of byTurn.values()) {
++			if (!routedAt || tokens <= 0) continue;
++			const sessionDay = localMidnight(routedAt);
++			const dayKey = toLocalDayKey(routedAt);
++			for (const d of RANGE_DAYS) {
++				const range = ranges.get(d)!;
++				const start = range.days[0].date;
++				const end = range.days[range.days.length - 1].date;
++				if (sessionDay < start || sessionDay > end) continue;
++				addTokensToRange(range, dayKey, "prompt-router", "prompt-router/route", tokens);
++			}
++		}
++	}
++}
++
++async function addPromptRouterEventsToRanges(ranges: Map<number, RangeAgg>, cwd: string, signal?: AbortSignal): Promise<void> {
++	const logPath = path.join(cwd, "pi", "prompt-routing", "logs", "routing_log.jsonl");
++	if (!(await pathExists(logPath))) return;
++
++	const stream = createReadStream(logPath, { encoding: "utf8" });
++	const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
++	try {
++		for await (const line of rl) {
++			if (signal?.aborted) return;
++			if (!line.trim()) continue;
++			let obj: any;
++			try {
++				obj = JSON.parse(line);
++			} catch {
++				continue;
++			}
++			const ts = toFiniteNumber(obj?.ts);
++			if (ts <= 0) continue;
++			const startedAt = new Date(ts * 1000);
++			if (!Number.isFinite(startedAt.getTime())) continue;
++			const session: ParsedSession = {
++				startedAt,
++				dayKeyLocal: toLocalDayKey(startedAt),
++				toolCalls: 1,
++				estimatedToolTokens: 0,
++				callsByToolKey: new Map([["prompt-router/route", 1]]),
++				tokensByToolKey: new Map(),
++				callsByExtension: new Map([["prompt-router", 1]]),
++				tokensByExtension: new Map(),
++				sessionsByToolKey: new Set(["prompt-router/route"]),
++				sessionsByExtension: new Set(["prompt-router"]),
++			};
++			const sessionDay = localMidnight(startedAt);
++			for (const d of RANGE_DAYS) {
++				const range = ranges.get(d)!;
++				const start = range.days[0].date;
++				const end = range.days[range.days.length - 1].date;
++				if (sessionDay < start || sessionDay > end) continue;
++				addSessionToRange(range, session);
++			}
++		}
++	} catch {
++		return;
++	} finally {
++		rl.close();
++		stream.destroy();
++	}
++}
++
+ function resolveEffectiveMetric(mode: MetricMode, totalTokens: number): MetricMode {
+ 	if (mode === "tokens" && totalTokens <= 0) return "calls";
+ 	return mode;
+@@ -880,7 +1083,7 @@ async function computeBreakdown(pi: ExtensionAPI, cwd: string, signal?: AbortSig
+ 
+ 	for (const filePath of candidates) {
+ 		if (signal?.aborted) break;
+-		const session = await parseSessionFile(filePath, ownersByTool, signal);
++		const session = await parseSessionFile(filePath, ownersByTool, ownership.ownersByCommand, signal);
+ 		if (!session) continue;
+ 
+ 		const sessionDay = localMidnight(session.startedAt);
+@@ -893,6 +1096,9 @@ async function computeBreakdown(pi: ExtensionAPI, cwd: string, signal?: AbortSig
+ 		}
+ 	}
+ 
++	await addPromptRouterEventsToRanges(ranges, cwd, signal);
++	await addPromptRouterTraceTokensToRanges(ranges, signal);
++
+ 	const allToolNames = new Set(pi.getAllTools().map((t) => t.name));
+ 	const unattributedTools = [...allToolNames].filter((name) => resolveToolOwner(name, ownersByTool) === "unknown-extension")
+ 		.length;
+@@ -1100,8 +1306,15 @@ class ExtensionStatsComponent implements Component {
+ 	}
+ }
+ 
++function displayOwnerName(owner: string): string {
++	return owner === "codex-status" ? "status" : owner;
++}
++
+ function displayUsageName(name: string): string {
+-	return name.startsWith("Pi/") ? name.slice("Pi/".length) : name;
++	const withoutNativePrefix = name.startsWith("Pi/") ? name.slice("Pi/".length) : name;
++	const slashIndex = withoutNativePrefix.indexOf("/");
++	if (slashIndex < 0) return displayOwnerName(withoutNativePrefix);
++	return `${displayOwnerName(withoutNativePrefix.slice(0, slashIndex))}${withoutNativePrefix.slice(slashIndex)}`;
+ }
+ 
+ function markdownUsageTable(rows: UsageRow[]): string[] {
+@@ -1180,7 +1393,7 @@ function renderMarkdownReport(data: BreakdownData, reportDays: number[]): string
+ 			rangeSummary(range, days),
+ 			"\n### By extension",
+ 			...markdownUsageTable(extensionRows),
+-			"\n### By extension/tool",
++			"\n### By extension/tool or command",
+ 			...markdownUsageTable(visibleToolRows),
+ 			...(coreToolNote ? ["", coreToolNote] : []),
+ 		);
+@@ -1192,7 +1405,7 @@ function renderMarkdownReport(data: BreakdownData, reportDays: number[]): string
+ 	const unusedOwners = data.discoveredOwnerNames.filter((owner) => owner !== "Pi" && !usedOwners.has(owner));
+ 	lines.push(
+ 		"\n## Unused extensions",
+-		unusedOwners.length > 0 ? unusedOwners.map((owner) => `- ${owner}`).join("\n") : "_None discovered._",
++		unusedOwners.length > 0 ? unusedOwners.map((owner) => `- ${displayOwnerName(owner)}`).join("\n") : "_None discovered._",
+ 	);
+ 
+ 	return lines.join("\n");
+@@ -1201,7 +1414,7 @@ function renderMarkdownReport(data: BreakdownData, reportDays: number[]): string
+ export default function extensionStatsExtension(pi: ExtensionAPI) {
+ 	pi.registerCommand("extension-stats", {
+ 		description:
+-			"Dump last 1/7/30 days of ~/.pi session tool usage; pass 60, 90, or all to include longer windows",
++			"Dump last 1/7/30 days of ~/.pi session tool/command usage; pass 60, 90, or all to include longer windows",
+ 		handler: async (args, ctx: ExtensionContext) => {
+ 			const reportDays = parseReportDays(args);
+ 			const data = await computeBreakdown(pi, ctx.cwd, undefined);
+diff --git a/pi/extensions/prompt-router.ts b/pi/extensions/prompt-router.ts
+index 75ac89e..fb2b767 100644
+--- a/pi/extensions/prompt-router.ts
++++ b/pi/extensions/prompt-router.ts
+@@ -57,6 +57,8 @@
+  * when transcript tracing is enabled.
+  */
+ 
++import * as fs from "node:fs/promises";
++import * as path from "node:path";
+ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+ import { makeExcerpt, sha256Hex } from "../lib/transcript.js";
+ import { emit, getWriter } from "./transcript-runtime.js";
+@@ -76,6 +78,21 @@ import {
+ 
+ export { safeParseClassifierOutput };
+ 
++const DEBUG_LOG_PATH = path.join(process.cwd(), "pi", "prompt-routing", "logs", "transcript_debug.jsonl");
++
++async function appendTranscriptDebug(event: string, payload: Record<string, unknown> = {}): Promise<void> {
++  try {
++    await fs.mkdir(path.dirname(DEBUG_LOG_PATH), { recursive: true });
++    await fs.appendFile(
++      DEBUG_LOG_PATH,
++      `${JSON.stringify({ ts: Date.now() / 1000, event, pid: process.pid, ...payload })}\n`,
++      "utf8",
++    );
++  } catch {
++    // Debug logging must never affect routing.
++  }
++}
++
+ // ---------------------------------------------------------------------------
+ // Config
+ // ---------------------------------------------------------------------------
+@@ -386,8 +403,20 @@ export async function emitRoutingDecision(
+     modelSwitchApplied?: boolean | null;
+   } = {},
+ ): Promise<void> {
+-  if (!getWriter()) return;
++  const writerAvailable = Boolean(getWriter());
++  await appendTranscriptDebug("emitRoutingDecision_called", {
++    writerAvailable,
++    applied_route: applied ? `${applied.tier}:${applied.effort}` : null,
++    selected_model_size: runtime.selectedModelSize ?? (applied ? modelSizeForTier(applied.tier) : null),
++  });
++  if (!writerAvailable) return;
+   try {
++    await emit({ event_type: "prompt_router_emit_attempt" }, {
++      source: "prompt-router",
++      has_recommendation: rec !== null,
++      applied_route: applied ? `${applied.tier}:${applied.effort}` : null,
++      selected_model_size: runtime.selectedModelSize ?? (applied ? modelSizeForTier(applied.tier) : null),
++    });
+     const payload = {
+       prompt_hash: sha256Hex(promptText),
+       prompt_excerpt: makeExcerpt(promptText),
+@@ -406,7 +435,15 @@ export async function emitRoutingDecision(
+       },
+     };
+     await emit({ event_type: "routing_decision" }, payload);
+-  } catch {
++    await emit({ event_type: "prompt_router_emit_success" }, {
++      source: "prompt-router",
++      applied_route: payload.applied_route,
++      selected_model_size: payload.selected_model_size,
++    });
++  } catch (err: unknown) {
++    await appendTranscriptDebug("emitRoutingDecision_failed", {
++      error: err instanceof Error ? err.message : String(err),
++    });
+     // Tracing must never break the routing path.
+   }
+ }
+@@ -512,6 +549,7 @@ async function classifyAndRoute(
+ // ---------------------------------------------------------------------------
+ 
+ export default function (pi: ExtensionAPI) {
++  void appendTranscriptDebug("prompt_router_extension_loaded");
+   const policy = loadRouterPolicy(EFFORT_ORDER);
+ 
+   const state: RouterState = {
+diff --git a/pi/extensions/skill-loader.ts b/pi/extensions/skill-loader.ts
+index 1f61fe2..09ed58b 100644
+--- a/pi/extensions/skill-loader.ts
++++ b/pi/extensions/skill-loader.ts
+@@ -24,7 +24,7 @@
+  * registration step.
+  */
+ 
+-import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
++import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+ import { discoverSkills, type SkillRecord } from "../lib/skill-discovery.js";
+ 
+ /**
+@@ -92,7 +92,8 @@ export default function (pi: ExtensionAPI) {
+ 	});
+ 
+ 	pi.registerCommand("skills", {
+-		description: "List auto-discovered skills (excludes hardcoded workflow commands).",
++		description:
++			"List auto-discovered skills (excludes hardcoded workflow commands).",
+ 		handler: async (_args, ctx) => {
+ 			if (state.skills.length === 0) {
+ 				ctx.ui.notify(
+@@ -103,7 +104,9 @@ export default function (pi: ExtensionAPI) {
+ 			}
+ 			const lines: string[] = ["Discovered skills:"];
+ 			for (const s of state.skills) {
+-				const tag = isReservedName(s.name) ? " (overridden by hardcoded command)" : "";
++				const tag = isReservedName(s.name)
++					? " (overridden by hardcoded command)"
++					: "";
+ 				const desc = s.description ? ` -- ${s.description.slice(0, 80)}` : "";
+ 				lines.push(`  /${s.name} [${s.source}]${desc}${tag}`);
+ 			}
+diff --git a/pi/extensions/transcript-provider.ts b/pi/extensions/transcript-provider.ts
+index b65dfd0..f266d0c 100644
+--- a/pi/extensions/transcript-provider.ts
++++ b/pi/extensions/transcript-provider.ts
+@@ -93,6 +93,13 @@ function extractAssistantContent(message: unknown): {
+ }
+ 
+ export default function (pi: ExtensionAPI) {
++	let providerLoadedEmitted = false;
++
++	async function emitDebug(eventType: string, payload: Record<string, unknown> = {}): Promise<void> {
++		if (!getWriter()) return;
++		await emit({ event_type: eventType }, { source: "transcript-provider", ...payload });
++	}
++
+ 	// Writer initialization and session_start/session_shutdown emission live in
+ 	// session-hooks.ts so all session-lifecycle work happens in one place.
+ 	// This file owns provider/message/model events only.
+@@ -104,6 +111,11 @@ export default function (pi: ExtensionAPI) {
+ 	// --------------------------------------------------------------------------
+ 	pi.on("turn_start", async (_event) => {
+ 		if (!getWriter()) return;
++		if (!providerLoadedEmitted) {
++			providerLoadedEmitted = true;
++			await emitDebug("transcript_provider_loaded", { pid: process.pid });
++		}
++		await emitDebug("transcript_provider_turn_start");
+ 		advanceTurn();
+ 	});
+ 
+@@ -156,6 +168,9 @@ export default function (pi: ExtensionAPI) {
+ 	pi.on("message_start", async (event) => {
+ 		if (!getWriter()) return;
+ 		const message = event.message as unknown as Record<string, unknown> | undefined;
++		await emitDebug("transcript_provider_message_start_seen", {
++			role: typeof message?.role === "string" ? message.role : undefined,
++		});
+ 		const messageId = typeof message?.id === "string" ? message.id : undefined;
+ 		setCurrentMessageId(messageId);
+ 		await emit(
+@@ -188,8 +203,15 @@ export default function (pi: ExtensionAPI) {
+ 	pi.on("message_end", async (event) => {
+ 		if (!getWriter()) return;
+ 		const message = event.message as unknown as Record<string, unknown> | undefined;
++		await emitDebug("transcript_provider_message_end_seen", {
++			role: typeof message?.role === "string" ? message.role : undefined,
++			has_usage: Boolean(message?.usage),
++		});
+ 		if (!message || message.role !== "assistant") return;
+-		if (!claimAssistantMessageEmission()) return; // already emitted for this turn
++		if (!claimAssistantMessageEmission()) {
++			await emitDebug("transcript_provider_assistant_skipped", { reason: "already-emitted-for-turn" });
++			return;
++		}
+ 
+ 		const messageId = typeof message.id === "string" ? message.id : getCurrentMessageId();
+ 		const { content, toolCalls } = extractAssistantContent(message);
+diff --git a/pi/tests/helpers/mock-pi.ts b/pi/tests/helpers/mock-pi.ts
+index 27bf7cb..4c17e4b 100644
+--- a/pi/tests/helpers/mock-pi.ts
++++ b/pi/tests/helpers/mock-pi.ts
+@@ -5,80 +5,81 @@
+ import { vi } from "vitest";
+ 
+ export interface RegisteredTool {
+-  name: string;
+-  label?: string;
+-  description: string;
+-  parameters: any;
+-  execute: Function;
+-  renderCall?: Function;
+-  renderResult?: Function;
+-  promptSnippet?: string;
+-  promptGuidelines?: string[];
++	name: string;
++	label?: string;
++	description: string;
++	parameters: any;
++	execute: Function;
++	renderCall?: Function;
++	renderResult?: Function;
++	promptSnippet?: string;
++	promptGuidelines?: string[];
+ }
+ 
+ export interface RegisteredHook {
+-  event: string;
+-  handler: Function;
++	event: string;
++	handler: Function;
+ }
+ 
+ export function createMockPi() {
+-  const tools: RegisteredTool[] = [];
+-  const hooks: RegisteredHook[] = [];
+-  const commands: Array<{ name: string; handler: Function }> = [];
++	const tools: RegisteredTool[] = [];
++	const hooks: RegisteredHook[] = [];
++	const commands: Array<{ name: string; handler: Function }> = [];
+ 
+-  const mockPi = {
+-    registerTool: vi.fn((toolDef: any) => {
+-      tools.push(toolDef);
+-    }),
+-    on: vi.fn((event: string, handler: Function) => {
+-      hooks.push({ event, handler });
+-    }),
+-    exec: vi.fn(async (_cmd: string, _args?: string[], _opts?: any) => ({
+-      code: 0,
+-      stdout: "",
+-      stderr: "",
+-    })),
+-    registerCommand: vi.fn((name: string, def: any) => {
+-      commands.push({ name, handler: def.handler });
+-    }),
+-    sendUserMessage: vi.fn(async (_msg: string) => {}),
+-    sendMessage: vi.fn((_message: any, _options?: any) => {}),
++	const mockPi = {
++		registerTool: vi.fn((toolDef: any) => {
++			tools.push(toolDef);
++		}),
++		on: vi.fn((event: string, handler: Function) => {
++			hooks.push({ event, handler });
++		}),
++		exec: vi.fn(async (_cmd: string, _args?: string[], _opts?: any) => ({
++			code: 0,
++			stdout: "",
++			stderr: "",
++		})),
++		registerCommand: vi.fn((name: string, def: any) => {
++			commands.push({ name, handler: def.handler });
++		}),
++		sendUserMessage: vi.fn(async (_msg: string) => {}),
++		sendMessage: vi.fn((_message: any, _options?: any) => {}),
++		appendEntry: vi.fn(async (_customType: string, _data?: unknown) => {}),
+ 
+-    // Test helpers
+-    _tools: tools,
+-    _hooks: hooks,
+-    _commands: commands,
+-    _getTool: (name: string) => tools.find((t) => t.name === name),
+-    _getHook: (event: string) => hooks.filter((h) => h.event === event),
+-  };
++		// Test helpers
++		_tools: tools,
++		_hooks: hooks,
++		_commands: commands,
++		_getTool: (name: string) => tools.find((t) => t.name === name),
++		_getHook: (event: string) => hooks.filter((h) => h.event === event),
++	};
+ 
+-  return mockPi;
++	return mockPi;
+ }
+ 
+ export function createMockCtx(overrides: Record<string, any> = {}) {
+-  return {
+-    cwd: "/test/dir",
+-    ui: {
+-      notify: vi.fn(),
+-      confirm: vi.fn(async () => true),
+-      input: vi.fn(async () => undefined as string | undefined),
+-      select: vi.fn(async () => undefined as string | undefined),
+-    },
+-    hasUI: true,
+-    ...overrides,
+-  };
++	return {
++		cwd: "/test/dir",
++		ui: {
++			notify: vi.fn(),
++			confirm: vi.fn(async () => true),
++			input: vi.fn(async () => undefined as string | undefined),
++			select: vi.fn(async () => undefined as string | undefined),
++		},
++		hasUI: true,
++		...overrides,
++	};
+ }
+ 
+ export function createMockTheme() {
+-  return {
+-    fg: vi.fn((_color: string, text: string) => text),
+-    bold: vi.fn((text: string) => text),
+-  };
++	return {
++		fg: vi.fn((_color: string, text: string) => text),
++		bold: vi.fn((text: string) => text),
++	};
+ }
+ 
+ export function createMockSignal() {
+-  const controller = new AbortController();
+-  return { controller, signal: controller.signal };
++	const controller = new AbortController();
++	return { controller, signal: controller.signal };
+ }
+ 
+ // ---------------------------------------------------------------------------
+@@ -86,55 +87,173 @@ export function createMockSignal() {
+ // ---------------------------------------------------------------------------
+ 
+ export interface GitRemoteFixture {
+-  label: string;
+-  remotes: Record<string, string>;
+-  preferredRemote?: string;
+-  expectedSlug: string;
++	label: string;
++	remotes: Record<string, string>;
++	preferredRemote?: string;
++	expectedSlug: string;
+ }
+ 
+ /** Table-driven fixtures mapping real-world remote formats to expected repo ID slugs.
+  *  These must match the decision tables in pi/docs/expertise-layering.md (T1 contract).
+  */
+ export const GIT_REMOTE_FIXTURES: GitRemoteFixture[] = [
+-  // HTTPS -- GitHub
+-  { label: "GitHub HTTPS with .git suffix", remotes: { origin: "https://github.com/owner/repo.git" }, expectedSlug: "gh/owner/repo" },
+-  { label: "GitHub HTTPS without .git suffix", remotes: { origin: "https://github.com/owner/repo" }, expectedSlug: "gh/owner/repo" },
+-  { label: "GitHub HTTPS uppercase host", remotes: { origin: "https://GITHUB.COM/Owner/Repo.git" }, expectedSlug: "gh/owner/repo" },
+-  // SCP-style SSH -- GitHub
+-  { label: "GitHub SCP with .git suffix", remotes: { origin: "git@github.com:owner/repo.git" }, expectedSlug: "gh/owner/repo" },
+-  { label: "GitHub SCP without .git suffix", remotes: { origin: "git@github.com:owner/repo" }, expectedSlug: "gh/owner/repo" },
+-  { label: "GitHub SCP uppercase host", remotes: { origin: "git@GITHUB.COM:Owner/Repo.git" }, expectedSlug: "gh/owner/repo" },
+-  // SSH with explicit port -- GitHub
+-  { label: "SSH URL with explicit port", remotes: { origin: "ssh://git@github.com/owner/repo.git" }, expectedSlug: "gh/owner/repo" },
+-  // HTTPS -- GitLab
+-  { label: "GitLab HTTPS with .git suffix", remotes: { origin: "https://gitlab.com/owner/repo.git" }, expectedSlug: "gl/owner/repo" },
+-  { label: "GitLab HTTPS uppercase host", remotes: { origin: "https://GITLAB.COM/Owner/Repo.git" }, expectedSlug: "gl/owner/repo" },
+-  // SCP-style SSH -- GitLab
+-  { label: "GitLab SCP with .git suffix", remotes: { origin: "git@gitlab.com:owner/repo.git" }, expectedSlug: "gl/owner/repo" },
+-  // HTTPS -- nested GitLab groups
+-  { label: "GitLab nested group (two levels)", remotes: { origin: "https://gitlab.com/group/subgroup/repo.git" }, expectedSlug: "gl/group/subgroup/repo" },
+-  { label: "GitLab SCP nested group", remotes: { origin: "git@gitlab.com:group/subgroup/repo.git" }, expectedSlug: "gl/group/subgroup/repo" },
+-  { label: "GitLab nested group (three levels)", remotes: { origin: "https://gitlab.com/org/team/project/repo.git" }, expectedSlug: "gl/org/team/project/repo" },
+-  // HTTPS -- Bitbucket
+-  { label: "Bitbucket HTTPS with .git suffix", remotes: { origin: "https://bitbucket.org/owner/repo.git" }, expectedSlug: "bb/owner/repo" },
+-  // HTTPS -- Azure DevOps (strips _git segment)
+-  { label: "Azure DevOps HTTPS with _git segment", remotes: { origin: "https://dev.azure.com/org/project/_git/repo" }, expectedSlug: "az/org/project/repo" },
+-  // HTTPS -- unknown/external host with non-standard port
+-  { label: "external host with non-standard port", remotes: { origin: "https://example.com:8443/owner/repo.git" }, expectedSlug: "ext/example.com/owner/repo" },
+-  // Multiple remotes -- selection precedence
+-  { label: "multiple remotes uses origin by default", remotes: { upstream: "https://github.com/canonical/repo.git", origin: "https://github.com/fork/repo.git" }, expectedSlug: "gh/fork/repo" },
+-  { label: "multiple remotes preferred remote wins over origin", remotes: { upstream: "https://github.com/owner/aux", origin: "https://github.com/fork/repo.git" }, preferredRemote: "upstream", expectedSlug: "gh/owner/aux" },
+-  { label: "multiple remotes no origin falls back lexically", remotes: { upstream: "https://github.com/org/repo.git", backup: "https://github.com/backup/repo.git" }, expectedSlug: "gh/backup/repo" },
++	// HTTPS -- GitHub
++	{
++		label: "GitHub HTTPS with .git suffix",
++		remotes: { origin: "https://github.com/owner/repo.git" },
++		expectedSlug: "gh/owner/repo",
++	},
++	{
++		label: "GitHub HTTPS without .git suffix",
++		remotes: { origin: "https://github.com/owner/repo" },
++		expectedSlug: "gh/owner/repo",
++	},
++	{
++		label: "GitHub HTTPS uppercase host",
++		remotes: { origin: "https://GITHUB.COM/Owner/Repo.git" },
++		expectedSlug: "gh/owner/repo",
++	},
++	// SCP-style SSH -- GitHub
++	{
++		label: "GitHub SCP with .git suffix",
++		remotes: { origin: "git@github.com:owner/repo.git" },
++		expectedSlug: "gh/owner/repo",
++	},
++	{
++		label: "GitHub SCP without .git suffix",
++		remotes: { origin: "git@github.com:owner/repo" },
++		expectedSlug: "gh/owner/repo",
++	},
++	{
++		label: "GitHub SCP uppercase host",
++		remotes: { origin: "git@GITHUB.COM:Owner/Repo.git" },
++		expectedSlug: "gh/owner/repo",
++	},
++	// SSH with explicit port -- GitHub
++	{
++		label: "SSH URL with explicit port",
++		remotes: { origin: "ssh://git@github.com/owner/repo.git" },
++		expectedSlug: "gh/owner/repo",
++	},
++	// HTTPS -- GitLab
++	{
++		label: "GitLab HTTPS with .git suffix",
++		remotes: { origin: "https://gitlab.com/owner/repo.git" },
++		expectedSlug: "gl/owner/repo",
++	},
++	{
++		label: "GitLab HTTPS uppercase host",
++		remotes: { origin: "https://GITLAB.COM/Owner/Repo.git" },
++		expectedSlug: "gl/owner/repo",
++	},
++	// SCP-style SSH -- GitLab
++	{
++		label: "GitLab SCP with .git suffix",
++		remotes: { origin: "git@gitlab.com:owner/repo.git" },
++		expectedSlug: "gl/owner/repo",
++	},
++	// HTTPS -- nested GitLab groups
++	{
++		label: "GitLab nested group (two levels)",
++		remotes: { origin: "https://gitlab.com/group/subgroup/repo.git" },
++		expectedSlug: "gl/group/subgroup/repo",
++	},
++	{
++		label: "GitLab SCP nested group",
++		remotes: { origin: "git@gitlab.com:group/subgroup/repo.git" },
++		expectedSlug: "gl/group/subgroup/repo",
++	},
++	{
++		label: "GitLab nested group (three levels)",
++		remotes: { origin: "https://gitlab.com/org/team/project/repo.git" },
++		expectedSlug: "gl/org/team/project/repo",
++	},
++	// HTTPS -- Bitbucket
++	{
++		label: "Bitbucket HTTPS with .git suffix",
++		remotes: { origin: "https://bitbucket.org/owner/repo.git" },
++		expectedSlug: "bb/owner/repo",
++	},
++	// HTTPS -- Azure DevOps (strips _git segment)
++	{
++		label: "Azure DevOps HTTPS with _git segment",
++		remotes: { origin: "https://dev.azure.com/org/project/_git/repo" },
++		expectedSlug: "az/org/project/repo",
++	},
++	// HTTPS -- unknown/external host with non-standard port
++	{
++		label: "external host with non-standard port",
++		remotes: { origin: "https://example.com:8443/owner/repo.git" },
++		expectedSlug: "ext/example.com/owner/repo",
++	},
++	// Multiple remotes -- selection precedence
++	{
++		label: "multiple remotes uses origin by default",
++		remotes: {
++			upstream: "https://github.com/canonical/repo.git",
++			origin: "https://github.com/fork/repo.git",
++		},
++		expectedSlug: "gh/fork/repo",
++	},
++	{
++		label: "multiple remotes preferred remote wins over origin",
++		remotes: {
++			upstream: "https://github.com/owner/aux",
++			origin: "https://github.com/fork/repo.git",
++		},
++		preferredRemote: "upstream",
++		expectedSlug: "gh/owner/aux",
++	},
++	{
++		label: "multiple remotes no origin falls back lexically",
++		remotes: {
++			upstream: "https://github.com/org/repo.git",
++			backup: "https://github.com/backup/repo.git",
++		},
++		expectedSlug: "gh/backup/repo",
++	},
+ ];
+ 
+ /** Fixtures for Windows-safe normalization edge cases */
+ export const WINDOWS_NORMALIZATION_FIXTURES: GitRemoteFixture[] = [
+-  { label: "reserved name CON", remotes: { origin: "https://github.com/owner/CON.git" }, expectedSlug: "gh/owner/con_" },
+-  { label: "reserved name PRN", remotes: { origin: "https://github.com/owner/PRN.git" }, expectedSlug: "gh/owner/prn_" },
+-  { label: "reserved name AUX", remotes: { origin: "https://github.com/owner/AUX.git" }, expectedSlug: "gh/owner/aux_" },
+-  { label: "reserved name NUL", remotes: { origin: "https://github.com/owner/NUL.git" }, expectedSlug: "gh/owner/nul_" },
+-  { label: "reserved name COM1", remotes: { origin: "https://github.com/owner/COM1.git" }, expectedSlug: "gh/owner/com1_" },
+-  { label: "reserved name LPT1", remotes: { origin: "https://github.com/owner/LPT1.git" }, expectedSlug: "gh/owner/lpt1_" },
+-  { label: "trailing dot on repo name", remotes: { origin: "https://github.com/owner/repo..git" }, expectedSlug: "gh/owner/repo" },
+-  { label: "case folding across path", remotes: { origin: "https://GITHUB.COM/MyOrg/MyRepo.git" }, expectedSlug: "gh/myorg/myrepo" },
++	{
++		label: "reserved name CON",
++		remotes: { origin: "https://github.com/owner/CON.git" },
++		expectedSlug: "gh/owner/con_",
++	},
++	{
++		label: "reserved name PRN",
++		remotes: { origin: "https://github.com/owner/PRN.git" },
++		expectedSlug: "gh/owner/prn_",
++	},
++	{
++		label: "reserved name AUX",
++		remotes: { origin: "https://github.com/owner/AUX.git" },
++		expectedSlug: "gh/owner/aux_",
++	},
++	{
++		label: "reserved name NUL",
++		remotes: { origin: "https://github.com/owner/NUL.git" },
++		expectedSlug: "gh/owner/nul_",
++	},
++	{
++		label: "reserved name COM1",
++		remotes: { origin: "https://github.com/owner/COM1.git" },
++		expectedSlug: "gh/owner/com1_",
++	},
++	{
++		label: "reserved name LPT1",
++		remotes: { origin: "https://github.com/owner/LPT1.git" },
++		expectedSlug: "gh/owner/lpt1_",
++	},
++	{
++		label: "trailing dot on repo name",
++		remotes: { origin: "https://github.com/owner/repo..git" },
++		expectedSlug: "gh/owner/repo",
++	},
++	{
++		label: "case folding across path",
++		remotes: { origin: "https://GITHUB.COM/MyOrg/MyRepo.git" },
++		expectedSlug: "gh/myorg/myrepo",
++	},
+ ];
