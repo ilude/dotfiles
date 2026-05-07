@@ -16,6 +16,7 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 ## Source captures
 
 - [claude_prompts](claude_prompts.md) — source-based extraction of Claude Code system-prompt text and prompt-selection rules.
+- [source-control-and-agentic-dev-services](projects/source-control-and-agentic-dev-services.md) — GitHub-alternative and agentic developer-tool services discussed positively in the GitHub alternatives video.
 
 ## Strongest signals
 
