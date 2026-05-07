@@ -8,7 +8,7 @@
  *
  * Shows rolling lookback windows (1/7/30/90d) with two sections:
  * - aggregates by extension
- * - aggregates by extension/tool (native tools are annotated as Pi/<tool>)
+ * - aggregates by extension/tool or extension/command (native tools are annotated as Pi/<tool>)
  *
  * Controls:
  * - m: toggle calls vs token-estimate attribution
@@ -20,6 +20,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { BorderedLoader } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, type Component, type TUI, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { createReadStream, type Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -94,6 +95,7 @@ interface UsageRow {
 
 interface ToolOwnershipDiscovery {
 	ownersByTool: Map<string, Set<string>>;
+	ownersByCommand: Map<string, Set<string>>;
 	ownerNames: string[];
 	packageScanRoots: number;
 }
@@ -111,6 +113,10 @@ const DEFAULT_REPORT_DAYS = [1, 7, 30] as const;
 const PAGE_SIZE = 10;
 
 const BUILTIN_TOOL_NAMES = new Set(["bash", "read", "edit", "write", "grep", "find", "ls"]);
+const LEGACY_TOOL_OWNERS = new Map([
+	["search", "Pi"],
+	["think", "Pi"],
+]);
 
 function getAgentDir(): string {
 	return process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), ".pi", "agent");
@@ -262,6 +268,14 @@ function extractRegisteredToolNames(source: string): string[] {
 		addExtractedToolName(names, match[1]);
 	}
 
+	return [...names];
+}
+
+function extractRegisteredCommandNames(source: string): string[] {
+	const names = new Set<string>();
+	for (const match of source.matchAll(/registerCommand\s*\(\s*["'`]([^"'`]+)["'`]/g)) {
+		addExtractedToolName(names, match[1]);
+	}
 	return [...names];
 }
 
@@ -429,8 +443,9 @@ async function collectConfiguredNpmPackageTargets(
 	return [...deduped.values()];
 }
 
-async function collectToolOwnersFromRoot(
+async function collectOwnersFromRoot(
 	ownersByTool: Map<string, Set<string>>,
+	ownersByCommand: Map<string, Set<string>>,
 	rootPath: string,
 	resolveOwner: (filePath: string) => string,
 	signal?: AbortSignal,
@@ -457,19 +472,31 @@ async function collectToolOwnersFromRoot(
 			set.add(owner);
 			ownersByTool.set(toolName, set);
 		}
+		for (const commandName of extractRegisteredCommandNames(source)) {
+			const set = ownersByCommand.get(commandName) ?? new Set<string>();
+			set.add(owner);
+			ownersByCommand.set(commandName, set);
+		}
 	}
 }
 
 async function discoverExtensionToolOwners(cwd: string, signal?: AbortSignal): Promise<ToolOwnershipDiscovery> {
 	const ownersByTool = new Map<string, Set<string>>();
+	const ownersByCommand = new Map<string, Set<string>>();
 
 	const extensionRoot = getExtensionRoot();
-	await collectToolOwnersFromRoot(ownersByTool, extensionRoot, (filePath) => ownerFromExtensionFilePath(filePath, extensionRoot), signal);
+	await collectOwnersFromRoot(
+		ownersByTool,
+		ownersByCommand,
+		extensionRoot,
+		(filePath) => ownerFromExtensionFilePath(filePath, extensionRoot),
+		signal,
+	);
 
 	const packageTargets = await collectConfiguredNpmPackageTargets(cwd, signal);
 	for (const target of packageTargets) {
 		if (signal?.aborted) break;
-		await collectToolOwnersFromRoot(ownersByTool, target.rootPath, () => target.owner, signal);
+		await collectOwnersFromRoot(ownersByTool, ownersByCommand, target.rootPath, () => target.owner, signal);
 	}
 
 	for (const nativeTool of BUILTIN_TOOL_NAMES) {
@@ -478,10 +505,13 @@ async function discoverExtensionToolOwners(cwd: string, signal?: AbortSignal): P
 		ownersByTool.set(nativeTool, existing);
 	}
 
-	const ownerNames = [...new Set([...ownersByTool.values()].flatMap((s) => [...s]))].sort((a, b) => a.localeCompare(b));
+	const ownerNames = [...new Set([...ownersByTool.values(), ...ownersByCommand.values()].flatMap((s) => [...s]))].sort((a, b) =>
+		a.localeCompare(b),
+	);
 
 	return {
 		ownersByTool,
+		ownersByCommand,
 		ownerNames,
 		packageScanRoots: packageTargets.length,
 	};
@@ -498,12 +528,49 @@ function resolveToolOwner(toolName: string, ownersByTool: Map<string, Set<string
 
 	if (BUILTIN_TOOL_NAMES.has(toolName)) return "Pi";
 
+	const legacyOwner = LEGACY_TOOL_OWNERS.get(toolName);
+	if (legacyOwner) return legacyOwner;
+
 	if (toolName.startsWith("mcp__") || toolName.startsWith("server__")) {
 		const mcpOwner = firstSortedOwner(ownersByTool.get("mcp"));
 		return mcpOwner ?? "pi-mcp-adapter";
 	}
 
 	return "unknown-extension";
+}
+
+function resolveCommandOwner(commandName: string, ownersByCommand: Map<string, Set<string>>): string {
+	return firstSortedOwner(ownersByCommand.get(commandName)) ?? "unknown-extension";
+}
+
+function parseSlashEchoCommand(content: unknown): string | null {
+	if (typeof content !== "string" || !content.startsWith("/")) return null;
+	const command = content.slice(1).trim().split(/\s+/, 1)[0];
+	return command && command.length > 0 ? command : null;
+}
+
+function addCommandUsage(
+	commandName: string,
+	ownersByCommand: Map<string, Set<string>>,
+	callsByToolKey: Map<string, number>,
+	tokensByToolKey: Map<string, number>,
+	callsByExtension: Map<string, number>,
+	tokensByExtension: Map<string, number>,
+	sessionsByToolKey: Set<string>,
+	sessionsByExtension: Set<string>,
+	tokens = 0,
+): { owner: string; commandKey: string } {
+	const owner = resolveCommandOwner(commandName, ownersByCommand);
+	const commandKey = `${owner}/${commandName}`;
+	callsByToolKey.set(commandKey, (callsByToolKey.get(commandKey) ?? 0) + 1);
+	callsByExtension.set(owner, (callsByExtension.get(owner) ?? 0) + 1);
+	if (tokens > 0) {
+		tokensByToolKey.set(commandKey, (tokensByToolKey.get(commandKey) ?? 0) + tokens);
+		tokensByExtension.set(owner, (tokensByExtension.get(owner) ?? 0) + tokens);
+	}
+	sessionsByToolKey.add(commandKey);
+	sessionsByExtension.add(owner);
+	return { owner, commandKey };
 }
 
 async function walkSessionFiles(root: string, signal?: AbortSignal): Promise<string[]> {
@@ -553,12 +620,36 @@ function extractUsageTokens(usage: any): number {
 	const output = toFiniteNumber(usage.output);
 	const cacheRead = toFiniteNumber(usage.cacheRead);
 	const cacheWrite = toFiniteNumber(usage.cacheWrite);
-	return input + output + cacheRead + cacheWrite;
+	const otelInput = toFiniteNumber(usage["gen_ai.usage.input_tokens"]);
+	const otelOutput = toFiniteNumber(usage["gen_ai.usage.output_tokens"]);
+	const otelCacheRead = toFiniteNumber(usage["gen_ai.usage.cache_read_tokens"]);
+	const otelCacheWrite = toFiniteNumber(usage["gen_ai.usage.cache_write_tokens"]);
+	return input + output + cacheRead + cacheWrite + otelInput + otelOutput + otelCacheRead + otelCacheWrite;
+}
+
+function estimateTextTokens(text: unknown): number {
+	return typeof text === "string" && text.length > 0 ? Math.ceil(text.length / 4) : 0;
+}
+
+function sha256Hex(text: string): string {
+	return createHash("sha256").update(text).digest("hex");
+}
+
+function extractUserText(message: any): string | null {
+	if (message?.role !== "user") return null;
+	if (typeof message.content === "string") return message.content;
+	if (!Array.isArray(message.content)) return null;
+	const text = message.content
+		.filter((block: any) => block?.type === "text" && typeof block?.text === "string")
+		.map((block: any) => block.text)
+		.join("\n");
+	return text.length > 0 ? text : null;
 }
 
 async function parseSessionFile(
 	filePath: string,
 	ownersByTool: Map<string, Set<string>>,
+	ownersByCommand: Map<string, Set<string>>,
 	signal?: AbortSignal,
 ): Promise<ParsedSession | null> {
 	const fileName = path.basename(filePath);
@@ -572,6 +663,7 @@ async function parseSessionFile(
 	const sessionsByExtension = new Set<string>();
 	let toolCalls = 0;
 	let estimatedToolTokens = 0;
+	const pendingCommandKeys: string[] = [];
 
 	const stream = createReadStream(filePath, { encoding: "utf8" });
 	const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
@@ -598,6 +690,48 @@ async function parseSessionFile(
 				continue;
 			}
 
+			if (
+				obj?.type === "custom_message" &&
+				typeof obj?.customType === "string" &&
+				ownersByCommand.has(obj.customType)
+			) {
+				const commandName = obj.customType;
+				const tokens = estimateTextTokens(obj.content);
+				toolCalls += 1;
+				estimatedToolTokens += tokens;
+				addCommandUsage(
+					commandName,
+					ownersByCommand,
+					callsByToolKey,
+					tokensByToolKey,
+					callsByExtension,
+					tokensByExtension,
+					sessionsByToolKey,
+					sessionsByExtension,
+					tokens,
+				);
+				continue;
+			}
+
+			if (obj?.type === "custom_message" && obj?.customType === "slash-echo") {
+				const commandName = parseSlashEchoCommand(obj.content);
+				if (!commandName) continue;
+				const { commandKey } = addCommandUsage(
+					commandName,
+					ownersByCommand,
+					callsByToolKey,
+					tokensByToolKey,
+					callsByExtension,
+					tokensByExtension,
+					sessionsByToolKey,
+					sessionsByExtension,
+				);
+
+				toolCalls += 1;
+				pendingCommandKeys.push(commandKey);
+				continue;
+			}
+
 			if (obj?.type !== "message") continue;
 			const message = obj?.message;
 			if (message?.role !== "assistant" || !Array.isArray(message?.content)) continue;
@@ -609,6 +743,15 @@ async function parseSessionFile(
 			if (toolNames.length === 0) continue;
 
 			const usageTokens = extractUsageTokens(extractMessageUsage(obj));
+			if (usageTokens > 0 && pendingCommandKeys.length > 0) {
+				const tokensPerCommand = usageTokens / pendingCommandKeys.length;
+				for (const commandKey of pendingCommandKeys.splice(0)) {
+					const owner = commandKey.split("/", 1)[0] || "unknown-extension";
+					estimatedToolTokens += tokensPerCommand;
+					tokensByToolKey.set(commandKey, (tokensByToolKey.get(commandKey) ?? 0) + tokensPerCommand);
+					tokensByExtension.set(owner, (tokensByExtension.get(owner) ?? 0) + tokensPerCommand);
+				}
+			}
 			const tokensPerToolCall = usageTokens > 0 ? usageTokens / toolNames.length : 0;
 
 			for (const toolName of toolNames) {
@@ -731,6 +874,199 @@ function addSessionToRange(range: RangeAgg, session: ParsedSession): void {
 	for (const owner of session.sessionsByExtension) {
 		range.sessionsByExtension.set(owner, (range.sessionsByExtension.get(owner) ?? 0) + 1);
 		day.sessionsByExtension.set(owner, (day.sessionsByExtension.get(owner) ?? 0) + 1);
+	}
+}
+
+function addTokensToRange(range: RangeAgg, dayKeyLocal: string, owner: string, toolKey: string, tokens: number): void {
+	const day = range.dayByKey.get(dayKeyLocal);
+	if (!day || tokens <= 0) return;
+	range.estimatedToolTokens += tokens;
+	day.estimatedToolTokens += tokens;
+	range.tokensByToolKey.set(toolKey, (range.tokensByToolKey.get(toolKey) ?? 0) + tokens);
+	day.tokensByToolKey.set(toolKey, (day.tokensByToolKey.get(toolKey) ?? 0) + tokens);
+	range.tokensByExtension.set(owner, (range.tokensByExtension.get(owner) ?? 0) + tokens);
+	day.tokensByExtension.set(owner, (day.tokensByExtension.get(owner) ?? 0) + tokens);
+}
+
+async function addPromptRouterTraceTokensToRanges(ranges: Map<number, RangeAgg>, signal?: AbortSignal): Promise<void> {
+	const traceRoot = path.join(getAgentDir(), "traces");
+	if (!(await pathExists(traceRoot))) return;
+	const traceFiles = await walkSessionFiles(traceRoot, signal);
+	for (const filePath of traceFiles) {
+		if (signal?.aborted) return;
+		const byTurn = new Map<string, { routedAt?: Date; tokens: number }>();
+		const stream = createReadStream(filePath, { encoding: "utf8" });
+		const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+		try {
+			for await (const line of rl) {
+				if (!line.trim()) continue;
+				let obj: any;
+				try {
+					obj = JSON.parse(line);
+				} catch {
+					continue;
+				}
+				const turnId = typeof obj?.turn_id === "string" ? obj.turn_id : "turn-unknown";
+				const current = byTurn.get(turnId) ?? { tokens: 0 };
+				if (obj?.event_type === "routing_decision") {
+					const d = new Date(obj.timestamp);
+					if (Number.isFinite(d.getTime())) current.routedAt = d;
+				}
+				if (obj?.event_type === "assistant_message") {
+					current.tokens += extractUsageTokens(obj?.payload?.usage);
+				}
+				byTurn.set(turnId, current);
+			}
+		} catch {
+			// Ignore malformed or concurrently-rotated trace files.
+		} finally {
+			rl.close();
+			stream.destroy();
+		}
+		for (const { routedAt, tokens } of byTurn.values()) {
+			if (!routedAt || tokens <= 0) continue;
+			const sessionDay = localMidnight(routedAt);
+			const dayKey = toLocalDayKey(routedAt);
+			for (const d of RANGE_DAYS) {
+				const range = ranges.get(d)!;
+				const start = range.days[0].date;
+				const end = range.days[range.days.length - 1].date;
+				if (sessionDay < start || sessionDay > end) continue;
+				addTokensToRange(range, dayKey, "prompt-router", "prompt-router/route", tokens);
+			}
+		}
+	}
+}
+
+async function readPromptRouterHashes(cwd: string): Promise<Set<string>> {
+	const logPath = path.join(cwd, "pi", "prompt-routing", "logs", "routing_log.jsonl");
+	const hashes = new Set<string>();
+	if (!(await pathExists(logPath))) return hashes;
+	const stream = createReadStream(logPath, { encoding: "utf8" });
+	const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+	try {
+		for await (const line of rl) {
+			if (!line.trim()) continue;
+			try {
+				const obj = JSON.parse(line);
+				if (typeof obj?.prompt_hash === "string") hashes.add(obj.prompt_hash);
+			} catch {
+				continue;
+			}
+		}
+	} catch {
+		return hashes;
+	} finally {
+		rl.close();
+		stream.destroy();
+	}
+	return hashes;
+}
+
+async function addPromptRouterSessionTokensToRanges(
+	ranges: Map<number, RangeAgg>,
+	cwd: string,
+	sessionFiles: string[],
+	signal?: AbortSignal,
+): Promise<void> {
+	const hashes = await readPromptRouterHashes(cwd);
+	if (hashes.size === 0) return;
+	for (const filePath of sessionFiles) {
+		if (signal?.aborted) return;
+		const stream = createReadStream(filePath, { encoding: "utf8" });
+		const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+		let pendingRoutedAt: Date | null = null;
+		try {
+			for await (const line of rl) {
+				if (!line.trim()) continue;
+				let obj: any;
+				try {
+					obj = JSON.parse(line);
+				} catch {
+					continue;
+				}
+				if (obj?.type !== "message") continue;
+				const message = obj?.message;
+				const userText = extractUserText(message);
+				if (userText !== null) {
+					const hash = sha256Hex(userText.trim());
+					if (hashes.has(hash)) {
+						const d = typeof obj.timestamp === "string" ? new Date(obj.timestamp) : null;
+						pendingRoutedAt = d && Number.isFinite(d.getTime()) ? d : null;
+					} else {
+						pendingRoutedAt = null;
+					}
+					continue;
+				}
+				if (!pendingRoutedAt || message?.role !== "assistant") continue;
+				const tokens = extractUsageTokens(extractMessageUsage(obj));
+				if (tokens <= 0) continue;
+				const sessionDay = localMidnight(pendingRoutedAt);
+				const dayKey = toLocalDayKey(pendingRoutedAt);
+				for (const d of RANGE_DAYS) {
+					const range = ranges.get(d)!;
+					const start = range.days[0].date;
+					const end = range.days[range.days.length - 1].date;
+					if (sessionDay < start || sessionDay > end) continue;
+					addTokensToRange(range, dayKey, "prompt-router", "prompt-router/route", tokens);
+				}
+				pendingRoutedAt = null;
+			}
+		} catch {
+			continue;
+		} finally {
+			rl.close();
+			stream.destroy();
+		}
+	}
+}
+
+async function addPromptRouterEventsToRanges(ranges: Map<number, RangeAgg>, cwd: string, signal?: AbortSignal): Promise<void> {
+	const logPath = path.join(cwd, "pi", "prompt-routing", "logs", "routing_log.jsonl");
+	if (!(await pathExists(logPath))) return;
+
+	const stream = createReadStream(logPath, { encoding: "utf8" });
+	const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+	try {
+		for await (const line of rl) {
+			if (signal?.aborted) return;
+			if (!line.trim()) continue;
+			let obj: any;
+			try {
+				obj = JSON.parse(line);
+			} catch {
+				continue;
+			}
+			const ts = toFiniteNumber(obj?.ts);
+			if (ts <= 0) continue;
+			const startedAt = new Date(ts * 1000);
+			if (!Number.isFinite(startedAt.getTime())) continue;
+			const session: ParsedSession = {
+				startedAt,
+				dayKeyLocal: toLocalDayKey(startedAt),
+				toolCalls: 1,
+				estimatedToolTokens: 0,
+				callsByToolKey: new Map([["prompt-router/route", 1]]),
+				tokensByToolKey: new Map(),
+				callsByExtension: new Map([["prompt-router", 1]]),
+				tokensByExtension: new Map(),
+				sessionsByToolKey: new Set(["prompt-router/route"]),
+				sessionsByExtension: new Set(["prompt-router"]),
+			};
+			const sessionDay = localMidnight(startedAt);
+			for (const d of RANGE_DAYS) {
+				const range = ranges.get(d)!;
+				const start = range.days[0].date;
+				const end = range.days[range.days.length - 1].date;
+				if (sessionDay < start || sessionDay > end) continue;
+				addSessionToRange(range, session);
+			}
+		}
+	} catch {
+		return;
+	} finally {
+		rl.close();
+		stream.destroy();
 	}
 }
 
@@ -880,7 +1216,7 @@ async function computeBreakdown(pi: ExtensionAPI, cwd: string, signal?: AbortSig
 
 	for (const filePath of candidates) {
 		if (signal?.aborted) break;
-		const session = await parseSessionFile(filePath, ownersByTool, signal);
+		const session = await parseSessionFile(filePath, ownersByTool, ownership.ownersByCommand, signal);
 		if (!session) continue;
 
 		const sessionDay = localMidnight(session.startedAt);
@@ -892,6 +1228,10 @@ async function computeBreakdown(pi: ExtensionAPI, cwd: string, signal?: AbortSig
 			addSessionToRange(range, session);
 		}
 	}
+
+	await addPromptRouterEventsToRanges(ranges, cwd, signal);
+	await addPromptRouterTraceTokensToRanges(ranges, signal);
+	await addPromptRouterSessionTokensToRanges(ranges, cwd, candidates, signal);
 
 	const allToolNames = new Set(pi.getAllTools().map((t) => t.name));
 	const unattributedTools = [...allToolNames].filter((name) => resolveToolOwner(name, ownersByTool) === "unknown-extension")
@@ -1100,8 +1440,15 @@ class ExtensionStatsComponent implements Component {
 	}
 }
 
+function displayOwnerName(owner: string): string {
+	return owner === "codex-status" ? "status" : owner;
+}
+
 function displayUsageName(name: string): string {
-	return name.startsWith("Pi/") ? name.slice("Pi/".length) : name;
+	const withoutNativePrefix = name.startsWith("Pi/") ? name.slice("Pi/".length) : name;
+	const slashIndex = withoutNativePrefix.indexOf("/");
+	if (slashIndex < 0) return displayOwnerName(withoutNativePrefix);
+	return `${displayOwnerName(withoutNativePrefix.slice(0, slashIndex))}${withoutNativePrefix.slice(slashIndex)}`;
 }
 
 function markdownUsageTable(rows: UsageRow[]): string[] {
@@ -1180,7 +1527,7 @@ function renderMarkdownReport(data: BreakdownData, reportDays: number[]): string
 			rangeSummary(range, days),
 			"\n### By extension",
 			...markdownUsageTable(extensionRows),
-			"\n### By extension/tool",
+			"\n### By extension/tool or command",
 			...markdownUsageTable(visibleToolRows),
 			...(coreToolNote ? ["", coreToolNote] : []),
 		);
@@ -1192,7 +1539,7 @@ function renderMarkdownReport(data: BreakdownData, reportDays: number[]): string
 	const unusedOwners = data.discoveredOwnerNames.filter((owner) => owner !== "Pi" && !usedOwners.has(owner));
 	lines.push(
 		"\n## Unused extensions",
-		unusedOwners.length > 0 ? unusedOwners.map((owner) => `- ${owner}`).join("\n") : "_None discovered._",
+		unusedOwners.length > 0 ? unusedOwners.map((owner) => `- ${displayOwnerName(owner)}`).join("\n") : "_None discovered._",
 	);
 
 	return lines.join("\n");
@@ -1201,7 +1548,7 @@ function renderMarkdownReport(data: BreakdownData, reportDays: number[]): string
 export default function extensionStatsExtension(pi: ExtensionAPI) {
 	pi.registerCommand("extension-stats", {
 		description:
-			"Dump last 1/7/30 days of ~/.pi session tool usage; pass 60, 90, or all to include longer windows",
+			"Dump last 1/7/30 days of ~/.pi session tool/command usage; pass 60, 90, or all to include longer windows",
 		handler: async (args, ctx: ExtensionContext) => {
 			const reportDays = parseReportDays(args);
 			const data = await computeBreakdown(pi, ctx.cwd, undefined);

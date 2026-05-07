@@ -93,6 +93,13 @@ function extractAssistantContent(message: unknown): {
 }
 
 export default function (pi: ExtensionAPI) {
+	let providerLoadedEmitted = false;
+
+	async function emitDebug(eventType: string, payload: Record<string, unknown> = {}): Promise<void> {
+		if (!getWriter()) return;
+		await emit({ event_type: eventType }, { source: "transcript-provider", ...payload });
+	}
+
 	// Writer initialization and session_start/session_shutdown emission live in
 	// session-hooks.ts so all session-lifecycle work happens in one place.
 	// This file owns provider/message/model events only.
@@ -104,6 +111,11 @@ export default function (pi: ExtensionAPI) {
 	// --------------------------------------------------------------------------
 	pi.on("turn_start", async (_event) => {
 		if (!getWriter()) return;
+		if (!providerLoadedEmitted) {
+			providerLoadedEmitted = true;
+			await emitDebug("transcript_provider_loaded", { pid: process.pid });
+		}
+		await emitDebug("transcript_provider_turn_start");
 		advanceTurn();
 	});
 
@@ -156,6 +168,9 @@ export default function (pi: ExtensionAPI) {
 	pi.on("message_start", async (event) => {
 		if (!getWriter()) return;
 		const message = event.message as unknown as Record<string, unknown> | undefined;
+		await emitDebug("transcript_provider_message_start_seen", {
+			role: typeof message?.role === "string" ? message.role : undefined,
+		});
 		const messageId = typeof message?.id === "string" ? message.id : undefined;
 		setCurrentMessageId(messageId);
 		await emit(
@@ -188,8 +203,15 @@ export default function (pi: ExtensionAPI) {
 	pi.on("message_end", async (event) => {
 		if (!getWriter()) return;
 		const message = event.message as unknown as Record<string, unknown> | undefined;
+		await emitDebug("transcript_provider_message_end_seen", {
+			role: typeof message?.role === "string" ? message.role : undefined,
+			has_usage: Boolean(message?.usage),
+		});
 		if (!message || message.role !== "assistant") return;
-		if (!claimAssistantMessageEmission()) return; // already emitted for this turn
+		if (!claimAssistantMessageEmission()) {
+			await emitDebug("transcript_provider_assistant_skipped", { reason: "already-emitted-for-turn" });
+			return;
+		}
 
 		const messageId = typeof message.id === "string" ? message.id : getCurrentMessageId();
 		const { content, toolCalls } = extractAssistantContent(message);

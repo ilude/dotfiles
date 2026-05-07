@@ -57,6 +57,8 @@
  * when transcript tracing is enabled.
  */
 
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { makeExcerpt, sha256Hex } from "../lib/transcript.js";
 import { emit, getWriter } from "./transcript-runtime.js";
@@ -75,6 +77,21 @@ import {
 } from "../lib/prompt-router/config.js";
 
 export { safeParseClassifierOutput };
+
+const DEBUG_LOG_PATH = path.join(process.cwd(), "pi", "prompt-routing", "logs", "transcript_debug.jsonl");
+
+async function appendTranscriptDebug(event: string, payload: Record<string, unknown> = {}): Promise<void> {
+  try {
+    await fs.mkdir(path.dirname(DEBUG_LOG_PATH), { recursive: true });
+    await fs.appendFile(
+      DEBUG_LOG_PATH,
+      `${JSON.stringify({ ts: Date.now() / 1000, event, pid: process.pid, ...payload })}\n`,
+      "utf8",
+    );
+  } catch {
+    // Debug logging must never affect routing.
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Config
@@ -386,8 +403,20 @@ export async function emitRoutingDecision(
     modelSwitchApplied?: boolean | null;
   } = {},
 ): Promise<void> {
-  if (!getWriter()) return;
+  const writerAvailable = Boolean(getWriter());
+  await appendTranscriptDebug("emitRoutingDecision_called", {
+    writerAvailable,
+    applied_route: applied ? `${applied.tier}:${applied.effort}` : null,
+    selected_model_size: runtime.selectedModelSize ?? (applied ? modelSizeForTier(applied.tier) : null),
+  });
+  if (!writerAvailable) return;
   try {
+    await emit({ event_type: "prompt_router_emit_attempt" }, {
+      source: "prompt-router",
+      has_recommendation: rec !== null,
+      applied_route: applied ? `${applied.tier}:${applied.effort}` : null,
+      selected_model_size: runtime.selectedModelSize ?? (applied ? modelSizeForTier(applied.tier) : null),
+    });
     const payload = {
       prompt_hash: sha256Hex(promptText),
       prompt_excerpt: makeExcerpt(promptText),
@@ -406,7 +435,15 @@ export async function emitRoutingDecision(
       },
     };
     await emit({ event_type: "routing_decision" }, payload);
-  } catch {
+    await emit({ event_type: "prompt_router_emit_success" }, {
+      source: "prompt-router",
+      applied_route: payload.applied_route,
+      selected_model_size: payload.selected_model_size,
+    });
+  } catch (err: unknown) {
+    await appendTranscriptDebug("emitRoutingDecision_failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
     // Tracing must never break the routing path.
   }
 }
@@ -512,6 +549,7 @@ async function classifyAndRoute(
 // ---------------------------------------------------------------------------
 
 export default function (pi: ExtensionAPI) {
+  void appendTranscriptDebug("prompt_router_extension_loaded");
   const policy = loadRouterPolicy(EFFORT_ORDER);
 
   const state: RouterState = {
