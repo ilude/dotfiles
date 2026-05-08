@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { ReadonlyFooterDataProvider } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
@@ -37,7 +38,10 @@ describe("summarizeTaskCounts / formatTaskStatus", () => {
 			{ state: "blocked", createdAt: "2026-01-01T00:02:00.000Z" },
 		] as any[];
 
-		const filtered = mod.filterCurrentSessionActiveTasks(records, sessionStartedAt);
+		const filtered = mod.filterCurrentSessionActiveTasks(
+			records,
+			sessionStartedAt,
+		);
 		expect(filtered.map((t) => t.state)).toEqual(["running", "blocked"]);
 	});
 
@@ -49,12 +53,26 @@ describe("summarizeTaskCounts / formatTaskStatus", () => {
 	});
 
 	it("counts only non-terminal states toward the active total", async () => {
-		const { createTask, transitionTask } = await import("../lib/task-registry.ts");
+		const { createTask, transitionTask } = await import(
+			"../lib/task-registry.ts"
+		);
 		const mod = await import("../extensions/operator-status.ts");
-		const a = createTask({ origin: "subagent", summary: "a", state: "running" });
-		const b = createTask({ origin: "subagent", summary: "b", state: "running" });
+		const a = createTask({
+			origin: "subagent",
+			summary: "a",
+			state: "running",
+		});
+		const b = createTask({
+			origin: "subagent",
+			summary: "b",
+			state: "running",
+		});
 		transitionTask(b.id, "blocked", { blockReason: "needs creds" });
-		const c = createTask({ origin: "subagent", summary: "c", state: "running" });
+		const c = createTask({
+			origin: "subagent",
+			summary: "c",
+			state: "running",
+		});
 		transitionTask(c.id, "completed");
 		void a;
 
@@ -70,6 +88,32 @@ describe("summarizeTaskCounts / formatTaskStatus", () => {
 		expect(label).toContain("tasks 2");
 		expect(label).toContain("1 running");
 		expect(label).toContain("1 blocked");
+	});
+});
+
+describe("footer extension status placement", () => {
+	function footerData(
+		statuses: Record<string, string>,
+	): ReadonlyFooterDataProvider {
+		return {
+			getExtensionStatuses: () => new Map(Object.entries(statuses)),
+		} as ReadonlyFooterDataProvider;
+	}
+
+	it("keeps router right-anchored and moves damage-control down with extension statuses", async () => {
+		const mod = await import("../extensions/operator-status.ts");
+		const data = footerData({
+			"damage-control": "damage-control: active",
+			router: "router: sonnet",
+			tps: "done — 42 tok/s",
+		});
+		const status = "damage-control: active done — 42 tok/s";
+
+		expect(mod.rightAnchoredStatus(data)).toBe("router: sonnet");
+		expect(mod.formatExtensionStatuses(data)).toBe(status);
+		expect(mod.formatExtensionStatusLine(data, 50)).toBe(
+			"done — 42 tok/s             damage-control: active",
+		);
 	});
 });
 
@@ -154,11 +198,17 @@ describe("formatPiStatusLine", () => {
 
 	it("colors thinking levels by model risk", async () => {
 		const mod = await import("../extensions/operator-status.ts");
-		expect(mod.colorForThinkingLevel("gpt-5.5", "medium")).toBe("\x1b[38;5;205m");
+		expect(mod.colorForThinkingLevel("gpt-5.5", "medium")).toBe(
+			"\x1b[38;5;205m",
+		);
 		expect(mod.colorForThinkingLevel("gpt-5.5", "high")).toBe("\x1b[38;5;205m");
-		expect(mod.colorForThinkingLevel("gpt-5.5", "xhigh")).toBe("\x1b[38;5;205m");
+		expect(mod.colorForThinkingLevel("gpt-5.5", "xhigh")).toBe(
+			"\x1b[38;5;205m",
+		);
 		expect(mod.colorForThinkingLevel("claude-opus", "medium")).toBe("\x1b[36m");
-		expect(mod.colorForThinkingLevel("claude-opus", "high")).toBe("\x1b[38;5;205m");
+		expect(mod.colorForThinkingLevel("claude-opus", "high")).toBe(
+			"\x1b[38;5;205m",
+		);
 		expect(mod.colorForThinkingLevel("claude-opus", "off")).toBe("\x1b[33m");
 		const pi = Object.assign(createMockPi(), { getThinkingLevel: () => "off" });
 		const line = mod.formatPiStatusLine({
@@ -237,7 +287,7 @@ describe("/doctor command", () => {
 		const command = pi._commands.find((c) => c.name === "doctor");
 		expect(command).toBeDefined();
 		const ctx = ctxWithStatus();
-		await command!.handler(args, ctx);
+		await command?.handler(args, ctx);
 		const notify = ctx.ui.notify as ReturnType<typeof vi.fn>;
 		expect(notify).toHaveBeenCalledTimes(1);
 		const [text, level] = notify.mock.calls[0];

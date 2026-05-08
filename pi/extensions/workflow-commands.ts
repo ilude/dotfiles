@@ -110,21 +110,30 @@ function loadSkill(name: string) {
 	}
 }
 
-async function newSessionWithReloadIfNeeded(ctx: {
-	newSession: (options?: {
-		withSession?: (newCtx: { reload: () => Promise<void> }) => Promise<void>;
-	}) => Promise<{ cancelled: boolean }>;
-}) {
+async function newSessionWithReloadIfNeeded<
+	TNewCtx extends { reload: () => Promise<void> },
+>(
+	ctx: {
+		newSession: (options?: {
+			withSession?: (newCtx: TNewCtx) => Promise<void>;
+		}) => Promise<{ cancelled: boolean }>;
+	},
+	options?: {
+		withSession?: (newCtx: TNewCtx) => Promise<void>;
+	},
+) {
 	const reloadNeeded = isOperatorReloadNeeded();
-	return ctx.newSession(
-		reloadNeeded
-			? {
-					withSession: async (newCtx) => {
-						await newCtx.reload();
-					},
-				}
-			: undefined,
-	);
+	if (!reloadNeeded && !options?.withSession) {
+		return ctx.newSession();
+	}
+	return ctx.newSession({
+		withSession: async (newCtx) => {
+			if (reloadNeeded) {
+				await newCtx.reload();
+			}
+			await options?.withSession?.(newCtx);
+		},
+	});
 }
 
 function loadClaudeCommitInstructions() {
@@ -1561,7 +1570,7 @@ export default function (pi: ExtensionAPI) {
 						replaceArguments: true,
 					});
 					if (isPlanFileInput(args)) {
-						await ctx.newSession({
+						await newSessionWithReloadIfNeeded(ctx, {
 							withSession: async (newCtx) => {
 								await newCtx.sendMessage(
 									{

@@ -23,10 +23,20 @@
 import * as childProcess from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ExtensionAPI, ExtensionContext, ReadonlyFooterDataProvider } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+	ReadonlyFooterDataProvider,
+} from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { formatDamageControlHealthDetail, getDamageControlHealth } from "../lib/damage-control-health.js";
-import { listRecentDecisions, listSessionApprovals } from "../lib/permission-registry.js";
+import {
+	formatDamageControlHealthDetail,
+	getDamageControlHealth,
+} from "../lib/damage-control-health.js";
+import {
+	listRecentDecisions,
+	listSessionApprovals,
+} from "../lib/permission-registry.js";
 import {
 	createReloadStatusState,
 	needsPiReload,
@@ -76,7 +86,8 @@ interface ContextUsage {
 
 function runCommand(args: string[], cwd?: string): string {
 	try {
-		const useWindowsShellShim = process.platform === "win32" && args[0] === "pi";
+		const useWindowsShellShim =
+			process.platform === "win32" && args[0] === "pi";
 		const result = useWindowsShellShim
 			? childProcess.spawnSync("pi --version", {
 					cwd,
@@ -91,7 +102,9 @@ function runCommand(args: string[], cwd?: string): string {
 					timeout: 3000,
 					windowsHide: true,
 				});
-		return result.status === 0 ? `${result.stdout ?? ""}${result.stderr ?? ""}`.trim() : "";
+		return result.status === 0
+			? `${result.stdout ?? ""}${result.stderr ?? ""}`.trim()
+			: "";
 	} catch {
 		return "";
 	}
@@ -113,7 +126,13 @@ function homePattern(): string {
 export function formatPiStatusDirectory(cwd: string): string {
 	const normalizedCwd = normalizePathForDisplay(cwd);
 	const home = homePattern();
-	const gitRoot = runCommand(["git", "-C", cwd, "rev-parse", "--show-toplevel"]);
+	const gitRoot = runCommand([
+		"git",
+		"-C",
+		cwd,
+		"rev-parse",
+		"--show-toplevel",
+	]);
 	if (gitRoot) {
 		const normalizedRoot = normalizePathForDisplay(gitRoot).replace(/\/$/, "");
 		const basename = path.basename(normalizedRoot);
@@ -132,21 +151,37 @@ function colorBranch(branchName: string | null): string {
 }
 
 export function formatReloadIndicator(needsReload: boolean): string {
-	return needsReload ? `${ANSI.white}[${ANSI.pink}reload${ANSI.white}]${ANSI.reset}` : "";
+	return needsReload
+		? `${ANSI.white}[${ANSI.pink}reload${ANSI.white}]${ANSI.reset}`
+		: "";
 }
 
 function sanitizeSingleLine(text: string): string {
-	return text.replace(/[\r\n\t]/g, " ").replace(/ +/g, " ").trim();
+	return text
+		.replace(/[\r\n\t]/g, " ")
+		.replace(/ +/g, " ")
+		.trim();
 }
 
-function rightAnchor(left: string, right: string | null, width: number): string {
+function rightAnchor(
+	left: string,
+	right: string | null,
+	width: number,
+): string {
 	if (!right) return left;
 	const gap = width - visibleWidth(left) - visibleWidth(right);
 	if (gap < 2) return left;
 	return `${left}${" ".repeat(gap)}${right}`;
 }
 
-function formatModelName(model: { id?: string; name?: string } | undefined): string {
+export function rightAlign(text: string, width: number): string {
+	const gap = width - visibleWidth(text);
+	return gap > 0 ? `${" ".repeat(gap)}${text}` : text;
+}
+
+function formatModelName(
+	model: { id?: string; name?: string } | undefined,
+): string {
 	return model?.id || model?.name || "no-model";
 }
 
@@ -162,8 +197,16 @@ function colorForContextPercent(percent: number): string {
 	return ANSI.green;
 }
 
-export function formatContextUsageSegment(usage: ContextUsage | null | undefined): string | null {
-	if (!usage || usage.tokens === null || usage.contextWindow === null || usage.contextWindow <= 0) return null;
+export function formatContextUsageSegment(
+	usage: ContextUsage | null | undefined,
+): string | null {
+	if (
+		!usage ||
+		usage.tokens === null ||
+		usage.contextWindow === null ||
+		usage.contextWindow <= 0
+	)
+		return null;
 	const percent = usage.percent ?? (usage.tokens / usage.contextWindow) * 100;
 	const roundedPercent = Math.round(percent);
 	const tokenText = `${compactTokens(usage.tokens)}/${compactTokens(usage.contextWindow)}`;
@@ -178,30 +221,59 @@ function formatThinkingLevel(pi: ExtensionAPI): string {
 	}
 }
 
-export function colorForThinkingLevel(model: string, thinkingLevel: string): string {
+export function colorForThinkingLevel(
+	model: string,
+	thinkingLevel: string,
+): string {
 	const normalizedModel = model.toLowerCase();
 	const normalizedLevel = thinkingLevel.toLowerCase();
 	if (normalizedLevel === "off") return ANSI.yellow;
-	if (normalizedModel === "gpt-5.5" && ["medium", "high", "xhigh"].includes(normalizedLevel)) return ANSI.pink;
+	if (
+		normalizedModel === "gpt-5.5" &&
+		["medium", "high", "xhigh"].includes(normalizedLevel)
+	)
+		return ANSI.pink;
 	if (["high", "xhigh"].includes(normalizedLevel)) return ANSI.pink;
 	return ANSI.cyan;
 }
 
-function rightAnchoredStatus(footerData: ReadonlyFooterDataProvider): string | null {
-	const statuses = footerData.getExtensionStatuses();
-	const raw = [statuses.get("damage-control"), statuses.get("router")]
-		.map((status) => (status ? sanitizeSingleLine(status) : ""))
-		.filter(Boolean);
-	return raw.length > 0 ? raw.join(" ") : null;
+export function rightAnchoredStatus(
+	footerData: ReadonlyFooterDataProvider,
+): string | null {
+	const status = footerData.getExtensionStatuses().get("router");
+	return status ? sanitizeSingleLine(status) : null;
 }
 
-function formatExtensionStatuses(footerData: ReadonlyFooterDataProvider): string | null {
+export function formatExtensionStatuses(
+	footerData: ReadonlyFooterDataProvider,
+): string | null {
 	const statuses = Array.from(footerData.getExtensionStatuses().entries())
-		.filter(([key]) => key !== "router" && key !== "damage-control")
+		.filter(([key]) => key !== "router")
 		.sort(([a], [b]) => a.localeCompare(b))
 		.map(([, text]) => sanitizeSingleLine(text))
 		.filter(Boolean);
 	return statuses.length > 0 ? statuses.join(" ") : null;
+}
+
+export function formatExtensionStatusLine(
+	footerData: ReadonlyFooterDataProvider,
+	width: number,
+): string | null {
+	const statuses = footerData.getExtensionStatuses();
+	const left = sanitizeSingleLine(statuses.get("tps") ?? "");
+	const right = Array.from(statuses.entries())
+		.filter(([key]) => key !== "router" && key !== "tps")
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([, text]) => sanitizeSingleLine(text))
+		.filter(Boolean)
+		.join(" ");
+	if (!left && !right) return null;
+	if (!left) return rightAlign(right, width);
+	if (!right)
+		return visibleWidth(left) > width ? truncateToWidth(left, width) : left;
+	const gap = width - visibleWidth(left) - visibleWidth(right);
+	if (gap < 2) return truncateToWidth(`${left} ${right}`, width);
+	return `${left}${" ".repeat(gap)}${right}`;
 }
 
 export function formatPiStatusLine(options: {
@@ -234,10 +306,15 @@ export function formatPiStatusLine(options: {
 		left = buildLeft(truncateToWidth(model, availableModelWidth));
 	}
 	const composed = rightAnchor(left, options.router, options.width);
-	return visibleWidth(composed) > options.width ? truncateToWidth(composed, options.width) : composed;
+	return visibleWidth(composed) > options.width
+		? truncateToWidth(composed, options.width)
+		: composed;
 }
 
-function installClaudeStyleFooter(ctx: ExtensionContext, pi: ExtensionAPI): boolean {
+function installClaudeStyleFooter(
+	ctx: ExtensionContext,
+	pi: ExtensionAPI,
+): boolean {
 	if (typeof ctx.ui.setFooter !== "function") return false;
 	const footerFactory: Parameters<ExtensionContext["ui"]["setFooter"]>[0] = (
 		_tui,
@@ -260,10 +337,9 @@ function installClaudeStyleFooter(ctx: ExtensionContext, pi: ExtensionAPI): bool
 				router: rightAnchoredStatus(footerData),
 				width,
 			});
-			const extensionStatuses = formatExtensionStatuses(footerData);
-			if (!extensionStatuses) return [statusLine];
-			const fitted = visibleWidth(extensionStatuses) > width ? truncateToWidth(extensionStatuses, width) : extensionStatuses;
-			return [statusLine, fitted];
+			const extensionStatusLine = formatExtensionStatusLine(footerData, width);
+			if (!extensionStatusLine) return [statusLine];
+			return [statusLine, extensionStatusLine];
 		},
 	});
 	ctx.ui.setFooter(footerFactory);
@@ -309,13 +385,19 @@ export function summarizeTaskCounts(records: TaskRecordV1[]): TaskCounts {
 	for (const t of records) {
 		counts[t.state]++;
 	}
-	counts.nonTerminal = counts.pending + counts.running + counts.blocked + counts.failed;
+	counts.nonTerminal =
+		counts.pending + counts.running + counts.blocked + counts.failed;
 	counts.urgent = counts.blocked + counts.failed;
 	return counts;
 }
 
-export function filterCurrentSessionActiveTasks(records: TaskRecordV1[], sessionStartedAt: string | null): TaskRecordV1[] {
-	const sessionStartMs = sessionStartedAt ? Date.parse(sessionStartedAt) : Number.NEGATIVE_INFINITY;
+export function filterCurrentSessionActiveTasks(
+	records: TaskRecordV1[],
+	sessionStartedAt: string | null,
+): TaskRecordV1[] {
+	const sessionStartMs = sessionStartedAt
+		? Date.parse(sessionStartedAt)
+		: Number.NEGATIVE_INFINITY;
 	return records.filter((task) => {
 		if (task.state !== "running" && task.state !== "blocked") return false;
 		const createdMs = Date.parse(task.createdAt);
@@ -339,10 +421,14 @@ export function formatElevatedStatus(approvalCount: number): string | null {
 	return `elevated (${approvalCount})`;
 }
 
-function refreshOperatorStatus(ctx: { ui?: { setStatus?: (key: string, value: string) => void } }): void {
+function refreshOperatorStatus(ctx: {
+	ui?: { setStatus?: (key: string, value: string) => void };
+}): void {
 	if (!ctx.ui?.setStatus) return;
 	try {
-		const counts = summarizeTaskCounts(filterCurrentSessionActiveTasks(listTasks(), currentSessionStartedAt));
+		const counts = summarizeTaskCounts(
+			filterCurrentSessionActiveTasks(listTasks(), currentSessionStartedAt),
+		);
 		const taskLabel = formatTaskStatus(counts);
 		ctx.ui.setStatus("task", taskLabel ?? "");
 	} catch {
@@ -363,14 +449,19 @@ function buildDoctorReport(cwd: string): DoctorReport {
 	checks.push({
 		name: "pi runtime",
 		ok: piVersion !== null,
-		detail: piVersion ? `pi v${piVersion}` : "pi-coding-agent install not found in known npm/bun locations",
+		detail: piVersion
+			? `pi v${piVersion}`
+			: "pi-coding-agent install not found in known npm/bun locations",
 	});
 
 	let taskRegistryOk = false;
 	let taskCounts: Record<string, number> = {};
 	try {
 		const records = listTasks();
-		taskCounts = summarizeTaskCounts(records) as unknown as Record<string, number>;
+		taskCounts = summarizeTaskCounts(records) as unknown as Record<
+			string,
+			number
+		>;
 		taskRegistryOk = true;
 	} catch (err) {
 		checks.push({
@@ -410,7 +501,10 @@ function buildDoctorReport(cwd: string): DoctorReport {
 	}
 
 	const damageControlHealth = getDamageControlHealth();
-	if (damageControlHealth.error !== "damage-control extension has not loaded rules yet") {
+	if (
+		damageControlHealth.error !==
+		"damage-control extension has not loaded rules yet"
+	) {
 		checks.push({
 			name: "damage-control",
 			ok: damageControlHealth.status === "active",
@@ -432,7 +526,9 @@ function buildDoctorReport(cwd: string): DoctorReport {
 function formatDoctorCompact(report: DoctorReport): string {
 	const failures = report.checks.filter((c) => !c.ok);
 	if (failures.length === 0) {
-		const version = report.piVersion ? `pi v${report.piVersion}` : "pi (version unknown)";
+		const version = report.piVersion
+			? `pi v${report.piVersion}`
+			: "pi (version unknown)";
 		return `${version} - all checks passed (${report.checks.length})`;
 	}
 	const lines = [`${failures.length} check(s) failed:`];
@@ -443,7 +539,8 @@ function formatDoctorCompact(report: DoctorReport): string {
 function formatDoctorVerbose(report: DoctorReport): string {
 	const lines: string[] = ["doctor:"];
 	if (report.piVersion) lines.push(`  pi: v${report.piVersion}`);
-	else lines.push(`  pi: (version unknown -- pi-coding-agent install not found)`);
+	else
+		lines.push(`  pi: (version unknown -- pi-coding-agent install not found)`);
 	lines.push(`  cwd: ${report.cwd}`);
 	lines.push(`  platform: ${report.platform}`);
 	lines.push("  checks:");
@@ -453,7 +550,8 @@ function formatDoctorVerbose(report: DoctorReport): string {
 	if (Object.keys(report.taskCounts).length > 0) {
 		lines.push("  tasks:");
 		for (const [state, count] of Object.entries(report.taskCounts)) {
-			if (typeof count === "number" && count > 0) lines.push(`    ${state}: ${count}`);
+			if (typeof count === "number" && count > 0)
+				lines.push(`    ${state}: ${count}`);
 		}
 	}
 	lines.push("  permissions:");
@@ -466,11 +564,16 @@ function formatDoctorJson(report: DoctorReport): string {
 	return JSON.stringify(report, null, 2);
 }
 
-export function resetOperatorReloadStatus(state: ReloadStatusState = reloadStatus, nowMs = Date.now()): void {
+export function resetOperatorReloadStatus(
+	state: ReloadStatusState = reloadStatus,
+	nowMs = Date.now(),
+): void {
 	resetReloadStatusBaseline(state, nowMs);
 }
 
-export function isOperatorReloadNeeded(state: ReloadStatusState = reloadStatus): boolean {
+export function isOperatorReloadNeeded(
+	state: ReloadStatusState = reloadStatus,
+): boolean {
 	return needsPiReload({ state });
 }
 
