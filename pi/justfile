@@ -7,15 +7,15 @@ set windows-shell := ["pwsh.exe", "-Command"]
 
 # Run all extension tests
 test:
-    cd ~/.dotfiles/pi/tests && bun vitest run
+    cd ~/.dotfiles/pi/tests && pnpm test
 
 # Run tests in watch mode
 test-watch:
-    cd ~/.dotfiles/pi/tests && bun vitest
+    cd ~/.dotfiles/pi/tests && pnpm test:watch
 
 # Run tests with coverage report
 test-coverage:
-    cd ~/.dotfiles/pi/tests && bun vitest run --coverage
+    cd ~/.dotfiles/pi/tests && pnpm test:coverage
 
 # Run deterministic memory eval scaffold (baseline mode)
 eval-memory:

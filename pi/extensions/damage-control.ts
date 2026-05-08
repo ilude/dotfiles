@@ -23,13 +23,19 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	type ExtensionAPI,
-	type BashToolCallEvent,
-	type ReadToolCallEvent,
-	type WriteToolCallEvent,
-	type EditToolCallEvent,
+import { fileURLToPath } from "node:url";
+import type {
+	BashToolCallEvent,
+	EditToolCallEvent,
+	ExtensionAPI,
+	ReadToolCallEvent,
+	WriteToolCallEvent,
 } from "@earendil-works/pi-coding-agent";
+import {
+	type DamageControlHealth,
+	getDamageControlHealth,
+	publishDamageControlHealth,
+} from "../lib/damage-control-health.js";
 import { canonicalize as sharedCanonicalize } from "../lib/extension-utils.js";
 import { recordEvent } from "../lib/metrics.js";
 import {
@@ -56,6 +62,7 @@ function safeRecordDeny(
 	rawAction: string,
 	reason: string,
 	rule?: string,
+	replayPayload?: Record<string, unknown>,
 ): void {
 	try {
 		const action = `${toolName}:${rawAction.slice(0, 200)}`;
@@ -65,11 +72,18 @@ function safeRecordDeny(
 			provenance: DENY_PROVENANCE,
 			summary: reason,
 			rule,
+			replayPayload,
 		});
 		// T14: structured metrics event for analytics streams.
 		recordEvent({
 			event: "permission_decision",
-			data: { tool: toolName, outcome: "deny", provenance: DENY_PROVENANCE, rule, summary: reason },
+			data: {
+				tool: toolName,
+				outcome: "deny",
+				provenance: DENY_PROVENANCE,
+				rule,
+				summary: reason,
+			},
 		});
 	} catch {
 		// ignore -- registry must never block damage-control flow
@@ -90,6 +104,10 @@ function safeRecordAllow(
 			provenance,
 			summary,
 		});
+		recordEvent({
+			event: "permission_decision",
+			data: { tool: toolName, outcome: "allow", provenance, summary },
+		});
 	} catch {
 		// ignore
 	}
@@ -100,13 +118,52 @@ function extractRulePattern(reason: string): string | undefined {
 	return match ? match[1] : undefined;
 }
 
+function redactSummary(value: string): string {
+	return value
+		.replace(/https?:\/\/[^\s@]+@/gi, "https://[redacted]@")
+		.replace(/(token|key|secret|password)=([^\s&]+)/gi, "$1=[redacted]")
+		.replace(
+			/-----BEGIN [^-]+-----[\s\S]*?-----END [^-]+-----/g,
+			"[redacted-key-material]",
+		)
+		.replace(/\.env\b/g, "[redacted-env-file]")
+		.replace(/id_ed25519|id_rsa|\.pem|\.key/g, "[redacted-secret-path]")
+		.slice(0, 200);
+}
+
+function replayDescriptor(input: {
+	toolName: string;
+	rawAction: string;
+	cwd?: string;
+	reason: string;
+	rule?: string;
+}): Record<string, unknown> {
+	return {
+		toolName: input.toolName,
+		cwd: input.cwd,
+		rule: input.rule,
+		classification: input.reason.startsWith("Confirmation required")
+			? "ask-deny"
+			: "block",
+		redactedSummary: redactSummary(input.rawAction),
+	};
+}
+
 interface DangerousCommand {
 	pattern: string;
 	reason: string;
 	action?: "block" | "ask";
+	regex?: string;
 	platforms?: string[];
 	exclude_platforms?: string[];
 }
+
+interface LoadedRules {
+	rules: DamageControlRules;
+	health: DamageControlHealth;
+}
+
+let lastDamageControlHealth: DamageControlHealth = getDamageControlHealth();
 
 interface DamageControlRules {
 	dangerous_commands: DangerousCommand[];
@@ -125,7 +182,7 @@ function stripQuotes(value: string): string {
 	return value;
 }
 
-function parseDamageControlRules(content: string): DamageControlRules {
+export function parseDamageControlRules(content: string): DamageControlRules {
 	const rules: DamageControlRules = {
 		dangerous_commands: [],
 		zero_access_paths: [],
@@ -138,10 +195,7 @@ function parseDamageControlRules(content: string): DamageControlRules {
 
 	const flushCommand = () => {
 		if (pendingCommand?.pattern && pendingCommand.reason) {
-			rules.dangerous_commands.push({
-				pattern: pendingCommand.pattern,
-				reason: pendingCommand.reason,
-			});
+			rules.dangerous_commands.push(pendingCommand as DangerousCommand);
 		}
 		pendingCommand = null;
 	};
@@ -169,11 +223,21 @@ function parseDamageControlRules(content: string): DamageControlRules {
 				continue;
 			}
 			if (indent === 4 && trimmed.startsWith("reason:") && pendingCommand) {
-				pendingCommand.reason = stripQuotes(trimmed.slice("reason:".length).trim());
+				pendingCommand.reason = stripQuotes(
+					trimmed.slice("reason:".length).trim(),
+				);
 				continue;
 			}
 			if (indent === 4 && trimmed.startsWith("action:") && pendingCommand) {
-				pendingCommand.action = stripQuotes(trimmed.slice("action:".length).trim()) as "block" | "ask";
+				pendingCommand.action = stripQuotes(
+					trimmed.slice("action:".length).trim(),
+				) as "block" | "ask";
+				continue;
+			}
+			if (indent === 4 && trimmed.startsWith("regex:") && pendingCommand) {
+				pendingCommand.regex = stripQuotes(
+					trimmed.slice("regex:".length).trim(),
+				);
 				continue;
 			}
 			if (indent === 4 && trimmed.startsWith("platforms:") && pendingCommand) {
@@ -187,7 +251,11 @@ function parseDamageControlRules(content: string): DamageControlRules {
 					.filter(Boolean);
 				continue;
 			}
-			if (indent === 4 && trimmed.startsWith("exclude_platforms:") && pendingCommand) {
+			if (
+				indent === 4 &&
+				trimmed.startsWith("exclude_platforms:") &&
+				pendingCommand
+			) {
 				pendingCommand.exclude_platforms = trimmed
 					.slice("exclude_platforms:".length)
 					.trim()
@@ -214,25 +282,87 @@ function parseDamageControlRules(content: string): DamageControlRules {
 	return rules;
 }
 
-function loadRules(): DamageControlRules {
-	const candidates = [
-		path.join(".pi", "damage-control-rules.yaml"),
-		path.join(os.homedir(), ".pi", "agent", "damage-control-rules.yaml"),
-	];
+function summarizeRules(
+	rules: DamageControlRules,
+	ruleSource?: string,
+): DamageControlHealth {
+	return {
+		status: "active",
+		ruleSource,
+		commandRules: rules.dangerous_commands.length,
+		zeroAccessRules: rules.zero_access_paths.length,
+		noDeleteRules: rules.no_delete_paths.length,
+	};
+}
 
-	for (const candidate of candidates) {
-		try {
-			const content = fs.readFileSync(candidate, "utf-8");
-			return parseDamageControlRules(content);
-		} catch {
-			// try next
+function validateRules(rules: DamageControlRules): string[] {
+	const errors: string[] = [];
+	if (!Array.isArray(rules.dangerous_commands))
+		errors.push("dangerous_commands must be an array");
+	if (!Array.isArray(rules.zero_access_paths))
+		errors.push("zero_access_paths must be an array");
+	if (!Array.isArray(rules.no_delete_paths))
+		errors.push("no_delete_paths must be an array");
+	for (const [idx, rule] of rules.dangerous_commands.entries()) {
+		if (!rule.pattern || typeof rule.pattern !== "string")
+			errors.push(`dangerous_commands[${idx}].pattern is required`);
+		if (!rule.reason || typeof rule.reason !== "string")
+			errors.push(`dangerous_commands[${idx}].reason is required`);
+		if (rule.action && rule.action !== "ask" && rule.action !== "block")
+			errors.push(`dangerous_commands[${idx}].action must be ask or block`);
+		if (rule.regex) {
+			try {
+				new RegExp(rule.regex);
+			} catch {
+				errors.push(`dangerous_commands[${idx}].regex is invalid`);
+			}
 		}
 	}
+	return errors;
+}
 
+function emptyRules(): DamageControlRules {
 	return {
 		dangerous_commands: [],
 		zero_access_paths: [],
 		no_delete_paths: [],
+	};
+}
+
+export function loadRules(cwd: string = process.cwd()): LoadedRules {
+	const extensionDir = path.dirname(fileURLToPath(import.meta.url));
+	const candidates = [
+		path.join(cwd, ".pi", "damage-control-rules.yaml"),
+		path.join(extensionDir, "..", "damage-control-rules.yaml"),
+		path.join(os.homedir(), ".pi", "agent", "damage-control-rules.yaml"),
+	];
+
+	const errors: string[] = [];
+	for (const candidate of candidates) {
+		try {
+			const content = fs.readFileSync(candidate, "utf-8");
+			const rules = parseDamageControlRules(content);
+			const validationErrors = validateRules(rules);
+			if (validationErrors.length > 0) {
+				throw new Error(validationErrors.join("; "));
+			}
+			return { rules, health: summarizeRules(rules, candidate) };
+		} catch (err) {
+			errors.push(
+				`${candidate}: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
+	}
+
+	return {
+		rules: emptyRules(),
+		health: {
+			status: "failed",
+			error: `No damage-control rules loaded. Tried: ${errors.join("; ")}`,
+			commandRules: 0,
+			zeroAccessRules: 0,
+			noDeleteRules: 0,
+		},
 	};
 }
 
@@ -263,11 +393,18 @@ function matchesSuffix(filePath: string, expanded: string): boolean {
 
 function matchesPrefix(filePath: string, expanded: string): boolean {
 	const prefix = expanded.slice(0, -2);
-	return filePath === prefix || filePath.startsWith(prefix + path.sep) || filePath.startsWith(prefix + "/");
+	return (
+		filePath === prefix ||
+		filePath.startsWith(prefix + path.sep) ||
+		filePath.startsWith(`${prefix}/`)
+	);
 }
 
 function matchesGlob(filePath: string, expanded: string): boolean {
-	const regexStr = expanded.split("*").map((s) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*");
+	const regexStr = expanded
+		.split("*")
+		.map((s) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+		.join(".*");
 	return new RegExp(regexStr).test(filePath);
 }
 
@@ -312,14 +449,20 @@ export function isSshProtectedPattern(pattern: string): boolean {
 	if (!pattern) return false;
 	if (SSH_PROTECTED_PATTERNS.has(pattern)) return true;
 	const trimmed = pattern.replace(/[/\\]+$/, "");
-	return SSH_PROTECTED_PATTERNS.has(trimmed) || SSH_PROTECTED_PATTERNS.has(`${trimmed}/`);
+	return (
+		SSH_PROTECTED_PATTERNS.has(trimmed) ||
+		SSH_PROTECTED_PATTERNS.has(`${trimmed}/`)
+	);
 }
 
 export async function checkZeroAccess(
 	canonical: string,
 	patterns: string[],
 	toolName: string,
-	ctx?: { ui?: { confirm?: (title: string, message: string) => Promise<boolean> }; hasUI?: boolean },
+	ctx?: {
+		ui?: { confirm?: (title: string, message: string) => Promise<boolean> };
+		hasUI?: boolean;
+	},
 ): Promise<{ block: true; reason: string } | undefined> {
 	for (const pattern of patterns) {
 		if (!matchesPattern(canonical, pattern)) continue;
@@ -362,30 +505,61 @@ function currentPlatformAliases(): Set<string> {
 	return aliases;
 }
 
-export function commandAppliesToCurrentPlatform(command: DangerousCommand): boolean {
+export function commandAppliesToCurrentPlatform(
+	command: DangerousCommand,
+): boolean {
 	const aliases = currentPlatformAliases();
 	if (command.platforms?.length) {
-		const wanted = new Set(command.platforms.map((value) => value.toLowerCase()));
+		const wanted = new Set(
+			command.platforms.map((value) => value.toLowerCase()),
+		);
 		if (![...aliases].some((value) => wanted.has(value))) return false;
 	}
 	if (command.exclude_platforms?.length) {
-		const banned = new Set(command.exclude_platforms.map((value) => value.toLowerCase()));
+		const banned = new Set(
+			command.exclude_platforms.map((value) => value.toLowerCase()),
+		);
 		if ([...aliases].some((value) => banned.has(value))) return false;
 	}
 	return true;
 }
 
+function commandMatchesRule(command: string, rule: DangerousCommand): boolean {
+	if (rule.regex) {
+		try {
+			return new RegExp(rule.regex, "i").test(command);
+		} catch {
+			return false;
+		}
+	}
+	return command.includes(rule.pattern);
+}
+
 export async function evaluateDangerousCommand(
 	command: string,
 	rules: DangerousCommand[],
-	ctx?: { ui?: { confirm?: (title: string, message: string) => Promise<boolean> }; hasUI?: boolean },
+	ctx?: {
+		ui?: { confirm?: (title: string, message: string) => Promise<boolean> };
+		hasUI?: boolean;
+		onConfirm?: (rule: DangerousCommand) => void;
+	},
 ): Promise<{ block: true; reason: string } | undefined> {
 	for (const rule of rules) {
-		if (!commandAppliesToCurrentPlatform(rule) || !command.includes(rule.pattern)) continue;
+		if (
+			!commandAppliesToCurrentPlatform(rule) ||
+			!commandMatchesRule(command, rule)
+		)
+			continue;
 		if (rule.action === "ask") {
 			if (ctx?.hasUI && ctx.ui?.confirm) {
-				const ok = await ctx.ui.confirm("Confirm dangerous command", rule.reason);
-				if (ok) return undefined;
+				const ok = await ctx.ui.confirm(
+					"Confirm dangerous command",
+					rule.reason,
+				);
+				if (ok) {
+					ctx.onConfirm?.(rule);
+					return undefined;
+				}
 			}
 			return {
 				block: true,
@@ -440,14 +614,22 @@ export function extractBashDeleteTargets(command: string): string[] {
 		}
 	}
 
-	if (head === "git" && tokens[1] === "clean" && tokens.slice(2).some((t) => /^-[a-z]*f/.test(t))) {
+	if (
+		head === "git" &&
+		tokens[1] === "clean" &&
+		tokens.slice(2).some((t) => /^-[a-z]*f/.test(t))
+	) {
 		targets.push(".");
 	}
 
 	if (head === "find" && tokens.includes("-delete")) {
 		for (const token of tokens.slice(1)) {
 			if (token === "-delete") break;
-			if (!isFlagToken(token) && !token.startsWith("(") && !token.startsWith(")")) {
+			if (
+				!isFlagToken(token) &&
+				!token.startsWith("(") &&
+				!token.startsWith(")")
+			) {
 				targets.push(token);
 				break;
 			}
@@ -485,7 +667,9 @@ export function extractPwshDeleteTargets(command: string): string[] {
 	const targets: string[] = [];
 	const lower = command.toLowerCase();
 
-	const fileDeleteMatches = command.match(/\[System\.IO\.File\]::Delete\(\s*["']([^"']+)["']\s*\)/g);
+	const fileDeleteMatches = command.match(
+		/\[System\.IO\.File\]::Delete\(\s*["']([^"']+)["']\s*\)/g,
+	);
 	if (fileDeleteMatches) {
 		for (const m of fileDeleteMatches) {
 			const inner = m.match(/["']([^"']+)["']/);
@@ -510,7 +694,9 @@ export function extractPwshDeleteTargets(command: string): string[] {
 		}
 	}
 
-	const outFileMatch = lower.match(/out-file\b[^|;]*?-force\b[^|;]*?(?:-filepath|-path)?\s+([^\s|;]+)/);
+	const outFileMatch = lower.match(
+		/out-file\b[^|;]*?-force\b[^|;]*?(?:-filepath|-path)?\s+([^\s|;]+)/,
+	);
 	if (outFileMatch) {
 		targets.push(stripQuotes(outFileMatch[1]));
 	}
@@ -520,7 +706,14 @@ export function extractPwshDeleteTargets(command: string): string[] {
 
 export function extractTruncatingEditWriteTarget(
 	toolName: string,
-	input: { path?: string; content?: string; new_string?: string; old_string?: string } | undefined,
+	input:
+		| {
+				path?: string;
+				content?: string;
+				new_string?: string;
+				old_string?: string;
+		  }
+		| undefined,
 ): string | undefined {
 	if (!input?.path) return undefined;
 
@@ -560,25 +753,102 @@ export function checkNoDeletePaths(
 	return undefined;
 }
 
+function formatDamageControlStatus(health: DamageControlHealth): string {
+	if (health.status === "active") {
+		return `damage-control: active (${health.commandRules}/${health.zeroAccessRules}/${health.noDeleteRules})`;
+	}
+	return "damage-control: failed";
+}
+
+function blockIfRulesFailed(): { block: true; reason: string } | undefined {
+	if (lastDamageControlHealth.status !== "failed") return undefined;
+	return {
+		block: true,
+		reason:
+			lastDamageControlHealth.error ?? "Damage-control rules failed to load.",
+	};
+}
+
 export default function (pi: ExtensionAPI) {
-	const rules = loadRules();
+	const loaded = loadRules();
+	const rules = loaded.rules;
+	lastDamageControlHealth = loaded.health;
+	publishDamageControlHealth(loaded.health);
+
+	pi.on("session_start", async (_event, ctx) => {
+		ctx.ui.setStatus(
+			"damage-control",
+			formatDamageControlStatus(lastDamageControlHealth),
+		);
+		if (lastDamageControlHealth.status === "failed") {
+			ctx.ui.notify(
+				lastDamageControlHealth.error ?? "Damage-control rules failed to load.",
+				"warning",
+			);
+		}
+	});
 
 	// Handler 1: bash -- dangerous patterns + no-delete enforcement.
 	pi.on("tool_call", async (event, ctx) => {
 		if (event.toolName !== "bash") return undefined;
+		const failed = blockIfRulesFailed();
+		if (failed) return failed;
 		const bashEvent = event as BashToolCallEvent;
 		const command = bashEvent.input.command ?? "";
 
-		const dangerous = await evaluateDangerousCommand(command, rules.dangerous_commands, ctx as any);
+		const dangerous = await evaluateDangerousCommand(
+			command,
+			rules.dangerous_commands,
+			{
+				ui: ctx.ui,
+				hasUI: true,
+				onConfirm: (rule) => {
+					safeRecordAllow(
+						"bash",
+						command,
+						"manual_once",
+						`Confirmed dangerous command (matched "${rule.pattern}"): ${rule.reason}`,
+					);
+				},
+			},
+		);
 		if (dangerous) {
-			safeRecordDeny("bash", command, dangerous.reason, extractRulePattern(dangerous.reason));
+			safeRecordDeny(
+				"bash",
+				command,
+				dangerous.reason,
+				extractRulePattern(dangerous.reason),
+				replayDescriptor({
+					toolName: event.toolName,
+					rawAction: command,
+					cwd: ctx.cwd,
+					reason: dangerous.reason,
+					rule: extractRulePattern(dangerous.reason),
+				}),
+			);
 			return dangerous;
 		}
 
 		const targets = extractBashDeleteTargets(command);
-		const noDelete = checkNoDeletePaths(targets, rules.no_delete_paths, ctx.cwd);
+		const noDelete = checkNoDeletePaths(
+			targets,
+			rules.no_delete_paths,
+			ctx.cwd,
+		);
 		if (noDelete) {
-			safeRecordDeny("bash", command, noDelete.reason, extractRulePattern(noDelete.reason));
+			safeRecordDeny(
+				"bash",
+				command,
+				noDelete.reason,
+				extractRulePattern(noDelete.reason),
+				replayDescriptor({
+					toolName: event.toolName,
+					rawAction: command,
+					cwd: ctx.cwd,
+					reason: noDelete.reason,
+					rule: extractRulePattern(noDelete.reason),
+				}),
+			);
 		}
 		return noDelete;
 	});
@@ -586,11 +856,29 @@ export default function (pi: ExtensionAPI) {
 	// Handler 1b: pwsh -- PowerShell-aware no-delete enforcement.
 	pi.on("tool_call", (event, ctx) => {
 		if (event.toolName !== "pwsh") return undefined;
+		const failed = blockIfRulesFailed();
+		if (failed) return failed;
 		const command = (event.input as { command?: string }).command ?? "";
 		const targets = extractPwshDeleteTargets(command);
-		const noDelete = checkNoDeletePaths(targets, rules.no_delete_paths, ctx.cwd);
+		const noDelete = checkNoDeletePaths(
+			targets,
+			rules.no_delete_paths,
+			ctx.cwd,
+		);
 		if (noDelete) {
-			safeRecordDeny("pwsh", command, noDelete.reason, extractRulePattern(noDelete.reason));
+			safeRecordDeny(
+				"pwsh",
+				command,
+				noDelete.reason,
+				extractRulePattern(noDelete.reason),
+				replayDescriptor({
+					toolName: event.toolName,
+					rawAction: command,
+					cwd: ctx.cwd,
+					reason: noDelete.reason,
+					rule: extractRulePattern(noDelete.reason),
+				}),
+			);
 		}
 		return noDelete;
 	});
@@ -599,14 +887,30 @@ export default function (pi: ExtensionAPI) {
 	pi.on("tool_call", async (event, ctx) => {
 		const FILE_TOOLS = new Set(["read", "write", "edit", "find", "ls"]);
 		if (!FILE_TOOLS.has(event.toolName)) return undefined;
+		const failed = blockIfRulesFailed();
+		if (failed) return failed;
 
-		const fileEvent = event as ReadToolCallEvent | WriteToolCallEvent | EditToolCallEvent;
+		const fileEvent = event as
+			| ReadToolCallEvent
+			| WriteToolCallEvent
+			| EditToolCallEvent;
 		const rawPath = (fileEvent.input as { path?: string }).path ?? "";
 		if (!rawPath) return undefined;
 
 		const canonResult = canonicalizeOrBlock(rawPath, ctx.cwd);
 		if ("block" in canonResult) {
-			safeRecordDeny(event.toolName, rawPath, canonResult.reason);
+			safeRecordDeny(
+				event.toolName,
+				rawPath,
+				canonResult.reason,
+				undefined,
+				replayDescriptor({
+					toolName: event.toolName,
+					rawAction: rawPath,
+					cwd: ctx.cwd,
+					reason: canonResult.reason,
+				}),
+			);
 			return canonResult;
 		}
 		const canonical = canonResult.canonical;
@@ -615,18 +919,54 @@ export default function (pi: ExtensionAPI) {
 			canonical,
 			rules.zero_access_paths,
 			event.toolName,
-			ctx as any,
+			{ ui: ctx.ui, hasUI: true },
 		);
 		if (zeroAccess) {
-			safeRecordDeny(event.toolName, rawPath, zeroAccess.reason, extractRulePattern(zeroAccess.reason));
+			safeRecordDeny(
+				event.toolName,
+				rawPath,
+				zeroAccess.reason,
+				extractRulePattern(zeroAccess.reason),
+				replayDescriptor({
+					toolName: event.toolName,
+					rawAction: rawPath,
+					cwd: ctx.cwd,
+					reason: zeroAccess.reason,
+					rule: extractRulePattern(zeroAccess.reason),
+				}),
+			);
 			return zeroAccess;
 		}
 
-		const truncatingTarget = extractTruncatingEditWriteTarget(event.toolName, fileEvent.input as any);
+		const truncatingTarget = extractTruncatingEditWriteTarget(
+			event.toolName,
+			fileEvent.input as {
+				path?: string;
+				content?: string;
+				new_string?: string;
+				old_string?: string;
+			},
+		);
 		if (truncatingTarget) {
-			const noDelete = checkNoDeletePaths([truncatingTarget], rules.no_delete_paths, ctx.cwd);
+			const noDelete = checkNoDeletePaths(
+				[truncatingTarget],
+				rules.no_delete_paths,
+				ctx.cwd,
+			);
 			if (noDelete) {
-				safeRecordDeny(event.toolName, rawPath, noDelete.reason, extractRulePattern(noDelete.reason));
+				safeRecordDeny(
+					event.toolName,
+					rawPath,
+					noDelete.reason,
+					extractRulePattern(noDelete.reason),
+					replayDescriptor({
+						toolName: event.toolName,
+						rawAction: rawPath,
+						cwd: ctx.cwd,
+						reason: noDelete.reason,
+						rule: extractRulePattern(noDelete.reason),
+					}),
+				);
 			}
 			return noDelete;
 		}

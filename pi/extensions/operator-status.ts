@@ -25,6 +25,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext, ReadonlyFooterDataProvider } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { formatDamageControlHealthDetail, getDamageControlHealth } from "../lib/damage-control-health.js";
 import { listRecentDecisions, listSessionApprovals } from "../lib/permission-registry.js";
 import {
 	createReloadStatusState,
@@ -392,6 +393,15 @@ function buildDoctorReport(cwd: string): DoctorReport {
 			name: "permission registry",
 			ok: true,
 			detail: `${sessionApprovals} session approvals, ${recentDecisions} recent decisions`,
+		});
+	}
+
+	const damageControlHealth = getDamageControlHealth();
+	if (damageControlHealth.error !== "damage-control extension has not loaded rules yet") {
+		checks.push({
+			name: "damage-control",
+			ok: damageControlHealth.status === "active",
+			detail: formatDamageControlHealthDetail(damageControlHealth),
 		});
 	}
 

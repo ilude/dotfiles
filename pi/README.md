@@ -168,6 +168,8 @@ TypeScript extensions live in `~/.dotfiles/pi/extensions/` and are auto-discover
 
 ### `damage-control.ts`
 
+Pi damage-control is a Pi-native adapter for the intent of the Claude Code damage-control hooks. It uses Pi extension APIs, status text, `/doctor`, and `/permissions` rather than importing the Claude hook runtime. Current coverage is intentionally bounded: destructive command variants, selected shell/interpreter wrappers, secret reads, obvious metadata-service access, and secret-to-network exfil patterns. The working parity inventory lives at `.specs/pi-damage-control-v2/claude-parity-matrix.md`; a future follow-up can replace per-client rule files with a neutral shared policy schema once the native behavior is stable.
+
 Intercepts tool calls and blocks dangerous operations before they execute.
 
 - **Dangerous commands** -- blocks `rm -rf`, `git reset --hard`, `dd if=`, etc.
