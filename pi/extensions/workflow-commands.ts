@@ -44,6 +44,7 @@ import {
 	buildSecretReviewPrompt,
 	buildSkillPrompt,
 } from "../lib/workflow-commands/prompts";
+import { isOperatorReloadNeeded } from "./operator-status";
 
 const SKILLS_DIR = path.join(
 	os.homedir(),
@@ -106,6 +107,23 @@ function loadSkill(name: string) {
 	} catch (err) {
 		throw new Error(`Failed to load skill ${name} from ${skillPath}: ${err}`);
 	}
+}
+
+async function newSessionWithReloadIfNeeded(ctx: {
+	newSession: (options?: {
+		withSession?: (newCtx: { reload: () => Promise<void> }) => Promise<void>;
+	}) => Promise<{ cancelled: boolean }>;
+}) {
+	const reloadNeeded = isOperatorReloadNeeded();
+	return ctx.newSession(
+		reloadNeeded
+			? {
+					withSession: async (newCtx) => {
+						await newCtx.reload();
+					},
+				}
+			: undefined,
+	);
 }
 
 function loadClaudeCommitInstructions() {
@@ -1590,7 +1608,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("clear", {
 		description: "Alias to /new",
 		handler: async (_args, ctx) => {
-			await ctx.newSession();
+			await newSessionWithReloadIfNeeded(ctx);
 		},
 	});
 

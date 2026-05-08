@@ -457,6 +457,10 @@ export function resetOperatorReloadStatus(state: ReloadStatusState = reloadStatu
 	resetReloadStatusBaseline(state, nowMs);
 }
 
+export function isOperatorReloadNeeded(state: ReloadStatusState = reloadStatus): boolean {
+	return needsPiReload({ state });
+}
+
 export default function (pi: ExtensionAPI) {
 	pi.on("session_start", async (event, ctx) => {
 		currentSessionStartedAt = new Date().toISOString();
