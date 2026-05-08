@@ -185,9 +185,11 @@ The older Python `scripts/commit-helper` remains a compatibility/parity referenc
 
 ### Direct-tool vs. slash-command usage
 
-**Agents must not call `commit_stage` or `commit_create` directly outside of the `/commit` slash-command flow.**
+**Agents must not call the structured mutating tools `commit_stage` or `commit_create` directly outside of the `/commit` slash-command flow.**
 
 The token-safety model is centralized in `/commit`: the command orchestrates `commit_plan`, presents the plan to the user for explicit approval, and only then passes the confirmation tokens to `commit_stage` and `commit_create`. Calling the mutating tools directly bypasses user review of the staged-path set and the commit message, eliminating the safety guarantee the token system provides.
+
+This restriction is about the structured Pi commit tools only. It does not prohibit ordinary git operations. When the user explicitly asks an agent to commit, the agent may use a normal shell git workflow (`git status`, targeted `git add -- <paths>`, secret scan, `git diff --cached --check`, `git commit`) while following the repo's git safety rules.
 
 `commit_plan` and `commit_validate_message` are non-mutating and may be called directly for inspection or validation purposes.
 
