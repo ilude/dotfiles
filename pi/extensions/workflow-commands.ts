@@ -241,7 +241,7 @@ const SUMMARIZE_PROMPT = `Summarize the work done in this session as a compact h
 Use this structure when applicable:
 
 1. Start with the primary artifact/path or main outcome in a short sentence.
-2. Include links/paths to any PRD.md or plan.md files created or materially updated in this session, with state: open, ready for review, ready for plan/implementation, completed, or archived.
+2. Include links/paths to any PRD.md or plan.md files created or materially updated in this session, with state: open, ready for review, ready for plan/implementation, completed, or archived. Before reporting a PRD/plan as active or recommending it as next work, validate whether it still exists at the stated path, whether it has moved under .specs/archive/, and whether its frontmatter/status/checklist marks it completed or archived.
 3. Add a "Current direction" or "Current status" section if there is an active design/plan/change.
 4. Add "Key decisions captured" as concise bullets for durable decisions.
 5. Add "Telemetry/validation/implementation notes" only if relevant.
