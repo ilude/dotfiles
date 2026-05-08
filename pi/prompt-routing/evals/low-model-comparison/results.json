@@ -1,0 +1,122 @@
+[
+  {
+    "id": "mechanical-json",
+    "model": "gpt-5.3-codex-spark",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 5577,
+    "usage": {
+      "input_tokens": 22176,
+      "cached_input_tokens": 3584,
+      "output_tokens": 336,
+      "reasoning_output_tokens": 306
+    },
+    "text": "{\"result\":{\"id\":42,\"name\":\"Ada\",\"age\":36},\"note\":\"Mapped headers to row values.\"}",
+    "stderr": "Reading additional input from stdin...\n"
+  },
+  {
+    "id": "mechanical-json",
+    "model": "gpt-5.4-mini",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 5100,
+    "usage": {
+      "input_tokens": 22249,
+      "cached_input_tokens": 2432,
+      "output_tokens": 131,
+      "reasoning_output_tokens": 102
+    },
+    "text": "{\"result\":{\"id\":\"42\",\"name\":\"Ada\",\"age\":\"36\"},\"note\":\"Parsed one CSV row\"}",
+    "stderr": "Reading additional input from stdin...\n"
+  },
+  {
+    "id": "tiny-code",
+    "model": "gpt-5.3-codex-spark",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 5421,
+    "usage": {
+      "input_tokens": 22185,
+      "cached_input_tokens": 3584,
+      "output_tokens": 366,
+      "reasoning_output_tokens": 308
+    },
+    "text": "function slugify(input: string): string {\n  return input\n    .toLowerCase()\n    .trim()\n    .replace(/[^a-z0-9]+/g, \"-\")\n    .replace(/^-+|-+$/g, \"\");\n}",
+    "stderr": "Reading additional input from stdin...\n"
+  },
+  {
+    "id": "tiny-code",
+    "model": "gpt-5.4-mini",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 3847,
+    "usage": {
+      "input_tokens": 22258,
+      "cached_input_tokens": 21888,
+      "output_tokens": 90,
+      "reasoning_output_tokens": 32
+    },
+    "text": "function slugify(input: string): string {\n  return input\n    .toLowerCase()\n    .trim()\n    .replace(/[^a-z0-9]+/g, '-')\n    .replace(/^-+|-+$/g, '');\n}",
+    "stderr": "Reading additional input from stdin...\n"
+  },
+  {
+    "id": "bug-spot",
+    "model": "gpt-5.3-codex-spark",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 6144,
+    "usage": {
+      "input_tokens": 22183,
+      "cached_input_tokens": 6400,
+      "output_tokens": 517,
+      "reasoning_output_tokens": 432
+    },
+    "text": "{\"bug\":\"Using `reduce` without an initial value causes a runtime error for empty arrays: `TypeError: Reduce of empty array with no initial value`.\",\"fix\":\"Seed the reduction and/or guard empty input, e.g. `if (!xs.length) return 0; return xs.reduce((a, b) => a + b, 0) / xs.length;`\"}",
+    "stderr": "Reading additional input from stdin...\n"
+  },
+  {
+    "id": "bug-spot",
+    "model": "gpt-5.4-mini",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 5415,
+    "usage": {
+      "input_tokens": 22256,
+      "cached_input_tokens": 2432,
+      "output_tokens": 175,
+      "reasoning_output_tokens": 93
+    },
+    "text": "{\"bug\":\"Calling `avg([])` throws a TypeError because `reduce` is used without an initial value, so empty arrays are not handled.\",\"fix\":\"Add an explicit empty-array check or supply an initial accumulator, e.g. `function avg(xs){ return xs.length ? xs.reduce((a,b)=>a+b,0)/xs.length : 0 }`.\"}",
+    "stderr": "Reading additional input from stdin...\n"
+  },
+  {
+    "id": "repo-fact",
+    "model": "gpt-5.3-codex-spark",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 7025,
+    "usage": {
+      "input_tokens": 46643,
+      "cached_input_tokens": 44032,
+      "output_tokens": 367,
+      "reasoning_output_tokens": 276
+    },
+    "text": "{\"command\":\"make test-quick\"}",
+    "stderr": "Reading additional input from stdin...\n"
+  },
+  {
+    "id": "repo-fact",
+    "model": "gpt-5.4-mini",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 3863,
+    "usage": {
+      "input_tokens": 22235,
+      "cached_input_tokens": 2432,
+      "output_tokens": 69,
+      "reasoning_output_tokens": 55
+    },
+    "text": "{\"command\":\"make test-quick\"}",
+    "stderr": "Reading additional input from stdin...\n"
+  }
+]

@@ -1,0 +1,374 @@
+[
+  {
+    "id": "mechanical-json",
+    "model": "gpt-5.3-codex-spark",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 5577,
+    "usage": {
+      "input_tokens": 22176,
+      "cached_input_tokens": 3584,
+      "output_tokens": 336,
+      "reasoning_output_tokens": 306
+    },
+    "text": "{\"result\":{\"id\":42,\"name\":\"Ada\",\"age\":36},\"note\":\"Mapped headers to row values.\"}",
+    "stderr": "Reading additional input from stdin...\n"
+  },
+  {
+    "id": "mechanical-json",
+    "model": "gpt-5.4-mini",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 5100,
+    "usage": {
+      "input_tokens": 22249,
+      "cached_input_tokens": 2432,
+      "output_tokens": 131,
+      "reasoning_output_tokens": 102
+    },
+    "text": "{\"result\":{\"id\":\"42\",\"name\":\"Ada\",\"age\":\"36\"},\"note\":\"Parsed one CSV row\"}",
+    "stderr": "Reading additional input from stdin...\n"
+  },
+  {
+    "id": "tiny-code",
+    "model": "gpt-5.3-codex-spark",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 5421,
+    "usage": {
+      "input_tokens": 22185,
+      "cached_input_tokens": 3584,
+      "output_tokens": 366,
+      "reasoning_output_tokens": 308
+    },
+    "text": "function slugify(input: string): string {\n  return input\n    .toLowerCase()\n    .trim()\n    .replace(/[^a-z0-9]+/g, \"-\")\n    .replace(/^-+|-+$/g, \"\");\n}",
+    "stderr": "Reading additional input from stdin...\n"
+  },
+  {
+    "id": "tiny-code",
+    "model": "gpt-5.4-mini",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 3847,
+    "usage": {
+      "input_tokens": 22258,
+      "cached_input_tokens": 21888,
+      "output_tokens": 90,
+      "reasoning_output_tokens": 32
+    },
+    "text": "function slugify(input: string): string {\n  return input\n    .toLowerCase()\n    .trim()\n    .replace(/[^a-z0-9]+/g, '-')\n    .replace(/^-+|-+$/g, '');\n}",
+    "stderr": "Reading additional input from stdin...\n"
+  },
+  {
+    "id": "bug-spot",
+    "model": "gpt-5.3-codex-spark",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 6144,
+    "usage": {
+      "input_tokens": 22183,
+      "cached_input_tokens": 6400,
+      "output_tokens": 517,
+      "reasoning_output_tokens": 432
+    },
+    "text": "{\"bug\":\"Using `reduce` without an initial value causes a runtime error for empty arrays: `TypeError: Reduce of empty array with no initial value`.\",\"fix\":\"Seed the reduction and/or guard empty input, e.g. `if (!xs.length) return 0; return xs.reduce((a, b) => a + b, 0) / xs.length;`\"}",
+    "stderr": "Reading additional input from stdin...\n"
+  },
+  {
+    "id": "bug-spot",
+    "model": "gpt-5.4-mini",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 5415,
+    "usage": {
+      "input_tokens": 22256,
+      "cached_input_tokens": 2432,
+      "output_tokens": 175,
+      "reasoning_output_tokens": 93
+    },
+    "text": "{\"bug\":\"Calling `avg([])` throws a TypeError because `reduce` is used without an initial value, so empty arrays are not handled.\",\"fix\":\"Add an explicit empty-array check or supply an initial accumulator, e.g. `function avg(xs){ return xs.length ? xs.reduce((a,b)=>a+b,0)/xs.length : 0 }`.\"}",
+    "stderr": "Reading additional input from stdin...\n"
+  },
+  {
+    "id": "repo-fact",
+    "model": "gpt-5.3-codex-spark",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 7025,
+    "usage": {
+      "input_tokens": 46643,
+      "cached_input_tokens": 44032,
+      "output_tokens": 367,
+      "reasoning_output_tokens": 276
+    },
+    "text": "{\"command\":\"make test-quick\"}",
+    "stderr": "Reading additional input from stdin...\n"
+  },
+  {
+    "id": "repo-fact",
+    "model": "gpt-5.4-mini",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 3863,
+    "usage": {
+      "input_tokens": 22235,
+      "cached_input_tokens": 2432,
+      "output_tokens": 69,
+      "reasoning_output_tokens": 55
+    },
+    "text": "{\"command\":\"make test-quick\"}",
+    "stderr": "Reading additional input from stdin...\n"
+  },
+  {
+    "id": "mechanical-json",
+    "model": "gpt-5.3-codex",
+    "raw_model": "gpt-5.3-codex",
+    "effort": "low",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 4701,
+    "usage": {
+      "input_tokens": 22160,
+      "cached_input_tokens": 6528,
+      "output_tokens": 26,
+      "reasoning_output_tokens": 0
+    },
+    "text": "{\"result\":{\"id\":42,\"name\":\"Ada\",\"age\":36},\"note\":\"Parsed single CSV row\"}",
+    "stderr": ""
+  },
+  {
+    "id": "mechanical-json",
+    "model": "gpt-5.4-low",
+    "raw_model": "gpt-5.4",
+    "effort": "low",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 4965,
+    "usage": {
+      "input_tokens": 22600,
+      "cached_input_tokens": 6528,
+      "output_tokens": 36,
+      "reasoning_output_tokens": 9
+    },
+    "text": "{\"result\":{\"id\":42,\"name\":\"Ada\",\"age\":36},\"note\":\"CSV row converted\"}",
+    "stderr": ""
+  },
+  {
+    "id": "mechanical-json",
+    "model": "gpt-4.5-none",
+    "raw_model": "gpt-4.5",
+    "effort": "none",
+    "status": 1,
+    "signal": null,
+    "elapsed_ms": 1914,
+    "usage": null,
+    "text": "",
+    "stderr": ""
+  },
+  {
+    "id": "mechanical-json",
+    "model": "gpt-5.5-none",
+    "raw_model": "gpt-5.5",
+    "effort": "none",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 4843,
+    "usage": {
+      "input_tokens": 23985,
+      "cached_input_tokens": 2432,
+      "output_tokens": 26,
+      "reasoning_output_tokens": 0
+    },
+    "text": "{\"result\":{\"id\":\"42\",\"name\":\"Ada\",\"age\":\"36\"},\"note\":\"CSV row converted\"}",
+    "stderr": ""
+  },
+  {
+    "id": "tiny-code",
+    "model": "gpt-5.3-codex",
+    "raw_model": "gpt-5.3-codex",
+    "effort": "low",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 5638,
+    "usage": {
+      "input_tokens": 22170,
+      "cached_input_tokens": 3456,
+      "output_tokens": 56,
+      "reasoning_output_tokens": 0
+    },
+    "text": "function slugify(input: string): string {\n  return input\n    .toLowerCase()\n    .trim()\n    .replace(/[^a-z0-9]+/g, \"-\")\n    .replace(/^-+|-+$/g, \"\");\n}",
+    "stderr": ""
+  },
+  {
+    "id": "tiny-code",
+    "model": "gpt-5.4-low",
+    "raw_model": "gpt-5.4",
+    "effort": "low",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 4273,
+    "usage": {
+      "input_tokens": 22610,
+      "cached_input_tokens": 22400,
+      "output_tokens": 56,
+      "reasoning_output_tokens": 0
+    },
+    "text": "function slugify(input: string): string {\n  return input\n    .toLowerCase()\n    .trim()\n    .replace(/[^a-z0-9]+/g, \"-\")\n    .replace(/^-+|-+$/g, \"\");\n}",
+    "stderr": ""
+  },
+  {
+    "id": "tiny-code",
+    "model": "gpt-4.5-none",
+    "raw_model": "gpt-4.5",
+    "effort": "none",
+    "status": 1,
+    "signal": null,
+    "elapsed_ms": 2017,
+    "usage": null,
+    "text": "",
+    "stderr": ""
+  },
+  {
+    "id": "tiny-code",
+    "model": "gpt-5.5-none",
+    "raw_model": "gpt-5.5",
+    "effort": "none",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 6706,
+    "usage": {
+      "input_tokens": 23995,
+      "cached_input_tokens": 2432,
+      "output_tokens": 56,
+      "reasoning_output_tokens": 0
+    },
+    "text": "function slugify(input: string): string {\n  return input\n    .toLowerCase()\n    .trim()\n    .replace(/[^a-z0-9]+/g, \"-\")\n    .replace(/^-+|-+$/g, \"\");\n}",
+    "stderr": ""
+  },
+  {
+    "id": "bug-spot",
+    "model": "gpt-5.3-codex",
+    "raw_model": "gpt-5.3-codex",
+    "effort": "low",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 4286,
+    "usage": {
+      "input_tokens": 22168,
+      "cached_input_tokens": 6528,
+      "output_tokens": 66,
+      "reasoning_output_tokens": 0
+    },
+    "text": "{\"bug\":\"Calling avg([]) throws a TypeError because reduce() has no initial value on an empty array.\",\"fix\":\"Handle empty input and provide an initial accumulator: `function avg(xs){ return xs.length ? xs.reduce((a,b)=>a+b,0)/xs.length : NaN }`\"}",
+    "stderr": ""
+  },
+  {
+    "id": "bug-spot",
+    "model": "gpt-5.4-low",
+    "raw_model": "gpt-5.4",
+    "effort": "low",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 4838,
+    "usage": {
+      "input_tokens": 22608,
+      "cached_input_tokens": 3456,
+      "output_tokens": 72,
+      "reasoning_output_tokens": 0
+    },
+    "text": "{\"bug\":\"`reduce` without an initial value throws on an empty array, so `avg([])` fails at runtime.\",\"fix\":\"Handle the empty-array case and provide an initial accumulator: `function avg(xs){ return xs.length ? xs.reduce((a,b)=>a+b, 0) / xs.length : 0 }`\"}",
+    "stderr": ""
+  },
+  {
+    "id": "bug-spot",
+    "model": "gpt-4.5-none",
+    "raw_model": "gpt-4.5",
+    "effort": "none",
+    "status": 1,
+    "signal": null,
+    "elapsed_ms": 2794,
+    "usage": null,
+    "text": "",
+    "stderr": ""
+  },
+  {
+    "id": "bug-spot",
+    "model": "gpt-5.5-none",
+    "raw_model": "gpt-5.5",
+    "effort": "none",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 4520,
+    "usage": {
+      "input_tokens": 23993,
+      "cached_input_tokens": 2432,
+      "output_tokens": 62,
+      "reasoning_output_tokens": 0
+    },
+    "text": "{\"bug\":\"reduce() throws TypeError when xs is an empty array because no initial value is provided.\",\"fix\":\"Handle empty arrays and provide an initial accumulator: function avg(xs){ return xs.length ? xs.reduce((a,b)=>a+b,0)/xs.length : 0 }\"}",
+    "stderr": ""
+  },
+  {
+    "id": "repo-fact",
+    "model": "gpt-5.3-codex",
+    "raw_model": "gpt-5.3-codex",
+    "effort": "low",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 4158,
+    "usage": {
+      "input_tokens": 22147,
+      "cached_input_tokens": 21888,
+      "output_tokens": 40,
+      "reasoning_output_tokens": 26
+    },
+    "text": "{\"command\":\"make test-quick\"}",
+    "stderr": ""
+  },
+  {
+    "id": "repo-fact",
+    "model": "gpt-5.4-low",
+    "raw_model": "gpt-5.4",
+    "effort": "low",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 14534,
+    "usage": {
+      "input_tokens": 47269,
+      "cached_input_tokens": 25856,
+      "output_tokens": 122,
+      "reasoning_output_tokens": 28
+    },
+    "text": "{\"command\":\"make test-quick\"}",
+    "stderr": ""
+  },
+  {
+    "id": "repo-fact",
+    "model": "gpt-4.5-none",
+    "raw_model": "gpt-4.5",
+    "effort": "none",
+    "status": 1,
+    "signal": null,
+    "elapsed_ms": 2826,
+    "usage": null,
+    "text": "",
+    "stderr": ""
+  },
+  {
+    "id": "repo-fact",
+    "model": "gpt-5.5-none",
+    "raw_model": "gpt-5.5",
+    "effort": "none",
+    "status": 0,
+    "signal": null,
+    "elapsed_ms": 9223,
+    "usage": {
+      "input_tokens": 48168,
+      "cached_input_tokens": 26368,
+      "output_tokens": 60,
+      "reasoning_output_tokens": 0
+    },
+    "text": "{\"command\":\"make test-quick\"}",
+    "stderr": ""
+  }
+]
