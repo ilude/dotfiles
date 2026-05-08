@@ -12,6 +12,7 @@
  *   /do-it         — smart task routing by complexity
  *   /research      — parallel multi-angle research on a topic
  *   /summarize     — concise session recap and workflow friction notes
+ *   /handoff       — write a compact handoff document for another agent
  *   /exit          — gracefully quit pi
  */
 
@@ -247,6 +248,14 @@ Style rules:
 - Skip routine tool calls and dead-end exploration unless they affect the next step.
 - Do not invent validation; say "not run" or omit if unknown.
 - Include any workflow issue that materially affects the next handoff.`;
+
+const HANDOFF_PROMPT = `Write a handoff document summarising the current conversation so a fresh agent can continue the work. Save it to a path produced by \`mktemp -t handoff-XXXXXX.md\` (read the file before you write to it).
+
+Suggest the skills to be used, if any, by the next session.
+
+Do not duplicate content already captured in other artifacts (PRDs, plans, ADRs, issues, commits, diffs). Reference them by path or URL instead.
+
+If the user passed arguments, treat them as a description of what the next session will focus on and tailor the doc accordingly.`;
 
 interface BranchLaunchPlan {
 	executable?: string;
@@ -1580,6 +1589,18 @@ export default function (pi: ExtensionAPI) {
 				? `\n\nAdditional focus: ${args.trim()}`
 				: "";
 			sendHiddenWorkflowPrompt(pi, `${SUMMARIZE_PROMPT}${extraContext}`);
+		},
+	});
+
+	pi.registerCommand("handoff", {
+		description:
+			"Compact the current conversation into a handoff document for another agent to pick up",
+		handler: async (args, _ctx) => {
+			echoSlashCommand(pi, "handoff", args);
+			const nextSessionFocus = args.trim()
+				? `\n\nNext session focus: ${args.trim()}`
+				: "";
+			sendHiddenWorkflowPrompt(pi, `${HANDOFF_PROMPT}${nextSessionFocus}`);
 		},
 	});
 
