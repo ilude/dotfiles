@@ -222,11 +222,13 @@ Use this structure when applicable:
 7. End with "Recommended next command" or "Next step" when there is a clear follow-up.
 
 Style rules:
+- Keep any top-level bullet list to 3 bullets or fewer when a sectioned handoff is not needed.
 - Prefer grouped sections over a flat chronological recap.
 - Preserve exact paths, commands, model names, and important enum/value choices.
 - Keep it concise but complete enough to survive compaction or handoff.
 - Skip routine tool calls and dead-end exploration unless they affect the next step.
-- Do not invent validation; say "not run" or omit if unknown.`;
+- Do not invent validation; say "not run" or omit if unknown.
+- Include any workflow issue that materially affects the next handoff.`;
 
 interface BranchLaunchPlan {
 	executable?: string;

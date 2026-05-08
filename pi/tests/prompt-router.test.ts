@@ -7,6 +7,8 @@ import promptRouter, {
   applyPolicy,
   buildStatusLabel,
   safeParseClassifierOutput,
+  applyRouteDecisionToProviderPayload,
+  resolveProviderRouteDecision,
 } from "../extensions/prompt-router.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
@@ -1234,5 +1236,161 @@ describe("T5: /router-explain full decision trail", () => {
     // prompt snippet
     expect(output).toContain("Prompt:");
     expect(output).toContain(promptText.slice(0, 40));
+  });
+});
+
+describe("Provider architecture spike: awaited provider seam", () => {
+  function routeCtx(current = { provider: "openai-codex", id: "gpt-5.4-mini" }) {
+    const availableModels = [
+      { provider: "openai-codex", id: "gpt-5.4-mini" },
+      { provider: "openai-codex", id: "gpt-5.4-fast" },
+      { provider: "openai-codex", id: "gpt-5.4" },
+    ];
+    return createMockCtx({
+      model: current,
+      modelRegistry: {
+        getAvailable: vi.fn(() => availableModels),
+        find: vi.fn((provider: string, id: string) => availableModels.find((m) => m.provider === provider && m.id === id)),
+      },
+      ui: { ...createMockCtx().ui, setStatus: vi.fn(), notify: vi.fn() },
+    });
+  }
+
+  it("awaits classification before provider dispatch and carries one immutable decision id", async () => {
+    const pi = createMockPi();
+    const order: string[] = ["pre-generation-start"];
+    let releaseClassifier!: () => void;
+    const classifierPending = new Promise<void>((resolve) => {
+      releaseClassifier = resolve;
+    });
+    (pi.exec as any).mockImplementationOnce(async () => {
+      order.push("classifier-start");
+      await classifierPending;
+      order.push("classifier-finish");
+      return { code: 0, stdout: makeV3Json("Sonnet", "medium", 0.91), stderr: "" };
+    });
+    const decisionPromise = resolveProviderRouteDecision(pi as any, "synthetic same turn prompt", routeCtx());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(order).toEqual(["pre-generation-start", "classifier-start"]);
+    releaseClassifier();
+    const decision = await decisionPromise;
+    order.push("route-resolved");
+    const payload = applyRouteDecisionToProviderPayload({ model: "ambient-default", prompt: "synthetic same turn prompt" }, { ...decision, same_turn_applied: true }) as Record<string, unknown>;
+    order.push("dispatch-called");
+    order.push("first-token-or-provider-invoked");
+
+    expect(order).toEqual([
+      "pre-generation-start",
+      "classifier-start",
+      "classifier-finish",
+      "route-resolved",
+      "dispatch-called",
+      "first-token-or-provider-invoked",
+    ]);
+    expect(payload.route_decision_id).toBe(decision.route_decision_id);
+    expect(payload.model).toBe(decision.model_label);
+    expect(payload.reasoning_effort).toBe(decision.thinking_level);
+    expect(payload.same_turn_applied).toBe(true);
+    expect(decision.route_resolution_reason).toBe("matched");
+  });
+
+  it("fails closed on timeout without applying stale previous route", async () => {
+    const pi = createMockPi();
+    (pi.exec as any).mockImplementationOnce(async () => new Promise(() => {}));
+    const decision = await resolveProviderRouteDecision(pi as any, "synthetic timeout prompt", routeCtx(), 1);
+    expect(decision.route_resolution_reason).toBe("classifier_timeout");
+    expect(decision.model_label).toBe("gpt-5.4-mini");
+    expect(decision.same_turn_applied).toBe(false);
+  });
+
+  it("denies implicit cross-provider routing", async () => {
+    const pi = createMockPi();
+    const ctx = routeCtx({ provider: "anthropic", id: "claude-sonnet" });
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Sonnet", "medium", 0.91), stderr: "" });
+    const decision = await resolveProviderRouteDecision(pi as any, "synthetic provider boundary", ctx);
+    expect(decision.route_resolution_reason).toBe("denied_by_policy");
+    expect(decision.provider_family).toBe("anthropic");
+  });
+
+  it("keeps out-of-order prompt completions correlated by decision id", async () => {
+    const pi = createMockPi();
+    let releaseFirst!: () => void;
+    const firstPending = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    (pi.exec as any)
+      .mockImplementationOnce(async () => {
+        await firstPending;
+        return { code: 0, stdout: makeV3Json("Opus", "high", 0.95), stderr: "" };
+      })
+      .mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Haiku", "low", 0.95), stderr: "" });
+    const first = resolveProviderRouteDecision(pi as any, "synthetic prompt one", routeCtx({ provider: "openai-codex", id: "gpt-5.4" }));
+    const second = resolveProviderRouteDecision(pi as any, "synthetic prompt two", routeCtx());
+    const secondDecision = await second;
+    releaseFirst();
+    const firstDecision = await first;
+    expect(firstDecision.route_decision_id).not.toBe(secondDecision.route_decision_id);
+    expect(firstDecision.prompt_hash).not.toBe(secondDecision.prompt_hash);
+  });
+});
+
+describe("T0: same-turn routing feasibility", () => {
+  it("documents that the input hook returns continue before async routing applies", async () => {
+    const pi = createMockPi();
+    const order: string[] = [];
+    let releaseClassifier!: () => void;
+    const classifierPending = new Promise<void>((resolve) => {
+      releaseClassifier = resolve;
+    });
+
+    (pi as any).setModel = vi.fn(async () => {
+      order.push("setModel");
+    });
+    (pi as any).setThinkingLevel = vi.fn(() => {
+      order.push("setThinkingLevel");
+    });
+    (pi.exec as any).mockImplementationOnce(async () => {
+      order.push("classifier-start");
+      await classifierPending;
+      order.push("classifier-finish");
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          schema_version: "3.0.0",
+          primary: { model_tier: "Sonnet", effort: "medium" },
+          candidates: [{ model_tier: "Sonnet", effort: "medium", confidence: 0.91 }],
+          confidence: 0.91,
+        }),
+        stderr: "",
+      };
+    });
+
+    promptRouter(pi as any);
+    const availableModels = [
+      { provider: "openai-codex", id: "gpt-5.4-mini" },
+      { provider: "openai-codex", id: "gpt-5.4-fast" },
+      { provider: "openai-codex", id: "gpt-5.4" },
+    ];
+    const ctx = createMockCtx({
+      model: { provider: "openai-codex", id: "gpt-5.4-mini" },
+      modelRegistry: {
+        getAvailable: vi.fn(() => availableModels),
+        find: vi.fn((provider: string, id: string) => availableModels.find((m) => m.provider === provider && m.id === id)),
+      },
+      ui: { ...createMockCtx().ui, setStatus: vi.fn(), notify: vi.fn() },
+    });
+
+    const inputHook = pi._getHook("input")[0];
+    const result = await inputHook.handler({ text: "synthetic prompt requiring broader reasoning", source: "user" }, ctx);
+    order.push("hook-returned-continue");
+
+    expect(result).toEqual({ action: "continue" });
+    expect(order).toEqual(["classifier-start", "hook-returned-continue"]);
+    expect((pi as any).setModel).not.toHaveBeenCalled();
+
+    releaseClassifier();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(order).toEqual(["classifier-start", "hook-returned-continue", "classifier-finish", "setModel", "setThinkingLevel"]);
   });
 });

@@ -72,21 +72,21 @@ This checklist is the durable resume ledger for `/do-it`. Every executable task,
 
 ### Wave -1
 
-- [ ] W0: Create dedicated git worktree
-  - Status: pending
-  - Evidence: --
-- [ ] WV0: Validate worktree isolation
-  - Status: pending
-  - Evidence: --
+- [x] W0: Create dedicated git worktree
+  - Status: completed
+  - Evidence: `.specs/prompt-router-control-plane/evidence/worktree-preflight.md` (worktree created on branch `plan/prompt-router-control-plane`, exit 0)
+- [x] WV0: Validate worktree isolation
+  - Status: completed
+  - Evidence: `.specs/prompt-router-control-plane/evidence/worktree-preflight.md` (branch/path/status captured, exit 0)
 
 ### Wave 0
 
-- [ ] T0: Inventory existing router surfaces and prove same-turn routing feasibility
-  - Status: pending
-  - Evidence: --
+- [x] T0: Inventory existing router surfaces and prove same-turn routing feasibility
+  - Status: completed-blocked
+  - Evidence: `.specs/prompt-router-control-plane/evidence/preflight-inventory.md`, `.specs/prompt-router-control-plane/evidence/synthetic_simple.txt`, `.specs/prompt-router-control-plane/evidence/same-turn-blocker.md`, `.specs/prompt-router-control-plane/provider-architecture-spike.md`
 - [ ] V0: Validate wave 0 blocking gate
-  - Status: pending
-  - Evidence: --
+  - Status: blocked
+  - Evidence: same-turn proof failed; downstream tasks intentionally unstarted
 
 ### Wave 1
 
@@ -460,8 +460,22 @@ If deployment is required later and skipped, cancelled, or fails, `/do-it` must 
 
 ## Execution Status
 
-- Status: not started.
-- Last updated: 2026-05-07 by `/review-it` auto-apply.
+- Completion classification: blocked-by-failure.
+- Status: blocked at Wave 0 same-turn feasibility gate; plan is not archived.
+- Last updated: 2026-05-07 by `/do-it`.
+- Last completed wave/gate: T0 inventory and same-turn blocker evidence.
+- Next wave/gate to run: none under this plan until the provider-architecture spike is reviewed/planned; V0 and all downstream behavior-changing tasks remain unchecked.
+- Implemented: created isolated worktree `../.dotfiles-prompt-router-control-plane` on branch `plan/prompt-router-control-plane`; added T0 input-hook harness in `pi/tests/prompt-router.test.ts`; created synthetic fixture and evidence under `.specs/prompt-router-control-plane/evidence/`; created `.specs/prompt-router-control-plane/provider-architecture-spike.md`.
+- Why not archived: required same-turn proof failed. Observed harness order was `classifier-start -> hook-returned-continue -> classifier-finish -> setModel -> setThinkingLevel`, so routing is applied after the input hook continues and cannot prove same-turn generation dispatch under the current architecture.
+- Commands run:
+  - `git worktree add -b plan/prompt-router-control-plane ../.dotfiles-prompt-router-control-plane HEAD` — exit 0.
+  - `cd ../.dotfiles-prompt-router-control-plane && find pi/tests pi/prompt-routing -maxdepth 3 \( -name '*router*' -o -name '*eval*' \) -print` — exit 0, captured in `preflight-inventory.md`.
+  - `cd pi/tests && pnpm install --frozen-lockfile && pnpm run test -- prompt-router.test.ts` — exit 1 because `pi/extensions/node_modules` was missing.
+  - `cd pi/extensions && pnpm install --frozen-lockfile && cd ../tests && pnpm run test -- prompt-router.test.ts` — exit 1 overall because Vitest ran the broader suite and exposed unrelated `tests/workflow-dispatch.test.ts` `/summarize` expectation drift; `tests/prompt-router.test.ts` itself passed with 57 tests including the T0 blocker harness.
+- Commands/checks still needed:
+  - Review or convert `.specs/prompt-router-control-plane/provider-architecture-spike.md` into a new executable plan.
+  - After a before-generation/provider-dispatch seam exists, rerun same-turn proof and then create a new/updated control-plane implementation plan.
+- Remaining user/manual steps: decide whether to proceed with the provider-architecture spike. No manual Pi smoke validation was run because implementation stopped before behavior changes.
+- Rerun guidance: do not rerun `/do-it .specs/prompt-router-control-plane/plan.md` expecting completion until the same-turn architecture blocker is resolved or the plan is revised.
 - Review applied: `.specs/prompt-router-control-plane/review-1/synthesis.md`.
-- Current blocker: none before execution; T0 is the first execution-time blocking gate.
 - PRD comparison update: addressed `.specs/prompt-router-control-plane/review-1/prd-plan-comparison.md` recommendations for artifact/hash validation, hash parity, capsule-log disablement, continuation explain fixture, `nano` default, invalid-mode semantics, aggregate handling, and T0 harness evidence.

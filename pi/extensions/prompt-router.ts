@@ -78,6 +78,128 @@ import {
 
 export { safeParseClassifierOutput };
 
+export type RouteResolutionReason =
+  | "matched"
+  | "fallback_used"
+  | "classifier_timeout"
+  | "classifier_failure"
+  | "denied_by_policy";
+
+export interface RouteDecision {
+  route_decision_id: string;
+  prompt_hash: string;
+  classifier_mode: string;
+  raw_route: RuntimeModelSize;
+  applied_route: RuntimeModelSize;
+  provider_family: string;
+  model_label: string;
+  thinking_level: string;
+  route_resolution_reason: RouteResolutionReason;
+  fallback_reason?: string;
+  same_turn_applied: boolean;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function extractProviderPrompt(payload: unknown): string | null {
+  if (!isPlainRecord(payload)) return null;
+  if (typeof payload.prompt === "string") return payload.prompt;
+  const messages = payload.messages;
+  if (!Array.isArray(messages)) return null;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const msg = messages[i];
+    if (!isPlainRecord(msg) || msg.role !== "user") continue;
+    if (typeof msg.content === "string") return msg.content;
+    if (Array.isArray(msg.content)) {
+      const text = msg.content
+        .map((part) => (isPlainRecord(part) && typeof part.text === "string" ? part.text : ""))
+        .join(" ")
+        .trim();
+      if (text) return text;
+    }
+  }
+  return null;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | "timeout"> {
+  return Promise.race([
+    promise,
+    new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), timeoutMs)),
+  ]);
+}
+
+function makeRouteDecisionId(promptHash: string): string {
+  return `route-${promptHash.slice(0, 16)}`;
+}
+
+function fallbackRouteDecision(text: string, reason: RouteResolutionReason, fallbackReason: string, ctx: any): RouteDecision {
+  const promptHash = sha256Hex(text);
+  const current = getCurrentModelHint(ctx, ctx.modelRegistry?.getAvailable?.() ?? []);
+  return {
+    route_decision_id: makeRouteDecisionId(`${promptHash}-${reason}`),
+    prompt_hash: promptHash,
+    classifier_mode: "confgate",
+    raw_route: "medium",
+    applied_route: "medium",
+    provider_family: typeof current?.provider === "string" ? current.provider : "unknown",
+    model_label: typeof current?.id === "string" ? current.id : "unknown",
+    thinking_level: "medium",
+    route_resolution_reason: reason,
+    fallback_reason: fallbackReason,
+    same_turn_applied: false,
+  };
+}
+
+export async function resolveProviderRouteDecision(
+  pi: ExtensionAPI,
+  text: string,
+  ctx: any,
+  timeoutMs = 1500,
+): Promise<RouteDecision> {
+  const promptHash = sha256Hex(text);
+  const classified = await withTimeout(classifyWithV3(pi, text, ctx), timeoutMs);
+  if (classified === "timeout") return fallbackRouteDecision(text, "classifier_timeout", "classifier timed out", ctx);
+  if (!classified) return fallbackRouteDecision(text, "classifier_failure", "classifier returned no usable route", ctx);
+
+  const rawSize = MODEL_TIER_TO_SIZE[classified.primary.model_tier] ?? "medium";
+  const tier = SIZE_TO_TIER[rawSize] ?? "mid";
+  const model = resolveDynamicModelFromRegistry(ctx.modelRegistry, ctx, rawSize, "same-family");
+  if (!model) return fallbackRouteDecision(text, "fallback_used", `no ${rawSize} model available`, ctx);
+
+  const current = getCurrentModelHint(ctx, ctx.modelRegistry?.getAvailable?.() ?? []);
+  if (current?.provider && model.provider && current.provider !== model.provider) {
+    return fallbackRouteDecision(text, "denied_by_policy", "cross-provider fallback denied", ctx);
+  }
+
+  const thinking = SCHEMA_EFFORT_TO_THINKING[classified.primary.effort] ?? TIER_EFFORT[tier];
+  return {
+    route_decision_id: makeRouteDecisionId(promptHash),
+    prompt_hash: promptHash,
+    classifier_mode: "confgate",
+    raw_route: rawSize,
+    applied_route: rawSize,
+    provider_family: typeof model.provider === "string" ? model.provider : "unknown",
+    model_label: resolveModelTierLabel(model, rawSize),
+    thinking_level: thinking,
+    route_resolution_reason: "matched",
+    same_turn_applied: false,
+  };
+}
+
+export function applyRouteDecisionToProviderPayload(payload: unknown, decision: RouteDecision): unknown {
+  if (!isPlainRecord(payload)) return payload;
+  return {
+    ...payload,
+    model: decision.model_label,
+    reasoning_effort: decision.thinking_level,
+    route_decision_id: decision.route_decision_id,
+    route_resolution_reason: decision.route_resolution_reason,
+    same_turn_applied: true,
+  };
+}
+
 const DEBUG_LOG_PATH = path.join(process.cwd(), "pi", "prompt-routing", "logs", "transcript_debug.jsonl");
 
 async function appendTranscriptDebug(event: string, payload: Record<string, unknown> = {}): Promise<void> {
@@ -598,6 +720,35 @@ export default function (pi: ExtensionAPI) {
       state.lastAppliedEffort = "low";
     }
     ctx.ui.setStatus("router", "router: ready");
+  });
+
+  // -- Same-turn provider seam spike: resolve route before provider dispatch --
+  pi.on("before_provider_request", async (event, ctx) => {
+    if (!state.enabled) return undefined;
+    const text = extractProviderPrompt(event.payload);
+    if (!text) return undefined;
+    const decision = await resolveProviderRouteDecision(pi, text, ctx);
+    state.lastRuleFired = decision.route_resolution_reason === "matched" ? "classifier" : "null-fallback";
+    state.lastAppliedEffort = decision.thinking_level;
+    state.lastPromptSnippet = `sha256:${decision.prompt_hash.slice(0, 12)}`;
+    const payload = applyRouteDecisionToProviderPayload(event.payload, { ...decision, same_turn_applied: true });
+    ctx.ui?.setStatus?.(
+      "router",
+      `same_turn_applied: true route_decision_id=${decision.route_decision_id} route=${decision.applied_route}`,
+    );
+    await emit({ event_type: "routing_decision" }, {
+      route_decision_id: decision.route_decision_id,
+      same_turn_applied: true,
+      classifier_mode: decision.classifier_mode,
+      raw_route: decision.raw_route,
+      applied_route: decision.applied_route,
+      route_resolution_reason: decision.route_resolution_reason,
+      provider_family: decision.provider_family,
+      model_label: decision.model_label,
+      thinking_level: decision.thinking_level,
+      prompt_hash: decision.prompt_hash,
+    });
+    return payload;
   });
 
   // -- Classify and route every user prompt --
