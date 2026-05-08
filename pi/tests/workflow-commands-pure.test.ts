@@ -4,6 +4,7 @@ import {
 	confirmCommitMessage,
 	filterCommitSafeFiles,
 	getCommitRuntimePathReason,
+	normalizeCommitSubject,
 	parseCommitPlan,
 	proposeCommitMessage,
 	validateCommitPlan,
@@ -18,7 +19,33 @@ describe("parseCommitPlan", () => {
 	});
 
 	it("throws when groups are missing", () => {
-		expect(() => parseCommitPlan('{"warnings":[]}')).toThrow(/no commit groups/i);
+		expect(() => parseCommitPlan('{"warnings":[]}')).toThrow(
+			/no commit groups/i,
+		);
+	});
+
+	it("normalizes planner subjects onto one line", () => {
+		const plan = parseCommitPlan(
+			JSON.stringify({
+				groups: [
+					{
+						files: ["a.ts"],
+						subject: "style(status):\n dim context token counts",
+					},
+				],
+			}),
+		);
+		expect(plan.groups[0]?.subject).toBe(
+			"style(status): dim context token counts",
+		);
+	});
+});
+
+describe("normalizeCommitSubject", () => {
+	it("collapses all whitespace runs, including newlines", () => {
+		expect(
+			normalizeCommitSubject("style(status):\n dim context token counts"),
+		).toBe("style(status): dim context token counts");
 	});
 });
 
@@ -40,21 +67,27 @@ describe("validateCommitPlan", () => {
 				{ files: ["a.ts"], subject: "test(pi): cover planner" },
 			],
 		};
-		expect(() => validateCommitPlan(plan, ["a.ts"])).toThrow(/multiple groups/i);
+		expect(() => validateCommitPlan(plan, ["a.ts"])).toThrow(
+			/multiple groups/i,
+		);
 	});
 
 	it("rejects omitted changed files", () => {
 		const plan = {
 			groups: [{ files: ["a.ts"], subject: "feat(pi): add planner" }],
 		};
-		expect(() => validateCommitPlan(plan, ["a.ts", "b.ts"])).toThrow(/omitted changed files/i);
+		expect(() => validateCommitPlan(plan, ["a.ts", "b.ts"])).toThrow(
+			/omitted changed files/i,
+		);
 	});
 
 	it("rejects invalid conventional commit subjects", () => {
 		const plan = {
 			groups: [{ files: ["a.ts"], subject: "Add planner" }],
 		};
-		expect(() => validateCommitPlan(plan, ["a.ts"])).toThrow(/invalid conventional commit/i);
+		expect(() => validateCommitPlan(plan, ["a.ts"])).toThrow(
+			/invalid conventional commit/i,
+		);
 	});
 });
 
@@ -68,19 +101,34 @@ describe("confirmCommitMessage", () => {
 	const stat = "a.ts | 5 ++-";
 
 	it("returns the original message without prompting", async () => {
-		const result = await confirmCommitMessage({}, baseMessage, files, stat, stat);
+		const result = await confirmCommitMessage(
+			{},
+			baseMessage,
+			files,
+			stat,
+			stat,
+		);
 		expect(result).toEqual(baseMessage);
 	});
 
 	it("preserves body without prompting", async () => {
-		const withBody = { subject: "feat(pi): original", body: "Detailed context." };
+		const withBody = {
+			subject: "feat(pi): original",
+			body: "Detailed context.",
+		};
 		const result = await confirmCommitMessage({}, withBody, files, stat, stat);
 		expect(result).toEqual(withBody);
 	});
 
 	it("throws when subject violates conventional commit format", async () => {
 		await expect(
-			confirmCommitMessage({}, { subject: "This is not conventional" }, files, stat, stat),
+			confirmCommitMessage(
+				{},
+				{ subject: "This is not conventional" },
+				files,
+				stat,
+				stat,
+			),
 		).rejects.toThrow(/conventional commit format/i);
 	});
 });
@@ -99,13 +147,18 @@ describe("commit runtime path filters", () => {
 			"notes/change.md",
 		];
 		const result = filterCommitSafeFiles(files);
-		expect(result.included).toEqual(["notes/change.md", "pi/prompt-routing/router.py"]);
+		expect(result.included).toEqual([
+			"notes/change.md",
+			"pi/prompt-routing/router.py",
+		]);
 		expect(result.excluded.map((item) => item.file)).toEqual([
 			"pi/cache/models-dev-api.json",
 			"pi/prompt-routing/logs/routing_log.jsonl",
 			"tmp/session.duckdb",
 		]);
-		expect(getCommitRuntimePathReason("pi/cache/models-dev-api.json")).toBe("Pi runtime cache");
+		expect(getCommitRuntimePathReason("pi/cache/models-dev-api.json")).toBe(
+			"Pi runtime cache",
+		);
 	});
 });
 
@@ -143,8 +196,15 @@ describe("parseCommitPlan multi-group", () => {
 	it("parses a 3-group plan with body and warnings", () => {
 		const json = JSON.stringify({
 			groups: [
-				{ files: ["src/api.ts", "src/db.ts"], subject: "feat(pi): add commit planner", body: "Implements LLM-based commit grouping" },
-				{ files: ["src/api.test.ts"], subject: "test(pi): cover commit planner" },
+				{
+					files: ["src/api.ts", "src/db.ts"],
+					subject: "feat(pi): add commit planner",
+					body: "Implements LLM-based commit grouping",
+				},
+				{
+					files: ["src/api.test.ts"],
+					subject: "test(pi): cover commit planner",
+				},
 				{ files: ["README.md"], subject: "docs(pi): document commit planner" },
 			],
 			warnings: ["large diff detected"],
@@ -178,12 +238,23 @@ describe("validateCommitPlan multi-group sequential staging", () => {
 	it("accepts a 3-group plan covering all changed files", () => {
 		const plan = {
 			groups: [
-				{ files: ["src/api.ts", "src/db.ts"], subject: "feat(pi): add commit planner" },
-				{ files: ["src/api.test.ts"], subject: "test(pi): cover commit planner" },
+				{
+					files: ["src/api.ts", "src/db.ts"],
+					subject: "feat(pi): add commit planner",
+				},
+				{
+					files: ["src/api.test.ts"],
+					subject: "test(pi): cover commit planner",
+				},
 				{ files: ["README.md"], subject: "docs(pi): document commit planner" },
 			],
 		};
-		const changedFiles = ["src/api.ts", "src/db.ts", "src/api.test.ts", "README.md"];
+		const changedFiles = [
+			"src/api.ts",
+			"src/db.ts",
+			"src/api.test.ts",
+			"README.md",
+		];
 		expect(() => validateCommitPlan(plan, changedFiles)).not.toThrow();
 	});
 
@@ -194,7 +265,9 @@ describe("validateCommitPlan multi-group sequential staging", () => {
 				{ files: ["untracked.ts"], subject: "test(pi): cover api" },
 			],
 		};
-		expect(() => validateCommitPlan(plan, ["src/api.ts"])).toThrow(/unknown file/i);
+		expect(() => validateCommitPlan(plan, ["src/api.ts"])).toThrow(
+			/unknown file/i,
+		);
 	});
 
 	it("preserves group order for sequential staging", () => {
@@ -205,7 +278,9 @@ describe("validateCommitPlan multi-group sequential staging", () => {
 				{ files: ["c.ts"], subject: "chore(pi): third commit" },
 			],
 		};
-		expect(() => validateCommitPlan(plan, ["a.ts", "b.ts", "c.ts"])).not.toThrow();
+		expect(() =>
+			validateCommitPlan(plan, ["a.ts", "b.ts", "c.ts"]),
+		).not.toThrow();
 		expect(plan.groups.map((g) => g.subject)).toEqual([
 			"feat(pi): first commit",
 			"fix(pi): second commit",
@@ -219,7 +294,8 @@ describe("validateCommitPlan multi-group sequential staging", () => {
 // ---------------------------------------------------------------------------
 
 describe("proposeCommitMessage", () => {
-	const CONVENTIONAL_COMMIT_RE = /^(feat|fix|docs|chore|refactor|test|perf|ci|build)(\([^)]+\))?: [a-z0-9]/;
+	const CONVENTIONAL_COMMIT_RE =
+		/^(feat|fix|docs|chore|refactor|test|perf|ci|build)(\([^)]+\))?: [a-z0-9]/;
 
 	it("docs-only files produce type docs", () => {
 		const result = proposeCommitMessage(["README.md", "CHANGELOG.md"], "", "");
@@ -232,17 +308,29 @@ describe("proposeCommitMessage", () => {
 	});
 
 	it("pi/ files produce scope pi", () => {
-		const result = proposeCommitMessage(["pi/extensions/workflow-commands.ts"], "", "");
+		const result = proposeCommitMessage(
+			["pi/extensions/workflow-commands.ts"],
+			"",
+			"",
+		);
 		expect(result.subject).toMatch(/\(pi\):/);
 	});
 
 	it("hint is used as description", () => {
-		const result = proposeCommitMessage(["pi/extensions/workflow-commands.ts"], "add planner fallback", "");
+		const result = proposeCommitMessage(
+			["pi/extensions/workflow-commands.ts"],
+			"add planner fallback",
+			"",
+		);
 		expect(result.subject).toContain("add planner fallback");
 	});
 
 	it("result matches conventional commit regex", () => {
-		const result = proposeCommitMessage(["pi/extensions/workflow-commands.ts"], "add planner fallback", "");
+		const result = proposeCommitMessage(
+			["pi/extensions/workflow-commands.ts"],
+			"add planner fallback",
+			"",
+		);
 		expect(result.subject).toMatch(CONVENTIONAL_COMMIT_RE);
 	});
 
@@ -254,12 +342,20 @@ describe("proposeCommitMessage", () => {
 	});
 
 	it("feat detected from diff containing registerCommand text", () => {
-		const result = proposeCommitMessage(["pi/extensions/workflow-commands.ts"], "", "+registerCommand(");
+		const result = proposeCommitMessage(
+			["pi/extensions/workflow-commands.ts"],
+			"",
+			"+registerCommand(",
+		);
 		expect(result.subject).toMatch(/^feat\(/);
 	});
 
 	it("fix detected from diff containing fix text", () => {
-		const result = proposeCommitMessage(["pi/extensions/workflow-commands.ts"], "", "+fix the bug");
+		const result = proposeCommitMessage(
+			["pi/extensions/workflow-commands.ts"],
+			"",
+			"+fix the bug",
+		);
 		expect(result.subject).toMatch(/^fix\(/);
 	});
 });

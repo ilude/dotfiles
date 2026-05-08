@@ -383,6 +383,10 @@ function extractJsonObject(text: string) {
 	return text.slice(start, end + 1);
 }
 
+export function normalizeCommitSubject(subject: string) {
+	return subject.replace(/\s+/g, " ").trim();
+}
+
 export function parseCommitPlan(text: string): CommitPlan {
 	const jsonText = extractJsonObject(text);
 	if (!jsonText) throw new Error("Planner did not return JSON");
@@ -401,6 +405,7 @@ export function parseCommitPlan(text: string): CommitPlan {
 		if (typeof group.subject !== "string" || !group.subject.trim()) {
 			throw new Error("Planner returned a group without a commit subject");
 		}
+		group.subject = normalizeCommitSubject(group.subject);
 		if (group.body !== undefined && typeof group.body !== "string") {
 			throw new Error("Planner returned a non-string commit body");
 		}
