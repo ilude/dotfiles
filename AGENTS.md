@@ -58,7 +58,7 @@ Tooling expectations:
 
 - Python tooling uses `uv`.
 - JavaScript/TypeScript package-manager policy: prefer `bun`; use `pnpm` where Bun cannot resolve the Pi package graph or where a package already has `pnpm-lock.yaml`; never use `npm` or create/commit `package-lock.json`.
-- Pi-specific rule: Pi TypeScript validation is pnpm-only. `pi/extensions/` owns Pi TypeScript dependencies/type-checking, and `pi/tests/` is pnpm-managed for Vitest. Do **not** use `bun add`, `bun install`, `bun run`, or `bun test` for Pi-related TypeScript packages/tests. Run `cd pi/extensions && pnpm install --frozen-lockfile && pnpm run typecheck` and `cd pi/tests && pnpm install --frozen-lockfile && pnpm run test`.
+- Pi-specific rule: Pi TypeScript validation is pnpm-only. `pi/extensions/` owns Pi TypeScript dependencies/type-checking, and `pi/tests/` is pnpm-managed for Vitest. Do **not** use `bun add`, `bun install`, `bun run`, or `bun test` for Pi-related TypeScript packages/tests. Run `cd pi/extensions && pnpm install --frozen-lockfile && pnpm run typecheck` and `cd pi/tests && pnpm install --frozen-lockfile && pnpm run test`. For a single Vitest file, pass the filter directly to the pnpm script, e.g. `cd pi/tests && pnpm test operator-status.test.ts`; do **not** insert `--` before the file filter, because this repo's script passes it through to Vitest and runs the full suite.
 - Tests use `pytest`.
 - Python lint and format use `ruff`.
 - Shell lint and format use `shellcheck` and `shfmt`.

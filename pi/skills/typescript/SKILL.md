@@ -34,6 +34,7 @@ When working in a TS/JS project, default to **inspecting, not running**:
 - **Do NOT run build commands** (`bun run build`, `next build`, `tsc -b`, etc.) as a first edit-time check. Builds are slow and side-effectful (write to `dist/`, `.next/`).
 - **DO run typecheck and lint** to verify edits: `bun run typecheck` (or `tsc --noEmit`), `bun run lint`, `bun run biome check .`. These catch most regressions edits introduce.
 - **DO run tests** when relevant to the change: `bun test`, `pnpm test`, `vitest run`.
+- **Check script argument forwarding before adding `--` to pnpm test commands.** Some package scripts pass `--` through to the test runner as a literal argument; for Vitest file filters, prefer the documented project command, often `pnpm test path/to/file.test.ts`.
 
 **Build prerequisite exception:** in TypeScript monorepos, especially npm/pnpm/bun workspaces where package `types` or `exports` point at `dist/*.d.ts`, a fresh clone/worktree may need a build before repo-wide checks can resolve sibling package types. If `tsc --noEmit` reports `TS2307 Cannot find module` for local workspace packages and their package metadata points to `dist`, verify whether the documented setup is:
 
