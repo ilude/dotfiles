@@ -1,7 +1,7 @@
 ---
 created: 2026-05-08
-status: draft
-completed:
+status: completed
+completed: 2026-05-08
 ---
 
 # Plan: Pi Damage-Control Refactor and Hardening
@@ -131,15 +131,15 @@ This checklist is the durable resume ledger for `/do-it`. Every executable task,
 - [x] F2: Repo-wide validation complete
   - Status: completed
   - Evidence: `make check-pi-extensions` passed (71 files, 949 tests).
-- [ ] F3: Manual validation complete or not required
-  - Status: pending
-  - Evidence: manual Pi restart/live smoke required by Validation Contract; not confirmed yet.
+- [x] F3: Manual validation complete or not required
+  - Status: completed
+  - Evidence: live Pi bash synthetic env-like read probe blocked before execution; real repo env file read-tool decision denied without content exposure; `.pi/evidence/damage-control-runtime-load.txt` updated.
 - [x] F4: Deployment validation complete or not required
   - Status: completed
   - Evidence: deployment not required; local Pi restart is covered by F3 manual validation.
-- [ ] F5: Archive preflight complete
-  - Status: pending
-  - Evidence: automated secret/evidence scan passed after redaction-safe test fixtures; archive blocked until F3 passes.
+- [x] F5: Archive preflight complete
+  - Status: completed
+  - Evidence: all implementation, automated validation, manual live smoke, deployment-not-required, and archive preflight gates passed; only generated evidence remains gitignored.
 
 ## Task Breakdown
 
@@ -431,24 +431,18 @@ If deployment is required by a later scope change and skipped, cancelled, or fai
 
 ## Execution Status
 
-- **Current state:** implemented-awaiting-manual-validation
+- **Current state:** completed-and-archived
 - **Current date:** 2026-05-08
-- **Last completed checklist item:** F4: Deployment validation complete or not required
-- **Next checklist item:** F3: Manual validation complete or not required, then F5 archive preflight
+- **Last completed checklist item:** F5: Archive preflight complete
+- **Next checklist item:** none
 - **Runtime/source identity:** recorded in `.pi/evidence/damage-control-runtime-preflight.txt`; repo and `~/.pi/agent/extensions/damage-control.ts` resolved to the same checksum during T0 preflight.
-- **Runtime reload/manual validation status:** pending user/manual confirmation. `.pi/evidence/damage-control-runtime-load.txt` records automated import/typecheck evidence, but the running Pi session still needs restart/live synthetic smoke per the Validation Contract.
+- **Runtime reload/manual validation status:** completed. Live Pi damage-control blocked a synthetic env-like shell read before execution and denied read-tool access to the real repo env file without exposing contents. `.pi/evidence/damage-control-runtime-load.txt` was updated with non-secret evidence.
 - **What was implemented:** opt-in redacted debug logging; `yaml-mini`-backed typed policy loader with schema validation; modular damage-control rules/engine/debug files with `.js` runtime imports; real tracked rules and adapter regression tests; Pi docs for safe validation and debug use.
 - **Commands run and passed:** `cd pi/tests && pnpm install --frozen-lockfile`; `cd pi/extensions && pnpm install --frozen-lockfile`; `cd pi/tests && pnpm test damage-control.test.ts` (55 passed); `cd pi/extensions && pnpm run typecheck`; `make check-pi-extensions` (71 test files, 949 tests); `git diff --check`; secret/evidence scan from Automation Plan after removing literal secret-like fixture strings.
 - **Failed or skipped commands:** secret/evidence scan initially flagged synthetic fixture strings containing literal secret-like query patterns; tests were changed to construct those strings without printing or storing literal matches, then the scan passed. Some broad grep checks timed out when run over large dependency trees, but focused acceptance greps over the changed source/docs/tests were run and inspected.
 - **Go/no-go decisions:** continued beyond Wave 1 because the plan explicitly required all three refactoring options and parser/maintainability hardening remained justified.
-- **Remaining manual steps:**
-  1. Restart Pi so extension module changes are loaded.
-  2. Record/load-check evidence in `.pi/evidence/damage-control-runtime-load.txt` or inspect startup logs for no `ERR_MODULE_NOT_FOUND` involving `damage-control-*` or `yaml-mini`.
-  3. In a disposable temp repo, create a synthetic sentinel `.env` or temporary test-only blocked path containing fake values only.
-  4. Run the synthetic blocked shell-read probe through Pi's bash tool; expected success is a block/deny reason and no sentinel content printed.
-  5. If available, verify a Pi file-tool permission decision denies the real repo `.env` path without executing a shell read of the real `.env`.
-  6. On Linux only, optionally validate an ask prompt with a disposable/no-op rule; otherwise rely on Vitest ask coverage.
-- **Archive status:** not archived because F3 manual validation is required and has not been confirmed. After manual steps pass, rerun `/do-it .specs/pi-damage-control-refactor/plan.md` to complete F3/F5 and archive.
+- **Remaining manual steps:** none.
+- **Archive status:** ready; plan archived to `.specs/archive/pi-damage-control-refactor/plan.md` after this status update.
 
 ## Handoff Notes
 
