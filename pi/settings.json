@@ -31,5 +31,8 @@
     "enabled": true,
     "path": "~/.pi/agent/traces"
   },
-  "transport": "sse"
+  "transport": "sse",
+  "prompts": [
+    "~/.dotfiles/pi/prompts"
+  ]
 }

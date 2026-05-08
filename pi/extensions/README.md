@@ -57,6 +57,32 @@ Subdirectories under `pi/extensions/` (such as `pi/extensions/subagent/` and
 `pi/extensions/web-fetch/`) are not auto-discovered; only top-level `*.ts`
 files are.
 
+## Command surface selection
+
+Do not default to TypeScript for every slash command. Pick the smallest Pi
+surface that matches the behavior:
+
+| Need | Location |
+|---|---|
+| Prompt-only slash command with static instructions and optional arguments | `pi/prompts/<name>.md` |
+| Reusable agent guidance or domain workflow | `pi/skills/<name>/SKILL.md` |
+| Runtime/state/UI/autocomplete/git/session behavior | TypeScript extension command |
+
+Prompt-only templates support frontmatter, `argument-hint`, and `$ARGUMENTS`
+substitution. TypeScript runtime commands are still correct for commands such as
+`/commit`, which need git inspection, secret scanning, UI prompts, and staged
+file control.
+
+Extension commands have precedence over prompt templates. Before adding a
+prompt-only command, check that no top-level extension shadows it:
+
+```bash
+grep -R 'registerCommand("<name>"' pi/extensions/*.ts
+```
+
+Example: `/handoff` belongs in `pi/prompts/handoff.md`; `/commit` belongs in
+`pi/extensions/workflow-commands.ts`.
+
 ## Default export
 
 Every extension MUST export a default function with this shape:

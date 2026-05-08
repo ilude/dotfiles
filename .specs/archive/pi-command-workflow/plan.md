@@ -1,7 +1,7 @@
 ---
 created: 2026-05-08
-status: draft
-completed:
+status: completed
+completed: 2026-05-08
 ---
 
 # Plan: Pi command authoring workflow
@@ -64,54 +64,54 @@ This checklist is the durable resume ledger for `/do-it`. Every executable task,
 
 ### Wave 0
 
-- [ ] P0: Capture preflight state
-  - Status: pending
-  - Evidence: --
+- [x] P0: Capture preflight state
+  - Status: completed
+  - Evidence: completed during 2026-05-08 /do-it execution
 
 ### Wave 1
 
-- [ ] T0: Verify Pi prompt-template and skill discovery schemas
-  - Status: pending
-  - Evidence: --
-- [ ] T1: Wire tracked Pi prompt-template discovery
-  - Status: pending
-  - Evidence: --
-- [ ] T2: Migrate `/handoff` to a prompt template
-  - Status: pending
-  - Evidence: --
-- [ ] T3: Add `pi-command` authoring skill
-  - Status: pending
-  - Evidence: --
-- [ ] V1: Validate wave 1
-  - Status: pending
-  - Evidence: --
+- [x] T0: Verify Pi prompt-template and skill discovery schemas
+  - Status: completed
+  - Evidence: completed during 2026-05-08 /do-it execution
+- [x] T1: Wire tracked Pi prompt-template discovery
+  - Status: completed
+  - Evidence: completed during 2026-05-08 /do-it execution
+- [x] T2: Migrate `/handoff` to a prompt template
+  - Status: completed
+  - Evidence: completed during 2026-05-08 /do-it execution
+- [x] T3: Add `pi-command` authoring skill
+  - Status: completed
+  - Evidence: completed during 2026-05-08 /do-it execution
+- [x] V1: Validate wave 1
+  - Status: completed
+  - Evidence: completed during 2026-05-08 /do-it execution
 
 ### Wave 2
 
-- [ ] T4: Update command-surface documentation and cleanup notes
-  - Status: pending
-  - Evidence: --
-- [ ] V2: Validate wave 2
-  - Status: pending
-  - Evidence: --
+- [x] T4: Update command-surface documentation and cleanup notes
+  - Status: completed
+  - Evidence: completed during 2026-05-08 /do-it execution
+- [x] V2: Validate wave 2
+  - Status: completed
+  - Evidence: completed during 2026-05-08 /do-it execution
 
 ### Final Gates
 
-- [ ] F1: Task-specific verification complete
-  - Status: pending
-  - Evidence: --
-- [ ] F2: Repo-wide validation complete
-  - Status: pending
-  - Evidence: --
-- [ ] F3: Manual validation complete or not required
-  - Status: pending
-  - Evidence: --
-- [ ] F4: Deployment validation complete or not required
-  - Status: pending
-  - Evidence: --
-- [ ] F5: Archive preflight complete
-  - Status: pending
-  - Evidence: --
+- [x] F1: Task-specific verification complete
+  - Status: completed
+  - Evidence: completed during 2026-05-08 /do-it execution
+- [x] F2: Repo-wide validation complete
+  - Status: completed
+  - Evidence: completed during 2026-05-08 /do-it execution
+- [x] F3: Manual validation complete or not required
+  - Status: completed
+  - Evidence: completed during 2026-05-08 /do-it execution
+- [x] F4: Deployment validation complete or not required
+  - Status: completed
+  - Evidence: completed during 2026-05-08 /do-it execution
+- [x] F5: Archive preflight complete
+  - Status: completed
+  - Evidence: completed during 2026-05-08 /do-it execution
 
 ## Task Breakdown
 
@@ -335,5 +335,29 @@ Fail F5 if any required evidence is missing, unrelated changes are unresolved, o
 
 - Created: 2026-05-08
 - Review status: review fixes applied from `.specs/pi-command-workflow/review-1/synthesis.md`
-- Current state: ready for `/do-it` execution after standalone-readiness check
-- Evidence log: pending implementation
+- Completion classification: completed-and-archived candidate
+- Current date: 2026-05-08
+- Last completed wave/gate: F5 archive preflight
+- Next wave/gate to run: none
+- Implemented:
+  - Captured `.specs/pi-command-workflow/settings-preflight.diff` before edits.
+  - Verified prompt template schema in `@earendil-works/pi-coding-agent/dist/core/prompt-templates.d.ts` and `settings-manager.d.ts`: `prompts?: string[]`, `promptPaths`, `~` expansion, default prompt dirs, and `$ARGUMENTS` substitution.
+  - Verified skill discovery in `pi/lib/skill-discovery.ts`: built-in roots include `~/.dotfiles/pi/skills/*`, with subdir `SKILL.md` support.
+  - Added `prompts: ["~/.dotfiles/pi/prompts"]` to `pi/settings.json`.
+  - Migrated `/handoff` to `pi/prompts/handoff.md` and removed the TypeScript registration/constant from `pi/extensions/workflow-commands.ts`.
+  - Added `pi/skills/pi-command/SKILL.md`.
+  - Updated command-surface guidance in `pi/extensions/README.md` and agent-facing guidance via `pi/AGENTS.md` (`claude/CLAUDE.md` symlink target in git status).
+- Commands run and results:
+  - `git status --short && git diff -- pi/settings.json > .specs/pi-command-workflow/settings-preflight.diff && test -f .specs/pi-command-workflow/settings-preflight.diff`: passed.
+  - `cd pi/extensions && pnpm exec biome format --write workflow-commands.ts && pnpm run typecheck`: passed.
+  - JSON/frontmatter/collision/skill/docs grep acceptance checks: passed.
+  - Prompt loader registry smoke with `loadPromptTemplates(... promptPaths:["~/.dotfiles/pi/prompts"], includeDefaults:false)` and `expandPromptTemplate("/handoff test focus")`: passed; found `pi/prompts/handoff.md` and substituted `test focus`.
+  - `make check`: passed; all checks passed, including Pi extension checks.
+- Manual validation: not required because automated prompt loader registry smoke proved discovery and argument substitution for the configured prompt path.
+- Deployment validation: not required.
+- Archive preflight:
+  - Checklist F1-F4 completed.
+  - `git status --short` reviewed; intended changes are settings, handoff prompt, skill, docs, workflow command cleanup, and preflight artifact.
+  - Targeted diffs reviewed; pre-existing `pi/settings.json` newline-only diff was intentionally absorbed while preserving valid JSON and adding only the prompts setting.
+- Remaining checks: none.
+- Rerun `/do-it .specs/pi-command-workflow/plan.md`: no; archive is proceeding.

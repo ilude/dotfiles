@@ -137,6 +137,8 @@ git submodule update --init --recursive
 - VS Code is the default editor, diff tool, and merge tool.
 - The default branch is `main`.
 - Dotbot link defaults rely on `force: true`, `relink: true`, and `create: true`.
+- Use only tools, workflows, permissions, and memory/task systems explicitly available in the active harness. If a capability is absent, adapt instead of naming or assuming it.
+- Keep planning proportional: use brief prose plans for complex work, skip formal planning for simple requests, and ask for clarification only when ambiguity affects correctness or direction.
 
 ## Agent Surfaces
 

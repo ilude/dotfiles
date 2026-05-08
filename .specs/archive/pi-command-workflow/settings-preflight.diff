@@ -1,0 +1,11 @@
+diff --git a/pi/settings.json b/pi/settings.json
+index e313160..17db40e 100644
+--- a/pi/settings.json
++++ b/pi/settings.json
+@@ -32,4 +32,4 @@
+     "path": "~/.pi/agent/traces"
+   },
+   "transport": "sse"
+-}
+\ No newline at end of file
++}
