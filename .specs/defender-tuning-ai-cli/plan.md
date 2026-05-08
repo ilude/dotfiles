@@ -28,7 +28,46 @@ This session already:
   `~/.dotfiles/pi/extensions/subagent/index.ts`, `~/.dotfiles/pi/extensions/pwsh.ts`,
   `~/.dotfiles/pi/extensions/quality-gates.ts` -- to resolve the real Git binary
   on Windows, add `windowsHide: true`, and replace `which` with
-  `where.exe` on Windows.
+  `where.exe` on Windows. Pre-flight: `pnpm test` in
+  `~/.dotfiles/pi/tests` was 880/880 green, `pnpm run typecheck` in
+  `~/.dotfiles/pi/extensions` clean. See "Pi customization patches"
+  in Handoff Notes for the exact change in each file (re-applicable if
+  upstream reverts).
+- Installed Sysinternals Suite via winget (`Microsoft.Sysinternals.Suite`);
+  `procexp64` and `procmon64` are on PATH for diagnostics.
+
+Current state (what the plan starts from):
+- Real-Time Protection is currently DISABLED via the Windows Security UI
+  (Virus & threat protection -> Manage settings) as a temporary workaround.
+  Windows auto-re-enables RTP after ~24h or a reboot, so this is not a
+  durable posture. The plan's goal is to make RTP-on tolerable so the
+  workaround is no longer needed.
+- Tamper Protection remains ON.
+- The on-disk `defender-add-exclusions.ps1` and the live
+  `(Get-MpPreference).ExclusionPath` are out of sync with the bullet list
+  above (still hardcode npm/pnpm/.claude\projects entries). T0 reconciles
+  this before Wave 1 begins. See B1 in `review-1/synthesis.md`.
+
+Investigation history that informed this plan (summary):
+- Earlier in the session we tracked an orphaned `find.exe` (Git for
+  Windows POSIX find, not System32 find) running 7+ minutes recursively
+  walking `AppData\Local`, `AppData\Roaming`, `~/.local` looking for a
+  `pi-coding-agent` install. Parent PID was already dead. Killed
+  manually; investigation revealed pi spawned git via the
+  `cmd\git.exe` wrapper which re-execs `mingw64\bin\git.exe`, leaving
+  the inner git as orphan when node exited. The pi customization
+  patches (above) eliminate that wrapper hop on Windows.
+- A 30-minute `defender-watch.ps1` sampler captured ZERO MsMpEng spikes
+  while Task Manager showed Antimalware Service Executable at 9-15%
+  CPU intermittently. This suggests either TM display lag (TM averaging
+  sub-second bursts into a visible %) OR something else briefly
+  attributed under the rollup. `Get-MpPerformanceReport` is the
+  authoritative attribution; the plan uses it.
+- nvim's statusline plugin polls `git status --porcelain` against
+  `~/.dotfiles` very aggressively (~50 git.exe processes per minute
+  parented to a single nvim instance). This is a separate-but-overlapping
+  perf issue noted in Handoff Notes -- it will skew T1 baseline if nvim
+  is open with `~/.dotfiles` loaded during recording.
 
 Confirmed via background research (sources cited inline below):
 - `ScanAvgCPULoadFactor` and `EnableLowCpuPriority` apply only to scheduled and
@@ -44,8 +83,12 @@ Confirmed via background research (sources cited inline below):
   ReFS Dev Drive with Performance Mode -- "significantly better protection
   than... folder exclusions" --
   https://learn.microsoft.com/en-us/defender-endpoint/microsoft-defender-endpoint-antivirus-performance-mode
-- Contextual exclusions (process-scoped, OnAccess) narrow broad path
-  exclusions without losing scan coverage for other processes:
+- Contextual exclusions narrow broad path exclusions without losing scan
+  coverage for other processes. Documented syntax:
+  `Add-MpPreference -ExclusionPath '<path>\Process:"<full exe path>"'`.
+  Available `ScanTrigger` modifiers are `\Scheduled`, `\OnDemand`, `\BM`
+  (no `OnAccess` keyword). The `Process:` modifier requires the absolute
+  exe path. Reference:
   https://learn.microsoft.com/en-us/defender-endpoint/configure-contextual-file-folder-exclusions-microsoft-defender-antivirus
 - Performance Analyzer (`New-MpPerformanceRecording` + `Get-MpPerformanceReport`)
   gives per-file/per-process scan attribution:
@@ -684,3 +727,72 @@ task-specific verification, and manual validation pass.
   This plan creates several scripts each adding subsets; folding them
   into a manifest can be done as a follow-up plan once T3/T4 settle.
   Not in scope here.
+
+- **Pre-existing scripts in `C:\Users\mglenn\` that this plan builds on**:
+  - `defender-add-exclusions.ps1` -- self-elevating exclusion applier.
+    Currently still hardcodes the npm/pnpm/`.claude\projects` paths;
+    T0 patches it.
+  - `defender-remove-exclusions.ps1` -- self-elevating exclusion remover
+    (used earlier this session to drop the npm-related paths). T0
+    can reuse the same `Remove-MpPreference` idiom.
+  - `defender-perf-record.ps1` -- self-elevating 60-second
+    `New-MpPerformanceRecording` capture. T1 follows the same pattern
+    but with the corrected exit-code propagation, the pre-flight
+    checks, and a 180-second window.
+  - `defender-perf-report-fixed.ps1` -- post-process an existing ETL
+    via `Get-MpPerformanceReport`; uses the explicit `-TopFiles`,
+    `-TopProcesses`, etc. parameters (NOT bare `-Top`). Reuse for the
+    T5 outcome comparison.
+  - `defender-watch.ps1` -- background sampler that logs MsMpEng %CPU
+    every 3 seconds and captures process command-lines on spike. Useful
+    for confirming "did the workload actually exercise RTP during T1's
+    180s window?" out of band.
+  - `cleanup-orphans.ps1` -- dry-run-by-default cleanup of orphaned
+    `find.exe`, `grep.exe`, `git.exe`, `sh.exe`, `bash.exe` whose
+    parent PID no longer exists AND age >= 60s. Useful between waves
+    if pi/find orphans accumulate.
+
+- **Pi customization patches (re-applicable if upstream reverts)**:
+  1. `~/.dotfiles/pi/lib/commit/git.ts` -- added `resolveGit()` helper
+     that prefers `C:\Program Files\Git\mingw64\bin\git.exe` over PATH
+     lookup (which resolves to the `cmd\git.exe` wrapper); `git()` now
+     calls `spawnSync(resolveGit(), args, { cwd, encoding: "utf8",
+     windowsHide: true })`.
+  2. `~/.dotfiles/pi/extensions/workflow-commands.ts` -- inlined the
+     same `resolveGit()` shim and used it in `runGit()`; same
+     `windowsHide: true` addition.
+  3. `~/.dotfiles/pi/lib/yaml-helpers.ts` -- added `windowsHide: true`
+     to the python `spawnSync` for yaml-via-python.
+  4. `~/.dotfiles/pi/extensions/operator-status.ts` -- added
+     `windowsHide: true` to `runCommand`'s `spawnSync`.
+  5. `~/.dotfiles/pi/extensions/subagent/index.ts` -- added
+     `windowsHide: true` to the `spawn(invocation.command, ...)` call
+     that launches subagent `pi` processes.
+  6. `~/.dotfiles/pi/extensions/pwsh.ts` -- added `windowsHide: true`
+     to the `spawn("taskkill", ...)` call.
+  7. `~/.dotfiles/pi/extensions/quality-gates.ts` -- replaced
+     `pi.exec("which", [checkBin])` with a platform shim:
+     `const lookup = process.platform === "win32" ? "where.exe" : "which";`
+     then `pi.exec(lookup, [checkBin])`.
+  Validated: `pnpm run typecheck` clean; full `pnpm test` 880/880 pass.
+
+- **Diagnostic tooling (Sysinternals)**: installed via
+  `winget install --id Microsoft.Sysinternals.Suite`. `procexp64` and
+  `procmon64` are on PATH. Reach for these if T1's
+  `New-MpPerformanceRecording` is unavailable (B7) or its output is
+  ambiguous, OR if the operator wants to settle the "TM display lag vs
+  real MsMpEng spike" question by watching `procexp64`'s per-process
+  history graph, OR if `procmon64` filtered to `Process Name =
+  MsMpEng.exe` is needed to show every file Defender opens with the
+  triggering process.
+
+- **nvim statusline polling caveat**: an open `nvim` instance with
+  `~/.dotfiles` loaded fires `git status --porcelain` ~once per second
+  via a statusline plugin. This produces ~50 `git.exe` processes per
+  minute parented to nvim, all hitting the (excluded) `.dotfiles` tree.
+  Not a Defender problem (those reads should be excluded), but it WILL
+  skew T1 baseline if you want a "pure" agent measurement -- close
+  nvim or open it in a non-dotfiles directory during the 180-second
+  T1 / V2 windows. Separate fix would be to reduce the gitsigns
+  `update_debounce` or switch the lualine git component to event-driven;
+  out of scope here.
