@@ -214,10 +214,12 @@ const SUMMARIZE_PROMPT = `Summarize the work done in this session as a compact h
 Use this structure when applicable:
 
 1. Start with the primary artifact/path or main outcome in a short sentence.
-2. Add a "Current direction" or "Current status" section if there is an active design/plan/change.
-3. Add "Key decisions captured" as concise bullets for durable decisions.
-4. Add "Telemetry/validation/implementation notes" only if relevant.
-5. End with "Recommended next command" or "Next step" when there is a clear follow-up.
+2. Include links/paths to any PRD.md or plan.md files created or materially updated in this session, with state: open, ready for review, ready for plan/implementation, completed, or archived.
+3. Add a "Current direction" or "Current status" section if there is an active design/plan/change.
+4. Add "Key decisions captured" as concise bullets for durable decisions.
+5. Add "Telemetry/validation/implementation notes" only if relevant.
+6. Add "Workflow friction" only when commands, agents, tools, prompts, or process issues should be improved later.
+7. End with "Recommended next command" or "Next step" when there is a clear follow-up.
 
 Style rules:
 - Prefer grouped sections over a flat chronological recap.
