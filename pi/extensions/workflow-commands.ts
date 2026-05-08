@@ -34,7 +34,11 @@ import {
 	type Model,
 	type TextContent,
 } from "@earendil-works/pi-ai";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type {
+	ContextUsage,
+	ExtensionAPI,
+	ExtensionCommandContext,
+} from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
 import { withTimingSpan } from "../lib/observability";
@@ -109,23 +113,16 @@ function loadSkill(name: string) {
 	}
 }
 
-async function newSessionWithReloadIfNeeded<
-	TNewCtx extends { reload: () => Promise<void> },
->(
-	ctx: {
-		newSession: (options?: {
-			withSession?: (newCtx: TNewCtx) => Promise<void>;
-		}) => Promise<{ cancelled: boolean }>;
-	},
-	options?: {
-		withSession?: (newCtx: TNewCtx) => Promise<void>;
-	},
+async function newSessionWithReloadIfNeeded(
+	ctx: Pick<ExtensionCommandContext, "newSession">,
+	options?: Parameters<ExtensionCommandContext["newSession"]>[0],
 ) {
 	const reloadNeeded = isOperatorReloadNeeded();
-	if (!reloadNeeded && !options?.withSession) {
+	if (!reloadNeeded && !options?.withSession && !options?.setup) {
 		return ctx.newSession();
 	}
 	return ctx.newSession({
+		setup: options?.setup,
 		withSession: async (newCtx) => {
 			if (reloadNeeded) {
 				await newCtx.reload();
@@ -133,6 +130,23 @@ async function newSessionWithReloadIfNeeded<
 			await options?.withSession?.(newCtx);
 		},
 	});
+}
+
+function formatUsageTokens(tokens: number): string {
+	if (tokens < 1_000) return String(tokens);
+	if (tokens < 1_000_000) return `${Math.round(tokens / 1_000)}k`;
+	const millions = tokens / 1_000_000;
+	return `${Number.isInteger(millions) ? millions : millions.toFixed(1)}M`;
+}
+
+function formatClearedSessionUsage(
+	usage: ContextUsage | undefined,
+): string | null {
+	if (!usage || usage.tokens === null || usage.contextWindow <= 0) return null;
+	const percent = usage.percent ?? (usage.tokens / usage.contextWindow) * 100;
+	const tokens = formatUsageTokens(usage.tokens);
+	const contextWindow = formatUsageTokens(usage.contextWindow);
+	return `Previous session usage: ${Math.round(percent)}% (${tokens}/${contextWindow} tokens)`;
 }
 
 function loadClaudeCommitInstructions() {
@@ -234,6 +248,7 @@ interface SlashEchoExtensionAPI extends ExtensionAPI {
 	__slashEchoRegisterCommandWrapped?: boolean;
 }
 
+const CLEAR_USAGE_TYPE = "workflow-clear-usage";
 const COMMIT_ACTIVITY_TYPE = "workflow-commit-activity";
 const SLASH_ECHO_TYPE = "slash-echo";
 const SUMMARIZE_PROMPT = `Summarize the work done in this session as a compact handoff note.
@@ -1387,6 +1402,14 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	if (typeof pi.registerMessageRenderer === "function") {
+		pi.registerMessageRenderer(CLEAR_USAGE_TYPE, (message, _options, theme) => {
+			const text =
+				typeof message.content === "string"
+					? message.content
+					: String(message.content ?? "");
+			return new Text(theme.fg("dim", text), 1, 0);
+		});
+
 		pi.registerMessageRenderer(SLASH_ECHO_TYPE, (message, _options, theme) => {
 			const text =
 				typeof message.content === "string"
@@ -1617,7 +1640,17 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("clear", {
 		description: "Alias to /new",
 		handler: async (_args, ctx) => {
-			await newSessionWithReloadIfNeeded(ctx);
+			const usageMessage = formatClearedSessionUsage(ctx.getContextUsage?.());
+			await newSessionWithReloadIfNeeded(ctx, {
+				setup: async (sessionManager) => {
+					if (!usageMessage) return;
+					sessionManager.appendCustomMessageEntry?.(
+						CLEAR_USAGE_TYPE,
+						usageMessage,
+						true,
+					);
+				},
+			});
 		},
 	});
 

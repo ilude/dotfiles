@@ -185,6 +185,39 @@ describe("/commit command flow – plan validation rejection", () => {
 		return cmd.handler as (args: string, ctx: any) => Promise<void>;
 	}
 
+	function getClearHandler() {
+		const cmd = mockPi._commands.find((c) => c.name === "clear");
+		if (!cmd) throw new Error("clear command not registered");
+		return cmd.handler as (args: string, ctx: any) => Promise<void>;
+	}
+
+	it("initializes the new session with previous usage instead of notifying before clear", async () => {
+		const appendCustomMessageEntry = vi.fn();
+		const newSession = vi.fn(async (options?: any) => {
+			await options?.setup?.({ appendCustomMessageEntry });
+			return { cancelled: false };
+		});
+		const ctx = {
+			getContextUsage: vi.fn(() => ({
+				tokens: 12_345,
+				contextWindow: 100_000,
+				percent: 12.345,
+			})),
+			newSession,
+			ui: { notify: vi.fn() },
+		};
+
+		await getClearHandler()("", ctx);
+
+		expect(newSession).toHaveBeenCalledWith(expect.objectContaining({ setup: expect.any(Function) }));
+		expect(appendCustomMessageEntry).toHaveBeenCalledWith(
+			"workflow-clear-usage",
+			"Previous session usage: 12% (12k/100k tokens)",
+			true,
+		);
+		expect(ctx.ui.notify).not.toHaveBeenCalled();
+	});
+
 	// ── duplicate file ──────────────────────────────────────────────────────────
 
 	it("notifies fallback warning when LLM plan assigns the same file to multiple groups", async () => {

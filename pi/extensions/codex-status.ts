@@ -345,10 +345,6 @@ function shouldShowStatusOnSessionStart(reason: string): boolean {
 	return reason === "startup" || reason === "new";
 }
 
-function isClearCommand(text: string): boolean {
-	return text.trim() === "/clear";
-}
-
 function showCodexStatusAfterInitialRender(ctx: ExtensionContext): void {
 	// session_start fires before interactive mode renders the initial transcript.
 	// Defer the notification so startup/new-session rendering does not overwrite it.
@@ -362,13 +358,6 @@ export default function registerCodexStatusCommand(pi: ExtensionAPI) {
 		if (shouldShowStatusOnSessionStart(String(event.reason))) {
 			showCodexStatusAfterInitialRender(ctx);
 		}
-	});
-
-	pi.on("input", async (event, ctx) => {
-		if (isClearCommand(event.text)) {
-			await showCodexStatus(ctx);
-		}
-		return { action: "continue" };
 	});
 
 	pi.registerCommand("usage", {
