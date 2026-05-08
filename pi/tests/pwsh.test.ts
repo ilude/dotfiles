@@ -82,6 +82,20 @@ describe("pwsh extension", () => {
     });
   });
 
+  describe("normalizeTerminalOutput", () => {
+    it("collapses carriage-return spinner frames to the final line", async () => {
+      const { normalizeTerminalOutput } = await import("../extensions/pwsh.ts");
+
+      expect(normalizeTerminalOutput("-\r\\\r|\rFound uv\nDone")).toBe("Found uv\nDone");
+    });
+
+    it("strips ANSI escape sequences", async () => {
+      const { normalizeTerminalOutput } = await import("../extensions/pwsh.ts");
+
+      expect(normalizeTerminalOutput("\u001b[32mName\u001b[0m\nuv")).toBe("Name\nuv");
+    });
+  });
+
   describe("renderResult", () => {
     const makeResult = (text: string, details = {}) => ({
       content: [{ type: "text", text }],
@@ -117,6 +131,12 @@ describe("pwsh extension", () => {
       tool.renderResult(makeResult("output"), { expanded: true, isPartial: false }, theme, {});
       const dimCalls = theme.fg.mock.calls.filter((c: any) => c[0] === "dim").map((c: any) => c[1]);
       expect(dimCalls.some((t: string) => t.includes("truncated"))).toBe(false);
+    });
+
+    it("should normalize carriage-return progress before rendering", () => {
+      const result = tool.renderResult(makeResult("-\r\\\r|\rFound uv\nDone"), { expanded: true, isPartial: false }, theme, {});
+
+      expect(String(result)).not.toContain("-\n\\\n|");
     });
 
     it("should handle empty output", () => {

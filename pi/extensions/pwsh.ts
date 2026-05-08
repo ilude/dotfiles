@@ -47,6 +47,36 @@ export function buildTruncationNotice(truncResult: { outputLines: number; totalL
   );
 }
 
+/**
+ * Normalize terminal-oriented output for static TUI rendering.
+ *
+ * PowerShell-hosted CLIs such as winget often redraw progress/spinner lines with
+ * carriage returns. If those raw CR frames are rendered as plain text, screenshots
+ * show staggered blocks and duplicated spinner frames. Treat CR as "return to the
+ * start of the current line" and keep only the latest version of that line.
+ */
+export function normalizeTerminalOutput(output: string): string {
+  const escapeCharacter = String.fromCharCode(27);
+  const ansiPattern = new RegExp(`${escapeCharacter}(?:[@-Z\\\\-_]|\\[[0-?]*[ -/]*[@-~])`, "g");
+  const withoutAnsi = output.replace(ansiPattern, "");
+  const lines: string[] = [];
+  let current = "";
+
+  for (const char of withoutAnsi) {
+    if (char === "\r") {
+      current = "";
+    } else if (char === "\n") {
+      lines.push(current.trimEnd());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+
+  if (current.length > 0) lines.push(current.trimEnd());
+  return lines.join("\n");
+}
+
 function isWindows11(): boolean {
   return isWindows11Check(process.platform, release());
 }
@@ -127,7 +157,7 @@ async function executePwsh(
       if (onUpdate) {
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         onUpdate({
-          content: [{ type: "text", text: output }],
+          content: [{ type: "text", text: normalizeTerminalOutput(output) }],
           details: { command: params.command, elapsed, isPartial: true },
         });
       }
@@ -177,7 +207,8 @@ async function executePwsh(
         if (signal) signal.removeEventListener("abort", onAbort);
 
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        const truncResult = truncateTail(output, {
+        const normalizedOutput = normalizeTerminalOutput(output);
+        const truncResult = truncateTail(normalizedOutput, {
           maxLines: DEFAULT_MAX_LINES,
           maxBytes: DEFAULT_MAX_BYTES,
         });
@@ -188,7 +219,7 @@ async function executePwsh(
         if (truncResult.truncated) {
           const safeId = toolCallId.replace(/[^a-zA-Z0-9_-]/g, "_");
           tempFile = join(tmpdir(), `pi-pwsh-${safeId}.txt`);
-          await writeFile(tempFile, output, "utf8");
+          await writeFile(tempFile, normalizedOutput, "utf8");
           finalOutput += buildTruncationNotice(truncResult, tempFile);
         }
 
@@ -260,7 +291,7 @@ export function renderResult(
   theme: any,
   _context: any
 ): any {
-  const output = result.content?.[0]?.text || "";
+  const output = normalizeTerminalOutput(result.content?.[0]?.text || "");
   const lines = output.split("\n");
   const elapsed = result.details?.elapsed || "0.0";
   const truncated = result.details?.truncated;
