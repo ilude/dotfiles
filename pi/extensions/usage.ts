@@ -443,7 +443,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("usage", {
+	pi.registerCommand("usage-stats", {
 		description:
 			"Summarize Pi/Codex token usage and cost for the last 1, 7, 30, and 90 days",
 		handler: async (args, ctx) => {

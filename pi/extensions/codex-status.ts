@@ -10,8 +10,8 @@
 //
 // This is intentionally a small dotfiles-native version, not a vendored copy:
 // it does not refresh tokens, write cache files, or register a CLI. The command
-// owns `/status` for now; if other providers need status later, extend this to
-// parse `/status <provider>` instead of adding competing status commands.
+// owns `/usage` for now; if other providers need status later, extend this to
+// parse `/usage <provider>` instead of adding competing usage commands.
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -199,6 +199,8 @@ function formatReset(
 
 const ANSI_LIGHT_BLUE = "\u001b[94m";
 const ANSI_LIGHT_GREEN = "\u001b[92m";
+const ANSI_YELLOW = "\u001b[33m";
+const ANSI_RED = "\u001b[31m";
 const ANSI_WHITE = "\u001b[97m";
 const ANSI_RESET = "\u001b[0m";
 
@@ -215,6 +217,39 @@ function usedPercent(window: ApiWindow | null | undefined): number | undefined {
 	return Math.max(0, Math.min(100, window.used_percent));
 }
 
+function windowPaceDelta(
+	window: ApiWindow | null | undefined,
+	used: number,
+): number | undefined {
+	const reset = resetDate(window);
+	if (!reset) return undefined;
+	const windowSeconds =
+		typeof window?.limit_window_seconds === "number" &&
+		Number.isFinite(window.limit_window_seconds) &&
+		window.limit_window_seconds > 0
+			? window.limit_window_seconds
+			: undefined;
+	if (!windowSeconds) return undefined;
+	const remainingSeconds = (reset.getTime() - Date.now()) / 1000;
+	const elapsedPercent = Math.max(
+		0,
+		Math.min(100, ((windowSeconds - remainingSeconds) / windowSeconds) * 100),
+	);
+	return used - elapsedPercent;
+}
+
+function pacedPercentColor(
+	window: ApiWindow | null | undefined,
+	used: number,
+): string {
+	if (used === 0) return ANSI_LIGHT_GREEN;
+	const delta = windowPaceDelta(window, used);
+	if (delta === undefined) return ANSI_WHITE;
+	if (delta > 3) return ANSI_RED;
+	if (delta >= -3) return ANSI_YELLOW;
+	return ANSI_LIGHT_GREEN;
+}
+
 function formatWindow(
 	label: string,
 	window: ApiWindow | null | undefined,
@@ -225,7 +260,8 @@ function formatWindow(
 	const percent = `${used.toFixed(Number.isInteger(used) ? 0 : 1)}%`.padStart(
 		6,
 	);
-	return `${color(label.padEnd(8), ANSI_LIGHT_BLUE, colorEnabled)} ${color(percent, ANSI_WHITE, colorEnabled)} used${formatReset(label, window)}`;
+	const percentColor = pacedPercentColor(window, used);
+	return `${color(label.padEnd(8), ANSI_LIGHT_BLUE, colorEnabled)} ${color(percent, percentColor, colorEnabled)} used${formatReset(label, window)}`;
 }
 
 function formatLimit(
@@ -335,7 +371,7 @@ export default function registerCodexStatusCommand(pi: ExtensionAPI) {
 		return { action: "continue" };
 	});
 
-	pi.registerCommand("status", {
+	pi.registerCommand("usage", {
 		description:
 			"Show ChatGPT Codex quota status using existing Pi/Codex OAuth credentials",
 		handler: async (_args, ctx) => {

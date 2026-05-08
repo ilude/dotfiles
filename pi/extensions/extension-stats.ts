@@ -543,10 +543,18 @@ function resolveCommandOwner(commandName: string, ownersByCommand: Map<string, S
 	return firstSortedOwner(ownersByCommand.get(commandName)) ?? "unknown-extension";
 }
 
+function normalizeHistoricalCommandName(commandName: string): string {
+	if (commandName === "status") return "usage";
+	if (commandName === "usage") return "usage-stats";
+	return commandName;
+}
+
 function parseSlashEchoCommand(content: unknown): string | null {
 	if (typeof content !== "string" || !content.startsWith("/")) return null;
 	const command = content.slice(1).trim().split(/\s+/, 1)[0];
-	return command && command.length > 0 ? command : null;
+	return command && command.length > 0
+		? normalizeHistoricalCommandName(command)
+		: null;
 }
 
 function addCommandUsage(
@@ -1441,7 +1449,7 @@ class ExtensionStatsComponent implements Component {
 }
 
 function displayOwnerName(owner: string): string {
-	return owner === "codex-status" ? "status" : owner;
+	return owner === "codex-status" ? "usage" : owner;
 }
 
 function displayUsageName(name: string): string {

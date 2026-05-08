@@ -30,6 +30,7 @@ function tempHome(): string {
 afterEach(() => {
 	process.env.HOME = OLD_HOME;
 	process.env.USERPROFILE = OLD_USERPROFILE;
+	vi.useRealTimers();
 	vi.restoreAllMocks();
 });
 
@@ -96,6 +97,9 @@ describe("codex-status usage", () => {
 	});
 
 	it("formats default and additional rate limits", () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date(2026, 4, 7, 19, 18, 0));
+
 		const text = formatUsage(
 			{
 				email: "person@example.com",
@@ -137,6 +141,79 @@ describe("codex-status usage", () => {
 		);
 	});
 
+	it("colors window percent by elapsed-window pace", () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date(2026, 4, 7, 19, 18, 0));
+		const reset_at = new Date(2026, 4, 12, 19, 18, 0).getTime() / 1000;
+		const weeklyWindow = { limit_window_seconds: 7 * 24 * 60 * 60, reset_at };
+
+		expect(
+			formatUsage(
+				{
+					rate_limit: {
+						secondary_window: { ...weeklyWindow, used_percent: 22 },
+					},
+				},
+				{ source: "pi", path: "/tmp/auth.json", accessToken: "redacted" },
+				{ color: true },
+			),
+		).toContain("\u001b[92m   22%\u001b[0m used");
+		expect(
+			formatUsage(
+				{
+					rate_limit: {
+						secondary_window: { ...weeklyWindow, used_percent: 31 },
+					},
+				},
+				{ source: "pi", path: "/tmp/auth.json", accessToken: "redacted" },
+				{ color: true },
+			),
+		).toContain("\u001b[33m   31%\u001b[0m used");
+		expect(
+			formatUsage(
+				{
+					rate_limit: {
+						secondary_window: { ...weeklyWindow, used_percent: 36 },
+					},
+				},
+				{ source: "pi", path: "/tmp/auth.json", accessToken: "redacted" },
+				{ color: true },
+			),
+		).toContain("\u001b[31m   36%\u001b[0m used");
+
+		const fiveHourResetAt = new Date(2026, 4, 7, 22, 18, 0).getTime() / 1000;
+		expect(
+			formatUsage(
+				{
+					rate_limit: {
+						primary_window: {
+							used_percent: 30,
+							limit_window_seconds: 5 * 60 * 60,
+							reset_at: fiveHourResetAt,
+						},
+					},
+				},
+				{ source: "pi", path: "/tmp/auth.json", accessToken: "redacted" },
+				{ color: true },
+			),
+		).toContain("\u001b[92m   30%\u001b[0m used");
+		expect(
+			formatUsage(
+				{
+					rate_limit: {
+						primary_window: {
+							used_percent: 0,
+							limit_window_seconds: 5 * 60 * 60,
+							reset_at: new Date(2026, 4, 8, 0, 18, 0).getTime() / 1000,
+						},
+					},
+				},
+				{ source: "pi", path: "/tmp/auth.json", accessToken: "redacted" },
+				{ color: true },
+			),
+		).toContain("\u001b[92m    0%\u001b[0m used");
+	});
+
 	it("fetches usage with bearer token and account header", async () => {
 		const home = tempHome();
 		await mkdir(join(home, ".pi", "agent"), { recursive: true });
@@ -176,14 +253,14 @@ describe("codex-status usage", () => {
 	});
 });
 
-describe("/status command", () => {
-	it("registers status command", () => {
+describe("/usage command", () => {
+	it("registers usage command", () => {
 		const mockPi = createMockPi();
 		registerCodexStatusCommand(
 			mockPi as Parameters<typeof registerCodexStatusCommand>[0],
 		);
 		expect(
-			mockPi._commands.find((command) => command.name === "status"),
+			mockPi._commands.find((command) => command.name === "usage"),
 		).toBeDefined();
 	});
 
