@@ -1556,6 +1556,35 @@ try {
                 Write-Host "  Installing pi-coding-agent via pnpm..." -ForegroundColor Cyan
             }
 
+            # Remove conflicting/legacy installs BEFORE pnpm add. pnpm refuses to
+            # install when another package owns the global "pi" bin (e.g. legacy
+            # @mariozechner/pi-coding-agent), so cleanup must precede install.
+            $legacyMarioPnpm = pnpm list -g --depth -1 2>$null | Select-String '@mariozechner/pi-coding-agent'
+            if ($legacyMarioPnpm) {
+                Write-Host "  Removing legacy pnpm-installed @mariozechner/pi-coding-agent..." -ForegroundColor DarkGray
+                pnpm remove -g '@mariozechner/pi-coding-agent' 2>$null | Out-Null
+            }
+
+            if (Get-Command npm -ErrorAction SilentlyContinue) {
+                $legacyNpmPi = npm list -g @earendil-works/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
+                $legacyMarioNpmPi = npm list -g @mariozechner/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
+                if ($legacyNpmPi -or $legacyMarioNpmPi) {
+                    Write-Host "  Removing legacy npm-installed pi-coding-agent..." -ForegroundColor DarkGray
+                    npm uninstall -g @earendil-works/pi-coding-agent 2>$null | Out-Null
+                    npm uninstall -g @mariozechner/pi-coding-agent 2>$null | Out-Null
+                }
+            }
+
+            if (Get-Command bun -ErrorAction SilentlyContinue) {
+                $bunBinDir = Join-Path $env:USERPROFILE '.bun\bin'
+                $bunPi = Join-Path $bunBinDir 'pi'
+                if ((Test-Path $bunPi) -or (Test-Path "${bunPi}.exe")) {
+                    Write-Host "  Removing legacy Bun-installed pi-coding-agent..." -ForegroundColor DarkGray
+                    bun uninstall -g @earendil-works/pi-coding-agent 2>$null | Out-Null
+                    bun uninstall -g @mariozechner/pi-coding-agent 2>$null | Out-Null
+                }
+            }
+
             # Always run pnpm for Pi. Older Pi releases have had self-update bugs,
             # so treating dotfiles bootstrap as an idempotent upgrade path keeps
             # `pi update` healthy instead of leaving a stale global install behind.
@@ -1572,28 +1601,6 @@ try {
                 }
             } else {
                 Write-Host "  pi-coding-agent: installation/update failed" -ForegroundColor Red
-            }
-
-            # Migrate: remove any legacy npm-installed Pi so pnpm owns the binary.
-            if (Get-Command npm -ErrorAction SilentlyContinue) {
-                $legacyNpmPi = npm list -g @earendil-works/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
-                $legacyMarioNpmPi = npm list -g @mariozechner/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
-                if ($legacyNpmPi -or $legacyMarioNpmPi) {
-                    Write-Host "  Removing legacy npm-installed pi-coding-agent..." -ForegroundColor DarkGray
-                    npm uninstall -g @earendil-works/pi-coding-agent 2>$null | Out-Null
-                    npm uninstall -g @mariozechner/pi-coding-agent 2>$null | Out-Null
-                }
-            }
-
-            # Migrate: remove any legacy Bun-installed Pi for the same reason.
-            if (Get-Command bun -ErrorAction SilentlyContinue) {
-                $bunBinDir = Join-Path $env:USERPROFILE '.bun\bin'
-                $bunPi = Join-Path $bunBinDir 'pi'
-                if ((Test-Path $bunPi) -or (Test-Path "${bunPi}.exe")) {
-                    Write-Host "  Removing legacy Bun-installed pi-coding-agent..." -ForegroundColor DarkGray
-                    bun uninstall -g @earendil-works/pi-coding-agent 2>$null | Out-Null
-                    bun uninstall -g @mariozechner/pi-coding-agent 2>$null | Out-Null
-                }
             }
         } else {
             Write-Host "  pnpm not found - skipping Pi installation (Windows installs Pi via pnpm because Bun's resolver fails on Pi's AWS SDK deps)" -ForegroundColor Yellow

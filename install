@@ -278,18 +278,17 @@ case ":$PATH:" in
 esac
 
 if command -v pnpm &>/dev/null; then
-    echo "Installing/updating pi-coding-agent to pinned version 0.74.0..."
-    pnpm add -g --allow-build=koffi --allow-build=protobufjs \
-        @earendil-works/pi-coding-agent@0.74.0 \
-        @earendil-works/pi-agent-core@0.74.0 \
-        @earendil-works/pi-ai@0.74.0 \
-        @earendil-works/pi-tui@0.74.0
-
+    # Remove conflicting/legacy installs BEFORE running pnpm add. pnpm refuses to
+    # install when another package owns the same global "pi" bin (e.g. the legacy
+    # @mariozechner/pi-coding-agent), so cleanup must precede the install.
     if [[ "$OSTYPE" == "darwin"* ]] && command -v brew &>/dev/null && brew list pi-coding-agent &>/dev/null; then
         echo "Removing Homebrew-installed pi-coding-agent to prefer pnpm-managed updates..."
-        if ! brew uninstall pi-coding-agent; then
-            echo "Warning: failed to uninstall Homebrew pi-coding-agent"
-        fi
+        brew uninstall pi-coding-agent || echo "Warning: failed to uninstall Homebrew pi-coding-agent"
+    fi
+
+    if pnpm list -g --depth -1 2>/dev/null | grep -q '@mariozechner/pi-coding-agent'; then
+        echo "Removing legacy pnpm-installed @mariozechner/pi-coding-agent..."
+        pnpm remove -g @mariozechner/pi-coding-agent &>/dev/null || true
     fi
 
     if command -v bun &>/dev/null && [[ -L "$HOME/.bun/bin/pi" || -f "$HOME/.bun/bin/pi" ]]; then
@@ -304,6 +303,13 @@ if command -v pnpm &>/dev/null; then
         npm uninstall -g @earendil-works/pi-coding-agent &>/dev/null || true
         npm uninstall -g @mariozechner/pi-coding-agent &>/dev/null || true
     fi
+
+    echo "Installing/updating pi-coding-agent to pinned version 0.74.0..."
+    pnpm add -g --allow-build=koffi --allow-build=protobufjs \
+        @earendil-works/pi-coding-agent@0.74.0 \
+        @earendil-works/pi-agent-core@0.74.0 \
+        @earendil-works/pi-ai@0.74.0 \
+        @earendil-works/pi-tui@0.74.0
 else
     echo "Warning: pnpm unavailable; skipping pi-coding-agent install"
 fi
