@@ -6,7 +6,14 @@ export interface ModelLike {
 	name?: string;
 }
 
-export type ModelSize = "nano" | "mini" | "core" | "large" | "small" | "medium";
+export type ModelSize =
+	| "nano"
+	| "mini"
+	| "core"
+	| "large"
+	| "max"
+	| "small"
+	| "medium";
 export type ModelPolicy = "same-provider" | "same-family";
 
 const NANO_HINT_RE = /(nano)/i;
@@ -19,6 +26,7 @@ const CODEX_DEFAULTS: Record<ModelSize, string[]> = {
 	mini: ["gpt-5.4-mini"],
 	core: ["gpt-5.5", "gpt-5.3-codex"],
 	large: ["gpt-5.5", "gpt-5.3-codex"],
+	max: ["gpt-5.5", "gpt-5.3-codex"],
 	small: ["gpt-5.4-mini"],
 	medium: ["gpt-5.5", "gpt-5.3-codex"],
 };

@@ -58,6 +58,7 @@ const ANSI = {
 	cyan: "\x1b[36m",
 	dim: "\x1b[2m",
 	green: "\x1b[32m",
+	grey: "\x1b[90m",
 	orange: "\x1b[38;5;208m",
 	pink: "\x1b[38;5;205m",
 	red: "\x1b[31m",
@@ -164,8 +165,8 @@ export function formatContextUsageSegment(usage: ContextUsage | null | undefined
 	if (!usage || usage.tokens === null || usage.contextWindow === null || usage.contextWindow <= 0) return null;
 	const percent = usage.percent ?? (usage.tokens / usage.contextWindow) * 100;
 	const roundedPercent = Math.round(percent);
-	const text = `${roundedPercent}% ${compactTokens(usage.tokens)}/${compactTokens(usage.contextWindow)}`;
-	return `${colorForContextPercent(roundedPercent)}${text}${ANSI.reset}`;
+	const tokenText = `${compactTokens(usage.tokens)}/${compactTokens(usage.contextWindow)}`;
+	return `${colorForContextPercent(roundedPercent)}${roundedPercent}%${ANSI.reset} ${ANSI.grey}${tokenText}${ANSI.reset}`;
 }
 
 function formatThinkingLevel(pi: ExtensionAPI): string {

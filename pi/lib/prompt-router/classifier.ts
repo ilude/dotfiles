@@ -1,7 +1,12 @@
 import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { CLASSIFY_SCRIPT, PROMPT_ROUTING_DIR } from "./config.js";
+import {
+	CLASSIFY_SCRIPT,
+	loadRouterClassifierMode,
+	PROMPT_ROUTING_DIR,
+	type RouterClassifierMode,
+} from "./config.js";
 
 export interface ClassifierRecommendation {
 	schema_version: string;
@@ -119,6 +124,7 @@ export async function classifyWithV3(
 	pi: ClassifierPi,
 	text: string,
 	ctx: ClassifierContext,
+	mode: RouterClassifierMode = loadRouterClassifierMode(),
 ): Promise<ClassifierRecommendation | null> {
 	let result: { stdout: string; stderr: string; code: number };
 	try {
@@ -131,7 +137,7 @@ export async function classifyWithV3(
 				"python",
 				CLASSIFY_SCRIPT,
 				"--classifier",
-				"t2",
+				mode,
 				text,
 			],
 			{ timeout: 5000 },
@@ -141,7 +147,7 @@ export async function classifyWithV3(
 		const low = msg.toLowerCase();
 		if (low.includes("timed out") || low.includes("timeout")) {
 			ctx.ui.notify(
-				'router: classifier timed out (likely first-run dependency/model setup). Run: uv sync --project prompt-routing, then warm once: uv run --project prompt-routing python prompt-routing/classify.py --classifier t2 "warmup"',
+				`router: classifier timed out (likely first-run dependency/model setup). Run: uv sync --project prompt-routing, then warm once: uv run --project prompt-routing python prompt-routing/classify.py --classifier ${mode} "warmup"`,
 				"warning",
 			);
 			return null;
@@ -200,7 +206,7 @@ export async function classifyWithV3(
 			combined.includes("collecting")
 		) {
 			ctx.ui.notify(
-				'router: classifier emitted setup logs instead of JSON (likely first run). Warm once: uv run --project prompt-routing python prompt-routing/classify.py --classifier t2 "warmup"',
+				`router: classifier emitted setup logs instead of JSON (likely first run). Warm once: uv run --project prompt-routing python prompt-routing/classify.py --classifier ${mode} "warmup"`,
 				"warning",
 			);
 			return null;

@@ -42,10 +42,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 try:
     # Parse optional --classifier flag before the prompt args.
     _args = sys.argv[1:]
-    _classifier_mode = "confgate"
+    _classifier_mode = "t2"
     if len(_args) >= 2 and _args[0] == "--classifier":
         _classifier_mode = _args[1]
         _args = _args[2:]
+    if _classifier_mode not in {"t2", "lgbm", "ensemble", "confgate"}:
+        raise ValueError(f"unsupported classifier mode: {_classifier_mode}")
 
     if _args:
         prompt = " ".join(_args).strip()
@@ -84,7 +86,6 @@ try:
         _cg = ConfGatedClassifier()
         result = _cg.predict_route(prompt)
     else:
-        # Default: ensemble
         from classifier_ensemble import EnsembleV3Classifier
         _ens = EnsembleV3Classifier()
         result = _ens.predict_route(prompt)

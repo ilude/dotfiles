@@ -22,6 +22,9 @@
     },
     "effort": {
       "maxLevel": "high"
+    },
+    "classifier": {
+      "mode": "t2"
     }
   },
   "transcript": {

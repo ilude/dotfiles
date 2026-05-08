@@ -123,7 +123,7 @@ describe("formatPiStatusLine", () => {
 		});
 
 		expect(line).toContain(
-			"gpt-5.5\x1b[0m\x1b[37m[\x1b[36mlow\x1b[37m]\x1b[0m \x1b[33m84% 168k/200k\x1b[0m",
+			"gpt-5.5\x1b[0m\x1b[37m[\x1b[36mlow\x1b[37m]\x1b[0m \x1b[33m84%\x1b[0m \x1b[90m168k/200k\x1b[0m",
 		);
 	});
 
@@ -135,21 +135,21 @@ describe("formatPiStatusLine", () => {
 				contextWindow: 100_000,
 				percent: 66,
 			}),
-		).toBe("\x1b[32m66% 66k/100k\x1b[0m");
+		).toBe("\x1b[32m66%\x1b[0m \x1b[90m66k/100k\x1b[0m");
 		expect(
 			mod.formatContextUsageSegment({
 				tokens: 67_000,
 				contextWindow: 100_000,
 				percent: 67,
 			}),
-		).toBe("\x1b[33m67% 67k/100k\x1b[0m");
+		).toBe("\x1b[33m67%\x1b[0m \x1b[90m67k/100k\x1b[0m");
 		expect(
 			mod.formatContextUsageSegment({
 				tokens: 90_000,
 				contextWindow: 100_000,
 				percent: 90,
 			}),
-		).toBe("\x1b[31m90% 90k/100k\x1b[0m");
+		).toBe("\x1b[31m90%\x1b[0m \x1b[90m90k/100k\x1b[0m");
 	});
 });
 

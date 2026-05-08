@@ -208,12 +208,12 @@ describe("safeParseClassifierOutput", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildStatusLabel", () => {
-  it("shows only route size for small", () => {
-    expect(buildStatusLabel("low", "low", "gpt-5.4-mini", "minimal")).toBe("route: small");
+  it("shows only route size for mini", () => {
+    expect(buildStatusLabel("low", "low", "gpt-5.4-mini", "minimal")).toBe("route: mini");
   });
 
-  it("shows only route size for medium", () => {
-    expect(buildStatusLabel("mid", "mid", "gpt-5.4-fast", "medium", "medium", "classifier")).toBe("route: medium");
+  it("shows only route size for core", () => {
+    expect(buildStatusLabel("mid", "mid", "gpt-5.4-fast", "medium", "medium", "classifier")).toBe("route: core");
   });
 
   it("shows only route size for large", () => {
@@ -620,7 +620,7 @@ describe("prompt-router extension -- input hook", () => {
 
     await new Promise((r) => setTimeout(r, 0));
     expect((pi as any).setModel).toHaveBeenCalledWith({ provider: "openai-codex", id: "gpt-5.4-fast" });
-    expect((ctx.ui as any).setStatus).toHaveBeenCalledWith("router", "route: medium");
+    expect((ctx.ui as any).setStatus).toHaveBeenCalledWith("router", "route: core");
   });
 
   it("passes the trimmed prompt text to the classifier", async () => {
@@ -672,15 +672,23 @@ describe("prompt-router extension -- command registration", () => {
       "info"
     );
     expect((ctx.ui as any).notify).toHaveBeenCalledWith(
-      expect.stringContaining("low  ->"),
+      expect.stringContaining("nano  ->"),
       "info"
     );
     expect((ctx.ui as any).notify).toHaveBeenCalledWith(
-      expect.stringContaining("mid  ->"),
+      expect.stringContaining("mini  ->"),
       "info"
     );
     expect((ctx.ui as any).notify).toHaveBeenCalledWith(
-      expect.stringContaining("high ->"),
+      expect.stringContaining("core  ->"),
+      "info"
+    );
+    expect((ctx.ui as any).notify).toHaveBeenCalledWith(
+      expect.stringContaining("large ->"),
+      "info"
+    );
+    expect((ctx.ui as any).notify).toHaveBeenCalledWith(
+      expect.stringContaining("max   ->"),
       "info"
     );
     expect((ctx.ui as any).notify).toHaveBeenCalledWith(
