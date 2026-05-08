@@ -33,7 +33,9 @@ function tokenizeLines(input: string): ParsedLine[] {
 	for (let i = 0; i < raw.length; i += 1) {
 		const line = raw[i];
 		if (line.includes("\t")) {
-			throw new Error(`yaml-mini: tab indentation not supported (line ${i + 1})`);
+			throw new Error(
+				`yaml-mini: tab indentation not supported (line ${i + 1})`,
+			);
 		}
 		const trimmed = line.replace(/\s+$/, "");
 		const stripped = trimmed.trimStart();
@@ -47,19 +49,47 @@ function tokenizeLines(input: string): ParsedLine[] {
 	return lines;
 }
 
+function stripInlineComment(value: string): string {
+	let quote: '"' | "'" | null = null;
+	for (let i = 0; i < value.length; i += 1) {
+		const char = value[i];
+		if (char === '"' && quote !== "'" && value[i - 1] !== "\\")
+			quote = quote === '"' ? null : '"';
+		if (char === "'" && quote !== '"') quote = quote === "'" ? null : "'";
+		if (char === "#" && quote === null && /\s/.test(value[i - 1] ?? " "))
+			return value.slice(0, i).trimEnd();
+	}
+	return value;
+}
+
 function unquoteScalar(value: string): string {
-	const trimmed = value.trim();
+	const trimmed = stripInlineComment(value.trim());
 	if (trimmed === "") return "";
-	if (
-		(trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) ||
-		(trimmed.startsWith("'") && trimmed.endsWith("'") && trimmed.length >= 2)
-	) {
+	if (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) {
+		try {
+			return JSON.parse(trimmed) as string;
+		} catch {
+			return trimmed.slice(1, -1);
+		}
+	}
+	if (trimmed.startsWith("'") && trimmed.endsWith("'") && trimmed.length >= 2) {
 		return trimmed.slice(1, -1);
 	}
 	return trimmed;
 }
 
-function parseInlineValue(content: string): { key: string; inlineValue: string | null } {
+function parseFlowSequence(value: string): string[] | null {
+	const trimmed = stripInlineComment(value.trim());
+	if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return null;
+	const inner = trimmed.slice(1, -1).trim();
+	if (!inner) return [];
+	return inner.split(",").map((entry) => unquoteScalar(entry.trim()));
+}
+
+function parseInlineValue(content: string): {
+	key: string;
+	inlineValue: string | null;
+} {
 	const colonIdx = content.indexOf(":");
 	if (colonIdx === -1) {
 		throw new Error(`yaml-mini: mapping line missing colon: ${content}`);
@@ -69,7 +99,11 @@ function parseInlineValue(content: string): { key: string; inlineValue: string |
 	return { key, inlineValue: rest === "" ? null : rest };
 }
 
-function parseBlock(lines: ParsedLine[], start: number, indent: number): { value: YamlValue; next: number } {
+function parseBlock(
+	lines: ParsedLine[],
+	start: number,
+	indent: number,
+): { value: YamlValue; next: number } {
 	if (start >= lines.length) return { value: "", next: start };
 
 	const first = lines[start];
@@ -81,14 +115,20 @@ function parseBlock(lines: ParsedLine[], start: number, indent: number): { value
 	return parseMapping(lines, start, first.indent);
 }
 
-function parseSequence(lines: ParsedLine[], start: number, indent: number): { value: YamlValue[]; next: number } {
+function parseSequence(
+	lines: ParsedLine[],
+	start: number,
+	indent: number,
+): { value: YamlValue[]; next: number } {
 	const items: YamlValue[] = [];
 	let i = start;
 	while (i < lines.length) {
 		const line = lines[i];
 		if (line.indent < indent) break;
 		if (line.indent > indent) {
-			throw new Error(`yaml-mini: unexpected indentation at line ${line.lineNumber}`);
+			throw new Error(
+				`yaml-mini: unexpected indentation at line ${line.lineNumber}`,
+			);
 		}
 		if (!line.content.startsWith("-")) break;
 
@@ -109,18 +149,24 @@ function parseSequence(lines: ParsedLine[], start: number, indent: number): { va
 			const { key, inlineValue } = parseInlineValue(itemContent);
 			const map: { [k: string]: YamlValue } = {};
 			if (inlineValue !== null) {
-				map[key] = unquoteScalar(inlineValue);
+				map[key] = parseFlowSequence(inlineValue) ?? unquoteScalar(inlineValue);
 			} else {
 				const child = parseBlock(lines, i, indent + 2);
 				map[key] = child.value;
 				i = child.next;
 			}
 			// Continuation lines at indent+2 contributing more keys to this map.
-			while (i < lines.length && lines[i].indent === indent + 2 && !lines[i].content.startsWith("-")) {
+			while (
+				i < lines.length &&
+				lines[i].indent === indent + 2 &&
+				!lines[i].content.startsWith("-")
+			) {
 				const cont = parseInlineValue(lines[i].content);
 				i += 1;
 				if (cont.inlineValue !== null) {
-					map[cont.key] = unquoteScalar(cont.inlineValue);
+					map[cont.key] =
+						parseFlowSequence(cont.inlineValue) ??
+						unquoteScalar(cont.inlineValue);
 				} else {
 					const child = parseBlock(lines, i, indent + 4);
 					map[cont.key] = child.value;
@@ -135,21 +181,27 @@ function parseSequence(lines: ParsedLine[], start: number, indent: number): { va
 	return { value: items, next: i };
 }
 
-function parseMapping(lines: ParsedLine[], start: number, indent: number): { value: { [k: string]: YamlValue }; next: number } {
+function parseMapping(
+	lines: ParsedLine[],
+	start: number,
+	indent: number,
+): { value: { [k: string]: YamlValue }; next: number } {
 	const out: { [k: string]: YamlValue } = {};
 	let i = start;
 	while (i < lines.length) {
 		const line = lines[i];
 		if (line.indent < indent) break;
 		if (line.indent > indent) {
-			throw new Error(`yaml-mini: unexpected indentation at line ${line.lineNumber}`);
+			throw new Error(
+				`yaml-mini: unexpected indentation at line ${line.lineNumber}`,
+			);
 		}
 		if (line.content.startsWith("-")) break;
 
 		const { key, inlineValue } = parseInlineValue(line.content);
 		i += 1;
 		if (inlineValue !== null) {
-			out[key] = unquoteScalar(inlineValue);
+			out[key] = parseFlowSequence(inlineValue) ?? unquoteScalar(inlineValue);
 		} else {
 			const child = parseBlock(lines, i, indent + 1);
 			out[key] = child.value;

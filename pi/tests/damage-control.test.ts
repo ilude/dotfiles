@@ -143,6 +143,30 @@ no_delete_paths: []
 		});
 	});
 
+	it("unescapes double-quoted YAML regex rules before matching", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const parsed = mod.parseDamageControlRules(`
+dangerous_commands:
+  - pattern: "secret file read"
+    regex: "\\\\b(?:cat|sed|awk|head|tail|base64)\\\\b[^|;&]*(?:\\\\.env\\\\b)"
+    reason: "Reads secret-bearing files that must not be exposed"
+
+zero_access_paths: []
+no_delete_paths: []
+`);
+
+		const result = await mod.evaluateDangerousCommand(
+			"cat .env >/dev/null",
+			parsed.dangerous_commands,
+		);
+
+		expect(result).toEqual({
+			block: true,
+			reason:
+				'Blocked dangerous command (matched "secret file read"): Reads secret-bearing files that must not be exposed',
+		});
+	});
+
 	it("loads the tracked repo rules as an extension-relative fallback", async () => {
 		const mod = await import("../extensions/damage-control.ts");
 		const loaded = mod.loadRules("C:/definitely/not/a/real/project");
@@ -377,7 +401,7 @@ describe("damage-control no_delete_paths enforcement", () => {
 		it("blocks malformed paths (NUL byte) by surfacing a block decision", async () => {
 			const mod = await import("../extensions/damage-control.ts");
 			const result = mod.checkNoDeletePaths(
-				["foo bar"],
+				[`foo${String.fromCharCode(0)}bar`],
 				["never-matched"],
 				process.cwd(),
 			);
@@ -585,5 +609,111 @@ describe("damage-control checkZeroAccess (ssh use/inspect split)", () => {
 			const mod = await import("../extensions/damage-control.ts");
 			expect(mod.isSshProtectedPattern(pattern)).toBe(expected);
 		});
+	});
+});
+
+describe("damage-control refactor hardening", () => {
+	it("debug logging is disabled by default and opt-in redacts synthetic secrets", async () => {
+		const fs = await import("node:fs");
+		const logPath = path.join(process.cwd(), ".pi", "damage-control-debug.log");
+		const mod = await import("../extensions/damage-control.ts");
+		fs.rmSync(logPath, { force: true });
+		const oldDebug = process.env.PI_DAMAGE_CONTROL_DEBUG;
+		delete process.env.PI_DAMAGE_CONTROL_DEBUG;
+		mod.debugLog("debug default", { value: `pass${"word"}=fake-value .env` });
+		expect(fs.existsSync(logPath)).toBe(false);
+
+		process.env.PI_DAMAGE_CONTROL_DEBUG = "1";
+		mod.debugLog("debug enabled", {
+			value: `pass${"word"}=fake-value tok${"en"}=fake-query Authorization: Bearer fakebearer .env id_ed25519 fake.pem`,
+		});
+		const log = fs.readFileSync(logPath, "utf-8");
+		expect(log).toContain("debug enabled");
+		expect(log).not.toContain("fake-value");
+		expect(log).not.toContain("fakebearer");
+		expect(log).toContain("[redacted]");
+		fs.rmSync(logPath, { force: true });
+		if (oldDebug === undefined) delete process.env.PI_DAMAGE_CONTROL_DEBUG;
+		else process.env.PI_DAMAGE_CONTROL_DEBUG = oldDebug;
+	});
+
+	it("real tracked rules block synthetic secret reads and destructive commands", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const loaded = mod.loadRules(process.cwd());
+		expect(loaded.health.status).toBe("active");
+		await expect(
+			mod.evaluateDangerousCommand(
+				"cat synthetic.env >/dev/null",
+				loaded.rules.dangerous_commands,
+			),
+		).resolves.toMatchObject({ block: true });
+		await expect(
+			mod.evaluateDangerousCommand(
+				"DROP TABLE fake_table",
+				loaded.rules.dangerous_commands,
+			),
+		).resolves.toMatchObject({ block: true });
+		await expect(
+			mod.evaluateDangerousCommand(
+				"rm -rf ./synthetic-build",
+				loaded.rules.dangerous_commands,
+			),
+		).resolves.toMatchObject({ block: true });
+	});
+
+	it("real tracked rules block through the registered bash and file handlers", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		type Handler = (
+			event: { toolName: string; input: Record<string, string> },
+			ctx: { cwd: string; ui: Record<string, unknown> },
+		) => unknown;
+		const handlers: Handler[] = [];
+		mod.default({
+			on: vi.fn((name: string, handler: Handler) => {
+				if (name === "tool_call") handlers.push(handler);
+			}),
+		} as unknown as Parameters<typeof mod.default>[0]);
+		const ctx = {
+			cwd: process.cwd(),
+			ui: { setStatus: vi.fn(), notify: vi.fn(), confirm: vi.fn() },
+		};
+		const bashResult = await handlers[0](
+			{ toolName: "bash", input: { command: "cat synthetic.env" } },
+			ctx,
+		);
+		expect(bashResult).toMatchObject({ block: true });
+		const fileResult = await handlers[2](
+			{ toolName: "read", input: { path: ".env" } },
+			ctx,
+		);
+		expect(fileResult).toMatchObject({ block: true });
+	});
+
+	it("policy schema rejects malformed rules with clear errors", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		for (const [name, yaml] of [
+			[
+				"invalid regex",
+				'dangerous_commands:\n  - pattern: "x"\n    regex: "["\n    reason: "bad"\nzero_access_paths: []\nno_delete_paths: []\n',
+			],
+			[
+				"invalid action",
+				'dangerous_commands:\n  - pattern: "x"\n    reason: "bad"\n    action: "prompt"\nzero_access_paths: []\nno_delete_paths: []\n',
+			],
+			[
+				"missing required",
+				'dangerous_commands:\n  - pattern: "x"\nzero_access_paths: []\nno_delete_paths: []\n',
+			],
+			[
+				"non-array section",
+				'dangerous_commands: []\nzero_access_paths:\n  bad: "x"\nno_delete_paths: []\n',
+			],
+			[
+				"unsupported schema value",
+				'dangerous_commands:\n  - pattern: "x"\n    reason: "bad"\n    platforms: "linux"\nzero_access_paths: []\nno_delete_paths: []\n',
+			],
+		] as const) {
+			expect(() => mod.parseDamageControlRules(yaml), name).toThrow();
+		}
 	});
 });

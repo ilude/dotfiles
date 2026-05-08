@@ -146,6 +146,22 @@ When an extension reads a path from tool input:
 3. Compare against patterns or rules using the canonicalized form, not the
    raw input.
 
+## Damage-control extension
+
+Damage-control is Pi-only safety enforcement for shell and file-tool decisions. `damage-control.ts` is the Pi event adapter; `damage-control-rules.ts` loads and validates the policy schema with `pi/lib/yaml-mini.ts`; `damage-control-engine.ts` contains pure deny/ask/allow decisions; `damage-control-debug.ts` contains opt-in redacted logging.
+
+Debug logging is off by default. Set `PI_DAMAGE_CONTROL_DEBUG=1` only while investigating, then inspect `.pi/damage-control-debug.log` or `~/.pi/agent/damage-control-debug.log` for redacted synthetic entries. Do not print old damage-control debug logs because they may predate redaction guarantees.
+
+Validate changes with pnpm only:
+
+```bash
+cd pi/tests && pnpm test damage-control.test.ts
+cd pi/extensions && pnpm run typecheck
+make check-pi-extensions
+```
+
+Safe live smoke tests must use a disposable temp repo, synthetic sentinel `.env`/key-like paths, or temporary test-only rules. Do not execute shell reads against real `.env`, SSH private keys, `*.pem`, or `*.key` files. If runtime source is not the same symlink/inode/checksum as this repo, rerun the dotfiles link/install flow or otherwise sync before live smoke. Linux-only ask rules such as `docker compose down` should be validated with unit tests on Windows/macOS unless a temporary non-destructive ask rule is used.
+
 ## Config loading
 
 For YAML config files use `pi/lib/yaml-mini.ts` (TS-native, no subprocess) when

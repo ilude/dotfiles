@@ -99,6 +99,22 @@ pnpm add -g --allow-build=koffi --allow-build=protobufjs \
 
 ---
 
+## Damage-control safety validation
+
+Pi damage-control is Pi-only and lives in `pi/extensions/damage-control.ts` plus focused sibling modules for rule loading, pure engine decisions, and opt-in debug logging. Rules are loaded from `pi/damage-control-rules.yaml` through the TS-native `pi/lib/yaml-mini.ts` parser and explicit type guards.
+
+Debug logging is disabled by default. To enable redacted diagnostic logs for a short investigation, set `PI_DAMAGE_CONTROL_DEBUG=1`; logs may appear at `.pi/damage-control-debug.log` and `~/.pi/agent/damage-control-debug.log`. Do not print old debug logs directly: inventory paths first and inspect only redacted, synthetic entries.
+
+Validation commands are pnpm-only:
+
+```bash
+cd pi/tests && pnpm test damage-control.test.ts
+cd pi/extensions && pnpm run typecheck
+make check-pi-extensions
+```
+
+For live smoke tests, restart Pi so extension modules reload, then use a disposable temp repo with synthetic sentinel files or temporary test-only rules. Never execute shell reads against real `.env`, SSH keys, `*.pem`, or `*.key` files. On Windows/macOS, Linux-only ask rules such as `docker compose down` are best validated with deterministic Vitest tests or a temporary non-destructive ask rule.
+
 ## Source vs. runtime state
 
 This repository keeps curated Pi source/config trackable and leaves generated runtime
