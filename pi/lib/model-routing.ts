@@ -6,17 +6,21 @@ export interface ModelLike {
 	name?: string;
 }
 
-export type ModelSize = "small" | "medium" | "large";
+export type ModelSize = "nano" | "mini" | "core" | "large" | "small" | "medium";
 export type ModelPolicy = "same-provider" | "same-family";
 
+const NANO_HINT_RE = /(nano)/i;
 const MINI_HINT_RE = /(mini|small|haiku)/i;
 const FAST_HINT_RE = /(fast|turbo|flash|lite)/i;
 const LARGE_HINT_RE = /(opus|large|xl|thinking|reasoning)/i;
 const VERSION_RE = /(\d+(?:[.-]\d+)*)/;
 const CODEX_DEFAULTS: Record<ModelSize, string[]> = {
+	nano: ["gpt-5.4-nano", "gpt-5.4-mini"],
+	mini: ["gpt-5.4-mini"],
+	core: ["gpt-5.5", "gpt-5.3-codex"],
+	large: ["gpt-5.5", "gpt-5.3-codex"],
 	small: ["gpt-5.4-mini"],
 	medium: ["gpt-5.5", "gpt-5.3-codex"],
-	large: ["gpt-5.5", "gpt-5.3-codex"],
 };
 const CODEX_MAX_RE = /codex-max/i;
 
@@ -74,7 +78,11 @@ function isMiniModel(model: ModelLike) {
 	return MINI_HINT_RE.test(text);
 }
 
-function scoreModelForSize(model: ModelLike, size: ModelSize, current?: ModelLike): number {
+function scoreModelForSize(
+	model: ModelLike,
+	size: ModelSize,
+	current?: ModelLike,
+): number {
 	const id = normalize(model.id);
 	const name = normalize(model.name);
 	const text = `${id} ${name}`;
@@ -84,39 +92,74 @@ function scoreModelForSize(model: ModelLike, size: ModelSize, current?: ModelLik
 	let score = 0;
 	if (current && model.provider === current.provider) score += 80;
 	if (currentSeries && modelSeries === currentSeries) score += 50;
-	if (current && model.id === current.id && model.provider === current.provider) score += 25;
+	if (current && model.id === current.id && model.provider === current.provider)
+		score += 25;
 
 	if (text.includes("gpt-5.4")) score += 8;
 	if (text.includes("claude")) score += 6;
 
-	if (size === "small") {
+	if (size === "nano") {
+		if (NANO_HINT_RE.test(text)) score += 140;
+		if (MINI_HINT_RE.test(text)) score += 90;
+		if (FAST_HINT_RE.test(text)) score += 20;
+		if (LARGE_HINT_RE.test(text) || /opus|o[134]/.test(text)) score -= 60;
+		if (
+			!NANO_HINT_RE.test(text) &&
+			!MINI_HINT_RE.test(text) &&
+			!FAST_HINT_RE.test(text)
+		)
+			score -= 15;
+	} else if (size === "mini" || size === "small") {
 		if (MINI_HINT_RE.test(text)) score += 120;
+		if (NANO_HINT_RE.test(text)) score -= 20;
 		if (FAST_HINT_RE.test(text)) score += 20;
 		if (LARGE_HINT_RE.test(text) || /opus|o[134]/.test(text)) score -= 60;
 		if (!MINI_HINT_RE.test(text) && !FAST_HINT_RE.test(text)) score -= 15;
-	} else if (size === "medium") {
+	} else if (size === "core" || size === "medium") {
 		if (FAST_HINT_RE.test(text)) score += 90;
 		if (/sonnet|codex/.test(text)) score += 85;
-		if (!MINI_HINT_RE.test(text) && !LARGE_HINT_RE.test(text) && !/opus|o[134]/.test(text)) score += 55;
-		if (MINI_HINT_RE.test(text)) score -= 35;
+		if (
+			!MINI_HINT_RE.test(text) &&
+			!LARGE_HINT_RE.test(text) &&
+			!/opus|o[134]/.test(text)
+		)
+			score += 55;
+		if (MINI_HINT_RE.test(text) || NANO_HINT_RE.test(text)) score -= 35;
 		if (/opus|o[134]/.test(text)) score -= 25;
 	} else {
 		if (/opus|o[134]/.test(text)) score += 130;
 		if (LARGE_HINT_RE.test(text)) score += 100;
-		if (text.includes("gpt-5.4") && !MINI_HINT_RE.test(text) && !FAST_HINT_RE.test(text)) score += 95;
+		if (
+			text.includes("gpt-5.4") &&
+			!MINI_HINT_RE.test(text) &&
+			!FAST_HINT_RE.test(text)
+		)
+			score += 95;
 		if (/sonnet/.test(text)) score += 35;
-		if (MINI_HINT_RE.test(text) || FAST_HINT_RE.test(text)) score -= 50;
+		if (
+			MINI_HINT_RE.test(text) ||
+			NANO_HINT_RE.test(text) ||
+			FAST_HINT_RE.test(text)
+		)
+			score -= 50;
 	}
 
 	return score;
 }
 
-function compareScoredModels<T extends ModelLike>(a: { model: T; score: number }, b: { model: T; score: number }) {
+function compareScoredModels<T extends ModelLike>(
+	a: { model: T; score: number },
+	b: { model: T; score: number },
+) {
 	if (b.score !== a.score) return b.score - a.score;
 	return getDisplayName(a.model).localeCompare(getDisplayName(b.model));
 }
 
-function pickBestModel<T extends ModelLike>(models: readonly T[], size: ModelSize, current?: ModelLike): T | undefined {
+function pickBestModel<T extends ModelLike>(
+	models: readonly T[],
+	size: ModelSize,
+	current?: ModelLike,
+): T | undefined {
 	if (models.length === 0) return undefined;
 	const codexDefault = pickCodexDefault(models, size);
 	if (codexDefault) return codexDefault;
@@ -126,12 +169,21 @@ function pickBestModel<T extends ModelLike>(models: readonly T[], size: ModelSiz
 		.sort(compareScoredModels)[0]?.model;
 }
 
-function findExact<T extends ModelLike>(models: readonly T[], provider: string, id: string): T | undefined {
+function findExact<T extends ModelLike>(
+	models: readonly T[],
+	provider: string,
+	id: string,
+): T | undefined {
 	return models.find((model) => model.provider === provider && model.id === id);
 }
 
-function pickCodexDefault<T extends ModelLike>(models: readonly T[], size: ModelSize): T | undefined {
-	const codexModels = models.filter((model) => model.provider === "openai-codex");
+function pickCodexDefault<T extends ModelLike>(
+	models: readonly T[],
+	size: ModelSize,
+): T | undefined {
+	const codexModels = models.filter(
+		(model) => model.provider === "openai-codex",
+	);
 	if (codexModels.length === 0) return undefined;
 	for (const id of CODEX_DEFAULTS[size]) {
 		const model = findExact(codexModels, "openai-codex", id);
@@ -140,8 +192,13 @@ function pickCodexDefault<T extends ModelLike>(models: readonly T[], size: Model
 	return undefined;
 }
 
-function findFirstMini<T extends ModelLike>(models: readonly T[], provider: string): T | undefined {
-	return models.find((model) => isProvider(model, provider) && isMiniModel(model));
+function findFirstMini<T extends ModelLike>(
+	models: readonly T[],
+	provider: string,
+): T | undefined {
+	return models.find(
+		(model) => isProvider(model, provider) && isMiniModel(model),
+	);
 }
 
 export function resolveCommitPlanningModel<T extends ModelLike>(
@@ -149,12 +206,20 @@ export function resolveCommitPlanningModel<T extends ModelLike>(
 	currentModel?: ModelLike,
 ): T | undefined {
 	return (
-		(currentModel ? resolveDynamicModel(availableModels, currentModel, "small", "same-family") : undefined) ??
+		(currentModel
+			? resolveDynamicModel(
+					availableModels,
+					currentModel,
+					"mini",
+					"same-family",
+				)
+			: undefined) ??
 		findExact(availableModels, "openai-codex", "gpt-5.4-mini") ??
+		findExact(availableModels, "openai", "gpt-5.4-mini") ??
 		findExact(availableModels, "github-copilot", "gpt-5.4-mini") ??
 		findFirstMini(availableModels, "openai-codex") ??
 		findFirstMini(availableModels, "github-copilot") ??
-		pickBestModel(availableModels, "small", currentModel)
+		pickBestModel(availableModels, "mini", currentModel)
 	);
 }
 
@@ -163,13 +228,30 @@ export async function resolveCommitPlanningModelFromRegistry(
 	ctx?: any,
 ): Promise<Model<any> | undefined> {
 	const available = modelRegistry.getAvailable();
-	return resolveCommitPlanningModel(available, ctx ? getCurrentModelHint(ctx, available) : undefined);
+	return resolveCommitPlanningModel(
+		available,
+		ctx ? getCurrentModelHint(ctx, available) : undefined,
+	);
 }
 
-export function getCurrentModelHint(ctx: any, availableModels: readonly ModelLike[]): ModelLike | undefined {
-	const directCandidates = [ctx?.model, ctx?.currentModel, ctx?.selectedModel, ctx?.session?.model, ctx?.state?.model];
+export function getCurrentModelHint(
+	ctx: any,
+	availableModels: readonly ModelLike[],
+): ModelLike | undefined {
+	const directCandidates = [
+		ctx?.model,
+		ctx?.currentModel,
+		ctx?.selectedModel,
+		ctx?.session?.model,
+		ctx?.state?.model,
+	];
 	for (const candidate of directCandidates) {
-		if (candidate && typeof candidate === "object" && typeof candidate.provider === "string" && typeof candidate.id === "string") {
+		if (
+			candidate &&
+			typeof candidate === "object" &&
+			typeof candidate.provider === "string" &&
+			typeof candidate.id === "string"
+		) {
 			return candidate as ModelLike;
 		}
 		if (typeof candidate === "string") {
@@ -180,7 +262,10 @@ export function getCurrentModelHint(ctx: any, availableModels: readonly ModelLik
 
 	const settingsProvider = ctx?.settings?.defaultProvider;
 	const settingsModel = ctx?.settings?.defaultModel;
-	if (typeof settingsProvider === "string" && typeof settingsModel === "string") {
+	if (
+		typeof settingsProvider === "string" &&
+		typeof settingsModel === "string"
+	) {
 		return { provider: settingsProvider, id: settingsModel };
 	}
 
@@ -197,14 +282,25 @@ export function resolveDynamicModel<T extends ModelLike>(
 	if (availableModels.length === 0) return undefined;
 	if (!currentModel) return pickBestModel(availableModels, size);
 
-	const sameProvider = availableModels.filter((model) => model.provider === currentModel.provider);
-	const sameFamily = sameProvider.filter((model) => inferSeriesKey(model) === inferSeriesKey(currentModel));
+	const sameProvider = availableModels.filter(
+		(model) => model.provider === currentModel.provider,
+	);
+	const sameFamily = sameProvider.filter(
+		(model) => inferSeriesKey(model) === inferSeriesKey(currentModel),
+	);
 
 	if (policy === "same-family") {
-		return pickBestModel(sameFamily, size, currentModel) ?? pickBestModel(sameProvider, size, currentModel) ?? pickBestModel(availableModels, size, currentModel);
+		return (
+			pickBestModel(sameFamily, size, currentModel) ??
+			pickBestModel(sameProvider, size, currentModel) ??
+			pickBestModel(availableModels, size, currentModel)
+		);
 	}
 
-	return pickBestModel(sameProvider, size, currentModel) ?? pickBestModel(availableModels, size, currentModel);
+	return (
+		pickBestModel(sameProvider, size, currentModel) ??
+		pickBestModel(availableModels, size, currentModel)
+	);
 }
 
 export function resolveDynamicModelFromRegistry(
@@ -218,6 +314,13 @@ export function resolveDynamicModelFromRegistry(
 	return resolveDynamicModel(available, current, size, policy);
 }
 
-export function resolveModelTierLabel(model: ModelLike | undefined, size: ModelSize) {
-	return model ? getDisplayName(model) : size === "small" ? "Small model" : size === "medium" ? "Medium model" : "Large model";
+export function resolveModelTierLabel(
+	model: ModelLike | undefined,
+	size: ModelSize,
+) {
+	if (model) return getDisplayName(model);
+	if (size === "nano") return "Nano model";
+	if (size === "mini" || size === "small") return "Mini model";
+	if (size === "core" || size === "medium") return "Core model";
+	return "Large model";
 }

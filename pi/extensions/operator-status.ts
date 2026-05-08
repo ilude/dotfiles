@@ -26,13 +26,13 @@ import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext, ReadonlyFooterDataProvider } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { listRecentDecisions, listSessionApprovals } from "../lib/permission-registry.js";
-import { listTasks, type TaskRecordV1 } from "../lib/task-registry.js";
 import {
 	createReloadStatusState,
 	needsPiReload,
-	resetReloadStatusBaseline,
 	type ReloadStatusState,
+	resetReloadStatusBaseline,
 } from "../lib/reload-status.js";
+import { listTasks, type TaskRecordV1 } from "../lib/task-registry.js";
 
 interface DoctorCheck {
 	name: string;
@@ -60,9 +60,17 @@ const ANSI = {
 	green: "\x1b[32m",
 	orange: "\x1b[38;5;208m",
 	pink: "\x1b[38;5;205m",
+	red: "\x1b[31m",
 	reset: "\x1b[0m",
 	white: "\x1b[37m",
+	yellow: "\x1b[33m",
 } as const;
+
+interface ContextUsage {
+	tokens: number | null;
+	contextWindow: number | null;
+	percent: number | null;
+}
 
 function runCommand(args: string[], cwd?: string): string {
 	try {
@@ -140,6 +148,26 @@ function formatModelName(model: { id?: string; name?: string } | undefined): str
 	return model?.id || model?.name || "no-model";
 }
 
+function compactTokens(tokens: number): string {
+	if (tokens < 1_000) return String(tokens);
+	if (tokens < 1_000_000) return `${Math.round(tokens / 1_000)}k`;
+	return `${Number.isInteger(tokens / 1_000_000) ? tokens / 1_000_000 : (tokens / 1_000_000).toFixed(1)}M`;
+}
+
+function colorForContextPercent(percent: number): string {
+	if (percent >= 90) return ANSI.red;
+	if (percent >= 67) return ANSI.yellow;
+	return ANSI.green;
+}
+
+export function formatContextUsageSegment(usage: ContextUsage | null | undefined): string | null {
+	if (!usage || usage.tokens === null || usage.contextWindow === null || usage.contextWindow <= 0) return null;
+	const percent = usage.percent ?? (usage.tokens / usage.contextWindow) * 100;
+	const roundedPercent = Math.round(percent);
+	const text = `${roundedPercent}% ${compactTokens(usage.tokens)}/${compactTokens(usage.contextWindow)}`;
+	return `${colorForContextPercent(roundedPercent)}${text}${ANSI.reset}`;
+}
+
 function formatThinkingLevel(pi: ExtensionAPI): string {
 	try {
 		return pi.getThinkingLevel?.() || "off";
@@ -169,6 +197,7 @@ export function formatPiStatusLine(options: {
 	pi: ExtensionAPI;
 	piVersion: string | null;
 	reloadNeeded?: boolean;
+	contextUsage?: ContextUsage | null;
 	router: string | null;
 	width: number;
 }): string {
@@ -177,8 +206,18 @@ export function formatPiStatusLine(options: {
 	const model = formatModelName(options.model);
 	const thinking = formatThinkingLevel(options.pi);
 	const thinkingLabel = `${ANSI.white}[${ANSI.cyan}${thinking}${ANSI.white}]${ANSI.reset}`;
+	const contextSegment = formatContextUsageSegment(options.contextUsage);
 	const versionLabel = `${ANSI.dim}π v${options.piVersion ?? "?"}${ANSI.reset}${formatReloadIndicator(Boolean(options.reloadNeeded))}`;
-	const left = `${ANSI.green}${directory}${ANSI.reset}${branch} | ${ANSI.orange}${model}${ANSI.reset}${thinkingLabel} | ${versionLabel}`;
+	const buildLeft = (modelText: string) => {
+		const modelLabel = `${ANSI.orange}${modelText}${ANSI.reset}${thinkingLabel}${contextSegment ? ` ${contextSegment}` : ""}`;
+		return `${ANSI.green}${directory}${ANSI.reset}${branch} | ${modelLabel} | ${versionLabel}`;
+	};
+	let left = buildLeft(model);
+	if (contextSegment && visibleWidth(left) > options.width) {
+		const nonModelWidth = visibleWidth(buildLeft(""));
+		const availableModelWidth = Math.max(0, options.width - nonModelWidth);
+		left = buildLeft(truncateToWidth(model, availableModelWidth));
+	}
 	const composed = rightAnchor(left, options.router, options.width);
 	return visibleWidth(composed) > options.width ? truncateToWidth(composed, options.width) : composed;
 }
@@ -194,6 +233,7 @@ function installClaudeStyleFooter(ctx: ExtensionContext, pi: ExtensionAPI): bool
 		render: (width: number) => {
 			const piVersion = resolvePiVersion();
 			const reloadNeeded = needsPiReload({ state: reloadStatus });
+			const contextUsage = ctx.getContextUsage?.() ?? null;
 			const statusLine = formatPiStatusLine({
 				cwd: ctx.cwd,
 				branch: footerData.getGitBranch(),
@@ -201,6 +241,7 @@ function installClaudeStyleFooter(ctx: ExtensionContext, pi: ExtensionAPI): bool
 				pi,
 				piVersion,
 				reloadNeeded,
+				contextUsage,
 				router: routerStatus(footerData),
 				width,
 			});

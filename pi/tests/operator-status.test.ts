@@ -107,6 +107,50 @@ describe("formatPiStatusLine", () => {
 		expect(line).toContain("π v0.72.0");
 		expect(line).toContain("\x1b[37m[\x1b[38;5;205mreload\x1b[37m]\x1b[0m");
 	});
+
+	it("renders colored context usage immediately after model reasoning", async () => {
+		const mod = await import("../extensions/operator-status.ts");
+		const pi = Object.assign(createMockPi(), { getThinkingLevel: () => "low" });
+		const line = mod.formatPiStatusLine({
+			cwd: tmpRoot,
+			branch: null,
+			model: { id: "gpt-5.5" },
+			pi: pi as any,
+			piVersion: "0.72.0",
+			contextUsage: { tokens: 168_000, contextWindow: 200_000, percent: 84 },
+			router: null,
+			width: 120,
+		});
+
+		expect(line).toContain(
+			"gpt-5.5\x1b[0m\x1b[37m[\x1b[36mlow\x1b[37m]\x1b[0m \x1b[33m84% 168k/200k\x1b[0m",
+		);
+	});
+
+	it("uses warning and error colors at context thresholds", async () => {
+		const mod = await import("../extensions/operator-status.ts");
+		expect(
+			mod.formatContextUsageSegment({
+				tokens: 66_000,
+				contextWindow: 100_000,
+				percent: 66,
+			}),
+		).toBe("\x1b[32m66% 66k/100k\x1b[0m");
+		expect(
+			mod.formatContextUsageSegment({
+				tokens: 67_000,
+				contextWindow: 100_000,
+				percent: 67,
+			}),
+		).toBe("\x1b[33m67% 67k/100k\x1b[0m");
+		expect(
+			mod.formatContextUsageSegment({
+				tokens: 90_000,
+				contextWindow: 100_000,
+				percent: 90,
+			}),
+		).toBe("\x1b[31m90% 90k/100k\x1b[0m");
+	});
 });
 
 describe("formatElevatedStatus", () => {
