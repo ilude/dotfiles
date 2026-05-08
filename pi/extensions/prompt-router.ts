@@ -618,7 +618,7 @@ export function buildStatusLabel(
 	_ruleFired?: RuleFired,
 ): string {
 	const size = modelSizeForTier(effective);
-	return `route: ${size}`;
+	return `router: ${size}`;
 }
 
 /**

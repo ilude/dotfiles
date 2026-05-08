@@ -178,14 +178,26 @@ function formatThinkingLevel(pi: ExtensionAPI): string {
 	}
 }
 
-function routerStatus(footerData: ReadonlyFooterDataProvider): string | null {
-	const raw = footerData.getExtensionStatuses().get("router");
-	return raw ? sanitizeSingleLine(raw) : null;
+export function colorForThinkingLevel(model: string, thinkingLevel: string): string {
+	const normalizedModel = model.toLowerCase();
+	const normalizedLevel = thinkingLevel.toLowerCase();
+	if (normalizedLevel === "off") return ANSI.yellow;
+	if (normalizedModel === "gpt-5.5" && ["medium", "high", "xhigh"].includes(normalizedLevel)) return ANSI.pink;
+	if (["high", "xhigh"].includes(normalizedLevel)) return ANSI.pink;
+	return ANSI.cyan;
+}
+
+function rightAnchoredStatus(footerData: ReadonlyFooterDataProvider): string | null {
+	const statuses = footerData.getExtensionStatuses();
+	const raw = [statuses.get("damage-control"), statuses.get("router")]
+		.map((status) => (status ? sanitizeSingleLine(status) : ""))
+		.filter(Boolean);
+	return raw.length > 0 ? raw.join(" ") : null;
 }
 
 function formatExtensionStatuses(footerData: ReadonlyFooterDataProvider): string | null {
 	const statuses = Array.from(footerData.getExtensionStatuses().entries())
-		.filter(([key]) => key !== "router")
+		.filter(([key]) => key !== "router" && key !== "damage-control")
 		.sort(([a], [b]) => a.localeCompare(b))
 		.map(([, text]) => sanitizeSingleLine(text))
 		.filter(Boolean);
@@ -207,7 +219,8 @@ export function formatPiStatusLine(options: {
 	const branch = colorBranch(options.branch);
 	const model = formatModelName(options.model);
 	const thinking = formatThinkingLevel(options.pi);
-	const thinkingLabel = `${ANSI.white}[${ANSI.cyan}${thinking}${ANSI.white}]${ANSI.reset}`;
+	const thinkingColor = colorForThinkingLevel(model, thinking);
+	const thinkingLabel = `${ANSI.white}[${thinkingColor}${thinking}${ANSI.white}]${ANSI.reset}`;
 	const contextSegment = formatContextUsageSegment(options.contextUsage);
 	const versionLabel = `${ANSI.dim}π v${options.piVersion ?? "?"}${ANSI.reset}${formatReloadIndicator(Boolean(options.reloadNeeded))}`;
 	const buildLeft = (modelText: string) => {
@@ -244,7 +257,7 @@ function installClaudeStyleFooter(ctx: ExtensionContext, pi: ExtensionAPI): bool
 				piVersion,
 				reloadNeeded,
 				contextUsage,
-				router: routerStatus(footerData),
+				router: rightAnchoredStatus(footerData),
 				width,
 			});
 			const extensionStatuses = formatExtensionStatuses(footerData);

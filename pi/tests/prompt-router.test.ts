@@ -209,15 +209,15 @@ describe("safeParseClassifierOutput", () => {
 
 describe("buildStatusLabel", () => {
   it("shows only route size for mini", () => {
-    expect(buildStatusLabel("low", "low", "gpt-5.4-mini", "minimal")).toBe("route: mini");
+    expect(buildStatusLabel("low", "low", "gpt-5.4-mini", "minimal")).toBe("router: mini");
   });
 
   it("shows only route size for core", () => {
-    expect(buildStatusLabel("mid", "mid", "gpt-5.4-fast", "medium", "medium", "classifier")).toBe("route: core");
+    expect(buildStatusLabel("mid", "mid", "gpt-5.4-fast", "medium", "medium", "classifier")).toBe("router: core");
   });
 
   it("shows only route size for large", () => {
-    expect(buildStatusLabel("high", "low", "claude-opus-4-6", "high")).toBe("route: large");
+    expect(buildStatusLabel("high", "low", "claude-opus-4-6", "high")).toBe("router: large");
   });
 });
 
@@ -620,7 +620,7 @@ describe("prompt-router extension -- input hook", () => {
 
     await new Promise((r) => setTimeout(r, 0));
     expect((pi as any).setModel).toHaveBeenCalledWith({ provider: "openai-codex", id: "gpt-5.4-fast" });
-    expect((ctx.ui as any).setStatus).toHaveBeenCalledWith("router", "route: core");
+    expect((ctx.ui as any).setStatus).toHaveBeenCalledWith("router", "router: core");
   });
 
   it("passes the trimmed prompt text to the classifier", async () => {
