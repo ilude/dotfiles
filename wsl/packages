@@ -105,6 +105,7 @@ CLI_PACKAGES=(
     "ripgrep:ripgrep (rg)"
     "fd-find:fd-find (fd)"
     "bat:bat (cat replacement)"
+    "age:age (file encryption)"
     "fzf:fzf (fuzzy finder)"
     "btop:btop (system monitor)"
     "tldr:tldr (man pages)"

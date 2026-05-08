@@ -56,7 +56,7 @@ install_packages() {
   # Define package groups
   BASE_PACKAGES=(coreutils make ssh-import-id zsh zsh-autosuggestions zsh-syntax-highlighting)
   # Modern CLI tools (Ubuntu 24.04+ has these in apt)
-  CLI_PACKAGES=(fzf ripgrep fd-find bat jq curl wget unzip)
+  CLI_PACKAGES=(fzf ripgrep fd-find bat jq curl wget unzip age)
   PYTHON_PACKAGES=(python3-dev python3-pip python3-setuptools)
   HEADER_PACKAGES=(linux-headers-generic)
 
@@ -158,6 +158,7 @@ setup_macos() {
 
     # macOS packages (zsh is already default shell since Catalina)
     local packages=(
+        age          # File encryption
         coreutils    # GNU coreutils (gls, gdate, etc.)
         fzf          # Fuzzy finder
         ripgrep      # Fast grep (rg)

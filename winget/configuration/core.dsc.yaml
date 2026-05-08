@@ -108,6 +108,12 @@ properties:
         source: winget
     - resource: Microsoft.WinGet.DSC/WinGetPackage
       directives:
+        description: Install age
+      settings:
+        id: FiloSottile.age  # age (file encryption)
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
         description: Install git-delta
       settings:
         id: dandavison.delta  # git-delta (diff pager)

@@ -3,6 +3,7 @@ tap "dimentium/autoraise"
 tap "oven-sh/bun"
 
 # CLI tools
+brew "age"
 brew "bat"
 brew "coreutils"
 brew "eza"
