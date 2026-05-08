@@ -257,6 +257,10 @@ function renderBucketTable(rows: BucketRow[], total: number): string {
 	return lines.join("\n");
 }
 
+function nowrap(value: string): string {
+	return `<span style="white-space: nowrap">${value}</span>`;
+}
+
 function renderPromptRows(records: RouterRecord[], mode: "tokens" | "confidence"): string {
 	const rows = [...records]
 		.filter((r) => (mode === "tokens" ? r.tokens > 0 : r.confidence !== null))
@@ -266,7 +270,7 @@ function renderPromptRows(records: RouterRecord[], mode: "tokens" | "confidence"
 	const lines = ["| Time | Size | Effort | Tokens | Confidence | Prompt excerpt |", "|---|---|---|---:|---:|---|"];
 	for (const r of rows) {
 		const time = new Date(r.ts * 1000).toISOString().slice(0, 16).replace("T", " ");
-		lines.push(`| ${time} | ${r.modelSize} | ${r.effort} | ${formatInt(r.tokens)} | ${r.confidence === null ? "--" : r.confidence.toFixed(2)} | ${r.promptExcerpt.replace(/\s+/g, " ").slice(0, 100)} |`);
+		lines.push(`| ${nowrap(time)} | ${r.modelSize} | ${r.effort} | ${formatInt(r.tokens)} | ${r.confidence === null ? "--" : r.confidence.toFixed(2)} | ${r.promptExcerpt.replace(/\s+/g, " ").slice(0, 100)} |`);
 	}
 	return lines.join("\n");
 }

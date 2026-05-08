@@ -209,14 +209,22 @@ interface SlashEchoExtensionAPI extends ExtensionAPI {
 
 const COMMIT_ACTIVITY_TYPE = "workflow-commit-activity";
 const SLASH_ECHO_TYPE = "slash-echo";
-const SUMMARIZE_PROMPT = `Summarize the work done in this session in 3 bullets or fewer.
-Include only:
-- what changed or was decided
-- current status / validation if important
-- unfinished work, open questions, or follow-ups worth carrying forward
-- any workflow issue worth considering later
+const SUMMARIZE_PROMPT = `Summarize the work done in this session as a compact handoff note.
 
-Be terse. Skip routine details.`;
+Use this structure when applicable:
+
+1. Start with the primary artifact/path or main outcome in a short sentence.
+2. Add a "Current direction" or "Current status" section if there is an active design/plan/change.
+3. Add "Key decisions captured" as concise bullets for durable decisions.
+4. Add "Telemetry/validation/implementation notes" only if relevant.
+5. End with "Recommended next command" or "Next step" when there is a clear follow-up.
+
+Style rules:
+- Prefer grouped sections over a flat chronological recap.
+- Preserve exact paths, commands, model names, and important enum/value choices.
+- Keep it concise but complete enough to survive compaction or handoff.
+- Skip routine tool calls and dead-end exploration unless they affect the next step.
+- Do not invent validation; say "not run" or omit if unknown.`;
 
 interface BranchLaunchPlan {
 	executable?: string;
