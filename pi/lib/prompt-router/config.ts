@@ -1,6 +1,7 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import { readMergedSettings } from "../settings-loader.js";
+import { type ClassifierMode, isClassifierMode } from "./classifier-modes.js";
 
 export const PROMPT_ROUTING_DIR = path.join(
 	os.homedir(),
@@ -12,7 +13,7 @@ export const SETTINGS_PATH = path.join(
 	".dotfiles/pi/settings.json",
 );
 
-export type RouterClassifierMode = "t2" | "lgbm" | "ensemble" | "confgate";
+export type RouterClassifierMode = ClassifierMode;
 
 export interface RouterPolicy {
 	N_HOLD: number;
@@ -22,6 +23,7 @@ export interface RouterPolicy {
 	UNCERTAIN_THRESHOLD: number;
 	UNCERTAIN_FALLBACK_ENABLED: boolean;
 	maxEffortLevel: string;
+	classifierMode: ClassifierMode;
 }
 
 export const POLICY_DEFAULTS: RouterPolicy = {
@@ -32,15 +34,11 @@ export const POLICY_DEFAULTS: RouterPolicy = {
 	UNCERTAIN_THRESHOLD: 0.55,
 	UNCERTAIN_FALLBACK_ENABLED: false,
 	maxEffortLevel: "high",
+	classifierMode: "t2",
 };
 
-export const CLASSIFIER_MODE_DEFAULT: RouterClassifierMode = "t2";
-const CLASSIFIER_MODES = new Set<RouterClassifierMode>([
-	"t2",
-	"lgbm",
-	"ensemble",
-	"confgate",
-]);
+export const CLASSIFIER_MODE_DEFAULT: RouterClassifierMode =
+	POLICY_DEFAULTS.classifierMode;
 
 function readNumber(
 	source: Record<string, unknown>,
@@ -74,6 +72,23 @@ function readMaxEffortLevel(
 		: POLICY_DEFAULTS.maxEffortLevel;
 }
 
+export class InvalidRouterSettingsError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "InvalidRouterSettingsError";
+	}
+}
+
+function readClassifierMode(router: Record<string, unknown>): ClassifierMode {
+	const classifier = router.classifier as Record<string, unknown> | undefined;
+	const mode = classifier?.mode;
+	if (mode === undefined) return POLICY_DEFAULTS.classifierMode;
+	if (isClassifierMode(mode)) return mode;
+	throw new InvalidRouterSettingsError(
+		"router.classifier.mode must be one of: t2, lgbm, ensemble, confgate",
+	);
+}
+
 export function loadRouterPolicy(
 	effortOrder: Record<string, number>,
 ): RouterPolicy {
@@ -87,14 +102,9 @@ export function loadRouterPolicy(
 			skipProject: true,
 			skipLocal: true,
 		});
-		const p =
-			((s?.router as Record<string, unknown>)?.policy as
-				| Record<string, unknown>
-				| undefined) ?? {};
-		const e =
-			((s?.router as Record<string, unknown>)?.effort as
-				| Record<string, unknown>
-				| undefined) ?? {};
+		const router = (s?.router as Record<string, unknown>) ?? {};
+		const p = (router.policy as Record<string, unknown> | undefined) ?? {};
+		const e = (router.effort as Record<string, unknown> | undefined) ?? {};
 		return {
 			N_HOLD: readNumber(p, "N_HOLD"),
 			DOWNGRADE_THRESHOLD: readNumber(p, "DOWNGRADE_THRESHOLD"),
@@ -103,8 +113,10 @@ export function loadRouterPolicy(
 			UNCERTAIN_THRESHOLD: readNumber(p, "UNCERTAIN_THRESHOLD"),
 			UNCERTAIN_FALLBACK_ENABLED: readBoolean(p, "UNCERTAIN_FALLBACK_ENABLED"),
 			maxEffortLevel: readMaxEffortLevel(e, effortOrder),
+			classifierMode: readClassifierMode(router),
 		};
-	} catch {
+	} catch (err) {
+		if (err instanceof InvalidRouterSettingsError) throw err;
 		return { ...POLICY_DEFAULTS };
 	}
 }
@@ -112,12 +124,8 @@ export function loadRouterPolicy(
 export function loadRouterClassifierMode(): RouterClassifierMode {
 	const settings = readPromptRouterSettings();
 	const router = settings?.router as Record<string, unknown> | undefined;
-	const classifier = router?.classifier as Record<string, unknown> | undefined;
-	const mode = classifier?.mode;
-	return typeof mode === "string" &&
-		CLASSIFIER_MODES.has(mode as RouterClassifierMode)
-		? (mode as RouterClassifierMode)
-		: CLASSIFIER_MODE_DEFAULT;
+	if (!router) return CLASSIFIER_MODE_DEFAULT;
+	return readClassifierMode(router);
 }
 
 export function readPromptRouterSettings(): Record<string, unknown> | null {

@@ -7,6 +7,7 @@ import {
 	PROMPT_ROUTING_DIR,
 	type RouterClassifierMode,
 } from "./config.js";
+import { normalizeRouteCandidate } from "./route-vocabulary.js";
 
 export interface ClassifierRecommendation {
 	schema_version: string;
@@ -56,10 +57,6 @@ function promptHash(text: string): string {
 	return crypto.createHash("sha256").update(text).digest("hex");
 }
 
-function promptExcerpt(text: string): string {
-	return text.slice(0, 160);
-}
-
 /**
  * Safely parse and schema-validate classifier stdout.
  *
@@ -88,6 +85,7 @@ export function safeParseClassifierOutput(
 	if (typeof obj.primary !== "object" || obj.primary === null) return null;
 	const primary = obj.primary as Record<string, unknown>;
 	if (typeof primary.model_tier !== "string") return null;
+	if (normalizeRouteCandidate(primary.model_tier) === null) return null;
 	if (typeof primary.effort !== "string") return null;
 
 	if (!Array.isArray(obj.candidates) || obj.candidates.length === 0)
@@ -156,7 +154,6 @@ export async function classifyWithV3(
 			event: "exec_exception",
 			error: msg,
 			prompt_hash: promptHash(text),
-			prompt_excerpt: promptExcerpt(text),
 		});
 		ctx.ui.notify(
 			`router: classifier exec failed (non-fatal): ${msg}`,
@@ -186,10 +183,9 @@ export async function classifyWithV3(
 		void logClassifierFailure({
 			event: "nonzero_exit",
 			code: result.code,
-			stdout,
-			stderr,
+			stdout_length: stdout.length,
+			stderr_length: stderr.length,
 			prompt_hash: promptHash(text),
-			prompt_excerpt: promptExcerpt(text),
 		});
 		ctx.ui.notify(
 			`router: classifier failed (exit ${result.code}), keeping current route. stderr=${stderr.slice(0, 160)}`,
@@ -214,12 +210,9 @@ export async function classifyWithV3(
 		void logClassifierFailure({
 			event: "invalid_output",
 			code: result.code,
-			stdout,
-			stderr,
 			stdout_length: stdout.length,
 			stderr_length: stderr.length,
 			prompt_hash: promptHash(text),
-			prompt_excerpt: promptExcerpt(text),
 		});
 		ctx.ui.notify(
 			`router: classifier output invalid, keeping current route. stdout=${stdout.slice(0, 120)}`,

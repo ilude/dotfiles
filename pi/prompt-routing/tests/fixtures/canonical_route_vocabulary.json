@@ -1,0 +1,13 @@
+{
+  "canonical_routes": ["nano", "mini", "core", "large", "max"],
+  "legacy_route_map": {
+    "Haiku": "mini",
+    "Sonnet": "core",
+    "Opus": "large"
+  },
+  "route_aliases": {
+    "small": "mini",
+    "medium": "core",
+    "large": "large"
+  }
+}

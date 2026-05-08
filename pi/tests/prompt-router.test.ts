@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -5,11 +6,18 @@ import promptRouter, {
   isValidTier,
   applyHysteresis,
   applyPolicy,
+  buildRoutingContextCapsule,
   buildStatusLabel,
   safeParseClassifierOutput,
   applyRouteDecisionToProviderPayload,
   resolveProviderRouteDecision,
+  resolveRouteProfile,
 } from "../extensions/prompt-router.ts";
+import {
+  legacyModelTierToRoute,
+  normalizeRouteCandidate,
+  ROUTER_SIZES,
+} from "../lib/prompt-router/route-vocabulary.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 // ---------------------------------------------------------------------------
@@ -24,6 +32,29 @@ function makeV3Json(modelTier: string, effort: string, confidence = 0.8): string
     confidence,
   });
 }
+
+// ---------------------------------------------------------------------------
+// canonical route vocabulary
+// ---------------------------------------------------------------------------
+
+describe("canonical route vocabulary parity", () => {
+  it("matches the shared TS/Python fixture", () => {
+    const fixturePath = path.join(
+      __dirname,
+      "../prompt-routing/tests/fixtures/canonical_route_vocabulary.json",
+    );
+    const fixture = JSON.parse(fs.readFileSync(fixturePath, "utf-8"));
+
+    expect(ROUTER_SIZES).toEqual(fixture.canonical_routes);
+    for (const [legacy, route] of Object.entries(fixture.legacy_route_map)) {
+      expect(legacyModelTierToRoute(legacy)).toBe(route);
+      expect(normalizeRouteCandidate(legacy)).toBe(route);
+    }
+    for (const [alias, route] of Object.entries(fixture.route_aliases)) {
+      expect(normalizeRouteCandidate(alias)).toBe(route);
+    }
+  });
+});
 
 // ---------------------------------------------------------------------------
 // isValidTier
@@ -183,6 +214,16 @@ describe("safeParseClassifierOutput", () => {
     expect(safeParseClassifierOutput(raw)).toBeNull();
   });
 
+  it("rejects unknown primary.model_tier values", () => {
+    const raw = JSON.stringify({
+      schema_version: "3.0.0",
+      primary: { model_tier: "unknown", effort: "medium" },
+      candidates: [{ model_tier: "unknown", effort: "medium", confidence: 0.8 }],
+      confidence: 0.8,
+    });
+    expect(safeParseClassifierOutput(raw)).toBeNull();
+  });
+
   it("rejects empty candidates array", () => {
     const raw = JSON.stringify({
       schema_version: "3.0.0",
@@ -208,16 +249,16 @@ describe("safeParseClassifierOutput", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildStatusLabel", () => {
-  it("shows only route size for mini", () => {
-    expect(buildStatusLabel("low", "low", "gpt-5.4-mini", "minimal")).toBe("router: mini");
+  it("shows only route size for small", () => {
+    expect(buildStatusLabel("low", "low", "gpt-5.4-mini", "minimal")).toBe("route: small");
   });
 
-  it("shows only route size for core", () => {
-    expect(buildStatusLabel("mid", "mid", "gpt-5.4-fast", "medium", "medium", "classifier")).toBe("router: core");
+  it("shows only route size for medium", () => {
+    expect(buildStatusLabel("mid", "mid", "gpt-5.4-fast", "medium", "medium", "classifier")).toBe("route: medium");
   });
 
   it("shows only route size for large", () => {
-    expect(buildStatusLabel("high", "low", "claude-opus-4-6", "high")).toBe("router: large");
+    expect(buildStatusLabel("high", "low", "claude-opus-4-6", "high")).toBe("route: large");
   });
 });
 
@@ -620,7 +661,7 @@ describe("prompt-router extension -- input hook", () => {
 
     await new Promise((r) => setTimeout(r, 0));
     expect((pi as any).setModel).toHaveBeenCalledWith({ provider: "openai-codex", id: "gpt-5.4-fast" });
-    expect((ctx.ui as any).setStatus).toHaveBeenCalledWith("router", "router: core");
+    expect((ctx.ui as any).setStatus).toHaveBeenCalledWith("router", "route: medium");
   });
 
   it("passes the trimmed prompt text to the classifier", async () => {
@@ -672,23 +713,15 @@ describe("prompt-router extension -- command registration", () => {
       "info"
     );
     expect((ctx.ui as any).notify).toHaveBeenCalledWith(
-      expect.stringContaining("nano  ->"),
+      expect.stringContaining("low  ->"),
       "info"
     );
     expect((ctx.ui as any).notify).toHaveBeenCalledWith(
-      expect.stringContaining("mini  ->"),
+      expect.stringContaining("mid  ->"),
       "info"
     );
     expect((ctx.ui as any).notify).toHaveBeenCalledWith(
-      expect.stringContaining("core  ->"),
-      "info"
-    );
-    expect((ctx.ui as any).notify).toHaveBeenCalledWith(
-      expect.stringContaining("large ->"),
-      "info"
-    );
-    expect((ctx.ui as any).notify).toHaveBeenCalledWith(
-      expect.stringContaining("max   ->"),
+      expect.stringContaining("high ->"),
       "info"
     );
     expect((ctx.ui as any).notify).toHaveBeenCalledWith(
@@ -1339,6 +1372,77 @@ describe("Provider architecture spike: awaited provider seam", () => {
     const firstDecision = await first;
     expect(firstDecision.route_decision_id).not.toBe(secondDecision.route_decision_id);
     expect(firstDecision.prompt_hash).not.toBe(secondDecision.prompt_hash);
+  });
+
+  it("resolves profile fields from the immutable route decision", async () => {
+    const pi = createMockPi();
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Sonnet", "medium", 0.91), stderr: "" });
+    const decision = await resolveProviderRouteDecision(pi as any, "synthetic resolver prompt", routeCtx());
+    const profile = resolveRouteProfile(decision);
+    expect(profile.route).toBe("core");
+    expect(profile.profile).toBe("route:core");
+    expect(profile.provider).toBe("openai-codex");
+    expect(profile.model).toBe(decision.model_label);
+    expect(profile.confidence).toBe(0.91);
+    expect(profile.candidates[0].route).toBe("core");
+    expect(profile.contextFlags).toEqual([]);
+    expect(profile.overrideScope).toBe("none");
+  });
+
+  it("falls back from nano to mini by default without leaking prompt text", async () => {
+    const pi = createMockPi();
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("nano", "low", 0.88), stderr: "" });
+    const decision = await resolveProviderRouteDecision(pi as any, "synthetic nano prompt", routeCtx());
+    expect(decision.raw_route).toBe("nano");
+    expect(decision.applied_route).toBe("mini");
+    expect(decision.route_resolution_reason).toBe("fallback_used");
+    expect(decision.decisionTrace.fallbackFrom).toBe("nano");
+    expect(JSON.stringify(decision)).not.toContain("synthetic nano prompt");
+  });
+
+  it("builds a bounded context capsule without prompt text", () => {
+    const capsule = buildRoutingContextCapsule({ prompt: "synthetic private prompt", messages: Array.from({ length: 120 }, () => ({ role: "user", content: "x" })) }, { model: { contextWindow: 1000 }, usage: { tokens: 900 } });
+    expect(capsule.messageCount).toBe(99);
+    expect(capsule.estimatedPromptChars).toBe("synthetic private prompt".length);
+    expect(capsule.contextPercent).toBe(90);
+    expect(capsule.flags).toEqual(["multi_turn", "context_window_high"]);
+    expect(JSON.stringify(capsule)).not.toContain("synthetic private prompt");
+  });
+
+  it("holds a one-turn downgrade from the previous applied route", async () => {
+    const pi = createMockPi();
+    const ctx = routeCtx();
+    (ctx as any).router = { previousAppliedRoute: "large" };
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Haiku", "low", 0.95), stderr: "" });
+    const decision = await resolveProviderRouteDecision(pi as any, "synthetic downgrade prompt", ctx);
+    expect(decision.raw_route).toBe("mini");
+    expect(decision.applied_route).toBe("large");
+    expect(decision.decisionTrace.contextFlags).toContain("anti_downgrade_hold");
+    expect(decision.fallback_reason).toBe("one-turn anti-downgrade hold");
+  });
+
+  it("applies route pin before session override and records override scope", async () => {
+    const pi = createMockPi();
+    const ctx = routeCtx();
+    (ctx as any).router = { routeOverride: "mini", routePin: "large" };
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Sonnet", "medium", 0.91), stderr: "" });
+    const decision = await resolveProviderRouteDecision(pi as any, "synthetic override prompt", ctx);
+    expect(decision.raw_route).toBe("core");
+    expect(decision.applied_route).toBe("large");
+    expect(decision.decisionTrace.overrideScope).toBe("route-pin");
+    expect(decision.decisionTrace.rule).toBe("override:route-pin");
+  });
+
+  it("raises low routes when context-window safety is high", async () => {
+    const pi = createMockPi();
+    const ctx = routeCtx({ provider: "openai-codex", id: "gpt-5.4-mini", contextWindow: 1000 } as any);
+    (ctx as any).usage = { tokens: 950 };
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Haiku", "low", 0.95), stderr: "" });
+    const decision = await resolveProviderRouteDecision(pi as any, "synthetic context safety prompt", ctx);
+    expect(decision.raw_route).toBe("mini");
+    expect(decision.applied_route).toBe("core");
+    expect(decision.decisionTrace.contextFlags).toContain("context_window_high");
+    expect(decision.decisionTrace.contextFlags).toContain("context_window_floor");
   });
 });
 

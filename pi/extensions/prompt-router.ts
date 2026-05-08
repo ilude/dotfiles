@@ -60,8 +60,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { makeExcerpt, sha256Hex } from "../lib/transcript.js";
-import { emit, getWriter } from "./transcript-runtime.js";
 import {
 	getCurrentModelHint,
 	resolveDynamicModelFromRegistry,
@@ -74,35 +72,26 @@ import {
 } from "../lib/prompt-router/classifier.js";
 import {
 	CLASSIFY_SCRIPT,
-	loadRouterClassifierMode,
+	loadRouterPolicy,
 	POLICY_DEFAULTS,
 	type RouterPolicy,
-	loadRouterPolicy,
 	readPromptRouterSettings,
 } from "../lib/prompt-router/config.js";
+import type {
+	RouteDecision,
+	RouteDecisionTrace,
+	RouteResolutionReason,
+} from "../lib/prompt-router/route-decision.js";
+import {
+	normalizeRouteCandidate,
+	ROUTER_SIZE_ORDER,
+	type RouterSize,
+} from "../lib/prompt-router/route-vocabulary.js";
+import { makeExcerpt, sha256Hex } from "../lib/transcript.js";
+import { emit, getWriter } from "./transcript-runtime.js";
 
+export type { RouteDecision, RouteResolutionReason };
 export { safeParseClassifierOutput };
-
-export type RouteResolutionReason =
-	| "matched"
-	| "fallback_used"
-	| "classifier_timeout"
-	| "classifier_failure"
-	| "denied_by_policy";
-
-export interface RouteDecision {
-	route_decision_id: string;
-	prompt_hash: string;
-	classifier_mode: string;
-	raw_route: RuntimeModelSize;
-	applied_route: RuntimeModelSize;
-	provider_family: string;
-	model_label: string;
-	thinking_level: string;
-	route_resolution_reason: RouteResolutionReason;
-	fallback_reason?: string;
-	same_turn_applied: boolean;
-}
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -146,6 +135,162 @@ function makeRouteDecisionId(promptHash: string): string {
 	return `route-${promptHash.slice(0, 16)}`;
 }
 
+function routeProfile(route: RouterSize): string {
+	return `route:${route}`;
+}
+
+export interface RoutingContextCapsule {
+	messageCount: number;
+	estimatedPromptChars: number;
+	contextWindow: number | null;
+	contextPercent: number | null;
+	flags: string[];
+	previousAppliedRoute?: RouterSize;
+}
+
+function readRouteOverride(
+	ctx: any,
+	payload: unknown,
+): { route: RouterSize; scope: string } | null {
+	const payloadOverride = isPlainRecord(payload)
+		? (payload.router_route_override ?? payload.route_override)
+		: undefined;
+	const ctxOverride = ctx?.router?.routeOverride ?? ctx?.routerRouteOverride;
+	const routePin = ctx?.router?.routePin ?? ctx?.routerRoutePin;
+	const ordered = [
+		{ value: routePin, scope: "route-pin" },
+		{ value: payloadOverride, scope: "request" },
+		{ value: ctxOverride, scope: "session" },
+	];
+	for (const candidate of ordered) {
+		const route = normalizeRouteCandidate(candidate.value);
+		if (route) return { route, scope: candidate.scope };
+	}
+	return null;
+}
+
+export function buildRoutingContextCapsule(
+	payload: unknown,
+	ctx: any,
+): RoutingContextCapsule {
+	const messages =
+		isPlainRecord(payload) && Array.isArray(payload.messages)
+			? payload.messages
+			: [];
+	const prompt = extractProviderPrompt(payload) ?? "";
+	const contextWindow =
+		typeof ctx?.model?.contextWindow === "number"
+			? ctx.model.contextWindow
+			: null;
+	const usedTokens =
+		typeof ctx?.usage?.tokens === "number" ? ctx.usage.tokens : null;
+	const percent =
+		typeof ctx?.usage?.percent === "number"
+			? ctx.usage.percent
+			: usedTokens !== null && contextWindow
+				? (usedTokens / contextWindow) * 100
+				: null;
+	const flags: string[] = [];
+	if (messages.length > 8) flags.push("multi_turn");
+	if (percent !== null && percent >= 85) flags.push("context_window_high");
+	return {
+		messageCount: Math.min(messages.length, 99),
+		estimatedPromptChars: Math.min(prompt.length, 20000),
+		contextWindow,
+		contextPercent:
+			percent === null ? null : Math.min(100, Math.max(0, Math.round(percent))),
+		flags,
+		...(ctx?.router?.previousAppliedRoute
+			? { previousAppliedRoute: ctx.router.previousAppliedRoute }
+			: {}),
+	};
+}
+
+function chooseAppliedRoute(
+	rawRoute: RouterSize,
+	override: { route: RouterSize; scope: string } | null,
+	capsule: RoutingContextCapsule,
+): {
+	route: RouterSize;
+	flags: string[];
+	scope: string;
+	fallbackReason?: string;
+} {
+	const flags = [...capsule.flags];
+	let route: RouterSize = rawRoute === "nano" ? "mini" : rawRoute;
+	let fallbackReason =
+		rawRoute === "nano"
+			? "nano unavailable by default; applied mini"
+			: undefined;
+	let scope = "none";
+	if (override) {
+		route = override.route === "nano" ? "mini" : override.route;
+		scope = override.scope;
+		flags.push("override_applied");
+		if (override.route === "nano")
+			fallbackReason = "nano unavailable by default; applied mini";
+	}
+	const previousRoute = capsule.previousAppliedRoute ?? null;
+	if (
+		previousRoute &&
+		ROUTER_SIZE_ORDER[route] < ROUTER_SIZE_ORDER[previousRoute]
+	) {
+		route = previousRoute;
+		flags.push("anti_downgrade_hold");
+		fallbackReason = "one-turn anti-downgrade hold";
+	}
+	if (
+		capsule.flags.includes("context_window_high") &&
+		ROUTER_SIZE_ORDER[route] < ROUTER_SIZE_ORDER.core
+	) {
+		route = "core";
+		flags.push("context_window_floor");
+		fallbackReason = "context window safety raised route to core";
+	}
+	return { route, flags, scope, fallbackReason };
+}
+
+function makeDecisionTrace(options: {
+	rawRoute: RouterSize;
+	appliedRoute: RouterSize;
+	provider: string;
+	model: string;
+	effort: string;
+	reason: RouteResolutionReason;
+	fallbackReason?: string;
+	confidence?: number | null;
+	candidates?: RouteDecisionTrace["candidates"];
+	rule?: string;
+	contextFlags?: string[];
+	overrideScope?: string;
+}): RouteDecisionTrace {
+	return {
+		route: options.appliedRoute,
+		domain: "default",
+		effort: options.effort,
+		profile: routeProfile(options.appliedRoute),
+		provider: options.provider,
+		model: options.model,
+		routeState: options.reason === "matched" ? "applied" : "fallback",
+		fallbackFrom:
+			options.rawRoute !== options.appliedRoute ? options.rawRoute : undefined,
+		reason: options.reason,
+		providerFamily: options.provider,
+		confidence: options.confidence ?? null,
+		candidates: options.candidates ?? [],
+		rule: options.rule ?? options.reason,
+		contextFlags: options.contextFlags ?? [],
+		overrideScope: options.overrideScope ?? "none",
+		fallbackReason: options.fallbackReason,
+	};
+}
+
+export function resolveRouteProfile(
+	decision: RouteDecision,
+): RouteDecisionTrace {
+	return decision.decisionTrace;
+}
+
 function fallbackRouteDecision(
 	text: string,
 	reason: RouteResolutionReason,
@@ -157,19 +302,31 @@ function fallbackRouteDecision(
 		ctx,
 		ctx.modelRegistry?.getAvailable?.() ?? [],
 	);
+	const provider =
+		typeof current?.provider === "string" ? current.provider : "unknown";
+	const model = typeof current?.id === "string" ? current.id : "unknown";
 	return {
 		route_decision_id: makeRouteDecisionId(`${promptHash}-${reason}`),
 		prompt_hash: promptHash,
-		classifier_mode: loadRouterClassifierMode(),
+		classifier_mode: POLICY_DEFAULTS.classifierMode,
 		raw_route: "core",
 		applied_route: "core",
-		provider_family:
-			typeof current?.provider === "string" ? current.provider : "unknown",
-		model_label: typeof current?.id === "string" ? current.id : "unknown",
+		provider_family: provider,
+		model_label: model,
 		thinking_level: "medium",
 		route_resolution_reason: reason,
 		fallback_reason: fallbackReason,
 		same_turn_applied: false,
+		decisionTrace: makeDecisionTrace({
+			rawRoute: "core",
+			appliedRoute: "core",
+			provider,
+			model,
+			effort: "medium",
+			reason,
+			fallbackReason,
+			rule: "null-fallback",
+		}),
 	};
 }
 
@@ -180,9 +337,9 @@ export async function resolveProviderRouteDecision(
 	timeoutMs = 1500,
 ): Promise<RouteDecision> {
 	const promptHash = sha256Hex(text);
-	const classifierMode = loadRouterClassifierMode();
+	const policy = loadRouterPolicy(EFFORT_ORDER);
 	const classified = await withTimeout(
-		classifyWithV3(pi, text, ctx, classifierMode),
+		classifyWithV3(pi, text, ctx, policy.classifierMode),
 		timeoutMs,
 	);
 	if (classified === "timeout")
@@ -200,7 +357,13 @@ export async function resolveProviderRouteDecision(
 			ctx,
 		);
 
-	const rawSize = MODEL_TIER_TO_SIZE[classified.primary.model_tier] ?? "core";
+	const rawRoute =
+		normalizeRouteCandidate(classified.primary.model_tier) ?? "core";
+	const capsule = buildRoutingContextCapsule({ prompt: text }, ctx);
+	const override = readRouteOverride(ctx, { prompt: text });
+	const routePolicy = chooseAppliedRoute(rawRoute, override, capsule);
+	const appliedRoute: RouterSize = routePolicy.route;
+	const rawSize = ROUTE_TO_RUNTIME_SIZE[appliedRoute] ?? "medium";
 	const tier = SIZE_TO_TIER[rawSize] ?? "mid";
 	const model = resolveDynamicModelFromRegistry(
 		ctx.modelRegistry,
@@ -235,18 +398,48 @@ export async function resolveProviderRouteDecision(
 
 	const thinking =
 		SCHEMA_EFFORT_TO_THINKING[classified.primary.effort] ?? TIER_EFFORT[tier];
+	const provider =
+		typeof model.provider === "string" ? model.provider : "unknown";
+	const modelLabel = resolveModelTierLabel(model, rawSize);
+	const fallbackReason = routePolicy.fallbackReason;
 	return {
 		route_decision_id: makeRouteDecisionId(promptHash),
 		prompt_hash: promptHash,
-		classifier_mode: classifierMode,
-		raw_route: rawSize,
-		applied_route: rawSize,
-		provider_family:
-			typeof model.provider === "string" ? model.provider : "unknown",
-		model_label: resolveModelTierLabel(model, rawSize),
+		classifier_mode: policy.classifierMode,
+		raw_route: rawRoute,
+		applied_route: appliedRoute,
+		provider_family: provider,
+		model_label: modelLabel,
 		thinking_level: thinking,
-		route_resolution_reason: "matched",
+		route_resolution_reason:
+			rawRoute === appliedRoute && routePolicy.scope === "none"
+				? "matched"
+				: "fallback_used",
+		fallback_reason: fallbackReason,
 		same_turn_applied: false,
+		decisionTrace: makeDecisionTrace({
+			rawRoute,
+			appliedRoute,
+			provider,
+			model: modelLabel,
+			effort: thinking,
+			reason:
+				rawRoute === appliedRoute && routePolicy.scope === "none"
+					? "matched"
+					: "fallback_used",
+			fallbackReason,
+			confidence: classified.confidence,
+			candidates: classified.candidates.map((candidate) => ({
+				route: normalizeRouteCandidate(candidate.model_tier) ?? "core",
+				effort: candidate.effort,
+				confidence: candidate.confidence,
+			})),
+			rule: override
+				? `override:${routePolicy.scope}`
+				: (classified.ensemble_rule ?? "classifier"),
+			contextFlags: routePolicy.flags,
+			overrideScope: routePolicy.scope,
+		}),
 	};
 }
 
@@ -330,20 +523,20 @@ const SCHEMA_EFFORT_TO_THINKING: Record<string, string> = {
 	high: "high",
 };
 
-// Map v3 legacy model_tier -> canonical router size bucket.
-const MODEL_TIER_TO_SIZE: Record<string, RouterSize> = {
-	Haiku: "mini",
-	Sonnet: "core",
-	Opus: "large",
+// Map v3 model_tier -> router size bucket.
+const ROUTE_TO_RUNTIME_SIZE: Record<string, "small" | "medium" | "large"> = {
+	nano: "small",
+	mini: "small",
+	core: "medium",
+	large: "large",
+	max: "large",
 };
 
-// Map canonical router size bucket -> legacy Tier (for hysteresis state machine).
+// Map router size bucket -> legacy Tier (for hysteresis state machine).
 const SIZE_TO_TIER: Record<string, Tier> = {
-	nano: "low",
-	mini: "low",
-	core: "mid",
+	small: "low",
+	medium: "mid",
 	large: "high",
-	max: "high",
 };
 
 // Default effort cap -- prevent xhigh unless explicitly configured.
@@ -363,8 +556,7 @@ const CODEX_GPT55_MEDIUM_CONFIDENCE_FLOOR = 0.8;
 // ---------------------------------------------------------------------------
 
 type Tier = "low" | "mid" | "high";
-type RouterSize = "nano" | "mini" | "core" | "large" | "max";
-type RuntimeModelSize = RouterSize;
+type RuntimeModelSize = "small" | "medium" | "large";
 
 // Which policy rule fired on the last turn (for /router-explain).
 type RuleFired =
@@ -388,6 +580,7 @@ interface RouterState {
 	lastAppliedEffort: string | null;
 	lastRuleFired: RuleFired | null;
 	cooldownTurnsRemaining: number;
+	lastRouteDecision: RouteDecision | null;
 }
 
 interface AppliedRoute {
@@ -402,25 +595,19 @@ interface AppliedRoute {
 
 function getResolvedTierMap(ctx: any) {
 	return {
-		nano: resolveDynamicModelFromRegistry(
+		low: resolveDynamicModelFromRegistry(
 			ctx.modelRegistry,
 			ctx,
-			"nano",
+			"small",
 			"same-family",
 		),
-		mini: resolveDynamicModelFromRegistry(
+		mid: resolveDynamicModelFromRegistry(
 			ctx.modelRegistry,
 			ctx,
-			"mini",
+			"medium",
 			"same-family",
 		),
-		core: resolveDynamicModelFromRegistry(
-			ctx.modelRegistry,
-			ctx,
-			"core",
-			"same-family",
-		),
-		large: resolveDynamicModelFromRegistry(
+		high: resolveDynamicModelFromRegistry(
 			ctx.modelRegistry,
 			ctx,
 			"large",
@@ -551,7 +738,8 @@ export function applyPolicy(
 	state: RouterState,
 	policy: RouterPolicy,
 ): AppliedRoute {
-	const size = MODEL_TIER_TO_SIZE[rec.primary.model_tier] ?? "core";
+	const route = normalizeRouteCandidate(rec.primary.model_tier) ?? "core";
+	const size = ROUTE_TO_RUNTIME_SIZE[route] ?? "medium";
 	const rawTier = SIZE_TO_TIER[size] ?? "mid";
 
 	let effectiveTier: Tier;
@@ -596,7 +784,7 @@ export function applyPolicy(
 }
 
 function modelSizeForTier(tier: Tier): RuntimeModelSize {
-	return tier === "low" ? "mini" : tier === "mid" ? "core" : "large";
+	return tier === "low" ? "small" : tier === "mid" ? "medium" : "large";
 }
 
 function serializeModelForLog(model: unknown): Record<string, string> | null {
@@ -618,7 +806,7 @@ export function buildStatusLabel(
 	_ruleFired?: RuleFired,
 ): string {
 	const size = modelSizeForTier(effective);
-	return `router: ${size}`;
+	return `route: ${size}`;
 }
 
 /**
@@ -665,9 +853,8 @@ export async function emitRoutingDecision(
 					(applied ? modelSizeForTier(applied.tier) : null),
 			},
 		);
-		const payload = {
+		const payload: Record<string, unknown> = {
 			prompt_hash: sha256Hex(promptText),
-			prompt_excerpt: makeExcerpt(promptText),
 			raw_classifier_output: rec,
 			applied_route: applied ? `${applied.tier}:${applied.effort}` : null,
 			selected_model_size:
@@ -685,6 +872,12 @@ export async function emitRoutingDecision(
 					applied?.ruleFired === "uncertainty-fallback" ? "active" : null,
 			},
 		};
+		if (process.env.PI_ROUTER_EXCERPTS_OPT_IN === "1") {
+			payload.prompt_excerpt = makeExcerpt(promptText, 120).replace(
+				/[A-Za-z0-9]/g,
+				"#",
+			);
+		}
 		await emit({ event_type: "routing_decision" }, payload);
 		await emit(
 			{ event_type: "prompt_router_emit_success" },
@@ -709,8 +902,7 @@ async function classifyAndRoute(
 	policy: RouterPolicy,
 	ctx: any,
 ): Promise<void> {
-	const classifierMode = loadRouterClassifierMode();
-	const rec = await classifyWithV3(pi, text, ctx, classifierMode);
+	const rec = await classifyWithV3(pi, text, ctx, policy.classifierMode);
 	state.lastPromptSnippet = text.slice(0, 60) + (text.length > 60 ? "..." : "");
 
 	if (rec === null) {
@@ -746,7 +938,8 @@ async function classifyAndRoute(
 
 	state.lastClassifierRec = rec;
 
-	const size = MODEL_TIER_TO_SIZE[rec.primary.model_tier] ?? "core";
+	const route = normalizeRouteCandidate(rec.primary.model_tier) ?? "core";
+	const size = ROUTE_TO_RUNTIME_SIZE[route] ?? "medium";
 	const rawTier = SIZE_TO_TIER[size] ?? "mid";
 	state.lastRaw = rawTier;
 
@@ -846,6 +1039,7 @@ export default function (pi: ExtensionAPI) {
 		lastAppliedEffort: null,
 		lastRuleFired: null,
 		cooldownTurnsRemaining: 0,
+		lastRouteDecision: null,
 	};
 
 	// escalateFor: applies above-classifier route for N turns then auto-decays.
@@ -877,6 +1071,7 @@ export default function (pi: ExtensionAPI) {
 		state.lastAppliedEffort = null;
 		state.lastRuleFired = null;
 		state.cooldownTurnsRemaining = 0;
+		state.lastRouteDecision = null;
 		if (
 			shouldForceLowThinkingOnSessionStart(ctx) &&
 			typeof (pi as any).setThinkingLevel === "function"
@@ -892,13 +1087,24 @@ export default function (pi: ExtensionAPI) {
 		if (!state.enabled) return undefined;
 		const text = extractProviderPrompt(event.payload);
 		if (!text) return undefined;
-		const decision = await resolveProviderRouteDecision(pi, text, ctx);
+		const ctxRecord = ctx as unknown as Record<string, unknown>;
+		const routeCtx = {
+			...ctx,
+			router: {
+				...(isPlainRecord(ctxRecord.router) ? ctxRecord.router : {}),
+				...(state.lastRouteDecision
+					? { previousAppliedRoute: state.lastRouteDecision.applied_route }
+					: {}),
+			},
+		};
+		const decision = await resolveProviderRouteDecision(pi, text, routeCtx);
 		state.lastRuleFired =
 			decision.route_resolution_reason === "matched"
 				? "classifier"
 				: "null-fallback";
 		state.lastAppliedEffort = decision.thinking_level;
 		state.lastPromptSnippet = `sha256:${decision.prompt_hash.slice(0, 12)}`;
+		state.lastRouteDecision = { ...decision, same_turn_applied: true };
 		const payload = applyRouteDecisionToProviderPayload(event.payload, {
 			...decision,
 			same_turn_applied: true,
@@ -971,9 +1177,19 @@ export default function (pi: ExtensionAPI) {
 			const currentLabel = current
 				? `${current.provider}/${current.id}`
 				: "(unknown)";
+			const decision = state.lastRouteDecision;
+			const trace = decision ? resolveRouteProfile(decision) : null;
 			const lines = [
 				`Prompt Router`,
 				`  Enabled:          ${state.enabled}`,
+				`  Route decision:   ${decision?.route_decision_id ?? "--"}`,
+				`  Same-turn:        ${decision?.same_turn_applied ?? false}`,
+				`  Classifier mode:  ${decision?.classifier_mode ?? policy.classifierMode}`,
+				`  Raw/applied:      ${decision ? `${decision.raw_route} -> ${decision.applied_route}` : "--"}`,
+				`  Provider/model:   ${trace ? `${trace.provider}/${trace.model}` : currentLabel}`,
+				`  Route state:      ${trace?.routeState ?? "--"}`,
+				`  Fallback reason:  ${trace?.fallbackReason ?? "--"}`,
+				`  Operator summary: ${decision ? `${decision.applied_route}/${decision.thinking_level} via ${trace?.rule ?? decision.route_resolution_reason}` : "no dispatch decision yet"}`,
 				`  Current model:    ${currentLabel}`,
 				`  Current effort:   ${effort}`,
 				`  Current tier:     ${tier}`,
@@ -984,15 +1200,12 @@ export default function (pi: ExtensionAPI) {
 				`  Cooldown turns:   ${state.cooldownTurnsRemaining}`,
 				``,
 				`  Tier map:`,
-				`    nano  -> ${resolveModelTierLabel(resolved.nano, "nano")}  [state: fallback-to-mini]`,
-				`    mini  -> ${resolveModelTierLabel(resolved.mini, "mini")}  [effort: low]`,
-				`    core  -> ${resolveModelTierLabel(resolved.core, "core")}  [effort: medium]`,
-				`    large -> ${resolveModelTierLabel(resolved.large, "large")}  [effort: high]`,
-				`    max   -> policy-only  [state: policy-only]`,
+				`    low  -> ${resolveModelTierLabel(resolved.low, "small")}  [effort: minimal]`,
+				`    mid  -> ${resolveModelTierLabel(resolved.mid, "medium")}  [effort: medium]`,
+				`    high -> ${resolveModelTierLabel(resolved.high, "large")}  [effort: high]`,
 				``,
 				`  Hysteresis: N_HOLD=${policy.N_HOLD} DOWNGRADE_THRESHOLD=${policy.DOWNGRADE_THRESHOLD} K_CONSEC=${policy.K_CONSEC}`,
 				`  Effort cap: maxLevel=${policy.maxEffortLevel} UNCERTAIN_THRESHOLD=${policy.UNCERTAIN_THRESHOLD} UNCERTAIN_FALLBACK_ENABLED=${policy.UNCERTAIN_FALLBACK_ENABLED}`,
-				`  Classifier mode: ${loadRouterClassifierMode()}`,
 				`  Classifier: ${CLASSIFY_SCRIPT}`,
 				`  Audit log:  ~/.dotfiles/pi/prompt-routing/logs/routing_log.jsonl`,
 			];
@@ -1006,10 +1219,14 @@ export default function (pi: ExtensionAPI) {
 		description:
 			"Show the last-turn routing decision: classifier output, applied route, rule fired, and current state",
 		handler: async (_args, ctx) => {
+			const decision = state.lastRouteDecision;
+			const trace = decision ? resolveRouteProfile(decision) : null;
 			const rec = state.lastClassifierRec;
-			const ruleFired = state.lastRuleFired ?? "--";
-			const appliedEffort = state.lastAppliedEffort ?? "--";
-			const appliedTier = state.lastEffective ?? "--";
+			const ruleFired = trace?.rule ?? state.lastRuleFired ?? "--";
+			const appliedEffort =
+				decision?.thinking_level ?? state.lastAppliedEffort ?? "--";
+			const appliedTier =
+				decision?.applied_route ?? state.lastEffective ?? "--";
 
 			const promptSnippet = state.lastPromptSnippet
 				? state.lastPromptSnippet.length > 80
@@ -1033,7 +1250,14 @@ export default function (pi: ExtensionAPI) {
 			const lines = [
 				`Last turn decision:`,
 				`  Prompt: "${promptSnippet}"`,
-				`  Classifier: ${loadRouterClassifierMode()}`,
+				`  Route decision: ${decision?.route_decision_id ?? "--"}`,
+				`  Same-turn applied: ${decision?.same_turn_applied ?? false}`,
+				`  Classifier: ${decision?.classifier_mode ?? policy.classifierMode}`,
+				`  Raw/applied route: ${decision ? `${decision.raw_route} -> ${decision.applied_route}` : "--"}`,
+				`  Confidence: ${trace?.confidence ?? "--"}`,
+				`  Context flags: ${trace?.contextFlags.join(",") || "--"}`,
+				`  Override scope: ${trace?.overrideScope ?? "--"}`,
+				`  Fallback reason: ${trace?.fallbackReason ?? "--"}`,
 			];
 
 			if (rec) {
@@ -1077,6 +1301,7 @@ export default function (pi: ExtensionAPI) {
 			state.lastAppliedEffort = null;
 			state.lastRuleFired = null;
 			state.cooldownTurnsRemaining = 0;
+			state.lastRouteDecision = null;
 			state.enabled = true;
 			ctx.ui.setStatus("router", "router: reset");
 			ctx.ui.notify(
