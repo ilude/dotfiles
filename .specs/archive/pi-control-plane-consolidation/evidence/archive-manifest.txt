@@ -1,0 +1,34 @@
+# Archive manifest
+.specs/pi-control-plane-consolidation/ -> .specs/archive/pi-control-plane-consolidation/
+.specs/pi-control-plane-consolidation/evidence/F1-manual-validation.md
+.specs/pi-control-plane-consolidation/evidence/P0-preflight.md
+.specs/pi-control-plane-consolidation/evidence/T1-branch-contract.md
+.specs/pi-control-plane-consolidation/evidence/T10-task-security.md
+.specs/pi-control-plane-consolidation/evidence/T11-task-tools.md
+.specs/pi-control-plane-consolidation/evidence/T12-tasks-command.md
+.specs/pi-control-plane-consolidation/evidence/T13-task-renderer.md
+.specs/pi-control-plane-consolidation/evidence/T14-docs-help.md
+.specs/pi-control-plane-consolidation/evidence/T2-branch-safety.md
+.specs/pi-control-plane-consolidation/evidence/T3-agent-source.md
+.specs/pi-control-plane-consolidation/evidence/T4-subagent-team-dispatch.md
+.specs/pi-control-plane-consolidation/evidence/T5-team-removal.md
+.specs/pi-control-plane-consolidation/evidence/T6-role-semantics.md
+.specs/pi-control-plane-consolidation/evidence/T7-task-lifecycle.md
+.specs/pi-control-plane-consolidation/evidence/T8-task-persistence.md
+.specs/pi-control-plane-consolidation/evidence/T9-task-dependencies.md
+.specs/pi-control-plane-consolidation/evidence/V1-focused-validation.md
+.specs/pi-control-plane-consolidation/evidence/V2-pi-validation.md
+.specs/pi-control-plane-consolidation/evidence/V3-repo-validation.md
+.specs/pi-control-plane-consolidation/evidence/W1-W2-validation.md
+.specs/pi-control-plane-consolidation/evidence/archive-manifest.txt
+.specs/pi-control-plane-consolidation/plan.md
+.specs/pi-control-plane-consolidation/review-1/applied-fixes.md
+.specs/pi-control-plane-consolidation/review-1/backend-state-reviewer.md
+.specs/pi-control-plane-consolidation/review-1/operator-ux-reviewer.md
+.specs/pi-control-plane-consolidation/review-1/product-manager.md
+.specs/pi-control-plane-consolidation/review-1/qa-automation-reviewer.md
+.specs/pi-control-plane-consolidation/review-1/reviewer.md
+.specs/pi-control-plane-consolidation/review-1/security-reviewer.md
+.specs/pi-control-plane-consolidation/review-1/standalone-readiness.md
+.specs/pi-control-plane-consolidation/review-1/synthesis.md
+.specs/pi-control-plane-consolidation/review-1/typescript-pi-extension-reviewer.md
