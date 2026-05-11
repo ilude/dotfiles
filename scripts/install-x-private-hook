@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install the X private-data pre-commit hook."""
+"""Install the private archive pre-commit hook."""
 from __future__ import annotations
 
 import argparse
@@ -15,7 +15,7 @@ def main() -> int:
     args = parser.parse_args()
     existing = HOOK.read_text(encoding="utf-8") if HOOK.exists() else "#!/bin/sh\n"
     if LINE in existing:
-        print("PASS: hook already installed")
+        print("PASS: private archive hook already installed")
         return 0
     if args.dry_run:
         print(f"DRY-RUN: would append {LINE.strip()} to {HOOK}")
@@ -23,7 +23,7 @@ def main() -> int:
     HOOK.parent.mkdir(parents=True, exist_ok=True)
     HOOK.write_text(existing.rstrip() + "\n" + LINE, encoding="utf-8")
     HOOK.chmod(0o755)
-    print("PASS: hook installed")
+    print("PASS: private archive hook installed")
     return 0
 
 

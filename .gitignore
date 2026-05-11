@@ -139,9 +139,16 @@ plugins/*
 
 pi/operator/tasks/
 
-# Local private data (PII; encrypt before sharing)
+# Local private data (PII/secrets/logs; encrypt before sharing)
 private/
+private.tar
+private.tar.gz
+private-merge.tar
+.private.tar
+private.conflicts/
 private-encrypted/**
 !private-encrypted/
 !private-encrypted/**/
 !private-encrypted/**/*.age
+# The encrypted private archive is intentionally committable.
+!private.tar.age

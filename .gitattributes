@@ -23,6 +23,7 @@ zsh-setup text eol=lf
 *.png binary
 *.jpg binary
 *.ico binary
+private.tar.age binary -diff -merge
 patches/msys2-runtime/*.dll filter=lfs diff=lfs merge=lfs -text
 # Normalize JSON key order to prevent phantom diffs from serializer churn
 claude/settings.json filter=json-sort

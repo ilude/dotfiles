@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+"""Decrypt private.tar.age into private/."""
+from __future__ import annotations
+
+import argparse
+import shutil
+from pathlib import Path
+
+from private_archive_lib import ARCHIVE, PRIVATE_DIR, decrypt_to_tar, extract_tar, tempdir
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--identity", required=True)
+    parser.add_argument("--archive", default=str(ARCHIVE))
+    parser.add_argument("--output-dir", default=str(PRIVATE_DIR))
+    parser.add_argument("--force", action="store_true")
+    args = parser.parse_args()
+    archive = Path(args.archive)
+    output = Path(args.output_dir)
+    if output.exists() and not args.force:
+        raise SystemExit(f"refusing to overwrite existing {output}; use --force")
+    with tempdir("private-decrypt-") as td:
+        root = Path(td)
+        tar_path = root / "private.tar"
+        extracted = root / "private"
+        decrypt_to_tar(archive, Path(args.identity), tar_path)
+        extract_tar(tar_path, extracted)
+        if output.exists():
+            backup = output.with_name(output.name + ".bak")
+            if backup.exists():
+                raise SystemExit(f"backup already exists: {backup}")
+            output.rename(backup)
+        shutil.copytree(extracted, output)
+    print(f"PASS: restored {output}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

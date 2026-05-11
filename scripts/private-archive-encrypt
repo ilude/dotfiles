@@ -1,0 +1,32 @@
+#!/usr/bin/env python3
+"""Encrypt private/ into private.tar.age."""
+from __future__ import annotations
+
+import argparse
+import tempfile
+from pathlib import Path
+
+from private_archive_lib import ARCHIVE, PRIVATE_DIR, atomic_replace, encrypt_tar, make_tar
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--private-dir", default=str(PRIVATE_DIR))
+    parser.add_argument("--output", default=str(ARCHIVE))
+    args = parser.parse_args()
+    private_dir = Path(args.private_dir)
+    output = Path(args.output)
+    if not private_dir.is_dir():
+        raise SystemExit(f"missing private directory: {private_dir}")
+    with tempfile.TemporaryDirectory(prefix="private-archive-") as td:
+        tar_path = Path(td) / "private.tar"
+        age_tmp = Path(td) / "private.tar.age"
+        make_tar(private_dir, tar_path)
+        encrypt_tar(tar_path, age_tmp)
+        atomic_replace(age_tmp, output)
+    print(f"PASS: wrote encrypted archive {output}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
