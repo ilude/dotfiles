@@ -63,6 +63,7 @@ Tooling expectations:
 - Python lint and format use `ruff`.
 - Shell lint and format use `shellcheck` and `shfmt`.
 - `pyproject.toml` sets the Python floor at 3.9.
+- Validation should target the intended contract or regression, not merely execute commands. If only a smoke test is practical, say so. Do not claim a behavior is verified unless the relevant code path or documented validation command was run.
 
 ## Repo Rules
 
@@ -138,6 +139,7 @@ git submodule update --init --recursive
 - The default branch is `main`.
 - Dotbot link defaults rely on `force: true`, `relink: true`, and `create: true`.
 - Use only tools, workflows, permissions, and memory/task systems explicitly available in the active harness. If a capability is absent, adapt instead of naming or assuming it.
+- Prefer deterministic code/tooling for routing, retries, transforms, status handling, install detection, and validation. Use model judgment for synthesis, review, classification, and ambiguous language tasks, not for decisions code or tool output can answer.
 - Keep planning proportional: use brief prose plans for complex work, skip formal planning for simple requests, and ask for clarification only when ambiguity affects correctness or direction.
 
 ## Agent Surfaces
@@ -155,6 +157,8 @@ Shared command ownership:
 - `claude/shared/` contains shared command bodies used by Claude, OpenCode, and some Copilot prompts.
 - `opencode/commands/` is an overlay: OpenCode-specific overrides live there, and the remaining commands are symlinked from `claude/commands/`.
 - Pi does not load `claude/commands/`; update `pi/skills/workflow/` for Pi-specific workflow behavior.
+
+When patterns conflict across Claude, OpenCode, Copilot, Pi, shell, PowerShell, WSL, or platform-specific directories, do not blend them. Follow the owning surface or local directory convention, and flag the conflict if it affects the change.
 
 ## Key Paths
 
