@@ -4,8 +4,11 @@ import {
 	clearCompletedTasks,
 	createTask,
 	getTask,
+	getUnmetBlockers,
 	listTasks,
+	partitionReadyTasks,
 	safeTransitionTask,
+	tasksByIdSnapshot,
 	type TaskRecordV1,
 	type TaskState,
 	updateTask,
@@ -29,6 +32,8 @@ export { formatTaskDetail, formatTaskList, groupTasksByUrgency };
 interface ParsedSubcommand {
 	verb:
 		| "list"
+		| "ready"
+		| "blocked"
 		| "show"
 		| "create"
 		| "start"
@@ -51,6 +56,8 @@ export function parseTasksArgs(args: string): ParsedSubcommand {
 	const parts = trimmed.split(/\s+/);
 	const head = parts[0].toLowerCase();
 	if (head === "list") return { verb: "list", all: parts.includes("--all") };
+	if (head === "ready") return { verb: "ready" };
+	if (head === "blocked") return { verb: "blocked" };
 	if (head === "show" && parts[1]) return { verb: "show", idArg: parts[1] };
 	if (head === "create")
 		return { verb: "create", text: trimmed.slice("create".length).trim() };
@@ -83,7 +90,53 @@ export function resolveTaskId(
 }
 
 function helpText(): string {
-	return "Usage: /tasks|/tasks list [--all]|show <id>|create <summary>|start <id>|complete <id>|skip <id> [reason]|cancel <id>|retry <id>|reopen <id>|clear completed|settings mode compact|full|hidden. Retry/reopen does not execute work.";
+	return "Usage: /tasks|/tasks list [--all]|ready|blocked|show <id>|create <summary>|start <id>|complete <id>|skip <id> [reason]|cancel <id>|retry <id>|reopen <id>|clear completed|settings mode compact|full|hidden. Examples: /tasks ready (what can I work on now?), /tasks blocked (why can't this start?). Retry/reopen does not execute work.";
+}
+
+function formatBlockedView(
+	tasks: readonly TaskRecordV1[],
+): string {
+	const byId = tasksByIdSnapshot(tasks);
+	const { waiting, blocked } = partitionReadyTasks(tasks);
+	const rows = [...waiting, ...blocked];
+	if (rows.length === 0) return "No waiting or blocked tasks.";
+	return rows
+		.map((task) => {
+			const unmet = getUnmetBlockers(task, byId);
+			const blockers = unmet.length
+				? unmet
+						.map((item) => {
+							const summary = item.task?.summary
+								? ` ${truncateTaskText(item.task.summary, 80)}`
+								: "";
+							const hint =
+								item.status === "missing" || item.status === "tombstoned"
+									? " Next: update/remove the stale dependency when a dependency-edit command is available."
+									: "";
+							return `${shortTaskId(item.id)} (${item.status})${summary}.${hint}`;
+						})
+						.join(" ")
+				: "explicit blocked state";
+			return `${shortTaskId(task.id)} ${truncateTaskText(task.summary, 80)} -- waiting on ${blockers} Next: /tasks show ${shortTaskId(task.id)} or /tasks blocked`;
+		})
+		.join("\n");
+}
+
+function formatStartBlockedMessage(
+	task: TaskRecordV1,
+	tasks: readonly TaskRecordV1[],
+): string | null {
+	const unmet = getUnmetBlockers(task, tasksByIdSnapshot(tasks));
+	if (unmet.length === 0) return null;
+	const blocker = unmet[0];
+	const summary = blocker.task?.summary
+		? ` ${truncateTaskText(blocker.task.summary, 80)}`
+		: "";
+	const recovery =
+		blocker.status === "missing" || blocker.status === "tombstoned"
+			? " Recovery: dependency is stale; update/remove it when a dependency-edit command is available."
+			: "";
+	return `Cannot start ${shortTaskId(task.id)}: waiting on ${shortTaskId(blocker.id)} (${blocker.status})${summary}. Next: /tasks show ${shortTaskId(blocker.id)} or /tasks blocked.${recovery}`;
 }
 
 function notifyOutcome(
@@ -288,6 +341,17 @@ export default function (pi: ExtensionAPI) {
 					formatTaskList(parsed.all ? all : listTasks(), getTaskRenderMode()),
 					"info",
 				);
+			if (parsed.verb === "ready") {
+				const ready = partitionReadyTasks(all).ready;
+				return ctx.ui.notify(
+					ready.length > 0
+						? formatTaskList(ready, getTaskRenderMode())
+						: "No ready pending tasks.",
+					"info",
+				);
+			}
+			if (parsed.verb === "blocked")
+				return ctx.ui.notify(formatBlockedView(all), "info");
 			if (parsed.verb === "create") {
 				const task = createTask({
 					origin: "other",
@@ -312,15 +376,18 @@ export default function (pi: ExtensionAPI) {
 				);
 			if (parsed.verb === "show")
 				return ctx.ui.notify(
-					formatTaskDetail(getTask(target.id) ?? target),
+					formatTaskDetail(getTask(target.id) ?? target, tasksByIdSnapshot(all)),
 					"info",
 				);
-			if (parsed.verb === "start")
+			if (parsed.verb === "start") {
+				const blockedMessage = formatStartBlockedMessage(target, all);
+				if (blockedMessage) return ctx.ui.notify(blockedMessage, "warning");
 				return notifyOutcome(
 					ctx,
 					"Started",
 					safeTransitionTask(target.id, "running"),
 				);
+			}
 			if (parsed.verb === "complete")
 				return notifyOutcome(
 					ctx,

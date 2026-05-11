@@ -378,6 +378,89 @@ export function tombstoneTask(id: string, reason = "deleted"): TaskRecordV1 {
 	return tombstone;
 }
 
+export type BlockerStatus =
+	| "missing"
+	| "tombstoned"
+	| "pending"
+	| "running"
+	| "blocked"
+	| "failed"
+	| "cancelled";
+
+export interface UnmetBlocker {
+	id: string;
+	status: BlockerStatus;
+	task?: TaskRecordV1;
+}
+
+export interface TaskReadiness {
+	ready: boolean;
+	unmetBlockers: UnmetBlocker[];
+}
+
+const UNBLOCKING_STATES = new Set<TaskState>(["completed", "skipped"]);
+
+export function tasksByIdSnapshot(
+	tasks: readonly TaskRecordV1[],
+): ReadonlyMap<string, TaskRecordV1> {
+	return new Map(tasks.map((task) => [task.id, task]));
+}
+
+export function sortedTaskIds(ids: readonly string[] | undefined): string[] {
+	return [...(ids ?? [])].sort((a, b) => a.localeCompare(b));
+}
+
+export function getUnmetBlockers(
+	task: TaskRecordV1,
+	tasksById: ReadonlyMap<string, TaskRecordV1>,
+): UnmetBlocker[] {
+	const unmet: UnmetBlocker[] = [];
+	for (const id of sortedTaskIds(task.blockedBy)) {
+		const blocker = tasksById.get(id);
+		if (!blocker) {
+			unmet.push({ id, status: "missing" });
+			continue;
+		}
+		if (blocker.deletedAt) {
+			unmet.push({ id, status: "tombstoned", task: blocker });
+			continue;
+		}
+		if (!UNBLOCKING_STATES.has(blocker.state))
+			unmet.push({ id, status: blocker.state as BlockerStatus, task: blocker });
+	}
+	return unmet;
+}
+
+export function getTaskReadiness(
+	task: TaskRecordV1,
+	tasksById: ReadonlyMap<string, TaskRecordV1>,
+): TaskReadiness {
+	const unmetBlockers = getUnmetBlockers(task, tasksById);
+	return { ready: unmetBlockers.length === 0, unmetBlockers };
+}
+
+export function isTaskReady(
+	task: TaskRecordV1,
+	tasksById: ReadonlyMap<string, TaskRecordV1>,
+): boolean {
+	return task.state === "pending" && getTaskReadiness(task, tasksById).ready;
+}
+
+export function partitionReadyTasks(tasks: readonly TaskRecordV1[]): {
+	ready: TaskRecordV1[];
+	waiting: TaskRecordV1[];
+	blocked: TaskRecordV1[];
+} {
+	const byId = tasksByIdSnapshot(tasks);
+	return {
+		ready: tasks.filter((task) => isTaskReady(task, byId)),
+		waiting: tasks.filter(
+			(task) => task.state === "pending" && getUnmetBlockers(task, byId).length > 0,
+		),
+		blocked: tasks.filter((task) => task.state === "blocked"),
+	};
+}
+
 export function clearCompletedTasks(): TaskRecordV1[] {
 	return listTasks({ includeTombstones: true })
 		.filter((task) => task.state === "completed" && !task.deletedAt)

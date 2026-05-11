@@ -1,4 +1,11 @@
-import type { TaskRecordV1, TaskState } from "./task-registry.ts";
+import {
+	getUnmetBlockers,
+	sortedTaskIds,
+	type TaskRecordV1,
+	type TaskState,
+	tasksByIdSnapshot,
+	type UnmetBlocker,
+} from "./task-registry.ts";
 import { redactTaskText } from "./task-security.ts";
 import type { TaskRenderMode } from "./task-settings.ts";
 
@@ -52,14 +59,37 @@ export function groupTasksByUrgency(tasks: TaskRecordV1[]): TaskGroup[] {
 	})).filter((group) => group.tasks.length > 0);
 }
 
-export function formatCompactRow(task: TaskRecordV1): string {
+function formatUnmetBlocker(blocker: UnmetBlocker): string {
+	const summary = blocker.task?.summary
+		? ` ${truncateTaskText(blocker.task.summary, 80)}`
+		: "";
+	return `${shortTaskId(blocker.id)} (${blocker.status})${summary}`;
+}
+
+export function formatUnmetBlockers(
+	unmetBlockers: readonly UnmetBlocker[],
+): string {
+	return unmetBlockers.map(formatUnmetBlocker).join(", ");
+}
+
+export function formatCompactRow(
+	task: TaskRecordV1,
+	tasksById: ReadonlyMap<string, TaskRecordV1> = tasksByIdSnapshot([task]),
+): string {
 	const summary = truncateTaskText(
 		task.summary || task.agentName || "task",
 		COMPACT_PREVIEW_LEN,
 	);
 	const ageSrc = task.endedAt || task.startedAt || task.createdAt;
 	const retry = task.retryCount > 0 ? ` (retry x${task.retryCount})` : "";
-	return `  ${shortTaskId(task.id)}  ${summary}${retry}  -- ${relativeTime(ageSrc)}`;
+	const unmet = getUnmetBlockers(task, tasksById);
+	const readiness =
+		task.state === "pending"
+			? unmet.length > 0
+				? ` [waiting: ${unmet.map((item) => shortTaskId(item.id)).join(", ")}]`
+				: " [ready]"
+			: "";
+	return `  ${shortTaskId(task.id)}  ${summary}${retry}${readiness}  -- ${relativeTime(ageSrc)}`;
 }
 
 export function formatTaskList(
@@ -70,11 +100,12 @@ export function formatTaskList(
 		return "Task display is hidden. Use /tasks settings mode compact to restore task output.";
 	if (tasks.length === 0) return "No tasks recorded.";
 	const groups = groupTasksByUrgency(tasks);
+	const byId = tasksByIdSnapshot(tasks);
 	const lines: string[] = [];
 	for (const group of groups) {
 		if (mode === "compact" && TERMINAL.has(group.state)) continue;
 		lines.push(`${group.state} (${group.tasks.length})`);
-		for (const task of group.tasks) lines.push(formatCompactRow(task));
+		for (const task of group.tasks) lines.push(formatCompactRow(task, byId));
 	}
 	const terminalCount = tasks.filter((task) => TERMINAL.has(task.state)).length;
 	if (mode === "compact" && terminalCount > 0)
@@ -84,7 +115,10 @@ export function formatTaskList(
 		: `No active tasks. terminal (${terminalCount})`;
 }
 
-export function formatTaskDetail(task: TaskRecordV1): string {
+export function formatTaskDetail(
+	task: TaskRecordV1,
+	tasksById: ReadonlyMap<string, TaskRecordV1> = tasksByIdSnapshot([task]),
+): string {
 	const lines: string[] = [];
 	lines.push(`task ${task.id}`);
 	lines.push(`  state: ${task.state}`);
@@ -109,8 +143,24 @@ export function formatTaskDetail(task: TaskRecordV1): string {
 		lines.push(`  error: ${truncateTaskText(task.errorReason, 200)}`);
 	if (task.skipReason)
 		lines.push(`  skipped: ${truncateTaskText(task.skipReason, 200)}`);
-	if (task.blockedBy?.length)
-		lines.push(`  blockedBy: ${task.blockedBy.join(", ")}`);
-	if (task.blocks?.length) lines.push(`  blocks: ${task.blocks.join(", ")}`);
+	const blockedBy = sortedTaskIds(task.blockedBy);
+	if (blockedBy.length) lines.push(`  blockedBy: ${blockedBy.join(", ")}`);
+	const unmet = getUnmetBlockers(task, tasksById);
+	if (unmet.length)
+		lines.push(`  unmet blockers: ${formatUnmetBlockers(unmet)}`);
+	const unblocking = blockedBy
+		.map((id) => tasksById.get(id))
+		.filter((item): item is TaskRecordV1 =>
+			Boolean(item && (item.state === "completed" || item.state === "skipped")),
+		)
+		.sort((a, b) => a.id.localeCompare(b.id));
+	if (unblocking.length)
+		lines.push(
+			`  unblocked by: ${unblocking
+				.map((item) => `${shortTaskId(item.id)} (${item.state})`)
+				.join(", ")}`,
+		);
+	const blocks = sortedTaskIds(task.blocks);
+	if (blocks.length) lines.push(`  blocks: ${blocks.join(", ")}`);
 	return lines.join("\n");
 }

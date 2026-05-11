@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTask, transitionTask } from "../lib/task-registry.js";
-import { formatTaskList } from "../lib/task-renderer.js";
+import { formatTaskDetail, formatTaskList } from "../lib/task-renderer.js";
 import { getTaskRenderMode, setTaskRenderMode } from "../lib/task-settings.js";
 
 let tmpRoot: string;
@@ -41,5 +41,43 @@ describe("task renderer/settings", () => {
 		});
 		const done = transitionTask(task.id, "completed");
 		expect(formatTaskList([done], "compact")).toContain("terminal (1)");
+	});
+
+	it("labels pending tasks as ready or waiting", () => {
+		const blocker = createTask({ origin: "other", summary: "blocker" });
+		const ready = createTask({ origin: "other", summary: "ready task" });
+		const waiting = createTask({
+			origin: "other",
+			summary: "waiting task",
+			blockedBy: [blocker.id],
+		});
+		const text = formatTaskList([ready, waiting, blocker], "compact");
+		expect(text).toContain("ready task");
+		expect(text).toContain("[ready]");
+		expect(text).toContain("waiting task");
+		expect(text).toContain(`[waiting: ${blocker.id.slice(0, 8)}]`);
+	});
+
+	it("renders sorted dependency detail with redaction and skipped unblocking", () => {
+		const first = createTask({ origin: "other", summary: "zzz token=abc" });
+		const second = createTask({ origin: "other", summary: "aaa" });
+		const skipped = transitionTask(second.id, "skipped");
+		const dependent = createTask({
+			origin: "other",
+			summary: "dependent",
+			blockedBy: [first.id, skipped.id].sort().reverse(),
+		});
+		const text = formatTaskDetail(
+			dependent,
+			new Map([
+				[first.id, first],
+				[skipped.id, skipped],
+				[dependent.id, dependent],
+			]),
+		);
+		expect(text).toContain("unmet blockers:");
+		expect(text).toContain("unblocked by:");
+		expect(text).toContain("(skipped)");
+		expect(text).not.toContain("token=abc");
 	});
 });

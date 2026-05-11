@@ -179,4 +179,76 @@ describe("/tasks command", () => {
 		expect(notify.mock.calls[0][1]).toBe("warning");
 		expect(notify.mock.calls[0][0]).toContain("No unique task");
 	});
+
+	it("lists ready tasks through the registered command", async () => {
+		const { createTask } = await import("../lib/task-registry.ts");
+		const blocker = createTask({ origin: "subagent", summary: "blocker" });
+		const ready = createTask({ origin: "subagent", summary: "ready work" });
+		createTask({ origin: "subagent", summary: "waiting work", blockedBy: [blocker.id] });
+		const { cmd } = await loadTasks();
+		const ctx = createMockCtx();
+		await cmd.handler("ready", ctx);
+		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+		expect(text).toContain(ready.summary);
+		expect(text).not.toContain("waiting work");
+	});
+
+	it("lists blocked tasks with actionable blocker context", async () => {
+		const { createTask } = await import("../lib/task-registry.ts");
+		const blocker = createTask({ origin: "subagent", summary: "blocker token=abc" });
+		const waiting = createTask({ origin: "subagent", summary: "waiting work", blockedBy: [blocker.id] });
+		const { cmd } = await loadTasks();
+		const ctx = createMockCtx();
+		await cmd.handler("blocked", ctx);
+		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+		expect(text).toContain(waiting.id.slice(0, 8));
+		expect(text).toContain(blocker.id.slice(0, 8));
+		expect(text).toContain("pending");
+		expect(text).toContain("Next: /tasks show");
+		expect(text).not.toContain("token=abc");
+	});
+
+	it("documents ready and blocked in help", async () => {
+		const { cmd } = await loadTasks();
+		const ctx = createMockCtx();
+		await cmd.handler("help", ctx);
+		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+		expect(text).toContain("ready");
+		expect(text).toContain("blocked");
+		expect(text).toContain("what can I work on now");
+		expect(text).toContain("why can't this start");
+		expect(text).toContain("Retry/reopen does not execute work");
+	});
+
+	it("rejects starting a waiting task without mutating persisted records", async () => {
+		const { createTask, getTask } = await import("../lib/task-registry.ts");
+		const blocker = createTask({ origin: "subagent", summary: "blocker" });
+		const waiting = createTask({ origin: "subagent", summary: "waiting work", blockedBy: [blocker.id] });
+		const taskDir = path.join(tmpRoot, "tasks");
+		const before = new Map(
+			fs.readdirSync(taskDir).map((file) => [file, fs.readFileSync(path.join(taskDir, file), "utf-8")]),
+		);
+		const { cmd } = await loadTasks();
+		const ctx = createMockCtx();
+		await cmd.handler(`start ${waiting.id}`, ctx);
+		const after = new Map(
+			fs.readdirSync(taskDir).map((file) => [file, fs.readFileSync(path.join(taskDir, file), "utf-8")]),
+		);
+		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+		expect(text).toContain("Cannot start");
+		expect(text).toContain(blocker.id.slice(0, 8));
+		expect(text).toContain("Next: /tasks show");
+		expect(getTask(waiting.id)?.state).toBe("pending");
+		expect(after).toEqual(before);
+	});
+
+	it("starts a ready task through the registered command", async () => {
+		const { createTask, getTask } = await import("../lib/task-registry.ts");
+		const ready = createTask({ origin: "subagent", summary: "ready" });
+		const { cmd } = await loadTasks();
+		const ctx = createMockCtx();
+		await cmd.handler(`start ${ready.id}`, ctx);
+		expect(getTask(ready.id)?.state).toBe("running");
+		expect((ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain("Started");
+	});
 });
