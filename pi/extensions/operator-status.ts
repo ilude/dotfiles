@@ -367,6 +367,7 @@ interface TaskCounts {
 	failed: number;
 	completed: number;
 	cancelled: number;
+	skipped: number;
 	nonTerminal: number;
 	urgent: number; // blocked + failed
 }
@@ -379,6 +380,7 @@ export function summarizeTaskCounts(records: TaskRecordV1[]): TaskCounts {
 		failed: 0,
 		completed: 0,
 		cancelled: 0,
+		skipped: 0,
 		nonTerminal: 0,
 		urgent: 0,
 	};

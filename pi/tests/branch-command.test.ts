@@ -94,6 +94,42 @@ describe("/branch", () => {
 
 		expect(plan.executable).toBeUndefined();
 		expect(plan.manualCommand).toBe("'pi' '--session' '/tmp/session.jsonl'");
+		expect(plan.reason).toContain(
+			"No supported terminal tab launcher detected",
+		);
+	});
+
+	it("reports launch failures with a manual recovery command", async () => {
+		mockSpawnSync.mockReturnValue({ status: 1, stdout: "", stderr: "" });
+		const pi = createMockPi();
+		workflowCommands(pi as Parameters<typeof workflowCommands>[0]);
+		const command = pi._commands.find((entry) => entry.name === "branch");
+		if (!command) throw new Error("branch command not registered");
+		const notify = vi.fn();
+
+		await command.handler("", {
+			cwd: "/c/Users/me/project dir",
+			ui: { notify },
+			sessionManager: {
+				getLeafId: vi.fn(() => "leaf-1"),
+				createBranchedSession: vi.fn(
+					() =>
+						"C:/Users/me/.pi/agent/sessions/project/2026-05-04T18-58-02-760Z_019df45a-c587-70ae-bf94-c74cd681715c.jsonl",
+				),
+			},
+		});
+
+		expect(notify).toHaveBeenCalledWith(
+			expect.stringContaining("Terminal launch failed: wt exited 1"),
+			"warning",
+		);
+		expect(notify).toHaveBeenCalledWith(
+			expect.stringContaining("Manual resume command:"),
+			"warning",
+		);
+		expect(notify.mock.calls[0][0]).toContain(
+			"'pi' '--session' '019df45a-c587-70ae-bf94-c74cd681715c'",
+		);
 	});
 });
 

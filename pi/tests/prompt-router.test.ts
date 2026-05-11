@@ -12,6 +12,7 @@ import promptRouter, {
   applyRouteDecisionToProviderPayload,
   resolveProviderRouteDecision,
   resolveRouteProfile,
+  buildRouterTelemetryPayload,
 } from "../extensions/prompt-router.ts";
 import {
   legacyModelTierToRoute,
@@ -1261,11 +1262,11 @@ describe("T5: /router-explain full decision trail", () => {
 
     // (a) classifier raw fields
     expect(output).toContain("schema_version: 3.0.0");
-    expect(output).toContain("primary: {model: Sonnet, effort: medium}");
+    expect(output).toContain("legacy_primary: {model_tier: Sonnet, effort: medium}");
     expect(output).toContain("confidence: 0.82");
-    expect(output).toContain("candidates:");
+    expect(output).toContain("canonical_candidates:");
     // (b) applied route
-    expect(output).toContain("Applied route: Sonnet/medium");
+    expect(output).toContain("Applied route: core/medium");
     // (c) rule fired
     expect(output).toContain("Rule fired:");
     // (d) confidence already asserted above
@@ -1380,9 +1381,11 @@ describe("Provider architecture spike: awaited provider seam", () => {
     const decision = await resolveProviderRouteDecision(pi as any, "synthetic resolver prompt", routeCtx());
     const profile = resolveRouteProfile(decision);
     expect(profile.route).toBe("core");
-    expect(profile.profile).toBe("route:core");
+    expect(profile.profile).toBe("codex:core");
     expect(profile.provider).toBe("openai-codex");
     expect(profile.model).toBe(decision.model_label);
+    expect(profile.routeState).toBe("available");
+    expect(profile.providerTrust).toBe("same-family");
     expect(profile.confidence).toBe(0.91);
     expect(profile.candidates[0].route).toBe("core");
     expect(profile.contextFlags).toEqual([]);
@@ -1397,31 +1400,71 @@ describe("Provider architecture spike: awaited provider seam", () => {
     expect(decision.applied_route).toBe("mini");
     expect(decision.route_resolution_reason).toBe("fallback_used");
     expect(decision.decisionTrace.fallbackFrom).toBe("nano");
+    expect(decision.decisionTrace.routeState).toBe("fallback");
     expect(JSON.stringify(decision)).not.toContain("synthetic nano prompt");
   });
 
-  it("builds a bounded context capsule without prompt text", () => {
-    const capsule = buildRoutingContextCapsule({ prompt: "synthetic private prompt", messages: Array.from({ length: 120 }, () => ({ role: "user", content: "x" })) }, { model: { contextWindow: 1000 }, usage: { tokens: 900 } });
-    expect(capsule.messageCount).toBe(99);
-    expect(capsule.estimatedPromptChars).toBe("synthetic private prompt".length);
-    expect(capsule.contextPercent).toBe(90);
-    expect(capsule.flags).toEqual(["multi_turn", "context_window_high"]);
-    expect(JSON.stringify(capsule)).not.toContain("synthetic private prompt");
+  it("uses only canonical route-state values and marks max as policy-only", async () => {
+    const pi = createMockPi();
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("max", "high", 0.93), stderr: "" });
+    const decision = await resolveProviderRouteDecision(pi as any, "synthetic max prompt", routeCtx());
+    expect(decision.raw_route).toBe("max");
+    expect(decision.applied_route).toBe("max");
+    expect(decision.decisionTrace.routeState).toBe("policy-only");
+    expect(["available", "fallback", "policy-only", "disabled"]).toContain(decision.decisionTrace.routeState);
   });
 
-  it("holds a one-turn downgrade from the previous applied route", async () => {
+  it("builds a deterministic continuation capsule without prompt text", () => {
+    const capsule = buildRoutingContextCapsule({ prompt: "do option 2", messages: Array.from({ length: 120 }, () => ({ role: "user", content: "x" })) }, { model: { contextWindow: 1000 }, usage: { tokens: 900 }, router: { previousAppliedRoute: "large" } });
+    expect(capsule.messageCount).toBe(99);
+    expect(capsule.estimatedPromptChars).toBe("do option 2".length);
+    expect(capsule.contextPercent).toBe(90);
+    expect(capsule.isContinuation).toBe(true);
+    expect(capsule.dependencyOnPriorContext).toBe(true);
+    expect(capsule.lastEffectiveSize).toBe("large");
+    expect(capsule.unresolvedTask).toBe(true);
+    expect(capsule.flags).toEqual(["multi_turn", "context_window_high", "continuation_detected", "depends_on_prior_context", "unresolved_task"]);
+    expect(JSON.stringify(capsule)).not.toContain("do option 2");
+  });
+
+  it("recognizes continuation phrases and rejects non-continuation lookalikes", () => {
+    expect(buildRoutingContextCapsule({ prompt: "patch it" }, { router: { previousAppliedRoute: "core" } }).isContinuation).toBe(true);
+    expect(buildRoutingContextCapsule({ prompt: "same but with auth" }, { router: { previousAppliedRoute: "core" } }).isContinuation).toBe(true);
+    expect(buildRoutingContextCapsule({ prompt: "optionally explain auth" }, { router: { previousAppliedRoute: "core" } }).isContinuation).toBe(false);
+    expect(buildRoutingContextCapsule({ prompt: "hi" }, { router: { previousAppliedRoute: "large" } }).dependencyOnPriorContext).toBe(false);
+  });
+
+  it("holds a one-turn continuation downgrade from the previous applied route", async () => {
     const pi = createMockPi();
     const ctx = routeCtx();
     (ctx as any).router = { previousAppliedRoute: "large" };
     (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Haiku", "low", 0.95), stderr: "" });
-    const decision = await resolveProviderRouteDecision(pi as any, "synthetic downgrade prompt", ctx);
+    const decision = await resolveProviderRouteDecision(pi as any, "do option 2", ctx);
     expect(decision.raw_route).toBe("mini");
     expect(decision.applied_route).toBe("large");
-    expect(decision.decisionTrace.contextFlags).toContain("anti_downgrade_hold");
-    expect(decision.fallback_reason).toBe("one-turn anti-downgrade hold");
+    expect(decision.decisionTrace.contextFlags).toContain("context-continuation-hold");
+    expect(decision.fallback_reason).toBe("one-turn context-continuation-hold");
   });
 
-  it("applies route pin before session override and records override scope", async () => {
+  it("allows unrelated and cheap continuation downgrades", async () => {
+    const pi = createMockPi();
+    const unrelatedCtx = routeCtx();
+    (unrelatedCtx as any).router = { previousAppliedRoute: "large" };
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Haiku", "low", 0.95), stderr: "" });
+    const unrelated = await resolveProviderRouteDecision(pi as any, "hi", unrelatedCtx);
+    expect(unrelated.applied_route).toBe("mini");
+    expect(unrelated.decisionTrace.contextFlags).not.toContain("context-continuation-hold");
+
+    const cheapCtx = routeCtx();
+    (cheapCtx as any).router = { previousAppliedRoute: "large" };
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Haiku", "low", 0.95), stderr: "" });
+    const cheap = await resolveProviderRouteDecision(pi as any, "briefly do option 2", cheapCtx);
+    expect(cheap.applied_route).toBe("mini");
+    expect(cheap.decisionTrace.contextFlags).toContain("downgrade_intent_detected");
+    expect(cheap.decisionTrace.contextFlags).toContain("context-continuation-hold-bypassed");
+  });
+
+  it("applies route pin before session override and records override scope/lifetime", async () => {
     const pi = createMockPi();
     const ctx = routeCtx();
     (ctx as any).router = { routeOverride: "mini", routePin: "large" };
@@ -1430,7 +1473,32 @@ describe("Provider architecture spike: awaited provider seam", () => {
     expect(decision.raw_route).toBe("core");
     expect(decision.applied_route).toBe("large");
     expect(decision.decisionTrace.overrideScope).toBe("route-pin");
+    expect(decision.decisionTrace.overrideLifetime).toBe("until-cleared");
     expect(decision.decisionTrace.rule).toBe("override:route-pin");
+  });
+
+  it("preserves explicit user-selected model in provider payload", async () => {
+    const pi = createMockPi();
+    const ctx = routeCtx();
+    (ctx as any).router = { explicitModelSelection: true };
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Sonnet", "medium", 0.91), stderr: "" });
+    const decision = await resolveProviderRouteDecision(pi as any, "synthetic explicit model prompt", ctx);
+    expect(decision.decisionTrace.explicitModelPreserved).toBe(true);
+    const payload = applyRouteDecisionToProviderPayload({ prompt: "synthetic explicit model prompt", model: "user/chosen", explicit_model_selection: true }, decision, ctx) as Record<string, unknown>;
+    expect(payload.model).toBe("user/chosen");
+    expect(payload.explicit_model_preserved).toBe(true);
+  });
+
+  it("reports provider trust and denied fallback metadata", async () => {
+    const pi = createMockPi();
+    const ctx = routeCtx({ provider: "anthropic", id: "claude-sonnet" });
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Sonnet", "medium", 0.91), stderr: "" });
+    const decision = await resolveProviderRouteDecision(pi as any, "synthetic provider trust prompt", ctx);
+    expect(decision.route_resolution_reason).toBe("denied_by_policy");
+    expect(decision.decisionTrace.providerTrust).toBe("cross-provider-denied");
+    expect(decision.decisionTrace.fallbackAllowed).toBe(false);
+    expect(decision.decisionTrace.fallbackDeniedReason).toBe("cross-provider fallback denied");
+    expect(JSON.stringify(decision)).not.toContain("synthetic provider trust prompt");
   });
 
   it("raises low routes when context-window safety is high", async () => {
@@ -1504,5 +1572,64 @@ describe("T0: same-turn routing feasibility", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(order).toEqual(["classifier-start", "hook-returned-continue", "classifier-finish", "setModel", "setThinkingLevel"]);
+  });
+});
+
+describe("T6: privacy-conscious router telemetry", () => {
+  it("serializes schema-versioned routing telemetry without raw prompt text", () => {
+    const privatePrompt = ["PRIVATE", "ROUTER", "PROMPT", "DO", "NOT", "LOG"].join("_");
+    const payload = buildRouterTelemetryPayload({
+      promptHash: "a".repeat(64),
+      classifierMode: "t2",
+      rawRoute: "large",
+      appliedRoute: "core",
+      rec: {
+        schema_version: "3.0.0",
+        primary: { model_tier: "Opus", effort: "high" },
+        candidates: [
+          { model_tier: "Opus", effort: "high", confidence: 0.7 },
+          { model_tier: "Sonnet", effort: "medium", confidence: 0.55 },
+        ],
+        confidence: 0.7,
+      },
+      previousRoute: "core",
+      ruleFired: "context-continuation-hold",
+      contextCapsule: {
+        isContinuation: true,
+        dependencyOnPriorContext: true,
+        lastEffectiveSize: "core",
+        unresolvedTask: true,
+        downgradeIntentDetected: false,
+        messageCount: 2,
+        contextPercent: null,
+        flags: ["continuation_detected"],
+      },
+      providerFamily: "openai-codex",
+      modelLabel: "gpt-5.4",
+      profile: "codex-large",
+      latencyMs: 12,
+      fallbackReason: "one-turn context-continuation-hold",
+    });
+    const serialized = JSON.stringify(payload);
+
+    expect(payload.schema_version).toBe("router-log-v1");
+    expect(payload.prompt_hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(payload.prompt_excerpt).toBeNull();
+    expect(payload.raw_route).toBe("large");
+    expect(payload.applied_route).toBe("core");
+    expect(payload.candidate_margin).toBe(0.15);
+    expect(payload.context_capsule).toMatchObject({
+      isContinuation: true,
+      dependencyOnPriorContext: true,
+      lastEffectiveSize: "core",
+      unresolvedTask: true,
+    });
+    expect(payload.provider_family).toBe("openai-codex");
+    expect(payload.model_label).toBe("gpt-5.4");
+    expect(payload.profile).toBe("codex-large");
+    expect(payload.latency_ms).toBe(12);
+    expect(serialized).not.toContain(privatePrompt);
+    expect(serialized).not.toContain("prompt_text");
+    expect(serialized).not.toContain("raw_prompt");
   });
 });

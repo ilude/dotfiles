@@ -19,7 +19,7 @@ isolation: none
 memory: project
 effort: high
 maxTurns: 50
-tools: read, write, edit, bash, grep
+tools: read, grep, find, ls, subagent
 domain:
   - path: .
     read: true

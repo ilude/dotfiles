@@ -1,0 +1,14 @@
+Metadata-Version: 2.4
+Name: dotfiles-tests
+Version: 0.1.0
+Requires-Python: >=3.9
+License-File: LICENSE
+Requires-Dist: httpx
+Requires-Dist: pydantic
+Requires-Dist: pytest
+Requires-Dist: pytest-asyncio
+Requires-Dist: pyyaml
+Requires-Dist: ruff
+Requires-Dist: tree-sitter>=0.23.0
+Requires-Dist: tree-sitter-bash>=0.23.0
+Dynamic: license-file

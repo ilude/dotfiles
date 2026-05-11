@@ -4,8 +4,6 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	ALLOWED_TRANSITIONS,
-	TASK_STATES,
-	TERMINAL_TASK_STATES,
 	ensureDirectory,
 	getDecisionsLogPath,
 	getOperatorStateDir,
@@ -13,7 +11,9 @@ import {
 	getSessionApprovalsPath,
 	getTasksDir,
 	isAllowedTransition,
+	TASK_STATES,
 	type TaskState,
+	TERMINAL_TASK_STATES,
 } from "../lib/operator-state.js";
 
 let tmpRoot: string;
@@ -38,7 +38,9 @@ describe("getOperatorStateDir", () => {
 
 	it("falls back to <agent-dir>/operator when no override is set", () => {
 		delete process.env.PI_OPERATOR_DIR;
-		expect(getOperatorStateDir()).toBe(path.join(os.homedir(), ".pi", "agent", "operator"));
+		expect(getOperatorStateDir()).toBe(
+			path.join(os.homedir(), ".pi", "agent", "operator"),
+		);
 	});
 });
 
@@ -46,8 +48,12 @@ describe("path helpers", () => {
 	it("derives tasks/permissions paths from the state root", () => {
 		expect(getTasksDir()).toBe(path.join(tmpRoot, "tasks"));
 		expect(getPermissionsDir()).toBe(path.join(tmpRoot, "permissions"));
-		expect(getDecisionsLogPath()).toBe(path.join(tmpRoot, "permissions", "decisions.jsonl"));
-		expect(getSessionApprovalsPath()).toBe(path.join(tmpRoot, "permissions", "session-approvals.json"));
+		expect(getDecisionsLogPath()).toBe(
+			path.join(tmpRoot, "permissions", "decisions.jsonl"),
+		);
+		expect(getSessionApprovalsPath()).toBe(
+			path.join(tmpRoot, "permissions", "session-approvals.json"),
+		);
 	});
 });
 
@@ -67,15 +73,24 @@ describe("ensureDirectory", () => {
 });
 
 describe("TASK_STATES", () => {
-	it("includes the six canonical lifecycle states", () => {
+	it("includes the seven canonical lifecycle states", () => {
 		expect(new Set(TASK_STATES)).toEqual(
-			new Set(["pending", "running", "blocked", "completed", "failed", "cancelled"]),
+			new Set([
+				"pending",
+				"running",
+				"blocked",
+				"completed",
+				"failed",
+				"cancelled",
+				"skipped",
+			]),
 		);
 	});
 
 	it("identifies terminal states", () => {
 		expect(TERMINAL_TASK_STATES.has("completed")).toBe(true);
 		expect(TERMINAL_TASK_STATES.has("cancelled")).toBe(true);
+		expect(TERMINAL_TASK_STATES.has("skipped")).toBe(true);
 		expect(TERMINAL_TASK_STATES.has("failed")).toBe(false); // failed is retryable
 		expect(TERMINAL_TASK_STATES.has("running")).toBe(false);
 	});

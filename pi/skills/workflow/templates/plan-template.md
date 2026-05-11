@@ -20,6 +20,17 @@ understand what triggered this plan and why it matters.}
 - Shell: {detected}
 - {any additional constraints from conversation}
 
+## Risk & Manual Gate Decision
+
+Manual gates are exceptional. Decide based on blast radius and rollback, not generic confidence. Be conservative for work/shared systems and data/resources that cost money; treat personal/local GitHub repos as localized-to-user when changes are reversible and validated.
+
+- **Risk level:** {low/medium/high}
+- **Blast radius:** {personal-local-repo/local/home-lab/shared/work-prod/paid-resource}
+- **Rollback:** {easy/known/unclear/impossible}
+- **Manual approval before action:** {required/not required}
+- **Manual validation after action:** {required/not required}
+- **Decision reason:** {why this does or does not need a manual gate; if uncertain, ask the user during planning before writing this plan}
+
 ## Alternatives Considered
 
 | Approach | Pros | Cons | Verdict |
@@ -82,7 +93,7 @@ This checklist is the durable resume ledger for `/do-it`. Every executable task,
 - [ ] F2: Repo-wide validation complete
   - Status: pending
   - Evidence: --
-- [ ] F3: Manual validation complete or not required
+- [ ] F3: Manual validation not required or completed
   - Status: pending
   - Evidence: --
 - [ ] F4: Deployment validation complete or not required
@@ -168,7 +179,7 @@ Wave 2: T3 → V2
    - Verify: `{command}`
    - Pass: {expected}
 2. [ ] {user-facing outcome check}
-   - Verify: `{command or manual check}`
+   - Verify: `{command, scripted check, test, screenshot/log inspection, or "not required"}`
    - Pass: {expected}
 
 ## Validation Contract
@@ -196,11 +207,14 @@ Wave 2: T3 → V2
 
 ### Manual validation
 
+Manual validation is exceptional. It should be `Required: no` unless the plan includes destructive operations, data-loss risk, irreversible external side effects, shared/work production impact, paid/billing/data-costing resources, secret exposure risk, hardware/physical checks, or genuinely subjective user judgment that cannot be replaced by safe automation. Scale matters: personal/local GitHub repos, local/home-lab, and new-backed-up systems are usually agent-runnable; work/shared/multi-user production systems and money/data-costing resources may need user gates when other people, spend, quota, or costly recovery could be affected.
+
 - Required: {yes/no}
+- Justification: {If yes, name the destructive/data-loss/irreversible/shared-production/secret-exposure/hardware/subjective reason. If no, write "Automated validation is sufficient."}
 - Steps:
   1. {If required, exact user/manual step with expected success signal. If not required, write "None."}
 
-If manual validation is required and not confirmed passed, `/do-it` must classify the result as `implemented-awaiting-manual-validation`, update `## Execution Status`, and must not archive the plan.
+If manual validation is required and not confirmed passed, `/do-it` must classify the result as `implemented-awaiting-manual-validation`, update `## Execution Status`, and must not archive the plan. If manual validation is not required, `/do-it` may mark the manual gate complete after recording why automated evidence is sufficient.
 
 ### Deployment validation
 
@@ -211,7 +225,7 @@ If deployment is required and skipped, cancelled, or fails, `/do-it` must not ar
 
 ### Archive rule
 
-`/do-it` may archive this plan only after all required automated validation, task-specific verification, manual validation, deployment validation, and repo-wide validation pass.
+`/do-it` may archive this plan only after all required automated validation, task-specific verification, exceptional manual validation (if required), deployment validation, and repo-wide validation pass. Do not require manual validation merely to increase confidence in non-destructive behavior that automated checks already cover, especially for local/home-lab/new-backed-up systems.
 
 ## Handoff Notes
 

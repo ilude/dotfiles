@@ -18,7 +18,9 @@ SHA256 verification:
 
 Logging:
     Each call is appended to logs/routing_log.jsonl when LOG_ROUTING != "0".
-    Set LOG_ROUTING=0 to disable (e.g. in tests).
+    Default entries include a prompt hash only, not raw prompts or excerpts.
+    Set LOG_ROUTING=0 to disable (e.g. in tests). Set LOG_ROUTING_EXCERPT=1
+    or LOG_ROUTING_PROMPT=1 only for explicit local debugging.
 """
 
 import hashlib
@@ -54,13 +56,9 @@ _model_lock = threading.Lock()
 
 def _verify_sha256() -> str:
     if not _HASH_PATH.exists():
-        raise FileNotFoundError(
-            f"router_v3.sha256 not found at {_HASH_PATH}. Run train.py first."
-        )
+        raise FileNotFoundError(f"router_v3.sha256 not found at {_HASH_PATH}. Run train.py first.")
     if not _MODEL_PATH.exists():
-        raise FileNotFoundError(
-            f"router_v3.joblib not found at {_MODEL_PATH}. Run train.py first."
-        )
+        raise FileNotFoundError(f"router_v3.joblib not found at {_MODEL_PATH}. Run train.py first.")
     expected = _HASH_PATH.read_text().strip()
     actual = hashlib.sha256(_MODEL_PATH.read_bytes()).hexdigest()
     if actual != expected:
@@ -75,6 +73,7 @@ def _verify_sha256() -> str:
 
 def _load_model():
     import joblib
+
     sha = _verify_sha256()
     model = joblib.load(_MODEL_PATH)
     logger.debug("router: model loaded (SHA256 verified: %s...)", sha[:16])
@@ -98,6 +97,7 @@ def _get_model():
 _log_lock = threading.Lock()
 _logging_enabled = os.environ.get("LOG_ROUTING", "1") != "0"
 _log_full_prompt = os.environ.get("LOG_ROUTING_PROMPT", "0") == "1"
+_log_excerpt = os.environ.get("LOG_ROUTING_EXCERPT", "0") == "1"
 
 
 def _excerpt(prompt: str, max_chars: int = 160) -> str:
@@ -117,12 +117,13 @@ def _log(prompt: str, result: dict, elapsed_us: float) -> None:
         entry = {
             "ts": time.time(),
             "prompt_hash": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
-            "prompt_excerpt": _excerpt(prompt),
             "primary": primary,
             "confidence": result["confidence"],
             "elapsed_us": round(elapsed_us, 1),
             "schema_version": SCHEMA_VERSION,
         }
+        if _log_excerpt:
+            entry["prompt_excerpt"] = _excerpt(prompt)
         if _log_full_prompt:
             entry["prompt"] = prompt
         with _log_lock:
@@ -170,8 +171,11 @@ def recommend(prompt: str) -> dict:
         "schema_version": SCHEMA_VERSION,
         "primary": {"model_tier": primary_tier, "effort": primary_effort},
         "candidates": [
-            {"model_tier": lbl.split("|")[0], "effort": lbl.split("|")[1],
-             "confidence": round(score, 4)}
+            {
+                "model_tier": lbl.split("|")[0],
+                "effort": lbl.split("|")[1],
+                "confidence": round(score, 4),
+            }
             for lbl, score in candidates
         ],
         "confidence": round(confidence, 4),
@@ -186,9 +190,7 @@ def _safe_default() -> dict:
     return {
         "schema_version": SCHEMA_VERSION,
         "primary": {"model_tier": "Sonnet", "effort": "medium"},
-        "candidates": [
-            {"model_tier": "Sonnet", "effort": "medium", "confidence": 1.0}
-        ],
+        "candidates": [{"model_tier": "Sonnet", "effort": "medium", "confidence": 1.0}],
         "confidence": 1.0,
     }
 
@@ -202,5 +204,7 @@ if __name__ == "__main__":
     print("Router v3 smoke test:")
     for prompt in examples:
         out = recommend(prompt)
-        print(f"  [{out['primary']['model_tier']}|{out['primary']['effort']}]"
-              f"  conf={out['confidence']:.3f}  {prompt[:60]}")
+        print(
+            f"  [{out['primary']['model_tier']}|{out['primary']['effort']}]"
+            f"  conf={out['confidence']:.3f}  {prompt[:60]}"
+        )

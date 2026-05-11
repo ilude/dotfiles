@@ -77,7 +77,9 @@ def _route_label(row: dict) -> str:
     return f"{car['model_tier']}|{car['effort']}"
 
 
-def _compute_metrics(clf, rows: list[dict], timing_us: dict, classifier_name: str) -> dict:
+def _compute_metrics(
+    clf, rows: list[dict], timing_us: dict, classifier_name: str = "test"
+) -> dict:
     labels_true = [_route_label(r) for r in rows]
     labels_pred = [
         _apply_eval_safety_floor(row, pred) for row, pred in zip(rows, clf.predict(rows))
@@ -284,34 +286,78 @@ def _load_classifier(mode: str):
     return _load_ensemble_clf(), "ensemble_t2_lgbm_veto", OUTPUT_PATH_ENSEMBLE
 
 
+def _has_downgrade_intent(turn: dict) -> bool:
+    if turn.get("downgrade_intent") is True:
+        return True
+    prompt = str(turn.get("prompt", "")).lower()
+    return any(term in prompt for term in ("cheap", "brief", "quick", "summarize"))
+
+
+def _apply_sequence_policy(
+    raw_route: str, turn: dict, previous_route: str | None
+) -> tuple[str, str]:
+    expected_previous = turn.get("previous_effective_route")
+    hold_from = str(expected_previous or previous_route or "")
+    if (
+        turn.get("continuation") is True
+        and hold_from in CANONICAL_ROUTE_ORDER
+        and not _has_downgrade_intent(turn)
+        and CANONICAL_ROUTE_ORDER[raw_route] < CANONICAL_ROUTE_ORDER[hold_from]
+    ):
+        return hold_from, "context-continuation-hold"
+    return raw_route, "classifier"
+
+
 def _sequence_metrics(clf, path: Path | None) -> dict:
     if path is None:
-        return {"n_sequences": 0, "n_turns": 0, "route_thrash": 0, "violations": []}
+        return {"n_sequences": 0, "n_turns": 0, "route_thrash": 0, "violations": [], "cases": []}
     turns = _load_eval(path)
     last_by_seq: dict[str, str] = {}
     route_thrash = 0
     violations = []
+    cases = []
     for turn in turns:
         seq_id = str(turn.get("sequence_id", "default"))
         pred = clf.predict_texts([turn["prompt"]])[0]
         tier = pred.split("|")[0]
-        canonical = LEGACY_TO_CANONICAL.get(tier, tier)
-        if seq_id in last_by_seq and canonical != last_by_seq[seq_id]:
+        raw_route = LEGACY_TO_CANONICAL.get(tier, tier)
+        applied_route, rule_fired = _apply_sequence_policy(
+            raw_route, turn, last_by_seq.get(seq_id)
+        )
+        if seq_id in last_by_seq and applied_route != last_by_seq[seq_id]:
             route_thrash += 1
-        last_by_seq[seq_id] = canonical
+        last_by_seq[seq_id] = applied_route
         expected_min = turn.get("expected_min_route")
-        if (
-            expected_min
-            and CANONICAL_ROUTE_ORDER.get(canonical, -1) < CANONICAL_ROUTE_ORDER[str(expected_min)]
+        if expected_min and (
+            CANONICAL_ROUTE_ORDER.get(applied_route, -1)
+            < CANONICAL_ROUTE_ORDER[str(expected_min)]
         ):
             violations.append(
                 {"sequence_id": seq_id, "turn": turn.get("turn"), "kind": "under_min_route"}
             )
+        expected_route = turn.get("expected_route")
+        if expected_route and applied_route != expected_route:
+            violations.append(
+                {"sequence_id": seq_id, "turn": turn.get("turn"), "kind": "unexpected_route"}
+            )
+        cases.append(
+            {
+                "sequence_id": seq_id,
+                "turn": turn.get("turn"),
+                "raw_route": raw_route,
+                "applied_route": applied_route,
+                "rule_fired": rule_fired,
+                "expected_route": expected_route,
+                "expected_min_route": expected_min,
+            }
+        )
     return {
         "n_sequences": len({str(t.get("sequence_id", "default")) for t in turns}),
         "n_turns": len(turns),
         "route_thrash": route_thrash,
+        "policy_deltas": sum(1 for case in cases if case["raw_route"] != case["applied_route"]),
         "violations": violations,
+        "cases": cases,
     }
 
 
@@ -376,8 +422,11 @@ def run() -> None:
         "policy": runtime_settings["policy"],
     }
     metrics["canonical_route_order"] = list(CANONICAL_ROUTE_ORDER)
-    metrics["sequence_aggregation"] = _sequence_metrics(clf, args.sequences)
-    metrics["policy_delta"] = {"source": "runtime_settings", "changed": False}
+    metrics["route_ordering"] = CANONICAL_ROUTE_ORDER
+    metrics["sequence_results"] = _sequence_metrics(clf, args.sequences)
+    metrics["sequence_aggregation"] = metrics["sequence_results"]
+    metrics["policy_deltas"] = {"source": "runtime_settings", "changed": False}
+    metrics["policy_delta"] = metrics["policy_deltas"]
     metrics["artifact_inventory"] = _artifact_inventory(classifier_mode)
     metrics["privacy"] = _privacy_summary(rows)
 

@@ -4,7 +4,7 @@ Do not use this template for raw Simple/Medium task execution unless a plan was 
 
 Use one of these exact first-line forms:
 - `✅ COMPLETE: <one-sentence outcome>` only when validation passed and the plan was archived.
-- `❌ NOT COMPLETE: <one-sentence blocker>` when validation failed, manual validation remains, archiving did not happen, or any required gate failed.
+- `❌ NOT COMPLETE: <one-sentence blocker>` when validation failed, truly required manual validation remains, archiving did not happen, or any required gate failed. Non-destructive optional confidence checks should not block completion when automated validation passed.
 - `⏸ BLOCKED: <one-sentence user decision needed>` when paused on an explicit user decision.
 
 Then include a required `## Outcome` section before the detailed bullets:
@@ -36,12 +36,12 @@ Then include:
      ```bash
      /review-it <plan-path>
      ```
-   - Validation failed, live/manual validation remains, or the same active plan should be retried after user steps:
+   - Validation failed, truly required live/manual validation remains, or the same active plan should be retried after user steps:
      ```bash
      /do-it <plan-path>
      ```
 
-Never print `/do-it <plan-path>` as the next-step command after a successful archived plan. It is a retry/resume command for failed validation, incomplete execution, blocked user/manual validation, or active unarchived plans only.
+Never print `/do-it <plan-path>` as the next-step command after a successful archived plan. It is a retry/resume command for failed validation, incomplete execution, blocked required user/manual validation, or active unarchived plans only.
 
    - No follow-up command is useful: write `None.`
 

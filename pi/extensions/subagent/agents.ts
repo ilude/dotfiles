@@ -18,6 +18,7 @@ export type AgentScope = "user" | "project" | "both";
 export type AgentIsolation = "none" | "worktree";
 export type AgentMemory = "user" | "project" | "session";
 export type AgentEffort = "low" | "medium" | "high";
+export type AgentRoleType = "orchestrator" | "lead" | "worker" | "specialist" | "tier";
 
 export interface AgentConfig {
 	name: string;
@@ -31,6 +32,7 @@ export interface AgentConfig {
 	memory?: AgentMemory;
 	effort?: AgentEffort;
 	maxTurns?: number;
+	roleType?: AgentRoleType;
 }
 
 export interface AgentDiscoveryResult {
@@ -49,6 +51,13 @@ function readDirEntries(dir: string): fs.Dirent[] {
 const VALID_ISOLATION = new Set<AgentIsolation>(["none", "worktree"]);
 const VALID_MEMORY = new Set<AgentMemory>(["user", "project", "session"]);
 const VALID_EFFORT = new Set<AgentEffort>(["low", "medium", "high"]);
+const VALID_ROLE_TYPE = new Set<AgentRoleType>([
+	"orchestrator",
+	"lead",
+	"worker",
+	"specialist",
+	"tier",
+]);
 
 function asIsolation(value: string | undefined): AgentIsolation | undefined {
 	if (!value) return undefined;
@@ -61,6 +70,12 @@ function asMemory(value: string | undefined): AgentMemory | undefined {
 function asEffort(value: string | undefined): AgentEffort | undefined {
 	if (!value) return undefined;
 	return VALID_EFFORT.has(value as AgentEffort) ? (value as AgentEffort) : undefined;
+}
+function asRoleType(value: string | undefined): AgentRoleType | undefined {
+	if (!value) return undefined;
+	return VALID_ROLE_TYPE.has(value as AgentRoleType)
+		? (value as AgentRoleType)
+		: undefined;
 }
 function asMaxTurns(value: string | number | undefined): number | undefined {
 	if (value === undefined || value === null) return undefined;
@@ -103,6 +118,8 @@ function parseAgentFile(filePath: string, source: "user" | "project"): AgentConf
 	if (effort) config.effort = effort;
 	const maxTurns = asMaxTurns(frontmatter.maxTurns);
 	if (maxTurns) config.maxTurns = maxTurns;
+	const roleType = asRoleType(frontmatter.roleType);
+	if (roleType) config.roleType = roleType;
 
 	return config;
 }

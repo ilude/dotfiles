@@ -325,7 +325,7 @@ describe("routing decision fixture (routing_decision)", () => {
       makeRoutingDecisionEvent({
         promptText,
         classifierTier: "Sonnet",
-        appliedRoute: "mid:medium",
+        appliedRoute: "core",
         ruleFired: "classifier",
         confidence: 0.81,
       }),
@@ -337,7 +337,7 @@ describe("routing decision fixture (routing_decision)", () => {
     const payload = rec.payload as Record<string, unknown>;
     expect(payload.prompt_hash).toBe(sha256Hex(promptText));
     expect(payload.prompt_excerpt).toBe(makeExcerpt(promptText));
-    expect(payload.applied_route).toBe("mid:medium");
+    expect(payload.applied_route).toBe("core");
     expect(payload.confidence).toBe(0.81);
     expect(payload.rule_fired).toBe("classifier");
     expect(payload.raw_classifier_output).toBeDefined();

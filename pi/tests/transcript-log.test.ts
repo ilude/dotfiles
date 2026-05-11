@@ -630,7 +630,7 @@ describe("routing decision schema and purge command", () => {
 			prompt_hash: sha256Hex(promptText),
 			prompt_excerpt: makeExcerpt(promptText),
 			raw_classifier_output: { primary: { model_tier: "Sonnet", effort: "medium" }, confidence: 0.81 },
-			applied_route: "mid:medium",
+			applied_route: "core",
 			selected_model_size: "medium",
 			actual_model: { provider: "anthropic", id: "claude-sonnet-4-5", name: "Sonnet" },
 			model_switch_applied: true,
@@ -652,7 +652,7 @@ describe("routing decision schema and purge command", () => {
 		const payload = records[0].payload as Record<string, unknown>;
 		expect(payload.prompt_hash).toBe(decision.prompt_hash);
 		expect(payload.prompt_excerpt).toBe(decision.prompt_excerpt);
-		expect(payload.applied_route).toBe("mid:medium");
+		expect(payload.applied_route).toBe("core");
 		expect(payload.selected_model_size).toBe("medium");
 		expect(payload.actual_model).toEqual({ provider: "anthropic", id: "claude-sonnet-4-5", name: "Sonnet" });
 		expect(payload.model_switch_applied).toBe(true);

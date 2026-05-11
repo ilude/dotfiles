@@ -22,11 +22,16 @@ export const TASK_STATES = [
 	"completed",
 	"failed",
 	"cancelled",
+	"skipped",
 ] as const;
 
 export type TaskState = (typeof TASK_STATES)[number];
 
-export const TERMINAL_TASK_STATES: ReadonlySet<TaskState> = new Set(["completed", "cancelled"]);
+export const TERMINAL_TASK_STATES: ReadonlySet<TaskState> = new Set([
+	"completed",
+	"cancelled",
+	"skipped",
+]);
 
 /**
  * Allowed state transitions. Source state -> set of valid target states.
@@ -37,13 +42,26 @@ export const TERMINAL_TASK_STATES: ReadonlySet<TaskState> = new Set(["completed"
  * - failed -> running (retry only; preserves retryCount + prior errorReason)
  * - completed and cancelled are terminal.
  */
-export const ALLOWED_TRANSITIONS: ReadonlyMap<TaskState, ReadonlySet<TaskState>> = new Map([
-	["pending", new Set<TaskState>(["running", "cancelled", "failed"])],
-	["running", new Set<TaskState>(["blocked", "completed", "failed", "cancelled"])],
-	["blocked", new Set<TaskState>(["running", "failed", "cancelled"])],
-	["failed", new Set<TaskState>(["running"])],
+export const ALLOWED_TRANSITIONS: ReadonlyMap<
+	TaskState,
+	ReadonlySet<TaskState>
+> = new Map([
+	[
+		"pending",
+		new Set<TaskState>(["running", "cancelled", "failed", "skipped"]),
+	],
+	[
+		"running",
+		new Set<TaskState>(["blocked", "completed", "failed", "cancelled"]),
+	],
+	[
+		"blocked",
+		new Set<TaskState>(["running", "failed", "cancelled", "skipped"]),
+	],
+	["failed", new Set<TaskState>(["running", "skipped"])],
 	["completed", new Set<TaskState>()],
 	["cancelled", new Set<TaskState>()],
+	["skipped", new Set<TaskState>()],
 ]);
 
 /**
@@ -85,7 +103,10 @@ export function ensureDirectory(dirPath: string): void {
  * True iff `target` is a permitted transition from `source`. Same-state
  * "transitions" return false; updateTask is the path for in-place changes.
  */
-export function isAllowedTransition(source: TaskState, target: TaskState): boolean {
+export function isAllowedTransition(
+	source: TaskState,
+	target: TaskState,
+): boolean {
 	const allowed = ALLOWED_TRANSITIONS.get(source);
 	return allowed ? allowed.has(target) : false;
 }

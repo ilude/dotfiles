@@ -307,10 +307,10 @@ describe("T3 -- provider, router, message hooks (criterion 1)", () => {
 		expect(routing.length).toBe(1);
 		const payload = routing[0].payload as Record<string, unknown>;
 		expect(payload.prompt_hash).toBe(sha256Hex(promptText));
-		expect(payload.applied_route).toBe("mid:medium");
+		expect(payload.applied_route).toBe("core");
 		expect(payload.confidence).toBe(0.81);
 		expect(payload.rule_fired).toBe("classifier");
-		expect(payload.raw_classifier_output).toBeDefined();
+		expect(payload.candidates).toBeDefined();
 	});
 
 	it("emits model_select with previous + current model identity", async () => {

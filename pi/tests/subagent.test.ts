@@ -158,6 +158,35 @@ You are a test agent.
     expect(spawnArgs).toContain("anthropic/claude-sonnet-4-6");
   }, 15000);
 
+  it("dispatches an explicit team request through the registered subagent tool", async () => {
+    mockSuccessfulSpawn();
+    const { tool } = await loadTool();
+
+    const ctx = createMockCtx({
+      cwd: tmpDir,
+      model: { provider: "anthropic", id: "claude-sonnet-4-6" },
+    });
+
+    const result = await tool.execute(
+      "call-team",
+      {
+        team: "engineering",
+        task: "Coordinate a safe backend change",
+        confirmProjectAgents: false,
+      },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    expect(result.isError).not.toBe(true);
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    const spawnArgs = spawnMock.mock.calls[0][1] as string[];
+    expect(spawnArgs.join(" ")).toContain("engineering-lead");
+    expect(spawnArgs.join(" ")).toContain("Coordinate a safe backend change");
+    expect(spawnArgs.join(" ")).not.toContain("/team");
+  }, 15000);
+
   it("registers the subagent run as a TaskRecordV1 with completed lifecycle", async () => {
     mockSuccessfulSpawn();
     const { tool } = await loadTool();

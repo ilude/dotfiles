@@ -25,6 +25,14 @@ import { recordEvent } from "../../lib/metrics.js";
 import { TimingSpan } from "../../lib/observability.js";
 import { resolveDynamicModelFromRegistry, type ModelPolicy, type ModelSize } from "../../lib/model-routing.js";
 import { createTask, transitionTask, updateTask } from "../../lib/task-registry.js";
+import {
+	buildDispatchMessage,
+	formatTeamList,
+	getAgentDir,
+	loadTeamsConfig,
+	resolveAgentPath,
+	resolveTeam,
+} from "../agent-team.js";
 import { formatTraceparent, getTraceId, newSpanId, newTraceId } from "../transcript-runtime.js";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.js";
 
@@ -739,7 +747,8 @@ const ModelPolicySchema = Type.Union([Type.Literal("same-provider"), Type.Litera
 
 const SubagentParams = Type.Object({
 	agent: Type.Optional(Type.String({ description: "Name of the agent to invoke (for single mode)" })),
-	task: Type.Optional(Type.String({ description: "Task to delegate (for single mode)" })),
+	team: Type.Optional(Type.String({ description: "Team key or lead name from pi/agents/teams.yaml (team-dispatch mode)" })),
+	task: Type.Optional(Type.String({ description: "Task to delegate (for single or team-dispatch mode)" })),
 	tasks: Type.Optional(Type.Array(TaskItem, { description: "Array of {agent, task} for parallel execution" })),
 	chain: Type.Optional(Type.Array(ChainItem, { description: "Array of {agent, task} for sequential execution" })),
 	agentScope: Type.Optional(AgentScopeSchema),
@@ -777,7 +786,9 @@ export default function (pi: ExtensionAPI) {
 			const hasChain = (params.chain?.length ?? 0) > 0;
 			const hasTasks = (params.tasks?.length ?? 0) > 0;
 			const hasSingle = Boolean(params.agent && params.task);
-			const modeCount = Number(hasChain) + Number(hasTasks) + Number(hasSingle);
+			const hasTeam = Boolean(params.team && params.task);
+			const modeCount =
+				Number(hasChain) + Number(hasTasks) + Number(hasSingle) + Number(hasTeam);
 
 			const makeDetails =
 				(mode: "single" | "parallel" | "chain") =>
@@ -798,6 +809,41 @@ export default function (pi: ExtensionAPI) {
 						},
 					],
 					details: makeDetails("single")([]),
+				};
+			}
+
+			if (hasTeam) {
+				const teams = loadTeamsConfig();
+				if (!teams) {
+					return {
+						content: [{ type: "text", text: "Could not load teams config for subagent team dispatch." }],
+						details: makeDetails("single")([]),
+					};
+				}
+				const resolved = resolveTeam(teams, String(params.team));
+				if (!resolved) {
+					return {
+						content: [
+							{
+								type: "text",
+								text: `Team or lead "${String(params.team)}" not found.\n\n${formatTeamList(teams)}`,
+							},
+						],
+						details: makeDetails("single")([]),
+					};
+				}
+				const [, teamEntry] = resolved;
+				const agentFilePath = resolveAgentPath(teamEntry.file, getAgentDir());
+				if (!fs.existsSync(agentFilePath)) {
+					return {
+						content: [{ type: "text", text: `Agent file not found: ${agentFilePath}` }],
+						details: makeDetails("single")([]),
+					};
+				}
+				params = {
+					...params,
+					agent: teamEntry.name,
+					task: buildDispatchMessage(teamEntry, agentFilePath, String(params.task)),
 				};
 			}
 

@@ -119,7 +119,7 @@ For live smoke tests, restart Pi so extension modules reload, then use a disposa
 
 This repository keeps curated Pi source/config trackable and leaves generated runtime
 state local. Commit changes to maintained config such as `pi/agents/`,
-`pi/multi-team/agents/`, `pi/multi-team/skills/`, `pi/skills/`, `pi/extensions/`,
+`pi/multi-team/skills/`, `pi/skills/`, `pi/extensions/`,
 `pi/lib/`, `pi/tests/`, `pi/settings.json`, prompt-router source/docs/data/models that
 are intentionally versioned, and lockfiles such as `pi/prompt-routing/uv.lock`.
 
@@ -163,8 +163,8 @@ just          # default -- Pi with all auto-discovered extensions
 just solo     # bare Pi, no extensions
 just safe     # damage-control only (safety rules)
 just chain    # damage-control + plan-build-review pipeline
-just team     # damage-control + team dispatcher
-just full     # all extensions (damage-control + chain + team + quality-gates + session-hooks)
+just team     # legacy recipe; use subagent team dispatch for new workflows
+just full     # all extensions (damage-control + chain + subagent + quality-gates + session-hooks)
 just guard    # full stack + conventional commit enforcement
 ```
 
@@ -222,13 +222,13 @@ With `query`, output keeps the normal snapshot first, then adds `Focused retriev
 
 ### `agent-team.ts`
 
-Dispatcher pattern routing work to specialist team leads.
+Shared team-config helpers for subagent team dispatch. `/team` is no longer an active slash command; use the `subagent` tool instead:
 
-**Slash commands:**
+```json
+{ "team": "engineering", "task": "Add rate limiting to the API" }
 ```
-/team list                    # show available agents and teams
-/team <lead|agent> <task>     # dispatch a task to a specific agent
-```
+
+Agent config recovery: active agent personas live in `pi/agents/`. If a bad role/tool config prevents normal coordination, start Pi with `pi --no-extensions`, edit the affected file under `pi/agents/`, then run `cd pi/tests && pnpm test agent-role-semantics.test.ts` before restarting Pi normally.
 
 ### `quality-gates.ts`
 
@@ -340,7 +340,7 @@ record subagent runs or permission decisions.
 Storage location: `~/.pi/agent/operator/{tasks,permissions}/`. Override
 with `PI_OPERATOR_DIR` (used by tests).
 
-Producer wiring: `subagent`, `agent-team`, and `damage-control` write to the
+Producer wiring: `subagent` and `damage-control` write to the
 registries automatically; producers are wrapped in defensive try/catch so
 registry I/O failure (disk full, permission error, etc.) never breaks the
 producer flow.
@@ -398,26 +398,19 @@ retry` or interactive confirm), `session` (session-scoped trust),
 
 ### `prompt-router.ts`
 
-Classifies every user prompt and switches **both model tier and thinking
-effort** per turn. The live classifier is ConfGate (LightGBM primary, T2
-LinearSVC consulted as a low-confidence fallback), trained on the v3
-route-level corpus under `~/.dotfiles/pi/prompt-routing/`.
+Classifies every user prompt and switches **both canonical route and thinking
+effort** for the same generation turn. The router uses canonical route sizes
+`nano`, `mini`, `core`, `large`, and `max`; legacy classifier labels are adapted
+at the TypeScript boundary and are not primary operator vocabulary.
 
-Routing is **dynamic**: predicted model tier (`Haiku` / `Sonnet` / `Opus`)
-maps onto the current provider/model ladder using same-family resolution, and
-the predicted effort (`none` / `low` / `medium` / `high`) is applied via
-`pi.setThinkingLevel()`.
+Routing is **dynamic**: the raw classifier route is resolved through the current
+provider/profile contract, then policy applies context-continuation holds,
+explicit overrides, provider trust boundaries, route-state fallbacks, and effort
+caps before Pi sends the provider request.
 
-| Tier | Target rung | When |
-|------|-------------|------|
-| Haiku | small model | Factual lookups, syntax questions, single-step tasks |
-| Sonnet | medium model | Multi-step tasks, code with context, moderate analysis |
-| Opus | large model | Architecture decisions, security, distributed systems |
-
-Examples:
-- OpenAI Codex session → `gpt-5.4-mini` / `gpt-5.4-fast` / `gpt-5.4`
-- Anthropic session → `haiku` / `sonnet` / `opus`
-- GitHub Copilot session → best available GitHub-backed small / medium / large rung in the current family or nearest same-provider equivalent
+See `pi/prompt-routing/docs/operator-handoff.md` for `/router-status`,
+`/router-explain`, required operator examples, telemetry privacy/purge, and eval
+commands.
 
 #### Runtime policy (ship config)
 
@@ -438,32 +431,22 @@ The session-wide never-downgrade rule was retired. Policy lives in
 **Footer indicator:** `▸ <small model>` / `▸▸ <medium model>` / `▸▸▸ <large model>` after each routed prompt.
 
 **Slash commands:**
-```
-/router-status    # current tier, effort, policy snapshot, resolved model ladder
+```text
+/router-status    # current route, classifier mode, overrides, route states
 /router-explain   # full decision trail for the last turn
-/router-reset     # clear session state
+/router-reset     # clear session router state
 /router-off       # disable routing (keep current model)
 /router-on        # re-enable routing
 ```
 
-`/router-explain` output format:
+`/router-explain` shows the actual classifier mode, canonical raw/applied
+routes, confidence/candidates, policy rule fired, context capsule flags,
+provider/model/effort resolution, route state, fallback reason when present, and
+a one-line operator summary.
 
-```
-Last turn decision:
-  Prompt: "<first ~80 chars>..."
-  Classifier: confgate
-    schema_version: 3.0.0
-    primary: {model: Sonnet, effort: medium}
-    confidence: 0.82
-    ensemble_rule: lgb-confident
-    candidates: [Haiku/low@0.1, Sonnet/medium@0.82]
-  Applied route: Sonnet/medium
-  Rule fired: classifier
-  Current state: model=openai-codex/gpt-5.4-fast, effort=medium, cap=high
-```
-
-`Rule fired` is one of: `classifier`, `hysteresis-hold`, `cooldown`,
-`uncertainty-fallback`, `effort-cap`, `null-fallback`.
+Common `Rule fired` values include `classifier`, `context-continuation-hold`,
+`explicit-route-override`, `manual-model-selection`, `safety-floor`,
+`effort-cap`, and `null-fallback`.
 
 **Where the classifier lives.** `~/.dotfiles/pi/prompt-routing/` -- see the
 README/AGENTS.md there for the training pipeline. `classify.py` is the CLI
@@ -474,14 +457,17 @@ Artifacts: `models/router_v3.joblib` (T2) and `models/router_v3_lgbm.joblib`
 
 **Troubleshooting:**
 
-- Routing decisions are logged to
-  `~/.dotfiles/pi/prompt-routing/logs/routing_log.jsonl` (classifier-side
-  audit log when Python logging is enabled).
-- If `/router-explain` shows `Rule fired: null-fallback`, the classifier
-  failed or returned garbage; the router kept the previous route. Reproduce
-  with `uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/classify.py --classifier t2 "test prompt"`.
-- If `effort-cap` fires often, raise `router.effort.maxLevel`. If `cooldown`
-  is stuck, call `/router-reset`.
+- Routing decisions are logged with prompt hashes by default, not raw prompt
+  text. See `pi/prompt-routing/analytics.md` for the privacy, purge, and
+  rotation contract.
+- If `/router-explain` shows `Rule fired: null-fallback`, the classifier failed
+  or returned garbage; the router kept the previous safe route. Reproduce with
+  `uv run --project ~/.dotfiles/pi/prompt-routing python ~/.dotfiles/pi/prompt-routing/classify.py --classifier t2 "test prompt"`.
+- If `context-continuation-hold` fires unexpectedly, check whether the prompt
+  looked like a dependent follow-up. Add explicit cheap/fast/brief wording to
+  request a downgrade.
+- If `effort-cap` fires often, raise `router.effort.maxLevel` or call
+  `/router-reset` to clear session state.
 
 ---
 
@@ -907,9 +893,10 @@ just chain
 
 ### Multi-agent team task
 
-```bash
-just full
-/team engineering-lead Add rate limiting to the API
+Use the `subagent` tool with a team key or lead name from `pi/agents/teams.yaml`:
+
+```json
+{ "team": "engineering", "task": "Add rate limiting to the API" }
 ```
 
 ### Inspect expertise (what agents know)

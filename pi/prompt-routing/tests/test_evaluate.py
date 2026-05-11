@@ -187,14 +187,14 @@ class TestComputeMetrics:
 
     def test_catastrophic_counted_correctly(self):
         rows = [
-            self._make_row("Sonnet", "medium"),  # catastrophic if pred=Haiku|low
+            self._make_row("Sonnet", "medium"),  # one-route under-routing
             self._make_row("Opus", "high"),       # catastrophic if pred=Haiku|medium
             self._make_row("Haiku", "low"),       # NOT catastrophic
         ]
         preds = ["Haiku|low", "Haiku|medium", "Haiku|none"]
         clf = self._stub_clf(preds)
         m = evaluate._compute_metrics(clf, rows, self._empty_timing())
-        assert m["catastrophic_under_routing"] == 2
+        assert m["catastrophic_under_routing"] == 1
 
     def test_over_routing_counted_correctly(self):
         rows = [
@@ -225,6 +225,42 @@ class TestComputeMetrics:
         assert m["per_tier_recall"]["Haiku"] == pytest.approx(0.5, abs=0.001)
         assert m["per_tier_recall"]["Sonnet"] == pytest.approx(1.0, abs=0.001)
         assert m["per_tier_recall"]["Opus"] == pytest.approx(1.0, abs=0.001)
+
+
+class TestSequenceMetrics:
+    def _stub_clf(self, prediction: str = "Haiku|low"):
+        class _Stub:
+            def predict_texts(self, prompts):
+                return [prediction for _ in prompts]
+
+        return _Stub()
+
+    def test_continuation_hold_uses_previous_effective_route(self, tmp_path):
+        sequence_file = tmp_path / "sequences.jsonl"
+        sequence_file.write_text(
+            '{"sequence_id":"s","turn":1,"prompt":"continue prior work",'
+            '"previous_effective_route":"large","continuation":true,'
+            '"expected_min_route":"large"}\n',
+            encoding="utf-8",
+        )
+        metrics = evaluate._sequence_metrics(self._stub_clf(), sequence_file)
+        assert metrics["policy_deltas"] == 1
+        assert metrics["violations"] == []
+        assert metrics["cases"][0]["applied_route"] == "large"
+        assert metrics["cases"][0]["rule_fired"] == "context-continuation-hold"
+
+    def test_cheap_brief_negative_bypasses_hold(self, tmp_path):
+        sequence_file = tmp_path / "sequences.jsonl"
+        sequence_file.write_text(
+            '{"sequence_id":"s","turn":1,"prompt":"Brief cheap summary",'
+            '"previous_effective_route":"large","continuation":true,'
+            '"downgrade_intent":true,"expected_route":"mini"}\n',
+            encoding="utf-8",
+        )
+        metrics = evaluate._sequence_metrics(self._stub_clf(), sequence_file)
+        assert metrics["policy_deltas"] == 0
+        assert metrics["violations"] == []
+        assert metrics["cases"][0]["applied_route"] == "mini"
 
 
 class TestEvaluateEntrypoint:

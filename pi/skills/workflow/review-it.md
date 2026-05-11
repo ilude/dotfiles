@@ -6,8 +6,9 @@ You are an adversarial plan review coordinator. Your job is to stress-test a pla
 2. Always launch independent reviewers first: 3 standard reviewers plus at least 3 domain-specific worker reviewers.
 3. Use worker/domain agents for ordinary review, not lead/coordinator agents.
 4. Findings must be actionable, evidence-based, and tied to required fixes.
-5. Check whether the plan is automation-ready for `/do-it`: commands/wrappers, credential flow, evidence, and archive gates must be clear.
-6. Preserve reviewer outputs as file-backed artifacts in the review directory; do not rely on truncated subagent previews as the source of truth.
+5. Check whether the plan is automation-ready for `/do-it`: commands/wrappers, credential flow, risk/manual-gate decision, evidence, and archive gates must be clear.
+6. If the review cannot tell whether a manual gate is warranted, ask the user during `/review-it` and fix the plan then; do not leave ambiguity for `/do-it` to spring at the end.
+7. Preserve reviewer outputs as file-backed artifacts in the review directory; do not rely on truncated subagent previews as the source of truth.
 7. Prefer the constrained `review_artifact_write` tool for reviewer artifacts when available; do not silently route reviewer personas through proxy agents just to gain general write access.
 8. Write the synthesis to the plan's review directory before responding.
 9. By default, apply all reviewer bug fixes and hardening to the plan without asking; use `ask` / `--ask` only when the user wants interactive apply choices.
@@ -48,8 +49,12 @@ Do **not** just summarize the plan. This command exists to find flaws, blind spo
 Every review must explicitly evaluate whether `/do-it` can execute the plan without hidden manual assumptions:
 
 - agent-runnable operational steps have commands, scripts, playbooks, or wrappers
-- credentialed steps define a safe local/gitignored or user-approved auth flow
-- manual-only steps are justified with exact user actions and expected success signals
+- credentialed steps define a safe local/gitignored or user-approved auth flow; credential use alone is not a manual-gate reason
+- `## Risk & Manual Gate Decision` exists or equivalent risk information is present: risk level, blast radius, rollback, manual approval before action, manual validation after action, and decision reason
+- manual-only steps are exceptional and justified by catastrophic-risk potential (destructive/data-loss/irreversible/shared-work-production/paid-resource-or-data-cost/secret-exposure/hardware/subjective), not ordinary confidence-building
+- personal/local GitHub repos are treated as localized-to-user and usually agent-runnable when changes are reversible and validated; work/shared systems and money/data-costing resources are reviewed conservatively
+- if manual-gate need is uncertain, `/review-it` asks the user during review and updates the plan with the answer before returning
+- every truly required manual gate includes exact user actions, commands/service actions, files/logs to inspect, expected success signals, and failure/rollback guidance
 - evidence artifacts are named and contain non-secret pass/fail signals
 - archive conditions are explicit enough for `/do-it` to decide completion
 - `## Execution Checklist` exists and can be used as `/do-it`'s durable resume ledger
@@ -352,7 +357,7 @@ Improvements that are not strictly required for basic success but materially imp
 What the outside-the-box reviewer identified as overbuilt, replaceable, or unnecessarily complex.
 
 ## Automation Readiness
-Whether `/do-it` can execute the plan without hidden manual assumptions: commands/wrappers, credential flow, evidence artifacts, archive gates, and a consistent `## Execution Checklist` resume ledger.
+Whether `/do-it` can execute the plan without hidden manual assumptions: commands/wrappers, credential flow, risk/manual-gate decision, exact manual-gate steps if truly required, evidence artifacts, archive gates, and a consistent `## Execution Checklist` resume ledger. If manual-gate need was unclear, record the user question asked during review and the plan update made from the answer.
 
 ## Contested or Dismissed Findings
 Include findings that were rejected, downgraded, or disputed after rebuttal/discussion or high-severity verification, with a short reason.
@@ -434,6 +439,7 @@ Unless the args included `ask` or `--ask`, do not ask which findings to apply. A
 3. all Automation Readiness fixes
 4. any necessary plan-clarity updates implied by verified reviewer findings
 5. any `## Execution Checklist` maintenance needed to keep one unchecked-or-checked item per executable task/gate/final gate
+6. any risk/manual-gate clarification needed so `/do-it` will not discover or invent a manual gate at the end; if risk is uncertain, ask the user before finalizing review fixes
 
 Do not apply code or implementation changes during `/review-it`; this command only updates the plan. Checklist edits must preserve execution truth: `/review-it` may add unchecked work or invalidate stale checked work, but it must never mark executable work complete.
 
@@ -486,7 +492,7 @@ After the known-blocker quick-fix pass and Section Integrity Check, launch one f
 
 The final reviewer must act as a standalone-readiness verifier with this exact goal:
 
-> Pretend you are starting a brand-new Pi session with no prior conversation. Is this plan sufficient to execute safely and completely with `/do-it <plan-path>`? Verify that the updated plan includes all necessary context, commands/wrappers, assumptions, evidence gates, validation gates, credential/manual-operation guidance, archive criteria, and a consistent `## Execution Checklist` with one item per executable task/gate/final gate. Classify each issue as `blocker`, `hardening`, or `nit`. Return `STANDALONE READY` if there are no blockers. If there are blockers, return only concrete blocker items with required fixes. Do not block on hardening or nits; list them only if no blockers exist, under `NON-BLOCKING`.
+> Pretend you are starting a brand-new Pi session with no prior conversation. Is this plan sufficient to execute safely and completely with `/do-it <plan-path>`? Verify that the updated plan includes all necessary context, commands/wrappers, assumptions, evidence gates, validation gates, risk/manual-gate decision, credential flow, archive criteria, and a consistent `## Execution Checklist` with one item per executable task/gate/final gate. If a manual gate is required, verify the exact user steps, commands/service actions, files/logs to inspect, expected success signals, and failure/rollback guidance are present. If manual-gate need is unclear, classify it as a blocker requiring `/review-it` to ask the user now rather than leaving it for `/do-it`. Classify each issue as `blocker`, `hardening`, or `nit`. Return `STANDALONE READY` if there are no blockers. If there are blockers, return only concrete blocker items with required fixes. Do not block on hardening or nits; list them only if no blockers exist, under `NON-BLOCKING`.
 
 If the final reviewer returns blocker items, update only the plan file again to make it standalone-runnable. Do not rerun the full review panel unless the user explicitly asks.
 
