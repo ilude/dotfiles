@@ -1,17 +1,3 @@
-/**
- * Task registry -- canonical durable task store for the operator layer.
- *
- * Owned by .specs/pi-operator-layer-mvp/plan.md (T1). This is the single
- * source of truth for TaskRecordV1; other plans (notably platform-alignment
- * Phase 4 T11/T12) consume this registry and must NOT define a parallel
- * task-tracker. See "Related Plans" in operator-layer-mvp plan.md.
- *
- * Storage: one JSON file per task at <operator-state-dir>/tasks/<id>.json.
- * Reads enumerate the directory; this stays cheap until the registry grows
- * past a few thousand records, at which point a manifest index can be added
- * without changing the public API.
- */
-
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -20,22 +6,23 @@ import {
 	ALLOWED_TRANSITIONS,
 	ensureDirectory,
 	getTasksDir,
-	type TaskState,
 	isAllowedTransition,
+	type TaskState,
+	TERMINAL_TASK_STATES,
 } from "./operator-state.ts";
+import { sanitizeTaskValue } from "./task-security.ts";
 
 export type { TaskState } from "./operator-state.ts";
 
-/**
- * Origin classifier. Distinguishes durable producer types so /tasks can
- * filter trivial inline work out of the urgency-grouped view.
- */
 export type TaskOrigin = "subagent" | "team" | "shell" | "other";
+export type TaskPersistenceOutcome =
+	| "persisted"
+	| "rejected"
+	| "conflict"
+	| "deferred"
+	| "write_failed"
+	| "not_found";
 
-/**
- * Token usage snapshot at task end. All counters are optional because not
- * every producer reports them.
- */
 export interface TaskUsage {
 	inputTokens?: number;
 	outputTokens?: number;
@@ -44,12 +31,8 @@ export interface TaskUsage {
 	cacheReadInputTokens?: number;
 }
 
-/**
- * TaskRecordV1 -- canonical task schema. The schemaVersion field is reserved
- * for future migrations; consumers should treat unknown fields as opaque and
- * preserve them on round-trip writes.
- */
 export interface TaskRecordV1 {
+	[key: string]: unknown;
 	schemaVersion: 1;
 	id: string;
 	origin: TaskOrigin;
@@ -67,8 +50,12 @@ export interface TaskRecordV1 {
 	repoSlug?: string;
 	blockReason?: string;
 	errorReason?: string;
+	skipReason?: string;
 	usage?: TaskUsage;
 	metadata?: Record<string, unknown>;
+	blockedBy?: string[];
+	blocks?: string[];
+	deletedAt?: string;
 }
 
 export interface CreateTaskInput {
@@ -81,6 +68,8 @@ export interface CreateTaskInput {
 	preview?: string;
 	repoSlug?: string;
 	metadata?: Record<string, unknown>;
+	blockedBy?: string[];
+	blocks?: string[];
 }
 
 export interface UpdateTaskPatch {
@@ -89,11 +78,14 @@ export interface UpdateTaskPatch {
 	usage?: TaskUsage;
 	metadata?: Record<string, unknown>;
 	agentName?: string;
+	blockedBy?: string[];
+	blocks?: string[];
 }
 
 export interface TransitionOptions {
 	blockReason?: string;
 	errorReason?: string;
+	skipReason?: string;
 	usage?: TaskUsage;
 }
 
@@ -102,6 +94,13 @@ export interface ListTasksOptions {
 	origins?: readonly TaskOrigin[];
 	repoSlug?: string;
 	limit?: number;
+	includeTombstones?: boolean;
+}
+
+export interface TaskOperationResult<T = TaskRecordV1> {
+	outcome: TaskPersistenceOutcome;
+	record?: T;
+	error?: string;
 }
 
 export class TaskRegistryError extends Error {
@@ -111,25 +110,68 @@ export class TaskRegistryError extends Error {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// File IO
-// ---------------------------------------------------------------------------
-
 function taskFilePath(id: string): string {
 	if (!isValidId(id)) throw new TaskRegistryError(`invalid task id: ${id}`);
 	return path.join(getTasksDir(), `${id}.json`);
 }
 
 function isValidId(id: string): boolean {
-	return typeof id === "string" && /^[A-Za-z0-9_-]+$/.test(id) && id.length > 0 && id.length <= 64;
+	return (
+		typeof id === "string" &&
+		/^[A-Za-z0-9_-]+$/.test(id) &&
+		id.length > 0 &&
+		id.length <= 64
+	);
+}
+
+function normalizeTaskRecord(
+	parsed: Record<string, unknown>,
+): TaskRecordV1 | null {
+	if (typeof parsed.id !== "string" || !isValidId(parsed.id)) return null;
+	const now = new Date().toISOString();
+	const state =
+		typeof parsed.state === "string" &&
+		ALLOWED_TRANSITIONS.has(parsed.state as TaskState)
+			? (parsed.state as TaskState)
+			: "pending";
+	return sanitizeTaskValue({
+		...parsed,
+		schemaVersion: 1,
+		id: parsed.id,
+		origin: isTaskOrigin(parsed.origin) ? parsed.origin : "other",
+		state,
+		summary:
+			typeof parsed.summary === "string" ? parsed.summary : "untitled task",
+		createdAt: typeof parsed.createdAt === "string" ? parsed.createdAt : now,
+		updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : now,
+		retryCount: typeof parsed.retryCount === "number" ? parsed.retryCount : 0,
+		blockedBy: normalizeIdList(parsed.blockedBy),
+		blocks: normalizeIdList(parsed.blocks),
+	}) as TaskRecordV1;
+}
+
+function isTaskOrigin(value: unknown): value is TaskOrigin {
+	return (
+		value === "subagent" ||
+		value === "team" ||
+		value === "shell" ||
+		value === "other"
+	);
+}
+
+function normalizeIdList(value: unknown): string[] {
+	return Array.isArray(value)
+		? [...new Set(value.filter((id): id is string => isValidId(id)))]
+		: [];
 }
 
 function readTaskFile(file: string): TaskRecordV1 | null {
 	try {
 		const raw = fs.readFileSync(file, "utf-8");
-		const parsed = JSON.parse(raw) as TaskRecordV1;
-		if (parsed && parsed.schemaVersion === 1 && typeof parsed.id === "string") return parsed;
-		return null;
+		const parsed = JSON.parse(raw) as unknown;
+		return parsed && typeof parsed === "object"
+			? normalizeTaskRecord(parsed as Record<string, unknown>)
+			: null;
 	} catch {
 		return null;
 	}
@@ -137,24 +179,42 @@ function readTaskFile(file: string): TaskRecordV1 | null {
 
 function writeTaskFile(record: TaskRecordV1): void {
 	ensureDirectory(getTasksDir());
-	const target = taskFilePath(record.id);
-	const tmp = `${target}.${process.pid}.tmp`;
-	fs.writeFileSync(tmp, `${JSON.stringify(record, null, 2)}\n`, "utf-8");
+	const sanitized = sanitizeTaskValue(record);
+	const target = taskFilePath(sanitized.id);
+	const tmp = `${target}.${process.pid}.${crypto.randomUUID()}.tmp`;
+	fs.writeFileSync(tmp, `${JSON.stringify(sanitized, null, 2)}\n`, "utf-8");
 	fs.renameSync(tmp, target);
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
+function assertNoCycle(id: string, blockedBy: string[]): void {
+	for (const blocker of blockedBy) {
+		if (blocker === id)
+			throw new TaskRegistryError("dependency cycle rejected");
+		const record = getTask(blocker);
+		if (record?.blockedBy?.includes(id))
+			throw new TaskRegistryError("dependency cycle rejected");
+	}
+}
 
-/**
- * Create and persist a new task record. The returned record reflects exactly
- * what was written to disk (after default-fill).
- */
+function maintainReverseEdges(record: TaskRecordV1): void {
+	for (const blockerId of record.blockedBy ?? []) {
+		const blocker = getTask(blockerId);
+		if (!blocker) continue;
+		const blocks = new Set(blocker.blocks ?? []);
+		blocks.add(record.id);
+		writeTaskFile({
+			...blocker,
+			blocks: [...blocks],
+			updatedAt: new Date().toISOString(),
+		});
+	}
+}
+
 export function createTask(input: CreateTaskInput): TaskRecordV1 {
 	const now = new Date().toISOString();
 	const initialState: TaskState = input.state ?? "pending";
-	const record: TaskRecordV1 = {
+	const blockedBy = normalizeIdList(input.blockedBy);
+	const record: TaskRecordV1 = sanitizeTaskValue({
 		schemaVersion: 1,
 		id: crypto.randomUUID(),
 		origin: input.origin,
@@ -169,37 +229,42 @@ export function createTask(input: CreateTaskInput): TaskRecordV1 {
 		preview: input.preview,
 		repoSlug: input.repoSlug,
 		metadata: input.metadata,
-	};
+		blockedBy,
+		blocks: normalizeIdList(input.blocks),
+	});
 	if (initialState === "running") record.startedAt = now;
+	assertNoCycle(record.id, blockedBy);
 	writeTaskFile(record);
+	maintainReverseEdges(record);
 	return record;
 }
 
-/**
- * Patch fields on an existing record without changing state. Use
- * transitionTask for state changes so the lifecycle invariants hold.
- */
 export function updateTask(id: string, patch: UpdateTaskPatch): TaskRecordV1 {
 	const existing = getTask(id);
 	if (!existing) throw new TaskRegistryError(`task not found: ${id}`);
-	const updated: TaskRecordV1 = {
+	const nextBlockedBy =
+		patch.blockedBy !== undefined
+			? normalizeIdList(patch.blockedBy)
+			: existing.blockedBy;
+	assertNoCycle(id, nextBlockedBy ?? []);
+	const updated: TaskRecordV1 = sanitizeTaskValue({
 		...existing,
 		...(patch.summary !== undefined ? { summary: patch.summary } : {}),
 		...(patch.preview !== undefined ? { preview: patch.preview } : {}),
 		...(patch.usage !== undefined ? { usage: patch.usage } : {}),
 		...(patch.metadata !== undefined ? { metadata: patch.metadata } : {}),
 		...(patch.agentName !== undefined ? { agentName: patch.agentName } : {}),
+		...(patch.blockedBy !== undefined ? { blockedBy: nextBlockedBy } : {}),
+		...(patch.blocks !== undefined
+			? { blocks: normalizeIdList(patch.blocks) }
+			: {}),
 		updatedAt: new Date().toISOString(),
-	};
+	});
 	writeTaskFile(updated);
+	maintainReverseEdges(updated);
 	return updated;
 }
 
-/**
- * Move a task to `target`. Throws TaskRegistryError if the transition is not
- * permitted. Failed -> running increments retryCount and clears errorReason
- * so a retried run does not appear pre-failed.
- */
 export function transitionTask(
 	id: string,
 	target: TaskState,
@@ -208,20 +273,25 @@ export function transitionTask(
 	const existing = getTask(id);
 	if (!existing) throw new TaskRegistryError(`task not found: ${id}`);
 	if (existing.state === target) {
+		if (target === "skipped") return existing;
 		throw new TaskRegistryError(
 			`task ${id} already in state ${target}; use updateTask for in-place changes`,
 		);
 	}
 	if (!isAllowedTransition(existing.state, target)) {
-		const allowed = [...(ALLOWED_TRANSITIONS.get(existing.state) ?? [])].join(", ") || "(none)";
+		const allowed =
+			[...(ALLOWED_TRANSITIONS.get(existing.state) ?? [])].join(", ") ||
+			"(none)";
 		throw new TaskRegistryError(
 			`invalid transition for ${id}: ${existing.state} -> ${target} (allowed: ${allowed})`,
 		);
 	}
-
 	const now = new Date().toISOString();
-	const next: TaskRecordV1 = { ...existing, state: target, updatedAt: now };
-
+	const next: TaskRecordV1 = sanitizeTaskValue({
+		...existing,
+		state: target,
+		updatedAt: now,
+	});
 	if (target === "running") {
 		if (existing.state === "failed") {
 			next.retryCount = existing.retryCount + 1;
@@ -230,20 +300,35 @@ export function transitionTask(
 		if (!existing.startedAt) next.startedAt = now;
 		delete next.blockReason;
 	}
-	if (target === "blocked") {
+	if (target === "blocked")
 		next.blockReason = opts.blockReason ?? existing.blockReason;
-	}
 	if (target === "failed") {
 		next.errorReason = opts.errorReason ?? existing.errorReason;
 		next.endedAt = now;
 	}
-	if (target === "completed" || target === "cancelled") {
+	if (target === "completed" || target === "cancelled" || target === "skipped")
 		next.endedAt = now;
-	}
+	if (target === "skipped")
+		next.skipReason = opts.skipReason ?? existing.skipReason;
 	if (opts.usage) next.usage = opts.usage;
-
 	writeTaskFile(next);
 	return next;
+}
+
+export function safeTransitionTask(
+	id: string,
+	target: TaskState,
+	opts: TransitionOptions = {},
+): TaskOperationResult {
+	try {
+		return { outcome: "persisted", record: transitionTask(id, target, opts) };
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return {
+			outcome: message.includes("not found") ? "not_found" : "rejected",
+			error: message,
+		};
+	}
 }
 
 export function getTask(id: string): TaskRecordV1 | null {
@@ -253,9 +338,6 @@ export function getTask(id: string): TaskRecordV1 | null {
 	return readTaskFile(file);
 }
 
-/**
- * Enumerate tasks, newest-first by createdAt. Filters are AND-combined.
- */
 export function listTasks(opts: ListTasksOptions = {}): TaskRecordV1[] {
 	const dir = getTasksDir();
 	if (!fs.existsSync(dir)) return [];
@@ -266,6 +348,7 @@ export function listTasks(opts: ListTasksOptions = {}): TaskRecordV1[] {
 		if (!entry.endsWith(".json")) continue;
 		const record = readTaskFile(path.join(dir, entry));
 		if (!record) continue;
+		if (!opts.includeTombstones && record.deletedAt) continue;
 		if (stateFilter && !stateFilter.has(record.state)) continue;
 		if (originFilter && !originFilter.has(record.origin)) continue;
 		if (opts.repoSlug && record.repoSlug !== opts.repoSlug) continue;
@@ -274,4 +357,29 @@ export function listTasks(opts: ListTasksOptions = {}): TaskRecordV1[] {
 	out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 	if (opts.limit && opts.limit > 0) return out.slice(0, opts.limit);
 	return out;
+}
+
+export function tombstoneTask(id: string, reason = "deleted"): TaskRecordV1 {
+	const existing = getTask(id);
+	if (!existing) throw new TaskRegistryError(`task not found: ${id}`);
+	const now = new Date().toISOString();
+	const state = TERMINAL_TASK_STATES.has(existing.state)
+		? existing.state
+		: "cancelled";
+	const tombstone = sanitizeTaskValue({
+		...existing,
+		state,
+		deletedAt: now,
+		endedAt: existing.endedAt ?? now,
+		updatedAt: now,
+		metadata: { ...(existing.metadata ?? {}), tombstoneReason: reason },
+	});
+	writeTaskFile(tombstone);
+	return tombstone;
+}
+
+export function clearCompletedTasks(): TaskRecordV1[] {
+	return listTasks({ includeTombstones: true })
+		.filter((task) => task.state === "completed" && !task.deletedAt)
+		.map((task) => tombstoneTask(task.id, "clear completed"));
 }

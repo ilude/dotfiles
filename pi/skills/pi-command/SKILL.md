@@ -48,6 +48,19 @@ $ARGUMENTS
 
 Keep `/commit` in TypeScript because it performs git status inspection, secret scanning, staged-file planning, validation, and user-facing workflow control. This belongs in `pi/extensions/workflow-commands.ts`, not `pi/prompts/commit.md`.
 
+## Tool schema compatibility
+
+When adding or editing Pi TypeScript tools, their JSON schemas must be provider-safe, not merely TypeScript-valid.
+
+Rules:
+
+- Prefer `@sinclair/typebox` (`Type.Object`, `Type.String`, `Type.Array`, etc.) for tool `parameters`.
+- Every object schema must include an explicit `properties` object, even when empty.
+- Every array schema must include `items`.
+- Avoid open-ended hand-written schemas like `{ type: "object", additionalProperties: true }`; Codex/OpenAI rejects object schemas without `properties`.
+- If additional fields are intentionally accepted, use `Type.Object({...}, { additionalProperties: true })`.
+- Add or update tests that register the extension and validate the exact registered tool schemas, not only command parsing or TypeScript compilation.
+
 ## Verification checklist
 
 1. Verify prompt discovery configuration if using `pi/prompts/`:
@@ -66,4 +79,10 @@ python -m json.tool pi/settings.json >/dev/null
 
 ```bash
 cd pi/extensions && pnpm run typecheck
+```
+
+4. For TypeScript tool changes, run the focused Pi tests for the owning surface, for example:
+
+```bash
+cd pi/tests && pnpm test task-tools.test.ts
 ```

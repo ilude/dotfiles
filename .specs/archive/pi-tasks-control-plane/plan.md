@@ -1,7 +1,7 @@
 ---
 created: 2026-05-07
-status: draft
-completed:
+status: superseded
+completed: 2026-05-11
 ---
 
 # Plan: Pi Tasks Control Plane MVP
@@ -467,10 +467,14 @@ This scan rejects sentinel/private-key markers in evidence logs and rejects real
 
 ## Execution Status
 
-- Status: not started.
-- Last completed item: none.
-- Current blocker: none.
-- Evidence: --
+- Status: superseded on 2026-05-11 by `.specs/pi-control-plane-consolidation/plan.md`; not started for this MVP plan, but some prerequisite/operator-layer task infrastructure already exists.
+- Last completed item: none for this plan's checklist.
+- Current blocker: none; start at P0 if executing this plan.
+- Existing code found on 2026-05-11: `pi/lib/task-registry.ts`, `pi/extensions/tasks.ts`, `pi/tests/task-registry.test.ts`, and `pi/tests/tasks.test.ts` implement the earlier operator-layer task registry and basic `/tasks` surface.
+- Existing coverage is partial relative to this plan: durable task records, basic lifecycle, task stats fields, urgency grouping, `/tasks` list/show/cancel/retry behavior, and registry tests exist.
+- Not yet complete for this plan: no `TaskCreateMany`/MVP task tools extension was found, no dependency DAG fields such as `blocks`/`blockedBy`, no `skipped` state in the current urgency/state set, no display settings helper for `hidden|compact|full`, no tombstone/persist_failed control-plane outcomes, and no evidence directory logs for this plan.
+- Validation evidence: `make check` passed on 2026-05-11, so existing task code is currently green, but that does not satisfy this MVP plan's unchecked acceptance gates.
+- Next safe action: continue remaining task-control-plane work from `.specs/pi-control-plane-consolidation/plan.md`, reusing existing registry/command code instead of rebuilding it.
 
 ## Handoff Notes
 

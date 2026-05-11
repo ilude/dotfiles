@@ -1,10 +1,13 @@
 ---
 created: 2026-05-07
-status: draft-reviewed
+status: superseded
+completed: 2026-05-11
 review: .specs/pi-tasks-control-plane/review-1/synthesis.md
 ---
 
 # PRD: Pi Tasks Control Plane
+
+> Superseded on 2026-05-11 by `.specs/pi-control-plane-consolidation/plan.md`, which rolls the remaining task control-plane MVP work together with the related Pi agent team and `/branch` cleanup.
 
 ## Problem
 

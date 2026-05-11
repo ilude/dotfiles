@@ -1,147 +1,48 @@
-/**
- * /tasks Operator Surface
- *
- * Reads the durable task registry (pi/lib/task-registry.ts) and exposes a
- * compact list grouped by urgency. Owned by .specs/pi-operator-layer-mvp/
- * plan.md (T4).
- *
- * Commands:
- *   /tasks                    -- urgency-grouped list (compact rows)
- *   /tasks <id>               -- detail view for a single task
- *   /tasks cancel <id>        -- transition running/blocked/pending -> cancelled
- *   /tasks retry <id>         -- transition failed -> running (registry bumps
- *                                retryCount and clears errorReason); does not
- *                                re-execute the work
- *
- * Task ids are UUIDv4. Prefix matching (first 8 chars) is supported for
- * convenience.
- */
-
-import { type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
 import {
+	clearCompletedTasks,
+	createTask,
 	getTask,
 	listTasks,
+	safeTransitionTask,
 	type TaskRecordV1,
 	type TaskState,
-	transitionTask,
+	updateTask,
 } from "../lib/task-registry.js";
+import {
+	formatTaskDetail,
+	formatTaskList,
+	groupTasksByUrgency,
+	shortTaskId,
+	truncateTaskText,
+} from "../lib/task-renderer.js";
+import { sanitizeTaskValue } from "../lib/task-security.js";
+import {
+	getTaskRenderMode,
+	isTaskRenderMode,
+	setTaskRenderMode,
+} from "../lib/task-settings.js";
 
-/**
- * State display order (most urgent first). Tasks within the same group are
- * ordered newest-first by createdAt.
- */
-const URGENCY_ORDER: TaskState[] = [
-	"blocked",
-	"failed",
-	"running",
-	"pending",
-	"completed",
-	"cancelled",
-];
-
-const COMPACT_PREVIEW_LEN = 60;
-const TERMINAL_STATES_FOR_LIST = new Set<TaskState>(["completed", "cancelled"]);
-
-export interface TaskGroup {
-	state: TaskState;
-	tasks: TaskRecordV1[];
-}
-
-export function groupTasksByUrgency(tasks: TaskRecordV1[]): TaskGroup[] {
-	const groups: Record<TaskState, TaskRecordV1[]> = {
-		blocked: [],
-		failed: [],
-		running: [],
-		pending: [],
-		completed: [],
-		cancelled: [],
-	};
-	for (const t of tasks) groups[t.state].push(t);
-	return URGENCY_ORDER.map((state) => ({ state, tasks: groups[state] })).filter(
-		(g) => g.tasks.length > 0,
-	);
-}
-
-function shortId(id: string): string {
-	return id.slice(0, 8);
-}
-
-function relativeTime(iso: string): string {
-	const then = new Date(iso).getTime();
-	if (Number.isNaN(then)) return "?";
-	const seconds = Math.max(0, Math.floor((Date.now() - then) / 1000));
-	if (seconds < 60) return `${seconds}s ago`;
-	if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-	if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-	return `${Math.floor(seconds / 86400)}d ago`;
-}
-
-function truncate(text: string | undefined, max: number): string {
-	if (!text) return "";
-	return text.length > max ? `${text.slice(0, max - 3)}...` : text;
-}
-
-export function formatCompactRow(task: TaskRecordV1): string {
-	const summary = truncate(task.summary || task.agentName || "task", COMPACT_PREVIEW_LEN);
-	const ageSrc = task.endedAt || task.startedAt || task.createdAt;
-	const age = relativeTime(ageSrc);
-	const retry = task.retryCount > 0 ? ` (retry x${task.retryCount})` : "";
-	return `  ${shortId(task.id)}  ${summary}${retry}  -- ${age}`;
-}
-
-export function formatTaskList(tasks: TaskRecordV1[]): string {
-	if (tasks.length === 0) return "No tasks recorded.";
-	const groups = groupTasksByUrgency(tasks);
-	const lines: string[] = [];
-	for (const g of groups) {
-		lines.push(`${g.state} (${g.tasks.length})`);
-		for (const t of g.tasks) lines.push(formatCompactRow(t));
-	}
-	return lines.join("\n");
-}
-
-export function formatTaskDetail(task: TaskRecordV1): string {
-	const lines: string[] = [];
-	lines.push(`task ${task.id}`);
-	lines.push(`  state: ${task.state}`);
-	lines.push(`  origin: ${task.origin}`);
-	if (task.agentName) lines.push(`  agent: ${task.agentName}`);
-	if (task.repoSlug) lines.push(`  repo: ${task.repoSlug}`);
-	if (task.summary) lines.push(`  summary: ${task.summary}`);
-	if (task.prompt) lines.push(`  prompt: ${truncate(task.prompt, 200)}`);
-	if (task.preview) lines.push(`  preview: ${truncate(task.preview, 200)}`);
-	lines.push(`  created: ${task.createdAt}`);
-	if (task.startedAt) lines.push(`  started: ${task.startedAt}`);
-	if (task.endedAt) lines.push(`  ended: ${task.endedAt}`);
-	if (task.retryCount > 0) lines.push(`  retries: ${task.retryCount}`);
-	if (task.blockReason) lines.push(`  blocked: ${task.blockReason}`);
-	if (task.errorReason) lines.push(`  error: ${task.errorReason}`);
-	if (task.usage) {
-		const usageParts: string[] = [];
-		if (task.usage.inputTokens) usageParts.push(`in=${task.usage.inputTokens}`);
-		if (task.usage.outputTokens) usageParts.push(`out=${task.usage.outputTokens}`);
-		if (task.usage.totalTokens) usageParts.push(`total=${task.usage.totalTokens}`);
-		if (usageParts.length > 0) lines.push(`  usage: ${usageParts.join(" ")}`);
-	}
-	return lines.join("\n");
-}
-
-/**
- * Resolve a task id from a partial input. Accepts full UUID, short prefix
- * (>= 4 chars), or returns null if no unique match.
- */
-export function resolveTaskId(input: string, candidates: TaskRecordV1[]): TaskRecordV1 | null {
-	const trimmed = input.trim();
-	if (trimmed.length < 4) return null;
-	const exact = candidates.find((t) => t.id === trimmed);
-	if (exact) return exact;
-	const prefix = candidates.filter((t) => t.id.startsWith(trimmed));
-	return prefix.length === 1 ? prefix[0] : null;
-}
+export { formatTaskDetail, formatTaskList, groupTasksByUrgency };
 
 interface ParsedSubcommand {
-	verb: "list" | "show" | "cancel" | "retry";
+	verb:
+		| "list"
+		| "show"
+		| "create"
+		| "start"
+		| "complete"
+		| "skip"
+		| "cancel"
+		| "retry"
+		| "clear"
+		| "settings"
+		| "help";
 	idArg?: string;
+	text?: string;
+	all?: boolean;
+	mode?: string;
 }
 
 export function parseTasksArgs(args: string): ParsedSubcommand {
@@ -149,97 +50,322 @@ export function parseTasksArgs(args: string): ParsedSubcommand {
 	if (!trimmed) return { verb: "list" };
 	const parts = trimmed.split(/\s+/);
 	const head = parts[0].toLowerCase();
+	if (head === "list") return { verb: "list", all: parts.includes("--all") };
+	if (head === "show" && parts[1]) return { verb: "show", idArg: parts[1] };
+	if (head === "create")
+		return { verb: "create", text: trimmed.slice("create".length).trim() };
+	if (head === "start" && parts[1]) return { verb: "start", idArg: parts[1] };
+	if (head === "complete" && parts[1])
+		return { verb: "complete", idArg: parts[1] };
+	if (head === "skip" && parts[1])
+		return { verb: "skip", idArg: parts[1], text: parts.slice(2).join(" ") };
 	if (head === "cancel" && parts[1]) return { verb: "cancel", idArg: parts[1] };
-	if (head === "retry" && parts[1]) return { verb: "retry", idArg: parts[1] };
-	// Anything else with one token is treated as an id for the show view
+	if ((head === "retry" || head === "reopen") && parts[1])
+		return { verb: "retry", idArg: parts[1] };
+	if (head === "clear" && parts[1]?.toLowerCase() === "completed")
+		return { verb: "clear" };
+	if (head === "settings") return { verb: "settings", mode: parts[2] };
+	if (head === "help") return { verb: "help" };
 	if (parts.length === 1) return { verb: "show", idArg: parts[0] };
-	return { verb: "list" };
+	return { verb: "help" };
+}
+
+export function resolveTaskId(
+	input: string,
+	candidates: TaskRecordV1[],
+): TaskRecordV1 | null {
+	const trimmed = input.trim();
+	if (trimmed.length < 4) return null;
+	const exact = candidates.find((task) => task.id === trimmed);
+	if (exact) return exact;
+	const prefix = candidates.filter((task) => task.id.startsWith(trimmed));
+	return prefix.length === 1 ? prefix[0] : null;
+}
+
+function helpText(): string {
+	return "Usage: /tasks|/tasks list [--all]|show <id>|create <summary>|start <id>|complete <id>|skip <id> [reason]|cancel <id>|retry <id>|reopen <id>|clear completed|settings mode compact|full|hidden. Retry/reopen does not execute work.";
+}
+
+function notifyOutcome(
+	ctx: {
+		ui: {
+			notify: (message: string, level?: "info" | "warning" | "error") => void;
+		};
+	},
+	label: string,
+	result: ReturnType<typeof safeTransitionTask>,
+): void {
+	if (result.outcome === "persisted" && result.record)
+		ctx.ui.notify(`${label} ${shortTaskId(result.record.id)}.`, "info");
+	else
+		ctx.ui.notify(
+			`${label} rejected: ${result.error ?? result.outcome}`,
+			"warning",
+		);
+}
+
+function toolResult(details: unknown) {
+	return {
+		content: [{ type: "text" as const, text: JSON.stringify(details) }],
+		details,
+	};
+}
+
+function asParams(params: unknown): Record<string, unknown> {
+	return params && typeof params === "object"
+		? (params as Record<string, unknown>)
+		: {};
+}
+
+function originFrom(value: unknown): "subagent" | "team" | "shell" | "other" {
+	return value === "subagent" || value === "team" || value === "shell"
+		? value
+		: "other";
+}
+
+function registerTaskTools(pi: ExtensionAPI): void {
+	const taskParams = Type.Object(
+		{
+			origin: Type.Optional(
+				Type.Union([
+					Type.Literal("subagent"),
+					Type.Literal("team"),
+					Type.Literal("shell"),
+					Type.Literal("other"),
+				]),
+			),
+			summary: Type.Optional(Type.String()),
+		},
+		{ additionalProperties: true },
+	);
+	const batchTaskParams = Type.Object(
+		{
+			tasks: Type.Optional(Type.Array(taskParams)),
+		},
+		{ additionalProperties: true },
+	);
+	const taskIdParams = Type.Object(
+		{
+			id: Type.Optional(Type.String()),
+		},
+		{ additionalProperties: true },
+	);
+	const taskUpdateParams = Type.Object(
+		{
+			id: Type.Optional(Type.String()),
+			state: Type.Optional(Type.String()),
+			summary: Type.Optional(Type.String()),
+		},
+		{ additionalProperties: true },
+	);
+	const emptyParams = Type.Object({}, { additionalProperties: true });
+	pi.registerTool({
+		name: "task_create",
+		label: "Task Create",
+		description: "Create a durable sanitized task.",
+		parameters: taskParams,
+		execute: async (_toolCallId, params) => {
+			const input = asParams(params);
+			return toolResult({
+				outcome: "persisted",
+				record: createTask({
+					origin: originFrom(input.origin),
+					summary:
+						typeof input.summary === "string" ? input.summary : "untitled task",
+				}),
+			});
+		},
+	});
+	pi.registerTool({
+		name: "task_batch_create",
+		label: "Task Batch Create",
+		description: "Create multiple durable sanitized tasks.",
+		parameters: batchTaskParams,
+		execute: async (_toolCallId, params) => {
+			const input = asParams(params);
+			const tasks = Array.isArray(input.tasks) ? input.tasks : [];
+			return toolResult({
+				outcome: "persisted",
+				records: tasks.map((task) => {
+					const item = asParams(task);
+					return createTask({
+						origin: originFrom(item.origin),
+						summary:
+							typeof item.summary === "string" ? item.summary : "untitled task",
+					});
+				}),
+			});
+		},
+	});
+	pi.registerTool({
+		name: "task_list",
+		label: "Task List",
+		description: "List durable tasks.",
+		parameters: emptyParams,
+		execute: async () =>
+			toolResult({
+				outcome: "persisted",
+				records: listTasks({ includeTombstones: true }),
+			}),
+	});
+	pi.registerTool({
+		name: "task_get",
+		label: "Task Get",
+		description: "Get one durable task.",
+		parameters: taskIdParams,
+		execute: async (_toolCallId, params) => {
+			const id = asParams(params).id;
+			const record = typeof id === "string" ? getTask(id) : null;
+			return toolResult({
+				outcome: record ? "persisted" : "not_found",
+				record,
+			});
+		},
+	});
+	pi.registerTool({
+		name: "task_update",
+		label: "Task Update",
+		description: "Update one durable task.",
+		parameters: taskUpdateParams,
+		execute: async (_toolCallId, params) => {
+			const input = asParams(params);
+			if (typeof input.id !== "string")
+				return toolResult({ outcome: "not_found" });
+			if (typeof input.state === "string")
+				return toolResult(
+					safeTransitionTask(input.id, input.state as TaskState),
+				);
+			try {
+				return toolResult({
+					outcome: "persisted",
+					record: updateTask(input.id, {
+						summary:
+							typeof input.summary === "string" ? input.summary : undefined,
+					}),
+				});
+			} catch (error) {
+				return toolResult({
+					outcome: "not_found",
+					error: error instanceof Error ? error.message : String(error),
+				});
+			}
+		},
+	});
+	for (const name of ["task_execute", "task_stop", "task_output"])
+		pi.registerTool({
+			name,
+			label: name,
+			description: "Deferred task execution tool; performs no execution.",
+			parameters: taskIdParams,
+			execute: async () => toolResult({ outcome: "deferred" }),
+		});
 }
 
 export default function (pi: ExtensionAPI) {
+	registerTaskTools(pi);
 	pi.registerCommand("tasks", {
 		description:
-			"Show durable subagent/team tasks grouped by urgency. " +
-			"Usage: /tasks | /tasks <id-prefix> | /tasks cancel <id> | /tasks retry <id>.",
+			"Task control plane. Use /tasks help for lifecycle, settings, and recovery commands.",
 		handler: async (args, ctx) => {
 			const parsed = parseTasksArgs(args);
-			let all: TaskRecordV1[];
-			try {
-				all = listTasks();
-			} catch (err) {
-				ctx.ui.notify(
-					`Failed to read task registry: ${err instanceof Error ? err.message : String(err)}`,
-					"error",
-				);
-				return;
-			}
-
-			if (parsed.verb === "list") {
-				// Hide ordinary terminal noise unless explicitly requested via show.
-				const interesting = all.filter((t) => !TERMINAL_STATES_FOR_LIST.has(t.state) || true);
-				ctx.ui.notify(formatTaskList(interesting), "info");
-				return;
-			}
-
-			if (!parsed.idArg) {
-				ctx.ui.notify("Usage: /tasks [<id> | cancel <id> | retry <id>]", "warning");
-				return;
-			}
-
-			const target = resolveTaskId(parsed.idArg, all);
-			if (!target) {
-				ctx.ui.notify(`No unique task found for "${parsed.idArg}".`, "warning");
-				return;
-			}
-
-			if (parsed.verb === "show") {
-				const fresh = getTask(target.id) ?? target;
-				ctx.ui.notify(formatTaskDetail(fresh), "info");
-				return;
-			}
-
-			if (parsed.verb === "cancel") {
-				if (target.state === "completed" || target.state === "cancelled") {
-					ctx.ui.notify(`Task ${shortId(target.id)} is already ${target.state}.`, "warning");
-					return;
-				}
-				try {
-					const after = transitionTask(target.id, "cancelled");
+			const all = listTasks({ includeTombstones: true });
+			if (parsed.verb === "help") return ctx.ui.notify(helpText(), "info");
+			if (parsed.verb === "settings") {
+				if (parsed.mode && isTaskRenderMode(parsed.mode))
 					ctx.ui.notify(
-						`Cancelled ${shortId(target.id)} (was ${target.state}; final summary: ${truncate(after.summary, 80)})`,
+						`Task display mode: ${setTaskRenderMode(parsed.mode)}`,
 						"info",
 					);
-				} catch (err) {
+				else
 					ctx.ui.notify(
-						`Cancel rejected: ${err instanceof Error ? err.message : String(err)}`,
+						`Task display mode: ${getTaskRenderMode()}. Use /tasks settings mode compact|full|hidden.`,
+						"info",
+					);
+				return;
+			}
+			if (parsed.verb === "list")
+				return ctx.ui.notify(
+					formatTaskList(parsed.all ? all : listTasks(), getTaskRenderMode()),
+					"info",
+				);
+			if (parsed.verb === "create") {
+				const task = createTask({
+					origin: "other",
+					summary: sanitizeTaskValue(parsed.text || "untitled task"),
+				});
+				return ctx.ui.notify(
+					`Created ${shortTaskId(task.id)}: ${truncateTaskText(task.summary, 80)}`,
+					"info",
+				);
+			}
+			if (parsed.verb === "clear")
+				return ctx.ui.notify(
+					`Cleared ${clearCompletedTasks().length} completed task(s).`,
+					"info",
+				);
+			if (!parsed.idArg) return ctx.ui.notify(helpText(), "warning");
+			const target = resolveTaskId(parsed.idArg, all);
+			if (!target)
+				return ctx.ui.notify(
+					`No unique task found for "${parsed.idArg}".`,
+					"warning",
+				);
+			if (parsed.verb === "show")
+				return ctx.ui.notify(
+					formatTaskDetail(getTask(target.id) ?? target),
+					"info",
+				);
+			if (parsed.verb === "start")
+				return notifyOutcome(
+					ctx,
+					"Started",
+					safeTransitionTask(target.id, "running"),
+				);
+			if (parsed.verb === "complete")
+				return notifyOutcome(
+					ctx,
+					"Completed",
+					safeTransitionTask(target.id, "completed"),
+				);
+			if (parsed.verb === "skip")
+				return notifyOutcome(
+					ctx,
+					"Skipped",
+					safeTransitionTask(target.id, "skipped", { skipReason: parsed.text }),
+				);
+			if (parsed.verb === "cancel") {
+				if (
+					target.state === "completed" ||
+					target.state === "cancelled" ||
+					target.state === "skipped"
+				) {
+					return ctx.ui.notify(
+						`Task ${shortTaskId(target.id)} is already ${target.state}.`,
 						"warning",
 					);
 				}
-				return;
+				return notifyOutcome(
+					ctx,
+					"Cancelled",
+					safeTransitionTask(target.id, "cancelled"),
+				);
 			}
-
 			if (parsed.verb === "retry") {
 				if (target.state !== "failed") {
-					ctx.ui.notify(
+					return ctx.ui.notify(
 						`Retry only valid for failed tasks (this one is ${target.state}).`,
 						"warning",
 					);
-					return;
 				}
-				try {
-					const after = transitionTask(target.id, "running");
-					ctx.ui.notify(
-						`Retried ${shortId(target.id)} (retry x${after.retryCount}). Re-issue the original work to drive execution.`,
-						"info",
-					);
-				} catch (err) {
-					ctx.ui.notify(
-						`Retry rejected: ${err instanceof Error ? err.message : String(err)}`,
-						"warning",
-					);
-				}
-				return;
+				const result = safeTransitionTask(target.id, "running");
+				return ctx.ui.notify(
+					result.outcome === "persisted" && result.record
+						? `Reopened ${shortTaskId(target.id)} (retry x${result.record.retryCount}). This does not execute work.`
+						: `Retry rejected: ${result.error ?? result.outcome}`,
+					result.outcome === "persisted" ? "info" : "warning",
+				);
 			}
+			return;
 		},
 	});
 }
