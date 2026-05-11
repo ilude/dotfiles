@@ -1,38 +1,6 @@
 {
-  "defaultModel": "gpt-5.5",
-  "lastChangelogVersion": "0.74.0",
   "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-5.5",
   "defaultThinkingLevel": "minimal",
-  "expertise_similarity": {
-    "enabled": true,
-    "provider": "openai-codex",
-    "model": "gpt-5.4-mini",
-    "timeout_ms": 3000,
-    "min_confidence": 0.75
-  },
-  "hideThinkingBlock": false,
-  "router": {
-    "policy": {
-      "N_HOLD": 0,
-      "DOWNGRADE_THRESHOLD": 0.85,
-      "K_CONSEC": 1,
-      "COOLDOWN_TURNS": 2,
-      "UNCERTAIN_THRESHOLD": 0.55,
-      "UNCERTAIN_FALLBACK_ENABLED": false
-    },
-    "effort": {
-      "maxLevel": "high"
-    },
-    "classifier": {
-      "mode": "t2"
-    }
-  },
-  "transcript": {
-    "enabled": true,
-    "path": "~/.pi/agent/traces"
-  },
-  "transport": "sse",
-  "prompts": [
-    "~/.dotfiles/pi/prompts"
-  ]
+  "lastChangelogVersion": "0.74.0"
 }

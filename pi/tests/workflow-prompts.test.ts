@@ -31,6 +31,15 @@ describe("workflow prompt contracts", () => {
 		expect(prompt).toContain("Contested or Dismissed Findings");
 		expect(prompt).toContain("Default mode is **auto-apply**");
 		expect(prompt).toContain("final standalone-readiness reviewer");
+		expect(prompt).toContain("review_artifact_write");
+		expect(prompt).toContain("do not silently route reviewer personas through proxy agents");
+	});
+
+	it("/review-it reviewer template prefers constrained artifact writer", () => {
+		const prompt = readPrompt("skills/workflow/templates/review-it-reviewer-prompts.md");
+		expect(prompt).toContain("review_artifact_write");
+		expect(prompt).toContain("narrowest available file-write mechanism");
+		expect(prompt).toContain("read/verify it if the available tool surface permits");
 	});
 
 	it("/commit documents hybrid candidate extraction plus LLM adjudication", () => {

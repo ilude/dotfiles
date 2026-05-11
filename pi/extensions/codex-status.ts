@@ -360,6 +360,13 @@ export default function registerCodexStatusCommand(pi: ExtensionAPI) {
 		}
 	});
 
+	pi.on("input", async (event, ctx) => {
+		if (event.text.trim().toLowerCase() === "/clear") {
+			await showCodexStatus(ctx);
+		}
+		return { action: "continue" };
+	});
+
 	pi.registerCommand("usage", {
 		description:
 			"Show ChatGPT Codex quota status using existing Pi/Codex OAuth credentials",

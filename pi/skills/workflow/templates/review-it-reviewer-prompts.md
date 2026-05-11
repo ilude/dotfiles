@@ -6,6 +6,8 @@ Every independent reviewer prompt must include these fields:
 - `Review output directory: <review_dir>`
 - `Reviewer artifact path: <review_dir>/<unique-reviewer-name>.md`
 
+Preferred artifact path: if a constrained `review_artifact_write` tool is available, the reviewer must call that tool with at most 5 structured findings instead of using general file-write tools. If the tool is not available, the reviewer may use the narrowest available file-write mechanism, but only for the assigned reviewer artifact path.
+
 Every independent reviewer must write its full findings to the reviewer artifact path using this shape:
 
 ```markdown
@@ -26,8 +28,9 @@ Rules:
 - Each finding must include `severity`, `evidence`, and `required_fix`.
 - Keep each finding under 120 words.
 - Do not include praise, plan restatement, or generic commentary.
-- After writing the artifact, return only: `WROTE: <reviewer_artifact_path>`.
-- If writing the artifact is impossible, return only: `FAILED_TO_WRITE: <reason>` plus the same at-most-5 findings inline. The coordinator must treat this as a recovery/exception path, not the normal source of truth.
+- After writing the artifact, read/verify it if the available tool surface permits, then return only: `WROTE: <reviewer_artifact_path>`.
+- If `review_artifact_write` is available but rejects the artifact, return only: `FAILED_TO_WRITE: <reason>` with no long inline dump unless explicitly requested by the coordinator.
+- If writing the artifact is impossible because no constrained artifact tool or file-write mechanism is available, return only: `FAILED_TO_WRITE: <reason>` plus the same at-most-5 findings inline. The coordinator must treat this as a recovery/exception path, not the normal source of truth.
 
 
 #### Standard reviewer 1 -- `reviewer`
@@ -67,4 +70,3 @@ Examples:
 - `typescript-pro` as `type/build/toolchain reviewer` -> typing, module/runtime, and TS build constraints
 
 Do not launch an extra reviewer with only a generic task like "review this plan as backend-dev". Every extra reviewer must be persona-seeded for the plan and given a unique reviewer artifact path.
-
