@@ -1,3 +1,0 @@
-{"sequence_id":"continuation_hold_synthetic","turn":1,"prompt":"Design a synthetic distributed cache migration plan.","expected_min_route":"core","expected_route":"core"}
-{"sequence_id":"continuation_hold_synthetic","turn":2,"prompt":"Now implement option 2 from the synthetic plan.","expected_min_route":"core","expected_route":"core","continuation":true}
-{"sequence_id":"cheap_override_synthetic","turn":1,"prompt":"Briefly summarize this synthetic status note.","expected_route":"mini","downgrade_intent":true}

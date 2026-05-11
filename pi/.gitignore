@@ -3,6 +3,7 @@ auth.json
 *.state.*
 *.jsonl
 !prompt-routing/data/**/*.jsonl
+!prompt-routing/tests/fixtures/*.jsonl
 !tool-reduction/tests/fixtures/*.jsonl
 expertise/*-expertise-log.jsonl
 multi-team/sessions/

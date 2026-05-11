@@ -1,0 +1,12 @@
+{"sequence_id":"continuation_from_mini","turn":1,"prompt":"Briefly outline a simple synthetic utility script."}
+{"sequence_id":"continuation_from_mini","turn":2,"prompt":"Now add tests for the prior synthetic script.","previous_effective_route":"mini","continuation":true,"expected_min_route":"mini"}
+{"sequence_id":"continuation_from_core","turn":1,"prompt":"Design a synthetic service refactor plan with API boundaries.","expected_min_route":"core"}
+{"sequence_id":"continuation_from_core","turn":2,"prompt":"Now implement the selected option from above.","previous_effective_route":"core","continuation":true,"expected_min_route":"core"}
+{"sequence_id":"continuation_from_large","turn":1,"prompt":"Create a fault-tolerant synthetic distributed consensus design.","expected_min_route":"large"}
+{"sequence_id":"continuation_from_large","turn":2,"prompt":"Continue with the failure-mode analysis for that design.","previous_effective_route":"large","continuation":true,"expected_min_route":"large"}
+{"sequence_id":"continuation_from_max","turn":1,"prompt":"Develop a synthetic multi-system migration strategy with safety invariants."}
+{"sequence_id":"continuation_from_max","turn":2,"prompt":"Now continue by proving the rollback invariants.","previous_effective_route":"max","continuation":true,"expected_min_route":"max"}
+{"sequence_id":"cheap_brief_negative","turn":1,"prompt":"Briefly summarize this synthetic status note.","previous_effective_route":"large","continuation":true,"downgrade_intent":true,"expected_route":"mini"}
+{"sequence_id":"cheap_brief_negative","turn":2,"prompt":"Give a cheap quick bullet list for the synthetic note.","previous_effective_route":"core","continuation":true,"downgrade_intent":true,"expected_route":"mini"}
+{"sequence_id":"non_continuation_lookalike","turn":1,"prompt":"Implement option two from a synthetic menu, no prior context needed.","previous_effective_route":"large","continuation":false,"expected_route":"mini"}
+{"sequence_id":"non_continuation_lookalike","turn":2,"prompt":"Continue means print the word continue in a toy example.","previous_effective_route":"core","continuation":false,"expected_route":"mini"}

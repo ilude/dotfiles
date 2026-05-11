@@ -97,7 +97,7 @@ cd pi/tests && pnpm test prompt-router.test.ts
 uv run --project pi/prompt-routing pytest pi/prompt-routing/tests
 uv run --project pi/prompt-routing python pi/prompt-routing/evaluate.py \
   --config pi/settings.json \
-  --sequences pi/prompt-routing/data/context_sequences_v1.jsonl \
+  --sequences pi/prompt-routing/tests/fixtures/context_sequences_v1.jsonl \
   --json
 ```
 

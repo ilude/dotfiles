@@ -13,7 +13,7 @@ MESSAGE = (
     "shadow_eval.py is retired; use "
     "uv run --project pi/prompt-routing python pi/prompt-routing/evaluate.py "
     "--config pi/settings.json --sequences "
-    "pi/prompt-routing/data/context_sequences_v1.jsonl --json"
+    "pi/prompt-routing/tests/fixtures/context_sequences_v1.jsonl --json"
 )
 
 
