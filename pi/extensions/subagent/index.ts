@@ -327,7 +327,11 @@ function getDefaultArtifactPath(agent: string, index: number): string {
 }
 
 function resolveOutputPath(output: string | false | undefined, defaultCwd: string, requestedCwd: string | undefined, agent: string, index: number): string | undefined {
-	if (output === false) return undefined;
+	// Some providers/tool-call layers have been observed to coerce JSON boolean
+	// false into the string "false". Treat both as the documented sentinel for
+	// disabling saved artifacts so reviewer panels never create repo-root files
+	// named "false".
+	if (output === false || output === "false") return undefined;
 	if (typeof output === "string" && output.length > 0) {
 		if (path.isAbsolute(output)) return output;
 		const baseCwd = requestedCwd ? (path.isAbsolute(requestedCwd) ? requestedCwd : path.resolve(defaultCwd, requestedCwd)) : defaultCwd;

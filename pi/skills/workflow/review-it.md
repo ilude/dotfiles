@@ -213,6 +213,8 @@ Use:
 - `modelSize: "small"` for the independent reviewers by default
 - `modelPolicy: "same-family"`
 
+Do **not** set per-task `output: false` for reviewer panel tasks. Reviewer artifacts are already written to `{review_dir}`; omitting the `output` field avoids provider/tool-call coercion bugs that can create a repo-root file literally named `false`.
+
 Escalate independent reviewers to `modelSize: "medium"` only when the plan is unusually large, security-critical, or architecturally risky. Keep synthesis/verification in the main coordinator context unless a targeted rebuttal truly needs a subagent. This keeps the mandatory 6-reviewer model while avoiding routine 6x medium-model latency.
 
 This means reviewer subagents should attempt to stay on the same provider/model ladder as the current session by default. Example mappings:

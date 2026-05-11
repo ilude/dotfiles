@@ -226,6 +226,34 @@ You are a test agent.
     expect(record.usage?.outputTokens).toBe(5);
   }, 15000);
 
+  it("does not create a repo-root false artifact when output is false or coerced to string false", async () => {
+    mockSuccessfulSpawn();
+    const { tool } = await loadTool();
+    const ctx = createMockCtx({
+      cwd: tmpDir,
+      model: { provider: "anthropic", id: "claude-sonnet-4-6" },
+    });
+
+    for (const output of [false, "false"] as const) {
+      const result = await tool.execute(
+        `call-output-${String(output)}`,
+        {
+          agent: "tester",
+          task: "Return compact review output",
+          agentScope: "project",
+          confirmProjectAgents: false,
+          output,
+        },
+        undefined,
+        undefined,
+        ctx,
+      );
+
+      expect(result.content[0].text).not.toContain("Output saved to:");
+    }
+    expect(fs.existsSync(path.join(tmpDir, "false"))).toBe(false);
+  }, 15000);
+
   it("registers a subagent failure as state=failed with errorReason", async () => {
     spawnMock.mockImplementation(() => {
       const proc = new EventEmitter() as any;

@@ -38,6 +38,12 @@ SHARDS: list[tuple[str, Path]] = [
     ("genB", DATA / "synthetic_shards" / "genB" / "chunk.jsonl"),
     ("genC", DATA / "synthetic_shards" / "genC" / "chunk.jsonl"),
     ("genD", DATA / "synthetic_shards" / "genD" / "chunk.jsonl"),
+    ("genE", DATA / "synthetic_shards" / "genE" / "chunk.jsonl"),
+    ("genF", DATA / "synthetic_shards" / "genF" / "chunk.jsonl"),
+    ("genG", DATA / "synthetic_shards" / "genG" / "chunk.jsonl"),
+    ("genH", DATA / "synthetic_shards" / "genH" / "chunk.jsonl"),
+    ("realClaude", DATA / "synthetic_shards" / "realClaude" / "chunk.jsonl"),
+    ("realPi", DATA / "synthetic_shards" / "realPi" / "chunk.jsonl"),
 ]
 
 CANONICAL = DATA / "synthetic_route_labels.jsonl"

@@ -1,34 +1,35 @@
+SHA256 verified: c5bd273ecb770710...
 {
-  "n": 564,
-  "top1_accuracy": 0.8191489361702128,
+  "n": 714,
+  "top1_accuracy": 0.8053221288515406,
   "catastrophic_under_routing": 0,
-  "over_routing_rate": 0.18439716312056736,
-  "cost_weighted_quality": 0.7239981501949585,
+  "over_routing_rate": 0.21988795518207283,
+  "cost_weighted_quality": 0.7298851358725308,
   "per_tier_recall": {
-    "Haiku": 0.8602620087336245,
-    "Sonnet": 0.6815642458100558,
-    "Opus": 0.9166666666666666
+    "Haiku": 0.7961538461538461,
+    "Sonnet": 0.7388059701492538,
+    "Opus": 0.9139784946236559
   },
   "per_tier_precision": {
-    "Haiku": 0.8602620087336245,
-    "Sonnet": 0.7393939393939394,
-    "Opus": 0.8411764705882353
+    "Haiku": 0.8589211618257261,
+    "Sonnet": 0.7471698113207547,
+    "Opus": 0.8173076923076923
   },
   "per_tier_f1": {
-    "Haiku": 0.8602620087336245,
-    "Sonnet": 0.7093023255813954,
-    "Opus": 0.8773006134969324
+    "Haiku": 0.8263473053892215,
+    "Sonnet": 0.7429643527204501,
+    "Opus": 0.8629441624365483
   },
   "per_tier_total": {
-    "Haiku": 229,
-    "Sonnet": 179,
-    "Opus": 156
+    "Haiku": 260,
+    "Sonnet": 268,
+    "Opus": 186
   },
   "inference_timing_us": {
-    "mean_us": 221.4057995006442,
-    "p50_us": 191.89994782209396,
-    "p95_us": 424.7950855642556,
-    "p99_us": 762.3582147061824,
+    "mean_us": 221.83095011860132,
+    "p50_us": 192.85001326352358,
+    "p95_us": 402.9701463878154,
+    "p99_us": 694.7941659018395,
     "n_runs": 2000
   },
   "classifier": "linearSVC_joint_v3",
@@ -90,7 +91,7 @@
       {
         "model": "router_v3.joblib",
         "sha256": "router_v3.sha256",
-        "hash": "1da4d8c292b0e77f48bbbcda1c68fd4f7f1130d01d553fdbfe479c348545c457"
+        "hash": "c5bd273ecb770710e4852917cbabe690fd5e882f932bb99b184cdbef5ec4b0ce"
       }
     ]
   },
@@ -98,9 +99,9 @@
     "raw_prompt_included": false,
     "excerpt_included": false,
     "sample_prompt_hashes": [
-      "8e122735eab89011e88d66a52af91d09834743e8e0d0613f1c89a586af760f7c",
-      "217c35a8d0bf443fd343fef7bc4a0969c06cc57d248bb0c70a18819372c2420a",
-      "b7b02e0a71d3362b42b3e8dfdbf63ea053a5859282f4ff5d13f0a36e4dd78a70"
+      "21d3cd7d51b89f71cf83603211a223e57790133aa479d61bf42041ae7220b01e",
+      "2656221d3db3915f07aef657c8a23e835cbf57baf7704c158fae8e76493b34ea",
+      "099266613c0a3f9f1865c80f766d9da1178c25cf1c2e6dbb5fa82a558615d7f1"
     ]
   }
 }
