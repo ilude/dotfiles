@@ -1,1 +1,1 @@
-/Users/mglenn/.dotfiles/claude/commands/yt-local.md
+C:/Users/mglenn/.dotfiles/claude/commands/yt-local.md
