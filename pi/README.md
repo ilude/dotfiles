@@ -745,7 +745,7 @@ Community pi-skills installed at `~/.dotfiles/pi/skills/pi-skills/`:
 | Skill | Purpose |
 |-------|---------|
 | `brave-search` | Web search via Brave Search API |
-| `browser-tools` | Browser automation and content extraction |
+| `browser-tools` | Browser automation and content extraction; use `scripts/agent-browser-brave` for safe Brave + `agent-browser` workflows |
 | `youtube-transcript` | Fetch YouTube transcripts |
 | `gccli` | Google Calendar CLI integration |
 | `gdcli` | Google Drive CLI integration |
