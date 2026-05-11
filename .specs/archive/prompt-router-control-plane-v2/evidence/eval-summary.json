@@ -1,0 +1,94 @@
+{
+  "n": 564,
+  "top1_accuracy": 0.8191489361702128,
+  "catastrophic_under_routing": 0,
+  "over_routing_rate": 0.18439716312056736,
+  "cost_weighted_quality": 0.7239981501949585,
+  "per_tier_recall": {
+    "Haiku": 0.8602620087336245,
+    "Sonnet": 0.6815642458100558,
+    "Opus": 0.9166666666666666
+  },
+  "per_tier_precision": {
+    "Haiku": 0.8602620087336245,
+    "Sonnet": 0.7393939393939394,
+    "Opus": 0.8411764705882353
+  },
+  "per_tier_f1": {
+    "Haiku": 0.8602620087336245,
+    "Sonnet": 0.7093023255813954,
+    "Opus": 0.8773006134969324
+  },
+  "per_tier_total": {
+    "Haiku": 229,
+    "Sonnet": 179,
+    "Opus": 156
+  },
+  "inference_timing_us": {
+    "mean_us": 873.3397001051344,
+    "p50_us": 885.7999928295612,
+    "p95_us": 1348.1300207786262,
+    "p99_us": 1868.9230270683763,
+    "n_runs": 2000
+  },
+  "classifier": "linearSVC_joint_v3",
+  "thresholds": {
+    "top1_gate": 0.75,
+    "catastrophic_gate": 0,
+    "recall_gate": 0.6
+  },
+  "baseline": {
+    "top1_accuracy": 0.5745,
+    "catastrophic_under_routing": 14,
+    "over_routing_rate": 0.2092,
+    "cost_weighted_quality": 0.7704
+  },
+  "runtime_settings": {
+    "classifier_mode": "t2",
+    "policy": {
+      "N_HOLD": 0,
+      "DOWNGRADE_THRESHOLD": 0.85,
+      "K_CONSEC": 1,
+      "COOLDOWN_TURNS": 2,
+      "UNCERTAIN_THRESHOLD": 0.55,
+      "UNCERTAIN_FALLBACK_ENABLED": false
+    }
+  },
+  "canonical_route_order": [
+    "nano",
+    "mini",
+    "core",
+    "large",
+    "max"
+  ],
+  "sequence_aggregation": {
+    "n_sequences": 2,
+    "n_turns": 3,
+    "route_thrash": 1,
+    "violations": []
+  },
+  "policy_delta": {
+    "source": "runtime_settings",
+    "changed": false
+  },
+  "artifact_inventory": {
+    "schema_version": "1.0.0",
+    "classifier": "t2",
+    "artifacts": [
+      {
+        "model": "router_v3.joblib",
+        "sha256": "router_v3.sha256",
+        "hash": "1da4d8c292b0e77f48bbbcda1c68fd4f7f1130d01d553fdbfe479c348545c457"
+      }
+    ]
+  },
+  "privacy": {
+    "raw_prompt_included": false,
+    "excerpt_included": false,
+    "sample_prompt_hashes": [
+      "8e122735eab89011e88d66a52af91d09834743e8e0d0613f1c89a586af760f7c",
+      "217c35a8d0bf443fd343fef7bc4a0969c06cc57d248bb0c70a18819372c2420a",
+      "b7b02e0a71d3362b42b3e8dfdbf63ea053a5859282f4ff5d13f0a36e4dd78a70"
+    ]
+  }
+}

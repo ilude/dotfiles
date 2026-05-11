@@ -1,0 +1,1 @@
+Cannot write `.specs/prompt-router-control-plane/review-1/reviewer.md`: this session exposes only read/grep tools, no file-write or shell tool.
