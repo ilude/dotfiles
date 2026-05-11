@@ -1,0 +1,10 @@
+usage: x-research [-h] [--db-path DB_PATH] [--config CONFIG]
+                  {sync,check-following,graph} ...
+
+positional arguments:
+  {sync,check-following,graph}
+
+options:
+  -h, --help            show this help message and exit
+  --db-path DB_PATH
+  --config CONFIG

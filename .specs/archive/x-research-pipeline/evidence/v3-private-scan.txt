@@ -1,0 +1,1 @@
+PASS: no plaintext private paths detected

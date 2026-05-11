@@ -1,0 +1,27 @@
+$ uv sync
+Resolved 32 packages in 4ms
+Checked 23 packages in 6ms
+$ uv run pytest tests/x_research
+============================= test session starts =============================
+platform win32 -- Python 3.14.4, pytest-9.0.2, pluggy-1.6.0
+rootdir: C:\Users\mglenn\.dotfiles
+configfile: pyproject.toml
+plugins: anyio-4.13.0, asyncio-1.3.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 25 items
+
+tests\x_research\test_browser_agent_backend.py ..                        [  8%]
+tests\x_research\test_cli_query.py ..                                    [ 16%]
+tests\x_research\test_cli_sync.py ...                                    [ 28%]
+tests\x_research\test_models.py .                                        [ 32%]
+tests\x_research\test_private_data_scripts.py ....                       [ 48%]
+tests\x_research\test_protocol_stubs.py .                                [ 52%]
+tests\x_research\test_repository.py ....                                 [ 68%]
+tests\x_research\test_seed_recipe.py ...                                 [ 80%]
+tests\x_research\test_twitterapi_io_backend.py .....                     [100%]
+
+============================= 25 passed in 3.35s ==============================
+$ uv run ruff check src/x_research tests/x_research
+All checks passed!
+$ scripts/x-private-scan --staged
+PASS: no plaintext private paths detected

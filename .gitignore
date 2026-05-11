@@ -138,3 +138,10 @@ plugins/*
 .specstory/
 
 pi/operator/tasks/
+
+# Local private data (PII; encrypt before sharing)
+private/
+private-encrypted/**
+!private-encrypted/
+!private-encrypted/**/
+!private-encrypted/**/*.age

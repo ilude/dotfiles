@@ -1,0 +1,1 @@
+DRY-RUN: would append scripts/git-hooks/pre-commit-x-private to .git\hooks\pre-commit

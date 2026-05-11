@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""Encrypt a private file with age recipients."""
+from __future__ import annotations
+
+import argparse
+import os
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+
+DEFAULT_RECIPIENTS = Path("config/age/x-research-recipients.txt")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("input", type=Path)
+    parser.add_argument("output", type=Path)
+    parser.add_argument("--recipients", type=Path, default=DEFAULT_RECIPIENTS)
+    parser.add_argument("--overwrite", action="store_true")
+    args = parser.parse_args()
+    if not args.recipients.exists() or not args.recipients.read_text(encoding="utf-8").strip():
+        print("ERROR: missing age recipients")
+        return 1
+    if args.output.exists() and not args.overwrite:
+        print("ERROR: output exists")
+        return 1
+    if shutil.which("age") is None:
+        print("SKIPPED: age not installed")
+        return 77
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=args.output.name, dir=args.output.parent)
+    os.close(fd)
+    tmp = Path(tmp_name)
+    try:
+        with tmp.open("wb") as out:
+            proc = subprocess.run(
+                ["age", "-R", str(args.recipients), "-o", "-", str(args.input)],
+                stdout=out,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+        if proc.returncode != 0:
+            print("ERROR: age encryption failed")
+            return proc.returncode
+        tmp.replace(args.output)
+        print(f"PASS: encrypted {args.output}")
+        return 0
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

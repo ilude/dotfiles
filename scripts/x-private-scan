@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+"""Reject plaintext private X research data in staged or fixture paths."""
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+from pathlib import PurePosixPath
+
+
+def _nul_paths(data: bytes) -> list[str]:
+    return [p.decode("utf-8", "replace").replace("\\", "/") for p in data.split(b"\0") if p]
+
+
+def _staged_paths() -> list[str]:
+    proc = subprocess.run(
+        ["git", "diff", "--cached", "--name-only", "-z"],
+        check=True,
+        stdout=subprocess.PIPE,
+    )
+    return _nul_paths(proc.stdout)
+
+
+def _blocked(path: str) -> bool:
+    posix = str(PurePosixPath(path))
+    return posix.startswith("private/") or (
+        posix.startswith("private-encrypted/") and not posix.endswith(".age")
+    )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--staged", action="store_true")
+    source.add_argument("--paths-from")
+    args = parser.parse_args()
+    paths = _staged_paths() if args.staged else _nul_paths(open(args.paths_from, "rb").read())
+    blocked = [path for path in paths if _blocked(path)]
+    if blocked:
+        for path in blocked:
+            print(f"BLOCKED private path: {path}", file=sys.stderr)
+        return 1
+    print("PASS: no plaintext private paths detected")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

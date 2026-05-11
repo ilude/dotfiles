@@ -1,0 +1,22 @@
+
+In scripts/x-private-decrypt line 1:
+#!/usr/bin/env python3
+^-- SC1071 (error): ShellCheck only supports sh/bash/dash/ksh/'busybox sh' scripts. Sorry!
+
+
+In scripts/x-private-encrypt line 1:
+#!/usr/bin/env python3
+^-- SC1071 (error): ShellCheck only supports sh/bash/dash/ksh/'busybox sh' scripts. Sorry!
+
+
+In scripts/x-private-scan line 1:
+#!/usr/bin/env python3
+^-- SC1071 (error): ShellCheck only supports sh/bash/dash/ksh/'busybox sh' scripts. Sorry!
+
+
+In scripts/install-x-private-hook line 1:
+#!/usr/bin/env python3
+^-- SC1071 (error): ShellCheck only supports sh/bash/dash/ksh/'busybox sh' scripts. Sorry!
+
+For more information:
+  https://www.shellcheck.net/wiki/SC1071 -- ShellCheck only supports sh/bash/...
