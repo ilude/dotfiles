@@ -12,8 +12,8 @@ def test_wrapper_documents_safe_defaults_and_real_profile_warning():
     assert "127.0.0.1" in text
     assert "free_port" in text
     assert "profileMode" in text
-    assert "I UNDERSTAND THIS CONTROLS MY REAL BRAVE PROFILE" in text
-    assert "--confirm-real-profile" in text
+    assert "real Brave profile mode can control logged-in sites" in text
+    assert "--confirm-real-profile" not in text
     assert "--real-brave-default" in text
     assert "default Brave profile directory" in text
     assert "brave_identity" in text

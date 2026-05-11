@@ -14,7 +14,6 @@ import time
 import urllib.request
 from pathlib import Path
 
-CONFIRM_TEXT = "I UNDERSTAND THIS CONTROLS MY REAL BRAVE PROFILE"
 STATE_DIR = Path(".pi/agent-browser-brave")
 STATE_PATH = STATE_DIR / "state.json"
 PI_PROFILE_DIR = STATE_DIR / "brave-user-data"
@@ -148,19 +147,12 @@ def launch(args: argparse.Namespace, command_source: str) -> dict:
     port = int(args.port) if args.port else free_port()
     real_profile = "Default" if args.real_brave_default else args.real_brave_profile
     if real_profile:
-        if not args.confirm_real_profile:
-            raise SystemExit(
-                "ERROR: real profile mode requires --confirm-real-profile and typed confirmation."
-            )
         print("WARNING: real Brave profile mode can control logged-in sites.", file=sys.stderr)
         print(
             "The default Brave profile directory is 'Default' even if its "
             "display name is 'Work' or another local name.",
             file=sys.stderr,
         )
-        typed = input("Type confirmation exactly: ")
-        if typed != CONFIRM_TEXT:
-            raise SystemExit("ERROR: confirmation did not match; aborting before launch.")
         brave_user_data = default_brave_user_data_dir()
         if not brave_user_data:
             raise SystemExit(
@@ -317,8 +309,8 @@ def main() -> int:
         "--real-brave-profile",
         metavar="PROFILE",
         help=(
-            "Use real Brave profile directory name; requires typed confirmation. "
-            "Use Default for the default Brave profile, regardless of display name."
+            "Use real Brave profile directory name. Use Default for the default "
+            "Brave profile, regardless of display name."
         ),
     )
     parser.add_argument(
@@ -328,11 +320,6 @@ def main() -> int:
             "Use the real default Brave profile directory (Default), regardless of "
             "local display name such as Work"
         ),
-    )
-    parser.add_argument(
-        "--confirm-real-profile",
-        action="store_true",
-        help="Require exact typed confirmation for real profile mode",
     )
     base, source = resolve_agent_browser()
     args = parser.parse_args()
