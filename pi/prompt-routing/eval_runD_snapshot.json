@@ -1,0 +1,107 @@
+SHA256 verified: 2d576fa3cfda5429...
+{
+  "n": 605,
+  "top1_accuracy": 0.7900826446280992,
+  "catastrophic_under_routing": 0,
+  "over_routing_rate": 0.21487603305785125,
+  "cost_weighted_quality": 0.6835435225931092,
+  "per_tier_recall": {
+    "Haiku": 0.756198347107438,
+    "Sonnet": 0.7811158798283262,
+    "Opus": 0.8692307692307693
+  },
+  "per_tier_precision": {
+    "Haiku": 0.8672985781990521,
+    "Sonnet": 0.7109375,
+    "Opus": 0.8188405797101449
+  },
+  "per_tier_f1": {
+    "Haiku": 0.8079470198675496,
+    "Sonnet": 0.7443762781186094,
+    "Opus": 0.8432835820895522
+  },
+  "per_tier_total": {
+    "Haiku": 242,
+    "Sonnet": 233,
+    "Opus": 130
+  },
+  "inference_timing_us": {
+    "mean_us": 260.97694993950427,
+    "p50_us": 212.3001031577587,
+    "p95_us": 589.9099516682327,
+    "p99_us": 817.6669408567249,
+    "n_runs": 2000
+  },
+  "classifier": "linearSVC_joint_v3",
+  "thresholds": {
+    "top1_gate": 0.75,
+    "catastrophic_gate": 0,
+    "recall_gate": 0.6
+  },
+  "baseline": {
+    "top1_accuracy": 0.5745,
+    "catastrophic_under_routing": 14,
+    "over_routing_rate": 0.2092,
+    "cost_weighted_quality": 0.7704
+  },
+  "runtime_settings": {
+    "classifier_mode": "t2",
+    "policy": {}
+  },
+  "canonical_route_order": [
+    "nano",
+    "mini",
+    "core",
+    "large",
+    "max"
+  ],
+  "route_ordering": {
+    "nano": 0,
+    "mini": 1,
+    "core": 2,
+    "large": 3,
+    "max": 4
+  },
+  "sequence_results": {
+    "n_sequences": 0,
+    "n_turns": 0,
+    "route_thrash": 0,
+    "violations": [],
+    "cases": []
+  },
+  "sequence_aggregation": {
+    "n_sequences": 0,
+    "n_turns": 0,
+    "route_thrash": 0,
+    "violations": [],
+    "cases": []
+  },
+  "policy_deltas": {
+    "source": "runtime_settings",
+    "changed": false
+  },
+  "policy_delta": {
+    "source": "runtime_settings",
+    "changed": false
+  },
+  "artifact_inventory": {
+    "schema_version": "1.0.0",
+    "classifier": "t2",
+    "artifacts": [
+      {
+        "model": "router_v3.joblib",
+        "sha256": "router_v3.sha256",
+        "hash": "2d576fa3cfda5429a08ee5d1efcc4abc69c1df4602c0b7229e841bce5d1afbb4"
+      }
+    ]
+  },
+  "privacy": {
+    "raw_prompt_included": false,
+    "excerpt_included": false,
+    "sample_prompt_hashes": [
+      "65a616ec0f31895950c6c6137e769b13d109d543aeb125335f5032c21664bb10",
+      "98386d973992e6f4d9c91958b203cc4c0eda496a3c4793bf0d3eac4295f90859",
+      "d4bab71925dc72eb11fd638d96fe4b10fa30565b2d37b12a168d343600062df8"
+    ]
+  }
+}

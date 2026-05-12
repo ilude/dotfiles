@@ -19,13 +19,13 @@ Four generator agents produced 2000 input rows (500 per shard) under cross_famil
 | genB | 500 | 0 | 500 | 0 | 0 |
 | genC | 500 | 500 | 0 | 0 | 0 |
 | genD | 500 | 0 | 500 | 0 | 0 |
-| genE | 250 | 0 | 250 | 0 | 0 |
-| genF | 250 | 0 | 250 | 0 | 0 |
-| genG | 250 | 0 | 250 | 0 | 0 |
-| genH | 250 | 0 | 250 | 0 | 0 |
-| realClaude | 250 | 0 | 0 | 0 | 250 |
-| realPi | 300 | 0 | 0 | 0 | 300 |
-| **total** | 3550 | 500 | 2500 | 0 | 550 |
+| genE | 250 | 0 | 0 | 0 | 250 |
+| genF | 250 | 0 | 0 | 0 | 250 |
+| genG | 250 | 0 | 0 | 0 | 250 |
+| genH | 250 | 0 | 0 | 0 | 250 |
+| realClaude | 96 | 0 | 0 | 0 | 96 |
+| realPi | 120 | 0 | 0 | 0 | 120 |
+| **total** | 3216 | 500 | 1500 | 0 | 1216 |
 
 ## Dropped (invalid) rows
 
@@ -59,18 +59,18 @@ Sample of failing rows (up to 5):
 - genB: 0 rows kept
 - genC: 0 rows kept
 - genD: 0 rows kept
-- genE: 0 rows kept
-- genF: 0 rows kept
-- genG: 0 rows kept
-- genH: 0 rows kept
-- realClaude: Haiku/low=104, Haiku/none=53, Opus/medium=2, Sonnet/high=31, Sonnet/low=18, Sonnet/medium=42 (history_curated=250)
-- realPi: Haiku/low=112, Haiku/none=44, Opus/high=8, Opus/medium=26, Sonnet/high=18, Sonnet/medium=92 (history_curated=300)
+- genE: Haiku/low=25, Sonnet/low=200, Sonnet/medium=25 (synthetic_large=250)
+- genF: Opus/medium=20, Sonnet/high=200, Sonnet/medium=30 (synthetic_large=250)
+- genG: Opus/high=20, Opus/medium=200, Sonnet/high=30 (synthetic_large=250)
+- genH: Haiku/low=50, Haiku/none=100, Sonnet/high=20, Sonnet/low=50, Sonnet/medium=30 (synthetic_large=250)
+- realClaude: Sonnet/high=11, Sonnet/low=39, Sonnet/medium=46 (history_curated=96)
+- realPi: Sonnet/high=6, Sonnet/low=89, Sonnet/medium=25 (history_curated=120)
 
 ## Canonical file
 
-- Before merge: 2982 rows
-- Appended: 550 rows
-- After merge: 3532 rows
+- Before merge: 1982 rows
+- Appended: 1216 rows
+- After merge: 3198 rows
 - Backup: `data/synthetic_route_labels.pre_wave4.jsonl`
 
 ## Dedup method
