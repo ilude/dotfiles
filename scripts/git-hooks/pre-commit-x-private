@@ -1,3 +1,11 @@
 #!/bin/sh
 set -eu
+
+if [ -d private ]; then
+  scripts/private-archive-encrypt
+  if [ -d .encrypted ]; then
+    git add -A -- .encrypted
+  fi
+fi
+
 exec scripts/private-archive-scan --staged

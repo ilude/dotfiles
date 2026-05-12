@@ -1,30 +1,23 @@
 #!/usr/bin/env python3
-"""Encrypt private/ into private.tar.age."""
+"""Sync-encrypt private/ files into per-path .encrypted/**/*.age artifacts."""
 from __future__ import annotations
 
 import argparse
-import tempfile
 from pathlib import Path
 
-from private_archive_lib import ARCHIVE, PRIVATE_DIR, atomic_replace, encrypt_tar, make_tar
+from private_archive_lib import ENCRYPTED_DIR, PRIVATE_DIR, sync_encrypt
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--private-dir", default=str(PRIVATE_DIR))
-    parser.add_argument("--output", default=str(ARCHIVE))
+    parser.add_argument("--output-dir", default=str(ENCRYPTED_DIR))
+    parser.add_argument("--output", dest="legacy_output", help="legacy option; use --output-dir")
     args = parser.parse_args()
-    private_dir = Path(args.private_dir)
-    output = Path(args.output)
-    if not private_dir.is_dir():
-        raise SystemExit(f"missing private directory: {private_dir}")
-    with tempfile.TemporaryDirectory(prefix="private-archive-") as td:
-        tar_path = Path(td) / "private.tar"
-        age_tmp = Path(td) / "private.tar.age"
-        make_tar(private_dir, tar_path)
-        encrypt_tar(tar_path, age_tmp)
-        atomic_replace(age_tmp, output)
-    print(f"PASS: wrote encrypted archive {output}")
+    if args.legacy_output:
+        raise SystemExit("private.tar.age output is legacy; use per-file .encrypted/ artifacts")
+    written = sync_encrypt(Path(args.private_dir), Path(args.output_dir))
+    print(f"PASS: synced {len(written)} encrypted private files to {args.output_dir}")
     return 0
 
 

@@ -1,29 +1,40 @@
 #!/usr/bin/env python3
-"""Install the private archive pre-commit hook."""
+"""Install the private per-file encryption pre-commit hook."""
 from __future__ import annotations
 
 import argparse
+import subprocess
 from pathlib import Path
 
-HOOK = Path(".git/hooks/pre-commit")
 LINE = "scripts/git-hooks/pre-commit-x-private\n"
+
+
+def hook_path() -> Path:
+    proc = subprocess.run(
+        ["git", "rev-parse", "--git-path", "hooks/pre-commit"],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    return Path(proc.stdout.strip())
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
-    existing = HOOK.read_text(encoding="utf-8") if HOOK.exists() else "#!/bin/sh\n"
+    hook = hook_path()
+    existing = hook.read_text(encoding="utf-8") if hook.exists() else "#!/bin/sh\n"
     if LINE in existing:
-        print("PASS: private archive hook already installed")
+        print("PASS: private .encrypted/ hook already installed")
         return 0
     if args.dry_run:
-        print(f"DRY-RUN: would append {LINE.strip()} to {HOOK}")
+        print(f"DRY-RUN: would append {LINE.strip()} to {hook}")
         return 0
-    HOOK.parent.mkdir(parents=True, exist_ok=True)
-    HOOK.write_text(existing.rstrip() + "\n" + LINE, encoding="utf-8")
-    HOOK.chmod(0o755)
-    print("PASS: private archive hook installed")
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_text(existing.rstrip() + "\n" + LINE, encoding="utf-8")
+    hook.chmod(0o755)
+    print(f"PASS: private .encrypted/ hook installed at {hook}")
     return 0
 
 

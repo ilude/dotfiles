@@ -1,38 +1,25 @@
 #!/usr/bin/env python3
-"""Decrypt private.tar.age into private/."""
+"""Decrypt per-path .encrypted/**/*.age artifacts into private/."""
 from __future__ import annotations
 
 import argparse
-import shutil
 from pathlib import Path
 
-from private_archive_lib import ARCHIVE, PRIVATE_DIR, decrypt_to_tar, extract_tar, tempdir
+from private_archive_lib import ENCRYPTED_DIR, PRIVATE_DIR, sync_decrypt
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--identity", required=True)
-    parser.add_argument("--archive", default=str(ARCHIVE))
+    parser.add_argument("--archive", dest="legacy_archive", help="legacy option; use --encrypted-dir")
+    parser.add_argument("--encrypted-dir", default=str(ENCRYPTED_DIR))
     parser.add_argument("--output-dir", default=str(PRIVATE_DIR))
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
-    archive = Path(args.archive)
-    output = Path(args.output_dir)
-    if output.exists() and not args.force:
-        raise SystemExit(f"refusing to overwrite existing {output}; use --force")
-    with tempdir("private-decrypt-") as td:
-        root = Path(td)
-        tar_path = root / "private.tar"
-        extracted = root / "private"
-        decrypt_to_tar(archive, Path(args.identity), tar_path)
-        extract_tar(tar_path, extracted)
-        if output.exists():
-            backup = output.with_name(output.name + ".bak")
-            if backup.exists():
-                raise SystemExit(f"backup already exists: {backup}")
-            output.rename(backup)
-        shutil.copytree(extracted, output)
-    print(f"PASS: restored {output}")
+    if args.legacy_archive:
+        raise SystemExit("private.tar.age input is legacy; use per-file .encrypted/ artifacts")
+    restored = sync_decrypt(Path(args.identity), Path(args.encrypted_dir), Path(args.output_dir), args.force)
+    print(f"PASS: restored {len(restored)} private files to {args.output_dir}")
     return 0
 
 
