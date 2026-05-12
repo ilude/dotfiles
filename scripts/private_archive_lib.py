@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath
 
 ROOT = Path.cwd()
 PRIVATE_DIR = Path("private")
+ENCRYPTED_DIR = Path(".encrypted")
 ARCHIVE = Path("private.tar.age")
 RECIPIENTS = Path("config/age/recipients.txt")
 BLOCKED_EXACT = {"private.tar", "private.tar.gz", "private-merge.tar", ".private.tar"}
@@ -33,7 +34,11 @@ def is_blocked_path(path: str) -> bool:
     p = normalize(path)
     if p == "private.tar.age":
         return False
+    if p.startswith(".encrypted/") and p.endswith(".age"):
+        return False
     if p in BLOCKED_EXACT or any(p.startswith(prefix) for prefix in BLOCKED_PREFIXES):
+        return True
+    if p.startswith(".encrypted/") and not p.endswith(".age"):
         return True
     if p.startswith("private-encrypted/") and not p.endswith(".age"):
         return True
@@ -49,14 +54,25 @@ def staged_paths() -> list[str]:
     return nul_paths(proc.stdout)
 
 
-def recipients() -> list[str]:
+def read_recipients() -> list[str]:
     if not RECIPIENTS.exists():
-        raise SystemExit(f"missing recipients file: {RECIPIENTS}")
+        return []
     vals = []
     for line in RECIPIENTS.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if line and not line.startswith("#"):
             vals.append(line)
+    return vals
+
+
+def recipients_configured() -> bool:
+    return bool(read_recipients())
+
+
+def recipients() -> list[str]:
+    if not RECIPIENTS.exists():
+        raise SystemExit(f"missing recipients file: {RECIPIENTS}")
+    vals = read_recipients()
     if not vals:
         raise SystemExit("recipients file has no recipients")
     return vals
@@ -92,6 +108,18 @@ def encrypt_tar(tar_path: Path, out_path: Path = ARCHIVE) -> None:
         cmd.extend(["-r", rec])
     cmd.extend(["-o", str(out_path), str(tar_path)])
     run(cmd)
+
+
+def encrypt_file(input_path: Path, out_path: Path) -> None:
+    cmd = ["age"]
+    for rec in recipients():
+        cmd.extend(["-r", rec])
+    cmd.extend(["-o", str(out_path), str(input_path)])
+    run(cmd)
+
+
+def decrypt_file(age_path: Path, identity: Path, out_path: Path) -> None:
+    run(["age", "-d", "-i", str(identity), "-o", str(out_path), str(age_path)])
 
 
 def decrypt_to_tar(age_path: Path, identity: Path, tar_path: Path) -> None:

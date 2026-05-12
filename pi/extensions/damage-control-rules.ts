@@ -12,6 +12,7 @@ export interface DangerousCommand {
 	regex?: string;
 	platforms?: string[];
 	exclude_platforms?: string[];
+	tools?: string[];
 }
 
 export interface DamageControlRules {
@@ -79,7 +80,11 @@ export function validateDamageControlRules(value: unknown): string[] {
 			) {
 				errors.push(`dangerous_commands[${idx}].action must be ask or block`);
 			}
-			for (const field of ["platforms", "exclude_platforms"] as const) {
+			for (const field of [
+				"platforms",
+				"exclude_platforms",
+				"tools",
+			] as const) {
 				if (entry[field] !== undefined && !stringArrayField(entry[field])) {
 					errors.push(
 						`dangerous_commands[${idx}].${field} must be an array of strings`,

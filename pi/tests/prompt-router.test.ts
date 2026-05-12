@@ -635,7 +635,7 @@ describe("prompt-router extension -- input hook", () => {
     expect(pi.exec).not.toHaveBeenCalled();
   });
 
-  it("calls exec for normal user text and routes to a dynamic same-family model", async () => {
+  it("calls exec for normal user text with configured classifier and routes to a dynamic same-family model", async () => {
     const { pi, inputHook, ctx } = setup();
     (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Sonnet", "medium"), stderr: "" });
 
@@ -654,7 +654,7 @@ describe("prompt-router extension -- input hook", () => {
         "python",
         path.join(os.homedir(), ".dotfiles/pi/prompt-routing/classify.py"),
         "--classifier",
-        "t2",
+        "lgbm",
         "explain the architecture of this system",
       ],
       expect.objectContaining({ timeout: 5000 })

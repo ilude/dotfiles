@@ -1,0 +1,14 @@
+
+> pi-extension-tests@ test C:\Users\mglenn\.dotfiles\pi\tests
+> vitest run "prompt-router.test.ts" "damage-control.test.ts"
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.5 [39m[90mC:/Users/mglenn/.dotfiles/pi[39m
+
+ [32m✓[39m tests/damage-control.test.ts [2m([22m[2m58 tests[22m[2m)[22m[32m 251[2mms[22m[39m
+ [32m✓[39m tests/prompt-router.test.ts [2m([22m[2m75 tests[22m[2m)[22m[32m 161[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m2 passed[39m[22m[90m (2)[39m
+[2m      Tests [22m [1m[32m133 passed[39m[22m[90m (133)[39m
+[2m   Start at [22m 11:32:08
+[2m   Duration [22m 2.62s[2m (transform 610ms, setup 0ms, import 2.36s, tests 411ms, environment 0ms)[22m

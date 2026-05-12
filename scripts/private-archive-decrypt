@@ -1,38 +1,55 @@
 #!/usr/bin/env python3
-"""Decrypt private.tar.age into private/."""
+"""Decrypt .encrypted/ age files into private/."""
 from __future__ import annotations
 
 import argparse
 import shutil
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
-from private_archive_lib import ARCHIVE, PRIVATE_DIR, decrypt_to_tar, extract_tar, tempdir
+from private_archive_lib import ENCRYPTED_DIR, PRIVATE_DIR, decrypt_file, tempdir
+
+
+def output_path_for(encrypted_dir: Path, age_file: Path, output_dir: Path) -> Path:
+    rel = age_file.relative_to(encrypted_dir).as_posix()
+    if not rel.endswith(".age"):
+        raise ValueError(f"encrypted file must end in .age: {rel}")
+    plain_rel = rel[:-4]
+    posix = PurePosixPath(plain_rel)
+    if plain_rel.startswith("/") or ".." in posix.parts or plain_rel in {"", "."}:
+        raise ValueError(f"unsafe encrypted path: {rel}")
+    return output_dir / plain_rel
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--identity", required=True)
-    parser.add_argument("--archive", default=str(ARCHIVE))
+    parser.add_argument("--encrypted-dir", default=str(ENCRYPTED_DIR))
     parser.add_argument("--output-dir", default=str(PRIVATE_DIR))
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
-    archive = Path(args.archive)
+    encrypted_dir = Path(args.encrypted_dir)
     output = Path(args.output_dir)
+    if not encrypted_dir.is_dir():
+        raise SystemExit(f"missing encrypted directory: {encrypted_dir}")
     if output.exists() and not args.force:
         raise SystemExit(f"refusing to overwrite existing {output}; use --force")
+    age_files = sorted(encrypted_dir.rglob("*.age"))
+    if not age_files:
+        raise SystemExit(f"no .age files found under {encrypted_dir}")
     with tempdir("private-decrypt-") as td:
         root = Path(td)
-        tar_path = root / "private.tar"
         extracted = root / "private"
-        decrypt_to_tar(archive, Path(args.identity), tar_path)
-        extract_tar(tar_path, extracted)
+        for age_file in age_files:
+            target = output_path_for(encrypted_dir, age_file, extracted)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            decrypt_file(age_file, Path(args.identity), target)
         if output.exists():
             backup = output.with_name(output.name + ".bak")
             if backup.exists():
                 raise SystemExit(f"backup already exists: {backup}")
             output.rename(backup)
         shutil.copytree(extracted, output)
-    print(f"PASS: restored {output}")
+    print(f"PASS: restored {output} from {encrypted_dir}")
     return 0
 
 

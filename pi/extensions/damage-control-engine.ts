@@ -3,6 +3,31 @@ import * as path from "node:path";
 import { canonicalize as sharedCanonicalize } from "../lib/extension-utils.js";
 import type { DangerousCommand } from "./damage-control-rules.js";
 
+export type DamageControlMode = "default" | "whitelist" | "noshell";
+
+const SHELL_TOOLS = new Set(["bash", "pwsh"]);
+const COMPOUND_SHELL_OPERATOR = /&&|\|\||[;|`<>]|\$\(/;
+
+const SHELL_WHITELIST: Record<string, RegExp[]> = {
+	bash: [
+		/^pwd$/,
+		/^ls(?:\s+-[A-Za-z]+)?(?:\s+[\w./~-]+)?$/,
+		/^git\s+status(?:\s+--short)?$/,
+		/^git\s+diff(?:\s+--stat|\s+--cached)?$/,
+		/^git\s+log(?:\s+--oneline)?(?:\s+-\d+)?$/,
+		/^pnpm\s+(?:test|run\s+typecheck)(?:\s+[\w./-]+)?$/,
+		/^uv\s+run\s+(?:pytest|ruff)(?:\s+[\w./-]+)?$/,
+	],
+	pwsh: [
+		/^(?:Get-Location|pwd)$/i,
+		/^(?:Get-ChildItem|ls)(?:\s+[\w./:~\\-]+)?$/i,
+		/^git\s+status(?:\s+--short)?$/i,
+		/^git\s+diff(?:\s+--stat|\s+--cached)?$/i,
+		/^git\s+log(?:\s+--oneline)?(?:\s+-\d+)?$/i,
+		/^pnpm\s+(?:test|run\s+typecheck)(?:\s+[\w./-]+)?$/i,
+	],
+};
+
 function stripShellQuotes(value: string): string {
 	if (
 		(value.startsWith('"') && value.endsWith('"')) ||
@@ -158,6 +183,15 @@ export function commandAppliesToCurrentPlatform(
 	return true;
 }
 
+function commandAppliesToTool(
+	command: DangerousCommand,
+	toolName?: string,
+): boolean {
+	if (!command.tools?.length || !toolName) return true;
+	const wanted = new Set(command.tools.map((value) => value.toLowerCase()));
+	return wanted.has(toolName.toLowerCase());
+}
+
 function commandMatchesRule(command: string, rule: DangerousCommand): boolean {
 	if (rule.regex) {
 		try {
@@ -169,18 +203,48 @@ function commandMatchesRule(command: string, rule: DangerousCommand): boolean {
 	return command.includes(rule.pattern);
 }
 
+export function evaluateShellMode(
+	toolName: string,
+	command: string,
+	mode: DamageControlMode,
+): { block: true; reason: string } | undefined {
+	if (!SHELL_TOOLS.has(toolName)) return undefined;
+	if (mode === "noshell") {
+		return {
+			block: true,
+			reason: `${toolName} is disabled by damage-control mode noshell`,
+		};
+	}
+	if (mode !== "whitelist") return undefined;
+	const trimmed = command.trim();
+	if (COMPOUND_SHELL_OPERATOR.test(trimmed)) {
+		return {
+			block: true,
+			reason: `${toolName} command blocked by damage-control whitelist mode: compound shell operators are not allowlisted`,
+		};
+	}
+	const allowlist = SHELL_WHITELIST[toolName] ?? [];
+	if (allowlist.some((pattern) => pattern.test(trimmed))) return undefined;
+	return {
+		block: true,
+		reason: `${toolName} command blocked by damage-control whitelist mode: command is not allowlisted`,
+	};
+}
+
 export async function evaluateDangerousCommand(
 	command: string,
 	rules: DangerousCommand[],
 	ctx?: {
 		ui?: { confirm?: (title: string, message: string) => Promise<boolean> };
 		hasUI?: boolean;
+		toolName?: string;
 		onConfirm?: (rule: DangerousCommand) => void;
 	},
 ): Promise<{ block: true; reason: string } | undefined> {
 	for (const rule of rules) {
 		if (
 			!commandAppliesToCurrentPlatform(rule) ||
+			!commandAppliesToTool(rule, ctx?.toolName) ||
 			!commandMatchesRule(command, rule)
 		)
 			continue;

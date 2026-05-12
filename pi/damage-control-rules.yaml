@@ -38,6 +38,30 @@ dangerous_commands:
     reason: "Potential exfiltration of local secrets to a network sink"
   - pattern: "chmod 777"
     reason: "Grants world-readable/writable/executable permissions — security risk"
+  - pattern: "pwsh recursive force delete"
+    tools: ["pwsh"]
+    regex: "\\b(?:Remove-Item|rm|ri|del|erase|rmdir|rd)\\b(?=[^|;&]*-(?:Recurse|r|rec))(?=[^|;&]*-(?:Force|f|fo))"
+    reason: "PowerShell recursive force delete can cause irreversible data loss"
+  - pattern: "pwsh encoded command"
+    tools: ["pwsh"]
+    regex: "\\b(?:powershell|pwsh)(?:\\.exe)?\\b[^|;&]*-(?:EncodedCommand|enc|e)\\b"
+    reason: "Encoded PowerShell commands hide behavior and are commonly used for bypass/obfuscation"
+  - pattern: "pwsh execution policy bypass"
+    tools: ["pwsh"]
+    regex: "\\b(?:powershell|pwsh)(?:\\.exe)?\\b[^|;&]*-(?:ExecutionPolicy|ep|ex)\\s+(?:Bypass|Unrestricted)|\\bSet-ExecutionPolicy\\b[^|;&]*(?:Bypass|Unrestricted)"
+    reason: "Execution policy bypass weakens PowerShell script safety controls"
+  - pattern: "pwsh download execute"
+    tools: ["pwsh"]
+    regex: "\\b(?:Invoke-WebRequest|iwr|wget|curl|Invoke-RestMethod|irm)\\b[^|;&]*(?:\\||;)\\s*(?:Invoke-Expression|iex|powershell|pwsh|Start-Process)"
+    reason: "Download-and-execute patterns can run untrusted remote code"
+  - pattern: "pwsh invoke expression"
+    tools: ["pwsh"]
+    regex: "\\b(?:Invoke-Expression|iex)\\b"
+    reason: "Invoke-Expression executes dynamically constructed code"
+  - pattern: "pwsh defender weakening"
+    tools: ["pwsh"]
+    regex: "\\b(?:Set-MpPreference|Add-MpPreference)\\b[^|;&]*(?:DisableRealtimeMonitoring|DisableBehaviorMonitoring|DisableIOAVProtection|ExclusionPath|ExclusionProcess|ExclusionExtension)"
+    reason: "Weakens Microsoft Defender or adds malware-style exclusions"
   # Linux only: on Windows/macOS these are allowed; on Linux they require confirmation.
   - pattern: "docker compose down"
     reason: "docker compose down stops and removes containers"

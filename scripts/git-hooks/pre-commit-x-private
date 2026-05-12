@@ -1,3 +1,19 @@
 #!/bin/sh
 set -eu
+
+if [ -d private ]; then
+    if python3 - <<'PY'
+import sys
+sys.path.insert(0, "scripts")
+from private_archive_lib import recipients_configured
+raise SystemExit(0 if recipients_configured() else 1)
+PY
+    then
+        scripts/private-archive-encrypt
+        git add -- .encrypted
+    else
+        echo "WARN: private/ exists but config/age/recipients.txt has no recipients; skipping auto-encryption" >&2
+    fi
+fi
+
 exec scripts/private-archive-scan --staged

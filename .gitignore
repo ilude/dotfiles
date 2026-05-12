@@ -147,9 +147,13 @@ private.tar.gz
 private-merge.tar
 .private.tar
 private.conflicts/
+.encrypted/**
+!.encrypted/
+!.encrypted/**/
+!.encrypted/**/*.age
 private-encrypted/**
 !private-encrypted/
 !private-encrypted/**/
 !private-encrypted/**/*.age
-# The encrypted private archive is intentionally committable.
+# Encrypted private files are intentionally committable.
 !private.tar.age

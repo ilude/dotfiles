@@ -1,0 +1,474 @@
+diff --git a/pi/damage-control-rules.yaml b/pi/damage-control-rules.yaml
+index 81add53..e8da1f9 100644
+--- a/pi/damage-control-rules.yaml
++++ b/pi/damage-control-rules.yaml
+@@ -38,6 +38,30 @@ dangerous_commands:
+     reason: "Potential exfiltration of local secrets to a network sink"
+   - pattern: "chmod 777"
+     reason: "Grants world-readable/writable/executable permissions — security risk"
++  - pattern: "pwsh recursive force delete"
++    tools: ["pwsh"]
++    regex: "\\b(?:Remove-Item|rm|ri|del|erase|rmdir|rd)\\b(?=[^|;&]*-(?:Recurse|r|rec))(?=[^|;&]*-(?:Force|f|fo))"
++    reason: "PowerShell recursive force delete can cause irreversible data loss"
++  - pattern: "pwsh encoded command"
++    tools: ["pwsh"]
++    regex: "\\b(?:powershell|pwsh)(?:\\.exe)?\\b[^|;&]*-(?:EncodedCommand|enc|e)\\b"
++    reason: "Encoded PowerShell commands hide behavior and are commonly used for bypass/obfuscation"
++  - pattern: "pwsh execution policy bypass"
++    tools: ["pwsh"]
++    regex: "\\b(?:powershell|pwsh)(?:\\.exe)?\\b[^|;&]*-(?:ExecutionPolicy|ep|ex)\\s+(?:Bypass|Unrestricted)|\\bSet-ExecutionPolicy\\b[^|;&]*(?:Bypass|Unrestricted)"
++    reason: "Execution policy bypass weakens PowerShell script safety controls"
++  - pattern: "pwsh download execute"
++    tools: ["pwsh"]
++    regex: "\\b(?:Invoke-WebRequest|iwr|wget|curl|Invoke-RestMethod|irm)\\b[^|;&]*(?:\\||;)\\s*(?:Invoke-Expression|iex|powershell|pwsh|Start-Process)"
++    reason: "Download-and-execute patterns can run untrusted remote code"
++  - pattern: "pwsh invoke expression"
++    tools: ["pwsh"]
++    regex: "\\b(?:Invoke-Expression|iex)\\b"
++    reason: "Invoke-Expression executes dynamically constructed code"
++  - pattern: "pwsh defender weakening"
++    tools: ["pwsh"]
++    regex: "\\b(?:Set-MpPreference|Add-MpPreference)\\b[^|;&]*(?:DisableRealtimeMonitoring|DisableBehaviorMonitoring|DisableIOAVProtection|ExclusionPath|ExclusionProcess|ExclusionExtension)"
++    reason: "Weakens Microsoft Defender or adds malware-style exclusions"
+   # Linux only: on Windows/macOS these are allowed; on Linux they require confirmation.
+   - pattern: "docker compose down"
+     reason: "docker compose down stops and removes containers"
+diff --git a/pi/extensions/damage-control-engine.ts b/pi/extensions/damage-control-engine.ts
+index a84ec7d..c9cee46 100644
+--- a/pi/extensions/damage-control-engine.ts
++++ b/pi/extensions/damage-control-engine.ts
+@@ -3,6 +3,31 @@ import * as path from "node:path";
+ import { canonicalize as sharedCanonicalize } from "../lib/extension-utils.js";
+ import type { DangerousCommand } from "./damage-control-rules.js";
+
++export type DamageControlMode = "default" | "whitelist" | "noshell";
++
++const SHELL_TOOLS = new Set(["bash", "pwsh"]);
++const COMPOUND_SHELL_OPERATOR = /&&|\|\||[;|`<>]|\$\(/;
++
++const SHELL_WHITELIST: Record<string, RegExp[]> = {
++    bash: [
++        /^pwd$/,
++        /^ls(?:\s+-[A-Za-z]+)?(?:\s+[\w./~-]+)?$/,
++        /^git\s+status(?:\s+--short)?$/,
++        /^git\s+diff(?:\s+--stat|\s+--cached)?$/,
++        /^git\s+log(?:\s+--oneline)?(?:\s+-\d+)?$/,
++        /^pnpm\s+(?:test|run\s+typecheck)(?:\s+[\w./-]+)?$/,
++        /^uv\s+run\s+(?:pytest|ruff)(?:\s+[\w./-]+)?$/,
++    ],
++    pwsh: [
++        /^(?:Get-Location|pwd)$/i,
++        /^(?:Get-ChildItem|ls)(?:\s+[\w./:~\\-]+)?$/i,
++        /^git\s+status(?:\s+--short)?$/i,
++        /^git\s+diff(?:\s+--stat|\s+--cached)?$/i,
++        /^git\s+log(?:\s+--oneline)?(?:\s+-\d+)?$/i,
++        /^pnpm\s+(?:test|run\s+typecheck)(?:\s+[\w./-]+)?$/i,
++    ],
++};
++
+ function stripShellQuotes(value: string): string {
+     if (
+         (value.startsWith('"') && value.endsWith('"')) ||
+@@ -158,6 +183,15 @@ export function commandAppliesToCurrentPlatform(
+     return true;
+ }
+
++function commandAppliesToTool(
++    command: DangerousCommand,
++    toolName?: string,
++): boolean {
++    if (!command.tools?.length || !toolName) return true;
++    const wanted = new Set(command.tools.map((value) => value.toLowerCase()));
++    return wanted.has(toolName.toLowerCase());
++}
++
+ function commandMatchesRule(command: string, rule: DangerousCommand): boolean {
+     if (rule.regex) {
+         try {
+@@ -169,18 +203,48 @@ function commandMatchesRule(command: string, rule: DangerousCommand): boolean {
+     return command.includes(rule.pattern);
+ }
+
++export function evaluateShellMode(
++    toolName: string,
++    command: string,
++    mode: DamageControlMode,
++): { block: true; reason: string } | undefined {
++    if (!SHELL_TOOLS.has(toolName)) return undefined;
++    if (mode === "noshell") {
++        return {
++            block: true,
++            reason: `${toolName} is disabled by damage-control mode noshell`,
++        };
++    }
++    if (mode !== "whitelist") return undefined;
++    const trimmed = command.trim();
++    if (COMPOUND_SHELL_OPERATOR.test(trimmed)) {
++        return {
++            block: true,
++            reason: `${toolName} command blocked by damage-control whitelist mode: compound shell operators are not allowlisted`,
++        };
++    }
++    const allowlist = SHELL_WHITELIST[toolName] ?? [];
++    if (allowlist.some((pattern) => pattern.test(trimmed))) return undefined;
++    return {
++        block: true,
++        reason: `${toolName} command blocked by damage-control whitelist mode: command is not allowlisted`,
++    };
++}
++
+ export async function evaluateDangerousCommand(
+     command: string,
+     rules: DangerousCommand[],
+     ctx?: {
+         ui?: { confirm?: (title: string, message: string) => Promise<boolean> };
+         hasUI?: boolean;
++        toolName?: string;
+         onConfirm?: (rule: DangerousCommand) => void;
+     },
+ ): Promise<{ block: true; reason: string } | undefined> {
+     for (const rule of rules) {
+         if (
+             !commandAppliesToCurrentPlatform(rule) ||
++            !commandAppliesToTool(rule, ctx?.toolName) ||
+             !commandMatchesRule(command, rule)
+         )
+             continue;
+diff --git a/pi/extensions/damage-control-rules.ts b/pi/extensions/damage-control-rules.ts
+index 2fcc3ff..2a518b4 100644
+--- a/pi/extensions/damage-control-rules.ts
++++ b/pi/extensions/damage-control-rules.ts
+@@ -12,6 +12,7 @@ export interface DangerousCommand {
+     regex?: string;
+     platforms?: string[];
+     exclude_platforms?: string[];
++    tools?: string[];
+ }
+
+ export interface DamageControlRules {
+@@ -79,7 +80,11 @@ export function validateDamageControlRules(value: unknown): string[] {
+             ) {
+                 errors.push(`dangerous_commands[${idx}].action must be ask or block`);
+             }
+-            for (const field of ["platforms", "exclude_platforms"] as const) {
++            for (const field of [
++                "platforms",
++                "exclude_platforms",
++                "tools",
++            ] as const) {
+                 if (entry[field] !== undefined && !stringArrayField(entry[field])) {
+                     errors.push(
+                         `dangerous_commands[${idx}].${field} must be an array of strings`,
+diff --git a/pi/extensions/damage-control.ts b/pi/extensions/damage-control.ts
+index f6efecd..4dfd19b 100644
+--- a/pi/extensions/damage-control.ts
++++ b/pi/extensions/damage-control.ts
+@@ -24,7 +24,9 @@ import {
+     canonicalizeOrBlock,
+     checkNoDeletePaths,
+     checkZeroAccess,
++    type DamageControlMode,
+     evaluateDangerousCommand,
++    evaluateShellMode,
+     extractBashDeleteTargets,
+     extractPwshDeleteTargets,
+     extractTruncatingEditWriteTarget,
+@@ -36,7 +38,9 @@ export {
+     checkNoDeletePaths,
+     checkZeroAccess,
+     commandAppliesToCurrentPlatform,
++    type DamageControlMode,
+     evaluateDangerousCommand,
++    evaluateShellMode,
+     extractBashDeleteTargets,
+     extractPwshDeleteTargets,
+     extractTruncatingEditWriteTarget,
+@@ -52,7 +56,13 @@ export {
+ } from "./damage-control-rules.js";
+
+ const DENY_PROVENANCE: DecisionProvenance = "rule";
++const DAMAGE_CONTROL_MODES: DamageControlMode[] = [
++    "default",
++    "whitelist",
++    "noshell",
++];
+ let lastDamageControlHealth: DamageControlHealth = getDamageControlHealth();
++let activeDamageControlMode: DamageControlMode = "default";
+
+ function safeRecordDeny(
+     toolName: string,
+@@ -129,11 +139,74 @@ function replayDescriptor(input: {
+
+ function formatDamageControlStatus(health: DamageControlHealth): string {
+     if (health.status === "active") {
+-        return "damage-control: active";
++        return `damage-control: active (${activeDamageControlMode})`;
+     }
+     return "damage-control: failed";
+ }
+
++function damageControlStatusMessage(): string {
++    return `damage-control status: ${lastDamageControlHealth.status}; mode: ${activeDamageControlMode}; core protections: always on`;
++}
++
++function parseDamageControlMode(value: string): DamageControlMode | undefined {
++    return DAMAGE_CONTROL_MODES.includes(value as DamageControlMode)
++        ? (value as DamageControlMode)
++        : undefined;
++}
++
++function registerDamageControlCommand(pi: ExtensionAPI): void {
++    const registerCommand = pi.registerCommand?.bind(pi);
++    if (!registerCommand) return;
++    const command = {
++        description:
++            "Show or switch the session-local damage-control mode: default, whitelist, noshell",
++        getArgumentCompletions: (prefix: string) => {
++            const items = [
++                { value: "status", label: "status" },
++                { value: "mode default", label: "mode default" },
++                { value: "mode whitelist", label: "mode whitelist" },
++                { value: "mode noshell", label: "mode noshell" },
++            ];
++            const filtered = items.filter((item) => item.value.startsWith(prefix));
++            return filtered.length > 0 ? filtered : items;
++        },
++        handler: async (args, ctx) => {
++            const trimmed = args.trim();
++            if (trimmed === "" || trimmed === "status") {
++                ctx.ui.notify(damageControlStatusMessage(), "info");
++                return;
++            }
++            const [subcommand, rawMode] = trimmed.split(/\s+/, 2);
++            if (subcommand !== "mode") {
++                ctx.ui.notify(
++                    "Usage: /damage-control status | /damage-control mode default|whitelist|noshell",
++                    "warning",
++                );
++                return;
++            }
++            const mode = parseDamageControlMode(rawMode ?? "");
++            if (!mode) {
++                ctx.ui.notify(
++                    "Usage: /damage-control mode default|whitelist|noshell",
++                    "warning",
++                );
++                return;
++            }
++            activeDamageControlMode = mode;
++            ctx.ui.setStatus(
++                "damage-control",
++                formatDamageControlStatus(lastDamageControlHealth),
++            );
++            ctx.ui.notify(`damage-control mode set to ${mode}`, "info");
++        },
++    } satisfies Parameters<ExtensionAPI["registerCommand"]>[1];
++    registerCommand("damage-control", command);
++    registerCommand("dc", {
++        ...command,
++        description: "Alias for /damage-control",
++    });
++}
++
+ function blockIfRulesFailed(): { block: true; reason: string } | undefined {
+     if (lastDamageControlHealth.status !== "failed") return undefined;
+     return {
+@@ -167,11 +240,13 @@ function recordBlock(
+
+ export default function (pi: ExtensionAPI) {
+     debugLog("extension_registered");
++    activeDamageControlMode = "default";
+     const loaded = loadRules();
+     const rules = loaded.rules;
+     lastDamageControlHealth = loaded.health;
+     debugLog("rules_loaded", { health: loaded.health });
+     publishDamageControlHealth(loaded.health);
++    registerDamageControlCommand(pi);
+
+     pi.on("session_start", async (_event, ctx) => {
+         debugLog("session_start", { health: lastDamageControlHealth });
+@@ -198,12 +273,23 @@ export default function (pi: ExtensionAPI) {
+             cwd: ctx.cwd,
+         });
+
++        const modeDecision = evaluateShellMode(
++            "bash",
++            command,
++            activeDamageControlMode,
++        );
++        if (modeDecision) {
++            recordBlock("bash", command, ctx.cwd, modeDecision);
++            return modeDecision;
++        }
++
+         const dangerous = await evaluateDangerousCommand(
+             command,
+             rules.dangerous_commands,
+             {
+                 ui: ctx.ui,
+                 hasUI: true,
++                toolName: "bash",
+                 onConfirm: (rule) => {
+                     safeRecordAllow(
+                         "bash",
+@@ -240,7 +326,7 @@ export default function (pi: ExtensionAPI) {
+         return noDelete;
+     });
+
+-    pi.on("tool_call", (event, ctx) => {
++    pi.on("tool_call", async (event, ctx) => {
+         if (event.toolName !== "pwsh") return undefined;
+         const failed = blockIfRulesFailed();
+         if (failed) return failed;
+@@ -250,6 +336,36 @@ export default function (pi: ExtensionAPI) {
+             actionSummary: command,
+             cwd: ctx.cwd,
+         });
++        const modeDecision = evaluateShellMode(
++            "pwsh",
++            command,
++            activeDamageControlMode,
++        );
++        if (modeDecision) {
++            recordBlock("pwsh", command, ctx.cwd, modeDecision);
++            return modeDecision;
++        }
++        const dangerous = await evaluateDangerousCommand(
++            command,
++            rules.dangerous_commands,
++            {
++                ui: ctx.ui,
++                hasUI: true,
++                toolName: "pwsh",
++                onConfirm: (rule) => {
++                    safeRecordAllow(
++                        "pwsh",
++                        command,
++                        "manual_once",
++                        `Confirmed dangerous command (matched "${rule.pattern}"): ${rule.reason}`,
++                    );
++                },
++            },
++        );
++        if (dangerous) {
++            recordBlock("pwsh", command, ctx.cwd, dangerous);
++            return dangerous;
++        }
+         const noDelete = checkNoDeletePaths(
+             extractPwshDeleteTargets(command),
+             rules.no_delete_paths,
+diff --git a/pi/tests/damage-control.test.ts b/pi/tests/damage-control.test.ts
+index 8757bc6..4c34a47 100644
+--- a/pi/tests/damage-control.test.ts
++++ b/pi/tests/damage-control.test.ts
+@@ -108,6 +108,7 @@ dangerous_commands:
+     reason: "docker compose down stops and removes containers"
+     action: "ask"
+     platforms: ["linux"]
++    tools: ["bash"]
+
+ zero_access_paths: []
+ no_delete_paths: []
+@@ -119,10 +120,102 @@ no_delete_paths: []
+                 reason: "docker compose down stops and removes containers",
+                 action: "ask",
+                 platforms: ["linux"],
++                tools: ["bash"],
+             },
+         ]);
+     });
+
++    it("applies dangerous command rules only to targeted tools", async () => {
++        const mod = await import("../extensions/damage-control.ts");
++        const rules = [
++            {
++                pattern: "pwsh invoke expression",
++                regex: "\\b(?:Invoke-Expression|iex)\\b",
++                reason: "Invoke-Expression executes dynamically constructed code",
++                tools: ["pwsh"],
++            },
++        ];
++
++        const bashResult = await mod.evaluateDangerousCommand("iex foo", rules, {
++            toolName: "bash",
++        });
++        const pwshResult = await mod.evaluateDangerousCommand("iex foo", rules, {
++            toolName: "pwsh",
++        });
++
++        expect(bashResult).toBeUndefined();
++        expect(pwshResult?.block).toBe(true);
++    });
++
++    it("supports default, whitelist, and noshell shell modes", async () => {
++        const mod = await import("../extensions/damage-control.ts");
++
++        expect(
++            mod.evaluateShellMode("bash", "git status --short", "default"),
++        ).toBeUndefined();
++        expect(
++            mod.evaluateShellMode("bash", "git status --short", "whitelist"),
++        ).toBeUndefined();
++        expect(mod.evaluateShellMode("bash", "echo hi", "whitelist")?.block).toBe(
++            true,
++        );
++        expect(
++            mod.evaluateShellMode("pwsh", "Get-Location", "whitelist"),
++        ).toBeUndefined();
++        expect(
++            mod.evaluateShellMode("pwsh", "Get-Location; Get-ChildItem", "whitelist")
++                ?.block,
++        ).toBe(true);
++        expect(
++            mod.evaluateShellMode("pwsh", "Get-Location", "noshell")?.block,
++        ).toBe(true);
++    });
++
++    it("registers /damage-control and /dc session-local mode commands", async () => {
++        const mod = await import("../extensions/damage-control.ts");
++        const commands: Record<
++            string,
++            {
++                handler: (
++                    args: string,
++                    ctx: { ui: Record<string, ReturnType<typeof vi.fn>> },
++                ) => Promise<void>;
++            }
++        > = {};
++        const pi = {
++            on: vi.fn(),
++            registerCommand: vi.fn(
++                (name: string, command: (typeof commands)[string]) => {
++                    commands[name] = command;
++                },
++            ),
++        };
++        const ctx = {
++            ui: {
++                notify: vi.fn(),
++                setStatus: vi.fn(),
++            },
++        };
++
++        mod.default(pi as Parameters<typeof mod.default>[0]);
++        await commands.dc.handler("mode whitelist", ctx);
++        await commands["damage-control"].handler("status", ctx);
++
++        expect(pi.registerCommand).toHaveBeenCalledWith(
++            "damage-control",
++            expect.any(Object),
++        );
++        expect(pi.registerCommand).toHaveBeenCalledWith("dc", expect.any(Object));
++        expect(ctx.ui.setStatus).toHaveBeenCalledWith(
++            "damage-control",
++            expect.stringContaining("whitelist"),
++        );
++        expect(ctx.ui.notify).toHaveBeenCalledWith(
++            expect.stringContaining("mode: whitelist"),
++            "info",
++        );
++    });
++
+     it("preserves regex metadata and matches command variants", async () => {
+         const mod = await import("../extensions/damage-control.ts");
+         const rules = [

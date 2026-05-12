@@ -1,0 +1,18 @@
+ M .gitattributes
+ M .gitignore
+ D .specs/prompt-routing-synthetic-data-prompt.md
+ M pi/damage-control-rules.yaml
+ M pi/extensions/damage-control-engine.ts
+ M pi/extensions/damage-control-rules.ts
+ M pi/extensions/damage-control.ts
+ M pi/prompts/handoff.md
+ M pi/tests/damage-control.test.ts
+ M scripts/git-hooks/pre-commit-x-private
+ M scripts/private-archive-decrypt
+ M scripts/private-archive-encrypt
+ M scripts/private-archive-status
+ M scripts/private_archive_lib.py
+ M test/test_private_archive.py
+?? .specs/archive/private-encrypted-workflow/
+?? .specs/damage-control-modes/
+?? artifacts/

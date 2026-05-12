@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Report private archive guardrail status without decrypting content."""
+"""Report private encryption guardrail status without decrypting content."""
 from __future__ import annotations
 
 import subprocess
 from pathlib import Path
 
-from private_archive_lib import ARCHIVE, RECIPIENTS, is_blocked_path, staged_paths
+from private_archive_lib import ENCRYPTED_DIR, is_blocked_path, recipients, staged_paths
 
 
 def ok(cmd: list[str]) -> bool:
@@ -15,9 +15,14 @@ def ok(cmd: list[str]) -> bool:
 def main() -> int:
     print(f"age: {'ok' if ok(['age', '--version']) else 'missing'}")
     print(f"age-keygen: {'ok' if ok(['age-keygen', '-version']) else 'missing'}")
-    print(f"recipients: {'present' if RECIPIENTS.exists() else 'missing'}")
-    print(f"archive: {'present' if ARCHIVE.exists() else 'missing'}")
-    print(f"archive_mtime: {int(ARCHIVE.stat().st_mtime) if ARCHIVE.exists() else 'n/a'}")
+    try:
+        recipient_count = len(recipients())
+    except SystemExit:
+        recipient_count = 0
+    encrypted_files = list(ENCRYPTED_DIR.rglob("*.age")) if ENCRYPTED_DIR.exists() else []
+    print(f"recipients: {'configured' if recipient_count else 'missing'}")
+    print(f"encrypted_dir: {'present' if ENCRYPTED_DIR.exists() else 'missing'}")
+    print(f"encrypted_files: {len(encrypted_files)}")
     blocked = [p for p in staged_paths() if is_blocked_path(p)] if Path('.git').exists() else []
     print(f"staged_plaintext_private: {len(blocked)}")
     print(f"hook: {'present' if Path('.git/hooks/pre-commit').exists() else 'missing'}")

@@ -108,6 +108,7 @@ dangerous_commands:
     reason: "docker compose down stops and removes containers"
     action: "ask"
     platforms: ["linux"]
+    tools: ["bash"]
 
 zero_access_paths: []
 no_delete_paths: []
@@ -119,8 +120,100 @@ no_delete_paths: []
 				reason: "docker compose down stops and removes containers",
 				action: "ask",
 				platforms: ["linux"],
+				tools: ["bash"],
 			},
 		]);
+	});
+
+	it("applies dangerous command rules only to targeted tools", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const rules = [
+			{
+				pattern: "pwsh invoke expression",
+				regex: "\\b(?:Invoke-Expression|iex)\\b",
+				reason: "Invoke-Expression executes dynamically constructed code",
+				tools: ["pwsh"],
+			},
+		];
+
+		const bashResult = await mod.evaluateDangerousCommand("iex foo", rules, {
+			toolName: "bash",
+		});
+		const pwshResult = await mod.evaluateDangerousCommand("iex foo", rules, {
+			toolName: "pwsh",
+		});
+
+		expect(bashResult).toBeUndefined();
+		expect(pwshResult?.block).toBe(true);
+	});
+
+	it("supports default, whitelist, and noshell shell modes", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+
+		expect(
+			mod.evaluateShellMode("bash", "git status --short", "default"),
+		).toBeUndefined();
+		expect(
+			mod.evaluateShellMode("bash", "git status --short", "whitelist"),
+		).toBeUndefined();
+		expect(mod.evaluateShellMode("bash", "echo hi", "whitelist")?.block).toBe(
+			true,
+		);
+		expect(
+			mod.evaluateShellMode("pwsh", "Get-Location", "whitelist"),
+		).toBeUndefined();
+		expect(
+			mod.evaluateShellMode("pwsh", "Get-Location; Get-ChildItem", "whitelist")
+				?.block,
+		).toBe(true);
+		expect(
+			mod.evaluateShellMode("pwsh", "Get-Location", "noshell")?.block,
+		).toBe(true);
+	});
+
+	it("registers /damage-control and /dc session-local mode commands", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const commands: Record<
+			string,
+			{
+				handler: (
+					args: string,
+					ctx: { ui: Record<string, ReturnType<typeof vi.fn>> },
+				) => Promise<void>;
+			}
+		> = {};
+		const pi = {
+			on: vi.fn(),
+			registerCommand: vi.fn(
+				(name: string, command: (typeof commands)[string]) => {
+					commands[name] = command;
+				},
+			),
+		};
+		const ctx = {
+			ui: {
+				notify: vi.fn(),
+				setStatus: vi.fn(),
+			},
+		};
+
+		mod.default(pi as Parameters<typeof mod.default>[0]);
+		await commands.dc.handler("mode whitelist", ctx);
+		await commands["damage-control"].handler("status", ctx);
+
+		expect(pi.registerCommand).toHaveBeenCalledWith(
+			"damage-control",
+			expect.any(Object),
+		);
+		expect(pi.registerCommand).toHaveBeenCalledWith("dc", expect.any(Object));
+		expect(ctx.ui.setStatus).toHaveBeenCalledWith(
+			"damage-control",
+			expect.stringContaining("whitelist"),
+		);
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			expect.stringContaining("mode: whitelist"),
+			"info",
+		);
 	});
 
 	it("preserves regex metadata and matches command variants", async () => {

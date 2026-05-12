@@ -24,7 +24,9 @@ import {
 	canonicalizeOrBlock,
 	checkNoDeletePaths,
 	checkZeroAccess,
+	type DamageControlMode,
 	evaluateDangerousCommand,
+	evaluateShellMode,
 	extractBashDeleteTargets,
 	extractPwshDeleteTargets,
 	extractTruncatingEditWriteTarget,
@@ -36,7 +38,9 @@ export {
 	checkNoDeletePaths,
 	checkZeroAccess,
 	commandAppliesToCurrentPlatform,
+	type DamageControlMode,
 	evaluateDangerousCommand,
+	evaluateShellMode,
 	extractBashDeleteTargets,
 	extractPwshDeleteTargets,
 	extractTruncatingEditWriteTarget,
@@ -52,7 +56,19 @@ export {
 } from "./damage-control-rules.js";
 
 const DENY_PROVENANCE: DecisionProvenance = "rule";
-let lastDamageControlHealth: DamageControlHealth = getDamageControlHealth();
+const DAMAGE_CONTROL_MODES: DamageControlMode[] = [
+	"default",
+	"whitelist",
+	"noshell",
+];
+interface DamageControlRuntimeState {
+	health: DamageControlHealth;
+	mode: DamageControlMode;
+}
+
+function createDamageControlState(): DamageControlRuntimeState {
+	return { health: getDamageControlHealth(), mode: "default" };
+}
 
 function safeRecordDeny(
 	toolName: string,
@@ -127,19 +143,108 @@ function replayDescriptor(input: {
 	};
 }
 
-function formatDamageControlStatus(health: DamageControlHealth): string {
-	if (health.status === "active") {
-		return "damage-control: active";
+function formatDamageControlStatus(state: DamageControlRuntimeState): string {
+	if (state.health.status === "active") {
+		return `damage-control: active (${state.mode})`;
 	}
 	return "damage-control: failed";
 }
 
-function blockIfRulesFailed(): { block: true; reason: string } | undefined {
-	if (lastDamageControlHealth.status !== "failed") return undefined;
+function damageControlStatusMessage(state: DamageControlRuntimeState): string {
+	return `damage-control status: ${state.health.status}; mode: ${state.mode}; core protections: always on`;
+}
+
+function parseDamageControlMode(value: string): DamageControlMode | undefined {
+	return DAMAGE_CONTROL_MODES.includes(value as DamageControlMode)
+		? (value as DamageControlMode)
+		: undefined;
+}
+
+function safeRecordModeTransition(
+	previousMode: DamageControlMode,
+	newMode: DamageControlMode,
+	alias: string,
+): void {
+	try {
+		recordEvent({
+			event: "damage_control_mode_transition",
+			data: { previousMode, newMode, alias },
+		});
+	} catch {
+		// Metrics failures must never block damage-control flow.
+	}
+}
+
+function registerDamageControlCommand(
+	pi: ExtensionAPI,
+	state: DamageControlRuntimeState,
+): void {
+	const registerCommand = pi.registerCommand?.bind(pi);
+	if (!registerCommand) return;
+	const command = {
+		description:
+			"Show or switch the session-local damage-control mode: default, whitelist, noshell",
+		getArgumentCompletions: (prefix: string) => {
+			const items = [
+				{ value: "status", label: "status" },
+				{ value: "mode default", label: "mode default" },
+				{ value: "mode whitelist", label: "mode whitelist" },
+				{ value: "mode noshell", label: "mode noshell" },
+			];
+			const filtered = items.filter((item) => item.value.startsWith(prefix));
+			return filtered.length > 0 ? filtered : items;
+		},
+		handler: async (args, ctx) => {
+			const trimmed = args.trim();
+			if (trimmed === "" || trimmed === "status") {
+				ctx.ui.notify(damageControlStatusMessage(state), "info");
+				return;
+			}
+			const tokens = trimmed.split(/\s+/);
+			const [subcommand, rawMode] = tokens;
+			if (subcommand !== "mode" || tokens.length !== 2) {
+				ctx.ui.notify(
+					"Usage: /damage-control status | /damage-control mode default|whitelist|noshell",
+					"warning",
+				);
+				return;
+			}
+			const mode = parseDamageControlMode(rawMode ?? "");
+			if (!mode) {
+				ctx.ui.notify(
+					"Usage: /damage-control mode default|whitelist|noshell",
+					"warning",
+				);
+				return;
+			}
+			const previousMode = state.mode;
+			state.mode = mode;
+			safeRecordModeTransition(
+				previousMode,
+				mode,
+				(ctx as { commandName?: string }).commandName ?? "damage-control",
+			);
+			ctx.ui.setStatus("damage-control", formatDamageControlStatus(state));
+			ctx.ui.notify(
+				`damage-control mode changed from ${previousMode} to ${mode}`,
+				"info",
+			);
+		},
+	} satisfies Parameters<ExtensionAPI["registerCommand"]>[1];
+	registerCommand("damage-control", command);
+	registerCommand("dc", {
+		...command,
+		description: "Alias for /damage-control",
+	});
+}
+
+function blockIfRulesFailed(
+	state: DamageControlRuntimeState,
+): { block: true; reason: string } | undefined {
+	if (state.health.status !== "failed") return undefined;
 	return {
 		block: true,
-		reason:
-			lastDamageControlHealth.error ?? "Damage-control rules failed to load.",
+		reason: state.health.error ?? "Damage-control rules failed to load.",
 	};
 }
 
@@ -167,21 +272,20 @@ function recordBlock(
 
 export default function (pi: ExtensionAPI) {
 	debugLog("extension_registered");
+	const state = createDamageControlState();
 	const loaded = loadRules();
 	const rules = loaded.rules;
-	lastDamageControlHealth = loaded.health;
+	state.health = loaded.health;
 	debugLog("rules_loaded", { health: loaded.health });
 	publishDamageControlHealth(loaded.health);
+	registerDamageControlCommand(pi, state);
 
 	pi.on("session_start", async (_event, ctx) => {
-		debugLog("session_start", { health: lastDamageControlHealth });
-		ctx.ui.setStatus(
-			"damage-control",
-			formatDamageControlStatus(lastDamageControlHealth),
-		);
-		if (lastDamageControlHealth.status === "failed") {
+		debugLog("session_start", { health: state.health });
+		ctx.ui.setStatus("damage-control", formatDamageControlStatus(state));
+		if (state.health.status === "failed") {
 			ctx.ui.notify(
-				lastDamageControlHealth.error ?? "Damage-control rules failed to load.",
+				state.health.error ?? "Damage-control rules failed to load.",
 				"warning",
 			);
 		}
@@ -189,7 +293,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("tool_call", async (event, ctx) => {
 		if (event.toolName !== "bash") return undefined;
-		const failed = blockIfRulesFailed();
+		const failed = blockIfRulesFailed(state);
 		if (failed) return failed;
 		const command = (event as BashToolCallEvent).input.command ?? "";
 		debugLog("tool_call_seen", {
@@ -198,12 +302,23 @@ export default function (pi: ExtensionAPI) {
 			cwd: ctx.cwd,
 		});
 
+		const modeDecision = evaluateShellMode(
+			"bash",
+			command,
+			state.mode,
+		);
+		if (modeDecision) {
+			recordBlock("bash", command, ctx.cwd, modeDecision);
+			return modeDecision;
+		}
+
 		const dangerous = await evaluateDangerousCommand(
 			command,
 			rules.dangerous_commands,
 			{
 				ui: ctx.ui,
 				hasUI: true,
+				toolName: "bash",
 				onConfirm: (rule) => {
 					safeRecordAllow(
 						"bash",
@@ -240,9 +355,9 @@ export default function (pi: ExtensionAPI) {
 		return noDelete;
 	});
 
-	pi.on("tool_call", (event, ctx) => {
+	pi.on("tool_call", async (event, ctx) => {
 		if (event.toolName !== "pwsh") return undefined;
-		const failed = blockIfRulesFailed();
+		const failed = blockIfRulesFailed(state);
 		if (failed) return failed;
 		const command = (event.input as { command?: string }).command ?? "";
 		debugLog("tool_call_seen", {
@@ -250,6 +365,36 @@ export default function (pi: ExtensionAPI) {
 			actionSummary: command,
 			cwd: ctx.cwd,
 		});
+		const modeDecision = evaluateShellMode(
+			"pwsh",
+			command,
+			state.mode,
+		);
+		if (modeDecision) {
+			recordBlock("pwsh", command, ctx.cwd, modeDecision);
+			return modeDecision;
+		}
+		const dangerous = await evaluateDangerousCommand(
+			command,
+			rules.dangerous_commands,
+			{
+				ui: ctx.ui,
+				hasUI: true,
+				toolName: "pwsh",
+				onConfirm: (rule) => {
+					safeRecordAllow(
+						"pwsh",
+						command,
+						"manual_once",
+						`Confirmed dangerous command (matched "${rule.pattern}"): ${rule.reason}`,
+					);
+				},
+			},
+		);
+		if (dangerous) {
+			recordBlock("pwsh", command, ctx.cwd, dangerous);
+			return dangerous;
+		}
 		const noDelete = checkNoDeletePaths(
 			extractPwshDeleteTargets(command),
 			rules.no_delete_paths,
@@ -262,7 +407,7 @@ export default function (pi: ExtensionAPI) {
 	pi.on("tool_call", async (event, ctx) => {
 		const FILE_TOOLS = new Set(["read", "write", "edit", "find", "ls"]);
 		if (!FILE_TOOLS.has(event.toolName)) return undefined;
-		const failed = blockIfRulesFailed();
+		const failed = blockIfRulesFailed(state);
 		if (failed) return failed;
 		const fileEvent = event as
 			| ReadToolCallEvent
