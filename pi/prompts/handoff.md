@@ -3,7 +3,7 @@ description: Compact the current conversation into a handoff document for anothe
 argument-hint: "[next-session focus]"
 ---
 
-Write a handoff document summarising the current conversation so a fresh agent can continue the work. Save it under `private/handoffs/` using a unique filename such as `handoff-YYYYMMDD-HHMMSS.md` (create the directory if needed; read the file before you write to it). Handoff artifacts are private data; the private pre-commit hook encrypts files from `private/` into `.encrypted/`.
+Write a handoff document summarising the current conversation so a fresh agent can continue the work. Save it under `private/handoffs/` using a unique filename such as `handoff-YYYYMMDD-HHMMSS.md` (create the directory if needed; read the file before you write to it). Handoff artifacts are private data; run `scripts/private-archive-encrypt` so they are committed only as per-file `.encrypted/handoffs/*.md.age` artifacts.
 
 Suggest the skills to be used, if any, by the next session.
 

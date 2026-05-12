@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Report private encryption guardrail status without decrypting content."""
+"""Report private per-file encryption guardrail status without decrypting content."""
 from __future__ import annotations
 
 import subprocess
 from pathlib import Path
 
-from private_archive_lib import ENCRYPTED_DIR, is_blocked_path, recipients, staged_paths
+from private_archive_lib import ENCRYPTED_DIR, RECIPIENTS, encrypted_files, is_blocked_path, staged_paths
 
 
 def ok(cmd: list[str]) -> bool:
@@ -15,18 +15,27 @@ def ok(cmd: list[str]) -> bool:
 def main() -> int:
     print(f"age: {'ok' if ok(['age', '--version']) else 'missing'}")
     print(f"age-keygen: {'ok' if ok(['age-keygen', '-version']) else 'missing'}")
+    recipients_state = "present" if RECIPIENTS.exists() else "missing"
+    print(f"recipients: {recipients_state}")
     try:
-        recipient_count = len(recipients())
-    except SystemExit:
-        recipient_count = 0
-    encrypted_files = list(ENCRYPTED_DIR.rglob("*.age")) if ENCRYPTED_DIR.exists() else []
-    print(f"recipients: {'configured' if recipient_count else 'missing'}")
+        encrypted_count = len(encrypted_files(ENCRYPTED_DIR))
+        encrypted_state = "ok"
+    except SystemExit as exc:
+        encrypted_count = 0
+        encrypted_state = f"error: {exc}"
     print(f"encrypted_dir: {'present' if ENCRYPTED_DIR.exists() else 'missing'}")
-    print(f"encrypted_files: {len(encrypted_files)}")
-    blocked = [p for p in staged_paths() if is_blocked_path(p)] if Path('.git').exists() else []
+    print(f"encrypted_files: {encrypted_count}")
+    print(f"encrypted_state: {encrypted_state}")
+    blocked = [p for p in staged_paths() if is_blocked_path(p)] if Path(".git").exists() else []
     print(f"staged_plaintext_private: {len(blocked)}")
-    print(f"hook: {'present' if Path('.git/hooks/pre-commit').exists() else 'missing'}")
-    return 1 if blocked else 0
+    hook_path = subprocess.run(
+        ["git", "rev-parse", "--git-path", "hooks/pre-commit"],
+        text=True,
+        capture_output=True,
+    )
+    hook = Path(hook_path.stdout.strip()) if hook_path.returncode == 0 else Path(".git/hooks/pre-commit")
+    print(f"hook: {'present' if hook.exists() else 'missing'}")
+    return 1 if blocked or encrypted_state != "ok" else 0
 
 
 if __name__ == "__main__":

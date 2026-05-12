@@ -1,42 +1,23 @@
 #!/usr/bin/env python3
-"""Encrypt private/ files into .encrypted/."""
+"""Sync-encrypt private/ files into per-path .encrypted/**/*.age artifacts."""
 from __future__ import annotations
 
 import argparse
-import tempfile
 from pathlib import Path
 
-from private_archive_lib import ENCRYPTED_DIR, PRIVATE_DIR, atomic_replace, encrypt_file
-
+from private_archive_lib import ENCRYPTED_DIR, PRIVATE_DIR, sync_encrypt
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--private-dir", default=str(PRIVATE_DIR))
     parser.add_argument("--output-dir", default=str(ENCRYPTED_DIR))
+    parser.add_argument("--output", dest="legacy_output", help="legacy option; use --output-dir")
     args = parser.parse_args()
-    private_dir = Path(args.private_dir)
-    output_dir = Path(args.output_dir)
-    if not private_dir.is_dir():
-        raise SystemExit(f"missing private directory: {private_dir}")
-    files = [item for item in sorted(private_dir.rglob("*")) if item.is_file()]
-    if not files:
-        print(f"PASS: no private files to encrypt under {private_dir}")
-        return 0
-    encrypted_count = 0
-    for item in files:
-        if item.is_symlink():
-            raise SystemExit(f"refusing symlink in private archive: {item.relative_to(private_dir).as_posix()}")
-        rel = item.relative_to(private_dir).as_posix()
-        out_path = output_dir / f"{rel}.age"
-        if out_path.exists() and out_path.stat().st_mtime >= item.stat().st_mtime:
-            continue
-        with tempfile.TemporaryDirectory(prefix="private-encrypt-") as td:
-            tmp_path = Path(td) / "file.age"
-            encrypt_file(item, tmp_path)
-            atomic_replace(tmp_path, out_path)
-        encrypted_count += 1
-    print(f"PASS: encrypted {encrypted_count} of {len(files)} private file(s) into {output_dir}")
+    if args.legacy_output:
+        raise SystemExit("private.tar.age output is legacy; use per-file .encrypted/ artifacts")
+    written = sync_encrypt(Path(args.private_dir), Path(args.output_dir))
+    print(f"PASS: synced {len(written)} encrypted private files to {args.output_dir}")
     return 0
 
 

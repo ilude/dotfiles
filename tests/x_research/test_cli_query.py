@@ -1,9 +1,8 @@
 from pathlib import Path
 
-from x_research.models import FollowDirection, XUser
-
 from x_research.cli import main
 from x_research.db import connect
+from x_research.models import FollowDirection, XUser
 from x_research.repository import XRepository
 
 

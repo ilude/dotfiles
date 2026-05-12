@@ -147,6 +147,7 @@ private.tar.gz
 private-merge.tar
 .private.tar
 private.conflicts/
+# Per-file age artifacts for private/ are intentionally committable.
 .encrypted/**
 !.encrypted/
 !.encrypted/**/
@@ -155,5 +156,5 @@ private-encrypted/**
 !private-encrypted/
 !private-encrypted/**/
 !private-encrypted/**/*.age
-# Encrypted private files are intentionally committable.
+# Legacy encrypted private archive remains committable for compatibility.
 !private.tar.age
