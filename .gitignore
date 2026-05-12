@@ -44,6 +44,7 @@ claude/CHECKPOINT
 claude/.checkpoints/
 claude/.session/
 claude/.update.lock
+claude/.last-cleanup
 claude/history.jsonl
 claude/stats-cache.json
 claude/sessions/
