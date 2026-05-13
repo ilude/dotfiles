@@ -985,11 +985,32 @@ export function stageFiles(
 			`Refusing to stage runtime/generated paths:\n${formatExcludedCommitPaths(unsafe)}`,
 		);
 	}
-	const addResult = runGit(cwd, ["add", "--", ...files], activity);
-	if (addResult.code !== 0)
-		throw new Error(
-			(addResult.stderr || addResult.stdout).trim() || "git add failed",
+	const existingFiles = files.filter((file) =>
+		fs.existsSync(path.resolve(cwd, file)),
+	);
+	const missingFiles = files.filter((file) => !existingFiles.includes(file));
+	if (existingFiles.length > 0) {
+		const addResult = runGit(
+			cwd,
+			["add", "-A", "--", ...existingFiles],
+			activity,
 		);
+		if (addResult.code !== 0)
+			throw new Error(
+				(addResult.stderr || addResult.stdout).trim() || "git add failed",
+			);
+	}
+	if (missingFiles.length > 0) {
+		const rmResult = runGit(
+			cwd,
+			["rm", "--ignore-unmatch", "--", ...missingFiles],
+			activity,
+		);
+		if (rmResult.code !== 0)
+			throw new Error(
+				(rmResult.stderr || rmResult.stdout).trim() || "git rm failed",
+			);
+	}
 }
 
 function unstageFiles(cwd: string, files: string[], activity?: CommitActivity) {

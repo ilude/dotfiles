@@ -286,6 +286,27 @@ describe("/commit command flow – plan validation rejection", () => {
 		expect(fallback).toBeUndefined();
 	});
 
+	it("stages selected tracked deletions with git rm --ignore-unmatch", async () => {
+		setupGitMocks([".specs/phase3-infisical-bootstrap.md"]);
+		const validPlan = JSON.stringify({
+			groups: [
+				{
+					files: [".specs/phase3-infisical-bootstrap.md"],
+					subject: "docs(infisical): remove superseded plan",
+				},
+			],
+		});
+		const ctx = createMockCtxWithLlmResponse(validPlan);
+
+		await getCommitHandler()("", ctx);
+
+		expect(mockSpawnSync).toHaveBeenCalledWith(
+			expect.any(String),
+			["rm", "--ignore-unmatch", "--", ".specs/phase3-infisical-bootstrap.md"],
+			expect.any(Object),
+		);
+	});
+
 	// ── plan with unknown file ──────────────────────────────────────────────────
 
 	it("does not block commit when secret reviewer classifies doc examples as examples", async () => {
