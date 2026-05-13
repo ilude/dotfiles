@@ -23,9 +23,13 @@ isolation: none
 memory: project
 effort: medium
 maxTurns: 25
-tools: read, grep, bash
+tools: read, grep, bash, review_artifact_write
 domain:
   - path: .pi/multi-team/
+    read: true
+    upsert: true
+    delete: false
+  - path: .specs/
     read: true
     upsert: true
     delete: false

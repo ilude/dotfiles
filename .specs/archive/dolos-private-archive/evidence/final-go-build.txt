@@ -1,0 +1,8 @@
+$ cd tools/dolos && go test ./... && go build -o ../../bin/dolos.exe . && ../../bin/dolos.exe --help
+?   	dolos	[no test files]
+ok  	dolos/internal/archive	(cached)
+ok  	dolos/internal/cli	(cached)
+?   	dolos/internal/crypto	[no test files]
+?   	dolos/internal/gitstore	[no test files]
+ok  	dolos/internal/state	(cached)
+usage: dolos <init|status|pack private|unpack private --identity KEY|scan --staged>

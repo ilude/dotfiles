@@ -1,0 +1,22 @@
+$ cd tools/dolos && go test ./...
+?   	dolos	[no test files]
+ok  	dolos/internal/archive	(cached)
+ok  	dolos/internal/cli	(cached)
+?   	dolos/internal/crypto	[no test files]
+?   	dolos/internal/gitstore	[no test files]
+ok  	dolos/internal/state	(cached)
+$ cd tools/dolos && go test ./... -run TestEndToEndTempRepoSSHKeys
+?   	dolos	[no test files]
+ok  	dolos/internal/archive	(cached) [no tests to run]
+ok  	dolos/internal/cli	0.884s
+?   	dolos/internal/crypto	[no test files]
+?   	dolos/internal/gitstore	[no test files]
+ok  	dolos/internal/state	(cached) [no tests to run]
+$ cd tools/dolos && go test ./... -run TestWorktreeStateIsolation
+?   	dolos	[no test files]
+ok  	dolos/internal/archive	(cached) [no tests to run]
+ok  	dolos/internal/cli	0.598s
+?   	dolos/internal/crypto	[no test files]
+?   	dolos/internal/gitstore	[no test files]
+ok  	dolos/internal/state	(cached) [no tests to run]
+$ gofmt -l tools/dolos

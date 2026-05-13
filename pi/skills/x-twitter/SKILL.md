@@ -22,7 +22,7 @@ The active execution plan is:
 Current MVP direction:
 
 - Store local plaintext X data under `private/x/` (gitignored).
-- Store optional repo-backed encrypted snapshots under `private-encrypted/x/*.age`.
+- Store optional repo-backed encrypted snapshots through Dolos at `.dolos/artifacts/private.tar.gz.age`.
 - Build an installable Python package at `src/x_research/` with CLI entrypoint `x-research`.
 - Use `twitterapi.io` for following/followers bulk sync.
 - Use browser-agent only for bounded read-only validation or occasional pulls.
@@ -98,16 +98,16 @@ Do not infer following status from feed presence alone.
 Keep plaintext PII/local caches out of git:
 
 ```text
-private/x/                       # plaintext local DB/config/exports, gitignored
-private-encrypted/x/*.age        # tracked encrypted artifacts only
+private/x/                                   # plaintext local DB/config/exports, gitignored
+.dolos/artifacts/private.tar.gz.age          # tracked encrypted Dolos archive
 ```
 
-Expected guardrails from the plan:
+Expected guardrails:
 
 - `private/` ignored.
-- `private-encrypted/` ignores everything except `*.age`.
-- `scripts/x-private-scan --staged` rejects plaintext private data.
-- `scripts/x-private-encrypt` and `scripts/x-private-decrypt` use `age` with explicit recipients and atomic writes.
+- Dolos owns private archive packing/unpacking through `bin/dolos`.
+- `scripts/install-dolos-hook` installs the block-only pre-commit hook.
+- `scripts/git-hooks/pre-commit-dolos` runs `bin/dolos scan --staged` and rejects plaintext private data.
 
 ## Anti-Patterns
 

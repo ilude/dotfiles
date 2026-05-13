@@ -1,0 +1,12 @@
+$ uv run pytest test/test_private_archive.py
+============================= test session starts =============================
+platform win32 -- Python 3.14.4, pytest-9.0.2, pluggy-1.6.0
+rootdir: C:\Users\mglenn\.dotfiles
+configfile: pyproject.toml
+plugins: anyio-4.13.0, asyncio-1.3.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 5 items
+
+test\test_private_archive.py .....                                       [100%]
+
+============================== 5 passed in 5.24s ==============================

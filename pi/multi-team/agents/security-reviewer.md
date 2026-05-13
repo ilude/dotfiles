@@ -16,9 +16,13 @@ skills:
     use-when: Always. Read the conversation log before every response.
   - path: .pi/multi-team/skills/precise-worker.md
     use-when: Always. Execute exactly what your lead assigned — no improvising.
-tools: read, grep, bash
+tools: read, grep, bash, review_artifact_write
 domain:
   - path: .pi/multi-team/
+    read: true
+    upsert: true
+    delete: false
+  - path: .specs/
     read: true
     upsert: true
     delete: false

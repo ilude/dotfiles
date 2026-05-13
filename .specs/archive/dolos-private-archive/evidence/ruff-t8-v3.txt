@@ -1,0 +1,5 @@
+$ make lint-python
+Running ruff check...
+uv run ruff check
+All checks passed!
+Ruff check passed.

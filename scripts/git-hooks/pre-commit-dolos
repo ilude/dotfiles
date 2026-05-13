@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+if [ -x bin/dolos.exe ]; then
+  exec bin/dolos.exe scan --staged
+fi
+if [ -x bin/dolos ]; then
+  exec bin/dolos scan --staged
+fi
+
+cat >&2 <<'EOF'
+ERROR: Dolos executable not found. Build it with:
+  cd tools/dolos && go build -o ../../bin/dolos.exe .
+The Dolos private archive hook is block-only; it never packs, unpacks, or stages files.
+EOF
+exit 1

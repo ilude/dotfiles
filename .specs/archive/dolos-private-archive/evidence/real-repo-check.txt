@@ -1,0 +1,5 @@
+$ dolos status
+archive=private status=untracked plain=true artifact=false
+archive=private status=untracked plain=true artifact=false
+$ dolos scan --staged
+dolos scan ok

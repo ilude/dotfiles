@@ -1,0 +1,8 @@
+$ git check-ignore / check-attr
+.dolos/artifacts/private.tar.gz.age: binary: set
+.dolos/artifacts/private.tar.gz.age: diff: unset
+.dolos/artifacts/private.tar.gz.age: merge: unset
+.dolos/artifacts/private.tar.gz.age: text: unset
+.dolos/artifacts/private.tar.gz.age: eol: lf
+.dolos/authorized_keys: text: set
+.dolos/authorized_keys: eol: lf

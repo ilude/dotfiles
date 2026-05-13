@@ -121,6 +121,7 @@ pi/**/*.jsonl
 # =============================================================================
 # Temporary and Build Files
 # =============================================================================
+bin/
 backups/
 logs/
 /yt/
@@ -147,14 +148,9 @@ private.tar.gz
 private-merge.tar
 .private.tar
 private.conflicts/
-# Per-file age artifacts for private/ are intentionally committable.
-.encrypted/**
-!.encrypted/
-!.encrypted/**/
-!.encrypted/**/*.age
-private-encrypted/**
-!private-encrypted/
-!private-encrypted/**/
-!private-encrypted/**/*.age
-# Legacy encrypted private archive remains committable for compatibility.
-!private.tar.age
+# Dolos private archive metadata/artifacts are intentionally committable.
+.dolos/**
+!.dolos/
+!.dolos/authorized_keys
+!.dolos/artifacts/
+!.dolos/artifacts/*.tar.gz.age

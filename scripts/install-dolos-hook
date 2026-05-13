@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Install the private per-file encryption pre-commit hook."""
+"""Install the Dolos block-only pre-commit hook."""
 from __future__ import annotations
 
 import argparse
 import subprocess
 from pathlib import Path
 
-LINE = "scripts/git-hooks/pre-commit-x-private\n"
+LINE = "scripts/git-hooks/pre-commit-dolos\n"
+OLD_LINES = (
+    "scripts/git-hooks/pre-commit-x-private\n",
+    "scripts/install-x-private-hook\n",
+)
 
 
 def hook_path() -> Path:
@@ -25,16 +29,22 @@ def main() -> int:
     args = parser.parse_args()
     hook = hook_path()
     existing = hook.read_text(encoding="utf-8") if hook.exists() else "#!/bin/sh\n"
-    if LINE in existing:
-        print("PASS: private .encrypted/ hook already installed")
+    migrated = existing
+    for old in OLD_LINES:
+        migrated = migrated.replace(old, "")
+    if LINE in migrated:
+        if migrated != existing and not args.dry_run:
+            hook.write_text(migrated, encoding="utf-8")
+        print("PASS: Dolos block-only hook already installed")
         return 0
     if args.dry_run:
-        print(f"DRY-RUN: would append {LINE.strip()} to {hook}")
+        action = "replace legacy hook line with" if migrated != existing else "append"
+        print(f"DRY-RUN: would {action} {LINE.strip()} in {hook}")
         return 0
     hook.parent.mkdir(parents=True, exist_ok=True)
-    hook.write_text(existing.rstrip() + "\n" + LINE, encoding="utf-8")
+    hook.write_text(migrated.rstrip() + "\n" + LINE, encoding="utf-8")
     hook.chmod(0o755)
-    print(f"PASS: private .encrypted/ hook installed at {hook}")
+    print(f"PASS: Dolos block-only hook installed at {hook}")
     return 0
 
 

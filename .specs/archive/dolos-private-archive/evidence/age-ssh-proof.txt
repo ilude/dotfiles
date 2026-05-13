@@ -1,0 +1,6 @@
+?   	dolos	[no test files]
+ok  	dolos/internal/archive	0.125s [no tests to run]
+ok  	dolos/internal/cli	1.093s
+?   	dolos/internal/crypto	[no test files]
+?   	dolos/internal/gitstore	[no test files]
+ok  	dolos/internal/state	0.036s [no tests to run]

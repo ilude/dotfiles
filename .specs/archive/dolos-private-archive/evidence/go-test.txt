@@ -1,0 +1,8 @@
+$ cd tools/dolos && go test ./...
+?   	dolos	[no test files]
+ok  	dolos/internal/archive	(cached)
+ok  	dolos/internal/cli	(cached)
+?   	dolos/internal/crypto	[no test files]
+?   	dolos/internal/gitstore	[no test files]
+ok  	dolos/internal/state	(cached)
+$ gofmt -l tools/dolos

@@ -1,0 +1,44 @@
+$ cd tools/dolos && go test ./... -run 'TestArchiveValidation|TestResourceLimits' -v
+?   	dolos	[no test files]
+=== RUN   TestArchiveValidation
+=== RUN   TestArchiveValidation/absolute_path
+=== RUN   TestArchiveValidation/parent_traversal
+=== RUN   TestArchiveValidation/nested_parent_traversal
+=== RUN   TestArchiveValidation/backslash_path
+=== RUN   TestArchiveValidation/duplicate_path
+=== RUN   TestArchiveValidation/symlink
+=== RUN   TestArchiveValidation/hardlink
+=== RUN   TestArchiveValidation/directory
+=== RUN   TestArchiveValidation/fifo
+=== RUN   TestArchiveValidation/character_device
+=== RUN   TestArchiveValidation/block_device
+--- PASS: TestArchiveValidation (0.06s)
+    --- PASS: TestArchiveValidation/absolute_path (0.00s)
+    --- PASS: TestArchiveValidation/parent_traversal (0.00s)
+    --- PASS: TestArchiveValidation/nested_parent_traversal (0.01s)
+    --- PASS: TestArchiveValidation/backslash_path (0.01s)
+    --- PASS: TestArchiveValidation/duplicate_path (0.00s)
+    --- PASS: TestArchiveValidation/symlink (0.00s)
+    --- PASS: TestArchiveValidation/hardlink (0.01s)
+    --- PASS: TestArchiveValidation/directory (0.00s)
+    --- PASS: TestArchiveValidation/fifo (0.01s)
+    --- PASS: TestArchiveValidation/character_device (0.01s)
+    --- PASS: TestArchiveValidation/block_device (0.00s)
+=== RUN   TestResourceLimits
+=== RUN   TestResourceLimits/oversized_manifest
+=== RUN   TestResourceLimits/oversized_file
+=== RUN   TestResourceLimits/too_many_files
+--- PASS: TestResourceLimits (10.99s)
+    --- PASS: TestResourceLimits/oversized_manifest (0.01s)
+    --- PASS: TestResourceLimits/oversized_file (0.01s)
+    --- PASS: TestResourceLimits/too_many_files (10.97s)
+PASS
+ok  	dolos/internal/archive	(cached)
+testing: warning: no tests to run
+PASS
+ok  	dolos/internal/cli	(cached) [no tests to run]
+?   	dolos/internal/crypto	[no test files]
+?   	dolos/internal/gitstore	[no test files]
+testing: warning: no tests to run
+PASS
+ok  	dolos/internal/state	(cached) [no tests to run]
