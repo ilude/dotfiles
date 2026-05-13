@@ -30,6 +30,7 @@
     ~/.zshrc: home/.zshrc
     ~/.zprofile: home/.zprofile
     ~/.profile: home/.profile
+    ~/.bash_env: home/.bash_env
     ~/.bashrc: home/.bashrc
     ~/.bash_profile: home/.bash_profile
     ~/.inputrc: home/.inputrc

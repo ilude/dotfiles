@@ -145,7 +145,7 @@ else
     echo -e "${CYAN}Dotbot not available, performing manual setup...${NC}"
 
     # Copy shell configs (not link, since source may be temporary)
-    for file in .zshrc .zprofile .profile .bashrc .bash_profile .dircolors; do
+    for file in .zshrc .zprofile .profile .bash_env .bashrc .bash_profile .dircolors; do
         if [[ -f "${BASEDIR}/${file}" ]]; then
             # Remove existing symlink if present
             [[ -L ~/${file} ]] && rm -f ~/${file}

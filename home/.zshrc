@@ -11,6 +11,12 @@ if [[ -z "$ZDOTDIR" && ( "$OSTYPE" == "cygwin" || "$OSTYPE" == "msys" ) && -d "/
     export ZDOTDIR="/c/Users/${USER:-$(whoami)}"
 fi
 
+# Disable Git Bash/MSYS path conversion for Docker/Ansible volume paths.
+# Prevents /workspace from becoming C:/Program Files/Git/workspace.
+if command -v uname >/dev/null 2>&1 && uname -s | grep -qiE '^(MINGW|MSYS|CYGWIN)'; then
+    export MSYS_NO_PATHCONV="${MSYS_NO_PATHCONV:-1}"
+fi
+
 # Dotfiles base directory
 _dotfiles="${ZDOTDIR:-$HOME}/.dotfiles"
 

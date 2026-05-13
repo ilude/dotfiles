@@ -14,6 +14,9 @@
 # This ensures tools like uv are available in Claude Code hooks
 export PATH="$HOME/.local/bin:$PATH"
 
+# Ensure future non-interactive bash shells source ~/.bash_env.
+export BASH_ENV="$HOME/.bash_env"
+
 # Prefer extended provider prompt caching in pi when supported.
 export PI_CACHE_RETENTION="${PI_CACHE_RETENTION:-long}"
 
