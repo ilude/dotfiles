@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: scripts/ci-bootstrap [base|pi] [--allow-local]
+
+Prepare the minimal GitHub Actions runtime contract used by this repo.
+
+Modes:
+  base  Print diagnostics only.
+  pi    Also expose the checkout through the dotfiles/Pi runtime paths that
+        Pi Vitest tests intentionally exercise: ~/.dotfiles and ~/.pi/agent.
+
+This script refuses to mutate local home-directory paths unless --allow-local is
+passed. GitHub Actions sets CI=true, so workflows do not need that flag.
+EOF
+}
+
+mode="base"
+allow_local="false"
+for arg in "$@"; do
+    case "$arg" in
+        base|pi) mode="$arg" ;;
+        --allow-local) allow_local="true" ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "ERROR: unknown argument: $arg" >&2; usage >&2; exit 2 ;;
+    esac
+done
+
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+
+printf '==> CI bootstrap (%s)\n' "$mode"
+printf 'repo=%s\n' "$repo_root"
+printf 'pwd=%s\n' "$PWD"
+printf 'HOME=%s\n' "${HOME:-}"
+printf 'RUNNER_OS=%s\n' "${RUNNER_OS:-unknown}"
+printf 'CI=%s\n' "${CI:-false}"
+
+for tool in git python python3 uv node pnpm bun shellcheck; do
+    if command -v "$tool" >/dev/null 2>&1; then
+        printf '%s: ' "$tool"
+        "$tool" --version 2>&1 | head -n 1 || true
+    else
+        printf '%s: not found\n' "$tool"
+    fi
+done
+
+if [ "$mode" = "base" ]; then
+    exit 0
+fi
+
+if [ "${CI:-false}" != "true" ] && [ "$allow_local" != "true" ]; then
+    echo "ERROR: refusing to alter home-directory runtime links outside CI." >&2
+    echo "       Re-run with --allow-local if you intentionally want to reproduce CI locally." >&2
+    exit 2
+fi
+
+if [ -z "${HOME:-}" ]; then
+    echo "ERROR: HOME is not set" >&2
+    exit 2
+fi
+
+mkdir -p "$HOME/.pi"
+ln -sfn "$repo_root" "$HOME/.dotfiles"
+ln -sfn "$repo_root/pi" "$HOME/.pi/agent"
+
+printf 'dotfiles_link=%s\n' "$(readlink "$HOME/.dotfiles" 2>/dev/null || echo unavailable)"
+printf 'pi_agent_link=%s\n' "$(readlink "$HOME/.pi/agent" 2>/dev/null || echo unavailable)"

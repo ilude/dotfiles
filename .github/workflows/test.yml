@@ -28,6 +28,10 @@ jobs:
         with:
           enable-cache: false
 
+      - name: Bootstrap CI contract
+        shell: bash
+        run: scripts/ci-bootstrap base
+
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y bats shellcheck
@@ -38,7 +42,7 @@ jobs:
 
       - name: Run checks (Linux/macOS)
         if: runner.os != 'Windows'
-        run: make lint test
+        run: make check-ci
 
       - name: Run tests (Windows)
         if: runner.os == 'Windows'
@@ -51,11 +55,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Link checkout as dotfiles home
-        run: |
-          ln -sfn "$GITHUB_WORKSPACE" "$HOME/.dotfiles"
-          mkdir -p "$HOME/.pi"
-          ln -sfn "$GITHUB_WORKSPACE/pi" "$HOME/.pi/agent"
+      - name: Bootstrap Pi CI contract
+        run: scripts/ci-bootstrap pi
 
       - name: Install bun
         uses: oven-sh/setup-bun@v2
@@ -70,11 +71,5 @@ jobs:
       - name: Install pi-coding-agent
         run: pnpm install -g @mariozechner/pi-coding-agent@0.72.0
 
-      - name: Install Pi extension dependencies
-        run: cd pi/extensions && pnpm install --frozen-lockfile
-
-      - name: Install Pi test dependencies
-        run: cd pi/tests && pnpm install --frozen-lockfile
-
       - name: Run Pi Vitest suite
-        run: cd pi/tests && pnpm run test
+        run: make check-pi-ci

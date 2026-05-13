@@ -1,7 +1,7 @@
-.PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all test test-quick test-parallel test-docker test-powershell test-pytest help lint lint-python format format-python check install-hooks
+.PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all ci-bootstrap test test-ci test-local test-runtime test-quick test-parallel test-docker test-powershell test-pytest help lint lint-python format format-python check check-ci check-pi-ci install-hooks
 
 # Shell scripts to check (excludes dotbot submodule and plugins)
-SHELL_SCRIPTS := home/.bashrc home/.zshrc install wsl/install scripts/git-ssh-setup scripts/claude-link-setup scripts/claude-mcp-setup scripts/copilot-link-setup scripts/zsh-setup scripts/zsh-plugins wsl/packages
+SHELL_SCRIPTS := home/.bashrc home/.zshrc install wsl/install scripts/ci-bootstrap scripts/git-ssh-setup scripts/claude-link-setup scripts/claude-mcp-setup scripts/copilot-link-setup scripts/zsh-setup scripts/zsh-plugins wsl/packages
 
 # Default target
 help:
@@ -10,6 +10,9 @@ help:
 	@echo "  make validate-all  - Validate all shells (bash + PowerShell)"
 	@echo "  make validate-pwsh - Validate PowerShell environment"
 	@echo "  make test          - Run all tests (pytest)"
+	@echo "  make test-ci       - Run CI-safe pytest suite"
+	@echo "  make test-local    - Run local pytest suite (may skip missing runtime artifacts)"
+	@echo "  make test-runtime  - Run runtime-dependent local checks"
 	@echo "  make test-pytest   - Run pytest tests only"
 	@echo "  make test-docker   - Run tests in Ubuntu 24.04 container (recommended)"
 	@echo "  make test-powershell - Run Pester tests for PowerShell code (Windows)"
@@ -19,6 +22,8 @@ help:
 	@echo "  make format        - Format shell scripts (shfmt) + Python (ruff)"
 	@echo "  make format-python - Format Python files with ruff"
 	@echo "  make check         - Run all checks (lint + test)"
+	@echo "  make check-ci      - Run CI-safe lint + test contract"
+	@echo "  make check-pi-ci   - Run CI-safe Pi Vitest contract"
 	@echo "  make install-hooks - Install git pre-commit hook for testing"
 
 # Shell environment validation (diagnostic)
@@ -56,6 +61,9 @@ preflight:
 	fi
 	@echo "Pre-flight checks passed."
 
+ci-bootstrap:
+	@scripts/ci-bootstrap base
+
 # Run all tests (pytest) with timing
 test: preflight
 	@echo "=== Test Suite ==="
@@ -83,10 +91,20 @@ test: preflight
 	echo ""; \
 	echo "=== All tests passed in $$(($$(date +%s) - start_time))s ==="
 
-# Run pytest tests (config patterns, idempotency, hooks)
-test-pytest:
-	@echo "Running pytest..."
+# Run pytest tests that should pass in a fresh CI checkout.
+test-ci: preflight
+	@echo "Running CI-safe pytest suite..."
 	uv run pytest test/ claude/hooks/*/tests/ -v --tb=short --durations=10
+
+# Run pytest tests (config patterns, idempotency, hooks)
+test-pytest: test-ci
+
+# Run local pytest suite. Runtime-artifact tests should skip themselves when
+# ignored/generated local artifacts are absent.
+test-local: test
+
+# Run runtime-dependent local checks.
+test-runtime: check-pi-extensions
 
 # Run only core tests (faster)
 test-quick: preflight
@@ -161,12 +179,22 @@ format-python:
 
 # Pi extension validation: pnpm-managed extension typecheck + pnpm/Vitest suite.
 # See pi/extensions/README.md for the full extension conventions.
+check-pi-ci:
+	@echo "==> Running CI-safe Pi Vitest suite"
+	cd pi/extensions && pnpm install --frozen-lockfile
+	cd pi/tests && pnpm install --frozen-lockfile && pnpm run test
+	@echo "Pi CI checks passed."
+
 check-pi-extensions:
 	@echo "==> Type-checking Pi extensions"
 	cd pi/extensions && pnpm install --frozen-lockfile && pnpm run typecheck
 	@echo "==> Running Pi Vitest suite (includes runtime smoke checks)"
 	cd pi/tests && pnpm install --frozen-lockfile && pnpm run test
 	@echo "Pi extension checks passed."
+
+# Run CI-safe checks.
+check-ci: lint test-ci
+	@echo "CI-safe checks passed."
 
 # Run all checks
 check: lint test check-pi-extensions
