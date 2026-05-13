@@ -426,7 +426,9 @@ def _handle_unix_system(tool_name: str, path_str: str) -> None:
     """CASE 2: Unix system paths — allow for WSL compatibility."""
     always_allow_prefixes = ("/dev/", "/proc/", "/var/")
     if path_str.startswith(always_allow_prefixes) or (
-        path_str.startswith("/tmp/") and not os.environ.get("CLAUDE_PROJECT_DIR")
+        path_str.startswith("/tmp/")
+        and not os.environ.get("CLAUDE_PROJECT_DIR")
+        and not os.environ.get("USERPROFILE")
     ):
         log_decision(tool_name, path_str, "allowed", "unix system path")
         sys.exit(0)
