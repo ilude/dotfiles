@@ -10,6 +10,13 @@ export PATH="$HOME/.local/bin:$PATH"
 # Prefer extended provider prompt caching in pi when supported.
 export PI_CACHE_RETENTION="${PI_CACHE_RETENTION:-long}"
 
+# Disable MSYS2/Git Bash path argument conversion by default.
+# Tools that intentionally pass POSIX-style args (Pi, Node, Docker, etc.) are
+# safer when MSYS does not rewrite /foo into Windows paths unexpectedly.
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
+    export MSYS_NO_PATHCONV="${MSYS_NO_PATHCONV:-1}"
+fi
+
 # Nix installer (for NixOS/nix-shell users)
 if [[ -e "$HOME/.nix-profile/etc/profile.d/nix.sh" ]]; then
     source "$HOME/.nix-profile/etc/profile.d/nix.sh"

@@ -20,6 +20,13 @@ export PI_CACHE_RETENTION="${PI_CACHE_RETENTION:-long}"
 # Hide pi startup version update notifications.
 export PI_SKIP_VERSION_CHECK="${PI_SKIP_VERSION_CHECK:-1}"
 
+# Disable MSYS2/Git Bash path argument conversion by default.
+# Tools that intentionally pass POSIX-style args (Pi, Node, Docker, etc.) are
+# safer when MSYS does not rewrite /foo into Windows paths unexpectedly.
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
+    export MSYS_NO_PATHCONV="${MSYS_NO_PATHCONV:-1}"
+fi
+
 # Early exit if not running interactively
 case $- in
     *i*) ;;
