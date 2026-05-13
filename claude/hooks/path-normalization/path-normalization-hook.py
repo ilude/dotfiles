@@ -200,10 +200,14 @@ def is_absolute(path: str) -> bool:
     if UNC_RE.match(path):
         return True
     # Windows drive letter (C:/ or C:\) - must check explicitly because
-    # Path("C:/...").is_absolute() returns False on Unix/WSL
+    # Path("C:/...").is_absolute() returns False on Unix/WSL. Check again
+    # after MSYS/WSL/Cygwin conversion (/c/..., /mnt/c/..., /cygdrive/c/...).
     if WINDOWS_DRIVE_RE.match(path):
         return True
-    return Path(to_windows_path(path)).is_absolute()
+    converted = to_windows_path(path)
+    if WINDOWS_DRIVE_RE.match(converted):
+        return True
+    return Path(converted).is_absolute()
 
 
 def _canonical_path_string(path_value) -> str:
