@@ -1,8 +1,7 @@
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildCommitPlan, preflightGitState } from "../lib/commit/plan.ts";
 import { existsInGitDir } from "../lib/commit/git.ts";
@@ -17,7 +16,7 @@ function run(cwd: string, args: string[], opts: { allowFailure?: boolean } = {})
 function repo() {
 	const dir = mkdtempSync(join(tmpdir(), "pi-commit-"));
 	repos.push(dir);
-	run(dir, ["init"]);
+	run(dir, ["init", "--initial-branch", "main"]);
 	run(dir, ["config", "user.email", "pi@example.invalid"]);
 	run(dir, ["config", "user.name", "Pi Test"]);
 	return dir;

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import workflowCommands, {
 	buildBranchLaunchPlan,
 	defaultBranchTitle,
@@ -16,8 +16,13 @@ const mockSpawnSync = spawnSync as ReturnType<typeof vi.fn>;
 
 describe("/branch", () => {
 	beforeEach(() => {
+		vi.stubEnv("WT_SESSION", "1");
 		mockSpawnSync.mockReset();
 		mockSpawnSync.mockReturnValue({ status: 0, stdout: "", stderr: "" });
+	});
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
 	});
 
 	it("builds Windows Terminal argv through PowerShell in the requested cwd", () => {
