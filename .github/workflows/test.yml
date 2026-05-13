@@ -51,6 +51,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Link checkout as dotfiles home
+        run: ln -sfn "$GITHUB_WORKSPACE" "$HOME/.dotfiles"
+
       - name: Install bun
         uses: oven-sh/setup-bun@v2
         with:
