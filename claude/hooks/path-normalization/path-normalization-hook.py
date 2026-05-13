@@ -155,12 +155,12 @@ def get_windows_home(win_path: str) -> Path:
     # Try USERPROFILE first (Windows sets this)
     userprofile = os.environ.get("USERPROFILE")
     if userprofile:
-        return Path(to_windows_path(userprofile)).resolve()
+        return _path_for_compare(userprofile)
 
     # Try WINHOME (set by dotfiles zsh config for WSL)
     winhome = os.environ.get("WINHOME")
     if winhome:
-        return Path(to_windows_path(winhome)).resolve()
+        return _path_for_compare(winhome)
 
     # Extract from the path itself if it contains Windows user directory pattern
     # Matches: C:/Users/username/..., /mnt/c/Users/username/..., /c/Users/username/...
@@ -175,10 +175,10 @@ def get_windows_home(win_path: str) -> Path:
         else:
             # Default to C: for MSYS/WSL paths
             drive = "C"
-        return Path(f"{drive}:/Users/{username}").resolve()
+        return Path(f"{drive}:/Users/{username}")
 
     # Fall back to standard expanduser (works correctly on native Windows)
-    return Path(os.path.expanduser("~")).resolve()
+    return _path_for_compare(os.path.expanduser("~"))
 
 
 def is_unc_path(path: str) -> bool:
@@ -206,14 +206,36 @@ def is_absolute(path: str) -> bool:
     return Path(to_windows_path(path)).is_absolute()
 
 
+def _canonical_path_string(path_value) -> str:
+    """Return a normalized comparison string without Unix-resolving Windows paths."""
+    path_str = normalize_separators(str(path_value)).rstrip("/")
+    if WINDOWS_DRIVE_RE.match(path_str):
+        return path_str.lower()
+    try:
+        return normalize_separators(str(Path(path_str).resolve())).rstrip("/").lower()
+    except (ValueError, OSError):
+        return path_str.lower()
+
+
+def _relative_to_string(child: Path, parent: Path) -> str:
+    """Return child relative to parent for both native and Windows-style paths."""
+    child_raw = normalize_separators(str(child)).rstrip("/")
+    parent_raw = normalize_separators(str(parent)).rstrip("/")
+    child_cmp = _canonical_path_string(child)
+    parent_cmp = _canonical_path_string(parent)
+    if child_cmp == parent_cmp:
+        return ""
+    prefix_cmp = parent_cmp + "/"
+    if child_cmp.startswith(prefix_cmp):
+        return child_raw[len(parent_raw) + 1 :]
+    return str(child.relative_to(parent)).replace(BACKSLASH, "/")
+
+
 def is_within(child: Path, parent: Path) -> bool:
     """Check if child path is within parent directory (case-insensitive on Windows)."""
-    try:
-        child_norm = os.path.normcase(str(child.resolve()))
-        parent_norm = os.path.normcase(str(parent.resolve()))
-        return child_norm.startswith(parent_norm + os.sep) or child_norm == parent_norm
-    except (ValueError, OSError):
-        return False
+    child_norm = _canonical_path_string(child)
+    parent_norm = _canonical_path_string(parent)
+    return child_norm.startswith(parent_norm + "/") or child_norm == parent_norm
 
 
 def fix_and_allow(tool_name: str, file_path: str, fixed_path: str, reason: str) -> None:
@@ -265,15 +287,21 @@ def block(tool_name: str, file_path: str, reason: str, suggested: str) -> None:
     sys.exit(2)
 
 
+def _path_for_compare(path_str: str) -> Path:
+    """Build a Path for comparisons without Unix-resolving Windows drive paths."""
+    normalized = to_windows_path(path_str)
+    return Path(normalized) if WINDOWS_DRIVE_RE.match(normalized) else Path(normalized).resolve()
+
+
 def _build_project_roots() -> tuple[list[Path], Path]:
     """Return (project_roots, cwd_resolved) for absolute path resolution."""
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR", "")
     actual_cwd = os.getcwd()
     roots: list[Path] = []
     if project_dir:
-        roots.append(Path(to_windows_path(project_dir)).resolve())
-    cwd_resolved = Path(to_windows_path(actual_cwd)).resolve()
-    if not roots or cwd_resolved != roots[0]:
+        roots.append(_path_for_compare(project_dir))
+    cwd_resolved = _path_for_compare(actual_cwd)
+    if not roots or _canonical_path_string(cwd_resolved) != _canonical_path_string(roots[0]):
         roots.append(cwd_resolved)
     return roots, cwd_resolved
 
@@ -312,12 +340,12 @@ def _handle_absolute_in_home(
     cwd: Path,
 ) -> None:
     """Handle absolute path that is within the home directory."""
-    home_relative = str(file_path.relative_to(home)).replace(BACKSLASH, "/")
+    home_relative = _relative_to_string(file_path, home)
     if home_relative.startswith("."):
         fix_and_allow(tool_name, path_str, f"~/{home_relative}", "absolute dotfile path")
     if _is_within_any(file_path, roots):
         root = _best_root(file_path, roots, cwd)
-        relative = str(file_path.relative_to(root)).replace(BACKSLASH, "/")
+        relative = _relative_to_string(file_path, root)
         if "/" not in relative:
             log_decision(tool_name, path_str, "allowed", "file in cwd (filename only)")
             sys.exit(0)
@@ -328,7 +356,7 @@ def _handle_absolute_in_home(
 def _handle_absolute(tool_name: str, path_str: str) -> None:
     """CASE 6: Absolute path — fix if within project/home, block if outside."""
     win_path = to_windows_path(path_str)
-    file_path = Path(win_path).resolve()
+    file_path = _path_for_compare(path_str)
     home = get_windows_home(win_path)
     roots, cwd = _build_project_roots()
 
@@ -337,7 +365,7 @@ def _handle_absolute(tool_name: str, path_str: str) -> None:
 
     if _is_within_any(file_path, roots):
         root = _best_root(file_path, roots, cwd)
-        relative = str(file_path.relative_to(root)).replace(BACKSLASH, "/")
+        relative = _relative_to_string(file_path, root)
         if "/" not in relative:
             log_decision(tool_name, path_str, "allowed", "file in cwd (filename only)")
             sys.exit(0)
