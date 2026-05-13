@@ -3,16 +3,17 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import promptRouter, {
-  isValidTier,
   applyHysteresis,
+  applyModelEffortBias,
   applyPolicy,
+  applyRouteDecisionToProviderPayload,
+  buildRouterTelemetryPayload,
   buildRoutingContextCapsule,
   buildStatusLabel,
-  safeParseClassifierOutput,
-  applyRouteDecisionToProviderPayload,
+  isValidTier,
   resolveProviderRouteDecision,
   resolveRouteProfile,
-  buildRouterTelemetryPayload,
+  safeParseClassifierOutput,
 } from "../extensions/prompt-router.ts";
 import {
   legacyModelTierToRoute,
@@ -33,6 +34,42 @@ function makeV3Json(modelTier: string, effort: string, confidence = 0.8): string
     confidence,
   });
 }
+
+function makeV3Rec(modelTier: string, effort: string, confidence = 0.8) {
+  const rec = safeParseClassifierOutput(makeV3Json(modelTier, effort, confidence));
+  if (!rec) throw new Error("test fixture should parse");
+  return rec;
+}
+
+// ---------------------------------------------------------------------------
+// model-specific effort bias
+// ---------------------------------------------------------------------------
+
+describe("applyModelEffortBias", () => {
+  const codexGpt55 = { provider: "openai-codex", id: "gpt-5.5" };
+  const otherModel = { provider: "openai-codex", id: "gpt-5.4" };
+
+  it("biases GPT-5.5 medium effort down to low", () => {
+    expect(
+      applyModelEffortBias("medium", makeV3Rec("core", "medium", 0.95), codexGpt55),
+    ).toBe("low");
+  });
+
+  it("keeps GPT-5.5 high effort only for high-confidence complex prompts", () => {
+    expect(
+      applyModelEffortBias("high", makeV3Rec("large", "high", 0.79), codexGpt55),
+    ).toBe("low");
+    expect(
+      applyModelEffortBias("high", makeV3Rec("large", "high", 0.8), codexGpt55),
+    ).toBe("high");
+  });
+
+  it("does not bias other models", () => {
+    expect(
+      applyModelEffortBias("medium", makeV3Rec("core", "medium", 0.5), otherModel),
+    ).toBe("medium");
+  });
+});
 
 // ---------------------------------------------------------------------------
 // canonical route vocabulary

@@ -727,13 +727,13 @@ const TIER_TO_ROUTE: Record<Tier, RouterSize> = {
 const DEFAULT_MAX_EFFORT = "high";
 
 // GPT-5.5 on openai-codex is strong enough that routine prompts should stay
-// cheap/fast. Let the classifier request medium/high for genuinely complex
-// prompts, but bias medium back down to low unless confidence is high. xhigh is
-// never selected by the router because the global default cap remains "high";
-// if the user manually sets xhigh, classifyAndRoute preserves it.
+// cheap/fast. Treat low as the normal default: medium classifier effort is
+// biased down to low, and high is reserved for high-confidence complex prompts.
+// xhigh is never selected by the router because the global default cap remains
+// "high"; if the user manually sets xhigh, classifyAndRoute preserves it.
 const CODEX_GPT55_PROVIDER = "openai-codex";
 const CODEX_GPT55_MODEL = "gpt-5.5";
-const CODEX_GPT55_MEDIUM_CONFIDENCE_FLOOR = 0.8;
+const CODEX_GPT55_HIGH_CONFIDENCE_FLOOR = 0.8;
 
 // ---------------------------------------------------------------------------
 // State
@@ -828,17 +828,16 @@ function shouldForceLowThinkingOnSessionStart(ctx: unknown): boolean {
 	);
 }
 
-function applyModelEffortBias(
+export function applyModelEffortBias(
 	effort: string,
 	rec: ClassifierRecommendation,
 	model: unknown,
 ): string {
 	if (!isCodexGpt55(model)) return effort;
-	if (
-		effort === "medium" &&
-		rec.confidence < CODEX_GPT55_MEDIUM_CONFIDENCE_FLOOR
-	)
+	if (effort === "medium") return "low";
+	if (effort === "high" && rec.confidence < CODEX_GPT55_HIGH_CONFIDENCE_FLOOR) {
 		return "low";
+	}
 	return effort;
 }
 
