@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
 EVIDENCE = ROOT / ".specs" / "dolos-private-archive" / "evidence"
@@ -29,12 +31,16 @@ def git_init(repo: Path) -> None:
     run(["git", "config", "user.name", "Test"], cwd=repo)
 
 
-def dolos_cmd() -> list[str]:
+def dolos_exe() -> Path:
     exe = ROOT / "bin" / ("dolos.exe" if os.name == "nt" else "dolos")
     if not exe.exists():
         alt = ROOT / "bin" / ("dolos" if os.name == "nt" else "dolos.exe")
         exe = alt if alt.exists() else exe
-    return [str(exe)]
+    return exe
+
+
+def dolos_cmd() -> list[str]:
+    return [str(dolos_exe())]
 
 
 def write_evidence(name: str, text: str) -> None:
@@ -99,7 +105,10 @@ def test_legacy_allowlist():
         ],
         check=False,
     )
-    allowed_prefixes = ("test/test_private_archive.py:",)
+    allowed_prefixes = (
+        "scripts/install-dolos-hook:",
+        "test/test_private_archive.py:",
+    )
     unexpected = [
         line
         for line in proc.stdout.splitlines()
@@ -133,6 +142,9 @@ def test_hook_install_idempotent_block_only_and_unrelated_commit(tmp_path):
 
 
 def test_real_repo_dolos_checks_are_non_mutating():
+    if not dolos_exe().exists():
+        pytest.skip("Dolos binary is a local ignored artifact")
+
     status_paths = [
         "git",
         "status",

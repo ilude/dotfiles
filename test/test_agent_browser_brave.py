@@ -1,9 +1,16 @@
 from pathlib import Path
 
+import pytest
+
 DOTFILES = Path(__file__).parent.parent
 SCRIPT = DOTFILES / "scripts" / "agent-browser-brave"
 SKILL = DOTFILES / "pi" / "skills" / "pi-skills" / "browser-tools" / "SKILL.md"
 PI_README = DOTFILES / "pi" / "README.md"
+
+pytestmark = pytest.mark.skipif(
+    not SKILL.exists(),
+    reason="pi/skills/pi-skills is local ignored runtime skill content",
+)
 
 
 def test_wrapper_documents_safe_defaults_and_real_profile_warning():
