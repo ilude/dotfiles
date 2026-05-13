@@ -1,0 +1,789 @@
+[0:00] Welcome everyone to the Hermes Agent
+[0:00] Masterclass.
+[0:00] I&#39;ve dug into basically every document,
+[0:00] every
+[0:00] feature, every
+[0:00] community skill and plugin and design
+[0:00] this masterclass from start to finish.
+[0:00] It&#39;s right now designed as 11 episodes,
+[0:00] but obviously as Hermes Agent evolves,
+[0:00] I&#39;ll be adding new episodes, new modules
+[0:00] to keep up with the changes and
+[0:00] evolution of the agent itself. So, this
+[0:00] masterclass will have everything you
+[0:00] want to know
+[0:00] to get the most out of Hermes Agent.
+[0:00] And we&#39;re starting literally from zero,
+[0:00] completely new.
+[0:00] This is going to be an introduction to
+[0:00] the agent itself and full installation
+[0:00] and then a tour of the CLI.
+[0:00] So, by the end of this, we will have a
+[0:00] Hermes Agent installed and configured
+[0:00] and we&#39;re have going to have our first
+[0:00] task actually completed.
+[0:00] So, part one, what is Hermes?
+[0:00] Hermes Agent is an open-source AI agent
+[0:00] built by new research and it&#39;s a lab
+[0:00] behind the Hermes model family.
+[0:00] Most agents are built by tool companies.
+[0:00] This one is built by the people who
+[0:00] trained the models and that matters.
+[0:00] And more on that in a second. It runs in
+[0:00] your terminal as a CLI or as a gateway
+[0:00] that can answer on your phone via
+[0:00] Telegram, Discord, Slack, iMessage,
+[0:00] WeChat. They have 16 platforms as of the
+[0:00] latest version.
+[0:00] It&#39;s provider agnostic, so you can use
+[0:00] Claude, you can use GPT, Grok, Kimi, you
+[0:00] can use a local model via Ollama,
+[0:00] or anything else. Hermes doesn&#39;t care,
+[0:00] you can pick exactly what you want.
+[0:00] So, why does this exist? New research
+[0:00] trains models. They built Hermes
+[0:00] originally as a the harm harness that
+[0:00] generates training data. So, when you
+[0:00] use Hermes, you&#39;re using the same tool
+[0:00] new research used to build the next
+[0:00] generation of their models.
+[0:00] And that&#39;s a credibility signal you
+[0:00] don&#39;t often get. And this is obviously
+[0:00] open-source, MIT licensed as of this
+[0:00] recording around 7,000 stars on GitHub,
+[0:00] nearly 300 contributors and it&#39;s moving
+[0:00] fast. We literally just got the the most
+[0:00] recent version 0.9.0 today.
+[0:00] So, the key bet of Hermes Agent is
+[0:00] compounding value. Most agents are
+[0:00] stateless.
+[0:00] So, every session starts from zero.
+[0:00] Every ChatGPT session starts blank.
+[0:00] Every new Claude conversation starts
+[0:00] blank.
+[0:00] Open Claude usually the same.
+[0:00] Hermes was built differently. Every
+[0:00] session feeds the next one.
+[0:00] So, there&#39;s a four-step loop here.
+[0:00] You give it a task. It could be
+[0:00] anything. It records a trajectory. And
+[0:00] this is the tools used, every decision
+[0:00] made, every result. And then it can
+[0:00] extract that as a reusable skill based
+[0:00] on how it worked. So, the next time it&#39;s
+[0:00] faster, more accurate and cost less
+[0:00] tokens. And this is
+[0:00] compounding value as a thesis and what
+[0:00] makes Hermes really unique. A Hermes
+[0:00] installed that you&#39;ve had for 3 months
+[0:00] is fundamentally better than what you
+[0:00] set up yesterday.
+[0:00] So, you&#39;re going to get to see this for
+[0:00] yourself. I&#39;m going to be installing
+[0:00] this on a new device that has never had
+[0:00] a Hermes Agent and through this
+[0:00] masterclass, you&#39;re going to be able to
+[0:00] see exactly how it develops, what skills
+[0:00] it learns
+[0:00] and how it becomes smarter.
+[0:00] So, how do you know Hermes Agent is
+[0:00] right for you?
+[0:00] So, if you use agents enough that
+[0:00] compounding benefit pays off,
+[0:00] occasional users may not feel it. If you
+[0:00] want model freedom, you might want to
+[0:00] start on Claude,
+[0:00] want to start on Grok, end up using
+[0:00] local, Hermes can roll with that pretty
+[0:00] easily.
+[0:00] And if privacy or cost matters to you,
+[0:00] the local model support is really first
+[0:00] class. So, you may not want Hermes if
+[0:00] you just want a chatbot, you could just
+[0:00] use ChatGPT, you don&#39;t need a full
+[0:00] agent. Or if you need
+[0:00] max platform integration breadth, right
+[0:00] now Open Claude has
+[0:00] a bigger out-of-the-box integrations,
+[0:00] but that is Hermes is catching up as we
+[0:00] speak. So, by the time you see this,
+[0:00] that may not even be true.
+[0:00] Okay, enough of me yapping. Let&#39;s
+[0:00] actually install this thing.
+[0:00] So, will it run on my machine? If you
+[0:00] have a Mac OS, it&#39;s native. Linux,
+[0:00] native. Windows, it only works on WSL 2.
+[0:00] And you need this these are the
+[0:00] dependencies that it will install.
+[0:00] Now, I am on a Windows PC.
+[0:00] So, we need this WSL 2 and if you&#39;ve
+[0:00] done any
+[0:00] Linux development on a Windows machine,
+[0:00] you&#39;re familiar with it, but if you&#39;re
+[0:00] not, I will show you what it means.
+[0:00] So, this kind of gives you a a
+[0:00] breakdown, but WSL stands for Windows
+[0:00] Subsystem for Linux and the default one
+[0:00] is usually Ubuntu,
+[0:00] uh but there&#39;s others. I have Debian on
+[0:00] this computer, so that&#39;s the one you&#39;ll
+[0:00] see me use, but usually the default will
+[0:00] be Ubuntu. It&#39;s basically the same
+[0:00] thing.
+[0:00] And this lets us develop with Linux
+[0:00] applications and tools uh directly onto
+[0:00] Windows. So, it&#39;s pretty nice and it&#39;s
+[0:00] pretty easy.
+[0:00] Uh you need to be running on a Windows
+[0:00] 10 version or higher.
+[0:00] Um and it&#39;s just this one thing, WSL
+[0:00] install.
+[0:00] You need to be in PowerShell in
+[0:00] administrator mode
+[0:00] and then just that one command and
+[0:00] that&#39;ll install Ubuntu
+[0:00] distribution of Linux uh as the default.
+[0:00] And once you have that installed,
+[0:00] you&#39;re ready. This is PowerShell.
+[0:00] Uh so, just do WSL
+[0:00] and it will launch your
+[0:00] WSL.
+[0:00] There we go.
+[0:00] Base and Tony B at Corpus, you&#39;ll see
+[0:00] something like this.
+[0:00] That&#39;s the name of my my PC, but
+[0:00] it doesn&#39;t matter where you install it,
+[0:00] it&#39;s going to ignore whatever directory
+[0:00] you&#39;re in and just install it to the
+[0:00] Hermes, which is going to be home slash
+[0:00] uh whatever your ID is and then
+[0:00] Hermes.hermes.
+[0:00] So, the quick install here is this is
+[0:00] the
+[0:00] uh
+[0:00] you see on the top here. This is the new
+[0:00] research slash Hermes Agent and this
+[0:00] will give you the quick install mode
+[0:00] here.
+[0:00] And it&#39;s just one command.
+[0:00] And that&#39;ll open up the installer here.
+[0:00] It&#39;ll install all the dependencies that
+[0:00] you need.
+[0:00] You see Python,
+[0:00] uh Git, Node.js.
+[0:00] And everything will compile here.
+[0:00] And the configuration is pretty quick.
+[0:00] You&#39;ll need to know your sudo password
+[0:00] um for the build tools.
+[0:00] See, all dependencies have been
+[0:00] installed here.
+[0:00] Okay, and once the installation is done,
+[0:00] you&#39;re going to get a choice between
+[0:00] full setup or just a quick setup.
+[0:00] You do quick, it&#39;s very quick, but for
+[0:00] this, we&#39;re going to do full setup so
+[0:00] you can get to see everything here.
+[0:00] So, first you can see the providers and
+[0:00] these are your AI providers.
+[0:00] New portal is new research&#39;s
+[0:00] subscription service for AI models.
+[0:00] Open router,
+[0:00] um you can see Anthropic, which has the
+[0:00] Claude models. You can use with an API
+[0:00] key or through Claude code.
+[0:00] Um you have OpenAI, Codex,
+[0:00] you have Qwen,
+[0:00] uh GitHub Copilot, Hugging Face
+[0:00] inference models and there&#39;s more
+[0:00] providers
+[0:00] uh that you can
+[0:00] use. For now, we&#39;re just going to use
+[0:00] Open router
+[0:00] uh since I have an API key for this one.
+[0:00] Uh no open
+[0:00] API key, so let&#39;s Here, I&#39;ll show you
+[0:00] how to do that. So, if you just go to
+[0:00] openrouter.com, you&#39;re going to have to
+[0:00] put in a credit card at least, get a
+[0:00] couple credits.
+[0:00] Let&#39;s see.
+[0:00] And you just get an API key, you can
+[0:00] create it there and then just insert it.
+[0:00] It&#39;ll be something like this, SK
+[0:00] something.
+[0:00] So, once you get your API key, just add
+[0:00] it here.
+[0:00] It saved it. I&#39;ll show you how to use
+[0:00] other models for now, but for now, we&#39;re
+[0:00] going to use Open router.
+[0:00] Um you can see all the different models
+[0:00] that it has.
+[0:00] It has Opus 4.6 as currently in use as
+[0:00] the default, but let&#39;s try to do
+[0:00] something a little bit cheaper.
+[0:00] See, it has a lot of different options.
+[0:00] You can enter a custom model name.
+[0:00] Uh let&#39;s do
+[0:00] For now, let&#39;s do this one, the Mimo V2
+[0:00] Pro.
+[0:00] So, then it it will offer a fallback and
+[0:00] rotation. So, Hermes can keep multiple
+[0:00] credentials for one provider and rotate
+[0:00] between them when one of the credentials
+[0:00] is exhausted or rate limited. And this
+[0:00] preserves your primary provider while
+[0:00] reducing interruptions. So, this is a
+[0:00] pretty nice function.
+[0:00] So, you just add a a second API key here
+[0:00] and then you could have that whenever
+[0:00] the first one runs out of credits or you
+[0:00] hit some type of uh rate limit.
+[0:00] And then we have the the max tool
+[0:00] calling.
+[0:00] Just set that to 90.
+[0:00] So, that will
+[0:00] determine how often your agent is
+[0:00] allowed to
+[0:00] uh call tools.
+[0:00] Tool progress, we&#39;re just going to set
+[0:00] that to all so you can see every single
+[0:00] tool call for now, but you can change
+[0:00] this to you just turn this off
+[0:00] or only show the the new tools when they
+[0:00] happen.
+[0:00] You see here in Telegram, this is my
+[0:00] uh existing Hermes Agent. You can see
+[0:00] the tools that we have. Like these are
+[0:00] all tool calls, listing, searching
+[0:00] files, executing code. So, it&#39;ll list
+[0:00] out all these so you can see them, which
+[0:00] I kind of like, so
+[0:00] we&#39;ll just do all for now, but you can
+[0:00] set this for off or set this for only
+[0:00] new tools, however you like.
+[0:00] Context compression.
+[0:00] So, for this, the higher the threshold
+[0:00] means the later you take to compress.
+[0:00] Let&#39;s do 0. Split the difference 0.75.
+[0:00] Depends on which model I&#39;m going to be
+[0:00] using.
+[0:00] Cuz some models can handle longer
+[0:00] context windows better and others need
+[0:00] compression quickly.
+[0:00] Uh session reset mode, inactivity and
+[0:00] daily reset.
+[0:00] Recommended reset, whichever comes
+[0:00] first, inactivity only.
+[0:00] Daily only, never auto reset.
+[0:00] Um let&#39;s do inactivity
+[0:00] and daily reset.
+[0:00] Inactivity timeout.
+[0:00] So, this is how long inactivity is.
+[0:00] Each message adds to the conversation
+[0:00] history, which means growing API costs.
+[0:00] So, this is
+[0:00] also about context management. If you
+[0:00] have very long
+[0:00] uh context,
+[0:00] if you continue to do work there, you&#39;re
+[0:00] going to have higher token costs.
+[0:00] Higher IP API costs.
+[0:00] Um
+[0:00] yeah, we&#39;ll just skip that.
+[0:00] Daily reset.
+[0:00] Do midnight. Makes sense.
+[0:00] Select plat- platforms to configure.
+[0:00] So, we&#39;re going to do this
+[0:00] in the next video when we get into the
+[0:00] the um the gateway. We&#39;re going to set
+[0:00] up a couple of these. So, I&#39;ll save
+[0:00] those for
+[0:00] next time.
+[0:00] Uh
+[0:00] choose provider, local browser.
+[0:00] Browser
+[0:00] use Firecrawl.
+[0:00] Uh we&#39;ll configure that later. Keep
+[0:00] defaults.
+[0:00] Flux 2 Pro.
+[0:00] You can get an API key here, I guess.
+[0:00] This is for in- image generation. Let me
+[0:00] see. This is a paid thing.
+[0:00] Okay, so I don&#39;t know if I&#39;ll use this
+[0:00] FAL for
+[0:00] image generation or something else, but
+[0:00] we can add a key for now. You just sign
+[0:00] in. There&#39;s no
+[0:00] You sign in with your GitHub.
+[0:00] And it&#39;ll create it for API, I guess.
+[0:00] API, sure.
+[0:00] Hermes agent. Okay, so I just paste that
+[0:00] in.
+[0:00] Uh
+[0:00] wait.
+[0:00] Microsoft Edge.
+[0:00] Search provider.
+[0:00] Firecrawl cloud.
+[0:00] Uh Tavily is good as well. AI native
+[0:00] search.
+[0:00] You can also do this self-hosted, but
+[0:00] you can do it locally.
+[0:00] Uh let&#39;s keep the defaults and I can
+[0:00] configure that later.
+[0:00] Uh so, here we go. That was all the
+[0:00] configuration you need to do. Some of
+[0:00] the stuff we&#39;ll set up later, like the
+[0:00] Telegram. That&#39;ll be in the next
+[0:00] episode, but should we launch Hermes
+[0:00] chat now? Sure.
+[0:00] There we go.
+[0:00] Hermes agent.
+[0:00] I&#39;m sure you all wanted to see that. So,
+[0:00] this has all the available tools.
+[0:00] You can see all the available skills and
+[0:00] these come
+[0:00] with it. None of these are custom. These
+[0:00] just come with the
+[0:00] with the Hermes agent.
+[0:00] You can see I&#39;m using Mimo V2 Pro
+[0:00] through OpenRouter right now.
+[0:00] So, there you go. That was the
+[0:00] installation and the setup. Now, we&#39;re
+[0:00] going to go through a couple of the CLI
+[0:00] commands that you&#39;ll use.
+[0:00] So, here are some of the top ones you
+[0:00] will use.
+[0:00] So, it&#39;s important to go through these
+[0:00] very quickly.
+[0:00] Hermes
+[0:00] just sharp starts this chat you up
+[0:00] uh TUI terminal
+[0:00] user interface. If you just do Hermes,
+[0:00] you&#39;ll do this. Hermes.
+[0:00] Hermes gateway starts the messaging
+[0:00] gateway, which you&#39;ll need to connect to
+[0:00] Telegram.
+[0:00] Hermes doctor is to check for any issues
+[0:00] that you may have.
+[0:00] So, I exited.
+[0:00] Um it&#39;s just {slash} exit to get out.
+[0:00] Cuz let&#39;s try a couple of these these
+[0:00] CLI commands.
+[0:00] So, Hermes model
+[0:00] uh just shows what you&#39;re using.
+[0:00] Okay, you have to reload your shell to
+[0:00] use the Hermes command.
+[0:00] So, let&#39;s do that. Excuse me, Hermes
+[0:00] model will open up the configurer and
+[0:00] you could select which provider to
+[0:00] easily switch through them.
+[0:00] So, we&#39;re going to stay with stay with
+[0:00] two.
+[0:00] Uh so, we&#39;ll just get out of that. So,
+[0:00] that&#39;s for the model.
+[0:00] Hermes status. Status.
+[0:00] Um and this shows you everything, the
+[0:00] whole configuration that you have here.
+[0:00] Where your project is.
+[0:00] What model you&#39;re using, what provider
+[0:00] you&#39;re using.
+[0:00] Your API keys.
+[0:00] Um you can see which ones are set and
+[0:00] which ones are not set. So, this is very
+[0:00] helpful.
+[0:00] Hermes status.
+[0:00] You could see
+[0:00] the auth providers.
+[0:00] Now, uh new portal, OpenAI Codex.
+[0:00] Quen OAuth.
+[0:00] And it shows everything that&#39;s
+[0:00] configured and most stuff obviously is
+[0:00] not configured cuz I just set this up.
+[0:00] Um
+[0:00] Hermes insights. This is probably not
+[0:00] going to have much.
+[0:00] But, let&#39;s see. Hermes insights. Since I
+[0:00] just pulled it up. Yeah, no sessions
+[0:00] found cuz I didn&#39;t I just loaded it.
+[0:00] Um so, these are other things. You can
+[0:00] see Hermes sessions browse.
+[0:00] Uh the cursor
+[0:00] pick uh curses picker to resume.
+[0:00] So, you can browse which session you
+[0:00] want to resume.
+[0:00] Hermes skill browse. You can discover
+[0:00] and install skills. Let&#39;s do that.
+[0:00] Hermes
+[0:00] skills browse.
+[0:00] There we go. We got a lot of skills.
+[0:00] Uh 50 skills loaded.
+[0:00] Have all these different ones. Canvas.
+[0:00] You could see
+[0:00] DuckDuckGo search.
+[0:00] Honcho.
+[0:00] They&#39;re all official, so there&#39;s no no
+[0:00] concern about that.
+[0:00] So, you can actually search for them
+[0:00] specifically. Let&#39;s say Hermes
+[0:00] skills search. Say you want something
+[0:00] about with email.
+[0:00] Uh these have all email related and you
+[0:00] can see the trust. Some are official.
+[0:00] This agent mail is official. Then you
+[0:00] have a bunch of community. Some are
+[0:00] trusted, which I guess are like this is
+[0:00] Anthropic
+[0:00] skills, which is obviously uh trusted
+[0:00] provider. You can see they have all
+[0:00] these skills. Cold emailing.
+[0:00] React email, business email.
+[0:00] So, that&#39;s a very useful skill. If
+[0:00] you&#39;re looking for a specific skill with
+[0:00] Hermes, Hermes skill search and then
+[0:00] whatever your query is.
+[0:00] Hermes config show, which is going to
+[0:00] show your configuration. Like I said,
+[0:00] Hermes doctor and Hermes update, which
+[0:00] pulls the latest. Let me see if we&#39;re
+[0:00] actually updated yet.
+[0:00] Hermes update. They may have had an
+[0:00] update recently.
+[0:00] It&#39;s updating some of the dependencies.
+[0:00] Down new commits. Yeah, they just had a
+[0:00] a new update actually while I was
+[0:00] filming this.
+[0:01] There you go. We&#39;re updated.
+[0:01] Pretty easy.
+[0:01] So, these are the top 10 {slash}
+[0:01] commands and these are in-chat commands.
+[0:01] So, let&#39;s go back to the chat and that&#39;s
+[0:01] just Hermes chat, right?
+[0:01] There we go. Back to the
+[0:01] the terminal.
+[0:01] Still with Mimo V2.
+[0:01] So, new. If you&#39;ve used like Claude
+[0:01] code, you&#39;re familiar with this as well.
+[0:01] You could put Think of this terminal
+[0:01] interface as like a Claude code type of
+[0:01] thing.
+[0:01] Or Codex or whatever
+[0:01] you&#39;re using.
+[0:01] Um new
+[0:01] starts a new fresh conversation, a new
+[0:01] session.
+[0:01] {slash} model.
+[0:01] You can swap the model mid-session.
+[0:01] So, that&#39;s a really nice feature.
+[0:01] Let&#39;s see. {slash} model.
+[0:01] Um
+[0:01] I&#39;m going to switch to
+[0:01] ZAI
+[0:01] {slash}
+[0:01] GLM
+[0:01] 5 1.
+[0:01] Model switched. Okay.
+[0:01] No, uh that&#39;s not the right one.
+[0:01] {slash} model.
+[0:01] ZAI
+[0:01] {slash}
+[0:01] GLM
+[0:01] 5.1. There we go.
+[0:01] So, there we go. We switched. Now, we&#39;re
+[0:01] in GLM 51.
+[0:01] And I don&#39;t have to restart the session.
+[0:01] Um I can just continue. I don&#39;t have to
+[0:01] re- reboot this configuration.
+[0:01] There we go. Hello, I&#39;m Her- Hermes,
+[0:01] your CLI AI agent. I&#39;m running on GLM
+[0:01] 5.1 model.
+[0:01] There we go. Fast, which is a a brand
+[0:01] new one that actually came out in
+[0:01] today&#39;s release, I believe. This is
+[0:01] priority routing through OpenAI and
+[0:01] Anthropic.
+[0:01] I don&#39;t have those configured, but if
+[0:01] you want like something quick
+[0:01] going through those is going to be
+[0:01] faster.
+[0:01] Background prompt. So, you can do a
+[0:01] background task and keep chatting.
+[0:01] {slash} by the BTW and then you can ask
+[0:01] you ask a question. So, that&#39;s a side
+[0:01] question while Hermes is working.
+[0:01] Uh {slash} Q with a prompt, which adds
+[0:01] like a next term Q. This is also like
+[0:01] when Hermes is working, you can do that.
+[0:01] You can try some of these a little bit
+[0:01] later when I once I give it a task.
+[0:01] {slash} compress. So, this manually
+[0:01] compacts the context. If you have a long
+[0:01] context window and you want to compress
+[0:01] everything, you can do that.
+[0:01] Skills. You can browse or invoke a
+[0:01] skill.
+[0:01] Uh {slash} yolo. Toggle dangerous
+[0:01] command approvals. Be careful with that.
+[0:01] And of course, {slash} help with
+[0:01] everything else.
+[0:01] And that is probably the most helpful.
+[0:01] You can see whoop.
+[0:01] They have a lot of stuff. So, this has
+[0:01] all the {slash} commands you could ever
+[0:01] want.
+[0:01] All the tools and skills.
+[0:01] So, if you ever need some type of skill
+[0:01] or some type of command, just
+[0:01] the {slash} help will tell you.
+[0:01] There are a lot. So, these are all skill
+[0:01] commands as well. These are the ones
+[0:01] that are installed. So, you can invoke
+[0:01] them in this session
+[0:01] if you need them.
+[0:01] So, this is where stuff lives. And just
+[0:01] quickly, everything is stored in this
+[0:01] uh {slash}.hermes file.
+[0:01] Or directory, I should say.
+[0:01] Sorry, this is small, but if you go
+[0:01] down, if you&#39;re in a Windows PC, you go
+[0:01] down here to Linux and mine is says Deb-
+[0:01] Debian, but yours might say Ubuntu.
+[0:01] And you go to home and then whatever
+[0:01] your username is.
+[0:01] And then you could do this dot Hermes
+[0:01] and this is where all the files live.
+[0:01] The sole file
+[0:01] um this has your history and this
+[0:01] config.ya- yaml file
+[0:01] is the main configuration and this is
+[0:01] your settings and you can edit that. You
+[0:01] can edit the dot env file cuz that&#39;s
+[0:01] going to be your secrets.
+[0:01] API keys, this one, this env file. API
+[0:01] keys, any kind of passwords, stuff like
+[0:01] that.
+[0:01] It&#39;s going to be stored there. Sessions
+[0:01] has every past conversation.
+[0:01] Skills, you see sessions is over here.
+[0:01] We&#39;ve only had one, so
+[0:01] there&#39;s only one there.
+[0:01] Skills folder here.
+[0:01] It&#39;s all of these. These are the ones
+[0:01] that come with the Hermes agent
+[0:01] basically.
+[0:01] Sorry this is small. Let me see.
+[0:01] You can see a little bit better here.
+[0:01] And you see here logs has your all of
+[0:01] your agent logs and the error logs.
+[0:01] Memory is here, so it&#39;s important at
+[0:01] least to be aware of this dot Hermes
+[0:01] directory
+[0:01] in case you ever need to change anything
+[0:01] here.
+[0:01] And you can edit uh these top three
+[0:01] config.yaml, dot env, and memories.
+[0:01] You don&#39;t want to touch uh the sessions
+[0:01] or crone by hand. Ask your agent to do
+[0:01] it cuz
+[0:01] you could break it. So, your first real
+[0:01] task
+[0:01] live demo. So, this was this video was
+[0:01] teaching you how to install Hermes agent
+[0:01] from scratch, how to set it up. We just
+[0:01] did a basic setup. There&#39;s obviously a
+[0:01] lot of settings we&#39;re going to be
+[0:01] fooling with
+[0:01] in the coming videos. Okay, so it&#39;s time
+[0:01] for our first real task and it&#39;s going
+[0:01] to be to do some competitor research. I
+[0:01] have what I think&#39;s a really great idea
+[0:01] for a business, but I need to
+[0:01] my Hermes agent to research the
+[0:01] competitors and see if there&#39;s any
+[0:01] market gaps here.
+[0:01] So, in order to do this, the one tool
+[0:01] it&#39;s going to need is web searchability.
+[0:01] So, what we&#39;re going to do is Tably.
+[0:01] They have a really good free monthly
+[0:01] credits. You can also they have
+[0:01] DuckDuckGo
+[0:01] available for free, but just to show you
+[0:01] another option here
+[0:01] is uh tably.com
+[0:01] and then you just sign up. You don&#39;t
+[0:01] need to put in a credit card or anything
+[0:01] and you get 1,000 free credits, which is
+[0:01] pretty good.
+[0:01] But we&#39;ll look in more deep into web
+[0:01] search options later on.
+[0:01] But here you get your API key here.
+[0:01] Save that. Then back
+[0:01] in your WSL you do Hermes config uh
+[0:01] Hermes setup actually.
+[0:01] Quick setup, configure missing items
+[0:01] only.
+[0:01] And these are all the items that are
+[0:01] missing, but Tably API key
+[0:01] API key uh space to toggle that.
+[0:01] Enter to confirm.
+[0:01] And then you put in your API key. Just
+[0:01] paste it there.
+[0:01] Setup.
+[0:01] Not going to do that right now.
+[0:01] Okay, so that should be set up.
+[0:01] And I checked here, I did Hermes status.
+[0:01] You can see
+[0:01] there we go. Tably is set up.
+[0:01] So, we should be able to use web search
+[0:01] now.
+[0:01] So, let&#39;s get into Hermes then, Hermes
+[0:01] chat.
+[0:01] Uh using Memo V2 Pro still.
+[0:01] So, this is my idea. Here we go.
+[0:01] I had an idea to start a business that
+[0:01] uses AI to make custom children&#39;s books.
+[0:01] Instead of just the name, it can use AI
+[0:01] to create custom illustrations in the
+[0:01] style the customer requests as well as
+[0:01] story themes, etc.
+[0:01] Please do a thorough research into other
+[0:01] companies and competitors who may
+[0:01] provide this service and report back to
+[0:01] me with their names
+[0:01] and try to identify any market gaps that
+[0:01] exist.
+[0:01] So, you can see it&#39;s initializing the
+[0:01] agent here.
+[0:01] And it&#39;s preparing the web search to
+[0:01] find
+[0:01] got some good leads. You can see these
+[0:01] are all the tool calls it&#39;s it has.
+[0:01] I think this is a good business idea.
+[0:01] It&#39;s a real one I had.
+[0:01] Hopefully we can find some kind of
+[0:01] market gap.
+[0:01] Uh okay, and here we go. We got it our
+[0:01] report back pretty quick as you just
+[0:01] saw.
+[0:01] Um here&#39;s a thorough breakdown of the
+[0:01] competitive landscape. Competitive
+[0:01] landscape
+[0:01] market falls into three tier- tiers.
+[0:01] Uh the traditional personalized book
+[0:01] companies, which were pre-AI.
+[0:01] So, let me see the AI-powered ones. Here
+[0:01] we go. Direct competitors. These are the
+[0:01] companies doing what you described using
+[0:01] AI for both story and illustration
+[0:01] generation.
+[0:01] Uh now there&#39;s a lot.
+[0:01] This might be a saturated market.
+[0:01] Might not be.
+[0:01] Might not be workable.
+[0:01] There&#39;s a lot doing this. And this first
+[0:01] one, one of the earliest AI children
+[0:01] books platform, template-based stories,
+[0:01] AI illustrations.
+[0:01] Mm.
+[0:01] Okay, tier three general AI tools,
+[0:01] indirect. Yeah, these are just visual
+[0:01] ones. You can see here just that quick
+[0:01] search it had found a lot of
+[0:01] competitors.
+[0:01] Market gaps and opportunities. There are
+[0:01] some.
+[0:01] Uh based on competitive analysis, here
+[0:01] are the underserved areas. Custom art
+[0:01] style selection.
+[0:01] So, most competitors let you customize
+[0:01] the character
+[0:01] but lock you into one illustration
+[0:01] style. Few let the customer choose or
+[0:01] define the actual art style.
+[0:01] Uh the user said in the style the
+[0:01] customer requests, this is the real gap.
+[0:01] That could be something, right?
+[0:01] Older age groups. Almost everyone
+[0:01] targets ages two to seven.
+[0:01] Uh I really wanted children&#39;s like baby
+[0:01] books. Those are the ones everyone&#39;s
+[0:01] buying
+[0:01] as like gifts.
+[0:01] Bilingual.
+[0:01] It found a lot of uh gaps here.
+[0:01] But I don&#39;t know if any of these are
+[0:01] workable for me. Audio first
+[0:01] culturally specific
+[0:01] author creator tools, that&#39;s more on the
+[0:01] B2B side.
+[0:01] Um so, here we go.
+[0:01] Wonderbly.
+[0:01] I See Me.
+[0:01] So, there&#39;s actually a lot uh So, it
+[0:01] gave it my my big take.
+[0:01] The biggest white space is custom art
+[0:01] style control combined with therapeutic
+[0:01] niche story themes and older age groups.
+[0:01] So, there we go. There&#39;s your kind of
+[0:01] market report, competitor report. Just
+[0:01] for this first video, we did something
+[0:01] simple, but
+[0:01] I think this is a a task that a lot of
+[0:01] people have, right? We all have random
+[0:01] business ideas.
+[0:01] Maybe it&#39;s just me.
+[0:01] And you can use your Hermes agent to uh
+[0:01] check on them, check on the competition.
+[0:01] See what kind of market gaps exist and
+[0:01] try to plan
+[0:01] when you want to start a business.
+[0:01] And there you have it. That&#39;s going to
+[0:01] be the end of this first video.
+[0:01] Uh right now you should have Hermes
+[0:01] installed and a provider configured.
+[0:01] You know the top 10 CLI commands and top
+[0:01] 10 slash commands.
+[0:01] Got our real first artifact, com- the
+[0:01] competitor report and the memory file
+[0:01] that just started learning you. So, this
+[0:01] has already started learning
+[0:01] me just with this first task. You can
+[0:01] see.
+[0:01] So, we just started this blank right
+[0:01] here and throughout this masterclass
+[0:01] series, you&#39;re going to be seeing how
+[0:01] this Hermes agent that just started
+[0:01] brand new, how it develops over time as
+[0:01] we continue to use it and work on it
+[0:01] with different tasks
+[0:01] and actually try to start some
+[0:01] businesses. I&#39;m not sure about this AI
+[0:01] children&#39;s book one, but
+[0:01] maybe other ones that has left less
+[0:01] competition.
+[0:01] That&#39;s going to be it for session one. I
+[0:01] hope you enjoyed it. Next session we&#39;re
+[0:01] going to talk about different deployment
+[0:01] options and messaging. We&#39;re going to
+[0:01] hook it up to Telegram. Maybe to some
+[0:01] other apps so that you can see your
+[0:01] options with that.
+[0:01] And you don&#39;t have to just chat with it
+[0:01] in the um
+[0:01] in the terminal like this.
+[0:01] Uh but thank you for watching. All of
+[0:01] these videos will be available on my
+[0:01] school community once it launches, which
+[0:01] should be in June.
+[0:01] But I&#39;ll be I&#39;ll be um presenting some
+[0:01] of these on YouTube as well. So, you may
+[0:01] be watching it there. If you So, if you
+[0:01] want to watch the full series from day
+[0:01] one in the school community, it&#39;ll be
+[0:01] available all of the episodes.
+[0:01] But I&#39;ll be posting some on YouTube.
+[0:01] So, if you&#39;re interested in this
+[0:01] content, please subscribe, please leave
+[0:01] a like, leave a comment.
+[0:01] Let me know if you have any questions
+[0:01] about setting up Hermes like this.
+[0:01] And I&#39;ll see you in the next video.

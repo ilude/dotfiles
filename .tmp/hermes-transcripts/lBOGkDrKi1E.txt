@@ -1,0 +1,476 @@
+[0:00] Hermes Agent dropped four major releases
+[0:00] in less than 3 weeks. Four. And if you
+[0:00] have been following the AI agent space,
+[0:00] you already know that is not normal.
+[0:00] Most tools take months between
+[0:00] meaningful updates. Hermes shipped
+[0:00] something significant almost every
+[0:00] single week. And each release had its
+[0:00] own identity, its own focus, and its own
+[0:00] set of features that completely changed
+[0:00] what this agent is capable of. The
+[0:00] problem is most people only caught one
+[0:00] or two of these updates. They saw a
+[0:00] headline, maybe watched a short clip,
+[0:00] and moved on. So, right now there&#39;s a
+[0:00] massive gap between what Hermes agent
+[0:00] actually is today and what most people
+[0:00] think it is. That gap is exactly what
+[0:00] this video is going to close. We&#39;re
+[0:00] going from version 0.9 all the way
+[0:00] through version 0.12, breaking down
+[0:00] every feature that actually matters,
+[0:00] explaining what it does, and more
+[0:00] [music] importantly, why it changes the
+[0:00] game. This is not a tutorial. This is
+[0:00] the full picture. Here is the version
+[0:00] road map so you know what we are working
+[0:00] with. Version 0.9 dropped on April 13th,
+[0:00] nicknamed the Everywhere release.
+[0:00] Version 0.10 followed on April 16th,
+[0:00] centered around the news tool gateway.
+[0:00] Version 0.11 landed on April 23rd as the
+[0:00] interface release, and version 0.12
+[0:00] arrived on April 30th, the curator
+[0:00] release. And that one in particular is
+[0:00] something the open- source AI world has
+[0:00] genuinely never seen before. If any of
+[0:00] this is new to you, or if you thought
+[0:00] you already knew Hermes, but you were
+[0:00] realizing there is a lot you missed, hit
+[0:00] that subscribe button right now. This
+[0:00] channel covers the AI agent space in
+[0:00] depth every week, and the way things are
+[0:00] moving means missing even one video can
+[0:00] leave you seriously behind. Drop a like
+[0:00] if you find this breakdown useful, and
+[0:00] share it with someone in your circle who
+[0:00] is building with AI agents, because this
+[0:00] is the kind of update they need to know
+[0:00] about. Let&#39;s start with a feature from
+[0:00] version 0.9 that quietly changed
+[0:00] everything about who can actually use
+[0:00] this agent and that is native Android
+[0:00] support via termics. Before this running
+[0:00] a powerful open- source AI agent meant
+[0:00] sitting at a desktop or a laptop. You
+[0:00] needed a proper development environment,
+[0:00] a terminal the right OS setup. That was
+[0:00] the barrier. Hermes broke it. With
+[0:00] version 0.9, you can now run Hermes
+[0:00] agent directly from your Android phone
+[0:00] or tablet through Termix. And this is
+[0:00] not a stripped down mobile version. This
+[0:00] is the full agent. Full access to
+[0:00] skills, persistent memory, all your
+[0:00] platform connections running from a
+[0:00] device that fits in your pocket. No
+[0:00] compromises. And on the Apple side,
+[0:00] iMessage support works natively on Mac
+[0:00] OS hosts. So that ecosystem is covered,
+[0:00] too. Hermes became the first major
+[0:00] open-source AI agent framework to
+[0:00] officially support mobile in this way.
+[0:00] [music] And that is not a small
+[0:00] footnote. That is a fundamental shift in
+[0:00] where and how people deploy this tool.
+[0:00] Now running everywhere does not just
+[0:00] mean the hardware you use. It also means
+[0:00] the platforms you connect to. And
+[0:00] version 0.12 went all in on that. Hermes
+[0:00] now supports 19 messaging platforms.
+[0:00] [music] 19. And before you scroll past
+[0:00] that number, let&#39;s talk about what
+[0:00] actually changed here because the
+[0:00] addition that matters most for a huge
+[0:00] chunk of potential users is Microsoft
+[0:00] Teams. Teams was the glaring gap for
+[0:00] anyone trying to bring Hermes into a
+[0:00] professional or enterprise context. Your
+[0:00] whole organization lives in Teams. Your
+[0:00] workflows, your meetings, your internal
+[0:00] communication, all of it. and Hermes
+[0:00] cannot touch it. That is now fixed.
+[0:00] Teams integration is live and it brings
+[0:00] Hermes directly into the environment
+[0:00] where a massive portion of knowledge
+[0:00] workers already spend their day. But
+[0:00] version 0.12 did not stop at Teams.
+[0:00] Spotify and Google Meet were also added
+[0:00] as native integrations. Not workarounds,
+[0:00] not custom endpoint hacks, native
+[0:00] support built right into the platform
+[0:00] layer. When you think about what that
+[0:00] unlocks, an AI agent that is present in
+[0:00] your video calls, aware of your
+[0:00] meetings, connected to your music
+[0:00] workflow. The picture of what Hermes is
+[0:00] starts to look very different from what
+[0:00] it was even a month ago. This is an
+[0:00] agent that goes where you go. All of it.
+[0:00] While the platform and mobile updates
+[0:00] were changing who could use Hermes and
+[0:00] where, something equally significant was
+[0:00] happening underneath the surface. The
+[0:00] engine powering Hermes was getting a
+[0:00] complete overhaul across versions 0.10
+[0:00] and 0.11. More inference paths, more
+[0:00] model options, and a core architectural
+[0:00] change that affects how every single
+[0:00] tool call gets handled. Version 0.10 10
+[0:00] was built around one thing, the news
+[0:00] tool gateway. And to understand why this
+[0:00] matters, you need to understand what a
+[0:00] gateway actually does in the context of
+[0:00] an AI agent. When Hermes decides to use
+[0:00] a tool, whether that is searching the
+[0:00] web, writing to memory, calling an
+[0:00] external service, the gateway is what
+[0:00] sits in the middle and routes that
+[0:00] decision is the traffic controller for
+[0:00] every action the agent takes. [music]
+[0:00] The news tool gateway is not just a
+[0:00] routing upgrade. It is a smarter, more
+[0:00] deliberate way of handling tool calls
+[0:00] that gives Hermes significantly more
+[0:00] control and precision over how it acts
+[0:00] in the world. If you have ever noticed
+[0:00] an AI agent doing something slightly
+[0:00] off, calling the wrong tool, misreading
+[0:00] context, wasting steps, a lot of that
+[0:00] comes down to how the gateway manages
+[0:00] those decisions. Version 0.10 was Hermes
+[0:00] drawing a line, and saying that problem
+[0:00] stops here. Then version 0.11 arrived
+[0:00] and expanded the model side of the
+[0:00] equation in a way that genuinely
+[0:00] surprised a lot of people. Five new
+[0:00] inference paths landed in a single
+[0:00] release. That alone is significant. But
+[0:00] the headline, the thing that got
+[0:00] people&#39;s attention immediately was GPT
+[0:00] 5.5Ex.
+[0:00] You can now run GPT 5.5 inside Hermes
+[0:00] agent, a frontier model, one of the most
+[0:00] capable language models available right
+[0:00] now, accessible through a free
+[0:00] open-source agent framework. The
+[0:00] combination of those two things,
+[0:00] frontier model performance and zero
+[0:00] licensing cost on the agent side, is
+[0:00] appearing that most people in this space
+[0:00] did not expect to see this soon. If your
+[0:00] workflow demands the best possible model
+[0:00] output, you now have a direct path to
+[0:00] that inside Hermes without rebuilding
+[0:00] anything. Version 0.11 also shipped
+[0:00] native AWS Bedrock support, which opens
+[0:00] up an entirely different lane. Bedrock
+[0:00] gives you access to a range of
+[0:00] enterprisegrade models through Amazon&#39;s
+[0:00] infrastructure with the security,
+[0:00] compliance, and scalability that comes
+[0:00] with it. For teams already operating
+[0:00] inside the AWS ecosystem, this is not
+[0:00] just convenient. It is the difference
+[0:00] between Hermes being a personal tool and
+[0:00] Hermes being something you can
+[0:00] responsibly deploy at an organizational
+[0:00] level. And then version 0.12 rounded out
+[0:00] the model story by doing something the
+[0:00] local AI community had been waiting for.
+[0:00] It made LM Studio a first class
+[0:00] provider. Not a workaround, not a custom
+[0:00] endpoint you have to configure manually
+[0:00] and hope it holds together. A fully
+[0:00] native integration with dedicated
+[0:00] authentication, a live models listing,
+[0:00] reasoning transport support, and
+[0:00] built-in health checks through the
+[0:00] Hermes Doctor command. If you run local
+[0:00] models, if you care about privacy, about
+[0:00] cost, about running inference entirely
+[0:00] on your own hardware, Hermes now treats
+[0:00] your setup with the same level of
+[0:00] respect and stability it gives to any
+[0:00] cloud provider. The local AI crowd has
+[0:00] always been an active and passionate
+[0:00] community and version 0.12 made a very
+[0:00] clear statement that Hermes is built for
+[0:00] them too. So far we have talked about
+[0:00] where Hermes runs and what powers it
+[0:00] under the hood. But version 0.11 and
+[0:00] 0.12 also change something you interact
+[0:00] with directly every single time you open
+[0:00] this agent, the interface itself. And
+[0:00] the scale of this change is not subtle.
+[0:00] This was not a cosmetic refresh. The
+[0:00] entire interactive CLI was rebuilt from
+[0:00] the ground up. The new terminal user
+[0:00] interface launched with the Hermes--2A
+[0:00] command is a complete React and Ink
+[0:00] rewrite. If you&#39;re not familiar with
+[0:00] Ink, it is a framework that lets you
+[0:00] build rich component-based interfaces
+[0:00] directly inside a terminal. The kind of
+[0:00] interface that feels alive and
+[0:00] responsive rather than flat and static.
+[0:00] And that is exactly what Hermes now has.
+[0:00] A sticky composer that stays in place as
+[0:00] output streams in live streaming with
+[0:00] clipboard support built directly into
+[0:00] the [music] interface. stable navigation
+[0:00] keys that do not shift or break when the
+[0:00] output updates. A status bar that shows
+[0:00] you per turn details in real time so you
+[0:00] always know what the agent is doing and
+[0:00] where it is in a given task. This is the
+[0:00] kind of terminal experience that makes
+[0:00] you forget you are in a terminal. It
+[0:00] feels more like a focused application
+[0:00] than a command line. And for a tool
+[0:00] you&#39;re potentially spending hours inside
+[0:00] every day, that difference is not
+[0:00] trivial. version 0.12 then pushed the
+[0:00] interface even further with one of the
+[0:00] most immediately noticeable improvements
+[0:00] in the entire release cycle. A 57%
+[0:00] reduction in TUI cold start time. That
+[0:00] is the time between launching Hermes and
+[0:00] the interface actually being ready to
+[0:00] use. 57% faster. If you have been using
+[0:00] Hermes for a while, you felt that delay
+[0:00] every single session. It was one of
+[0:00] those small friction points that
+[0:00] compounds over time. Version 0.12 cut it
+[0:00] in more than half. And the result is an
+[0:00] agent that feels instant in a way the
+[0:00] previous versions simply did not. But
+[0:00] the interface changes in version 0.11
+[0:00] went deeper than what you see on screen.
+[0:00] Alongside the visual rebuild came a
+[0:00] dramatically expanded plug-in surface
+[0:00] and something that fundamentally changes
+[0:00] what Hermes can do as a system. Subagent
+[0:00] parallelization. This is the ability to
+[0:00] spin up multiple Hermes agents and run
+[0:00] them simultaneously coordinated working
+[0:00] on different parts of a problem at the
+[0:00] same time. Think about what that
+[0:00] actually means in practice. Instead of
+[0:00] one agent working through a complex task
+[0:00] step by step, you can have a whole team
+[0:00] of agents running in parallel. One
+[0:00] handling research, one handling writing,
+[0:00] one handling code, one handling review,
+[0:00] all coordinated through the same
+[0:00] framework, all sharing the same memory
+[0:00] and tool access. People in the community
+[0:00] have started calling these agent swarms.
+[0:00] And the reason that framing is caught on
+[0:00] is because it maps to something
+[0:00] intuitive. It is less like using a tool
+[0:00] and more like running a small AI
+[0:00] organization. You define the goal.
+[0:00] Hermes figures out how to divide and
+[0:00] conquer it across multiple agents. And
+[0:00] the output you get reflects that
+[0:00] parallel effort. With over 40 built-in
+[0:00] tools, persistent memory, and this new
+[0:00] sub aent layer, all working together,
+[0:00] the gap between what a single developer
+[0:00] can produce with Hermes and what used to
+[0:00] require a full team is closing faster
+[0:00] than most people in this space are ready
+[0:00] to admit. Everything we have covered so
+[0:00] far, the mobile support, the platform
+[0:00] reach, the model options, the interface
+[0:00] overhaul, all of that is impressive. But
+[0:00] version 0.12 saved the most conceptually
+[0:00] significant changes for last. And these
+[0:00] are the features that separate Hermes
+[0:00] not just from where it was a month ago,
+[0:00] but from every other open- source AI
+[0:00] agent that exists right now. Because
+[0:00] version 0.12 is where Hermes stopped
+[0:00] being a tool you manage and started
+[0:00] becoming a system that manages itself.
+[0:00] Let&#39;s start with the self-improvement
+[0:00] loop because this is the core of what
+[0:00] makes Hermes different at a fundamental
+[0:00] level. Every time Hermes completes a
+[0:00] task, it does not just move on. It looks
+[0:00] back at what it did, evaluates how it
+[0:00] performed, and updates its own skills
+[0:00] based on what it learned. That loop has
+[0:00] existed in earlier versions, but version
+[0:00] 0.12 rebuilt it in a way that makes it
+[0:00] dramatically more reliable and focused.
+[0:00] The evaluation is now class first,
+[0:00] meaning it runs against a structured
+[0:00] rubric rather than a loose free form
+[0:00] judgment. That matters because it means
+[0:00] the self- assessment is consistent. It
+[0:00] is graded against the same standard
+[0:00] every single time, which makes the
+[0:00] improvements that come out of it more
+[0:00] meaningful and more predictable. The
+[0:00] loop is also now active update biased,
+[0:00] which means Hermes prioritizes improving
+[0:00] the skill it actually just used, the one
+[0:00] that is freshest, most relevant, [music]
+[0:00] and most likely to benefit from targeted
+[0:00] update. And critically, the entire loop
+[0:00] is now restricted to the memory and
+[0:00] skills tool sets. It cannot sprawl. It
+[0:00] cannot start modifying things it should
+[0:00] not be touching. The self-improvement
+[0:00] process is contained, intentional, and
+[0:00] precise. And then there is the
+[0:00] checkpoint system. Every 15 tool calls,
+[0:00] Hermes pauses and runs an internal
+[0:00] self-evaluation. You do not configure
+[0:00] this. You do not trigger it manually. It
+[0:00] is baked directly into the agent loop.
+[0:00] Every 15 tool calls without exception,
+[0:00] the agent asks itself how it is doing
+[0:00] and adjusts. The compounding effect of
+[0:00] that over a long session or over weeks
+[0:00] of use is the reason people describe
+[0:00] Hermes as an agent that grows with you.
+[0:00] The longer you run it, the better it
+[0:00] understands your workflows, your
+[0:00] preferences, your standards. Is not just
+[0:00] learning. It is continuously refining.
+[0:00] But here is the problem that existed
+[0:00] before version 0.12. And it is a problem
+[0:00] that every agent framework with a
+[0:00] self-improvement loop eventually runs
+[0:00] into. Every time Hermes learned
+[0:00] something new, it saved a new skill.
+[0:00] Session after session, task after task,
+[0:00] the skill library grew and nobody was
+[0:00] cleaning it up. Old skills from months
+[0:00] ago were still sitting there, outdated,
+[0:00] overlapping with newer ones, sometimes
+[0:00] conflicting with each other. Every time
+[0:00] the agent loaded skills into context, it
+[0:00] was carrying dead weight, slow
+[0:00] retrieval, wasted tokens, and in some
+[0:00] cases, genuinely wrong guidance being
+[0:00] pulled from skills that should have been
+[0:00] retired long ago. Version 0.12 solved
+[0:00] this with something called the
+[0:00] autonomous curator. And this is where
+[0:00] Hermes enters territory that no other
+[0:00] open-source AI agent framework has
+[0:00] touched. The curator is a background
+[0:00] agent that runs on its own schedule, a
+[0:00] 7-day cycle by default, and it does
+[0:00] something remarkable. It reads your
+[0:00] entire skill library, grades every skill
+[0:00] against the quality rubric, identifies
+[0:00] ones that are outdated or
+[0:00] underperforming, consolidates skills
+[0:00] that overlap with each other, and prunes
+[0:00] the ones that are doing more harm than
+[0:00] good. Then it writes a full report, a
+[0:00] structured log of everything it did,
+[0:00] every decision it made, saved to a run
+[0:00] file, and a readable report document. So
+[0:00] you always have a transparent record of
+[0:00] what changed and why. The framing that
+[0:00] is spread across the community for this
+[0:00] feature is that the agent now maintains
+[0:00] itself. And that [music] framing is
+[0:00] accurate. You&#39;re not just running an AI
+[0:00] agent anymore. You are running a system
+[0:00] that actively tends to its own knowledge
+[0:00] base, keeps itself sharp, and gets rid
+[0:00] of what is slowing it down, all without
+[0:00] you having to intervene. that is not an
+[0:00] incremental improvement. That is a
+[0:00] different category of software and the
+[0:00] fact that it is available right now for
+[0:00] free in an open source framework is the
+[0:00] part of this story that the broader AI
+[0:00] world has not fully caught up to yet.
+[0:00] Before we get to the outro, there is one
+[0:00] more addition from version 0.12 that
+[0:00] deserves a call out and it is one that a
+[0:00] specific part of this audience is going
+[0:00] to care about a lot. Comfy UI and Touch
+[0:00] Designer are now bundled into Hermes by
+[0:00] default. Comfy UI version 5 with its
+[0:00] full command line interface, REST API
+[0:00] support and hardware local installation
+[0:00] is no longer something you set up
+[0:00] separately and wire into Hermes manually
+[0:00] is just there out of the box ready to
+[0:00] use the moment you launch the agent. For
+[0:00] anyone building AI image generation into
+[0:00] their workflows, that removal of setup
+[0:00] friction is significant. Touch Designer
+[0:00] support was also expanded and bundled by
+[0:00] default, now covering GLSL shaders, post
+[0:00] effects, audio, geometry, and nine new
+[0:00] reference documents baked directly into
+[0:00] the integration. What this means
+[0:00] practically is that Hermes is no longer
+[0:00] just an agent for developers and
+[0:00] automation builders. The creative and
+[0:00] visual AI community, the people working
+[0:00] with generative imagery, real-time
+[0:00] visuals, and audio reactive systems now
+[0:00] have a direct lane into everything
+[0:00] Hermes offers without any extra
+[0:00] configuration. That is a new audience
+[0:00] for this tool and version 0.12 welcomed
+[0:00] them in without making them jump through
+[0:00] a single extra hoop for releases 17
+[0:00] days. And what came out the other side
+[0:00] is an agent that runs on your phone,
+[0:00] connects to 19 platforms, supports
+[0:00] Frontier models including GPT 5.5, has a
+[0:00] completely rebuilt interface that loads
+[0:00] in half the time, can run parallel agent
+[0:00] swarms on complex tasks, improves itself
+[0:00] after every session, and now maintains
+[0:00] its own skill library autonomously on a
+[0:00] rolling schedule. That is not an update
+[0:00] cycle. That is a transformation and the
+[0:00] pace at which the Hermes team is
+[0:00] shipping makes it very clear that this
+[0:00] is nowhere near the end of that story.
+[0:00] Now, all four of these releases, version
+[0:00] 0.9, 0.10, 0.11, and 0.12, have their
+[0:00] own dedicated deep dive videos on this
+[0:00] channel. If you want the full breakdown
+[0:00] on any specific release, every link is
+[0:00] sitting in the description below. Go as
+[0:00] deep as you want. And if you&#39;re thinking
+[0:00] about deploying Hermes Agent on a VPS,
+[0:00] which is honestly the cleanest way to
+[0:00] run it, if you want always on, always
+[0:00] available without tying up your local
+[0:00] machine, I recommend hosting your VPS.
+[0:00] It handles Hermes agent without any
+[0:00] issues. The pricing is solid and getting
+[0:00] set up is straightforward even if you
+[0:00] have not done much server work before.
+[0:00] The link is in the description and using
+[0:00] it supports this channel directly. If
+[0:00] this breakdown was useful, leave a like.
+[0:00] It genuinely helps this channel reach
+[0:00] more people who are trying to stay on
+[0:00] top of the AI agent space. Subscribe if
+[0:00] you&#39;re not already because the next few
+[0:00] months in this space are going to move
+[0:00] fast and you do not want to be catching
+[0:00] up after the fact. And if you have been
+[0:00] running Hermes yourself, if you have
+[0:00] already seen some of these features in
+[0:00] action, drop a comment below and tell me
+[0:00] which one hit different for you. I read
+[0:00] every single one. Thanks for watching
+[0:00] and I will see you in the next

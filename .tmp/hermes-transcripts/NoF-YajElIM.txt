@@ -1,0 +1,515 @@
+[0:00] So, I&#39;ve been doing kind of a deep dive
+[0:00] into Hermes agent and the different
+[0:00] functions it has and this is one thing
+[0:00] that I thought was pretty interesting.
+[0:00] And I don&#39;t know, I haven&#39;t heard a lot
+[0:00] of people talking about it, but I want
+[0:00] to do a video on it because I thought it
+[0:00] was a pretty nice feature.
+[0:00] So, Hermes agent eight hidden models and
+[0:00] you&#39;ve been running them the whole time.
+[0:00] And this is about auxiliary models.
+[0:00] Most people ever mess with them, but it
+[0:00] could save you a lot of money and could
+[0:00] improve your Hermes agent performance if
+[0:00] you take a look at it. So, today I&#39;m
+[0:00] going to show you what they are, which
+[0:00] ones matter and the one config that can
+[0:00] cut your auxiliary cost by 90%.
+[0:00] So, if you use your Hermes agent a lot
+[0:00] for heavy-duty software engineering
+[0:00] coding tasks, you&#39;re probably using a
+[0:00] frontier model Opus, Sonnet, GPT-5
+[0:00] something that can be quite expensive
+[0:00] cuz you want quality, but Hermes just
+[0:00] doesn&#39;t use your model for the chat
+[0:00] itself
+[0:00] and for the specific task you give it.
+[0:00] Hermes silently runs eight background
+[0:00] tasks on top of your chat.
+[0:00] Things like compressing your
+[0:00] conversation when the context gets too
+[0:00] big, summarizing web pages after it
+[0:00] fetches them, analyzing images, and
+[0:00] writing to persistent memory.
+[0:00] On the default config, those tasks are
+[0:00] either inherited by your main model,
+[0:00] which can be quite expensive or it falls
+[0:00] back to Gemini Flash through an auto
+[0:00] detect chain.
+[0:00] And this goes from open router to new
+[0:00] portal and then into Codex.
+[0:00] So, you if you have open router
+[0:00] configured like I do, it&#39;ll
+[0:00] automatically use Gemini Flash 3
+[0:00] for most of these tasks.
+[0:00] But each task has different needs, so
+[0:00] summarizing a page is different from
+[0:00] analyzing an image.
+[0:00] Compressing a long conversation is
+[0:00] different from classifying whether a
+[0:00] command is dangerous.
+[0:00] So, you may want to use different models
+[0:00] for these different tasks.
+[0:00] So, here are the eight tasks.
+[0:00] The The top four here are the ones that
+[0:00] cost the most in terms of spend.
+[0:00] Compression is for uh long
+[0:00] summarizing your conversation when the
+[0:00] context hits the threshold.
+[0:00] Web extract is to summarize a web page
+[0:00] after Hermes fetches it.
+[0:00] Vision is analyzing image and browser
+[0:00] screenshots and obviously certain models
+[0:00] are better at that than others. Flush
+[0:00] memories is a task that writes durable
+[0:00] facts from your chat to your memory
+[0:00] files when a session ends.
+[0:00] Session search here.
+[0:00] Uh this summarizes past sessions when
+[0:00] you search them.
+[0:00] Skills hub matches your query to an
+[0:00] installed skill, MCP dispatches MCP tool
+[0:00] calls, and approval classifies risky
+[0:00] commands if you&#39;re in smart approval
+[0:00] mode.
+[0:00] So, like I said, the top four here are
+[0:00] the ones where you&#39;re going to
+[0:00] spend the most and I should say that
+[0:00] this is all based on the current version
+[0:00] of Hermes
+[0:00] as of this date, which is April 15th,
+[0:00] 2026.
+[0:00] They&#39;ve been updating it a lot, so
+[0:00] you may want to double-check if you&#39;re
+[0:00] watching this at a a later date to see
+[0:00] exactly
+[0:00] what kind of auxiliary tasks they have
+[0:00] here.
+[0:00] So, where the spend actually lives and
+[0:00] number one by far is compression. It
+[0:00] fires every time your context fills up
+[0:00] to the threshold. So, for heavy users,
+[0:00] if you&#39;re live coding or have complex
+[0:00] automated workflows, this could fire
+[0:00] uh 10 to 20 times a day
+[0:00] and this is your biggest cost by far.
+[0:00] Flush memories fires on every session
+[0:00] end, so if you do {slash}new
+[0:00] or do {slash}end exit
+[0:00] this flush memories will work and it
+[0:00] basically looks back at the context and
+[0:00] summarizes and stores memories.
+[0:00] It costs less than compression, but it
+[0:00] still does add up. Web extract fires on
+[0:00] every web page that the agent
+[0:00] summarizes.
+[0:00] So, if you use Hermes a lot for
+[0:00] research, this is going to get hit
+[0:00] constantly.
+[0:00] And then vision.
+[0:00] Vision fires on every image and browser
+[0:00] screenshot that you send it. This lower
+[0:00] frequency for some people, but it can be
+[0:00] expensive per call because the images
+[0:00] eat a lot of tokens and certain models
+[0:00] are specifically designed for vision
+[0:00] task, so setting this is less about
+[0:00] cost, but more about having the right
+[0:00] model
+[0:00] for the task.
+[0:00] Okay, so where are these actually? These
+[0:00] are in the config. Let me show you this
+[0:00] myself.
+[0:00] Now, I&#39;m using this with WSL on Windows.
+[0:00] It&#39;s going to be different if you&#39;re
+[0:00] using this in a Mac. Sorry, this is
+[0:00] small, but
+[0:00] on the bottom of your file explorer
+[0:00] here, you&#39;re going to see something
+[0:00] called Linux.
+[0:00] And this is the WSL workspace basically.
+[0:00] Um and then you&#39;re going to have a
+[0:00] folder. It&#39;s probably going to be called
+[0:00] Ubuntu. Mine&#39;s called Debian, which is a
+[0:00] different uh WSL provider.
+[0:00] But yours the default is Ubuntu, so you
+[0:00] might have it as that. Then you look
+[0:00] under the home folder
+[0:00] and then whatever your user ID is and
+[0:00] then you&#39;re going to
+[0:00] do {dot}hermes
+[0:00] {dot}hermes directory
+[0:00] and then you&#39;re going to see all of them
+[0:00] here and this is the file you want,
+[0:00] config
+[0:00] {dot}yaml. Sorry, once again that the
+[0:00] the text is small here.
+[0:00] So, this is the config file and it&#39;s
+[0:00] going to have everything that you
+[0:00] uh put in during the setup phase. This
+[0:00] is just the config file that has it and
+[0:00] you can edit this directly. You&#39;re going
+[0:00] to look down here around line 100,
+[0:00] depending.
+[0:00] But you&#39;re going to see this line for
+[0:00] auxiliary and this is where all of the
+[0:00] auxiliary models are set. You see here
+[0:00] the ones that I just talked about,
+[0:00] vision
+[0:00] web extract, compression, session
+[0:00] search, skills hub
+[0:00] flush memories is down here.
+[0:00] So, you could see
+[0:00] you could set these here and the base
+[0:00] the base way you&#39;re going to do this is
+[0:00] set the provider and set the model.
+[0:00] So, for instance, if you&#39;re going to be
+[0:00] using this Gemini Flash one, provider
+[0:00] open router, that&#39;s what you&#39;re using
+[0:00] and then you set the model.
+[0:00] Um and say if you want to do Haiku for
+[0:00] web extract
+[0:00] provider Anthropic, model Claude Haiku
+[0:00] 4.5.
+[0:00] So, that&#39;s how you basically change it
+[0:00] in the configurations.
+[0:00] So, by default the auto, which you saw
+[0:00] all of these are set to
+[0:00] uh auto right now.
+[0:00] These walks through open router
+[0:00] uh new portal, Codex, Gemini Flash.
+[0:00] So, I have open router configured and I
+[0:00] was wondering why I have all these very
+[0:00] tiny
+[0:00] Gemini Flash charges
+[0:00] even though I I wasn&#39;t using Gemini
+[0:00] Flash. It&#39;s because of this, they were
+[0:00] set to the auto for the auxiliary tasks.
+[0:00] So, which model do you want to choose?
+[0:00] This is up to you. You can experiment
+[0:00] with this, but just to give you a couple
+[0:00] ideas, couple options here. For
+[0:00] compression, some good choices are
+[0:00] uh models that have
+[0:00] clean summaries that can handle long
+[0:00] context. Kimi K2 is good, Claude Haiku
+[0:00] 4.5, Gemini Flash 2.5 Flash.
+[0:00] These are all good. For flush memories,
+[0:00] you want something that&#39;s good at small,
+[0:00] fast, structured extraction.
+[0:00] So, GPT-4o Mini is quite good and once
+[0:00] again, Gemini 4.5 Flash. You&#39;ll see this
+[0:00] one a lot and this is why it&#39;s kind of
+[0:00] the default because it&#39;s really
+[0:00] well-balanced and very fast at a lot of
+[0:00] these tasks
+[0:00] and comparatively cheap.
+[0:00] Web extract
+[0:00] uh Claude Haiku 4.5 is great and once
+[0:00] again, Gemini and for this you really
+[0:00] want factual preservation for the
+[0:00] research. So, if you&#39;re going to use a
+[0:00] little bit of a heavier model, web
+[0:00] extract is a good one if you&#39;re doing a
+[0:00] lot of research. And then vision.
+[0:00] So, vision has to be a multimodal
+[0:00] model and multimodal just means it can
+[0:00] handle images as well.
+[0:00] So, Gemini 2.5 Flash is good, but also
+[0:00] GPT-4o. Um I last week or so I used JLM
+[0:00] 5D Turbo, which is really nice.
+[0:00] And most of your frontier models will
+[0:00] also do this well, but you may want to
+[0:00] pick a specific vision model that you
+[0:00] like and that might be cheaper than your
+[0:00] frontier model.
+[0:00] And one of the big benefits obviously is
+[0:00] going local with these. If you are able
+[0:00] to run a local model that is pretty good
+[0:00] and can handle these tasks, you&#39;re
+[0:00] obviously going to be taking a
+[0:00] background task that can cost you some
+[0:00] money and making it cost nothing by
+[0:00] going local.
+[0:00] So, you could continue to use your
+[0:00] frontier model, continue to use
+[0:00] your Opus or
+[0:00] GPT
+[0:00] 5 4, but then in the background task,
+[0:00] you can use this for local. And the way
+[0:00] you do this in the configuration is like
+[0:00] this.
+[0:00] Um this is going to be vary a little bit
+[0:00] based on how you&#39;re using it, but
+[0:00] the base URL is going to be your local
+[0:00] host, which is whatever your
+[0:00] local provider is
+[0:00] pointing to. So, you can see a lot of
+[0:00] the common ones here, Ollama LM Studio
+[0:00] VL LM and llama.cpp. If you watch my
+[0:00] videos, you&#39;ve seen me set up Ollama and
+[0:00] llama.cpp.
+[0:00] So, that&#39;ll just point to a certain
+[0:00] local server.
+[0:00] And then you just set that as the base
+[0:00] URL here in the configuration. You
+[0:00] choose whichever model it is you&#39;re
+[0:00] using. API key, you have to put
+[0:00] something here, but it&#39;s not actually
+[0:00] used, so you can actually just literally
+[0:00] just write placeholder.
+[0:00] And then whatever the timeout is, which
+[0:00] is why you want to make this a little
+[0:00] bit larger than normal because local can
+[0:00] be run slower, depending.
+[0:00] And the base if you set base URL, this
+[0:00] will override provider. So, if you set
+[0:00] it, Hermes will go to your endpoint,
+[0:00] your local endpoint here and use your
+[0:00] local model.
+[0:00] So, a little bit of a caveat, if you&#39;re
+[0:00] doing this for compression, there&#39;s
+[0:00] actually two configs.
+[0:00] Uh if we look at it here
+[0:00] there&#39;s actually top-level one. I showed
+[0:00] you the one down here, right?
+[0:00] Uh right here. This is under the
+[0:00] auxiliary part.
+[0:00] There&#39;s also if you go up a little bit
+[0:00] compression is here.
+[0:00] So, you can set
+[0:00] um
+[0:00] auxiliary compression provider and
+[0:00] model.
+[0:00] And I&#39;ll show you that when we do the
+[0:00] live demo
+[0:00] um as well as the auxiliary one.
+[0:00] So, if both are set,
+[0:00] auxiliary.compression will win.
+[0:00] And if you set the provider to auto
+[0:00] though
+[0:00] in the auxiliary, it overrides your
+[0:00] top-level choice and it&#39;ll fall back to
+[0:00] Gemini.
+[0:00] And before we continue, I want to
+[0:00] quickly let you know about this free
+[0:00] weekly newsletter that I&#39;m going to be
+[0:00] be publishing.
+[0:00] AI Garage Weekly will be released every
+[0:00] Friday.
+[0:00] It&#39;ll feature the weekly AI news, model
+[0:00] releases along with my thoughts on each
+[0:00] of these. Summary of interesting
+[0:00] articles, papers, and research that I
+[0:00] found during the week. And as well as
+[0:00] what kind of research and projects that
+[0:00] I&#39;m working on and just a general
+[0:00] roundup of my random brainstorming
+[0:00] sessions.
+[0:00] If anyone wants to take a peek behind on
+[0:00] chain AI Garage.
+[0:00] Like I said, it&#39;s completely free. Just
+[0:00] sign up.
+[0:00] The link is in the description. It&#39;s
+[0:00] also AI-Garage-Weekly.beehive.com.
+[0:00] Let&#39;s continue.
+[0:00] Okay, enough of me talking.
+[0:00] It&#39;s demo time. So, we&#39;re going to do
+[0:00] the the one task that is probably cost
+[0:00] the most, which is going to be the
+[0:00] compression. I&#39;m going to
+[0:00] fill out a context window with the same
+[0:00] amount of tokens and then I&#39;m going to
+[0:00] run compression once using Claude Opus,
+[0:00] the API from Anthropic, and one uh we&#39;re
+[0:00] going to do it with Open Router using
+[0:00] Kimi 2.
+[0:00] Obviously, if you did this local with a
+[0:00] local model, your cost would be zero.
+[0:00] So, you can do the math the savings
+[0:00] there. But uh I want to do it with a
+[0:00] cheaper model than what you would get
+[0:00] with uh frontier model just to show you
+[0:00] the difference in case you can&#39;t run a
+[0:00] local model that can handle this task.
+[0:00] So, let&#39;s move over
+[0:00] to the Hermes agent.
+[0:00] Okay, so for our first test, you can see
+[0:00] here I&#39;m in Claude Opus 4.6 in my Hermes
+[0:00] agent.
+[0:00] I&#39;ve been chatting, talking about
+[0:00] different paper. We filled this up uh
+[0:00] 50,000 tokens into the context window.
+[0:00] Not a lot for Opus&#39;s context window, but
+[0:00] for other smaller models, it&#39;s a lot.
+[0:00] But it&#39;s still sufficient for us to test
+[0:00] out the compression
+[0:00] cost. So, you can see here this is the
+[0:00] API that I have. Um you can see I
+[0:00] haven&#39;t spent anything today. So, this
+[0:00] will obviously go up as we keep doing
+[0:00] these experiments, but for now, no token
+[0:00] cost. So,
+[0:00] the previous filling up of the context
+[0:00] window was with a different model.
+[0:00] Different provider. So, we&#39;re going to
+[0:00] do the compression, see much see how
+[0:00] much that cost
+[0:00] in API cost.
+[0:00] So, it&#39;s doing the compression of all
+[0:00] the messages.
+[0:00] And this is the task we&#39;re going to test
+[0:00] to see with the auxiliary
+[0:00] models. Right now, it&#39;s just using
+[0:00] Claude Opus
+[0:00] 4.6 to compress.
+[0:00] Okay, and you can see it compressed it
+[0:00] down
+[0:00] from 62 message down to seven.
+[0:00] Uh this says 36, but it was at 50 down
+[0:00] here. So, we&#39;ll just go with that. And
+[0:00] we&#39;re down back to 1%.
+[0:00] So, Claude Opus compressed it. So, let&#39;s
+[0:00] see how much that cost us.
+[0:00] Okay, [snorts] you can see 13 cents.
+[0:00] So, not a lot, but keep in mind that was
+[0:00] only a 50,000 token window.
+[0:00] And that is going to be our baseline
+[0:00] that we&#39;re going to compare it when we
+[0:00] set the auxiliary model for this one
+[0:00] task.
+[0:00] So, keep that in mind. Opus was 13
+[0:00] cents.
+[0:00] Okay, now we&#39;re ready for the
+[0:00] comparison. We&#39;re at back at 50K tokens.
+[0:00] So, for this one, we&#39;re going to try the
+[0:00] Kimi K2.
+[0:00] And this is from Moonshot AI.
+[0:00] Kimi K2.
+[0:00] It&#39;s a little bit of an older one. Uh
+[0:00] this is the version that was released on
+[0:00] September 4th. Uh but it&#39;s pretty
+[0:00] reasonable and should do well for this
+[0:00] task.
+[0:00] I&#39;m just using this just to give you an
+[0:00] example of a couple different versions,
+[0:00] but
+[0:00] I&#39;m sure there are other models that
+[0:00] would do well.
+[0:00] So, now you need to configure this in
+[0:00] the
+[0:00] config.yaml
+[0:00] for auxiliary, go to compression.
+[0:00] Open Router.
+[0:00] And then
+[0:00] and then Moonshot AI Kimi K2.
+[0:00] So, after you change this, you have to
+[0:00] start a new session
+[0:00] so that it&#39;ll pick up the changes in the
+[0:00] config.
+[0:00] Okay, so I had to fill up this context
+[0:00] window, but we&#39;re back at 50, 000 tokens
+[0:00] roughly.
+[0:00] And now we&#39;re going to try this using
+[0:00] the Kimi 2.
+[0:00] So, even though we have a different Open
+[0:00] Router
+[0:00] model running,
+[0:00] uh if I do compress here, it&#39;s going to
+[0:00] use the Kimi 2 automatically. So, let&#39;s
+[0:00] do this. Compress.
+[0:00] And it&#39;s compressing all of the
+[0:00] messages.
+[0:00] There you go, it finished the
+[0:00] compression.
+[0:00] 134 messages down to six.
+[0:00] Okay, and this is the actual spend on
+[0:00] the um the compression itself.
+[0:00] It was 0.
+[0:00] 019 cents.
+[0:00] Um there&#39;s some Gemini activity going on
+[0:00] cuz I use this Open Router key a lot,
+[0:00] but this is for the context compression.
+[0:00] And so, you can see it&#39;s 1 cent.
+[0:00] Uh almost almost 2 cents, but still a
+[0:00] significant savings over 13 cents doing
+[0:00] the same compression
+[0:00] with Opus. So, that&#39;s a 85%
+[0:00] savings for each compression. And this
+[0:00] is only 50,000 tokens, not a lot.
+[0:00] If you&#39;re doing hour-long sessions,
+[0:00] you&#39;re going to end up filling a lot of
+[0:00] the the context window. And it doesn&#39;t
+[0:00] sound like a big difference, 13 cents
+[0:00] versus almost 2 cents,
+[0:00] but over the long haul, that&#39;s going to
+[0:00] cost you a lot. There you have it. Uh
+[0:00] so, one compression pass doesn&#39;t sound
+[0:00] like much, right? We saw 13 cents with
+[0:00] Opus, and then
+[0:00] one almost 2 cents with Kimi.
+[0:00] And the one pass isn&#39;t that big of a
+[0:00] difference, but compression fires
+[0:00] constantly. If you&#39;re on a real work
+[0:00] day with multiple hour sessions and
+[0:00] research task, browser activity,
+[0:00] automated task, coding tasks, you can
+[0:00] easily hit compression like 10, 15, 20
+[0:00] times a day. And this will add up, you
+[0:00] know. The Opus, if you&#39;re just using
+[0:00] Opus for this every single time with the
+[0:00] API, it can easily hit $60 a month if
+[0:00] you&#39;re doing 15 compressions a day.
+[0:00] But obviously, if you&#39;re doing it
+[0:00] locally, you&#39;ll save that total amount.
+[0:00] But even using a cheaper model like Kimi
+[0:00] K2 here,
+[0:00] bumps that down to $9 a month. So, you
+[0:00] could save at least $50 using these
+[0:00] auxiliary tasks. And that&#39;s real
+[0:00] savings.
+[0:00] And this was just the compression demo.
+[0:00] If you use local or cheaper models on
+[0:01] the other auxiliary tasks, you&#39;re going
+[0:01] to stack those savings even more.
+[0:01] So, just to wrap up,
+[0:01] um Hermes has eight auxiliary tasks you
+[0:01] can configure independently.
+[0:01] Uh you might want to focus on these top
+[0:01] four, compression, flash memories, web
+[0:01] extract, and vision. Like I said, if you
+[0:01] have a specific vision model that you
+[0:01] like using that has better capabilities
+[0:01] than whatever model you&#39;re using for
+[0:01] day-to-day work, you want to match the
+[0:01] model to the task. Make sure you have
+[0:01] the right model for each task.
+[0:01] And local models work on this task, too.
+[0:01] If you want
+[0:01] just to point your local model
+[0:01] to the Hermes agent, you can set that up
+[0:01] like I showed you before.
+[0:01] And that&#39;s a really great way if maybe
+[0:01] your local model doesn&#39;t can&#39;t handle
+[0:01] the main project building or whatever
+[0:01] you&#39;re doing with Hermes agent, but you
+[0:01] can still use it for stuff like this to
+[0:01] get a lot of savings out of it.
+[0:01] So, that&#39;s going to be it for this
+[0:01] video. I just thought this was a
+[0:01] interesting feature of Hermes agent, so
+[0:01] I wanted to do a video on it. I hope you
+[0:01] enjoyed it. If you want to see more
+[0:01] Hermes agent-focused
+[0:01] uh videos, please subscribe. Please
+[0:01] leave a like. Leave a comment. Let me
+[0:01] know how you&#39;ve been using your Hermes
+[0:01] agent. And stay tuned cuz we&#39;re going to
+[0:01] have a lot of new Hermes agent-related
+[0:01] videos and
+[0:01] the uh real deep dive master class is
+[0:01] going to start in May, I believe. I&#39;ll
+[0:01] do a couple videos each week in May. But
+[0:01] that&#39;s going to be it for this one.
+[0:01] Thank you for watching.

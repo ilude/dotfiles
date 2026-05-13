@@ -1,0 +1,795 @@
+[0:00] So one of the common comments that you
+[0:00] might hear a lot kind of criticizing AI
+[0:00] agents and all these new tools is people
+[0:00] often say, &quot;Okay, you have all these
+[0:00] tools and you have all these agents, all
+[0:00] these skills, but what do you actually
+[0:00] do with it?
+[0:00] How can you actually use it?&quot; And it&#39;s a
+[0:00] fair question. I&#39;m guilty myself of
+[0:00] getting too excited and interested in
+[0:00] the tools themselves instead of what you
+[0:00] can actually do with them. But I hope to
+[0:00] answer that question at least part
+[0:00] partially today
+[0:00] because there&#39;s a lot you could do with
+[0:00] them and
+[0:00] one of the really useful tools in doing
+[0:00] that is using webhooks along with your
+[0:00] agent. So today&#39;s video
+[0:00] I&#39;ll be talking about Hermes agent and
+[0:00] using webhooks to unlock agentic
+[0:00] workflow potential
+[0:00] to actually use your agent and use its
+[0:00] tools and skills in real-world
+[0:00] situations.
+[0:00] And if you like this video, please
+[0:00] subscribe to my free weekly newsletter
+[0:00] where I give my honest thoughts about
+[0:00] the week&#39;s AI news that I can&#39;t share
+[0:00] here as well as interesting research and
+[0:00] papers that I found and what projects
+[0:00] I&#39;ve been building behind the scenes.
+[0:00] There&#39;s a link in the description or go
+[0:00] to onchainaigarage.com.
+[0:00] Every word is written by me, mistakes
+[0:00] and all. So if you&#39;re sick of AI slop
+[0:00] articles or all hype with no substance,
+[0:00] subscribe and give AI Garage a weekly
+[0:00] shot. Now back to the video.
+[0:00] So most people just talk to their AI
+[0:00] agent. They type, it replies, that&#39;s it.
+[0:00] But Hermes has a whole other mode where
+[0:00] the internet itself triggers your agent.
+[0:00] Emails arrive, subscribers sign up,
+[0:00] GitHub pull request open and the agent
+[0:00] just starts working without you ever
+[0:00] opening a chat. So that&#39;s webhooks and
+[0:00] they&#39;re the unlock for making Hermes
+[0:00] feel less like a chatbot and more like
+[0:00] an actual back-end service.
+[0:00] So today we&#39;re actually going to build
+[0:00] three of them so you can see for
+[0:00] yourself and these are real-world
+[0:00] examples
+[0:00] for my work and
+[0:00] what I&#39;m building, but you can certainly
+[0:00] apply them to whatever you&#39;re building,
+[0:00] whatever apps or services or businesses
+[0:00] you&#39;re working on right now.
+[0:00] So what is a webhook?
+[0:00] Technically it&#39;s just a HTTP post that
+[0:00] one service fires when something happens
+[0:00] on their end.
+[0:00] That post lands on a URL you own
+[0:00] and it&#39;s event-driven, not polling.
+[0:00] So imagine somebody is at your front
+[0:00] door. Something like polling is you
+[0:00] going out and opening the front door to
+[0:00] look if someone&#39;s there every 5 minutes,
+[0:00] every 10 minutes, however long the
+[0:00] polling is.
+[0:00] A webhook is like a doorbell.
+[0:00] So the person comes, presses the
+[0:00] doorbell and you instantly know
+[0:00] somebody&#39;s at the front door instead of
+[0:00] waiting for the next time you get to go
+[0:00] open the front door.
+[0:00] And this HTTP post carries with it a
+[0:00] JSON payload with the event details
+[0:00] which depend on the exact event, but who
+[0:00] signed up, what PR was opened, what
+[0:00] payment cleared, whatever it is.
+[0:00] And because it&#39;s real time, the moment
+[0:00] it happens, you know about it. So every
+[0:00] major service speaks with them. You
+[0:00] probably often see webhooks in a
+[0:00] dashboard.
+[0:00] Some examples down here, GitHub, Stripe,
+[0:00] Helios, Beehiiv, Shopify. And combining
+[0:00] these webhooks with agents creates a
+[0:00] really powerful tool for you.
+[0:00] So there&#39;s two directions. Every webhook
+[0:00] has a sender and a receiver and Hermes
+[0:00] can play both roles depending on how you
+[0:00] set it up.
+[0:00] Over here is world to agent, so an
+[0:00] external service fires an event and most
+[0:00] of the time you&#39;ll be using this kind of
+[0:00] version.
+[0:00] Something happens in the outside world
+[0:00] and Hermes is the one getting the
+[0:00] message.
+[0:00] So this could be somebody signing up for
+[0:00] your newsletter, somebody
+[0:00] buying something from your online store,
+[0:00] somebody submitting a pull request on
+[0:00] your GitHub repo.
+[0:00] Your Hermes agent is notified the moment
+[0:00] it happens. So there&#39;s also outbound
+[0:00] which starts with the agent and then
+[0:00] goes outbound to the external service.
+[0:00] The agent produces the output and posts
+[0:00] it to the service endpoint. So this
+[0:00] could be going to your app, to your
+[0:00] website, to your dashboard, Slack,
+[0:00] whatever you have it set up with.
+[0:00] This is a little rundown of what exactly
+[0:00] happens with Hermes agent as a receiver
+[0:00] of the webhook.
+[0:00] Uh we&#39;re going to actually do some real
+[0:00] examples so I&#39;m not going to go through
+[0:00] all of this and it does vary based on
+[0:00] how you&#39;re setting it up.
+[0:00] But very quickly, it&#39;s basically use URL
+[0:00] routing to connect, go through a
+[0:00] signature check,
+[0:00] and then template rendering,
+[0:00] and then a fresh agent turn
+[0:00] uh with the rendered prompt as input and
+[0:00] then it delivers the response to your
+[0:00] Telegram.
+[0:00] But like I said, we&#39;ll go actually go
+[0:00] through this.
+[0:00] And then as a sender, uh we can often
+[0:00] use cron jobs and a terminal tool to
+[0:00] schedule agent post via curl or HTTPX as
+[0:00] part of its run.
+[0:00] Or the gateway hook which Hermes has a
+[0:00] built-in hook system.
+[0:00] So you drop a file in Hermes.hook or
+[0:00] Hermes/hooks
+[0:00] uh and it fires on life cycle events,
+[0:00] session started, agent took a step,
+[0:00] slash command used.
+[0:00] You could also hook it into plugins as
+[0:00] well. So push anywhere, CLI or gateway.
+[0:00] So in this case it&#39;s just the outbound
+[0:00] the agent making HTTP calls.
+[0:00] So how are these actually used? There&#39;s
+[0:00] a lot of different ways. This is just a
+[0:00] sample here, but you can use it in
+[0:00] GitHub. Um you can use it like I said in
+[0:00] Stripe payment events.
+[0:00] You can use it to draft a welcome
+[0:00] message or flag fraud. Helios which is a
+[0:00] on-chain RPC provider for Solana.
+[0:00] On-chain events can come into Telegram
+[0:00] alerts. Say if you&#39;re tracking a certain
+[0:00] wallet, you can be use a webhook there
+[0:00] to
+[0:00] alert your agent that this wallet bought
+[0:00] a certain token.
+[0:00] Um Beehiiv which is a the newsletter
+[0:00] platform that I use.
+[0:00] Um you can use it for new subscribers.
+[0:00] You can use it for enrichment. Sentry
+[0:00] for errors. The agent can triage the
+[0:00] error and pages on call.
+[0:00] cal.com, you can do this for meetings,
+[0:00] stuff like that. If a meeting is booked,
+[0:00] you can do a automatic pre-meeting
+[0:00] briefing.
+[0:00] Typeform or Home Assistant as well.
+[0:00] So basically any service with a webhook
+[0:00] URL field is a trigger for your agent.
+[0:00] And this could be integrated into your
+[0:00] app, into your business,
+[0:00] into just your personal workflow.
+[0:00] There&#39;s a really a lot of cases for it.
+[0:00] Okay, so enough of the slides, right?
+[0:00] You want to see how this actually works.
+[0:00] So we&#39;re going to do three demos.
+[0:00] And first it&#39;s going to be using
+[0:00] Beehiiv which like I said is the
+[0:00] newsletter platform that I use
+[0:00] and I&#39;m going to set it up so that every
+[0:00] time I get a new subscriber, I&#39;m going
+[0:00] to get a ping in the Telegram.
+[0:00] Um and then I&#39;ll also do like an hourly
+[0:00] cron job
+[0:00] because that might be a lot of pings if
+[0:00] I get a lot of subscribers. So it&#39;ll
+[0:00] create an hourly cron job that gives me
+[0:00] a stats report and this comes to
+[0:00] Telegram delivered to me.
+[0:00] Then we&#39;re going to do GitHub and auto
+[0:00] code review.
+[0:00] So PR is open, the agent can read what
+[0:00] the PR is, do some research and then can
+[0:00] draft a review comment on the PR or just
+[0:00] post it automatically. I think we&#39;re
+[0:00] just going to do a draft.
+[0:00] And then finally we&#39;re going to use
+[0:00] actually one of my real apps
+[0:00] and set up a cron job where my agent
+[0:00] analyzes certain data and then posts
+[0:00] analysis and summary on the app itself
+[0:00] to enrich the app.
+[0:00] Okay, so let&#39;s get started with the
+[0:00] first one.
+[0:00] Like I said, this is for the newsletter
+[0:00] to inform me whenever I get a new
+[0:00] subscriber.
+[0:00] And the part B which brings it all
+[0:00] together is like an hourly cron to pull
+[0:00] stats, writes a digest.
+[0:00] And there&#39;s ways you can really enrich
+[0:00] this even more if you have your agent
+[0:00] hooked up to the X API,
+[0:00] you can analyze, okay, when when am I
+[0:00] getting a lot of subscribers? Um if you
+[0:00] also hook it up to for me it&#39;s YouTube,
+[0:00] but whichever service you&#39;re using,
+[0:00] when am I getting the most subscribers
+[0:00] during the day? Is it when I post a new
+[0:00] video? Is it when I tweet something? Is
+[0:00] it some other specific time frame? It
+[0:00] really lets you analyze these kind of
+[0:00] flows. So part one is you&#39;re going to
+[0:00] add this to your .hermes/ .env file
+[0:00] enabling the webhook itself, webhook
+[0:00] enable true, webhook port uh whichever
+[0:00] it is, 8644 in our case, webhook secret
+[0:00] and then you generate a secret. And you
+[0:00] can do this, there&#39;s a couple different
+[0:00] ways you can do this, but um I did this
+[0:00] just in Windows with this Python script.
+[0:00] Um and it&#39;s just a random
+[0:00] uh string of 36 or 32
+[0:00] uh characters.
+[0:00] I can&#39;t obviously show you the .env
+[0:00] file, uh otherwise I would, but you
+[0:00] shouldn&#39;t show this to anyone, but it&#39;s
+[0:00] just these three lines basically. Then
+[0:00] you have to add the route to Hermes.
+[0:00] Um the .hermes config.yaml and that&#39;s
+[0:00] the main config file.
+[0:00] You can see here.
+[0:00] Um this is the config file.
+[0:00] Um create platforms way webhook enable
+[0:00] true. You have the port and then this is
+[0:00] the route, new subscriber. So this is
+[0:00] really what it reads.
+[0:00] And this is the prompt it&#39;s giving.
+[0:00] So this is formatted as a Telegram ping
+[0:00] with the email,
+[0:00] uh referral source, subscription tier,
+[0:00] timestamp, and then it gives us the raw
+[0:00] JSON and it&#39;s delivered to Telegram. So
+[0:00] in order to actually connect between the
+[0:00] endpoint, the webhook endpoint,
+[0:00] and the HTTP, you do ngrok HTTP and you
+[0:00] start it with whichever port
+[0:00] it it became. So it&#39;s going to give you
+[0:00] a URL like this.
+[0:00] Um big big string of random words and
+[0:00] that&#39;s going to point to the local
+[0:00] server.
+[0:00] Then this is the Beehiiv platform, the
+[0:00] website, my dashboard. You&#39;re going to
+[0:00] enter create a webhook endpoint and it&#39;s
+[0:00] going to be whatever that big string
+[0:00] that ngrok gave you
+[0:00] uh slash webhook slash
+[0:00] whichever route, remember we set in the
+[0:00] config. For us it was new subscriber.
+[0:00] And like I said, if this is
+[0:00] um like a very common one would be using
+[0:00] the Stripe
+[0:00] webhooks, you just do a very similar
+[0:00] thing just
+[0:00] within the Stripe platform itself. Okay,
+[0:00] so once we&#39;ve registered the webhook in
+[0:00] Beehiiv,
+[0:00] we start the gateway.
+[0:00] And you see I I the gateway for Hermes
+[0:00] here. It&#39;s already receiving some
+[0:00] some of them.
+[0:00] And you can see this is my the Hermes
+[0:00] agent in Telegram. So, it gives me every
+[0:00] time I have a new subscriber, it&#39;ll ping
+[0:00] me new Beehiiv subscriber with the email
+[0:00] where it referred to,
+[0:00] the tier, and the time exactly.
+[0:00] So, part B is the hourly cron report.
+[0:00] Like all of these are good, but you
+[0:00] might get might not want to set it up
+[0:00] like this.
+[0:00] You might want to just do it like an
+[0:00] hourly report, like I said.
+[0:00] So, for this you just add your platform,
+[0:00] for me it&#39;s Beehiiv, the API credentials
+[0:00] in hermes.env
+[0:00] um with the API key and your publication
+[0:00] ID key for this specifically. And like I
+[0:00] said, whatever platform
+[0:00] you&#39;re using is probably going to give
+[0:00] you an API key for this.
+[0:00] And this is the script
+[0:00] beehiiv_stats.
+[0:00] It&#39;s a Python script. So, this is what
+[0:00] um
+[0:00] I&#39;m actually using
+[0:00] to process this.
+[0:00] And then I created a cron job that
+[0:00] basically runs the script every 1 hour.
+[0:00] And the prompt is to summarize the last
+[0:00] hour of Beehiiv activity from the script
+[0:00] output.
+[0:00] Lead with new subscriber count, note
+[0:00] dominant UTM sources, flag any invalid
+[0:00] emails. So, this is where you&#39;re
+[0:00] actually getting the agent more
+[0:00] involved. And you can adjust this prompt
+[0:00] to be however you want it to be.
+[0:00] So, you can easily combine any data you
+[0:00] receive from the script with other
+[0:00] skills that your Hermes agent might
+[0:00] have. The nice thing with doing this
+[0:00] with an agent that it has all your
+[0:00] information, it has all your data, which
+[0:00] projects you&#39;re working on.
+[0:00] Like I said, you can set it up to
+[0:00] connect with your YouTube API or the X
+[0:00] API to try to see when the the
+[0:00] subscriber activity really peaks. And
+[0:00] that&#39;ll give you some nice insights.
+[0:00] Okay. And you can see the the cron job
+[0:00] response
+[0:00] uh triggering in the Telegram. So, this
+[0:00] is kind of an example of what we got.
+[0:00] Last hour activity, 11 new subscribers,
+[0:00] the dominant source was
+[0:00] uh this is my
+[0:00] onchainai.garage.com
+[0:00] landing page. So, this is the API email
+[0:00] validity.
+[0:00] All 11 addresses appeared correctly
+[0:00] formatted.
+[0:00] Um and this is my most recent post. So,
+[0:00] it kind of gives you
+[0:00] that data as well.
+[0:00] But,
+[0:00] this is one use case I think you can
+[0:00] certainly see how useful it will be
+[0:00] use webhooks and combining with cron
+[0:00] jobs or whatever skills your Hermes
+[0:00] agent has. Especially if you&#39;re running
+[0:00] a business, it&#39;ll be really easy for
+[0:00] analysis purposes to see when you&#39;re
+[0:00] getting new followers, new subscribers,
+[0:00] uh new buyers,
+[0:00] and analyzing the data really well.
+[0:00] Okay, so the next use case is one that I
+[0:00] think a lot of people will have. And
+[0:00] this is to use webhooks for a pull
+[0:00] request on your GitHub.
+[0:00] So, this one is similar in principle to
+[0:00] the the newsletter one.
+[0:00] First, you need to add a GitHub route to
+[0:00] the hermes/config.yaml
+[0:00] file.
+[0:00] So, this is similar in nature
+[0:00] uh to the previous one we did.
+[0:00] So, this is in the same config file.
+[0:00] Uh routes, you can see just add this
+[0:00] one. See, this is the new subscriber
+[0:00] one. So, we&#39;re just adding a new route
+[0:00] calling it github-pr.
+[0:00] So, you&#39;re going to do this prompt
+[0:00] review the pull request repository PR
+[0:00] number
+[0:00] author
+[0:00] URL
+[0:00] and then action.
+[0:00] So, this is the route we&#39;re doing.
+[0:00] And the idea is to fetch the difference,
+[0:00] assess correctness, suggest
+[0:00] improvements, and flag risks.
+[0:00] This is the prompt your agent&#39;s going to
+[0:00] receive. So, you&#39;re going to need a
+[0:00] secret here.
+[0:00] And um
+[0:00] you do this the same Python script we
+[0:00] did before, and this is going to give
+[0:00] you a a long string of numbers. So, you
+[0:00] put it here between the quotes.
+[0:00] You need to restart your gateway to pick
+[0:00] it up.
+[0:00] Uh you&#39;re going to make sure that you
+[0:00] have uh
+[0:00] the GitHub CLI installed on WSL if you
+[0:00] don&#39;t have it already. Even if you have
+[0:00] it on Windows, you need to install it in
+[0:00] WSL itself and authenticate it. Log in.
+[0:00] Um
+[0:00] you&#39;re still going to need the ngrok uh
+[0:00] tunnel.
+[0:00] This ngrok tunnel here needs to continue
+[0:00] be running, and you&#39;re going to need to
+[0:00] use this
+[0:00] URL in the same way.
+[0:00] Um you&#39;re going to need to then register
+[0:00] the webhook in GitHub.
+[0:00] And to do this, we go to GitHub.
+[0:00] So, in GitHub here, down here you&#39;re
+[0:00] going to go to webhooks.
+[0:00] Um I already have this one added, but
+[0:00] you&#39;re just going to add the webhook.
+[0:00] This is the URL that you got from um
+[0:00] from ngrok.
+[0:00] So, you&#39;re just going to add that to the
+[0:00] payload URL.
+[0:00] And
+[0:00] it&#39;s going to be that URL/webhook/
+[0:00] whatever the route is named, github-pr
+[0:00] or whatever. Content
+[0:00] um
+[0:00] So, it&#39;s like this, webhooks
+[0:00] /github
+[0:00] pr.
+[0:00] So, then content type is
+[0:00] application.json.
+[0:00] Secret is the same secret that you had
+[0:00] put in the config file.
+[0:00] And then
+[0:00] which events would you like to trigger
+[0:00] this webhook? Let me select the
+[0:00] individual events. So, we&#39;re just going
+[0:00] to do pull request. There&#39;s a lot of
+[0:00] options, obviously.
+[0:00] Um but we&#39;re just going to do pull
+[0:00] requests.
+[0:00] And then that&#39;s pretty much it, I think.
+[0:00] Yep. Add the webhook there.
+[0:00] So, this is the webhook.
+[0:00] Um you can edit it.
+[0:00] You want to check once you set it up,
+[0:00] it&#39;s going to ping once.
+[0:00] You can see I had a couple pings, but
+[0:00] the first one of mine didn&#39;t run and
+[0:00] didn&#39;t work. And that&#39;s because I didn&#39;t
+[0:00] have my Hermes gateway open.
+[0:00] So, then I restarted the Hermes gateway,
+[0:00] and then it it worked on the redelivery.
+[0:00] Okay, so then I
+[0:00] So, then I tested this out a little bit.
+[0:00] I cloned the repo locally.
+[0:00] I&#39;m using Tomb B Studio, the learnML
+[0:00] one. But, it&#39;s it&#39;s whichever repo you
+[0:00] have the webhook set up for.
+[0:00] Um and then you do get checkout webhook
+[0:00] test. We&#39;re just doing a test here.
+[0:00] This switches it to a new branch.
+[0:00] Um add the readme, and then commit test
+[0:00] webhook trigger.
+[0:00] So, remember you do need your your git
+[0:00] config, the user email and username set
+[0:00] here for this to work.
+[0:00] So, then I did git commit test webhook
+[0:00] trigger once I had that stuff set.
+[0:01] And then it created the pull request.
+[0:01] So, we can see here.
+[0:01] This is the pull request.
+[0:01] The webhook test one, testing Hermes
+[0:01] agent review. And you see what happened
+[0:01] in the gateway once this happened. Once
+[0:01] it that pull request was um submitted,
+[0:01] it automatically read it through the
+[0:01] webhook.
+[0:01] And you can see it fetched
+[0:01] um and it did
+[0:01] all this work to fetch it, and then it
+[0:01] wrote
+[0:01] a comment.
+[0:01] We scroll down, you can see it
+[0:01] automatically
+[0:01] uh commented on the PR review. Tomb B
+[0:01] Studio learnML number one, summary to
+[0:01] test.
+[0:01] Changed one line in the readme.
+[0:01] So, correctness, suggested improvements.
+[0:01] Keep as is for the test, but plan to
+[0:01] revert. Risks.
+[0:01] Low risk recommendation.
+[0:01] Approve for merge. So, this isn&#39;t
+[0:01] actually going to merge it, it&#39;s just a
+[0:01] comment based on this. So, this is a a
+[0:01] very useful way I think.
+[0:01] Especially if you have a super busy uh
+[0:01] GitHub,
+[0:01] you&#39;re able to have the Hermes agent
+[0:01] kind of review PRs and
+[0:01] leave comments like this. And then you
+[0:01] can as the human go and actually check
+[0:01] and check its work, which we should all
+[0:01] do.
+[0:01] To make sure that what it&#39;s it&#39;s
+[0:01] suggesting and recommending is actually
+[0:01] accurate.
+[0:01] So, it took around a minute um all
+[0:01] together, so
+[0:01] uh a couple of the gotchas you need to
+[0:01] that we found with this was
+[0:01] you need to obviously install the GitHub
+[0:01] CLI.
+[0:01] Um make sure the gateway is open. Make
+[0:01] sure the ngrok tunnel is open.
+[0:01] And some of you may keep in mind ngrok
+[0:01] URLs rotate on free tier restart. So,
+[0:01] you need to check that and update the
+[0:01] URL
+[0:01] if you close and then restart the ngrok
+[0:01] tunnel.
+[0:01] Okay, the last one is actually going to
+[0:01] be using your agent to kind of enhance
+[0:01] and enrich your apps.
+[0:01] And people have asked me what kind of
+[0:01] apps I&#39;ve built or what kind of
+[0:01] projects. And this was a very early one
+[0:01] called mentioned.
+[0:01] It was a kind of dashboard analytics
+[0:01] suite plus a trading platform
+[0:01] for tokenized Kalshi mention markets
+[0:01] specifically.
+[0:01] And this is a very early live coding
+[0:01] project I did probably in December of
+[0:01] last year with Opus 4.5. Uh it was a fun
+[0:01] one to do.
+[0:01] I started just with the Trump speeches
+[0:01] and Trump mention markets. But then we
+[0:01] did um I did uh J Powell Mondami and
+[0:01] Caroline Leavitt, the press secretary.
+[0:01] And it probably needs some maintenance
+[0:01] uh since I released it. Kalshi decided
+[0:01] that even the tokenized uh version of
+[0:01] their markets needed KYC.
+[0:01] So, I didn&#39;t want to be involved with
+[0:01] that, so I I got rid of the trading
+[0:01] aspect, but it still works as an
+[0:01] analytical one.
+[0:01] See here, you can check his speeches. Um
+[0:01] This has all the markets. So, say
+[0:01] there&#39;s a word here. Um
+[0:01] Let&#39;s just do Bitcoin.
+[0:01] I have to update this. The uh
+[0:01] And you see it has this nice little
+[0:01] graph here. If I do Bitcoin,
+[0:01] the mentions over time. You get to see
+[0:01] all the mentions when he mentioned it.
+[0:01] How it&#39;s peaking.
+[0:01] Recently, he&#39;s been saying it lot more.
+[0:01] So, this was connected to the trading
+[0:01] platform, which is why it&#39;s all it&#39;s
+[0:01] kind of broken. I need to redo that.
+[0:01] Um but
+[0:01] this was an early project of mine. And
+[0:01] you can see like what other words it
+[0:01] appears with a lot.
+[0:01] Um and it automatically ingest like a
+[0:01] lot of his speeches and stuff. You can
+[0:01] see there&#39;s there&#39;s recent stuff, too.
+[0:01] In April.
+[0:01] These are a lot of the the phrases he
+[0:01] refers to it. It&#39;s a nice little
+[0:01] analytical app.
+[0:01] I haven&#39;t been very good about updating
+[0:01] and maintaining it, but it was a fun
+[0:01] project.
+[0:01] So, in order to do this, obviously, I
+[0:01] have to add this element to the site
+[0:01] itself. And this is what we did. I was
+[0:01] using next.js for the site.
+[0:01] And I was doing this in
+[0:01] uh Cloud Code itself, where I originally
+[0:01] built this app. And the key part here is
+[0:01] it created this receiving endpoint for
+[0:01] the API
+[0:01] /agentupdates.route.typescript.
+[0:01] And this creates kind of where you&#39;re
+[0:01] you&#39;re going to receive the data from
+[0:01] the agent and connect it to the site.
+[0:01] And we had to do some database and
+[0:01] back-end work as well on this.
+[0:01] And then added the front-end element as
+[0:01] well. And then added the
+[0:01] these changes in GitHub.
+[0:01] That was actually on the the site side
+[0:01] itself. And you could see how it looks
+[0:01] now. You can see it added this little
+[0:01] card, the news signal up here, which is
+[0:01] going to have our agent data.
+[0:01] So, that was just on the app side
+[0:01] working in the directory where I
+[0:01] originally worked on this.
+[0:01] On the Hermes side, and this is where
+[0:01] you&#39;re going to have to try to set up
+[0:01] your agent to do this, is you need to
+[0:01] add a
+[0:01] uh in your env file, add
+[0:01] what you called it agent webhook URL,
+[0:01] which has the actual the site it&#39;s not
+[0:01] localhost, it&#39;s just calling it here,
+[0:01] but it&#39;s whatever your site was and the
+[0:01] API
+[0:01] endpoint.
+[0:01] And then the secret, you need to have
+[0:01] the same secret in the Hermes side and
+[0:01] on the I use Vercel for deployment, so I
+[0:01] added that as a environmental variable.
+[0:01] So, those have to match in order for it
+[0:01] to work.
+[0:01] So, we wrote this uh poll mentions RSS
+[0:01] poll Python script.
+[0:01] And what this does is it pull RSS news
+[0:01] articles from different sources.
+[0:01] You can see here, this is a simple
+[0:01] Python script that
+[0:01] pulls news from these different feeds.
+[0:01] And this is the data that I want the
+[0:01] agent to analyze and then put its
+[0:01] analysis on the website.
+[0:01] Um so, it has to parse it properly
+[0:01] properly.
+[0:01] Then we had to create a cron job
+[0:01] injecting
+[0:01] the prompt file.
+[0:01] And this was basically telling the cron
+[0:01] job to run this
+[0:01] uh script.
+[0:01] Had some issues with the configuration,
+[0:01] but this was the one that actually
+[0:01] worked it
+[0:01] worked correctly.
+[0:01] And this might be a easier way to see
+[0:01] this, but this is the you need to create
+[0:01] the cron job in Hermes like this. Call
+[0:01] it I called it mentions weekly. Deliver
+[0:01] to Telegram and the script uses this.
+[0:01] And this is the prompt you&#39;re telling
+[0:01] your agent. You are analyzing political
+[0:01] news to predict words Donald Trump is
+[0:01] likely to say this week in public
+[0:01] speeches, posts, and press.
+[0:01] The articles in the script output. And
+[0:01] this is the script, like I said, pulling
+[0:01] the RSS news feeds.
+[0:01] Um
+[0:01] Identify the top 10 keywords, topics
+[0:01] that Trump is most likely to mention.
+[0:01] Return only valid JSON matching this
+[0:01] exact shape. And this is the the shape
+[0:01] that it needs to and this is important
+[0:01] cuz it has to match what the output is
+[0:01] going to be for the API.
+[0:01] So, after producing the JSON, use the
+[0:01] terminal tool to post it to This is the
+[0:01] the webhook URL
+[0:01] with the headers
+[0:01] using the the secret that it needs in
+[0:01] order to be authorized.
+[0:01] So, confirm the HTTP status and received
+[0:01] count in your Telegram reply. So, it&#39;ll
+[0:01] tell me
+[0:01] when this has been done.
+[0:01] And for this process, since it&#39;s just
+[0:01] going out, you don&#39;t need the ngrok
+[0:01] tunnel that we needed for the first two
+[0:01] assign the first two tasks.
+[0:01] Okay, so I think everything is ready for
+[0:01] it. We&#39;re going to run the cron job um
+[0:01] right now.
+[0:01] Normally, I would set this up to update
+[0:01] maybe every day or every couple days.
+[0:01] Okay, so let&#39;s see if this works.
+[0:01] Hermes
+[0:01] cron run and then give it the correct
+[0:01] task number.
+[0:01] Okay, so it should run
+[0:01] soon.
+[0:01] Okay, so yeah, it was just a minute and
+[0:01] you can see it&#39;s already starting. This
+[0:01] is the gateway.
+[0:01] Starting to compute.
+[0:01] See if it can actually run this task.
+[0:01] And you can see how this is more
+[0:01] complicated than just pull the news and
+[0:01] just post it. For that, you don&#39;t need a
+[0:01] really an agent to do it.
+[0:01] This is has an agent in the loop in the
+[0:01] analytical part. It has to kind of parse
+[0:01] and reason from the news articles, the
+[0:01] raw sources itself, what is relevant to
+[0:01] Donald Trump. And that&#39;s part of the
+[0:01] prompt. And that&#39;s why you would want to
+[0:01] use an agent for this.
+[0:01] And this may take a while cuz it needs
+[0:01] to read through all of those
+[0:01] the news feeds and then analyze.
+[0:01] So, it might take a little bit.
+[0:01] Okay, you see it&#39;s a lot, but um
+[0:01] it pulls a lot of the information. You
+[0:01] can see it&#39;s all a block of text, but
+[0:01] you can see it is pulling these
+[0:01] different articles here.
+[0:01] So, let&#39;s see if it can actually export
+[0:01] it properly.
+[0:01] Okay, so it had a lot of
+[0:01] output here. It did respond it.
+[0:01] So, it did receive it, it seems like.
+[0:01] Uh let&#39;s see what we actually get in
+[0:01] terms of an output from this.
+[0:01] Huh, and the site did update. That&#39;s
+[0:01] great. Look at this. Yeah, I&#39;ll zoom in
+[0:01] on it a little bit, but you can see the
+[0:01] top news signals.
+[0:01] And this is based on the agent&#39;s
+[0:01] analysis of the the news RSS feeds. Iran
+[0:01] obviously in the top, also some other
+[0:01] topics that Trump may want to talk
+[0:01] about.
+[0:01] Uh cabinet, military, Federal Reserve,
+[0:01] Democrats. So, there you go.
+[0:01] So, this now will run as a cron job
+[0:01] every day, probably. And it will
+[0:01] continue to update and the agent is in
+[0:01] the loop analyzing news stories
+[0:01] and producing this kind of result.
+[0:01] So, if you have an app or a site, you
+[0:01] can kind of use this tool to get an
+[0:01] agent in there and
+[0:01] get this kind of analysis without you
+[0:01] ever having to do anything. Once it&#39;s
+[0:01] set up, it just runs on a cron job
+[0:01] schedule.
+[0:01] And like I said, you could integrate it
+[0:01] with different skills that the agent
+[0:01] has,
+[0:01] different plugins or MCP servers.
+[0:01] So, you could really customize it
+[0:01] exactly to how you need for your app.
+[0:01] So, that&#39;s it. I hope it was helpful.
+[0:01] This is probably going to be a longer
+[0:01] video, but I think this is a interesting
+[0:01] topic and really shows how you can use
+[0:01] agents
+[0:01] and webhooks and these different things
+[0:01] to actually connect with the internet.
+[0:01] And if you have a business or you&#39;re
+[0:01] building apps or projects online, you
+[0:01] can really use an agent a Hermes agent
+[0:01] to um enhance what you&#39;re building.
+[0:01] And the key things to remember for
+[0:01] inbound, like in the first two projects,
+[0:01] you&#39;re going to use set up the route in
+[0:01] your config file. Route name is going to
+[0:01] be the URL path. You usually going to
+[0:01] have to set it up. Um the webhook URL in
+[0:01] whichever platform you&#39;re using. We did
+[0:01] Beehive and then GitHub. And then the
+[0:01] payload is the prompt. And outbound,
+[0:01] it&#39;s not you don&#39;t need a public URL.
+[0:01] The agent just makes HTTP calls.
+[0:01] So, you don&#39;t need ngrok or anything
+[0:01] like that for that setup.
+[0:01] Uh so, that&#39;s going to be it for this
+[0:01] episode. This one was a bit more
+[0:01] involved than my previous ones, but I
+[0:01] thought it was a important topic to dig
+[0:01] deeper on.
+[0:01] Please uh like the video. Please
+[0:01] subscribe if you like this.
+[0:01] Look forward to in May, I&#39;m going to
+[0:01] have a even deeper dive with a Hermes
+[0:01] agent masterclass.
+[0:01] And those videos will be posted once a
+[0:01] week
+[0:01] uh leading up into June.
+[0:01] But please leave a comment. Let me know
+[0:01] how you&#39;re using this. If you have any
+[0:01] questions about this kind of setup, I&#39;ll
+[0:01] try to answer it to the best of my
+[0:01] ability.
+[0:01] But that&#39;s going to be it for this
+[0:01] video. Thank you for watching.

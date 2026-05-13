@@ -1,0 +1,341 @@
+[0:00] People keep saying Hermess Agent kills
+[0:00] Open Claw. That take is wrong and I&#39;m
+[0:00] going to explain exactly why. Because
+[0:00] these are not even the same kind of
+[0:00] tool.
+[0:00] Open Claw is a messaging gateway that
+[0:00] happens to have an agent inside it and
+[0:00] Hermess is an agent that happens to have
+[0:00] messaging connectors. If you don&#39;t
+[0:00] understand that difference, you will
+[0:00] pick the wrong one and waste weeks
+[0:00] setting it up before realizing it does
+[0:00] not fit how you [music] work. I have
+[0:00] used both extensively and I&#39;m going to
+[0:00] walk you through every real difference,
+[0:00] every trade-off and exactly who should
+[0:00] use which one. Not going to be picking a
+[0:00] winner for clicks.
+[0:00] I&#39;m just going to tell you what actually
+[0:00] matters if you&#39;re a founder or a builder
+[0:00] or an operator trying to get real
+[0:00] leverage from AI [music] agents.
+[0:00] Let me start with Open Claw because most
+[0:00] people still do not understand what it
+[0:00] fundamentally is.
+[0:00] Open Claw started as a what WhatsApp
+[0:00] relay bot. Someone wanted their AI
+[0:00] assistant to respond on WhatsApp and
+[0:00] they built a bridge for it. That DNA is
+[0:00] still the core of the product. Today,
+[0:00] Open Claw is a gateway. Capital G.
+[0:00] Everything flows through one central
+[0:00] process called the gateway. It binds to
+[0:00] a port. It manages sessions. It handles
+[0:00] channel routing, tool dispatch and
+[0:00] events.
+[0:00] Think of it as air traffic control for
+[0:00] your AI. Every message from every chat
+[0:00] platform, every single tool execution or
+[0:00] every state change goes through this one
+[0:00] process. And the channel support is
+[0:00] absurd. I mean, it has over 50
+[0:00] integrations with WhatsApp, Telegram,
+[0:00] Discord, Slack, iMessage, Matrix,
+[0:00] WeChat, Line, email, Signal, Google Chat
+[0:00] and built-in browser. I mean, the list
+[0:00] can go on and on and on. It now has over
+[0:00] 345,000
+[0:00] GitHub stars as of the filming of this
+[0:00] video and 15,000 community built skills
+[0:00] on Claw Hub, their public marketplace.
+[0:00] That is the scale we&#39;re talking about
+[0:00] here. Now,
+[0:00] the way you set up or configure your
+[0:00] Open Claw is through a set of markdown
+[0:00] files. The most important one being, if
+[0:00] you&#39;ve ever installed Open Claw,
+[0:00] soul.md.
+[0:00] This file defines who your agent is,
+[0:00] it&#39;s it&#39;s personality, it&#39;s boundaries,
+[0:00] it&#39;s
+[0:00] behavior rules. You edit soul.md and you
+[0:00] are literally editing the agent&#39;s
+[0:00] identity.
+[0:00] Then you have memory.md for persistent
+[0:00] facts and context. You have tools.md for
+[0:00] what tools the agent can use. Everything
+[0:00] is explicit. Everything is a file you
+[0:00] can read and edit. You get what I&#39;m
+[0:00] going with this. This is the philosophy
+[0:00] of Open Claw.
+[0:00] You shape the machine. You control every
+[0:00] behavior. Nothing happens that you did
+[0:00] not explicitly configure.
+[0:00] If you are the kind of person who likes
+[0:00] building systems from scratch and
+[0:00] knowing exactly why something behaves
+[0:00] the way that it does,
+[0:00] Open Claw is beautiful.
+[0:00] Hermess Agent, and yes, I&#39;m going to say
+[0:00] Hermess and not Hermes or
+[0:00] whatever people keep fighting about in
+[0:00] the comment section. I see you.
+[0:00] Hermess Agent was built by New Research
+[0:00] or News Research.
+[0:00] Again, something the comment section is
+[0:00] definitely going to fight with me about.
+[0:00] It is one of the top open source AI
+[0:00] labs. It launched in February 2026 and
+[0:00] went from version 0.1 to version 0.8 in
+[0:00] 2 month
+[0:00] with 209 merge pull requests and 53,000
+[0:00] GitHub stars already. Now,
+[0:00] the first thing everyone talks about
+[0:00] with Hermess is memory. And yes, it has
+[0:00] persistent memory. It maintains two
+[0:00] curated files, memory.md for environment
+[0:00] facts, conventions and lessons learned
+[0:00] and user.md for your preferences and
+[0:00] communication style. Those get injected
+[0:00] into the system prompt at session start.
+[0:00] But, here&#39;s the thing. A lot of agents
+[0:00] have memory now. That is a table stakes.
+[0:00] That is not what makes Hermess
+[0:00] different. What makes Hermess different
+[0:00] is self-generated skills. That is the
+[0:00] part most people skip over and it&#39;s the
+[0:00] single most important technical
+[0:00] difference between these two tools. When
+[0:00] Hermess finishes a complex task like
+[0:00] debugging a deployment issue or
+[0:00] summarizing a long research document, it
+[0:00] doesn&#39;t just move on to the next task.
+[0:00] It pauses. It looks back at the steps it
+[0:00] took and if it figured out a good
+[0:00] approach, it writes a reusable skill
+[0:00] file and it saves it. These skill files
+[0:00] follow the agent-skills.io
+[0:00] spec. Each one is a directory with a
+[0:00] skill.md file,
+[0:00] optional scripts, references and assets.
+[0:00] And they are loaded efficiently into the
+[0:00] agent. Level zero is just the skill name
+[0:00] and description.
+[0:00] About 3,000 tokens. Level one loads the
+[0:00] full context when needed. Level two
+[0:00] loads specific reference files within
+[0:00] the skill. What that basically means is
+[0:00] the next time Hermess encounters a
+[0:00] similar problem, it searches its own
+[0:00] skill library first before trying to
+[0:00] solve that problem again from scratch.
+[0:00] That is the learning loop.
+[0:00] It executes, evaluates, extracts,
+[0:00] refines and retrieves. And that loop is
+[0:00] what separates Hermess from frameworks
+[0:00] where you manually author every skill
+[0:00] yourself. It also has a full text search
+[0:00] over all past sessions stored in an
+[0:00] SQLite.
+[0:00] So, it can recall conversations from
+[0:00] weeks ago.
+[0:00] Okay, let me explain why the
+[0:00] self-improving loop actually matters.
+[0:00] It&#39;s actually such a cool functionality.
+[0:00] Because this is where the conversation
+[0:00] stops being theoretical and it starts
+[0:00] being practical. If you&#39;re a founder, an
+[0:00] operator, a builder or even a creator,
+[0:00] your work is made up of recurring
+[0:00] patterns. You check similar dashboards
+[0:00] every morning. You write similar briefs
+[0:00] every week. You do similar code reviews.
+[0:00] You process similar customer requests.
+[0:00] You run essentially the same operating
+[0:00] loops in your business over and over
+[0:00] again.
+[0:00] With Open Claw, every time you encounter
+[0:00] one of these patterns, the agent handles
+[0:00] it based on whatever skills you have
+[0:00] manually configured. If you want the
+[0:00] agent to get better at it, you write a
+[0:00] better skill file. With Hermess, the
+[0:00] agent handles the pattern and then
+[0:00] writes its own skill file based on what
+[0:00] worked. Next time that that pattern
+[0:00] shows up, it already has a solution in
+[0:00] its library. And if the solution gets
+[0:00] refined over multiple encounters, the
+[0:00] skill file gets updated. That is why
+[0:00] it&#39;s compounding.
+[0:00] The longer you end up using Hermess, the
+[0:00] more skills it accumulates from your
+[0:00] actual work. Now, there&#39;s a real
+[0:00] trade-off here. With Open Claw, you know
+[0:00] exactly what every skill does because
+[0:00] you wrote it.
+[0:00] Or you asked it to write it. With
+[0:00] Hermess, you are trusting the agent to
+[0:00] learn the right things and some of you
+[0:00] are going to love that autonomy and some
+[0:00] of you are going to hate it. If you
+[0:00] prefer tighter control and less
+[0:00] autonomous,
+[0:00] let&#39;s call it drift, Open Claw is going
+[0:00] to feel safer and more legible.
+[0:00] If you prefer less manual configuration
+[0:00] and more agent autonomy,
+[0:00] Hermess is going to feel more powerful
+[0:00] over time.
+[0:00] Let me be specific about where Open Claw
+[0:00] is clearly stronger.
+[0:00] I mean, first, channel coverage. It has
+[0:00] 50 plus platforms versus six that
+[0:00] Hermess has. That&#39;s not a small gap, 50
+[0:00] versus six.
+[0:00] If you need your AI agent on, for
+[0:00] example, iMessage or email or Matrix or
+[0:00] WeChat or any of the dozens of other
+[0:00] platforms Open Claw supports,
+[0:00] Hermess simply does not offer that.
+[0:00] Conversation over for that use case.
+[0:00] Second, multi-agent routing. Open Claw
+[0:00] lets you run different agents for
+[0:00] different channels, contacts or groups.
+[0:00] One agent handles your personal DMs with
+[0:00] a casual tone and calendar access.
+[0:00] Another handles your work Slack with a
+[0:00] professional tone and project context.
+[0:00] Another can handle your community
+[0:00] Discord and essentially they all run
+[0:00] through the same gateway. Hermess
+[0:00] doesn&#39;t have this. It&#39;s one agent, one
+[0:00] persistent operator. Although they do
+[0:00] have what is called sub-agents, but
+[0:00] essentially you&#39;re handling one main
+[0:00] persistent operator. Third
+[0:00] is the ecosystem. It has 15,000 plus
+[0:00] community skills on ClawHub. If someone
+[0:00] has already built the skill you need,
+[0:00] you just have to install it and move on.
+[0:00] Hermes has a much smaller and newer
+[0:00] ecosystem. Fourth, transparency. Open
+[0:00] Claw&#39;s memory is explicit. Files on disk
+[0:00] you can read, edit, and version control.
+[0:00] You know exactly what the agent
+[0:00] remembers and why.
+[0:00] Hermes also stores memory in files, but
+[0:00] the self-generated skills add a layer of
+[0:00] autonomy that some people find harder to
+[0:00] audit.
+[0:00] Now,
+[0:00] let me be very specific about where
+[0:00] Hermes is a clear winner. First is the
+[0:00] most obvious one, the most amazing one,
+[0:00] the learning loop. I keep coming back to
+[0:00] this because it genuinely is the
+[0:00] defining feature for it. No other
+[0:00] open-source agent framework has a system
+[0:00] where the agent writes its own reusable
+[0:00] skills from completed tasks and improves
+[0:00] them every single time during use.
+[0:00] That is unique to Hermes right now.
+[0:00] Second, session search.
+[0:00] I mean, full-text search across all past
+[0:00] conversations using SQLite and FTS5. You
+[0:00] can ask Hermes to find something you
+[0:00] discussed 3 weeks ago, and it will pull
+[0:00] it up. Open Claw has
+[0:00] what is called a vector search over
+[0:00] memory files, but the cross-session
+[0:00] recall in Hermes just feels more
+[0:00] natural. And you&#39;ll notice this if you
+[0:00] use both. One is a lot better at
+[0:00] remembering things.
+[0:00] Third, speed of development. Hermes went
+[0:00] from 0.1 to 0.8 in 2 months with 209
+[0:00] merged PRs. It added browser use
+[0:00] integration, remote back ends, work tree
+[0:00] parallelism,
+[0:00] parallelism,
+[0:00] parallelism, paralleli-
+[0:00] parallelism,
+[0:00] parallelism. In the beginning,
+[0:00] new research is shipping extremely fast.
+[0:00] &gt;&gt; [snorts]
+[0:00] &gt;&gt; And fourth, the Honcho integration for
+[0:00] dialectic user modeling. That is the
+[0:00] advanced memory feature that builds a
+[0:00] deeper understanding of who you are
+[0:00] across sessions. Not just what you said,
+[0:00] but how you think and what you prefer.
+[0:00] Let me make this simple.
+[0:00] Use Open Claw if you need AI connected
+[0:00] to multiple messaging platforms, if your
+[0:00] work involves WhatsApp, Telegram,
+[0:00] Discord, Slack, and email, and all that
+[0:00] at the same time.
+[0:00] And if you want explicit control over
+[0:00] every single behavior.
+[0:00] If you like building and configuring the
+[0:00] machine yourself, or if you run a team
+[0:00] and need multiple agent routing across
+[0:00] different channels. And if the 15,000
+[0:00] skill ecosystem saves you time.
+[0:00] Use Hermes if you want one personal
+[0:00] agent that gets better through
+[0:00] repetition.
+[0:00] If your work has recurring patterns that
+[0:00] compound. If you care more about the
+[0:00] agent improving itself than connecting
+[0:00] to 50 platforms.
+[0:00] &gt;&gt; [snorts]
+[0:00] &gt;&gt; If you want broader model access, and if
+[0:00] you prefer less manual configuration,
+[0:00] and are willing to trust the agent with
+[0:00] more autonomy. Or you&#39;re just simply
+[0:00] happy to. And honestly, some experienced
+[0:00] users are running both. I mean, I am.
+[0:00] Open Claw as the orchestrator for
+[0:00] planning, decomposition, and sequencing,
+[0:00] and Hermes as the execution specialist
+[0:00] for
+[0:00] things like fast and repeatable task
+[0:00] loops.
+[0:00] It&#39;s not a bad setup if you have the
+[0:00] technical appetite and time.
+[0:00] But, I do want to end on what I think is
+[0:00] the most important thing here.
+[0:00] The biggest mistake right now is not
+[0:00] picking the wrong agent. The biggest
+[0:00] mistake is still using AI like a
+[0:00] chatbot.
+[0:00] Most people open a chat window and ask
+[0:00] one question, get one answer, and they
+[0:00] just close the tab. That&#39;s it. That is
+[0:00] not leverage. That is
+[0:00] Google, essentially, with extra steps.
+[0:00] AI agents are different. They persist.
+[0:00] They remember. They run recurring
+[0:00] workflows. They can monitor things or
+[0:00] route tasks. They remove actual grunt
+[0:00] work from your day. And the people who
+[0:00] set this up now are going to have a
+[0:00] massive advantage over the people who
+[0:00] wait until it just feels obvious or
+[0:00] gets at the height of its popularity.
+[0:00] So,
+[0:00] pick the one that fits how you work.
+[0:00] Set it up this weekend,
+[0:00] or today if you have time, and start
+[0:00] building the system that works for you
+[0:00] while you sleep. If you want to watch a
+[0:00] full hands-on setup tutorial for either
+[0:00] Open Claw or Hermes, I have both of
+[0:00] these videos already on my channel. And
+[0:00] don&#39;t forget to subscribe if you want
+[0:00] more real breakdowns on AI agents,
+[0:00] automation, and how to actually use this
+[0:00] stuff to build. I&#39;ll see you in the next
+[0:00] one.

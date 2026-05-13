@@ -1,0 +1,323 @@
+[0:00] Hi, welcome to another video. So, Hermes
+[0:00] Agent has had two pretty large releases
+[0:00] recently. First, they shipped V011 and
+[0:00] then shortly after that, they followed
+[0:00] it with V012.
+[0:00] And I want to talk about both of them,
+[0:00] but I do not want to turn this into a
+[0:00] long release note reading video because
+[0:00] there is a lot in here. The part I
+[0:00] mainly want to focus on is the new
+[0:00] cananban tutorial in the Hermes docs
+[0:00] because I think that explains the
+[0:00] direction of Hermes better than just
+[0:00] listing every provider, plug-in, and
+[0:00] integration. The simple version is this.
+[0:00] Hermes is not only trying to be a
+[0:00] chatbased agent anymore. It is trying to
+[0:00] become a system where different agent
+[0:00] profiles, tools, dashboards, plugins,
+[0:00] and background workers can coordinate
+[0:00] work over time. And Kananban is one of
+[0:00] the clearest examples of that idea. Now
+[0:00] before we get into canban let me quickly
+[0:00] cover what changed in v011 was called
+[0:00] the interface release. The big headline
+[0:00] there was the new inkbased 2-way which
+[0:00] is a react and ink rewrite of the
+[0:00] interactive CLI. So the terminal
+[0:00] interface got a proper rebuild with
+[0:00] things like a sticky composer live
+[0:00] streaming better picker keys a status
+[0:00] bar a light theme and more visibility
+[0:00] when sub agents are spawned. They also
+[0:00] added a pluggable transport architecture
+[0:00] under the providers. In simple terms,
+[0:00] Hermes split provider communication into
+[0:00] cleaner transport layers and that is
+[0:00] what helped them add native AWS bedrock
+[0:00] support on top of the Converse API. V011
+[0:00] also added more inference paths
+[0:00] including NVIDIA NIM RCAI step plan
+[0:00] Google Gemini CLI OOTH and Verselai
+[0:00] Gateway. They also added GPT 5.5 through
+[0:00] Codex OOTH with live model discovery in
+[0:00] the picker. There was also a new QQBot
+[0:00] adapter, expanded plug-in support, the
+[0:00] SL steer command for nudging a running
+[0:00] agent after its next tool call, shell
+[0:00] hooks, web hook, direct direct delivery
+[0:00] mode, smarter delegation with
+[0:00] orchestrator style sub aents, auxiliary
+[0:00] model configuration, and a more
+[0:00] extensible dashboard. So v0.11 was
+[0:00] mainly about interface, provider
+[0:00] architecture, plugins, and making Hermes
+[0:00] more flexible. Then v 0.12 was called
+[0:00] the curator release. The biggest new
+[0:00] feature there is the autonomous curator.
+[0:00] This is a background agent that can
+[0:00] grade, prune, and consolidate your skill
+[0:00] library on its own schedule. The
+[0:00] self-improvement loop also got upgraded.
+[0:00] Hermes says the background review fork
+[0:00] is more rubric based now, prefers
+[0:00] updating the skill the agent just used,
+[0:00] can handle reference and template files,
+[0:00] and properly inherits the parent
+[0:00] runtime, including provider, model, and
+[0:00] credentials. V 0.12 also added more
+[0:00] providers including GMI cloud, Azure AI
+[0:00] foundry, Miniaax OOTH, 10-centent
+[0:00] tokenhub, and a firstclass LM studio
+[0:00] provider. It added a pluggable gateway
+[0:00] platform system with Microsoft Teams as
+[0:00] the first plug-in shipped platform, plus
+[0:00] we bow as another messaging platform.
+[0:00] There are also new native Spotify tools,
+[0:00] a Google Meet plugin, Comfy UI and Touch
+[0:00] Designer MCP bundled by default, a
+[0:00] models tab in the dashboard, better
+[0:00] multimodal image routing, better gateway
+[0:00] media handling, local Piper text to
+[0:00] speech for cell sandbox support, and a
+[0:00] visible 2e cold start improvement that
+[0:00] the release notes put at around 57%.
+[0:00] So yes, both releases are large, but
+[0:00] again, I think the practical story is
+[0:00] not just Hermes added more stuff. The
+[0:00] practical story is that Hermes is moving
+[0:00] toward persistent agent workflows and
+[0:00] that is where conbon comes in. Now what
+[0:00] is Hermes KBAN? It is not just a visual
+[0:00] to board. According to the docs, Hermes
+[0:00] conbon is a durable task board shared
+[0:00] across Hermes profiles. The tasks live
+[0:00] in a local escqite database inside
+[0:00] her/con.db.
+[0:00] Each task has a status, an assigne,
+[0:00] optional parent and child dependencies,
+[0:00] comments, run history, and structured
+[0:00] handoff data. That last part is
+[0:00] important. This is not just a place
+[0:00] where you drag cards around. It is meant
+[0:00] to be a coordination layer for multiple
+[0:00] named agent profiles. So instead of one
+[0:00] agent spawning a short-lived sub agent,
+[0:00] waiting for the answer, and then
+[0:00] continuing, can bond gives you something
+[0:00] more durable. The docs make this
+[0:00] distinction pretty clear. Delegate task
+[0:00] is more like a function call. You ask
+[0:00] another agent to do a short job. It
+[0:00] returns and the parent continues. Kenbon
+[0:00] is more like a work Q. A task can can be
+[0:00] created, assigned, blocked, retried,
+[0:00] completed, inspected later, and picked
+[0:00] up by different roles over time. That
+[0:00] means Kenbon is more useful when the
+[0:00] work crosses agent boundaries, needs to
+[0:00] survive restarts, may require human
+[0:00] input, or needs an audit trail after the
+[0:00] fact. And honestly, that is a sensible
+[0:00] distinction. For a small question, use
+[0:00] delegation. For a workflow that has
+[0:00] multiple roles, retries, handoffs, or
+[0:00] human review, use Canbon. Now the
+[0:00] tutorial starts with the dashboard. The
+[0:00] setup is simple. You run Hermes Kanban
+[0:00] in it. Although the docs say the first
+[0:00] Hermes KBAN triage is for rough ideas
+[0:00] that still need to be fleshed out. Toto
+[0:00] is for tasks that are created but
+[0:00] waiting on dependencies or not assigned
+[0:00] yet. Ready means the task is assigned
+[0:00] and waiting for the dispatcher. In
+[0:00] progress means a worker is actively
+[0:00] running it. Blocked means either the
+[0:00] worker asked for human input or the
+[0:00] circuit breaker tripped. And done is
+[0:00] completed work. There are also filters
+[0:00] for search tenant and assigne. There is
+[0:00] a lanes by profile toggle. So the in
+[0:00] progress column can be grouped by the
+[0:00] worker profile. And there is a nudge
+[0:00] dispatcher button which runs one
+[0:00] dispatch tick right away instead of
+[0:00] waiting for the next interval. That is
+[0:00] the basic interface. Now the tutorial
+[0:00] explains four main use cases. The first
+[0:00] one is a solo developer shipping a
+[0:00] feature. The example is an O feature
+[0:00] with three tasks. First design the O
+[0:00] schema. Then implement the O API
+[0:00] endpoints. then write integration tests.
+[0:00] The key idea is that these tasks can
+[0:00] have parent child dependencies. So the
+[0:00] API task depends on the schema task and
+[0:00] the test task depends on the API task.
+[0:00] Only the schema task starts as ready.
+[0:00] The API and test tasks stay in Toto
+[0:00] until their parent tasks complete. Once
+[0:00] the schema task is completed, Hermes
+[0:00] promotes the API task to ready
+[0:00] automatically. That is the dependency
+[0:00] promotion engine doing the useful work.
+[0:00] And this matters because you do not want
+[0:00] a test writing worker starting before
+[0:00] there is an API to test. The other
+[0:00] important part is structured handoff.
+[0:00] When the schema task is completed, the
+[0:00] worker can include a summary and
+[0:00] metadata. For example, the summary can
+[0:00] say what database tables were designed
+[0:00] and the metadata can include changed
+[0:00] files and decisions. Then the downstream
+[0:00] API worker reads that summary and
+[0:00] metadata as part of its context. So the
+[0:00] API worker does not have to dig through
+[0:00] a long design conversation to understand
+[0:00] what happened. That is the main idea.
+[0:00] KBAN is not only moving a card from one
+[0:00] column to another. It is carrying
+[0:00] structured context from one stage of the
+[0:00] workflow to the next. The second story
+[0:00] is fleet farming. This is when you have
+[0:00] several specialist workers and a pile of
+[0:00] independent tasks. The tutorial uses a
+[0:00] translator, a transcriber, and a
+[0:00] copywriter. You create translation
+[0:00] tasks, transcription tasks, and product
+[0:00] description tasks. Then you start the
+[0:00] gateway and the embedded dispatcher
+[0:00] picks up tasks for those specialist
+[0:00] profiles.
+[0:00] The board can show you what each profile
+[0:00] is doing, especially with lanes by
+[0:00] profile turned on. This is useful when
+[0:00] the work does not need a strict chain.
+[0:00] It is just a queue of jobs and different
+[0:00] workers can drain that queue in
+[0:00] parallel. The important thing here is
+[0:00] visibility. Instead of hoping three
+[0:00] background agents are doing the right
+[0:00] thing somewhere, you can see what is
+[0:00] running, what is ready, what is done,
+[0:00] and what got stuck. And the same
+[0:00] structured handoff idea still applies.
+[0:00] If a translator completes something,
+[0:00] they can leave a summary and metadata
+[0:00] like how much was translated or how many
+[0:00] tokens were used. That can be useful for
+[0:00] analytics or for a later task that
+[0:00] depends on it. The third story is a RO
+[0:00] pipeline with retry. This is probably
+[0:00] the most interesting one for coding
+[0:00] workflows. The flow is simple. A PM
+[0:00] writes a spec. An engineer implements
+[0:00] it. A reviewer checks it. If the
+[0:00] reviewer rejects the first attempt, the
+[0:00] engineer tries again with the specific
+[0:00] feedback. In the tutorial, the
+[0:00] implementation task gets blocked because
+[0:00] the review says a password strength
+[0:00] check is missing and the reset link is
+[0:00] not single use. Then the engineer
+[0:00] unblocks, retries, completes the task
+[0:00] again, and includes updated metadata
+[0:00] with changed files, tests, run, and
+[0:00] review iteration. The dashboard drawer
+[0:00] then shows two attempts. Run one was
+[0:00] blocked, run two was completed, and each
+[0:00] run has its own outcome, summary, and
+[0:00] metadata. This is the part I like most
+[0:00] from a practical point of view. In many
+[0:00] agent systems, retry history is
+[0:00] basically hidden inside a chat log.
+[0:00] Here, the retry history is treated as
+[0:00] data. When the task is retried, the
+[0:00] worker can see the earlier attempt and
+[0:00] the reason it failed. When the reviewer
+[0:00] opens the next task, the reviewer can
+[0:00] see the parent implementation summary
+[0:00] and the changed files before looking at
+[0:00] the diff. That is much closer to how
+[0:00] real engineering work happens.
+[0:00] The fourth story is circuit breaker and
+[0:00] crash recovery. This is where the
+[0:00] tutorial becomes more grounded.
+[0:00] Real workers fail. They can have missing
+[0:00] credentials. They can run out of memory.
+[0:00] They can hit network errors. They can
+[0:00] crash halfway through a job. The
+[0:00] tutorial describes two protections. The
+[0:00] first is a circuit breaker. If a worker
+[0:00] cannot spawn because something like an
+[0:00] API key is missing, the dispatcher
+[0:00] retries. But after a failure limit, the
+[0:00] task gets blocked with a gave up outcome
+[0:00] that prevents the board from retrying
+[0:00] forever and wasting time. The second is
+[0:00] crash recovery. If a worker process dies
+[0:00] mid-flight, the dispatcher can detect
+[0:00] that the process is gone, release the
+[0:00] claim, move the task back to ready, and
+[0:00] let a fresh worker try again. The run
+[0:00] history still shows what happened. For
+[0:00] example, one run can be marked crashed
+[0:00] because of an outofmemory problem and
+[0:00] the next run can be completed with
+[0:00] metadata explaining that the worker
+[0:00] switched to a chunked strategy. Again,
+[0:00] this is not flashy, but it is practical.
+[0:00] If you&#39;re going to run long agent
+[0:00] workflows, you need failure history. You
+[0:00] need retries, you need blocked states,
+[0:00] you need human intervention, and you
+[0:00] need the system to not silently lose
+[0:00] what happened. That is what this conbon
+[0:00] design is trying to solve. Now, one
+[0:00] thing I want to be clear about is that
+[0:00] this is not for every task. If you just
+[0:00] need a quick answer from another agent,
+[0:00] Kanbon may be unnecessary. Delegate task
+[0:00] is simpler for that. Canbon makes more
+[0:00] sense when the work is longunning,
+[0:00] multi-step role-based or needs to be
+[0:00] visible later. So, if you&#39;re doing a
+[0:00] quick subtask, use the simpler path. If
+[0:00] you&#39;re doing something like research to
+[0:00] writing, PM to engineer to reviewer,
+[0:00] content cues, ops monitoring or
+[0:00] recurring work, then conbon is where it
+[0:00] starts to make sense. There&#39;s also a
+[0:00] scope limitation worth mentioning. The
+[0:00] docs describe conbon as single host by
+[0:00] design. The board is a local SQLite file
+[0:00] and the dispatcher spawns workers on the
+[0:00] same machine. So this is not trying to
+[0:00] be a shared multi-server enterprise
+[0:00] workflow engine. It is more like a local
+[0:00] coordination layer for your Hermes
+[0:00] profiles and that is fine. It is better
+[0:00] to be clear about the boundary than
+[0:00] pretend this is something it is not.
+[0:00] Also, if you expose the dashboard beyond
+[0:00] local host, you need to be careful. The
+[0:00] docs warn that plug-in routes including
+[0:00] conbon can become reachable from the
+[0:00] network if you run the dashboard on
+[0:00] 0.0.0.0.
+[0:00] So for normal users, keeping it local is
+[0:00] the sensible default. So that is kind of
+[0:00] cool for sure. I think that these
+[0:00] updates are actually really good.
+[0:00] Overall, it&#39;s pretty cool. Anyway, let
+[0:00] me know your thoughts in the comments.
+[0:00] If you like this video, consider
+[0:00] donating through the super thanks option
+[0:00] or becoming a member by clicking the
+[0:00] join button. Also, give this video a
+[0:00] thumbs up and subscribe to my channel.
+[0:00] I&#39;ll see you in the next one. Until
+[0:00] then, bye.
