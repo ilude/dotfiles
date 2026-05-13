@@ -105,6 +105,7 @@ pi/prompt-routing/logs/
 pi/cache/
 pi/multi-team/expertise/
 pi/index/
+pi/models/
 pi/**/*.jsonl
 !pi/prompt-routing/data/**/*.jsonl
 
