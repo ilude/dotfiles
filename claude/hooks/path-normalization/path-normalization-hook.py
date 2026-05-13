@@ -424,7 +424,10 @@ def _handle_home_relative(tool_name: str, path_str: str, has_backslash: bool) ->
 
 def _handle_unix_system(tool_name: str, path_str: str) -> None:
     """CASE 2: Unix system paths — allow for WSL compatibility."""
-    if path_str.startswith(("/dev/", "/proc/", "/tmp/", "/var/")):
+    always_allow_prefixes = ("/dev/", "/proc/", "/var/")
+    if path_str.startswith(always_allow_prefixes) or (
+        path_str.startswith("/tmp/") and not os.environ.get("CLAUDE_PROJECT_DIR")
+    ):
         log_decision(tool_name, path_str, "allowed", "unix system path")
         sys.exit(0)
 
