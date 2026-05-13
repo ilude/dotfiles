@@ -51,22 +51,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Install bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
       - name: Install pnpm
         uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
       - name: Install pi-coding-agent
         run: pnpm install -g @mariozechner/pi-coding-agent@0.72.0
 
       - name: Install Pi test dependencies
-        run: cd pi/tests && bun install --frozen-lockfile
+        run: cd pi/tests && pnpm install --frozen-lockfile
 
       - name: Run Pi Vitest suite
-        run: cd pi/tests && bun vitest run
-
-      # Windows is skipped: bun on Windows runners is not yet stable enough
-      # for the global pnpm + pi-coding-agent install sequence.
+        run: cd pi/tests && pnpm run test
