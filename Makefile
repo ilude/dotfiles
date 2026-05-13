@@ -1,4 +1,4 @@
-.PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all ci-bootstrap test test-ci test-local test-runtime test-quick test-parallel test-docker test-powershell test-pytest help lint lint-python format format-python check check-ci check-pi-ci install-hooks
+.PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all ci-bootstrap test test-ci test-ci-contract test-local test-runtime test-quick test-parallel test-docker test-powershell test-pytest help lint lint-python format format-python check check-ci check-pi-ci install-hooks
 
 # Shell scripts to check (excludes dotbot submodule and plugins)
 SHELL_SCRIPTS := home/.bashrc home/.zshrc install wsl/install scripts/ci-bootstrap scripts/git-ssh-setup scripts/claude-link-setup scripts/claude-mcp-setup scripts/copilot-link-setup scripts/zsh-setup scripts/zsh-plugins wsl/packages
@@ -11,6 +11,7 @@ help:
 	@echo "  make validate-pwsh - Validate PowerShell environment"
 	@echo "  make test          - Run all tests (pytest)"
 	@echo "  make test-ci       - Run CI-safe pytest suite"
+	@echo "  make test-ci-contract - Run CI contract checks first"
 	@echo "  make test-local    - Run local pytest suite (may skip missing runtime artifacts)"
 	@echo "  make test-runtime  - Run runtime-dependent local checks"
 	@echo "  make test-pytest   - Run pytest tests only"
@@ -91,10 +92,15 @@ test: preflight
 	echo ""; \
 	echo "=== All tests passed in $$(($$(date +%s) - start_time))s ==="
 
+# Run fast checks for repo invariants that CI depends on.
+test-ci-contract: preflight
+	@echo "Running CI contract checks..."
+	uv run pytest test/test_ci_contract.py -v --tb=short -x
+
 # Run pytest tests that should pass in a fresh CI checkout.
-test-ci: preflight
+test-ci: test-ci-contract
 	@echo "Running CI-safe pytest suite..."
-	uv run pytest test/ claude/hooks/*/tests/ -v --tb=short --durations=10
+	uv run pytest test/ claude/hooks/*/tests/ -v --tb=short --durations=10 --ignore=test/test_ci_contract.py
 
 # Run pytest tests (config patterns, idempotency, hooks)
 test-pytest: test-ci
