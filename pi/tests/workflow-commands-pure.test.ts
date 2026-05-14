@@ -81,6 +81,30 @@ describe("validateCommitPlan", () => {
 		);
 	});
 
+	it("accepts dependency commit subjects", () => {
+		const plan = {
+			groups: [{ files: ["a.ts"], subject: "deps(pi): update packages" }],
+		};
+		expect(() => validateCommitPlan(plan, ["a.ts"])).not.toThrow();
+	});
+
+	it("accepts normalized wrapped dependency commit subjects", () => {
+		const plan = parseCommitPlan(
+			JSON.stringify({
+				groups: [
+					{
+						files: ["a.ts"],
+						subject: "deps(teams):\n update Kubernetes platform Helm charts",
+					},
+				],
+			}),
+		);
+		expect(plan.groups[0]?.subject).toBe(
+			"deps(teams): update Kubernetes platform Helm charts",
+		);
+		expect(() => validateCommitPlan(plan, ["a.ts"])).not.toThrow();
+	});
+
 	it("rejects invalid conventional commit subjects", () => {
 		const plan = {
 			groups: [{ files: ["a.ts"], subject: "Add planner" }],

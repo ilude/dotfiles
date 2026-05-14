@@ -67,6 +67,7 @@ const CONVENTIONAL_TYPES = [
 	"perf",
 	"ci",
 	"build",
+	"deps",
 ];
 const CONVENTIONAL_COMMIT_RE = new RegExp(
 	`^(${CONVENTIONAL_TYPES.join("|")})(\\([^)]+\\))?: [a-z0-9].{0,71}$`,

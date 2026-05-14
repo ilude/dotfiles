@@ -14,7 +14,10 @@ export interface SecretReviewPromptFinding {
 	context: string;
 }
 
-export function buildCommitPlanningPrompt(claudeInstructions: string, context: CommitPlanningPromptContext) {
+export function buildCommitPlanningPrompt(
+	claudeInstructions: string,
+	context: CommitPlanningPromptContext,
+) {
 	const payload = {
 		files: context.files,
 		diffStat: context.diffStat,
@@ -46,6 +49,9 @@ Return JSON only with this schema:
 Rules:
 - Group files into atomic commits.
 - Use conventional commit subjects.
+- Each subject must be exactly one line in the form "type(scope): description".
+- Do not put a newline before or after the colon in a subject.
+- Do not include Markdown, explanations, or extra prose in any subject.
 - Keep descriptions specific and human.
 - If only one commit makes sense, return one group.
 - If you are uncertain, cannot infer a split, or think no split is justified, return one group containing all listed files.
@@ -92,9 +98,15 @@ Candidate findings JSON:
 ${JSON.stringify(payload, null, 2)}`;
 }
 
-export function buildSkillPrompt(template: string, args: string, options: { replaceArguments?: boolean } = {}) {
+export function buildSkillPrompt(
+	template: string,
+	args: string,
+	options: { replaceArguments?: boolean } = {},
+) {
 	const trimmedArgs = args.trim();
-	const resolvedTemplate = options.replaceArguments ? template.replace("$ARGUMENTS", trimmedArgs) : template;
+	const resolvedTemplate = options.replaceArguments
+		? template.replace("$ARGUMENTS", trimmedArgs)
+		: template;
 	const appendSuffix = !options.replaceArguments && trimmedArgs;
 	return resolvedTemplate + (appendSuffix ? `\n\nArgs: ${args}` : "");
 }
