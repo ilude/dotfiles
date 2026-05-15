@@ -338,9 +338,23 @@ no_delete_paths: []
 				tools: ["bash"],
 			},
 		];
-		expect(await mod.evaluateDangerousCommand("RM file", rules, { toolName: "bash" })).toBeUndefined();
-		expect(await mod.evaluateDangerousCommand("rm file", rules, { toolName: "pwsh" })).toBeUndefined();
-		expect((await mod.evaluateDangerousCommand("rm file", rules, { toolName: "bash" }))?.block).toBe(true);
+		expect(
+			await mod.evaluateDangerousCommand("RM file", rules, {
+				toolName: "bash",
+			}),
+		).toBeUndefined();
+		expect(
+			await mod.evaluateDangerousCommand("rm file", rules, {
+				toolName: "pwsh",
+			}),
+		).toBeUndefined();
+		expect(
+			(
+				await mod.evaluateDangerousCommand("rm file", rules, {
+					toolName: "bash",
+				})
+			)?.block,
+		).toBe(true);
 	});
 
 	it("sets status and prompts through the registered bash handler", async () => {
@@ -826,6 +840,60 @@ describe("damage-control refactor hardening", () => {
 				loaded.rules.dangerous_commands,
 			),
 		).resolves.toMatchObject({ block: true });
+	});
+
+	it("real tracked rules block dangerous bash command strings through the registered handler", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		type Handler = (
+			event: { toolName: string; input: Record<string, string> },
+			ctx: { cwd: string; ui: Record<string, unknown> },
+		) => unknown;
+		const handlers: Handler[] = [];
+		mod.default({
+			on: vi.fn((name: string, handler: Handler) => {
+				if (name === "tool_call") handlers.push(handler);
+			}),
+		} as unknown as Parameters<typeof mod.default>[0]);
+		const ctx = {
+			cwd: process.cwd(),
+			ui: { setStatus: vi.fn(), notify: vi.fn(), confirm: vi.fn() },
+		};
+
+		// Inert test input literals only; this test invokes no shell/process APIs.
+		for (const command of [
+			"rm -rf ./synthetic-build",
+			"git reset --hard",
+			"git clean -fd",
+		]) {
+			await expect(
+				handlers[0]({ toolName: "bash", input: { command } }, ctx),
+			).resolves.toMatchObject({ block: true });
+		}
+	});
+
+	it("real tracked rules allow safe bash command strings through the registered handler", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		type Handler = (
+			event: { toolName: string; input: Record<string, string> },
+			ctx: { cwd: string; ui: Record<string, unknown> },
+		) => unknown;
+		const handlers: Handler[] = [];
+		mod.default({
+			on: vi.fn((name: string, handler: Handler) => {
+				if (name === "tool_call") handlers.push(handler);
+			}),
+		} as unknown as Parameters<typeof mod.default>[0]);
+		const ctx = {
+			cwd: process.cwd(),
+			ui: { setStatus: vi.fn(), notify: vi.fn(), confirm: vi.fn() },
+		};
+
+		await expect(
+			handlers[0](
+				{ toolName: "bash", input: { command: "git status --short" } },
+				ctx,
+			),
+		).resolves.toBeUndefined();
 	});
 
 	it("real tracked rules block through the registered bash and file handlers", async () => {

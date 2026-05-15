@@ -185,6 +185,10 @@ When an extension reads a path from tool input:
 
 Damage-control is Pi-only safety enforcement for shell and file-tool decisions. `damage-control.ts` is the Pi event adapter; `damage-control-rules.ts` loads and validates the policy schema with `pi/lib/yaml-mini.ts`; `damage-control-engine.ts` contains pure deny/ask/allow decisions; `damage-control-debug.ts` contains opt-in redacted logging.
 
+Damage-control covers Pi's normal runtime `tool_call` event path for registered tools such as `bash`, `pwsh`, `read`, `write`, and `edit`. It is distinct from Claude Code `PreToolUse` hooks under `claude/hooks/`, and it does not claim coverage for external/direct API developer-tool surfaces such as this harness's `functions.bash` unless that surface is explicitly routed through Pi extension hooks. When investigating a bypass, first identify the execution boundary before adding a wrapper.
+
+Automated destructive-command coverage must treat commands such as `rm -rf`, `git reset --hard`, and `git clean -fd` as inert string inputs to the damage-control handler. Live destructive probes are out of scope for routine tests and require a separate plan with disposable temp-dir safeguards.
+
 Debug logging is off by default. Set `PI_DAMAGE_CONTROL_DEBUG=1` only while investigating, then inspect `.pi/damage-control-debug.log` or `~/.pi/agent/damage-control-debug.log` for redacted synthetic entries. Do not print old damage-control debug logs because they may predate redaction guarantees.
 
 Validate changes with pnpm only:
