@@ -7,5 +7,9 @@
     "classifier": {
       "mode": "lgbm"
     }
-  }
+  },
+  "packages": [
+    "npm:pi-code-previews",
+    "npm:pi-side-chat"
+  ]
 }
