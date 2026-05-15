@@ -1,7 +1,7 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import { canonicalize as sharedCanonicalize } from "../lib/extension-utils.js";
-import type { DangerousCommand } from "./damage-control-rules.js";
+import { compileCommandRegex, type DangerousCommand } from "./damage-control-rules.js";
 
 export type DamageControlMode = "default" | "whitelist" | "noshell";
 
@@ -193,13 +193,7 @@ function commandAppliesToTool(
 }
 
 function commandMatchesRule(command: string, rule: DangerousCommand): boolean {
-	if (rule.regex) {
-		try {
-			return new RegExp(rule.regex, "i").test(command);
-		} catch {
-			return false;
-		}
-	}
+	if (rule.regex) return compileCommandRegex(rule.regex).test(command);
 	return command.includes(rule.pattern);
 }
 
@@ -406,6 +400,55 @@ export function checkNoDeletePaths(
 		}
 	}
 	return undefined;
+}
+
+export function isExcludedPath(canonical: string, exclusions: string[]): boolean {
+	return exclusions.some((pattern) => matchesPattern(canonical, pattern));
+}
+
+export function checkReadOnlyPath(
+	filePath: string,
+	patterns: string[],
+	exclusions: string[],
+	cwd: string,
+): { block: true; reason: string } | undefined {
+	const result = canonicalizeOrBlock(filePath, cwd);
+	if ("block" in result) return result;
+	if (isExcludedPath(result.canonical, exclusions)) return undefined;
+	const pattern = patterns.find((candidate) => matchesPattern(result.canonical, candidate));
+	return pattern
+		? {
+				block: true,
+				reason: `Blocked write to read-only path (matched "${pattern}"): ${result.canonical}`,
+			}
+		: undefined;
+}
+
+export function checkWriteConfirmPath(
+	filePath: string,
+	patterns: string[],
+	exclusions: string[],
+	cwd: string,
+): { ask: true; reason: string } | undefined {
+	const result = canonicalizeOrBlock(filePath, cwd);
+	if ("block" in result) return undefined;
+	if (isExcludedPath(result.canonical, exclusions)) return undefined;
+	const pattern = patterns.find((candidate) => matchesPattern(result.canonical, candidate));
+	return pattern
+		? {
+				ask: true,
+				reason: `Confirmation required for write path (matched "${pattern}"): ${result.canonical}`,
+			}
+		: undefined;
+}
+
+export function contentNeedsScan(filePath: string, patterns: string[], cwd: string): boolean {
+	const result = canonicalizeOrBlock(filePath, cwd);
+	return "canonical" in result && patterns.some((pattern) => matchesPattern(result.canonical, pattern));
+}
+
+export function containsInjectionPattern(content: string, patterns: string[]): string | undefined {
+	return patterns.find((pattern) => new RegExp(pattern).test(content));
 }
 
 export { canonicalizeOrBlock };

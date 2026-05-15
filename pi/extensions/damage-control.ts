@@ -23,7 +23,11 @@ import {
 import {
 	canonicalizeOrBlock,
 	checkNoDeletePaths,
+	checkReadOnlyPath,
+	checkWriteConfirmPath,
 	checkZeroAccess,
+	containsInjectionPattern,
+	contentNeedsScan,
 	type DamageControlMode,
 	evaluateDangerousCommand,
 	evaluateShellMode,
@@ -36,8 +40,12 @@ import { loadRules } from "./damage-control-rules.js";
 export { debugLog, redactSummary } from "./damage-control-debug.js";
 export {
 	checkNoDeletePaths,
+	checkReadOnlyPath,
+	checkWriteConfirmPath,
 	checkZeroAccess,
 	commandAppliesToCurrentPlatform,
+	containsInjectionPattern,
+	contentNeedsScan,
 	type DamageControlMode,
 	evaluateDangerousCommand,
 	evaluateShellMode,
@@ -51,6 +59,8 @@ export {
 	type DamageControlRules,
 	type DangerousCommand,
 	loadRules,
+	compileCommandRegex,
+	normalizeClaudePolicy,
 	parseDamageControlRules,
 	validateDamageControlRules,
 } from "./damage-control-rules.js";
@@ -427,12 +437,16 @@ export default function (pi: ExtensionAPI) {
 			return canonResult;
 		}
 
-		const zeroAccess = await checkZeroAccess(
-			canonResult.canonical,
-			rules.zero_access_paths,
-			event.toolName,
-			{ ui: ctx.ui, hasUI: true },
-		);
+		const zeroAccess = rules.zero_access_exclusions.some((pattern) =>
+			canonResult.canonical.includes(pattern),
+		)
+			? undefined
+			: await checkZeroAccess(
+					canonResult.canonical,
+					rules.zero_access_paths,
+					event.toolName,
+					{ ui: ctx.ui, hasUI: true },
+				);
 		if (zeroAccess) {
 			debugDecision(
 				"zero_access_decision",
@@ -442,6 +456,60 @@ export default function (pi: ExtensionAPI) {
 			);
 			recordBlock(event.toolName, rawPath, ctx.cwd, zeroAccess);
 			return zeroAccess;
+		}
+
+		if (event.toolName === "write" || event.toolName === "edit") {
+			const readOnly = checkReadOnlyPath(
+				rawPath,
+				rules.read_only_paths,
+				rules.zero_access_exclusions,
+				ctx.cwd,
+			);
+			if (readOnly) {
+				recordBlock(event.toolName, rawPath, ctx.cwd, readOnly);
+				return readOnly;
+			}
+			const content =
+				(fileEvent.input as { content?: string; new_string?: string }).content ??
+				(fileEvent.input as { new_string?: string }).new_string ??
+				"";
+			if (contentNeedsScan(rawPath, rules.content_scan_paths, ctx.cwd)) {
+				const injectionPattern = containsInjectionPattern(
+					content,
+					rules.injection_patterns,
+				);
+				if (injectionPattern) {
+					const decision = {
+						block: true as const,
+						reason: `Blocked content injection pattern (matched "${injectionPattern}"): ${rawPath}`,
+					};
+					recordBlock(event.toolName, rawPath, ctx.cwd, decision);
+					return decision;
+				}
+			}
+			const writeConfirm = checkWriteConfirmPath(
+				rawPath,
+				rules.write_confirm_paths,
+				rules.zero_access_exclusions,
+				ctx.cwd,
+			);
+			if (writeConfirm) {
+				const ok = await ctx.ui.confirm(
+					"Confirm protected write",
+					writeConfirm.reason,
+				);
+				if (!ok) {
+					const decision = { block: true as const, reason: writeConfirm.reason };
+					recordBlock(event.toolName, rawPath, ctx.cwd, decision);
+					return decision;
+				}
+				safeRecordAllow(
+					event.toolName,
+					rawPath,
+					"manual_once",
+					writeConfirm.reason,
+				);
+			}
 		}
 
 		const truncatingTarget = extractTruncatingEditWriteTarget(

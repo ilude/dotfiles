@@ -236,6 +236,40 @@ no_delete_paths: []
 		});
 	});
 
+	it("asks before allowing non-recursive rm -f commands", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const rules = [
+			{
+				pattern: "rm force",
+				regex:
+					"\\brm\\s+(?=[^|;&]*?(?:-[A-Za-z]*f[A-Za-z]*|--force)\\b)(?![^|;&]*?(?:-[A-Za-z]*r[A-Za-z]*|--recursive)\\b)",
+				reason:
+					"Force delete bypasses normal interactive safeguards and can remove files irreversibly",
+				action: "ask" as const,
+			},
+		];
+		const confirm = vi.fn(async () => false);
+
+		const result = await mod.evaluateDangerousCommand(
+			"rm -f ./scratch.txt",
+			rules,
+			{
+				hasUI: true,
+				ui: { confirm },
+			},
+		);
+
+		expect(confirm).toHaveBeenCalledWith(
+			"Confirm dangerous command",
+			"Force delete bypasses normal interactive safeguards and can remove files irreversibly",
+		);
+		expect(result).toEqual({
+			block: true,
+			reason:
+				'Confirmation required for dangerous command (matched "rm force"): Force delete bypasses normal interactive safeguards and can remove files irreversibly',
+		});
+	});
+
 	it("unescapes double-quoted YAML regex rules before matching", async () => {
 		const mod = await import("../extensions/damage-control.ts");
 		const parsed = mod.parseDamageControlRules(`
@@ -260,13 +294,53 @@ no_delete_paths: []
 		});
 	});
 
-	it("loads the tracked repo rules as an extension-relative fallback", async () => {
+	it("loads the tracked Claude policy as the canonical source", async () => {
 		const mod = await import("../extensions/damage-control.ts");
 		const loaded = mod.loadRules("C:/definitely/not/a/real/project");
 
 		expect(loaded.health.status).toBe("active");
-		expect(loaded.health.ruleSource).toContain("damage-control-rules.yaml");
-		expect(loaded.rules.dangerous_commands.length).toBeGreaterThan(0);
+		expect(loaded.health.ruleSource).toContain("claude");
+		expect(loaded.rules.dangerous_commands.length).toBeGreaterThan(300);
+	});
+
+	it("normalizes Claude bashToolPatterns with strict booleans and regex validation", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const loaded = mod.normalizeClaudePolicy({
+			bashToolPatterns: [
+				{ pattern: "\\brm\\b", ask: true, reason: "rm asks" },
+				{ pattern: "\\brm\\s+-rf\\s+/", reason: "root delete blocks" },
+			],
+		});
+		expect(loaded.health.status).toBe("active");
+		expect(loaded.rules.dangerous_commands[0].action).toBe("ask");
+		expect(loaded.rules.dangerous_commands[1].action).toBe("block");
+		expect(loaded.rules.dangerous_commands[0].tools).toEqual(["bash"]);
+
+		const stringAsk = mod.normalizeClaudePolicy({
+			bashToolPatterns: [{ pattern: "rm", ask: "true", reason: "bad" }],
+		});
+		expect(stringAsk.health.status).toBe("failed");
+
+		const pythonOnly = mod.normalizeClaudePolicy({
+			bashToolPatterns: [{ pattern: "(?P<x>rm)", reason: "bad" }],
+		});
+		expect(pythonOnly.health.status).toBe("failed");
+	});
+
+	it("matches Claude command regexes case-sensitively by default and scopes them to bash", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const rules = [
+			{
+				pattern: "rm",
+				regex: "\\brm\\b",
+				reason: "rm asks",
+				action: "ask" as const,
+				tools: ["bash"],
+			},
+		];
+		expect(await mod.evaluateDangerousCommand("RM file", rules, { toolName: "bash" })).toBeUndefined();
+		expect(await mod.evaluateDangerousCommand("rm file", rules, { toolName: "pwsh" })).toBeUndefined();
+		expect((await mod.evaluateDangerousCommand("rm file", rules, { toolName: "bash" }))?.block).toBe(true);
 	});
 
 	it("sets status and prompts through the registered bash handler", async () => {
@@ -317,7 +391,7 @@ no_delete_paths: []
 		);
 		expect(confirm).toHaveBeenCalledWith(
 			"Confirm dangerous command",
-			"docker compose down stops and removes containers",
+			"docker compose down (stops and removes containers)",
 		);
 		expect(result).toBeUndefined();
 	});
@@ -776,7 +850,7 @@ describe("damage-control refactor hardening", () => {
 		);
 		expect(bashResult).toMatchObject({ block: true });
 		const fileResult = await handlers[2](
-			{ toolName: "read", input: { path: ".env" } },
+			{ toolName: "read", input: { path: "~/.ssh/id_ed25519" } },
 			ctx,
 		);
 		expect(fileResult).toMatchObject({ block: true });
