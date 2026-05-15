@@ -58,6 +58,7 @@
  */
 
 import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
@@ -94,7 +95,7 @@ import {
 	type RouterSize,
 } from "../lib/prompt-router/route-vocabulary.js";
 import { makeExcerpt, sha256Hex } from "../lib/transcript.js";
-import { emit, getWriter } from "./transcript-runtime.js";
+import { emit, getSessionId, getWriter } from "./transcript-runtime.js";
 
 export type { RouteDecision, RouteResolutionReason };
 export { safeParseClassifierOutput };
@@ -636,23 +637,36 @@ export function applyRouteDecisionToProviderPayload(
 	};
 }
 
-const DEBUG_LOG_PATH = path.join(
-	process.cwd(),
-	"pi",
-	"prompt-routing",
-	"logs",
-	"transcript_debug.jsonl",
-);
+let debugSessionId: string | null = null;
+
+function sanitizeLogName(value: string): string {
+	return value.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 120);
+}
+
+function getTranscriptDebugLogPath(): string | null {
+	const sessionId = debugSessionId ?? getSessionId();
+	if (!sessionId) return null;
+	return path.join(
+		os.homedir(),
+		".pi",
+		"logs",
+		"prompt-router",
+		`${sanitizeLogName(sessionId)}.transcript_debug.jsonl`,
+	);
+}
 
 async function appendTranscriptDebug(
 	event: string,
 	payload: Record<string, unknown> = {},
 ): Promise<void> {
 	try {
-		await fs.mkdir(path.dirname(DEBUG_LOG_PATH), { recursive: true });
+		const debugLogPath = getTranscriptDebugLogPath();
+		if (!debugLogPath) return;
+		await fs.mkdir(path.dirname(debugLogPath), { recursive: true });
+		const sessionId = debugSessionId || getSessionId();
 		await fs.appendFile(
-			DEBUG_LOG_PATH,
-			`${JSON.stringify({ ts: Date.now() / 1000, event, pid: process.pid, ...payload })}\n`,
+			debugLogPath,
+			`${JSON.stringify({ ts: Date.now() / 1000, event, pid: process.pid, session_id: sessionId, ...payload })}\n`,
 			"utf8",
 		);
 	} catch {
@@ -1221,7 +1235,6 @@ async function classifyAndRoute(
 // ---------------------------------------------------------------------------
 
 export default function (pi: ExtensionAPI) {
-	void appendTranscriptDebug("prompt_router_extension_loaded");
 	const policy = loadRouterPolicy(EFFORT_ORDER);
 
 	const state: RouterState = {
@@ -1259,6 +1272,9 @@ export default function (pi: ExtensionAPI) {
 
 	// -- Reset state on new session --
 	pi.on("session_start", async (_event, ctx) => {
+		debugSessionId =
+			ctx.sessionManager?.getSessionId?.() || getSessionId() || `pi-${process.pid}`;
+		void appendTranscriptDebug("prompt_router_session_start");
 		state.currentTier = "low";
 		state.turnsAtCurrentTier = 0;
 		state.downgradeCandidateTier = null;

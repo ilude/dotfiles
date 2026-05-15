@@ -160,6 +160,11 @@ export function getWriter(): TranscriptWriter | null {
 	return state.writer;
 }
 
+/** Returns the active Pi session id. Empty string before init. */
+export function getSessionId(): string {
+	return state.sessionId;
+}
+
 /** Returns the current W3C trace id (32 hex). Empty string before init. */
 export function getTraceId(): string {
 	return state.traceId;
