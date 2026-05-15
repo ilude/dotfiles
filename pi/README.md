@@ -101,7 +101,7 @@ pnpm add -g --allow-build=koffi --allow-build=protobufjs \
 
 ## Damage-control safety validation
 
-Pi damage-control is Pi-only and lives in `pi/extensions/damage-control.ts` plus focused sibling modules for rule loading, pure engine decisions, and opt-in debug logging. Rules are loaded from `pi/damage-control-rules.yaml` through the TS-native `pi/lib/yaml-mini.ts` parser and explicit type guards.
+Pi damage-control is Pi-only and lives in `pi/extensions/damage-control.ts` plus focused sibling modules for rule loading, pure engine decisions, and opt-in debug logging. The canonical command/path policy is Claude's in-repo `claude/hooks/damage-control/patterns.yaml` when present, parsed through the full-YAML Python/PyYAML helper and normalized into Pi's TypeScript engine. `PI_DAMAGE_CONTROL_CLAUDE_POLICY_PATH` can point at an explicit Claude policy; if that override is missing or invalid, damage-control fails closed. If no override is set and the in-repo Claude policy is unavailable, Pi falls back to `pi/damage-control-rules.yaml` in explicit Pi-only mode.
 
 Debug logging is disabled by default. To enable redacted diagnostic logs for a short investigation, set `PI_DAMAGE_CONTROL_DEBUG=1`; logs may appear at `.pi/damage-control-debug.log` and `~/.pi/agent/damage-control-debug.log`. Do not print old debug logs directly: inventory paths first and inspect only redacted, synthetic entries.
 
@@ -113,7 +113,7 @@ cd pi/extensions && pnpm run typecheck
 make check-pi-extensions
 ```
 
-For live smoke tests, restart Pi so extension modules reload, then use a disposable temp repo with synthetic sentinel files or temporary test-only rules. Never execute shell reads against real `.env`, SSH keys, `*.pem`, or `*.key` files. On Windows/macOS, Linux-only ask rules such as `docker compose down` are best validated with deterministic Vitest tests or a temporary non-destructive ask rule.
+For live smoke tests, restart/reload Pi so extension modules and policy files reload, then use a disposable temp repo with synthetic sentinel files or temporary test-only rules. Never execute shell reads against real `.env`, SSH keys, `*.pem`, or `*.key` files. On Windows/macOS, Linux-only ask rules such as `docker compose down` are best validated with deterministic Vitest tests or a temporary non-destructive ask rule.
 
 ## Source vs. runtime state
 
@@ -184,7 +184,7 @@ TypeScript extensions live in `~/.dotfiles/pi/extensions/` and are auto-discover
 
 ### `damage-control.ts`
 
-Pi damage-control is a Pi-native adapter for the intent of the Claude Code damage-control hooks. It uses Pi extension APIs, status text, `/doctor`, and `/permissions` rather than importing the Claude hook runtime. Current coverage is intentionally bounded: destructive command variants, selected shell/interpreter wrappers, secret reads, obvious metadata-service access, and secret-to-network exfil patterns. The working parity inventory lives at `.specs/pi-damage-control-v2/claude-parity-matrix.md`; a future follow-up can replace per-client rule files with a neutral shared policy schema once the native behavior is stable.
+Pi damage-control is a Pi-native adapter for the intent of the Claude Code damage-control hooks. It uses Pi extension APIs, status text, `/doctor`, and `/permissions` rather than importing the Claude hook runtime. Current coverage is intentionally bounded: Claude `bashToolPatterns` (Bash-only, excluding `exfil` entries from all-pattern parity claims) plus Claude path/write sections that map to Pi's tool surfaces. Semantic git analysis, AST bash analysis, taint/sequence detection, and post-tool secret-output detection remain deferred.
 
 Intercepts tool calls and blocks dangerous operations before they execute.
 
@@ -192,7 +192,7 @@ Intercepts tool calls and blocks dangerous operations before they execute.
 - **Zero-access paths** -- blocks read/write to `~/.ssh/*`, `*.pem`, `*.key`, `.env`
 - **No-delete paths** -- protects `package.json`, `Makefile`, `pyproject.toml`
 
-Rules file: `~/.dotfiles/pi/damage-control-rules.yaml` -- edit to customize.
+Primary policy file: `~/.dotfiles/claude/hooks/damage-control/patterns.yaml`. Fallback Pi-only rules file: `~/.dotfiles/pi/damage-control-rules.yaml`.
 
 ### `agent-chain.ts`
 

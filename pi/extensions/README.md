@@ -24,6 +24,15 @@ Pi auto-discovers extensions from `~/.dotfiles/pi/extensions/*.ts` (see
 live). Templates intended for copy-paste should use the `.ts.example`
 suffix so auto-discovery skips them.
 
+Damage-control has one documented YAML exception: Claude's
+`claude/hooks/damage-control/patterns.yaml` is parsed through
+`pi/lib/yaml-helpers.ts` with Python/PyYAML instead of `yaml-mini`, because
+that policy needs full YAML scalar typing (`ask: true` must remain a boolean)
+and richer syntax. The loader uses the in-repo Claude policy by default,
+`PI_DAMAGE_CONTROL_CLAUDE_POLICY_PATH` as an explicit override, and fails
+closed on invalid explicit overrides. Keep loader helpers under `pi/lib/`, not
+as new auto-discovered `pi/extensions/*.ts` files.
+
 ## Snapshot retirement
 
 The legacy `*-mental-model.json` snapshot loader/regenerator has been
