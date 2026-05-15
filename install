@@ -109,6 +109,14 @@ else
 fi
 completed_steps+=("uv install")
 
+# Harden uv resolutions for repo install-time tooling: delay newly-uploaded
+# packages, keep first-index dependency-confusion protection explicit, ignore
+# development-only Git/URL/path sources, and avoid arbitrary sdist builds.
+export UV_EXCLUDE_NEWER="${UV_EXCLUDE_NEWER:-3 days}"
+export UV_INDEX_STRATEGY="${UV_INDEX_STRATEGY:-first-index}"
+export UV_NO_SOURCES="${UV_NO_SOURCES:-true}"
+export UV_NO_BUILD="${UV_NO_BUILD:-true}"
+
 current_step="Python shim"
 # Install Python 3.14 via uv and shim 'python' into ~/.local/bin
 # Hooks use bare 'python' (not python3) cross-platform; this ensures it resolves.
@@ -134,14 +142,14 @@ if command -v uv &>/dev/null; then
         echo "ruff: already installed"
     else
         echo "Installing ruff..."
-        uv tool install ruff
+        uv tool install --exclude-newer "${UV_EXCLUDE_NEWER}" --index-strategy "${UV_INDEX_STRATEGY}" --no-sources --no-build ruff
     fi
     # Install lizard (cyclomatic complexity analyzer) globally via uv tool
     if command -v lizard &>/dev/null; then
         echo "lizard: already installed"
     else
         echo "Installing lizard..."
-        uv tool install lizard
+        uv tool install --exclude-newer "${UV_EXCLUDE_NEWER}" --index-strategy "${UV_INDEX_STRATEGY}" --no-sources --no-build lizard
     fi
 fi
 completed_steps+=("Python dev tools")
@@ -163,7 +171,7 @@ else
             echo "${dep}: already installed"
         else
             echo "Installing ${dep}..."
-            uv pip install --python "$_py" --break-system-packages "${dep}" 2>/dev/null || "$_py" -m pip install --break-system-packages "${dep}" 2>/dev/null || echo "Warning: failed to install ${dep}"
+            uv pip install --python "$_py" --break-system-packages --exclude-newer "${UV_EXCLUDE_NEWER}" --index-strategy "${UV_INDEX_STRATEGY}" --no-build "${dep}" 2>/dev/null || "$_py" -m pip install --break-system-packages "${dep}" 2>/dev/null || echo "Warning: failed to install ${dep}"
         fi
     done
 fi
@@ -278,6 +286,13 @@ case ":$PATH:" in
 esac
 
 if command -v pnpm &>/dev/null; then
+    # Harden pnpm installs against common supply-chain attacks. These global
+    # defaults require install-script review, delay newly-published packages,
+    # and block exotic transitive dependency sources.
+    pnpm config set --global minimumReleaseAge 4320 >/dev/null || echo "Warning: failed to set pnpm minimumReleaseAge"
+    pnpm config set --global blockExoticSubdeps true >/dev/null || echo "Warning: failed to set pnpm blockExoticSubdeps"
+    pnpm config set --global strictDepBuilds true >/dev/null || echo "Warning: failed to set pnpm strictDepBuilds"
+
     # Remove conflicting/legacy installs BEFORE running pnpm add. pnpm refuses to
     # install when another package owns the same global "pi" bin (e.g. the legacy
     # @mariozechner/pi-coding-agent), so cleanup must precede the install.

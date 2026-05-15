@@ -2,6 +2,12 @@
 name = "pi-tool-reduction"
 version = "0.1.0"
 
+[tool.uv]
+exclude-newer = "3 days"
+index-strategy = "first-index"
+no-sources = true
+no-build = true
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"

@@ -1,3 +1,6 @@
+minimumReleaseAge: 4320
+blockExoticSubdeps: true
+strictDepBuilds: true
 allowBuilds:
   '@google/genai': false
   koffi: false

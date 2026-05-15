@@ -812,6 +812,23 @@ function Initialize-PnpmGlobalConfig {
         $env:PATH = "$pnpmHome;$env:PATH"
     }
 
+    # Harden pnpm installs against common supply-chain attacks. These are global
+    # defaults for install-script review, newly-published packages, and exotic
+    # transitive dependency sources; project pnpm-workspace.yaml files may be
+    # more specific where needed.
+    $pnpmSecurityConfig = @(
+        @{ Name = 'minimumReleaseAge'; Value = '4320' },
+        @{ Name = 'blockExoticSubdeps'; Value = 'true' },
+        @{ Name = 'strictDepBuilds'; Value = 'true' }
+    )
+    foreach ($setting in $pnpmSecurityConfig) {
+        try {
+            pnpm config set --global $setting.Name $setting.Value 2>&1 | Out-Null
+        } catch {
+            Write-Host "  pnpm config $($setting.Name): warning -- $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    }
+
     # Run `pnpm setup` to populate the .tools/pnpm-exe shim. Idempotent.
     try {
         pnpm setup 2>&1 | Out-Null
@@ -1052,6 +1069,10 @@ function Install-Packages {
     #         project setup, not this dotfiles bootstrap.
     Write-Host "`n--- Python Dev Tools (uv-managed) ---" -ForegroundColor Cyan
     if (Get-Command uv -ErrorAction SilentlyContinue) {
+        # Harden uv tool resolutions: delay newly-uploaded packages, keep
+        # first-index dependency-confusion protection explicit, ignore
+        # development-only Git/URL/path sources, and avoid arbitrary sdist builds.
+        $uvSecurityArgs = @('--exclude-newer', '3 days', '--index-strategy', 'first-index', '--no-sources', '--no-build')
         $uvTools = @('ruff', 'lizard')
         foreach ($tool in $uvTools) {
             Write-Host "  $tool..." -ForegroundColor Cyan -NoNewline
@@ -1059,7 +1080,7 @@ function Install-Packages {
                 Write-Host " already installed" -ForegroundColor DarkGray
             } else {
                 try {
-                    uv tool install $tool 2>&1 | Out-Null
+                    uv tool install @uvSecurityArgs $tool 2>&1 | Out-Null
                     if ($LASTEXITCODE -eq 0) {
                         Write-Host " installed" -ForegroundColor Green
                     } else {

@@ -1,0 +1,5 @@
+# Supply-chain hardening defaults for repo-local uv commands.
+exclude-newer = "3 days"
+index-strategy = "first-index"
+no-sources = true
+no-build = true

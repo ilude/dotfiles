@@ -22,6 +22,14 @@ Explicit over implicit. Type hints everywhere. Modern tooling (uv, Ruff). Test c
 - **Installation:** `uv add <package>`, `uv add --dev <package>`, `uv add --group <name> <package>`
 - **Execution:** `uv run python script.py` or `uv run pytest`
 - Run `uv sync` before executing code in new projects
+- **MUST configure uv supply-chain hardening** before resolving new dependencies. Add these settings to `[tool.uv]` in `pyproject.toml` or to the repo/global `uv.toml`:
+  ```toml
+  exclude-newer = "3 days"      # dependency cooldown for newly-uploaded artifacts
+  index-strategy = "first-index" # preserve dependency-confusion protection
+  no-sources = true              # ignore Git/URL/path sources unless intentionally reviewed
+  no-build = true                # avoid arbitrary source-distribution builds by default
+  ```
+- Prefer locked installs for verification and CI: `uv sync --locked` / `uv sync --frozen`; avoid ad-hoc unpinned `uv pip install` unless explicitly needed. If a project needs `tool.uv.sources` or source builds, require an explicit reviewed exception and document why.
 
 ### Alternative: Traditional Tools
 - If not using uv, use pip with requirements files

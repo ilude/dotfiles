@@ -59,6 +59,19 @@ Pick the manager from the project's lockfile:
 
 Do **not** run `npm` or `yarn` commands. If a project's CI or Docker image pins one of those, follow that pin, but flag it.
 
+### pnpm Supply-Chain Hardening
+
+For pnpm projects, **MUST use and set up pnpm hardening** before resolving new dependencies. These are the JavaScript/TypeScript equivalents to uv's required `exclude-newer`, `index-strategy = "first-index"`, `no-sources`, and `no-build` protections:
+
+```yaml
+# pnpm-workspace.yaml
+minimumReleaseAge: 4320
+blockExoticSubdeps: true
+strictDepBuilds: true
+```
+
+Review install scripts with `pnpm approve-builds` or explicit `allowBuilds` entries; do not bypass unreviewed build-script failures just to make an install pass.
+
 ## Bun Project Commands
 
 **You MUST use Bun commands** for all package and runtime operations in Bun projects:
