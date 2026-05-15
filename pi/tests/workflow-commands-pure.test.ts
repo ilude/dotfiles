@@ -155,6 +155,12 @@ describe("confirmCommitMessage", () => {
 			),
 		).rejects.toThrow(/conventional commit format/i);
 	});
+
+	it("accepts wip commit subjects", async () => {
+		const message = { subject: "wip: save tui latency instrumentation" };
+		const result = await confirmCommitMessage({}, message, files, stat, stat);
+		expect(result).toEqual(message);
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -319,7 +325,7 @@ describe("validateCommitPlan multi-group sequential staging", () => {
 
 describe("proposeCommitMessage", () => {
 	const CONVENTIONAL_COMMIT_RE =
-		/^(feat|fix|docs|chore|refactor|test|perf|ci|build)(\([^)]+\))?: [a-z0-9]/;
+		/^(feat|fix|docs|chore|refactor|test|perf|ci|build|wip)(\([^)]+\))?: [a-z0-9]/;
 
 	it("docs-only files produce type docs", () => {
 		const result = proposeCommitMessage(["README.md", "CHANGELOG.md"], "", "");

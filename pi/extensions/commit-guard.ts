@@ -27,7 +27,7 @@ import type {
 
 const GIT_COMMIT_RE = /\bgit\s+commit\b/;
 const CONVENTIONAL_COMMIT_RE =
-	/^(feat|fix|docs|chore|refactor|test|perf|ci|build)(\(.+\))?: .+/;
+	/^(feat|fix|docs|chore|refactor|test|perf|ci|build|wip)(\(.+\))?: .+/;
 const MUTATING_EDIT_RE =
 	/(python\s+-\s*<<[\s\S]*(write_text|open\([^)]*,\s*['"]w['"])|\bsed\s+-i\b|\bperl\s+-pi\b|\bcat\s*>)/;
 
@@ -68,7 +68,7 @@ function checkMessageFormat(command: string): BlockResult {
 		block: true,
 		reason:
 			`Commit message "${message}" does not follow conventional format. ` +
-			"Use: type(scope): description — where type is one of feat|fix|docs|chore|refactor|test|perf|ci|build",
+			"Use: type(scope): description — where type is one of feat|fix|docs|chore|refactor|test|perf|ci|build|wip",
 	};
 }
 

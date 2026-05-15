@@ -1,6 +1,6 @@
 import type { MessageValidationResult } from "./types";
 
-const TYPES = ["feat", "fix", "docs", "chore", "refactor", "test", "perf", "ci", "build"] as const;
+const TYPES = ["feat", "fix", "docs", "chore", "refactor", "test", "perf", "ci", "build", "wip"] as const;
 const CONVENTIONAL_RE = new RegExp(`^(${TYPES.join("|")})(\\([^)]+\\))?: [a-z0-9].{0,71}$`);
 
 export function validateCommitMessage(message: string): MessageValidationResult {

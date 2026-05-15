@@ -68,6 +68,7 @@ const CONVENTIONAL_TYPES = [
 	"ci",
 	"build",
 	"deps",
+	"wip",
 ];
 const CONVENTIONAL_COMMIT_RE = new RegExp(
 	`^(${CONVENTIONAL_TYPES.join("|")})(\\([^)]+\\))?: [a-z0-9].{0,71}$`,
@@ -1031,7 +1032,7 @@ export async function confirmCommitMessage(
 ) {
 	if (!isValidConventionalCommit(commitMessage.subject)) {
 		throw new Error(
-			"Commit message must match conventional commit format: type(scope): description",
+			"Commit message must match conventional commit format: type(scope): description; allowed types include wip",
 		);
 	}
 	return commitMessage;
@@ -1348,7 +1349,7 @@ async function executeCommitCommand(
 			if (!isValidConventionalCommit(commitMessage.subject)) {
 				activity.finish();
 				return ctx.ui.notify(
-					"Proposed commit message does not match conventional commit format",
+					"Proposed commit message does not match conventional commit format; allowed types include wip",
 					"error",
 				);
 			}

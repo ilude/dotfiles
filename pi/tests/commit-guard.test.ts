@@ -69,6 +69,12 @@ describe("commit-guard extension", () => {
 			expect(result).toBeUndefined();
 		});
 
+		it("allows wip commit messages (returns undefined)", async () => {
+			const hook = await getCommitGuardHook();
+			const result = await hook(bashEvent('git commit -m "wip: save tui latency instrumentation"'), {});
+			expect(result).toBeUndefined();
+		});
+
 		it("allows --amend without -m (returns undefined)", async () => {
 			const hook = await getCommitGuardHook();
 			const result = await hook(bashEvent("git commit --amend"), {});

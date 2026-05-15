@@ -6,6 +6,9 @@ describe("commit message validation", () => {
 	it("accepts conventional subjects", () => {
 		expect(validateCommitMessage("docs(workflow): harden pi workflow validation").valid).toBe(true);
 	});
+	it("accepts wip subjects", () => {
+		expect(validateCommitMessage("wip: save tui latency instrumentation").valid).toBe(true);
+	});
 	it("rejects unknown type", () => {
 		expect(validateCommitMessage("Ignore generated menos status").valid).toBe(false);
 	});
