@@ -1,0 +1,60 @@
+diff --git a/pi/damage-control-rules.yaml b/pi/damage-control-rules.yaml
+index e8da1f9..b6f17bf 100644
+--- a/pi/damage-control-rules.yaml
++++ b/pi/damage-control-rules.yaml
+@@ -5,6 +5,10 @@ dangerous_commands:
+   - pattern: "rm recursive force"
+     regex: "\\brm\\s+(?:-[A-Za-z]*r[A-Za-z]*f[A-Za-z]*|-[A-Za-z]*f[A-Za-z]*r[A-Za-z]*|--recursive\\s+--force|--force\\s+--recursive)\\b"
+     reason: "Recursive force delete can cause irreversible data loss"
++  - pattern: "rm force"
++    regex: "\\brm\\s+(?=[^|;&]*?(?:-[A-Za-z]*f[A-Za-z]*|--force)\\b)(?![^|;&]*?(?:-[A-Za-z]*r[A-Za-z]*|--recursive)\\b)"
++    reason: "Force delete bypasses normal interactive safeguards and can remove files irreversibly"
++    action: "ask"
+   - pattern: "git reset hard"
+     regex: "\\bgit\\s+reset\\s+--hard\\b"
+     reason: "Discards uncommitted changes permanently"
+diff --git a/pi/tests/damage-control.test.ts b/pi/tests/damage-control.test.ts
+index 4c34a47..d0834b1 100644
+--- a/pi/tests/damage-control.test.ts
++++ b/pi/tests/damage-control.test.ts
+@@ -236,6 +236,40 @@ no_delete_paths: []
+ 		});
+ 	});
+ 
++	it("asks before allowing non-recursive rm -f commands", async () => {
++		const mod = await import("../extensions/damage-control.ts");
++		const rules = [
++			{
++				pattern: "rm force",
++				regex:
++					"\\brm\\s+(?=[^|;&]*?(?:-[A-Za-z]*f[A-Za-z]*|--force)\\b)(?![^|;&]*?(?:-[A-Za-z]*r[A-Za-z]*|--recursive)\\b)",
++				reason:
++					"Force delete bypasses normal interactive safeguards and can remove files irreversibly",
++				action: "ask" as const,
++			},
++		];
++		const confirm = vi.fn(async () => false);
++
++		const result = await mod.evaluateDangerousCommand(
++			"rm -f ./scratch.txt",
++			rules,
++			{
++				hasUI: true,
++				ui: { confirm },
++			},
++		);
++
++		expect(confirm).toHaveBeenCalledWith(
++			"Confirm dangerous command",
++			"Force delete bypasses normal interactive safeguards and can remove files irreversibly",
++		);
++		expect(result).toEqual({
++			block: true,
++			reason:
++				'Confirmation required for dangerous command (matched "rm force"): Force delete bypasses normal interactive safeguards and can remove files irreversibly',
++		});
++	});
++
+ 	it("unescapes double-quoted YAML regex rules before matching", async () => {
+ 		const mod = await import("../extensions/damage-control.ts");
+ 		const parsed = mod.parseDamageControlRules(`
