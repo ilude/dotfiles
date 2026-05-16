@@ -1,6 +1,6 @@
 ---
 name: research-archive
-description: Activate when saving research findings, referencing prior investigations, citing sources, documenting references, or using the /research command. Guides consistent research documentation in ~/.claude/research/.
+description: Activate when saving research findings, referencing prior investigations, citing sources, documenting references, or using the /research command. Guides consistent research documentation in .specs/research/.
 ---
 
 # Research Archive Skill
@@ -9,7 +9,7 @@ description: Activate when saving research findings, referencing prior investiga
 
 ## Purpose
 
-Ensure research findings, source documentation, and reference materials are consistently stored in `~/.claude/research/` for future reuse. Build on prior work rather than duplicating effort.
+Ensure research findings, source documentation, and reference materials are consistently stored in `.specs/research/` for future reuse. Build on prior work rather than duplicating effort.
 
 ---
 
@@ -17,14 +17,14 @@ Ensure research findings, source documentation, and reference materials are cons
 
 ### 1. Check Before Researching
 
-**ALWAYS check `~/.claude/research/` for existing work on the topic before starting new research.**
+**ALWAYS check `.specs/research/` for existing work on the topic before starting new research.**
 
 ```bash
 # Quick search for existing research
-ls ~/.claude/research/ | grep -i <topic>
+ls .specs/research/ | grep -i <topic>
 
 # Or search within files
-grep -ri "<topic>" ~/.claude/research/
+grep -ri "<topic>" .specs/research/
 ```
 
 **If existing file found:** Update and expand it rather than creating a new one. Add new findings, update sources, note date of latest research.
@@ -38,10 +38,10 @@ grep -ri "<topic>" ~/.claude/research/
 Use **kebab-case topic slugs** for filenames:
 
 ```
-~/.claude/research/ai-hallucination-prevention.md
-~/.claude/research/terraform-module-patterns.md
-~/.claude/research/python-async-patterns.md
-~/.claude/research/kubernetes-security-best-practices.md
+.specs/research/ai-hallucination-prevention.md
+.specs/research/terraform-module-patterns.md
+.specs/research/python-async-patterns.md
+.specs/research/kubernetes-security-best-practices.md
 ```
 
 **Rules:**
@@ -183,7 +183,7 @@ When research relates to existing files in the archive, add cross-references:
 
 ## Integration with /research Command
 
-The `/research` command automatically saves to `~/.claude/research/<topic-slug>.md` with the standard format. This skill ensures:
+The `/research` command automatically saves to `.specs/research/<topic-slug>.md` with the standard format. This skill ensures:
 
 1. Consistent formatting across automated and manual research
 2. Proper source attribution and URLs
