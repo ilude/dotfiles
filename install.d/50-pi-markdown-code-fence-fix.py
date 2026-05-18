@@ -179,8 +179,8 @@ def main() -> int:
 
     paths = candidate_paths(include_legacy=args.include_legacy_scope)
     if not paths:
-        print("No pnpm-global @earendil-works/pi-tui markdown.js files found.", file=sys.stderr)
-        return 1
+        print("No pnpm-global @earendil-works/pi-tui markdown.js files found; nothing to patch.")
+        return 0
 
     statuses = [patch_file(path, args.dry_run) for path in paths]
     for status in statuses:
