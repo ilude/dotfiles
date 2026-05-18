@@ -11,7 +11,10 @@ import argparse
 import json
 import os
 import re
+import site
+import subprocess
 import sys
+from collections import defaultdict
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
@@ -218,9 +221,79 @@ SCAN_NAMES = {
     "package.json", "package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml",
     "yarn.lock", "bun.lock", "bun.lockb", "pyproject.toml", "requirements.txt",
     "requirements-dev.txt", "requirements.lock", "uv.lock", "poetry.lock", "Pipfile.lock",
+    "NuGet.config", "packages.lock.json", "Directory.Build.props", "Directory.Packages.props",
+    "go.mod", "go.sum", "Cargo.toml", "Cargo.lock", "pom.xml", "Gemfile.lock",
 }
 SKIP_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache", "dist", "build"}
 NODE_MODULES = "node_modules"
+
+
+def run_command(args: list[str]) -> str | None:
+    try:
+        proc = subprocess.run(args, capture_output=True, text=True, timeout=15, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip()
+
+
+def existing_paths(paths: list[str | Path]) -> list[Path]:
+    out: list[Path] = []
+    seen: set[str] = set()
+    for raw in paths:
+        if not raw:
+            continue
+        path = Path(raw).expanduser()
+        try:
+            resolved = path.resolve()
+        except OSError:
+            continue
+        key = str(resolved).casefold() if os.name == "nt" else str(resolved)
+        if key not in seen and resolved.exists():
+            seen.add(key)
+            out.append(resolved)
+    return out
+
+
+def default_scan_roots(user_roots: list[str]) -> list[Path]:
+    roots: list[str | Path] = [Path(r) for r in user_roots]
+
+    npm_root = run_command(["npm", "root", "-g"])
+    pnpm_root = run_command(["pnpm", "root", "-g"])
+    bun_root = run_command(["bun", "pm", "g"])
+    roots.extend([p for p in [npm_root, pnpm_root, bun_root] if p])
+
+    try:
+        roots.append(site.getusersitepackages())
+    except (AttributeError, OSError):
+        pass
+    try:
+        roots.extend(site.getsitepackages())
+    except (AttributeError, OSError):
+        pass
+
+    local = os.environ.get("LOCALAPPDATA")
+    appdata = os.environ.get("APPDATA")
+    home = Path.home()
+    roots.extend([
+        home / ".npm-global" / "lib" / "node_modules",
+        home / ".local" / "lib",
+        home / ".local" / "pipx" / "venvs",
+        home / ".local" / "share" / "pnpm" / "global",
+        home / ".bun" / "install" / "global" / "node_modules",
+    ])
+    if local:
+        roots.extend([
+            Path(local) / "pnpm" / "global",
+            Path(local) / "Programs" / "Python",
+            Path(local) / "pipx" / "venvs",
+        ])
+    if appdata:
+        roots.append(Path(appdata) / "npm" / "node_modules")
+
+    return existing_paths(roots)
+
 
 @dataclass
 class Finding:
@@ -230,6 +303,222 @@ class Finding:
     package: str | None = None
     version: str | None = None
     evidence: str | None = None
+
+
+REMEDIATIONS = {
+    "pnpm-hardening-missing": "Add to .npmrc or pnpm-workspace.yaml: minimumReleaseAge=4320, blockExoticSubdeps=true, strictDepBuilds=true. Then run pnpm install --frozen-lockfile.",
+    "pnpm-dangerous-setting-enabled": "Remove dangerouslyAllowAllBuilds=true. Use explicit allowBuilds/onlyBuiltDependencies for reviewed packages that need install scripts.",
+    "npm-hardening-missing": "Add .npmrc with ignore-scripts=true. For reviewed native deps, run explicit rebuild/install steps instead of allowing arbitrary lifecycle scripts.",
+    "bun-hardening-missing": "Add bunfig.toml: [install] ignoreScripts = true. Add package.json trustedDependencies only for reviewed packages that need lifecycle scripts.",
+    "uv-hardening-missing": "Add [tool.uv] settings in pyproject.toml or uv.toml: exclude-newer='3 days', index-strategy='first-index', no-sources=true, no-build=true. Then run uv sync --locked.",
+    "pip-hardening-missing": "Regenerate requirements with pinned hashes and install with --require-hashes. Example: uv pip compile pyproject.toml --generate-hashes -o requirements.txt; pip install --require-hashes -r requirements.txt.",
+    "nuget-lockfile-missing": "Add <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile> to Directory.Build.props or csproj, then run dotnet restore and commit packages.lock.json.",
+    "nuget-locked-mode-missing": "Add <RestoreLockedMode>true</RestoreLockedMode> for CI/checked restores, then validate with dotnet restore --locked-mode.",
+    "nuget-source-mapping-missing": "Add packageSourceMapping to NuGet.config so package ID patterns resolve only from intended feeds. Then run dotnet restore --locked-mode.",
+    "go-sum-missing": "Run go mod tidy, commit go.sum, and validate with go mod verify.",
+    "go-env-hardening-review": "Set defaults once per user/runner: go env -w GOPROXY=https://proxy.golang.org,direct GOSUMDB=sum.golang.org GOVCS=public:git,private:all. Validate repos with go mod verify.",
+    "cargo-lock-missing": "For Rust applications, run cargo generate-lockfile, commit Cargo.lock, and use cargo fetch --locked / cargo test --locked in CI.",
+    "cargo-deny-missing": "Run cargo install cargo-deny; cargo deny init; cargo deny check. Commit deny.toml and run cargo deny check in CI.",
+    "maven-dynamic-version": "Replace Maven LATEST/RELEASE/range versions with exact versions. Validate with mvn -B verify.",
+    "maven-checksum-policy-review": "In Maven settings.xml or repository manager config, set checksumPolicy=fail for repositories. Validate with mvn -B verify.",
+    "bundler-frozen-missing": "Run bundle config set --local frozen true; bundle config set --local deployment true. Commit .bundle/config if project policy allows it.",
+    "bundler-checksums-missing": "On Bundler 2.6+, run bundle lock --add-checksums and commit Gemfile.lock. Validate with bundle install.",
+}
+
+
+def has_setting(text: str, name: str, value: str | None = None) -> bool:
+    if value is None:
+        return re.search(rf"(?m)^\s*{re.escape(name)}\s*[:=]", text) is not None
+    return re.search(rf"(?m)^\s*{re.escape(name)}\s*[:=]\s*{re.escape(value)}\s*$", text, re.IGNORECASE) is not None
+
+
+def read_nearby_config(project_dir: Path, names: list[str]) -> str:
+    parts: list[str] = []
+    for name in names:
+        path = project_dir / name
+        if path.exists():
+            parts.append(read_text(path))
+    return "\n".join(parts)
+
+
+def hardening_recommendations(project_dirs: dict[Path, set[str]]) -> list[Finding]:
+    findings: list[Finding] = []
+    for project_dir, names in sorted(project_dirs.items(), key=lambda item: str(item[0]).casefold()):
+        js_config = read_nearby_config(project_dir, [".npmrc", "pnpm-workspace.yaml", "pnpm-workspace.yml", "package.json"])
+        bun_config = read_nearby_config(project_dir, ["bunfig.toml", ".npmrc", "package.json"])
+        uv_config = read_nearby_config(project_dir, ["uv.toml", "pyproject.toml"])
+        nuget_config = read_nearby_config(project_dir, ["NuGet.config", "Directory.Build.props", "Directory.Packages.props"])
+        for parent in project_dir.parents:
+            if parent == project_dir.anchor:
+                break
+            for config_name in ["NuGet.config", "Directory.Build.props", "Directory.Packages.props"]:
+                config_path = parent / config_name
+                if config_path.exists():
+                    nuget_config += "\n" + read_text(config_path)
+
+        if {"pnpm-lock.yaml", "pnpm-workspace.yaml", "pnpm-workspace.yml"} & names:
+            for setting, expected in [
+                ("minimumReleaseAge", None),
+                ("blockExoticSubdeps", "true"),
+                ("strictDepBuilds", "true"),
+            ]:
+                if not has_setting(js_config, setting, expected):
+                    findings.append(Finding(
+                        "recommendation",
+                        "pnpm-hardening-missing",
+                        str(project_dir),
+                        evidence=f"Set {setting}{'=' + expected if expected else ' to a positive cooldown'} in .npmrc or pnpm-workspace.yaml",
+                    ))
+            if has_setting(js_config, "dangerouslyAllowAllBuilds", "true"):
+                findings.append(Finding(
+                    "recommendation",
+                    "pnpm-dangerous-setting-enabled",
+                    str(project_dir),
+                    evidence="Avoid dangerouslyAllowAllBuilds=true; use explicit allowBuilds/onlyBuiltDependencies instead",
+                ))
+
+        if "package-lock.json" in names or "npm-shrinkwrap.json" in names:
+            if not has_setting(js_config, "ignore-scripts", "true"):
+                findings.append(Finding(
+                    "recommendation",
+                    "npm-hardening-missing",
+                    str(project_dir),
+                    evidence="Consider ignore-scripts=true in project .npmrc; use explicit reviewed rebuilds for native deps",
+                ))
+
+        if {"bun.lock", "bun.lockb"} & names:
+            if not (
+                has_setting(bun_config, "ignoreScripts", "true")
+                or has_setting(bun_config, "install.ignoreScripts", "true")
+                or has_setting(bun_config, "ignore-scripts", "true")
+            ):
+                findings.append(Finding(
+                    "recommendation",
+                    "bun-hardening-missing",
+                    str(project_dir),
+                    evidence="Consider [install] ignoreScripts=true in bunfig.toml or ignore-scripts=true in .npmrc; use trustedDependencies only for reviewed build scripts",
+                ))
+
+        if any(name.startswith("requirements") and name.endswith(".txt") for name in names):
+            req_text = read_nearby_config(project_dir, [name for name in names if name.startswith("requirements") and name.endswith(".txt")])
+            has_requirement = any(
+                line.strip()
+                and not line.lstrip().startswith(("#", "-", "--"))
+                for line in req_text.splitlines()
+            )
+            if has_requirement and "--hash=" not in req_text and "--require-hashes" not in req_text:
+                findings.append(Finding(
+                    "recommendation",
+                    "pip-hardening-missing",
+                    str(project_dir),
+                    evidence="For pip requirements, consider --require-hashes with fully pinned hashes; prefer wheels-only where practical",
+                ))
+
+        if any(name.endswith(".csproj") for name in names) or "packages.lock.json" in names:
+            if "packages.lock.json" not in names:
+                findings.append(Finding(
+                    "recommendation",
+                    "nuget-lockfile-missing",
+                    str(project_dir),
+                    evidence="Enable NuGet lock files with RestorePackagesWithLockFile=true and commit packages.lock.json",
+                ))
+            if "packages.lock.json" in names and not re.search(r"<RestoreLockedMode>\s*true\s*</RestoreLockedMode>", nuget_config, re.IGNORECASE):
+                findings.append(Finding(
+                    "recommendation",
+                    "nuget-locked-mode-missing",
+                    str(project_dir),
+                    evidence="Set RestoreLockedMode=true for CI/checked restores so packages.lock.json is enforced",
+                ))
+            if "<packageSourceMapping>" not in nuget_config:
+                findings.append(Finding(
+                    "recommendation",
+                    "nuget-source-mapping-missing",
+                    str(project_dir),
+                    evidence="Consider NuGet packageSourceMapping in NuGet.config to bind package ID patterns to trusted feeds",
+                ))
+
+        if "go.mod" in names:
+            if "go.sum" not in names:
+                findings.append(Finding(
+                    "recommendation",
+                    "go-sum-missing",
+                    str(project_dir),
+                    evidence="Commit go.sum and run go mod verify in CI; keep GOSUMDB enabled and avoid GOINSECURE/GONOSUMDB=*",
+                ))
+            findings.append(Finding(
+                "recommendation",
+                "go-env-hardening-review",
+                str(project_dir),
+                evidence="Recommended: go env -w GOPROXY=https://proxy.golang.org,direct GOSUMDB=sum.golang.org GOVCS=public:git,private:all",
+            ))
+
+        if "Cargo.toml" in names:
+            cargo_text = read_nearby_config(project_dir, ["Cargo.toml"])
+            is_workspace = "[workspace]" in cargo_text
+            if "Cargo.lock" not in names and not is_workspace:
+                findings.append(Finding(
+                    "recommendation",
+                    "cargo-lock-missing",
+                    str(project_dir),
+                    evidence="For Rust applications, commit Cargo.lock and use cargo fetch/test --locked in CI",
+                ))
+            if not (project_dir / "deny.toml").exists():
+                findings.append(Finding(
+                    "recommendation",
+                    "cargo-deny-missing",
+                    str(project_dir),
+                    evidence="Consider cargo install cargo-deny; cargo deny init; cargo deny check for advisories/licenses/sources",
+                ))
+
+        if "pom.xml" in names:
+            pom_text = read_nearby_config(project_dir, ["pom.xml"])
+            if re.search(r">\s*(LATEST|RELEASE|\[[^\]]*,\)|\([^)]*,\))\s*<", pom_text):
+                findings.append(Finding(
+                    "recommendation",
+                    "maven-dynamic-version",
+                    str(project_dir),
+                    evidence="Avoid Maven dynamic/range versions like LATEST, RELEASE, [1.0,); pin exact versions",
+                ))
+            if (project_dir / "settings.xml").exists() and "<checksumPolicy>fail</checksumPolicy>" not in pom_text:
+                findings.append(Finding(
+                    "recommendation",
+                    "maven-checksum-policy-review",
+                    str(project_dir),
+                    evidence="In settings.xml/repository config, prefer checksumPolicy=fail; often enforced by Nexus/Artifactory",
+                ))
+
+        if "Gemfile.lock" in names:
+            bundle_config = read_nearby_config(project_dir, [".bundle/config", "Gemfile.lock"])
+            if "BUNDLE_FROZEN" not in bundle_config and "BUNDLE_DEPLOYMENT" not in bundle_config:
+                findings.append(Finding(
+                    "recommendation",
+                    "bundler-frozen-missing",
+                    str(project_dir),
+                    evidence="Consider bundle config set --local frozen true; bundle config set --local deployment true; run bundle audit check",
+                ))
+            if "CHECKSUMS" not in bundle_config:
+                findings.append(Finding(
+                    "recommendation",
+                    "bundler-checksums-missing",
+                    str(project_dir),
+                    evidence="On modern Bundler, consider bundle lock --add-checksums to verify gem contents",
+                ))
+
+        if {"uv.lock", "pyproject.toml"} & names:
+            for setting, expected in [
+                ("exclude-newer", None),
+                ("index-strategy", '"first-index"'),
+                ("no-sources", "true"),
+                ("no-build", "true"),
+            ]:
+                if not has_setting(uv_config, setting, expected):
+                    findings.append(Finding(
+                        "recommendation",
+                        "uv-hardening-missing",
+                        str(project_dir),
+                        evidence=f"Set tool.uv {setting}{'=' + expected if expected else ' to a dependency cooldown'}",
+                    ))
+    return findings
 
 
 def load_npm() -> None:
@@ -256,7 +545,11 @@ def iter_files(root: Path, include_node_modules: bool) -> tuple[list[Path], int]
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and (include_node_modules or d != NODE_MODULES)]
         for fn in filenames:
             p = Path(dirpath) / fn
-            if fn in SCAN_NAMES or fn in {"router_init.js", "router_runtime.js", "tanstack_runner.js", "transformers.pyz", "pgmonitor.py"}:
+            if (
+                fn in SCAN_NAMES
+                or fn.endswith(".csproj")
+                or fn in {"router_init.js", "router_runtime.js", "tanstack_runner.js", "transformers.pyz", "pgmonitor.py"}
+            ):
                 files.append(p)
             elif include_node_modules and fn == "package.json":
                 files.append(p)
@@ -298,10 +591,34 @@ def scan_file(path: Path, text: str) -> list[Finding]:
     return out
 
 
+def print_recommendation_summary(findings: list[Finding]) -> None:
+    grouped: dict[str, list[Finding]] = defaultdict(list)
+    for finding in findings:
+        if finding.severity == "recommendation":
+            grouped[finding.kind].append(finding)
+    if not grouped:
+        return
+    print("\nRecommended setup commands:")
+    for kind in sorted(grouped):
+        items = grouped[kind]
+        paths = sorted({item.path for item in items}, key=str.casefold)
+        print(f"\n[{kind}] {len(items)} finding(s), {len(paths)} path(s)")
+        print(f"  Fix: {REMEDIATIONS.get(kind, items[0].evidence or 'Review project configuration.')}")
+        for path in paths[:5]:
+            print(f"  - {path}")
+        if len(paths) > 5:
+            print(f"  - ... {len(paths) - 5} more")
+
+
 def main() -> int:
     load_npm()
     parser = argparse.ArgumentParser(description="Audit trees for Mini Shai-Hulud package IOCs")
     parser.add_argument("roots", nargs="*", default=["."], help="roots to scan, e.g. C:/projects")
+    parser.add_argument(
+        "--no-default-installs",
+        action="store_true",
+        help="do not add discovered npm/pnpm/bun/Python global and user installs",
+    )
     parser.add_argument("--include-node-modules", action="store_true", help="also scan node_modules package files/payloads")
     parser.add_argument("--json", action="store_true", help="emit JSON")
     parser.add_argument(
@@ -309,31 +626,64 @@ def main() -> int:
         action="store_true",
         help="also report non-critical affected-ecosystem package-name presence",
     )
+    parser.add_argument(
+        "--no-hardening-recommendations",
+        action="store_true",
+        help="do not report package-manager supply-chain hardening recommendations",
+    )
+    parser.add_argument(
+        "--list-all-recommendations",
+        action="store_true",
+        help="print every recommendation instead of grouped setup commands",
+    )
     args = parser.parse_args()
 
     findings: list[Finding] = []
     scanned = 0
-    for root_s in args.roots:
-        root = Path(root_s).expanduser().resolve()
-        files, _ = iter_files(root, args.include_node_modules)
+    project_dirs: dict[Path, set[str]] = {}
+    roots = existing_paths([Path(r) for r in args.roots])
+    if not args.no_default_installs:
+        roots = default_scan_roots(args.roots)
+    for root in roots:
+        include_node_modules = args.include_node_modules or root.name == "node_modules"
+        files, _ = iter_files(root, include_node_modules)
         for path in files:
+            if path.name in SCAN_NAMES:
+                project_dirs.setdefault(path.parent, set()).add(path.name)
             scanned += 1
             file_findings = scan_file(path, read_text(path))
             if not args.warn_package_names:
                 file_findings = [f for f in file_findings if f.severity != "info"]
             findings.extend(file_findings)
 
+    if not args.no_hardening_recommendations:
+        findings.extend(hardening_recommendations(project_dirs))
+
     critical = [f for f in findings if f.severity == "critical"]
-    result = {"scanned_files": scanned, "critical_count": len(critical), "findings": [asdict(f) for f in findings]}
+    result = {
+        "roots": [str(r) for r in roots],
+        "scanned_files": scanned,
+        "critical_count": len(critical),
+        "recommendation_count": len([f for f in findings if f.severity == "recommendation"]),
+        "findings": [asdict(f) for f in findings],
+    }
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
+        print(f"Roots: {len(roots)}")
+        for root in roots:
+            print(f"  {root}")
         print(f"Scanned files: {scanned}")
         print(f"Critical findings: {len(critical)}")
+        print(f"Recommendations: {len([f for f in findings if f.severity == 'recommendation'])}")
         for f in findings:
+            if f.severity == "recommendation" and not args.list_all_recommendations:
+                continue
             pkg = f" {f.package}@{f.version}" if f.package and f.version else f" {f.package}" if f.package else ""
             ev = f" evidence={f.evidence}" if f.evidence else ""
             print(f"[{f.severity}] {f.kind}{pkg} {f.path}{ev}")
+        if not args.list_all_recommendations:
+            print_recommendation_summary(findings)
     return 2 if critical else 0
 
 
