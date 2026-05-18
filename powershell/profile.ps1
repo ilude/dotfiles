@@ -132,6 +132,12 @@ Add-PathIfNotExists -PathToAdd "$env:USERPROFILE\.local\bin"
 function Invoke-Claude {
   $claudePath = (Get-Command claude -ErrorAction Stop).Source
 
+  # Native executables (e.g. WinGet's claude.exe) run directly; no JS runtime needed.
+  if ($claudePath -like '*.exe') {
+    & $claudePath @args
+    return
+  }
+
   if (Get-Command node -ErrorAction SilentlyContinue) {
     & $claudePath @args
     return

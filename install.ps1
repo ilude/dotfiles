@@ -964,7 +964,8 @@ function Install-Packages {
         Write-Host "  pnpm not found - skipping (rerun installer after core packages finish)" -ForegroundColor DarkGray
     }
 
-    # Claude Code (prefer Bun, fall back to WinGet)
+    # Claude Code (WinGet). The native claude.exe needs no JS runtime and works
+    # uniformly across Windows machines regardless of whether node/bun is present.
     Write-Host "`n--- Claude Code ---" -ForegroundColor Cyan
     $claudeVersion = $null
     $claudeCommand = Get-Command claude -ErrorAction SilentlyContinue
@@ -982,47 +983,13 @@ function Install-Packages {
         Write-Host "  Claude Code: already installed ($claudeVersion)" -ForegroundColor DarkGray
     } elseif ($claudeCommand) {
         Write-Host "  Claude Code: already installed" -ForegroundColor DarkGray
+    } elseif (Get-Command winget -ErrorAction SilentlyContinue) {
+        if (-not (Install-WingetPackage -Id 'Anthropic.ClaudeCode' -Name 'Claude Code')) {
+            $script:failed += 'winget:claude-code'
+        }
     } else {
-        $claudeInstalled = $false
-
-        if (Get-Command bun -ErrorAction SilentlyContinue) {
-            $bunBinDir = Join-Path $env:USERPROFILE '.bun\bin'
-            $userPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
-            if ($userPath -notlike "*$bunBinDir*") {
-                $newUserPath = if ([string]::IsNullOrWhiteSpace($userPath)) { $bunBinDir } else { "$bunBinDir;$userPath" }
-                [Environment]::SetEnvironmentVariable('PATH', $newUserPath, 'User')
-            }
-            if ($env:PATH -notlike "*$bunBinDir*") {
-                $env:PATH = "$bunBinDir;$env:PATH"
-            }
-
-            Write-Host "  Bun install..." -ForegroundColor Cyan -NoNewline
-            try {
-                bun install -g @anthropic-ai/claude-code 2>$null | Out-Null
-                if ($LASTEXITCODE -eq 0) {
-                    $claudeInstalled = $true
-                    Write-Host " installed" -ForegroundColor Green
-                } else {
-                    Write-Host " failed" -ForegroundColor Yellow
-                }
-            } catch {
-                Write-Host " failed" -ForegroundColor Yellow
-            }
-        } else {
-            Write-Host "  Bun install... skipped (bun not found)" -ForegroundColor DarkGray
-        }
-
-        if (-not $claudeInstalled -and (Get-Command winget -ErrorAction SilentlyContinue)) {
-            Write-Host "  Bun unavailable or failed; trying WinGet..." -ForegroundColor DarkGray
-            if (Install-WingetPackage -Id 'Anthropic.ClaudeCode' -Name 'Claude Code') {
-                $claudeInstalled = $true
-            } else {
-                $script:failed += 'winget:claude-code'
-            }
-        } elseif (-not $claudeInstalled) {
-            Write-Host "  WinGet not found - unable to install Claude Code" -ForegroundColor Red
-            $script:failed += 'claude-code'
-        }
+        Write-Host "  WinGet not found - unable to install Claude Code" -ForegroundColor Red
+        $script:failed += 'claude-code'
     }
 
     # Enable the built-in PowerShell tool in Claude Code (Windows-only opt-in)
