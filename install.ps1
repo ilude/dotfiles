@@ -1533,102 +1533,6 @@ try {
             & $gitBash "$bashPath"
         }
 
-        # Install Pi coding agent (Windows uses pnpm; Bun's resolver fails on
-        # Pi's transitive AWS SDK deps on Windows -- see pi/README.md).
-        Write-Host "`nInstalling Pi coding agent..." -ForegroundColor Cyan
-        if (Get-Command pnpm -ErrorAction SilentlyContinue) {
-            $piInstalled = pnpm list -g @earendil-works/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
-            if ($piInstalled) {
-                Write-Host "  Updating pi-coding-agent via pnpm..." -ForegroundColor Cyan
-            } else {
-                Write-Host "  Installing pi-coding-agent via pnpm..." -ForegroundColor Cyan
-            }
-
-            # Remove conflicting/legacy installs BEFORE pnpm add. pnpm refuses to
-            # install when another package owns the global "pi" bin (e.g. legacy
-            # @mariozechner/pi-coding-agent), so cleanup must precede install.
-            $legacyMarioPnpm = pnpm list -g --depth -1 2>$null | Select-String '@mariozechner/pi-coding-agent'
-            if ($legacyMarioPnpm) {
-                Write-Host "  Removing legacy pnpm-installed @mariozechner/pi-coding-agent..." -ForegroundColor DarkGray
-                pnpm remove -g '@mariozechner/pi-coding-agent' 2>$null | Out-Null
-            }
-
-            if (Get-Command npm -ErrorAction SilentlyContinue) {
-                $legacyNpmPi = npm list -g @earendil-works/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
-                $legacyMarioNpmPi = npm list -g @mariozechner/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
-                if ($legacyNpmPi -or $legacyMarioNpmPi) {
-                    Write-Host "  Removing legacy npm-installed pi-coding-agent..." -ForegroundColor DarkGray
-                    npm uninstall -g @earendil-works/pi-coding-agent 2>$null | Out-Null
-                    npm uninstall -g @mariozechner/pi-coding-agent 2>$null | Out-Null
-                }
-            }
-
-            if (Get-Command bun -ErrorAction SilentlyContinue) {
-                $bunBinDir = Join-Path $env:USERPROFILE '.bun\bin'
-                $bunPi = Join-Path $bunBinDir 'pi'
-                if ((Test-Path $bunPi) -or (Test-Path "${bunPi}.exe")) {
-                    Write-Host "  Removing legacy Bun-installed pi-coding-agent..." -ForegroundColor DarkGray
-                    bun uninstall -g @earendil-works/pi-coding-agent 2>$null | Out-Null
-                    bun uninstall -g @mariozechner/pi-coding-agent 2>$null | Out-Null
-                }
-            }
-
-            # Always run pnpm for Pi. Older Pi releases have had self-update bugs,
-            # so treating dotfiles bootstrap as an idempotent upgrade path keeps
-            # `pi update` healthy instead of leaving a stale global install behind.
-            pnpm add -g --allow-build=koffi --allow-build=protobufjs `
-                '@earendil-works/pi-coding-agent@0.74.0' `
-                '@earendil-works/pi-agent-core@0.74.0' `
-                '@earendil-works/pi-ai@0.74.0' `
-                '@earendil-works/pi-tui@0.74.0'
-            if ($LASTEXITCODE -eq 0) {
-                if ($piInstalled) {
-                    Write-Host "  pi-coding-agent: updated successfully via pnpm" -ForegroundColor Green
-                } else {
-                    Write-Host "  pi-coding-agent: installed successfully via pnpm" -ForegroundColor Green
-                }
-            } else {
-                Write-Host "  pi-coding-agent: installation/update failed" -ForegroundColor Red
-            }
-        } else {
-            Write-Host "  pnpm not found - skipping Pi installation (Windows installs Pi via pnpm because Bun's resolver fails on Pi's AWS SDK deps)" -ForegroundColor Yellow
-        }
-
-        # Set up Pi directory link
-        Write-Host "`nSetting up Pi directory..." -ForegroundColor Cyan
-        $piLinkSetup = Join-Path $BASEDIR "scripts" "pi-link-setup"
-        if (Test-Path $piLinkSetup) {
-            $bashPath = ConvertTo-GitBashPath $piLinkSetup
-            & $gitBash "$bashPath"
-        }
-
-        # Link pnpm-global @scopes into pi/node_modules so extensions can resolve them
-        $piDepsLinkSetup = Join-Path $BASEDIR "scripts" "pi-deps-link-setup"
-        if (Test-Path $piDepsLinkSetup) {
-            $bashPath = ConvertTo-GitBashPath $piDepsLinkSetup
-            & $gitBash "$bashPath"
-        }
-
-        # Install pi web-fetch dependencies
-        $webFetchDir = Join-Path $BASEDIR "pi" "extensions" "web-fetch"
-        if (Test-Path $webFetchDir) {
-            $nodeModules = Join-Path $webFetchDir "node_modules"
-            if (Test-Path $nodeModules) {
-                Write-Host "  pi web-fetch deps: already installed" -ForegroundColor DarkGray
-            } else {
-                Write-Host "  Installing pi web-fetch dependencies..." -ForegroundColor Cyan
-                if (Get-Command bun -ErrorAction SilentlyContinue) {
-                    bun install --cwd $webFetchDir
-                } elseif (Get-Command pnpm -ErrorAction SilentlyContinue) {
-                    pnpm install --dir $webFetchDir
-                } else {
-                    Write-Host "  bun and pnpm not found - skipping pi web-fetch deps" -ForegroundColor Yellow
-                }
-            }
-        } else {
-            Write-Host "  pi web-fetch dir not found - skipping" -ForegroundColor DarkGray
-        }
-
         # Configure Claude MCP servers
         Write-Host "`nConfiguring Claude MCP servers..." -ForegroundColor Cyan
         $claudeMcpSetup = Join-Path $BASEDIR "scripts" "claude-mcp-setup"
@@ -1795,6 +1699,102 @@ try {
             Configure-Rclone
         } else {
             Write-Host "`nLock file not updated because package installation had failures" -ForegroundColor Yellow
+        }
+    }
+
+    # ========================================================================
+    # Pi coding agent (must run AFTER Install-Packages so pnpm exists on first run)
+    # ========================================================================
+    Write-Host "`nInstalling Pi coding agent..." -ForegroundColor Cyan
+    if (Get-Command pnpm -ErrorAction SilentlyContinue) {
+        $piInstalled = pnpm list -g @earendil-works/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
+        if ($piInstalled) {
+            Write-Host "  Updating pi-coding-agent via pnpm..." -ForegroundColor Cyan
+        } else {
+            Write-Host "  Installing pi-coding-agent via pnpm..." -ForegroundColor Cyan
+        }
+
+        # Remove conflicting/legacy installs BEFORE pnpm add. pnpm refuses to
+        # install when another package owns the global "pi" bin (e.g. legacy
+        # @mariozechner/pi-coding-agent), so cleanup must precede install.
+        $legacyMarioPnpm = pnpm list -g --depth -1 2>$null | Select-String '@mariozechner/pi-coding-agent'
+        if ($legacyMarioPnpm) {
+            Write-Host "  Removing legacy pnpm-installed @mariozechner/pi-coding-agent..." -ForegroundColor DarkGray
+            pnpm remove -g '@mariozechner/pi-coding-agent' 2>$null | Out-Null
+        }
+
+        if (Get-Command npm -ErrorAction SilentlyContinue) {
+            $legacyNpmPi = npm list -g @earendil-works/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
+            $legacyMarioNpmPi = npm list -g @mariozechner/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
+            if ($legacyNpmPi -or $legacyMarioNpmPi) {
+                Write-Host "  Removing legacy npm-installed pi-coding-agent..." -ForegroundColor DarkGray
+                npm uninstall -g @earendil-works/pi-coding-agent 2>$null | Out-Null
+                npm uninstall -g @mariozechner/pi-coding-agent 2>$null | Out-Null
+            }
+        }
+
+        if (Get-Command bun -ErrorAction SilentlyContinue) {
+            $bunBinDir = Join-Path $env:USERPROFILE '.bun\bin'
+            $bunPi = Join-Path $bunBinDir 'pi'
+            if ((Test-Path $bunPi) -or (Test-Path "${bunPi}.exe")) {
+                Write-Host "  Removing legacy Bun-installed pi-coding-agent..." -ForegroundColor DarkGray
+                bun uninstall -g @earendil-works/pi-coding-agent 2>$null | Out-Null
+                bun uninstall -g @mariozechner/pi-coding-agent 2>$null | Out-Null
+            }
+        }
+
+        # Always run pnpm for Pi. Older Pi releases have had self-update bugs,
+        # so treating dotfiles bootstrap as an idempotent upgrade path keeps
+        # `pi update` healthy instead of leaving a stale global install behind.
+        pnpm add -g --allow-build=koffi --allow-build=protobufjs `
+            '@earendil-works/pi-coding-agent@0.74.0' `
+            '@earendil-works/pi-agent-core@0.74.0' `
+            '@earendil-works/pi-ai@0.74.0' `
+            '@earendil-works/pi-tui@0.74.0'
+        if ($LASTEXITCODE -eq 0) {
+            if ($piInstalled) {
+                Write-Host "  pi-coding-agent: updated successfully via pnpm" -ForegroundColor Green
+            } else {
+                Write-Host "  pi-coding-agent: installed successfully via pnpm" -ForegroundColor Green
+            }
+        } else {
+            Write-Host "  pi-coding-agent: installation/update failed" -ForegroundColor Red
+        }
+    } else {
+        Write-Host "  pnpm not found - skipping Pi installation (Windows installs Pi via pnpm because Bun's resolver fails on Pi's AWS SDK deps)" -ForegroundColor Yellow
+    }
+
+    # Set up Pi directory link and resolve pnpm-global deps for pi extensions
+    if ($gitBash) {
+        Write-Host "`nSetting up Pi directory..." -ForegroundColor Cyan
+        $piLinkSetup = Join-Path $BASEDIR "scripts" "pi-link-setup"
+        if (Test-Path $piLinkSetup) {
+            $bashPath = ConvertTo-GitBashPath $piLinkSetup
+            & $gitBash "$bashPath"
+        }
+
+        $piDepsLinkSetup = Join-Path $BASEDIR "scripts" "pi-deps-link-setup"
+        if (Test-Path $piDepsLinkSetup) {
+            $bashPath = ConvertTo-GitBashPath $piDepsLinkSetup
+            & $gitBash "$bashPath"
+        }
+    }
+
+    # Install pi web-fetch dependencies
+    $webFetchDir = Join-Path $BASEDIR "pi" "extensions" "web-fetch"
+    if (Test-Path $webFetchDir) {
+        $nodeModules = Join-Path $webFetchDir "node_modules"
+        if (Test-Path $nodeModules) {
+            Write-Host "  pi web-fetch deps: already installed" -ForegroundColor DarkGray
+        } else {
+            Write-Host "  Installing pi web-fetch dependencies..." -ForegroundColor Cyan
+            if (Get-Command bun -ErrorAction SilentlyContinue) {
+                bun install --cwd $webFetchDir
+            } elseif (Get-Command pnpm -ErrorAction SilentlyContinue) {
+                pnpm install --dir $webFetchDir
+            } else {
+                Write-Host "  bun and pnpm not found - skipping pi web-fetch deps" -ForegroundColor Yellow
+            }
         }
     }
 
