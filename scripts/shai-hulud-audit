@@ -1,9 +1,31 @@
 #!/usr/bin/env python3
-"""Deterministic Mini Shai-Hulud repo/lockfile audit.
+"""Deterministic Mini Shai-Hulud repository and install-root audit.
 
-Scans repositories/trees for known compromised package versions and payload IOCs
-from the May 2026 Mini Shai-Hulud npm/PyPI campaign. This is intentionally
-stdlib-only so it can be copied to other machines.
+The script has two jobs:
+
+1. Find known-bad package versions and payload indicators from the May 2026
+   Mini Shai-Hulud npm/PyPI campaign. These are reported as ``critical`` and
+   make the process exit with status 2.
+2. Find package-manager hardening gaps that increase exposure to future
+   install-time supply-chain attacks. These are reported as ``recommendation``
+   and do not fail the process.
+
+Design goals:
+
+* stdlib-only so the file can be copied to other machines without bootstrapping
+  dependencies;
+* read-only scanning; no package manager install/import/build commands are run;
+* deterministic matching against lockfiles, manifests, and known payload names;
+* concise default output with JSON available for automation.
+
+Typical usage:
+
+    python scripts/shai-hulud-audit C:/projects
+    python scripts/shai-hulud-audit C:/projects --json > audit.json
+    python scripts/shai-hulud-audit C:/projects --no-hardening-recommendations
+
+By default, the explicit roots are scanned and common global/user install roots
+for npm, pnpm, Bun, and Python are added when they exist.
 """
 from __future__ import annotations
 
@@ -229,6 +251,11 @@ NODE_MODULES = "node_modules"
 
 
 def run_command(args: list[str]) -> str | None:
+    """Return stdout for a short discovery command, or ``None`` on failure.
+
+    Only benign location-discovery commands such as ``npm root -g`` are used.
+    A timeout keeps unavailable tools from making the audit feel hung.
+    """
     try:
         proc = subprocess.run(args, capture_output=True, text=True, timeout=15, check=False)
     except (OSError, subprocess.SubprocessError):
@@ -239,6 +266,7 @@ def run_command(args: list[str]) -> str | None:
 
 
 def existing_paths(paths: list[str | Path]) -> list[Path]:
+    """Resolve, de-duplicate, and keep only paths that exist."""
     out: list[Path] = []
     seen: set[str] = set()
     for raw in paths:
@@ -257,6 +285,13 @@ def existing_paths(paths: list[str | Path]) -> list[Path]:
 
 
 def default_scan_roots(user_roots: list[str]) -> list[Path]:
+    """Return explicit roots plus discovered global/user package install roots.
+
+    The function intentionally combines command-discovered paths with common
+    platform fallback locations. This makes the script useful on fresh machines,
+    CI runners, and developer workstations even when one package manager is not
+    installed or not on PATH.
+    """
     roots: list[str | Path] = [Path(r) for r in user_roots]
 
     npm_root = run_command(["npm", "root", "-g"])
@@ -297,6 +332,14 @@ def default_scan_roots(user_roots: list[str]) -> list[Path]:
 
 @dataclass
 class Finding:
+    """One audit result suitable for both human output and JSON serialization.
+
+    ``severity`` is one of:
+    * ``critical``: known compromised version or IOC; process exits 2;
+    * ``recommendation``: hardening gap; actionable but non-failing;
+    * ``info``: opt-in context from ``--warn-package-names``.
+    """
+
     severity: str
     kind: str
     path: str
@@ -327,12 +370,19 @@ REMEDIATIONS = {
 
 
 def has_setting(text: str, name: str, value: str | None = None) -> bool:
+    """Return whether a simple ``key=value`` or ``key: value`` setting exists.
+
+    This intentionally handles only the small cross-file setting forms used by
+    npmrc, pnpm YAML, bunfig-adjacent text, and TOML snippets in this script.
+    It is a low-noise heuristic, not a complete parser for every format.
+    """
     if value is None:
         return re.search(rf"(?m)^\s*{re.escape(name)}\s*[:=]", text) is not None
     return re.search(rf"(?m)^\s*{re.escape(name)}\s*[:=]\s*{re.escape(value)}\s*$", text, re.IGNORECASE) is not None
 
 
 def read_nearby_config(project_dir: Path, names: list[str]) -> str:
+    """Concatenate named config files that exist directly under ``project_dir``."""
     parts: list[str] = []
     for name in names:
         path = project_dir / name
@@ -342,6 +392,13 @@ def read_nearby_config(project_dir: Path, names: list[str]) -> str:
 
 
 def hardening_recommendations(project_dirs: dict[Path, set[str]]) -> list[Finding]:
+    """Produce non-failing supply-chain hardening recommendations.
+
+    ``project_dirs`` maps each directory to the package-manager files found in
+    that directory. Recommendations are deliberately conservative: they point to
+    settings that reduce install-time code execution, enforce lockfiles, or pin
+    dependency provenance, but they do not claim the project is compromised.
+    """
     findings: list[Finding] = []
     for project_dir, names in sorted(project_dirs.items(), key=lambda item: str(item[0]).casefold()):
         js_config = read_nearby_config(project_dir, [".npmrc", "pnpm-workspace.yaml", "pnpm-workspace.yml", "package.json"])
@@ -522,12 +579,14 @@ def hardening_recommendations(project_dirs: dict[Path, set[str]]) -> list[Findin
 
 
 def load_npm() -> None:
+    """Parse the embedded affected npm package/version table into a mapping."""
     for line in AFFECTED_NPM_TEXT.strip().splitlines():
         name, versions = line.split(":", 1)
         AFFECTED_NPM[name.strip()] = {v.strip() for v in versions.split(",")}
 
 
 def version_patterns(name: str, version: str) -> list[re.Pattern[str]]:
+    """Build regexes for common lockfile/manifest package-version forms."""
     n = re.escape(name)
     v = re.escape(version)
     return [
@@ -539,6 +598,12 @@ def version_patterns(name: str, version: str) -> list[re.Pattern[str]]:
 
 
 def iter_files(root: Path, include_node_modules: bool) -> tuple[list[Path], int]:
+    """Return package-manager and IOC candidate files under ``root``.
+
+    Large generated directories are skipped by default. ``node_modules`` is
+    skipped for repository scans but included for discovered global installs or
+    when the user explicitly passes ``--include-node-modules``.
+    """
     files: list[Path] = []
     skipped = 0
     for dirpath, dirnames, filenames in os.walk(root):
@@ -559,6 +624,7 @@ def iter_files(root: Path, include_node_modules: bool) -> tuple[list[Path], int]
 
 
 def read_text(path: Path) -> str:
+    """Read a small text file as UTF-8 with replacement; return empty on error."""
     try:
         if path.stat().st_size > 15_000_000:
             return ""
@@ -568,6 +634,7 @@ def read_text(path: Path) -> str:
 
 
 def scan_file(path: Path, text: str) -> list[Finding]:
+    """Scan one file for critical IOCs and known affected package versions."""
     out: list[Finding] = []
     low = text.lower()
     for ioc in IOCS:
@@ -592,6 +659,7 @@ def scan_file(path: Path, text: str) -> list[Finding]:
 
 
 def print_recommendation_summary(findings: list[Finding]) -> None:
+    """Print grouped remediation guidance instead of hundreds of raw rows."""
     grouped: dict[str, list[Finding]] = defaultdict(list)
     for finding in findings:
         if finding.severity == "recommendation":
@@ -603,7 +671,8 @@ def print_recommendation_summary(findings: list[Finding]) -> None:
         items = grouped[kind]
         paths = sorted({item.path for item in items}, key=str.casefold)
         print(f"\n[{kind}] {len(items)} finding(s), {len(paths)} path(s)")
-        print(f"  Fix: {REMEDIATIONS.get(kind, items[0].evidence or 'Review project configuration.')}")
+        fix = REMEDIATIONS.get(kind, items[0].evidence or "Review project configuration.")
+        print(f"  Fix: {fix}")
         for path in paths[:5]:
             print(f"  - {path}")
         if len(paths) > 5:
@@ -611,15 +680,27 @@ def print_recommendation_summary(findings: list[Finding]) -> None:
 
 
 def main() -> int:
+    """CLI entrypoint. Return 2 only when critical compromise findings exist."""
     load_npm()
-    parser = argparse.ArgumentParser(description="Audit trees for Mini Shai-Hulud package IOCs")
+    parser = argparse.ArgumentParser(
+        description="Audit trees for Mini Shai-Hulud package IOCs",
+        epilog=(
+            "Examples: %(prog)s C:/projects | "
+            "%(prog)s C:/projects --json > audit.json | "
+            "%(prog)s C:/projects --no-hardening-recommendations"
+        ),
+    )
     parser.add_argument("roots", nargs="*", default=["."], help="roots to scan, e.g. C:/projects")
     parser.add_argument(
         "--no-default-installs",
         action="store_true",
         help="do not add discovered npm/pnpm/bun/Python global and user installs",
     )
-    parser.add_argument("--include-node-modules", action="store_true", help="also scan node_modules package files/payloads")
+    parser.add_argument(
+        "--include-node-modules",
+        action="store_true",
+        help="also scan node_modules package files/payloads",
+    )
     parser.add_argument("--json", action="store_true", help="emit JSON")
     parser.add_argument(
         "--warn-package-names",
