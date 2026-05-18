@@ -14,6 +14,13 @@ _run_claude() {
     local claude_bin
     claude_bin="$(whence -p claude 2>/dev/null)" || return 127
 
+    # Native Windows executables (WinGet's claude.exe) run directly; handing
+    # an EXE to bun makes bun lex MZ-header bytes as JS and emits gibberish.
+    if [[ "$claude_bin" == *.exe ]]; then
+        command "$claude_bin" "$@"
+        return
+    fi
+
     if (( ${+commands[node]} )); then
         command "$claude_bin" "$@"
         return
