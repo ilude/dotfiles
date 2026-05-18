@@ -306,6 +306,12 @@ if command -v pnpm &>/dev/null; then
         pnpm remove -g @mariozechner/pi-coding-agent &>/dev/null || true
     fi
 
+    if pnpm list -g --depth -1 2>/dev/null | grep -q '^birdclaw'; then
+        echo "Removing pnpm-installed birdclaw and its global dependencies..."
+        pnpm remove -g birdclaw &>/dev/null || true
+        rm -f "$PNPM_HOME/birdclaw" "$PNPM_HOME/birdclaw.CMD" "$PNPM_HOME/birdclaw.ps1"
+    fi
+
     if command -v bun &>/dev/null && [[ -L "$HOME/.bun/bin/pi" || -f "$HOME/.bun/bin/pi" ]]; then
         echo "Removing legacy bun-installed pi-coding-agent..."
         bun uninstall -g @earendil-works/pi-coding-agent &>/dev/null || true

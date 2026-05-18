@@ -1723,6 +1723,19 @@ try {
             pnpm remove -g '@mariozechner/pi-coding-agent' 2>$null | Out-Null
         }
 
+        $birdclawPnpm = pnpm list -g --depth -1 2>$null | Select-String '^birdclaw'
+        if ($birdclawPnpm) {
+            Write-Host "  Removing pnpm-installed birdclaw and its global dependencies..." -ForegroundColor DarkGray
+            pnpm remove -g 'birdclaw' 2>$null | Out-Null
+            $pnpmHome = pnpm bin -g 2>$null | Select-Object -First 1
+            if ($pnpmHome) {
+                Remove-Item -Force -ErrorAction SilentlyContinue `
+                    (Join-Path $pnpmHome 'birdclaw'), `
+                    (Join-Path $pnpmHome 'birdclaw.CMD'), `
+                    (Join-Path $pnpmHome 'birdclaw.ps1')
+            }
+        }
+
         if (Get-Command npm -ErrorAction SilentlyContinue) {
             $legacyNpmPi = npm list -g @earendil-works/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
             $legacyMarioNpmPi = npm list -g @mariozechner/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
