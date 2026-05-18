@@ -1,0 +1,14 @@
+{
+  "critical_count": 0,
+  "findings": [
+    {
+      "evidence": null,
+      "kind": "pypi-package-present-review-version",
+      "package": "mistralai",
+      "path": "C:\\Projects\\Personal\\agent-spike\\uv.lock",
+      "severity": "info",
+      "version": null
+    }
+  ],
+  "scanned_files": 418
+}

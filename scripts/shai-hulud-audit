@@ -1,0 +1,341 @@
+#!/usr/bin/env python3
+"""Deterministic Mini Shai-Hulud repo/lockfile audit.
+
+Scans repositories/trees for known compromised package versions and payload IOCs
+from the May 2026 Mini Shai-Hulud npm/PyPI campaign. This is intentionally
+stdlib-only so it can be copied to other machines.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+from dataclasses import dataclass, asdict
+from pathlib import Path
+
+# Source: Aikido "Mini Shai-Hulud Is Back" affected package list, 2026-05-12,
+# plus TanStack GHSA-g7cv-rxg3-hmpx and public PyPI reporting.
+AFFECTED_NPM: dict[str, set[str]] = {}
+AFFECTED_PYPI: dict[str, set[str]] = {
+    "mistralai": {"2.4.6"},
+    # Public reporting confirms guardrails-ai was affected but version lists have
+    # varied by feed. Treat any exact IOC marker as critical; use package-name
+    # presence as suspicious context rather than a version hit below.
+}
+SUSPICIOUS_PYPI_NAMES = {"guardrails-ai", "mistralai"}
+
+AFFECTED_NPM_TEXT = r"""
+@tanstack/history: 1.161.9, 1.161.12
+@tanstack/react-router: 1.169.5, 1.169.8
+@tanstack/router-core: 1.169.5, 1.169.8
+@tanstack/router-utils: 1.161.11, 1.161.14
+@tanstack/router-plugin: 1.167.38, 1.167.41
+@tanstack/virtual-file-routes: 1.161.10, 1.161.13
+@tanstack/router-generator: 1.166.45, 1.166.48
+@tanstack/start-server-core: 1.167.33, 1.167.36
+@tanstack/start-client-core: 1.168.5, 1.168.8
+@tanstack/start-storage-context: 1.166.38, 1.166.41
+@tanstack/start-plugin-core: 1.169.23, 1.169.26
+@tanstack/react-start-server: 1.166.55, 1.166.58
+@tanstack/react-start-client: 1.166.51, 1.166.54
+@tanstack/start-fn-stubs: 1.161.9, 1.161.12
+@tanstack/react-start: 1.167.68, 1.167.71
+@tanstack/react-start-rsc: 0.0.47, 0.0.50
+@mistralai/mistralai: 2.2.2, 2.2.3, 2.2.4
+@tanstack/react-router-devtools: 1.166.16, 1.166.19
+@tanstack/router-devtools-core: 1.167.6, 1.167.9
+@tanstack/router-devtools: 1.166.16, 1.166.19
+@tanstack/router-ssr-query-core: 1.168.3, 1.168.6
+@tanstack/react-router-ssr-query: 1.166.15, 1.166.18
+@tanstack/router-cli: 1.166.46, 1.166.49
+@tanstack/zod-adapter: 1.166.12, 1.166.15
+@tanstack/eslint-plugin-router: 1.161.9, 1.161.12
+@tanstack/router-vite-plugin: 1.166.53, 1.166.56
+@tanstack/nitro-v2-vite-plugin: 1.154.12, 1.154.15
+@mistralai/mistralai-gcp: 1.7.1, 1.7.2, 1.7.3
+@tanstack/solid-router: 1.169.5, 1.169.8
+@tanstack/solid-start: 1.167.65, 1.167.68
+@tanstack/solid-start-client: 1.166.50, 1.166.53
+@tanstack/solid-start-server: 1.166.54, 1.166.57
+@tanstack/solid-router-devtools: 1.166.16, 1.166.19
+@tanstack/start-static-server-functions: 1.166.44, 1.166.47
+@tanstack/vue-router: 1.169.5, 1.169.8
+@uipath/apollo-react: 4.24.5
+@tanstack/solid-router-ssr-query: 1.166.15, 1.166.18
+safe-action: 0.8.3, 0.8.4
+@tanstack/valibot-adapter: 1.166.12, 1.166.15
+@tanstack/vue-start: 1.167.61, 1.167.64
+@uipath/apollo-wind: 2.16.2
+@uipath/cli: 1.0.1
+@tanstack/vue-start-server: 1.166.50, 1.166.53
+@squawk/types: 0.8.2, 0.8.3, 0.8.4
+@uipath/rpa-tool: 0.9.5
+@squawk/mcp: 0.9.1, 0.9.2, 0.9.3, 0.9.4
+@tanstack/vue-start-client: 1.166.46, 1.166.49
+@squawk/weather: 0.5.6, 0.5.7, 0.5.8, 0.5.9
+@squawk/airspace: 0.8.1, 0.8.2, 0.8.3, 0.8.4
+@squawk/icao-registry-data: 0.8.4, 0.8.5, 0.8.6, 0.8.7
+@tanstack/arktype-adapter: 1.166.12, 1.166.15
+@squawk/flightplan: 0.5.2, 0.5.3, 0.5.4, 0.5.5
+@squawk/airports: 0.6.2, 0.6.3, 0.6.4, 0.6.5
+@mesadev/sdk: 0.28.3
+@squawk/geo: 0.4.4, 0.4.5, 0.4.6, 0.4.7
+@mesadev/rest: 0.28.3
+@squawk/procedure-data: 0.7.3, 0.7.4, 0.7.5, 0.7.6
+@squawk/navaid-data: 0.6.4, 0.6.5, 0.6.6, 0.6.7
+@squawk/fix-data: 0.6.4, 0.6.5, 0.6.6, 0.6.7
+@squawk/navaids: 0.4.2, 0.4.3, 0.4.4, 0.4.5
+@squawk/fixes: 0.3.2, 0.3.3, 0.3.4, 0.3.5
+@squawk/airport-data: 0.7.4, 0.7.5, 0.7.6, 0.7.7
+@squawk/airway-data: 0.5.4, 0.5.5, 0.5.6, 0.5.7
+@squawk/units: 0.4.3, 0.4.4, 0.4.5, 0.4.6
+@squawk/procedures: 0.5.2, 0.5.3, 0.5.4, 0.5.5
+@squawk/airways: 0.4.2, 0.4.3, 0.4.4, 0.4.5
+@squawk/icao-registry: 0.5.2, 0.5.3, 0.5.4, 0.5.5
+@uipath/apollo-core: 5.9.2
+@squawk/notams: 0.3.6, 0.3.7, 0.3.8, 0.3.9
+@uipath/filesystem: 1.0.1
+@uipath/solutionpackager-tool-core: 0.0.34
+@squawk/flight-math: 0.5.4, 0.5.5, 0.5.6, 0.5.7
+@squawk/airspace-data: 0.5.3, 0.5.4, 0.5.5, 0.5.6
+@mistralai/mistralai-azure: 1.7.1, 1.7.2, 1.7.3
+@uipath/solution-tool: 1.0.1
+@tanstack/eslint-plugin-start: 0.0.4, 0.0.7
+@uipath/maestro-tool: 1.0.1
+@uipath/codedapp-tool: 1.0.1
+@uipath/agent-tool: 1.0.1
+@draftlab/auth: 0.24.1, 0.24.2
+@uipath/orchestrator-tool: 1.0.1
+@uipath/integrationservice-tool: 1.0.2
+@taskflow-corp/cli: 0.1.24, 0.1.25, 0.1.26, 0.1.27, 0.1.28, 0.1.29
+@tanstack/vue-router-ssr-query: 1.166.15, 1.166.18
+@uipath/rpa-legacy-tool: 1.0.1
+@uipath/vertical-solutions-tool: 1.0.1
+@uipath/flow-tool: 1.0.2
+@uipath/codedagent-tool: 1.0.1
+@uipath/common: 1.0.1
+@uipath/resource-tool: 1.0.1
+@uipath/auth: 1.0.1
+@uipath/docsai-tool: 1.0.1
+@uipath/case-tool: 1.0.1
+@uipath/api-workflow-tool: 1.0.1
+@tanstack/vue-router-devtools: 1.166.16, 1.166.19
+@uipath/test-manager-tool: 1.0.2
+@uipath/robot: 1.3.4
+@uipath/traces-tool: 1.0.1
+@uipath/agent-sdk: 1.0.2
+@uipath/integrationservice-sdk: 1.0.2
+@uipath/maestro-sdk: 1.0.1
+@uipath/data-fabric-tool: 1.0.2
+@mesadev/saguaro: 0.4.22
+@uipath/tasks-tool: 1.0.1
+@uipath/insights-tool: 1.0.1
+@uipath/insights-sdk: 1.0.1
+@uipath/uipath-python-bridge: 1.0.1
+@draftlab/db: 0.16.1
+@uipath/ap-chat: 1.5.7
+@uipath/project-packager: 1.1.16
+@uipath/packager-tool-case: 0.0.9
+@uipath/packager-tool-workflowcompiler-browser: 0.0.34
+@uipath/packager-tool-connector: 0.0.19
+@uipath/packager-tool-workflowcompiler: 0.0.16
+@uipath/packager-tool-webapp: 1.0.6
+@uipath/packager-tool-apiworkflow: 0.0.19
+@uipath/packager-tool-functions: 0.1.1
+ts-dna: 3.0.1, 3.0.2, 3.0.3, 3.0.4
+@uipath/widget.sdk: 1.2.3
+@uipath/resources-tool: 0.1.11
+@uipath/agent.sdk: 0.0.18
+cross-stitch: 1.1.3, 1.1.4, 1.1.5, 1.1.6
+@uipath/codedagents-tool: 0.1.12
+@uipath/aops-policy-tool: 0.3.1
+@uipath/solution-packager: 0.0.35
+@draftlab/auth-router: 0.5.1, 0.5.2
+cmux-agent-mcp: 0.1.3, 0.1.4, 0.1.5, 0.1.6, 0.1.7, 0.1.8
+agentwork-cli: 0.1.4, 0.1.5
+@uipath/packager-tool-bpmn: 0.0.9
+@draftauth/core: 0.13.1, 0.13.2
+@dirigible-ai/sdk: 0.6.2, 0.6.3
+@uipath/packager-tool-flow: 0.0.19
+git-branch-selector: 1.3.3, 1.3.4, 1.3.5, 1.3.6, 1.3.7
+wot-api: 0.8.1, 0.8.2, 0.8.3, 0.8.4
+git-git-git: 1.0.8, 1.0.9, 1.0.10, 1.0.11, 1.0.12
+@beproduct/nestjs-auth: 0.1.2, 0.1.3, 0.1.4, 0.1.5, 0.1.6, 0.1.7, 0.1.8, 0.1.9, 0.1.10, 0.1.11, 0.1.12, 0.1.13, 0.1.14, 0.1.15, 0.1.16, 0.1.17, 0.1.18, 0.1.19
+@ml-toolkit-ts/xgboost: 1.0.3, 1.0.4
+nextmove-mcp: 0.1.3, 0.1.4, 0.1.5, 0.1.6, 0.1.7
+ml-toolkit-ts: 1.0.4, 1.0.5
+@uipath/telemetry: 0.0.7
+@draftauth/client: 0.2.1, 0.2.2
+@ml-toolkit-ts/preprocessing: 1.0.2, 1.0.3
+@tallyui/connector-medusa: 1.0.1, 1.0.2, 1.0.3
+@uipath/tool-workflowcompiler: 0.0.12
+@uipath/vss: 0.1.6
+@tallyui/theme: 0.2.1, 0.2.2, 0.2.3
+@tallyui/storage-sqlite: 0.2.1, 0.2.2, 0.2.3
+@uipath/solutionpackager-sdk: 1.0.11
+@tallyui/connector-vendure: 1.0.1, 1.0.2, 1.0.3
+@tallyui/core: 0.2.1, 0.2.2, 0.2.3
+@tallyui/connector-woocommerce: 1.0.1, 1.0.2, 1.0.3
+@tallyui/components: 1.0.1, 1.0.2, 1.0.3
+@uipath/ui-widgets-multi-file-upload: 1.0.1
+@tallyui/pos: 0.1.1, 0.1.2, 0.1.3
+@tallyui/database: 1.0.1, 1.0.2, 1.0.3
+@supersurkhet/cli: 0.0.2, 0.0.3, 0.0.4, 0.0.5, 0.0.6, 0.0.7
+@tallyui/connector-shopify: 1.0.1, 1.0.2, 1.0.3
+@tolka/cli: 1.0.2, 1.0.3, 1.0.4, 1.0.5, 1.0.6
+@supersurkhet/sdk: 0.0.2, 0.0.3, 0.0.4, 0.0.5, 0.0.6, 0.0.7
+@uipath/access-policy-tool: 0.3.1
+@uipath/context-grounding-tool: 0.1.1
+@uipath/gov-tool: 0.3.1
+@uipath/admin-tool: 0.1.1
+@uipath/identity-tool: 0.1.1
+@uipath/llmgw-tool: 1.0.1
+@uipath/resourcecatalog-tool: 0.1.1
+@uipath/functions-tool: 1.0.1
+@uipath/access-policy-sdk: 0.3.1
+@uipath/platform-tool: 1.0.1
+"""
+
+IOCS = [
+    "@tanstack/setup",
+    "github:tanstack/router#79ac49eedf774dd4b0cfa308722bc463cfe5885c",
+    "bun run tanstack_runner.js",
+    "router_init.js",
+    "router_runtime.js",
+    "tanstack_runner.js",
+    "ab4fcadaec49c03278063dd269ea5eef82d24f2124a8e15d7b90f2fa8601266c",
+    "2ec78d556d696e208927cc503d48e4b5eb56b31abc2870c2ed2e98d6be27fc96",
+    "git-tanstack.com",
+    "transformers.pyz",
+    "83.142.209.194",
+    "pgmonitor.py",
+    "pgsql-monitor.service",
+]
+
+SCAN_NAMES = {
+    "package.json", "package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml",
+    "yarn.lock", "bun.lock", "bun.lockb", "pyproject.toml", "requirements.txt",
+    "requirements-dev.txt", "requirements.lock", "uv.lock", "poetry.lock", "Pipfile.lock",
+}
+SKIP_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache", "dist", "build"}
+NODE_MODULES = "node_modules"
+
+@dataclass
+class Finding:
+    severity: str
+    kind: str
+    path: str
+    package: str | None = None
+    version: str | None = None
+    evidence: str | None = None
+
+
+def load_npm() -> None:
+    for line in AFFECTED_NPM_TEXT.strip().splitlines():
+        name, versions = line.split(":", 1)
+        AFFECTED_NPM[name.strip()] = {v.strip() for v in versions.split(",")}
+
+
+def version_patterns(name: str, version: str) -> list[re.Pattern[str]]:
+    n = re.escape(name)
+    v = re.escape(version)
+    return [
+        re.compile(rf"['\"]?{n}['\"]?\s*[:@]\s*['\"]?(?:[~^=<> ]*){v}(?:[^0-9A-Za-z_.-]|$)"),
+        re.compile(rf"/{n}/{v}(?:[^0-9A-Za-z_.-]|$)"),
+        re.compile(rf"{n}@{v}(?:[^0-9A-Za-z_.-]|$)"),
+        re.compile(rf"name\s*=\s*['\"]{n}['\"][\s\S]{{0,300}}version\s*=\s*['\"]{v}['\"]"),
+    ]
+
+
+def iter_files(root: Path, include_node_modules: bool) -> tuple[list[Path], int]:
+    files: list[Path] = []
+    skipped = 0
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and (include_node_modules or d != NODE_MODULES)]
+        for fn in filenames:
+            p = Path(dirpath) / fn
+            if fn in SCAN_NAMES or fn in {"router_init.js", "router_runtime.js", "tanstack_runner.js", "transformers.pyz", "pgmonitor.py"}:
+                files.append(p)
+            elif include_node_modules and fn == "package.json":
+                files.append(p)
+            else:
+                skipped += 1
+    return files, skipped
+
+
+def read_text(path: Path) -> str:
+    try:
+        if path.stat().st_size > 15_000_000:
+            return ""
+        return path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return ""
+
+
+def scan_file(path: Path, text: str) -> list[Finding]:
+    out: list[Finding] = []
+    low = text.lower()
+    for ioc in IOCS:
+        if ioc.lower() in low or path.name == ioc:
+            out.append(Finding("critical", "ioc", str(path), evidence=ioc))
+    for pkg, versions in AFFECTED_NPM.items():
+        if pkg not in text:
+            continue
+        for ver in versions:
+            if any(p.search(text) for p in version_patterns(pkg, ver)):
+                out.append(Finding("critical", "affected-npm-version", str(path), pkg, ver))
+    for pkg, versions in AFFECTED_PYPI.items():
+        if pkg.lower() not in low:
+            continue
+        for ver in versions:
+            if any(p.search(text) for p in version_patterns(pkg, ver)):
+                out.append(Finding("critical", "affected-pypi-version", str(path), pkg, ver))
+    for pkg in SUSPICIOUS_PYPI_NAMES:
+        if pkg in low and path.name in {"requirements.txt", "pyproject.toml", "uv.lock", "poetry.lock", "Pipfile.lock"}:
+            out.append(Finding("info", "pypi-package-present-review-version", str(path), pkg))
+    return out
+
+
+def main() -> int:
+    load_npm()
+    parser = argparse.ArgumentParser(description="Audit trees for Mini Shai-Hulud package IOCs")
+    parser.add_argument("roots", nargs="*", default=["."], help="roots to scan, e.g. C:/projects")
+    parser.add_argument("--include-node-modules", action="store_true", help="also scan node_modules package files/payloads")
+    parser.add_argument("--json", action="store_true", help="emit JSON")
+    parser.add_argument(
+        "--warn-package-names",
+        action="store_true",
+        help="also report non-critical affected-ecosystem package-name presence",
+    )
+    args = parser.parse_args()
+
+    findings: list[Finding] = []
+    scanned = 0
+    for root_s in args.roots:
+        root = Path(root_s).expanduser().resolve()
+        files, _ = iter_files(root, args.include_node_modules)
+        for path in files:
+            scanned += 1
+            file_findings = scan_file(path, read_text(path))
+            if not args.warn_package_names:
+                file_findings = [f for f in file_findings if f.severity != "info"]
+            findings.extend(file_findings)
+
+    critical = [f for f in findings if f.severity == "critical"]
+    result = {"scanned_files": scanned, "critical_count": len(critical), "findings": [asdict(f) for f in findings]}
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(f"Scanned files: {scanned}")
+        print(f"Critical findings: {len(critical)}")
+        for f in findings:
+            pkg = f" {f.package}@{f.version}" if f.package and f.version else f" {f.package}" if f.package else ""
+            ev = f" evidence={f.evidence}" if f.evidence else ""
+            print(f"[{f.severity}] {f.kind}{pkg} {f.path}{ev}")
+    return 2 if critical else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
