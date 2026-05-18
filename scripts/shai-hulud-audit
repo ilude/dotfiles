@@ -319,11 +319,15 @@ def default_scan_roots(user_roots: list[str]) -> list[Path]:
         home / ".bun" / "install" / "global" / "node_modules",
     ])
     if local:
+        # Windows python.org installs live under LOCALAPPDATA/Programs/Python.
+        # Scan only site-packages leaves instead of the whole interpreter tree.
+        python_programs = Path(local) / "Programs" / "Python"
         roots.extend([
             Path(local) / "pnpm" / "global",
-            Path(local) / "Programs" / "Python",
             Path(local) / "pipx" / "venvs",
         ])
+        if python_programs.exists():
+            roots.extend(python_programs.glob("Python*/Lib/site-packages"))
     if appdata:
         roots.append(Path(appdata) / "npm" / "node_modules")
 
@@ -391,6 +395,225 @@ def read_nearby_config(project_dir: Path, names: list[str]) -> str:
     return "\n".join(parts)
 
 
+def read_nuget_config_chain(project_dir: Path) -> str:
+    """Read NuGet/MSBuild config from a project directory and its ancestors."""
+    names = ["NuGet.config", "Directory.Build.props", "Directory.Packages.props"]
+    parts = [read_nearby_config(project_dir, names)]
+    for parent in project_dir.parents:
+        parts.append(read_nearby_config(parent, names))
+    return "\n".join(part for part in parts if part)
+
+
+def check_javascript_hardening(project_dir: Path, names: set[str]) -> list[Finding]:
+    """Check npm, pnpm, and Bun install-time execution controls."""
+    findings: list[Finding] = []
+    js_config = read_nearby_config(project_dir, [".npmrc", "pnpm-workspace.yaml", "pnpm-workspace.yml", "package.json"])
+    bun_config = read_nearby_config(project_dir, ["bunfig.toml", ".npmrc", "package.json"])
+
+    if {"pnpm-lock.yaml", "pnpm-workspace.yaml", "pnpm-workspace.yml"} & names:
+        for setting, expected in [
+            ("minimumReleaseAge", None),
+            ("blockExoticSubdeps", "true"),
+            ("strictDepBuilds", "true"),
+        ]:
+            if not has_setting(js_config, setting, expected):
+                findings.append(Finding(
+                    "recommendation",
+                    "pnpm-hardening-missing",
+                    str(project_dir),
+                    evidence=f"Set {setting}{'=' + expected if expected else ' to a positive cooldown'} in .npmrc or pnpm-workspace.yaml",
+                ))
+        if has_setting(js_config, "dangerouslyAllowAllBuilds", "true"):
+            findings.append(Finding(
+                "recommendation",
+                "pnpm-dangerous-setting-enabled",
+                str(project_dir),
+                evidence="Avoid dangerouslyAllowAllBuilds=true; use explicit allowBuilds/onlyBuiltDependencies instead",
+            ))
+
+    if "package-lock.json" in names or "npm-shrinkwrap.json" in names:
+        if not has_setting(js_config, "ignore-scripts", "true"):
+            findings.append(Finding(
+                "recommendation",
+                "npm-hardening-missing",
+                str(project_dir),
+                evidence="Consider ignore-scripts=true in project .npmrc; use explicit reviewed rebuilds for native deps",
+            ))
+
+    if {"bun.lock", "bun.lockb"} & names:
+        if not (
+            has_setting(bun_config, "ignoreScripts", "true")
+            or has_setting(bun_config, "install.ignoreScripts", "true")
+            or has_setting(bun_config, "ignore-scripts", "true")
+        ):
+            findings.append(Finding(
+                "recommendation",
+                "bun-hardening-missing",
+                str(project_dir),
+                evidence="Consider [install] ignoreScripts=true in bunfig.toml or ignore-scripts=true in .npmrc; use trustedDependencies only for reviewed build scripts",
+            ))
+    return findings
+
+
+def check_python_hardening(project_dir: Path, names: set[str]) -> list[Finding]:
+    """Check pip requirements hash mode and uv resolver hardening."""
+    findings: list[Finding] = []
+    if any(name.startswith("requirements") and name.endswith(".txt") for name in names):
+        req_text = read_nearby_config(project_dir, [name for name in names if name.startswith("requirements") and name.endswith(".txt")])
+        has_requirement = any(
+            line.strip()
+            and not line.lstrip().startswith(("#", "-", "--"))
+            for line in req_text.splitlines()
+        )
+        if has_requirement and "--hash=" not in req_text and "--require-hashes" not in req_text:
+            findings.append(Finding(
+                "recommendation",
+                "pip-hardening-missing",
+                str(project_dir),
+                evidence="For pip requirements, consider --require-hashes with fully pinned hashes; prefer wheels-only where practical",
+            ))
+
+    if {"uv.lock", "pyproject.toml"} & names:
+        uv_config = read_nearby_config(project_dir, ["uv.toml", "pyproject.toml"])
+        for setting, expected in [
+            ("exclude-newer", None),
+            ("index-strategy", '"first-index"'),
+            ("no-sources", "true"),
+            ("no-build", "true"),
+        ]:
+            if not has_setting(uv_config, setting, expected):
+                findings.append(Finding(
+                    "recommendation",
+                    "uv-hardening-missing",
+                    str(project_dir),
+                    evidence=f"Set tool.uv {setting}{'=' + expected if expected else ' to a dependency cooldown'}",
+                ))
+    return findings
+
+
+def check_nuget_hardening(project_dir: Path, names: set[str]) -> list[Finding]:
+    """Check NuGet lockfile enforcement and source mapping."""
+    findings: list[Finding] = []
+    if not (any(name.endswith(".csproj") for name in names) or "packages.lock.json" in names):
+        return findings
+
+    nuget_config = read_nuget_config_chain(project_dir)
+    if "packages.lock.json" not in names:
+        findings.append(Finding(
+            "recommendation",
+            "nuget-lockfile-missing",
+            str(project_dir),
+            evidence="Enable NuGet lock files with RestorePackagesWithLockFile=true and commit packages.lock.json",
+        ))
+    if "packages.lock.json" in names and not re.search(r"<RestoreLockedMode>\s*true\s*</RestoreLockedMode>", nuget_config, re.IGNORECASE):
+        findings.append(Finding(
+            "recommendation",
+            "nuget-locked-mode-missing",
+            str(project_dir),
+            evidence="Set RestoreLockedMode=true for CI/checked restores so packages.lock.json is enforced",
+        ))
+    if "<packageSourceMapping>" not in nuget_config:
+        findings.append(Finding(
+            "recommendation",
+            "nuget-source-mapping-missing",
+            str(project_dir),
+            evidence="Consider NuGet packageSourceMapping in NuGet.config to bind package ID patterns to trusted feeds",
+        ))
+    return findings
+
+
+def check_go_hardening(project_dir: Path, names: set[str]) -> list[Finding]:
+    """Check Go module checksum files and recommended user/runner defaults."""
+    if "go.mod" not in names:
+        return []
+    findings: list[Finding] = []
+    if "go.sum" not in names:
+        findings.append(Finding(
+            "recommendation",
+            "go-sum-missing",
+            str(project_dir),
+            evidence="Commit go.sum and run go mod verify in CI; keep GOSUMDB enabled and avoid GOINSECURE/GONOSUMDB=*",
+        ))
+    findings.append(Finding(
+        "recommendation",
+        "go-env-hardening-review",
+        str(project_dir),
+        evidence="Recommended: go env -w GOPROXY=https://proxy.golang.org,direct GOSUMDB=sum.golang.org GOVCS=public:git,private:all",
+    ))
+    return findings
+
+
+def check_cargo_hardening(project_dir: Path, names: set[str]) -> list[Finding]:
+    """Check Rust lockfile and cargo-deny policy presence."""
+    if "Cargo.toml" not in names:
+        return []
+    findings: list[Finding] = []
+    cargo_text = read_nearby_config(project_dir, ["Cargo.toml"])
+    is_workspace = "[workspace]" in cargo_text
+    if "Cargo.lock" not in names and not is_workspace:
+        findings.append(Finding(
+            "recommendation",
+            "cargo-lock-missing",
+            str(project_dir),
+            evidence="For Rust applications, commit Cargo.lock and use cargo fetch/test --locked in CI",
+        ))
+    if not (project_dir / "deny.toml").exists():
+        findings.append(Finding(
+            "recommendation",
+            "cargo-deny-missing",
+            str(project_dir),
+            evidence="Consider cargo install cargo-deny; cargo deny init; cargo deny check for advisories/licenses/sources",
+        ))
+    return findings
+
+
+def check_maven_hardening(project_dir: Path, names: set[str]) -> list[Finding]:
+    """Check Maven dynamic versions and local settings checksum policy."""
+    if "pom.xml" not in names:
+        return []
+    findings: list[Finding] = []
+    pom_text = read_nearby_config(project_dir, ["pom.xml"])
+    settings_text = read_nearby_config(project_dir, ["settings.xml"])
+    if re.search(r">\s*(LATEST|RELEASE|\[[^\]]*,\)|\([^)]*,\))\s*<", pom_text):
+        findings.append(Finding(
+            "recommendation",
+            "maven-dynamic-version",
+            str(project_dir),
+            evidence="Avoid Maven dynamic/range versions like LATEST, RELEASE, [1.0,); pin exact versions",
+        ))
+    if settings_text and "<checksumPolicy>fail</checksumPolicy>" not in settings_text:
+        findings.append(Finding(
+            "recommendation",
+            "maven-checksum-policy-review",
+            str(project_dir),
+            evidence="In settings.xml/repository config, prefer checksumPolicy=fail; often enforced by Nexus/Artifactory",
+        ))
+    return findings
+
+
+def check_bundler_hardening(project_dir: Path, names: set[str]) -> list[Finding]:
+    """Check Bundler frozen/deployment mode and lockfile checksums."""
+    if "Gemfile.lock" not in names:
+        return []
+    findings: list[Finding] = []
+    bundle_config = read_nearby_config(project_dir, [".bundle/config", "Gemfile.lock"])
+    if "BUNDLE_FROZEN" not in bundle_config and "BUNDLE_DEPLOYMENT" not in bundle_config:
+        findings.append(Finding(
+            "recommendation",
+            "bundler-frozen-missing",
+            str(project_dir),
+            evidence="Consider bundle config set --local frozen true; bundle config set --local deployment true; run bundle audit check",
+        ))
+    if "CHECKSUMS" not in bundle_config:
+        findings.append(Finding(
+            "recommendation",
+            "bundler-checksums-missing",
+            str(project_dir),
+            evidence="On modern Bundler, consider bundle lock --add-checksums to verify gem contents",
+        ))
+    return findings
+
+
 def hardening_recommendations(project_dirs: dict[Path, set[str]]) -> list[Finding]:
     """Produce non-failing supply-chain hardening recommendations.
 
@@ -400,181 +623,18 @@ def hardening_recommendations(project_dirs: dict[Path, set[str]]) -> list[Findin
     dependency provenance, but they do not claim the project is compromised.
     """
     findings: list[Finding] = []
+    checkers = [
+        check_javascript_hardening,
+        check_python_hardening,
+        check_nuget_hardening,
+        check_go_hardening,
+        check_cargo_hardening,
+        check_maven_hardening,
+        check_bundler_hardening,
+    ]
     for project_dir, names in sorted(project_dirs.items(), key=lambda item: str(item[0]).casefold()):
-        js_config = read_nearby_config(project_dir, [".npmrc", "pnpm-workspace.yaml", "pnpm-workspace.yml", "package.json"])
-        bun_config = read_nearby_config(project_dir, ["bunfig.toml", ".npmrc", "package.json"])
-        uv_config = read_nearby_config(project_dir, ["uv.toml", "pyproject.toml"])
-        nuget_config = read_nearby_config(project_dir, ["NuGet.config", "Directory.Build.props", "Directory.Packages.props"])
-        for parent in project_dir.parents:
-            if parent == project_dir.anchor:
-                break
-            for config_name in ["NuGet.config", "Directory.Build.props", "Directory.Packages.props"]:
-                config_path = parent / config_name
-                if config_path.exists():
-                    nuget_config += "\n" + read_text(config_path)
-
-        if {"pnpm-lock.yaml", "pnpm-workspace.yaml", "pnpm-workspace.yml"} & names:
-            for setting, expected in [
-                ("minimumReleaseAge", None),
-                ("blockExoticSubdeps", "true"),
-                ("strictDepBuilds", "true"),
-            ]:
-                if not has_setting(js_config, setting, expected):
-                    findings.append(Finding(
-                        "recommendation",
-                        "pnpm-hardening-missing",
-                        str(project_dir),
-                        evidence=f"Set {setting}{'=' + expected if expected else ' to a positive cooldown'} in .npmrc or pnpm-workspace.yaml",
-                    ))
-            if has_setting(js_config, "dangerouslyAllowAllBuilds", "true"):
-                findings.append(Finding(
-                    "recommendation",
-                    "pnpm-dangerous-setting-enabled",
-                    str(project_dir),
-                    evidence="Avoid dangerouslyAllowAllBuilds=true; use explicit allowBuilds/onlyBuiltDependencies instead",
-                ))
-
-        if "package-lock.json" in names or "npm-shrinkwrap.json" in names:
-            if not has_setting(js_config, "ignore-scripts", "true"):
-                findings.append(Finding(
-                    "recommendation",
-                    "npm-hardening-missing",
-                    str(project_dir),
-                    evidence="Consider ignore-scripts=true in project .npmrc; use explicit reviewed rebuilds for native deps",
-                ))
-
-        if {"bun.lock", "bun.lockb"} & names:
-            if not (
-                has_setting(bun_config, "ignoreScripts", "true")
-                or has_setting(bun_config, "install.ignoreScripts", "true")
-                or has_setting(bun_config, "ignore-scripts", "true")
-            ):
-                findings.append(Finding(
-                    "recommendation",
-                    "bun-hardening-missing",
-                    str(project_dir),
-                    evidence="Consider [install] ignoreScripts=true in bunfig.toml or ignore-scripts=true in .npmrc; use trustedDependencies only for reviewed build scripts",
-                ))
-
-        if any(name.startswith("requirements") and name.endswith(".txt") for name in names):
-            req_text = read_nearby_config(project_dir, [name for name in names if name.startswith("requirements") and name.endswith(".txt")])
-            has_requirement = any(
-                line.strip()
-                and not line.lstrip().startswith(("#", "-", "--"))
-                for line in req_text.splitlines()
-            )
-            if has_requirement and "--hash=" not in req_text and "--require-hashes" not in req_text:
-                findings.append(Finding(
-                    "recommendation",
-                    "pip-hardening-missing",
-                    str(project_dir),
-                    evidence="For pip requirements, consider --require-hashes with fully pinned hashes; prefer wheels-only where practical",
-                ))
-
-        if any(name.endswith(".csproj") for name in names) or "packages.lock.json" in names:
-            if "packages.lock.json" not in names:
-                findings.append(Finding(
-                    "recommendation",
-                    "nuget-lockfile-missing",
-                    str(project_dir),
-                    evidence="Enable NuGet lock files with RestorePackagesWithLockFile=true and commit packages.lock.json",
-                ))
-            if "packages.lock.json" in names and not re.search(r"<RestoreLockedMode>\s*true\s*</RestoreLockedMode>", nuget_config, re.IGNORECASE):
-                findings.append(Finding(
-                    "recommendation",
-                    "nuget-locked-mode-missing",
-                    str(project_dir),
-                    evidence="Set RestoreLockedMode=true for CI/checked restores so packages.lock.json is enforced",
-                ))
-            if "<packageSourceMapping>" not in nuget_config:
-                findings.append(Finding(
-                    "recommendation",
-                    "nuget-source-mapping-missing",
-                    str(project_dir),
-                    evidence="Consider NuGet packageSourceMapping in NuGet.config to bind package ID patterns to trusted feeds",
-                ))
-
-        if "go.mod" in names:
-            if "go.sum" not in names:
-                findings.append(Finding(
-                    "recommendation",
-                    "go-sum-missing",
-                    str(project_dir),
-                    evidence="Commit go.sum and run go mod verify in CI; keep GOSUMDB enabled and avoid GOINSECURE/GONOSUMDB=*",
-                ))
-            findings.append(Finding(
-                "recommendation",
-                "go-env-hardening-review",
-                str(project_dir),
-                evidence="Recommended: go env -w GOPROXY=https://proxy.golang.org,direct GOSUMDB=sum.golang.org GOVCS=public:git,private:all",
-            ))
-
-        if "Cargo.toml" in names:
-            cargo_text = read_nearby_config(project_dir, ["Cargo.toml"])
-            is_workspace = "[workspace]" in cargo_text
-            if "Cargo.lock" not in names and not is_workspace:
-                findings.append(Finding(
-                    "recommendation",
-                    "cargo-lock-missing",
-                    str(project_dir),
-                    evidence="For Rust applications, commit Cargo.lock and use cargo fetch/test --locked in CI",
-                ))
-            if not (project_dir / "deny.toml").exists():
-                findings.append(Finding(
-                    "recommendation",
-                    "cargo-deny-missing",
-                    str(project_dir),
-                    evidence="Consider cargo install cargo-deny; cargo deny init; cargo deny check for advisories/licenses/sources",
-                ))
-
-        if "pom.xml" in names:
-            pom_text = read_nearby_config(project_dir, ["pom.xml"])
-            if re.search(r">\s*(LATEST|RELEASE|\[[^\]]*,\)|\([^)]*,\))\s*<", pom_text):
-                findings.append(Finding(
-                    "recommendation",
-                    "maven-dynamic-version",
-                    str(project_dir),
-                    evidence="Avoid Maven dynamic/range versions like LATEST, RELEASE, [1.0,); pin exact versions",
-                ))
-            if (project_dir / "settings.xml").exists() and "<checksumPolicy>fail</checksumPolicy>" not in pom_text:
-                findings.append(Finding(
-                    "recommendation",
-                    "maven-checksum-policy-review",
-                    str(project_dir),
-                    evidence="In settings.xml/repository config, prefer checksumPolicy=fail; often enforced by Nexus/Artifactory",
-                ))
-
-        if "Gemfile.lock" in names:
-            bundle_config = read_nearby_config(project_dir, [".bundle/config", "Gemfile.lock"])
-            if "BUNDLE_FROZEN" not in bundle_config and "BUNDLE_DEPLOYMENT" not in bundle_config:
-                findings.append(Finding(
-                    "recommendation",
-                    "bundler-frozen-missing",
-                    str(project_dir),
-                    evidence="Consider bundle config set --local frozen true; bundle config set --local deployment true; run bundle audit check",
-                ))
-            if "CHECKSUMS" not in bundle_config:
-                findings.append(Finding(
-                    "recommendation",
-                    "bundler-checksums-missing",
-                    str(project_dir),
-                    evidence="On modern Bundler, consider bundle lock --add-checksums to verify gem contents",
-                ))
-
-        if {"uv.lock", "pyproject.toml"} & names:
-            for setting, expected in [
-                ("exclude-newer", None),
-                ("index-strategy", '"first-index"'),
-                ("no-sources", "true"),
-                ("no-build", "true"),
-            ]:
-                if not has_setting(uv_config, setting, expected):
-                    findings.append(Finding(
-                        "recommendation",
-                        "uv-hardening-missing",
-                        str(project_dir),
-                        evidence=f"Set tool.uv {setting}{'=' + expected if expected else ' to a dependency cooldown'}",
-                    ))
+        for checker in checkers:
+            findings.extend(checker(project_dir, names))
     return findings
 
 
