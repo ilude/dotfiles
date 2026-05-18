@@ -140,7 +140,10 @@ git submodule update --init --recursive
 - Dotbot link defaults rely on `force: true`, `relink: true`, and `create: true`.
 - Use only tools, workflows, permissions, and memory/task systems explicitly available in the active harness. If a capability is absent, adapt instead of naming or assuming it.
 - Prefer deterministic code/tooling for routing, retries, transforms, status handling, install detection, and validation. Use model judgment for synthesis, review, classification, and ambiguous language tasks, not for decisions code or tool output can answer.
+- Do not use try-catch wrappers, guard flags, or fallback logic unless specifically requested. Solve the domain problem natively. If data or dependencies are missing, fail with explicit exceptions -- not silent defaults. When requirements make code paths redundant, remove them entirely; do not wrap old logic in fallback flags.
 - Keep planning proportional: use brief prose plans for complex work, skip formal planning for simple requests, and ask for clarification only when ambiguity affects correctness or direction.
+- When a task involves a list or batch of items, track scope explicitly. Do not finalize until all items are accounted for -- completed, explicitly skipped with reason, or flagged as blocked.
+- Stop researching when the core question is answered and additional retrieval is unlikely to change the conclusion. Exhaustive coverage only when explicitly requested.
 
 ## Agent Surfaces
 
