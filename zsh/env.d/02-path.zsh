@@ -5,6 +5,22 @@ export PATH="${WINHOME:-$HOME}/.local/bin:$PATH"
 # Bun global binaries
 export PATH="${ZDOTDIR:-$HOME}/.bun/bin:$PATH"
 
+# pnpm global binaries
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    export PNPM_HOME="${ZDOTDIR:-$HOME}/Library/pnpm"
+else
+    export PNPM_HOME="${ZDOTDIR:-$HOME}/.local/share/pnpm"
+fi
+case ":$PATH:" in
+    *":$PNPM_HOME/bin:"*) ;;
+    *) export PATH="$PNPM_HOME/bin:$PATH" ;;
+esac
+
+# fnm (Fast Node Manager)
+if [[ -d "${ZDOTDIR:-$HOME}/.local/share/fnm" ]]; then
+    export PATH="${ZDOTDIR:-$HOME}/.local/share/fnm:$PATH"
+fi
+
 # Dotfiles scripts (pi-scaffold, pi-link-setup, etc.)
 export PATH="${ZDOTDIR:-$HOME}/.dotfiles/scripts:$PATH"
 

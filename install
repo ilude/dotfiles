@@ -177,6 +177,29 @@ else
 fi
 completed_steps+=("Claude Code hook dependencies")
 
+current_step="fnm install"
+# fnm installs to ~/.local/share/fnm; ensure it's on PATH for detection
+[[ -d "$HOME/.local/share/fnm" ]] && export PATH="$HOME/.local/share/fnm:$PATH"
+if command -v fnm &>/dev/null; then
+    echo "fnm: already installed"
+else
+    echo "Installing fnm..."
+    curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell
+    export PATH="$HOME/.local/share/fnm:$PATH"
+fi
+# Install LTS Node via fnm if node is missing or too old (need 20+ for Pi)
+eval "$(fnm env --shell bash)"
+_node_major="$(node --version 2>/dev/null | sed 's/^v//' | cut -d. -f1)"
+if [[ -z "$_node_major" || "$_node_major" -lt 20 ]]; then
+    fnm install --lts
+    fnm default lts-latest
+    echo "node: installed $(fnm exec --using=default node --version) via fnm"
+else
+    echo "node: $(node --version) (>= 20, OK)"
+fi
+unset _node_major
+completed_steps+=("fnm install")
+
 current_step="Homebrew packages"
 if [[ "$OSTYPE" == "darwin"* ]] && command -v brew &>/dev/null; then
     echo "Installing Homebrew packages..."
@@ -205,7 +228,7 @@ if ! is_windows; then
     fi
     # Remove legacy bun->node symlink. It used to redirect #!/usr/bin/env node
     # shebangs to bun, but it shadows real Node.js (required by pnpm and other
-    # node CLIs). Real node comes from Brewfile / winget instead.
+    # node CLIs). Real node comes from fnm / Brewfile / winget instead.
     if [[ -L "$HOME/.bun/bin/node" ]] && [[ "$(readlink "$HOME/.bun/bin/node")" == *bun* ]]; then
         rm -f "$HOME/.bun/bin/node"
         echo "bun: removed legacy node symlink"
@@ -266,13 +289,9 @@ current_step="Pi coding agent install"
 # Pi installs via pnpm on all platforms. pnpm's strict resolver pins transitive
 # pi packages cleanly; bun's looser resolution let pi-agent-core/pi-ai/pi-tui
 # drift to newer patch versions even when pi-coding-agent itself was pinned.
-if ! command -v pnpm &>/dev/null; then
-    echo "Bootstrapping pnpm via official installer..."
-    curl -fsSL https://get.pnpm.io/install.sh | env SHELL="$SHELL" sh -
-fi
 
-# Ensure pnpm's global bin is on PATH even when pnpm was installed by another
-# manager (brew, corepack, etc.) and PNPM_HOME was never exported in this shell.
+# Ensure PNPM_HOME is set before bootstrap so the installer knows where to put
+# binaries, and so SHELL=/dev/null can suppress rc-file appends.
 if [[ -z "${PNPM_HOME:-}" ]]; then
     if [[ "$OSTYPE" == "darwin"* ]]; then
         export PNPM_HOME="$HOME/Library/pnpm"
@@ -280,10 +299,16 @@ if [[ -z "${PNPM_HOME:-}" ]]; then
         export PNPM_HOME="$HOME/.local/share/pnpm"
     fi
 fi
+
 case ":$PATH:" in
     *":$PNPM_HOME/bin:"*) ;;
     *) export PATH="$PNPM_HOME/bin:$PATH" ;;
 esac
+
+if ! command -v pnpm &>/dev/null; then
+    echo "Bootstrapping pnpm via official installer..."
+    curl -fsSL https://get.pnpm.io/install.sh | PNPM_HOME="$PNPM_HOME" SHELL=/bin/bash sh -
+fi
 
 if command -v pnpm &>/dev/null; then
     # Harden pnpm installs against common supply-chain attacks. These global

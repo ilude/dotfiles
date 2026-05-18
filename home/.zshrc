@@ -57,11 +57,3 @@ debug_report
 
 # broot launcher (sourced only if present)
 [[ -f "${ZDOTDIR:-$HOME}/.config/broot/launcher/bash/br" ]] && source "${ZDOTDIR:-$HOME}/.config/broot/launcher/bash/br"
-
-# pnpm
-export PNPM_HOME="/Users/mglenn/Library/pnpm"
-case ":$PATH:" in
-  *":$PNPM_HOME/bin:"*) ;;
-  *) export PATH="$PNPM_HOME/bin:$PATH" ;;
-esac
-# pnpm end

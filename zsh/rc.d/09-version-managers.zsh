@@ -37,6 +37,11 @@ if [[ -d "${NODENV_ROOT:-${ZDOTDIR:-$HOME}/.nodenv}" ]]; then
     }
 fi
 
+# fnm - Fast Node Manager (Rust-based)
+if command -v fnm &>/dev/null || [[ -d "${ZDOTDIR:-$HOME}/.local/share/fnm" ]]; then
+    eval "$(fnm env --use-on-cd --shell zsh)"
+fi
+
 # nvm - Node Version Manager (special case - uses NVM_DIR)
 if [[ -d "${NVM_DIR:-${ZDOTDIR:-$HOME}/.nvm}" ]]; then
     nvm() {
