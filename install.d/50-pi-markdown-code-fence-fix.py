@@ -19,7 +19,6 @@ import argparse
 import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 ACTIVE_SCOPE = "@earendil-works"

@@ -20,6 +20,9 @@ dependencies = [
 [project.scripts]
 x-research = "x_research.cli:main"
 
+[tool.uv]
+package = false
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
