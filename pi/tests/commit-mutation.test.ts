@@ -103,6 +103,33 @@ describe("timingSafeTokenEqual", () => {
 // B1: listChangedFiles does not crash on a fresh repo with no HEAD
 // ---------------------------------------------------------------------------
 
+describe("stageFiles -- ignored paths and broad staging", () => {
+	it("refuses ignored untracked paths instead of passing them to git add", () => {
+		const dir = repo();
+		mkdirSync(join(dir, "pi", "inspect", "snapshots"), { recursive: true });
+		writeFileSync(join(dir, ".gitignore"), "pi/inspect/snapshots/\n");
+		writeFileSync(join(dir, "pi", "inspect", "snapshots", "session.json"), "{}\n");
+		expect(() =>
+			stageFiles(dir, ["pi/inspect/snapshots/session.json"]),
+		).toThrow(/ignored paths/i);
+	});
+
+	it("uses git add . for a full safe candidate set", () => {
+		const dir = repo();
+		const files = Array.from({ length: 21 }, (_, index) => `src/file-${index}.ts`);
+		mkdirSync(join(dir, "src"), { recursive: true });
+		for (const file of files) {
+			writeFileSync(join(dir, file), "content\n");
+		}
+		stageFiles(dir, files, undefined, files);
+		const staged = run(dir, ["diff", "--cached", "--name-only"])
+			.trim()
+			.split(/\r?\n/)
+			.filter(Boolean);
+		expect(staged).toEqual([...files].sort());
+	});
+});
+
 describe("listChangedFiles -- fresh repo (no HEAD)", () => {
 	it("returns untracked files without throwing on a repo with no commits", () => {
 		const dir = repo();
@@ -111,8 +138,8 @@ describe("listChangedFiles -- fresh repo (no HEAD)", () => {
 		expect(() => {
 			result = listChangedFiles(dir);
 		}).not.toThrow();
-		expect(result!.all).toContain("new-file.txt");
-		expect(result!.staged).toEqual([]);
+		expect(result?.all).toContain("new-file.txt");
+		expect(result?.staged).toEqual([]);
 	});
 });
 

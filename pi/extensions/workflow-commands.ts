@@ -205,6 +205,26 @@ interface SecretReviewResult {
 	findings: SecretReviewFinding[];
 }
 
+export interface UntrackedClassification {
+	path: string;
+	decision: "ignore" | "do_not_ignore";
+	confidence: number;
+	reason: string;
+	gitignorePattern?: string;
+}
+
+export interface UntrackedClassificationPlan {
+	accepted: UntrackedClassification[];
+	needsUserDecision: UntrackedClassification[];
+}
+
+export interface StagingPlan {
+	addArgs: string[];
+	rmCachedArgs: string[];
+	unsafe: string[];
+	useBroadAdd: boolean;
+}
+
 interface CommitActivity {
 	setPhase(message?: string): void;
 	logCommand(command: string, result?: GitRunResult): void;
@@ -214,6 +234,10 @@ interface CommitActivity {
 
 interface WorkflowUi {
 	notify(message: string, level?: string): void;
+	select?(
+		message: string,
+		options: string[],
+	): Promise<string | null | undefined>;
 	setStatus?(key: string, value: string | undefined): void;
 	setWidget?(
 		key: string,
@@ -655,6 +679,10 @@ function parseLines(output: string) {
 		.filter(Boolean);
 }
 
+function normalizeGitPath(file: string) {
+	return file.replace(/\\/g, "/").replace(/^\.\//, "");
+}
+
 function uniqueSorted(values: string[]) {
 	return [...new Set(values.filter(Boolean))].sort((a, b) =>
 		a.localeCompare(b),
@@ -702,6 +730,124 @@ export function listChangedFiles(cwd: string, activity?: CommitActivity) {
 	return {
 		all: uniqueSorted([...headDiff, ...untracked]),
 		staged: uniqueSorted(staged),
+		untracked: uniqueSorted(untracked),
+	};
+}
+
+export function buildUntrackedClassifierPrompt(untrackedFiles: string[]) {
+	return `Classify every untracked Git path for commit hygiene.
+
+Rules:
+- Return JSON only: {"classifications":[{"path":"...","decision":"ignore|do_not_ignore","confidence":0-100,"reason":"...","gitignorePattern":"..."}]}
+- Allowed decisions are exactly ignore and do_not_ignore.
+- Use ignore for generated runtime state, logs, caches, local metadata, build outputs, temporary files, database files, and machine-local artifacts.
+- Use do_not_ignore for source code, tests, documentation, project configuration, lockfiles, and intentional assets.
+- Use the 85% confidence gate: if you are below 85% confident, still choose the best decision and set confidence below 85 so the user can decide.
+- For ignore decisions, include the minimal Git ignore pattern that covers the artifact without hiding unrelated source.
+- Classify every input path exactly once.
+
+Untracked paths:
+${untrackedFiles.map((file) => `- ${file}`).join("\n")}`;
+}
+
+export function parseUntrackedClassifierResult(
+	text: string,
+	untrackedFiles: string[],
+): UntrackedClassificationPlan {
+	const jsonText = extractJsonObject(text);
+	if (!jsonText) throw new Error("Untracked classifier did not return JSON");
+	const parsed = JSON.parse(jsonText) as { classifications?: unknown };
+	if (!Array.isArray(parsed.classifications)) {
+		throw new Error("Untracked classifier returned no classifications");
+	}
+	const expected = new Set(untrackedFiles.map(normalizeGitPath));
+	const seen = new Set<string>();
+	const classifications: UntrackedClassification[] = [];
+	for (const item of parsed.classifications) {
+		if (!item || typeof item !== "object") {
+			throw new Error("Untracked classifier returned an invalid item");
+		}
+		const record = item as Record<string, unknown>;
+		const itemPath =
+			typeof record.path === "string" ? normalizeGitPath(record.path) : "";
+		if (!expected.has(itemPath)) {
+			throw new Error(
+				`Untracked classifier returned unknown path: ${itemPath || "<missing>"}`,
+			);
+		}
+		if (seen.has(itemPath)) {
+			throw new Error(
+				`Untracked classifier returned duplicate path: ${itemPath}`,
+			);
+		}
+		seen.add(itemPath);
+		if (record.decision !== "ignore" && record.decision !== "do_not_ignore") {
+			throw new Error("Untracked classifier returned invalid decision");
+		}
+		if (
+			typeof record.confidence !== "number" ||
+			!Number.isFinite(record.confidence) ||
+			record.confidence < 0 ||
+			record.confidence > 100
+		) {
+			throw new Error("Untracked classifier returned invalid confidence");
+		}
+		if (typeof record.reason !== "string" || !record.reason.trim()) {
+			throw new Error("Untracked classifier returned missing reason");
+		}
+		classifications.push({
+			path: itemPath,
+			decision: record.decision,
+			confidence: record.confidence,
+			reason: record.reason.trim(),
+			gitignorePattern:
+				typeof record.gitignorePattern === "string"
+					? record.gitignorePattern.trim()
+					: undefined,
+		});
+	}
+	const missing = [...expected].filter((file) => !seen.has(file));
+	if (missing.length > 0) {
+		throw new Error(
+			`Untracked classifier omitted paths: ${missing.join(", ")}`,
+		);
+	}
+	return {
+		accepted: classifications.filter((item) => item.confidence >= 85),
+		needsUserDecision: classifications.filter((item) => item.confidence < 85),
+	};
+}
+
+export function buildStagingPlan(input: {
+	files: string[];
+	allCommittableFiles: string[];
+	ignoredFiles?: string[];
+	trackedIgnoredFiles?: string[];
+}): StagingPlan {
+	const files = uniqueSorted(input.files.map(normalizeGitPath));
+	const allCommittable = uniqueSorted(
+		input.allCommittableFiles.map(normalizeGitPath),
+	);
+	const ignored = new Set((input.ignoredFiles ?? []).map(normalizeGitPath));
+	const trackedIgnored = uniqueSorted(
+		(input.trackedIgnoredFiles ?? []).map(normalizeGitPath),
+	);
+	const unsafe = files.filter((file) => ignored.has(file));
+	const useBroadAdd =
+		unsafe.length === 0 &&
+		files.length > 0 &&
+		files.length === allCommittable.length &&
+		files.every((file, index) => file === allCommittable[index]);
+	return {
+		addArgs: useBroadAdd
+			? ["add", "."]
+			: ["add", "-A", "--", ...files.filter((file) => !ignored.has(file))],
+		rmCachedArgs:
+			trackedIgnored.length > 0
+				? ["rm", "--cached", "--ignore-unmatch", "--", ...trackedIgnored]
+				: [],
+		unsafe,
+		useBroadAdd,
 	};
 }
 
@@ -957,12 +1103,111 @@ async function confirmSecretScan(
 		.slice(0, 8)
 		.map(
 			(finding) =>
-				`- ${finding.path}: ${finding.label} [${finding.classification}]${finding.match ? ` (${finding.match})` : ""} — ${finding.reason}`,
+				`- ${finding.path}: ${finding.label} [${finding.classification}]${finding.match ? ` (${finding.match})` : ""} - ${finding.reason}`,
 		)
 		.join("\n");
 	throw new Error(
 		`Potential secrets detected after review:\n${preview}${blocking.length > 8 ? "\n- ..." : ""}\n\nRemove the secrets, redact them, or exclude the files before committing.`,
 	);
+}
+
+async function classifyUntrackedFiles(
+	ctx: WorkflowContext,
+	untrackedFiles: string[],
+): Promise<UntrackedClassificationPlan> {
+	if (untrackedFiles.length === 0) {
+		return { accepted: [], needsUserDecision: [] };
+	}
+	const model = await resolveCommitPlanningModelFromRegistry(
+		ctx.modelRegistry,
+		ctx,
+	);
+	if (!model) {
+		throw new Error("No small/mini model available for untracked classifier");
+	}
+	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+	if (!auth?.ok) {
+		throw new Error(
+			auth?.error || "No configured auth available for untracked classifier",
+		);
+	}
+	const response = await completeSimple(
+		model,
+		{
+			systemPrompt: ctx.getSystemPrompt?.(),
+			messages: [
+				{
+					role: "user",
+					content: buildUntrackedClassifierPrompt(untrackedFiles),
+					timestamp: Date.now(),
+				},
+			],
+		},
+		{
+			apiKey: auth.apiKey,
+			headers: auth.headers,
+			reasoning: "minimal",
+			signal: ctx.signal,
+		},
+	);
+	const text = extractAssistantText(response.content);
+	if (!text.trim()) {
+		throw new Error("Untracked classifier returned no assistant text");
+	}
+	return parseUntrackedClassifierResult(text, untrackedFiles);
+}
+
+async function resolveLowConfidenceClassifications(
+	ctx: WorkflowContext,
+	items: UntrackedClassification[],
+) {
+	const resolved: UntrackedClassification[] = [];
+	for (const item of items) {
+		const selected = await ctx.ui.select?.(
+			`Track untracked path ${item.path}? ${item.reason}`,
+			["ignore", "do_not_ignore"],
+		);
+		if (selected !== "ignore" && selected !== "do_not_ignore") {
+			throw new Error("Commit cancelled during untracked classification");
+		}
+		resolved.push({ ...item, decision: selected });
+	}
+	return resolved;
+}
+
+function appendGitignorePatterns(cwd: string, patterns: string[]) {
+	const uniquePatterns = uniqueSorted(
+		patterns.map((p) => p.trim()).filter(Boolean),
+	);
+	if (uniquePatterns.length === 0) return;
+	const gitignorePath = path.join(cwd, ".gitignore");
+	const existing = fs.existsSync(gitignorePath)
+		? fs.readFileSync(gitignorePath, "utf-8")
+		: "";
+	const existingLines = new Set(parseLines(existing));
+	const missing = uniquePatterns.filter(
+		(pattern) => !existingLines.has(pattern),
+	);
+	if (missing.length === 0) return;
+	const prefix = existing.length === 0 || existing.endsWith("\n") ? "" : "\n";
+	fs.appendFileSync(gitignorePath, `${prefix}${missing.join("\n")}\n`);
+}
+
+function applyUntrackedClassifications(
+	cwd: string,
+	classifications: UntrackedClassification[],
+	activity?: CommitActivity,
+) {
+	const ignored = classifications.filter((item) => item.decision === "ignore");
+	appendGitignorePatterns(
+		cwd,
+		ignored.map((item) => item.gitignorePattern || item.path),
+	);
+	if (ignored.length > 0) {
+		activity?.logInfo(
+			`Ignored untracked paths:\n${ignored.map((item) => `- ${item.path}: ${item.reason}`).join("\n")}`,
+		);
+	}
 }
 
 export async function chooseFilesToCommit(
@@ -980,6 +1225,7 @@ export function stageFiles(
 	cwd: string,
 	files: string[],
 	activity?: CommitActivity,
+	allCommittableFiles: string[] = files,
 ) {
 	const unsafe = filterCommitSafeFiles(files).excluded;
 	if (unsafe.length > 0) {
@@ -991,12 +1237,21 @@ export function stageFiles(
 		fs.existsSync(path.resolve(cwd, file)),
 	);
 	const missingFiles = files.filter((file) => !existingFiles.includes(file));
-	if (existingFiles.length > 0) {
-		const addResult = runGit(
-			cwd,
-			["add", "-A", "--", ...existingFiles],
-			activity,
+	const ignoredExisting = existingFiles.filter(
+		(file) => runGit(cwd, ["check-ignore", "--quiet", "--", file]).code === 0,
+	);
+	const stagingPlan = buildStagingPlan({
+		files: existingFiles,
+		allCommittableFiles,
+		ignoredFiles: ignoredExisting,
+	});
+	if (stagingPlan.unsafe.length > 0) {
+		throw new Error(
+			`Refusing to stage ignored paths:\n${stagingPlan.unsafe.map((file) => `- ${file}`).join("\n")}`,
 		);
+	}
+	if (existingFiles.length > 0) {
+		const addResult = runGit(cwd, stagingPlan.addArgs, activity);
 		if (addResult.code !== 0)
 			throw new Error(
 				(addResult.stderr || addResult.stdout).trim() || "git add failed",
@@ -1219,7 +1474,7 @@ function formatExcludedCommitPaths(
 }
 
 function getCommitContext(cwd: string, activity?: CommitActivity) {
-	const { all, staged } = listChangedFiles(cwd, activity);
+	const { all, staged, untracked } = listChangedFiles(cwd, activity);
 	const changed = filterCommitSafeFiles(all);
 	const stagedSafe = filterCommitSafeFiles(staged);
 	if (changed.excluded.length > 0) {
@@ -1243,6 +1498,7 @@ function getCommitContext(cwd: string, activity?: CommitActivity) {
 		diffStat,
 		changedFiles: changed.included,
 		stagedFiles: stagedSafe.included,
+		untrackedFiles: untracked,
 	};
 }
 
@@ -1251,10 +1507,25 @@ async function prepareCommitSelection(
 	ctx: WorkflowContext,
 	activity?: CommitActivity,
 ) {
-	const { diffStat, changedFiles, stagedFiles } = getCommitContext(
-		ctx.cwd,
-		activity,
-	);
+	let { diffStat, changedFiles, stagedFiles, untrackedFiles } =
+		getCommitContext(ctx.cwd, activity);
+	if (untrackedFiles.length > 0) {
+		activity?.setPhase("classifying untracked files");
+		const plan = await classifyUntrackedFiles(ctx, untrackedFiles);
+		const userDecisions = await resolveLowConfidenceClassifications(
+			ctx,
+			plan.needsUserDecision,
+		);
+		applyUntrackedClassifications(
+			ctx.cwd,
+			[...plan.accepted, ...userDecisions],
+			activity,
+		);
+		({ diffStat, changedFiles, stagedFiles, untrackedFiles } = getCommitContext(
+			ctx.cwd,
+			activity,
+		));
+	}
 	const findings = scanFilesForSecrets(ctx.cwd, changedFiles);
 	if (!(await confirmSecretScan(ctx, findings))) return null;
 
@@ -1266,7 +1537,8 @@ async function prepareCommitSelection(
 		parsedArgs.files,
 	);
 	if (selection.cancelled || selection.files.length === 0) return null;
-	if (selection.stageAll) stageFiles(ctx.cwd, selection.files, activity);
+	if (selection.stageAll)
+		stageFiles(ctx.cwd, selection.files, activity, changedFiles);
 
 	const cachedStat = gitOrThrow(
 		ctx.cwd,
@@ -1369,7 +1641,7 @@ async function executeCommitCommand(
 		unstageFiles(ctx.cwd, prepared.selection.files, activity);
 		for (const [index, group] of plan.groups.entries()) {
 			activity.setPhase(`creating commit ${index + 1}/${plan.groups.length}`);
-			stageFiles(ctx.cwd, group.files, activity);
+			stageFiles(ctx.cwd, group.files, activity, prepared.selection.files);
 			let hash: string;
 			try {
 				const stagedStat = gitOrThrow(

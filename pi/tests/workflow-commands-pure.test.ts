@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+	buildStagingPlan,
+	buildUntrackedClassifierPrompt,
 	chooseFilesToCommit,
 	confirmCommitMessage,
 	filterCommitSafeFiles,
 	getCommitRuntimePathReason,
 	normalizeCommitSubject,
 	parseCommitPlan,
+	parseUntrackedClassifierResult,
 	proposeCommitMessage,
 	validateCommitPlan,
 } from "../extensions/workflow-commands.ts";
@@ -189,6 +192,165 @@ describe("commit runtime path filters", () => {
 		expect(getCommitRuntimePathReason("pi/cache/models-dev-api.json")).toBe(
 			"Pi runtime cache",
 		);
+	});
+});
+
+describe("untracked classifier helpers", () => {
+	const untracked = [
+		"pi/inspect/snapshots/session.json",
+		"pi/extensions/source.ts",
+	];
+
+	it("builds a constrained prompt with Git best practices and confidence gate", () => {
+		const prompt = buildUntrackedClassifierPrompt(untracked);
+		expect(prompt).toContain(
+			"Allowed decisions are exactly ignore and do_not_ignore",
+		);
+		expect(prompt).toContain("85% confidence gate");
+		expect(prompt).toContain("generated runtime state");
+		expect(prompt).toContain("source code, tests, documentation");
+	});
+
+	it("accepts full coverage and splits low confidence decisions", () => {
+		const result = parseUntrackedClassifierResult(
+			JSON.stringify({
+				classifications: [
+					{
+						path: "pi/inspect/snapshots/session.json",
+						decision: "ignore",
+						confidence: 96,
+						reason: "Generated runtime snapshot.",
+						gitignorePattern: "pi/inspect/snapshots/",
+					},
+					{
+						path: "pi/extensions/source.ts",
+						decision: "do_not_ignore",
+						confidence: 84,
+						reason: "Source file, but confidence is intentionally low.",
+					},
+				],
+			}),
+			untracked,
+		);
+		expect(result.accepted.map((item) => item.path)).toEqual([
+			"pi/inspect/snapshots/session.json",
+		]);
+		expect(result.needsUserDecision.map((item) => item.path)).toEqual([
+			"pi/extensions/source.ts",
+		]);
+	});
+
+	it("rejects invalid decisions, duplicate paths, and incomplete coverage", () => {
+		expect(() =>
+			parseUntrackedClassifierResult(
+				JSON.stringify({
+					classifications: [
+						{
+							path: untracked[0],
+							decision: "ask_user",
+							confidence: 90,
+							reason: "Invalid action.",
+						},
+					],
+				}),
+				untracked,
+			),
+		).toThrow(/invalid decision/i);
+		expect(() =>
+			parseUntrackedClassifierResult(
+				JSON.stringify({
+					classifications: [
+						{
+							path: untracked[0],
+							decision: "ignore",
+							confidence: 90,
+							reason: "Generated.",
+						},
+						{
+							path: untracked[0],
+							decision: "ignore",
+							confidence: 91,
+							reason: "Generated.",
+						},
+					],
+				}),
+				untracked,
+			),
+		).toThrow(/duplicate/i);
+		expect(() =>
+			parseUntrackedClassifierResult(
+				JSON.stringify({
+					classifications: [
+						{
+							path: untracked[0],
+							decision: "ignore",
+							confidence: 90,
+							reason: "Generated.",
+						},
+					],
+				}),
+				untracked,
+			),
+		).toThrow(/omitted/i);
+	});
+
+	it("rejects nonnumeric confidence", () => {
+		expect(() =>
+			parseUntrackedClassifierResult(
+				JSON.stringify({
+					classifications: untracked.map((path) => ({
+						path,
+						decision: "do_not_ignore",
+						confidence: "high",
+						reason: "Invalid confidence.",
+					})),
+				}),
+				untracked,
+			),
+		).toThrow(/confidence/i);
+	});
+});
+
+describe("staging strategy helpers", () => {
+	it("omits ignored paths from git add and plans index-only removal", () => {
+		const plan = buildStagingPlan({
+			files: ["src/app.ts", "pi/inspect/snapshots/session.json"],
+			allCommittableFiles: ["src/app.ts"],
+			ignoredFiles: ["pi/inspect/snapshots/session.json"],
+			trackedIgnoredFiles: ["pi/inspect/snapshots/session.json"],
+		});
+		expect(plan.addArgs).toEqual(["add", "-A", "--", "src/app.ts"]);
+		expect(plan.rmCachedArgs).toEqual([
+			"rm",
+			"--cached",
+			"--ignore-unmatch",
+			"--",
+			"pi/inspect/snapshots/session.json",
+		]);
+		expect(plan.addArgs).not.toContain("-f");
+	});
+
+	it("uses broad staging only for the full safe candidate set", () => {
+		const files = Array.from(
+			{ length: 21 },
+			(_, index) => `src/file-${index}.ts`,
+		);
+		expect(
+			buildStagingPlan({ files, allCommittableFiles: files }).addArgs,
+		).toEqual(["add", "."]);
+		expect(
+			buildStagingPlan({
+				files: [files[0] ?? "src/file-0.ts"],
+				allCommittableFiles: files,
+			}).addArgs,
+		).toEqual(["add", "-A", "--", files[0]]);
+		expect(
+			buildStagingPlan({
+				files: ["src/app.ts", "pi/inspect/snapshots/session.json"],
+				allCommittableFiles: ["src/app.ts"],
+				ignoredFiles: ["pi/inspect/snapshots/session.json"],
+			}).useBroadAdd,
+		).toBe(false);
 	});
 });
 
