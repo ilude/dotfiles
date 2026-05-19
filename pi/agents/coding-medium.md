@@ -8,7 +8,7 @@ isolation: none
 memory: project
 effort: medium
 maxTurns: 35
-tools: read, grep, bash, edit, write, ask_user, subagent, append_expertise, log_exchange, read_expertise, tool_search, web_search, web_fetch, pwsh, test_status, test_debug, test_targets, test_run, test_canary, test_recover, test_infra_research, test_lock_clear, todo, commit_plan, commit_validate_message
+tools: read, grep, bash, edit, write, ask_user, subagent, append_expertise, log_exchange, read_expertise, tool_search, web_search, web_fetch, pwsh, todo, commit_plan, commit_validate_message
 ---
 
 # Coding Medium

@@ -19,7 +19,7 @@ isolation: none
 memory: project
 effort: high
 maxTurns: 35
-tools: read, grep, bash, test_status, test_debug, test_targets, test_run, test_canary, test_recover, test_infra_research
+tools: read, grep, bash
 ---
 
 # Validator Heavy
