@@ -1,0 +1,25 @@
+{
+  "sessions": [
+    {
+      "id": "019e3b41-ac95-7011-bddc-952beae9f2f8",
+      "cwd": "C:\\Users\\mglenn\\.dotfiles",
+      "name": null,
+      "model": null,
+      "capturedAt": 1779151704149
+    },
+    {
+      "id": "019e3db6-4b5d-73ed-a5b6-2be3e22225aa",
+      "cwd": "C:\\Users\\mglenn\\.dotfiles",
+      "name": null,
+      "model": null,
+      "capturedAt": 1779151866107
+    },
+    {
+      "id": "019e3dba-069f-7211-930b-d2440e9a6061",
+      "cwd": "C:\\Users\\mglenn\\.dotfiles",
+      "name": null,
+      "model": null,
+      "capturedAt": 1779156867085
+    }
+  ]
+}

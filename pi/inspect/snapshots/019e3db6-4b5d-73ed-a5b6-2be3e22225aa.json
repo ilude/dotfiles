@@ -1,0 +1,2785 @@
+{
+  "sessionId": "019e3db6-4b5d-73ed-a5b6-2be3e22225aa",
+  "sessionName": null,
+  "cwd": "C:\\Users\\mglenn\\.dotfiles",
+  "model": null,
+  "systemPrompt": "# Pi Coding Agent System Prompt\n# System Prompt v1.0 – 2026-04-25\n\n## Role\nYou are an expert coding assistant operating inside **Pi**, a terminal‑based coding‑agent harness. Your primary goal is to help the user by reading files, executing commands, editing code, and writing new files.\n\n## Available Tools\n- `read`\n- `bash`\n- `edit`\n- `write`\n- `ask_user`\n- `subagent`\n- `append_expertise`\n- `log_exchange`\n- `read_expertise`\n- `tool_search`\n- `web_search`\n- `web_fetch`\n- `pwsh`\n- `test_status`\n- `test_debug`\n- `test_targets`\n- `test_run`\n- `test_canary`\n- `test_recover`\n- `test_infra_research`\n- `test_lock_clear`\n- `todo`\n\n(For detailed usage see each tool’s documentation.)\n\n## Output Format\n- Always respond in **Markdown**.\n- Code blocks must be fenced with triple backticks and a language hint.\n- Summaries should be ≤ 3 bullet points unless a longer answer is requested.\n- Keep any response ≤ 2000 tokens; truncate longer tool output with a short summary first.\n\n## Task Flow\n1. **Verify** the request (e.g., read needed files, run a dry‑run of a command).\n2. **Choose** the appropriate tool and invoke it.\n3. **Summarize** any large tool output before further reasoning.\n4. **Confirm** before destructive, irreversible, ambiguous, secret-touching, or environment-wide mutations. Routine requested repo edits may proceed without extra confirmation.\n5. **Iterate** until the goal is satisfied, then present the final result.\n\n## Constraints\n- **Never** commit secrets, API keys, or modify `*.env` files.\n- **No** destructive git commands (`git reset --hard`, `git clean -f`, etc.) without an explicit `ask_user` confirmation.\n- Use forward‑slashes in paths; on Windows use `/dev/null` for redirection.\n- Keep total token usage ≤ 8000; truncate or summarize as needed.\n- Follow the KISS principle – implement the simplest solution that meets the acceptance criteria.\n- Fix all errors and warnings; do not suppress diagnostics.\n\n## Safety & Confirmation\n- Use `ask_user` for any ambiguous request or before performing irreversible operations.\n- If the user requests a destructive action, ask for explicit confirmation (`mode: \"confirm\"`).\n\n## Decision‑Making\nWhen presenting alternatives, use the **1‑problem / 3‑options / 1‑recommendation** format.\n\n## External Knowledge\nLarge reference material (e.g., the full Pi README) is stored in `.pi/APPEND_SYSTEM.md`. The model may consult it when needed.\n\n\n# Project Context\n\nProject-specific instructions and guidelines:\n\n## C:\\Users\\mglenn\\.dotfiles\\AGENTS.md\n\n# AGENTS.md\n\nNeutral onboarding for coding agents working in this repository. This file covers repo-wide behavior only. Client-specific runtime details live in the client directories, especially `claude/`, `opencode/`, and `copilot/`.\n\n## Overview\n\nCross-platform dotfiles for Linux, Windows PowerShell, Git Bash/MSYS2, and WSL. The repo uses Dotbot for symlink management and aims to provide a unified zsh experience across terminals. It also contains git submodules, including `dotbot/` and `menos/`.\n\nRead this file first for repo-wide rules. If you are running inside a specific client:\n\n- Claude Code: then read `CLAUDE.md` for Claude-specific hooks, commands, and workarounds.\n- OpenCode/Codex: then read `opencode/AGENTS.md` for client-specific behavior.\n- Copilot: use the guidance in `copilot/`.\n\n## Primary Commands\n\n### Installation\n\nLinux, Git Bash, MSYS2:\n\n```bash\n~/.dotfiles/install\n```\n\nWindows PowerShell:\n\n```powershell\n~\\.dotfiles\\install.ps1\n~\\.dotfiles\\install.ps1 -Work\n~\\.dotfiles\\install.ps1 -ITAdmin\n~\\.dotfiles\\install.ps1 -NoElevate\n~\\.dotfiles\\install.ps1 -ListPackages\n```\n\nFor the Windows Pi package-manager decision (`pnpm` instead of Bun for the global `pi` install), see `pi/README.md`.\n\nWSL:\n\n```bash\n~/.dotfiles/wsl/install\n~/.dotfiles/wsl/install --packages\n```\n\n### Validation\n\n```bash\nmake test\nmake test-quick\nmake test-pytest\nmake lint\nmake lint-python\nmake format\nmake check\njust update\n```\n\nTooling expectations:\n\n- Python tooling uses `uv`.\n- JavaScript/TypeScript package-manager policy: prefer `bun`; use `pnpm` where Bun cannot resolve the Pi package graph or where a package already has `pnpm-lock.yaml`; never use `npm` or create/commit `package-lock.json`.\n- Pi-specific rule: Pi TypeScript validation is pnpm-only. `pi/extensions/` owns Pi TypeScript dependencies/type-checking, and `pi/tests/` is pnpm-managed for Vitest. Do **not** use `bun add`, `bun install`, `bun run`, or `bun test` for Pi-related TypeScript packages/tests. Run `cd pi/extensions && pnpm install --frozen-lockfile && pnpm run typecheck` and `cd pi/tests && pnpm install --frozen-lockfile && pnpm run test`. For a single Vitest file, pass the filter directly to the pnpm script, e.g. `cd pi/tests && pnpm test operator-status.test.ts`; do **not** insert `--` before the file filter, because this repo's script passes it through to Vitest and runs the full suite.\n- Tests use `pytest`.\n- Python lint and format use `ruff`.\n- Shell lint and format use `shellcheck` and `shfmt`.\n- `pyproject.toml` sets the Python floor at 3.9.\n- Validation should target the intended contract or regression, not merely execute commands. If only a smoke test is practical, say so. Do not claim a behavior is verified unless the relevant code path or documented validation command was run.\n\n## Repo Rules\n\n### Install Flow\n\nThe main entrypoints are `install` and `install.ps1`.\n\nThe install flow is:\n\n1. Perform XDG migration for Git config files.\n2. Run Dotbot with `install.conf.yaml`.\n3. Generate machine-local Git identity config with `scripts/git-ssh-setup`.\n4. Configure zsh with `scripts/zsh-setup`.\n5. Download pinned zsh plugins on first shell startup with `scripts/zsh-plugins`.\n\nWSL uses `wsl/install` and `wsl/install.conf.yaml`.\n\n### WSL Mirroring Rule\n\n`wsl/install.conf.yaml` must mirror the relevant cross-platform links from `install.conf.yaml`.\n\nWhen adding a new cross-platform link to `install.conf.yaml`, add the WSL equivalent to `wsl/install.conf.yaml`. Skip Windows-only targets such as the PowerShell profile and Windows VS Code paths.\n\n### Shell Architecture\n\nAll terminals are expected to converge on zsh:\n\n```text\n.bash_profile -> .zshenv -> .zshrc\n```\n\n- `zsh/env.d/` contains environment modules.\n- `zsh/rc.d/` contains interactive modules.\n- Canonical platform helpers live in `zsh/rc.d/00-helpers.zsh`.\n- Standalone scripts sometimes redefine platform detection for self-containment.\n\n### Cross-Platform Shell Gotchas\n\n- In MSYS2 and Git Bash, pass `ZDOTDIR` through `env` when execing zsh.\n- In shell config and prompt logic, prefer `${ZDOTDIR:-$HOME}` over raw `~` or `$HOME` when path resolution crosses the Git Bash and MSYS2 boundary.\n- On Windows with MSYS2, `nsswitch.conf` must resolve HOME with `db_home: env windows cygwin desc`.\n- In WSL prompt normalization, compare Windows-home paths case-insensitively.\n\n### Git Identity Rules\n\n- Git identity switches automatically based on directory and remote URL.\n- Machine-specific SSH config is written into gitignored local files.\n- Personal key priority is `id_ed25519-personal` then generic `id_ed25519`.\n- Work key priority is `id_ed25519-work` then `id_ed25519-eagletg`.\n- Work does not fall back to generic `id_ed25519`.\n\n### Pi Expertise Retrieval Note\n\n`read_expertise` currently uses layered snapshots plus optional focused local retrieval (`query` / `max_results`). Option 3 -- a retrieval-first expertise system -- is future-only and not implemented in this plan. Revisit it only if the layered snapshot-plus-retrieval approach cannot keep outputs focused and bounded without losing critical stable knowledge.\n\n### Submodule Rules\n\n- Never force-push submodule repos.\n- Do not amend or rebase already-pushed submodule commits.\n- Pull inside the submodule before updating the parent repo’s pinned submodule reference.\n- If `git pull` fails on a submodule fetch, use:\n\n```bash\ngit pull --no-recurse-submodules\ngit submodule update --init --recursive\n```\n\n### Conventions\n\n- All scripts must be idempotent.\n- Use LF line endings only.\n- VS Code is the default editor, diff tool, and merge tool.\n- The default branch is `main`.\n- Dotbot link defaults rely on `force: true`, `relink: true`, and `create: true`.\n- Use only tools, workflows, permissions, and memory/task systems explicitly available in the active harness. If a capability is absent, adapt instead of naming or assuming it.\n- Prefer deterministic code/tooling for routing, retries, transforms, status handling, install detection, and validation. Use model judgment for synthesis, review, classification, and ambiguous language tasks, not for decisions code or tool output can answer.\n- Do not use try-catch wrappers, guard flags, or fallback logic unless specifically requested. Solve the domain problem natively. If data or dependencies are missing, fail with explicit exceptions -- not silent defaults. When requirements make code paths redundant, remove them entirely; do not wrap old logic in fallback flags.\n- Keep planning proportional: use brief prose plans for complex work, skip formal planning for simple requests, and ask for clarification only when ambiguity affects correctness or direction.\n- When a task involves a list or batch of items, track scope explicitly. Do not finalize until all items are accounted for -- completed, explicitly skipped with reason, or flagged as blocked.\n- Stop researching when the core question is answered and additional retrieval is unlikely to change the conclusion. Exhaustive coverage only when explicitly requested.\n\n## Agent Surfaces\n\nFor command ownership and client-specific command locations, see `docs/agent-command-surfaces.md`.\n\n- `claude/` is Claude Code-specific runtime config, hooks, commands, and local session data linked to `~/.claude`.\n- `opencode/` is OpenCode config linked to `~/.config/opencode`.\n- `copilot/` contains Copilot prompts and instructions.\n- `pi/skills/workflow/` contains Pi workflow skills such as Pi's `/do-it`.\n\nShared command ownership:\n\n- `claude/commands/` is the canonical shared command source for Claude/OpenCode command wrappers.\n- `claude/shared/` contains shared command bodies used by Claude, OpenCode, and some Copilot prompts.\n- `opencode/commands/` is an overlay: OpenCode-specific overrides live there, and the remaining commands are symlinked from `claude/commands/`.\n- Pi does not load `claude/commands/`; update `pi/skills/workflow/` for Pi-specific workflow behavior.\n\nWhen patterns conflict across Claude, OpenCode, Copilot, Pi, shell, PowerShell, WSL, or platform-specific directories, do not blend them. Follow the owning surface or local directory convention, and flag the conflict if it affects the change.\n\n## Key Paths\n\n- `install`, `install.ps1`: primary installers\n- `install.conf.yaml`: Dotbot symlink configuration\n- `winget/configuration/`: WinGet Configuration (DSC) YAML files defining the Windows package set. Edit `core.dsc.yaml`, `work.dsc.yaml`, or `dev.dsc.yaml` to add/remove packages — install.ps1 invokes `winget configure` against them. Preserve the comment format `id: <id>  # <Display Name>` (two spaces before `#`) so `-ListPackages` keeps working.\n- `wsl/`: WSL installer, packages, validation, and WSL-specific Dotbot config\n- `zsh/env.d/`, `zsh/rc.d/`: shell modules\n- `config/git/`: XDG Git config\n- `powershell/profile.ps1`: PowerShell profile\n- `test/`: repo tests\n- `docs/research/obsidian-vault/`: Obsidian-style research vault for multi-topic idea gardens; follow its local `AGENTS.md` and topic-specific guidance such as `agent-workflows/AGENTS.md`.\n- `plugins/`: zsh plugins\n- `dotbot/`: Dotbot submodule\n\n## Out Of Scope Here\n\nThis file intentionally does not cover:\n\n- Claude hook internals\n- Claude slash-command usage\n- Claude settings semantics\n- Claude-specific runtime workarounds\n- `menos/` deployment or Claude-only content-ingestion workflows\n\n\n\n\nThe following skills provide specialized instructions for specific tasks.\nUse the read tool to load a skill's file when the task matches its description.\nWhen a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.\n\n<available_skills>\n  <skill>\n    <name>analysis-workflow</name>\n    <description>Activate when user mentions analyze, review, validate, critique, debug, troubleshoot, red-team, adversarial, or &quot;what could go wrong&quot;. Use for code review, debugging, validation, and error investigation.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\analysis-workflow\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>ansible</name>\n    <description>Ansible automation, playbooks, and configuration management. Activate when working with Ansible YAML files, playbooks, inventory files, roles, handlers, or discussing Ansible patterns, ansible-playbook, ansible-lint, molecule testing, or Ansible Galaxy.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\ansible\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>api-design</name>\n    <description>API design patterns including REST, GraphQL, and authentication. Activate when designing APIs or discussing API patterns.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\api-design\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>brainstorming</name>\n    <description>Generate multiple approaches before implementing. Activate when facing design decisions, architectural choices, or problems with multiple valid solutions. Prevents premature commitment to first idea.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\brainstorming\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>caveman</name>\n    <description>Ultra-compressed communication mode. Cuts token usage ~75% by dropping filler, articles, and pleasantries while keeping full technical accuracy. Use when user says &quot;caveman mode&quot;, &quot;talk like caveman&quot;, &quot;use caveman&quot;, &quot;less tokens&quot;, &quot;be brief&quot;, or invokes /caveman.\n</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\caveman\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>claude-code-workflow</name>\n    <description>Activate when discussing Claude Code usage, prompting strategies, context management, hooks, multi-instance verification, browser automation, ruleset optimization, CLAUDE.md optimization, multi-agent projects, or .spec/ patterns.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\claude-code-workflow\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>code-review</name>\n    <description>Evidence-based code review avoiding false positives. Triggers: code review, review code, review changes, review PR, review diff, review branch, review commit, PR review, pull request review, git diff, git show, compare changes. Activate when user asks to review code, changes, a branch, a commit, or a PR.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\code-review\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>csharp</name>\n    <description>C# and .NET development with testing and best practices. Activate when working with .cs, .csproj, .sln files, or discussing C#/.NET patterns, dotnet CLI, NuGet, Entity Framework, LINQ, dependency injection, async/await in .NET, or xUnit/NUnit testing.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\csharp\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>database</name>\n    <description>Database design, SQL, ORM patterns, migrations, and optimization. Activate when working with .sql files, database schemas, migrations, ORMs, query optimization, indexing, transactions, EXPLAIN plans, or discussing database patterns, PostgreSQL, MySQL, SQLite, DynamoDB, or Redis.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\database\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>development-philosophy</name>\n    <description>Personal development philosophy emphasizing experiment-driven, fail-fast approach. Activate when planning implementations, reviewing code architecture, making design decisions, or when user asks to apply development principles. Guides against over-engineering and towards solving real problems with simple solutions.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\development-philosophy\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>docker</name>\n    <description>Docker containers, Compose, and containerization patterns. Activate when working with Dockerfile, docker-compose.yml, docker-compose, .dockerignore, .devcontainer, devcontainer.json, or discussing Docker, containers, images, container orchestration, or podman.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\docker\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>docs</name>\n    <description>Technical documentation, writing guides, and documentation patterns. Activate when writing or discussing documentation, working with .md markdown files, README, CHANGELOG, docs/ folders, mkdocs, docusaurus, or technical writing.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\docs\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>git-workflow</name>\n    <description>Activate when working with git operations, commits, branches, or version control. Trigger on git commands, .git/ files, .gitignore, .gitattributes, or mentions of commit, push, merge, rebase, reset, filter-branch, or history rewrite.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\git-workflow\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>go</name>\n    <description>Go development with testing, modules, and best practices. Activate when working with .go files, go.mod, go.sum, or discussing Go patterns, goroutines, channels, interfaces, go test, go vet, or Go concurrency patterns.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\go\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>grill-me</name>\n    <description>Interview the user relentlessly about a plan or design until reaching shared understanding, resolving each branch of the decision tree. Use when user wants to stress-test a plan, get grilled on their design, or mentions &quot;grill me&quot;.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\grill-me\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>least-astonishment</name>\n    <description>Principle of Least Astonishment (POLA) for edit-time code changes. Activate when modifying, editing, refactoring, fixing, patching, extending, or adding to existing code — any time Claude is about to change code in an established codebase. Trigger keywords: edit, modify, change, update, refactor, fix, patch, extend, add to, integrate with, wire into, match the existing, follow the pattern, in this file, in this module, in this codebase, alongside, similar to. Do NOT activate for: greenfield, from scratch, new project, prototype, scaffold, throwaway.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\least-astonishment\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>llmstxt</name>\n    <description>LLMs.txt standard for AI-friendly documentation. Activate when discussing llms.txt, /llms.txt endpoints, llms-full.txt, AI-readable documentation, machine-readable docs, or the llmstxt.org specification.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\llmstxt\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>logging-observability</name>\n    <description>Structured logging, distributed tracing, and debugging patterns. Triggers: logging, observability, tracing, debugging, structured logging, log aggregation, performance metrics, monitoring, correlation ID, trace ID.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\logging-observability\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>pdf-reader</name>\n    <description>Read and comprehend PDF files, especially math lecture notes, papers, scanned-ish pages, diagrams, and page-specific questions. Use when the user asks to read, parse, analyze, search, render, or extract content from a PDF file.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\pdf-reader\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>pi-command</name>\n    <description>Use when creating, reviewing, relocating, or documenting Pi slash commands, prompt templates, skills, or command-surface placement decisions.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\pi-command\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>pi-contributor-workflow</name>\n    <description>Pi-mono upstream contribution workflow. Activate only when working in badlogic/pi-mono or @mariozechner/pi-* packages and discussing Pi issue/PR submission, maintainer approval, contributor gates, pkg:* labels, changelog rules, or getting a Pi fix accepted upstream.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\pi-contributor-workflow\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>brave-search</name>\n    <description>Web search and content extraction via Brave Search API. Use for searching documentation, facts, or any web content. Lightweight, no browser required.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\pi-skills\\brave-search\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>browser-tools</name>\n    <description>Interactive browser automation via Chrome DevTools Protocol. Use when you need to interact with web pages, test frontends, or when user interaction with a visible browser is required.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\pi-skills\\browser-tools\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>gccli</name>\n    <description>Google Calendar CLI for listing calendars, viewing/creating/updating events, and checking availability.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\pi-skills\\gccli\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>gdcli</name>\n    <description>Google Drive CLI for listing, searching, uploading, downloading, and sharing files and folders.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\pi-skills\\gdcli\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>gmcli</name>\n    <description>Gmail CLI for searching emails, reading threads, sending messages, managing drafts, and handling labels/attachments.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\pi-skills\\gmcli\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>transcribe</name>\n    <description>Speech-to-text transcription using Groq Whisper API. Supports m4a, mp3, wav, ogg, flac, webm.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\pi-skills\\transcribe\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>vscode</name>\n    <description>VS Code integration for viewing diffs and comparing files. Use when showing file differences to the user.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\pi-skills\\vscode\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>youtube-transcript</name>\n    <description>Fetch transcripts from YouTube videos for summarization and analysis.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\pi-skills\\youtube-transcript\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>planning</name>\n    <description>Planning methodology including acceptance criteria, PRDs, and verification strategies. Activate when writing acceptance criteria, creating PRDs, defining requirements, user stories, verification criteria, or converting vague requirements into testable outcomes.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\planning\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>prd</name>\n    <description>Product Requirements Document refinement for Pi. Activate when the user invokes /prd-it or asks to create, refine, review, flesh out, draft, or write a PRD/product requirements artifact. Do not activate for incidental PRD mentions unless asking one opt-in question.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\prd\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>python</name>\n    <description>Python development with uv, pytest, Pydantic, type hints, and modern tooling. Activate when working with Python files, pyproject.toml, uv, pip, pytest, or discussing Python code patterns.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\python\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>reddit</name>\n    <description>Browse Reddit via public .json endpoints (no API key required). Use when the user asks to search Reddit, view a subreddit, or read a specific post.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\reddit\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>research-archive</name>\n    <description>Activate when saving research findings, referencing prior investigations, citing sources, documenting references, or using the /research command. Guides consistent research documentation in .specs/research/.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\research-archive\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>ruby</name>\n    <description>Ruby development with Rails, RSpec, and best practices. Activate when working with .rb files, Gemfile, Gemfile.lock, Rakefile, .gemspec, or discussing Ruby/Rails patterns, bundler, ActiveRecord, migrations, RSpec, minitest, or Rails generators.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\ruby\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>rust</name>\n    <description>Rust development with Cargo, testing, and ownership patterns. Activate when working with .rs files, Cargo.toml, Cargo.lock, or discussing Rust patterns, ownership, borrowing, lifetimes, traits, cargo build/test/run, Result/Option types, or the borrow checker.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\rust\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>shell</name>\n    <description>Shell scripting, CLI development, Bash, PowerShell, Makefiles, and cross-platform tooling. Activate when working with .sh, .bash, .ps1, Makefile files or discussing shell/CLI patterns.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\shell\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>skills-engineer</name>\n    <description>Domain knowledge for writing, reviewing, and optimizing SKILL.md files, agent definitions, and command files for Claude Code and OpenCode. Activate when working on SKILL.md, skills, skill creation, skill review, skill optimization, agent files, agent definitions, command files, meta-skill, activation triggers, or frontmatter.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\skills-engineer\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>terraform</name>\n    <description>Terraform IaC, modules, and cloud infrastructure patterns. Activate when working with .tf files, variables.tf, main.tf, outputs.tf, terraform.tfvars, .tfstate, or discussing Terraform, HCL, terraform init/plan/apply, remote backends, or infrastructure as code with Terraform.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\terraform\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>typescript</name>\n    <description>TypeScript/JavaScript development with Bun, Biome, Zod, and modern tooling. Activate when working with .ts, .tsx, .js, .jsx files, package.json, or discussing TypeScript/JavaScript patterns.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\typescript\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>ux-design-workflow</name>\n    <description>UX/UI design workflow from idea to code. Covers accessibility (WCAG), design tokens, aesthetics, pipelines. Triggers: design systems, UI components, build a UI, design this, user interface patterns, accessibility, WCAG.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\ux-design-workflow\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>war-report</name>\n    <description>Generate weekly activity reports (WAR) from git commits. Analyzes commits Sunday-Saturday, creates bullet summaries. Activate when user mentions &quot;war report&quot;, &quot;weekly report&quot;, &quot;activity report&quot;, &quot;WAR&quot;, or asks about weekly work accomplishments.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\war-report\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>workflow-design</name>\n    <description>Activate when improving repo developer/operator command UX, task runners, justfiles, Makefiles, package scripts, shell scripts, deployment commands, workflow docs, or command-surface consolidation.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\workflow-design\\SKILL.md</location>\n  </skill>\n  <skill>\n    <name>x-twitter</name>\n    <description>Use when working with X/Twitter: x.com feed extraction, tweet/profile checks, following/follower lists, twitterapi.io, browser-agent pulls, or local encrypted X data handling.</description>\n    <location>C:\\Users\\mglenn\\.pi\\agent\\skills\\x-twitter\\SKILL.md</location>\n  </skill>\n</available_skills>\nCurrent date: 2026-05-18\nCurrent working directory: C:/Users/mglenn/.dotfiles\n\n# Pi Global Agent Instructions\n\nPi-specific architecture and conventions. Loaded by the `pi-instructions` extension on every Pi session via `before_agent_start`. Project-specific `AGENTS.md` files take precedence.\n\n## Agent System Overview\n\nThree-tier multi-agent architecture with knowledge compounding via expertise files:\n\n- **Orchestrator** (Opus): routes requests to team leads, synthesizes output\n- **Team Leads** (Sonnet): Planning Lead, Engineering Lead, Validation Lead\n- **Workers** (Sonnet): domain-specialist agents with constrained write access\n\nAgent personas: `~/.pi/agent/multi-team/agents/`\nExpertise files: `~/.pi/agent/multi-team/expertise/`\nShared skills: `~/.pi/agent/multi-team/skills/`\nSession logs: `~/.pi/agent/multi-team/sessions/`\n\nSource-vs-runtime policy: keep curated source/config trackable, including `pi/settings.json`, but leave generated history, sessions, expertise logs, caches, and local tool state uncommitted. See `pi/README.md#source-vs-runtime-state` for the canonical policy.\n\nPi-first implementation policy: for future workflow/tooling work, prefer Pi-native solutions (Pi skills, Pi extensions, and TypeScript where Pi extension/runtime code is appropriate) unless the user explicitly asks for a cross-client or non-Pi implementation. Cross-client shims can wrap Pi-first behavior when needed, but Pi should be the default target going forward.\n\nPi `/commit` policy: Pi owns the primary structured commit-tool workflow through `pi/extensions/workflow-commands.ts`, with structured commit tools in `pi/extensions/commit.ts`. Use `commit_plan`/`commit_validate_message` for non-mutating checks. Do not call the structured mutating tools `commit_stage` or `commit_create` directly outside the `/commit` slash-command flow; `/commit` is responsible for presenting the exact staged-path set and message for explicit user approval before passing confirmation tokens to those tools. This restriction applies only to the structured commit tools, not to ordinary git usage: when the user explicitly asks to commit, agents may use a normal shell git workflow (`git status`, targeted `git add -- <paths>`, secret scan, `git diff --cached --check`, `git commit`) following the repo's git safety rules. `scripts/commit-helper` remains a compatibility/parity reference for non-Pi consumers, not the canonical Pi implementation.\n\n## Agent Frontmatter Schema\n\nPi agent `.md` files use YAML frontmatter that is a **superset** of Claude Code's agent schema. Pi-specific fields (`expertise`, `domain`, `skills`) coexist with Claude Code-compatible execution constraints (`isolation`, `memory`, `effort`, `maxTurns`). Both platforms ignore unknown fields, so a single agent file is portable.\n\n| Field | Required | Description | Source |\n|-------|----------|-------------|--------|\n| `name` | yes | Agent identifier used by `/team`, `subagent`, etc. | shared |\n| `description` | yes | One-line summary of role and routing intent. | shared |\n| `model` | no | Provider/model id, e.g. `anthropic/claude-sonnet-4-6`. Subagent honors dynamic overrides; this is the fallback. | shared |\n| `tools` | no | Comma-separated allow-list (`read, grep, subagent, ...`). | shared |\n| `isolation` | no | `none` (default) or `worktree`. Pi runtime currently ignores `worktree`; documented for forward compatibility. | claude code |\n| `memory` | no | `user`, `project` (default), or `session`. Hint for expertise-storage scope. Pi reads this advisory; the expertise system already scopes by repo-id. | claude code |\n| `effort` | no | `low`, `medium`, `high`. Maps to thinking effort when the runtime supports it. Leads use `high`; workers use `medium`. | claude code |\n| `maxTurns` | no | Conversation turn cap. Leads: `50`. Workers: `25`. | claude code |\n| `expertise` | no | List of mental-model files the agent reads/updates. | pi |\n| `domain` | no | Per-path read/upsert/delete access control. | pi |\n| `skills` | no | List of skill files the agent should follow with `use-when` hints. | pi |\n\nDefaults applied during the 2026-04-27 alignment pass:\n\n- All agents: `isolation: none`, `memory: project`.\n- Leads (orchestrator, engineering-lead, planning-lead, validation-lead, ml-research-lead): `effort: high`, `maxTurns: 50`.\n- Other agents: `effort: medium`, `maxTurns: 25`.\n\nTune per-agent values in the individual `.md` file when the work pattern justifies it -- the bulk defaults are a starting point, not a contract.\n\n## Knowledge Compounding\n\nEach agent maintains a personal expertise file (YAML) -- their mental model of the system. Read it at task start. Update it after completing work. Expertise grows across sessions.\n\n## Shell Selection\nBoth bash and pwsh tools are available. Prefer pwsh for Windows-native tasks (cmdlets, registry, WMI, .NET, COM). Use bash for git, npm, POSIX text tools.",
+  "commands": [
+    {
+      "name": "chain",
+      "description": "Run plan-build-review sequence: planner -> builder -> reviewer",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\agent-chain.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "usage",
+      "description": "Show ChatGPT Codex quota status using existing Pi/Codex OAuth credentials",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\codex-status.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "context",
+      "description": "Show Pi context usage, token spend, and component breakdown",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\context.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "damage-control",
+      "description": "Show or switch the session-local damage-control mode: default, whitelist, noshell",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\damage-control.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "dc",
+      "description": "Alias for /damage-control",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\damage-control.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "extension-stats",
+      "description": "Dump last 1/7/30 days of ~/.pi session tool/command usage; pass 60, 90, or all to include longer windows",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\extension-stats.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "doctor",
+      "description": "Operator layer health check. Usage: /doctor [--verbose | --json]. Reports pi runtime version, registry availability, task and permission state.",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\operator-status.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "permissions",
+      "description": "Show permission state -- session approvals + recent decisions. Usage: /permissions | /permissions allows | /permissions denies | /permissions reset | /permissions retry <id>.",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\permissions.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "router-status",
+      "description": "Show current prompt routing state",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\prompt-router.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "router-explain",
+      "description": "Show the last-turn routing decision: classifier output, applied route, rule fired, and current state",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\prompt-router.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "router-reset",
+      "description": "Reset prompt router session state (re-enables and clears hysteresis)",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\prompt-router.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "router-off",
+      "description": "Disable automatic prompt routing (keep current model)",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\prompt-router.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "router-on",
+      "description": "Re-enable automatic prompt routing",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\prompt-router.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "provider",
+      "description": "Manage provider credentials (API keys in ~/.pi/agent/auth.json, OAuth guidance)",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\provider.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "refresh-models",
+      "description": "Refresh available models for one configured provider or all configured providers",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\refresh-models.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "router-stats",
+      "description": "Show prompt-router model-size, effort, confidence, latency, and token attribution stats",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\router-stats.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skills",
+      "description": "List auto-discovered skills (excludes hardcoded workflow commands).",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\skill-loader.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill-stats",
+      "description": "Show best-effort skill usage from Pi session logs.",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\skill-stats.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "tasks",
+      "description": "Task control plane. Use /tasks help for lifecycle, settings, and recovery commands.",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\tasks.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "test-status",
+      "description": "Show test orchestrator adapter, lock, and latest attempt/recovery summaries",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\test-orchestrator.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "test-debug",
+      "description": "Show resolved adapter paths, validation diagnostics, discovery, and lock state",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\test-orchestrator.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "test-adapter-validate",
+      "description": "Validate the current project test orchestrator adapter config",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\test-orchestrator.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "test-targets",
+      "description": "List discovered test targets from the current project adapter",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\test-orchestrator.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "test-infra-research",
+      "description": "Run manual infrastructure research for the latest or specified incident and persist a markdown report",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\test-orchestrator.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "test-lock-clear",
+      "description": "Clear a stale or unwanted active-run lock after confirmation",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\test-orchestrator.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "test-run",
+      "description": "Run one discovered test target by filename or repo-relative path",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\test-orchestrator.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "test-canary",
+      "description": "Run the configured cache-cleared canary target",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\test-orchestrator.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "test-recover",
+      "description": "Run a named recovery action from the project adapter. Usage: /test-recover <action>",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\test-orchestrator.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "transcript-purge",
+      "description": "Delete trace+spill files older than the given age (default: all). Examples: /transcript-purge, /transcript-purge 7d, /transcript-purge 24h",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\transcript-purge.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "usage-stats",
+      "description": "Summarize Pi/Codex token usage and cost for the last 1, 7, 30, and 90 days",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\usage.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "commit",
+      "description": "Smart git commit with LLM grouping + deterministic execution",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\workflow-commands.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "branch",
+      "description": "Open a branched copy of this Pi session in a new terminal tab",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\workflow-commands.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "plan-it",
+      "description": "Crystallize conversation context into an executable plan document; pass worktree/wt to require isolated branch work",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\workflow-commands.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "prd-it",
+      "description": "Refine a fuzzy product/workflow idea into an optional PRD artifact",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\workflow-commands.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "review-it",
+      "description": "Adversarial review of a plan file — finds bugs, gaps, and failure modes",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\workflow-commands.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "do-it",
+      "description": "Smart task routing — implements directly, delegates, or plans based on complexity",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\workflow-commands.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "summarize",
+      "description": "Concise recap of this session and notable workflow friction",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\workflow-commands.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "research",
+      "description": "Parallel multi-angle research — primary sources, practical guidance, and alternatives",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\workflow-commands.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "gitlab-ticket",
+      "description": "Generate a structured GitLab issue, then optionally create an issue-numbered branch and draft MR",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\workflow-commands.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "clear",
+      "description": "Alias to /new",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\workflow-commands.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "exit",
+      "description": "Gracefully quit pi",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\workflow-commands.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "code-preview-health",
+      "description": "Show code preview renderer health and settings",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\AppData\\Roaming\\npm\\node_modules\\pi-code-previews\\index.ts",
+        "source": "npm:pi-code-previews",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "C:\\Users\\mglenn\\AppData\\Roaming\\npm\\node_modules\\pi-code-previews"
+      }
+    },
+    {
+      "name": "code-preview-settings",
+      "description": "Configure code preview settings",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\AppData\\Roaming\\npm\\node_modules\\pi-code-previews\\index.ts",
+        "source": "npm:pi-code-previews",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "C:\\Users\\mglenn\\AppData\\Roaming\\npm\\node_modules\\pi-code-previews"
+      }
+    },
+    {
+      "name": "side",
+      "description": "Open side chat (fork conversation)",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\AppData\\Roaming\\npm\\node_modules\\pi-side-chat\\index.ts",
+        "source": "npm:pi-side-chat",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "C:\\Users\\mglenn\\AppData\\Roaming\\npm\\node_modules\\pi-side-chat"
+      }
+    },
+    {
+      "name": "inspect",
+      "description": "pi-inspect dashboard: start | stop | restart | status | open web|app | list | snapshot. Bare `/inspect` opens the current session; `/inspect <sessionId>` opens a specific session.",
+      "source": "extension",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\AppData\\Roaming\\npm\\node_modules\\pi-inspect\\extensions\\inspect.ts",
+        "source": "npm:pi-inspect",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "C:\\Users\\mglenn\\AppData\\Roaming\\npm\\node_modules\\pi-inspect"
+      }
+    },
+    {
+      "name": "handoff",
+      "description": "Compact the current conversation into a handoff document for another agent to pick up",
+      "source": "prompt",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\prompts\\handoff.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "init",
+      "description": "Create or update a project-local AGENTS.md with concise coding-agent guidance",
+      "source": "prompt",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\prompts\\init.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:analysis-workflow",
+      "description": "Activate when user mentions analyze, review, validate, critique, debug, troubleshoot, red-team, adversarial, or \"what could go wrong\". Use for code review, debugging, validation, and error investigation.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\analysis-workflow\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:ansible",
+      "description": "Ansible automation, playbooks, and configuration management. Activate when working with Ansible YAML files, playbooks, inventory files, roles, handlers, or discussing Ansible patterns, ansible-playbook, ansible-lint, molecule testing, or Ansible Galaxy.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\ansible\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:api-design",
+      "description": "API design patterns including REST, GraphQL, and authentication. Activate when designing APIs or discussing API patterns.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\api-design\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:brainstorming",
+      "description": "Generate multiple approaches before implementing. Activate when facing design decisions, architectural choices, or problems with multiple valid solutions. Prevents premature commitment to first idea.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\brainstorming\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:caveman",
+      "description": "Ultra-compressed communication mode. Cuts token usage ~75% by dropping filler, articles, and pleasantries while keeping full technical accuracy. Use when user says \"caveman mode\", \"talk like caveman\", \"use caveman\", \"less tokens\", \"be brief\", or invokes /caveman.\n",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\caveman\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:claude-code-workflow",
+      "description": "Activate when discussing Claude Code usage, prompting strategies, context management, hooks, multi-instance verification, browser automation, ruleset optimization, CLAUDE.md optimization, multi-agent projects, or .spec/ patterns.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\claude-code-workflow\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:code-review",
+      "description": "Evidence-based code review avoiding false positives. Triggers: code review, review code, review changes, review PR, review diff, review branch, review commit, PR review, pull request review, git diff, git show, compare changes. Activate when user asks to review code, changes, a branch, a commit, or a PR.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\code-review\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:csharp",
+      "description": "C# and .NET development with testing and best practices. Activate when working with .cs, .csproj, .sln files, or discussing C#/.NET patterns, dotnet CLI, NuGet, Entity Framework, LINQ, dependency injection, async/await in .NET, or xUnit/NUnit testing.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\csharp\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:database",
+      "description": "Database design, SQL, ORM patterns, migrations, and optimization. Activate when working with .sql files, database schemas, migrations, ORMs, query optimization, indexing, transactions, EXPLAIN plans, or discussing database patterns, PostgreSQL, MySQL, SQLite, DynamoDB, or Redis.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\database\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:development-philosophy",
+      "description": "Personal development philosophy emphasizing experiment-driven, fail-fast approach. Activate when planning implementations, reviewing code architecture, making design decisions, or when user asks to apply development principles. Guides against over-engineering and towards solving real problems with simple solutions.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\development-philosophy\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:docker",
+      "description": "Docker containers, Compose, and containerization patterns. Activate when working with Dockerfile, docker-compose.yml, docker-compose, .dockerignore, .devcontainer, devcontainer.json, or discussing Docker, containers, images, container orchestration, or podman.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\docker\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:docs",
+      "description": "Technical documentation, writing guides, and documentation patterns. Activate when writing or discussing documentation, working with .md markdown files, README, CHANGELOG, docs/ folders, mkdocs, docusaurus, or technical writing.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\docs\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:git-workflow",
+      "description": "Activate when working with git operations, commits, branches, or version control. Trigger on git commands, .git/ files, .gitignore, .gitattributes, or mentions of commit, push, merge, rebase, reset, filter-branch, or history rewrite.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\git-workflow\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:go",
+      "description": "Go development with testing, modules, and best practices. Activate when working with .go files, go.mod, go.sum, or discussing Go patterns, goroutines, channels, interfaces, go test, go vet, or Go concurrency patterns.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\go\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:grill-me",
+      "description": "Interview the user relentlessly about a plan or design until reaching shared understanding, resolving each branch of the decision tree. Use when user wants to stress-test a plan, get grilled on their design, or mentions \"grill me\".",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\grill-me\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:least-astonishment",
+      "description": "Principle of Least Astonishment (POLA) for edit-time code changes. Activate when modifying, editing, refactoring, fixing, patching, extending, or adding to existing code — any time Claude is about to change code in an established codebase. Trigger keywords: edit, modify, change, update, refactor, fix, patch, extend, add to, integrate with, wire into, match the existing, follow the pattern, in this file, in this module, in this codebase, alongside, similar to. Do NOT activate for: greenfield, from scratch, new project, prototype, scaffold, throwaway.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\least-astonishment\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:llmstxt",
+      "description": "LLMs.txt standard for AI-friendly documentation. Activate when discussing llms.txt, /llms.txt endpoints, llms-full.txt, AI-readable documentation, machine-readable docs, or the llmstxt.org specification.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\llmstxt\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:logging-observability",
+      "description": "Structured logging, distributed tracing, and debugging patterns. Triggers: logging, observability, tracing, debugging, structured logging, log aggregation, performance metrics, monitoring, correlation ID, trace ID.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\logging-observability\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:pdf-reader",
+      "description": "Read and comprehend PDF files, especially math lecture notes, papers, scanned-ish pages, diagrams, and page-specific questions. Use when the user asks to read, parse, analyze, search, render, or extract content from a PDF file.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\pdf-reader\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:pi-command",
+      "description": "Use when creating, reviewing, relocating, or documenting Pi slash commands, prompt templates, skills, or command-surface placement decisions.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\pi-command\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:pi-contributor-workflow",
+      "description": "Pi-mono upstream contribution workflow. Activate only when working in badlogic/pi-mono or @mariozechner/pi-* packages and discussing Pi issue/PR submission, maintainer approval, contributor gates, pkg:* labels, changelog rules, or getting a Pi fix accepted upstream.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\pi-contributor-workflow\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:brave-search",
+      "description": "Web search and content extraction via Brave Search API. Use for searching documentation, facts, or any web content. Lightweight, no browser required.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\pi-skills\\brave-search\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:browser-tools",
+      "description": "Interactive browser automation via Chrome DevTools Protocol. Use when you need to interact with web pages, test frontends, or when user interaction with a visible browser is required.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\pi-skills\\browser-tools\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:gccli",
+      "description": "Google Calendar CLI for listing calendars, viewing/creating/updating events, and checking availability.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\pi-skills\\gccli\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:gdcli",
+      "description": "Google Drive CLI for listing, searching, uploading, downloading, and sharing files and folders.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\pi-skills\\gdcli\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:gmcli",
+      "description": "Gmail CLI for searching emails, reading threads, sending messages, managing drafts, and handling labels/attachments.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\pi-skills\\gmcli\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:transcribe",
+      "description": "Speech-to-text transcription using Groq Whisper API. Supports m4a, mp3, wav, ogg, flac, webm.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\pi-skills\\transcribe\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:vscode",
+      "description": "VS Code integration for viewing diffs and comparing files. Use when showing file differences to the user.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\pi-skills\\vscode\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:youtube-transcript",
+      "description": "Fetch transcripts from YouTube videos for summarization and analysis.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\pi-skills\\youtube-transcript\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:planning",
+      "description": "Planning methodology including acceptance criteria, PRDs, and verification strategies. Activate when writing acceptance criteria, creating PRDs, defining requirements, user stories, verification criteria, or converting vague requirements into testable outcomes.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\planning\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:prd",
+      "description": "Product Requirements Document refinement for Pi. Activate when the user invokes /prd-it or asks to create, refine, review, flesh out, draft, or write a PRD/product requirements artifact. Do not activate for incidental PRD mentions unless asking one opt-in question.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\prd\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:python",
+      "description": "Python development with uv, pytest, Pydantic, type hints, and modern tooling. Activate when working with Python files, pyproject.toml, uv, pip, pytest, or discussing Python code patterns.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\python\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:reddit",
+      "description": "Browse Reddit via public .json endpoints (no API key required). Use when the user asks to search Reddit, view a subreddit, or read a specific post.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\reddit\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:research-archive",
+      "description": "Activate when saving research findings, referencing prior investigations, citing sources, documenting references, or using the /research command. Guides consistent research documentation in .specs/research/.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\research-archive\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:ruby",
+      "description": "Ruby development with Rails, RSpec, and best practices. Activate when working with .rb files, Gemfile, Gemfile.lock, Rakefile, .gemspec, or discussing Ruby/Rails patterns, bundler, ActiveRecord, migrations, RSpec, minitest, or Rails generators.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\ruby\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:rust",
+      "description": "Rust development with Cargo, testing, and ownership patterns. Activate when working with .rs files, Cargo.toml, Cargo.lock, or discussing Rust patterns, ownership, borrowing, lifetimes, traits, cargo build/test/run, Result/Option types, or the borrow checker.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\rust\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:shell",
+      "description": "Shell scripting, CLI development, Bash, PowerShell, Makefiles, and cross-platform tooling. Activate when working with .sh, .bash, .ps1, Makefile files or discussing shell/CLI patterns.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\shell\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:skills-engineer",
+      "description": "Domain knowledge for writing, reviewing, and optimizing SKILL.md files, agent definitions, and command files for Claude Code and OpenCode. Activate when working on SKILL.md, skills, skill creation, skill review, skill optimization, agent files, agent definitions, command files, meta-skill, activation triggers, or frontmatter.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\skills-engineer\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:terraform",
+      "description": "Terraform IaC, modules, and cloud infrastructure patterns. Activate when working with .tf files, variables.tf, main.tf, outputs.tf, terraform.tfvars, .tfstate, or discussing Terraform, HCL, terraform init/plan/apply, remote backends, or infrastructure as code with Terraform.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\terraform\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:typescript",
+      "description": "TypeScript/JavaScript development with Bun, Biome, Zod, and modern tooling. Activate when working with .ts, .tsx, .js, .jsx files, package.json, or discussing TypeScript/JavaScript patterns.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\typescript\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:ux-design-workflow",
+      "description": "UX/UI design workflow from idea to code. Covers accessibility (WCAG), design tokens, aesthetics, pipelines. Triggers: design systems, UI components, build a UI, design this, user interface patterns, accessibility, WCAG.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\ux-design-workflow\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:war-report",
+      "description": "Generate weekly activity reports (WAR) from git commits. Analyzes commits Sunday-Saturday, creates bullet summaries. Activate when user mentions \"war report\", \"weekly report\", \"activity report\", \"WAR\", or asks about weekly work accomplishments.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\war-report\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:workflow-design",
+      "description": "Activate when improving repo developer/operator command UX, task runners, justfiles, Makefiles, package scripts, shell scripts, deployment commands, workflow docs, or command-surface consolidation.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\workflow-design\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:x-twitter",
+      "description": "Use when working with X/Twitter: x.com feed extraction, tweet/profile checks, following/follower lists, twitterapi.io, browser-agent pulls, or local encrypted X data handling.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\x-twitter\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "skill:zoom-out",
+      "description": "Tell the agent to zoom out and give broader context or a higher-level perspective. Use when you're unfamiliar with a section of code or need to understand how it fits into the bigger picture.",
+      "source": "skill",
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\skills\\zoom-out\\SKILL.md",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    }
+  ],
+  "tools": [
+    {
+      "name": "read",
+      "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path to the file to read (relative or absolute)"
+          },
+          "offset": {
+            "type": "number",
+            "description": "Line number to start reading from (1-indexed)"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of lines to read"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\AppData\\Roaming\\npm\\node_modules\\pi-code-previews\\index.ts",
+        "source": "npm:pi-code-previews",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "C:\\Users\\mglenn\\AppData\\Roaming\\npm\\node_modules\\pi-code-previews"
+      }
+    },
+    {
+      "name": "bash",
+      "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "command"
+        ],
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "Bash command to execute"
+          },
+          "timeout": {
+            "type": "number",
+            "description": "Timeout in seconds (optional, no default timeout)"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\AppData\\Roaming\\npm\\node_modules\\pi-code-previews\\index.ts",
+        "source": "npm:pi-code-previews",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "C:\\Users\\mglenn\\AppData\\Roaming\\npm\\node_modules\\pi-code-previews"
+      }
+    },
+    {
+      "name": "edit",
+      "description": "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "path",
+          "edits"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path to the file to edit (relative or absolute)"
+          },
+          "edits": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "oldText",
+                "newText"
+              ],
+              "properties": {
+                "oldText": {
+                  "type": "string",
+                  "description": "Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call."
+                },
+                "newText": {
+                  "type": "string",
+                  "description": "Replacement text for this targeted edit."
+                }
+              },
+              "additionalProperties": false
+            },
+            "description": "One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead."
+          }
+        },
+        "additionalProperties": false
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\AppData\\Roaming\\npm\\node_modules\\pi-code-previews\\index.ts",
+        "source": "npm:pi-code-previews",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "C:\\Users\\mglenn\\AppData\\Roaming\\npm\\node_modules\\pi-code-previews"
+      }
+    },
+    {
+      "name": "write",
+      "description": "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "path",
+          "content"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path to the file to write (relative or absolute)"
+          },
+          "content": {
+            "type": "string",
+            "description": "Content to write to the file"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\AppData\\Roaming\\npm\\node_modules\\pi-code-previews\\index.ts",
+        "source": "npm:pi-code-previews",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "C:\\Users\\mglenn\\AppData\\Roaming\\npm\\node_modules\\pi-code-previews"
+      }
+    },
+    {
+      "name": "grep",
+      "description": "Search file contents for a pattern. Returns matching lines with file paths and line numbers. Respects .gitignore. Output is truncated to 100 matches or 50KB (whichever is hit first). Long lines are truncated to 500 chars.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "pattern"
+        ],
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "Search pattern (regex or literal string)"
+          },
+          "path": {
+            "type": "string",
+            "description": "Directory or file to search (default: current directory)"
+          },
+          "glob": {
+            "type": "string",
+            "description": "Filter files by glob pattern, e.g. '*.ts' or '**/*.spec.ts'"
+          },
+          "ignoreCase": {
+            "type": "boolean",
+            "description": "Case-insensitive search (default: false)"
+          },
+          "literal": {
+            "type": "boolean",
+            "description": "Treat pattern as literal string instead of regex (default: false)"
+          },
+          "context": {
+            "type": "number",
+            "description": "Number of lines to show before and after each match (default: 0)"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of matches to return (default: 100)"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\AppData\\Roaming\\npm\\node_modules\\pi-code-previews\\index.ts",
+        "source": "npm:pi-code-previews",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "C:\\Users\\mglenn\\AppData\\Roaming\\npm\\node_modules\\pi-code-previews"
+      }
+    },
+    {
+      "name": "find",
+      "description": "Search for files by glob pattern. Returns matching file paths relative to the search directory. Respects .gitignore. Output is truncated to 1000 results or 50KB (whichever is hit first).",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "pattern"
+        ],
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "Glob pattern to match files, e.g. '*.ts', '**/*.json', or 'src/**/*.spec.ts'"
+          },
+          "path": {
+            "type": "string",
+            "description": "Directory to search in (default: current directory)"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of results (default: 1000)"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\AppData\\Roaming\\npm\\node_modules\\pi-code-previews\\index.ts",
+        "source": "npm:pi-code-previews",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "C:\\Users\\mglenn\\AppData\\Roaming\\npm\\node_modules\\pi-code-previews"
+      }
+    },
+    {
+      "name": "ls",
+      "description": "List directory contents. Returns entries sorted alphabetically, with '/' suffix for directories. Includes dotfiles. Output is truncated to 500 entries or 50KB (whichever is hit first).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Directory to list (default: current directory)"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of entries to return (default: 500)"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\AppData\\Roaming\\npm\\node_modules\\pi-code-previews\\index.ts",
+        "source": "npm:pi-code-previews",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "C:\\Users\\mglenn\\AppData\\Roaming\\npm\\node_modules\\pi-code-previews"
+      }
+    },
+    {
+      "name": "append_expertise",
+      "description": "Append a discovery or decision to your expertise log. Use this at the end of a task to record what you learned. Entries are appended to {agent}-expertise-log.jsonl -- never overwrites existing knowledge.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "agent",
+          "category",
+          "entry"
+        ],
+        "properties": {
+          "agent": {
+            "type": "string",
+            "description": "Agent name (e.g. backend-dev, orchestrator)"
+          },
+          "category": {
+            "type": "string",
+            "description": "Category: pattern | strong_decision | key_file | observation | open_question | system_overview"
+          },
+          "entry": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": true,
+            "description": "Structured entry. For strong_decision include why_good. For key_file include role."
+          },
+          "session_id": {
+            "type": "string",
+            "description": "Session ID for traceability"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\agent-chain.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "log_exchange",
+      "description": "Record an agent exchange to the shared session conversation log. Schema: {role, agent, content, session_id, timestamp}",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "session_id",
+          "role",
+          "agent",
+          "content"
+        ],
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Session ID (directory name under sessions/)"
+          },
+          "role": {
+            "type": "string",
+            "description": "Role: user | orchestrator | planning-lead | engineering-lead | validation-lead | worker"
+          },
+          "agent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Agent name, or null for user messages"
+          },
+          "content": {
+            "type": "string",
+            "description": "Message content"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\agent-chain.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "read_expertise",
+      "description": "Read your expertise from the JSONL log, grouped by category. The raw JSONL log is the source of truth.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "agent"
+        ],
+        "properties": {
+          "agent": {
+            "type": "string",
+            "description": "Agent name (e.g. backend-dev, orchestrator)"
+          },
+          "mode": {
+            "type": "string",
+            "description": "Output mode: concise (default) | full | debug"
+          },
+          "query": {
+            "type": "string",
+            "description": "Optional topic/query for focused local expertise retrieval"
+          },
+          "max_results": {
+            "type": "number",
+            "description": "Maximum focused retrieval results when query is present (1-20, default 5)"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\agent-chain.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "ask_user",
+      "description": "Ask the user a question mid-turn and get their response. Use when you need clarification, a decision, or confirmation before proceeding. Modes: \"text\" for free-form input, \"select\" for one option, \"multi_select\" for multiple options, \"confirm\" for yes/no.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "properties": {
+          "question": {
+            "type": "string",
+            "description": "The question to ask the user"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "text"
+              },
+              {
+                "type": "string",
+                "const": "select"
+              },
+              {
+                "type": "string",
+                "const": "multi_select"
+              },
+              {
+                "type": "string",
+                "const": "confirm"
+              }
+            ],
+            "description": "Input mode: \"text\" (default), \"select\", \"multi_select\", or \"confirm\"",
+            "default": "text"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Options for \"select\" or \"multi_select\" mode"
+          },
+          "placeholder": {
+            "type": "string",
+            "description": "Placeholder text for \"text\" mode"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\ask-user.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "commit_plan",
+      "description": "Non-mutating Pi-native git commit planning. Does not stage, commit, or push.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cwd": {
+            "type": "string",
+            "description": "Repository directory; defaults to session cwd."
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\commit.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "commit_validate_message",
+      "description": "Validate a conventional commit subject without mutating git state.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\commit.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "commit_stage",
+      "description": "Stage exact safe paths after user confirmation. Never force-adds ignored paths.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "paths",
+          "confirmationToken"
+        ],
+        "properties": {
+          "cwd": {
+            "type": "string",
+            "description": "Repository directory; defaults to session cwd."
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Exact paths to stage; passed to git add after --."
+          },
+          "confirmationToken": {
+            "type": "string",
+            "description": "Token from commit_plan.stageConfirmationToken for this exact path set."
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\commit.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "commit_create",
+      "description": "Create a commit after token validation, message validation, and final staged-set revalidation. Does not push.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "message",
+          "expectedStagedPaths",
+          "confirmationToken"
+        ],
+        "properties": {
+          "cwd": {
+            "type": "string",
+            "description": "Repository directory; defaults to session cwd."
+          },
+          "message": {
+            "type": "string"
+          },
+          "expectedStagedPaths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Exact staged path set confirmed by the user."
+          },
+          "confirmationToken": {
+            "type": "string",
+            "description": "Token from commit_plan.createConfirmationToken for this exact staged path set."
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\commit.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "pwsh",
+      "description": "Execute a PowerShell Core (pwsh) command in the current working directory. Use for: PowerShell cmdlets (Get-*, Set-*, New-*, Remove-*), .ps1 scripts, Windows Registry/WMI/COM access, .NET type operations, $env: environment variables, and tasks requiring PowerShell modules. On non-Windows systems, only use if the user explicitly requests PowerShell. Returns stdout, stderr, and PowerShell error stream. Output truncated to last 2000 lines or 50KB.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "command"
+        ],
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "PowerShell command to execute"
+          },
+          "timeout": {
+            "type": "number",
+            "description": "Timeout in seconds (optional)"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\pwsh.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "review_artifact_write",
+      "description": "Write a constrained /review-it reviewer artifact under an assigned review directory. Use only for reviewer findings; validates path safety, schema, and size limits.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "reviewDir",
+          "reviewer",
+          "artifactName",
+          "findings"
+        ],
+        "properties": {
+          "reviewDir": {
+            "type": "string",
+            "description": "Review directory, e.g. .specs/name/review-1"
+          },
+          "reviewer": {
+            "type": "string",
+            "description": "Reviewer id/persona for frontmatter"
+          },
+          "artifactName": {
+            "type": "string",
+            "description": "Artifact markdown filename, e.g. security-reviewer.md"
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "severity",
+                "evidence",
+                "required_fix"
+              ],
+              "properties": {
+                "severity": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "const": "critical"
+                    },
+                    {
+                      "type": "string",
+                      "const": "high"
+                    },
+                    {
+                      "type": "string",
+                      "const": "medium"
+                    },
+                    {
+                      "type": "string",
+                      "const": "low"
+                    }
+                  ]
+                },
+                "evidence": {
+                  "type": "string",
+                  "maxLength": 800
+                },
+                "required_fix": {
+                  "type": "string",
+                  "maxLength": 800
+                },
+                "category": {
+                  "type": "string",
+                  "maxLength": 800
+                },
+                "confidence": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "const": "high"
+                    },
+                    {
+                      "type": "string",
+                      "const": "medium"
+                    },
+                    {
+                      "type": "string",
+                      "const": "low"
+                    }
+                  ]
+                }
+              }
+            },
+            "maxItems": 5
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\review-artifact.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "structured_edit",
+      "description": "Safely edit JSON files with typed-array set/delete operations, indentation, finalNewline, and repo path safety.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "path",
+          "format",
+          "operations"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string",
+            "const": "json"
+          },
+          "indent": {
+            "type": "number"
+          },
+          "finalNewline": {
+            "type": "boolean"
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "mode",
+                    "path",
+                    "value"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "const": "set"
+                    },
+                    "path": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ]
+                      }
+                    },
+                    "value": {}
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "mode",
+                    "path"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "const": "delete"
+                    },
+                    "path": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\structured-edit.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "subagent",
+      "description": "Delegate tasks to specialized subagents with isolated context. Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder). Default agent scope is \"user\" (from ~/.pi/agent/agents). To enable project-local agents in .pi/agents, set agentScope: \"both\" (or \"project\"). Optional modelSize/modelPolicy parameters dynamically map subagents onto the current provider/model ladder.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "agent": {
+            "type": "string",
+            "description": "Name of the agent to invoke (for single mode)"
+          },
+          "team": {
+            "type": "string",
+            "description": "Team key or lead name from pi/agents/teams.yaml (team-dispatch mode)"
+          },
+          "task": {
+            "type": "string",
+            "description": "Task to delegate (for single or team-dispatch mode)"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "agent",
+                "task"
+              ],
+              "properties": {
+                "agent": {
+                  "type": "string",
+                  "description": "Name of the agent to invoke"
+                },
+                "task": {
+                  "type": "string",
+                  "description": "Task to delegate to the agent"
+                },
+                "cwd": {
+                  "type": "string",
+                  "description": "Working directory for the agent process"
+                },
+                "output": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ],
+                  "description": "Optional artifact path for full output. Set false to disable saved artifacts. Relative paths resolve from the task cwd or current cwd."
+                },
+                "outputMode": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "const": "inline"
+                    },
+                    {
+                      "type": "string",
+                      "const": "file-only"
+                    }
+                  ],
+                  "description": "Output preservation policy. \"inline\" returns full child output in the parent result. \"file-only\" saves full output to an artifact and returns an explicit file reference.",
+                  "default": "inline"
+                }
+              }
+            },
+            "description": "Array of {agent, task} for parallel execution"
+          },
+          "chain": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "agent",
+                "task"
+              ],
+              "properties": {
+                "agent": {
+                  "type": "string",
+                  "description": "Name of the agent to invoke"
+                },
+                "task": {
+                  "type": "string",
+                  "description": "Task with optional {previous} placeholder for prior output"
+                },
+                "cwd": {
+                  "type": "string",
+                  "description": "Working directory for the agent process"
+                },
+                "output": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ],
+                  "description": "Optional artifact path for full output. Set false to disable saved artifacts. Relative paths resolve from the step cwd or current cwd."
+                },
+                "outputMode": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "const": "inline"
+                    },
+                    {
+                      "type": "string",
+                      "const": "file-only"
+                    }
+                  ],
+                  "description": "Output preservation policy. \"inline\" returns full child output in the parent result. \"file-only\" saves full output to an artifact and returns an explicit file reference.",
+                  "default": "inline"
+                }
+              }
+            },
+            "description": "Array of {agent, task} for sequential execution"
+          },
+          "agentScope": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "user"
+              },
+              {
+                "type": "string",
+                "const": "project"
+              },
+              {
+                "type": "string",
+                "const": "both"
+              }
+            ],
+            "description": "Which agent directories to use. Default: \"user\". Use \"both\" to include project-local agents.",
+            "default": "user"
+          },
+          "modelSize": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "small"
+              },
+              {
+                "type": "string",
+                "const": "medium"
+              },
+              {
+                "type": "string",
+                "const": "large"
+              }
+            ],
+            "description": "Dynamic model size override. Resolves against the current session model/provider and available registry models."
+          },
+          "modelPolicy": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "same-provider"
+              },
+              {
+                "type": "string",
+                "const": "same-family"
+              }
+            ],
+            "description": "How to resolve dynamic model sizes. same-provider prefers the current provider; same-family prefers the current series first, then the provider.",
+            "default": "same-provider"
+          },
+          "confirmProjectAgents": {
+            "type": "boolean",
+            "description": "Prompt before running project-local agents. Default: true.",
+            "default": true
+          },
+          "cwd": {
+            "type": "string",
+            "description": "Working directory for the agent process (single mode)"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\subagent\\index.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "task_create",
+      "description": "Create a durable sanitized task.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "origin": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "subagent"
+              },
+              {
+                "type": "string",
+                "const": "team"
+              },
+              {
+                "type": "string",
+                "const": "shell"
+              },
+              {
+                "type": "string",
+                "const": "other"
+              }
+            ]
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\tasks.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "task_batch_create",
+      "description": "Create multiple durable sanitized tasks.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "origin": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "const": "subagent"
+                    },
+                    {
+                      "type": "string",
+                      "const": "team"
+                    },
+                    {
+                      "type": "string",
+                      "const": "shell"
+                    },
+                    {
+                      "type": "string",
+                      "const": "other"
+                    }
+                  ]
+                },
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": true
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\tasks.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "task_list",
+      "description": "List durable tasks.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": true
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\tasks.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "task_get",
+      "description": "Get one durable task.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\tasks.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "task_update",
+      "description": "Update one durable task.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\tasks.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "task_execute",
+      "description": "Deferred task execution tool; performs no execution.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\tasks.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "task_stop",
+      "description": "Deferred task execution tool; performs no execution.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\tasks.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "task_output",
+      "description": "Deferred task execution tool; performs no execution.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\tasks.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "test_status",
+      "description": "Show the current test orchestrator status, including lock, latest attempt, canary, and recovery summaries.",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\test-orchestrator.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "test_debug",
+      "description": "Show resolved adapter paths, diagnostics, discovery details, and current lock JSON for the test orchestrator.",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\test-orchestrator.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "test_targets",
+      "description": "List discovered test targets from the current project adapter.",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\test-orchestrator.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "test_run",
+      "description": "Run one discovered test target by filename or repo-relative path. Enforces single active run via lock and persists an attempt record.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "target"
+        ],
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Spec filename or repo-relative test path"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\test-orchestrator.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "test_canary",
+      "description": "Run the configured cache-cleared canary target to assess current test infrastructure health.",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\test-orchestrator.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "test_recover",
+      "description": "Run a named recovery action from the project adapter. For actions requiring confirmation, set confirm=true explicitly.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "Recovery action name from the adapter"
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required true for actions marked requiresConfirmation"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\test-orchestrator.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "test_infra_research",
+      "description": "Run manual infrastructure research for the latest or specified incident and persist a markdown report.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "incident": {
+            "type": "string",
+            "description": "Optional incident file path; defaults to latest incident"
+          },
+          "queryHint": {
+            "type": "string",
+            "description": "Optional extra search hint for the research prompt"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\test-orchestrator.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "test_lock_clear",
+      "description": "Clear the active test lock. Requires confirm=true.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "confirm"
+        ],
+        "properties": {
+          "confirm": {
+            "type": "boolean",
+            "description": "Must be true to clear the lock"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\test-orchestrator.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "text_edit",
+      "description": "Safely edit tracked repo text files with literal/regex replacement, LF normalization, final newline, dry-run previews, path safety, and expected match counts.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "paths",
+          "operations"
+        ],
+        "properties": {
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dryRun": {
+            "type": "boolean"
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "mode",
+                    "search",
+                    "replace"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "const": "literal_replace"
+                    },
+                    "search": {
+                      "type": "string"
+                    },
+                    "replace": {
+                      "type": "string"
+                    },
+                    "expectedMatches": {
+                      "type": "number"
+                    },
+                    "allowZero": {
+                      "type": "boolean"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "mode",
+                    "pattern",
+                    "replace"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "const": "regex_replace"
+                    },
+                    "pattern": {
+                      "type": "string"
+                    },
+                    "replace": {
+                      "type": "string"
+                    },
+                    "flags": {
+                      "type": "string"
+                    },
+                    "expectedMatches": {
+                      "type": "number"
+                    },
+                    "allowZero": {
+                      "type": "boolean"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "mode"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "const": "normalize_line_endings"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "mode"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "const": "ensure_final_newline"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\text-edit.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "todo",
+      "description": "Manage a persistent task list with dependency tracking. Actions: add (create task, optional depends_on), update (change status/title/notes/deps), remove (delete task), list (show all), ready (show parallelizable tasks). Statuses: pending, in_progress, done. Tasks with unmet dependencies show as blocked. State saved to .pi/todo.json.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "add"
+              },
+              {
+                "type": "string",
+                "const": "update"
+              },
+              {
+                "type": "string",
+                "const": "remove"
+              },
+              {
+                "type": "string",
+                "const": "list"
+              },
+              {
+                "type": "string",
+                "const": "ready"
+              }
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "Task ID (for update/remove)"
+          },
+          "title": {
+            "type": "string",
+            "description": "Task title (for add, or update to rename)"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "pending"
+              },
+              {
+                "type": "string",
+                "const": "in_progress"
+              },
+              {
+                "type": "string",
+                "const": "done"
+              }
+            ],
+            "description": "New status (for update)"
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Task IDs this task depends on (for add/update)"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Notes/context for the task"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\todo.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "tool_search",
+      "description": "Search available tools by keyword. Returns matching tool names, descriptions, and parameter schemas. Use when unsure which tool to use for a task, or to discover available capabilities.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search keywords. Omit to list all tools."
+          },
+          "include_params": {
+            "type": "boolean",
+            "description": "Include parameter schemas in results (default: false)"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\tool-search.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "usage_report",
+      "description": "Parse local Pi and Codex CLI session logs and return token/cost usage tables.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "refreshPricing": {
+            "type": "boolean",
+            "description": "Force-refresh models.dev pricing cache."
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\usage.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "web_search",
+      "description": "Search the web via SearXNG. Returns titles, URLs, snippets, and dates. Use for finding documentation, current information, or researching any topic.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Base search query"
+          },
+          "exactPhrases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Exact phrases to require; each becomes a quoted phrase"
+          },
+          "exact_phrases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Alias for exactPhrases"
+          },
+          "excludeTerms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Terms or phrases to exclude"
+          },
+          "exclude_terms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Alias for excludeTerms"
+          },
+          "site": {
+            "type": "string",
+            "description": "Optional site/domain restriction, e.g. example.com"
+          },
+          "num_results": {
+            "type": "number",
+            "description": "Number of results to return (default: 5, max: 20)"
+          },
+          "count": {
+            "type": "number",
+            "description": "Alias for num_results"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\web-tools.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    },
+    {
+      "name": "web_fetch",
+      "description": "Fetch a URL and return its content as clean markdown. Uses Readability to extract the main article content, stripping navigation and boilerplate.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "URL to fetch"
+          },
+          "max_chars": {
+            "type": "number",
+            "description": "Maximum characters to return (default: 8000)"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "C:\\Users\\mglenn\\.pi\\agent\\extensions\\web-tools.ts",
+        "source": "auto",
+        "scope": "user",
+        "origin": "top-level",
+        "baseDir": "C:\\Users\\mglenn\\.pi\\agent"
+      }
+    }
+  ],
+  "activeTools": [
+    "read",
+    "bash",
+    "edit",
+    "write",
+    "append_expertise",
+    "log_exchange",
+    "read_expertise",
+    "ask_user",
+    "commit_plan",
+    "commit_validate_message",
+    "commit_stage",
+    "commit_create",
+    "review_artifact_write",
+    "structured_edit",
+    "subagent",
+    "task_create",
+    "task_batch_create",
+    "task_list",
+    "task_get",
+    "task_update",
+    "task_execute",
+    "task_stop",
+    "task_output",
+    "test_status",
+    "test_debug",
+    "test_targets",
+    "test_run",
+    "test_canary",
+    "test_recover",
+    "test_infra_research",
+    "test_lock_clear",
+    "text_edit",
+    "todo",
+    "tool_search",
+    "usage_report",
+    "web_search",
+    "web_fetch",
+    "pwsh",
+    "grep",
+    "find",
+    "ls"
+  ],
+  "capturedAt": 1779151866107
+}
