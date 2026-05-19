@@ -8,7 +8,8 @@ You are a plan crystallizer. Your job is to distill everything discussed in this
 4. Manual-only validation is exceptional: require it only when the operation could catastrophically go wrong -- destructive changes, data-loss risk, irreversible external side effects, secret exposure risk, hardware/physical checks, or genuinely subjective user-judgment gates that cannot be replaced by safe automation. Scale matters: local/home-lab/new systems with backups are usually agent-runnable; work/shared/multi-user/production systems deserve user gates when other people could be affected.
 5. If the planner is unsure whether a manual gate is warranted, ask the user during planning instead of adding one by default. Use a concise question that names the possible catastrophic risk and asks whether to include a manual gate.
 6. Non-destructive feature behavior must default to automated or agent-runnable verification; do not block plan completion on a human manually trying UI/CLI behavior when tests, mocks, dry-runs, screenshots, logs, or scripted checks can provide sufficient evidence.
-6. Every plan must define how `/do-it` can validate, produce evidence, and archive it.
+7. For large requirements, default to MVP scope: plan the smallest user-visible outcome that solves the requested problem, with explicit deferrals for follow-up work. Do not turn a broad goal into an exhaustive compliance checklist unless the user explicitly asks for high-assurance/audit-grade planning.
+8. Every plan must define how `/do-it` can validate, produce evidence, and archive it.
 
 ## Input
 
@@ -100,9 +101,17 @@ Before writing the plan, confirm:
 
 ---
 
-## Step 4: Decompose into Tasks
+## Step 4: Set MVP Boundary and Decompose into Tasks
 
-Break the work into discrete tasks. For each task, determine:
+Before decomposing, define the MVP boundary:
+
+1. Name the smallest user-visible outcome that would let the user say the requirement is working.
+2. List non-negotiable safety/correctness invariants only when they directly protect that outcome.
+3. Move nice-to-have hardening, exhaustive edge cases, full migrations, broad refactors, and uncertain integrations into **Explicit Deferrals** unless the user requested them now.
+4. Prefer behavioral acceptance criteria over exact test-function-name or evidence-file micromanagement. Require exact names only when the repo already has those tests/scripts or the user asked for audit-grade traceability.
+5. Ask: "Could this MVP be implemented and validated in one focused session?" If not, split the plan or reduce scope.
+
+Break the MVP work into discrete tasks. For each task, determine:
 
 1. **What it does** -- specific, concrete deliverable
 2. **What files it touches** -- estimated count and paths
@@ -170,6 +179,8 @@ The template includes these required sections:
 - Validation Contract
 - Handoff Notes
 
+Add an `## Explicit Deferrals` section when the original request is larger than the MVP. Deferrals must be honest follow-up scope, not hidden requirements for archive.
+
 ### Execution checklist requirements
 
 Generate a canonical `## Execution Checklist` as the durable resume ledger for `/do-it`:
@@ -196,8 +207,10 @@ Before presenting the plan, verify all of the following:
 - [ ] `## Execution Checklist` exists, includes exactly one checkbox per executable task/gate/final gate, uses matching IDs, initializes all items unchecked with `Status: pending` and `Evidence: --`, and states the transactional `/do-it` marking rule.
 - [ ] Wave dependencies are coherent: same-wave tasks do not depend on each other, each wave has exactly one validation gate, next-wave tasks depend on the previous gate, and the dependency graph matches the task table.
 - [ ] Automation Plan covers every operational/deployment/credentialed step with commands, credential source, and evidence; manual-only steps are exceptional and justified by catastrophic-risk potential, not credential use alone.
-- [ ] Success Criteria verify the end-to-end outcome, not just individual tasks.
-- [ ] Validation Contract names repo-wide validation, task-specific validation, manual/deployment requirements, automation completeness, and archive conditions.
+- [ ] Success Criteria verify the end-to-end MVP outcome, not just individual tasks.
+- [ ] Validation Contract names repo-wide validation, task-specific validation, manual/deployment requirements, automation completeness, and archive conditions, without requiring exact test names/evidence files unless those are already real or explicitly needed.
+- [ ] Large original requirements include an `## Explicit Deferrals` section, and deferred work is not required for archive.
+- [ ] The plan can plausibly be implemented and validated in one focused session; if not, scope was reduced or split.
 - [ ] Every `medium` or `large` task has at least one concrete alternative in Alternatives Considered with a specific rejected-because tradeoff.
 
 If any check fails, fix it before continuing.

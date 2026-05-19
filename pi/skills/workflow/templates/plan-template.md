@@ -41,6 +41,14 @@ Manual gates are exceptional. Decide based on blast radius and rollback, not gen
 
 {What the plan produces when complete. Concrete, verifiable end state.}
 
+## MVP Boundary
+
+{The smallest user-visible outcome this plan will deliver. State why this is sufficient for the current plan and small enough to implement/validate in one focused session.}
+
+## Explicit Deferrals
+
+{Follow-up work intentionally out of scope for this plan. Deferred items are not required for archive. If there are no deferrals, write "None."}
+
 ## Project Context
 
 - **Language**: {detected from markers}
@@ -173,7 +181,7 @@ Wave 2: T3 → V2
 
 ## Success Criteria
 
-{How to verify the ENTIRE plan succeeded end-to-end, not just individual tasks.}
+{How to verify the ENTIRE MVP succeeded end-to-end, not just individual tasks. Keep this outcome-based; do not require exhaustive hardening or deferred follow-up work for archive.}
 
 1. [ ] {end-to-end verification}
    - Verify: `{command}`
@@ -202,8 +210,10 @@ Wave 2: T3 → V2
 
 2. [ ] Run task-specific verification from every acceptance criterion above.
    - Command: see each task's `Verify:` command
-   - Pass: every acceptance criterion passes exactly as written
+   - Pass: every acceptance criterion passes as written
    - Fail: create/fix a task, rerun affected checks, then rerun repo-wide validation
+
+Do not require exact test function names, exhaustive evidence files, or audit-grade traceability unless those tests/scripts already exist or the user explicitly requested that rigor.
 
 ### Manual validation
 
