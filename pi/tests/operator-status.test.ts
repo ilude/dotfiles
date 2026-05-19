@@ -279,44 +279,11 @@ describe("session_start hook", () => {
 	});
 });
 
-describe("/doctor command", () => {
-	async function runDoctor(args: string) {
+describe("command registration", () => {
+	it("does not register the doctor command", async () => {
 		const pi = createMockPi();
 		const mod = await import("../extensions/operator-status.ts");
 		mod.default(pi as any);
-		const command = pi._commands.find((c) => c.name === "doctor");
-		expect(command).toBeDefined();
-		const ctx = ctxWithStatus();
-		await command?.handler(args, ctx);
-		const notify = ctx.ui.notify as ReturnType<typeof vi.fn>;
-		expect(notify).toHaveBeenCalledTimes(1);
-		const [text, level] = notify.mock.calls[0];
-		return { text: text as string, level };
-	}
-
-	it("compact mode reports registry health and optional pi version availability", async () => {
-		const { text, level } = await runDoctor("");
-		if (text.includes("pi runtime")) {
-			expect(level).toBe("warning");
-			expect(text).toContain("pi-coding-agent install not found");
-		} else {
-			expect(level).toBe("info");
-			expect(text).toContain("checks passed");
-		}
-	});
-
-	it("--verbose prints multi-line diagnostic output", async () => {
-		const { text } = await runDoctor("--verbose");
-		expect(text).toContain("doctor:");
-		expect(text).toContain("checks:");
-		expect(text).toContain("permissions:");
-	});
-
-	it("--json returns parseable JSON", async () => {
-		const { text } = await runDoctor("--json");
-		const parsed = JSON.parse(text);
-		expect(parsed.checks).toBeDefined();
-		expect(Array.isArray(parsed.checks)).toBe(true);
-		expect(parsed.platform).toBeDefined();
+		expect(pi._commands.find((c) => c.name === "doctor")).toBeUndefined();
 	});
 });

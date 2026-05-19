@@ -1,8 +1,8 @@
 /**
  * Operator Status Extension
  *
- * Adds three status bar slots and the `/doctor` command surface for the
- * operator layer. Owned by .specs/pi-operator-layer-mvp/plan.md (T3).
+ * Adds three status bar slots for the operator layer. Owned by
+ * .specs/pi-operator-layer-mvp/plan.md (T3).
  *
  * Status bar slots:
  *   - "pi" -- always shown, format: `pi vX.Y.Z`
@@ -13,11 +13,6 @@
  * other slots (model/provider/router/effort) are owned by other extensions
  * (prompt-router, etc.); this extension only fills the operator-specific
  * gaps.
- *
- * Commands:
- *   /doctor               -- compact health check
- *   /doctor --verbose     -- expanded diagnostic output
- *   /doctor --json        -- machine-readable JSON
  */
 
 import * as childProcess from "node:child_process";
@@ -29,14 +24,7 @@ import type {
 	ReadonlyFooterDataProvider,
 } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import {
-	formatDamageControlHealthDetail,
-	getDamageControlHealth,
-} from "../lib/damage-control-health.js";
-import {
-	listRecentDecisions,
-	listSessionApprovals,
-} from "../lib/permission-registry.js";
+import { listSessionApprovals } from "../lib/permission-registry.js";
 import {
 	createReloadStatusState,
 	needsPiReload,
@@ -44,22 +32,6 @@ import {
 	resetReloadStatusBaseline,
 } from "../lib/reload-status.js";
 import { listTasks, type TaskRecordV1 } from "../lib/task-registry.js";
-
-interface DoctorCheck {
-	name: string;
-	ok: boolean;
-	detail: string;
-}
-
-interface DoctorReport {
-	piVersion: string | null;
-	checks: DoctorCheck[];
-	taskCounts: Record<string, number>;
-	sessionApprovals: number;
-	recentDecisions: number;
-	cwd: string;
-	platform: string;
-}
 
 let cachedPiVersion: string | null | undefined;
 let currentSessionStartedAt: string | null = null;
@@ -445,127 +417,6 @@ function refreshOperatorStatus(ctx: {
 	}
 }
 
-function buildDoctorReport(cwd: string): DoctorReport {
-	const checks: DoctorCheck[] = [];
-	const piVersion = resolvePiVersion();
-	checks.push({
-		name: "pi runtime",
-		ok: piVersion !== null,
-		detail: piVersion
-			? `pi v${piVersion}`
-			: "pi-coding-agent install not found in known npm/bun locations",
-	});
-
-	let taskRegistryOk = false;
-	let taskCounts: Record<string, number> = {};
-	try {
-		const records = listTasks();
-		taskCounts = summarizeTaskCounts(records) as unknown as Record<
-			string,
-			number
-		>;
-		taskRegistryOk = true;
-	} catch (err) {
-		checks.push({
-			name: "task registry",
-			ok: false,
-			detail: err instanceof Error ? err.message : String(err),
-		});
-	}
-	if (taskRegistryOk) {
-		checks.push({
-			name: "task registry",
-			ok: true,
-			detail: `${taskCounts.nonTerminal ?? 0} active, ${taskCounts.completed ?? 0} completed`,
-		});
-	}
-
-	let sessionApprovals = 0;
-	let recentDecisions = 0;
-	let permissionRegistryOk = false;
-	try {
-		sessionApprovals = listSessionApprovals().length;
-		recentDecisions = listRecentDecisions({ limit: 50 }).length;
-		permissionRegistryOk = true;
-	} catch (err) {
-		checks.push({
-			name: "permission registry",
-			ok: false,
-			detail: err instanceof Error ? err.message : String(err),
-		});
-	}
-	if (permissionRegistryOk) {
-		checks.push({
-			name: "permission registry",
-			ok: true,
-			detail: `${sessionApprovals} session approvals, ${recentDecisions} recent decisions`,
-		});
-	}
-
-	const damageControlHealth = getDamageControlHealth();
-	if (
-		damageControlHealth.error !==
-		"damage-control extension has not loaded rules yet"
-	) {
-		checks.push({
-			name: "damage-control",
-			ok: damageControlHealth.status === "active",
-			detail: formatDamageControlHealthDetail(damageControlHealth),
-		});
-	}
-
-	return {
-		piVersion,
-		checks,
-		taskCounts,
-		sessionApprovals,
-		recentDecisions,
-		cwd,
-		platform: `${process.platform} ${process.arch}`,
-	};
-}
-
-function formatDoctorCompact(report: DoctorReport): string {
-	const failures = report.checks.filter((c) => !c.ok);
-	if (failures.length === 0) {
-		const version = report.piVersion
-			? `pi v${report.piVersion}`
-			: "pi (version unknown)";
-		return `${version} - all checks passed (${report.checks.length})`;
-	}
-	const lines = [`${failures.length} check(s) failed:`];
-	for (const f of failures) lines.push(`  ! ${f.name}: ${f.detail}`);
-	return lines.join("\n");
-}
-
-function formatDoctorVerbose(report: DoctorReport): string {
-	const lines: string[] = ["doctor:"];
-	if (report.piVersion) lines.push(`  pi: v${report.piVersion}`);
-	else
-		lines.push(`  pi: (version unknown -- pi-coding-agent install not found)`);
-	lines.push(`  cwd: ${report.cwd}`);
-	lines.push(`  platform: ${report.platform}`);
-	lines.push("  checks:");
-	for (const c of report.checks) {
-		lines.push(`    [${c.ok ? "ok" : "fail"}] ${c.name}: ${c.detail}`);
-	}
-	if (Object.keys(report.taskCounts).length > 0) {
-		lines.push("  tasks:");
-		for (const [state, count] of Object.entries(report.taskCounts)) {
-			if (typeof count === "number" && count > 0)
-				lines.push(`    ${state}: ${count}`);
-		}
-	}
-	lines.push("  permissions:");
-	lines.push(`    session approvals: ${report.sessionApprovals}`);
-	lines.push(`    recent decisions: ${report.recentDecisions}`);
-	return lines.join("\n");
-}
-
-function formatDoctorJson(report: DoctorReport): string {
-	return JSON.stringify(report, null, 2);
-}
-
 export function resetOperatorReloadStatus(
 	state: ReloadStatusState = reloadStatus,
 	nowMs = Date.now(),
@@ -596,25 +447,5 @@ export default function (pi: ExtensionAPI) {
 		// listTasks just enumerates a single directory and registry I/O is
 		// already non-blocking from the producer side.
 		refreshOperatorStatus(ctx);
-	});
-
-	pi.registerCommand("doctor", {
-		description:
-			"Operator layer health check. Usage: /doctor [--verbose | --json]. " +
-			"Reports pi runtime version, registry availability, task and permission state.",
-		handler: async (args, ctx) => {
-			const trimmed = args.trim();
-			const report = buildDoctorReport(ctx.cwd);
-			let output: string;
-			if (trimmed === "--json") {
-				output = formatDoctorJson(report);
-			} else if (trimmed === "--verbose" || trimmed === "-v") {
-				output = formatDoctorVerbose(report);
-			} else {
-				output = formatDoctorCompact(report);
-			}
-			const failed = report.checks.some((c) => !c.ok);
-			ctx.ui.notify(output, failed ? "warning" : "info");
-		},
 	});
 }
