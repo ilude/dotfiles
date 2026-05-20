@@ -294,6 +294,47 @@ no_delete_paths: []
 		});
 	});
 
+	it("does not treat docker env-file arguments as secret file reads", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const rules = [
+			{
+				pattern: "env file",
+				regex: "\\.env(?!\\.(?:example|template))\\b",
+				reason: ".env file may contain secrets (API keys, passwords)",
+				action: "ask" as const,
+			},
+		];
+
+		expect(
+			await mod.evaluateDangerousCommand(
+				"docker run --rm --env-file .env image python app.py",
+				rules,
+				{ toolName: "bash" },
+			),
+		).toBeUndefined();
+		expect(
+			await mod.evaluateDangerousCommand(
+				"docker compose --env-file .env up",
+				rules,
+				{ toolName: "bash" },
+			),
+		).toBeUndefined();
+		expect(
+			await mod.evaluateDangerousCommand(
+				"docker network ls --format '{{.Name}}' | grep mps; docker run --rm --network mps_mps-net --env-file .env image python -u app.py",
+				rules,
+				{ toolName: "bash" },
+			),
+		).toBeUndefined();
+		expect(
+			(
+				await mod.evaluateDangerousCommand("cat .env", rules, {
+					toolName: "bash",
+				})
+			)?.block,
+		).toBe(true);
+	});
+
 	it("loads the tracked Claude policy as the canonical source", async () => {
 		const mod = await import("../extensions/damage-control.ts");
 		const loaded = mod.loadRules("C:/definitely/not/a/real/project");

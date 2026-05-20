@@ -1,7 +1,10 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import { canonicalize as sharedCanonicalize } from "../lib/extension-utils.js";
-import { compileCommandRegex, type DangerousCommand } from "./damage-control-rules.js";
+import {
+	compileCommandRegex,
+	type DangerousCommand,
+} from "./damage-control-rules.js";
 
 export type DamageControlMode = "default" | "whitelist" | "noshell";
 
@@ -192,9 +195,31 @@ function commandAppliesToTool(
 	return wanted.has(toolName.toLowerCase());
 }
 
+function isEnvFileRule(rule: DangerousCommand): boolean {
+	return (
+		rule.reason.includes(".env") ||
+		rule.pattern.includes(".env") ||
+		(rule.regex?.includes(".env") ?? false)
+	);
+}
+
+function stripDockerEnvFileArgs(command: string): string {
+	if (
+		!/(^|[;&|]\s*)docker(?:\s+compose)?\b[^;&|]*\s--env-file(?:[=\s]|$)/.test(
+			command,
+		)
+	) {
+		return command;
+	}
+	return command.replace(/--env-file(?:=\S+|\s+\S+)?/g, "--env-file");
+}
+
 function commandMatchesRule(command: string, rule: DangerousCommand): boolean {
-	if (rule.regex) return compileCommandRegex(rule.regex).test(command);
-	return command.includes(rule.pattern);
+	const commandToMatch = isEnvFileRule(rule)
+		? stripDockerEnvFileArgs(command)
+		: command;
+	if (rule.regex) return compileCommandRegex(rule.regex).test(commandToMatch);
+	return commandToMatch.includes(rule.pattern);
 }
 
 export function evaluateShellMode(
@@ -402,7 +427,10 @@ export function checkNoDeletePaths(
 	return undefined;
 }
 
-export function isExcludedPath(canonical: string, exclusions: string[]): boolean {
+export function isExcludedPath(
+	canonical: string,
+	exclusions: string[],
+): boolean {
 	return exclusions.some((pattern) => matchesPattern(canonical, pattern));
 }
 
@@ -415,7 +443,9 @@ export function checkReadOnlyPath(
 	const result = canonicalizeOrBlock(filePath, cwd);
 	if ("block" in result) return result;
 	if (isExcludedPath(result.canonical, exclusions)) return undefined;
-	const pattern = patterns.find((candidate) => matchesPattern(result.canonical, candidate));
+	const pattern = patterns.find((candidate) =>
+		matchesPattern(result.canonical, candidate),
+	);
 	return pattern
 		? {
 				block: true,
@@ -433,7 +463,9 @@ export function checkWriteConfirmPath(
 	const result = canonicalizeOrBlock(filePath, cwd);
 	if ("block" in result) return undefined;
 	if (isExcludedPath(result.canonical, exclusions)) return undefined;
-	const pattern = patterns.find((candidate) => matchesPattern(result.canonical, candidate));
+	const pattern = patterns.find((candidate) =>
+		matchesPattern(result.canonical, candidate),
+	);
 	return pattern
 		? {
 				ask: true,
@@ -442,12 +474,22 @@ export function checkWriteConfirmPath(
 		: undefined;
 }
 
-export function contentNeedsScan(filePath: string, patterns: string[], cwd: string): boolean {
+export function contentNeedsScan(
+	filePath: string,
+	patterns: string[],
+	cwd: string,
+): boolean {
 	const result = canonicalizeOrBlock(filePath, cwd);
-	return "canonical" in result && patterns.some((pattern) => matchesPattern(result.canonical, pattern));
+	return (
+		"canonical" in result &&
+		patterns.some((pattern) => matchesPattern(result.canonical, pattern))
+	);
 }
 
-export function containsInjectionPattern(content: string, patterns: string[]): string | undefined {
+export function containsInjectionPattern(
+	content: string,
+	patterns: string[],
+): string | undefined {
 	return patterns.find((pattern) => new RegExp(pattern).test(content));
 }
 
