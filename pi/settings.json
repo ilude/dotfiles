@@ -2,14 +2,11 @@
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.5",
   "defaultThinkingLevel": "minimal",
-  "lastChangelogVersion": "0.74.0",
+  "lastChangelogVersion": "0.75.3",
   "router": {
     "classifier": {
       "mode": "lgbm"
     }
   },
-  "packages": [
-    "npm:pi-code-previews",
-    "npm:pi-inspect"
-  ]
+  "packages": []
 }
