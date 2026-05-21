@@ -151,6 +151,13 @@ if command -v uv &>/dev/null; then
         echo "Installing lizard..."
         uv tool install --exclude-newer "${UV_EXCLUDE_NEWER}" --index-strategy "${UV_INDEX_STRATEGY}" --no-sources --no-build lizard
     fi
+    # Install detect-secrets for /commit secret scanning
+    if command -v detect-secrets-hook &>/dev/null; then
+        echo "detect-secrets: already installed"
+    else
+        echo "Installing detect-secrets..."
+        uv tool install --exclude-newer "${UV_EXCLUDE_NEWER}" --index-strategy "${UV_INDEX_STRATEGY}" --no-sources --no-build detect-secrets
+    fi
 fi
 completed_steps+=("Python dev tools")
 

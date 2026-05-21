@@ -1034,13 +1034,14 @@ function Install-Packages {
     #         Java, Ruby, ...). Language-specific tools (clippy, biome,
     #         rubocop, etc.) are expected to be provided by their own
     #         project setup, not this dotfiles bootstrap.
+    # detect-secrets: staged-file secret scanner used by the /commit workflow.
     Write-Host "`n--- Python Dev Tools (uv-managed) ---" -ForegroundColor Cyan
     if (Get-Command uv -ErrorAction SilentlyContinue) {
         # Harden uv tool resolutions: delay newly-uploaded packages, keep
         # first-index dependency-confusion protection explicit, ignore
         # development-only Git/URL/path sources, and avoid arbitrary sdist builds.
         $uvSecurityArgs = @('--exclude-newer', '3 days', '--index-strategy', 'first-index', '--no-sources', '--no-build')
-        $uvTools = @('ruff', 'lizard')
+        $uvTools = @('ruff', 'lizard', 'detect-secrets')
         foreach ($tool in $uvTools) {
             Write-Host "  $tool..." -ForegroundColor Cyan -NoNewline
             if (Get-Command $tool -ErrorAction SilentlyContinue) {
@@ -1061,7 +1062,7 @@ function Install-Packages {
             }
         }
     } else {
-        Write-Host "  uv not found - skipping ruff/lizard install" -ForegroundColor Yellow
+        Write-Host "  uv not found - skipping ruff/lizard/detect-secrets install" -ForegroundColor Yellow
         Write-Host "  (uv comes from core winget packages; rerun installer)" -ForegroundColor DarkGray
     }
 
