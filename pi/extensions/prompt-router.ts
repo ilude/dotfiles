@@ -1376,7 +1376,8 @@ export default function (pi: ExtensionAPI) {
 			!text ||
 			text.startsWith("/") ||
 			event.source === "extension" ||
-			!state.enabled
+			!state.enabled ||
+			!ctx.hasUI
 		) {
 			return { action: "continue" };
 		}
@@ -1384,8 +1385,8 @@ export default function (pi: ExtensionAPI) {
 		// Fire-and-forget: classify in background so the input hook returns immediately.
 		classifyAndRoute(pi, text, state, policy, ctx).catch((err: unknown) => {
 			const msg = err instanceof Error ? err.message : String(err);
-			ctx.ui.setStatus("router", "router: err");
-			ctx.ui.notify(`Prompt router error (non-fatal): ${msg}`, "warning");
+			ctx.ui?.setStatus?.("router", "router: err");
+			ctx.ui?.notify?.(`Prompt router error (non-fatal): ${msg}`, "warning");
 		});
 
 		return { action: "continue" };

@@ -672,6 +672,13 @@ describe("prompt-router extension -- input hook", () => {
     expect(pi.exec).not.toHaveBeenCalled();
   });
 
+  it("skips background classification when no UI is available", async () => {
+    const { pi, inputHook, ctx } = setup({ hasUI: false });
+    const result = await inputHook.handler({ text: "explain the architecture", source: "user" }, ctx);
+    expect(result).toEqual({ action: "continue" });
+    expect(pi.exec).not.toHaveBeenCalled();
+  });
+
   it("calls exec for normal user text with configured classifier and routes to a dynamic same-family model", async () => {
     const { pi, inputHook, ctx } = setup();
     (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Sonnet", "medium"), stderr: "" });
