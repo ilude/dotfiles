@@ -205,7 +205,7 @@ If the plan has already been archived under `.specs/archive/{plan-name}/`, write
 
 ## Step 4: Launch Independent Reviews First
 
-Use the `subagent` tool in **parallel** mode to launch the full review panel.
+Use the `subagent` tool in **parallel** mode to launch the full review panel. Make exactly one reviewer-panel `subagent` tool call with the full reviewer list in the top-level `tasks` array. Do not launch the independent reviewers as separate single-agent `subagent` calls, and do not use `chain` for the independent panel.
 
 Use:
 - `agentScope: "both"`

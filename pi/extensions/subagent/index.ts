@@ -129,8 +129,7 @@ function buildSubagentTraceparent(): string {
 	return formatTraceparent(parentTraceId, newSpanId());
 }
 
-const MAX_PARALLEL_TASKS = 8;
-const MAX_CONCURRENCY = 4;
+const MAX_CONCURRENCY = 8;
 const COLLAPSED_ITEM_COUNT = 10;
 
 function formatTokens(count: number): string {
@@ -953,16 +952,6 @@ export default function (pi: ExtensionAPI) {
 
 			if (params.tasks && params.tasks.length > 0) {
 				const tasks = params.tasks as TaskParams[];
-				if (tasks.length > MAX_PARALLEL_TASKS)
-					return {
-						content: [
-							{
-								type: "text",
-								text: `Too many parallel tasks (${tasks.length}). Max is ${MAX_PARALLEL_TASKS}.`,
-							},
-						],
-						details: makeDetails("parallel")([]),
-					};
 
 				// Track all results for streaming updates
 				const allResults: SingleResult[] = new Array(tasks.length);

@@ -7,6 +7,22 @@ import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 const spawnMock = vi.fn();
 
+type MockProcess = EventEmitter & {
+  stdout: EventEmitter;
+  stderr: EventEmitter;
+  kill: ReturnType<typeof vi.fn>;
+  killed: boolean;
+};
+
+function createMockProcess(): MockProcess {
+  const proc = new EventEmitter() as MockProcess;
+  proc.stdout = new EventEmitter();
+  proc.stderr = new EventEmitter();
+  proc.kill = vi.fn();
+  proc.killed = false;
+  return proc;
+}
+
 vi.mock("node:child_process", () => ({
   spawn: spawnMock,
 }));
@@ -45,11 +61,7 @@ You are a test agent.
 
   function mockSuccessfulSpawn() {
     spawnMock.mockImplementation((_command: string, _args: string[]) => {
-      const proc = new EventEmitter() as any;
-      proc.stdout = new EventEmitter();
-      proc.stderr = new EventEmitter();
-      proc.kill = vi.fn();
-      proc.killed = false;
+      const proc = createMockProcess();
 
       queueMicrotask(() => {
         proc.stdout.emit(
@@ -74,11 +86,134 @@ You are a test agent.
   async function loadTool() {
     const pi = createMockPi();
     const mod = await import("../extensions/subagent/index.ts");
-    mod.default(pi as any);
+    mod.default(pi as Parameters<typeof mod.default>[0]);
     const tool = pi._getTool("subagent");
     if (!tool) throw new Error("subagent tool not registered");
     return { pi, tool };
   }
+
+  it("queues parallel tasks beyond the concurrency limit", async () => {
+    const procs: MockProcess[] = [];
+    spawnMock.mockImplementation(() => {
+      const proc = createMockProcess();
+      procs.push(proc);
+      return proc;
+    });
+    const { tool } = await loadTool();
+
+    const ctx = createMockCtx({
+      cwd: tmpDir,
+      model: { provider: "anthropic", id: "claude-sonnet-4-6" },
+    });
+
+    const execution = tool.execute(
+      "call-parallel-queued",
+      {
+        tasks: Array.from({ length: 10 }, (_, index) => ({
+          agent: "tester",
+          task: `Parallel task ${index + 1}`,
+        })),
+        agentScope: "project",
+        confirmProjectAgents: false,
+      },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(8));
+    expect(procs).toHaveLength(8);
+
+    procs[0].stdout.emit(
+      "data",
+      `${JSON.stringify({
+        type: "message_end",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "done" }],
+          stopReason: "end_turn",
+        },
+      })}\n`,
+    );
+    procs[0].emit("close", 0);
+
+    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(9));
+
+    for (const proc of procs.slice(1)) {
+      proc.stdout.emit(
+        "data",
+        `${JSON.stringify({
+          type: "message_end",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "done" }],
+            stopReason: "end_turn",
+          },
+        })}\n`,
+      );
+      proc.emit("close", 0);
+    }
+
+    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(10));
+    const lastProc = procs[9];
+    lastProc.stdout.emit(
+      "data",
+      `${JSON.stringify({
+        type: "message_end",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "done" }],
+          stopReason: "end_turn",
+        },
+      })}\n`,
+    );
+    lastProc.emit("close", 0);
+
+    const result = await execution;
+    expect(result.content[0].text).toContain("Parallel: 10/10 succeeded");
+  }, 15000);
+
+  it("finishes a subagent when the child emits agent_end without close", async () => {
+    const proc = createMockProcess();
+    spawnMock.mockImplementation(() => proc);
+    const { tool } = await loadTool();
+
+    const ctx = createMockCtx({
+      cwd: tmpDir,
+      model: { provider: "anthropic", id: "claude-sonnet-4-6" },
+    });
+
+    const execution = tool.execute(
+      "call-agent-end",
+      {
+        agent: "tester",
+        task: "Finish on agent_end",
+        agentScope: "project",
+        confirmProjectAgents: false,
+      },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1));
+    proc.stdout.emit(
+      "data",
+      `${JSON.stringify({
+        type: "agent_end",
+        messages: [
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "agent-end done" }],
+          },
+        ],
+      })}\n`,
+    );
+
+    const result = await execution;
+    expect(result.content[0].text).toContain("agent-end done");
+    expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
+  }, 15000);
 
   it("uses modelSize/modelPolicy to override pinned agent models", async () => {
     mockSuccessfulSpawn();
@@ -256,11 +391,7 @@ You are a test agent.
 
   it("registers a subagent failure as state=failed with errorReason", async () => {
     spawnMock.mockImplementation(() => {
-      const proc = new EventEmitter() as any;
-      proc.stdout = new EventEmitter();
-      proc.stderr = new EventEmitter();
-      proc.kill = vi.fn();
-      proc.killed = false;
+      const proc = createMockProcess();
       queueMicrotask(() => {
         proc.stderr.emit("data", "agent crashed: simulated failure\n");
         proc.emit("close", 1);
@@ -296,11 +427,7 @@ You are a test agent.
 
   it("treats stopReason=error as a parallel failure", async () => {
     spawnMock.mockImplementation(() => {
-      const proc = new EventEmitter() as any;
-      proc.stdout = new EventEmitter();
-      proc.stderr = new EventEmitter();
-      proc.kill = vi.fn();
-      proc.killed = false;
+      const proc = createMockProcess();
       queueMicrotask(() => {
         proc.stdout.emit(
           "data",
