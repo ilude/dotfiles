@@ -548,6 +548,13 @@ async function runSingleAgent(
 		let wasAborted = false;
 
 		const exitCode = await new Promise<number>((resolve) => {
+			let resolved = false;
+			let proc: ReturnType<typeof spawn> | undefined;
+			const finish = (code: number) => {
+				if (resolved) return;
+				resolved = true;
+				resolve(code);
+			};
 			const invocation = getPiInvocation(args);
 			// W3C Trace Context propagation: inject TRACEPARENT so the spawned
 			// child Pi process carries the parent's trace and treats this
@@ -557,7 +564,7 @@ async function runSingleAgent(
 				...process.env,
 				TRACEPARENT: buildSubagentTraceparent(),
 			};
-			const proc = spawn(invocation.command, invocation.args, {
+			proc = spawn(invocation.command, invocation.args, {
 				cwd: cwd ?? defaultCwd,
 				shell: false,
 				stdio: ["ignore", "pipe", "pipe"],
@@ -601,26 +608,35 @@ async function runSingleAgent(
 					currentResult.messages.push(event.message as Message);
 					emitUpdate();
 				}
+
+				if (event.type === "agent_end") {
+					if (Array.isArray(event.messages) && currentResult.messages.length === 0) {
+						currentResult.messages = event.messages as Message[];
+						emitUpdate();
+					}
+					finish(0);
+					proc?.kill("SIGTERM");
+				}
 			};
 
-			proc.stdout.on("data", (data) => {
+			proc.stdout?.on("data", (data) => {
 				buffer += data.toString();
 				const lines = buffer.split("\n");
 				buffer = lines.pop() || "";
 				for (const line of lines) processLine(line);
 			});
 
-			proc.stderr.on("data", (data) => {
+			proc.stderr?.on("data", (data) => {
 				currentResult.stderr += data.toString();
 			});
 
 			proc.on("close", (code) => {
 				if (buffer.trim()) processLine(buffer);
-				resolve(code ?? 0);
+				finish(code ?? 0);
 			});
 
 			proc.on("error", () => {
-				resolve(1);
+				finish(1);
 			});
 
 			if (signal) {
