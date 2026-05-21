@@ -106,28 +106,27 @@ describe("timingSafeTokenEqual", () => {
 describe("chooseFilesToCommit -- large and staged worktrees", () => {
 	const ctx = { cwd: "", ui: {}, modelRegistry: {} } as never;
 
-	it("defaults to staged files instead of all changed files", async () => {
-		const selection = await chooseFilesToCommit(
-			ctx,
-			["a.txt", "b.txt", "c.txt"],
-			["b.txt"],
-			[],
-		);
+	it("defaults to all changed files even when some files are staged", async () => {
+		const files = ["a.txt", "b.txt", "c.txt"];
+		const selection = await chooseFilesToCommit(ctx, files, ["b.txt"], []);
 		expect(selection).toEqual({
-			files: ["b.txt"],
-			stageAll: false,
+			files,
+			stageAll: true,
 			cancelled: false,
 		});
 	});
 
-	it("refuses a large unstaged default selection", async () => {
+	it("defaults to all changed files for a large unstaged selection", async () => {
 		const files = Array.from(
 			{ length: 51 },
 			(_, index) => `src/file-${index}.ts`,
 		);
-		await expect(chooseFilesToCommit(ctx, files, [], [])).rejects.toThrow(
-			/Large\/mixed worktree detected/,
-		);
+		const selection = await chooseFilesToCommit(ctx, files, [], []);
+		expect(selection).toEqual({
+			files,
+			stageAll: true,
+			cancelled: false,
+		});
 	});
 
 	it("allows explicit files even when the worktree is large", async () => {

@@ -1,104 +1,53 @@
-You are performing a smart git commit. This path handles dirty trees by splitting changes into atomic conventional commits when needed.
+You are performing `/commit` for Pi. Use the fast, flexible shell-driven workflow below. Arguments: `$ARGUMENTS`
 
-When commit planning uses an LLM, prefer a small/mini model by default. Commit planning should stay cheap and deterministic unless there is a concrete reason to escalate.
+Core contract:
+- Commit all legitimate uncommitted changes. Do not skip files because of provenance, task ownership, or because they were changed earlier.
+- Never refuse because the worktree is large or mixed. Split into logical commits and continue until clean or explicitly blocked.
+- If arguments include `push`, push after all commits succeed.
+- If arguments include file/path tokens, limit the first commit pass to those paths, then check status and continue with remaining legitimate changes unless the user explicitly meant only those paths.
+- Use normal git commands, not Pi structured commit mutation tools.
 
-## Step 1: Understand the current state
+Workflow:
 
-Run `git status` to see what is staged, unstaged, and untracked.
-Run `git diff --stat HEAD` to understand the scope of changes.
+1. Inspect state
+   - Run `git status --short`.
+   - If clean, report clean and stop.
+   - If merge conflicts exist, report them and stop.
+   - Use direct git commands only. Do not run helper scripts for planning.
 
-If the working tree is clean or merge conflicts exist, exit with an appropriate message.
+2. Classify files
+   - Auto-stage source, tests, docs, project config, small JSON/YAML, lockfiles, scripts, and intentional assets.
+   - Auto-ignore generated/runtime data such as logs, caches, databases, temporary files, large data dumps, and machine-local state.
+   - Ask only for ambiguous files: unclear binary/data files or possible fixtures vs user data.
+   - Never force-add ignored files unless the user explicitly approves that exact recovery.
 
-## Step 2: Secret scan
+3. Secret scan before committing
+   - Check `.gitattributes` for `filter=git-crypt` and skip encrypted paths.
+   - Scan all files intended for commit for obvious secret file names and token/key/password/private-key patterns.
+   - If a likely or ambiguous secret is found, stop before committing and report path, pattern, and reason.
 
-Skip git-crypt encrypted paths: read `.gitattributes` if it exists and ignore any path whose pattern carries `filter=git-crypt`. Those files are encrypted before push.
+4. Plan logical commits
+   - Group by one coherent change per commit.
+   - Prefer one commit when changes are one coherent unit, even if many files are involved.
+   - Split unrelated changes by feature/fix/docs/tests/chore or by subsystem.
+   - Use conventional commit subjects: `type(scope): description`.
+   - Keep messages human, specific, no emojis, no trailing period.
 
-two-step secret review on the remaining staged and modified files:
+5. Commit loop
+   - For each group, stage exact paths with `git add -- <paths>` or `git add -A -- <paths>` when deletions are included. Avoid broad `git add .` unless the group intentionally covers the whole safe worktree.
+   - Run `git diff --cached --check` before commit.
+   - Ensure the subject matches `type(scope): description` with one of `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `perf`, `ci`, `build`, or `wip`.
+   - Commit with `git commit -m "<subject>"` and `-m "<body>"` when a body helps.
+   - Do not use `--no-verify` unless the repo instructions explicitly require it.
+   - After each commit, run `git status --short` and continue until clean or only explicitly skipped/ignored files remain.
 
-1. deterministic pattern matching to extract candidate findings.
-2. A small/mini LLM evaluates each candidate in context and classifies it as: likely real secret / example or fixture / ambiguous.
+6. Push and report
+   - If args include `push`, run `git push` after all commits succeed.
+   - Final report must include:
+     - `Prepared: yes/no`
+     - `Committed: yes/no`
+     - `Pushed: yes/no/not requested`
+     - commit hashes and subjects for successful commits
+     - final `git status --short` result
 
-Patterns to match:
-
-- Secret files: `.env`, `credentials.json`, `secrets.yaml`, `*.pem`, `*.key`, `*.p12`, `*.pfx`
-- AWS keys: `AKIA`, `ABIA`, `ACCA`, `ASIA`
-- GitHub tokens: `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`
-- Anthropic keys: `sk-ant-`
-- OpenAI keys: `sk-proj-`, `sk-`
-- Slack tokens: `xoxb-`, `xoxp-`
-- npm tokens: `npm_`
-- JWTs: `eyJ`
-- Generic: `API_KEY=`, `TOKEN=`, `PASSWORD=`, `Bearer`
-- Private keys: `-----BEGIN`
-- Connection strings: `mongodb://`, `postgres://`, `mysql://`
-
-If the LLM classifies a candidate as a likely real secret, or it remains ambiguous, STOP immediately. Warn the user with file name, matched pattern, and short reason. Do not proceed until the user explicitly resolves the finding.
-
-## Step 3: Categorize uncommitted files
-
-Commit ALL uncommitted changes in the working tree. Do not skip files because they were changed by the user manually, by another agent, or in a previous session. If a file is uncommitted and matches the auto-stage rules below, it gets committed.
-
-### Anti-patterns -- DO NOT rationalize skipping files
-
-These are INVALID reasons to skip a file:
-
-- "Not my changes" / "I didn't create this file"
-- "Created by another agent" / "Created in a previous session"
-- "Not part of this task" / "Not related to the current work"
-- "Was already there before I started"
-- "The user didn't ask me to commit this specific file"
-
-The ONLY valid reasons to skip a file:
-
-- Matches an auto-ignore pattern below
-- User explicitly said to skip it when asked
-- Contains secrets (detected in Step 2)
-- Listed in `.gitignore`
-
-If `git status` after this command shows untracked source code, docs, or config still present, the workflow is NOT finished.
-
-### Categorization rules
-
-- **Auto-ignore and add to `.gitignore`:** `*.log`, `*.csv`, `*.tsv`, `*.db`, `*.sqlite`, `*.sqlite3`, large data files (`*.json` over 1 MB, `*.xml` data dumps).
-- **Auto-stage:** source files (`*.py`, `*.js`, `*.ts`, etc.), docs (`*.md`, `*.rst`, `*.txt`), config (`pyproject.toml`, `package.json`, `Dockerfile`, `docker-compose.yml`), small JSON/YAML configs, test files.
-- **Ask the user:** ambiguous data files that could be fixtures or user data, binary files not in `.gitignore`, unclear file types.
-
-When asking, batch-prompt: list the files and ask "Track these files? (y/n/pattern)" where pattern is a `.gitignore` rule.
-
-## Step 4: Group into atomic commits
-
-Group related files by logical change using conventional commit types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `perf`, `ci`, `build`. Related functionality changes go together. Do not mix unrelated changes. Each commit should do ONE thing.
-
-For each group:
-
-1. Stage only that group's files with `git add <files>` (no `git add .` / `git add -A`).
-2. Review `git diff --cached`.
-3. Build a conventional commit message:
-   ```
-   type(scope): short description
-
-   <optional body>
-   ```
-   - Imperative mood, lowercase, no trailing period, under 72 characters
-   - Scope optional but preferred when localized
-   - Body when the why is non-obvious
-   - No emojis
-4. Show the proposed message to the user. Ask: "Confirm? (yes / no / revise / skip)".
-5. On `yes`, run `git commit -m "<message>"` (HEREDOC for multi-line bodies). Do NOT pass `--no-verify` -- the commit-guard extension blocks it. If a pre-commit hook fails, fix the root cause and retry.
-6. Report the commit hash.
-
-## Step 5: Loop until clean
-
-After each commit, run `git status` again. If legitimate files remain (not matching auto-ignore patterns), repeat from Step 3 for the remainder.
-
-Exit when:
-
-- Working tree is clean
-- Only files matching `.gitignore` patterns remain
-- User said `skip` or `stop` for the remaining unclear files
-
-## Step 6: Summary
-
-Show a brief list of commits created with their hashes and summary lines.
-
-If args contain `push`, run `git push` after all commits succeed. Otherwise stop without pushing.
+If any staging, commit, hook, validation, or push command fails, stop. Report exactly what happened, whether anything is staged, whether any commits were created, and the next safe choices.

@@ -2,8 +2,8 @@
  * Workflow Commands Extension
  *
  * Registers shared slash commands. Most commands load skill template files and
- * dispatch them via sendUserMessage(). `/commit` is implemented directly so it
- * can run a tighter git workflow with less conversational back-and-forth.
+ * dispatch them via sendUserMessage(). `/commit` uses the same prompt-dispatch
+ * path so it can stay flexible for complex worktrees.
  *
  *   /commit        — smart git commit with secret scanning
  *   /plan-it       — crystallize conversation context into an executable plan
@@ -1236,16 +1236,6 @@ export function isLargeOrMixedCommitSelection(files: string[]) {
 	);
 }
 
-function formatCommitSelectionRefusal(files: string[]) {
-	const roots = uniqueSorted(files.map(topLevelCommitRoot));
-	const rootPreview = roots.slice(0, 12).join(", ");
-	return [
-		`Large/mixed worktree detected: ${files.length} changed files across ${roots.length} top-level roots${rootPreview ? ` (${rootPreview}${roots.length > 12 ? ", ..." : ""})` : ""}.`,
-		"Stage a logical group first, or pass explicit file/path arguments to /commit.",
-		"Refusing to stage the whole worktree by default.",
-	].join(" ");
-}
-
 export async function chooseFilesToCommit(
 	_ctx: WorkflowContext,
 	changedFiles: string[],
@@ -1254,11 +1244,6 @@ export async function chooseFilesToCommit(
 ) {
 	if (requestedFiles.length > 0)
 		return { files: requestedFiles, stageAll: true, cancelled: false };
-	if (stagedFiles.length > 0)
-		return { files: stagedFiles, stageAll: false, cancelled: false };
-	if (isLargeOrMixedCommitSelection(changedFiles)) {
-		throw new Error(formatCommitSelectionRefusal(changedFiles));
-	}
 	return { files: changedFiles, stageAll: true, cancelled: false };
 }
 
@@ -1798,16 +1783,14 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	pi.registerCommand("commit", {
-		description: "Smart git commit with LLM grouping + deterministic execution",
-		handler: async (args, ctx) => {
-			try {
-				await executeCommitCommand(pi, args, ctx);
-			} catch (err) {
-				ctx.ui.notify(
-					err instanceof Error ? err.message : String(err),
-					"error",
-				);
-			}
+		description: "Smart git commit with flexible prompt-driven grouping",
+		handler: async (args, _ctx) => {
+			echoSlashCommand(pi, "commit", args);
+			const template = loadSkill("commit.md");
+			sendHiddenWorkflowPrompt(
+				pi,
+				buildSkillPrompt(template, args, { replaceArguments: true }),
+			);
 		},
 	});
 
