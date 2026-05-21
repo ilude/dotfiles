@@ -44,15 +44,29 @@ vi.mock("@earendil-works/pi-ai", () => ({
 	completeSimple: vi.fn(),
 }));
 
+vi.mock("../extensions/codex-status.ts", () => ({
+	clearCodexStatusNewSessionSuppression: vi.fn(),
+	showCodexStatus: vi.fn(async () => {}),
+	suppressNextCodexStatusOnNewSession: vi.fn(),
+}));
+
 // ── Git mock helpers ──────────────────────────────────────────────────────────
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import { completeSimple } from "@earendil-works/pi-ai";
+import {
+	showCodexStatus,
+	suppressNextCodexStatusOnNewSession,
+} from "../extensions/codex-status.ts";
+
 const mockSpawnSync = spawnSync as ReturnType<typeof vi.fn>;
 const mockCompleteSimple = completeSimple as ReturnType<typeof vi.fn>;
 const mockReadFileSync = fs.readFileSync as ReturnType<typeof vi.fn>;
 const mockStatSync = fs.statSync as ReturnType<typeof vi.fn>;
+const mockShowCodexStatus = showCodexStatus as ReturnType<typeof vi.fn>;
+const mockSuppressNextCodexStatusOnNewSession =
+	suppressNextCodexStatusOnNewSession as ReturnType<typeof vi.fn>;
 
 /**
  * Wire up spawnSync so every git sub-command returns plausible output.
@@ -191,10 +205,27 @@ describe("/commit command flow – plan validation rejection", () => {
 		return cmd.handler as (args: string, ctx: any) => Promise<void>;
 	}
 
-	it("initializes the new session with previous usage instead of notifying before clear", async () => {
+	it("initializes the new session with previous usage before showing Codex status", async () => {
+		type NewSessionOptions = {
+			setup?: (sessionManager: {
+				appendCustomMessageEntry: ReturnType<typeof vi.fn>;
+			}) => Promise<void>;
+			withSession?: (ctx: unknown) => Promise<void>;
+		};
+
 		const appendCustomMessageEntry = vi.fn();
-		const newSession = vi.fn(async (options?: any) => {
+		const order: string[] = [];
+		mockSuppressNextCodexStatusOnNewSession.mockImplementationOnce(() => {
+			order.push("suppress-session-start");
+		});
+		mockShowCodexStatus.mockImplementationOnce(async () => {
+			order.push("codex-status");
+		});
+		const replacementCtx = { ui: { notify: vi.fn() } };
+		const newSession = vi.fn(async (options?: NewSessionOptions) => {
 			await options?.setup?.({ appendCustomMessageEntry });
+			order.push("new-session");
+			await options?.withSession?.(replacementCtx);
 			return { cancelled: false };
 		});
 		const ctx = {
@@ -209,13 +240,23 @@ describe("/commit command flow – plan validation rejection", () => {
 
 		await getClearHandler()("", ctx);
 
-		expect(newSession).toHaveBeenCalledWith(expect.objectContaining({ setup: expect.any(Function) }));
+		expect(newSession).toHaveBeenCalledWith(
+			expect.objectContaining({
+				setup: expect.any(Function),
+				withSession: expect.any(Function),
+			}),
+		);
 		expect(appendCustomMessageEntry).toHaveBeenCalledWith(
 			"workflow-clear-usage",
 			"Previous session usage: 12% (12k/100k tokens)",
 			true,
 		);
-		expect(ctx.ui.notify).not.toHaveBeenCalled();
+		expect(mockShowCodexStatus).toHaveBeenCalledWith(replacementCtx);
+		expect(order).toEqual([
+			"suppress-session-start",
+			"new-session",
+			"codex-status",
+		]);
 	});
 
 	// ── duplicate file ──────────────────────────────────────────────────────────

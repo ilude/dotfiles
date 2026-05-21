@@ -5,9 +5,11 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import registerCodexStatusCommand, {
 	accountIdFromToken,
+	clearCodexStatusNewSessionSuppression,
 	fetchCodexUsage,
 	formatUsage,
 	resolveAuth,
+	suppressNextCodexStatusOnNewSession,
 	USAGE_ENDPOINT,
 } from "../extensions/codex-status";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi";
@@ -28,6 +30,7 @@ function tempHome(): string {
 }
 
 afterEach(() => {
+	clearCodexStatusNewSessionSuppression();
 	process.env.HOME = OLD_HOME;
 	process.env.USERPROFILE = OLD_USERPROFILE;
 	vi.useRealTimers();
@@ -300,13 +303,13 @@ describe("/usage command", () => {
 		}
 	});
 
-	it("shows status when /clear input passes through", async () => {
+	it("suppresses one /clear-backed new session status", async () => {
 		const home = tempHome();
 		await mkdir(join(home, ".pi", "agent"), { recursive: true });
 		await writeFile(
 			join(home, ".pi", "agent", "auth.json"),
 			JSON.stringify({
-				"openai-codex": { access: fakeJwt({}), accountId: "acct-clear" },
+				"openai-codex": { access: fakeJwt({}), accountId: "acct-new" },
 			}),
 		);
 		vi.stubGlobal(
@@ -322,16 +325,20 @@ describe("/usage command", () => {
 		registerCodexStatusCommand(
 			mockPi as Parameters<typeof registerCodexStatusCommand>[0],
 		);
-		const hook = mockPi._getHook("input")[0];
+		const hook = mockPi._getHook("session_start")[0];
 		const ctx = createMockCtx();
 
-		await expect(hook.handler({ text: " /clear " }, ctx)).resolves.toEqual({
-			action: "continue",
+		suppressNextCodexStatusOnNewSession();
+		await hook.handler({ reason: "new" }, ctx);
+		expect(ctx.ui.notify).not.toHaveBeenCalled();
+
+		await hook.handler({ reason: "new" }, ctx);
+		await vi.waitFor(() => {
+			expect(ctx.ui.notify).toHaveBeenCalledWith(
+				expect.stringContaining("Codex:"),
+				"info",
+			);
 		});
-		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			expect.stringContaining("Codex:"),
-			"info",
-		);
 	});
 
 	it("does not auto-show status on reload or resume", async () => {

@@ -48,6 +48,11 @@ import {
 	buildSecretReviewPrompt,
 	buildSkillPrompt,
 } from "../lib/workflow-commands/prompts";
+import {
+	clearCodexStatusNewSessionSuppression,
+	showCodexStatus,
+	suppressNextCodexStatusOnNewSession,
+} from "./codex-status";
 import { isOperatorReloadNeeded } from "./operator-status";
 
 const SKILLS_DIR = path.join(
@@ -120,16 +125,22 @@ async function newSessionWithReloadIfNeeded(
 	options?: Parameters<ExtensionCommandContext["newSession"]>[0],
 ) {
 	const reloadNeeded = isOperatorReloadNeeded();
-	if (!reloadNeeded && !options?.withSession && !options?.setup) {
+	if (
+		!reloadNeeded &&
+		!options?.parentSession &&
+		!options?.withSession &&
+		!options?.setup
+	) {
 		return ctx.newSession();
 	}
 	return ctx.newSession({
+		parentSession: options?.parentSession,
 		setup: options?.setup,
 		withSession: async (newCtx) => {
-			if (reloadNeeded) {
+			await options?.withSession?.(newCtx);
+			if (reloadNeeded && !options?.withSession) {
 				await newCtx.reload();
 			}
-			await options?.withSession?.(newCtx);
 		},
 	});
 }
@@ -1936,16 +1947,29 @@ export default function (pi: ExtensionAPI) {
 		description: "Alias to /new",
 		handler: async (_args, ctx) => {
 			const usageMessage = formatClearedSessionUsage(ctx.getContextUsage?.());
-			await newSessionWithReloadIfNeeded(ctx, {
-				setup: async (sessionManager) => {
-					if (!usageMessage) return;
-					sessionManager.appendCustomMessageEntry?.(
-						CLEAR_USAGE_TYPE,
-						usageMessage,
-						true,
-					);
-				},
-			});
+			suppressNextCodexStatusOnNewSession();
+			let result: Awaited<ReturnType<ExtensionCommandContext["newSession"]>>;
+			try {
+				result = await newSessionWithReloadIfNeeded(ctx, {
+					setup: async (sessionManager) => {
+						if (!usageMessage) return;
+						sessionManager.appendCustomMessageEntry?.(
+							CLEAR_USAGE_TYPE,
+							usageMessage,
+							true,
+						);
+					},
+					withSession: async (newCtx) => {
+						await showCodexStatus(newCtx);
+					},
+				});
+			} catch (error) {
+				clearCodexStatusNewSessionSuppression();
+				throw error;
+			}
+			if (result.cancelled) {
+				clearCodexStatusNewSessionSuppression();
+			}
 		},
 	});
 
