@@ -1221,14 +1221,44 @@ function applyUntrackedClassifications(
 	}
 }
 
+const LARGE_COMMIT_FILE_THRESHOLD = 50;
+const MIXED_COMMIT_FILE_THRESHOLD = 10;
+
+function topLevelCommitRoot(file: string) {
+	return normalizeGitPath(file).split("/")[0] || file;
+}
+
+export function isLargeOrMixedCommitSelection(files: string[]) {
+	const roots = uniqueSorted(files.map(topLevelCommitRoot));
+	return (
+		files.length > LARGE_COMMIT_FILE_THRESHOLD ||
+		(files.length > MIXED_COMMIT_FILE_THRESHOLD && roots.length > 1)
+	);
+}
+
+function formatCommitSelectionRefusal(files: string[]) {
+	const roots = uniqueSorted(files.map(topLevelCommitRoot));
+	const rootPreview = roots.slice(0, 12).join(", ");
+	return [
+		`Large/mixed worktree detected: ${files.length} changed files across ${roots.length} top-level roots${rootPreview ? ` (${rootPreview}${roots.length > 12 ? ", ..." : ""})` : ""}.`,
+		"Stage a logical group first, or pass explicit file/path arguments to /commit.",
+		"Refusing to stage the whole worktree by default.",
+	].join(" ");
+}
+
 export async function chooseFilesToCommit(
 	_ctx: WorkflowContext,
 	changedFiles: string[],
-	_stagedFiles: string[],
+	stagedFiles: string[],
 	requestedFiles: string[],
 ) {
 	if (requestedFiles.length > 0)
 		return { files: requestedFiles, stageAll: true, cancelled: false };
+	if (stagedFiles.length > 0)
+		return { files: stagedFiles, stageAll: false, cancelled: false };
+	if (isLargeOrMixedCommitSelection(changedFiles)) {
+		throw new Error(formatCommitSelectionRefusal(changedFiles));
+	}
 	return { files: changedFiles, stageAll: true, cancelled: false };
 }
 
@@ -1253,7 +1283,9 @@ export function stageFiles(
 	);
 	const stagingPlan = buildStagingPlan({
 		files: existingFiles,
-		allCommittableFiles,
+		allCommittableFiles: isLargeOrMixedCommitSelection(files)
+			? []
+			: allCommittableFiles,
 		ignoredFiles: ignoredExisting,
 	});
 	if (stagingPlan.unsafe.length > 0) {
@@ -1520,9 +1552,21 @@ async function prepareCommitSelection(
 ) {
 	let { diffStat, changedFiles, stagedFiles, untrackedFiles } =
 		getCommitContext(ctx.cwd, activity);
-	if (untrackedFiles.length > 0) {
+	const parsedArgs = parseCommitArgs(args, changedFiles);
+	let selection = await chooseFilesToCommit(
+		ctx,
+		changedFiles,
+		stagedFiles,
+		parsedArgs.files,
+	);
+	if (selection.cancelled || selection.files.length === 0) return null;
+
+	const selectedUntracked = untrackedFiles.filter((file) =>
+		selection.files.includes(file),
+	);
+	if (selectedUntracked.length > 0) {
 		activity?.setPhase("classifying untracked files");
-		const plan = await classifyUntrackedFiles(ctx, untrackedFiles);
+		const plan = await classifyUntrackedFiles(ctx, selectedUntracked);
 		const userDecisions = await resolveLowConfidenceClassifications(
 			ctx,
 			plan.needsUserDecision,
@@ -1536,18 +1580,18 @@ async function prepareCommitSelection(
 			ctx.cwd,
 			activity,
 		));
+		selection = await chooseFilesToCommit(
+			ctx,
+			changedFiles,
+			stagedFiles,
+			parsedArgs.files,
+		);
+		if (selection.cancelled || selection.files.length === 0) return null;
 	}
-	const findings = scanFilesForSecrets(ctx.cwd, changedFiles);
+
+	const findings = scanFilesForSecrets(ctx.cwd, selection.files);
 	if (!(await confirmSecretScan(ctx, findings))) return null;
 
-	const parsedArgs = parseCommitArgs(args, changedFiles);
-	const selection = await chooseFilesToCommit(
-		ctx,
-		changedFiles,
-		stagedFiles,
-		parsedArgs.files,
-	);
-	if (selection.cancelled || selection.files.length === 0) return null;
 	if (selection.stageAll)
 		stageFiles(ctx.cwd, selection.files, activity, changedFiles);
 

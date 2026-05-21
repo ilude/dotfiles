@@ -13,7 +13,7 @@ vi.mock("@earendil-works/pi-tui", () => ({ Text: class {} }));
 import { buildCommitPlan } from "../lib/commit/plan.ts";
 import { stagePaths } from "../lib/commit/stage.ts";
 import { createCommit } from "../lib/commit/create.ts";
-import { listChangedFiles, stageFiles, SECRET_PATTERNS } from "../extensions/workflow-commands.ts";
+import { chooseFilesToCommit, listChangedFiles, stageFiles, SECRET_PATTERNS } from "../extensions/workflow-commands.ts";
 import { timingSafeTokenEqual } from "../lib/commit/token.ts";
 
 const repos: string[] = [];
@@ -103,6 +103,47 @@ describe("timingSafeTokenEqual", () => {
 // B1: listChangedFiles does not crash on a fresh repo with no HEAD
 // ---------------------------------------------------------------------------
 
+describe("chooseFilesToCommit -- large and staged worktrees", () => {
+	const ctx = { cwd: "", ui: {}, modelRegistry: {} } as never;
+
+	it("defaults to staged files instead of all changed files", async () => {
+		const selection = await chooseFilesToCommit(
+			ctx,
+			["a.txt", "b.txt", "c.txt"],
+			["b.txt"],
+			[],
+		);
+		expect(selection).toEqual({
+			files: ["b.txt"],
+			stageAll: false,
+			cancelled: false,
+		});
+	});
+
+	it("refuses a large unstaged default selection", async () => {
+		const files = Array.from(
+			{ length: 51 },
+			(_, index) => `src/file-${index}.ts`,
+		);
+		await expect(chooseFilesToCommit(ctx, files, [], [])).rejects.toThrow(
+			/Large\/mixed worktree detected/,
+		);
+	});
+
+	it("allows explicit files even when the worktree is large", async () => {
+		const files = Array.from(
+			{ length: 51 },
+			(_, index) => `src/file-${index}.ts`,
+		);
+		const selection = await chooseFilesToCommit(ctx, files, [], ["src/file-1.ts"]);
+		expect(selection).toEqual({
+			files: ["src/file-1.ts"],
+			stageAll: true,
+			cancelled: false,
+		});
+	});
+});
+
 describe("stageFiles -- ignored paths and broad staging", () => {
 	it("refuses ignored untracked paths instead of passing them to git add", () => {
 		const dir = repo();
@@ -114,9 +155,9 @@ describe("stageFiles -- ignored paths and broad staging", () => {
 		).toThrow(/ignored paths/i);
 	});
 
-	it("uses git add . for a full safe candidate set", () => {
+	it("stages a large full safe candidate set without broad git add dot", () => {
 		const dir = repo();
-		const files = Array.from({ length: 21 }, (_, index) => `src/file-${index}.ts`);
+		const files = Array.from({ length: 51 }, (_, index) => `src/file-${index}.ts`);
 		mkdirSync(join(dir, "src"), { recursive: true });
 		for (const file of files) {
 			writeFileSync(join(dir, file), "content\n");
