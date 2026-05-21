@@ -1,5 +1,7 @@
 Run `git status --short` to check uncommitted files. If the working tree is clean or merge conflicts exist, exit with an appropriate message.
 
+Do not modify files as part of this workflow, except for adding auto-ignore patterns to `.gitignore` when the rules below require it. `/commit` stages, commits, and optionally pushes existing changes; it does not fix, refactor, format, or update code before committing.
+
 Commit all legitimate uncommitted changes in the working tree. Do not skip files because they were changed in a previous task, by the user manually, or by another agent. If a file is uncommitted and matches the auto-stage rules below, it gets committed. The "never revert user changes" rule applies to destructive actions, not to committing via `/commit`.
 
 Anti-patterns -- do not rationalize skipping files:
@@ -17,21 +19,19 @@ The only valid reasons to skip a file:
 
 If `git status --short` shows untracked source code, documentation, or config files after your commit, the workflow is not finished. Stage and commit them.
 
-Check for git-crypt encrypted files by reading `.gitattributes` if it exists. Parse lines with `filter=git-crypt` to identify encrypted file patterns. Skip those files during security scanning since they are encrypted before pushing.
+Use `detect-secrets-hook` for secret scanning after staging each commit group and before `git commit`:
 
-Scan all non-encrypted modified and untracked files for secrets. Look for:
-- Secret files: `.env`, `credentials.json`, `secrets.yaml`, `*.pem`, `*.key`, `*.p12`, `*.pfx`
-- AWS keys: `AKIA`, `ABIA`, `ACCA`, `ASIA` prefixes
-- GitHub tokens: `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`
-- Anthropic keys: `sk-ant-`
-- OpenAI keys: `sk-proj-`, `sk-`
-- Generic API keys: `API_KEY=`, `APIKEY=`, `api_key=`
-- Tokens: `TOKEN=`, `ACCESS_TOKEN=`, `Bearer`
-- Passwords: `PASSWORD=`, `pwd=`, `passwd=`, `secret=`
-- Private keys: `-----BEGIN PRIVATE KEY-----`, `-----BEGIN RSA`, `-----BEGIN OPENSSH`
-- Connection strings: `mongodb://`, `postgres://`, `mysql://`
+```bash
+git diff --staged --name-only -z | xargs -0 detect-secrets-hook
+```
 
-If secrets are found, stop immediately. Show details and suggest adding files to `.gitignore`. Do not proceed with commits.
+If `.secrets.baseline` exists, include it:
+
+```bash
+git diff --staged --name-only -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline
+```
+
+If `detect-secrets-hook` is not installed, rely on the repository's existing commit hooks and do not create ad-hoc secret-scanning scripts. If the scanner or hook reports secrets, stop immediately and report the findings. Do not proceed with commits.
 
 Categorize uncommitted files using this approach:
 - Auto-ignore and add to `.gitignore`: `*.log`, `*.csv`, `*.tsv`, `*.db`, `*.sqlite`, `*.sqlite3`, large data files (`*.json` over 1 MB, `*.xml` data dumps)
@@ -45,10 +45,11 @@ Group files by logical change using commit types: `feat`, `fix`, `docs`, `test`,
 For each group of related files:
 1. Stage that group's files.
 2. If staging exits non-zero, stop before creating a commit and report the error.
-3. Write a commit message that is human-style with natural grammar.
-4. No emojis in commit messages.
-5. Brief summary line with optional detailed body.
-6. Create the commit.
+3. Run the `detect-secrets-hook` scan described above if it is installed.
+4. Write a commit message that is human-style with natural grammar.
+5. No emojis in commit messages.
+6. Brief summary line with optional detailed body.
+7. Create the commit.
 
 After each commit, run `git status --short` again. If legitimate files remain, categorize and group them, then commit. Repeat until the working tree is clean or only explicitly skipped/ignored files remain.
 

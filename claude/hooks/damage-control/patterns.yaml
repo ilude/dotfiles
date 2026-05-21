@@ -1611,16 +1611,12 @@ bashToolPatterns:
 # Using ask: true to allow legitimate access with user approval
 # .env.example and .env.template are safe template files (no real secrets)
 
-  - pattern: '\.env(?!\.(?:example|template))\b'
-    reason: .env file may contain secrets (API keys, passwords)
+  - pattern: '(?:^|[;&|]\s*)(?:cat|less|more|head|tail|grep|rg|awk|sed|source|\.|bash|sh|zsh|vim|vi|nano|code|tee|cp|mv|rm|curl|wget)\b[^\n;&|]*(?:\.env(?!\.(?:example|template))\b|\.env\.(?!example\b|template\b)[a-zA-Z]+|\w+\.env\b)'
+    reason: environment file access may expose secrets (API keys, passwords)
     ask: true
 
-  - pattern: '\.env\.(?!example\b|template\b)[a-zA-Z]+'
-    reason: .env.* file may contain secrets (API keys, passwords)
-    ask: true
-
-  - pattern: '\w+\.env\b'
-    reason: "*.env file may contain secrets (API keys, passwords)"
+  - pattern: '(?:[<>]{1,2}|@)\s*(?:\.env(?!\.(?:example|template))\b|\.env\.(?!example\b|template\b)[a-zA-Z]+|\w+\.env\b)'
+    reason: environment file read/write may expose or modify secrets (API keys, passwords)
     ask: true
 
 # ---------------------------------------------------------------------------
