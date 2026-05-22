@@ -8,5 +8,10 @@
       "mode": "lgbm"
     }
   },
-  "packages": []
+  "packages": [
+    "npm:pi-code-previews"
+  ],
+  "_disabledPackages": [
+    "npm:pi-inspect"
+  ]
 }
