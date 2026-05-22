@@ -1,0 +1,128 @@
+---
+name: tui-ux
+description: Terminal UI and interactive CLI UX best practices. Activate when designing, reviewing, or modifying TUIs, command palettes, model pickers, login/setup wizards, lists, forms, status bars, keyboard navigation, streaming views, or terminal workflows.
+---
+
+# TUI UX Skill
+
+Treat terminal UI as a product surface, not just command output. Users should not need to discover basic interaction flaws manually.
+
+## Research-Informed Additions
+
+Sources reviewed: OpenAI GPT-5/GPT-5.2 prompting guides and CLI UX pattern writing. I did not find a clearly authoritative public GPT-5.5-specific TUI UX guide; treat GPT-5.5-specific claims from social posts as unverified unless backed by official docs.
+
+Key takeaways to apply:
+
+- **Control agent eagerness:** when changing UX, gather enough context to identify existing patterns, then make the smallest scoped change. Do not invent unrelated UI components or behavior.
+- **Preserve design consistency:** reuse existing TUI styles, tokens, wording, spacing, and component patterns instead of creating one-off UI.
+- **Constrain output shape:** for UX/code changes, report concise sections: what changed, where, validation, and remaining risks.
+- **Interactive mode should reduce mistakes:** setup/login flows should constrain choices, validate early, and explain recovery steps.
+- **Good CLI/TUI UX reduces time-to-value:** show useful first actions and examples in-app instead of forcing users to read docs.
+- **Interactive UX does not replace automation:** keep non-interactive/env/config paths working when adding wizards.
+
+## Core Principles
+
+1. **Responsiveness first**
+   - Never block typing, navigation, cancel, help, or quit on network/storage/provider work.
+   - Use async work with stale-result guards for provider/model/session changes.
+   - Add timeouts for provider/model list calls so one bad endpoint cannot hang the UI.
+
+2. **Predictable navigation**
+   - Every selectable list must support Up/Down, Vim-style `k`/`j` where appropriate, Enter, Esc/cancel, and typed selection only if visible/documented.
+   - Selection movement must update the visible window. Never let selection move into hidden rows without scrolling/windowing.
+   - Preserve selection where sensible after refresh; clamp safely when list length changes.
+
+3. **Deterministic ordering**
+   - Lists should have stable, explainable ordering: alphabetical, newest-first, grouped by provider, etc.
+   - If grouped, sort within groups.
+   - Do not rely on map iteration or provider response order unless intentionally documented.
+
+4. **Window long content**
+   - Long lists need pagination/windowing and clear indicators: `… N previous`, `… N more`.
+   - Keep the selected row visible.
+   - Avoid hiding available items with a static top-N truncation.
+
+5. **Provider isolation and graceful degradation**
+   - A failing provider must not block other providers from listing models or working.
+   - Surface failures as warnings when partial success exists.
+   - Make provider names specific enough for recovery, including endpoint/base URL when useful and safe.
+
+6. **Safe configuration behavior**
+   - Do not silently overwrite or drop existing profile fields, secret refs, user-chosen models, or unknown future fields.
+   - Prefer additive migration and explicit dedupe rules.
+   - Generated default config should be created in the OS user config directory, formatted, with final newline, and never overwrite user edits.
+
+7. **Secrets stay secret**
+   - Never print API keys, tokens, passwords, AWS keys, or bearer tokens.
+   - UI should mention secret refs/locations only when safe; avoid exposing values.
+   - When editing config manually or by tool, preserve `secret_ref` unless intentionally deleting credentials.
+
+8. **No color-only state**
+   - Status, selected state, warnings, errors, and disabled actions need text/symbol/layout cues, not only color.
+
+9. **Explicit recovery paths**
+   - Every error/degraded state should explain what happened and what the user can do: retry, cancel, run `/login`, edit config, restart, etc.
+   - Cancellation should leave the app usable and preserve drafts.
+
+10. **Least astonishment**
+    - Match existing keybindings, wording, spacing, and layout patterns.
+    - No drive-by reformatting or unrelated behavior changes.
+    - If changing a stored-data convention, add migration tests.
+
+## Agent Behavior Rules for TUI Work
+
+Before implementing TUI changes:
+
+1. Inspect nearby UI/state/test patterns first.
+2. Identify the user-visible invariant, e.g. "selection remains visible" or "one provider failure does not block others".
+3. Add or update tests for that invariant.
+4. Avoid extra UX embellishments beyond the request unless they are baseline usability requirements.
+5. If touching config/profile/secret behavior, preserve existing fields and add migration/preservation tests.
+
+When responding after TUI work, use compact structure:
+
+- `Changed:` behavior summary.
+- `Files:` key files only.
+- `Validation:` exact commands run.
+- `Notes/Risks:` only if meaningful.
+
+## Checklist Before Marking a TUI Change Done
+
+For any TUI/list/form/setup change, verify:
+
+- [ ] Keyboard navigation works and selected item remains visible.
+- [ ] Esc/cancel behavior is clear and safe.
+- [ ] Long lists are windowed or paginated.
+- [ ] Ordering is deterministic and tested.
+- [ ] Partial provider failures do not block successes.
+- [ ] Status text and recovery guidance are visible.
+- [ ] Secrets are not rendered, logged, or dropped from profiles.
+- [ ] Config defaults are created only when missing and do not overwrite edits.
+- [ ] Tests cover UX invariants, not only happy-path function output.
+- [ ] Narrow terminal behavior is acceptable or explicitly bounded.
+
+## Common TUI Tests to Add
+
+- List with more items than visible window; move selection past first page and assert selected item is rendered.
+- List sorting with shuffled inputs.
+- One failing provider plus one successful provider returns successful results and warning.
+- Setup form loads existing config and preserves secret refs when key field is blank.
+- Missing config creates defaults; existing config is not overwritten.
+- Esc/cancel closes modal/form and leaves app in a recoverable state.
+- Rendering does not include secret values.
+
+## Model Picker Specific Guidance
+
+- Model lists should be stable and scannable.
+- Use provider labels and alphabetical or clearly documented grouping.
+- Avoid static truncation; window around selection.
+- If visible numbers are removed, do not prompt primarily for typed numbers. If typed numbers remain supported, treat them as hidden compatibility, not primary UX.
+- Apply model filters through explicit user config, with global and per-provider scopes.
+- Default filters should be documented and migrated into the same mechanism users can edit.
+
+## Login/Setup Specific Guidance
+
+- Setup should detect existing provider config and preserve it.
+- Adding a provider should not delete other providers unless the UI explicitly confirms replacement.
+- Credentials should be stored in the intended secret store or external standard location; provider metadata should not contain secret-like values.
+- If a setup option only enables metadata for future transport, say so clearly.
