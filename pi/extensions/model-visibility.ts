@@ -1,5 +1,5 @@
-import { type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getOAuthProvider } from "@earendil-works/pi-ai/oauth";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { uiNotify } from "../lib/extension-utils.js";
 
 type ModelLike = {
@@ -10,7 +10,12 @@ type ModelLike = {
 	baseUrl: string;
 	reasoning: boolean;
 	input: ("text" | "image")[];
-	cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
+	cost: {
+		input: number;
+		output: number;
+		cacheRead: number;
+		cacheWrite: number;
+	};
 	contextWindow: number;
 	maxTokens: number;
 	headers?: Record<string, string>;
@@ -18,11 +23,29 @@ type ModelLike = {
 	compat?: unknown;
 };
 
-const TARGET_PROVIDERS = ["openai-codex", "github-copilot", "opencode", "opencode-go", "openrouter"] as const;
+const TARGET_PROVIDERS = [
+	"openai-codex",
+	"github-copilot",
+	"opencode",
+	"opencode-go",
+	"openrouter",
+	"amazon-bedrock",
+] as const;
 
 const HIDE_EXACT_IDS = {
 	"openai-codex": new Set(["codex-auto-review"]),
-	opencode: new Set(["claude-3-5-haiku", "claude-opus-4-1", "claude-sonnet-4"]),
+	opencode: new Set([
+		"claude-3-5-haiku",
+		"claude-haiku-4-5",
+		"claude-opus-4-1",
+		"claude-opus-4-5",
+		"claude-opus-4-6",
+		"claude-opus-4-7",
+		"claude-sonnet-4",
+		"claude-sonnet-4-5",
+		"claude-sonnet-4-6",
+		"qwen3.5-plus",
+	]),
 	"opencode-go": new Set<string>(),
 	openrouter: new Set([
 		"ai21/jamba-large-1.7",
@@ -54,6 +77,8 @@ const HIDE_EXACT_IDS = {
 		"deepseek/deepseek-r1",
 		"deepseek/deepseek-r1-0528",
 		"deepseek/deepseek-v3.1-terminus",
+		"deepseek/deepseek-v3.2",
+		"deepseek/deepseek-v3.2-exp",
 		"essentialai/rnj-1-instruct",
 		"google/gemini-2.0-flash-001",
 		"google/gemini-2.0-flash-lite-001",
@@ -67,12 +92,19 @@ const HIDE_EXACT_IDS = {
 		"google/gemini-3.1-flash-lite-preview",
 		"google/gemini-3.1-pro-preview",
 		"google/gemini-3.1-pro-preview-customtools",
+		"google/gemma-3-12b-it",
+		"google/gemma-3-27b-it",
+		"ibm-granite/granite-4.1-8b",
 		"inception/mercury-2",
+		"inclusionai/ling-2.6-1t",
+		"inclusionai/ling-2.6-flash",
 		"inclusionai/ling-2.6-flash:free",
+		"inclusionai/ring-2.6-1t",
 		"kwaipilot/kat-coder-pro-v2",
 		"minimax/minimax-m1",
 		"minimax/minimax-m2",
 		"minimax/minimax-m2.1",
+		"minimax/minimax-m2.5",
 		"moonshotai/kimi-k2",
 		"moonshotai/kimi-k2-0905",
 		"moonshotai/kimi-k2-thinking",
@@ -82,6 +114,7 @@ const HIDE_EXACT_IDS = {
 		"nvidia/nemotron-3-nano-30b-a3b",
 		"nvidia/nemotron-3-super-120b-a12b",
 		"nvidia/nemotron-nano-9b-v2",
+		"openrouter/owl-alpha",
 		"openai/gpt-3.5-turbo",
 		"openai/gpt-3.5-turbo-0613",
 		"openai/gpt-3.5-turbo-16k",
@@ -111,7 +144,16 @@ const HIDE_EXACT_IDS = {
 		"openai/o4-mini",
 		"openai/o4-mini-deep-research",
 		"openai/o4-mini-high",
+		"poolside/laguna-m.1:free",
+		"poolside/laguna-xs.2:free",
 		"prime-intellect/intellect-3",
+		"qwen/qwen3.5-122b-a10b",
+		"qwen/qwen3.5-27b",
+		"qwen/qwen3.5-35b-a3b",
+		"qwen/qwen3.5-397b-a17b",
+		"qwen/qwen3.5-9b",
+		"qwen/qwen3.5-flash-02-23",
+		"qwen/qwen3.5-plus-02-15",
 		"qwen/qwen-2.5-72b-instruct",
 		"qwen/qwen-2.5-7b-instruct",
 		"qwen/qwen-max",
@@ -172,16 +214,58 @@ const HIDE_EXACT_IDS = {
 		"z-ai/glm-4.6v",
 		"z-ai/glm-4.7",
 		"z-ai/glm-4.7-flash",
+		"z-ai/glm-5",
+		"z-ai/glm-5-turbo",
+		"z-ai/glm-5.1",
+		"z-ai/glm-5v-turbo",
+		"~anthropic/claude-haiku-latest",
+		"~anthropic/claude-opus-latest",
+		"~anthropic/claude-sonnet-latest",
+		"~google/gemini-flash-latest",
+		"~google/gemini-pro-latest",
+		"~moonshotai/kimi-latest",
+		"~openai/gpt-latest",
+		"~openai/gpt-mini-latest",
 	]),
 	"github-copilot": new Set<string>(),
+	"amazon-bedrock": new Set([
+		"deepseek.r1-v1:0",
+		"deepseek.v3-v1:0",
+		"minimax.minimax-m2",
+		"minimax.minimax-m2.1",
+		"moonshot.kimi-k2-thinking",
+		"us.anthropic.claude-opus-4-1-20250805-v1:0",
+		"us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+		"us.deepseek.r1-v1:0",
+		"us.meta.llama4-maverick-17b-instruct-v1:0",
+		"us.meta.llama4-scout-17b-instruct-v1:0",
+		"writer.palmyra-x4-v1:0",
+		"writer.palmyra-x5-v1:0",
+		"zai.glm-4.7",
+		"zai.glm-4.7-flash",
+	]),
 } as const;
 
 const HIDE_PREFIXES = {
-	openrouter: ["meta-llama/", "mistralai/", "xiaomi/"],
+	openrouter: [
+		"anthropic/claude-",
+		"meta-llama/",
+		"mistralai/",
+		"nvidia/nemotron-",
+		"openai/gpt-",
+		"xiaomi/",
+	],
 	"openai-codex": [] as string[],
-	opencode: [] as string[],
+	opencode: ["gpt-"],
 	"opencode-go": [] as string[],
 	"github-copilot": [] as string[],
+	"amazon-bedrock": [
+		"anthropic.",
+		"global.anthropic.",
+		"meta.",
+		"mistral.",
+		"nvidia.",
+	],
 } as const;
 
 function isDatedOrVersionSuffix(id: string): boolean {
@@ -197,28 +281,50 @@ function isPreviewSnapshot(id: string, name: string): boolean {
 	return combined.includes("preview");
 }
 
+function isNonUsBedrockRegionalModel(provider: string, id: string): boolean {
+	return (
+		provider === "amazon-bedrock" &&
+		/^[a-z]{2}\./.test(id) &&
+		!id.startsWith("us.")
+	);
+}
+
 function shouldHideByCustomRules(provider: string, id: string): boolean {
+	if (isNonUsBedrockRegionalModel(provider, id)) return true;
 	const exact = HIDE_EXACT_IDS[provider as keyof typeof HIDE_EXACT_IDS];
 	if (exact?.has(id)) return true;
 	const prefixes = HIDE_PREFIXES[provider as keyof typeof HIDE_PREFIXES] ?? [];
 	return prefixes.some((prefix) => id.startsWith(prefix));
 }
 
-export function shouldHideModel(provider: string, model: Pick<ModelLike, "id" | "name">): boolean {
+export function shouldHideModel(
+	provider: string,
+	model: Pick<ModelLike, "id" | "name">,
+): boolean {
 	if (shouldHideByCustomRules(provider, model.id)) return true;
-	return isDatedOrVersionSuffix(model.id) || isPreviewSnapshot(model.id, model.name);
+	return (
+		isDatedOrVersionSuffix(model.id) || isPreviewSnapshot(model.id, model.name)
+	);
 }
 
 function compatWithoutReasoningEffortMap(compat: unknown): unknown {
-	if (!compat || typeof compat !== "object" || Array.isArray(compat)) return compat;
-	const { reasoningEffortMap: _reasoningEffortMap, ...rest } = compat as Record<string, unknown>;
+	if (!compat || typeof compat !== "object" || Array.isArray(compat))
+		return compat;
+	const { reasoningEffortMap: _reasoningEffortMap, ...rest } = compat as Record<
+		string,
+		unknown
+	>;
 	return Object.keys(rest).length > 0 ? rest : undefined;
 }
 
-function getThinkingLevelMap(model: ModelLike): Record<string, string | null> | undefined {
+function getThinkingLevelMap(
+	model: ModelLike,
+): Record<string, string | null> | undefined {
 	const compat = model.compat as { reasoningEffortMap?: unknown } | undefined;
 	const legacyMap =
-		compat?.reasoningEffortMap && typeof compat.reasoningEffortMap === "object" && !Array.isArray(compat.reasoningEffortMap)
+		compat?.reasoningEffortMap &&
+		typeof compat.reasoningEffortMap === "object" &&
+		!Array.isArray(compat.reasoningEffortMap)
 			? (compat.reasoningEffortMap as Record<string, string | null>)
 			: undefined;
 	return model.thinkingLevelMap ?? legacyMap;
@@ -240,8 +346,13 @@ function toProviderModelDef(model: ModelLike) {
 	};
 }
 
-function applyProviderFilter(ctx: any, provider: string): { before: number; after: number } | undefined {
-	const models = (ctx.modelRegistry.getAll() as ModelLike[]).filter((model) => model.provider === provider);
+async function applyProviderFilter(
+	ctx: any,
+	provider: string,
+): Promise<{ before: number; after: number } | undefined> {
+	const models = (ctx.modelRegistry.getAll() as ModelLike[]).filter(
+		(model) => model.provider === provider,
+	);
 	if (models.length === 0) return undefined;
 
 	const filtered = models.filter((model) => !shouldHideModel(provider, model));
@@ -274,12 +385,17 @@ function applyProviderFilter(ctx: any, provider: string): { before: number; afte
 		provider === "opencode" || provider === "opencode-go"
 			? "OPENCODE_API_KEY"
 			: provider === "openrouter"
-			  ? "OPENROUTER_API_KEY"
-			  : undefined;
-	if (!apiKeyEnv) return { before: models.length, after: models.length };
+				? "OPENROUTER_API_KEY"
+				: undefined;
+	if (!apiKeyEnv && provider !== "amazon-bedrock")
+		return { before: models.length, after: models.length };
+	if (provider === "amazon-bedrock") {
+		const apiKey = await ctx.modelRegistry.getApiKeyForProvider(provider);
+		if (!apiKey) return { before: models.length, after: models.length };
+	}
 	ctx.modelRegistry.registerProvider(provider, {
 		baseUrl: models[0].baseUrl,
-		apiKey: apiKeyEnv,
+		apiKey: apiKeyEnv ?? "AWS_BEARER_TOKEN_BEDROCK",
 		api: models[0].api as any,
 		models: filtered.map((model) => toProviderModelDef(model)),
 	});
@@ -290,16 +406,21 @@ export default function registerModelVisibilityExtension(pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
 		const messages: string[] = [];
 		for (const provider of TARGET_PROVIDERS) {
-			const result = applyProviderFilter(ctx, provider);
+			const result = await applyProviderFilter(ctx, provider);
 			if (!result) continue;
 			if (result.after < result.before) {
 				messages.push(`${provider}: ${result.before} -> ${result.after}`);
 			}
 		}
 		if (messages.length > 0) {
-			uiNotify(ctx, "info", `Hidden older/blocked models (${messages.join(", ")})`, {
-				prefix: "model-visibility",
-			});
+			uiNotify(
+				ctx,
+				"info",
+				`Hidden older/blocked models (${messages.join(", ")})`,
+				{
+					prefix: "model-visibility",
+				},
+			);
 		}
 	});
 }
