@@ -185,13 +185,15 @@ export default function (pi: ExtensionAPI) {
 
 			const results = (data.results ?? []).slice(0, n);
 
+			const header = `web_search(${JSON.stringify(composedQuery)})`;
 			if (results.length === 0) {
-				return { content: [{ type: "text" as const, text: "No results found." }], details: undefined };
+				return { content: [{ type: "text" as const, text: `${header}\nNo results found.` }], details: { composedQuery, resultCount: 0 } };
 			}
 
-			const text = results
-				.map((r, i) => formatSearchResult(r, i + 1))
-				.join("\n\n");
+			const text = [
+				header,
+				results.map((r, i) => formatSearchResult(r, i + 1)).join("\n\n"),
+			].join("\n");
 
 			return { content: [{ type: "text" as const, text }], details: { composedQuery, resultCount: results.length } };
 		},

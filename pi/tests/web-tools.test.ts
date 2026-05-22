@@ -59,12 +59,13 @@ describe("web-tools extension", () => {
       expect(mockFetch.mock.calls[0][0]).toContain("q=hello%20world");
     });
 
-    it("should format results with title, URL, snippet", async () => {
+    it("should format results with query, title, URL, snippet", async () => {
       mockSearchResponse([
         { title: "Page One", url: "https://one.com", content: "Snippet", publishedDate: "2024-01-15", engine: "google" },
       ]);
       const result = await search.execute("id", { query: "test" }, undefined, undefined, {});
       const text = result.content[0].text;
+      expect(text).toContain('web_search("test")');
       expect(text).toContain("Title: Page One");
       expect(text).toContain("URL: https://one.com");
       expect(text).toContain("Snippet: Snippet");
@@ -93,10 +94,10 @@ describe("web-tools extension", () => {
       expect(result.content[0].text).not.toContain("Result 21");
     });
 
-    it("should return 'No results found.' for empty results", async () => {
+    it("should return query with 'No results found.' for empty results", async () => {
       mockSearchResponse([]);
       const result = await search.execute("id", { query: "nothing" }, undefined, undefined, {});
-      expect(result.content[0].text).toBe("No results found.");
+      expect(result.content[0].text).toBe('web_search("nothing")\nNo results found.');
     });
 
     it("should throw on HTTP error", async () => {
