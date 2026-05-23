@@ -1,3 +1,13 @@
+## 2026-05-23: Tune Pi commit secret scanning
+
+**Why:** The Pi `/commit` workflow's documented `detect-secrets-hook` command used the default Yelp detect-secrets ruleset, so `KeywordDetector` blocked harmless test fixtures containing words like `secret` or `key`.
+
+**Fix:** Updated the Pi commit workflow instructions to pass `--disable-plugin KeywordDetector`, including the `.secrets.baseline` variant, so staged scans focus on secret-shaped values while retaining the other detect-secrets detectors.
+
+**Files:** ~/.dotfiles/pi/skills/workflow/commit.md
+
+---
+
 ## 2026-05-02: yt-local scripts use PEP 723 inline metadata
 
 **Why:** `uv run <abs-path>/fetch_transcript.py` from any cwd other than `claude/commands/yt-local` failed with `No module named 'youtube_transcript_api'` because uv resolves deps from cwd, not script location.

@@ -19,19 +19,19 @@ The only valid reasons to skip a file:
 
 If `git status --short` shows untracked source code, documentation, or config files after your commit, the workflow is not finished. Stage and commit them.
 
-Use `detect-secrets-hook` for secret scanning after staging each commit group and before `git commit`:
+Use `detect-secrets-hook` for secret scanning after staging each commit group and before `git commit`. Disable Yelp detect-secrets `KeywordDetector` so the scan targets actual secret-shaped values instead of blocking on fixture words like `secret`, `key`, or `token`.
 
 ```bash
-git diff --staged --name-only -z | xargs -0 detect-secrets-hook
+git diff --staged --name-only -z | xargs -0 detect-secrets-hook --disable-plugin KeywordDetector
 ```
 
-If `.secrets.baseline` exists, include it:
+If `.secrets.baseline` exists, include it while keeping the same ruleset override:
 
 ```bash
-git diff --staged --name-only -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline
+git diff --staged --name-only -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline --disable-plugin KeywordDetector
 ```
 
-If `detect-secrets-hook` is not installed, rely on the repository's existing commit hooks and do not create ad-hoc secret-scanning scripts. If the scanner or hook reports secrets, stop immediately and report the findings. Do not proceed with commits.
+If `detect-secrets-hook` is not installed, rely on the repository's existing commit hooks and do not create ad-hoc secret-scanning scripts. If the scanner or hook reports secrets after `KeywordDetector` is disabled, stop immediately and report the findings. Do not proceed with commits.
 
 Categorize uncommitted files using this approach:
 - Auto-ignore and add to `.gitignore`: `*.log`, `*.csv`, `*.tsv`, `*.db`, `*.sqlite`, `*.sqlite3`, large data files (`*.json` over 1 MB, `*.xml` data dumps)
