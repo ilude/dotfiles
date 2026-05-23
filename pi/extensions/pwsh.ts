@@ -39,11 +39,10 @@ export function classifyOutputLine(line: string): "verbose" | "debug" | "warning
 
 /** Build the truncation notice appended to output. */
 export function buildTruncationNotice(truncResult: { outputLines: number; totalLines: number; outputBytes: number; totalBytes: number }, tempFile: string): string {
+  const startLine = Math.max(1, truncResult.totalLines - truncResult.outputLines + 1);
   return (
-    `\n\n[Output truncated: showing last ${truncResult.outputLines} of ` +
-    `${truncResult.totalLines} lines ` +
-    `(${formatSize(truncResult.outputBytes)} of ${formatSize(truncResult.totalBytes)}). ` +
-    `Full output saved to: ${tempFile}]`
+    `\n\n[Showing lines ${startLine}-${truncResult.totalLines} of ${truncResult.totalLines} ` +
+    `(${formatSize(DEFAULT_MAX_BYTES)} limit). Full output: ${tempFile}]`
   );
 }
 
@@ -62,9 +61,16 @@ export function normalizeTerminalOutput(output: string): string {
   const lines: string[] = [];
   let current = "";
 
-  for (const char of withoutAnsi) {
+  for (let index = 0; index < withoutAnsi.length; index += 1) {
+    const char = withoutAnsi[index];
     if (char === "\r") {
-      current = "";
+      if (withoutAnsi[index + 1] === "\n") {
+        lines.push(current.trimEnd());
+        current = "";
+        index += 1;
+      } else {
+        current = "";
+      }
     } else if (char === "\n") {
       lines.push(current.trimEnd());
       current = "";
@@ -233,7 +239,7 @@ async function executePwsh(
               exitCode: code,
               elapsed,
               truncated: truncResult.truncated,
-              ...(tempFile && { tempFile }),
+              ...(tempFile && { tempFile, full_output_path: tempFile }),
             },
           });
         }
@@ -295,13 +301,13 @@ export function renderResult(
   const lines = output.split("\n");
   const elapsed = result.details?.elapsed || "0.0";
   const truncated = result.details?.truncated;
-  const tempFile = result.details?.tempFile;
+  const tempFile = result.details?.full_output_path || result.details?.tempFile;
 
   const displayLines = selectDisplayLines(lines, options, elapsed, theme)
     .map((line) => colorOutputLine(line, theme));
 
   if (truncated && tempFile) {
-    displayLines.push(theme.fg("dim", `[truncated — see ${tempFile} for full output]`));
+    displayLines.push(theme.fg("dim", `[truncated - see ${tempFile} for full output]`));
   }
 
   return new Text(displayLines.join("\n"), 0, 0);

@@ -68,10 +68,9 @@ describe("buildTruncationNotice", () => {
       { outputLines: 2000, totalLines: 5000, outputBytes: 51200, totalBytes: 150000 },
       "/tmp/pi-pwsh-abc.txt"
     );
-    expect(notice).toContain("2000");
-    expect(notice).toContain("5000");
-    expect(notice).toContain("/tmp/pi-pwsh-abc.txt");
-    expect(notice).toContain("truncated");
+    expect(notice).toContain("Showing lines 3001-5000 of 5000");
+    expect(notice).toContain("50.0KB limit");
+    expect(notice).toContain("Full output: /tmp/pi-pwsh-abc.txt");
   });
 
   it("starts with newlines for separation", () => {

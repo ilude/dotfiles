@@ -89,6 +89,12 @@ describe("pwsh extension", () => {
       expect(normalizeTerminalOutput("-\r\\\r|\rFound uv\nDone")).toBe("Found uv\nDone");
     });
 
+    it("preserves PowerShell CRLF line endings", async () => {
+      const { normalizeTerminalOutput } = await import("../extensions/pwsh.ts");
+
+      expect(normalizeTerminalOutput("hello\r\nworld\r\n")).toBe("hello\nworld");
+    });
+
     it("strips ANSI escape sequences", async () => {
       const { normalizeTerminalOutput } = await import("../extensions/pwsh.ts");
 
@@ -121,7 +127,7 @@ describe("pwsh extension", () => {
 
     it("should show truncation notice when truncated", () => {
       tool.renderResult(
-        makeResult("output", { truncated: true, tempFile: "/tmp/out.txt" }),
+        makeResult("output", { truncated: true, full_output_path: "/tmp/out.txt" }),
         { expanded: true, isPartial: false }, theme, {}
       );
       expect(theme.fg).toHaveBeenCalledWith("dim", expect.stringContaining("truncated"));
