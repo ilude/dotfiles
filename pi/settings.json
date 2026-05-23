@@ -9,7 +9,8 @@
     }
   },
   "packages": [
-    "npm:pi-code-previews"
+    "npm:pi-code-previews",
+    "npm:@narumitw/pi-goal"
   ],
   "_disabledPackages": [
     "npm:pi-inspect"
