@@ -225,5 +225,11 @@ describe("shouldHideModel", () => {
 				name: "Claude Sonnet 4.6",
 			}),
 		).toBe(false);
+		expect(
+			shouldHideModel("amazon-bedrock", {
+				id: "eu.amazon.nova-pro-v1:0",
+				name: "Amazon Nova Pro",
+			}),
+		).toBe(false);
 	});
 });

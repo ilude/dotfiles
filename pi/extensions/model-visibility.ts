@@ -229,20 +229,8 @@ const HIDE_EXACT_IDS = {
 	]),
 	"github-copilot": new Set<string>(),
 	"amazon-bedrock": new Set([
-		"deepseek.r1-v1:0",
-		"deepseek.v3-v1:0",
-		"minimax.minimax-m2",
-		"minimax.minimax-m2.1",
 		"moonshot.kimi-k2-thinking",
-		"us.anthropic.claude-opus-4-1-20250805-v1:0",
-		"us.anthropic.claude-sonnet-4-5-20250929-v1:0",
 		"us.deepseek.r1-v1:0",
-		"us.meta.llama4-maverick-17b-instruct-v1:0",
-		"us.meta.llama4-scout-17b-instruct-v1:0",
-		"writer.palmyra-x4-v1:0",
-		"writer.palmyra-x5-v1:0",
-		"zai.glm-4.7",
-		"zai.glm-4.7-flash",
 	]),
 } as const;
 
@@ -259,12 +247,28 @@ const HIDE_PREFIXES = {
 	opencode: ["gpt-"],
 	"opencode-go": [] as string[],
 	"github-copilot": [] as string[],
+	"amazon-bedrock": [] as string[],
+} as const;
+
+const HIDE_PATTERNS = {
+	openrouter: [] as RegExp[],
+	"openai-codex": [] as RegExp[],
+	opencode: [] as RegExp[],
+	"opencode-go": [] as RegExp[],
+	"github-copilot": [] as RegExp[],
 	"amazon-bedrock": [
-		"anthropic.",
-		"global.anthropic.",
-		"meta.",
-		"mistral.",
-		"nvidia.",
+		/^anthropic\./,
+		/^global\.anthropic\./,
+		/^(?!us\.)[a-z]{2}\.anthropic\./,
+		/^meta\./,
+		/^mistral\./,
+		/^nvidia\./,
+		/^deepseek\.(?:r1|v3)-v1:0$/,
+		/^minimax\.minimax-m2(?:\.1)?$/,
+		/^us\.anthropic\.claude-(?:opus-4-1-20250805|sonnet-4-5-20250929)-v1:0$/,
+		/^us\.meta\.llama4-(?:maverick|scout)-17b-instruct-v1:0$/,
+		/^writer\.palmyra-x[45]-v1:0$/,
+		/^zai\.glm-4\.7(?:-flash)?$/,
 	],
 } as const;
 
@@ -281,20 +285,13 @@ function isPreviewSnapshot(id: string, name: string): boolean {
 	return combined.includes("preview");
 }
 
-function isNonUsBedrockRegionalModel(provider: string, id: string): boolean {
-	return (
-		provider === "amazon-bedrock" &&
-		/^[a-z]{2}\./.test(id) &&
-		!id.startsWith("us.")
-	);
-}
-
 function shouldHideByCustomRules(provider: string, id: string): boolean {
-	if (isNonUsBedrockRegionalModel(provider, id)) return true;
 	const exact = HIDE_EXACT_IDS[provider as keyof typeof HIDE_EXACT_IDS];
 	if (exact?.has(id)) return true;
 	const prefixes = HIDE_PREFIXES[provider as keyof typeof HIDE_PREFIXES] ?? [];
-	return prefixes.some((prefix) => id.startsWith(prefix));
+	if (prefixes.some((prefix) => id.startsWith(prefix))) return true;
+	const patterns = HIDE_PATTERNS[provider as keyof typeof HIDE_PATTERNS] ?? [];
+	return patterns.some((pattern) => pattern.test(id));
 }
 
 export function shouldHideModel(
