@@ -14,5 +14,6 @@
   ],
   "_disabledPackages": [
     "npm:pi-inspect"
-  ]
+  ],
+  "hideThinkingBlock": false
 }

@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import workflowCommands, {
 	buildBranchLaunchPlan,
-	defaultBranchTitle,
+	buildNewInstanceLaunchPlan,
 	extractSessionId,
 	msysPathToWindows,
 } from "../extensions/workflow-commands";
@@ -40,12 +40,37 @@ describe("/branch", () => {
 			"new-tab",
 			"--title",
 			"feat/$HOME && nope",
+			"--suppressApplicationTitle",
 			"-d",
 			"C:\\Users\\Example User\\project dir",
 			"pwsh",
 			"-NoExit",
 			"-Command",
 			"& pi '--session' 'C:/Users/Example User/.pi/session file.jsonl'",
+		]);
+	});
+
+	it("builds new-instance argv without session restore", () => {
+		const plan = buildNewInstanceLaunchPlan({
+			cwd: "/c/Users/me/project dir",
+			title: "project dir",
+			env: { WT_SESSION: "1" } as NodeJS.ProcessEnv,
+		});
+
+		expect(plan.executable).toBe("wt");
+		expect(plan.args).toEqual([
+			"-w",
+			"0",
+			"new-tab",
+			"--title",
+			"project dir",
+			"--suppressApplicationTitle",
+			"-d",
+			"C:\\Users\\me\\project dir",
+			"pwsh",
+			"-NoExit",
+			"-Command",
+			"& pi",
 		]);
 	});
 
@@ -76,6 +101,7 @@ describe("/branch", () => {
 			expect.arrayContaining([
 				"--title",
 				"custom title",
+				"--suppressApplicationTitle",
 				"pwsh",
 				"-Command",
 				"& pi '--session' '019df45a-c587-70ae-bf94-c74cd681715c'",
@@ -88,23 +114,50 @@ describe("/branch", () => {
 		);
 	});
 
-	it("falls back to a manual resume command when no supported terminal is detected", () => {
-		const plan = buildBranchLaunchPlan({
-			cwd: "/tmp/project",
-			title: defaultBranchTitle("/tmp/project"),
-			sessionFile: "/tmp/session.jsonl",
-			env: {},
-			platform: "linux",
+	it("registers new-instance command and ctrl+t shortcut", async () => {
+		const pi = createMockPi();
+		workflowCommands(pi as Parameters<typeof workflowCommands>[0]);
+		const command = pi._commands.find((entry) => entry.name === "new-instance");
+		expect(command).toBeTruthy();
+		if (!command) throw new Error("new-instance command not registered");
+		const shortcut = pi._shortcuts[0];
+		expect(shortcut).toBeTruthy();
+		const notify = vi.fn();
+
+		await command.handler("custom title", {
+			cwd: "/c/Users/me/project dir",
+			ui: { notify },
 		});
 
-		expect(plan.executable).toBeUndefined();
-		expect(plan.manualCommand).toBe("'pi' '--session' '/tmp/session.jsonl'");
-		expect(plan.reason).toContain(
-			"No supported terminal tab launcher detected",
+		expect(mockSpawnSync).toHaveBeenCalledWith(
+			"wt",
+			expect.arrayContaining([
+				"--title",
+				"custom title",
+				"--suppressApplicationTitle",
+				"-d",
+				"C:\\Users\\me\\project dir",
+				"pwsh",
+				"-Command",
+				"& pi",
+			]),
+			expect.objectContaining({ shell: false }),
+		);
+		expect(notify).toHaveBeenCalledWith(
+			expect.stringContaining("Opened new Pi instance"),
+			"info",
+		);
+
+		mockSpawnSync.mockClear();
+		await shortcut.handler({ cwd: "/c/Users/me/project dir", ui: { notify } });
+		expect(mockSpawnSync).toHaveBeenCalledWith(
+			"wt",
+			expect.arrayContaining(["-Command", "& pi"]),
+			expect.objectContaining({ shell: false }),
 		);
 	});
 
-	it("reports launch failures with a manual recovery command", async () => {
+	it("reports launch failures without a manual recovery command", async () => {
 		mockSpawnSync.mockReturnValue({ status: 1, stdout: "", stderr: "" });
 		const pi = createMockPi();
 		workflowCommands(pi as Parameters<typeof workflowCommands>[0]);
@@ -128,13 +181,7 @@ describe("/branch", () => {
 			expect.stringContaining("Terminal launch failed: wt exited 1"),
 			"warning",
 		);
-		expect(notify).toHaveBeenCalledWith(
-			expect.stringContaining("Manual resume command:"),
-			"warning",
-		);
-		expect(notify.mock.calls[0][0]).toContain(
-			"'pi' '--session' '019df45a-c587-70ae-bf94-c74cd681715c'",
-		);
+		expect(notify.mock.calls[0][0]).not.toContain("Manual resume command:");
 	});
 });
 

@@ -39,7 +39,7 @@ import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import { Key, Text } from "@earendil-works/pi-tui";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
 import { withTimingSpan } from "../lib/observability";
 import {
@@ -312,12 +312,7 @@ Style rules:
 interface BranchLaunchPlan {
 	executable?: string;
 	args: string[];
-	manualCommand: string;
 	reason?: string;
-}
-
-function quoteCliArg(value: string): string {
-	return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
 export function msysPathToWindows(cwd: string): string {
@@ -338,10 +333,6 @@ export function extractSessionId(sessionFile: string): string {
 
 export function buildPiResumeArgs(sessionFile: string): string[] {
 	return ["--session", extractSessionId(sessionFile)];
-}
-
-export function buildManualResumeCommand(sessionFile: string): string {
-	return ["pi", ...buildPiResumeArgs(sessionFile)].map(quoteCliArg).join(" ");
 }
 
 function quotePowerShellArg(value: string): string {
@@ -367,34 +358,69 @@ export function buildBranchLaunchPlan(input: {
 	env?: NodeJS.ProcessEnv;
 	platform?: NodeJS.Platform;
 }): BranchLaunchPlan {
+	return buildWindowsTerminalLaunchPlan({
+		cwd: input.cwd,
+		title: input.title,
+		command: buildPowerShellResumeCommand(input.sessionFile),
+		suppressApplicationTitle: true,
+		env: input.env,
+		platform: input.platform,
+	});
+}
+
+export function buildNewInstanceLaunchPlan(input: {
+	cwd: string;
+	title: string;
+	env?: NodeJS.ProcessEnv;
+	platform?: NodeJS.Platform;
+}): BranchLaunchPlan {
+	return buildWindowsTerminalLaunchPlan({
+		cwd: input.cwd,
+		title: input.title,
+		command: "& pi",
+		suppressApplicationTitle: true,
+		env: input.env,
+		platform: input.platform,
+	});
+}
+
+function buildWindowsTerminalLaunchPlan(input: {
+	cwd: string;
+	title: string;
+	command: string;
+	suppressApplicationTitle?: boolean;
+	env?: NodeJS.ProcessEnv;
+	platform?: NodeJS.Platform;
+}): BranchLaunchPlan {
 	const env = input.env ?? process.env;
 	const platform = input.platform ?? process.platform;
-	const manualCommand = buildManualResumeCommand(input.sessionFile);
-	const powerShellCommand = buildPowerShellResumeCommand(input.sessionFile);
 	if (platform === "win32" || env.WT_SESSION) {
+		const args = [
+			"-w",
+			"0",
+			"new-tab",
+			"--title",
+			input.title,
+		];
+		if (input.suppressApplicationTitle) {
+			args.push("--suppressApplicationTitle");
+		}
+		args.push(
+			"-d",
+			msysPathToWindows(input.cwd),
+			"pwsh",
+			"-NoExit",
+			"-Command",
+			input.command,
+		);
 		return {
 			executable: "wt",
-			args: [
-				"-w",
-				"0",
-				"new-tab",
-				"--title",
-				input.title,
-				"-d",
-				msysPathToWindows(input.cwd),
-				"pwsh",
-				"-NoExit",
-				"-Command",
-				powerShellCommand,
-			],
-			manualCommand,
+			args,
 		};
 	}
 	return {
 		args: [],
-		manualCommand,
-		reason:
-			"No supported terminal tab launcher detected. Open a new terminal in this cwd and run the command below.",
+		reason: "No supported terminal tab launcher detected.",
 	};
 }
 
@@ -415,6 +441,28 @@ export function launchBranch(plan: BranchLaunchPlan): {
 			error: `${plan.executable} exited ${result.status}`,
 		};
 	return { launched: true };
+}
+
+async function executeNewInstanceCommand(
+	args: string,
+	ctx: Pick<WorkflowContext, "cwd" | "ui">,
+) {
+	const title = args.trim() || defaultBranchTitle(ctx.cwd ?? process.cwd());
+	const plan = buildNewInstanceLaunchPlan({
+		cwd: ctx.cwd ?? process.cwd(),
+		title,
+	});
+	const launched = launchBranch(plan);
+	if (launched.launched) {
+		return ctx.ui.notify(`Opened new Pi instance in a new terminal tab: ${title}`, "info");
+	}
+	const details = launched.error
+		? `Terminal launch failed: ${launched.error}`
+		: plan.reason;
+	return ctx.ui.notify(
+		details ?? "Terminal launch failed.",
+		launched.error ? "warning" : "error",
+	);
 }
 
 async function executeBranchCommand(args: string, ctx: WorkflowContext) {
@@ -450,8 +498,8 @@ async function executeBranchCommand(args: string, ctx: WorkflowContext) {
 		? `Terminal launch failed: ${launched.error}`
 		: plan.reason;
 	return ctx.ui.notify(
-		`${details}\nManual resume command:\n${plan.manualCommand}`,
-		launched.error ? "warning" : "info",
+		details ?? "Terminal launch failed.",
+		launched.error ? "warning" : "error",
 	);
 }
 
@@ -1800,6 +1848,34 @@ export default function (pi: ExtensionAPI) {
 		handler: async (args, ctx) => {
 			try {
 				await executeBranchCommand(args, ctx);
+			} catch (err) {
+				ctx.ui.notify(
+					err instanceof Error ? err.message : String(err),
+					"error",
+				);
+			}
+		},
+	});
+
+	pi.registerCommand("new-instance", {
+		description: "Open a new Pi instance in this cwd in a new terminal tab",
+		handler: async (args, ctx) => {
+			try {
+				await executeNewInstanceCommand(args, ctx);
+			} catch (err) {
+				ctx.ui.notify(
+					err instanceof Error ? err.message : String(err),
+					"error",
+				);
+			}
+		},
+	});
+
+	pi.registerShortcut(Key.ctrl("t"), {
+		description: "Open a new Pi instance in this cwd",
+		handler: async (ctx) => {
+			try {
+				await executeNewInstanceCommand("", ctx);
 			} catch (err) {
 				ctx.ui.notify(
 					err instanceof Error ? err.message : String(err),
