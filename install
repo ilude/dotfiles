@@ -363,6 +363,17 @@ if command -v pnpm &>/dev/null; then
         @earendil-works/pi-agent-core@0.74.0 \
         @earendil-works/pi-ai@0.74.0 \
         @earendil-works/pi-tui@0.74.0
+
+    pi_markdown_patch="${BASEDIR}/install.d/50-pi-markdown-code-fence-fix.py"
+    if [[ -f "$pi_markdown_patch" ]]; then
+        if command -v python3 >/dev/null 2>&1; then
+            python3 "$pi_markdown_patch" || echo "Warning: Pi markdown code fence patch failed"
+        elif command -v python >/dev/null 2>&1; then
+            python "$pi_markdown_patch" || echo "Warning: Pi markdown code fence patch failed"
+        else
+            echo "Warning: python unavailable; skipping Pi markdown code fence patch"
+        fi
+    fi
 else
     echo "Warning: pnpm unavailable; skipping pi-coding-agent install"
 fi

@@ -1771,6 +1771,19 @@ try {
             } else {
                 Write-Host "  pi-coding-agent: installed successfully via pnpm" -ForegroundColor Green
             }
+
+            $piMarkdownPatch = Join-Path $BASEDIR 'install.d\50-pi-markdown-code-fence-fix.py'
+            if (Test-Path $piMarkdownPatch) {
+                $python = Get-Command python -ErrorAction SilentlyContinue
+                if ($python) {
+                    & $python.Source $piMarkdownPatch
+                    if ($LASTEXITCODE -ne 0) {
+                        Write-Warning "Pi markdown code fence patch failed; continuing"
+                    }
+                } else {
+                    Write-Warning "python unavailable; skipping Pi markdown code fence patch"
+                }
+            }
         } else {
             Write-Host "  pi-coding-agent: installation/update failed" -ForegroundColor Red
         }
