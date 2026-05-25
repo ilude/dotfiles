@@ -162,7 +162,19 @@ function claude-install { npm install -g @anthropic-ai/claude-code }
 
 #region Prompt (fast native - no oh-my-posh)
 
+function Set-TerminalTitle {
+    $title = Split-Path -Leaf $PWD.Path
+    if ([string]::IsNullOrWhiteSpace($title)) {
+        $title = $PWD.Path
+    }
+
+    if ($env:WT_SESSION) {
+        Write-Host -NoNewline ("`e]0;{0}`a" -f $title)
+    }
+}
+
 function prompt {
+    Set-TerminalTitle
     $p = $PWD.Path.Replace($env:USERPROFILE, '~').Replace('\', '/')
     $branch = git symbolic-ref --short HEAD 2>$null
     if ($branch) {
