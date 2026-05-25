@@ -173,7 +173,7 @@ function Set-TerminalTitle {
     }
 }
 
-function prompt {
+function Write-CustomPrompt {
     Set-TerminalTitle
     $p = $PWD.Path.Replace($env:USERPROFILE, '~').Replace('\', '/')
     $branch = git symbolic-ref --short HEAD 2>$null
@@ -360,6 +360,12 @@ if (Get-Command dotnet -ErrorAction SilentlyContinue) {
       [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     }
   }
+}
+
+# The cached zoxide init wraps prompt when it is loaded, so define the final prompt
+# after cached completions are imported.
+function global:prompt {
+    Write-CustomPrompt
 }
 
 #endregion
