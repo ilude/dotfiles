@@ -1,4 +1,5 @@
 {
   "app.thinking.cycle": "shift+tab",
-  "app.thinking.toggle": []
+  "app.thinking.toggle": [],
+  "app.tree.filter.noTools": []
 }
