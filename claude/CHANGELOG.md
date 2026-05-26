@@ -1,3 +1,14 @@
+## 2026-05-26: Document Pi workflow eval telemetry operations
+
+**Why:** Pi workflow telemetry now records dispatch events and defines lifecycle data for future adaptive review sizing. Agents need clear rules for what runtime telemetry not to commit and which docs/tests to update when the contract changes.
+
+**Added:**
+- Workflow eval telemetry guidance in the shared ruleset: runtime JSONL stays local by default, DuckDB files are rebuildable caches, and workflow telemetry contract changes must update the Pi telemetry docs and prompt-contract tests.
+
+**Files:** ~/.dotfiles/claude/CLAUDE.md, ~/.dotfiles/pi/AGENTS.md
+
+---
+
 ## 2026-05-23: Tune Pi commit secret scanning
 
 **Why:** The Pi `/commit` workflow's documented `detect-secrets-hook` command used the default Yelp detect-secrets ruleset, so `KeywordDetector` blocked harmless test fixtures containing words like `secret` or `key`.

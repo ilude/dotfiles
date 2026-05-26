@@ -3,7 +3,8 @@
 This document defines the telemetry and evidence contract for evaluating Pi
 workflow commands over time. The goal is to make later audits answer concrete
 questions without reconstructing everything from chat transcripts, terminal
-scrollback, or archived plans.
+scrollback, or archived plans. For operational usage, query examples, and the
+local helper script, see `pi/docs/workflow-eval-operations.md`.
 
 This is a design and usage document plus the contract for the initial runtime
 implementation. Runtime support currently records workflow command dispatch

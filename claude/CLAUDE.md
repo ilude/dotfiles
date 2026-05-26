@@ -64,6 +64,15 @@ Extension commands have precedence over prompt templates. Search
 `pi/extensions/*.ts` for `registerCommand("<name>"` before adding a prompt-only
 command, and do not put prompt-only commands in `workflow-commands.ts`.
 
+## Workflow Eval Telemetry
+
+Workflow telemetry JSONL under `~/.pi/workflow-telemetry/` is runtime state and
+should not be committed by default. DuckDB files are rebuildable analysis caches
+and should not be committed. When changing `/plan-it`, `/review-it`, `/do-it`,
+or workflow telemetry code, update `pi/docs/workflow-eval-telemetry.md`,
+`pi/docs/workflow-eval-operations.md`, and prompt-contract tests when the data
+contract changes.
+
 ## Common Pitfalls
 
 - Committing without explicit request.
