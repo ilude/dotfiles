@@ -19,3 +19,8 @@ exclude-newer = "3 days"
 index-strategy = "first-index"
 no-sources = true
 no-build = true
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]

@@ -19,11 +19,12 @@ The core problem is not lack of raw prompts. It is deciding which rows are safe 
 
 ## Goals
 
-1. Normalize existing and external prompt/session sources into one candidate schema.
-2. Generate weak supervision signals from independent sources, including current router output, deterministic trace features, optional external classifiers, and optional rubric-based judging.
-3. Prioritize human review using disagreement, uncertainty, catastrophic-risk patterns, and diversity sampling.
-4. Produce accepted training rows and a separate held-out OOD eval set without directly mutating production data.
-5. Prove whether curated additions improve the router by comparing against fixed baseline metrics.
+1. Pull bounded samples from multiple external prompt/session sources instead of choosing a single source up front.
+2. Normalize existing and external prompt/session sources into one candidate schema.
+3. Generate weak supervision signals from independent local sources, starting with current router output and deterministic trace features.
+4. Automate candidate triage as much as possible, using human review only for ambiguous or high-risk exceptions.
+5. Produce accepted training candidates and a separate held-out OOD candidate set without directly mutating production data.
+6. Prove whether curated additions improve the router by comparing against fixed baseline metrics before manual promotion.
 
 ## Non-Goals
 
@@ -32,14 +33,17 @@ The core problem is not lack of raw prompts. It is deciding which rows are safe 
 - Add runtime network dependencies to the live router.
 - Treat trace length, observed model choice, or thinking level as ground truth.
 - Optimize for a generic simple/complex prompt classifier instead of Pi's route-level target.
+- Require broad human review as the primary curation mechanism.
+- Automatically promote curated rows into production training data or model artifacts.
 
 ## Requirements
 
 ### Functional Requirements
 
-1. Source ingestion must support at least one local source and one external source in the first iteration.
-   - Local source candidates: `prompt-routing/logs/routing_log.jsonl`, local session logs, or existing prompt-routing corpus files.
-   - External source candidates: `championswimmer/pi-coding-sessions`, `jedisct1/agent-traces-swival`, `nebius/SWE-agent-trajectories`, `smolagents/codeagent-traces`, `nlile/misc-merged-claude-code-traces-v1`, `routellm/gpt4_dataset`, or `CARROT-LLM-Routing/SPROUT`.
+1. Source ingestion must support bounded network pulls from multiple external sources in the first iteration.
+   - Initial external sources: `championswimmer/pi-coding-sessions`, `jedisct1/agent-traces-swival`, `smolagents/codeagent-traces`, `routellm/gpt4_dataset`, and `CARROT-LLM-Routing/SPROUT` when easy to load.
+   - Later external sources: `nebius/SWE-agent-trajectories` and `nlile/misc-merged-claude-code-traces-v1`, because they are larger and likely need more careful sampling.
+   - Local source candidates remain useful for baseline comparison: `prompt-routing/logs/routing_log.jsonl`, local session logs, or existing prompt-routing corpus files.
 
 2. Normalization must emit JSONL rows with a stable schema:
    - `id`
@@ -67,11 +71,18 @@ The core problem is not lack of raw prompts. It is deciding which rows are safe 
 4. Weak labeling must be explicit and auditable:
    - current router prediction and confidence
    - deterministic heuristic route candidate
-   - optional external complexity score
-   - optional rubric judge label
+   - source-derived metadata signals
    - disagreement summary
+   - optional external complexity score in a later iteration
+   - optional rubric judge label in a later iteration
 
-5. Review queue generation must prioritize:
+5. Automated triage must assign each row one of these statuses:
+   - `auto_accept_candidate`
+   - `holdout_candidate`
+   - `needs_review`
+   - `reject`
+
+6. Automated triage must prioritize human review only for exceptions:
    - low current-router confidence
    - disagreement between weak labelers
    - predicted under-routing risk
@@ -80,15 +91,18 @@ The core problem is not lack of raw prompts. It is deciding which rows are safe 
    - underrepresented route cells
    - cluster outliers and near-duplicates
 
-6. Human-reviewed rows must be exported separately from raw candidates:
-   - accepted training candidates
-   - accepted development candidates
-   - held-out OOD evaluation rows
+7. Pipeline outputs must be separated by promotion state:
+   - raw external pulls and caches
+   - normalized candidates
+   - scored candidates
+   - auto-accepted candidates
+   - held-out OOD candidates
    - rejected rows with rejection reason
+   - experiment reports and summaries
 
-7. Retrain experiments must compare baseline and candidate models without modifying production artifacts until accepted.
+8. Retrain experiments must compare baseline and candidate models without modifying production artifacts until manually accepted.
 
-8. Evaluation reports must include:
+9. Evaluation reports must include:
    - top-1 cheapest-route accuracy
    - catastrophic under-routing count
    - over-routing rate
@@ -100,42 +114,54 @@ The core problem is not lack of raw prompts. It is deciding which rows are safe 
 
 - Pipeline scripts must be deterministic for the same inputs and configuration.
 - Raw external datasets must remain outside tracked source unless explicitly approved.
-- Outputs that may contain private prompts must stay in ignored local state by default.
+- Generated raw pulls, caches, and intermediate scored rows should stay ignored by default.
+- Small accepted corpora may be tracked only after manual promotion.
+- Experiment configs, reports, and summaries should be tracked when they are useful and do not include sensitive raw prompts.
 - Accepted rows must retain source attribution and license metadata.
-- The first iteration should be small enough to inspect manually.
+- The first iteration should be small enough to audit by summary and spot-checks, not broad manual review.
 - The live router must remain local and non-blocking if curation tools are absent.
 
 ## Acceptance Criteria
 
-1. [ ] A normalized candidate JSONL can be produced from one local source and one external source.
+1. [ ] Normalized candidate JSONL can be produced from bounded samples of at least three external sources.
    - Verify: run the ingestion command documented by the plan.
-   - Pass: output rows contain `prompt`, `source`, `trace_features`, `weak_labels`, and `review_status`.
+   - Pass: output rows contain `prompt`, `source`, `source_license`, `trace_features`, `weak_labels`, and `review_status`.
    - Fail: rows are source-specific, missing prompt text, or lack trace/label fields.
 
-2. [ ] The curation pipeline produces a review queue sorted by disagreement and risk.
-   - Verify: inspect the generated review CSV or JSONL.
-   - Pass: rows include current router prediction, heuristic candidate, disagreement summary, and priority reason.
-   - Fail: review order is arbitrary or priority reasons are absent.
+2. [ ] The curation pipeline produces automated triage outputs.
+   - Verify: inspect generated JSONL outputs and summary report.
+   - Pass: rows are split into `auto_accept_candidate`, `holdout_candidate`, `needs_review`, and `reject` groups with explicit reasons.
+   - Fail: rows require manual classification by default or lack triage reasons.
 
-3. [ ] Human review can produce accepted and rejected outputs without touching production training files.
-   - Verify: run the review export command on a small labeled sample.
-   - Pass: accepted and rejected files are written to an experiment directory only.
-   - Fail: production corpus, model artifacts, or tracked training files are modified during review export.
+3. [ ] Review is exception-based rather than required for every row.
+   - Verify: run the curation command on a bounded sample.
+   - Pass: only ambiguous, risky, or low-confidence rows are placed in `needs_review`.
+   - Fail: all rows are routed to manual review or accepted without reasons.
 
-4. [ ] Candidate retraining is evaluated against the current baseline on fixed datasets.
+4. [ ] Curation outputs do not touch production training files or model artifacts.
+   - Verify: run the curation command and inspect git status plus output paths.
+   - Pass: outputs are written under `pi/prompt-routing/experiments/curation/` or another experiment directory only.
+   - Fail: production corpus, model artifacts, or tracked training files are modified during curation.
+
+5. [ ] Candidate retraining is evaluated against the current baseline on fixed datasets.
    - Verify: run the documented baseline and candidate eval commands.
    - Pass: report shows baseline vs candidate metrics for top-1 accuracy, catastrophic under-routing, over-routing, per-tier recall, and latency.
    - Fail: only candidate metrics are reported or eval data changes between runs.
 
-5. [ ] A candidate data addition is rejected if safety regresses.
+6. [ ] A candidate data addition is rejected if safety regresses.
    - Verify: run an experiment where catastrophic under-routing increases or per-tier recall collapses.
    - Pass: the report marks the experiment as failed and does not promote artifacts.
    - Fail: the pipeline promotes artifacts based on top-1 improvement alone.
 
-6. [ ] A candidate data addition is accepted only when predefined thresholds are met.
+7. [ ] A candidate data addition is accepted only when predefined thresholds are met.
    - Verify: inspect experiment config and report.
    - Pass: thresholds are declared before evaluation and the report states pass/fail for each gate.
    - Fail: acceptance is decided after seeing results without recorded thresholds.
+
+8. [ ] LLM-judge usage is deferred behind a comparison experiment.
+   - Verify: inspect curation configuration and generated report.
+   - Pass: MVP uses deterministic features plus current router, and any judge workflow is documented as a later sampled comparison.
+   - Fail: broad LLM judging is required for MVP curation.
 
 ## Alternatives Considered
 
@@ -143,9 +169,10 @@ The core problem is not lack of raw prompts. It is deciding which rows are safe 
 |--------|------|------|----------|
 | Bulk-import external labels | Fast, high volume | Repeats prior failure mode; noisy labels can poison corpus | Reject |
 | Single external complexity classifier | Simple to run | Measures apparent complexity, not cheapest acceptable route | Reject as sole signal |
-| Manual-only labeling | Highest label quality | Slow; poor coverage discovery | Use for final review only |
-| Weak supervision plus active review | Balances scale and safety; auditable | More pipeline work | Choose for MVP |
+| Manual-only labeling | Highest label quality | Slow; poor coverage discovery | Reject as primary workflow; use only for exceptions |
+| Automated weak supervision plus exception review | Balances scale and safety; auditable | More pipeline work | Choose for MVP |
 | Preference-style labeling | Best match to cheapest acceptable route | More expensive; needs model outputs and judging | Defer until curation MVP exists |
+| Broad LLM judging in MVP | Could improve labels | Adds cost and judge-bias risk before schema is proven | Defer; run sampled comparison first |
 
 ## Risks
 
@@ -157,7 +184,7 @@ The core problem is not lack of raw prompts. It is deciding which rows are safe 
 | OOD eval contamination | Metrics become misleading | Write OOD eval before retraining and never train on it |
 | Over-routing appears safer but wastes cost | Cost goals regress | Track over-routing and shadow cost alongside safety |
 | Class imbalance | Model collapses to dominant route cells | Stratify sampling and report per-tier recall |
-| Pipeline complexity exceeds value | Maintenance burden | Start with one local and one external source only |
+| Pipeline complexity exceeds value | Maintenance burden | Start with bounded samples and deterministic local scoring only |
 
 ## Research References
 
@@ -213,11 +240,11 @@ The core problem is not lack of raw prompts. It is deciding which rows are safe 
 
 ## Open Questions
 
-- Which local source should be the first ingestion target?
-- Which external dataset should be sampled first?
+- What exact bounded sample size should each external source use in the first run?
 - What exact pass/fail thresholds should candidate retrains use beyond catastrophic under-routing not increasing?
-- Should accepted rows live under `prompt-routing/data/` or a separate experiment directory until promotion?
+- Should manually promoted accepted rows live under `prompt-routing/data/` or a separate promoted-corpus directory?
 - Which fields must be redacted before a row can be tracked?
+- What sample size is sufficient for a later LLM-judge comparison experiment?
 
 ## Plan Handoff
 
@@ -230,6 +257,8 @@ The core problem is not lack of raw prompts. It is deciding which rows are safe 
   /review-it .specs/prompt-router-curation-pipeline/PRD.md
   ```
 - Notes for planner:
-  - Start with an ingestion spike, not model retraining.
-  - Keep production model artifacts unchanged until an experiment passes fixed gates.
+  - Start with a multi-source bounded ingestion spike, not model retraining.
+  - Write generated outputs under `pi/prompt-routing/experiments/curation/` by default.
+  - Keep production model artifacts unchanged until an experiment passes fixed gates and is manually promoted.
   - Prefer deterministic feature extraction and explicit experiment reports over ad hoc notebooks.
+  - Defer broad LLM judging until a sampled comparison shows it adds useful signal.
