@@ -9,13 +9,13 @@ export const ROUTER_SIZE_ORDER: Record<RouterSize, number> = {
 	max: 4,
 };
 
-const LEGACY_MODEL_TIER_TO_ROUTE: Record<string, RouterSize> = {
+const LEGACY_PROVIDER_LABEL_TO_ROUTE: Record<string, RouterSize> = {
 	Haiku: "mini",
 	Sonnet: "core",
 	Opus: "large",
 };
 
-const ROUTE_ALIASES: Record<string, RouterSize> = {
+const ROUTER_SIZE_ALIASES: Record<string, RouterSize> = {
 	small: "mini",
 	medium: "core",
 	large: "large",
@@ -28,12 +28,14 @@ export function isRouterSize(value: unknown): value is RouterSize {
 	);
 }
 
+// Permissive runtime normalization for overrides, telemetry, and backcompat.
+// Strict classifier wire validation lives in classifier.ts.
 export function normalizeRouteCandidate(value: unknown): RouterSize | null {
 	if (isRouterSize(value)) return value;
 	if (typeof value !== "string") return null;
-	return LEGACY_MODEL_TIER_TO_ROUTE[value] ?? ROUTE_ALIASES[value] ?? null;
+	return LEGACY_PROVIDER_LABEL_TO_ROUTE[value] ?? ROUTER_SIZE_ALIASES[value] ?? null;
 }
 
 export function legacyModelTierToRoute(value: string): RouterSize | null {
-	return LEGACY_MODEL_TIER_TO_ROUTE[value] ?? null;
+	return LEGACY_PROVIDER_LABEL_TO_ROUTE[value] ?? null;
 }

@@ -39,10 +39,10 @@ def _cost_key(lbl: str) -> tuple[int, int]:
 
 def _make_cands(label: str, conf: float) -> list[tuple[str, float]]:
     others = [
-        ("Haiku|low", 0.0),
-        ("Haiku|medium", 0.0),
-        ("Sonnet|medium", 0.0),
-        ("Opus|high", 0.0),
+        ("mini|low", 0.0),
+        ("mini|medium", 0.0),
+        ("core|medium", 0.0),
+        ("large|high", 0.0),
     ]
     cand_map = {lbl: p for lbl, p in others}
     cand_map[label] = conf
@@ -90,52 +90,57 @@ def _build_confgate(
 class TestConfGateLogic:
     def test_lgb_confident_uses_lgb_ignores_t2(self):
         """LGB conf >= gate: LGB's pick returned, T2 not called."""
-        cg = _build_confgate("Haiku|low", 0.80, "Sonnet|medium", 0.90)
+        cg = _build_confgate("mini|low", 0.80, "core|medium", 0.90)
         lbl, conf, _ = cg.predict_single_full("fix a typo")
-        assert lbl == "Haiku|low"
+        assert lbl == "mini|low"
         assert conf == pytest.approx(0.80)
         cg._t2.predict_single_full.assert_not_called()
 
     def test_lgb_confident_at_exact_gate_boundary(self):
         """LGB conf == gate exactly: treated as confident."""
-        cg = _build_confgate("Haiku|medium", 0.50, "Opus|high", 0.95)
+        cg = _build_confgate("mini|medium", 0.50, "large|high", 0.95)
         lbl, conf, _ = cg.predict_single_full("hello")
-        assert lbl == "Haiku|medium"
+        assert lbl == "mini|medium"
         cg._t2.predict_single_full.assert_not_called()
 
     def test_lgb_uncertain_both_agree_returns_max_conf(self):
         """LGB uncertain, T2 agrees: returns agreed label, conf = max."""
-        cg = _build_confgate("Sonnet|medium", 0.40, "Sonnet|medium", 0.65)
+        cg = _build_confgate("core|medium", 0.40, "core|medium", 0.65)
         lbl, conf, _ = cg.predict_single_full("Write a REST API.")
-        assert lbl == "Sonnet|medium"
+        assert lbl == "core|medium"
         assert conf == pytest.approx(0.65)  # max(0.40, 0.65)
 
     def test_lgb_uncertain_t2_agrees_lower_conf_uses_t2_conf_as_max(self):
         """LGB uncertain, T2 agrees but with lower conf: max is LGB's (unusual but valid)."""
-        cg = _build_confgate("Sonnet|medium", 0.45, "Sonnet|medium", 0.30)
+        cg = _build_confgate("core|medium", 0.45, "core|medium", 0.30)
         lbl, conf, _ = cg.predict_single_full("Write tests.")
-        assert lbl == "Sonnet|medium"
+        assert lbl == "core|medium"
         assert conf == pytest.approx(0.45)  # max(0.45, 0.30)
 
     def test_lgb_uncertain_t2_more_confident_disagrees_uses_t2(self):
         """LGB uncertain, T2 more confident and disagrees: T2's pick wins."""
-        cg = _build_confgate("Haiku|low", 0.30, "Sonnet|medium", 0.70)
+        cg = _build_confgate("mini|low", 0.30, "core|medium", 0.70)
         lbl, conf, _ = cg.predict_single_full("Design an auth system.")
-        assert lbl == "Sonnet|medium"
+        assert lbl == "core|medium"
         assert conf == pytest.approx(0.70)
 
     def test_lgb_uncertain_t2_also_uncertain_lgb_fallback(self):
         """LGB uncertain, T2 also uncertain and disagrees: LGB fallback."""
-        cg = _build_confgate("Sonnet|medium", 0.35, "Opus|high", 0.20)
+        cg = _build_confgate("core|medium", 0.35, "large|high", 0.20)
         lbl, conf, _ = cg.predict_single_full("complex question")
-        assert lbl == "Sonnet|medium"
+        assert lbl == "core|medium"
         assert conf == pytest.approx(0.35)
 
     def test_lgb_uncertain_t2_equal_conf_disagrees_lgb_fallback(self):
         """T2 not strictly MORE confident: LGB fallback (not t2-overrides)."""
-        cg = _build_confgate("Haiku|low", 0.40, "Sonnet|medium", 0.40)
+        cg = _build_confgate("mini|low", 0.40, "core|medium", 0.40)
         lbl, _, _ = cg.predict_single_full("test")
-        assert lbl == "Haiku|low"
+        assert lbl == "mini|low"
+
+    def test_lgb_uncertain_catastrophic_near_tie_vetoes_mini(self):
+        cg = _build_confgate("mini|low", 0.49, "large|high", 0.48)
+        lbl, _, _ = cg.predict_single_full("deep architecture review")
+        assert lbl == "large|high"
 
 
 # ---------------------------------------------------------------------------
@@ -144,32 +149,43 @@ class TestConfGateLogic:
 
 class TestEnsembleRule:
     def test_rule_lgb_confident(self):
-        cg = _build_confgate("Haiku|low", 0.80, "Sonnet|medium", 0.90)
+        cg = _build_confgate("mini|low", 0.80, "core|medium", 0.90)
         result = cg.predict_route("fix a typo")
         assert result["ensemble_rule"] == "lgb-confident"
 
     def test_rule_agree(self):
-        cg = _build_confgate("Sonnet|medium", 0.40, "Sonnet|medium", 0.65)
+        cg = _build_confgate("core|medium", 0.40, "core|medium", 0.65)
         result = cg.predict_route("Write a REST API.")
         assert result["ensemble_rule"] == "agree"
 
     def test_rule_t2_overrides(self):
-        cg = _build_confgate("Haiku|low", 0.30, "Sonnet|medium", 0.70)
+        cg = _build_confgate("mini|low", 0.30, "core|medium", 0.70)
         result = cg.predict_route("Design an auth system.")
         assert result["ensemble_rule"] == "t2-overrides"
 
     def test_rule_lgb_fallback(self):
-        cg = _build_confgate("Sonnet|medium", 0.35, "Opus|high", 0.20)
+        cg = _build_confgate("core|medium", 0.35, "large|high", 0.20)
         result = cg.predict_route("complex question")
         assert result["ensemble_rule"] == "lgb-fallback"
 
+    def test_rule_catastrophic_veto(self):
+        cg = _build_confgate("mini|low", 0.49, "large|high", 0.48)
+        result = cg.predict_route("deep architecture review")
+        assert result["ensemble_rule"] == "catastrophic-veto"
+
     def test_rule_field_valid_values(self):
-        valid_rules = {"lgb-confident", "agree", "t2-overrides", "lgb-fallback"}
+        valid_rules = {
+            "lgb-confident",
+            "agree",
+            "t2-overrides",
+            "lgb-fallback",
+            "catastrophic-veto",
+        }
         for lgbm_conf, t2_conf, lgbm_lbl, t2_lbl in [
-            (0.80, 0.60, "Haiku|low", "Sonnet|medium"),
-            (0.40, 0.65, "Sonnet|medium", "Sonnet|medium"),
-            (0.30, 0.70, "Haiku|low", "Sonnet|medium"),
-            (0.35, 0.20, "Sonnet|medium", "Opus|high"),
+            (0.80, 0.60, "mini|low", "core|medium"),
+            (0.40, 0.65, "core|medium", "core|medium"),
+            (0.30, 0.70, "mini|low", "core|medium"),
+            (0.35, 0.20, "core|medium", "large|high"),
         ]:
             cg = _build_confgate(lgbm_lbl, lgbm_conf, t2_lbl, t2_conf)
             result = cg.predict_route("test")
@@ -182,7 +198,7 @@ class TestEnsembleRule:
 
 class TestOutputContract:
     def test_output_has_required_fields(self):
-        cg = _build_confgate("Sonnet|medium", 0.75, "Sonnet|medium", 0.72)
+        cg = _build_confgate("core|medium", 0.75, "core|medium", 0.72)
         result = cg.predict_route("Write a REST API in FastAPI.")
         assert "schema_version" in result
         assert "primary" in result
@@ -191,10 +207,10 @@ class TestOutputContract:
         assert result["schema_version"] == "3.0.0"
 
     def test_primary_has_valid_model_tier_and_effort(self):
-        cg = _build_confgate("Haiku|low", 0.80, "Haiku|medium", 0.70)
+        cg = _build_confgate("mini|low", 0.80, "mini|medium", 0.70)
         result = cg.predict_route("fix a typo")
         primary = result["primary"]
-        assert primary["model_tier"] in {"Haiku", "Sonnet", "Opus"}
+        assert primary["model_tier"] in {"mini", "core", "large"}
         assert primary["effort"] in {"none", "low", "medium", "high"}
 
     def test_output_validates_against_schema(self):
@@ -208,7 +224,7 @@ class TestOutputContract:
         with open(SCHEMA_PATH, encoding="utf-8") as f:
             schema = json.load(f)
 
-        cg = _build_confgate("Sonnet|medium", 0.75, "Opus|high", 0.68)
+        cg = _build_confgate("core|medium", 0.75, "large|high", 0.68)
         result = cg.predict_route("Design a distributed payment system.")
         result_for_schema = {k: v for k, v in result.items() if k != "ensemble_rule"}
         jsonschema.validate(result_for_schema, schema)
@@ -225,7 +241,7 @@ class TestOutputContract:
         with open(SCHEMA_PATH, encoding="utf-8") as f:
             schema = json.load(f)
 
-        cg = _build_confgate("Haiku|low", 0.30, "Sonnet|medium", 0.70)
+        cg = _build_confgate("mini|low", 0.30, "core|medium", 0.70)
         result = cg.predict_route("Design an auth system.")
         result_for_schema = {k: v for k, v in result.items() if k != "ensemble_rule"}
         jsonschema.validate(result_for_schema, schema)
@@ -283,7 +299,7 @@ class TestConfGateIntegration:
         from classifier_confgate import ConfGatedClassifier
         cg = ConfGatedClassifier()
         result = cg.predict_route("fix a typo in README")
-        assert result["primary"]["model_tier"] in {"Haiku", "Sonnet", "Opus"}
+        assert result["primary"]["model_tier"] in {"mini", "core", "large"}
         assert 0.0 <= result["confidence"] <= 1.0
         assert result["ensemble_rule"] in {"lgb-confident", "agree", "t2-overrides", "lgb-fallback"}
 

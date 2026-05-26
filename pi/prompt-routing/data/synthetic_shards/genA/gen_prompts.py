@@ -166,8 +166,8 @@ def generate_rows():
                 "domain": domain,
                 "task_type": task_type,
                 "ambiguity": "clear",
-                "cheapest_acceptable_route": {"model_tier": "Haiku", "effort": effort_level},
-                "labels": {"cheapest_acceptable_route": {"model_tier": "Haiku", "effort": effort_level}},
+                "cheapest_acceptable_route": {"model_tier": "mini", "effort": effort_level},
+                "labels": {"cheapest_acceptable_route": {"model_tier": "mini", "effort": effort_level}},
                 "provenance": {
                     "generator_model": "claude-haiku-4-5",
                     "generator_model_size": "small",
@@ -200,8 +200,8 @@ def generate_rows():
             "domain": domain,
             "task_type": task_type,
             "ambiguity": "clear",
-            "cheapest_acceptable_route": {"model_tier": "Sonnet", "effort": "low"},
-            "labels": {"cheapest_acceptable_route": {"model_tier": "Sonnet", "effort": "low"}},
+            "cheapest_acceptable_route": {"model_tier": "core", "effort": "low"},
+            "labels": {"cheapest_acceptable_route": {"model_tier": "core", "effort": "low"}},
             "provenance": {
                 "generator_model": "claude-haiku-4-5",
                 "generator_model_size": "small",
@@ -234,8 +234,8 @@ def generate_rows():
             "domain": domain,
             "task_type": task_type,
             "ambiguity": "borderline",
-            "cheapest_acceptable_route": {"model_tier": "Sonnet", "effort": "medium"},
-            "labels": {"cheapest_acceptable_route": {"model_tier": "Sonnet", "effort": "medium"}},
+            "cheapest_acceptable_route": {"model_tier": "core", "effort": "medium"},
+            "labels": {"cheapest_acceptable_route": {"model_tier": "core", "effort": "medium"}},
             "provenance": {
                 "generator_model": "claude-haiku-4-5",
                 "generator_model_size": "small",

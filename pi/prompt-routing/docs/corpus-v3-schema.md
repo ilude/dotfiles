@@ -18,17 +18,17 @@ The router's decision is a pair of ordinal tiers, not a single label.
 
 ### 1.1 Model tier
 
-Ordered cheapest to most expensive. Each tier maps to a concrete Claude model
-at serving time; the corpus stores the tier name, not the model id, so the
-mapping can be updated without rewriting labels.
+Ordered cheapest to most expensive. Each tier maps to a concrete runtime model
+at serving time; the corpus stores the provider-neutral tier name, not the
+model id, so the mapping can be updated without rewriting labels.
 
-| Tier    | Typical model | Role                                                   |
-|---------|---------------|--------------------------------------------------------|
-| Haiku   | claude-haiku  | Cheap, fast, adequate for mechanical / factual work.   |
-| Sonnet  | claude-sonnet | Default for multi-step coding / analysis.              |
-| Opus    | claude-opus   | Reserved for architecture, security, deep reasoning.   |
+| Tier  | Runtime bucket | Role                                                   |
+|-------|----------------|--------------------------------------------------------|
+| mini  | small          | Cheap, fast, adequate for mechanical / factual work.   |
+| core  | medium         | Default for multi-step coding / analysis.              |
+| large | large          | Reserved for architecture, security, deep reasoning.   |
 
-Ordering: `Haiku < Sonnet < Opus`.
+Ordering: `mini < core < large`.
 
 ### 1.2 Effort tier
 
@@ -46,7 +46,7 @@ Ordering: `none < low < medium < high`.
 
 ### 1.3 Route
 
-A `route` is a pair `{ "model_tier": <Haiku|Sonnet|Opus>, "effort": <none|low|medium|high> }`.
+A `route` is a pair `{ "model_tier": <mini|core|large>, "effort": <none|low|medium|high> }`.
 Cost is monotone in both dimensions: escalating either tier is strictly more
 expensive than keeping it fixed. The router's objective is to pick the
 cheapest route that still produces an acceptable answer (see rubric below).
@@ -79,7 +79,7 @@ fields are marked O.
 
 ```json
 {
-  "model_tier": "Sonnet",
+  "model_tier": "core",
   "effort": "medium"
 }
 ```
@@ -91,9 +91,9 @@ predict.
 
 ```json
 {
-  "generator_model": "claude-haiku",
+  "generator_model": "small-route",
   "generator_model_size": "small",
-  "adjudicator_model": "claude-opus",
+  "adjudicator_model": "large-route",
   "adjudicator_model_size": "large",
   "prompt_version_hash": "sha256:...",
   "temperature": 0.0,
@@ -113,9 +113,9 @@ candidate verdicts:
 
 ```json
 [
-  { "route": { "model_tier": "Haiku",  "effort": "low"    }, "verdict": "insufficient", "rationale": "Missed error-handling branch." },
-  { "route": { "model_tier": "Sonnet", "effort": "medium" }, "verdict": "acceptable",   "rationale": "Correct fix, concise." },
-  { "route": { "model_tier": "Opus",   "effort": "high"   }, "verdict": "overkill",     "rationale": "Same answer as Sonnet, more cost." }
+  { "route": { "model_tier": "mini",  "effort": "low"    }, "verdict": "insufficient", "rationale": "Missed error-handling branch." },
+  { "route": { "model_tier": "core", "effort": "medium" }, "verdict": "acceptable",   "rationale": "Correct fix, concise." },
+  { "route": { "model_tier": "large",   "effort": "high"   }, "verdict": "overkill",     "rationale": "Same answer as core, more cost." }
 ]
 ```
 
@@ -132,7 +132,7 @@ does not affect training.
 
 ```json
 {
-  "cheapest_acceptable_route": {"model_tier": "Sonnet", "effort": "high"},
+  "cheapest_acceptable_route": {"model_tier": "core", "effort": "high"},
   "complexity_tier": "high",
   "route_judgments": [...]
 }
@@ -180,8 +180,8 @@ Every candidate route, when evaluated, receives one of three verdicts.
 ### 3.2 How to pick `cheapest_acceptable_route`
 
 1. Enumerate candidate routes in cost order, cheapest first:
-   `(Haiku, none) < (Haiku, low) < (Haiku, medium) < (Haiku, high) <
-    (Sonnet, none) < ... < (Opus, high)`.
+   `(mini, none) < (mini, low) < (mini, medium) < (mini, high) <
+    (core, none) < ... < (large, high)`.
    In practice annotators evaluate a small candidate set (typically 3-4
    routes spanning the tiers) rather than the full 12-cell grid.
 2. For each candidate, assign a verdict per 3.1. Use real outputs when
@@ -195,24 +195,24 @@ Every candidate route, when evaluated, receives one of three verdicts.
 
 Use model tier to capture capability ceilings.
 
-- `Haiku` is appropriate when the prompt is a factual lookup, a mechanical
+- `mini` is appropriate when the prompt is a factual lookup, a mechanical
   edit with a small diff, a single-file question answerable from the prompt
-  text alone, or a rewrite / format task. Haiku is the default guess for
+  text alone, or a rewrite / format task. mini is the default guess for
   `task_type in {factual, mechanical_edit, explain (simple), rewrite}` with
   `ambiguity == clear`.
-- `Sonnet` is appropriate when the prompt requires multi-step reasoning,
+- `core` is appropriate when the prompt requires multi-step reasoning,
   coordinated edits across a small number of files, debugging with
-  nontrivial context, or moderate analysis. Sonnet is the default guess for
+  nontrivial context, or moderate analysis. core is the default guess for
   `task_type in {code_write, code_debug, code_review, analysis, plan}` with
   `ambiguity in {clear, borderline}`.
-- `Opus` is appropriate when the prompt involves architecture trade-offs,
+- `large` is appropriate when the prompt involves architecture trade-offs,
   security reasoning, distributed-systems correctness, cross-cutting
-  refactors, or high-ambiguity design work. Opus is the default guess for
+  refactors, or high-ambiguity design work. large is the default guess for
   `task_type in {design, plan (cross-cutting), analysis (security-sensitive)}`
   and for any row with `ambiguity == ambiguous` where getting it wrong is
   expensive.
 
-Never promote to `Opus` solely because the prompt is long. Length is not a
+Never promote to `large` solely because the prompt is long. Length is not a
 complexity signal (see AGENTS.md "apply the terraform changes" example).
 
 ### 3.4 Effort tier selection guidance
@@ -220,19 +220,19 @@ complexity signal (see AGENTS.md "apply the terraform changes" example).
 Effort captures reasoning depth within a given model tier.
 
 - `none` -- The answer is a direct recall or a one-shot template fill. Only
-  valid at `Haiku` and `Sonnet` for trivial `factual` / `mechanical_edit`
+  valid at `mini` and `core` for trivial `factual` / `mechanical_edit`
   rows.
 - `low` -- A short plan / scratch step is useful but not required. Typical
-  for clear `code_write` / `code_debug` at `Sonnet`.
+  for clear `code_write` / `code_debug` at `core`.
 - `medium` -- Default when the model benefits from a structured internal
   plan. Typical for `analysis`, `plan`, most `code_review`.
 - `high` -- The model needs extended thinking to avoid obvious mistakes:
   multiple interacting constraints, non-local correctness, or adversarial
-  cases. Typical for `design`, `security`, and `ambiguous` rows at `Opus`.
+  cases. Typical for `design`, `security`, and `ambiguous` rows at `large`.
 
 Rule of thumb: raise effort before promoting model tier when the bottleneck
 is reasoning depth rather than capability. Promote model tier before raising
-effort when the bottleneck is capability (e.g., Haiku consistently gives a
+effort when the bottleneck is capability (e.g., mini consistently gives a
 wrong algorithmic answer no matter how much effort you give it).
 
 ### 3.5 Ambiguity handling
@@ -242,8 +242,8 @@ wrong algorithmic answer no matter how much effort you give it).
 - `clear` -- A competent annotator would pick the same route with high
   confidence. Most seed rows and most `factual` / `mechanical_edit` rows are
   clear.
-- `borderline` -- Two adjacent routes (e.g., `(Haiku, medium)` vs
-  `(Sonnet, low)`) are both plausibly cheapest acceptable. Pick the one a
+- `borderline` -- Two adjacent routes (e.g., `(mini, medium)` vs
+  `(core, low)`) are both plausibly cheapest acceptable. Pick the one a
   cost-conscious reviewer would defend, and record the alternative in
   `route_judgments` when practical.
 - `ambiguous` -- The correct route depends on unstated intent, missing
@@ -256,7 +256,7 @@ wrong algorithmic answer no matter how much effort you give it).
 ### 3.6 Tie-break rules
 
 When two cost-equivalent routes are both acceptable (rare, but possible when
-a Haiku+high row matches a Sonnet+low row on nominal cost), prefer the one
+a mini+high row matches a core+low row on nominal cost), prefer the one
 with the higher model tier and lower effort. Higher model tier generalizes
 better; lower effort keeps latency predictable.
 
@@ -270,9 +270,9 @@ override freely):
 
 | Legacy `complexity_tier` | Prior guess for `cheapest_acceptable_route` |
 |--------------------------|---------------------------------------------|
-| `low`                    | `{ model_tier: Haiku,  effort: low    }`    |
-| `mid`                    | `{ model_tier: Sonnet, effort: medium }`    |
-| `high`                   | `{ model_tier: Opus,   effort: high   }`    |
+| `low`                    | `{ model_tier: mini,  effort: low    }`    |
+| `mid`                    | `{ model_tier: core, effort: medium }`    |
+| `high`                   | `{ model_tier: large,   effort: high   }`    |
 
 A row is only kept at its legacy prior if a human (or adjudicator at
 `temperature=0` with a pinned prompt hash) confirms the verdict on at least
@@ -295,37 +295,37 @@ A fully populated row from `seed_route_labels.jsonl`:
   "task_type": "design",
   "ambiguity": "borderline",
   "cheapest_acceptable_route": {
-    "model_tier": "Sonnet",
+    "model_tier": "core",
     "effort": "high"
   },
   "route_judgments": [
     {
-      "route": { "model_tier": "Haiku", "effort": "medium" },
+      "route": { "model_tier": "mini", "effort": "medium" },
       "verdict": "insufficient",
       "rationale": "Produced bcrypt code but skipped the dual-hash migration window; would break existing logins on first deploy."
     },
     {
-      "route": { "model_tier": "Sonnet", "effort": "high" },
+      "route": { "model_tier": "core", "effort": "high" },
       "verdict": "acceptable",
       "rationale": "Covered dual-write, lazy rehash on successful login, and rollback plan. Good enough to ship."
     },
     {
-      "route": { "model_tier": "Opus", "effort": "high" },
+      "route": { "model_tier": "large", "effort": "high" },
       "verdict": "overkill",
-      "rationale": "Same migration plan as Sonnet plus extra threat-model commentary the user did not ask for."
+      "rationale": "Same migration plan as core plus extra threat-model commentary the user did not ask for."
     }
   ],
   "complexity_tier": "high",
   "provenance": {
     "generator_model": "human",
     "generator_model_size": "n/a",
-    "adjudicator_model": "claude-opus",
+    "adjudicator_model": "large-route",
     "adjudicator_model_size": "large",
     "prompt_version_hash": "sha256:0f3a1c9b2d4e5f67a8b9c0d1e2f3a4b5",
     "temperature": 0.0,
     "generated_at": "2026-04-22T14:30:00Z"
   },
-  "notes": "Borderline because a careful Haiku+high response could arguably cover the migration; adjudication showed Haiku missed the dual-hash window in 3/5 runs, so Sonnet is the cheapest reliably acceptable route."
+  "notes": "Borderline because a careful mini+high response could arguably cover the migration; adjudication showed mini missed the dual-hash window in 3/5 runs, so core is the cheapest reliably acceptable route."
 }
 ```
 
@@ -346,7 +346,7 @@ Key points illustrated by this example:
 `pi/prompt-routing/tools/validate_corpus.py` will enforce:
 
 1. All required fields present and typed correctly.
-2. `cheapest_acceptable_route.model_tier in {Haiku, Sonnet, Opus}` and
+2. `cheapest_acceptable_route.model_tier in {mini, core, large}` and
    `cheapest_acceptable_route.effort in {none, low, medium, high}`.
 3. If `route_judgments` is present, the cheapest `acceptable` verdict matches
    `cheapest_acceptable_route` (section 2.3 invariant).

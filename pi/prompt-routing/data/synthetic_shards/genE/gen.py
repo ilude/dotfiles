@@ -1,10 +1,10 @@
 """
-Generate genE synthetic shard: 250 rows focused on Sonnet/low practical repo edits.
+Generate genE synthetic shard: 250 rows focused on core/low practical repo edits.
 
 Distribution:
-  200 Sonnet/low
-   25 Haiku/low
-   25 Sonnet/medium
+  200 core/low
+   25 mini/low
+   25 core/medium
 """
 
 import json
@@ -26,64 +26,64 @@ PROVENANCE = {
 # ---------------------------------------------------------------------------
 
 def _judgments_sonnet_low(task_desc: str, domain: str) -> list[dict]:
-    """Three-entry judgments for a Sonnet/low acceptable row."""
+    """Three-entry judgments for a core/low acceptable row."""
     return [
         {
-            "route": {"model_tier": "Haiku", "effort": "low"},
+            "route": {"model_tier": "mini", "effort": "low"},
             "verdict": "insufficient",
-            "rationale": f"Haiku/low produced a syntactically correct but incomplete result for {task_desc}: missed edge cases and left placeholder comments rather than real implementation.",
+            "rationale": f"mini/low produced a syntactically correct but incomplete result for {task_desc}: missed edge cases and left placeholder comments rather than real implementation.",
         },
         {
-            "route": {"model_tier": "Sonnet", "effort": "low"},
+            "route": {"model_tier": "core", "effort": "low"},
             "verdict": "acceptable",
-            "rationale": f"Sonnet/low correctly handled {task_desc}, applying the change in all relevant call sites with appropriate variable naming and no regression to nearby logic.",
+            "rationale": f"core/low correctly handled {task_desc}, applying the change in all relevant call sites with appropriate variable naming and no regression to nearby logic.",
         },
         {
-            "route": {"model_tier": "Sonnet", "effort": "medium"},
+            "route": {"model_tier": "core", "effort": "medium"},
             "verdict": "overkill",
-            "rationale": f"Sonnet/medium produced the same correct output for {task_desc} but additionally rewrote surrounding boilerplate and added unrequested docstrings, expanding the diff beyond the task scope.",
+            "rationale": f"core/medium produced the same correct output for {task_desc} but additionally rewrote surrounding boilerplate and added unrequested docstrings, expanding the diff beyond the task scope.",
         },
     ]
 
 
 def _judgments_haiku_low(task_desc: str, domain: str) -> list[dict]:
-    """Three-entry judgments for a Haiku/low acceptable row."""
+    """Three-entry judgments for a mini/low acceptable row."""
     return [
         {
-            "route": {"model_tier": "Haiku", "effort": "none"},
+            "route": {"model_tier": "mini", "effort": "none"},
             "verdict": "insufficient",
-            "rationale": f"Haiku/none skipped the task entirely for {task_desc}, returning only a generic acknowledgment without any code or diff.",
+            "rationale": f"mini/none skipped the task entirely for {task_desc}, returning only a generic acknowledgment without any code or diff.",
         },
         {
-            "route": {"model_tier": "Haiku", "effort": "low"},
+            "route": {"model_tier": "mini", "effort": "low"},
             "verdict": "acceptable",
-            "rationale": f"Haiku/low correctly completed {task_desc} -- the change is mechanical and the model produced the right substitution without needing extended reasoning.",
+            "rationale": f"mini/low correctly completed {task_desc} -- the change is mechanical and the model produced the right substitution without needing extended reasoning.",
         },
         {
-            "route": {"model_tier": "Sonnet", "effort": "low"},
+            "route": {"model_tier": "core", "effort": "low"},
             "verdict": "overkill",
-            "rationale": f"Sonnet/low also handled {task_desc} correctly but used extra reasoning tokens debating alternative approaches that were not asked for.",
+            "rationale": f"core/low also handled {task_desc} correctly but used extra reasoning tokens debating alternative approaches that were not asked for.",
         },
     ]
 
 
 def _judgments_sonnet_medium(task_desc: str, domain: str) -> list[dict]:
-    """Three-entry judgments for a Sonnet/medium acceptable row."""
+    """Three-entry judgments for a core/medium acceptable row."""
     return [
         {
-            "route": {"model_tier": "Sonnet", "effort": "low"},
+            "route": {"model_tier": "core", "effort": "low"},
             "verdict": "insufficient",
-            "rationale": f"Sonnet/low attempted {task_desc} but missed the cross-cutting concern: it updated one layer while leaving inconsistent behaviour in the other, producing a partial fix.",
+            "rationale": f"core/low attempted {task_desc} but missed the cross-cutting concern: it updated one layer while leaving inconsistent behaviour in the other, producing a partial fix.",
         },
         {
-            "route": {"model_tier": "Sonnet", "effort": "medium"},
+            "route": {"model_tier": "core", "effort": "medium"},
             "verdict": "acceptable",
-            "rationale": f"Sonnet/medium traced the full call path for {task_desc}, caught the secondary impact point, and produced a coherent diff covering both locations.",
+            "rationale": f"core/medium traced the full call path for {task_desc}, caught the secondary impact point, and produced a coherent diff covering both locations.",
         },
         {
-            "route": {"model_tier": "Opus", "effort": "medium"},
+            "route": {"model_tier": "large", "effort": "medium"},
             "verdict": "overkill",
-            "rationale": f"Opus/medium solved {task_desc} correctly but appended a multi-paragraph architectural commentary recommending a broader refactor that was outside the requested scope.",
+            "rationale": f"large/medium solved {task_desc} correctly but appended a multi-paragraph architectural commentary recommending a broader refactor that was outside the requested scope.",
         },
     ]
 
@@ -474,7 +474,7 @@ SONNET_LOW_PROMPTS = [
      "clear"),
 ]
 
-# Fill remaining Sonnet/low rows with additional varied prompts
+# Fill remaining core/low rows with additional varied prompts
 SONNET_LOW_EXTRA = [
     # auth
     ("auth", "rewrite", "fam-genE-auth-token-rewrite",
@@ -807,7 +807,7 @@ def build_rows() -> list[dict]:
     def make_id(n: int) -> str:
         return f"synth-genE-{n:04d}"
 
-    # -- Sonnet/low (target 200) --
+    # -- core/low (target 200) --
     # Use the main bank (currently 88 prompts) then extra (27 prompts) = 115 distinct
     # We need 200, so we cycle through both banks, adjusting family_id with suffix to avoid
     # near-duplicate detection
@@ -836,16 +836,16 @@ def build_rows() -> list[dict]:
             "domain": domain,
             "task_type": task_type,
             "ambiguity": ambiguity,
-            "cheapest_acceptable_route": {"model_tier": "Sonnet", "effort": "low"},
+            "cheapest_acceptable_route": {"model_tier": "core", "effort": "low"},
             "complexity_tier": "low",
             "route_judgments": _judgments_sonnet_low(task_desc, domain),
             "provenance": PROVENANCE,
-            "notes": f"Mechanical or bounded task ({task_desc}); Sonnet/low handles it correctly without extended reasoning.",
+            "notes": f"Mechanical or bounded task ({task_desc}); core/low handles it correctly without extended reasoning.",
         })
         idx += 1
         sl_count += 1
 
-    # -- Haiku/low (25) --
+    # -- mini/low (25) --
     for i, (domain, task_type, family_id, prompt, task_desc, ambiguity) in enumerate(HAIKU_LOW_PROMPTS):
         rows.append({
             "prompt_id": make_id(idx),
@@ -855,15 +855,15 @@ def build_rows() -> list[dict]:
             "domain": domain,
             "task_type": task_type,
             "ambiguity": ambiguity,
-            "cheapest_acceptable_route": {"model_tier": "Haiku", "effort": "low"},
+            "cheapest_acceptable_route": {"model_tier": "mini", "effort": "low"},
             "complexity_tier": "low",
             "route_judgments": _judgments_haiku_low(task_desc, domain),
             "provenance": PROVENANCE,
-            "notes": f"Trivially scoped change ({task_desc}); Haiku/low is sufficient for this single-token or single-line fix.",
+            "notes": f"Trivially scoped change ({task_desc}); mini/low is sufficient for this single-token or single-line fix.",
         })
         idx += 1
 
-    # -- Sonnet/medium (25) --
+    # -- core/medium (25) --
     for i, (domain, task_type, family_id, prompt, task_desc, ambiguity) in enumerate(SONNET_MEDIUM_PROMPTS):
         rows.append({
             "prompt_id": make_id(idx),
@@ -873,11 +873,11 @@ def build_rows() -> list[dict]:
             "domain": domain,
             "task_type": task_type,
             "ambiguity": ambiguity,
-            "cheapest_acceptable_route": {"model_tier": "Sonnet", "effort": "medium"},
+            "cheapest_acceptable_route": {"model_tier": "core", "effort": "medium"},
             "complexity_tier": "mid",
             "route_judgments": _judgments_sonnet_medium(task_desc, domain),
             "provenance": PROVENANCE,
-            "notes": f"Cross-cutting or multi-layer task ({task_desc}); requires Sonnet/medium to trace full call path and produce coherent diff.",
+            "notes": f"Cross-cutting or multi-layer task ({task_desc}); requires core/medium to trace full call path and produce coherent diff.",
         })
         idx += 1
 

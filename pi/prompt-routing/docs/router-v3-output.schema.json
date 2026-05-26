@@ -65,8 +65,8 @@
   "$defs": {
     "model_tier": {
       "type": "string",
-      "enum": ["Haiku", "Sonnet", "Opus"],
-      "description": "Ordinal model tier. Ordering: Haiku < Sonnet < Opus."
+      "enum": ["mini", "core", "large"],
+      "description": "Ordinal model tier. Ordering: mini < core < large."
     },
     "effort": {
       "type": "string",

@@ -178,15 +178,15 @@ def assign_route_from_legacy(
     Return (cheapest_acceptable_route, domain, task_type, ambiguity).
 
     Migration priors from corpus-v3-schema.md section 4:
-      low  -> (Haiku, low)
-      mid  -> (Sonnet, medium)   -- only used for relabel rows, not called here
-      high -> (Opus, medium)     -- audit says architectural subset maps to Opus medium
+      low  -> (mini, low)
+      mid  -> (core, medium)   -- only used for relabel rows, not called here
+      high -> (large, medium)     -- audit says architectural subset maps to large medium
 
     Overrides applied:
-    - High-tier architectural prompts involving security: route (Opus, high) --
+    - High-tier architectural prompts involving security: route (large, high) --
       security design has higher failure cost per rubric 3.5.
-    - Low-tier factual/explain prompts: route (Haiku, none) for pure recall tasks.
-    - Low-tier mechanical_edit: (Haiku, low).
+    - Low-tier factual/explain prompts: route (mini, none) for pure recall tasks.
+    - Low-tier mechanical_edit: (mini, low).
     """
     domain = infer_domain(prompt)
     task_type = infer_task_type(prompt)
@@ -194,24 +194,24 @@ def assign_route_from_legacy(
 
     if legacy_label == "low":
         if task_type == "factual" and domain not in ("architecture", "security"):
-            route = _route("Haiku", "none")
+            route = _route("mini", "none")
         else:
-            route = _route("Haiku", "low")
+            route = _route("mini", "low")
 
     elif legacy_label == "high":
-        # Architectural subset: default (Opus, medium) per schema section 4
-        # Security-sensitive design: (Opus, high) per rubric 3.5 ambiguity bias
+        # Architectural subset: default (large, medium) per schema section 4
+        # Security-sensitive design: (large, high) per rubric 3.5 ambiguity bias
         if domain == "security" or (
             task_type in ("design",) and domain in ("security", "architecture")
         ):
-            route = _route("Opus", "high")
+            route = _route("large", "high")
             ambiguity = "borderline"
         else:
-            route = _route("Opus", "medium")
+            route = _route("large", "medium")
 
     else:
         # Should not be called for mid -- fallback
-        route = _route("Sonnet", "medium")
+        route = _route("core", "medium")
 
     return route, domain, task_type, ambiguity
 

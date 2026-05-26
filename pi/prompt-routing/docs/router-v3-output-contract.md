@@ -1,55 +1,67 @@
 # Router v3 Classifier Output Contract
 
-Status: T7 artifact. Locks the production classifier output shape so
-downstream router implementation can be written against a stable
-interface without re-opening the data-design question.
+Status: current. Locks the production classifier output shape consumed by the
+Pi prompt-router runtime.
 
 ---
 
 ## 1. Scope
 
-This contract describes what the **trained v3 classifier** emits per
-prompt at serve time. It is the interface the router runtime will
-consume. Training and evaluation of that classifier are out of scope
-for this plan; see `corpus-readiness-report.md` for the go/no-go on
-corpus readiness.
-
-The contract is forward compatible with the v3 corpus schema in
-`corpus-v3-schema.md`: every label the classifier is trained on is
-expressible in this output, and every runtime-consumed field maps back
-to a column in `train_v3.jsonl`.
+This contract describes what the trained v3 classifier emits per prompt at
+serve time. Training and evaluation are out of scope; see
+`corpus-v3-schema.md` for labels and `router-v3-output.schema.json` for the
+machine-readable schema.
 
 ---
 
 ## 2. Output object
 
-One JSON object per classification call. All fields use camelCase
-except nested route objects which keep the `model_tier` / `effort`
-snake_case to match the corpus schema.
+One JSON object per classification call. The object is serialized as one line
+of JSON with a trailing newline.
 
-### 2.1 Fields
+Required fields:
 
-| Field              | Required | Type             | Description |
-|--------------------|----------|------------------|-------------|
-| `primary_route`    | yes      | `Route`          | The cheapest route the classifier believes is acceptable for this prompt. This is what the router should try first. |
-| `fallback_route`   | yes      | `Route`          | A strictly more expensive route the router should escalate to if the primary route's answer fails a quality check or the caller requests retry-up. Must satisfy `route_cost(fallback_route) > route_cost(primary_route)`. |
-| `confidence`       | yes      | number (0..1)    | Model-calibrated probability that `primary_route` is actually the cheapest acceptable route for this prompt. Consumers MAY treat confidence below a policy threshold (e.g. 0.55) as an automatic escalation to `fallback_route`. |
-| `reason`           | no       | string           | Short human-readable explanation of the route choice. For observability only; never parsed by the runtime. |
-| `ambiguity_flag`   | no       | enum             | One of `clear` / `borderline` / `ambiguous`. Mirrors the corpus `ambiguity` field. When `ambiguous`, the router SHOULD bias toward `fallback_route` per the v3 rubric (ambiguous rows bias up, not down). |
-| `predicted_domain` | no       | string           | Echo of the classifier's best-guess `domain` tag. Observability only; the runtime does not dispatch on this. |
-| `model_version`    | no       | string           | SHA of the classifier artifact that produced this output. Required in production; optional in contract-schema terms because offline tools may omit it. |
+| Field            | Type      | Description |
+|------------------|-----------|-------------|
+| `schema_version` | string    | Semver output contract version. Current value: `3.0.0`. |
+| `primary`        | `Route`   | Cheapest acceptable route predicted for the prompt. |
+| `candidates`     | `Route[]` | Candidate routes with confidence values. Must include `primary`. |
+| `confidence`     | number    | Calibrated probability for `primary`, range `0..1`. |
 
-### 2.2 `Route` shape
+Optional fields:
+
+| Field              | Type   | Description |
+|--------------------|--------|-------------|
+| `reason`           | string | Human-readable observability only. |
+| `ambiguity_flag`   | string | `clear`, `borderline`, or `ambiguous`; observability only. |
+| `predicted_domain` | string | Classifier domain guess; observability only. |
+| `model_version`    | string | Classifier artifact identifier. |
+| `ensemble_rule`    | string | Ensemble/confgate rule fired; observability only. |
+
+### 2.1 Route shape
 
 ```json
 {
-  "model_tier": "Haiku|Sonnet|Opus",
+  "model_tier": "mini|core|large",
   "effort": "none|low|medium|high"
 }
 ```
 
-Ordering: `Haiku < Sonnet < Opus` and `none < low < medium < high`. Cost
-is monotone in both dimensions (see `corpus-v3-schema.md` section 1).
+Ordering: `mini < core < large` and `none < low < medium < high`.
+
+### 2.2 Candidate shape
+
+```json
+{
+  "model_tier": "core",
+  "effort": "medium",
+  "confidence": 0.72
+}
+```
+
+The TypeScript runtime rejects malformed candidates, unknown route labels,
+unknown effort labels, out-of-range confidence values, unknown schema versions,
+and outputs where `primary` is missing from `candidates`.
 
 ---
 
@@ -57,28 +69,32 @@ is monotone in both dimensions (see `corpus-v3-schema.md` section 1).
 
 ```json
 {
-  "primary_route": {
-    "model_tier": "Sonnet",
+  "schema_version": "3.0.0",
+  "primary": {
+    "model_tier": "core",
     "effort": "medium"
   },
-  "fallback_route": {
-    "model_tier": "Opus",
-    "effort": "high"
-  },
-  "confidence": 0.82,
-  "reason": "Multi-file refactor with moderate ambiguity; Sonnet+medium is the cheapest route whose training-distribution neighbors were marked acceptable.",
+  "candidates": [
+    {"model_tier": "mini", "effort": "low", "confidence": 0.12},
+    {"model_tier": "core", "effort": "medium", "confidence": 0.72},
+    {"model_tier": "large", "effort": "high", "confidence": 0.16}
+  ],
+  "confidence": 0.72,
+  "reason": "Multi-file refactor with moderate ambiguity.",
   "ambiguity_flag": "borderline",
   "predicted_domain": "typescript",
-  "model_version": "sha256:3f1c9b2d4e5f67a8b9c0d1e2f3a4b5c6"
+  "model_version": "sha256:3f1c9b2d4e5f67a8b9c0d1e2f3a4b5c6",
+  "ensemble_rule": "lgb-confident"
 }
 ```
 
-A minimal example (only required fields):
+Minimal example:
 
 ```json
 {
-  "primary_route": {"model_tier": "Haiku", "effort": "low"},
-  "fallback_route": {"model_tier": "Sonnet", "effort": "medium"},
+  "schema_version": "3.0.0",
+  "primary": {"model_tier": "mini", "effort": "low"},
+  "candidates": [{"model_tier": "mini", "effort": "low", "confidence": 0.94}],
   "confidence": 0.94
 }
 ```
@@ -87,25 +103,17 @@ A minimal example (only required fields):
 
 ## 4. Runtime semantics
 
-- The router MUST dispatch the first attempt to `primary_route`.
-- The router MAY escalate to `fallback_route` when (a) `confidence` is
-  below a policy threshold, (b) `ambiguity_flag == "ambiguous"`, or
-  (c) a downstream quality check rejects the primary-route answer.
-- The router MUST NOT downgrade below `primary_route`. The classifier
-  already chose the cheapest acceptable option; cheaper than that is a
-  policy violation equivalent to catastrophic under-routing per
-  `eval-v3-metrics.md` section 2.2.
-- `reason`, `predicted_domain`, and `model_version` are observability
-  signals. They are emitted to logs/metrics and MUST NOT drive
-  dispatch logic.
+- The router dispatches the first attempt to `primary` after runtime policy
+  floors and overrides are applied.
+- `candidates` replaces the older `fallback_route` concept. Runtime fallback
+  policy can choose from candidates or clamp upward based on context.
+- The router must not use `reason`, `predicted_domain`, `model_version`, or
+  `ensemble_rule` to dispatch. These fields are observability only.
 
 ---
 
 ## 5. Versioning
 
-This is v3 of the classifier output contract. Breaking changes
-(renaming a required field, tightening an enum, changing `confidence`
-semantics) require bumping the contract major version and coordinating
-with the router runtime. Additive changes (new optional fields, new
-observability-only fields) do not require a version bump but SHOULD be
-announced in the corresponding `corpus-readiness-report.md` revision.
+Breaking changes require a new `schema_version` and TypeScript runtime support.
+Additive observability-only fields may remain on `3.0.0` if old runtimes can
+ignore them safely.

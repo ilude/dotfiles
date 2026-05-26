@@ -1,9 +1,7 @@
 """Build train/dev/eval v3 splits with family-disjoint assignment.
 
 Reads:
-  data/seed_route_labels.jsonl
-  data/curated_history_route_labels.jsonl
-  data/synthetic_route_labels.jsonl
+  data/corpus_v3_source.jsonl
 
 Writes:
   data/train_v3.jsonl
@@ -25,6 +23,7 @@ Policy:
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import random
@@ -36,10 +35,13 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 DATA = REPO / "data"
 
-SEED_PATH = DATA / "seed_route_labels.jsonl"
-HIST_PATH = DATA / "curated_history_route_labels.jsonl"
-SYN_PATH = DATA / "synthetic_route_labels.jsonl"
-RELABEL_PATH = DATA / "relabeled_mid_tier_route_labels.jsonl"
+CORPUS_SOURCE_PATH = DATA / "corpus_v3_source.jsonl"
+SOURCE_INPUTS = [
+    ("seed", DATA / "seed_route_labels.jsonl"),
+    ("history", DATA / "curated_history_route_labels.jsonl"),
+    ("synthetic", DATA / "synthetic_route_labels.jsonl"),
+    ("relabel", DATA / "relabeled_mid_tier_route_labels.jsonl"),
+]
 
 TRAIN_PATH = DATA / "train_v3.jsonl"
 DEV_PATH = DATA / "dev_v3.jsonl"
@@ -98,20 +100,23 @@ def _hamming(a: int, b: int) -> int:
     return (a ^ b).bit_count()
 
 
-def assign_seed_families(rows: list[dict]) -> list[dict]:
-    """Seed rows already have per-row unique family_ids. We keep them.
-
-    Policy note: each seed row is treated as its own family. This guarantees
-    family-disjoint splits trivially, preserves the per-row provenance
-    embedded in the original fam-*-<hash> identifiers from build_seed_labels,
-    and avoids collapsing 958 rows into a handful of mega-families which
-    would make clean 70/15/15 proportions impossible.
-    """
-    return rows
-
-
-def assign_history_families(rows: list[dict]) -> list[dict]:
-    """History rows already have per-row unique family_ids. Same policy as seed."""
+def rebuild_corpus_source() -> list[dict]:
+    rows: list[dict] = []
+    counts: dict[str, int] = {}
+    for name, path in SOURCE_INPUTS:
+        if not path.exists():
+            counts[name] = 0
+            continue
+        source_rows = load_jsonl(path)
+        counts[name] = len(source_rows)
+        rows.extend(source_rows)
+    write_jsonl(CORPUS_SOURCE_PATH, rows)
+    print(
+        f"Wrote {CORPUS_SOURCE_PATH} from "
+        f"seed={counts['seed']} history={counts['history']} "
+        f"synthetic={counts['synthetic']} relabel={counts['relabel']} "
+        f"total={len(rows)}"
+    )
     return rows
 
 
@@ -170,20 +175,32 @@ def dedup_eval(
     return kept, dropped
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--rebuild-source",
+        action="store_true",
+        help="rebuild corpus_v3_source.jsonl from provenance input files before splitting",
+    )
+    parser.add_argument(
+        "--source-only",
+        action="store_true",
+        help="only rebuild corpus_v3_source.jsonl; implies --rebuild-source",
+    )
+    return parser.parse_args()
+
+
 def main() -> int:
+    args = parse_args()
     rng = random.Random(RANDOM_SEED)
 
-    seed_rows = assign_seed_families(load_jsonl(SEED_PATH))
-    hist_rows = assign_history_families(load_jsonl(HIST_PATH))
-    syn_rows = load_jsonl(SYN_PATH)
-    relabel_rows = load_jsonl(RELABEL_PATH) if RELABEL_PATH.exists() else []
-
-    all_rows = seed_rows + hist_rows + syn_rows + relabel_rows
-    print(
-        f"Loaded: seed={len(seed_rows)} history={len(hist_rows)} "
-        f"synthetic={len(syn_rows)} relabel={len(relabel_rows)} "
-        f"total={len(all_rows)}"
-    )
+    if args.rebuild_source or args.source_only:
+        all_rows = rebuild_corpus_source()
+        if args.source_only:
+            return 0
+    else:
+        all_rows = load_jsonl(CORPUS_SOURCE_PATH)
+        print(f"Loaded corpus source rows: {len(all_rows)}")
 
     train, dev, evl = split_by_family(all_rows, rng)
     print(f"Pre-dedup splits: train={len(train)} dev={len(dev)} eval={len(evl)}")

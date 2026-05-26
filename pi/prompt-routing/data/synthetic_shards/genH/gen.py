@@ -2,11 +2,11 @@
 gen.py -- Generate synthetic genH shard (250 rows) for prompt-routing training corpus.
 
 Route distribution:
-  100 Haiku/none
-   50 Haiku/low
-   50 Sonnet/low
-   30 Sonnet/medium
-   20 Sonnet/high
+  100 mini/none
+   50 mini/low
+   50 core/low
+   30 core/medium
+   20 core/high
 
 Focus: docs, testing, cli, frontend, logging, refactor, config, api, database
 Task types: code_review, mechanical_edit, explain, rewrite, factual
@@ -32,7 +32,7 @@ PROVENANCE = {
 # Template banks -- each entry is (prompt_text, domain, task_type, ambiguity)
 # ---------------------------------------------------------------------------
 
-# Haiku/none: answer-only clarification, trivial recall, no reasoning needed
+# mini/none: answer-only clarification, trivial recall, no reasoning needed
 HAIKU_NONE_BANK = [
     # docs
     ("What does the @deprecated JSDoc tag signal to callers of a function?", "docs", "factual", "clear"),
@@ -152,7 +152,7 @@ HAIKU_NONE_BANK = [
     ("What is the difference between a log message and a metric?", "logging", "factual", "clear"),
 ]
 
-# Haiku/low: simple factual, syntax clarification, small isolated transformation
+# mini/low: simple factual, syntax clarification, small isolated transformation
 HAIKU_LOW_BANK = [
     # docs / mechanical_edit
     ("Fix the typo in this function's docstring: 'Retuns the user ID' should read 'Returns the user ID'.", "docs", "mechanical_edit", "clear"),
@@ -221,7 +221,7 @@ HAIKU_LOW_BANK = [
     ("Add `aria-required='true'` to each required form input in the registration form template.", "frontend", "mechanical_edit", "clear"),
 ]
 
-# Sonnet/low: practical repo-aware edits, simple reviews
+# core/low: practical repo-aware edits, simple reviews
 SONNET_LOW_BANK = [
     # code_review / docs
     ("Review this updated README section explaining pagination. Does it accurately describe the cursor-based API, and are the curl examples correct?", "docs", "code_review", "clear"),
@@ -284,7 +284,7 @@ SONNET_LOW_BANK = [
     ("Remove the `console.log` debug statements left in `CartContext.tsx` before the release.", "frontend", "mechanical_edit", "clear"),
 ]
 
-# Sonnet/medium: multi-step, requires understanding context and tradeoffs
+# core/medium: multi-step, requires understanding context and tradeoffs
 SONNET_MEDIUM_BANK = [
     # code_review
     ("Review the authentication middleware refactor that moves JWT verification from route-level decorators to a centralized guard. Assess whether all protected routes are still covered and whether error responses are consistent.", "api", "code_review", "clear"),
@@ -324,7 +324,7 @@ SONNET_MEDIUM_BANK = [
     ("Rewrite the `config_override` decorator so it restores the original config values even if the decorated function raises an exception.", "config", "rewrite", "clear"),
 ]
 
-# Sonnet/high: complex but bounded -- deep analysis, larger-scope reviews
+# core/high: complex but bounded -- deep analysis, larger-scope reviews
 SONNET_HIGH_BANK = [
     # code_review (larger scope)
     ("Review this 200-line pull request that migrates the user service from synchronous SQLAlchemy sessions to async sessions with asyncpg. Check for unawaited coroutines, missing `async with` session contexts, and whether background tasks correctly acquire their own sessions.", "database", "code_review", "clear"),
@@ -357,17 +357,17 @@ SONNET_HIGH_BANK = [
 def make_judgment_haiku_none(domain, task_type):
     return [
         {
-            "route": {"model_tier": "Haiku", "effort": "none"},
+            "route": {"model_tier": "mini", "effort": "none"},
             "verdict": "acceptable",
             "rationale": f"Prompt requires only direct recall or a one-line factual answer; no reasoning chain needed for this {domain} {task_type}.",
         },
         {
-            "route": {"model_tier": "Haiku", "effort": "low"},
+            "route": {"model_tier": "mini", "effort": "low"},
             "verdict": "overkill",
             "rationale": f"Allocating thinking budget for this {domain} {task_type} adds latency without improving the answer quality.",
         },
         {
-            "route": {"model_tier": "Sonnet", "effort": "low"},
+            "route": {"model_tier": "core", "effort": "low"},
             "verdict": "overkill",
             "rationale": f"A larger model is unnecessary; the answer is a single well-known fact about {domain}.",
         },
@@ -377,19 +377,19 @@ def make_judgment_haiku_none(domain, task_type):
 def make_judgment_haiku_low(prompt_text, domain, task_type):
     return [
         {
-            "route": {"model_tier": "Haiku", "effort": "none"},
+            "route": {"model_tier": "mini", "effort": "none"},
             "verdict": "insufficient",
             "rationale": f"Zero-effort mode skips the brief scan needed to locate and apply this small {domain} {task_type} correctly.",
         },
         {
-            "route": {"model_tier": "Haiku", "effort": "low"},
+            "route": {"model_tier": "mini", "effort": "low"},
             "verdict": "acceptable",
             "rationale": f"A small model with minimal thinking budget is enough to complete this isolated {domain} {task_type} without broader context.",
         },
         {
-            "route": {"model_tier": "Sonnet", "effort": "low"},
+            "route": {"model_tier": "core", "effort": "low"},
             "verdict": "overkill",
-            "rationale": f"A mid-tier model provides no correctness benefit over Haiku for this straightforward {domain} {task_type}.",
+            "rationale": f"A mid-tier model provides no correctness benefit over mini for this straightforward {domain} {task_type}.",
         },
     ]
 
@@ -397,17 +397,17 @@ def make_judgment_haiku_low(prompt_text, domain, task_type):
 def make_judgment_sonnet_low(prompt_text, domain, task_type):
     return [
         {
-            "route": {"model_tier": "Haiku", "effort": "low"},
+            "route": {"model_tier": "mini", "effort": "low"},
             "verdict": "insufficient",
-            "rationale": f"Haiku lacks the code-reading depth to confidently handle this {domain} {task_type} without missing context-dependent details.",
+            "rationale": f"mini lacks the code-reading depth to confidently handle this {domain} {task_type} without missing context-dependent details.",
         },
         {
-            "route": {"model_tier": "Sonnet", "effort": "low"},
+            "route": {"model_tier": "core", "effort": "low"},
             "verdict": "acceptable",
-            "rationale": f"Sonnet with low effort can parse the relevant code context and produce a correct {domain} {task_type} result.",
+            "rationale": f"core with low effort can parse the relevant code context and produce a correct {domain} {task_type} result.",
         },
         {
-            "route": {"model_tier": "Sonnet", "effort": "medium"},
+            "route": {"model_tier": "core", "effort": "medium"},
             "verdict": "overkill",
             "rationale": f"Extended thinking is not required; this {domain} {task_type} is straightforward once the relevant file is in context.",
         },
@@ -417,17 +417,17 @@ def make_judgment_sonnet_low(prompt_text, domain, task_type):
 def make_judgment_sonnet_medium(prompt_text, domain, task_type):
     return [
         {
-            "route": {"model_tier": "Sonnet", "effort": "low"},
+            "route": {"model_tier": "core", "effort": "low"},
             "verdict": "insufficient",
             "rationale": f"Low effort misses the multi-step reasoning needed to fully address this {domain} {task_type} and its edge cases.",
         },
         {
-            "route": {"model_tier": "Sonnet", "effort": "medium"},
+            "route": {"model_tier": "core", "effort": "medium"},
             "verdict": "acceptable",
-            "rationale": f"Medium effort gives Sonnet enough reasoning budget to work through the cross-cutting concerns of this {domain} {task_type}.",
+            "rationale": f"Medium effort gives core enough reasoning budget to work through the cross-cutting concerns of this {domain} {task_type}.",
         },
         {
-            "route": {"model_tier": "Sonnet", "effort": "high"},
+            "route": {"model_tier": "core", "effort": "high"},
             "verdict": "overkill",
             "rationale": f"High-effort extended thinking adds cost without correctness gain for this bounded {domain} {task_type}.",
         },
@@ -437,17 +437,17 @@ def make_judgment_sonnet_medium(prompt_text, domain, task_type):
 def make_judgment_sonnet_high(prompt_text, domain, task_type):
     return [
         {
-            "route": {"model_tier": "Sonnet", "effort": "medium"},
+            "route": {"model_tier": "core", "effort": "medium"},
             "verdict": "insufficient",
             "rationale": f"Medium effort does not provide enough reasoning depth for this complex {domain} {task_type} spanning multiple components.",
         },
         {
-            "route": {"model_tier": "Sonnet", "effort": "high"},
+            "route": {"model_tier": "core", "effort": "high"},
             "verdict": "acceptable",
-            "rationale": f"High-effort Sonnet can sustain the extended analysis required for this large-scope {domain} {task_type}.",
+            "rationale": f"High-effort core can sustain the extended analysis required for this large-scope {domain} {task_type}.",
         },
         {
-            "route": {"model_tier": "Opus", "effort": "medium"},
+            "route": {"model_tier": "large", "effort": "medium"},
             "verdict": "overkill",
             "rationale": f"Top-tier architectural reasoning is not required; the complexity of this {domain} {task_type} is bounded and well-specified.",
         },
@@ -464,7 +464,7 @@ def build_rows():
     def make_family(label):
         return f"fam-genH-{label}"
 
-    # -- Haiku/none (100 rows) --
+    # -- mini/none (100 rows) --
     bank = list(HAIKU_NONE_BANK)
     for i, (prompt, domain, task_type, ambiguity) in enumerate(bank[:100]):
         fam_slug = prompt.split()[2:5]
@@ -477,7 +477,7 @@ def build_rows():
             "domain": domain,
             "task_type": task_type,
             "ambiguity": ambiguity,
-            "cheapest_acceptable_route": {"model_tier": "Haiku", "effort": "none"},
+            "cheapest_acceptable_route": {"model_tier": "mini", "effort": "none"},
             "complexity_tier": "low",
             "route_judgments": make_judgment_haiku_none(domain, task_type),
             "provenance": PROVENANCE,
@@ -485,7 +485,7 @@ def build_rows():
         })
         counter += 1
 
-    # -- Haiku/low (50 rows) --
+    # -- mini/low (50 rows) --
     bank = list(HAIKU_LOW_BANK)
     for i, (prompt, domain, task_type, ambiguity) in enumerate(bank[:50]):
         fam_slug = prompt.split()[1:4]
@@ -498,7 +498,7 @@ def build_rows():
             "domain": domain,
             "task_type": task_type,
             "ambiguity": ambiguity,
-            "cheapest_acceptable_route": {"model_tier": "Haiku", "effort": "low"},
+            "cheapest_acceptable_route": {"model_tier": "mini", "effort": "low"},
             "complexity_tier": "low",
             "route_judgments": make_judgment_haiku_low(prompt, domain, task_type),
             "provenance": PROVENANCE,
@@ -506,7 +506,7 @@ def build_rows():
         })
         counter += 1
 
-    # -- Sonnet/low (50 rows) --
+    # -- core/low (50 rows) --
     bank = list(SONNET_LOW_BANK)
     for i, (prompt, domain, task_type, ambiguity) in enumerate(bank[:50]):
         fam_slug = prompt.split()[1:4]
@@ -519,15 +519,15 @@ def build_rows():
             "domain": domain,
             "task_type": task_type,
             "ambiguity": ambiguity,
-            "cheapest_acceptable_route": {"model_tier": "Sonnet", "effort": "low"},
+            "cheapest_acceptable_route": {"model_tier": "core", "effort": "low"},
             "complexity_tier": "low",
             "route_judgments": make_judgment_sonnet_low(prompt, domain, task_type),
             "provenance": PROVENANCE,
-            "notes": "Requires reading code context and applying repo-aware judgment; Sonnet/low is the minimum effective route.",
+            "notes": "Requires reading code context and applying repo-aware judgment; core/low is the minimum effective route.",
         })
         counter += 1
 
-    # -- Sonnet/medium (30 rows) --
+    # -- core/medium (30 rows) --
     bank = list(SONNET_MEDIUM_BANK)
     for i, (prompt, domain, task_type, ambiguity) in enumerate(bank[:30]):
         fam_slug = prompt.split()[1:4]
@@ -540,7 +540,7 @@ def build_rows():
             "domain": domain,
             "task_type": task_type,
             "ambiguity": ambiguity,
-            "cheapest_acceptable_route": {"model_tier": "Sonnet", "effort": "medium"},
+            "cheapest_acceptable_route": {"model_tier": "core", "effort": "medium"},
             "complexity_tier": "mid",
             "route_judgments": make_judgment_sonnet_medium(prompt, domain, task_type),
             "provenance": PROVENANCE,
@@ -548,7 +548,7 @@ def build_rows():
         })
         counter += 1
 
-    # -- Sonnet/high (20 rows) --
+    # -- core/high (20 rows) --
     bank = list(SONNET_HIGH_BANK)
     for i, (prompt, domain, task_type, ambiguity) in enumerate(bank[:20]):
         fam_slug = prompt.split()[1:4]
@@ -561,11 +561,11 @@ def build_rows():
             "domain": domain,
             "task_type": task_type,
             "ambiguity": ambiguity,
-            "cheapest_acceptable_route": {"model_tier": "Sonnet", "effort": "high"},
+            "cheapest_acceptable_route": {"model_tier": "core", "effort": "high"},
             "complexity_tier": "mid",
             "route_judgments": make_judgment_sonnet_high(prompt, domain, task_type),
             "provenance": PROVENANCE,
-            "notes": "Large-scope bounded task requiring sustained analysis; Sonnet/high is sufficient without top-tier strategic reasoning.",
+            "notes": "Large-scope bounded task requiring sustained analysis; core/high is sufficient without top-tier strategic reasoning.",
         })
         counter += 1
 

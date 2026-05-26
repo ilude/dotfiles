@@ -8,7 +8,7 @@
     "task_type": "factual",
     "ambiguity": "clear",
     "cheapest_acceptable_route": {
-      "model_tier": "Haiku",
+      "model_tier": "mini",
       "effort": "low"
     },
     "complexity_tier": "low",
@@ -23,22 +23,22 @@
     "task_type": "analysis",
     "ambiguity": "borderline",
     "cheapest_acceptable_route": {
-      "model_tier": "Sonnet",
+      "model_tier": "core",
       "effort": "medium"
     },
     "route_judgments": [
       {
-        "route": { "model_tier": "Haiku", "effort": "medium" },
+        "route": { "model_tier": "mini", "effort": "medium" },
         "verdict": "insufficient",
         "rationale": "Suggested a single-column index without considering selectivity or the join pattern."
       },
       {
-        "route": { "model_tier": "Sonnet", "effort": "medium" },
+        "route": { "model_tier": "core", "effort": "medium" },
         "verdict": "acceptable",
         "rationale": "Correctly identified composite index candidate, explained partial index for active orders, and noted covering index for the join."
       },
       {
-        "route": { "model_tier": "Opus", "effort": "high" },
+        "route": { "model_tier": "large", "effort": "high" },
         "verdict": "overkill",
         "rationale": "Same indexing guidance as Sonnet plus unrequested VACUUM and autovacuum tuning commentary."
       }
@@ -55,22 +55,22 @@
     "task_type": "design",
     "ambiguity": "clear",
     "cheapest_acceptable_route": {
-      "model_tier": "Sonnet",
+      "model_tier": "core",
       "effort": "high"
     },
     "route_judgments": [
       {
-        "route": { "model_tier": "Haiku", "effort": "high" },
+        "route": { "model_tier": "mini", "effort": "high" },
         "verdict": "insufficient",
         "rationale": "Produced valid YAML but used a single ClusterRole bound at cluster scope, which grants more than the three-namespace requirement."
       },
       {
-        "route": { "model_tier": "Sonnet", "effort": "high" },
+        "route": { "model_tier": "core", "effort": "high" },
         "verdict": "acceptable",
         "rationale": "Used namespace-scoped Roles with RoleBindings per namespace, correct resource/verb pairs for logs and deployment status."
       },
       {
-        "route": { "model_tier": "Opus", "effort": "high" },
+        "route": { "model_tier": "large", "effort": "high" },
         "verdict": "overkill",
         "rationale": "Identical RBAC design plus unrequested OPA/Gatekeeper policy commentary."
       }

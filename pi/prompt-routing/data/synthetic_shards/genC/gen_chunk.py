@@ -48,7 +48,7 @@ rows = []
 n = 0
 
 # ============================================================
-# Sonnet + high (300 rows) -- architecture-adjacent design/review/plan
+# core + high (300 rows) -- architecture-adjacent design/review/plan
 # ============================================================
 
 sonnet_high = [
@@ -285,7 +285,7 @@ sonnet_high = [
 ]
 
 for i, (prompt, domain, task_type, ambiguity) in enumerate(sonnet_high):
-    rows.append(row(n, prompt, domain, task_type, ambiguity, "Sonnet", "high"))
+    rows.append(row(n, prompt, domain, task_type, ambiguity, "core", "high"))
     n += 1
 
 # Pad to exactly 300 if short
@@ -329,7 +329,7 @@ extras_sonnet_high = [
 for prompt, domain, task_type, ambiguity in extras_sonnet_high:
     if n >= 300:
         break
-    rows.append(row(n, prompt, domain, task_type, ambiguity, "Sonnet", "high"))
+    rows.append(row(n, prompt, domain, task_type, ambiguity, "core", "high"))
     n += 1
 
 sonnet_high_filler = [
@@ -378,12 +378,12 @@ sonnet_high_filler = [
 _filler_idx = 0
 while len(rows) < 300:
     item = sonnet_high_filler[_filler_idx % len(sonnet_high_filler)]
-    rows.append(row(n, item[0], item[1], item[2], item[3], "Sonnet", "high"))
+    rows.append(row(n, item[0], item[1], item[2], item[3], "core", "high"))
     n += 1
     _filler_idx += 1
 
 # ============================================================
-# Opus + low (150 rows) -- complex reasoning but small scope
+# large + low (150 rows) -- complex reasoning but small scope
 # ============================================================
 
 opus_low = [
@@ -519,12 +519,12 @@ opus_low = [
 ]
 
 for i, (prompt, domain, task_type, ambiguity) in enumerate(opus_low):
-    if len([r for r in rows if r["cheapest_acceptable_route"]["model_tier"] == "Opus" and r["cheapest_acceptable_route"]["effort"] == "low"]) >= 150:
+    if len([r for r in rows if r["cheapest_acceptable_route"]["model_tier"] == "large" and r["cheapest_acceptable_route"]["effort"] == "low"]) >= 150:
         break
-    rows.append(row(n, prompt, domain, task_type, ambiguity, "Opus", "low"))
+    rows.append(row(n, prompt, domain, task_type, ambiguity, "large", "low"))
     n += 1
 
-# fill remaining Opus+low if needed with unique prompts
+# fill remaining large+low if needed with unique prompts
 opus_low_fillers = [
     ("Latency vs. durability in distributed consensus: for a financial write workload, which takes priority? Justify with a failure scenario.", "formal_reasoning", "analysis", "borderline"),
     ("Throughput vs. consistency in a replicated key-value store: for a session cache workload, which trade-off wins and under what access pattern does the answer flip?", "formal_reasoning", "analysis", "borderline"),
@@ -537,18 +537,18 @@ opus_low_fillers = [
     ("Pull vs. push for health check probes in a service mesh: which detects a crashed instance faster and what is the detection latency formula?", "formal_reasoning", "analysis", "clear"),
     ("Short vs. long lease duration for a distributed lock: derive the trade-off in terms of recovery time after lock-holder crash vs. false expiry rate.", "formal_reasoning", "analysis", "borderline"),
 ]
-opus_low_count = len([r for r in rows if r["cheapest_acceptable_route"]["model_tier"] == "Opus" and r["cheapest_acceptable_route"]["effort"] == "low"])
+opus_low_count = len([r for r in rows if r["cheapest_acceptable_route"]["model_tier"] == "large" and r["cheapest_acceptable_route"]["effort"] == "low"])
 _filler2_idx = 0
 fill_id = 9000
 while opus_low_count < 150:
     item = opus_low_fillers[_filler2_idx % len(opus_low_fillers)]
-    rows.append(row(fill_id, item[0], item[1], item[2], item[3], "Opus", "low"))
+    rows.append(row(fill_id, item[0], item[1], item[2], item[3], "large", "low"))
     fill_id += 1
     opus_low_count += 1
     _filler2_idx += 1
 
 # ============================================================
-# Opus + medium (50 rows) -- multi-step complex
+# large + medium (50 rows) -- multi-step complex
 # ============================================================
 
 opus_medium = [
@@ -605,7 +605,7 @@ opus_medium = [
 ]
 
 for i, (prompt, domain, task_type, ambiguity) in enumerate(opus_medium):
-    rows.append(row(n, prompt, domain, task_type, ambiguity, "Opus", "medium"))
+    rows.append(row(n, prompt, domain, task_type, ambiguity, "large", "medium"))
     n += 1
 
 # ============================================================

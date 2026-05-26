@@ -123,9 +123,9 @@ def select_new(candidates: list[dict], existing: set[str], cap: int | None) -> l
 
 def _format_label_block(label: str, prompts: list[str]) -> list[str]:
     label_titles = {
-        "low": "LOW complexity \u2192 Haiku  (from history.jsonl, labeled by Opus)",
-        "mid": "MID complexity \u2192 Sonnet (from history.jsonl, labeled by Opus)",
-        "high": "HIGH complexity \u2192 Opus  (from history.jsonl, labeled by Opus)",
+        "low": "LOW complexity \u2192 mini  (from history.jsonl, labeled by large)",
+        "mid": "MID complexity \u2192 core (from history.jsonl, labeled by large)",
+        "high": "HIGH complexity \u2192 large  (from history.jsonl, labeled by large)",
     }
     title = label_titles[label]
     lines = [f"\n    # \u2500\u2500 {title} {'-' * max(0, 55 - len(title))}"]

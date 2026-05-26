@@ -1,7 +1,7 @@
 """
 gen.py -- Generate synthetic_shards/genG/chunk.jsonl
 250 rows focused on architecture/security/reliability tradeoffs.
-Route distribution: 200 Opus/medium, 30 Sonnet/high, 20 Opus/high.
+Route distribution: 200 large/medium, 30 core/high, 20 large/high.
 """
 
 import json
@@ -19,7 +19,7 @@ PROVENANCE = {
 }
 
 # ---------------------------------------------------------------------------
-# Template banks for Opus/medium (200 rows)
+# Template banks for large/medium (200 rows)
 # Each entry: prompt, family_id suffix, domain, task_type, ambiguity,
 #             complexity_tier, insufficient_rationale, acceptable_rationale,
 #             overkill_rationale, notes
@@ -43,7 +43,7 @@ OPUS_MED_TEMPLATES = [
         "ins_rationale": "Suggested revoking the old key immediately, missing the in-flight token grace window and the need for a multi-key verification step.",
         "acc_rationale": "Identified the dual-key overlap pattern, explained how to embed kid (key ID) in the JWT header, and described the grace-period revocation sequence.",
         "overkill_rationale": "Added unsolicited advice on migrating from HMAC to RSA signing and redesigning the token issuance pipeline beyond the rotation scope.",
-        "notes": "Opus/medium: dual-key overlap design spans auth and infra but is a well-bounded architectural pattern.",
+        "notes": "large/medium: dual-key overlap design spans auth and infra but is a well-bounded architectural pattern.",
     },
     {
         "family": "fam-genG-oauth-token-leak",
@@ -61,7 +61,7 @@ OPUS_MED_TEMPLATES = [
         "ins_rationale": "Described token exposure as a generic 'use HTTPS' issue without tracing the specific referrer-header or history-log leak vector.",
         "acc_rationale": "Identified the specific leak vector (query string vs fragment vs referrer), explained the storage risk, and recommended PKCE with authorization code flow plus HttpOnly cookie storage.",
         "overkill_rationale": "Went beyond the analysis to produce a full OpenID Connect migration plan including provider configuration and SDK swap.",
-        "notes": "Opus/medium: token-leak analysis requires multi-step threat reasoning but the scope is a single auth flow.",
+        "notes": "large/medium: token-leak analysis requires multi-step threat reasoning but the scope is a single auth flow.",
     },
     {
         "family": "fam-genG-secrets-in-env",
@@ -79,7 +79,7 @@ OPUS_MED_TEMPLATES = [
         "ins_rationale": "Flagged the plaintext credential as a generic 'move to secrets manager' recommendation without tracing the specific exposure: image layer history, CI log scraping, or state file access.",
         "acc_rationale": "Identified the specific exposure path (image layer, CI artifact, state file), explained why env vars are visible to all child processes, and provided a concrete secrets-injection pattern using Vault or cloud-native secrets manager.",
         "overkill_rationale": "Added an unrequested audit of all other secrets handling across the codebase and a proposed secrets governance policy.",
-        "notes": "Opus/medium: secrets exposure review is a focused threat analysis with concrete remediation steps.",
+        "notes": "large/medium: secrets exposure review is a focused threat analysis with concrete remediation steps.",
     },
     {
         "family": "fam-genG-api-rate-limiting",
@@ -115,7 +115,7 @@ OPUS_MED_TEMPLATES = [
         "ins_rationale": "Described TLS termination at the ingress without addressing east-west mTLS or the cert rotation lifecycle between services.",
         "acc_rationale": "Explained SPIFFE/SVID identity, described short-lived cert issuance by a mesh CA, addressed the rotation window and what happens during control-plane unavailability.",
         "overkill_rationale": "Added a full PKI hierarchy design with offline root CA and intermediate CA chain beyond what a service mesh implementation requires.",
-        "notes": "Opus/medium: mTLS cert lifecycle design is architectural reasoning within a bounded service mesh scope.",
+        "notes": "large/medium: mTLS cert lifecycle design is architectural reasoning within a bounded service mesh scope.",
     },
     {
         "family": "fam-genG-sql-injection-review",
@@ -133,7 +133,7 @@ OPUS_MED_TEMPLATES = [
         "ins_rationale": "Flagged the concatenation pattern as dangerous without tracing the specific injection vector or explaining how an attacker would craft a payload to extract data.",
         "acc_rationale": "Traced the specific injectable parameter, explained the exfiltration path (UNION-based or error-based), and provided a concrete parameterized query rewrite.",
         "overkill_rationale": "Extended the review to cover the entire codebase with an automated SAST scan recommendation and a data classification policy.",
-        "notes": "Opus/medium: SQL injection review requires following the data flow but is scoped to the identified functions.",
+        "notes": "large/medium: SQL injection review requires following the data flow but is scoped to the identified functions.",
     },
     {
         "family": "fam-genG-zero-trust-network",
@@ -169,7 +169,7 @@ OPUS_MED_TEMPLATES = [
         "ins_rationale": "Described CORS as a browser-enforced mechanism without analyzing the specific misconfiguration vector or how a reflective Origin policy enables cross-site request forgery.",
         "acc_rationale": "Identified the specific misconfiguration (wildcard with credentials, reflective Origin, or subdomain regex), traced the attack path, and provided the correct restrictive policy.",
         "overkill_rationale": "Added a full Content-Security-Policy and SameSite cookie audit beyond the CORS analysis scope.",
-        "notes": "Opus/medium: CORS misconfiguration analysis is a focused security review with a clear attack path to trace.",
+        "notes": "large/medium: CORS misconfiguration analysis is a focused security review with a clear attack path to trace.",
     },
     # --- architecture ---
     {
@@ -206,7 +206,7 @@ OPUS_MED_TEMPLATES = [
         "ins_rationale": "Described failover as a DNS change without addressing database promotion, replication lag RPO, or the split-brain risk during a partition.",
         "acc_rationale": "Explained the replication lag RPO window, described the database promotion sequence with fencing, outlined the DNS TTL considerations for RTO, and addressed split-brain prevention.",
         "overkill_rationale": "Added an unrequested global load balancer design and a full chaos engineering test plan for the failover.",
-        "notes": "Opus/medium: multi-region failover design requires reasoning about consistency, fencing, and DNS but is a standard HA pattern.",
+        "notes": "large/medium: multi-region failover design requires reasoning about consistency, fencing, and DNS but is a standard HA pattern.",
     },
     {
         "family": "fam-genG-db-schema-migration",
@@ -224,7 +224,7 @@ OPUS_MED_TEMPLATES = [
         "ins_rationale": "Suggested running ALTER TABLE directly, missing the lock-timeout risk on large tables and the need for a multi-phase backfill approach.",
         "acc_rationale": "Described the expand/contract pattern, explained how to backfill in batches with lock_timeout guards, and outlined the deployment sequencing for each phase.",
         "overkill_rationale": "Added an unrequested analysis of the entire migration toolchain including Flyway vs Liquibase vs custom scripts.",
-        "notes": "Opus/medium: zero-downtime migration planning requires multi-step reasoning across schema, application, and deployment phases.",
+        "notes": "large/medium: zero-downtime migration planning requires multi-step reasoning across schema, application, and deployment phases.",
     },
     {
         "family": "fam-genG-cache-invalidation",
@@ -260,7 +260,7 @@ OPUS_MED_TEMPLATES = [
         "ins_rationale": "Described a simple queue with retries without addressing idempotency, visibility timeout for long jobs, or backpressure when producers outpace consumers.",
         "acc_rationale": "Explained idempotent job design using deduplication keys, addressed visibility timeout extension for long jobs, and described a bounded queue with producer backpressure.",
         "overkill_rationale": "Added a full distributed tracing integration for every job hop and a multi-queue priority scheduling design beyond the stated requirements.",
-        "notes": "Opus/medium: job queue design with reliability guarantees is a standard distributed systems pattern.",
+        "notes": "large/medium: job queue design with reliability guarantees is a standard distributed systems pattern.",
     },
     {
         "family": "fam-genG-api-versioning",
@@ -296,7 +296,7 @@ OPUS_MED_TEMPLATES = [
         "ins_rationale": "Described a dual-write pattern without addressing the atomicity gap between the database write and the broker publish, which is the exact problem the outbox solves.",
         "acc_rationale": "Explained the outbox as a within-transaction table write, described the relay process (polling vs CDC), addressed the at-least-once delivery with consumer-side deduplication.",
         "overkill_rationale": "Added an unsolicited comparison of CDC tools (Debezium vs custom WAL reader) and a full Kafka topic configuration guide.",
-        "notes": "Opus/medium: outbox pattern design requires understanding distributed transaction semantics but is a bounded architectural pattern.",
+        "notes": "large/medium: outbox pattern design requires understanding distributed transaction semantics but is a bounded architectural pattern.",
     },
     {
         "family": "fam-genG-service-discovery",
@@ -314,7 +314,7 @@ OPUS_MED_TEMPLATES = [
         "ins_rationale": "Described service discovery as registering an IP in a key-value store without addressing TTL eviction, split-brain during partition, or what callers should do when the registry is down.",
         "acc_rationale": "Explained TTL-based eviction with active health checks, compared client-side vs server-side discovery, and described the stale-cache fallback policy for registry unavailability.",
         "overkill_rationale": "Added an unsolicited service mesh vendor comparison and a full eBPF-based network observability layer.",
-        "notes": "Opus/medium: service discovery design with failure modes is a standard distributed systems topic.",
+        "notes": "large/medium: service discovery design with failure modes is a standard distributed systems topic.",
     },
     {
         "family": "fam-genG-db-connection-pooling",
@@ -332,7 +332,7 @@ OPUS_MED_TEMPLATES = [
         "ins_rationale": "Recommended increasing max_connections without addressing the memory cost per connection or the need for a pooler to multiplex at the application tier.",
         "acc_rationale": "Explained PgBouncer transaction-mode pooling, addressed the prepared-statement incompatibility, and sized the pool using the request rate and hold-time estimate.",
         "overkill_rationale": "Added an unsolicited Citus sharding recommendation and a full database topology redesign.",
-        "notes": "Opus/medium: connection pool design requires quantitative reasoning about concurrency but is a bounded infrastructure problem.",
+        "notes": "large/medium: connection pool design requires quantitative reasoning about concurrency but is a bounded infrastructure problem.",
     },
     {
         "family": "fam-genG-saga-pattern",
@@ -368,7 +368,7 @@ OPUS_MED_TEMPLATES = [
         "ins_rationale": "Recommended adding more collector nodes without addressing the synchronous blocking issue, buffer overflow during spikes, or the sampling strategy for high-cardinality traces.",
         "acc_rationale": "Described async buffered shipping with head/tail sampling, explained sidecar vs shared aggregator resource tradeoffs, and addressed backpressure to prevent OOM.",
         "overkill_rationale": "Added an unsolicited OpenTelemetry collector DAG design and a full vendor evaluation for the trace storage backend.",
-        "notes": "Opus/medium: observability pipeline design requires reasoning about reliability and resource bounds.",
+        "notes": "large/medium: observability pipeline design requires reasoning about reliability and resource bounds.",
     },
     {
         "family": "fam-genG-cdn-cache-strategy",
@@ -386,7 +386,7 @@ OPUS_MED_TEMPLATES = [
         "ins_rationale": "Recommended caching everything with a short TTL without differentiating authenticated vs anonymous responses or addressing the cache-key design for personalized content.",
         "acc_rationale": "Explained Cache-Control directives for authenticated vs public endpoints, described path-based and tag-based purge strategies, and addressed Vary header impact on cache efficiency.",
         "overkill_rationale": "Added an unsolicited multi-CDN failover design and an edge-compute function architecture.",
-        "notes": "Opus/medium: CDN cache strategy requires reasoning about cache keys, TTLs, and purge paths.",
+        "notes": "large/medium: CDN cache strategy requires reasoning about cache keys, TTLs, and purge paths.",
     },
     {
         "family": "fam-genG-distributed-locking",
@@ -422,7 +422,7 @@ OPUS_MED_TEMPLATES = [
         "ins_rationale": "Described replication lag as a network latency issue without tracing the WAL replay backlog, the read-your-own-writes problem, or the application routing strategies.",
         "acc_rationale": "Explained WAL apply lag under write load, described read-after-write routing using session affinity or a version token, and addressed replica-only delayed reporting use cases.",
         "overkill_rationale": "Added an unrequested migration plan to a distributed SQL database to eliminate replication lag entirely.",
-        "notes": "Opus/medium: replication lag analysis requires understanding WAL mechanics and application-level routing strategies.",
+        "notes": "large/medium: replication lag analysis requires understanding WAL mechanics and application-level routing strategies.",
     },
     {
         "family": "fam-genG-iam-privilege-escalation",
@@ -440,7 +440,7 @@ OPUS_MED_TEMPLATES = [
         "ins_rationale": "Flagged the overly permissive policy without tracing the specific escalation path or explaining which combination of actions enables admin access.",
         "acc_rationale": "Traced the specific privilege escalation chain (PassRole to RunInstances with admin role, or CreatePolicyVersion to attach admin policy), explained the blast radius, and recommended the remediation.",
         "overkill_rationale": "Added an unsolicited full IAM audit framework and a proposed SCP organization-level guardrail design.",
-        "notes": "Opus/medium: IAM escalation path analysis requires following a multi-step attack chain within a focused scope.",
+        "notes": "large/medium: IAM escalation path analysis requires following a multi-step attack chain within a focused scope.",
     },
     {
         "family": "fam-genG-grpc-load-balancing",
@@ -458,7 +458,7 @@ OPUS_MED_TEMPLATES = [
         "ins_rationale": "Recommended round-robin at the TCP level without explaining why connection-level balancing fails for HTTP/2 multiplexed streams.",
         "acc_rationale": "Explained HTTP/2 stream multiplexing on a single connection, described L7 proxy-based or client-side request-level balancing, and addressed gRPC health protocol integration.",
         "overkill_rationale": "Added an unsolicited service mesh adoption plan and an Envoy xDS configuration deep-dive.",
-        "notes": "Opus/medium: gRPC load balancing requires understanding HTTP/2 connection semantics but is a focused infrastructure design.",
+        "notes": "large/medium: gRPC load balancing requires understanding HTTP/2 connection semantics but is a focused infrastructure design.",
     },
     {
         "family": "fam-genG-encryption-at-rest",
@@ -476,7 +476,7 @@ OPUS_MED_TEMPLATES = [
         "ins_rationale": "Described encryption as enabling AES-256 at the storage tier without addressing per-tenant key isolation, envelope encryption, or the CMEK revocation risk.",
         "acc_rationale": "Explained envelope encryption (DEK wrapped by KEK), described per-tenant key hierarchy, addressed CMEK revocation implications and key rotation via DEK re-wrapping.",
         "overkill_rationale": "Added an unsolicited HSM hardware procurement recommendation and a FIPS 140-2 compliance certification path.",
-        "notes": "Opus/medium: envelope encryption key design is a multi-step architectural problem within a security domain.",
+        "notes": "large/medium: envelope encryption key design is a multi-step architectural problem within a security domain.",
     },
     {
         "family": "fam-genG-circuit-breaker",
@@ -494,7 +494,7 @@ OPUS_MED_TEMPLATES = [
         "ins_rationale": "Described a circuit breaker as 'stop calling the service when it fails' without addressing threshold tuning, the half-open probe state, or the fallback behavior strategy.",
         "acc_rationale": "Explained the closed/open/half-open state machine, described error-rate and latency thresholds with sliding windows, and designed a fallback response policy.",
         "overkill_rationale": "Added an unsolicited bulkhead and rate-limiter design for the entire dependency graph beyond the single downstream service.",
-        "notes": "Opus/medium: circuit breaker design with threshold tuning and fallback policy is a focused reliability pattern.",
+        "notes": "large/medium: circuit breaker design with threshold tuning and fallback policy is a focused reliability pattern.",
     },
     {
         "family": "fam-genG-slo-error-budget",
@@ -530,7 +530,7 @@ OPUS_MED_TEMPLATES = [
         "ins_rationale": "Recommended auto-scaling without addressing the admission control needed during the scale-out lag window or the priority ordering for shedding.",
         "acc_rationale": "Described priority-based admission control using request metadata, explained queue depth as the shedding signal, and designed backpressure propagation to the edge load balancer.",
         "overkill_rationale": "Added an unsolicited capacity planning model and a full traffic forecasting system design.",
-        "notes": "Opus/medium: load-shedding design requires reasoning about priority, admission control, and backpressure propagation.",
+        "notes": "large/medium: load-shedding design requires reasoning about priority, admission control, and backpressure propagation.",
     },
     {
         "family": "fam-genG-chaos-engineering",
@@ -566,7 +566,7 @@ OPUS_MED_TEMPLATES = [
         "ins_rationale": "Described an audit log as a database table with a created_at timestamp without addressing immutability, tamper-evidence via hash chaining, or the access control separation.",
         "acc_rationale": "Described append-only storage with hash chaining for tamper evidence, explained the access control separation between auditors and developers, and addressed retention and queryability requirements.",
         "overkill_rationale": "Added an unsolicited blockchain-based audit log design and a full SOC 2 compliance program outline.",
-        "notes": "Opus/medium: tamper-evident audit log design with access control is a bounded compliance-driven architecture problem.",
+        "notes": "large/medium: tamper-evident audit log design with access control is a bounded compliance-driven architecture problem.",
     },
     {
         "family": "fam-genG-pii-data-handling",
@@ -602,7 +602,7 @@ OPUS_MED_TEMPLATES = [
         "ins_rationale": "Described rate limiting bypass as 'use multiple IPs' without analyzing the specific signal weakness, the botnet distribution pattern, or the alternative signals available.",
         "acc_rationale": "Traced the specific bypass path (botnet, cloud IPs, phone enumeration), identified the missing signals (device fingerprint, behavioral patterns), and recommended a layered signal design.",
         "overkill_rationale": "Added an unsolicited fraud detection ML model design and a full account takeover prevention program.",
-        "notes": "Opus/medium: rate limit bypass analysis requires tracing the specific attack vector and evaluating signal alternatives.",
+        "notes": "large/medium: rate limit bypass analysis requires tracing the specific attack vector and evaluating signal alternatives.",
     },
     {
         "family": "fam-genG-blue-green-deploy",
@@ -620,12 +620,12 @@ OPUS_MED_TEMPLATES = [
         "ins_rationale": "Described blue-green as switching the load balancer without addressing the shared database schema compatibility problem or the rollback constraints after data mutations.",
         "acc_rationale": "Described the expand-migrate-contract pattern for backward-compatible migrations, addressed the rollback constraint after irreversible mutations, and defined health-gate metrics for promotion.",
         "overkill_rationale": "Added an unsolicited full GitOps pipeline design and a feature flag system for granular traffic control.",
-        "notes": "Opus/medium: blue-green deployment planning with database migration compatibility is a multi-step operations design.",
+        "notes": "large/medium: blue-green deployment planning with database migration compatibility is a multi-step operations design.",
     },
 ]
 
 # ---------------------------------------------------------------------------
-# Template banks for Sonnet/high (30 rows)
+# Template banks for core/high (30 rows)
 # ---------------------------------------------------------------------------
 
 SONNET_HIGH_TEMPLATES = [
@@ -645,7 +645,7 @@ SONNET_HIGH_TEMPLATES = [
         "ins_rationale": "Described Kubernetes limits as a simple cap to set without addressing JVM heap vs container memory overhead, the OOMKill startup window, or CPU throttling under burstable QoS.",
         "acc_rationale": "Explained the request/limit distinction, JVM heap to container memory ratio, CPU throttling under burstable QoS, and designed a resource quota for multi-tenant fairness.",
         "overkill_rationale": "Same guidance plus unsolicited vertical pod autoscaler configuration and a full cluster capacity planning analysis.",
-        "notes": "Sonnet/high: Kubernetes resource tuning is a well-structured problem requiring multi-field reasoning but not deep architectural tradeoffs.",
+        "notes": "core/high: Kubernetes resource tuning is a well-structured problem requiring multi-field reasoning but not deep architectural tradeoffs.",
     },
     {
         "family": "fam-genG-tls-cert-pinning",
@@ -663,7 +663,7 @@ SONNET_HIGH_TEMPLATES = [
         "ins_rationale": "Described cert pinning as a simple security improvement without analyzing the rotation operational overhead, the backup-pin requirement, or the CA compromise protection it actually provides.",
         "acc_rationale": "Explained pin hash rotation, backup pin requirement, HPKP deprecation context, and analyzed whether the CA compromise protection is relevant to the stated threat model.",
         "overkill_rationale": "Same analysis plus an unrequested deep dive into building a private CA and a client certificate mutual authentication system.",
-        "notes": "Sonnet/high: cert pinning tradeoff analysis is a focused security review requiring multi-step reasoning about operational risk.",
+        "notes": "core/high: cert pinning tradeoff analysis is a focused security review requiring multi-step reasoning about operational risk.",
     },
     {
         "family": "fam-genG-postgres-vacuum",
@@ -681,7 +681,7 @@ SONNET_HIGH_TEMPLATES = [
         "ins_rationale": "Described autovacuum tuning as increasing cost-delay without tracing the specific cause (long transaction blocking dead tuple reclaim, TOAST storage, XID wraparound risk).",
         "acc_rationale": "Traced the specific bloat cause, explained the long-transaction dead-tuple lock, addressed TOAST and XID wraparound scenarios, and recommended targeted autovacuum knobs.",
         "overkill_rationale": "Same analysis plus an unsolicited recommendation to migrate the table to a partitioned heap to reduce vacuum scope.",
-        "notes": "Sonnet/high: autovacuum analysis is a well-scoped database problem requiring multi-step diagnosis.",
+        "notes": "core/high: autovacuum analysis is a well-scoped database problem requiring multi-step diagnosis.",
     },
     {
         "family": "fam-genG-http-caching-headers",
@@ -699,7 +699,7 @@ SONNET_HIGH_TEMPLATES = [
         "ins_rationale": "Flagged inconsistent Cache-Control values without distinguishing the no-cache vs no-store semantics or identifying which specific endpoints are miscategorized.",
         "acc_rationale": "Correctly distinguished no-cache from no-store, identified which endpoints contain personal data vs public data, and provided correct directives for each category.",
         "overkill_rationale": "Same review plus an unsolicited full HTTP caching strategy redesign including surrogate keys and CDN vendor configuration.",
-        "notes": "Sonnet/high: HTTP cache header review is a focused technical analysis with well-defined correct answers.",
+        "notes": "core/high: HTTP cache header review is a focused technical analysis with well-defined correct answers.",
     },
     {
         "family": "fam-genG-webhook-reliability",
@@ -717,7 +717,7 @@ SONNET_HIGH_TEMPLATES = [
         "ins_rationale": "Described webhook delivery as HTTP POST with a retry loop without addressing per-consumer queue isolation, idempotency keys, or HMAC signature verification.",
         "acc_rationale": "Described per-consumer isolation queues, explained idempotency key deduplication at the consumer, designed exponential backoff with a dead-letter path, and described HMAC signature scheme.",
         "overkill_rationale": "Same design plus an unrequested streaming event bus architecture replacing webhooks entirely.",
-        "notes": "Sonnet/high: webhook reliability design is a well-scoped problem with established patterns.",
+        "notes": "core/high: webhook reliability design is a well-scoped problem with established patterns.",
     },
     {
         "family": "fam-genG-docker-image-hardening",
@@ -735,12 +735,12 @@ SONNET_HIGH_TEMPLATES = [
         "ins_rationale": "Flagged the root user and mutable tag without explaining the specific attack surface (layer secret persistence, supply chain risk from mutable tags, or namespace escape risk from root).",
         "acc_rationale": "Identified layer secret persistence in multi-stage builds, explained the supply chain risk of mutable tags, described the non-root user pattern and its namespace escape mitigation.",
         "overkill_rationale": "Same review plus an unsolicited container signing and SBOM generation pipeline design.",
-        "notes": "Sonnet/high: Dockerfile security review is a focused analysis with concrete, verifiable issues.",
+        "notes": "core/high: Dockerfile security review is a focused analysis with concrete, verifiable issues.",
     },
 ]
 
 # ---------------------------------------------------------------------------
-# Template banks for Opus/high (20 rows)
+# Template banks for large/high (20 rows)
 # ---------------------------------------------------------------------------
 
 OPUS_HIGH_TEMPLATES = [
@@ -760,7 +760,7 @@ OPUS_HIGH_TEMPLATES = [
         "ins1_rationale": "Described global consensus as 'just replicate to all regions' without addressing linearizability guarantees, the CAP tradeoff under partition, or the latency cost of cross-region quorum.",
         "ins2_rationale": "Addressed basic Raft/Paxos concepts but did not model the specific latency vs consistency tradeoff for three-region quorum writes or the double-spend prevention constraint.",
         "acc_rationale": "Analyzed Raft/Paxos correctness guarantees under partition, quantified quorum latency for three regions, designed the write path with explicit consistency semantics, and addressed double-spend fencing.",
-        "notes": "Opus/high: global consensus design for financial systems requires deep formal reasoning about distributed correctness under partition.",
+        "notes": "large/high: global consensus design for financial systems requires deep formal reasoning about distributed correctness under partition.",
     },
     {
         "family": "fam-genG-threat-model-full",
@@ -778,7 +778,7 @@ OPUS_HIGH_TEMPLATES = [
         "ins1_rationale": "Listed common threats generically (injection, broken auth) without tracing them to specific trust boundaries or data flows in the described system.",
         "ins2_rationale": "Identified some trust boundaries but did not complete the STRIDE analysis across all threat categories or quantify residual risk after mitigations.",
         "acc_rationale": "Enumerated trust boundaries and data flows, applied all six STRIDE categories to each boundary, ranked threats by likelihood and impact, and specified concrete mitigations with residual risk.",
-        "notes": "Opus/high: full STRIDE threat modeling across a complex system requires sustained multi-step security reasoning beyond what Opus/medium provides.",
+        "notes": "large/high: full STRIDE threat modeling across a complex system requires sustained multi-step security reasoning beyond what large/medium provides.",
     },
     {
         "family": "fam-genG-compliance-architecture",
@@ -796,7 +796,7 @@ OPUS_HIGH_TEMPLATES = [
         "ins1_rationale": "Described compliance as enabling encryption and logging without mapping controls to specific trust service criteria or regulation requirements.",
         "ins2_rationale": "Addressed encryption and audit logging but did not cover access control, vendor management, change management controls, or the authorization boundary definition required by the framework.",
         "acc_rationale": "Mapped specific technical controls to each trust service criterion or regulation requirement, designed the authorization boundary, addressed all required control families, and outlined continuous monitoring.",
-        "notes": "Opus/high: full compliance architecture spanning multiple control families requires deep regulatory knowledge and sustained architectural reasoning.",
+        "notes": "large/high: full compliance architecture spanning multiple control families requires deep regulatory knowledge and sustained architectural reasoning.",
     },
     {
         "family": "fam-genG-adversarial-resilience",
@@ -814,7 +814,7 @@ OPUS_HIGH_TEMPLATES = [
         "ins1_rationale": "Described defense-in-depth as adding a WAF and network segmentation without modeling the insider threat or the breached-perimeter assumption.",
         "ins2_rationale": "Added segmentation and access controls but did not address the hardware enclave or proxy tokenization pattern needed to protect data from the application tier itself.",
         "acc_rationale": "Modeled the insider and breached-perimeter threat, designed hardware enclave or tokenization for data in use, described the two-person integrity control for CI/CD, and addressed east-west per-request authorization.",
-        "notes": "Opus/high: adversarial resilience design under a sophisticated threat model requires deep security architecture reasoning.",
+        "notes": "large/high: adversarial resilience design under a sophisticated threat model requires deep security architecture reasoning.",
     },
 ]
 
@@ -834,21 +834,21 @@ def make_opus_med_row(prompt_id: str, template: dict, prompt: str) -> dict:
         "domain": template["domain"],
         "task_type": template["task_type"],
         "ambiguity": template["ambiguity"],
-        "cheapest_acceptable_route": {"model_tier": "Opus", "effort": "medium"},
+        "cheapest_acceptable_route": {"model_tier": "large", "effort": "medium"},
         "complexity_tier": template["complexity_tier"],
         "route_judgments": [
             {
-                "route": {"model_tier": "Sonnet", "effort": "high"},
+                "route": {"model_tier": "core", "effort": "high"},
                 "verdict": "insufficient",
                 "rationale": template["ins_rationale"],
             },
             {
-                "route": {"model_tier": "Opus", "effort": "medium"},
+                "route": {"model_tier": "large", "effort": "medium"},
                 "verdict": "acceptable",
                 "rationale": template["acc_rationale"],
             },
             {
-                "route": {"model_tier": "Opus", "effort": "high"},
+                "route": {"model_tier": "large", "effort": "high"},
                 "verdict": "overkill",
                 "rationale": template["overkill_rationale"],
             },
@@ -867,21 +867,21 @@ def make_sonnet_high_row(prompt_id: str, template: dict, prompt: str) -> dict:
         "domain": template["domain"],
         "task_type": template["task_type"],
         "ambiguity": template["ambiguity"],
-        "cheapest_acceptable_route": {"model_tier": "Sonnet", "effort": "high"},
+        "cheapest_acceptable_route": {"model_tier": "core", "effort": "high"},
         "complexity_tier": template["complexity_tier"],
         "route_judgments": [
             {
-                "route": {"model_tier": "Sonnet", "effort": "medium"},
+                "route": {"model_tier": "core", "effort": "medium"},
                 "verdict": "insufficient",
                 "rationale": template["ins_rationale"],
             },
             {
-                "route": {"model_tier": "Sonnet", "effort": "high"},
+                "route": {"model_tier": "core", "effort": "high"},
                 "verdict": "acceptable",
                 "rationale": template["acc_rationale"],
             },
             {
-                "route": {"model_tier": "Opus", "effort": "medium"},
+                "route": {"model_tier": "large", "effort": "medium"},
                 "verdict": "overkill",
                 "rationale": template["overkill_rationale"],
             },
@@ -900,21 +900,21 @@ def make_opus_high_row(prompt_id: str, template: dict, prompt: str) -> dict:
         "domain": template["domain"],
         "task_type": template["task_type"],
         "ambiguity": template["ambiguity"],
-        "cheapest_acceptable_route": {"model_tier": "Opus", "effort": "high"},
+        "cheapest_acceptable_route": {"model_tier": "large", "effort": "high"},
         "complexity_tier": template["complexity_tier"],
         "route_judgments": [
             {
-                "route": {"model_tier": "Sonnet", "effort": "high"},
+                "route": {"model_tier": "core", "effort": "high"},
                 "verdict": "insufficient",
                 "rationale": template["ins1_rationale"],
             },
             {
-                "route": {"model_tier": "Opus", "effort": "medium"},
+                "route": {"model_tier": "large", "effort": "medium"},
                 "verdict": "insufficient",
                 "rationale": template["ins2_rationale"],
             },
             {
-                "route": {"model_tier": "Opus", "effort": "high"},
+                "route": {"model_tier": "large", "effort": "high"},
                 "verdict": "acceptable",
                 "rationale": template["acc_rationale"],
             },
@@ -934,7 +934,7 @@ def generate_rows() -> list[dict]:
         counter += 1
         return pid
 
-    # --- Opus/medium: 200 rows ---
+    # --- large/medium: 200 rows ---
     # Cycle through all base prompts from all templates
     all_opus_med_prompts = []
     for tmpl in OPUS_MED_TEMPLATES:
@@ -954,7 +954,7 @@ def generate_rows() -> list[dict]:
         "Thinking through this design: ",
     ]
 
-    # Build 200 Opus/medium rows: use each base prompt once then cycle with prefix variants
+    # Build 200 large/medium rows: use each base prompt once then cycle with prefix variants
     opus_med_queue = list(all_opus_med_prompts)  # 150 items
     # Add 50 more by cycling templates 0..24 with an extra prefix variant
     extra_templates = OPUS_MED_TEMPLATES[:10]
@@ -966,7 +966,7 @@ def generate_rows() -> list[dict]:
         tmpl, prompt = opus_med_queue[i % len(opus_med_queue)]
         rows.append(make_opus_med_row(next_id(), tmpl, prompt))
 
-    # --- Sonnet/high: 30 rows ---
+    # --- core/high: 30 rows ---
     all_sonnet_prompts = []
     for tmpl in SONNET_HIGH_TEMPLATES:
         for p in tmpl["prompts"]:
@@ -976,7 +976,7 @@ def generate_rows() -> list[dict]:
         tmpl, prompt = all_sonnet_prompts[i % len(all_sonnet_prompts)]
         rows.append(make_sonnet_high_row(next_id(), tmpl, prompt))
 
-    # --- Opus/high: 20 rows ---
+    # --- large/high: 20 rows ---
     all_opus_high_prompts = []
     for tmpl in OPUS_HIGH_TEMPLATES:
         for p in tmpl["prompts"]:

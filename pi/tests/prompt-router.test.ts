@@ -192,11 +192,11 @@ describe("applyHysteresis", () => {
 
 describe("safeParseClassifierOutput", () => {
   it("accepts valid v3 JSON", () => {
-    const raw = makeV3Json("Sonnet", "medium", 0.72);
+    const raw = makeV3Json("core", "medium", 0.72);
     const rec = safeParseClassifierOutput(raw);
     expect(rec).not.toBeNull();
     expect(rec!.schema_version).toBe("3.0.0");
-    expect(rec!.primary.model_tier).toBe("Sonnet");
+    expect(rec!.primary.model_tier).toBe("core");
     expect(rec!.primary.effort).toBe("medium");
     expect(rec!.confidence).toBe(0.72);
   });
@@ -215,8 +215,8 @@ describe("safeParseClassifierOutput", () => {
 
   it("rejects missing schema_version", () => {
     const raw = JSON.stringify({
-      primary: { model_tier: "Sonnet", effort: "medium" },
-      candidates: [{ model_tier: "Sonnet", effort: "medium", confidence: 0.8 }],
+      primary: { model_tier: "core", effort: "medium" },
+      candidates: [{ model_tier: "core", effort: "medium", confidence: 0.8 }],
       confidence: 0.8,
     });
     expect(safeParseClassifierOutput(raw)).toBeNull();
@@ -225,8 +225,8 @@ describe("safeParseClassifierOutput", () => {
   it("rejects unknown schema_version", () => {
     const raw = JSON.stringify({
       schema_version: "99.0.0",
-      primary: { model_tier: "Sonnet", effort: "medium" },
-      candidates: [{ model_tier: "Sonnet", effort: "medium", confidence: 0.8 }],
+      primary: { model_tier: "core", effort: "medium" },
+      candidates: [{ model_tier: "core", effort: "medium", confidence: 0.8 }],
       confidence: 0.8,
     });
     expect(safeParseClassifierOutput(raw)).toBeNull();
@@ -235,8 +235,8 @@ describe("safeParseClassifierOutput", () => {
   it("rejects missing primary.effort", () => {
     const raw = JSON.stringify({
       schema_version: "3.0.0",
-      primary: { model_tier: "Sonnet" },
-      candidates: [{ model_tier: "Sonnet", effort: "medium", confidence: 0.8 }],
+      primary: { model_tier: "core" },
+      candidates: [{ model_tier: "core", effort: "medium", confidence: 0.8 }],
       confidence: 0.8,
     });
     expect(safeParseClassifierOutput(raw)).toBeNull();
@@ -246,7 +246,7 @@ describe("safeParseClassifierOutput", () => {
     const raw = JSON.stringify({
       schema_version: "3.0.0",
       primary: { effort: "medium" },
-      candidates: [{ model_tier: "Sonnet", effort: "medium", confidence: 0.8 }],
+      candidates: [{ model_tier: "core", effort: "medium", confidence: 0.8 }],
       confidence: 0.8,
     });
     expect(safeParseClassifierOutput(raw)).toBeNull();
@@ -265,7 +265,7 @@ describe("safeParseClassifierOutput", () => {
   it("rejects empty candidates array", () => {
     const raw = JSON.stringify({
       schema_version: "3.0.0",
-      primary: { model_tier: "Sonnet", effort: "medium" },
+      primary: { model_tier: "core", effort: "medium" },
       candidates: [],
       confidence: 0.8,
     });
@@ -275,8 +275,8 @@ describe("safeParseClassifierOutput", () => {
   it("rejects missing confidence", () => {
     const raw = JSON.stringify({
       schema_version: "3.0.0",
-      primary: { model_tier: "Sonnet", effort: "medium" },
-      candidates: [{ model_tier: "Sonnet", effort: "medium", confidence: 0.8 }],
+      primary: { model_tier: "core", effort: "medium" },
+      candidates: [{ model_tier: "core", effort: "medium", confidence: 0.8 }],
     });
     expect(safeParseClassifierOutput(raw)).toBeNull();
   });
@@ -330,13 +330,13 @@ describe("hysteresis suppresses thrash (legacy; ship-config N_HOLD=0 lets classi
 
     // Feed alternating v3 JSON outputs with the same effort ("medium") so that
     // effort changes don't trigger extra setModel calls -- only tier changes do.
-    // Sequence: Haiku, Opus, Haiku, Opus, Haiku (alternating low/high tier).
+    // Sequence: mini, large, mini, large, mini (alternating low/high tier).
     const sequence = [
-      makeV3Json("Haiku", "medium", 0.9),
-      makeV3Json("Opus", "medium", 0.9),
-      makeV3Json("Haiku", "medium", 0.9),
-      makeV3Json("Opus", "medium", 0.9),
-      makeV3Json("Haiku", "medium", 0.9),
+      makeV3Json("mini", "medium", 0.9),
+      makeV3Json("large", "medium", 0.9),
+      makeV3Json("mini", "medium", 0.9),
+      makeV3Json("large", "medium", 0.9),
+      makeV3Json("mini", "medium", 0.9),
     ];
     for (const json of sequence) {
       (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: json, stderr: "" });
@@ -383,24 +383,24 @@ describe("effort set per tier", () => {
 
     const inputHook = pi._getHook("input")[0];
 
-    // Haiku/low -> ThinkingLevel "low"
-    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Haiku", "low"), stderr: "" });
+    // mini/low -> ThinkingLevel "low"
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("mini", "low"), stderr: "" });
     await inputHook.handler({ text: "what is a variable", source: "user" }, ctx);
     await new Promise((r) => setTimeout(r, 0));
     expect((pi as any).setThinkingLevel).toHaveBeenLastCalledWith("low");
 
-    // Opus/high -> ThinkingLevel "high" (upgrade, applied immediately)
-    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Opus", "high"), stderr: "" });
+    // large/high -> ThinkingLevel "high" (upgrade, applied immediately)
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("large", "high"), stderr: "" });
     await inputHook.handler({ text: "design a distributed system", source: "user" }, ctx);
     await new Promise((r) => setTimeout(r, 0));
     expect((pi as any).setThinkingLevel).toHaveBeenLastCalledWith("high");
 
-    // Verify Sonnet/medium by resetting state first via /router-reset
+    // Verify core/medium by resetting state first via /router-reset
     const resetCmd = pi._commands.find((c) => c.name === "router-reset")!;
     await resetCmd.handler([], ctx);
 
-    // Now feed Sonnet/medium from a low baseline
-    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Sonnet", "medium"), stderr: "" });
+    // Now feed core/medium from a low baseline
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("core", "medium"), stderr: "" });
     await inputHook.handler({ text: "refactor this function", source: "user" }, ctx);
     await new Promise((r) => setTimeout(r, 0));
     expect((pi as any).setThinkingLevel).toHaveBeenLastCalledWith("medium");
@@ -439,13 +439,13 @@ describe("classifier JSON parse -- T4", () => {
 
   it("valid JSON -- router applies the recommendation", async () => {
     const { pi, ctx, inputHook } = setup();
-    const json = makeV3Json("Sonnet", "medium", 0.85);
+    const json = makeV3Json("core", "medium", 0.85);
     (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: json, stderr: "" });
 
     await inputHook.handler({ text: "explain how promises work", source: "user" }, ctx);
     await new Promise((r) => setTimeout(r, 0));
 
-    // Router should have called setModel (Sonnet -> medium -> gpt-5.4-fast)
+    // Router should have called setModel (core -> medium -> gpt-5.4-fast)
     expect((pi as any).setModel).toHaveBeenCalledWith({ provider: "openai-codex", id: "gpt-5.4-fast" });
     expect((pi as any).setThinkingLevel).toHaveBeenLastCalledWith("medium");
   });
@@ -470,8 +470,8 @@ describe("classifier JSON parse -- T4", () => {
     const { pi, ctx, inputHook } = setup();
     const json = JSON.stringify({
       schema_version: "99.0.0",
-      primary: { model_tier: "Sonnet", effort: "medium" },
-      candidates: [{ model_tier: "Sonnet", effort: "medium", confidence: 0.8 }],
+      primary: { model_tier: "core", effort: "medium" },
+      candidates: [{ model_tier: "core", effort: "medium", confidence: 0.8 }],
       confidence: 0.8,
     });
     (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: json, stderr: "" });
@@ -490,8 +490,8 @@ describe("classifier JSON parse -- T4", () => {
     const { pi, ctx, inputHook } = setup();
     const json = JSON.stringify({
       schema_version: "3.0.0",
-      primary: { model_tier: "Sonnet" },
-      candidates: [{ model_tier: "Sonnet", effort: "medium", confidence: 0.8 }],
+      primary: { model_tier: "core" },
+      candidates: [{ model_tier: "core", effort: "medium", confidence: 0.8 }],
       confidence: 0.8,
     });
     (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: json, stderr: "" });
@@ -508,13 +508,13 @@ describe("classifier JSON parse -- T4", () => {
 
   it("setModel AND setThinkingLevel both called with correct args", async () => {
     const { pi, ctx, inputHook } = setup();
-    const json = makeV3Json("Opus", "high", 0.9);
+    const json = makeV3Json("large", "high", 0.9);
     (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: json, stderr: "" });
 
     await inputHook.handler({ text: "design a distributed consensus protocol", source: "user" }, ctx);
     await new Promise((r) => setTimeout(r, 0));
 
-    // Opus -> large -> gpt-5.4
+    // large -> large -> gpt-5.4
     expect((pi as any).setModel).toHaveBeenCalledWith({ provider: "openai-codex", id: "gpt-5.4" });
     expect((pi as any).setThinkingLevel).toHaveBeenCalledWith("high");
   });
@@ -537,8 +537,8 @@ describe("classifier JSON parse -- T4", () => {
     };
     const rec = {
       schema_version: "3.0.0",
-      primary: { model_tier: "Opus", effort: "high" },
-      candidates: [{ model_tier: "Opus", effort: "high", confidence: 0.9 }],
+      primary: { model_tier: "large", effort: "high" },
+      candidates: [{ model_tier: "large", effort: "high", confidence: 0.9 }],
       confidence: 0.9,
     };
     const policy = {
@@ -589,7 +589,7 @@ describe("router-explain command -- T4", () => {
     });
 
     const inputHook = pi._getHook("input")[0];
-    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Sonnet", "medium", 0.75), stderr: "" });
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("core", "medium", 0.75), stderr: "" });
     await inputHook.handler({ text: "explain async/await", source: "user" }, ctx);
     await new Promise((r) => setTimeout(r, 0));
 
@@ -601,7 +601,7 @@ describe("router-explain command -- T4", () => {
     expect(notifyArg).toContain("Rule fired:");
     expect(notifyArg).toContain("Applied route:");
     expect(notifyArg).toContain("Current state:");
-    expect(notifyArg).toContain("Sonnet");
+    expect(notifyArg).toContain("core");
     expect(notifyArg).toContain("3.0.0");
   });
 
@@ -681,7 +681,7 @@ describe("prompt-router extension -- input hook", () => {
 
   it("calls exec for normal user text with configured classifier and routes to a dynamic same-family model", async () => {
     const { pi, inputHook, ctx } = setup();
-    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Sonnet", "medium"), stderr: "" });
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("core", "medium"), stderr: "" });
 
     const result = await inputHook.handler(
       { text: "explain the architecture of this system", source: "user" },
@@ -698,7 +698,7 @@ describe("prompt-router extension -- input hook", () => {
         "python",
         path.join(os.homedir(), ".dotfiles/pi/prompt-routing/classify.py"),
         "--classifier",
-        "lgbm",
+        "confgate",
         "explain the architecture of this system",
       ],
       expect.objectContaining({ timeout: 5000 })
@@ -794,7 +794,7 @@ describe("prompt-router extension -- command registration", () => {
     });
 
     const inputHook = pi._getHook("input")[0];
-    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Opus", "high"), stderr: "" });
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("large", "high"), stderr: "" });
     await inputHook.handler({ text: "design a distributed system", source: "user" }, ctx);
     await new Promise((r) => setTimeout(r, 0));
 
@@ -887,7 +887,7 @@ describe("T3: hysteresis covers joint state", () => {
     let prevTier = state.currentTier;
 
     for (const tier of tiers) {
-      const rec = { schema_version: "3.0.0", primary: { model_tier: tier === "low" ? "Haiku" : "Sonnet", effort: "medium" }, candidates: [{ model_tier: tier === "low" ? "Haiku" : "Sonnet", effort: "medium", confidence: 0.6 }], confidence: 0.6 };
+      const rec = { schema_version: "3.0.0", primary: { model_tier: tier === "low" ? "mini" : "core", effort: "medium" }, candidates: [{ model_tier: tier === "low" ? "mini" : "core", effort: "medium", confidence: 0.6 }], confidence: 0.6 };
       const { tier: applied } = applyPolicy(rec as any, state, policy);
       if (applied !== prevTier) {
         const prevOrder = applied === "low" ? 0 : applied === "mid" ? 1 : 2;
@@ -910,12 +910,12 @@ describe("T3: downgrade requires K_CONSEC", () => {
     const state = makeRouterState("mid", policy.N_HOLD); // already past hold window
 
     // Turn 1: low confidence > DOWNGRADE_THRESHOLD, but only 1 consecutive -- no downgrade yet.
-    const rec1 = { schema_version: "3.0.0", primary: { model_tier: "Haiku", effort: "low" }, candidates: [{ model_tier: "Haiku", effort: "low", confidence: 0.9 }], confidence: 0.9 };
+    const rec1 = { schema_version: "3.0.0", primary: { model_tier: "mini", effort: "low" }, candidates: [{ model_tier: "mini", effort: "low", confidence: 0.9 }], confidence: 0.9 };
     const { tier: tier1 } = applyPolicy(rec1 as any, state, policy);
     expect(tier1).toBe("mid");
 
     // Turn 2: same low recommendation -- K_CONSEC=2 satisfied, downgrade fires.
-    const rec2 = { schema_version: "3.0.0", primary: { model_tier: "Haiku", effort: "low" }, candidates: [{ model_tier: "Haiku", effort: "low", confidence: 0.9 }], confidence: 0.9 };
+    const rec2 = { schema_version: "3.0.0", primary: { model_tier: "mini", effort: "low" }, candidates: [{ model_tier: "mini", effort: "low", confidence: 0.9 }], confidence: 0.9 };
     const { tier: tier2 } = applyPolicy(rec2 as any, state, policy);
     expect(tier2).toBe("low");
   });
@@ -932,7 +932,7 @@ describe("T3: cooldown decays", () => {
     state.cooldownTurnsRemaining = 2;
 
     // Turn 1 of cooldown: classifier says low, cooldown keeps high.
-    const rec = { schema_version: "3.0.0", primary: { model_tier: "Haiku", effort: "low" }, candidates: [{ model_tier: "Haiku", effort: "low", confidence: 0.9 }], confidence: 0.9 };
+    const rec = { schema_version: "3.0.0", primary: { model_tier: "mini", effort: "low" }, candidates: [{ model_tier: "mini", effort: "low", confidence: 0.9 }], confidence: 0.9 };
     const { tier: tier1, ruleFired: rule1 } = applyPolicy(rec as any, state, policy);
     expect(tier1).toBe("high");
     expect(rule1).toBe("cooldown");
@@ -951,11 +951,11 @@ describe("T3: cooldown decays", () => {
 });
 
 describe("T3: uncertainty fallback", () => {
-  it("when enabled: classifier returns Haiku with confidence 0.4 while at mid -> stays at mid", () => {
+  it("when enabled: classifier returns mini with confidence 0.4 while at mid -> stays at mid", () => {
     const policy = makePolicy({ UNCERTAIN_THRESHOLD: 0.55, UNCERTAIN_FALLBACK_ENABLED: true });
     const state = makeRouterState("mid", 5);
 
-    const rec = { schema_version: "3.0.0", primary: { model_tier: "Haiku", effort: "low" }, candidates: [{ model_tier: "Haiku", effort: "low", confidence: 0.4 }], confidence: 0.4 };
+    const rec = { schema_version: "3.0.0", primary: { model_tier: "mini", effort: "low" }, candidates: [{ model_tier: "mini", effort: "low", confidence: 0.4 }], confidence: 0.4 };
     const { tier, ruleFired } = applyPolicy(rec as any, state, policy);
     expect(tier).toBe("mid"); // stayed at mid, not downgraded
     expect(ruleFired).toBe("uncertainty-fallback");
@@ -965,14 +965,14 @@ describe("T3: uncertainty fallback", () => {
     const policy = makePolicy({ UNCERTAIN_THRESHOLD: 0.55 }); // UNCERTAIN_FALLBACK_ENABLED=false
     const state = makeRouterState("mid", 5); // past N_HOLD window
 
-    // Turn 1: low-confidence Haiku; fallback is disabled, so hysteresis path runs.
+    // Turn 1: low-confidence mini; fallback is disabled, so hysteresis path runs.
     // With K_CONSEC=2, first eligible turn does not downgrade yet.
-    const rec = { schema_version: "3.0.0", primary: { model_tier: "Haiku", effort: "low" }, candidates: [{ model_tier: "Haiku", effort: "low", confidence: 0.4 }], confidence: 0.4 };
+    const rec = { schema_version: "3.0.0", primary: { model_tier: "mini", effort: "low" }, candidates: [{ model_tier: "mini", effort: "low", confidence: 0.4 }], confidence: 0.4 };
     const { tier: t1, ruleFired: r1 } = applyPolicy(rec as any, state, policy);
     expect(t1).toBe("mid");
     expect(r1).not.toBe("uncertainty-fallback");
 
-    // Turn 2: same low-confidence Haiku; K_CONSEC=2 satisfied, downgrade to low.
+    // Turn 2: same low-confidence mini; K_CONSEC=2 satisfied, downgrade to low.
     const { tier: t2, ruleFired: r2 } = applyPolicy(rec as any, state, policy);
     expect(t2).toBe("low");
     expect(r2).not.toBe("uncertainty-fallback");
@@ -980,12 +980,12 @@ describe("T3: uncertainty fallback", () => {
 });
 
 describe("T3: effort cap clamps", () => {
-  it("classifier returns Opus/high with high confidence and maxLevel=high -> applies Opus/high (xhigh clamped)", () => {
+  it("classifier returns large/high with high confidence and maxLevel=high -> applies large/high (xhigh clamped)", () => {
     const policy = makePolicy({ maxEffortLevel: "high" });
     const state = makeRouterState("low", 0);
 
     // Classifier wants xhigh -- schema maps to thinking level "xhigh" -> clamped to "high".
-    const rec = { schema_version: "3.0.0", primary: { model_tier: "Opus", effort: "high" }, candidates: [{ model_tier: "Opus", effort: "high", confidence: 0.95 }], confidence: 0.95 };
+    const rec = { schema_version: "3.0.0", primary: { model_tier: "large", effort: "high" }, candidates: [{ model_tier: "large", effort: "high", confidence: 0.95 }], confidence: 0.95 };
     const { tier, effort, ruleFired } = applyPolicy(rec as any, state, policy);
     expect(tier).toBe("high");
     expect(effort).toBe("high"); // not xhigh
@@ -999,7 +999,7 @@ describe("T3: effort cap clamps", () => {
     const state = makeRouterState("low", 0);
 
     // SCHEMA_EFFORT_TO_THINKING maps "high" -> "high", which exceeds cap "medium".
-    const rec = { schema_version: "3.0.0", primary: { model_tier: "Opus", effort: "high" }, candidates: [{ model_tier: "Opus", effort: "high", confidence: 0.95 }], confidence: 0.95 };
+    const rec = { schema_version: "3.0.0", primary: { model_tier: "large", effort: "high" }, candidates: [{ model_tier: "large", effort: "high", confidence: 0.95 }], confidence: 0.95 };
     const { effort, ruleFired } = applyPolicy(rec as any, state, policy);
     expect(effort).toBe("medium");
     expect(ruleFired).toBe("effort-cap");
@@ -1031,8 +1031,8 @@ describe("T5: effort cap clamps xhigh to high", () => {
     // With maxEffortLevel="high", schema "high" is within cap -- classifier rule.
     const rec = {
       schema_version: "3.0.0",
-      primary: { model_tier: "Opus", effort: "high" },
-      candidates: [{ model_tier: "Opus", effort: "high", confidence: 0.95 }],
+      primary: { model_tier: "large", effort: "high" },
+      candidates: [{ model_tier: "large", effort: "high", confidence: 0.95 }],
       confidence: 0.95,
     };
     const { effort, ruleFired } = applyPolicy(rec as any, state, policy);
@@ -1075,8 +1075,8 @@ describe("T5: schema_version mismatch falls back", () => {
       code: 0,
       stdout: JSON.stringify({
         schema_version: "99.0.0",
-        primary: { model_tier: "Sonnet", effort: "medium" },
-        candidates: [{ model_tier: "Sonnet", effort: "medium", confidence: 0.8 }],
+        primary: { model_tier: "core", effort: "medium" },
+        candidates: [{ model_tier: "core", effort: "medium", confidence: 0.8 }],
         confidence: 0.8,
       }),
       stderr: "",
@@ -1150,8 +1150,8 @@ describe("T5: temporary escalation decays", () => {
     // Trigger cooldown escalation (from default low baseline).
     (pi as any)._escalateFor(2);
 
-    // Turn 1 of cooldown: classifier says low (Haiku), but cooldown holds escalated tier.
-    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Haiku", "low", 0.9), stderr: "" });
+    // Turn 1 of cooldown: classifier says low (mini), but cooldown holds escalated tier.
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("mini", "low", 0.9), stderr: "" });
     await inputHook.handler({ text: "prompt 1", source: "user" }, ctx);
     await new Promise((r) => setTimeout(r, 0));
 
@@ -1161,7 +1161,7 @@ describe("T5: temporary escalation decays", () => {
     expect(output).toContain("cooldown");
 
     // Turn 2 of cooldown: still held.
-    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Haiku", "low", 0.9), stderr: "" });
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("mini", "low", 0.9), stderr: "" });
     await inputHook.handler({ text: "prompt 2", source: "user" }, ctx);
     await new Promise((r) => setTimeout(r, 0));
     (ctx.ui as any).notify.mockClear();
@@ -1170,7 +1170,7 @@ describe("T5: temporary escalation decays", () => {
     expect(output).toContain("cooldown");
 
     // Turn 3: cooldown expired, classifier recommendation takes over.
-    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Haiku", "low", 0.9), stderr: "" });
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("mini", "low", 0.9), stderr: "" });
     await inputHook.handler({ text: "prompt 3", source: "user" }, ctx);
     await new Promise((r) => setTimeout(r, 0));
     (ctx.ui as any).notify.mockClear();
@@ -1188,8 +1188,8 @@ describe("T5: N_HOLD=0 disables hysteresis hold", () => {
     // With N_HOLD=0, downgrade to low should fire immediately (K_CONSEC=1).
     const rec = {
       schema_version: "3.0.0",
-      primary: { model_tier: "Haiku", effort: "low" },
-      candidates: [{ model_tier: "Haiku", effort: "low", confidence: 0.9 }],
+      primary: { model_tier: "mini", effort: "low" },
+      candidates: [{ model_tier: "mini", effort: "low", confidence: 0.9 }],
       confidence: 0.9,
     };
     const { tier } = applyPolicy(rec as any, state, policy);
@@ -1227,8 +1227,8 @@ describe("T5: ConfGate ensemble_rule flows through", () => {
 
     const confgateJson = JSON.stringify({
       schema_version: "3.0.0",
-      primary: { model_tier: "Sonnet", effort: "medium" },
-      candidates: [{ model_tier: "Sonnet", effort: "medium", confidence: 0.82 }],
+      primary: { model_tier: "core", effort: "medium" },
+      candidates: [{ model_tier: "core", effort: "medium", confidence: 0.82 }],
       confidence: 0.82,
       ensemble_rule: "agree",
     });
@@ -1247,8 +1247,8 @@ describe("T5: ConfGate ensemble_rule flows through", () => {
   it("safeParseClassifierOutput captures ensemble_rule when present", () => {
     const raw = JSON.stringify({
       schema_version: "3.0.0",
-      primary: { model_tier: "Opus", effort: "high" },
-      candidates: [{ model_tier: "Opus", effort: "high", confidence: 0.9 }],
+      primary: { model_tier: "large", effort: "high" },
+      candidates: [{ model_tier: "large", effort: "high", confidence: 0.9 }],
       confidence: 0.9,
       ensemble_rule: "lgb-confident",
     });
@@ -1285,10 +1285,10 @@ describe("T5: /router-explain full decision trail", () => {
       code: 0,
       stdout: JSON.stringify({
         schema_version: "3.0.0",
-        primary: { model_tier: "Sonnet", effort: "medium" },
+        primary: { model_tier: "core", effort: "medium" },
         candidates: [
-          { model_tier: "Haiku", effort: "low", confidence: 0.1 },
-          { model_tier: "Sonnet", effort: "medium", confidence: 0.82 },
+          { model_tier: "mini", effort: "low", confidence: 0.1 },
+          { model_tier: "core", effort: "medium", confidence: 0.82 },
         ],
         confidence: 0.82,
         ensemble_rule: "lgb-confident",
@@ -1306,7 +1306,7 @@ describe("T5: /router-explain full decision trail", () => {
 
     // (a) classifier raw fields
     expect(output).toContain("schema_version: 3.0.0");
-    expect(output).toContain("legacy_primary: {model_tier: Sonnet, effort: medium}");
+    expect(output).toContain("primary: {model_tier: core, effort: medium}");
     expect(output).toContain("confidence: 0.82");
     expect(output).toContain("canonical_candidates:");
     // (b) applied route
@@ -1353,7 +1353,7 @@ describe("Provider architecture spike: awaited provider seam", () => {
       order.push("classifier-start");
       await classifierPending;
       order.push("classifier-finish");
-      return { code: 0, stdout: makeV3Json("Sonnet", "medium", 0.91), stderr: "" };
+      return { code: 0, stdout: makeV3Json("core", "medium", 0.91), stderr: "" };
     });
     const decisionPromise = resolveProviderRouteDecision(pi as any, "synthetic same turn prompt", routeCtx());
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -1392,7 +1392,7 @@ describe("Provider architecture spike: awaited provider seam", () => {
   it("denies implicit cross-provider routing", async () => {
     const pi = createMockPi();
     const ctx = routeCtx({ provider: "anthropic", id: "claude-sonnet" });
-    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Sonnet", "medium", 0.91), stderr: "" });
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("core", "medium", 0.91), stderr: "" });
     const decision = await resolveProviderRouteDecision(pi as any, "synthetic provider boundary", ctx);
     expect(decision.route_resolution_reason).toBe("denied_by_policy");
     expect(decision.provider_family).toBe("anthropic");
@@ -1407,9 +1407,9 @@ describe("Provider architecture spike: awaited provider seam", () => {
     (pi.exec as any)
       .mockImplementationOnce(async () => {
         await firstPending;
-        return { code: 0, stdout: makeV3Json("Opus", "high", 0.95), stderr: "" };
+        return { code: 0, stdout: makeV3Json("large", "high", 0.95), stderr: "" };
       })
-      .mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Haiku", "low", 0.95), stderr: "" });
+      .mockResolvedValueOnce({ code: 0, stdout: makeV3Json("mini", "low", 0.95), stderr: "" });
     const first = resolveProviderRouteDecision(pi as any, "synthetic prompt one", routeCtx({ provider: "openai-codex", id: "gpt-5.4" }));
     const second = resolveProviderRouteDecision(pi as any, "synthetic prompt two", routeCtx());
     const secondDecision = await second;
@@ -1421,7 +1421,7 @@ describe("Provider architecture spike: awaited provider seam", () => {
 
   it("resolves profile fields from the immutable route decision", async () => {
     const pi = createMockPi();
-    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Sonnet", "medium", 0.91), stderr: "" });
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("core", "medium", 0.91), stderr: "" });
     const decision = await resolveProviderRouteDecision(pi as any, "synthetic resolver prompt", routeCtx());
     const profile = resolveRouteProfile(decision);
     expect(profile.route).toBe("core");
@@ -1436,25 +1436,24 @@ describe("Provider architecture spike: awaited provider seam", () => {
     expect(profile.overrideScope).toBe("none");
   });
 
-  it("falls back from nano to mini by default without leaking prompt text", async () => {
+  it("rejects classifier nano output without leaking prompt text", async () => {
     const pi = createMockPi();
     (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("nano", "low", 0.88), stderr: "" });
     const decision = await resolveProviderRouteDecision(pi as any, "synthetic nano prompt", routeCtx());
-    expect(decision.raw_route).toBe("nano");
-    expect(decision.applied_route).toBe("mini");
-    expect(decision.route_resolution_reason).toBe("fallback_used");
-    expect(decision.decisionTrace.fallbackFrom).toBe("nano");
+    expect(decision.raw_route).toBe("core");
+    expect(decision.applied_route).toBe("core");
+    expect(decision.route_resolution_reason).toBe("classifier_failure");
     expect(decision.decisionTrace.routeState).toBe("fallback");
     expect(JSON.stringify(decision)).not.toContain("synthetic nano prompt");
   });
 
-  it("uses only canonical route-state values and marks max as policy-only", async () => {
+  it("rejects classifier max output as outside the wire schema", async () => {
     const pi = createMockPi();
     (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("max", "high", 0.93), stderr: "" });
     const decision = await resolveProviderRouteDecision(pi as any, "synthetic max prompt", routeCtx());
-    expect(decision.raw_route).toBe("max");
-    expect(decision.applied_route).toBe("max");
-    expect(decision.decisionTrace.routeState).toBe("policy-only");
+    expect(decision.raw_route).toBe("core");
+    expect(decision.applied_route).toBe("core");
+    expect(decision.route_resolution_reason).toBe("classifier_failure");
     expect(["available", "fallback", "policy-only", "disabled"]).toContain(decision.decisionTrace.routeState);
   });
 
@@ -1482,7 +1481,7 @@ describe("Provider architecture spike: awaited provider seam", () => {
     const pi = createMockPi();
     const ctx = routeCtx();
     (ctx as any).router = { previousAppliedRoute: "large" };
-    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Haiku", "low", 0.95), stderr: "" });
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("mini", "low", 0.95), stderr: "" });
     const decision = await resolveProviderRouteDecision(pi as any, "do option 2", ctx);
     expect(decision.raw_route).toBe("mini");
     expect(decision.applied_route).toBe("large");
@@ -1494,14 +1493,14 @@ describe("Provider architecture spike: awaited provider seam", () => {
     const pi = createMockPi();
     const unrelatedCtx = routeCtx();
     (unrelatedCtx as any).router = { previousAppliedRoute: "large" };
-    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Haiku", "low", 0.95), stderr: "" });
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("mini", "low", 0.95), stderr: "" });
     const unrelated = await resolveProviderRouteDecision(pi as any, "hi", unrelatedCtx);
     expect(unrelated.applied_route).toBe("mini");
     expect(unrelated.decisionTrace.contextFlags).not.toContain("context-continuation-hold");
 
     const cheapCtx = routeCtx();
     (cheapCtx as any).router = { previousAppliedRoute: "large" };
-    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Haiku", "low", 0.95), stderr: "" });
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("mini", "low", 0.95), stderr: "" });
     const cheap = await resolveProviderRouteDecision(pi as any, "briefly do option 2", cheapCtx);
     expect(cheap.applied_route).toBe("mini");
     expect(cheap.decisionTrace.contextFlags).toContain("downgrade_intent_detected");
@@ -1512,7 +1511,7 @@ describe("Provider architecture spike: awaited provider seam", () => {
     const pi = createMockPi();
     const ctx = routeCtx();
     (ctx as any).router = { routeOverride: "mini", routePin: "large" };
-    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Sonnet", "medium", 0.91), stderr: "" });
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("core", "medium", 0.91), stderr: "" });
     const decision = await resolveProviderRouteDecision(pi as any, "synthetic override prompt", ctx);
     expect(decision.raw_route).toBe("core");
     expect(decision.applied_route).toBe("large");
@@ -1525,7 +1524,7 @@ describe("Provider architecture spike: awaited provider seam", () => {
     const pi = createMockPi();
     const ctx = routeCtx();
     (ctx as any).router = { explicitModelSelection: true };
-    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Sonnet", "medium", 0.91), stderr: "" });
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("core", "medium", 0.91), stderr: "" });
     const decision = await resolveProviderRouteDecision(pi as any, "synthetic explicit model prompt", ctx);
     expect(decision.decisionTrace.explicitModelPreserved).toBe(true);
     const payload = applyRouteDecisionToProviderPayload({ prompt: "synthetic explicit model prompt", model: "user/chosen", explicit_model_selection: true }, decision, ctx) as Record<string, unknown>;
@@ -1536,7 +1535,7 @@ describe("Provider architecture spike: awaited provider seam", () => {
   it("reports provider trust and denied fallback metadata", async () => {
     const pi = createMockPi();
     const ctx = routeCtx({ provider: "anthropic", id: "claude-sonnet" });
-    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Sonnet", "medium", 0.91), stderr: "" });
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("core", "medium", 0.91), stderr: "" });
     const decision = await resolveProviderRouteDecision(pi as any, "synthetic provider trust prompt", ctx);
     expect(decision.route_resolution_reason).toBe("denied_by_policy");
     expect(decision.decisionTrace.providerTrust).toBe("cross-provider-denied");
@@ -1549,7 +1548,7 @@ describe("Provider architecture spike: awaited provider seam", () => {
     const pi = createMockPi();
     const ctx = routeCtx({ provider: "openai-codex", id: "gpt-5.4-mini", contextWindow: 1000 } as any);
     (ctx as any).usage = { tokens: 950 };
-    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("Haiku", "low", 0.95), stderr: "" });
+    (pi.exec as any).mockResolvedValueOnce({ code: 0, stdout: makeV3Json("mini", "low", 0.95), stderr: "" });
     const decision = await resolveProviderRouteDecision(pi as any, "synthetic context safety prompt", ctx);
     expect(decision.raw_route).toBe("mini");
     expect(decision.applied_route).toBe("core");
@@ -1581,8 +1580,8 @@ describe("T0: same-turn routing feasibility", () => {
         code: 0,
         stdout: JSON.stringify({
           schema_version: "3.0.0",
-          primary: { model_tier: "Sonnet", effort: "medium" },
-          candidates: [{ model_tier: "Sonnet", effort: "medium", confidence: 0.91 }],
+          primary: { model_tier: "core", effort: "medium" },
+          candidates: [{ model_tier: "core", effort: "medium", confidence: 0.91 }],
           confidence: 0.91,
         }),
         stderr: "",
@@ -1629,10 +1628,10 @@ describe("T6: privacy-conscious router telemetry", () => {
       appliedRoute: "core",
       rec: {
         schema_version: "3.0.0",
-        primary: { model_tier: "Opus", effort: "high" },
+        primary: { model_tier: "large", effort: "high" },
         candidates: [
-          { model_tier: "Opus", effort: "high", confidence: 0.7 },
-          { model_tier: "Sonnet", effort: "medium", confidence: 0.55 },
+          { model_tier: "large", effort: "high", confidence: 0.7 },
+          { model_tier: "core", effort: "medium", confidence: 0.55 },
         ],
         confidence: 0.7,
       },

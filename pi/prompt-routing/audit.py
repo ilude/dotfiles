@@ -3,10 +3,10 @@ audit.py — Daily batch audit of routing decisions.
 
 Reads logs/routing_log.jsonl, finds entries not yet reviewed, sends them in
 batches to `claude -p --model opus` (or --model sonnet for speed), compares
-Opus labels against the router's predictions, and writes a dated report to
+large labels against the router's predictions, and writes a dated report to
 logs/audit_YYYY-MM-DD.json.
 
-Divergences (router != Opus) are flagged. HIGH->LOW divergences are marked
+Divergences (router != large) are flagged. HIGH->LOW divergences are marked
 CRITICAL — they are the primary signal that the model is mis-routing hard prompts.
 Divergences are candidate examples for the training corpus.
 
@@ -45,9 +45,9 @@ LABEL_PROMPT = """\
 You are auditing a prompt routing classifier. For each prompt below, give your
 independent assessment of which model tier it should be routed to:
 
-  low  = simple factual lookups, syntax questions, single-step tasks (Haiku)
-  mid  = multi-step tasks, code with context, moderate analysis (Sonnet)
-  high = architecture decisions, security, distributed systems, scale (Opus)
+  low  = simple factual lookups, syntax questions, single-step tasks (mini)
+  mid  = multi-step tasks, code with context, moderate analysis (core)
+  high = architecture decisions, security, distributed systems, scale (large)
   skip = not a real prompt (fragment, noise, test input)
 
 Return ONLY a JSON array with exactly {n} objects in the same order:
@@ -97,7 +97,7 @@ def load_log(log_path: Path, since: date | None, include_reviewed: bool) -> list
 
 
 # ---------------------------------------------------------------------------
-# Opus interaction
+# large interaction
 # ---------------------------------------------------------------------------
 
 
@@ -295,7 +295,7 @@ def _print_summary(report: dict, divergences: list[dict], criticals: list[dict])
         f"Accuracy: {report['accuracy']:.1%}"
     )
     print(f"Divergences: {len(divergences)}  |  CRITICAL (HIGH routed to LOW): {len(criticals)}")
-    print(f"Opus distribution: {report['opus_tier_distribution']}")
+    print(f"large distribution: {report['opus_tier_distribution']}")
     if criticals:
         print(
             f"\n*** {len(criticals)} CRITICAL INVERSION(S) — "
@@ -351,7 +351,7 @@ def _print_dry_run(entries: list[dict], batch_size: int, model: str) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Daily audit of routing decisions vs Opus")
+    parser = argparse.ArgumentParser(description="Daily audit of routing decisions vs large")
     parser.add_argument("--model", default="opus", help="Model for audit labels (default: opus)")
     parser.add_argument("--limit", type=int, default=500)
     parser.add_argument("--batch-size", type=int, default=BATCH_SIZE)

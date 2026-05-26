@@ -2,7 +2,7 @@
 label_history.py — Label history.jsonl prompts using `claude -p --model opus`.
 
 Uses your Claude subscription (no API key needed). Extracts usable standalone
-prompts from ~/.dotfiles/claude/history.jsonl, sends them in batches to Opus
+prompts from ~/.dotfiles/claude/history.jsonl, sends them in batches to large
 via the CLI, and writes results to prompt-routing/labeled_history.csv.
 
 Usage:
@@ -110,17 +110,17 @@ SYSTEM_PROMPT = (
     "You are labeling training data for a prompt routing classifier.\n"
     "Classify each user prompt into one of these tiers:\n"
     "\n"
-    "  low  → Haiku:  Single-step, factual lookups, syntax questions, basic how-tos,\n"
+    "  low  → mini:  Single-step, factual lookups, syntax questions, basic how-tos,\n"
     "                 definition requests, one-liner code.\n"
     '                 Examples: "What is a variable?", "How do I sort a list?",\n'
     '                 "what is cilium?"\n'
     "\n"
-    "  mid  → Sonnet: Multi-step tasks, moderate analysis, code with context,\n"
+    "  mid  → core: Multi-step tasks, moderate analysis, code with context,\n"
     "                 debugging, integrations, config work, known algorithm impls.\n"
     '                 Examples: "Write a FastAPI endpoint", "Debug this SQL query",\n'
     '                 "Set up nginx reverse proxy"\n'
     "\n"
-    "  high → Opus:   Architecture, security analysis, distributed systems, scale\n"
+    "  high → large:   Architecture, security analysis, distributed systems, scale\n"
     "                 decisions, trade-off analysis, multi-system reasoning,\n"
     "                 compliance design.\n"
     '                 Examples: "Design auth for 1M users",\n'
@@ -229,7 +229,7 @@ def extract_candidates(history_path: Path, signal: str = "all") -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Opus interaction
+# large interaction
 # ---------------------------------------------------------------------------
 
 
@@ -276,7 +276,7 @@ def _build_row(item: dict, src: dict) -> dict:
 
 
 def parse_response(raw: str, batch: list[dict]) -> list[dict]:
-    """Parse Opus JSON response back into labeled rows."""
+    """Parse large JSON response back into labeled rows."""
     items = json.loads(_strip_code_fence(raw))
     results = []
     for item in items:

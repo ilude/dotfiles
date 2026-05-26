@@ -1,8 +1,11 @@
 # v3 Evaluation Metrics
 
-Status: T7 artifact. Defines the metrics used to judge a trained v3
+Status: historical T7 artifact. Defines the metrics used to judge a trained v3
 classifier against the eval split, and the operational thresholds the
-corpus-readiness report applies.
+corpus-readiness report applies. Provider-specific labels such as
+Haiku/Sonnet/Opus refer to the legacy evaluation vocabulary. Current
+runtime/schema vocabulary is provider-neutral: mini/core/large plus effort
+none/low/medium/high.
 
 ---
 

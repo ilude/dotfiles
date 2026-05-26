@@ -6,7 +6,7 @@ These prompts were written independently of the training corpus to test
 whether the router generalises beyond its training vocabulary.
 
 Hard gate (test failure):
-    - Zero HIGH->LOW inversions (Opus-tier prompt sent to Haiku).
+    - Zero HIGH->LOW inversions (large-tier prompt sent to mini).
 
 Soft metrics (printed, not failures):
     - Overall accuracy
@@ -31,9 +31,9 @@ sys.path.insert(0, str(PROMPT_ROUTING_DIR))
 
 # Map v3 model_tier -> legacy tier label (for OOD accuracy comparison)
 MODEL_TIER_TO_LEGACY: dict[str, str] = {
-    "Haiku": "low",
-    "Sonnet": "mid",
-    "Opus": "high",
+    "mini": "low",
+    "core": "mid",
+    "large": "high",
 }
 
 
@@ -81,7 +81,7 @@ def ood_results():
 
 class TestOODInversions:
     def test_zero_high_to_low_inversions(self, ood_results):
-        """No HIGH prompt in the OOD set may be routed to Haiku."""
+        """No HIGH prompt in the OOD set may be routed to mini."""
         inversions = [r for r in ood_results if r["inversion"]]
         if inversions:
             lines = [f"\n  HIGH->LOW inversions found ({len(inversions)}):"]
@@ -157,21 +157,21 @@ class TestOODAccuracy:
         )
 
     def test_no_low_predicted_high(self, ood_results):
-        """LOW prompts should never route to Opus."""
+        """LOW prompts should never route to large."""
         low_to_high = [r for r in ood_results if r["true"] == "low" and r["pred"] == "high"]
         if low_to_high:
             details = "; ".join(r["prompt"][:50] for r in low_to_high)
             assert len(low_to_high) <= 2, (
-                f"{len(low_to_high)} LOW prompts routed to Opus: {details}"
+                f"{len(low_to_high)} LOW prompts routed to large: {details}"
             )
 
     def test_high_recall_acceptable(self, ood_results):
-        """At least 80% of HIGH-tier OOD prompts should reach Opus or Sonnet."""
+        """At least 80% of HIGH-tier OOD prompts should reach large or core."""
         high_results = [r for r in ood_results if r["true"] == "high"]
         not_low = sum(1 for r in high_results if r["pred"] != "low")
         recall = not_low / len(high_results)
         assert recall >= 0.80, (
-            f"HIGH OOD prompts reaching Opus or Sonnet: {recall:.1%} "
+            f"HIGH OOD prompts reaching large or core: {recall:.1%} "
             f"({not_low}/{len(high_results)}). "
             f"More than 20% of hard prompts are being under-routed."
         )

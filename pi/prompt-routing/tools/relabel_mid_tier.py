@@ -1,5 +1,5 @@
 """Relabel mid-tier "needs relabel" rows from migration_candidates.csv into v3
-route-labeled rows targeting Sonnet as the default tier.
+route-labeled rows targeting core as the default tier.
 
 Reads:
   pi/prompt-routing/data/migration_candidates.csv
@@ -10,10 +10,10 @@ Writes:
   pi/prompt-routing/data/relabeled_mid_tier_route_labels.jsonl
 
 Rubric (see seed-labeling-summary.md, section "Mid-tier relabel rubric"):
-  Default mid-tier prompt -> (Sonnet, medium)
-  Short mechanical prompts (<30 tokens AND mechanical_edit signals) -> (Sonnet, low)
-  Architecture / security / migration keywords -> (Sonnet, high)
-  Genuinely complex DevOps (kubernetes / helm / multi-cluster) -> (Opus, medium)
+  Default mid-tier prompt -> (core, medium)
+  Short mechanical prompts (<30 tokens AND mechanical_edit signals) -> (core, low)
+  Architecture / security / migration keywords -> (core, high)
+  Genuinely complex DevOps (kubernetes / helm / multi-cluster) -> (large, medium)
 
 Rows from "high ambiguity" or missing prompt text are skipped. These are
 curated-historical labels, not synthetic, so no provenance block is emitted.
@@ -184,20 +184,20 @@ def assign_mid_route(prompt: str, domain: str) -> tuple[dict[str, str], str]:
     """Apply the mid-tier relabel rubric. Return (route, ambiguity)."""
     tokens = _token_count(prompt)
 
-    # Override 3: complex DevOps bumps to Opus/medium
+    # Override 3: complex DevOps bumps to large/medium
     if domain == "devops" and _COMPLEX_DEVOPS.search(prompt):
-        return {"model_tier": "Opus", "effort": "medium"}, "borderline"
+        return {"model_tier": "large", "effort": "medium"}, "borderline"
 
-    # Override 2: architecture / security / migration keywords -> Sonnet/high
+    # Override 2: architecture / security / migration keywords -> core/high
     if _ARCH_SEC_MIGRATION.search(prompt):
-        return {"model_tier": "Sonnet", "effort": "high"}, "borderline"
+        return {"model_tier": "core", "effort": "high"}, "borderline"
 
-    # Override 1: short mechanical edits -> Sonnet/low
+    # Override 1: short mechanical edits -> core/low
     if tokens < 30 and _MECHANICAL_SIGNALS.search(prompt):
-        return {"model_tier": "Sonnet", "effort": "low"}, "clear"
+        return {"model_tier": "core", "effort": "low"}, "clear"
 
-    # Default mid-tier -> Sonnet/medium
-    return {"model_tier": "Sonnet", "effort": "medium"}, "clear"
+    # Default mid-tier -> core/medium
+    return {"model_tier": "core", "effort": "medium"}, "clear"
 
 
 def _family_id(prompt: str, domain: str) -> str:

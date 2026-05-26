@@ -1,9 +1,9 @@
 import json
 
 def row(pid, fid, prompt, domain, task_type, ambiguity, model_tier, effort, complexity_tier):
-    tiers = [('Haiku','none'),('Haiku','low'),('Haiku','medium'),('Haiku','high'),
-             ('Sonnet','none'),('Sonnet','low'),('Sonnet','medium'),('Sonnet','high'),
-             ('Opus','none'),('Opus','low'),('Opus','medium'),('Opus','high')]
+    tiers = [('mini','none'),('mini','low'),('mini','medium'),('mini','high'),
+             ('core','none'),('core','low'),('core','medium'),('core','high'),
+             ('large','none'),('large','low'),('large','medium'),('large','high')]
     chosen_idx = tiers.index((model_tier, effort))
     judgments = []
     for i, (m, e) in enumerate(tiers):
@@ -1062,13 +1062,13 @@ out_path = 'C:/Users/mglenn/.dotfiles/pi/prompt-routing/data/synthetic_shards/ge
 total = 0
 with open(out_path, 'w', encoding='utf-8') as f:
     for i, (prompt, domain, task_type, ambiguity, complexity_tier) in enumerate(opus_high):
-        f.write(row(f'GD-OH-{i:04d}', f'GD-F-OH-{i:04d}', prompt, domain, task_type, ambiguity, 'Opus', 'high', complexity_tier) + '\n')
+        f.write(row(f'GD-OH-{i:04d}', f'GD-F-OH-{i:04d}', prompt, domain, task_type, ambiguity, 'large', 'high', complexity_tier) + '\n')
         total += 1
     for i, (prompt, domain, task_type, ambiguity, complexity_tier) in enumerate(opus_medium):
-        f.write(row(f'GD-OM-{i:04d}', f'GD-F-OM-{i:04d}', prompt, domain, task_type, ambiguity, 'Opus', 'medium', complexity_tier) + '\n')
+        f.write(row(f'GD-OM-{i:04d}', f'GD-F-OM-{i:04d}', prompt, domain, task_type, ambiguity, 'large', 'medium', complexity_tier) + '\n')
         total += 1
     for i, (prompt, domain, task_type, ambiguity, complexity_tier) in enumerate(sonnet_high):
-        f.write(row(f'GD-SH-{i:04d}', f'GD-F-SH-{i:04d}', prompt, domain, task_type, ambiguity, 'Sonnet', 'high', complexity_tier) + '\n')
+        f.write(row(f'GD-SH-{i:04d}', f'GD-F-SH-{i:04d}', prompt, domain, task_type, ambiguity, 'core', 'high', complexity_tier) + '\n')
         total += 1
 
 print(f'Written: {total} rows')

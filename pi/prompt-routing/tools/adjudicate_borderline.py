@@ -6,8 +6,8 @@ Workflow:
      curated history, mid-tier relabel, synthetic). We score source rows
      rather than train/dev/eval splits so decisions can be written back to
      the underlying files without split-specific bookkeeping.
-  2. Flag rows whose ground-truth model_tier is in {Sonnet, Opus} but for
-     which the classifier's predicted Haiku probability > 0.50 and the
+  2. Flag rows whose ground-truth model_tier is in {core, large} but for
+     which the classifier's predicted mini probability > 0.50 and the
      predicted effort is in {none, low, medium}. That's the full
      "catastrophic candidate" pool.
   3. Emit data/adjudication_queue.jsonl with prompt text, current label,
@@ -60,7 +60,7 @@ QUEUE_PATH = DATA / "adjudication_queue.jsonl"
 DECISIONS_PATH = DATA / "adjudication_decisions.jsonl"
 SUMMARY_PATH = DATA / "adjudication_summary.json"
 
-MODEL_ORDER = ["Haiku", "Sonnet", "Opus"]
+MODEL_ORDER = ["mini", "core", "large"]
 EFFORT_ORDER = ["none", "low", "medium", "high"]
 
 HAIKU_PROB_THRESHOLD = 0.50
@@ -166,7 +166,7 @@ def queue_cmd(_args: argparse.Namespace) -> int:
 
     tier_classes = list(clf_tier.classes_)
     effort_classes = list(clf_effort.classes_)
-    haiku_idx = tier_classes.index("Haiku") if "Haiku" in tier_classes else -1
+    haiku_idx = tier_classes.index("mini") if "mini" in tier_classes else -1
 
     queue: list[dict] = []
     scanned = 0
@@ -185,7 +185,7 @@ def queue_cmd(_args: argparse.Namespace) -> int:
 
         for r, tp, ep in zip(rows, tier_probs_all, effort_probs_all):
             gt_tier = r["cheapest_acceptable_route"]["model_tier"]
-            if gt_tier not in ("Sonnet", "Opus"):
+            if gt_tier not in ("core", "large"):
                 continue
             haiku_p = float(tp[haiku_idx]) if haiku_idx >= 0 else 0.0
             if haiku_p <= HAIKU_PROB_THRESHOLD:
@@ -271,7 +271,7 @@ def adjudicate_row(row: dict) -> dict:
             ),
         }
 
-    # Trivial factual / mechanical_edit rows are clear Haiku territory per
+    # Trivial factual / mechanical_edit rows are clear mini territory per
     # rubric 3.3 regardless of the source row's ambiguity tag. Several
     # synthetic rows labeled `ambiguous` are not actually ambiguous
     # ("Which planet is closest to the Sun?"); the rubric applies to the
@@ -286,10 +286,10 @@ def adjudicate_row(row: dict) -> dict:
             "source_file": row["source_file"],
             "decision": "DOWNGRADE_TO_HAIKU",
             "rationale": (
-                f"Trivial {task_type} at {tc} tokens; rubric 3.3 puts this at Haiku"
+                f"Trivial {task_type} at {tc} tokens; rubric 3.3 puts this at mini"
             ),
             "new_cheapest_acceptable_route": {
-                "model_tier": "Haiku",
+                "model_tier": "mini",
                 "effort": "none" if task_type == "factual" and tc < 15 else "low",
             },
         }
@@ -305,14 +305,14 @@ def adjudicate_row(row: dict) -> dict:
             "rationale": "ambiguity=ambiguous with non-trivial task_type; rubric biases up",
         }
 
-    if task_type in ("design", "plan", "analysis") and current["model_tier"] == "Opus":
+    if task_type in ("design", "plan", "analysis") and current["model_tier"] == "large":
         return {
             "prompt_id": row["prompt_id"],
             "source_file": row["source_file"],
             "decision": "KEEP",
             "rationale": (
-                f"task_type={task_type} with Opus label; rubric reserves "
-                f"Opus for design/cross-cutting work"
+                f"task_type={task_type} with large label; rubric reserves "
+                f"large for design/cross-cutting work"
             ),
         }
 
@@ -325,11 +325,11 @@ def adjudicate_row(row: dict) -> dict:
             "decision": "DOWNGRADE_TO_HAIKU",
             "rationale": (
                 f"Short ({tc} tokens), mechanical/factual/rewrite "
-                f"(task_type={task_type}, mech={mech[:2] or None}); Haiku is "
+                f"(task_type={task_type}, mech={mech[:2] or None}); mini is "
                 f"cheapest acceptable"
             ),
             "new_cheapest_acceptable_route": {
-                "model_tier": "Haiku",
+                "model_tier": "mini",
                 "effort": new_effort,
             },
         }

@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-VALID_MODEL_TIERS = {"Haiku", "Sonnet", "Opus"}
+VALID_MODEL_TIERS = {"mini", "core", "large"}
 VALID_EFFORT_TIERS = {"none", "low", "medium", "high"}
 VALID_SOURCES = {
     "seed_v2",
@@ -51,7 +51,7 @@ VALID_AMBIGUITY = {"clear", "borderline", "ambiguous"}
 VALID_COMPLEXITY_TIERS = {"low", "mid", "high"}
 
 # Cost ordering for route comparison (lower index = cheaper)
-_MODEL_ORDER = ["Haiku", "Sonnet", "Opus"]
+_MODEL_ORDER = ["mini", "core", "large"]
 _EFFORT_ORDER = ["none", "low", "medium", "high"]
 
 

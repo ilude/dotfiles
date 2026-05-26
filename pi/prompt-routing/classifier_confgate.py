@@ -8,7 +8,8 @@ Combination rule:
   1. If lgb.conf >= CONF_GATE: return LGB directly (lgb-confident).
   2. Both models consulted -- if they agree on label: return agreed, conf=max (agree).
   3. If T2 is more confident and disagrees: return T2's pick (t2-overrides).
-  4. Otherwise: return LGB (lgb-fallback).
+  4. If LGB says mini and T2 says large at near-tie confidence: return T2 (catastrophic-veto).
+  5. Otherwise: return LGB (lgb-fallback).
 
 Public API:
   ConfGatedClassifier(conf_gate=0.50)  -- loads both models, verifies SHA256
@@ -35,8 +36,9 @@ LGBM_HASH_PATH = _MODEL_DIR / "router_v3_lgbm.sha256"
 
 SCHEMA_VERSION = "3.0.0"
 CONF_GATE: float = 0.50
+CATASTROPHIC_TIE_MARGIN: float = 0.05
 
-TIER_ORDER = {"Haiku": 0, "Sonnet": 1, "Opus": 2}
+TIER_ORDER = {"mini": 0, "core": 1, "large": 2}
 EFFORT_ORDER = {"none": 0, "low": 1, "medium": 2, "high": 3}
 
 
@@ -115,7 +117,8 @@ class ConfGatedClassifier:
     ) -> tuple[str, float, list[tuple[str, float]], str]:
         """
         Returns (final_label, confidence, candidates, ensemble_rule).
-        ensemble_rule is one of: lgb-confident, agree, t2-overrides, lgb-fallback.
+        ensemble_rule is one of: lgb-confident, agree, t2-overrides,
+        catastrophic-veto, lgb-fallback.
         """
         if lgbm_conf >= self.conf_gate:
             # LGB is confident -- use it directly, no T2 consultation
@@ -127,6 +130,11 @@ class ConfGatedClassifier:
             confidence = max(lgbm_conf, t2_conf)
             candidates = _merge_candidates(lgbm_candidates, t2_candidates)
             return lgbm_label, confidence, candidates, "agree"
+
+        # Disagreement -- fail closed on near-tie catastrophic tier gaps.
+        if _is_catastrophic_near_tie(lgbm_label, lgbm_conf, t2_label, t2_conf):
+            candidates = _merge_candidates(t2_candidates, lgbm_candidates)
+            return t2_label, t2_conf, candidates, "catastrophic-veto"
 
         # Disagreement -- use whichever model is more confident
         if t2_conf > lgbm_conf:
@@ -212,6 +220,23 @@ class ConfGatedClassifier:
 # ---------------------------------------------------------------------------
 # Candidate merge helper
 # ---------------------------------------------------------------------------
+
+def _tier(label: str) -> str:
+    return label.split("|", 1)[0]
+
+
+def _is_catastrophic_near_tie(
+    lgbm_label: str,
+    lgbm_conf: float,
+    t2_label: str,
+    t2_conf: float,
+) -> bool:
+    return (
+        _tier(lgbm_label) == "mini"
+        and _tier(t2_label) == "large"
+        and t2_conf >= lgbm_conf - CATASTROPHIC_TIE_MARGIN
+    )
+
 
 def _cost_key(lbl: str) -> tuple[int, int]:
     parts = lbl.split("|")

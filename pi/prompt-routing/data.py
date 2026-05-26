@@ -18,14 +18,14 @@ To add v3 route-labeled examples (training_corpus_v3 / cheapest_acceptable_route
   3. Retrain as above.
 
 Labels:
-  low  -> route to Haiku  (simple, single-step, factual lookups)
-  mid  -> route to Sonnet (multi-step, moderate analysis, code tasks with context)
-  high -> route to Opus   (architectural decisions, security analysis, complex reasoning)
+  low  -> route to mini  (simple, single-step, factual lookups)
+  mid  -> route to core (multi-step, moderate analysis, code tasks with context)
+  high -> route to large   (architectural decisions, security analysis, complex reasoning)
 
 v3 cheapest_acceptable_route model_tier mapping:
-  Haiku  -> low
-  Sonnet -> mid
-  Opus   -> high
+  mini  -> low
+  core -> mid
+  large   -> high
 """
 
 import json

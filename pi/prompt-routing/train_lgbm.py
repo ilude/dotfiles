@@ -67,8 +67,8 @@ def evaluate_on_split(clf: V3ClassifierLGBM, rows: list[dict], split_name: str) 
         pt = TIER_ORDER[pred_tier]
         pe = EFFORT_ORDER[pred_effort]
 
-        if (gt["model_tier"] in {"Sonnet", "Opus"}
-                and pred_tier == "Haiku"
+        if (gt["model_tier"] in {"core", "large"}
+                and pred_tier == "mini"
                 and EFFORT_ORDER[pred_effort] <= EFFORT_ORDER["medium"]):
             catastrophic += 1
 
@@ -83,8 +83,8 @@ def evaluate_on_split(clf: V3ClassifierLGBM, rows: list[dict], split_name: str) 
             cwq_sum += 1.0
 
     n = len(rows)
-    tier_tp: dict[str, int] = {"Haiku": 0, "Sonnet": 0, "Opus": 0}
-    tier_gt: dict[str, int] = {"Haiku": 0, "Sonnet": 0, "Opus": 0}
+    tier_tp: dict[str, int] = {"mini": 0, "core": 0, "large": 0}
+    tier_gt: dict[str, int] = {"mini": 0, "core": 0, "large": 0}
     for r, pred_label in zip(rows, labels_pred):
         gt_tier = r["cheapest_acceptable_route"]["model_tier"]
         pred_tier = pred_label.split("|")[0]
@@ -94,7 +94,7 @@ def evaluate_on_split(clf: V3ClassifierLGBM, rows: list[dict], split_name: str) 
 
     per_tier_recall = {
         t: tier_tp[t] / tier_gt[t] if tier_gt[t] > 0 else 0.0
-        for t in ("Haiku", "Sonnet", "Opus")
+        for t in ("mini", "core", "large")
     }
 
     print(f"\n  [{split_name}] top-1={top1:.4f}  catastrophic={catastrophic}  "

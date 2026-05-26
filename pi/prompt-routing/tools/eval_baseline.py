@@ -12,8 +12,8 @@ the trained classifier metrics.
 Metrics:
   - cheapest-route top-1 accuracy (exact (model_tier, effort) match)
   - catastrophic under-routing count
-      ground_truth.model_tier in {Sonnet, Opus}
-      AND predicted.model_tier == Haiku
+      ground_truth.model_tier in {core, large}
+      AND predicted.model_tier == mini
       AND predicted.effort in {none, low, medium}
   - over-routing rate
       predicted route strictly more expensive than ground truth
@@ -38,7 +38,7 @@ DATA = REPO / "data"
 TRAIN = DATA / "train_v3.jsonl"
 EVAL = DATA / "eval_v3.jsonl"
 
-MODEL_ORDER = ["Haiku", "Sonnet", "Opus"]
+MODEL_ORDER = ["mini", "core", "large"]
 EFFORT_ORDER = ["none", "low", "medium", "high"]
 
 DEFAULT_ENCODER = "all-MiniLM-L6-v2"
@@ -67,9 +67,9 @@ def majority_route(rows: list[dict]) -> dict:
 
 
 def is_catastrophic(gt: dict, pred: dict) -> bool:
-    if gt["model_tier"] not in ("Sonnet", "Opus"):
+    if gt["model_tier"] not in ("core", "large"):
         return False
-    if pred["model_tier"] != "Haiku":
+    if pred["model_tier"] != "mini":
         return False
     if pred["effort"] not in ("none", "low", "medium"):
         return False
@@ -99,7 +99,7 @@ def evaluate(eval_rows: list[dict], predict) -> dict:
     per_tier_pred: Counter = Counter()
     per_tier_tp: Counter = Counter()
     cells: Counter = Counter()
-    max_cost = MODEL_ORDER.index("Opus") * 4 + EFFORT_ORDER.index("high")
+    max_cost = MODEL_ORDER.index("large") * 4 + EFFORT_ORDER.index("high")
 
     for r in eval_rows:
         gt = r["cheapest_acceptable_route"]
@@ -157,10 +157,10 @@ def evaluate(eval_rows: list[dict], predict) -> dict:
 def train_st_logreg_classifier(train_rows: list[dict], model_name: str):
     """Train a two-head SentenceTransformer + LogisticRegression baseline.
 
-    Head 1 predicts model_tier (Haiku/Sonnet/Opus). Head 2 predicts effort
+    Head 1 predicts model_tier (mini/core/large). Head 2 predicts effort
     (none/low/medium/high). A cost-safety rule is applied: when the tier
-    head predicts Haiku with low margin over Sonnet (top-1 probability gap
-    < 0.20), the prediction is upgraded to Sonnet. This matches the B4
+    head predicts mini with low margin over core (top-1 probability gap
+    < 0.20), the prediction is upgraded to core. This matches the B4
     zero-tolerance gate on catastrophic under-routing: on genuinely
     ambiguous prompts, pay a small over-routing premium rather than risk
     an insufficient route.
@@ -206,8 +206,8 @@ def train_st_logreg_classifier(train_rows: list[dict], model_name: str):
     clf_effort.fit(X_train, y_effort)
 
     tier_classes = list(clf_tier.classes_)
-    haiku_idx = tier_classes.index("Haiku") if "Haiku" in tier_classes else -1
-    sonnet_idx = tier_classes.index("Sonnet") if "Sonnet" in tier_classes else -1
+    haiku_idx = tier_classes.index("mini") if "mini" in tier_classes else -1
+    sonnet_idx = tier_classes.index("core") if "core" in tier_classes else -1
 
     def predict(row: dict) -> dict:
         Xq = encoder.encode(
@@ -223,10 +223,10 @@ def train_st_logreg_classifier(train_rows: list[dict], model_name: str):
         best_idx = int(tier_probs.argmax())
         tier = tier_classes[best_idx]
 
-        if tier == "Haiku" and sonnet_idx >= 0:
+        if tier == "mini" and sonnet_idx >= 0:
             margin = tier_probs[haiku_idx] - tier_probs[sonnet_idx]
             if margin < 0.20:
-                tier = "Sonnet"
+                tier = "core"
 
         return {"model_tier": tier, "effort": effort}
 
@@ -271,8 +271,8 @@ def train_tfidf_logreg_classifier(train_rows: list[dict]):
     clf_effort.fit(Xv, y_effort)
 
     tier_classes = list(clf_tier.classes_)
-    haiku_idx = tier_classes.index("Haiku") if "Haiku" in tier_classes else -1
-    sonnet_idx = tier_classes.index("Sonnet") if "Sonnet" in tier_classes else -1
+    haiku_idx = tier_classes.index("mini") if "mini" in tier_classes else -1
+    sonnet_idx = tier_classes.index("core") if "core" in tier_classes else -1
 
     def predict(row: dict) -> dict:
         Xq = vec.transform([row["prompt"]])
@@ -280,10 +280,10 @@ def train_tfidf_logreg_classifier(train_rows: list[dict]):
         effort = clf_effort.predict(Xq)[0]
         best_idx = int(tier_probs.argmax())
         tier = tier_classes[best_idx]
-        if tier == "Haiku" and sonnet_idx >= 0:
+        if tier == "mini" and sonnet_idx >= 0:
             margin = tier_probs[haiku_idx] - tier_probs[sonnet_idx]
             if margin < 0.20:
-                tier = "Sonnet"
+                tier = "core"
         return {"model_tier": tier, "effort": effort}
 
     return predict

@@ -16,18 +16,23 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 SCRIPT_DIR = Path(__file__).resolve().parent
 # parents[0]=synthetic_shards, [1]=data, [2]=prompt-routing, [3]=pi, [4]=.dotfiles
-HISTORY_DIR = SCRIPT_DIR.parents[3] / "history"
+REPO_PI_HISTORY_DIR = SCRIPT_DIR.parents[3] / "history"
+LIVE_PI_AGENT_DIR = Path.home() / ".pi" / "agent"
 DATA_DIR = SCRIPT_DIR.parents[1]  # pi/prompt-routing/data
-OUTPUT_PATH = SCRIPT_DIR / "chunk.jsonl"
+OUTPUT_PATH = DATA_DIR / "realpi_extraction_queue.jsonl"
 
 # ---------------------------------------------------------------------------
 # Sanitization helpers
 # ---------------------------------------------------------------------------
-_PATH_RE = re.compile(r'[A-Za-z]:\\(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]*mglenn[^\\/:*?"<>|\r\n]*')
+_PATH_RE = re.compile(
+    r'[A-Za-z]:\\(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]*mglenn[^\\/:*?"<>|\r\n]*'
+)
 _PATH_POSIX_RE = re.compile(r'/(?:home|Users)/mglenn(?:/[^\s,\'"]+)*')
-_EMAIL_RE = re.compile(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}')
-_B64_HEX_RE = re.compile(r'[A-Za-z0-9+/=]{31,}|[0-9a-fA-F]{32,}')
-_SECRET_URL_RE = re.compile(r'https?://[^\s]*(?:password|token|api_key|secret)=[^\s&"\']+', re.IGNORECASE)
+_EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
+_B64_HEX_RE = re.compile(r"[A-Za-z0-9+/=]{31,}|[0-9a-fA-F]{32,}")
+_SECRET_URL_RE = re.compile(
+    r'https?://[^\s]*(?:password|token|api_key|secret)=[^\s&"\']+', re.IGNORECASE
+)
 
 
 def sanitize(text: str) -> str | None:
@@ -37,6 +42,7 @@ def sanitize(text: str) -> str | None:
     text = _PATH_RE.sub("~", text)
     text = _PATH_POSIX_RE.sub("~", text)
     text = _EMAIL_RE.sub("user@example.com", text)
+
     # Redact long base64/hex blobs that are not common words
     def _redact_token(m: re.Match) -> str:
         val = m.group(0)
@@ -44,6 +50,7 @@ def sanitize(text: str) -> str | None:
         if len(val) < 32:
             return val
         return "<redacted-token>"
+
     text = _B64_HEX_RE.sub(_redact_token, text)
     return text
 
@@ -66,6 +73,8 @@ _SYSTEM_REMINDER_PHRASES = (
     "this is an automatic",
     "[hook output]",
     "hook blocked",
+    "escape interrupt",
+    "[extensions]",
 )
 _HOOK_OUTPUT_RE = re.compile(r"^\[?(hook|pre-tool|post-tool|damage-control)\b", re.IGNORECASE)
 
@@ -118,104 +127,191 @@ def label(prompt: str) -> dict:
     task_type = "code_write"  # default
 
     has_question = text.endswith("?") or any(
-        text.startswith(w) for w in ("what ", "how ", "why ", "when ", "where ", "which ", "who ", "is ", "are ", "does ", "do ", "can ", "could ", "would ", "will ", "should ")
+        text.startswith(w)
+        for w in (
+            "what ",
+            "how ",
+            "why ",
+            "when ",
+            "where ",
+            "which ",
+            "who ",
+            "is ",
+            "are ",
+            "does ",
+            "do ",
+            "can ",
+            "could ",
+            "would ",
+            "will ",
+            "should ",
+        )
     )
 
-    if any(kw in text for kw in ("design ", "architect", "architecture", "strategy", "structure the")):
+    if any(
+        kw in text for kw in ("design ", "architect", "architecture", "strategy", "structure the")
+    ):
         task_type = "design"
-    elif any(kw in text for kw in ("plan ", "planning", "roadmap", "migration plan", "removal plan", "draft the")):
+    elif any(
+        kw in text
+        for kw in ("plan ", "planning", "roadmap", "migration plan", "removal plan", "draft the")
+    ):
         task_type = "plan"
     elif any(kw in text for kw in ("review", "audit", "adversar")):
         task_type = "code_review"
-    elif any(kw in text for kw in ("fix", "bug", "error", "failing", "fail", "broken", "crash", "not work", "debug", "traceback", "exception")):
+    elif any(
+        kw in text
+        for kw in (
+            "fix",
+            "bug",
+            "error",
+            "failing",
+            "fail",
+            "broken",
+            "crash",
+            "not work",
+            "debug",
+            "traceback",
+            "exception",
+        )
+    ):
         task_type = "code_debug"
-    elif any(kw in text for kw in ("rename", "replace ", "add comment", "update doc", "move ", "change ", "delete ", "remove ")):
+    elif any(
+        kw in text
+        for kw in (
+            "rename",
+            "replace ",
+            "add comment",
+            "update doc",
+            "move ",
+            "change ",
+            "delete ",
+            "remove ",
+        )
+    ):
         if length < 200:
             task_type = "mechanical_edit"
-    elif any(kw in text for kw in ("implement", "build ", "refactor", "create ", "write ", "generate", "develop")):
+    elif any(
+        kw in text
+        for kw in ("implement", "build ", "refactor", "create ", "write ", "generate", "develop")
+    ):
         task_type = "code_write"
-    elif any(kw in text for kw in ("explain", "describe", "tell me", "what is", "how does", "why does")):
+    elif any(
+        kw in text for kw in ("explain", "describe", "tell me", "what is", "how does", "why does")
+    ):
         task_type = "explain"
     elif has_question and length <= 120:
         task_type = "factual"
-    elif any(kw in text for kw in ("analyze", "analyse", "analysis", "compare", "evaluate", "assess")):
+    elif any(
+        kw in text for kw in ("analyze", "analyse", "analysis", "compare", "evaluate", "assess")
+    ):
         task_type = "analysis"
 
     # Security/reliability overrides for route
-    is_security = any(kw in text for kw in ("threat", "security", "compliance", "vulnerability", "attack", "pentest", "rbac", "iam", "secret", "encrypt", "auth", "permission"))
-    is_distributed = any(kw in text for kw in ("distributed", "reliability", "sla", "slo", "redundan", "ha ", "high availab", "failover"))
+    is_security = any(
+        kw in text
+        for kw in (
+            "threat",
+            "security",
+            "compliance",
+            "vulnerability",
+            "attack",
+            "pentest",
+            "rbac",
+            "iam",
+            "secret",
+            "encrypt",
+            "auth",
+            "permission",
+        )
+    )
+    is_distributed = any(
+        kw in text
+        for kw in (
+            "distributed",
+            "reliability",
+            "sla",
+            "slo",
+            "redundan",
+            "ha ",
+            "high availab",
+            "failover",
+        )
+    )
 
     # Route and complexity
-    if task_type in ("design", "plan") or any(kw in text for kw in ("adversar", "expert", "sub agent", "multi-agent", "orchestrat")):
+    if task_type in ("design", "plan") or any(
+        kw in text for kw in ("adversar", "expert", "sub agent", "multi-agent", "orchestrat")
+    ):
         if length > 300 or is_security or is_distributed:
-            model_tier = "Opus"
+            model_tier = "large"
             effort = "high"
             complexity = "high"
         else:
-            model_tier = "Opus"
+            model_tier = "large"
             effort = "medium"
             complexity = "high"
     elif task_type == "code_review":
         if is_security:
-            model_tier = "Opus"
+            model_tier = "large"
             effort = "high"
             complexity = "high"
         else:
-            model_tier = "Sonnet"
+            model_tier = "core"
             effort = "medium"
             complexity = "mid"
     elif task_type == "code_debug":
         if length > 500:
-            model_tier = "Sonnet"
+            model_tier = "core"
             effort = "high"
             complexity = "mid"
         else:
-            model_tier = "Sonnet"
+            model_tier = "core"
             effort = "medium"
             complexity = "mid"
     elif task_type == "code_write":
         if length > 400:
-            model_tier = "Sonnet"
+            model_tier = "core"
             effort = "high"
             complexity = "mid"
         elif length > 150:
-            model_tier = "Sonnet"
+            model_tier = "core"
             effort = "medium"
             complexity = "mid"
         else:
-            model_tier = "Haiku"
+            model_tier = "mini"
             effort = "low"
             complexity = "low"
     elif task_type == "mechanical_edit":
-        model_tier = "Haiku"
+        model_tier = "mini"
         effort = "low"
         complexity = "low"
     elif task_type in ("factual", "explain"):
         if length <= 80:
-            model_tier = "Haiku"
+            model_tier = "mini"
             effort = "none"
             complexity = "low"
         else:
-            model_tier = "Haiku"
+            model_tier = "mini"
             effort = "low"
             complexity = "low"
     elif task_type == "analysis":
-        model_tier = "Sonnet"
+        model_tier = "core"
         effort = "medium"
         complexity = "mid"
     else:
-        model_tier = "Sonnet"
+        model_tier = "core"
         effort = "medium"
         complexity = "mid"
 
     # Security/distributed override
     if is_security or is_distributed:
-        if model_tier == "Haiku":
-            model_tier = "Sonnet"
+        if model_tier == "mini":
+            model_tier = "core"
             effort = "medium"
             complexity = "mid"
-        elif model_tier == "Sonnet" and task_type in ("design", "plan", "code_review"):
-            model_tier = "Opus"
+        elif model_tier == "core" and task_type in ("design", "plan", "code_review"):
+            model_tier = "large"
             effort = "medium"
             complexity = "high"
 
@@ -241,7 +337,7 @@ def label(prompt: str) -> dict:
 # ---------------------------------------------------------------------------
 def build_route_judgments(task_type: str, model_tier: str, effort: str, prompt: str) -> list[dict]:
     """Build 3 route_judgments with the cheapest_acceptable matching model_tier/effort."""
-    _model_order = ["Haiku", "Sonnet", "Opus"]
+    _model_order = ["mini", "core", "large"]
     _effort_order = ["none", "low", "medium", "high"]
 
     cheapest_idx = _model_order.index(model_tier)
@@ -249,49 +345,64 @@ def build_route_judgments(task_type: str, model_tier: str, effort: str, prompt: 
 
     judgments = []
 
-    # Insufficient: one tier below cheapest (or if cheapest is Haiku, use Haiku/none)
+    # Insufficient: one tier below cheapest (or if cheapest is mini, use mini/none)
     if cheapest_idx == 0 and cheapest_effort_idx == 0:
         # cheapest is already minimum; insufficient doesn't exist below, skip or use haiku/none
         pass
     elif cheapest_effort_idx > 0:
         insuff_route = {"model_tier": model_tier, "effort": _effort_order[cheapest_effort_idx - 1]}
-        judgments.append({
-            "route": insuff_route,
-            "verdict": "insufficient",
-            "rationale": _insufficient_rationale(task_type, insuff_route, model_tier, effort, prompt),
-        })
+        judgments.append(
+            {
+                "route": insuff_route,
+                "verdict": "insufficient",
+                "rationale": _insufficient_rationale(
+                    task_type, insuff_route, model_tier, effort, prompt
+                ),
+            }
+        )
     else:
         # cheapest_effort is "none", step down model
         insuff_model = _model_order[cheapest_idx - 1]
         insuff_route = {"model_tier": insuff_model, "effort": _effort_order[-1]}
-        judgments.append({
-            "route": insuff_route,
-            "verdict": "insufficient",
-            "rationale": _insufficient_rationale(task_type, insuff_route, model_tier, effort, prompt),
-        })
+        judgments.append(
+            {
+                "route": insuff_route,
+                "verdict": "insufficient",
+                "rationale": _insufficient_rationale(
+                    task_type, insuff_route, model_tier, effort, prompt
+                ),
+            }
+        )
 
     # Acceptable: the cheapest_acceptable_route
-    judgments.append({
-        "route": {"model_tier": model_tier, "effort": effort},
-        "verdict": "acceptable",
-        "rationale": _acceptable_rationale(task_type, model_tier, effort, prompt),
-    })
+    judgments.append(
+        {
+            "route": {"model_tier": model_tier, "effort": effort},
+            "verdict": "acceptable",
+            "rationale": _acceptable_rationale(task_type, model_tier, effort, prompt),
+        }
+    )
 
     # Overkill: one tier above
     if cheapest_idx < len(_model_order) - 1:
         overkill_model = _model_order[cheapest_idx + 1]
         overkill_route = {"model_tier": overkill_model, "effort": effort}
     else:
-        # Already Opus -- use same model, higher effort
+        # Already large -- use same model, higher effort
         if cheapest_effort_idx < len(_effort_order) - 1:
-            overkill_route = {"model_tier": model_tier, "effort": _effort_order[cheapest_effort_idx + 1]}
+            overkill_route = {
+                "model_tier": model_tier,
+                "effort": _effort_order[cheapest_effort_idx + 1],
+            }
         else:
             overkill_route = {"model_tier": model_tier, "effort": effort}
-    judgments.append({
-        "route": overkill_route,
-        "verdict": "overkill",
-        "rationale": _overkill_rationale(task_type, overkill_route, model_tier, effort, prompt),
-    })
+    judgments.append(
+        {
+            "route": overkill_route,
+            "verdict": "overkill",
+            "rationale": _overkill_rationale(task_type, overkill_route, model_tier, effort, prompt),
+        }
+    )
 
     return judgments
 
@@ -313,12 +424,14 @@ def _task_label(task_type: str) -> str:
     return labels.get(task_type, task_type)
 
 
-def _insufficient_rationale(task_type: str, insuff_route: dict, model_tier: str, effort: str, prompt: str) -> str:
+def _insufficient_rationale(
+    task_type: str, insuff_route: dict, model_tier: str, effort: str, prompt: str
+) -> str:
     tl = _task_label(task_type)
     return (
         f"At ({insuff_route['model_tier']}, {insuff_route['effort']}), the model lacks the "
-        f"capacity for this {tl} -- it may miss context, skip edge cases, or produce shallow output "
-        f"that requires significant follow-up."
+        f"capacity for this {tl} -- it may miss context, skip edge cases, "
+        f"or produce shallow output that requires significant follow-up."
     )
 
 
@@ -332,7 +445,9 @@ def _acceptable_rationale(task_type: str, model_tier: str, effort: str, prompt: 
     )
 
 
-def _overkill_rationale(task_type: str, overkill_route: dict, model_tier: str, effort: str, prompt: str) -> str:
+def _overkill_rationale(
+    task_type: str, overkill_route: dict, model_tier: str, effort: str, prompt: str
+) -> str:
     tl = _task_label(task_type)
     return (
         f"({overkill_route['model_tier']}, {overkill_route['effort']}) adds capability beyond what "
@@ -346,8 +461,32 @@ def _overkill_rationale(task_type: str, overkill_route: dict, model_tier: str, e
 # ---------------------------------------------------------------------------
 def make_family_id(task_type: str, prompt: str) -> str:
     """Generate a stable family token from the first few significant words."""
-    stop = {"a", "an", "the", "is", "are", "can", "do", "does", "to", "in", "of", "for",
-            "it", "i", "me", "we", "our", "my", "you", "that", "this", "with", "and", "or"}
+    stop = {
+        "a",
+        "an",
+        "the",
+        "is",
+        "are",
+        "can",
+        "do",
+        "does",
+        "to",
+        "in",
+        "of",
+        "for",
+        "it",
+        "i",
+        "me",
+        "we",
+        "our",
+        "my",
+        "you",
+        "that",
+        "this",
+        "with",
+        "and",
+        "or",
+    }
     words = [w for w in re.sub(r"[^a-z0-9 ]", " ", prompt.lower()).split() if w not in stop]
     key = task_type + " " + " ".join(words[:4])
     h = hashlib.md5(key.encode()).hexdigest()[:10]
@@ -384,8 +523,23 @@ def load_existing_prompts() -> set[str]:
 # ---------------------------------------------------------------------------
 # Main extraction loop
 # ---------------------------------------------------------------------------
+def _session_files() -> list[Path]:
+    roots = [
+        REPO_PI_HISTORY_DIR,
+        LIVE_PI_AGENT_DIR / "history",
+        LIVE_PI_AGENT_DIR / "sessions",
+    ]
+    files: dict[str, Path] = {}
+    for root in roots:
+        if not root.exists():
+            continue
+        for path in root.rglob("*.jsonl"):
+            files[str(path.resolve())] = path
+    return sorted(files.values())
+
+
 def extract_sessions() -> list[dict]:
-    history_files = sorted(HISTORY_DIR.glob("*.jsonl"))
+    history_files = _session_files()
     print(f"Found {len(history_files)} session files", file=sys.stderr)
 
     # Track stats
@@ -478,7 +632,7 @@ def extract_sessions() -> list[dict]:
     return candidates
 
 
-def build_rows(candidates: list[dict], existing: set[str]) -> list[dict]:
+def build_queue_rows(candidates: list[dict], existing: set[str]) -> list[dict]:
     seen_norms: set[str] = set(existing)
     rows = []
     counter = 1
@@ -521,20 +675,26 @@ def build_rows(candidates: list[dict], existing: set[str]) -> list[dict]:
                     if j["verdict"] == "acceptable":
                         j["route"] = cheapest
 
-        cwd_hint = f"cwd={cwd}" if cwd else "cwd=unknown"
+        clean_cwd = sanitize(cwd) if cwd else ""
+        cwd_hint = f"cwd={clean_cwd}" if clean_cwd else "cwd=unknown"
         notes = f"session {session_id[:18]}; {cwd_hint}"
 
         row = {
             "prompt_id": prompt_id,
             "family_id": family_id,
             "prompt": text,
-            "source": "history_curated",
+            "source": "history_heuristic",
+            "status": "needs_adjudication",
             "domain": domain,
-            "task_type": lbl["task_type"],
-            "ambiguity": lbl["ambiguity"],
-            "cheapest_acceptable_route": cheapest,
-            "complexity_tier": lbl["complexity"],
-            "route_judgments": judgments,
+            "heuristic_task_type": lbl["task_type"],
+            "heuristic_ambiguity": lbl["ambiguity"],
+            "heuristic_route": cheapest,
+            "heuristic_complexity_tier": lbl["complexity"],
+            "heuristic_route_judgments": judgments,
+            "extraction_source": "realPi",
+            "session_id": session_id,
+            "cwd_hint": clean_cwd or "unknown",
+            "label_method": "heuristic",
             "notes": notes,
         }
         rows.append(row)
@@ -549,7 +709,7 @@ def main() -> None:
 
     candidates = extract_sessions()
 
-    rows = build_rows(candidates, existing)
+    rows = build_queue_rows(candidates, existing)
     print(f"Rows after dedup and filtering: {len(rows)}", file=sys.stderr)
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -561,9 +721,12 @@ def main() -> None:
 
     # Distribution summary
     from collections import Counter
-    routes = Counter(f"{r['cheapest_acceptable_route']['model_tier']}/{r['cheapest_acceptable_route']['effort']}" for r in rows)
+
+    routes = Counter(
+        f"{r['heuristic_route']['model_tier']}/{r['heuristic_route']['effort']}" for r in rows
+    )
     domains = Counter(r["domain"] for r in rows)
-    tasks = Counter(r["task_type"] for r in rows)
+    tasks = Counter(r["heuristic_task_type"] for r in rows)
     print("Route distribution:", dict(routes.most_common()), file=sys.stderr)
     print("Domain distribution:", dict(domains.most_common()), file=sys.stderr)
     print("Task type distribution:", dict(tasks.most_common()), file=sys.stderr)

@@ -26,7 +26,7 @@ def _minimal_row(**overrides) -> dict:
         "domain": "python",
         "task_type": "factual",
         "ambiguity": "clear",
-        "cheapest_acceptable_route": {"model_tier": "Haiku", "effort": "low"},
+        "cheapest_acceptable_route": {"model_tier": "mini", "effort": "low"},
     }
     row.update(overrides)
     return row
@@ -136,14 +136,14 @@ class TestInvalidRouteValues:
 
     def test_invalid_effort_is_caught(self):
         row = _minimal_row(
-            cheapest_acceptable_route={"model_tier": "Haiku", "effort": "extreme"}
+            cheapest_acceptable_route={"model_tier": "mini", "effort": "extreme"}
         )
         errors = validate_row(row, "test-001")
         assert errors
         assert any("effort" in e for e in errors)
 
     def test_valid_all_model_tiers(self):
-        for tier in ("Haiku", "Sonnet", "Opus"):
+        for tier in ("mini", "core", "large"):
             row = _minimal_row(
                 cheapest_acceptable_route={"model_tier": tier, "effort": "medium"}
             )
@@ -152,7 +152,7 @@ class TestInvalidRouteValues:
     def test_valid_all_effort_tiers(self):
         for effort in ("none", "low", "medium", "high"):
             row = _minimal_row(
-                cheapest_acceptable_route={"model_tier": "Sonnet", "effort": effort}
+                cheapest_acceptable_route={"model_tier": "core", "effort": effort}
             )
             assert validate_row(row, "test") == []
 
@@ -203,15 +203,15 @@ class TestSyntheticRowProvenance:
 class TestRouteJudgmentsInvariant:
     def test_cheapest_acceptable_matches_car(self):
         row = _minimal_row(
-            cheapest_acceptable_route={"model_tier": "Sonnet", "effort": "medium"},
+            cheapest_acceptable_route={"model_tier": "core", "effort": "medium"},
             route_judgments=[
                 {
-                    "route": {"model_tier": "Haiku", "effort": "medium"},
+                    "route": {"model_tier": "mini", "effort": "medium"},
                     "verdict": "insufficient",
                     "rationale": "wrong",
                 },
                 {
-                    "route": {"model_tier": "Sonnet", "effort": "medium"},
+                    "route": {"model_tier": "core", "effort": "medium"},
                     "verdict": "acceptable",
                     "rationale": "correct",
                 },
@@ -222,20 +222,20 @@ class TestRouteJudgmentsInvariant:
 
     def test_car_mismatch_with_judgments_is_caught(self):
         row = _minimal_row(
-            cheapest_acceptable_route={"model_tier": "Opus", "effort": "high"},
+            cheapest_acceptable_route={"model_tier": "large", "effort": "high"},
             route_judgments=[
                 {
-                    "route": {"model_tier": "Haiku", "effort": "low"},
+                    "route": {"model_tier": "mini", "effort": "low"},
                     "verdict": "insufficient",
                     "rationale": "too weak",
                 },
                 {
-                    "route": {"model_tier": "Sonnet", "effort": "medium"},
+                    "route": {"model_tier": "core", "effort": "medium"},
                     "verdict": "acceptable",
                     "rationale": "good enough",
                 },
                 {
-                    "route": {"model_tier": "Opus", "effort": "high"},
+                    "route": {"model_tier": "large", "effort": "high"},
                     "verdict": "overkill",
                     "rationale": "too much",
                 },
@@ -249,7 +249,7 @@ class TestRouteJudgmentsInvariant:
         row = _minimal_row(
             route_judgments=[
                 {
-                    "route": {"model_tier": "Haiku", "effort": "low"},
+                    "route": {"model_tier": "mini", "effort": "low"},
                     "verdict": "maybe",
                     "rationale": "not sure",
                 }
@@ -296,7 +296,7 @@ class TestLabelsField:
     def test_row_with_consistent_labels_validates(self):
         row = _minimal_row(
             labels={
-                "cheapest_acceptable_route": {"model_tier": "Haiku", "effort": "low"},
+                "cheapest_acceptable_route": {"model_tier": "mini", "effort": "low"},
             }
         )
         errors = validate_row(row, "test-001")
@@ -304,9 +304,9 @@ class TestLabelsField:
 
     def test_row_with_labels_mismatch_is_caught(self):
         row = _minimal_row(
-            cheapest_acceptable_route={"model_tier": "Haiku", "effort": "low"},
+            cheapest_acceptable_route={"model_tier": "mini", "effort": "low"},
             labels={
-                "cheapest_acceptable_route": {"model_tier": "Sonnet", "effort": "medium"},
+                "cheapest_acceptable_route": {"model_tier": "core", "effort": "medium"},
             },
         )
         errors = validate_row(row, "test-001")

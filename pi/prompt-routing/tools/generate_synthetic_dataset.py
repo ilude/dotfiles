@@ -85,9 +85,9 @@ cheapest acceptable route -- the lowest-cost (model_tier, effort) pair that
 can reliably solve the prompt.
 
 Action space (cheapest to most expensive):
-  Haiku/none   Haiku/low    Haiku/medium   Haiku/high
-  Sonnet/none  Sonnet/low   Sonnet/medium  Sonnet/high
-  Opus/none    Opus/low     Opus/medium    Opus/high
+  mini/none   mini/low    mini/medium   mini/high
+  core/none  core/low   core/medium  core/high
+  large/none    large/low     large/medium    large/high
 
 Vocabulary per candidate route:
   acceptable   -- solves the prompt correctly without unreasonable risk
@@ -680,19 +680,19 @@ _EFFORT_FOR_PRIOR_SHIFT = {
     "high": ["medium", "high"],
 }
 
-_TIER_ORDER = ["Haiku", "Sonnet", "Opus"]
+_TIER_ORDER = ["mini", "core", "large"]
 _EFFORT_ORDER = ["none", "low", "medium", "high"]
 
 
 def _normalize_tier(tier: str) -> str:
     t = tier.strip().lower()
     if t.startswith("haiku"):
-        return "Haiku"
+        return "mini"
     if t.startswith("sonnet"):
-        return "Sonnet"
+        return "core"
     if t.startswith("opus"):
-        return "Opus"
-    return "Sonnet"
+        return "large"
+    return "core"
 
 
 def _normalize_effort(effort: str) -> str:
@@ -722,14 +722,14 @@ def seeded_adjudicate(
     # Small-probability tier promotion on borderline/ambiguous-looking prompts,
     # and tier demotion on the lowest band to spread the label distribution.
     tier_roll = (h >> 4) % 20
-    if complexity_band == "small" and tier == "Haiku" and tier_roll == 0:
-        tier = "Sonnet"
+    if complexity_band == "small" and tier == "mini" and tier_roll == 0:
+        tier = "core"
         perturbed_effort = "low"
-    elif complexity_band == "large" and tier == "Sonnet" and tier_roll < 3:
-        tier = "Opus"
+    elif complexity_band == "large" and tier == "core" and tier_roll < 3:
+        tier = "large"
         perturbed_effort = "high"
-    elif complexity_band == "large" and tier == "Opus" and tier_roll >= 17:
-        tier = "Sonnet"
+    elif complexity_band == "large" and tier == "large" and tier_roll >= 17:
+        tier = "core"
         perturbed_effort = "high"
 
     cheapest = {"model_tier": tier, "effort": perturbed_effort}

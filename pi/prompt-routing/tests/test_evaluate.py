@@ -103,7 +103,7 @@ class TestGateThresholds:
         p50_us: float = 500.0,
     ) -> dict:
         if recall is None:
-            recall = {"Haiku": 0.80, "Sonnet": 0.80, "Opus": 0.80}
+            recall = {"mini": 0.80, "core": 0.80, "large": 0.80}
         return {
             "top1_accuracy": top1,
             "catastrophic_under_routing": catastrophic,
@@ -133,7 +133,7 @@ class TestGateThresholds:
         assert any("catastrophic" in f for f in failures)
 
     def test_low_tier_recall_reported(self):
-        metrics = self._make_metrics(recall={"Haiku": 0.50, "Sonnet": 0.80, "Opus": 0.80})
+        metrics = self._make_metrics(recall={"mini": 0.50, "core": 0.80, "large": 0.80})
         failures = evaluate._check_gate(metrics)
         assert any("recall" in f for f in failures)
 
@@ -174,11 +174,11 @@ class TestComputeMetrics:
 
     def test_perfect_predictions(self):
         rows = [
-            self._make_row("Haiku", "low"),
-            self._make_row("Sonnet", "medium"),
-            self._make_row("Opus", "high"),
+            self._make_row("mini", "low"),
+            self._make_row("core", "medium"),
+            self._make_row("large", "high"),
         ]
-        preds = ["Haiku|low", "Sonnet|medium", "Opus|high"]
+        preds = ["mini|low", "core|medium", "large|high"]
         clf = self._stub_clf(preds)
         m = evaluate._compute_metrics(clf, rows, self._empty_timing())
         assert m["top1_accuracy"] == 1.0
@@ -187,48 +187,48 @@ class TestComputeMetrics:
 
     def test_catastrophic_counted_correctly(self):
         rows = [
-            self._make_row("Sonnet", "medium"),  # one-route under-routing
-            self._make_row("Opus", "high"),       # catastrophic if pred=Haiku|medium
-            self._make_row("Haiku", "low"),       # NOT catastrophic
+            self._make_row("core", "medium"),  # catastrophic if pred=mini|low
+            self._make_row("large", "high"),   # catastrophic if pred=mini|medium
+            self._make_row("mini", "low"),     # NOT catastrophic
         ]
-        preds = ["Haiku|low", "Haiku|medium", "Haiku|none"]
+        preds = ["mini|low", "mini|medium", "mini|none"]
         clf = self._stub_clf(preds)
         m = evaluate._compute_metrics(clf, rows, self._empty_timing())
-        assert m["catastrophic_under_routing"] == 1
+        assert m["catastrophic_under_routing"] == 2
 
     def test_over_routing_counted_correctly(self):
         rows = [
-            self._make_row("Haiku", "low"),    # over-routed to Sonnet
-            self._make_row("Sonnet", "medium"), # exact match
-            self._make_row("Opus", "high"),     # under-routed
+            self._make_row("mini", "low"),    # over-routed to core
+            self._make_row("core", "medium"), # exact match
+            self._make_row("large", "high"),     # under-routed
         ]
-        preds = ["Sonnet|medium", "Sonnet|medium", "Haiku|low"]
+        preds = ["core|medium", "core|medium", "mini|low"]
         clf = self._stub_clf(preds)
         m = evaluate._compute_metrics(clf, rows, self._empty_timing())
         assert m["over_routing_rate"] == pytest.approx(1 / 3, abs=0.001)
 
     def test_per_tier_recall_fixture(self):
         rows = [
-            self._make_row("Haiku", "low"),
-            self._make_row("Haiku", "medium"),
-            self._make_row("Sonnet", "medium"),
-            self._make_row("Opus", "high"),
+            self._make_row("mini", "low"),
+            self._make_row("mini", "medium"),
+            self._make_row("core", "medium"),
+            self._make_row("large", "high"),
         ]
         preds = [
-            "Haiku|low",     # correct Haiku
-            "Sonnet|medium", # wrong tier for Haiku
-            "Sonnet|high",   # correct Sonnet
-            "Opus|medium",   # correct Opus
+            "mini|low",     # correct mini
+            "core|medium", # wrong tier for mini
+            "core|high",   # correct core
+            "large|medium",   # correct large
         ]
         clf = self._stub_clf(preds)
         m = evaluate._compute_metrics(clf, rows, self._empty_timing())
-        assert m["per_tier_recall"]["Haiku"] == pytest.approx(0.5, abs=0.001)
-        assert m["per_tier_recall"]["Sonnet"] == pytest.approx(1.0, abs=0.001)
-        assert m["per_tier_recall"]["Opus"] == pytest.approx(1.0, abs=0.001)
+        assert m["per_tier_recall"]["mini"] == pytest.approx(0.5, abs=0.001)
+        assert m["per_tier_recall"]["core"] == pytest.approx(1.0, abs=0.001)
+        assert m["per_tier_recall"]["large"] == pytest.approx(1.0, abs=0.001)
 
 
 class TestSequenceMetrics:
-    def _stub_clf(self, prediction: str = "Haiku|low"):
+    def _stub_clf(self, prediction: str = "mini|low"):
         class _Stub:
             def predict_texts(self, prompts):
                 return [prediction for _ in prompts]

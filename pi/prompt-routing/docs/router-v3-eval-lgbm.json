@@ -1,28 +1,28 @@
 {
-  "n": 605,
-  "top1_accuracy": 0.8776859504132232,
+  "n": 625,
+  "top1_accuracy": 0.808,
   "catastrophic_under_routing": 0,
-  "over_routing_rate": 0.1537190082644628,
-  "cost_weighted_quality": 0.7198230832528352,
+  "over_routing_rate": 0.2656,
+  "cost_weighted_quality": 0.691739047619047,
   "per_tier_recall": {
-    "Haiku": 0.8801652892561983,
-    "Sonnet": 0.8497854077253219,
-    "Opus": 0.9230769230769231
+    "mini": 0.6459143968871596,
+    "core": 0.9375,
+    "large": 0.9
   },
   "per_tier_precision": {
-    "Haiku": 0.9102564102564102,
-    "Sonnet": 0.8354430379746836,
-    "Opus": 0.8955223880597015
+    "mini": 1.0,
+    "core": 0.6456953642384106,
+    "large": 0.9171974522292994
   },
   "per_tier_f1": {
-    "Haiku": 0.8949579831932772,
-    "Sonnet": 0.8425531914893617,
-    "Opus": 0.9090909090909091
+    "mini": 0.7848699763593382,
+    "core": 0.7647058823529412,
+    "large": 0.9085173501577287
   },
   "per_tier_total": {
-    "Haiku": 242,
-    "Sonnet": 233,
-    "Opus": 130
+    "mini": 257,
+    "core": 208,
+    "large": 160
   },
   "inference_timing_us": {
     "mean_us": 0.0,
@@ -91,7 +91,7 @@
       {
         "model": "router_v3_lgbm.joblib",
         "sha256": "router_v3_lgbm.sha256",
-        "hash": "e90abab9d6f7be2d1dc5f359b0c4afd6fd922cb9b2dae19e3f71dedbe53d7328"
+        "hash": "75308661deeb63ed17045b4aafc4d604927512d64421ba297d1eee5626e7baa5"
       }
     ]
   },
@@ -99,9 +99,9 @@
     "raw_prompt_included": false,
     "excerpt_included": false,
     "sample_prompt_hashes": [
-      "65a616ec0f31895950c6c6137e769b13d109d543aeb125335f5032c21664bb10",
-      "98386d973992e6f4d9c91958b203cc4c0eda496a3c4793bf0d3eac4295f90859",
-      "d4bab71925dc72eb11fd638d96fe4b10fa30565b2d37b12a168d343600062df8"
+      "51dd698284736faf6de00884b08293505c73d71530342d3d2e7b7f97aedc8951",
+      "d6b650a4aa7fc1dbcbf556f286e979410d493ae314f33687c5ab9d76944223a0",
+      "c07d2d333ff7ba5003cbbfd250a426b7e4041f30a257f50641a41d3049042cf3"
     ]
   }
 }

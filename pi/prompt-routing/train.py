@@ -3,7 +3,7 @@ Training pipeline for the v3 route-level prompt routing classifier.
 
 Architecture: joint LinearSVC on TF-IDF (1-3 gram).
   - Single LinearSVC predicts the joint (model_tier, effort) label.
-  - Labels: "Haiku|low", "Sonnet|medium", etc. (up to 12 classes).
+  - Labels: "mini|low", "core|medium", etc. (up to 12 classes).
   - Probabilities: softmax(decision_function()) -- fast and monotonically ordered.
   - Class definition lives in classifier.py so joblib deserialises as
     'classifier.V3Classifier' from any calling context.
@@ -82,8 +82,8 @@ def evaluate_on_split(
         pe = EFFORT_ORDER[pred_effort]
 
         # catastrophic_under_routing per route_judgments contract
-        if (gt["model_tier"] in {"Sonnet", "Opus"}
-                and pred_tier == "Haiku"
+        if (gt["model_tier"] in {"core", "large"}
+                and pred_tier == "mini"
                 and EFFORT_ORDER[pred_effort] <= EFFORT_ORDER["medium"]):
             catastrophic += 1
 
@@ -100,8 +100,8 @@ def evaluate_on_split(
     over_routing_rate = over_routing / len(rows)
     cost_weighted_quality = cwq_sum / len(rows)
 
-    tier_correct: dict[str, int] = {"Haiku": 0, "Sonnet": 0, "Opus": 0}
-    tier_total: dict[str, int] = {"Haiku": 0, "Sonnet": 0, "Opus": 0}
+    tier_correct: dict[str, int] = {"mini": 0, "core": 0, "large": 0}
+    tier_total: dict[str, int] = {"mini": 0, "core": 0, "large": 0}
     tier_pred_count: dict[str, int] = {}
     for r, pred_label in zip(rows, labels_pred):
         gt_tier = r["cheapest_acceptable_route"]["model_tier"]
@@ -113,17 +113,17 @@ def evaluate_on_split(
 
     per_tier_recall = {
         t: tier_correct[t] / tier_total[t] if tier_total[t] > 0 else 0.0
-        for t in ("Haiku", "Sonnet", "Opus")
+        for t in ("mini", "core", "large")
     }
     per_tier_precision = {
         t: tier_correct[t] / tier_pred_count[t] if tier_pred_count.get(t, 0) > 0 else 0.0
-        for t in ("Haiku", "Sonnet", "Opus")
+        for t in ("mini", "core", "large")
     }
     per_tier_f1 = {
         t: (2 * per_tier_precision[t] * per_tier_recall[t]
             / (per_tier_precision[t] + per_tier_recall[t])
             if (per_tier_precision[t] + per_tier_recall[t]) > 0 else 0.0)
-        for t in ("Haiku", "Sonnet", "Opus")
+        for t in ("mini", "core", "large")
     }
 
     if verbose:

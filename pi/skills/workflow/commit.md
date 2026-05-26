@@ -31,7 +31,15 @@ If `.secrets.baseline` exists, include it while keeping the same ruleset overrid
 git diff --staged --name-only -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline --disable-plugin KeywordDetector
 ```
 
-If `detect-secrets-hook` is not installed, rely on the repository's existing commit hooks and do not create ad-hoc secret-scanning scripts. If the scanner or hook reports secrets after `KeywordDetector` is disabled, stop immediately and report the findings. Do not proceed with commits.
+If `detect-secrets-hook` is not installed, rely on the repository's existing commit hooks and do not create ad-hoc secret-scanning scripts.
+
+If the scanner or hook reports findings after `KeywordDetector` is disabled, review each finding before stopping:
+- Treat documented hashes, checksums, prompt hashes, model hashes, fixture/example values, redacted values, and clearly non-credential test data as false positives when the surrounding context proves they are not usable secrets.
+- Prefer a repository baseline for stable false positives in generated or tracked data artifacts when comments are not legal for the file type, especially JSON. If `.secrets.baseline` exists, update it with the reviewed false positives and rerun the scan with `--baseline .secrets.baseline`. If no baseline exists and the false positives are clearly stable tracked artifacts, create one using `detect-secrets scan --disable-plugin KeywordDetector --baseline .secrets.baseline <affected paths>` and stage it with the commit group.
+- Prefer inline allowlist comments only for source or documentation formats where comments are valid and the comment will not corrupt generated data.
+- Stop immediately if any finding is likely a real secret or remains ambiguous after context review. Report the path, line, detector, and reason.
+
+Do not ask the user for false-positive approval when the context is clear and the baseline or allowlist update is the standard deterministic fix. After updating the baseline or allowlist, rerun the required scan and proceed only if it passes.
 
 Categorize uncommitted files using this approach:
 - Auto-ignore and add to `.gitignore`: `*.log`, `*.csv`, `*.tsv`, `*.db`, `*.sqlite`, `*.sqlite3`, large data files (`*.json` over 1 MB, `*.xml` data dumps)

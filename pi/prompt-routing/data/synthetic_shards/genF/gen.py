@@ -1,10 +1,10 @@
 """
-Generator for genF synthetic shard -- Sonnet/high bounded complex implementation/debugging.
+Generator for genF synthetic shard -- core/high bounded complex implementation/debugging.
 
 Route distribution:
-  - 200 Sonnet/high
-  - 30 Sonnet/medium
-  - 20 Opus/medium
+  - 200 core/high
+  - 30 core/medium
+  - 20 large/medium
 
 Output: data/synthetic_shards/genF/chunk.jsonl
 """
@@ -26,7 +26,7 @@ PROVENANCE = {
 }
 
 # ---------------------------------------------------------------------------
-# Sonnet/high families -- bounded complex implementation and debugging tasks
+# core/high families -- bounded complex implementation and debugging tasks
 # ---------------------------------------------------------------------------
 
 SONNET_HIGH_FAMILIES = [
@@ -46,12 +46,12 @@ SONNET_HIGH_FAMILIES = [
             "A JUnit test for an async message consumer sporadically asserts against stale state because the consumer processes messages on a different thread. Identify the missing happens-before edge and show how CountDownLatch or CompletableFuture can make the assertion deterministic.",
             "Our Python test uses monkeypatch to replace time.sleep but the background worker it tests imports time at module load time. Explain why the patch does not take effect and provide the corrected import-path target for monkeypatch.setattr.",
         ],
-        "insufficient_route": {"model_tier": "Sonnet", "effort": "medium"},
+        "insufficient_route": {"model_tier": "core", "effort": "medium"},
         "insufficient_rationale_tmpl": "Identified the symptom (timing sensitivity) but did not trace the missing synchronization primitive or explain the specific happens-before violation in {task}.",
         "acceptable_rationale_tmpl": "Correctly identified the data race or timer ordering issue in {task}, named the specific synchronization primitive needed, and provided a concrete fix that eliminates the non-determinism.",
-        "overkill_route": {"model_tier": "Opus", "effort": "high"},
-        "overkill_rationale_tmpl": "Same root-cause analysis as Sonnet/high plus an unsolicited deep dive into the test framework internals and suggested migration to a different testing library.",
-        "notes_tmpl": "Sonnet/high is the right tier: tracing a concurrency bug in a test requires multi-step reasoning but the scope is bounded to a single test file.",
+        "overkill_route": {"model_tier": "large", "effort": "high"},
+        "overkill_rationale_tmpl": "Same root-cause analysis as core/high plus an unsolicited deep dive into the test framework internals and suggested migration to a different testing library.",
+        "notes_tmpl": "core/high is the right tier: tracing a concurrency bug in a test requires multi-step reasoning but the scope is bounded to a single test file.",
     },
     # --- Multi-file backend bug ---
     {
@@ -69,12 +69,12 @@ SONNET_HIGH_FAMILIES = [
             "A Flask blueprint for /reports/generate starts the report generation synchronously and times out on large datasets. Identify that the route is blocking the worker, and refactor it to enqueue a Celery task and return HTTP 202 Accepted with a task ID.",
             "Our Hapi.js route handler for /cart/checkout returns 200 even when the inventory reservation fails, because the promise rejection inside a helper function is not propagated to the route handler. Trace the missing await and show the corrected async control flow.",
         ],
-        "insufficient_route": {"model_tier": "Sonnet", "effort": "medium"},
+        "insufficient_route": {"model_tier": "core", "effort": "medium"},
         "insufficient_rationale_tmpl": "Spotted the surface-level HTTP status mismatch but did not trace the root cause through the middleware or async boundary in {task}.",
         "acceptable_rationale_tmpl": "Traced the bug through the full call stack in {task}, identified the specific error-swallowing or lifecycle mismatch, and provided a corrected implementation with the correct HTTP semantics.",
-        "overkill_route": {"model_tier": "Opus", "effort": "high"},
-        "overkill_rationale_tmpl": "Reproduced the Sonnet/high diagnosis with correct fix, then added unsolicited recommendations for API versioning strategy and OpenAPI spec generation.",
-        "notes_tmpl": "Sonnet/high is appropriate: tracing an async bug across middleware layers requires multi-step analysis but the codebase scope is bounded.",
+        "overkill_route": {"model_tier": "large", "effort": "high"},
+        "overkill_rationale_tmpl": "Reproduced the core/high diagnosis with correct fix, then added unsolicited recommendations for API versioning strategy and OpenAPI spec generation.",
+        "notes_tmpl": "core/high is appropriate: tracing an async bug across middleware layers requires multi-step analysis but the codebase scope is bounded.",
     },
     # --- Database migration with constraints ---
     {
@@ -92,12 +92,12 @@ SONNET_HIGH_FAMILIES = [
             "Write a TypeORM migration that changes a 'price' column from NUMERIC(10,2) to NUMERIC(12,4), preserving all existing values and updating the column in a single ALTER TABLE statement safe for Postgres under READ COMMITTED isolation.",
             "Write a Prisma migration that adds a composite unique index on (user_id, resource_id, scope) to the 'permissions' table. The table has 8M rows; explain the strategy to build the index concurrently and add the CREATE INDEX CONCURRENTLY statement as a raw SQL step.",
         ],
-        "insufficient_route": {"model_tier": "Sonnet", "effort": "medium"},
+        "insufficient_route": {"model_tier": "core", "effort": "medium"},
         "insufficient_rationale_tmpl": "Produced a syntactically valid migration but missed the locking or concurrency constraint for {task}, resulting in a migration that would block production traffic.",
         "acceptable_rationale_tmpl": "Wrote the complete migration for {task} with correct backfill logic, proper reversibility, and addressed the locking concern explicitly using the appropriate Postgres or ORM pattern.",
-        "overkill_route": {"model_tier": "Opus", "effort": "high"},
-        "overkill_rationale_tmpl": "Identical migration to Sonnet/high but also included an unsolicited schema design review and suggestions for restructuring the table relationships.",
-        "notes_tmpl": "Sonnet/high covers the locking and backfill reasoning; Opus/high would spend effort on schema redesign that was not requested.",
+        "overkill_route": {"model_tier": "large", "effort": "high"},
+        "overkill_rationale_tmpl": "Identical migration to core/high but also included an unsolicited schema design review and suggestions for restructuring the table relationships.",
+        "notes_tmpl": "core/high covers the locking and backfill reasoning; large/high would spend effort on schema redesign that was not requested.",
     },
     # --- Auth/JWT debugging ---
     {
@@ -115,12 +115,12 @@ SONNET_HIGH_FAMILIES = [
             "A Rails API using Devise-JWT returns a fresh token in the Authorization response header but the Axios client is not reading it because the header is not in Access-Control-Expose-Headers. Identify the CORS gap and show the Rack CORS configuration fix.",
             "Our Express.js middleware logs 'JsonWebTokenError: jwt malformed' for requests that previously worked. The JWTs are base64url-encoded but a recent nginx config change added URL-decoding of the Authorization header, corrupting the dots. Trace the transformation and show how to configure nginx correctly.",
         ],
-        "insufficient_route": {"model_tier": "Sonnet", "effort": "medium"},
+        "insufficient_route": {"model_tier": "core", "effort": "medium"},
         "insufficient_rationale_tmpl": "Named the general category of JWT error but did not trace the specific encoding, header, or algorithm mismatch step-by-step for {task}.",
         "acceptable_rationale_tmpl": "Correctly traced the JWT validation failure in {task} to its specific root cause, provided diagnostic commands or code, and gave a targeted fix rather than a general JWT troubleshooting checklist.",
-        "overkill_route": {"model_tier": "Opus", "effort": "high"},
-        "overkill_rationale_tmpl": "Provided the same correct JWT fix as Sonnet/high but also added an unprompted security audit of the token lifecycle and rotation strategy.",
-        "notes_tmpl": "Sonnet/high correctly diagnoses a specific JWT misconfiguration without needing the broader security audit that Opus/high would inject.",
+        "overkill_route": {"model_tier": "large", "effort": "high"},
+        "overkill_rationale_tmpl": "Provided the same correct JWT fix as core/high but also added an unprompted security audit of the token lifecycle and rotation strategy.",
+        "notes_tmpl": "core/high correctly diagnoses a specific JWT misconfiguration without needing the broader security audit that large/high would inject.",
     },
     # --- DevOps / pipeline debugging ---
     {
@@ -138,12 +138,12 @@ SONNET_HIGH_FAMILIES = [
             "A Helm chart upgrade fails with 'cannot patch Deployment because it is immutable'. The change was to add a new label to spec.selector.matchLabels, which is immutable after creation. Explain the immutability constraint and show how to perform the upgrade using helm upgrade --force or a delete-and-redeploy strategy.",
             "Our Ansible playbook idempotency check fails because the shell module is used for a task that creates a file, and it always reports 'changed'. Replace the shell module task with the appropriate file and template modules so the playbook reports 'ok' on subsequent runs.",
         ],
-        "insufficient_route": {"model_tier": "Sonnet", "effort": "medium"},
+        "insufficient_route": {"model_tier": "core", "effort": "medium"},
         "insufficient_rationale_tmpl": "Suggested a general debugging approach but did not identify the specific misconfiguration or constraint (such as the immutable field or cache key mismatch) in {task}.",
         "acceptable_rationale_tmpl": "Identified the specific root cause in {task} -- not just the symptom -- provided the corrected configuration, and explained the underlying constraint that makes the naive approach fail.",
-        "overkill_route": {"model_tier": "Opus", "effort": "high"},
-        "overkill_rationale_tmpl": "Delivered the same correct fix as Sonnet/high and additionally proposed a full CI/CD pipeline redesign that was outside the scope of the question.",
-        "notes_tmpl": "Sonnet/high is right for diagnosing a specific DevOps misconfiguration; the scope is bounded to one pipeline or deployment artifact.",
+        "overkill_route": {"model_tier": "large", "effort": "high"},
+        "overkill_rationale_tmpl": "Delivered the same correct fix as core/high and additionally proposed a full CI/CD pipeline redesign that was outside the scope of the question.",
+        "notes_tmpl": "core/high is right for diagnosing a specific DevOps misconfiguration; the scope is bounded to one pipeline or deployment artifact.",
     },
     # --- Performance / query optimization ---
     {
@@ -161,12 +161,12 @@ SONNET_HIGH_FAMILIES = [
             "A Python data pipeline processes 500k CSV rows by calling a pandas apply() with a UDF that does string parsing. It takes 90 seconds. Analyze why apply() with a Python UDF is slow and show a vectorized rewrite using str accessor methods that should run in under 5 seconds.",
             "Our API response time at p99 jumped from 80ms to 600ms after adding a new index to the 'transactions' table. Explain how adding a write-heavy index increases write amplification and WAL volume, and describe how to evaluate whether the query read benefit outweighs the write cost using pg_stat_user_indexes.",
         ],
-        "insufficient_route": {"model_tier": "Sonnet", "effort": "medium"},
+        "insufficient_route": {"model_tier": "core", "effort": "medium"},
         "insufficient_rationale_tmpl": "Recommended adding an index generically without analyzing the EXPLAIN output or identifying why the existing index is not used for {task}.",
         "acceptable_rationale_tmpl": "Analyzed the query plan or data structure for {task}, identified the specific bottleneck (index selectivity, N+1 pattern, or O(N) data structure), and recommended the targeted fix with a rationale tied to the observed cost.",
-        "overkill_route": {"model_tier": "Opus", "effort": "high"},
-        "overkill_rationale_tmpl": "Provided the same targeted optimization as Sonnet/high and then added unsolicited advice on connection pooling, caching layers, and read replica setup.",
-        "notes_tmpl": "Sonnet/high can reason through query plans and recommend the right index or data structure change; Opus/high would add unrequested infrastructure recommendations.",
+        "overkill_route": {"model_tier": "large", "effort": "high"},
+        "overkill_rationale_tmpl": "Provided the same targeted optimization as core/high and then added unsolicited advice on connection pooling, caching layers, and read replica setup.",
+        "notes_tmpl": "core/high can reason through query plans and recommend the right index or data structure change; large/high would add unrequested infrastructure recommendations.",
     },
     # --- API design / refactor ---
     {
@@ -184,12 +184,12 @@ SONNET_HIGH_FAMILIES = [
             "Rewrite a GraphQL resolver that fetches author data inside a loop (N+1) to use a DataLoader that batches author IDs and fetches them in a single query. Show the DataLoader definition, the resolver change, and explain the batch scheduling behavior.",
             "Add request signing verification to a webhook receiver endpoint: parse the X-Signature-256 header, recompute HMAC-SHA256 of the raw request body using the shared secret, compare in constant time, and return HTTP 401 on mismatch. Show the middleware and the constant-time comparison.",
         ],
-        "insufficient_route": {"model_tier": "Sonnet", "effort": "medium"},
+        "insufficient_route": {"model_tier": "core", "effort": "medium"},
         "insufficient_rationale_tmpl": "Sketched the high-level structure but omitted the backward compatibility handling or partial-failure semantics specific to {task}.",
         "acceptable_rationale_tmpl": "Provided a complete implementation for {task} with correct handling of the edge cases (partial failures, cursor encoding, or idempotency collision), proper interface boundaries, and working code.",
-        "overkill_route": {"model_tier": "Opus", "effort": "high"},
+        "overkill_route": {"model_tier": "large", "effort": "high"},
         "overkill_rationale_tmpl": "Produced the correct implementation then added unrequested API versioning strategy and rate-limiting design discussion.",
-        "notes_tmpl": "Sonnet/high handles the bounded refactor with edge cases; the task does not require Opus-level architectural reasoning.",
+        "notes_tmpl": "core/high handles the bounded refactor with edge cases; the task does not require large-level architectural reasoning.",
     },
     # --- Distributed systems bounded tasks ---
     {
@@ -207,12 +207,12 @@ SONNET_HIGH_FAMILIES = [
             "A Pub/Sub subscription is delivering messages out of order despite ordering keys being set, because two subscriptions share the same topic and the second subscription does not have message ordering enabled. Identify the ordering configuration gap and show the corrected subscription setup.",
             "Our service mesh (Envoy-based) is applying circuit breaking but the threshold is never triggered because each Envoy sidecar tracks its own request counts independently rather than sharing state. Explain why distributed circuit breaking does not aggregate across pods and show how to tune per-host outlier detection to achieve the intended behavior.",
         ],
-        "insufficient_route": {"model_tier": "Sonnet", "effort": "medium"},
+        "insufficient_route": {"model_tier": "core", "effort": "medium"},
         "insufficient_rationale_tmpl": "Identified that message processing was slow or rebalancing occurred but did not pinpoint the specific configuration parameter (such as max.poll.interval.ms or prefetch_multiplier) causing {task}.",
         "acceptable_rationale_tmpl": "Correctly diagnosed the specific configuration root cause in {task}, explained the protocol-level behavior (heartbeat, PEL, or load-balancing policy) driving the issue, and provided the corrected configuration with tradeoff notes.",
-        "overkill_route": {"model_tier": "Opus", "effort": "high"},
-        "overkill_rationale_tmpl": "Same diagnosis and fix as Sonnet/high, plus unsolicited advice on migrating to a different messaging system and redesigning the consumer topology.",
-        "notes_tmpl": "Sonnet/high diagnoses a specific distributed systems misconfiguration without needing Opus-level protocol redesign suggestions.",
+        "overkill_route": {"model_tier": "large", "effort": "high"},
+        "overkill_rationale_tmpl": "Same diagnosis and fix as core/high, plus unsolicited advice on migrating to a different messaging system and redesigning the consumer topology.",
+        "notes_tmpl": "core/high diagnoses a specific distributed systems misconfiguration without needing large-level protocol redesign suggestions.",
     },
     # --- Code review: backend ---
     {
@@ -230,12 +230,12 @@ SONNET_HIGH_FAMILIES = [
             "Review this PHP function that generates a password reset token using rand() and stores it in the database. Identify that rand() is not cryptographically secure, propose using random_bytes() with bin2hex(), and note that the token should be hashed before storage.",
             "Review this Rust async function that holds a MutexGuard across an await point. Identify why this can deadlock or cause a panic in an async runtime, and show how to release the lock before the await using a scoped block.",
         ],
-        "insufficient_route": {"model_tier": "Sonnet", "effort": "medium"},
+        "insufficient_route": {"model_tier": "core", "effort": "medium"},
         "insufficient_rationale_tmpl": "Flagged one of the issues (e.g., SQL injection) but missed the resource leak or the async/sync boundary problem specific to {task}.",
         "acceptable_rationale_tmpl": "Identified all the specific issues in {task} -- security, resource management, and async correctness -- and provided a corrected implementation addressing each one.",
-        "overkill_route": {"model_tier": "Opus", "effort": "high"},
-        "overkill_rationale_tmpl": "Caught the same issues as Sonnet/high and additionally proposed a full architectural refactor of the service layer that was not requested.",
-        "notes_tmpl": "Sonnet/high is sufficient for a bounded code review of a single function; all issues are findable with careful single-file analysis.",
+        "overkill_route": {"model_tier": "large", "effort": "high"},
+        "overkill_rationale_tmpl": "Caught the same issues as core/high and additionally proposed a full architectural refactor of the service layer that was not requested.",
+        "notes_tmpl": "core/high is sufficient for a bounded code review of a single function; all issues are findable with careful single-file analysis.",
     },
     # --- Planning: backend system design (bounded) ---
     {
@@ -253,17 +253,17 @@ SONNET_HIGH_FAMILIES = [
             "Plan a blue/green deployment for a stateful service that uses a shared Postgres database. Cover: how to run schema migrations that are backward compatible with both versions, how to switch traffic, and how to roll back if the green deployment has errors after switch-over.",
             "Plan the steps to extract a user-profile service from a Rails monolith as a standalone Sinatra API. Cover: how to identify the bounded context, how to route traffic to the new service using the strangler fig pattern, how to keep data consistent during the transition, and when to remove the monolith code path.",
         ],
-        "insufficient_route": {"model_tier": "Sonnet", "effort": "medium"},
+        "insufficient_route": {"model_tier": "core", "effort": "medium"},
         "insufficient_rationale_tmpl": "Produced a high-level checklist but missed the specific dual-routing or backward-compatibility mechanics required during the transition phase for {task}.",
         "acceptable_rationale_tmpl": "Produced a concrete, sequenced plan for {task} with specific steps for the transition period, rollback criteria, and validation checkpoints -- not just a list of phases.",
-        "overkill_route": {"model_tier": "Opus", "effort": "high"},
-        "overkill_rationale_tmpl": "Provided the same sequenced plan as Sonnet/high and additionally proposed re-architecting the entire service mesh and adopting a CQRS pattern that was not part of the scope.",
-        "notes_tmpl": "Sonnet/high produces a concrete migration plan with transition-period specifics; Opus/high would broaden scope beyond what was asked.",
+        "overkill_route": {"model_tier": "large", "effort": "high"},
+        "overkill_rationale_tmpl": "Provided the same sequenced plan as core/high and additionally proposed re-architecting the entire service mesh and adopting a CQRS pattern that was not part of the scope.",
+        "notes_tmpl": "core/high produces a concrete migration plan with transition-period specifics; large/high would broaden scope beyond what was asked.",
     },
 ]
 
 # ---------------------------------------------------------------------------
-# Sonnet/medium families -- moderate complexity, bounded scope
+# core/medium families -- moderate complexity, bounded scope
 # ---------------------------------------------------------------------------
 
 SONNET_MEDIUM_FAMILIES = [
@@ -280,12 +280,12 @@ SONNET_MEDIUM_FAMILIES = [
             "A PATCH /settings endpoint silently ignores unknown fields instead of returning HTTP 422. The Pydantic model uses the default Config without extra='forbid'. Show the Config change that enforces strict field validation.",
             "Our API returns stale data because a response is cached by an intermediate proxy for 5 minutes. The Cache-Control header is missing. Add the correct Cache-Control: no-store header for authenticated endpoints and Cache-Control: max-age=60 for public endpoints.",
         ],
-        "insufficient_route": {"model_tier": "Haiku", "effort": "medium"},
+        "insufficient_route": {"model_tier": "mini", "effort": "medium"},
         "insufficient_rationale_tmpl": "Named the wrong layer (e.g., blamed the client) without checking the specific header parsing or type coercion code for {task}.",
         "acceptable_rationale_tmpl": "Identified the specific parameter parsing or header handling bug in {task} and provided a one-line or small targeted fix.",
-        "overkill_route": {"model_tier": "Sonnet", "effort": "high"},
+        "overkill_route": {"model_tier": "core", "effort": "high"},
         "overkill_rationale_tmpl": "Correctly fixed the bug in {task} and added unsolicited API validation framework refactoring.",
-        "notes_tmpl": "Sonnet/medium is sufficient: each bug is in a single configuration or type-check, no multi-file tracing needed.",
+        "notes_tmpl": "core/medium is sufficient: each bug is in a single configuration or type-check, no multi-file tracing needed.",
     },
     {
         "family_id": "fam-genF-sm-sql-write",
@@ -300,12 +300,12 @@ SONNET_MEDIUM_FAMILIES = [
             "Write a Postgres trigger function that logs changes to the 'prices' table into an 'audit_prices' table, capturing old_price, new_price, changed_by (current_user), and changed_at (now()) on UPDATE events.",
             "Write a query that identifies duplicate email addresses in the 'contacts' table, showing the email, the count of duplicates, and the IDs of all duplicate rows using GROUP BY and STRING_AGG.",
         ],
-        "insufficient_route": {"model_tier": "Haiku", "effort": "medium"},
+        "insufficient_route": {"model_tier": "mini", "effort": "medium"},
         "insufficient_rationale_tmpl": "Wrote a query that computed the result correctly for simple cases but missed the PARTITION BY semantics or recursion termination for {task}.",
         "acceptable_rationale_tmpl": "Wrote a correct, idiomatic SQL query for {task} using the appropriate window function or CTE, with correct partition or recursion logic.",
-        "overkill_route": {"model_tier": "Sonnet", "effort": "high"},
+        "overkill_route": {"model_tier": "core", "effort": "high"},
         "overkill_rationale_tmpl": "Correct SQL plus unsolicited index recommendations and query plan analysis for {task}.",
-        "notes_tmpl": "Sonnet/medium handles moderate SQL writing with window functions or CTEs without needing the broader analysis Sonnet/high would provide.",
+        "notes_tmpl": "core/medium handles moderate SQL writing with window functions or CTEs without needing the broader analysis core/high would provide.",
     },
     {
         "family_id": "fam-genF-sm-devops-write",
@@ -320,12 +320,12 @@ SONNET_MEDIUM_FAMILIES = [
             "Write a Makefile target 'test-integration' that starts a Docker Compose stack, waits for the health check to pass, runs pytest, and tears down the stack regardless of test outcome.",
             "Write an Ansible task that installs a list of packages defined in a variable 'required_packages' using apt, updates the cache if it is older than 1 hour, and fails if any package is unavailable.",
         ],
-        "insufficient_route": {"model_tier": "Haiku", "effort": "medium"},
+        "insufficient_route": {"model_tier": "mini", "effort": "medium"},
         "insufficient_rationale_tmpl": "Produced a template with placeholders but omitted the conditional logic (branch filter or timeout loop) required for {task}.",
         "acceptable_rationale_tmpl": "Wrote a complete, runnable configuration for {task} with correct conditional logic and error handling.",
-        "overkill_route": {"model_tier": "Sonnet", "effort": "high"},
+        "overkill_route": {"model_tier": "core", "effort": "high"},
         "overkill_rationale_tmpl": "Correct implementation plus unrequested discussion of multi-environment strategy and secrets management for {task}.",
-        "notes_tmpl": "Sonnet/medium is the right fit: self-contained infrastructure snippet with bounded conditional logic.",
+        "notes_tmpl": "core/medium is the right fit: self-contained infrastructure snippet with bounded conditional logic.",
     },
     {
         "family_id": "fam-genF-sm-testing-write",
@@ -340,12 +340,12 @@ SONNET_MEDIUM_FAMILIES = [
             "Write a Python property-based test using Hypothesis that verifies a base64 encode/decode round-trip for arbitrary byte strings up to 1000 bytes.",
             "Write a Cypress test that logs in via the UI, navigates to the settings page, changes the display name, saves, and asserts the new name appears in the nav bar after a page reload.",
         ],
-        "insufficient_route": {"model_tier": "Haiku", "effort": "medium"},
+        "insufficient_route": {"model_tier": "mini", "effort": "medium"},
         "insufficient_rationale_tmpl": "Wrote a test that checked the happy path but omitted the mock assertion or the edge-case inputs required for {task}.",
         "acceptable_rationale_tmpl": "Wrote a complete test for {task} with correct mocking, assertion of side effects, and coverage of the specified edge cases.",
-        "overkill_route": {"model_tier": "Sonnet", "effort": "high"},
+        "overkill_route": {"model_tier": "core", "effort": "high"},
         "overkill_rationale_tmpl": "Correct test plus unrequested discussion of test pyramid structure and coverage thresholds for {task}.",
-        "notes_tmpl": "Sonnet/medium is right for writing a single, bounded unit or integration test with mocking.",
+        "notes_tmpl": "core/medium is right for writing a single, bounded unit or integration test with mocking.",
     },
     {
         "family_id": "fam-genF-sm-backend-analysis",
@@ -360,12 +360,12 @@ SONNET_MEDIUM_FAMILIES = [
             "Analyze the memory and CPU tradeoffs of streaming a 100MB CSV file through a Pandas read_csv() call vs processing it in chunks with chunksize=10000, given a 512MB container memory limit.",
             "Compare using background threads vs asyncio tasks for handling webhook deliveries in a Django application, given that Django's ORM is synchronous and each webhook call involves a database write.",
         ],
-        "insufficient_route": {"model_tier": "Haiku", "effort": "medium"},
+        "insufficient_route": {"model_tier": "mini", "effort": "medium"},
         "insufficient_rationale_tmpl": "Stated a preference without analyzing the specific tradeoff (memory footprint, thread safety, or latency profile) for {task}.",
         "acceptable_rationale_tmpl": "Analyzed the specific tradeoffs for {task} -- including the quantitative dimensions like memory or connection count -- and gave a grounded recommendation.",
-        "overkill_route": {"model_tier": "Sonnet", "effort": "high"},
+        "overkill_route": {"model_tier": "core", "effort": "high"},
         "overkill_rationale_tmpl": "Correct analysis plus unsolicited benchmarking plan and infrastructure cost estimation for {task}.",
-        "notes_tmpl": "Sonnet/medium handles a focused tradeoff analysis with two concrete options and a bounded scope.",
+        "notes_tmpl": "core/medium handles a focused tradeoff analysis with two concrete options and a bounded scope.",
     },
     {
         "family_id": "fam-genF-sm-auth-write",
@@ -380,17 +380,17 @@ SONNET_MEDIUM_FAMILIES = [
             "Write a Django view that implements password reset using a time-limited signed token (itsdangerous or Django's built-in signing), verifying the token on POST and updating the password if valid.",
             "Write a FastAPI dependency that reads an API key from the X-API-Key header, looks it up in a Redis cache first and then a Postgres fallback, and raises HTTP 403 if not found.",
         ],
-        "insufficient_route": {"model_tier": "Haiku", "effort": "medium"},
+        "insufficient_route": {"model_tier": "mini", "effort": "medium"},
         "insufficient_rationale_tmpl": "Wrote code that performs the check but missed the constant-time comparison or the hash-before-store requirement for {task}.",
         "acceptable_rationale_tmpl": "Wrote a correct, secure implementation for {task} including the cryptographic detail (constant-time compare, hashed storage, or signed token) that makes it production-safe.",
-        "overkill_route": {"model_tier": "Sonnet", "effort": "high"},
+        "overkill_route": {"model_tier": "core", "effort": "high"},
         "overkill_rationale_tmpl": "Correct implementation plus unsolicited OAuth2 integration design and token rotation strategy for {task}.",
-        "notes_tmpl": "Sonnet/medium handles a bounded security implementation task that requires correct use of one cryptographic primitive.",
+        "notes_tmpl": "core/medium handles a bounded security implementation task that requires correct use of one cryptographic primitive.",
     },
 ]
 
 # ---------------------------------------------------------------------------
-# Opus/medium families -- tasks requiring broader reasoning but not high effort
+# large/medium families -- tasks requiring broader reasoning but not high effort
 # ---------------------------------------------------------------------------
 
 OPUS_MEDIUM_FAMILIES = [
@@ -407,12 +407,12 @@ OPUS_MEDIUM_FAMILIES = [
             "Analyze the tradeoffs of using optimistic locking (version column) vs pessimistic locking (SELECT FOR UPDATE) for concurrent updates to a 'shopping cart' entity that is updated from multiple devices for the same user simultaneously.",
             "Analyze how backpressure propagates through a pipeline of Kafka consumer -> async processor -> downstream HTTP service when the HTTP service degrades to 5-second response times. Identify where unbounded queue growth occurs and describe the correct pressure relief mechanism.",
         ],
-        "insufficient_route": {"model_tier": "Sonnet", "effort": "high"},
+        "insufficient_route": {"model_tier": "core", "effort": "high"},
         "insufficient_rationale_tmpl": "Identified the happy path correctly but did not fully enumerate the failure modes or compensating transaction requirements for {task}.",
         "acceptable_rationale_tmpl": "Enumerated the relevant failure scenarios for {task} with concrete examples, identified which failures are recoverable vs not, and described the mitigation mechanisms at the right level of specificity.",
-        "overkill_route": {"model_tier": "Opus", "effort": "high"},
-        "overkill_rationale_tmpl": "Same failure analysis as Opus/medium but also derived formal consistency proofs and proposed migrating to a different consensus protocol -- beyond the scope of the question.",
-        "notes_tmpl": "Opus/medium is needed to enumerate cross-service failure modes comprehensively; Sonnet/high underestimates the interaction complexity.",
+        "overkill_route": {"model_tier": "large", "effort": "high"},
+        "overkill_rationale_tmpl": "Same failure analysis as large/medium but also derived formal consistency proofs and proposed migrating to a different consensus protocol -- beyond the scope of the question.",
+        "notes_tmpl": "large/medium is needed to enumerate cross-service failure modes comprehensively; core/high underestimates the interaction complexity.",
     },
     {
         "family_id": "fam-genF-om-auth-plan",
@@ -427,12 +427,12 @@ OPUS_MEDIUM_FAMILIES = [
             "Plan a secrets rotation strategy for a service that connects to Postgres and Redis using long-lived credentials stored in environment variables. Cover how to push new credentials without downtime, how to use a secrets manager with dynamic credentials, and how to audit which service instances used which credential version.",
             "Plan how to implement account takeover detection using login event signals: device fingerprint changes, geolocation anomalies, and rapid successive failed logins. Describe the feature flag rollout, the risk-score computation, the step-up authentication trigger, and the alert escalation path.",
         ],
-        "insufficient_route": {"model_tier": "Sonnet", "effort": "high"},
+        "insufficient_route": {"model_tier": "core", "effort": "high"},
         "insufficient_rationale_tmpl": "Outlined the main phases but missed the parallel-operation transition mechanics or the rollback path required for {task}.",
         "acceptable_rationale_tmpl": "Produced a complete plan for {task} with concrete transition steps, rollback criteria, and security validation checkpoints -- not just a feature list.",
-        "overkill_route": {"model_tier": "Opus", "effort": "high"},
-        "overkill_rationale_tmpl": "Same concrete plan as Opus/medium plus formal threat modeling and a complete security architecture review that was not requested.",
-        "notes_tmpl": "Opus/medium is needed for planning complex auth transitions with multi-phase coexistence; Sonnet/high misses the transition-period edge cases.",
+        "overkill_route": {"model_tier": "large", "effort": "high"},
+        "overkill_rationale_tmpl": "Same concrete plan as large/medium plus formal threat modeling and a complete security architecture review that was not requested.",
+        "notes_tmpl": "large/medium is needed for planning complex auth transitions with multi-phase coexistence; core/high misses the transition-period edge cases.",
     },
     {
         "family_id": "fam-genF-om-perf-plan",
@@ -445,12 +445,12 @@ OPUS_MEDIUM_FAMILIES = [
             "Plan the steps to shard a single Postgres 'events' table that is growing at 500GB/month. Cover horizontal vs time-based partitioning, how to route queries to the correct shard, how to migrate existing data without downtime, and how to handle queries that span shards.",
             "Plan how to add a read cache layer (Redis) to an API that currently reads user preferences from Postgres on every request. Cover cache warming, cache invalidation on write, TTL strategy, cache stampede prevention using probabilistic early expiration, and how to measure cache hit rate.",
         ],
-        "insufficient_route": {"model_tier": "Sonnet", "effort": "high"},
+        "insufficient_route": {"model_tier": "core", "effort": "high"},
         "insufficient_rationale_tmpl": "Described the general approach but missed the tail-latency isolation strategy or the cross-shard query handling specific to {task}.",
         "acceptable_rationale_tmpl": "Produced a sequenced investigation or migration plan for {task} with specific tooling, metrics, and decision criteria at each step.",
-        "overkill_route": {"model_tier": "Opus", "effort": "high"},
-        "overkill_rationale_tmpl": "Same plan as Opus/medium plus unsolicited migration to a different database engine and a capacity planning model.",
-        "notes_tmpl": "Opus/medium is appropriate for planning a multi-phase performance or sharding initiative with cross-cutting concerns.",
+        "overkill_route": {"model_tier": "large", "effort": "high"},
+        "overkill_rationale_tmpl": "Same plan as large/medium plus unsolicited migration to a different database engine and a capacity planning model.",
+        "notes_tmpl": "large/medium is appropriate for planning a multi-phase performance or sharding initiative with cross-cutting concerns.",
     },
     {
         "family_id": "fam-genF-om-backend-code-review",
@@ -463,12 +463,12 @@ OPUS_MEDIUM_FAMILIES = [
             "Review a Go service that uses a single global database connection (sql.DB) configured with MaxOpenConns=1. Identify the bottleneck under concurrent requests, explain the risk of connection starvation, recommend correct pool settings for 50 concurrent workers, and flag any missing error handling patterns.",
             "Review a microservice's API contract: it returns HTTP 200 with a success flag in the body for both success and business errors. Identify why this breaks HTTP semantics, how it complicates client retry logic, and propose a migration to proper HTTP status codes with a backward-compatible transition.",
         ],
-        "insufficient_route": {"model_tier": "Sonnet", "effort": "high"},
+        "insufficient_route": {"model_tier": "core", "effort": "high"},
         "insufficient_rationale_tmpl": "Identified individual code-level issues but did not reason about the cross-cutting architectural concern (idempotency gap, connection starvation, or HTTP semantics) for {task}.",
         "acceptable_rationale_tmpl": "Identified the architectural issue in {task}, explained the systemic risk (not just the code smell), and proposed a concrete remedy with the right tradeoff discussion.",
-        "overkill_route": {"model_tier": "Opus", "effort": "high"},
-        "overkill_rationale_tmpl": "Same architectural review as Opus/medium plus a full service decomposition recommendation and migration roadmap that was not requested.",
-        "notes_tmpl": "Opus/medium is needed for an architectural review that requires reasoning across multiple components; Sonnet/high focuses on code-level details.",
+        "overkill_route": {"model_tier": "large", "effort": "high"},
+        "overkill_rationale_tmpl": "Same architectural review as large/medium plus a full service decomposition recommendation and migration roadmap that was not requested.",
+        "notes_tmpl": "large/medium is needed for an architectural review that requires reasoning across multiple components; core/high focuses on code-level details.",
     },
 ]
 
@@ -500,11 +500,11 @@ def build_rows():
         ]
 
     # -----------------------------------------------------------------------
-    # Generate Sonnet/high rows from families
+    # Generate core/high rows from families
     # -----------------------------------------------------------------------
     # 10 families * 7 prompts = 70 natural rows; need 200 total.
     # Cycle through families to reach 200 rows with varied wording.
-    sh_route = {"model_tier": "Sonnet", "effort": "high"}
+    sh_route = {"model_tier": "core", "effort": "high"}
 
     # Use all prompts from all families first, then cycle with paraphrasing.
     sh_prompts = []
@@ -578,9 +578,9 @@ def build_rows():
         counter += 1
 
     # -----------------------------------------------------------------------
-    # Generate Sonnet/medium rows
+    # Generate core/medium rows
     # -----------------------------------------------------------------------
-    sm_route = {"model_tier": "Sonnet", "effort": "medium"}
+    sm_route = {"model_tier": "core", "effort": "medium"}
     sm_prompts = []
     for fam in SONNET_MEDIUM_FAMILIES:
         for i, p in enumerate(fam["prompts"]):
@@ -618,9 +618,9 @@ def build_rows():
         counter += 1
 
     # -----------------------------------------------------------------------
-    # Generate Opus/medium rows
+    # Generate large/medium rows
     # -----------------------------------------------------------------------
-    om_route = {"model_tier": "Opus", "effort": "medium"}
+    om_route = {"model_tier": "large", "effort": "medium"}
     om_prompts = []
     for fam in OPUS_MEDIUM_FAMILIES:
         for i, p in enumerate(fam["prompts"]):
@@ -678,21 +678,21 @@ def main():
     rows = build_rows()
     assert len(rows) == 250, f"Expected 250 rows, got {len(rows)}"
 
-    sh = sum(1 for r in rows if r["cheapest_acceptable_route"] == {"model_tier": "Sonnet", "effort": "high"})
-    sm = sum(1 for r in rows if r["cheapest_acceptable_route"] == {"model_tier": "Sonnet", "effort": "medium"})
-    om = sum(1 for r in rows if r["cheapest_acceptable_route"] == {"model_tier": "Opus", "effort": "medium"})
-    assert sh == 200, f"Expected 200 Sonnet/high, got {sh}"
-    assert sm == 30, f"Expected 30 Sonnet/medium, got {sm}"
-    assert om == 20, f"Expected 20 Opus/medium, got {om}"
+    sh = sum(1 for r in rows if r["cheapest_acceptable_route"] == {"model_tier": "core", "effort": "high"})
+    sm = sum(1 for r in rows if r["cheapest_acceptable_route"] == {"model_tier": "core", "effort": "medium"})
+    om = sum(1 for r in rows if r["cheapest_acceptable_route"] == {"model_tier": "large", "effort": "medium"})
+    assert sh == 200, f"Expected 200 core/high, got {sh}"
+    assert sm == 30, f"Expected 30 core/medium, got {sm}"
+    assert om == 20, f"Expected 20 large/medium, got {om}"
 
     with out_path.open("w", encoding="utf-8") as f:
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     print(f"Wrote {len(rows)} rows to {out_path}")
-    print(f"  Sonnet/high: {sh}")
-    print(f"  Sonnet/medium: {sm}")
-    print(f"  Opus/medium: {om}")
+    print(f"  core/high: {sh}")
+    print(f"  core/medium: {sm}")
+    print(f"  large/medium: {om}")
 
 
 if __name__ == "__main__":

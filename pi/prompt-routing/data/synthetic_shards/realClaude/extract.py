@@ -322,80 +322,80 @@ def detect_route(text: str, task_type: str, domain: str) -> tuple[dict, str]:
     lower = text.lower()
     length = len(text)
 
-    # Security/threat/distributed systems -> at least Sonnet/high, possibly Opus
+    # Security/threat/distributed systems -> at least core/high, possibly large
     if domain == "security" or any(kw in lower for kw in
                                    ["threat model", "security design", "compliance", "distributed system",
                                     "reliability at scale", "zero trust", "adversar"]):
         if task_type in ("design", "analysis") or length > 500:
-            return {"model_tier": "Opus", "effort": "medium"}, "high"
-        return {"model_tier": "Sonnet", "effort": "high"}, "mid"
+            return {"model_tier": "large", "effort": "medium"}, "high"
+        return {"model_tier": "core", "effort": "high"}, "mid"
 
-    # Design/architecture -> Sonnet or Opus
+    # Design/architecture -> core or large
     if task_type in ("design", "plan"):
         if length > 500 or any(kw in lower for kw in ["architecture", "system design", "microservice",
                                                         "distributed", "strategy for", "tradeoff"]):
-            return {"model_tier": "Opus", "effort": "medium"}, "high"
-        return {"model_tier": "Sonnet", "effort": "high"}, "mid"
+            return {"model_tier": "large", "effort": "medium"}, "high"
+        return {"model_tier": "core", "effort": "high"}, "mid"
 
-    # Factual, short -> Haiku
+    # Factual, short -> mini
     if task_type == "factual":
         if length <= 120:
-            return {"model_tier": "Haiku", "effort": "none"}, "low"
-        return {"model_tier": "Haiku", "effort": "low"}, "low"
+            return {"model_tier": "mini", "effort": "none"}, "low"
+        return {"model_tier": "mini", "effort": "low"}, "low"
 
-    # Mechanical edit -> Haiku/low
+    # Mechanical edit -> mini/low
     if task_type == "mechanical_edit":
-        return {"model_tier": "Haiku", "effort": "low"}, "low"
+        return {"model_tier": "mini", "effort": "low"}, "low"
 
-    # Chat short -> Haiku
+    # Chat short -> mini
     if task_type == "chat" and length < 100:
-        return {"model_tier": "Haiku", "effort": "low"}, "low"
+        return {"model_tier": "mini", "effort": "low"}, "low"
 
-    # Explain short -> Haiku/low
+    # Explain short -> mini/low
     if task_type == "explain" and length < 150:
-        return {"model_tier": "Haiku", "effort": "low"}, "low"
+        return {"model_tier": "mini", "effort": "low"}, "low"
 
     # Code debug
     if task_type == "code_debug":
         if length > 800:
-            return {"model_tier": "Sonnet", "effort": "high"}, "high"
+            return {"model_tier": "core", "effort": "high"}, "high"
         if length > 300:
-            return {"model_tier": "Sonnet", "effort": "medium"}, "mid"
-        return {"model_tier": "Sonnet", "effort": "low"}, "mid"
+            return {"model_tier": "core", "effort": "medium"}, "mid"
+        return {"model_tier": "core", "effort": "low"}, "mid"
 
     # Code review
     if task_type == "code_review":
         if length > 500:
-            return {"model_tier": "Sonnet", "effort": "high"}, "high"
-        return {"model_tier": "Sonnet", "effort": "medium"}, "mid"
+            return {"model_tier": "core", "effort": "high"}, "high"
+        return {"model_tier": "core", "effort": "medium"}, "mid"
 
     # Code write
     if task_type == "code_write":
         if length > 500:
-            return {"model_tier": "Sonnet", "effort": "high"}, "high"
+            return {"model_tier": "core", "effort": "high"}, "high"
         if length > 200:
-            return {"model_tier": "Sonnet", "effort": "medium"}, "mid"
-        return {"model_tier": "Sonnet", "effort": "low"}, "mid"
+            return {"model_tier": "core", "effort": "medium"}, "mid"
+        return {"model_tier": "core", "effort": "low"}, "mid"
 
     # Analysis
     if task_type == "analysis":
         if length > 400:
-            return {"model_tier": "Sonnet", "effort": "high"}, "high"
-        return {"model_tier": "Sonnet", "effort": "medium"}, "mid"
+            return {"model_tier": "core", "effort": "high"}, "high"
+        return {"model_tier": "core", "effort": "medium"}, "mid"
 
     # Rewrite
     if task_type == "rewrite":
-        return {"model_tier": "Sonnet", "effort": "medium"}, "mid"
+        return {"model_tier": "core", "effort": "medium"}, "mid"
 
     # Default
-    return {"model_tier": "Sonnet", "effort": "medium"}, "mid"
+    return {"model_tier": "core", "effort": "medium"}, "mid"
 
 
 def build_route_judgments(
     route: dict, task_type: str, domain: str, prompt: str
 ) -> list[dict]:
     """Build 3+ route_judgments with the cheapest acceptable matching route."""
-    model_order = ["Haiku", "Sonnet", "Opus"]
+    model_order = ["mini", "core", "large"]
     effort_order = ["none", "low", "medium", "high"]
 
     mt = route["model_tier"]
@@ -431,13 +431,13 @@ def build_route_judgments(
             "rationale": rationale,
         })
     else:
-        # Already Haiku/none -- add a Haiku/none insufficient with a concrete note
+        # Already mini/none -- add a mini/none insufficient with a concrete note
         rationale = (
             f"A bare zero-effort call would skip minimal response formatting "
             f'needed for: "{prompt[:60].rstrip()}..."'
         )
         judgments.append({
-            "route": {"model_tier": "Haiku", "effort": "none"},
+            "route": {"model_tier": "mini", "effort": "none"},
             "verdict": "insufficient",
             "rationale": rationale,
         })
@@ -475,12 +475,12 @@ def build_route_judgments(
             ),
         })
     else:
-        # Already Opus/high -- add a "same model higher effort" note
+        # Already large/high -- add a "same model higher effort" note
         judgments.append({
-            "route": {"model_tier": "Opus", "effort": "high"},
+            "route": {"model_tier": "large", "effort": "high"},
             "verdict": "overkill",
             "rationale": (
-                f"Opus/high adds speculative analysis beyond what this {task_type} "
+                f"large/high adds speculative analysis beyond what this {task_type} "
                 f"request requires."
             ),
         })

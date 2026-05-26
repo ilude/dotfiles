@@ -3,8 +3,8 @@ Tests for EnsembleV3Classifier veto logic and output contract.
 
 Covers:
   - Both models agree -> ensemble returns agreed route
-  - T2 says Haiku, LightGBM says Sonnet -> ensemble returns Sonnet (veto escalate)
-  - Both say Haiku -> ensemble returns Haiku
+  - T2 says mini, LightGBM says core -> ensemble returns core (veto escalate)
+  - Both say mini -> ensemble returns mini
   - Confidence formula: agree=max, veto=winning model's conf
   - Ensemble output validates against router-v3-output.schema.json
 """
@@ -37,10 +37,10 @@ def _cost_key(lbl: str) -> tuple[int, int]:
 def _make_cands(label: str, conf: float) -> list[tuple[str, float]]:
     """Minimal candidate list: primary at given confidence, rest at residual."""
     others = [
-        ("Haiku|low", 0.0),
-        ("Haiku|medium", 0.0),
-        ("Sonnet|medium", 0.0),
-        ("Opus|high", 0.0),
+        ("mini|low", 0.0),
+        ("mini|medium", 0.0),
+        ("core|medium", 0.0),
+        ("large|high", 0.0),
     ]
     cand_map = {lbl: p for lbl, p in others}
     cand_map[label] = conf
@@ -87,47 +87,47 @@ def _build_ensemble_with_mocks(
 class TestVetoLogic:
     def test_both_agree_returns_agreed_route(self):
         ens = _build_ensemble_with_mocks(
-            "Sonnet|medium", 0.80,
-            "Sonnet|medium", 0.75,
+            "core|medium", 0.80,
+            "core|medium", 0.75,
         )
         lbl, conf, cands = ens.predict_single_full("Write a REST API.")
-        assert lbl == "Sonnet|medium"
+        assert lbl == "core|medium"
         assert conf == pytest.approx(0.80)  # agree -> max(0.80, 0.75)
 
     def test_t2_haiku_lgbm_sonnet_returns_sonnet(self):
-        """T2 says Haiku but LightGBM says Sonnet -- veto escalates to Sonnet."""
+        """T2 says mini but LightGBM says core -- veto escalates to core."""
         ens = _build_ensemble_with_mocks(
-            "Haiku|low", 0.70,
-            "Sonnet|medium", 0.65,
+            "mini|low", 0.70,
+            "core|medium", 0.65,
         )
         lbl, conf, cands = ens.predict_single_full("Write a REST API.")
         tier, effort = lbl.split("|")
-        assert tier == "Sonnet", f"Expected Sonnet tier, got {tier}"
+        assert tier == "core", f"Expected core tier, got {tier}"
 
     def test_lgbm_haiku_t2_sonnet_returns_sonnet(self):
-        """LightGBM says Haiku but T2 says Sonnet -- veto escalates to Sonnet."""
+        """LightGBM says mini but T2 says core -- veto escalates to core."""
         ens = _build_ensemble_with_mocks(
-            "Sonnet|medium", 0.72,
-            "Haiku|low", 0.68,
+            "core|medium", 0.72,
+            "mini|low", 0.68,
         )
         lbl, conf, cands = ens.predict_single_full("Design an API.")
         tier, _ = lbl.split("|")
-        assert tier == "Sonnet", f"Expected Sonnet tier, got {tier}"
+        assert tier == "core", f"Expected core tier, got {tier}"
 
     def test_both_haiku_returns_haiku(self):
         ens = _build_ensemble_with_mocks(
-            "Haiku|low", 0.85,
-            "Haiku|low", 0.80,
+            "mini|low", 0.85,
+            "mini|low", 0.80,
         )
         lbl, conf, cands = ens.predict_single_full("fix a typo")
         tier, _ = lbl.split("|")
-        assert tier == "Haiku"
+        assert tier == "mini"
 
     def test_confidence_agree_is_max_of_two(self):
         """agree case: confidence = max of the two models' confidences."""
         ens = _build_ensemble_with_mocks(
-            "Sonnet|medium", 0.90,
-            "Sonnet|medium", 0.60,
+            "core|medium", 0.90,
+            "core|medium", 0.60,
         )
         lbl, conf, cands = ens.predict_single_full("test")
         assert conf == pytest.approx(0.90)  # max(0.90, 0.60)
@@ -135,60 +135,60 @@ class TestVetoLogic:
     def test_confidence_agree_both_at_07(self):
         """agree case: both conf=0.7 -> ensemble conf=0.7 (max of equal values)."""
         ens = _build_ensemble_with_mocks(
-            "Sonnet|medium", 0.70,
-            "Sonnet|medium", 0.70,
+            "core|medium", 0.70,
+            "core|medium", 0.70,
         )
         _, conf, _ = ens.predict_single_full("test")
         assert conf == pytest.approx(0.70)
 
     def test_confidence_veto_t2haiku_lgbmsonnet_winner_is_lgbm(self):
-        """t2=Haiku/0.9, lgbm=Sonnet/0.55 -> Sonnet wins -> ensemble conf=0.55."""
+        """t2=mini/0.9, lgbm=core/0.55 -> core wins -> ensemble conf=0.55."""
         ens = _build_ensemble_with_mocks(
-            "Haiku|low", 0.90,
-            "Sonnet|medium", 0.55,
+            "mini|low", 0.90,
+            "core|medium", 0.55,
         )
         lbl, conf, _ = ens.predict_single_full("test")
         tier, _ = lbl.split("|")
-        assert tier == "Sonnet"
-        assert conf == pytest.approx(0.55)  # winning model (lgbm/Sonnet) conf
+        assert tier == "core"
+        assert conf == pytest.approx(0.55)  # winning model (lgbm/core) conf
 
     def test_confidence_veto_t2sonnet_lgbmhaiku_winner_is_t2(self):
-        """t2=Sonnet/0.55, lgbm=Haiku/0.8 -> Sonnet wins (t2) -> ensemble conf=0.55."""
+        """t2=core/0.55, lgbm=mini/0.8 -> core wins (t2) -> ensemble conf=0.55."""
         ens = _build_ensemble_with_mocks(
-            "Sonnet|medium", 0.55,
-            "Haiku|low", 0.80,
+            "core|medium", 0.55,
+            "mini|low", 0.80,
         )
         lbl, conf, _ = ens.predict_single_full("test")
         tier, _ = lbl.split("|")
-        assert tier == "Sonnet"
-        assert conf == pytest.approx(0.55)  # winning model (t2/Sonnet) conf
+        assert tier == "core"
+        assert conf == pytest.approx(0.55)  # winning model (t2/core) conf
 
     def test_effort_veto_escalates_to_higher_effort(self):
-        """Both say Sonnet but different effort -- ensemble takes the higher one."""
+        """Both say core but different effort -- ensemble takes the higher one."""
         ens = _build_ensemble_with_mocks(
-            "Sonnet|low", 0.75,
-            "Sonnet|medium", 0.70,
+            "core|low", 0.75,
+            "core|medium", 0.70,
         )
         lbl, _, _ = ens.predict_single_full("test")
         _, effort = lbl.split("|")
-        assert _cost_key(f"Haiku|{effort}")[1] >= _cost_key("Haiku|medium")[1], (
+        assert _cost_key(f"mini|{effort}")[1] >= _cost_key("mini|medium")[1], (
             f"Expected effort >= medium, got {effort}"
         )
 
     def test_candidates_includes_labels_from_both_models(self):
         ens = _build_ensemble_with_mocks(
-            "Haiku|low", 0.60,
-            "Sonnet|medium", 0.55,
+            "mini|low", 0.60,
+            "core|medium", 0.55,
         )
         _, _, cands = ens.predict_single_full("test")
         labels = {lbl for lbl, _ in cands}
-        assert "Haiku|low" in labels
-        assert "Sonnet|medium" in labels
+        assert "mini|low" in labels
+        assert "core|medium" in labels
 
     def test_candidates_sorted_by_ascending_cost(self):
         ens = _build_ensemble_with_mocks(
-            "Opus|high", 0.70,
-            "Haiku|low", 0.50,
+            "large|high", 0.70,
+            "mini|low", 0.50,
         )
         _, _, cands = ens.predict_single_full("test")
         costs = [_cost_key(lbl) for lbl, _ in cands]
@@ -202,8 +202,8 @@ class TestVetoLogic:
 class TestPredictRouteContract:
     def test_output_has_required_fields(self):
         ens = _build_ensemble_with_mocks(
-            "Sonnet|medium", 0.75,
-            "Sonnet|medium", 0.72,
+            "core|medium", 0.75,
+            "core|medium", 0.72,
         )
         result = ens.predict_route("Write a REST API in FastAPI.")
         assert "schema_version" in result
@@ -214,12 +214,12 @@ class TestPredictRouteContract:
 
     def test_primary_has_valid_model_tier_and_effort(self):
         ens = _build_ensemble_with_mocks(
-            "Haiku|low", 0.80,
-            "Haiku|medium", 0.70,
+            "mini|low", 0.80,
+            "mini|medium", 0.70,
         )
         result = ens.predict_route("fix a typo")
         primary = result["primary"]
-        assert primary["model_tier"] in {"Haiku", "Sonnet", "Opus"}
+        assert primary["model_tier"] in {"mini", "core", "large"}
         assert primary["effort"] in {"none", "low", "medium", "high"}
 
     def test_output_validates_against_schema(self):
@@ -235,8 +235,8 @@ class TestPredictRouteContract:
             schema = json.load(f)
 
         ens = _build_ensemble_with_mocks(
-            "Sonnet|medium", 0.75,
-            "Opus|high", 0.68,
+            "core|medium", 0.75,
+            "large|high", 0.68,
         )
         result = ens.predict_route("Design a distributed payment system.")
         # ensemble_rule is an extra field not in schema -- strip before validating
@@ -245,8 +245,8 @@ class TestPredictRouteContract:
 
     def test_ensemble_rule_field_present(self):
         ens = _build_ensemble_with_mocks(
-            "Haiku|low", 0.80,
-            "Sonnet|medium", 0.65,
+            "mini|low", 0.80,
+            "core|medium", 0.65,
         )
         result = ens.predict_route("test")
         assert "ensemble_rule" in result
@@ -254,16 +254,16 @@ class TestPredictRouteContract:
 
     def test_agree_rule_when_both_match(self):
         ens = _build_ensemble_with_mocks(
-            "Sonnet|medium", 0.80,
-            "Sonnet|medium", 0.78,
+            "core|medium", 0.80,
+            "core|medium", 0.78,
         )
         result = ens.predict_route("test")
         assert result["ensemble_rule"] == "agree"
 
     def test_veto_escalate_tier_when_haiku_vs_sonnet(self):
         ens = _build_ensemble_with_mocks(
-            "Haiku|low", 0.70,
-            "Sonnet|medium", 0.65,
+            "mini|low", 0.70,
+            "core|medium", 0.65,
         )
         result = ens.predict_route("test")
         assert result["ensemble_rule"] == "veto_escalate_tier"
@@ -280,7 +280,7 @@ class TestEnsembleIntegration:
         from classifier_ensemble import EnsembleV3Classifier
         ens = EnsembleV3Classifier()
         result = ens.predict_route("fix a typo in README")
-        assert result["primary"]["model_tier"] in {"Haiku", "Sonnet", "Opus"}
+        assert result["primary"]["model_tier"] in {"mini", "core", "large"}
         assert 0.0 <= result["confidence"] <= 1.0
 
     def test_real_ensemble_output_validates_against_schema(self):

@@ -7,7 +7,7 @@ Experiment: do alternative classifier architectures beat the T2 production model
 Architectures tested:
   1. LightGBM on TF-IDF(1-3gram) + hand-crafted features
   2. sklearn HistGradientBoostingClassifier on TF-IDF(dense PCA) + hand features
-  3. Haiku safety-margin sweep (same T2 SVC, vary P(Haiku) threshold)
+  3. mini safety-margin sweep (same T2 SVC, vary P(mini) threshold)
 
 Usage:
     python pi/prompt-routing/experiments/exp_alternative_classifiers.py
@@ -38,7 +38,7 @@ TRAIN_PATH = DATA_DIR / "train_v3.jsonl"
 DEV_PATH = DATA_DIR / "dev_v3.jsonl"
 EVAL_PATH = DATA_DIR / "eval_v3.jsonl"
 
-TIER_ORDER = {"Haiku": 0, "Sonnet": 1, "Opus": 2}
+TIER_ORDER = {"mini": 0, "core": 1, "large": 2}
 EFFORT_ORDER = {"none": 0, "low": 1, "medium": 2, "high": 3}
 
 RANDOM_STATE = 42
@@ -136,8 +136,8 @@ def compute_metrics(
     over_routing = 0
     cwq_sum = 0.0
 
-    tier_tp: dict[str, int] = {"Haiku": 0, "Sonnet": 0, "Opus": 0}
-    tier_gt: dict[str, int] = {"Haiku": 0, "Sonnet": 0, "Opus": 0}
+    tier_tp: dict[str, int] = {"mini": 0, "core": 0, "large": 0}
+    tier_gt: dict[str, int] = {"mini": 0, "core": 0, "large": 0}
 
     for true_lbl, pred_lbl in zip(labels_true, labels_pred):
         gt_tier, gt_effort = true_lbl.split("|")
@@ -148,7 +148,7 @@ def compute_metrics(
         pt = TIER_ORDER[pred_tier]
         pe = EFFORT_ORDER[pred_effort]
 
-        if gt_tier in {"Sonnet", "Opus"} and pred_tier == "Haiku" and pe <= EFFORT_ORDER["medium"]:
+        if gt_tier in {"core", "large"} and pred_tier == "mini" and pe <= EFFORT_ORDER["medium"]:
             catastrophic += 1
 
         pred_cost = pt * 4 + pe + 1
@@ -167,7 +167,7 @@ def compute_metrics(
 
     per_tier_recall = {
         t: tier_tp[t] / tier_gt[t] if tier_gt[t] > 0 else 0.0
-        for t in ("Haiku", "Sonnet", "Opus")
+        for t in ("mini", "core", "large")
     }
 
     return {
@@ -303,13 +303,13 @@ def run_histgb(train_rows: list[dict], eval_rows: list[dict]) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Experiment 3: Haiku safety-margin sweep on T2 SVC
+# Experiment 3: mini safety-margin sweep on T2 SVC
 # ---------------------------------------------------------------------------
 
 def run_margin_sweep(train_rows: list[dict], eval_rows: list[dict]) -> dict:
     """
     Refit a LinearSVC (T2-identical) and sweep the probability threshold
-    below which a Haiku prediction is promoted to Sonnet, to trade
+    below which a mini prediction is promoted to core, to trade
     catastrophic-under-routing against top-1 accuracy.
     """
     print("  [MarginSweep] fitting T2-equivalent SVC...")
@@ -341,8 +341,8 @@ def run_margin_sweep(train_rows: list[dict], eval_rows: list[dict]) -> dict:
     proba = _softmax(df, axis=1)  # (n_eval, n_classes)
 
     # Identify haiku class indices
-    haiku_indices = [i for i, c in enumerate(classes) if c.startswith("Haiku")]
-    # Fallback for Haiku predictions: promote to Sonnet|medium
+    haiku_indices = [i for i, c in enumerate(classes) if c.startswith("mini")]
+    # Fallback for mini predictions: promote to core|medium
 
     thresholds = [0.55, 0.60, 0.65, 0.70, 0.75]
     sweep_results = []
@@ -353,9 +353,9 @@ def run_margin_sweep(train_rows: list[dict], eval_rows: list[dict]) -> dict:
             raw_idx = int(p_row.argmax())
             raw_lbl = classes[raw_idx]
             if raw_idx in haiku_indices and p_row[raw_idx] < thresh:
-                # Insufficient confidence -- promote to lowest Sonnet label
-                sonnet_idxs = [i for i, c in enumerate(classes) if c.startswith("Sonnet")]
-                # Pick highest probability Sonnet
+                # Insufficient confidence -- promote to lowest core label
+                sonnet_idxs = [i for i, c in enumerate(classes) if c.startswith("core")]
+                # Pick highest probability core
                 best_sonnet = max(sonnet_idxs, key=lambda i: p_row[i])
                 labels_pred.append(classes[best_sonnet])
             else:
@@ -431,7 +431,7 @@ def main() -> None:
     })
 
     # -- Experiment 3: Margin sweep
-    print("\n=== Haiku Safety-Margin Sweep (T2-equivalent SVC) ===")
+    print("\n=== mini Safety-Margin Sweep (T2-equivalent SVC) ===")
     sweep = run_margin_sweep(all_train, eval_rows)
     best_sweep = sweep["best"]
     results.append({
@@ -440,9 +440,9 @@ def main() -> None:
         "catastrophic": best_sweep["catastrophic"],
         "per_tier_recall": best_sweep["per_tier_recall"],
         "notes": (
-            f"T2-equivalent LinearSVC with Haiku confidence "
+            f"T2-equivalent LinearSVC with mini confidence "
             f"threshold={best_sweep['haiku_threshold']}. "
-            "Haiku predictions below threshold are promoted to best Sonnet. "
+            "mini predictions below threshold are promoted to best core. "
             "Full sweep: " + json.dumps(sweep["sweep"])
         ),
     })
@@ -452,7 +452,7 @@ def main() -> None:
         "baseline_reference": {
             "top1": 0.6241,
             "catastrophic": 38,
-            "per_tier_recall": {"Haiku": 0.8603, "Sonnet": 0.6872, "Opus": 0.8974},
+            "per_tier_recall": {"mini": 0.8603, "core": 0.6872, "large": 0.8974},
             "source": "T2 production (LinearSVC, train+dev corpus, eval_v3.jsonl n=564)",
         },
     }
@@ -465,7 +465,7 @@ def main() -> None:
     print("\nSummary:")
     header = (
         f"  {'Name':<45} {'top1':>6} {'cat':>5}  "
-        f"{'Haiku':>6} {'Sonnet':>6} {'Opus':>6}"
+        f"{'mini':>6} {'core':>6} {'large':>6}"
     )
     print(header)
     baseline = (
@@ -477,7 +477,7 @@ def main() -> None:
         ptr = r["per_tier_recall"]
         print(
             f"  {r['name']:<45} {r['top1']:>6.4f} {r['catastrophic']:>5}  "
-            f"{ptr['Haiku']:>6.4f} {ptr['Sonnet']:>6.4f} {ptr['Opus']:>6.4f}"
+            f"{ptr['mini']:>6.4f} {ptr['core']:>6.4f} {ptr['large']:>6.4f}"
         )
 
 

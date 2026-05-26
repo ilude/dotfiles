@@ -3,7 +3,7 @@ build_corpus.py — Consolidate all training data into data/training_corpus.json
 
 Sources:
   1. data/*.json files (multiple schemas, auto-detected)
-  2. labeled_history.csv (chat log prompts, anonymized via Opus)
+  2. labeled_history.csv (chat log prompts, anonymized via large)
 
 Anonymization (chat log prompts only):
   Pass 1: regex substitution for known patterns (paths, hostnames, company refs)
@@ -20,8 +20,8 @@ Output: data/training_corpus.json — single canonical source
 
 Usage:
     python build_corpus.py --dry-run     # counts only, no API calls
-    python build_corpus.py               # full build with Opus anonymization
-    python build_corpus.py --skip-anon   # skip Opus pass (regex only)
+    python build_corpus.py               # full build with large anonymization
+    python build_corpus.py --skip-anon   # skip large pass (regex only)
 """
 
 import argparse
@@ -44,7 +44,7 @@ HISTORY_CSV = ARTIFACT_DIR / "labeled_history.csv"
 LABEL_ORDER = ["low", "mid", "high"]
 
 # v3 schema constants -- keep in sync with tools/validate_corpus.py
-VALID_MODEL_TIERS = {"Haiku", "Sonnet", "Opus"}
+VALID_MODEL_TIERS = {"mini", "core", "large"}
 VALID_EFFORT_TIERS = {"none", "low", "medium", "high"}
 
 TIER_MAP = {
@@ -139,7 +139,7 @@ def needs_opus_pass(original: str, after_regex: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Opus anonymization — pass 2
+# large anonymization — pass 2
 # ---------------------------------------------------------------------------
 
 OPUS_ANONYMIZE_PROMPT = """\
@@ -284,7 +284,7 @@ def v3_row_to_legacy(row: dict) -> tuple[str, str, str] | None:
     # Derive from cheapest_acceptable_route model_tier
     car = row.get("cheapest_acceptable_route") or {}
     model_tier = car.get("model_tier", "")
-    legacy_label = {"Haiku": "low", "Sonnet": "mid", "Opus": "high"}.get(model_tier)
+    legacy_label = {"mini": "low", "core": "mid", "large": "high"}.get(model_tier)
     if legacy_label:
         return (" ".join(prompt.split()), legacy_label, source)
 
@@ -417,7 +417,7 @@ def _split_regex_results(
 def _run_opus_batches(specific_prompts: list[str], batch_size: int, model: str) -> list[str | None]:
     opus_results: list[str | None] = []
     total_batches = (len(specific_prompts) + batch_size - 1) // batch_size
-    print(f"  Pass 2 (Opus): {len(specific_prompts)} prompts in {total_batches} batches...")
+    print(f"  Pass 2 (large): {len(specific_prompts)} prompts in {total_batches} batches...")
 
     for i in range(total_batches):
         batch = specific_prompts[i * batch_size : (i + 1) * batch_size]
@@ -458,7 +458,7 @@ def anonymize_chat_logs(
     """Returns (regex_clean, anon_examples, skipped_count)."""
     regex_results = [(anonymize_regex(p), lb, s) for p, lb, s in chat_examples]
     regex_clean, still_specific = _split_regex_results(chat_examples, regex_results)
-    print(f"  Pass 1 (regex): {len(regex_clean)} clean, {len(still_specific)} need Opus pass")
+    print(f"  Pass 1 (regex): {len(regex_clean)} clean, {len(still_specific)} need large pass")
 
     if not still_specific:
         return regex_clean, [], 0
@@ -506,9 +506,9 @@ def _build_corpus_dict(all_examples: list[tuple[str, str, str]]) -> dict:
             "created": date.today().isoformat(),
             "description": (
                 "Consolidated prompt routing training corpus. "
-                "Labels: low=Haiku, mid=Sonnet, high=Opus. "
+                "Labels: low=mini, mid=core, high=large. "
                 "Sources: handcrafted coding prompts (3 models), "
-                "user chat logs (anonymized, labeled by Opus)."
+                "user chat logs (anonymized, labeled by large)."
             ),
             "tier_definitions": {
                 "low": (
@@ -558,7 +558,7 @@ def _print_source_summary(json_examples: list[tuple[str, str, str]]) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build consolidated training_corpus.json")
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--skip-anon", action="store_true", help="Skip Opus anonymization pass")
+    parser.add_argument("--skip-anon", action="store_true", help="Skip large anonymization pass")
     parser.add_argument("--model", default="opus", help="Model for anonymization (default: opus)")
     parser.add_argument("--batch-size", type=int, default=20)
     return parser.parse_args()

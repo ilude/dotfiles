@@ -12,6 +12,7 @@ from pathlib import Path
 import joblib
 import numpy as np
 from privacy import prompt_sha256_hex
+from safety_floor import apply_runtime_safety_floor
 
 _DIR = Path(__file__).parent
 MODEL_PATH = _DIR / "models" / "router_v3.joblib"
@@ -20,10 +21,10 @@ EVAL_DATA = _DIR / "data" / "eval_v3.jsonl"
 OUTPUT_PATH = _DIR / "docs" / "router-v3-eval.json"
 OUTPUT_PATH_ENSEMBLE = _DIR / "docs" / "router-v3-eval-ensemble.json"
 
-TIER_ORDER = {"Haiku": 0, "Sonnet": 1, "Opus": 2}
+TIER_ORDER = {"mini": 0, "core": 1, "large": 2}
 EFFORT_ORDER = {"none": 0, "low": 1, "medium": 2, "high": 3}
 CANONICAL_ROUTE_ORDER = {"nano": 0, "mini": 1, "core": 2, "large": 3, "max": 4}
-LEGACY_TO_CANONICAL = {"Haiku": "mini", "Sonnet": "core", "Opus": "large"}
+LEGACY_TO_CANONICAL = {"mini": "mini", "core": "core", "large": "large"}
 
 TOP1_GATE = 0.75
 CATASTROPHIC_GATE = 0
@@ -92,9 +93,9 @@ def _compute_metrics(
     catastrophic = 0
     over_routing = 0
     cwq_sum = 0.0
-    tier_tp: dict[str, int] = {"Haiku": 0, "Sonnet": 0, "Opus": 0}
-    tier_gt: dict[str, int] = {"Haiku": 0, "Sonnet": 0, "Opus": 0}
-    tier_pp: dict[str, int] = {"Haiku": 0, "Sonnet": 0, "Opus": 0}
+    tier_tp: dict[str, int] = {"mini": 0, "core": 0, "large": 0}
+    tier_gt: dict[str, int] = {"mini": 0, "core": 0, "large": 0}
+    tier_pp: dict[str, int] = {"mini": 0, "core": 0, "large": 0}
 
     for row, pred_label in zip(rows, labels_pred):
         gt = row["cheapest_acceptable_route"]
@@ -104,9 +105,9 @@ def _compute_metrics(
         pt = TIER_ORDER[pred_tier]
         pe = EFFORT_ORDER[pred_effort]
         if (
-            CANONICAL_ROUTE_ORDER[_canonical_tier(gt["model_tier"])]
-            - CANONICAL_ROUTE_ORDER[_canonical_tier(pred_tier)]
-            >= 2
+            gt["model_tier"] in {"core", "large"}
+            and pred_tier == "mini"
+            and EFFORT_ORDER[pred_effort] <= EFFORT_ORDER["medium"]
         ):
             catastrophic += 1
         pred_cost = pt * 4 + pe + 1
@@ -123,11 +124,11 @@ def _compute_metrics(
             tier_tp[gt_tier] += 1
 
     per_tier_recall = {
-        t: tier_tp[t] / tier_gt[t] if tier_gt[t] else 0.0 for t in ("Haiku", "Sonnet", "Opus")
+        t: tier_tp[t] / tier_gt[t] if tier_gt[t] else 0.0 for t in ("mini", "core", "large")
     }
     per_tier_precision = {
         t: tier_tp[t] / tier_pp[t] if tier_pp.get(t, 0) else 0.0
-        for t in ("Haiku", "Sonnet", "Opus")
+        for t in ("mini", "core", "large")
     }
     per_tier_f1 = {
         t: (
@@ -138,7 +139,7 @@ def _compute_metrics(
             if (per_tier_precision[t] + per_tier_recall[t])
             else 0.0
         )
-        for t in ("Haiku", "Sonnet", "Opus")
+        for t in ("mini", "core", "large")
     }
     return {
         "n": n,
@@ -203,18 +204,8 @@ def _canonical_tier(tier: str) -> str:
 
 
 def _apply_eval_safety_floor(row: dict, predicted_label: str) -> str:
-    """Apply runtime-comparable fail-closed floors for obvious high-risk prompts."""
-    tier, effort = predicted_label.split("|", 1)
-    prompt = str(row.get("prompt", "")).lower()
-    task_type = str(row.get("task_type", "")).lower()
-    floor = tier
-    if any(term in prompt for term in ("highly optimized", "regex engine", "scope an mvp")):
-        floor = "Opus"
-    elif task_type in {"analysis", "architecture", "security"} and tier == "Haiku":
-        floor = "Sonnet"
-    if TIER_ORDER[floor] > TIER_ORDER[tier]:
-        return f"{floor}|{effort}"
-    return predicted_label
+    """Apply the same prompt-only safety floor used by runtime classifiers."""
+    return apply_runtime_safety_floor(str(row.get("prompt", "")), predicted_label)
 
 
 def _load_lgbm_clf():

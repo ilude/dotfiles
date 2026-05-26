@@ -14,7 +14,7 @@ def test_router_log_omits_excerpt_by_default(monkeypatch, tmp_path):
     monkeypatch.setattr(router, "_LOG_PATH", log_path)
 
     prompt = "synthetic prompt with private details that must not be logged"
-    result = {"primary": {"model_tier": "Sonnet", "effort": "medium"}, "confidence": 0.42}
+    result = {"primary": {"model_tier": "core", "effort": "medium"}, "confidence": 0.42}
 
     router._log(prompt, result, 123.4)
 
@@ -36,7 +36,7 @@ def test_router_log_excerpt_requires_explicit_opt_in(monkeypatch, tmp_path):
     monkeypatch.setattr(router, "_LOG_PATH", log_path)
 
     prompt = "synthetic prompt opted into excerpt logging"
-    result = {"primary": {"model_tier": "Sonnet", "effort": "medium"}, "confidence": 0.42}
+    result = {"primary": {"model_tier": "core", "effort": "medium"}, "confidence": 0.42}
 
     router._log(prompt, result, 123.4)
 

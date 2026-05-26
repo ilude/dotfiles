@@ -30,7 +30,7 @@ HASH_PATH = MODELS_DIR / "router_v3.sha256"
 SCHEMA_PATH = PROMPT_ROUTING / "docs" / "router-v3-output.schema.json"
 CLASSIFY_PY = PROMPT_ROUTING / "classify.py"
 
-VALID_MODEL_TIERS = {"Haiku", "Sonnet", "Opus"}
+VALID_MODEL_TIERS = {"mini", "core", "large"}
 VALID_EFFORTS = {"none", "low", "medium", "high"}
 SCHEMA_VERSION = "3.0.0"
 
@@ -283,7 +283,7 @@ class TestRouterContract:
         sys.path.insert(0, str(PROMPT_ROUTING))
         from router import recommend
         result = recommend("")
-        assert result["primary"]["model_tier"] == "Sonnet"
+        assert result["primary"]["model_tier"] == "core"
         assert result["schema_version"] == SCHEMA_VERSION
 
     def test_recommend_candidates_ordered_by_ascending_cost(self):
@@ -291,7 +291,7 @@ class TestRouterContract:
             pytest.skip("model missing")
         sys.path.insert(0, str(PROMPT_ROUTING))
         from router import recommend
-        TIER_ORDER = {"Haiku": 0, "Sonnet": 1, "Opus": 2}
+        TIER_ORDER = {"mini": 0, "core": 1, "large": 2}
         EFFORT_ORDER = {"none": 0, "low": 1, "medium": 2, "high": 3}
         result = recommend("Design a distributed consensus protocol.")
         candidates = result["candidates"]
@@ -325,48 +325,48 @@ class TestGateMetricsFixture:
     def test_catastrophic_definition(self):
         """
         A prediction is catastrophic iff:
-          gt_tier in {Sonnet, Opus} AND pred_tier == Haiku AND pred_effort <= medium
+          gt_tier in {core, large} AND pred_tier == mini AND pred_effort <= medium
         """
         sys.path.insert(0, str(PROMPT_ROUTING))
         from train import EFFORT_ORDER
 
         rows = [
-            self._make_row("Sonnet", "medium"),  # gt Sonnet
-            self._make_row("Opus", "high"),       # gt Opus
-            # gt Haiku -- NOT catastrophic even if under-routed
-            self._make_row("Haiku", "low"),
+            self._make_row("core", "medium"),  # gt core
+            self._make_row("large", "high"),       # gt large
+            # gt mini -- NOT catastrophic even if under-routed
+            self._make_row("mini", "low"),
         ]
         preds = [
-            "Haiku|low",    # catastrophic: gt=Sonnet, pred=Haiku|low (<=medium)
-            "Haiku|medium", # catastrophic: gt=Opus, pred=Haiku|medium (<=medium)
-            "Haiku|none",   # NOT catastrophic: gt=Haiku
+            "mini|low",    # catastrophic: gt=core, pred=mini|low (<=medium)
+            "mini|medium", # catastrophic: gt=large, pred=mini|medium (<=medium)
+            "mini|none",   # NOT catastrophic: gt=mini
         ]
 
         catastrophic = 0
         for r, pred in zip(rows, preds):
             gt = r["cheapest_acceptable_route"]
             pred_tier, pred_effort = pred.split("|")
-            if (gt["model_tier"] in {"Sonnet", "Opus"}
-                    and pred_tier == "Haiku"
+            if (gt["model_tier"] in {"core", "large"}
+                    and pred_tier == "mini"
                     and EFFORT_ORDER[pred_effort] <= EFFORT_ORDER["medium"]):
                 catastrophic += 1
 
         assert catastrophic == 2, f"Expected 2 catastrophic, got {catastrophic}"
 
     def test_haiku_high_pred_is_not_catastrophic(self):
-        """Haiku|high does NOT trigger catastrophic even for Sonnet gt."""
+        """mini|high does NOT trigger catastrophic even for core gt."""
         sys.path.insert(0, str(PROMPT_ROUTING))
         from train import EFFORT_ORDER
 
-        gt = {"model_tier": "Sonnet", "effort": "medium"}
-        pred_tier, pred_effort = "Haiku", "high"
+        gt = {"model_tier": "core", "effort": "medium"}
+        pred_tier, pred_effort = "mini", "high"
 
         is_catastrophic = (
-            gt["model_tier"] in {"Sonnet", "Opus"}
-            and pred_tier == "Haiku"
+            gt["model_tier"] in {"core", "large"}
+            and pred_tier == "mini"
             and EFFORT_ORDER[pred_effort] <= EFFORT_ORDER["medium"]
         )
-        assert not is_catastrophic, "Haiku|high should not be catastrophic"
+        assert not is_catastrophic, "mini|high should not be catastrophic"
 
     def test_over_routing_definition(self):
         """Over-routing: pred ordinal cost > gt ordinal cost."""
@@ -374,14 +374,14 @@ class TestGateMetricsFixture:
         from train import EFFORT_ORDER, TIER_ORDER
 
         rows = [
-            self._make_row("Haiku", "low"),    # gt cheap
-            self._make_row("Sonnet", "medium"), # gt mid
-            self._make_row("Opus", "high"),     # gt expensive
+            self._make_row("mini", "low"),    # gt cheap
+            self._make_row("core", "medium"), # gt mid
+            self._make_row("large", "high"),     # gt expensive
         ]
         preds = [
-            "Sonnet|medium",  # over-routing
-            "Sonnet|medium",  # exact match
-            "Haiku|low",      # under-routing
+            "core|medium",  # over-routing
+            "core|medium",  # exact match
+            "mini|low",      # under-routing
         ]
 
         over = 0
@@ -396,28 +396,28 @@ class TestGateMetricsFixture:
     def test_per_tier_recall_fixture(self):
         """Per-tier recall counts tier-level matches regardless of effort."""
         rows = [
-            self._make_row("Haiku", "low"),
-            self._make_row("Haiku", "medium"),
-            self._make_row("Sonnet", "medium"),
-            self._make_row("Opus", "high"),
+            self._make_row("mini", "low"),
+            self._make_row("mini", "medium"),
+            self._make_row("core", "medium"),
+            self._make_row("large", "high"),
         ]
         preds = [
-            "Haiku|low",    # correct tier
-            "Sonnet|medium", # wrong tier
-            "Sonnet|high",   # correct tier
-            "Opus|medium",   # correct tier
+            "mini|low",    # correct tier
+            "core|medium", # wrong tier
+            "core|high",   # correct tier
+            "large|medium",   # correct tier
         ]
-        tier_tp = {"Haiku": 0, "Sonnet": 0, "Opus": 0}
-        tier_gt = {"Haiku": 0, "Sonnet": 0, "Opus": 0}
+        tier_tp = {"mini": 0, "core": 0, "large": 0}
+        tier_gt = {"mini": 0, "core": 0, "large": 0}
         for r, p in zip(rows, preds):
             gt_tier = r["cheapest_acceptable_route"]["model_tier"]
             tier_gt[gt_tier] += 1
             if p.split("|")[0] == gt_tier:
                 tier_tp[gt_tier] += 1
-        recall = {t: tier_tp[t] / tier_gt[t] for t in ("Haiku", "Sonnet", "Opus")}
-        assert recall["Haiku"] == 0.5
-        assert recall["Sonnet"] == 1.0
-        assert recall["Opus"] == 1.0
+        recall = {t: tier_tp[t] / tier_gt[t] for t in ("mini", "core", "large")}
+        assert recall["mini"] == 0.5
+        assert recall["core"] == 1.0
+        assert recall["large"] == 1.0
 
 
 # ---------------------------------------------------------------------------

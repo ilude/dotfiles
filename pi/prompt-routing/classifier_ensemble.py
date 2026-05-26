@@ -30,10 +30,10 @@ LGBM_HASH_PATH = _MODEL_DIR / "router_v3_lgbm.sha256"
 
 SCHEMA_VERSION = "3.0.0"
 
-TIER_ORDER = {"Haiku": 0, "Sonnet": 1, "Opus": 2}
+TIER_ORDER = {"mini": 0, "core": 1, "large": 2}
 EFFORT_ORDER = {"none": 0, "low": 1, "medium": 2, "high": 3}
 
-_TIERS = ["Haiku", "Sonnet", "Opus"]
+_TIERS = ["mini", "core", "large"]
 _EFFORTS = ["none", "low", "medium", "high"]
 
 # Inverted maps for index -> label
@@ -96,8 +96,8 @@ class EnsembleV3Classifier:
     Veto rule (applied to joint tier|effort label):
       - tier  = max(t2_tier, lgbm_tier)   by TIER_ORDER ordinal
       - effort = max(t2_effort, lgbm_effort) by EFFORT_ORDER ordinal
-      - If one model says Haiku and the other says Sonnet/Opus, escalate
-        to the non-Haiku model's full prediction (tier + effort).
+      - If one model says mini and the other says core/large, escalate
+        to the non-mini model's full prediction (tier + effort).
       - confidence = min(t2_confidence, lgbm_confidence) -- reflects the
         less-certain model.
       - candidates = union of both models' candidates, deduped, sorted by
@@ -138,9 +138,9 @@ class EnsembleV3Classifier:
         t2_tier_ord = TIER_ORDER[t2_tier]
         lgbm_tier_ord = TIER_ORDER[lgbm_tier]
 
-        # Detect Haiku-vs-nonHaiku disagreement -- veto escalates fully.
-        t2_is_haiku = t2_tier == "Haiku"
-        lgbm_is_haiku = lgbm_tier == "Haiku"
+        # Detect mini-vs-nonmini disagreement -- veto escalates fully.
+        t2_is_haiku = t2_tier == "mini"
+        lgbm_is_haiku = lgbm_tier == "mini"
 
         if t2_is_haiku and not lgbm_is_haiku:
             # LightGBM vetoes -- use LightGBM's full prediction.
@@ -155,7 +155,7 @@ class EnsembleV3Classifier:
             # Winning model is T2 (its route survived).
             confidence = t2_conf
         else:
-            # Both agree on Haiku or both are Sonnet/Opus -- apply ordinal max.
+            # Both agree on mini or both are core/large -- apply ordinal max.
             final_tier_ord = max(t2_tier_ord, lgbm_tier_ord)
             final_tier = _IDX_TO_TIER[final_tier_ord]
 

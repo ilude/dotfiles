@@ -19,13 +19,13 @@ Usage:
 
 Flags:
     --classifier t2|ensemble|lgbm|confgate
-        t2       (default) -- T2 LinearSVC only (production)
+        t2       (default) -- T2 LinearSVC only
         ensemble           -- veto ensemble of T2 + LightGBM (experimental)
-        lgbm               -- LightGBM only (experimental)
-        confgate           -- confidence-gated LGB+T2 delegation (experimental)
+        lgbm               -- LightGBM only
+        confgate           -- confidence-gated LGB+T2 delegation (production)
 
 Output (single-line JSON, trailing newline):
-    {"schema_version":"3.0.0","primary":{"model_tier":"Sonnet","effort":"medium"},
+    {"schema_version":"3.0.0","primary":{"model_tier":"core","effort":"medium"},
      "candidates":[...],"confidence":0.72}
 
 Exit codes:
@@ -41,6 +41,21 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from safety_floor import apply_runtime_safety_floor
+
+
+def _apply_primary_floor(prompt: str, result: dict) -> dict:
+    primary = result.get("primary")
+    if not isinstance(primary, dict):
+        return result
+    tier = primary.get("model_tier")
+    effort = primary.get("effort")
+    if not isinstance(tier, str) or not isinstance(effort, str):
+        return result
+    floored_tier, floored_effort = apply_runtime_safety_floor(prompt, f"{tier}|{effort}").split("|")
+    result["primary"] = {"model_tier": floored_tier, "effort": floored_effort}
+    return result
 
 
 def _parse_args() -> argparse.Namespace:
@@ -154,6 +169,7 @@ try:
         # but schema uses additionalProperties: false -- omit to keep TS side clean).
         result.pop("ensemble_rule", None)
 
+    result = _apply_primary_floor(prompt, result)
     sys.stdout.write(json.dumps(result, ensure_ascii=False) + "\n")
     sys.exit(0)
 

@@ -1,5 +1,7 @@
 # Shadow Eval: Legacy vs v3 T2 Router + T3 Policy -- Cost and Safety Report
 
+**Status:** historical. Provider-specific labels such as Haiku/Sonnet/Opus refer to the legacy evaluation vocabulary. Current runtime/schema vocabulary is provider-neutral: mini/core/large plus effort none/low/medium/high.
+
 **Configuration:** T2 LinearSVC classifier + full T3 policy (hysteresis, uncertainty fallback, effort cap, cooldown) on pseudo-sessions of 8 prompts.
 
 **Gate verdict: FAIL** -- see failing gates below.

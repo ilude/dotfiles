@@ -2,16 +2,16 @@
 cascade_label.py -- Ascending cascade relabeler for prompt-routing training data.
 
 For each input row, runs candidate responses through ascending model tiers
-(Haiku/none -> Haiku/low -> Sonnet/none -> ... -> Opus/high), judging each
-with an Opus judge. Stops at the cheapest tier whose response is "sufficient"
+(mini/none -> mini/low -> core/none -> ... -> large/high), judging each
+with an large judge. Stops at the cheapest tier whose response is "sufficient"
 and emits a v3-schema JSONL row with real route_judgments.
 
-Trade-off note (Opus-tier rows): The validator enforces B5 -- generator and
-adjudicator must be in different model families. Since the default judge is Opus,
-any row that requires Opus-tier responses would have Opus as both generator and
-adjudicator. To satisfy B5, when the cascade lands on an Opus tier the judge is
-automatically swapped to the Sonnet judge model. This is a deliberate trade-off:
-Sonnet may be slightly less accurate as a judge for Opus-tier prompts, but it
+Trade-off note (large-tier rows): The validator enforces B5 -- generator and
+adjudicator must be in different model families. Since the default judge is large,
+any row that requires large-tier responses would have large as both generator and
+adjudicator. To satisfy B5, when the cascade lands on an large tier the judge is
+automatically swapped to the core judge model. This is a deliberate trade-off:
+core may be slightly less accurate as a judge for large-tier prompts, but it
 keeps the dataset provenance constraint satisfied without manual intervention.
 
 Usage:
@@ -42,14 +42,14 @@ import anthropic
 
 # Each step is (model_tier, effort). Ascending cost order.
 CASCADE_STEPS: list[tuple[str, str]] = [
-    ("Haiku", "none"),
-    ("Haiku", "low"),
-    ("Sonnet", "none"),
-    ("Sonnet", "low"),
-    ("Sonnet", "medium"),
-    ("Sonnet", "high"),
-    ("Opus", "medium"),
-    ("Opus", "high"),
+    ("mini", "none"),
+    ("mini", "low"),
+    ("core", "none"),
+    ("core", "low"),
+    ("core", "medium"),
+    ("core", "high"),
+    ("large", "medium"),
+    ("large", "high"),
 ]
 
 # effort -> budget_tokens for extended thinking (none means thinking disabled)
@@ -62,14 +62,14 @@ THINKING_BUDGETS: dict[str, int | None] = {
 
 # Anthropic model IDs per tier
 DEFAULT_CANDIDATE_MODELS: dict[str, str] = {
-    "Haiku": "claude-haiku-4-5-20251001",
-    "Sonnet": "claude-sonnet-4-6",
-    "Opus": "claude-opus-4-7",
+    "mini": "claude-haiku-4-5-20251001",
+    "core": "claude-sonnet-4-6",
+    "large": "claude-opus-4-7",
 }
 DEFAULT_JUDGE_MODEL = "claude-opus-4-7"
 
 # Complexity tier derived from final route
-_MODEL_ORDER = ["Haiku", "Sonnet", "Opus"]
+_MODEL_ORDER = ["mini", "core", "large"]
 _EFFORT_ORDER = ["none", "low", "medium", "high"]
 
 # ---------------------------------------------------------------------------
@@ -101,9 +101,9 @@ def _route_cost(tier: str, effort: str) -> tuple[int, int]:
 
 
 def _derive_complexity_tier(model_tier: str, effort: str) -> str:
-    if model_tier == "Opus":
+    if model_tier == "large":
         return "high"
-    if model_tier == "Sonnet" and effort in ("medium", "high"):
+    if model_tier == "core" and effort in ("medium", "high"):
         return "mid"
     return "low"
 
@@ -118,7 +118,7 @@ def _sha256(*parts: str) -> str:
 def _next_cascade_step(tier: str, effort: str, max_effort: str) -> tuple[str, str] | None:
     """Return the step immediately above (tier, effort) in CASCADE_STEPS, or None."""
     current = (tier, effort)
-    max_cost = _route_cost("Opus", max_effort)
+    max_cost = _route_cost("large", max_effort)
     try:
         idx = CASCADE_STEPS.index(current)
     except ValueError:
@@ -314,7 +314,7 @@ async def process_row(
     final_rationale: str | None = None
     last_insufficient: tuple[str, str, str] | None = None  # (tier, effort, rationale)
 
-    max_cost = _route_cost("Opus", max_effort)
+    max_cost = _route_cost("large", max_effort)
     steps = [(t, e) for t, e in CASCADE_STEPS if _route_cost(t, e) <= max_cost]
 
     if dry_run:
@@ -327,10 +327,10 @@ async def process_row(
     for step_idx, (tier, effort) in enumerate(steps):
         model_id = candidate_models[tier]
 
-        # Judge for this tier: swap to Sonnet-as-judge for Opus-tier rows
+        # Judge for this tier: swap to core-as-judge for large-tier rows
         # to satisfy B5 (generator and adjudicator in different families).
-        if tier == "Opus":
-            effective_judge = candidate_models["Sonnet"]
+        if tier == "large":
+            effective_judge = candidate_models["core"]
         else:
             effective_judge = judge_model
 
@@ -402,8 +402,8 @@ async def process_row(
                 ok_model_id = candidate_models[ok_tier]
 
                 # Judge for overkill step
-                if ok_tier == "Opus":
-                    ok_judge = candidate_models["Sonnet"]
+                if ok_tier == "large":
+                    ok_judge = candidate_models["core"]
                 else:
                     ok_judge = judge_model
 
@@ -487,7 +487,7 @@ async def process_row(
 
     # Build v3 output row
     generator_model_id = candidate_models[final_tier]
-    adjudicator_model_id = judge_model if final_tier != "Opus" else candidate_models["Sonnet"]
+    adjudicator_model_id = judge_model if final_tier != "large" else candidate_models["core"]
     complexity_tier = _derive_complexity_tier(final_tier, final_effort)
 
     prompt_hash = f"sha256:{_sha256(prompt)}"
@@ -505,7 +505,7 @@ async def process_row(
         "route_judgments": judgments,
         "provenance": {
             "generator_model": generator_model_id,
-            "generator_model_size": "small" if final_tier == "Haiku" else ("medium" if final_tier == "Sonnet" else "large"),
+            "generator_model_size": "small" if final_tier == "mini" else ("medium" if final_tier == "core" else "large"),
             "adjudicator_model": adjudicator_model_id,
             "adjudicator_model_size": "large" if adjudicator_model_id == judge_model else "medium",
             "prompt_version_hash": prompt_hash,
@@ -630,7 +630,7 @@ async def amain(args: argparse.Namespace) -> int:
     # Average across all models -- a rough estimate; actual varies by model
     # We don't track per-call model here, so use blended pricing as approximation.
     # For accurate cost, would need per-call tracking.
-    # Rough estimate using Sonnet pricing as midpoint:
+    # Rough estimate using core pricing as midpoint:
     estimated_cost = _price_usd(
         "claude-sonnet-4-6",
         total_tokens["input_tokens"],
@@ -643,7 +643,7 @@ async def amain(args: argparse.Namespace) -> int:
     logger.info("  Rows processed   : %d", total)
     logger.info("  Total input tok  : %d", total_tokens["input_tokens"])
     logger.info("  Total output tok : %d", total_tokens["output_tokens"])
-    logger.info("  Estimated cost   : $%.4f (blended Sonnet rate -- actual varies)", estimated_cost)
+    logger.info("  Estimated cost   : $%.4f (blended core rate -- actual varies)", estimated_cost)
     logger.info("  Avg wall-clock/row: %.1fs", avg_elapsed)
     logger.info("  Output           : %s", output_path)
     logger.info("=" * 60)
@@ -687,7 +687,7 @@ def main() -> None:
         "--candidate-models",
         nargs="*",
         metavar="TIER=MODEL_ID",
-        help="Override candidate models, e.g. Haiku=claude-haiku-4-5-20251001",
+        help="Override candidate models, e.g. mini=claude-haiku-4-5-20251001",
     )
     parser.add_argument(
         "--max-effort",

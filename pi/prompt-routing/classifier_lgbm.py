@@ -15,7 +15,7 @@ from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import LabelEncoder
 
-TIER_ORDER = {"Haiku": 0, "Sonnet": 1, "Opus": 2}
+TIER_ORDER = {"mini": 0, "core": 1, "large": 2}
 EFFORT_ORDER = {"none": 0, "low": 1, "medium": 2, "high": 3}
 
 _KEYWORD_PATTERNS = {

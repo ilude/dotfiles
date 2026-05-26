@@ -31,6 +31,8 @@ import threading
 import time
 from pathlib import Path
 
+from safety_floor import apply_runtime_safety_floor
+
 _DIR = Path(__file__).parent
 _MODEL_PATH = _DIR / "models" / "router_v3.joblib"
 _HASH_PATH = _DIR / "models" / "router_v3.sha256"
@@ -39,8 +41,8 @@ _LOG_PATH = _LOG_DIR / "routing_log.jsonl"
 
 SCHEMA_VERSION = "3.0.0"
 
-TIER_ORDER = {"Haiku": 0, "Sonnet": 1, "Opus": 2}
-TIER_TO_SIZE = {"Haiku": "small", "Sonnet": "medium", "Opus": "large"}
+TIER_ORDER = {"mini": 0, "core": 1, "large": 2}
+TIER_TO_SIZE = {"mini": "small", "core": "medium", "large": "large"}
 EFFORT_ORDER = {"none": 0, "low": 1, "medium": 2, "high": 3}
 
 logger = logging.getLogger(__name__)
@@ -145,10 +147,10 @@ def recommend(prompt: str) -> dict:
     Returns a dict matching router-v3-output.schema.json:
     {
         "schema_version": "3.0.0",
-        "primary": {"model_tier": "Sonnet", "effort": "medium"},
+        "primary": {"model_tier": "core", "effort": "medium"},
         "candidates": [
-            {"model_tier": "Haiku", "effort": "low", "confidence": 0.21},
-            {"model_tier": "Sonnet", "effort": "medium", "confidence": 0.72},
+            {"model_tier": "mini", "effort": "low", "confidence": 0.21},
+            {"model_tier": "core", "effort": "medium", "confidence": 0.72},
             ...
         ],
         "confidence": 0.72
@@ -166,7 +168,7 @@ def recommend(prompt: str) -> dict:
     primary_label, confidence, candidates = clf.predict_single_full(prompt)
     elapsed_us = (time.perf_counter() - t0) * 1e6
 
-    primary_tier, primary_effort = primary_label.split("|")
+    primary_tier, primary_effort = apply_runtime_safety_floor(prompt, primary_label).split("|")
     result = {
         "schema_version": SCHEMA_VERSION,
         "primary": {"model_tier": primary_tier, "effort": primary_effort},
@@ -186,11 +188,11 @@ def recommend(prompt: str) -> dict:
 
 
 def _safe_default() -> dict:
-    """Return a safe Sonnet|medium default for empty/whitespace prompts."""
+    """Return a safe core|medium default for empty/whitespace prompts."""
     return {
         "schema_version": SCHEMA_VERSION,
-        "primary": {"model_tier": "Sonnet", "effort": "medium"},
-        "candidates": [{"model_tier": "Sonnet", "effort": "medium", "confidence": 1.0}],
+        "primary": {"model_tier": "core", "effort": "medium"},
+        "candidates": [{"model_tier": "core", "effort": "medium", "confidence": 1.0}],
         "confidence": 1.0,
     }
 

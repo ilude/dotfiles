@@ -7,7 +7,6 @@ import {
 	PROMPT_ROUTING_DIR,
 	type RouterClassifierMode,
 } from "./config.js";
-import { normalizeRouteCandidate } from "./route-vocabulary.js";
 
 export interface ClassifierRecommendation {
 	schema_version: string;
@@ -19,6 +18,9 @@ export interface ClassifierRecommendation {
 }
 
 const KNOWN_SCHEMA_VERSIONS = new Set(["3.0.0"]);
+const CLASSIFIER_MODEL_TIERS = new Set(["mini", "core", "large"]);
+const CLASSIFIER_EFFORTS = new Set(["none", "low", "medium", "high"]);
+const MAX_CANDIDATES = 12;
 const CLASSIFIER_FAILURE_LOG = path.join(
 	PROMPT_ROUTING_DIR,
 	"logs",
@@ -57,6 +59,38 @@ function promptHash(text: string): string {
 	return crypto.createHash("sha256").update(text).digest("hex");
 }
 
+function isClassifierModelTier(value: unknown): value is string {
+	return typeof value === "string" && CLASSIFIER_MODEL_TIERS.has(value);
+}
+
+function isClassifierEffort(value: unknown): value is string {
+	return typeof value === "string" && CLASSIFIER_EFFORTS.has(value);
+}
+
+function isConfidence(value: unknown): value is number {
+	return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
+}
+
+function parseClassifierRoute(
+	value: unknown,
+): { model_tier: string; effort: string } | null {
+	if (typeof value !== "object" || value === null) return null;
+	const route = value as Record<string, unknown>;
+	if (!isClassifierModelTier(route.model_tier)) return null;
+	if (!isClassifierEffort(route.effort)) return null;
+	return { model_tier: route.model_tier, effort: route.effort };
+}
+
+function parseClassifierCandidate(
+	value: unknown,
+): { model_tier: string; effort: string; confidence: number } | null {
+	const route = parseClassifierRoute(value);
+	if (!route) return null;
+	const candidate = value as Record<string, unknown>;
+	if (!isConfidence(candidate.confidence)) return null;
+	return { ...route, confidence: candidate.confidence };
+}
+
 /**
  * Safely parse and schema-validate classifier stdout.
  *
@@ -82,35 +116,38 @@ export function safeParseClassifierOutput(
 	if (typeof obj.schema_version !== "string") return null;
 	if (!KNOWN_SCHEMA_VERSIONS.has(obj.schema_version)) return null;
 
-	if (typeof obj.primary !== "object" || obj.primary === null) return null;
-	const primary = obj.primary as Record<string, unknown>;
-	if (typeof primary.model_tier !== "string") return null;
-	if (normalizeRouteCandidate(primary.model_tier) === null) return null;
-	if (typeof primary.effort !== "string") return null;
+	const primary = parseClassifierRoute(obj.primary);
+	if (!primary) return null;
 
-	if (!Array.isArray(obj.candidates) || obj.candidates.length === 0)
+	if (
+		!Array.isArray(obj.candidates) ||
+		obj.candidates.length === 0 ||
+		obj.candidates.length > MAX_CANDIDATES
+	)
 		return null;
 
-	if (typeof obj.confidence !== "number") return null;
-	if (obj.confidence < 0 || obj.confidence > 1) return null;
+	if (!isConfidence(obj.confidence)) return null;
+
+	const candidates = obj.candidates.map(parseClassifierCandidate);
+	if (candidates.some((candidate) => candidate === null)) return null;
+	const parsedCandidates = candidates as Array<{
+		model_tier: string;
+		effort: string;
+		confidence: number;
+	}>;
+	if (
+		!parsedCandidates.some(
+			(candidate) =>
+				candidate.model_tier === primary.model_tier &&
+				candidate.effort === primary.effort,
+		)
+	)
+		return null;
 
 	return {
 		schema_version: obj.schema_version,
-		primary: {
-			model_tier: primary.model_tier,
-			effort: primary.effort,
-		},
-		candidates: obj.candidates.map((candidate: unknown) => {
-			const c =
-				typeof candidate === "object" && candidate !== null
-					? (candidate as Record<string, unknown>)
-					: {};
-			return {
-				model_tier: String(c.model_tier ?? ""),
-				effort: String(c.effort ?? ""),
-				confidence: Number(c.confidence ?? 0),
-			};
-		}),
+		primary,
+		candidates: parsedCandidates,
 		confidence: obj.confidence,
 		reason: typeof obj.reason === "string" ? obj.reason : undefined,
 		ensemble_rule:

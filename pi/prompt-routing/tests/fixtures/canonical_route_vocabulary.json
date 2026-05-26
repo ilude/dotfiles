@@ -1,5 +1,11 @@
 {
-  "canonical_routes": ["nano", "mini", "core", "large", "max"],
+  "canonical_routes": [
+    "nano",
+    "mini",
+    "core",
+    "large",
+    "max"
+  ],
   "legacy_route_map": {
     "Haiku": "mini",
     "Sonnet": "core",

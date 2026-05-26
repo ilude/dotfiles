@@ -20,7 +20,7 @@
  * effort accordingly.
  *
  * The v3 classifier returns a structured JSON recommendation with:
- *   primary.model_tier  -- Haiku | Sonnet | Opus
+ *   primary.model_tier  -- mini | core | large
  *   primary.effort      -- none | low | medium | high
  *   confidence          -- 0.0..1.0 calibrated probability
  *   candidates[]        -- ranked route alternatives
@@ -1427,17 +1427,17 @@ export default function (pi: ExtensionAPI) {
 				`  Operator summary: ${decision ? `${decision.applied_route}/${decision.thinking_level} via ${trace?.rule ?? decision.route_resolution_reason}` : "no dispatch decision yet"}`,
 				`  Current model:    ${currentLabel}`,
 				`  Current effort:   ${effort}`,
-				`  Legacy tier state: ${tier}`,
+				`  Tier state:       ${tier}`,
 				`  Turns at tier:    ${state.turnsAtCurrentTier} (hold window: ${policy.N_HOLD})`,
-				`  Last legacy tier: ${raw ?? "--"} -> applied: ${eff ?? "--"}`,
+				`  Last tier:        ${raw ?? "--"} -> applied: ${eff ?? "--"}`,
 				`  Last rule:        ${state.lastRuleFired ?? "--"}`,
 				`  Last prompt:      "${state.lastPromptSnippet}"`,
 				`  Cooldown turns:   ${state.cooldownTurnsRemaining}`,
 				``,
-				`  Legacy tier map (diagnostic):`,
-				`    legacy low  -> ${resolveModelTierLabel(resolved.low, "small")}  [route: mini, effort: minimal]`,
-				`    legacy mid  -> ${resolveModelTierLabel(resolved.mid, "medium")}  [route: core, effort: medium]`,
-				`    legacy high -> ${resolveModelTierLabel(resolved.high, "large")}  [route: large, effort: high]`,
+				`  Runtime tier map (diagnostic):`,
+				`    low  -> ${resolveModelTierLabel(resolved.low, "small")}  [route: mini, effort: minimal]`,
+				`    mid  -> ${resolveModelTierLabel(resolved.mid, "medium")}  [route: core, effort: medium]`,
+				`    high -> ${resolveModelTierLabel(resolved.high, "large")}  [route: large, effort: high]`,
 				``,
 				`  Hysteresis: N_HOLD=${policy.N_HOLD} DOWNGRADE_THRESHOLD=${policy.DOWNGRADE_THRESHOLD} K_CONSEC=${policy.K_CONSEC}`,
 				`  Effort cap: maxLevel=${policy.maxEffortLevel} UNCERTAIN_THRESHOLD=${policy.UNCERTAIN_THRESHOLD} UNCERTAIN_FALLBACK_ENABLED=${policy.UNCERTAIN_FALLBACK_ENABLED}`,
@@ -1503,7 +1503,7 @@ export default function (pi: ExtensionAPI) {
 			if (rec) {
 				lines.push(`    schema_version: ${rec.schema_version}`);
 				lines.push(
-					`    legacy_primary: {model_tier: ${rec.primary.model_tier}, effort: ${rec.primary.effort}}`,
+					`    primary: {model_tier: ${rec.primary.model_tier}, effort: ${rec.primary.effort}}`,
 				);
 				lines.push(`    confidence: ${rec.confidence}`);
 				if (rec.ensemble_rule)
