@@ -15,6 +15,7 @@ export interface RoutingTelemetryContextCapsule {
 	unresolvedTask: boolean;
 	downgradeIntentDetected: boolean;
 	messageCount: number;
+	estimatedPromptChars?: number;
 	contextPercent: number | null;
 	flags: string[];
 }

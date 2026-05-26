@@ -86,8 +86,8 @@ import type {
 } from "../lib/prompt-router/route-decision.js";
 import {
 	providerFamilyTrust,
-	resolveDefaultCodexProfile,
 	type RouteState,
+	resolveDefaultCodexProfile,
 } from "../lib/prompt-router/route-profile.js";
 import {
 	normalizeRouteCandidate,
@@ -186,6 +186,46 @@ function hasDowngradeIntent(prompt: string): boolean {
 	return DOWNGRADE_INTENT_PATTERN.test(prompt);
 }
 
+export type UserEffortOverride = {
+	effort: string;
+	scope: string;
+};
+
+export function readUserEffortOverride(
+	ctx: any,
+	payload: unknown,
+): UserEffortOverride | null {
+	const payloadRecord = isPlainRecord(payload) ? payload : {};
+	const ctxRecord = isPlainRecord(ctx) ? ctx : {};
+	const router = isPlainRecord(ctxRecord.router) ? ctxRecord.router : {};
+	const candidates = [
+		{ value: payloadRecord.router_effort_override, scope: "request" },
+		{ value: payloadRecord.user_selected_effort, scope: "request" },
+		{ value: payloadRecord.reasoning_effort, scope: "request" },
+		{ value: router.effortOverride, scope: "session" },
+		{ value: router.userSelectedEffort, scope: "session" },
+	];
+	for (const candidate of candidates) {
+		if (typeof candidate.value !== "string") continue;
+		const effort = candidate.value.trim().toLowerCase();
+		if (effort in EFFORT_ORDER) return { effort, scope: candidate.scope };
+	}
+	return null;
+}
+
+export function effortOverrideType(
+	recommended: string | null,
+	selected: string | null,
+): string {
+	if (!recommended || !selected || !(recommended in EFFORT_ORDER))
+		return "none";
+	if (!(selected in EFFORT_ORDER)) return "none";
+	const diff = EFFORT_ORDER[selected] - EFFORT_ORDER[recommended];
+	if (diff > 0) return "user_effort_up";
+	if (diff < 0) return "user_effort_down";
+	return "user_effort_same";
+}
+
 function readRouteOverride(
 	ctx: any,
 	payload: unknown,
@@ -234,7 +274,9 @@ export function buildRoutingContextCapsule(
 	);
 	const isContinuation = hasContinuationIntent(prompt);
 	const dependencyOnPriorContext = isContinuation && Boolean(lastEffectiveSize);
-	const unresolvedTask = Boolean(ctx?.router?.unresolvedTask ?? dependencyOnPriorContext);
+	const unresolvedTask = Boolean(
+		ctx?.router?.unresolvedTask ?? dependencyOnPriorContext,
+	);
 	const downgradeIntentDetected = hasDowngradeIntent(prompt);
 	if (messages.length > 8) flags.push("multi_turn");
 	if (percent !== null && percent >= 85) flags.push("context_window_high");
@@ -268,6 +310,7 @@ function toTelemetryContextCapsule(
 		unresolvedTask: capsule.unresolvedTask,
 		downgradeIntentDetected: capsule.downgradeIntentDetected,
 		messageCount: capsule.messageCount,
+		estimatedPromptChars: capsule.estimatedPromptChars,
 		contextPercent: capsule.contextPercent,
 		flags: [...capsule.flags],
 	};
@@ -309,6 +352,12 @@ export function buildRouterTelemetryPayload(options: {
 	actualModel?: unknown;
 	selectedModelSize?: RuntimeModelSize | null;
 	modelSwitchApplied?: boolean | null;
+	userSelectedRoute?: {
+		route: RouterSize | null;
+		effort: string | null;
+	} | null;
+	finalAppliedEffort?: string | null;
+	overrideType?: string | null;
 }): Record<string, unknown> {
 	return {
 		schema_version: "router-log-v1",
@@ -329,6 +378,24 @@ export function buildRouterTelemetryPayload(options: {
 		selected_model_size: options.selectedModelSize ?? null,
 		actual_model: serializeModelForLog(options.actualModel),
 		model_switch_applied: options.modelSwitchApplied ?? null,
+		router_recommended_route: {
+			model_tier: options.rawRoute,
+			effort: options.rec?.primary.effort ?? null,
+		},
+		user_selected_route: options.userSelectedRoute ?? {
+			route: null,
+			effort: null,
+		},
+		final_applied_route: {
+			model_tier: options.appliedRoute,
+			effort: options.finalAppliedEffort ?? null,
+		},
+		override_type: options.overrideType ?? "none",
+		prompt_features: {
+			estimated_chars: options.contextCapsule?.estimatedPromptChars ?? null,
+			message_count: options.contextCapsule?.messageCount ?? null,
+			flags: options.contextCapsule?.flags ?? [],
+		},
 		prompt_excerpt: null,
 	};
 }
@@ -353,7 +420,8 @@ function chooseAppliedRoute(
 	let scope = "none";
 	let overrideLifetime = "none";
 	if (override) {
-		overrideLifetime = override.scope === "request" ? "one-turn" : "until-cleared";
+		overrideLifetime =
+			override.scope === "request" ? "one-turn" : "until-cleared";
 		route = override.route === "nano" ? "mini" : override.route;
 		scope = override.scope;
 		flags.push("override_applied");
@@ -561,7 +629,8 @@ export async function resolveProviderRouteDecision(
 		);
 		denied.decisionTrace.providerTrust = "cross-provider-denied";
 		denied.decisionTrace.fallbackAllowed = false;
-		denied.decisionTrace.fallbackDeniedReason = "cross-provider fallback denied";
+		denied.decisionTrace.fallbackDeniedReason =
+			"cross-provider fallback denied";
 		return denied;
 	}
 
@@ -626,10 +695,11 @@ export function applyRouteDecisionToProviderPayload(
 ): unknown {
 	if (!isPlainRecord(payload)) return payload;
 	const explicitModelPreserved = hasExplicitModelSelection(payload, ctx);
+	const effortOverride = readUserEffortOverride(ctx, payload);
 	return {
 		...payload,
 		model: explicitModelPreserved ? payload.model : decision.model_label,
-		reasoning_effort: decision.thinking_level,
+		reasoning_effort: effortOverride?.effort ?? decision.thinking_level,
 		route_decision_id: decision.route_decision_id,
 		route_resolution_reason: decision.route_resolution_reason,
 		explicit_model_preserved: explicitModelPreserved,
@@ -1027,6 +1097,11 @@ export async function emitRoutingDecision(
 		selectedModelSize?: RuntimeModelSize | null;
 		actualModel?: unknown;
 		modelSwitchApplied?: boolean | null;
+		userSelectedRoute?: {
+			route: RouterSize | null;
+			effort: string | null;
+		} | null;
+		overrideType?: string | null;
 	} = {},
 ): Promise<void> {
 	const writerAvailable = Boolean(getWriter());
@@ -1073,6 +1148,9 @@ export async function emitRoutingDecision(
 					(applied ? modelSizeForTier(applied.tier) : null),
 				actualModel: runtime.actualModel,
 				modelSwitchApplied: runtime.modelSwitchApplied ?? null,
+				userSelectedRoute: runtime.userSelectedRoute ?? null,
+				finalAppliedEffort: applied?.effort ?? null,
+				overrideType: runtime.overrideType ?? "none",
 			}),
 			legacy_applied_tier: applied ? applied.tier : null,
 			confidence: rec?.confidence ?? null,
@@ -1158,8 +1236,15 @@ async function classifyAndRoute(
 	const prevTier = state.lastEffective;
 	const prevEffort = state.lastAppliedEffort;
 	const applied = applyPolicy(rec, state, policy);
+	const effortOverride = readUserEffortOverride(ctx, { prompt: text });
 	const { tier: effectiveTier, ruleFired } = applied;
 	let { effort } = applied;
+	const routerRecommendedEffort = effort;
+	let overrideType = "none";
+	if (effortOverride) {
+		effort = effortOverride.effort;
+		overrideType = effortOverrideType(routerRecommendedEffort, effort);
+	}
 
 	const modelSize = modelSizeForTier(effectiveTier);
 	const model = resolveDynamicModelFromRegistry(
@@ -1194,7 +1279,9 @@ async function classifyAndRoute(
 		return;
 	}
 
-	effort = applyModelEffortBias(effort, rec, model);
+	if (!effortOverride) {
+		effort = applyModelEffortBias(effort, rec, model);
+	}
 	const finalApplied = { ...applied, effort };
 	state.lastRuleFired = ruleFired;
 	state.lastAppliedEffort = effort;
@@ -1227,6 +1314,10 @@ async function classifyAndRoute(
 		selectedModelSize: modelSize,
 		actualModel: model,
 		modelSwitchApplied,
+		userSelectedRoute: effortOverride
+			? { route, effort: effortOverride.effort }
+			: null,
+		overrideType,
 	});
 }
 
@@ -1273,7 +1364,9 @@ export default function (pi: ExtensionAPI) {
 	// -- Reset state on new session --
 	pi.on("session_start", async (_event, ctx) => {
 		debugSessionId =
-			ctx.sessionManager?.getSessionId?.() || getSessionId() || `pi-${process.pid}`;
+			ctx.sessionManager?.getSessionId?.() ||
+			getSessionId() ||
+			`pi-${process.pid}`;
 		void appendTranscriptDebug("prompt_router_session_start");
 		state.currentTier = "low";
 		state.turnsAtCurrentTier = 0;
