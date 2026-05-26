@@ -1,0 +1,13 @@
+metrics:
+  project_key: derived from display path; anonymized when outside current repo
+  session_id: stable episode_id when native session identifier absent
+  era: unknown_era unless timestamp can be compared to git timeline
+  explicit_commands: literal /plan-it /review-it /do-it matches
+  structural_signals: spec, acceptance criteria, review, checklist signals
+  reviewer_findings: extracted from review artifact patterns when available
+missing_codes:
+  unknown: source absent or field not observable
+conflict_rules:
+  - prefer explicit artifact files over session paraphrase
+  - prefer latest completed checklist over earlier plan text
+sensitivity: redact secrets, tokens, passwords, keys, and email addresses

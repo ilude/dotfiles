@@ -1,0 +1,24 @@
+planning_quality:
+  missing_acceptance_criteria: no observable acceptance criteria in handoff
+  missing_verification_commands: plan lacks exact validation commands
+  weak_handoff_to_execution: execution lacks needed scope/context
+execution_quality:
+  validation_claimed_not_performed: completion claims without command evidence
+review_quality:
+  duplicate: materially same finding appears more than once
+  severity_inflation: severity higher than demonstrated impact
+  useful_high_signal_finding: actionable evidence-backed defect
+workflow_mechanics:
+  context_loss_between_phases: later phase misses earlier artifact/context
+  artifact_path_confusion: wrong/missing plan or review path
+operator_experience:
+  user_rescue: user redirects avoidable agent mistake or missing context
+performance:
+  repeated_reads_same_large_files: repeated large reads without new value
+  unnecessary_subagent_launches: agent fan-out disproportionate to task
+review_theater_classes:
+  - substantive_defect
+  - process_defect
+  - duplicate
+  - low_value_or_theater
+  - false_positive
