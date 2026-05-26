@@ -39,12 +39,14 @@ for file in "$CLAUDE_COMMANDS"/*.md; do
         continue
     fi
 
-    # Create or refresh symlink
+    # Create or refresh symlink with a repo-relative target so git does not see
+    # platform-specific absolute paths as changes.
+    link_target="../../claude/commands/${filename}"
     rm -f "$target"
     if is_windows; then
-        MSYS=winsymlinks:nativestrict ln -sf "$file" "$target" 2>/dev/null
+        MSYS=winsymlinks:nativestrict ln -sf "$link_target" "$target" 2>/dev/null
     else
-        ln -sf "$file" "$target"
+        ln -sf "$link_target" "$target"
     fi
     ((linked++))
 done
@@ -61,11 +63,12 @@ for dir in "$CLAUDE_COMMANDS"/*/; do
         continue
     fi
 
+    link_target="../../claude/commands/${dirname}"
     rm -f "$target"
     if is_windows; then
-        MSYS=winsymlinks:nativestrict ln -sf "$dir" "$target" 2>/dev/null
+        MSYS=winsymlinks:nativestrict ln -sf "$link_target" "$target" 2>/dev/null
     else
-        ln -sf "$dir" "$target"
+        ln -sf "$link_target" "$target"
     fi
     ((linked++))
 done
