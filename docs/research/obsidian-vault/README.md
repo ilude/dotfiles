@@ -11,11 +11,14 @@ it needs more specific guidance.
 - [index](index.md) — vault map and topic list
 - [AGENTS](AGENTS.md) — vault-wide guidance for agents
 - [agent-workflows/index](agent-workflows/index.md) — agent workflow research and Pi/dotfiles ideas
+- [prompt-router/index](prompt-router/index.md) — prompt-router curation, experiments, datasets, and routing policy research
 
 ## Current topics
 
 - `agent-workflows/` — agent tooling, workflow patterns, videos, projects, and
   small Pi/dotfiles adaptation ideas.
+- `prompt-router/` — prompt-router curation, experiments, datasets, deployment
+  candidates, and user-effort override policy.
 
 ## Adding a topic
 

@@ -1,7 +1,7 @@
 ---
 created: 2026-05-26
-status: draft
-completed:
+status: completed
+completed: 2026-05-26
 ---
 
 # Plan: Prompt Router Candidate Review and Retrain Gates
@@ -107,54 +107,54 @@ This checklist is the durable resume ledger for `/do-it`. Every executable task,
 
 ### Wave 1
 
-- [ ] T1: Define experiment schema, output policy, and fixed gate config
-  - Status: pending
-  - Evidence: --
-- [ ] T2: Implement candidate export and exception review packet
-  - Status: pending
-  - Evidence: --
-- [ ] V1: Validate wave 1
-  - Status: pending
-  - Evidence: --
+- [x] T1: Define experiment schema, output policy, and fixed gate config
+  - Status: completed
+  - Evidence: Added .gitignore policy and curation_experiment.py gates/path schema; ruff check passed.
+- [x] T2: Implement candidate export and exception review packet
+  - Status: completed
+  - Evidence: Export writes separated partitions and prompt-safe review_packet.md; schema/export tests passed.
+- [x] V1: Validate wave 1
+  - Status: completed
+  - Evidence: uv run --project pi/prompt-routing python -m pytest pi/prompt-routing/tests/ -k 'curation_experiment_schema or curation_experiment_export' -v passed (7 passed).
 
 ### Wave 2
 
-- [ ] T3: Implement sandboxed baseline-vs-candidate evaluation
-  - Status: pending
-  - Evidence: --
-- [ ] T4: Implement reporting, gate decisions, and artifact safeguards
-  - Status: pending
-  - Evidence: --
-- [ ] V2: Validate wave 2
-  - Status: pending
-  - Evidence: --
+- [x] T3: Implement sandboxed baseline-vs-candidate evaluation
+  - Status: completed
+  - Evidence: Evaluation trains candidate_model.joblib under experiments/retraining only and snapshots production artifacts.
+- [x] T4: Implement reporting, gate decisions, and artifact safeguards
+  - Status: completed
+  - Evidence: report.json/report.md include required metrics, gate hash, classifications, and production snapshots; report contract check passed.
+- [x] V2: Validate wave 2
+  - Status: completed
+  - Evidence: uv run --project pi/prompt-routing python -m pytest pi/prompt-routing/tests/ -k 'curation_experiment_eval or curation_experiment_report' -v passed (3 passed).
 
 ### Wave 3
 
-- [ ] T5: Add CLI orchestration, docs, and end-to-end tests
-  - Status: pending
-  - Evidence: --
-- [ ] V3: Validate wave 3
-  - Status: pending
-  - Evidence: --
+- [x] T5: Add CLI orchestration, docs, and end-to-end tests
+  - Status: completed
+  - Evidence: Added run/scan/cleanup CLIs, docs, and CLI tests; e2e smoke final-smoke-20260526161035 produced overall_status=passed.
+- [x] V3: Validate wave 3
+  - Status: completed
+  - Evidence: uv run --project pi/prompt-routing python -m pytest pi/prompt-routing/tests/ -k 'curation or experiment' -v passed (30 passed).
 
 ### Final Gates
 
-- [ ] F1: Task-specific verification complete
-  - Status: pending
-  - Evidence: --
-- [ ] F2: Repo-wide validation complete
-  - Status: pending
-  - Evidence: --
-- [ ] F3: Manual validation not required or completed
-  - Status: pending
-  - Evidence: --
-- [ ] F4: Deployment validation complete or not required
-  - Status: pending
-  - Evidence: --
-- [ ] F5: Archive preflight complete
-  - Status: pending
-  - Evidence: --
+- [x] F1: Task-specific verification complete
+  - Status: completed
+  - Evidence: final-smoke-20260526161035 curation run and retraining run completed with overall_status=passed; report contract check passed.
+- [x] F2: Repo-wide validation complete
+  - Status: completed
+  - Evidence: prompt-routing tests passed (167 passed, 6 skipped); make test-quick passed (199 passed); make lint-python passed.
+- [x] F3: Manual validation not required or completed
+  - Status: completed
+  - Evidence: Manual validation not required by Validation Contract; automated local validation covers non-destructive ignored outputs.
+- [x] F4: Deployment validation complete or not required
+  - Status: completed
+  - Evidence: Deployment not applicable; no runtime routing behavior changed.
+- [x] F5: Archive preflight complete
+  - Status: completed
+  - Evidence: All required gates checked; production artifact status clean; generated retraining final-smoke outputs ignored; scans passed.
 
 ## Task Breakdown
 
@@ -400,9 +400,16 @@ If deployment is skipped because it is not required, `/do-it` may mark the deplo
 
 ## Execution Status
 
-- Status: pending execution after review
-- Last updated: 2026-05-26 by /review-it
-- Notes: Review fixes applied to make gate ordering, generated-input handling, output confinement, label provenance, metric denominators, artifact safety, and archive evidence explicit. No implementation, validation, deployment, or archive gates have been executed.
+- Status: completed-and-archived candidate
+- Last updated: 2026-05-26 by /do-it
+- Last completed wave/gate: F5 archive preflight
+- Next wave/gate: archive move
+- Implemented: Added sandboxed curation_experiment.py workflow, retraining ignore policy, experiment tests, and curation docs.
+- Validation passed: targeted experiment tests, all prompt-routing tests, make test-quick, make lint-python, final smoke, report contract check, and artifact scans.
+- Generated evidence paths: pi/prompt-routing/experiments/curation/final-smoke-20260526161035 and pi/prompt-routing/experiments/retraining/final-smoke-20260526161035.
+- Manual validation: not required.
+- Deployment validation: not applicable.
+- Remaining steps: archive this plan.
 
 ## Handoff Notes
 

@@ -12,6 +12,8 @@ a roadmap or commitment to build everything captured here.
 
 - [agent-workflows/index](agent-workflows/index.md) — agent workflow tools, patterns, projects, videos,
   and KISS ideas applicable to Pi/dotfiles.
+- [prompt-router/index](prompt-router/index.md) — prompt-router curation,
+  experiments, datasets, deployment candidates, and user-effort override policy.
 
 ## Topic convention
 
