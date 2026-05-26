@@ -5,8 +5,9 @@
  * dispatch them via sendUserMessage(). `/commit` uses the same prompt-dispatch
  * path so it can stay flexible for complex worktrees.
  *
- *   /commit        — smart git commit with secret scanning
- *   /plan-it       — crystallize conversation context into an executable plan
+ *   /commit        -- smart git commit with secret scanning
+ *   /new-terminal  -- open a plain shell in this cwd in a new terminal
+ *   /plan-it       -- crystallize conversation context into an executable plan
  *   /prd-it        — refine fuzzy ideas into an optional PRD artifact
  *   /review-it     — adversarial review of a plan file
  *   /do-it         — smart task routing by complexity
@@ -358,13 +359,21 @@ export function buildBranchLaunchPlan(input: {
 	env?: NodeJS.ProcessEnv;
 	platform?: NodeJS.Platform;
 }): BranchLaunchPlan {
+	const env = input.env ?? process.env;
+	const platform = input.platform ?? process.platform;
+	if (platform === "darwin") {
+		return buildGhosttyLaunchPlan({
+			cwd: input.cwd,
+			initialInput: buildShellPiCommand(buildPiResumeArgs(input.sessionFile)),
+		});
+	}
 	return buildWindowsTerminalLaunchPlan({
 		cwd: input.cwd,
 		title: input.title,
 		command: buildPowerShellResumeCommand(input.sessionFile),
 		suppressApplicationTitle: true,
-		env: input.env,
-		platform: input.platform,
+		env,
+		platform,
 	});
 }
 
@@ -374,14 +383,98 @@ export function buildNewInstanceLaunchPlan(input: {
 	env?: NodeJS.ProcessEnv;
 	platform?: NodeJS.Platform;
 }): BranchLaunchPlan {
+	const env = input.env ?? process.env;
+	const platform = input.platform ?? process.platform;
+	if (platform === "darwin") {
+		return buildGhosttyLaunchPlan({
+			cwd: input.cwd,
+			initialInput: "pi",
+		});
+	}
 	return buildWindowsTerminalLaunchPlan({
 		cwd: input.cwd,
 		title: input.title,
 		command: "& pi",
 		suppressApplicationTitle: true,
-		env: input.env,
-		platform: input.platform,
+		env,
+		platform,
 	});
+}
+
+export function buildNewTerminalLaunchPlan(input: {
+	cwd: string;
+	title: string;
+	env?: NodeJS.ProcessEnv;
+	platform?: NodeJS.Platform;
+}): BranchLaunchPlan {
+	const env = input.env ?? process.env;
+	const platform = input.platform ?? process.platform;
+	if (platform === "win32" || env.WT_SESSION) {
+		return {
+			executable: "wt",
+			args: [
+				"-w",
+				"0",
+				"new-tab",
+				"--title",
+				input.title,
+				"-d",
+				msysPathToWindows(input.cwd),
+				"pwsh",
+			],
+		};
+	}
+	if (platform === "darwin") {
+		return buildGhosttyLaunchPlan({ cwd: input.cwd });
+	}
+	return {
+		args: [],
+		reason: "No supported terminal launcher detected.",
+	};
+}
+
+function buildGhosttyLaunchPlan(input: {
+	cwd: string;
+	initialInput?: string;
+}): BranchLaunchPlan {
+	return {
+		executable: "osascript",
+		args: ["-e", buildGhosttyNewWindowScript(input)],
+	};
+}
+
+function quoteAppleScriptString(value: string): string {
+	return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+function quoteShellArg(value: string): string {
+	return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function buildShellPiCommand(args: string[]): string {
+	return ["pi", ...args.map(quoteShellArg)].join(" ");
+}
+
+function buildGhosttyNewWindowScript(input: {
+	cwd: string;
+	initialInput?: string;
+}): string {
+	const lines = [
+		'tell application "Ghostty"',
+		"activate",
+		"set cfg to new surface configuration",
+		`set initial working directory of cfg to ${quoteAppleScriptString(input.cwd)}`,
+		'set command of cfg to "/bin/zsh"',
+		"set win to new window with configuration cfg",
+	];
+	if (input.initialInput) {
+		lines.push(
+			"set term to terminal 1 of selected tab of win",
+			`input text ${quoteAppleScriptString(`${input.initialInput}\n`)} to term`,
+		);
+	}
+	lines.push("end tell");
+	return lines.join("\n");
 }
 
 function buildWindowsTerminalLaunchPlan(input: {
@@ -395,13 +488,7 @@ function buildWindowsTerminalLaunchPlan(input: {
 	const env = input.env ?? process.env;
 	const platform = input.platform ?? process.platform;
 	if (platform === "win32" || env.WT_SESSION) {
-		const args = [
-			"-w",
-			"0",
-			"new-tab",
-			"--title",
-			input.title,
-		];
+		const args = ["-w", "0", "new-tab", "--title", input.title];
 		if (input.suppressApplicationTitle) {
 			args.push("--suppressApplicationTitle");
 		}
@@ -454,7 +541,32 @@ async function executeNewInstanceCommand(
 	});
 	const launched = launchBranch(plan);
 	if (launched.launched) {
-		return ctx.ui.notify(`Opened new Pi instance in a new terminal tab: ${title}`, "info");
+		return ctx.ui.notify(
+			`Opened new Pi instance in a new terminal tab: ${title}`,
+			"info",
+		);
+	}
+	const details = launched.error
+		? `Terminal launch failed: ${launched.error}`
+		: plan.reason;
+	return ctx.ui.notify(
+		details ?? "Terminal launch failed.",
+		launched.error ? "warning" : "error",
+	);
+}
+
+async function executeNewTerminalCommand(
+	args: string,
+	ctx: Pick<WorkflowContext, "cwd" | "ui">,
+) {
+	const title = args.trim() || defaultBranchTitle(ctx.cwd ?? process.cwd());
+	const plan = buildNewTerminalLaunchPlan({
+		cwd: ctx.cwd ?? process.cwd(),
+		title,
+	});
+	const launched = launchBranch(plan);
+	if (launched.launched) {
+		return ctx.ui.notify(`Opened new terminal in this cwd: ${title}`, "info");
 	}
 	const details = launched.error
 		? `Terminal launch failed: ${launched.error}`
@@ -1862,6 +1974,20 @@ export default function (pi: ExtensionAPI) {
 		handler: async (args, ctx) => {
 			try {
 				await executeNewInstanceCommand(args, ctx);
+			} catch (err) {
+				ctx.ui.notify(
+					err instanceof Error ? err.message : String(err),
+					"error",
+				);
+			}
+		},
+	});
+
+	pi.registerCommand("new-terminal", {
+		description: "Open a plain shell in this cwd in a new terminal",
+		handler: async (args, ctx) => {
+			try {
+				await executeNewTerminalCommand(args, ctx);
 			} catch (err) {
 				ctx.ui.notify(
 					err instanceof Error ? err.message : String(err),
