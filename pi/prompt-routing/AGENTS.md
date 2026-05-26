@@ -164,6 +164,11 @@ new ingestion, weak-labeling, review-queue, retraining, or external dataset
 adaptation work. The PRD's central rule is that new rows are candidates until
 fixed baseline, OOD, and safety/cost gates prove they improve the router.
 
+For classifier experiment workflow, production baseline rules, rebuild parity,
+active-learning queues, and promotion requirements, read
+`docs/classifier-experiment-pipeline.md`. Promotion claims must compare against
+production ConfGate, not only T2.
+
 ## Recommended Corpus Expansion Path
 
 In priority order:

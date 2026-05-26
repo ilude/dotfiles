@@ -28,10 +28,12 @@ DEFAULT_MAX_BYTES: Final = 5_000_000
 DEFAULT_MAX_PROMPT_CHARS: Final = 12_000
 DEFAULT_HOLDOUT_MODULUS: Final = 10
 DEFAULT_HOLDOUT_BUCKET: Final = 0
+DEFAULT_HF_PAGE_SIZE: Final = 100
 MIN_AUTO_ACCEPT_CONFIDENCE: Final = 0.65
 LICENSE_UNKNOWN: Final = "unknown"
 ALLOWED_LICENSES: Final = frozenset({"apache-2.0", "mit", "cc-by-4.0", "unknown-public"})
 PROMPT_PREVIEW_CHARS: Final = 80
+EMAIL_REDACTION_PATTERN: Final = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 SCAN_PATTERNS: Final = {
     "private_key": re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
     "token": re.compile(r"(?i)(api[_-]?key|secret|token)\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{20,}"),
@@ -106,7 +108,7 @@ SOURCES: Final = [
     SourceSpec(
         name="routellm_gpt4_dataset",
         dataset="routellm/gpt4_dataset",
-        url="https://datasets-server.huggingface.co/rows?dataset=routellm%2Fgpt4_dataset&config=default&split=train&offset=0&length={limit}",
+        url="https://datasets-server.huggingface.co/rows?dataset=routellm%2Fgpt4_dataset&config=default&split=train&offset={offset}&length={limit}",
         revision="main",
         license_name="apache-2.0",
         license_url="https://huggingface.co/datasets/routellm/gpt4_dataset",
@@ -115,7 +117,7 @@ SOURCES: Final = [
     SourceSpec(
         name="carrot_sprout",
         dataset="CARROT-LLM-Routing/SPROUT",
-        url="https://datasets-server.huggingface.co/rows?dataset=CARROT-LLM-Routing%2FSPROUT&config=default&split=train&offset=0&length={limit}",
+        url="https://datasets-server.huggingface.co/rows?dataset=CARROT-LLM-Routing%2FSPROUT&config=default&split=train&offset={offset}&length={limit}",
         revision="main",
         license_name="unknown-public",
         license_url="https://huggingface.co/datasets/CARROT-LLM-Routing/SPROUT",
@@ -124,7 +126,7 @@ SOURCES: Final = [
     SourceSpec(
         name="smolagents_codeagent_traces",
         dataset="smolagents/codeagent-traces",
-        url="https://datasets-server.huggingface.co/rows?dataset=smolagents%2Fcodeagent-traces&config=default&split=train&offset=0&length={limit}",
+        url="https://datasets-server.huggingface.co/rows?dataset=smolagents%2Fcodeagent-traces&config=default&split=train&offset={offset}&length={limit}",
         revision="main",
         license_name="apache-2.0",
         license_url="https://huggingface.co/datasets/smolagents/codeagent-traces",
@@ -203,14 +205,27 @@ def pull_source(
     timeout_seconds: int,
     max_bytes: int,
 ) -> PullResult:
-    url = source.url.format(limit=limit_per_source)
+    rows: list[dict[str, Any]] = []
+    byte_count = 0
+    offset = 0
     try:
-        payload, byte_count = read_limited_url(url, timeout_seconds, max_bytes)
-        return PullResult(
-            source=source,
-            rows=extract_rows_from_hf_payload(payload),
-            byte_count=byte_count,
-        )
+        while len(rows) < limit_per_source:
+            page_limit = min(DEFAULT_HF_PAGE_SIZE, limit_per_source - len(rows))
+            url = source.url.format(offset=offset, limit=page_limit)
+            payload, page_bytes = read_limited_url(
+                url,
+                timeout_seconds,
+                max_bytes - byte_count,
+            )
+            page_rows = extract_rows_from_hf_payload(payload)
+            byte_count += page_bytes
+            if not page_rows:
+                break
+            rows.extend(page_rows)
+            if len(page_rows) < page_limit:
+                break
+            offset += page_limit
+        return PullResult(source=source, rows=rows[:limit_per_source], byte_count=byte_count)
     except (
         OSError,
         urllib.error.URLError,
@@ -265,7 +280,7 @@ def normalize_row(source: SourceSpec, row: dict[str, Any], max_prompt_chars: int
     )
     if prompt is None:
         prompt = ""
-    prompt = prompt.strip()
+    prompt = sanitize_prompt_text(prompt.strip())
     metadata = sanitized_metadata(row)
     reason_codes: list[str] = []
     if not prompt:
@@ -279,7 +294,7 @@ def normalize_row(source: SourceSpec, row: dict[str, Any], max_prompt_chars: int
         id=candidate_id,
         source=source.name,
         source_dataset=source.dataset,
-        source_url=source.url.format(limit="{limit}"),
+        source_url=source.url.format(offset="{offset}", limit="{limit}"),
         source_revision=source.revision,
         source_row_id=row_id,
         license_name=source.license_name,
@@ -294,6 +309,10 @@ def normalize_row(source: SourceSpec, row: dict[str, Any], max_prompt_chars: int
         reason_codes=reason_codes,
         notes=[],
     )
+
+
+def sanitize_prompt_text(prompt: str) -> str:
+    return EMAIL_REDACTION_PATTERN.sub("[EMAIL]", prompt)
 
 
 def stable_json_hash(value: Any) -> str:
@@ -393,48 +412,45 @@ def classifier_artifacts() -> dict[str, Any]:
         return {"available": False, "error": str(exc)}
 
 
-def score_candidate(candidate: Candidate, router_metadata: dict[str, Any]) -> None:
-    command = [
-        sys.executable,
-        str(Path(__file__).with_name("classify.py")),
-        "--classifier",
-        CLASSIFIER_NAME,
-        candidate.prompt,
-    ]
+def score_candidate(
+    candidate: Candidate,
+    router_metadata: dict[str, Any],
+    classifier: Any | None = None,
+) -> None:
+    if classifier is None:
+        from classifier_confgate import ConfGatedClassifier
+
+        classifier = ConfGatedClassifier()
     try:
-        proc = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
-        data = json.loads(proc.stdout)
-        if proc.returncode != 0 or data.get("error"):
-            label = WeakLabel(
-                schema_version=WEAK_LABEL_SCHEMA_VERSION,
-                classifier=CLASSIFIER_NAME,
-                interface="classify.py --classifier confgate",
-                primary=None,
-                candidates=[],
-                confidence=None,
-                ensemble_rule=None,
-                router_metadata=router_metadata,
-                failure=data.get("error") or proc.stderr.strip() or "classifier_failed",
-            )
-        else:
-            label = WeakLabel(
-                schema_version=WEAK_LABEL_SCHEMA_VERSION,
-                classifier=CLASSIFIER_NAME,
-                interface="classify.py --classifier confgate",
-                primary=data.get("primary"),
-                candidates=data.get("candidates", []),
-                confidence=data.get("confidence"),
-                ensemble_rule=data.get("ensemble_rule"),
-                router_metadata=router_metadata,
-                failure=None,
-            )
-            candidate.proposed_route = data.get("primary")
-        candidate.weak_labels = [asdict(label)]
-    except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
+        from safety_floor import apply_runtime_safety_floor
+
+        data = classifier.predict_route(candidate.prompt)
+        primary = data.get("primary")
+        if isinstance(primary, dict):
+            tier = primary.get("model_tier")
+            effort = primary.get("effort")
+            if isinstance(tier, str) and isinstance(effort, str):
+                floored = apply_runtime_safety_floor(candidate.prompt, f"{tier}|{effort}")
+                floored_tier, floored_effort = floored.split("|")
+                data["primary"] = {"model_tier": floored_tier, "effort": floored_effort}
         label = WeakLabel(
             schema_version=WEAK_LABEL_SCHEMA_VERSION,
             classifier=CLASSIFIER_NAME,
-            interface="classify.py --classifier confgate",
+            interface="classifier_confgate.ConfGatedClassifier",
+            primary=data.get("primary"),
+            candidates=data.get("candidates", []),
+            confidence=data.get("confidence"),
+            ensemble_rule=data.get("ensemble_rule"),
+            router_metadata=router_metadata,
+            failure=data.get("error"),
+        )
+        candidate.proposed_route = data.get("primary") if not data.get("error") else None
+        candidate.weak_labels = [asdict(label)]
+    except (OSError, RuntimeError, ValueError, KeyError, ImportError) as exc:
+        label = WeakLabel(
+            schema_version=WEAK_LABEL_SCHEMA_VERSION,
+            classifier=CLASSIFIER_NAME,
+            interface="classifier_confgate.ConfGatedClassifier",
             primary=None,
             candidates=[],
             confidence=None,
@@ -443,6 +459,14 @@ def score_candidate(candidate: Candidate, router_metadata: dict[str, Any]) -> No
             failure=str(exc),
         )
         candidate.weak_labels = [asdict(label)]
+
+
+def score_candidates(candidates: list[Candidate], router_metadata: dict[str, Any]) -> None:
+    from classifier_confgate import ConfGatedClassifier
+
+    classifier = ConfGatedClassifier()
+    for candidate in candidates:
+        score_candidate(candidate, router_metadata, classifier)
 
 
 def triage_candidate(candidate: Candidate) -> None:
@@ -491,7 +515,20 @@ def risky_features(features: dict[str, Any]) -> bool:
     )
 
 
-def fixture_pull_results(limit_per_source: int) -> list[PullResult]:
+def selected_sources(source_names: list[str] | None) -> list[SourceSpec]:
+    if not source_names:
+        return list(SOURCES)
+    by_name = {source.name: source for source in SOURCES}
+    unknown = sorted(set(source_names) - set(by_name))
+    if unknown:
+        raise ValueError(f"unknown source(s): {', '.join(unknown)}")
+    return [by_name[name] for name in source_names]
+
+
+def fixture_pull_results(
+    limit_per_source: int,
+    source_names: list[str] | None = None,
+) -> list[PullResult]:
     fixtures = {
         "routellm": [
             {
@@ -539,7 +576,7 @@ def fixture_pull_results(limit_per_source: int) -> list[PullResult]:
         ],
     }
     results: list[PullResult] = []
-    for source in SOURCES:
+    for source in selected_sources(source_names):
         rows = fixtures[source.normalizer][:limit_per_source]
         results.append(PullResult(source=source, rows=rows, byte_count=len(json.dumps(rows))))
     return results
@@ -565,7 +602,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
     output_dir = safe_output_dir(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     results = (
-        fixture_pull_results(args.limit_per_source)
+        fixture_pull_results(args.limit_per_source, args.source)
         if args.fixture
         else [
             pull_source(
@@ -574,14 +611,15 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 args.timeout_seconds,
                 args.max_bytes_per_source,
             )
-            for source in SOURCES
+            for source in selected_sources(args.source)
         ]
     )
     candidates = normalize_results(results, args.max_prompt_chars)
     router_metadata = classifier_artifacts()
     for candidate in candidates:
         candidate.trace_features = extract_features(candidate)
-        score_candidate(candidate, router_metadata)
+    score_candidates(candidates, router_metadata)
+    for candidate in candidates:
         triage_candidate(candidate)
     write_outputs(output_dir, candidates, results, args, router_metadata)
     if not args.fixture and not any(
@@ -657,7 +695,7 @@ def build_manifest(
             {
                 "name": result.source.name,
                 "dataset": result.source.dataset,
-                "url": result.source.url.format(limit=args.limit_per_source),
+                "url": result.source.url.format(offset=0, limit=args.limit_per_source),
                 "revision": result.source.revision,
                 "license_name": result.source.license_name,
                 "license_url": result.source.license_url,
@@ -815,7 +853,7 @@ def pull_command(args: argparse.Namespace) -> int:
             args.timeout_seconds,
             args.max_bytes_per_source,
         )
-        for source in SOURCES
+        for source in selected_sources(args.source)
     ]
     pull_manifest = {
         "schema_version": MANIFEST_SCHEMA_VERSION,
@@ -846,6 +884,12 @@ def parse_args() -> argparse.Namespace:
         sub.add_argument("--max-bytes-per-source", type=int, default=DEFAULT_MAX_BYTES)
         sub.add_argument("--max-prompt-chars", type=int, default=DEFAULT_MAX_PROMPT_CHARS)
         sub.add_argument("--fixture", action="store_true")
+        sub.add_argument(
+            "--source",
+            action="append",
+            choices=[source.name for source in SOURCES],
+            help="Limit pulls to one source name. Repeat to include multiple sources.",
+        )
     scan = subparsers.add_parser("scan")
     scan.add_argument("--output-dir", required=True)
     cleanup = subparsers.add_parser("cleanup")
