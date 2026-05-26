@@ -58,12 +58,15 @@ describe("workflow prompt contracts", () => {
 		);
 	});
 
-	it("/commit documents hybrid candidate extraction plus LLM adjudication", () => {
+	it("/commit documents the prompt-dispatched git workflow", () => {
 		const prompt = readPrompt("skills/workflow/commit.md");
-		expect(prompt).toContain("two-step secret review");
-		expect(prompt).toContain("deterministic pattern matching");
-		expect(prompt).toContain("small/mini LLM");
-		expect(prompt).toContain("likely real secret");
+		expect(prompt).toContain("Commit all legitimate uncommitted changes");
+		expect(prompt).toContain("Do not skip files because they were changed");
+		expect(prompt).toContain("detect-secrets-hook");
+		expect(prompt).toContain("--disable-plugin KeywordDetector");
+		expect(prompt).toContain("Prepared: yes/no");
+		expect(prompt).toContain("Committed: yes/no");
+		expect(prompt).toContain("Pushed: yes/no/not requested");
 	});
 
 	it("commit planner prompt requires one-line subjects", () => {
