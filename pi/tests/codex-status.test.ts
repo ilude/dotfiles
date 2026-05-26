@@ -184,6 +184,23 @@ describe("codex-status usage", () => {
 			),
 		).toContain("\u001b[31m   36%\u001b[0m used");
 
+		const earlyWeeklyResetAt = new Date(2026, 4, 14, 19, 0, 0).getTime() / 1000;
+		expect(
+			formatUsage(
+				{
+					rate_limit: {
+						secondary_window: {
+							used_percent: 1,
+							limit_window_seconds: 7 * 24 * 60 * 60,
+							reset_at: earlyWeeklyResetAt,
+						},
+					},
+				},
+				{ source: "pi", path: "/tmp/auth.json", accessToken: "redacted" },
+				{ color: true },
+			),
+		).toContain("\u001b[92m    1%\u001b[0m used");
+
 		const fiveHourResetAt = new Date(2026, 4, 7, 22, 18, 0).getTime() / 1000;
 		expect(
 			formatUsage(

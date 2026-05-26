@@ -212,6 +212,8 @@ const ANSI_YELLOW = "\u001b[33m";
 const ANSI_RED = "\u001b[31m";
 const ANSI_WHITE = "\u001b[97m";
 const ANSI_RESET = "\u001b[0m";
+const MIN_PACE_ELAPSED_PERCENT = 2;
+const MIN_PACE_USED_PERCENT = 2;
 
 function color(text: string, code: string, enabled: boolean): string {
 	return enabled ? `${code}${text}${ANSI_RESET}` : text;
@@ -226,9 +228,8 @@ function usedPercent(window: ApiWindow | null | undefined): number | undefined {
 	return Math.max(0, Math.min(100, window.used_percent));
 }
 
-function windowPaceDelta(
+function windowElapsedPercent(
 	window: ApiWindow | null | undefined,
-	used: number,
 ): number | undefined {
 	const reset = resetDate(window);
 	if (!reset) return undefined;
@@ -240,10 +241,18 @@ function windowPaceDelta(
 			: undefined;
 	if (!windowSeconds) return undefined;
 	const remainingSeconds = (reset.getTime() - Date.now()) / 1000;
-	const elapsedPercent = Math.max(
+	return Math.max(
 		0,
 		Math.min(100, ((windowSeconds - remainingSeconds) / windowSeconds) * 100),
 	);
+}
+
+function windowPaceDelta(
+	window: ApiWindow | null | undefined,
+	used: number,
+): number | undefined {
+	const elapsedPercent = windowElapsedPercent(window);
+	if (elapsedPercent === undefined) return undefined;
 	return used - elapsedPercent;
 }
 
@@ -252,6 +261,13 @@ function pacedPercentColor(
 	used: number,
 ): string {
 	if (used === 0) return ANSI_LIGHT_GREEN;
+	const elapsedPercent = windowElapsedPercent(window);
+	if (elapsedPercent === undefined) return ANSI_WHITE;
+	if (
+		elapsedPercent < MIN_PACE_ELAPSED_PERCENT ||
+		used < MIN_PACE_USED_PERCENT
+	)
+		return ANSI_LIGHT_GREEN;
 	const delta = windowPaceDelta(window, used);
 	if (delta === undefined) return ANSI_WHITE;
 	if (delta > 3) return ANSI_RED;
