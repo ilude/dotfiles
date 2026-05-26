@@ -156,6 +156,14 @@ callers. This means there is no fallback when the model is uncertain.
 
 ---
 
+## Prompt Router Curation Pipeline PRD
+
+The current requirements artifact for expanding prompt-router training data is
+`.specs/prompt-router-curation-pipeline/PRD.md`. Read it before implementing
+new ingestion, weak-labeling, review-queue, retraining, or external dataset
+adaptation work. The PRD's central rule is that new rows are candidates until
+fixed baseline, OOD, and safety/cost gates prove they improve the router.
+
 ## Recommended Corpus Expansion Path
 
 In priority order:
