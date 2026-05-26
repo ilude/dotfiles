@@ -32,6 +32,22 @@ Create a checklist for when to use local execution vs Multipass/Daytona-like san
 
 Why: keeps YOLO workflows safe without making every task heavy.
 
+### 6. Adaptive plan review telemetry eval
+
+Use collected workflow telemetry to decide when `/review-it` can be embedded into
+`/plan-it` and how many reviewers each plan profile needs.
+
+Why: lowers command count only after reviewer yield and execution-outcome data
+show the embedded review policy is safe.
+
+### 7. Goal closeout handoff
+
+Make `/goal` completion emit a compact closeout report with outcome, validation,
+current state, and next steps before the goal stops.
+
+Why: preserves handoff context without requiring the user to remember a separate
+summarize command.
+
 ## Parking lot
 
 - Full Zellij/Pi cockpit UI.

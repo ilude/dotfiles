@@ -44,6 +44,8 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 - [workflow-ideas/pipelines-and-policies](workflow-ideas/pipelines-and-policies.md) — run ledgers, first-class artifacts, resumability, and policy-as-code gates.
 - [workflow-ideas/code-intelligence](workflow-ideas/code-intelligence.md) — Graphify/SCIP/code-intel ideas for semantic navigation and architecture orientation.
 - [workflow-ideas/duckdb-for-pi-usage-analytics](workflow-ideas/duckdb-for-pi-usage-analytics.md) — optional DuckDB backend idea for Pi usage/session analytics.
+- [workflow-ideas/adaptive-plan-review-telemetry](workflow-ideas/adaptive-plan-review-telemetry.md) -- data model for learning when `/review-it` can be embedded into `/plan-it` with adaptive reviewer counts.
+- [workflow-ideas/goal-closeout-handoff](workflow-ideas/goal-closeout-handoff.md) -- automatic `/goal` completion closeout so goal endings preserve outcome, validation, state, and next steps.
 - [workflow-ideas/menos-knowledge-compiler](workflow-ideas/menos-knowledge-compiler.md) — persona-scoped session capture, concept compilation, previews, lint, and digests on menos.
 - [workflow-ideas/multipass-yolo-sandboxes](workflow-ideas/multipass-yolo-sandboxes.md) — Multipass + Infisical design for safer YOLO/bypass-permissions agent runs.
 - [workflow-ideas/x-research-pipeline](workflow-ideas/x-research-pipeline.md) — X.com read-only research graph pipeline using twscrape/Webshare/menos.
