@@ -1847,11 +1847,7 @@ writeConfirmPaths:
   - "~/.claude/settings.json"
   - ".claude/settings.json"
   - ".claude/settings.local.json"
-  - ".vscode/settings.json"
   - ".cursor/mcp.json"
-  - ".cursorrules"
-  - "CLAUDE.md"
-  - "AGENTS.md"
   - "~/.claude/commands/"
 
 # ---------------------------------------------------------------------------
