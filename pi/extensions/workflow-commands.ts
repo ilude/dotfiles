@@ -49,6 +49,7 @@ import {
 	buildSecretReviewPrompt,
 	buildSkillPrompt,
 } from "../lib/workflow-commands/prompts";
+import { startWorkflowEpisode } from "../lib/workflow-telemetry";
 import {
 	clearCodexStatusNewSessionSuppression,
 	showCodexStatus,
@@ -2018,6 +2019,11 @@ export default function (pi: ExtensionAPI) {
 			const planPath = args
 				.trim()
 				.match(/(\.specs\/[A-Za-z0-9._/-]+\/plan\.md)/)?.[1];
+			startWorkflowEpisode({
+				command: "plan-it",
+				args,
+				artifactPath: planPath,
+			});
 			await withTimingSpan(
 				{
 					name: "slash.plan-it",
@@ -2042,6 +2048,7 @@ export default function (pi: ExtensionAPI) {
 		description:
 			"Refine a fuzzy product/workflow idea into an optional PRD artifact",
 		handler: async (args, _ctx) => {
+			startWorkflowEpisode({ command: "prd-it", args });
 			await withTimingSpan(
 				{
 					name: "slash.prd-it",
@@ -2066,11 +2073,16 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerCommand("review-it", {
 		description:
-			"Adversarial review of a plan file — finds bugs, gaps, and failure modes",
+			"Adversarial review of a plan file -- finds bugs, gaps, and failure modes",
 		handler: async (args, _ctx) => {
 			const planPath = args
 				.trim()
 				.match(/(\.specs\/[A-Za-z0-9._/-]+\/plan\.md)/)?.[1];
+			startWorkflowEpisode({
+				command: "review-it",
+				args,
+				artifactPath: planPath,
+			});
 			await withTimingSpan(
 				{
 					name: "slash.review-it",
@@ -2096,11 +2108,16 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerCommand("do-it", {
 		description:
-			"Smart task routing — implements directly, delegates, or plans based on complexity",
+			"Smart task routing -- implements directly, delegates, or plans based on complexity",
 		handler: async (args, ctx) => {
 			const planPath = args
 				.trim()
 				.match(/(\.specs\/[A-Za-z0-9._/-]+\/plan\.md)/)?.[1];
+			startWorkflowEpisode({
+				command: "do-it",
+				args,
+				artifactPath: planPath,
+			});
 			await withTimingSpan(
 				{
 					name: "slash.do-it",

@@ -11,6 +11,7 @@ You are a smart task router and execution coordinator. Analyze the input, determ
 7. For plan-file execution, the first and last response lines must clearly state whether the task fully completed.
 8. For raw-task execution, use a normal concise assistant summary; do not use plan archive wording or print `archived at n/a`.
 9. When executing a plan file, assume `/do-it` was started in a fresh session; rely on the plan file and repository state, not prior chat context.
+10. For plan-file execution, maintain structured telemetry/evidence in the plan status or named artifacts: episode ID, phase ID, task ID, validation command, status, archive status, timestamps, and non-secret evidence.
 
 ## Step 1: Parse Input
 
@@ -20,8 +21,8 @@ If `$ARGUMENTS` is empty, ask: "What should I do? Describe the task."
 
 Determine the input type:
 
-1. **Plan file** — if `$ARGUMENTS` is a file path ending in `plan.md` (for example `.specs/my-feature/plan.md`), read the file and go to **Step 3: Execute Plan File**.
-2. **Raw task** — otherwise, treat `$ARGUMENTS` as a task description and go to **Step 2: Analyze & Route**.
+1. **Plan file** -- if `$ARGUMENTS` is a file path ending in `plan.md` (for example `.specs/my-feature/plan.md`), read the file and go to **Step 3: Execute Plan File**.
+2. **Raw task** -- otherwise, treat `$ARGUMENTS` as a task description and go to **Step 2: Analyze & Route**.
 
 ---
 
@@ -50,7 +51,7 @@ Before routing, ground the decision in the actual repo:
 
 Classify the work into one of three tiers:
 
-#### Simple — implement directly
+#### Simple -- implement directly
 Indicators (any two or more):
 - touches 1-2 files
 - mechanical change: rename, config tweak, add a field, fix a typo, update a dependency
@@ -58,14 +59,14 @@ Indicators (any two or more):
 - acceptance criteria are obvious from the description
 - reversible with a single git revert
 
-#### Medium — delegate through a specialist lead
+#### Medium -- delegate through a specialist lead
 Indicators (any two or more):
 - touches 3-5 files
 - feature work: implement a new behavior, refactor an existing one, integrate two systems
 - requires judgment about approach but not full architectural planning
 - can be completed in a single focused session without a separate planning artifact
 
-#### Complex — plan first, then execute
+#### Complex -- plan first, then execute
 Indicators (any two or more):
 - touches 6+ files
 - architectural, cross-cutting, or involves migrating/redesigning existing systems
@@ -81,9 +82,9 @@ If scope is ambiguous, lean toward **Medium**. If genuinely uncertain between Me
 When this workflow delegates to subagents or follow-up commands, keep them in the **same provider/model family as the current session model when possible**.
 
 Use abstract size tiers, not hardcoded vendor names:
-- `small` → lightweight classification, mechanical changes, simple follow-ups
-- `medium` → routine implementation and validation work
-- `large` → orchestration, architectural reasoning, unusually complex or risky work
+- `small` -> lightweight classification, mechanical changes, simple follow-ups
+- `medium` -> routine implementation and validation work
+- `large` -> orchestration, architectural reasoning, unusually complex or risky work
 
 Use `small`, `medium`, and `large` only; the runtime maps those tiers to the current provider/model family.
 
@@ -96,12 +97,12 @@ Default to `medium` unless the delegated work clearly needs `small` or `large`.
 ### 2D. Specialist Routing Guidance
 
 Prefer the closest specialist path available:
-- frontend-heavy UI work → `frontend-dev`
-- backend/API/data-flow work → `backend-dev`
-- TypeScript-heavy implementation → `typescript-pro`
-- Python-heavy implementation → `python-pro`
-- infra / CI / deployment work → `devops-pro` or `terraform-pro`
-- mixed engineering work with coordination needs → `engineering-lead`
+- frontend-heavy UI work -> `frontend-dev`
+- backend/API/data-flow work -> `backend-dev`
+- TypeScript-heavy implementation -> `typescript-pro`
+- Python-heavy implementation -> `python-pro`
+- infra / CI / deployment work -> `devops-pro` or `terraform-pro`
+- mixed engineering work with coordination needs -> `engineering-lead`
 
 Use `engineering-lead` when the task spans multiple implementation domains or requires coordinating workers. Do not default to a generic lead if a single specialist clearly fits better.
 
@@ -112,8 +113,8 @@ Use `engineering-lead` when the task spans multiple implementation domains or re
 When execution, validation, deployment, or infrastructure work fails, do not give up
 just because the first fix is not obvious. Before reporting a blocker:
 
-1. Preserve sanitized evidence:
-   - capture the failing command, exit code, relevant stack trace/log excerpt, and
+1. Preserve sanitized evidence before any repair loop:
+   - capture the failing command, exit code, relevant stack trace/log excerpt, phase ID, validation command, and
      changed file context
    - redact secrets, tokens, private URLs, credentials, and sensitive user data
    - record evidence in `## Execution Status` for plan-file runs when the task
@@ -171,10 +172,13 @@ If the input is an existing `.specs/*/plan.md` file:
    - Extract required automated validation commands, task-specific verification, whether manual validation is required, whether deployment validation is required, automation completeness requirements, and the archive rule.
    - If absent, continue using the legacy gates below, but do not reject older plans solely for missing this section.
 6. Check whether the plan contains a `## Automation Plan` section.
-   - If present, use it as the source of truth for agent-runnable commands, wrappers, playbooks, credential source expectations, and evidence artifacts.
+   - If present, use it as the source of truth for agent-runnable commands, wrappers, playbooks, credential source expectations, mutation boundaries, and evidence artifacts.
    - Prefer running documented automation over inventing ad hoc commands.
    - If automation is missing for an agent-runnable operational step, implement or ask for the missing safe credential/config path before classifying it as manual.
    - If absent, infer automation from task acceptance criteria and validation/deployment sections, but record the gap in `## Execution Status` if the plan cannot complete cleanly.
+7. Check whether the plan contains a `## Telemetry & Evidence Contract` section.
+   - If present, use it as the source of truth for machine-readable evidence fields, including episode ID, phase ID, task ID, validation command, status, archive status, timestamps, and artifact paths.
+   - If absent, continue with checklist evidence and `## Execution Status`, but record structured evidence in a parseable bullet or table for every task, validation command, manual/deployment decision, and archive decision.
 7. Otherwise, execute the plan **wave by wave**:
    - respect dependencies exactly as written
    - use `## Execution Checklist` to skip verified completed items and resume at the first unchecked dependency-ready item
@@ -192,7 +196,7 @@ If the input is an existing `.specs/*/plan.md` file:
    - Classify each step as agent-runnable, safely skippable confidence check, truly required manual approval before action, or truly required manual validation after action.
    - Run agent-runnable safe checks directly.
    - Treat non-destructive manual checks as optional confidence checks when automated validation already covers the behavior; record them as not required/skipped and continue toward archive.
-   - For older or over-strict plans, `/do-it` may downgrade a manual validation gate to "not required" when the operation is clearly non-destructive, local/home-lab/backed-up or otherwise reversible, has automated validation evidence, and does not affect shared/work production users. Record the downgrade reason in `## Execution Status` and evidence.
+   - For older or over-strict plans, `/do-it` may downgrade a manual validation gate to "not required" only when the operation is clearly safe, non-destructive, local/home-lab/backed-up or otherwise reversible, has automated validation evidence, and does not affect shared/work production users. Record the downgrade reason, risk facts, phase ID, and evidence in `## Execution Status` or the plan's telemetry/evidence record.
    - Require user/manual gates only when the operation could catastrophically go wrong: destructive changes, data-loss risk, irreversible external side effects, shared/work production impact, paid/billing/data-costing resources, secret exposure risk, hardware/physical checks, or genuinely subjective user judgment that cannot be replaced by safe automation.
    - Scale deployment risk: personal/local GitHub repos, local/home-lab, and new-backed-up systems are usually agent-runnable; work/shared/multi-user production systems and money/data-costing resources deserve user gates when other people, spend, quota, or costly recovery could be affected or rollback is unclear.
    - Do not require manual validation solely because credentials are used; if credentials are already available through approved local mechanisms and the action is non-destructive/reversible, run it and record evidence.
@@ -242,18 +246,31 @@ If the input is an existing `.specs/*/plan.md` file:
    - every required final gate in `## Execution Checklist` is checked or ready to be checked transactionally before archiving.
    - the final report will include the archive path.
    - if any preflight item fails, do not archive; update `## Execution Status` and classify appropriately.
-18. After archive preflight passes, archive the completed plan:
+18. After archive preflight passes, archive the completed plan by default unless the plan explicitly opts out with a rationale:
+   - If the plan opts out of archive, verify the rationale is explicit, record `archive_status: opted-out` with the reason, and leave the completed plan active.
+   - Otherwise set `archive_status: archived` in structured evidence and continue.
    - Set `completed` in frontmatter to the current date (`YYYY-MM-DD`).
    - Set `status: completed` if the plan uses a status field.
    - Move `.specs/{slug}/plan.md` to `.specs/archive/{slug}/plan.md`.
    - Move any sibling plan artifacts that belong to the same spec, such as review directories or design notes, to `.specs/archive/{slug}/` unless the user asks to keep them active.
    - Create `.specs/archive/{slug}/` if needed.
    - If archive target already exists, ask the user before overwriting or choose a collision-safe suffix.
-19. When execution finishes, summarize:
+19. Automatic post-run workflow eval -- always run this before the final user report; this is part of `/do-it`, not a separate command for the user to remember.
+   - Always record a compact deterministic eval record in the plan status, archived plan, or telemetry/evidence artifact with: final classification, archive status/path, validation commands/results, manual/deployment gate decisions, checklist completion state, blocker reason if any, friction tags, missing evidence, improvement candidates, and execution outcome after review.
+   - Add or update a `## Workflow Eval Record` section when no better structured artifact is available. Use stable fields: `outcome`, `friction`, `missing_evidence`, `improvement_candidates`, `eval_confidence`, and `post_run_reviewers`.
+   - Do not let post-run eval create a new user-facing slash command or tell the user to run another eval command.
+   - Run deterministic checks first: final classification present, archive status/path consistent, required validation commands recorded, checklist complete or blocked with reason, manual/deployment gates completed or not required, and failures linked to repair attempts.
+   - Launch hidden post-run evaluator subagents only when friction triggers exist: blocked or not-complete outcome, validation failed before repair, manual gate required/skipped/downgraded, archive collision/failure/opt-out, checklist/evidence mismatch, missing required telemetry fields, unexpected scope expansion, or user-visible confusion.
+   - Keep the hidden panel small by default: evidence-auditor for outcome/evidence consistency and workflow-friction-analyst for system-improvement findings. Add regression-test-hunter only when a prompt, runtime, or test gap is clear.
+   - Post-run eval must not block a successfully archived run unless it finds a factual completion inconsistency such as failed required validation, missing archive move, unresolved manual gate, incomplete checklist, or insufficient evidence to verify completion.
+   - Record evaluator findings as `friction`, `improvement_candidate`, or `missing_evidence` entries with category, severity, evidence, impact, recommended change, and candidate test when applicable.
+   - If a reviewed plan was executed, record `execution_outcome` and `panel_quality_label` fields for adaptive review learning: completed/blocked classification, validation failures after review, plan gaps discovered during execution, missed reviewer issues, manual-gate ambiguity, archive issues, whether the panel was under-reviewed/right-sized/over-reviewed/unknown, reason, and confidence.
+20. When execution finishes, summarize:
    - completion classification
    - tasks completed
    - validation results
    - archive path, or `Not archived` with the reason from `## Execution Status`
+   - post-run workflow eval status and where it was recorded
    - exact remaining user/manual steps, if any
    - remaining follow-up items, if any
    - do **not** recommend rerunning `/do-it <original-plan-path>` after successful execution and archiving; `/do-it <plan-path>` is only useful for failed, blocked, incomplete, or manually gated active plans
@@ -264,7 +281,7 @@ If the user gave a plan path and also asked to review first, route to `/review-i
 
 ## Step 4: Route by Complexity
 
-### Simple route — implement directly
+### Simple route -- implement directly
 
 1. Identify the specific files to change.
 2. Read each file before editing.
@@ -275,7 +292,7 @@ If the user gave a plan path and also asked to review first, route to `/review-i
    - confirm the specific behavior changed as expected
 5. Report what was changed and how it was verified.
 
-### Medium route — delegate to the best specialist or lead
+### Medium route -- delegate to the best specialist or lead
 
 Dispatch using the closest suitable specialist. Prefer `medium` routing with:
 - `modelSize: "medium"`
@@ -289,7 +306,7 @@ Include in the delegated task:
 
 Use `engineering-lead` only when the task genuinely spans multiple engineering domains or needs coordination.
 
-### Complex route — plan first, then execute
+### Complex route -- plan first, then execute
 
 1. Invoke `/plan-it {full task description}` to crystallize a plan using dynamic `small` / `medium` / `large` model sizing.
 2. Wait for the plan to be written to `.specs/`.
@@ -317,8 +334,8 @@ For raw tasks that were routed through Simple, Medium, or Complex routes, do not
 Never print `/do-it <plan-path>` as the next-step command after a successful archived plan. It is a retry/resume command for failed validation, incomplete execution, blocked user/manual validation, or active unarchived plans only.
 
 For plan-file execution only, end with one of these exact final-line forms:
-- `FINAL STATUS: COMPLETE — archived at <archive-path>.`
-- `FINAL STATUS: NOT COMPLETE — <required validation/manual/archive gate still failing>.`
-- `FINAL STATUS: BLOCKED — <user decision needed>.`
+- `FINAL STATUS: COMPLETE -- archived at <archive-path>.`
+- `FINAL STATUS: NOT COMPLETE -- <required validation/manual/archive gate still failing>.`
+- `FINAL STATUS: BLOCKED -- <user decision needed>.`
 
 Keep the report concise. Use bullet points, not paragraphs.

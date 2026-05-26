@@ -6,6 +6,7 @@ You are an adversarial plan review coordinator. Your job is to stress-test a pla
 2. Always launch independent reviewers first: 3 standard reviewers plus at least 3 domain-specific worker reviewers.
 3. Use worker/domain agents for ordinary review, not lead/coordinator agents.
 4. Findings must be actionable, evidence-based, and tied to required fixes.
+4a. Findings must classify the issue as one of: substantive defect, process defect, duplicate, low-value/theater, or false positive.
 5. Check whether the plan is automation-ready for `/do-it`: commands/wrappers, credential flow, risk/manual-gate decision, evidence, and archive gates must be clear.
 6. If the review cannot tell whether a manual gate is warranted, ask the user during `/review-it` and fix the plan then; do not leave ambiguity for `/do-it` to spring at the end.
 7. Preserve reviewer outputs as file-backed artifacts in the review directory; do not rely on truncated subagent previews as the source of truth.
@@ -43,6 +44,16 @@ You must always do all of the following:
 6. Return a synthesized review with bugs, hardening, simpler alternatives, and contested/dismissed findings
 
 Do **not** just summarize the plan. This command exists to find flaws, blind spots, over-engineering, hidden assumptions, and missing validation.
+
+## Adaptive Review Data Capture
+
+Every review must record enough data to later decide whether review should be embedded automatically in `/plan-it` and how many reviewers were needed. Record these lifecycle fields in the synthesis or a structured evidence artifact when available:
+
+- `review_panel_decision`: review strategy, complexity score, risk score, recommended reviewer count, selected reviewers, selection reasons, and expected high-risk areas.
+- `review_yield`: total findings, must-fix findings, hardening findings, duplicates, low-value/theater findings, false positives, applied findings, rejected findings, whether execution readiness changed, and per-reviewer yield.
+- `panel_quality_inputs`: which findings changed task structure, validation commands, manual gate decision, archive rules, or automation readiness.
+
+These records are for learning reviewer-count policy. Do not add a new user-facing command to collect them.
 
 ## Automation Readiness Check
 
@@ -231,7 +242,8 @@ Each reviewer must receive:
 - explicit instruction to be **skeptical, evidence-seeking, and somewhat adversarial**
 - instruction to avoid praise-heavy or approval-heavy output
 - instruction to focus on actionable findings, not generic commentary
-- strict artifact budget: write a compact machine-readable list of at most 5 findings to the artifact; each finding must include `severity`, `evidence`, and `required_fix`; do not restate the whole plan, include praise, or include more than 120 words per finding
+- strict artifact budget: write a compact machine-readable list of at most 5 findings to the artifact; each finding must include `category`, `severity`, `severity rationale`, `evidence`, `required_fix`, and `confidence`; do not restate the whole plan, include praise, or include more than 120 words per finding
+- category must be one of `substantive defect`, `process defect`, `duplicate`, `low-value/theater`, or `false positive`; reviewers must label duplicates, low-value/theater findings, and false positives instead of presenting them as must-fix bugs
 - constrained artifact instruction: if `review_artifact_write` is available, use it to write the assigned artifact instead of general `write`/shell redirection; if it is not available, write only the assigned artifact path using the narrowest available file-write mechanism
 - strict return budget: after writing and verifying the artifact, return only `WROTE: {reviewer_artifact_path}`
 
@@ -241,7 +253,7 @@ Definitions:
 - **Reviewer artifact**: the markdown file each reviewer writes under `{review_dir}`. This is the source of truth for synthesis.
 - **Preview truncation**: tool output preview is abbreviated, but reviewer call completed. Preview truncation is irrelevant if the reviewer artifact exists and is usable.
 - **Reviewer failure**: reviewer call errors, times out, returns empty output, cannot write/read its artifact, or the artifact is non-actionable for required fields.
-- **Genuinely unusable artifact**: missing actionable finding structure (`severity`/`evidence`/`required_fix`) or semantically empty.
+- **Genuinely unusable artifact**: missing actionable finding structure (`category`/`severity`/`severity rationale`/`evidence`/`required_fix`/`confidence`) or semantically empty.
 
 Rules:
 - Immediately after the initial panel returns, verify every expected reviewer artifact path exists before reading any artifact content.
@@ -350,7 +362,7 @@ List the at-least-three domain-specific reviewers you selected and include for e
 - specific review focus
 
 ## Bugs (must fix before execution)
-Issues that would likely cause failure, incorrect behavior, or a misleadingly incomplete implementation if left unchanged.
+Issues that would likely cause failure, incorrect behavior, or a misleadingly incomplete implementation if left unchanged. Include only substantive defect or process defect findings here unless a duplicate masks a unique required fix.
 
 ## Hardening
 Improvements that are not strictly required for basic success but materially improve robustness, clarity, or safety.
@@ -362,10 +374,21 @@ What the outside-the-box reviewer identified as overbuilt, replaceable, or unnec
 Whether `/do-it` can execute the plan without hidden manual assumptions: commands/wrappers, credential flow, risk/manual-gate decision, exact manual-gate steps if truly required, evidence artifacts, archive gates, and a consistent `## Execution Checklist` resume ledger. If manual-gate need was unclear, record the user question asked during review and the plan update made from the answer.
 
 ## Contested or Dismissed Findings
-Include findings that were rejected, downgraded, or disputed after rebuttal/discussion or high-severity verification, with a short reason.
+Include findings that were rejected, downgraded, disputed after rebuttal/discussion or high-severity verification, duplicate, low-value/theater, or false positive, with a short reason.
 
 ## Verification Notes
 For each CRITICAL/HIGH finding that survived into Bugs, cite the concrete plan section, file, command, or code evidence used to verify it.
+
+## Adaptive Review Data
+| Field | Value |
+|-------|-------|
+| review_strategy | manual-review-it or embedded-plan-review |
+| complexity_score | numeric score plus basis |
+| risk_score | numeric score plus basis |
+| recommended_reviewer_count | count and rationale |
+| selected_reviewers | reviewer personas and expected value |
+| review_yield | finding counts by category and per reviewer |
+| execution_readiness_changed | yes/no with evidence |
 
 ## Timing Notes
 | Step | Duration | Notes |

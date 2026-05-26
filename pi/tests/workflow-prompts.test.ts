@@ -18,7 +18,7 @@ describe("workflow prompt contracts", () => {
 		expect(prompt).toContain("wave by wave");
 	});
 
-	it("/plan-it requires agent assignment and self-validation", () => {
+	it("/plan-it requires agent assignment and executable plan contracts", () => {
 		const prompt = readPrompt("skills/workflow/plan-it.md");
 		expect(prompt).toContain("| Scope | Indicators | Model | Agent |");
 		expect(prompt).toContain(
@@ -28,6 +28,15 @@ describe("workflow prompt contracts", () => {
 		expect(prompt).toContain(
 			"| # | Task | Files | Type | Model | Agent | Depends On |",
 		);
+		expect(prompt).toContain("Validation Contract");
+		expect(prompt).toContain("Automation Plan");
+		expect(prompt).toContain("mutation boundaries");
+		expect(prompt).toContain("Telemetry & Evidence Contract");
+		expect(prompt).toContain("episode ID");
+		expect(prompt).toContain("validation command");
+		expect(prompt).toContain("plan_profile");
+		expect(prompt).toContain("review_panel_decision");
+		expect(prompt).toContain("expected reviewer count");
 	});
 
 	it("/review-it requires fixed standard reviewers plus dynamic expert reviewers", () => {
@@ -45,6 +54,15 @@ describe("workflow prompt contracts", () => {
 		expect(prompt).toContain(
 			"do not silently route reviewer personas through proxy agents",
 		);
+		expect(prompt).toContain("substantive defect");
+		expect(prompt).toContain("process defect");
+		expect(prompt).toContain("duplicate");
+		expect(prompt).toContain("low-value/theater");
+		expect(prompt).toContain("false positive");
+		expect(prompt).toContain("severity rationale");
+		expect(prompt).toContain("confidence");
+		expect(prompt).toContain("review_yield");
+		expect(prompt).toContain("per-reviewer yield");
 	});
 
 	it("/review-it reviewer template prefers constrained artifact writer", () => {
@@ -56,6 +74,31 @@ describe("workflow prompt contracts", () => {
 		expect(prompt).toContain(
 			"read/verify it if the available tool surface permits",
 		);
+		expect(prompt).toContain("substantive defect");
+		expect(prompt).toContain("low-value/theater");
+		expect(prompt).toContain("severity_rationale");
+		expect(prompt).toContain("confidence");
+	});
+
+	it("/do-it enforces telemetry, safe manual-gate downgrade, archive defaults, and automatic post-run eval", () => {
+		const prompt = readPrompt("skills/workflow/do-it.md");
+		expect(prompt).toContain("structured telemetry/evidence");
+		expect(prompt).toContain("episode ID");
+		expect(prompt).toContain("phase ID");
+		expect(prompt).toContain("validation command");
+		expect(prompt).toContain("archive status");
+		expect(prompt).toContain("downgrade a manual validation gate");
+		expect(prompt).toContain("clearly safe, non-destructive");
+		expect(prompt).toContain("archive the completed plan by default");
+		expect(prompt).toContain("opted-out");
+		expect(prompt).toContain("Automatic post-run workflow eval");
+		expect(prompt).toContain("not a separate command");
+		expect(prompt).toContain("## Workflow Eval Record");
+		expect(prompt).toContain("evidence-auditor");
+		expect(prompt).toContain("workflow-friction-analyst");
+		expect(prompt).toContain("friction triggers");
+		expect(prompt).toContain("execution_outcome");
+		expect(prompt).toContain("panel_quality_label");
 	});
 
 	it("/commit documents the prompt-dispatched git workflow", () => {

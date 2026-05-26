@@ -18,16 +18,22 @@ status: complete
 
 # Findings
 
-- severity: <critical|high|medium|low>
+- category: <substantive defect|process defect|duplicate|low-value/theater|false positive>
+  severity: <critical|high|medium|low>
+  severity_rationale: <why this severity matches the likely impact>
   evidence: <specific plan section, file, command, or quoted text>
   required_fix: <concrete change required before execution or hardening recommendation>
+  confidence: <high|medium|low>
 ```
 
 Rules:
 - Write at most 5 findings.
-- Each finding must include `severity`, `evidence`, and `required_fix`.
+- Each finding must include `category`, `severity`, `severity_rationale`, `evidence`, `required_fix`, and `confidence`.
+- Category must be one of `substantive defect`, `process defect`, `duplicate`, `low-value/theater`, or `false positive`.
+- Do not inflate duplicate, low-value/theater, or false positive findings into must-fix defects; label them directly.
 - Keep each finding under 120 words.
 - Do not include praise, plan restatement, or generic commentary.
+- Provide a severity rationale and confidence for every finding, even when the category is duplicate, low-value/theater, or false positive.
 - After writing the artifact, read/verify it if the available tool surface permits, then return only: `WROTE: <reviewer_artifact_path>`.
 - If `review_artifact_write` is available but rejects the artifact, return only: `FAILED_TO_WRITE: <reason>` with no long inline dump unless explicitly requested by the coordinator.
 - If writing the artifact is impossible because no constrained artifact tool or file-write mechanism is available, return only: `FAILED_TO_WRITE: <reason>` plus the same at-most-5 findings inline. The coordinator must treat this as a recovery/exception path, not the normal source of truth.

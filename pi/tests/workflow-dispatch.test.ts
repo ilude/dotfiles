@@ -16,6 +16,8 @@ vi.mock("node:fs", async (importOriginal) => {
 				return "Do skill body $ARGUMENTS";
 			return "test stub";
 		}),
+		mkdirSync: vi.fn(),
+		appendFileSync: vi.fn(),
 	};
 });
 
