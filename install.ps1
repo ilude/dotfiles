@@ -1709,12 +1709,6 @@ try {
     Write-Host "`nInstalling Pi coding agent..." -ForegroundColor Cyan
     if (Get-Command pnpm -ErrorAction SilentlyContinue) {
         $piInstalled = pnpm list -g @earendil-works/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
-        if ($piInstalled) {
-            Write-Host "  Updating pi-coding-agent via pnpm..." -ForegroundColor Cyan
-        } else {
-            Write-Host "  Installing pi-coding-agent via pnpm..." -ForegroundColor Cyan
-        }
-
         # Remove conflicting/legacy installs BEFORE pnpm add. pnpm refuses to
         # install when another package owns the global "pi" bin (e.g. legacy
         # @mariozechner/pi-coding-agent), so cleanup must precede install.
@@ -1757,35 +1751,36 @@ try {
             }
         }
 
-        # Always run pnpm for Pi. Older Pi releases have had self-update bugs,
-        # so treating dotfiles bootstrap as an idempotent upgrade path keeps
-        # `pi update` healthy instead of leaving a stale global install behind.
-        pnpm add -g --allow-build=koffi --allow-build=protobufjs `
-            '@earendil-works/pi-coding-agent@0.74.0' `
-            '@earendil-works/pi-agent-core@0.74.0' `
-            '@earendil-works/pi-ai@0.74.0' `
-            '@earendil-works/pi-tui@0.74.0'
-        if ($LASTEXITCODE -eq 0) {
-            if ($piInstalled) {
-                Write-Host "  pi-coding-agent: updated successfully via pnpm" -ForegroundColor Green
-            } else {
+        # Install Pi only when missing, with no version pin. Once installed,
+        # version management is delegated to `pi update` so the bootstrap never
+        # downgrades a self-updated global install back to a stale pinned version.
+        if (-not $piInstalled) {
+            Write-Host "  Installing pi-coding-agent via pnpm..." -ForegroundColor Cyan
+            pnpm add -g --allow-build=koffi --allow-build=protobufjs `
+                '@earendil-works/pi-coding-agent' `
+                '@earendil-works/pi-agent-core' `
+                '@earendil-works/pi-ai' `
+                '@earendil-works/pi-tui'
+            if ($LASTEXITCODE -eq 0) {
                 Write-Host "  pi-coding-agent: installed successfully via pnpm" -ForegroundColor Green
-            }
 
-            $piMarkdownPatch = Join-Path $BASEDIR 'install.d\50-pi-markdown-code-fence-fix.py'
-            if (Test-Path $piMarkdownPatch) {
-                $python = Get-Command python -ErrorAction SilentlyContinue
-                if ($python) {
-                    & $python.Source $piMarkdownPatch
-                    if ($LASTEXITCODE -ne 0) {
-                        Write-Warning "Pi markdown code fence patch failed; continuing"
+                $piMarkdownPatch = Join-Path $BASEDIR 'install.d\50-pi-markdown-code-fence-fix.py'
+                if (Test-Path $piMarkdownPatch) {
+                    $python = Get-Command python -ErrorAction SilentlyContinue
+                    if ($python) {
+                        & $python.Source $piMarkdownPatch
+                        if ($LASTEXITCODE -ne 0) {
+                            Write-Warning "Pi markdown code fence patch failed; continuing"
+                        }
+                    } else {
+                        Write-Warning "python unavailable; skipping Pi markdown code fence patch"
                     }
-                } else {
-                    Write-Warning "python unavailable; skipping Pi markdown code fence patch"
                 }
+            } else {
+                Write-Host "  pi-coding-agent: installation failed" -ForegroundColor Red
             }
         } else {
-            Write-Host "  pi-coding-agent: installation/update failed" -ForegroundColor Red
+            Write-Host "  pi-coding-agent: already installed -- leaving version to 'pi update'" -ForegroundColor DarkGray
         }
     } else {
         Write-Host "  pnpm not found - skipping Pi installation (Windows installs Pi via pnpm because Bun's resolver fails on Pi's AWS SDK deps)" -ForegroundColor Yellow
