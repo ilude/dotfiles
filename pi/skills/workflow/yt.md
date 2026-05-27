@@ -25,6 +25,7 @@ The status file is a display hint only. If useful, mention `checked_at` / `avail
 
 ## Other subcommands
 
+- `channel <@handle_or_url>`: run `cd ~/.dotfiles/pi/skills/workflow/yt && unset VIRTUAL_ENV && uv run channel_videos.py "{handle_or_url}" --limit {n}` and render the results to the user. Supports `@name` and `https://www.youtube.com/@name`. The script calls menos first and falls back to the local YouTube Data API when menos is unreachable, returns 5xx, or the deployed menos version does not have the channel endpoint yet. The local fallback requires `YOUTUBE_API_KEY`.
 - `list [n]`: run `cd ~/.claude/commands/yt && unset VIRTUAL_ENV && uv run list_videos.py {n}` and render the results to the user. No local fallback if menos is unreachable.
 - `search <query>`: run `cd ~/.claude/commands/yt && unset VIRTUAL_ENV && uv run search.py {query}` and render scores/IDs/snippets. No local fallback if menos is unreachable.
 - `content <content_id>`: run `cd ~/.claude/commands/yt && unset VIRTUAL_ENV && uv run get_content.py {content_id} --json`. No local fallback if menos is unreachable.
