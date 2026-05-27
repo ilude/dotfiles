@@ -1,6 +1,6 @@
 import * as os from "node:os";
 import * as path from "node:path";
-import { canonicalize as sharedCanonicalize } from "../lib/extension-utils.js";
+import { canonicalize as sharedCanonicalize, emitTerminalBell } from "../lib/extension-utils.js";
 import {
 	compileCommandRegex,
 	type DangerousCommand,
@@ -132,6 +132,7 @@ export async function checkZeroAccess(
 		if (!matchesPattern(canonical, pattern)) continue;
 		if (isSshProtectedPattern(pattern) && METADATA_ONLY_TOOLS.has(toolName)) {
 			if (ctx?.hasUI && ctx.ui?.confirm) {
+				emitTerminalBell();
 				const ok = await ctx.ui.confirm(
 					"Confirm SSH path inspection",
 					`${toolName} on ${canonical} reveals filenames/metadata for an SSH-protected path (matched "${pattern}").`,
@@ -269,6 +270,7 @@ export async function evaluateDangerousCommand(
 			continue;
 		if (rule.action === "ask") {
 			if (ctx?.hasUI && ctx.ui?.confirm) {
+				emitTerminalBell();
 				const ok = await ctx.ui.confirm(
 					"Confirm dangerous command",
 					rule.reason,

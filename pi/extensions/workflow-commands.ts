@@ -41,6 +41,7 @@ import type {
 	ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 import { Key, Text } from "@earendil-works/pi-tui";
+import { emitTerminalBell } from "../lib/extension-utils";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
 import { withTimingSpan } from "../lib/observability";
 import {
@@ -1335,6 +1336,7 @@ async function resolveLowConfidenceClassifications(
 ) {
 	const resolved: UntrackedClassification[] = [];
 	for (const item of items) {
+		emitTerminalBell();
 		const selected = await ctx.ui.select?.(
 			`Track untracked path ${item.path}? ${item.reason}`,
 			["ignore", "do_not_ignore"],

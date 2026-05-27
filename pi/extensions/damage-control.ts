@@ -10,6 +10,7 @@ import {
 	getDamageControlHealth,
 	publishDamageControlHealth,
 } from "../lib/damage-control-health.js";
+import { emitTerminalBell } from "../lib/extension-utils.js";
 import { recordEvent } from "../lib/metrics.js";
 import {
 	type DecisionProvenance,
@@ -494,6 +495,7 @@ export default function (pi: ExtensionAPI) {
 				ctx.cwd,
 			);
 			if (writeConfirm) {
+				emitTerminalBell();
 				const ok = await ctx.ui.confirm(
 					"Confirm protected write",
 					writeConfirm.reason,

@@ -11,7 +11,7 @@
 import { Type } from "@sinclair/typebox";
 import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { formatToolError } from "../lib/extension-utils.js";
+import { emitTerminalBell, formatToolError } from "../lib/extension-utils.js";
 
 export default function (pi: ExtensionAPI) {
   pi.registerTool({
@@ -56,6 +56,7 @@ export default function (pi: ExtensionAPI) {
 
       switch (mode) {
         case "confirm":
+          emitTerminalBell();
           answer = await ctx.ui.confirm("Question", params.question);
           break;
 
@@ -63,8 +64,10 @@ export default function (pi: ExtensionAPI) {
           if (!params.options || params.options.length === 0) {
             return formatToolError('Error: "select" mode requires a non-empty options array.');
           }
+          emitTerminalBell();
           answer = await ctx.ui.select(params.question, [...params.options, "Other (custom answer)"]);
           if (answer === "Other (custom answer)") {
+            emitTerminalBell();
             answer = await ctx.ui.input(`${params.question}\nOther:`, params.placeholder);
           }
           break;
@@ -82,6 +85,7 @@ export default function (pi: ExtensionAPI) {
               "Done",
             ];
             const suffix = selected.length ? `\nSelected: ${selected.join(", ")}` : "";
+            emitTerminalBell();
             const choice = await ctx.ui.select(`${params.question}${suffix}`, choices);
             if (choice === undefined) {
               answer = undefined;
@@ -92,12 +96,14 @@ export default function (pi: ExtensionAPI) {
               break;
             }
             if (choice === "Other (custom answer)") {
+              emitTerminalBell();
               const custom = await ctx.ui.input("Other:", params.placeholder);
               if (custom) selected.push(custom);
               continue;
             }
             selected.push(choice.replace(/^\+ /, ""));
             if (selected.length === params.options.length) {
+              emitTerminalBell();
               const addMore = await ctx.ui.confirm("Question", "All listed options selected. Add a custom answer?");
               if (!addMore) {
                 answer = selected.join("\n");
@@ -110,6 +116,7 @@ export default function (pi: ExtensionAPI) {
 
         case "text":
         default:
+          emitTerminalBell();
           answer = await ctx.ui.input(params.question, params.placeholder);
           break;
       }

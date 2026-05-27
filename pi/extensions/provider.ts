@@ -9,6 +9,7 @@
 //   ambient/background notifications; it is not the right surface for
 //   command-handler messaging where the user already knows the context.
 import { type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { emitTerminalBell } from "../lib/extension-utils.js";
 
 type ProviderAuthType = "api_key" | "oauth";
 
@@ -93,6 +94,7 @@ async function promptProviderSelection(ctx: any, auth: ProviderAuthType): Promis
 	const options = PROVIDERS.filter((provider) => provider.auth === auth).map(
 		(provider) => `${provider.id} -- ${provider.label}`,
 	);
+	emitTerminalBell();
 	const selected = await ctx.ui.select(
 		auth === "api_key" ? "Select API-key provider" : "Select OAuth provider",
 		options,
@@ -104,6 +106,7 @@ async function promptProviderSelection(ctx: any, auth: ProviderAuthType): Promis
 
 async function setApiKeyForProvider(ctx: any, provider: ProviderEntry) {
 	const placeholder = provider.envVar ? `Paste key (or set ${provider.envVar})` : "Paste API key";
+	emitTerminalBell();
 	const key = await ctx.ui.input(`API key for ${provider.id}`, placeholder);
 	if (key === undefined) {
 		ctx.ui.notify("Cancelled.", "info");
@@ -135,6 +138,7 @@ async function handleRemove(ctx: any, provider: ProviderEntry) {
 		ctx.ui.notify(`No credentials found for ${provider.id}.`, "warning");
 		return;
 	}
+	emitTerminalBell();
 	const confirmed = await ctx.ui.confirm("Remove provider auth", `Remove saved credentials for ${provider.id}?`);
 	if (!confirmed) {
 		ctx.ui.notify("Cancelled.", "info");
@@ -145,6 +149,7 @@ async function handleRemove(ctx: any, provider: ProviderEntry) {
 }
 
 async function runInteractiveFlow(ctx: any) {
+	emitTerminalBell();
 	const action = await ctx.ui.select("Provider auth action", [
 		"Set API key",
 		"Set OAuth provider (guided)",
@@ -186,6 +191,7 @@ async function runInteractiveFlow(ctx: any) {
 		ctx.ui.notify("No configured providers to remove.", "warning");
 		return;
 	}
+	emitTerminalBell();
 	const selected = await ctx.ui.select("Remove provider auth", configured.sort());
 	if (!selected) {
 		ctx.ui.notify("Cancelled.", "info");
