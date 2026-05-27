@@ -2,18 +2,18 @@
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.5",
   "defaultThinkingLevel": "minimal",
-  "lastChangelogVersion": "0.75.4",
+  "lastChangelogVersion": "0.75.5",
   "router": {
     "classifier": {
       "mode": "confgate"
     }
   },
   "packages": [
-    "npm:pi-code-previews",
     "npm:@narumitw/pi-goal"
   ],
   "_disabledPackages": [
-    "npm:pi-inspect"
+    "npm:pi-inspect",
+    "npm:pi-code-previews"
   ],
   "hideThinkingBlock": false
 }
