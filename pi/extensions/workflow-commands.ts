@@ -1402,7 +1402,7 @@ export function isLargeOrMixedCommitSelection(files: string[]) {
 export async function chooseFilesToCommit(
 	_ctx: WorkflowContext,
 	changedFiles: string[],
-	stagedFiles: string[],
+	_stagedFiles: string[],
 	requestedFiles: string[],
 ) {
 	if (requestedFiles.length > 0)
@@ -1513,29 +1513,6 @@ function summarizeCommit(hash: string, subject: string, pushed: boolean) {
 	return pushed ? `${hash} ${subject}\nPushed to remote` : `${hash} ${subject}`;
 }
 
-function truncateForCommitOutput(value: string, maxChars = 4000) {
-	if (value.length <= maxChars) return value;
-	return `${value.slice(0, maxChars)}\n... [truncated ${value.length - maxChars} chars]`;
-}
-
-function formatGitOutput(result?: GitRunResult) {
-	if (!result) return ["ok"];
-	const outputLines: string[] = [];
-	const stdout = truncateForCommitOutput(result.stdout.trim());
-	const stderr = truncateForCommitOutput(result.stderr.trim());
-	if (stdout) {
-		for (const line of stdout.split(/\r?\n/)) outputLines.push(line);
-	}
-	if (stderr) {
-		for (const line of stderr.split(/\r?\n/))
-			outputLines.push(`stderr: ${line}`);
-	}
-	if (outputLines.length === 0) {
-		outputLines.push(result.code === 0 ? "ok" : `exit ${result.code}`);
-	}
-	return outputLines.slice(0, 80);
-}
-
 function echoSlashCommand(pi: ExtensionAPI, command: string, args: string) {
 	if ((pi as SlashEchoExtensionAPI).__slashEchoRegisterCommandWrapped)
 		return undefined;
@@ -1574,12 +1551,7 @@ function isPlanFileInput(args: string) {
 	);
 }
 
-function createCommitActivity(
-	pi: ExtensionAPI,
-	ctx: WorkflowContext,
-	commandText: string,
-): CommitActivity {
-	const fallbackLines: string[] = [];
+function createCommitActivity(ctx: WorkflowContext): CommitActivity {
 	const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 	let spinnerIndex = 0;
 	let spinnerTimer: ReturnType<typeof setInterval> | undefined;
@@ -1608,23 +1580,6 @@ function createCommitActivity(
 		spinnerTimer = setInterval(tick, 120);
 	};
 
-	const emit = (content: string) => {
-		if (typeof pi.sendMessage === "function") {
-			pi.sendMessage({
-				customType: COMMIT_ACTIVITY_TYPE,
-				content,
-				display: true,
-			});
-			return;
-		}
-		fallbackLines.push(content);
-		ctx.ui.setWidget?.("commit-progress", fallbackLines.slice(-10), {
-			placement: "aboveEditor",
-		});
-	};
-
-	emit(commandText);
-
 	const shouldSpinForPhase = (phase: string) =>
 		phase === "preparing" ||
 		phase === "planning commits" ||
@@ -1634,23 +1589,13 @@ function createCommitActivity(
 	return {
 		setPhase(message?: string) {
 			const phase = message ?? "done";
-			emit(`phase: ${phase}`);
 			if (shouldSpinForPhase(phase)) startSpinner(phase);
 			else stopSpinner();
 		},
-		logCommand(command: string, result?: GitRunResult) {
-			const output = formatGitOutput(result)
-				.map((line) => `  ${line}`)
-				.join("\n");
-			const content = output ? `$ ${command}\n${output}` : `$ ${command}`;
-			emit(content);
-		},
-		logInfo(message: string) {
-			emit(message);
-		},
+		logCommand() {},
+		logInfo() {},
 		finish() {
 			stopSpinner();
-			emit("phase: done");
 		},
 	};
 }
@@ -1762,9 +1707,7 @@ async function executeCommitCommand(
 	args: string,
 	ctx: WorkflowContext,
 ) {
-	const commandText = `/commit${args.trim() ? ` ${args.trim()}` : ""}`;
-	const activity = createCommitActivity(pi, ctx, commandText);
-	ctx.ui.notify(`Starting ${commandText}…`, "info");
+	const activity = createCommitActivity(ctx);
 	activity.setPhase("preparing");
 	try {
 		const status = gitOrThrow(ctx.cwd, ["status", "--short"], activity);
@@ -1796,10 +1739,9 @@ async function executeCommitCommand(
 				cachedDiff: prepared.cachedDiff,
 				hint: prepared.parsedArgs.hint,
 			});
-		} catch (err) {
-			ctx.ui.notify(
-				`Commit planner unavailable, falling back to single commit: ${err instanceof Error ? err.message : String(err)}`,
-				"warning",
+		} catch (_err) {
+			activity.logInfo(
+				"Commit planner unavailable; falling back to single commit",
 			);
 		}
 
@@ -1947,13 +1889,15 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerCommand("commit", {
 		description: "Smart git commit with flexible prompt-driven grouping",
-		handler: async (args, _ctx) => {
-			echoSlashCommand(pi, "commit", args);
-			const template = loadSkill("commit.md");
-			sendHiddenWorkflowPrompt(
-				pi,
-				buildSkillPrompt(template, args, { replaceArguments: true }),
-			);
+		handler: async (args, ctx) => {
+			try {
+				await executeCommitCommand(pi, args, ctx);
+			} catch (err) {
+				ctx.ui.notify(
+					`Commit failed: ${err instanceof Error ? err.message : String(err)}`,
+					"error",
+				);
+			}
 		},
 	});
 

@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	showCodexStatus,
@@ -5,12 +6,17 @@ import {
 } from "../extensions/codex-status.ts";
 import { createMockPi } from "./helpers/mock-pi.js";
 
+vi.mock("node:child_process", () => ({
+	spawnSync: vi.fn(),
+}));
+
 vi.mock("../extensions/codex-status.ts", () => ({
 	clearCodexStatusNewSessionSuppression: vi.fn(),
 	showCodexStatus: vi.fn(async () => {}),
 	suppressNextCodexStatusOnNewSession: vi.fn(),
 }));
 
+const mockSpawnSync = spawnSync as ReturnType<typeof vi.fn>;
 const mockShowCodexStatus = showCodexStatus as ReturnType<typeof vi.fn>;
 const mockSuppressNextCodexStatusOnNewSession =
 	suppressNextCodexStatusOnNewSession as ReturnType<typeof vi.fn>;
@@ -22,6 +28,7 @@ describe("workflow command dispatch", () => {
 
 	beforeEach(async () => {
 		vi.clearAllMocks();
+		mockSpawnSync.mockReturnValue({ status: 0, stdout: "", stderr: "" });
 		mockPi = createMockPi() as typeof mockPi;
 		mockPi.setModel = vi.fn(async () => {});
 		const mod = await import("../extensions/workflow-commands.ts");
@@ -88,40 +95,34 @@ describe("workflow command dispatch", () => {
 		]);
 	});
 
-	it("dispatches /commit through the workflow prompt", async () => {
-		await getHandler("commit")("", { ui: { notify: vi.fn() } });
+	it("runs /commit directly without dispatching a workflow prompt", async () => {
+		const notify = vi.fn();
 
-		expect(mockPi.sendMessage).toHaveBeenCalledWith({
-			customType: "slash-echo",
-			content: "/commit",
-			display: true,
-		});
-		expect(mockPi.sendMessage).toHaveBeenCalledWith(
-			expect.objectContaining({
-				customType: "workflow.hiddenPrompt",
-				display: false,
-				content: expect.stringContaining("Run `git status --short`"),
-			}),
-			expect.objectContaining({
-				triggerTurn: true,
-				deliverAs: "followUp",
-			}),
+		await getHandler("commit")("", { cwd: "/repo", ui: { notify } });
+
+		expect(mockSpawnSync).toHaveBeenCalledWith(
+			expect.any(String),
+			["status", "--short"],
+			expect.objectContaining({ cwd: "/repo" }),
 		);
+		expect(mockPi.sendMessage).not.toHaveBeenCalled();
+		expect(notify).toHaveBeenCalledWith("Working tree is clean", "info");
 	});
 
-	it("substitutes /commit arguments into the workflow prompt", async () => {
-		await getHandler("commit")("push pi/skills/workflow/commit.md", {
-			ui: { notify: vi.fn() },
+	it("reports /commit executor failures without dispatching a workflow prompt", async () => {
+		const notify = vi.fn();
+		mockSpawnSync.mockReturnValueOnce({
+			status: 1,
+			stdout: "",
+			stderr: "fatal: not a git repository\n",
 		});
 
-		const hiddenPromptCall = (
-			mockPi.sendMessage as ReturnType<typeof vi.fn>
-		).mock.calls.find(
-			([message]) => message.customType === "workflow.hiddenPrompt",
-		);
-		expect(hiddenPromptCall).toBeDefined();
-		expect(hiddenPromptCall?.[0].content).toContain(
-			"push pi/skills/workflow/commit.md",
+		await getHandler("commit")("", { cwd: "/repo", ui: { notify } });
+
+		expect(mockPi.sendMessage).not.toHaveBeenCalled();
+		expect(notify).toHaveBeenCalledWith(
+			"Commit failed: fatal: not a git repository",
+			"error",
 		);
 	});
 });
