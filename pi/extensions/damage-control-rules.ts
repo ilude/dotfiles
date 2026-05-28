@@ -92,7 +92,11 @@ export function validateDamageControlRules(value: unknown): string[] {
 	const errors: string[] = [];
 	if (!isRecord(value)) return ["policy root must be a mapping"];
 
-	for (const key of ["dangerous_commands", "zero_access_paths", "no_delete_paths"]) {
+	for (const key of [
+		"dangerous_commands",
+		"zero_access_paths",
+		"no_delete_paths",
+	]) {
 		if (!Array.isArray(value[key])) errors.push(`${key} must be an array`);
 	}
 
@@ -168,14 +172,20 @@ export function parseDamageControlRules(content: string): DamageControlRules {
 		...emptyRules(),
 		dangerous_commands: root.dangerous_commands as DangerousCommand[],
 		zero_access_paths: root.zero_access_paths as string[],
+		zero_access_exclusions: stringList(root, "zero_access_exclusions"),
+		read_only_paths: stringList(root, "read_only_paths"),
 		no_delete_paths: root.no_delete_paths as string[],
+		write_confirm_paths: stringList(root, "write_confirm_paths"),
+		content_scan_paths: stringList(root, "content_scan_paths"),
+		injection_patterns: stringList(root, "injection_patterns"),
 		domain_constraints: root.domain_constraints,
 	};
 }
 
 function stringList(root: YamlRecord, key: string): string[] {
 	const value = root[key];
-	return Array.isArray(value) && value.every((entry) => typeof entry === "string")
+	return Array.isArray(value) &&
+		value.every((entry) => typeof entry === "string")
 		? (value as string[])
 		: [];
 }
@@ -183,11 +193,17 @@ function stringList(root: YamlRecord, key: string): string[] {
 export function normalizeClaudePolicy(value: unknown): LoadedRules {
 	const errors: string[] = [];
 	if (!isRecord(value)) {
-		return { rules: emptyRules(), health: failedHealth("Claude policy root must be a mapping") };
+		return {
+			rules: emptyRules(),
+			health: failedHealth("Claude policy root must be a mapping"),
+		};
 	}
 	const commands = value.bashToolPatterns;
 	if (!Array.isArray(commands)) {
-		return { rules: emptyRules(), health: failedHealth("Claude bashToolPatterns must be an array") };
+		return {
+			rules: emptyRules(),
+			health: failedHealth("Claude bashToolPatterns must be an array"),
+		};
 	}
 	const normalized: DangerousCommand[] = [];
 	commands.forEach((entry, idx) => {
@@ -196,9 +212,20 @@ export function normalizeClaudePolicy(value: unknown): LoadedRules {
 			return;
 		}
 		const unsupported = Object.keys(entry).filter(
-			(key) => !["pattern", "ask", "reason", "platforms", "exclude_platforms", "exfil"].includes(key),
+			(key) =>
+				![
+					"pattern",
+					"ask",
+					"reason",
+					"platforms",
+					"exclude_platforms",
+					"exfil",
+				].includes(key),
 		);
-		if (unsupported.length > 0) errors.push(`bashToolPatterns[${idx}] unsupported keys: ${unsupported.join(", ")}`);
+		if (unsupported.length > 0)
+			errors.push(
+				`bashToolPatterns[${idx}] unsupported keys: ${unsupported.join(", ")}`,
+			);
 		if (entry.exfil !== undefined) return;
 		const pattern = stringField(entry.pattern);
 		const reason = stringField(entry.reason) ?? "Claude damage-control rule";
@@ -212,9 +239,19 @@ export function normalizeClaudePolicy(value: unknown): LoadedRules {
 		}
 		const platforms = stringArrayField(entry.platforms);
 		const exclude = stringArrayField(entry.exclude_platforms);
-		if (entry.platforms !== undefined && !platforms) errors.push(`bashToolPatterns[${idx}].platforms must be strings`);
-		if (entry.exclude_platforms !== undefined && !exclude) errors.push(`bashToolPatterns[${idx}].exclude_platforms must be strings`);
-		normalized.push({ pattern, regex: pattern, reason, action: entry.ask === true ? "ask" : "block", platforms, exclude_platforms: exclude, tools: ["bash"] });
+		if (entry.platforms !== undefined && !platforms)
+			errors.push(`bashToolPatterns[${idx}].platforms must be strings`);
+		if (entry.exclude_platforms !== undefined && !exclude)
+			errors.push(`bashToolPatterns[${idx}].exclude_platforms must be strings`);
+		normalized.push({
+			pattern,
+			regex: pattern,
+			reason,
+			action: entry.ask === true ? "ask" : "block",
+			platforms,
+			exclude_platforms: exclude,
+			tools: ["bash"],
+		});
 	});
 	const rules: DamageControlRules = {
 		dangerous_commands: normalized,
@@ -226,7 +263,8 @@ export function normalizeClaudePolicy(value: unknown): LoadedRules {
 		content_scan_paths: stringList(value, "contentScanPaths"),
 		injection_patterns: stringList(value, "injectionPatterns"),
 	};
-	if (errors.length > 0) return { rules: emptyRules(), health: failedHealth(errors.join("; ")) };
+	if (errors.length > 0)
+		return { rules: emptyRules(), health: failedHealth(errors.join("; ")) };
 	return { rules, health: summarizeRules(rules) };
 }
 
@@ -244,7 +282,13 @@ function summarizeRules(
 }
 
 function failedHealth(error: string): DamageControlHealth {
-	return { status: "failed", error, commandRules: 0, zeroAccessRules: 0, noDeleteRules: 0 };
+	return {
+		status: "failed",
+		error,
+		commandRules: 0,
+		zeroAccessRules: 0,
+		noDeleteRules: 0,
+	};
 }
 
 export default function damageControlRulesModule(): void {
@@ -254,17 +298,38 @@ export default function damageControlRulesModule(): void {
 export function loadRules(cwd: string = process.cwd()): LoadedRules {
 	const extensionDir = path.dirname(fileURLToPath(import.meta.url));
 	const override = process.env.PI_DAMAGE_CONTROL_CLAUDE_POLICY_PATH;
-	const repoClaudePolicy = path.join(extensionDir, "..", "..", "claude", "hooks", "damage-control", "patterns.yaml");
-	const claudePolicy = override || (fs.existsSync(repoClaudePolicy) ? repoClaudePolicy : undefined);
+	const repoClaudePolicy = path.join(
+		extensionDir,
+		"..",
+		"..",
+		"claude",
+		"hooks",
+		"damage-control",
+		"patterns.yaml",
+	);
+	const claudePolicy =
+		override ||
+		(fs.existsSync(repoClaudePolicy) ? repoClaudePolicy : undefined);
 	if (claudePolicy) {
 		try {
 			const parsed = loadYamlFileViaPythonDetailed<unknown>(claudePolicy);
-			if (!parsed.ok) return { rules: emptyRules(), health: failedHealth(`${claudePolicy}: ${parsed.error}; ${parsed.attempts.join("; ")}`) };
+			if (!parsed.ok)
+				return {
+					rules: emptyRules(),
+					health: failedHealth(
+						`${claudePolicy}: ${parsed.error}; ${parsed.attempts.join("; ")}`,
+					),
+				};
 			const loaded = normalizeClaudePolicy(parsed.value);
 			loaded.health.ruleSource = claudePolicy;
 			return loaded;
 		} catch (err) {
-			return { rules: emptyRules(), health: failedHealth(`${claudePolicy}: ${err instanceof Error ? err.message : String(err)}`) };
+			return {
+				rules: emptyRules(),
+				health: failedHealth(
+					`${claudePolicy}: ${err instanceof Error ? err.message : String(err)}`,
+				),
+			};
 		}
 	}
 	const candidates = [

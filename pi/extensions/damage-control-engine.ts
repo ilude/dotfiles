@@ -1,6 +1,9 @@
 import * as os from "node:os";
 import * as path from "node:path";
-import { canonicalize as sharedCanonicalize, emitTerminalBell } from "../lib/extension-utils.js";
+import {
+	emitTerminalBell,
+	canonicalize as sharedCanonicalize,
+} from "../lib/extension-utils.js";
 import {
 	compileCommandRegex,
 	type DangerousCommand,
@@ -10,6 +13,27 @@ export type DamageControlMode = "default" | "whitelist" | "noshell";
 
 const SHELL_TOOLS = new Set(["bash", "pwsh"]);
 const COMPOUND_SHELL_OPERATOR = /&&|\|\||[;|`<>]|\$\(/;
+const READ_ONLY_SEARCH_COMMANDS = new Set(["grep", "rg", "ag", "ack"]);
+const READ_ONLY_PIPE_COMMANDS = new Set([
+	"awk",
+	"bat",
+	"cat",
+	"cut",
+	"grep",
+	"head",
+	"jq",
+	"less",
+	"more",
+	"rg",
+	"sed",
+	"sort",
+	"tail",
+	"tee",
+	"tr",
+	"uniq",
+	"wc",
+	"yq",
+]);
 
 const SHELL_WHITELIST: Record<string, RegExp[]> = {
 	bash: [
@@ -223,6 +247,63 @@ function commandMatchesRule(command: string, rule: DangerousCommand): boolean {
 	return commandToMatch.includes(rule.pattern);
 }
 
+function commandHead(segment: string): string {
+	const tokens = tokenize(segment);
+	if (tokens[0] === "git" && tokens[1]) return `git ${tokens[1]}`;
+	return tokens[0] ?? "";
+}
+
+function splitOutsideQuotes(command: string, separators: string[]): string[] {
+	const parts: string[] = [];
+	let current = "";
+	let quote: string | undefined;
+	for (let i = 0; i < command.length; i += 1) {
+		const ch = command[i];
+		if ((ch === "'" || ch === '"') && command[i - 1] !== "\\") {
+			quote = quote === ch ? undefined : (quote ?? ch);
+		}
+		const separator = quote
+			? undefined
+			: separators.find((candidate) => command.startsWith(candidate, i));
+		if (separator) {
+			if (current.trim()) parts.push(current.trim());
+			current = "";
+			i += separator.length - 1;
+			continue;
+		}
+		current += ch;
+	}
+	if (current.trim()) parts.push(current.trim());
+	return parts;
+}
+
+function splitReadOnlySegments(command: string): string[] {
+	return splitOutsideQuotes(command, ["&&", "||", ";"]);
+}
+
+function isReadOnlySearchSegment(segment: string): boolean {
+	const pipeParts = splitOutsideQuotes(segment, ["|"]);
+	if (pipeParts.length === 0) return false;
+	const firstHead = commandHead(pipeParts[0]);
+	const firstIsSearch =
+		READ_ONLY_SEARCH_COMMANDS.has(firstHead) || firstHead === "git grep";
+	const firstIsTextProducer = /^(?:echo|printf)\b/.test(firstHead);
+	if (!firstIsSearch && !firstIsTextProducer) return false;
+	return pipeParts.slice(1).every((part) => {
+		const head = commandHead(part);
+		return READ_ONLY_PIPE_COMMANDS.has(head) || head === "git grep";
+	});
+}
+
+export function isReadOnlySearchCommand(
+	command: string,
+	toolName?: string,
+): boolean {
+	if (toolName && toolName !== "bash") return false;
+	const segments = splitReadOnlySegments(command);
+	return segments.length > 0 && segments.every(isReadOnlySearchSegment);
+}
+
 export function evaluateShellMode(
 	toolName: string,
 	command: string,
@@ -261,6 +342,8 @@ export async function evaluateDangerousCommand(
 		onConfirm?: (rule: DangerousCommand) => void;
 	},
 ): Promise<{ block: true; reason: string } | undefined> {
+	if (isReadOnlySearchCommand(command, ctx?.toolName)) return undefined;
+
 	for (const rule of rules) {
 		if (
 			!commandAppliesToCurrentPlatform(rule) ||

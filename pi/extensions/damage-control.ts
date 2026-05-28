@@ -35,6 +35,7 @@ import {
 	extractBashDeleteTargets,
 	extractPwshDeleteTargets,
 	extractTruncatingEditWriteTarget,
+	matchesPattern,
 } from "./damage-control-engine.js";
 import { loadRules } from "./damage-control-rules.js";
 
@@ -53,14 +54,15 @@ export {
 	extractBashDeleteTargets,
 	extractPwshDeleteTargets,
 	extractTruncatingEditWriteTarget,
+	isReadOnlySearchCommand,
 	isSshProtectedPattern,
 	matchesPattern,
 } from "./damage-control-engine.js";
 export {
+	compileCommandRegex,
 	type DamageControlRules,
 	type DangerousCommand,
 	loadRules,
-	compileCommandRegex,
 	normalizeClaudePolicy,
 	parseDamageControlRules,
 	validateDamageControlRules,
@@ -313,11 +315,7 @@ export default function (pi: ExtensionAPI) {
 			cwd: ctx.cwd,
 		});
 
-		const modeDecision = evaluateShellMode(
-			"bash",
-			command,
-			state.mode,
-		);
+		const modeDecision = evaluateShellMode("bash", command, state.mode);
 		if (modeDecision) {
 			recordBlock("bash", command, ctx.cwd, modeDecision);
 			return modeDecision;
@@ -376,11 +374,7 @@ export default function (pi: ExtensionAPI) {
 			actionSummary: command,
 			cwd: ctx.cwd,
 		});
-		const modeDecision = evaluateShellMode(
-			"pwsh",
-			command,
-			state.mode,
-		);
+		const modeDecision = evaluateShellMode("pwsh", command, state.mode);
 		if (modeDecision) {
 			recordBlock("pwsh", command, ctx.cwd, modeDecision);
 			return modeDecision;
@@ -439,7 +433,7 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		const zeroAccess = rules.zero_access_exclusions.some((pattern) =>
-			canonResult.canonical.includes(pattern),
+			matchesPattern(canonResult.canonical, pattern),
 		)
 			? undefined
 			: await checkZeroAccess(
@@ -471,7 +465,8 @@ export default function (pi: ExtensionAPI) {
 				return readOnly;
 			}
 			const content =
-				(fileEvent.input as { content?: string; new_string?: string }).content ??
+				(fileEvent.input as { content?: string; new_string?: string })
+					.content ??
 				(fileEvent.input as { new_string?: string }).new_string ??
 				"";
 			if (contentNeedsScan(rawPath, rules.content_scan_paths, ctx.cwd)) {
@@ -501,7 +496,10 @@ export default function (pi: ExtensionAPI) {
 					writeConfirm.reason,
 				);
 				if (!ok) {
-					const decision = { block: true as const, reason: writeConfirm.reason };
+					const decision = {
+						block: true as const,
+						reason: writeConfirm.reason,
+					};
 					recordBlock(event.toolName, rawPath, ctx.cwd, decision);
 					return decision;
 				}

@@ -29,10 +29,10 @@ dangerous_commands:
     regex: "\\b(?:python\\s+-c|node\\s+-e)\\s+['\"]?[^'\"]*(?:rm\\s+-[A-Za-z]*r[A-Za-z]*f|unlink|rmdir|rmSync)"
     reason: "Interpreter wrapper hides a destructive file operation"
   - pattern: "secret file read"
-    regex: "\\b(?:cat|sed|awk|head|tail|base64)\\b[^|;&]*(?:\\.env\\b|~/\\.ssh/|id_(?:ed25519|rsa)|\\.(?:pem|key)\\b)"
+    regex: "\\b(?:cat|sed|awk|head|tail|base64)\\b[^|;&]*(?:\\.env(?!\\.(?:example|template|sample|j2))\\b|~/\\.ssh/|id_(?:ed25519|rsa)|\\.(?:pem|key)\\b)"
     reason: "Reads secret-bearing files that must not be exposed"
   - pattern: "interpreter secret file read"
-    regex: "\\b(?:python\\s+-c|node\\s+-e)\\s+['\"]?[^'\"]*(?:\\.env\\b|~/\\.ssh/|id_(?:ed25519|rsa)|\\.(?:pem|key)\\b)"
+    regex: "\\b(?:python\\s+-c|node\\s+-e)\\s+['\"]?[^'\"]*(?:\\.env(?!\\.(?:example|template|sample|j2))\\b|~/\\.ssh/|id_(?:ed25519|rsa)|\\.(?:pem|key)\\b)"
     reason: "Interpreter wrapper can read and expose secret-bearing files"
   - pattern: "cloud metadata credential read"
     regex: "169\\.254\\.169\\.254|metadata\\.google\\.internal"
@@ -83,6 +83,13 @@ zero_access_paths:
   - ".env"
   - "*credentials*"
   - "*secret*"
+
+zero_access_exclusions:
+  - ".env.example"
+  - "*.env.example"
+  - "*.env.template"
+  - "*.env.sample"
+  - "*.env.j2"
 
 no_delete_paths:
   - "package.json"

@@ -111,9 +111,12 @@ dangerous_commands:
     tools: ["bash"]
 
 zero_access_paths: []
+zero_access_exclusions:
+  - "*.env.j2"
 no_delete_paths: []
 `);
 
+		expect(parsed.zero_access_exclusions).toEqual(["*.env.j2"]);
 		expect(parsed.dangerous_commands).toEqual([
 			{
 				pattern: "docker compose down",
@@ -299,7 +302,7 @@ no_delete_paths: []
 		const rules = [
 			{
 				pattern: "env file",
-				regex: "\\.env(?!\\.(?:example|template))\\b",
+				regex: "\\.env(?!\\.(?:example|template|sample|j2))\\b",
 				reason: ".env file may contain secrets (API keys, passwords)",
 				action: "ask" as const,
 			},
@@ -327,10 +330,57 @@ no_delete_paths: []
 			),
 		).toBeUndefined();
 		expect(
+			await mod.evaluateDangerousCommand("cat service.env.j2", rules, {
+				toolName: "bash",
+			}),
+		).toBeUndefined();
+		expect(
 			(
 				await mod.evaluateDangerousCommand("cat .env", rules, {
 					toolName: "bash",
 				})
+			)?.block,
+		).toBe(true);
+	});
+
+	it("does not match dangerous text inside read-only search commands", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const rules = [
+			{
+				pattern: "helm upgrade",
+				regex: "\\bhelm\\s+upgrade\\b",
+				reason: "helm upgrade modifies deployments",
+				action: "ask" as const,
+			},
+			{
+				pattern: "env file",
+				regex: "\\.env(?!\\.(?:example|template|sample|j2))\\b",
+				reason: ".env file may contain secrets (API keys, passwords)",
+				action: "ask" as const,
+			},
+		];
+
+		expect(
+			await mod.evaluateDangerousCommand(
+				'grep -R "helm upgrade" deployment/scripts/*.sh',
+				rules,
+				{ toolName: "bash" },
+			),
+		).toBeUndefined();
+		expect(
+			await mod.evaluateDangerousCommand(
+				"printf '%s\\n' \"$staged\" | grep -E '(^|/)\\.env($|\\.)'",
+				rules,
+				{ toolName: "bash" },
+			),
+		).toBeUndefined();
+		expect(
+			(
+				await mod.evaluateDangerousCommand(
+					'grep -R "helm upgrade" .; helm upgrade release chart',
+					rules,
+					{ toolName: "bash" },
+				)
 			)?.block,
 		).toBe(true);
 	});
