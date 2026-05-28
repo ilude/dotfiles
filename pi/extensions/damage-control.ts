@@ -6,6 +6,13 @@ import type {
 	WriteToolCallEvent,
 } from "@earendil-works/pi-coding-agent";
 import {
+	addDamageControlEvalLabel,
+	isDamageControlEvalLabel,
+	listDamageControlEvalEvents,
+	recordDamageControlEval,
+	summarizeDamageControlEval,
+} from "../lib/damage-control-eval.js";
+import {
 	type DamageControlHealth,
 	getDamageControlHealth,
 	publishDamageControlHealth,
@@ -156,6 +163,32 @@ function replayDescriptor(input: {
 	};
 }
 
+function safeRecordDamageControlEval(input: {
+	decisionType: "ask_approved" | "ask_denied" | "hard_block";
+	toolName: string;
+	rawAction: string;
+	cwd?: string;
+	reason?: string;
+	rule?: string;
+	ruleSource?: string;
+	toolCallId?: string;
+}): void {
+	try {
+		recordDamageControlEval({
+			decisionType: input.decisionType,
+			toolName: input.toolName,
+			redactedAction: redactSummary(input.rawAction),
+			rule: input.rule,
+			ruleSource: input.ruleSource,
+			summary: input.reason,
+			cwd: input.cwd,
+			toolCallId: input.toolCallId,
+		});
+	} catch {
+		// Eval logging must never affect safety flow.
+	}
+}
+
 function formatDamageControlStatus(state: DamageControlRuntimeState): string {
 	if (state.health.status === "active") {
 		return `damage-control: active (${state.mode})`;
@@ -165,6 +198,45 @@ function formatDamageControlStatus(state: DamageControlRuntimeState): string {
 
 function damageControlStatusMessage(state: DamageControlRuntimeState): string {
 	return `damage-control status: ${state.health.status}; mode: ${state.mode}; core protections: always on`;
+}
+
+function shortId(id: string): string {
+	return id.slice(0, 8);
+}
+
+function formatDamageControlStats(): string {
+	const stats = summarizeDamageControlEval();
+	const lines = ["damage-control eval stats:"];
+	lines.push(`  events: ${stats.total}`);
+	const decisionTypes = Object.entries(stats.byDecisionType)
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([type, count]) => `${type}=${count}`)
+		.join(", ");
+	lines.push(`  decision types: ${decisionTypes || "none"}`);
+	lines.push("  top rules:");
+	for (const row of stats.byRule.slice(0, 10)) {
+		const labels = Object.entries(row.labels)
+			.sort(([a], [b]) => a.localeCompare(b))
+			.map(([label, count]) => `${label}=${count}`)
+			.join(", ");
+		lines.push(
+			`    ${row.total} ${row.rule} (approved=${row.askApproved}, denied=${row.askDenied}, blocked=${row.hardBlock}${labels ? `, ${labels}` : ""})`,
+		);
+	}
+	return lines.join("\n");
+}
+
+function formatDamageControlRecent(): string {
+	const events = listDamageControlEvalEvents(10);
+	if (events.length === 0) return "No damage-control eval events recorded.";
+	return ["recent damage-control eval events:"]
+		.concat(
+			events.map(
+				(event) =>
+					`  ${shortId(event.id)} ${event.decisionType} ${event.toolName} ${event.rule ?? "(no rule)"} -- ${event.redactedAction}`,
+			),
+		)
+		.join("\n");
 }
 
 function parseDamageControlMode(value: string): DamageControlMode | undefined {
@@ -214,10 +286,40 @@ function registerDamageControlCommand(
 				return;
 			}
 			const tokens = trimmed.split(/\s+/);
-			const [subcommand, rawMode] = tokens;
+			const [subcommand, rawMode, labelArg] = tokens;
+			if (subcommand === "stats") {
+				ctx.ui.notify(formatDamageControlStats(), "info");
+				return;
+			}
+			if (subcommand === "recent") {
+				ctx.ui.notify(formatDamageControlRecent(), "info");
+				return;
+			}
+			if (subcommand === "label") {
+				if (!rawMode || !labelArg || !isDamageControlEvalLabel(labelArg)) {
+					ctx.ui.notify(
+						"Usage: /damage-control label <event-id> useful|noise|too_strict|too_weak|unclear",
+						"warning",
+					);
+					return;
+				}
+				try {
+					const updated = addDamageControlEvalLabel(rawMode, labelArg);
+					ctx.ui.notify(
+						`Labeled ${shortId(updated.id)}: ${(updated.labels ?? []).join(", ")}`,
+						"info",
+					);
+				} catch (err) {
+					ctx.ui.notify(
+						`Label failed: ${err instanceof Error ? err.message : String(err)}`,
+						"warning",
+					);
+				}
+				return;
+			}
 			if (subcommand !== "mode" || tokens.length !== 2) {
 				ctx.ui.notify(
-					"Usage: /damage-control status | /damage-control mode default|whitelist|noshell",
+					"Usage: /damage-control status | /damage-control mode default|whitelist|noshell | /damage-control stats | /damage-control recent | /damage-control label <id> <label>",
 					"warning",
 				);
 				return;
@@ -266,8 +368,22 @@ function recordBlock(
 	rawAction: string,
 	cwd: string,
 	decision: { block: true; reason: string },
+	ruleSource?: string,
+	toolCallId?: string,
 ): void {
 	const rule = extractRulePattern(decision.reason);
+	safeRecordDamageControlEval({
+		decisionType: decision.reason.startsWith("Confirmation required")
+			? "ask_denied"
+			: "hard_block",
+		toolName,
+		rawAction,
+		cwd,
+		reason: decision.reason,
+		rule,
+		ruleSource,
+		toolCallId,
+	});
 	safeRecordDeny(
 		toolName,
 		rawAction,
@@ -317,7 +433,14 @@ export default function (pi: ExtensionAPI) {
 
 		const modeDecision = evaluateShellMode("bash", command, state.mode);
 		if (modeDecision) {
-			recordBlock("bash", command, ctx.cwd, modeDecision);
+			recordBlock(
+				"bash",
+				command,
+				ctx.cwd,
+				modeDecision,
+				loaded.health.ruleSource,
+				event.toolCallId,
+			);
 			return modeDecision;
 		}
 
@@ -329,12 +452,18 @@ export default function (pi: ExtensionAPI) {
 				hasUI: true,
 				toolName: "bash",
 				onConfirm: (rule) => {
-					safeRecordAllow(
-						"bash",
-						command,
-						"manual_once",
-						`Confirmed dangerous command (matched "${rule.pattern}"): ${rule.reason}`,
-					);
+					const summary = `Confirmed dangerous command (matched "${rule.pattern}"): ${rule.reason}`;
+					safeRecordDamageControlEval({
+						decisionType: "ask_approved",
+						toolName: "bash",
+						rawAction: command,
+						cwd: ctx.cwd,
+						reason: summary,
+						rule: rule.pattern,
+						ruleSource: loaded.health.ruleSource,
+						toolCallId: event.toolCallId,
+					});
+					safeRecordAllow("bash", command, "manual_once", summary);
 				},
 			},
 		);
@@ -345,7 +474,14 @@ export default function (pi: ExtensionAPI) {
 				command,
 				dangerous,
 			);
-			recordBlock("bash", command, ctx.cwd, dangerous);
+			recordBlock(
+				"bash",
+				command,
+				ctx.cwd,
+				dangerous,
+				loaded.health.ruleSource,
+				event.toolCallId,
+			);
 			return dangerous;
 		}
 
@@ -359,7 +495,14 @@ export default function (pi: ExtensionAPI) {
 			debugDecision("no_delete_decision", event.toolName, command, noDelete, {
 				targets,
 			});
-			recordBlock("bash", command, ctx.cwd, noDelete);
+			recordBlock(
+				"bash",
+				command,
+				ctx.cwd,
+				noDelete,
+				loaded.health.ruleSource,
+				event.toolCallId,
+			);
 		}
 		return noDelete;
 	});
@@ -376,7 +519,14 @@ export default function (pi: ExtensionAPI) {
 		});
 		const modeDecision = evaluateShellMode("pwsh", command, state.mode);
 		if (modeDecision) {
-			recordBlock("pwsh", command, ctx.cwd, modeDecision);
+			recordBlock(
+				"pwsh",
+				command,
+				ctx.cwd,
+				modeDecision,
+				loaded.health.ruleSource,
+				event.toolCallId,
+			);
 			return modeDecision;
 		}
 		const dangerous = await evaluateDangerousCommand(
@@ -387,17 +537,30 @@ export default function (pi: ExtensionAPI) {
 				hasUI: true,
 				toolName: "pwsh",
 				onConfirm: (rule) => {
-					safeRecordAllow(
-						"pwsh",
-						command,
-						"manual_once",
-						`Confirmed dangerous command (matched "${rule.pattern}"): ${rule.reason}`,
-					);
+					const summary = `Confirmed dangerous command (matched "${rule.pattern}"): ${rule.reason}`;
+					safeRecordDamageControlEval({
+						decisionType: "ask_approved",
+						toolName: "pwsh",
+						rawAction: command,
+						cwd: ctx.cwd,
+						reason: summary,
+						rule: rule.pattern,
+						ruleSource: loaded.health.ruleSource,
+						toolCallId: event.toolCallId,
+					});
+					safeRecordAllow("pwsh", command, "manual_once", summary);
 				},
 			},
 		);
 		if (dangerous) {
-			recordBlock("pwsh", command, ctx.cwd, dangerous);
+			recordBlock(
+				"pwsh",
+				command,
+				ctx.cwd,
+				dangerous,
+				loaded.health.ruleSource,
+				event.toolCallId,
+			);
 			return dangerous;
 		}
 		const noDelete = checkNoDeletePaths(
@@ -405,7 +568,15 @@ export default function (pi: ExtensionAPI) {
 			rules.no_delete_paths,
 			ctx.cwd,
 		);
-		if (noDelete) recordBlock("pwsh", command, ctx.cwd, noDelete);
+		if (noDelete)
+			recordBlock(
+				"pwsh",
+				command,
+				ctx.cwd,
+				noDelete,
+				loaded.health.ruleSource,
+				event.toolCallId,
+			);
 		return noDelete;
 	});
 
@@ -428,7 +599,14 @@ export default function (pi: ExtensionAPI) {
 
 		const canonResult = canonicalizeOrBlock(rawPath, ctx.cwd);
 		if ("block" in canonResult) {
-			recordBlock(event.toolName, rawPath, ctx.cwd, canonResult);
+			recordBlock(
+				event.toolName,
+				rawPath,
+				ctx.cwd,
+				canonResult,
+				loaded.health.ruleSource,
+				event.toolCallId,
+			);
 			return canonResult;
 		}
 
@@ -449,7 +627,14 @@ export default function (pi: ExtensionAPI) {
 				rawPath,
 				zeroAccess,
 			);
-			recordBlock(event.toolName, rawPath, ctx.cwd, zeroAccess);
+			recordBlock(
+				event.toolName,
+				rawPath,
+				ctx.cwd,
+				zeroAccess,
+				loaded.health.ruleSource,
+				event.toolCallId,
+			);
 			return zeroAccess;
 		}
 
@@ -461,7 +646,14 @@ export default function (pi: ExtensionAPI) {
 				ctx.cwd,
 			);
 			if (readOnly) {
-				recordBlock(event.toolName, rawPath, ctx.cwd, readOnly);
+				recordBlock(
+					event.toolName,
+					rawPath,
+					ctx.cwd,
+					readOnly,
+					loaded.health.ruleSource,
+					event.toolCallId,
+				);
 				return readOnly;
 			}
 			const content =
@@ -479,7 +671,14 @@ export default function (pi: ExtensionAPI) {
 						block: true as const,
 						reason: `Blocked content injection pattern (matched "${injectionPattern}"): ${rawPath}`,
 					};
-					recordBlock(event.toolName, rawPath, ctx.cwd, decision);
+					recordBlock(
+						event.toolName,
+						rawPath,
+						ctx.cwd,
+						decision,
+						loaded.health.ruleSource,
+						event.toolCallId,
+					);
 					return decision;
 				}
 			}
@@ -500,9 +699,26 @@ export default function (pi: ExtensionAPI) {
 						block: true as const,
 						reason: writeConfirm.reason,
 					};
-					recordBlock(event.toolName, rawPath, ctx.cwd, decision);
+					recordBlock(
+						event.toolName,
+						rawPath,
+						ctx.cwd,
+						decision,
+						loaded.health.ruleSource,
+						event.toolCallId,
+					);
 					return decision;
 				}
+				safeRecordDamageControlEval({
+					decisionType: "ask_approved",
+					toolName: event.toolName,
+					rawAction: rawPath,
+					cwd: ctx.cwd,
+					reason: writeConfirm.reason,
+					rule: extractRulePattern(writeConfirm.reason),
+					ruleSource: loaded.health.ruleSource,
+					toolCallId: event.toolCallId,
+				});
 				safeRecordAllow(
 					event.toolName,
 					rawPath,
@@ -527,7 +743,15 @@ export default function (pi: ExtensionAPI) {
 				rules.no_delete_paths,
 				ctx.cwd,
 			);
-			if (noDelete) recordBlock(event.toolName, rawPath, ctx.cwd, noDelete);
+			if (noDelete)
+				recordBlock(
+					event.toolName,
+					rawPath,
+					ctx.cwd,
+					noDelete,
+					loaded.health.ruleSource,
+					event.toolCallId,
+				);
 			return noDelete;
 		}
 		return undefined;
