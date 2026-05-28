@@ -290,6 +290,7 @@ interface SlashEchoExtensionAPI extends ExtensionAPI {
 
 const CLEAR_USAGE_TYPE = "workflow-clear-usage";
 const COMMIT_ACTIVITY_TYPE = "workflow-commit-activity";
+const COMMIT_REPORT_TYPE = "workflow-commit-report";
 const SLASH_ECHO_TYPE = "slash-echo";
 const SUMMARIZE_PROMPT = `Summarize the work done in this session as a compact handoff note.
 
@@ -619,9 +620,32 @@ async function executeBranchCommand(args: string, ctx: WorkflowContext) {
 
 function extractJsonObject(text: string) {
 	const start = text.indexOf("{");
-	const end = text.lastIndexOf("}");
-	if (start === -1 || end === -1 || end < start) return undefined;
-	return text.slice(start, end + 1);
+	if (start === -1) return undefined;
+	let depth = 0;
+	let inString = false;
+	let escaped = false;
+	for (let i = start; i < text.length; i += 1) {
+		const ch = text[i];
+		if (escaped) {
+			escaped = false;
+			continue;
+		}
+		if (ch === "\\") {
+			escaped = true;
+			continue;
+		}
+		if (ch === '"') {
+			inString = !inString;
+			continue;
+		}
+		if (inString) continue;
+		if (ch === "{") depth += 1;
+		if (ch === "}") {
+			depth -= 1;
+			if (depth === 0) return text.slice(start, i + 1);
+		}
+	}
+	return undefined;
 }
 
 export function normalizeCommitSubject(subject: string) {
@@ -1513,6 +1537,23 @@ function summarizeCommit(hash: string, subject: string, pushed: boolean) {
 	return pushed ? `${hash} ${subject}\nPushed to remote` : `${hash} ${subject}`;
 }
 
+function emitCommitReport(
+	pi: ExtensionAPI,
+	ctx: WorkflowContext,
+	lines: string[],
+) {
+	const content = lines.join("\n");
+	if (typeof pi.sendMessage === "function") {
+		pi.sendMessage({
+			customType: COMMIT_REPORT_TYPE,
+			content,
+			display: true,
+		});
+		return;
+	}
+	ctx.ui.notify(content, "info");
+}
+
 function echoSlashCommand(pi: ExtensionAPI, command: string, args: string) {
 	if ((pi as SlashEchoExtensionAPI).__slashEchoRegisterCommandWrapped)
 		return undefined;
@@ -1551,7 +1592,25 @@ function isPlanFileInput(args: string) {
 	);
 }
 
-function createCommitActivity(ctx: WorkflowContext): CommitActivity {
+function formatGitOutput(result?: GitRunResult) {
+	if (!result) return [];
+	const lines: string[] = [];
+	const stdout = result.stdout.trim();
+	const stderr = result.stderr.trim();
+	if (stdout)
+		lines.push(...stdout.split("\n").map((line) => `stdout: ${line}`));
+	if (stderr)
+		lines.push(...stderr.split("\n").map((line) => `stderr: ${line}`));
+	lines.push(`exit: ${result.code}`);
+	return lines;
+}
+
+function createCommitActivity(
+	pi: ExtensionAPI,
+	ctx: WorkflowContext,
+	commandText: string,
+): CommitActivity {
+	const fallbackLines: string[] = [];
 	const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 	let spinnerIndex = 0;
 	let spinnerTimer: ReturnType<typeof setInterval> | undefined;
@@ -1580,6 +1639,23 @@ function createCommitActivity(ctx: WorkflowContext): CommitActivity {
 		spinnerTimer = setInterval(tick, 120);
 	};
 
+	const emit = (content: string) => {
+		if (typeof pi.sendMessage === "function") {
+			pi.sendMessage({
+				customType: COMMIT_ACTIVITY_TYPE,
+				content,
+				display: true,
+			});
+			return;
+		}
+		fallbackLines.push(content);
+		ctx.ui.setWidget?.("commit-progress", fallbackLines.slice(-12), {
+			placement: "aboveEditor",
+		});
+	};
+
+	emit(commandText);
+
 	const shouldSpinForPhase = (phase: string) =>
 		phase === "preparing" ||
 		phase === "planning commits" ||
@@ -1589,13 +1665,22 @@ function createCommitActivity(ctx: WorkflowContext): CommitActivity {
 	return {
 		setPhase(message?: string) {
 			const phase = message ?? "done";
+			emit(`phase: ${phase}`);
 			if (shouldSpinForPhase(phase)) startSpinner(phase);
 			else stopSpinner();
 		},
-		logCommand() {},
-		logInfo() {},
+		logCommand(command: string, result?: GitRunResult) {
+			const output = formatGitOutput(result)
+				.map((line) => `  ${line}`)
+				.join("\n");
+			emit(output ? `$ ${command}\n${output}` : `$ ${command}`);
+		},
+		logInfo(message: string) {
+			emit(message);
+		},
 		finish() {
 			stopSpinner();
+			emit("phase: done");
 		},
 	};
 }
@@ -1707,7 +1792,9 @@ async function executeCommitCommand(
 	args: string,
 	ctx: WorkflowContext,
 ) {
-	const activity = createCommitActivity(ctx);
+	const commandText = `/commit${args.trim() ? ` ${args.trim()}` : ""}`;
+	const activity = createCommitActivity(pi, ctx, commandText);
+	ctx.ui.notify(`Starting ${commandText}...`, "info");
 	activity.setPhase("preparing");
 	try {
 		const status = gitOrThrow(ctx.cwd, ["status", "--short"], activity);
@@ -1776,10 +1863,10 @@ async function executeCommitCommand(
 				pushCurrentBranch(ctx.cwd, activity);
 			}
 			activity.finish();
-			return ctx.ui.notify(
+			emitCommitReport(pi, ctx, [
 				summarizeCommit(hash, commitMessage.subject, prepared.parsedArgs.push),
-				"info",
-			);
+			]);
+			return;
 		}
 
 		const commitSummaries: string[] = [];
@@ -1822,7 +1909,8 @@ async function executeCommitCommand(
 			activity.logInfo("Pushed to remote");
 		}
 		activity.finish();
-		return ctx.ui.notify(commitSummaries.join("\n"), "info");
+		emitCommitReport(pi, ctx, commitSummaries);
+		return;
 	} catch (err) {
 		activity.finish();
 		throw err;
@@ -1883,6 +1971,32 @@ export default function (pi: ExtensionAPI) {
 					})
 					.join("\n");
 				return new Text(theme.bold(theme.fg("success", "> ")) + styled, 0, 0);
+			},
+		);
+
+		pi.registerMessageRenderer(
+			COMMIT_REPORT_TYPE,
+			(message, _options, theme) => {
+				const text =
+					typeof message.content === "string"
+						? message.content
+						: String(message.content ?? "");
+				const styled = text
+					.split("\n")
+					.map((line) => {
+						const match = line.match(/^([0-9a-f]{7,12})\s+(.*)$/i);
+						if (match) {
+							return `${theme.fg("dim", match[1])} ${theme.bold(theme.fg("text", match[2]))}`;
+						}
+						if (line === "Pushed to remote") return theme.fg("success", line);
+						return theme.fg("text", line);
+					})
+					.join("\n");
+				return new Text(
+					`${theme.bold(theme.fg("success", "commits:"))}\n${styled}`,
+					0,
+					0,
+				);
 			},
 		);
 	}

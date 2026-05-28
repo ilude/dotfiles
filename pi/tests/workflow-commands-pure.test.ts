@@ -385,6 +385,15 @@ describe("chooseFilesToCommit", () => {
 // ---------------------------------------------------------------------------
 
 describe("parseCommitPlan multi-group", () => {
+	it("parses the first complete JSON object when extra text follows", () => {
+		const json = `${JSON.stringify({
+			groups: [{ files: ["src/api.ts"], subject: "feat(pi): add planner" }],
+		})}\n${JSON.stringify({ note: "extra model output" })}`;
+		const plan = parseCommitPlan(json);
+		expect(plan.groups).toHaveLength(1);
+		expect(plan.groups[0]?.subject).toBe("feat(pi): add planner");
+	});
+
 	it("parses a 3-group plan with body and warnings", () => {
 		const json = JSON.stringify({
 			groups: [
