@@ -8,12 +8,11 @@
       "mode": "confgate"
     }
   },
-  "packages": [
-    "npm:@narumitw/pi-goal"
-  ],
+  "packages": [],
   "_disabledPackages": [
     "npm:pi-inspect",
-    "npm:pi-code-previews"
+    "npm:pi-code-previews",
+    "npm:@narumitw/pi-goal"
   ],
   "hideThinkingBlock": false
 }

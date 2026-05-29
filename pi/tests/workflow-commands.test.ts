@@ -105,7 +105,10 @@ describe("workflow command dispatch", () => {
 			["status", "--short"],
 			expect.objectContaining({ cwd: "/repo" }),
 		);
-		expect(mockPi.sendMessage).not.toHaveBeenCalled();
+		expect(mockPi.sendMessage).not.toHaveBeenCalledWith(
+			expect.objectContaining({ customType: "workflow.hiddenPrompt" }),
+			expect.anything(),
+		);
 		expect(notify).toHaveBeenCalledWith("Working tree is clean", "info");
 	});
 
@@ -119,7 +122,10 @@ describe("workflow command dispatch", () => {
 
 		await getHandler("commit")("", { cwd: "/repo", ui: { notify } });
 
-		expect(mockPi.sendMessage).not.toHaveBeenCalled();
+		expect(mockPi.sendMessage).not.toHaveBeenCalledWith(
+			expect.objectContaining({ customType: "workflow.hiddenPrompt" }),
+			expect.anything(),
+		);
 		expect(notify).toHaveBeenCalledWith(
 			"Commit failed: fatal: not a git repository",
 			"error",

@@ -161,3 +161,4 @@ private.conflicts/
 !.dolos/artifacts/
 !.dolos/artifacts/*.tar.gz.age
 claude/.last-update-result.json
+.specs/archive/pi-goal-command/
