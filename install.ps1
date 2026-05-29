@@ -365,6 +365,23 @@ function Invoke-WingetConfigure {
     }
 }
 
+function Install-WingetPackage {
+    param(
+        [Parameter(Mandatory)][string]$Id,
+        [Parameter(Mandatory)][string]$Name
+    )
+
+    Write-Host "  $Name..." -ForegroundColor Cyan -NoNewline
+    & winget install --id $Id --exact --source winget --accept-package-agreements --accept-source-agreements --disable-interactivity 2>&1 | Out-Host
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "  ${Name}: installed" -ForegroundColor Green
+        return $true
+    }
+
+    Write-Host "  ${Name}: install failed (exit: $LASTEXITCODE)" -ForegroundColor Red
+    return $false
+}
+
 function Remove-GitShellExtensions {
     # Git for Windows re-adds "Open Git GUI/Bash Here" on every (re)install
     # because the installer always selects ext\shellhere and ext\guihere.
@@ -837,6 +854,49 @@ function Initialize-PnpmGlobalConfig {
     }
 }
 
+function Test-ClaudeCommand {
+    param([Parameter(Mandatory)]$Command)
+
+    $output = & $Command.Source --version 2>$null | Select-Object -First 1
+    if ($LASTEXITCODE -ne 0 -or -not $output) {
+        return $null
+    }
+
+    $versionMatch = [regex]::Match($output, '[0-9]+(?:\.[0-9]+)+')
+    if ($versionMatch.Success) {
+        return $versionMatch.Value
+    }
+    return 'unknown-version'
+}
+
+function Repair-ClaudeNpmShim {
+    param([Parameter(Mandatory)]$Command)
+
+    # npm's shim can survive while @anthropic-ai/claude-code/bin/claude.exe is
+    # missing. Re-run the package postinstall when the global npm package still
+    # exists; it copies/links the native optional-dependency binary back into bin/.
+    $npmRoot = Join-Path $env:APPDATA 'npm'
+    if (-not $Command.Source.StartsWith($npmRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $false
+    }
+
+    $packageDir = Join-Path $npmRoot 'node_modules\@anthropic-ai\claude-code'
+    $installScript = Join-Path $packageDir 'install.cjs'
+    if (-not ((Test-Path $installScript) -and (Get-Command node -ErrorAction SilentlyContinue))) {
+        return $false
+    }
+
+    Write-Host "  Claude Code: repairing npm shim via postinstall" -ForegroundColor Yellow
+    Push-Location $packageDir
+    try {
+        node install.cjs 2>&1 | Out-Null
+    } finally {
+        Pop-Location
+    }
+
+    return [bool](Test-ClaudeCommand -Command $Command)
+}
+
 function Test-ClaudeSmoke {
     # Verify claude actually launches after install. A stale shim pointing at
     # a pruned node_modules will fail here -- that's the whole point.
@@ -846,11 +906,10 @@ function Test-ClaudeSmoke {
         $script:failed += 'claude-smoke:not-on-path'
         return
     }
-    $null = & $cmd.Source --version 2>&1
-    if ($LASTEXITCODE -eq 0) {
+    if (Test-ClaudeCommand -Command $cmd) {
         Write-Host "  claude: smoke test ok ($($cmd.Source))" -ForegroundColor Green
     } else {
-        Write-Host "  claude: FAILED to launch ($($cmd.Source), exit $LASTEXITCODE)" -ForegroundColor Red
+        Write-Host "  claude: FAILED to launch ($($cmd.Source))" -ForegroundColor Red
         $script:failed += 'claude-smoke:launch-failed'
     }
 }
@@ -970,20 +1029,21 @@ function Install-Packages {
     $claudeVersion = $null
     $claudeCommand = Get-Command claude -ErrorAction SilentlyContinue
     if ($claudeCommand) {
-        $claudeVersionOutput = & $claudeCommand.Source --version 2>$null | Select-Object -First 1
-        if ($LASTEXITCODE -eq 0 -and $claudeVersionOutput) {
-            $claudeVersionMatch = [regex]::Match($claudeVersionOutput, '[0-9]+(?:\.[0-9]+)+')
-            if ($claudeVersionMatch.Success) {
-                $claudeVersion = $claudeVersionMatch.Value
+        $claudeVersion = Test-ClaudeCommand -Command $claudeCommand
+        if (-not $claudeVersion) {
+            $repaired = Repair-ClaudeNpmShim -Command $claudeCommand
+            if ($repaired) {
+                $claudeVersion = Test-ClaudeCommand -Command $claudeCommand
             }
         }
     }
 
     if ($claudeVersion) {
         Write-Host "  Claude Code: already installed ($claudeVersion)" -ForegroundColor DarkGray
-    } elseif ($claudeCommand) {
-        Write-Host "  Claude Code: already installed" -ForegroundColor DarkGray
     } elseif (Get-Command winget -ErrorAction SilentlyContinue) {
+        if ($claudeCommand) {
+            Write-Host "  Claude Code: existing command is broken ($($claudeCommand.Source)); installing WinGet package" -ForegroundColor Yellow
+        }
         if (-not (Install-WingetPackage -Id 'Anthropic.ClaudeCode' -Name 'Claude Code')) {
             $script:failed += 'winget:claude-code'
         }
