@@ -16,8 +16,16 @@ export interface DangerousCommand {
 	tools?: string[];
 }
 
+export interface AstAnalysisConfig {
+	enabled: boolean;
+	timeoutMs?: number;
+	safeCommands?: string[];
+	dangerousCommands?: string[];
+}
+
 export interface DamageControlRules {
 	dangerous_commands: DangerousCommand[];
+	astAnalysis?: AstAnalysisConfig;
 	zero_access_paths: string[];
 	zero_access_exclusions: string[];
 	read_only_paths: string[];
@@ -64,6 +72,7 @@ function emptyRules(): DamageControlRules {
 		write_confirm_paths: [],
 		content_scan_paths: [],
 		injection_patterns: [],
+		astAnalysis: { enabled: false },
 	};
 }
 
@@ -171,6 +180,7 @@ export function parseDamageControlRules(content: string): DamageControlRules {
 	return {
 		...emptyRules(),
 		dangerous_commands: root.dangerous_commands as DangerousCommand[],
+		astAnalysis: astAnalysisConfig(root.astAnalysis),
 		zero_access_paths: root.zero_access_paths as string[],
 		zero_access_exclusions: stringList(root, "zero_access_exclusions"),
 		read_only_paths: stringList(root, "read_only_paths"),
@@ -188,6 +198,29 @@ function stringList(root: YamlRecord, key: string): string[] {
 		value.every((entry) => typeof entry === "string")
 		? (value as string[])
 		: [];
+}
+
+function booleanField(value: unknown): boolean | undefined {
+	if (typeof value === "boolean") return value;
+	if (value === "true") return true;
+	if (value === "false") return false;
+	return undefined;
+}
+
+function numberField(value: unknown): number | undefined {
+	if (typeof value === "number") return value;
+	if (typeof value === "string" && /^\d+$/.test(value)) return Number(value);
+	return undefined;
+}
+
+function astAnalysisConfig(value: unknown): AstAnalysisConfig | undefined {
+	if (!isRecord(value)) return undefined;
+	return {
+		enabled: booleanField(value.enabled) ?? false,
+		timeoutMs: numberField(value.timeoutMs),
+		safeCommands: stringArrayField(value.safeCommands),
+		dangerousCommands: stringArrayField(value.dangerousCommands),
+	};
 }
 
 export function normalizeClaudePolicy(value: unknown): LoadedRules {
@@ -262,6 +295,7 @@ export function normalizeClaudePolicy(value: unknown): LoadedRules {
 		write_confirm_paths: stringList(value, "writeConfirmPaths"),
 		content_scan_paths: stringList(value, "contentScanPaths"),
 		injection_patterns: stringList(value, "injectionPatterns"),
+		astAnalysis: astAnalysisConfig(value.astAnalysis) ?? { enabled: false },
 	};
 	if (errors.length > 0)
 		return { rules: emptyRules(), health: failedHealth(errors.join("; ")) };

@@ -1,6 +1,36 @@
 # Pi-native damage-control rules port the intent of the Claude hooks for Pi's
 # extension runtime. See .specs/pi-damage-control-v2/claude-parity-matrix.md
 # for current limits and the future shared policy schema follow-up.
+astAnalysis:
+  enabled: true
+  timeoutMs: 50
+  safeCommands:
+    - ls
+    - echo
+    - cat
+    - grep
+    - head
+    - tail
+    - wc
+    - date
+    - pwd
+    - whoami
+    - "git status"
+    - "git log"
+    - "git diff"
+    - "git branch"
+  dangerousCommands:
+    - rm
+    - mv
+    - dd
+    - mkfs
+    - chmod
+    - chown
+    - kill
+    - pkill
+    - shutdown
+    - reboot
+
 dangerous_commands:
   - pattern: "rm recursive force"
     regex: "\\brm\\s+(?:-[A-Za-z]*r[A-Za-z]*f[A-Za-z]*|-[A-Za-z]*f[A-Za-z]*r[A-Za-z]*|--recursive\\s+--force|--force\\s+--recursive)\\b"

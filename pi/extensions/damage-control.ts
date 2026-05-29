@@ -45,9 +45,14 @@ import {
 	matchesPattern,
 } from "./damage-control-engine.js";
 import { loadRules } from "./damage-control-rules.js";
+import {
+	DamageControlSessionState,
+	outputContainsSecret,
+} from "./damage-control-state.js";
 
 export { debugLog, redactSummary } from "./damage-control-debug.js";
 export {
+	analyzeGitCommand,
 	checkNoDeletePaths,
 	checkReadOnlyPath,
 	checkWriteConfirmPath,
@@ -61,6 +66,7 @@ export {
 	extractBashDeleteTargets,
 	extractPwshDeleteTargets,
 	extractTruncatingEditWriteTarget,
+	hasValidDryRun,
 	isReadOnlySearchCommand,
 	isSshProtectedPattern,
 	matchesPattern,
@@ -402,6 +408,7 @@ function recordBlock(
 export default function (pi: ExtensionAPI) {
 	debugLog("extension_registered");
 	const state = createDamageControlState();
+	const sessionState = new DamageControlSessionState();
 	const loaded = loadRules();
 	const rules = loaded.rules;
 	state.health = loaded.health;
@@ -431,6 +438,31 @@ export default function (pi: ExtensionAPI) {
 			cwd: ctx.cwd,
 		});
 
+		const sequenceDecision = sessionState.check("bash", command);
+		if (sequenceDecision) {
+			const decision = {
+				block: true as const,
+				reason: `${sequenceDecision.action === "ask" ? "Confirmation required" : "Blocked"} for dangerous sequence (matched "${sequenceDecision.name}"): ${sequenceDecision.reason}`,
+			};
+			if (sequenceDecision.action === "ask" && ctx.ui?.confirm) {
+				emitTerminalBell();
+				const ok = await ctx.ui.confirm(
+					"Confirm dangerous sequence",
+					sequenceDecision.reason,
+				);
+				if (ok) return undefined;
+			}
+			recordBlock(
+				"bash",
+				command,
+				ctx.cwd,
+				decision,
+				loaded.health.ruleSource,
+				event.toolCallId,
+			);
+			return decision;
+		}
+
 		const modeDecision = evaluateShellMode("bash", command, state.mode);
 		if (modeDecision) {
 			recordBlock(
@@ -451,6 +483,7 @@ export default function (pi: ExtensionAPI) {
 				ui: ctx.ui,
 				hasUI: true,
 				toolName: "bash",
+				astAnalysis: rules.astAnalysis,
 				onConfirm: (rule) => {
 					const summary = `Confirmed dangerous command (matched "${rule.pattern}"): ${rule.reason}`;
 					safeRecordDamageControlEval({
@@ -503,8 +536,23 @@ export default function (pi: ExtensionAPI) {
 				loaded.health.ruleSource,
 				event.toolCallId,
 			);
+		} else {
+			sessionState.record("bash", command);
 		}
 		return noDelete;
+	});
+
+	pi.on("tool_result", async (event, ctx) => {
+		if (!outputContainsSecret(event.content)) return undefined;
+		const reason = "Tool output appears to contain secret material.";
+		ctx.ui?.notify?.(reason, "warning");
+		safeRecordDeny(
+			event.toolName,
+			JSON.stringify(event.content ?? "").slice(0, 200),
+			reason,
+			"secret_output",
+		);
+		return undefined;
 	});
 
 	pi.on("tool_call", async (event, ctx) => {
@@ -581,7 +629,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("tool_call", async (event, ctx) => {
-		const FILE_TOOLS = new Set(["read", "write", "edit", "find", "ls"]);
+		const FILE_TOOLS = new Set(["read", "write", "edit", "find", "ls", "glob"]);
 		if (!FILE_TOOLS.has(event.toolName)) return undefined;
 		const failed = blockIfRulesFailed(state);
 		if (failed) return failed;
@@ -753,6 +801,9 @@ export default function (pi: ExtensionAPI) {
 					event.toolCallId,
 				);
 			return noDelete;
+		}
+		if (["read", "glob"].includes(event.toolName)) {
+			sessionState.record(event.toolName, rawPath);
 		}
 		return undefined;
 	});

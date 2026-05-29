@@ -10,7 +10,9 @@
     "@earendil-works/pi-ai": "0.74.0",
     "@earendil-works/pi-coding-agent": "0.74.0",
     "@earendil-works/pi-tui": "0.74.0",
-    "@sinclair/typebox": "^0.34.41"
+    "@sinclair/typebox": "^0.34.41",
+    "tree-sitter-bash": "0.25.1",
+    "web-tree-sitter": "0.26.9"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

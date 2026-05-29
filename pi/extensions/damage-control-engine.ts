@@ -4,7 +4,9 @@ import {
 	emitTerminalBell,
 	canonicalize as sharedCanonicalize,
 } from "../lib/extension-utils.js";
+import { analyzeCommandAst } from "./damage-control/ast-analyzer.js";
 import {
+	type AstAnalysisConfig,
 	compileCommandRegex,
 	type DangerousCommand,
 } from "./damage-control-rules.js";
@@ -13,7 +15,31 @@ export type DamageControlMode = "default" | "whitelist" | "noshell";
 
 const SHELL_TOOLS = new Set(["bash", "pwsh"]);
 const COMPOUND_SHELL_OPERATOR = /&&|\|\||[;|`<>]|\$\(/;
-const READ_ONLY_SEARCH_COMMANDS = new Set(["grep", "rg", "ag", "ack"]);
+const READ_ONLY_SEARCH_COMMANDS = new Set([
+	"ack",
+	"ag",
+	"diff",
+	"du",
+	"egrep",
+	"fd",
+	"fgrep",
+	"file",
+	"find",
+	"grep",
+	"hexdump",
+	"locate",
+	"ls",
+	"plocate",
+	"printf",
+	"readlink",
+	"realpath",
+	"rg",
+	"stat",
+	"strings",
+	"tree",
+	"which",
+	"xxd",
+]);
 const READ_ONLY_PIPE_COMMANDS = new Set([
 	"awk",
 	"bat",
@@ -249,7 +275,12 @@ function commandMatchesRule(command: string, rule: DangerousCommand): boolean {
 
 function commandHead(segment: string): string {
 	const tokens = tokenize(segment);
-	if (tokens[0] === "git" && tokens[1]) return `git ${tokens[1]}`;
+	if (
+		["git", "helm", "kubectl", "terraform"].includes(tokens[0] ?? "") &&
+		tokens[1]
+	) {
+		return `${tokens[0]} ${tokens[1]}`;
+	}
 	return tokens[0] ?? "";
 }
 
@@ -286,7 +317,33 @@ function isReadOnlySearchSegment(segment: string): boolean {
 	if (pipeParts.length === 0) return false;
 	const firstHead = commandHead(pipeParts[0]);
 	const firstIsSearch =
-		READ_ONLY_SEARCH_COMMANDS.has(firstHead) || firstHead === "git grep";
+		READ_ONLY_SEARCH_COMMANDS.has(firstHead) ||
+		[
+			"git branch",
+			"git diff",
+			"git grep",
+			"git log",
+			"git remote",
+			"git show",
+			"git status",
+			"helm get",
+			"helm list",
+			"helm ls",
+			"helm search",
+			"helm show",
+			"helm status",
+			"kubectl api-resources",
+			"kubectl cluster-info",
+			"kubectl describe",
+			"kubectl explain",
+			"kubectl get",
+			"kubectl logs",
+			"kubectl top",
+			"terraform output",
+			"terraform plan",
+			"terraform show",
+			"terraform state",
+		].includes(firstHead);
 	const firstIsTextProducer = /^(?:echo|printf)\b/.test(firstHead);
 	if (!firstIsSearch && !firstIsTextProducer) return false;
 	return pipeParts.slice(1).every((part) => {
@@ -302,6 +359,89 @@ export function isReadOnlySearchCommand(
 	if (toolName && toolName !== "bash") return false;
 	const segments = splitReadOnlySegments(command);
 	return segments.length > 0 && segments.every(isReadOnlySearchSegment);
+}
+
+function hasCombinedShortFlag(args: string[], chars: string): boolean {
+	return args.some(
+		(arg) =>
+			arg.startsWith("-") &&
+			!arg.startsWith("--") &&
+			[...chars].some((ch) => arg.slice(1).includes(ch)),
+	);
+}
+
+export function analyzeGitCommand(
+	command: string,
+): { ask: true; reason: string } | undefined {
+	const tokens = tokenize(command);
+	if (tokens[0] !== "git" || tokens.length < 2) return undefined;
+	const subcommand = tokens[1];
+	const args = tokens.slice(2);
+	const argsText = args.join(" ");
+	if (subcommand === "checkout") {
+		if (args.includes("-b") || args.includes("--branch")) return undefined;
+		if (args.includes("--") && args.indexOf("--") < args.length - 1) {
+			return {
+				ask: true,
+				reason: "git checkout with -- discards uncommitted changes",
+			};
+		}
+		if (
+			args.includes("--force") ||
+			args.includes("-f") ||
+			hasCombinedShortFlag(args, "f")
+		) {
+			return {
+				ask: true,
+				reason: "git checkout --force discards uncommitted changes",
+			};
+		}
+	}
+	if (subcommand === "push") {
+		if (argsText.includes("--force-with-lease")) return undefined;
+		if (
+			args.includes("--force") ||
+			args.includes("-f") ||
+			hasCombinedShortFlag(args, "f")
+		) {
+			return {
+				ask: true,
+				reason:
+					"git push --force can overwrite remote history without safety checks",
+			};
+		}
+	}
+	if (subcommand === "reset") {
+		if (args.includes("--soft") || args.includes("--mixed")) return undefined;
+		if (args.includes("--hard")) {
+			return {
+				ask: true,
+				reason: "git reset --hard permanently discards uncommitted changes",
+			};
+		}
+	}
+	if (subcommand === "clean") {
+		if (
+			args.includes("-f") ||
+			args.includes("-d") ||
+			hasCombinedShortFlag(args, "fd")
+		) {
+			return {
+				ask: true,
+				reason: "git clean removes untracked files permanently",
+			};
+		}
+	}
+	return undefined;
+}
+
+export function hasValidDryRun(command: string): boolean {
+	return (
+		/--dry-run\b/.test(command) &&
+		/^\s*(?:helm\b|kubectl\b|docker(?:\s+compose)?\b|argocd\s+app\s+sync\b)/i.test(
+			command,
+		)
+	);
 }
 
 export function evaluateShellMode(
@@ -340,11 +480,31 @@ export async function evaluateDangerousCommand(
 		hasUI?: boolean;
 		toolName?: string;
 		onConfirm?: (rule: DangerousCommand) => void;
+		astAnalysis?: AstAnalysisConfig;
 	},
 ): Promise<{ block: true; reason: string } | undefined> {
 	if (isReadOnlySearchCommand(command, ctx?.toolName)) return undefined;
 
+	const semanticGit =
+		ctx?.toolName === "bash" ? analyzeGitCommand(command) : undefined;
+	if (semanticGit) {
+		if (ctx?.hasUI && ctx.ui?.confirm) {
+			emitTerminalBell();
+			const ok = await ctx.ui.confirm(
+				"Confirm dangerous command",
+				semanticGit.reason,
+			);
+			if (ok) return undefined;
+		}
+		return {
+			block: true,
+			reason: `Confirmation required for dangerous command (matched "semantic_git"): ${semanticGit.reason}`,
+		};
+	}
+
+	const skipPatternRules = ctx?.toolName === "bash" && hasValidDryRun(command);
 	for (const rule of rules) {
+		if (skipPatternRules && !rule.pattern.includes("LD_")) continue;
 		if (
 			!commandAppliesToCurrentPlatform(rule) ||
 			!commandAppliesToTool(rule, ctx?.toolName) ||
@@ -372,6 +532,33 @@ export async function evaluateDangerousCommand(
 			block: true,
 			reason: `Blocked dangerous command (matched "${rule.pattern}"): ${rule.reason}`,
 		};
+	}
+	if (ctx?.toolName === "bash") {
+		const astDecision = await analyzeCommandAst(
+			command,
+			rules.filter((rule) => commandAppliesToTool(rule, "bash")),
+			ctx.astAnalysis,
+		);
+		if (astDecision.decision === "ask") {
+			if (ctx.hasUI && ctx.ui?.confirm) {
+				emitTerminalBell();
+				const ok = await ctx.ui.confirm(
+					"Confirm dangerous command",
+					astDecision.reason,
+				);
+				if (ok) return undefined;
+			}
+			return {
+				block: true,
+				reason: `Confirmation required for dangerous command (matched "AST analysis"): ${astDecision.reason}`,
+			};
+		}
+		if (astDecision.decision === "block") {
+			return {
+				block: true,
+				reason: `Blocked dangerous command (matched "AST analysis"): ${astDecision.reason}`,
+			};
+		}
 	}
 	return undefined;
 }
