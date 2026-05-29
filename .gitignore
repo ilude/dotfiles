@@ -160,3 +160,4 @@ private.conflicts/
 !.dolos/authorized_keys
 !.dolos/artifacts/
 !.dolos/artifacts/*.tar.gz.age
+claude/.last-update-result.json
