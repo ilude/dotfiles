@@ -42,6 +42,8 @@
  *
  * Effort cap: router.effort.maxLevel in settings (default "high") prevents
  * xhigh from being applied even if the classifier recommends it.
+ * Router default effort: router.effort.defaultLevel in settings (default
+ * "medium") controls reset/startup and GPT-5.5 routine-effort bias.
  *
  * All thresholds read from pi/settings.json under router.policy.*.
  *
@@ -61,6 +63,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Key } from "@earendil-works/pi-tui";
 import {
 	getCurrentModelHint,
 	resolveDynamicModelFromRegistry,
@@ -224,6 +227,21 @@ export function effortOverrideType(
 	if (diff > 0) return "user_effort_up";
 	if (diff < 0) return "user_effort_down";
 	return "user_effort_same";
+}
+
+function readRuntimeEffortOverride(
+	pi: ExtensionAPI,
+	lastAppliedEffort: string | null,
+): UserEffortOverride | null {
+	const getThinkingLevel = (pi as { getThinkingLevel?: () => string | null })
+		.getThinkingLevel;
+	if (typeof getThinkingLevel !== "function") return null;
+	const current = getThinkingLevel.call(pi);
+	if (typeof current !== "string") return null;
+	const effort = current.trim().toLowerCase();
+	if (!(effort in EFFORT_ORDER)) return null;
+	if (lastAppliedEffort && effort === lastAppliedEffort) return null;
+	return { effort, scope: "session" };
 }
 
 function readRouteOverride(
@@ -597,7 +615,6 @@ export async function resolveProviderRouteDecision(
 	const telemetryCapsule = toTelemetryContextCapsule(capsule);
 	const appliedRoute: RouterSize = routePolicy.route;
 	const rawSize = ROUTE_TO_RUNTIME_SIZE[appliedRoute] ?? "medium";
-	const tier = SIZE_TO_TIER[rawSize] ?? "mid";
 	const model = resolveDynamicModelFromRegistry(
 		ctx.modelRegistry,
 		ctx,
@@ -634,8 +651,15 @@ export async function resolveProviderRouteDecision(
 		return denied;
 	}
 
-	const thinking =
-		SCHEMA_EFFORT_TO_THINKING[classified.primary.effort] ?? TIER_EFFORT[tier];
+	const rawThinking =
+		SCHEMA_EFFORT_TO_THINKING[classified.primary.effort] ??
+		policy.defaultEffortLevel;
+	const thinking = applyModelEffortBias(
+		rawThinking,
+		classified,
+		model,
+		policy.defaultEffortLevel,
+	);
 	const provider =
 		typeof model.provider === "string" ? model.provider : "unknown";
 	const providerTrust = providerFamilyTrust(current, model);
@@ -807,14 +831,11 @@ const TIER_TO_ROUTE: Record<Tier, RouterSize> = {
 	high: "large",
 };
 
-// Default effort cap -- prevent xhigh unless explicitly configured.
-const DEFAULT_MAX_EFFORT = "high";
-
 // GPT-5.5 on openai-codex is strong enough that routine prompts should stay
-// cheap/fast. Treat low as the normal default: medium classifier effort is
-// biased down to low, and high is reserved for high-confidence complex prompts.
-// xhigh is never selected by the router because the global default cap remains
-// "high"; if the user manually sets xhigh, classifyAndRoute preserves it.
+// at the configured default effort. Medium classifier effort is biased to that
+// default, and high is reserved for high-confidence complex prompts. xhigh is
+// never selected by the router because the global default cap remains "high";
+// if the user manually sets xhigh, classifyAndRoute preserves it.
 const CODEX_GPT55_PROVIDER = "openai-codex";
 const CODEX_GPT55_MODEL = "gpt-5.5";
 const CODEX_GPT55_HIGH_CONFIDENCE_FLOOR = 0.8;
@@ -916,11 +937,12 @@ export function applyModelEffortBias(
 	effort: string,
 	rec: ClassifierRecommendation,
 	model: unknown,
+	defaultEffort = "low",
 ): string {
 	if (!isCodexGpt55(model)) return effort;
-	if (effort === "medium") return "low";
+	if (effort === "medium") return defaultEffort;
 	if (effort === "high" && rec.confidence < CODEX_GPT55_HIGH_CONFIDENCE_FLOOR) {
-		return "low";
+		return defaultEffort;
 	}
 	return effort;
 }
@@ -1197,7 +1219,7 @@ async function classifyAndRoute(
 
 	if (rec === null) {
 		// Null fallback: keep current applied route.
-		const effort = state.lastAppliedEffort ?? TIER_EFFORT[state.currentTier];
+		const effort = state.lastAppliedEffort ?? policy.defaultEffortLevel;
 		state.lastClassifierRec = null;
 		state.lastRuleFired = "null-fallback";
 		const size = modelSizeForTier(state.currentTier);
@@ -1236,7 +1258,9 @@ async function classifyAndRoute(
 	const prevTier = state.lastEffective;
 	const prevEffort = state.lastAppliedEffort;
 	const applied = applyPolicy(rec, state, policy);
-	const effortOverride = readUserEffortOverride(ctx, { prompt: text });
+	const effortOverride =
+		readUserEffortOverride(ctx, { prompt: text }) ??
+		readRuntimeEffortOverride(pi, state.lastAppliedEffort);
 	const { tier: effectiveTier, ruleFired } = applied;
 	let { effort } = applied;
 	const routerRecommendedEffort = effort;
@@ -1280,7 +1304,12 @@ async function classifyAndRoute(
 	}
 
 	if (!effortOverride) {
-		effort = applyModelEffortBias(effort, rec, model);
+		effort = applyModelEffortBias(
+			effort,
+			rec,
+			model,
+			policy.defaultEffortLevel,
+		);
 	}
 	const finalApplied = { ...applied, effort };
 	state.lastRuleFired = ruleFired;
@@ -1361,6 +1390,22 @@ export default function (pi: ExtensionAPI) {
 	// Expose for external callers and tests.
 	(pi as any)._escalateFor = escalateFor;
 
+	pi.registerShortcut(Key.ctrl(Key.backtick), {
+		description: "Reset thinking level to router default",
+		handler: async (ctx) => {
+			try {
+				(pi as any).setThinkingLevel(policy.defaultEffortLevel);
+				state.lastAppliedEffort = policy.defaultEffortLevel;
+				ctx.ui?.setStatus?.("router", `thinking: ${policy.defaultEffortLevel}`);
+			} catch (err: unknown) {
+				ctx.ui?.notify?.(
+					err instanceof Error ? err.message : String(err),
+					"error",
+				);
+			}
+		},
+	});
+
 	// -- Reset state on new session --
 	pi.on("session_start", async (_event, ctx) => {
 		debugSessionId =
@@ -1383,8 +1428,8 @@ export default function (pi: ExtensionAPI) {
 			shouldForceLowThinkingOnSessionStart(ctx) &&
 			typeof (pi as any).setThinkingLevel === "function"
 		) {
-			(pi as any).setThinkingLevel("low");
-			state.lastAppliedEffort = "low";
+			(pi as any).setThinkingLevel(policy.defaultEffortLevel);
+			state.lastAppliedEffort = policy.defaultEffortLevel;
 		}
 		ctx.ui.setStatus("router", "router: ready");
 	});
@@ -1395,10 +1440,17 @@ export default function (pi: ExtensionAPI) {
 		const text = extractProviderPrompt(event.payload);
 		if (!text) return undefined;
 		const ctxRecord = ctx as unknown as Record<string, unknown>;
+		const runtimeEffortOverride = readRuntimeEffortOverride(
+			pi,
+			state.lastAppliedEffort,
+		);
 		const routeCtx = {
 			...ctx,
 			router: {
 				...(isPlainRecord(ctxRecord.router) ? ctxRecord.router : {}),
+				...(runtimeEffortOverride
+					? { effortOverride: runtimeEffortOverride.effort }
+					: {}),
 				...(state.lastRouteDecision
 					? { previousAppliedRoute: state.lastRouteDecision.applied_route }
 					: {}),

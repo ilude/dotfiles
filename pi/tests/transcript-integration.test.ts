@@ -299,6 +299,7 @@ describe("T3 -- provider, router, message hooks (criterion 1)", () => {
 			UNCERTAIN_THRESHOLD: 0.55,
 			UNCERTAIN_FALLBACK_ENABLED: false,
 			maxEffortLevel: "high",
+			defaultEffortLevel: "medium",
 		};
 		await emitRoutingDecision(promptText, rec as any, { tier: "mid", effort: "medium", ruleFired: "classifier" }, policy);
 
@@ -614,6 +615,7 @@ describe("T3 -- end-to-end turn (criterion 3)", () => {
 			UNCERTAIN_THRESHOLD: 0.55,
 			UNCERTAIN_FALLBACK_ENABLED: false,
 			maxEffortLevel: "high",
+			defaultEffortLevel: "medium",
 		};
 
 		await fire(env.pi, "turn_start", { type: "turn_start", turnIndex: 1, timestamp: Date.now() }, env.ctx);

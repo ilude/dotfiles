@@ -57,12 +57,21 @@ describe("applyModelEffortBias", () => {
 	const codexGpt55 = { provider: "openai-codex", id: "gpt-5.5" };
 	const otherModel = { provider: "openai-codex", id: "gpt-5.4" };
 
-	it("biases GPT-5.5 medium effort down to low", () => {
+	it("biases GPT-5.5 medium effort down to the configured default", () => {
 		expect(
 			applyModelEffortBias(
 				"medium",
 				makeV3Rec("core", "medium", 0.95),
 				codexGpt55,
+				"medium",
+			),
+		).toBe("medium");
+		expect(
+			applyModelEffortBias(
+				"medium",
+				makeV3Rec("core", "medium", 0.95),
+				codexGpt55,
+				"low",
 			),
 		).toBe("low");
 	});
@@ -73,8 +82,9 @@ describe("applyModelEffortBias", () => {
 				"high",
 				makeV3Rec("large", "high", 0.79),
 				codexGpt55,
+				"medium",
 			),
-		).toBe("low");
+		).toBe("medium");
 		expect(
 			applyModelEffortBias("high", makeV3Rec("large", "high", 0.8), codexGpt55),
 		).toBe("high");
@@ -443,6 +453,42 @@ describe("user effort override", () => {
 		) as Record<string, unknown>;
 
 		expect(payload.reasoning_effort).toBe("low");
+	});
+
+	it("preserves runtime thinking selection on the next routed input", async () => {
+		const pi = createMockPi();
+		(pi as any).setModel = vi.fn(async () => {});
+		(pi as any).setThinkingLevel = vi.fn();
+		(pi as any).getThinkingLevel = vi.fn(() => "xhigh");
+		promptRouter(pi as any);
+
+		const availableModels = [
+			{ provider: "openai-codex", id: "gpt-5.5-mini" },
+			{ provider: "openai-codex", id: "gpt-5.5-fast" },
+			{ provider: "openai-codex", id: "gpt-5.5" },
+		];
+		const ctx = createMockCtx({
+			model: { provider: "openai-codex", id: "gpt-5.5" },
+			modelRegistry: {
+				getAvailable: vi.fn(() => availableModels),
+				find: vi.fn((provider: string, id: string) =>
+					availableModels.find((m) => m.provider === provider && m.id === id),
+				),
+			},
+			ui: { ...createMockCtx().ui, setStatus: vi.fn(), notify: vi.fn() },
+		});
+
+		const inputHook = pi._getHook("input")[0];
+		(pi.exec as any).mockResolvedValueOnce({
+			code: 0,
+			stdout: makeV3Json("core", "medium", 0.95),
+			stderr: "",
+		});
+
+		await inputHook.handler({ text: "analyze this", source: "user" }, ctx);
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect((pi as any).setThinkingLevel).toHaveBeenLastCalledWith("xhigh");
 	});
 
 	it("records privacy-safe override telemetry fields", () => {
@@ -1066,7 +1112,7 @@ describe("prompt-router extension -- session_start hook", () => {
 		);
 	});
 
-	it("forces low thinking for configured GPT-5.5 default even when ctx.model is missing", async () => {
+	it("sets configured router default thinking for configured GPT-5.5 default even when ctx.model is missing", async () => {
 		const pi = createMockPi();
 		(pi as any).setThinkingLevel = vi.fn();
 		promptRouter(pi as any);
@@ -1079,10 +1125,30 @@ describe("prompt-router extension -- session_start hook", () => {
 
 		await sessionHooks[0].handler({}, ctx);
 
-		expect((pi as any).setThinkingLevel).toHaveBeenCalledWith("low");
+		expect((pi as any).setThinkingLevel).toHaveBeenCalledWith("medium");
 		expect((ctx.ui as any).setStatus).toHaveBeenCalledWith(
 			"router",
 			"router: ready",
+		);
+	});
+
+	it("registers Ctrl+backtick to reset thinking to the router default", async () => {
+		const pi = createMockPi();
+		(pi as any).setThinkingLevel = vi.fn();
+		promptRouter(pi as any);
+
+		const shortcut = pi._shortcuts.find((s) => s.shortcut === "ctrl+`");
+		expect(shortcut).toBeDefined();
+
+		const ctx = createMockCtx({
+			ui: { ...createMockCtx().ui, setStatus: vi.fn(), notify: vi.fn() },
+		});
+		await shortcut!.handler(ctx);
+
+		expect((pi as any).setThinkingLevel).toHaveBeenCalledWith("medium");
+		expect((ctx.ui as any).setStatus).toHaveBeenCalledWith(
+			"router",
+			"thinking: medium",
 		);
 	});
 });
@@ -1120,6 +1186,7 @@ function makePolicy(
 		UNCERTAIN_THRESHOLD: number;
 		UNCERTAIN_FALLBACK_ENABLED: boolean;
 		maxEffortLevel: string;
+		defaultEffortLevel: string;
 	}> = {},
 ) {
 	return {
@@ -1130,6 +1197,7 @@ function makePolicy(
 		UNCERTAIN_THRESHOLD: 0.55,
 		UNCERTAIN_FALLBACK_ENABLED: false,
 		maxEffortLevel: "high",
+		defaultEffortLevel: "medium",
 		...overrides,
 	};
 }

@@ -23,6 +23,7 @@ export interface RouterPolicy {
 	UNCERTAIN_THRESHOLD: number;
 	UNCERTAIN_FALLBACK_ENABLED: boolean;
 	maxEffortLevel: string;
+	defaultEffortLevel: string;
 	classifierMode: ClassifierMode;
 }
 
@@ -34,6 +35,7 @@ export const POLICY_DEFAULTS: RouterPolicy = {
 	UNCERTAIN_THRESHOLD: 0.55,
 	UNCERTAIN_FALLBACK_ENABLED: false,
 	maxEffortLevel: "high",
+	defaultEffortLevel: "medium",
 	classifierMode: "t2",
 };
 
@@ -62,14 +64,16 @@ function readBoolean(
 		: Boolean(fallback);
 }
 
-function readMaxEffortLevel(
+function readEffortLevel(
 	source: Record<string, unknown>,
+	key: string,
+	fallback: string,
 	effortOrder: Record<string, number>,
 ): string {
-	return typeof source.maxLevel === "string" &&
-		effortOrder[source.maxLevel] !== undefined
-		? source.maxLevel
-		: POLICY_DEFAULTS.maxEffortLevel;
+	const value = source[key];
+	return typeof value === "string" && effortOrder[value] !== undefined
+		? value
+		: fallback;
 }
 
 export class InvalidRouterSettingsError extends Error {
@@ -112,7 +116,18 @@ export function loadRouterPolicy(
 			COOLDOWN_TURNS: readNumber(p, "COOLDOWN_TURNS"),
 			UNCERTAIN_THRESHOLD: readNumber(p, "UNCERTAIN_THRESHOLD"),
 			UNCERTAIN_FALLBACK_ENABLED: readBoolean(p, "UNCERTAIN_FALLBACK_ENABLED"),
-			maxEffortLevel: readMaxEffortLevel(e, effortOrder),
+			maxEffortLevel: readEffortLevel(
+				e,
+				"maxLevel",
+				POLICY_DEFAULTS.maxEffortLevel,
+				effortOrder,
+			),
+			defaultEffortLevel: readEffortLevel(
+				e,
+				"defaultLevel",
+				POLICY_DEFAULTS.defaultEffortLevel,
+				effortOrder,
+			),
 			classifierMode: readClassifierMode(router),
 		};
 	} catch (err) {

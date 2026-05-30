@@ -6,6 +6,9 @@
   "router": {
     "classifier": {
       "mode": "confgate"
+    },
+    "effort": {
+      "defaultLevel": "medium"
     }
   },
   "packages": [],
