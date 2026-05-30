@@ -82,11 +82,7 @@ export {
 } from "./damage-control-rules.js";
 
 const DENY_PROVENANCE: DecisionProvenance = "rule";
-const DAMAGE_CONTROL_MODES: DamageControlMode[] = [
-	"default",
-	"whitelist",
-	"noshell",
-];
+const DAMAGE_CONTROL_MODES: DamageControlMode[] = ["default", "noshell"];
 interface DamageControlRuntimeState {
 	health: DamageControlHealth;
 	mode: DamageControlMode;
@@ -102,6 +98,7 @@ function safeRecordDeny(
 	reason: string,
 	rule?: string,
 	replayPayload?: Record<string, unknown>,
+	metadata?: Record<string, unknown>,
 ): void {
 	try {
 		const action = `${toolName}:${rawAction.slice(0, 200)}`;
@@ -112,6 +109,7 @@ function safeRecordDeny(
 			summary: reason,
 			rule,
 			replayPayload,
+			metadata,
 		});
 		recordEvent({
 			event: "permission_decision",
@@ -157,6 +155,7 @@ function replayDescriptor(input: {
 	cwd?: string;
 	reason: string;
 	rule?: string;
+	metadata?: Record<string, unknown>;
 }): Record<string, unknown> {
 	return {
 		toolName: input.toolName,
@@ -166,6 +165,7 @@ function replayDescriptor(input: {
 			? "ask-deny"
 			: "block",
 		redactedSummary: redactSummary(input.rawAction),
+		metadata: input.metadata,
 	};
 }
 
@@ -274,12 +274,11 @@ function registerDamageControlCommand(
 	if (!registerCommand) return;
 	const command = {
 		description:
-			"Show or switch the session-local damage-control mode: default, whitelist, noshell",
+			"Show or switch the session-local damage-control mode: default, noshell",
 		getArgumentCompletions: (prefix: string) => {
 			const items = [
 				{ value: "status", label: "status" },
 				{ value: "mode default", label: "mode default" },
-				{ value: "mode whitelist", label: "mode whitelist" },
 				{ value: "mode noshell", label: "mode noshell" },
 			];
 			const filtered = items.filter((item) => item.value.startsWith(prefix));
@@ -325,17 +324,14 @@ function registerDamageControlCommand(
 			}
 			if (subcommand !== "mode" || tokens.length !== 2) {
 				ctx.ui.notify(
-					"Usage: /damage-control status | /damage-control mode default|whitelist|noshell | /damage-control stats | /damage-control recent | /damage-control label <id> <label>",
+					"Usage: /damage-control status | /damage-control mode default|noshell | /damage-control stats | /damage-control recent | /damage-control label <id> <label>",
 					"warning",
 				);
 				return;
 			}
 			const mode = parseDamageControlMode(rawMode ?? "");
 			if (!mode) {
-				ctx.ui.notify(
-					"Usage: /damage-control mode default|whitelist|noshell",
-					"warning",
-				);
+				ctx.ui.notify("Usage: /damage-control mode default|noshell", "warning");
 				return;
 			}
 			const previousMode = state.mode;
@@ -376,6 +372,7 @@ function recordBlock(
 	decision: { block: true; reason: string },
 	ruleSource?: string,
 	toolCallId?: string,
+	metadata?: Record<string, unknown>,
 ): void {
 	const rule = extractRulePattern(decision.reason);
 	safeRecordDamageControlEval({
@@ -401,7 +398,9 @@ function recordBlock(
 			cwd,
 			reason: decision.reason,
 			rule,
+			metadata,
 		}),
+		metadata,
 	);
 }
 
@@ -459,6 +458,9 @@ export default function (pi: ExtensionAPI) {
 				decision,
 				loaded.health.ruleSource,
 				event.toolCallId,
+				sequenceDecision.evidence
+					? { sequenceEvidence: sequenceDecision.evidence }
+					: undefined,
 			);
 			return decision;
 		}

@@ -65,6 +65,19 @@ no_delete_paths: []
 		).resolves.toEqual({ decision: "allow" });
 	});
 
+	it("allows read-only git inspection commands", async () => {
+		await expect(
+			analyzeCommandAst("git worktree list", [rmRule], astConfig),
+		).resolves.toEqual({ decision: "allow" });
+		await expect(
+			analyzeCommandAst(
+				"git status --short --branch && git rev-parse --short HEAD && git log -1 --oneline",
+				[rmRule],
+				astConfig,
+			),
+		).resolves.toEqual({ decision: "allow" });
+	});
+
 	it("blocks a destructive command hidden behind bash -c", async () => {
 		const result = await analyzeCommandAst(
 			"bash -c 'rm -rf /tmp/x'",

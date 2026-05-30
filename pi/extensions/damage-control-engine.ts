@@ -11,10 +11,9 @@ import {
 	type DangerousCommand,
 } from "./damage-control-rules.js";
 
-export type DamageControlMode = "default" | "whitelist" | "noshell";
+export type DamageControlMode = "default" | "noshell";
 
 const SHELL_TOOLS = new Set(["bash", "pwsh"]);
-const COMPOUND_SHELL_OPERATOR = /&&|\|\||[;|`<>]|\$\(/;
 const READ_ONLY_SEARCH_COMMANDS = new Set([
 	"ack",
 	"ag",
@@ -60,26 +59,6 @@ const READ_ONLY_PIPE_COMMANDS = new Set([
 	"wc",
 	"yq",
 ]);
-
-const SHELL_WHITELIST: Record<string, RegExp[]> = {
-	bash: [
-		/^pwd$/,
-		/^ls(?:\s+-[A-Za-z]+)?(?:\s+[\w./~-]+)?$/,
-		/^git\s+status(?:\s+--short)?$/,
-		/^git\s+diff(?:\s+--stat|\s+--cached)?$/,
-		/^git\s+log(?:\s+--oneline)?(?:\s+-\d+)?$/,
-		/^pnpm\s+(?:test|run\s+typecheck)(?:\s+[\w./-]+)?$/,
-		/^uv\s+run\s+(?:pytest|ruff)(?:\s+[\w./-]+)?$/,
-	],
-	pwsh: [
-		/^(?:Get-Location|pwd)$/i,
-		/^(?:Get-ChildItem|ls)(?:\s+[\w./:~\\-]+)?$/i,
-		/^git\s+status(?:\s+--short)?$/i,
-		/^git\s+diff(?:\s+--stat|\s+--cached)?$/i,
-		/^git\s+log(?:\s+--oneline)?(?:\s+-\d+)?$/i,
-		/^pnpm\s+(?:test|run\s+typecheck)(?:\s+[\w./-]+)?$/i,
-	],
-};
 
 function stripShellQuotes(value: string): string {
 	if (
@@ -456,20 +435,7 @@ export function evaluateShellMode(
 			reason: `${toolName} is disabled by damage-control mode noshell`,
 		};
 	}
-	if (mode !== "whitelist") return undefined;
-	const trimmed = command.trim();
-	if (COMPOUND_SHELL_OPERATOR.test(trimmed)) {
-		return {
-			block: true,
-			reason: `${toolName} command blocked by damage-control whitelist mode: compound shell operators are not allowlisted`,
-		};
-	}
-	const allowlist = SHELL_WHITELIST[toolName] ?? [];
-	if (allowlist.some((pattern) => pattern.test(trimmed))) return undefined;
-	return {
-		block: true,
-		reason: `${toolName} command blocked by damage-control whitelist mode: command is not allowlisted`,
-	};
+	return undefined;
 }
 
 export async function evaluateDangerousCommand(

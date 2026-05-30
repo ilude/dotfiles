@@ -150,24 +150,27 @@ no_delete_paths: []
 		expect(pwshResult?.block).toBe(true);
 	});
 
-	it("supports default, whitelist, and noshell shell modes", async () => {
+	it("supports default and noshell shell modes", async () => {
 		const mod = await import("../extensions/damage-control.ts");
 
 		expect(
 			mod.evaluateShellMode("bash", "git status --short", "default"),
 		).toBeUndefined();
 		expect(
-			mod.evaluateShellMode("bash", "git status --short", "whitelist"),
-		).toBeUndefined();
-		expect(mod.evaluateShellMode("bash", "echo hi", "whitelist")?.block).toBe(
-			true,
-		);
-		expect(
-			mod.evaluateShellMode("pwsh", "Get-Location", "whitelist"),
+			mod.evaluateShellMode("bash", "git worktree list", "default"),
 		).toBeUndefined();
 		expect(
-			mod.evaluateShellMode("pwsh", "Get-Location; Get-ChildItem", "whitelist")
-				?.block,
+			mod.evaluateShellMode(
+				"bash",
+				"git status --short --branch && git rev-parse --short HEAD && git log -1 --oneline",
+				"default",
+			),
+		).toBeUndefined();
+		expect(
+			mod.evaluateShellMode("pwsh", "Get-Location", "default"),
+		).toBeUndefined();
+		expect(
+			mod.evaluateShellMode("bash", "git status --short", "noshell")?.block,
 		).toBe(true);
 		expect(
 			mod.evaluateShellMode("pwsh", "Get-Location", "noshell")?.block,
@@ -201,7 +204,7 @@ no_delete_paths: []
 		};
 
 		mod.default(pi as Parameters<typeof mod.default>[0]);
-		await commands.dc.handler("mode whitelist", ctx);
+		await commands.dc.handler("mode noshell", ctx);
 		await commands["damage-control"].handler("status", ctx);
 
 		expect(pi.registerCommand).toHaveBeenCalledWith(
@@ -211,10 +214,10 @@ no_delete_paths: []
 		expect(pi.registerCommand).toHaveBeenCalledWith("dc", expect.any(Object));
 		expect(ctx.ui.setStatus).toHaveBeenCalledWith(
 			"damage-control",
-			expect.stringContaining("whitelist"),
+			expect.stringContaining("noshell"),
 		);
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			expect.stringContaining("mode: whitelist"),
+			expect.stringContaining("mode: noshell"),
 			"info",
 		);
 	});
@@ -341,6 +344,36 @@ no_delete_paths: []
 				})
 			)?.block,
 		).toBe(true);
+	});
+
+	it("allows read-only git inspection commands in default dangerous-command analysis", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const astAnalysis = {
+			enabled: true,
+			timeoutMs: 500,
+			safeCommands: ["git status", "git log"],
+			dangerousCommands: ["rm", "mv", "chmod"],
+		};
+
+		expect(
+			mod.isReadOnlySearchCommand(
+				"git status --short --branch && git rev-parse --short HEAD && git log -1 --oneline",
+				"bash",
+			),
+		).toBe(false);
+		expect(
+			await mod.evaluateDangerousCommand(
+				"git status --short --branch && git rev-parse --short HEAD && git log -1 --oneline",
+				[],
+				{ toolName: "bash", astAnalysis },
+			),
+		).toBeUndefined();
+		expect(
+			await mod.evaluateDangerousCommand("git worktree list", [], {
+				toolName: "bash",
+				astAnalysis,
+			}),
+		).toBeUndefined();
 	});
 
 	it("does not match dangerous text inside read-only search commands", async () => {
