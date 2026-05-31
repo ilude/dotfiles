@@ -1811,36 +1811,31 @@ try {
             }
         }
 
-        # Install Pi only when missing, with no version pin. Once installed,
-        # version management is delegated to `pi update` so the bootstrap never
-        # downgrades a self-updated global install back to a stale pinned version.
-        if (-not $piInstalled) {
-            Write-Host "  Installing pi-coding-agent via pnpm..." -ForegroundColor Cyan
-            pnpm add -g --allow-build=koffi --allow-build=protobufjs `
-                '@earendil-works/pi-coding-agent' `
-                '@earendil-works/pi-agent-core' `
-                '@earendil-works/pi-ai' `
-                '@earendil-works/pi-tui'
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "  pi-coding-agent: installed successfully via pnpm" -ForegroundColor Green
+        # Install or update Pi on every run with no version pin. pnpm's global
+        # policy, including minimumReleaseAge, determines the newest eligible version.
+        Write-Host "  Installing/updating pi-coding-agent via pnpm..." -ForegroundColor Cyan
+        pnpm add -g --allow-build=koffi --allow-build=protobufjs `
+            '@earendil-works/pi-coding-agent' `
+            '@earendil-works/pi-agent-core' `
+            '@earendil-works/pi-ai' `
+            '@earendil-works/pi-tui'
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "  pi-coding-agent: installed/updated successfully via pnpm" -ForegroundColor Green
 
-                $piMarkdownPatch = Join-Path $BASEDIR 'install.d\50-pi-markdown-code-fence-fix.py'
-                if (Test-Path $piMarkdownPatch) {
-                    $python = Get-Command python -ErrorAction SilentlyContinue
-                    if ($python) {
-                        & $python.Source $piMarkdownPatch
-                        if ($LASTEXITCODE -ne 0) {
-                            Write-Warning "Pi markdown code fence patch failed; continuing"
-                        }
-                    } else {
-                        Write-Warning "python unavailable; skipping Pi markdown code fence patch"
+            $piMarkdownPatch = Join-Path $BASEDIR 'install.d\50-pi-markdown-code-fence-fix.py'
+            if (Test-Path $piMarkdownPatch) {
+                $python = Get-Command python -ErrorAction SilentlyContinue
+                if ($python) {
+                    & $python.Source $piMarkdownPatch
+                    if ($LASTEXITCODE -ne 0) {
+                        Write-Warning "Pi markdown code fence patch failed; continuing"
                     }
+                } else {
+                    Write-Warning "python unavailable; skipping Pi markdown code fence patch"
                 }
-            } else {
-                Write-Host "  pi-coding-agent: installation failed" -ForegroundColor Red
             }
         } else {
-            Write-Host "  pi-coding-agent: already installed -- leaving version to 'pi update'" -ForegroundColor DarkGray
+            Write-Host "  pi-coding-agent: installation/update failed" -ForegroundColor Red
         }
     } else {
         Write-Host "  pnpm not found - skipping Pi installation (Windows installs Pi via pnpm because Bun's resolver fails on Pi's AWS SDK deps)" -ForegroundColor Yellow

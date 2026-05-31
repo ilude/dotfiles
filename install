@@ -357,12 +357,12 @@ if command -v pnpm &>/dev/null; then
         npm uninstall -g @mariozechner/pi-coding-agent &>/dev/null || true
     fi
 
-    echo "Installing/updating pi-coding-agent to pinned version 0.74.0..."
+    echo "Installing/updating pi-coding-agent via pnpm..."
     pnpm add -g --allow-build=koffi --allow-build=protobufjs \
-        @earendil-works/pi-coding-agent@0.74.0 \
-        @earendil-works/pi-agent-core@0.74.0 \
-        @earendil-works/pi-ai@0.74.0 \
-        @earendil-works/pi-tui@0.74.0
+        @earendil-works/pi-coding-agent \
+        @earendil-works/pi-agent-core \
+        @earendil-works/pi-ai \
+        @earendil-works/pi-tui
 
     pi_markdown_patch="${BASEDIR}/install.d/50-pi-markdown-code-fence-fix.py"
     if [[ -f "$pi_markdown_patch" ]]; then
