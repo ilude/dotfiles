@@ -264,8 +264,8 @@ function pacedPercentColor(
 	const elapsedPercent = windowElapsedPercent(window);
 	if (elapsedPercent === undefined) return ANSI_WHITE;
 	if (
-		elapsedPercent < MIN_PACE_ELAPSED_PERCENT ||
-		used < MIN_PACE_USED_PERCENT
+		elapsedPercent <= MIN_PACE_ELAPSED_PERCENT ||
+		used <= MIN_PACE_USED_PERCENT
 	)
 		return ANSI_LIGHT_GREEN;
 	const delta = windowPaceDelta(window, used);

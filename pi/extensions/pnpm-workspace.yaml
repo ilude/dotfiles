@@ -5,4 +5,5 @@ allowBuilds:
   '@google/genai': false
   koffi: false
   protobufjs: false
+  tree-sitter: false
   tree-sitter-bash: false
