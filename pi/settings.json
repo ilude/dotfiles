@@ -2,7 +2,7 @@
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.5",
   "defaultThinkingLevel": "minimal",
-  "lastChangelogVersion": "0.75.5",
+  "lastChangelogVersion": "0.76.0",
   "router": {
     "classifier": {
       "mode": "confgate"
