@@ -1,3 +1,13 @@
+## 2026-06-01: Default Pi goal prompt skill to inline output
+
+**Why:** Requests to create a `/goal` prompt should usually return a copyable command on screen, not create a markdown file unless the user asks for one or the prompt is too large for inline use.
+
+**Fix:** Updated the Pi goal prompt skill to make inline `/goal ...` output the default for most tasks, allow file-backed prompts for large or complex goals, and ask before creating a file when only recommending a file-backed prompt.
+
+**Files:** ~/.dotfiles/pi/skills/pi-goal/SKILL.md
+
+---
+
 ## 2026-05-23: Tune Pi commit secret scanning
 
 **Why:** The Pi `/commit` workflow's documented `detect-secrets-hook` command used the default Yelp detect-secrets ruleset, so `KeywordDetector` blocked harmless test fixtures containing words like `secret` or `key`.

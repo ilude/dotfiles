@@ -1,6 +1,6 @@
 ---
 name: pi-goal
-description: "Use when the user asks to create, draft, write, improve, optimize, or build a Pi /goal prompt, goal prompt file, long-running objective, or goal_prompt_file.md. Triggers: /goal prompt, goal prompt, pi goal, goal_prompt_file.md, write a goal for, turn this into a goal."
+description: "Use when the user asks to create, draft, write, improve, optimize, or build an inline Pi /goal command, goal prompt file, long-running objective, or goal_prompt_file.md. Triggers: /goal prompt, goal prompt, pi goal, goal_prompt_file.md, write a goal for, turn this into a goal."
 ---
 
 # Pi Goal Prompt Builder
@@ -20,18 +20,20 @@ Optimize for:
 
 ## Practical Steps
 
-### 1. Decide whether inline or file-backed
+### 1. Default to an inline command unless the user asks for a file
 
-Use inline `/goal <objective>` when the objective is short and simple.
+When the user asks to "create a /goal prompt", "write a goal prompt", or "turn this into a goal" without asking for a file, output a copyable command on screen that starts with `/goal `.
 
-Use a goal prompt file when any of these are true:
+Use inline `/goal <objective>` when the objective is short or moderate and can fit in a compact command.
 
-- The goal has multiple phases or constraints.
-- The user provided notes, logs, acceptance criteria, or context.
-- The prompt may exceed a few paragraphs.
+Most goals should stay inline. Use a goal prompt file only when the user explicitly asks for a file/path, or when the goal is large or complex enough that inline output would be impractical:
+
+- The goal has multiple phases with detailed constraints.
+- The user provided long notes, logs, acceptance criteria, or context that must be preserved.
+- The prompt would exceed a few paragraphs.
 - The work should be resumed or audited later.
 
-Recommended file name patterns:
+For large or complex goals, the skill may recommend a file-backed prompt, but ask before creating the file unless the user explicitly requested file creation. Recommended file name patterns:
 
 - `.specs/<slug>/goal_prompt_file.md`
 - `docs/<topic>/goal_prompt_file.md`
@@ -166,7 +168,9 @@ Poor file-backed content:
 
 ## Quick Reference
 
-### Inline goal pattern
+### Inline response pattern
+
+When the user asks for a `/goal` prompt and not a file, respond with only the copyable command or a short lead-in plus the command:
 
 ```text
 /goal <specific outcome>. Work until complete, run <validation command>, repair safe in-scope failures, ask before <manual gate>, then call goal_complete with accomplished work, validation, current state, gaps, and next steps.
