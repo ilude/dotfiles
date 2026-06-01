@@ -22,7 +22,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { Type } from "@sinclair/typebox";
 import { Text } from "@earendil-works/pi-tui";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { AgentToolResult, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -152,7 +152,51 @@ function saveTodos(cwd: string, state: TodoState): void {
   const filePath = getTodoPath(cwd);
   const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(filePath, JSON.stringify(state, null, 2), "utf-8");
+  const tempPath = path.join(dir, `todo.json.${process.pid}.${Date.now()}.tmp`);
+  try {
+    fs.writeFileSync(tempPath, JSON.stringify(state, null, 2), "utf-8");
+    fs.renameSync(tempPath, filePath);
+  } finally {
+    if (fs.existsSync(tempPath)) fs.rmSync(tempPath, { force: true });
+  }
+}
+
+const TODO_LOCK_TIMEOUT_MS = 5_000;
+const TODO_LOCK_RETRY_MS = 25;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withTodoLock(
+  cwd: string,
+  callback: (state: TodoState) => AgentToolResult<unknown> | Promise<AgentToolResult<unknown>>,
+): Promise<AgentToolResult<unknown>> {
+  const filePath = getTodoPath(cwd);
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const lockPath = `${filePath}.lock`;
+  const started = Date.now();
+
+  while (true) {
+    try {
+      const fd = fs.openSync(lockPath, "wx");
+      try {
+        fs.writeFileSync(fd, `${process.pid}\n`, "utf-8");
+        return await callback(loadTodos(cwd));
+      } finally {
+        fs.closeSync(fd);
+        fs.rmSync(lockPath, { force: true });
+      }
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "EEXIST") throw error;
+      if (Date.now() - started >= TODO_LOCK_TIMEOUT_MS) {
+        throw new Error(`Timed out waiting for todo lock: ${lockPath}`);
+      }
+      await delay(TODO_LOCK_RETRY_MS);
+    }
+  }
 }
 
 // ── Extension ───────────────────────────────────────────────────────────────
@@ -200,10 +244,10 @@ export default function (pi: ExtensionAPI) {
     }),
 
     execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const state = loadTodos(ctx.cwd);
-      const now = new Date().toISOString();
+      return withTodoLock(ctx.cwd, (state) => {
+        const now = new Date().toISOString();
 
-      switch (params.action) {
+        switch (params.action) {
         case "add": {
           if (!params.title) {
             return Promise.resolve({
@@ -221,8 +265,12 @@ export default function (pi: ExtensionAPI) {
               });
             }
           }
+          let id = generateId();
+          while (state.items.some((existing) => existing.id === id)) {
+            id = generateId();
+          }
           const item: TodoItem = {
-            id: generateId(),
+            id,
             title: params.title,
             status: "pending",
             depends_on: deps,
@@ -342,12 +390,13 @@ export default function (pi: ExtensionAPI) {
           });
         }
 
-        default:
-          return Promise.resolve({
-            content: [{ type: "text" as const, text: `Unknown action: ${params.action}` }],
-            isError: true, details: undefined,
-          });
-      }
+          default:
+            return Promise.resolve({
+              content: [{ type: "text" as const, text: `Unknown action: ${params.action}` }],
+              isError: true, details: undefined,
+            });
+        }
+      });
     },
 
     renderCall(args, theme, _context) {

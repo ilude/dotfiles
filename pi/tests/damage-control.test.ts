@@ -318,7 +318,7 @@ no_delete_paths: []
 		);
 	});
 
-	it("allows rm -f and rm -rf when every target is under a temp directory", async () => {
+	it("allows non-recursive rm -f when every literal target is under a temp directory", async () => {
 		const mod = await import("../extensions/damage-control.ts");
 		const rules = [
 			{
@@ -348,7 +348,84 @@ no_delete_paths: []
 				toolName: "bash",
 				cwd: process.cwd(),
 			}),
+		).resolves.toMatchObject({ block: true });
+	});
+
+	it("allows embedded non-recursive rm -f cleanup for literal temp files", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const rules = [
+			{
+				pattern: "rm force",
+				regex:
+					"\\brm\\s+(?=[^|;&]*?(?:-[A-Za-z]*f[A-Za-z]*|--force)\\b)(?![^|;&]*?(?:-[A-Za-z]*r[A-Za-z]*|--recursive)\\b)",
+				reason:
+					"Force delete bypasses normal interactive safeguards and can remove files irreversibly",
+				action: "ask" as const,
+			},
+		];
+		const command =
+			"ssh host 'python /tmp/update.py && rm -f /tmp/update.py && docker compose up -d'";
+
+		await expect(
+			mod.evaluateDangerousCommand(command, rules, {
+				toolName: "bash",
+				cwd: process.cwd(),
+			}),
 		).resolves.toBeUndefined();
+	});
+
+	it("does not allow embedded rm -f cleanup with dynamic or globbed temp targets", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const rules = [
+			{
+				pattern: "rm force",
+				regex:
+					"\\brm\\s+(?=[^|;&]*?(?:-[A-Za-z]*f[A-Za-z]*|--force)\\b)(?![^|;&]*?(?:-[A-Za-z]*r[A-Za-z]*|--recursive)\\b)",
+				reason:
+					"Force delete bypasses normal interactive safeguards and can remove files irreversibly",
+				action: "ask" as const,
+			},
+		];
+
+		await expect(
+			mod.evaluateDangerousCommand("ssh host 'rm -f /tmp/*'", rules, {
+				toolName: "bash",
+				cwd: process.cwd(),
+			}),
+		).resolves.toMatchObject({ block: true });
+		await expect(
+			mod.evaluateDangerousCommand("ssh host 'rm -f $tmpfile'", rules, {
+				toolName: "bash",
+				cwd: process.cwd(),
+			}),
+		).resolves.toMatchObject({ block: true });
+	});
+
+	it("allows rm -f for Pi todo state only", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const rules = [
+			{
+				pattern: "rm force",
+				regex:
+					"\\brm\\s+(?=[^|;&]*?(?:-[A-Za-z]*f[A-Za-z]*|--force)\\b)(?![^|;&]*?(?:-[A-Za-z]*r[A-Za-z]*|--recursive)\\b)",
+				reason:
+					"Force delete bypasses normal interactive safeguards and can remove files irreversibly",
+				action: "ask" as const,
+			},
+		];
+
+		await expect(
+			mod.evaluateDangerousCommand("rm -f .pi/todo.json", rules, {
+				toolName: "bash",
+				cwd: process.cwd(),
+			}),
+		).resolves.toBeUndefined();
+		await expect(
+			mod.evaluateDangerousCommand("rm -f .pi/other.json", rules, {
+				toolName: "bash",
+				cwd: process.cwd(),
+			}),
+		).resolves.toMatchObject({ block: true });
 	});
 
 	it("does not apply the temp removal exception when any target is outside temp", async () => {

@@ -626,13 +626,61 @@ function isCanonicalTempPath(target: string, cwd: string): boolean {
 	);
 }
 
+function hasRmForceWithoutRecursive(command: string): boolean {
+	const args = tokenize(command).slice(1);
+	const hasForce = args.includes("--force") || hasCombinedShortFlag(args, "f");
+	const hasRecursive =
+		args.includes("--recursive") || hasCombinedShortFlag(args, "r");
+	return hasForce && !hasRecursive;
+}
+
+function isStaticPath(target: string): boolean {
+	return !/[${}*?[\]]/.test(stripShellQuotes(target));
+}
+
 function isTempRemoval(command: string, cwd: string): boolean {
+	if (!hasRmForceWithoutRecursive(command)) return false;
 	const targets = extractRmTargets(command);
 	return (
 		targets.length > 0 &&
 		targets.every(
-			(target) => isRawTempPath(target) || isCanonicalTempPath(target, cwd),
+			(target) =>
+				isStaticPath(target) &&
+				(isRawTempPath(target) || isCanonicalTempPath(target, cwd)),
 		)
+	);
+}
+
+function rmCommandAtMatch(command: string, matchIndex: number): string {
+	const afterMatch = command.slice(matchIndex);
+	const separator = afterMatch.search(/\s(?:&&|\|\|)|[;]/);
+	return (
+		separator === -1 ? afterMatch : afterMatch.slice(0, separator)
+	).trim();
+}
+
+function isMatchedTempRemoval(
+	command: string,
+	rule: DangerousCommand,
+	cwd: string,
+): boolean {
+	const match = commandRuleMatch(command, rule);
+	if (!match) return false;
+	return isTempRemoval(rmCommandAtMatch(command, match.index), cwd);
+}
+
+function isPiTodoStateRemoval(command: string, cwd: string): boolean {
+	const tokens = tokenize(command);
+	if (tokens[0] !== "rm") return false;
+	if (!hasRmForceWithoutRecursive(command)) return false;
+	const targets = extractRmTargets(command);
+	if (targets.length !== 1) return false;
+	const stripped = stripShellQuotes(targets[0]);
+	if (!isStaticPath(stripped)) return false;
+	const result = canonicalizeOrBlock(stripped, cwd);
+	if ("block" in result) return false;
+	return (
+		result.canonical === path.normalize(path.join(cwd, ".pi", "todo.json"))
 	);
 }
 
@@ -687,7 +735,12 @@ function shouldSkipMatchedRule(
 	ctx?: { toolName?: string; cwd?: string },
 ): boolean {
 	if (ctx?.toolName !== "bash") return false;
-	if (isRmForceRule(rule) && ctx.cwd && isTempRemoval(command, ctx.cwd)) {
+	if (
+		isRmForceRule(rule) &&
+		ctx.cwd &&
+		(isMatchedTempRemoval(command, rule, ctx.cwd) ||
+			isPiTodoStateRemoval(command, ctx.cwd))
+	) {
 		return true;
 	}
 	if (shouldAllowReadOnlyXargsShellRule(command, rule)) return true;

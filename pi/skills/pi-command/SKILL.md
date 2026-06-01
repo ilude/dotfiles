@@ -61,6 +61,21 @@ Rules:
 - If additional fields are intentionally accepted, use `Type.Object({...}, { additionalProperties: true })`.
 - Add or update tests that register the extension and validate the exact registered tool schemas, not only command parsing or TypeScript compilation.
 
+## State, concurrency, and idempotency
+
+Pi extensions can run from multiple Pi instances in the same repo. Any extension or command that reads or writes local state must be safe under repeated calls and concurrent processes.
+
+Rules:
+
+- Prefer stateless behavior. If state is needed, keep it repo-local under `.pi/` unless the owning surface already has a different convention.
+- Treat JSON/YAML/text state files as shared mutable state. Use locked read-modify-write for mutations, not separate load and save calls around tool logic.
+- Use atomic writes: write complete content to a temp file in the same directory, then rename over the target.
+- Do not assume one Pi process owns a state file. Design for two agents adding, updating, or deleting state at the same time.
+- Make commands idempotent. Re-running setup, sync, cleanup, or registration commands should converge without duplicate entries or corrupt state.
+- Use deterministic merge/update behavior for append-like state. Generate IDs inside the lock, then check for collisions against the latest loaded state.
+- State reset commands may remove known extension-owned files, but scope them exactly, for example `.pi/todo.json`, not `.pi/*`.
+- Add tests for locking or stale-write prevention when adding a new state file or changing a state mutation path.
+
 ## Verification checklist
 
 1. Verify prompt discovery configuration if using `pi/prompts/`:
@@ -86,3 +101,5 @@ cd pi/extensions && pnpm run typecheck
 ```bash
 cd pi/tests && pnpm test task-tools.test.ts
 ```
+
+5. For stateful extensions, verify idempotency and concurrent-safe mutation with focused tests before considering the command complete.

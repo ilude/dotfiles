@@ -124,6 +124,7 @@ Before finalizing any skill, verify all items:
 - [ ] **Anti-patterns section**: included with concrete examples
 - [ ] **Quick reference**: table, checklist, or command grid included
 - [ ] **Cross-platform**: no Claude-specific features that break OpenCode
+- [ ] **State safety**: Pi extension or command guidance requires idempotency, locking, and atomic writes for local state files
 - [ ] **No defaults**: does not teach what the model already does well
 - [ ] **Academic grounding**: cited where the domain has established theory
 - [ ] **Auto-activate line**: present after the title heading
@@ -145,6 +146,23 @@ Skills should work across tools that support the agent skills standard.
 - Standard frontmatter fields (`name`, `description`) work everywhere
 - Claude-specific fields (`allowed-tools`, `model`, `context`) are silently ignored by other tools
 - Avoid tool-specific features in the main skill body; use frontmatter extensions instead
+
+---
+
+## Pi Extension and Skill State Safety
+
+When a skill instructs agents to build Pi extensions, commands, tools, or local state workflows, it must explicitly require safe state handling.
+
+**Required guidance for stateful Pi work:**
+
+- Prefer idempotent operations: repeated runs should converge, not duplicate work or corrupt files.
+- Treat repo-local state files such as `.pi/*.json` as shared across multiple Pi processes.
+- Require locked read-modify-write for state mutations, plus atomic temp-file rename for writes.
+- Generate IDs and resolve update conflicts while holding the lock, using the latest state from disk.
+- Scope reset/cleanup commands to exact extension-owned files, never broad directories or globs.
+- Require focused tests for idempotency and concurrent or stale-write behavior when adding or changing state files.
+
+**Review prompt:** If a proposed skill or command mentions persistent state, caches, session files, queues, task lists, or `.pi/`, check that it explains ownership, locking, atomic writes, and safe reset behavior.
 
 ---
 

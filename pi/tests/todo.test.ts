@@ -2,7 +2,7 @@
  * Integration tests for todo extension execute function.
  * Uses a temp directory for file I/O — no heavy mocking.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createMockPi, createMockCtx, createMockTheme } from "./helpers/mock-pi.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -72,6 +72,30 @@ describe("todo extension", () => {
     it("should add with notes", async () => {
       const result = await tool.execute("id", { action: "add", title: "Task", notes: "context here" }, undefined, undefined, ctx);
       expect(result.content[0].text).toContain("context here");
+    });
+
+    it("should wait for the todo file lock before writing", async () => {
+      const piDir = path.join(tmpDir, ".pi");
+      fs.mkdirSync(piDir, { recursive: true });
+      const lockPath = path.join(piDir, "todo.json.lock");
+      fs.writeFileSync(lockPath, "held", "utf-8");
+
+      let completed = false;
+      const pending = tool
+        .execute("id", { action: "add", title: "Locked task" }, undefined, undefined, ctx)
+        .then((result) => {
+          completed = true;
+          return result;
+        });
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(completed).toBe(false);
+      expect(fs.existsSync(path.join(piDir, "todo.json"))).toBe(false);
+
+      fs.rmSync(lockPath, { force: true });
+      const result = await pending;
+      expect(result.content[0].text).toContain("Locked task");
+      expect(fs.existsSync(lockPath)).toBe(false);
     });
   });
 
