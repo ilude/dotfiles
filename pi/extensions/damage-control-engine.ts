@@ -59,6 +59,24 @@ const READ_ONLY_PIPE_COMMANDS = new Set([
 	"wc",
 	"yq",
 ]);
+const READ_ONLY_SHELL_SNIPPET_COMMANDS = new Set([
+	"awk",
+	"cat",
+	"cut",
+	"echo",
+	"grep",
+	"head",
+	"jq",
+	"printf",
+	"rg",
+	"sed",
+	"sort",
+	"tail",
+	"tr",
+	"uniq",
+	"wc",
+	"yq",
+]);
 
 function stripShellQuotes(value: string): string {
 	if (
@@ -244,12 +262,32 @@ function stripDockerEnvFileArgs(command: string): string {
 	return command.replace(/--env-file(?:=\S+|\s+\S+)?/g, "--env-file");
 }
 
-function commandMatchesRule(command: string, rule: DangerousCommand): boolean {
+type CommandRuleMatch = {
+	index: number;
+	matchedText: string;
+};
+
+function commandRuleMatch(
+	command: string,
+	rule: DangerousCommand,
+): CommandRuleMatch | undefined {
 	const commandToMatch = isEnvFileRule(rule)
 		? stripDockerEnvFileArgs(command)
 		: command;
-	if (rule.regex) return compileCommandRegex(rule.regex).test(commandToMatch);
-	return commandToMatch.includes(rule.pattern);
+	if (rule.regex) {
+		const match = compileCommandRegex(rule.regex).exec(commandToMatch);
+		if (!match) return undefined;
+		return {
+			index: isEnvFileRule(rule) ? command.indexOf(match[0]) : match.index,
+			matchedText: match[0],
+		};
+	}
+	const index = commandToMatch.indexOf(rule.pattern);
+	return index === -1 ? undefined : { index, matchedText: rule.pattern };
+}
+
+function commandMatchesRule(command: string, rule: DangerousCommand): boolean {
+	return commandRuleMatch(command, rule) !== undefined;
 }
 
 function commandHead(segment: string): string {
@@ -425,7 +463,7 @@ export function hasValidDryRun(command: string): boolean {
 
 export function evaluateShellMode(
 	toolName: string,
-	command: string,
+	_command: string,
 	mode: DamageControlMode,
 ): { block: true; reason: string } | undefined {
 	if (!SHELL_TOOLS.has(toolName)) return undefined;
@@ -447,6 +485,7 @@ export async function evaluateDangerousCommand(
 		toolName?: string;
 		onConfirm?: (rule: DangerousCommand) => void;
 		astAnalysis?: AstAnalysisConfig;
+		cwd?: string;
 	},
 ): Promise<{ block: true; reason: string } | undefined> {
 	if (isReadOnlySearchCommand(command, ctx?.toolName)) return undefined;
@@ -477,12 +516,13 @@ export async function evaluateDangerousCommand(
 			!commandMatchesRule(command, rule)
 		)
 			continue;
+		if (shouldSkipMatchedRule(command, rule, ctx)) continue;
 		if (rule.action === "ask") {
 			if (ctx?.hasUI && ctx.ui?.confirm) {
 				emitTerminalBell();
 				const ok = await ctx.ui.confirm(
 					"Confirm dangerous command",
-					rule.reason,
+					formatDangerousConfirmation(command, rule, ctx),
 				);
 				if (ok) {
 					ctx.onConfirm?.(rule);
@@ -535,6 +575,226 @@ function tokenize(command: string): string[] {
 }
 function isFlagToken(token: string): boolean {
 	return token.startsWith("-") && token !== "-";
+}
+
+function stripOptionValue(tokens: string[], index: number): number {
+	const token = tokens[index];
+	if (!token) return index;
+	if (token === "--") return index;
+	if (token.startsWith("--") && token.includes("=")) return index;
+	if (["--interactive", "--one-file-system"].includes(token)) return index;
+	return index;
+}
+
+function extractRmTargets(command: string): string[] {
+	const tokens = tokenize(command);
+	if (tokens[0] !== "rm") return [];
+	const targets: string[] = [];
+	for (let index = 1; index < tokens.length; index += 1) {
+		const token = tokens[index];
+		if (!token) continue;
+		if (token === "--") {
+			targets.push(...tokens.slice(index + 1).filter(Boolean));
+			break;
+		}
+		if (isFlagToken(token)) {
+			index = stripOptionValue(tokens, index);
+			continue;
+		}
+		targets.push(stripShellQuotes(token));
+	}
+	return targets;
+}
+
+function isRawTempPath(target: string): boolean {
+	const normalized = stripShellQuotes(target).replaceAll("\\", "/");
+	return (
+		normalized === "/tmp" ||
+		normalized.startsWith("/tmp/") ||
+		normalized === "/var/tmp" ||
+		normalized.startsWith("/var/tmp/")
+	);
+}
+
+function isCanonicalTempPath(target: string, cwd: string): boolean {
+	const result = canonicalizeOrBlock(target, cwd);
+	if ("block" in result) return false;
+	const tempRoot = path.normalize(os.tmpdir());
+	return (
+		result.canonical === tempRoot ||
+		result.canonical.startsWith(tempRoot + path.sep)
+	);
+}
+
+function isTempRemoval(command: string, cwd: string): boolean {
+	const targets = extractRmTargets(command);
+	return (
+		targets.length > 0 &&
+		targets.every(
+			(target) => isRawTempPath(target) || isCanonicalTempPath(target, cwd),
+		)
+	);
+}
+
+function isRmForceRule(rule: DangerousCommand): boolean {
+	const text =
+		`${rule.pattern} ${rule.regex ?? ""} ${rule.reason}`.toLowerCase();
+	return text.includes("rm") && (text.includes("force") || text.includes("-f"));
+}
+
+function extractXargsShellSnippet(command: string): string | undefined {
+	const match = command.match(
+		/\bxargs\b[\s\S]*?\b(?:bash|sh|zsh|ksh|dash|csh|tcsh|fish)\s+-c\s+(["'])([\s\S]*?)\1/,
+	);
+	return match?.[2];
+}
+
+function isReadOnlyShellSnippet(snippet: string): boolean {
+	if (/[`<>]|\$\(/.test(snippet)) return false;
+	const segments = splitOutsideQuotes(snippet, ["&&", "||", ";", "|"]);
+	if (segments.length === 0) return false;
+	return segments.every((segment) => {
+		const tokens = tokenize(segment);
+		const head = stripShellQuotes(tokens[0] ?? "");
+		if (!READ_ONLY_SHELL_SNIPPET_COMMANDS.has(head)) return false;
+		if (head === "sed" && tokens.some((token) => /^-.*i/.test(token)))
+			return false;
+		if (head === "awk" && /\bsystem\s*\(/.test(segment)) return false;
+		return true;
+	});
+}
+
+function isXargsShellRule(rule: DangerousCommand): boolean {
+	const text =
+		`${rule.pattern} ${rule.regex ?? ""} ${rule.reason}`.toLowerCase();
+	return (
+		text.includes("xargs") && text.includes("shell") && text.includes("-c")
+	);
+}
+
+export function shouldAllowReadOnlyXargsShellRule(
+	command: string,
+	rule: DangerousCommand,
+): boolean {
+	if (!isXargsShellRule(rule)) return false;
+	const snippet = extractXargsShellSnippet(command);
+	return Boolean(snippet && isReadOnlyShellSnippet(snippet));
+}
+
+function shouldSkipMatchedRule(
+	command: string,
+	rule: DangerousCommand,
+	ctx?: { toolName?: string; cwd?: string },
+): boolean {
+	if (ctx?.toolName !== "bash") return false;
+	if (isRmForceRule(rule) && ctx.cwd && isTempRemoval(command, ctx.cwd)) {
+		return true;
+	}
+	if (shouldAllowReadOnlyXargsShellRule(command, rule)) return true;
+	return false;
+}
+
+function lineContextForIndex(
+	command: string,
+	index: number,
+): { lineNumber: number; lines: string[] } | undefined {
+	if (index < 0) return undefined;
+	const lines = command.split(/\r?\n/);
+	let offset = 0;
+	let lineIndex = 0;
+	for (; lineIndex < lines.length; lineIndex += 1) {
+		const lineLength = lines[lineIndex].length;
+		if (index <= offset + lineLength) break;
+		offset += lineLength + 1;
+	}
+	if (lineIndex >= lines.length) return undefined;
+	const start = Math.max(0, lineIndex - 2);
+	const end = Math.min(lines.length - 1, lineIndex + 2);
+	const width = String(end + 1).length;
+	return {
+		lineNumber: lineIndex + 1,
+		lines: lines.slice(start, end + 1).map((line, idx) => {
+			const actual = start + idx + 1;
+			const marker = actual === lineIndex + 1 ? ">" : " ";
+			return `${marker} ${String(actual).padStart(width, " ")}  ${line}`;
+		}),
+	};
+}
+
+function lineAtIndex(command: string, index: number): string {
+	if (index < 0) return command;
+	const before = command.lastIndexOf("\n", index);
+	const after = command.indexOf("\n", index);
+	return command.slice(
+		before === -1 ? 0 : before + 1,
+		after === -1 ? command.length : after,
+	);
+}
+
+function classifyTarget(target: string, cwd: string | undefined): string {
+	const stripped = stripShellQuotes(target);
+	if (/[${}*?[\]]/.test(stripped)) return "dynamic";
+	if (isRawTempPath(stripped)) return "temp";
+	if (!cwd) return "unknown";
+	const result = canonicalizeOrBlock(stripped, cwd);
+	if ("block" in result) return "invalid";
+	if (isCanonicalTempPath(stripped, cwd)) return "temp";
+	const relativeToCwd = path.relative(cwd, result.canonical);
+	if (
+		relativeToCwd === "" ||
+		(!relativeToCwd.startsWith("..") && !path.isAbsolute(relativeToCwd))
+	) {
+		return "repo";
+	}
+	const home = os.homedir();
+	const relativeToHome = path.relative(home, result.canonical);
+	if (
+		relativeToHome === "" ||
+		(!relativeToHome.startsWith("..") && !path.isAbsolute(relativeToHome))
+	) {
+		return "home";
+	}
+	const root = path.parse(result.canonical).root;
+	if (result.canonical === root) return "root";
+	return "absolute";
+}
+
+function dangerousTargetsForContext(
+	command: string,
+	matchIndex: number,
+): string[] {
+	const line = lineAtIndex(command, matchIndex).trim();
+	const rmTargets = extractRmTargets(line);
+	if (rmTargets.length > 0) return rmTargets;
+	return [];
+}
+
+function formatDangerousConfirmation(
+	command: string,
+	rule: DangerousCommand,
+	ctx?: { cwd?: string },
+): string {
+	const match = commandRuleMatch(command, rule);
+	const parts = [`Rule: ${rule.pattern}`, `Reason: ${rule.reason}`];
+	if (match) {
+		parts.push("", "Matched command fragment:", match.matchedText);
+		const context = lineContextForIndex(command, match.index);
+		if (context) {
+			parts.push(
+				"",
+				`Context around line ${context.lineNumber}:`,
+				...context.lines,
+			);
+		}
+		const targets = dangerousTargetsForContext(command, match.index);
+		if (targets.length > 0) {
+			parts.push("", "Likely targets:");
+			for (const target of targets) {
+				parts.push(`- ${target} (${classifyTarget(target, ctx?.cwd)})`);
+			}
+		}
+	}
+	return parts.join("\n");
 }
 
 export function extractBashDeleteTargets(command: string): string[] {

@@ -145,7 +145,7 @@ no_delete_paths: []
 
 	it("integrates as a second pass for nested shell content missed by regex-only matching", async () => {
 		const regexOnly = await evaluateDangerousCommand(
-			"bash -c 'rm -rf /tmp/x'",
+			"bash -c 'rm -rf ./build'",
 			[anchoredRmRule],
 			{
 				toolName: "bash",
@@ -153,7 +153,7 @@ no_delete_paths: []
 			},
 		);
 		const withAst = await evaluateDangerousCommand(
-			"bash -c 'rm -rf /tmp/x'",
+			"bash -c 'rm -rf ./build'",
 			[anchoredRmRule],
 			{
 				toolName: "bash",
@@ -167,6 +167,69 @@ no_delete_paths: []
 			reason:
 				'Blocked dangerous command (matched "AST analysis"): Recursive force delete can cause irreversible data loss',
 		});
+	});
+
+	it("allows read-only xargs shell snippets after inspecting the shell body", async () => {
+		const xargsShellRule: DangerousCommand = {
+			pattern: "xargs shell c",
+			regex: "\\bxargs\\s+.*\\b(?:bash|sh|zsh|ksh|dash|csh|tcsh|fish)\\s+-c\\b",
+			reason:
+				"xargs with shell -c can execute arbitrary commands from dynamic input",
+			tools: ["bash"],
+		};
+
+		await expect(
+			evaluateDangerousCommand(
+				'find deployment/env -maxdepth 3 -type f -print | sort | xargs -I{} sh -c \'echo --- {}; sed -n "1,90p" "{}"\'',
+				[xargsShellRule],
+				{ toolName: "bash", astAnalysis: astConfig },
+			),
+		).resolves.toBeUndefined();
+	});
+
+	it("still blocks xargs shell snippets with destructive shell bodies", async () => {
+		const xargsShellRule: DangerousCommand = {
+			pattern: "xargs shell c",
+			regex: "\\bxargs\\s+.*\\b(?:bash|sh|zsh|ksh|dash|csh|tcsh|fish)\\s+-c\\b",
+			reason:
+				"xargs with shell -c can execute arbitrary commands from dynamic input",
+			tools: ["bash"],
+		};
+
+		await expect(
+			evaluateDangerousCommand(
+				"find . -type f -print | xargs -I{} sh -c 'rm -rf {}'",
+				[xargsShellRule],
+				{ toolName: "bash", astAnalysis: astConfig },
+			),
+		).resolves.toMatchObject({ block: true });
+	});
+
+	it("does not let the xargs read-only exception bypass other matching rules", async () => {
+		const rules: DangerousCommand[] = [
+			{
+				pattern: "xargs shell c",
+				regex:
+					"\\bxargs\\s+.*\\b(?:bash|sh|zsh|ksh|dash|csh|tcsh|fish)\\s+-c\\b",
+				reason:
+					"xargs with shell -c can execute arbitrary commands from dynamic input",
+				tools: ["bash"],
+			},
+			{
+				pattern: "secret file read",
+				regex: "\\bcat\\b[^|;&]*(?:\\.env\\b)",
+				reason: "Reads secret-bearing files that must not be exposed",
+				tools: ["bash"],
+			},
+		];
+
+		await expect(
+			evaluateDangerousCommand(
+				"find . -type f -print | xargs -I{} sh -c 'cat .env'",
+				rules,
+				{ toolName: "bash", astAnalysis: astConfig },
+			),
+		).resolves.toMatchObject({ block: true });
 	});
 
 	it("integrates ask semantics through confirmation", async () => {

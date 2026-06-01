@@ -1,7 +1,10 @@
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import * as TreeSitter from "web-tree-sitter";
-import { commandAppliesToCurrentPlatform } from "../damage-control-engine.js";
+import {
+	commandAppliesToCurrentPlatform,
+	shouldAllowReadOnlyXargsShellRule,
+} from "../damage-control-engine.js";
 import {
 	type AstAnalysisConfig,
 	compileCommandRegex,
@@ -131,6 +134,7 @@ function checkExtractedCommands(
 	for (const command of commands) {
 		for (const rule of rules) {
 			if (!commandAppliesToCurrentPlatform(rule)) continue;
+			if (shouldAllowReadOnlyXargsShellRule(command, rule)) continue;
 			const regex = rule.regex ? compileCommandRegex(rule.regex) : undefined;
 			const matched = regex
 				? regex.test(command)
@@ -256,11 +260,11 @@ function checkEvalSource(
 }
 
 async function runAnalysis(
+	parser: TreeSitter.Parser,
 	command: string,
 	rules: DangerousCommand[],
 	astConfig: AstAnalysisConfig,
 ): Promise<AstDecision> {
-	const parser = await getParser();
 	const root = parse(parser, command);
 	const extracted = checkExtractedCommands(
 		extractedCommands(root, parser),
@@ -306,7 +310,8 @@ export async function analyzeCommandAst(
 		return { decision: "allow" };
 	}
 	try {
-		const analysis = runAnalysis(command, rules, astConfig);
+		const parser = await getParser();
+		const analysis = runAnalysis(parser, command, rules, astConfig);
 		return astConfig.timeoutMs && astConfig.timeoutMs > 0
 			? await withTimeout(analysis, astConfig.timeoutMs)
 			: await analysis;

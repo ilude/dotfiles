@@ -486,6 +486,7 @@ export default function (pi: ExtensionAPI) {
 				hasUI: true,
 				toolName: "bash",
 				astAnalysis: rules.astAnalysis,
+				cwd: ctx.cwd,
 				onConfirm: (rule) => {
 					const summary = `Confirmed dangerous command (matched "${rule.pattern}"): ${rule.reason}`;
 					safeRecordDamageControlEval({
@@ -586,6 +587,7 @@ export default function (pi: ExtensionAPI) {
 				ui: ctx.ui,
 				hasUI: true,
 				toolName: "pwsh",
+				cwd: ctx.cwd,
 				onConfirm: (rule) => {
 					const summary = `Confirmed dangerous command (matched "${rule.pattern}"): ${rule.reason}`;
 					safeRecordDamageControlEval({

@@ -65,7 +65,7 @@ describe("damage-control extension", () => {
 
 		expect(confirm).toHaveBeenCalledWith(
 			"Confirm dangerous command",
-			"docker compose down stops and removes containers",
+			expect.stringContaining("Rule: docker compose down"),
 		);
 		expect(result).toBeUndefined();
 	});
@@ -267,13 +267,111 @@ no_delete_paths: []
 
 		expect(confirm).toHaveBeenCalledWith(
 			"Confirm dangerous command",
-			"Force delete bypasses normal interactive safeguards and can remove files irreversibly",
+			expect.stringContaining("Rule: rm force"),
+		);
+		expect(confirm).toHaveBeenCalledWith(
+			"Confirm dangerous command",
+			expect.stringContaining("Likely targets:\n- ./scratch.txt"),
 		);
 		expect(result).toEqual({
 			block: true,
 			reason:
 				'Confirmation required for dangerous command (matched "rm force"): Force delete bypasses normal interactive safeguards and can remove files irreversibly',
 		});
+	});
+
+	it("shows line context for dangerous rm approval inside multiline scripts", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const rules = [
+			{
+				pattern: "rm force",
+				regex:
+					"\\brm\\s+(?=[^|;&]*?(?:-[A-Za-z]*f[A-Za-z]*|--force)\\b)(?![^|;&]*?(?:-[A-Za-z]*r[A-Za-z]*|--recursive)\\b)",
+				reason:
+					"Force delete bypasses normal interactive safeguards and can remove files irreversibly",
+				action: "ask" as const,
+			},
+		];
+		const confirm = vi.fn(async () => false);
+		const script = [
+			"set -euo pipefail",
+			"scratch=./generated-cache",
+			'mkdir -p "$scratch"',
+			"rm -f ./generated-cache/result.txt",
+			"printf done",
+		].join("\n");
+
+		await mod.evaluateDangerousCommand(script, rules, {
+			hasUI: true,
+			ui: { confirm },
+			toolName: "bash",
+			cwd: process.cwd(),
+		});
+
+		const message = confirm.mock.calls[0][1] as string;
+		expect(message).toContain("Rule: rm force");
+		expect(message).toContain("Matched command fragment:");
+		expect(message).toContain("Context around line 4:");
+		expect(message).toContain("> 4  rm -f ./generated-cache/result.txt");
+		expect(message).toContain(
+			"Likely targets:\n- ./generated-cache/result.txt (repo)",
+		);
+	});
+
+	it("allows rm -f and rm -rf when every target is under a temp directory", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const rules = [
+			{
+				pattern: "rm recursive force",
+				regex:
+					"\\brm\\s+(?:-[A-Za-z]*r[A-Za-z]*f[A-Za-z]*|-[A-Za-z]*f[A-Za-z]*r[A-Za-z]*)\\b",
+				reason: "Recursive force delete can cause irreversible data loss",
+			},
+			{
+				pattern: "rm force",
+				regex:
+					"\\brm\\s+(?=[^|;&]*?(?:-[A-Za-z]*f[A-Za-z]*|--force)\\b)(?![^|;&]*?(?:-[A-Za-z]*r[A-Za-z]*|--recursive)\\b)",
+				reason:
+					"Force delete bypasses normal interactive safeguards and can remove files irreversibly",
+				action: "ask" as const,
+			},
+		];
+
+		await expect(
+			mod.evaluateDangerousCommand("rm -f /tmp/pi-scratch.txt", rules, {
+				toolName: "bash",
+				cwd: process.cwd(),
+			}),
+		).resolves.toBeUndefined();
+		await expect(
+			mod.evaluateDangerousCommand("rm -rf /tmp/pi-scratch-dir", rules, {
+				toolName: "bash",
+				cwd: process.cwd(),
+			}),
+		).resolves.toBeUndefined();
+	});
+
+	it("does not apply the temp removal exception when any target is outside temp", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const rules = [
+			{
+				pattern: "rm recursive force",
+				regex:
+					"\\brm\\s+(?:-[A-Za-z]*r[A-Za-z]*f[A-Za-z]*|-[A-Za-z]*f[A-Za-z]*r[A-Za-z]*)\\b",
+				reason: "Recursive force delete can cause irreversible data loss",
+			},
+		];
+
+		await expect(
+			mod.evaluateDangerousCommand(
+				"rm -rf /tmp/pi-scratch-dir ./build",
+				rules,
+				{
+					toolName: "bash",
+					cwd: process.cwd(),
+				},
+			),
+		).resolves.toMatchObject({ block: true });
 	});
 
 	it("unescapes double-quoted YAML regex rules before matching", async () => {
@@ -529,7 +627,7 @@ no_delete_paths: []
 		);
 		expect(confirm).toHaveBeenCalledWith(
 			"Confirm dangerous command",
-			"docker compose down (stops and removes containers)",
+			expect.stringContaining("Reason: docker compose down"),
 		);
 		expect(result).toBeUndefined();
 	});
