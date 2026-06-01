@@ -374,6 +374,90 @@ no_delete_paths: []
 		).resolves.toBeUndefined();
 	});
 
+	it("allows embedded non-recursive rm -f cleanup for Git Bash temp files", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const rules = [
+			{
+				pattern: "rm force",
+				regex:
+					"\\brm\\s+(?=[^|;&]*?(?:-[A-Za-z]*f[A-Za-z]*|--force)\\b)(?![^|;&]*?(?:-[A-Za-z]*r[A-Za-z]*|--recursive)\\b)",
+				reason:
+					"Force delete bypasses normal interactive safeguards and can remove files irreversibly",
+				action: "ask" as const,
+			},
+		];
+
+		await expect(
+			mod.evaluateDangerousCommand(
+				"rm -f /c/Users/mglenn/AppData/Local/Temp/infisical-patch-body.json",
+				rules,
+				{
+					toolName: "bash",
+					cwd: process.cwd(),
+				},
+			),
+		).resolves.toBeUndefined();
+	});
+
+	it("allows EXIT trap cleanup for assigned temp-like basenames", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const rules = [
+			{
+				pattern: "rm force",
+				regex:
+					"\\brm\\s+(?=[^|;&]*?(?:-[A-Za-z]*f[A-Za-z]*|--force)\\b)(?![^|;&]*?(?:-[A-Za-z]*r[A-Za-z]*|--recursive)\\b)",
+				reason:
+					"Force delete bypasses normal interactive safeguards and can remove files irreversibly",
+				action: "ask" as const,
+			},
+		];
+		const command = [
+			"set -euo pipefail",
+			"src=registry-key-src.tmp.json",
+			"out=registry-key-staging.tmp.json",
+			'trap \'rm -f "$src" "$out"\' EXIT',
+			'kubectl get secret registry-key -o json > "$src"',
+		].join("\n");
+
+		await expect(
+			mod.evaluateDangerousCommand(command, rules, {
+				toolName: "bash",
+				cwd: process.cwd(),
+			}),
+		).resolves.toBeUndefined();
+	});
+
+	it("does not allow EXIT trap cleanup for unknown or non-temp variables", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const rules = [
+			{
+				pattern: "rm force",
+				regex:
+					"\\brm\\s+(?=[^|;&]*?(?:-[A-Za-z]*f[A-Za-z]*|--force)\\b)(?![^|;&]*?(?:-[A-Za-z]*r[A-Za-z]*|--recursive)\\b)",
+				reason:
+					"Force delete bypasses normal interactive safeguards and can remove files irreversibly",
+				action: "ask" as const,
+			},
+		];
+
+		await expect(
+			mod.evaluateDangerousCommand("trap 'rm -f \"$src\"' EXIT", rules, {
+				toolName: "bash",
+				cwd: process.cwd(),
+			}),
+		).resolves.toMatchObject({ block: true });
+		await expect(
+			mod.evaluateDangerousCommand(
+				["src=registry-key.json", "trap 'rm -f \"$src\"' EXIT"].join("\n"),
+				rules,
+				{
+					toolName: "bash",
+					cwd: process.cwd(),
+				},
+			),
+		).resolves.toMatchObject({ block: true });
+	});
+
 	it("does not allow embedded rm -f cleanup with dynamic or globbed temp targets", async () => {
 		const mod = await import("../extensions/damage-control.ts");
 		const rules = [

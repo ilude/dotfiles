@@ -607,12 +607,16 @@ function extractRmTargets(command: string): string[] {
 }
 
 function isRawTempPath(target: string): boolean {
-	const normalized = stripShellQuotes(target).replaceAll("\\", "/");
+	const normalized = stripShellQuotes(target)
+		.replaceAll("\\", "/")
+		.replace(/^['"]+|['"]+$/g, "");
 	return (
 		normalized === "/tmp" ||
 		normalized.startsWith("/tmp/") ||
 		normalized === "/var/tmp" ||
-		normalized.startsWith("/var/tmp/")
+		normalized.startsWith("/var/tmp/") ||
+		/^\/[a-z]\/Users\/[^/]+\/AppData\/Local\/Temp(?:\/|$)/i.test(normalized) ||
+		/^[a-z]:\/Users\/[^/]+\/AppData\/Local\/Temp(?:\/|$)/i.test(normalized)
 	);
 }
 
@@ -636,6 +640,49 @@ function hasRmForceWithoutRecursive(command: string): boolean {
 
 function isStaticPath(target: string): boolean {
 	return !/[${}*?[\]]/.test(stripShellQuotes(target));
+}
+
+function isTempLikeBasename(target: string): boolean {
+	const normalized = stripShellQuotes(target).replaceAll("\\", "/");
+	return (
+		isStaticPath(normalized) &&
+		!normalized.includes("/") &&
+		/(?:^|[-_.])tmp(?:[-_.]|$)/i.test(normalized)
+	);
+}
+
+function shellAssignmentsBefore(
+	command: string,
+	index: number,
+): Map<string, string> {
+	const assignments = new Map<string, string>();
+	const before = command.slice(0, index);
+	for (const line of before.split(/\r?\n/)) {
+		const match = line.match(/^\s*([A-Za-z_]\w*)=(\S+)\s*$/);
+		if (!match) continue;
+		assignments.set(match[1], stripShellQuotes(match[2]));
+	}
+	return assignments;
+}
+
+function isTempVariableTrapCleanup(
+	command: string,
+	matchIndex: number,
+): boolean {
+	const line = lineAtIndex(command, matchIndex);
+	const trap = line.match(/^\s*trap\s+(['"])([\s\S]*?)\1\s+EXIT\b/);
+	if (!trap) return false;
+	const snippet = trap[2];
+	if (!hasRmForceWithoutRecursive(snippet)) return false;
+	const targets = extractRmTargets(snippet);
+	if (targets.length === 0) return false;
+	const assignments = shellAssignmentsBefore(command, matchIndex);
+	return targets.every((target) => {
+		const variable = stripShellQuotes(target).match(/^\$([A-Za-z_]\w*)$/);
+		if (!variable) return false;
+		const value = assignments.get(variable[1]);
+		return Boolean(value && isTempLikeBasename(value));
+	});
 }
 
 function isTempRemoval(command: string, cwd: string): boolean {
@@ -666,7 +713,10 @@ function isMatchedTempRemoval(
 ): boolean {
 	const match = commandRuleMatch(command, rule);
 	if (!match) return false;
-	return isTempRemoval(rmCommandAtMatch(command, match.index), cwd);
+	return (
+		isTempRemoval(rmCommandAtMatch(command, match.index), cwd) ||
+		isTempVariableTrapCleanup(command, match.index)
+	);
 }
 
 function isPiTodoStateRemoval(command: string, cwd: string): boolean {
