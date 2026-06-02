@@ -128,6 +128,103 @@ no_delete_paths: []
 		]);
 	});
 
+	it("allows read-only kubectl exec inspection without confirmation", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const confirm = vi.fn(async () => false);
+		const rules = [
+			{
+				pattern: "kubectl exec",
+				regex: "\\bkubectl\\s+exec\\b",
+				reason: "kubectl exec (shell access to pod)",
+				action: "ask",
+				tools: ["bash"],
+			},
+		];
+
+		const result = await mod.evaluateDangerousCommand(
+			`POD=$(kubectl get pods -n gitlab --context prod -l app=gitlab-gitlab-runner --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+			echo "pod=$POD"
+			kubectl exec -n gitlab --context prod "$POD" -- sh -c 'grep -E "^(concurrent|listen_address)|plugin =" /home/gitlab-runner/.gitlab-runner/config.toml'
+			kubectl exec -n gitlab --context prod "$POD" -- sh -c 'wget -qO- http://127.0.0.1:9252/metrics | grep -E "gitlab_runner_(jobs|version)" | head -20'`,
+			rules,
+			{
+				hasUI: true,
+				ui: { confirm },
+				toolName: "bash",
+			},
+		);
+
+		expect(result).toBeUndefined();
+		expect(confirm).not.toHaveBeenCalled();
+	});
+
+	it("keeps requiring confirmation for interactive kubectl exec shells", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const rules = [
+			{
+				pattern: "kubectl exec",
+				regex: "\\bkubectl\\s+exec\\b",
+				reason: "kubectl exec (shell access to pod)",
+				action: "ask",
+				tools: ["bash"],
+			},
+		];
+
+		const result = await mod.evaluateDangerousCommand(
+			"kubectl exec -it pod -- sh",
+			rules,
+			{ toolName: "bash" },
+		);
+
+		expect(result).toEqual({
+			block: true,
+			reason:
+				'Confirmation required for dangerous command (matched "kubectl exec"): kubectl exec (shell access to pod)',
+		});
+	});
+
+	it("keeps requiring confirmation for sensitive kubectl exec reads", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const rules = [
+			{
+				pattern: "kubectl exec",
+				regex: "\\bkubectl\\s+exec\\b",
+				reason: "kubectl exec (shell access to pod)",
+				action: "ask",
+				tools: ["bash"],
+			},
+		];
+
+		const result = await mod.evaluateDangerousCommand(
+			"kubectl exec pod -- sh -c 'grep token /var/run/secrets/kubernetes.io/serviceaccount/token'",
+			rules,
+			{ toolName: "bash" },
+		);
+
+		expect(result?.block).toBe(true);
+	});
+
+	it("keeps requiring confirmation for mutating kubectl exec payloads", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const rules = [
+			{
+				pattern: "kubectl exec",
+				regex: "\\bkubectl\\s+exec\\b",
+				reason: "kubectl exec (shell access to pod)",
+				action: "ask",
+				tools: ["bash"],
+			},
+		];
+
+		const result = await mod.evaluateDangerousCommand(
+			"kubectl exec pod -- sh -c 'rm -rf /tmp/cache'",
+			rules,
+			{ toolName: "bash" },
+		);
+
+		expect(result?.block).toBe(true);
+	});
+
 	it("applies dangerous command rules only to targeted tools", async () => {
 		const mod = await import("../extensions/damage-control.ts");
 		const rules = [

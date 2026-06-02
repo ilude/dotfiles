@@ -245,6 +245,58 @@ class TestReadonlySearchFalsePositives:
         )
 
 
+class TestKubectlExecReadOnlyInspection:
+    """Verify kubectl exec allows only constrained read-only inspection payloads."""
+
+    def test_readonly_kubectl_exec_inspection_allowed(self, full_config):
+        config_check = (
+            "grep -E \"^(concurrent|listen_address)|plugin =\" "
+            "/home/gitlab-runner/.gitlab-runner/config.toml"
+        )
+        metrics_check = (
+            "wget -qO- http://127.0.0.1:9252/metrics | "
+            "grep -E \"gitlab_runner_(jobs|version)\" | head -20"
+        )
+        command = "\n".join(
+            [
+                "POD=$(kubectl get pods -n gitlab --context prod "
+                "-l app=gitlab-gitlab-runner "
+                "--field-selector=status.phase=Running "
+                "-o jsonpath='{.items[0].metadata.name}')",
+                "echo \"pod=$POD\"",
+                "kubectl exec -n gitlab --context prod \"$POD\" -- "
+                f"sh -c '{config_check}'",
+                "kubectl exec -n gitlab --context prod \"$POD\" -- "
+                f"sh -c '{metrics_check}'",
+            ]
+        )
+        blocked, ask, reason, pattern, _, _ = check_command(command, full_config)
+        assert not blocked and not ask, (
+            f"False positive: read-only kubectl exec inspection\n"
+            f"  blocked={blocked}, ask={ask}, reason={reason}"
+        )
+
+    def test_interactive_kubectl_exec_shell_still_asks(self, full_config):
+        blocked, ask, reason, pattern, _, _ = check_command(
+            "kubectl exec -it pod -- sh", full_config
+        )
+        assert ask, "interactive kubectl exec shell should require confirmation"
+
+    def test_sensitive_kubectl_exec_read_still_asks(self, full_config):
+        blocked, ask, reason, pattern, _, _ = check_command(
+            "kubectl exec pod -- sh -c '"
+            "grep token /var/run/secrets/kubernetes.io/serviceaccount/token'",
+            full_config,
+        )
+        assert ask, "sensitive kubectl exec read should require confirmation"
+
+    def test_mutating_kubectl_exec_payload_still_asks(self, full_config):
+        blocked, ask, reason, pattern, _, _ = check_command(
+            "kubectl exec pod -- sh -c 'rm -rf /tmp/cache'", full_config
+        )
+        assert ask, "mutating kubectl exec payload should require confirmation"
+
+
 class TestDangerousCommandsStillCaught:
     """Verify that actual dangerous commands are still blocked/ask even when
     they appear alongside search commands.

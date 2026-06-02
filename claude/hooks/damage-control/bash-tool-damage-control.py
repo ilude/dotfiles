@@ -40,6 +40,7 @@ import fnmatch
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -47,6 +48,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Optional
+from urllib.parse import urlparse
 
 import yaml
 
@@ -901,6 +903,110 @@ def is_readonly_search_command(command: str) -> bool:
     return has_search
 
 
+def _shell_split(command: str) -> list[str]:
+    """Split shell text into tokens; return an empty list on malformed quotes."""
+    try:
+        return shlex.split(command)
+    except ValueError:
+        return []
+
+
+def _is_local_http_url(token: str) -> bool:
+    parsed = urlparse(token)
+    return parsed.scheme in {"http", "https"} and parsed.hostname in {
+        "127.0.0.1",
+        "localhost",
+        "::1",
+    }
+
+
+def _is_readonly_kubectl_exec_segment(segment: str) -> bool:
+    tokens = _shell_split(segment)
+    if not tokens:
+        return False
+    head = tokens[0]
+    if head == "sed" and any(re.match(r"^-.*i", token) for token in tokens):
+        return False
+    if head == "awk" and re.search(r"\bsystem\s*\(", segment):
+        return False
+    if head in {"wget", "curl"}:
+        urls = [token for token in tokens if re.match(r"^https?://", token)]
+        return bool(urls) and all(_is_local_http_url(url) for url in urls)
+    return _matches_any(head, READONLY_PIPE_TARGETS)
+
+
+def _has_sensitive_kubectl_exec_read(snippet: str) -> bool:
+    return bool(
+        re.search(
+            r"(?:/var/run/secrets\b|/run/secrets\b|/etc/shadow\b|\.ssh/|"
+            r"\.env\b|\b(?:password|secret|token|credential)s?\b)",
+            snippet,
+            re.IGNORECASE,
+        )
+    )
+
+
+def _is_readonly_kubectl_exec_snippet(snippet: str) -> bool:
+    if re.search(r"[`<>]|\$\(", snippet):
+        return False
+    if _has_sensitive_kubectl_exec_read(snippet):
+        return False
+    segments = _split_on_shell_operators(snippet)
+    pipe_segments = [part for segment in segments for part in _split_pipe_chain(segment)]
+    return bool(pipe_segments) and all(
+        _is_readonly_kubectl_exec_segment(segment) for segment in pipe_segments
+    )
+
+
+def _is_readonly_kubectl_exec_invocation(command: str) -> bool:
+    tokens = _shell_split(command)
+    if len(tokens) < 3 or tokens[0] != "kubectl" or tokens[1] != "exec":
+        return False
+    try:
+        separator_index = tokens.index("--")
+    except ValueError:
+        return False
+    exec_args = tokens[2:separator_index]
+    if any(
+        token.startswith("-")
+        and not token.startswith("--")
+        and re.search(r"[it]", token[1:])
+        for token in exec_args
+    ):
+        return False
+    payload = tokens[separator_index + 1 :]
+    if not payload:
+        return False
+    if payload[0] in {"bash", "sh", "zsh", "ksh", "dash"}:
+        if len(payload) < 3 or payload[1] != "-c":
+            return False
+        return _is_readonly_kubectl_exec_snippet(" ".join(payload[2:]))
+    return _is_readonly_kubectl_exec_snippet(" ".join(payload))
+
+
+def _is_kubectl_exec_rule(item: dict[str, Any]) -> bool:
+    text = f"{item.get('pattern', '')} {item.get('reason', '')}".lower()
+    return "kubectl" in text and "exec" in text
+
+
+def _should_allow_readonly_kubectl_exec_rule(
+    command: str, item: dict[str, Any]
+) -> bool:
+    if not _is_kubectl_exec_rule(item):
+        return False
+    segments = [
+        segment.strip()
+        for line in command.splitlines()
+        for segment in _split_on_shell_operators(line)
+    ]
+    exec_segments = [
+        segment for segment in segments if re.search(r"\bkubectl\s+exec\b", segment)
+    ]
+    return bool(exec_segments) and all(
+        _is_readonly_kubectl_exec_invocation(segment) for segment in exec_segments
+    )
+
+
 # ============================================================================
 # GIT SEMANTIC ANALYSIS
 # ============================================================================
@@ -1589,7 +1695,10 @@ def _stage_yaml_patterns(rules: CompiledRules, ctx: CommandContext) -> Optional[
         if skip_patterns and not is_env_injection:
             continue
         if ctx.is_readonly_search and not is_env_injection:
-            continue
+            if _should_allow_readonly_kubectl_exec_rule(ctx.original, item):
+                continue
+            if not _is_kubectl_exec_rule(item):
+                continue
 
         result = _evaluate_yaml_pattern(item, idx, ctx)
         if result is not None:

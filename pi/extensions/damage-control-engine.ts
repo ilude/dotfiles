@@ -762,6 +762,123 @@ function isReadOnlyShellSnippet(snippet: string): boolean {
 	});
 }
 
+function shellTokenize(command: string): string[] {
+	const tokens: string[] = [];
+	let current = "";
+	let quote: string | undefined;
+	for (let index = 0; index < command.length; index += 1) {
+		const ch = command[index];
+		if (ch === "\\" && quote !== "'" && index + 1 < command.length) {
+			current += command[index + 1];
+			index += 1;
+			continue;
+		}
+		if ((ch === "'" || ch === '"') && !quote) {
+			quote = ch;
+			continue;
+		}
+		if (ch === quote) {
+			quote = undefined;
+			continue;
+		}
+		if (/\s/.test(ch) && !quote) {
+			if (current) tokens.push(current);
+			current = "";
+			continue;
+		}
+		current += ch;
+	}
+	if (current) tokens.push(current);
+	return tokens;
+}
+
+function isLocalHttpUrl(token: string): boolean {
+	let parsed: URL;
+	try {
+		parsed = new URL(token);
+	} catch {
+		return false;
+	}
+	return (
+		(parsed.protocol === "http:" || parsed.protocol === "https:") &&
+		["127.0.0.1", "localhost", "[::1]"].includes(parsed.hostname)
+	);
+}
+
+function isReadOnlyKubectlExecSegment(segment: string): boolean {
+	const tokens = shellTokenize(segment);
+	const head = tokens[0] ?? "";
+	if (!head) return false;
+	if (head === "sed" && tokens.some((token) => /^-.*i/.test(token)))
+		return false;
+	if (head === "awk" && /\bsystem\s*\(/.test(segment)) return false;
+	if (head === "wget" || head === "curl") {
+		const urls = tokens.filter((token) => /^https?:\/\//.test(token));
+		return urls.length > 0 && urls.every(isLocalHttpUrl);
+	}
+	return READ_ONLY_SHELL_SNIPPET_COMMANDS.has(head);
+}
+
+function hasSensitiveKubectlExecRead(snippet: string): boolean {
+	return /(?:\/var\/run\/secrets\b|\/run\/secrets\b|\/etc\/shadow\b|\.ssh\/|\.env\b|\b(?:password|secret|token|credential)s?\b)/i.test(
+		snippet,
+	);
+}
+
+function isReadOnlyKubectlExecSnippet(snippet: string): boolean {
+	if (/[`<>]|\$\(/.test(snippet)) return false;
+	if (hasSensitiveKubectlExecRead(snippet)) return false;
+	const segments = splitOutsideQuotes(snippet, ["&&", "||", ";", "|"]);
+	return segments.length > 0 && segments.every(isReadOnlyKubectlExecSegment);
+}
+
+function isReadOnlyKubectlExecInvocation(command: string): boolean {
+	const tokens = shellTokenize(command);
+	if (tokens[0] !== "kubectl" || tokens[1] !== "exec") return false;
+	const separatorIndex = tokens.indexOf("--");
+	if (separatorIndex === -1) return false;
+	const execArgs = tokens.slice(2, separatorIndex);
+	if (
+		execArgs.some(
+			(token) =>
+				token.startsWith("-") &&
+				!token.startsWith("--") &&
+				/[it]/.test(token.slice(1)),
+		)
+	) {
+		return false;
+	}
+	const payload = tokens.slice(separatorIndex + 1);
+	if (payload.length === 0) return false;
+	const payloadHead = payload[0];
+	if (["bash", "sh", "zsh", "ksh", "dash"].includes(payloadHead)) {
+		if (payload[1] !== "-c" || !payload[2]) return false;
+		return isReadOnlyKubectlExecSnippet(payload.slice(2).join(" "));
+	}
+	return isReadOnlyKubectlExecSnippet(payload.join(" "));
+}
+
+function isKubectlExecRule(rule: DangerousCommand): boolean {
+	const text =
+		`${rule.pattern} ${rule.regex ?? ""} ${rule.reason}`.toLowerCase();
+	return text.includes("kubectl") && text.includes("exec");
+}
+
+function shouldAllowReadOnlyKubectlExecRule(
+	command: string,
+	rule: DangerousCommand,
+): boolean {
+	if (!isKubectlExecRule(rule)) return false;
+	const segments = splitOutsideQuotes(command, ["&&", "||", ";", "\n"]);
+	const execSegments = segments.filter((segment) =>
+		/\bkubectl\s+exec\b/.test(segment),
+	);
+	return (
+		execSegments.length > 0 &&
+		execSegments.every(isReadOnlyKubectlExecInvocation)
+	);
+}
+
 function isXargsShellRule(rule: DangerousCommand): boolean {
 	const text =
 		`${rule.pattern} ${rule.regex ?? ""} ${rule.reason}`.toLowerCase();
@@ -793,6 +910,7 @@ function shouldSkipMatchedRule(
 	) {
 		return true;
 	}
+	if (shouldAllowReadOnlyKubectlExecRule(command, rule)) return true;
 	if (shouldAllowReadOnlyXargsShellRule(command, rule)) return true;
 	return false;
 }
