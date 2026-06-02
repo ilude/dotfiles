@@ -5,7 +5,7 @@
  * web_fetch: mocks pi.exec (lightweight, validates arg wiring)
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createMockPi } from "./helpers/mock-pi.js";
+import { createMockPi, createMockTheme } from "./helpers/mock-pi.js";
 
 // Mock fs for loadDotEnv (called at module level)
 vi.mock("node:fs", async (importOriginal) => {
@@ -159,6 +159,13 @@ describe("web-tools extension", () => {
       mockPi.exec.mockResolvedValue({ code: 0, stdout: "", stderr: "" });
       const result = await fetch_tool.execute("id", { url: "https://example.com" }, undefined, undefined, {});
       expect(result.content[0].text).toBe("(no content extracted)");
+    });
+
+    it("should show the fetched URL in call rendering", () => {
+      const theme = createMockTheme();
+      const result = fetch_tool.renderCall({ url: "https://example.com/article" }, theme, {});
+      expect(result).toBeDefined();
+      expect(theme.fg).toHaveBeenCalledWith("toolTitle", "https://example.com/article");
     });
   });
 });

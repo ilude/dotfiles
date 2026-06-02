@@ -25,7 +25,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Type } from "@earendil-works/pi-ai";
-import { type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 
 const SEARXNG_URL = "http://192.168.16.241:8888/search";
 const WEB_FETCH_SCRIPT = path.join(os.homedir(), ".dotfiles", "pi", "extensions", "web-fetch", "fetch.js");
@@ -90,13 +91,13 @@ interface StructuredSearchParams {
 
 function cleanSearchItems(values?: string[]): string[] {
 	return (values ?? [])
-		.map((value) => value.trim().replace(/^\"|\"$/g, "").replace(/\s+/g, " "))
+		.map((value) => value.trim().replace(/^"|"$/g, "").replace(/\s+/g, " "))
 		.filter(Boolean);
 }
 
 function normalizeSite(site?: string): string | undefined {
 	if (!site) return undefined;
-	let value = site.trim().replace(/^site:/i, "").trim();
+	const value = site.trim().replace(/^site:/i, "").trim();
 	if (!value) return undefined;
 	try {
 		const candidate = /^[a-z]+:\/\//i.test(value) ? value : `https://${value}`;
@@ -140,6 +141,11 @@ export function formatSearchResult(r: SearchResult, index: number): string {
 }
 
 loadDotEnv();
+
+function displayUrl(url: string | undefined): string {
+	if (!url) return "(missing URL)";
+	return url.length > 120 ? `${url.slice(0, 117)}...` : url;
+}
 
 export default function (pi: ExtensionAPI) {
 	// ── Tool: web_search ────────────────────────────────────────────────────────
@@ -223,6 +229,14 @@ export default function (pi: ExtensionAPI) {
 			const text = result.stdout.trim() || result.stderr.trim() || "(no content extracted)";
 
 			return { content: [{ type: "text" as const, text }], details: undefined };
+		},
+		renderCall(args, theme, _context) {
+			const url = displayUrl((args as { url?: string }).url);
+			return new Text(
+				theme.fg("accent", "web_fetch ") + theme.fg("toolTitle", url),
+				0,
+				0,
+			);
 		},
 	});
 }
