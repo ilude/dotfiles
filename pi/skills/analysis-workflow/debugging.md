@@ -21,7 +21,7 @@ Research shows **hypothesis-driven debugging** produces:
 
 When the user proposes a debugging hypothesis with hedged language -- "I think", "seems like", "probably", "maybe", "I suspect", "might be", "could be", "looks like", "pretty sure" -- generate 2-3 alternative causes *independently* before evaluating their theory.
 
-**Rule (from `claude/CLAUDE.md` user-certainty-calibration):** if the user is not sure, the agent must not be sure.
+**Rule (from the active instruction ruleset's user-certainty calibration):** if the user is not sure, the agent must not be sure.
 
 Procedure:
 1. List 2-3 candidate causes that fit the observed evidence, generated without reference to the user's hypothesis.
@@ -36,7 +36,7 @@ Skip this when the user is *not* hedging and is reporting an observed fact ("the
 ## The Process
 
 ```
-REPRODUCE → ISOLATE → HYPOTHESIZE → TEST → FIX → VERIFY
+REPRODUCE -> ISOLATE -> HYPOTHESIZE -> TEST -> FIX -> VERIFY
 ```
 
 ### The 10-Minute Rule
@@ -165,11 +165,11 @@ Keep asking "Why?" until you reach actionable root cause:
 
 ```
 Bug: Login fails
-Why? → Database query returns null
-Why? → User record not found
-Why? → Email lookup is case-sensitive
-Why? → No normalization on insert
-Why? → Requirements didn't specify case handling
+Why? -> Database query returns null
+Why? -> User record not found
+Why? -> Email lookup is case-sensitive
+Why? -> No normalization on insert
+Why? -> Requirements didn't specify case handling
 ROOT CAUSE: Requirements gap
 ```
 

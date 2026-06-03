@@ -5,7 +5,7 @@ description: API design patterns including REST, GraphQL, and authentication. Ac
 
 # API Design Patterns
 
-Language-agnostic patterns for designing robust, scalable REST and GraphQL APIs. Focus on solving real problems with simple, maintainable solutions.
+Language-agnostic patterns for designing REST and GraphQL APIs. Focus on solving real problems with simple, maintainable solutions that match the project's existing API conventions.
 
 **Auto-activate when:** Working with API routes, endpoints, REST design, GraphQL schemas, OpenAPI/Swagger specs, authentication tokens, API documentation, or discussing endpoint design, versioning strategies, or API architecture.
 
@@ -193,4 +193,4 @@ Good: GET /api/data (Authorization: Bearer <token>)
 
 ---
 
-**Note:** For project-specific API patterns, check `.claude/CLAUDE.md` in the project directory.
+**Note:** For project-specific API patterns, check the active repo/client instruction files, such as `AGENTS.md`, `CLAUDE.md`, README files, or local API docs.

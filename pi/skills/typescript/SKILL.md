@@ -5,7 +5,7 @@ description: TypeScript/JavaScript development with Bun, Biome, Zod, and modern 
 
 # TypeScript/JavaScript Projects Workflow
 
-Guidelines for working with TypeScript and JavaScript projects using Bun as the primary package manager with modern tooling and best practices.
+Guidelines for working with TypeScript and JavaScript projects using the lockfile-selected package manager, project conventions, and typecheck/lint/test validation.
 
 ## Tool Grid
 
@@ -124,7 +124,7 @@ module.exports = { UserService };
 
 ## TypeScript Configuration
 
-### tsconfig.json Best Practices
+### tsconfig.json Project Defaults
 
 ```json
 {
@@ -307,20 +307,20 @@ function createUser(data: unknown): User {
 
 ```
 project/
-├── src/
-│   ├── main.ts              # Entry point
-│   ├── types/               # Type definitions
-│   ├── services/            # Business logic
-│   ├── repositories/        # Data access layer
-│   ├── handlers/            # Request/event handlers
-│   ├── utils/               # Utility functions
-│   └── config/              # Configuration
-├── tests/                   # Tests
-├── dist/                    # Compiled output (gitignored)
-├── package.json
-├── tsconfig.json
-├── biome.json
-└── bun.lock
+|-- src/
+|   |-- main.ts              # Entry point
+|   |-- types/               # Type definitions
+|   |-- services/            # Business logic
+|   |-- repositories/        # Data access layer
+|   |-- handlers/            # Request/event handlers
+|   |-- utils/               # Utility functions
+|   `-- config/              # Configuration
+|-- tests/                   # Tests
+|-- dist/                    # Compiled output (gitignored)
+|-- package.json
+|-- tsconfig.json
+|-- biome.json
+`-- bun.lock
 ```
 
 ## Error Handling
@@ -445,4 +445,4 @@ Check `package.json` "scripts" section for:
 
 ---
 
-**Note:** For project-specific TypeScript patterns, check `.claude/CLAUDE.md` in the project directory.
+**Note:** For project-specific TypeScript patterns, check the active repo/client instruction files, such as `AGENTS.md`, `CLAUDE.md`, package scripts, README files, or local docs.

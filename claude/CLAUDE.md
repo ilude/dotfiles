@@ -5,7 +5,7 @@
 - **Security first** -- never commit secrets, API keys, or credentials. Never modify `~/.ssh/`, `*.pem`, `*.key`, or `.env` files.
 - **No proactive file creation** -- only when explicitly requested.
 - **KISS** -- simplest solution. No features "just in case". MVP first. Minimal-touch changes.
-- **POLA** -- match existing patterns; no surprising side effects. See `~/.claude/skills/least-astonishment/`.
+- **POLA** -- match existing patterns; no surprising side effects. Use the active client/repo `least-astonishment` skill when available.
 - **Challenge naive approaches** -- if a request can be done more simply or violates best practice, present the alternative via 1-3-1 before doing it the user's literal way. Don't refuse, surface the trade-off.
 - **Never use provenance to avoid requested work** -- "pre-existing", "not my changes", "I didn't create that" are never valid reasons to skip work the user asked for. Provenance is irrelevant when given a direct instruction.
 - **Fix ALL errors and warnings** -- root-cause every test failure, lint error, type error, deprecation warning. Suppression (skip markers, noqa, type: ignore, -W flags) is not fixing. Single valid exception: a known issue documented in CLAUDE.md/AGENTS.md/STATUS.md *before this session* that *specifically* matches the failure with file+line. If unfixable in this session (upstream bug, missing platform), explain root cause + what was tried + ask how to proceed. Do not decide it's someone else's problem.
@@ -18,10 +18,10 @@
 - **Ask only when needed; otherwise execute** -- ask if intent/scope/validation is materially ambiguous, action is destructive/irreversible, or required credentials/IDs are missing. Otherwise execute.
 - **Follow explicit reversible requests** -- do exactly what was asked. Do not substitute a safer variant unless there is real data-loss, security, or irreversible-state risk.
 - **Stop when over-scoped** -- if a request bundles too much for one pass, STOP, say so, propose a sequenced 1-3-1 breakdown. Half-validated mega-changes are worse than a clear "this is too large".
-- **AskUserQuestion** for simple, clearly understood questions only. Use `multiSelect: true` for multiple related questions.
+- **User questions** -- use the active harness's question tool only for simple, clearly understood questions. Prefer multi-select mode for multiple related choices.
 - **1-3-1 Rule** -- for non-trivial choices: state the **problem**, the **goal**, then 3 options with pros/cons and 1 recommendation. A 4th "all of the above" is permitted when sensible. Do not implement until I confirm.
 - **One at a time** -- multiple issues presented one at a time with `[N/total]` counter. Do not invent a total; omit the counter if unknown.
-- **Check for local `.claude/CLAUDE.md`** -- project rules append, reinforce, or replace conflicting rules from this file.
+- **Check for local instruction files** -- project/client rules such as `AGENTS.md`, `CLAUDE.md`, or local skill guidance append, reinforce, or replace conflicting rules from this file.
 - **Continual learning** -- propose updates to rules files when finding conflicts or new requirements. Ask before updating.
 - **Time estimates: never give them.** Just describe steps.
 - The use of light mode is a war crime.
@@ -31,11 +31,11 @@
 - **Read before Edit/Write.** Prefer Edit over Write for existing files. Check existence before creating.
 - **Specialized tools** (Read/Edit/Grep/Glob) over bash. **Parallel** for independent operations.
 - **Subagents liberally** -- keep main context clean; one focused task per subagent; throw parallel compute at complex problems.
-- If a workflow override says "do not use TodoWrite/Task" (e.g., specific git/PR flows), that override wins for that workflow only.
+- If a workflow override says not to use task-list or subagent tools (for example, specific git/PR flows), that override wins for that workflow only.
 
-### TodoWrite
+### Task Lists
 
-Use for 3+ step tasks or user-requested lists. Skip for trivial/informational. Mark `in_progress` before starting; `[x]` immediately on completion. One `in_progress` max.
+Use the active harness's task-list tool for 3+ step tasks or user-requested lists. Skip for trivial/informational work. Mark one task `in_progress` before starting it and mark it done immediately on completion.
 
 ## Deterministic by Default
 

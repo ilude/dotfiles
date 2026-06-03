@@ -1,3 +1,23 @@
+## 2026-06-03: Clean up Pi skill client references
+
+**Why:** A few Pi skills still had Claude-specific references or vague "best practices" wording that could confuse cross-client use.
+
+**Fix:** Updated Pi API, TypeScript, and debugging skills to reference active repo/client instruction files, project conventions, and concrete validation instead of Claude-only files or vague quality language.
+
+**Files:** ~/.dotfiles/pi/skills/api-design/SKILL.md, ~/.dotfiles/pi/skills/typescript/SKILL.md, ~/.dotfiles/pi/skills/analysis-workflow/debugging.md
+
+---
+
+## 2026-06-03: Tighten coding-quality and cross-client instruction guidance
+
+**Why:** Goal prompts and shared instruction files needed a concrete coding-quality bar without vague "best practices" wording, and several shared surfaces carried Claude-specific tool/path names while also being loaded by Pi.
+
+**Fix:** Updated the Pi goal skill to require the smallest maintainable coding change, project patterns, explicit validation, and no placeholder/speculative implementations. Reworded shared instruction and development-philosophy guidance to use active harness/client terms and replaced per-tool-call planning with outcome-first next-step guidance.
+
+**Files:** ~/.dotfiles/pi/skills/pi-goal/SKILL.md, ~/.dotfiles/claude/CLAUDE.md, ~/.dotfiles/pi/skills/development-philosophy/SKILL.md, ~/.dotfiles/claude/skills/development-philosophy/SKILL.md
+
+---
+
 ## 2026-06-01: Default Pi goal prompt skill to inline output
 
 **Why:** Requests to create a `/goal` prompt should usually return a copyable command on screen, not create a markdown file unless the user asks for one or the prompt is too large for inline use.
@@ -95,7 +115,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 ## 2026-03-18: Improve war-report specificity and formatting
 
 **Changed:**
-- Added explicit rule requiring specific entries (name the feature/component/system) — generic statements like "fixed a bug" are never acceptable
+- Added explicit rule requiring specific entries (name the feature/component/system) -- generic statements like "fixed a bug" are never acceptable
 - Added bad example section showing what NOT to write
 - Enforced active voice and no trailing periods on entries
 - Updated good examples to match new formatting rules
@@ -105,7 +125,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 ## 2026-02-26: Fix Windows console window flashing caused by uv in hooks
 
 **Fixed:**
-- Replaced `uv run` with bare `python` in all hook commands in `settings.json` — `uv.exe` spawns visible `conhost.exe` windows on the hook execution path in Claude Code v2.1.45+
+- Replaced `uv run` with bare `python` in all hook commands in `settings.json` -- `uv.exe` spawns visible `conhost.exe` windows on the hook execution path in Claude Code v2.1.45+
 - Removed redundant `bash -c` wrapper from all Python hook commands (was spawning an unnecessary extra bash layer)
 - Normalized outlier hook patterns: PermissionRequest no longer uses `-l` (login shell) or bare `python` without `uv`; statusLine uses `$HOME` instead of `~`
 - Added `pip install pyyaml tree-sitter tree-sitter-bash` to both `install` and `install.ps1` for hook dependencies
@@ -118,7 +138,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
-## 2026-02-26: /review-plan file persistence — findings survive context compaction
+## 2026-02-26: /review-plan file persistence -- findings survive context compaction
 
 **Changed:**
 - All reviewer agents now write findings to files at `.specs/{plan-name}/review-{N}/{reviewer-slug}.md`
@@ -137,19 +157,19 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
-## 2026-02-25: Major /review-plan redesign — dynamic panels, outside-the-box expert, rebuttal round
+## 2026-02-25: Major /review-plan redesign -- dynamic panels, outside-the-box expert, rebuttal round
 
 **Changed:**
-- Dynamic expert panel — main agent analyzes plan content and composes the reviewer panel (4-8 experts) instead of hardcoded 4
+- Dynamic expert panel -- main agent analyzes plan content and composes the reviewer panel (4-8 experts) instead of hardcoded 4
 - 3 mandatory reviewers (Completeness, Adversarial, Outside-the-Box) + dynamic selection from suggested pool
-- New "Outside-the-Box / Simplicity" mandatory reviewer — questions the approach itself, checks industry best practices via web search, evaluates proportionality of complexity to goal (`max_turns: 8`)
-- Suggested expert pool with 6 archetypes (Ops/SRE, Security, Database, Networking, Cost, Compliance) as starting points; pool is a reference, not a constraint — custom reviewers encouraged
-- Rebuttal round (Step 3) — after all reviewers complete, domain experts respond to OtB findings with AGREE/PARTIAL/DISAGREE. Uses haiku, `max_turns: 1` for speed. Consensus determines whether complexity is justified or the plan should simplify.
-- Enforce parallel launch — all Task calls must be in a single message (mandatory)
+- New "Outside-the-Box / Simplicity" mandatory reviewer -- questions the approach itself, checks industry best practices via web search, evaluates proportionality of complexity to goal (`max_turns: 8`)
+- Suggested expert pool with 6 archetypes (Ops/SRE, Security, Database, Networking, Cost, Compliance) as starting points; pool is a reference, not a constraint -- custom reviewers encouraged
+- Rebuttal round (Step 3) -- after all reviewers complete, domain experts respond to OtB findings with AGREE/PARTIAL/DISAGREE. Uses haiku, `max_turns: 1` for speed. Consensus determines whether complexity is justified or the plan should simplify.
+- Enforce parallel launch -- all Task calls must be in a single message (mandatory)
 - `max_turns: 5` for standard reviewers, `max_turns: 8` for Outside-the-Box
 - Cap findings at 8 per reviewer
 - Outside-the-Box assessment + rebuttal summary gets its own prominent section in output
-- Remove redundant "Suggested Plan Edits" section — findings already contain suggestions
+- Remove redundant "Suggested Plan Edits" section -- findings already contain suggestions
 - Panel is presented to user before launch (but launched immediately, no approval wait)
 
 **Files:** `~/.dotfiles/claude/shared/review-plan-instructions.md`
@@ -159,7 +179,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 ## 2026-02-25: Create /review-plan command
 
 **Added:**
-- `/review-plan` command — launches 4 parallel expert reviewers (Ops/SRE, Security, Completeness, Adversarial/Red Team) against a plan file
+- `/review-plan` command -- launches 4 parallel expert reviewers (Ops/SRE, Security, Completeness, Adversarial/Red Team) against a plan file
 - Thin command file at `~/.dotfiles/claude/commands/review-plan.md`
 - Full instructions at `~/.dotfiles/claude/shared/review-plan-instructions.md`
 
@@ -170,13 +190,13 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 ## 2026-02-21: Add workflow orchestration rules
 
 **Added:**
-- "Plan mode default" critical rule — enter plan mode for non-trivial tasks, re-plan on failure
+- "Plan mode default" critical rule -- enter plan mode for non-trivial tasks, re-plan on failure
 - "Workflow Orchestration" section with task tracking (`tasks/todo.md`, `tasks/lessons.md`), demand elegance, autonomous bug fixing, and verification-before-done
 - Self-improvement loop: update `tasks/lessons.md` after any user correction
 
 **Changed:**
-- KISS principle — added "every change should touch minimal code"
-- Subagent guidance — expanded to "use liberally, one focused task per subagent, throw more compute at complex problems"
+- KISS principle -- added "every change should touch minimal code"
+- Subagent guidance -- expanded to "use liberally, one focused task per subagent, throw more compute at complex problems"
 
 **Files:** `claude/CLAUDE.md`
 
@@ -185,11 +205,11 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 ## 2026-02-17: Eliminate provenance-based work avoidance
 
 **Added:**
-- New critical rule: "Never use provenance to avoid requested work" — blocks using "pre-existing", "not my changes", etc. as reasons to skip user-requested work
+- New critical rule: "Never use provenance to avoid requested work" -- blocks using "pre-existing", "not my changes", etc. as reasons to skip user-requested work
 
 **Changed:**
-- "Fix ALL errors and warnings" — removed escape hatch language ("prove it's pre-existing"), replaced with "fix them all regardless of who introduced them"
-- "Never revert user changes" → renamed to "No unsolicited destructive git actions" — narrowed scope to destructive actions only, no longer implies skipping requested work on files you didn't author
+- "Fix ALL errors and warnings" -- removed escape hatch language ("prove it's pre-existing"), replaced with "fix them all regardless of who introduced them"
+- "Never revert user changes" -> renamed to "No unsolicited destructive git actions" -- narrowed scope to destructive actions only, no longer implies skipping requested work on files you didn't author
 - `/commit` instructions now explicitly state to commit ALL uncommitted files matching auto-stage rules, regardless of who made the changes
 
 **Files:** `claude/CLAUDE.md`, `claude/shared/commit-instructions.md`
@@ -275,7 +295,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 **Enhanced python-workflow skill:**
 - Merged patterns from copilot-python-workflow
-- Added UV-exclusive commands table (✅ correct vs ❌ incorrect)
+- Added UV-exclusive commands table (OK: correct vs BAD: incorrect)
 - Added CRITICAL section for zero warnings tolerance
 - Added CQRS/IoC architecture patterns
 - Enhanced testing workflow (targeted during dev, full before commit)
@@ -323,9 +343,9 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 **All Copilot references removed:**
 - Skills rewritten as native Claude Code guidance
-- Adapted applyTo frontmatter → activation triggers
-- Adapted .github/ directory → .claude/ directory
-- Adapted copilot-instructions.md → CLAUDE.md references
+- Adapted applyTo frontmatter -> activation triggers
+- Adapted .github/ directory -> .claude/ directory
+- Adapted copilot-instructions.md -> CLAUDE.md references
 - No "Copilot" branding in any skill
 
 **Token efficiency:**
@@ -356,7 +376,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 - Removed meta-commentary
 
 **Architecture Benefits:**
-- Total system: 1,610 → 1,017 tokens (37% reduction)
+- Total system: 1,610 -> 1,017 tokens (37% reduction)
 - Command is purely procedural with inline data
 - Skill contains philosophy and rationale
 - No help separation needed (simpler workflow than prompt engineering)
@@ -434,7 +454,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 - Skills: Philosophy and principles (WHY and WHEN)
 
 **Total Impact:**
-- System-wide token reduction: **66%** (11,667 → 4,021 tokens)
+- System-wide token reduction: **66%** (11,667 -> 4,021 tokens)
 - optimize-ruleset alone: **7,852 tokens saved per invocation**
 - Better Haiku 4.5 compatibility through:
   - Direct imperatives ("Run X" not "Consider running X")

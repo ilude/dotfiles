@@ -12,7 +12,7 @@ description: Personal development philosophy emphasizing experiment-driven, fail
 **Execute decisively after intent and success criteria are clear. Solve real problems. Start simple, iterate based on evidence.**
 
 **Five pillars:**
-1. **Autonomous Execution (Post-Clarification)** - Complete tasks fully once intent and validation criteria are clear; defer ask/execute boundaries to `claude/CLAUDE.md`
+1. **Autonomous Execution (Post-Clarification)** - Complete tasks fully once intent and validation criteria are clear; defer ask/execute boundaries to the active repo/client instruction file
 2. **Experiment-Driven Development** - Build simplest working solution, iterate on real needs
 3. **Fail-Fast Learning** - Short cycles, expect to pivot, document learnings
 4. **Least Astonishment** - Changes should be predictable; match existing patterns (see the [least-astonishment skill](../least-astonishment/SKILL.md))
@@ -27,14 +27,14 @@ description: Personal development philosophy emphasizing experiment-driven, fail
 
 **Execute tasks without verbose explanations:**
 
-✅ **Do this:**
+OK: **Do this:**
 - "Fetching docs..."
 - "Found 3 files. Updating now..."
 - "Running tests..."
 - "Fixed 2 issues. Tests passing."
 - "Done."
 
-❌ **Never do this:**
+BAD: **Never do this:**
 - "Would you like me to..."
 - "I could potentially..."
 - "Should I proceed with..."
@@ -74,36 +74,36 @@ If the user reports the **same issue twice**, STOP guessing fixes:
 3. **Research** - Use web search if needed for platform-specific issues
 4. **Fix properly** - Address root cause, not symptoms
 
-❌ **Never:** Keep trying random fixes while user repeats the same error message
-✅ **Always:** Step back, understand WHY, then fix
+BAD: **Never:** Keep trying random fixes while user repeats the same error message
+OK: **Always:** Step back, understand WHY, then fix
 
 ---
 
 **When errors occur, fix them autonomously:**
 
 ```
-✅ CORRECT flow:
-1. Run tests → 3 failures
+OK: CORRECT flow:
+1. Run tests -> 3 failures
 2. "Fixing import errors..."
 3. Add missing dependencies
-4. Run tests → All pass
+4. Run tests -> All pass
 5. "Tests passing. Done."
 
-❌ WRONG flow:
-1. Run tests → 3 failures
+BAD: WRONG flow:
+1. Run tests -> 3 failures
 2. "Tests failed. What should I do?"
 [STOP - never leave errors unfixed]
 ```
 
-**Error recovery:** Identify error → State fix → Apply → Verify → Continue
+**Error recovery:** Identify error -> State fix -> Apply -> Verify -> Continue
 
 **Before completing ANY task, verify you have NOT:**
-1. ❌ Asked "Would you like me to..."
-2. ❌ Ended without verification (tests after code changes)
-3. ❌ Stopped mid-task
-4. ❌ Skipped error handling
-5. ❌ Provided unsolicited code blocks
-6. ❌ Made unnecessary changes
+1. BAD: Asked "Would you like me to..."
+2. BAD: Ended without verification (tests after code changes)
+3. BAD: Stopped mid-task
+4. BAD: Skipped error handling
+5. BAD: Provided unsolicited code blocks
+6. BAD: Made unnecessary changes
 
 ---
 
@@ -114,7 +114,7 @@ If the user reports the **same issue twice**, STOP guessing fixes:
 **File rules:**
 - Only create files when explicitly requested or necessary
 - Respect project structure decisions
-- Store planning/analysis in `.spec/` or `.chat_planning/`
+- Store planning/analysis in the repo's established planning directory, such as `.specs/`, or another documented local convention
 - Focus on runnable code, not documentation
 - Use docstrings/comments instead of separate markdown
 
@@ -123,14 +123,14 @@ If the user reports the **same issue twice**, STOP guessing fixes:
 **Code should explain itself. Comment to explain WHY, not WHAT.**
 
 ```python
-# ❌ BAD - Obvious comment
+# BAD: Obvious comment
 # Increment counter by 1
 counter += 1
 
-# ✅ GOOD - No comment needed
+# GOOD: No comment needed
 counter += 1
 
-# ✅ GOOD - Comment explains WHY (not obvious)
+# GOOD: Comment explains WHY (not obvious)
 # Binary search because list is sorted and large (10M+ items)
 index = binary_search(sorted_list, target)
 ```
@@ -166,7 +166,7 @@ index = binary_search(sorted_list, target)
 | **Dependency Injection** | Testing requires mocking, framework encourages | Simple imports work fine |
 | **Test-First** | Non-obvious/critical behavior | Trivial getters/setters |
 
-### Problem → Pattern Mapping
+### Problem -> Pattern Mapping
 
 | Problem | Consider Pattern |
 |---------|-----------------|
@@ -185,10 +185,10 @@ index = binary_search(sorted_list, target)
 4. Will this make code easier to understand?
 
 **Pattern Anti-Patterns:**
-- ❌ Singleton for configuration (use DI)
-- ❌ Factory "because enterprise"
-- ❌ Strategy "in case we need algorithms later"
-- ❌ Interface for every class
+- BAD: Singleton for configuration (use DI)
+- BAD: Factory "because enterprise"
+- BAD: Strategy "in case we need algorithms later"
+- BAD: Interface for every class
 
 ---
 ### Standard Library First
@@ -232,10 +232,10 @@ index = binary_search(sorted_list, target)
 **During implementation phase, never interrupt between steps to ask permission.**
 
 **Verification after code changes:**
-- ✅ Python (*.py) modified → `uv run pytest`
-- ✅ Test files modified → Run tests
-- ✅ Dependencies changed → Run tests
-- ⚠️ Only docs/config → Skip tests
+- OK: Python (*.py) modified -> `uv run pytest`
+- OK: Test files modified -> Run tests
+- OK: Dependencies changed -> Run tests
+- WARN: Only docs/config -> Skip tests
 
 ---
 
@@ -285,10 +285,10 @@ index = binary_search(sorted_list, target)
 
 | Phase | Approach |
 |-------|----------|
-| **Experiment** | Simplest code → Notice pain → Extract patterns → Document learnings |
-| **Production** | Apply SOLID → Comprehensive tests → Inject dependencies → Consider CQRS → Enforce DRY |
+| **Experiment** | Simplest code -> Notice pain -> Extract patterns -> Document learnings |
+| **Production** | Apply SOLID -> Comprehensive tests -> Inject dependencies -> Consider CQRS -> Enforce DRY |
 
-**Quality standards:** Plan before each tool call. Test thoroughly. Handle edge cases. Follow project conventions.
+**Quality standards:** Define the next useful step, act, then validate with the smallest check that proves the change. Handle relevant edge cases and follow project conventions.
 
 **Stay focused:** Minimal changes. No over-engineering. No speculative features. Respect existing patterns.
 

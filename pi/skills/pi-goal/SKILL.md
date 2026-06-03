@@ -70,6 +70,8 @@ Use this shape for most file-backed goals:
 ## Execution Rules
 - Work until the objective is complete or a real blocker is reached.
 - Prefer documented project commands and existing patterns.
+- For coding goals, write the smallest maintainable change that satisfies the objective. Use design patterns only when they reduce real duplication, clarify ownership, or match an established project convention.
+- For coding goals, do not add placeholder code, speculative abstractions, broad rewrites, fake fallbacks, or unvalidated "looks good" implementations.
 - Do not expose secrets.
 - Ask before destructive, irreversible, paid, shared-production, or subjective user-judgment gates.
 - Repair validation failures when safe and in scope.
@@ -165,6 +167,7 @@ Poor file-backed content:
 - **Premature closeout:** Telling the agent to call `goal_complete` after implementation but before validation.
 - **Secret leakage:** Including tokens, private keys, or full sensitive logs in the prompt.
 - **Prompt as plan archive:** If the task needs durable wave-by-wave tracking, recommend `/plan-it` instead of a single `/goal` prompt.
+- **Vague coding quality bar:** "Use best practices" without saying what project patterns, validation, or acceptance criteria prove the code is acceptable.
 
 ## Quick Reference
 
