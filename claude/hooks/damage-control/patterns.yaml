@@ -64,11 +64,11 @@ bashToolPatterns:
 
   # Regular rm with recursive/force - ask for confirmation
   # Note: (?<!git\s) negative lookbehind excludes 'git rm' (handled separately above)
-  - pattern: '(?<!git\s)\brm\s+(-[^\s]*)*-[rRf]'
+  - pattern: '(?<!git\s)(?<!docker\s)\brm\s+(-[^\s]*)*-[rRf]'
     reason: rm with recursive or force flags
     ask: true
 
-  - pattern: '(?<!git\s)\brm\s+-[rRf]'
+  - pattern: '(?<!git\s)(?<!docker\s)\brm\s+-[rRf]'
     reason: rm with recursive or force flags
     ask: true
 
@@ -85,11 +85,11 @@ bashToolPatterns:
     reason: rm deletes files permanently
     ask: true
 
-  - pattern: '\brm\s+--recursive'
+  - pattern: '(?<!docker\s)\brm\s+--recursive'
     reason: rm with --recursive flag
     ask: true
 
-  - pattern: '\brm\s+--force'
+  - pattern: '(?<!docker\s)\brm\s+--force'
     reason: rm with --force flag
     ask: true
 

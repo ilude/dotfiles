@@ -32,6 +32,42 @@ def minimal_config():
     return {"bashToolPatterns": [], "zeroAccessPaths": [], "readOnlyPaths": [], "noDeletePaths": []}
 
 
+@pytest.fixture
+def full_config():
+    """Load the real patterns.yaml config for integration testing."""
+    bash_tool.load_config()
+    return bash_tool.get_compiled_config()
+
+
+class TestDockerRmIntegration:
+    """Integration tests for Docker remove commands."""
+
+    def test_docker_rm_force_named_containers_allowed(self, full_config):
+        command = (
+            "docker rm -f onramp-caddy onramp-joyride onramp-whoami "
+            "onramp-infisical onramp-infisical-db onramp-infisical-redis "
+            "2>/dev/null || true"
+        )
+        is_blocked, should_ask, reason, pattern, unwrapped, semantic = check_command(
+            command, full_config
+        )
+        assert not is_blocked and not should_ask, reason
+
+    def test_docker_rm_force_all_containers_still_asks(self, full_config):
+        command = "docker rm -f $(docker ps -aq)"
+        is_blocked, should_ask, reason, pattern, unwrapped, semantic = check_command(
+            command, full_config
+        )
+        assert should_ask, "broad docker rm -f should still require confirmation"
+
+    def test_plain_rm_force_still_asks(self, full_config):
+        command = "rm -f build/output.log"
+        is_blocked, should_ask, reason, pattern, unwrapped, semantic = check_command(
+            command, full_config
+        )
+        assert should_ask, "plain rm -f should still require confirmation"
+
+
 class TestGitSemanticIntegration:
     """Integration tests for git semantic analysis with check_command."""
 

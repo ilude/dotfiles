@@ -1298,6 +1298,38 @@ describe("damage-control refactor hardening", () => {
 		else process.env.PI_DAMAGE_CONTROL_DEBUG = oldDebug;
 	});
 
+	it("real tracked rules allow docker rm -f named containers only", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const loaded = mod.loadRules(process.cwd());
+		expect(loaded.health.status).toBe("active");
+
+		await expect(
+			mod.evaluateDangerousCommand(
+				[
+					"docker rm -f onramp-caddy onramp-joyride onramp-whoami",
+					"onramp-infisical onramp-infisical-db onramp-infisical-redis",
+					"2>/dev/null || true",
+				].join(" "),
+				loaded.rules.dangerous_commands,
+				{ toolName: "bash", cwd: process.cwd() },
+			),
+		).resolves.toBeUndefined();
+		await expect(
+			mod.evaluateDangerousCommand(
+				"docker rm -f $(docker ps -aq)",
+				loaded.rules.dangerous_commands,
+				{ toolName: "bash", cwd: process.cwd() },
+			),
+		).resolves.toMatchObject({ block: true });
+		await expect(
+			mod.evaluateDangerousCommand(
+				"rm -f build/output.log",
+				loaded.rules.dangerous_commands,
+				{ toolName: "bash", cwd: process.cwd() },
+			),
+		).resolves.toMatchObject({ block: true });
+	});
+
 	it("real tracked rules block synthetic secret reads and destructive commands", async () => {
 		const mod = await import("../extensions/damage-control.ts");
 		const loaded = mod.loadRules(process.cwd());
