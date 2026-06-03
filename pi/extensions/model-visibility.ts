@@ -380,9 +380,9 @@ async function applyProviderFilter(
 
 	const apiKeyEnv =
 		provider === "opencode" || provider === "opencode-go"
-			? "OPENCODE_API_KEY"
+			? "$OPENCODE_API_KEY"
 			: provider === "openrouter"
-				? "OPENROUTER_API_KEY"
+				? "$OPENROUTER_API_KEY"
 				: undefined;
 	if (!apiKeyEnv && provider !== "amazon-bedrock")
 		return { before: models.length, after: models.length };
@@ -392,7 +392,7 @@ async function applyProviderFilter(
 	}
 	ctx.modelRegistry.registerProvider(provider, {
 		baseUrl: models[0].baseUrl,
-		apiKey: apiKeyEnv ?? "AWS_BEARER_TOKEN_BEDROCK",
+		apiKey: apiKeyEnv ?? "$AWS_BEARER_TOKEN_BEDROCK",
 		api: models[0].api as any,
 		models: filtered.map((model) => toProviderModelDef(model)),
 	});
