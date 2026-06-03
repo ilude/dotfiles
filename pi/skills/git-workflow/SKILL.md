@@ -20,6 +20,9 @@ Comprehensive git workflow principles for all git operations.
 ### When to Commit
 Only commit when explicitly requested. MUST NOT commit proactively.
 
+### Precedence
+For git status, staging, committing, and pushing, this skill is authoritative. Do not apply code-editing scope rules from least-astonishment to decide what to stage. Inspect all current changes, group them by commit type, and either commit them together when related or ask the user when a change is ambiguous.
+
 ## Security First
 
 **MUST scan for secrets. If found, STOP and refuse to commit.**
@@ -133,10 +136,11 @@ When writing code in commits, avoid AI patterns:
 
 1. **Security scan** - Check for secrets first
 2. **Analyze** - Run git status, diff, log in parallel
-3. **Group** - Organize by commit type
-4. **Commit** - Use HEREDOC format
-5. **Verify** - Ensure clean status
-6. **Push** - Only if explicitly requested
+3. **Inspect all changes** - Before committing, inspect every modified/untracked file. If any change is not part of the requested work, ask whether to include it, commit it separately, or leave it uncommitted. Do not silently skip it.
+4. **Group** - Organize by commit type
+5. **Commit** - Use HEREDOC format
+6. **Verify** - Ensure clean status
+7. **Push** - Only if explicitly requested
 
 ## Safety Rules
 

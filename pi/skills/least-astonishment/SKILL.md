@@ -1,6 +1,6 @@
 ---
 name: least-astonishment
-description: "Principle of Least Astonishment (POLA) for edit-time code changes. Activate when modifying, editing, refactoring, fixing, patching, extending, or adding to existing code — any time Claude is about to change code in an established codebase. Trigger keywords: edit, modify, change, update, refactor, fix, patch, extend, add to, integrate with, wire into, match the existing, follow the pattern, in this file, in this module, in this codebase, alongside, similar to. Do NOT activate for: greenfield, from scratch, new project, prototype, scaffold, throwaway."
+description: "Principle of Least Astonishment (POLA) for edit-time code changes. Activate when modifying, editing, refactoring, fixing, patching, extending, or adding to existing code — any time Claude is about to change code in an established codebase. Trigger keywords: edit, modify, change, update, refactor, fix, patch, extend, add to, integrate with, wire into, match the existing, follow the pattern, in this file, in this module, in this codebase, alongside, similar to. Do NOT activate for: greenfield, from scratch, new project, prototype, scaffold, throwaway, or pure git operations such as staging, committing, pushing, or deciding what changes belong in a commit."
 ---
 
 # Principle of Least Astonishment (POLA)
