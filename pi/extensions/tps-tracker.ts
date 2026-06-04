@@ -131,12 +131,16 @@ export default function (pi: ExtensionAPI) {
 			avgFirstTokenLatency === undefined
 				? ""
 				: `, ${avgFirstTokenLatency.toFixed(1)}s avg first token`;
+		const finishedAt = theme.fg(
+			"dim",
+			`completed at: ${new Date().toLocaleString()}`,
+		);
 		const detail = theme.fg(
 			"dim",
 			`${totalOutputTokens} tokens in ${elapsed.toFixed(1)}s streaming${latencyDetail}`,
 		);
 
-		ctx.ui.notify(`${icon} ${tpsLabel}  ${detail}`, "info");
-		ctx.ui.setStatus("tps", theme.fg("dim", `done — ${tpsLabel}`));
+		ctx.ui.notify(`${icon} ${tpsLabel}  ${detail}\n${finishedAt}`, "info");
+		ctx.ui.setStatus("tps", theme.fg("dim", `done - ${tpsLabel}`));
 	});
 }
