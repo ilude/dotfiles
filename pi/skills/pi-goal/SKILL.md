@@ -22,9 +22,9 @@ Optimize for:
 
 ### 1. Default to an inline command unless the user asks for a file
 
-When the user asks to "create a /goal prompt", "write a goal prompt", "give me a goal prompt for doing that", or "turn this into a goal" without asking for a file, output a copyable command on screen that starts with `/goal `.
+When the user asks to "create a /goal prompt", "write a goal prompt", "give me a goal prompt for doing that", or "turn this into a goal" without asking for a file, output a copyable command on screen.
 
-This is mandatory for inline responses: the first visible content of the prompt must be `/goal `. Do not output a standalone Markdown goal document unless writing the prompt to a file or giving file contents after the user explicitly asked for a file.
+This is mandatory for inline responses: the assistant response itself must start with `/goal `. Do not add a lead-in sentence, heading, code fence, bullet, label, explanation, or any other visible content before `/goal `. Do not output a standalone Markdown goal document unless writing the prompt to a file or giving file contents after the user explicitly asked for a file.
 
 Use inline `/goal <objective>` when the objective is short or moderate and can fit in a compact command.
 
@@ -175,7 +175,7 @@ Poor file-backed content:
 
 ### Inline response pattern
 
-When the user asks for a `/goal` prompt and not a file, respond with only the copyable command or a short lead-in plus the command. The copyable prompt itself must always start with `/goal `:
+When the user asks for a `/goal` prompt and not a file, respond with only the copyable command. The first visible characters of the assistant response must be `/goal `:
 
 ```text
 /goal <specific outcome>. Work until complete, run <validation command>, repair safe in-scope failures, ask before <manual gate>, then call goal_complete with accomplished work, validation, current state, gaps, and next steps.

@@ -1,3 +1,13 @@
+## 2026-06-03: Require inline goal prompts to start with /goal
+
+**Why:** Inline Pi goal prompt requests were still allowed to include a short lead-in, so some responses did not begin with the copyable `/goal` command.
+
+**Fix:** Updated the Pi goal prompt skill to require the assistant response itself to start with `/goal ` and removed the short lead-in allowance.
+
+**Files:** ~/.dotfiles/pi/skills/pi-goal/SKILL.md
+
+---
+
 ## 2026-06-03: Clean up Pi skill client references
 
 **Why:** A few Pi skills still had Claude-specific references or vague "best practices" wording that could confuse cross-client use.
