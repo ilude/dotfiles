@@ -29,8 +29,7 @@ Output (single-line JSON, trailing newline):
      "candidates":[...],"confidence":0.72}
 
 Exit codes:
-    0 -- success
-    1 -- error (prints JSON error object to stdout; TS side handles graceful fallback)
+    0 -- success, including safe default fallback when classification fails
 """
 
 import argparse
@@ -38,6 +37,7 @@ import hashlib
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -105,6 +105,47 @@ def _artifact_inventory(mode: str) -> dict:
         artifacts.append({"model": model_path.name, "sha256": hash_path.name, "hash": actual})
     return {"schema_version": "1.0.0", "classifier": mode, "artifacts": artifacts}
 
+
+def _safe_default_result(reason: str) -> dict:
+    return {
+        "schema_version": "3.0.0",
+        "primary": {"model_tier": "core", "effort": "medium"},
+        "candidates": [
+            {"model_tier": "core", "effort": "medium", "confidence": 0.0}
+        ],
+        "confidence": 0.0,
+        "reason": reason,
+    }
+
+
+def _unclassified_log_path() -> Path:
+    override = os.environ.get("UNCLASSIFIED_PROMPTS_LOG")
+    if override:
+        return Path(override)
+    return Path(__file__).parent / "logs" / "unclassified_prompts.jsonl"
+
+
+def _log_unclassified_prompt(prompt: str, mode: str, exc: Exception) -> None:
+    try:
+        log_path = _unclassified_log_path()
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        event = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "prompt": prompt,
+            "prompt_hash": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+            "classifier": mode,
+            "error": str(exc),
+            "error_type": type(exc).__name__,
+            "fallback_route": {"model_tier": "core", "effort": "medium"},
+        }
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(event, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+prompt = ""
+_classifier_mode = "t2"
 
 try:
     _args = _parse_args()
@@ -174,10 +215,8 @@ try:
     sys.exit(0)
 
 except Exception as exc:
-    error_out = {
-        "schema_version": "3.0.0",
-        "error": str(exc),
-        "fallback": True,
-    }
-    sys.stdout.write(json.dumps(error_out, ensure_ascii=False) + "\n")
-    sys.exit(1)
+    _log_unclassified_prompt(prompt, _classifier_mode, exc)
+    sys.stdout.write(
+        json.dumps(_safe_default_result("classifier_exception"), ensure_ascii=False) + "\n"
+    )
+    sys.exit(0)

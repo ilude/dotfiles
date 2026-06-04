@@ -1,5 +1,7 @@
 import * as crypto from "node:crypto";
-import * as fs from "node:fs/promises";
+import * as fs from "node:fs";
+import * as fsp from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
 import {
 	CLASSIFY_SCRIPT,
@@ -45,8 +47,8 @@ async function logClassifierFailure(
 	event: Record<string, unknown>,
 ): Promise<void> {
 	try {
-		await fs.mkdir(path.dirname(CLASSIFIER_FAILURE_LOG), { recursive: true });
-		await fs.appendFile(
+		await fsp.mkdir(path.dirname(CLASSIFIER_FAILURE_LOG), { recursive: true });
+		await fsp.appendFile(
 			CLASSIFIER_FAILURE_LOG,
 			`${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`,
 		);
@@ -68,7 +70,12 @@ function isClassifierEffort(value: unknown): value is string {
 }
 
 function isConfidence(value: unknown): value is number {
-	return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
+	return (
+		typeof value === "number" &&
+		Number.isFinite(value) &&
+		value >= 0 &&
+		value <= 1
+	);
 }
 
 function parseClassifierRoute(
@@ -162,7 +169,11 @@ export async function classifyWithV3(
 	mode: RouterClassifierMode = loadRouterClassifierMode(),
 ): Promise<ClassifierRecommendation | null> {
 	let result: { stdout: string; stderr: string; code: number };
+	let promptDir: string | null = null;
 	try {
+		promptDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-router-"));
+		const promptFile = path.join(promptDir, "prompt.txt");
+		fs.writeFileSync(promptFile, text, "utf-8");
 		result = await pi.exec(
 			"uv",
 			[
@@ -173,7 +184,8 @@ export async function classifyWithV3(
 				CLASSIFY_SCRIPT,
 				"--classifier",
 				mode,
-				text,
+				"--prompt-file",
+				promptFile,
 			],
 			{ timeout: 5000 },
 		);
@@ -197,6 +209,8 @@ export async function classifyWithV3(
 			"warning",
 		);
 		return null;
+	} finally {
+		if (promptDir) fs.rmSync(promptDir, { recursive: true, force: true });
 	}
 
 	const stdout = result.stdout.trim();

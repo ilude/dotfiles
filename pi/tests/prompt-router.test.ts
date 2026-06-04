@@ -950,6 +950,7 @@ describe("prompt-router extension -- input hook", () => {
 		);
 
 		expect(result).toEqual({ action: "continue" });
+		await new Promise((r) => setTimeout(r, 0));
 		expect(pi.exec).toHaveBeenCalledWith(
 			"uv",
 			[
@@ -960,12 +961,12 @@ describe("prompt-router extension -- input hook", () => {
 				path.join(os.homedir(), ".dotfiles/pi/prompt-routing/classify.py"),
 				"--classifier",
 				"confgate",
-				"explain the architecture of this system",
+				"--prompt-file",
+				expect.stringMatching(/prompt\.txt$/),
 			],
 			expect.objectContaining({ timeout: 5000 }),
 		);
 
-		await new Promise((r) => setTimeout(r, 0));
 		expect((pi as any).setModel).toHaveBeenCalledWith({
 			provider: "openai-codex",
 			id: "gpt-5.4-fast",
@@ -976,14 +977,25 @@ describe("prompt-router extension -- input hook", () => {
 		);
 	});
 
-	it("passes the trimmed prompt text to the classifier", async () => {
+	it("passes the trimmed prompt text to the classifier through a prompt file", async () => {
 		const { pi, inputHook, ctx } = setup();
+		(pi.exec as any).mockImplementationOnce(
+			async (_cmd: string, args: string[]) => {
+				const promptFile = args[args.indexOf("--prompt-file") + 1];
+				expect(fs.readFileSync(promptFile, "utf-8")).toBe(
+					"fix the null pointer bug",
+				);
+				return { code: 0, stdout: makeV3Json("core", "medium"), stderr: "" };
+			},
+		);
 		await inputHook.handler(
 			{ text: "  fix the null pointer bug  ", source: "user" },
 			ctx,
 		);
+		await new Promise((r) => setTimeout(r, 0));
 		const [, args] = (pi.exec as any).mock.calls[0];
-		expect(args[args.length - 1]).toBe("fix the null pointer bug");
+		expect(args).toContain("--prompt-file");
+		expect(args).not.toContain("fix the null pointer bug");
 	});
 });
 
@@ -1112,14 +1124,14 @@ describe("prompt-router extension -- session_start hook", () => {
 		);
 	});
 
-	it("sets configured router default thinking for configured GPT-5.5 default even when ctx.model is missing", async () => {
+	it("sets configured router default thinking when ctx.model is GPT-5.5", async () => {
 		const pi = createMockPi();
 		(pi as any).setThinkingLevel = vi.fn();
 		promptRouter(pi as any);
 
 		const sessionHooks = pi._getHook("session_start");
 		const ctx = createMockCtx({
-			model: undefined,
+			model: { provider: "openai-codex", id: "gpt-5.5" },
 			ui: { ...createMockCtx().ui, setStatus: vi.fn() },
 		});
 

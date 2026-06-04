@@ -14,6 +14,7 @@ Requires router_v3.joblib + router_v3.sha256 (run train.py first).
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -232,26 +233,50 @@ class TestClassifyOutput:
         assert "confidence" in out
         assert 0.0 <= out["confidence"] <= 1.0
 
-    def test_error_fallback_on_missing_model(self):
-        """If model is unavailable, classify.py exits 1 with JSON error object."""
+    def test_exception_logs_unclassified_prompt_and_returns_default(self, tmp_path):
+        """Classifier exceptions are queued for retraining and return a safe default."""
+        prompt = "try this unclassified prompt later"
+        prompt_file = tmp_path / "prompt.txt"
+        prompt_file.write_text(prompt, encoding="utf-8")
+        log_path = tmp_path / "unclassified_prompts.jsonl"
+        shadow_dir = tmp_path / "shadow"
+        shadow_dir.mkdir()
+        (shadow_dir / "joblib.py").write_text(
+            "raise RuntimeError('forced classifier import failure')\n",
+            encoding="utf-8",
+        )
+
         result = subprocess.run(
-            [sys.executable, str(CLASSIFY_PY), "test prompt"],
+            [
+                sys.executable,
+                str(CLASSIFY_PY),
+                "--classifier",
+                "t2",
+                "--prompt-file",
+                str(prompt_file),
+            ],
             capture_output=True,
             text=True,
             env={
-                **__import__("os").environ,
+                **os.environ,
                 "LOG_ROUTING": "0",
+                "PYTHONPATH": str(shadow_dir),
+                "UNCLASSIFIED_PROMPTS_LOG": str(log_path),
             },
-            # Use a temp directory with no model to simulate missing model
         )
-        # We can't easily remove the model in this test, so just verify
-        # that if classify.py does fail, it outputs valid JSON with error field
-        # This is a structural test -- if the model exists it will succeed.
-        if result.returncode == 1:
-            out = json.loads(result.stdout.strip())
-            assert "error" in out
-            assert out.get("fallback") is True
-            assert "schema_version" in out
+
+        assert result.returncode == 0, result.stderr
+        out = json.loads(result.stdout.strip())
+        assert out["schema_version"] == SCHEMA_VERSION
+        assert out["primary"] == {"model_tier": "core", "effort": "medium"}
+        assert out["confidence"] == 0.0
+
+        events = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+        assert len(events) == 1
+        assert events[0]["prompt"] == prompt
+        assert events[0]["classifier"] == "t2"
+        assert events[0]["fallback_route"] == {"model_tier": "core", "effort": "medium"}
+        assert "forced classifier import failure" in events[0]["error"]
 
 
 # ---------------------------------------------------------------------------
