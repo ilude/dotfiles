@@ -1,6 +1,6 @@
 {
-  "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-5.5",
+  "defaultProvider": "amazon-bedrock",
+  "defaultModel": "us.anthropic.claude-opus-4-8",
   "defaultThinkingLevel": "minimal",
   "lastChangelogVersion": "0.78.0",
   "router": {
