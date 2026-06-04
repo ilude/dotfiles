@@ -29,6 +29,14 @@ const EVAL_SOURCE_COMMANDS = new Set(["eval", "source", "."]);
 const COMPOUND_SHELL_OPERATOR = /&&|\|\||[;|`<>]|\$\(/;
 const MAX_RECURSION_DEPTH = 3;
 
+type TempProvenance = "mktemp_file" | "mktemp_dir";
+
+type TempCleanupAnalysis = {
+	ask?: AstDecision;
+	safeRmCommands: Set<string>;
+	safeRmTexts: Set<string>;
+};
+
 let initPromise: Promise<TreeSitter.Parser> | undefined;
 
 function stripQuotes(value: string): string {
@@ -52,6 +60,192 @@ function isSafeCommand(command: string, safeCommands: string[]): boolean {
 
 function nodeText(node: TreeSitter.Node): string {
 	return node.text;
+}
+
+function nodeSpanKey(node: TreeSitter.Node): string {
+	return `${node.startIndex}:${node.endIndex}`;
+}
+
+function commandName(node: TreeSitter.Node): string | undefined {
+	if (node.type !== "command" || node.children.length === 0) return undefined;
+	return stripQuotes(nodeText(node.children[0]).trim());
+}
+
+function containsCommandSubstitution(node: TreeSitter.Node): boolean {
+	if (node.type === "command_substitution") return true;
+	return node.children.some((child) => containsCommandSubstitution(child));
+}
+
+function hasAncestorType(node: TreeSitter.Node, types: Set<string>): boolean {
+	let current = node.parent;
+	while (current) {
+		if (types.has(current.type)) return true;
+		current = current.parent;
+	}
+	return false;
+}
+
+function collectLinearShellEvents(root: TreeSitter.Node): TreeSitter.Node[] {
+	const events: TreeSitter.Node[] = [];
+	function walk(current: TreeSitter.Node): void {
+		if (
+			(current.type === "command" || current.type === "variable_assignment") &&
+			!hasAncestorType(
+				current,
+				new Set(["command_substitution", "process_substitution"]),
+			)
+		) {
+			events.push(current);
+		}
+		for (const child of current.children) walk(child);
+	}
+	walk(root);
+	return events.sort((a, b) => a.startIndex - b.startIndex);
+}
+
+function variableAssignmentName(node: TreeSitter.Node): string | undefined {
+	if (node.type !== "variable_assignment") return undefined;
+	return node.children.find((child) => child.type === "variable_name")?.text;
+}
+
+function mktempProvenanceFromAssignment(
+	node: TreeSitter.Node,
+): TempProvenance | undefined {
+	if (node.type !== "variable_assignment") return undefined;
+	const value = node.children.find(
+		(child) => child.type !== "variable_name" && child.type !== "=",
+	);
+	if (!value) return undefined;
+	const meaningfulChildren = value.children.filter(
+		(child) => child.type !== '"' && child.type !== "'",
+	);
+	const commandSubstitution =
+		value.type === "command_substitution"
+			? value
+			: meaningfulChildren.length === 1 &&
+					meaningfulChildren[0].type === "command_substitution"
+				? meaningfulChildren[0]
+				: undefined;
+	if (!commandSubstitution) return undefined;
+	const commands = commandSubstitution.children.filter(
+		(child) => child.type === "command",
+	);
+	if (commands.length !== 1) return undefined;
+	const mktempCommand = commands[0];
+	if (commandName(mktempCommand) !== "mktemp") return undefined;
+	const args = commandParts(mktempCommand).slice(1);
+	return args.some((arg) => arg === "-d" || arg === "--directory")
+		? "mktemp_dir"
+		: "mktemp_file";
+}
+
+function isQuotedExactVariable(node: TreeSitter.Node): string | undefined {
+	if (node.type !== "string") return undefined;
+	const expansions = node.children.filter(
+		(child) => child.type === "simple_expansion",
+	);
+	if (expansions.length !== 1) return undefined;
+	if (node.children.some((child) => child.type === "string_content"))
+		return undefined;
+	const variableName = expansions[0].children.find(
+		(child) => child.type === "variable_name",
+	)?.text;
+	return variableName ? `$${variableName}` : undefined;
+}
+
+function rmCommandDetails(node: TreeSitter.Node):
+	| {
+			hasForce: boolean;
+			hasRecursive: boolean;
+			targets: TreeSitter.Node[];
+	  }
+	| undefined {
+	if (commandName(node) !== "rm") return undefined;
+	let hasForce = false;
+	let hasRecursive = false;
+	const targets: TreeSitter.Node[] = [];
+	let afterDoubleDash = false;
+	for (const child of node.children.slice(1)) {
+		const text = nodeText(child).trim();
+		if (!text) continue;
+		if (!afterDoubleDash && text === "--") {
+			afterDoubleDash = true;
+			continue;
+		}
+		if (!afterDoubleDash && child.type === "word" && text.startsWith("-")) {
+			if (text === "--force") hasForce = true;
+			if (text === "--recursive") hasRecursive = true;
+			if (/^-[A-Za-z]+$/.test(text)) {
+				hasForce ||= text.includes("f");
+				hasRecursive ||= text.includes("r") || text.includes("R");
+			}
+			continue;
+		}
+		targets.push(child);
+	}
+	return { hasForce, hasRecursive, targets };
+}
+
+function isSafeTempRmCommand(
+	node: TreeSitter.Node,
+	provenance: Map<string, TempProvenance>,
+): boolean {
+	const details = rmCommandDetails(node);
+	if (!details?.hasForce || details.targets.length === 0) return false;
+	return details.targets.every((target) => {
+		if (containsCommandSubstitution(target)) return false;
+		const variable = isQuotedExactVariable(target);
+		if (!variable) return false;
+		const source = provenance.get(variable.slice(1));
+		if (!source) return false;
+		return details.hasRecursive ? source === "mktemp_dir" : true;
+	});
+}
+
+function shellCommandExecutesTempTarget(
+	node: TreeSitter.Node,
+	provenance: Map<string, TempProvenance>,
+): string | undefined {
+	const name = commandName(node);
+	if (!name || !SHELL_C_NAMES.has(name)) return undefined;
+	for (const child of node.children.slice(1)) {
+		const variable = isQuotedExactVariable(child);
+		if (variable && provenance.has(variable.slice(1))) return variable;
+	}
+	return undefined;
+}
+
+function analyzeTempCleanup(root: TreeSitter.Node): TempCleanupAnalysis {
+	const provenance = new Map<string, TempProvenance>();
+	const safeRmCommands = new Set<string>();
+	const safeRmTexts = new Set<string>();
+	for (const event of collectLinearShellEvents(root)) {
+		if (event.type === "variable_assignment") {
+			const variable = variableAssignmentName(event);
+			if (!variable) continue;
+			const source = mktempProvenanceFromAssignment(event);
+			if (source) provenance.set(variable, source);
+			else provenance.delete(variable);
+			continue;
+		}
+		if (event.type !== "command") continue;
+		const executedTemp = shellCommandExecutesTempTarget(event, provenance);
+		if (executedTemp) {
+			return {
+				ask: {
+					decision: "ask",
+					reason: `${commandName(event)} executes temp file ${executedTemp} - payload must be reviewed separately`,
+				},
+				safeRmCommands,
+				safeRmTexts,
+			};
+		}
+		if (isSafeTempRmCommand(event, provenance)) {
+			safeRmCommands.add(nodeSpanKey(event));
+			safeRmTexts.add(nodeText(event));
+		}
+	}
+	return { safeRmCommands, safeRmTexts };
 }
 
 function bashWasmPath(): string {
@@ -130,8 +324,10 @@ function extractedCommands(
 function checkExtractedCommands(
 	commands: string[],
 	rules: DangerousCommand[],
+	safeRmTexts = new Set<string>(),
 ): AstDecision | undefined {
 	for (const command of commands) {
+		if (safeRmTexts.has(command)) continue;
 		for (const rule of rules) {
 			if (!commandAppliesToCurrentPlatform(rule)) continue;
 			if (shouldAllowReadOnlyXargsShellRule(command, rule)) continue;
@@ -168,9 +364,13 @@ function unsafeVariables(variables: Set<string>): string[] {
 function checkVariableExpansion(
 	node: TreeSitter.Node,
 	dangerousCommands: string[],
+	safeRmCommands: Set<string>,
 ): AstDecision | undefined {
 	if (node.type === "command" && node.children.length > 0) {
 		const commandName = stripQuotes(nodeText(node.children[0]).trim());
+		if (commandName === "rm" && safeRmCommands.has(nodeSpanKey(node))) {
+			return undefined;
+		}
 		if (dangerousCommands.includes(commandName)) {
 			const variables = new Set<string>();
 			for (const child of node.children.slice(1)) {
@@ -187,7 +387,11 @@ function checkVariableExpansion(
 		}
 	}
 	for (const child of node.children) {
-		const result = checkVariableExpansion(child, dangerousCommands);
+		const result = checkVariableExpansion(
+			child,
+			dangerousCommands,
+			safeRmCommands,
+		);
 		if (result) return result;
 	}
 	return undefined;
@@ -266,14 +470,18 @@ async function runAnalysis(
 	astConfig: AstAnalysisConfig,
 ): Promise<AstDecision> {
 	const root = parse(parser, command);
+	const tempCleanup = analyzeTempCleanup(root);
 	const extracted = checkExtractedCommands(
 		extractedCommands(root, parser),
 		rules,
+		tempCleanup.safeRmTexts,
 	);
 	if (extracted) return extracted;
+	if (tempCleanup.ask) return tempCleanup.ask;
 	const variable = checkVariableExpansion(
 		root,
 		astConfig.dangerousCommands ?? [],
+		tempCleanup.safeRmCommands,
 	);
 	if (variable) return variable;
 	const evalSource = checkEvalSource(root, parser, rules, astConfig);
@@ -295,6 +503,34 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 			},
 		);
 	});
+}
+
+export async function isProvenSafeTempCleanupAt(
+	command: string,
+	matchIndex: number,
+	astConfig: AstAnalysisConfig | undefined,
+): Promise<boolean> {
+	if (!astConfig?.enabled || matchIndex < 0) return false;
+	try {
+		const parser = await getParser();
+		const analysis = (async () => {
+			const root = parse(parser, command);
+			const tempCleanup = analyzeTempCleanup(root);
+			if (tempCleanup.ask) return false;
+			return collectLinearShellEvents(root).some(
+				(event) =>
+					event.type === "command" &&
+					tempCleanup.safeRmCommands.has(nodeSpanKey(event)) &&
+					event.startIndex <= matchIndex &&
+					matchIndex < event.endIndex,
+			);
+		})();
+		return astConfig.timeoutMs && astConfig.timeoutMs > 0
+			? await withTimeout(analysis, astConfig.timeoutMs)
+			: await analysis;
+	} catch {
+		return false;
+	}
 }
 
 export async function analyzeCommandAst(

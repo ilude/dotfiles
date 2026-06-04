@@ -28,6 +28,16 @@ const anchoredRmRule: DangerousCommand = {
 	regex: "^rm\\s+-rf\\s+",
 };
 
+const rmForceAskRule: DangerousCommand = {
+	pattern: "rm force",
+	regex:
+		"\\brm\\s+(?=[^|;&]*?(?:-[A-Za-z]*f[A-Za-z]*|--force)\\b)(?![^|;&]*?(?:-[A-Za-z]*r[A-Za-z]*|--recursive)\\b)",
+	reason:
+		"Force delete bypasses normal interactive safeguards and can remove files irreversibly",
+	action: "ask",
+	tools: ["bash"],
+};
+
 describe("damage-control AST analyzer", () => {
 	it("parses AST configuration from Pi rules", () => {
 		const rules = parseDamageControlRules(`
@@ -128,6 +138,76 @@ no_delete_paths: []
 		await expect(
 			analyzeCommandAst("rm $HOME/file.txt", [rmRule], astConfig),
 		).resolves.toEqual({ decision: "allow" });
+	});
+
+	it("allows proven mktemp file cleanup without asking on variable expansion", async () => {
+		await expect(
+			analyzeCommandAst(
+				'tmpfile="$(mktemp)"\nsome_command > "$tmpfile"\nrm -f -- "$tmpfile"',
+				[rmForceAskRule],
+				astConfig,
+			),
+		).resolves.toEqual({ decision: "allow" });
+	});
+
+	it("skips the rm force ask rule for proven mktemp file cleanup", async () => {
+		await expect(
+			evaluateDangerousCommand(
+				'tmpfile="$(mktemp)"; rm -f -- "$tmpfile"',
+				[rmForceAskRule],
+				{ toolName: "bash", astAnalysis: astConfig },
+			),
+		).resolves.toBeUndefined();
+	});
+
+	it("skips the recursive force rule only for proven mktemp directory cleanup", async () => {
+		await expect(
+			evaluateDangerousCommand(
+				'tmpdir="$(mktemp -d)"; rm -rf -- "$tmpdir"',
+				[rmRule],
+				{ toolName: "bash", astAnalysis: astConfig },
+			),
+		).resolves.toBeUndefined();
+	});
+
+	it("keeps asking when temp cleanup mixes in an unproven target", async () => {
+		await expect(
+			evaluateDangerousCommand(
+				'tmpfile="$(mktemp)"; rm -f -- "$tmpfile" ~/.ssh/id_rsa',
+				[rmForceAskRule],
+				{ toolName: "bash", astAnalysis: astConfig },
+			),
+		).resolves.toMatchObject({ block: true });
+	});
+
+	it("keeps asking when a temp variable is reassigned before cleanup", async () => {
+		await expect(
+			evaluateDangerousCommand(
+				'tmpfile="$(mktemp)"; tmpfile="$HOME/.ssh/id_rsa"; rm -f -- "$tmpfile"',
+				[rmForceAskRule],
+				{ toolName: "bash", astAnalysis: astConfig },
+			),
+		).resolves.toMatchObject({ block: true });
+	});
+
+	it("keeps asking on fallback expansion cleanup targets", async () => {
+		await expect(
+			evaluateDangerousCommand(
+				'tmpfile="$(mktemp)"; rm -f -- "${tmpfile:-/}"',
+				[rmForceAskRule],
+				{ toolName: "bash", astAnalysis: astConfig },
+			),
+		).resolves.toMatchObject({ block: true });
+	});
+
+	it("keeps asking when a temp file is executed as a payload", async () => {
+		await expect(
+			evaluateDangerousCommand(
+				'tmpfile="$(mktemp)"; bash "$tmpfile"; rm -f -- "$tmpfile"',
+				[rmForceAskRule],
+				{ toolName: "bash", astAnalysis: astConfig },
+			),
+		).resolves.toMatchObject({ block: true });
 	});
 
 	it("is veto-only and never downgrades an existing regex block", async () => {

@@ -4,7 +4,10 @@ import {
 	emitTerminalBell,
 	canonicalize as sharedCanonicalize,
 } from "../lib/extension-utils.js";
-import { analyzeCommandAst } from "./damage-control/ast-analyzer.js";
+import {
+	analyzeCommandAst,
+	isProvenSafeTempCleanupAt,
+} from "./damage-control/ast-analyzer.js";
 import {
 	type AstAnalysisConfig,
 	compileCommandRegex,
@@ -517,6 +520,18 @@ export async function evaluateDangerousCommand(
 		)
 			continue;
 		if (shouldSkipMatchedRule(command, rule, ctx)) continue;
+		if (
+			isRmForceRule(rule) &&
+			ctx?.toolName === "bash" &&
+			ctx.astAnalysis &&
+			(await isProvenSafeTempCleanupAt(
+				command,
+				commandRuleMatch(command, rule)?.index ?? -1,
+				ctx.astAnalysis,
+			))
+		) {
+			continue;
+		}
 		if (rule.action === "ask") {
 			if (ctx?.hasUI && ctx.ui?.confirm) {
 				emitTerminalBell();
