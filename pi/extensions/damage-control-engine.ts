@@ -749,6 +749,51 @@ function isPiTodoStateRemoval(command: string, cwd: string): boolean {
 	);
 }
 
+function hasRmRecursive(command: string): boolean {
+	const args = tokenize(command).slice(1);
+	return args.includes("--recursive") || hasCombinedShortFlag(args, "rR");
+}
+
+function redirectionTargetsBefore(command: string, index: number): string[] {
+	const before = command.slice(0, index);
+	const targets: string[] = [];
+	const matches = before.matchAll(/(?:^|[^>])>\s*([^\s|>;&]+)/g);
+	for (const match of matches) {
+		const target = stripShellQuotes(match[1]);
+		if (target && target !== "/dev/null") targets.push(target);
+	}
+	return targets;
+}
+
+function isGeneratedTempLikeFileCleanup(
+	command: string,
+	matchIndex: number,
+	cwd: string,
+): boolean {
+	const rmCommand = rmCommandAtMatch(command, matchIndex);
+	const tokens = tokenize(rmCommand);
+	if (tokens[0] !== "rm") return false;
+	if (hasRmRecursive(rmCommand)) return false;
+	const targets = extractRmTargets(rmCommand);
+	if (targets.length !== 1) return false;
+	const target = stripShellQuotes(targets[0]);
+	if (!isStaticPath(target) || !isTempLikeBasename(path.basename(target))) {
+		return false;
+	}
+	const result = canonicalizeOrBlock(target, cwd);
+	if ("block" in result) return false;
+	return redirectionTargetsBefore(command, matchIndex).some((created) => {
+		if (!isStaticPath(created) || !isTempLikeBasename(path.basename(created))) {
+			return false;
+		}
+		const createdResult = canonicalizeOrBlock(created, cwd);
+		return (
+			"canonical" in createdResult &&
+			createdResult.canonical === result.canonical
+		);
+	});
+}
+
 function isRmForceRule(rule: DangerousCommand): boolean {
 	const text =
 		`${rule.pattern} ${rule.regex ?? ""} ${rule.reason}`.toLowerCase();
@@ -917,11 +962,14 @@ function shouldSkipMatchedRule(
 	ctx?: { toolName?: string; cwd?: string },
 ): boolean {
 	if (ctx?.toolName !== "bash") return false;
+	const match = commandRuleMatch(command, rule);
 	if (
-		isRmForceRule(rule) &&
 		ctx.cwd &&
-		(isMatchedTempRemoval(command, rule, ctx.cwd) ||
-			isPiTodoStateRemoval(command, ctx.cwd))
+		match &&
+		(isGeneratedTempLikeFileCleanup(command, match.index, ctx.cwd) ||
+			(isRmForceRule(rule) &&
+				(isMatchedTempRemoval(command, rule, ctx.cwd) ||
+					isPiTodoStateRemoval(command, ctx.cwd))))
 	) {
 		return true;
 	}

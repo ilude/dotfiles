@@ -377,6 +377,52 @@ no_delete_paths: []
 		});
 	});
 
+	it("allows cleanup of a temp-like file created earlier in the same command", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const rules = [
+			{
+				pattern: "simple rm",
+				regex: "(?<!-)\\brm\\s+[^-\\s]",
+				reason: "rm deletes files permanently",
+				action: "ask" as const,
+			},
+		];
+		const command = [
+			"go run ./cmd/onramp --plan up booklore patriot-onramp -o json > booklore-plan.tmp",
+			"python - <<'PY'",
+			"import json",
+			"p=json.load(open('booklore-plan.tmp'))",
+			"PY",
+			"rm booklore-plan.tmp",
+		].join("\n");
+
+		await expect(
+			mod.evaluateDangerousCommand(command, rules, {
+				toolName: "bash",
+				cwd: process.cwd(),
+			}),
+		).resolves.toBeUndefined();
+	});
+
+	it("keeps requiring confirmation for temp-like file removal without same-command provenance", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const rules = [
+			{
+				pattern: "simple rm",
+				regex: "(?<!-)\\brm\\s+[^-\\s]",
+				reason: "rm deletes files permanently",
+				action: "ask" as const,
+			},
+		];
+
+		await expect(
+			mod.evaluateDangerousCommand("rm booklore-plan.tmp", rules, {
+				toolName: "bash",
+				cwd: process.cwd(),
+			}),
+		).resolves.toMatchObject({ block: true });
+	});
+
 	it("shows line context for dangerous rm approval inside multiline scripts", async () => {
 		const mod = await import("../extensions/damage-control.ts");
 		const rules = [
