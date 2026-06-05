@@ -545,10 +545,9 @@ export default function (pi: ExtensionAPI) {
 		return noDelete;
 	});
 
-	pi.on("tool_result", async (event, ctx) => {
+	pi.on("tool_result", async (event) => {
 		if (!outputContainsSecret(event.content)) return undefined;
-		const reason = "Tool output appears to contain secret material.";
-		ctx.ui?.notify?.(reason, "warning");
+		const reason = "Tool output matched secret-material heuristics.";
 		safeRecordDeny(
 			event.toolName,
 			JSON.stringify(event.content ?? "").slice(0, 200),
