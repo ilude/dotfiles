@@ -5,11 +5,9 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import registerCodexStatusCommand, {
 	accountIdFromToken,
-	clearCodexStatusNewSessionSuppression,
 	fetchCodexUsage,
 	formatUsage,
 	resolveAuth,
-	suppressNextCodexStatusOnNewSession,
 	USAGE_ENDPOINT,
 } from "../extensions/codex-status";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi";
@@ -30,7 +28,6 @@ function tempHome(): string {
 }
 
 afterEach(() => {
-	clearCodexStatusNewSessionSuppression();
 	process.env.HOME = OLD_HOME;
 	process.env.USERPROFILE = OLD_USERPROFILE;
 	vi.useRealTimers();
@@ -301,7 +298,7 @@ describe("/usage command", () => {
 		).toBeDefined();
 	});
 
-	it("shows status on startup and new sessions", async () => {
+	it("shows status on startup only", async () => {
 		const home = tempHome();
 		await mkdir(join(home, ".pi", "agent"), { recursive: true });
 		await writeFile(
@@ -325,54 +322,18 @@ describe("/usage command", () => {
 		);
 		const hook = mockPi._getHook("session_start")[0];
 
-		for (const reason of ["startup", "new"]) {
-			const ctx = createMockCtx();
-			await hook.handler({ reason }, ctx);
-			await vi.waitFor(() => {
-				expect(ctx.ui.notify).toHaveBeenCalledWith(
-					expect.stringContaining("Codex:"),
-					"info",
-				);
-			});
-		}
-	});
-
-	it("suppresses one /clear-backed new session status", async () => {
-		const home = tempHome();
-		await mkdir(join(home, ".pi", "agent"), { recursive: true });
-		await writeFile(
-			join(home, ".pi", "agent", "auth.json"),
-			JSON.stringify({
-				"openai-codex": { access: fakeJwt({}), accountId: "acct-new" },
-			}),
-		);
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () => ({
-				ok: true,
-				json: async () => ({
-					rate_limit: { primary_window: { used_percent: 12 } },
-				}),
-			})),
-		);
-		const mockPi = createMockPi();
-		registerCodexStatusCommand(
-			mockPi as Parameters<typeof registerCodexStatusCommand>[0],
-		);
-		const hook = mockPi._getHook("session_start")[0];
-		const ctx = createMockCtx();
-
-		suppressNextCodexStatusOnNewSession();
-		await hook.handler({ reason: "new" }, ctx);
-		expect(ctx.ui.notify).not.toHaveBeenCalled();
-
-		await hook.handler({ reason: "new" }, ctx);
+		const startupCtx = createMockCtx();
+		await hook.handler({ reason: "startup" }, startupCtx);
 		await vi.waitFor(() => {
-			expect(ctx.ui.notify).toHaveBeenCalledWith(
+			expect(startupCtx.ui.notify).toHaveBeenCalledWith(
 				expect.stringContaining("Codex:"),
 				"info",
 			);
 		});
+
+		const newCtx = createMockCtx();
+		await hook.handler({ reason: "new" }, newCtx);
+		expect(newCtx.ui.notify).not.toHaveBeenCalled();
 	});
 
 	it("does not auto-show status on reload or resume", async () => {

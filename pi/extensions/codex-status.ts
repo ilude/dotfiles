@@ -62,15 +62,6 @@ type ApiUsage = {
 
 export const USAGE_ENDPOINT = "https://chatgpt.com/backend-api/wham/usage";
 const OFFICIAL_USAGE_PAGE = "https://chatgpt.com/codex/settings/usage";
-let suppressNextNewSessionStatus = false;
-
-export function suppressNextCodexStatusOnNewSession(): void {
-	suppressNextNewSessionStatus = true;
-}
-
-export function clearCodexStatusNewSessionSuppression(): void {
-	suppressNextNewSessionStatus = false;
-}
 
 function homePath(...parts: string[]): string {
 	return join(process.env.HOME || process.env.USERPROFILE || ".", ...parts);
@@ -369,13 +360,7 @@ export async function showCodexStatus(
 }
 
 function shouldShowStatusOnSessionStart(reason: string): boolean {
-	if (reason === "startup") return true;
-	if (reason !== "new") return false;
-	if (suppressNextNewSessionStatus) {
-		suppressNextNewSessionStatus = false;
-		return false;
-	}
-	return true;
+	return reason === "startup";
 }
 
 function showCodexStatusAfterInitialRender(ctx: ExtensionContext): void {

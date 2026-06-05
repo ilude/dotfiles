@@ -1,9 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-	showCodexStatus,
-	suppressNextCodexStatusOnNewSession,
-} from "../extensions/codex-status.ts";
+import { fetchCodexUsage, formatUsage } from "../extensions/codex-status.ts";
 import { createMockPi } from "./helpers/mock-pi.js";
 
 vi.mock("node:child_process", () => ({
@@ -11,15 +8,13 @@ vi.mock("node:child_process", () => ({
 }));
 
 vi.mock("../extensions/codex-status.ts", () => ({
-	clearCodexStatusNewSessionSuppression: vi.fn(),
-	showCodexStatus: vi.fn(async () => {}),
-	suppressNextCodexStatusOnNewSession: vi.fn(),
+	fetchCodexUsage: vi.fn(async () => ({ auth: {}, usage: {} })),
+	formatUsage: vi.fn(() => "Codex:\n 5h     7% used"),
 }));
 
 const mockSpawnSync = spawnSync as ReturnType<typeof vi.fn>;
-const mockShowCodexStatus = showCodexStatus as ReturnType<typeof vi.fn>;
-const mockSuppressNextCodexStatusOnNewSession =
-	suppressNextCodexStatusOnNewSession as ReturnType<typeof vi.fn>;
+const mockFetchCodexUsage = fetchCodexUsage as ReturnType<typeof vi.fn>;
+const mockFormatUsage = formatUsage as ReturnType<typeof vi.fn>;
 
 describe("workflow command dispatch", () => {
 	let mockPi: ReturnType<typeof createMockPi> & {
@@ -41,27 +36,31 @@ describe("workflow command dispatch", () => {
 		return cmd.handler as (args: string, ctx: unknown) => Promise<void>;
 	}
 
-	it("initializes the new session with previous usage before showing Codex status", async () => {
+	it("initializes the new session with Codex status before previous usage", async () => {
 		type NewSessionOptions = {
 			setup?: (sessionManager: {
 				appendCustomMessageEntry: ReturnType<typeof vi.fn>;
 			}) => Promise<void>;
-			withSession?: (ctx: unknown) => Promise<void>;
 		};
 
 		const appendCustomMessageEntry = vi.fn();
 		const order: string[] = [];
-		mockSuppressNextCodexStatusOnNewSession.mockImplementationOnce(() => {
-			order.push("suppress-session-start");
+		mockFetchCodexUsage.mockImplementationOnce(async () => {
+			order.push("fetch-codex-status");
+			return { auth: { source: "pi" }, usage: { rate_limit: {} } };
 		});
-		mockShowCodexStatus.mockImplementationOnce(async () => {
-			order.push("codex-status");
+		mockFormatUsage.mockImplementationOnce(() => {
+			order.push("format-codex-status");
+			return "Codex:\n 5h     7% used";
 		});
-		const replacementCtx = { ui: { notify: vi.fn() } };
+		appendCustomMessageEntry.mockImplementation((_type, content) => {
+			order.push(
+				String(content).startsWith("Codex:") ? "codex-status" : "usage",
+			);
+		});
 		const newSession = vi.fn(async (options?: NewSessionOptions) => {
 			await options?.setup?.({ appendCustomMessageEntry });
 			order.push("new-session");
-			await options?.withSession?.(replacementCtx);
 			return { cancelled: false };
 		});
 		const ctx = {
@@ -79,19 +78,31 @@ describe("workflow command dispatch", () => {
 		expect(newSession).toHaveBeenCalledWith(
 			expect.objectContaining({
 				setup: expect.any(Function),
-				withSession: expect.any(Function),
 			}),
 		);
-		expect(appendCustomMessageEntry).toHaveBeenCalledWith(
+		expect(mockFormatUsage).toHaveBeenCalledWith(
+			{ rate_limit: {} },
+			{ source: "pi" },
+			{ color: true },
+		);
+		expect(appendCustomMessageEntry).toHaveBeenNthCalledWith(
+			1,
+			"workflow-clear-codex-status",
+			"Codex:\n 5h     7% used",
+			true,
+		);
+		expect(appendCustomMessageEntry).toHaveBeenNthCalledWith(
+			2,
 			"workflow-clear-usage",
 			"Previous session usage: 12% (12k/100k tokens)",
 			true,
 		);
-		expect(mockShowCodexStatus).toHaveBeenCalledWith(replacementCtx);
 		expect(order).toEqual([
-			"suppress-session-start",
-			"new-session",
+			"fetch-codex-status",
+			"format-codex-status",
 			"codex-status",
+			"usage",
+			"new-session",
 		]);
 	});
 

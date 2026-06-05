@@ -51,11 +51,7 @@ import {
 	buildSkillPrompt,
 } from "../lib/workflow-commands/prompts";
 import { startWorkflowEpisode } from "../lib/workflow-telemetry";
-import {
-	clearCodexStatusNewSessionSuppression,
-	showCodexStatus,
-	suppressNextCodexStatusOnNewSession,
-} from "./codex-status";
+import { fetchCodexUsage, formatUsage } from "./codex-status";
 import { isOperatorReloadNeeded } from "./operator-status";
 
 const SKILLS_DIR = path.join(
@@ -163,6 +159,15 @@ function formatClearedSessionUsage(
 	const tokens = formatUsageTokens(usage.tokens);
 	const contextWindow = formatUsageTokens(usage.contextWindow);
 	return `Previous session usage: ${Math.round(percent)}% (${tokens}/${contextWindow} tokens)`;
+}
+
+async function formatClearedSessionCodexStatus(): Promise<string> {
+	try {
+		const { auth, usage } = await fetchCodexUsage();
+		return formatUsage(usage, auth, { color: true });
+	} catch (error) {
+		return error instanceof Error ? error.message : String(error);
+	}
 }
 
 function loadClaudeCommitInstructions() {
@@ -289,6 +294,7 @@ interface SlashEchoExtensionAPI extends ExtensionAPI {
 }
 
 const CLEAR_USAGE_TYPE = "workflow-clear-usage";
+const CLEAR_CODEX_STATUS_TYPE = "workflow-clear-codex-status";
 const COMMIT_ACTIVITY_TYPE = "workflow-commit-activity";
 const COMMIT_REPORT_TYPE = "workflow-commit-report";
 const SLASH_ECHO_TYPE = "slash-echo";
@@ -1938,6 +1944,14 @@ export default function (pi: ExtensionAPI) {
 			return new Text(theme.fg("dim", text), 1, 0);
 		});
 
+		pi.registerMessageRenderer(CLEAR_CODEX_STATUS_TYPE, (message) => {
+			const text =
+				typeof message.content === "string"
+					? message.content
+					: String(message.content ?? "");
+			return new Text(text, 1, 0);
+		});
+
 		pi.registerMessageRenderer(SLASH_ECHO_TYPE, (message, _options, theme) => {
 			const text =
 				typeof message.content === "string"
@@ -2253,29 +2267,23 @@ export default function (pi: ExtensionAPI) {
 		description: "Alias to /new",
 		handler: async (_args, ctx) => {
 			const usageMessage = formatClearedSessionUsage(ctx.getContextUsage?.());
-			suppressNextCodexStatusOnNewSession();
-			let result: Awaited<ReturnType<ExtensionCommandContext["newSession"]>>;
-			try {
-				result = await newSessionWithReloadIfNeeded(ctx, {
-					setup: async (sessionManager) => {
-						if (!usageMessage) return;
-						sessionManager.appendCustomMessageEntry?.(
-							CLEAR_USAGE_TYPE,
-							usageMessage,
-							true,
-						);
-					},
-					withSession: async (newCtx) => {
-						await showCodexStatus(newCtx);
-					},
-				});
-			} catch (error) {
-				clearCodexStatusNewSessionSuppression();
-				throw error;
-			}
-			if (result.cancelled) {
-				clearCodexStatusNewSessionSuppression();
-			}
+			await newSessionWithReloadIfNeeded(ctx, {
+				setup: async (sessionManager) => {
+					if (!sessionManager.appendCustomMessageEntry) return;
+					const codexStatusMessage = await formatClearedSessionCodexStatus();
+					sessionManager.appendCustomMessageEntry(
+						CLEAR_CODEX_STATUS_TYPE,
+						codexStatusMessage,
+						true,
+					);
+					if (!usageMessage) return;
+					sessionManager.appendCustomMessageEntry(
+						CLEAR_USAGE_TYPE,
+						usageMessage,
+						true,
+					);
+				},
+			});
 		},
 	});
 
