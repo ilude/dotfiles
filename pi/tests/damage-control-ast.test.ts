@@ -170,6 +170,50 @@ no_delete_paths: []
 		).resolves.toBeUndefined();
 	});
 
+	it("allows mktemp template variants for proven file cleanup", async () => {
+		await expect(
+			evaluateDangerousCommand(
+				'tmpfile="$(mktemp -t pi-output.XXXXXX)"; rm -f -- "$tmpfile"',
+				[rmForceAskRule],
+				{ toolName: "bash", astAnalysis: astConfig },
+			),
+		).resolves.toBeUndefined();
+		await expect(
+			evaluateDangerousCommand(
+				'tmpfile="$(mktemp /tmp/pi-output.XXXXXX)"; rm -f -- "$tmpfile"',
+				[rmForceAskRule],
+				{ toolName: "bash", astAnalysis: astConfig },
+			),
+		).resolves.toBeUndefined();
+	});
+
+	it("allows proven temp cleanup inside an EXIT trap", async () => {
+		await expect(
+			evaluateDangerousCommand(
+				'tmpfile="$(mktemp)"; trap \'rm -f -- "$tmpfile"\' EXIT',
+				[rmForceAskRule],
+				{ toolName: "bash", astAnalysis: astConfig },
+			),
+		).resolves.toBeUndefined();
+	});
+
+	it("allows files derived under a proven mktemp directory", async () => {
+		await expect(
+			evaluateDangerousCommand(
+				'tmpdir="$(mktemp -d)"; outfile="$tmpdir/output.txt"; rm -f -- "$outfile"; rm -rf -- "$tmpdir"',
+				[rmForceAskRule, rmRule],
+				{ toolName: "bash", astAnalysis: astConfig },
+			),
+		).resolves.toBeUndefined();
+		await expect(
+			evaluateDangerousCommand(
+				'tmpdir="$(mktemp -d)"; outfile="${tmpdir}/output.txt"; rm -f -- "$outfile"',
+				[rmForceAskRule],
+				{ toolName: "bash", astAnalysis: astConfig },
+			),
+		).resolves.toBeUndefined();
+	});
+
 	it("keeps asking when temp cleanup mixes in an unproven target", async () => {
 		await expect(
 			evaluateDangerousCommand(
@@ -194,6 +238,26 @@ no_delete_paths: []
 		await expect(
 			evaluateDangerousCommand(
 				'tmpfile="$(mktemp)"; rm -f -- "${tmpfile:-/}"',
+				[rmForceAskRule],
+				{ toolName: "bash", astAnalysis: astConfig },
+			),
+		).resolves.toMatchObject({ block: true });
+	});
+
+	it("keeps asking on unsafe temp-directory child paths", async () => {
+		await expect(
+			evaluateDangerousCommand(
+				'tmpdir="$(mktemp -d)"; outfile="$tmpdir/../target"; rm -f -- "$outfile"',
+				[rmForceAskRule],
+				{ toolName: "bash", astAnalysis: astConfig },
+			),
+		).resolves.toMatchObject({ block: true });
+	});
+
+	it("keeps asking when a trap cleanup mixes in an unproven target", async () => {
+		await expect(
+			evaluateDangerousCommand(
+				'tmpfile="$(mktemp)"; trap \'rm -f -- "$tmpfile" ~/.ssh/id_rsa\' EXIT',
 				[rmForceAskRule],
 				{ toolName: "bash", astAnalysis: astConfig },
 			),

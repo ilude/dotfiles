@@ -29,12 +29,13 @@ const EVAL_SOURCE_COMMANDS = new Set(["eval", "source", "."]);
 const COMPOUND_SHELL_OPERATOR = /&&|\|\||[;|`<>]|\$\(/;
 const MAX_RECURSION_DEPTH = 3;
 
-type TempProvenance = "mktemp_file" | "mktemp_dir";
+type TempProvenance = "mktemp_file" | "mktemp_dir" | "mktemp_dir_child";
 
 type TempCleanupAnalysis = {
 	ask?: AstDecision;
 	safeRmCommands: Set<string>;
-	safeRmTexts: Set<string>;
+	safeCommandTexts: Set<string>;
+	safeRanges: Array<{ start: number; end: number }>;
 };
 
 let initPromise: Promise<TreeSitter.Parser> | undefined;
@@ -139,6 +140,34 @@ function mktempProvenanceFromAssignment(
 		: "mktemp_file";
 }
 
+function tempDirChildProvenanceFromAssignment(
+	node: TreeSitter.Node,
+	provenance: Map<string, TempProvenance>,
+): TempProvenance | undefined {
+	if (node.type !== "variable_assignment") return undefined;
+	const value = node.children.find(
+		(child) => child.type !== "variable_name" && child.type !== "=",
+	);
+	if (value?.type !== "string") return undefined;
+	if (containsCommandSubstitution(value)) return undefined;
+	const expansions = value.children.filter(
+		(child) => child.type === "simple_expansion" || child.type === "expansion",
+	);
+	if (expansions.length !== 1) return undefined;
+	const variableName = expansions[0].children.find(
+		(child) => child.type === "variable_name",
+	)?.text;
+	if (!variableName || provenance.get(variableName) !== "mktemp_dir")
+		return undefined;
+	const suffix = value.children
+		.filter((child) => child.type === "string_content")
+		.map((child) => child.text)
+		.join("");
+	if (!/^\/[A-Za-z0-9._/-]+$/.test(suffix)) return undefined;
+	if (suffix.includes("..") || suffix.includes("//")) return undefined;
+	return "mktemp_dir_child";
+}
+
 function isQuotedExactVariable(node: TreeSitter.Node): string | undefined {
 	if (node.type !== "string") return undefined;
 	const expansions = node.children.filter(
@@ -202,6 +231,43 @@ function isSafeTempRmCommand(
 	});
 }
 
+function trapCleanupDetails(
+	node: TreeSitter.Node,
+): { rawString: TreeSitter.Node; snippet: string } | undefined {
+	if (commandName(node) !== "trap") return undefined;
+	const parts = node.children.slice(1);
+	if (parts.length !== 2) return undefined;
+	const [rawString, signal] = parts;
+	if (!["raw_string", "string"].includes(rawString.type)) return undefined;
+	if (signal.text !== "EXIT") return undefined;
+	return { rawString, snippet: stripQuotes(rawString.text) };
+}
+
+function analyzeTrapCleanup(
+	parser: TreeSitter.Parser,
+	node: TreeSitter.Node,
+	provenance: Map<string, TempProvenance>,
+): { safeRanges: Array<{ start: number; end: number }>; allSafe: boolean } {
+	const trap = trapCleanupDetails(node);
+	if (!trap) return { safeRanges: [], allSafe: false };
+	const root = parse(parser, trap.snippet);
+	const commands = collectLinearShellEvents(root).filter(
+		(event) => event.type === "command",
+	);
+	if (commands.length === 0) return { safeRanges: [], allSafe: false };
+	const innerOffset = trap.rawString.startIndex + 1;
+	const safeRanges: Array<{ start: number; end: number }> = [];
+	for (const command of commands) {
+		if (!isSafeTempRmCommand(command, provenance))
+			return { safeRanges: [], allSafe: false };
+		safeRanges.push({
+			start: innerOffset + command.startIndex,
+			end: innerOffset + command.endIndex,
+		});
+	}
+	return { safeRanges, allSafe: true };
+}
+
 function shellCommandExecutesTempTarget(
 	node: TreeSitter.Node,
 	provenance: Map<string, TempProvenance>,
@@ -215,20 +281,32 @@ function shellCommandExecutesTempTarget(
 	return undefined;
 }
 
-function analyzeTempCleanup(root: TreeSitter.Node): TempCleanupAnalysis {
+function analyzeTempCleanup(
+	root: TreeSitter.Node,
+	parser: TreeSitter.Parser,
+): TempCleanupAnalysis {
 	const provenance = new Map<string, TempProvenance>();
 	const safeRmCommands = new Set<string>();
-	const safeRmTexts = new Set<string>();
+	const safeCommandTexts = new Set<string>();
+	const safeRanges: Array<{ start: number; end: number }> = [];
 	for (const event of collectLinearShellEvents(root)) {
 		if (event.type === "variable_assignment") {
 			const variable = variableAssignmentName(event);
 			if (!variable) continue;
-			const source = mktempProvenanceFromAssignment(event);
+			const source =
+				mktempProvenanceFromAssignment(event) ??
+				tempDirChildProvenanceFromAssignment(event, provenance);
 			if (source) provenance.set(variable, source);
 			else provenance.delete(variable);
 			continue;
 		}
 		if (event.type !== "command") continue;
+		const trap = analyzeTrapCleanup(parser, event, provenance);
+		if (trap.allSafe) {
+			safeCommandTexts.add(nodeText(event));
+			for (const range of trap.safeRanges) safeRanges.push(range);
+			continue;
+		}
 		const executedTemp = shellCommandExecutesTempTarget(event, provenance);
 		if (executedTemp) {
 			return {
@@ -237,15 +315,17 @@ function analyzeTempCleanup(root: TreeSitter.Node): TempCleanupAnalysis {
 					reason: `${commandName(event)} executes temp file ${executedTemp} - payload must be reviewed separately`,
 				},
 				safeRmCommands,
-				safeRmTexts,
+				safeCommandTexts,
+				safeRanges,
 			};
 		}
 		if (isSafeTempRmCommand(event, provenance)) {
 			safeRmCommands.add(nodeSpanKey(event));
-			safeRmTexts.add(nodeText(event));
+			safeCommandTexts.add(nodeText(event));
+			safeRanges.push({ start: event.startIndex, end: event.endIndex });
 		}
 	}
-	return { safeRmCommands, safeRmTexts };
+	return { safeRmCommands, safeCommandTexts, safeRanges };
 }
 
 function bashWasmPath(): string {
@@ -470,11 +550,11 @@ async function runAnalysis(
 	astConfig: AstAnalysisConfig,
 ): Promise<AstDecision> {
 	const root = parse(parser, command);
-	const tempCleanup = analyzeTempCleanup(root);
+	const tempCleanup = analyzeTempCleanup(root, parser);
 	const extracted = checkExtractedCommands(
 		extractedCommands(root, parser),
 		rules,
-		tempCleanup.safeRmTexts,
+		tempCleanup.safeCommandTexts,
 	);
 	if (extracted) return extracted;
 	if (tempCleanup.ask) return tempCleanup.ask;
@@ -515,14 +595,10 @@ export async function isProvenSafeTempCleanupAt(
 		const parser = await getParser();
 		const analysis = (async () => {
 			const root = parse(parser, command);
-			const tempCleanup = analyzeTempCleanup(root);
+			const tempCleanup = analyzeTempCleanup(root, parser);
 			if (tempCleanup.ask) return false;
-			return collectLinearShellEvents(root).some(
-				(event) =>
-					event.type === "command" &&
-					tempCleanup.safeRmCommands.has(nodeSpanKey(event)) &&
-					event.startIndex <= matchIndex &&
-					matchIndex < event.endIndex,
+			return tempCleanup.safeRanges.some(
+				(range) => range.start <= matchIndex && matchIndex < range.end,
 			);
 		})();
 		return astConfig.timeoutMs && astConfig.timeoutMs > 0

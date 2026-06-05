@@ -1,3 +1,13 @@
+## 2026-06-04: Document verifiable shell temp cleanup patterns
+
+**Why:** Damage-control can now prove several canonical temporary-file cleanup patterns, and shell guidance needed to steer future scripts toward those easy-to-verify forms.
+
+**Fix:** Updated the Pi shell skill temporary-file section to prefer direct `mktemp` assignments, exact quoted cleanup targets with `--`, EXIT trap cleanup, temp-directory child paths, and conservative examples that should continue to require review.
+
+**Files:** ~/.dotfiles/pi/skills/shell/SKILL.md
+
+---
+
 ## 2026-06-03: Require inline goal prompts to start with /goal
 
 **Why:** Inline Pi goal prompt requests were still allowed to include a short lead-in, so some responses did not begin with the copyable `/goal` command.

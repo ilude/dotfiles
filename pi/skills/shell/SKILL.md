@@ -129,22 +129,57 @@ Naming: snake_case, prefix private functions with underscore: `_helper_function`
 
 ## Temporary Files
 
-Temporary files MUST be created with `mktemp`:
+Temporary files MUST be created with `mktemp` using simple assignments:
 
 ```bash
-temp_file=$(mktemp)
-temp_dir=$(mktemp -d)
+temp_file="$(mktemp)"
+temp_dir="$(mktemp -d)"
 ```
 
-Cleanup MUST be ensured with `trap`:
+Named templates are allowed when useful:
 
 ```bash
-cleanup() {
-    rm -f "$temp_file"
-    rm -rf "$temp_dir"
-}
-trap cleanup EXIT
+temp_file="$(mktemp -t my-tool.XXXXXX)"
+temp_file="$(mktemp /tmp/my-tool.XXXXXX)"
 ```
+
+Cleanup MUST be easy to verify. Prefer exact quoted targets and `--`:
+
+```bash
+rm -f -- "$temp_file"
+rm -rf -- "$temp_dir"
+```
+
+For multi-step scripts, use an EXIT trap with the same exact cleanup form:
+
+```bash
+temp_file="$(mktemp)"
+trap 'rm -f -- "$temp_file"' EXIT
+```
+
+When a temporary directory owns derived files, keep child paths directly under
+that directory and clean up either the child file or the directory:
+
+```bash
+temp_dir="$(mktemp -d)"
+output_file="$temp_dir/output.txt"
+rm -f -- "$output_file"
+rm -rf -- "$temp_dir"
+```
+
+Do not use cleanup forms that are hard to verify:
+
+```bash
+rm -f /tmp/*.tmp
+rm -f -- "${temp_file:-/}"
+rm -f -- "$temp_file" "$HOME/important-file"
+temp_file="$(some_command)"
+rm -f -- "$temp_file"
+```
+
+Do not reassign a temp variable before cleanup. Do not execute a temp file with
+`bash`, `sh`, `source`, or `.` unless that execution is the explicit purpose of
+the script and the payload is reviewed separately.
 
 ---
 
