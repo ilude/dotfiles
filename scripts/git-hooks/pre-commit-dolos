@@ -2,15 +2,32 @@
 set -eu
 
 if [ -x bin/dolos.exe ]; then
-  exec bin/dolos.exe scan --staged
-fi
-if [ -x bin/dolos ]; then
-  exec bin/dolos scan --staged
-fi
-
-cat >&2 <<'EOF'
+  dolos=bin/dolos.exe
+elif [ -x bin/dolos ]; then
+  dolos=bin/dolos
+else
+  cat >&2 <<'EOF'
 ERROR: Dolos executable not found. Build it with:
   cd tools/dolos && go build -o ../../bin/dolos.exe .
-The Dolos private archive hook is block-only; it never packs, unpacks, or stages files.
 EOF
-exit 1
+  exit 1
+fi
+
+"$dolos" scan --staged
+
+status_output=$("$dolos" status 2>&1) || status_code=$?
+status_code=${status_code:-0}
+case "$status_output" in
+  *"status=diverged"*)
+    printf '%s\n' "Dolos: private/ diverged from encrypted archive; packing private/." >&2
+    "$dolos" pack private
+    git add -- .dolos/artifacts/private.tar.gz.age
+    "$dolos" scan --staged
+    ;;
+  *)
+    if [ "$status_code" -ne 0 ]; then
+      printf '%s\n' "$status_output" >&2
+      exit "$status_code"
+    fi
+    ;;
+esac

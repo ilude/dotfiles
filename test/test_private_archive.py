@@ -71,6 +71,19 @@ def make_hook_repo(tmp_path: Path) -> Path:
         "  echo dolos scan ok\n"
         "  exit 0\n"
         "fi\n"
+        "if [ \"$1\" = \"status\" ]; then\n"
+        "  if [ -d private ] && [ ! -f .dolos/artifacts/private.tar.gz.age ]; then\n"
+        "    echo 'archive=private status=diverged plain=true artifact=false'\n"
+        "    exit 4\n"
+        "  fi\n"
+        "  echo 'archive=private status=clean plain=true artifact=true'\n"
+        "  exit 0\n"
+        "fi\n"
+        "if [ \"$1 $2\" = \"pack private\" ]; then\n"
+        "  mkdir -p .dolos/artifacts\n"
+        "  printf 'encrypted private archive\\n' > .dolos/artifacts/private.tar.gz.age\n"
+        "  exit 0\n"
+        "fi\n"
         "exit 2\n",
         encoding="utf-8",
     )
@@ -117,7 +130,7 @@ def test_legacy_allowlist():
     assert unexpected == []
 
 
-def test_hook_install_idempotent_block_only_and_unrelated_commit(tmp_path):
+def test_hook_install_idempotent_auto_pack_and_unrelated_commit(tmp_path):
     repo = make_hook_repo(tmp_path)
     run(script(repo / "scripts/install-dolos-hook") + ["--dry-run"], cwd=repo)
     run(script(repo / "scripts/install-dolos-hook"), cwd=repo)
@@ -131,17 +144,29 @@ def test_hook_install_idempotent_block_only_and_unrelated_commit(tmp_path):
     (repo / "README.md").write_text("unrelated\n", encoding="utf-8")
     run(["git", "add", "README.md"], cwd=repo)
     run(["git", "commit", "-m", "unrelated"], cwd=repo)
-    assert "scan\n--staged\n" in (repo / "dolos-args.log").read_text(encoding="utf-8")
+    args_log = (repo / "dolos-args.log").read_text(encoding="utf-8")
+    assert "scan\n--staged\n" in args_log
+    assert "pack\nprivate\n" not in args_log
 
     (repo / "private").mkdir()
     (repo / "private" / "secret.txt").write_text("CANARY_PRIVATE_SECRET\n", encoding="utf-8")
+    (repo / "README.md").write_text("with private archive\n", encoding="utf-8")
+    run(["git", "add", "README.md"], cwd=repo)
+    run(["git", "commit", "-m", "pack private"], cwd=repo)
+    args_log = (repo / "dolos-args.log").read_text(encoding="utf-8")
+    assert "pack\nprivate\n" in args_log
+    committed = run(["git", "show", "--name-only", "--format=", "HEAD"], cwd=repo).stdout
+    assert ".dolos/artifacts/private.tar.gz.age" in committed
+
+    run(["git", "rm", "--cached", ".dolos/artifacts/private.tar.gz.age"], cwd=repo)
+    (repo / ".dolos" / "artifacts" / "private.tar.gz.age").unlink()
     run(["git", "add", "-f", "private/secret.txt"], cwd=repo)
     proc = run(["git", "commit", "-m", "plaintext"], cwd=repo, check=False)
     assert proc.returncode != 0
     assert not (repo / ".dolos" / "artifacts" / "private.tar.gz.age").exists()
 
 
-def test_real_repo_dolos_checks_are_non_mutating():
+def test_real_repo_dolos_scan_is_non_mutating():
     if not dolos_exe().exists():
         pytest.skip("Dolos binary is a local ignored artifact")
 

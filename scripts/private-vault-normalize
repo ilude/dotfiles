@@ -1,0 +1,312 @@
+#!/usr/bin/env python3
+"""Normalize existing private Markdown notes to the private vault contract."""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import re
+from pathlib import Path
+from typing import Final
+
+ROOT: Final = Path("private")
+BROWSER_NOTES: Final = ROOT / "browser-tabs" / "brave"
+BROWSER_ATTACHMENTS: Final = ROOT / "_attachments" / "browser-tabs" / "brave"
+INDEXES: Final = ROOT / "_indexes"
+HANDOFFS: Final = ROOT / "handoffs"
+X_DIR: Final = ROOT / "x"
+
+
+def now_iso() -> str:
+    return dt.datetime.now().astimezone().replace(microsecond=0).isoformat()
+
+
+def split_frontmatter(text: str) -> tuple[str | None, str]:
+    if not text.startswith("---\n"):
+        return None, text
+    parts = text.split("---", 2)
+    if len(parts) < 3:
+        return None, text
+    return parts[1], parts[2].lstrip("\n")
+
+
+def write_note(path: Path, frontmatter: list[str], body: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "---\n" + "\n".join(frontmatter) + "\n---\n\n" + body.rstrip() + "\n",
+        encoding="utf-8",
+    )
+
+
+def ensure_summary(body: str, summary_text: str) -> str:
+    lines = body.splitlines()
+    if "## Summary" in lines:
+        return body
+    if lines and lines[0].startswith("# "):
+        return "\n".join([lines[0], "", "## Summary", "", summary_text, "", *lines[1:]])
+    return "\n".join(["## Summary", "", summary_text, "", *lines])
+
+
+def normalize_h1(body: str, title: str) -> str:
+    lines = body.splitlines()
+    output: list[str] = []
+    found = False
+    for line in lines:
+        if line.startswith("# "):
+            if not found:
+                output.append(f"# {title}")
+                found = True
+            else:
+                output.append("#" + line)
+        else:
+            output.append(line)
+    if not found:
+        output = [f"# {title}", "", *output]
+    return "\n".join(output)
+
+
+def handoff_title(path: Path) -> str:
+    match = re.search(r"(\d{8})-(\d{6})", path.stem)
+    if match:
+        ymd, hms = match.groups()
+        return f"Handoff {ymd[:4]}-{ymd[4:6]}-{ymd[6:]} {hms[:2]}:{hms[2:4]}:{hms[4:]}"
+    return f"Handoff {path.stem}"
+
+
+def handoff_created(path: Path) -> str:
+    match = re.search(r"(\d{8})-(\d{6})", path.stem)
+    if match:
+        ymd, hms = match.groups()
+        return f"{ymd[:4]}-{ymd[4:6]}-{ymd[6:]}T{hms[:2]}:{hms[2:4]}:{hms[4:]}-04:00"
+    modified = dt.datetime.fromtimestamp(path.stat().st_mtime).astimezone()
+    return modified.replace(microsecond=0).isoformat()
+
+
+def normalize_handoffs(updated: str) -> None:
+    if not HANDOFFS.exists():
+        return
+    for path in sorted(HANDOFFS.glob("*.md")):
+        text = path.read_text(encoding="utf-8")
+        frontmatter, body = split_frontmatter(text)
+        if frontmatter is not None:
+            continue
+        title = handoff_title(path)
+        body = normalize_h1(body, title)
+        body = ensure_summary(
+            body,
+            "Private handoff note. See the sections below for context and continuation details.",
+        )
+        write_note(
+            path,
+            [
+                f"title: {title}",
+                f"created: {handoff_created(path)}",
+                f"updated: {updated}",
+                "type: handoff",
+                "source: pi-session",
+                "sensitive: true",
+                "tags:",
+                "  - private/handoff",
+                "related:",
+                "  - \"[[handoffs]]\"",
+                "attachments: []",
+            ],
+            body,
+        )
+
+
+def browser_entries() -> list[str]:
+    entries: list[str] = []
+    if not BROWSER_NOTES.exists():
+        return entries
+    for note in sorted(BROWSER_NOTES.glob("*.md")):
+        metadata = read_frontmatter(note)
+        method = metadata.get("capture_method", "unknown")
+        tabs = metadata.get("tab_count", "0")
+        locked = metadata.get("locked_files", "0")
+        entries.append(f"- [[{note.stem}]] - {tabs} tabs, {method}, {locked} locked files")
+    return entries
+
+
+def read_frontmatter(path: Path) -> dict[str, str]:
+    text = path.read_text(encoding="utf-8")
+    frontmatter, _body = split_frontmatter(text)
+    if frontmatter is None:
+        return {}
+    data: dict[str, str] = {}
+    for line in frontmatter.splitlines():
+        if line.startswith(" ") or ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        data[key.strip()] = value.strip().strip('"')
+    return data
+
+
+def write_root_readme(updated: str) -> None:
+    write_note(
+        ROOT / "README.md",
+        [
+            "title: Private vault",
+            f"created: {updated}",
+            f"updated: {updated}",
+            "type: index",
+            "source: local-vault",
+            "sensitive: true",
+            "tags:",
+            "  - private",
+            "related: []",
+            "attachments: []",
+        ],
+        "# Private vault\n\n"
+        "## Summary\n\n"
+        "Encrypted local Obsidian-compatible vault for private notes and local data.\n\n"
+        "## Indexes\n\n"
+        "- [[browser-tabs]]\n"
+        "- [[handoffs]]\n"
+        "- [[x]]\n\n"
+        "## Notes\n\n"
+        "This vault stores plaintext private data locally. Git ignores `private/`; "
+        "Dolos packs it into the encrypted commit artifact at "
+        "`.dolos/artifacts/private.tar.gz.age`.",
+    )
+
+
+def write_indexes(updated: str) -> None:
+    INDEXES.mkdir(parents=True, exist_ok=True)
+    write_note(
+        INDEXES / "browser-tabs.md",
+        [
+            "title: Browser tabs",
+            f"created: {updated}",
+            f"updated: {updated}",
+            "type: index",
+            "source: local-vault",
+            "sensitive: true",
+            "tags:",
+            "  - private/index",
+            "  - private/browser-tabs",
+            "related: []",
+            "attachments: []",
+        ],
+        "# Browser tabs\n\n"
+        "## Summary\n\n"
+        "Path-level index of private browser tab capture notes.\n\n"
+        "## Brave\n\n"
+        + "\n".join(browser_entries()),
+    )
+
+    handoff_entries = [
+        f"- [[{path.stem}]] - handoff note" for path in sorted(HANDOFFS.glob("*.md"))
+    ]
+    write_note(
+        INDEXES / "handoffs.md",
+        [
+            "title: Handoffs",
+            f"created: {updated}",
+            f"updated: {updated}",
+            "type: index",
+            "source: local-vault",
+            "sensitive: true",
+            "tags:",
+            "  - private/index",
+            "  - private/handoff",
+            "related: []",
+            "attachments: []",
+        ],
+        "# Handoffs\n\n"
+        "## Summary\n\n"
+        "Path-level index of private handoff notes.\n\n"
+        + "\n".join(handoff_entries),
+    )
+
+    write_note(
+        INDEXES / "x.md",
+        [
+            "title: X private data",
+            f"created: {updated}",
+            f"updated: {updated}",
+            "type: index",
+            "source: local-vault",
+            "sensitive: true",
+            "tags:",
+            "  - private/index",
+            "  - private/x",
+            "related: []",
+            "attachments: []",
+        ],
+        "# X private data\n\n"
+        "## Summary\n\n"
+        "Path-level index for local X private data.\n\n"
+        "- [[README]] - X private data overview\n"
+        "- `private/x/` - local data directory",
+    )
+
+
+def ensure_browser_manifests() -> None:
+    if not BROWSER_ATTACHMENTS.exists():
+        return
+    for directory in sorted(BROWSER_ATTACHMENTS.iterdir()):
+        if not directory.is_dir() or directory.name == "tools":
+            continue
+        manifest = directory / "manifest.json"
+        if manifest.exists():
+            continue
+        data = []
+        capture_json = directory / "brave-tabs-full.json"
+        if capture_json.exists():
+            try:
+                data = json.loads(capture_json.read_text(encoding="utf-8")).get("manifest", [])
+            except (json.JSONDecodeError, OSError):
+                data = []
+        manifest.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def write_x_readme(updated: str) -> None:
+    X_DIR.mkdir(parents=True, exist_ok=True)
+    write_note(
+        X_DIR / "README.md",
+        [
+            "title: X private data",
+            "created: 2026-06-06T00:00:00-04:00",
+            f"updated: {updated}",
+            "type: private-dataset",
+            "source: x",
+            "sensitive: true",
+            "tags:",
+            "  - private/x",
+            "related:",
+            "  - \"[[x]]\"",
+            "attachments: []",
+        ],
+        "# X private data\n\n"
+        "## Summary\n\n"
+        "Local plaintext X data, configuration, caches, and databases. Git ignores "
+        "`private/`; Dolos packs it into the encrypted commit artifact.\n\n"
+        "## Data files\n\n"
+        "- `config.local.json`\n"
+        "- `x-data.sqlite`\n"
+        "- `birdclaw/`\n"
+        "- `birdclaw-home/`",
+    )
+
+
+def normalize() -> None:
+    updated = now_iso()
+    normalize_handoffs(updated)
+    ensure_browser_manifests()
+    write_root_readme(updated)
+    write_x_readme(updated)
+    write_indexes(updated)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Normalize private vault Markdown structure.")
+    parser.parse_args()
+    normalize()
+    print("normalized private vault")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

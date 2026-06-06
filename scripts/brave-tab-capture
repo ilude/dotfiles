@@ -1,0 +1,790 @@
+#!/usr/bin/env python3
+"""Capture Brave tab URLs into the private Obsidian vault."""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import filecmp
+import json
+import os
+import re
+import shutil
+import struct
+import subprocess
+import sys
+import urllib.request
+from pathlib import Path
+from typing import Any, Final
+
+SNSS_MAGIC: Final = b"SNSS"
+COMMAND_SET_TAB_WINDOW: Final = 0
+COMMAND_SET_TAB_INDEX: Final = 2
+COMMAND_UPDATE_TAB_NAVIGATION: Final = 6
+COMMAND_SET_SELECTED_NAVIGATION: Final = 7
+COMMAND_SET_PINNED_STATE: Final = 12
+COMMAND_TAB_CLOSED: Final = 16
+COMMAND_WINDOW_CLOSED: Final = 17
+DEFAULT_PROFILE_NAMES: Final = ("Default",)
+PROFILE_PREFIX: Final = "Profile "
+PRIVATE_NOTES_ROOT: Final = Path("private/browser-tabs/brave")
+PRIVATE_ATTACHMENTS_ROOT: Final = Path("private/_attachments/browser-tabs/brave")
+PRIVATE_INDEX_PATH: Final = Path("private/_indexes/browser-tabs.md")
+CDP_TIMEOUT_SECONDS: Final = 2
+
+
+def is_windows() -> bool:
+    return sys.platform.startswith("win") or "MINGW" in os.environ.get("MSYSTEM", "")
+
+
+def default_user_data_dir() -> Path:
+    env_path = os.environ.get("BRAVE_USER_DATA_DIR")
+    if env_path:
+        return Path(env_path)
+    if is_windows():
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if not local_app_data:
+            raise SystemExit("ERROR: LOCALAPPDATA is not set; pass --user-data-dir.")
+        return Path(local_app_data) / "BraveSoftware/Brave-Browser/User Data"
+    if sys.platform == "darwin":
+        return Path.home() / "Library/Application Support/BraveSoftware/Brave-Browser"
+    return Path.home() / ".config/BraveSoftware/Brave-Browser"
+
+
+def timestamp_slug(now: dt.datetime | None = None) -> str:
+    return (now or dt.datetime.now()).strftime("%Y%m%d-%H%M%S")
+
+
+def display_timestamp(slug: str) -> str:
+    match = re.fullmatch(r"(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})", slug)
+    if not match:
+        return slug
+    year, month, day, hour, minute, second = match.groups()
+    return f"{year}-{month}-{day} {hour}:{minute}:{second}"
+
+
+def align(value: int) -> int:
+    return (value + 3) & ~3
+
+
+def read_u32(data: bytes, offset: int) -> tuple[int, int]:
+    if offset + 4 > len(data):
+        raise ValueError("u32 read beyond command body")
+    return struct.unpack_from("<I", data, offset)[0], offset + 4
+
+
+def read_string(data: bytes, offset: int, encoding: str) -> tuple[str, int]:
+    length, offset = read_u32(data, offset)
+    byte_length = length if encoding == "utf-8" else length * 2
+    if offset + byte_length > len(data):
+        raise ValueError("string read beyond command body")
+    value = data[offset : offset + byte_length].decode(encoding, errors="replace")
+    return value, offset + align(byte_length)
+
+
+def parse_update_navigation(body: bytes) -> tuple[int, int, str, str]:
+    offset = 0
+    _payload_size, offset = read_u32(body, offset)
+    tab_id, offset = read_u32(body, offset)
+    nav_index, offset = read_u32(body, offset)
+    url, offset = read_string(body, offset, "utf-8")
+    title, _offset = read_string(body, offset, "utf-16le")
+    return tab_id, nav_index, url, title
+
+
+def parse_commands(path: Path) -> list[tuple[int, int, bytes]]:
+    data = path.read_bytes()
+    if data[:4] != SNSS_MAGIC:
+        return []
+    commands: list[tuple[int, int, bytes]] = []
+    offset = 8
+    sequence = 0
+    while offset + 3 <= len(data):
+        size = struct.unpack_from("<H", data, offset)[0]
+        offset += 2
+        if size == 0 or offset + size > len(data):
+            break
+        command_id = data[offset]
+        offset += 1
+        body = data[offset : offset + size - 1]
+        offset += size - 1
+        commands.append((sequence, command_id, body))
+        sequence += 1
+    return commands
+
+
+def profile_dirs(user_data_dir: Path, requested: list[str]) -> list[Path]:
+    if requested:
+        return [user_data_dir / profile for profile in requested]
+    if not user_data_dir.exists():
+        raise SystemExit(f"ERROR: Brave user data directory not found: {user_data_dir}")
+    profiles = [user_data_dir / name for name in DEFAULT_PROFILE_NAMES]
+    profiles.extend(
+        path
+        for path in sorted(user_data_dir.iterdir(), key=lambda item: item.name)
+        if path.is_dir() and path.name.startswith(PROFILE_PREFIX)
+    )
+    return [path for path in profiles if path.is_dir()]
+
+
+def copy_first_available_session_file(
+    profile: Path, pattern: str, attachments_dir: Path
+) -> list[dict[str, Any]]:
+    sessions_dir = profile / "Sessions"
+    if not sessions_dir.exists():
+        return []
+    session_files_dir = attachments_dir / "session-files"
+    session_files_dir.mkdir(parents=True, exist_ok=True)
+    manifest: list[dict[str, Any]] = []
+    for source in sorted(
+        sessions_dir.glob(pattern), key=lambda item: item.stat().st_mtime, reverse=True
+    ):
+        destination = session_files_dir / f"{safe_name(profile.name)}__{source.name}"
+        try:
+            shutil.copy2(source, destination)
+        except OSError as exc:
+            manifest.append(
+                {
+                    "profile": profile.name,
+                    "source": str(source),
+                    "copy": None,
+                    "kind": source.name.split("_", 1)[0],
+                    "lastWrite": iso_mtime(source),
+                    "locked": True,
+                    "error": str(exc),
+                }
+            )
+            continue
+        manifest.append(
+            {
+                "profile": profile.name,
+                "source": str(source),
+                "copy": str(destination),
+                "kind": source.name.split("_", 1)[0],
+                "lastWrite": iso_mtime(source),
+                "locked": False,
+            }
+        )
+        break
+    return manifest
+
+
+def safe_name(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]", "_", value)
+
+
+def iso_mtime(path: Path) -> str:
+    return dt.datetime.fromtimestamp(path.stat().st_mtime).astimezone().isoformat()
+
+
+def copy_session_files(profiles: list[Path], attachments_dir: Path) -> list[dict[str, Any]]:
+    attachments_dir.mkdir(parents=True, exist_ok=True)
+    manifest: list[dict[str, Any]] = []
+    for profile in profiles:
+        manifest.extend(copy_first_available_session_file(profile, "Session_*", attachments_dir))
+        manifest.extend(copy_first_available_session_file(profile, "Tabs_*", attachments_dir))
+    return manifest
+
+
+def parse_session_copies(
+    manifest: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    by_profile: dict[str, list[dict[str, Any]]] = {}
+    for item in manifest:
+        if item.get("copy"):
+            by_profile.setdefault(str(item["profile"]), []).append(item)
+
+    tabs: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+    for profile, items in sorted(by_profile.items()):
+        profile_tabs, profile_errors = parse_profile_session(profile, items)
+        tabs.extend(profile_tabs)
+        errors.extend(profile_errors)
+    return tabs, errors
+
+
+def parse_profile_session(
+    profile: str, items: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    navs_by_tab: dict[int, dict[int, dict[str, str]]] = {}
+    selected_nav: dict[int, int] = {}
+    tab_window: dict[int, int] = {}
+    tab_index: dict[int, int] = {}
+    pinned: dict[int, bool] = {}
+    closed_tabs: set[int] = set()
+    closed_windows: set[int] = set()
+    errors: list[dict[str, Any]] = []
+
+    for item in sorted(
+        items, key=lambda value: (str(value["lastWrite"]), str(value["kind"]))
+    ):
+        path = Path(str(item["copy"]))
+        for sequence, command_id, body in parse_commands(path):
+            try:
+                apply_command(
+                    body,
+                    command_id,
+                    navs_by_tab,
+                    selected_nav,
+                    tab_window,
+                    tab_index,
+                    pinned,
+                    closed_tabs,
+                    closed_windows,
+                )
+            except (struct.error, ValueError) as exc:
+                errors.append(
+                    {
+                        "profile": profile,
+                        "file": str(path),
+                        "sequence": sequence,
+                        "commandId": command_id,
+                        "error": str(exc),
+                    }
+                )
+
+    rows: list[dict[str, Any]] = []
+    for tab_id, navs in sorted(navs_by_tab.items()):
+        if tab_id in closed_tabs or tab_window.get(tab_id) in closed_windows:
+            continue
+        selected = selected_nav.get(tab_id, max(navs))
+        nav = navs.get(selected) or navs[max(navs)]
+        if not nav.get("url"):
+            continue
+        rows.append(
+            {
+                "profile": profile,
+                "windowId": tab_window.get(tab_id),
+                "tabId": tab_id,
+                "tabIndex": tab_index.get(tab_id),
+                "selectedNavigationIndex": selected,
+                "pinned": pinned.get(tab_id, False),
+                "title": nav.get("title", ""),
+                "url": nav["url"],
+                "source": "session",
+            }
+        )
+    rows.sort(key=tab_sort_key)
+    return rows, errors
+
+
+def apply_command(
+    body: bytes,
+    command_id: int,
+    navs_by_tab: dict[int, dict[int, dict[str, str]]],
+    selected_nav: dict[int, int],
+    tab_window: dict[int, int],
+    tab_index: dict[int, int],
+    pinned: dict[int, bool],
+    closed_tabs: set[int],
+    closed_windows: set[int],
+) -> None:
+    if command_id == COMMAND_SET_TAB_WINDOW and len(body) >= 8:
+        window_id, tab_id = struct.unpack_from("<II", body, 0)
+        tab_window[tab_id] = window_id
+    elif command_id == COMMAND_SET_TAB_INDEX and len(body) >= 8:
+        tab_id, index = struct.unpack_from("<II", body, 0)
+        tab_index[tab_id] = index
+    elif command_id == COMMAND_UPDATE_TAB_NAVIGATION:
+        tab_id, nav_index, url, title = parse_update_navigation(body)
+        if url:
+            navs_by_tab.setdefault(tab_id, {})[nav_index] = {"url": url, "title": title}
+    elif command_id == COMMAND_SET_SELECTED_NAVIGATION and len(body) >= 8:
+        tab_id, index = struct.unpack_from("<II", body, 0)
+        selected_nav[tab_id] = index
+    elif command_id == COMMAND_SET_PINNED_STATE and len(body) >= 8:
+        tab_id, state = struct.unpack_from("<II", body, 0)
+        pinned[tab_id] = bool(state)
+    elif command_id == COMMAND_TAB_CLOSED and len(body) >= 8:
+        closed_tabs.add(struct.unpack_from("<Q", body, 0)[0])
+    elif command_id == COMMAND_WINDOW_CLOSED and len(body) >= 8:
+        closed_windows.add(struct.unpack_from("<Q", body, 0)[0])
+
+
+def tab_sort_key(tab: dict[str, Any]) -> tuple[str, int, int, int]:
+    window_id = tab.get("windowId")
+    tab_index = tab.get("tabIndex")
+    tab_id = tab.get("tabId")
+    return (
+        str(tab.get("profile") or ""),
+        int(window_id) if window_id is not None else sys.maxsize,
+        int(tab_index) if tab_index is not None else sys.maxsize,
+        int(tab_id) if tab_id is not None else sys.maxsize,
+    )
+
+
+def discover_cdp_ports() -> list[int]:
+    if is_windows():
+        return discover_cdp_ports_windows()
+    return discover_cdp_ports_posix()
+
+
+def discover_cdp_ports_windows() -> list[int]:
+    command = [
+        "powershell",
+        "-NoProfile",
+        "-Command",
+        "$p=Get-CimInstance Win32_Process -Filter \"name = 'brave.exe'\"; "
+        "$p.CommandLine | Select-String -Pattern '--remote-debugging-port=(\\d+)' "
+        "-AllMatches | ForEach-Object { $_.Matches.Groups[1].Value }",
+    ]
+    try:
+        proc = subprocess.run(command, text=True, capture_output=True, check=False)
+    except OSError:
+        return []
+    return sorted(
+        {int(line.strip()) for line in proc.stdout.splitlines() if line.strip().isdigit()}
+    )
+
+
+def discover_cdp_ports_posix() -> list[int]:
+    try:
+        proc = subprocess.run(
+            ["ps", "-axo", "command="], text=True, capture_output=True, check=False
+        )
+    except OSError:
+        return []
+    ports: set[int] = set()
+    for line in proc.stdout.splitlines():
+        if "brave" not in line.lower():
+            continue
+        for match in re.finditer(r"--remote-debugging-port=(\d+)", line):
+            ports.add(int(match.group(1)))
+    return sorted(ports)
+
+
+def fetch_cdp_json(port: int, path: str) -> Any | None:
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}{path}", timeout=CDP_TIMEOUT_SECONDS
+        ) as response:
+            return json.loads(response.read().decode("utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def capture_from_cdp(port: int) -> list[dict[str, Any]]:
+    version = fetch_cdp_json(port, "/json/version")
+    if not isinstance(version, dict):
+        return []
+    targets = fetch_cdp_json(port, "/json/list")
+    if not isinstance(targets, list):
+        return []
+    tabs = []
+    for index, target in enumerate(targets):
+        if not isinstance(target, dict) or target.get("type") != "page":
+            continue
+        url = str(target.get("url") or "")
+        if not url or url.startswith("devtools://"):
+            continue
+        tabs.append(
+            {
+                "profile": None,
+                "windowId": None,
+                "tabId": target.get("id"),
+                "tabIndex": index,
+                "selectedNavigationIndex": None,
+                "pinned": False,
+                "title": str(target.get("title") or ""),
+                "url": url,
+                "source": "cdp",
+            }
+        )
+    tabs.sort(key=lambda item: (int(item["tabIndex"]), str(item["url"])))
+    return tabs
+
+
+def build_capture(args: argparse.Namespace, attachments_dir: Path) -> dict[str, Any]:
+    captured_at = dt.datetime.now().astimezone().isoformat()
+    manifest: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+    method = "session"
+    tabs: list[dict[str, Any]] = []
+
+    if not args.session_only:
+        ports = [args.cdp_port] if args.cdp_port else discover_cdp_ports()
+        for port in ports:
+            tabs = capture_from_cdp(int(port))
+            if tabs:
+                method = "cdp"
+                break
+
+    if not tabs:
+        user_data_dir = args.user_data_dir or default_user_data_dir()
+        profiles = profile_dirs(user_data_dir, args.profile)
+        manifest = copy_session_files(profiles, attachments_dir)
+        tabs, errors = parse_session_copies(manifest)
+        method = "session"
+
+    tabs.sort(key=tab_sort_key)
+    return {
+        "capturedAt": captured_at,
+        "method": method,
+        "tabs": tabs,
+        "manifest": manifest,
+        "parseErrors": errors,
+    }
+
+
+def rel_link(from_path: Path, to_path: Path) -> str:
+    return Path(os.path.relpath(to_path, start=from_path.parent)).as_posix()
+
+
+def yaml_list(values: list[str], indent: str = "") -> list[str]:
+    return [f"{indent}- {value}" for value in values]
+
+
+def markdown_link(title: str, url: str) -> str:
+    clean_title = title.strip() or url
+    escaped = clean_title.replace("[", "\\[").replace("]", "\\]")
+    return f"[{escaped}]({url})"
+
+
+def write_capture_outputs(
+    note_path: Path,
+    attachments_dir: Path,
+    index_path: Path,
+    capture: dict[str, Any],
+    timestamp: str,
+) -> tuple[Path, Path, Path]:
+    note_path.parent.mkdir(parents=True, exist_ok=True)
+    attachments_dir.mkdir(parents=True, exist_ok=True)
+    json_path = attachments_dir / "brave-tabs-full.json"
+    manifest_path = attachments_dir / "manifest.json"
+    json_path.write_text(json.dumps(capture, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(capture.get("manifest") or [], indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    note_path.write_text(
+        markdown_capture(capture, timestamp, note_path, attachments_dir), encoding="utf-8"
+    )
+    update_browser_tabs_index(index_path, note_path.parent, timestamp, capture)
+    return note_path, json_path, index_path
+
+
+def markdown_capture(
+    capture: dict[str, Any], timestamp: str, note_path: Path, attachments_dir: Path
+) -> str:
+    tabs = list(capture.get("tabs") or [])
+    manifest = list(capture.get("manifest") or [])
+    locked_files = sum(1 for item in manifest if item.get("locked"))
+    title = f"Brave tabs capture {display_timestamp(timestamp)}"
+    json_link = rel_link(note_path, attachments_dir / "brave-tabs-full.json")
+    manifest_link = rel_link(note_path, attachments_dir / "manifest.json")
+    session_dir = attachments_dir / "session-files"
+    attachment_links = [json_link, manifest_link]
+    if session_dir.exists():
+        attachment_links.append(rel_link(note_path, session_dir))
+
+    lines = [
+        "---",
+        f"title: {title}",
+        f"created: {capture['capturedAt']}",
+        f"updated: {capture['capturedAt']}",
+        "type: browser-tabs",
+        "source: brave",
+        f"capture_method: {capture['method']}",
+        f"tab_count: {len(tabs)}",
+        f"locked_files: {locked_files}",
+        "sensitive: true",
+        "tags:",
+        "  - private/browser-tabs",
+        "  - browser/brave",
+        "related:",
+        "  - \"[[browser-tabs]]\"",
+        "attachments:",
+        *yaml_list([f'"{value}"' for value in attachment_links], "  "),
+        "---",
+        "",
+        f"# {title}",
+        "",
+        "## Summary",
+        "",
+        f"- Method: {capture['method']}",
+        f"- Tabs: {len(tabs)}",
+        f"- Locked files: {locked_files}",
+        f"- JSON: [brave-tabs-full.json]({json_link})",
+        f"- Manifest: [manifest.json]({manifest_link})",
+        "",
+        "## Tabs",
+        "",
+    ]
+    profiles = sorted({str(tab.get("profile") or "CDP") for tab in tabs})
+    for profile in profiles:
+        rows = [tab for tab in tabs if str(tab.get("profile") or "CDP") == profile]
+        lines.extend([f"### {profile}", ""])
+        for tab in rows:
+            title_value = str(tab.get("title") or "").strip()
+            lines.append(f"- {markdown_link(title_value, str(tab['url']))}")
+        lines.append("")
+    lines.extend(["## Attachments", ""])
+    for value in attachment_links:
+        label = Path(value).name or value
+        lines.append(f"- [{label}]({value})")
+    lines.extend(["", "## Notes", ""])
+    return "\n".join(lines)
+
+
+def update_browser_tabs_index(
+    index_path: Path, notes_root: Path, timestamp: str, capture: dict[str, Any]
+) -> None:
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+    records = discover_capture_records(notes_root)
+    note_name = f"{timestamp}.md"
+    records[timestamp] = {
+        "note": note_name,
+        "capturedAt": str(capture["capturedAt"]),
+        "method": str(capture["method"]),
+        "tabCount": len(capture.get("tabs") or []),
+        "lockedFiles": sum(1 for item in capture.get("manifest") or [] if item.get("locked")),
+    }
+    index_path.write_text(render_browser_tabs_index(records), encoding="utf-8")
+
+
+def discover_capture_records(notes_root: Path) -> dict[str, dict[str, Any]]:
+    records: dict[str, dict[str, Any]] = {}
+    if not notes_root.exists():
+        return records
+    for note in sorted(notes_root.glob("*.md")):
+        timestamp = note.stem
+        frontmatter = read_frontmatter(note)
+        if frontmatter.get("type") != "browser-tabs":
+            continue
+        records[timestamp] = {
+            "note": note.name,
+            "capturedAt": frontmatter.get("created", ""),
+            "method": frontmatter.get("capture_method", "unknown"),
+            "tabCount": int(frontmatter.get("tab_count", "0") or 0),
+            "lockedFiles": int(frontmatter.get("locked_files", "0") or 0),
+        }
+    return records
+
+
+def read_frontmatter(path: Path) -> dict[str, str]:
+    text = path.read_text(encoding="utf-8")
+    if not text.startswith("---\n"):
+        return {}
+    parts = text.split("---", 2)
+    if len(parts) < 3:
+        return {}
+    data: dict[str, str] = {}
+    for line in parts[1].splitlines():
+        if not line or line.startswith(" ") or ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        data[key.strip()] = value.strip().strip('"')
+    return data
+
+
+def render_browser_tabs_index(records: dict[str, dict[str, Any]]) -> str:
+    lines = [
+        "---",
+        "title: Browser tabs",
+        "type: index",
+        "sensitive: true",
+        "tags:",
+        "  - private/index",
+        "  - private/browser-tabs",
+        "---",
+        "",
+        "# Browser tabs",
+        "",
+        "## Brave",
+        "",
+    ]
+    for timestamp in sorted(records):
+        record = records[timestamp]
+        link = Path(str(record["note"])).stem
+        method = record.get("method", "unknown")
+        tab_count = record.get("tabCount", 0)
+        locked_files = record.get("lockedFiles", 0)
+        lines.append(
+            f"- [[{link}]] - {tab_count} tabs, {method}, {locked_files} locked files"
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def migrate_existing(args: argparse.Namespace) -> dict[str, Any]:
+    notes_root = args.notes_root
+    attachments_root = args.attachments_root
+    index_path = args.index_path
+    migrated: list[str] = []
+    skipped: list[str] = []
+    conflicts: list[str] = []
+    if not notes_root.exists():
+        return migration_summary(migrated, skipped, conflicts, index_path)
+    for legacy_dir in sorted(path for path in notes_root.iterdir() if path.is_dir()):
+        legacy_md = legacy_dir / "brave-tabs-full.md"
+        legacy_json = legacy_dir / "brave-tabs-full.json"
+        if not legacy_md.exists():
+            continue
+        timestamp = legacy_dir.name
+        note_path = notes_root / f"{timestamp}.md"
+        attachments_dir = attachments_root / timestamp
+        try:
+            capture_json = legacy_json
+            if not capture_json.exists():
+                capture_json = attachments_dir / "brave-tabs-full.json"
+            capture = load_legacy_capture(capture_json, legacy_md)
+            move_legacy_attachments(legacy_dir, attachments_dir)
+            ensure_manifest_file(attachments_dir, capture)
+            note_text = markdown_capture(capture, timestamp, note_path, attachments_dir)
+            write_or_confirm_same(note_path, note_text.encode("utf-8"))
+            legacy_md.unlink()
+            remove_if_empty(legacy_dir)
+            migrated.append(timestamp)
+        except RuntimeError as exc:
+            conflicts.append(f"{timestamp}: {exc}")
+    records = discover_capture_records(notes_root)
+    if migrated:
+        index_path.parent.mkdir(parents=True, exist_ok=True)
+        index_path.write_text(render_browser_tabs_index(records), encoding="utf-8")
+    return migration_summary(migrated, skipped, conflicts, index_path)
+
+
+def load_legacy_capture(json_path: Path, md_path: Path) -> dict[str, Any]:
+    if json_path.exists():
+        capture = json.loads(json_path.read_text(encoding="utf-8"))
+        if "capturedAt" not in capture and "captured_at" in capture:
+            capture["capturedAt"] = capture["captured_at"]
+        capture.setdefault("capturedAt", iso_mtime(json_path))
+        capture.setdefault("manifest", [])
+        capture.setdefault("parseErrors", [])
+        capture.setdefault("tabs", [])
+        return capture
+    captured_at = iso_mtime(md_path)
+    return {"capturedAt": captured_at, "method": "legacy", "tabs": [], "manifest": []}
+
+
+def ensure_manifest_file(attachments_dir: Path, capture: dict[str, Any]) -> None:
+    manifest_path = attachments_dir / "manifest.json"
+    if manifest_path.exists():
+        return
+    manifest_path.write_text(
+        json.dumps(capture.get("manifest") or [], indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+
+def move_legacy_attachments(legacy_dir: Path, attachments_dir: Path) -> None:
+    attachments_dir.mkdir(parents=True, exist_ok=True)
+    session_files_dir = attachments_dir / "session-files"
+    for source in sorted(legacy_dir.iterdir()):
+        if source.name == "brave-tabs-full.md":
+            continue
+        if source.name.startswith(("Default__", "Profile_")):
+            destination = session_files_dir / source.name
+        else:
+            destination = attachments_dir / source.name
+        move_or_confirm_same(source, destination)
+
+
+def move_or_confirm_same(source: Path, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.exists():
+        same_file = (
+            source.is_file()
+            and destination.is_file()
+            and filecmp.cmp(source, destination, shallow=False)
+        )
+        if same_file:
+            source.unlink()
+            return
+        raise RuntimeError(f"target exists with different content: {destination}")
+    shutil.move(str(source), str(destination))
+
+
+def write_or_confirm_same(path: Path, content: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        if path.read_bytes() == content:
+            return
+        raise RuntimeError(f"target exists with different content: {path}")
+    path.write_bytes(content)
+
+
+def remove_if_empty(path: Path) -> None:
+    try:
+        path.rmdir()
+    except OSError:
+        pass
+
+
+def migration_summary(
+    migrated: list[str], skipped: list[str], conflicts: list[str], index_path: Path
+) -> dict[str, Any]:
+    return {
+        "migrated": len(migrated),
+        "skipped": len(skipped),
+        "conflicts": conflicts,
+        "indexPath": str(index_path),
+    }
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Capture Brave tab URLs into private/.")
+    parser.add_argument("--user-data-dir", type=Path, help="Brave User Data directory.")
+    parser.add_argument(
+        "--profile", action="append", default=[], help="Profile directory to parse."
+    )
+    parser.add_argument("--notes-root", type=Path, default=PRIVATE_NOTES_ROOT)
+    parser.add_argument("--attachments-root", type=Path, default=PRIVATE_ATTACHMENTS_ROOT)
+    parser.add_argument("--index-path", type=Path, default=PRIVATE_INDEX_PATH)
+    parser.add_argument("--timestamp", help="Output note name. Defaults to current timestamp.")
+    parser.add_argument("--cdp-port", type=int, help="Use a specific Brave CDP port first.")
+    parser.add_argument(
+        "--session-only", action="store_true", help="Skip CDP and parse session files."
+    )
+    parser.add_argument(
+        "--migrate-existing", action="store_true", help="Migrate legacy capture folders."
+    )
+    parser.add_argument(
+        "--json", action="store_true", help="Print machine-readable result summary."
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv or sys.argv[1:])
+    if args.migrate_existing:
+        summary = migrate_existing(args)
+        if args.json:
+            print(json.dumps(summary, indent=2))
+        else:
+            print(f"migrated: {summary['migrated']}")
+            print(f"conflicts: {len(summary['conflicts'])}")
+            print(f"index: {summary['indexPath']}")
+        return 1 if summary["conflicts"] else 0
+
+    timestamp = args.timestamp or timestamp_slug()
+    note_path = args.notes_root / f"{timestamp}.md"
+    attachments_dir = args.attachments_root / timestamp
+    capture = build_capture(args, attachments_dir)
+    note_path, json_path, index_path = write_capture_outputs(
+        note_path, attachments_dir, args.index_path, capture, timestamp
+    )
+    summary = {
+        "notePath": str(note_path),
+        "jsonPath": str(json_path),
+        "attachmentsDir": str(attachments_dir),
+        "indexPath": str(index_path),
+        "method": capture["method"],
+        "tabCount": len(capture["tabs"]),
+        "lockedFiles": sum(1 for item in capture["manifest"] if item.get("locked")),
+    }
+    if args.json:
+        print(json.dumps(summary, indent=2))
+    else:
+        print(f"note: {note_path}")
+        print(f"attachments: {attachments_dir}")
+        print(f"index: {index_path}")
+        print(f"method: {summary['method']}")
+        print(f"tabs: {summary['tabCount']}")
+        print(f"locked files: {summary['lockedFiles']}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

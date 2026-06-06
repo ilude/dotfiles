@@ -1,3 +1,33 @@
+## 2026-06-06: Make private datastore Obsidian-compatible
+
+**Why:** Private datastore writers needed one vault structure so browser captures, handoffs, X data, attachments, and indexes are browsable in Obsidian instead of mixing notes and raw artifacts in timestamp folders.
+
+**Fix:** Updated the private-store and browser-tab-capture skills, handoff prompt, X guidance, and Brave tab capture script to use domain notes, `_attachments/`, `_indexes/`, YAML frontmatter, and a legacy browser-capture migration mode.
+
+**Files:** ~/.dotfiles/pi/skills/private-store/SKILL.md, ~/.dotfiles/pi/skills/browser-tab-capture/SKILL.md, ~/.dotfiles/pi/prompts/handoff.md, ~/.dotfiles/pi/skills/x-twitter/SKILL.md, ~/.dotfiles/scripts/brave-tab-capture, ~/.dotfiles/scripts/private-vault-audit, ~/.dotfiles/scripts/private-vault-normalize, ~/.dotfiles/test/test_brave_tab_capture.py
+
+---
+
+## 2026-06-06: Align private archive commit behavior
+
+**Why:** Private datastore writes were expected to be encrypted into the commit artifact during normal commits, but the Dolos hook only scanned staged paths and left packing as a manual step.
+
+**Fix:** Updated the Dolos pre-commit hook to pack diverged `private/` content into `.dolos/artifacts/private.tar.gz.age`, stage the encrypted artifact, and re-scan before commit. Added a private-store skill to define scoped writes under `private/`.
+
+**Files:** ~/.dotfiles/scripts/git-hooks/pre-commit-dolos, ~/.dotfiles/scripts/install-dolos-hook, ~/.dotfiles/pi/skills/private-store/SKILL.md, ~/.dotfiles/pi/skills/x-twitter/SKILL.md, ~/.dotfiles/test/test_private_archive.py
+
+---
+
+## 2026-06-06: Add Brave tab capture workflow
+
+**Why:** Open Brave tab capture needed a repeatable workflow that keeps sensitive URLs in the ignored private store and reports whether results came from live CDP or session-file parsing.
+
+**Fix:** Added a focused Pi browser-tab-capture skill plus `scripts/brave-tab-capture`, with tests covering session-file parsing and private-store output guidance.
+
+**Files:** ~/.dotfiles/pi/skills/browser-tab-capture/SKILL.md, ~/.dotfiles/scripts/brave-tab-capture, ~/.dotfiles/test/test_brave_tab_capture.py
+
+---
+
 ## 2026-06-04: Document verifiable shell temp cleanup patterns
 
 **Why:** Damage-control can now prove several canonical temporary-file cleanup patterns, and shell guidance needed to steer future scripts toward those easy-to-verify forms.

@@ -98,16 +98,21 @@ Do not infer following status from feed presence alone.
 Keep plaintext PII/local caches out of git:
 
 ```text
-private/x/                                   # plaintext local DB/config/exports, gitignored
+private/x/README.md                         # Obsidian entry note for local X data
+private/x/                                   # plaintext local DB/config/cache, gitignored
+private/_attachments/x/                      # optional exports/media attachments
+private/_indexes/x.md                        # path-level Obsidian index
 .dolos/artifacts/private.tar.gz.age          # tracked encrypted Dolos archive
 ```
 
 Expected guardrails:
 
 - `private/` ignored.
+- Human-readable X notes use YAML frontmatter and link to `[[x]]`.
+- SQLite, JSON, CSV, cache, media, and config files stay out of note folders unless a README note documents them.
 - Dolos owns private archive packing/unpacking through `bin/dolos`.
-- `scripts/install-dolos-hook` installs the block-only pre-commit hook.
-- `scripts/git-hooks/pre-commit-dolos` runs `bin/dolos scan --staged` and rejects plaintext private data.
+- `scripts/install-dolos-hook` installs the Dolos pre-commit hook.
+- `scripts/git-hooks/pre-commit-dolos` rejects staged plaintext private data, packs diverged `private/` content, stages the encrypted archive, and scans again.
 
 ## Anti-Patterns
 

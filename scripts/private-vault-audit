@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""Validate private Obsidian vault structure without printing note bodies."""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+ROOT = Path("private")
+REQUIRED_COMMON = {"title", "type", "sensitive", "tags"}
+REQUIRED_GENERATED = {"created", "updated", "source", "related"}
+
+
+def frontmatter(path: Path) -> tuple[dict[str, str] | None, list[str]]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if not lines or lines[0] != "---":
+        return None, lines
+    try:
+        end = lines[1:].index("---") + 1
+    except ValueError:
+        return None, lines
+    data: dict[str, str] = {}
+    for line in lines[1:end]:
+        match = re.match(r"^([A-Za-z0-9_-]+):\s*(.*)$", line)
+        if match:
+            data[match.group(1)] = match.group(2).strip().strip('"')
+    return data, lines[end + 1 :]
+
+
+def validate(root: Path = ROOT) -> list[tuple[str, str]]:
+    failures: list[tuple[str, str]] = []
+    if not root.exists():
+        return [(root.as_posix(), "missing private vault root")]
+
+    for path in sorted(root.rglob("*.md")):
+        rel = path.as_posix()
+        data, body = frontmatter(path)
+        if data is None:
+            failures.append((rel, "missing or malformed frontmatter"))
+            continue
+
+        missing_common = REQUIRED_COMMON - set(data)
+        if missing_common:
+            failures.append((rel, "missing common metadata: " + ",".join(sorted(missing_common))))
+
+        if data.get("sensitive") != "true":
+            failures.append((rel, "sensitive must be true"))
+
+        if not rel.startswith("private/_indexes/") and path.name != "README.md":
+            missing_generated = REQUIRED_GENERATED - set(data)
+            if missing_generated:
+                failures.append(
+                    (rel, "missing generated metadata: " + ",".join(sorted(missing_generated)))
+                )
+
+        h1s = [line for line in body if line.startswith("# ")]
+        if len(h1s) != 1:
+            failures.append((rel, f"expected exactly one H1, found {len(h1s)}"))
+
+        if "## Summary" not in body:
+            failures.append((rel, "missing ## Summary"))
+
+        if rel.startswith("private/browser-tabs/") and "attachments" not in data:
+            failures.append((rel, "browser-tabs note missing attachments metadata"))
+
+    raw_browser = [
+        path.as_posix()
+        for path in (root / "browser-tabs").rglob("*")
+        if path.is_file() and path.suffix != ".md"
+    ]
+    for rel in raw_browser:
+        failures.append((rel, "raw browser data outside _attachments"))
+
+    return failures
+
+
+def main() -> int:
+    failures = validate()
+    if failures:
+        for path, issue in failures:
+            print(f"FAIL\t{path}\t{issue}")
+        return 1
+    print("PASS private Obsidian compatibility checks")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
