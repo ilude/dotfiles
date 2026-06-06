@@ -25,7 +25,7 @@
 //   /commit / /plan-it / /review-it status line would echo back the slash
 //   command name and add visual noise to user-facing command output.
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -106,7 +106,7 @@ export const SECRET_PATTERNS = [
 	{
 		label: "Hardcoded password/token/secret/key",
 		regex:
-			/(?:^|[^A-Za-z0-9])[A-Za-z_]*(?:PASSWORD|TOKEN|SECRET|API[_-]?KEY)[A-Za-z_]*\s*[:=]/gim,
+			/(?:^|[^A-Za-z0-9])[A-Za-z_]*(?:PASSWORD|TOKEN|SECRET|API[_-]?KEY)[A-Za-z_]*\s*[:=]\s*["']?(?!%s\b|\$\{|\{\{|\$[A-Za-z_]|<|values\[|envValue\(|process\.env\b|redacted\b|example\b|placeholder\b|token-value\b|secret-value\b)[A-Za-z0-9+/_.:@-]{6,}/gim,
 	},
 ];
 
@@ -875,6 +875,97 @@ function gitOrThrow(cwd: string, args: string[], activity?: CommitActivity) {
 	return result.stdout.trim();
 }
 
+function stopProcessTree(pid: number) {
+	if (process.platform === "win32") {
+		spawn("taskkill", ["/pid", String(pid), "/t", "/f"], {
+			windowsHide: true,
+			stdio: "ignore",
+		});
+		return;
+	}
+	process.kill(-pid, "SIGTERM");
+}
+
+function runGitAsync(
+	cwd: string,
+	args: string[],
+	activity?: CommitActivity,
+	signal?: AbortSignal,
+): Promise<GitRunResult> {
+	if (signal?.aborted) {
+		return Promise.resolve({
+			code: 1,
+			stdout: "",
+			stderr: "Operation cancelled",
+		});
+	}
+	return new Promise((resolve) => {
+		const child = spawn(resolveGit(), args, {
+			cwd,
+			detached: process.platform !== "win32",
+			windowsHide: true,
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+		let stdout = "";
+		let stderr = "";
+		let cancelled = false;
+		const onAbort = () => {
+			cancelled = true;
+			if (child.pid) stopProcessTree(child.pid);
+		};
+		child.stdout?.setEncoding("utf8");
+		child.stderr?.setEncoding("utf8");
+		child.stdout?.on("data", (chunk) => {
+			stdout += chunk;
+		});
+		child.stderr?.on("data", (chunk) => {
+			stderr += chunk;
+		});
+		signal?.addEventListener("abort", onAbort, { once: true });
+		child.on("error", (err) => {
+			signal?.removeEventListener("abort", onAbort);
+			const gitResult = {
+				code: 1,
+				stdout,
+				stderr: err.message,
+			};
+			if (shouldLogGitCommand(args)) {
+				activity?.logCommand(`git ${args.join(" ")}`, gitResult);
+			}
+			resolve(gitResult);
+		});
+		child.on("close", (code, signalName) => {
+			signal?.removeEventListener("abort", onAbort);
+			const gitResult = {
+				code: code ?? 1,
+				stdout,
+				stderr: cancelled
+					? "Operation cancelled"
+					: stderr || (signalName ? `git terminated by ${signalName}` : ""),
+			};
+			if (shouldLogGitCommand(args)) {
+				activity?.logCommand(`git ${args.join(" ")}`, gitResult);
+			}
+			resolve(gitResult);
+		});
+	});
+}
+
+async function gitOrThrowAsync(
+	cwd: string,
+	args: string[],
+	activity?: CommitActivity,
+	signal?: AbortSignal,
+) {
+	const result = await runGitAsync(cwd, args, activity, signal);
+	if (result.code !== 0) {
+		throw new Error(
+			(result.stderr || result.stdout || `git ${args.join(" ")} failed`).trim(),
+		);
+	}
+	return result.stdout.trim();
+}
+
 function parseLines(output: string) {
 	return output
 		.split(/\r?\n/)
@@ -929,6 +1020,53 @@ export function listChangedFiles(cwd: string, activity?: CommitActivity) {
 	);
 	const staged = parseLines(
 		gitOrThrow(cwd, ["diff", "--cached", "--name-only"], activity),
+	);
+	return {
+		all: uniqueSorted([...headDiff, ...untracked]),
+		staged: uniqueSorted(staged),
+		untracked: uniqueSorted(untracked),
+	};
+}
+
+async function listChangedFilesAsync(
+	cwd: string,
+	activity?: CommitActivity,
+	signal?: AbortSignal,
+) {
+	const hasHead =
+		(
+			await runGitAsync(
+				cwd,
+				["rev-parse", "--verify", "HEAD"],
+				undefined,
+				signal,
+			)
+		).code === 0;
+	const headDiff = hasHead
+		? parseLines(
+				await gitOrThrowAsync(
+					cwd,
+					["diff", "--name-only", "HEAD"],
+					activity,
+					signal,
+				),
+			)
+		: [];
+	const untracked = parseLines(
+		await gitOrThrowAsync(
+			cwd,
+			["ls-files", "--others", "--exclude-standard"],
+			activity,
+			signal,
+		),
+	);
+	const staged = parseLines(
+		await gitOrThrowAsync(
+			cwd,
+			["diff", "--cached", "--name-only"],
+			activity,
+			signal,
+		),
 	);
 	return {
 		all: uniqueSorted([...headDiff, ...untracked]),
@@ -1491,8 +1629,83 @@ export function stageFiles(
 	}
 }
 
-function unstageFiles(cwd: string, files: string[], activity?: CommitActivity) {
-	const resetResult = runGit(cwd, ["reset", "HEAD", "--", ...files], activity);
+async function stageFilesAsync(
+	cwd: string,
+	files: string[],
+	activity?: CommitActivity,
+	allCommittableFiles: string[] = files,
+	signal?: AbortSignal,
+) {
+	const unsafe = filterCommitSafeFiles(files).excluded;
+	if (unsafe.length > 0) {
+		throw new Error(
+			`Refusing to stage runtime/generated paths:\n${formatExcludedCommitPaths(unsafe)}`,
+		);
+	}
+	const existingFiles = files.filter((file) =>
+		fs.existsSync(path.resolve(cwd, file)),
+	);
+	const missingFiles = files.filter((file) => !existingFiles.includes(file));
+	const ignoredExisting: string[] = [];
+	for (const file of existingFiles) {
+		const result = await runGitAsync(
+			cwd,
+			["check-ignore", "--quiet", "--", file],
+			undefined,
+			signal,
+		);
+		if (result.code === 0) ignoredExisting.push(file);
+	}
+	const stagingPlan = buildStagingPlan({
+		files: existingFiles,
+		allCommittableFiles: isLargeOrMixedCommitSelection(files)
+			? []
+			: allCommittableFiles,
+		ignoredFiles: ignoredExisting,
+	});
+	if (stagingPlan.unsafe.length > 0) {
+		throw new Error(
+			`Refusing to stage ignored paths:\n${stagingPlan.unsafe.map((file) => `- ${file}`).join("\n")}`,
+		);
+	}
+	if (existingFiles.length > 0) {
+		const addResult = await runGitAsync(
+			cwd,
+			stagingPlan.addArgs,
+			activity,
+			signal,
+		);
+		if (addResult.code !== 0)
+			throw new Error(
+				(addResult.stderr || addResult.stdout).trim() || "git add failed",
+			);
+	}
+	if (missingFiles.length > 0) {
+		const rmResult = await runGitAsync(
+			cwd,
+			["rm", "--ignore-unmatch", "--", ...missingFiles],
+			activity,
+			signal,
+		);
+		if (rmResult.code !== 0)
+			throw new Error(
+				(rmResult.stderr || rmResult.stdout).trim() || "git rm failed",
+			);
+	}
+}
+
+async function unstageFilesAsync(
+	cwd: string,
+	files: string[],
+	activity?: CommitActivity,
+	signal?: AbortSignal,
+) {
+	const resetResult = await runGitAsync(
+		cwd,
+		["reset", "HEAD", "--", ...files],
+		activity,
+		signal,
+	);
 	if (resetResult.code !== 0)
 		throw new Error(
 			(resetResult.stderr || resetResult.stdout).trim() || "git reset failed",
@@ -1514,25 +1727,35 @@ export async function confirmCommitMessage(
 	return commitMessage;
 }
 
-function commitCurrentChanges(
+async function commitCurrentChangesAsync(
 	cwd: string,
 	commitMessage: { subject: string; body?: string },
 	activity?: CommitActivity,
+	signal?: AbortSignal,
 ) {
 	const commitArgs = commitMessage.body
 		? ["commit", "-m", commitMessage.subject, "-m", commitMessage.body]
 		: ["commit", "-m", commitMessage.subject];
-	const commitResult = runGit(cwd, commitArgs, activity);
+	const commitResult = await runGitAsync(cwd, commitArgs, activity, signal);
 	if (commitResult.code !== 0)
 		throw new Error(
 			(commitResult.stderr || commitResult.stdout).trim() ||
 				"git commit failed",
 		);
-	return gitOrThrow(cwd, ["rev-parse", "--short", "HEAD"], activity);
+	return gitOrThrowAsync(
+		cwd,
+		["rev-parse", "--short", "HEAD"],
+		activity,
+		signal,
+	);
 }
 
-function pushCurrentBranch(cwd: string, activity?: CommitActivity) {
-	const pushResult = runGit(cwd, ["push"], activity);
+async function pushCurrentBranchAsync(
+	cwd: string,
+	activity?: CommitActivity,
+	signal?: AbortSignal,
+) {
+	const pushResult = await runGitAsync(cwd, ["push"], activity, signal);
 	if (pushResult.code !== 0)
 		throw new Error(
 			(pushResult.stderr || pushResult.stdout).trim() || "git push failed",
@@ -1700,8 +1923,16 @@ function formatExcludedCommitPaths(
 		.join("\n");
 }
 
-function getCommitContext(cwd: string, activity?: CommitActivity) {
-	const { all, staged, untracked } = listChangedFiles(cwd, activity);
+async function getCommitContext(
+	cwd: string,
+	activity?: CommitActivity,
+	signal?: AbortSignal,
+) {
+	const { all, staged, untracked } = await listChangedFilesAsync(
+		cwd,
+		activity,
+		signal,
+	);
 	const changed = filterCommitSafeFiles(all);
 	const stagedSafe = filterCommitSafeFiles(staged);
 	if (changed.excluded.length > 0) {
@@ -1716,10 +1947,11 @@ function getCommitContext(cwd: string, activity?: CommitActivity) {
 	}
 	if (changed.included.length === 0)
 		throw new Error("No committable changed files found");
-	const diffStat = gitOrThrow(
+	const diffStat = await gitOrThrowAsync(
 		cwd,
 		["diff", "--stat", "HEAD", "--", ...changed.included],
 		activity,
+		signal,
 	);
 	return {
 		diffStat,
@@ -1735,7 +1967,7 @@ async function prepareCommitSelection(
 	activity?: CommitActivity,
 ) {
 	let { diffStat, changedFiles, stagedFiles, untrackedFiles } =
-		getCommitContext(ctx.cwd, activity);
+		await getCommitContext(ctx.cwd, activity, ctx.signal);
 	const parsedArgs = parseCommitArgs(args, changedFiles);
 	let selection = await chooseFilesToCommit(
 		ctx,
@@ -1760,10 +1992,8 @@ async function prepareCommitSelection(
 			[...plan.accepted, ...userDecisions],
 			activity,
 		);
-		({ diffStat, changedFiles, stagedFiles, untrackedFiles } = getCommitContext(
-			ctx.cwd,
-			activity,
-		));
+		({ diffStat, changedFiles, stagedFiles, untrackedFiles } =
+			await getCommitContext(ctx.cwd, activity, ctx.signal));
 		selection = await chooseFilesToCommit(
 			ctx,
 			changedFiles,
@@ -1777,18 +2007,26 @@ async function prepareCommitSelection(
 	if (!(await confirmSecretScan(ctx, findings))) return null;
 
 	if (selection.stageAll)
-		stageFiles(ctx.cwd, selection.files, activity, changedFiles);
+		await stageFilesAsync(
+			ctx.cwd,
+			selection.files,
+			activity,
+			changedFiles,
+			ctx.signal,
+		);
 
-	const cachedStat = gitOrThrow(
+	const cachedStat = await gitOrThrowAsync(
 		ctx.cwd,
 		["diff", "--cached", "--stat"],
 		activity,
+		ctx.signal,
 	);
 	if (!cachedStat.trim()) throw new Error("Nothing is staged for commit");
-	const cachedDiff = gitOrThrow(
+	const cachedDiff = await gitOrThrowAsync(
 		ctx.cwd,
 		["diff", "--cached", "--no-color"],
 		activity,
+		ctx.signal,
 	);
 	return { parsedArgs, selection, diffStat, cachedStat, cachedDiff };
 }
@@ -1803,7 +2041,12 @@ async function executeCommitCommand(
 	ctx.ui.notify(`Starting ${commandText}...`, "info");
 	activity.setPhase("preparing");
 	try {
-		const status = gitOrThrow(ctx.cwd, ["status", "--short"], activity);
+		const status = await gitOrThrowAsync(
+			ctx.cwd,
+			["status", "--short"],
+			activity,
+			ctx.signal,
+		);
 		if (!status.trim()) {
 			activity.finish();
 			return ctx.ui.notify("Working tree is clean", "info");
@@ -1863,10 +2106,15 @@ async function executeCommitCommand(
 					"error",
 				);
 			}
-			const hash = commitCurrentChanges(ctx.cwd, commitMessage, activity);
+			const hash = await commitCurrentChangesAsync(
+				ctx.cwd,
+				commitMessage,
+				activity,
+				ctx.signal,
+			);
 			if (prepared.parsedArgs.push) {
 				activity.setPhase("pushing");
-				pushCurrentBranch(ctx.cwd, activity);
+				await pushCurrentBranchAsync(ctx.cwd, activity, ctx.signal);
 			}
 			activity.finish();
 			emitCommitReport(pi, ctx, [
@@ -1876,16 +2124,28 @@ async function executeCommitCommand(
 		}
 
 		const commitSummaries: string[] = [];
-		unstageFiles(ctx.cwd, prepared.selection.files, activity);
+		await unstageFilesAsync(
+			ctx.cwd,
+			prepared.selection.files,
+			activity,
+			ctx.signal,
+		);
 		for (const [index, group] of plan.groups.entries()) {
 			activity.setPhase(`creating commit ${index + 1}/${plan.groups.length}`);
-			stageFiles(ctx.cwd, group.files, activity, prepared.selection.files);
+			await stageFilesAsync(
+				ctx.cwd,
+				group.files,
+				activity,
+				prepared.selection.files,
+				ctx.signal,
+			);
 			let hash: string;
 			try {
-				const stagedStat = gitOrThrow(
+				const stagedStat = await gitOrThrowAsync(
 					ctx.cwd,
 					["diff", "--cached", "--stat"],
 					activity,
+					ctx.signal,
 				);
 				const commitMessage = await confirmCommitMessage(
 					ctx,
@@ -1898,26 +2158,34 @@ async function executeCommitCommand(
 					prepared.diffStat,
 				);
 				if (!commitMessage) {
-					unstageFiles(ctx.cwd, group.files, activity);
+					await unstageFilesAsync(ctx.cwd, group.files, activity, ctx.signal);
 					activity.finish();
 					return ctx.ui.notify("Commit cancelled", "warning");
 				}
-				hash = commitCurrentChanges(ctx.cwd, commitMessage, activity);
+				hash = await commitCurrentChangesAsync(
+					ctx.cwd,
+					commitMessage,
+					activity,
+					ctx.signal,
+				);
 				commitSummaries.push(`${hash} ${commitMessage.subject}`);
 			} catch (groupErr) {
-				unstageFiles(ctx.cwd, group.files, activity);
+				await unstageFilesAsync(ctx.cwd, group.files, activity, ctx.signal);
 				throw groupErr;
 			}
 		}
 		if (prepared.parsedArgs.push) {
 			activity.setPhase("pushing");
-			pushCurrentBranch(ctx.cwd, activity);
+			await pushCurrentBranchAsync(ctx.cwd, activity, ctx.signal);
 			activity.logInfo("Pushed to remote");
 		}
 		activity.finish();
 		emitCommitReport(pi, ctx, commitSummaries);
 		return;
 	} catch (err) {
+		activity.logInfo(
+			`Error: Commit failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
 		activity.finish();
 		throw err;
 	}

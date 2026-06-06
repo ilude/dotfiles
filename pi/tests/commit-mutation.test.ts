@@ -225,10 +225,10 @@ describe("multi-group loop -- unstages files when commit throws", () => {
 });
 
 // ---------------------------------------------------------------------------
-// H2: secret-scan regex catches compound env-var names
+// H2: secret-scan regex catches compound env-var names with literal values
 // ---------------------------------------------------------------------------
 
-describe("SECRET_PATTERNS -- compound env-var name matching", () => {
+describe("SECRET_PATTERNS -- compound env-var literal value matching", () => {
 	function matchesSecretPattern(input: string): boolean {
 		for (const { regex } of SECRET_PATTERNS) {
 			// Reset lastIndex since regexes with /g flag are stateful.
@@ -239,18 +239,24 @@ describe("SECRET_PATTERNS -- compound env-var name matching", () => {
 	}
 
 	const shouldMatch = [
-		"DATABASE_PASSWORD=foo",
-		"ACCESS_TOKEN=bar",
-		"APP_TOKEN=baz",
-		"API_KEY=qux",
-		"SECRET_KEY=quux",
-		"db_password=foo",
-		"API_KEY_ID=xyz",
-		"API_KEYS=[secret1, secret2]",
+		"DATABASE_PASSWORD=hunter2",
+		"ACCESS_TOKEN=literal-token",
+		"APP_TOKEN=bazvalue",
+		"API_KEY=abcdef123456",
+		"SECRET_KEY=quuxvalue",
+		"db_password=foovalue",
+		"API_KEY_ID=xyzvalue",
 	];
 
 	const shouldNotMatch = [
 		"normal_variable=value",
+		"CF_DNS_API_TOKEN=%s",
+		"ACCESS_TOKEN=$" + "{ACCESS_TOKEN}",
+		"APP_TOKEN=$APP_TOKEN",
+		"API_KEY=",
+		"SECRET_KEY=<redacted>",
+		'CloudflareDNSAPIToken: values["CF_DNS_API_TOKEN"]',
+		"CF_DNS_API_TOKEN=token-value",
 	];
 
 	for (const input of shouldMatch) {
