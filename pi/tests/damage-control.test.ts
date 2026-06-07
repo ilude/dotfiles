@@ -377,6 +377,35 @@ no_delete_paths: []
 		});
 	});
 
+	it("ignores dangerous command text inside heredoc bodies", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const rules = [
+			{
+				pattern: "simple rm",
+				regex: "(?<!-)\\brm\\s+[^-\\s]",
+				reason: "rm deletes files permanently",
+				action: "ask" as const,
+			},
+		];
+		const command = [
+			"python - <<'PYCODE'",
+			"lines = [",
+			"\"just risk crap json > risk.tmp.json && python - <<\\'PY\\'\",",
+			'"PY",',
+			'"rm risk.tmp.json",',
+			"]",
+			'cmd = "\\n".join(lines)',
+			"PYCODE",
+		].join("\n");
+
+		await expect(
+			mod.evaluateDangerousCommand(command, rules, {
+				toolName: "bash",
+				cwd: process.cwd(),
+			}),
+		).resolves.toBeUndefined();
+	});
+
 	it("allows cleanup of a temp-like file created earlier in the same command", async () => {
 		const mod = await import("../extensions/damage-control.ts");
 		const rules = [

@@ -304,6 +304,36 @@ function commandHead(segment: string): string {
 	return tokens[0] ?? "";
 }
 
+function heredocDelimiter(line: string): string | undefined {
+	const match = line.match(/<<-?\s*\\?(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/);
+	return match?.[2];
+}
+
+function maskHeredocBodies(command: string): string {
+	const lines = command.match(/.*(?:\r?\n|$)/g) ?? [];
+	let output = "";
+	let index = 0;
+	while (index < lines.length) {
+		const line = lines[index];
+		if (line === "") break;
+		output += line;
+		const delimiter = heredocDelimiter(line);
+		index += 1;
+		if (!delimiter) continue;
+		while (index < lines.length) {
+			const candidate = lines[index];
+			if (candidate.trim() === delimiter) {
+				output += candidate;
+				index += 1;
+				break;
+			}
+			output += candidate.replace(/[^\r\n]/g, " ");
+			index += 1;
+		}
+	}
+	return output;
+}
+
 function splitOutsideQuotes(command: string, separators: string[]): string[] {
 	const parts: string[] = [];
 	let current = "";
@@ -491,10 +521,12 @@ export async function evaluateDangerousCommand(
 		cwd?: string;
 	},
 ): Promise<{ block: true; reason: string } | undefined> {
-	if (isReadOnlySearchCommand(command, ctx?.toolName)) return undefined;
+	const analysisCommand =
+		ctx?.toolName === "bash" ? maskHeredocBodies(command) : command;
+	if (isReadOnlySearchCommand(analysisCommand, ctx?.toolName)) return undefined;
 
 	const semanticGit =
-		ctx?.toolName === "bash" ? analyzeGitCommand(command) : undefined;
+		ctx?.toolName === "bash" ? analyzeGitCommand(analysisCommand) : undefined;
 	if (semanticGit) {
 		if (ctx?.hasUI && ctx.ui?.confirm) {
 			emitTerminalBell();
@@ -510,23 +542,24 @@ export async function evaluateDangerousCommand(
 		};
 	}
 
-	const skipPatternRules = ctx?.toolName === "bash" && hasValidDryRun(command);
+	const skipPatternRules =
+		ctx?.toolName === "bash" && hasValidDryRun(analysisCommand);
 	for (const rule of rules) {
 		if (skipPatternRules && !rule.pattern.includes("LD_")) continue;
 		if (
 			!commandAppliesToCurrentPlatform(rule) ||
 			!commandAppliesToTool(rule, ctx?.toolName) ||
-			!commandMatchesRule(command, rule)
+			!commandMatchesRule(analysisCommand, rule)
 		)
 			continue;
-		if (shouldSkipMatchedRule(command, rule, ctx)) continue;
+		if (shouldSkipMatchedRule(analysisCommand, rule, ctx)) continue;
 		if (
 			isRmForceRule(rule) &&
 			ctx?.toolName === "bash" &&
 			ctx.astAnalysis &&
 			(await isProvenSafeTempCleanupAt(
-				command,
-				commandRuleMatch(command, rule)?.index ?? -1,
+				analysisCommand,
+				commandRuleMatch(analysisCommand, rule)?.index ?? -1,
 				ctx.astAnalysis,
 			))
 		) {
@@ -537,7 +570,7 @@ export async function evaluateDangerousCommand(
 				emitTerminalBell();
 				const ok = await ctx.ui.confirm(
 					"Confirm dangerous command",
-					formatDangerousConfirmation(command, rule, ctx),
+					formatDangerousConfirmation(analysisCommand, rule, ctx),
 				);
 				if (ok) {
 					ctx.onConfirm?.(rule);
@@ -556,7 +589,7 @@ export async function evaluateDangerousCommand(
 	}
 	if (ctx?.toolName === "bash") {
 		const astDecision = await analyzeCommandAst(
-			command,
+			analysisCommand,
 			rules.filter((rule) => commandAppliesToTool(rule, "bash")),
 			ctx.astAnalysis,
 		);
