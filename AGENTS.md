@@ -138,6 +138,7 @@ git submodule update --init --recursive
 - VS Code is the default editor, diff tool, and merge tool.
 - The default branch is `main`.
 - Dotbot link defaults rely on `force: true`, `relink: true`, and `create: true`.
+- Onramp/Caddy stack variable convention: a service `port` field means the container/service port reachable on the Docker Compose network. Do not reinterpret it as host publishing, split it into host/internal ports, or introduce host bind assumptions unless explicitly requested.
 - Use only tools, workflows, permissions, and memory/task systems explicitly available in the active harness. If a capability is absent, adapt instead of naming or assuming it.
 - Prefer deterministic code/tooling for routing, retries, transforms, status handling, install detection, and validation. Use model judgment for synthesis, review, classification, and ambiguous language tasks, not for decisions code or tool output can answer.
 - Do not use try-catch wrappers, guard flags, or fallback logic unless specifically requested. Solve the domain problem natively. If data or dependencies are missing, fail with explicit exceptions -- not silent defaults. When requirements make code paths redundant, remove them entirely; do not wrap old logic in fallback flags.
@@ -153,6 +154,11 @@ For command ownership and client-specific command locations, see `docs/agent-com
 - `opencode/` is OpenCode config linked to `~/.config/opencode`.
 - `copilot/` contains Copilot prompts and instructions.
 - `pi/skills/workflow/` contains Pi workflow skills such as Pi's `/do-it`.
+
+Pi-first feature rule:
+
+- When adding or fixing agent runtime features, safety systems, slash commands, workflow commands, skills, prompt routing, status UI, tools, or Pi operator behavior, work in `pi/` by default. Do not modify `claude/` as a proxy for Pi behavior unless the user explicitly asks for Claude Code support or the task is clearly Claude-only.
+- If a feature exists in both `claude/` and `pi/`, treat `pi/` as the active implementation for Pi sessions. Port useful behavior into the owning Pi surface, validate with Pi's pnpm commands, and leave Claude-specific files alone unless cross-client parity is explicitly requested.
 
 Shared command ownership:
 
