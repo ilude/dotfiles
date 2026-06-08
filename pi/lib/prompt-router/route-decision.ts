@@ -53,6 +53,7 @@ export interface RouteDecision {
 	applied_route: RouterSize;
 	provider_family: string;
 	model_label: string;
+	model_id?: string;
 	thinking_level: string;
 	route_resolution_reason: RouteResolutionReason;
 	fallback_reason?: string;

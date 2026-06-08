@@ -562,6 +562,7 @@ function fallbackRouteDecision(
 		applied_route: "core",
 		provider_family: provider,
 		model_label: model,
+		model_id: model,
 		thinking_level: "medium",
 		route_resolution_reason: reason,
 		fallback_reason: fallbackReason,
@@ -664,6 +665,7 @@ export async function resolveProviderRouteDecision(
 		typeof model.provider === "string" ? model.provider : "unknown";
 	const providerTrust = providerFamilyTrust(current, model);
 	const modelLabel = resolveModelTierLabel(model, rawSize);
+	const modelId = model.id;
 	const fallbackReason = routePolicy.fallbackReason;
 	return {
 		classifierRecommendation: classified,
@@ -674,6 +676,7 @@ export async function resolveProviderRouteDecision(
 		applied_route: appliedRoute,
 		provider_family: provider,
 		model_label: modelLabel,
+		model_id: modelId,
 		thinking_level: thinking,
 		route_resolution_reason:
 			rawRoute === appliedRoute && routePolicy.scope === "none"
@@ -723,7 +726,7 @@ export function applyRouteDecisionToProviderPayload(
 	const effortOverride = readUserEffortOverride(ctx, payload);
 	return {
 		...payload,
-		model: explicitModelPreserved ? payload.model : decision.model_label,
+		model: explicitModelPreserved ? payload.model : decision.model_id ?? decision.model_label,
 		reasoning_effort: effortOverride?.effort ?? decision.thinking_level,
 		route_decision_id: decision.route_decision_id,
 		route_resolution_reason: decision.route_resolution_reason,

@@ -609,6 +609,36 @@ describe("classifier JSON parse -- T4", () => {
 		expect(payload.reasoning_effort).toBe("medium");
 	});
 
+	it("uses model id, not display name, in provider payload", async () => {
+		const pi = createMockPi();
+		promptRouter(pi as any);
+		const availableModels = [
+			{ provider: "openai-codex", id: "gpt-5.4-mini", name: "GPT 5.4 Mini" },
+			{ provider: "openai-codex", id: "gpt-5.4-fast", name: "GPT 5.4 Fast" },
+			{ provider: "openai-codex", id: "gpt-5.4", name: "GPT 5.4" },
+		];
+		const ctx = createMockCtx({
+			model: { provider: "openai-codex", id: "gpt-5.4", name: "GPT 5.4" },
+			modelRegistry: {
+				getAvailable: vi.fn(() => availableModels),
+				find: vi.fn((provider: string, id: string) =>
+					availableModels.find((m) => m.provider === provider && m.id === id),
+				),
+			},
+			ui: { ...createMockCtx().ui, setStatus: vi.fn(), notify: vi.fn() },
+		});
+		(pi.exec as any).mockResolvedValueOnce({
+			code: 0,
+			stdout: makeV3Json("core", "medium", 0.85),
+			stderr: "",
+		});
+
+		const payload = await routeProviderPrompt(pi, ctx, "explain promises");
+
+		expect(payload.model).toBe("gpt-5.4-fast");
+		expect(payload.model).not.toBe("GPT 5.4 Fast");
+	});
+
 	it("invalid JSON -- router falls back and logs warning", async () => {
 		const { pi, ctx } = setup();
 		(pi.exec as any).mockResolvedValueOnce({
