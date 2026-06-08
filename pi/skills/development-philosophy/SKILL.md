@@ -1,312 +1,49 @@
 ---
 name: development-philosophy
-description: Personal development philosophy emphasizing experiment-driven, fail-fast approach. Activate when planning implementations, reviewing code architecture, making design decisions, or when user asks to apply development principles. Guides against over-engineering and towards solving real problems with simple solutions.
+description: "Implementation strategy and design tradeoff guardrails. Use when planning implementation approach, architecture choices, experiment-driven development, or avoiding over-engineering. Not for edit-time diff consistency; use least-astonishment."
 ---
 
 # Development Philosophy
 
-**Auto-activate when:** User mentions planning, architecture, design decisions, MVP, over-engineering, simplicity, fail-fast, experiment-driven, comments, docstrings, documentation philosophy, POLA, security design, threat modeling, authentication, authorization, API security, secrets, encryption, security review, or asks to apply development principles. Should activate during planning phases of new features or when reviewing proposed implementations.
+**Auto-activate when:** choosing an implementation approach, evaluating architecture tradeoffs, planning experiments, or explicitly applying development principles.
+
+## Boundary
+
+Use this skill before or during design decisions. Use `least-astonishment` when editing existing code and checking whether the diff matches local patterns.
 
 ## Core Principles
 
-**Execute decisively after intent and success criteria are clear. Solve real problems. Start simple, iterate based on evidence.**
-
-**Five pillars:**
-1. **Autonomous Execution (Post-Clarification)** - Complete tasks fully once intent and validation criteria are clear; defer ask/execute boundaries to the active repo/client instruction file
-2. **Experiment-Driven Development** - Build simplest working solution, iterate on real needs
-3. **Fail-Fast Learning** - Short cycles, expect to pivot, document learnings
-4. **Least Astonishment** - Changes should be predictable; match existing patterns (see the [least-astonishment skill](../least-astonishment/SKILL.md))
-5. **Security-First Design** - Evaluate security implications before implementation, avoid security theater (see [security-first.md](security-first.md))
-
-**Related principles:**
-- **Code Documentation** - Write self-explanatory code; comment WHY not WHAT (see [documentation.md](documentation.md))
-
----
-
-## BE BRIEF - Action Over Commentary
-
-**Execute tasks without verbose explanations:**
-
-OK: **Do this:**
-- "Fetching docs..."
-- "Found 3 files. Updating now..."
-- "Running tests..."
-- "Fixed 2 issues. Tests passing."
-- "Done."
-
-BAD: **Never do this:**
-- "Would you like me to..."
-- "I could potentially..."
-- "Should I proceed with..."
-- "What do you think about..."
-- "Is there anything else..."
-
-**After clarifying ambiguous intent, complete requests fully before returning control.**
-
-**Ask when:**
-- New assignment/planning intent is unclear (objective, constraints, or success criteria missing)
-- Critical information is missing (API key, account ID, environment value)
-- Destructive action lacks clear intent (delete production database)
-
-**Always:**
-- State brief plan (1-3 sentences)
-- Execute immediately after plan
-- Iterate until problem fully solved
-- Verify with tests/build
-- Report results concisely
-
-**Never:**
-- During implementation of clear-scope work, ask permission for obvious next steps
-- Stop mid-task
-- Skip verification
-- Provide unsolicited code blocks (use Edit tool)
-
----
-
-## Error Handling - Self-Recovery
-
-### Repeated Feedback = STOP
-
-If the user reports the **same issue twice**, STOP guessing fixes:
-
-1. **Acknowledge** - "I see this is still happening"
-2. **Investigate** - Read error messages carefully, trace root cause
-3. **Research** - Use web search if needed for platform-specific issues
-4. **Fix properly** - Address root cause, not symptoms
-
-BAD: **Never:** Keep trying random fixes while user repeats the same error message
-OK: **Always:** Step back, understand WHY, then fix
-
----
-
-**When errors occur, fix them autonomously:**
-
-```
-OK: CORRECT flow:
-1. Run tests -> 3 failures
-2. "Fixing import errors..."
-3. Add missing dependencies
-4. Run tests -> All pass
-5. "Tests passing. Done."
-
-BAD: WRONG flow:
-1. Run tests -> 3 failures
-2. "Tests failed. What should I do?"
-[STOP - never leave errors unfixed]
-```
-
-**Error recovery:** Identify error -> State fix -> Apply -> Verify -> Continue
-
-**Before completing ANY task, verify you have NOT:**
-1. BAD: Asked "Would you like me to..."
-2. BAD: Ended without verification (tests after code changes)
-3. BAD: Stopped mid-task
-4. BAD: Skipped error handling
-5. BAD: Provided unsolicited code blocks
-6. BAD: Made unnecessary changes
-
----
-
-## File Operations
-
-**If file was deleted, assume intentional - never recreate without request.**
-
-**File rules:**
-- Only create files when explicitly requested or necessary
-- Respect project structure decisions
-- Store planning/analysis in the repo's established planning directory, such as `.specs/`, or another documented local convention
-- Focus on runnable code, not documentation
-- Use docstrings/comments instead of separate markdown
-
-### Self-Explanatory Code
-
-**Code should explain itself. Comment to explain WHY, not WHAT.**
-
-```python
-# BAD: Obvious comment
-# Increment counter by 1
-counter += 1
-
-# GOOD: No comment needed
-counter += 1
-
-# GOOD: Comment explains WHY (not obvious)
-# Binary search because list is sorted and large (10M+ items)
-index = binary_search(sorted_list, target)
-```
-
-**When to comment:** Non-obvious trade-offs, performance optimizations, workarounds (with ticket reference), complex algorithms
-
-**When NOT to comment:** Variable assignments, function calls, loop iterations, return statements, standard patterns
-
----
-
-## Experiment-Driven Development
-
-**Start simple, iterate based on real needs, avoid speculative over-engineering.**
-
-- Experiment in short cycles; expect to learn and pivot
-- Build simplest thing that works, then improve based on actual pain
-- Focus on real bottlenecks, not hypothetical problems
-- Document learnings, not just code
-
-**Scope discipline:** Change only what's requested. No unsolicited refactoring. No speculative features.
-
----
-
-## Technical Principles & Design Patterns
-
-**Don't build abstractions before you have 3+ concrete cases.**
-
-| Principle/Pattern | When to Apply | When to Skip |
-|------------------|---------------|--------------|
-| **SOLID** | Production code, unclear responsibilities | Experiments, simple scripts |
-| **DRY** | Duplication causes pain (3+ cases) | First occurrence, learning code |
-| **CQRS** | Read/write patterns differ significantly | Simple CRUD, experiments |
-| **Dependency Injection** | Testing requires mocking, framework encourages | Simple imports work fine |
-| **Test-First** | Non-obvious/critical behavior | Trivial getters/setters |
-
-### Problem -> Pattern Mapping
-
-| Problem | Consider Pattern |
-|---------|-----------------|
-| Constructor has 8+ parameters | Builder |
-| Need dynamic features | Decorator |
-| Simplify complex library | Facade |
-| State change notifications | Observer |
-| Undo/redo needed | Command/Memento |
-| Behavior changes by state | State |
-| Swap algorithms | Strategy |
-
-**Before applying ANY pattern:**
-1. What real problem am I solving?
-2. Do I have 3+ concrete examples?
-3. Is pattern simpler than straightforward solution?
-4. Will this make code easier to understand?
-
-**Pattern Anti-Patterns:**
-- BAD: Singleton for configuration (use DI)
-- BAD: Factory "because enterprise"
-- BAD: Strategy "in case we need algorithms later"
-- BAD: Interface for every class
-
----
-### Standard Library First
-
-**Before writing custom code, check if stdlib solves it.**
-
-| Instead of... | Use... |
-|---------------|--------|
-| Custom path string manipulation | `pathlib.Path` |
-| Manual JSON parsing | `json` module |
-| Regex for URL parsing | `urllib.parse` |
-| Custom date math | `datetime`, `timedelta` |
-| Hand-rolled retries | `tenacity`, `backoff` |
-| DIY argument parsing | `argparse`, `click`, `typer` |
-
-**Principles:**
-- **Stdlib first** - Check if Python/language stdlib solves it before writing custom code
-- **Battle-tested libraries second** - Well-maintained packages > custom implementations
-- **Inline trivial helpers** - One-liner functions used once add cognitive overhead without value
-- **Delete, don't wrap** - If stdlib does 90% of what you need, use it directly; don't wrap it
-
-**Before writing a utility function, ask:**
-1. Does stdlib have this? (It usually does)
-2. Is there a well-known library for this?
-3. If I must write it, is it more than 3 lines? (If not, inline it)
-
----
-
-
-## Task Execution Workflow
-
-1. **Clarify objective + validation** (for new assignments/planning, ensure success criteria are explicit)
-2. **Brief plan** (1-3 sentences)
-3. **Research** (fetch docs/URLs if needed)
-4. **Execute** (make changes, use tools)
-5. **Test** (verify changes work)
-6. **Debug** (fix errors immediately)
-7. **Verify** (final tests/checks)
-8. **Report** (concise summary)
-
-**During implementation phase, never interrupt between steps to ask permission.**
-
-**Verification after code changes:**
-- OK: Python (*.py) modified -> `uv run pytest`
-- OK: Test files modified -> Run tests
-- OK: Dependencies changed -> Run tests
-- WARN: Only docs/config -> Skip tests
-
----
-
-## Pre-Completion Checklist
-
-**Before declaring a task "done", verify:**
-
-| Check | Question |
-|-------|----------|
-| **Tests pass** | Did you run the test suite? |
-| **Original issue fixed** | Does the original problem still reproduce? |
-| **No regressions** | Did you break anything else? |
-| **Clean state** | No debug prints, commented code, or TODOs left? |
-| **Scope respected** | Did you only change what was requested? |
-
-**Red flags that you're not done:**
-- "It should work now" without running tests
-- Warnings in test output (warnings ARE failures)
-- Uncommitted debug statements
-- Changes to unrelated files
-- Edge cases mentioned but not tested
-
----
-
-## Key Questions
-
-**Before adding abstraction:**
-- Do we have 3+ concrete examples?
-- Is duplication causing pain?
-- Will this make code easier to understand?
-
-**Before adding complexity:**
-- What problem are we solving?
-- Is this problem real or hypothetical?
-- What's the simplest solution?
-- Can we prove it works with small experiment?
-
-**During implementation:**
-- Are we solving the real bottleneck?
-- Could we defer this decision?
-- What's minimum viable implementation?
-- How will we know if this works?
-
----
-
-## When to Apply What
-
-| Phase | Approach |
-|-------|----------|
-| **Experiment** | Simplest code -> Notice pain -> Extract patterns -> Document learnings |
-| **Production** | Apply SOLID -> Comprehensive tests -> Inject dependencies -> Consider CQRS -> Enforce DRY |
-
-**Quality standards:** Define the next useful step, act, then validate with the smallest check that proves the change. Handle relevant edge cases and follow project conventions.
-
-**Stay focused:** Minimal changes. No over-engineering. No speculative features. Respect existing patterns.
-
----
-
-## References
-
-- **Doc Norton**: Emergent design, organic architecture
-- **Theory of Constraints**: Focus on bottlenecks
-- **SOLID**: Robert C. Martin
-- **TDD**: Kent Beck
-- **DRY**: Andy Hunt & Dave Thomas
-- **Design Patterns**: Gang of Four - Use when you recognize the problem
-
----
-
-## TL;DR
-
-**Execute immediately. Communicate concisely. Let code speak. Experiment fast, learn from failures, solve real problems.**
-
-Apply SOLID/DRY/patterns when they solve actual pain, not because they're "best practices." Start simple, iterate based on evidence. Complete tasks fully without asking permission for obvious steps.
+- Solve the observed problem, not a generalized future version.
+- Prefer small experiments over speculative architecture.
+- Fail explicitly when required data/dependencies are missing.
+- Remove redundant paths instead of hiding them behind flags.
+- Standard library and existing project patterns first.
+
+## Practical Steps
+
+1. Name the real problem and evidence it exists.
+2. Choose the smallest solution that tests the assumption.
+3. Prefer deterministic code for routing, retries, transforms, and validation.
+4. Use model judgment for synthesis or ambiguous language, not deterministic decisions.
+5. Validate the behavior that matters, not just command execution.
+6. Stop when the requirement is satisfied; list follow-ups separately.
+
+## Decision Checks
+
+| Question | If yes |
+| --- | --- |
+| Is this solving a hypothetical future case? | Defer it |
+| Is a new abstraction replacing two simple uses? | Keep it simple |
+| Is fallback logic masking missing data? | Fail explicitly |
+| Can a quick test reduce uncertainty? | Run it first |
+
+## Anti-Patterns
+
+- Adding guard flags around obsolete behavior.
+- Introducing fallback logic without a requirement.
+- Refactoring broadly while fixing a narrow issue.
+- Treating a smoke test as full validation.
+
+## Quick Reference
+
+Experiment first, generalize later, and keep failure modes explicit.

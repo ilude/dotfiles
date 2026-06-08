@@ -1,48 +1,48 @@
 ---
 name: logging-observability
-description: "Structured logging, distributed tracing, and debugging patterns. Triggers: logging, observability, tracing, debugging, structured logging, log aggregation, performance metrics, monitoring, correlation ID, trace ID."
+description: "Observability design and debugging. Use for logging, structured logs, metrics, tracing, monitoring, alerting, SLOs, correlation IDs, trace IDs, and log aggregation. Not for general debugging without telemetry."
 ---
 
-# Logging & Observability Skill
+# Logging and Observability
 
-Compact index for logs, metrics, traces, debugging instrumentation, and alerting work.
+**Auto-activate when:** working with logs, metrics, traces, monitoring, alerting, SLOs, correlation IDs, trace IDs, or telemetry-driven debugging.
 
-## Auto-activate when
+## Boundary
 
-- Adding or reviewing logging, metrics, traces, spans, dashboards, alerts, SLOs, debug output, correlation IDs, or telemetry pipelines.
-- User mentions logging, observability, tracing, monitoring, Prometheus, OpenTelemetry, structured logs, log aggregation, metrics, performance counters, trace ID, or correlation ID.
-- Do not use for generic bug fixing unless instrumentation or diagnostic output is being changed.
+Use this skill only when telemetry is central to the task. Use `analysis-workflow` for general investigation and `code-review` for diff review.
 
-## Project-specific rules
+## Core Principle
 
-- Prefer deterministic code/tool output for status handling and debugging decisions.
-- Match the local logging mechanism; do not introduce `print` in structured-logger code or vice versa.
-- Do not log secrets, tokens, private paths, PII, credentials, or raw request/response bodies unless explicitly scrubbed.
-- Fail explicitly for missing telemetry dependencies; do not silently disable observability in production paths unless the project already does so.
+Observability lets operators infer internal state from external signals. Instrument the questions people must answer during incidents.
 
-## Practical steps
+## Practical Steps
 
-1. Define the operational question the signal must answer.
-2. Use structured fields for identifiers, status, duration, operation, and error class.
-3. Keep cardinality bounded; avoid user input, paths, UUIDs, or stack traces as metric labels.
-4. Validate by exercising the code path and checking emitted logs/metrics/traces when practical.
+1. Identify the operational question: latency, errors, saturation, causality, or audit trail.
+2. Pick the right signal: logs for events, metrics for trends, traces for request flow.
+3. Add correlation IDs across boundaries.
+4. Keep fields structured and stable.
+5. Alert on user impact or error-budget burn, not noisy internals.
+6. Validate that telemetry appears where operators will query it.
 
-## Quick validation
+## Signal Guide
 
-| Purpose | Checks |
-|---|---|
-| Structured logs | Run focused path and inspect fields, levels, and redaction |
-| Metrics | Confirm names, units, labels, and bounded cardinality |
-| Traces | Confirm span boundaries, parent/child relation, status, and attributes |
-| Alerts | Confirm alert maps to an SLO/user impact and has runbook context |
+| Signal | Best for | Avoid |
+| --- | --- | --- |
+| Logs | discrete events, audits, failures | high-cardinality metrics replacement |
+| Metrics | rates, latency, saturation | per-request debugging |
+| Traces | cross-service flow and bottlenecks | business reporting |
 
-## Anti-patterns
+## Structured Log Fields
 
-- Logging everything at `info` or hiding useful failures at `debug`.
-- High-cardinality metric labels from IDs, emails, URLs, paths, or exception messages.
-- Adding telemetry without a stated debugging/operations question.
-- Swallowing exceptions after logging them.
+Prefer stable names: timestamp, level, message, service, environment, request_id/trace_id, user/account identifier when safe, operation, outcome, duration_ms, error type.
 
-## Optional references
+## Anti-Patterns
 
-- [reference.md](reference.md) - detailed guidance, examples, sources, and language library notes.
+- Logging secrets or raw PII.
+- Alerting on every exception instead of user impact.
+- Free-text logs where structured fields are needed.
+- Adding telemetry without a query/use case.
+
+## Quick Reference
+
+Instrument to answer: what happened, who/what was affected, where did it fail, and how bad is it?
