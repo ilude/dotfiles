@@ -49,6 +49,20 @@ function makeV3Rec(modelTier: string, effort: string, confidence = 0.8) {
 	return rec;
 }
 
+async function routeProviderPrompt(
+	pi: ReturnType<typeof createMockPi>,
+	ctx: ReturnType<typeof createMockCtx>,
+	prompt: string,
+	payload: Record<string, unknown> = {},
+): Promise<Record<string, unknown>> {
+	const hook = pi._getHook("before_provider_request")[0];
+	if (!hook) throw new Error("before_provider_request hook not registered");
+	return (await hook.handler({ payload: { prompt, ...payload } }, ctx)) as Record<
+		string,
+		unknown
+	>;
+}
+
 // ---------------------------------------------------------------------------
 // model-specific effort bias
 // ---------------------------------------------------------------------------
@@ -349,63 +363,23 @@ describe("buildStatusLabel", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Hysteresis suppresses thrash (v3 JSON inputs)
+// Input hook no longer performs background routing
 // ---------------------------------------------------------------------------
 
-describe("hysteresis suppresses thrash (legacy; ship-config N_HOLD=0 lets classifier drive)", () => {
-	it("alternating classifier outputs route per classifier under N_HOLD=0 ship config", async () => {
+describe("prompt-router input hook", () => {
+	it("does not classify normal user text before provider dispatch", async () => {
 		const pi = createMockPi();
-		(pi as any).setModel = vi.fn(async () => {});
-		(pi as any).setThinkingLevel = vi.fn();
 		promptRouter(pi as any);
-
-		const availableModels = [
-			{ provider: "openai-codex", id: "gpt-5.4-mini" },
-			{ provider: "openai-codex", id: "gpt-5.4-fast" },
-			{ provider: "openai-codex", id: "gpt-5.4" },
-		];
-
-		const ctx = createMockCtx({
-			model: { provider: "openai-codex", id: "gpt-5.4" },
-			modelRegistry: {
-				getAvailable: vi.fn(() => availableModels),
-				find: vi.fn((provider: string, id: string) =>
-					availableModels.find((m) => m.provider === provider && m.id === id),
-				),
-			},
-			ui: { ...createMockCtx().ui, setStatus: vi.fn(), notify: vi.fn() },
-		});
-
+		const ctx = createMockCtx();
 		const inputHook = pi._getHook("input")[0];
 
-		// Feed alternating v3 JSON outputs with the same effort ("medium") so that
-		// effort changes don't trigger extra setModel calls -- only tier changes do.
-		// Sequence: mini, large, mini, large, mini (alternating low/high tier).
-		const sequence = [
-			makeV3Json("mini", "medium", 0.9),
-			makeV3Json("large", "medium", 0.9),
-			makeV3Json("mini", "medium", 0.9),
-			makeV3Json("large", "medium", 0.9),
-			makeV3Json("mini", "medium", 0.9),
-		];
-		for (const json of sequence) {
-			(pi.exec as any).mockResolvedValueOnce({
-				code: 0,
-				stdout: json,
-				stderr: "",
-			});
-			await inputHook.handler({ text: "a prompt", source: "user" }, ctx);
-			await new Promise((r) => setTimeout(r, 0));
-		}
+		const result = await inputHook.handler(
+			{ text: "a prompt", source: "user" },
+			ctx,
+		);
 
-		const switchCount = (pi as any).setModel.mock.calls.length;
-		// Under ship config (N_HOLD=0, K_CONSEC=1) the classifier drives every turn.
-		// Sequence low/high/low/high/low -> upgrade, downgrade, upgrade, downgrade, downgrade-no-op
-		// produces at most 5 switches, at least 4. Hysteresis-suppression behavior
-		// is exercised in the policy-level tests under the T3 describe block with
-		// explicit makePolicy() overrides.
-		expect(switchCount).toBeGreaterThanOrEqual(1);
-		expect(switchCount).toBeLessThanOrEqual(5);
+		expect(result).toEqual({ action: "continue" });
+		expect(pi.exec).not.toHaveBeenCalled();
 	});
 });
 
@@ -455,10 +429,8 @@ describe("user effort override", () => {
 		expect(payload.reasoning_effort).toBe("low");
 	});
 
-	it("preserves runtime thinking selection on the next routed input", async () => {
+	it("preserves runtime thinking selection in the provider payload", async () => {
 		const pi = createMockPi();
-		(pi as any).setModel = vi.fn(async () => {});
-		(pi as any).setThinkingLevel = vi.fn();
 		(pi as any).getThinkingLevel = vi.fn(() => "xhigh");
 		promptRouter(pi as any);
 
@@ -478,17 +450,15 @@ describe("user effort override", () => {
 			ui: { ...createMockCtx().ui, setStatus: vi.fn(), notify: vi.fn() },
 		});
 
-		const inputHook = pi._getHook("input")[0];
 		(pi.exec as any).mockResolvedValueOnce({
 			code: 0,
 			stdout: makeV3Json("core", "medium", 0.95),
 			stderr: "",
 		});
 
-		await inputHook.handler({ text: "analyze this", source: "user" }, ctx);
-		await new Promise((r) => setTimeout(r, 0));
+		const payload = await routeProviderPrompt(pi, ctx, "analyze this");
 
-		expect((pi as any).setThinkingLevel).toHaveBeenLastCalledWith("xhigh");
+		expect(payload.reasoning_effort).toBe("xhigh");
 	});
 
 	it("records privacy-safe override telemetry fields", () => {
@@ -540,10 +510,8 @@ describe("user effort override", () => {
 // ---------------------------------------------------------------------------
 
 describe("effort set per tier", () => {
-	it("calls setThinkingLevel with correct effort for each tier", async () => {
+	it("sets provider payload reasoning effort for each tier", async () => {
 		const pi = createMockPi();
-		(pi as any).setModel = vi.fn(async () => {});
-		(pi as any).setThinkingLevel = vi.fn();
 		promptRouter(pi as any);
 
 		const availableModels = [
@@ -563,50 +531,34 @@ describe("effort set per tier", () => {
 			ui: { ...createMockCtx().ui, setStatus: vi.fn(), notify: vi.fn() },
 		});
 
-		const inputHook = pi._getHook("input")[0];
-
-		// mini/low -> ThinkingLevel "low"
 		(pi.exec as any).mockResolvedValueOnce({
 			code: 0,
 			stdout: makeV3Json("mini", "low"),
 			stderr: "",
 		});
-		await inputHook.handler(
-			{ text: "what is a variable", source: "user" },
-			ctx,
-		);
-		await new Promise((r) => setTimeout(r, 0));
-		expect((pi as any).setThinkingLevel).toHaveBeenLastCalledWith("low");
+		expect(
+			(await routeProviderPrompt(pi, ctx, "what is a variable")).reasoning_effort,
+		).toBe("low");
 
-		// large/high -> ThinkingLevel "high" (upgrade, applied immediately)
 		(pi.exec as any).mockResolvedValueOnce({
 			code: 0,
 			stdout: makeV3Json("large", "high"),
 			stderr: "",
 		});
-		await inputHook.handler(
-			{ text: "design a distributed system", source: "user" },
-			ctx,
-		);
-		await new Promise((r) => setTimeout(r, 0));
-		expect((pi as any).setThinkingLevel).toHaveBeenLastCalledWith("high");
+		expect(
+			(await routeProviderPrompt(pi, ctx, "design a distributed system"))
+				.reasoning_effort,
+		).toBe("high");
 
-		// Verify core/medium by resetting state first via /router-reset
-		const resetCmd = pi._commands.find((c) => c.name === "router-reset")!;
-		await resetCmd.handler([], ctx);
-
-		// Now feed core/medium from a low baseline
 		(pi.exec as any).mockResolvedValueOnce({
 			code: 0,
 			stdout: makeV3Json("core", "medium"),
 			stderr: "",
 		});
-		await inputHook.handler(
-			{ text: "refactor this function", source: "user" },
-			ctx,
-		);
-		await new Promise((r) => setTimeout(r, 0));
-		expect((pi as any).setThinkingLevel).toHaveBeenLastCalledWith("medium");
+		expect(
+			(await routeProviderPrompt(pi, ctx, "refactor this function"))
+				.reasoning_effort,
+		).toBe("medium");
 	});
 });
 
@@ -617,8 +569,6 @@ describe("effort set per tier", () => {
 describe("classifier JSON parse -- T4", () => {
 	function setup() {
 		const pi = createMockPi();
-		(pi as any).setModel = vi.fn(async () => {});
-		(pi as any).setThinkingLevel = vi.fn();
 		promptRouter(pi as any);
 
 		const availableModels = [
@@ -638,122 +588,108 @@ describe("classifier JSON parse -- T4", () => {
 			ui: { ...createMockCtx().ui, setStatus: vi.fn(), notify: vi.fn() },
 		});
 
-		const inputHook = pi._getHook("input")[0];
-		return { pi, ctx, inputHook };
+		return { pi, ctx };
 	}
 
-	it("valid JSON -- router applies the recommendation", async () => {
-		const { pi, ctx, inputHook } = setup();
-		const json = makeV3Json("core", "medium", 0.85);
+	it("valid JSON -- provider payload applies the recommendation", async () => {
+		const { pi, ctx } = setup();
 		(pi.exec as any).mockResolvedValueOnce({
 			code: 0,
-			stdout: json,
+			stdout: makeV3Json("core", "medium", 0.85),
 			stderr: "",
 		});
 
-		await inputHook.handler(
-			{ text: "explain how promises work", source: "user" },
+		const payload = await routeProviderPrompt(
+			pi,
 			ctx,
+			"explain how promises work",
 		);
-		await new Promise((r) => setTimeout(r, 0));
 
-		// Router should have called setModel (core -> medium -> gpt-5.4-fast)
-		expect((pi as any).setModel).toHaveBeenCalledWith({
-			provider: "openai-codex",
-			id: "gpt-5.4-fast",
-		});
-		expect((pi as any).setThinkingLevel).toHaveBeenLastCalledWith("medium");
+		expect(payload.model).toBe("gpt-5.4-fast");
+		expect(payload.reasoning_effort).toBe("medium");
 	});
 
-	it("invalid JSON -- router falls back to current-applied route and logs warning", async () => {
-		const { pi, ctx, inputHook } = setup();
+	it("invalid JSON -- router falls back and logs warning", async () => {
+		const { pi, ctx } = setup();
 		(pi.exec as any).mockResolvedValueOnce({
 			code: 0,
 			stdout: "garbage output not json",
 			stderr: "",
 		});
 
-		await inputHook.handler({ text: "some prompt", source: "user" }, ctx);
-		await new Promise((r) => setTimeout(r, 0));
+		const payload = await routeProviderPrompt(pi, ctx, "some prompt");
 
-		// Should NOT switch model on invalid output
-		expect((pi as any).setModel).not.toHaveBeenCalled();
-		// Should have notified about the failure
+		expect(payload.route_resolution_reason).toBe("classifier_failure");
 		expect((ctx.ui as any).notify).toHaveBeenCalledWith(
 			expect.stringContaining("classifier output invalid"),
 			"warning",
 		);
 	});
 
-	it("schema_version mismatch -- router falls back to current-applied route", async () => {
-		const { pi, ctx, inputHook } = setup();
-		const json = JSON.stringify({
-			schema_version: "99.0.0",
-			primary: { model_tier: "core", effort: "medium" },
-			candidates: [{ model_tier: "core", effort: "medium", confidence: 0.8 }],
-			confidence: 0.8,
-		});
+	it("schema_version mismatch -- router falls back", async () => {
+		const { pi, ctx } = setup();
 		(pi.exec as any).mockResolvedValueOnce({
 			code: 0,
-			stdout: json,
+			stdout: JSON.stringify({
+				schema_version: "99.0.0",
+				primary: { model_tier: "core", effort: "medium" },
+				candidates: [
+					{ model_tier: "core", effort: "medium", confidence: 0.8 },
+				],
+				confidence: 0.8,
+			}),
 			stderr: "",
 		});
 
-		await inputHook.handler({ text: "some prompt", source: "user" }, ctx);
-		await new Promise((r) => setTimeout(r, 0));
+		const payload = await routeProviderPrompt(pi, ctx, "some prompt");
 
-		expect((pi as any).setModel).not.toHaveBeenCalled();
+		expect(payload.route_resolution_reason).toBe("classifier_failure");
 		expect((ctx.ui as any).notify).toHaveBeenCalledWith(
 			expect.stringContaining("classifier output invalid"),
 			"warning",
 		);
 	});
 
-	it("missing required field (no effort) -- router falls back", async () => {
-		const { pi, ctx, inputHook } = setup();
-		const json = JSON.stringify({
-			schema_version: "3.0.0",
-			primary: { model_tier: "core" },
-			candidates: [{ model_tier: "core", effort: "medium", confidence: 0.8 }],
-			confidence: 0.8,
-		});
+	it("missing required field -- router falls back", async () => {
+		const { pi, ctx } = setup();
 		(pi.exec as any).mockResolvedValueOnce({
 			code: 0,
-			stdout: json,
+			stdout: JSON.stringify({
+				schema_version: "3.0.0",
+				primary: { model_tier: "core" },
+				candidates: [
+					{ model_tier: "core", effort: "medium", confidence: 0.8 },
+				],
+				confidence: 0.8,
+			}),
 			stderr: "",
 		});
 
-		await inputHook.handler({ text: "some prompt", source: "user" }, ctx);
-		await new Promise((r) => setTimeout(r, 0));
+		const payload = await routeProviderPrompt(pi, ctx, "some prompt");
 
-		expect((pi as any).setModel).not.toHaveBeenCalled();
+		expect(payload.route_resolution_reason).toBe("classifier_failure");
 		expect((ctx.ui as any).notify).toHaveBeenCalledWith(
 			expect.stringContaining("classifier output invalid"),
 			"warning",
 		);
 	});
 
-	it("setModel AND setThinkingLevel both called with correct args", async () => {
-		const { pi, ctx, inputHook } = setup();
-		const json = makeV3Json("large", "high", 0.9);
+	it("large/high output maps to model and effort in provider payload", async () => {
+		const { pi, ctx } = setup();
 		(pi.exec as any).mockResolvedValueOnce({
 			code: 0,
-			stdout: json,
+			stdout: makeV3Json("large", "high", 0.9),
 			stderr: "",
 		});
 
-		await inputHook.handler(
-			{ text: "design a distributed consensus protocol", source: "user" },
+		const payload = await routeProviderPrompt(
+			pi,
 			ctx,
+			"design a distributed consensus protocol",
 		);
-		await new Promise((r) => setTimeout(r, 0));
 
-		// large -> large -> gpt-5.4
-		expect((pi as any).setModel).toHaveBeenCalledWith({
-			provider: "openai-codex",
-			id: "gpt-5.4",
-		});
-		expect((pi as any).setThinkingLevel).toHaveBeenCalledWith("high");
+		expect(payload.model).toBe("gpt-5.4");
+		expect(payload.reasoning_effort).toBe("high");
 	});
 
 	it("effort cap clamps via maxEffortLevel in applyPolicy", () => {
@@ -827,17 +763,12 @@ describe("router-explain command -- T4", () => {
 			ui: { ...createMockCtx().ui, setStatus: vi.fn(), notify: vi.fn() },
 		});
 
-		const inputHook = pi._getHook("input")[0];
 		(pi.exec as any).mockResolvedValueOnce({
 			code: 0,
 			stdout: makeV3Json("core", "medium", 0.75),
 			stderr: "",
 		});
-		await inputHook.handler(
-			{ text: "explain async/await", source: "user" },
-			ctx,
-		);
-		await new Promise((r) => setTimeout(r, 0));
+		await routeProviderPrompt(pi, ctx, "explain async/await");
 
 		const explainCmd = pi._commands.find((c) => c.name === "router-explain")!;
 		(ctx.ui as any).notify.mockClear();
@@ -871,42 +802,15 @@ describe("router-explain command -- T4", () => {
 // ---------------------------------------------------------------------------
 
 describe("prompt-router extension -- input hook", () => {
-	function setup(overrides: Record<string, any> = {}) {
+	function setup() {
 		const pi = createMockPi();
-		(pi as any).setModel = vi.fn(async () => {});
-		(pi as any).setThinkingLevel = vi.fn(() => {});
 		promptRouter(pi as any);
-
-		const inputHooks = pi._getHook("input");
-		if (inputHooks.length === 0) throw new Error("input hook not registered");
-		const inputHook = inputHooks[0];
-
-		const availableModels = [
-			{ provider: "openai-codex", id: "gpt-5.4-mini" },
-			{ provider: "openai-codex", id: "gpt-5.4-fast" },
-			{ provider: "openai-codex", id: "gpt-5.4" },
-		];
-
-		const ctx = createMockCtx({
-			model: { provider: "openai-codex", id: "gpt-5.4" },
-			modelRegistry: {
-				getAvailable: vi.fn(() => availableModels),
-				find: vi.fn((provider: string, id: string) =>
-					availableModels.find((m) => m.provider === provider && m.id === id),
-				),
-			},
-			ui: {
-				...createMockCtx().ui,
-				setStatus: vi.fn(),
-				notify: vi.fn(),
-			},
-			...overrides,
-		});
-
+		const inputHook = pi._getHook("input")[0];
+		const ctx = createMockCtx({ shutdown: vi.fn() });
 		return { pi, inputHook, ctx };
 	}
 
-	it("skips classification for extension-generated input", async () => {
+	it("continues extension-generated input without classification", async () => {
 		const { pi, inputHook, ctx } = setup();
 		const result = await inputHook.handler(
 			{ text: "plan this", source: "extension" },
@@ -916,7 +820,7 @@ describe("prompt-router extension -- input hook", () => {
 		expect(pi.exec).not.toHaveBeenCalled();
 	});
 
-	it("skips classification for slash commands", async () => {
+	it("continues slash commands without classification", async () => {
 		const { pi, inputHook, ctx } = setup();
 		const result = await inputHook.handler(
 			{ text: "/router-status", source: "user" },
@@ -926,76 +830,11 @@ describe("prompt-router extension -- input hook", () => {
 		expect(pi.exec).not.toHaveBeenCalled();
 	});
 
-	it("skips background classification when no UI is available", async () => {
-		const { pi, inputHook, ctx } = setup({ hasUI: false });
-		const result = await inputHook.handler(
-			{ text: "explain the architecture", source: "user" },
-			ctx,
-		);
-		expect(result).toEqual({ action: "continue" });
-		expect(pi.exec).not.toHaveBeenCalled();
-	});
-
-	it("calls exec for normal user text with configured classifier and routes to a dynamic same-family model", async () => {
-		const { pi, inputHook, ctx } = setup();
-		(pi.exec as any).mockResolvedValueOnce({
-			code: 0,
-			stdout: makeV3Json("core", "medium"),
-			stderr: "",
-		});
-
-		const result = await inputHook.handler(
-			{ text: "explain the architecture of this system", source: "user" },
-			ctx,
-		);
-
-		expect(result).toEqual({ action: "continue" });
-		await new Promise((r) => setTimeout(r, 0));
-		expect(pi.exec).toHaveBeenCalledWith(
-			"uv",
-			[
-				"run",
-				"--project",
-				path.join(os.homedir(), ".dotfiles/pi/prompt-routing"),
-				"python",
-				path.join(os.homedir(), ".dotfiles/pi/prompt-routing/classify.py"),
-				"--classifier",
-				"confgate",
-				"--prompt-file",
-				expect.stringMatching(/prompt\.txt$/),
-			],
-			expect.objectContaining({ timeout: 5000 }),
-		);
-
-		expect((pi as any).setModel).toHaveBeenCalledWith({
-			provider: "openai-codex",
-			id: "gpt-5.4-fast",
-		});
-		expect((ctx.ui as any).setStatus).toHaveBeenCalledWith(
-			"router",
-			"route: medium",
-		);
-	});
-
-	it("passes the trimmed prompt text to the classifier through a prompt file", async () => {
-		const { pi, inputHook, ctx } = setup();
-		(pi.exec as any).mockImplementationOnce(
-			async (_cmd: string, args: string[]) => {
-				const promptFile = args[args.indexOf("--prompt-file") + 1];
-				expect(fs.readFileSync(promptFile, "utf-8")).toBe(
-					"fix the null pointer bug",
-				);
-				return { code: 0, stdout: makeV3Json("core", "medium"), stderr: "" };
-			},
-		);
-		await inputHook.handler(
-			{ text: "  fix the null pointer bug  ", source: "user" },
-			ctx,
-		);
-		await new Promise((r) => setTimeout(r, 0));
-		const [, args] = (pi.exec as any).mock.calls[0];
-		expect(args).toContain("--prompt-file");
-		expect(args).not.toContain("fix the null pointer bug");
+	it("handles plain exit", async () => {
+		const { inputHook, ctx } = setup();
+		const result = await inputHook.handler({ text: "exit", source: "user" }, ctx);
+		expect(result).toEqual({ action: "handled" });
+		expect(ctx.shutdown).toHaveBeenCalled();
 	});
 });
 
@@ -1449,8 +1288,6 @@ describe("T5: effort cap clamps xhigh to high", () => {
 describe("T5: schema_version mismatch falls back", () => {
 	it("schema_version 99.0.0 -> null-path, no crash", async () => {
 		const pi = createMockPi();
-		(pi as any).setModel = vi.fn(async () => {});
-		(pi as any).setThinkingLevel = vi.fn();
 		promptRouter(pi as any);
 
 		const availableModels = [
@@ -1469,24 +1306,22 @@ describe("T5: schema_version mismatch falls back", () => {
 			ui: { ...createMockCtx().ui, setStatus: vi.fn(), notify: vi.fn() },
 		});
 
-		const inputHook = pi._getHook("input")[0];
 		(pi.exec as any).mockResolvedValueOnce({
 			code: 0,
 			stdout: JSON.stringify({
 				schema_version: "99.0.0",
 				primary: { model_tier: "core", effort: "medium" },
-				candidates: [{ model_tier: "core", effort: "medium", confidence: 0.8 }],
+				candidates: [
+					{ model_tier: "core", effort: "medium", confidence: 0.8 },
+				],
 				confidence: 0.8,
 			}),
 			stderr: "",
 		});
 
-		await expect(
-			inputHook.handler({ text: "a prompt", source: "user" }, ctx),
-		).resolves.toEqual({ action: "continue" });
-		await new Promise((r) => setTimeout(r, 0));
+		const payload = await routeProviderPrompt(pi, ctx, "a prompt");
 
-		expect((pi as any).setModel).not.toHaveBeenCalled();
+		expect(payload.route_resolution_reason).toBe("classifier_failure");
 		expect((ctx.ui as any).notify).toHaveBeenCalledWith(
 			expect.stringContaining("classifier output invalid"),
 			"warning",
@@ -1512,90 +1347,15 @@ describe("T5: malformed JSON falls back", () => {
 			ui: { ...createMockCtx().ui, setStatus: vi.fn(), notify: vi.fn() },
 		});
 
-		const inputHook = pi._getHook("input")[0];
 		(pi.exec as any).mockResolvedValueOnce({
 			code: 0,
 			stdout: "}{ not json at all %%%",
 			stderr: "",
 		});
 
-		await expect(
-			inputHook.handler({ text: "trigger garbage", source: "user" }, ctx),
-		).resolves.toEqual({ action: "continue" });
-		await new Promise((r) => setTimeout(r, 0));
+		const payload = await routeProviderPrompt(pi, ctx, "trigger garbage");
 
-		expect((pi as any).setModel).not.toHaveBeenCalled();
-	});
-});
-
-describe("T5: temporary escalation decays", () => {
-	it("_escalateFor(2) escalates for 2 turns, decays on turn 3", async () => {
-		const pi = createMockPi();
-		(pi as any).setModel = vi.fn(async () => {});
-		(pi as any).setThinkingLevel = vi.fn();
-		promptRouter(pi as any);
-
-		const availableModels = [
-			{ provider: "openai-codex", id: "gpt-5.4-mini" },
-			{ provider: "openai-codex", id: "gpt-5.4-fast" },
-			{ provider: "openai-codex", id: "gpt-5.4" },
-		];
-		const ctx = createMockCtx({
-			model: { provider: "openai-codex", id: "gpt-5.4" },
-			modelRegistry: {
-				getAvailable: vi.fn(() => availableModels),
-				find: vi.fn((provider: string, id: string) =>
-					availableModels.find((m) => m.provider === provider && m.id === id),
-				),
-			},
-			ui: { ...createMockCtx().ui, setStatus: vi.fn(), notify: vi.fn() },
-		});
-
-		const inputHook = pi._getHook("input")[0];
-		const explainCmd = pi._commands.find((c) => c.name === "router-explain")!;
-
-		// Trigger cooldown escalation (from default low baseline).
-		(pi as any)._escalateFor(2);
-
-		// Turn 1 of cooldown: classifier says low (mini), but cooldown holds escalated tier.
-		(pi.exec as any).mockResolvedValueOnce({
-			code: 0,
-			stdout: makeV3Json("mini", "low", 0.9),
-			stderr: "",
-		});
-		await inputHook.handler({ text: "prompt 1", source: "user" }, ctx);
-		await new Promise((r) => setTimeout(r, 0));
-
-		(ctx.ui as any).notify.mockClear();
-		await explainCmd.handler([], ctx);
-		let output = (ctx.ui as any).notify.mock.calls[0][0];
-		expect(output).toContain("cooldown");
-
-		// Turn 2 of cooldown: still held.
-		(pi.exec as any).mockResolvedValueOnce({
-			code: 0,
-			stdout: makeV3Json("mini", "low", 0.9),
-			stderr: "",
-		});
-		await inputHook.handler({ text: "prompt 2", source: "user" }, ctx);
-		await new Promise((r) => setTimeout(r, 0));
-		(ctx.ui as any).notify.mockClear();
-		await explainCmd.handler([], ctx);
-		output = (ctx.ui as any).notify.mock.calls[0][0];
-		expect(output).toContain("cooldown");
-
-		// Turn 3: cooldown expired, classifier recommendation takes over.
-		(pi.exec as any).mockResolvedValueOnce({
-			code: 0,
-			stdout: makeV3Json("mini", "low", 0.9),
-			stderr: "",
-		});
-		await inputHook.handler({ text: "prompt 3", source: "user" }, ctx);
-		await new Promise((r) => setTimeout(r, 0));
-		(ctx.ui as any).notify.mockClear();
-		await explainCmd.handler([], ctx);
-		output = (ctx.ui as any).notify.mock.calls[0][0];
-		expect(output).not.toContain("Rule fired: cooldown");
+		expect(payload.route_resolution_reason).toBe("classifier_failure");
 	});
 });
 
@@ -1644,8 +1404,6 @@ describe("T5: ConfGate ensemble_rule flows through", () => {
 			ui: { ...createMockCtx().ui, setStatus: vi.fn(), notify: vi.fn() },
 		});
 
-		const inputHook = pi._getHook("input")[0];
-
 		const confgateJson = JSON.stringify({
 			schema_version: "3.0.0",
 			primary: { model_tier: "core", effort: "medium" },
@@ -1658,11 +1416,7 @@ describe("T5: ConfGate ensemble_rule flows through", () => {
 			stdout: confgateJson,
 			stderr: "",
 		});
-		await inputHook.handler(
-			{ text: "refactor this module", source: "user" },
-			ctx,
-		);
-		await new Promise((r) => setTimeout(r, 0));
+		await routeProviderPrompt(pi, ctx, "refactor this module");
 
 		const explainCmd = pi._commands.find((c) => c.name === "router-explain")!;
 		(ctx.ui as any).notify.mockClear();
@@ -1709,7 +1463,6 @@ describe("T5: /router-explain full decision trail", () => {
 			ui: { ...createMockCtx().ui, setStatus: vi.fn(), notify: vi.fn() },
 		});
 
-		const inputHook = pi._getHook("input")[0];
 		const promptText =
 			"explain how the router policy integrates with confgate classifier output";
 		(pi.exec as any).mockResolvedValueOnce({
@@ -1726,8 +1479,7 @@ describe("T5: /router-explain full decision trail", () => {
 			}),
 			stderr: "",
 		});
-		await inputHook.handler({ text: promptText, source: "user" }, ctx);
-		await new Promise((r) => setTimeout(r, 0));
+		await routeProviderPrompt(pi, ctx, promptText);
 
 		const explainCmd = pi._commands.find((c) => c.name === "router-explain")!;
 		(ctx.ui as any).notify.mockClear();
@@ -1750,9 +1502,8 @@ describe("T5: /router-explain full decision trail", () => {
 		expect(output).toContain("model=openai-codex/gpt-5.4-fast");
 		expect(output).toContain("effort=medium");
 		expect(output).toContain("cap=high");
-		// prompt snippet
-		expect(output).toContain("Prompt:");
-		expect(output).toContain(promptText.slice(0, 40));
+		// prompt text is not exposed in the explanation.
+		expect(output).toContain("Prompt: \"sha256:");
 	});
 });
 
@@ -2184,7 +1935,7 @@ describe("Provider architecture spike: awaited provider seam", () => {
 });
 
 describe("T0: same-turn routing feasibility", () => {
-	it("documents that the input hook returns continue before async routing applies", async () => {
+	it("classifies only at the provider request seam", async () => {
 		const pi = createMockPi();
 		const order: string[] = [];
 		let releaseClassifier!: () => void;
@@ -2192,26 +1943,13 @@ describe("T0: same-turn routing feasibility", () => {
 			releaseClassifier = resolve;
 		});
 
-		(pi as any).setModel = vi.fn(async () => {
-			order.push("setModel");
-		});
-		(pi as any).setThinkingLevel = vi.fn(() => {
-			order.push("setThinkingLevel");
-		});
 		(pi.exec as any).mockImplementationOnce(async () => {
 			order.push("classifier-start");
 			await classifierPending;
 			order.push("classifier-finish");
 			return {
 				code: 0,
-				stdout: JSON.stringify({
-					schema_version: "3.0.0",
-					primary: { model_tier: "core", effort: "medium" },
-					candidates: [
-						{ model_tier: "core", effort: "medium", confidence: 0.91 },
-					],
-					confidence: 0.91,
-				}),
+				stdout: makeV3Json("core", "medium", 0.91),
 				stderr: "",
 			};
 		});
@@ -2241,18 +1979,23 @@ describe("T0: same-turn routing feasibility", () => {
 		order.push("hook-returned-continue");
 
 		expect(result).toEqual({ action: "continue" });
-		expect(order).toEqual(["classifier-start", "hook-returned-continue"]);
-		expect((pi as any).setModel).not.toHaveBeenCalled();
+		expect(order).toEqual(["hook-returned-continue"]);
+
+		const routed = routeProviderPrompt(
+			pi,
+			ctx,
+			"synthetic prompt requiring broader reasoning",
+		);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(order).toEqual(["hook-returned-continue", "classifier-start"]);
 
 		releaseClassifier();
-		await new Promise((resolve) => setTimeout(resolve, 0));
-
+		const payload = await routed;
+		expect(payload.model).toBe("gpt-5.4-fast");
 		expect(order).toEqual([
-			"classifier-start",
 			"hook-returned-continue",
+			"classifier-start",
 			"classifier-finish",
-			"setModel",
-			"setThinkingLevel",
 		]);
 	});
 });

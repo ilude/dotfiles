@@ -666,6 +666,7 @@ export async function resolveProviderRouteDecision(
 	const modelLabel = resolveModelTierLabel(model, rawSize);
 	const fallbackReason = routePolicy.fallbackReason;
 	return {
+		classifierRecommendation: classified,
 		route_decision_id: makeRouteDecisionId(promptHash),
 		prompt_hash: promptHash,
 		classifier_mode: policy.classifierMode,
@@ -775,21 +776,12 @@ async function appendTranscriptDebug(
 const TIER_ORDER: Record<string, number> = { low: 0, mid: 1, high: 2 };
 const TIER_KEYS: Tier[] = ["low", "mid", "high"];
 
-const TIER_ICON: Record<string, string> = {
-	low: ">",
-	mid: ">>",
-	high: ">>>",
-};
-
 // Static tier->effort mapping -- fallback when classifier returns null.
 const TIER_EFFORT: Record<Tier, string> = {
 	low: "minimal",
 	mid: "medium",
 	high: "high",
 };
-
-// Providers that don't have cost/model size mappings yet -- router skips them.
-const SKIP_PROVIDERS = new Set(["opencode", "opencode-go", "openrouter"]);
 
 // Effort ordering for clamping and comparison.
 const EFFORT_ORDER: Record<string, number> = {
@@ -834,8 +826,7 @@ const TIER_TO_ROUTE: Record<Tier, RouterSize> = {
 // GPT-5.5 on openai-codex is strong enough that routine prompts should stay
 // at the configured default effort. Medium classifier effort is biased to that
 // default, and high is reserved for high-confidence complex prompts. xhigh is
-// never selected by the router because the global default cap remains "high";
-// if the user manually sets xhigh, classifyAndRoute preserves it.
+// never selected by the router because the global default cap remains "high".
 const CODEX_GPT55_PROVIDER = "openai-codex";
 const CODEX_GPT55_MODEL = "gpt-5.5";
 const CODEX_GPT55_HIGH_CONFIDENCE_FLOOR = 0.8;
@@ -1207,149 +1198,6 @@ export async function emitRoutingDecision(
 	}
 }
 
-async function classifyAndRoute(
-	pi: ExtensionAPI,
-	text: string,
-	state: RouterState,
-	policy: RouterPolicy,
-	ctx: any,
-): Promise<void> {
-	const rec = await classifyWithV3(pi, text, ctx, policy.classifierMode);
-	state.lastPromptSnippet = text.slice(0, 60) + (text.length > 60 ? "..." : "");
-
-	if (rec === null) {
-		// Null fallback: keep current applied route.
-		const effort = state.lastAppliedEffort ?? policy.defaultEffortLevel;
-		state.lastClassifierRec = null;
-		state.lastRuleFired = "null-fallback";
-		const size = modelSizeForTier(state.currentTier);
-		const model = resolveDynamicModelFromRegistry(
-			ctx.modelRegistry,
-			ctx,
-			size,
-			"same-family",
-		);
-		const label = resolveModelTierLabel(model, size);
-		ctx.ui.setStatus(
-			"router",
-			buildStatusLabel(state.currentTier, state.currentTier, label, effort),
-		);
-		await emitRoutingDecision(
-			text,
-			null,
-			{ tier: state.currentTier, effort, ruleFired: "null-fallback" },
-			policy,
-			{
-				selectedModelSize: size,
-				actualModel: model,
-				modelSwitchApplied: false,
-			},
-		);
-		return;
-	}
-
-	state.lastClassifierRec = rec;
-
-	const route = normalizeRouteCandidate(rec.primary.model_tier) ?? "core";
-	const size = ROUTE_TO_RUNTIME_SIZE[route] ?? "medium";
-	const rawTier = SIZE_TO_TIER[size] ?? "mid";
-	state.lastRaw = rawTier;
-
-	const prevTier = state.lastEffective;
-	const prevEffort = state.lastAppliedEffort;
-	const applied = applyPolicy(rec, state, policy);
-	const effortOverride =
-		readUserEffortOverride(ctx, { prompt: text }) ??
-		readRuntimeEffortOverride(pi, state.lastAppliedEffort);
-	const { tier: effectiveTier, ruleFired } = applied;
-	let { effort } = applied;
-	const routerRecommendedEffort = effort;
-	let overrideType = "none";
-	if (effortOverride) {
-		effort = effortOverride.effort;
-		overrideType = effortOverrideType(routerRecommendedEffort, effort);
-	}
-
-	const modelSize = modelSizeForTier(effectiveTier);
-	const model = resolveDynamicModelFromRegistry(
-		ctx.modelRegistry,
-		ctx,
-		modelSize,
-		"same-family",
-	);
-
-	if (!model) {
-		ctx.ui.setStatus("router", `router: no ${modelSize} model available`);
-		await emitRoutingDecision(text, rec, applied, policy, {
-			selectedModelSize: modelSize,
-			actualModel: null,
-			modelSwitchApplied: false,
-		});
-		return;
-	}
-
-	// Skip routing for providers without cost/size mappings.
-	if (model.provider && SKIP_PROVIDERS.has(model.provider)) {
-		const current = getCurrentModelHint(
-			ctx,
-			ctx.modelRegistry?.getAvailable?.() ?? [],
-		);
-		ctx.ui.setStatus("router", `router: skipped (${model.provider})`);
-		await emitRoutingDecision(text, rec, applied, policy, {
-			selectedModelSize: modelSize,
-			actualModel: current,
-			modelSwitchApplied: false,
-		});
-		return;
-	}
-
-	if (!effortOverride) {
-		effort = applyModelEffortBias(
-			effort,
-			rec,
-			model,
-			policy.defaultEffortLevel,
-		);
-	}
-	const finalApplied = { ...applied, effort };
-	state.lastRuleFired = ruleFired;
-	state.lastAppliedEffort = effort;
-
-	const modelSwitchApplied = effectiveTier !== prevTier;
-	const effortSwitchApplied = effort !== prevEffort;
-
-	// Only switch model/effort when route actually changes.
-	if (modelSwitchApplied || effortSwitchApplied) {
-		if (modelSwitchApplied) {
-			await pi.setModel(model);
-		}
-		try {
-			(pi as any).setThinkingLevel(effort);
-		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : String(err);
-			ctx.ui.notify(
-				`router: setThinkingLevel failed (non-fatal): ${msg}`,
-				"warning",
-			);
-		}
-	}
-
-	const modelLabel = resolveModelTierLabel(model, modelSize);
-	ctx.ui.setStatus(
-		"router",
-		buildStatusLabel(effectiveTier, rawTier, modelLabel, effort),
-	);
-	await emitRoutingDecision(text, rec, finalApplied, policy, {
-		selectedModelSize: modelSize,
-		actualModel: model,
-		modelSwitchApplied,
-		userSelectedRoute: effortOverride
-			? { route, effort: effortOverride.effort }
-			: null,
-		overrideType,
-	});
-}
-
 // ---------------------------------------------------------------------------
 // Extension
 // ---------------------------------------------------------------------------
@@ -1372,23 +1220,6 @@ export default function (pi: ExtensionAPI) {
 		cooldownTurnsRemaining: 0,
 		lastRouteDecision: null,
 	};
-
-	// escalateFor: applies above-classifier route for N turns then auto-decays.
-	// Called by external signals (e.g. tool-call failure). Not session-sticky.
-	function escalateFor(turns: number = policy.COOLDOWN_TURNS): void {
-		// Step current tier up one level for the cooldown period.
-		const curOrder = TIER_ORDER[state.currentTier];
-		const escalatedTier =
-			curOrder < TIER_KEYS.length - 1
-				? TIER_KEYS[curOrder + 1]
-				: state.currentTier;
-		// Temporarily override currentTier so cooldown path holds escalated route.
-		state.currentTier = escalatedTier;
-		state.cooldownTurnsRemaining = turns;
-	}
-
-	// Expose for external callers and tests.
-	(pi as any)._escalateFor = escalateFor;
 
 	pi.registerShortcut(Key.ctrl(Key.backtick), {
 		description: "Reset thinking level to router default",
@@ -1458,10 +1289,18 @@ export default function (pi: ExtensionAPI) {
 		};
 		const decision = await resolveProviderRouteDecision(pi, text, routeCtx);
 		const previousAppliedRoute = state.lastRouteDecision?.applied_route ?? null;
-		state.lastRuleFired =
-			decision.route_resolution_reason === "matched"
-				? "classifier"
-				: "null-fallback";
+		state.lastRuleFired = decision.decisionTrace.rule as RuleFired;
+		state.lastClassifierRec =
+			"classifierRecommendation" in decision
+				? ((decision as { classifierRecommendation?: ClassifierRecommendation })
+						.classifierRecommendation ?? null)
+				: null;
+		const rawSize = ROUTE_TO_RUNTIME_SIZE[decision.raw_route] ?? "medium";
+		const appliedSize =
+			ROUTE_TO_RUNTIME_SIZE[decision.applied_route] ?? "medium";
+		state.lastRaw = SIZE_TO_TIER[rawSize] ?? "mid";
+		state.lastEffective = SIZE_TO_TIER[appliedSize] ?? "mid";
+		state.currentTier = state.lastEffective;
 		state.lastAppliedEffort = decision.thinking_level;
 		state.lastPromptSnippet = `sha256:${decision.prompt_hash.slice(0, 12)}`;
 		state.lastRouteDecision = { ...decision, same_turn_applied: true };
@@ -1471,7 +1310,7 @@ export default function (pi: ExtensionAPI) {
 				...decision,
 				same_turn_applied: true,
 			},
-			ctx,
+			routeCtx,
 		);
 		ctx.ui?.setStatus?.(
 			"router",
@@ -1507,32 +1346,14 @@ export default function (pi: ExtensionAPI) {
 		return payload;
 	});
 
-	// -- Classify and route every user prompt --
+	// -- Input conveniences only. Provider routing is authoritative. --
 	pi.on("input", async (event, ctx) => {
 		const text = event.text?.trim() ?? "";
 
-		// Convenience: treat plain "exit" as a graceful shutdown.
 		if (event.source !== "extension" && text.toLowerCase() === "exit") {
 			ctx.shutdown();
 			return { action: "handled" };
 		}
-
-		if (
-			!text ||
-			text.startsWith("/") ||
-			event.source === "extension" ||
-			!state.enabled ||
-			!ctx.hasUI
-		) {
-			return { action: "continue" };
-		}
-
-		// Fire-and-forget: classify in background so the input hook returns immediately.
-		classifyAndRoute(pi, text, state, policy, ctx).catch((err: unknown) => {
-			const msg = err instanceof Error ? err.message : String(err);
-			ctx.ui?.setStatus?.("router", "router: err");
-			ctx.ui?.notify?.(`Prompt router error (non-fatal): ${msg}`, "warning");
-		});
 
 		return { action: "continue" };
 	});
@@ -1610,7 +1431,7 @@ export default function (pi: ExtensionAPI) {
 
 			const promptSnippet = state.lastPromptSnippet
 				? state.lastPromptSnippet.length > 80
-					? state.lastPromptSnippet.slice(0, 80) + "..."
+					? `${state.lastPromptSnippet.slice(0, 80)}...`
 					: state.lastPromptSnippet
 				: "(none yet)";
 

@@ -18,7 +18,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { uiNotify } from "../lib/extension-utils.js";
 import { readMergedSettings } from "../lib/settings-loader.js";
 import { loadSettings as loadTranscriptSettings, sweepRetention as sweepTranscriptRetention } from "../lib/transcript.js";
@@ -27,6 +27,8 @@ import {
 	getWriter as getTranscriptWriter,
 	initializeRuntime as initializeTranscriptRuntime,
 } from "./transcript-runtime.js";
+
+const GIT_PREFLIGHT_TIMEOUT_MS = 5000;
 
 export default function (pi: ExtensionAPI) {
 	// -- session_start: restore default model on reload + git pre-flight -------
@@ -52,15 +54,21 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		try {
-			// Silently skip if fetch fails (no remote, not a repo, no network, etc.)
-			const fetchResult = await pi.exec("git", ["fetch", "--quiet"], { cwd: ctx.cwd });
+			// Silently skip if fetch fails (no remote, not a repo, no network, timeout, etc.)
+			const fetchResult = await pi.exec("git", ["fetch", "--quiet"], {
+				cwd: ctx.cwd,
+				timeout: GIT_PREFLIGHT_TIMEOUT_MS,
+			});
 			if (fetchResult.code !== 0) return;
 
-			const behindResult = await pi.exec("git", ["rev-list", "--count", "HEAD..@{u}"], { cwd: ctx.cwd });
+			const behindResult = await pi.exec("git", ["rev-list", "--count", "HEAD..@{u}"], {
+				cwd: ctx.cwd,
+				timeout: GIT_PREFLIGHT_TIMEOUT_MS,
+			});
 			if (behindResult.code !== 0) return;
 
 			const count = parseInt(behindResult.stdout.trim(), 10);
-			if (!isNaN(count) && count > 0) {
+			if (!Number.isNaN(count) && count > 0) {
 				uiNotify(
 					ctx,
 					"warning",
