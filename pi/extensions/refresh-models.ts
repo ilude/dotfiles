@@ -618,6 +618,7 @@ async function refreshProviderAvailability(
 
 	const providerDefinition: Record<string, unknown> = {
 		baseUrl: allModels[0].baseUrl,
+		api: allModels[0].api,
 		models: refreshedModels,
 	};
 	const oauthProvider = getOAuthProvider(provider);
@@ -630,6 +631,8 @@ async function refreshProviderAvailability(
 			usesCallbackServer: oauthProvider.usesCallbackServer,
 			modifyModels: oauthProvider.modifyModels,
 		};
+	} else {
+		providerDefinition.apiKey = apiKey;
 	}
 
 	ctx.modelRegistry.registerProvider(provider, providerDefinition);

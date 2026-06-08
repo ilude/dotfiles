@@ -551,7 +551,13 @@ describe("/refresh-models command", () => {
 				models: expect.arrayContaining([expect.objectContaining({ id: "sonnet" })]),
 			}),
 		);
-		expect(registerProvider.mock.calls.find(([provider]) => provider === "openrouter")?.[1].oauth).toBeUndefined();
+		const openrouterDefinition = registerProvider.mock.calls.find(([provider]) => provider === "openrouter")?.[1];
+		expect(openrouterDefinition.oauth).toBeUndefined();
+		expect(openrouterDefinition.apiKey).toBe("openrouter-key");
+		expect(openrouterDefinition.api).toBe("openai-completions");
+		const opencodeDefinition = registerProvider.mock.calls.find(([provider]) => provider === "opencode")?.[1];
+		expect(opencodeDefinition.apiKey).toBe("opencode-key");
+		expect(opencodeDefinition.api).toBe("openai-completions");
 		expect(fetchMock.mock.calls.find(([url]) => url === "https://openrouter.ai/api/v1/models")?.[1].headers.Authorization).toBe(
 			"Bearer openrouter-key",
 		);
