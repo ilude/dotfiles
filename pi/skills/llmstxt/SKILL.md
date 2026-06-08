@@ -1,275 +1,49 @@
 ---
 name: llmstxt
-description: LLMs.txt standard for AI-friendly documentation. Activate when discussing llms.txt, /llms.txt endpoints, llms-full.txt, AI-readable documentation, machine-readable docs, or the llmstxt.org specification.
+description: LLMs.txt standard for machine-readable documentation. Activate when discussing llms.txt, /llms.txt endpoints, llms-full.txt, documentation indexes, machine-readable docs, or the llmstxt.org specification.
 ---
 
 # llms.txt Workflow
 
-Guidelines for creating and maintaining llms.txt files following the [llmstxt.org](https://llmstxt.org/) specification.
+Compact index for creating and maintaining `llms.txt` documentation.
 
-## What is llms.txt?
+## Auto-activate when
 
-A markdown file at `/llms.txt` that helps LLMs efficiently understand and navigate website content. Unlike robots.txt (crawling) or sitemap.xml (indexing), llms.txt targets **inference-time usage** - helping AI assistants use your documentation.
+- Creating, editing, reviewing, or validating `llms.txt`, `llms-full.txt`, `/llms.txt` endpoints, or machine-readable documentation indexes.
+- User mentions llms.txt, llms-full.txt, llmstxt.org, machine-readable docs, documentation endpoints, or inference-time documentation.
+- Do not use for ordinary README/docs edits unless the machine-readable index is in scope.
 
----
+## Project-specific rules
 
-## File Format Specification
+- Keep docs concise and no-slop: avoid hype, vague claims, duplicated summaries, and uncited specifics.
+- Preserve local documentation structure; link to canonical docs instead of copying whole sites into the index.
+- Do not expose private URLs, credentials, internal-only paths, or generated local files.
+- Validate that listed links exist when practical.
 
-### Required Structure
+## Practical steps
 
-```markdown
-# Project Name
+1. Identify the audience: assistants needing fast navigation, not search crawlers.
+2. Put the most important docs first, grouped by stable section names.
+3. Use short descriptions that state what each linked page contains.
+4. Put verbose or optional content in `llms-full.txt` or companion markdown, not the main index.
 
-> Brief summary with key information necessary for understanding the project.
-> This blockquote provides essential context in 1-3 sentences.
+## Quick validation
 
-Optional body content with additional context, guidelines, or important notes.
-Can include paragraphs, lists, or other markdown (but NOT headings here).
+| Purpose | Checks |
+|---|---|
+| Format | Confirm H1 title, short intro, sections, and markdown links |
+| Reachability | Fetch or open `/llms.txt` and linked docs when available |
+| Scope | Confirm no private/internal-only material is exposed |
+| Duplication | Confirm main file is an index, not a copied tutorial dump |
 
-## Section Name
+## Anti-patterns
 
-- [Resource Name](https://example.com/path.md): Brief description of the resource
-- [Another Resource](https://example.com/other.md): What this covers
+- Treating `llms.txt` as `sitemap.xml`, robots policy, or marketing copy.
+- Dumping complete tutorials into the index instead of linking them.
+- Using unstable generated URLs without a clear reason.
+- Publishing private docs or environment-specific endpoints.
 
-## Another Section
+## Optional references
 
-- [Link](url): Description
-
-## Optional
-
-- [Less Critical Resource](url): Secondary information
-```
-
-### Section Rules
-
-| Section | Required | Purpose |
-|---------|----------|---------|
-| H1 Title | Yes | Project or site name |
-| Blockquote | No | Key summary (highly recommended) |
-| Body | No | Additional context, guidelines |
-| H2 Sections | No | Categorized resource links |
-| "Optional" H2 | Special | Resources for extended context only |
-
----
-
-## Link Format
-
-Each link in a file list follows this pattern:
-
-```markdown
-- [Display Name](url): Optional description
-```
-
-Examples:
-```markdown
-- [API Reference](https://docs.example.com/api.md): Complete API documentation
-- [Quick Start](https://docs.example.com/quickstart.md)
-- [Examples](https://github.com/org/repo/examples/): Code samples and tutorials
-```
-
----
-
-## The "Optional" Section
-
-The `## Optional` section has special meaning for context management:
-
-- **llms.txt** - Includes everything except Optional section
-- **llms-full.txt** - Includes everything including Optional section
-
-Use Optional for:
-- Verbose reference documentation
-- Third-party library docs
-- Deep-dive technical details
-- Content useful but not essential
-
-```markdown
-## Optional
-
-- [Full API Schema](url): Complete OpenAPI spec (large)
-- [Third-Party Lib Docs](url): Dependency documentation
-- [Historical Changelog](url): Version history
-```
-
----
-
-## Companion Markdown Files
-
-The spec proposes providing markdown versions of HTML pages:
-
-| Original URL | Markdown URL |
-|--------------|--------------|
-| `/docs/guide.html` | `/docs/guide.html.md` |
-| `/docs/api/` | `/docs/api/index.html.md` |
-| `/about` | `/about.md` |
-
-This allows LLMs to fetch clean markdown instead of parsing HTML.
-
----
-
-## Best Practices
-
-### Content Guidelines
-
-1. **Be concise** - LLM context windows are limited
-2. **Front-load important info** - Put critical content in blockquote and early sections
-3. **Use clear language** - Avoid jargon without explanation
-4. **Describe, don't just link** - Brief descriptions help LLMs understand relevance
-5. **Organize logically** - Group related resources (Docs, API, Examples, etc.)
-
-### Section Organization Patterns
-
-**API-focused projects:**
-```markdown
-## Authentication
-## Endpoints
-## SDKs
-## Examples
-## Optional
-```
-
-**Documentation sites:**
-```markdown
-## Getting Started
-## Core Concepts
-## API Reference
-## Tutorials
-## Optional
-```
-
-**Multi-product companies:**
-```markdown
-## Product A
-## Product B
-## Shared Resources
-## Optional
-```
-
-### Testing
-
-- Test with multiple LLMs (Claude, GPT, etc.)
-- Verify LLMs can answer questions using your llms.txt
-- Check that links resolve and content is accessible
-- Validate markdown renders correctly
-
----
-
-## Complete Example
-
-```markdown
-# Acme API
-
-> Acme API provides RESTful endpoints for widget management.
-> Authentication uses Bearer tokens. Base URL: https://api.acme.com/v1
-
-When integrating with Acme API:
-- All requests require authentication header
-- Rate limit: 1000 requests/hour
-- Responses are JSON with ISO 8601 timestamps
-
-## Getting Started
-
-- [Quick Start Guide](https://docs.acme.com/quickstart.md): 5-minute integration tutorial
-- [Authentication](https://docs.acme.com/auth.md): API key setup and token refresh
-
-## API Reference
-
-- [Widgets API](https://docs.acme.com/api/widgets.md): CRUD operations for widgets
-- [Users API](https://docs.acme.com/api/users.md): User management endpoints
-- [Webhooks](https://docs.acme.com/api/webhooks.md): Event subscription setup
-
-## SDKs
-
-- [Python SDK](https://github.com/acme/acme-python): Official Python client
-- [Node.js SDK](https://github.com/acme/acme-node): Official Node.js client
-
-## Examples
-
-- [Code Samples](https://github.com/acme/examples): Integration examples
-- [Postman Collection](https://docs.acme.com/postman.json): API testing collection
-
-## Optional
-
-- [OpenAPI Spec](https://docs.acme.com/openapi.yaml): Full API schema
-- [Changelog](https://docs.acme.com/changelog.md): Version history
-- [Migration Guide](https://docs.acme.com/migration.md): v1 to v2 upgrade path
-```
-
----
-
-## Two-File Pattern
-
-Many projects provide both files:
-
-| File | Purpose | Size |
-|------|---------|------|
-| `llms.txt` | Core documentation, fits smaller contexts | Smaller |
-| `llms-full.txt` | Complete documentation including Optional | Larger |
-
-Generate both if your documentation is extensive.
-
----
-
-## Tools & Ecosystem
-
-For Python CLI, static site generator plugins, and other tools, see [tools.md](tools.md).
-
----
-
-## Creating llms.txt for a Project
-
-### Step-by-Step
-
-1. **Identify your audience** - What will LLMs help users do?
-2. **List key resources** - Documentation, API refs, examples
-3. **Write the summary** - 1-3 sentences of essential context
-4. **Organize sections** - Group by topic or user journey
-5. **Add descriptions** - Brief notes for each link
-6. **Identify Optional content** - Large/verbose resources
-7. **Test with LLMs** - Verify comprehension
-
-### Checklist
-
-- [ ] H1 title matches project name
-- [ ] Blockquote summarizes project in 1-3 sentences
-- [ ] All links are valid and accessible
-- [ ] Descriptions are concise but informative
-- [ ] Sections are logically organized
-- [ ] Optional section contains non-essential resources
-- [ ] File is valid markdown
-- [ ] Tested with at least one LLM
-
----
-
-## Validation
-
-### Manual Check
-
-```bash
-# Verify file exists and is readable
-curl -s https://yoursite.com/llms.txt | head -20
-
-# Check all links resolve
-grep -oP '\[.*?\]\(\K[^)]+' llms.txt | xargs -I {} curl -sI {} | grep HTTP
-```
-
-### Structure Validation
-
-The file must have:
-1. Exactly one H1 (first line after optional frontmatter)
-2. Optional blockquote immediately after H1
-3. No H2+ headings before file list sections
-4. Each file list item starts with `- [`
-
----
-
-## Directory Listings
-
-Browse existing llms.txt implementations at [directory.llmstxt.cloud](https://directory.llmstxt.cloud/) (curated directory with token counts and category filtering).
-
----
-
-## References
-
-- [llmstxt.org](https://llmstxt.org/) - Official specification
-- [GitHub: AnswerDotAI/llms-txt](https://github.com/AnswerDotAI/llms-txt) - Reference implementation
-- [Answer.AI Announcement](https://www.answer.ai/posts/2024-09-03-llmstxt.html) - Original proposal
+- [reference.md](reference.md) - detailed guidance, examples, and templates.
+- [tools.md](tools.md) - tools and ecosystem notes.

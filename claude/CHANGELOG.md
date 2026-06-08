@@ -1,3 +1,13 @@
+## 2026-06-08: Compact large domain skills
+
+**Why:** Several broad domain skills had grown into tutorial-heavy files, which made routine activation expensive and blurred when to load optional details.
+
+**Fix:** Reworked the TypeScript, Python, shell, Docker, git workflow, logging-observability, Ansible, Terraform, and llms.txt main skill files as compact indexes with triggers, must/must-not rules, validation commands, anti-patterns, and links to detailed reference files.
+
+**Files:** ~/.dotfiles/pi/skills/typescript/SKILL.md, ~/.dotfiles/pi/skills/typescript/reference.md, ~/.dotfiles/pi/skills/python/SKILL.md, ~/.dotfiles/pi/skills/python/reference.md, ~/.dotfiles/pi/skills/shell/SKILL.md, ~/.dotfiles/pi/skills/shell/reference.md, ~/.dotfiles/pi/skills/docker/SKILL.md, ~/.dotfiles/pi/skills/docker/reference.md, ~/.dotfiles/pi/skills/git-workflow/SKILL.md, ~/.dotfiles/pi/skills/git-workflow/reference.md, ~/.dotfiles/pi/skills/logging-observability/SKILL.md, ~/.dotfiles/pi/skills/logging-observability/reference.md, ~/.dotfiles/pi/skills/ansible/SKILL.md, ~/.dotfiles/pi/skills/ansible/reference.md, ~/.dotfiles/pi/skills/terraform/SKILL.md, ~/.dotfiles/pi/skills/terraform/reference.md, ~/.dotfiles/pi/skills/llmstxt/SKILL.md, ~/.dotfiles/pi/skills/llmstxt/reference.md
+
+---
+
 ## 2026-06-06: Make private datastore Obsidian-compatible
 
 **Why:** Private datastore writers needed one vault structure so browser captures, handoffs, X data, attachments, and indexes are browsable in Obsidian instead of mixing notes and raw artifacts in timestamp folders.

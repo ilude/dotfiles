@@ -5,425 +5,47 @@ description: Docker containers, Compose, and containerization patterns. Activate
 
 # Container-Based Projects
 
-Guidelines for containerized projects using Docker, Dockerfile, docker-compose, containers, and DevContainers. Covers multi-stage builds, security, signal handling, entrypoint scripts, and deployment workflows.
+Compact index for Docker, Compose, and DevContainer work. Load linked files for full templates and examples.
 
-## Out of Scope
-- Infrastructure orchestration - see ansible skill
-- Kubernetes patterns - separate skill
+## Auto-activate when
 
----
+- Editing `Dockerfile`, `.dockerignore`, `docker-compose.yml`, `compose.yaml`, `.devcontainer/`, entrypoint scripts, or container CI/deploy files.
+- Discussing Docker, Compose, containers, images, build contexts, multi-stage builds, health checks, or Podman compatibility.
+- Do not use for Terraform/Ansible/Kubernetes-only orchestration unless container files are also changed.
 
-## CRITICAL: Avoid Container Complexity Theater
+## Project-specific rules
 
-**Containers are tools, not requirements. Use them when they solve real problems.**
+- Avoid container complexity theater: do not add Compose, sidecars, custom networks, or orchestration unless the project need is real.
+- Use Docker Compose V2 syntax: `docker compose`, not `docker-compose`.
+- Onramp/Caddy convention: a service `port` field means the container/service port reachable on the Compose network; do not reinterpret it as host publishing or split host/internal ports unless requested.
+- Keep entrypoints idempotent and signal-safe; prefer exec form for final process.
+- Do not bake secrets into images or Compose files.
 
-Before adding container complexity, ask:
-1. **Does this solve a real problem?** ("We need consistent environments" vs "Best practices say...")
-2. **Is the simpler approach sufficient?**
-3. **What's the operational cost?**
+## Practical steps
 
-### Anti-Patterns to Avoid
+1. Identify the runtime contract: image build, local dev, CI, or deployment.
+2. Minimize build context with `.dockerignore` and avoid copying secrets/caches.
+3. Keep Dockerfiles deterministic and cache-friendly; use multi-stage only when it reduces real risk/size.
+4. Validate image build and the service path touched by the change.
 
-| Anti-Pattern | Problem |
-|--------------|---------|
-| mTLS theater | In single-tenant app where TLS terminates at edge |
-| Sidecar proliferation | When log shipping from host works fine |
-| Service mesh overhead | For 3 services talking to each other |
+## Quick validation
 
----
+| Purpose | Commands |
+|---|---|
+| Compose config check | `docker compose config` |
+| Build image | `docker build -t <name> .` |
+| Build Compose services | `docker compose build` |
+| Start/health smoke | `docker compose up --build` |
+| Cleanup local stack | `docker compose down` |
 
-## CRITICAL: Docker Compose V2 Syntax
+## Anti-patterns
 
-**MUST NOT use `version:` field** (deprecated) **or `docker-compose` with hyphen:**
+- Publishing host ports by default when network-only service access is intended.
+- Adding root containers, privileged mode, or Docker socket mounts without explicit need.
+- Using `latest` tags in reproducible workflows.
+- Treating health checks, resource limits, or log rotation as generic copy-paste instead of project contracts.
 
-```yaml
-# MUST NOT
-version: '3.8'
+## Optional references
 
-# MUST
-services:
-  app:
-    image: myapp
-```
-
-```bash
-docker compose up    # MUST
-docker-compose up    # MUST NOT
-```
-
-## CRITICAL: DNS Configuration
-
-```yaml
-# MUST use .internal for container DNS
-environment:
-  - DNS_DOMAIN=.internal
-
-# MUST NOT use .local (conflicts with mDNS/Bonjour)
-```
-
----
-
-## Dockerfile Core Requirements
-
-### Base Images
-- Use **Alpine Linux** for minimal attack surface (`python:3.12-alpine`, `node:20-alpine`)
-- **MUST specify version tags** (MUST NOT use `latest`)
-- **SHOULD use image digest pinning (SHA256)** for production
-- If Alpine packages unavailable, use Debian Slim
-
-```dockerfile
-# RECOMMENDED: Pin by digest for production
-FROM python:3.12-alpine@sha256:abc123...
-```
-
-### Multi-stage Builds
-- `base` - Common dependencies and user setup
-- `development` - Development tools
-- `production` - Minimal runtime only
-
-### Security Checklist
-- MUST create and use non-root users
-- MUST set USER directive before EXPOSE and CMD
-- MUST NOT include secrets in layers
-- MUST use `.dockerignore` to exclude sensitive files
-- MUST include health checks for orchestration
-- MUST use Docker secrets for sensitive data (NOT environment variables)
-- MUST set `no-new-privileges:true` security option
-
-```yaml
-services:
-  app:
-    security_opt:
-      - no-new-privileges:true
-```
-
----
-
-## .dockerignore Best Practices
-
-**MUST maintain `.dockerignore`** to reduce build context and prevent sensitive file inclusion.
-
-### Template
-
-```dockerignore
-# Git
-.git/
-.gitattributes
-.gitignore
-
-# Documentation
-*.md
-docs/
-
-# CI/CD
-.github/
-.gitlab-ci.yml
-
-# Development
-.devcontainer/
-.idea/
-.vscode/
-
-# Testing
-.coverage
-.pytest_cache/
-.spec/
-htmlcov/
-tests/
-
-# Python
-__pycache__/
-*.egg-info/
-*.pyc
-*.pyo
-.mypy_cache/
-.ruff_cache/
-
-# Virtual environments
-.venv/
-venv/
-
-# Build artifacts
-build/
-dist/
-
-# Environment files
-.env
-.env.*
-
-# Logs
-*.log
-logs/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Temporary
-temp/
-tmp/
-*.tmp
-
-# Docker files (not needed in image)
-docker-compose*.yml
-Dockerfile*
-.dockerignore
-
-# Node (if applicable)
-node_modules/
-```
-
-### Key Principles
-1. **Alphabetical ordering** within sections
-2. **Include Git metadata** - `.git/` not needed in images
-3. **Exclude tests** - Tests run before build, not in container
-4. **Exclude dev tools** - IDE configs, devcontainer
-5. **Keep dependency files** - `requirements.txt`, `package.json` needed for install
-
----
-
-## Layer Optimization
-
-```dockerfile
-# MUST NOT: Multiple layers
-RUN apk update
-RUN apk add curl
-RUN apk add git
-
-# MUST: Single optimized layer
-RUN apk add --no-cache \
-        curl \
-        git
-```
-
-### Cache Optimization
-
-```dockerfile
-# Dependency layer cached separately
-COPY requirements.txt .
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir -r requirements.txt
-
-# Source code changes won't invalidate dependency cache
-COPY app/ ./app/
-```
-
----
-
-## Non-Root User Setup
-
-```dockerfile
-ARG PUID=1000
-ARG PGID=1000
-ARG USER=appuser
-
-RUN addgroup -g ${PGID} ${USER} && \
-    adduser -D -u ${PUID} -G ${USER} -s /bin/sh ${USER}
-
-USER ${USER}
-```
-
----
-
-## 12-Factor App Compliance
-
-| Factor | Implementation |
-|--------|---------------|
-| Configuration | Environment variables only |
-| Dependencies | Explicit declarations with lockfiles |
-| Stateless | No local state, horizontally scalable |
-| Disposability | Fast startup/shutdown, graceful termination |
-
----
-
-## Resource Limits & Log Rotation
-
-**MUST define for production:**
-
-```yaml
-services:
-  app:
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
-          pids: 100
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-```
-
----
-
-## Health Checks
-
-```dockerfile
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-  CMD curl -f http://localhost:8000/health || exit 1
-```
-
-```yaml
-services:
-  app:
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-```
-
----
-
-## Docker Compose Organization
-
-```yaml
-# docker-compose.yml
-include:
-  - compose/service1.yml
-  - compose/service2.yml
-
-services:
-  app:
-    build:
-      context: .
-      target: production
-    depends_on:
-      db:
-        condition: service_healthy
-    networks:
-      - app_network
-    security_opt:
-      - no-new-privileges:true
-
-  db:
-    image: postgres:15-alpine
-    volumes:
-      - db_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "postgres"]
-
-volumes:
-  db_data:
-
-networks:
-  app_network:
-    driver: bridge
-```
-
----
-
-## Docker Secrets
-
-**MUST use over environment variables** for sensitive data:
-
-```yaml
-services:
-  app:
-    secrets:
-      - db_password
-    environment:
-      - DB_PASSWORD_FILE=/run/secrets/db_password
-
-secrets:
-  db_password:
-    file: ./secrets/db_password.txt
-```
-
----
-
-## Signal Handling and Entrypoint
-
-### Production Entrypoint Script
-
-```bash
-#!/bin/bash
-set -euo pipefail
-
-if [ "$(id -u)" = "0" ]; then
-    groupmod -o -g ${PGID:-1000} ${USER} 2>/dev/null || true
-    usermod -o -u ${PUID:-1000} ${USER} 2>/dev/null || true
-    chown ${USER}:${USER} /var/run/docker.sock 2>/dev/null || true
-    exec gosu ${USER} "$@"
-fi
-
-exec "$@"
-```
-
-- Use `gosu` with `exec` to drop privileges and forward signals
-- Use direct command execution (not shell wrapping) for proper signal delivery
-
----
-
-## Makefile Integration
-
-```makefile
-.PHONY: dev build up down logs
-
-dev:
-	@docker compose -f docker-compose.yml -f compose/dev.yml up
-
-build:
-	@docker compose build
-
-up:
-	@docker compose up -d
-
-down:
-	@docker compose down
-
-logs:
-	@docker compose logs -f
-```
-
----
-
-## Essential Commands
-
-```bash
-# Service management
-docker compose up / up -d / down / down -v
-docker compose build / build --no-cache
-
-# Monitoring
-docker compose ps / logs -f
-docker stats
-
-# Execute commands
-docker compose exec app sh
-docker compose run --rm app pytest
-
-# Cleanup
-docker image prune -a
-docker system prune
-```
-
----
-
-## Quick Reference
-
-**Before running containers:**
-- Check README and Makefile
-- Review docker-compose.yml dependencies
-- Check for .env.example
-
-**Common mistakes:**
-- Using `version:` field or `docker-compose` with hyphen
-- Running as root user
-- Using large base images (not Alpine)
-- Using `.local` domain
-- Skipping health checks
-- Using env vars instead of secrets
-- Missing resource limits
-- No log rotation
-
-
-
----
-
-## DevContainer Configuration
-
-For VS Code DevContainers with Docker, non-root users, and Python/uv patterns, see [devcontainer.md](devcontainer.md).
+- [reference.md](reference.md) - detailed guidance, examples, and templates.
+- [devcontainer.md](devcontainer.md) - DevContainer-specific guidance.

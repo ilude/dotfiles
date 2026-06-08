@@ -5,345 +5,48 @@ description: Shell scripting, CLI development, Bash, PowerShell, Makefiles, and 
 
 # Shell Script Workflow
 
-## Related Documentation
+Compact index for shell, PowerShell, Makefile, and CLI work. Load linked files for platform-specific details.
 
-- [CLI Development](cli-development.md) - CLI design principles and best practices
-- [PowerShell](powershell.md) - Windows automation and scripting
-- [Makefile Best Practices](makefile.md) - Build automation and task runners
-- [Bats Testing](bats.md) - Shell script testing framework
-- [Cross-Platform Scripting](cross-platform.md) - Windows/WSL/Linux patterns
-- [CLI Tools](tools.md) - Modern command-line utilities (rg, fd, bat, etc.)
-- [WinGet Workflow](winget.md) - Windows package management with winget
+## Auto-activate when
 
----
+- Editing `.sh`, `.bash`, `.zsh`, `.ps1`, `Makefile`, `justfile`, install scripts, CLI wrappers, or shell test files.
+- Discussing Bash, zsh, PowerShell, POSIX portability, shfmt, shellcheck, Bats, winget, or cross-platform command UX.
+- Do not use for Dockerfile-only or Python/Node CLIs unless shell wrappers are involved.
 
-## Tool Grid
+## Project-specific rules
 
-| Task | Tool | Command |
-|------|------|---------|
-| Lint | shellcheck | `shellcheck *.sh` |
-| Format | shfmt | `shfmt -w *.sh` |
-| Security | shellharden | `shellharden --check *.sh` |
-| POSIX check | checkbashisms | `checkbashisms *.sh` |
-| Test | bats | `bats test/` |
+- Dotfiles install flow must stay idempotent.
+- Use LF line endings only.
+- Git Bash/MSYS2 zsh handoff must pass `ZDOTDIR` through `env`.
+- Prefer `${ZDOTDIR:-$HOME}` over raw `~`/`$HOME` when path resolution crosses Git Bash/MSYS2 boundaries.
+- On Windows-native tasks, prefer PowerShell; for POSIX tooling and git, prefer bash.
+- Do not add fallback logic that hides missing dependencies; fail explicitly.
 
----
+## Practical steps
 
-## Shebang
+1. Identify target shell/platform and existing helper conventions.
+2. Keep scripts small, quoted, idempotent, and deterministic.
+3. Preserve strict-mode and logging style already present in the file.
+4. Validate with shellcheck/shfmt or PowerShell parser/tests as appropriate.
 
-Scripts MUST use the portable shebang:
+## Quick validation
 
-```bash
-#!/usr/bin/env bash
-```
+| Context | Commands |
+|---|---|
+| Repo shell lint | `make lint` |
+| ShellCheck direct | `shellcheck <script>` |
+| shfmt check | `shfmt -d <script>` |
+| PowerShell syntax | `pwsh -NoProfile -Command '$null = [scriptblock]::Create((Get-Content -Raw <path>))'` |
+| Repo quick tests | `make test-quick` |
 
-POSIX-only scripts MAY use `#!/bin/sh` when bash features are not needed.
+## Anti-patterns
 
----
+- Assuming Bash features in POSIX scripts or Windows paths in MSYS2/WSL scripts.
+- Unquoted variables, unsafe temp files, or broad globs in cleanup.
+- Replacing a platform-specific path convention without checking install/Dotbot mirror rules.
+- Adding interactive prompts to automation paths unless explicitly requested.
 
-## Strict Mode
+## Optional references
 
-All bash scripts MUST enable strict mode:
-
-```bash
-set -euo pipefail
-```
-
-| Flag | Meaning |
-|------|---------|
-| `-e` | Exit on error |
-| `-u` | Error on undefined variables |
-| `-o pipefail` | Fail on pipe errors |
-
----
-
-## Variable Quoting
-
-Variables MUST be quoted to prevent word splitting:
-
-```bash
-# Correct
-echo "$variable"
-cp "$source" "$destination"
-
-# Incorrect
-echo $variable
-```
-
-Arrays MUST use proper expansion:
-
-```bash
-"${array[@]}"     # Each element as separate word
-"${array[*]}"     # All elements as single string
-```
-
----
-
-## Variable Naming
-
-| Scope | Convention | Example |
-|-------|------------|---------|
-| Environment/Global | UPPER_CASE | `LOG_LEVEL`, `CONFIG_PATH` |
-| Local/Script | lower_case | `file_count`, `temp_dir` |
-| Constants | UPPER_CASE + readonly | `readonly MAX_RETRIES=3` |
-
-**No magic values:** MUST NOT use literal strings or numbers inline when they represent a domain concept, configuration, or repeated value. Extract to `readonly` constants at the top of the script. Literals are fine for array indices, test assertions, single-use messages, and well-known exit codes (0, 1, 2).
-
----
-
-## Test Syntax
-
-In bash scripts, `[[ ]]` MUST be used over `[ ]`:
-
-```bash
-if [[ -f "$file" ]]; then
-    echo "File exists"
-fi
-
-if [[ "$string" =~ ^[0-9]+$ ]]; then
-    echo "Numeric"
-fi
-```
-
-POSIX scripts MUST use `[ ]` for compatibility.
-
----
-
-## Functions
-
-Functions MUST use `local` for internal variables:
-
-```bash
-my_function() {
-    local input="$1"
-    local result=""
-
-    result=$(process "$input")
-    echo "$result"
-}
-```
-
-Naming: snake_case, prefix private functions with underscore: `_helper_function`
-
----
-
-## Temporary Files
-
-Temporary files MUST be created with `mktemp` using simple assignments:
-
-```bash
-temp_file="$(mktemp)"
-temp_dir="$(mktemp -d)"
-```
-
-Named templates are allowed when useful:
-
-```bash
-temp_file="$(mktemp -t my-tool.XXXXXX)"
-temp_file="$(mktemp /tmp/my-tool.XXXXXX)"
-```
-
-Cleanup MUST be easy to verify. Prefer exact quoted targets and `--`:
-
-```bash
-rm -f -- "$temp_file"
-rm -rf -- "$temp_dir"
-```
-
-For multi-step scripts, use an EXIT trap with the same exact cleanup form:
-
-```bash
-temp_file="$(mktemp)"
-trap 'rm -f -- "$temp_file"' EXIT
-```
-
-When a temporary directory owns derived files, keep child paths directly under
-that directory and clean up either the child file or the directory:
-
-```bash
-temp_dir="$(mktemp -d)"
-output_file="$temp_dir/output.txt"
-rm -f -- "$output_file"
-rm -rf -- "$temp_dir"
-```
-
-Do not use cleanup forms that are hard to verify:
-
-```bash
-rm -f /tmp/*.tmp
-rm -f -- "${temp_file:-/}"
-rm -f -- "$temp_file" "$HOME/important-file"
-temp_file="$(some_command)"
-rm -f -- "$temp_file"
-```
-
-Do not reassign a temp variable before cleanup. Do not execute a temp file with
-`bash`, `sh`, `source`, or `.` unless that execution is the explicit purpose of
-the script and the payload is reviewed separately.
-
----
-
-## Exit Codes
-
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | General error |
-| 2 | Misuse (invalid arguments, missing dependencies) |
-
-```bash
-main() {
-    if [[ $# -lt 1 ]]; then
-        echo "Usage: $0 <argument>" >&2
-        exit 2
-    fi
-
-    if ! process_data "$1"; then
-        echo "Error: Processing failed" >&2
-        exit 1
-    fi
-}
-```
-
----
-
-## Error Handling
-
-```bash
-# Continue on optional failure
-rm -f "$optional_file" || true
-
-# Exit on critical failure
-cd "$required_dir" || exit 1
-
-# Custom error message
-command_that_might_fail || {
-    echo "Error: command failed" >&2
-    exit 1
-}
-```
-
----
-
-## POSIX vs Bash
-
-| Feature | POSIX | Bash |
-|---------|-------|------|
-| Test syntax | `[ ]` | `[[ ]]` |
-| Arrays | Not available | Supported |
-| `local` | Not standard | Supported |
-| `source` | Use `.` | Both work |
-| Process substitution | Not available | `<(cmd)` |
-
----
-
-## Input Validation
-
-```bash
-validate_input() {
-    local input="$1"
-
-    if [[ -z "$input" ]]; then
-        echo "Error: Input cannot be empty" >&2
-        return 1
-    fi
-
-    if [[ ! "$input" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-        echo "Error: Invalid characters" >&2
-        return 1
-    fi
-}
-```
-
----
-
-## Command Substitution
-
-Modern syntax MUST be used:
-
-```bash
-# Correct
-result=$(command)
-
-# Incorrect - MUST NOT use backticks
-result=`command`
-```
-
----
-
-## Logging
-
-```bash
-log_info() {
-    echo "[INFO] $*"
-}
-
-log_error() {
-    echo "[ERROR] $*" >&2
-}
-
-log_debug() {
-    [[ "${DEBUG:-0}" == "1" ]] && echo "[DEBUG] $*"
-}
-```
-
----
-
-## Script Template
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly SCRIPT_NAME="$(basename "$0")"
-
-usage() {
-    cat <<EOF
-Usage: $SCRIPT_NAME [options] <argument>
-
-Options:
-    -h, --help    Show this help message
-    -v, --verbose Enable verbose output
-EOF
-}
-
-main() {
-    local verbose=0
-
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            -h|--help)
-                usage
-                exit 0
-                ;;
-            -v|--verbose)
-                verbose=1
-                shift
-                ;;
-            *)
-                break
-                ;;
-        esac
-    done
-
-    if [[ $# -lt 1 ]]; then
-        usage >&2
-        exit 2
-    fi
-
-    # Script logic here
-}
-
-main "$@"
-```
-
----
-
-## Size Limit
-
-Scripts SHOULD NOT exceed 100 lines (excluding comments/blanks).
-
-When a script exceeds 100 lines:
-- Refactor into smaller functions
-- Consider converting to Python for maintainability
+- [reference.md](reference.md) - detailed guidance, examples, and templates.
+- [cli-development.md](cli-development.md), [cross-platform.md](cross-platform.md), [powershell.md](powershell.md), [makefile.md](makefile.md), [tools.md](tools.md), [bats.md](bats.md), [winget.md](winget.md).

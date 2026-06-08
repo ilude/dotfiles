@@ -1,0 +1,429 @@
+---
+name: git-workflow
+description: Activate when working with git operations, commits, branches, or version control. Trigger on git commands, .git/ files, .gitignore, .gitattributes, or mentions of commit, push, merge, rebase, reset, filter-branch, or history rewrite.
+---
+
+# Git Workflow Guidelines
+
+Comprehensive git workflow principles for all git operations.
+
+**See also:**
+- [worktrees.md](worktrees.md) - Git worktrees for parallel development
+- [github-setup.md](github-setup.md) - GitHub repository configuration
+- [gitlab.md](gitlab.md) - GitLab CLI (glab) workflow
+
+## Critical Rules
+
+### Push Behavior
+**MUST NOT push without explicit "push" keyword.** Examples: "commit my changes" -> NO push, "commit and push" -> YES push. After committing without push, inform: "Changes committed locally. Run 'git push' to push to remote."
+
+### When to Commit
+Only commit when explicitly requested. MUST NOT commit proactively.
+
+### Precedence
+For git status, staging, committing, and pushing, this skill is authoritative. Do not apply code-editing scope rules from least-astonishment to decide what to stage. Inspect all current changes, group them by commit type, and either commit them together when related or ask the user when a change is ambiguous.
+
+## Security First
+
+**MUST scan for secrets. If found, STOP and refuse to commit.**
+
+Critical patterns:
+- AWS keys (`AKIA`, `ABIA`, `ACCA`, `ASIA` prefixes)
+- GitHub tokens (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`)
+- Anthropic keys (`sk-ant-`)
+- Provider keys (`sk-proj-`, `sk-`)
+- Generic API keys (`API_KEY=`, `APIKEY=`, `api_key=`)
+- Tokens (`TOKEN=`, `ACCESS_TOKEN=`, `Bearer `)
+- Passwords (`PASSWORD=`, `pwd=`, `passwd=`, `secret=`)
+- Private keys (`-----BEGIN`, `-----BEGIN RSA`, `-----BEGIN OPENSSH`)
+- Connection strings (`mongodb://`, `postgres://`, `mysql://`)
+- High-entropy strings (32+ char random alphanumeric)
+
+If detected:
+1. Show files/lines
+2. Suggest .gitignore
+3. Recommend env vars or secret manager
+4. Refuse even if insisted
+
+### Git-Crypt Exception
+
+Files marked with `filter=git-crypt` in `.gitattributes` are exempt from security scanning.
+
+**Why safe:**
+- Automatically encrypted before commit
+- Plaintext in working directory, encrypted in repository
+- Explicit protection declaration
+
+**Detection:**
+Check if file matches patterns in `.gitattributes` with `filter=git-crypt` directive.
+
+**Example .gitattributes:**
+```
+secrets/*.json filter=git-crypt diff=git-crypt
+*.key filter=git-crypt diff=git-crypt
+.env.production filter=git-crypt diff=git-crypt
+```
+
+**Validation:**
+- Verify git-crypt is initialized: `git-crypt status`
+- If not initialized, warn user but don't block
+
+## Commit Organization
+
+### Types (Conventional Commits)
+| Type | Purpose | Examples |
+|------|---------|----------|
+| feat | New features | New functionality |
+| fix | Bug fixes | Corrections |
+| docs | Documentation | README, *.md |
+| test | Tests | test_*.py, *.spec.* |
+| refactor | Code improvements | No behavior change |
+| perf | Performance | Optimization |
+| style | Formatting | Whitespace, semicolons |
+| chore | Maintenance | .gitignore, configs |
+| build | Build system | Dockerfile, Makefile |
+| ci | CI/CD | .github/workflows |
+| deps | Dependencies | lock/requirements |
+| revert | Reverts | Undo previous commit |
+
+### Breaking Changes
+add footer: `BREAKING CHANGE: description`
+
+### Atomic Commits
+Each commit should:
+- Do ONE thing only
+- Leave codebase in working state
+- Be independently revertable
+- Use `git add -p` to stage partial files
+
+### Grouping Strategy
+- Single commit: All changes closely related
+- Multiple commits: Different types or purposes
+- Follow project's existing commit style (check git log)
+
+## Commit Message Format
+
+Use HEREDOC for multi-line messages:
+```bash
+git commit -m "$(cat <<'EOF'
+type: concise summary
+
+Optional details focusing on why, not what
+EOF
+)"
+```
+
+Focus on "why" rather than "what". Keep summary to 1-2 sentences.
+
+### Commit Style
+
+Keep messages readable and project-matched:
+- **No emojis**: MUST NOT use emoji symbols in commits
+- **Natural grammar**: Use natural phrasing, do not force perfect structure
+- **Avoid excessive structure**: Limit section headers (one "Changes:" section is fine, but avoid multiple like "Technical improvements:", "Benefits:", "Result:", etc.)
+- **Detail when needed**: Include relevant details, but focus on what and why, not exhaustive documentation of every file
+
+### Code Comment Guidelines
+
+When writing code in commits:
+- **No border comments**: Do not use `# ===...===` or `# ---...---` style separators
+- **No "WHY" labels**: Instead of "# WHY: reason", just explain naturally: "# Reason for this..."
+- **No emojis in code**: MUST NOT use emoji symbols in comments or strings
+- **Brief explanations**: Comment purpose, not every detail
+- **Casual tone**: "This handles..." not "This implementation provides comprehensive handling of..."
+
+## Workflow Process
+
+1. **Security scan** - Check for secrets first
+2. **Analyze** - Run git status, diff, log in parallel
+3. **Inspect all changes** - Before committing, inspect every modified/untracked file. If any change is not part of the requested work, ask whether to include it, commit it separately, or leave it uncommitted. Do not silently skip it.
+4. **Group** - Organize by commit type
+5. **Commit** - Use HEREDOC format
+6. **Verify** - Ensure clean status
+7. **Push** - Only if explicitly requested
+
+## Safety Rules
+
+- MUST NOT skip hooks (--no-verify) without explicit request **EXCEPT**: when creating multiple atomic commits, run tests ONCE before all commits, then use --no-verify to avoid redundant test runs
+- Only amend your own unpushed commits
+- MUST check authorship before amending
+- If pre-commit hooks modify files, only amend if safe
+
+### Multi-Commit Hook Optimization
+
+When creating multiple atomic commits (e.g., separating docs, feat, test changes):
+1. Detect if pre-commit hook exists (`git config core.hooksPath` or `.git/hooks/pre-commit`)
+2. Run the test suite ONCE before any commits (e.g., `make test-quick`)
+3. If tests fail, stop immediately
+4. If tests pass, use `--no-verify` on all subsequent commits
+5. This ensures tests run exactly once instead of N times for N commits
+
+### Force Push - AVOID
+**Never use `git push --force` or `--force-with-lease` unless explicitly requested by user.**
+
+Why force push is dangerous:
+- Rewrites published history others may have pulled
+- Can cause collaborators to lose work
+- Breaks CI/CD pipelines referencing old commits
+- Makes debugging harder (commit SHAs change)
+
+Common mistakes that lead to force push:
+- Amending after push -> just make a new commit instead
+- Rebasing a pushed branch -> merge instead, or only rebase unpushed commits
+- "Cleaning up" commit history -> leave it alone once pushed
+
+**If you pushed a commit, it's done.** Fix mistakes with new commits, not by rewriting history.
+
+## Destructive Operations - BANNED
+
+### MUST NOT Use These Commands
+- `git filter-branch` - BANNED (deprecated by git project, use git-filter-repo)
+- `git gc --prune=now` - BANNED (bypasses 14-day safety window)
+- `git gc --aggressive` - BANNED (makes recovery harder)
+- `git reset --hard` - BANNED without explicit user request
+- `git clean -fd` - BANNED without explicit user request
+- `git add -f` on gitignored files - BANNED (causes data loss later)
+
+### If User Asks to Remove Files from Git History
+1. STOP - Do not use filter-branch (it is deprecated)
+2. Tell user: "git-filter-repo is the recommended tool. It requires a fresh clone."
+3. Ask: "Do you have backups? Assume any secrets are already compromised."
+4. Suggest: Rotate credentials first, then rewrite history
+5. If proceeding: User must install git-filter-repo and work on fresh clone
+6. MUST NOT run `gc --prune` after - default 14-day window allows recovery
+
+### If File is in .gitignore But Needs Committing
+1. STOP - Do not use `git add -f`
+2. Better: Add exception to .gitignore using the negation operator
+   ```
+   # In .gitignore:
+   *.log
+   !important.log  # Exception - this file WILL be tracked
+   ```
+3. Or: Remove file pattern from .gitignore entirely
+4. Then: `git add <file>` normally
+
+### Undo Accidental Force-Add
+```bash
+git rm --cached <file>  # Removes from git, keeps on disk
+```
+
+### Recovery Options (before gc --prune=now)
+```bash
+git reflog                    # Find lost commits
+git fsck --unreachable        # Find orphaned objects
+git fsck --lost-found         # Recover to .git/lost-found/
+```
+
+## Validation Script
+
+Quick validation before commits:
+
+```bash
+#!/bin/bash
+# git-pre-commit-check.sh - Run before committing
+
+set -e
+
+echo "=== Git Pre-Commit Validation ==="
+
+# Check for secrets
+echo "Checking for secrets..."
+if git diff --cached --name-only | xargs grep -l -E \
+  '(AKIA|ghp_|sk-ant-|sk-proj-|API_KEY=|PASSWORD=|-----BEGIN)' 2>/dev/null; then
+  echo "FAIL: Potential secrets detected in staged files"
+  exit 1
+fi
+echo "yes No secrets detected"
+
+# Check for .env files being committed
+if git diff --cached --name-only | grep -E '^\.env$|\.env\.[^e]' 2>/dev/null; then
+  echo "FAIL: .env file staged for commit"
+  exit 1
+fi
+echo "yes No .env files staged"
+
+# Check for large files (>1MB)
+for file in $(git diff --cached --name-only); do
+  if [ -f "$file" ]; then
+    size=$(wc -c < "$file")
+    if [ "$size" -gt 1048576 ]; then
+      echo "WARN WARNING: Large file: $file ($(($size/1024))KB)"
+    fi
+  fi
+done
+
+# Validate commit message format (if message provided)
+echo "yes Validation passed - ready to commit"
+```
+
+### Validation Checklist
+
+Before each commit:
+- [ ] No secrets/API keys in diff
+- [ ] No .env files staged
+- [ ] No large binary files
+- [ ] Commit message follows conventional commits
+- [ ] Changes are atomic (one logical change)
+
+## Worktrees
+
+When creating worktrees, **always use `.worktrees/` inside the project root** -- never create sibling directories.
+
+```bash
+# Correct -- contained within the project
+git worktree add .worktrees/feature-x feature-x
+
+# Wrong -- pollutes parent directory
+git worktree add ../project-feature-x feature-x
+```
+
+`git worktree add` creates the `.worktrees/` directory automatically. The directory is globally gitignored via `~/.config/git/ignore`.
+
+**Gotcha:** Untracked and gitignored files (e.g., `.env`, `.venv/`, build artifacts) are NOT present in worktrees -- only tracked files from the checked-out branch. If the project needs local setup, run it in the worktree.
+
+See [worktrees.md](worktrees.md) for full details including parallel sessions and cleanup.
+
+## Philosophy
+
+This skill defines the principles. The `/commit` command implements the procedural execution. Security always comes first, commits require explicit request, and pushes require the "push" keyword.
+
+---
+
+## .gitignore Modifications
+
+**MUST ask before adding entries to .gitignore.** Do not unilaterally decide that a file or directory should be ignored. The user may want to track it. Always ask first using AskUserQuestion, even if it seems obvious (e.g., build artifacts, working directories, temp files).
+
+## .gitignore Best Practices
+
+### Organization
+
+- **Alphabetical ordering** within sections (case-sensitive)
+- **Section comments** to group related patterns
+- **Specific patterns** over broad rules
+
+```gitignore
+# Build artifacts (alphabetical)
+build/
+dist/
+*.egg-info/
+
+# IDEs (alphabetical)
+.idea/
+.vscode/
+*.swp
+```
+
+### What to Include
+
+**Build artifacts:** `build/`, `dist/`, `*.egg-info/`, `bin/`, `out/`
+
+**Dependencies:** `node_modules/`, `.venv/`, `venv/`, `vendor/`
+
+**Compiled code:** `*.pyc`, `*.pyo`, `__pycache__/`, `*.o`, `*.so`
+
+**Test outputs:** `.pytest_cache/`, `.coverage`, `htmlcov/`, `.tox/`
+
+**Environment files:** `.env`, `.env.*` (except `.env.example`)
+
+**Logs:** `*.log`, `logs/`
+
+**OS files:** `.DS_Store`, `Thumbs.db`
+
+**IDE files:** `.vscode/`, `.idea/`, `*.swp`
+
+**Temporary:** `tmp/`, `temp/`, `*.tmp`
+
+### What NOT to Include
+
+- Source code or tests
+- Configuration templates (`.env.example`, `config.example.yml`)
+- Project documentation (`README.md`, `docs/`)
+- Essential config (`pyproject.toml`, `package.json`, `Dockerfile`)
+
+### Negation for Exceptions
+
+```gitignore
+# Ignore all .env files except the example
+.env.*
+!.env.example
+
+# Ignore configs except template
+config/*.yml
+!config/template.yml
+```
+
+### Common Mistakes
+
+```gitignore
+# BAD: Too broad
+*
+*.py*
+config/
+
+# GOOD: Specific patterns
+*.pyc
+*.pyo
+__pycache__/
+config/*.local
+```
+
+### Testing Patterns
+
+```bash
+# Check what Git ignores
+git status --ignored
+
+# Check specific file
+git check-ignore -v path/to/file.txt
+
+# List tracked files
+git ls-files
+```
+
+### Python Template
+
+```gitignore
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.so
+
+# Virtual environments
+.venv/
+venv/
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Type checking
+.mypy_cache/
+
+# Linting
+.ruff_cache/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary
+temp/
+tmp/
+```
