@@ -137,10 +137,12 @@ describe("web-tools extension", () => {
       expect(args).toContain("5000");
     });
 
-    it("should not pass --max-chars when unspecified", async () => {
+    it("should pass default --max-chars when unspecified", async () => {
       mockPi.exec.mockResolvedValue({ code: 0, stdout: "content", stderr: "" });
       await fetch_tool.execute("id", { url: "https://example.com" }, undefined, undefined, {});
-      expect((mockPi.exec.mock.calls[0][1] as string[])).not.toContain("--max-chars");
+      const args = mockPi.exec.mock.calls[0][1] as string[];
+      expect(args).toContain("--max-chars");
+      expect(args).toContain("8000");
     });
 
     it("should return trimmed stdout", async () => {

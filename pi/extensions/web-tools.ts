@@ -30,6 +30,8 @@ import { Text } from "@earendil-works/pi-tui";
 
 const SEARXNG_URL = "http://192.168.16.241:8888/search";
 const WEB_FETCH_SCRIPT = path.join(os.homedir(), ".dotfiles", "pi", "extensions", "web-fetch", "fetch.js");
+const DEFAULT_WEB_FETCH_MAX_CHARS = 8000;
+const MAX_WEB_FETCH_CHARS = 50000;
 
 // ── .env parsing ────────────────────────────────────────────────────────────
 
@@ -147,6 +149,13 @@ function displayUrl(url: string | undefined): string {
 	return url.length > 120 ? `${url.slice(0, 117)}...` : url;
 }
 
+export function normalizeWebFetchMaxChars(value: number | undefined): number {
+	if (value === undefined) return DEFAULT_WEB_FETCH_MAX_CHARS;
+	if (!Number.isFinite(value) || value <= 0)
+		throw new Error("max_chars must be a positive number");
+	return Math.min(Math.floor(value), MAX_WEB_FETCH_CHARS);
+}
+
 export default function (pi: ExtensionAPI) {
 	// ── Tool: web_search ────────────────────────────────────────────────────────
 	pi.registerTool({
@@ -220,9 +229,9 @@ export default function (pi: ExtensionAPI) {
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
 			const { url, max_chars } = params as { url: string; max_chars?: number };
+			const normalizedMaxChars = normalizeWebFetchMaxChars(max_chars);
 
-			const args = [WEB_FETCH_SCRIPT, url];
-			if (max_chars) args.push("--max-chars", String(max_chars));
+			const args = [WEB_FETCH_SCRIPT, url, "--max-chars", String(normalizedMaxChars)];
 
 			const result = await pi.exec("node", args);
 

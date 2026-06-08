@@ -2,7 +2,7 @@
  * Pure function tests for web-tools extension — no mocking needed.
  */
 import { describe, it, expect } from "vitest";
-import { parseDotEnv, formatSearchResult } from "../extensions/web-tools.ts";
+import { parseDotEnv, formatSearchResult, normalizeWebFetchMaxChars } from "../extensions/web-tools.ts";
 
 describe("parseDotEnv", () => {
   it("parses simple KEY=VALUE pairs", () => {
@@ -60,6 +60,25 @@ describe("parseDotEnv", () => {
   it("skips lines with empty key", () => {
     const result = parseDotEnv("=value");
     expect(result).toEqual([]);
+  });
+});
+
+describe("normalizeWebFetchMaxChars", () => {
+  it("uses the default when unspecified", () => {
+    expect(normalizeWebFetchMaxChars(undefined)).toBe(8000);
+  });
+
+  it("floors and preserves valid limits", () => {
+    expect(normalizeWebFetchMaxChars(1234.9)).toBe(1234);
+  });
+
+  it("caps large values", () => {
+    expect(normalizeWebFetchMaxChars(100000)).toBe(50000);
+  });
+
+  it("rejects invalid values", () => {
+    expect(() => normalizeWebFetchMaxChars(0)).toThrow(/positive/);
+    expect(() => normalizeWebFetchMaxChars(Number.NaN)).toThrow(/positive/);
   });
 });
 
