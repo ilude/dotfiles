@@ -9,7 +9,7 @@
  *   4. routing_decision schema + transcript-purge command registration
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -662,6 +662,32 @@ describe("routing decision schema and purge command", () => {
 		expect(payload.fallback_metadata).toEqual({ cap: null, hysteresis: null });
 	});
 
+	it("rejects invalid /transcript-purge age without removing files", async () => {
+		const settingsPath = path.join(tmpHome, ".pi", "agent", "settings.json");
+		fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+		fs.writeFileSync(
+			settingsPath,
+			JSON.stringify({ transcript: { enabled: true, path: tmpDir, retentionDays: 14 } }),
+			"utf-8",
+		);
+		const oldJsonl = path.join(tmpDir, "old-session.jsonl");
+		const oldSpill = path.join(tmpDir, "old-session.spill");
+		fs.writeFileSync(oldJsonl, "x");
+		fs.mkdirSync(oldSpill, { recursive: true });
+
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/transcript-purge.ts");
+		mod.default(mockPi as any);
+		const purge = mockPi._commands.find((c) => c.name === "transcript-purge");
+		const notify = vi.fn();
+
+		await purge!.handler("7days", { ui: { notify } } as any);
+
+		expect(fs.existsSync(oldJsonl)).toBe(true);
+		expect(fs.existsSync(oldSpill)).toBe(true);
+		expect(notify).toHaveBeenCalledWith(expect.stringContaining("Invalid age"), "error");
+	});
+
 	it("registers /transcript-purge command and removes old trace+spill files", async () => {
 		// Set the per-user transcript path to the test dir.
 		const settingsPath = path.join(tmpHome, ".pi", "agent", "settings.json");
@@ -678,6 +704,9 @@ describe("routing decision schema and purge command", () => {
 		fs.writeFileSync(oldJsonl, "x");
 		fs.mkdirSync(oldSpill, { recursive: true });
 		fs.writeFileSync(path.join(oldSpill, "evt.json.gz"), "gz");
+		const oldTime = new Date(Date.now() - 60_000);
+		fs.utimesSync(oldJsonl, oldTime, oldTime);
+		fs.utimesSync(oldSpill, oldTime, oldTime);
 
 		const mockPi = createMockPi();
 		const mod = await import("../extensions/transcript-purge.ts");

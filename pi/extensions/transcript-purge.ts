@@ -26,18 +26,18 @@ const UNIT_MS: Record<string, number> = {
 
 /**
  * Parse `7d`, `24h`, `30m`, `1500ms`, or a bare number (ms). Returns null when
- * the input is empty/unparseable -- the caller treats that as "delete all".
+ * the input is empty and undefined when the input is invalid.
  */
-export function parseAgeArgument(raw: string): number | null {
+export function parseAgeArgument(raw: string): number | null | undefined {
 	const trimmed = raw.trim().toLowerCase();
 	if (!trimmed) return null;
 	const match = trimmed.match(/^(\d+(?:\.\d+)?)\s*(ms|s|m|h|d)?$/);
-	if (!match) return null;
+	if (!match) return undefined;
 	const value = Number(match[1]);
-	if (!Number.isFinite(value) || value < 0) return null;
+	if (!Number.isFinite(value) || value < 0) return undefined;
 	const unit = match[2] ?? "ms";
 	const multiplier = UNIT_MS[unit];
-	if (!multiplier) return null;
+	if (!multiplier) return undefined;
 	return value * multiplier;
 }
 
@@ -46,8 +46,17 @@ export default function (pi: ExtensionAPI) {
 		description:
 			"Delete trace+spill files older than the given age (default: all). Examples: /transcript-purge, /transcript-purge 7d, /transcript-purge 24h",
 		handler: async (args, ctx) => {
-			const settings = loadSettings();
 			const maxAgeMs = parseAgeArgument(args);
+			if (maxAgeMs === undefined) {
+				uiNotify(
+					ctx,
+					"error",
+					"Invalid age. Usage: /transcript-purge, /transcript-purge 7d, /transcript-purge 24h, /transcript-purge 30m",
+					{ prefix: "transcript-purge" },
+				);
+				return;
+			}
+			const settings = loadSettings();
 			const result = await sweepRetention(
 				settings.path,
 				settings.retentionDays,
