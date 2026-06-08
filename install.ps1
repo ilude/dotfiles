@@ -135,7 +135,7 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
 # Check Developer Mode early (before elevation decision)
 $DevModeEarly = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -Name AllowDevelopmentWithoutDevLicense -ErrorAction SilentlyContinue).AllowDevelopmentWithoutDevLicense -eq 1
 
-if (-not $isAdmin -and -not $NoElevate -and (-not $DevModeEarly -or $Work -or $Dev -or $ITAdmin)) {
+if (-not $isAdmin -and -not $NoElevate) {
     Write-Host "Requesting Administrator privileges..." -ForegroundColor Yellow
 
     # Determine PowerShell executable
@@ -172,13 +172,8 @@ if (-not $isAdmin -and -not $NoElevate -and (-not $DevModeEarly -or $Work -or $D
         Write-Host "Elevation cancelled or failed: $($_.Exception.Message)" -ForegroundColor Red
         exit 2
     }
-} elseif (-not $isAdmin -and ($NoElevate -or $DevModeEarly)) {
-    if ($DevModeEarly) {
-        Write-Host "Developer Mode enabled - creating symlinks without elevation" -ForegroundColor Green
-    }
-    if ($NoElevate) {
-        Write-Host "Skipping elevation (-NoElevate)" -ForegroundColor Yellow
-    }
+} elseif (-not $isAdmin -and $NoElevate) {
+    Write-Host "Skipping elevation (-NoElevate)" -ForegroundColor Yellow
     Write-Host "Admin-only operations (MSYS2 nsswitch.conf, WSL install) will be skipped" -ForegroundColor Yellow
 }
 
@@ -1814,11 +1809,13 @@ try {
         # Install or update Pi on every run with no version pin. pnpm's global
         # policy, including minimumReleaseAge, determines the newest eligible version.
         Write-Host "  Installing/updating pi-coding-agent via pnpm..." -ForegroundColor Cyan
+        $env:CI = '1'
         pnpm add -g --allow-build=koffi --allow-build=protobufjs `
             '@earendil-works/pi-coding-agent' `
             '@earendil-works/pi-agent-core' `
             '@earendil-works/pi-ai' `
             '@earendil-works/pi-tui'
+        $env:CI = $null
         if ($LASTEXITCODE -eq 0) {
             Write-Host "  pi-coding-agent: installed/updated successfully via pnpm" -ForegroundColor Green
 
@@ -1854,6 +1851,26 @@ try {
         if (Test-Path $piDepsLinkSetup) {
             $bashPath = ConvertTo-GitBashPath $piDepsLinkSetup
             & $gitBash "$bashPath"
+        }
+    }
+
+    # Install pi/extensions dependencies (web-tree-sitter, tree-sitter-bash, etc.)
+    $piExtensionsDir = Join-Path $BASEDIR "pi" "extensions"
+    if ((Test-Path $piExtensionsDir) -and (Get-Command pnpm -ErrorAction SilentlyContinue)) {
+        $piExtNodeModules = Join-Path $piExtensionsDir "node_modules"
+        $piExtLock = Join-Path $piExtensionsDir "pnpm-lock.yaml"
+        if ((Test-Path $piExtNodeModules) -and (Test-Path $piExtLock)) {
+            Write-Host "  pi/extensions deps: already installed" -ForegroundColor DarkGray
+        } else {
+            Write-Host "  Installing pi/extensions dependencies..." -ForegroundColor Cyan
+            Push-Location $piExtensionsDir
+            pnpm install --frozen-lockfile 2>&1 | Out-String | Write-Host
+            Pop-Location
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "  pi/extensions deps: installed" -ForegroundColor Green
+            } else {
+                Write-Host "  pi/extensions deps: install failed" -ForegroundColor Red
+            }
         }
     }
 
