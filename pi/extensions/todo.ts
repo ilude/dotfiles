@@ -138,13 +138,22 @@ function getTodoPath(cwd: string): string {
   return path.join(cwd, ".pi", "todo.json");
 }
 
+function isTodoState(value: unknown): value is TodoState {
+  return Boolean(value) && typeof value === "object" && Array.isArray((value as TodoState).items);
+}
+
 function loadTodos(cwd: string): TodoState {
   const filePath = getTodoPath(cwd);
   try {
     const content = fs.readFileSync(filePath, "utf-8");
-    return JSON.parse(content) as TodoState;
-  } catch {
-    return { items: [] };
+    const parsed = JSON.parse(content) as unknown;
+    if (!isTodoState(parsed)) throw new Error("todo state must contain an items array");
+    return parsed;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return { items: [] };
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Could not load ${filePath}: ${message}. Existing todo state was not modified.`);
   }
 }
 

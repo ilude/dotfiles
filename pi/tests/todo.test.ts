@@ -33,6 +33,30 @@ describe("todo extension", () => {
     expect(tool.name).toBe("todo");
   });
 
+  describe("state loading", () => {
+    it("should not overwrite malformed todo state", async () => {
+      const piDir = path.join(tmpDir, ".pi");
+      fs.mkdirSync(piDir, { recursive: true });
+      const filePath = path.join(piDir, "todo.json");
+      fs.writeFileSync(filePath, "{ malformed", "utf-8");
+
+      await expect(tool.execute("id", { action: "add", title: "New task" }, undefined, undefined, ctx))
+        .rejects.toThrow(/Existing todo state was not modified/);
+      expect(fs.readFileSync(filePath, "utf-8")).toBe("{ malformed");
+    });
+
+    it("should not overwrite todo state with the wrong shape", async () => {
+      const piDir = path.join(tmpDir, ".pi");
+      fs.mkdirSync(piDir, { recursive: true });
+      const filePath = path.join(piDir, "todo.json");
+      fs.writeFileSync(filePath, JSON.stringify({ tasks: [] }), "utf-8");
+
+      await expect(tool.execute("id", { action: "add", title: "New task" }, undefined, undefined, ctx))
+        .rejects.toThrow(/items array/);
+      expect(JSON.parse(fs.readFileSync(filePath, "utf-8"))).toEqual({ tasks: [] });
+    });
+  });
+
   describe("add", () => {
     it("should add a task and persist to file", async () => {
       const result = await tool.execute("id", { action: "add", title: "Build feature" }, undefined, undefined, ctx);
