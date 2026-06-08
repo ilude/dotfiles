@@ -55,7 +55,7 @@ describe("agents-context extension", () => {
 		});
 	});
 
-	it("discovers global/user, root, nested, Claude, .pi, and imported instructions in deterministic order", () => {
+	it("discovers global/user, root, nested, and imported instructions in deterministic order", () => {
 		const cwd = path.join(tmp, "repo");
 		const nested = path.join(cwd, "src", "feature");
 		writeFile(path.join(tmp, ".pi", "agent", "AGENTS.md"), "global agent");
@@ -74,15 +74,52 @@ describe("agents-context extension", () => {
 			".pi/AGENTS.md",
 			"repo/AGENTS.md",
 			"repo/docs/root.md",
-			"repo/.pi/AGENTS.md",
-			"repo/CLAUDE.md",
-			"repo/.claude/CLAUDE.md",
 			"repo/src/AGENT.md",
 			"repo/src/feature/AGENTS.md",
 		]);
 
 		const second = agentsContextTestApi.discoverForPaths(cwd, [path.join("src", "feature", "thing.ts")]);
 		expect(second).toEqual([]);
+	});
+
+	it("rejects unsafe AGENTS imports without loading skipped content", () => {
+		const cwd = path.join(tmp, "repo");
+		writeFile(path.join(cwd, "AGENTS.md"), [
+			"root agents",
+			"@../outside.md",
+			"@/etc/hosts",
+			"@.env",
+			"@docs/ok.md",
+		].join("\n"));
+		writeFile(path.join(tmp, "outside.md"), "outside secret");
+		writeFile(path.join(cwd, ".env"), "TOKEN=secret");
+		writeFile(path.join(cwd, "docs", "ok.md"), "safe import");
+
+		const files = agentsContextTestApi.discoverForPaths(cwd, ["file.ts"]);
+		expect(files.map((file) => path.relative(tmp, file.path).replaceAll(path.sep, "/"))).toEqual([
+			"repo/AGENTS.md",
+			"repo/docs/ok.md",
+		]);
+		const status = formatAgentsContextStatus();
+		expect(status).toContain("parent-directory imports are not allowed");
+		expect(status).toContain("absolute imports are not allowed");
+		expect(status).toContain("sensitive file imports are not allowed");
+		expect(status).not.toContain("outside secret");
+		expect(status).not.toContain("TOKEN=secret");
+	});
+
+	it("rejects AGENTS imports through symlinks escaping the repo", () => {
+		const cwd = path.join(tmp, "repo");
+		writeFile(path.join(cwd, "AGENTS.md"), "root agents\n@links/outside.md");
+		writeFile(path.join(tmp, "outside", "outside.md"), "outside secret");
+		mkdirp(path.join(cwd, "links"));
+		fs.symlinkSync(path.join(tmp, "outside", "outside.md"), path.join(cwd, "links", "outside.md"));
+
+		const files = agentsContextTestApi.discoverForPaths(cwd, ["file.ts"]);
+		expect(files.map((file) => path.relative(tmp, file.path).replaceAll(path.sep, "/"))).toEqual([
+			"repo/AGENTS.md",
+		]);
+		expect(formatAgentsContextStatus()).toContain("import escapes instruction root");
 	});
 
 	it("blocks a mutating call once after loading new instructions and allows retry", async () => {

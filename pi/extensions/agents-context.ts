@@ -164,9 +164,70 @@ function parseImports(content: string): string[] {
 	return imports;
 }
 
+function isPathInside(candidate: string, root: string): boolean {
+	const relative = path.relative(root, candidate);
+	return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative);
+}
+
+function isSensitiveImportPath(imported: string): boolean {
+	const normalized = imported.split(/[\\/]+/).filter(Boolean);
+	const lower = normalized.map((part) => part.toLowerCase());
+	if (lower.some((part) => part === ".ssh")) return true;
+	return lower.some((part) =>
+		part === ".env" ||
+		part.startsWith(".env.") ||
+		part.endsWith(".pem") ||
+		part.endsWith(".key") ||
+		part === "id_rsa" ||
+		part === "id_ed25519" ||
+		part === "known_hosts" ||
+		part === "ssh_config"
+	);
+}
+
+function validateImportSpec(imported: string) {
+	if (path.isAbsolute(imported) || imported.startsWith("~"))
+		return "absolute imports are not allowed";
+	const parts = imported.split(/[\\/]+/).filter(Boolean);
+	if (parts.includes("..")) return "parent-directory imports are not allowed";
+	if (isSensitiveImportPath(imported))
+		return "sensitive file imports are not allowed";
+	return undefined;
+}
+
+function existingImportPath(imported: string, importerPath: string) {
+	const importPath = canonical(path.resolve(path.dirname(importerPath), imported));
+	if (fs.existsSync(importPath) && fs.statSync(importPath).isFile()) return importPath;
+	noteSkipped(`${importPath} skipped: import not found`);
+	return undefined;
+}
+
+function realPathInsideRoot(importPath: string, importRoot: string) {
+	const rootReal = fs.realpathSync(importRoot);
+	const importReal = fs.realpathSync(importPath);
+	if (importReal === rootReal || isPathInside(importReal, rootReal)) return importPath;
+	noteSkipped(`${importPath} skipped: import escapes instruction root`);
+	return undefined;
+}
+
+function resolveSafeImport(
+	imported: string,
+	importerPath: string,
+	importRoot: string,
+) {
+	const validationError = validateImportSpec(imported);
+	if (validationError) {
+		noteSkipped(`${imported} skipped: ${validationError}`);
+		return undefined;
+	}
+	const importPath = existingImportPath(imported, importerPath);
+	return importPath ? realPathInsideRoot(importPath, importRoot) : undefined;
+}
+
 function readInstruction(
 	filePath: string,
 	reason: string,
+	importRoot: string,
 	depth = 0,
 ): LoadedInstruction[] {
 	const fullPath = canonical(filePath);
@@ -198,16 +259,11 @@ function readInstruction(
 	if (truncated) noteSkipped(`${fullPath} truncated`);
 	if (depth >= MAX_IMPORT_DEPTH) return result;
 	for (const imported of parseImports(content)) {
-		const importPath = canonical(
-			path.resolve(path.dirname(fullPath), imported),
+		const importPath = resolveSafeImport(imported, fullPath, importRoot);
+		if (!importPath) continue;
+		result.push(
+			...readInstruction(importPath, `imported by ${fullPath}`, importRoot, depth + 1),
 		);
-		if (fs.existsSync(importPath) && fs.statSync(importPath).isFile()) {
-			result.push(
-				...readInstruction(importPath, `imported by ${fullPath}`, depth + 1),
-			);
-		} else {
-			noteSkipped(`${importPath} skipped: import not found`);
-		}
 	}
 	return result;
 }
@@ -258,12 +314,17 @@ function instructionReason(file: string, globalFiles: Set<string>): string {
 function discoverForPaths(cwd: string, paths: string[]): LoadedInstruction[] {
 	const globalFiles = globalInstructionFiles();
 	const globalFileSet = new Set(globalFiles);
+	const projectRoot = projectRootFor(cwd);
 	const files = [
 		...globalFiles,
 		...paths.flatMap((target) => localInstructionFiles(cwd, target)),
 	];
 	return files.flatMap((file) =>
-		readInstruction(file, instructionReason(file, globalFileSet)),
+		readInstruction(
+			file,
+			instructionReason(file, globalFileSet),
+			globalFileSet.has(file) ? path.dirname(file) : projectRoot,
+		),
 	);
 }
 
