@@ -588,4 +588,5 @@ $env:DOCKER_BUILDKIT = 1
 
 #endregion
 
-. 'C:\Users\mglenn\AppData\Roaming\dystroy\broot\config\launcher\powershell\br.ps1'
+$brootLauncher = Join-Path $env:APPDATA 'dystroy\broot\config\launcher\powershell\br.ps1'
+if (Test-Path $brootLauncher) { . $brootLauncher }
