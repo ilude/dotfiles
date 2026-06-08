@@ -88,6 +88,43 @@ no_delete_paths: []
 		).resolves.toEqual({ decision: "allow" });
 	});
 
+	it("allows piped bun stdin execution without an AST warning", async () => {
+		await expect(
+			evaluateDangerousCommand(
+				"printf 'console.log(1)\\n' | bun run -",
+				[rmRule],
+				{
+					toolName: "bash",
+					astAnalysis: { ...astConfig, timeoutMs: 50 },
+				},
+			),
+		).resolves.toBeUndefined();
+		await expect(
+			evaluateDangerousCommand(
+				"printf 'console.log(1)\n' | bun run -",
+				[rmRule],
+				{
+					toolName: "bash",
+					astAnalysis: { ...astConfig, timeoutMs: 50 },
+				},
+			),
+		).resolves.toBeUndefined();
+	});
+
+	it("asks before running bun stdin scripts with filesystem operations", async () => {
+		await expect(
+			evaluateDangerousCommand(
+				'printf \'require("fs").rmSync("target")\' | bun run -',
+				[rmRule],
+				{ toolName: "bash", astAnalysis: astConfig },
+			),
+		).resolves.toEqual({
+			block: true,
+			reason:
+				'Confirmation required for dangerous command (matched "bun stdin script"): Bun stdin script contains filesystem or process operations - confirm command is safe',
+		});
+	});
+
 	it("blocks a destructive command hidden behind bash -c", async () => {
 		const result = await analyzeCommandAst(
 			"bash -c 'rm -rf /tmp/x'",

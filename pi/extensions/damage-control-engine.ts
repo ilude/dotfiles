@@ -411,6 +411,40 @@ export function isReadOnlySearchCommand(
 	return segments.length > 0 && segments.every(isReadOnlySearchSegment);
 }
 
+const DANGEROUS_BUN_STDIN_SCRIPT =
+	/\b(?:Bun\.(?:spawn|spawnSync|write)|require\s*\(\s*['"](?:node:)?(?:fs|child_process)['"]|import\s+.*(?:node:)?(?:fs|child_process)|(?:fs|child_process)\.|(?:rm|unlink|rmdir|chmod|chown)Sync\s*\(|exec(?:File)?Sync\s*\(|spawnSync\s*\()/;
+
+function staticBunStdinScript(command: string): string | undefined {
+	const parts = splitOutsideQuotes(command, ["|"]);
+	if (parts.length !== 2) return undefined;
+	const producer = shellTokenize(parts[0]);
+	const runner = shellTokenize(parts[1]);
+	if (runner[0] !== "bun") return undefined;
+	if (!(runner.length === 3 && runner[1] === "run" && runner[2] === "-")) {
+		return undefined;
+	}
+	if (producer[0] === "printf" && producer.length === 2) return producer[1];
+	if (producer[0] === "echo" && producer.length > 1) {
+		return producer.slice(1).join(" ");
+	}
+	return undefined;
+}
+
+function analyzeBunStdinCommand(
+	command: string,
+): { decision: "allow" } | { decision: "ask"; reason: string } | undefined {
+	const script = staticBunStdinScript(command);
+	if (script === undefined) return undefined;
+	if (DANGEROUS_BUN_STDIN_SCRIPT.test(script)) {
+		return {
+			decision: "ask",
+			reason:
+				"Bun stdin script contains filesystem or process operations - confirm command is safe",
+		};
+	}
+	return { decision: "allow" };
+}
+
 function hasCombinedShortFlag(args: string[], chars: string): boolean {
 	return args.some(
 		(arg) =>
@@ -586,6 +620,24 @@ export async function evaluateDangerousCommand(
 			block: true,
 			reason: `Blocked dangerous command (matched "${rule.pattern}"): ${rule.reason}`,
 		};
+	}
+	if (ctx?.toolName === "bash") {
+		const bunStdinDecision = analyzeBunStdinCommand(analysisCommand);
+		if (bunStdinDecision?.decision === "allow") return undefined;
+		if (bunStdinDecision?.decision === "ask") {
+			if (ctx.hasUI && ctx.ui?.confirm) {
+				emitTerminalBell();
+				const ok = await ctx.ui.confirm(
+					"Confirm dangerous command",
+					bunStdinDecision.reason,
+				);
+				if (ok) return undefined;
+			}
+			return {
+				block: true,
+				reason: `Confirmation required for dangerous command (matched "bun stdin script"): ${bunStdinDecision.reason}`,
+			};
+		}
 	}
 	if (ctx?.toolName === "bash") {
 		const astDecision = await analyzeCommandAst(
