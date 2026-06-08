@@ -1315,6 +1315,25 @@ export default function (pi: ExtensionAPI) {
 			},
 			routeCtx,
 		);
+		const routedPayload = isPlainRecord(payload) ? payload : {};
+		const originalPayload = isPlainRecord(event.payload) ? event.payload : {};
+		const explicitModelPreserved = routedPayload.explicit_model_preserved === true;
+		const selectedModel = typeof routedPayload.model === "string" ? routedPayload.model : decision.model_id ?? decision.model_label;
+		const finalAppliedEffort = typeof routedPayload.reasoning_effort === "string" ? routedPayload.reasoning_effort : decision.thinking_level;
+		const userSelectedRoute =
+			decision.decisionTrace.overrideScope !== "none" || runtimeEffortOverride
+				? {
+					route: decision.decisionTrace.overrideScope !== "none" ? decision.applied_route : null,
+					effort: runtimeEffortOverride?.effort ?? null,
+				}
+				: null;
+		const overrideType = explicitModelPreserved
+			? "explicit_model"
+			: runtimeEffortOverride
+				? effortOverrideType(decision.thinking_level, runtimeEffortOverride.effort)
+				: decision.decisionTrace.overrideScope !== "none"
+					? `route_${decision.decisionTrace.overrideScope}`
+					: "none";
 		ctx.ui?.setStatus?.(
 			"router",
 			`same_turn_applied: true route_decision_id=${decision.route_decision_id} route=${decision.applied_route}`,
@@ -1339,6 +1358,16 @@ export default function (pi: ExtensionAPI) {
 							? decision.latency_ms
 							: null,
 					fallbackReason: decision.fallback_reason ?? null,
+					selectedModelSize: appliedSize,
+					actualModel: {
+						provider: decision.provider_family,
+						id: selectedModel,
+						name: decision.model_label,
+					},
+					modelSwitchApplied: !explicitModelPreserved && originalPayload.model !== selectedModel,
+					userSelectedRoute,
+					finalAppliedEffort,
+					overrideType,
 				}),
 				route_decision_id: decision.route_decision_id,
 				same_turn_applied: true,

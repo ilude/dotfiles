@@ -1,7 +1,14 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../extensions/transcript-runtime.ts", () => ({
+	emit: vi.fn(async () => {}),
+	getSessionId: vi.fn(() => "test-session"),
+	getWriter: vi.fn(() => null),
+}));
+
 import promptRouter, {
 	applyHysteresis,
 	applyModelEffortBias,
@@ -22,11 +29,16 @@ import {
 	normalizeRouteCandidate,
 	ROUTER_SIZES,
 } from "../lib/prompt-router/route-vocabulary.ts";
+import { emit as transcriptEmit } from "../extensions/transcript-runtime.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+beforeEach(() => {
+	vi.mocked(transcriptEmit).mockClear();
+});
 
 function makeV3Json(
 	modelTier: string,
@@ -2027,6 +2039,51 @@ describe("T0: same-turn routing feasibility", () => {
 			"classifier-start",
 			"classifier-finish",
 		]);
+	});
+
+	it("emits same-turn routing telemetry with applied model and effort fields", async () => {
+		const pi = createMockPi();
+		promptRouter(pi as any);
+		const availableModels = [
+			{ provider: "openai-codex", id: "gpt-5.4-mini" },
+			{ provider: "openai-codex", id: "gpt-5.4-fast" },
+			{ provider: "openai-codex", id: "gpt-5.4" },
+		];
+		const ctx = createMockCtx({
+			model: { provider: "openai-codex", id: "gpt-5.4-mini" },
+			modelRegistry: {
+				getAvailable: vi.fn(() => availableModels),
+				find: vi.fn((provider: string, id: string) =>
+					availableModels.find((m) => m.provider === provider && m.id === id),
+				),
+			},
+			ui: { ...createMockCtx().ui, setStatus: vi.fn(), notify: vi.fn() },
+		});
+		(pi.exec as any).mockResolvedValueOnce({
+			code: 0,
+			stdout: makeV3Json("core", "medium", 0.91),
+			stderr: "",
+		});
+
+		await routeProviderPrompt(pi, ctx, "synthetic telemetry prompt");
+
+		const routingCall = vi.mocked(transcriptEmit).mock.calls.find(
+			([envelope]) => envelope.event_type === "routing_decision",
+		);
+		expect(routingCall).toBeDefined();
+		const payload = routingCall?.[1] as Record<string, unknown>;
+		expect(payload.selected_model_size).toBe("medium");
+		expect(payload.actual_model).toEqual({
+			provider: "openai-codex",
+			id: "gpt-5.4-fast",
+			name: "gpt-5.4-fast",
+		});
+		expect(payload.model_switch_applied).toBe(true);
+		expect(payload.final_applied_route).toEqual({
+			model_tier: "core",
+			effort: "medium",
+		});
+		expect(payload.override_type).toBe("none");
 	});
 });
 
