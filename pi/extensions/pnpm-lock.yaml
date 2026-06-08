@@ -9,23 +9,23 @@ importers:
   .:
     dependencies:
       '@earendil-works/pi-agent-core':
-        specifier: 0.78.0
-        version: 0.78.0(ws@8.20.0)(zod@4.4.2)
+        specifier: 0.78.1
+        version: 0.78.1(ws@8.20.0)(zod@4.4.2)
       '@earendil-works/pi-ai':
-        specifier: 0.78.0
-        version: 0.78.0(ws@8.20.0)(zod@4.4.2)
+        specifier: 0.78.1
+        version: 0.78.1(ws@8.20.0)(zod@4.4.2)
       '@earendil-works/pi-coding-agent':
-        specifier: 0.78.0
-        version: 0.78.0(ws@8.20.0)(zod@4.4.2)
+        specifier: 0.78.1
+        version: 0.78.1(ws@8.20.0)(zod@4.4.2)
       '@earendil-works/pi-tui':
-        specifier: 0.78.0
-        version: 0.78.0
+        specifier: 0.78.1
+        version: 0.78.1
       '@sinclair/typebox':
         specifier: ^0.34.41
         version: 0.34.49
       tree-sitter-bash:
         specifier: 0.25.1
-        version: 0.25.1(tree-sitter@0.25.0)
+        version: 0.25.1
       web-tree-sitter:
         specifier: 0.26.9
         version: 0.26.9
@@ -133,10 +133,6 @@ packages:
     resolution: {integrity: sha512-81duvlltQlsfn5K+o8zILcystBRdbT1G2JJYVCML5NZHBz4CL/zf+sAemCtBh/uh6RQUMyInGeZLQ7/8igZhbA==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/types@3.973.8':
-    resolution: {integrity: sha512-gjlAdtHMbtR9X5iIhVUvbVcy55KnznpC6bkDUWW9z915bi0ckdUr5cjf16Kp6xq0bP5HBD2xzgbL9F9Quv5vUw==}
-    engines: {node: '>=20.0.0'}
-
   '@aws-sdk/types@3.973.9':
     resolution: {integrity: sha512-kuBfgQVdcz5Bmapc4A13YbpVw/pXkesfhetcFYwbntqas8sF41OHyd4o28+/TG2ZQdHBsv90Lsu5y6oitvYCdg==}
     engines: {node: '>=20.0.0'}
@@ -157,22 +153,22 @@ packages:
     resolution: {integrity: sha512-JiDShH45zKHWyGe4ZNVRrCjBz8Nh9TMmZG1kh4QTK8hCBTWBi8Da+i7s1fJw7/lYpM4ccepSNfqzZ/QvABBi5g==}
     engines: {node: '>=6.9.0'}
 
-  '@earendil-works/pi-agent-core@0.78.0':
-    resolution: {integrity: sha512-xhWd59Qzd8yO88gYQw2S4dEQstJJEiUtxRP01//YzVJ61jCtUASMfcyAmYhgGYR4Onp7GmwEAbBBGOiV6Iwk9g==}
+  '@earendil-works/pi-agent-core@0.78.1':
+    resolution: {integrity: sha512-oPwVRkkAvyKPWyM7E4k+EaTNmynbYn7ZLG/LBh9BUnMNb2gvpMp+VQ420R6JCJ20uogSqrHnWTyosSa/rU8lVw==}
     engines: {node: '>=22.19.0'}
 
-  '@earendil-works/pi-ai@0.78.0':
-    resolution: {integrity: sha512-q0hUrvT6ngT6cgBX0oIbzfQfmzztgdkZobP8OTL+sCOOBlnG6+1YRt8g7zO9CC/4NdeYEqa7uGqWdQhH0fjCLA==}
-    engines: {node: '>=22.19.0'}
-    hasBin: true
-
-  '@earendil-works/pi-coding-agent@0.78.0':
-    resolution: {integrity: sha512-gXt6pD3BoSG0yLwfLqb6844vz6qAO87PvNrv+YSDYKP3QliTjcwIld9v4ihmDcmBjO13QwKswubq/lYCvn4bkg==}
+  '@earendil-works/pi-ai@0.78.1':
+    resolution: {integrity: sha512-CM2pkTs1iupG/maw381lC9Q/Y/aQaMGK7GILc28ttImD0ci3LDwKroDsGkWbly5JIy3iqxdRxB9JlG7vvzCzTg==}
     engines: {node: '>=22.19.0'}
     hasBin: true
 
-  '@earendil-works/pi-tui@0.78.0':
-    resolution: {integrity: sha512-3a705FnsVVUhAyceShNB3kS2rpxcxLcx+hqB0u6MMMpHwQGbW+m++MqA6r7eOzq/8FLx5e3vDh38h/SVTk2qzw==}
+  '@earendil-works/pi-coding-agent@0.78.1':
+    resolution: {integrity: sha512-Syjf6Ib8UoY5t9ZdKjp0BRrQZuFkFBc8j2KEU9zG/ZnmYPcAxYeioofdv2Q3MEXnHEX2U8sKQptkSnJIdMsd0g==}
+    engines: {node: '>=22.19.0'}
+    hasBin: true
+
+  '@earendil-works/pi-tui@0.78.1':
+    resolution: {integrity: sha512-07GVQo/38a0yvIPlWDr3RJn1B8gk3ZuIX9h2oIQ+Biyu3JN0KppWmgWHfaWRydQgse5JtC++KDw5MWaIRnV0mw==}
     engines: {node: '>=22.19.0'}
 
   '@google/genai@1.52.0':
@@ -320,10 +316,6 @@ packages:
 
   '@smithy/signature-v4@5.4.5':
     resolution: {integrity: sha512-QBJKWGqIknH0dc9LWpfH1mkdokAx6iXYN3UcQ3eY6uIEyScuoQAhfl94ge7ozUy9WgFUdE8xsvwBjaYBbWmPNA==}
-    engines: {node: '>=18.0.0'}
-
-  '@smithy/types@4.14.1':
-    resolution: {integrity: sha512-59b5HtSVrVR/eYNei3BUj3DCPKD/G7EtDDe7OEJE7i7FtQFugYo6MxbotS8mVJkLNVf8gYaAlEBwwtJ9HzhWSg==}
     engines: {node: '>=18.0.0'}
 
   '@smithy/types@4.14.2':
@@ -591,9 +583,6 @@ packages:
       tree-sitter:
         optional: true
 
-  tree-sitter@0.25.0:
-    resolution: {integrity: sha512-PGZZzFW63eElZJDe/b/R/LbsjDDYJa5UEjLZJB59RQsMX+fo0j54fqBPn1MGKav/QNa0JR0zBiVaikYDWCj5KQ==}
-
   ts-algebra@2.0.0:
     resolution: {integrity: sha512-FPAhNPFMrkwz76P7cdjdmiShwMynZYN6SgOujD1urY4oNm80Ou9oMdmbR45LotcKOXoy7wSmHkRFE6Mxbrhefw==}
 
@@ -667,7 +656,7 @@ snapshots:
   '@aws-crypto/crc32@5.2.0':
     dependencies:
       '@aws-crypto/util': 5.2.0
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/types': 3.973.9
       tslib: 2.8.1
 
   '@aws-crypto/sha256-browser@5.2.0':
@@ -675,7 +664,7 @@ snapshots:
       '@aws-crypto/sha256-js': 5.2.0
       '@aws-crypto/supports-web-crypto': 5.2.0
       '@aws-crypto/util': 5.2.0
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/types': 3.973.9
       '@aws-sdk/util-locate-window': 3.965.5
       '@smithy/util-utf8': 2.3.0
       tslib: 2.8.1
@@ -683,7 +672,7 @@ snapshots:
   '@aws-crypto/sha256-js@5.2.0':
     dependencies:
       '@aws-crypto/util': 5.2.0
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/types': 3.973.9
       tslib: 2.8.1
 
   '@aws-crypto/supports-web-crypto@5.2.0':
@@ -692,7 +681,7 @@ snapshots:
 
   '@aws-crypto/util@5.2.0':
     dependencies:
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/types': 3.973.9
       '@smithy/util-utf8': 2.3.0
       tslib: 2.8.1
 
@@ -706,11 +695,11 @@ snapshots:
       '@aws-sdk/middleware-eventstream': 3.972.14
       '@aws-sdk/middleware-websocket': 3.972.23
       '@aws-sdk/token-providers': 3.1048.0
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.5
       '@smithy/fetch-http-handler': 5.4.5
-      '@smithy/node-http-handler': 4.7.3
-      '@smithy/types': 4.14.1
+      '@smithy/node-http-handler': 4.7.5
+      '@smithy/types': 4.14.2
       tslib: 2.8.1
 
   '@aws-sdk/core@3.974.15':
@@ -856,9 +845,9 @@ snapshots:
     dependencies:
       '@aws-sdk/core': 3.974.15
       '@aws-sdk/nested-clients': 3.997.13
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.5
-      '@smithy/types': 4.14.1
+      '@smithy/types': 4.14.2
       tslib: 2.8.1
 
   '@aws-sdk/token-providers@3.1056.0':
@@ -868,11 +857,6 @@ snapshots:
       '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.5
       '@smithy/types': 4.14.2
-      tslib: 2.8.1
-
-  '@aws-sdk/types@3.973.8':
-    dependencies:
-      '@smithy/types': 4.14.1
       tslib: 2.8.1
 
   '@aws-sdk/types@3.973.9':
@@ -894,9 +878,9 @@ snapshots:
 
   '@babel/runtime@7.29.2': {}
 
-  '@earendil-works/pi-agent-core@0.78.0(ws@8.20.0)(zod@4.4.2)':
+  '@earendil-works/pi-agent-core@0.78.1(ws@8.20.0)(zod@4.4.2)':
     dependencies:
-      '@earendil-works/pi-ai': 0.78.0(ws@8.20.0)(zod@4.4.2)
+      '@earendil-works/pi-ai': 0.78.1(ws@8.20.0)(zod@4.4.2)
       ignore: 7.0.5
       typebox: 1.1.38
       yaml: 2.9.0
@@ -908,7 +892,7 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-ai@0.78.0(ws@8.20.0)(zod@4.4.2)':
+  '@earendil-works/pi-ai@0.78.1(ws@8.20.0)(zod@4.4.2)':
     dependencies:
       '@anthropic-ai/sdk': 0.91.1(zod@4.4.2)
       '@aws-sdk/client-bedrock-runtime': 3.1048.0
@@ -928,11 +912,11 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-coding-agent@0.78.0(ws@8.20.0)(zod@4.4.2)':
+  '@earendil-works/pi-coding-agent@0.78.1(ws@8.20.0)(zod@4.4.2)':
     dependencies:
-      '@earendil-works/pi-agent-core': 0.78.0(ws@8.20.0)(zod@4.4.2)
-      '@earendil-works/pi-ai': 0.78.0(ws@8.20.0)(zod@4.4.2)
-      '@earendil-works/pi-tui': 0.78.0
+      '@earendil-works/pi-agent-core': 0.78.1(ws@8.20.0)(zod@4.4.2)
+      '@earendil-works/pi-ai': 0.78.1(ws@8.20.0)(zod@4.4.2)
+      '@earendil-works/pi-tui': 0.78.1
       '@silvia-odwyer/photon-node': 0.3.4
       chalk: 5.6.2
       cross-spawn: 7.0.6
@@ -957,7 +941,7 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-tui@0.78.0':
+  '@earendil-works/pi-tui@0.78.1':
     dependencies:
       get-east-asian-width: 1.6.0
       marked: 15.0.12
@@ -1093,10 +1077,6 @@ snapshots:
     dependencies:
       '@smithy/core': 3.24.5
       '@smithy/types': 4.14.2
-      tslib: 2.8.1
-
-  '@smithy/types@4.14.1':
-    dependencies:
       tslib: 2.8.1
 
   '@smithy/types@4.14.2':
@@ -1347,18 +1327,10 @@ snapshots:
 
   strnum@2.2.3: {}
 
-  tree-sitter-bash@0.25.1(tree-sitter@0.25.0):
+  tree-sitter-bash@0.25.1:
     dependencies:
       node-addon-api: 8.8.0
       node-gyp-build: 4.8.4
-    optionalDependencies:
-      tree-sitter: 0.25.0
-
-  tree-sitter@0.25.0:
-    dependencies:
-      node-addon-api: 8.8.0
-      node-gyp-build: 4.8.4
-    optional: true
 
   ts-algebra@2.0.0: {}
 

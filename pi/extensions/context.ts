@@ -26,6 +26,16 @@ export type Bucket = {
 	details: string;
 };
 
+type SystemPromptOptions = {
+	customPrompt?: string;
+	selectedTools?: string[];
+	toolSnippets?: Record<string, string>;
+	promptGuidelines?: string[];
+	appendSystemPrompt?: string;
+	contextFiles?: Array<{ path: string; content: string }>;
+	skills?: Array<{ name: string; description: string; disableModelInvocation?: boolean }>;
+};
+
 const TOKEN_APPROX_DIVISOR = 4;
 
 function estimateTokens(value: unknown): number {
@@ -95,6 +105,57 @@ function bucket(label: string, tokens: number, details: string): Bucket {
 	return { label, tokens, details };
 }
 
+function buildSystemPromptBuckets(systemPrompt: string, options?: SystemPromptOptions): Bucket[] {
+	const totalTokens = estimateTokens(systemPrompt);
+	if (!options) {
+		return [bucket("System prompt", totalTokens, "Pi instructions, tool docs, AGENTS.md, extension guidance")];
+	}
+
+	const buckets: Bucket[] = [];
+	const addBucket = (label: string, value: unknown, details: string) => {
+		const tokens = estimateTokens(value);
+		if (tokens > 0) buckets.push(bucket(label, tokens, details));
+	};
+
+	addBucket("Custom prompt", options.customPrompt, "--system-prompt or configured custom prompt");
+
+	const selectedTools = options.selectedTools ?? [];
+	const toolSnippets = Object.entries(options.toolSnippets ?? {}).map(([name, snippet]) => `${name}: ${snippet}`);
+	const promptGuidelines = options.promptGuidelines ?? [];
+	addBucket(
+		"Tool instructions",
+		[selectedTools.join("\n"), toolSnippets.join("\n"), promptGuidelines.join("\n")].filter(Boolean).join("\n"),
+		`${selectedTools.length} selected tool(s), ${toolSnippets.length} snippet(s), ${promptGuidelines.length} guideline(s)`,
+	);
+
+	const contextFiles = options.contextFiles ?? [];
+	addBucket(
+		"Context files",
+		contextFiles.map((file) => `${file.path}\n${file.content}`).join("\n\n"),
+		`${contextFiles.length} loaded AGENTS/CLAUDE/context file(s)`,
+	);
+
+	const skills = options.skills ?? [];
+	const modelVisibleSkills = skills.filter((skill) => !skill.disableModelInvocation);
+	addBucket(
+		"Skills",
+		modelVisibleSkills.map((skill) => `${skill.name}\n${skill.description}`).join("\n\n"),
+		`${modelVisibleSkills.length} model-visible skill(s), ${skills.length} loaded`,
+	);
+
+	addBucket("Appended prompt", options.appendSystemPrompt, "--append-system-prompt and appended extension text");
+
+	const knownTokens = buckets.reduce((sum, item) => sum + item.tokens, 0);
+	const remainder = Math.max(0, totalTokens - knownTokens);
+	if (remainder > 0 || buckets.length === 0) {
+		buckets.unshift(
+			bucket(options.customPrompt ? "Prompt wrapper" : "Pi base prompt", remainder, "default instructions and formatting overhead"),
+		);
+	}
+
+	return buckets;
+}
+
 function collectSessionUsage(entries: AnyEntry[]) {
 	let input = 0;
 	let output = 0;
@@ -139,7 +200,11 @@ function entriesThatContributeToContext(branch: AnyEntry[]): AnyEntry[] {
 	return [compaction, ...keptBeforeCompaction, ...afterCompaction];
 }
 
-export function buildContextBuckets(entries: AnyEntry[], systemPrompt: string): Bucket[] {
+export function buildContextBuckets(
+	entries: AnyEntry[],
+	systemPrompt: string,
+	systemPromptOptions?: SystemPromptOptions,
+): Bucket[] {
 	let userTokens = 0;
 	let assistantTokens = 0;
 	let toolCallTokens = 0;
@@ -202,7 +267,7 @@ export function buildContextBuckets(entries: AnyEntry[], systemPrompt: string): 
 	}
 
 	return [
-		bucket("System prompt", estimateTokens(systemPrompt), "Pi instructions, tool docs, AGENTS.md, extension guidance"),
+		...buildSystemPromptBuckets(systemPrompt, systemPromptOptions),
 		bucket("User messages", userTokens, `${userCount} message(s)`),
 		bucket("Assistant text", assistantTokens, `${assistantCount} message(s)`),
 		bucket("Assistant thinking", thinkingTokens, "reasoning blocks in session history"),
@@ -221,8 +286,11 @@ function buildReport(ctx: any): string[] {
 	const allEntries = ctx.sessionManager.getEntries() as AnyEntry[];
 	const usage = ctx.getContextUsage() as ContextUsage;
 	const systemPrompt = ctx.getSystemPrompt() ?? "";
+	const systemPromptOptions = typeof ctx.getSystemPromptOptions === "function"
+		? ctx.getSystemPromptOptions()
+		: undefined;
 	const sessionUsage = collectSessionUsage(allEntries);
-	const buckets = buildContextBuckets(entries, systemPrompt);
+	const buckets = buildContextBuckets(entries, systemPrompt, systemPromptOptions);
 	const estimatedTotal = buckets.reduce((sum, item) => sum + item.tokens, 0);
 	const displayTotal = usage?.tokens ?? estimatedTotal;
 	const modelName = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "no model selected";
