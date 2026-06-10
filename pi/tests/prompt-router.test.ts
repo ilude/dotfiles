@@ -24,12 +24,12 @@ import promptRouter, {
 	resolveRouteProfile,
 	safeParseClassifierOutput,
 } from "../extensions/prompt-router.ts";
+import { emit as transcriptEmit } from "../extensions/transcript-runtime.ts";
 import {
 	legacyModelTierToRoute,
 	normalizeRouteCandidate,
 	ROUTER_SIZES,
 } from "../lib/prompt-router/route-vocabulary.ts";
-import { emit as transcriptEmit } from "../extensions/transcript-runtime.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 // ---------------------------------------------------------------------------
@@ -1921,6 +1921,56 @@ describe("Provider architecture spike: awaited provider seam", () => {
 		) as Record<string, unknown>;
 		expect(payload.model).toBe("user/chosen");
 		expect(payload.explicit_model_preserved).toBe(true);
+	});
+
+	it("uses provider payload messages for context metadata without storing text", async () => {
+		const pi = createMockPi();
+		const prompt = "final user task";
+		const messages = [
+			...Array.from({ length: 8 }, () => ({ role: "user", content: "prior" })),
+			{ role: "user", content: prompt },
+		];
+		(pi.exec as any).mockResolvedValueOnce({
+			code: 0,
+			stdout: makeV3Json("core", "medium", 0.91),
+			stderr: "",
+		});
+
+		const decision = await resolveProviderRouteDecision(
+			pi as any,
+			prompt,
+			routeCtx(),
+			undefined,
+			{ messages },
+		);
+
+		expect(decision.decisionTrace.contextCapsule?.messageCount).toBe(9);
+		expect(decision.decisionTrace.contextCapsule?.estimatedPromptChars).toBe(
+			prompt.length,
+		);
+		expect(decision.decisionTrace.contextFlags).toContain("multi_turn");
+		expect(JSON.stringify(decision)).not.toContain(prompt);
+	});
+
+	it("applies request route overrides from the provider payload", async () => {
+		const pi = createMockPi();
+		promptRouter(pi as any);
+		const ctx = routeCtx();
+		(pi.exec as any).mockResolvedValueOnce({
+			code: 0,
+			stdout: makeV3Json("core", "medium", 0.91),
+			stderr: "",
+		});
+
+		const payload = await routeProviderPrompt(
+			pi,
+			ctx,
+			"synthetic request override prompt",
+			{ router_route_override: "large" },
+		);
+
+		expect(payload.model).toBe("gpt-5.4");
+		expect(payload.route_resolution_reason).toBe("fallback_used");
 	});
 
 	it("reports provider trust and denied fallback metadata", async () => {

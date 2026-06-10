@@ -585,6 +585,7 @@ export async function resolveProviderRouteDecision(
 	text: string,
 	ctx: any,
 	timeoutMs = 1500,
+	providerPayload: unknown = { prompt: text },
 ): Promise<RouteDecision> {
 	const startedAt = Date.now();
 	const promptHash = sha256Hex(text);
@@ -610,8 +611,8 @@ export async function resolveProviderRouteDecision(
 
 	const rawRoute =
 		normalizeRouteCandidate(classified.primary.model_tier) ?? "core";
-	const capsule = buildRoutingContextCapsule({ prompt: text }, ctx);
-	const override = readRouteOverride(ctx, { prompt: text });
+	const capsule = buildRoutingContextCapsule(providerPayload, ctx);
+	const override = readRouteOverride(ctx, providerPayload);
 	const routePolicy = chooseAppliedRoute(rawRoute, override, capsule);
 	const telemetryCapsule = toTelemetryContextCapsule(capsule);
 	const appliedRoute: RouterSize = routePolicy.route;
@@ -704,13 +705,13 @@ export async function resolveProviderRouteDecision(
 			contextCapsule: telemetryCapsule,
 			overrideScope: routePolicy.scope,
 			overrideLifetime: routePolicy.overrideLifetime,
-			explicitModelPreserved: hasExplicitModelSelection({ prompt: text }, ctx),
 			fallbackAllowed: providerTrust !== "cross-provider-denied",
 			fallbackDeniedReason:
 				providerTrust === "cross-provider-denied"
 					? "cross-provider fallback denied"
 					: undefined,
 			providerTrust,
+			explicitModelPreserved: hasExplicitModelSelection(providerPayload, ctx),
 		}),
 		latency_ms: Date.now() - startedAt,
 	} as RouteDecision & { latency_ms: number };
@@ -726,7 +727,9 @@ export function applyRouteDecisionToProviderPayload(
 	const effortOverride = readUserEffortOverride(ctx, payload);
 	return {
 		...payload,
-		model: explicitModelPreserved ? payload.model : decision.model_id ?? decision.model_label,
+		model: explicitModelPreserved
+			? payload.model
+			: (decision.model_id ?? decision.model_label),
 		reasoning_effort: effortOverride?.effort ?? decision.thinking_level,
 		route_decision_id: decision.route_decision_id,
 		route_resolution_reason: decision.route_resolution_reason,
@@ -1290,7 +1293,13 @@ export default function (pi: ExtensionAPI) {
 					: {}),
 			},
 		};
-		const decision = await resolveProviderRouteDecision(pi, text, routeCtx);
+		const decision = await resolveProviderRouteDecision(
+			pi,
+			text,
+			routeCtx,
+			undefined,
+			event.payload,
+		);
 		const previousAppliedRoute = state.lastRouteDecision?.applied_route ?? null;
 		state.lastRuleFired = decision.decisionTrace.rule as RuleFired;
 		state.lastClassifierRec =
@@ -1317,20 +1326,33 @@ export default function (pi: ExtensionAPI) {
 		);
 		const routedPayload = isPlainRecord(payload) ? payload : {};
 		const originalPayload = isPlainRecord(event.payload) ? event.payload : {};
-		const explicitModelPreserved = routedPayload.explicit_model_preserved === true;
-		const selectedModel = typeof routedPayload.model === "string" ? routedPayload.model : decision.model_id ?? decision.model_label;
-		const finalAppliedEffort = typeof routedPayload.reasoning_effort === "string" ? routedPayload.reasoning_effort : decision.thinking_level;
+		const explicitModelPreserved =
+			routedPayload.explicit_model_preserved === true;
+		const selectedModel =
+			typeof routedPayload.model === "string"
+				? routedPayload.model
+				: (decision.model_id ?? decision.model_label);
+		const finalAppliedEffort =
+			typeof routedPayload.reasoning_effort === "string"
+				? routedPayload.reasoning_effort
+				: decision.thinking_level;
 		const userSelectedRoute =
 			decision.decisionTrace.overrideScope !== "none" || runtimeEffortOverride
 				? {
-					route: decision.decisionTrace.overrideScope !== "none" ? decision.applied_route : null,
-					effort: runtimeEffortOverride?.effort ?? null,
-				}
+						route:
+							decision.decisionTrace.overrideScope !== "none"
+								? decision.applied_route
+								: null,
+						effort: runtimeEffortOverride?.effort ?? null,
+					}
 				: null;
 		const overrideType = explicitModelPreserved
 			? "explicit_model"
 			: runtimeEffortOverride
-				? effortOverrideType(decision.thinking_level, runtimeEffortOverride.effort)
+				? effortOverrideType(
+						decision.thinking_level,
+						runtimeEffortOverride.effort,
+					)
 				: decision.decisionTrace.overrideScope !== "none"
 					? `route_${decision.decisionTrace.overrideScope}`
 					: "none";
@@ -1364,7 +1386,8 @@ export default function (pi: ExtensionAPI) {
 						id: selectedModel,
 						name: decision.model_label,
 					},
-					modelSwitchApplied: !explicitModelPreserved && originalPayload.model !== selectedModel,
+					modelSwitchApplied:
+						!explicitModelPreserved && originalPayload.model !== selectedModel,
 					userSelectedRoute,
 					finalAppliedEffort,
 					overrideType,
