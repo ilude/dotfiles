@@ -212,24 +212,23 @@ describe("untracked classifier helpers", () => {
 	});
 
 	it("accepts full coverage and splits low confidence decisions", () => {
+		const classifications = [
+			{
+				path: "pi/inspect/snapshots/session.json",
+				decision: "ignore",
+				confidence: 96,
+				reason: "Generated runtime snapshot.",
+				gitignorePattern: "pi/inspect/snapshots/",
+			},
+			{
+				path: "pi/extensions/source.ts",
+				decision: "do_not_ignore",
+				confidence: 84,
+				reason: "Source file, but confidence is intentionally low.",
+			},
+		];
 		const result = parseUntrackedClassifierResult(
-			JSON.stringify({
-				classifications: [
-					{
-						path: "pi/inspect/snapshots/session.json",
-						decision: "ignore",
-						confidence: 96,
-						reason: "Generated runtime snapshot.",
-						gitignorePattern: "pi/inspect/snapshots/",
-					},
-					{
-						path: "pi/extensions/source.ts",
-						decision: "do_not_ignore",
-						confidence: 84,
-						reason: "Source file, but confidence is intentionally low.",
-					},
-				],
-			}),
+			JSON.stringify({ classifications }),
 			untracked,
 		);
 		expect(result.accepted.map((item) => item.path)).toEqual([
@@ -238,6 +237,12 @@ describe("untracked classifier helpers", () => {
 		expect(result.needsUserDecision.map((item) => item.path)).toEqual([
 			"pi/extensions/source.ts",
 		]);
+
+		const arrayResult = parseUntrackedClassifierResult(
+			JSON.stringify(classifications),
+			untracked,
+		);
+		expect(arrayResult).toEqual(result);
 	});
 
 	it("rejects invalid decisions, duplicate paths, and incomplete coverage", () => {

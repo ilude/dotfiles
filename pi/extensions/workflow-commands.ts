@@ -624,10 +624,10 @@ async function executeBranchCommand(args: string, ctx: WorkflowContext) {
 	);
 }
 
-function extractJsonObject(text: string) {
-	const start = text.indexOf("{");
+function extractJsonValue(text: string) {
+	const start = text.search(/[\[{]/);
 	if (start === -1) return undefined;
-	let depth = 0;
+	const stack: string[] = [];
 	let inString = false;
 	let escaped = false;
 	for (let i = start; i < text.length; i += 1) {
@@ -645,13 +645,19 @@ function extractJsonObject(text: string) {
 			continue;
 		}
 		if (inString) continue;
-		if (ch === "{") depth += 1;
-		if (ch === "}") {
-			depth -= 1;
-			if (depth === 0) return text.slice(start, i + 1);
+		if (ch === "{") stack.push("}");
+		else if (ch === "[") stack.push("]");
+		else if (ch === "}" || ch === "]") {
+			if (stack.pop() !== ch) return undefined;
+			if (stack.length === 0) return text.slice(start, i + 1);
 		}
 	}
 	return undefined;
+}
+
+function extractJsonObject(text: string) {
+	const jsonText = extractJsonValue(text);
+	return jsonText?.startsWith("{") ? jsonText : undefined;
 }
 
 export function normalizeCommitSubject(subject: string) {
@@ -1095,16 +1101,23 @@ export function parseUntrackedClassifierResult(
 	text: string,
 	untrackedFiles: string[],
 ): UntrackedClassificationPlan {
-	const jsonText = extractJsonObject(text);
+	const jsonText = extractJsonValue(text);
 	if (!jsonText) throw new Error("Untracked classifier did not return JSON");
-	const parsed = JSON.parse(jsonText) as { classifications?: unknown };
-	if (!Array.isArray(parsed.classifications)) {
+	const parsed = JSON.parse(jsonText) as
+		| { classifications?: unknown }
+		| unknown[];
+	const rawClassifications = Array.isArray(parsed)
+		? parsed
+		: parsed && typeof parsed === "object"
+			? parsed.classifications
+			: undefined;
+	if (!Array.isArray(rawClassifications)) {
 		throw new Error("Untracked classifier returned no classifications");
 	}
 	const expected = new Set(untrackedFiles.map(normalizeGitPath));
 	const seen = new Set<string>();
 	const classifications: UntrackedClassification[] = [];
-	for (const item of parsed.classifications) {
+	for (const item of rawClassifications) {
 		if (!item || typeof item !== "object") {
 			throw new Error("Untracked classifier returned an invalid item");
 		}
