@@ -2025,28 +2025,13 @@ try {
     $null = Ensure-WindowsTerminalShiftEnter
 
     # ========================================================================
-    # Patched msys-2.0.dll (add_item race condition fix)
+    # Patched msys-2.0.dll (manual only)
     # ========================================================================
-    # Install patched DLL until fix ships upstream in Git for Windows.
-    # PR: https://github.com/msys2/msys2-runtime/pull/333
-    $patchedDll = Join-Path $BASEDIR "patches\msys2-runtime\msys-2.0.dll"
-    $targetDll = "C:\Program Files\Git\usr\bin\msys-2.0.dll"
-    if ($isAdmin -and (Test-Path $patchedDll) -and (Test-Path $targetDll)) {
-        $patchedHash = (Get-FileHash $patchedDll -Algorithm SHA256).Hash
-        $currentHash = (Get-FileHash $targetDll -Algorithm SHA256).Hash
-        if ($currentHash -ne $patchedHash) {
-            $backupDll = "$targetDll.patched-backup"
-            if (-not (Test-Path $backupDll)) {
-                Copy-Item $targetDll $backupDll -Force
-            }
-            Copy-Item $patchedDll $targetDll -Force
-            Write-Host "  Patched msys-2.0.dll installed (add_item race fix)" -ForegroundColor Green
-        } else {
-            Write-Host "  Patched msys-2.0.dll: already installed" -ForegroundColor DarkGray
-        }
-    } elseif (-not $isAdmin) {
-        Write-Host "  Patched msys-2.0.dll: skipped (requires admin)" -ForegroundColor Yellow
-    }
+    # The runtime patch is kept for manual recovery/testing, but the installer
+    # must not replace Git for Windows' bundled msys-2.0.dll automatically.
+    # To apply it explicitly:
+    #   pwsh -File patches\msys2-runtime\install-patched-runtime.ps1
+    Write-Host "  Patched msys-2.0.dll: auto-install disabled" -ForegroundColor DarkGray
 
     # ========================================================================
     # Windows Defender Exclusion for Git MSYS2 runtime (requires admin)
