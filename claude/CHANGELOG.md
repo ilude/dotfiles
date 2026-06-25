@@ -1,3 +1,23 @@
+## 2026-06-24: Expand Pi extension authoring footguns
+
+**Why:** Public Pi skill and extension repositories surfaced additional recurring authoring mistakes beyond shell-out performance, especially around registration-time actions, reload-safe state, command-only context methods, and custom tool contracts.
+
+**Fix:** Updated the Pi extension skill with concise rules for factory registration boundaries, RPC/TUI mode guards, tool error signaling, StringEnum parameters, path normalization, extension-relative file resolution, state reconstruction, command-only methods, and model switch checks.
+
+**Files:** ~/.pi/agent/skills/pi-extension/SKILL.md
+
+---
+
+## 2026-06-24: Add Pi extension runtime guidance
+
+**Why:** Pi extension work needed a dedicated checklist for hot-path subprocess risks, runtime cleanup, bounded output, and Pi-native extension patterns.
+
+**Fix:** Updated the Pi extension skill to prefer Pi docs and examples, document render/status/tool-result shell-out risks, require caching/gating/timeouts, and capture cleanup, cancellation, mutation queue, and truncation guidance.
+
+**Files:** ~/.pi/agent/skills/pi-extension/SKILL.md
+
+---
+
 ## 2026-06-08: Compact large domain skills
 
 **Why:** Several broad domain skills had grown into tutorial-heavy files, which made routine activation expensive and blurred when to load optional details.
