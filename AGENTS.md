@@ -115,6 +115,10 @@ All terminals are expected to converge on zsh:
 - Work key priority is `id_ed25519-work` then `id_ed25519-eagletg`.
 - Work does not fall back to generic `id_ed25519`.
 
+### Git LFS Scope
+
+Git LFS is intentionally narrow in this repo: `.gitattributes` should only route `patches/msys2-runtime/*.dll` through LFS. If Git LFS hooks hang or Git commands become slow, run `pwsh -File scripts/git-lfs-health.ps1` before retrying. Do not remove LFS hooks or bypass Git hooks as a default workflow; only bypass after the staged diff and LFS health checks pass and the user approves.
+
 ### Pi Expertise Retrieval Note
 
 `read_expertise` currently uses layered snapshots plus optional focused local retrieval (`query` / `max_results`). Option 3 -- a retrieval-first expertise system -- is future-only and not implemented in this plan. Revisit it only if the layered snapshot-plus-retrieval approach cannot keep outputs focused and bounded without losing critical stable knowledge.
@@ -145,6 +149,10 @@ git submodule update --init --recursive
 - Keep planning proportional: use brief prose plans for complex work, skip formal planning for simple requests, and ask for clarification only when ambiguity affects correctness or direction.
 - When a task involves a list or batch of items, track scope explicitly. Do not finalize until all items are accounted for -- completed, explicitly skipped with reason, or flagged as blocked.
 - Stop researching when the core question is answered and additional retrieval is unlikely to change the conclusion. Exhaustive coverage only when explicitly requested.
+
+### Windows Process Churn Diagnostics
+
+If Windows shows high Local Session Manager (LSM), CryptSvc, Git LFS, MSYS helper, or console-host CPU after agent work, run `pwsh -File scripts/diagnose-windows-process-churn.ps1` before guessing. Treat System log event `Tcpip` ID `4227` as evidence of high-rate outgoing connection churn and correlate it with recent subprocess-heavy work. Prefer fixing the process source with caching, timeouts, and child-tree cleanup instead of repeatedly retrying hung commands.
 
 ## Agent Surfaces
 
