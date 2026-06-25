@@ -29,6 +29,7 @@ let getWriterSpy: ReturnType<typeof vi.spyOn>;
 let emitSpy: ReturnType<typeof vi.spyOn>;
 let loadSettingsSpy: ReturnType<typeof vi.spyOn>;
 let sweepRetentionSpy: ReturnType<typeof vi.spyOn>;
+let originalArgv: string[];
 
 function makeSessionCtx(extra: Record<string, any> = {}) {
 	return {
@@ -61,6 +62,7 @@ function makeGitFriendlyPi() {
 }
 
 beforeEach(() => {
+	originalArgv = [...process.argv];
 	tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-session-hooks-test-"));
 
 	initializeRuntimeSpy = vi.spyOn(transcriptRuntime, "initializeRuntime").mockReturnValue(null as any);
@@ -75,11 +77,60 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	process.argv = originalArgv;
 	fs.rmSync(tmpDir, { recursive: true, force: true });
 	vi.restoreAllMocks();
 });
 
 describe("session-hooks: session_start", () => {
+	it("runs git preflight on primary startup", async () => {
+		const pi = makeGitFriendlyPi();
+		const mod = await import("../extensions/session-hooks");
+		mod.default(pi as any);
+
+		const sessionStartHooks = pi._getHook("session_start");
+		const ctx = makeSessionCtx();
+		await sessionStartHooks[0].handler({ reason: "startup" }, ctx as any);
+
+		expect(pi.exec).toHaveBeenCalledWith("git", ["config", "--get", "core.sshCommand"], {
+			cwd: ctx.cwd,
+			timeout: 5000,
+		});
+	});
+
+	it("skips git preflight for non-startup session events", async () => {
+		const pi = makeGitFriendlyPi();
+		const mod = await import("../extensions/session-hooks");
+		mod.default(pi as any);
+
+		const sessionStartHooks = pi._getHook("session_start");
+		const ctx = makeSessionCtx();
+		await sessionStartHooks[0].handler({ reason: "new" }, ctx as any);
+
+		expect(pi.exec).not.toHaveBeenCalledWith(
+			"git",
+			["config", "--get", "core.sshCommand"],
+			expect.anything(),
+		);
+	});
+
+	it("skips git preflight for no-session processes", async () => {
+		process.argv = [...originalArgv, "--no-session"];
+		const pi = makeGitFriendlyPi();
+		const mod = await import("../extensions/session-hooks");
+		mod.default(pi as any);
+
+		const sessionStartHooks = pi._getHook("session_start");
+		const ctx = makeSessionCtx();
+		await sessionStartHooks[0].handler({ reason: "startup" }, ctx as any);
+
+		expect(pi.exec).not.toHaveBeenCalledWith(
+			"git",
+			["config", "--get", "core.sshCommand"],
+			expect.anything(),
+		);
+	});
+
 	it("calls initializeTranscriptRuntime when transcript settings are enabled", async () => {
 		// Transcript-enabled config -- both branches (sweep + writer init) fire.
 		loadSettingsSpy.mockReturnValue({

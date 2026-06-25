@@ -25,9 +25,9 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	type ExtensionAPI,
-	type ToolResultEvent,
+import type {
+	ExtensionAPI,
+	ToolResultEvent,
 } from "@earendil-works/pi-coding-agent";
 import { loadYamlViaPython } from "../lib/yaml-helpers";
 
@@ -50,7 +50,7 @@ interface ValidatorsYaml {
 // Load validators.yaml once at module init
 const VALIDATORS_PATH = path.join(
 	os.homedir(),
-	".dotfiles/claude/hooks/quality-validation/validators.yaml"
+	".dotfiles/claude/hooks/quality-validation/validators.yaml",
 );
 
 function loadValidators(): ValidatorsYaml {
@@ -65,7 +65,9 @@ function loadValidators(): ValidatorsYaml {
 const validators = loadValidators();
 
 // Build extension-to-language lookup from the loaded config
-export function buildExtMap(config: ValidatorsYaml): Map<string, LanguageConfig> {
+export function buildExtMap(
+	config: ValidatorsYaml,
+): Map<string, LanguageConfig> {
 	const map = new Map<string, LanguageConfig>();
 	for (const langConfig of Object.values(config)) {
 		if (!Array.isArray(langConfig?.extensions)) continue;
@@ -77,6 +79,7 @@ export function buildExtMap(config: ValidatorsYaml): Map<string, LanguageConfig>
 }
 
 const extMap = buildExtMap(validators);
+const validatorAvailabilityCache = new Map<string, boolean>();
 
 export function getFilePath(event: ToolResultEvent): string | undefined {
 	return (
@@ -85,16 +88,30 @@ export function getFilePath(event: ToolResultEvent): string | undefined {
 	);
 }
 
-async function runFirstAvailableValidator(
+async function isValidatorAvailable(
+	pi: ExtensionAPI,
+	lookup: string,
+	checkBin: string,
+): Promise<boolean> {
+	const cacheKey = `${lookup}\0${checkBin}`;
+	const cached = validatorAvailabilityCache.get(cacheKey);
+	if (cached !== undefined) return cached;
+
+	const whichResult = await pi.exec(lookup, [checkBin]);
+	const available = whichResult.code === 0;
+	validatorAvailabilityCache.set(cacheKey, available);
+	return available;
+}
+
+export async function runFirstAvailableValidator(
 	pi: ExtensionAPI,
 	langConfig: LanguageConfig,
-	filePath: string
+	filePath: string,
 ): Promise<{ name: string; output: string } | undefined> {
 	for (const validator of langConfig.validators) {
 		const checkBin = validator.check ?? validator.command[0];
 		const lookup = process.platform === "win32" ? "where.exe" : "which";
-		const whichResult = await pi.exec(lookup, [checkBin]);
-		if (whichResult.code !== 0) continue;
+		if (!(await isValidatorAvailable(pi, lookup, checkBin))) continue;
 
 		const args = validator.command
 			.slice(1)
@@ -102,7 +119,10 @@ async function runFirstAvailableValidator(
 
 		const result = await pi.exec(validator.command[0], args);
 		if (result.code !== 0) {
-			return { name: validator.name, output: (result.stdout + result.stderr).trim() };
+			return {
+				name: validator.name,
+				output: (result.stdout + result.stderr).trim(),
+			};
 		}
 		return undefined;
 	}
@@ -127,10 +147,7 @@ export default function (pi: ExtensionAPI) {
 
 		const warningText = `\u26a0 Quality gate: ${failure.name} reported issues in ${path.basename(filePath)}:\n${failure.output}`;
 		return {
-			content: [
-				{ type: "text" as const, text: warningText },
-				...event.content,
-			],
+			content: [{ type: "text" as const, text: warningText }, ...event.content],
 		};
 	});
 }

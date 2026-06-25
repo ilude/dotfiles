@@ -2,8 +2,8 @@
  * Session Hooks Extension
  *
  * session_start: on reload, restores the configured default model; then runs
- *   git pre-flight checks (fetch + behind-count). Notifies if branch is behind
- *   remote. Silently skips if not a git repo. Also runs an idempotent
+ *   git pre-flight checks (fetch + behind-count) for primary startup only.
+ *   Notifies if branch is behind remote. Silently skips if not a git repo. Also runs an idempotent
  *   transcript retention sweep when the per-user transcript toggle is enabled
  *   in ~/.pi/agent/settings.json. Initializes the transcript writer (when
  *   enabled), parses any inherited W3C TRACEPARENT, and emits a
@@ -14,6 +14,7 @@
  *   `session_shutdown` event into the sidecar trace.
  */
 
+import { spawn } from "node:child_process";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -29,6 +30,115 @@ import {
 } from "./transcript-runtime.js";
 
 const GIT_PREFLIGHT_TIMEOUT_MS = 5000;
+
+interface CommandResult {
+	stdout: string;
+	stderr: string;
+	code: number;
+	killed: boolean;
+}
+
+function shouldRunGitPreflight(reason: string): boolean {
+	return reason === "startup" && !process.argv.includes("--no-session");
+}
+
+function withSshSafetyOptions(command: string): string {
+	const trimmed = command.trim();
+	if (!trimmed.startsWith("ssh")) return command;
+
+	const options = [];
+	if (!/(^|\s)-o\s+BatchMode=/i.test(command)) {
+		options.push("-o", "BatchMode=yes");
+	}
+	if (!/(^|\s)-o\s+ConnectTimeout=/i.test(command)) {
+		options.push("-o", "ConnectTimeout=5");
+	}
+	if (options.length === 0) return command;
+
+	return command.replace(/^ssh(\s|$)/, `ssh ${options.join(" ")}$1`);
+}
+
+async function killProcessTree(pid: number): Promise<void> {
+	if (process.platform === "win32") {
+		await new Promise<void>((resolve) => {
+			spawn("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" })
+				.on("error", () => resolve())
+				.on("close", () => resolve());
+		});
+		return;
+	}
+
+	try {
+		process.kill(-pid, "SIGTERM");
+	} catch {
+		try {
+			process.kill(pid, "SIGTERM");
+		} catch {
+			// Process already exited.
+		}
+	}
+}
+
+function runCommandWithTreeTimeout(
+	command: string,
+	args: string[],
+	cwd: string,
+	timeout: number,
+): Promise<CommandResult> {
+	return new Promise((resolve) => {
+		const child = spawn(command, args, {
+			cwd,
+			detached: process.platform !== "win32",
+			shell: false,
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+
+		let stdout = "";
+		let stderr = "";
+		let killed = false;
+		let settled = false;
+
+		const timeoutId = setTimeout(() => {
+			if (child.pid) {
+				killed = true;
+				void killProcessTree(child.pid);
+			}
+		}, timeout);
+
+		child.stdout.on("data", (data) => {
+			stdout += data.toString();
+		});
+		child.stderr.on("data", (data) => {
+			stderr += data.toString();
+		});
+		child.on("error", (error) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timeoutId);
+			resolve({ stdout, stderr: stderr || error.message, code: 1, killed });
+		});
+		child.on("close", (code) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timeoutId);
+			resolve({ stdout, stderr, code: code ?? 0, killed });
+		});
+	});
+}
+
+async function runGitFetchPreflight(pi: ExtensionAPI, cwd: string): Promise<CommandResult> {
+	const args = ["fetch", "--quiet"];
+	const sshCommand = await pi.exec("git", ["config", "--get", "core.sshCommand"], {
+		cwd,
+		timeout: GIT_PREFLIGHT_TIMEOUT_MS,
+	});
+	const configuredSshCommand = sshCommand.code === 0 ? sshCommand.stdout.trim() : "";
+	if (configuredSshCommand) {
+		args.unshift("-c", `core.sshCommand=${withSshSafetyOptions(configuredSshCommand)}`);
+	}
+
+	return runCommandWithTreeTimeout("git", args, cwd, GIT_PREFLIGHT_TIMEOUT_MS);
+}
 
 export default function (pi: ExtensionAPI) {
 	// -- session_start: restore default model on reload + git pre-flight -------
@@ -53,31 +163,30 @@ export default function (pi: ExtensionAPI) {
 			}
 		}
 
-		try {
-			// Silently skip if fetch fails (no remote, not a repo, no network, timeout, etc.)
-			const fetchResult = await pi.exec("git", ["fetch", "--quiet"], {
-				cwd: ctx.cwd,
-				timeout: GIT_PREFLIGHT_TIMEOUT_MS,
-			});
-			if (fetchResult.code !== 0) return;
+		if (shouldRunGitPreflight(event.reason)) {
+			try {
+				// Silently skip if fetch fails (no remote, not a repo, no network, timeout, etc.)
+				const fetchResult = await runGitFetchPreflight(pi, ctx.cwd);
+				if (fetchResult.code !== 0) return;
 
-			const behindResult = await pi.exec("git", ["rev-list", "--count", "HEAD..@{u}"], {
-				cwd: ctx.cwd,
-				timeout: GIT_PREFLIGHT_TIMEOUT_MS,
-			});
-			if (behindResult.code !== 0) return;
+				const behindResult = await pi.exec("git", ["rev-list", "--count", "HEAD..@{u}"], {
+					cwd: ctx.cwd,
+					timeout: GIT_PREFLIGHT_TIMEOUT_MS,
+				});
+				if (behindResult.code !== 0) return;
 
-			const count = parseInt(behindResult.stdout.trim(), 10);
-			if (!Number.isNaN(count) && count > 0) {
-				uiNotify(
-					ctx,
-					"warning",
-					`⚠ Branch is ${count} commit${count === 1 ? "" : "s"} behind remote. Consider git pull before starting.`,
-					{ prefix: "session-hooks" },
-				);
+				const count = parseInt(behindResult.stdout.trim(), 10);
+				if (!Number.isNaN(count) && count > 0) {
+					uiNotify(
+						ctx,
+						"warning",
+						`⚠ Branch is ${count} commit${count === 1 ? "" : "s"} behind remote. Consider git pull before starting.`,
+						{ prefix: "session-hooks" },
+					);
+				}
+			} catch {
+				// Not a git repo, no remote, or other git failure -- silently skip
 			}
-		} catch {
-			// Not a git repo, no remote, or other git failure -- silently skip
 		}
 
 		// Transcript retention sweep (opt-in via ~/.pi/agent/settings.json).

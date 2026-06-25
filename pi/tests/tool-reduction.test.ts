@@ -9,7 +9,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockPi } from "./helpers/mock-pi.js";
 
 // ---------------------------------------------------------------------------
@@ -28,7 +29,9 @@ vi.mock("node:child_process", async (importOriginal) => {
 			if (spawnBehavior === "real") {
 				return actual.spawn(...args);
 			}
-			return (spawnBehavior as () => import("node:child_process").ChildProcess)();
+			return (
+				spawnBehavior as () => import("node:child_process").ChildProcess
+			)();
 		}),
 	};
 });
@@ -50,6 +53,8 @@ const EXTENSION_PATH = path.resolve(
 	"extensions",
 	"tool-reduction.ts",
 );
+
+type TextBlock = { type: "text"; text: string };
 
 function makeBashResultEvent(stdout: string, isError = false) {
 	return {
@@ -81,7 +86,7 @@ describe("tool-reduction extension", () => {
 			const bytesBefore = Buffer.byteLength(fixtureText, "utf-8");
 
 			const mod = await import("../extensions/tool-reduction.ts");
-			mod.default(mockPi as any);
+			mod.default(mockPi as unknown as ExtensionAPI);
 
 			const [hook] = mockPi._getHook("tool_result");
 			expect(hook).toBeDefined();
@@ -99,13 +104,28 @@ describe("tool-reduction extension", () => {
 			expect(result.content.length).toBeGreaterThan(0);
 
 			const compactedText = result.content
-				.filter((c: any) => c.type === "text")
-				.map((c: any) => c.text)
+				.filter((c): c is TextBlock => c.type === "text")
+				.map((c) => c.text)
 				.join("");
 
 			const bytesAfter = Buffer.byteLength(compactedText, "utf-8");
 			expect(bytesAfter).toBeLessThan(bytesBefore);
 		}, 30000);
+	});
+
+	describe("small-output bypass", () => {
+		it("does not spawn the reducer for tiny bash output", async () => {
+			const { spawn } = await import("node:child_process");
+			vi.mocked(spawn).mockClear();
+			const mod = await import("../extensions/tool-reduction.ts");
+			mod.default(mockPi as unknown as ExtensionAPI);
+
+			const [hook] = mockPi._getHook("tool_result");
+			const result = await hook.handler(makeBashResultEvent("ok\n"));
+
+			expect(result).toBeUndefined();
+			expect(spawn).not.toHaveBeenCalled();
+		});
 	});
 
 	// ---------------------------------------------------------------------------
@@ -118,10 +138,10 @@ describe("tool-reduction extension", () => {
 			};
 
 			const mod = await import("../extensions/tool-reduction.ts");
-			mod.default(mockPi as any);
+			mod.default(mockPi as unknown as ExtensionAPI);
 
 			const [hook] = mockPi._getHook("tool_result");
-			const event = makeBashResultEvent("some output");
+			const event = makeBashResultEvent("some output".repeat(24));
 			const result = await hook.handler(event);
 			expect(result).toBeUndefined();
 		});
@@ -134,16 +154,17 @@ describe("tool-reduction extension", () => {
 			const { spawn: actualSpawn } = await import("node:child_process");
 			const sleepCmd = process.platform === "win32" ? "timeout" : "sleep";
 			const sleepArg = "10";
-			spawnBehavior = () => actualSpawn(sleepCmd, [sleepArg], {
-				windowsHide: true,
-				stdio: ["pipe", "pipe", "pipe"],
-			});
+			spawnBehavior = () =>
+				actualSpawn(sleepCmd, [sleepArg], {
+					windowsHide: true,
+					stdio: ["pipe", "pipe", "pipe"],
+				});
 
 			const mod = await import("../extensions/tool-reduction.ts");
-			mod.default(mockPi as any);
+			mod.default(mockPi as unknown as ExtensionAPI);
 
 			const [hook] = mockPi._getHook("tool_result");
-			const event = makeBashResultEvent("some output");
+			const event = makeBashResultEvent("some output".repeat(24));
 
 			const start = Date.now();
 			const result = await hook.handler(event);
@@ -160,16 +181,17 @@ describe("tool-reduction extension", () => {
 				process.platform === "win32"
 					? ["/c", "echo not json"]
 					: ["-c", "printf 'not json'"];
-			spawnBehavior = () => actualSpawn(echoCmd, echoArgs, {
-				windowsHide: true,
-				stdio: ["pipe", "pipe", "pipe"],
-			});
+			spawnBehavior = () =>
+				actualSpawn(echoCmd, echoArgs, {
+					windowsHide: true,
+					stdio: ["pipe", "pipe", "pipe"],
+				});
 
 			const mod = await import("../extensions/tool-reduction.ts");
-			mod.default(mockPi as any);
+			mod.default(mockPi as unknown as ExtensionAPI);
 
 			const [hook] = mockPi._getHook("tool_result");
-			const event = makeBashResultEvent("some output");
+			const event = makeBashResultEvent("some output".repeat(24));
 			const result = await hook.handler(event);
 			expect(result).toBeUndefined();
 		}, 5000);

@@ -27,17 +27,28 @@
 import * as child_process from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
-import { isBashToolResult, type ExtensionAPI, type ToolResultEvent } from "@earendil-works/pi-coding-agent";
+import {
+	type ExtensionAPI,
+	isBashToolResult,
+	type ToolResultEvent,
+} from "@earendil-works/pi-coding-agent";
 
 function getHomeDir(): string {
 	return process.env.HOME ?? process.env.USERPROFILE ?? os.homedir();
 }
 
 function getReduceScriptPath(): string {
-	return path.resolve(getHomeDir(), ".dotfiles", "pi", "tool-reduction", "reduce.py");
+	return path.resolve(
+		getHomeDir(),
+		".dotfiles",
+		"pi",
+		"tool-reduction",
+		"reduce.py",
+	);
 }
 
 const TIMEOUT_MS = 3000;
+const MIN_REDUCER_INPUT_BYTES = 240;
 
 interface ReduceRequest {
 	argv: string[];
@@ -61,12 +72,21 @@ function splitArgv(command: string): string[] {
 	return command.trim().split(/\s+/).filter(Boolean);
 }
 
-function extractTextContent(content: ToolResultEvent["content"]): { stdout: string; stderr: string } {
+function extractTextContent(content: ToolResultEvent["content"]): {
+	stdout: string;
+	stderr: string;
+} {
 	const texts = content
 		.filter((c): c is { type: "text"; text: string } => c.type === "text")
 		.map((c) => c.text);
 	// Bash tool emits a single text block combining stdout and stderr.
 	return { stdout: texts.join(""), stderr: "" };
+}
+
+export function shouldRunReducer(stdout: string, stderr: string): boolean {
+	const separator = stdout && stderr ? "\n" : "";
+	const rawText = `${stdout}${separator}${stderr}`;
+	return Buffer.byteLength(rawText, "utf-8") >= MIN_REDUCER_INPUT_BYTES;
 }
 
 function callReducer(
@@ -138,6 +158,7 @@ export default function (pi: ExtensionAPI) {
 
 		const command = (event.input as { command?: string }).command ?? "";
 		const { stdout, stderr } = extractTextContent(event.content);
+		if (!shouldRunReducer(stdout, stderr)) return undefined;
 
 		const request: ReduceRequest = {
 			argv: splitArgv(command),

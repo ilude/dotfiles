@@ -1,3 +1,4 @@
+import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -114,6 +115,24 @@ describe("footer extension status placement", () => {
 		expect(mod.formatExtensionStatusLine(data, 50)).toBe(
 			"done — 42 tok/s             damage-control: active",
 		);
+	});
+});
+
+describe("formatPiStatusDirectory", () => {
+	it("caches the git-root display until cwd changes", async () => {
+		const mod = await import("../extensions/operator-status.ts");
+		childProcess.execFileSync("git", ["init"], {
+			cwd: tmpRoot,
+			stdio: "ignore",
+		});
+		const subdir = path.join(tmpRoot, "subdir");
+		fs.mkdirSync(subdir);
+
+		const first = mod.formatPiStatusDirectory(tmpRoot);
+		fs.rmSync(path.join(tmpRoot, ".git"), { recursive: true, force: true });
+
+		expect(mod.formatPiStatusDirectory(tmpRoot)).toBe(first);
+		expect(mod.formatPiStatusDirectory(subdir)).not.toBe(first);
 	});
 });
 

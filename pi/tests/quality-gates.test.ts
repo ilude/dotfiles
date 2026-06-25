@@ -8,15 +8,31 @@
  * The hook intercepts tool_result for write/edit and either prepends a
  * warning to the content (failure) or returns undefined (clean).
  */
-import { describe, it, expect } from "vitest";
-import { buildExtMap, getFilePath } from "../extensions/quality-gates.ts";
+import type {
+	ExtensionAPI,
+	ToolResultEvent,
+} from "@earendil-works/pi-coding-agent";
+import { describe, expect, it, vi } from "vitest";
+import {
+	buildExtMap,
+	getFilePath,
+	runFirstAvailableValidator,
+} from "../extensions/quality-gates.ts";
 
 describe("quality-gates extension", () => {
 	describe("buildExtMap (pure function)", () => {
 		it("maps each extension to its language config", () => {
 			const config = {
-				python: { extensions: [".py"], validators: [{ name: "ruff", command: ["ruff", "check", "{file}"] }] },
-				typescript: { extensions: [".ts", ".tsx"], validators: [{ name: "biome", command: ["biome", "check", "{file}"] }] },
+				python: {
+					extensions: [".py"],
+					validators: [{ name: "ruff", command: ["ruff", "check", "{file}"] }],
+				},
+				typescript: {
+					extensions: [".ts", ".tsx"],
+					validators: [
+						{ name: "biome", command: ["biome", "check", "{file}"] },
+					],
+				},
 			};
 			const map = buildExtMap(config);
 			expect(map.has(".py")).toBe(true);
@@ -31,22 +47,67 @@ describe("quality-gates extension", () => {
 		});
 
 		it("skips language entries that have no extensions array", () => {
-			const config = { broken: { validators: [] } as any };
+			const config = { broken: { validators: [] } } as unknown as Parameters<
+				typeof buildExtMap
+			>[0];
 			expect(buildExtMap(config).size).toBe(0);
 		});
 	});
 
 	describe("getFilePath (pure function)", () => {
 		it("reads input.path when present", () => {
-			expect(getFilePath({ input: { path: "/a/b.ts" } } as any)).toBe("/a/b.ts");
+			expect(
+				getFilePath({
+					input: { path: "/a/b.ts" },
+				} as unknown as ToolResultEvent),
+			).toBe("/a/b.ts");
 		});
 
 		it("falls back to input.file_path when path is absent", () => {
-			expect(getFilePath({ input: { file_path: "/a/b.ts" } } as any)).toBe("/a/b.ts");
+			expect(
+				getFilePath({
+					input: { file_path: "/a/b.ts" },
+				} as unknown as ToolResultEvent),
+			).toBe("/a/b.ts");
 		});
 
 		it("returns undefined when neither field is set", () => {
-			expect(getFilePath({ input: {} } as any)).toBeUndefined();
+			expect(
+				getFilePath({ input: {} } as unknown as ToolResultEvent),
+			).toBeUndefined();
+		});
+	});
+
+	describe("runFirstAvailableValidator", () => {
+		it("caches validator availability after first lookup", async () => {
+			const lookup = process.platform === "win32" ? "where.exe" : "which";
+			const exec = vi.fn(async (command: string) => ({
+				code: command === lookup ? 0 : 0,
+				stdout: "",
+				stderr: "",
+			}));
+			const pi = { exec } as unknown as ExtensionAPI;
+			const langConfig: Parameters<typeof runFirstAvailableValidator>[1] = {
+				extensions: [".test-cache"],
+				validators: [
+					{
+						name: "cache-test-validator",
+						command: ["cache-test-validator", "check", "{file}"],
+					},
+				],
+			};
+
+			await runFirstAvailableValidator(pi, langConfig, "one.test-cache");
+			await runFirstAvailableValidator(pi, langConfig, "two.test-cache");
+
+			expect(
+				exec.mock.calls.filter(([command]) => command === lookup),
+			).toHaveLength(1);
+			expect(
+				exec.mock.calls.filter(
+					([command]) => command === "cache-test-validator",
+				),
+			).toHaveLength(2);
 		});
 	});
 
@@ -72,10 +133,16 @@ describe("quality-gates extension", () => {
 			// We verify the structural shape by constructing the same
 			// payload the hook produces.
 			const failure = { name: "ruff", output: "E501 line too long" };
-			const filePath = "src/foo.py";
-			const warningText = "âš  Quality gate: " + failure.name + " reported issues in foo.py:\n" + failure.output;
-			const originalContent = [{ type: "text" as const, text: "wrote 42 bytes" }];
-			const result = { content: [{ type: "text" as const, text: warningText }, ...originalContent] };
+			const warningText = `\u26a0 Quality gate: ${failure.name} reported issues in foo.py:\n${failure.output}`;
+			const originalContent = [
+				{ type: "text" as const, text: "wrote 42 bytes" },
+			];
+			const result = {
+				content: [
+					{ type: "text" as const, text: warningText },
+					...originalContent,
+				],
+			};
 
 			expect(result.content[0].type).toBe("text");
 			expect(result.content[0].text).toContain("ruff");

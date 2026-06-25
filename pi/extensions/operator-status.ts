@@ -35,6 +35,7 @@ import { listTasks, type TaskRecordV1 } from "../lib/task-registry.js";
 
 let cachedPiVersion: string | null | undefined;
 let currentSessionStartedAt: string | null = null;
+const cachedStatusDirectories = new Map<string, string>();
 const reloadStatus = createReloadStatusState();
 
 const ANSI = {
@@ -96,6 +97,9 @@ function homePattern(): string {
 }
 
 export function formatPiStatusDirectory(cwd: string): string {
+	const cached = cachedStatusDirectories.get(cwd);
+	if (cached !== undefined) return cached;
+
 	const normalizedCwd = normalizePathForDisplay(cwd);
 	const home = homePattern();
 	const gitRoot = runCommand([
@@ -105,16 +109,19 @@ export function formatPiStatusDirectory(cwd: string): string {
 		"rev-parse",
 		"--show-toplevel",
 	]);
+	let directory: string;
 	if (gitRoot) {
 		const normalizedRoot = normalizePathForDisplay(gitRoot).replace(/\/$/, "");
 		const basename = path.basename(normalizedRoot);
-		return normalizedRoot.startsWith(home) ? `~/${basename}` : basename;
-	}
-	if (normalizedCwd.startsWith(home)) {
+		directory = normalizedRoot.startsWith(home) ? `~/${basename}` : basename;
+	} else if (normalizedCwd.startsWith(home)) {
 		const relative = normalizedCwd.slice(home.length);
-		return relative ? `~${relative}` : "~";
+		directory = relative ? `~${relative}` : "~";
+	} else {
+		directory = normalizedCwd;
 	}
-	return normalizedCwd;
+	cachedStatusDirectories.set(cwd, directory);
+	return directory;
 }
 
 function colorBranch(branchName: string | null): string {
