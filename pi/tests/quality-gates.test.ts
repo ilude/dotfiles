@@ -108,6 +108,8 @@ describe("quality-gates extension", () => {
 					([command]) => command === "cache-test-validator",
 				),
 			).toHaveLength(2);
+			expect(exec.mock.calls[0][2]).toEqual({ timeout: 2000 });
+			expect(exec.mock.calls[1][2]).toEqual({ timeout: 10000 });
 		});
 	});
 

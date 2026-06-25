@@ -80,6 +80,8 @@ export function buildExtMap(
 
 const extMap = buildExtMap(validators);
 const validatorAvailabilityCache = new Map<string, boolean>();
+const VALIDATOR_LOOKUP_TIMEOUT_MS = 2000;
+const VALIDATOR_RUN_TIMEOUT_MS = 10000;
 
 export function getFilePath(event: ToolResultEvent): string | undefined {
 	return (
@@ -97,7 +99,9 @@ async function isValidatorAvailable(
 	const cached = validatorAvailabilityCache.get(cacheKey);
 	if (cached !== undefined) return cached;
 
-	const whichResult = await pi.exec(lookup, [checkBin]);
+	const whichResult = await pi.exec(lookup, [checkBin], {
+		timeout: VALIDATOR_LOOKUP_TIMEOUT_MS,
+	});
 	const available = whichResult.code === 0;
 	validatorAvailabilityCache.set(cacheKey, available);
 	return available;
@@ -117,7 +121,9 @@ export async function runFirstAvailableValidator(
 			.slice(1)
 			.map((part) => (part === "{file}" ? filePath : part));
 
-		const result = await pi.exec(validator.command[0], args);
+		const result = await pi.exec(validator.command[0], args, {
+			timeout: VALIDATOR_RUN_TIMEOUT_MS,
+		});
 		if (result.code !== 0) {
 			return {
 				name: validator.name,

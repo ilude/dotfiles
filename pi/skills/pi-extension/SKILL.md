@@ -44,6 +44,10 @@ Pi docs and Pi examples are authoritative for extension behavior. Use Node docs 
 7. Prefer in-process Node APIs for filesystem, path, JSON, and config reads.
 8. Avoid synchronous subprocess APIs in hot paths; they block the extension event loop.
 9. If a subprocess is required, use explicit args, avoid `shell: true` unless required, set `windowsHide: true` on Windows, bound it with timeout/cancellation, and either consume or ignore stdout/stderr deliberately.
+10. On timeout or abort, clean up the whole child process tree. On Windows, use `taskkill /PID <pid> /T /F`; on Unix-like systems, spawn detached when appropriate and signal the process group.
+11. For Windows churn investigations, use `scripts/diagnose-windows-process-churn.ps1` before guessing. Check for hot LSM/CryptSvc, stale Git LFS/MSYS helpers, orphan-like console processes, and `Tcpip` event ID `4227`.
+10. On timeout or abort, clean up the whole child process tree. On Windows, use `taskkill /PID <pid> /T /F`; on Unix-like systems, spawn detached when appropriate and signal the process group.
+11. For Windows churn investigations, use `scripts/diagnose-windows-process-churn.ps1` before guessing. Check for hot LSM/CryptSvc, stale Git LFS/MSYS helpers, orphan-like console processes, and `Tcpip` event ID `4227`.
 
 ## Known Bad Patterns
 

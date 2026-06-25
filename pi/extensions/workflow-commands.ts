@@ -818,6 +818,8 @@ function shouldLogGitCommand(args: string[]) {
 	);
 }
 
+const GIT_COMMAND_TIMEOUT_MS = 120000;
+
 let _gitBin: string | undefined;
 function resolveGit(): string {
 	if (_gitBin !== undefined) return _gitBin;
@@ -858,12 +860,13 @@ function runGit(
 	const result = spawnSync(resolveGit(), args, {
 		cwd,
 		encoding: "utf8",
+		timeout: GIT_COMMAND_TIMEOUT_MS,
 		windowsHide: true,
 	});
 	const gitResult = {
 		code: result.status ?? 1,
 		stdout: result.stdout ?? "",
-		stderr: result.stderr ?? "",
+		stderr: result.error?.message ?? result.stderr ?? "",
 	};
 	if (shouldLogGitCommand(args)) {
 		activity?.logCommand(`git ${args.join(" ")}`, gitResult);
@@ -915,6 +918,11 @@ function runGitAsync(
 		let stdout = "";
 		let stderr = "";
 		let cancelled = false;
+		let timedOut = false;
+		const timeoutId = setTimeout(() => {
+			timedOut = true;
+			if (child.pid) stopProcessTree(child.pid);
+		}, GIT_COMMAND_TIMEOUT_MS);
 		const onAbort = () => {
 			cancelled = true;
 			if (child.pid) stopProcessTree(child.pid);
@@ -929,6 +937,7 @@ function runGitAsync(
 		});
 		signal?.addEventListener("abort", onAbort, { once: true });
 		child.on("error", (err) => {
+			clearTimeout(timeoutId);
 			signal?.removeEventListener("abort", onAbort);
 			const gitResult = {
 				code: 1,
@@ -941,13 +950,16 @@ function runGitAsync(
 			resolve(gitResult);
 		});
 		child.on("close", (code, signalName) => {
+			clearTimeout(timeoutId);
 			signal?.removeEventListener("abort", onAbort);
 			const gitResult = {
 				code: code ?? 1,
 				stdout,
-				stderr: cancelled
-					? "Operation cancelled"
-					: stderr || (signalName ? `git terminated by ${signalName}` : ""),
+				stderr: timedOut
+					? `git timed out after ${GIT_COMMAND_TIMEOUT_MS / 1000}s`
+					: cancelled
+						? "Operation cancelled"
+						: stderr || (signalName ? `git terminated by ${signalName}` : ""),
 			};
 			if (shouldLogGitCommand(args)) {
 				activity?.logCommand(`git ${args.join(" ")}`, gitResult);

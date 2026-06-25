@@ -210,5 +210,12 @@ describe("tool-reduction extension", () => {
 			const source = fs.readFileSync(EXTENSION_PATH, "utf-8");
 			expect(source).toContain("windowsHide");
 		});
+
+		it("extension source cleans up reducer process trees on timeout", () => {
+			const source = fs.readFileSync(EXTENSION_PATH, "utf-8");
+			expect(source).toContain("function stopProcessTree");
+			expect(source).toContain("taskkill");
+			expect(source).toContain("process.kill(-pid");
+		});
 	});
 });

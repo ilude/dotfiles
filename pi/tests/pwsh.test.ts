@@ -59,6 +59,10 @@ describe("pwsh extension", () => {
       expect(tool.description).toContain("PowerShell Core");
     });
 
+    it("should document the default timeout", () => {
+      expect(tool.description).toContain("120s timeout");
+    });
+
     it("should have prompt guidelines", () => {
       expect(tool.promptGuidelines!.length).toBeGreaterThan(0);
     });

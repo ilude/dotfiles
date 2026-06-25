@@ -231,7 +231,9 @@ export default function (pi: ExtensionAPI) {
 				const probePath = path.join(home, ".claude", "hooks", "menos-circuit", "probe.py");
 				const backfillPath = path.join(home, ".claude", "hooks", "menos-circuit", "backfill.py");
 				await pi.exec("python", [probePath], { timeout: 3000 }).catch(() => undefined);
-				void pi.exec("python", [backfillPath, "--detach"]).catch(() => undefined);
+				void pi
+					.exec("python", [backfillPath, "--detach"], { timeout: 3000 })
+					.catch(() => undefined);
 			}
 		} catch {
 			// menos hooks are best-effort.

@@ -16,6 +16,8 @@ import { writeFile } from "node:fs/promises";
 import { tmpdir, release } from "node:os";
 import { join } from "node:path";
 
+const DEFAULT_TIMEOUT_SECONDS = 120;
+
 /** Check if OS release string indicates Windows 11 (build >= 22000). */
 export function isWindows11Check(platform: string, osRelease: string): boolean {
   if (platform !== "win32") return false;
@@ -122,7 +124,7 @@ function registerPwshTool(pi: ExtensionAPI) {
   pi.registerTool({
     name: "pwsh",
     label: "PowerShell",
-    description: `Execute a PowerShell Core (pwsh) command in the current working directory. Use for: PowerShell cmdlets (Get-*, Set-*, New-*, Remove-*), .ps1 scripts, Windows Registry/WMI/COM access, .NET type operations, $env: environment variables, and tasks requiring PowerShell modules. On non-Windows systems, only use if the user explicitly requests PowerShell. Returns stdout, stderr, and PowerShell error stream. Output truncated to last ${DEFAULT_MAX_LINES} lines or ${Math.round(DEFAULT_MAX_BYTES / 1024)}KB.`,
+    description: `Execute a PowerShell Core (pwsh) command in the current working directory. Use for: PowerShell cmdlets (Get-*, Set-*, New-*, Remove-*), .ps1 scripts, Windows Registry/WMI/COM access, .NET type operations, $env: environment variables, and tasks requiring PowerShell modules. On non-Windows systems, only use if the user explicitly requests PowerShell. Defaults to a ${DEFAULT_TIMEOUT_SECONDS}s timeout unless a timeout is provided. Returns stdout, stderr, and PowerShell error stream. Output truncated to last ${DEFAULT_MAX_LINES} lines or ${Math.round(DEFAULT_MAX_BYTES / 1024)}KB.`,
     promptSnippet: "Execute PowerShell Core (pwsh) commands for Windows-native tasks, .NET, and PowerShell modules",
     promptGuidelines: [
       "Use pwsh for Windows-native commands, PowerShell cmdlets, .NET CLI, registry access, and .ps1 scripts.",
@@ -148,7 +150,8 @@ async function executePwsh(
   ctx: any
 ): Promise<any> {
   const startTime = Date.now();
-  const timeoutMs = params.timeout ? params.timeout * 1000 : undefined;
+  const timeoutSeconds = params.timeout ?? DEFAULT_TIMEOUT_SECONDS;
+  const timeoutMs = timeoutSeconds * 1000;
   let proc: any = null;
   let timeoutHandle: NodeJS.Timeout | null = null;
   let output = "";
@@ -185,12 +188,10 @@ async function executePwsh(
 
       if (signal) signal.addEventListener("abort", onAbort);
 
-      if (timeoutMs) {
-        timeoutHandle = setTimeout(() => {
-          killProc(proc?.pid);
-          reject(new Error(`Command timed out after ${params.timeout}s`));
-        }, timeoutMs);
-      }
+      timeoutHandle = setTimeout(() => {
+        killProc(proc?.pid);
+        reject(new Error(`Command timed out after ${timeoutSeconds}s`));
+      }, timeoutMs);
 
       proc.stdout?.on("data", (chunk: Buffer) => {
         output += chunk.toString();

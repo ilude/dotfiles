@@ -50,6 +50,26 @@ function getReduceScriptPath(): string {
 const TIMEOUT_MS = 3000;
 const MIN_REDUCER_INPUT_BYTES = 240;
 
+function stopProcessTree(pid: number): void {
+	if (process.platform === "win32") {
+		child_process.spawn("taskkill", ["/PID", String(pid), "/T", "/F"], {
+			stdio: "ignore",
+			windowsHide: true,
+		});
+		return;
+	}
+
+	try {
+		process.kill(-pid, "SIGKILL");
+	} catch {
+		try {
+			process.kill(pid, "SIGKILL");
+		} catch {
+			// Process already exited.
+		}
+	}
+}
+
 interface ReduceRequest {
 	argv: string[];
 	exit_code: number;
@@ -97,6 +117,7 @@ function callReducer(
 		let child: child_process.ChildProcess;
 		try {
 			child = child_process.spawn("python", [scriptPath], {
+				detached: process.platform !== "win32",
 				windowsHide: true,
 				stdio: ["pipe", "pipe", "pipe"],
 			});
@@ -110,7 +131,9 @@ function callReducer(
 
 		const timer = setTimeout(() => {
 			timedOut = true;
-			child.kill("SIGKILL");
+			if (child.pid) {
+				stopProcessTree(child.pid);
+			}
 		}, TIMEOUT_MS);
 
 		child.stdout?.on("data", (chunk: Buffer) => {

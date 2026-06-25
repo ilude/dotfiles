@@ -32,6 +32,7 @@ const SEARXNG_URL = "http://192.168.16.241:8888/search";
 const WEB_FETCH_SCRIPT = path.join(os.homedir(), ".dotfiles", "pi", "extensions", "web-fetch", "fetch.js");
 const DEFAULT_WEB_FETCH_MAX_CHARS = 8000;
 const MAX_WEB_FETCH_CHARS = 50000;
+const WEB_FETCH_TIMEOUT_MS = 30000;
 
 // ── .env parsing ────────────────────────────────────────────────────────────
 
@@ -233,7 +234,9 @@ export default function (pi: ExtensionAPI) {
 
 			const args = [WEB_FETCH_SCRIPT, url, "--max-chars", String(normalizedMaxChars)];
 
-			const result = await pi.exec("node", args);
+			const result = await pi.exec("node", args, {
+				timeout: WEB_FETCH_TIMEOUT_MS,
+			});
 
 			const text = result.stdout.trim() || result.stderr.trim() || "(no content extracted)";
 

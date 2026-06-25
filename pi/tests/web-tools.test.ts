@@ -127,6 +127,7 @@ describe("web-tools extension", () => {
       const args = mockPi.exec.mock.calls[0][1] as string[];
       expect(args).toContain("https://example.com");
       expect(args[0]).toContain("fetch.js");
+      expect(mockPi.exec.mock.calls[0][2]).toEqual({ timeout: 30000 });
     });
 
     it("should pass --max-chars when specified", async () => {
