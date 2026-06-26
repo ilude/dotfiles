@@ -40,6 +40,7 @@ fi
 # fnm - Fast Node Manager (Rust-based)
 if command -v fnm &>/dev/null || [[ -d "${ZDOTDIR:-$HOME}/.local/share/fnm" ]]; then
     eval "$(fnm env --use-on-cd --shell zsh)"
+    fnm use default --silent-if-unchanged 2>/dev/null || true
 fi
 
 # nvm - Node Version Manager (special case - uses NVM_DIR)
