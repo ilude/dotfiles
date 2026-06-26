@@ -38,6 +38,15 @@ Use arrays for argument lists. Use `[[ ... ]]` in Bash-specific scripts; use POS
 
 Use approved cmdlet names in scripts, `$env:NAME` for environment variables, and explicit error handling consistent with the existing file.
 
+For PowerShell readability, avoid generated-code/minified style:
+
+- Do not compress functions, loops, `if`/`else`, `try`/`catch`, or object construction onto one long line.
+- Prefer readable multiline hashtables and `[pscustomobject]` literals when there is more than one or two properties.
+- Keep comments/help concise and operator-focused: what the script does, what is read-only, what can mutate state, and what outputs are written.
+- Avoid filler wording such as "comprehensive", "robust", "seamless", or legacy/process commentary that does not help an operator run or review the script.
+- Use small helper functions for repeated path, output, auth, and comparison logic instead of copy-pasted dense blocks.
+- Before finishing, scan for very long lines and reflow any dense implementation line that would be hard to review in a diff.
+
 ## Anti-Patterns
 
 - Unquoted variables in paths or user input.
@@ -45,6 +54,7 @@ Use approved cmdlet names in scripts, `$env:NAME` for environment variables, and
 - Silent fallback when a required dependency is missing.
 - Mixing POSIX and Bash features accidentally.
 - Changing platform behavior without validation.
+- PowerShell "AI slop": minified one-line functions/control flow, giant one-line apply blocks, vague boilerplate comments, or decorative comments that do not explain behavior.
 
 ## Quick Reference
 
