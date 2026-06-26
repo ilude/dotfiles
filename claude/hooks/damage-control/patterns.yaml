@@ -1865,7 +1865,6 @@ readOnlyPaths:
   - /bin/
   - /sbin/
   - /boot/
-  - /root/
 
   # ---------------------------------------------------------------------------
   # KUBERNETES CONFIG (moved from zeroAccessPaths for ask-based access)
