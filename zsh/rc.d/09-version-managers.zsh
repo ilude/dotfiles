@@ -38,7 +38,12 @@ if [[ -d "${NODENV_ROOT:-${ZDOTDIR:-$HOME}/.nodenv}" ]]; then
 fi
 
 # fnm - Fast Node Manager (Rust-based)
-if command -v fnm &>/dev/null || [[ -d "${ZDOTDIR:-$HOME}/.local/share/fnm" ]]; then
+_fnm_local="${ZDOTDIR:-$HOME}/.local/share/fnm"
+if [[ -x "$_fnm_local/fnm" ]] && ! command -v fnm &>/dev/null; then
+    path=("$_fnm_local" $path)
+fi
+unset _fnm_local
+if command -v fnm &>/dev/null; then
     eval "$(fnm env --use-on-cd --shell zsh)"
     fnm use default --silent-if-unchanged 2>/dev/null || true
 fi
