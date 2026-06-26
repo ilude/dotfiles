@@ -57,3 +57,12 @@ debug_report
 
 # broot launcher (sourced only if present)
 [[ -f "${ZDOTDIR:-$HOME}/.config/broot/launcher/bash/br" ]] && source "${ZDOTDIR:-$HOME}/.config/broot/launcher/bash/br"
+
+# bun completions
+[ -s "/root/.bun/_bun" ] && source "/root/.bun/_bun"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
+. "$HOME/.local/bin/env"
