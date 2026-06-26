@@ -186,5 +186,6 @@
   "statusLine": {
     "command": "python $HOME/.claude/claude-status",
     "type": "command"
-  }
+  },
+  "theme": "dark"
 }
