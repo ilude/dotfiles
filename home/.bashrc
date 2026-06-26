@@ -14,6 +14,13 @@
 # This ensures tools like uv are available in Claude Code hooks
 export PATH="$HOME/.local/bin:$PATH"
 
+# fnm (Fast Node Manager) -- makes node available to all bash contexts including hooks
+if [[ -d "$HOME/.local/share/fnm" ]]; then
+    export PATH="$HOME/.local/share/fnm:$PATH"
+    eval "$("$HOME/.local/share/fnm/fnm" env --use-on-cd --shell bash 2>/dev/null)"
+    "$HOME/.local/share/fnm/fnm" use default --silent-if-unchanged 2>/dev/null || true
+fi
+
 # Ensure future non-interactive bash shells source ~/.bash_env.
 export BASH_ENV="$HOME/.bash_env"
 
@@ -139,4 +146,4 @@ command -v fd &>/dev/null && alias find='fd'
 # shellcheck source=/dev/null
 [[ -f "$HOME/.local/bin/env" ]] && . "$HOME/.local/bin/env"
 
-source C:\Users\mglenn\AppData\Roaming\dystroy\broot\config\launcher\bash\br
+
