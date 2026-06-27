@@ -1,4 +1,4 @@
-.PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all ci-bootstrap test test-ci test-ci-contract test-local test-runtime test-quick test-parallel test-docker test-powershell test-pytest help lint lint-python format format-python check check-ci check-pi-ci install-hooks
+.PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all ci-bootstrap test test-ci test-ci-contract test-local test-runtime test-quick test-parallel test-docker test-powershell test-pytest help lint lint-python format format-python check check-ci check-pi-ci check-pi-extensions pi-doctor install-hooks
 
 # Shell scripts to check (excludes dotbot submodule and plugins)
 SHELL_SCRIPTS := home/.bashrc home/.zshrc install wsl/install scripts/ci-bootstrap scripts/git-ssh-setup scripts/claude-link-setup scripts/claude-mcp-setup scripts/copilot-link-setup scripts/zsh-setup scripts/zsh-plugins wsl/packages
@@ -26,6 +26,7 @@ help:
 	@echo "  make check-ci      - Run CI-safe lint + test contract"
 	@echo "  make check-pi-ci   - Run CI-safe Pi Vitest contract"
 	@echo "  make install-hooks - Install git pre-commit hook for testing"
+	@echo "  make pi-doctor     - Print Pi install health snapshot"
 
 # Shell environment validation (diagnostic)
 validate: validate-bash
@@ -211,3 +212,7 @@ install-hooks:
 	git config core.hooksPath hooks
 	chmod +x hooks/*
 	@echo "Git hooks installed. Commits will now run tests first."
+
+# Pi install health snapshot (diagnostic, read-only)
+pi-doctor:
+	@scripts/pi-doctor

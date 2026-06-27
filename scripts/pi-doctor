@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+
+# Diagnostic snapshot of the Pi install health.
+# Reports state only -- makes no changes.
+# Exit 0 if all checks pass or only warn, exit 1 if any fail.
+
+DOTFILES_DIR="${HOME}/.dotfiles"
+PI_DIR="${DOTFILES_DIR}/pi"
+PI_NODE_MODULES="${PI_DIR}/node_modules"
+
+PACKAGES=(
+    "@earendil-works/pi-coding-agent"
+    "@earendil-works/pi-agent-core"
+    "@earendil-works/pi-ai"
+    "@earendil-works/pi-tui"
+    "@sinclair/typebox"
+)
+
+HAS_FAIL=0
+
+ok()   { printf '  [ok]   %s\n' "$*"; }
+warn() { printf '  [warn] %s\n' "$*"; }
+fail() { printf '  [fail] %s\n' "$*"; HAS_FAIL=1; }
+
+# Augment PATH with well-known install locations so the rest of the checks
+# work even when invoked from a bare make environment (no interactive shell).
+PNPM_HOME="${PNPM_HOME:-${HOME}/.local/share/pnpm}"
+export PNPM_HOME
+PNPM_BIN="${PNPM_HOME}/bin"
+
+# fnm: pick highest version dir if present
+FNM_NODE_BIN=""
+fnm_versions_dir="${HOME}/.local/share/fnm/node-versions"
+if [[ -d "$fnm_versions_dir" ]]; then
+    fnm_latest=$(find "$fnm_versions_dir" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort -V | tail -1)
+    if [[ -n "$fnm_latest" ]]; then
+        FNM_NODE_BIN="${fnm_versions_dir}/${fnm_latest}/installation/bin"
+    fi
+fi
+
+# Prepend fallback dirs; duplicates in PATH are harmless.
+PATH="${PNPM_BIN}:${FNM_NODE_BIN}:${PATH}"
+export PATH
+
+echo "Pi install health check"
+echo "======================="
+
+# 1. pi binary
+echo ""
+echo "pi binary"
+if pi_path=$(command -v pi 2>/dev/null); then
+    pi_version=$(pi --version 2>/dev/null || true)
+    if [[ -n "$pi_version" ]]; then
+        ok "pi at ${pi_path} -- version: ${pi_version}"
+    else
+        ok "pi at ${pi_path} (no --version flag)"
+    fi
+else
+    fail "pi not found (checked PATH and ${PNPM_BIN})"
+fi
+
+# 2. pnpm global root
+echo ""
+echo "pnpm global root"
+if pnpm_bin=$(command -v pnpm 2>/dev/null); then
+    pnpm_global=$("$pnpm_bin" root -g 2>/dev/null || true)
+    if [[ -n "$pnpm_global" && -d "$pnpm_global" ]]; then
+        ok "${pnpm_global}"
+    elif [[ -n "$pnpm_global" ]]; then
+        fail "pnpm root -g returned ${pnpm_global} but directory does not exist"
+    else
+        fail "pnpm root -g returned nothing"
+    fi
+else
+    fail "pnpm not found (checked PATH and ${PNPM_BIN})"
+fi
+
+# 3. Node
+echo ""
+echo "node"
+if node_path=$(command -v node 2>/dev/null); then
+    node_version=$(node --version 2>/dev/null || true)
+    ok "${node_path} -- ${node_version}"
+else
+    fail "node not found (checked PATH and ${FNM_NODE_BIN:-no fnm dir found})"
+fi
+
+# 4. pi/node_modules symlinks
+echo ""
+echo "pi/node_modules symlinks"
+for package in "${PACKAGES[@]}"; do
+    link_path="${PI_NODE_MODULES}/${package}"
+    if [[ -L "$link_path" ]]; then
+        target=$(readlink -f "$link_path" 2>/dev/null || readlink "$link_path" 2>/dev/null || true)
+        if [[ -d "$link_path" ]]; then
+            ok "${package} -> ${target}"
+        else
+            fail "${package}: dangling symlink -> ${target:-unknown target}"
+        fi
+    elif [[ -e "$link_path" ]]; then
+        warn "${package}: exists but is not a symlink"
+    else
+        warn "${package}: no symlink found in pi/node_modules"
+    fi
+done
+
+# 5. Native deps ABI test
+echo ""
+echo "native deps ABI test"
+if [[ -d "$PI_DIR" ]]; then
+    if abi_error=$(cd "$PI_DIR" && node -e "require('web-tree-sitter'); require('tree-sitter-bash'); require('jsdom');" 2>&1); then
+        ok "web-tree-sitter, tree-sitter-bash, jsdom all load"
+    else
+        fail "native module load failed"
+        printf '         %s\n' "$abi_error"
+        echo "         Suggestion: cd ~/.dotfiles && pnpm install --dir pi"
+    fi
+else
+    fail "pi directory not found: ${PI_DIR}"
+fi
+
+# 6. ~/.pi/agent symlink
+echo ""
+pi_agent="${HOME}/.pi/agent"
+echo "${HOME}/.pi/agent symlink"
+if [[ -L "$pi_agent" ]]; then
+    pi_agent_target=$(readlink -f "$pi_agent" 2>/dev/null || readlink "$pi_agent" 2>/dev/null || true)
+    if [[ -d "$pi_agent" ]]; then
+        ok "${pi_agent} -> ${pi_agent_target}"
+    else
+        fail "${pi_agent} is a dangling symlink -> ${pi_agent_target:-unknown target}"
+    fi
+elif [[ -e "$pi_agent" ]]; then
+    warn "${pi_agent} exists but is not a symlink"
+else
+    fail "${pi_agent} does not exist (run scripts/pi-link-setup)"
+fi
+
+echo ""
+echo "======================="
+if [[ $HAS_FAIL -eq 1 ]]; then
+    echo "Result: FAIL (see [fail] items above)"
+    exit 1
+else
+    echo "Result: OK"
+    exit 0
+fi
