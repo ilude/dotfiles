@@ -405,27 +405,31 @@ else
 fi
 completed_steps+=("Pi coding agent install")
 
+current_step="pi runtime deps"
+# Install pi's consolidated runtime + dev dependencies declared at pi/package.json.
+# Must run BEFORE pi-deps-link-setup -- pnpm install will recreate pi/node_modules
+# and would wipe @earendil-works/@sinclair symlinks if planted first.
+PI_DIR="${BASEDIR}/pi"
+if [[ -f "$PI_DIR/package.json" ]] && command -v pnpm &>/dev/null; then
+    echo "Installing pi runtime dependencies..."
+    pnpm install --dir "$PI_DIR"
+    # Refresh deps within their declared semver ranges so every install run
+    # picks up patch/minor bumps. minimumReleaseAge (pi/pnpm-workspace.yaml)
+    # gates against rushed upstream publishes. Major bumps still require an
+    # explicit edit to pi/package.json + manual `pnpm up --latest`.
+    echo "Refreshing pi runtime deps within semver..."
+    pnpm update --dir "$PI_DIR"
+elif [[ -f "$PI_DIR/package.json" ]]; then
+    echo "Warning: pnpm unavailable; skipping pi runtime deps"
+fi
+completed_steps+=("pi runtime deps")
+
 current_step="pi extension deps link"
+# Plant @earendil-works/* and @sinclair/* symlinks from pnpm-global into
+# pi/node_modules. Intentionally not listed in pi/package.json -- their version
+# is tied to the pnpm-global pi-coding-agent install.
 "${BASEDIR}/scripts/pi-deps-link-setup"
 completed_steps+=("pi extension deps link")
-
-current_step="pi web-fetch deps"
-WEB_FETCH_DIR="${BASEDIR}/pi/extensions/web-fetch"
-if [[ -d "$WEB_FETCH_DIR" ]]; then
-    if [[ ! -d "$WEB_FETCH_DIR/node_modules" ]]; then
-        echo "Installing pi web-fetch dependencies..."
-        if command -v bun &>/dev/null; then
-            bun install --cwd "$WEB_FETCH_DIR"
-        elif command -v pnpm &>/dev/null; then
-            pnpm install --dir "$WEB_FETCH_DIR"
-        else
-            echo "Warning: bun and pnpm both unavailable; skipping pi web-fetch deps"
-        fi
-    else
-        echo "pi web-fetch deps: already installed"
-    fi
-fi
-completed_steps+=("pi web-fetch deps")
 
 current_step="pi agent directory link"
 "${BASEDIR}/scripts/pi-link-setup"

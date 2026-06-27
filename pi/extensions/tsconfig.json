@@ -11,8 +11,8 @@
     "allowImportingTsExtensions": true,
     "baseUrl": ".",
     "paths": {
-      "@earendil-works/*": ["node_modules/@earendil-works/*"],
-      "@sinclair/*": ["node_modules/@sinclair/*"]
+      "@earendil-works/*": ["../node_modules/@earendil-works/*"],
+      "@sinclair/*": ["../node_modules/@sinclair/*"]
     }
   },
   "include": ["**/*.ts"],

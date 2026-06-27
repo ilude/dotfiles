@@ -6,16 +6,16 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const agentDir = path.resolve(__dirname, "..").replace(/\\/g, "/");
 
-// Pi TypeScript dependencies are managed by pi/extensions/pnpm-lock.yaml.
-// Keep tests pointed at that pnpm install instead of global runtime packages.
-const extensionsNodeModules = path.resolve(__dirname, "../extensions/node_modules");
-const piPackageRoot = path.join(extensionsNodeModules, "@earendil-works/pi-coding-agent");
-const piNodeModules = extensionsNodeModules;
-const typeboxDir = path.join(extensionsNodeModules, "@sinclair/typebox");
+// Pi TypeScript dependencies live at pi/node_modules: native deps via
+// pi/package.json + pnpm install, and @earendil-works/@sinclair scopes via
+// pi-deps-link-setup symlinking pnpm-global into pi/node_modules.
+const piNodeModules = path.resolve(__dirname, "../node_modules");
+const piPackageRoot = path.join(piNodeModules, "@earendil-works/pi-coding-agent");
+const typeboxDir = path.join(piNodeModules, "@sinclair/typebox");
 
 if (!fs.existsSync(piPackageRoot)) {
   throw new Error(
-    `Could not locate pnpm-managed Pi dependencies at ${extensionsNodeModules}. Run: cd pi/extensions && pnpm install --frozen-lockfile`
+    `Could not locate Pi dependencies at ${piNodeModules}. Run: ~/.dotfiles/install`
   );
 }
 

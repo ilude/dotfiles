@@ -18,6 +18,19 @@ if [[ -z "$PNPM_GLOBAL_NODE_MODULES" ]] && command -v pnpm >/dev/null 2>&1; then
     PNPM_GLOBAL_NODE_MODULES=$(pnpm root -g 2>/dev/null || true)
 fi
 
+# pnpm v11 moved packages into per-install hash directories underneath the
+# value returned by `pnpm root -g` (e.g. <root>/<hash>/node_modules/<scope>/).
+# Earlier layouts placed scopes directly at <root>/<scope>. Detect which case
+# we're in and resolve to the directory that actually contains the scopes.
+if [[ -n "$PNPM_GLOBAL_NODE_MODULES" && -d "$PNPM_GLOBAL_NODE_MODULES" ]]; then
+    if [[ ! -d "$PNPM_GLOBAL_NODE_MODULES/@earendil-works" ]]; then
+        _resolved=$(find "$PNPM_GLOBAL_NODE_MODULES" -maxdepth 3 -type d -name "@earendil-works" -path "*/node_modules/@earendil-works" 2>/dev/null | head -1)
+        if [[ -n "$_resolved" ]]; then
+            PNPM_GLOBAL_NODE_MODULES=$(dirname "$_resolved")
+        fi
+    fi
+fi
+
 # Scopes to link (each is a directory under PNPM_GLOBAL_NODE_MODULES)
 SCOPES=("@earendil-works" "@sinclair")
 
