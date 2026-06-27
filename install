@@ -101,11 +101,12 @@ completed_steps+=("Zsh setup")
 
 current_step="uv install"
 # Install uv (Python package manager)
-if command -v uv &>/dev/null; then
-    echo "uv: already installed"
-else
+if ! command -v uv &>/dev/null; then
     echo "Installing uv..."
     curl -LsSf https://astral.sh/uv/install.sh | sh
+else
+    echo "uv: already installed, checking for updates..."
+    uv self update
 fi
 completed_steps+=("uv install")
 
