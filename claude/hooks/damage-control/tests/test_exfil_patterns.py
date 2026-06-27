@@ -507,22 +507,21 @@ class TestCloudMetadataExfiltration:
 
 
 class TestZeroAccessPaths:
-    """Test that new paths were added to zeroAccessPaths."""
+    """Test sensitive path access policy."""
 
-    def test_tfvars_in_zero_access(self, patterns_config):
-        """*.tfvars should be in zeroAccessPaths."""
+    def test_tfvars_not_in_zero_access(self, patterns_config):
+        """*.tfvars should not be in zeroAccessPaths so writes are allowed."""
         zero_access = patterns_config.get("zeroAccessPaths", [])
-        assert "*.tfvars" in zero_access
+        assert "*.tfvars" not in zero_access
+        assert "terraform.tfvars" not in zero_access
+        assert "*.auto.tfvars" not in zero_access
 
-    def test_terraform_tfvars_in_zero_access(self, patterns_config):
-        """terraform.tfvars should be in zeroAccessPaths."""
-        zero_access = patterns_config.get("zeroAccessPaths", [])
-        assert "terraform.tfvars" in zero_access
-
-    def test_auto_tfvars_in_zero_access(self, patterns_config):
-        """*.auto.tfvars should be in zeroAccessPaths."""
-        zero_access = patterns_config.get("zeroAccessPaths", [])
-        assert "*.auto.tfvars" in zero_access
+    def test_tfvars_in_read_confirm(self, patterns_config):
+        """*.tfvars reads should require confirmation."""
+        read_confirm = patterns_config.get("readConfirmPaths", [])
+        assert "*.tfvars" in read_confirm
+        assert "terraform.tfvars" in read_confirm
+        assert "*.auto.tfvars" in read_confirm
 
     def test_vault_token_in_zero_access(self, patterns_config):
         """.vault-token should be in zeroAccessPaths."""

@@ -96,6 +96,22 @@ dangerous_commands:
     tools: ["pwsh"]
     regex: "\\b(?:Set-MpPreference|Add-MpPreference)\\b[^|;&]*(?:DisableRealtimeMonitoring|DisableBehaviorMonitoring|DisableIOAVProtection|ExclusionPath|ExclusionProcess|ExclusionExtension)"
     reason: "Weakens Microsoft Defender or adds malware-style exclusions"
+  - pattern: "tfvars content read"
+    regex: "\\b(?:cat|sed|awk|head|tail|base64|grep|rg|cp)\\b[^|;&]*\\.tfvars\\b"
+    reason: "reads or copies .tfvars file content (may contain variables/secrets)"
+    action: "ask"
+  - pattern: "tfvars network sink"
+    regex: "(?:\\.tfvars\\b).*(?:\\||;|&&).*(?:curl|wget|nc|ncat)\\b|(?:curl|wget|nc|ncat)\\b.*(?:@[^\\s]*\\.tfvars\\b|--data(?:-binary|-raw)?\\s+@[^\\s]*\\.tfvars\\b|--upload-file\\s+[^\\s]*\\.tfvars\\b)"
+    reason: "potential exfiltration of .tfvars content to a network sink"
+    action: "ask"
+  - pattern: "terraform tfvars"
+    regex: "\\bterraform\\s+(?:plan|apply|destroy|import|refresh|console)\\b.*\\.tfvars\\b"
+    reason: "terraform command references .tfvars file (contains variables/secrets)"
+    action: "ask"
+  - pattern: "tofu tfvars"
+    regex: "\\btofu\\s+(?:plan|apply|destroy|import|refresh|console)\\b.*\\.tfvars\\b"
+    reason: "tofu command references .tfvars file (contains variables/secrets)"
+    action: "ask"
   # Linux only: on Windows/macOS these are allowed; on Linux they require confirmation.
   - pattern: "docker compose down"
     reason: "docker compose down stops and removes containers"
@@ -120,6 +136,11 @@ zero_access_exclusions:
   - "*.env.template"
   - "*.env.sample"
   - "*.env.j2"
+
+read_confirm_paths:
+  - "*.tfvars"
+  - "terraform.tfvars"
+  - "*.auto.tfvars"
 
 no_delete_paths:
   - "package.json"

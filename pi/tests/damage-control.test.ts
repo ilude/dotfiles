@@ -117,6 +117,7 @@ no_delete_paths: []
 `);
 
 		expect(parsed.zero_access_exclusions).toEqual(["*.env.j2"]);
+		expect(parsed.read_confirm_paths).toEqual([]);
 		expect(parsed.dangerous_commands).toEqual([
 			{
 				pattern: "docker compose down",
@@ -870,6 +871,7 @@ no_delete_paths: []
 		expect(loaded.rules.dangerous_commands[0].action).toBe("ask");
 		expect(loaded.rules.dangerous_commands[1].action).toBe("block");
 		expect(loaded.rules.dangerous_commands[0].tools).toEqual(["bash"]);
+		expect(loaded.rules.read_confirm_paths).toEqual([]);
 
 		const stringAsk = mod.normalizeClaudePolicy({
 			bashToolPatterns: [{ pattern: "rm", ask: "true", reason: "bad" }],
@@ -880,6 +882,37 @@ no_delete_paths: []
 			bashToolPatterns: [{ pattern: "(?P<x>rm)", reason: "bad" }],
 		});
 		expect(pythonOnly.health.status).toBe("failed");
+	});
+
+	it("normalizes Claude readConfirmPaths for protected read prompts", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const loaded = mod.normalizeClaudePolicy({
+			bashToolPatterns: [],
+			readConfirmPaths: ["*.tfvars", "terraform.tfvars"],
+		});
+
+		expect(loaded.health.status).toBe("active");
+		expect(loaded.rules.read_confirm_paths).toEqual([
+			"*.tfvars",
+			"terraform.tfvars",
+		]);
+	});
+
+	it("asks before reading .tfvars but allows writing it", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const cwd = process.cwd();
+
+		expect(
+			mod.checkReadConfirmPath(
+				"terraform.tfvars",
+				["*.tfvars", "terraform.tfvars"],
+				[],
+				cwd,
+			),
+		).toMatchObject({ ask: true });
+		await expect(
+			mod.checkZeroAccess(`${cwd}/terraform.tfvars`, [".env"], "write"),
+		).resolves.toBeUndefined();
 	});
 
 	it("matches Claude command regexes case-sensitively by default and scopes them to bash", async () => {

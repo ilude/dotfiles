@@ -850,10 +850,16 @@ bashToolPatterns:
   # ---------------------------------------------------------------------------
   # INFRASTRUCTURE AS CODE DESTRUCTIVE OPERATIONS
   # ---------------------------------------------------------------------------
-  # Terraform commands referencing .tfvars files (overrides zeroAccessPaths)
-  # bashToolPatterns are checked BEFORE zeroAccessPaths, so ask: true here
-  # lets terraform plan/apply with -var-file through with a prompt instead
-  # of hard-blocking on the *.tfvars zero-access glob.
+  # Terraform variable files are writeable local config, but reading or sending
+  # their contents requires confirmation because they commonly contain secrets.
+  - pattern: '\b(?:cat|sed|awk|head|tail|base64|grep|rg|cp)\b[^|;&]*\.tfvars\b'
+    reason: "reads or copies .tfvars file content (may contain variables/secrets)"
+    ask: true
+
+  - pattern: '(?:\.tfvars\b).*(?:\||;|&&).*(?:curl|wget|nc|ncat)\b|(?:curl|wget|nc|ncat)\b.*(?:@[^\s]*\.tfvars\b|--data(?:-binary|-raw)?\s+@[^\s]*\.tfvars\b|--upload-file\s+[^\s]*\.tfvars\b)'
+    reason: "potential exfiltration of .tfvars content to a network sink"
+    ask: true
+
   - pattern: '\bterraform\s+(?:plan|apply|destroy|import|refresh|console)\b.*\.tfvars\b'
     reason: "terraform command references .tfvars file (contains variables/secrets)"
     ask: true
@@ -909,7 +915,7 @@ bashToolPatterns:
   # ---------------------------------------------------------------------------
   # OPENTOFU (tofu) DESTRUCTIVE OPERATIONS
   # ---------------------------------------------------------------------------
-  # Tofu commands referencing .tfvars files (overrides zeroAccessPaths)
+  # Tofu commands referencing .tfvars files are allowed after confirmation.
   - pattern: '\btofu\s+(?:plan|apply|destroy|import|refresh|console)\b.*\.tfvars\b'
     reason: "tofu command references .tfvars file (contains variables/secrets)"
     ask: true
@@ -1683,14 +1689,10 @@ zeroAccessPaths:
   - "*.ppk"        # PuTTY private keys
 
   # ---------------------------------------------------------------------------
-  # TERRAFORM STATE AND VARIABLES (contain secrets)
+  # TERRAFORM STATE (contains secrets)
   # ---------------------------------------------------------------------------
   # Note: *.tfstate moved to readOnlyPaths - read allowed for inspection
   - ".terraform/"
-  # Terraform variable files often contain secrets (API keys, passwords)
-  - "*.tfvars"
-  - "terraform.tfvars"
-  - "*.auto.tfvars"
 
   # ---------------------------------------------------------------------------
   # SESSION AND TOKEN FILES
@@ -1849,6 +1851,16 @@ writeConfirmPaths:
   - ".claude/settings.local.json"
   - ".cursor/mcp.json"
   - "~/.claude/commands/"
+
+# ---------------------------------------------------------------------------
+# READ CONFIRM PATHS - Soft-ask confirmation for reading sensitive local config
+# ---------------------------------------------------------------------------
+# Reads from these paths trigger a confirmation prompt instead of silent allow.
+# Writes remain allowed so agents can create and update local configuration.
+readConfirmPaths:
+  - "*.tfvars"
+  - "terraform.tfvars"
+  - "*.auto.tfvars"
 
 # ---------------------------------------------------------------------------
 # READ-ONLY PATHS - Can read, but not write/edit/delete

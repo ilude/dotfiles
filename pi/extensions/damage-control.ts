@@ -31,6 +31,7 @@ import {
 import {
 	canonicalizeOrBlock,
 	checkNoDeletePaths,
+	checkReadConfirmPath,
 	checkReadOnlyPath,
 	checkWriteConfirmPath,
 	checkZeroAccess,
@@ -54,6 +55,7 @@ export { debugLog, redactSummary } from "./damage-control-debug.js";
 export {
 	analyzeGitCommand,
 	checkNoDeletePaths,
+	checkReadConfirmPath,
 	checkReadOnlyPath,
 	checkWriteConfirmPath,
 	checkZeroAccess,
@@ -687,6 +689,53 @@ export default function (pi: ExtensionAPI) {
 				event.toolCallId,
 			);
 			return zeroAccess;
+		}
+
+		if (event.toolName === "read") {
+			const readConfirm = checkReadConfirmPath(
+				rawPath,
+				rules.read_confirm_paths,
+				rules.zero_access_exclusions,
+				ctx.cwd,
+			);
+			if (readConfirm) {
+				emitTerminalBell();
+				const ok = await ctx.ui.confirm(
+					"Confirm protected read",
+					readConfirm.reason,
+				);
+				if (!ok) {
+					const decision = {
+						block: true as const,
+						reason: readConfirm.reason,
+					};
+					recordBlock(
+						event.toolName,
+						rawPath,
+						ctx.cwd,
+						decision,
+						loaded.health.ruleSource,
+						event.toolCallId,
+					);
+					return decision;
+				}
+				safeRecordDamageControlEval({
+					decisionType: "ask_approved",
+					toolName: event.toolName,
+					rawAction: rawPath,
+					cwd: ctx.cwd,
+					reason: readConfirm.reason,
+					rule: extractRulePattern(readConfirm.reason),
+					ruleSource: loaded.health.ruleSource,
+					toolCallId: event.toolCallId,
+				});
+				safeRecordAllow(
+					event.toolName,
+					rawPath,
+					"manual_once",
+					readConfirm.reason,
+				);
+			}
 		}
 
 		if (event.toolName === "write" || event.toolName === "edit") {

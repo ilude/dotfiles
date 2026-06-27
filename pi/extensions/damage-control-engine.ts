@@ -1341,6 +1341,26 @@ export function checkWriteConfirmPath(
 		: undefined;
 }
 
+export function checkReadConfirmPath(
+	filePath: string,
+	patterns: string[],
+	exclusions: string[],
+	cwd: string,
+): { ask: true; reason: string } | undefined {
+	const result = canonicalizeOrBlock(filePath, cwd);
+	if ("block" in result) return undefined;
+	if (isExcludedPath(result.canonical, exclusions)) return undefined;
+	const pattern = patterns.find((candidate) =>
+		matchesPattern(result.canonical, candidate),
+	);
+	return pattern
+		? {
+				ask: true,
+				reason: `Confirmation required for read path (matched "${pattern}"): ${result.canonical}`,
+			}
+		: undefined;
+}
+
 export function contentNeedsScan(
 	filePath: string,
 	patterns: string[],

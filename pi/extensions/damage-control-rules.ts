@@ -31,6 +31,7 @@ export interface DamageControlRules {
 	read_only_paths: string[];
 	no_delete_paths: string[];
 	write_confirm_paths: string[];
+	read_confirm_paths: string[];
 	content_scan_paths: string[];
 	injection_patterns: string[];
 	domain_constraints?: unknown;
@@ -70,6 +71,7 @@ function emptyRules(): DamageControlRules {
 		read_only_paths: [],
 		no_delete_paths: [],
 		write_confirm_paths: [],
+		read_confirm_paths: [],
 		content_scan_paths: [],
 		injection_patterns: [],
 		astAnalysis: { enabled: false },
@@ -157,6 +159,7 @@ export function validateDamageControlRules(value: unknown): string[] {
 		"read_only_paths",
 		"no_delete_paths",
 		"write_confirm_paths",
+		"read_confirm_paths",
 		"content_scan_paths",
 		"injection_patterns",
 	] as const) {
@@ -186,6 +189,7 @@ export function parseDamageControlRules(content: string): DamageControlRules {
 		read_only_paths: stringList(root, "read_only_paths"),
 		no_delete_paths: root.no_delete_paths as string[],
 		write_confirm_paths: stringList(root, "write_confirm_paths"),
+		read_confirm_paths: stringList(root, "read_confirm_paths"),
 		content_scan_paths: stringList(root, "content_scan_paths"),
 		injection_patterns: stringList(root, "injection_patterns"),
 		domain_constraints: root.domain_constraints,
@@ -293,6 +297,7 @@ export function normalizeClaudePolicy(value: unknown): LoadedRules {
 		read_only_paths: stringList(value, "readOnlyPaths"),
 		no_delete_paths: stringList(value, "noDeletePaths"),
 		write_confirm_paths: stringList(value, "writeConfirmPaths"),
+		read_confirm_paths: stringList(value, "readConfirmPaths"),
 		content_scan_paths: stringList(value, "contentScanPaths"),
 		injection_patterns: stringList(value, "injectionPatterns"),
 		astAnalysis: astAnalysisConfig(value.astAnalysis) ?? { enabled: false },
