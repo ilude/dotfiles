@@ -147,3 +147,11 @@ command -v fd &>/dev/null && alias find='fd'
 [[ -f "$HOME/.local/bin/env" ]] && . "$HOME/.local/bin/env"
 
 
+
+# pnpm
+export PNPM_HOME="/home/anvil/.local/share/pnpm"
+case ":$PATH:" in
+  *":$PNPM_HOME/bin:"*) ;;
+  *) export PATH="$PNPM_HOME/bin:$PATH" ;;
+esac
+# pnpm end
