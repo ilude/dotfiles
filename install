@@ -3,11 +3,12 @@
 set -e
 
 completed_steps=()
+skipped_steps=()
 current_step=""
 install_failed=0
 trap 'install_failed=$?' ERR
 # shellcheck disable=SC2154
-trap 'echo ""; echo "=== Install Summary ==="; for s in "${completed_steps[@]}"; do echo "  [done] $s"; done; if [[ $install_failed -ne 0 ]]; then echo "  [FAIL] $current_step"; fi' EXIT
+trap 'echo ""; echo "=== Install Summary ==="; for s in "${completed_steps[@]}"; do echo "  [done] $s"; done; for s in "${skipped_steps[@]}"; do echo "  [skip] $s"; done; if [[ $install_failed -ne 0 ]]; then echo "  [FAIL] $current_step"; fi' EXIT
 
 CONFIG="install.conf.yaml"
 DOTBOT_DIR="dotbot"
@@ -85,10 +86,34 @@ if is_windows && [[ -d "/home/$USER" ]]; then
 fi
 completed_steps+=("MSYS2 zsh bootstrap")
 
-# Skip GUI tools on headless Linux servers
-if [[ "$OSTYPE" != "darwin"* ]] && [[ -z "$DISPLAY" ]] && [[ -z "$WAYLAND_DISPLAY" ]] && [[ -z "$WSL_DISTRO_NAME" ]] && ! is_windows; then
-    echo "Headless server detected - skipping GUI tool setup"
+# Skip GUI tools on headless Linux servers.
+# Detection is machine-level (not shell-level) so a remote terminal on a GUI
+# workstation -- e.g. VS Code Remote SSH with no DISPLAY -- still installs
+# GUI-adjacent tooling. Order:
+#   1. DOTFILES_HEADLESS=1 / DOTFILES_GUI=1 -- explicit override (escape hatch)
+#   2. macOS, Windows, WSL -- never headless
+#   3. Shell already has a graphical session ($DISPLAY/$WAYLAND_DISPLAY) -- GUI
+#   4. systemd default target is graphical.target -- GUI workstation
+#   5. Xorg/Xwayland binary present -- GUI capable
+#   6. Otherwise -- treat as headless
+HEADLESS=
+if [[ -n "${DOTFILES_HEADLESS:-}" ]]; then
     HEADLESS=1
+elif [[ -n "${DOTFILES_GUI:-}" ]]; then
+    HEADLESS=
+elif [[ "$OSTYPE" == "darwin"* ]] || is_windows || [[ -n "$WSL_DISTRO_NAME" ]]; then
+    HEADLESS=
+elif [[ -n "$DISPLAY" || -n "$WAYLAND_DISPLAY" ]]; then
+    HEADLESS=
+elif command -v systemctl &>/dev/null && [[ "$(systemctl get-default 2>/dev/null)" == "graphical.target" ]]; then
+    HEADLESS=
+elif command -v Xorg &>/dev/null || command -v Xwayland &>/dev/null; then
+    HEADLESS=
+else
+    HEADLESS=1
+fi
+if [[ -n "$HEADLESS" ]]; then
+    echo "Headless server detected - skipping GUI tool setup"
 fi
 
 current_step="Git SSH setup"
@@ -402,6 +427,10 @@ if [[ -d "$WEB_FETCH_DIR" ]]; then
 fi
 completed_steps+=("pi web-fetch deps")
 
+current_step="pi agent directory link"
+"${BASEDIR}/scripts/pi-link-setup"
+completed_steps+=("pi agent directory link")
+
 current_step="GUI tool setup"
 if [[ -z "$HEADLESS" ]]; then
     "${BASEDIR}/scripts/claude-link-setup"
@@ -409,27 +438,29 @@ if [[ -z "$HEADLESS" ]]; then
     "${BASEDIR}/scripts/claude-mcp-setup"
     "${BASEDIR}/scripts/claude-plugins-setup"
     "${BASEDIR}/scripts/copilot-link-setup"
-    "${BASEDIR}/scripts/pi-link-setup"
+    completed_steps+=("GUI tool setup")
+else
+    skipped_steps+=("GUI tool setup (headless)")
 fi
-completed_steps+=("GUI tool setup")
 
 current_step="claude-status binary"
-if [[ -z "$HEADLESS" ]]; then
-    if is_windows; then
-        _status_bin="claude-status.exe"
-    else
-        _status_bin="claude-status-bin"
+# Not gated by HEADLESS: claude-status is a terminal statusline used by Claude
+# Code on any host (including headless servers). Docker absence is handled
+# below by falling back to the Python implementation.
+if is_windows; then
+    _status_bin="claude-status.exe"
+else
+    _status_bin="claude-status-bin"
+fi
+if [[ -f "$HOME/.claude/$_status_bin" ]]; then
+    echo "claude-status binary: already built"
+elif command -v docker &>/dev/null; then
+    echo "Building claude-status binary..."
+    if ! bash "${BASEDIR}/claude/claude-status-go/build.sh"; then
+        echo "Warning: claude-status build failed (Python fallback active)"
     fi
-    if [[ -f "$HOME/.claude/$_status_bin" ]]; then
-        echo "claude-status binary: already built"
-    elif command -v docker &>/dev/null; then
-        echo "Building claude-status binary..."
-        if ! bash "${BASEDIR}/claude/claude-status-go/build.sh"; then
-            echo "Warning: claude-status build failed (Python fallback active)"
-        fi
-    else
-        echo "claude-status: docker not found, skipping (Python fallback active)"
-    fi
+else
+    echo "claude-status: docker not found, skipping (Python fallback active)"
 fi
 completed_steps+=("claude-status binary")
 
