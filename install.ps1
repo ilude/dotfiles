@@ -1857,7 +1857,33 @@ try {
         Write-Host "  pnpm not found - skipping Pi installation (Windows installs Pi via pnpm because Bun's resolver fails on Pi's AWS SDK deps)" -ForegroundColor Yellow
     }
 
-    # Set up Pi directory link and resolve pnpm-global deps for pi extensions
+    # Install pi runtime dependencies (web-tree-sitter, tree-sitter-bash, jsdom, etc.)
+    # pnpm install must run BEFORE pi-deps-link-setup because pnpm recreates
+    # node_modules and would wipe the @earendil-works/@sinclair symlinks otherwise.
+    $piDir = Join-Path $BASEDIR "pi"
+    $piPackageJson = Join-Path $piDir "package.json"
+    if ((Test-Path $piPackageJson) -and (Get-Command pnpm -ErrorAction SilentlyContinue)) {
+        $piNodeModules = Join-Path $piDir "node_modules"
+        if (Test-Path $piNodeModules) {
+            Write-Host "  pi runtime deps: already installed" -ForegroundColor DarkGray
+        } else {
+            Write-Host "  Installing pi runtime dependencies..." -ForegroundColor Cyan
+            Push-Location $piDir
+            pnpm install 2>&1 | Out-String | Write-Host
+            Pop-Location
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "  pi runtime deps: installed" -ForegroundColor Green
+            } else {
+                Write-Host "  pi runtime deps: install failed" -ForegroundColor Red
+            }
+        }
+    } elseif (Test-Path $piPackageJson) {
+        Write-Host "  pi runtime deps: pnpm not found, skipping" -ForegroundColor Yellow
+    }
+
+    # Set up Pi directory link and plant pnpm-global symlinks into pi/node_modules.
+    # pi-deps-link-setup must run AFTER pnpm install (above) so the symlinks are
+    # not wiped when pnpm recreates node_modules.
     if ($gitBash) {
         Write-Host "`nSetting up Pi directory..." -ForegroundColor Cyan
         $piLinkSetup = Join-Path $BASEDIR "scripts" "pi-link-setup"
@@ -1870,44 +1896,6 @@ try {
         if (Test-Path $piDepsLinkSetup) {
             $bashPath = ConvertTo-GitBashPath $piDepsLinkSetup
             & $gitBash "$bashPath"
-        }
-    }
-
-    # Install pi/extensions dependencies (web-tree-sitter, tree-sitter-bash, etc.)
-    $piExtensionsDir = Join-Path $BASEDIR "pi" "extensions"
-    if ((Test-Path $piExtensionsDir) -and (Get-Command pnpm -ErrorAction SilentlyContinue)) {
-        $piExtNodeModules = Join-Path $piExtensionsDir "node_modules"
-        $piExtLock = Join-Path $piExtensionsDir "pnpm-lock.yaml"
-        if ((Test-Path $piExtNodeModules) -and (Test-Path $piExtLock)) {
-            Write-Host "  pi/extensions deps: already installed" -ForegroundColor DarkGray
-        } else {
-            Write-Host "  Installing pi/extensions dependencies..." -ForegroundColor Cyan
-            Push-Location $piExtensionsDir
-            pnpm install --frozen-lockfile 2>&1 | Out-String | Write-Host
-            Pop-Location
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "  pi/extensions deps: installed" -ForegroundColor Green
-            } else {
-                Write-Host "  pi/extensions deps: install failed" -ForegroundColor Red
-            }
-        }
-    }
-
-    # Install pi web-fetch dependencies
-    $webFetchDir = Join-Path $BASEDIR "pi" "extensions" "web-fetch"
-    if (Test-Path $webFetchDir) {
-        $nodeModules = Join-Path $webFetchDir "node_modules"
-        if (Test-Path $nodeModules) {
-            Write-Host "  pi web-fetch deps: already installed" -ForegroundColor DarkGray
-        } else {
-            Write-Host "  Installing pi web-fetch dependencies..." -ForegroundColor Cyan
-            if (Get-Command bun -ErrorAction SilentlyContinue) {
-                bun install --cwd $webFetchDir
-            } elseif (Get-Command pnpm -ErrorAction SilentlyContinue) {
-                pnpm install --dir $webFetchDir
-            } else {
-                Write-Host "  bun and pnpm not found - skipping pi web-fetch deps" -ForegroundColor Yellow
-            }
         }
     }
 

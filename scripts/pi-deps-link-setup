@@ -159,11 +159,10 @@ link_package() {
         return 0
     fi
 
-    if [[ -e "$scope_dir" ]] && is_link "$scope_dir"; then
+    if is_link "$scope_dir"; then
         echo "  ${scope}: replacing stale scope link"
         remove_link "$scope_dir"
-    fi
-    if [[ -e "$scope_dir" && ! -d "$scope_dir" ]]; then
+    elif [[ -e "$scope_dir" && ! -d "$scope_dir" ]]; then
         echo "  Error: ${scope_dir} exists and is not a directory"
         exit 1
     fi
@@ -172,7 +171,7 @@ link_package() {
     expected=$(readlink -f "$source_path" 2>/dev/null || echo "$source_path")
     if is_link "$target_path"; then
         current=$(resolve_link_target "$target_path")
-        if [[ "$current" == "$expected" ]] || [[ "$current" == "$source_path" ]]; then
+        if [[ -n "$current" ]] && ([[ "$current" == "$expected" ]] || [[ "$current" == "$source_path" ]]); then
             echo "  ${package}: already linked"
             return 0
         fi

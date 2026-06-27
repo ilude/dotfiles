@@ -91,17 +91,20 @@ completed_steps+=("MSYS2 zsh bootstrap")
 # workstation -- e.g. VS Code Remote SSH with no DISPLAY -- still installs
 # GUI-adjacent tooling. Order:
 #   1. DOTFILES_HEADLESS=1 / DOTFILES_GUI=1 -- explicit override (escape hatch)
-#   2. macOS, Windows, WSL -- never headless
-#   3. Shell already has a graphical session ($DISPLAY/$WAYLAND_DISPLAY) -- GUI
-#   4. systemd default target is graphical.target -- GUI workstation
-#   5. Xorg/Xwayland binary present -- GUI capable
-#   6. Otherwise -- treat as headless
+#   2. macOS -- always has GUI (no systemd)
+#   3. Windows, WSL -- never headless
+#   4. Shell already has a graphical session ($DISPLAY/$WAYLAND_DISPLAY) -- GUI
+#   5. systemd default target is graphical.target -- GUI workstation
+#   6. Xorg/Xwayland binary present -- GUI capable
+#   7. Otherwise -- treat as headless
 HEADLESS=
 if [[ -n "${DOTFILES_HEADLESS:-}" ]]; then
     HEADLESS=1
 elif [[ -n "${DOTFILES_GUI:-}" ]]; then
     HEADLESS=
-elif [[ "$OSTYPE" == "darwin"* ]] || is_windows || [[ -n "$WSL_DISTRO_NAME" ]]; then
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+    HEADLESS=
+elif is_windows || [[ -n "$WSL_DISTRO_NAME" ]]; then
     HEADLESS=
 elif [[ -n "$DISPLAY" || -n "$WAYLAND_DISPLAY" ]]; then
     HEADLESS=
@@ -420,6 +423,15 @@ if [[ -f "$PI_DIR/package.json" ]] && command -v pnpm &>/dev/null; then
     # explicit edit to pi/package.json + manual `pnpm up --latest`.
     echo "Refreshing pi runtime deps within semver..."
     pnpm update --dir "$PI_DIR"
+    # Smoke test native deps against the current Node version
+    if command -v node &>/dev/null; then
+        _node_version="$(node --version 2>/dev/null)"
+        if (cd "$PI_DIR" && node -e "require('web-tree-sitter'); require('tree-sitter-bash');" 2>/dev/null); then
+            echo "Native deps (web-tree-sitter, tree-sitter-bash): OK"
+        else
+            echo "[warn] Native deps failed to load with Node ${_node_version}. Try re-running: pnpm install --dir pi"
+        fi
+    fi
 elif [[ -f "$PI_DIR/package.json" ]]; then
     echo "Warning: pnpm unavailable; skipping pi runtime deps"
 fi
