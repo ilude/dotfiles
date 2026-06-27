@@ -13,7 +13,7 @@
 //   line would only add noise. The handler's own `notify(...)` closure
 //   already centralizes the call site.
 import { type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { getModels } from "@earendil-works/pi-ai";
+import { getModels } from "@earendil-works/pi-ai/compat";
 import { getOAuthProvider } from "@earendil-works/pi-ai/oauth";
 
 const CODEX_CLIENT_VERSION_CANDIDATES = ["999.0.0", "1.0.0", "0.99.0"];

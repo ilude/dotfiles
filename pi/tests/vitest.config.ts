@@ -25,6 +25,7 @@ export default defineConfig({
     alias: {
       "@earendil-works/pi-coding-agent": path.join(piPackageRoot, "dist/index.js"),
       "@earendil-works/pi-ai/oauth": path.join(piNodeModules, "@earendil-works/pi-ai/dist/oauth.js"),
+      "@earendil-works/pi-ai/compat": path.join(piNodeModules, "@earendil-works/pi-ai/dist/compat.js"),
       "@earendil-works/pi-ai": path.join(piNodeModules, "@earendil-works/pi-ai/dist/index.js"),
       "@earendil-works/pi-tui": path.join(piNodeModules, "@earendil-works/pi-tui/dist/index.js"),
       "@earendil-works/pi-agent-core": path.join(piNodeModules, "@earendil-works/pi-agent-core/dist/index.js"),

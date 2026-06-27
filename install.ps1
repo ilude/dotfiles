@@ -795,15 +795,19 @@ globalBinDir = "$globalBinDirToml"
 }
 
 function Initialize-PnpmGlobalConfig {
-    # pnpm requires PNPM_HOME and PNPM_HOME on PATH for `pnpm add -g` to work.
-    # `pnpm setup` does this on first run; we replicate it idempotently so the
-    # current process can immediately invoke `pnpm add -g` without a shell restart.
+    # pnpm requires PNPM_HOME plus its global bin directory on PATH for
+    # `pnpm add -g` to work. pnpm on Windows resolves global shims under
+    # %PNPM_HOME%\bin, while older installs left shims directly in PNPM_HOME.
+    # Keep PNPM_HOME available for compatibility, but put the bin directory first
+    # so freshly-installed shims win over stale root-level shims.
     if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
         return
     }
 
     $pnpmHome = Join-Path $env:LOCALAPPDATA 'pnpm'
+    $pnpmBin = Join-Path $pnpmHome 'bin'
     New-Item -ItemType Directory -Path $pnpmHome -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -ItemType Directory -Path $pnpmBin -Force -ErrorAction SilentlyContinue | Out-Null
 
     $userPnpmHome = [Environment]::GetEnvironmentVariable('PNPM_HOME', 'User')
     if ($userPnpmHome -ne $pnpmHome) {
@@ -815,13 +819,27 @@ function Initialize-PnpmGlobalConfig {
     $env:PNPM_HOME = $pnpmHome
 
     $userPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
-    if ($userPath -notlike "*$pnpmHome*" -and $userPath -notlike '*%PNPM_HOME%*') {
-        $newUserPath = if ([string]::IsNullOrWhiteSpace($userPath)) { $pnpmHome } else { "$pnpmHome;$userPath" }
-        [Environment]::SetEnvironmentVariable('PATH', $newUserPath, 'User')
-        Write-Host "  PATH: added pnpm dir" -ForegroundColor Green
+    $userPathEntries = @($userPath -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $hasPnpmBin = $userPathEntries | Where-Object { $_.TrimEnd('\', '/') -ieq $pnpmBin }
+    $hasPnpmHome = $userPathEntries | Where-Object { $_.TrimEnd('\', '/') -ieq $pnpmHome -or $_ -ieq '%PNPM_HOME%' }
+    if (-not $hasPnpmBin) {
+        $newUserPathEntries = @($pnpmBin)
+        if (-not $hasPnpmHome) { $newUserPathEntries += $pnpmHome }
+        $newUserPathEntries += $userPathEntries
+        [Environment]::SetEnvironmentVariable('PATH', ($newUserPathEntries -join ';'), 'User')
+        Write-Host "  PATH: added pnpm global bin dir" -ForegroundColor Green
+    } else {
+        Write-Host "  PATH: pnpm global bin dir already present" -ForegroundColor DarkGray
     }
-    if ($env:PATH -notlike "*$pnpmHome*") {
-        $env:PATH = "$pnpmHome;$env:PATH"
+
+    $processPathEntries = @($env:PATH -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $processHasPnpmBin = $processPathEntries | Where-Object { $_.TrimEnd('\', '/') -ieq $pnpmBin }
+    $processHasPnpmHome = $processPathEntries | Where-Object { $_.TrimEnd('\', '/') -ieq $pnpmHome }
+    if (-not $processHasPnpmBin) {
+        $newProcessPathEntries = @($pnpmBin)
+        if (-not $processHasPnpmHome) { $newProcessPathEntries += $pnpmHome }
+        $newProcessPathEntries += $processPathEntries
+        $env:PATH = $newProcessPathEntries -join ';'
     }
 
     # Harden pnpm installs against common supply-chain attacks. These are global

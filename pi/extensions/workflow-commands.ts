@@ -34,7 +34,7 @@ import {
 	completeSimple,
 	type Model,
 	type TextContent,
-} from "@earendil-works/pi-ai";
+} from "@earendil-works/pi-ai/compat";
 import type {
 	ContextUsage,
 	ExtensionAPI,

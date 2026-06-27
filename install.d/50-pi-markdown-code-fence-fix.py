@@ -99,6 +99,11 @@ def candidate_paths(include_legacy: bool) -> list[Path]:
     pnpm_root = pnpm_global_root()
     if pnpm_root:
         node_modules_roots.append(pnpm_root)
+        node_modules_roots.append(pnpm_root / "node_modules")
+        if pnpm_root.exists():
+            for install_dir in pnpm_root.iterdir():
+                if install_dir.is_dir():
+                    node_modules_roots.append(install_dir / "node_modules")
 
     global_bases: list[Path] = []
     local_appdata = os.environ.get("LOCALAPPDATA")
