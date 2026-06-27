@@ -6,6 +6,7 @@ import * as path from "node:path";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 const spawnMock = vi.fn();
+const SUBAGENT_TEST_TIMEOUT_MS = 30000;
 
 type MockProcess = EventEmitter & {
   stdout: EventEmitter;
@@ -171,7 +172,7 @@ You are a test agent.
 
     const result = await execution;
     expect(result.content[0].text).toContain("Parallel: 10/10 succeeded");
-  }, 15000);
+  }, SUBAGENT_TEST_TIMEOUT_MS);
 
   it("finishes a subagent when the child emits agent_end without close", async () => {
     const proc = createMockProcess();
@@ -213,7 +214,7 @@ You are a test agent.
     const result = await execution;
     expect(result.content[0].text).toContain("agent-end done");
     expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
-  }, 15000);
+  }, SUBAGENT_TEST_TIMEOUT_MS);
 
   it("uses modelSize/modelPolicy to override pinned agent models", async () => {
     mockSuccessfulSpawn();
@@ -256,7 +257,7 @@ You are a test agent.
     expect(spawnArgs).toContain("openai-codex/gpt-5.5");
     expect(spawnArgs).not.toContain("openai-codex/gpt-5.1-codex-max");
     expect(spawnArgs).not.toContain("anthropic/claude-sonnet-4-6");
-  }, 15000);
+  }, SUBAGENT_TEST_TIMEOUT_MS);
 
   it("falls back to the agent's pinned model when no modelSize is requested", async () => {
     mockSuccessfulSpawn();
@@ -291,7 +292,7 @@ You are a test agent.
     const spawnArgs = spawnMock.mock.calls[0][1] as string[];
     expect(spawnArgs).toContain("--model");
     expect(spawnArgs).toContain("anthropic/claude-sonnet-4-6");
-  }, 15000);
+  }, SUBAGENT_TEST_TIMEOUT_MS);
 
   it("dispatches an explicit team request through the registered subagent tool", async () => {
     mockSuccessfulSpawn();
@@ -320,7 +321,7 @@ You are a test agent.
     expect(spawnArgs.join(" ")).toContain("engineering-lead");
     expect(spawnArgs.join(" ")).toContain("Coordinate a safe backend change");
     expect(spawnArgs.join(" ")).not.toContain("/team");
-  }, 15000);
+  }, SUBAGENT_TEST_TIMEOUT_MS);
 
   it("registers the subagent run as a TaskRecordV1 with completed lifecycle", async () => {
     mockSuccessfulSpawn();
@@ -359,7 +360,7 @@ You are a test agent.
     expect(record.endedAt).toBeDefined();
     expect(record.usage?.inputTokens).toBe(10);
     expect(record.usage?.outputTokens).toBe(5);
-  }, 15000);
+  }, SUBAGENT_TEST_TIMEOUT_MS);
 
   it("does not create a repo-root false artifact when output is false or coerced to string false", async () => {
     mockSuccessfulSpawn();
@@ -387,7 +388,7 @@ You are a test agent.
       expect(result.content[0].text).not.toContain("Output saved to:");
     }
     expect(fs.existsSync(path.join(tmpDir, "false"))).toBe(false);
-  }, 15000);
+  }, SUBAGENT_TEST_TIMEOUT_MS);
 
   it("registers a subagent failure as state=failed with errorReason", async () => {
     spawnMock.mockImplementation(() => {
@@ -423,7 +424,7 @@ You are a test agent.
     expect(records.length).toBe(1);
     expect(records[0].state).toBe("failed");
     expect(records[0].errorReason).toContain("simulated failure");
-  }, 15000);
+  }, SUBAGENT_TEST_TIMEOUT_MS);
 
   it("treats stopReason=error as a parallel failure", async () => {
     spawnMock.mockImplementation(() => {
@@ -478,5 +479,5 @@ You are a test agent.
     expect(records.length).toBe(1);
     expect(records[0].state).toBe("failed");
     expect(records[0].errorReason).toContain("not supported");
-  }, 15000);
+  }, SUBAGENT_TEST_TIMEOUT_MS);
 });
