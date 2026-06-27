@@ -388,7 +388,8 @@ if command -v pnpm &>/dev/null; then
         @earendil-works/pi-coding-agent \
         @earendil-works/pi-agent-core \
         @earendil-works/pi-ai \
-        @earendil-works/pi-tui
+        @earendil-works/pi-tui \
+        @sinclair/typebox
 
     pi_markdown_patch="${BASEDIR}/install.d/50-pi-markdown-code-fence-fix.py"
     if [[ -f "$pi_markdown_patch" ]]; then

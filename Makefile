@@ -183,19 +183,18 @@ format-python:
 	uv run ruff check --fix
 	@echo "Python format complete."
 
-# Pi extension validation: pnpm-managed extension typecheck + pnpm/Vitest suite.
-# See pi/extensions/README.md for the full extension conventions.
+# Pi extension validation: pi/package.json owns typecheck and Vitest.
+# See pi/README.md for the full extension conventions.
 check-pi-ci:
 	@echo "==> Running CI-safe Pi Vitest suite"
-	cd pi/extensions && pnpm install --frozen-lockfile
-	cd pi/tests && pnpm install --frozen-lockfile && pnpm run test
+	cd pi && pnpm install --frozen-lockfile && pnpm test
 	@echo "Pi CI checks passed."
 
 check-pi-extensions:
 	@echo "==> Type-checking Pi extensions"
-	cd pi/extensions && pnpm install --frozen-lockfile && pnpm run typecheck
+	cd pi && pnpm install --frozen-lockfile && pnpm run typecheck
 	@echo "==> Running Pi Vitest suite (includes runtime smoke checks)"
-	cd pi/tests && pnpm install --frozen-lockfile && pnpm run test
+	cd pi && pnpm test
 	@echo "Pi extension checks passed."
 
 # Run CI-safe checks.

@@ -18,7 +18,7 @@ Pi is installed automatically by the dotfiles installer:
 ~/.dotfiles/install.ps1
 ```
 
-On all platforms, this uses `pnpm add -g --allow-build=koffi --allow-build=protobufjs @earendil-works/pi-coding-agent` plus the matching `pi-agent-core`, `pi-ai`, and `pi-tui` packages on every installer run, then runs `scripts/pi-link-setup` (which junctions `~/.dotfiles/pi/` -> `~/.pi/agent/` on Windows, symlinks on Linux/macOS). pnpm's global policy, including `minimumReleaseAge`, determines the newest eligible version. Final temporary install-time patches live in root `install.d/`; bash installs run `*.sh` plus common `*.py`, PowerShell installs run `*.ps1` plus common `*.py`, and moving a hook to `install.d/disabled/` turns it off.
+On all platforms, this uses `pnpm add -g --allow-build=koffi --allow-build=protobufjs @earendil-works/pi-coding-agent` plus the matching `pi-agent-core`, `pi-ai`, `pi-tui`, and `@sinclair/typebox` packages on every installer run, then runs `scripts/pi-link-setup` (which junctions `~/.dotfiles/pi/` -> `~/.pi/agent/` on Windows, symlinks on Linux/macOS) and `scripts/pi-deps-link-setup` (which links the pnpm-global Pi packages into `pi/node_modules`). pnpm's global policy, including `minimumReleaseAge`, determines the newest eligible version. Final temporary install-time patches live in root `install.d/`; bash installs run `*.sh` plus common `*.py`, PowerShell installs run `*.ps1` plus common `*.py`, and moving a hook to `install.d/disabled/` turns it off.
 
 The local dotfiles install also defaults `PI_CACHE_RETENTION=long` in the installed shell profiles (`zsh`, `bash`, `sh`, and PowerShell) unless you have already set a different value. That prefers extended provider-side prompt caching where Pi supports it (currently documented by Pi as Anthropic 1h and OpenAI 24h for direct API calls). OpenAI and OpenRouter-hosted OpenAI prompt caching are automatic for eligible long prompts; provider-specific `cache_control` markers are only for models/providers that require Anthropic-style caching semantics.
 
@@ -48,14 +48,15 @@ Package-manager priority:
 
 Pi-specific package-manager boundaries:
 
-- `pi/extensions/` is pnpm-managed (`package.json` + `pnpm-lock.yaml`) and owns Pi TypeScript dependencies such as `@earendil-works/pi-coding-agent`, `@earendil-works/pi-ai`, `@earendil-works/pi-agent-core`, and `@earendil-works/pi-tui`.
-- Do **not** run `bun add` for Pi extension/runtime packages, do not add those packages to `pi/tests/package.json`, and do not point tests at global Pi package internals for type/runtime resolution.
+- `pi/` is pnpm-managed (`package.json` + `pnpm-lock.yaml`) and owns Pi TypeScript typecheck/test dependencies.
+- Pi runtime packages such as `@earendil-works/pi-coding-agent`, `@earendil-works/pi-ai`, `@earendil-works/pi-agent-core`, `@earendil-works/pi-tui`, and `@sinclair/typebox` are installed globally by pnpm and linked into `pi/node_modules` by `scripts/pi-deps-link-setup`.
+- Do **not** run `bun add` for Pi extension/runtime packages and do not recreate `pi/extensions/package.json`, `pi/extensions/pnpm-lock.yaml`, or `pi/tests/package.json`.
 - Type-check extensions with:
   ```bash
-  cd pi/extensions && pnpm install --frozen-lockfile && pnpm run typecheck
+  cd pi && pnpm install --frozen-lockfile && pnpm run typecheck
   ```
-- `pi/tests/` is pnpm-managed for Vitest (`package.json` + `pnpm-lock.yaml`). Use `cd pi/tests && pnpm install --frozen-lockfile && pnpm run test`.
-- Do **not** use Bun for Pi TypeScript validation: no `bun add`, `bun install`, `bun run`, or `bun test` in `pi/extensions/` or `pi/tests/`. This avoids ambiguity between Bun's built-in test runner and Vitest, and keeps Pi package resolution on the pnpm lockfiles.
+- Run Vitest with `cd pi && pnpm install --frozen-lockfile && pnpm test`.
+- Do **not** use Bun for Pi TypeScript validation: no `bun add`, `bun install`, `bun run`, or `bun test` in `pi/`, `pi/extensions/`, or `pi/tests/`. This avoids ambiguity between Bun's built-in test runner and Vitest, and keeps Pi package resolution on the pnpm lockfile.
 - `Makefile` target `check-pi-extensions` is the canonical combined Pi validation: pnpm extension typecheck first, then pnpm/Vitest tests.
 
 ### Why pnpm for the global `pi` install
@@ -93,8 +94,10 @@ pnpm add -g --allow-build=koffi --allow-build=protobufjs \
     @earendil-works/pi-coding-agent \
     @earendil-works/pi-agent-core \
     @earendil-works/pi-ai \
-    @earendil-works/pi-tui
+    @earendil-works/pi-tui \
+    @sinclair/typebox
 ~/.dotfiles/scripts/pi-link-setup
+~/.dotfiles/scripts/pi-deps-link-setup
 ```
 
 ---
@@ -108,8 +111,8 @@ Debug logging is disabled by default. To enable redacted diagnostic logs for a s
 Validation commands are pnpm-only:
 
 ```bash
-cd pi/tests && pnpm test damage-control.test.ts
-cd pi/extensions && pnpm run typecheck
+cd pi && pnpm test damage-control.test.ts
+cd pi && pnpm run typecheck
 make check-pi-extensions
 ```
 
@@ -228,7 +231,7 @@ Shared team-config helpers for subagent team dispatch. `/team` is no longer an a
 { "team": "engineering", "task": "Add rate limiting to the API" }
 ```
 
-Agent config recovery: active agent personas live in `pi/agents/`. If a bad role/tool config prevents normal coordination, start Pi with `pi --no-extensions`, edit the affected file under `pi/agents/`, then run `cd pi/tests && pnpm test agent-role-semantics.test.ts` before restarting Pi normally.
+Agent config recovery: active agent personas live in `pi/agents/`. If a bad role/tool config prevents normal coordination, start Pi with `pi --no-extensions`, edit the affected file under `pi/agents/`, then run `cd pi && pnpm test agent-role-semantics.test.ts` before restarting Pi normally.
 
 ### `quality-gates.ts`
 
@@ -659,10 +662,10 @@ secrets, keys, or provider credentials for retrieval. The targeted TypeScript va
 command for this behavior is:
 
 ```bash
-cd pi/tests && pnpm run test -- read-expertise-retrieval.test.ts
+cd pi && pnpm test read-expertise-retrieval.test.ts
 ```
 
-Run the broader TypeScript suite with `cd pi/tests && pnpm run test`. The full repo gate is `make check`.
+Run the broader TypeScript suite with `cd pi && pnpm test`. The full repo gate is `make check`.
 
 #### Optional provider-gated similarity policy
 

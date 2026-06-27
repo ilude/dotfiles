@@ -1832,7 +1832,8 @@ try {
             '@earendil-works/pi-coding-agent' `
             '@earendil-works/pi-agent-core' `
             '@earendil-works/pi-ai' `
-            '@earendil-works/pi-tui'
+            '@earendil-works/pi-tui' `
+            '@sinclair/typebox'
         $env:CI = $null
         if ($LASTEXITCODE -eq 0) {
             Write-Host "  pi-coding-agent: installed/updated successfully via pnpm" -ForegroundColor Green

@@ -1,70 +1,76 @@
 #!/usr/bin/env bash
 
-# Link pnpm-global @earendil-works and @sinclair scopes into pi/node_modules so
-# extensions in ~/.dotfiles/pi/{extensions,lib}/*.ts can resolve
-# @earendil-works/pi-coding-agent, @earendil-works/pi-ai, and @sinclair/typebox.
+# Link pnpm-global Pi packages into pi/node_modules so extensions in
+# ~/.dotfiles/pi/{extensions,lib}/*.ts can resolve runtime-owned packages.
 #
-# pi (the binary) is installed via `pnpm add -g @earendil-works/pi-coding-agent`,
-# which puts those packages in the pnpm global node_modules directory. Node's
-# resolver, walking up from a file under ~/.dotfiles/pi/, never reaches that
-# global path -- so we plant the scopes inside pi/node_modules ourselves.
+# pnpm v11 can place each global package in its own hash directory under
+# `pnpm root -g`, so link individual package directories instead of linking an
+# entire scope directory.
 
 DOTFILES_DIR="${HOME}/.dotfiles"
 PI_DIR="${DOTFILES_DIR}/pi"
 PI_NODE_MODULES="${PI_DIR}/node_modules"
 PNPM_GLOBAL_NODE_MODULES="${PNPM_GLOBAL_NODE_MODULES:-}"
 
-if [[ -z "$PNPM_GLOBAL_NODE_MODULES" ]] && command -v pnpm >/dev/null 2>&1; then
-    PNPM_GLOBAL_NODE_MODULES=$(pnpm root -g 2>/dev/null || true)
-fi
-
-# pnpm v11 moved packages into per-install hash directories underneath the
-# value returned by `pnpm root -g` (e.g. <root>/<hash>/node_modules/<scope>/).
-# Earlier layouts placed scopes directly at <root>/<scope>. Detect which case
-# we're in and resolve to the directory that actually contains the scopes.
-if [[ -n "$PNPM_GLOBAL_NODE_MODULES" && -d "$PNPM_GLOBAL_NODE_MODULES" ]]; then
-    if [[ ! -d "$PNPM_GLOBAL_NODE_MODULES/@earendil-works" ]]; then
-        _resolved=$(find "$PNPM_GLOBAL_NODE_MODULES" -maxdepth 3 -type d -name "@earendil-works" -path "*/node_modules/@earendil-works" 2>/dev/null | head -1)
-        if [[ -n "$_resolved" ]]; then
-            PNPM_GLOBAL_NODE_MODULES=$(dirname "$_resolved")
-        fi
-    fi
-fi
-
-# Scopes to link (each is a directory under PNPM_GLOBAL_NODE_MODULES)
-SCOPES=("@earendil-works" "@sinclair")
+PACKAGES=(
+    "@earendil-works/pi-coding-agent"
+    "@earendil-works/pi-agent-core"
+    "@earendil-works/pi-ai"
+    "@earendil-works/pi-tui"
+    "@sinclair/typebox"
+)
 
 is_windows() {
     [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ -n "$WINDIR" ]]
 }
 
+normalize_path() {
+    local path="$1"
+    if is_windows && command -v cygpath >/dev/null 2>&1; then
+        cygpath -u "$path" 2>/dev/null || printf '%s\n' "$path"
+    else
+        printf '%s\n' "$path"
+    fi
+}
+
+if [[ -z "$PNPM_GLOBAL_NODE_MODULES" ]] && command -v pnpm >/dev/null 2>&1; then
+    PNPM_GLOBAL_NODE_MODULES=$(pnpm root -g 2>/dev/null || true)
+fi
+
+if [[ -n "$PNPM_GLOBAL_NODE_MODULES" ]]; then
+    PNPM_GLOBAL_NODE_MODULES=$(normalize_path "$PNPM_GLOBAL_NODE_MODULES")
+fi
+
 is_link() {
     local path="$1"
+    if [[ -L "$path" ]]; then
+        return 0
+    fi
     if is_windows; then
-        if [[ -L "$path" ]]; then
-            return 0
-        fi
         local win_path
-        win_path=$(cygpath -w "$path" 2>/dev/null)
+        win_path=$(cygpath -w "$path" 2>/dev/null || true)
         if [[ -n "$win_path" ]] && cmd //c "dir /AL \"$(dirname "$win_path")\"" 2>/dev/null | grep -q "$(basename "$path")"; then
             return 0
         fi
-        return 1
-    else
-        [[ -L "$path" ]]
     fi
+    return 1
 }
 
 resolve_link_target() {
     local path="$1"
+    readlink -f "$path" 2>/dev/null || readlink "$path" 2>/dev/null || echo ""
+}
+
+remove_link() {
+    local path="$1"
     if is_windows; then
-        # readlink -f works for symlinks; junctions are reported by `dir` but
-        # have no readlink target. For idempotency we accept either form as
-        # "linked" and just verify the path resolves into the pnpm global tree.
-        readlink -f "$path" 2>/dev/null || readlink "$path" 2>/dev/null || echo ""
-    else
-        readlink -f "$path" 2>/dev/null || readlink "$path" 2>/dev/null || echo ""
+        local win_path
+        win_path=$(cygpath -w "$path" 2>/dev/null || true)
+        if [[ -n "$win_path" ]] && cmd //c "rmdir \"$win_path\"" >/dev/null 2>&1; then
+            return 0
+        fi
     fi
+    rm -f "$path"
 }
 
 create_link() {
@@ -74,9 +80,114 @@ create_link() {
         local win_target win_source
         win_target=$(cygpath -w "$target")
         win_source=$(cygpath -w "$source")
-        cmd //c "mklink /J $win_target $win_source" > /dev/null 2>&1
+        cmd //c "mklink /J \"$win_target\" \"$win_source\"" >/dev/null 2>&1
     else
         ln -s "$source" "$target"
+    fi
+}
+
+package_scope() {
+    local package="$1"
+    printf '%s\n' "${package%/*}"
+}
+
+package_name() {
+    local package="$1"
+    printf '%s\n' "${package##*/}"
+}
+
+package_path_from_pnpm_list() {
+    local package="$1"
+    pnpm list -g --json --depth -1 "$package" 2>/dev/null | node -e '
+const packageName = process.argv[1];
+let input = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => { input += chunk; });
+process.stdin.on("end", () => {
+  try {
+    const parsed = JSON.parse(input || "[]");
+    const entry = Array.isArray(parsed) ? parsed[0] : undefined;
+    const dep = entry?.dependencies?.[packageName];
+    if (dep?.path) console.log(dep.path);
+  } catch {
+    process.exitCode = 0;
+  }
+});
+' "$package"
+}
+
+find_package_path() {
+    local package="$1"
+    local scope name listed_path direct_path found_path
+    scope=$(package_scope "$package")
+    name=$(package_name "$package")
+
+    listed_path=$(package_path_from_pnpm_list "$package" | tail -1)
+    if [[ -n "$listed_path" ]]; then
+        listed_path=$(normalize_path "$listed_path")
+        if [[ -d "$listed_path" ]]; then
+            printf '%s\n' "$listed_path"
+            return 0
+        fi
+    fi
+
+    direct_path="${PNPM_GLOBAL_NODE_MODULES}/${scope}/${name}"
+    if [[ -d "$direct_path" ]]; then
+        printf '%s\n' "$direct_path"
+        return 0
+    fi
+
+    found_path=$(find "$PNPM_GLOBAL_NODE_MODULES" -maxdepth 7 \( -type d -o -type l \) -path "*/node_modules/${scope}/${name}" 2>/dev/null | sort | head -1)
+    if [[ -n "$found_path" && -d "$found_path" ]]; then
+        printf '%s\n' "$found_path"
+        return 0
+    fi
+
+    return 1
+}
+
+link_package() {
+    local package="$1"
+    local scope name source_path scope_dir target_path current expected
+    scope=$(package_scope "$package")
+    name=$(package_name "$package")
+    scope_dir="${PI_NODE_MODULES}/${scope}"
+    target_path="${scope_dir}/${name}"
+
+    if ! source_path=$(find_package_path "$package"); then
+        echo "  Skipping ${package}: not present in ${PNPM_GLOBAL_NODE_MODULES}"
+        return 0
+    fi
+
+    if [[ -e "$scope_dir" ]] && is_link "$scope_dir"; then
+        echo "  ${scope}: replacing stale scope link"
+        remove_link "$scope_dir"
+    fi
+    if [[ -e "$scope_dir" && ! -d "$scope_dir" ]]; then
+        echo "  Error: ${scope_dir} exists and is not a directory"
+        exit 1
+    fi
+    mkdir -p "$scope_dir"
+
+    expected=$(readlink -f "$source_path" 2>/dev/null || echo "$source_path")
+    if is_link "$target_path"; then
+        current=$(resolve_link_target "$target_path")
+        if [[ "$current" == "$expected" ]] || [[ "$current" == "$source_path" ]]; then
+            echo "  ${package}: already linked"
+            return 0
+        fi
+        echo "  ${package}: replacing stale link"
+        remove_link "$target_path"
+    elif [[ -e "$target_path" ]]; then
+        echo "  Error: ${target_path} exists and is not a link; refusing to overwrite"
+        exit 1
+    fi
+
+    if create_link "$source_path" "$target_path"; then
+        echo "  ${package}: linked -> ${source_path}"
+    else
+        echo "  Error: failed to link ${package}"
+        exit 1
     fi
 }
 
@@ -89,41 +200,14 @@ fi
 
 if [[ -z "$PNPM_GLOBAL_NODE_MODULES" || ! -d "$PNPM_GLOBAL_NODE_MODULES" ]]; then
     echo "  Skipping: pnpm global node_modules not found"
-    echo "  (install pi-coding-agent first: pnpm add -g @earendil-works/pi-coding-agent)"
+    echo "  (install Pi packages first: pnpm add -g @earendil-works/pi-coding-agent)"
     exit 0
 fi
 
 mkdir -p "$PI_NODE_MODULES"
 
-for scope in "${SCOPES[@]}"; do
-    source_path="${PNPM_GLOBAL_NODE_MODULES}/${scope}"
-    target_path="${PI_NODE_MODULES}/${scope}"
-
-    if [[ ! -d "$source_path" ]]; then
-        echo "  Skipping ${scope}: not present in ${PNPM_GLOBAL_NODE_MODULES}"
-        continue
-    fi
-
-    if is_link "$target_path"; then
-        current=$(resolve_link_target "$target_path")
-        expected=$(readlink -f "$source_path" 2>/dev/null || echo "$source_path")
-        if [[ "$current" == "$expected" ]] || [[ "$current" == "$source_path" ]]; then
-            echo "  ${scope}: already linked"
-            continue
-        fi
-        echo "  ${scope}: replacing stale link"
-        rm -f "$target_path"
-    elif [[ -e "$target_path" ]]; then
-        echo "  Error: ${target_path} exists and is not a link; refusing to overwrite"
-        exit 1
-    fi
-
-    if create_link "$source_path" "$target_path"; then
-        echo "  ${scope}: linked -> ${source_path}"
-    else
-        echo "  Error: failed to link ${scope}"
-        exit 1
-    fi
+for package in "${PACKAGES[@]}"; do
+    link_package "$package"
 done
 
 echo "  Done"
