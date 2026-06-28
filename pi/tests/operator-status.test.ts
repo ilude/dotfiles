@@ -269,9 +269,8 @@ describe("session_start hook", () => {
 		const calls = (ctx.ui.setStatus as ReturnType<typeof vi.fn>).mock.calls;
 		const piCall = calls.find(([k]: string[]) => k === "pi");
 		expect(piCall).toBeDefined();
-		// pi version may not be resolvable in CI / hermetic env; both forms ok.
 		const value = piCall?.[1] as string;
-		expect(value === "π" || /^π v\d+\.\d+\.\d+/.test(value)).toBe(true);
+		expect(value).toMatch(/^π v\d+\.\d+\.\d+/);
 
 		const taskCall = calls.find(([k]: string[]) => k === "task");
 		const elevatedCall = calls.find(([k]: string[]) => k === "elevated");

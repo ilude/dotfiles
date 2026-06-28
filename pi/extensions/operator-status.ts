@@ -16,8 +16,10 @@
  */
 
 import * as childProcess from "node:child_process";
+import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
@@ -331,8 +333,34 @@ function installClaudeStyleFooter(
  * Do not read settings.lastChangelogVersion here: that value tracks the last
  * changelog the user saw, not necessarily the installed/runtime version.
  */
+function readPackageVersion(packageName: string): string | null {
+	try {
+		const entryPath = fileURLToPath(import.meta.resolve(packageName));
+		let currentDir = path.dirname(entryPath);
+		while (true) {
+			const packageJsonPath = path.join(currentDir, "package.json");
+			if (fs.existsSync(packageJsonPath)) {
+				const parsed = JSON.parse(
+					fs.readFileSync(packageJsonPath, "utf-8"),
+				) as { version?: unknown };
+				return typeof parsed.version === "string" ? parsed.version : null;
+			}
+			const parentDir = path.dirname(currentDir);
+			if (parentDir === currentDir) return null;
+			currentDir = parentDir;
+		}
+	} catch {
+		return null;
+	}
+}
+
 export function resolvePiVersion(): string | null {
 	if (cachedPiVersion !== undefined) return cachedPiVersion;
+	const packageVersion = readPackageVersion("@earendil-works/pi-coding-agent");
+	if (packageVersion) {
+		cachedPiVersion = packageVersion;
+		return cachedPiVersion;
+	}
 	const output = runCommand(["pi", "--version"]);
 	const match = output.match(/\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/);
 	cachedPiVersion = match?.[0] ?? null;
