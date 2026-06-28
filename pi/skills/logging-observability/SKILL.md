@@ -34,13 +34,14 @@ Observability lets operators infer internal state from external signals. Instrum
 
 ## Structured Log Fields
 
-Prefer stable names: timestamp, level, message, service, environment, request_id/trace_id, user/account identifier when safe, operation, outcome, duration_ms, error type.
+Prefer stable names: timestamp, level, message, service, environment, request_id/trace_id, user/account identifier when safe, operation, outcome, duration_ms, error type. Do not add redundant derived fields when consumers can derive them reliably from existing structured fields.
 
 ## Anti-Patterns
 
 - Logging secrets or raw PII.
 - Alerting on every exception instead of user impact.
 - Free-text logs where structured fields are needed.
+- Redundant derived fields that duplicate existing structured data without a clear query need.
 - Adding telemetry without a query/use case.
 
 ## Quick Reference

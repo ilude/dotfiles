@@ -44,6 +44,12 @@ Required scopes for typical work:
 
 **MUST use method 1 in scripts and automation.**
 
+## Branches and External Artifacts
+
+- Name issue branches with the issue number when there is one, for example `123-fix-login-timeout` or `issue-123-fix-login-timeout` if the project uses that convention.
+- Match the project's existing branch prefix and slug style when it is visible.
+- Do not mention local tooling, internal workflow details, or provenance in issues, merge requests, commit messages intended for the project, or other external project artifacts unless the user explicitly requests it.
+
 ## Common Operations
 
 ```bash

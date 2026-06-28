@@ -1,10 +1,10 @@
 # Git Worktrees for Parallel Development
 
-Git worktrees allow multiple working directories from the same repository, enabling parallel Claude sessions without stashing or context pollution.
+Git worktrees allow multiple working directories from the same repository, enabling parallel sessions without stashing or context pollution.
 
 ## The Problem
 
-Traditional workflow requires stashing and switching, which loses Claude context and risks stash conflicts.
+Traditional workflow requires stashing and switching, which loses session context and risks stash conflicts.
 
 ## Solution: `.worktrees/` Directory
 
@@ -27,8 +27,8 @@ git worktree add .worktrees/feature-x feature-x
 # Create new branch and worktree together
 git worktree add -b feature-y .worktrees/feature-y
 
-# List all worktrees
-git worktree list
+# List all worktrees in script-friendly form
+git worktree list --porcelain
 
 # Remove after merging
 git worktree remove .worktrees/feature-x
@@ -37,15 +37,15 @@ git worktree remove .worktrees/feature-x
 git worktree prune
 ```
 
-## Parallel Claude Sessions
+## Parallel Sessions
 
 ```bash
 # Terminal 1: Main feature
-cd ~/project && claude
+cd ~/project
 
 # Terminal 2: Separate worktree
 git worktree add .worktrees/hotfix hotfix-branch
-cd .worktrees/hotfix && claude
+cd .worktrees/hotfix
 ```
 
 Benefits: isolated context, no stash conflicts, parallel tests, easy comparison.
@@ -62,11 +62,20 @@ Benefits: isolated context, no stash conflicts, parallel tests, easy comparison.
 
 ## Cleanup
 
+Distinguish Git metadata cleanup from filesystem cleanup:
+
 ```bash
+# Remove a valid registered worktree directory after verifying the path
 git worktree remove .worktrees/feature-x
-git branch -d feature-x  # Delete branch too
-git worktree prune       # Periodic cleanup
+
+# Prune stale Git metadata for missing worktree paths
+git worktree prune
+
+# Delete the branch only when it is no longer needed
+git branch -d feature-x
 ```
+
+Before claiming cleanup is complete, verify with `git worktree list --porcelain` and confirm any filesystem paths you report still exist or were removed. Do not delete stale worktree directories manually unless the user explicitly approves the exact paths.
 
 ## Gotchas
 
@@ -77,13 +86,23 @@ git worktree prune       # Periodic cleanup
 Worktrees only contain tracked files from the checked-out branch. Gitignored files like `.env`, `.venv/`, `node_modules/`, and build artifacts are NOT present. Run any local setup (e.g., `uv sync`, `bun install`, or `pnpm install` for pnpm-locked projects) in the new worktree if needed.
 
 ### Global config symlinks
-If your project uses `~/.claude/` or `~/.config/opencode/` via symlinks pointing to the main worktree (e.g., `~/.claude -> ~/.dotfiles/claude`), edits to those files in a secondary worktree won't affect the live global config until merged back to the branch the main worktree has checked out.
+If your project uses global config symlinks pointing to the main worktree, edits to those files in a secondary worktree won't affect the live global config until merged back to the branch the main worktree has checked out.
 
 ### Checking worktree state
+For status questions, run live state first:
+
 ```bash
-# List all worktrees and their branches
-git worktree list
+# List all worktrees, branches, and prunable entries
+git worktree list --porcelain
+
+# Check dirty state in the current worktree
+git status --short --branch
 
 # Check if you're inside a worktree (non-main worktrees have a .git file, not directory)
 [ -f .git ] && echo "worktree" || echo "main"
 ```
+
+Report actual worktrees, branches, dirty state, stale/prunable entries, and convention mismatches such as paths outside `.worktrees/`.
+
+### Branch and worktree changes
+Before switching branches, adding worktrees, syncing branches, rebasing, or merging across branches, verify the current worktree is clean with `git status --short --branch`. If the user is preserving work before switching or syncing, an explicit `wip: ...` save-point commit is allowed. Treat WIP commits as local and temporary unless the user explicitly asks to push them.

@@ -21,10 +21,12 @@ Generated Markdown notes should include YAML frontmatter with `title`, `created`
 ## Workflow
 
 1. Choose a scoped domain path before writing.
-2. Put human-readable notes in the domain folder and raw artifacts under `_attachments/`.
-3. Update the relevant `_indexes/` note with path-level metadata only.
-4. Never stage plaintext `private/...` paths.
-5. Let Dolos pack diverged private content into the encrypted artifact before commit.
+2. Keep reusable source separate from private values: track schemas, templates, and instructions outside `private/`; store real tenant data, credentials, exports, and secrets only in private storage.
+3. Prefer IaC, API, or CLI collection over UI-only notes. Before documenting a UI-only limitation, verify the service API and supported CLI do not expose the data or operation.
+4. Put human-readable notes in the domain folder and raw artifacts under `_attachments/`.
+5. Update the relevant `_indexes/` note with path-level metadata only.
+6. Never stage plaintext `private/...` paths.
+7. Let Dolos pack diverged private content into the encrypted artifact before commit.
 
 ## Commands
 

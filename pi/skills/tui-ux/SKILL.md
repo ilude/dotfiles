@@ -25,6 +25,7 @@ Key takeaways to apply:
 1. **Responsiveness first**
    - Never block typing, navigation, cancel, help, or quit on network/storage/provider work.
    - Use async work with stale-result guards for provider/model/session changes.
+   - Discover live provider/model data on startup or cache refresh instead of hardcoding stale lists.
    - Add timeouts for provider/model list calls so one bad endpoint cannot hang the UI.
 
 2. **Predictable navigation**
@@ -38,7 +39,7 @@ Key takeaways to apply:
    - Do not rely on map iteration or provider response order unless intentionally documented.
 
 4. **Window long content**
-   - Long lists need pagination/windowing and clear indicators: `… N previous`, `… N more`.
+   - Long lists need pagination/windowing and clear indicators: `... N previous`, `... N more`.
    - Keep the selected row visible.
    - Avoid hiding available items with a static top-N truncation.
 
@@ -76,8 +77,9 @@ Before implementing TUI changes:
 1. Inspect nearby UI/state/test patterns first.
 2. Identify the user-visible invariant, e.g. "selection remains visible" or "one provider failure does not block others".
 3. Add or update tests for that invariant.
-4. Avoid extra UX embellishments beyond the request unless they are baseline usability requirements.
-5. If touching config/profile/secret behavior, preserve existing fields and add migration/preservation tests.
+4. For typing latency, instrument first and validate against measured input/render timing before guessing.
+5. Avoid extra UX embellishments beyond the request unless they are baseline usability requirements.
+6. If touching config/profile/secret behavior, preserve existing fields and add migration/preservation tests.
 
 When responding after TUI work, use compact structure:
 
@@ -114,6 +116,7 @@ For any TUI/list/form/setup change, verify:
 ## Model Picker Specific Guidance
 
 - Model lists should be stable and scannable.
+- Populate provider/model data from live discovery on startup or cache refresh; do not rely on stale hardcoded inventories.
 - Use provider labels and alphabetical or clearly documented grouping.
 - Avoid static truncation; window around selection.
 - If visible numbers are removed, do not prompt primarily for typed numbers. If typed numbers remain supported, treat them as hidden compatibility, not primary UX.

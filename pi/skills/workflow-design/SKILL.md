@@ -17,7 +17,7 @@ description: "Developer/operator command UX design. Use when improving command s
 
 ## Core Principle
 
-A good workflow has one obvious entry point, predictable side effects, and validation that matches user intent.
+A good workflow has one obvious entry point, predictable side effects, and validation that exercises the exact user path.
 
 ## Practical Steps
 
@@ -26,7 +26,8 @@ A good workflow has one obvious entry point, predictable side effects, and valid
 3. Make commands composable, idempotent, and safe to rerun.
 4. Centralize configuration and environment resolution.
 5. Document the shortest successful path plus recovery steps.
-6. Validate on the platforms the workflow claims to support.
+6. Validate through the same entry point and sequence the user will run.
+7. Validate on the platforms the workflow claims to support.
 
 ## Design Checks
 
@@ -35,6 +36,9 @@ A good workflow has one obvious entry point, predictable side effects, and valid
 - Are destructive operations explicit?
 - Are platform assumptions documented or detected?
 - Are internal helpers kept out of the public surface?
+- Does validation run the public workflow, not only a helper?
+- Is scratch output written to gitignored `.tmp/` or OS temp, and left in place when it is untracked, overwritten with `>`, and not a secret or hygiene issue?
+- For broad audits, are discovery passes parallelized, synthesized, and then executed one topic at a time with user confirmation?
 
 ## Anti-Patterns
 
@@ -42,6 +46,8 @@ A good workflow has one obvious entry point, predictable side effects, and valid
 - Host/container boundary confusion.
 - Workflows that require hidden local state.
 - Documentation that lists commands without saying when to use them.
+- Validating a workflow by testing only an internal subcommand.
+- Turning a broad audit directly into a batch mutation without a synthesis and confirmation step.
 
 ## Quick Reference
 

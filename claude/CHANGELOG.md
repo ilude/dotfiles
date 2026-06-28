@@ -1,3 +1,13 @@
+## 2026-06-28: Encode recurring workflow preferences
+
+**Why:** Past-session review found repeated workflow expectations around exact-path validation, durable handoff, scratch output handling, worktree state, deployment checks, private values, and domain-specific triage loops.
+
+**Fix:** Updated shared instruction guidance and Pi skills to capture those preferences, including overwrite-not-delete scratch handling, parallel discovery with one-topic-at-a-time execution, migration parity, worktree live-state checks, WIP save-point commits, hot-path extension caching, GitOps validation, Playwright triage, and tenant automation rules.
+
+**Files:** ~/.dotfiles/pi/AGENTS.md, ~/.dotfiles/pi/skills/workflow-design/SKILL.md, ~/.dotfiles/pi/skills/least-astonishment/SKILL.md, ~/.dotfiles/pi/skills/planning/SKILL.md, ~/.dotfiles/pi/skills/prd/SKILL.md, ~/.dotfiles/pi/skills/workflow/plan-it.md, ~/.dotfiles/pi/skills/git-workflow/SKILL.md, ~/.dotfiles/pi/skills/git-workflow/worktrees.md, ~/.dotfiles/pi/skills/git-workflow/gitlab.md, ~/.dotfiles/pi/skills/workflow/commit.md, ~/.dotfiles/pi/skills/pi-extension/SKILL.md, ~/.dotfiles/pi/skills/tui-ux/SKILL.md, ~/.dotfiles/pi/skills/logging-observability/SKILL.md, ~/.dotfiles/pi/skills/terraform/SKILL.md, ~/.dotfiles/pi/skills/private-store/SKILL.md, ~/.dotfiles/pi/skills/ansible/SKILL.md, ~/.dotfiles/pi/skills/shell/SKILL.md, ~/.dotfiles/pi/skills/docker/SKILL.md, ~/.dotfiles/pi/skills/kubernetes-helm/SKILL.md, ~/.dotfiles/pi/skills/playwright-e2e/SKILL.md, ~/.dotfiles/pi/skills/m365-tenant-automation/SKILL.md
+
+---
+
 ## 2026-06-24: Expand Pi extension authoring footguns
 
 **Why:** Public Pi skill and extension repositories surfaced additional recurring authoring mistakes beyond shell-out performance, especially around registration-time actions, reload-safe state, command-only context methods, and custom tool contracts.

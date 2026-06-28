@@ -27,7 +27,9 @@ A plan is useful only when it makes completion falsifiable. Write outcomes that 
 3. Convert vague language into observable behavior.
 4. Add acceptance criteria using `Given/When/Then` or concise bullets.
 5. Define verification: exact command, review check, or manual scenario.
-6. Call out blockers that would change the plan.
+6. For workflows, require validation of the exact user entry point and sequence, not only helper-level tests.
+7. For migrations or refactors, define parity checks that prove old and new behavior match before cutover.
+8. Call out blockers that would change the plan.
 
 ## Acceptance Criteria Pattern
 
@@ -35,7 +37,8 @@ A plan is useful only when it makes completion falsifiable. Write outcomes that 
 ## Acceptance Criteria
 - Given <state>, when <action>, then <observable result>.
 - <File/API/command> handles <case> without <failure>.
-- Validation: <exact command or inspection step>.
+- Validation: <exact command or inspection step> that exercises the user-facing workflow when applicable.
+- Migration parity: <old path> and <new path> produce <same observable result> before cutover.
 ```
 
 ## Anti-Patterns
@@ -44,6 +47,8 @@ A plan is useful only when it makes completion falsifiable. Write outcomes that 
 - Treating implementation details as requirements.
 - Adding PRD sections when the user only needs acceptance criteria.
 - Claiming validation without a concrete check.
+- Treating helper-level tests as sufficient when the risk is in the user workflow.
+- Omitting parity criteria from migration or refactor plans.
 
 ## Quick Reference
 

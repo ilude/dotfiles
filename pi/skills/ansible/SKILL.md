@@ -19,13 +19,16 @@ Compact index for Ansible playbooks, roles, inventories, and tests.
 - Do not commit secrets; use vault or environment-specific secret stores.
 - Fail explicitly for missing required vars instead of silently defaulting unsafe values.
 - Keep host-specific/local generated files out of tracked source.
+- For risky service or runtime file mutations, capture preflight state, verify ownership and mode, create backups, gate targets, roll out serially, define rollback, then check restart status and logs.
+- Prefer OpenSSL for certificate inspection. Use CA tooling only when issuing, renewing, revoking, or changing trust-chain state.
 
 ## Practical steps
 
 1. Identify inventory, role, and variable precedence before editing.
-2. Prefer modules over shell/command tasks; if shell is required, make `changed_when`/`creates`/`removes` explicit.
-3. Notify handlers only from tasks that actually change state.
-4. Validate syntax/lint and, for role changes, Molecule or a focused dry run/check mode.
+2. Capture current service state, file metadata, relevant config snippets, and logs before changing runtime-critical files.
+3. Prefer modules over shell/command tasks; if shell is required, make `changed_when`/`creates`/`removes` explicit.
+4. Notify handlers only from tasks that actually change state.
+5. Validate syntax/lint and, for role changes, Molecule or a focused dry run/check mode.
 
 ## Quick validation
 

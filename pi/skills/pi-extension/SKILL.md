@@ -20,7 +20,7 @@ description: "Pi TypeScript extension implementation and review. Use when editin
 
 Pi extensions run inside the interactive agent process. Treat render paths, status paths, hooks, and tool-result handlers as hot paths. Small subprocess calls can become visible CPU, process churn, or startup latency when repeated.
 
-Pi docs and Pi examples are authoritative for extension behavior. Use Node docs only for runtime mechanics such as `child_process`, streams, signals, and buffers. Do not import editor-extension rules from other ecosystems unless the user explicitly asks for that comparison.
+Pi docs, Pi examples, and local Pi source/types are authoritative for extension behavior. When local Pi source or `.d.ts` files are available, inspect them before hedging about extension API behavior. Use Node docs only for runtime mechanics such as `child_process`, streams, signals, and buffers. Do not import editor-extension rules from other ecosystems unless the user explicitly asks for that comparison.
 
 ## Pi Runtime Rules
 
@@ -36,16 +36,14 @@ Pi docs and Pi examples are authoritative for extension behavior. Use Node docs 
 ## Shell-Out Rules
 
 1. Prefer `pi.exec(command, args, { cwd, timeout, signal })` for ordinary command execution. Use raw `child_process` only when Pi's wrapper does not fit the use case.
-2. Do not shell out from footer render, status render, or other UI render paths unless the result is cached.
-3. Prefer computing display values once per relevant key, such as cwd, model, or session id.
-4. Avoid subprocesses in `tool_result` handlers unless gated by file type, output size, command type, or another cheap deterministic check.
+2. Do not shell out from footer render, status render, or other UI render paths unless the result is cached by a stable key.
+3. Prefer computing display values once per relevant key, such as cwd, model, provider, session id, tool name, or output fingerprint.
+4. Avoid subprocesses in `tool_result` handlers unless gated by file type, output size, command type, or another cheap deterministic check; skip small or no-op inputs before spawning.
 5. Cache binary availability checks such as `where.exe`, `which`, `git --version`, or tool probes. Lazy cache is usually best for optional validators.
 6. Treat `session_start` subprocesses as startup-cost risks. Network calls, `git fetch`, package-manager commands, and Python probes need timeouts and a clear reason.
 7. Prefer in-process Node APIs for filesystem, path, JSON, and config reads.
 8. Avoid synchronous subprocess APIs in hot paths; they block the extension event loop.
 9. If a subprocess is required, use explicit args, avoid `shell: true` unless required, set `windowsHide: true` on Windows, bound it with timeout/cancellation, and either consume or ignore stdout/stderr deliberately.
-10. On timeout or abort, clean up the whole child process tree. On Windows, use `taskkill /PID <pid> /T /F`; on Unix-like systems, spawn detached when appropriate and signal the process group.
-11. For Windows churn investigations, use `scripts/diagnose-windows-process-churn.ps1` before guessing. Check for hot LSM/CryptSvc, stale Git LFS/MSYS helpers, orphan-like console processes, and `Tcpip` event ID `4227`.
 10. On timeout or abort, clean up the whole child process tree. On Windows, use `taskkill /PID <pid> /T /F`; on Unix-like systems, spawn detached when appropriate and signal the process group.
 11. For Windows churn investigations, use `scripts/diagnose-windows-process-churn.ps1` before guessing. Check for hot LSM/CryptSvc, stale Git LFS/MSYS helpers, orphan-like console processes, and `Tcpip` event ID `4227`.
 
@@ -55,7 +53,7 @@ Pi docs and Pi examples are authoritative for extension behavior. Use Node docs 
 | --- | --- | --- |
 | `git rev-parse` inside footer render | Repeats on repaint | Cache by cwd |
 | `where.exe` or `which` before every edit validator | Process churn per edit | Cache availability by binary |
-| Python reducer for every Bash result | Python startup for tiny output | Skip below a byte threshold |
+| Python reducer for every Bash result | Python startup for tiny output | Skip below a byte threshold and cache larger reductions by stable input key |
 | `git fetch` on every reload | Startup/network cost | Run only on primary startup, timeout, skip on failure |
 | Unbounded tool output | Context pressure and compaction risk | Use Pi truncation helpers and save full output when needed |
 | Background interval without shutdown cleanup | Work continues after reload/session switch | Clear it in `session_shutdown` or component disposal |
@@ -96,6 +94,7 @@ Pi TypeScript is pnpm-only in this repo. Do not use bun or npm for Pi extension 
 
 - Is the code path registration-time, render-time, status-time, per-token, per-tool-result, or session startup?
 - Does any subprocess run more often than the user action that justifies it?
+- Do footer/status/tool-result hooks cache by stable key and skip tiny or no-op work?
 - Is availability discovery cached?
 - Is small/no-op input bypassed before spawning?
 - Are timeout, cancellation, and stdio behavior explicit?

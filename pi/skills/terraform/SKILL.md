@@ -16,7 +16,9 @@ Compact index for Terraform modules, state, plans, and infrastructure workflows.
 ## Project-specific rules
 
 - Do not reinterpret service `port` fields as host publishing when working near Onramp/Caddy Compose conventions.
-- Never commit state files, secrets, credentials, or local override files.
+- Keep reusable source separate from private values: modules, schemas, and examples can be tracked; real secrets, credentials, tenant values, and local overrides cannot.
+- Never commit state files, secrets, credentials, or local override files unless the repo explicitly documents state custody and the state contents have been checked for sensitive data.
+- Prefer IaC, API, or CLI changes over UI-only runbooks. Before claiming a UI-only limitation, verify the provider, API, and CLI do not support the needed operation.
 - Do not run `terraform apply`, `destroy`, state surgery, or imports without explicit user approval.
 - Prefer explicit variables/validation over hidden defaults for required infrastructure decisions.
 

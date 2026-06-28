@@ -26,15 +26,19 @@ Compact index for git operations. Load linked files for worktrees or hosting set
 ## Practical steps
 
 1. Inspect state before mutation: `git status --short --branch` and relevant diffs.
-2. Separate user changes from agent changes; never stage unrelated files.
-3. Run secret/whitespace checks before committing when practical.
-4. Prefer revert/restore over destructive history operations; ask before resets or force pushes.
+2. For worktree status questions, run live state first: `git worktree list --porcelain` and `git status --short --branch`; report actual worktrees, branches, dirty state, stale/prunable entries, and convention mismatches.
+3. Before branch or worktree changes, verify the current worktree is clean or get explicit direction to preserve work.
+4. Separate user changes from agent changes; never stage unrelated files.
+5. Run secret/whitespace checks before committing when practical.
+6. Allow explicit `wip: ...` save-point commits when the user is preserving work before switching or syncing; treat them as local and temporary unless the user explicitly asks to push.
+7. Prefer revert/restore over destructive history operations; ask before resets, force pushes, or deleting stale worktree directories.
 
 ## Quick validation
 
 | Purpose | Commands |
 |---|---|
 | Status | `git status --short --branch` |
+| Worktree status | `git worktree list --porcelain` plus `git status --short --branch` in the relevant worktree |
 | Review unstaged diff | `git diff -- <path>` |
 | Review staged diff | `git diff --cached -- <path>` |
 | Whitespace check | `git diff --check` / `git diff --cached --check` |

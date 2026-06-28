@@ -50,6 +50,8 @@ When asking about unclear files, use batch prompting if there are multiple files
 
 Group files by logical change using commit types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `style`, `chore`, `build`, `ci`, `deps`, `revert`. Related functionality changes go together. Do not mix unrelated changes. Each commit should do one thing.
 
+Allow an explicit `wip: ...` save-point commit when the user says they are preserving work before switching branches, syncing, rebasing, or other cross-branch work. Treat WIP commits as local and temporary unless the user explicitly asks to push them.
+
 For each group of related files:
 1. Stage that group's files.
 2. If staging exits non-zero, stop before creating a commit and report the error.

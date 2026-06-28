@@ -38,7 +38,11 @@ Use arrays for argument lists. Use `[[ ... ]]` in Bash-specific scripts; use POS
 
 Use approved cmdlet names in scripts, `$env:NAME` for environment variables, and explicit error handling consistent with the existing file.
 
-For PowerShell readability, avoid generated-code/minified style:
+For administrative mutation scripts, support `ShouldProcess`/`-WhatIf` through `[CmdletBinding(SupportsShouldProcess)]` and `ShouldProcess` guards around each mutation. When the user asks for preview mode, default to `-WhatIf` or an equivalent read-only dry run.
+
+Do not run newly written or generated PowerShell scripts unless the user explicitly asks to execute them. For legacy or on-prem Windows environments, target Windows PowerShell 5.1 compatibility unless the repo documents PowerShell 7+ as the runtime.
+
+For PowerShell readability, avoid dense or minified style:
 
 - Do not compress functions, loops, `if`/`else`, `try`/`catch`, or object construction onto one long line.
 - Prefer readable multiline hashtables and `[pscustomobject]` literals when there is more than one or two properties.
@@ -54,7 +58,9 @@ For PowerShell readability, avoid generated-code/minified style:
 - Silent fallback when a required dependency is missing.
 - Mixing POSIX and Bash features accidentally.
 - Changing platform behavior without validation.
-- PowerShell "AI slop": minified one-line functions/control flow, giant one-line apply blocks, vague boilerplate comments, or decorative comments that do not explain behavior.
+- Running generated mutation scripts without explicit instruction.
+- PowerShell admin scripts that mutate state without `ShouldProcess`/`-WhatIf` support.
+- PowerShell slop: minified one-line functions/control flow, giant one-line apply blocks, vague boilerplate comments, or decorative comments that do not explain behavior.
 
 ## Quick Reference
 

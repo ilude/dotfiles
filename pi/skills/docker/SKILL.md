@@ -17,7 +17,7 @@ Compact index for Docker, Compose, and DevContainer work. Load linked files for 
 
 - Avoid container complexity theater: do not add Compose, sidecars, custom networks, or orchestration unless the project need is real.
 - Use Docker Compose V2 syntax: `docker compose`, not `docker-compose`.
-- Onramp/Caddy convention: a service `port` field means the container/service port reachable on the Compose network; do not reinterpret it as host publishing or split host/internal ports unless requested.
+- Onramp/Caddy convention: a service `port` field means the container/service port reachable on the Compose network; do not reinterpret it as host publishing or split host/internal ports unless requested. Preserve explicit exposure decisions such as no host binding, Caddy-only ingress, or intentionally published ports.
 - Keep entrypoints idempotent and signal-safe; prefer exec form for final process.
 - Do not bake secrets into images or Compose files.
 

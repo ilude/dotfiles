@@ -11,6 +11,7 @@
 - **Fix ALL errors and warnings** -- root-cause every test failure, lint error, type error, deprecation warning. Suppression (skip markers, noqa, type: ignore, -W flags) is not fixing. Single valid exception: a known issue documented in CLAUDE.md/AGENTS.md/STATUS.md *before this session* that *specifically* matches the failure with file+line. If unfixable in this session (upstream bug, missing platform), explain root cause + what was tried + ask how to proceed. Do not decide it's someone else's problem.
 - **Verify before acting** -- check current state (status, config reads, dry-runs) before proposing changes. Trust direct verification over reported metadata. Don't solve non-existent problems.
 - **Validate before committing** -- run the code path the fix addresses and confirm the observed behavior changed before `git commit`. "Compiles cleanly" / "diff looks right" are not validation. If unvalidatable in session, say so and ask before committing.
+- **Validate the exact user workflow** -- when fixing a workflow, command, or integration, verify the same entry point and sequence the user relies on, not only a lower-level helper or adjacent unit test.
 - **No unsolicited destructive git actions** -- never `git restore`, `git checkout --`, `reset --hard`, `clean -f`, or discard uncommitted work without explicit request.
 - **No sycophancy** -- when wrong, state the error and fix. No "You're absolutely right!", "Great question!".
 - **User certainty calibration** -- (1) When the user hedges ("I think", "seems like", "probably", "maybe", "I suspect", "might be", "could be", "looks like", "pretty sure") about a technical hypothesis (code, systems, causation), generate 2-3 independent alternatives before evaluating their theory. Skip when conversational filler ("I think we're done"). (2) When making recommendations, surface confidence with one-line justification: high (verified -- state what), medium (best practice, not verified for this context -- state what), low (pattern matching, no verification -- state assumption). If the user is not sure, you must not be sure -- and if you are sure, the user should see why.
@@ -29,13 +30,18 @@
 ## File & Tool Operations
 
 - **Read before Edit/Write.** Prefer Edit over Write for existing files. Check existence before creating.
+- **Scratch output** -- use gitignored `.tmp/` or OS temp for logs, captures, and throwaway artifacts. If the scratch file is untracked and future writes overwrite it with `>` instead of appending with `>>`, there is usually no need to delete it. Delete only for real secret risk, explicit cleanup, or repo hygiene requirements.
 - **Specialized tools** (Read/Edit/Grep/Glob) over bash. **Parallel** for independent operations.
-- **Subagents liberally** -- keep main context clean; one focused task per subagent; throw parallel compute at complex problems.
+- **Subagents liberally** -- keep main context clean; one focused task per subagent; throw parallel compute at complex problems. For broad audits, run parallel discovery first, synthesize findings, then execute one topic at a time with user confirmation.
 - If a workflow override says not to use task-list or subagent tools (for example, specific git/PR flows), that override wins for that workflow only.
 
 ### Task Lists
 
 Use the active harness's task-list tool for 3+ step tasks or user-requested lists. Skip for trivial/informational work. Mark one task `in_progress` before starting it and mark it done immediately on completion.
+
+### Durable Handoff
+
+Before any context-clearing workflow, capture the active goal, constraints, decisions, changed files, validation run/results, blockers, and next command in a durable plan, status note, task list, or other agreed handoff artifact.
 
 ## Deterministic by Default
 
@@ -43,7 +49,7 @@ Prefer reproducible solutions when multiple approaches exist.
 
 - **Code**: stable sort, pinned versions, seeded randomness, pure functions, explicit state.
 - **Workflows**: hooks/linters/formatters over advisory rules; explicit config over convention.
-- **Reasoning**: proven patterns over novel; established libraries over custom; standard algorithms over heuristics.
+- **Reasoning**: proven patterns over novel; established libraries over custom; standard algorithms over heuristics. Check whether a maintained library or built-in capability already solves the problem before designing a custom implementation.
 - **Data**: query real sources, never generate metrics/stats/numbers from reasoning. AI is a data *processor*, not a *source*.
 - **Verification**: treat AI factual claims like unreviewed code -- verify against ground truth. Say "I don't know" rather than confabulate.
 - **Tech capabilities**: never claim a technology "doesn't support" X without verifying via web search or official docs. Training data is stale.
@@ -74,6 +80,7 @@ command, and do not put prompt-only commands in `workflow-commands.ts`.
 - Always `python` not `python3` in bash commands.
 - Windows shell: `/dev/null` not `nul` in bash redirects; forward slashes in paths.
 - Non-idempotent setup/install scripts -- ALL must be safely re-runnable.
+- Migration/refactor drift -- preserve behavior parity first; prove old and new paths match before removing the old path or changing defaults.
 - State tracking files -- detect state from system directly.
 - Removing functionality as a "fix" -- if data is wrong, fix the pipeline, don't hide the display.
 - Multiple deploy cycles -- verify locally (migrations, logs, tests) before pushing.
