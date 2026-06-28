@@ -24,7 +24,19 @@ fail() { printf '  [fail] %s\n' "$*"; HAS_FAIL=1; }
 
 # Augment PATH with well-known install locations so the rest of the checks
 # work even when invoked from a bare make environment (no interactive shell).
-PNPM_HOME="${PNPM_HOME:-${HOME}/.local/share/pnpm}"
+if [[ -z "${PNPM_HOME:-}" ]]; then
+    if pnpm_path=$(command -v pnpm 2>/dev/null); then
+        pnpm_path=$(readlink -f "$pnpm_path" 2>/dev/null || printf '%s\n' "$pnpm_path")
+        PNPM_HOME=$(dirname "$(dirname "$pnpm_path")")
+    elif [[ -n "${LOCALAPPDATA:-}" ]] && command -v cygpath >/dev/null 2>&1; then
+        PNPM_HOME=$(cygpath -u "${LOCALAPPDATA}\\pnpm" 2>/dev/null || printf '%s\n' "${HOME}/.local/share/pnpm")
+    else
+        PNPM_HOME="${HOME}/.local/share/pnpm"
+    fi
+fi
+if command -v cygpath >/dev/null 2>&1; then
+    PNPM_HOME=$(cygpath -u "$PNPM_HOME" 2>/dev/null || printf '%s\n' "$PNPM_HOME")
+fi
 export PNPM_HOME
 PNPM_BIN="${PNPM_HOME}/bin"
 

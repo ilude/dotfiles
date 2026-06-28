@@ -1863,19 +1863,14 @@ try {
     $piDir = Join-Path $BASEDIR "pi"
     $piPackageJson = Join-Path $piDir "package.json"
     if ((Test-Path $piPackageJson) -and (Get-Command pnpm -ErrorAction SilentlyContinue)) {
-        $piNodeModules = Join-Path $piDir "node_modules"
-        if (Test-Path $piNodeModules) {
-            Write-Host "  pi runtime deps: already installed" -ForegroundColor DarkGray
+        Write-Host "  Installing pi runtime dependencies..." -ForegroundColor Cyan
+        Push-Location $piDir
+        pnpm install 2>&1 | Out-String | Write-Host
+        Pop-Location
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "  pi runtime deps: installed" -ForegroundColor Green
         } else {
-            Write-Host "  Installing pi runtime dependencies..." -ForegroundColor Cyan
-            Push-Location $piDir
-            pnpm install 2>&1 | Out-String | Write-Host
-            Pop-Location
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "  pi runtime deps: installed" -ForegroundColor Green
-            } else {
-                Write-Host "  pi runtime deps: install failed" -ForegroundColor Red
-            }
+            Write-Host "  pi runtime deps: install failed" -ForegroundColor Red
         }
     } elseif (Test-Path $piPackageJson) {
         Write-Host "  pi runtime deps: pnpm not found, skipping" -ForegroundColor Yellow

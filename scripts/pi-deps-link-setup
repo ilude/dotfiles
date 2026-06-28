@@ -171,7 +171,7 @@ link_package() {
     expected=$(readlink -f "$source_path" 2>/dev/null || echo "$source_path")
     if is_link "$target_path"; then
         current=$(resolve_link_target "$target_path")
-        if [[ -n "$current" ]] && ([[ "$current" == "$expected" ]] || [[ "$current" == "$source_path" ]]); then
+        if [[ -n "$current" ]] && { [[ "$current" == "$expected" ]] || [[ "$current" == "$source_path" ]]; }; then
             echo "  ${package}: already linked"
             return 0
         fi

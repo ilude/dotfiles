@@ -417,12 +417,6 @@ PI_DIR="${BASEDIR}/pi"
 if [[ -f "$PI_DIR/package.json" ]] && command -v pnpm &>/dev/null; then
     echo "Installing pi runtime dependencies..."
     pnpm install --dir "$PI_DIR"
-    # Refresh deps within their declared semver ranges so every install run
-    # picks up patch/minor bumps. minimumReleaseAge (pi/pnpm-workspace.yaml)
-    # gates against rushed upstream publishes. Major bumps still require an
-    # explicit edit to pi/package.json + manual `pnpm up --latest`.
-    echo "Refreshing pi runtime deps within semver..."
-    pnpm update --dir "$PI_DIR"
     # Smoke test native deps against the current Node version
     if command -v node &>/dev/null; then
         _node_version="$(node --version 2>/dev/null)"
