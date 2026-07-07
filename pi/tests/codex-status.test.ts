@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import registerCodexStatusCommand, {
 	accountIdFromToken,
 	fetchCodexUsage,
+	formatBedrockUsageSection,
+	formatCodexFooterStatus,
 	formatUsage,
 	resolveAuth,
 	USAGE_ENDPOINT,
@@ -246,6 +248,66 @@ describe("codex-status usage", () => {
 				{ color: true },
 			),
 		).toContain("\u001b[92m    0%\u001b[0m used");
+	});
+
+	it("formats the Codex footer slot", () => {
+		expect(
+			formatCodexFooterStatus({
+				rate_limit: {
+					primary_window: { used_percent: 42 },
+					secondary_window: { used_percent: 61 },
+				},
+			}),
+		).toBe("codex 5h 42% | wk 61%");
+		expect(formatCodexFooterStatus({ rate_limit: {} })).toBe("codex: unknown");
+	});
+
+	it("formats Bedrock month-to-date local estimates", () => {
+		expect(
+			formatBedrockUsageSection({
+				month: "2026-07",
+				inputTokens: 0,
+				outputTokens: 0,
+				cacheReadTokens: 0,
+				cacheWriteTokens: 0,
+				costTotal: 0,
+				requestCount: 0,
+				unpricedRequestCount: 0,
+				models: [],
+			}),
+		).toBe("Bedrock: no usage recorded this month.");
+
+		const text = formatBedrockUsageSection({
+			month: "2026-07",
+			inputTokens: 1200,
+			outputTokens: 3400,
+			cacheReadTokens: 500,
+			cacheWriteTokens: 60,
+			costTotal: 0.12345,
+			requestCount: 2,
+			unpricedRequestCount: 1,
+			models: [
+				{
+					provider: "amazon-bedrock",
+					model: "anthropic.claude-sonnet-4-5",
+					inputTokens: 1200,
+					outputTokens: 3400,
+					cacheReadTokens: 500,
+					cacheWriteTokens: 60,
+					costTotal: 0.12345,
+					requestCount: 2,
+					unpricedRequestCount: 1,
+				},
+			],
+		});
+
+		expect(text).toContain("Bedrock MTD local estimate (2026-07):");
+		expect(text).toContain(
+			"amazon-bedrock/anthropic.claude-sonnet-4-5: >= $0.1235 (partial: 1 unpriced) (in 1,200, out 3,400, cache-read 500, cache-write 60)",
+		);
+		expect(text).toContain(
+			"Total: >= $0.1235 (partial: 1 unpriced) (1,200 in, 3,400 out)",
+		);
 	});
 
 	it("fetches usage with bearer token and account header", async () => {

@@ -106,6 +106,7 @@ pi/prompt-routing/experiments/baseline-rebuild-parity/**
 *.state.*
 
 # Pi generated expertise/runtime state (source/config remains tracked under pi/)
+pi/trust.json
 pi/cache/
 pi/multi-team/expertise/
 pi/index/
@@ -163,3 +164,9 @@ private.conflicts/
 claude/.last-update-result.json
 .specs/archive/pi-goal-command/
 sessions/
+/.tmp/bedrock-metrics-query.json
+/.tmp/bedrock-metrics-today.json
+/.tmp/bedrock-model-values.json
+/.tmp/bedrock-products.json
+/.tmp/subagent-bedrock-cost-stage2.md
+/.tmp/subagent-codex-footer-stage3.md

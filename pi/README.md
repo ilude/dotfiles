@@ -36,6 +36,61 @@ When enabled, `pi/extensions/direct-personality.ts` appends concise/direct style
 
 Rollback: remove the `personality` key or set it to `"default"`/`"none"`. The repo-tracked `pi/settings.json` does not enable direct mode by default; the setting is intentionally per-user opt-in.
 
+### Codex plus Bedrock workflow
+
+The tracked `pi/settings.json` keeps the Codex subscription provider as the startup default and orders `enabledModels` for `/model` scoped mode and Ctrl+P cycling. OpenAI Codex entries appear first, followed by the selected Amazon Bedrock Claude models:
+
+- `openai-codex/gpt-5.5`
+- `openai-codex/gpt-5.4`
+- `openai-codex/gpt-5.4-mini`
+- `openai-codex/gpt-5.3-codex-spark`
+- `amazon-bedrock/us.anthropic.claude-opus-4-8`
+- `amazon-bedrock/us.anthropic.claude-fable-5`
+- `amazon-bedrock/us.anthropic.claude-sonnet-4-6`
+
+`/model` starts in scoped mode when `enabledModels` is set. Pressing Tab toggles to Pi's all-model view, which uses Pi's built-in provider sort instead of this curated order.
+
+Bedrock credentials stay local and ignored in `~/.pi/agent/auth.json` (`pi/auth.json` in this repo checkout). To make Bedrock available without command-line flags or process-wide AWS variables, add an `amazon-bedrock` auth entry with provider-scoped environment values:
+
+```json
+{
+  "amazon-bedrock": {
+    "type": "api_key",
+    "key": "<authenticated>",
+    "env": {
+      "AWS_PROFILE": "default",
+      "AWS_REGION": "us-east-2"
+    }
+  }
+}
+```
+
+This does not store AWS keys in the repo. It tells Pi to use the existing local AWS profile for Bedrock only, while normal shell AWS commands keep their own environment/profile behavior.
+
+Poll AWS Bedrock for newer Opus, Fable, and Sonnet model IDs from inside Pi:
+
+```text
+/bedrock-refresh
+```
+
+The command is read-only by default and reports current vs latest configured model lines. To update `pi/settings.json` `enabledModels` to the latest matching `us.*` model IDs:
+
+```text
+/bedrock-refresh --apply
+```
+
+The command reports a warning when a newer model is available or a configured model is stale, so it can be used as a periodic check from inside Pi.
+
+Validation:
+
+```bash
+env -u AWS_PROFILE -u AWS_DEFAULT_PROFILE -u AWS_REGION -u AWS_DEFAULT_REGION \
+  pi --provider amazon-bedrock \
+  --model us.anthropic.claude-haiku-4-5-20251001-v1:0 \
+  --no-tools --no-extensions --no-skills --no-context-files --no-session \
+  -p 'Reply with exactly: bedrock-ok'
+```
+
 ### JavaScript package-manager policy
 
 Do not use `npm` in this repository. Do not create or commit `package-lock.json`.
@@ -330,6 +385,7 @@ Applies startup model-list cleanup for noisy provider catalogs.
 
 Behavior:
 - Hides date/version-suffixed and preview snapshot models for `openai-codex`, `github-copilot`, `opencode`, `opencode-go`, and `openrouter`.
+- Limits Amazon Bedrock visibility to the configured `us.anthropic` Claude models used by the Codex plus Bedrock workflow.
 - Applies provider-specific blocklists (including internal/legacy model IDs) before `/model` selection.
 
 ### Operator Layer

@@ -32,6 +32,14 @@ const TARGET_PROVIDERS = [
 	"amazon-bedrock",
 ] as const;
 
+const ALLOW_EXACT_IDS = {
+	"amazon-bedrock": new Set([
+		"us.anthropic.claude-opus-4-8",
+		"us.anthropic.claude-fable-5",
+		"us.anthropic.claude-sonnet-4-6",
+	]),
+} as const;
+
 const HIDE_EXACT_IDS = {
 	"openai-codex": new Set(["codex-auto-review"]),
 	opencode: new Set([
@@ -286,6 +294,8 @@ function isPreviewSnapshot(id: string, name: string): boolean {
 }
 
 function shouldHideByCustomRules(provider: string, id: string): boolean {
+	const allowed = ALLOW_EXACT_IDS[provider as keyof typeof ALLOW_EXACT_IDS];
+	if (allowed && !allowed.has(id)) return true;
 	const exact = HIDE_EXACT_IDS[provider as keyof typeof HIDE_EXACT_IDS];
 	if (exact?.has(id)) return true;
 	const prefixes = HIDE_PREFIXES[provider as keyof typeof HIDE_PREFIXES] ?? [];

@@ -197,13 +197,6 @@ function safeRecordDamageControlEval(input: {
 	}
 }
 
-function formatDamageControlStatus(state: DamageControlRuntimeState): string {
-	if (state.health.status === "active") {
-		return `damage-control: active (${state.mode})`;
-	}
-	return "damage-control: failed";
-}
-
 function damageControlStatusMessage(state: DamageControlRuntimeState): string {
 	return `damage-control status: ${state.health.status}; mode: ${state.mode}; core protections: always on`;
 }
@@ -343,7 +336,6 @@ function registerDamageControlCommand(
 				mode,
 				(ctx as { commandName?: string }).commandName ?? "damage-control",
 			);
-			ctx.ui.setStatus("damage-control", formatDamageControlStatus(state));
 			ctx.ui.notify(
 				`damage-control mode changed from ${previousMode} to ${mode}`,
 				"info",
@@ -419,7 +411,6 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_start", async (_event, ctx) => {
 		debugLog("session_start", { health: state.health });
-		ctx.ui.setStatus("damage-control", formatDamageControlStatus(state));
 		if (state.health.status === "failed") {
 			ctx.ui.notify(
 				state.health.error ?? "Damage-control rules failed to load.",

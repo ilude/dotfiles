@@ -10,7 +10,7 @@
  *   - "elevated" -- shown only when session approvals exist, e.g. `elevated (2)`
  *
  * Healthy default keeps the bar quiet (no `OK` token, no zero counters). The
- * other slots (model/provider/router/effort) are owned by other extensions
+ * other slots (model/provider/codex/effort) are owned by other extensions
  * (prompt-router, etc.); this extension only fills the operator-specific
  * gaps.
  */
@@ -221,7 +221,7 @@ export function colorForThinkingLevel(
 export function rightAnchoredStatus(
 	footerData: ReadonlyFooterDataProvider,
 ): string | null {
-	const status = footerData.getExtensionStatuses().get("router");
+	const status = footerData.getExtensionStatuses().get("codex");
 	return status ? sanitizeSingleLine(status) : null;
 }
 
@@ -229,7 +229,7 @@ export function formatExtensionStatuses(
 	footerData: ReadonlyFooterDataProvider,
 ): string | null {
 	const statuses = Array.from(footerData.getExtensionStatuses().entries())
-		.filter(([key]) => key !== "router")
+		.filter(([key]) => key !== "codex")
 		.sort(([a], [b]) => a.localeCompare(b))
 		.map(([, text]) => sanitizeSingleLine(text))
 		.filter(Boolean);
@@ -243,7 +243,7 @@ export function formatExtensionStatusLine(
 	const statuses = footerData.getExtensionStatuses();
 	const left = sanitizeSingleLine(statuses.get("tps") ?? "");
 	const right = Array.from(statuses.entries())
-		.filter(([key]) => key !== "router" && key !== "tps")
+		.filter(([key]) => key !== "codex" && key !== "tps")
 		.sort(([a], [b]) => a.localeCompare(b))
 		.map(([, text]) => sanitizeSingleLine(text))
 		.filter(Boolean)

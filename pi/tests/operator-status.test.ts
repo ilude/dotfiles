@@ -101,19 +101,19 @@ describe("footer extension status placement", () => {
 		} as ReadonlyFooterDataProvider;
 	}
 
-	it("keeps router right-anchored and moves damage-control down with extension statuses", async () => {
+	it("keeps codex right-anchored and moves damage-control down with extension statuses", async () => {
 		const mod = await import("../extensions/operator-status.ts");
 		const data = footerData({
 			"damage-control": "damage-control: active",
-			router: "router: sonnet",
-			tps: "done — 42 tok/s",
+			codex: "codex 5h 42% | wk 61%",
+			tps: "done -- 42 tok/s",
 		});
-		const status = "damage-control: active done — 42 tok/s";
+		const status = "damage-control: active done -- 42 tok/s";
 
-		expect(mod.rightAnchoredStatus(data)).toBe("router: sonnet");
+		expect(mod.rightAnchoredStatus(data)).toBe("codex 5h 42% | wk 61%");
 		expect(mod.formatExtensionStatuses(data)).toBe(status);
 		expect(mod.formatExtensionStatusLine(data, 50)).toBe(
-			"done — 42 tok/s             damage-control: active",
+			"done -- 42 tok/s            damage-control: active",
 		);
 	});
 });

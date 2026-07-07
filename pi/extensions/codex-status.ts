@@ -19,6 +19,12 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import {
+	type BedrockMonthSummary,
+	formatMoney,
+	formatTokenCount,
+	getCurrentBedrockMonthSummary,
+} from "../lib/bedrock-cost-ledger.js";
 
 type AuthEntry = {
 	access: string;
@@ -62,6 +68,16 @@ type ApiUsage = {
 
 export const USAGE_ENDPOINT = "https://chatgpt.com/backend-api/wham/usage";
 const OFFICIAL_USAGE_PAGE = "https://chatgpt.com/codex/settings/usage";
+const CODEX_FOOTER_REFRESH_MS = 5 * 60 * 1000;
+const CODEX_FOOTER_FETCH_TIMEOUT_MS = 15 * 1000;
+const CODEX_FOOTER_FAILURE_THRESHOLD = 3;
+
+let codexFooterInterval: ReturnType<typeof setInterval> | null = null;
+let codexFooterAbortController: AbortController | null = null;
+let codexFooterRefreshEpoch = 0;
+let codexFooterRefreshInFlightEpoch: number | null = null;
+let lastGoodCodexFooterStatus: string | null = null;
+let codexFooterFailureCount = 0;
 
 function homePath(...parts: string[]): string {
 	return join(process.env.HOME || process.env.USERPROFILE || ".", ...parts);
@@ -83,6 +99,10 @@ function objectField(value: unknown): Record<string, unknown> | undefined {
 	return value && typeof value === "object" && !Array.isArray(value)
 		? (value as Record<string, unknown>)
 		: undefined;
+}
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }
 
 function decodeJwtPayload(token: string): Record<string, unknown> | undefined {
@@ -247,7 +267,7 @@ function windowPaceDelta(
 	return used - elapsedPercent;
 }
 
-function pacedPercentColor(
+export function pacedPercentColor(
 	window: ApiWindow | null | undefined,
 	used: number,
 ): string {
@@ -319,12 +339,90 @@ export function formatUsage(
 	return lines.join("\n");
 }
 
-export async function fetchCodexUsage(): Promise<{
+function formatCostWithPartialMarker(
+	cost: number,
+	unpricedRequestCount: number,
+): string {
+	const prefix = unpricedRequestCount > 0 ? ">= " : "";
+	const suffix =
+		unpricedRequestCount > 0
+			? ` (partial: ${unpricedRequestCount} unpriced)`
+			: "";
+	return `${prefix}${formatMoney(cost)}${suffix}`;
+}
+
+export function formatBedrockUsageSection(
+	summary: BedrockMonthSummary,
+): string {
+	if (summary.requestCount === 0 || summary.models.length === 0) {
+		return "Bedrock: no usage recorded this month.";
+	}
+
+	const lines = [`Bedrock MTD local estimate (${summary.month}):`];
+	for (const model of summary.models) {
+		const tokenParts = [
+			`in ${formatTokenCount(model.inputTokens)}`,
+			`out ${formatTokenCount(model.outputTokens)}`,
+		];
+		if (model.cacheReadTokens > 0) {
+			tokenParts.push(`cache-read ${formatTokenCount(model.cacheReadTokens)}`);
+		}
+		if (model.cacheWriteTokens > 0) {
+			tokenParts.push(
+				`cache-write ${formatTokenCount(model.cacheWriteTokens)}`,
+			);
+		}
+		lines.push(
+			`${model.provider}/${model.model}: ${formatCostWithPartialMarker(model.costTotal, model.unpricedRequestCount)} (${tokenParts.join(", ")})`,
+		);
+	}
+	lines.push(
+		`Total: ${formatCostWithPartialMarker(summary.costTotal, summary.unpricedRequestCount)} (${formatTokenCount(summary.inputTokens)} in, ${formatTokenCount(summary.outputTokens)} out)`,
+	);
+	return lines.join("\n");
+}
+
+export function formatCodexFooterStatus(
+	usage: ApiUsage,
+	options: { color?: boolean } = {},
+): string {
+	const colorEnabled = options.color ?? false;
+	const primary = formatFooterWindow(
+		"5h",
+		usage.rate_limit?.primary_window,
+		colorEnabled,
+	);
+	const secondary = formatFooterWindow(
+		"wk",
+		usage.rate_limit?.secondary_window,
+		colorEnabled,
+	);
+	const parts = [primary, secondary].filter((value): value is string =>
+		Boolean(value),
+	);
+	return parts.length > 0 ? `codex ${parts.join(" | ")}` : "codex: unknown";
+}
+
+function formatFooterWindow(
+	label: string,
+	window: ApiWindow | null | undefined,
+	colorEnabled: boolean,
+): string | undefined {
+	const used = usedPercent(window);
+	if (used === undefined) return undefined;
+	const text = `${used.toFixed(Number.isInteger(used) ? 0 : 1)}%`;
+	return `${label} ${color(text, pacedPercentColor(window, used), colorEnabled)}`;
+}
+
+export async function fetchCodexUsage(
+	options: { signal?: AbortSignal } = {},
+): Promise<{
 	auth: AuthInfo;
 	usage: ApiUsage;
 }> {
 	const auth = await resolveAuth();
 	const response = await fetch(USAGE_ENDPOINT, {
+		signal: options.signal,
 		headers: {
 			authorization: `Bearer ${auth.accessToken}`,
 			...(auth.accountId ? { "chatgpt-account-id": auth.accountId } : {}),
@@ -350,13 +448,78 @@ export async function showCodexStatus(
 ): Promise<void> {
 	try {
 		const { auth, usage } = await fetchCodexUsage();
-		ctx.ui.notify(formatUsage(usage, auth, { color: true }), "info");
-	} catch (error) {
+		let bedrock: string;
+		try {
+			bedrock = formatBedrockUsageSection(
+				await getCurrentBedrockMonthSummary(),
+			);
+		} catch (error) {
+			bedrock = `Bedrock: local usage unavailable (${errorMessage(error)})`;
+		}
 		ctx.ui.notify(
-			error instanceof Error ? error.message : String(error),
-			"error",
+			`${formatUsage(usage, auth, { color: true })}\n\n${bedrock}`,
+			"info",
 		);
+	} catch (error) {
+		ctx.ui.notify(errorMessage(error), "error");
 	}
+}
+
+async function refreshCodexFooterStatus(
+	ctx: Pick<ExtensionContext, "ui">,
+	epoch: number,
+): Promise<void> {
+	if (codexFooterRefreshInFlightEpoch === epoch) return;
+	codexFooterRefreshInFlightEpoch = epoch;
+	const controller = new AbortController();
+	codexFooterAbortController = controller;
+	const timeout = setTimeout(() => {
+		controller.abort();
+	}, CODEX_FOOTER_FETCH_TIMEOUT_MS);
+	try {
+		const { usage } = await fetchCodexUsage({ signal: controller.signal });
+		if (controller.signal.aborted || epoch !== codexFooterRefreshEpoch) return;
+		const status = formatCodexFooterStatus(usage, { color: true });
+		lastGoodCodexFooterStatus = status;
+		codexFooterFailureCount = 0;
+		ctx.ui.setStatus("codex", status);
+	} catch {
+		if (controller.signal.aborted || epoch !== codexFooterRefreshEpoch) return;
+		codexFooterFailureCount += 1;
+		if (codexFooterFailureCount < CODEX_FOOTER_FAILURE_THRESHOLD) return;
+		ctx.ui.setStatus(
+			"codex",
+			lastGoodCodexFooterStatus
+				? `${lastGoodCodexFooterStatus} stale`
+				: "codex: error",
+		);
+	} finally {
+		clearTimeout(timeout);
+		if (codexFooterAbortController === controller) {
+			codexFooterAbortController = null;
+		}
+		if (codexFooterRefreshInFlightEpoch === epoch) {
+			codexFooterRefreshInFlightEpoch = null;
+		}
+	}
+}
+
+function clearCodexFooterRefresh(): void {
+	codexFooterRefreshEpoch += 1;
+	codexFooterAbortController?.abort();
+	codexFooterAbortController = null;
+	if (!codexFooterInterval) return;
+	clearInterval(codexFooterInterval);
+	codexFooterInterval = null;
+}
+
+function startCodexFooterRefresh(ctx: ExtensionContext): void {
+	clearCodexFooterRefresh();
+	const epoch = codexFooterRefreshEpoch;
+	void refreshCodexFooterStatus(ctx, epoch);
+	codexFooterInterval = setInterval(() => {
+		void refreshCodexFooterStatus(ctx, epoch);
+	}, CODEX_FOOTER_REFRESH_MS);
 }
 
 function shouldShowStatusOnSessionStart(reason: string): boolean {
@@ -373,9 +536,14 @@ function showCodexStatusAfterInitialRender(ctx: ExtensionContext): void {
 
 export default function registerCodexStatusCommand(pi: ExtensionAPI) {
 	pi.on("session_start", async (event, ctx) => {
+		startCodexFooterRefresh(ctx);
 		if (shouldShowStatusOnSessionStart(String(event.reason))) {
 			showCodexStatusAfterInitialRender(ctx);
 		}
+	});
+
+	pi.on("session_shutdown", async () => {
+		clearCodexFooterRefresh();
 	});
 
 	pi.registerCommand("usage", {

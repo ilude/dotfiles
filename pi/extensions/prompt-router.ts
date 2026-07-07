@@ -1,15 +1,13 @@
 // Convention exception: the router emits structured multi-line status output
-//   (router-status, router-explain) and per-turn `setStatus("router", ...)`
-//   indicators alongside warning notifications when classifier exec or JSON
-//   parsing fails. Several existing test assertions match exact substrings
-//   like "classifier output invalid" and "router: ready" without an
-//   extension prefix.
+//   (router-status, router-explain) and warning notifications when classifier
+//   exec or JSON parsing fails. Several existing test assertions match exact
+//   substrings like "classifier output invalid" without an extension prefix.
 // Risk: rerouting every notify through uiNotify with a `[prompt-router]`
 //   prefix would force test churn in prompt-router.test.ts and add noise to
 //   the multi-line `/router-status` and `/router-explain` outputs that are
 //   the user's primary debugging surface.
-// Why shared helper is inappropriate: setStatus has no helper analogue, and
-//   the multi-line `router-status`/`router-explain` text is a structured
+// Why shared helper is inappropriate: the multi-line
+//   `router-status`/`router-explain` text is a structured
 //   report whose `Prompt Router\n  Enabled: ...` heading already self-
 //   identifies the source.
 /**
@@ -1233,7 +1231,6 @@ export default function (pi: ExtensionAPI) {
 			try {
 				(pi as any).setThinkingLevel(policy.defaultEffortLevel);
 				state.lastAppliedEffort = policy.defaultEffortLevel;
-				ctx.ui?.setStatus?.("router", `thinking: ${policy.defaultEffortLevel}`);
 			} catch (err: unknown) {
 				ctx.ui?.notify?.(
 					err instanceof Error ? err.message : String(err),
@@ -1268,7 +1265,6 @@ export default function (pi: ExtensionAPI) {
 			(pi as any).setThinkingLevel(policy.defaultEffortLevel);
 			state.lastAppliedEffort = policy.defaultEffortLevel;
 		}
-		ctx.ui.setStatus("router", "router: ready");
 	});
 
 	// -- Same-turn provider seam spike: resolve route before provider dispatch --
@@ -1356,10 +1352,6 @@ export default function (pi: ExtensionAPI) {
 				: decision.decisionTrace.overrideScope !== "none"
 					? `route_${decision.decisionTrace.overrideScope}`
 					: "none";
-		ctx.ui?.setStatus?.(
-			"router",
-			`same_turn_applied: true route_decision_id=${decision.route_decision_id} route=${decision.applied_route}`,
-		);
 		await emit(
 			{ event_type: "routing_decision" },
 			{
@@ -1564,7 +1556,6 @@ export default function (pi: ExtensionAPI) {
 			state.cooldownTurnsRemaining = 0;
 			state.lastRouteDecision = null;
 			state.enabled = true;
-			ctx.ui.setStatus("router", "router: reset");
 			ctx.ui.notify(
 				"Prompt router reset. Next message will re-classify.",
 				"info",
@@ -1577,7 +1568,6 @@ export default function (pi: ExtensionAPI) {
 		description: "Disable automatic prompt routing (keep current model)",
 		handler: async (_args, ctx) => {
 			state.enabled = false;
-			ctx.ui.setStatus("router", "router: off");
 			ctx.ui.notify(
 				"Prompt routing disabled. Use /router-on to re-enable.",
 				"info",
@@ -1589,7 +1579,6 @@ export default function (pi: ExtensionAPI) {
 		description: "Re-enable automatic prompt routing",
 		handler: async (_args, ctx) => {
 			state.enabled = true;
-			ctx.ui.setStatus("router", "router: on");
 			ctx.ui.notify("Prompt routing enabled.", "info");
 		},
 	});

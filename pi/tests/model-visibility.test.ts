@@ -91,7 +91,7 @@ describe("shouldHideModel", () => {
 		).toBe(false);
 	});
 
-	it("only keeps US Amazon Bedrock Anthropic models", () => {
+	it("only keeps selected Amazon Bedrock Anthropic models", () => {
 		expect(
 			shouldHideModel("amazon-bedrock", {
 				id: "global.anthropic.claude-sonnet-4-6",
@@ -112,10 +112,22 @@ describe("shouldHideModel", () => {
 		).toBe(false);
 		expect(
 			shouldHideModel("amazon-bedrock", {
+				id: "us.anthropic.claude-opus-4-8",
+				name: "Claude Opus 4.8",
+			}),
+		).toBe(false);
+		expect(
+			shouldHideModel("amazon-bedrock", {
+				id: "us.anthropic.claude-fable-5",
+				name: "Claude Fable 5",
+			}),
+		).toBe(false);
+		expect(
+			shouldHideModel("amazon-bedrock", {
 				id: "global.amazon.nova-pro-v1",
 				name: "Amazon Nova Pro",
 			}),
-		).toBe(false);
+		).toBe(true);
 	});
 
 	it("hides selected OpenCode model families and ids", () => {
@@ -230,6 +242,6 @@ describe("shouldHideModel", () => {
 				id: "eu.amazon.nova-pro-v1:0",
 				name: "Amazon Nova Pro",
 			}),
-		).toBe(false);
+		).toBe(true);
 	});
 });
