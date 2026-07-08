@@ -206,6 +206,7 @@
   "remote.autoForwardPortsSource": "hybrid",
   "security.promptForRemoteFileProtocolHandling": false,
   "security.workspace.trust.untrustedFiles": "open",
+  "task.allowAutomaticTasks": "off",
   "terminal.integrated.allowChords": false,
   "terminal.integrated.defaultProfile.linux": "zsh",
   "terminal.integrated.defaultProfile.windows": "pwsh",

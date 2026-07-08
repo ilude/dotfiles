@@ -15,6 +15,13 @@ Use `shell` for script implementation details. Use `workflow-design` for public 
 
 Shell scripts should be explicit about interpreter, inputs, failure behavior, and platform assumptions.
 
+## Supply-chain guardrails
+
+- Do not add `curl | sh`, `wget | bash`, `irm | iex`, or other remote script execution without an explicit user request.
+- Pin downloaded tool versions and verify checksums/signatures when automation downloads executables.
+- Keep installer scripts fail-closed: if verification metadata is missing, stop with a clear error.
+- Treat editor tasks, AI-agent hooks, CI workflows, and setup scripts as executable attack surface; flag auto-run-on-open behavior and hidden Node/Python/Bun/PowerShell launchers.
+
 ## Practical Steps
 
 1. Match the existing interpreter and style.

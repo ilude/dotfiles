@@ -22,6 +22,10 @@ description: "Forgejo Actions workflows and runner deployment. Use when working 
 - Prefer repository-scoped runners for deploy workflows. Avoid global runners for private infrastructure repos.
 - Avoid `host` labels unless the runner is dedicated to one trusted repo and the risk is accepted; Docker/LXC labels are safer but still need careful privileges.
 - Use explicit runner labels, pinned action versions/images, and narrow triggers.
+- Pin third-party actions and container images to immutable refs where possible; prefer full commit SHAs for actions that handle secrets or deployment.
+- Do not run dependency installs with secrets available for pull requests, forks, or untrusted branches.
+- Treat package-manager lifecycle scripts, workspace setup scripts, and generated workflows in CI
+  as arbitrary code execution; prefer frozen lockfiles and reviewed build-script allowlists.
 - For deployments, set `concurrency.group` and usually `cancel-in-progress: false` so two applies cannot overlap.
 - Never print secrets or private inventory in logs. Avoid shell tracing around deploy commands.
 
@@ -64,3 +68,4 @@ on:
 - Using `pull_request_target` with checkout or execution of untrusted code.
 - Mounting broad host paths or Docker socket into untrusted workflows.
 - Automatic apply without serialized concurrency or stale-plan protection.
+- Using mutable action refs or image tags such as `main`, `master`, or `latest` in privileged workflows.

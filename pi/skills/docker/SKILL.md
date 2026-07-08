@@ -20,6 +20,9 @@ Compact index for Docker, Compose, and DevContainer work. Load linked files for 
 - Onramp/Caddy convention: a service `port` field means the container/service port reachable on the Compose network; do not reinterpret it as host publishing or split host/internal ports unless requested. Preserve explicit exposure decisions such as no host binding, Caddy-only ingress, or intentionally published ports.
 - Keep entrypoints idempotent and signal-safe; prefer exec form for final process.
 - Do not bake secrets into images or Compose files.
+- Pin base images and copied tool images by version; use digests for production or CI-sensitive images.
+- Do not install tools from remote shell pipes inside Dockerfiles; use package-manager repositories or verified checksums.
+- Treat `.devcontainer/`, VS Code tasks, copied setup scripts, and CI container jobs as executable workspace attack surface.
 
 ## Practical steps
 

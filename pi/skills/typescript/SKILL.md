@@ -21,6 +21,12 @@ Compact index for TypeScript and JavaScript work. Load linked files only when th
 - Never create or commit `package-lock.json`; do not use `npm` unless the user explicitly asks for npm-specific troubleshooting.
 - Preserve module style and formatter already used by the package; do not reformat unrelated code.
 - Use deterministic code for routing, retries, transforms, status handling, and install detection; reserve judgment calls for ambiguous language tasks.
+- Before adding or resolving dependencies, check the package-manager hardening guidance in
+  `reference.md`; do not bypass lifecycle-script, build-script, or minimum-release-age
+  protections to make installs pass.
+- Treat `.vscode/tasks.json`, `.claude/settings.json`, `.gemini/settings.json`,
+  `.cursor/rules/**`, `.github/workflows/**`, package lifecycle scripts, and setup scripts as
+  executable or agent-instruction attack surface.
 
 ## Practical steps
 

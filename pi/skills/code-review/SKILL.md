@@ -20,9 +20,12 @@ Report only issues that are demonstrably reachable and worth fixing. Suggestions
 1. Identify the reviewed range and changed files.
 2. Understand intended behavior from code, tests, and docs.
 3. Check changed paths for correctness, security, data loss, regressions, and test gaps.
-4. Prove reachability: inputs, callers, guards, and runtime conditions.
-5. Classify severity and confidence.
-6. Provide exact evidence and required fix.
+4. Treat changes under `.vscode/`, `.claude/`, `.gemini/`, `.cursor/`, `.github/workflows/`,
+   `.forgejo/workflows/`, package lifecycle scripts, setup scripts, and `go:generate` directives
+   as security-sensitive executable or agent-instruction surface.
+5. Prove reachability: inputs, callers, guards, and runtime conditions.
+6. Classify severity and confidence.
+7. Provide exact evidence and required fix.
 
 ## Finding Format
 
@@ -48,6 +51,7 @@ Required fix: <specific change or invariant>
 - Reviewing unchanged code as if introduced by the diff.
 - Mixing style preferences with required fixes.
 - Missing tests but not explaining the untested risk.
+- Treating editor tasks, agent hooks, or workflow changes as harmless metadata without checking execution triggers and secret access.
 
 ## Quick Reference
 

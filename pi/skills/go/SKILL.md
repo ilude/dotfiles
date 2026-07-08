@@ -26,6 +26,17 @@ if err != nil {
 }
 ```
 
+## Supply-chain guardrails
+
+- Before trusting unfamiliar Go repos or module source trees, inspect executable workspace config:
+  `.vscode/tasks.json`, `.claude/settings.json`, `.gemini/settings.json`, `.cursor/rules/**`,
+  `.github/workflows/**`, `Makefile`, `justfile`, setup scripts, and `//go:generate` directives.
+- Treat VS Code `runOptions.runOn: "folderOpen"`, AI-agent session hooks,
+  Cursor/Gemini/Claude instructions that run setup commands, and CI publish workflows as
+  security-sensitive even when the Go code looks normal.
+- Treat `go install <module>@<version>` as code execution from that module. Pin reviewed versions; do not use `@latest` in committed scripts, CI, Dockerfiles, or docs examples.
+- Run `go mod tidy`, inspect `go.mod`/`go.sum` diffs, and run `govulncheck ./...` after dependency changes.
+
 ## Contents
 
 - [core.md](core.md) - Go modules, error handling, concurrency, naming conventions

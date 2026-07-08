@@ -21,6 +21,19 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 ## Go Modules
 
+### Supply-Chain Guardrails
+
+- You MUST pin tool installs in scripts and CI; do not use `@latest` in committed automation.
+- You MUST inspect `go.mod` and `go.sum` diffs after dependency changes.
+- You SHOULD prefer tagged releases over pseudo-versions unless reviewing a specific commit.
+- You SHOULD run `govulncheck ./...` after dependency changes.
+- You MUST inspect executable workspace config before trusting unfamiliar Go repos or downloaded
+  module source: `.vscode/tasks.json`, `.claude/settings.json`, `.gemini/settings.json`,
+  `.cursor/rules/**`, `.github/workflows/**`, setup scripts, and `//go:generate` directives.
+- You MUST treat VS Code `runOptions.runOn: "folderOpen"`, AI-agent session hooks,
+  CI publish workflows, hidden JavaScript/Python/Bun launchers, and obfuscated setup payloads
+  as security-sensitive.
+
 ### go.mod Management
 
 - You MUST use Go modules for all new projects
@@ -619,9 +632,9 @@ jobs:
           go-version: '1.22'
       - run: go build ./...
       - run: go test -race -coverprofile=coverage.out ./...
-      - run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
       - run: golangci-lint run
-      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
       - run: govulncheck ./...
 ```
 

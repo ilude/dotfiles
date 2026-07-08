@@ -72,6 +72,20 @@ strictDepBuilds: true
 
 Review install scripts with `pnpm approve-builds` or explicit `allowBuilds` entries; do not bypass unreviewed build-script failures just to make an install pass.
 
+### JavaScript Dependency and Workspace Safety
+
+- Treat package install scripts, native builds, VS Code tasks, AI-agent hooks, and CI workflows as arbitrary code execution.
+- Do not run unreviewed `preinstall`, `postinstall`, `prepare`, or native-build scripts; approve only the specific package that needs them.
+- Prefer frozen lockfile installs in CI and verification.
+- Do not add brand-new packages immediately after publish unless the project has an explicit exception.
+- For Bun projects, use the existing lockfile and avoid disabling lockfile or lifecycle-script protections.
+- Before opening or running unfamiliar repositories, inspect `.vscode/tasks.json`,
+  `.claude/settings.json`, `.gemini/settings.json`, `.cursor/rules/**`, `.github/workflows/**`,
+  `package.json` scripts, and setup scripts for auto-run or credential-exfiltration patterns.
+- Treat `runOptions.runOn: "folderOpen"`, AI-agent `SessionStart` hooks,
+  hidden JavaScript/Python/Bun launchers, obfuscated blobs, and workflows with broad
+  write/OIDC/package-publish permissions as security-sensitive.
+
 ## Bun Project Commands
 
 **You MUST use Bun commands** for all package and runtime operations in Bun projects:

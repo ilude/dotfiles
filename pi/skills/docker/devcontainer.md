@@ -58,7 +58,7 @@ RUN groupadd --gid $USER_GID $USERNAME && \
     chmod 0440 /etc/sudoers.d/$USERNAME
 
 # Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:<pinned-version> /uv /usr/local/bin/uv
 
 WORKDIR /workspace
 USER $USERNAME
@@ -124,7 +124,7 @@ For building images within the devcontainer:
 {
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:2": {
-      "version": "latest",
+      "version": "<pinned-version>",
       "moby": true
     }
   },
@@ -139,7 +139,9 @@ Add user to docker group:
 RUN groupadd docker || true && usermod -aG docker vscode
 ```
 
-**Security:** Only use in trusted environments - Docker socket grants full daemon access.
+**Security:** Only use in trusted environments - Docker socket grants full daemon access. Before
+rebuilding or reopening an unfamiliar devcontainer, inspect `.devcontainer/`, `.vscode/tasks.json`,
+AI-agent config, and setup scripts for auto-run commands or hidden download/execute payloads.
 
 ---
 
