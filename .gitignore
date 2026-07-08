@@ -84,6 +84,7 @@ claude/.specstory/
 .venv/
 __pycache__/
 *.pyc
+*.egg-info/
 uv.lock
 !pi/prompt-routing/uv.lock
 
@@ -164,9 +165,6 @@ private.conflicts/
 claude/.last-update-result.json
 .specs/archive/pi-goal-command/
 sessions/
-/.tmp/bedrock-metrics-query.json
-/.tmp/bedrock-metrics-today.json
-/.tmp/bedrock-model-values.json
-/.tmp/bedrock-products.json
-/.tmp/subagent-bedrock-cost-stage2.md
-/.tmp/subagent-codex-footer-stage3.md
+
+# Scratch dir (gitignored per CLAUDE.md convention)
+/.tmp/
