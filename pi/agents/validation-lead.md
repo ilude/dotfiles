@@ -1,7 +1,7 @@
 ---
 name: validation-lead
 description: Team lead for coordinated validation; delegates to qa-engineer and security-reviewer, not for general-purpose testing
-model: openai-codex/gpt-5.5
+model: openai-codex/gpt-5.6-sol
 roleType: lead
 routingUse: "Use only for coordinated validation across qa-engineer and security-reviewer."
 team: [qa-engineer, security-reviewer]

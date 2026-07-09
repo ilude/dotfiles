@@ -1,7 +1,7 @@
 ---
 name: data-engineer
 description: Builds the labeled training corpus for the prompt routing classifier. Extracts TF-IDF features, creates stratified train/test splits, and saves artifacts for the model-engineer.
-model: openai-codex/gpt-5.5
+model: openai-codex/gpt-5.6-terra
 roleType: worker
 reportsTo: ml-research-lead
 routingUse: "Use for direct data/corpus/features/pipeline work."

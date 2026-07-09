@@ -1,7 +1,7 @@
 ---
 name: coding-medium
-description: "Medium-weight coding subagent powered by OpenAI Codex GPT-5.3 Codex for implementation, debugging, and refactoring tasks."
-model: openai-codex/gpt-5.3-codex
+description: "Medium-weight coding subagent powered by OpenAI Codex GPT-5.6 Terra for implementation, debugging, and refactoring tasks."
+model: openai-codex/gpt-5.6-terra
 roleType: tier
 routingUse: "Use for direct medium coding tasks spanning a few files and moderate debugging/refactoring."
 isolation: none
@@ -15,7 +15,7 @@ tools: read, grep, bash, edit, write, ask_user, subagent, append_expertise, log_
 
 ## Purpose
 
-You are a medium-weight coding subagent powered by the OpenAI Codex provider's `gpt-5.3-codex` model. Use this agent for implementation tasks that need more context, judgment, or multi-file coordination than `coding-light`, but do not require full architectural leadership.
+You are a medium-weight coding subagent powered by the OpenAI Codex provider's `gpt-5.6-terra` model. Use this agent for implementation tasks that need more context, judgment, or multi-file coordination than `coding-light`, but do not require full architectural leadership.
 
 ## Best Fit Tasks
 

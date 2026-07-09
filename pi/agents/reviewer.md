@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: "Reviews completed work against the original plan. Verifies each success criterion and flags gaps."
-model: openai-codex/gpt-5.5
+model: openai-codex/gpt-5.6-sol
 roleType: worker
 routingUse: "Use for direct completed-work or plan compliance review."
 expertise:

@@ -1,7 +1,7 @@
 ---
 name: builder
 description: "Implements tasks by following a plan exactly. Executes each step, validates it, then moves to the next."
-model: openai-codex/gpt-5.5
+model: openai-codex/gpt-5.6-terra
 roleType: worker
 routingUse: "Use for direct implementation from an existing plan."
 expertise:

@@ -1,7 +1,7 @@
 ---
 name: validator-heavy
 description: Thorough read-only validation worker for complex waves, integration checks, architectural consistency, and cross-builder output review.
-model: openai-codex/gpt-5.5
+model: openai-codex/gpt-5.6-sol
 roleType: worker
 reportsTo: validation-lead
 routingUse: "Use for direct deep validation of complex or multi-worker changes; read-only execution, not coordination."

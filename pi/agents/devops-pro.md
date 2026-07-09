@@ -1,7 +1,7 @@
 ---
 name: devops-pro
 description: Expert DevOps engineer for autonomous infrastructure and automation tasks. Activate for CI/CD, containerization, cloud deployment, and automation work.
-model: openai-codex/gpt-5.5
+model: openai-codex/gpt-5.6-terra
 roleType: specialist
 routingUse: "Use for direct DevOps, CI/CD, deployment, automation, and reliability work."
 expertise:

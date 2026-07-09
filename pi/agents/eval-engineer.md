@@ -1,7 +1,7 @@
 ---
 name: eval-engineer
 description: Validates the prompt routing classifier against the holdout test set. Checks accuracy thresholds, verifies zero HIGH->LOW inversions, times inference, and flags model integrity issues.
-model: openai-codex/gpt-5.5
+model: openai-codex/gpt-5.6-terra
 roleType: worker
 reportsTo: ml-research-lead
 routingUse: "Use for direct evaluation, thresholds, metrics, and holdout validation work."

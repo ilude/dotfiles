@@ -1,7 +1,7 @@
 ---
 name: backend-dev
 description: Builds and maintains backend API, database, and infrastructure for assigned projects
-model: openai-codex/gpt-5.5
+model: openai-codex/gpt-5.6-terra
 roleType: worker
 reportsTo: engineering-lead
 routingUse: "Use for direct backend/API/database/service implementation and review."

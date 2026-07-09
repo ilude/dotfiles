@@ -1,7 +1,7 @@
 ---
 name: engineering-lead
 description: Team lead for coordinated engineering work; delegates to frontend-dev and backend-dev, not for general-purpose coding
-model: openai-codex/gpt-5.5
+model: openai-codex/gpt-5.6-sol
 roleType: lead
 routingUse: "Use only for coordinated engineering across frontend-dev and backend-dev."
 team: [frontend-dev, backend-dev]

@@ -1,7 +1,7 @@
 ---
 name: ux-researcher
 description: Owns user research, persona definition, usability analysis, and accessibility requirements
-model: openai-codex/gpt-5.5
+model: openai-codex/gpt-5.6-terra
 roleType: worker
 reportsTo: planning-lead
 routingUse: "Use for direct UX research, usability, personas, accessibility, and operator-friction review."

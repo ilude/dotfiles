@@ -25,6 +25,7 @@ import promptRouter, {
 	safeParseClassifierOutput,
 } from "../extensions/prompt-router.ts";
 import { emit as transcriptEmit } from "../extensions/transcript-runtime.ts";
+import { resolveDefaultCodexProfile } from "../lib/prompt-router/route-profile.ts";
 import {
 	legacyModelTierToRoute,
 	normalizeRouteCandidate,
@@ -81,7 +82,8 @@ async function routeProviderPrompt(
 
 describe("applyModelEffortBias", () => {
 	const codexGpt55 = { provider: "openai-codex", id: "gpt-5.5" };
-	const otherModel = { provider: "openai-codex", id: "gpt-5.4" };
+	const codexGpt56Sol = { provider: "openai-codex", id: "gpt-5.6-sol" };
+	const otherModel = { provider: "openai-codex", id: "gpt-5.6-terra" };
 
 	it("biases GPT-5.5 medium effort down to the configured default", () => {
 		expect(
@@ -102,18 +104,24 @@ describe("applyModelEffortBias", () => {
 		).toBe("low");
 	});
 
-	it("keeps GPT-5.5 high effort only for high-confidence complex prompts", () => {
-		expect(
-			applyModelEffortBias(
-				"high",
-				makeV3Rec("large", "high", 0.79),
-				codexGpt55,
-				"medium",
-			),
-		).toBe("medium");
-		expect(
-			applyModelEffortBias("high", makeV3Rec("large", "high", 0.8), codexGpt55),
-		).toBe("high");
+	it("keeps premium Codex high effort only for high-confidence complex prompts", () => {
+		for (const model of [codexGpt55, codexGpt56Sol]) {
+			expect(
+				applyModelEffortBias(
+					"high",
+					makeV3Rec("large", "high", 0.79),
+					model,
+					"medium",
+				),
+			).toBe("medium");
+			expect(
+				applyModelEffortBias(
+					"high",
+					makeV3Rec("large", "high", 0.8),
+					model,
+				),
+			).toBe("high");
+		}
 	});
 
 	it("does not bias other models", () => {
@@ -130,6 +138,14 @@ describe("applyModelEffortBias", () => {
 // ---------------------------------------------------------------------------
 // canonical route vocabulary
 // ---------------------------------------------------------------------------
+
+describe("default Codex route profiles", () => {
+	it("maps GPT-5.6 models to the Luna, Terra, and Sol ladder", () => {
+		expect(resolveDefaultCodexProfile("mini").preferredModels[0]).toBe("gpt-5.6-luna");
+		expect(resolveDefaultCodexProfile("core").preferredModels[0]).toBe("gpt-5.6-terra");
+		expect(resolveDefaultCodexProfile("large").preferredModels[0]).toBe("gpt-5.6-sol");
+	});
+});
 
 describe("canonical route vocabulary parity", () => {
 	it("matches the shared TS/Python fixture", () => {
@@ -572,6 +588,41 @@ describe("effort set per tier", () => {
 				.reasoning_effort,
 		).toBe("medium");
 	});
+
+	it("routes GPT-5.6 mini, core, and large to Luna, Terra, and Sol", async () => {
+		const pi = createMockPi();
+		promptRouter(pi as any);
+		const availableModels = [
+			{ provider: "openai-codex", id: "gpt-5.6-luna" },
+			{ provider: "openai-codex", id: "gpt-5.6-terra" },
+			{ provider: "openai-codex", id: "gpt-5.6-sol" },
+		];
+		const ctx = createMockCtx({
+			model: availableModels[2],
+			modelRegistry: {
+				getAvailable: vi.fn(() => availableModels),
+				find: vi.fn((provider: string, id: string) =>
+					availableModels.find(
+						(model) => model.provider === provider && model.id === id,
+					),
+				),
+			},
+			ui: { ...createMockCtx().ui, setStatus: vi.fn(), notify: vi.fn() },
+		});
+
+		for (const [route, model] of [
+			["mini", "gpt-5.6-luna"],
+			["core", "gpt-5.6-terra"],
+			["large", "gpt-5.6-sol"],
+		] as const) {
+			(pi.exec as any).mockResolvedValueOnce({
+				code: 0,
+				stdout: makeV3Json(route, route === "large" ? "high" : "medium", 0.9),
+				stderr: "",
+			});
+			expect((await routeProviderPrompt(pi, ctx, `route ${route}`)).model).toBe(model);
+		}
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -1005,14 +1056,14 @@ describe("prompt-router extension -- session_start hook", () => {
 		);
 	});
 
-	it("sets configured router default thinking when ctx.model is GPT-5.5", async () => {
+	it("sets configured router default thinking when ctx.model is GPT-5.6 Sol", async () => {
 		const pi = createMockPi();
 		(pi as any).setThinkingLevel = vi.fn();
 		promptRouter(pi as any);
 
 		const sessionHooks = pi._getHook("session_start");
 		const ctx = createMockCtx({
-			model: { provider: "openai-codex", id: "gpt-5.5" },
+			model: { provider: "openai-codex", id: "gpt-5.6-sol" },
 			ui: { ...createMockCtx().ui, setStatus: vi.fn() },
 		});
 

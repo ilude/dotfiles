@@ -41,7 +41,7 @@
  * Effort cap: router.effort.maxLevel in settings (default "high") prevents
  * xhigh from being applied even if the classifier recommends it.
  * Router default effort: router.effort.defaultLevel in settings (default
- * "medium") controls reset/startup and GPT-5.5 routine-effort bias.
+ * "medium") controls reset/startup and premium Codex routine-effort bias.
  *
  * All thresholds read from pi/settings.json under router.policy.*.
  *
@@ -827,13 +827,13 @@ const TIER_TO_ROUTE: Record<Tier, RouterSize> = {
 	high: "large",
 };
 
-// GPT-5.5 on openai-codex is strong enough that routine prompts should stay
-// at the configured default effort. Medium classifier effort is biased to that
+// Premium Codex models are strong enough that routine prompts should stay at
+// the configured default effort. Medium classifier effort is biased to that
 // default, and high is reserved for high-confidence complex prompts. xhigh is
 // never selected by the router because the global default cap remains "high".
-const CODEX_GPT55_PROVIDER = "openai-codex";
-const CODEX_GPT55_MODEL = "gpt-5.5";
-const CODEX_GPT55_HIGH_CONFIDENCE_FLOOR = 0.8;
+const CODEX_PREMIUM_PROVIDER = "openai-codex";
+const CODEX_PREMIUM_MODELS = new Set(["gpt-5.5", "gpt-5.6-sol"]);
+const CODEX_PREMIUM_HIGH_CONFIDENCE_FLOOR = 0.8;
 
 // ---------------------------------------------------------------------------
 // State
@@ -900,31 +900,36 @@ function getResolvedTierMap(ctx: any) {
 	};
 }
 
-function modelNameMatchesCodexGpt55(model: Record<string, unknown>): boolean {
-	const names = new Set([model.id, model.model, model.name]);
-	return names.has(CODEX_GPT55_MODEL);
-}
-
-function isCodexGpt55(model: unknown): boolean {
-	if (!model || typeof model !== "object") return false;
-	const m = model as Record<string, unknown>;
-	return m.provider === CODEX_GPT55_PROVIDER && modelNameMatchesCodexGpt55(m);
-}
-
-function isConfiguredDefaultCodexGpt55(): boolean {
-	const settings = readPromptRouterSettings();
-	return (
-		settings?.defaultProvider === CODEX_GPT55_PROVIDER &&
-		settings.defaultModel === CODEX_GPT55_MODEL
+function modelNameMatchesPremiumCodex(model: Record<string, unknown>): boolean {
+	return [model.id, model.model, model.name].some(
+		(name) => typeof name === "string" && CODEX_PREMIUM_MODELS.has(name),
 	);
 }
 
-function shouldForceLowThinkingOnSessionStart(ctx: unknown): boolean {
+function isPremiumCodexModel(model: unknown): boolean {
+	if (!model || typeof model !== "object") return false;
+	const m = model as Record<string, unknown>;
+	return (
+		m.provider === CODEX_PREMIUM_PROVIDER && modelNameMatchesPremiumCodex(m)
+	);
+}
+
+function isConfiguredDefaultPremiumCodex(): boolean {
+	const settings = readPromptRouterSettings();
+	return (
+		settings?.defaultProvider === CODEX_PREMIUM_PROVIDER &&
+		typeof settings.defaultModel === "string" &&
+		CODEX_PREMIUM_MODELS.has(settings.defaultModel)
+	);
+}
+
+function shouldSetDefaultThinkingOnSessionStart(ctx: unknown): boolean {
 	const currentModel = (ctx as { model?: unknown } | null)?.model;
 	return (
-		isCodexGpt55(currentModel) ||
-		currentModel === CODEX_GPT55_MODEL ||
-		isConfiguredDefaultCodexGpt55()
+		isPremiumCodexModel(currentModel) ||
+		(typeof currentModel === "string" &&
+			CODEX_PREMIUM_MODELS.has(currentModel)) ||
+		isConfiguredDefaultPremiumCodex()
 	);
 }
 
@@ -934,9 +939,12 @@ export function applyModelEffortBias(
 	model: unknown,
 	defaultEffort = "low",
 ): string {
-	if (!isCodexGpt55(model)) return effort;
+	if (!isPremiumCodexModel(model)) return effort;
 	if (effort === "medium") return defaultEffort;
-	if (effort === "high" && rec.confidence < CODEX_GPT55_HIGH_CONFIDENCE_FLOOR) {
+	if (
+		effort === "high" &&
+		rec.confidence < CODEX_PREMIUM_HIGH_CONFIDENCE_FLOOR
+	) {
 		return defaultEffort;
 	}
 	return effort;
@@ -1260,7 +1268,7 @@ export default function (pi: ExtensionAPI) {
 		state.cooldownTurnsRemaining = 0;
 		state.lastRouteDecision = null;
 		if (
-			shouldForceLowThinkingOnSessionStart(ctx) &&
+			shouldSetDefaultThinkingOnSessionStart(ctx) &&
 			typeof (pi as any).setThinkingLevel === "function"
 		) {
 			(pi as any).setThinkingLevel(policy.defaultEffortLevel);

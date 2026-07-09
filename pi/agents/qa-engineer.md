@@ -1,7 +1,7 @@
 ---
 name: qa-engineer
 description: Owns functional testing, regression suites, and acceptance criteria verification
-model: openai-codex/gpt-5.5
+model: openai-codex/gpt-5.6-terra
 roleType: worker
 reportsTo: validation-lead
 routingUse: "Use for direct test strategy, regression coverage, and acceptance validation."

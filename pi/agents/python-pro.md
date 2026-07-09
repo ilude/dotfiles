@@ -1,7 +1,7 @@
 ---
 name: python-pro
 description: Expert Python developer for autonomous multi-step tasks. Activate for Python files, uv projects, pytest, FastAPI, Pydantic, and type-safe Python work.
-model: openai-codex/gpt-5.5
+model: openai-codex/gpt-5.6-terra
 roleType: specialist
 routingUse: "Use for direct Python-specific implementation, debugging, tests, and review."
 expertise:

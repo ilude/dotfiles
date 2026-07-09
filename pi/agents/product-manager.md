@@ -1,7 +1,7 @@
 ---
 name: product-manager
 description: Owns feature definition, acceptance criteria, and roadmap prioritization; writes specs
-model: openai-codex/gpt-5.5
+model: openai-codex/gpt-5.6-terra
 roleType: worker
 reportsTo: planning-lead
 routingUse: "Use for direct product definition, acceptance criteria, roadmap, and scope review."

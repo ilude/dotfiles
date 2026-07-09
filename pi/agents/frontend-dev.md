@@ -1,7 +1,7 @@
 ---
 name: frontend-dev
 description: Builds and maintains UI layer, components, client-side logic, and styling
-model: openai-codex/gpt-5.5
+model: openai-codex/gpt-5.6-terra
 roleType: worker
 reportsTo: engineering-lead
 routingUse: "Use for direct frontend/UI/component/client-side implementation and review."

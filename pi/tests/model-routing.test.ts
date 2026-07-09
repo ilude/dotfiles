@@ -56,6 +56,18 @@ describe("resolveDynamicModel", () => {
 		expect(resolveDynamicModel(models, current, "large", "same-family")).toEqual(models[2]);
 	});
 
+	it("maps the GPT-5.6 ladder to Luna, Terra, and Sol", () => {
+		const models = [
+			{ provider: "openai-codex", id: "gpt-5.6-luna" },
+			{ provider: "openai-codex", id: "gpt-5.6-terra" },
+			{ provider: "openai-codex", id: "gpt-5.6-sol" },
+		];
+		const current = models[2];
+		expect(resolveDynamicModel(models, current, "small", "same-family")).toEqual(models[0]);
+		expect(resolveDynamicModel(models, current, "medium", "same-family")).toEqual(models[1]);
+		expect(resolveDynamicModel(models, current, "large", "same-family")).toEqual(models[2]);
+	});
+
 	it("uses the anthropic ladder when current model is anthropic", () => {
 		const models = [
 			{ provider: "anthropic", id: "claude-haiku-4-6" },

@@ -22,13 +22,13 @@ const FAST_HINT_RE = /(fast|turbo|flash|lite)/i;
 const LARGE_HINT_RE = /(opus|large|xl|thinking|reasoning)/i;
 const VERSION_RE = /(\d+(?:[.-]\d+)*)/;
 const CODEX_DEFAULTS: Record<ModelSize, string[]> = {
-	nano: ["gpt-5.4-nano", "gpt-5.4-mini"],
-	mini: ["gpt-5.4-mini"],
-	core: ["gpt-5.5", "gpt-5.3-codex"],
-	large: ["gpt-5.5", "gpt-5.3-codex"],
-	max: ["gpt-5.5", "gpt-5.3-codex"],
-	small: ["gpt-5.4-mini"],
-	medium: ["gpt-5.5", "gpt-5.3-codex"],
+	nano: ["gpt-5.6-luna", "gpt-5.4-nano", "gpt-5.4-mini"],
+	mini: ["gpt-5.6-luna", "gpt-5.4-mini"],
+	core: ["gpt-5.6-terra", "gpt-5.5", "gpt-5.3-codex"],
+	large: ["gpt-5.6-sol", "gpt-5.5", "gpt-5.3-codex"],
+	max: ["gpt-5.6-sol", "gpt-5.5", "gpt-5.3-codex"],
+	small: ["gpt-5.6-luna", "gpt-5.4-mini"],
+	medium: ["gpt-5.6-terra", "gpt-5.5", "gpt-5.3-codex"],
 };
 const CODEX_MAX_RE = /codex-max/i;
 

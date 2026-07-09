@@ -1,7 +1,7 @@
 ---
 name: validator
 description: Read-only validation worker for focused tasks. Runs tests, linters, type checks, and acceptance checks on builder output.
-model: openai-codex/gpt-5.4-mini
+model: openai-codex/gpt-5.6-luna
 roleType: worker
 reportsTo: validation-lead
 routingUse: "Use for direct lightweight validation of a task or changed files; read-only execution, not coordination."

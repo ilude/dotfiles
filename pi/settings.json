@@ -20,10 +20,12 @@
   "hideThinkingBlock": false,
   "theme": "dark",
   "enabledModels": [
+    "openai-codex/gpt-5.6-luna",
+    "openai-codex/gpt-5.6-sol",
+    "openai-codex/gpt-5.6-terra",
     "openai-codex/gpt-5.5",
     "openai-codex/gpt-5.4",
     "openai-codex/gpt-5.4-mini",
-    "openai-codex/gpt-5.3-codex-spark",
     "amazon-bedrock/us.anthropic.claude-opus-4-8",
     "amazon-bedrock/us.anthropic.claude-fable-5",
     "amazon-bedrock/us.anthropic.claude-sonnet-4-6"

@@ -1,7 +1,7 @@
 ---
 name: planning-lead
 description: Team lead for coordinated product planning; delegates to product-manager and ux-researcher, not for general-purpose planning
-model: openai-codex/gpt-5.5
+model: openai-codex/gpt-5.6-sol
 roleType: lead
 routingUse: "Use only for coordinated product planning across product-manager and ux-researcher."
 team: [product-manager, ux-researcher]
