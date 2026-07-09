@@ -43,6 +43,11 @@ interface ClassifierContext {
 	};
 }
 
+function previewText(value: string): string | undefined {
+	if (!value) return undefined;
+	return value.slice(0, 1000);
+}
+
 async function logClassifierFailure(
 	event: Record<string, unknown>,
 ): Promise<void> {
@@ -168,6 +173,7 @@ export async function classifyWithV3(
 	ctx: ClassifierContext,
 	mode: RouterClassifierMode = loadRouterClassifierMode(),
 ): Promise<ClassifierRecommendation | null> {
+	const startedAt = Date.now();
 	let result: { stdout: string; stderr: string; code: number };
 	let promptDir: string | null = null;
 	try {
@@ -201,8 +207,11 @@ export async function classifyWithV3(
 		}
 		void logClassifierFailure({
 			event: "exec_exception",
+			classifier_mode: mode,
 			error: msg,
 			prompt_hash: promptHash(text),
+			prompt_length: text.length,
+			elapsed_ms: Date.now() - startedAt,
 		});
 		ctx.ui.notify(
 			`router: classifier exec failed (non-fatal): ${msg}`,
@@ -233,10 +242,15 @@ export async function classifyWithV3(
 		}
 		void logClassifierFailure({
 			event: "nonzero_exit",
+			classifier_mode: mode,
 			code: result.code,
 			stdout_length: stdout.length,
 			stderr_length: stderr.length,
+			stdout_preview: previewText(stdout),
+			stderr_preview: previewText(stderr),
 			prompt_hash: promptHash(text),
+			prompt_length: text.length,
+			elapsed_ms: Date.now() - startedAt,
 		});
 		ctx.ui.notify(
 			`router: classifier failed (exit ${result.code}), keeping current route. stderr=${stderr.slice(0, 160)}`,
@@ -260,10 +274,15 @@ export async function classifyWithV3(
 		}
 		void logClassifierFailure({
 			event: "invalid_output",
+			classifier_mode: mode,
 			code: result.code,
 			stdout_length: stdout.length,
 			stderr_length: stderr.length,
+			stdout_preview: previewText(stdout),
+			stderr_preview: previewText(stderr),
 			prompt_hash: promptHash(text),
+			prompt_length: text.length,
+			elapsed_ms: Date.now() - startedAt,
 		});
 		ctx.ui.notify(
 			`router: classifier output invalid, keeping current route. stdout=${stdout.slice(0, 120)}`,

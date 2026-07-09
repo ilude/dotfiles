@@ -1231,6 +1231,7 @@ export default function (pi: ExtensionAPI) {
 			try {
 				(pi as any).setThinkingLevel(policy.defaultEffortLevel);
 				state.lastAppliedEffort = policy.defaultEffortLevel;
+				ctx.ui.setStatus?.("router", `thinking: ${policy.defaultEffortLevel}`);
 			} catch (err: unknown) {
 				ctx.ui?.notify?.(
 					err instanceof Error ? err.message : String(err),
@@ -1265,6 +1266,7 @@ export default function (pi: ExtensionAPI) {
 			(pi as any).setThinkingLevel(policy.defaultEffortLevel);
 			state.lastAppliedEffort = policy.defaultEffortLevel;
 		}
+		ctx.ui.setStatus?.("router", "router: ready");
 	});
 
 	// -- Same-turn provider seam spike: resolve route before provider dispatch --
@@ -1556,6 +1558,7 @@ export default function (pi: ExtensionAPI) {
 			state.cooldownTurnsRemaining = 0;
 			state.lastRouteDecision = null;
 			state.enabled = true;
+			ctx.ui.setStatus?.("router", "router: reset");
 			ctx.ui.notify(
 				"Prompt router reset. Next message will re-classify.",
 				"info",

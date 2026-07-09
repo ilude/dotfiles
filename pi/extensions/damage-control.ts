@@ -281,6 +281,10 @@ function registerDamageControlCommand(
 		},
 		handler: async (args, ctx) => {
 			const trimmed = args.trim();
+			ctx.ui.setStatus?.(
+				"damage-control",
+				`damage-control: ${state.health.status}; mode ${state.mode}`,
+			);
 			if (trimmed === "" || trimmed === "status") {
 				ctx.ui.notify(damageControlStatusMessage(state), "info");
 				return;
@@ -331,6 +335,10 @@ function registerDamageControlCommand(
 			}
 			const previousMode = state.mode;
 			state.mode = mode;
+			ctx.ui.setStatus?.(
+				"damage-control",
+				`damage-control: ${state.health.status}; mode ${state.mode}`,
+			);
 			safeRecordModeTransition(
 				previousMode,
 				mode,
@@ -411,6 +419,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_start", async (_event, ctx) => {
 		debugLog("session_start", { health: state.health });
+		ctx.ui.setStatus?.("damage-control", "damage-control: active");
 		if (state.health.status === "failed") {
 			ctx.ui.notify(
 				state.health.error ?? "Damage-control rules failed to load.",
