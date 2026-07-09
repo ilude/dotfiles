@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+node --experimental-strip-types --experimental-loader ./pi/scripts/ts-strip-loader.mjs --input-type=module - "$@" <<'NODE'
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { createHash } from "node:crypto";
+import { validateGeneratedArtifacts, stableJson } from "./pi/lib/skill-review.ts";
+
+const args = process.argv.slice(2);
+const writeEvidence = args.includes("--write-evidence-manifest");
+const runArg = args.find((arg) => arg !== "--write-evidence-manifest");
+if (!runArg) throw new Error("Usage: pi/scripts/skill-review-validate-run <run-dir> [--write-evidence-manifest]");
+const repoRoot = process.cwd();
+const runDir = path.resolve(repoRoot, runArg);
+const relRunDir = path.relative(repoRoot, runDir).replace(/\\/g, "/");
+if (relRunDir.startsWith("..") || path.isAbsolute(relRunDir)) throw new Error("run directory escapes repo root");
+const required = ["summary.md", "inventory.json", "findings.json", "high-risk-skills.json", "trigger-evals.json", "model-packet.md", "subagent-tasks.json", "comparison-template.json", "decision-ledger.json", "run-manifest.json"];
+const artifacts = {};
+for (const name of required) {
+  const file = path.join(runDir, name);
+  if (!fs.existsSync(file)) throw new Error(`missing ${name}`);
+  artifacts[name] = fs.readFileSync(file, "utf-8");
+}
+const requireModels = fs.existsSync(path.join(runDir, "gpt-review.json")) || fs.existsSync(path.join(runDir, "fable-review.json"));
+for (const name of ["gpt-review.json", "fable-review.json", "comparison.md"]) {
+  const file = path.join(runDir, name);
+  if (fs.existsSync(file)) artifacts[name] = fs.readFileSync(file, "utf-8");
+}
+const validation = validateGeneratedArtifacts(artifacts, requireModels);
+if (!validation.ok) throw new Error(validation.errors.join("; "));
+const inventory = JSON.parse(artifacts["inventory.json"]);
+const findings = JSON.parse(artifacts["findings.json"]);
+const highRisk = JSON.parse(artifacts["high-risk-skills.json"]);
+const evals = JSON.parse(artifacts["trigger-evals.json"]);
+if (!Array.isArray(inventory) || inventory.length === 0) throw new Error("inventory is empty");
+if (!evals.some((item) => item.expectedTrigger === false)) throw new Error("trigger evals have no negative controls");
+const fablePolicyText = [artifacts["fable-review.json"] ?? "", artifacts["comparison.md"] ?? "", artifacts["decision-ledger.json"]].join("\n");
+if (/xhigh|max|ultra|above high/i.test(fablePolicyText)) throw new Error("Fable output contains forbidden effort wording");
+console.log(`validated ${relRunDir} skills=${inventory.length} findings=${findings.length} highRisk=${highRisk.length} models=${requireModels}`);
+if (writeEvidence) {
+  const evidenceDir = path.resolve(repoRoot, ".specs", "skill-review-system", "evidence");
+  fs.mkdirSync(evidenceDir, { recursive: true });
+  const artifactHashes = {};
+  for (const [name, body] of Object.entries(artifacts)) artifactHashes[name] = `sha256:${createHash("sha256").update(body).digest("hex")}`;
+  const stamp = path.basename(runDir);
+  const evidence = {
+    episode_id: "skill-review-system",
+    run_dir: relRunDir,
+    artifact_hashes: artifactHashes,
+    skill_count: inventory.length,
+    finding_count: findings.length,
+    high_risk_count: highRisk.length,
+    model_ids: ["openai-codex/gpt-5.5:xhigh", "amazon-bedrock/us.anthropic.claude-fable-5:medium", "amazon-bedrock/us.anthropic.claude-fable-5:high"],
+    validation_commands: ["pi/scripts/skill-review-validate-run <run-dir>", "pi/scripts/skill-review-run-models <run-dir>", "pi/scripts/skill-review-validate-run <run-dir> --write-evidence-manifest"],
+    status: "passed",
+    archive_status: "ready"
+  };
+  const target = path.join(evidenceDir, `${stamp}.json`);
+  fs.writeFileSync(target, stableJson(evidence), "utf-8");
+  console.log(path.relative(repoRoot, target).replace(/\\/g, "/"));
+}
+NODE

@@ -100,7 +100,12 @@ export function splitFrontmatter(content: string): RawFrontmatter {
 	}
 	const fmText = lines.slice(1, endIdx).join("\n");
 	const body = lines.slice(endIdx + 1).join("\n");
-	const parsed = parseYamlMini(fmText);
+	let parsed: unknown;
+	try {
+		parsed = parseYamlMini(fmText);
+	} catch {
+		parsed = {};
+	}
 	const fm =
 		parsed && typeof parsed === "object" && !Array.isArray(parsed)
 			? (parsed as Record<string, unknown>)
@@ -243,7 +248,10 @@ interface SkillCandidate {
 	priority: number;
 }
 
-function discoverNestedSkills(rootPath: string, source: SkillSource): SkillRecord[] {
+function discoverNestedSkills(
+	rootPath: string,
+	source: SkillSource,
+): SkillRecord[] {
 	const out: SkillRecord[] = [];
 	for (const entry of readDirectoryEntries(rootPath)) {
 		const sub = path.join(rootPath, entry);

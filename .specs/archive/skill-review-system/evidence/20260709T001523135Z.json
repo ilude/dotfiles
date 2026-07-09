@@ -1,0 +1,34 @@
+{
+  "archive_status": "ready",
+  "artifact_hashes": {
+    "comparison-template.json": "sha256:9c72d2eb7067f9ff3c68b92b6ed70f05b4cb36643774c9bd4108f2a3fe1d0fcd",
+    "comparison.md": "sha256:e10293b88a29046082df05c8cb722bd0655da049c487fa2d202cc12a6eb08ddb",
+    "decision-ledger.json": "sha256:3dadb65111414445221fcaf7f9c641da3f098126885db9336f74ddb4126c24ab",
+    "fable-review.json": "sha256:e8af08b0198bb7c45b1813033e8b13246fd76da453205ce9fe77a9e9dab39e3f",
+    "findings.json": "sha256:8f61ffa2c7aa206852ad305bee58cced2c66939b958ef4b7e64c4260c26f5ca6",
+    "gpt-review.json": "sha256:1a9b329d70c32ff4acf0e9d5c1e62250fc5135a60a6421af7cdaa15f03dae1ae",
+    "high-risk-skills.json": "sha256:17050e30ab6e831b16db3820ec080626a7c41b700bf4f195b6fe7b119c05e62e",
+    "inventory.json": "sha256:2498d7dde105da4bb6faed440d533b0779a9dc41f1c2a90bf5ba5dea3ab20730",
+    "model-packet.md": "sha256:7db2cd45877b01f54a47444b2c5a3ad939a6e7e5ec81c7eb18fc70c9adddb2c1",
+    "run-manifest.json": "sha256:310b305eb7929ce35b0b9ec70c10a01bbe62c14dc9210c7b8cca9678a4771776",
+    "subagent-tasks.json": "sha256:41177c09b08a7d70ae9e428fa192f97eb44c768df78e7f167376ca330c02d065",
+    "summary.md": "sha256:a20c25ca0104605d70a051599a14b0759f359ec67cfd28d4d28819ddbe477a9d",
+    "trigger-evals.json": "sha256:6907cee8f0f03b2da5b33f54cb8fd7a0f5b0db45c7feb8fe898682ebcd27a9bb"
+  },
+  "episode_id": "skill-review-system",
+  "finding_count": 870,
+  "high_risk_count": 10,
+  "model_ids": [
+    "openai-codex/gpt-5.5:xhigh",
+    "amazon-bedrock/us.anthropic.claude-fable-5:medium",
+    "amazon-bedrock/us.anthropic.claude-fable-5:high"
+  ],
+  "run_dir": ".tmp/skill-review/20260709T001523135Z",
+  "skill_count": 120,
+  "status": "passed",
+  "validation_commands": [
+    "pi/scripts/skill-review-validate-run <run-dir>",
+    "pi/scripts/skill-review-run-models <run-dir>",
+    "pi/scripts/skill-review-validate-run <run-dir> --write-evidence-manifest"
+  ]
+}

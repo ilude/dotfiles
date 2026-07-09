@@ -1,0 +1,35 @@
+{
+  "episode_id": "skill-review-system",
+  "phase_id": "wave-0",
+  "task_id": "V0",
+  "status": "passed",
+  "archive_status": "not-ready",
+  "validation_command": "subagent dry runs: skill-review-gpt, skill-review-fable-medium, skill-review-fable-high",
+  "model_checks": [
+    {
+      "agent": "skill-review-gpt",
+      "model": "openai-codex/gpt-5.5:xhigh",
+      "expected_output": "MODEL-CHECK-GPT",
+      "output_artifact": ".specs/skill-review-system/evidence/model-check-gpt.txt",
+      "status": "passed"
+    },
+    {
+      "agent": "skill-review-fable-medium",
+      "model": "amazon-bedrock/us.anthropic.claude-fable-5:medium",
+      "expected_output": "MODEL-CHECK-FABLE-MEDIUM",
+      "output_artifact": ".specs/skill-review-system/evidence/model-check-fable-medium.txt",
+      "status": "passed"
+    },
+    {
+      "agent": "skill-review-fable-high",
+      "model": "amazon-bedrock/us.anthropic.claude-fable-5:high",
+      "expected_output": "MODEL-CHECK-FABLE-HIGH",
+      "output_artifact": ".specs/skill-review-system/evidence/model-check-fable-high.txt",
+      "status": "passed"
+    }
+  ],
+  "notes": [
+    "Subagent tool reported 3/3 dry runs succeeded.",
+    "Runtime support verified by pi/extensions/subagent/index.ts passing agent.model to child Pi with --model."
+  ]
+}

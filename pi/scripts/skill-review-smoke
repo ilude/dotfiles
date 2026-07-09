@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+node --experimental-strip-types --experimental-loader ./pi/scripts/ts-strip-loader.mjs --input-type=module <<'NODE'
+import { runSkillReview } from "./pi/extensions/skill-review-command.ts";
+const repoRoot = process.cwd().replace(/\\/g, "/");
+const pi = { exec: async () => ({ code: 0, stdout: repoRoot + "\n", stderr: "" }) };
+const ctx = { cwd: repoRoot, ui: { notify: (message) => console.error(message) } };
+const result = await runSkillReview(pi, ctx);
+console.log(result.runDir);
+NODE
