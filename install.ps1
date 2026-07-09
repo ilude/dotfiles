@@ -349,7 +349,7 @@ function Invoke-WingetConfigure {
     }
 
     Write-Host "  Applying configuration..." -ForegroundColor Cyan
-    & winget configure --accept-configuration-agreements -f $ConfigFile 2>&1 | Out-Host
+    & winget configure --accept-configuration-agreements --disable-interactivity -f $ConfigFile 2>&1 | Out-Host
     $exitCode = $LASTEXITCODE
 
     if ($exitCode -ne 0) {
@@ -414,7 +414,7 @@ function Install-PSModule {
     }
 
     try {
-        Install-Module -Name $Name -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop
+        Install-Module -Name $Name -Scope CurrentUser -Force -AllowClobber -Confirm:$false -ErrorAction Stop
         Write-Host " installed" -ForegroundColor Green
         return $true
     } catch {
@@ -1827,14 +1827,21 @@ try {
         # Install or update Pi on every run with no version pin. pnpm's global
         # policy, including minimumReleaseAge, determines the newest eligible version.
         Write-Host "  Installing/updating pi-coding-agent via pnpm..." -ForegroundColor Cyan
+        $previousCi = $env:CI
+        $previousPnpmAllowAllBuilds = $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS
         $env:CI = '1'
-        pnpm add -g --allow-build=koffi --allow-build=protobufjs `
-            '@earendil-works/pi-coding-agent' `
-            '@earendil-works/pi-agent-core' `
-            '@earendil-works/pi-ai' `
-            '@earendil-works/pi-tui' `
-            '@sinclair/typebox'
-        $env:CI = $null
+        $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS = 'true'
+        try {
+            pnpm add -g --allow-build=koffi --allow-build=protobufjs `
+                '@earendil-works/pi-coding-agent' `
+                '@earendil-works/pi-agent-core' `
+                '@earendil-works/pi-ai' `
+                '@earendil-works/pi-tui' `
+                '@sinclair/typebox'
+        } finally {
+            $env:CI = $previousCi
+            $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS = $previousPnpmAllowAllBuilds
+        }
         if ($LASTEXITCODE -eq 0) {
             Write-Host "  pi-coding-agent: installed/updated successfully via pnpm" -ForegroundColor Green
 
@@ -1865,7 +1872,16 @@ try {
     if ((Test-Path $piPackageJson) -and (Get-Command pnpm -ErrorAction SilentlyContinue)) {
         Write-Host "  Installing pi runtime dependencies..." -ForegroundColor Cyan
         Push-Location $piDir
-        pnpm install 2>&1 | Out-String | Write-Host
+        $previousCi = $env:CI
+        $previousPnpmAllowAllBuilds = $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS
+        $env:CI = '1'
+        $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS = 'true'
+        try {
+            pnpm install 2>&1 | Out-String | Write-Host
+        } finally {
+            $env:CI = $previousCi
+            $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS = $previousPnpmAllowAllBuilds
+        }
         Pop-Location
         if ($LASTEXITCODE -eq 0) {
             Write-Host "  pi runtime deps: installed" -ForegroundColor Green
@@ -2219,8 +2235,7 @@ try {
 } catch {
     Write-Host "`nERROR: $_" -ForegroundColor Red
     Write-Host $_.ScriptStackTrace -ForegroundColor DarkRed
-    Write-Host "`nPress Enter to exit..." -ForegroundColor Yellow
-    Read-Host | Out-Null
+    Write-Host "`nInstaller failed; see log above." -ForegroundColor Yellow
 }
 
 # ============================================================================
@@ -2231,6 +2246,4 @@ Stop-Transcript | Out-Null
 
 Write-Host "`nInstallation log saved to:" -ForegroundColor Cyan
 Write-Host "  $LogFile" -ForegroundColor White
-Write-Host "`nPress Enter to close..." -ForegroundColor DarkGray
-
-Read-Host | Out-Null
+Write-Host "`nInstaller finished; closing without prompting." -ForegroundColor DarkGray
