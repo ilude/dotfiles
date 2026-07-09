@@ -109,6 +109,7 @@ pi/prompt-routing/experiments/baseline-rebuild-parity/**
 # Pi generated expertise/runtime state (source/config remains tracked under pi/)
 pi/trust.json
 pi/cache/
+pi/model-cache/
 pi/multi-team/expertise/
 pi/index/
 pi/models/

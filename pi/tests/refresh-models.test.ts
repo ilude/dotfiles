@@ -1,3 +1,6 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockPi } from "./helpers/mock-pi";
 
@@ -89,12 +92,31 @@ describe("getCurrentSubscriptionProviders", () => {
 });
 
 describe("/refresh-models command", () => {
+	let tempHome: string;
+
 	beforeEach(() => {
 		vi.restoreAllMocks();
+		tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "pi-refresh-models-"));
+		const agentDir = path.join(tempHome, ".pi", "agent");
+		fs.mkdirSync(agentDir, { recursive: true });
+		fs.writeFileSync(
+			path.join(agentDir, "settings.json"),
+			`${JSON.stringify(
+				{
+					enabledModels: ["openai-codex/gpt-5.4", "github-copilot/gpt-4.1"],
+				},
+				null,
+				2,
+			)}\n`,
+			"utf-8",
+		);
+		vi.stubEnv("PI_AGENT_DIR", agentDir);
 	});
 
 	afterEach(() => {
 		vi.unstubAllGlobals();
+		vi.restoreAllMocks();
+		fs.rmSync(tempHome, { recursive: true, force: true });
 	});
 
 	it("registers the slash command", () => {
@@ -129,6 +151,47 @@ describe("/refresh-models command", () => {
 							input_modalities: ["text", "image"],
 							supported_reasoning_levels: ["low", "high"],
 							context_window: 272000,
+						},
+						{
+							slug: "gpt-5.6-sol",
+							display_name: "GPT-5.6-Sol",
+							input_modalities: ["text", "image"],
+							supported_reasoning_levels: [
+								{ effort: "low" },
+								{ effort: "medium" },
+								{ effort: "high" },
+								{ effort: "xhigh" },
+								{ effort: "max" },
+								{ effort: "ultra" },
+							],
+							context_window: 372000,
+						},
+						{
+							slug: "gpt-5.6-terra",
+							display_name: "GPT-5.6-Terra",
+							input_modalities: ["text", "image"],
+							supported_reasoning_levels: [
+								{ effort: "low" },
+								{ effort: "medium" },
+								{ effort: "high" },
+								{ effort: "xhigh" },
+								{ effort: "max" },
+								{ effort: "ultra" },
+							],
+							context_window: 372000,
+						},
+						{
+							slug: "gpt-5.6-luna",
+							display_name: "GPT-5.6-Luna",
+							input_modalities: ["text", "image"],
+							supported_reasoning_levels: [
+								{ effort: "low" },
+								{ effort: "medium" },
+								{ effort: "high" },
+								{ effort: "xhigh" },
+								{ effort: "max" },
+							],
+							context_window: 372000,
 						},
 						{
 							slug: "codex-auto-review",
@@ -191,8 +254,10 @@ describe("/refresh-models command", () => {
 		vi.stubGlobal("fetch", fetchMock);
 
 		const registerProvider = vi.fn();
+		const reload = vi.fn(async () => undefined);
 		const notify = vi.fn();
 		const ctx = {
+			reload,
 			ui: { notify },
 			modelRegistry: {
 				authStorage: {
@@ -265,13 +330,24 @@ describe("/refresh-models command", () => {
 				models: expect.arrayContaining([
 					expect.objectContaining({ id: "gpt-5.4", api: "openai-codex-responses" }),
 					expect.objectContaining({ id: "gpt-5.5", api: "openai-codex-responses" }),
+					expect.objectContaining({ id: "gpt-5.6-sol", api: "openai-codex-responses" }),
+					expect.objectContaining({ id: "gpt-5.6-terra", api: "openai-codex-responses" }),
+					expect.objectContaining({ id: "gpt-5.6-luna", api: "openai-codex-responses" }),
 				]),
 			}),
 		);
 		const codexProviderCall = registerProvider.mock.calls.find(([provider]: [string]) => provider === "openai-codex");
 		if (!codexProviderCall) throw new Error("missing openai-codex registerProvider call");
-		const codexModels = (codexProviderCall[1] as { models: Array<{ id: string }> }).models;
+		const codexModels = (codexProviderCall[1] as {
+			models: Array<{ id: string; thinkingLevelMap?: Record<string, string | null> }>;
+		}).models;
 		expect(codexModels.some((model) => model.id === "codex-auto-review")).toBe(false);
+		expect(codexModels.find((model) => model.id === "gpt-5.6-sol")?.thinkingLevelMap).toMatchObject({
+			low: "low",
+			medium: "medium",
+			high: "high",
+			xhigh: "xhigh",
+		});
 		expect(registerProvider).toHaveBeenCalledWith(
 			"github-copilot",
 			expect.objectContaining({
@@ -303,7 +379,38 @@ describe("/refresh-models command", () => {
 		expect(copilotCall).toBeDefined();
 		expect(copilotCall?.[1]?.headers?.["Editor-Version"]).toBe("vscode/1.107.0");
 
-		expect(notify).toHaveBeenCalledWith(expect.stringContaining("openai-codex added: gpt-5.5"), "info");
+		expect(notify).toHaveBeenCalledWith(
+			expect.stringContaining("openai-codex added: gpt-5.5, gpt-5.6-luna, gpt-5.6-sol, gpt-5.6-terra"),
+			"info",
+		);
+		expect(notify).toHaveBeenCalledWith(
+			expect.stringContaining(
+				"openai-codex enabled: openai-codex/gpt-5.5, openai-codex/gpt-5.6-luna, openai-codex/gpt-5.6-sol, openai-codex/gpt-5.6-terra",
+			),
+			"info",
+		);
+		const settings = JSON.parse(
+			fs.readFileSync(path.join(tempHome, ".pi", "agent", "settings.json"), "utf-8"),
+		) as { enabledModels: string[] };
+		expect(settings.enabledModels).toEqual([
+			"github-copilot/claude-opus-4.7",
+			"openai-codex/gpt-5.5",
+			"openai-codex/gpt-5.6-luna",
+			"openai-codex/gpt-5.6-sol",
+			"openai-codex/gpt-5.6-terra",
+			"openai-codex/gpt-5.4",
+			"github-copilot/gpt-4.1",
+		]);
+		expect(
+			fs.existsSync(
+				path.join(tempHome, ".pi", "agent", "model-cache", "refresh-models", "openai-codex.json"),
+			),
+		).toBe(true);
+		expect(reload).toHaveBeenCalledTimes(1);
+		expect(notify).toHaveBeenCalledWith(
+			expect.stringContaining("Model catalog changed; reloading Pi resources so /models can see updates."),
+			"info",
+		);
 		expect(notify).toHaveBeenCalledWith(
 			expect.stringContaining("github-copilot added: claude-opus-4.7"),
 			"info",

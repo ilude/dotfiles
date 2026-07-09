@@ -12,9 +12,12 @@
 //   already knows the source; a `[refresh-models]` prefix on every progress
 //   line would only add noise. The handler's own `notify(...)` closure
 //   already centralizes the call site.
-import { type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { getModels } from "@earendil-works/pi-ai/compat";
 import { getOAuthProvider } from "@earendil-works/pi-ai/oauth";
+import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 
 const CODEX_CLIENT_VERSION_CANDIDATES = ["999.0.0", "1.0.0", "0.99.0"];
 const SUPPORTED_REFRESH_PROVIDERS = new Set([
@@ -50,18 +53,8 @@ type ModelLike = {
 	compat?: unknown;
 };
 
-type ProviderModelDef = {
-	id: string;
-	name: string;
-	api: string;
-	reasoning: boolean;
-	input: InputKind[];
-	cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
-	contextWindow: number;
-	maxTokens: number;
-	headers?: Record<string, string>;
-	thinkingLevelMap?: ThinkingLevelMap;
-	compat?: unknown;
+type ProviderModelDef = ProviderModelConfig & {
+	api: NonNullable<ProviderModelConfig["api"]>;
 };
 
 type RemoteModelInfo = {
@@ -116,8 +109,87 @@ function asStringArray(value: unknown): string[] {
 	return value.filter((item): item is string => typeof item === "string");
 }
 
+function asReasoningLevelArray(value: unknown): string[] {
+	if (!Array.isArray(value)) return [];
+	return value
+		.map((item) => {
+			if (typeof item === "string") return item;
+			if (!item || typeof item !== "object") return undefined;
+			return asString((item as Record<string, unknown>).effort);
+		})
+		.filter((item): item is string => !!item);
+}
+
 function defaultCost() {
 	return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+}
+
+function agentDir(): string {
+	return process.env.PI_AGENT_DIR ?? path.join(os.homedir(), ".pi", "agent");
+}
+
+function settingsPath(): string {
+	return path.join(agentDir(), "settings.json");
+}
+
+function refreshCacheDir(): string {
+	return path.join(agentDir(), "model-cache", "refresh-models");
+}
+
+function cachePath(provider: string): string {
+	return path.join(refreshCacheDir(), `${provider}.json`);
+}
+
+function atomicWriteJson(filePath: string, data: unknown): void {
+	const dir = path.dirname(filePath);
+	fs.mkdirSync(dir, { recursive: true });
+	const tempPath = path.join(dir, `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`);
+	fs.writeFileSync(tempPath, `${JSON.stringify(data, null, 2)}\n`, "utf-8");
+	fs.renameSync(tempPath, filePath);
+}
+
+function writeProviderCache(provider: string, baseUrl: string, api: string, models: ProviderModelDef[]): void {
+	atomicWriteJson(cachePath(provider), { provider, baseUrl, api, models });
+}
+
+function loadProviderCache(provider: string): { baseUrl: string; api: string; models: ProviderModelDef[] } | undefined {
+	const filePath = cachePath(provider);
+	if (!fs.existsSync(filePath)) return undefined;
+	const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8")) as {
+		baseUrl?: unknown;
+		api?: unknown;
+		models?: unknown;
+	};
+	if (typeof parsed.baseUrl !== "string" || typeof parsed.api !== "string" || !Array.isArray(parsed.models)) {
+		throw new Error(`Invalid cached model catalog: ${filePath}`);
+	}
+	return {
+		baseUrl: parsed.baseUrl,
+		api: parsed.api,
+		models: parsed.models as ProviderModelDef[],
+	};
+}
+
+function syncEnabledModels(
+	provider: string,
+	addedIds: string[],
+	removedIds: string[],
+): { added: string[]; removed: string[] } {
+	const filePath = settingsPath();
+	const settings = JSON.parse(fs.readFileSync(filePath, "utf-8")) as Record<string, unknown>;
+	if (!Array.isArray(settings.enabledModels) || settings.enabledModels.length === 0) {
+		return { added: [], removed: [] };
+	}
+
+	const existing = settings.enabledModels.filter((value): value is string => typeof value === "string");
+	const removed = removedIds.map((id) => `${provider}/${id}`).filter((id) => existing.includes(id));
+	const additions = addedIds.map((id) => `${provider}/${id}`).filter((id) => !existing.includes(id));
+	const retained = existing.filter((id) => !removed.includes(id));
+	if (additions.length === 0 && removed.length === 0) return { added: [], removed: [] };
+
+	settings.enabledModels = [...additions, ...retained];
+	atomicWriteJson(filePath, settings);
+	return { added: additions, removed };
 }
 
 function getBuiltInCopilotHeaders(): Record<string, string> {
@@ -342,7 +414,7 @@ function parseOpenAICodexRemoteModels(payload: unknown): RemoteModelInfo[] {
 
 		const inputModalities = asStringArray(record.input_modalities);
 		const input: InputKind[] = inputModalities.includes("image") ? ["text", "image"] : ["text"];
-		const supportedReasoning = asStringArray(record.supported_reasoning_levels);
+		const supportedReasoning = asReasoningLevelArray(record.supported_reasoning_levels);
 		const reasoning = supportedReasoning.length > 0 || !!asString(record.default_reasoning_level);
 
 		parsed.push({
@@ -636,6 +708,7 @@ async function refreshProviderAvailability(
 	}
 
 	ctx.modelRegistry.registerProvider(provider, providerDefinition);
+	writeProviderCache(provider, allModels[0].baseUrl, allModels[0].api, refreshedModels);
 
 	const beforeIds = new Set(allModels.map((model) => model.id));
 	const afterIds = new Set(refreshedModels.map((model) => model.id));
@@ -678,7 +751,28 @@ export function formatRefreshFailure(provider: string, error: unknown): string {
 	return `${provider}: ${detail}`;
 }
 
+function registerCachedProvider(pi: ExtensionAPI, provider: string): void {
+	const cache = loadProviderCache(provider);
+	if (!cache) return;
+	const oauthProvider = getOAuthProvider(provider);
+	if (!oauthProvider) return;
+	pi.registerProvider(provider, {
+		baseUrl: cache.baseUrl,
+		api: cache.api as ProviderModelDef["api"],
+		oauth: {
+			name: oauthProvider.name,
+			login: oauthProvider.login,
+			refreshToken: oauthProvider.refreshToken,
+			getApiKey: oauthProvider.getApiKey,
+			modifyModels: oauthProvider.modifyModels,
+		},
+		models: cache.models,
+	});
+}
+
 export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
+	registerCachedProvider(pi, "openai-codex");
+
 	pi.registerCommand("refresh-models", {
 		description: "Refresh available models for one configured provider or all configured providers",
 		handler: async (args, ctx) => {
@@ -780,13 +874,24 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 			const successes = outcomes.filter((outcome): outcome is Extract<(typeof outcomes)[number], { ok: true }> => outcome.ok);
 			const failures = outcomes.filter((outcome): outcome is Extract<(typeof outcomes)[number], { ok: false }> => !outcome.ok);
 
+			let changedModelState = false;
 			for (const success of successes) {
 				notify(success.message, "info");
+				if (success.addedIds.length > 0 || success.removedIds.length > 0) {
+					changedModelState = true;
+				}
 				if (success.addedIds.length > 0) {
 					notify(`${success.provider} added: ${formatModelIdList(success.addedIds)}`, "info");
 				}
 				if (success.removedIds.length > 0) {
 					notify(`${success.provider} removed: ${formatModelIdList(success.removedIds)}`, "info");
+				}
+				const enabledChanges = syncEnabledModels(success.provider, success.addedIds, success.removedIds);
+				if (enabledChanges.added.length > 0) {
+					notify(`${success.provider} enabled: ${formatModelIdList(enabledChanges.added)}`, "info");
+				}
+				if (enabledChanges.removed.length > 0) {
+					notify(`${success.provider} disabled: ${formatModelIdList(enabledChanges.removed)}`, "info");
 				}
 			}
 			for (const failure of failures) notify(failure.message, "warning");
@@ -798,6 +903,11 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 					`Refresh completed with errors (${successes.length} succeeded, ${failures.length} failed).`,
 					"warning",
 				);
+			}
+
+			if (changedModelState) {
+				notify("Model catalog changed; reloading Pi resources so /models can see updates.", "info");
+				if (typeof ctx.reload === "function") await ctx.reload();
 			}
 		},
 	});

@@ -374,10 +374,11 @@ Refreshes available model lists for active subscription providers **without relo
 
 Behavior:
 - No provider: refreshes all currently authenticated **supported** subscription providers (OAuth entries in `auth.json`).
-- Provider argument: refreshes only that provider (currently `anthropic`, `openai-codex`, and `github-copilot`).
+- Provider argument: refreshes only that provider (currently `anthropic`, `openai-codex`, `github-copilot`, `openrouter`, `opencode`, and `opencode-go`).
 - Unsupported providers are skipped with a warning.
 - Uses existing session credentials and updates in-session model availability immediately.
 - Prints per-provider diffs with model IDs that were added/removed.
+- Newly released Codex models may appear through `/refresh-models openai-codex` before they are added to the tracked startup `enabledModels` list.
 
 ### `model-visibility.ts`
 
