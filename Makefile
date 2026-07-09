@@ -188,7 +188,9 @@ format-python:
 # See pi/README.md for the full extension conventions.
 check-pi-ci:
 	@echo "==> Running CI-safe Pi Vitest suite"
-	cd pi && pnpm install --frozen-lockfile && pnpm test
+	cd pi && pnpm install --frozen-lockfile
+	scripts/pi-deps-link-setup
+	cd pi && pnpm test
 	@echo "Pi CI checks passed."
 
 check-pi-extensions:

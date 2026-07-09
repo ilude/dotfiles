@@ -64,12 +64,18 @@ jobs:
           bun-version: latest
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
         with:
           version: 10
 
       - name: Install pi-coding-agent
-        run: pnpm install -g @mariozechner/pi-coding-agent@0.72.0
+        run: >
+          pnpm install -g
+          @earendil-works/pi-coding-agent@0.80.3
+          @earendil-works/pi-agent-core@0.80.3
+          @earendil-works/pi-ai@0.80.3
+          @earendil-works/pi-tui@0.80.3
+          @sinclair/typebox@0.34.49
 
       - name: Run Pi Vitest suite
         run: make check-pi-ci

@@ -58,7 +58,7 @@ is_link() {
 
 resolve_link_target() {
     local path="$1"
-    readlink -f "$path" 2>/dev/null || readlink "$path" 2>/dev/null || echo ""
+    readlink "$path" 2>/dev/null || readlink -f "$path" 2>/dev/null || echo ""
 }
 
 remove_link() {
@@ -80,7 +80,11 @@ create_link() {
         local win_target win_source
         win_target=$(cygpath -w "$target")
         win_source=$(cygpath -w "$source")
-        cmd //c "mklink /J \"$win_target\" \"$win_source\"" >/dev/null 2>&1
+        if command -v pwsh >/dev/null 2>&1; then
+            pwsh -NoProfile -Command "& { param(\$path, \$target) New-Item -ItemType SymbolicLink -Path \$path -Target \$target | Out-Null }" "$win_target" "$win_source"
+            return $?
+        fi
+        cmd //c "mklink /D \"$win_target\" \"$win_source\"" >/dev/null 2>&1
     else
         ln -s "$source" "$target"
     fi
@@ -148,7 +152,7 @@ find_package_path() {
 
 link_package() {
     local package="$1"
-    local scope name source_path scope_dir target_path current expected
+    local scope name source_path scope_dir target_path current
     scope=$(package_scope "$package")
     name=$(package_name "$package")
     scope_dir="${PI_NODE_MODULES}/${scope}"
@@ -168,10 +172,9 @@ link_package() {
     fi
     mkdir -p "$scope_dir"
 
-    expected=$(readlink -f "$source_path" 2>/dev/null || echo "$source_path")
     if is_link "$target_path"; then
         current=$(resolve_link_target "$target_path")
-        if [[ -n "$current" ]] && { [[ "$current" == "$expected" ]] || [[ "$current" == "$source_path" ]]; }; then
+        if [[ -n "$current" ]] && [[ "$current" == "$source_path" ]]; then
             echo "  ${package}: already linked"
             return 0
         fi
