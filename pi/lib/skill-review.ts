@@ -130,9 +130,20 @@ function normalizePath(input: string): string {
 	return input.replace(/\\/g, "/");
 }
 
+function externalPathLabel(target: string): string {
+	const normalized = normalizePath(path.resolve(target));
+	const hash = createHash("sha256")
+		.update(normalized)
+		.digest("hex")
+		.slice(0, 12);
+	return `external/${path.basename(path.dirname(target))}/${path.basename(target)}-${hash}`;
+}
+
 function relativeTo(root: string, target: string): string {
 	const rel = path.relative(root, target);
-	return normalizePath(rel.startsWith("..") ? target : rel);
+	if (rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel)))
+		return normalizePath(rel);
+	return externalPathLabel(target);
 }
 
 function countWords(body: string): number {

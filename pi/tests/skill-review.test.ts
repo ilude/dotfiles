@@ -153,6 +153,14 @@ describe("skill-review deterministic core", () => {
 		]);
 		expect(records[0].name).toBe("inline-skill");
 	});
+
+	it("labels out-of-repo skill paths without leaking local absolute paths", () => {
+		const inventory = buildInventory(fixtureSkills(), tmpRoot);
+		expect(inventory.every((item) => item.path.startsWith("external/"))).toBe(
+			true,
+		);
+		expect(JSON.stringify(inventory)).not.toContain(fixtureRoot);
+	});
 });
 
 describe("skill-review command", () => {
