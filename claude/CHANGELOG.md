@@ -1,3 +1,13 @@
+## 2026-07-09: Restore private-store contract wording
+
+**Why:** CI contract tests require the private-store skill to preserve the Obsidian vault wording used by browser tab capture and handoff guidance.
+
+**Fix:** Restored the explicit local plaintext Obsidian-compatible vault phrasing and one-H1 title requirement in the private-store skill.
+
+**Files:** ~/.dotfiles/pi/skills/private-store/SKILL.md
+
+---
+
 ## 2026-06-28: Encode recurring workflow preferences
 
 **Why:** Past-session review found repeated workflow expectations around exact-path validation, durable handoff, scratch output handling, worktree state, deployment checks, private values, and domain-specific triage loops.

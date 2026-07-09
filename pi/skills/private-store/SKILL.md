@@ -5,7 +5,7 @@ description: Private datastore/Dolos workflow. Use when saving, archiving, packi
 
 # Private Store
 
-Routing card for sensitive local data. `private/` is plaintext and gitignored; `.dolos/artifacts/private.tar.gz.age` is the encrypted commit artifact.
+Routing card for sensitive local data. `private/` is the local plaintext Obsidian-compatible vault and is gitignored; `.dolos/artifacts/private.tar.gz.age` is the encrypted commit artifact.
 
 ## Layout
 
@@ -16,7 +16,7 @@ private/_indexes/<domain>.md                 # path-level index, no secrets/full
 .dolos/artifacts/private.tar.gz.age          # tracked encrypted archive
 ```
 
-Generated Markdown notes should include YAML frontmatter with `title`, `created`, `updated`, `type`, `source` when applicable, `sensitive: true`, tags, related index links, and attachment paths. Include a matching H1 and `## Summary`.
+Generated Markdown notes should include YAML frontmatter with `title`, `created`, `updated`, `type`, `source` when applicable, `sensitive: true`, tags, related index links, and attachment paths. Include one H1 matching `title` and `## Summary`.
 
 ## Workflow
 
