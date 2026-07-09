@@ -10,7 +10,7 @@ If no topic is provided, ask: "What topic should I research?"
 
 1. Extract the core research topic from args
 2. Create a slug: lowercase, replace spaces and special characters with hyphens, max 40 chars
-   - Example: "SurrealDB indexing strategies" → `surrealdb-indexing-strategies`
+   - Example: "SurrealDB indexing strategies" -> `surrealdb-indexing-strategies`
 3. Check whether `.specs/{slug}/research.md` already exists. If it does, ask: "A research file for this topic already exists at `.specs/{slug}/research.md`. Overwrite, or open a new slug?"
 
 ## Step 2: Dispatch Three Parallel Research Subagents
@@ -22,13 +22,13 @@ Use dynamic same-provider reviewer sizing for the research pass:
 - `modelPolicy: "same-family"`
 
 This keeps the three research passes on the current provider/model ladder when possible:
-- OpenAI Codex session → medium research model such as `gpt-5.4-fast` or nearest routine same-family model
-- Anthropic session → `sonnet`
-- GitHub Copilot session → best available GitHub-backed medium model in the same family/provider
+- OpenAI Codex session -> medium research model such as `openai-codex/gpt-5.6-terra` or nearest routine same-family model
+- Anthropic session -> `sonnet`
+- GitHub Copilot session -> best available GitHub-backed medium model in the same family/provider
 
 If you run a follow-up synthesis or contradiction-resolution pass that is unusually complex, you may use `modelSize: "large"` with `modelPolicy: "same-family"` for that final arbitration step.
 
-### Subagent A — Primary Source Researcher
+### Subagent A -- Primary Source Researcher
 
 Focus: What do authoritative sources say?
 
@@ -45,7 +45,7 @@ Produce a structured finding with:
 - **Version notes**: anything version-specific the user must know
 - **Official caveats**: limitations or warnings from the source itself
 
-### Subagent B — Practical Researcher
+### Subagent B -- Practical Researcher
 
 Focus: What do practitioners actually encounter?
 
@@ -62,7 +62,7 @@ Produce a structured finding with:
 - **Recommended defaults**: configuration or usage patterns that avoid known problems
 - **Performance notes**: realistic expectations, not theoretical maximums
 
-### Subagent C — Alternatives Researcher
+### Subagent C -- Alternatives Researcher
 
 Focus: When should you NOT use this?
 
@@ -71,7 +71,7 @@ Research approach:
 - For each alternative, identify the specific scenario where it outperforms the primary option
 - Find documented migration paths between the primary option and its alternatives
 - Identify the signal that tells practitioners they chose the wrong option for their use case
-- Find the "regret stories" — teams that adopted this and later switched, and why
+- Find the "regret stories" -- teams that adopted this and later switched, and why
 
 Produce a structured finding with:
 - **Alternatives**: name, one-line description, link
@@ -83,8 +83,8 @@ Produce a structured finding with:
 
 Gather all findings from the three subagents. Synthesize into a coherent document:
 
-1. Resolve contradictions between sources — prefer primary sources over practitioner sources for correctness, but note when practitioners report real-world behavior that differs from documentation
-2. Identify convergence points — things all three angles agree on are the most reliable findings
+1. Resolve contradictions between sources -- prefer primary sources over practitioner sources for correctness, but note when practitioners report real-world behavior that differs from documentation
+2. Identify convergence points -- things all three angles agree on are the most reliable findings
 3. Surface the single most important insight from each research angle
 
 ## Step 4: Write Research Document
@@ -128,7 +128,7 @@ slug: {slug}
 
 ## Practical Guidance
 
-{Summary of practitioner findings — what real-world usage looks like.}
+{Summary of practitioner findings -- what real-world usage looks like.}
 
 ### Recommended Usage Pattern
 
@@ -164,7 +164,7 @@ Consider an alternative when:
 
 ## Key Takeaways
 
-1. {Most important insight — the thing practitioners wish they knew at the start}
+1. {Most important insight -- the thing practitioners wish they knew at the start}
 2. {Second most important insight}
 3. {Third most important insight}
 

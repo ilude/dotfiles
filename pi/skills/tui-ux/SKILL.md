@@ -9,7 +9,7 @@ Treat terminal UI as a product surface, not just command output. Users should no
 
 ## Research-Informed Additions
 
-Sources reviewed: OpenAI GPT-5/GPT-5.2 prompting guides and CLI UX pattern writing. I did not find a clearly authoritative public GPT-5.5-specific TUI UX guide; treat GPT-5.5-specific claims from social posts as unverified unless backed by official docs.
+Sources reviewed: OpenAI GPT-5/GPT-5.2 prompting guides and CLI UX pattern writing. I did not find a clearly authoritative public GPT-5.6-specific TUI UX guide; treat GPT-5.6-specific claims from social posts as unverified unless backed by official docs.
 
 Key takeaways to apply:
 
