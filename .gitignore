@@ -168,3 +168,4 @@ sessions/
 
 # Scratch dir (gitignored per CLAUDE.md convention)
 /.tmp/
+claude/commands/yt/hermes-transcript.tmp.txt
