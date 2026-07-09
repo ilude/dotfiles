@@ -50,12 +50,14 @@ function safeCreateSubagentTask(
 	cwd: string,
 	step: number | undefined,
 	agentConfig?: AgentConfig,
+	model?: string,
 ): string | undefined {
 	try {
 		const snippet = task.length > 200 ? `${task.slice(0, 200)}...` : task;
 		const summary = step ? `${agentName} step ${step}` : agentName;
 		const metadata: Record<string, unknown> = { cwd };
-		if (agentConfig?.effort) metadata.effort = agentConfig.effort;
+		metadata.model = model ?? agentConfig?.model ?? "default";
+		metadata.effort = agentConfig?.effort ?? "default";
 		if (agentConfig?.maxTurns) metadata.maxTurns = agentConfig.maxTurns;
 		if (agentConfig?.isolation) metadata.isolation = agentConfig.isolation;
 		if (agentConfig?.memory) metadata.memory = agentConfig.memory;
@@ -166,6 +168,20 @@ function formatUsageStats(
 	return parts.join(" ");
 }
 
+function formatModelEffort(
+	model: string | undefined,
+	effort: AgentConfig["effort"] | "default" | undefined,
+): string {
+	return `${model ?? "default"}[${effort ?? "default"}]`;
+}
+
+function formatAgentExecutionLabel(
+	r: Pick<SingleResult, "model" | "effort">,
+	themeFg: (color: "muted", text: string) => string,
+): string {
+	return themeFg("muted", ` ${formatModelEffort(r.model, r.effort)}`);
+}
+
 function formatToolCall(
 	toolName: string,
 	args: Record<string, unknown>,
@@ -262,6 +278,7 @@ interface SingleResult {
 	stderr: string;
 	usage: UsageStats;
 	model?: string;
+	effort?: AgentConfig["effort"] | "default";
 	stopReason?: string;
 	errorMessage?: string;
 	step?: number;
@@ -499,6 +516,7 @@ async function runSingleAgent(
 		stderr: "",
 		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
 		model: modelOverride || agent.model,
+		effort: agent.effort ?? "default",
 		step,
 	};
 
@@ -513,7 +531,14 @@ async function runSingleAgent(
 
 	// Operator task registry: track this subagent invocation as durable work.
 	// Lifecycle: pending -> running (before spawn) -> completed/failed/cancelled.
-	const taskId = safeCreateSubagentTask(agentName, task, cwd ?? defaultCwd, step, agent);
+	const taskId = safeCreateSubagentTask(
+		agentName,
+		task,
+		cwd ?? defaultCwd,
+		step,
+		agent,
+		currentResult.model,
+	);
 	const planPath = extractPlanPath(task);
 	const workflow = inferWorkflow(task);
 	const timingSpan = new TimingSpan({
@@ -772,6 +797,7 @@ const SubagentParams = Type.Object({
 	tasks: Type.Optional(Type.Array(TaskItem, { description: "Array of {agent, task} for parallel execution" })),
 	chain: Type.Optional(Type.Array(ChainItem, { description: "Array of {agent, task} for sequential execution" })),
 	agentScope: Type.Optional(AgentScopeSchema),
+	model: Type.Optional(Type.String({ description: "Exact provider/model override for spawned subagents, e.g. openai-codex/gpt-5.5. Takes precedence over modelSize and agent frontmatter." })),
 	modelSize: Type.Optional(ModelSizeSchema),
 	modelPolicy: Type.Optional(ModelPolicySchema),
 	confirmProjectAgents: Type.Optional(
@@ -789,16 +815,17 @@ export default function (pi: ExtensionAPI) {
 			"Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder).",
 			'Default agent scope is "user" (from ~/.pi/agent/agents).',
 			'To enable project-local agents in .pi/agents, set agentScope: "both" (or "project").',
-			'Optional modelSize/modelPolicy parameters dynamically map subagents onto the current provider/model ladder.',
+			'Optional model overrides the agent frontmatter model. Optional modelSize/modelPolicy parameters dynamically map subagents onto the current provider/model ladder.',
 		].join(" "),
 		parameters: SubagentParams,
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const agentScope = (params.agentScope as unknown as AgentScope | undefined) ?? "user";
+			const explicitModel = typeof params.model === "string" && params.model.trim() ? params.model.trim() : undefined;
 			const modelSize = params.modelSize as unknown as ModelSize | undefined;
 			const modelPolicy = (params.modelPolicy as unknown as ModelPolicy | undefined) ?? "same-provider";
-			const resolvedModel = modelSize ? resolveDynamicModelFromRegistry(ctx.modelRegistry, ctx, modelSize, modelPolicy) : undefined;
-			const resolvedModelId = resolvedModel ? `${resolvedModel.provider}/${resolvedModel.id}` : undefined;
+			const resolvedModel = !explicitModel && modelSize ? resolveDynamicModelFromRegistry(ctx.modelRegistry, ctx, modelSize, modelPolicy) : undefined;
+			const resolvedModelId = explicitModel ?? (resolvedModel ? `${resolvedModel.provider}/${resolvedModel.id}` : undefined);
 			const discovery = discoverAgents(ctx.cwd, agentScope);
 			const agents = discovery.agents;
 			const confirmProjectAgents = params.confirmProjectAgents ?? true;
@@ -960,14 +987,17 @@ export default function (pi: ExtensionAPI) {
 
 				// Initialize placeholder results
 				for (let i = 0; i < tasks.length; i++) {
+					const agent = agents.find((a) => a.name === tasks[i].agent);
 					allResults[i] = {
 						agent: tasks[i].agent,
-						agentSource: "unknown",
+						agentSource: agent?.source ?? "unknown",
 						task: tasks[i].task,
 						exitCode: -1, // -1 = still running
 						messages: [],
 						stderr: "",
 						usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
+						model: resolvedModelId || agent?.model,
+						effort: agent?.effort ?? "default",
 					};
 				}
 
@@ -983,6 +1013,8 @@ export default function (pi: ExtensionAPI) {
 						});
 					}
 				};
+
+				emitParallelUpdate();
 
 				const results = await mapWithConcurrencyLimit(tasks, MAX_CONCURRENCY, async (t, index) => {
 					const result = await runSingleAgent(
@@ -1074,7 +1106,11 @@ export default function (pi: ExtensionAPI) {
 
 		renderCall(args, theme, _context) {
 			const scope: AgentScope = args.agentScope ?? "user";
-			const modelHint = args.modelSize ? ` ${theme.fg("muted", `(${args.modelSize}${args.modelPolicy ? `, ${args.modelPolicy}` : ""})`)}` : "";
+			const modelHint = args.model
+				? ` ${theme.fg("muted", `(model: ${args.model})`)}`
+				: args.modelSize
+					? ` ${theme.fg("muted", `(${args.modelSize}${args.modelPolicy ? `, ${args.modelPolicy}` : ""})`)}`
+					: "";
 			if (args.chain && args.chain.length > 0) {
 				let text =
 					theme.fg("toolTitle", theme.bold("subagent ")) +
@@ -1154,7 +1190,7 @@ export default function (pi: ExtensionAPI) {
 
 				if (expanded) {
 					const container = new Container();
-					let header = `${icon} ${theme.fg("toolTitle", theme.bold(r.agent))}${theme.fg("muted", ` (${r.agentSource})`)}`;
+					let header = `${icon} ${theme.fg("toolTitle", theme.bold(r.agent))}${theme.fg("muted", ` (${r.agentSource})`)}${formatAgentExecutionLabel(r, theme.fg.bind(theme))}`;
 					if (isError && r.stopReason) header += ` ${theme.fg("error", `[${r.stopReason}]`)}`;
 					container.addChild(new Text(header, 0, 0));
 					if (isError && r.errorMessage)
@@ -1190,7 +1226,7 @@ export default function (pi: ExtensionAPI) {
 					return container;
 				}
 
-				let text = `${icon} ${theme.fg("toolTitle", theme.bold(r.agent))}${theme.fg("muted", ` (${r.agentSource})`)}`;
+				let text = `${icon} ${theme.fg("toolTitle", theme.bold(r.agent))}${theme.fg("muted", ` (${r.agentSource})`)}${formatAgentExecutionLabel(r, theme.fg.bind(theme))}`;
 				if (isError && r.stopReason) text += ` ${theme.fg("error", `[${r.stopReason}]`)}`;
 				if (isError && r.errorMessage) text += `\n${theme.fg("error", `Error: ${r.errorMessage}`)}`;
 				else if (displayItems.length === 0) text += `\n${theme.fg("muted", "(no output)")}`;
@@ -1241,7 +1277,7 @@ export default function (pi: ExtensionAPI) {
 						container.addChild(new Spacer(1));
 						container.addChild(
 							new Text(
-								`${theme.fg("muted", `─── Step ${r.step}: `) + theme.fg("accent", r.agent)} ${rIcon}`,
+								`${theme.fg("muted", `--- Step ${r.step}: `) + theme.fg("accent", r.agent)}${formatAgentExecutionLabel(r, theme.fg.bind(theme))} ${rIcon}`,
 								0,
 								0,
 							),
@@ -1288,7 +1324,7 @@ export default function (pi: ExtensionAPI) {
 				for (const r of details.results) {
 					const rIcon = r.exitCode === 0 ? theme.fg("success", "✓") : theme.fg("error", "✗");
 					const displayItems = getDisplayItems(r.messages);
-					text += `\n\n${theme.fg("muted", `─── Step ${r.step}: `)}${theme.fg("accent", r.agent)} ${rIcon}`;
+					text += `\n\n${theme.fg("muted", `--- Step ${r.step}: `)}${theme.fg("accent", r.agent)}${formatAgentExecutionLabel(r, theme.fg.bind(theme))} ${rIcon}`;
 					if (displayItems.length === 0) text += `\n${theme.fg("muted", "(no output)")}`;
 					else text += `\n${renderDisplayItems(displayItems, 5)}`;
 				}
@@ -1329,7 +1365,11 @@ export default function (pi: ExtensionAPI) {
 
 						container.addChild(new Spacer(1));
 						container.addChild(
-							new Text(`${theme.fg("muted", "─── ") + theme.fg("accent", r.agent)} ${rIcon}`, 0, 0),
+							new Text(
+								`${theme.fg("muted", "--- ") + theme.fg("accent", r.agent)}${formatAgentExecutionLabel(r, theme.fg.bind(theme))} ${rIcon}`,
+								0,
+								0,
+							),
 						);
 						container.addChild(new Text(theme.fg("muted", "Task: ") + theme.fg("dim", r.task), 0, 0));
 
@@ -1374,7 +1414,7 @@ export default function (pi: ExtensionAPI) {
 								? theme.fg("success", "✓")
 								: theme.fg("error", "✗");
 					const displayItems = getDisplayItems(r.messages);
-					text += `\n\n${theme.fg("muted", "─── ")}${theme.fg("accent", r.agent)} ${rIcon}`;
+					text += `\n\n${theme.fg("muted", "--- ")}${theme.fg("accent", r.agent)}${formatAgentExecutionLabel(r, theme.fg.bind(theme))} ${rIcon}`;
 					if (displayItems.length === 0)
 						text += `\n${theme.fg("muted", r.exitCode === -1 ? "(running...)" : "(no output)")}`;
 					else text += `\n${renderDisplayItems(displayItems, 5)}`;

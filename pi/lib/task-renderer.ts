@@ -66,6 +66,26 @@ function formatUnmetBlocker(blocker: UnmetBlocker): string {
 	return `${shortTaskId(blocker.id)} (${blocker.status})${summary}`;
 }
 
+function getMetadataString(
+	task: TaskRecordV1,
+	key: string,
+): string | undefined {
+	const metadata = task.metadata;
+	if (!metadata || typeof metadata !== "object") return undefined;
+	const value = metadata[key];
+	return typeof value === "string" && value
+		? truncateTaskText(value, 120)
+		: undefined;
+}
+
+function formatTaskModelEffort(task: TaskRecordV1): string | null {
+	if (task.origin !== "subagent") return null;
+	const model = getMetadataString(task, "model");
+	const effort = getMetadataString(task, "effort");
+	if (!model && !effort) return null;
+	return `${model ?? "default"}[${effort ?? "default"}]`;
+}
+
 export function formatUnmetBlockers(
 	unmetBlockers: readonly UnmetBlocker[],
 ): string {
@@ -89,7 +109,9 @@ export function formatCompactRow(
 				? ` [waiting: ${unmet.map((item) => shortTaskId(item.id)).join(", ")}]`
 				: " [ready]"
 			: "";
-	return `  ${shortTaskId(task.id)}  ${summary}${retry}${readiness}  -- ${relativeTime(ageSrc)}`;
+	const modelEffort = formatTaskModelEffort(task);
+	const execution = modelEffort ? ` ${modelEffort}` : "";
+	return `  ${shortTaskId(task.id)}  ${summary}${execution}${retry}${readiness}  -- ${relativeTime(ageSrc)}`;
 }
 
 export function formatTaskList(
@@ -125,6 +147,8 @@ export function formatTaskDetail(
 	lines.push(`  origin: ${task.origin}`);
 	if (task.agentName)
 		lines.push(`  agent: ${truncateTaskText(task.agentName, 120)}`);
+	const modelEffort = formatTaskModelEffort(task);
+	if (modelEffort) lines.push(`  model: ${modelEffort}`);
 	if (task.repoSlug)
 		lines.push(`  repo: ${truncateTaskText(task.repoSlug, 120)}`);
 	if (task.summary)

@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
+import { createMockCtx, createMockPi, createMockTheme } from "./helpers/mock-pi.ts";
 
 const spawnMock = vi.fn();
 const SUBAGENT_TEST_TIMEOUT_MS = 30000;
@@ -42,6 +42,7 @@ describe("subagent model override routing", () => {
 name: tester
 description: Test agent
 model: anthropic/claude-sonnet-4-6
+effort: high
 ---
 
 You are a test agent.
@@ -259,6 +260,45 @@ You are a test agent.
     expect(spawnArgs).not.toContain("anthropic/claude-sonnet-4-6");
   }, SUBAGENT_TEST_TIMEOUT_MS);
 
+  it("uses explicit model over modelSize and pinned agent models", async () => {
+    mockSuccessfulSpawn();
+    const { tool } = await loadTool();
+    const getAvailable = vi.fn(() => [
+      { provider: "openai-codex", id: "gpt-5.5" },
+      { provider: "anthropic", id: "claude-sonnet-4-6" },
+    ]);
+
+    const ctx = createMockCtx({
+      cwd: tmpDir,
+      model: { provider: "openai-codex", id: "gpt-5.5" },
+      modelRegistry: { getAvailable },
+    });
+
+    const result = await tool.execute(
+      "call-explicit-model",
+      {
+        agent: "tester",
+        task: "Check the thing",
+        agentScope: "project",
+        confirmProjectAgents: false,
+        model: "anthropic/claude-opus-4-5",
+        modelSize: "medium",
+      },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    expect(result.isError).not.toBe(true);
+    expect(getAvailable).not.toHaveBeenCalled();
+    const spawnArgs = spawnMock.mock.calls[0][1] as string[];
+    expect(spawnArgs).toContain("--model");
+    expect(spawnArgs).toContain("anthropic/claude-opus-4-5");
+    expect(spawnArgs).not.toContain("openai-codex/gpt-5.5");
+    expect(spawnArgs).not.toContain("anthropic/claude-sonnet-4-6");
+    expect(result.details.results[0].model).toBe("anthropic/claude-opus-4-5");
+  }, SUBAGENT_TEST_TIMEOUT_MS);
+
   it("falls back to the agent's pinned model when no modelSize is requested", async () => {
     mockSuccessfulSpawn();
     const { tool } = await loadTool();
@@ -360,6 +400,8 @@ You are a test agent.
     expect(record.endedAt).toBeDefined();
     expect(record.usage?.inputTokens).toBe(10);
     expect(record.usage?.outputTokens).toBe(5);
+    expect(record.metadata?.model).toBe("anthropic/claude-sonnet-4-6");
+    expect(record.metadata?.effort).toBe("high");
   }, SUBAGENT_TEST_TIMEOUT_MS);
 
   it("does not create a repo-root false artifact when output is false or coerced to string false", async () => {
@@ -388,6 +430,54 @@ You are a test agent.
       expect(result.content[0].text).not.toContain("Output saved to:");
     }
     expect(fs.existsSync(path.join(tmpDir, "false"))).toBe(false);
+  }, SUBAGENT_TEST_TIMEOUT_MS);
+
+  it("renders active parallel subagents with model and effort", async () => {
+    const proc = createMockProcess();
+    spawnMock.mockImplementation(() => proc);
+    const { tool } = await loadTool();
+
+    const ctx = createMockCtx({
+      cwd: tmpDir,
+      model: { provider: "anthropic", id: "claude-sonnet-4-6" },
+    });
+    let partialResult: Awaited<ReturnType<typeof tool.execute>> | undefined;
+
+    const execution = tool.execute(
+      "call-render-active",
+      {
+        tasks: [{ agent: "tester", task: "Keep running" }],
+        agentScope: "project",
+        confirmProjectAgents: false,
+      },
+      undefined,
+      (partial: Awaited<ReturnType<typeof tool.execute>>) => {
+        partialResult = partial;
+      },
+      ctx,
+    );
+
+    await vi.waitFor(() => expect(partialResult).toBeDefined());
+    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1));
+    const rendered = tool
+      .renderResult(partialResult, { expanded: false }, createMockTheme(), {})
+      .render(120)
+      .join("\n");
+    expect(rendered).toContain("tester anthropic/claude-sonnet-4-6[high]");
+
+    proc.stdout.emit(
+      "data",
+      `${JSON.stringify({
+        type: "message_end",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "done" }],
+          stopReason: "end_turn",
+        },
+      })}\n`,
+    );
+    proc.emit("close", 0);
+    await execution;
   }, SUBAGENT_TEST_TIMEOUT_MS);
 
   it("registers a subagent failure as state=failed with errorReason", async () => {

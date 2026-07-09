@@ -58,6 +58,24 @@ describe("task renderer/settings", () => {
 		expect(text).toContain(`[waiting: ${blocker.id.slice(0, 8)}]`);
 	});
 
+	it("shows subagent model and effort in compact and detail views", () => {
+		const task = createTask({
+			origin: "subagent",
+			summary: "engineering-lead",
+			agentName: "engineering-lead",
+			state: "running",
+			metadata: { model: "anthropic/claude-sonnet-4-6", effort: "high" },
+		});
+
+		const listText = formatTaskList([task], "compact");
+		expect(listText).toContain(
+			"engineering-lead anthropic/claude-sonnet-4-6[high]",
+		);
+		expect(formatTaskDetail(task)).toContain(
+			"model: anthropic/claude-sonnet-4-6[high]",
+		);
+	});
+
 	it("renders sorted dependency detail with redaction and skipped unblocking", () => {
 		const first = createTask({ origin: "other", summary: "zzz token=abc" });
 		const second = createTask({ origin: "other", summary: "aaa" });
