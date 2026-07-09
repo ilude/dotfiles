@@ -38,6 +38,7 @@ import { listTasks, type TaskRecordV1 } from "../lib/task-registry.js";
 let cachedPiVersion: string | null | undefined;
 let currentSessionStartedAt: string | null = null;
 const cachedStatusDirectories = new Map<string, string>();
+const FOOTER_STATUS_EXCLUDE_KEYS = new Set(["damage-control", "router"]);
 const reloadStatus = createReloadStatusState();
 
 const ANSI = {
@@ -229,7 +230,7 @@ export function formatExtensionStatuses(
 	footerData: ReadonlyFooterDataProvider,
 ): string | null {
 	const statuses = Array.from(footerData.getExtensionStatuses().entries())
-		.filter(([key]) => key !== "codex")
+		.filter(([key]) => key !== "codex" && !FOOTER_STATUS_EXCLUDE_KEYS.has(key))
 		.sort(([a], [b]) => a.localeCompare(b))
 		.map(([, text]) => sanitizeSingleLine(text))
 		.filter(Boolean);
@@ -243,7 +244,12 @@ export function formatExtensionStatusLine(
 	const statuses = footerData.getExtensionStatuses();
 	const left = sanitizeSingleLine(statuses.get("tps") ?? "");
 	const right = Array.from(statuses.entries())
-		.filter(([key]) => key !== "codex" && key !== "tps")
+		.filter(
+			([key]) =>
+				key !== "codex" &&
+				key !== "tps" &&
+				!FOOTER_STATUS_EXCLUDE_KEYS.has(key),
+		)
 		.sort(([a], [b]) => a.localeCompare(b))
 		.map(([, text]) => sanitizeSingleLine(text))
 		.filter(Boolean)

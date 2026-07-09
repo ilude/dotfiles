@@ -101,19 +101,21 @@ describe("footer extension status placement", () => {
 		} as ReadonlyFooterDataProvider;
 	}
 
-	it("keeps codex right-anchored and moves damage-control down with extension statuses", async () => {
+	it("keeps codex right-anchored and excludes noisy health statuses", async () => {
 		const mod = await import("../extensions/operator-status.ts");
 		const data = footerData({
+			bedrock: "bedrock $17.49 mtd",
 			"damage-control": "damage-control: active",
 			codex: "codex 5h 42% | wk 61%",
+			router: "router: ready",
 			tps: "done -- 42 tok/s",
 		});
-		const status = "damage-control: active done -- 42 tok/s";
+		const status = "bedrock $17.49 mtd done -- 42 tok/s";
 
 		expect(mod.rightAnchoredStatus(data)).toBe("codex 5h 42% | wk 61%");
 		expect(mod.formatExtensionStatuses(data)).toBe(status);
 		expect(mod.formatExtensionStatusLine(data, 50)).toBe(
-			"done -- 42 tok/s            damage-control: active",
+			"done -- 42 tok/s                bedrock $17.49 mtd",
 		);
 	});
 });
