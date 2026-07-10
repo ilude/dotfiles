@@ -2,8 +2,8 @@
  * Quality Gates Extension
  *
  * Collects files changed by write and edit operations, then runs the
- * appropriate linters once after the agent settles. Validation failures
- * are added to the transcript without starting another agent turn.
+ * appropriate linters when the agent run ends. Validation failures trigger
+ * a bounded follow-up repair turn before the session settles.
  *
  * Validators are configured in:
  *   $HOME/.dotfiles/claude/hooks/quality-validation/validators.yaml
@@ -78,6 +78,7 @@ const extMap = buildExtMap(validators);
 const validatorAvailabilityCache = new Map<string, boolean>();
 const VALIDATOR_LOOKUP_TIMEOUT_MS = 2000;
 const VALIDATOR_RUN_TIMEOUT_MS = 10000;
+const MAX_AUTO_REPAIR_ATTEMPTS = 2;
 
 export function getFilePath(event: ToolResultEvent): string | undefined {
 	return (
@@ -136,6 +137,16 @@ export function registerQualityGates(
 	languageByExtension: Map<string, LanguageConfig> = extMap,
 ): void {
 	const touchedFiles = new Set<string>();
+	let repairAttempts = 0;
+	let repairQueued = false;
+
+	pi.on("agent_start", () => {
+		if (repairQueued) {
+			repairQueued = false;
+			return;
+		}
+		repairAttempts = 0;
+	});
 
 	pi.on("tool_result", (event: ToolResultEvent) => {
 		if (event.toolName !== "write" && event.toolName !== "edit") return;
@@ -147,7 +158,7 @@ export function registerQualityGates(
 		if (languageByExtension.has(ext)) touchedFiles.add(filePath);
 	});
 
-	pi.on("agent_settled", async () => {
+	pi.on("agent_end", async () => {
 		const files = Array.from(touchedFiles).sort();
 		touchedFiles.clear();
 		if (files.length === 0) return;
@@ -170,12 +181,33 @@ export function registerQualityGates(
 			}
 		}
 
-		if (warnings.length === 0) return;
-		pi.sendMessage({
-			customType: "quality-gates",
-			content: `Quality gate validation failed:\n\n${warnings.join("\n\n")}`,
-			display: true,
-		});
+		if (warnings.length === 0) {
+			repairAttempts = 0;
+			return;
+		}
+
+		const content = `Quality gate validation failed:\n\n${warnings.join("\n\n")}`;
+		if (repairAttempts >= MAX_AUTO_REPAIR_ATTEMPTS) {
+			repairAttempts = 0;
+			pi.sendMessage({
+				customType: "quality-gates",
+				content: `${content}\n\nAutomatic repair limit reached. Resolve these failures before continuing.`,
+				display: true,
+			});
+			return;
+		}
+
+		repairAttempts++;
+		repairQueued = true;
+		for (const filePath of files) touchedFiles.add(filePath);
+		pi.sendMessage(
+			{
+				customType: "quality-gates",
+				content: `${content}\n\nAddress every validation failure, re-run the relevant checks, and do not finish until they pass.`,
+				display: true,
+			},
+			{ triggerTurn: true, deliverAs: "followUp" },
+		);
 	});
 }
 

@@ -112,7 +112,7 @@ describe("quality-gates extension", () => {
 	});
 
 	describe("batched hook timing", () => {
-		it("defers and deduplicates validation until agent_settled", async () => {
+		it("validates once at agent_end and queues a repair follow-up", async () => {
 			const pi = createMockPi();
 			pi.exec.mockImplementation(async (command: string) => ({
 				code: command === "batch-failure-validator" ? 1 : 0,
@@ -133,7 +133,7 @@ describe("quality-gates extension", () => {
 			});
 			registerQualityGates(pi as unknown as ExtensionAPI, map);
 			const toolResult = pi._getHook("tool_result")[0].handler;
-			const agentSettled = pi._getHook("agent_settled")[0].handler;
+			const agentEnd = pi._getHook("agent_end")[0].handler;
 			const event = {
 				toolName: "edit",
 				input: { path: "foo.batch-failure" },
@@ -144,25 +144,72 @@ describe("quality-gates extension", () => {
 			expect(pi.exec).not.toHaveBeenCalled();
 			expect(pi.sendMessage).not.toHaveBeenCalled();
 
-			await agentSettled();
+			await agentEnd();
 
 			expect(
 				pi.exec.mock.calls.filter(
 					([command]) => command === "batch-failure-validator",
 				),
 			).toHaveLength(1);
-			expect(pi.sendMessage).toHaveBeenCalledWith({
-				customType: "quality-gates",
-				content:
-					"Quality gate validation failed:\n\nbatch-failure-validator reported issues in foo.batch-failure:\nE501 line too long",
-				display: true,
-			});
-
-			await agentSettled();
-			expect(pi.exec).toHaveBeenCalledTimes(2);
+			expect(pi.sendMessage).toHaveBeenCalledWith(
+				{
+					customType: "quality-gates",
+					content:
+						"Quality gate validation failed:\n\nbatch-failure-validator reported issues in foo.batch-failure:\nE501 line too long\n\nAddress every validation failure, re-run the relevant checks, and do not finish until they pass.",
+					display: true,
+				},
+				{ triggerTurn: true, deliverAs: "followUp" },
+			);
 		});
 
-		it("stays silent when settled validation passes", async () => {
+		it("stops automatic repair after two follow-up attempts", async () => {
+			const pi = createMockPi();
+			pi.exec.mockImplementation(async (command: string) => ({
+				code: command === "repair-limit-validator" ? 1 : 0,
+				stdout: command === "repair-limit-validator" ? "still broken" : "",
+				stderr: "",
+			}));
+			const map = buildExtMap({
+				typescript: {
+					extensions: [".repair-limit"],
+					validators: [
+						{
+							name: "repair-limit-validator",
+							command: ["repair-limit-validator", "check", "{file}"],
+						},
+					],
+				},
+			});
+			registerQualityGates(pi as unknown as ExtensionAPI, map);
+			await pi._getHook("tool_result")[0].handler({
+				toolName: "write",
+				input: { path: "foo.repair-limit" },
+			} as unknown as ToolResultEvent);
+			const agentStart = pi._getHook("agent_start")[0].handler;
+			const agentEnd = pi._getHook("agent_end")[0].handler;
+
+			await agentEnd();
+			await agentStart();
+			await agentEnd();
+			await agentStart();
+			await agentEnd();
+
+			expect(pi.sendMessage).toHaveBeenCalledTimes(3);
+			expect(pi.sendMessage.mock.calls[0][1]).toEqual({
+				triggerTurn: true,
+				deliverAs: "followUp",
+			});
+			expect(pi.sendMessage.mock.calls[1][1]).toEqual({
+				triggerTurn: true,
+				deliverAs: "followUp",
+			});
+			expect(pi.sendMessage.mock.calls[2][1]).toBeUndefined();
+			expect(pi.sendMessage.mock.calls[2][0].content).toContain(
+				"Automatic repair limit reached",
+			);
+		});
+
+		it("stays silent when end-of-run validation passes", async () => {
 			const pi = createMockPi();
 			const map = buildExtMap({
 				typescript: {
@@ -181,7 +228,7 @@ describe("quality-gates extension", () => {
 				toolName: "write",
 				input: { path: "foo.batch-clean" },
 			} as unknown as ToolResultEvent);
-			await pi._getHook("agent_settled")[0].handler();
+			await pi._getHook("agent_end")[0].handler();
 
 			expect(pi.sendMessage).not.toHaveBeenCalled();
 		});

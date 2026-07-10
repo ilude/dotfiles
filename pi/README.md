@@ -277,7 +277,7 @@ Agent config recovery: active agent personas live in `pi/agents/`. If a bad role
 
 ### `quality-gates.ts`
 
-Collects files changed by write and edit operations, then runs the appropriate linters once after the agent settles. Failures are added to the transcript without starting another agent turn.
+Collects files changed by write and edit operations, then runs the appropriate linters when the agent run ends. Failures trigger a follow-up repair turn before the session settles, with at most two automatic repair attempts before control returns with an unresolved warning.
 
 Validators are configured in `~/.dotfiles/claude/hooks/quality-validation/validators.yaml` -- shared with the Claude Code quality-validation hook.
 
