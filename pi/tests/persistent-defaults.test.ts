@@ -22,6 +22,14 @@ afterEach(() => {
 });
 
 describe("persistent defaults guard", () => {
+	it("pins GPT-5.6 Sol with medium thinking", () => {
+		expect(PINNED_DEFAULTS).toEqual({
+			defaultModel: "gpt-5.6-sol",
+			defaultProvider: "openai-codex",
+			defaultThinkingLevel: "medium",
+		});
+	});
+
 	it("restores pinned model provider and thinking defaults while preserving other settings", () => {
 		const settingsPath = tempSettingsPath();
 		fs.writeFileSync(

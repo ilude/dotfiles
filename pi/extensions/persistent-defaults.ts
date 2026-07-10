@@ -13,9 +13,9 @@ import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export const PINNED_DEFAULTS = {
-	defaultModel: "gpt-5.5",
+	defaultModel: "gpt-5.6-sol",
 	defaultProvider: "openai-codex",
-	defaultThinkingLevel: "minimal",
+	defaultThinkingLevel: "medium",
 } as const;
 
 export function getSettingsPath(): string {

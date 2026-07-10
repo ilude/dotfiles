@@ -6,7 +6,7 @@ describe("fable command", () => {
 	it("builds an orchestration prompt with explicit Codex subagent model", () => {
 		const prompt = buildFablePrompt("Fix the display");
 		expect(prompt).toContain("Fix the display");
-		expect(prompt).toContain('model: "openai-codex/gpt-5.5"');
+		expect(prompt).toContain('model: "openai-codex/gpt-5.6-sol"');
 		expect(prompt).toContain("planning, dispatch, coordination, and synthesis");
 	});
 
@@ -39,7 +39,7 @@ describe("fable command", () => {
 			expect.stringContaining("Ship the feature"),
 		);
 		expect(pi.sendUserMessage).toHaveBeenCalledWith(
-			expect.stringContaining('model: "openai-codex/gpt-5.5"'),
+			expect.stringContaining('model: "openai-codex/gpt-5.6-sol"'),
 		);
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
 			"amazon-bedrock/us.anthropic.claude-fable-5[high] orchestration started.",

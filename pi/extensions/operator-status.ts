@@ -211,7 +211,7 @@ export function colorForThinkingLevel(
 	const normalizedLevel = thinkingLevel.toLowerCase();
 	if (normalizedLevel === "off") return ANSI.yellow;
 	if (
-		normalizedModel === "gpt-5.5" &&
+		normalizedModel === "gpt-5.6-sol" &&
 		["medium", "high", "xhigh"].includes(normalizedLevel)
 	)
 		return ANSI.pink;

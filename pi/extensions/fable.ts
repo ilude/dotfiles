@@ -3,7 +3,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const FABLE_MODEL_ID = "amazon-bedrock/us.anthropic.claude-fable-5";
 const FABLE_THINKING_LEVEL = "high";
-const SUBAGENT_MODEL_ID = "openai-codex/gpt-5.5";
+const SUBAGENT_MODEL_ID = "openai-codex/gpt-5.6-sol";
 
 function parseModelId(
 	modelId: string,

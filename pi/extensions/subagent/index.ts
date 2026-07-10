@@ -797,7 +797,7 @@ const SubagentParams = Type.Object({
 	tasks: Type.Optional(Type.Array(TaskItem, { description: "Array of {agent, task} for parallel execution" })),
 	chain: Type.Optional(Type.Array(ChainItem, { description: "Array of {agent, task} for sequential execution" })),
 	agentScope: Type.Optional(AgentScopeSchema),
-	model: Type.Optional(Type.String({ description: "Exact provider/model override for spawned subagents, e.g. openai-codex/gpt-5.5. Takes precedence over modelSize and agent frontmatter." })),
+	model: Type.Optional(Type.String({ description: "Exact provider/model override for spawned subagents, e.g. openai-codex/gpt-5.6-terra. Takes precedence over modelSize and agent frontmatter." })),
 	modelSize: Type.Optional(ModelSizeSchema),
 	modelPolicy: Type.Optional(ModelPolicySchema),
 	confirmProjectAgents: Type.Optional(

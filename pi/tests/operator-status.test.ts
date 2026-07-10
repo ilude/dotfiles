@@ -179,7 +179,7 @@ describe("formatPiStatusLine", () => {
 		const line = mod.formatPiStatusLine({
 			cwd: tmpRoot,
 			branch: null,
-			model: { id: "gpt-5.5" },
+			model: { id: "gpt-5.6-sol" },
 			pi: pi as any,
 			piVersion: "0.72.0",
 			contextUsage: { tokens: 168_000, contextWindow: 200_000, percent: 84 },
@@ -188,7 +188,7 @@ describe("formatPiStatusLine", () => {
 		});
 
 		expect(line).toContain(
-			"gpt-5.5\x1b[0m\x1b[37m[\x1b[36mlow\x1b[37m]\x1b[0m \x1b[33m84%\x1b[0m \x1b[90m168k/200k\x1b[0m",
+			"gpt-5.6-sol\x1b[0m\x1b[37m[\x1b[36mlow\x1b[37m]\x1b[0m \x1b[33m84%\x1b[0m \x1b[90m168k/200k\x1b[0m",
 		);
 	});
 
@@ -219,11 +219,11 @@ describe("formatPiStatusLine", () => {
 
 	it("colors thinking levels by model risk", async () => {
 		const mod = await import("../extensions/operator-status.ts");
-		expect(mod.colorForThinkingLevel("gpt-5.5", "medium")).toBe(
+		expect(mod.colorForThinkingLevel("gpt-5.6-sol", "medium")).toBe(
 			"\x1b[38;5;205m",
 		);
-		expect(mod.colorForThinkingLevel("gpt-5.5", "high")).toBe("\x1b[38;5;205m");
-		expect(mod.colorForThinkingLevel("gpt-5.5", "xhigh")).toBe(
+		expect(mod.colorForThinkingLevel("gpt-5.6-sol", "high")).toBe("\x1b[38;5;205m");
+		expect(mod.colorForThinkingLevel("gpt-5.6-sol", "xhigh")).toBe(
 			"\x1b[38;5;205m",
 		);
 		expect(mod.colorForThinkingLevel("claude-opus", "medium")).toBe("\x1b[36m");
@@ -235,7 +235,7 @@ describe("formatPiStatusLine", () => {
 		const line = mod.formatPiStatusLine({
 			cwd: tmpRoot,
 			branch: null,
-			model: { id: "gpt-5.5" },
+			model: { id: "gpt-5.6-sol" },
 			pi: pi as any,
 			piVersion: "0.72.0",
 			router: null,

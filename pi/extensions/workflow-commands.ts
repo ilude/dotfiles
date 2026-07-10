@@ -795,7 +795,7 @@ async function generateCommitPlanWithLlm(
 		{
 			apiKey: auth.apiKey,
 			headers: auth.headers,
-			reasoning: "minimal",
+			reasoning: "low",
 			signal: ctx.signal,
 		},
 	);
@@ -1443,7 +1443,7 @@ async function reviewSecretFindingsWithLlm(
 		{
 			apiKey: auth.apiKey,
 			headers: auth.headers,
-			reasoning: "minimal",
+			reasoning: "low",
 			signal: ctx.signal,
 		},
 	);
@@ -1512,7 +1512,7 @@ async function classifyUntrackedFiles(
 		{
 			apiKey: auth.apiKey,
 			headers: auth.headers,
-			reasoning: "minimal",
+			reasoning: "low",
 			signal: ctx.signal,
 		},
 	);
