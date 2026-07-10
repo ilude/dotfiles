@@ -29,12 +29,7 @@ import { spawn, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	type Api,
-	completeSimple,
-	type Model,
-	type TextContent,
-} from "@earendil-works/pi-ai/compat";
+import type { Api, Model } from "@earendil-works/pi-ai/compat";
 import type {
 	ContextUsage,
 	ExtensionAPI,
@@ -625,7 +620,7 @@ async function executeBranchCommand(args: string, ctx: WorkflowContext) {
 }
 
 function extractJsonValue(text: string) {
-	const start = text.search(/[\[{]/);
+	const start = text.search(/[[{]/);
 	if (start === -1) return undefined;
 	const stack: string[] = [];
 	let inString = false;
@@ -715,20 +710,6 @@ export function validateCommitPlan(plan: CommitPlan, changedFiles: string[]) {
 	}
 }
 
-function extractAssistantText(content: unknown) {
-	if (!Array.isArray(content)) return "";
-	return content
-		.filter(
-			(block): block is TextContent =>
-				!!block &&
-				typeof block === "object" &&
-				"type" in block &&
-				block.type === "text",
-		)
-		.map((block) => block.text)
-		.join("\n");
-}
-
 function buildSingleGroupCommitPlan(
 	context: {
 		files: string[];
@@ -756,8 +737,94 @@ function buildSingleGroupCommitPlan(
 	};
 }
 
+const COMMIT_MODEL_TIMEOUT_MS = 120000;
+const COMMIT_MODEL_OUTPUT_INSTRUCTION =
+	"Execute the attached instructions now and return only the requested JSON.";
+
+export function buildCommitModelArgs(
+	model: Model<Api>,
+	promptFile: string,
+): string[] {
+	return [
+		"--provider",
+		model.provider,
+		"--model",
+		model.id,
+		"--thinking",
+		"low",
+		"--no-tools",
+		"--no-extensions",
+		"--no-skills",
+		"--no-context-files",
+		"--no-prompt-templates",
+		"--no-themes",
+		"--no-session",
+		"--no-approve",
+		`@${promptFile}`,
+		"--print",
+		COMMIT_MODEL_OUTPUT_INSTRUCTION,
+	];
+}
+
+function getPiInvocation(args: string[]): { command: string; args: string[] } {
+	const currentScript = process.argv[1];
+	if (currentScript && fs.existsSync(currentScript)) {
+		return { command: process.execPath, args: [currentScript, ...args] };
+	}
+	const execName = path.basename(process.execPath).toLowerCase();
+	if (!/^(node|bun)(\.exe)?$/.test(execName)) {
+		return { command: process.execPath, args };
+	}
+	return { command: "pi", args };
+}
+
+async function runCommitModelPrompt(
+	pi: ExtensionAPI,
+	ctx: WorkflowContext,
+	prompt: string,
+): Promise<string> {
+	const model = await resolveCommitPlanningModelFromRegistry(
+		ctx.modelRegistry,
+		ctx,
+	);
+	if (!model) throw new Error("No commit review model available");
+	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+	if (!auth.ok) {
+		throw new Error(
+			auth.error || "No configured auth available for commit review model",
+		);
+	}
+
+	const tempDir = await fs.promises.mkdtemp(
+		path.join(os.tmpdir(), "pi-commit-model-"),
+	);
+	const promptFile = path.join(tempDir, "prompt.md");
+	try {
+		await fs.promises.writeFile(promptFile, prompt, {
+			encoding: "utf8",
+			mode: 0o600,
+		});
+		const invocation = getPiInvocation(buildCommitModelArgs(model, promptFile));
+		const result = await pi.exec(invocation.command, invocation.args, {
+			cwd: ctx.cwd,
+			signal: ctx.signal,
+			timeout: COMMIT_MODEL_TIMEOUT_MS,
+		});
+		if (result.code !== 0) {
+			throw new Error(
+				(result.stderr || result.stdout || "Luna commit review failed").trim(),
+			);
+		}
+		const output = result.stdout.trim();
+		if (!output) throw new Error("Luna commit review returned no output");
+		return output;
+	} finally {
+		await fs.promises.rm(tempDir, { recursive: true, force: true });
+	}
+}
+
 async function generateCommitPlanWithLlm(
-	_ctxPi: ExtensionAPI,
+	pi: ExtensionAPI,
 	ctx: WorkflowContext,
 	context: {
 		files: string[];
@@ -767,39 +834,11 @@ async function generateCommitPlanWithLlm(
 		hint: string;
 	},
 ) {
-	const model = await resolveCommitPlanningModelFromRegistry(
-		ctx.modelRegistry,
-		ctx,
-	);
-	if (!model) {
-		throw new Error("No small/mini model available for commit planning");
-	}
-	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-	if (!auth?.ok) {
-		throw new Error(
-			auth?.error || "No configured auth available for commit planning model",
-		);
-	}
 	const planningPrompt = buildCommitPlanningPrompt(
 		loadClaudeCommitInstructions(),
 		context,
 	);
-	const response = await completeSimple(
-		model,
-		{
-			systemPrompt: ctx.getSystemPrompt?.(),
-			messages: [
-				{ role: "user", content: planningPrompt, timestamp: Date.now() },
-			],
-		},
-		{
-			apiKey: auth.apiKey,
-			headers: auth.headers,
-			reasoning: "low",
-			signal: ctx.signal,
-		},
-	);
-	const planText = extractAssistantText(response.content);
+	const planText = await runCommitModelPrompt(pi, ctx, planningPrompt);
 	if (!planText.trim()) {
 		return buildSingleGroupCommitPlan(
 			context,
@@ -1413,52 +1452,26 @@ function parseSecretReviewResult(text: string): SecretReviewResult {
 }
 
 async function reviewSecretFindingsWithLlm(
+	pi: ExtensionAPI,
 	ctx: WorkflowContext,
 	findings: SecretCandidate[],
 ): Promise<SecretReviewFinding[]> {
 	if (findings.length === 0) return [];
-	const model = await resolveCommitPlanningModelFromRegistry(
-		ctx.modelRegistry,
+	const text = await runCommitModelPrompt(
+		pi,
 		ctx,
+		buildSecretReviewPrompt(findings),
 	);
-	if (!model)
-		throw new Error("No small/mini model available for secret review");
-	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-	if (!auth?.ok)
-		throw new Error(
-			auth?.error || "No configured auth available for secret review model",
-		);
-	const response = await completeSimple(
-		model,
-		{
-			systemPrompt: ctx.getSystemPrompt?.(),
-			messages: [
-				{
-					role: "user",
-					content: buildSecretReviewPrompt(findings),
-					timestamp: Date.now(),
-				},
-			],
-		},
-		{
-			apiKey: auth.apiKey,
-			headers: auth.headers,
-			reasoning: "low",
-			signal: ctx.signal,
-		},
-	);
-	const text = extractAssistantText(response.content);
-	if (!text.trim())
-		throw new Error("Secret reviewer returned no assistant text");
 	return parseSecretReviewResult(text).findings;
 }
 
 async function confirmSecretScan(
+	pi: ExtensionAPI,
 	ctx: WorkflowContext,
 	findings: SecretCandidate[],
 ) {
 	if (findings.length === 0) return true;
-	const reviewed = await reviewSecretFindingsWithLlm(ctx, findings);
+	const reviewed = await reviewSecretFindingsWithLlm(pi, ctx, findings);
 	const blocking = reviewed.filter(
 		(finding) =>
 			finding.classification === "likely_secret" ||
@@ -1478,51 +1491,18 @@ async function confirmSecretScan(
 }
 
 export async function classifyUntrackedFiles(
+	pi: ExtensionAPI,
 	ctx: WorkflowContext,
 	untrackedFiles: string[],
 ): Promise<UntrackedClassificationPlan> {
 	if (untrackedFiles.length === 0) {
 		return { accepted: [], needsUserDecision: [] };
 	}
-	const model = await resolveCommitPlanningModelFromRegistry(
-		ctx.modelRegistry,
+	const text = await runCommitModelPrompt(
+		pi,
 		ctx,
+		buildUntrackedClassifierPrompt(untrackedFiles),
 	);
-	if (!model) {
-		throw new Error("No small/mini model available for untracked classifier");
-	}
-	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-	if (!auth?.ok) {
-		throw new Error(
-			auth?.error || "No configured auth available for untracked classifier",
-		);
-	}
-	const response = await completeSimple(
-		model,
-		{
-			systemPrompt: ctx.getSystemPrompt?.(),
-			messages: [
-				{
-					role: "user",
-					content: buildUntrackedClassifierPrompt(untrackedFiles),
-					timestamp: Date.now(),
-				},
-			],
-		},
-		{
-			apiKey: auth.apiKey,
-			headers: auth.headers,
-			reasoning: "low",
-			signal: ctx.signal,
-		},
-	);
-	if (response.stopReason === "error" && response.errorMessage) {
-		throw new Error(response.errorMessage);
-	}
-	const text = extractAssistantText(response.content);
-	if (!text.trim()) {
-		throw new Error("Untracked classifier returned no assistant text");
-	}
 	return parseUntrackedClassifierResult(text, untrackedFiles);
 }
 
@@ -1990,6 +1970,7 @@ async function getCommitContext(
 }
 
 async function prepareCommitSelection(
+	pi: ExtensionAPI,
 	args: string,
 	ctx: WorkflowContext,
 	activity?: CommitActivity,
@@ -2010,7 +1991,7 @@ async function prepareCommitSelection(
 	);
 	if (selectedUntracked.length > 0) {
 		activity?.setPhase("classifying untracked files");
-		const plan = await classifyUntrackedFiles(ctx, selectedUntracked);
+		const plan = await classifyUntrackedFiles(pi, ctx, selectedUntracked);
 		const userDecisions = await resolveLowConfidenceClassifications(
 			ctx,
 			plan.needsUserDecision,
@@ -2032,7 +2013,7 @@ async function prepareCommitSelection(
 	}
 
 	const findings = scanFilesForSecrets(ctx.cwd, selection.files);
-	if (!(await confirmSecretScan(ctx, findings))) return null;
+	if (!(await confirmSecretScan(pi, ctx, findings))) return null;
 
 	if (selection.stageAll)
 		await stageFilesAsync(
@@ -2087,7 +2068,7 @@ async function executeCommitCommand(
 			);
 		}
 
-		const prepared = await prepareCommitSelection(args, ctx, activity);
+		const prepared = await prepareCommitSelection(pi, args, ctx, activity);
 		if (!prepared) {
 			activity.finish();
 			return ctx.ui.notify("Commit cancelled", "warning");

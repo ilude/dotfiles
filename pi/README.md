@@ -314,7 +314,7 @@ Workflow highlights:
 - `/plan-it` writes plans with explicit `small` / `medium` / `large` model sizing and agent assignments.
 - `/review-it` coordinates a fixed 3-reviewer core plus at least 3 persona-seeded domain reviewers, with targeted rebuttal only when disagreement matters.
 - `/do-it` can route a raw task **or** execute an existing `.specs/*/plan.md` file wave by wave.
-- `/commit` uses deterministic candidate extraction plus a small-model LLM review to distinguish real secrets from docs/examples/tests before blocking.
+- `/commit` uses deterministic candidate extraction plus an isolated low-effort GPT-5.6 Luna child to distinguish real secrets from docs/examples/tests before blocking and to plan commit groups. The child runs through Pi's normal agent entrypoint because direct `completeSimple()` calls are not supported for Luna on the Codex subscription backend.
 
 ### `context.ts`
 

@@ -222,7 +222,7 @@ export function resolveCommitPlanningModel<T extends ModelLike>(
 	currentModel?: ModelLike,
 ): T | undefined {
 	return (
-		findExact(availableModels, "openai-codex", "gpt-5.4-mini") ??
+		findExact(availableModels, "openai-codex", "gpt-5.6-luna") ??
 		(currentModel
 			? resolveDynamicModel(
 					availableModels,

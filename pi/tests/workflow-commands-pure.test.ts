@@ -1,20 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 
-const { completeSimpleMock, resolveCommitPlanningModelMock } = vi.hoisted(
-	() => ({
-		completeSimpleMock: vi.fn(),
-		resolveCommitPlanningModelMock: vi.fn(),
-	}),
-);
-
-vi.mock("@earendil-works/pi-ai/compat", () => ({
-	completeSimple: completeSimpleMock,
+const { resolveCommitPlanningModelMock } = vi.hoisted(() => ({
+	resolveCommitPlanningModelMock: vi.fn(),
 }));
+
 vi.mock("../lib/model-routing", () => ({
 	resolveCommitPlanningModelFromRegistry: resolveCommitPlanningModelMock,
 }));
 
 import {
+	buildCommitModelArgs,
 	buildStagingPlan,
 	buildUntrackedClassifierPrompt,
 	chooseFilesToCommit,
@@ -28,6 +23,31 @@ import {
 	proposeCommitMessage,
 	validateCommitPlan,
 } from "../extensions/workflow-commands.ts";
+
+describe("commit model invocation", () => {
+	it("runs Luna through an isolated low-effort Pi child", () => {
+		const args = buildCommitModelArgs(
+			{ provider: "openai-codex", id: "gpt-5.6-luna" } as never,
+			"C:/Temp/prompt.md",
+		);
+		expect(args).toEqual(
+			expect.arrayContaining([
+				"--provider",
+				"openai-codex",
+				"--model",
+				"gpt-5.6-luna",
+				"--thinking",
+				"low",
+				"--no-extensions",
+				"--no-session",
+				"@C:/Temp/prompt.md",
+			]),
+		);
+		expect(args.at(-1)).toBe(
+			"Execute the attached instructions now and return only the requested JSON.",
+		);
+	});
+});
 
 describe("parseCommitPlan", () => {
 	it("parses JSON wrapped in assistant prose", () => {
@@ -318,14 +338,18 @@ describe("untracked classifier helpers", () => {
 	it("surfaces an upstream provider error instead of masking it as empty text", async () => {
 		const model = { provider: "test", id: "small" } as never;
 		resolveCommitPlanningModelMock.mockResolvedValue(model);
-		completeSimpleMock.mockResolvedValue({
-			content: [],
-			stopReason: "error",
-			errorMessage: "synthetic upstream failure",
-		});
+		const pi = {
+			exec: vi.fn(async () => ({
+				stdout: "",
+				stderr: "synthetic upstream failure",
+				code: 1,
+				killed: false,
+			})),
+		};
 
 		await expect(
 			classifyUntrackedFiles(
+				pi as never,
 				{
 					cwd: "/test/dir",
 					ui: { notify: vi.fn() },

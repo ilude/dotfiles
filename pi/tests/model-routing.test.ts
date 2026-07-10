@@ -21,7 +21,7 @@ describe("resolveCommitPlanningModel", () => {
 		).toEqual(models[0]);
 	});
 
-	it("pins commit planning to Codex GPT-5.4 mini instead of Luna", () => {
+	it("pins commit planning to Codex GPT-5.6 Luna", () => {
 		const models = [
 			{ provider: "openai-codex", id: "gpt-5.6-luna" },
 			{ provider: "openai-codex", id: "gpt-5.6-sol" },
@@ -32,7 +32,7 @@ describe("resolveCommitPlanningModel", () => {
 				provider: "openai-codex",
 				id: "gpt-5.6-sol",
 			}),
-		).toEqual(models[2]);
+		).toEqual(models[0]);
 	});
 
 	it("uses the anthropic small rung when the current model is anthropic", () => {

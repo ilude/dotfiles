@@ -4,14 +4,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchCodexUsage, formatUsage } from "../extensions/codex-status.ts";
 import { createMockPi } from "./helpers/mock-pi.js";
 
-const { completeSimpleMock } = vi.hoisted(() => ({
-	completeSimpleMock: vi.fn(),
-}));
-
-vi.mock("@earendil-works/pi-ai/compat", () => ({
-	completeSimple: completeSimpleMock,
-}));
-
 vi.mock("node:child_process", () => ({
 	spawn: vi.fn(),
 	spawnSync: vi.fn(),
@@ -209,10 +201,11 @@ describe("workflow command dispatch", () => {
 		]) {
 			mockSpawn.mockImplementationOnce(() => mockGitSpawn(result));
 		}
-		completeSimpleMock.mockResolvedValueOnce({
-			content: [],
-			stopReason: "error",
-			errorMessage: "synthetic upstream failure",
+		mockPi.exec.mockResolvedValueOnce({
+			stdout: "",
+			stderr: "synthetic upstream failure",
+			code: 1,
+			killed: false,
 		});
 
 		await getHandler("commit")("", {
@@ -224,7 +217,7 @@ describe("workflow command dispatch", () => {
 			ui: { notify },
 		});
 
-		expect(completeSimpleMock).toHaveBeenCalledOnce();
+		expect(mockPi.exec).toHaveBeenCalledOnce();
 		expect(mockPi.sendMessage).toHaveBeenCalledWith(
 			expect.objectContaining({
 				customType: "workflow-commit-activity",
