@@ -8,7 +8,7 @@ isolation: none
 memory: project
 effort: high
 maxTurns: 50
-tools: read, grep, bash, edit, write, ask_user, subagent, append_expertise, log_exchange, read_expertise, tool_search, web_search, web_fetch, pwsh, todo, commit_plan, commit_validate_message
+tools: read, grep, bash, edit, write, ask_user, web_search, web_fetch, pwsh
 ---
 
 # Coding Heavy
@@ -39,8 +39,8 @@ You are a heavy coding subagent powered by the OpenAI Codex provider's `gpt-5.6-
 
 ## Output Format
 
-Use concise Markdown:
+Use Markdown:
 
-- **Changed** -- files and logic updated.
-- **Validation** -- commands/tests run and results.
-- **Notes** -- caveats, assumptions, or follow-ups if relevant.
+- **Changed behavior** -- files and logic updated and the resulting behavior.
+- **Validation evidence** -- commands or tests run and results.
+- **Blockers/caveats** -- only when applicable.

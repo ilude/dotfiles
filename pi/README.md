@@ -183,11 +183,12 @@ are intentionally versioned, and lockfiles such as `pi/prompt-routing/uv.lock`.
 
 Do not delete or commit local runtime state unless a separate migration explicitly
 approves it. Treat these as generated/local: `pi/history/`, `pi/sessions/`,
-`pi/multi-team/sessions/`, `pi/multi-team/logs/`, `*-expertise-log.jsonl`,
-project-local expertise directories under `pi/multi-team/expertise/*/`, local caches,
-logs, virtualenvs, and `node_modules/`. Tracked global mental-model snapshots and
-curated prompt-router data/models may remain versioned; classify them deliberately
-rather than hiding broad directories.
+`pi/multi-team/sessions/`, `pi/multi-team/logs/`, all
+`*-expertise-log.jsonl` files and project-local directories under
+`pi/multi-team/expertise/`, local indexes, caches, logs, virtualenvs, and
+`node_modules/`. Expertise JSONL is the durable runtime source of truth, but it is
+not curated repository source. Curated prompt-router data and models may remain
+versioned; classify them deliberately rather than hiding broad directories.
 
 ---
 
@@ -254,33 +255,19 @@ Primary policy file: `~/.dotfiles/claude/hooks/damage-control/patterns.yaml`. Fa
 
 ### `agent-chain.ts`
 
-Implements the plan-build-review pipeline and the expertise system.
+Implements the `/chain` plan-build-review pipeline. Planner output feeds the builder,
+and builder output feeds the reviewer. The extension registers `log_exchange` for
+session conversation records and internally retrieves bounded relevant expertise from
+JSONL before dispatch. It does not register `read_expertise` or `append_expertise`.
 
-**Slash command:**
-```
+```text
 /chain <task description>
 ```
-Sequences planner → builder → reviewer agents. Each agent's output feeds the next.
-
-**Tools registered for agents:**
-- `append_expertise` -- appends a discovery to `{agent}-expertise-log.jsonl` (append-only source of truth)
-- `read_expertise` -- reads the compact expertise snapshot / mental model for an agent, rebuilding from raw history if needed. Optional `query` enables deterministic local focused retrieval, and optional `max_results` caps focused matches.
-- `log_exchange` -- records messages to the session `conversation.jsonl`
-
-`read_expertise` parameters:
-
-| Parameter | Default | Notes |
-|---|---:|---|
-| `agent` | required | Non-empty agent name. |
-| `mode` | `concise` | `concise`, `full`, or `debug`; unknown modes fall back to concise behavior. |
-| `query` | omitted | Trimmed string, 1-500 characters. When present, appends a focused retrieval section after the baseline snapshot. |
-| `max_results` | `5` with `query` | Integer 1-20. Caps deduplicated focused bullets. Invalid values return a validation error. |
-
-With `query`, output keeps the normal snapshot first, then adds `Focused retrieval for: <query>` and up to `max_results` deterministic lexical matches. If nothing matches, it says `No focused matches found; using baseline expertise only.` Debug-only retrieval diagnostics live in `details.retrieval`; LLM-facing text does not expose cache paths, hashes, raw JSON, or source file metadata.
 
 ### `agent-team.ts`
 
-Shared team-config helpers for subagent team dispatch. `/team` is no longer an active slash command; use the `subagent` tool instead:
+Shared configuration helpers remain available to current coordination extensions.
+The `/team` slash command is retired; use the `subagent` tool instead:
 
 ```json
 { "team": "engineering", "task": "Add rate limiting to the API" }
@@ -290,7 +277,7 @@ Agent config recovery: active agent personas live in `pi/agents/`. If a bad role
 
 ### `quality-gates.ts`
 
-Intercepts tool results for write and edit operations, runs the appropriate linter for the file's language, and prepends a warning if the linter fails.
+Collects files changed by write and edit operations, then runs the appropriate linters once after the agent settles. Failures are added to the transcript without starting another agent turn.
 
 Validators are configured in `~/.dotfiles/claude/hooks/quality-validation/validators.yaml` -- shared with the Claude Code quality-validation hook.
 
@@ -595,190 +582,43 @@ Full documentation: `~/.dotfiles/pi/prompt-routing/AGENTS.md`
 
 ## Agent Architecture
 
-### Hierarchy
+Interactive `gpt-5.6-sol`, Fable, and Opus parents coordinate substantive work
+through the active subagent runtime. The runtime and current agent files, not a
+static hierarchy diagram, determine routing and execution behavior. The `/team`
+slash command is retired.
 
-```
-Orchestrator (Opus)
-├── Planning Lead (Sonnet)
-│   ├── Product Manager
-│   └── UX Researcher
-├── Engineering Lead (Sonnet)
-│   ├── Frontend Dev
-│   └── Backend Dev
-├── Validation Lead (Sonnet)
-│   ├── QA Engineer
-│   └── Security Reviewer
-└── ML Research Lead (Sonnet)
-    ├── Data Engineer
-    ├── Model Engineer
-    └── Eval Engineer
-```
+Active user-level personas live in `pi/agents/` and are discovered from
+`~/.pi/agent/agents/` at runtime. A nearest project `.pi/agents/` directory may
+override a user persona with the same name.
 
-Plus standalone chain agents: **Planner**, **Builder**, **Reviewer**.
+### Agent configuration
 
-Agent persona files: `~/.dotfiles/pi/agents/`
-Team configuration: `~/.dotfiles/pi/agents/teams.yaml`
+The agent parser consumes these frontmatter fields:
 
-### Knowledge Compounding
+- Required: `name`, `description`
+- Optional: `tools`, `model`, `isolation`, `memory`, `effort`, `maxTurns`, `roleType`
 
-Each agent maintains a two-layer expertise system: a **global layer** (reusable cross-project
-knowledge) and a **project-local layer** (repo-scoped knowledge keyed by a deterministic
-compact repo ID).
+The parser applies no default frontmatter values. `isolation` and `memory` are
+advisory metadata in the current runtime. Other frontmatter is informational
+unless a component explicitly consumes it; for example, the subagent launcher
+uses `tools` and `model`, task metadata records parsed execution fields, and
+`roleType` is parsed metadata used by validation and policy checks. It is not a
+runtime coordination input unless an explicit consumer uses it. Unknown fields
+are not execution contracts.
 
-Full layering spec: `pi/docs/expertise-layering.md`
+If a bad persona prevents normal coordination, start Pi with
+`pi --no-extensions`, repair the affected file under `pi/agents/`, run
+`cd pi && pnpm test agent-role-semantics.test.ts`, and restart Pi normally.
 
-#### Storage layout
+### Expertise storage and retrieval
 
-```text
-~/.pi/agent/multi-team/expertise/
-  {agent}-expertise-log.jsonl          # global layer (append-only source of truth)
-  {agent}-mental-model.json            # global snapshot
-  {agent}-mental-model.state.json      # global snapshot state
-  {repo-id-slug}/                      # project-local layer (one dir per repo)
-    repo-id.json                       # persisted remote identity for drift detection
-    {agent}-expertise-log.jsonl        # project-local log
-    {agent}-mental-model.json          # project-local snapshot
-    {agent}-mental-model.state.json    # project-local snapshot state
-```
+Expertise JSONL under `pi/multi-team/expertise/` is the durable runtime source
+of truth. Derived indexes are disposable. The legacy mental-model snapshots are
+retired, and `read_expertise` and `append_expertise` are unavailable and blocked.
+Put durable instructions in `AGENTS.md` or skills instead.
 
-#### Remote precedence
-
-The repo ID slug is derived from the canonical remote, selected in this order:
-
-1. Configured `preferredRemote` in `.pi/settings.json` (if set and present)
-2. `origin` (if it exists)
-3. Lexically-first remote name (deterministic fallback)
-4. No-remote fallback: `local/<cwd-slug>` (git repo with no remotes)
-5. Non-git fallback: slug `global` (expertise goes to global layer only)
-
-#### Compact repo ID format
-
-Short provider-prefix slugs: `gh/owner/repo`, `gl/group/subgroup/repo`, `bb/owner/repo`,
-`az/org/project/repo`, `ext/example.com/owner/repo`. Supports HTTPS, SSH, and SCP-style
-remotes. Handles nested GitLab groups, optional ports, and `.git` suffix stripping.
-
-Windows normalization rules (reserved names, case-folding, trailing dots/spaces,
-path-length pressure, deterministic hash suffix on collision) are applied to all slugs.
-See decision tables in `pi/docs/expertise-layering.md`.
-
-#### Read semantics: project-local first
-
-`read_expertise` merges both layers with project-local first, then global appended after
-deduplication. Dedupe/conflict precedence: project-local wins on matching summary keys.
-Global entries that duplicate a project-local entry are suppressed from the rendered output
-(not deleted from disk). This reduces cross-project pollution without losing reusable global
-knowledge.
-
-See `pi/docs/expertise-layering.md` for the full dedupe/conflict rule table.
-
-#### Write semantics
-
-Inside a git repo (and not `sensitive_repo`): `append_expertise` writes to the project-local
-layer. Outside a git repo, or when `sensitive_repo: true` is set: writes go to the global
-layer.
-
-#### Migration: mixed legacy global state
-
-Existing global `{agent}-expertise-log.jsonl` files are never moved or deleted. They remain
-the global layer permanently. No manual migration is required -- `read_expertise` dual-reads
-both layers from the first session after deployment.
-
-#### Drift and rename handling
-
-If the repo remote URL or `preferredRemote` config changes, the derived repo ID slug may
-drift. Drift is detected via `repo-id.json`. On drift: old directory is kept as a read-only
-dual-read source; new writes go to the new slug directory. No expertise is silently orphaned.
-
-#### Safety
-
-- **Secret redaction**: entries matching API key / private key / high-entropy secret patterns
-  are blocked at write time. The entire entry is rejected; no partial write.
-- **Sensitive-repo disable**: `sensitive_repo: true` in `.pi/settings.json` or
-  `SENSITIVE_REPO=true` routes all writes to the global layer and disables project-local reads.
-- **Snapshot invalidation**: any new append marks the snapshot stale; rebuilt synchronously
-  on the next `read_expertise` call. Last-known-good snapshot retained on rebuild failure.
-- **Focused retrieval fallback**: optional `read_expertise` retrieval is local lexical search by default. Missing, stale, corrupt, partial, or wrong-version retrieval caches are rebuilt or bypassed with a direct JSONL scan; failures fall back to the baseline snapshot instead of throwing an unhandled cache error.
-
-The JSONL log is the append-only source of truth. Every `append_expertise` call adds a
-historical record there and never rewrites prior entries. The mental-model snapshot and any
-retrieval index/cache are derived, disposable views used by `read_expertise` so agents recall
-durable knowledge without replaying the entire raw history every session. Generated retrieval
-caches must remain rebuildable, gitignored, and unstaged.
-
-At task start, an agent reads its mental model to recall what it already knows. If the
-snapshot is missing, stale, or a prior rebuild failed, `read_expertise` must rebuild or
-return the documented safe fallback instead of silently returning misleading stale state.
-Knowledge compounds across sessions -- Session 20 is smarter than Session 1.
-
-#### Focused retrieval privacy and validation
-
-Focused retrieval for `read_expertise(query, max_results)` is deterministic and local by
-default. External embedding providers, vector databases, and network calls are not used by
-this feature unless a later approved design adds an explicit opt-in. Do not edit `.env`,
-secrets, keys, or provider credentials for retrieval. The targeted TypeScript validation
-command for this behavior is:
-
-```bash
-cd pi && pnpm test read-expertise-retrieval.test.ts
-```
-
-Run the broader TypeScript suite with `cd pi && pnpm test`. The full repo gate is `make check`.
-
-#### Optional provider-gated similarity policy
-
-The expertise snapshot remains **deterministic by default**. Any future model-assisted similarity pass is optional, **disabled by default**, and must run only inside the synchronous snapshot rebuild path -- never as background orchestration.
-
-Reserved config surface for that future path:
-- feature flag: `expertise_similarity.enabled=false` by default
-- provider/model selection: `expertise_similarity.provider`, `expertise_similarity.model`
-- bounded execution: `expertise_similarity.timeout_ms`
-- merge acceptance gate: `expertise_similarity.min_confidence`
-
-To enable it locally, add an `expertise_similarity` block to `~/.pi/agent/settings.json`. Example:
-
-```json
-{
-  "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-5.4",
-  "defaultThinkingLevel": "medium",
-  "expertise_similarity": {
-    "enabled": true,
-    "provider": "openai-codex",
-    "model": "gpt-5.4-mini",
-    "timeout_ms": 3000,
-    "min_confidence": 0.75
-  }
-}
-```
-
-Notes:
-- `expertise_similarity.enabled` must be `true` or the tie-breaker stays off.
-- The configured provider/model must exist in Pi's model registry and have working auth.
-- If the provider is unavailable, times out, returns malformed JSON, omits required fields, or returns low confidence, rebuilds still fall back to deterministic compaction.
-- Provider-assisted merges are annotated in the snapshot with provenance metadata (`merge_metadata.method`, confidence, merged-from count).
-- Snapshot rebuilds also record similarity usage stats (`attempted`, `merged`, `kept_separate`, `skipped_for_low_confidence`, `malformed`, `failed`) plus an activation reason.
-
-Troubleshooting when enabled but not active:
-- `reason=disabled` → feature flag is off.
-- `reason=missing_provider` / `missing_model` → config is incomplete.
-- `reason=registry_unavailable` → current read path does not have a model registry available.
-- `reason=model_not_found` → Pi cannot resolve that provider/model pair.
-- `reason=auth_unavailable` → the provider exists, but Pi has no usable auth.
-- `reason=ready` with zero attempts → the feature is configured correctly, but no ambiguous `observation` / `pattern` / `open_question` candidates were found in that rebuild.
-
-Debug surfaces:
-- `read_expertise` tool results now include a `details.similarity` object with the activation reason and usage counters.
-- The rendered snapshot text now includes a one-line similarity status summary for quick inspection.
-
-Safety contract:
-- Raw JSONL remains the source of truth; no provider pass may mutate or delete history.
-- Deterministic pre-grouping must narrow candidates before any model call.
-- Only `observation`, `pattern`, and `open_question` are eligible unless the docs explicitly expand the allowlist later.
-- `strong_decision` and `key_file` are prohibited from model-assisted similarity.
-- Low-confidence results, scores below the configured threshold, provider unavailability, rate limits, malformed responses, or timeout must all fall back to deterministic compaction.
-- Deterministic compaction remains both the default path and the required fallback path.
-
-Session conversation logs: `~/.dotfiles/pi/multi-team/sessions/{session_id}/conversation.jsonl`
+Current paths, retrieval behavior, safety, and canonical tests are documented in
+[`pi/docs/expertise-layering.md`](docs/expertise-layering.md).
 
 ---
 
@@ -929,7 +769,7 @@ A fresh span id is generated for each subagent invocation (single, parallel, or 
 | `~/.dotfiles/pi/settings.json` | Default provider/model for session startup |
 | `~/.dotfiles/pi/AGENTS.md` | Global agent instructions (auto-loaded by Pi) |
 | `~/.dotfiles/pi/damage-control-rules.yaml` | Safety rules for damage-control extension |
-| `~/.dotfiles/pi/agents/teams.yaml` | Team roster and hierarchy |
+| `~/.dotfiles/pi/agents/teams.yaml` | Coordination roster consumed by current helper extensions; not a `/team` command |
 
 Project-level overrides: place `AGENTS.md` or `.pi/settings.json` in any repo root.
 
@@ -959,19 +799,9 @@ Use the `subagent` tool with a team key or lead name from `pi/agents/teams.yaml`
 { "team": "engineering", "task": "Add rate limiting to the API" }
 ```
 
-### Inspect expertise (what agents know)
+### Expertise reference
 
-```bash
-cat ~/.pi/agent/multi-team/expertise/backend-dev-mental-model.json
-cat ~/.pi/agent/multi-team/expertise/backend-dev-expertise-log.jsonl
-# Or from within Pi, ask an agent to read_expertise
-```
-
-`read_expertise` should prefer the compact snapshot when it is fresh. If the snapshot is missing, stale, or the last rebuild failed, it must rebuild or return the documented safe fallback rather than silently using outdated knowledge.
-
-### Reset expertise for an agent
-
-```bash
-> ~/reset-expertise backend-dev   # delete log to start fresh
-rm ~/.pi/agent/multi-team/expertise/backend-dev-expertise-log.jsonl
-```
+Expertise JSONL and its derived local index are runtime state, not an agent-facing
+instruction surface. The expertise tools are unavailable. See
+[`pi/docs/expertise-layering.md`](docs/expertise-layering.md) for current ownership,
+retrieval, safety, and retirement details.
