@@ -24,9 +24,9 @@ Follow-up work identified while refining Pi orchestration, prompt size, and suba
 
    Subagents launch with `--no-skills` and only validated agent-specific `--skill` paths. Missing configured skills fail explicitly instead of falling back to the broad catalog.
 
-7. **Open - Shorten workflow prompts**
+7. **Complete - Shorten workflow prompts**
 
-   `/plan-it`, `/review-it`, and `/do-it` repeat global safety, planning, validation, and reporting rules. Convert each into a short state machine with one output contract.
+   `/plan-it` (271 -> 103 lines), `/do-it` (341 -> 144), and `/review-it` (576 -> 317) are now state-machine prompts with one output contract each. Templates own plan/report/synthesis structure, `pi/tests/workflow-prompts.test.ts` guards load-bearing phrases, and global policy restatements were removed with per-file deletion ledgers under `.tmp/prompt-compression/`.
 
 8. **Complete - Remove overlapping or no-op tools**
 

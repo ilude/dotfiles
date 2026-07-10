@@ -24,7 +24,7 @@ describe("workflow prompt contracts", () => {
 		expect(prompt).toContain(
 			"Every task has both a **Model** and an **Agent** assigned",
 		);
-		expect(prompt).toContain("## Step 7: Self-Validate Before Presenting");
+		expect(prompt).toContain("Self-Validate Before Presenting");
 		expect(prompt).toContain(
 			"| # | Task | Files | Type | Model | Agent | Depends On |",
 		);
