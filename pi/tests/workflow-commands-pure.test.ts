@@ -1,8 +1,24 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const { completeSimpleMock, resolveCommitPlanningModelMock } = vi.hoisted(
+	() => ({
+		completeSimpleMock: vi.fn(),
+		resolveCommitPlanningModelMock: vi.fn(),
+	}),
+);
+
+vi.mock("@earendil-works/pi-ai/compat", () => ({
+	completeSimple: completeSimpleMock,
+}));
+vi.mock("../lib/model-routing", () => ({
+	resolveCommitPlanningModelFromRegistry: resolveCommitPlanningModelMock,
+}));
+
 import {
 	buildStagingPlan,
 	buildUntrackedClassifierPrompt,
 	chooseFilesToCommit,
+	classifyUntrackedFiles,
 	confirmCommitMessage,
 	filterCommitSafeFiles,
 	getCommitRuntimePathReason,
@@ -297,6 +313,30 @@ describe("untracked classifier helpers", () => {
 				untracked,
 			),
 		).toThrow(/omitted/i);
+	});
+
+	it("surfaces an upstream provider error instead of masking it as empty text", async () => {
+		const model = { provider: "test", id: "small" } as never;
+		resolveCommitPlanningModelMock.mockResolvedValue(model);
+		completeSimpleMock.mockResolvedValue({
+			content: [],
+			stopReason: "error",
+			errorMessage: "synthetic upstream failure",
+		});
+
+		await expect(
+			classifyUntrackedFiles(
+				{
+					cwd: "/test/dir",
+					ui: { notify: vi.fn() },
+					modelRegistry: {
+						getAvailable: () => [model],
+						getApiKeyAndHeaders: async () => ({ ok: true }),
+					},
+				},
+				untracked,
+			),
+		).rejects.toThrow("synthetic upstream failure");
 	});
 
 	it("rejects nonnumeric confidence", () => {

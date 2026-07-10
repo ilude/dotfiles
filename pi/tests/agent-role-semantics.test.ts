@@ -44,6 +44,23 @@ describe("agent source and role semantics", () => {
 		expect(agents.every((agent) => !(agent.tools ?? []).includes("subagent"))).toBe(true);
 	});
 
+	it("keeps the intended tier agents from delegating", () => {
+		const agents = loadAgentsFromDir(AGENTS_DIR, "user");
+		const tierAgentNames = [
+			"utility-mini",
+			"coding-light",
+			"coding-medium",
+			"coding-heavy",
+		];
+
+		for (const name of tierAgentNames) {
+			const agent = agents.find((candidate) => candidate.name === name);
+			expect(agent).toBeDefined();
+			expect(agent?.roleType).toBe("tier");
+			expect(agent?.tools ?? []).not.toContain("subagent");
+		}
+	});
+
 	it("documents a recovery path for bad agent config", () => {
 		const readme = fs.readFileSync(path.resolve(__dirname, "..", "README.md"), "utf-8");
 		expect(readme).toContain("Agent config recovery");

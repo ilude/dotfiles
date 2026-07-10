@@ -4,6 +4,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchCodexUsage, formatUsage } from "../extensions/codex-status.ts";
 import { createMockPi } from "./helpers/mock-pi.js";
 
+const { completeSimpleMock } = vi.hoisted(() => ({
+	completeSimpleMock: vi.fn(),
+}));
+
+vi.mock("@earendil-works/pi-ai/compat", () => ({
+	completeSimple: completeSimpleMock,
+}));
+
 vi.mock("node:child_process", () => ({
 	spawn: vi.fn(),
 	spawnSync: vi.fn(),
@@ -181,6 +189,51 @@ describe("workflow command dispatch", () => {
 		);
 		expect(notify).toHaveBeenCalledWith(
 			"Commit failed: fatal: not a git repository",
+			"error",
+		);
+	});
+
+	it("surfaces untracked classifier provider failures through /commit", async () => {
+		const notify = vi.fn();
+		const model = {
+			provider: "openai-codex",
+			id: "gpt-5.4-mini",
+		};
+		for (const result of [
+			{ stdout: "?? new-file.ts\n" },
+			{},
+			{},
+			{ stdout: "new-file.ts\n" },
+			{},
+			{},
+		]) {
+			mockSpawn.mockImplementationOnce(() => mockGitSpawn(result));
+		}
+		completeSimpleMock.mockResolvedValueOnce({
+			content: [],
+			stopReason: "error",
+			errorMessage: "synthetic upstream failure",
+		});
+
+		await getHandler("commit")("", {
+			cwd: "/repo",
+			modelRegistry: {
+				getAvailable: () => [model],
+				getApiKeyAndHeaders: async () => ({ ok: true }),
+			},
+			ui: { notify },
+		});
+
+		expect(completeSimpleMock).toHaveBeenCalledOnce();
+		expect(mockPi.sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				customType: "workflow-commit-activity",
+				content: "Error: Commit failed: synthetic upstream failure",
+				display: true,
+			}),
+		);
+		expect(notify).toHaveBeenCalledWith(
+			"Commit failed: synthetic upstream failure",
 			"error",
 		);
 	});

@@ -1,12 +1,8 @@
 /**
  * Behavioral tests for quality-gates.ts.
  *
- * Per Phase 2 plan T2 AC#3: BOTH a forced lint/test failure (producing a
- * block-style warning) AND a clean run (producing no warning) must be
- * covered.
- *
- * The hook intercepts tool_result for write/edit and either prepends a
- * warning to the content (failure) or returns undefined (clean).
+ * Covers a forced validation failure and a clean run after changed files
+ * are collected during tool execution and validated when the agent settles.
  */
 import type {
 	ExtensionAPI,
@@ -16,8 +12,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	buildExtMap,
 	getFilePath,
+	registerQualityGates,
 	runFirstAvailableValidator,
 } from "../extensions/quality-gates.ts";
+import { createMockPi } from "./helpers/mock-pi.ts";
 
 describe("quality-gates extension", () => {
 	describe("buildExtMap (pure function)", () => {
@@ -113,44 +111,79 @@ describe("quality-gates extension", () => {
 		});
 	});
 
-	describe("hook block-decision shape (forced failure vs clean run)", () => {
-		// Direct hook execution requires the module-level loadValidators()
-		// call to have populated extMap. The user's environment ships a
-		// real validators.yaml, so the hook is integration-tested via the
-		// existing make check-pi-extensions pipeline running on touched
-		// files. Here we verify the SHAPE both directions produce by
-		// driving the same logic the hook uses.
+	describe("batched hook timing", () => {
+		it("defers and deduplicates validation until agent_settled", async () => {
+			const pi = createMockPi();
+			pi.exec.mockImplementation(async (command: string) => ({
+				code: command === "batch-failure-validator" ? 1 : 0,
+				stdout:
+					command === "batch-failure-validator" ? "E501 line too long" : "",
+				stderr: "",
+			}));
+			const map = buildExtMap({
+				python: {
+					extensions: [".batch-failure"],
+					validators: [
+						{
+							name: "batch-failure-validator",
+							command: ["batch-failure-validator", "check", "{file}"],
+						},
+					],
+				},
+			});
+			registerQualityGates(pi as unknown as ExtensionAPI, map);
+			const toolResult = pi._getHook("tool_result")[0].handler;
+			const agentSettled = pi._getHook("agent_settled")[0].handler;
+			const event = {
+				toolName: "edit",
+				input: { path: "foo.batch-failure" },
+			} as unknown as ToolResultEvent;
 
-		it("clean run shape: no validator failure means hook returns undefined", () => {
-			// When extMap.get(ext) is undefined OR the validator passes,
-			// the hook must return undefined so the original tool_result
-			// content passes through untouched.
-			const map = buildExtMap({});
-			expect(map.get(".unknown-extension")).toBeUndefined();
-			// Mirrors the early-return: if (!langConfig) return undefined.
+			await toolResult(event);
+			await toolResult(event);
+			expect(pi.exec).not.toHaveBeenCalled();
+			expect(pi.sendMessage).not.toHaveBeenCalled();
+
+			await agentSettled();
+
+			expect(
+				pi.exec.mock.calls.filter(
+					([command]) => command === "batch-failure-validator",
+				),
+			).toHaveLength(1);
+			expect(pi.sendMessage).toHaveBeenCalledWith({
+				customType: "quality-gates",
+				content:
+					"Quality gate validation failed:\n\nbatch-failure-validator reported issues in foo.batch-failure:\nE501 line too long",
+				display: true,
+			});
+
+			await agentSettled();
+			expect(pi.exec).toHaveBeenCalledTimes(2);
 		});
 
-		it("failure shape: warning is prepended to content array", () => {
-			// Failure path: result.content = [warning, ...event.content].
-			// We verify the structural shape by constructing the same
-			// payload the hook produces.
-			const failure = { name: "ruff", output: "E501 line too long" };
-			const warningText = `\u26a0 Quality gate: ${failure.name} reported issues in foo.py:\n${failure.output}`;
-			const originalContent = [
-				{ type: "text" as const, text: "wrote 42 bytes" },
-			];
-			const result = {
-				content: [
-					{ type: "text" as const, text: warningText },
-					...originalContent,
-				],
-			};
+		it("stays silent when settled validation passes", async () => {
+			const pi = createMockPi();
+			const map = buildExtMap({
+				typescript: {
+					extensions: [".batch-clean"],
+					validators: [
+						{
+							name: "batch-clean-validator",
+							command: ["batch-clean-validator", "check", "{file}"],
+						},
+					],
+				},
+			});
+			registerQualityGates(pi as unknown as ExtensionAPI, map);
 
-			expect(result.content[0].type).toBe("text");
-			expect(result.content[0].text).toContain("ruff");
-			expect(result.content[0].text).toContain("E501");
-			expect(result.content[1]).toEqual(originalContent[0]);
-			expect(result.content.length).toBe(originalContent.length + 1);
+			await pi._getHook("tool_result")[0].handler({
+				toolName: "write",
+				input: { path: "foo.batch-clean" },
+			} as unknown as ToolResultEvent);
+			await pi._getHook("agent_settled")[0].handler();
+
+			expect(pi.sendMessage).not.toHaveBeenCalled();
 		});
 	});
 });

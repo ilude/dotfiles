@@ -7,6 +7,7 @@ import { createMockCtx, createMockPi, createMockTheme } from "./helpers/mock-pi.
 
 const spawnMock = vi.fn();
 const SUBAGENT_TEST_TIMEOUT_MS = 30000;
+const SPAWN_WAIT_TIMEOUT_MS = 20000;
 
 type MockProcess = EventEmitter & {
   stdout: EventEmitter;
@@ -94,11 +95,56 @@ You are a test agent.
     return { pi, tool };
   }
 
+  it("does not prompt for project agents by default", async () => {
+    mockSuccessfulSpawn();
+    const { tool } = await loadTool();
+    const ctx = createMockCtx({ cwd: tmpDir });
+
+    const result = await tool.execute(
+      "call-project-default",
+      {
+        agent: "tester",
+        task: "Check the thing",
+        agentScope: "project",
+      },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    expect(result.isError).not.toBe(true);
+    expect(ctx.ui.confirm).not.toHaveBeenCalled();
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+  }, SUBAGENT_TEST_TIMEOUT_MS);
+
   it("queues parallel tasks beyond the concurrency limit", async () => {
     const procs: MockProcess[] = [];
+    const spawnWaiters = new Map<
+      number,
+      { resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
+    >();
+    const waitForSpawnCount = (count: number) =>
+      new Promise<void>((resolve, reject) => {
+        if (procs.length >= count) {
+          resolve();
+          return;
+        }
+        const timer = setTimeout(() => {
+          spawnWaiters.delete(count);
+          reject(new Error(`Timed out waiting for ${count} spawns; observed ${procs.length}`));
+        }, SPAWN_WAIT_TIMEOUT_MS);
+        spawnWaiters.set(count, { resolve, reject, timer });
+      });
     spawnMock.mockImplementation(() => {
       const proc = createMockProcess();
       procs.push(proc);
+      for (const [count, waiter] of spawnWaiters) {
+        if (procs.length >= count) {
+          spawnWaiters.delete(count);
+          clearTimeout(waiter.timer);
+          waiter.resolve();
+        }
+      }
       return proc;
     });
     const { tool } = await loadTool();
@@ -123,7 +169,8 @@ You are a test agent.
       ctx,
     );
 
-    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(8));
+    await waitForSpawnCount(8);
+    expect(spawnMock).toHaveBeenCalledTimes(8);
     expect(procs).toHaveLength(8);
 
     procs[0].stdout.emit(
@@ -139,7 +186,8 @@ You are a test agent.
     );
     procs[0].emit("close", 0);
 
-    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(9));
+    await waitForSpawnCount(9);
+    expect(spawnMock).toHaveBeenCalledTimes(9);
 
     for (const proc of procs.slice(1)) {
       proc.stdout.emit(
@@ -156,7 +204,8 @@ You are a test agent.
       proc.emit("close", 0);
     }
 
-    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(10));
+    await waitForSpawnCount(10);
+    expect(spawnMock).toHaveBeenCalledTimes(10);
     const lastProc = procs[9];
     lastProc.stdout.emit(
       "data",
@@ -430,6 +479,294 @@ You are a test agent.
       expect(result.content[0].text).not.toContain("Output saved to:");
     }
     expect(fs.existsSync(path.join(tmpDir, "false"))).toBe(false);
+  }, SUBAGENT_TEST_TIMEOUT_MS);
+
+  it("returns ordinary single inline output without an artifact", async () => {
+    mockSuccessfulSpawn();
+    const { tool } = await loadTool();
+    const ctx = createMockCtx({
+      cwd: tmpDir,
+      model: { provider: "anthropic", id: "claude-sonnet-4-6" },
+    });
+
+    const result = await tool.execute(
+      "call-single-inline",
+      {
+        agent: "tester",
+        task: "Return inline output",
+        agentScope: "project",
+        confirmProjectAgents: false,
+      },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    expect(result.content[0].text).toBe("done");
+    expect(result.details.results[0].outputPath).toBeUndefined();
+    expect(result.details.results[0].outputReference).toBeUndefined();
+  }, SUBAGENT_TEST_TIMEOUT_MS);
+
+  it("returns file-only output inline when artifacts are disabled", async () => {
+    mockSuccessfulSpawn();
+    const { tool } = await loadTool();
+    const ctx = createMockCtx({
+      cwd: tmpDir,
+      model: { provider: "anthropic", id: "claude-sonnet-4-6" },
+    });
+
+    const result = await tool.execute(
+      "call-file-only-disabled",
+      {
+        agent: "tester",
+        task: "Return output without an artifact",
+        agentScope: "project",
+        confirmProjectAgents: false,
+        output: false,
+        outputMode: "file-only",
+      },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    expect(result.content[0].text).toContain("done");
+    expect(result.content[0].text).toContain("Output artifact disabled by output: false");
+    expect(result.details.results[0].outputReference).toBeUndefined();
+  }, SUBAGENT_TEST_TIMEOUT_MS);
+
+  it("preserves legacy output:true by saving to the default artifact", async () => {
+    mockSuccessfulSpawn();
+    const { tool } = await loadTool();
+    const ctx = createMockCtx({
+      cwd: tmpDir,
+      model: { provider: "anthropic", id: "claude-sonnet-4-6" },
+    });
+
+    const result = await tool.execute(
+      "call-legacy-output-true",
+      {
+        agent: "tester",
+        task: "Return default artifact output",
+        agentScope: "project",
+        confirmProjectAgents: false,
+        output: true,
+      },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    const outputPath = result.details.results[0].outputPath;
+    if (!outputPath) throw new Error("Expected a default output artifact path");
+    expect(await fs.promises.readFile(outputPath, "utf8")).toBe("done");
+    expect(result.content[0].text).toBe("done");
+    expect(result.details.results[0].outputReference?.path).toBe(outputPath);
+    await fs.promises.rm(outputPath, { force: true });
+  }, SUBAGENT_TEST_TIMEOUT_MS);
+
+  it("saves single file-only output to a default artifact when no path is provided", async () => {
+    mockSuccessfulSpawn();
+    const { tool } = await loadTool();
+    const ctx = createMockCtx({
+      cwd: tmpDir,
+      model: { provider: "anthropic", id: "claude-sonnet-4-6" },
+    });
+
+    const result = await tool.execute(
+      "call-single-file-only-default",
+      {
+        agent: "tester",
+        task: "Return default artifact output",
+        agentScope: "project",
+        confirmProjectAgents: false,
+        outputMode: "file-only",
+      },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    const outputPath = result.details.results[0].outputPath;
+    if (!outputPath) throw new Error("Expected a default output artifact path");
+    expect(await fs.promises.readFile(outputPath, "utf8")).toBe("done");
+    expect(result.content[0].text).toContain(`Output saved to: ${outputPath}`);
+    await fs.promises.rm(outputPath, { force: true });
+  }, SUBAGENT_TEST_TIMEOUT_MS);
+
+  it("returns file-only output inline when artifact saving fails", async () => {
+    mockSuccessfulSpawn();
+    const { tool } = await loadTool();
+    const ctx = createMockCtx({
+      cwd: tmpDir,
+      model: { provider: "anthropic", id: "claude-sonnet-4-6" },
+    });
+    const outputPath = tmpDir;
+
+    const result = await tool.execute(
+      "call-file-only-save-error",
+      {
+        agent: "tester",
+        task: "Return output despite artifact failure",
+        agentScope: "project",
+        confirmProjectAgents: false,
+        output: outputPath,
+        outputMode: "file-only",
+      },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    expect(result.content[0].text).toContain("done");
+    expect(result.content[0].text).toContain(`Output file error: ${outputPath}`);
+    expect(result.details.results[0].saveError).toBeDefined();
+  }, SUBAGENT_TEST_TIMEOUT_MS);
+
+  it("saves single file-only output and returns its artifact reference", async () => {
+    mockSuccessfulSpawn();
+    const { tool } = await loadTool();
+    const ctx = createMockCtx({
+      cwd: tmpDir,
+      model: { provider: "anthropic", id: "claude-sonnet-4-6" },
+    });
+    const outputPath = path.join(tmpDir, "single-output.md");
+
+    const result = await tool.execute(
+      "call-single-file-only",
+      {
+        agent: "tester",
+        task: "Return artifact output",
+        agentScope: "project",
+        confirmProjectAgents: false,
+        output: outputPath,
+        outputMode: "file-only",
+      },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    expect(await fs.promises.readFile(outputPath, "utf8")).toBe("done");
+    expect(result.content[0].text).toContain(`Output saved to: ${outputPath}`);
+    expect(result.content[0].text).not.toContain("done");
+    expect(result.details.results[0]).toMatchObject({
+      outputMode: "file-only",
+      outputPath,
+      outputReference: { path: outputPath },
+    });
+  }, SUBAGENT_TEST_TIMEOUT_MS);
+
+  it("passes a file-only chain artifact reference to the next step", async () => {
+    const spawnArgs: string[][] = [];
+    let calls = 0;
+    spawnMock.mockImplementation((_command: string, args: string[]) => {
+      spawnArgs.push(args);
+      const proc = createMockProcess();
+      const output = calls++ === 0 ? "first full output" : "second output";
+      queueMicrotask(() => {
+        proc.stdout.emit(
+          "data",
+          `${JSON.stringify({
+            type: "message_end",
+            message: {
+              role: "assistant",
+              content: [{ type: "text", text: output }],
+              stopReason: "end_turn",
+            },
+          })}\n`,
+        );
+        proc.emit("close", 0);
+      });
+      return proc;
+    });
+    const { tool } = await loadTool();
+    const ctx = createMockCtx({
+      cwd: tmpDir,
+      model: { provider: "anthropic", id: "claude-sonnet-4-6" },
+    });
+    const outputPath = path.join(tmpDir, "chain-first.md");
+
+    const result = await tool.execute(
+      "call-chain-file-only",
+      {
+        chain: [
+          {
+            agent: "tester",
+            task: "Create the source output",
+            output: outputPath,
+            outputMode: "file-only",
+          },
+          { agent: "tester", task: "Use this artifact: {previous}" },
+        ],
+        agentScope: "project",
+        confirmProjectAgents: false,
+      },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    const artifactReference = `Output saved to: ${outputPath} (17 B, 1 line). Read this file if needed.`;
+    expect(await fs.promises.readFile(outputPath, "utf8")).toBe("first full output");
+    expect(spawnArgs[1].join(" ")).toContain(artifactReference);
+    expect(spawnArgs[1].join(" ")).not.toContain("first full output");
+    expect(result.content[0].text).toBe("second output");
+    expect(result.details.results[0].outputReference?.message).toBe(artifactReference);
+  }, SUBAGENT_TEST_TIMEOUT_MS);
+
+  it("passes inline output to the next chain step when file-only artifacts are disabled", async () => {
+    const spawnArgs: string[][] = [];
+    let calls = 0;
+    spawnMock.mockImplementation((_command: string, args: string[]) => {
+      spawnArgs.push(args);
+      const proc = createMockProcess();
+      const output = calls++ === 0 ? "first inline output" : "second output";
+      queueMicrotask(() => {
+        proc.stdout.emit(
+          "data",
+          `${JSON.stringify({
+            type: "message_end",
+            message: {
+              role: "assistant",
+              content: [{ type: "text", text: output }],
+              stopReason: "end_turn",
+            },
+          })}\n`,
+        );
+        proc.emit("close", 0);
+      });
+      return proc;
+    });
+    const { tool } = await loadTool();
+    const ctx = createMockCtx({
+      cwd: tmpDir,
+      model: { provider: "anthropic", id: "claude-sonnet-4-6" },
+    });
+
+    const result = await tool.execute(
+      "call-chain-file-only-disabled",
+      {
+        chain: [
+          {
+            agent: "tester",
+            task: "Create inline source output",
+            output: false,
+            outputMode: "file-only",
+          },
+          { agent: "tester", task: "Use this output: {previous}" },
+        ],
+        agentScope: "project",
+        confirmProjectAgents: false,
+      },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    expect(spawnArgs[1].join(" ")).toContain("first inline output");
+    expect(result.content[0].text).toBe("second output");
+    expect(result.details.results[0].outputReference).toBeUndefined();
   }, SUBAGENT_TEST_TIMEOUT_MS);
 
   it("renders active parallel subagents with model and effort", async () => {
