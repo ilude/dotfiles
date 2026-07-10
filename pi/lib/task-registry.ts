@@ -73,6 +73,8 @@ export interface TaskRecordV1 {
 	prompt?: string;
 	preview?: string;
 	repoSlug?: string;
+	workspace?: string;
+	notes?: string;
 	blockReason?: string;
 	errorReason?: string;
 	skipReason?: string;
@@ -93,6 +95,8 @@ export interface CreateTaskInput {
 	prompt?: string;
 	preview?: string;
 	repoSlug?: string;
+	workspace?: string;
+	notes?: string;
 	metadata?: Record<string, unknown>;
 	execution?: SubagentTaskExecution;
 	blockedBy?: string[];
@@ -106,6 +110,8 @@ export interface UpdateTaskPatch {
 	metadata?: Record<string, unknown>;
 	execution?: SubagentTaskExecution;
 	agentName?: string;
+	workspace?: string;
+	notes?: string;
 	blockedBy?: string[];
 	blocks?: string[];
 }
@@ -123,6 +129,7 @@ export interface ListTasksOptions {
 	repoSlug?: string;
 	limit?: number;
 	includeTombstones?: boolean;
+	workspace?: string;
 }
 
 export interface TaskOperationResult<T = TaskRecordV1> {
@@ -136,6 +143,20 @@ export class TaskRegistryError extends Error {
 		super(message);
 		this.name = "TaskRegistryError";
 	}
+}
+
+export function resolveTaskWorkspace(cwd: string): string {
+	let current = path.resolve(cwd);
+	while (true) {
+		if (fs.existsSync(path.join(current, ".git"))) {
+			return process.platform === "win32" ? current.toLowerCase() : current;
+		}
+		const parent = path.dirname(current);
+		if (parent === current) break;
+		current = parent;
+	}
+	const resolved = path.resolve(cwd);
+	return process.platform === "win32" ? resolved.toLowerCase() : resolved;
 }
 
 function taskFilePath(id: string): string {
@@ -215,17 +236,34 @@ function writeTaskFile(record: TaskRecordV1): void {
 }
 
 function assertNoCycle(id: string, blockedBy: string[]): void {
-	for (const blocker of blockedBy) {
+	const pending = [...blockedBy];
+	const visited = new Set<string>();
+	while (pending.length > 0) {
+		const blocker = pending.pop();
+		if (!blocker || visited.has(blocker)) continue;
 		if (blocker === id)
 			throw new TaskRegistryError("dependency cycle rejected");
-		const record = getTask(blocker);
-		if (record?.blockedBy?.includes(id))
-			throw new TaskRegistryError("dependency cycle rejected");
+		visited.add(blocker);
+		pending.push(...(getTask(blocker)?.blockedBy ?? []));
 	}
 }
 
-function maintainReverseEdges(record: TaskRecordV1): void {
-	for (const blockerId of record.blockedBy ?? []) {
+function maintainReverseEdges(
+	record: TaskRecordV1,
+	previousBlockedBy: readonly string[] = [],
+): void {
+	const nextBlockedBy = new Set(record.blockedBy ?? []);
+	for (const blockerId of previousBlockedBy) {
+		if (nextBlockedBy.has(blockerId)) continue;
+		const blocker = getTask(blockerId);
+		if (!blocker) continue;
+		writeTaskFile({
+			...blocker,
+			blocks: (blocker.blocks ?? []).filter((id) => id !== record.id),
+			updatedAt: new Date().toISOString(),
+		});
+	}
+	for (const blockerId of nextBlockedBy) {
 		const blocker = getTask(blockerId);
 		if (!blocker) continue;
 		const blocks = new Set(blocker.blocks ?? []);
@@ -256,6 +294,8 @@ export function createTask(input: CreateTaskInput): TaskRecordV1 {
 		prompt: input.prompt,
 		preview: input.preview,
 		repoSlug: input.repoSlug,
+		workspace: input.workspace,
+		notes: input.notes,
 		metadata: input.metadata,
 		execution: input.execution,
 		blockedBy,
@@ -284,6 +324,8 @@ export function updateTask(id: string, patch: UpdateTaskPatch): TaskRecordV1 {
 		...(patch.metadata !== undefined ? { metadata: patch.metadata } : {}),
 		...(patch.execution !== undefined ? { execution: patch.execution } : {}),
 		...(patch.agentName !== undefined ? { agentName: patch.agentName } : {}),
+		...(patch.workspace !== undefined ? { workspace: patch.workspace } : {}),
+		...(patch.notes !== undefined ? { notes: patch.notes } : {}),
 		...(patch.blockedBy !== undefined ? { blockedBy: nextBlockedBy } : {}),
 		...(patch.blocks !== undefined
 			? { blocks: normalizeIdList(patch.blocks) }
@@ -291,7 +333,7 @@ export function updateTask(id: string, patch: UpdateTaskPatch): TaskRecordV1 {
 		updatedAt: new Date().toISOString(),
 	});
 	writeTaskFile(updated);
-	maintainReverseEdges(updated);
+	maintainReverseEdges(updated, existing.blockedBy);
 	return updated;
 }
 
@@ -382,6 +424,7 @@ export function listTasks(opts: ListTasksOptions = {}): TaskRecordV1[] {
 		if (stateFilter && !stateFilter.has(record.state)) continue;
 		if (originFilter && !originFilter.has(record.origin)) continue;
 		if (opts.repoSlug && record.repoSlug !== opts.repoSlug) continue;
+		if (opts.workspace && record.workspace !== opts.workspace) continue;
 		out.push(record);
 	}
 	out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));

@@ -42,23 +42,31 @@ describe("createTask", () => {
 	});
 
 	it("sets startedAt when initial state is running", () => {
-		const task = createTask({ origin: "team", summary: "build feature", state: "running" });
+		const task = createTask({
+			origin: "team",
+			summary: "build feature",
+			state: "running",
+		});
 		expect(task.state).toBe("running");
 		expect(task.startedAt).toBeDefined();
 	});
 
-	it("preserves optional fields (parentId, agentName, repoSlug, metadata)", () => {
+	it("preserves optional fields including workspace and notes", () => {
 		const task = createTask({
 			origin: "subagent",
 			summary: "lint",
 			parentId: "parent-123",
 			agentName: "validator",
 			repoSlug: "gh/owner/repo",
+			workspace: "/work/repo",
+			notes: "run after deploy",
 			metadata: { ticket: "OPS-42" },
 		});
 		expect(task.parentId).toBe("parent-123");
 		expect(task.agentName).toBe("validator");
 		expect(task.repoSlug).toBe("gh/owner/repo");
+		expect(task.workspace).toBe("/work/repo");
+		expect(task.notes).toBe("run after deploy");
 		expect(task.metadata).toEqual({ ticket: "OPS-42" });
 	});
 
@@ -75,12 +83,16 @@ describe("createTask", () => {
 describe("transitionTask", () => {
 	it("rejects an invalid transition", () => {
 		const task = createTask({ origin: "subagent", summary: "x" });
-		expect(() => transitionTask(task.id, "completed")).toThrow(TaskRegistryError);
+		expect(() => transitionTask(task.id, "completed")).toThrow(
+			TaskRegistryError,
+		);
 	});
 
 	it("rejects a no-op transition to the same state", () => {
 		const task = createTask({ origin: "subagent", summary: "x" });
-		expect(() => transitionTask(task.id, "pending")).toThrow(/already in state/);
+		expect(() => transitionTask(task.id, "pending")).toThrow(
+			/already in state/,
+		);
 	});
 
 	it("walks pending -> running -> completed and stamps timestamps", () => {
@@ -96,22 +108,38 @@ describe("transitionTask", () => {
 	});
 
 	it("captures blockReason when transitioning to blocked", () => {
-		const task = createTask({ origin: "subagent", summary: "x", state: "running" });
-		const blocked = transitionTask(task.id, "blocked", { blockReason: "needs creds" });
+		const task = createTask({
+			origin: "subagent",
+			summary: "x",
+			state: "running",
+		});
+		const blocked = transitionTask(task.id, "blocked", {
+			blockReason: "needs creds",
+		});
 		expect(blocked.state).toBe("blocked");
 		expect(blocked.blockReason).toBe("needs creds");
 	});
 
 	it("captures errorReason when transitioning to failed", () => {
-		const task = createTask({ origin: "subagent", summary: "x", state: "running" });
-		const failed = transitionTask(task.id, "failed", { errorReason: "subprocess exit 1" });
+		const task = createTask({
+			origin: "subagent",
+			summary: "x",
+			state: "running",
+		});
+		const failed = transitionTask(task.id, "failed", {
+			errorReason: "subprocess exit 1",
+		});
 		expect(failed.state).toBe("failed");
 		expect(failed.errorReason).toBe("subprocess exit 1");
 		expect(failed.endedAt).toBeDefined();
 	});
 
 	it("retry path: failed -> running increments retryCount and clears errorReason", () => {
-		const task = createTask({ origin: "subagent", summary: "x", state: "running" });
+		const task = createTask({
+			origin: "subagent",
+			summary: "x",
+			state: "running",
+		});
 		transitionTask(task.id, "failed", { errorReason: "first attempt failed" });
 		const retried = transitionTask(task.id, "running");
 		expect(retried.state).toBe("running");
@@ -120,7 +148,11 @@ describe("transitionTask", () => {
 	});
 
 	it("rejects transition from completed (terminal)", () => {
-		const task = createTask({ origin: "subagent", summary: "x", state: "running" });
+		const task = createTask({
+			origin: "subagent",
+			summary: "x",
+			state: "running",
+		});
 		transitionTask(task.id, "completed");
 		expect(() => transitionTask(task.id, "running")).toThrow(TaskRegistryError);
 	});
@@ -132,18 +164,29 @@ describe("transitionTask", () => {
 	});
 
 	it("preserves usage when supplied on transition", () => {
-		const task = createTask({ origin: "subagent", summary: "x", state: "running" });
+		const task = createTask({
+			origin: "subagent",
+			summary: "x",
+			state: "running",
+		});
 		const done = transitionTask(task.id, "completed", {
 			usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
 		});
-		expect(done.usage).toEqual({ inputTokens: 100, outputTokens: 50, totalTokens: 150 });
+		expect(done.usage).toEqual({
+			inputTokens: 100,
+			outputTokens: 50,
+			totalTokens: 150,
+		});
 	});
 });
 
 describe("updateTask", () => {
 	it("patches summary/preview/usage without changing state", () => {
 		const task = createTask({ origin: "subagent", summary: "x" });
-		const updated = updateTask(task.id, { summary: "x v2", preview: "first line" });
+		const updated = updateTask(task.id, {
+			summary: "x v2",
+			preview: "first line",
+		});
 		expect(updated.summary).toBe("x v2");
 		expect(updated.preview).toBe("first line");
 		expect(updated.state).toBe("pending");
@@ -151,7 +194,9 @@ describe("updateTask", () => {
 	});
 
 	it("throws when the task does not exist", () => {
-		expect(() => updateTask("does-not-exist", { summary: "y" })).toThrow(TaskRegistryError);
+		expect(() => updateTask("does-not-exist", { summary: "y" })).toThrow(
+			TaskRegistryError,
+		);
 	});
 });
 
@@ -179,7 +224,11 @@ describe("listTasks", () => {
 
 	it("filters by state", () => {
 		const a = createTask({ origin: "subagent", summary: "a" });
-		const b = createTask({ origin: "subagent", summary: "b", state: "running" });
+		const b = createTask({
+			origin: "subagent",
+			summary: "b",
+			state: "running",
+		});
 		void a;
 		const running = listTasks({ states: ["running"] });
 		expect(running.map((t) => t.id)).toEqual([b.id]);
@@ -193,14 +242,23 @@ describe("listTasks", () => {
 	});
 
 	it("filters by repoSlug", () => {
-		createTask({ origin: "subagent", summary: "a", repoSlug: "gh/owner/repo-a" });
-		const matching = createTask({ origin: "subagent", summary: "b", repoSlug: "gh/owner/repo-b" });
+		createTask({
+			origin: "subagent",
+			summary: "a",
+			repoSlug: "gh/owner/repo-a",
+		});
+		const matching = createTask({
+			origin: "subagent",
+			summary: "b",
+			repoSlug: "gh/owner/repo-b",
+		});
 		const got = listTasks({ repoSlug: "gh/owner/repo-b" });
 		expect(got.map((t) => t.id)).toEqual([matching.id]);
 	});
 
 	it("respects limit", () => {
-		for (let i = 0; i < 5; i++) createTask({ origin: "shell", summary: `t${i}` });
+		for (let i = 0; i < 5; i++)
+			createTask({ origin: "shell", summary: `t${i}` });
 		expect(listTasks({ limit: 2 }).length).toBe(2);
 	});
 

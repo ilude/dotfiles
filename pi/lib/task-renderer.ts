@@ -151,12 +151,15 @@ export function formatTaskDetail(
 	if (modelEffort) lines.push(`  model: ${modelEffort}`);
 	if (task.repoSlug)
 		lines.push(`  repo: ${truncateTaskText(task.repoSlug, 120)}`);
+	if (task.workspace)
+		lines.push(`  workspace: ${truncateTaskText(task.workspace, 240)}`);
 	if (task.summary)
 		lines.push(`  summary: ${truncateTaskText(task.summary, 200)}`);
 	if (task.prompt)
 		lines.push(`  prompt: ${truncateTaskText(task.prompt, 200)}`);
 	if (task.preview)
 		lines.push(`  preview: ${truncateTaskText(task.preview, 200)}`);
+	if (task.notes) lines.push(`  notes: ${truncateTaskText(task.notes, 400)}`);
 	if (task.execution) {
 		lines.push(`  execution: ${task.execution.status}`);
 		if (task.execution.outputPath)

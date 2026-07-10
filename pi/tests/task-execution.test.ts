@@ -93,15 +93,13 @@ Test agent.
 		const tasks = await import("../extensions/tasks.ts");
 		const registry = await import("../lib/task-registry.ts");
 		tasks.default(pi as Parameters<typeof tasks.default>[0]);
-		const create = pi._getTool("task_create");
-		const execute = pi._getTool("task_execute");
-		const output = pi._getTool("task_output");
-		if (!create || !execute || !output)
-			throw new Error("task tools not registered");
+		const task = pi._getTool("task");
+		if (!task) throw new Error("task tool not registered");
 		const ctx = createMockCtx({ cwd: tmpDir });
-		const created = await create.execute(
+		const created = await task.execute(
 			"create-task",
 			{
+				action: "create",
 				summary: "durable worker",
 				agent: "tester",
 				task: "Check the thing",
@@ -113,9 +111,9 @@ Test agent.
 		);
 		const id = created.details.record.id as string;
 
-		const accepted = await execute.execute(
+		const accepted = await task.execute(
 			"execute-task",
-			{ id },
+			{ action: "execute", id },
 			undefined,
 			undefined,
 			ctx,
@@ -127,9 +125,9 @@ Test agent.
 		expect(spawnMock).toHaveBeenCalledTimes(1);
 		expect(spawnMock.mock.calls[0][1]).toContain("openai-codex/gpt-5.6-terra");
 
-		const result = await output.execute(
+		const result = await task.execute(
 			"task-output",
-			{ id },
+			{ action: "output", id },
 			undefined,
 			undefined,
 			ctx,

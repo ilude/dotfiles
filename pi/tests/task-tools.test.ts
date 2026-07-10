@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TaskExecutionCoordinator } from "../extensions/tasks/execution.ts";
 import { registerTaskTools } from "../extensions/tasks.ts";
-import { createTask, getTask } from "../lib/task-registry.ts";
+import { createTask, getTask, listTasks } from "../lib/task-registry.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 let tmpRoot: string;
@@ -23,19 +23,97 @@ afterEach(() => {
 });
 
 describe("task tools", () => {
-	it("registers MVP lower_snake_case task tools", async () => {
+	it("registers one unified task tool", async () => {
 		const pi = createMockPi();
 		const mod = await import("../extensions/tasks.ts");
 		mod.default(pi as Parameters<typeof mod.default>[0]);
+		expect(pi._getTool("task")).toBeDefined();
 		for (const name of [
+			"todo",
 			"task_create",
 			"task_batch_create",
 			"task_list",
 			"task_get",
 			"task_update",
+			"task_execute",
+			"task_stop",
+			"task_output",
 		]) {
-			expect(pi._getTool(name)).toBeDefined();
+			expect(pi._getTool(name)).toBeUndefined();
 		}
+	});
+
+	it("uses one registry for planning dependencies and readiness", async () => {
+		const pi = createMockPi();
+		const coordinator = new TaskExecutionCoordinator();
+		registerTaskTools(
+			pi as Parameters<typeof registerTaskTools>[0],
+			coordinator,
+		);
+		const ctx = createMockCtx({ cwd: tmpRoot });
+		const tool = pi._getTool("task");
+		const blocker = await tool?.execute(
+			"create-blocker",
+			{ action: "create", summary: "first", notes: "planning note" },
+			undefined,
+			undefined,
+			ctx,
+		);
+		const blockerId = blocker.details.record.id as string;
+		const waiting = await tool?.execute(
+			"create-waiting",
+			{ action: "create", summary: "second", blockedBy: [blockerId] },
+			undefined,
+			undefined,
+			ctx,
+		);
+		const ready = await tool?.execute(
+			"ready",
+			{ action: "ready" },
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(blocker.details.record.notes).toBe("planning note");
+		expect(waiting.details.record.blockedBy).toEqual([blockerId]);
+		expect(
+			ready.details.records.map((record: { id: string }) => record.id),
+		).toEqual([blockerId]);
+	});
+
+	it("imports legacy todo state idempotently", async () => {
+		const legacyDir = path.join(tmpRoot, ".pi");
+		fs.mkdirSync(legacyDir, { recursive: true });
+		fs.writeFileSync(
+			path.join(legacyDir, "todo.json"),
+			JSON.stringify({
+				items: [
+					{ id: "old-1", title: "first", status: "done", depends_on: [] },
+					{
+						id: "old-2",
+						title: "second",
+						status: "pending",
+						depends_on: ["old-1"],
+						notes: "keep this",
+					},
+				],
+			}),
+			"utf-8",
+		);
+		const { importLegacyTodos } = await import("../extensions/tasks.ts");
+		expect(importLegacyTodos(tmpRoot)).toHaveLength(2);
+		expect(importLegacyTodos(tmpRoot)).toHaveLength(0);
+		const records = listTasks();
+		expect(records).toHaveLength(2);
+		const first = records.find(
+			(record) => record.metadata?.legacyTodoId === "old-1",
+		);
+		const second = records.find(
+			(record) => record.metadata?.legacyTodoId === "old-2",
+		);
+		expect(first?.state).toBe("completed");
+		expect(second?.notes).toBe("keep this");
+		expect(second?.blockedBy).toEqual([first?.id]);
 	});
 
 	it("executes an explicit subagent task and retains bounded output", async () => {
@@ -51,9 +129,10 @@ describe("task tools", () => {
 			coordinator,
 		);
 		const ctx = createMockCtx({ cwd: tmpRoot });
-		const created = await pi._getTool("task_create")?.execute(
+		const created = await pi._getTool("task")?.execute(
 			"create",
 			{
+				action: "create",
 				summary: "worker task",
 				agent: "coding-light",
 				task: "Read one file",
@@ -65,14 +144,20 @@ describe("task tools", () => {
 		const id = created.details.record.id as string;
 
 		const started = await pi
-			._getTool("task_execute")
-			?.execute("execute", { id }, undefined, undefined, ctx);
+			._getTool("task")
+			?.execute(
+				"execute",
+				{ action: "execute", id },
+				undefined,
+				undefined,
+				ctx,
+			);
 		expect(started.details.outcome).toBe("accepted");
 		await vi.waitFor(() => expect(getTask(id)?.state).toBe("completed"));
 
 		const output = await pi
-			._getTool("task_output")
-			?.execute("output", { id }, undefined, undefined, ctx);
+			._getTool("task")
+			?.execute("output", { action: "output", id }, undefined, undefined, ctx);
 		expect(output.content[0].text).toContain("completed output");
 		expect(output.details.truncated).toBe(true);
 		const outputPath = getTask(id)?.execution?.outputPath;
@@ -102,22 +187,28 @@ describe("task tools", () => {
 		);
 		const ctx = createMockCtx({ cwd: tmpRoot });
 		const created = await pi
-			._getTool("task_create")
+			._getTool("task")
 			?.execute(
 				"create",
-				{ agent: "coding-light", task: "Wait" },
+				{ action: "create", agent: "coding-light", task: "Wait" },
 				undefined,
 				undefined,
 				ctx,
 			);
 		const id = created.details.record.id as string;
 		await pi
-			._getTool("task_execute")
-			?.execute("execute", { id }, undefined, undefined, ctx);
+			._getTool("task")
+			?.execute(
+				"execute",
+				{ action: "execute", id },
+				undefined,
+				undefined,
+				ctx,
+			);
 
 		const stopped = await pi
-			._getTool("task_stop")
-			?.execute("stop", { id }, undefined, undefined, ctx);
+			._getTool("task")
+			?.execute("stop", { action: "stop", id }, undefined, undefined, ctx);
 		expect(stopped.details.outcome).toBe("persisted");
 		expect(getTask(id)?.state).toBe("cancelled");
 		expect(getTask(id)?.execution?.status).toBe("stopped");

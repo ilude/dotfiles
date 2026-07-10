@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import {
@@ -7,11 +9,14 @@ import {
 	getUnmetBlockers,
 	listTasks,
 	partitionReadyTasks,
+	resolveTaskWorkspace,
 	type SubagentTaskExecution,
 	safeTransitionTask,
 	type TaskRecordV1,
 	type TaskState,
 	tasksByIdSnapshot,
+	tombstoneTask,
+	transitionTask,
 	updateTask,
 } from "../lib/task-registry.js";
 import {
@@ -170,6 +175,78 @@ function asParams(params: unknown): Record<string, unknown> {
 		: {};
 }
 
+interface LegacyTodoItem {
+	id: string;
+	title: string;
+	status: "pending" | "in_progress" | "done" | "blocked";
+	depends_on?: string[];
+	notes?: string;
+}
+
+function isLegacyTodoItem(value: unknown): value is LegacyTodoItem {
+	if (!value || typeof value !== "object") return false;
+	const item = value as Record<string, unknown>;
+	return (
+		typeof item.id === "string" &&
+		typeof item.title === "string" &&
+		["pending", "in_progress", "done", "blocked"].includes(String(item.status))
+	);
+}
+
+export function importLegacyTodos(cwd: string): TaskRecordV1[] {
+	const filePath = path.join(cwd, ".pi", "todo.json");
+	if (!fs.existsSync(filePath)) return [];
+	const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8")) as {
+		items?: unknown[];
+	};
+	const items = Array.isArray(parsed.items)
+		? parsed.items.filter(isLegacyTodoItem)
+		: [];
+	const workspace = resolveTaskWorkspace(cwd);
+	const existing = listTasks({ includeTombstones: true });
+	const byLegacyId = new Map<string, TaskRecordV1>();
+	for (const record of existing) {
+		if (
+			record.metadata?.legacyTodoWorkspace === workspace &&
+			typeof record.metadata.legacyTodoId === "string"
+		)
+			byLegacyId.set(record.metadata.legacyTodoId, record);
+	}
+	const imported: TaskRecordV1[] = [];
+	const newlyCreated = new Set<string>();
+	for (const item of items) {
+		if (byLegacyId.has(item.id)) continue;
+		const record = createTask({
+			origin: "other",
+			summary: item.title,
+			notes: item.notes,
+			workspace,
+			metadata: {
+				legacyTodoId: item.id,
+				legacyTodoWorkspace: workspace,
+				legacyTodoImportedAt: new Date().toISOString(),
+			},
+		});
+		byLegacyId.set(item.id, record);
+		newlyCreated.add(record.id);
+		imported.push(record);
+	}
+	for (const item of items) {
+		const record = byLegacyId.get(item.id);
+		if (!record || !newlyCreated.has(record.id)) continue;
+		const blockedBy = (item.depends_on ?? [])
+			.map((id) => byLegacyId.get(id)?.id)
+			.filter((id): id is string => Boolean(id));
+		updateTask(record.id, { blockedBy });
+		if (item.status === "in_progress") transitionTask(record.id, "running");
+		if (item.status === "done") {
+			transitionTask(record.id, "running");
+			transitionTask(record.id, "completed");
+		}
+	}
+	return imported.map((record) => getTask(record.id) ?? record);
+}
+
 function originFrom(value: unknown): "subagent" | "team" | "shell" | "other" {
 	return value === "subagent" || value === "team" || value === "shell"
 		? value
@@ -214,11 +291,67 @@ function executionFrom(
 	};
 }
 
+function validatedBlockers(value: unknown): string[] | undefined {
+	if (!Array.isArray(value)) return undefined;
+	const ids = value.filter((item): item is string => typeof item === "string");
+	for (const id of ids) {
+		if (!getTask(id)) throw new Error(`task dependency not found: ${id}`);
+	}
+	return ids;
+}
+
+function createTaskFromInput(
+	input: Record<string, unknown>,
+	cwd: string,
+): TaskRecordV1 {
+	const execution = executionFrom(input, cwd);
+	return createTask({
+		origin: originFrom(input.origin),
+		summary:
+			typeof input.summary === "string"
+				? input.summary
+				: (execution?.task ?? "untitled task"),
+		agentName: execution?.agent,
+		prompt: execution?.task,
+		execution,
+		workspace: resolveTaskWorkspace(cwd),
+		notes: typeof input.notes === "string" ? input.notes : undefined,
+		blockedBy: validatedBlockers(input.blockedBy),
+	});
+}
+
+function taskOutputResult(coordinator: TaskExecutionCoordinator, id: string) {
+	const result = coordinator.output(id);
+	const execution = result.record?.execution;
+	return {
+		content: [
+			{
+				type: "text" as const,
+				text: `${result.output ?? "(no output available)"}\n\n${JSON.stringify({
+					outcome: result.outcome,
+					truncated: result.truncated,
+					execution: execution
+						? {
+								status: execution.status,
+								agent: execution.agent,
+								model: execution.model,
+								modelSize: execution.modelSize,
+								outputPath: execution.outputPath,
+								outputError: execution.outputError,
+							}
+						: undefined,
+				})}`,
+			},
+		],
+		details: result,
+	};
+}
+
 export function registerTaskTools(
 	pi: ExtensionAPI,
 	coordinator: TaskExecutionCoordinator,
 ): void {
-	const taskParams = Type.Object(
+	const taskItem = Type.Object(
 		{
 			origin: Type.Optional(
 				Type.Union([
@@ -229,6 +362,8 @@ export function registerTaskTools(
 				]),
 			),
 			summary: Type.Optional(Type.String()),
+			notes: Type.Optional(Type.String()),
+			blockedBy: Type.Optional(Type.Array(Type.String())),
 			agent: Type.Optional(Type.String()),
 			task: Type.Optional(Type.String()),
 			cwd: Type.Optional(Type.String()),
@@ -250,204 +385,136 @@ export function registerTaskTools(
 		},
 		{ additionalProperties: true },
 	);
-	const batchTaskParams = Type.Object(
+	const parameters = Type.Object(
 		{
-			tasks: Type.Optional(Type.Array(taskParams)),
-		},
-		{ additionalProperties: true },
-	);
-	const taskIdParams = Type.Object(
-		{
+			action: Type.Union([
+				Type.Literal("create"),
+				Type.Literal("batch"),
+				Type.Literal("update"),
+				Type.Literal("remove"),
+				Type.Literal("list"),
+				Type.Literal("ready"),
+				Type.Literal("get"),
+				Type.Literal("execute"),
+				Type.Literal("stop"),
+				Type.Literal("output"),
+			]),
 			id: Type.Optional(Type.String()),
-		},
-		{ additionalProperties: true },
-	);
-	const taskUpdateParams = Type.Object(
-		{
-			id: Type.Optional(Type.String()),
-			state: Type.Optional(Type.String()),
 			summary: Type.Optional(Type.String()),
+			notes: Type.Optional(Type.String()),
+			state: Type.Optional(Type.String()),
+			blockedBy: Type.Optional(Type.Array(Type.String())),
+			all: Type.Optional(Type.Boolean()),
+			origin: Type.Optional(taskItem.properties.origin),
+			agent: Type.Optional(Type.String()),
+			task: Type.Optional(Type.String()),
+			cwd: Type.Optional(Type.String()),
+			agentScope: Type.Optional(taskItem.properties.agentScope),
+			model: Type.Optional(Type.String()),
+			modelSize: Type.Optional(taskItem.properties.modelSize),
+			tasks: Type.Optional(Type.Array(taskItem)),
 		},
 		{ additionalProperties: true },
 	);
-	const emptyParams = Type.Object({}, { additionalProperties: true });
 	pi.registerTool({
-		name: "task_create",
-		label: "Task Create",
+		name: "task",
+		label: "Task",
 		description:
-			"Create a durable sanitized task. Include both agent and task to make it executable by task_execute.",
-		parameters: taskParams,
+			"Unified durable task surface. Actions create, batch, update, remove, list, ready, get, execute, stop, and output manage planning and background subagent work in one registry.",
+		promptSnippet:
+			"Manage durable planning tasks and background subagent execution through one task surface",
+		promptGuidelines: [
+			"Use task for multi-step work, dependencies, and background execution.",
+			"Create dependencies with blockedBy; use ready to find parallelizable work.",
+			"Set state to running when direct work starts and completed when it finishes.",
+			"For background work, create an executable task and then use execute; inspect it with output and cancel it with stop.",
+		],
+		parameters,
 		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
 			const input = asParams(params);
-			const execution = executionFrom(input, ctx.cwd);
-			return toolResult({
-				outcome: "persisted",
-				record: createTask({
-					origin: originFrom(input.origin),
-					summary:
-						typeof input.summary === "string"
-							? input.summary
-							: (execution?.task ?? "untitled task"),
-					agentName: execution?.agent,
-					prompt: execution?.task,
-					execution,
-				}),
-			});
-		},
-	});
-	pi.registerTool({
-		name: "task_batch_create",
-		label: "Task Batch Create",
-		description:
-			"Create multiple durable sanitized tasks, optionally with executable subagent specifications.",
-		parameters: batchTaskParams,
-		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
-			const input = asParams(params);
-			const tasks = Array.isArray(input.tasks) ? input.tasks : [];
-			return toolResult({
-				outcome: "persisted",
-				records: tasks.map((task) => {
-					const item = asParams(task);
-					const execution = executionFrom(item, ctx.cwd);
-					return createTask({
-						origin: originFrom(item.origin),
-						summary:
-							typeof item.summary === "string"
-								? item.summary
-								: (execution?.task ?? "untitled task"),
-						agentName: execution?.agent,
-						prompt: execution?.task,
-						execution,
-					});
-				}),
-			});
-		},
-	});
-	pi.registerTool({
-		name: "task_list",
-		label: "Task List",
-		description: "List durable tasks.",
-		parameters: emptyParams,
-		execute: async () =>
-			toolResult({
-				outcome: "persisted",
-				records: listTasks({ includeTombstones: true }),
-			}),
-	});
-	pi.registerTool({
-		name: "task_get",
-		label: "Task Get",
-		description: "Get one durable task.",
-		parameters: taskIdParams,
-		execute: async (_toolCallId, params) => {
-			const id = asParams(params).id;
-			const record = typeof id === "string" ? getTask(id) : null;
-			return toolResult({
-				outcome: record ? "persisted" : "not_found",
-				record,
-			});
-		},
-	});
-	pi.registerTool({
-		name: "task_update",
-		label: "Task Update",
-		description: "Update one durable task.",
-		parameters: taskUpdateParams,
-		execute: async (_toolCallId, params) => {
-			const input = asParams(params);
-			if (typeof input.id !== "string")
-				return toolResult({ outcome: "not_found" });
-			if (typeof input.state === "string")
-				return toolResult(
-					safeTransitionTask(input.id, input.state as TaskState),
-				);
-			try {
+			const action = input.action;
+			const workspace = resolveTaskWorkspace(ctx.cwd);
+			if (action === "create")
 				return toolResult({
 					outcome: "persisted",
-					record: updateTask(input.id, {
-						summary:
-							typeof input.summary === "string" ? input.summary : undefined,
-					}),
+					record: createTaskFromInput(input, ctx.cwd),
 				});
-			} catch (error) {
+			if (action === "batch") {
+				const tasks = Array.isArray(input.tasks) ? input.tasks : [];
 				return toolResult({
-					outcome: "not_found",
-					error: error instanceof Error ? error.message : String(error),
+					outcome: "persisted",
+					records: tasks.map((item) =>
+						createTaskFromInput(asParams(item), ctx.cwd),
+					),
 				});
 			}
-		},
-	});
-	pi.registerTool({
-		name: "task_execute",
-		label: "Task Execute",
-		description:
-			"Start a pending executable subagent task in the background. Returns immediately with its durable state.",
-		parameters: taskIdParams,
-		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
-			const id = asParams(params).id;
-			if (typeof id !== "string")
+			if (action === "list" || action === "ready") {
+				const allRecords = listTasks({ includeTombstones: false });
+				const records =
+					input.all === true
+						? allRecords
+						: allRecords.filter(
+								(record) => !record.workspace || record.workspace === workspace,
+							);
+				return toolResult({
+					outcome: "persisted",
+					records:
+						action === "ready" ? partitionReadyTasks(records).ready : records,
+				});
+			}
+			const id = typeof input.id === "string" ? input.id : undefined;
+			if (!id)
 				return toolResult({
 					outcome: "not_found",
-					error: "task id is required",
+					error: `task id is required for ${String(action)}`,
 				});
-			return toolResult(coordinator.start(id, ctx.cwd));
-		},
-	});
-	pi.registerTool({
-		name: "task_stop",
-		label: "Task Stop",
-		description:
-			"Stop a running background subagent task and persist the cancellation outcome.",
-		parameters: taskIdParams,
-		execute: async (_toolCallId, params) => {
-			const id = asParams(params).id;
-			if (typeof id !== "string")
+			if (action === "get") {
+				const record = getTask(id);
 				return toolResult({
-					outcome: "not_found",
-					error: "task id is required",
+					outcome: record ? "persisted" : "not_found",
+					record,
 				});
-			return toolResult(await coordinator.stop(id));
-		},
-	});
-	pi.registerTool({
-		name: "task_output",
-		label: "Task Output",
-		description:
-			"Read bounded sanitized output and artifact metadata for a background subagent task.",
-		parameters: taskIdParams,
-		execute: async (_toolCallId, params) => {
-			const id = asParams(params).id;
-			if (typeof id !== "string")
-				return toolResult({
-					outcome: "not_found",
-					error: "task id is required",
-				});
-			const result = coordinator.output(id);
-			const execution = result.record?.execution;
-			return {
-				content: [
-					{
-						type: "text" as const,
-						text: `${result.output ?? "(no output available)"}\n\n${JSON.stringify(
-							{
-								outcome: result.outcome,
-								truncated: result.truncated,
-								execution: execution
-									? {
-											status: execution.status,
-											agent: execution.agent,
-											model: execution.model,
-											modelSize: execution.modelSize,
-											outputPath: execution.outputPath,
-											outputError: execution.outputError,
-										}
-									: undefined,
-							},
-						)}`,
-					},
-				],
-				details: result,
-			};
+			}
+			if (action === "remove") {
+				try {
+					return toolResult({
+						outcome: "persisted",
+						record: tombstoneTask(id),
+					});
+				} catch (error) {
+					return toolResult({
+						outcome: "not_found",
+						error: error instanceof Error ? error.message : String(error),
+					});
+				}
+			}
+			if (action === "update") {
+				if (typeof input.state === "string") {
+					const transition = safeTransitionTask(id, input.state as TaskState);
+					if (transition.outcome !== "persisted") return toolResult(transition);
+				}
+				try {
+					return toolResult({
+						outcome: "persisted",
+						record: updateTask(id, {
+							summary:
+								typeof input.summary === "string" ? input.summary : undefined,
+							notes: typeof input.notes === "string" ? input.notes : undefined,
+							blockedBy: validatedBlockers(input.blockedBy),
+						}),
+					});
+				} catch (error) {
+					return toolResult({
+						outcome: "not_found",
+						error: error instanceof Error ? error.message : String(error),
+					});
+				}
+			}
+			if (action === "execute")
+				return toolResult(coordinator.start(id, ctx.cwd));
+			if (action === "stop") return toolResult(await coordinator.stop(id));
+			if (action === "output") return taskOutputResult(coordinator, id);
+			return toolResult({ outcome: "rejected", error: "unknown action" });
 		},
 	});
 }
@@ -455,14 +522,29 @@ export function registerTaskTools(
 export default function (pi: ExtensionAPI) {
 	const coordinator = new TaskExecutionCoordinator();
 	registerTaskTools(pi, coordinator);
-	pi.on("session_start", () => coordinator.reconcileOrphans());
+	pi.on("session_start", (_event, ctx) => {
+		try {
+			importLegacyTodos(ctx.cwd);
+		} catch (error) {
+			ctx.ui.notify(
+				`Legacy task migration failed: ${error instanceof Error ? error.message : String(error)}`,
+				"warning",
+			);
+		}
+		coordinator.reconcileOrphans();
+	});
 	pi.on("session_shutdown", async () => coordinator.shutdown());
 	pi.registerCommand("tasks", {
 		description:
 			"Task control plane. Use /tasks help for lifecycle, settings, and recovery commands.",
 		handler: async (args, ctx) => {
 			const parsed = parseTasksArgs(args);
-			const all = listTasks({ includeTombstones: true });
+			const allTasks = listTasks({ includeTombstones: true });
+			const scopedTasks = allTasks.filter(
+				(task) =>
+					!task.workspace || task.workspace === resolveTaskWorkspace(ctx.cwd),
+			);
+			const all = parsed.all ? allTasks : scopedTasks;
 			if (parsed.verb === "help") return ctx.ui.notify(helpText(), "info");
 			if (parsed.verb === "settings") {
 				if (parsed.mode && isTaskRenderMode(parsed.mode))
@@ -497,6 +579,7 @@ export default function (pi: ExtensionAPI) {
 				const task = createTask({
 					origin: "other",
 					summary: sanitizeTaskValue(parsed.text || "untitled task"),
+					workspace: resolveTaskWorkspace(ctx.cwd),
 				});
 				return ctx.ui.notify(
 					`Created ${shortTaskId(task.id)}: ${truncateTaskText(task.summary, 80)}`,
@@ -509,7 +592,7 @@ export default function (pi: ExtensionAPI) {
 					"info",
 				);
 			if (!parsed.idArg) return ctx.ui.notify(helpText(), "warning");
-			const target = resolveTaskId(parsed.idArg, all);
+			const target = resolveTaskId(parsed.idArg, allTasks);
 			if (!target)
 				return ctx.ui.notify(
 					`No unique task found for "${parsed.idArg}".`,
@@ -519,7 +602,7 @@ export default function (pi: ExtensionAPI) {
 				return ctx.ui.notify(
 					formatTaskDetail(
 						getTask(target.id) ?? target,
-						tasksByIdSnapshot(all),
+						tasksByIdSnapshot(allTasks),
 					),
 					"info",
 				);
