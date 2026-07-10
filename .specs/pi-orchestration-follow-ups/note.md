@@ -8,10 +8,6 @@ Follow-up work identified while refining Pi orchestration, prompt size, and suba
 
 ## Status
 
-1. **Open - Hide blocked tools from orchestrator parents**
-
-   Blocked tools still consume prompt/schema context and appear callable. Apply a model-specific active-tool profile and restore the previous profile on model switch.
-
 2. **Open - Replace the mutation blocklist with capability metadata**
 
    New mutating tools could bypass `fable.ts` until manually added. Tools should declare capabilities such as `read`, `execute`, `mutate-files`, `mutate-git`, or `external-write`; orchestration policy can then enforce categories.
@@ -19,10 +15,6 @@ Follow-up work identified while refining Pi orchestration, prompt size, and suba
 3. **Open - Fix agents-context accumulation**
 
    Nested `AGENTS.md` content is persisted through hidden messages. `pi/prompt-routing/AGENTS.md` alone is 376 lines. Inject relevant instructions ephemerally and move historical detail into referenced docs.
-
-4. **Completed - Trim always-loaded instructions**
-
-   Moved frontmatter and explanatory architecture material out of `pi/PI-INSTRUCTIONS.md`, corrected the owning reference documentation, and reduced root `AGENTS.md` to repository invariants and pointers.
 
 5. **Open - Make agent frontmatter truthful**
 
@@ -36,9 +28,9 @@ Follow-up work identified while refining Pi orchestration, prompt size, and suba
 
    `/plan-it`, `/review-it`, and `/do-it` repeat global safety, planning, validation, and reporting rules. Convert each into a short state machine with one output contract.
 
-8. **Open - Remove overlapping or no-op tools**
+8. **In progress - Remove overlapping or no-op tools**
 
-   `task_execute`, `task_stop`, and `task_output` are deferred no-ops. `todo` and durable `task_*` tools overlap. Expose one task surface per workflow.
+   `task_execute`, `task_stop`, and `task_output` now provide background subagent execution, cancellation, and bounded artifact-backed output. The remaining work is to resolve the overlap between `todo` and the durable `task_*` tools so each workflow exposes one task surface.
 
 9. **Open - Add orchestration telemetry**
 

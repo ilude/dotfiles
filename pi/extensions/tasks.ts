@@ -7,10 +7,11 @@ import {
 	getUnmetBlockers,
 	listTasks,
 	partitionReadyTasks,
+	type SubagentTaskExecution,
 	safeTransitionTask,
-	tasksByIdSnapshot,
 	type TaskRecordV1,
 	type TaskState,
+	tasksByIdSnapshot,
 	updateTask,
 } from "../lib/task-registry.js";
 import {
@@ -26,6 +27,7 @@ import {
 	isTaskRenderMode,
 	setTaskRenderMode,
 } from "../lib/task-settings.js";
+import { TaskExecutionCoordinator } from "./tasks/execution.js";
 
 export { formatTaskDetail, formatTaskList, groupTasksByUrgency };
 
@@ -93,9 +95,7 @@ function helpText(): string {
 	return "Usage: /tasks|/tasks list [--all]|ready|blocked|show <id>|create <summary>|start <id>|complete <id>|skip <id> [reason]|cancel <id>|retry <id>|reopen <id>|clear completed|settings mode compact|full|hidden. Examples: /tasks ready (what can I work on now?), /tasks blocked (why can't this start?). Retry/reopen does not execute work.";
 }
 
-function formatBlockedView(
-	tasks: readonly TaskRecordV1[],
-): string {
+function formatBlockedView(tasks: readonly TaskRecordV1[]): string {
 	const byId = tasksByIdSnapshot(tasks);
 	const { waiting, blocked } = partitionReadyTasks(tasks);
 	const rows = [...waiting, ...blocked];
@@ -176,7 +176,48 @@ function originFrom(value: unknown): "subagent" | "team" | "shell" | "other" {
 		: "other";
 }
 
-function registerTaskTools(pi: ExtensionAPI): void {
+function executionFrom(
+	input: Record<string, unknown>,
+	fallbackCwd: string,
+): SubagentTaskExecution | undefined {
+	const hasExecution = input.agent !== undefined || input.task !== undefined;
+	if (!hasExecution) return undefined;
+	if (typeof input.agent !== "string" || !input.agent.trim())
+		throw new Error("Executable tasks require a non-empty agent.");
+	if (typeof input.task !== "string" || !input.task.trim())
+		throw new Error("Executable tasks require a non-empty task.");
+	const agentScope =
+		input.agentScope === "project" || input.agentScope === "both"
+			? input.agentScope
+			: "user";
+	const modelSize =
+		input.modelSize === "small" ||
+		input.modelSize === "medium" ||
+		input.modelSize === "large"
+			? input.modelSize
+			: undefined;
+	return {
+		kind: "subagent",
+		agent: input.agent,
+		task: input.task,
+		cwd:
+			typeof input.cwd === "string" && input.cwd.trim()
+				? input.cwd
+				: fallbackCwd,
+		agentScope,
+		model:
+			typeof input.model === "string" && input.model.trim()
+				? input.model
+				: undefined,
+		modelSize,
+		status: "pending",
+	};
+}
+
+export function registerTaskTools(
+	pi: ExtensionAPI,
+	coordinator: TaskExecutionCoordinator,
+): void {
 	const taskParams = Type.Object(
 		{
 			origin: Type.Optional(
@@ -188,6 +229,24 @@ function registerTaskTools(pi: ExtensionAPI): void {
 				]),
 			),
 			summary: Type.Optional(Type.String()),
+			agent: Type.Optional(Type.String()),
+			task: Type.Optional(Type.String()),
+			cwd: Type.Optional(Type.String()),
+			agentScope: Type.Optional(
+				Type.Union([
+					Type.Literal("user"),
+					Type.Literal("project"),
+					Type.Literal("both"),
+				]),
+			),
+			model: Type.Optional(Type.String()),
+			modelSize: Type.Optional(
+				Type.Union([
+					Type.Literal("small"),
+					Type.Literal("medium"),
+					Type.Literal("large"),
+				]),
+			),
 		},
 		{ additionalProperties: true },
 	);
@@ -215,16 +274,23 @@ function registerTaskTools(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "task_create",
 		label: "Task Create",
-		description: "Create a durable sanitized task.",
+		description:
+			"Create a durable sanitized task. Include both agent and task to make it executable by task_execute.",
 		parameters: taskParams,
-		execute: async (_toolCallId, params) => {
+		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
 			const input = asParams(params);
+			const execution = executionFrom(input, ctx.cwd);
 			return toolResult({
 				outcome: "persisted",
 				record: createTask({
 					origin: originFrom(input.origin),
 					summary:
-						typeof input.summary === "string" ? input.summary : "untitled task",
+						typeof input.summary === "string"
+							? input.summary
+							: (execution?.task ?? "untitled task"),
+					agentName: execution?.agent,
+					prompt: execution?.task,
+					execution,
 				}),
 			});
 		},
@@ -232,19 +298,26 @@ function registerTaskTools(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "task_batch_create",
 		label: "Task Batch Create",
-		description: "Create multiple durable sanitized tasks.",
+		description:
+			"Create multiple durable sanitized tasks, optionally with executable subagent specifications.",
 		parameters: batchTaskParams,
-		execute: async (_toolCallId, params) => {
+		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
 			const input = asParams(params);
 			const tasks = Array.isArray(input.tasks) ? input.tasks : [];
 			return toolResult({
 				outcome: "persisted",
 				records: tasks.map((task) => {
 					const item = asParams(task);
+					const execution = executionFrom(item, ctx.cwd);
 					return createTask({
 						origin: originFrom(item.origin),
 						summary:
-							typeof item.summary === "string" ? item.summary : "untitled task",
+							typeof item.summary === "string"
+								? item.summary
+								: (execution?.task ?? "untitled task"),
+						agentName: execution?.agent,
+						prompt: execution?.task,
+						execution,
 					});
 				}),
 			});
@@ -304,18 +377,86 @@ function registerTaskTools(pi: ExtensionAPI): void {
 			}
 		},
 	});
-	for (const name of ["task_execute", "task_stop", "task_output"])
-		pi.registerTool({
-			name,
-			label: name,
-			description: "Deferred task execution tool; performs no execution.",
-			parameters: taskIdParams,
-			execute: async () => toolResult({ outcome: "deferred" }),
-		});
+	pi.registerTool({
+		name: "task_execute",
+		label: "Task Execute",
+		description:
+			"Start a pending executable subagent task in the background. Returns immediately with its durable state.",
+		parameters: taskIdParams,
+		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
+			const id = asParams(params).id;
+			if (typeof id !== "string")
+				return toolResult({
+					outcome: "not_found",
+					error: "task id is required",
+				});
+			return toolResult(coordinator.start(id, ctx.cwd));
+		},
+	});
+	pi.registerTool({
+		name: "task_stop",
+		label: "Task Stop",
+		description:
+			"Stop a running background subagent task and persist the cancellation outcome.",
+		parameters: taskIdParams,
+		execute: async (_toolCallId, params) => {
+			const id = asParams(params).id;
+			if (typeof id !== "string")
+				return toolResult({
+					outcome: "not_found",
+					error: "task id is required",
+				});
+			return toolResult(await coordinator.stop(id));
+		},
+	});
+	pi.registerTool({
+		name: "task_output",
+		label: "Task Output",
+		description:
+			"Read bounded sanitized output and artifact metadata for a background subagent task.",
+		parameters: taskIdParams,
+		execute: async (_toolCallId, params) => {
+			const id = asParams(params).id;
+			if (typeof id !== "string")
+				return toolResult({
+					outcome: "not_found",
+					error: "task id is required",
+				});
+			const result = coordinator.output(id);
+			const execution = result.record?.execution;
+			return {
+				content: [
+					{
+						type: "text" as const,
+						text: `${result.output ?? "(no output available)"}\n\n${JSON.stringify(
+							{
+								outcome: result.outcome,
+								truncated: result.truncated,
+								execution: execution
+									? {
+											status: execution.status,
+											agent: execution.agent,
+											model: execution.model,
+											modelSize: execution.modelSize,
+											outputPath: execution.outputPath,
+											outputError: execution.outputError,
+										}
+									: undefined,
+							},
+						)}`,
+					},
+				],
+				details: result,
+			};
+		},
+	});
 }
 
 export default function (pi: ExtensionAPI) {
-	registerTaskTools(pi);
+	const coordinator = new TaskExecutionCoordinator();
+	registerTaskTools(pi, coordinator);
+	pi.on("session_start", () => coordinator.reconcileOrphans());
+	pi.on("session_shutdown", async () => coordinator.shutdown());
 	pi.registerCommand("tasks", {
 		description:
 			"Task control plane. Use /tasks help for lifecycle, settings, and recovery commands.",
@@ -376,7 +517,10 @@ export default function (pi: ExtensionAPI) {
 				);
 			if (parsed.verb === "show")
 				return ctx.ui.notify(
-					formatTaskDetail(getTask(target.id) ?? target, tasksByIdSnapshot(all)),
+					formatTaskDetail(
+						getTask(target.id) ?? target,
+						tasksByIdSnapshot(all),
+					),
 					"info",
 				);
 			if (parsed.verb === "start") {

@@ -419,6 +419,12 @@ Commands:
 - `/tasks cancel <id>` -- transitions `running`/`blocked`/`pending` -> `cancelled`; preserves the final summary
 - `/tasks retry <id>` -- transitions `failed` -> `running`; the registry bumps `retryCount` and clears `errorReason`. Does not re-execute the work; you re-issue the original action through normal channels.
 
+Model-callable execution tools:
+- `task_create` and `task_batch_create` accept an optional subagent execution specification: `agent`, `task`, `cwd`, `agentScope`, `model`, and `modelSize`.
+- `task_execute` validates the task state and dependencies, starts the configured subagent in the background, and returns immediately.
+- `task_stop` cancels a running child process tree and persists the stop outcome. Session shutdown cancels active executions; startup marks abandoned executions as orphaned.
+- `task_output` returns a bounded sanitized tail plus the durable output artifact path and execution metadata.
+
 Lifecycle (defined in `pi/lib/operator-state.ts`):
 ```
 pending  -> running, cancelled, failed

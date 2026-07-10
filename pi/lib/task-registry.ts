@@ -31,6 +31,31 @@ export interface TaskUsage {
 	cacheReadInputTokens?: number;
 }
 
+export type TaskExecutionStatus =
+	| "pending"
+	| "running"
+	| "stop_requested"
+	| "stopped"
+	| "completed"
+	| "failed"
+	| "failed_to_stop"
+	| "orphaned";
+
+export interface SubagentTaskExecution {
+	kind: "subagent";
+	agent: string;
+	task: string;
+	cwd?: string;
+	agentScope?: "user" | "project" | "both";
+	model?: string;
+	modelSize?: "small" | "medium" | "large";
+	status: TaskExecutionStatus;
+	ownerPid?: number;
+	runId?: string;
+	outputPath?: string;
+	outputError?: string;
+}
+
 export interface TaskRecordV1 {
 	[key: string]: unknown;
 	schemaVersion: 1;
@@ -53,6 +78,7 @@ export interface TaskRecordV1 {
 	skipReason?: string;
 	usage?: TaskUsage;
 	metadata?: Record<string, unknown>;
+	execution?: SubagentTaskExecution;
 	blockedBy?: string[];
 	blocks?: string[];
 	deletedAt?: string;
@@ -68,6 +94,7 @@ export interface CreateTaskInput {
 	preview?: string;
 	repoSlug?: string;
 	metadata?: Record<string, unknown>;
+	execution?: SubagentTaskExecution;
 	blockedBy?: string[];
 	blocks?: string[];
 }
@@ -77,6 +104,7 @@ export interface UpdateTaskPatch {
 	preview?: string;
 	usage?: TaskUsage;
 	metadata?: Record<string, unknown>;
+	execution?: SubagentTaskExecution;
 	agentName?: string;
 	blockedBy?: string[];
 	blocks?: string[];
@@ -229,6 +257,7 @@ export function createTask(input: CreateTaskInput): TaskRecordV1 {
 		preview: input.preview,
 		repoSlug: input.repoSlug,
 		metadata: input.metadata,
+		execution: input.execution,
 		blockedBy,
 		blocks: normalizeIdList(input.blocks),
 	});
@@ -253,6 +282,7 @@ export function updateTask(id: string, patch: UpdateTaskPatch): TaskRecordV1 {
 		...(patch.preview !== undefined ? { preview: patch.preview } : {}),
 		...(patch.usage !== undefined ? { usage: patch.usage } : {}),
 		...(patch.metadata !== undefined ? { metadata: patch.metadata } : {}),
+		...(patch.execution !== undefined ? { execution: patch.execution } : {}),
 		...(patch.agentName !== undefined ? { agentName: patch.agentName } : {}),
 		...(patch.blockedBy !== undefined ? { blockedBy: nextBlockedBy } : {}),
 		...(patch.blocks !== undefined
@@ -455,7 +485,8 @@ export function partitionReadyTasks(tasks: readonly TaskRecordV1[]): {
 	return {
 		ready: tasks.filter((task) => isTaskReady(task, byId)),
 		waiting: tasks.filter(
-			(task) => task.state === "pending" && getUnmetBlockers(task, byId).length > 0,
+			(task) =>
+				task.state === "pending" && getUnmetBlockers(task, byId).length > 0,
 		),
 		blocked: tasks.filter((task) => task.state === "blocked"),
 	};

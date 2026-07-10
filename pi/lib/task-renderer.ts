@@ -157,6 +157,17 @@ export function formatTaskDetail(
 		lines.push(`  prompt: ${truncateTaskText(task.prompt, 200)}`);
 	if (task.preview)
 		lines.push(`  preview: ${truncateTaskText(task.preview, 200)}`);
+	if (task.execution) {
+		lines.push(`  execution: ${task.execution.status}`);
+		if (task.execution.outputPath)
+			lines.push(
+				`  output: ${truncateTaskText(task.execution.outputPath, 240)}`,
+			);
+		if (task.execution.outputError)
+			lines.push(
+				`  output error: ${truncateTaskText(task.execution.outputError, 200)}`,
+			);
+	}
 	lines.push(`  created: ${task.createdAt}`);
 	if (task.startedAt) lines.push(`  started: ${task.startedAt}`);
 	if (task.endedAt) lines.push(`  ended: ${task.endedAt}`);

@@ -76,6 +76,24 @@ describe("task renderer/settings", () => {
 		);
 	});
 
+	it("shows background execution status and output artifact", () => {
+		const task = createTask({
+			origin: "subagent",
+			summary: "background task",
+			execution: {
+				kind: "subagent",
+				agent: "coding-light",
+				task: "Read one file",
+				status: "completed",
+				outputPath: "C:/tmp/task-output.md",
+			},
+		});
+
+		const text = formatTaskDetail(task);
+		expect(text).toContain("execution: completed");
+		expect(text).toContain("output: C:/tmp/task-output.md");
+	});
+
 	it("renders sorted dependency detail with redaction and skipped unblocking", () => {
 		const first = createTask({ origin: "other", summary: "zzz token=abc" });
 		const second = createTask({ origin: "other", summary: "aaa" });
