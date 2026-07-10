@@ -18,6 +18,7 @@
 //   path.extname and path.basename, not absolute-path safety checks.
 // uiNotify does not apply because failures need to remain in the transcript.
 
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -80,6 +81,96 @@ const VALIDATOR_LOOKUP_TIMEOUT_MS = 2000;
 const VALIDATOR_RUN_TIMEOUT_MS = 10000;
 const MAX_AUTO_REPAIR_ATTEMPTS = 2;
 
+function normalizedRelativePath(root: string, filePath: string): string {
+	const relative = path.relative(root, filePath).replaceAll("\\", "/");
+	return process.platform === "win32" ? relative.toLowerCase() : relative;
+}
+
+function parseChangedPaths(output: string): Set<string> {
+	const changed = new Set<string>();
+	const entries = output.split("\0").filter(Boolean);
+	for (let index = 0; index < entries.length; index++) {
+		const entry = entries[index];
+		if (entry.length < 4) continue;
+		changed.add(entry.slice(3).replaceAll("\\", "/"));
+		if (entry[0] === "R" || entry[0] === "C") {
+			const destination = entries[++index];
+			if (destination) changed.add(destination.replaceAll("\\", "/"));
+		}
+	}
+	return changed;
+}
+
+export async function filterNetChangedFiles(
+	pi: ExtensionAPI,
+	files: string[],
+	cwd: string,
+): Promise<string[]> {
+	const existing = files.filter((filePath) =>
+		fs.existsSync(path.resolve(cwd, filePath)),
+	);
+	const missing = files.filter(
+		(filePath) => !fs.existsSync(path.resolve(cwd, filePath)),
+	);
+	if (existing.length === 0) return files;
+
+	const rootResult = await pi.exec("git", ["rev-parse", "--show-toplevel"], {
+		cwd,
+		timeout: VALIDATOR_LOOKUP_TIMEOUT_MS,
+	});
+	const root = rootResult.stdout.trim();
+	if (rootResult.code !== 0 || !root) return files;
+
+	const insideRoot: Array<{ original: string; relative: string }> = [];
+	const outsideRoot: string[] = [];
+	for (const filePath of existing) {
+		const absolute = path.resolve(cwd, filePath);
+		const relative = normalizedRelativePath(root, absolute);
+		if (relative === ".." || relative.startsWith("../"))
+			outsideRoot.push(filePath);
+		else insideRoot.push({ original: filePath, relative });
+	}
+	if (insideRoot.length === 0) return files;
+
+	const statusResult = await pi.exec(
+		"git",
+		[
+			"status",
+			"--porcelain=v1",
+			"-z",
+			"--untracked-files=all",
+			"--",
+			...insideRoot.map((item) => item.relative),
+		],
+		{ cwd: root, timeout: VALIDATOR_LOOKUP_TIMEOUT_MS },
+	);
+	if (statusResult.code !== 0) return files;
+	const changed = parseChangedPaths(statusResult.stdout);
+	const normalizedChanged = new Set(
+		[...changed].map((filePath) =>
+			process.platform === "win32" ? filePath.toLowerCase() : filePath,
+		),
+	);
+	return [
+		...missing,
+		...outsideRoot,
+		...insideRoot
+			.filter((item) => normalizedChanged.has(item.relative))
+			.map((item) => item.original),
+	];
+}
+
+function contentHash(filePath: string, cwd: string): string | undefined {
+	try {
+		return crypto
+			.createHash("sha256")
+			.update(fs.readFileSync(path.resolve(cwd, filePath)))
+			.digest("hex");
+	} catch {
+		return undefined;
+	}
+}
+
 export function getFilePath(event: ToolResultEvent): string | undefined {
 	return (
 		(event.input as { path?: string }).path ??
@@ -137,6 +228,7 @@ export function registerQualityGates(
 	languageByExtension: Map<string, LanguageConfig> = extMap,
 ): void {
 	const touchedFiles = new Set<string>();
+	const successfulHashes = new Map<string, string>();
 	let repairAttempts = 0;
 	let repairQueued = false;
 
@@ -158,35 +250,50 @@ export function registerQualityGates(
 		if (languageByExtension.has(ext)) touchedFiles.add(filePath);
 	});
 
-	pi.on("agent_end", async () => {
-		const files = Array.from(touchedFiles).sort();
+	pi.on("agent_end", async (_event, ctx) => {
+		const pendingFiles = Array.from(touchedFiles).sort();
 		touchedFiles.clear();
-		if (files.length === 0) return;
+		if (pendingFiles.length === 0) return;
+		const cwd = ctx?.cwd ?? process.cwd();
+		const files = await filterNetChangedFiles(pi, pendingFiles, cwd);
+		if (files.length === 0) {
+			repairAttempts = 0;
+			return;
+		}
 
-		const warnings: string[] = [];
+		const failures: Array<{
+			filePath: string;
+			name: string;
+			output: string;
+		}> = [];
 		for (const filePath of files) {
 			const ext = path.extname(filePath).toLowerCase();
 			const langConfig = languageByExtension.get(ext);
 			if (!langConfig) continue;
+			const hash = contentHash(filePath, cwd);
+			const cacheKey = path.resolve(cwd, filePath);
+			if (hash && successfulHashes.get(cacheKey) === hash) continue;
 
 			const failure = await runFirstAvailableValidator(
 				pi,
 				langConfig,
 				filePath,
 			);
-			if (failure) {
-				warnings.push(
-					`${failure.name} reported issues in ${path.basename(filePath)}:\n${failure.output}`,
-				);
-			}
+			if (failure) failures.push({ filePath, ...failure });
+			else if (hash) successfulHashes.set(cacheKey, hash);
 		}
 
-		if (warnings.length === 0) {
+		if (failures.length === 0) {
 			repairAttempts = 0;
 			return;
 		}
 
-		const content = `Quality gate validation failed:\n\n${warnings.join("\n\n")}`;
+		const content = `Quality gate validation failed:\n\n${failures
+			.map(
+				(failure) =>
+					`${failure.name} reported issues in ${path.basename(failure.filePath)}:\n${failure.output}`,
+			)
+			.join("\n\n")}`;
 		if (repairAttempts >= MAX_AUTO_REPAIR_ATTEMPTS) {
 			repairAttempts = 0;
 			pi.sendMessage({
@@ -199,7 +306,7 @@ export function registerQualityGates(
 
 		repairAttempts++;
 		repairQueued = true;
-		for (const filePath of files) touchedFiles.add(filePath);
+		for (const failure of failures) touchedFiles.add(failure.filePath);
 		pi.sendMessage(
 			{
 				customType: "quality-gates",

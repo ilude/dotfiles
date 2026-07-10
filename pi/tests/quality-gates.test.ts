@@ -4,6 +4,9 @@
  * Covers a forced validation failure and a clean run after changed files
  * are collected during tool execution and validated when the agent settles.
  */
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type {
 	ExtensionAPI,
 	ToolResultEvent,
@@ -11,6 +14,7 @@ import type {
 import { describe, expect, it, vi } from "vitest";
 import {
 	buildExtMap,
+	filterNetChangedFiles,
 	getFilePath,
 	registerQualityGates,
 	runFirstAvailableValidator,
@@ -73,6 +77,32 @@ describe("quality-gates extension", () => {
 			expect(
 				getFilePath({ input: {} } as unknown as ToolResultEvent),
 			).toBeUndefined();
+		});
+	});
+
+	describe("filterNetChangedFiles", () => {
+		it("drops touched files that have no net Git change", async () => {
+			const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-quality-net-"));
+			try {
+				fs.writeFileSync(path.join(root, "changed.ts"), "changed\n");
+				fs.writeFileSync(path.join(root, "restored.ts"), "restored\n");
+				const exec = vi.fn(async (_command: string, args: string[]) => {
+					if (args[0] === "rev-parse")
+						return { code: 0, stdout: root, stderr: "" };
+					return { code: 0, stdout: " M changed.ts\0", stderr: "" };
+				});
+				const pi = { exec } as unknown as ExtensionAPI;
+
+				const result = await filterNetChangedFiles(
+					pi,
+					["changed.ts", "restored.ts"],
+					root,
+				);
+
+				expect(result).toEqual(["changed.ts"]);
+			} finally {
+				fs.rmSync(root, { recursive: true, force: true });
+			}
 		});
 	});
 
@@ -160,6 +190,106 @@ describe("quality-gates extension", () => {
 				},
 				{ triggerTurn: true, deliverAs: "followUp" },
 			);
+		});
+
+		it("requeues only files whose validators failed", async () => {
+			const pi = createMockPi();
+			pi.exec.mockImplementation(
+				async (command: string, args: string[] = []) => ({
+					code:
+						command === "selective-validator" && args.includes("bad.selective")
+							? 1
+							: 0,
+					stdout:
+						command === "selective-validator" && args.includes("bad.selective")
+							? "still broken"
+							: "",
+					stderr: "",
+				}),
+			);
+			const map = buildExtMap({
+				typescript: {
+					extensions: [".selective"],
+					validators: [
+						{
+							name: "selective-validator",
+							command: ["selective-validator", "check", "{file}"],
+						},
+					],
+				},
+			});
+			registerQualityGates(pi as unknown as ExtensionAPI, map);
+			const toolResult = pi._getHook("tool_result")[0].handler;
+			const agentStart = pi._getHook("agent_start")[0].handler;
+			const agentEnd = pi._getHook("agent_end")[0].handler;
+			for (const filePath of ["good.selective", "bad.selective"])
+				await toolResult({
+					toolName: "edit",
+					input: { path: filePath },
+				} as unknown as ToolResultEvent);
+
+			await agentEnd();
+			await agentStart();
+			await agentEnd();
+
+			const validatorCalls = pi.exec.mock.calls.filter(
+				([command]) => command === "selective-validator",
+			);
+			expect(validatorCalls).toHaveLength(3);
+			expect(
+				validatorCalls.filter(([, args]) => args.includes("good.selective")),
+			).toHaveLength(1);
+			expect(
+				validatorCalls.filter(([, args]) => args.includes("bad.selective")),
+			).toHaveLength(2);
+		});
+
+		it("skips unchanged content after a successful validation", async () => {
+			const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-quality-cache-"));
+			const filePath = path.join(root, "cached.content-cache");
+			try {
+				fs.writeFileSync(filePath, "first\n");
+				const pi = createMockPi();
+				pi.exec.mockImplementation(async (command: string) => ({
+					code: command === "git" ? 1 : 0,
+					stdout: "",
+					stderr: "",
+				}));
+				const map = buildExtMap({
+					typescript: {
+						extensions: [".content-cache"],
+						validators: [
+							{
+								name: "content-cache-validator",
+								command: ["content-cache-validator", "check", "{file}"],
+							},
+						],
+					},
+				});
+				registerQualityGates(pi as unknown as ExtensionAPI, map);
+				const toolResult = pi._getHook("tool_result")[0].handler;
+				const agentEnd = pi._getHook("agent_end")[0].handler;
+				const event = {
+					toolName: "edit",
+					input: { path: filePath },
+				} as unknown as ToolResultEvent;
+
+				await toolResult(event);
+				await agentEnd({}, { cwd: root });
+				await toolResult(event);
+				await agentEnd({}, { cwd: root });
+				fs.writeFileSync(filePath, "second\n");
+				await toolResult(event);
+				await agentEnd({}, { cwd: root });
+
+				expect(
+					pi.exec.mock.calls.filter(
+						([command]) => command === "content-cache-validator",
+					),
+				).toHaveLength(2);
+			} finally {
+				fs.rmSync(root, { recursive: true, force: true });
+			}
 		});
 
 		it("stops automatic repair after two follow-up attempts", async () => {
