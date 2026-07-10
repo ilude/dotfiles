@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import workflowFrictionExtension, {
 	buildReviewerArgs,
-} from "../extensions/workflow-friction.js";
+} from "../extensions/workflow-friction-review.js";
 import {
 	buildReviewPrompt,
 	consumeWorkflowSubmission,

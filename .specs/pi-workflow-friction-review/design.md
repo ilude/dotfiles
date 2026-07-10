@@ -6,7 +6,7 @@ Design decisions captured from the July 10, 2026 workflow interview. This is a r
 
 The thin slice was implemented on July 10, 2026 in:
 
-- `pi/extensions/workflow-friction.ts`;
+- `pi/extensions/workflow-friction-review.ts`;
 - `pi/lib/workflow-friction.ts`;
 - `pi/tests/workflow-friction.test.ts`.
 
