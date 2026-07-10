@@ -109,17 +109,14 @@ export async function filterNetChangedFiles(
 	const existing = files.filter((filePath) =>
 		fs.existsSync(path.resolve(cwd, filePath)),
 	);
-	const missing = files.filter(
-		(filePath) => !fs.existsSync(path.resolve(cwd, filePath)),
-	);
-	if (existing.length === 0) return files;
+	if (existing.length === 0) return [];
 
 	const rootResult = await pi.exec("git", ["rev-parse", "--show-toplevel"], {
 		cwd,
 		timeout: VALIDATOR_LOOKUP_TIMEOUT_MS,
 	});
 	const root = rootResult.stdout.trim();
-	if (rootResult.code !== 0 || !root) return files;
+	if (rootResult.code !== 0 || !root) return existing;
 
 	const insideRoot: Array<{ original: string; relative: string }> = [];
 	const outsideRoot: string[] = [];
@@ -130,7 +127,7 @@ export async function filterNetChangedFiles(
 			outsideRoot.push(filePath);
 		else insideRoot.push({ original: filePath, relative });
 	}
-	if (insideRoot.length === 0) return files;
+	if (insideRoot.length === 0) return outsideRoot;
 
 	const statusResult = await pi.exec(
 		"git",
@@ -144,7 +141,7 @@ export async function filterNetChangedFiles(
 		],
 		{ cwd: root, timeout: VALIDATOR_LOOKUP_TIMEOUT_MS },
 	);
-	if (statusResult.code !== 0) return files;
+	if (statusResult.code !== 0) return existing;
 	const changed = parseChangedPaths(statusResult.stdout);
 	const normalizedChanged = new Set(
 		[...changed].map((filePath) =>
@@ -152,7 +149,6 @@ export async function filterNetChangedFiles(
 		),
 	);
 	return [
-		...missing,
 		...outsideRoot,
 		...insideRoot
 			.filter((item) => normalizedChanged.has(item.relative))
@@ -250,7 +246,7 @@ export function registerQualityGates(
 		if (languageByExtension.has(ext)) touchedFiles.add(filePath);
 	});
 
-	pi.on("agent_end", async (_event, ctx) => {
+	pi.on("agent_settled", async (_event, ctx) => {
 		const pendingFiles = Array.from(touchedFiles).sort();
 		touchedFiles.clear();
 		if (pendingFiles.length === 0) return;
@@ -267,20 +263,27 @@ export function registerQualityGates(
 			output: string;
 		}> = [];
 		for (const filePath of files) {
+			const absolutePath = path.resolve(cwd, filePath);
+			if (!fs.existsSync(absolutePath)) continue;
 			const ext = path.extname(filePath).toLowerCase();
 			const langConfig = languageByExtension.get(ext);
 			if (!langConfig) continue;
-			const hash = contentHash(filePath, cwd);
-			const cacheKey = path.resolve(cwd, filePath);
-			if (hash && successfulHashes.get(cacheKey) === hash) continue;
+			const hashBefore = contentHash(filePath, cwd);
+			const cacheKey = absolutePath;
+			if (hashBefore && successfulHashes.get(cacheKey) === hashBefore) continue;
 
 			const failure = await runFirstAvailableValidator(
 				pi,
 				langConfig,
 				filePath,
 			);
+			const hashAfter = contentHash(filePath, cwd);
+			if (hashBefore !== hashAfter) {
+				if (hashAfter) touchedFiles.add(filePath);
+				continue;
+			}
 			if (failure) failures.push({ filePath, ...failure });
-			else if (hash) successfulHashes.set(cacheKey, hash);
+			else if (hashAfter) successfulHashes.set(cacheKey, hashAfter);
 		}
 
 		if (failures.length === 0) {
@@ -310,7 +313,7 @@ export function registerQualityGates(
 		pi.sendMessage(
 			{
 				customType: "quality-gates",
-				content: `${content}\n\nAddress every validation failure, re-run the relevant checks, and do not finish until they pass.`,
+				content: `${content}\n\nAddress every validation failure, re-run the relevant checks, and do not finish until they pass. After they pass, provide a complete final summary of the original task, all changes and repairs, changed files, and final validation results. Do not summarize only this repair.`,
 				display: true,
 			},
 			{ triggerTurn: true, deliverAs: "followUp" },

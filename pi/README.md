@@ -316,6 +316,19 @@ Workflow highlights:
 - `/do-it` can route a raw task **or** execute an existing `.specs/*/plan.md` file wave by wave.
 - `/commit` uses deterministic candidate extraction plus an isolated low-effort GPT-5.6 Luna child to distinguish real secrets from docs/examples/tests before blocking and to plan commit groups. The child runs through Pi's normal agent entrypoint because direct `completeSimple()` calls are not supported for Luna on the Codex subscription backend.
 
+### `workflow-friction.ts`
+
+Measures each interaction from submission through `agent_settled` and records metadata-only denominator metrics for every interaction. It silently queues selected interactions for a bounded GPT-5.6 Terra review: every interaction over 10 minutes, every subagent run lasting at least 2 minutes, high-confidence triggered interactions from 2 through 10 minutes, and a deterministic 15 percent control sample from the remaining 2-to-10-minute interactions. Subagent records include the durable run ID and spawn time for correlation with operator tasks. Review jobs run one at a time from a persistent local queue and never delay the original interaction.
+
+Runtime records live under `~/.pi/agent/workflow-friction/` and remain uncommitted. `interactions.jsonl` contains timing, mode, selection, tool, validation, subagent, and mutation counts without prompt or response content.
+
+```text
+/capture [optional note]  # review the latest completed interaction
+/workflow-review          # discuss findings from the previous 15 days
+```
+
+`/workflow-review` presents concise evidence and recommendations but does not apply changes. Approved changes can be recorded for later comparison with the `workflow_friction_mark_change` tool.
+
 ### `context.ts`
 
 Shows Claude Code-style context usage for Pi.
@@ -419,11 +432,12 @@ Commands:
 - `/tasks cancel <id>` -- transitions `running`/`blocked`/`pending` -> `cancelled`; preserves the final summary
 - `/tasks retry <id>` -- transitions `failed` -> `running`; the registry bumps `retryCount` and clears `errorReason`. Does not re-execute the work; you re-issue the original action through normal channels.
 
-Model-callable execution tools:
-- `task_create` and `task_batch_create` accept an optional subagent execution specification: `agent`, `task`, `cwd`, `agentScope`, `model`, and `modelSize`.
-- `task_execute` validates the task state and dependencies, starts the configured subagent in the background, and returns immediately.
-- `task_stop` cancels a running child process tree and persists the stop outcome. Session shutdown cancels active executions; startup marks abandoned executions as orphaned.
-- `task_output` returns a bounded sanitized tail plus the durable output artifact path and execution metadata.
+Model-callable task surface:
+- The unified `task` tool owns planning and background execution through `create`, `batch`, `update`, `remove`, `list`, `ready`, `get`, `execute`, `stop`, and `output` actions.
+- Tasks default to the current repository workspace; `list` and `ready` accept `all: true` for a cross-repository view.
+- Executable tasks accept `agent`, `task`, `cwd`, `agentScope`, `model`, and `modelSize`. The `execute` action validates dependencies and starts the child in the background.
+- `stop` cancels a running child process tree. `output` returns a bounded sanitized tail plus the durable artifact path and execution metadata.
+- Legacy `.pi/todo.json` entries are imported idempotently into the durable registry at session startup. The retired `todo` and individual `task_*` tools are no longer registered.
 
 Lifecycle (defined in `pi/lib/operator-state.ts`):
 ```
@@ -604,15 +618,17 @@ override a user persona with the same name.
 The agent parser consumes these frontmatter fields:
 
 - Required: `name`, `description`
-- Optional: `tools`, `model`, `isolation`, `memory`, `effort`, `maxTurns`, `roleType`
+- Enforced by the subagent launcher: `tools`, `model`, `effort`, `skills`
+- Advisory metadata: `isolation`, `memory`
+- Validation and policy metadata: `roleType`
 
-The parser applies no default frontmatter values. `isolation` and `memory` are
-advisory metadata in the current runtime. Other frontmatter is informational
-unless a component explicitly consumes it; for example, the subagent launcher
-uses `tools` and `model`, task metadata records parsed execution fields, and
-`roleType` is parsed metadata used by validation and policy checks. It is not a
-runtime coordination input unless an explicit consumer uses it. Unknown fields
-are not execution contracts.
+The parser applies no default frontmatter values. `effort` is passed to child Pi
+as `--thinking`. Child skill discovery is disabled with `--no-skills`; each
+`skills` entry is resolved to an explicit skill file and passed with `--skill`.
+Skill entries may be discovered skill names or paths relative to the agent file.
+Missing skills fail the launch explicitly. `tools` is a tool-name allowlist, not
+a path sandbox; any assigned path scope in an agent prompt is guidance only.
+Unknown fields are not execution contracts.
 
 If a bad persona prevents normal coordination, start Pi with
 `pi --no-extensions`, repair the affected file under `pi/agents/`, run
