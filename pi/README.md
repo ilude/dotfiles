@@ -582,10 +582,12 @@ Full documentation: `~/.dotfiles/pi/prompt-routing/AGENTS.md`
 
 ## Agent Architecture
 
-Interactive `gpt-5.6-sol`, Fable, and Opus parents coordinate substantive work
-through the active subagent runtime. The runtime and current agent files, not a
-static hierarchy diagram, determine routing and execution behavior. The `/team`
-slash command is retired.
+Interactive parents work directly by default on one coherent task. Fable, Opus,
+and `gpt-5.6-sol` at xhigh effort assess whether complex work has two or more
+independent work items that benefit from parallel delegation. `gpt-5.6-sol` at
+medium effort delegates only when that split is clearly beneficial. When a
+parent delegates, the active subagent runtime and current agent files determine
+routing and execution behavior. The `/team` slash command is retired.
 
 Active user-level personas live in `pi/agents/` and are discovered from
 `~/.pi/agent/agents/` at runtime. A nearest project `.pi/agents/` directory may
