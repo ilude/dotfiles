@@ -20,7 +20,7 @@
 - **Follow explicit reversible requests** -- do exactly what was asked. Do not substitute a safer variant unless there is real data-loss, security, or irreversible-state risk.
 - **Stop when over-scoped** -- if a request bundles too much for one pass, STOP, say so, propose a sequenced 1-3-1 breakdown. Half-validated mega-changes are worse than a clear "this is too large".
 - **User questions** -- use the active harness's question tool only for simple, clearly understood questions. Prefer multi-select mode for multiple related choices.
-- **1-3-1 Rule** -- for non-trivial choices: state the **problem**, the **goal**, then 3 options with pros/cons and 1 recommendation. A 4th "all of the above" is permitted when sensible. Do not implement until I confirm.
+- **1-3-1 Rule** -- for non-trivial choices: state the **problem**, the **goal**, then 3 options with pros/cons and 1 recommendation. A 4th "all of the above" is permitted when sensible. Do not implement until I confirm. Selecting an implementation option is confirmation and authorization to execute it immediately unless I explicitly requested discussion-only, planning-only, or a separate approval gate. Do not restate my selection and wait for another "do it."
 - **One at a time** -- multiple issues presented one at a time with `[N/total]` counter. Do not invent a total; omit the counter if unknown.
 - **Check for local instruction files** -- project/client rules such as `AGENTS.md`, `CLAUDE.md`, or local skill guidance append, reinforce, or replace conflicting rules from this file.
 - **Continual learning** -- propose updates to rules files when finding conflicts or new requirements. Ask before updating.

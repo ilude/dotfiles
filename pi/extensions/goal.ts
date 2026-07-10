@@ -4,6 +4,7 @@ import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { formatToolError } from "../lib/extension-utils.js";
+import { noteWorkflowSubmission } from "../lib/workflow-friction.js";
 
 const GOAL_STATE_TYPE = "local-goal-state";
 const INLINE_LIMIT = 15_000;
@@ -347,6 +348,10 @@ export default function (pi: ExtensionAPI) {
 				ctx?.ui?.notify?.(parsed.message, "warning");
 				return;
 			}
+			noteWorkflowSubmission(
+				args.trim() ? `/goal ${args.trim()}` : "/goal",
+				"explore",
+			);
 			activeGoal = parsed.goal;
 			await appendState(pi, stateEntry(activeGoal));
 			if (typeof pi.sendUserMessage === "function")

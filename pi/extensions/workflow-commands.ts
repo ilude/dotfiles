@@ -45,6 +45,7 @@ import {
 	buildSecretReviewPrompt,
 	buildSkillPrompt,
 } from "../lib/workflow-commands/prompts";
+import { noteWorkflowSubmission } from "../lib/workflow-friction";
 import { startWorkflowEpisode } from "../lib/workflow-telemetry";
 import { fetchCodexUsage, formatUsage } from "./codex-status";
 import { isOperatorReloadNeeded } from "./operator-status";
@@ -2370,6 +2371,10 @@ export default function (pi: ExtensionAPI) {
 			const planPath = args
 				.trim()
 				.match(/(\.specs\/[A-Za-z0-9._/-]+\/plan\.md)/)?.[1];
+			noteWorkflowSubmission(
+				args.trim() ? `/plan-it ${args.trim()}` : "/plan-it",
+				"engineer",
+			);
 			startWorkflowEpisode({
 				command: "plan-it",
 				args,
@@ -2429,6 +2434,10 @@ export default function (pi: ExtensionAPI) {
 			const planPath = args
 				.trim()
 				.match(/(\.specs\/[A-Za-z0-9._/-]+\/plan\.md)/)?.[1];
+			noteWorkflowSubmission(
+				args.trim() ? `/review-it ${args.trim()}` : "/review-it",
+				"engineer",
+			);
 			startWorkflowEpisode({
 				command: "review-it",
 				args,
@@ -2464,6 +2473,10 @@ export default function (pi: ExtensionAPI) {
 			const planPath = args
 				.trim()
 				.match(/(\.specs\/[A-Za-z0-9._/-]+\/plan\.md)/)?.[1];
+			noteWorkflowSubmission(
+				args.trim() ? `/do-it ${args.trim()}` : "/do-it",
+				"engineer",
+			);
 			startWorkflowEpisode({
 				command: "do-it",
 				args,
