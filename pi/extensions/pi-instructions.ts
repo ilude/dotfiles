@@ -2,17 +2,15 @@
  * pi-instructions: append Pi-specific architecture/conventions to the system
  * prompt on every Pi session.
  *
- * The shared rules (KISS, POLA, error handling, certainty calibration, etc.)
- * live in claude/CLAUDE.md and are loaded by Pi automatically as the global
- * context file at ~/.pi/agent/AGENTS.md (which is a symlink to
- * claude/CLAUDE.md). This extension adds the Pi-only architectural context
- * (orchestrator/leads/workers, frontmatter schema, knowledge compounding)
- * that does not belong in the cross-runtime CLAUDE.md.
+ * The shared rules live in the global and project AGENTS context. This
+ * extension adds a compact Pi-only safety and reference prompt for
+ * orchestration, ownership, runtime-state, commit, agent-config, and
+ * expertise boundaries.
  *
  * Source file: pi/PI-INSTRUCTIONS.md (sibling of pi/extensions/).
  *
  * On read failure, the extension logs a warning via ctx.ui and skips the
- * append. Pi should still start with the shared rules from CLAUDE.md;
+ * append. Pi should still start with the shared rules from the global/project AGENTS.md context;
  * losing the architectural context is degraded but not broken.
  */
 

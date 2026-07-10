@@ -1,4 +1,4 @@
-import type { Model } from "@earendil-works/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
 
 export interface ModelLike {
 	provider: string;
@@ -15,6 +15,14 @@ export type ModelSize =
 	| "small"
 	| "medium";
 export type ModelPolicy = "same-provider" | "same-family";
+
+type AnyModel = Model<Api>;
+
+function asRecord(value: unknown): Record<string, unknown> {
+	return value !== null && typeof value === "object"
+		? (value as Record<string, unknown>)
+		: {};
+}
 
 const NANO_HINT_RE = /(nano)/i;
 const MINI_HINT_RE = /(mini|small|haiku)/i;
@@ -214,6 +222,7 @@ export function resolveCommitPlanningModel<T extends ModelLike>(
 	currentModel?: ModelLike,
 ): T | undefined {
 	return (
+		findExact(availableModels, "openai-codex", "gpt-5.4-mini") ??
 		(currentModel
 			? resolveDynamicModel(
 					availableModels,
@@ -222,7 +231,6 @@ export function resolveCommitPlanningModel<T extends ModelLike>(
 					"same-family",
 				)
 			: undefined) ??
-		findExact(availableModels, "openai-codex", "gpt-5.4-mini") ??
 		findExact(availableModels, "openai", "gpt-5.4-mini") ??
 		findExact(availableModels, "github-copilot", "gpt-5.4-mini") ??
 		findFirstMini(availableModels, "openai-codex") ??
@@ -232,9 +240,9 @@ export function resolveCommitPlanningModel<T extends ModelLike>(
 }
 
 export async function resolveCommitPlanningModelFromRegistry(
-	modelRegistry: { getAvailable(): Model<any>[] },
-	ctx?: any,
-): Promise<Model<any> | undefined> {
+	modelRegistry: { getAvailable(): AnyModel[] },
+	ctx?: unknown,
+): Promise<AnyModel | undefined> {
 	const available = modelRegistry.getAvailable();
 	return resolveCommitPlanningModel(
 		available,
@@ -243,24 +251,23 @@ export async function resolveCommitPlanningModelFromRegistry(
 }
 
 export function getCurrentModelHint(
-	ctx: any,
+	ctx: unknown,
 	availableModels: readonly ModelLike[],
 ): ModelLike | undefined {
+	const context = asRecord(ctx);
 	const directCandidates = [
-		ctx?.model,
-		ctx?.currentModel,
-		ctx?.selectedModel,
-		ctx?.session?.model,
-		ctx?.state?.model,
+		context.model,
+		context.currentModel,
+		context.selectedModel,
+		asRecord(context.session).model,
+		asRecord(context.state).model,
 	];
 	for (const candidate of directCandidates) {
-		if (
-			candidate &&
-			typeof candidate === "object" &&
-			typeof candidate.provider === "string" &&
-			typeof candidate.id === "string"
-		) {
-			return candidate as ModelLike;
+		if (candidate && typeof candidate === "object") {
+			const model = asRecord(candidate);
+			if (typeof model.provider === "string" && typeof model.id === "string") {
+				return model as unknown as ModelLike;
+			}
 		}
 		if (typeof candidate === "string") {
 			const parsed = parseProviderModelString(candidate);
@@ -268,8 +275,9 @@ export function getCurrentModelHint(
 		}
 	}
 
-	const settingsProvider = ctx?.settings?.defaultProvider;
-	const settingsModel = ctx?.settings?.defaultModel;
+	const settings = asRecord(context.settings);
+	const settingsProvider = settings.defaultProvider;
+	const settingsModel = settings.defaultModel;
 	if (
 		typeof settingsProvider === "string" &&
 		typeof settingsModel === "string"
@@ -312,11 +320,11 @@ export function resolveDynamicModel<T extends ModelLike>(
 }
 
 export function resolveDynamicModelFromRegistry(
-	modelRegistry: { getAvailable(): Model<any>[] },
-	ctx: any,
+	modelRegistry: { getAvailable(): AnyModel[] },
+	ctx: unknown,
 	size: ModelSize,
 	policy: ModelPolicy = "same-provider",
-): Model<any> | undefined {
+): AnyModel | undefined {
 	const available = modelRegistry.getAvailable();
 	const current = getCurrentModelHint(ctx, available);
 	return resolveDynamicModel(available, current, size, policy);

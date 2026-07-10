@@ -1477,7 +1477,7 @@ async function confirmSecretScan(
 	);
 }
 
-async function classifyUntrackedFiles(
+export async function classifyUntrackedFiles(
 	ctx: WorkflowContext,
 	untrackedFiles: string[],
 ): Promise<UntrackedClassificationPlan> {
@@ -1516,6 +1516,9 @@ async function classifyUntrackedFiles(
 			signal: ctx.signal,
 		},
 	);
+	if (response.stopReason === "error" && response.errorMessage) {
+		throw new Error(response.errorMessage);
+	}
 	const text = extractAssistantText(response.content);
 	if (!text.trim()) {
 		throw new Error("Untracked classifier returned no assistant text");

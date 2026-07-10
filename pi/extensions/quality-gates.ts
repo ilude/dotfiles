@@ -1,9 +1,9 @@
 /**
  * Quality Gates Extension
  *
- * Intercepts tool_result events for write and edit operations,
- * runs the appropriate linter for the file's language, and
- * prepends a warning to the result content if the linter fails.
+ * Collects files changed by write and edit operations, then runs the
+ * appropriate linters once after the agent settles. Validation failures
+ * are added to the transcript without starting another agent turn.
  *
  * Validators are configured in:
  *   $HOME/.dotfiles/claude/hooks/quality-validation/validators.yaml
@@ -11,16 +11,12 @@
 
 // Convention exception: no extension-utils helpers apply directly.
 // Risk: helper API drifts and this file is not visited; mitigated because
-//   the file already uses the shared yaml-helpers loader (Phase 1 helper)
-//   and its only output is `tool_result` content augmentation, not a tool
-//   error envelope.
-// Why shared helper is inappropriate: tool_result handlers return
-//   ToolResultEventResult (content augmentation), not the
-//   tool-execute-error shape that formatToolError produces. canonicalize
-//   does not apply because the file uses path.extname and path.basename,
-//   not absolute-path safety checks. uiNotify does not apply because the
-//   warning is appended inline to the tool result content where the LLM
-//   will see it, not surfaced as a UI notification.
+//   the file already uses the shared yaml-helpers loader and reports
+//   validation failures as a transcript message, not a tool error envelope.
+// Why shared helper is inappropriate: formatToolError does not apply to
+//   transcript messages. canonicalize does not apply because the file uses
+//   path.extname and path.basename, not absolute-path safety checks.
+// uiNotify does not apply because failures need to remain in the transcript.
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -135,25 +131,54 @@ export async function runFirstAvailableValidator(
 	return undefined;
 }
 
-export default function (pi: ExtensionAPI) {
-	pi.on("tool_result", async (event: ToolResultEvent) => {
-		if (event.toolName !== "write" && event.toolName !== "edit") {
-			return undefined;
-		}
+export function registerQualityGates(
+	pi: ExtensionAPI,
+	languageByExtension: Map<string, LanguageConfig> = extMap,
+): void {
+	const touchedFiles = new Set<string>();
+
+	pi.on("tool_result", (event: ToolResultEvent) => {
+		if (event.toolName !== "write" && event.toolName !== "edit") return;
 
 		const filePath = getFilePath(event);
-		if (!filePath) return undefined;
+		if (!filePath) return;
 
 		const ext = path.extname(filePath).toLowerCase();
-		const langConfig = extMap.get(ext);
-		if (!langConfig) return undefined;
-
-		const failure = await runFirstAvailableValidator(pi, langConfig, filePath);
-		if (!failure) return undefined;
-
-		const warningText = `\u26a0 Quality gate: ${failure.name} reported issues in ${path.basename(filePath)}:\n${failure.output}`;
-		return {
-			content: [{ type: "text" as const, text: warningText }, ...event.content],
-		};
+		if (languageByExtension.has(ext)) touchedFiles.add(filePath);
 	});
+
+	pi.on("agent_settled", async () => {
+		const files = Array.from(touchedFiles).sort();
+		touchedFiles.clear();
+		if (files.length === 0) return;
+
+		const warnings: string[] = [];
+		for (const filePath of files) {
+			const ext = path.extname(filePath).toLowerCase();
+			const langConfig = languageByExtension.get(ext);
+			if (!langConfig) continue;
+
+			const failure = await runFirstAvailableValidator(
+				pi,
+				langConfig,
+				filePath,
+			);
+			if (failure) {
+				warnings.push(
+					`${failure.name} reported issues in ${path.basename(filePath)}:\n${failure.output}`,
+				);
+			}
+		}
+
+		if (warnings.length === 0) return;
+		pi.sendMessage({
+			customType: "quality-gates",
+			content: `Quality gate validation failed:\n\n${warnings.join("\n\n")}`,
+			display: true,
+		});
+	});
+}
+
+export default function (pi: ExtensionAPI) {
+	registerQualityGates(pi);
 }

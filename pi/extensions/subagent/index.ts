@@ -343,7 +343,7 @@ function getDefaultArtifactPath(agent: string, index: number): string {
 	return path.join(dir, `${Date.now()}_${process.pid}_${index + 1}_${safeAgent}_output.md`);
 }
 
-function resolveOutputPath(output: string | false | undefined, defaultCwd: string, requestedCwd: string | undefined, agent: string, index: number): string | undefined {
+function resolveOutputPath(output: string | boolean | undefined, defaultCwd: string, requestedCwd: string | undefined, agent: string, index: number): string | undefined {
 	// Some providers/tool-call layers have been observed to coerce JSON boolean
 	// false into the string "false". Treat both as the documented sentinel for
 	// disabling saved artifacts so reviewer panels never create repo-root files
@@ -367,6 +367,44 @@ function saveOutputArtifact(outputPath: string, fullOutput: string): { reference
 	}
 }
 
+function finalizeOutput(
+	result: SingleResult,
+	output: string | boolean | undefined,
+	outputMode: OutputMode | undefined,
+	defaultCwd: string,
+	requestedCwd: string | undefined,
+	index: number,
+	saveByDefault: boolean,
+): SingleResult {
+	result.outputMode = outputMode ?? "inline";
+	const shouldSave = saveByDefault || output !== undefined || result.outputMode === "file-only";
+	result.outputPath = shouldSave ? resolveOutputPath(output, defaultCwd, requestedCwd, result.agent, index) : undefined;
+	if (result.outputPath && result.exitCode === 0 && result.stopReason !== "error") {
+		const saved = saveOutputArtifact(result.outputPath, getFinalOutput(result.messages));
+		result.outputReference = saved.reference;
+		result.saveError = saved.error;
+	}
+	return result;
+}
+
+function getArtifactFallbackMessage(result: SingleResult): string | undefined {
+	if (result.saveError && result.outputPath) {
+		return `Output file error: ${result.outputPath}\n${result.saveError}`;
+	}
+	if (result.outputPath === undefined) {
+		return "Output artifact disabled by output: false. Returning child output inline.";
+	}
+	return undefined;
+}
+
+function getOutputForParent(result: SingleResult): string {
+	const output = getFinalOutput(result.messages);
+	if (result.outputMode !== "file-only") return output;
+	if (result.outputReference) return result.outputReference.message;
+	const fallbackMessage = getArtifactFallbackMessage(result);
+	return fallbackMessage ? `${output}\n\n${fallbackMessage}`.trim() : output;
+}
+
 export function aggregateParallelOutputs(results: SingleResult[]): string {
 	return results
 		.map((r, i) => {
@@ -383,8 +421,9 @@ export function aggregateParallelOutputs(results: SingleResult[]): string {
 			let body = status ? (hasOutput ? `${status}\n${output}` : status) : output;
 			if (r.outputReference) {
 				body = r.outputMode === "file-only" ? r.outputReference.message : `${body}\n\n${r.outputReference.message}`;
-			} else if (r.saveError && r.outputPath) {
-				body = `${body}\n\nOutput file error: ${r.outputPath}\n${r.saveError}`;
+			} else if (r.outputMode === "file-only" || r.saveError) {
+				const fallbackMessage = getArtifactFallbackMessage(r);
+				if (fallbackMessage) body = `${body}\n\n${fallbackMessage}`;
 			}
 			return `${header}\n${body}`;
 		})
@@ -743,7 +782,7 @@ async function runSingleAgent(
 	}
 }
 
-type TaskParams = { agent: string; task: string; cwd?: string; output?: string | false; outputMode?: OutputMode };
+type TaskParams = { agent: string; task: string; cwd?: string; output?: string | boolean; outputMode?: OutputMode };
 
 type ChainParams = TaskParams;
 
@@ -801,9 +840,15 @@ const SubagentParams = Type.Object({
 	modelSize: Type.Optional(ModelSizeSchema),
 	modelPolicy: Type.Optional(ModelPolicySchema),
 	confirmProjectAgents: Type.Optional(
-		Type.Boolean({ description: "Prompt before running project-local agents. Default: true.", default: true }),
+		Type.Boolean({ description: "Prompt before running project-local agents. Default: false.", default: false }),
 	),
-	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process (single mode)" })),
+	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process (single or team-dispatch mode)" })),
+	output: Type.Optional(
+		Type.Union([Type.String(), Type.Boolean()], {
+			description: "Optional artifact path for full output in single or team-dispatch mode. Set false to disable saved artifacts.",
+		}),
+	),
+	outputMode: Type.Optional(OutputModeSchema),
 });
 
 export default function (pi: ExtensionAPI) {
@@ -828,7 +873,7 @@ export default function (pi: ExtensionAPI) {
 			const resolvedModelId = explicitModel ?? (resolvedModel ? `${resolvedModel.provider}/${resolvedModel.id}` : undefined);
 			const discovery = discoverAgents(ctx.cwd, agentScope);
 			const agents = discovery.agents;
-			const confirmProjectAgents = params.confirmProjectAgents ?? true;
+			const confirmProjectAgents = params.confirmProjectAgents ?? false;
 
 			const hasChain = (params.chain?.length ?? 0) > 0;
 			const hasTasks = (params.tasks?.length ?? 0) > 0;
@@ -958,6 +1003,7 @@ export default function (pi: ExtensionAPI) {
 						modelSize,
 						modelPolicy,
 					);
+					finalizeOutput(result, step.output, step.outputMode, ctx.cwd, step.cwd, i, false);
 					results.push(result);
 
 					const isError =
@@ -971,10 +1017,19 @@ export default function (pi: ExtensionAPI) {
 							isError: true,
 						};
 					}
-					previousOutput = getFinalOutput(result.messages);
+					previousOutput =
+						result.outputMode === "file-only" && result.outputReference
+							? result.outputReference.message
+							: getFinalOutput(result.messages);
 				}
+				const finalResult = results[results.length - 1];
 				return {
-					content: [{ type: "text", text: getFinalOutput(results[results.length - 1].messages) || "(no output)" }],
+					content: [
+						{
+							type: "text",
+							text: getOutputForParent(finalResult) || "(no output)",
+						},
+					],
 					details: makeDetails("chain")(results),
 				};
 			}
@@ -1037,16 +1092,7 @@ export default function (pi: ExtensionAPI) {
 						modelSize,
 						modelPolicy,
 					);
-					const outputMode = t.outputMode ?? "inline";
-					const outputPath = resolveOutputPath(t.output, ctx.cwd, t.cwd, t.agent, index);
-					const fullOutput = getFinalOutput(result.messages);
-					result.outputMode = outputMode;
-					result.outputPath = outputPath;
-					if (outputPath && result.exitCode === 0 && result.stopReason !== "error") {
-						const saved = saveOutputArtifact(outputPath, fullOutput);
-						result.outputReference = saved.reference;
-						result.saveError = saved.error;
-					}
+					finalizeOutput(result, t.output, t.outputMode, ctx.cwd, t.cwd, index, true);
 					allResults[index] = result;
 					emitParallelUpdate();
 					return result;
@@ -1081,6 +1127,7 @@ export default function (pi: ExtensionAPI) {
 					modelSize,
 					modelPolicy,
 				);
+				finalizeOutput(result, params.output, params.outputMode, ctx.cwd, params.cwd, 0, false);
 				const isError = result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted";
 				if (isError) {
 					const errorMsg =
@@ -1092,7 +1139,12 @@ export default function (pi: ExtensionAPI) {
 					};
 				}
 				return {
-					content: [{ type: "text", text: getFinalOutput(result.messages) || "(no output)" }],
+					content: [
+						{
+							type: "text",
+							text: getOutputForParent(result) || "(no output)",
+						},
+					],
 					details: makeDetails("single")([result]),
 				};
 			}
