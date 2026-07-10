@@ -16,21 +16,21 @@ Follow-up work identified while refining Pi orchestration, prompt size, and suba
 
    Nested `AGENTS.md` content is persisted through hidden messages. `pi/prompt-routing/AGENTS.md` alone is 376 lines. Inject relevant instructions ephemerally and move historical detail into referenced docs.
 
-5. **Open - Make agent frontmatter truthful**
+5. **Complete - Make agent frontmatter truthful**
 
-   `domain`, `skills`, `expertise`, `effort`, and `maxTurns` are partly or wholly advisory. Either enforce them or remove claims that imply enforcement, especially path permissions and reasoning effort.
+   `tools`, `model`, `effort`, and `skills` now map to launcher arguments. Unenforced `domain`, `expertise`, and `maxTurns` fields were removed; assigned path scope is explicitly labeled as prompt guidance rather than a sandbox.
 
-6. **Open - Reduce child skill exposure**
+6. **Complete - Reduce child skill exposure**
 
-   Subagents currently receive the broad skill catalog. Parse agent-specific skills and launch children with `--no-skills` plus only relevant explicit skills, reducing initial context.
+   Subagents launch with `--no-skills` and only validated agent-specific `--skill` paths. Missing configured skills fail explicitly instead of falling back to the broad catalog.
 
 7. **Open - Shorten workflow prompts**
 
    `/plan-it`, `/review-it`, and `/do-it` repeat global safety, planning, validation, and reporting rules. Convert each into a short state machine with one output contract.
 
-8. **In progress - Remove overlapping or no-op tools**
+8. **Complete - Remove overlapping or no-op tools**
 
-   `task_execute`, `task_stop`, and `task_output` now provide background subagent execution, cancellation, and bounded artifact-backed output. The remaining work is to resolve the overlap between `todo` and the durable `task_*` tools so each workflow exposes one task surface.
+   The unified `task` tool now owns planning, dependencies, lifecycle updates, background execution, cancellation, and bounded output. The separate `todo` and model-facing `task_*` tools were retired; `/tasks` remains the operator UI, and legacy `.pi/todo.json` state imports idempotently into the durable registry.
 
 9. **Open - Add orchestration telemetry**
 

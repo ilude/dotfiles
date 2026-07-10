@@ -7,7 +7,6 @@ routingUse: "Use for direct small coding tasks and compact implementation-risk r
 isolation: none
 memory: project
 effort: medium
-maxTurns: 25
 tools: read, grep, bash, edit, write, ask_user, web_search, web_fetch, pwsh
 ---
 

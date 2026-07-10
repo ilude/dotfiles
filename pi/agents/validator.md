@@ -5,20 +5,11 @@ model: openai-codex/gpt-5.6-luna
 roleType: worker
 reportsTo: validation-lead
 routingUse: "Use for direct lightweight validation of a task or changed files; read-only execution, not coordination."
-expertise:
-  - path: .pi/multi-team/expertise/validator-mental-model.yaml
-    use-when: "Track validation commands, common failure modes, and reliable fallback checks."
-    updatable: true
-    max-lines: 10000
-skills:
-  - path: .pi/multi-team/skills/mental-model.md
-    use-when: Read at task start. Update after completing work.
-  - path: .pi/multi-team/skills/precise-worker.md
-    use-when: Always. Validate exactly the assigned scope.
 isolation: none
 memory: project
 effort: medium
-maxTurns: 25
+skills:
+  - analysis-workflow
 tools: read, grep, bash
 ---
 

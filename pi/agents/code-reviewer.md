@@ -4,20 +4,11 @@ description: Autonomous code review worker for branch/diff review. Use for PR-st
 model: openai-codex/gpt-5.6-sol
 roleType: worker
 routingUse: "Use for direct read-only code review of a diff/branch; not plan review or team coordination."
-expertise:
-  - path: .pi/multi-team/expertise/code-reviewer-mental-model.yaml
-    use-when: "Track code review patterns, recurring defects, and false-positive avoidance strategies."
-    updatable: true
-    max-lines: 10000
-skills:
-  - path: .pi/multi-team/skills/mental-model.md
-    use-when: Read at task start. Update after completing work.
-  - path: .pi/multi-team/skills/precise-worker.md
-    use-when: Always. Review only the assigned scope.
 isolation: none
 memory: project
 effort: medium
-maxTurns: 25
+skills:
+  - code-review
 tools: read, grep, bash
 ---
 

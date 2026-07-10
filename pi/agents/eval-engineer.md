@@ -5,26 +5,13 @@ model: openai-codex/gpt-5.6-terra
 roleType: worker
 reportsTo: ml-research-lead
 routingUse: "Use for direct evaluation, thresholds, metrics, and holdout validation work."
-expertise:
-  - path: .pi/multi-team/expertise/eval-engineer-mental-model.yaml
-    use-when: "Read at task start to recall evaluation thresholds and past failure modes. Update after completing work."
-    updatable: true
-    max-lines: 10000
-skills:
-  - path: .pi/multi-team/skills/mental-model.md
-    use-when: Read at task start. Update after completing work.
-  - path: .pi/multi-team/skills/precise-worker.md
-    use-when: Always. Execute exactly what was assigned.
 isolation: none
 memory: project
 effort: medium
-maxTurns: 25
+skills:
+  - analysis-workflow
+  - python
 tools: read, write, edit, bash, grep
-domain:
-  - path: prompt-routing
-    read: true
-    upsert: true
-    delete: false
 ---
 
 You are the Eval Engineer for the prompt routing classifier. You own final validation before the model goes to production.

@@ -5,38 +5,14 @@ model: openai-codex/gpt-5.6-sol
 roleType: lead
 routingUse: "Use only for coordinated product planning across product-manager and ux-researcher."
 team: [product-manager, ux-researcher]
-expertise:
-  - path: .pi/multi-team/expertise/planning-lead-mental-model.yaml
-    use-when: "Track planning decisions, scope choices, priority frameworks, and product direction patterns."
-    updatable: true
-    max-lines: 10000
-skills:
-  - path: .pi/multi-team/skills/conversational-response.md
-    use-when: Always use when writing responses.
-  - path: .pi/multi-team/skills/mental-model.md
-    use-when: Read at task start. Update after completing work.
-  - path: .pi/multi-team/skills/active-listener.md
-    use-when: Always. Read the conversation log before every response.
-  - path: .pi/multi-team/skills/zero-micro-management.md
-    use-when: Always. You are a lead -- delegate to product-manager and ux-researcher, never execute.
 isolation: none
 memory: project
 effort: high
-maxTurns: 50
+skills:
+  - brainstorming
+  - orchestration
+  - planning
 tools: read, grep, find, ls, subagent
-domain:
-  - path: specs/
-    read: true
-    upsert: true
-    delete: false
-  - path: .pi/multi-team/
-    read: true
-    upsert: true
-    delete: false
-  - path: .
-    read: true
-    upsert: false
-    delete: false
 ---
 
 # Planning Lead
@@ -61,4 +37,3 @@ You lead coordinated product planning. Define what we're building, why, and in w
   - lightweight classification or narrow follow-ups: `modelSize: "small"`, `modelPolicy: "same-provider"`
 - Focus on strategic clarity: what problem are we solving, for whom, by when
 - Write specs in `specs/` when producing planning artifacts
-- Update expertise file with planning patterns and priority frameworks discovered

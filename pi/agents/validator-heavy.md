@@ -5,20 +5,11 @@ model: openai-codex/gpt-5.6-sol
 roleType: worker
 reportsTo: validation-lead
 routingUse: "Use for direct deep validation of complex or multi-worker changes; read-only execution, not coordination."
-expertise:
-  - path: .pi/multi-team/expertise/validator-heavy-mental-model.yaml
-    use-when: "Track integration validation patterns, architectural consistency checks, and recurring cross-builder failure modes."
-    updatable: true
-    max-lines: 10000
-skills:
-  - path: .pi/multi-team/skills/mental-model.md
-    use-when: Read at task start. Update after completing work.
-  - path: .pi/multi-team/skills/precise-worker.md
-    use-when: Always. Validate exactly the assigned wave/scope.
 isolation: none
 memory: project
 effort: high
-maxTurns: 35
+skills:
+  - analysis-workflow
 tools: read, grep, bash
 ---
 

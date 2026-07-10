@@ -35,6 +35,7 @@ vi.mock("node:child_process", () => ({
 
 describe("subagent model override routing", () => {
 	let tmpDir: string;
+	let skillDir: string;
 	let prevOperatorDir: string | undefined;
 
 	beforeEach(async () => {
@@ -42,7 +43,20 @@ describe("subagent model override routing", () => {
 			path.join(os.tmpdir(), "pi-subagent-test-"),
 		);
 		const agentsDir = path.join(tmpDir, ".pi", "agents");
+		skillDir = path.join(tmpDir, ".pi", "skills", "test-skill");
 		await fs.promises.mkdir(agentsDir, { recursive: true });
+		await fs.promises.mkdir(skillDir, { recursive: true });
+		await fs.promises.writeFile(
+			path.join(skillDir, "SKILL.md"),
+			`---
+name: test-skill
+description: Test-only skill
+---
+
+# Test Skill
+`,
+			"utf8",
+		);
 		await fs.promises.writeFile(
 			path.join(agentsDir, "tester.md"),
 			`---
@@ -50,6 +64,8 @@ name: tester
 description: Test agent
 model: anthropic/claude-sonnet-4-6
 effort: high
+skills:
+  - ../skills/test-skill/SKILL.md
 ---
 
 You are a test agent.
@@ -130,6 +146,19 @@ You are a test agent.
 			expect(result.isError).not.toBe(true);
 			expect(ctx.ui.confirm).not.toHaveBeenCalled();
 			expect(spawnMock).toHaveBeenCalledTimes(1);
+			const spawnArgs = spawnMock.mock.calls[0][1] as string[];
+			expect(spawnArgs).toContain("--no-skills");
+			expect(spawnArgs).toContain("--thinking");
+			expect(spawnArgs[spawnArgs.indexOf("--thinking") + 1]).toBe("high");
+			expect(spawnArgs).toContain("--skill");
+			expect(spawnArgs[spawnArgs.indexOf("--skill") + 1]).toBe(
+				path.join(skillDir, "SKILL.md"),
+			);
+			const spawnOptions = spawnMock.mock.calls[0][2] as {
+				env: Record<string, string>;
+			};
+			expect(spawnOptions.env.PI_SUBAGENT_RUN_ID).toMatch(/^[0-9a-f-]+$/);
+			expect(Date.parse(spawnOptions.env.PI_SUBAGENT_STARTED_AT)).not.toBeNaN();
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);

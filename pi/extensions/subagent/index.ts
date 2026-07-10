@@ -13,6 +13,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -35,6 +36,7 @@ import {
 import { TimingSpan } from "../../lib/observability.js";
 import {
 	createTask,
+	resolveTaskWorkspace,
 	transitionTask,
 	updateTask,
 } from "../../lib/task-registry.js";
@@ -52,7 +54,12 @@ import {
 	newSpanId,
 	newTraceId,
 } from "../transcript-runtime.js";
-import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.js";
+import {
+	type AgentConfig,
+	type AgentScope,
+	discoverAgents,
+	resolveAgentSkillPaths,
+} from "./agents.js";
 
 /**
  * Operator task registry integration -- defensive wrappers.
@@ -75,7 +82,7 @@ function safeCreateSubagentTask(
 		const metadata: Record<string, unknown> = { cwd };
 		metadata.model = model ?? agentConfig?.model ?? "default";
 		metadata.effort = agentConfig?.effort ?? "default";
-		if (agentConfig?.maxTurns) metadata.maxTurns = agentConfig.maxTurns;
+		if (agentConfig?.skills) metadata.skills = agentConfig.skills;
 		if (agentConfig?.isolation) metadata.isolation = agentConfig.isolation;
 		if (agentConfig?.memory) metadata.memory = agentConfig.memory;
 		const record = createTask({
@@ -83,6 +90,7 @@ function safeCreateSubagentTask(
 			summary,
 			agentName,
 			prompt: snippet,
+			workspace: resolveTaskWorkspace(cwd),
 			metadata,
 		});
 		// T14: structured metrics event mirrors the registry write so
@@ -672,11 +680,20 @@ export async function runSingleAgent(
 		};
 	}
 
-	const args: string[] = ["--mode", "json", "-p", "--no-session"];
+	const args: string[] = [
+		"--mode",
+		"json",
+		"-p",
+		"--no-session",
+		"--no-skills",
+	];
 	if (modelOverride) args.push("--model", modelOverride);
 	else if (agent.model) args.push("--model", agent.model);
+	if (agent.effort) args.push("--thinking", agent.effort);
 	if (agent.tools && agent.tools.length > 0)
 		args.push("--tools", agent.tools.join(","));
+	for (const skillPath of resolveAgentSkillPaths(agent))
+		args.push("--skill", skillPath);
 
 	let tmpPromptDir: string | null = null;
 	let tmpPromptPath: string | null = null;
@@ -728,6 +745,7 @@ export async function runSingleAgent(
 			agent,
 			currentResult.model,
 		);
+	const runId = taskId ?? randomUUID();
 	const planPath = extractPlanPath(task);
 	const workflow = inferWorkflow(task);
 	const timingSpan = new TimingSpan({
@@ -761,6 +779,7 @@ export async function runSingleAgent(
 		args.push(`Task: ${task}`);
 		let wasAborted = false;
 
+		const subagentStartedAt = new Date().toISOString();
 		const exitCode = await new Promise<number>((resolve) => {
 			let resolved = false;
 			let proc: ReturnType<typeof spawn> | undefined;
@@ -777,6 +796,8 @@ export async function runSingleAgent(
 			const childEnv = {
 				...process.env,
 				TRACEPARENT: buildSubagentTraceparent(),
+				PI_SUBAGENT_RUN_ID: runId,
+				PI_SUBAGENT_STARTED_AT: subagentStartedAt,
 			};
 			proc = spawn(invocation.command, invocation.args, {
 				cwd: cwd ?? defaultCwd,

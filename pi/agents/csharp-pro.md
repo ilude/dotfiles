@@ -4,20 +4,11 @@ description: Expert C#/.NET specialist for autonomous multi-step tasks, .NET bui
 model: openai-codex/gpt-5.6-terra
 roleType: specialist
 routingUse: "Use for direct C#/.NET implementation, debugging, build, test, and review tasks."
-expertise:
-  - path: .pi/multi-team/expertise/csharp-pro-mental-model.yaml
-    use-when: "Track C#/.NET patterns, project conventions, recurring build issues, and testing approaches."
-    updatable: true
-    max-lines: 10000
-skills:
-  - path: .pi/multi-team/skills/mental-model.md
-    use-when: Read at task start. Update after completing work.
-  - path: .pi/multi-team/skills/precise-worker.md
-    use-when: Always. Execute exactly what was assigned.
 isolation: none
 memory: project
 effort: medium
-maxTurns: 25
+skills:
+  - csharp
 tools: read, grep, bash, pwsh, edit, write
 ---
 

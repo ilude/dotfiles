@@ -7,7 +7,6 @@ routingUse: "Use for direct complex coding tasks requiring deep context, multi-f
 isolation: none
 memory: project
 effort: high
-maxTurns: 50
 tools: read, grep, bash, edit, write, ask_user, web_search, web_fetch, pwsh
 ---
 

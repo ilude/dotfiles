@@ -7,7 +7,6 @@ routingUse: "Use for direct medium coding tasks spanning a few files and moderat
 isolation: none
 memory: project
 effort: medium
-maxTurns: 35
 tools: read, grep, bash, edit, write, ask_user, web_search, web_fetch, pwsh
 ---
 

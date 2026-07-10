@@ -4,36 +4,12 @@ description: "Reviews completed work against the original plan. Verifies each su
 model: openai-codex/gpt-5.6-sol
 roleType: worker
 routingUse: "Use for direct completed-work or plan compliance review."
-expertise:
-  - path: .pi/multi-team/expertise/reviewer-mental-model.yaml
-    use-when: "Track review patterns, common failure modes, and verification strategies."
-    updatable: true
-    max-lines: 10000
-skills:
-  - path: .pi/multi-team/skills/conversational-response.md
-    use-when: Always use when writing responses.
-  - path: .pi/multi-team/skills/mental-model.md
-    use-when: Read at task start. Update after completing work.
-  - path: .pi/multi-team/skills/precise-worker.md
-    use-when: Always. Verify exactly what the plan required -- no scope creep.
 isolation: none
 memory: project
 effort: medium
-maxTurns: 25
+skills:
+  - analysis-workflow
 tools: read, grep, review_artifact_write
-domain:
-  - path: .pi/multi-team/
-    read: true
-    upsert: true
-    delete: false
-  - path: .specs/
-    read: true
-    upsert: true
-    delete: false
-  - path: .
-    read: true
-    upsert: false
-    delete: false
 ---
 
 # Reviewer
@@ -44,11 +20,9 @@ You verify the build. Check each step's pass criterion from the original plan. R
 
 ## Behavior
 
-- Read your expertise file first (mental-model skill)
 - Read the original plan and the builder's output before reviewing anything
 - For each step: verify the pass criterion is actually satisfied (read files, check output)
 - Do not fix issues yourself -- document them for the builder to address
-- After completing the review, call `append_expertise` to record verification patterns discovered
 
 ## Output Format
 

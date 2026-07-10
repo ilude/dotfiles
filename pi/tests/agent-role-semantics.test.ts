@@ -12,14 +12,44 @@ describe("agent source and role semantics", () => {
 		const agents = loadAgentsFromDir(AGENTS_DIR, "user");
 
 		expect(agents.length).toBeGreaterThan(0);
-		expect(agents.every((agent) => agent.filePath.includes(`${path.sep}pi${path.sep}agents${path.sep}`))).toBe(true);
-		expect(agents.every((agent) => !agent.filePath.includes(`${path.sep}pi${path.sep}multi-team${path.sep}agents${path.sep}`))).toBe(true);
+		expect(
+			agents.every((agent) =>
+				agent.filePath.includes(`${path.sep}pi${path.sep}agents${path.sep}`),
+			),
+		).toBe(true);
+		expect(
+			agents.every(
+				(agent) =>
+					!agent.filePath.includes(
+						`${path.sep}pi${path.sep}multi-team${path.sep}agents${path.sep}`,
+					),
+			),
+		).toBe(true);
 	});
 
-	it("parses roleType frontmatter for active agents", () => {
+	it("parses enforced execution frontmatter for active agents", () => {
 		const agents = loadAgentsFromDir(AGENTS_DIR, "user");
-		expect(agents.find((agent) => agent.name === "engineering-lead")?.roleType).toBe("lead");
-		expect(agents.find((agent) => agent.name === "builder")?.roleType).toBe("worker");
+		expect(
+			agents.find((agent) => agent.name === "engineering-lead")?.roleType,
+		).toBe("lead");
+		expect(agents.find((agent) => agent.name === "builder")?.roleType).toBe(
+			"worker",
+		);
+		expect(agents.every((agent) => agent.effort)).toBe(true);
+		expect(
+			agents.find((agent) => agent.name === "code-reviewer")?.skills,
+		).toEqual(["code-review"]);
+	});
+
+	it("does not advertise unenforced domain, expertise, or maxTurns fields", () => {
+		for (const file of fs
+			.readdirSync(AGENTS_DIR)
+			.filter((name) => name.endsWith(".md"))) {
+			const content = fs.readFileSync(path.join(AGENTS_DIR, file), "utf-8");
+			expect(content).not.toMatch(/^domain:/m);
+			expect(content).not.toMatch(/^expertise:/m);
+			expect(content).not.toMatch(/^maxTurns:/m);
+		}
 	});
 
 	it("keeps lead/orchestrator agents coordination-only by default", () => {
@@ -41,7 +71,9 @@ describe("agent source and role semantics", () => {
 		);
 
 		expect(agents.length).toBeGreaterThan(0);
-		expect(agents.every((agent) => !(agent.tools ?? []).includes("subagent"))).toBe(true);
+		expect(
+			agents.every((agent) => !(agent.tools ?? []).includes("subagent")),
+		).toBe(true);
 	});
 
 	it("keeps the intended tier agents from delegating", () => {
@@ -62,7 +94,10 @@ describe("agent source and role semantics", () => {
 	});
 
 	it("documents a recovery path for bad agent config", () => {
-		const readme = fs.readFileSync(path.resolve(__dirname, "..", "README.md"), "utf-8");
+		const readme = fs.readFileSync(
+			path.resolve(__dirname, "..", "README.md"),
+			"utf-8",
+		);
 		expect(readme).toContain("Agent config recovery");
 		expect(readme).toContain("pi/agents/");
 	});
