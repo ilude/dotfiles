@@ -365,7 +365,7 @@ describe("safeParseClassifierOutput", () => {
 
 describe("buildStatusLabel", () => {
 	it("shows only route size for small", () => {
-		expect(buildStatusLabel("low", "low", "gpt-5.4-mini", "minimal")).toBe(
+		expect(buildStatusLabel("low", "low", "gpt-5.6-luna", "low")).toBe(
 			"route: small",
 		);
 	});
@@ -984,7 +984,7 @@ describe("prompt-router extension -- command registration", () => {
 			"info",
 		);
 		expect((ctx.ui as any).notify).toHaveBeenCalledWith(
-			expect.stringContaining("Current effort:"),
+			expect.stringContaining("Current effort:   low"),
 			"info",
 		);
 	});

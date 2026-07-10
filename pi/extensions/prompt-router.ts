@@ -782,7 +782,7 @@ const TIER_KEYS: Tier[] = ["low", "mid", "high"];
 
 // Static tier->effort mapping -- fallback when classifier returns null.
 const TIER_EFFORT: Record<Tier, string> = {
-	low: "minimal",
+	low: "low",
 	mid: "medium",
 	high: "high",
 };
@@ -1458,7 +1458,7 @@ export default function (pi: ExtensionAPI) {
 				`  Cooldown turns:   ${state.cooldownTurnsRemaining}`,
 				``,
 				`  Runtime tier map (diagnostic):`,
-				`    low  -> ${resolveModelTierLabel(resolved.low, "small")}  [route: mini, effort: minimal]`,
+				`    low  -> ${resolveModelTierLabel(resolved.low, "small")}  [route: mini, effort: low]`,
 				`    mid  -> ${resolveModelTierLabel(resolved.mid, "medium")}  [route: core, effort: medium]`,
 				`    high -> ${resolveModelTierLabel(resolved.high, "large")}  [route: large, effort: high]`,
 				``,
