@@ -170,5 +170,5 @@ sessions/
 # Scratch dir (gitignored per CLAUDE.md convention)
 /.tmp/
 claude/commands/yt/hermes-transcript.tmp.txt
-.specs/archive/pi-orchestration-telemetry/execution-evidence/smoke-dir.txt
+/.specs/**/execution-evidence/
 .specs/archive/pi-orchestration-telemetry/review-1/execution-state.md
