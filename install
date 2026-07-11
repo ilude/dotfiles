@@ -238,8 +238,8 @@ completed_steps+=("fnm install")
 
 current_step="Homebrew packages"
 if [[ "$OSTYPE" == "darwin"* ]] && command -v brew &>/dev/null; then
-    echo "Installing Homebrew packages..."
-    if ! brew bundle --file="${BASEDIR}/Brewfile"; then
+    echo "Installing Homebrew packages without auto-updating Homebrew..."
+    if ! HOMEBREW_NO_AUTO_UPDATE=1 brew bundle --file="${BASEDIR}/Brewfile"; then
         echo "Warning: some Homebrew packages failed to install"
     fi
 fi
