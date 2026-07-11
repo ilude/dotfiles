@@ -5,6 +5,8 @@ import { type AgentScope, discoverAgents } from "./subagent/agents.js";
 
 const FABLE_MODEL_ID = "amazon-bedrock/us.anthropic.claude-fable-5";
 const FABLE_THINKING_LEVEL = "high";
+const FOREMAN_MODEL_ID = "openai-codex/gpt-5.6-sol";
+const FOREMAN_THINKING_LEVEL = "xhigh";
 const UNKNOWN_PROVIDER_ERROR = "An unknown error occurred";
 const FABLE_BEDROCK_UNKNOWN_ERROR =
 	"Bedrock Fable request failed without provider details. The Bedrock stream adapter did not preserve the underlying ValidationException or stop reason.";
@@ -24,6 +26,14 @@ const DIRECT_FIRST_INSTRUCTION = [
 const DELEGATION_BIASED_INSTRUCTION = [
 	"Before complex repository work, assess whether it has two or more independent work items.",
 	"Delegate them in parallel when that split is material; otherwise work directly.",
+].join(" ");
+const FOREMAN_INSTRUCTION = [
+	"Act as the foreman for a team of lower-cost Codex subagents.",
+	"Use your stronger judgment and understanding of user intent to keep the work aligned with the requested outcome.",
+	"Minimize your own token usage by delegating investigation, implementation, and validation instead of doing that work yourself.",
+	"Stay focused on the big picture: divide the work, coordinate execution, resolve ambiguity, review evidence, correct course, and synthesize the final result.",
+	"Keep solutions simple and proportionate: follow YAGNI and KISS, prefer the Pareto 80/20 solution, and avoid over-complication or gold-plating.",
+	"Require tests that protect distinct user-visible contracts, regressions, edge cases, or safety properties; do not create tests that merely restate implementation details or add no decision-relevant confidence.",
 ].join(" ");
 
 type SubagentInput = {
@@ -204,6 +214,8 @@ export function isDelegationBiasedParent(
 }
 
 export default function fableCommand(pi: ExtensionAPI): void {
+	let foremanMode = false;
+
 	pi.on("before_provider_request", (event, ctx) =>
 		sanitizeFableBedrockPayload(event.payload, ctx.model),
 	);
@@ -223,9 +235,15 @@ export default function fableCommand(pi: ExtensionAPI): void {
 
 	pi.on("before_agent_start", (event, ctx) => {
 		if (!isInteractiveOrchestratorParent(ctx)) return undefined;
-		const instruction = isDelegationBiasedParent(ctx, pi.getThinkingLevel())
-			? `${DIRECT_FIRST_INSTRUCTION} ${DELEGATION_BIASED_INSTRUCTION}`
-			: DIRECT_FIRST_INSTRUCTION;
+		const instruction =
+			isFableBedrockModel(ctx.model) ||
+			(foremanMode &&
+				ctx.model?.provider === "openai-codex" &&
+				ctx.model.id === "gpt-5.6-sol")
+				? FOREMAN_INSTRUCTION
+				: isDelegationBiasedParent(ctx, pi.getThinkingLevel())
+					? `${DIRECT_FIRST_INSTRUCTION} ${DELEGATION_BIASED_INSTRUCTION}`
+					: DIRECT_FIRST_INSTRUCTION;
 		return {
 			systemPrompt: `${event.systemPrompt}\n\n${instruction}`,
 		};
@@ -246,6 +264,46 @@ export default function fableCommand(pi: ExtensionAPI): void {
 			return undefined;
 		}
 		return undefined;
+	});
+
+	pi.registerCommand("foreman", {
+		description: "Switch to GPT-5.6 Sol xhigh as a delegating foreman.",
+		handler: async (args, ctx) => {
+			const task = args.trim();
+			if (!task) {
+				ctx.ui.notify("Usage: /foreman <task>", "warning");
+				return;
+			}
+
+			const foremanModel = findModel(
+				ctx.modelRegistry.getAvailable(),
+				FOREMAN_MODEL_ID,
+			);
+			if (!foremanModel) {
+				ctx.ui.notify(
+					`Foreman model not available: ${FOREMAN_MODEL_ID}`,
+					"error",
+				);
+				return;
+			}
+
+			const changed = await pi.setModel(foremanModel);
+			if (!changed) {
+				ctx.ui.notify(
+					`Could not switch to ${FOREMAN_MODEL_ID}. Check provider credentials.`,
+					"error",
+				);
+				return;
+			}
+
+			foremanMode = true;
+			pi.setThinkingLevel(FOREMAN_THINKING_LEVEL);
+			ctx.ui.notify(
+				`${FOREMAN_MODEL_ID}[${FOREMAN_THINKING_LEVEL}] orchestration started.`,
+				"info",
+			);
+			await pi.sendUserMessage(task);
+		},
 	});
 
 	pi.registerCommand("fable", {
@@ -275,6 +333,7 @@ export default function fableCommand(pi: ExtensionAPI): void {
 				return;
 			}
 
+			foremanMode = false;
 			pi.setThinkingLevel(FABLE_THINKING_LEVEL);
 			ctx.ui.notify(
 				`${FABLE_MODEL_ID}[${FABLE_THINKING_LEVEL}] orchestration started.`,

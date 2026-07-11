@@ -257,7 +257,7 @@ describe("fable orchestration policy", () => {
 		expect(event.input.model).toBe("openai-codex/gpt-5.6-terra");
 	});
 
-	it("adds the delegation bias for Fable, Opus, and Sol xhigh only", () => {
+	it("makes Fable a foreman and retains delegation bias for Opus and Sol xhigh", () => {
 		const { beforeAgentStart: solMedium } = hooks("medium");
 		const { beforeAgentStart: solXhigh } = hooks("xhigh");
 		const medium = solMedium({ systemPrompt: "base" }, orchestratorCtx());
@@ -273,15 +273,35 @@ describe("fable orchestration policy", () => {
 				}),
 			).systemPrompt,
 		).toContain("Before complex repository work");
-		for (const id of ["claude-fable-test", "claude-opus-test"]) {
-			const { beforeAgentStart } = hooks("medium");
-			expect(
-				beforeAgentStart(
-					{ systemPrompt: "base" },
-					createMockCtx({ mode: "tui", model: { id } }),
-				).systemPrompt,
-			).toContain("Before complex repository work");
-		}
+
+		const { beforeAgentStart } = hooks("medium");
+		const fable = beforeAgentStart(
+			{ systemPrompt: "base" },
+			createMockCtx({
+				mode: "tui",
+				model: {
+					provider: "amazon-bedrock",
+					id: "us.anthropic.claude-fable-5",
+				},
+			}),
+		).systemPrompt;
+		expect(fable).toContain(
+			"Act as the foreman for a team of lower-cost Codex subagents.",
+		);
+		expect(fable).toContain("understanding of user intent");
+		expect(fable).toContain("Minimize your own token usage");
+		expect(fable).toContain(
+			"delegating investigation, implementation, and validation",
+		);
+		expect(fable).toContain("Stay focused on the big picture");
+		expect(fable).not.toContain("otherwise work directly");
+
+		expect(
+			beforeAgentStart(
+				{ systemPrompt: "base" },
+				createMockCtx({ mode: "tui", model: { id: "claude-opus-test" } }),
+			).systemPrompt,
+		).toContain("Before complex repository work");
 	});
 
 	it("allows direct tools while enforcing GPT-5.6 routing after delegation", () => {
@@ -289,6 +309,50 @@ describe("fable orchestration policy", () => {
 		for (const toolName of ["bash", "pwsh", "edit", "write", "commit_stage"]) {
 			expect(tool({ toolName, input: {} }, orchestratorCtx())).toBeUndefined();
 		}
+	});
+});
+
+describe("foreman command", () => {
+	it("switches to Sol xhigh, enables foreman policy, and sends the task", async () => {
+		const pi = Object.assign(createMockPi(), {
+			getThinkingLevel: vi.fn(() => "xhigh"),
+			setModel: vi.fn(async () => true),
+			setThinkingLevel: vi.fn(),
+		});
+		fableCommand(pi as Parameters<typeof fableCommand>[0]);
+		const command = pi._commands.find(
+			(candidate) => candidate.name === "foreman",
+		);
+		if (!command) throw new Error("foreman command not registered");
+		const foremanModel = {
+			provider: "openai-codex",
+			id: "gpt-5.6-sol",
+		};
+		const ctx = createMockCtx({
+			modelRegistry: { getAvailable: vi.fn(() => [foremanModel]) },
+		});
+
+		await command.handler("Ship the feature", ctx);
+
+		expect(pi.setModel).toHaveBeenCalledWith(foremanModel);
+		expect(pi.setThinkingLevel).toHaveBeenCalledWith("xhigh");
+		expect(pi.sendUserMessage).toHaveBeenCalledWith("Ship the feature");
+
+		const beforeAgentStart = pi._getHook("before_agent_start")[0].handler;
+		const result = beforeAgentStart(
+			{ systemPrompt: "base" },
+			orchestratorCtx({ model: foremanModel }),
+		);
+		expect(result.systemPrompt).toContain(
+			"Act as the foreman for a team of lower-cost Codex subagents.",
+		);
+		expect(result.systemPrompt).toContain("Minimize your own token usage");
+		expect(result.systemPrompt).toContain("follow YAGNI and KISS");
+		expect(result.systemPrompt).toContain("prefer the Pareto 80/20 solution");
+		expect(result.systemPrompt).toContain(
+			"do not create tests that merely restate implementation details",
+		);
+		expect(result.systemPrompt).not.toContain("otherwise work directly");
 	});
 });
 
