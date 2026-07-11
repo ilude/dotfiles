@@ -54,6 +54,7 @@ Route label: Execute Plan File.
 ## EXECUTE_READY_WORK
 
 - Execute the plan wave by wave, respecting dependencies and stopping each wave at its validation gate.
+- Never combine independent stateful replacement waves at execution time. Before each stateful mutation, verify the plan names current backup evidence, restore action, rollback boundary, and one-service target.
 - Use the plan's task sizing and agent assignments.
 - Transactional checklist rule: keep an item unchecked while in progress; after its required verification passes, immediately mark it `[x]`, set completed status, record non-secret evidence, save the plan, and only then start a dependent or sequential item.
 - On failure, leave the item unchecked, record blocked or pending status and evidence, then transition to REPAIR_ON_FAILURE.
@@ -70,10 +71,12 @@ Route label: Execute Plan File.
 ## REPAIR_ON_FAILURE
 
 - Preserve sanitized failure evidence, diagnose from repository evidence and authoritative sources, apply the smallest safe in-scope repair, and rerun the failing command.
-- Validation failures are implementation feedback, not terminal states.
-- Repeat while another evidence-based repair is safe, reversible, in scope, and testable.
+- A failed live mutation immediately enters incident mode: stop later waves, broad applies, parallel recovery, and unrelated refactoring; preserve healthy services; keep diagnosis and recovery direct against one affected service.
+- Validation failures before live mutation are implementation feedback. Live failures are recovery work and must not be treated as permission for repeated batch retries.
+- Repeat only while another evidence-based repair is safe, reversible, in scope, testable, and targets the same affected boundary.
+- Exit incident mode only after the original endpoint and persisted-state checks pass. Then return to VALIDATE; do not skip the failed wave gate.
 - A real blocker exists only when a reasonable repair repeats the same failure; repair requires destructive action, unavailable access, secrets, production action, or user judgment; the needed change is out of scope; validation infrastructure cannot be safely recovered; or blast radius/rollback is unacceptable or unknown.
-- Real blocker -> persist `## Execution Status`, then RECORD_WORKFLOW_EVAL.
+- Real blocker -> persist `## Execution Status`, including incident state, healthy services to preserve, affected service, last direct evidence, and exact recovery entrypoint, then RECORD_WORKFLOW_EVAL.
 - Repair passes -> return to VALIDATE.
 
 ## MANUAL_AND_DEPLOY_GATES

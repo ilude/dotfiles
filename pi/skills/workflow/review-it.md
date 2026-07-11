@@ -42,6 +42,9 @@ entry condition says it is optional.
   approval or an explicitly reported emergency degraded mode.
 - Never edit implementation files. Review and apply changes only to the supplied
   artifact.
+- Treat findings as prioritized backlog inputs. Applying all findings to a plan
+  must not collapse migrations, stateful replacements, hardening, backup redesign,
+  and orchestration changes into one rollout wave.
 - Report progress at panel launch, artifact verification, synthesis, apply, and
   standalone-readiness checkpoints.
 
@@ -64,6 +67,13 @@ Classify from the file name:
 - Any other name: ask whether it should be treated as a plan or PRD.
 
 For `plan.md`, assess `/do-it` readiness explicitly:
+
+- one independent stateful service replacement per rollout wave until its direct
+  endpoint and state gate passes
+- current backup evidence, restore action, rollback boundary, and exact target for
+  every stateful replacement
+- an incident transition that blocks later rollout waves after the first failed
+  live mutation until direct recovery checks pass
 
 - runnable commands, scripts, playbooks, or wrappers for operational steps
 - safe credential flow; credentials alone do not justify a manual gate
@@ -213,9 +223,10 @@ status: synthesis-complete
 ---
 ```
 
-Merge duplicates; rank bugs before hardening and by impact. Include automation
-readiness, verified high-severity evidence, artifact/recovery status, and actual
-or unknown timing. Record `per-reviewer timing unavailable` when needed.
+Merge duplicates; rank bugs before hardening and by impact. Group accepted
+findings into safe implementation and rollout waves rather than one batch. Include
+automation readiness, verified high-severity evidence, artifact/recovery status,
+and actual or unknown timing. Record `per-reviewer timing unavailable` when needed.
 
 Also record:
 
@@ -230,7 +241,8 @@ Say `Synthesis written; applying structured plan fixes.` before default apply.
 ## APPLY_MODE
 ### Auto-apply
 Apply every verified bug, hardening item, readiness fix, and necessary clarity
-change to the reviewed plan only. First write `{review_dir}/applied-fixes.md`
+change to the reviewed plan only, while preserving separate implementation and
+rollout waves. First write `{review_dir}/applied-fixes.md`
 with a table mapping finding, category, target sections, edit intent, and
 checklist impact. Record any intentional omission and reason.
 

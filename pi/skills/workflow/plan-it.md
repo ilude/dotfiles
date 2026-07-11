@@ -37,6 +37,9 @@ Do not implement the plan.
 - Read `templates/plan-template.md` before writing. It is authoritative for plan structure, the checklist invariant, transactional marking rule, validation contract, manual-gate wording, and archive rule. Do not restate those template sections outside the generated plan.
 - Define the MVP as the smallest user-visible outcome that works in one focused session. Put nice-to-have hardening, broad refactors, exhaustive edge cases, migrations, and uncertain integrations in Explicit Deferrals unless requested now; deferrals cannot block archive.
 - Decompose the MVP into tasks with concrete deliverables, files, dependencies, exact verification and pass/fail signals, and mutation boundaries.
+- Treat review findings as backlog inputs, not a single implementation batch. Separate migrations, stateful replacements, hardening, backup redesign, and orchestration changes into distinct waves even when all are in scope.
+- For stateful infrastructure, permit at most one independent service replacement per rollout wave until its direct endpoint and state gate passes. Record current backup evidence, restore command, rollback boundary, and the plan/apply target for that service.
+- Add an incident transition: the first failed live mutation blocks later rollout waves until the affected service is recovered and its original endpoint and state checks pass.
 - Every task has both a **Model** and an **Agent** assigned.
 
 | Scope | Indicators | Model | Agent |
@@ -61,6 +64,7 @@ Do not implement the plan.
 
 - Confirm the plan is standalone, project-specific, scoped to an executable MVP, and has honest deferrals.
 - Confirm risk, blast radius, rollback, approval, and validation decisions are explicit and justified.
+- Confirm stateful rollout waves use one-service canaries with backup/restore evidence and that failure blocks unrelated rollout work.
 - Confirm every task has Model, Agent, dependency, Verify, Pass, Fail, files, and mutation boundaries.
 - Confirm checklist, task, wave, gate, and dependency IDs map one-to-one and all template invariants hold.
 - Confirm every wave has one correctly sized validation gate and coherent dependencies.
