@@ -1824,15 +1824,17 @@ try {
             }
         }
 
-        # Install or update Pi on every run with no version pin. pnpm's global
-        # policy, including minimumReleaseAge, determines the newest eligible version.
-        Write-Host "  Installing/updating pi-coding-agent via pnpm..." -ForegroundColor Cyan
+        # Install or update Pi on every run with no version pin. Pi is updated
+        # frequently and intentionally uses a shorter release-age window than
+        # the global pnpm default.
+        $piPnpmMinimumReleaseAge = 720
+        Write-Host "  Installing/updating pi-coding-agent via pnpm (minimumReleaseAge=$piPnpmMinimumReleaseAge minutes)..." -ForegroundColor Cyan
         $previousCi = $env:CI
         $previousPnpmAllowAllBuilds = $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS
         $env:CI = '1'
         $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS = 'true'
         try {
-            pnpm add -g --allow-build=koffi --allow-build=protobufjs `
+            pnpm --config.minimumReleaseAge=$piPnpmMinimumReleaseAge add -g --allow-build=koffi --allow-build=protobufjs `
                 '@earendil-works/pi-coding-agent' `
                 '@earendil-works/pi-agent-core' `
                 '@earendil-works/pi-ai' `

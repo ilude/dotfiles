@@ -325,6 +325,9 @@ current_step="Pi coding agent install"
 # Pi installs via pnpm on all platforms. pnpm's strict resolver pins transitive
 # pi packages cleanly; bun's looser resolution let pi-agent-core/pi-ai/pi-tui
 # drift to newer patch versions even when pi-coding-agent itself was pinned.
+# Pi is updated frequently and intentionally uses a shorter release-age window
+# than the global pnpm default.
+PI_PNPM_MINIMUM_RELEASE_AGE=720
 
 # Ensure PNPM_HOME is set before bootstrap so the installer knows where to put
 # binaries, and so SHELL=/dev/null can suppress rc-file appends.
@@ -386,8 +389,8 @@ if command -v pnpm &>/dev/null; then
         npm uninstall -g @mariozechner/pi-coding-agent &>/dev/null || true
     fi
 
-    echo "Installing/updating pi-coding-agent via pnpm..."
-    pnpm add -g --allow-build=koffi --allow-build=protobufjs \
+    echo "Installing/updating pi-coding-agent via pnpm (minimumReleaseAge=${PI_PNPM_MINIMUM_RELEASE_AGE} minutes)..."
+    pnpm --config.minimumReleaseAge="${PI_PNPM_MINIMUM_RELEASE_AGE}" add -g --allow-build=koffi --allow-build=protobufjs \
         @earendil-works/pi-coding-agent \
         @earendil-works/pi-agent-core \
         @earendil-works/pi-ai \
