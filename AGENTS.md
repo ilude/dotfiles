@@ -99,6 +99,14 @@ git submodule update --init --recursive
 - For lists or batches, track every item to completed, explicitly skipped with reason, or blocked before finalizing.
 - Stop research when the core question is answered and further retrieval is unlikely to change the conclusion; be exhaustive only when requested.
 
+### Rollout and incident discipline
+
+- Treat review findings as a prioritized backlog. A request to address all findings authorizes the scope, but does not justify one batch; separate migrations, stateful replacements, hardening, backup redesign, and orchestration changes into validated waves.
+- For stateful infrastructure, replace or migrate one independent service per rollout until the canary is healthy. Before mutation, require a current backup, a known restore path, an explicit rollback boundary, and a reviewed plan naming every create, update, replace, and delete.
+- The first failed live mutation enters incident mode: stop roadmap work, broad applies, parallel recovery, and unrelated refactoring. Diagnose directly, recover one service, preserve healthy services, and exit incident mode only after the original endpoint and state checks pass.
+- Direct command output, saved logs, and endpoint checks outrank summaries. The parent executing or coordinating live work must independently verify critical plan and health claims.
+- Reuse the user's authorization for repeated in-scope, non-destructive recovery steps. Ask again only when the target, destructive scope, rollback risk, or intended outcome materially changes.
+
 ### Windows process churn
 
 If agent work coincides with high LSM, CryptSvc, Git LFS, MSYS helper, or console-host CPU, run [`scripts/diagnose-windows-process-churn.ps1`](scripts/diagnose-windows-process-churn.ps1) with `pwsh -File` before guessing. Correlate System log `Tcpip` event ID `4227` with recent subprocess-heavy work; prefer fixing process churn through caching, timeouts, and child-tree cleanup over repeated retries.

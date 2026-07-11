@@ -32,9 +32,9 @@ Follow-up work identified while refining Pi orchestration, prompt size, and suba
 
    The unified `task` tool now owns planning, dependencies, lifecycle updates, background execution, cancellation, and bounded output. The separate `todo` and model-facing `task_*` tools were retired; `/tasks` remains the operator UI, and legacy `.pi/todo.json` state imports idempotently into the durable registry.
 
-9. **Open - Add orchestration telemetry**
+9. **Complete - Add orchestration telemetry**
 
-   Record parent model, worker models, fan-out, inline versus artifact bytes, tokens, latency, and cost. Use the data to determine whether delegation saves Fable/Opus API spend and Sol context.
+   `orchestration_run` and `orchestration_interaction` events now record parent and worker models, fan-out, inline and artifact bytes, normalized token usage, latency, status, and known or unavailable cost. `/orchestration-stats [days]` reports bounded observational summaries and workflow-friction correlation. An isolated cross-platform smoke runner verifies a real delegated interaction and exact run-to-interaction joins. Causal savings claims remain deferred until matched cohort data exists.
 
 10. **Open - Run a live smoke test after `/reload`**
 

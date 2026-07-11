@@ -22,7 +22,11 @@ A goal prompt should let Pi work autonomously until completion, with explicit sc
 3. List scope: files, systems, constraints, non-goals.
 4. Give execution rules: ask only when blocked, track batches, avoid unrelated changes.
 5. Define validation with exact commands or inspection criteria.
-6. Require closeout: concise summary, validation, gaps, next steps.
+6. Separate migrations, stateful replacements, hardening, backup redesign, and orchestration changes into explicit waves.
+7. Require incident behavior: after the first failed live mutation, stop batch execution and recover one affected service before continuing.
+8. Require closeout: concise summary, validation, gaps, next steps.
+
+A goal may cover a broad authorized outcome, but it must not turn that outcome into one mutation batch. For stateful infrastructure, define a one-service canary, backup evidence, restore path, and direct health gate for each rollout wave.
 
 ## Template
 
@@ -44,6 +48,8 @@ Completion: Call goal_complete with summary, validation, gaps, next steps.
 - Omitting validation or completion criteria.
 - Hiding autonomy boundaries in vague prose.
 - Asking multiple clarifying questions when one blocker question is enough.
+- Combining migration, stateful replacement, hardening, and workflow redesign into one rollout wave.
+- Omitting the stop-and-recover rule for live failures.
 
 ## Quick Reference
 

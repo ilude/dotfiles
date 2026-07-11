@@ -54,7 +54,7 @@ When uncertain, inspect only the relevant command category or path section in th
 | Build or package cache issue | Invalidate the smallest project-local scope that solves the problem before considering a global cache clean |
 | Process shutdown | Use the normal graceful stop first when it can solve the problem; force termination only when needed |
 | Git recovery or history change | Inspect status and diffs first, preserve unrelated work, and use the smallest correct operation even when it requires confirmation |
-| Infrastructure, cluster, cloud, or database change | Run read-only status, diff, plan, or preview steps first; when mutation is required, perform it through the normal confirmed path |
+| Infrastructure, cluster, cloud, or database change | Run read-only status, diff, plan, or preview steps first; for stateful replacement require current backup evidence, restore steps, rollback boundary, and one-service canary scope; then mutate through the normal confirmed path |
 | Protected credential or secret path | Use documented examples, schemas, identifiers, or redacted values; ask the user for needed information rather than probing alternate paths |
 
 ## Approval discipline
@@ -64,6 +64,12 @@ When uncertain, inspect only the relevant command category or path section in th
 - Do not combine unrelated risky effects into one broad command to reduce prompt count.
 - Do not omit required teardown, rollback, deletion, or mutation merely because it will prompt.
 - If a necessary approval cannot be obtained, report the exact blocked outcome and preserve completed work for continuation.
+- Reuse authorization for repeated in-scope, non-destructive recovery. Ask again only when the target, destructive scope, rollback risk, or intended outcome materially changes.
+- Do not combine independent stateful replacements into one approval or apply merely because each replacement is individually authorized.
+
+## Failure boundary
+
+After a live mutation fails, stop unrelated mutations and enter incident mode. Preserve healthy targets, diagnose one affected service directly, and do not resume batch rollout until its original endpoint and state checks pass. Confirmation to continue does not replace recovery evidence.
 
 ## Forbidden evasions
 

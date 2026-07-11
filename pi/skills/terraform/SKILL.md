@@ -27,7 +27,20 @@ Compact index for Terraform modules, state, plans, and infrastructure workflows.
 1. Identify module boundaries, provider versions, backend, and workspace/environment.
 2. Run format/validate before evaluating a plan.
 3. Treat plans as review artifacts: summarize creates/updates/destroys and risks.
-4. Keep modules small with clear inputs/outputs; avoid cross-environment condition sprawl.
+4. Classify every replacement or delete as stateful or stateless and name the rollback boundary.
+5. For stateful resources, verify a current backup and restore path, then plan and apply one independent service at a time until the canary is healthy.
+6. Keep modules small with clear inputs/outputs; avoid cross-environment condition sprawl.
+
+## Stateful rollout gate
+
+Before applying a stateful replacement, require all of:
+
+- saved plan reviewed with exact creates, updates, replacements, and deletes
+- current backup evidence and a tested or documented restore command
+- one independent service in the rollout unless a deliberate batch override is explicitly recorded
+- post-apply endpoint and state checks
+
+If apply fails, stop broad planning/apply cycles and enter incident mode. Recover the affected service directly before creating another rollout plan.
 
 ## Quick validation
 
@@ -45,6 +58,8 @@ Compact index for Terraform modules, state, plans, and infrastructure workflows.
 - Committing `.tfstate`, `.tfvars` secrets, or provider credentials.
 - Using workspaces as a substitute for clear environment structure when the repo has another pattern.
 - Broad refactors mixed with resource behavior changes.
+- Replacing multiple independent stateful services before the first replacement is healthy.
+- Treating `apply` completion or a delegated summary as service-health evidence.
 
 ## Optional references
 

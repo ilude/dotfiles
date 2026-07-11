@@ -8,7 +8,15 @@ Work directly by default on one coherent task; the prompt router selects the mod
 
 Fable, Opus, and `gpt-5.6-sol` at xhigh effort assess the parallel-work split before complex repository work. `gpt-5.6-sol` at medium effort delegates only when the split is clearly beneficial. Parallelize only independent assignments. For broad investigation, use file-only discovery workers followed by one synthesis subagent.
 
-Every delegation must state the deliverable, scope, allowed changes, required evidence, and stop condition. Discovery workers write only their assigned artifacts; the synthesis subagent reads those artifacts, resolves overlaps and gaps, and returns one decision-ready result.
+Every delegation must state the deliverable, scope, allowed changes, required evidence, and stop condition. Discovery workers write only their assigned artifacts; the synthesis subagent reads those artifacts, resolves overlaps and gaps, and returns one decision-ready result. Subagent summaries are advisory: the parent must directly verify critical plan semantics, live state, and completion evidence.
+
+During a live incident or failed mutation, keep diagnosis and recovery direct unless a read-only independent investigation has a clear boundary. Do not delegate live recovery or use parallel execution across affected services.
+
+## Rollout and incident discipline
+
+Treat review findings as a backlog, not a mutation batch. Separate migrations, stateful replacements, hardening, backup redesign, and orchestration changes into validated waves. For stateful infrastructure, require a current backup and restore path, then roll out one independent service as a canary before proceeding.
+
+The first failed live mutation enters incident mode. Stop broad applies, roadmap work, parallel recovery, and unrelated refactoring; preserve healthy services; diagnose and recover one service directly. Exit incident mode only after the original endpoint and state checks pass. Reuse existing authorization for in-scope recovery and ask again only when destructive scope, target, or outcome changes.
 
 ## Ownership and safety
 

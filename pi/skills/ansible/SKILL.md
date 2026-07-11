@@ -29,6 +29,17 @@ Compact index for Ansible playbooks, roles, inventories, and tests.
 3. Prefer modules over shell/command tasks; if shell is required, make `changed_when`/`creates`/`removes` explicit.
 4. Notify handlers only from tasks that actually change state.
 5. Validate syntax/lint and, for role changes, Molecule or a focused dry run/check mode.
+6. Converge one stateful or failed service independently before running broad orchestration; verify its direct endpoint and persisted state, not only playbook exit status.
+
+## Recovery mode
+
+After a live playbook or infrastructure mutation fails:
+
+- stop parallel service waves and unrelated role changes
+- target one affected service through its normal direct inventory endpoint
+- preserve logs and already-healthy services
+- rerun only after a concrete repair or hypothesis
+- return to broad orchestration only after direct endpoint and state checks pass
 
 ## Quick validation
 
@@ -45,6 +56,8 @@ Compact index for Ansible playbooks, roles, inventories, and tests.
 - Hiding variable-precedence problems with broad defaults.
 - Handlers that restart services on every run.
 - Committing vault passwords, host secrets, or generated inventory output.
+- Continuing a parallel service wave after one service fails.
+- Treating an idempotent playbook result as proof that the application endpoint or persisted state is healthy.
 
 ## Optional references
 

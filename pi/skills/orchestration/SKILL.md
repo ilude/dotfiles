@@ -20,6 +20,7 @@ description: "On-demand delegation guidance. Use when deciding whether to delega
 | Independent verification needed | Assign a separate verifier. |
 | Discovery would consume substantial main context | Delegate discovery. |
 | Broad investigation | Use file-only discovery workers, then one synthesis subagent. |
+| Live incident or failed mutation | Keep diagnosis and recovery direct; delegate only bounded read-only investigation or independent verification. |
 
 ## Assignment contract
 
@@ -31,6 +32,10 @@ Every delegation states:
 - Evidence required
 - Stop condition
 
+## Evidence ownership
+
+Subagent reports are advisory. The parent must directly verify critical plan semantics, destructive scope, live state, endpoint health, and completion evidence before acting or reporting success. Never use a synthesis summary as the sole basis for a live mutation.
+
 ## Artifact pattern
 
-Discovery workers write only their assigned artifacts. The synthesis subagent reads those artifacts, resolves overlaps and gaps, and returns one decision-ready result. Keep implementation direct unless the decision table calls for delegation.
+Discovery workers write only their assigned artifacts. The synthesis subagent reads those artifacts, resolves overlaps and gaps, and returns one decision-ready result. Keep implementation direct unless the decision table calls for delegation. During incident mode, do not parallelize live work across affected services.
