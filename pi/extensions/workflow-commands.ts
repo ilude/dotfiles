@@ -47,7 +47,11 @@ import {
 } from "../lib/workflow-commands/prompts";
 import { noteWorkflowSubmission } from "../lib/workflow-friction";
 import { startWorkflowEpisode } from "../lib/workflow-telemetry";
-import { fetchCodexUsage, formatUsage } from "./codex-status";
+import {
+	fetchCodexUsage,
+	formatConfiguredBedrockUsageSection,
+	formatUsage,
+} from "./codex-status";
 import { isOperatorReloadNeeded } from "./operator-status";
 
 const SKILLS_DIR = path.join(
@@ -160,7 +164,10 @@ function formatClearedSessionUsage(
 async function formatClearedSessionCodexStatus(): Promise<string> {
 	try {
 		const { auth, usage } = await fetchCodexUsage();
-		return formatUsage(usage, auth, { color: true });
+		const sections = [formatUsage(usage, auth, { color: true })];
+		const bedrock = await formatConfiguredBedrockUsageSection();
+		if (bedrock) sections.push(bedrock);
+		return sections.join("\n\n");
 	} catch (error) {
 		return error instanceof Error ? error.message : String(error);
 	}

@@ -1,19 +1,28 @@
-import { describe, expect, it } from "vitest";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import workflowFrictionExtension, {
 	buildReviewerArgs,
 } from "../extensions/workflow-friction-review.js";
 import {
+	activateOrchestrationInteraction,
 	buildReviewPrompt,
 	consumeWorkflowSubmission,
 	detectFrictionTriggers,
 	interactionMetadataFromPacket,
 	isControlSample,
+	noteParentAssistantUsage,
 	noteWorkflowSubmission,
 	parseReviewResult,
+	registerOrchestrationInvocation,
+	resetOrchestrationInteraction,
 	reviewSampleBucket,
 	selectInteractionForReview,
+	settleOrchestrationInteraction,
 	summarizeInteractionMetadata,
 	type ToolTrace,
+	workflowFrictionStorageRoot,
 } from "../lib/workflow-friction.js";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.js";
 
@@ -156,6 +165,32 @@ describe("workflow friction metadata", () => {
 		expect(JSON.stringify(metadata)).not.toContain("private assistant text");
 	});
 
+	it("counts task execute traces as subagent invocations", () => {
+		const metadata = interactionMetadataFromPacket({
+			schemaVersion: 1,
+			interactionId: "interaction-task-execute",
+			sessionId: "session-task-execute",
+			mode: "engineer",
+			startedAt: "2026-07-10T00:00:00.000Z",
+			settledAt: "2026-07-10T00:01:00.000Z",
+			durationMs: 60_000,
+			selectionReasons: [],
+			userText: "",
+			assistantTurns: [],
+			assistantText: "",
+			tools: [
+				trace({
+					toolName: "task",
+					argsText: JSON.stringify({ action: "execute" }),
+					resultText: "completed",
+					isError: false,
+				}),
+			],
+		});
+		expect(metadata.subagentCount).toBe(1);
+		expect(metadata.failedSubagentCount).toBe(0);
+	});
+
 	it("summarizes selected and unselected interactions with duration buckets", () => {
 		const base = {
 			schemaVersion: 1,
@@ -263,6 +298,105 @@ describe("workflow friction reviewer", () => {
 	});
 });
 
+describe("orchestration interaction lifecycle", () => {
+	beforeEach(() => resetOrchestrationInteraction());
+	afterEach(() => resetOrchestrationInteraction());
+
+	it("accumulates usage by provider and model and consumes once", () => {
+		activateOrchestrationInteraction({
+			interactionId: "interaction-usage",
+			sessionId: "session-usage",
+		});
+		expect(registerOrchestrationInvocation("orchestration-one")).toBe(
+			"interaction-usage",
+		);
+		noteParentAssistantUsage({
+			provider: "provider-one",
+			model: "model-one",
+			usage: {
+				input: 10,
+				output: 2,
+				cacheRead: 3,
+				cacheWrite: 4,
+				totalTokens: 19,
+				cost: { total: 0 },
+			},
+		});
+		noteParentAssistantUsage({
+			provider: "provider-two",
+			model: "model-two",
+			usage: { input: 5, totalTokens: 5 },
+		});
+		const settled = settleOrchestrationInteraction("interaction-usage");
+		expect(settled).toMatchObject({
+			orchestrationIds: ["orchestration-one"],
+			parentUsageByModel: [
+				{
+					provider: "provider-one",
+					model: "model-one",
+					inputTokens: 10,
+					outputTokens: 2,
+					cacheReadTokens: 3,
+					cacheWriteTokens: 4,
+					contextPeakTokens: 19,
+					costUsd: 0,
+					costSource: "pi-usage",
+				},
+				{
+					provider: "provider-two",
+					model: "model-two",
+					costUsd: null,
+					costSource: "unavailable",
+				},
+			],
+		});
+		expect(settleOrchestrationInteraction("interaction-usage")).toBeNull();
+	});
+
+	it("shares lifecycle state across distinct module identities", async () => {
+		const copyUrl = new URL("../lib/workflow-friction.ts", import.meta.url);
+		copyUrl.searchParams.set("instance", "orchestration-lifecycle-copy");
+		const copy = await import(copyUrl.href);
+
+		activateOrchestrationInteraction({
+			interactionId: "interaction-module-copy",
+			sessionId: "session-module-copy",
+		});
+		copy.registerOrchestrationInvocation("orchestration-module-copy");
+
+		expect(
+			settleOrchestrationInteraction("interaction-module-copy"),
+		).toMatchObject({
+			orchestrationIds: ["orchestration-module-copy"],
+		});
+	});
+
+	it("clears only the matching session lifecycle", () => {
+		activateOrchestrationInteraction({
+			interactionId: "interaction-session",
+			sessionId: "session-one",
+		});
+		resetOrchestrationInteraction("session-two");
+		expect(
+			settleOrchestrationInteraction("interaction-session"),
+		).not.toBeNull();
+		activateOrchestrationInteraction({
+			interactionId: "interaction-replaced",
+			sessionId: "session-two",
+		});
+		resetOrchestrationInteraction("session-two");
+		expect(settleOrchestrationInteraction("interaction-replaced")).toBeNull();
+	});
+
+	it("resolves the configured friction storage root", () => {
+		const previous = process.env.PI_WORKFLOW_FRICTION_DIR;
+		process.env.PI_WORKFLOW_FRICTION_DIR = "C:/tmp/friction";
+		expect(workflowFrictionStorageRoot()).toBe("C:/tmp/friction");
+		if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
+		else process.env.PI_WORKFLOW_FRICTION_DIR = previous;
+	});
+});
+
 describe("workflow friction extension", () => {
 	it("registers the commands, experiment tool, and lifecycle hooks", () => {
 		const pi = createMockPi();
@@ -286,6 +420,109 @@ describe("workflow friction extension", () => {
 			"No completed interaction is available to capture.",
 			"warning",
 		);
+	});
+
+	it("emits one top-level interaction event with grouped parent usage", async () => {
+		const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "pi-friction-"));
+		const metricsDir = path.join(scratch, "metrics");
+		const frictionDir = path.join(scratch, "friction");
+		const previousMetrics = process.env.PI_METRICS_DIR;
+		const previousFriction = process.env.PI_WORKFLOW_FRICTION_DIR;
+		const previousSubagent = process.env.PI_SUBAGENT_RUN_ID;
+		process.env.PI_METRICS_DIR = metricsDir;
+		process.env.PI_WORKFLOW_FRICTION_DIR = frictionDir;
+		delete process.env.PI_SUBAGENT_RUN_ID;
+		try {
+			const ctx = createMockCtx({
+				sessionManager: { getSessionId: () => "session-top-level" },
+			});
+			const pi = createMockPi();
+			workflowFrictionExtension(pi as never);
+			const beforeAgent = pi._getHook("before_agent_start")[0]?.handler;
+			const messageEnd = pi._getHook("message_end")[0]?.handler;
+			const settled = pi._getHook("agent_settled")[0]?.handler;
+			await beforeAgent({ prompt: "direct" }, ctx);
+			await messageEnd({
+				message: {
+					role: "assistant",
+					provider: "provider-one",
+					model: "model-one",
+					usage: { input: 7, output: 2, totalTokens: 9 },
+					content: [],
+				},
+			});
+			await messageEnd({
+				message: {
+					role: "assistant",
+					provider: "provider-two",
+					model: "model-two",
+					usage: { input: 3, output: 1, totalTokens: 4, cost: { total: 0 } },
+					content: [{ type: "text", text: "done" }],
+				},
+			});
+			await settled({}, ctx);
+
+			await beforeAgent({ prompt: "delegated" }, ctx);
+			registerOrchestrationInvocation("orchestration-delegated");
+			await settled({}, ctx);
+
+			process.env.PI_SUBAGENT_RUN_ID = "child-run";
+			const child = createMockPi();
+			workflowFrictionExtension(child as never);
+			const childBefore = child._getHook("before_agent_start")[0]?.handler;
+			const childSettled = child._getHook("agent_settled")[0]?.handler;
+			await childBefore({ prompt: "child" }, ctx);
+			await childSettled({}, ctx);
+
+			const files = await fs.readdir(metricsDir);
+			const lines = await fs.readFile(
+				path.join(metricsDir, files[0] ?? ""),
+				"utf8",
+			);
+			const events = lines
+				.trim()
+				.split("\n")
+				.map((line) => JSON.parse(line) as Record<string, unknown>)
+				.filter((event) => event.event === "orchestration_interaction");
+			expect(events).toHaveLength(2);
+			expect(events[0]).toMatchObject({
+				session: "session-top-level",
+				data: {
+					orchestrationIds: [],
+					direct: true,
+					parentUsageByModel: [
+						{
+							provider: "provider-one",
+							model: "model-one",
+							inputTokens: 7,
+							costSource: "unavailable",
+						},
+						{
+							provider: "provider-two",
+							model: "model-two",
+							inputTokens: 3,
+							costUsd: 0,
+							costSource: "pi-usage",
+						},
+					],
+				},
+			});
+			expect(events[1]).toMatchObject({
+				data: {
+					orchestrationIds: ["orchestration-delegated"],
+					direct: false,
+				},
+			});
+		} finally {
+			if (previousMetrics === undefined) delete process.env.PI_METRICS_DIR;
+			else process.env.PI_METRICS_DIR = previousMetrics;
+			if (previousFriction === undefined)
+				delete process.env.PI_WORKFLOW_FRICTION_DIR;
+			else process.env.PI_WORKFLOW_FRICTION_DIR = previousFriction;
+			if (previousSubagent === undefined) delete process.env.PI_SUBAGENT_RUN_ID;
+			else process.env.PI_SUBAGENT_RUN_ID = previousSubagent;
+			await fs.rm(scratch, { recursive: true, force: true });
+		}
 	});
 });
 

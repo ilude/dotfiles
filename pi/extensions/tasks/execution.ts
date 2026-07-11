@@ -2,11 +2,19 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { truncateTail } from "@earendil-works/pi-coding-agent";
+import { recordEvent } from "../../lib/metrics.js";
 import { getTasksDir } from "../../lib/operator-state.js";
+import {
+	buildOrchestrationRunEvent,
+	type OrchestrationStatus,
+	type OutputMode,
+} from "../../lib/orchestration-telemetry.js";
 import {
 	getTask,
 	getUnmetBlockers,
 	listTasks,
+	type NormalizedTaskUsage,
+	normalizeTaskUsage,
 	type SubagentTaskExecution,
 	safeTransitionTask,
 	type TaskRecordV1,
@@ -14,6 +22,7 @@ import {
 	updateTask,
 } from "../../lib/task-registry.js";
 import { sanitizeTaskValue } from "../../lib/task-security.js";
+import { registerOrchestrationInvocation } from "../../lib/workflow-friction.js";
 import { subagentModelFor } from "../fable.js";
 import { type AgentScope, discoverAgents } from "../subagent/agents.js";
 import {
@@ -30,6 +39,13 @@ const STOP_TIMEOUT_MS = 7_000;
 export interface TaskExecutionRunResult {
 	output: string;
 	exitCode: number;
+	usage?: NormalizedTaskUsage;
+	turns?: number;
+	resolvedModel?: string;
+	durationMs?: number;
+	outputMode?: OutputMode;
+	childTextBytes?: number;
+	artifactBytes?: number;
 }
 
 export type TaskExecutionRunner = (
@@ -45,6 +61,7 @@ interface ActiveExecution {
 	promise: Promise<void>;
 	liveOutput: string;
 	stopRequested: boolean;
+	settled: boolean;
 }
 
 export interface TaskExecutionResult {
@@ -161,15 +178,43 @@ export async function runTaskSubagent(
 		execution.modelSize,
 		undefined,
 		taskId,
+		execution.runId,
 	);
+	const output = getFinalOutput(result.messages) || result.stderr;
 	return {
-		output: getFinalOutput(result.messages) || result.stderr,
+		output,
 		exitCode: result.exitCode,
+		usage: normalizeTaskUsage({
+			inputTokens: result.usage.input,
+			outputTokens: result.usage.output,
+			totalTokens:
+				result.usage.contextPeakTokens ||
+				result.usage.input + result.usage.output,
+			cacheCreationInputTokens: result.usage.cacheWrite,
+			cacheReadInputTokens: result.usage.cacheRead,
+			contextPeakTokens: result.usage.contextPeakTokens,
+			turns: result.usage.turns,
+			costUsd: result.usage.cost,
+		}),
+		turns: result.usage.turns,
+		resolvedModel: result.model,
+		durationMs: result.durationMs,
+		outputMode:
+			result.outputMode === "file-only"
+				? "artifact"
+				: result.outputMode === "inline"
+					? "inline"
+					: "none",
+		childTextBytes: Buffer.byteLength(output, "utf-8"),
+		...(result.outputReference
+			? { artifactBytes: result.outputReference.bytes }
+			: {}),
 	};
 }
 
 export class TaskExecutionCoordinator {
 	private readonly active = new Map<string, ActiveExecution>();
+	private readonly settledOrchestrationIds = new Set<string>();
 
 	constructor(private readonly runner: TaskExecutionRunner = runTaskSubagent) {}
 
@@ -215,12 +260,15 @@ export class TaskExecutionCoordinator {
 			promise: Promise.resolve(),
 			liveOutput: "",
 			stopRequested: false,
+			settled: false,
 		};
 		const runningExecution: SubagentTaskExecution = {
 			...execution,
 			status: "running",
 			ownerPid: process.pid,
 			runId: crypto.randomUUID(),
+			orchestrationId: crypto.randomUUID(),
+			startedAt: new Date().toISOString(),
 		};
 		const transition =
 			record.state === "running"
@@ -232,6 +280,10 @@ export class TaskExecutionCoordinator {
 				record: transition.record ?? record,
 				error: transition.error ?? "task could not enter running state",
 			};
+		const interactionId = runningExecution.orchestrationId
+			? registerOrchestrationInvocation(runningExecution.orchestrationId)
+			: undefined;
+		if (interactionId) runningExecution.interactionId = interactionId;
 		updateTask(taskId, { execution: runningExecution });
 		this.active.set(taskId, active);
 		active.promise = this.finishExecution(
@@ -241,6 +293,78 @@ export class TaskExecutionCoordinator {
 			active,
 		).finally(() => this.active.delete(taskId));
 		return { outcome: "accepted", record: getTask(taskId) ?? record };
+	}
+
+	private settleExecution(
+		taskId: string,
+		execution: SubagentTaskExecution,
+		status: Extract<OrchestrationStatus, SubagentTaskExecution["status"]>,
+		active?: ActiveExecution,
+		result?: TaskExecutionRunResult,
+		savedOutput: { outputPath?: string; outputError?: string } = {},
+	): void {
+		if (
+			active?.settled ||
+			(execution.orchestrationId &&
+				this.settledOrchestrationIds.has(execution.orchestrationId))
+		)
+			return;
+		if (active) active.settled = true;
+		if (execution.orchestrationId)
+			this.settledOrchestrationIds.add(execution.orchestrationId);
+		updateTask(taskId, {
+			execution: { ...execution, status, ...savedOutput },
+		});
+		if (!execution.orchestrationId) return;
+		const startedAt = execution.startedAt
+			? Date.parse(execution.startedAt)
+			: Number.NaN;
+		const durationMs =
+			result?.durationMs ??
+			(Number.isFinite(startedAt)
+				? Math.max(0, Date.now() - startedAt)
+				: undefined);
+		const childTextBytes =
+			result?.childTextBytes ??
+			(result ? Buffer.byteLength(result.output, "utf-8") : undefined);
+		const event = buildOrchestrationRunEvent({
+			orchestrationId: execution.orchestrationId,
+			...(execution.interactionId
+				? { interactionId: execution.interactionId }
+				: {}),
+			mode: "task-execute",
+			fanOut: 1,
+			status,
+			...(durationMs === undefined
+				? {}
+				: { durationMs, childWorkMs: durationMs }),
+			workers: [
+				{
+					runId: execution.runId ?? execution.orchestrationId,
+					taskId,
+					agent: execution.agent,
+					...((result?.resolvedModel ?? execution.model)
+						? { resolvedModel: result?.resolvedModel ?? execution.model }
+						: {}),
+					status,
+					...(result ? { exitCode: Math.max(0, result.exitCode) } : {}),
+					...(durationMs === undefined ? {} : { durationMs }),
+					outputMode:
+						result?.outputMode ??
+						(savedOutput.outputPath ? "artifact" : "none"),
+					...(childTextBytes === undefined ? {} : { childTextBytes }),
+					parentVisibleBytes: 0,
+					...(result?.artifactBytes === undefined
+						? savedOutput.outputPath && childTextBytes !== undefined
+							? { artifactBytes: childTextBytes }
+							: {}
+						: { artifactBytes: result.artifactBytes }),
+					...(result?.usage ? { usage: result.usage } : {}),
+					...(result?.turns === undefined ? {} : { turns: result.turns }),
+				},
+			],
+		});
+		if (event) recordEvent(event as Parameters<typeof recordEvent>[0]);
 	}
 
 	private async finishExecution(
@@ -259,38 +383,47 @@ export class TaskExecutionCoordinator {
 				},
 				taskId,
 			);
+			if (active.settled) return;
 			const savedOutput = saveOutput(taskId, result.output);
-			let record = getTask(taskId);
-			if (record?.state === "pending" || record?.state === "running") {
-				safeTransitionTask(
+			if (active.stopRequested) {
+				this.settleExecution(
 					taskId,
-					result.exitCode === 0 ? "completed" : "failed",
-					result.exitCode === 0
-						? {}
-						: { errorReason: `subagent exited with code ${result.exitCode}` },
+					execution,
+					"stopped",
+					active,
+					result,
+					savedOutput,
 				);
-				record = getTask(taskId);
-			}
-			if (!record) return;
-			const status = active.stopRequested
-				? "stopped"
-				: record.state === "completed"
-					? "completed"
-					: "failed";
-			updateTask(taskId, {
-				execution: { ...execution, status, ...savedOutput },
-			});
-		} catch (error) {
-			const record = getTask(taskId);
-			if (!record) return;
-			const status = active.stopRequested ? "stopped" : "failed";
-			if (active.stopRequested && record.state !== "cancelled")
 				safeTransitionTask(taskId, "cancelled");
-			else if (!active.stopRequested && record.state === "running")
-				safeTransitionTask(taskId, "failed", {
-					errorReason: error instanceof Error ? error.message : String(error),
-				});
-			updateTask(taskId, { execution: { ...execution, status } });
+				return;
+			}
+			const status = result.exitCode === 0 ? "completed" : "failed";
+			this.settleExecution(
+				taskId,
+				execution,
+				status,
+				active,
+				result,
+				savedOutput,
+			);
+			safeTransitionTask(
+				taskId,
+				status,
+				status === "completed"
+					? {}
+					: { errorReason: `subagent exited with code ${result.exitCode}` },
+			);
+		} catch (error) {
+			if (active.settled) return;
+			if (active.stopRequested) {
+				this.settleExecution(taskId, execution, "stopped", active);
+				safeTransitionTask(taskId, "cancelled");
+				return;
+			}
+			this.settleExecution(taskId, execution, "failed", active);
+			safeTransitionTask(taskId, "failed", {
+				errorReason: error instanceof Error ? error.message : String(error),
+			});
 		}
 	}
 
@@ -305,11 +438,12 @@ export class TaskExecutionCoordinator {
 			const ownerPid = execution.ownerPid;
 			const status =
 				ownerPid && processExists(ownerPid) ? "failed_to_stop" : "orphaned";
-			updateTask(taskId, { execution: { ...execution, status } });
-			if (status === "orphaned")
+			if (status === "orphaned") {
 				safeTransitionTask(taskId, "blocked", {
 					blockReason: "orphaned execution",
 				});
+				this.settleExecution(taskId, execution, "orphaned");
+			} else updateTask(taskId, { execution: { ...execution, status } });
 			return {
 				outcome: status === "orphaned" ? "persisted" : "failed_to_stop",
 				record: getTask(taskId) ?? record,
@@ -332,10 +466,15 @@ export class TaskExecutionCoordinator {
 		if (!completed) {
 			const current = getTask(taskId);
 			const currentExecution = current && executionFor(current);
-			if (currentExecution)
-				updateTask(taskId, {
-					execution: { ...currentExecution, status: "failed_to_stop" },
-				});
+			if (currentExecution) {
+				safeTransitionTask(taskId, "cancelled");
+				this.settleExecution(
+					taskId,
+					currentExecution,
+					"failed_to_stop",
+					active,
+				);
+			}
 			return {
 				outcome: "failed_to_stop",
 				record: getTask(taskId) ?? record,
@@ -368,12 +507,10 @@ export class TaskExecutionCoordinator {
 			if (execution?.status !== "running") continue;
 			const ownerPid = execution.ownerPid;
 			if (ownerPid && processExists(ownerPid)) continue;
-			updateTask(record.id, {
-				execution: { ...execution, status: "orphaned" },
-			});
 			safeTransitionTask(record.id, "blocked", {
 				blockReason: "orphaned execution",
 			});
+			this.settleExecution(record.id, execution, "orphaned");
 		}
 	}
 

@@ -320,7 +320,7 @@ Workflow highlights:
 
 Measures each interaction from submission through `agent_settled` and records metadata-only denominator metrics for every interaction. It silently queues selected interactions for a bounded GPT-5.6 Terra review: every interaction over 10 minutes, every subagent run lasting at least 2 minutes, high-confidence triggered interactions from 2 through 10 minutes, and a deterministic 15 percent control sample from the remaining 2-to-10-minute interactions. Subagent records include the durable run ID and spawn time for correlation with operator tasks. Review jobs run one at a time from a persistent local queue and never delay the original interaction.
 
-Runtime records live under `~/.pi/agent/workflow-friction/` and remain uncommitted. `interactions.jsonl` contains timing, mode, selection, tool, validation, subagent, and mutation counts without prompt or response content.
+Runtime records live under `~/.pi/agent/workflow-friction/` and remain uncommitted. `interactions.jsonl` contains timing, mode, selection, tool, validation, subagent, and mutation counts without prompt or response content. Set `PI_WORKFLOW_FRICTION_DIR` to use a separate local directory. At interaction settlement, the extension also emits a metadata-only `orchestration_interaction` metrics event for direct and delegated interactions.
 
 ```text
 /capture [optional note]  # review the latest completed interaction
@@ -328,6 +328,16 @@ Runtime records live under `~/.pi/agent/workflow-friction/` and remain uncommitt
 ```
 
 `/workflow-review` presents concise evidence and recommendations but does not apply changes. Approved changes can be recorded for later comparison with the `workflow_friction_mark_change` tool.
+
+### `orchestration-stats.ts`
+
+Adds `/orchestration-stats [days]` for a bounded, observational report of `orchestration_run` and `orchestration_interaction` metrics. The report covers delegation topology, parent and worker usage, known and unavailable cost, output-byte handling, duration, run status, and workflow-friction correlation. The default window is 7 days and the maximum is 365 days.
+
+Metrics are written best-effort under `~/.pi/agent/logs/` by default. Set `metrics.enabled` to `false` to opt out, or set `PI_METRICS_DIR` to use an isolated local metrics root. Metrics have no built-in retention or purge job. Do not use a shared or synced metrics directory. These events retain operational metadata only; they do not retain prompts, child output, terminal output, tool arguments, or response content.
+
+For a bounded purge, stop writers, back up one identified metrics JSONL file, and remove only its `orchestration_run` and `orchestration_interaction` records. Verify the backup and remaining records before replacing that one file. A dedicated scratch `PI_METRICS_DIR` may instead be removed after confirming that it contains no other records.
+
+See `pi/docs/orchestration-telemetry.md` for field schemas, joins, reader bounds, and report definitions.
 
 ### `context.ts`
 

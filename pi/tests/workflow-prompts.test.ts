@@ -45,8 +45,17 @@ describe("workflow prompt contracts", () => {
 		expect(prompt).toContain(
 			"at least 3 additional domain-specific expert reviewers",
 		);
-		expect(prompt).toContain('modelSize: "medium"');
-		expect(prompt).toContain('modelPolicy: "same-family"');
+		expect(prompt).toContain('modelSize: "small"` by default');
+		expect(prompt).toContain("do not raise the whole\npanel tier by default");
+		expect(prompt).toContain(
+			'Escalate independent reviewers to `modelSize: "medium"`',
+		);
+		expect(prompt).toContain(
+			'`modelSize: "medium"`, and\n`modelPolicy: "same-family"`. This gate is a single serial reviewer',
+		);
+		expect(prompt).toContain(
+			'Escalate every readiness recheck after a repair\npass to `modelSize: "large"`',
+		);
 		expect(prompt).toContain("Contested or Dismissed Findings");
 		expect(prompt).toContain("Default mode is **auto-apply**");
 		expect(prompt).toContain("final standalone-readiness reviewer");

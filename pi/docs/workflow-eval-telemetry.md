@@ -18,6 +18,10 @@ evidence artifacts whenever practical.
 
 ---
 
+## Ownership Boundary
+
+Workflow telemetry owns command-lifecycle episodes, phases, and workflow evidence. Orchestration telemetry owns delegation topology, worker and parent usage, cost, output-byte handling, and run status. Correlate the two only through explicit IDs: workflow records use their episode and artifact identifiers, while orchestration records use `interactionId`, `orchestrationId`, `runId`, and optional `taskId`. Neither stream infers ownership or joins from timestamps, names, or paths.
+
 ## Goals
 
 1. Reproduce a workflow episode from durable local artifacts.

@@ -23,6 +23,7 @@ const KNOWN_SCHEMA_VERSIONS = new Set(["3.0.0"]);
 const CLASSIFIER_MODEL_TIERS = new Set(["mini", "core", "large"]);
 const CLASSIFIER_EFFORTS = new Set(["none", "low", "medium", "high"]);
 const MAX_CANDIDATES = 12;
+const CLASSIFIER_TIMEOUT_MS = 15_000;
 const CLASSIFIER_FAILURE_LOG = path.join(
 	PROMPT_ROUTING_DIR,
 	"logs",
@@ -193,7 +194,7 @@ export async function classifyWithV3(
 				"--prompt-file",
 				promptFile,
 			],
-			{ timeout: 5000 },
+			{ timeout: CLASSIFIER_TIMEOUT_MS },
 		);
 	} catch (err: unknown) {
 		const msg = err instanceof Error ? err.message : String(err);

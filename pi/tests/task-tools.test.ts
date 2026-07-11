@@ -1,25 +1,40 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TaskExecutionCoordinator } from "../extensions/tasks/execution.ts";
-import { registerTaskTools } from "../extensions/tasks.ts";
-import { createTask, getTask, listTasks } from "../lib/task-registry.ts";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
+
+const prevMetricsDir = process.env.PI_METRICS_DIR;
+const metricsRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pi-task-tools-metrics-"));
+process.env.PI_METRICS_DIR = metricsRoot;
+
+const { TaskExecutionCoordinator } = await import("../extensions/tasks/execution.ts");
+const { registerTaskTools } = await import("../extensions/tasks.ts");
+const { createTask, getTask, listTasks } = await import("../lib/task-registry.ts");
 
 let tmpRoot: string;
 let prevOperatorDir: string | undefined;
+let testMetricsDir: string;
 
 beforeEach(() => {
 	tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pi-task-tools-"));
+	testMetricsDir = path.join(tmpRoot, "metrics");
 	prevOperatorDir = process.env.PI_OPERATOR_DIR;
 	process.env.PI_OPERATOR_DIR = tmpRoot;
+	process.env.PI_METRICS_DIR = testMetricsDir;
 });
 
 afterEach(() => {
 	if (prevOperatorDir === undefined) delete process.env.PI_OPERATOR_DIR;
 	else process.env.PI_OPERATOR_DIR = prevOperatorDir;
+	process.env.PI_METRICS_DIR = metricsRoot;
 	fs.rmSync(tmpRoot, { recursive: true, force: true });
+});
+
+afterAll(() => {
+	if (prevMetricsDir === undefined) delete process.env.PI_METRICS_DIR;
+	else process.env.PI_METRICS_DIR = prevMetricsDir;
+	fs.rmSync(metricsRoot, { recursive: true, force: true });
 });
 
 describe("task tools", () => {

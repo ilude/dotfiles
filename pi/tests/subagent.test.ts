@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import workflowFrictionExtension from "../extensions/workflow-friction-review.js";
 import {
 	createMockCtx,
 	createMockPi,
@@ -37,6 +38,9 @@ describe("subagent model override routing", () => {
 	let tmpDir: string;
 	let skillDir: string;
 	let prevOperatorDir: string | undefined;
+	let prevMetricsDir: string | undefined;
+	let defaultMetricsPath: string;
+	let defaultMetricsContents: string | undefined;
 
 	beforeEach(async () => {
 		tmpDir = await fs.promises.mkdtemp(
@@ -73,13 +77,26 @@ You are a test agent.
 			"utf8",
 		);
 		prevOperatorDir = process.env.PI_OPERATOR_DIR;
+		prevMetricsDir = process.env.PI_METRICS_DIR;
+		const { getMetricsLogPath } = await import("../lib/metrics.ts");
+		defaultMetricsPath = getMetricsLogPath();
+		defaultMetricsContents = fs.existsSync(defaultMetricsPath)
+			? await fs.promises.readFile(defaultMetricsPath, "utf8")
+			: undefined;
 		process.env.PI_OPERATOR_DIR = path.join(tmpDir, "operator");
+		process.env.PI_METRICS_DIR = path.join(tmpDir, "metrics");
 		spawnMock.mockReset();
 	});
 
 	afterEach(async () => {
 		if (prevOperatorDir === undefined) delete process.env.PI_OPERATOR_DIR;
 		else process.env.PI_OPERATOR_DIR = prevOperatorDir;
+		if (prevMetricsDir === undefined) delete process.env.PI_METRICS_DIR;
+		else process.env.PI_METRICS_DIR = prevMetricsDir;
+		const defaultMetricsAfter = fs.existsSync(defaultMetricsPath)
+			? await fs.promises.readFile(defaultMetricsPath, "utf8")
+			: undefined;
+		expect(defaultMetricsAfter).toBe(defaultMetricsContents);
 		await fs.promises.rm(tmpDir, { recursive: true, force: true });
 		vi.clearAllMocks();
 	});
@@ -123,6 +140,58 @@ You are a test agent.
 		if (!tool) throw new Error("subagent tool not registered");
 		return { pi, tool };
 	}
+
+	async function orchestrationRuns() {
+		const { readRecentEvents } = await import("../lib/metrics.ts");
+		return readRecentEvents(100).filter(
+			(event) => event.event === "orchestration_run",
+		);
+	}
+
+	it(
+		"passes an execution-attempt runId override to the child process",
+		async () => {
+			mockSuccessfulSpawn();
+			const { runSingleAgent } = await import(
+				"../extensions/subagent/index.ts"
+			);
+			const result = await runSingleAgent(
+				tmpDir,
+				[
+					{
+						name: "tester",
+						description: "Test agent",
+						systemPrompt: "",
+						source: "project",
+						filePath: path.join(tmpDir, ".pi", "agents", "tester.md"),
+					},
+				],
+				"tester",
+				"Check the override",
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				(results) => ({
+					mode: "single",
+					agentScope: "project",
+					projectAgentsDir: null,
+					results,
+				}),
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				"attempt-override",
+			);
+
+			expect(result.runId).toBe("attempt-override");
+			expect(spawnMock.mock.calls[0][2].env.PI_SUBAGENT_RUN_ID).toBe(
+				"attempt-override",
+			);
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
 
 	it(
 		"does not prompt for project agents by default",
@@ -531,6 +600,128 @@ You are a test agent.
 			expect(record.usage?.outputTokens).toBe(5);
 			expect(record.metadata?.model).toBe("anthropic/claude-sonnet-4-6");
 			expect(record.metadata?.effort).toBe("high");
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"persists cumulative normalized usage with a context peak and known zero cost",
+		async () => {
+			spawnMock.mockImplementation(() => {
+				const proc = createMockProcess();
+				queueMicrotask(() => {
+					for (const usage of [
+						{
+							input: 10,
+							output: 5,
+							cacheRead: 7,
+							cacheWrite: 3,
+							cost: { total: 0 },
+							totalTokens: 200,
+						},
+						{
+							input: 20,
+							output: 6,
+							cacheRead: 2,
+							cacheWrite: 4,
+							totalTokens: 100,
+						},
+					]) {
+						proc.stdout.emit(
+							"data",
+							`${JSON.stringify({
+								type: "message_end",
+								message: {
+									role: "assistant",
+									content: [{ type: "text", text: "done" }],
+									usage,
+								},
+							})}\n`,
+						);
+					}
+					proc.emit("close", 0);
+				});
+				return proc;
+			});
+			const { tool } = await loadTool();
+			const { listTasks } = await import("../lib/task-registry.ts");
+
+			await tool.execute(
+				"call-normalized-usage",
+				{
+					agent: "tester",
+					task: "Measure usage",
+					agentScope: "project",
+					confirmProjectAgents: false,
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			expect(listTasks()[0]?.usage).toEqual({
+				inputTokens: 30,
+				outputTokens: 11,
+				totalTokens: 200,
+				cacheCreationInputTokens: 7,
+				cacheReadInputTokens: 9,
+				processedTokens: 57,
+				contextPeakTokens: 200,
+				turns: 2,
+				costUsd: 0,
+				costSource: "pi-usage",
+			});
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"persists unavailable cost and partial usage when cancelled",
+		async () => {
+			const proc = createMockProcess();
+			spawnMock.mockImplementation(() => proc);
+			const { tool } = await loadTool();
+			const { listTasks } = await import("../lib/task-registry.ts");
+			const controller = new AbortController();
+			const execution = tool.execute(
+				"call-cancelled-usage",
+				{
+					agent: "tester",
+					task: "Cancel after usage",
+					agentScope: "project",
+					confirmProjectAgents: false,
+				},
+				controller.signal,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1));
+			proc.stdout.emit(
+				"data",
+				`${JSON.stringify({
+					type: "message_end",
+					message: {
+						role: "assistant",
+						content: [{ type: "text", text: "partial" }],
+						usage: { input: 4, output: 2, totalTokens: 12 },
+					},
+				})}\n`,
+			);
+			controller.abort();
+			proc.emit("close", 1);
+			await expect(execution).rejects.toThrow("Subagent was aborted");
+
+			const record = listTasks()[0];
+			expect(record?.state).toBe("cancelled");
+			expect(record?.usage).toMatchObject({
+				inputTokens: 4,
+				outputTokens: 2,
+				processedTokens: 6,
+				contextPeakTokens: 12,
+				costUsd: null,
+				costSource: "unavailable",
+			});
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
@@ -989,6 +1180,146 @@ You are a test agent.
 			expect(records.length).toBe(1);
 			expect(records[0].state).toBe("failed");
 			expect(records[0].errorReason).toContain("simulated failure");
+			expect(records[0].usage).toMatchObject({
+				processedTokens: 0,
+				contextPeakTokens: 0,
+				costUsd: null,
+				costSource: "unavailable",
+			});
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"joins the subagent orchestration run to the settled workflow-friction interaction",
+		async () => {
+			const previousSubagentRunId = process.env.PI_SUBAGENT_RUN_ID;
+			delete process.env.PI_SUBAGENT_RUN_ID;
+			try {
+				mockSuccessfulSpawn();
+				const pi = createMockPi();
+				workflowFrictionExtension(pi as never);
+				const subagent = await import("../extensions/subagent/index.ts");
+				subagent.default(pi as Parameters<typeof subagent.default>[0]);
+				const tool = pi._getTool("subagent");
+				if (!tool) throw new Error("subagent tool not registered");
+				const ctx = createMockCtx({
+					cwd: tmpDir,
+					sessionManager: { getSessionId: () => "session-integration" },
+				});
+				const beforeAgent = pi._getHook("before_agent_start")[0]?.handler;
+				const settled = pi._getHook("agent_settled")[0]?.handler;
+				if (!beforeAgent || !settled)
+					throw new Error("workflow-friction lifecycle hooks not registered");
+
+				await beforeAgent({ prompt: "delegate" }, ctx);
+				await tool.execute(
+					"call-workflow-friction-integration",
+					{
+						agent: "tester",
+						task: "Join this run to the parent interaction",
+						agentScope: "project",
+					},
+					undefined,
+					undefined,
+					ctx,
+				);
+				await settled({}, ctx);
+
+				const { readRecentEvents } = await import("../lib/metrics.ts");
+				const events = readRecentEvents(10);
+				const run = events.find((event) => event.event === "orchestration_run");
+				const interaction = events.find(
+					(event) => event.event === "orchestration_interaction",
+				);
+				expect(run?.data?.orchestrationId).toEqual(expect.any(String));
+				expect(run?.data?.interactionId).toBe(interaction?.data?.interactionId);
+				expect(interaction?.data).toMatchObject({
+					orchestrationIds: [run?.data?.orchestrationId],
+					direct: false,
+				});
+			} finally {
+				if (previousSubagentRunId === undefined)
+					delete process.env.PI_SUBAGENT_RUN_ID;
+				else process.env.PI_SUBAGENT_RUN_ID = previousSubagentRunId;
+			}
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"emits exactly one content-free orchestration run for every subagent mode and failure path",
+		async () => {
+			mockSuccessfulSpawn();
+			const { tool } = await loadTool();
+			const ctx = createMockCtx({ cwd: tmpDir });
+			const execute = (params: Record<string, unknown>) =>
+				tool.execute("call-telemetry", params, undefined, undefined, ctx);
+
+			await execute({
+				agent: "tester",
+				task: "single",
+				agentScope: "project",
+			});
+			await execute({
+				tasks: [
+					{ agent: "tester", task: "parallel one" },
+					{ agent: "tester", task: "parallel two" },
+				],
+				agentScope: "project",
+			});
+			await execute({
+				chain: [
+					{ agent: "tester", task: "chain one" },
+					{ agent: "tester", task: "chain two {previous}" },
+				],
+				agentScope: "project",
+			});
+			await execute({ team: "engineering", task: "team" });
+			await execute({
+				agent: "missing",
+				task: "failure",
+				agentScope: "project",
+			});
+
+			const runs = await orchestrationRuns();
+			expect(runs).toHaveLength(5);
+			const byMode = new Map(
+				runs.map((event) => [
+					(event.data as { mode: string }).mode,
+					event.data as {
+						status: string;
+						parentVisibleBytes: number;
+						workers: Array<{
+							chainTransferBytes?: number;
+							parentVisibleBytes: number;
+							durationMs: number;
+							usage: { inputTokens: number; costSource: string };
+						}>;
+					},
+				]),
+			);
+			const parallel = byMode.get("parallel");
+			expect(parallel?.workers).toHaveLength(2);
+			expect(parallel?.parentVisibleBytes).toBeGreaterThan(0);
+			expect(
+				parallel?.workers.every((worker) => worker.parentVisibleBytes === 0),
+			).toBe(true);
+			expect(parallel?.workers.every((worker) => worker.durationMs >= 0)).toBe(
+				true,
+			);
+			expect(
+				parallel?.workers.every((worker) => worker.usage.inputTokens === 10),
+			).toBe(true);
+			const chain = byMode.get("chain");
+			expect(chain?.workers[0]?.chainTransferBytes).toBeGreaterThan(0);
+			expect(chain?.workers[0]?.parentVisibleBytes).toBe(0);
+			expect(byMode.get("team")?.status).toBe("completed");
+			const failure = runs.find(
+				(event) => (event.data as { status: string }).status === "failed",
+			)?.data as { status: string } | undefined;
+			expect(failure?.status).toBe("failed");
+			expect(JSON.stringify(failure)).not.toContain("Unknown agent");
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);

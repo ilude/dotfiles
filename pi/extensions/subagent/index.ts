@@ -35,11 +35,18 @@ import {
 } from "../../lib/model-routing.js";
 import { TimingSpan } from "../../lib/observability.js";
 import {
+	buildOrchestrationRunEvent,
+	type OrchestrationWorker,
+} from "../../lib/orchestration-telemetry.js";
+import {
 	createTask,
+	type NormalizedTaskUsage,
+	normalizeTaskUsage,
 	resolveTaskWorkspace,
 	transitionTask,
 	updateTask,
 } from "../../lib/task-registry.js";
+import { registerOrchestrationInvocation } from "../../lib/workflow-friction.js";
 import {
 	buildDispatchMessage,
 	formatTeamList,
@@ -118,11 +125,7 @@ function safeTransitionTask(
 	target: "running" | "completed" | "failed" | "cancelled",
 	opts: {
 		errorReason?: string;
-		usage?: {
-			inputTokens?: number;
-			outputTokens?: number;
-			totalTokens?: number;
-		};
+		usage?: NormalizedTaskUsage;
 	} = {},
 ): void {
 	if (!id) return;
@@ -180,8 +183,8 @@ function formatUsageStats(
 		output: number;
 		cacheRead: number;
 		cacheWrite: number;
-		cost: number;
-		contextTokens?: number;
+		cost: number | null;
+		contextPeakTokens?: number;
 		turns?: number;
 	},
 	model?: string,
@@ -193,9 +196,9 @@ function formatUsageStats(
 	if (usage.output) parts.push(`↓${formatTokens(usage.output)}`);
 	if (usage.cacheRead) parts.push(`R${formatTokens(usage.cacheRead)}`);
 	if (usage.cacheWrite) parts.push(`W${formatTokens(usage.cacheWrite)}`);
-	if (usage.cost) parts.push(`$${usage.cost.toFixed(4)}`);
-	if (usage.contextTokens && usage.contextTokens > 0) {
-		parts.push(`ctx:${formatTokens(usage.contextTokens)}`);
+	if (usage.cost !== null) parts.push(`$${usage.cost.toFixed(4)}`);
+	if (usage.contextPeakTokens && usage.contextPeakTokens > 0) {
+		parts.push(`ctx:${formatTokens(usage.contextPeakTokens)}`);
 	}
 	if (model) parts.push(model);
 	return parts.join(" ");
@@ -301,9 +304,22 @@ interface UsageStats {
 	output: number;
 	cacheRead: number;
 	cacheWrite: number;
-	cost: number;
-	contextTokens: number;
+	cost: number | null;
+	contextPeakTokens: number;
 	turns: number;
+}
+
+function taskUsageSnapshot(usage: UsageStats): NormalizedTaskUsage {
+	return normalizeTaskUsage({
+		inputTokens: usage.input,
+		outputTokens: usage.output,
+		totalTokens: usage.contextPeakTokens || usage.input + usage.output,
+		cacheCreationInputTokens: usage.cacheWrite,
+		cacheReadInputTokens: usage.cacheRead,
+		contextPeakTokens: usage.contextPeakTokens,
+		turns: usage.turns,
+		costUsd: usage.cost,
+	});
 }
 
 type OutputMode = "inline" | "file-only";
@@ -332,6 +348,9 @@ export interface SingleResult {
 	outputPath?: string;
 	outputReference?: SavedOutputReference;
 	saveError?: string;
+	runId?: string;
+	taskId?: string;
+	durationMs?: number;
 }
 
 export interface SubagentDetails {
@@ -655,7 +674,9 @@ export async function runSingleAgent(
 	modelSizeHint: ModelSize | undefined,
 	modelPolicyHint: ModelPolicy | undefined,
 	existingTaskId?: string,
+	executionAttemptRunId?: string,
 ): Promise<SingleResult> {
+	const runStartedAt = Date.now();
 	const agent = agents.find((a) => a.name === agentName);
 
 	if (!agent) {
@@ -672,11 +693,13 @@ export async function runSingleAgent(
 				output: 0,
 				cacheRead: 0,
 				cacheWrite: 0,
-				cost: 0,
-				contextTokens: 0,
+				cost: null,
+				contextPeakTokens: 0,
 				turns: 0,
 			},
 			step,
+			runId: executionAttemptRunId ?? randomUUID(),
+			durationMs: Date.now() - runStartedAt,
 		};
 	}
 
@@ -710,13 +733,14 @@ export async function runSingleAgent(
 			output: 0,
 			cacheRead: 0,
 			cacheWrite: 0,
-			cost: 0,
-			contextTokens: 0,
+			cost: null,
+			contextPeakTokens: 0,
 			turns: 0,
 		},
 		model: modelOverride || agent.model,
 		effort: agent.effort ?? "default",
 		step,
+		runId: executionAttemptRunId,
 	};
 
 	const emitUpdate = () => {
@@ -745,7 +769,9 @@ export async function runSingleAgent(
 			agent,
 			currentResult.model,
 		);
-	const runId = taskId ?? randomUUID();
+	const runId = executionAttemptRunId ?? taskId ?? randomUUID();
+	currentResult.runId = runId;
+	currentResult.taskId = taskId;
 	const planPath = extractPlanPath(task);
 	const workflow = inferWorkflow(task);
 	const timingSpan = new TimingSpan({
@@ -830,12 +856,18 @@ export async function runSingleAgent(
 						currentResult.usage.turns++;
 						const usage = msg.usage;
 						if (usage) {
-							currentResult.usage.input += usage.input || 0;
-							currentResult.usage.output += usage.output || 0;
-							currentResult.usage.cacheRead += usage.cacheRead || 0;
-							currentResult.usage.cacheWrite += usage.cacheWrite || 0;
-							currentResult.usage.cost += usage.cost?.total || 0;
-							currentResult.usage.contextTokens = usage.totalTokens || 0;
+							currentResult.usage.input += usage.input ?? 0;
+							currentResult.usage.output += usage.output ?? 0;
+							currentResult.usage.cacheRead += usage.cacheRead ?? 0;
+							currentResult.usage.cacheWrite += usage.cacheWrite ?? 0;
+							if (typeof usage.cost?.total === "number") {
+								currentResult.usage.cost =
+									(currentResult.usage.cost ?? 0) + usage.cost.total;
+							}
+							currentResult.usage.contextPeakTokens = Math.max(
+								currentResult.usage.contextPeakTokens,
+								usage.totalTokens ?? 0,
+							);
 						}
 						if (!currentResult.model && msg.model)
 							currentResult.model = msg.model;
@@ -894,13 +926,7 @@ export async function runSingleAgent(
 		});
 
 		currentResult.exitCode = exitCode;
-		const taskUsage = {
-			inputTokens: currentResult.usage.input,
-			outputTokens: currentResult.usage.output,
-			totalTokens:
-				currentResult.usage.contextTokens ||
-				currentResult.usage.input + currentResult.usage.output,
-		};
+		const taskUsage = taskUsageSnapshot(currentResult.usage);
 		if (wasAborted) {
 			safeTransitionTask(taskId, "cancelled", { usage: taskUsage });
 			taskFinalized = true;
@@ -942,7 +968,10 @@ export async function runSingleAgent(
 		// catches unexpected runtime errors only.
 		if (!taskFinalized) {
 			const errorReason = err instanceof Error ? err.message : String(err);
-			safeTransitionTask(taskId, "failed", { errorReason });
+			safeTransitionTask(taskId, "failed", {
+				errorReason,
+				usage: taskUsageSnapshot(currentResult.usage),
+			});
 		}
 		if (!timingFinished) {
 			const status =
@@ -957,8 +986,11 @@ export async function runSingleAgent(
 			);
 			timingFinished = true;
 		}
+		if (err instanceof Error)
+			Object.assign(err, { subagentResult: currentResult });
 		throw err;
 	} finally {
+		currentResult.durationMs = Date.now() - runStartedAt;
 		if (tmpPromptPath)
 			try {
 				fs.unlinkSync(tmpPromptPath);
@@ -1169,11 +1201,135 @@ export default function (pi: ExtensionAPI) {
 					projectAgentsDir: discovery.projectAgentsDir,
 					results,
 				});
+			const orchestrationId = randomUUID();
+			const interactionId = registerOrchestrationInvocation(orchestrationId);
+			const invocationStartedAt = Date.now();
+			const originalMode = hasTeam
+				? "team"
+				: hasChain
+					? "chain"
+					: hasTasks
+						? "parallel"
+						: "single";
+			let orchestrationEmitted = false;
+			const complete = <T extends AgentToolResult<SubagentDetails>>(
+				result: T,
+			): T => {
+				if (orchestrationEmitted) return result;
+				orchestrationEmitted = true;
+				const details = result.details;
+				const results = details?.results ?? [];
+				const parentText = result.content.find(
+					(item) => item.type === "text",
+				)?.text;
+				const parentVisibleBytes = Buffer.byteLength(parentText ?? "", "utf-8");
+				const workers: OrchestrationWorker[] = results.map((worker, index) => {
+					const isCancelled = worker.stopReason === "aborted";
+					const failed =
+						worker.exitCode !== 0 ||
+						worker.stopReason === "error" ||
+						isCancelled;
+					const isFinalChainWorker =
+						originalMode === "chain" && index === results.length - 1;
+					const childText = getFinalOutput(worker.messages);
+					const forwarded =
+						originalMode === "chain" && !isFinalChainWorker
+							? worker.outputMode === "file-only" && worker.outputReference
+								? worker.outputReference.message
+								: childText
+							: undefined;
+					return {
+						runId: worker.runId ?? randomUUID(),
+						...(worker.taskId ? { taskId: worker.taskId } : {}),
+						agent: worker.agent,
+						...(worker.model ? { resolvedModel: worker.model } : {}),
+						status: isCancelled ? "cancelled" : failed ? "failed" : "completed",
+						exitCode: Math.max(0, worker.exitCode),
+						durationMs: worker.durationMs ?? 0,
+						outputMode:
+							worker.outputMode === "file-only"
+								? "artifact"
+								: worker.outputMode === "inline"
+									? "inline"
+									: "none",
+						childTextBytes: Buffer.byteLength(childText, "utf-8"),
+						parentVisibleBytes:
+							originalMode === "parallel" ||
+							(originalMode === "chain" && !isFinalChainWorker)
+								? 0
+								: parentVisibleBytes,
+						...(worker.outputReference
+							? { artifactBytes: worker.outputReference.bytes }
+							: {}),
+						...(forwarded === undefined
+							? {}
+							: { chainTransferBytes: Buffer.byteLength(forwarded, "utf-8") }),
+						usage: taskUsageSnapshot(worker.usage),
+						turns: worker.usage.turns,
+					};
+				});
+				const allCompleted =
+					workers.length > 0 &&
+					workers.every((worker) => worker.status === "completed");
+				const anyCancelled = workers.some(
+					(worker) => worker.status === "cancelled",
+				);
+				const event = buildOrchestrationRunEvent({
+					orchestrationId,
+					...(interactionId ? { interactionId } : {}),
+					...(ctx.sessionManager?.getSessionId?.()
+						? { parentSessionId: ctx.sessionManager.getSessionId() }
+						: {}),
+					mode: originalMode,
+					fanOut: results.length,
+					status: allCompleted
+						? "completed"
+						: anyCancelled
+							? "cancelled"
+							: results.length === 0
+								? "rejected"
+								: "failed",
+					durationMs: Date.now() - invocationStartedAt,
+					childWorkMs: workers.reduce(
+						(sum, worker) => sum + (worker.durationMs ?? 0),
+						0,
+					),
+					parentVisibleBytes,
+					workers,
+					session: ctx.sessionManager?.getSessionId?.(),
+				});
+				if (event)
+					recordEvent(event as unknown as Parameters<typeof recordEvent>[0]);
+				return result;
+			};
+			const run = async (
+				...args: Parameters<typeof runSingleAgent>
+			): Promise<SingleResult> => {
+				try {
+					return await runSingleAgent(...args);
+				} catch (error) {
+					const failedResult =
+						error instanceof Error
+							? (error as Error & { subagentResult?: SingleResult })
+									.subagentResult
+							: undefined;
+					complete({
+						content: [],
+						details: makeDetails(
+							originalMode === "parallel" || originalMode === "chain"
+								? originalMode
+								: "single",
+						)(failedResult ? [failedResult] : []),
+						isError: true,
+					});
+					throw error;
+				}
+			};
 
 			if (modeCount !== 1) {
 				const available =
 					agents.map((a) => `${a.name} (${a.source})`).join(", ") || "none";
-				return {
+				return complete({
 					content: [
 						{
 							type: "text",
@@ -1181,13 +1337,13 @@ export default function (pi: ExtensionAPI) {
 						},
 					],
 					details: makeDetails("single")([]),
-				};
+				});
 			}
 
 			if (hasTeam) {
 				const teams = loadTeamsConfig();
 				if (!teams) {
-					return {
+					return complete({
 						content: [
 							{
 								type: "text",
@@ -1195,11 +1351,11 @@ export default function (pi: ExtensionAPI) {
 							},
 						],
 						details: makeDetails("single")([]),
-					};
+					});
 				}
 				const resolved = resolveTeam(teams, String(params.team));
 				if (!resolved) {
-					return {
+					return complete({
 						content: [
 							{
 								type: "text",
@@ -1207,17 +1363,17 @@ export default function (pi: ExtensionAPI) {
 							},
 						],
 						details: makeDetails("single")([]),
-					};
+					});
 				}
 				const [, teamEntry] = resolved;
 				const agentFilePath = resolveAgentPath(teamEntry.file, getAgentDir());
 				if (!fs.existsSync(agentFilePath)) {
-					return {
+					return complete({
 						content: [
 							{ type: "text", text: `Agent file not found: ${agentFilePath}` },
 						],
 						details: makeDetails("single")([]),
-					};
+					});
 				}
 				params = {
 					...params,
@@ -1255,7 +1411,7 @@ export default function (pi: ExtensionAPI) {
 						`Agents: ${names}\nSource: ${dir}\n\nProject agents are repo-controlled. Only continue for trusted repositories.`,
 					);
 					if (!ok)
-						return {
+						return complete({
 							content: [
 								{
 									type: "text",
@@ -1265,7 +1421,7 @@ export default function (pi: ExtensionAPI) {
 							details: makeDetails(
 								hasChain ? "chain" : hasTasks ? "parallel" : "single",
 							)([]),
-						};
+						});
 				}
 			}
 
@@ -1296,7 +1452,7 @@ export default function (pi: ExtensionAPI) {
 							}
 						: undefined;
 
-					const result = await runSingleAgent(
+					const result = await run(
 						ctx.cwd,
 						agents,
 						step.agent,
@@ -1331,7 +1487,7 @@ export default function (pi: ExtensionAPI) {
 							result.stderr ||
 							getFinalOutput(result.messages) ||
 							"(no output)";
-						return {
+						return complete({
 							content: [
 								{
 									type: "text",
@@ -1340,7 +1496,7 @@ export default function (pi: ExtensionAPI) {
 							],
 							details: makeDetails("chain")(results),
 							isError: true,
-						};
+						});
 					}
 					previousOutput =
 						result.outputMode === "file-only" && result.outputReference
@@ -1348,7 +1504,7 @@ export default function (pi: ExtensionAPI) {
 							: getFinalOutput(result.messages);
 				}
 				const finalResult = results[results.length - 1];
-				return {
+				return complete({
 					content: [
 						{
 							type: "text",
@@ -1356,7 +1512,7 @@ export default function (pi: ExtensionAPI) {
 						},
 					],
 					details: makeDetails("chain")(results),
-				};
+				});
 			}
 
 			if (params.tasks && params.tasks.length > 0) {
@@ -1380,8 +1536,8 @@ export default function (pi: ExtensionAPI) {
 							output: 0,
 							cacheRead: 0,
 							cacheWrite: 0,
-							cost: 0,
-							contextTokens: 0,
+							cost: null,
+							contextPeakTokens: 0,
 							turns: 0,
 						},
 						model: resolvedModelId || agent?.model,
@@ -1411,7 +1567,7 @@ export default function (pi: ExtensionAPI) {
 					tasks,
 					MAX_CONCURRENCY,
 					async (t, index) => {
-						const result = await runSingleAgent(
+						const result = await run(
 							ctx.cwd,
 							agents,
 							t.agent,
@@ -1451,7 +1607,7 @@ export default function (pi: ExtensionAPI) {
 					r.stopReason !== "error" &&
 					r.stopReason !== "aborted";
 				const successCount = results.filter(isSuccessfulResult).length;
-				return {
+				return complete({
 					content: [
 						{
 							type: "text",
@@ -1459,11 +1615,11 @@ export default function (pi: ExtensionAPI) {
 						},
 					],
 					details: makeDetails("parallel")(results),
-				};
+				});
 			}
 
 			if (params.agent && params.task) {
-				const result = await runSingleAgent(
+				const result = await run(
 					ctx.cwd,
 					agents,
 					params.agent,
@@ -1496,7 +1652,7 @@ export default function (pi: ExtensionAPI) {
 						result.stderr ||
 						getFinalOutput(result.messages) ||
 						"(no output)";
-					return {
+					return complete({
 						content: [
 							{
 								type: "text",
@@ -1505,9 +1661,9 @@ export default function (pi: ExtensionAPI) {
 						],
 						details: makeDetails("single")([result]),
 						isError: true,
-					};
+					});
 				}
-				return {
+				return complete({
 					content: [
 						{
 							type: "text",
@@ -1515,12 +1671,12 @@ export default function (pi: ExtensionAPI) {
 						},
 					],
 					details: makeDetails("single")([result]),
-				};
+				});
 			}
 
 			const available =
 				agents.map((a) => `${a.name} (${a.source})`).join(", ") || "none";
-			return {
+			return complete({
 				content: [
 					{
 						type: "text",
@@ -1528,7 +1684,7 @@ export default function (pi: ExtensionAPI) {
 					},
 				],
 				details: makeDetails("single")([]),
-			};
+			});
 		},
 
 		renderCall(args, theme, _context) {
@@ -1711,7 +1867,7 @@ export default function (pi: ExtensionAPI) {
 					output: 0,
 					cacheRead: 0,
 					cacheWrite: 0,
-					cost: 0,
+					cost: null as number | null,
 					turns: 0,
 				};
 				for (const r of results) {
@@ -1719,7 +1875,8 @@ export default function (pi: ExtensionAPI) {
 					total.output += r.usage.output;
 					total.cacheRead += r.usage.cacheRead;
 					total.cacheWrite += r.usage.cacheWrite;
-					total.cost += r.usage.cost;
+					if (r.usage.cost !== null)
+						total.cost = (total.cost ?? 0) + r.usage.cost;
 					total.turns += r.usage.turns;
 				}
 				return total;

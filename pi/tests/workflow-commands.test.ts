@@ -1,7 +1,11 @@
 import { spawn, spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchCodexUsage, formatUsage } from "../extensions/codex-status.ts";
+import {
+	fetchCodexUsage,
+	formatConfiguredBedrockUsageSection,
+	formatUsage,
+} from "../extensions/codex-status.ts";
 import { createMockPi } from "./helpers/mock-pi.js";
 
 vi.mock("node:child_process", () => ({
@@ -11,12 +15,15 @@ vi.mock("node:child_process", () => ({
 
 vi.mock("../extensions/codex-status.ts", () => ({
 	fetchCodexUsage: vi.fn(async () => ({ auth: {}, usage: {} })),
+	formatConfiguredBedrockUsageSection: vi.fn(async () => null),
 	formatUsage: vi.fn(() => "Codex:\n 5h     7% used"),
 }));
 
 const mockSpawn = spawn as ReturnType<typeof vi.fn>;
 const mockSpawnSync = spawnSync as ReturnType<typeof vi.fn>;
 const mockFetchCodexUsage = fetchCodexUsage as ReturnType<typeof vi.fn>;
+const mockFormatConfiguredBedrockUsageSection =
+	formatConfiguredBedrockUsageSection as ReturnType<typeof vi.fn>;
 const mockFormatUsage = formatUsage as ReturnType<typeof vi.fn>;
 
 describe("workflow command dispatch", () => {
@@ -90,6 +97,10 @@ describe("workflow command dispatch", () => {
 			order.push("format-codex-status");
 			return "Codex:\n 5h     7% used";
 		});
+		mockFormatConfiguredBedrockUsageSection.mockImplementationOnce(async () => {
+			order.push("format-bedrock-status");
+			return "Bedrock: no usage recorded this month.";
+		});
 		appendCustomMessageEntry.mockImplementation((_type, content) => {
 			order.push(
 				String(content).startsWith("Codex:") ? "codex-status" : "usage",
@@ -125,7 +136,7 @@ describe("workflow command dispatch", () => {
 		expect(appendCustomMessageEntry).toHaveBeenNthCalledWith(
 			1,
 			"workflow-clear-codex-status",
-			"Codex:\n 5h     7% used",
+			"Codex:\n 5h     7% used\n\nBedrock: no usage recorded this month.",
 			true,
 		);
 		expect(appendCustomMessageEntry).toHaveBeenNthCalledWith(
@@ -137,6 +148,7 @@ describe("workflow command dispatch", () => {
 		expect(order).toEqual([
 			"fetch-codex-status",
 			"format-codex-status",
+			"format-bedrock-status",
 			"codex-status",
 			"usage",
 			"new-session",

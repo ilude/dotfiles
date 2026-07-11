@@ -131,8 +131,11 @@ Panel call invariants:
 - never set per-task `output: false`; omit `output` because coercion can create a
   repository-root file literally named `false`
 
-Escalate independent reviewers to `modelSize: "medium"` only for an unusually
-large, security-critical, or architecturally risky plan. Each task must identify
+Small panels earn their keep through breadth: six independent adversarial reads
+at small size have produced verified line-level findings; do not raise the whole
+panel tier by default. Escalate independent reviewers to `modelSize: "medium"`
+only for an unusually large, security-critical, or architecturally risky plan.
+Each task must identify
 its independent worker role, persona seed, plan path, review directory, unique
 artifact path, skeptical focus, and the template-owned artifact/return contract.
 
@@ -271,16 +274,21 @@ Auto-apply only. Say:
 `Plan fixes applied; running standalone-readiness check.`
 
 Launch one final standalone-readiness reviewer with `agentScope: "both"`,
-`confirmProjectAgents: false`, `modelSize: "small"`, and
-`modelPolicy: "same-family"`. It must assume a brand-new session and verify the
-plan can safely and completely run via `/do-it <plan-path>` with all context,
+`confirmProjectAgents: false`, `modelSize: "medium"`, and
+`modelPolicy: "same-family"`. This gate is a single serial reviewer, so
+consolidation failures cost whole repair passes; medium is the floor, not small.
+It must assume a brand-new session and verify the plan can safely and completely
+run via `/do-it <plan-path>` with all context,
 commands, assumptions, credentials, evidence, gates, rollback, archive criteria,
 and checklist mappings. It classifies issues as `blocker`, `hardening`, or `nit`,
 returns `STANDALONE READY` when no blockers exist, and does not block on
 hardening/nits.
 
 For blockers, edit only the plan, announce each repair pass, run Section Integrity
-Check, and retry the same goal. Allow at most two repair passes after the initial
+Check, and retry the same goal. Escalate every readiness recheck after a repair
+pass to `modelSize: "large"` so remaining and adjacent defects are consolidated
+into one pass instead of dribbling across the budget. Allow at most two repair
+passes after the initial
 review. Never rerun the full panel. If blockers remain, write them to
 `{review_dir}/standalone-readiness-blockers.md`, mark not ready, and stop. Do not
 silently continue patching.

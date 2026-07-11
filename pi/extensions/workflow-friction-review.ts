@@ -7,10 +7,12 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { recordEvent } from "../lib/metrics.js";
+import { buildOrchestrationInteractionEvent } from "../lib/orchestration-telemetry.js";
 import { sanitizeTaskValue } from "../lib/task-security.js";
 import {
+	activateOrchestrationInteraction,
 	buildReviewPrompt,
 	buildWorkflowReviewPrompt,
 	consumeWorkflowSubmission,
@@ -20,15 +22,19 @@ import {
 	type InteractionMetadataRecord,
 	type InteractionPacket,
 	interactionMetadataFromPacket,
+	noteParentAssistantUsage,
 	noteWorkflowSubmission,
 	parseReviewResult,
 	REVIEW_LOOKBACK_DAYS,
 	REVIEW_MIN_DURATION_MS,
+	resetOrchestrationInteraction,
 	type StoredReviewRecord,
 	selectInteractionForReview,
+	settleOrchestrationInteraction,
 	summarizeInteractionMetadata,
 	type ToolTrace,
 	type WorkflowMode,
+	workflowFrictionStorageRoot,
 } from "../lib/workflow-friction.js";
 
 const REVIEW_TIMEOUT_MS = 120_000;
@@ -98,7 +104,7 @@ interface CaptureAnnotation {
 }
 
 function storageRoot(): string {
-	return path.join(getAgentDir(), "workflow-friction");
+	return workflowFrictionStorageRoot();
 }
 
 function pendingDir(): string {
@@ -616,8 +622,17 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 	let currentSessionId = "unknown";
 
 	pi.on("session_start", async (_event, ctx) => {
-		currentSessionId = ctx.sessionManager.getSessionId();
+		const sessionId = ctx.sessionManager.getSessionId();
+		if (currentSessionId !== sessionId)
+			resetOrchestrationInteraction(currentSessionId);
+		currentSessionId = sessionId;
 		startBackgroundWorker(pi, ctx.cwd);
+	});
+
+	pi.on("session_shutdown", async () => {
+		resetOrchestrationInteraction(currentSessionId);
+		active = null;
+		pendingInput = null;
 	});
 
 	pi.on("input", async (event) => {
@@ -635,6 +650,12 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("before_agent_start", async (event, ctx) => {
+		const sessionId = ctx.sessionManager.getSessionId();
+		if (currentSessionId !== sessionId) {
+			resetOrchestrationInteraction(currentSessionId);
+			active = null;
+			currentSessionId = sessionId;
+		}
 		if (active) return undefined;
 		const now = Date.now();
 		const workflowHint = consumeWorkflowSubmission(now);
@@ -650,7 +671,7 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 			: (submission?.submittedAt ?? now);
 		active = {
 			interactionId: createInteractionId(),
-			sessionId: ctx.sessionManager.getSessionId(),
+			sessionId,
 			mode: submission?.mode ?? "unknown",
 			startedAt,
 			startedMonotonic: performance.now() - Math.max(0, now - startedAt),
@@ -664,11 +685,20 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 			activeTools: new Map(),
 			mutationGeneration: 0,
 		};
+		activateOrchestrationInteraction({
+			interactionId: active.interactionId,
+			sessionId: active.sessionId,
+		});
 		return undefined;
 	});
 
 	pi.on("message_end", async (event) => {
 		if (!active || event.message.role !== "assistant") return;
+		noteParentAssistantUsage({
+			provider: event.message.provider,
+			model: event.message.model,
+			usage: event.message.usage,
+		});
 		const text = messageText(event.message);
 		if (!text) return;
 		active.assistantTexts.push(bounded(text, MAX_ASSISTANT_TURN));
@@ -734,6 +764,20 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 		void appendJsonLine(interactionsPath(), metadata).catch(() => {
 			// Metadata persistence must not delay or interrupt control return.
 		});
+		const orchestration = settleOrchestrationInteraction(
+			completed.interactionId,
+		);
+		if (!process.env.PI_SUBAGENT_RUN_ID && orchestration) {
+			const event = buildOrchestrationInteractionEvent({
+				interactionId: orchestration.interactionId,
+				orchestrationIds: orchestration.orchestrationIds,
+				parentUsageByModel: orchestration.parentUsageByModel,
+				durationMs: provisional.durationMs,
+				direct: orchestration.orchestrationIds.length === 0,
+				session: orchestration.sessionId,
+			});
+			if (event) recordEvent(event);
+		}
 		if (reasons.length === 0) return;
 		const packet = latestCompleted;
 		void enqueueReview(packet)

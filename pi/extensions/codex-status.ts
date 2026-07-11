@@ -21,8 +21,6 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import {
 	type BedrockMonthSummary,
-	formatMoney,
-	formatTokenCount,
 	getCurrentBedrockMonthSummary,
 } from "../lib/bedrock-cost-ledger.js";
 
@@ -178,6 +176,15 @@ export async function resolveAuth(): Promise<AuthInfo> {
 	throw new Error(
 		"No usable Codex OAuth credentials found. Run Pi /login for OpenAI Codex or `codex login` first.",
 	);
+}
+
+export async function isBedrockProviderConfigured(): Promise<boolean> {
+	try {
+		const auth = await readJson(homePath(".pi", "agent", "auth.json"));
+		return objectField(auth["amazon-bedrock"]) !== undefined;
+	} catch {
+		return false;
+	}
 }
 
 function formatClock12(date: Date): string {
@@ -339,16 +346,19 @@ export function formatUsage(
 	return lines.join("\n");
 }
 
-function formatCostWithPartialMarker(
-	cost: number,
-	unpricedRequestCount: number,
-): string {
-	const prefix = unpricedRequestCount > 0 ? ">= " : "";
-	const suffix =
-		unpricedRequestCount > 0
-			? ` (partial: ${unpricedRequestCount} unpriced)`
-			: "";
-	return `${prefix}${formatMoney(cost)}${suffix}`;
+function formatCompactMoney(amount: number): string {
+	return `$${amount.toFixed(2)}`;
+}
+
+function formatCompactTokenCount(tokens: number): string {
+	if (tokens < 1_000) return String(tokens);
+	if (tokens < 1_000_000) return `${(tokens / 1_000).toFixed(1)}K`;
+	return `${(tokens / 1_000_000).toFixed(1)}M`;
+}
+
+function shortBedrockModelName(model: string): string {
+	const match = model.match(/claude-(opus|fable|sonnet|haiku)-(\d+(?:-\d+)?)/);
+	return match ? `${match[1]}-${match[2]}` : model;
 }
 
 export function formatBedrockUsageSection(
@@ -358,28 +368,27 @@ export function formatBedrockUsageSection(
 		return "Bedrock: no usage recorded this month.";
 	}
 
-	const lines = [`Bedrock MTD local estimate (${summary.month}):`];
+	const lines = ["Bedrock:"];
 	for (const model of summary.models) {
-		const tokenParts = [
-			`in ${formatTokenCount(model.inputTokens)}`,
-			`out ${formatTokenCount(model.outputTokens)}`,
-		];
-		if (model.cacheReadTokens > 0) {
-			tokenParts.push(`cache-read ${formatTokenCount(model.cacheReadTokens)}`);
-		}
-		if (model.cacheWriteTokens > 0) {
-			tokenParts.push(
-				`cache-write ${formatTokenCount(model.cacheWriteTokens)}`,
-			);
-		}
+		const partial = model.unpricedRequestCount > 0 ? ">= " : "";
 		lines.push(
-			`${model.provider}/${model.model}: ${formatCostWithPartialMarker(model.costTotal, model.unpricedRequestCount)} (${tokenParts.join(", ")})`,
+			`  ${shortBedrockModelName(model.model)}: ${partial}${formatCompactMoney(model.costTotal)} ${formatCompactTokenCount(model.inputTokens)} in, ${formatCompactTokenCount(model.outputTokens)} out`,
 		);
 	}
-	lines.push(
-		`Total: ${formatCostWithPartialMarker(summary.costTotal, summary.unpricedRequestCount)} (${formatTokenCount(summary.inputTokens)} in, ${formatTokenCount(summary.outputTokens)} out)`,
-	);
+	const partial = summary.unpricedRequestCount > 0 ? ">= " : "";
+	lines.push(`  Total:  ${partial}${formatCompactMoney(summary.costTotal)}`);
 	return lines.join("\n");
+}
+
+export async function formatConfiguredBedrockUsageSection(): Promise<
+	string | null
+> {
+	if (!(await isBedrockProviderConfigured())) return null;
+	try {
+		return formatBedrockUsageSection(await getCurrentBedrockMonthSummary());
+	} catch (error) {
+		return `Bedrock: local usage unavailable (${errorMessage(error)})`;
+	}
 }
 
 export function formatCodexFooterStatus(
@@ -448,18 +457,10 @@ export async function showCodexStatus(
 ): Promise<void> {
 	try {
 		const { auth, usage } = await fetchCodexUsage();
-		let bedrock: string;
-		try {
-			bedrock = formatBedrockUsageSection(
-				await getCurrentBedrockMonthSummary(),
-			);
-		} catch (error) {
-			bedrock = `Bedrock: local usage unavailable (${errorMessage(error)})`;
-		}
-		ctx.ui.notify(
-			`${formatUsage(usage, auth, { color: true })}\n\n${bedrock}`,
-			"info",
-		);
+		const sections = [formatUsage(usage, auth, { color: true })];
+		const bedrock = await formatConfiguredBedrockUsageSection();
+		if (bedrock) sections.push(bedrock);
+		ctx.ui.notify(sections.join("\n\n"), "info");
 	} catch (error) {
 		ctx.ui.notify(errorMessage(error), "error");
 	}

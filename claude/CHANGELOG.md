@@ -1,3 +1,13 @@
+## 2026-07-10: Treat explicit requests as authorization
+
+**Why:** Agents could ask for conversational confirmation after the user had already specified or selected an action, then trigger a second runtime safety confirmation for the same operation.
+
+**Fix:** Clarified that explicit requests authorize exact in-scope execution, runtime safety confirmation is the sole approval gate for the same tool call, plans are not approval gates, 1-3-1 applies only to unresolved choices, and broad audits do not pause for repeated confirmation within the agreed scope.
+
+**Files:** ~/.dotfiles/claude/CLAUDE.md
+
+---
+
 ## 2026-07-09: Restore private-store contract wording
 
 **Why:** CI contract tests require the private-store skill to preserve the Obsidian vault wording used by browser tab capture and handoff guidance.

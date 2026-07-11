@@ -6,6 +6,7 @@ import {
 	createTask,
 	getTask,
 	listTasks,
+	normalizeTaskUsage,
 	TaskRegistryError,
 	transitionTask,
 	updateTask,
@@ -176,6 +177,42 @@ describe("transitionTask", () => {
 			inputTokens: 100,
 			outputTokens: 50,
 			totalTokens: 150,
+		});
+	});
+
+	it("adds normalized usage only when a legacy record receives terminal usage", () => {
+		const task = createTask({
+			origin: "subagent",
+			summary: "x",
+			state: "running",
+		});
+		const legacyUsage = {
+			inputTokens: 100,
+			outputTokens: 50,
+			totalTokens: 150,
+		};
+		updateTask(task.id, { usage: legacyUsage });
+		expect(getTask(task.id)?.usage).toEqual(legacyUsage);
+
+		const completed = transitionTask(task.id, "completed", {
+			usage: normalizeTaskUsage({
+				...legacyUsage,
+				cacheCreationInputTokens: 10,
+				cacheReadInputTokens: 20,
+				contextPeakTokens: 300,
+				turns: 2,
+				costUsd: null,
+			}),
+		});
+		expect(completed.usage).toEqual({
+			...legacyUsage,
+			cacheCreationInputTokens: 10,
+			cacheReadInputTokens: 20,
+			processedTokens: 180,
+			contextPeakTokens: 300,
+			turns: 2,
+			costUsd: null,
+			costSource: "unavailable",
 		});
 	});
 });

@@ -1,4 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
+import * as path from "node:path";
+
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
 export const FRICTION_SCHEMA_VERSION = 1;
 export const REVIEW_MIN_DURATION_MS = 2 * 60 * 1000;
@@ -120,6 +123,184 @@ export interface StoredReviewRecord {
 
 let pendingSubmission: SubmissionHint | null = null;
 
+export interface ParentAssistantUsage {
+	input?: number;
+	output?: number;
+	cacheRead?: number;
+	cacheWrite?: number;
+	totalTokens?: number;
+	cost?: { total?: number };
+}
+
+export interface OrchestrationInteractionLifecycle {
+	interactionId: string;
+	sessionId: string;
+	orchestrationIds: string[];
+	parentUsageByModel: Array<{
+		provider: string;
+		model: string;
+		inputTokens: number;
+		outputTokens: number;
+		cacheReadTokens: number;
+		cacheWriteTokens: number;
+		contextPeakTokens: number;
+		costUsd: number | null;
+		costSource: "pi-usage" | "unavailable";
+	}>;
+}
+
+interface ActiveOrchestrationInteraction {
+	interactionId: string;
+	sessionId: string;
+	orchestrationIds: string[];
+	parentUsageByModel: Map<
+		string,
+		{
+			provider: string;
+			model: string;
+			inputTokens: number;
+			outputTokens: number;
+			cacheReadTokens: number;
+			cacheWriteTokens: number;
+			contextPeakTokens: number;
+			costUsd: number;
+			costKnown: boolean;
+		}
+	>;
+}
+
+const ORCHESTRATION_INTERACTION_STATE = Symbol.for(
+	"pi.workflow-friction.orchestration-interaction.v1",
+);
+
+interface OrchestrationInteractionState {
+	active: ActiveOrchestrationInteraction | null;
+}
+
+function orchestrationInteractionState(): OrchestrationInteractionState {
+	const host = globalThis as typeof globalThis & {
+		[ORCHESTRATION_INTERACTION_STATE]?: OrchestrationInteractionState;
+	};
+	const existing = host[ORCHESTRATION_INTERACTION_STATE];
+	if (existing) return existing;
+	const state: OrchestrationInteractionState = { active: null };
+	host[ORCHESTRATION_INTERACTION_STATE] = state;
+	return state;
+}
+
+function nonnegativeUsage(value: unknown): number {
+	return typeof value === "number" && Number.isFinite(value) && value >= 0
+		? value
+		: 0;
+}
+
+export function workflowFrictionStorageRoot(): string {
+	const override = process.env.PI_WORKFLOW_FRICTION_DIR;
+	return override && override.length > 0
+		? override
+		: path.join(getAgentDir(), "workflow-friction");
+}
+
+export function activateOrchestrationInteraction(input: {
+	interactionId: string;
+	sessionId: string;
+}): void {
+	orchestrationInteractionState().active = {
+		interactionId: input.interactionId,
+		sessionId: input.sessionId,
+		orchestrationIds: [],
+		parentUsageByModel: new Map(),
+	};
+}
+
+export function registerOrchestrationInvocation(
+	orchestrationId: string,
+): string | undefined {
+	const active = orchestrationInteractionState().active;
+	if (
+		!active ||
+		!orchestrationId ||
+		active.orchestrationIds.includes(orchestrationId) ||
+		active.orchestrationIds.length >= 64
+	)
+		return undefined;
+	active.orchestrationIds.push(orchestrationId);
+	return active.interactionId;
+}
+
+export function noteParentAssistantUsage(input: {
+	provider: string;
+	model: string;
+	usage: ParentAssistantUsage | undefined;
+}): void {
+	const active = orchestrationInteractionState().active;
+	if (!active || !input.usage || !input.provider || !input.model) return;
+	const key = `${input.provider}\u0000${input.model}`;
+	const existing = active.parentUsageByModel.get(key);
+	if (!existing && active.parentUsageByModel.size >= 8) return;
+	const current = existing ?? {
+		provider: input.provider,
+		model: input.model,
+		inputTokens: 0,
+		outputTokens: 0,
+		cacheReadTokens: 0,
+		cacheWriteTokens: 0,
+		contextPeakTokens: 0,
+		costUsd: 0,
+		costKnown: false,
+	};
+	current.inputTokens += nonnegativeUsage(input.usage.input);
+	current.outputTokens += nonnegativeUsage(input.usage.output);
+	current.cacheReadTokens += nonnegativeUsage(input.usage.cacheRead);
+	current.cacheWriteTokens += nonnegativeUsage(input.usage.cacheWrite);
+	current.contextPeakTokens = Math.max(
+		current.contextPeakTokens,
+		nonnegativeUsage(input.usage.totalTokens),
+	);
+	if (
+		typeof input.usage.cost?.total === "number" &&
+		Number.isFinite(input.usage.cost.total) &&
+		input.usage.cost.total >= 0
+	) {
+		current.costUsd += input.usage.cost.total;
+		current.costKnown = true;
+	}
+	active.parentUsageByModel.set(key, current);
+}
+
+export function settleOrchestrationInteraction(
+	interactionId: string,
+): OrchestrationInteractionLifecycle | null {
+	const state = orchestrationInteractionState();
+	const active = state.active;
+	if (!active || active.interactionId !== interactionId) return null;
+	state.active = null;
+	return {
+		interactionId: active.interactionId,
+		sessionId: active.sessionId,
+		orchestrationIds: [...active.orchestrationIds],
+		parentUsageByModel: [...active.parentUsageByModel.values()].map(
+			(usage) => ({
+				provider: usage.provider,
+				model: usage.model,
+				inputTokens: usage.inputTokens,
+				outputTokens: usage.outputTokens,
+				cacheReadTokens: usage.cacheReadTokens,
+				cacheWriteTokens: usage.cacheWriteTokens,
+				contextPeakTokens: usage.contextPeakTokens,
+				costUsd: usage.costKnown ? usage.costUsd : null,
+				costSource: usage.costKnown ? "pi-usage" : "unavailable",
+			}),
+		),
+	};
+}
+
+export function resetOrchestrationInteraction(sessionId?: string): void {
+	const state = orchestrationInteractionState();
+	if (state.active && (!sessionId || state.active.sessionId === sessionId))
+		state.active = null;
+}
+
 export function noteWorkflowSubmission(
 	text: string,
 	mode: WorkflowMode,
@@ -192,7 +373,7 @@ export function interactionMetadataFromPacket(
 		if (failed) toolFailureCount += 1;
 		const command = normalizedCommand(trace);
 		if (command && VALIDATION_PATTERN.test(command)) validationCount += 1;
-		if (trace.toolName === "subagent" || trace.toolName === "task_execute") {
+		if (trace.toolName === "subagent" || isTaskExecutionTrace(trace)) {
 			subagentCount += 1;
 			if (failed) failedSubagentCount += 1;
 		}

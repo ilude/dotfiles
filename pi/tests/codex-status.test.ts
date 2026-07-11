@@ -9,6 +9,7 @@ import registerCodexStatusCommand, {
 	formatBedrockUsageSection,
 	formatCodexFooterStatus,
 	formatUsage,
+	isBedrockProviderConfigured,
 	resolveAuth,
 	USAGE_ENDPOINT,
 } from "../extensions/codex-status";
@@ -90,6 +91,25 @@ describe("codex-status auth", () => {
 			source: "codex",
 			accountId: "acct-codex-token",
 		});
+	});
+
+	it("detects whether Amazon Bedrock is configured in Pi auth", async () => {
+		const home = tempHome();
+		await mkdir(join(home, ".pi", "agent"), { recursive: true });
+		await writeFile(
+			join(home, ".pi", "agent", "auth.json"),
+			JSON.stringify({ "openai-codex": { access: "token" } }),
+		);
+		await expect(isBedrockProviderConfigured()).resolves.toBe(false);
+
+		await writeFile(
+			join(home, ".pi", "agent", "auth.json"),
+			JSON.stringify({
+				"openai-codex": { access: "token" },
+				"amazon-bedrock": { type: "api_key", key: "configured" },
+			}),
+		);
+		await expect(isBedrockProviderConfigured()).resolves.toBe(true);
 	});
 });
 
@@ -279,34 +299,30 @@ describe("codex-status usage", () => {
 
 		const text = formatBedrockUsageSection({
 			month: "2026-07",
-			inputTokens: 1200,
-			outputTokens: 3400,
-			cacheReadTokens: 500,
-			cacheWriteTokens: 60,
-			costTotal: 0.12345,
+			inputTokens: 3_614_498,
+			outputTokens: 146_348,
+			cacheReadTokens: 11_351_065,
+			cacheWriteTokens: 915_277,
+			costTotal: 66.2544,
 			requestCount: 2,
-			unpricedRequestCount: 1,
+			unpricedRequestCount: 0,
 			models: [
 				{
 					provider: "amazon-bedrock",
-					model: "anthropic.claude-sonnet-4-5",
-					inputTokens: 1200,
-					outputTokens: 3400,
-					cacheReadTokens: 500,
-					cacheWriteTokens: 60,
-					costTotal: 0.12345,
+					model: "us.anthropic.claude-fable-5",
+					inputTokens: 3_614_498,
+					outputTokens: 146_348,
+					cacheReadTokens: 11_351_065,
+					cacheWriteTokens: 915_277,
+					costTotal: 66.2544,
 					requestCount: 2,
-					unpricedRequestCount: 1,
+					unpricedRequestCount: 0,
 				},
 			],
 		});
 
-		expect(text).toContain("Bedrock MTD local estimate (2026-07):");
-		expect(text).toContain(
-			"amazon-bedrock/anthropic.claude-sonnet-4-5: >= $0.1235 (partial: 1 unpriced) (in 1,200, out 3,400, cache-read 500, cache-write 60)",
-		);
-		expect(text).toContain(
-			"Total: >= $0.1235 (partial: 1 unpriced) (1,200 in, 3,400 out)",
+		expect(text).toBe(
+			"Bedrock:\n  fable-5: $66.25 3.6M in, 146.3K out\n  Total:  $66.25",
 		);
 	});
 

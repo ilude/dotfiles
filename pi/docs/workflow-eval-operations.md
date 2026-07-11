@@ -8,6 +8,10 @@ See also: `pi/docs/workflow-eval-telemetry.md` for the field-level schema.
 
 ---
 
+## Ownership Boundary
+
+Workflow telemetry owns command-lifecycle episodes, phases, and workflow evidence. Orchestration telemetry owns delegation topology, worker and parent usage, cost, output-byte handling, and run status. Correlate the two only through explicit IDs: workflow records use their episode and artifact identifiers, while orchestration records use `interactionId`, `orchestrationId`, `runId`, and optional `taskId`. Neither stream infers ownership or joins from timestamps, names, or paths.
+
 ## Current State
 
 The current implementation has three layers.

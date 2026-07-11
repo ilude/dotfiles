@@ -26,9 +26,62 @@ export type TaskPersistenceOutcome =
 export interface TaskUsage {
 	inputTokens?: number;
 	outputTokens?: number;
+	/** @deprecated Retained for schemaVersion-1 compatibility. */
 	totalTokens?: number;
 	cacheCreationInputTokens?: number;
 	cacheReadInputTokens?: number;
+	processedTokens?: number;
+	contextPeakTokens?: number;
+	turns?: number;
+	costUsd?: number | null;
+	costSource?: "pi-usage" | "unavailable";
+}
+
+export interface NormalizedTaskUsage
+	extends Required<Omit<TaskUsage, "costUsd" | "costSource">> {
+	costUsd: number | null;
+	costSource: "pi-usage" | "unavailable";
+}
+
+function nonnegativeNumber(value: number | undefined): number {
+	return typeof value === "number" && Number.isFinite(value) && value >= 0
+		? value
+		: 0;
+}
+
+/** Normalizes worker usage for task-registry persistence. */
+export function normalizeTaskUsage(usage: TaskUsage): NormalizedTaskUsage {
+	const inputTokens = nonnegativeNumber(usage.inputTokens);
+	const outputTokens = nonnegativeNumber(usage.outputTokens);
+	const cacheCreationInputTokens = nonnegativeNumber(
+		usage.cacheCreationInputTokens,
+	);
+	const cacheReadInputTokens = nonnegativeNumber(usage.cacheReadInputTokens);
+	const contextPeakTokens = nonnegativeNumber(usage.contextPeakTokens);
+	const costUsd =
+		typeof usage.costUsd === "number" &&
+		Number.isFinite(usage.costUsd) &&
+		usage.costUsd >= 0
+			? usage.costUsd
+			: null;
+	return {
+		inputTokens,
+		outputTokens,
+		// Retained for schemaVersion-1 consumers; use processedTokens for analytics.
+		totalTokens:
+			nonnegativeNumber(usage.totalTokens) || inputTokens + outputTokens,
+		cacheCreationInputTokens,
+		cacheReadInputTokens,
+		processedTokens:
+			inputTokens +
+			outputTokens +
+			cacheCreationInputTokens +
+			cacheReadInputTokens,
+		contextPeakTokens,
+		turns: nonnegativeNumber(usage.turns),
+		costUsd,
+		costSource: costUsd === null ? "unavailable" : "pi-usage",
+	};
 }
 
 export type TaskExecutionStatus =
@@ -52,6 +105,9 @@ export interface SubagentTaskExecution {
 	status: TaskExecutionStatus;
 	ownerPid?: number;
 	runId?: string;
+	orchestrationId?: string;
+	interactionId?: string;
+	startedAt?: string;
 	outputPath?: string;
 	outputError?: string;
 }
