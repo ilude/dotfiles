@@ -50,22 +50,24 @@ type LoadedInstruction = {
 
 type State = {
 	loaded: Map<string, LoadedInstruction>;
-	blockedOnce: Set<string>;
 	skipped: string[];
 	skippedOnce: Set<string>;
 	projectRoots: Map<string, string>;
 	totalBytes: number;
 	expertiseDisabled: boolean;
+	cwd?: string;
+	basePaths: Set<string>;
+	lastInjectedTargetPayload?: string;
 };
 
 const state: State = {
 	loaded: new Map(),
-	blockedOnce: new Set(),
 	skipped: [],
 	skippedOnce: new Set(),
 	projectRoots: new Map(),
 	totalBytes: 0,
 	expertiseDisabled: false,
+	basePaths: new Set(),
 };
 
 function canonical(filePath: string): string {
@@ -166,22 +168,27 @@ function parseImports(content: string): string[] {
 
 function isPathInside(candidate: string, root: string): boolean {
 	const relative = path.relative(root, candidate);
-	return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative);
+	return (
+		Boolean(relative) &&
+		!relative.startsWith("..") &&
+		!path.isAbsolute(relative)
+	);
 }
 
 function isSensitiveImportPath(imported: string): boolean {
 	const normalized = imported.split(/[\\/]+/).filter(Boolean);
 	const lower = normalized.map((part) => part.toLowerCase());
 	if (lower.some((part) => part === ".ssh")) return true;
-	return lower.some((part) =>
-		part === ".env" ||
-		part.startsWith(".env.") ||
-		part.endsWith(".pem") ||
-		part.endsWith(".key") ||
-		part === "id_rsa" ||
-		part === "id_ed25519" ||
-		part === "known_hosts" ||
-		part === "ssh_config"
+	return lower.some(
+		(part) =>
+			part === ".env" ||
+			part.startsWith(".env.") ||
+			part.endsWith(".pem") ||
+			part.endsWith(".key") ||
+			part === "id_rsa" ||
+			part === "id_ed25519" ||
+			part === "known_hosts" ||
+			part === "ssh_config",
 	);
 }
 
@@ -196,8 +203,11 @@ function validateImportSpec(imported: string) {
 }
 
 function existingImportPath(imported: string, importerPath: string) {
-	const importPath = canonical(path.resolve(path.dirname(importerPath), imported));
-	if (fs.existsSync(importPath) && fs.statSync(importPath).isFile()) return importPath;
+	const importPath = canonical(
+		path.resolve(path.dirname(importerPath), imported),
+	);
+	if (fs.existsSync(importPath) && fs.statSync(importPath).isFile())
+		return importPath;
 	noteSkipped(`${importPath} skipped: import not found`);
 	return undefined;
 }
@@ -205,7 +215,8 @@ function existingImportPath(imported: string, importerPath: string) {
 function realPathInsideRoot(importPath: string, importRoot: string) {
 	const rootReal = fs.realpathSync(importRoot);
 	const importReal = fs.realpathSync(importPath);
-	if (importReal === rootReal || isPathInside(importReal, rootReal)) return importPath;
+	if (importReal === rootReal || isPathInside(importReal, rootReal))
+		return importPath;
 	noteSkipped(`${importPath} skipped: import escapes instruction root`);
 	return undefined;
 }
@@ -262,7 +273,12 @@ function readInstruction(
 		const importPath = resolveSafeImport(imported, fullPath, importRoot);
 		if (!importPath) continue;
 		result.push(
-			...readInstruction(importPath, `imported by ${fullPath}`, importRoot, depth + 1),
+			...readInstruction(
+				importPath,
+				`imported by ${fullPath}`,
+				importRoot,
+				depth + 1,
+			),
 		);
 	}
 	return result;
@@ -311,7 +327,30 @@ function instructionReason(file: string, globalFiles: Set<string>): string {
 	return "project primary instruction";
 }
 
+function clearLoadedSnapshot(): void {
+	state.loaded.clear();
+	state.skipped.length = 0;
+	state.skippedOnce.clear();
+	state.projectRoots.clear();
+	state.totalBytes = 0;
+}
+
+function clearInstructionState(): void {
+	clearLoadedSnapshot();
+	state.basePaths.clear();
+	state.lastInjectedTargetPayload = undefined;
+}
+
+function resetForCwd(cwd: string): void {
+	const resolvedCwd = canonical(cwd);
+	if (state.cwd === resolvedCwd) return;
+	clearInstructionState();
+	state.cwd = resolvedCwd;
+}
+
 function discoverForPaths(cwd: string, paths: string[]): LoadedInstruction[] {
+	resetForCwd(cwd);
+	clearLoadedSnapshot();
 	const globalFiles = globalInstructionFiles();
 	const globalFileSet = new Set(globalFiles);
 	const projectRoot = projectRootFor(cwd);
@@ -325,18 +364,6 @@ function discoverForPaths(cwd: string, paths: string[]): LoadedInstruction[] {
 			instructionReason(file, globalFileSet),
 			globalFileSet.has(file) ? path.dirname(file) : projectRoot,
 		),
-	);
-}
-
-function publishReport(pi: ExtensionAPI, files: LoadedInstruction[]): void {
-	if (!files.length || typeof pi.sendMessage !== "function") return;
-	pi.sendMessage(
-		{
-			customType: REPORT_TYPE,
-			display: false,
-			content: instructionPayload(files),
-		},
-		{ triggerTurn: false },
 	);
 }
 
@@ -355,13 +382,9 @@ export function formatAgentsContextStatus(): string {
 }
 
 export function resetAgentsContextStateForTests(): void {
-	state.loaded.clear();
-	state.blockedOnce.clear();
-	state.skipped.length = 0;
-	state.skippedOnce.clear();
-	state.projectRoots.clear();
-	state.totalBytes = 0;
+	clearInstructionState();
 	state.expertiseDisabled = false;
+	state.cwd = undefined;
 }
 
 export const agentsContextTestApi = {
@@ -378,13 +401,54 @@ export default function (pi: ExtensionAPI) {
 		removeExpertiseTools(event);
 		state.expertiseDisabled = true;
 		const files = discoverForPaths(ctx.cwd, [ctx.cwd]);
+		state.basePaths = new Set(files.map((file) => file.path));
+		state.lastInjectedTargetPayload = undefined;
 		if (!files.length) return undefined;
 		return {
 			systemPrompt: `${event.systemPrompt}\n\n${instructionPayload(files)}`,
 		};
 	});
 
-	pi.on("session_start", async (event) => {
+	type ContextHook = (
+		event: { messages: Array<Record<string, unknown>> },
+		ctx: { cwd: string },
+	) => Promise<{ messages: Array<Record<string, unknown>> }>;
+	const registerContextHook = pi.on as unknown as (
+		event: "context",
+		handler: ContextHook,
+	) => void;
+	registerContextHook("context", async (event, ctx) => {
+		resetForCwd(ctx.cwd);
+		const messages = event.messages.filter(
+			(message) =>
+				!(message.role === "custom" && message.customType === REPORT_TYPE),
+		);
+		const targetFiles = [...state.loaded.values()].filter(
+			(file) => !state.basePaths.has(file.path),
+		);
+		if (!targetFiles.length) {
+			state.lastInjectedTargetPayload = undefined;
+			return { messages };
+		}
+		const payload = instructionPayload(targetFiles);
+		state.lastInjectedTargetPayload = payload;
+		return {
+			messages: [
+				...messages,
+				{
+					role: "custom" as const,
+					customType: REPORT_TYPE,
+					display: false,
+					content: payload,
+					timestamp: Date.now(),
+				},
+			],
+		};
+	});
+
+	pi.on("session_start", async (event, ctx) => {
+		clearInstructionState();
+		state.cwd = canonical(ctx.cwd);
 		removeExpertiseTools(event);
 		state.expertiseDisabled = true;
 	});
@@ -400,16 +464,19 @@ export default function (pi: ExtensionAPI) {
 		}
 		const targetPaths = collectToolPaths(toolName, event.input, ctx.cwd);
 		const files = discoverForPaths(ctx.cwd, targetPaths);
-		publishReport(pi, files);
-		if (files.length && MUTATING_TOOLS.has(toolName)) {
-			const key = `${toolName}:${JSON.stringify(event.input ?? {})}`;
-			if (!state.blockedOnce.has(key)) {
-				state.blockedOnce.add(key);
-				return {
-					block: true,
-					reason: `Loaded ${files.length} AGENTS context file(s). Retry this ${toolName} call now that instructions are available.`,
-				};
-			}
+		const targetFiles = files.filter((file) => !state.basePaths.has(file.path));
+		const targetPayload = targetFiles.length
+			? instructionPayload(targetFiles)
+			: undefined;
+		if (
+			targetPayload &&
+			MUTATING_TOOLS.has(toolName) &&
+			targetPayload !== state.lastInjectedTargetPayload
+		) {
+			return {
+				block: true,
+				reason: `Loaded ${targetFiles.length} target-specific AGENTS context file(s). Retry this ${toolName} call after the next model request applies them.`,
+			};
 		}
 		return undefined;
 	});
