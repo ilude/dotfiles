@@ -31,8 +31,11 @@ ConfGate behavior:
 5. If they disagree, use confidence and catastrophic-under-routing tie-break
    rules from `classifier_confgate.py`.
 
-The runtime default is ConfGate through `classify.py --classifier confgate`.
-Experiments that only compare against T2 are incomplete for promotion purposes.
+`pi/settings.json` selects ConfGate with `router.classifier.mode=confgate`, and
+the prompt-router extension reads that setting and passes `--classifier
+confgate` to `classify.py`. The standalone `classify.py` parser defaults to T2
+when `--classifier` is omitted. Experiments that only compare against T2 are
+incomplete for promotion purposes.
 
 ## Current Model Roles
 
@@ -41,6 +44,11 @@ Experiments that only compare against T2 are incomplete for promotion purposes.
 | T2 | `models/router_v3.joblib` | `classifier.V3Classifier` | Fast TF-IDF plus LinearSVC fallback model |
 | LGBM | `models/router_v3_lgbm.joblib` | `classifier_lgbm.V3ClassifierLGBM` | Stronger primary classifier |
 | ConfGate | wrapper | `classifier_confgate.ConfGatedClassifier` | Production route selector over LGBM and T2 |
+
+Each model load verifies its SHA256 sidecar before deserialization. The tracked
+`data/synthetic_route_labels.pre_wave4.jsonl` is the pre-wave-4 data backup.
+The legacy interface (`router.py`) and legacy data path are compatibility and
+migration inputs, not the production v3 runtime.
 
 ## Baseline Rebuild Parity
 

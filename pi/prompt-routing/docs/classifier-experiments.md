@@ -1,10 +1,10 @@
-# Classifier Experiments: Alternative Architectures vs T2 Production
+# Classifier Experiments: Alternative Architectures vs Former T2 Baseline
 
 Eval set: `eval_v3.jsonl` (n=564, held-out). Training set: `train_v3.jsonl + dev_v3.jsonl` (n=3248).
 
 ## What was tried and why
 
-Three experiments were run against the T2 production baseline (LinearSVC on TF-IDF 1-3gram):
+Three experiments were run against the former T2 baseline (LinearSVC on TF-IDF 1-3gram):
 
 **1. LightGBM + TF-IDF SVD + hand features**
 LightGBM is a gradient-boosted tree model that handles dense input well. TF-IDF (6000 features, 1-3gram)
@@ -31,7 +31,7 @@ without retraining a new model class.
 
 | Model                              | top-1  | catastrophic | Haiku recall | Sonnet recall | Opus recall |
 |------------------------------------|--------|:------------:|:------------:|:-------------:|:-----------:|
-| T2 production (baseline)           | 0.6241 | 38           | 0.8603       | 0.6872        | 0.8974      |
+| T2 former baseline                 | 0.6241 | 38           | 0.8603       | 0.6872        | 0.8974      |
 | LightGBM TF-IDF SVD + hand feat.  | 0.6631 | 23           | 0.8865       | 0.8101        | 0.9103      |
 | HistGB TF-IDF SVD + hand feat.     | 0.6454 | 27           | 0.8646       | 0.7821        | 0.9295      |
 | T2 SVC margin sweep (thresh=0.55)  | 0.4504 | 0            | 0.0306       | 0.8883        | 0.8974      |
@@ -46,7 +46,7 @@ Full margin sweep detail:
 | 0.70            | 0.4397 | 0            | 0.0000       |
 | 0.75            | 0.4397 | 0            | 0.0000       |
 
-## Honest comparison vs T2 production
+## Honest comparison vs former T2 baseline
 
 **LightGBM** is the clear winner among the alternative architectures:
 - top-1 improved from 0.6241 to 0.6631 (+3.9pp)
@@ -61,9 +61,11 @@ Haiku recall collapses to 0.03 at thresh=0.55 (nearly all Haiku prompts are prom
 to Sonnet), and top-1 drops to 0.45. This is not a viable approach for production --
 it replaces catastrophic under-routing with extreme over-routing.
 
-Neither experiment clears the production gate (top-1 >= 0.75, catastrophic == 0).
-The oracle ceiling is estimated at ~0.75-0.76 due to effort labeling ambiguity
-(documented in `docs/classifier-training.md`).
+Neither experiment clears the historical v3 experiment gate (top-1 >= 0.75,
+catastrophic == 0). That gate is a historical evaluation threshold, not a
+current production setting or production-qualification claim. The oracle ceiling
+is estimated at ~0.75-0.76 due to effort labeling ambiguity (documented in
+[classifier-training.md](classifier-training.md)).
 
 ## Recommendation: does any experiment justify a swap?
 
@@ -77,8 +79,8 @@ Arguments for LightGBM:
 - LightGBM is already installed in the environment (no new dep cost)
 
 Arguments against swapping now:
-- catastrophic is still 23, nowhere near the hard gate of 0
-- top-1 is 0.6631 vs the 0.75 gate -- gap remains large
+- catastrophic is still 23, nowhere near the historical v3 experiment gate of 0
+- top-1 is 0.6631 vs the historical 0.75 experiment gate -- gap remains large
 - SVD compression loses information; a direct sparse LightGBM fit (without SVD)
   might close the gap further and is worth trying
 - The LightGBM experiment used class_weight="balanced" + SVD(150);
@@ -91,3 +93,26 @@ Arguments against swapping now:
 (LightGBM handles sparse natively), add hyperparameter search on num_leaves and
 learning_rate, and re-evaluate. If catastrophic can be driven below 10 and top-1
 above 0.68, a swap case becomes compelling.
+
+## Historical snapshots
+
+### 2026-03-31 history.jsonl attempt
+
+The attempt extracted 4,644 prompts, labeled 782, retained 594 usable labels,
+and merged 363 balanced examples. The resulting evaluation was 77.98% accuracy,
+one HIGH-to-LOW inversion, and 591 us mean inference. C values 1, 10, 100, and
+1000 did not resolve the failure. Domain skew and vocabulary overlap made the
+tier signal unreliable, so the change was reverted. The durable lesson is to
+manually curate additions and maintain an independent OOD evaluation set; do
+not bulk import history.
+
+### Superseded legacy runtime snapshot
+
+At that time, the legacy runtime used 181 handcrafted examples and a
+37-example holdout. Its interface (`router.py`) and legacy data path remain for
+compatibility and historical reference, but are not the production v3 runtime.
+The tracked v3 SHA256 sidecars and the pre-wave-4 data backup at
+`data/synthetic_route_labels.pre_wave4.jsonl` remain subject to the documented
+integrity and migration rules. Current production uses ConfGate because
+`pi/settings.json` selects it and the prompt-router extension passes
+`--classifier confgate`; the standalone parser defaults to T2.
