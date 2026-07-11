@@ -242,6 +242,70 @@ describe("/tasks command", () => {
 		expect(after).toEqual(before);
 	});
 
+	it("lists only current-workspace tasks unless --all is provided", async () => {
+		const { createTask, resolveTaskWorkspace } = await import("../lib/task-registry.ts");
+		const currentDir = path.join(tmpRoot, "current");
+		const foreignDir = path.join(tmpRoot, "foreign");
+		fs.mkdirSync(currentDir);
+		fs.mkdirSync(foreignDir);
+		const current = createTask({
+			origin: "other",
+			summary: "current workspace task",
+			workspace: resolveTaskWorkspace(currentDir),
+		});
+		const global = createTask({ origin: "other", summary: "global task" });
+		const foreign = createTask({
+			origin: "other",
+			summary: "foreign workspace task",
+			workspace: resolveTaskWorkspace(foreignDir),
+		});
+		const { cmd } = await loadTasks();
+		const ctx = createMockCtx({ cwd: currentDir });
+
+		await cmd.handler("list", ctx);
+		const scoped = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+		expect(scoped).toContain(current.summary);
+		expect(scoped).toContain(global.summary);
+		expect(scoped).not.toContain(foreign.summary);
+
+		await cmd.handler("list --all", ctx);
+		const globalList = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[1][0] as string;
+		expect(globalList).toContain(foreign.summary);
+	});
+
+	it("clears completed tasks only in the current workspace", async () => {
+		const { createTask, getTask, resolveTaskWorkspace } = await import("../lib/task-registry.ts");
+		const currentDir = path.join(tmpRoot, "current");
+		const foreignDir = path.join(tmpRoot, "foreign");
+		fs.mkdirSync(currentDir);
+		fs.mkdirSync(foreignDir);
+		const current = createTask({
+			origin: "other",
+			summary: "current completed task",
+			state: "completed",
+			workspace: resolveTaskWorkspace(currentDir),
+		});
+		const global = createTask({
+			origin: "other",
+			summary: "global completed task",
+			state: "completed",
+		});
+		const foreign = createTask({
+			origin: "other",
+			summary: "foreign completed task",
+			state: "completed",
+			workspace: resolveTaskWorkspace(foreignDir),
+		});
+		const { cmd } = await loadTasks();
+		const ctx = createMockCtx({ cwd: currentDir });
+
+		await cmd.handler("clear completed", ctx);
+
+		expect(getTask(current.id)?.deletedAt).toBeDefined();
+		expect(getTask(global.id)?.deletedAt).toBeDefined();
+		expect(getTask(foreign.id)?.deletedAt).toBeUndefined();
+	});
+
 	it("starts a ready task through the registered command", async () => {
 		const { createTask, getTask } = await import("../lib/task-registry.ts");
 		const ready = createTask({ origin: "subagent", summary: "ready" });

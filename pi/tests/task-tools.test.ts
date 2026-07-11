@@ -176,6 +176,116 @@ describe("task tools", () => {
 		expect(listTasks()).toHaveLength(0);
 	});
 
+	it("rejects an oversized summary update without transitioning the task", async () => {
+		const pi = createMockPi();
+		registerTaskTools(
+			pi as Parameters<typeof registerTaskTools>[0],
+			new TaskExecutionCoordinator(),
+		);
+		const ctx = createMockCtx({ cwd: tmpRoot });
+		const tool = pi._getTool("task");
+		const task = createTask({ origin: "other", summary: "pending task" });
+		const before = getTask(task.id);
+
+		const rejected = await tool?.execute(
+			"invalid-update",
+			{
+				action: "update",
+				id: task.id,
+				state: "running",
+				summary: "s".repeat(101),
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		const missing = await tool?.execute(
+			"missing-update",
+			{ action: "update", id: "missing-task", summary: "valid" },
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		expect(rejected.details.outcome).toBe("rejected");
+		expect(getTask(task.id)).toEqual(before);
+		expect(missing.details.outcome).toBe("not_found");
+	});
+
+	it("rejects invalid completed-to-skipped updates without patching fields", async () => {
+		const pi = createMockPi();
+		registerTaskTools(
+			pi as Parameters<typeof registerTaskTools>[0],
+			new TaskExecutionCoordinator(),
+		);
+		const ctx = createMockCtx({ cwd: tmpRoot });
+		const tool = pi._getTool("task");
+		const task = createTask({
+			origin: "other",
+			state: "completed",
+			summary: "completed task",
+		});
+		const before = getTask(task.id);
+
+		const rejected = await tool?.execute(
+			"completed-to-skipped",
+			{
+				action: "update",
+				id: task.id,
+				state: "skipped",
+				summary: "changed summary",
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		expect(rejected.details.outcome).toBe("rejected");
+		expect(getTask(task.id)).toEqual(before);
+	});
+
+	it("rejects invalid notes or blockers without patching or transitioning", async () => {
+		const pi = createMockPi();
+		registerTaskTools(
+			pi as Parameters<typeof registerTaskTools>[0],
+			new TaskExecutionCoordinator(),
+		);
+		const ctx = createMockCtx({ cwd: tmpRoot });
+		const tool = pi._getTool("task");
+		const task = createTask({ origin: "other", summary: "pending task" });
+		const before = getTask(task.id);
+
+		const oversizedNotes = await tool?.execute(
+			"oversized-notes",
+			{
+				action: "update",
+				id: task.id,
+				state: "running",
+				notes: "n".repeat(501),
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(oversizedNotes.details.outcome).toBe("rejected");
+		expect(getTask(task.id)).toEqual(before);
+
+		const invalidBlockers = await tool?.execute(
+			"invalid-blockers",
+			{
+				action: "update",
+				id: task.id,
+				state: "running",
+				blockedBy: ["missing-task"],
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(invalidBlockers.details.outcome).toBe("rejected");
+		expect(getTask(task.id)).toEqual(before);
+	});
+
 	it("reads legacy todos from an override while preserving the target workspace", async () => {
 		const sourceRoot = fs.mkdtempSync(
 			path.join(os.tmpdir(), "pi-legacy-source-"),

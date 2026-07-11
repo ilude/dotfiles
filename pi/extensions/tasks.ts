@@ -3,6 +3,7 @@ import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
+import { isAllowedTransition } from "../lib/operator-state.js";
 import {
 	clearCompletedTasks,
 	createTask,
@@ -14,6 +15,7 @@ import {
 	type SubagentTaskExecution,
 	safeTransitionTask,
 	type TaskRecordV1,
+	type UpdateTaskPatch,
 	type TaskState,
 	tasksByIdSnapshot,
 	tombstoneTask,
@@ -576,16 +578,17 @@ export function registerTaskTools(
 				}
 			}
 			if (action === "update") {
-				if (typeof input.state === "string") {
-					const transition = safeTransitionTask(id, input.state as TaskState);
-					if (transition.outcome !== "persisted") return toolResult(transition);
-				}
-				try {
+				const existing = getTask(id);
+				if (!existing)
 					return toolResult({
-						outcome: "persisted",
-						record: updateTask(id, {
-							summary:
-								typeof input.summary === "string"
+						outcome: "not_found",
+						error: `task not found: ${id}`,
+					});
+				let patch: UpdateTaskPatch;
+				try {
+					patch = {
+						summary:
+							typeof input.summary === "string"
 									? validateTaskText(
 											"summary",
 											input.summary,
@@ -593,20 +596,45 @@ export function registerTaskTools(
 											true,
 										)
 									: undefined,
-							notes:
-								typeof input.notes === "string"
+						notes:
+							typeof input.notes === "string"
 									? validateTaskText(
 											"notes",
 											input.notes,
 											TASK_NOTES_MAX_LENGTH,
 										)
 									: undefined,
-							blockedBy: validatedBlockers(input.blockedBy),
-						}),
-					});
+						blockedBy: validatedBlockers(input.blockedBy),
+					};
 				} catch (error) {
 					return toolResult({
-						outcome: "not_found",
+						outcome: "rejected",
+						error: error instanceof Error ? error.message : String(error),
+					});
+				}
+				if (typeof input.state === "string") {
+					const target = input.state as TaskState;
+					if (
+						(target === existing.state && target !== "skipped") ||
+						(target !== existing.state &&
+							!isAllowedTransition(existing.state, target))
+					)
+						return toolResult({
+							outcome: "rejected",
+							error: `invalid transition for ${id}: ${existing.state} -> ${input.state}`,
+						});
+				}
+				try {
+					const record = updateTask(id, patch);
+					if (typeof input.state === "string") {
+						const transition = safeTransitionTask(id, input.state as TaskState);
+						if (transition.outcome !== "persisted") return toolResult(transition);
+						return toolResult({ outcome: "persisted", record: transition.record });
+					}
+					return toolResult({ outcome: "persisted", record });
+				} catch (error) {
+					return toolResult({
+						outcome: "rejected",
 						error: error instanceof Error ? error.message : String(error),
 					});
 				}
@@ -664,10 +692,7 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 			if (parsed.verb === "list")
-				return ctx.ui.notify(
-					formatTaskList(parsed.all ? all : listTasks(), getTaskRenderMode()),
-					"info",
-				);
+				return ctx.ui.notify(formatTaskList(all, getTaskRenderMode()), "info");
 			if (parsed.verb === "ready") {
 				const ready = partitionReadyTasks(all).ready;
 				return ctx.ui.notify(
@@ -704,7 +729,7 @@ export default function (pi: ExtensionAPI) {
 			}
 			if (parsed.verb === "clear")
 				return ctx.ui.notify(
-					`Cleared ${clearCompletedTasks().length} completed task(s).`,
+					`Cleared ${clearCompletedTasks(resolveTaskWorkspace(ctx.cwd)).length} completed task(s).`,
 					"info",
 				);
 			if (!parsed.idArg) return ctx.ui.notify(helpText(), "warning");

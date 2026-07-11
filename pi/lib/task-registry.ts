@@ -591,8 +591,13 @@ export function partitionReadyTasks(tasks: readonly TaskRecordV1[]): {
 	};
 }
 
-export function clearCompletedTasks(): TaskRecordV1[] {
+export function clearCompletedTasks(workspace?: string): TaskRecordV1[] {
 	return listTasks({ includeTombstones: true })
-		.filter((task) => task.state === "completed" && !task.deletedAt)
+		.filter(
+			(task) =>
+				task.state === "completed" &&
+				!task.deletedAt &&
+				(!workspace || !task.workspace || task.workspace === workspace),
+		)
 		.map((task) => tombstoneTask(task.id, "clear completed"));
 }
