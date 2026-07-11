@@ -39,6 +39,7 @@ import { Key, Text } from "@earendil-works/pi-tui";
 import { emitTerminalBell } from "../lib/extension-utils";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
 import { withTimingSpan } from "../lib/observability";
+import { scanSecrets } from "../lib/secret-scan";
 import {
 	buildCommitPlanningPrompt,
 	buildGitlabTicketPrompt,
@@ -88,14 +89,6 @@ const COMMIT_RUNTIME_PATH_PATTERNS = [
 ];
 
 export const SECRET_PATTERNS = [
-	{ label: "OpenAI-style key", regex: /\bsk-[A-Za-z0-9_-]{10,}\b/g },
-	{ label: "AWS access key", regex: /\bAKIA[A-Z0-9]{16}\b/g },
-	{ label: "Private key / certificate", regex: /-----BEGIN(?: [A-Z]+)?-----/g },
-	{ label: "GitHub PAT", regex: /\bghp_[A-Za-z0-9]{20,}\b/g },
-	{
-		label: "GitHub fine-grained PAT",
-		regex: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g,
-	},
 	{ label: "npm token", regex: /\bnpm_[A-Za-z0-9]{20,}\b/g },
 	{ label: "Slack bot token", regex: /\bxoxb-[A-Za-z0-9-]{10,}\b/g },
 	{ label: "Slack user token", regex: /\bxoxp-[A-Za-z0-9-]{10,}\b/g },
@@ -718,30 +711,122 @@ export function validateCommitPlan(plan: CommitPlan, changedFiles: string[]) {
 	}
 }
 
-function buildSingleGroupCommitPlan(
-	context: {
-		files: string[];
-		diffStat: string;
-		cachedStat: string;
-		cachedDiff: string;
-		hint: string;
-	},
-	warning?: string,
-): CommitPlan {
-	const message = proposeCommitMessage(
-		context.files,
-		context.hint,
-		context.cachedDiff,
+interface CommitFallbackContext {
+	files: string[];
+	diffStat: string;
+	cachedStat: string;
+	cachedDiff: string;
+	hint: string;
+}
+
+export type CommitFallbackResult =
+	| { plan: CommitPlan; needsUserDecision?: undefined }
+	| { plan?: undefined; needsUserDecision: string };
+
+function extractPlanOwnedGroups(cwd: string, files: string[]): string[][] {
+	const changed = new Set(files);
+	const groups: string[][] = [];
+	for (const planFile of files.filter((file) =>
+		/(?:^|\/)plan\.md$/.test(file),
+	)) {
+		let content: string;
+		try {
+			content = fs.readFileSync(path.resolve(cwd, planFile), "utf8");
+		} catch {
+			continue;
+		}
+		for (const line of content.split(/\r?\n/)) {
+			if (!/(?:^|[-|])\s*Files\s*:/i.test(line)) continue;
+			const owned = uniqueSorted(
+				[...line.matchAll(/`([^`]+)`/g)]
+					.map((match) => normalizeGitPath(match[1] ?? ""))
+					.filter((file) => changed.has(file)),
+			);
+			if (owned.length > 0) groups.push(owned);
+		}
+	}
+	return groups.sort((left, right) =>
+		left.join("\0").localeCompare(right.join("\0")),
 	);
+}
+
+function fallbackSurface(file: string): string | null {
+	const normalized = normalizeGitPath(file);
+	if (normalized.startsWith(".specs/")) return "specs";
+	if (normalized.startsWith("claude/")) return "claude-config";
+	if (
+		normalized.startsWith("pi/skills/workflow/") ||
+		normalized.startsWith("pi/prompts/")
+	)
+		return "workflow-prompts";
+	if (normalized.startsWith("pi/")) return "pi";
+	return null;
+}
+
+export function buildDeterministicCommitFallback(
+	context: CommitFallbackContext,
+	options: { cwd?: string; planOwnedGroups?: string[][] } = {},
+): CommitFallbackResult {
+	const files = uniqueSorted(context.files.map(normalizeGitPath));
+	const explicitGroups = (
+		options.planOwnedGroups ??
+		(options.cwd ? extractPlanOwnedGroups(options.cwd, files) : [])
+	)
+		.map((group) => uniqueSorted(group.map(normalizeGitPath)))
+		.filter((group) => group.length > 0);
+	const assigned = new Set<string>();
+	const groups: string[][] = [];
+	for (const group of explicitGroups) {
+		const available = group.filter(
+			(file) => files.includes(file) && !assigned.has(file),
+		);
+		if (available.length === 0) continue;
+		for (const file of available) assigned.add(file);
+		groups.push(available);
+	}
+
+	const surfaces = new Map<string, string[]>();
+	const ambiguous: string[] = [];
+	for (const file of files) {
+		if (assigned.has(file)) continue;
+		const surface = fallbackSurface(file);
+		if (!surface) ambiguous.push(file);
+		else surfaces.set(surface, [...(surfaces.get(surface) ?? []), file]);
+	}
+	for (const surface of [...surfaces.keys()].sort()) {
+		groups.push(uniqueSorted(surfaces.get(surface) ?? []));
+	}
+	if (
+		ambiguous.length > 0 &&
+		(groups.length > 0 || new Set(ambiguous.map(topLevelCommitRoot)).size > 1)
+	) {
+		return {
+			needsUserDecision: `Commit planner failed and these paths cross ambiguous ownership surfaces:\n${ambiguous.map((file) => `- ${file}`).join("\n")}\nChoose explicit path groups and run /commit once per group.`,
+		};
+	}
+	if (ambiguous.length > 0) groups.push(ambiguous);
+
+	const stableGroups = groups
+		.filter((group) => group.length > 0)
+		.sort((left, right) => left.join("\0").localeCompare(right.join("\0")));
 	return {
-		groups: [
-			{
-				files: context.files,
-				subject: message.subject,
-				...(message.body ? { body: message.body } : {}),
-			},
-		],
-		warnings: warning ? [warning] : undefined,
+		plan: {
+			groups: stableGroups.map((group) => {
+				const message = proposeCommitMessage(
+					group,
+					context.hint,
+					context.cachedDiff,
+				);
+				return {
+					files: group,
+					subject: message.subject,
+					...(message.body ? { body: message.body } : {}),
+				};
+			}),
+			warnings: [
+				"Commit planner unavailable; used deterministic ownership fallback.",
+			],
+		},
 	};
 }
 
@@ -847,12 +932,8 @@ async function generateCommitPlanWithLlm(
 		context,
 	);
 	const planText = await runCommitModelPrompt(pi, ctx, planningPrompt);
-	if (!planText.trim()) {
-		return buildSingleGroupCommitPlan(
-			context,
-			"Commit planner returned empty response; used single-commit fallback.",
-		);
-	}
+	if (!planText.trim())
+		throw new Error("Commit planner returned empty response");
 	const plan = parseCommitPlan(planText);
 	validateCommitPlan(plan, context.files);
 	return plan;
@@ -1314,11 +1395,21 @@ function scanFileForSecrets(
 		return [];
 	}
 
-	const findings: SecretCandidate[] = [];
+	const findings: SecretCandidate[] = scanSecrets(content).map((finding) => {
+		const redactedContent = `${content.slice(0, finding.offset)}${finding.redacted}${content.slice(finding.offset + finding.length)}`;
+		return {
+			path: relativePath,
+			label: finding.kind,
+			match: finding.redacted,
+			line: finding.line,
+			context: buildSecretContext(redactedContent, finding.offset).context,
+		};
+	});
 	for (const pattern of SECRET_PATTERNS) {
 		for (const match of content.matchAll(pattern.regex)) {
 			const raw = String(match[0]);
 			const index = match.index ?? 0;
+			if (/\b(?:task|risk)$/i.test(content.slice(0, index))) continue;
 			const { line, context } = buildSecretContext(content, index);
 			findings.push({
 				path: relativePath,
@@ -1778,10 +1869,6 @@ async function pushCurrentBranchAsync(
 		);
 }
 
-function summarizeCommit(hash: string, subject: string, pushed: boolean) {
-	return pushed ? `${hash} ${subject}\nPushed to remote` : `${hash} ${subject}`;
-}
-
 function emitCommitReport(
 	pi: ExtensionAPI,
 	ctx: WorkflowContext,
@@ -2093,53 +2180,24 @@ async function executeCommitCommand(
 				hint: prepared.parsedArgs.hint,
 			});
 		} catch (_err) {
-			activity.logInfo(
-				"Commit planner unavailable; falling back to single commit",
+			const fallback = buildDeterministicCommitFallback(
+				{
+					files: prepared.selection.files,
+					diffStat: prepared.diffStat,
+					cachedStat: prepared.cachedStat,
+					cachedDiff: prepared.cachedDiff,
+					hint: prepared.parsedArgs.hint,
+				},
+				{ cwd: ctx.cwd },
 			);
+			if ("needsUserDecision" in fallback) {
+				throw new Error(fallback.needsUserDecision);
+			}
+			plan = fallback.plan;
+			activity.logInfo(fallback.plan.warnings?.[0] ?? "Used commit fallback");
 		}
 
-		if (!plan) {
-			activity.setPhase("creating commit");
-			const proposed = proposeCommitMessage(
-				prepared.selection.files,
-				prepared.parsedArgs.hint,
-				prepared.cachedDiff,
-			);
-			const commitMessage = await confirmCommitMessage(
-				ctx,
-				proposed,
-				prepared.selection.files,
-				prepared.cachedStat,
-				prepared.diffStat,
-			);
-			if (!commitMessage) {
-				activity.finish();
-				return ctx.ui.notify("Commit cancelled", "warning");
-			}
-			if (!isValidConventionalCommit(commitMessage.subject)) {
-				activity.finish();
-				return ctx.ui.notify(
-					"Proposed commit message does not match conventional commit format; allowed types include wip",
-					"error",
-				);
-			}
-			const hash = await commitCurrentChangesAsync(
-				ctx.cwd,
-				commitMessage,
-				activity,
-				ctx.signal,
-			);
-			if (prepared.parsedArgs.push) {
-				activity.setPhase("pushing");
-				await pushCurrentBranchAsync(ctx.cwd, activity, ctx.signal);
-			}
-			activity.finish();
-			emitCommitReport(pi, ctx, [
-				summarizeCommit(hash, commitMessage.subject, prepared.parsedArgs.push),
-			]);
-			return;
-		}
-
+		if (!plan) throw new Error("Commit planning produced no plan");
 		const commitSummaries: string[] = [];
 		await unstageFilesAsync(
 			ctx.cwd,

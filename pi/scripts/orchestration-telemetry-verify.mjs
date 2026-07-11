@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { scanSecrets } from "../lib/secret-scan.ts";
 
 const REQUIRED = ["plan", "evidence-dir", "smoke-dir"];
 const REQUIRED_CHECKS = [
@@ -139,8 +140,16 @@ function checkEvidence(evidenceDir) {
 	const files = descendants(evidenceDir);
 	if (files.length === 0) fail("evidence directory is empty");
 	for (const file of files) {
-		if (path.basename(file) === "archive-preflight.log") continue;
-		if (fs.statSync(file).size === 0) fail(`empty evidence capture: ${file}`);
+		const activeCapture =
+			path.dirname(file) === evidenceDir &&
+			path.basename(file) === "archive-preflight.log";
+		if (!activeCapture && fs.statSync(file).size === 0)
+			fail(`empty evidence capture: ${file}`);
+		const findings = scanSecrets(read(file));
+		if (findings.length > 0)
+			fail(
+				`secret-like content in evidence: ${file}:${findings[0].line}:${findings[0].column} (${findings[0].kind} ${findings[0].redacted})`,
+			);
 	}
 }
 

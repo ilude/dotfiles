@@ -26,6 +26,15 @@ import {
 } from "../lib/workflow-friction.js";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.js";
 
+let moduleInstance = 0;
+
+async function loadIndependentWorkflowFrictionModule() {
+	const copyUrl = new URL("../lib/workflow-friction.ts", import.meta.url);
+	moduleInstance += 1;
+	copyUrl.searchParams.set("instance", String(moduleInstance));
+	return import(copyUrl.href);
+}
+
 function trace(overrides: Partial<ToolTrace> = {}): ToolTrace {
 	return {
 		toolName: "bash",
@@ -353,39 +362,75 @@ describe("orchestration interaction lifecycle", () => {
 		expect(settleOrchestrationInteraction("interaction-usage")).toBeNull();
 	});
 
-	it("shares lifecycle state across distinct module identities", async () => {
-		const copyUrl = new URL("../lib/workflow-friction.ts", import.meta.url);
-		copyUrl.searchParams.set("instance", "orchestration-lifecycle-copy");
-		const copy = await import(copyUrl.href);
+	it("shares only orchestration lifecycle state across module identities", async () => {
+		const copy = await loadIndependentWorkflowFrictionModule();
 
 		activateOrchestrationInteraction({
 			interactionId: "interaction-module-copy",
 			sessionId: "session-module-copy",
 		});
-		copy.registerOrchestrationInvocation("orchestration-module-copy");
+		expect(
+			copy.registerOrchestrationInvocation("orchestration-module-copy"),
+		).toBe("interaction-module-copy");
+
+		noteWorkflowSubmission("primary submission", "engineer", 1_000);
+		expect(copy.consumeWorkflowSubmission(1_001)).toBeNull();
+		expect(consumeWorkflowSubmission(1_001)?.text).toBe("primary submission");
 
 		expect(
 			settleOrchestrationInteraction("interaction-module-copy"),
 		).toMatchObject({
 			orchestrationIds: ["orchestration-module-copy"],
 		});
+		expect(
+			copy.settleOrchestrationInteraction("interaction-module-copy"),
+		).toBeNull();
 	});
 
-	it("clears only the matching session lifecycle", () => {
+	it("returns the canonical interaction ID after cross-module replacement", async () => {
+		const copy = await loadIndependentWorkflowFrictionModule();
+		activateOrchestrationInteraction({
+			interactionId: "interaction-stale",
+			sessionId: "session-stale",
+		});
+		copy.activateOrchestrationInteraction({
+			interactionId: "interaction-current",
+			sessionId: "session-current",
+		});
+
+		expect(registerOrchestrationInvocation("orchestration-current")).toBe(
+			"interaction-current",
+		);
+		expect(settleOrchestrationInteraction("interaction-stale")).toBeNull();
+		expect(
+			copy.settleOrchestrationInteraction("interaction-current"),
+		).toMatchObject({
+			interactionId: "interaction-current",
+			orchestrationIds: ["orchestration-current"],
+		});
+		expect(settleOrchestrationInteraction("interaction-current")).toBeNull();
+	});
+
+	it("clears only the matching session lifecycle across module identities", async () => {
+		const copy = await loadIndependentWorkflowFrictionModule();
 		activateOrchestrationInteraction({
 			interactionId: "interaction-session",
 			sessionId: "session-one",
 		});
-		resetOrchestrationInteraction("session-two");
+		copy.resetOrchestrationInteraction("session-two");
 		expect(
 			settleOrchestrationInteraction("interaction-session"),
 		).not.toBeNull();
+
 		activateOrchestrationInteraction({
-			interactionId: "interaction-replaced",
+			interactionId: "interaction-reset",
 			sessionId: "session-two",
 		});
-		resetOrchestrationInteraction("session-two");
-		expect(settleOrchestrationInteraction("interaction-replaced")).toBeNull();
+		copy.resetOrchestrationInteraction("session-two");
+		expect(
+			registerOrchestrationInvocation("orchestration-stale"),
+		).toBeUndefined();
+		expect(settleOrchestrationInteraction("interaction-reset")).toBeNull();
 	});
 
 	it("resolves the configured friction storage root", () => {

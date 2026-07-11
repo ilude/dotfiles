@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
+import * as path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	fetchCodexUsage,
@@ -17,6 +18,11 @@ vi.mock("../extensions/codex-status.ts", () => ({
 	fetchCodexUsage: vi.fn(async () => ({ auth: {}, usage: {} })),
 	formatConfiguredBedrockUsageSection: vi.fn(async () => null),
 	formatUsage: vi.fn(() => "Codex:\n 5h     7% used"),
+}));
+
+const mockScanSecrets = vi.hoisted(() => vi.fn(() => []));
+vi.mock("../lib/secret-scan.ts", () => ({
+	scanSecrets: mockScanSecrets,
 }));
 
 const mockSpawn = spawn as ReturnType<typeof vi.fn>;
@@ -68,6 +74,7 @@ describe("workflow command dispatch", () => {
 		vi.clearAllMocks();
 		mockSpawn.mockImplementation(() => mockGitSpawn());
 		mockSpawnSync.mockReturnValue({ status: 0, stdout: "", stderr: "" });
+		mockScanSecrets.mockReturnValue([]);
 		mockPi = createMockPi() as typeof mockPi;
 		mockPi.setModel = vi.fn(async () => {});
 		const mod = await import("../extensions/workflow-commands.ts");
@@ -172,6 +179,38 @@ describe("workflow command dispatch", () => {
 		expect(notify).toHaveBeenCalledWith("Working tree is clean", "info");
 	});
 
+	it("uses the shared secret scanner during /commit", async () => {
+		const notify = vi.fn();
+		const file = "pi/lib/secret-scan.ts";
+		for (const result of [
+			{ stdout: ` M ${file}\n` },
+			{},
+			{ stdout: `${file}\n` },
+			{},
+			{ stdout: `${file}\n` },
+			{},
+		]) {
+			mockSpawn.mockImplementationOnce(() => mockGitSpawn(result));
+		}
+		mockScanSecrets.mockImplementationOnce(() => {
+			throw new Error("shared scanner sentinel");
+		});
+
+		await getHandler("commit")("", {
+			cwd: path.resolve(process.cwd(), ".."),
+			ui: { notify },
+		});
+
+		expect(mockScanSecrets).toHaveBeenCalledOnce();
+		expect(mockScanSecrets).toHaveBeenCalledWith(
+			expect.stringContaining("export function scanSecrets"),
+		);
+		expect(notify).toHaveBeenCalledWith(
+			"Commit failed: shared scanner sentinel",
+			"error",
+		);
+	});
+
 	it("reports /commit executor failures without dispatching a workflow prompt", async () => {
 		const notify = vi.fn();
 		mockSpawn.mockImplementationOnce(() =>
@@ -266,6 +305,94 @@ describe("workflow command dispatch", () => {
 			"Commit failed: Operation cancelled",
 			"error",
 		);
+	});
+
+	it("builds stable ownership fallback groups for a mixed 47-file selection", async () => {
+		const { buildDeterministicCommitFallback } = await import(
+			"../extensions/workflow-commands.ts"
+		);
+		const files = [
+			...Array.from({ length: 20 }, (_, index) => `pi/lib/feature-${index}.ts`),
+			...Array.from(
+				{ length: 10 },
+				(_, index) => `pi/tests/feature-${index}.test.ts`,
+			),
+			...Array.from(
+				{ length: 7 },
+				(_, index) => `pi/skills/workflow/step-${index}.md`,
+			),
+			...Array.from(
+				{ length: 5 },
+				(_, index) => `claude/settings/config-${index}.json`,
+			),
+			...Array.from(
+				{ length: 5 },
+				(_, index) => `.specs/change/note-${index}.md`,
+			),
+		];
+		const context = {
+			files,
+			diffStat: "",
+			cachedStat: "",
+			cachedDiff: "",
+			hint: "",
+		};
+
+		const forward = buildDeterministicCommitFallback(context);
+		const reversed = buildDeterministicCommitFallback({
+			...context,
+			files: [...files].reverse(),
+		});
+
+		expect(forward).toEqual(reversed);
+		expect(forward.plan?.groups).toHaveLength(4);
+		expect(
+			forward.plan?.groups
+				.map((group) => group.files.length)
+				.sort((a, b) => a - b),
+		).toEqual([5, 5, 7, 30]);
+	});
+
+	it("prefers explicit plan-owned groups over ownership surfaces", async () => {
+		const { buildDeterministicCommitFallback } = await import(
+			"../extensions/workflow-commands.ts"
+		);
+		const result = buildDeterministicCommitFallback(
+			{
+				files: ["pi/lib/a.ts", "pi/lib/b.ts", "pi/tests/a.test.ts"],
+				diffStat: "",
+				cachedStat: "",
+				cachedDiff: "",
+				hint: "",
+			},
+			{
+				planOwnedGroups: [
+					["pi/tests/a.test.ts", "pi/lib/a.ts"],
+					["pi/lib/b.ts"],
+				],
+			},
+		);
+
+		expect(result.plan?.groups.map((group) => group.files)).toEqual([
+			["pi/lib/a.ts", "pi/tests/a.test.ts"],
+			["pi/lib/b.ts"],
+		]);
+	});
+
+	it("requires a user decision for ambiguous cross-domain fallback", async () => {
+		const { buildDeterministicCommitFallback } = await import(
+			"../extensions/workflow-commands.ts"
+		);
+		const result = buildDeterministicCommitFallback({
+			files: ["pi/lib/a.ts", "scripts/setup", "zsh/rc.d/tool.zsh"],
+			diffStat: "",
+			cachedStat: "",
+			cachedDiff: "",
+			hint: "",
+		});
+
+		expect(result.plan).toBeUndefined();
+		expect(result.needsUserDecision).toContain("run /commit once per group");
 	});
 
 	it("terminates the running git process tree when /commit is aborted", async () => {

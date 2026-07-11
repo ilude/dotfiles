@@ -193,8 +193,11 @@ function isLegacyTodoItem(value: unknown): value is LegacyTodoItem {
 	);
 }
 
-export function importLegacyTodos(cwd: string): TaskRecordV1[] {
-	const filePath = path.join(cwd, ".pi", "todo.json");
+export function importLegacyTodos(
+	cwd: string,
+	sourceDir = cwd,
+): TaskRecordV1[] {
+	const filePath = path.join(sourceDir, ".pi", "todo.json");
 	if (!fs.existsSync(filePath)) return [];
 	const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8")) as {
 		items?: unknown[];
@@ -524,7 +527,10 @@ export default function (pi: ExtensionAPI) {
 	registerTaskTools(pi, coordinator);
 	pi.on("session_start", (_event, ctx) => {
 		try {
-			importLegacyTodos(ctx.cwd);
+			importLegacyTodos(
+				ctx.cwd,
+				process.env.PI_LEGACY_TODO_SOURCE_DIR || ctx.cwd,
+			);
 		} catch (error) {
 			ctx.ui.notify(
 				`Legacy task migration failed: ${error instanceof Error ? error.message : String(error)}`,

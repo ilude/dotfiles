@@ -1,16 +1,30 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	afterAll,
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	vi,
+} from "vitest";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 const prevMetricsDir = process.env.PI_METRICS_DIR;
-const metricsRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pi-task-tools-metrics-"));
+const metricsRoot = fs.mkdtempSync(
+	path.join(os.tmpdir(), "pi-task-tools-metrics-"),
+);
 process.env.PI_METRICS_DIR = metricsRoot;
 
-const { TaskExecutionCoordinator } = await import("../extensions/tasks/execution.ts");
+const { TaskExecutionCoordinator } = await import(
+	"../extensions/tasks/execution.ts"
+);
 const { registerTaskTools } = await import("../extensions/tasks.ts");
-const { createTask, getTask, listTasks } = await import("../lib/task-registry.ts");
+const { createTask, getTask, listTasks, resolveTaskWorkspace } = await import(
+	"../lib/task-registry.ts"
+);
 
 let tmpRoot: string;
 let prevOperatorDir: string | undefined;
@@ -94,6 +108,45 @@ describe("task tools", () => {
 		expect(
 			ready.details.records.map((record: { id: string }) => record.id),
 		).toEqual([blockerId]);
+	});
+
+	it("reads legacy todos from an override while preserving the target workspace", async () => {
+		const sourceRoot = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-legacy-source-"),
+		);
+		const legacyDir = path.join(sourceRoot, ".pi");
+		fs.mkdirSync(legacyDir, { recursive: true });
+		fs.writeFileSync(
+			path.join(legacyDir, "todo.json"),
+			JSON.stringify({
+				items: [
+					{
+						id: "override-legacy",
+						title: "import from override",
+						status: "pending",
+					},
+				],
+			}),
+			"utf8",
+		);
+		const previous = process.env.PI_LEGACY_TODO_SOURCE_DIR;
+		process.env.PI_LEGACY_TODO_SOURCE_DIR = sourceRoot;
+		try {
+			const pi = createMockPi();
+			const mod = await import("../extensions/tasks.ts");
+			mod.default(pi as Parameters<typeof mod.default>[0]);
+			await pi
+				._getHook("session_start")[0]
+				?.handler({}, createMockCtx({ cwd: tmpRoot }));
+			const records = listTasks();
+			expect(records).toHaveLength(1);
+			expect(records[0].metadata?.legacyTodoId).toBe("override-legacy");
+			expect(records[0].workspace).toBe(resolveTaskWorkspace(tmpRoot));
+		} finally {
+			fs.rmSync(sourceRoot, { recursive: true, force: true });
+			if (previous === undefined) delete process.env.PI_LEGACY_TODO_SOURCE_DIR;
+			else process.env.PI_LEGACY_TODO_SOURCE_DIR = previous;
+		}
 	});
 
 	it("imports legacy todo state idempotently", async () => {

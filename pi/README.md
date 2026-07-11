@@ -314,7 +314,7 @@ Workflow highlights:
 - `/plan-it` writes plans with explicit `small` / `medium` / `large` model sizing and agent assignments.
 - `/review-it` coordinates a fixed 3-reviewer core plus at least 3 persona-seeded domain reviewers, with targeted rebuttal only when disagreement matters.
 - `/do-it` can route a raw task **or** execute an existing `.specs/*/plan.md` file wave by wave.
-- `/commit` uses deterministic candidate extraction plus an isolated low-effort GPT-5.6 Luna child to distinguish real secrets from docs/examples/tests before blocking and to plan commit groups. The child runs through Pi's normal agent entrypoint because direct `completeSimple()` calls are not supported for Luna on the Codex subscription backend.
+- `/commit` uses shared deterministic candidate extraction plus an isolated low-effort GPT-5.6 Luna child to distinguish real secrets from docs/examples/tests before blocking and to plan commit groups. If commit planning fails, a deterministic ownership fallback separates Pi implementation, workflow prompts, Claude configuration, and specification artifacts. Ambiguous cross-domain paths require an explicit user decision instead of becoming one broad commit. The child runs through Pi's normal agent entrypoint because direct `completeSimple()` calls are not supported for Luna on the Codex subscription backend.
 
 ### `workflow-friction-review.ts`
 
@@ -337,7 +337,16 @@ Metrics are written best-effort under `~/.pi/agent/logs/` by default. Set `metri
 
 For a bounded purge, stop writers, back up one identified metrics JSONL file, and remove only its `orchestration_run` and `orchestration_interaction` records. Verify the backup and remaining records before replacing that one file. A dedicated scratch `PI_METRICS_DIR` may instead be removed after confirming that it contains no other records.
 
-See `pi/docs/orchestration-telemetry.md` for field schemas, joins, reader bounds, and report definitions.
+Run the deterministic isolated CLI check before a live telemetry check:
+
+```bash
+node pi/scripts/run-isolated-pi-smoke.mjs
+node pi/scripts/run-isolated-pi-smoke.mjs orchestration-telemetry --live
+```
+
+The first command makes no provider call. The second command performs one delegated provider interaction, then runs `/orchestration-stats` without tools against the same isolated roots.
+
+See `pi/docs/orchestration-telemetry.md` for field schemas, joins, validation order, reader bounds, and report definitions.
 
 ### `context.ts`
 
@@ -447,7 +456,7 @@ Model-callable task surface:
 - Tasks default to the current repository workspace; `list` and `ready` accept `all: true` for a cross-repository view.
 - Executable tasks accept `agent`, `task`, `cwd`, `agentScope`, `model`, and `modelSize`. The `execute` action validates dependencies and starts the child in the background.
 - `stop` cancels a running child process tree. `output` returns a bounded sanitized tail plus the durable artifact path and execution metadata.
-- Legacy `.pi/todo.json` entries are imported idempotently into the durable registry at session startup. The retired `todo` and individual `task_*` tools are no longer registered.
+- Legacy `.pi/todo.json` entries are imported idempotently into the durable registry at session startup. Isolated tests may set `PI_LEGACY_TODO_SOURCE_DIR` to an empty native directory while preserving the tested workspace identity. The retired `todo` and individual `task_*` tools are no longer registered.
 
 Lifecycle (defined in `pi/lib/operator-state.ts`):
 ```

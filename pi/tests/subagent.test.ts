@@ -39,8 +39,6 @@ describe("subagent model override routing", () => {
 	let skillDir: string;
 	let prevOperatorDir: string | undefined;
 	let prevMetricsDir: string | undefined;
-	let defaultMetricsPath: string;
-	let defaultMetricsContents: string | undefined;
 
 	beforeEach(async () => {
 		tmpDir = await fs.promises.mkdtemp(
@@ -78,13 +76,10 @@ You are a test agent.
 		);
 		prevOperatorDir = process.env.PI_OPERATOR_DIR;
 		prevMetricsDir = process.env.PI_METRICS_DIR;
-		const { getMetricsLogPath } = await import("../lib/metrics.ts");
-		defaultMetricsPath = getMetricsLogPath();
-		defaultMetricsContents = fs.existsSync(defaultMetricsPath)
-			? await fs.promises.readFile(defaultMetricsPath, "utf8")
-			: undefined;
 		process.env.PI_OPERATOR_DIR = path.join(tmpDir, "operator");
 		process.env.PI_METRICS_DIR = path.join(tmpDir, "metrics");
+		const { getMetricsLogPath } = await import("../lib/metrics.ts");
+		expect(path.relative(tmpDir, getMetricsLogPath())).not.toMatch(/^\.\./);
 		spawnMock.mockReset();
 	});
 
@@ -93,10 +88,6 @@ You are a test agent.
 		else process.env.PI_OPERATOR_DIR = prevOperatorDir;
 		if (prevMetricsDir === undefined) delete process.env.PI_METRICS_DIR;
 		else process.env.PI_METRICS_DIR = prevMetricsDir;
-		const defaultMetricsAfter = fs.existsSync(defaultMetricsPath)
-			? await fs.promises.readFile(defaultMetricsPath, "utf8")
-			: undefined;
-		expect(defaultMetricsAfter).toBe(defaultMetricsContents);
 		await fs.promises.rm(tmpDir, { recursive: true, force: true });
 		vi.clearAllMocks();
 	});

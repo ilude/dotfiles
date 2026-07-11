@@ -247,6 +247,42 @@ function verifierFixture() {
 }
 
 describe("orchestration telemetry archive verifier", () => {
+	it("accepts the active verifier output capture while rejecting unrelated empty evidence", () => {
+		const script = path.resolve("scripts/orchestration-telemetry-verify.mjs");
+		const fixture = verifierFixture();
+		const capture = path.join(fixture.evidence, "archive-preflight.log");
+		const shellPath = (value: string) => value.replaceAll("\\", "/");
+		const command = [
+			"set -o pipefail",
+			`"${shellPath(process.execPath)}" "${shellPath(script)}" --plan "${shellPath(fixture.plan)}" --evidence-dir "${shellPath(fixture.evidence)}" --smoke-dir "${shellPath(fixture.smoke)}" 2>&1 | tee "${shellPath(capture)}"`,
+		].join("; ");
+
+		expect(
+			execFileSync("bash", ["--noprofile", "--norc", "-c", command], {
+				encoding: "utf8",
+			}),
+		).toContain("passed");
+		expect(fs.readFileSync(capture, "utf8")).toContain("passed");
+
+		fs.writeFileSync(path.join(fixture.evidence, "unrelated.log"), "");
+		expect(() =>
+			execFileSync(
+				process.execPath,
+				[
+					script,
+					"--plan",
+					fixture.plan,
+					"--evidence-dir",
+					fixture.evidence,
+					"--smoke-dir",
+					fixture.smoke,
+				],
+				{ encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+			),
+		).toThrow();
+		fs.rmSync(fixture.fixture, { recursive: true, force: true });
+	});
+
 	it("passes a complete fixture and rejects each archive defect", () => {
 		const script = path.resolve("scripts/orchestration-telemetry-verify.mjs");
 		const invoke = (fixture: ReturnType<typeof verifierFixture>) =>
