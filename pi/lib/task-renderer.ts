@@ -26,6 +26,11 @@ export interface TaskGroup {
 	tasks: TaskRecordV1[];
 }
 
+export interface TaskToolRenderResult {
+	text: string;
+	failed: boolean;
+}
+
 export function shortTaskId(id: string): string {
 	return id.slice(0, 8);
 }
@@ -135,6 +140,61 @@ export function formatTaskList(
 	return lines.length > 0
 		? lines.join("\n")
 		: `No active tasks. terminal (${terminalCount})`;
+}
+
+export function formatTaskToolResult(
+	details: unknown,
+	expanded = false,
+): TaskToolRenderResult {
+	if (!details || typeof details !== "object")
+		return { text: "(no task result)", failed: true };
+	const result = details as {
+		outcome?: unknown;
+		error?: unknown;
+		record?: TaskRecordV1;
+		records?: TaskRecordV1[];
+		output?: unknown;
+		truncated?: unknown;
+	};
+	const outcome = String(result.outcome);
+	if (outcome !== "persisted" && outcome !== "accepted") {
+		const error =
+			typeof result.error === "string"
+				? truncateTaskText(result.error, 200)
+				: "";
+		const text = `x ${outcome}${error ? `: ${error}` : ""}`;
+		return {
+			text: result.record ? `${text}\n${formatCompactRow(result.record)}` : text,
+			failed: true,
+		};
+	}
+	if (Array.isArray(result.records)) {
+		return {
+			text:
+				result.records.length === 0
+					? "No tasks."
+					: formatTaskList(result.records, expanded ? "full" : "compact"),
+			failed: false,
+		};
+	}
+	if (typeof result.output === "string") {
+		const id = result.record ? ` ${shortTaskId(result.record.id)}` : "";
+		const truncated = result.truncated === true ? ", truncated" : "";
+		const header = `ok output${id} (${result.output.length} chars${truncated})`;
+		return {
+			text: expanded ? `${header}\n${result.output}` : header,
+			failed: false,
+		};
+	}
+	if (result.record) {
+		return {
+			text: expanded
+				? formatTaskDetail(result.record)
+				: `ok ${result.record.state}${formatCompactRow(result.record)}`,
+			failed: false,
+		};
+	}
+	return { text: `ok ${outcome}`, failed: false };
 }
 
 export function formatTaskDetail(

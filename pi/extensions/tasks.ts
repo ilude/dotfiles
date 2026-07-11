@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import {
 	clearCompletedTasks,
@@ -22,6 +23,7 @@ import {
 import {
 	formatTaskDetail,
 	formatTaskList,
+	formatTaskToolResult,
 	groupTasksByUrgency,
 	shortTaskId,
 	truncateTaskText,
@@ -35,6 +37,24 @@ import {
 import { TaskExecutionCoordinator } from "./tasks/execution.js";
 
 export { formatTaskDetail, formatTaskList, groupTasksByUrgency };
+
+const TASK_SUMMARY_MAX_LENGTH = 100;
+const TASK_NOTES_MAX_LENGTH = 500;
+const TASK_PROMPT_MAX_LENGTH = 2_000;
+
+function validateTaskText(
+	label: "summary" | "notes" | "task",
+	value: string,
+	maxLength: number,
+	oneLine = false,
+): string {
+	const trimmed = value.trim();
+	if (trimmed.length > maxLength)
+		throw new Error(`${label} must be at most ${maxLength} characters.`);
+	if (oneLine && /[\r\n]/.test(trimmed))
+		throw new Error(`${label} must be one line.`);
+	return trimmed;
+}
 
 interface ParsedSubcommand {
 	verb:
@@ -266,6 +286,7 @@ function executionFrom(
 		throw new Error("Executable tasks require a non-empty agent.");
 	if (typeof input.task !== "string" || !input.task.trim())
 		throw new Error("Executable tasks require a non-empty task.");
+	const task = validateTaskText("task", input.task, TASK_PROMPT_MAX_LENGTH);
 	const agentScope =
 		input.agentScope === "project" || input.agentScope === "both"
 			? input.agentScope
@@ -279,7 +300,7 @@ function executionFrom(
 	return {
 		kind: "subagent",
 		agent: input.agent,
-		task: input.task,
+		task,
 		cwd:
 			typeof input.cwd === "string" && input.cwd.trim()
 				? input.cwd
@@ -308,17 +329,26 @@ function createTaskFromInput(
 	cwd: string,
 ): TaskRecordV1 {
 	const execution = executionFrom(input, cwd);
+	const summary = validateTaskText(
+		"summary",
+		typeof input.summary === "string"
+			? input.summary
+			: (execution?.task ?? "untitled task"),
+		TASK_SUMMARY_MAX_LENGTH,
+		true,
+	);
+	const notes =
+		typeof input.notes === "string"
+			? validateTaskText("notes", input.notes, TASK_NOTES_MAX_LENGTH)
+			: undefined;
 	return createTask({
 		origin: originFrom(input.origin),
-		summary:
-			typeof input.summary === "string"
-				? input.summary
-				: (execution?.task ?? "untitled task"),
+		summary,
 		agentName: execution?.agent,
 		prompt: execution?.task,
 		execution,
 		workspace: resolveTaskWorkspace(cwd),
-		notes: typeof input.notes === "string" ? input.notes : undefined,
+		notes,
 		blockedBy: validatedBlockers(input.blockedBy),
 	});
 }
@@ -364,11 +394,13 @@ export function registerTaskTools(
 					Type.Literal("other"),
 				]),
 			),
-			summary: Type.Optional(Type.String()),
-			notes: Type.Optional(Type.String()),
+			summary: Type.Optional(
+				Type.String({ maxLength: TASK_SUMMARY_MAX_LENGTH }),
+			),
+			notes: Type.Optional(Type.String({ maxLength: TASK_NOTES_MAX_LENGTH })),
 			blockedBy: Type.Optional(Type.Array(Type.String())),
 			agent: Type.Optional(Type.String()),
-			task: Type.Optional(Type.String()),
+			task: Type.Optional(Type.String({ maxLength: TASK_PROMPT_MAX_LENGTH })),
 			cwd: Type.Optional(Type.String()),
 			agentScope: Type.Optional(
 				Type.Union([
@@ -403,14 +435,16 @@ export function registerTaskTools(
 				Type.Literal("output"),
 			]),
 			id: Type.Optional(Type.String()),
-			summary: Type.Optional(Type.String()),
-			notes: Type.Optional(Type.String()),
+			summary: Type.Optional(
+				Type.String({ maxLength: TASK_SUMMARY_MAX_LENGTH }),
+			),
+			notes: Type.Optional(Type.String({ maxLength: TASK_NOTES_MAX_LENGTH })),
 			state: Type.Optional(Type.String()),
 			blockedBy: Type.Optional(Type.Array(Type.String())),
 			all: Type.Optional(Type.Boolean()),
 			origin: Type.Optional(taskItem.properties.origin),
 			agent: Type.Optional(Type.String()),
-			task: Type.Optional(Type.String()),
+			task: Type.Optional(Type.String({ maxLength: TASK_PROMPT_MAX_LENGTH })),
 			cwd: Type.Optional(Type.String()),
 			agentScope: Type.Optional(taskItem.properties.agentScope),
 			model: Type.Optional(Type.String()),
@@ -423,16 +457,50 @@ export function registerTaskTools(
 		name: "task",
 		label: "Task",
 		description:
-			"Unified durable task surface. Actions create, batch, update, remove, list, ready, get, execute, stop, and output manage planning and background subagent work in one registry.",
+			"Unified durable task surface for dependencies and background work. Task entries are index cards, not handoff documents: summary is a one-line deliverable, notes hold only blockers, dependencies, or acceptance checks, and detailed context belongs in a referenced artifact.",
 		promptSnippet:
 			"Manage durable planning tasks and background subagent execution through one task surface",
 		promptGuidelines: [
-			"Use task for multi-step work, dependencies, and background execution.",
+			"Use task only for durable dependencies or background execution, not direct single-threaded work.",
+			"Task entries are index cards, not handoff documents: keep summary under 100 characters and notes under 500; put detailed context in an artifact and reference its path.",
+			"Summary contains only the deliverable; notes contain only blockers, dependencies, or acceptance checks. Never copy conversation summaries, plans, diffs, or investigation narratives into task fields.",
 			"Create dependencies with blockedBy; use ready to find parallelizable work.",
 			"Set state to running when direct work starts and completed when it finishes.",
 			"For background work, create an executable task and then use execute; inspect it with output and cancel it with stop.",
 		],
 		parameters,
+		renderCall(args, theme) {
+			const input = asParams(args);
+			const action = input.action;
+			const id = typeof input.id === "string" ? input.id : undefined;
+			const hint =
+				typeof input.summary === "string"
+					? input.summary
+					: typeof input.task === "string"
+						? input.task
+						: Array.isArray(input.tasks)
+							? `${input.tasks.length} task(s)`
+							: undefined;
+			return new Text(
+				theme.fg("toolTitle", theme.bold("task ")) +
+					theme.fg("muted", String(action)) +
+					(id ? theme.fg("dim", ` ${shortTaskId(id)}`) : "") +
+					(hint ? theme.fg("dim", ` ${truncateTaskText(hint, 60)}`) : ""),
+				0,
+				0,
+			);
+		},
+		renderResult(result, { expanded }, theme) {
+			if (result.details == null) {
+				const text = result.content
+					.filter((item) => item.type === "text")
+					.map((item) => item.text)
+					.join("\n");
+				if (text) return new Text(theme.fg("warning", text), 0, 0);
+			}
+			const { text, failed } = formatTaskToolResult(result.details, expanded);
+			return new Text(theme.fg(failed ? "warning" : "dim", text), 0, 0);
+		},
 		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
 			const input = asParams(params);
 			const action = input.action;
@@ -444,6 +512,22 @@ export function registerTaskTools(
 				});
 			if (action === "batch") {
 				const tasks = Array.isArray(input.tasks) ? input.tasks : [];
+				for (const item of tasks) {
+					const task = asParams(item);
+					executionFrom(task, ctx.cwd);
+					validateTaskText(
+						"summary",
+						typeof task.summary === "string"
+							? task.summary
+							: typeof task.task === "string"
+								? task.task
+								: "untitled task",
+						TASK_SUMMARY_MAX_LENGTH,
+						true,
+					);
+					if (typeof task.notes === "string")
+						validateTaskText("notes", task.notes, TASK_NOTES_MAX_LENGTH);
+				}
 				return toolResult({
 					outcome: "persisted",
 					records: tasks.map((item) =>
@@ -501,8 +585,22 @@ export function registerTaskTools(
 						outcome: "persisted",
 						record: updateTask(id, {
 							summary:
-								typeof input.summary === "string" ? input.summary : undefined,
-							notes: typeof input.notes === "string" ? input.notes : undefined,
+								typeof input.summary === "string"
+									? validateTaskText(
+											"summary",
+											input.summary,
+											TASK_SUMMARY_MAX_LENGTH,
+											true,
+										)
+									: undefined,
+							notes:
+								typeof input.notes === "string"
+									? validateTaskText(
+											"notes",
+											input.notes,
+											TASK_NOTES_MAX_LENGTH,
+										)
+									: undefined,
 							blockedBy: validatedBlockers(input.blockedBy),
 						}),
 					});
@@ -582,15 +680,27 @@ export default function (pi: ExtensionAPI) {
 			if (parsed.verb === "blocked")
 				return ctx.ui.notify(formatBlockedView(all), "info");
 			if (parsed.verb === "create") {
-				const task = createTask({
-					origin: "other",
-					summary: sanitizeTaskValue(parsed.text || "untitled task"),
-					workspace: resolveTaskWorkspace(ctx.cwd),
-				});
-				return ctx.ui.notify(
-					`Created ${shortTaskId(task.id)}: ${truncateTaskText(task.summary, 80)}`,
-					"info",
-				);
+				try {
+					const task = createTask({
+						origin: "other",
+						summary: validateTaskText(
+							"summary",
+							sanitizeTaskValue(parsed.text || "untitled task"),
+							TASK_SUMMARY_MAX_LENGTH,
+							true,
+						),
+						workspace: resolveTaskWorkspace(ctx.cwd),
+					});
+					return ctx.ui.notify(
+						`Created ${shortTaskId(task.id)}: ${truncateTaskText(task.summary, 80)}`,
+						"info",
+					);
+				} catch (error) {
+					return ctx.ui.notify(
+						error instanceof Error ? error.message : String(error),
+						"warning",
+					);
+				}
 			}
 			if (parsed.verb === "clear")
 				return ctx.ui.notify(

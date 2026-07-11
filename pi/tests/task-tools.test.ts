@@ -110,6 +110,72 @@ describe("task tools", () => {
 		).toEqual([blockerId]);
 	});
 
+	it("rejects oversized task fields without partial batch creation", async () => {
+		const pi = createMockPi();
+		const coordinator = new TaskExecutionCoordinator();
+		registerTaskTools(
+			pi as Parameters<typeof registerTaskTools>[0],
+			coordinator,
+		);
+		const ctx = createMockCtx({ cwd: tmpRoot });
+		const tool = pi._getTool("task");
+
+		await expect(
+			tool?.execute(
+				"long-summary",
+				{ action: "create", summary: "s".repeat(101) },
+				undefined,
+				undefined,
+				ctx,
+			),
+		).rejects.toThrow("summary must be at most 100 characters");
+		await expect(
+			tool?.execute(
+				"multiline-summary",
+				{ action: "create", summary: "first\nsecond" },
+				undefined,
+				undefined,
+				ctx,
+			),
+		).rejects.toThrow("summary must be one line");
+		await expect(
+			tool?.execute(
+				"long-notes",
+				{ action: "create", summary: "valid", notes: "n".repeat(501) },
+				undefined,
+				undefined,
+				ctx,
+			),
+		).rejects.toThrow("notes must be at most 500 characters");
+		await expect(
+			tool?.execute(
+				"long-prompt",
+				{
+					action: "create",
+					summary: "valid",
+					agent: "coding-light",
+					task: "t".repeat(2_001),
+				},
+				undefined,
+				undefined,
+				ctx,
+			),
+		).rejects.toThrow("task must be at most 2000 characters");
+		await expect(
+			tool?.execute(
+				"invalid-batch",
+				{
+					action: "batch",
+					tasks: [{ summary: "valid" }, { summary: "s".repeat(101) }],
+				},
+				undefined,
+				undefined,
+				ctx,
+			),
+		).rejects.toThrow("summary must be at most 100 characters");
+		expect(listTasks()).toHaveLength(0);
+	});
+
 	it("reads legacy todos from an override while preserving the target workspace", async () => {
 		const sourceRoot = fs.mkdtempSync(
 			path.join(os.tmpdir(), "pi-legacy-source-"),

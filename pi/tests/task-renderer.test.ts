@@ -3,7 +3,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTask, transitionTask } from "../lib/task-registry.js";
-import { formatTaskDetail, formatTaskList } from "../lib/task-renderer.js";
+import {
+	formatTaskDetail,
+	formatTaskList,
+	formatTaskToolResult,
+} from "../lib/task-renderer.js";
 import { getTaskRenderMode, setTaskRenderMode } from "../lib/task-settings.js";
 
 let tmpRoot: string;
@@ -19,6 +23,64 @@ afterEach(() => {
 	if (prevOperatorDir === undefined) delete process.env.PI_OPERATOR_DIR;
 	else process.env.PI_OPERATOR_DIR = prevOperatorDir;
 	fs.rmSync(tmpRoot, { recursive: true, force: true });
+});
+
+describe("formatTaskToolResult", () => {
+	it("renders a persisted record compactly", () => {
+		const record = createTask({ origin: "other", summary: "compact task" });
+		const result = formatTaskToolResult({ outcome: "persisted", record });
+
+		expect(result.failed).toBe(false);
+		expect(result.text).toContain("ok pending");
+		expect(result.text).toContain("compact task");
+	});
+
+	it("renders a single record in expanded detail mode", () => {
+		const record = createTask({ origin: "other", summary: "detail task" });
+		const result = formatTaskToolResult({ outcome: "persisted", record }, true);
+
+		expect(result.text).toContain("state:");
+		expect(result.text).toContain("summary: detail task");
+	});
+
+	it("renders record lists grouped by state", () => {
+		const pending = createTask({ origin: "other", summary: "pending task" });
+		const running = transitionTask(pending.id, "running");
+		const result = formatTaskToolResult({
+			outcome: "persisted",
+			records: [running],
+		});
+
+		expect(result.text).toContain("running (1)");
+		expect(result.text).toContain("pending task");
+	});
+
+	it("renders failed outcomes with their error", () => {
+		const result = formatTaskToolResult({
+			outcome: "not_found",
+			error: "task is missing",
+		});
+
+		expect(result.failed).toBe(true);
+		expect(result.text).toContain("x not_found");
+		expect(result.text).toContain("task is missing");
+	});
+
+	it("renders truncated output when expanded", () => {
+		const record = createTask({ origin: "other", summary: "output task" });
+		const result = formatTaskToolResult(
+			{
+				outcome: "persisted",
+				record,
+				output: "output body",
+				truncated: true,
+			},
+			true,
+		);
+
+		expect(result.text).toContain("11 chars, truncated");
+		expect(result.text).toContain("output body");
+	});
 });
 
 describe("task renderer/settings", () => {

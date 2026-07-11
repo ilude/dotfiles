@@ -10,6 +10,8 @@ Fable, Opus, and `gpt-5.6-sol` at xhigh effort assess the parallel-work split be
 
 Every delegation must state the deliverable, scope, allowed changes, required evidence, and stop condition. Discovery workers write only their assigned artifacts; the synthesis subagent reads those artifacts, resolves overlaps and gaps, and returns one decision-ready result. Subagent summaries are advisory: the parent must directly verify critical plan semantics, live state, and completion evidence.
 
+Task entries are index cards, not handoff documents. Use them only for durable dependencies or background execution. Keep the summary to a one-line deliverable and notes to blockers, dependencies, or acceptance checks; store detailed context in an artifact and reference its path. Never copy conversation summaries, plans, diffs, or investigation narratives into task fields.
+
 During a live incident or failed mutation, keep diagnosis and recovery direct unless a read-only independent investigation has a clear boundary. Do not delegate live recovery or use parallel execution across affected services.
 
 ## Rollout and incident discipline
