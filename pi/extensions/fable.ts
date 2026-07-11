@@ -5,6 +5,9 @@ import { type AgentScope, discoverAgents } from "./subagent/agents.js";
 
 const FABLE_MODEL_ID = "amazon-bedrock/us.anthropic.claude-fable-5";
 const FABLE_THINKING_LEVEL = "high";
+const UNKNOWN_PROVIDER_ERROR = "An unknown error occurred";
+const FABLE_BEDROCK_UNKNOWN_ERROR =
+	"Bedrock Fable request failed without provider details. The Bedrock stream adapter did not preserve the underlying ValidationException or stop reason.";
 const DEFAULT_SUBAGENT_MODEL_ID = "openai-codex/gpt-5.6-terra";
 const SUBAGENT_MODELS = {
 	small: "openai-codex/gpt-5.6-luna",
@@ -112,6 +115,53 @@ function findModel(
 	);
 }
 
+function isFableBedrockModel(model?: {
+	provider?: unknown;
+	id?: unknown;
+}): boolean {
+	return (
+		model?.provider === "amazon-bedrock" &&
+		model.id === "us.anthropic.claude-fable-5"
+	);
+}
+
+export function sanitizeFableBedrockPayload(
+	payload: unknown,
+	model?: { provider?: unknown; id?: unknown },
+): unknown | undefined {
+	if (!isFableBedrockModel(model)) return undefined;
+	if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+		return undefined;
+	}
+
+	const request = payload as Record<string, unknown>;
+	const inferenceConfig = request.inferenceConfig;
+	if (
+		!inferenceConfig ||
+		typeof inferenceConfig !== "object" ||
+		Array.isArray(inferenceConfig) ||
+		!("temperature" in inferenceConfig)
+	) {
+		return undefined;
+	}
+
+	const { temperature: _temperature, ...supportedInferenceConfig } =
+		inferenceConfig as Record<string, unknown>;
+	return {
+		...request,
+		inferenceConfig: supportedInferenceConfig,
+	};
+}
+
+export function improveFableBedrockError(
+	errorMessage: string | undefined,
+	model?: { provider?: unknown; id?: unknown },
+): string | undefined {
+	if (!isFableBedrockModel(model)) return undefined;
+	if (errorMessage !== UNKNOWN_PROVIDER_ERROR) return undefined;
+	return FABLE_BEDROCK_UNKNOWN_ERROR;
+}
+
 export function isInteractiveOrchestratorParent(ctx: {
 	mode?: unknown;
 	model?: { provider?: unknown; id?: unknown };
@@ -154,6 +204,23 @@ export function isDelegationBiasedParent(
 }
 
 export default function fableCommand(pi: ExtensionAPI): void {
+	pi.on("before_provider_request", (event, ctx) =>
+		sanitizeFableBedrockPayload(event.payload, ctx.model),
+	);
+
+	pi.on("message_end", (event, ctx) => {
+		const message = event.message;
+		if (message.role !== "assistant" || message.stopReason !== "error") {
+			return undefined;
+		}
+		const improvedError = improveFableBedrockError(
+			message.errorMessage,
+			ctx.model,
+		);
+		if (!improvedError) return undefined;
+		return { message: { ...message, errorMessage: improvedError } };
+	});
+
 	pi.on("before_agent_start", (event, ctx) => {
 		if (!isInteractiveOrchestratorParent(ctx)) return undefined;
 		const instruction = isDelegationBiasedParent(ctx, pi.getThinkingLevel())

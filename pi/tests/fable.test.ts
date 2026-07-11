@@ -16,7 +16,10 @@ vi.mock("../extensions/agent-team.js", () => ({
 	resolveTeam: resolveTeamMock,
 }));
 
-import fableCommand from "../extensions/fable.ts";
+import fableCommand, {
+	improveFableBedrockError,
+	sanitizeFableBedrockPayload,
+} from "../extensions/fable.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 function orchestratorCtx(overrides: Record<string, unknown> = {}) {
@@ -37,6 +40,58 @@ function hooks(thinkingLevel = "medium") {
 		tool: pi._getHook("tool_call")[0].handler,
 	};
 }
+
+describe("Fable Bedrock compatibility", () => {
+	const fableModel = {
+		provider: "amazon-bedrock",
+		id: "us.anthropic.claude-fable-5",
+	};
+
+	it("removes deprecated temperature from Fable inference config", () => {
+		expect(
+			sanitizeFableBedrockPayload(
+				{
+					modelId: fableModel.id,
+					inferenceConfig: { maxTokens: 128, temperature: 0 },
+				},
+				fableModel,
+			),
+		).toEqual({
+			modelId: fableModel.id,
+			inferenceConfig: { maxTokens: 128 },
+		});
+	});
+
+	it("leaves other models and already-compatible payloads unchanged", () => {
+		expect(
+			sanitizeFableBedrockPayload(
+				{ inferenceConfig: { temperature: 0 } },
+				{ provider: "amazon-bedrock", id: "other-model" },
+			),
+		).toBeUndefined();
+		expect(
+			sanitizeFableBedrockPayload(
+				{ inferenceConfig: { maxTokens: 128 } },
+				fableModel,
+			),
+		).toBeUndefined();
+	});
+
+	it("replaces only opaque Fable provider errors", () => {
+		expect(
+			improveFableBedrockError("An unknown error occurred", fableModel),
+		).toContain("did not preserve the underlying ValidationException");
+		expect(
+			improveFableBedrockError("Throttling error", fableModel),
+		).toBeUndefined();
+		expect(
+			improveFableBedrockError("An unknown error occurred", {
+				provider: "amazon-bedrock",
+				id: "other-model",
+			}),
+		).toBeUndefined();
+	});
+});
 
 describe("fable orchestration policy", () => {
 	it("adds the direct-first policy only for interactive orchestrator parents", async () => {
