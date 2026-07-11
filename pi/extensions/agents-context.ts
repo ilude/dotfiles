@@ -38,6 +38,9 @@ const MAX_BYTES_PER_FILE = 24 * 1024;
 const MAX_TOTAL_BYTES = 96 * 1024;
 const MAX_IMPORT_DEPTH = 3;
 const REPORT_TYPE = "agents-context-report";
+const MAX_TOOL_FAILURES = 128;
+const REPEATED_TOOL_LOOP_REASON =
+	"repeated_tool_loop: third identical failed or blocked tool attempt denied before execution";
 
 type ToolCallResult = { block: true; reason: string } | undefined;
 
@@ -57,7 +60,8 @@ type State = {
 	expertiseDisabled: boolean;
 	cwd?: string;
 	basePaths: Set<string>;
-	lastInjectedTargetPayload?: string;
+	injectedTargetFingerprints: Set<string>;
+	toolFailures: Map<string, { resultFingerprint: string; count: number }>;
 };
 
 const state: State = {
@@ -68,10 +72,71 @@ const state: State = {
 	totalBytes: 0,
 	expertiseDisabled: false,
 	basePaths: new Set(),
+	injectedTargetFingerprints: new Set(),
+	toolFailures: new Map(),
 };
 
 function canonical(filePath: string): string {
 	return path.resolve(filePath);
+}
+
+function canonicalValue(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(canonicalValue);
+	if (!isRecord(value)) return value;
+	return Object.fromEntries(
+		Object.keys(value)
+			.sort()
+			.map((key) => [key, canonicalValue(value[key])]),
+	);
+}
+
+function toolCallFingerprint(toolName: unknown, input: unknown): string {
+	return JSON.stringify([
+		String(toolName ?? "").trim().toLowerCase(),
+		canonicalValue(input),
+	]);
+}
+
+function normalizeResultValue(value: unknown): unknown {
+	if (typeof value === "string")
+		return value.replaceAll("\r\n", "\n").trimEnd();
+	if (Array.isArray(value)) return value.map(normalizeResultValue);
+	if (!isRecord(value)) return value;
+	return Object.fromEntries(
+		Object.keys(value)
+			.sort()
+			.map((key) => [key, normalizeResultValue(value[key])]),
+	);
+}
+
+function normalizedFailureFingerprint(event: {
+	content?: unknown;
+	details?: unknown;
+	isError?: unknown;
+}): string {
+	return JSON.stringify(
+		normalizeResultValue({
+			content: event.content,
+			details: event.details,
+			isError: Boolean(event.isError),
+		}),
+	);
+}
+
+function recordToolFailure(callFingerprint: string, resultFingerprint: string): void {
+	const previous = state.toolFailures.get(callFingerprint);
+	state.toolFailures.delete(callFingerprint);
+	state.toolFailures.set(callFingerprint, {
+		resultFingerprint,
+		count:
+			previous?.resultFingerprint === resultFingerprint
+				? previous.count + 1
+				: 1,
+	});
+	if (state.toolFailures.size > MAX_TOOL_FAILURES) {
+		const oldest = state.toolFailures.keys().next().value;
+		if (typeof oldest === "string") state.toolFailures.delete(oldest);
+	}
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -338,7 +403,8 @@ function clearLoadedSnapshot(): void {
 function clearInstructionState(): void {
 	clearLoadedSnapshot();
 	state.basePaths.clear();
-	state.lastInjectedTargetPayload = undefined;
+	state.injectedTargetFingerprints.clear();
+	state.toolFailures.clear();
 }
 
 function resetForCwd(cwd: string): void {
@@ -402,7 +468,8 @@ export default function (pi: ExtensionAPI) {
 		state.expertiseDisabled = true;
 		const files = discoverForPaths(ctx.cwd, [ctx.cwd]);
 		state.basePaths = new Set(files.map((file) => file.path));
-		state.lastInjectedTargetPayload = undefined;
+		state.injectedTargetFingerprints.clear();
+		state.toolFailures.clear();
 		if (!files.length) return undefined;
 		return {
 			systemPrompt: `${event.systemPrompt}\n\n${instructionPayload(files)}`,
@@ -426,12 +493,8 @@ export default function (pi: ExtensionAPI) {
 		const targetFiles = [...state.loaded.values()].filter(
 			(file) => !state.basePaths.has(file.path),
 		);
-		if (!targetFiles.length) {
-			state.lastInjectedTargetPayload = undefined;
-			return { messages };
-		}
+		if (!targetFiles.length) return { messages };
 		const payload = instructionPayload(targetFiles);
-		state.lastInjectedTargetPayload = payload;
 		return {
 			messages: [
 				...messages,
@@ -455,12 +518,15 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("tool_call", async (event, ctx): Promise<ToolCallResult> => {
 		const toolName = String(event.toolName ?? "");
+		const callFingerprint = toolCallFingerprint(toolName, event.input);
+		if ((state.toolFailures.get(callFingerprint)?.count ?? 0) >= 2) {
+			return { block: true, reason: REPEATED_TOOL_LOOP_REASON };
+		}
 		if (EXPERTISE_TOOLS.has(toolName)) {
-			return {
-				block: true,
-				reason:
-					"Expertise tools are disabled; use AGENTS.md, project .pi/skills, or user/global skills instead.",
-			};
+			const reason =
+				"Expertise tools are disabled; use AGENTS.md, project .pi/skills, or user/global skills instead.";
+			recordToolFailure(callFingerprint, reason);
+			return { block: true, reason };
 		}
 		const targetPaths = collectToolPaths(toolName, event.input, ctx.cwd);
 		const files = discoverForPaths(ctx.cwd, targetPaths);
@@ -468,17 +534,28 @@ export default function (pi: ExtensionAPI) {
 		const targetPayload = targetFiles.length
 			? instructionPayload(targetFiles)
 			: undefined;
-		if (
-			targetPayload &&
-			MUTATING_TOOLS.has(toolName) &&
-			targetPayload !== state.lastInjectedTargetPayload
-		) {
-			return {
-				block: true,
-				reason: `Loaded ${targetFiles.length} target-specific AGENTS context file(s). Retry this ${toolName} call after the next model request applies them.`,
-			};
+		if (targetPayload && MUTATING_TOOLS.has(toolName)) {
+			const contextFingerprint = targetPayload;
+			if (!state.injectedTargetFingerprints.has(contextFingerprint)) {
+				state.injectedTargetFingerprints.add(contextFingerprint);
+				const reason = `Loaded ${targetFiles.length} target-specific AGENTS context file(s). Retry this ${toolName} call after the next model request applies them.`;
+				recordToolFailure(callFingerprint, reason);
+				return { block: true, reason };
+			}
 		}
 		return undefined;
+	});
+
+	pi.on("tool_result", async (event) => {
+		const callFingerprint = toolCallFingerprint(event.toolName, event.input);
+		if (event.isError) {
+			recordToolFailure(
+				callFingerprint,
+				normalizedFailureFingerprint(event),
+			);
+		} else {
+			state.toolFailures.delete(callFingerprint);
+		}
 	});
 
 	pi.registerCommand("agents-context", {

@@ -288,7 +288,7 @@ describe("agents-context extension", () => {
 		).resolves.toBeUndefined();
 	});
 
-	it("blocks the first mutation and puts target instructions in the retry model call", async () => {
+	it("blocks newly discovered context exactly once and permits the immediate identical retry", async () => {
 		const cwd = path.join(tmp, "repo");
 		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
 		writeFile(path.join(cwd, "src", "AGENTS.md"), "src agents");
@@ -299,11 +299,79 @@ describe("agents-context extension", () => {
 		const ctx = createMockCtx({ cwd });
 		const event = { toolName: "edit", input: { path: "src/file.ts" } };
 		await expect(toolHook(event, ctx)).resolves.toMatchObject({ block: true });
+		await expect(toolHook(event, ctx)).resolves.toBeUndefined();
 		const retryContext = await contextHook({ messages: [] }, ctx);
 		expect(retryContext.messages).toHaveLength(1);
 		expect(retryContext.messages[0].content).toContain("src agents");
-		await expect(toolHook(event, ctx)).resolves.toBeUndefined();
 		expect(pi.sendMessage).not.toHaveBeenCalled();
+	});
+
+	it("blocks once again when target instruction content changes", async () => {
+		const cwd = path.join(tmp, "repo");
+		const instructionPath = path.join(cwd, "src", "AGENTS.md");
+		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
+		writeFile(instructionPath, "first version");
+		const pi = createMockPi();
+		registerAgentsContext(pi);
+		const toolHook = pi._getHook("tool_call")[0].handler;
+		const resultHook = pi._getHook("tool_result")[0].handler;
+		const ctx = createMockCtx({ cwd });
+		const event = { toolName: "edit", input: { path: "src/file.ts" } };
+
+		await expect(toolHook(event, ctx)).resolves.toMatchObject({ block: true });
+		await expect(toolHook(event, ctx)).resolves.toBeUndefined();
+		await resultHook({ ...event, content: [], isError: false }, ctx);
+		writeFile(instructionPath, "second version");
+		await expect(toolHook(event, ctx)).resolves.toMatchObject({ block: true });
+		await expect(toolHook(event, ctx)).resolves.toBeUndefined();
+	});
+
+	it("does not stop identical successful tool calls", async () => {
+		const pi = createMockPi();
+		registerAgentsContext(pi);
+		const toolHook = pi._getHook("tool_call")[0].handler;
+		const resultHook = pi._getHook("tool_result")[0].handler;
+		const ctx = createMockCtx({ cwd: tmp });
+		const event = { toolName: "read", input: { path: "same.ts" } };
+
+		for (let attempt = 0; attempt < 3; attempt += 1) {
+			await expect(toolHook(event, ctx)).resolves.toBeUndefined();
+			await resultHook({ ...event, content: [], isError: false }, ctx);
+		}
+	});
+
+	it("stops a third identical failed attempt before execution and resets for a new user turn", async () => {
+		const cwd = path.join(tmp, "repo");
+		const pi = createMockPi();
+		registerAgentsContext(pi);
+		const toolHook = pi._getHook("tool_call")[0].handler;
+		const resultHook = pi._getHook("tool_result")[0].handler;
+		const beforeAgentStart = pi._getHook("before_agent_start")[0].handler;
+		const ctx = createMockCtx({ cwd });
+		const event = { toolName: "read", input: { path: "missing.ts" } };
+		const failedResult = {
+			...event,
+			content: [{ type: "text", text: "not found" }],
+			details: { code: "ENOENT" },
+			isError: true,
+		};
+		let invocationCount = 0;
+
+		for (let attempt = 0; attempt < 2; attempt += 1) {
+			await expect(toolHook(event, ctx)).resolves.toBeUndefined();
+			invocationCount += 1;
+			await resultHook(failedResult, ctx);
+		}
+		await expect(toolHook(event, ctx)).resolves.toEqual({
+			block: true,
+			reason: expect.stringContaining("repeated_tool_loop"),
+		});
+		expect(invocationCount).toBe(2);
+
+		await beforeAgentStart({ systemPrompt: "base", tools: [] }, ctx);
+		await expect(toolHook(event, ctx)).resolves.toBeUndefined();
+		invocationCount += 1;
+		expect(invocationCount).toBe(3);
 	});
 
 	it("registers /agents-context inspection status without adding display reports to LLM context", async () => {
