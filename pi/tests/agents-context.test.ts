@@ -256,6 +256,38 @@ describe("agents-context extension", () => {
 		expect(result.messages[0].content).not.toContain("first root");
 	});
 
+	it("keeps base instructions in the system prompt and blocks only new target scope", async () => {
+		const cwd = path.join(tmp, "repo");
+		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
+		writeFile(path.join(cwd, "src", "AGENTS.md"), "src agents");
+		const pi = createMockPi();
+		registerAgentsContext(pi);
+		const ctx = createMockCtx({ cwd });
+		const beforeAgentStart = pi._getHook("before_agent_start")[0].handler;
+		const contextHook = pi._getHook("context")[0].handler;
+		const toolHook = pi._getHook("tool_call")[0].handler;
+
+		const start = await beforeAgentStart(
+			{ systemPrompt: "base", tools: [] },
+			ctx,
+		);
+		expect(start.systemPrompt).toContain("root agents");
+		await expect(
+			toolHook({ toolName: "edit", input: { path: "root.ts" } }, ctx),
+		).resolves.toBeUndefined();
+		await expect(
+			toolHook({ toolName: "edit", input: { path: "src/file.ts" } }, ctx),
+		).resolves.toMatchObject({ block: true });
+
+		const retryContext = await contextHook({ messages: [] }, ctx);
+		expect(retryContext.messages).toHaveLength(1);
+		expect(retryContext.messages[0].content).toContain("src agents");
+		expect(retryContext.messages[0].content).not.toContain("root agents");
+		await expect(
+			toolHook({ toolName: "edit", input: { path: "src/file.ts" } }, ctx),
+		).resolves.toBeUndefined();
+	});
+
 	it("blocks the first mutation and puts target instructions in the retry model call", async () => {
 		const cwd = path.join(tmp, "repo");
 		writeFile(path.join(cwd, "AGENTS.md"), "root agents");

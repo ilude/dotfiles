@@ -12,9 +12,9 @@ Follow-up work identified while refining Pi orchestration, prompt size, and suba
 
    New mutating tools could bypass `fable.ts` until manually added. Tools should declare capabilities such as `read`, `execute`, `mutate-files`, `mutate-git`, or `external-write`; orchestration policy can then enforce categories.
 
-3. **Open - Fix agents-context accumulation**
+3. **Complete - Fix agents-context accumulation**
 
-   Nested `AGENTS.md` content is persisted through hidden messages. `pi/prompt-routing/AGENTS.md` alone is 376 lines. Inject relevant instructions ephemerally and move historical detail into referenced docs.
+   Base global and root-to-cwd instructions remain in the per-request system prompt. Target-specific instructions are injected through Pi's non-persistent `context` hook, historical hidden reports are filtered, target scopes replace instead of accumulate, and mutations wait until the applicable scope has reached a model request. Focused tests cover persistence, scope replacement, retries, and cwd changes. `pi/prompt-routing/AGENTS.md` was reduced from 376 to 93 lines, with experiment history and production governance moved into referenced classifier docs.
 
 5. **Complete - Make agent frontmatter truthful**
 

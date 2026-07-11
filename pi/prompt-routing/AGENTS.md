@@ -81,7 +81,7 @@ experiment rationale in `docs/classifier-experiments.md`.
 Run these exact commands after relevant changes:
 
 ```bash
-cd pi/tests && pnpm test prompt-router.test.ts
+cd pi && pnpm test prompt-router.test.ts
 uv run --project pi/prompt-routing pytest pi/prompt-routing/tests
 uv run --project pi/prompt-routing python pi/prompt-routing/evaluate.py \
   --config pi/settings.json \
