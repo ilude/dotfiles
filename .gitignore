@@ -172,3 +172,6 @@ sessions/
 claude/commands/yt/hermes-transcript.tmp.txt
 /.specs/**/execution-evidence/
 .specs/archive/pi-orchestration-telemetry/review-1/execution-state.md
+/pi/workflow-friction/queue/pending/
+/pi/workflow-friction/queue/processing/
+/pi/workflow-friction/worker.lock
