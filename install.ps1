@@ -403,6 +403,28 @@ function Remove-GitShellExtensions {
     }
 }
 
+function Ensure-WindowsTerminalContextMenu {
+    # Override Explorer's legacy "Open PowerShell window here" registrations for
+    # the current user. The machine-wide entries launch powershell.exe directly,
+    # bypassing Windows Terminal and its existing-window behavior.
+    $command = 'wt.exe -w 0 new-tab -d "%V" pwsh.exe'
+    $paths = @(
+        'HKCU:\Software\Classes\Directory\shell\Powershell',
+        'HKCU:\Software\Classes\Directory\Background\shell\Powershell',
+        'HKCU:\Software\Classes\Drive\shell\Powershell'
+    )
+
+    foreach ($path in $paths) {
+        $commandPath = Join-Path $path 'command'
+        $null = New-Item -Path $commandPath -Force
+        Set-Item -Path $path -Value 'Open in Windows Terminal'
+        Set-Item -Path $commandPath -Value $command
+    }
+
+    Write-Host "  Explorer context menu: Windows Terminal" -ForegroundColor Green
+    return $true
+}
+
 function Install-PSModule {
     param([string]$Name)
 
@@ -2039,9 +2061,10 @@ try {
     }
 
     # ========================================================================
-    # Windows Terminal - OpenCode Shift+Enter
+    # Windows Terminal integration
     # ========================================================================
-    Write-Host "`nConfiguring Windows Terminal (Shift+Enter)..." -ForegroundColor Cyan
+    Write-Host "`nConfiguring Windows Terminal..." -ForegroundColor Cyan
+    $null = Ensure-WindowsTerminalContextMenu
     $null = Ensure-WindowsTerminalShiftEnter
 
     # ========================================================================
