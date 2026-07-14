@@ -8,8 +8,6 @@ import type {
 
 const COMMAND_NAME = "bedrock-refresh";
 const POLL_TIMEOUT_MS = 60_000;
-const BEDROCK_PREFIX = "amazon-bedrock/";
-const TRACKED_BEDROCK_PREFIX = `${BEDROCK_PREFIX}us.anthropic.claude-`;
 
 interface PollResult {
 	profile: string;
@@ -67,7 +65,7 @@ function helpText(): string {
 		"",
 		"Poll AWS Bedrock for newer configured Claude Opus, Fable, and Sonnet model IDs.",
 		"Without --apply, this is read-only and reports current vs latest models.",
-		"With --apply, it updates pi/settings.json enabledModels.",
+		"With --apply, it updates pi/settings.json bedrockRefresh.models.",
 	].join("\n");
 }
 
@@ -198,14 +196,18 @@ async function runPoll(
 		string,
 		unknown
 	>;
-	const enabledModels = Array.isArray(settings.enabledModels)
-		? settings.enabledModels.filter(
-				(value): value is string => typeof value === "string",
+	const refreshSettings =
+		settings.bedrockRefresh !== null &&
+		typeof settings.bedrockRefresh === "object" &&
+		!Array.isArray(settings.bedrockRefresh)
+			? (settings.bedrockRefresh as Record<string, unknown>)
+			: {};
+	const current = Array.isArray(refreshSettings.models)
+		? refreshSettings.models.filter(
+				(value): value is string =>
+					typeof value === "string" && value.startsWith("us.anthropic.claude-"),
 			)
 		: [];
-	const current = enabledModels
-		.filter((value) => value.startsWith(TRACKED_BEDROCK_PREFIX))
-		.map((value) => value.slice(BEDROCK_PREFIX.length));
 
 	const latest: Record<string, string | null> = {};
 	const recommended: string[] = [];
@@ -264,7 +266,7 @@ function formatPollSummary(result: PollResult): string {
 	} else {
 		lines.push(
 			"",
-			"Bedrock enabledModels are current for configured Opus, Fable, and Sonnet lines.",
+			"Bedrock refresh models are current for configured Opus, Fable, and Sonnet lines.",
 		);
 	}
 
@@ -285,21 +287,21 @@ function applyRecommendedModels(result: PollResult): boolean {
 	const targetPath = settingsPath();
 	const raw = fs.readFileSync(targetPath, "utf-8");
 	const settings = JSON.parse(raw) as Record<string, unknown>;
-	const existing = Array.isArray(settings.enabledModels)
-		? settings.enabledModels.filter(
+	const refreshSettings =
+		settings.bedrockRefresh !== null &&
+		typeof settings.bedrockRefresh === "object" &&
+		!Array.isArray(settings.bedrockRefresh)
+			? (settings.bedrockRefresh as Record<string, unknown>)
+			: {};
+	const existing = Array.isArray(refreshSettings.models)
+		? refreshSettings.models.filter(
 				(value): value is string => typeof value === "string",
 			)
 		: [];
-	const recommended = result.recommended.map(
-		(model) => `${BEDROCK_PREFIX}${model}`,
-	);
-	const retained = existing.filter(
-		(model) => !model.startsWith(TRACKED_BEDROCK_PREFIX),
-	);
-	const next = [...retained, ...recommended];
+	const next = result.recommended;
 
 	if (JSON.stringify(existing) === JSON.stringify(next)) return false;
-	settings.enabledModels = next;
+	settings.bedrockRefresh = { ...refreshSettings, models: next };
 	atomicWriteJson(targetPath, settings);
 	return true;
 }
@@ -345,7 +347,7 @@ export default function bedrockRefresh(pi: ExtensionAPI): void {
 				const changed = applyRecommendedModels(poll);
 				notify(
 					ctx,
-					`${summary}\n\n${changed ? "Updated pi/settings.json enabledModels." : "No settings update needed."}`,
+					`${summary}\n\n${changed ? "Updated pi/settings.json bedrockRefresh.models." : "No settings update needed."}`,
 					changed ? "info" : "warning",
 				);
 			} catch (error) {

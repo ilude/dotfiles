@@ -38,15 +38,7 @@ Rollback: remove the `personality` key or set it to `"default"`/`"none"`. The re
 
 ### Codex plus Bedrock workflow
 
-The tracked `pi/settings.json` keeps the Codex subscription provider as the startup default and orders `enabledModels` for `/model` scoped mode and Ctrl+P cycling. OpenAI Codex entries appear first, followed by the selected Amazon Bedrock Claude models:
-
-- `openai-codex/gpt-5.5`
-- `openai-codex/gpt-5.4`
-- `openai-codex/gpt-5.4-mini`
-- `openai-codex/gpt-5.3-codex-spark`
-- `amazon-bedrock/us.anthropic.claude-opus-4-8`
-- `amazon-bedrock/us.anthropic.claude-fable-5`
-- `amazon-bedrock/us.anthropic.claude-sonnet-4-6`
+The tracked `pi/settings.json` keeps the Codex subscription provider as the startup default and limits `enabledModels` to the OpenAI Codex models used for `/model` scoped mode and Ctrl+P cycling. Bedrock model IDs are tracked separately under `bedrockRefresh.models`, so machines without Bedrock credentials do not receive unmatched-model warnings.
 
 `/model` starts in scoped mode when `enabledModels` is set. Pressing Tab toggles to Pi's all-model view, which uses Pi's built-in provider sort instead of this curated order.
 
@@ -73,7 +65,7 @@ Poll AWS Bedrock for newer Opus, Fable, and Sonnet model IDs from inside Pi:
 /bedrock-refresh
 ```
 
-The command is read-only by default and reports current vs latest configured model lines. To update `pi/settings.json` `enabledModels` to the latest matching `us.*` model IDs:
+The command is read-only by default and reports current vs latest configured model lines. To update `pi/settings.json` `bedrockRefresh.models` to the latest matching `us.*` model IDs:
 
 ```text
 /bedrock-refresh --apply

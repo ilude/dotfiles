@@ -25,9 +25,13 @@
     "openai-codex/gpt-5.6-terra",
     "openai-codex/gpt-5.5",
     "openai-codex/gpt-5.4",
-    "openai-codex/gpt-5.4-mini",
-    "amazon-bedrock/us.anthropic.claude-opus-4-8",
-    "amazon-bedrock/us.anthropic.claude-fable-5",
-    "amazon-bedrock/us.anthropic.claude-sonnet-4-6"
-  ]
+    "openai-codex/gpt-5.4-mini"
+  ],
+  "bedrockRefresh": {
+    "models": [
+      "us.anthropic.claude-opus-4-8",
+      "us.anthropic.claude-fable-5",
+      "us.anthropic.claude-sonnet-4-6"
+    ]
+  }
 }

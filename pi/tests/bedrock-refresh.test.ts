@@ -63,9 +63,31 @@ describe("bedrock-refresh extension", () => {
 		);
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
 			expect.stringContaining(
-				"Bedrock enabledModels are current for configured Opus, Fable, and Sonnet lines.",
+				"Bedrock refresh models are current for configured Opus, Fable, and Sonnet lines.",
 			),
 			"info",
+		);
+	});
+
+	it("keeps refresh inventory separate from enabled models", async () => {
+		const pi = createMockPi();
+		pi.exec = vi.fn(async (_cmd: string, args?: string[], _opts?: unknown) => ({
+			code: 0,
+			stdout: JSON.stringify(
+				args?.includes("list-inference-profiles")
+					? inferenceProfiles
+					: foundationModels,
+			),
+			stderr: "",
+		}));
+		const ctx = createMockCtx();
+
+		bedrockRefresh(pi as unknown as ExtensionApiArg);
+		await pi._commands[0]?.handler("--apply", ctx);
+
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			expect.stringContaining("No settings update needed."),
+			"warning",
 		);
 	});
 });
