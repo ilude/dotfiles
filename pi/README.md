@@ -315,12 +315,13 @@ Measures each interaction from submission through `agent_settled` and records me
 Runtime records live under `~/.pi/agent/workflow-friction/` and remain uncommitted. `interactions.jsonl` contains timing, mode, selection, tool, validation, subagent, and mutation counts without prompt or response content. Reviewed interaction packets remain local in `reviews.jsonl`; applied or skipped learning decisions are append-only records in `learning-decisions.jsonl`. Set `PI_WORKFLOW_FRICTION_DIR` to use a separate local directory. At interaction settlement, the extension also emits a metadata-only `orchestration_interaction` metrics event for direct and delegated interactions.
 
 ```text
-/capture [optional note]  # review the latest completed interaction
-/learning-review          # discuss one pending cross-session lesson
-/workflow-review          # discuss findings from the previous 15 days
+/improve                 # discuss one supported self-improvement candidate
+/improve <capture note>  # queue the latest interaction for background review
 ```
 
-`/learning-review` presents one quarantined lesson in the normal conversation using the full 1-3-1 format. It waits for an Apply, Edit, or Skip decision before changing tracked instructions or skills. Applied lessons require target paths, validation evidence, and rollback instructions; they also create an experiment marker for later comparison. `/workflow-review` remains an aggregate discussion surface and does not apply changes directly.
+`/improve` is the only public self-improvement workflow. It combines one pending cross-session candidate with the previous 15 days of interaction metadata, prior experiments, and target-skill usage when applicable. It presents the candidate using the full 1-3-1 format and waits for an Apply, Edit, or Skip decision. Applied changes require target paths, validation evidence, and rollback instructions and create an experiment marker for later comparison.
+
+Interaction capture and background review remain automatic internal stages; the optional note provides a manual capture path through the same command. The retired `/capture`, `/learning-review`, `/workflow-review`, and `/skill-review` commands are not registered. `/review-it` remains separate because it reviews a supplied plan or PRD, while stats commands remain read-only diagnostics.
 
 ### `orchestration-stats.ts`
 

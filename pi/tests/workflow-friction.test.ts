@@ -52,6 +52,7 @@ function trace(overrides: Partial<ToolTrace> = {}): ToolTrace {
 function commandLearningReviewRecord(
 	repoRoot: string,
 	scope: "project" | "user" = "project",
+	targetSkill?: string,
 ): StoredReviewRecord {
 	return {
 		schemaVersion: 1,
@@ -73,6 +74,7 @@ function commandLearningReviewRecord(
 				likely: "yes",
 				reason: "The package manager is a durable project convention.",
 				scope,
+				targetSkill,
 			},
 			suggestedChange: "Use pnpm for Pi TypeScript work.",
 		},
@@ -94,8 +96,9 @@ async function waitForPath(filePath: string): Promise<void> {
 async function seedCommandLearningReview(
 	repoRoot: string,
 	scope: "project" | "user" = "project",
+	targetSkill?: string,
 ): Promise<StoredReviewRecord> {
-	const review = commandLearningReviewRecord(repoRoot, scope);
+	const review = commandLearningReviewRecord(repoRoot, scope, targetSkill);
 	const reviewsPath = path.join(
 		path.dirname(learningDecisionsPath()),
 		"reviews.jsonl",
@@ -533,33 +536,41 @@ describe("orchestration interaction lifecycle", () => {
 });
 
 describe("workflow friction extension", () => {
-	it("registers the commands, experiment tool, and lifecycle hooks", () => {
+	it("registers one improvement command, decision tools, and lifecycle hooks", () => {
 		const pi = createMockPi();
 		workflowFrictionExtension(pi as never);
-		expect(pi._commands.map((command) => command.name)).toEqual([
-			"capture",
-			"learning-review",
-			"workflow-review",
-		]);
+		expect(pi._commands.map((command) => command.name)).toEqual(["improve"]);
 		expect(pi._getTool("learning_candidate_decide")).toBeDefined();
 		expect(pi._getTool("workflow_friction_mark_change")).toBeDefined();
 		expect(pi._getHook("before_agent_start")).toHaveLength(1);
 		expect(pi._getHook("agent_settled")).toHaveLength(1);
 	});
 
-	it("reports when capture has no completed interaction", async () => {
+	it("reports when no supported improvement candidate exists", async () => {
 		const pi = createMockPi();
 		workflowFrictionExtension(pi as never);
 		const ctx = createMockCtx();
-		const capture = pi._commands.find((command) => command.name === "capture");
-		await capture?.handler("", ctx);
+		const improve = pi._commands.find((command) => command.name === "improve");
+		await improve?.handler("", ctx);
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			"No supported improvement candidates exist for this workspace.",
+			"info",
+		);
+	});
+
+	it("uses /improve notes as the manual capture path", async () => {
+		const pi = createMockPi();
+		workflowFrictionExtension(pi as never);
+		const ctx = createMockCtx();
+		const improve = pi._commands.find((command) => command.name === "improve");
+		await improve?.handler("Repeated validation with no edit", ctx);
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
 			"No completed interaction is available to capture.",
 			"warning",
 		);
 	});
 
-	it("turns a short correction into a quarantined conversational review", async () => {
+	it("turns a short correction into a quarantined improvement discussion", async () => {
 		const scratch = await fs.mkdtemp(
 			path.join(os.tmpdir(), "pi-learning-auto-"),
 		);
@@ -592,20 +603,56 @@ describe("workflow friction extension", () => {
 			await waitForPath(path.join(scratch, "reviews.jsonl"));
 			expect(pi.sendMessage).not.toHaveBeenCalled();
 
-			const command = pi._commands.find(
-				(item) => item.name === "learning-review",
-			);
+			const command = pi._commands.find((item) => item.name === "improve");
 			await command?.handler("", ctx);
 			expect(pi.sendMessage).toHaveBeenCalledTimes(1);
 			const prompt = String(pi.sendMessage.mock.calls[0]?.[0]?.content ?? "");
 			expect(prompt).toContain("Use the full 1-3-1 format");
 			expect(prompt).toContain(
-				"Proposed lesson: Use pnpm for Pi TypeScript work.",
+				"Proposed change: Use pnpm for Pi TypeScript work.",
+			);
+			expect(prompt).toContain(
+				"Cross-session context from the previous 15 days",
 			);
 			expect(await readCurrentLearningDecisions()).toEqual([]);
 		} finally {
 			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
 			else process.env.PI_WORKFLOW_FRICTION_DIR = previous;
+			await fs.rm(scratch, { recursive: true, force: true });
+		}
+	});
+
+	it("adds target-skill usage to the improvement evidence", async () => {
+		const scratch = await fs.mkdtemp(
+			path.join(os.tmpdir(), "pi-improve-skill-"),
+		);
+		const previousFriction = process.env.PI_WORKFLOW_FRICTION_DIR;
+		const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+		process.env.PI_WORKFLOW_FRICTION_DIR = path.join(scratch, "friction");
+		process.env.PI_CODING_AGENT_DIR = path.join(scratch, "agent");
+		try {
+			await fs.mkdir(path.join(scratch, "agent", "sessions"), {
+				recursive: true,
+			});
+			const ctx = createMockCtx({ cwd: "/test/dir" });
+			await seedCommandLearningReview(ctx.cwd, "project", "typescript");
+			const pi = createMockPi();
+			workflowFrictionExtension(pi as never);
+			const improve = pi._commands.find(
+				(command) => command.name === "improve",
+			);
+			await improve?.handler("", ctx);
+			const prompt = String(pi.sendMessage.mock.calls[0]?.[0]?.content ?? "");
+			expect(prompt).toContain(
+				'"targetSkillUsage":{"name":"typescript","used30d":0,"manualReadCandidates":0}',
+			);
+		} finally {
+			if (previousFriction === undefined)
+				delete process.env.PI_WORKFLOW_FRICTION_DIR;
+			else process.env.PI_WORKFLOW_FRICTION_DIR = previousFriction;
+			if (previousAgentDir === undefined)
+				delete process.env.PI_CODING_AGENT_DIR;
+			else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
 			await fs.rm(scratch, { recursive: true, force: true });
 		}
 	});
@@ -684,9 +731,7 @@ describe("workflow friction extension", () => {
 			const candidate = await seedCommandLearningReview(ctx.cwd);
 			const pi = createMockPi();
 			workflowFrictionExtension(pi as never);
-			const command = pi._commands.find(
-				(item) => item.name === "learning-review",
-			);
+			const command = pi._commands.find((item) => item.name === "improve");
 			await command?.handler("", ctx);
 			const decideTool = pi._getTool("learning_candidate_decide");
 			const decisionText =
@@ -734,7 +779,7 @@ describe("workflow friction extension", () => {
 			await command?.handler("", ctx);
 			expect(pi.sendMessage).not.toHaveBeenCalled();
 			expect(ctx.ui.notify).toHaveBeenCalledWith(
-				"No pending learning candidates exist for this workspace.",
+				"No supported improvement candidates exist for this workspace.",
 				"info",
 			);
 		} finally {
@@ -755,9 +800,7 @@ describe("workflow friction extension", () => {
 			const candidate = await seedCommandLearningReview(ctx.cwd, "user");
 			const pi = createMockPi();
 			workflowFrictionExtension(pi as never);
-			const command = pi._commands.find(
-				(item) => item.name === "learning-review",
-			);
+			const command = pi._commands.find((item) => item.name === "improve");
 			await command?.handler("", ctx);
 			const decisionText = "Skip this because it was specific to one task.";
 			const input = pi._getHook("input")[0]?.handler;

@@ -659,31 +659,3 @@ Rules:
 Interaction:
 ${JSON.stringify(packet)}`;
 }
-
-export function buildWorkflowReviewPrompt(
-	records: readonly StoredReviewRecord[],
-	experiments: readonly Record<string, unknown>[],
-	interactionSummary: InteractionMetadataSummary,
-): string {
-	return `Analyze stored Pi workflow-friction reviews from the previous ${REVIEW_LOOKBACK_DAYS} days.
-
-Present no more than three concise finding headlines. Present only one when only one is meaningful. For each headline include the occurrence count, representative session IDs, likely impact, and confidence. Distinguish observed records from reviewer interpretation. Recommend exactly one issue to discuss first.
-
-Use this interaction pattern for the recommended issue:
-1. State the problem.
-2. State the goal.
-3. Offer a small numbered set of concrete options.
-4. Give one recommendation.
-5. Wait for the user to choose and add context.
-
-Do not edit files or apply changes. Avoid a wall of text. Do not pad the output. If source context is insufficient, inspect the referenced session ID before making a strong claim. If the user later approves and the change is applied, record an experiment marker with the workflow_friction_mark_change tool.
-
-Interaction metadata summary (includes reviewed and unreviewed interactions):
-${JSON.stringify(interactionSummary)}
-
-Review records:
-${JSON.stringify(records)}
-
-Prior experiment markers:
-${JSON.stringify(experiments)}`;
-}

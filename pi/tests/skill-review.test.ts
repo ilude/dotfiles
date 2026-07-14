@@ -194,17 +194,10 @@ describe("skill-review deterministic core", () => {
 });
 
 describe("skill-review command", () => {
-	it("registers /skill-review and rejects user-facing arguments", async () => {
+	it("does not register the retired /skill-review command", () => {
 		const pi = createMockPi();
 		skillReviewExtension(asPi(pi));
-		const command = pi._commands.find((item) => item.name === "skill-review");
-		expect(command).toBeDefined();
-		const ctx = createMockCtx({ cwd: tmpRoot });
-		await command?.handler("--root elsewhere", ctx);
-		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			"Usage: /skill-review (no arguments)",
-			"error",
-		);
+		expect(pi._commands.map((item) => item.name)).not.toContain("skill-review");
 	});
 
 	it("writes artifacts under repo-root output and leaves source fixtures unchanged", async () => {

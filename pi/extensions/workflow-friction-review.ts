@@ -14,7 +14,6 @@ import { sanitizeTaskValue } from "../lib/task-security.js";
 import {
 	activateOrchestrationInteraction,
 	buildReviewPrompt,
-	buildWorkflowReviewPrompt,
 	consumeWorkflowSubmission,
 	createInteractionId,
 	detectFrictionTriggers,
@@ -36,6 +35,7 @@ import {
 	type WorkflowMode,
 	workflowFrictionStorageRoot,
 } from "../lib/workflow-friction.js";
+import { collectSkillStats } from "./skill-stats.js";
 
 const REVIEW_TIMEOUT_MS = 120_000;
 const MAX_USER_TEXT = 16_000;
@@ -579,24 +579,42 @@ async function recordLearningDecision(
 	});
 }
 
-function buildLearningDiscussionPrompt(record: StoredReviewRecord): string {
+interface ImprovementContext {
+	reviewCount: number;
+	pendingCandidateCount: number;
+	interactionSummary: ReturnType<typeof summarizeInteractionMetadata>;
+	priorExperimentCount: number;
+	targetSkillUsage?: {
+		name: string;
+		used30d: number;
+		manualReadCandidates: number;
+	};
+}
+
+function buildImprovementDiscussionPrompt(
+	record: StoredReviewRecord,
+	context: ImprovementContext,
+): string {
 	const review = record.review;
-	if (!review) throw new Error("Learning candidate review is missing");
-	return `Discuss exactly one cross-session learning candidate with the user.
+	if (!review) throw new Error("Improvement candidate review is missing");
+	return `Discuss exactly one supported self-improvement candidate with the user.
 
 Candidate ID: ${record.interactionId}
-Proposed lesson: ${review.suggestedChange}
+Proposed change: ${review.suggestedChange}
 Scope hint: ${learningScope(record)}
 Target skill hint: ${review.reusableInstruction.targetSkill ?? "none"}
 Reason: ${review.reusableInstruction.reason}
 Evidence:
 ${review.evidence.map((item) => `- ${item}`).join("\n")}
 
+Cross-session context from the previous ${REVIEW_LOOKBACK_DAYS} days:
+${JSON.stringify(context)}
+
 Use the full 1-3-1 format in normal conversation:
 - Problem: explain the observed recurring risk or correction and its evidence.
-- Goal: state the future behavior the lesson should produce.
-- Option 1: Apply the proposed lesson as written.
-- Option 2: Edit the lesson or target before applying it.
+- Goal: state the future behavior the change should produce.
+- Option 1: Apply the proposed change as written.
+- Option 2: Edit the change or target before applying it.
 - Option 3: Skip it as non-durable or incorrect.
 - Recommendation: choose one option and explain why.
 
@@ -1019,42 +1037,34 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 			});
 	});
 
-	pi.registerCommand("capture", {
+	pi.registerCommand("improve", {
 		description:
-			"Queue the latest completed interaction for background workflow review",
+			"Discuss one supported improvement or capture the latest interaction with a note",
 		handler: async (args: string, ctx: ExtensionContext) => {
-			if (!latestCompleted) {
-				ctx.ui.notify(
-					"No completed interaction is available to capture.",
-					"warning",
-				);
-				return;
-			}
 			const note = args.trim();
-			const packet: InteractionPacket = {
-				...latestCompleted,
-				selectionReasons: [
-					...new Set([...latestCompleted.selectionReasons, "manual_capture"]),
-				].sort(),
-				captureNote: note ? bounded(note, 1_000) : undefined,
-			};
-			const outcome = await enqueueReview(packet);
-			ctx.ui.notify(
-				outcome === "already_reviewed"
-					? "Latest interaction was already reviewed."
-					: "Latest interaction captured for background review.",
-				"info",
-			);
-			startBackgroundWorker(pi, ctx.cwd);
-		},
-	});
-
-	pi.registerCommand("learning-review", {
-		description:
-			"Discuss one quarantined cross-session learning candidate using the full 1-3-1 format",
-		handler: async (args: string, ctx: ExtensionContext) => {
-			if (args.trim()) {
-				ctx.ui.notify("Usage: /learning-review", "warning");
+			if (note) {
+				if (!latestCompleted) {
+					ctx.ui.notify(
+						"No completed interaction is available to capture.",
+						"warning",
+					);
+					return;
+				}
+				const packet: InteractionPacket = {
+					...latestCompleted,
+					selectionReasons: [
+						...new Set([...latestCompleted.selectionReasons, "manual_capture"]),
+					].sort(),
+					captureNote: bounded(note, 1_000),
+				};
+				const outcome = await enqueueReview(packet);
+				ctx.ui.notify(
+					outcome === "already_reviewed"
+						? "Latest interaction was already reviewed."
+						: "Latest interaction captured for background review.",
+					"info",
+				);
+				startBackgroundWorker(pi, ctx.cwd);
 				return;
 			}
 			const resolved = new Set(
@@ -1062,7 +1072,7 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 					(decision) => decision.candidateId,
 				),
 			);
-			const candidate = (await learningReviewRecords())
+			const candidates = (await learningReviewRecords())
 				.filter(
 					(record) =>
 						isLearningCandidate(record) &&
@@ -1073,42 +1083,16 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 					(a, b) =>
 						a.reviewedAt.localeCompare(b.reviewedAt) ||
 						a.interactionId.localeCompare(b.interactionId),
-				)[0];
+				);
+			const candidate = candidates[0];
 			if (!candidate) {
 				ctx.ui.notify(
-					"No pending learning candidates exist for this workspace.",
+					"No supported improvement candidates exist for this workspace.",
 					"info",
 				);
-				return;
-			}
-			pendingLearningDiscussion = { candidateId: candidate.interactionId };
-			noteWorkflowSubmission("/learning-review", "explore");
-			pi.sendMessage(
-				{
-					customType: "workflow-friction.learningReview",
-					content: buildLearningDiscussionPrompt(candidate),
-					display: false,
-				},
-				{ triggerTurn: true, deliverAs: "followUp" },
-			);
-		},
-	});
-
-	pi.registerCommand("workflow-review", {
-		description: "Aggregate the previous 15 days of workflow-friction reviews",
-		handler: async (args: string, ctx: ExtensionContext) => {
-			if (args.trim()) {
-				ctx.ui.notify("Usage: /workflow-review", "warning");
 				return;
 			}
 			const records = await recentReviewRecords();
-			if (records.length === 0) {
-				ctx.ui.notify(
-					"No workflow-friction reviews were recorded in the previous 15 days.",
-					"info",
-				);
-				return;
-			}
 			const selectedByReview = new Map(
 				records.map((record) => [
 					record.interactionId,
@@ -1126,15 +1110,29 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 					].sort(),
 				};
 			});
-			noteWorkflowSubmission("/workflow-review", "explore");
+			const targetSkill = candidate.review?.reusableInstruction.targetSkill;
+			let targetSkillUsage: ImprovementContext["targetSkillUsage"];
+			if (targetSkill) {
+				const stats = await collectSkillStats("30", { cwd: ctx.cwd });
+				if (stats.result)
+					targetSkillUsage = {
+						name: targetSkill,
+						used30d: stats.result.usage.get("30")?.get(targetSkill) ?? 0,
+						manualReadCandidates: stats.result.candidates.get(targetSkill) ?? 0,
+					};
+			}
+			pendingLearningDiscussion = { candidateId: candidate.interactionId };
+			noteWorkflowSubmission("/improve", "explore");
 			pi.sendMessage(
 				{
-					customType: "workflow-friction.reviewPrompt",
-					content: buildWorkflowReviewPrompt(
-						records,
-						await experimentRecords(),
-						summarizeInteractionMetadata(metadata),
-					),
+					customType: "workflow-friction.improve",
+					content: buildImprovementDiscussionPrompt(candidate, {
+						reviewCount: records.length,
+						pendingCandidateCount: candidates.length,
+						interactionSummary: summarizeInteractionMetadata(metadata),
+						priorExperimentCount: (await experimentRecords()).length,
+						targetSkillUsage,
+					}),
 					display: false,
 				},
 				{ triggerTurn: true, deliverAs: "followUp" },
@@ -1144,14 +1142,14 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 
 	pi.registerTool({
 		name: "learning_candidate_decide",
-		label: "Record Learning Decision",
+		label: "Record Improvement Decision",
 		description:
-			"Record the user's decision after discussing one cross-session learning candidate.",
+			"Record the user's decision after discussing one /improve candidate.",
 		promptSnippet:
-			"Record an applied or skipped learning candidate after the user decides.",
+			"Record an applied or skipped improvement candidate after the user decides.",
 		promptGuidelines: [
-			"Call learning_candidate_decide only after the user explicitly chooses Apply, Edit, or Skip for the candidate shown by /learning-review.",
-			"For applied learning candidates, call learning_candidate_decide only after the approved change is applied and validated.",
+			"Call learning_candidate_decide only after the user explicitly chooses Apply, Edit, or Skip for the candidate shown by /improve.",
+			"For applied improvement candidates, call learning_candidate_decide only after the approved change is applied and validated.",
 		],
 		parameters: Type.Object({
 			candidateId: Type.String(),
@@ -1181,7 +1179,7 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 				pendingLearningDiscussion.userDecisionText !== decisionText
 			)
 				throw new Error(
-					"Learning candidate requires a subsequent user decision from /learning-review",
+					"Improvement candidate requires a subsequent user decision from /improve",
 				);
 			const candidate = (await learningReviewRecords()).find(
 				(record) =>
@@ -1191,7 +1189,7 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 			);
 			if (!candidate?.review)
 				throw new Error(
-					"Learning candidate was not found or is no longer eligible",
+					"Improvement candidate was not found or is no longer eligible",
 				);
 			const now = new Date().toISOString();
 			const targetPaths = [
@@ -1250,7 +1248,7 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 				content: [
 					{
 						type: "text" as const,
-						text: `Learning candidate ${decision.candidateId} marked ${decision.decision}.`,
+						text: `Improvement candidate ${decision.candidateId} marked ${decision.decision}.`,
 					},
 				],
 				details: decision,

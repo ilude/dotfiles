@@ -1,3 +1,52 @@
+## 2026-07-14: Stabilize Pi secret-review coverage
+
+**Why:** `/commit` required the secret reviewer to reproduce path, label, line, and
+match text verbatim. Harmless output normalization could therefore fail exact
+candidate coverage before commit planning.
+
+**Fix:** Assigned stable numeric IDs to deterministic scanner candidates, made
+the reviewer return only each ID and its decision, retried one incomplete
+coverage response with an explicit correction, and joined validated decisions
+back to the original candidate metadata in code.
+
+**Files:** ~/.dotfiles/pi/extensions/workflow-commands.ts,
+~/.dotfiles/pi/lib/workflow-commands/prompts.ts,
+~/.dotfiles/pi/tests/workflow-commands-pure.test.ts,
+~/.dotfiles/pi/tests/workflow-prompts.test.ts
+
+---
+
+## 2026-07-14: Surface Pi commit planner warnings
+
+**Why:** `/commit` accepted validated planner warnings but discarded them before
+creating commits, leaving useful uncertainty invisible to the operator.
+
+**Fix:** Normalized non-empty planner warnings and emitted them through the
+existing `/commit` activity stream before staging each planned group.
+
+**Files:** ~/.dotfiles/pi/extensions/workflow-commands.ts,
+~/.dotfiles/pi/tests/workflow-commands-pure.test.ts
+
+---
+
+## 2026-07-14: Consolidate Pi self-improvement commands
+
+**Why:** Pi exposed interaction capture, aggregate review, candidate approval,
+and skill linting as overlapping self-improvement workflows.
+
+**Fix:** Added `/improve` as the single public self-improvement command, folded
+recent interaction context, prior experiments, and target-skill usage into one
+Apply/Edit/Skip discussion, and retired `/capture`, `/learning-review`,
+`/workflow-review`, and `/skill-review` registrations.
+
+**Files:** ~/.dotfiles/pi/extensions/workflow-friction-review.ts,
+~/.dotfiles/pi/extensions/skill-review-command.ts,
+~/.dotfiles/pi/lib/workflow-friction.ts,
+~/.dotfiles/pi/tests/workflow-friction.test.ts,
+~/.dotfiles/pi/tests/skill-review.test.ts, ~/.dotfiles/pi/README.md
+
+---
+
 ## 2026-07-14: Strengthen Pi review readiness checks
 
 **Why:** Material plan repairs and incremental readiness findings could bypass

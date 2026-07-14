@@ -1,5 +1,63 @@
 # Pi Changelog
 
+## 2026-07-14: Stabilize secret-review coverage
+
+**Why:** `/commit` required the secret reviewer to reproduce path, label, line,
+and match text verbatim. Harmless output normalization could therefore fail
+exact candidate coverage before commit planning.
+
+**Changed:**
+- Assigned stable numeric IDs to deterministic scanner candidates.
+- Reduced reviewer output to each candidate ID, classification, and reason.
+- Validated exact ID coverage and joined decisions back to original candidate
+  metadata in deterministic code.
+- Added focused prompt and coverage regressions.
+
+**Files:** `pi/extensions/workflow-commands.ts`,
+`pi/lib/workflow-commands/prompts.ts`,
+`pi/tests/workflow-commands-pure.test.ts`,
+`pi/tests/workflow-prompts.test.ts`, `pi/CHANGELOG.md`
+
+---
+
+## 2026-07-14: Surface commit planner warnings
+
+**Why:** `/commit` accepted validated planner warnings but discarded them before
+creating commits, leaving useful uncertainty invisible to the operator.
+
+**Changed:**
+- Normalized non-empty planner warnings.
+- Emitted warnings through the existing commit activity stream before staging
+  planned commit groups.
+- Added focused coverage for trimming, empty warnings, and display formatting.
+
+**Files:** `pi/extensions/workflow-commands.ts`,
+`pi/tests/workflow-commands-pure.test.ts`, `pi/CHANGELOG.md`
+
+---
+
+## 2026-07-14: Consolidate self-improvement into /improve
+
+**Why:** Interaction capture, trend review, candidate approval, and skill review
+were exposed as overlapping workflows with inconsistent evidence and outcomes.
+
+**Changed:**
+- Added `/improve` as the only public self-improvement command.
+- Combined one supported candidate with recent interaction metadata, prior
+  experiments, and target-skill usage before the Apply/Edit/Skip decision.
+- Retired `/capture`, `/learning-review`, `/workflow-review`, and
+  `/skill-review` while preserving automatic background review and existing
+  decision records.
+- Kept `/review-it` for plan and PRD review and stats commands as read-only
+  diagnostics.
+
+**Files:** `pi/extensions/workflow-friction-review.ts`,
+`pi/extensions/skill-review-command.ts`, `pi/lib/workflow-friction.ts`,
+`pi/tests/workflow-friction.test.ts`, `pi/tests/skill-review.test.ts`,
+`pi/README.md`, `pi/CHANGELOG.md`
+
+---
+
 ## 2026-07-14: Prevent incremental standalone-review blockers
 
 **Why:** A material auto-applied plan rewrite bypassed renewed panel coverage, and

@@ -29,8 +29,6 @@ export interface SkillReviewRunResult {
 	artifactNames: string[];
 }
 
-const COMMAND_NAME = "skill-review";
-
 function normalize(input: string): string {
 	return input.replace(/\\/g, "/");
 }
@@ -178,20 +176,4 @@ export async function runSkillReview(
 	};
 }
 
-export default function skillReviewExtension(pi: ExtensionAPI) {
-	pi.registerCommand(COMMAND_NAME, {
-		description:
-			"Review the discovered skill corpus and generate deterministic skill-review artifacts",
-		handler: async (args: string, ctx: ExtensionContext) => {
-			if (args.trim()) {
-				ctx.ui.notify("Usage: /skill-review (no arguments)", "error");
-				return;
-			}
-			const result = await runSkillReview(pi, ctx);
-			ctx.ui.notify(
-				`Skill review artifacts written to ${result.runDir}`,
-				"info",
-			);
-		},
-	});
-}
+export default function skillReviewExtension(_pi: ExtensionAPI) {}
