@@ -1,10 +1,12 @@
 import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import {
+	getSettingsPath,
+	updateJsonObjectAtomic,
+} from "../lib/settings-file.ts";
 
 const COMMAND_NAME = "bedrock-refresh";
 const POLL_TIMEOUT_MS = 60_000;
@@ -67,10 +69,6 @@ function helpText(): string {
 		"Without --apply, this is read-only and reports current vs latest models.",
 		"With --apply, it updates pi/settings.json bedrockRefresh.models.",
 	].join("\n");
-}
-
-function settingsPath(): string {
-	return path.join(os.homedir(), ".pi", "agent", "settings.json");
 }
 
 function profile(parsed: ParsedArgs): string {
@@ -191,7 +189,7 @@ async function runPoll(
 		),
 	]);
 	const allModelIds = [...modelIds].sort();
-	const settingsFile = settingsPath();
+	const settingsFile = getSettingsPath();
 	const settings = JSON.parse(fs.readFileSync(settingsFile, "utf-8")) as Record<
 		string,
 		unknown
@@ -273,37 +271,26 @@ function formatPollSummary(result: PollResult): string {
 	return lines.join("\n");
 }
 
-function atomicWriteJson(filePath: string, data: unknown): void {
-	const dir = path.dirname(filePath);
-	const tempPath = path.join(
-		dir,
-		`.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`,
-	);
-	fs.writeFileSync(tempPath, `${JSON.stringify(data, null, 2)}\n`, "utf-8");
-	fs.renameSync(tempPath, filePath);
-}
-
-function applyRecommendedModels(result: PollResult): boolean {
-	const targetPath = settingsPath();
-	const raw = fs.readFileSync(targetPath, "utf-8");
-	const settings = JSON.parse(raw) as Record<string, unknown>;
-	const refreshSettings =
-		settings.bedrockRefresh !== null &&
-		typeof settings.bedrockRefresh === "object" &&
-		!Array.isArray(settings.bedrockRefresh)
-			? (settings.bedrockRefresh as Record<string, unknown>)
-			: {};
-	const existing = Array.isArray(refreshSettings.models)
-		? refreshSettings.models.filter(
-				(value): value is string => typeof value === "string",
-			)
-		: [];
-	const next = result.recommended;
-
-	if (JSON.stringify(existing) === JSON.stringify(next)) return false;
-	settings.bedrockRefresh = { ...refreshSettings, models: next };
-	atomicWriteJson(targetPath, settings);
-	return true;
+function applyRecommendedModels(result: PollResult): Promise<boolean> {
+	return updateJsonObjectAtomic(getSettingsPath(), (settings) => {
+		const refreshSettings =
+			settings.bedrockRefresh !== null &&
+			typeof settings.bedrockRefresh === "object" &&
+			!Array.isArray(settings.bedrockRefresh)
+				? (settings.bedrockRefresh as Record<string, unknown>)
+				: {};
+		const existing = Array.isArray(refreshSettings.models)
+			? refreshSettings.models.filter(
+					(value): value is string => typeof value === "string",
+				)
+			: [];
+		if (JSON.stringify(existing) === JSON.stringify(result.recommended))
+			return settings;
+		return {
+			...settings,
+			bedrockRefresh: { ...refreshSettings, models: result.recommended },
+		};
+	});
 }
 
 function notify(
@@ -344,7 +331,7 @@ export default function bedrockRefresh(pi: ExtensionAPI): void {
 					return;
 				}
 
-				const changed = applyRecommendedModels(poll);
+				const changed = await applyRecommendedModels(poll);
 				notify(
 					ctx,
 					`${summary}\n\n${changed ? "Updated pi/settings.json bedrockRefresh.models." : "No settings update needed."}`,

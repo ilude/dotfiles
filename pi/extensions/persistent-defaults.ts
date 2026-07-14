@@ -8,9 +8,11 @@
 // user edits the defaults intentionally.
 
 import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import {
+	getSettingsPath as getRuntimeSettingsPath,
+	updateJsonObjectAtomic,
+} from "../lib/settings-file.ts";
 
 export const PINNED_DEFAULTS = {
 	defaultModel: "gpt-5.6-sol",
@@ -19,33 +21,38 @@ export const PINNED_DEFAULTS = {
 } as const;
 
 export function getSettingsPath(): string {
-	return path.join(os.homedir(), ".pi", "agent", "settings.json");
+	return getRuntimeSettingsPath();
 }
 
-export function enforcePinnedDefaults(
+export async function enforcePinnedDefaults(
 	settingsPath = getSettingsPath(),
-): boolean {
+): Promise<boolean> {
 	if (!fs.existsSync(settingsPath)) return false;
-	const raw = fs.readFileSync(settingsPath, "utf-8");
-	const settings = JSON.parse(raw) as Record<string, unknown>;
-	const next = { ...settings, ...PINNED_DEFAULTS };
-	const nextRaw = `${JSON.stringify(next, null, 2)}\n`;
-	if (nextRaw === raw) return false;
-	fs.writeFileSync(settingsPath, nextRaw, "utf-8");
-	return true;
+	return updateJsonObjectAtomic(settingsPath, (settings) => ({
+		...settings,
+		...PINNED_DEFAULTS,
+	}));
+}
+
+function reportEnforcementError(error: unknown): void {
+	console.error(
+		`[persistent-defaults] ${error instanceof Error ? error.message : String(error)}`,
+	);
 }
 
 function scheduleEnforce(): void {
 	// Settings writes are queued by Pi internals; run once soon and once later to
 	// catch both synchronous writes and queued promise flushes.
-	setTimeout(() => enforcePinnedDefaults(), 25);
-	setTimeout(() => enforcePinnedDefaults(), 250);
+	const enforce = () => {
+		void enforcePinnedDefaults().catch(reportEnforcementError);
+	};
+	setTimeout(enforce, 25);
+	setTimeout(enforce, 250);
 }
 
 export default function persistentDefaults(pi: ExtensionAPI): void {
-	enforcePinnedDefaults();
-
 	pi.on("session_start", async () => {
+		await enforcePinnedDefaults();
 		scheduleEnforce();
 	});
 

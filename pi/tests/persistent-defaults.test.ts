@@ -30,7 +30,7 @@ describe("persistent defaults guard", () => {
 		});
 	});
 
-	it("restores pinned model provider and thinking defaults while preserving other settings", () => {
+	it("restores pinned model provider and thinking defaults while preserving other settings", async () => {
 		const settingsPath = tempSettingsPath();
 		fs.writeFileSync(
 			settingsPath,
@@ -46,7 +46,7 @@ describe("persistent defaults guard", () => {
 			)}\n`,
 		);
 
-		expect(enforcePinnedDefaults(settingsPath)).toBe(true);
+		expect(await enforcePinnedDefaults(settingsPath)).toBe(true);
 
 		const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
 		expect(settings).toMatchObject({
@@ -55,13 +55,13 @@ describe("persistent defaults guard", () => {
 		});
 	});
 
-	it("does not rewrite when defaults are already pinned", () => {
+	it("does not rewrite when defaults are already pinned", async () => {
 		const settingsPath = tempSettingsPath();
 		fs.writeFileSync(
 			settingsPath,
 			`${JSON.stringify(PINNED_DEFAULTS, null, 2)}\n`,
 		);
 
-		expect(enforcePinnedDefaults(settingsPath)).toBe(false);
+		expect(await enforcePinnedDefaults(settingsPath)).toBe(false);
 	});
 });
