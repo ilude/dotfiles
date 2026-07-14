@@ -88,9 +88,10 @@ Return JSON only in this schema:
     {
       "path": "file",
       "label": "pattern label",
+      "line": 1,
       "classification": "likely_secret|false_positive|ambiguous",
       "reason": "short reason",
-      "match": "matched text preview"
+      "match": "exact matched text preview"
     }
   ]
 }

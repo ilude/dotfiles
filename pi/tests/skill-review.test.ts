@@ -127,6 +127,36 @@ describe("skill-review deterministic core", () => {
 		expect(parseModelReview("{}").valid).toBe(false);
 	});
 
+	it("caps the actual rendered model packet when estimates undercount", () => {
+		const longTrigger = `general ${"x".repeat(12000)}`;
+		const skills = Array.from({ length: 10 }, (_, index) => ({
+			name: `stress-skill-${index}`,
+			description: "Safety workflow review.",
+			body: `# Stress\n\nAuto-activate when: ${longTrigger}\n\nBoundary: Not for unrelated work.\n`,
+			filePath: path.join(
+				tmpRoot,
+				"skills",
+				`stress-skill-${index}`,
+				"SKILL.md",
+			),
+			source: "custom" as const,
+			metadata: {
+				name: `stress-skill-${index}`,
+				description: "Safety workflow review.",
+			},
+		}));
+		const artifacts = buildSkillReviewArtifacts({
+			repoRoot: tmpRoot,
+			runId: "byte-cap",
+			skills,
+		});
+		const selected = JSON.parse(artifacts["high-risk-skills.json"]);
+
+		expect(selected.length).toBeGreaterThan(0);
+		expect(selected.length).toBeLessThan(skills.length);
+		expect(validatePacketSafety(artifacts["model-packet.md"]).ok).toBe(true);
+	});
+
 	it("converts malformed model output into invalid comparison state", () => {
 		const artifacts = buildSkillReviewArtifacts({
 			repoRoot: path.resolve(".."),

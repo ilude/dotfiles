@@ -53,11 +53,40 @@ describe("workflow prompt contracts", () => {
 		expect(prompt).toContain(
 			'Escalate independent reviewers to `modelSize: "medium"`',
 		);
+		expect(prompt).toContain("MATERIAL_CHANGE_REVIEW");
 		expect(prompt).toContain(
-			'`modelSize: "medium"`, and\n`modelPolicy: "same-family"`. This gate is a single serial reviewer',
+			"original panel verdict is invalid for the changed",
+		);
+		expect(prompt).toContain("Run at most one post-change panel");
+		expect(prompt).toContain("If its fixes are material under the same");
+		expect(prompt).toMatch(
+			/Classify the\s+resulting diff with the complete MATERIAL_CHANGE_REVIEW definition/,
+		);
+		expect(
+			prompt.match(
+				/return(?:s)? to the complete MATERIAL_CHANGE_REVIEW state/g,
+			),
+		).toHaveLength(2);
+		expect(prompt.match(/execute every step in that state/g)).toHaveLength(2);
+		expect(prompt).toContain(
+			"resume at\nPRE_READINESS_AUDIT without repeating KNOWN_BLOCKER_QUICKFIX",
+		);
+		expect(prompt).toContain("PRE_READINESS_AUDIT");
+		expect(prompt).toContain("Repository prerequisites");
+		expect(prompt).toContain("Command truth tables");
+		expect(prompt).toContain("Archive before/after");
+		expect(prompt).toContain("Allow two\naudit repair cycles");
+		expect(prompt).toContain(
+			"A material repair consumes its current audit\nrepair cycle",
 		);
 		expect(prompt).toContain(
-			'Escalate every readiness recheck after a repair\npass to `modelSize: "large"`',
+			'`modelSize: "large"`, and\n`modelPolicy: "same-family"`. This gate is a single serial reviewer',
+		);
+		expect(prompt).toContain(
+			"The reviewer must evaluate every PRE_READINESS_AUDIT domain",
+		);
+		expect(prompt).toContain(
+			"The budget starts only here, after all earlier audits pass",
 		);
 		expect(prompt).toContain("Contested or Dismissed Findings");
 		expect(prompt).toContain("Default mode is **auto-apply**");

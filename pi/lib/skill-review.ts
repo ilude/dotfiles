@@ -739,10 +739,18 @@ export function buildSkillReviewArtifacts(
 		options.usage,
 	);
 	const findings = lintInventory(inventory);
-	const highRisk = capHighRisk(rankHighRiskSkills(inventory, findings));
-	const evals = buildTriggerEvals(highRisk, inventory);
+	let highRisk = capHighRisk(rankHighRiskSkills(inventory, findings));
+	let evals = buildTriggerEvals(highRisk, inventory);
+	let packet = renderModelPacket(inventory, findings, highRisk, evals);
+	while (
+		Buffer.byteLength(packet, "utf-8") > MAX_MODEL_PACKET_BYTES &&
+		highRisk.length > 0
+	) {
+		highRisk = highRisk.slice(0, -1);
+		evals = buildTriggerEvals(highRisk, inventory);
+		packet = renderModelPacket(inventory, findings, highRisk, evals);
+	}
 	const ledger = buildDecisionLedger(highRisk);
-	const packet = renderModelPacket(inventory, findings, highRisk, evals);
 	const packetSafety = validatePacketSafety(packet);
 	const artifactsExceptManifest = {
 		"summary.md": renderSummary(options.runId, inventory, findings, highRisk),

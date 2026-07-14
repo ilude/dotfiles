@@ -9,11 +9,9 @@ vi.mock("../lib/model-routing", () => ({
 }));
 
 import {
-	buildCommitModelArgs,
 	buildStagingPlan,
 	buildUntrackedClassifierPrompt,
 	chooseFilesToCommit,
-	classifyUntrackedFiles,
 	confirmCommitMessage,
 	filterCommitSafeFiles,
 	getCommitRuntimePathReason,
@@ -24,32 +22,8 @@ import {
 	parseUntrackedClassifierResult,
 	proposeCommitMessage,
 	validateCommitPlan,
+	validateSecretReviewCoverage,
 } from "../extensions/workflow-commands.ts";
-
-describe("commit model invocation", () => {
-	it("runs Luna through an isolated low-effort Pi child", () => {
-		const args = buildCommitModelArgs(
-			{ provider: "openai-codex", id: "gpt-5.6-luna" } as never,
-			"C:/Temp/prompt.md",
-		);
-		expect(args).toEqual(
-			expect.arrayContaining([
-				"--provider",
-				"openai-codex",
-				"--model",
-				"gpt-5.6-luna",
-				"--thinking",
-				"low",
-				"--no-extensions",
-				"--no-session",
-				"@C:/Temp/prompt.md",
-			]),
-		);
-		expect(args.at(-1)).toBe(
-			"Execute the attached instructions now and return only the requested JSON.",
-		);
-	});
-});
 
 describe("parseCommitPlan", () => {
 	it("parses JSON wrapped in assistant prose", () => {
@@ -90,8 +64,10 @@ describe("parseSecretReviewResult", () => {
 					{
 						path: "example.ts",
 						label: "Hardcoded password/token/secret/key",
+						line: 7,
 						classification: "false_positive",
 						reason: "Type annotation with no credential value.",
+						match: "accessToken: string",
 					},
 				],
 			}),
@@ -111,13 +87,43 @@ describe("parseSecretReviewResult", () => {
 						{
 							path: "example.ts",
 							label: "candidate",
+							line: 7,
 							classification: "safe",
 							reason: "Unrecognized classification.",
+							match: "accessToken: string",
 						},
 					],
 				}),
 			),
 		).toThrow("Secret reviewer returned invalid findings");
+	});
+
+	it("requires one exact classification for every candidate", () => {
+		const candidate = {
+			path: "example.ts",
+			label: "Hardcoded password/token/secret/key",
+			line: 7,
+			match: "accessToken: string",
+			context: "interface Auth { accessToken: string }",
+		};
+		const reviewed = {
+			path: candidate.path,
+			label: candidate.label,
+			line: candidate.line,
+			match: candidate.match,
+			classification: "false_positive" as const,
+			reason: "Type annotation with no credential value.",
+		};
+
+		expect(() =>
+			validateSecretReviewCoverage([reviewed], [candidate]),
+		).not.toThrow();
+		expect(() => validateSecretReviewCoverage([], [candidate])).toThrow(
+			"classify every candidate exactly once",
+		);
+		expect(() =>
+			validateSecretReviewCoverage([reviewed, reviewed], [candidate]),
+		).toThrow("classify every candidate exactly once");
 	});
 });
 
@@ -374,34 +380,6 @@ describe("untracked classifier helpers", () => {
 				untracked,
 			),
 		).toThrow(/omitted/i);
-	});
-
-	it("surfaces an upstream provider error instead of masking it as empty text", async () => {
-		const model = { provider: "test", id: "small" } as never;
-		resolveCommitPlanningModelMock.mockResolvedValue(model);
-		const pi = {
-			exec: vi.fn(async () => ({
-				stdout: "",
-				stderr: "synthetic upstream failure",
-				code: 1,
-				killed: false,
-			})),
-		};
-
-		await expect(
-			classifyUntrackedFiles(
-				pi as never,
-				{
-					cwd: "/test/dir",
-					ui: { notify: vi.fn() },
-					modelRegistry: {
-						getAvailable: () => [model],
-						getApiKeyAndHeaders: async () => ({ ok: true }),
-					},
-				},
-				untracked,
-			),
-		).rejects.toThrow("synthetic upstream failure");
 	});
 
 	it("rejects nonnumeric confidence", () => {

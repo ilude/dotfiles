@@ -1,3 +1,37 @@
+## 2026-07-14: Strengthen Pi review readiness checks
+
+**Why:** Material plan repairs and incremental readiness findings could bypass
+renewed adversarial coverage or exhaust the fixed repair budget one blocker at a
+time.
+
+**Fix:** Added material-change panel routing, a bounded pre-readiness contract
+audit, and consolidated standalone-readiness checks to the Pi review workflow.
+
+**Files:** ~/.dotfiles/pi/skills/workflow/review-it.md,
+~/.dotfiles/pi/tests/workflow-prompts.test.ts
+
+---
+
+## 2026-07-14: Add Pi typed-agent workflows
+
+**Why:** Pi commands needed a small reusable boundary between deterministic
+workflow code and focused semantic decisions without introducing a second
+language or a general workflow framework.
+
+**Fix:** Added a Pi SDK-backed typed-agent API, migrated `/commit` semantic
+stages to isolated typed agents with schema validation and one correction
+retry, and added a skill with evidence-triggered capability specifications.
+
+**Files:** ~/.dotfiles/pi/lib/typed-agent.ts,
+~/.dotfiles/pi/extensions/workflow-commands.ts,
+~/.dotfiles/pi/tests/typed-agent.test.ts,
+~/.dotfiles/pi/tests/workflow-commands.test.ts,
+~/.dotfiles/pi/tests/workflow-commands-pure.test.ts,
+~/.dotfiles/pi/skills/typed-agent-workflows/SKILL.md,
+~/.dotfiles/pi/skills/typed-agent-workflows/roadmap.md
+
+---
+
 ## 2026-07-14: Add Pi cross-session learning review
 
 **Why:** Pi needed to turn explicit corrections into quarantined, reviewable

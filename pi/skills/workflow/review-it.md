@@ -20,7 +20,9 @@ RESOLVE_ARTIFACT
   -> VERIFY_HIGH_SEVERITY
   -> SYNTHESIZE
   -> APPLY_MODE
+  -> MATERIAL_CHANGE_REVIEW
   -> KNOWN_BLOCKER_QUICKFIX
+  -> PRE_READINESS_AUDIT
   -> STANDALONE_READINESS
   -> REPORT
 ```
@@ -271,37 +273,109 @@ selected hardening; everything; or review only. Include counts and
 `/do-it <plan-path>`. If a choice edits the plan, use the same apply-plan,
 integrity, and checklist rules, then recommend `/do-it`, not another review.
 
+## MATERIAL_CHANGE_REVIEW
+
+Run after plan edits in either apply mode. Classify the applied diff as material
+when it changes any objective, MVP boundary, architecture, execution/runtime
+boundary, mutation or credential flow, risk/manual-gate decision, task/wave
+structure, rollout target, or archive mechanism. Wording-only clarification and
+acceptance-command correction are not material.
+
+For a material change, the original panel verdict is invalid for the changed
+contract. Before standalone readiness:
+
+1. Say `Material plan change detected; launching post-change adversarial panel.`
+2. Launch one fresh six-reviewer panel using the same standard/domain composition
+   rules, new deterministic `post-change-<reviewer>.md` artifacts, `modelSize:
+   "medium"`, and `modelPolicy: "same-family"`.
+3. Give reviewers the updated plan only. Do not seed them with the original
+   findings or coordinator conclusions. Require them to inspect changed and
+   adjacent contracts, not merely confirm applied fixes.
+4. Verify and read every post-change artifact, verify HIGH/CRITICAL claims, update
+   synthesis and applied-fixes records, apply accepted findings, and run Section
+   Integrity Check after each edit.
+5. Run at most one post-change panel. If its fixes are material under the same
+   definition, mark the plan blocked for a new `/review-it` rather than
+   recursively paneling.
+
+The standalone repair budget does not start until the post-change panel and all
+resulting plan edits finish. If no material change occurred, record why this
+state was skipped.
+
 ## KNOWN_BLOCKER_QUICKFIX
 Auto-apply only. Say:
 `Synthesis written; checking prior standalone blockers before final readiness.`
 
 If the previous review has `standalone-readiness-blockers.md`, read it and apply
-only listed blocker fixes before standalone review. Do not launch a new panel.
-Write `{review_dir}/known-blocker-fixes.md` with source path, each blocker,
-sections edited, and omissions with reasons. Run Section Integrity Check.
-If safe repair requires user/product scope input, ask and stop before readiness.
+only listed blocker fixes before standalone review. Write
+`{review_dir}/known-blocker-fixes.md` with source path, each blocker, sections
+edited, and omissions with reasons. Run Section Integrity Check.
+Classify the resulting diff with the complete MATERIAL_CHANGE_REVIEW definition.
+For a material fix, return to the complete MATERIAL_CHANGE_REVIEW state. If no
+post-change panel has run, execute every step in that state, then resume at
+PRE_READINESS_AUDIT without repeating KNOWN_BLOCKER_QUICKFIX. If the post-change
+panel already ran, mark the plan blocked for a new `/review-it`. For a
+non-material fix, record why renewed panel coverage was skipped. If safe repair
+requires user/product scope input, ask and stop before readiness.
+
+## PRE_READINESS_AUDIT
+Auto-apply only. Run this deterministic contract audit after all panel and known
+blocker edits, before starting the standalone repair budget. Record each result in
+synthesis. Do not consume a standalone repair pass for failures found here.
+
+1. **Repository prerequisites:** compare every executable named by the plan with
+   repository setup/prerequisite docs, manifests, tool images, and wrappers.
+   Reject undeclared host tools or alternate runtimes.
+2. **Command truth tables:** inspect every compound validation/archive command.
+   Require every claimed condition independently, preserve documented exit-code
+   precedence, and ensure failure-path evidence commands still run.
+3. **Exact workflow boundary:** verify the command starts from the documented
+   host/container boundary and invokes the same entrypoint and sequence the user
+   relies on without nested wrappers.
+4. **Mutation and rollback:** verify each command's actual writes/deletes against
+   its declared mutation boundary and ensure rollback is patch/target scoped.
+5. **Archive before/after:** require separate preconditions and postconditions,
+   including active-path absence, archive-path presence, final status, checklist
+   evidence, and failure handling after a partial move.
+6. **Checklist/schema integrity:** run Section Integrity Check and verify every
+   executable task/gate has one unchecked checklist item, command, pass/fail
+   signal, and evidence destination.
+
+Fix deterministic failures immediately and rerun the complete audit. Allow two
+audit repair cycles. Classify every repair with the complete
+MATERIAL_CHANGE_REVIEW definition. A material repair consumes its current audit
+repair cycle and returns to the complete MATERIAL_CHANGE_REVIEW state. If no
+post-change panel has run, execute every step in that state, then resume the
+complete audit with the remaining cycle budget. If the panel already ran, mark
+the plan blocked for a new `/review-it`. If the audit still fails after two
+repair cycles, write the remaining items to
+`{review_dir}/pre-readiness-audit-blockers.md`, mark not ready, and stop. If a fix
+requires product scope, ask and stop before mutation.
 
 ## STANDALONE_READINESS
 Auto-apply only. Say:
 `Plan fixes applied; running standalone-readiness check.`
 
 Launch one final standalone-readiness reviewer with `agentScope: "both"`,
-`confirmProjectAgents: false`, `modelSize: "medium"`, and
-`modelPolicy: "same-family"`. This gate is a single serial reviewer, so
-consolidation failures cost whole repair passes; medium is the floor, not small.
-It must assume a brand-new session and verify the plan can safely and completely
-run via `/do-it <plan-path>` with all context,
-commands, assumptions, credentials, evidence, gates, rollback, archive criteria,
-and checklist mappings. It classifies issues as `blocker`, `hardening`, or `nit`,
-returns `STANDALONE READY` when no blockers exist, and does not block on
-hardening/nits.
+`confirmProjectAgents: false`, `modelSize: "large"`, and
+`modelPolicy: "same-family"`. This gate is a single serial reviewer, so broad
+consolidation is required before any repair. It must assume a brand-new session
+and verify the plan can safely and completely run via `/do-it <plan-path>` with
+all context, commands, assumptions, credentials, evidence, gates, rollback,
+archive criteria, and checklist mappings.
+
+The reviewer must evaluate every PRE_READINESS_AUDIT domain, continue after the
+first defect, and return one consolidated result containing all blockers found,
+grouped into at most five actionable domains. It must inspect repository evidence
+for prerequisites and command boundaries rather than infer them from the plan.
+It classifies issues as `blocker`, `hardening`, or `nit`, returns `STANDALONE
+READY` when no blockers exist, and does not block on hardening/nits.
 
 For blockers, edit only the plan, announce each repair pass, run Section Integrity
-Check, and retry the same goal. Escalate every readiness recheck after a repair
-pass to `modelSize: "large"` so remaining and adjacent defects are consolidated
-into one pass instead of dribbling across the budget. Allow at most two repair
-passes after the initial
-review. Never rerun the full panel. If blockers remain, write them to
+Check, rerun the complete PRE_READINESS_AUDIT, and retry the same comprehensive
+goal with `modelSize: "large"`. Allow at most two repair passes after the initial
+review. The budget starts only here, after all earlier audits pass. Never rerun
+the original panel from this state. If blockers remain, write them to
 `{review_dir}/standalone-readiness-blockers.md`, mark not ready, and stop. Do not
 silently continue patching.
 

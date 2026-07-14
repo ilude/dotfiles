@@ -21,8 +21,16 @@ vi.mock("../extensions/codex-status.ts", () => ({
 }));
 
 const mockScanSecrets = vi.hoisted(() => vi.fn(() => []));
+const mockTypedAgentRun = vi.hoisted(() => vi.fn());
 vi.mock("../lib/secret-scan.ts", () => ({
 	scanSecrets: mockScanSecrets,
+}));
+vi.mock("../lib/typed-agent.ts", () => ({
+	defineAgent: (config: { id: string }) => ({
+		id: config.id,
+		run: (input: unknown, ctx: unknown) =>
+			mockTypedAgentRun(config.id, input, ctx),
+	}),
 }));
 
 const mockSpawn = spawn as ReturnType<typeof vi.fn>;
@@ -75,6 +83,40 @@ describe("workflow command dispatch", () => {
 		mockSpawn.mockImplementation(() => mockGitSpawn());
 		mockSpawnSync.mockReturnValue({ status: 0, stdout: "", stderr: "" });
 		mockScanSecrets.mockReturnValue([]);
+		mockTypedAgentRun.mockImplementation(
+			async (id: string, input: Record<string, unknown>) => {
+				if (id === "untracked-classifier") {
+					return {
+						output: {
+							classifications: (input.files as string[]).map((file) => ({
+								path: file,
+								decision: "do_not_ignore",
+								confidence: 100,
+								reason: "Source file.",
+							})),
+						},
+						attempts: 1,
+					};
+				}
+				if (id === "secret-reviewer") {
+					return {
+						output: { findings: [] },
+						attempts: 1,
+					};
+				}
+				return {
+					output: {
+						groups: [
+							{
+								files: input.files,
+								subject: "chore(pi): update tracked changes",
+							},
+						],
+					},
+					attempts: 1,
+				};
+			},
+		);
 		mockPi = createMockPi() as typeof mockPi;
 		mockPi.setModel = vi.fn(async () => {});
 		const mod = await import("../extensions/workflow-commands.ts");
@@ -252,12 +294,9 @@ describe("workflow command dispatch", () => {
 		]) {
 			mockSpawn.mockImplementationOnce(() => mockGitSpawn(result));
 		}
-		mockPi.exec.mockResolvedValueOnce({
-			stdout: "",
-			stderr: "synthetic upstream failure",
-			code: 1,
-			killed: false,
-		});
+		mockTypedAgentRun.mockRejectedValueOnce(
+			new Error("synthetic upstream failure"),
+		);
 
 		await getHandler("commit")("", {
 			cwd: "/repo",
@@ -268,7 +307,11 @@ describe("workflow command dispatch", () => {
 			ui: { notify },
 		});
 
-		expect(mockPi.exec).toHaveBeenCalledOnce();
+		expect(mockTypedAgentRun).toHaveBeenCalledWith(
+			"untracked-classifier",
+			{ files: ["new-file.ts"] },
+			expect.anything(),
+		);
 		expect(mockPi.sendMessage).toHaveBeenCalledWith(
 			expect.objectContaining({
 				customType: "workflow-commit-activity",

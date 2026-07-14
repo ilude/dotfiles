@@ -29,17 +29,18 @@ import { spawn, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { Api, Model } from "@earendil-works/pi-ai/compat";
 import type {
 	ContextUsage,
 	ExtensionAPI,
 	ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 import { Key, Text } from "@earendil-works/pi-tui";
+import { Type } from "@sinclair/typebox";
 import { emitTerminalBell } from "../lib/extension-utils";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
 import { withTimingSpan } from "../lib/observability";
 import { scanSecrets } from "../lib/secret-scan";
+import { defineAgent, type TypedAgentRunContext } from "../lib/typed-agent";
 import {
 	buildCommitPlanningPrompt,
 	buildGitlabTicketPrompt,
@@ -216,9 +217,10 @@ export type SecretReviewClassification =
 interface SecretReviewFinding {
 	path: string;
 	label: string;
+	line: number;
 	classification: SecretReviewClassification;
 	reason: string;
-	match?: string;
+	match: string;
 }
 
 interface SecretReviewResult {
@@ -271,24 +273,117 @@ interface WorkflowSessionManager {
 	createBranchedSession?(leafId: string): string | null | undefined;
 }
 
-interface WorkflowModelRegistry {
-	getAvailable(): Model<Api>[];
-	getApiKeyAndHeaders(model: Model<Api>): Promise<{
-		ok?: boolean;
-		error?: string;
-		apiKey?: string;
-		headers?: Record<string, string>;
-	}>;
-}
-
 interface WorkflowContext {
 	cwd: string;
 	ui: WorkflowUi;
-	modelRegistry: WorkflowModelRegistry;
+	model: ExtensionCommandContext["model"];
+	modelRegistry: ExtensionCommandContext["modelRegistry"];
 	getSystemPrompt?: () => string | undefined;
-	signal?: AbortSignal;
+	signal: AbortSignal | undefined;
 	sessionManager?: WorkflowSessionManager;
 }
+
+const CommitPlannerInputSchema = Type.Object({
+	instructions: Type.String(),
+	files: Type.Array(Type.String()),
+	diffStat: Type.String(),
+	cachedStat: Type.String(),
+	cachedDiff: Type.String(),
+	hint: Type.String(),
+});
+const CommitPlanSchema = Type.Object({
+	groups: Type.Array(
+		Type.Object({
+			files: Type.Array(Type.String(), { minItems: 1 }),
+			subject: Type.String({ minLength: 1 }),
+			body: Type.Optional(Type.String()),
+		}),
+		{ minItems: 1 },
+	),
+	warnings: Type.Optional(Type.Array(Type.String())),
+});
+const SecretReviewInputSchema = Type.Object({
+	findings: Type.Array(
+		Type.Object({
+			path: Type.String(),
+			label: Type.String(),
+			match: Type.String(),
+			line: Type.Number(),
+			context: Type.String(),
+		}),
+	),
+});
+const SecretReviewSchema = Type.Object({
+	findings: Type.Array(
+		Type.Object({
+			path: Type.String(),
+			label: Type.String(),
+			line: Type.Number(),
+			classification: Type.Union([
+				Type.Literal("likely_secret"),
+				Type.Literal("false_positive"),
+				Type.Literal("ambiguous"),
+			]),
+			reason: Type.String(),
+			match: Type.String(),
+		}),
+	),
+});
+const UntrackedClassifierInputSchema = Type.Object({
+	files: Type.Array(Type.String()),
+});
+const UntrackedClassifierSchema = Type.Object({
+	classifications: Type.Array(
+		Type.Object({
+			path: Type.String(),
+			decision: Type.Union([
+				Type.Literal("ignore"),
+				Type.Literal("do_not_ignore"),
+			]),
+			confidence: Type.Number({ minimum: 0, maximum: 100 }),
+			reason: Type.String(),
+			gitignorePattern: Type.Optional(Type.String()),
+		}),
+	),
+});
+
+const COMMIT_MODEL_TIMEOUT_MS = 120_000;
+
+async function resolveCommitAgentModel(ctx: TypedAgentRunContext) {
+	return resolveCommitPlanningModelFromRegistry(ctx.modelRegistry, ctx);
+}
+
+const commitPlannerAgent = defineAgent({
+	id: "commit-planner",
+	instructions: "Plan logical commit groups and conventional commit messages.",
+	inputSchema: CommitPlannerInputSchema,
+	outputSchema: CommitPlanSchema,
+	resolveModel: resolveCommitAgentModel,
+	prompt: ({ instructions, ...context }) =>
+		buildCommitPlanningPrompt(instructions, context),
+	timeoutMs: COMMIT_MODEL_TIMEOUT_MS,
+});
+
+const secretReviewAgent = defineAgent({
+	id: "secret-reviewer",
+	instructions:
+		"Classify candidate findings without weakening the deterministic commit policy.",
+	inputSchema: SecretReviewInputSchema,
+	outputSchema: SecretReviewSchema,
+	resolveModel: resolveCommitAgentModel,
+	prompt: ({ findings }) => buildSecretReviewPrompt(findings),
+	timeoutMs: COMMIT_MODEL_TIMEOUT_MS,
+});
+
+const untrackedClassifierAgent = defineAgent({
+	id: "untracked-classifier",
+	instructions: "Classify untracked Git paths for commit hygiene.",
+	inputSchema: UntrackedClassifierInputSchema,
+	outputSchema: UntrackedClassifierSchema,
+	resolveModel: resolveCommitAgentModel,
+	prompt: ({ files }) => buildUntrackedClassifierPrompt(files),
+	timeoutMs: COMMIT_MODEL_TIMEOUT_MS,
+});
 
 interface SlashEchoExtensionAPI extends ExtensionAPI {
 	__slashEchoRegisterCommandWrapped?: boolean;
@@ -835,94 +930,7 @@ export function buildDeterministicCommitFallback(
 	};
 }
 
-const COMMIT_MODEL_TIMEOUT_MS = 120000;
-const COMMIT_MODEL_OUTPUT_INSTRUCTION =
-	"Execute the attached instructions now and return only the requested JSON.";
-
-export function buildCommitModelArgs(
-	model: Model<Api>,
-	promptFile: string,
-): string[] {
-	return [
-		"--provider",
-		model.provider,
-		"--model",
-		model.id,
-		"--thinking",
-		"low",
-		"--no-tools",
-		"--no-extensions",
-		"--no-skills",
-		"--no-context-files",
-		"--no-prompt-templates",
-		"--no-themes",
-		"--no-session",
-		"--no-approve",
-		`@${promptFile}`,
-		"--print",
-		COMMIT_MODEL_OUTPUT_INSTRUCTION,
-	];
-}
-
-function getPiInvocation(args: string[]): { command: string; args: string[] } {
-	const currentScript = process.argv[1];
-	if (currentScript && fs.existsSync(currentScript)) {
-		return { command: process.execPath, args: [currentScript, ...args] };
-	}
-	const execName = path.basename(process.execPath).toLowerCase();
-	if (!/^(node|bun)(\.exe)?$/.test(execName)) {
-		return { command: process.execPath, args };
-	}
-	return { command: "pi", args };
-}
-
-async function runCommitModelPrompt(
-	pi: ExtensionAPI,
-	ctx: WorkflowContext,
-	prompt: string,
-): Promise<string> {
-	const model = await resolveCommitPlanningModelFromRegistry(
-		ctx.modelRegistry,
-		ctx,
-	);
-	if (!model) throw new Error("No commit review model available");
-	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-	if (!auth.ok) {
-		throw new Error(
-			auth.error || "No configured auth available for commit review model",
-		);
-	}
-
-	const tempDir = await fs.promises.mkdtemp(
-		path.join(os.tmpdir(), "pi-commit-model-"),
-	);
-	const promptFile = path.join(tempDir, "prompt.md");
-	try {
-		await fs.promises.writeFile(promptFile, prompt, {
-			encoding: "utf8",
-			mode: 0o600,
-		});
-		const invocation = getPiInvocation(buildCommitModelArgs(model, promptFile));
-		const result = await pi.exec(invocation.command, invocation.args, {
-			cwd: ctx.cwd,
-			signal: ctx.signal,
-			timeout: COMMIT_MODEL_TIMEOUT_MS,
-		});
-		if (result.code !== 0) {
-			throw new Error(
-				(result.stderr || result.stdout || "Luna commit review failed").trim(),
-			);
-		}
-		const output = result.stdout.trim();
-		if (!output) throw new Error("Luna commit review returned no output");
-		return output;
-	} finally {
-		await fs.promises.rm(tempDir, { recursive: true, force: true });
-	}
-}
-
 async function generateCommitPlanWithLlm(
-	pi: ExtensionAPI,
 	ctx: WorkflowContext,
 	context: {
 		files: string[];
@@ -932,14 +940,14 @@ async function generateCommitPlanWithLlm(
 		hint: string;
 	},
 ) {
-	const planningPrompt = buildCommitPlanningPrompt(
-		loadClaudeCommitInstructions(),
-		context,
+	const result = await commitPlannerAgent.run(
+		{
+			instructions: loadClaudeCommitInstructions(),
+			...context,
+		},
+		ctx,
 	);
-	const planText = await runCommitModelPrompt(pi, ctx, planningPrompt);
-	if (!planText.trim())
-		throw new Error("Commit planner returned empty response");
-	const plan = parseCommitPlan(planText);
+	const plan = parseCommitPlan(JSON.stringify(result.output));
 	validateCommitPlan(plan, context.files);
 	return plan;
 }
@@ -1559,7 +1567,14 @@ export function parseSecretReviewResult(text: string): SecretReviewResult {
 		!parsed ||
 		!Array.isArray(parsed.findings) ||
 		parsed.findings.some(
-			(finding) => !classifications.has(finding.classification),
+			(finding) =>
+				!finding ||
+				typeof finding.path !== "string" ||
+				typeof finding.label !== "string" ||
+				!Number.isInteger(finding.line) ||
+				!classifications.has(finding.classification) ||
+				typeof finding.reason !== "string" ||
+				typeof finding.match !== "string",
 		)
 	) {
 		throw new Error("Secret reviewer returned invalid findings");
@@ -1567,18 +1582,49 @@ export function parseSecretReviewResult(text: string): SecretReviewResult {
 	return parsed;
 }
 
+function secretReviewKey(finding: {
+	path: string;
+	label: string;
+	line: number;
+	match: string;
+}) {
+	return JSON.stringify([
+		finding.path,
+		finding.label,
+		finding.line,
+		finding.match,
+	]);
+}
+
+export function validateSecretReviewCoverage(
+	reviewed: SecretReviewFinding[],
+	candidates: SecretCandidate[],
+) {
+	const expected = new Set(candidates.map(secretReviewKey));
+	const actual = reviewed.map(secretReviewKey);
+	if (
+		expected.size !== candidates.length ||
+		actual.length !== candidates.length ||
+		new Set(actual).size !== actual.length ||
+		actual.some((key) => !expected.has(key))
+	) {
+		throw new Error(
+			"Secret reviewer must classify every candidate exactly once",
+		);
+	}
+}
+
 async function reviewSecretFindingsWithLlm(
-	pi: ExtensionAPI,
 	ctx: WorkflowContext,
 	findings: SecretCandidate[],
 ): Promise<SecretReviewFinding[]> {
 	if (findings.length === 0) return [];
-	const text = await runCommitModelPrompt(
-		pi,
-		ctx,
-		buildSecretReviewPrompt(findings),
-	);
-	return parseSecretReviewResult(text).findings;
+	const result = await secretReviewAgent.run({ findings }, ctx);
+	const reviewed = parseSecretReviewResult(
+		JSON.stringify(result.output),
+	).findings;
+	validateSecretReviewCoverage(reviewed, findings);
+	return reviewed;
 }
 
 export function isBlockingSecretReviewClassification(
@@ -1588,12 +1634,11 @@ export function isBlockingSecretReviewClassification(
 }
 
 async function confirmSecretScan(
-	pi: ExtensionAPI,
 	ctx: WorkflowContext,
 	findings: SecretCandidate[],
 ) {
 	if (findings.length === 0) return true;
-	const reviewed = await reviewSecretFindingsWithLlm(pi, ctx, findings);
+	const reviewed = await reviewSecretFindingsWithLlm(ctx, findings);
 	const blocking = reviewed.filter((finding) =>
 		isBlockingSecretReviewClassification(finding.classification),
 	);
@@ -1611,19 +1656,20 @@ async function confirmSecretScan(
 }
 
 export async function classifyUntrackedFiles(
-	pi: ExtensionAPI,
 	ctx: WorkflowContext,
 	untrackedFiles: string[],
 ): Promise<UntrackedClassificationPlan> {
 	if (untrackedFiles.length === 0) {
 		return { accepted: [], needsUserDecision: [] };
 	}
-	const text = await runCommitModelPrompt(
-		pi,
+	const result = await untrackedClassifierAgent.run(
+		{ files: untrackedFiles },
 		ctx,
-		buildUntrackedClassifierPrompt(untrackedFiles),
 	);
-	return parseUntrackedClassifierResult(text, untrackedFiles);
+	return parseUntrackedClassifierResult(
+		JSON.stringify(result.output),
+		untrackedFiles,
+	);
 }
 
 async function resolveLowConfidenceClassifications(
@@ -2086,7 +2132,6 @@ async function getCommitContext(
 }
 
 async function prepareCommitSelection(
-	pi: ExtensionAPI,
 	args: string,
 	ctx: WorkflowContext,
 	activity?: CommitActivity,
@@ -2107,7 +2152,7 @@ async function prepareCommitSelection(
 	);
 	if (selectedUntracked.length > 0) {
 		activity?.setPhase("classifying untracked files");
-		const plan = await classifyUntrackedFiles(pi, ctx, selectedUntracked);
+		const plan = await classifyUntrackedFiles(ctx, selectedUntracked);
 		const userDecisions = await resolveLowConfidenceClassifications(
 			ctx,
 			plan.needsUserDecision,
@@ -2129,7 +2174,7 @@ async function prepareCommitSelection(
 	}
 
 	const findings = scanFilesForSecrets(ctx.cwd, selection.files);
-	if (!(await confirmSecretScan(pi, ctx, findings))) return null;
+	if (!(await confirmSecretScan(ctx, findings))) return null;
 
 	if (selection.stageAll)
 		await stageFilesAsync(
@@ -2184,7 +2229,7 @@ async function executeCommitCommand(
 			);
 		}
 
-		const prepared = await prepareCommitSelection(pi, args, ctx, activity);
+		const prepared = await prepareCommitSelection(args, ctx, activity);
 		if (!prepared) {
 			activity.finish();
 			return ctx.ui.notify("Commit cancelled", "warning");
@@ -2193,7 +2238,7 @@ async function executeCommitCommand(
 
 		let plan: CommitPlan | undefined;
 		try {
-			plan = await generateCommitPlanWithLlm(pi, ctx, {
+			plan = await generateCommitPlanWithLlm(ctx, {
 				files: prepared.selection.files,
 				diffStat: prepared.diffStat,
 				cachedStat: prepared.cachedStat,
