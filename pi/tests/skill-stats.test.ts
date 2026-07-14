@@ -1,13 +1,13 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it } from "vitest";
-import skillLoader from "../extensions/skill-loader.ts";
 import skillStats, {
 	collectSkillStats,
 	renderSkillStatsMarkdown,
 } from "../extensions/skill-stats.ts";
-import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
+import { createMockPi } from "./helpers/mock-pi.ts";
 
 const tempDirs: string[] = [];
 
@@ -38,7 +38,7 @@ async function writeJsonl(
 describe("/skill-stats extension", () => {
 	it("registers the command", () => {
 		const pi = createMockPi();
-		skillStats(pi as any);
+		skillStats(pi as unknown as ExtensionAPI);
 		expect(pi._commands.find((c) => c.name === "skill-stats")).toBeDefined();
 	});
 
@@ -56,11 +56,49 @@ describe("/skill-stats extension", () => {
 					turnId: "1",
 				},
 			},
-			{ text: '<skill name="docs">expanded</skill>' },
-			{ text: "please /skill:python test" },
 			{
-				toolName: "read",
-				args: { path: "/home/person/.pi/agent/skills/secret/SKILL.md" },
+				type: "custom_message",
+				customType: "slash-echo",
+				content: "/docs topic",
+				timestamp: "2026-05-07T00:00:00.000Z",
+			},
+			{
+				type: "message",
+				timestamp: "2026-05-07T00:00:00.000Z",
+				message: {
+					role: "user",
+					content:
+						'<skill name="docs">expanded</skill> please /skill:python test',
+				},
+			},
+			{
+				type: "message",
+				timestamp: "2026-05-07T00:00:00.000Z",
+				message: {
+					role: "toolResult",
+					content: [
+						{
+							type: "text",
+							text: '<skill name="example">docs</skill> /skill:example',
+						},
+					],
+				},
+			},
+			{
+				type: "message",
+				timestamp: "2026-05-07T00:00:00.000Z",
+				message: {
+					role: "assistant",
+					content: [
+						{
+							type: "toolCall",
+							name: "read",
+							arguments: {
+								path: "/home/person/.pi/agent/skills/secret/SKILL.md",
+							},
+						},
+					],
+				},
 			},
 			{
 				type: "custom",
@@ -88,9 +126,10 @@ describe("/skill-stats extension", () => {
 			now: new Date("2026-05-07T12:00:00.000Z"),
 		});
 		expect(errorMarkdown).toBeUndefined();
-		expect(result?.usage.get("1")?.get("docs")).toBe(2);
+		expect(result?.usage.get("1")?.get("docs")).toBe(3);
 		expect(result?.usage.get("1")?.get("python")).toBe(1);
 		expect(result?.usage.get("1")?.has("secret")).toBe(false);
+		expect(result?.usage.get("1")?.has("example")).toBe(false);
 		expect(result?.candidates.get("secret")).toBe(1);
 		expect(result?.candidates.get("prompt_skill_inventory")).toBe(1);
 		expect(result?.diagnostics.get("malformed_json")).toBe(1);
@@ -110,28 +149,5 @@ describe("/skill-stats extension", () => {
 			sessionRoot: root,
 		});
 		expect(errorMarkdown).toContain("/skill-stats usage");
-	});
-
-	it("logs explicit skill command loads with appendEntry", async () => {
-		const root = await makeSessionRoot();
-		const skillRoot = path.join(root, "skills");
-		await fs.mkdir(path.join(skillRoot, "docs"), { recursive: true });
-		await fs.writeFile(
-			path.join(skillRoot, "docs", "SKILL.md"),
-			"---\nname: docs\ndescription: docs skill\n---\nBody ${args}\n",
-			"utf-8",
-		);
-		const pi = createMockPi();
-		skillLoader(pi as any);
-		await pi._getHook("session_start")[0].handler(
-			{},
-			createMockCtx({
-				cwd: "/tmp",
-				ui: createMockCtx().ui,
-				roots: undefined,
-			}),
-		);
-		// The loader uses default roots in production. For smoke coverage, assert helper exists on mock.
-		expect(pi.appendEntry).toBeDefined();
 	});
 });

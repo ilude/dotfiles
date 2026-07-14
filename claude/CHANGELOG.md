@@ -1,3 +1,23 @@
+## 2026-07-14: Retire duplicate Pi skill commands
+
+**Why:** Pi's custom skill loader duplicated native skill discovery, exposed
+reference documents as slash commands, and made `/skills` and `/yt-local`
+operator commands even though neither should be public.
+
+**Fix:** Retired the custom skill-command loader and `/skills`, migrated `/yt`
+to a native Pi prompt template, kept the local YouTube fetcher as an internal
+fallback, loaded the YouTube transcript guidance through native skill settings,
+and updated `/skill-stats` for current nested session records.
+
+**Files:** ~/.dotfiles/pi/extensions/skill-loader.ts,
+~/.dotfiles/pi/extensions/skill-stats.ts, ~/.dotfiles/pi/prompts/yt.md,
+~/.dotfiles/pi/skills/workflow/yt.md,
+~/.dotfiles/pi/skills/workflow/yt-local.md, ~/.dotfiles/pi/settings.json,
+~/.dotfiles/pi/tests/skill-loader.test.ts,
+~/.dotfiles/pi/tests/skill-stats.test.ts
+
+---
+
 ## 2026-07-14: Stabilize Pi secret-review coverage
 
 **Why:** `/commit` required the secret reviewer to reproduce path, label, line, and

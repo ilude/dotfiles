@@ -13,6 +13,20 @@ function readPrompt(relativePath: string) {
 }
 
 describe("workflow prompt contracts", () => {
+	it("/yt is the public menos workflow and keeps the local fetcher internal", () => {
+		const prompt = readPrompt("prompts/yt.md");
+		expect(prompt).toContain("argument-hint:");
+		expect(prompt).toContain("YouTube request: $ARGUMENTS");
+		expect(prompt).toContain("Always attempt menos first");
+		expect(prompt).toContain("locally fall back");
+		expect(
+			fs.existsSync(new URL("../prompts/yt-local.md", import.meta.url)),
+		).toBe(false);
+		expect(
+			fs.existsSync(new URL("../skills/workflow/yt-local.md", import.meta.url)),
+		).toBe(false);
+	});
+
 	it("/do-it explicitly supports .specs/*/plan.md execution", () => {
 		const prompt = readPrompt("skills/workflow/do-it.md");
 		expect(prompt).toContain("Plan file");

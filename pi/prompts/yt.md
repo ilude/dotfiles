@@ -1,6 +1,13 @@
+---
+description: Ingest, search, list, or fetch YouTube content through menos
+argument-hint: "<request>"
+---
+
 # Pi /yt workflow
 
-Use this skill when the user asks Pi to ingest, search, list, fetch content, or fetch transcripts for YouTube videos through menos.
+YouTube request: $ARGUMENTS
+
+Use this workflow to ingest, search, list, fetch content, or fetch transcripts for YouTube videos through menos.
 
 ## Ingest default
 

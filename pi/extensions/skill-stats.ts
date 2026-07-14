@@ -264,18 +264,20 @@ function eventFromJson(
 	sessionFile: string,
 	line: number,
 	fallback: Date,
+	knownSkills: Set<string>,
 ): SkillEvent[] {
 	const out: SkillEvent[] = [];
+	const timestamp = parseTime(entry.timestamp, fallback) ?? fallback;
 	const data = isObject(entry.data) ? entry.data : undefined;
 	if (entry.type === "custom" && entry.customType === "skill-load" && data) {
 		const skill = asString(data.skill);
 		const source = asString(data.source) as SkillEvidenceSource | undefined;
-		const timestamp = parseTime(data.timestamp, fallback);
-		if (skill && timestamp && (!source || VALID_SOURCES.has(source))) {
+		const eventTimestamp = parseTime(data.timestamp, timestamp);
+		if (skill && eventTimestamp && (!source || VALID_SOURCES.has(source))) {
 			out.push({
 				skill: safeLabel(skill),
 				source: source || "unknown",
-				timestamp,
+				timestamp: eventTimestamp,
 				sessionFile,
 				turnKey: asString(data.turnId) || String(line),
 				candidate:
@@ -284,45 +286,86 @@ function eventFromJson(
 			});
 		}
 	}
-	const text = [entry.text, entry.content, entry.message]
+
+	const echoedInvocation =
+		entry.customType === "slash-echo" ? asString(entry.content) : undefined;
+	const echoedCommand = echoedInvocation?.match(
+		/^\/([A-Za-z0-9_-]+)(?:\s|$)/,
+	)?.[1];
+	if (echoedCommand && knownSkills.has(echoedCommand.toLowerCase())) {
+		out.push({
+			skill: safeLabel(echoedCommand),
+			source: "explicit_slash_command",
+			timestamp,
+			sessionFile,
+			turnKey: String(line),
+			candidate: false,
+		});
+	}
+
+	const message = isObject(entry.message) ? entry.message : undefined;
+	const messageContent = message?.content;
+	const blocks = Array.isArray(messageContent)
+		? messageContent.filter(isObject)
+		: [];
+	const texts = [entry.text, entry.content]
 		.map(asString)
-		.find(Boolean);
-	if (text) {
-		for (const m of text.matchAll(/<skill\s+name=["']([^"']+)["']/gi))
+		.filter((value): value is string => Boolean(value));
+	if (message?.role === "user") {
+		const messageText = asString(messageContent);
+		if (messageText) texts.push(messageText);
+		for (const block of blocks) {
+			const text = asString(block.text);
+			if (text) texts.push(text);
+		}
+	}
+	for (const text of texts) {
+		for (const match of text.matchAll(/<skill\s+name=["']([^"']+)["']/gi))
 			out.push({
-				skill: safeLabel(m[1]),
+				skill: safeLabel(match[1]),
 				source: "expanded_skill_block",
-				timestamp: fallback,
+				timestamp,
 				sessionFile,
 				turnKey: String(line),
 				candidate: false,
 			});
-		for (const m of text.matchAll(/(?:^|\s)\/skill:([A-Za-z0-9_-]+)/g))
+		for (const match of text.matchAll(/(?:^|\s)\/skill:([A-Za-z0-9_-]+)/g))
 			out.push({
-				skill: safeLabel(m[1]),
+				skill: safeLabel(match[1]),
 				source: "historical_explicit_prompt",
-				timestamp: fallback,
+				timestamp,
 				sessionFile,
 				turnKey: String(line),
 				candidate: false,
 			});
 	}
-	const toolName = asString(entry.toolName) || asString(entry.name);
-	const args = isObject(entry.args)
-		? entry.args
-		: isObject(entry.parameters)
-			? entry.parameters
+
+	for (const toolRecord of [entry, ...blocks]) {
+		const toolName = asString(toolRecord.toolName) || asString(toolRecord.name);
+		const args = isObject(toolRecord.args)
+			? toolRecord.args
+			: isObject(toolRecord.parameters)
+				? toolRecord.parameters
+				: isObject(toolRecord.arguments)
+					? toolRecord.arguments
+					: undefined;
+		const filePath = args
+			? asString(args.path) || asString(args.file_path)
 			: undefined;
-	const p = args ? asString(args.path) || asString(args.file_path) : undefined;
-	if (toolName === "read" && p && /(^|[\\/])SKILL\.md$/i.test(p)) {
-		out.push({
-			skill: safeLabel(path.basename(path.dirname(p))),
-			source: "manual_read_candidate",
-			timestamp: fallback,
-			sessionFile,
-			turnKey: String(line),
-			candidate: true,
-		});
+		if (
+			toolName === "read" &&
+			filePath &&
+			/(^|[\\/])SKILL\.md$/i.test(filePath)
+		) {
+			out.push({
+				skill: safeLabel(path.basename(path.dirname(filePath))),
+				source: "manual_read_candidate",
+				timestamp,
+				sessionFile,
+				turnKey: String(line),
+				candidate: true,
+			});
+		}
 	}
 	return out;
 }
@@ -347,6 +390,8 @@ export async function collectSkillStats(
 	const now = options.now || new Date();
 	const events: SkillEvent[] = [];
 	const diagnostics = new Map<string, number>();
+	const skillMetadata = loadSkillMetadata();
+	const knownSkills = new Set(skillMetadata.keys());
 	for (const file of await enumerateJsonlFiles(root, options.signal)) {
 		const fallback = fileTime(file);
 		for await (const { line, value } of readJsonlFile(file, {
@@ -355,7 +400,13 @@ export async function collectSkillStats(
 		})) {
 			if (isObject(value))
 				events.push(
-					...eventFromJson(value, path.relative(root, file), line, fallback),
+					...eventFromJson(
+						value,
+						path.relative(root, file),
+						line,
+						fallback,
+						knownSkills,
+					),
 				);
 		}
 	}
@@ -378,7 +429,6 @@ export async function collectSkillStats(
 	const sources = new Map<string, number>();
 	const candidates = new Map<string, number>();
 	const usedSkills = new Set<string>();
-	const skillMetadata = loadSkillMetadata();
 	for (const w of parsed.windows) usage.set(String(w), new Map());
 	for (const e of deduped.values()) {
 		inc(e.candidate ? candidates : sources, e.source);

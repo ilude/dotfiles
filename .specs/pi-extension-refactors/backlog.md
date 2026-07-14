@@ -8,18 +8,11 @@ The initial four refactors have been implemented and validated:
 2. Queued complete transactions for custom edit tools (`957e9f1`).
 3. Canonical agent paths and atomic settings updates (`d5742d9`, `424d9dd`).
 4. Shared session JSONL parsing primitives (`eaa0ace`).
+5. Native skill-loader retirement and `/yt` prompt migration.
 
-Validation completed with `make check-pi-extensions`: 95 test files passed, with 1,293 tests passed and 1 expected platform skip.
+The initial four refactors passed `make check-pi-extensions` with 95 test files, 1,293 tests passed, and 1 expected platform skip. After retiring the duplicate skill-loader tests and adding the `/yt` migration contract, the complete suite passed with 94 test files, 1,287 tests passed, and 1 expected platform skip.
 
 ## Deferred refactors
-
-### Native skill-loader retirement
-
-- Evidence: `pi/extensions/skill-loader.ts:49-95` maintains collision handling, discovery, command registration, and `sendUserMessage` expansion. `pi/tests/skill-loader.test.ts:5-36` covers body substitution and hook registration. `.tmp/extension-review-tools.md:32-46` identifies the duplicate native lifecycle.
-- Reason deferred: Native command precedence, reload behavior, frontmatter, and argument semantics need parity coverage before removing the extension path.
-- Revisit trigger: Native skill inventory and expansion parity tests exist for global and project skills.
-- Smallest safe scope: Retire custom discovery and expansion only. If `/skills` remains, render `pi.getCommands()` entries whose source is `skill`; do not alter native skill behavior.
-- Required validation: Verify global and project precedence, reload discovery, argument expansion, frontmatter handling, extension-command collisions, and `/skills` inventory.
 
 ### Shared Bedrock profile and region resolution
 
