@@ -168,6 +168,7 @@ describe("workflow prompt contracts", () => {
 	it("secret review distinguishes ordinary code from credentials", () => {
 		const prompt = buildSecretReviewPrompt([
 			{
+				id: 1,
 				path: "example.ts",
 				label: "Hardcoded password/token/secret/key",
 				match: "accessToken: string",
@@ -181,6 +182,8 @@ describe("workflow prompt contracts", () => {
 		expect(prompt).toContain("type annotations");
 		expect(prompt).toContain("runtime expressions");
 		expect(prompt).toContain("no literal credential value");
+		expect(prompt).toContain("every candidate ID exactly once");
+		expect(prompt).toContain('"id": 1');
 	});
 
 	it("/gitlab-ticket documents issue-numbered branch naming and draft MR follow-on", () => {

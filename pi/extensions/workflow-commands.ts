@@ -214,17 +214,19 @@ export type SecretReviewClassification =
 	| "false_positive"
 	| "ambiguous";
 
-interface SecretReviewFinding {
-	path: string;
-	label: string;
-	line: number;
+interface SecretReviewDecision {
+	id: number;
 	classification: SecretReviewClassification;
 	reason: string;
-	match: string;
+}
+
+interface SecretReviewFinding extends SecretCandidate {
+	classification: SecretReviewClassification;
+	reason: string;
 }
 
 interface SecretReviewResult {
-	findings: SecretReviewFinding[];
+	findings: SecretReviewDecision[];
 }
 
 export interface UntrackedClassification {
@@ -305,6 +307,7 @@ const CommitPlanSchema = Type.Object({
 const SecretReviewInputSchema = Type.Object({
 	findings: Type.Array(
 		Type.Object({
+			id: Type.Integer({ minimum: 1 }),
 			path: Type.String(),
 			label: Type.String(),
 			match: Type.String(),
@@ -312,20 +315,18 @@ const SecretReviewInputSchema = Type.Object({
 			context: Type.String(),
 		}),
 	),
+	coverageCorrection: Type.Optional(Type.String()),
 });
 const SecretReviewSchema = Type.Object({
 	findings: Type.Array(
 		Type.Object({
-			path: Type.String(),
-			label: Type.String(),
-			line: Type.Number(),
+			id: Type.Integer({ minimum: 1 }),
 			classification: Type.Union([
 				Type.Literal("likely_secret"),
 				Type.Literal("false_positive"),
 				Type.Literal("ambiguous"),
 			]),
 			reason: Type.String(),
-			match: Type.String(),
 		}),
 	),
 });
@@ -371,7 +372,8 @@ const secretReviewAgent = defineAgent({
 	inputSchema: SecretReviewInputSchema,
 	outputSchema: SecretReviewSchema,
 	resolveModel: resolveCommitAgentModel,
-	prompt: ({ findings }) => buildSecretReviewPrompt(findings),
+	prompt: ({ findings, coverageCorrection }) =>
+		buildSecretReviewPrompt(findings, coverageCorrection),
 	timeoutMs: COMMIT_MODEL_TIMEOUT_MS,
 });
 
@@ -784,6 +786,15 @@ export function parseCommitPlan(text: string): CommitPlan {
 		}
 	}
 	return parsed;
+}
+
+export function formatCommitPlanWarnings(
+	warnings: string[] | undefined,
+): string[] {
+	return (warnings ?? [])
+		.map((warning) => warning.trim())
+		.filter(Boolean)
+		.map((warning) => `Planner warning: ${warning}`);
 }
 
 export function validateCommitPlan(plan: CommitPlan, changedFiles: string[]) {
@@ -1569,12 +1580,10 @@ export function parseSecretReviewResult(text: string): SecretReviewResult {
 		parsed.findings.some(
 			(finding) =>
 				!finding ||
-				typeof finding.path !== "string" ||
-				typeof finding.label !== "string" ||
-				!Number.isInteger(finding.line) ||
+				!Number.isInteger(finding.id) ||
+				finding.id < 1 ||
 				!classifications.has(finding.classification) ||
-				typeof finding.reason !== "string" ||
-				typeof finding.match !== "string",
+				typeof finding.reason !== "string",
 		)
 	) {
 		throw new Error("Secret reviewer returned invalid findings");
@@ -1582,31 +1591,15 @@ export function parseSecretReviewResult(text: string): SecretReviewResult {
 	return parsed;
 }
 
-function secretReviewKey(finding: {
-	path: string;
-	label: string;
-	line: number;
-	match: string;
-}) {
-	return JSON.stringify([
-		finding.path,
-		finding.label,
-		finding.line,
-		finding.match,
-	]);
-}
-
 export function validateSecretReviewCoverage(
-	reviewed: SecretReviewFinding[],
+	reviewed: SecretReviewDecision[],
 	candidates: SecretCandidate[],
 ) {
-	const expected = new Set(candidates.map(secretReviewKey));
-	const actual = reviewed.map(secretReviewKey);
+	const actualIds = reviewed.map((finding) => finding.id);
 	if (
-		expected.size !== candidates.length ||
-		actual.length !== candidates.length ||
-		new Set(actual).size !== actual.length ||
-		actual.some((key) => !expected.has(key))
+		actualIds.length !== candidates.length ||
+		new Set(actualIds).size !== actualIds.length ||
+		actualIds.some((id) => id < 1 || id > candidates.length)
 	) {
 		throw new Error(
 			"Secret reviewer must classify every candidate exactly once",
@@ -1619,12 +1612,31 @@ async function reviewSecretFindingsWithLlm(
 	findings: SecretCandidate[],
 ): Promise<SecretReviewFinding[]> {
 	if (findings.length === 0) return [];
-	const result = await secretReviewAgent.run({ findings }, ctx);
-	const reviewed = parseSecretReviewResult(
-		JSON.stringify(result.output),
-	).findings;
-	validateSecretReviewCoverage(reviewed, findings);
-	return reviewed;
+	const identifiedFindings = findings.map((finding, index) => ({
+		id: index + 1,
+		...finding,
+	}));
+	const runReview = async (coverageCorrection?: string) => {
+		const result = await secretReviewAgent.run(
+			{ findings: identifiedFindings, coverageCorrection },
+			ctx,
+		);
+		return parseSecretReviewResult(JSON.stringify(result.output)).findings;
+	};
+	let reviewed = await runReview();
+	try {
+		validateSecretReviewCoverage(reviewed, findings);
+	} catch {
+		reviewed = await runReview(
+			`Your previous response did not classify every candidate ID exactly once. Return exactly ${findings.length} findings covering IDs 1 through ${findings.length}, with no duplicates or extra IDs.`,
+		);
+		validateSecretReviewCoverage(reviewed, findings);
+	}
+	return reviewed.map((decision) => ({
+		...findings[decision.id - 1],
+		classification: decision.classification,
+		reason: decision.reason,
+	}));
 }
 
 export function isBlockingSecretReviewClassification(
@@ -2260,10 +2272,12 @@ async function executeCommitCommand(
 				throw new Error(fallback.needsUserDecision);
 			}
 			plan = fallback.plan;
-			activity.logInfo(fallback.plan.warnings?.[0] ?? "Used commit fallback");
 		}
 
 		if (!plan) throw new Error("Commit planning produced no plan");
+		for (const warning of formatCommitPlanWarnings(plan.warnings)) {
+			activity.logInfo(warning);
+		}
 		const commitSummaries: string[] = [];
 		await unstageFilesAsync(
 			ctx.cwd,

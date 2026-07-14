@@ -7,6 +7,7 @@ export interface CommitPlanningPromptContext {
 }
 
 export interface SecretReviewPromptFinding {
+	id: number;
 	path: string;
 	label: string;
 	match: string;
@@ -63,8 +64,12 @@ Commit planning context (JSON):
 ${JSON.stringify(payload, null, 2)}`;
 }
 
-export function buildSecretReviewPrompt(findings: SecretReviewPromptFinding[]) {
+export function buildSecretReviewPrompt(
+	findings: SecretReviewPromptFinding[],
+	coverageCorrection?: string,
+) {
 	const payload = findings.map((finding) => ({
+		id: finding.id,
 		path: finding.path,
 		label: finding.label,
 		match: finding.match,
@@ -82,22 +87,20 @@ Be skeptical of false positives in code, markdown docs, comments, tests, example
 Classify identifier-only declarations, type annotations, function parameters, property names, and runtime expressions as false_positive when no literal credential value is present.
 Only mark likely_secret when the content looks like an actual usable secret or credential-bearing assignment.
 
+Return one finding for every candidate ID exactly once.
 Return JSON only in this schema:
 {
   "findings": [
     {
-      "path": "file",
-      "label": "pattern label",
-      "line": 1,
+      "id": 1,
       "classification": "likely_secret|false_positive|ambiguous",
-      "reason": "short reason",
-      "match": "exact matched text preview"
+      "reason": "short reason"
     }
   ]
 }
 
 Candidate findings JSON:
-${JSON.stringify(payload, null, 2)}`;
+${JSON.stringify(payload, null, 2)}${coverageCorrection ? `\n\nCoverage correction:\n${coverageCorrection}` : ""}`;
 }
 
 export function buildSkillPrompt(

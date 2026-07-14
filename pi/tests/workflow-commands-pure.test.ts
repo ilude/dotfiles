@@ -14,6 +14,7 @@ import {
 	chooseFilesToCommit,
 	confirmCommitMessage,
 	filterCommitSafeFiles,
+	formatCommitPlanWarnings,
 	getCommitRuntimePathReason,
 	isBlockingSecretReviewClassification,
 	normalizeCommitSubject,
@@ -24,6 +25,19 @@ import {
 	validateCommitPlan,
 	validateSecretReviewCoverage,
 } from "../extensions/workflow-commands.ts";
+
+describe("commit planner warnings", () => {
+	it("trims warnings and drops empty entries before display", () => {
+		expect(
+			formatCommitPlanWarnings([
+				"  Review generated files before committing.  ",
+				"",
+				"   ",
+			]),
+		).toEqual(["Planner warning: Review generated files before committing."]);
+		expect(formatCommitPlanWarnings(undefined)).toEqual([]);
+	});
+});
 
 describe("parseCommitPlan", () => {
 	it("parses JSON wrapped in assistant prose", () => {
@@ -62,12 +76,9 @@ describe("parseSecretReviewResult", () => {
 			JSON.stringify({
 				findings: [
 					{
-						path: "example.ts",
-						label: "Hardcoded password/token/secret/key",
-						line: 7,
+						id: 1,
 						classification: "false_positive",
 						reason: "Type annotation with no credential value.",
-						match: "accessToken: string",
 					},
 				],
 			}),
@@ -85,12 +96,9 @@ describe("parseSecretReviewResult", () => {
 				JSON.stringify({
 					findings: [
 						{
-							path: "example.ts",
-							label: "candidate",
-							line: 7,
+							id: 1,
 							classification: "safe",
 							reason: "Unrecognized classification.",
-							match: "accessToken: string",
 						},
 					],
 				}),
@@ -107,10 +115,7 @@ describe("parseSecretReviewResult", () => {
 			context: "interface Auth { accessToken: string }",
 		};
 		const reviewed = {
-			path: candidate.path,
-			label: candidate.label,
-			line: candidate.line,
-			match: candidate.match,
+			id: 1,
 			classification: "false_positive" as const,
 			reason: "Type annotation with no credential value.",
 		};
@@ -123,6 +128,9 @@ describe("parseSecretReviewResult", () => {
 		);
 		expect(() =>
 			validateSecretReviewCoverage([reviewed, reviewed], [candidate]),
+		).toThrow("classify every candidate exactly once");
+		expect(() =>
+			validateSecretReviewCoverage([{ ...reviewed, id: 2 }], [candidate]),
 		).toThrow("classify every candidate exactly once");
 	});
 });

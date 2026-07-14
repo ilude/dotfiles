@@ -253,6 +253,136 @@ describe("workflow command dispatch", () => {
 		);
 	});
 
+	it("retries incomplete secret-review coverage with stable candidate IDs", async () => {
+		const notify = vi.fn();
+		const file = "pi/lib/extension-utils.ts";
+		for (const result of [
+			{ stdout: ` M ${file}\n` },
+			{},
+			{ stdout: `${file}\n` },
+			{},
+			{},
+			{ stdout: `${file} | 1 +\n` },
+			{ code: 1 },
+			{},
+			{ stdout: `${file} | 1 +\n` },
+			{ stdout: `diff --git a/${file} b/${file}\n` },
+			{ code: 1, stderr: "stop after review\n" },
+		]) {
+			mockSpawn.mockImplementationOnce(() => mockGitSpawn(result));
+		}
+		mockScanSecrets.mockReturnValueOnce([
+			{
+				kind: "secret-assignment",
+				line: 1,
+				column: 1,
+				offset: 0,
+				length: 6,
+				redacted: "[REDACTED]",
+			},
+		]);
+		mockTypedAgentRun
+			.mockResolvedValueOnce({ output: { findings: [] }, attempts: 1 })
+			.mockResolvedValueOnce({
+				output: {
+					findings: [
+						{
+							id: 1,
+							classification: "false_positive",
+							reason: "No credential value is present.",
+						},
+					],
+				},
+				attempts: 1,
+			})
+			.mockResolvedValueOnce({
+				output: {
+					groups: [
+						{
+							files: [file],
+							subject: "chore(pi): update extension utilities",
+						},
+					],
+				},
+				attempts: 1,
+			});
+
+		await getHandler("commit")("", {
+			cwd: path.resolve(process.cwd(), ".."),
+			ui: { notify },
+		});
+
+		expect(mockTypedAgentRun).toHaveBeenNthCalledWith(
+			1,
+			"secret-reviewer",
+			expect.objectContaining({
+				findings: [expect.objectContaining({ id: 1, path: file })],
+			}),
+			expect.anything(),
+		);
+		expect(mockTypedAgentRun).toHaveBeenNthCalledWith(
+			2,
+			"secret-reviewer",
+			expect.objectContaining({
+				coverageCorrection: expect.stringContaining(
+					"Return exactly 1 findings covering IDs 1 through 1",
+				),
+			}),
+			expect.anything(),
+		);
+		expect(mockTypedAgentRun).toHaveBeenNthCalledWith(
+			3,
+			"commit-planner",
+			expect.anything(),
+			expect.anything(),
+		);
+	});
+
+	it("surfaces planner warnings before commit mutation", async () => {
+		const notify = vi.fn();
+		const file = "pi/lib/extension-utils.ts";
+		for (const result of [
+			{ stdout: ` M ${file}\n` },
+			{},
+			{ stdout: `${file}\n` },
+			{},
+			{},
+			{ stdout: `${file} | 1 +\n` },
+			{ code: 1 },
+			{},
+			{ stdout: `${file} | 1 +\n` },
+			{ stdout: `diff --git a/${file} b/${file}\n` },
+			{ code: 1, stderr: "stop after warning\n" },
+		]) {
+			mockSpawn.mockImplementationOnce(() => mockGitSpawn(result));
+		}
+		mockTypedAgentRun.mockResolvedValueOnce({
+			output: {
+				groups: [
+					{
+						files: [file],
+						subject: "chore(pi): update secret scanner",
+					},
+				],
+				warnings: ["Review generated files before committing."],
+			},
+			attempts: 1,
+		});
+
+		await getHandler("commit")("", {
+			cwd: path.resolve(process.cwd(), ".."),
+			ui: { notify },
+		});
+
+		expect(mockPi.sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				customType: "workflow-commit-activity",
+				content: "Planner warning: Review generated files before committing.",
+				display: true,
+			}),
+		);
+	});
+
 	it("reports /commit executor failures without dispatching a workflow prompt", async () => {
 		const notify = vi.fn();
 		mockSpawn.mockImplementationOnce(() =>
