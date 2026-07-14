@@ -36,6 +36,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Key, Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
+import { preflightGitStateAsync } from "../lib/commit/plan";
 import { emitTerminalBell } from "../lib/extension-utils";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
 import { withTimingSpan } from "../lib/observability";
@@ -49,11 +50,7 @@ import {
 } from "../lib/workflow-commands/prompts";
 import { noteWorkflowSubmission } from "../lib/workflow-friction";
 import { startWorkflowEpisode } from "../lib/workflow-telemetry";
-import {
-	fetchCodexUsage,
-	formatConfiguredBedrockUsageSection,
-	formatUsage,
-} from "./codex-status";
+import { formatConfiguredUsageReport } from "./codex-status";
 import { isOperatorReloadNeeded } from "./operator-status";
 
 const SKILLS_DIR = path.join(
@@ -157,11 +154,7 @@ function formatClearedSessionUsage(
 
 async function formatClearedSessionCodexStatus(): Promise<string> {
 	try {
-		const { auth, usage } = await fetchCodexUsage();
-		const sections = [formatUsage(usage, auth, { color: true })];
-		const bedrock = await formatConfiguredBedrockUsageSection();
-		if (bedrock) sections.push(bedrock);
-		return sections.join("\n\n");
+		return await formatConfiguredUsageReport();
 	} catch (error) {
 		return error instanceof Error ? error.message : String(error);
 	}
@@ -1151,13 +1144,6 @@ function uniqueSorted(values: string[]) {
 	return [...new Set(values.filter(Boolean))].sort((a, b) =>
 		a.localeCompare(b),
 	);
-}
-
-function hasMergeConflicts(statusOutput: string) {
-	return parseLines(statusOutput).some((line) => {
-		const code = line.slice(0, 2);
-		return ["DD", "AU", "UD", "UA", "DU", "AA", "UU"].includes(code);
-	});
 }
 
 export function getCommitRuntimePathReason(file: string): string | null {
@@ -2223,6 +2209,17 @@ async function executeCommitCommand(
 	ctx.ui.notify(`Starting ${commandText}...`, "info");
 	activity.setPhase("preparing");
 	try {
+		if (ctx.signal?.aborted) throw new Error("Operation cancelled");
+		const preflight = await preflightGitStateAsync(
+			ctx.cwd,
+			(cwd, gitArgs, signal) => runGitAsync(cwd, gitArgs, activity, signal),
+			ctx.signal,
+		);
+		if (!preflight.ok) {
+			throw new Error(
+				`Git state preflight failed:\n${preflight.blocked.join("\n")}`,
+			);
+		}
 		const status = await gitOrThrowAsync(
 			ctx.cwd,
 			["status", "--short"],
@@ -2232,13 +2229,6 @@ async function executeCommitCommand(
 		if (!status.trim()) {
 			activity.finish();
 			return ctx.ui.notify("Working tree is clean", "info");
-		}
-		if (hasMergeConflicts(status)) {
-			activity.finish();
-			return ctx.ui.notify(
-				"Resolve merge conflicts before committing",
-				"error",
-			);
 		}
 
 		const prepared = await prepareCommitSelection(args, ctx, activity);

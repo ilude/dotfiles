@@ -9,9 +9,10 @@ exact candidate coverage before commit planning.
 **Changed:**
 - Assigned stable numeric IDs to deterministic scanner candidates.
 - Reduced reviewer output to each candidate ID, classification, and reason.
+- Retried one incomplete response with an explicit exact-coverage correction.
 - Validated exact ID coverage and joined decisions back to original candidate
   metadata in deterministic code.
-- Added focused prompt and coverage regressions.
+- Added focused prompt, coverage, and retry regressions.
 
 **Files:** `pi/extensions/workflow-commands.ts`,
 `pi/lib/workflow-commands/prompts.ts`,

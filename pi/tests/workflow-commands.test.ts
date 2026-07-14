@@ -2,11 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import * as path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-	fetchCodexUsage,
-	formatConfiguredBedrockUsageSection,
-	formatUsage,
-} from "../extensions/codex-status.ts";
+import { formatConfiguredUsageReport } from "../extensions/codex-status.ts";
 import { createMockPi } from "./helpers/mock-pi.js";
 
 vi.mock("node:child_process", () => ({
@@ -15,13 +11,15 @@ vi.mock("node:child_process", () => ({
 }));
 
 vi.mock("../extensions/codex-status.ts", () => ({
-	fetchCodexUsage: vi.fn(async () => ({ auth: {}, usage: {} })),
-	formatConfiguredBedrockUsageSection: vi.fn(async () => null),
-	formatUsage: vi.fn(() => "Codex:\n 5h     7% used"),
+	formatConfiguredUsageReport: vi.fn(async () => "Codex:\n 5h     7% used"),
 }));
 
+const mockPreflightGitStateAsync = vi.hoisted(() => vi.fn());
 const mockScanSecrets = vi.hoisted(() => vi.fn(() => []));
 const mockTypedAgentRun = vi.hoisted(() => vi.fn());
+vi.mock("../lib/commit/plan.ts", () => ({
+	preflightGitStateAsync: mockPreflightGitStateAsync,
+}));
 vi.mock("../lib/secret-scan.ts", () => ({
 	scanSecrets: mockScanSecrets,
 }));
@@ -35,10 +33,8 @@ vi.mock("../lib/typed-agent.ts", () => ({
 
 const mockSpawn = spawn as ReturnType<typeof vi.fn>;
 const mockSpawnSync = spawnSync as ReturnType<typeof vi.fn>;
-const mockFetchCodexUsage = fetchCodexUsage as ReturnType<typeof vi.fn>;
-const mockFormatConfiguredBedrockUsageSection =
-	formatConfiguredBedrockUsageSection as ReturnType<typeof vi.fn>;
-const mockFormatUsage = formatUsage as ReturnType<typeof vi.fn>;
+const mockFormatConfiguredUsageReport =
+	formatConfiguredUsageReport as ReturnType<typeof vi.fn>;
 
 describe("workflow command dispatch", () => {
 	let mockPi: ReturnType<typeof createMockPi> & {
@@ -82,6 +78,7 @@ describe("workflow command dispatch", () => {
 		vi.clearAllMocks();
 		mockSpawn.mockImplementation(() => mockGitSpawn());
 		mockSpawnSync.mockReturnValue({ status: 0, stdout: "", stderr: "" });
+		mockPreflightGitStateAsync.mockResolvedValue({ ok: true, blocked: [] });
 		mockScanSecrets.mockReturnValue([]);
 		mockTypedAgentRun.mockImplementation(
 			async (id: string, input: Record<string, unknown>) => {
@@ -138,17 +135,9 @@ describe("workflow command dispatch", () => {
 
 		const appendCustomMessageEntry = vi.fn();
 		const order: string[] = [];
-		mockFetchCodexUsage.mockImplementationOnce(async () => {
-			order.push("fetch-codex-status");
-			return { auth: { source: "pi" }, usage: { rate_limit: {} } };
-		});
-		mockFormatUsage.mockImplementationOnce(() => {
-			order.push("format-codex-status");
-			return "Codex:\n 5h     7% used";
-		});
-		mockFormatConfiguredBedrockUsageSection.mockImplementationOnce(async () => {
-			order.push("format-bedrock-status");
-			return "Bedrock: no usage recorded this month.";
+		mockFormatConfiguredUsageReport.mockImplementationOnce(async () => {
+			order.push("format-configured-usage-report");
+			return "Codex:\n 5h     7% used\n\nBedrock: no usage recorded this month.";
 		});
 		appendCustomMessageEntry.mockImplementation((_type, content) => {
 			order.push(
@@ -177,11 +166,7 @@ describe("workflow command dispatch", () => {
 				setup: expect.any(Function),
 			}),
 		);
-		expect(mockFormatUsage).toHaveBeenCalledWith(
-			{ rate_limit: {} },
-			{ source: "pi" },
-			{ color: true },
-		);
+		expect(mockFormatConfiguredUsageReport).toHaveBeenCalledOnce();
 		expect(appendCustomMessageEntry).toHaveBeenNthCalledWith(
 			1,
 			"workflow-clear-codex-status",
@@ -195,9 +180,7 @@ describe("workflow command dispatch", () => {
 			true,
 		);
 		expect(order).toEqual([
-			"fetch-codex-status",
-			"format-codex-status",
-			"format-bedrock-status",
+			"format-configured-usage-report",
 			"codex-status",
 			"usage",
 			"new-session",
@@ -219,6 +202,96 @@ describe("workflow command dispatch", () => {
 			expect.anything(),
 		);
 		expect(notify).toHaveBeenCalledWith("Working tree is clean", "info");
+	});
+
+	it.each([
+		["merge", "Blocked during merge."],
+		["rebase", "Blocked during rebase."],
+		["cherry-pick", "Blocked during cherry-pick."],
+		["bisect", "Blocked during bisect."],
+		["detached HEAD", "Blocked during detached HEAD."],
+		["unresolved paths", "Blocked during unmerged paths."],
+	])("refuses %s before planning or mutation", async (_state, blocked) => {
+		const notify = vi.fn();
+		mockPreflightGitStateAsync.mockResolvedValueOnce({
+			ok: false,
+			blocked: [blocked],
+		});
+
+		await getHandler("commit")("", { cwd: "/repo", ui: { notify } });
+
+		expect(mockPreflightGitStateAsync).toHaveBeenCalledWith(
+			"/repo",
+			expect.any(Function),
+			undefined,
+		);
+		expect(mockSpawn).not.toHaveBeenCalled();
+		expect(mockTypedAgentRun).not.toHaveBeenCalled();
+		expect(notify).toHaveBeenCalledWith(
+			`Commit failed: Git state preflight failed:\n${blocked}`,
+			"error",
+		);
+	});
+
+	it("keeps normal multi-group commit execution", async () => {
+		const notify = vi.fn();
+		const cwd = path.resolve(process.cwd(), "..");
+		const files = ["pi/lib/extension-utils.ts", "pi/lib/model-routing.ts"];
+		let hashIndex = 0;
+		mockSpawn.mockImplementation((_command, args: string[]) => {
+			const signature = args.join(" ");
+			if (signature === "status --short") {
+				return mockGitSpawn({
+					stdout: files.map((file) => ` M ${file}`).join("\n"),
+				});
+			}
+			if (signature === "diff --name-only HEAD") {
+				return mockGitSpawn({ stdout: `${files.join("\n")}\n` });
+			}
+			if (
+				signature ===
+				"diff --stat HEAD -- pi/lib/extension-utils.ts pi/lib/model-routing.ts"
+			) {
+				return mockGitSpawn({ stdout: "2 files changed\n" });
+			}
+			if (signature === "diff --cached --stat") {
+				return mockGitSpawn({ stdout: "1 file changed\n" });
+			}
+			if (signature === "diff --cached --no-color") {
+				return mockGitSpawn({ stdout: "diff --git synthetic\n" });
+			}
+			if (signature === "rev-parse --short HEAD") {
+				hashIndex += 1;
+				return mockGitSpawn({ stdout: `abc000${hashIndex}\n` });
+			}
+			if (args[0] === "check-ignore") {
+				return mockGitSpawn({ code: 1 });
+			}
+			return mockGitSpawn();
+		});
+		mockTypedAgentRun.mockResolvedValueOnce({
+			output: {
+				groups: [
+					{ files: [files[0]], subject: "chore(pi): update utilities" },
+					{ files: [files[1]], subject: "chore(pi): update routing" },
+				],
+			},
+			attempts: 1,
+		});
+
+		await getHandler("commit")("", { cwd, ui: { notify } });
+
+		const commitCalls = mockSpawn.mock.calls.filter(
+			([, args]) => (args as string[])[0] === "commit",
+		);
+		expect(commitCalls.map(([, args]) => args)).toEqual([
+			["commit", "-m", "chore(pi): update utilities"],
+			["commit", "-m", "chore(pi): update routing"],
+		]);
+		expect(notify).not.toHaveBeenCalledWith(
+			expect.stringContaining("Commit failed:"),
+			"error",
+		);
 	});
 
 	it("uses the shared secret scanner during /commit", async () => {

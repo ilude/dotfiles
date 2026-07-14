@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { git } from "./git";
+import { type GitAsyncRunner, type GitResult, git } from "./git";
 import { createConfirmationToken, normalizeCommitPaths } from "./token";
 import type {
 	CommitPathEntry,
@@ -165,15 +165,12 @@ function gitDir(root: string): string {
 	);
 }
 
-function preflightGitStateForRoot(
+function decideGitPreflight(
 	root: string,
-	statusOutput?: string,
+	resolvedGitDir: string,
+	statusText: string,
+	sparseCheckoutOutput: string,
 ): GitPreflight {
-	const status =
-		statusOutput ?? git(root, ["status", "--porcelain=v1", "--branch", "-z"]);
-	const statusText = typeof status === "string" ? status : status.stdout;
-	const sparse = git(root, ["config", "--bool", "core.sparseCheckout"]);
-	const resolvedGitDir = gitDir(root);
 	const existsInResolvedGitDir = (rel: string) =>
 		fs.existsSync(path.join(resolvedGitDir, rel));
 	const blocks = [] as string[];
@@ -193,7 +190,7 @@ function preflightGitStateForRoot(
 		hasUnmergedPaths: decodePorcelainStatus(statusText).some(isUnmerged),
 		isSubmodule: fs.statSync(path.join(root, ".git")).isFile(),
 		isWorktree: fs.existsSync(path.join(resolvedGitDir, "commondir")),
-		sparseCheckout: sparse.stdout.trim() === "true",
+		sparseCheckout: sparseCheckoutOutput.trim() === "true",
 		partialIndex: false,
 	};
 	for (const [key, label] of [
@@ -209,11 +206,118 @@ function preflightGitStateForRoot(
 	return state;
 }
 
+function preflightGitStateForRoot(
+	root: string,
+	statusOutput?: string,
+): GitPreflight {
+	const status =
+		statusOutput ?? git(root, ["status", "--porcelain=v1", "--branch", "-z"]);
+	const statusText = typeof status === "string" ? status : status.stdout;
+	const sparse = git(root, ["config", "--bool", "core.sparseCheckout"]);
+	return decideGitPreflight(root, gitDir(root), statusText, sparse.stdout);
+}
+
 export function preflightGitState(
 	cwd: string,
 	statusOutput?: string,
 ): GitPreflight {
 	return preflightGitStateForRoot(repoRoot(cwd), statusOutput);
+}
+
+export const GIT_PREFLIGHT_TIMEOUT_MS = 120_000;
+
+function gitFailure(result: GitResult, args: string[]): Error {
+	return new Error(
+		(result.stderr || result.stdout || `git ${args.join(" ")} failed`).trim(),
+	);
+}
+
+async function runRequiredGit(
+	runner: GitAsyncRunner,
+	cwd: string,
+	args: string[],
+	signal: AbortSignal,
+): Promise<GitResult> {
+	const result = await runner(cwd, args, signal);
+	if (result.code !== 0) throw gitFailure(result, args);
+	return result;
+}
+
+async function preflightGitStateWithRunner(
+	cwd: string,
+	runner: GitAsyncRunner,
+	signal: AbortSignal,
+): Promise<GitPreflight> {
+	const rootResult = await runRequiredGit(
+		runner,
+		cwd,
+		["rev-parse", "--show-toplevel"],
+		signal,
+	);
+	const root = path.resolve(stripFinalLineDelimiter(rootResult.stdout));
+	const gitDirResult = await runRequiredGit(
+		runner,
+		root,
+		["rev-parse", "--git-dir"],
+		signal,
+	);
+	const rawGitDir = stripFinalLineDelimiter(gitDirResult.stdout);
+	const resolvedGitDir = path.isAbsolute(rawGitDir)
+		? rawGitDir
+		: path.join(root, rawGitDir);
+	const status = await runRequiredGit(
+		runner,
+		root,
+		["status", "--porcelain=v1", "--branch", "-z"],
+		signal,
+	);
+	const sparse = await runner(
+		root,
+		["config", "--bool", "core.sparseCheckout"],
+		signal,
+	);
+	return decideGitPreflight(root, resolvedGitDir, status.stdout, sparse.stdout);
+}
+
+export function preflightGitStateAsync(
+	cwd: string,
+	runner: GitAsyncRunner,
+	signal?: AbortSignal,
+): Promise<GitPreflight> {
+	const controller = new AbortController();
+	return new Promise((resolve, reject) => {
+		let settled = false;
+		const finish = (callback: () => void) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timeoutId);
+			signal?.removeEventListener("abort", onAbort);
+			callback();
+		};
+		const onAbort = () => {
+			controller.abort();
+			finish(() => reject(new Error("Operation cancelled")));
+		};
+		const timeoutId = setTimeout(() => {
+			controller.abort();
+			finish(() =>
+				reject(
+					new Error(
+						`Git preflight timed out after ${GIT_PREFLIGHT_TIMEOUT_MS / 1000}s`,
+					),
+				),
+			);
+		}, GIT_PREFLIGHT_TIMEOUT_MS);
+		signal?.addEventListener("abort", onAbort, { once: true });
+		if (signal?.aborted) {
+			onAbort();
+			return;
+		}
+		preflightGitStateWithRunner(cwd, runner, controller.signal).then(
+			(value) => finish(() => resolve(value)),
+			(error: unknown) => finish(() => reject(error)),
+		);
+	});
 }
 
 export function buildCommitPlan(cwd: string): CommitPlanResult {

@@ -8,9 +8,14 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { existsInGitDir } from "../lib/commit/git.ts";
-import { buildCommitPlan, preflightGitState } from "../lib/commit/plan.ts";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { existsInGitDir, type GitAsyncRunner } from "../lib/commit/git.ts";
+import {
+	buildCommitPlan,
+	GIT_PREFLIGHT_TIMEOUT_MS,
+	preflightGitState,
+	preflightGitStateAsync,
+} from "../lib/commit/plan.ts";
 
 const repos: string[] = [];
 function run(
@@ -38,6 +43,60 @@ afterEach(() => {
 });
 
 describe("commit planning", () => {
+	it("matches synchronous preflight for a normal repository", async () => {
+		const dir = repo();
+		const runner: GitAsyncRunner = async (cwd, args) => {
+			const result = run(cwd, args, { allowFailure: true });
+			return {
+				code: result.status ?? 1,
+				stdout: result.stdout ?? "",
+				stderr: result.stderr ?? "",
+			};
+		};
+
+		await expect(preflightGitStateAsync(dir, runner)).resolves.toEqual(
+			preflightGitState(dir),
+		);
+	});
+
+	it("cancels while async preflight git is running", async () => {
+		const controller = new AbortController();
+		let runnerSignal: AbortSignal | undefined;
+		const runner: GitAsyncRunner = (_cwd, _args, signal) => {
+			runnerSignal = signal;
+			return new Promise(() => {});
+		};
+
+		const pending = preflightGitStateAsync("/repo", runner, controller.signal);
+		await Promise.resolve();
+		controller.abort();
+
+		await expect(pending).rejects.toThrow("Operation cancelled");
+		expect(runnerSignal?.aborted).toBe(true);
+	});
+
+	it("times out while async preflight git is running", async () => {
+		vi.useFakeTimers();
+		try {
+			let runnerSignal: AbortSignal | undefined;
+			const runner: GitAsyncRunner = (_cwd, _args, signal) => {
+				runnerSignal = signal;
+				return new Promise(() => {});
+			};
+			const pending = preflightGitStateAsync("/repo", runner);
+			const rejection = expect(pending).rejects.toThrow(
+				"Git preflight timed out after 120s",
+			);
+
+			await vi.advanceTimersByTimeAsync(GIT_PREFLIGHT_TIMEOUT_MS);
+
+			await rejection;
+			expect(runnerSignal?.aborted).toBe(true);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("preserves tracked file -> ignored -> git rm --cached staged deletion", () => {
 		const dir = repo();
 		writeFileSync(join(dir, "generated.log"), "generated\n");
