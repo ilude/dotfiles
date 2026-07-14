@@ -92,7 +92,9 @@ function canonicalValue(value: unknown): unknown {
 
 function toolCallFingerprint(toolName: unknown, input: unknown): string {
 	return JSON.stringify([
-		String(toolName ?? "").trim().toLowerCase(),
+		String(toolName ?? "")
+			.trim()
+			.toLowerCase(),
 		canonicalValue(input),
 	]);
 }
@@ -123,7 +125,10 @@ function normalizedFailureFingerprint(event: {
 	);
 }
 
-function recordToolFailure(callFingerprint: string, resultFingerprint: string): void {
+function recordToolFailure(
+	callFingerprint: string,
+	resultFingerprint: string,
+): void {
 	const previous = state.toolFailures.get(callFingerprint);
 	state.toolFailures.delete(callFingerprint);
 	state.toolFailures.set(callFingerprint, {
@@ -357,6 +362,32 @@ function instructionPayload(files: LoadedInstruction[]): string {
 	return `# Loaded AGENTS context\n\n${blocks.join("\n\n")}`;
 }
 
+function recordNativeContextFiles(event: unknown): void {
+	clearLoadedSnapshot();
+	state.basePaths.clear();
+	if (!isRecord(event) || !isRecord(event.systemPromptOptions)) return;
+	const contextFiles = event.systemPromptOptions.contextFiles;
+	if (!Array.isArray(contextFiles)) return;
+	for (const item of contextFiles) {
+		if (
+			!isRecord(item) ||
+			typeof item.path !== "string" ||
+			typeof item.content !== "string"
+		)
+			continue;
+		const filePath = canonical(item.path);
+		const bytes = Buffer.byteLength(item.content);
+		state.basePaths.add(filePath);
+		state.loaded.set(filePath, {
+			path: filePath,
+			bytes,
+			reason: "native Pi context",
+			truncated: false,
+		});
+		state.totalBytes += bytes;
+	}
+}
+
 function removeExpertiseTools(event: unknown): void {
 	if (!isRecord(event) || !Array.isArray(event.tools)) return;
 	event.tools = event.tools.filter(
@@ -466,14 +497,11 @@ export default function (pi: ExtensionAPI) {
 	pi.on("before_agent_start", async (event, ctx) => {
 		removeExpertiseTools(event);
 		state.expertiseDisabled = true;
-		const files = discoverForPaths(ctx.cwd, [ctx.cwd]);
-		state.basePaths = new Set(files.map((file) => file.path));
+		resetForCwd(ctx.cwd);
+		recordNativeContextFiles(event);
 		state.injectedTargetFingerprints.clear();
 		state.toolFailures.clear();
-		if (!files.length) return undefined;
-		return {
-			systemPrompt: `${event.systemPrompt}\n\n${instructionPayload(files)}`,
-		};
+		return undefined;
 	});
 
 	type ContextHook = (
@@ -549,10 +577,7 @@ export default function (pi: ExtensionAPI) {
 	pi.on("tool_result", async (event) => {
 		const callFingerprint = toolCallFingerprint(event.toolName, event.input);
 		if (event.isError) {
-			recordToolFailure(
-				callFingerprint,
-				normalizedFailureFingerprint(event),
-			);
+			recordToolFailure(callFingerprint, normalizedFailureFingerprint(event));
 		} else {
 			state.toolFailures.delete(callFingerprint);
 		}

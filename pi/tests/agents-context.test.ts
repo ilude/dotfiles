@@ -256,9 +256,10 @@ describe("agents-context extension", () => {
 		expect(result.messages[0].content).not.toContain("first root");
 	});
 
-	it("keeps base instructions in the system prompt and blocks only new target scope", async () => {
+	it("relies on native base context and blocks only new target scope", async () => {
 		const cwd = path.join(tmp, "repo");
-		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
+		const rootInstructions = path.join(cwd, "AGENTS.md");
+		writeFile(rootInstructions, "root agents");
 		writeFile(path.join(cwd, "src", "AGENTS.md"), "src agents");
 		const pi = createMockPi();
 		registerAgentsContext(pi);
@@ -266,12 +267,18 @@ describe("agents-context extension", () => {
 		const beforeAgentStart = pi._getHook("before_agent_start")[0].handler;
 		const contextHook = pi._getHook("context")[0].handler;
 		const toolHook = pi._getHook("tool_call")[0].handler;
+		const startEvent = {
+			systemPrompt: "base\nroot agents",
+			tools: [],
+			systemPromptOptions: {
+				contextFiles: [{ path: rootInstructions, content: "root agents" }],
+			},
+		};
 
-		const start = await beforeAgentStart(
-			{ systemPrompt: "base", tools: [] },
-			ctx,
-		);
-		expect(start.systemPrompt).toContain("root agents");
+		const start = await beforeAgentStart(startEvent, ctx);
+		expect(start).toBeUndefined();
+		expect(startEvent.systemPrompt.match(/root agents/g)).toHaveLength(1);
+		expect(formatAgentsContextStatus()).toContain("native Pi context");
 		await expect(
 			toolHook({ toolName: "edit", input: { path: "root.ts" } }, ctx),
 		).resolves.toBeUndefined();
@@ -376,12 +383,19 @@ describe("agents-context extension", () => {
 
 	it("registers /agents-context inspection status without adding display reports to LLM context", async () => {
 		const cwd = path.join(tmp, "repo");
-		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
+		const rootInstructions = path.join(cwd, "AGENTS.md");
+		writeFile(rootInstructions, "root agents");
 		const pi = createMockPi();
 		registerAgentsContext(pi);
 		const beforeAgentStart = pi._getHook("before_agent_start")[0].handler;
 		await beforeAgentStart(
-			{ systemPrompt: "base", tools: [] },
+			{
+				systemPrompt: "base\nroot agents",
+				tools: [],
+				systemPromptOptions: {
+					contextFiles: [{ path: rootInstructions, content: "root agents" }],
+				},
+			},
 			createMockCtx({ cwd }),
 		);
 		const command = pi._commands.find((item) => item.name === "agents-context");
