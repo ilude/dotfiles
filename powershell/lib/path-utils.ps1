@@ -39,6 +39,50 @@ function ConvertTo-GitBashPath {
     return $path
 }
 
+function Get-PathWithEntryBefore {
+    <#
+    .SYNOPSIS
+        Put one PATH entry before another while preserving all other entries.
+    .DESCRIPTION
+        Removes duplicate occurrences of the preferred entry, then inserts its
+        canonical value before the first matching anchor. If the anchor is not
+        present, the preferred entry is prepended.
+    #>
+    param(
+        [string]$Path,
+        [Parameter(Mandatory)][string]$Entry,
+        [Parameter(Mandatory)][string]$Before
+    )
+
+    function Normalize-PathEntry {
+        param([string]$Value)
+        if ([string]::IsNullOrWhiteSpace($Value)) { return '' }
+        $expanded = [Environment]::ExpandEnvironmentVariables($Value.Trim())
+        return $expanded.TrimEnd('\', '/').ToLowerInvariant()
+    }
+
+    $entryNormalized = Normalize-PathEntry $Entry
+    $beforeNormalized = Normalize-PathEntry $Before
+    $entries = @($Path -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $remaining = @($entries | Where-Object { (Normalize-PathEntry $_) -ne $entryNormalized })
+
+    $result = @()
+    $inserted = $false
+    foreach ($pathEntry in $remaining) {
+        if (-not $inserted -and (Normalize-PathEntry $pathEntry) -eq $beforeNormalized) {
+            $result += $Entry
+            $inserted = $true
+        }
+        $result += $pathEntry
+    }
+
+    if (-not $inserted) {
+        $result = @($Entry) + $result
+    }
+
+    return $result -join ';'
+}
+
 function Get-GitBash {
     <#
     .SYNOPSIS

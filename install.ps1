@@ -499,6 +499,45 @@ function Get-MissingConfiguredPackages {
     return $missing
 }
 
+function Ensure-GitSshPathPriority {
+    # Native Windows processes concatenate Machine PATH before User PATH.
+    # Git's User-level usr\bin therefore cannot outrank Machine-level OpenSSH.
+    $gitUsrBin = Join-Path $env:ProgramFiles 'Git\usr\bin'
+    $gitSsh = Join-Path $gitUsrBin 'ssh.exe'
+    $windowsOpenSsh = Join-Path $env:WINDIR 'System32\OpenSSH'
+
+    if (-not (Test-Path $gitSsh -PathType Leaf)) {
+        Write-Host "  Git SSH: not found at $gitSsh" -ForegroundColor Yellow
+        return $false
+    }
+
+    if (-not $isAdmin) {
+        Write-Host "  Git SSH PATH priority: skipped (requires admin)" -ForegroundColor Yellow
+        return $false
+    }
+
+    $machinePath = [Environment]::GetEnvironmentVariable('PATH', 'Machine')
+    $preferredMachinePath = Get-PathWithEntryBefore `
+        -Path $machinePath `
+        -Entry $gitUsrBin `
+        -Before $windowsOpenSsh
+
+    if ($machinePath -ne $preferredMachinePath) {
+        [Environment]::SetEnvironmentVariable('PATH', $preferredMachinePath, 'Machine')
+        Write-Host "  Git SSH PATH priority: configured" -ForegroundColor Green
+    } else {
+        Write-Host "  Git SSH PATH priority: already configured" -ForegroundColor DarkGray
+    }
+
+    # Make the corrected ordering effective for the rest of this installer run.
+    $env:PATH = Get-PathWithEntryBefore `
+        -Path $env:PATH `
+        -Entry $gitUsrBin `
+        -Before $windowsOpenSsh
+
+    return $true
+}
+
 function Optimize-UserPath {
     # Clean up User PATH: remove duplicates, empty entries, missing directories,
     # and WinGet Packages paths whose executables are all covered by WinGet Links shims
@@ -1962,8 +2001,11 @@ try {
     }
 
     # ========================================================================
-    # PATH Optimization (remove duplicates, empty entries, redundant WinGet paths)
+    # PATH Priority and Optimization
     # ========================================================================
+    Write-Host "`nConfiguring Git SSH PATH priority..." -ForegroundColor Cyan
+    $null = Ensure-GitSshPathPriority
+
     Write-Host "`nOptimizing User PATH..." -ForegroundColor Cyan
     Optimize-UserPath
 

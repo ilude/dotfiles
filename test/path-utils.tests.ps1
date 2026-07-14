@@ -93,6 +93,37 @@ Describe "Get-ContentLF" {
     }
 }
 
+Describe "Get-PathWithEntryBefore" {
+    It "puts Git SSH before Windows OpenSSH" {
+        $path = 'C:\Windows\System32;C:\Windows\System32\OpenSSH\;C:\Program Files\Git\cmd'
+        $result = Get-PathWithEntryBefore `
+            -Path $path `
+            -Entry 'C:\Program Files\Git\usr\bin' `
+            -Before 'C:\Windows\System32\OpenSSH'
+
+        $result | Should Be 'C:\Windows\System32;C:\Program Files\Git\usr\bin;C:\Windows\System32\OpenSSH\;C:\Program Files\Git\cmd'
+    }
+
+    It "moves an existing Git SSH entry and removes its duplicates" {
+        $path = 'C:\Windows\System32\OpenSSH;C:\Program Files\Git\usr\bin\;C:\Tools;C:\Program Files\Git\usr\bin'
+        $result = Get-PathWithEntryBefore `
+            -Path $path `
+            -Entry 'C:\Program Files\Git\usr\bin' `
+            -Before 'C:\Windows\System32\OpenSSH\'
+
+        $result | Should Be 'C:\Program Files\Git\usr\bin;C:\Windows\System32\OpenSSH;C:\Tools'
+    }
+
+    It "prepends Git SSH when Windows OpenSSH is absent" {
+        $result = Get-PathWithEntryBefore `
+            -Path 'C:\Windows\System32;C:\Program Files\Git\cmd' `
+            -Entry 'C:\Program Files\Git\usr\bin' `
+            -Before 'C:\Windows\System32\OpenSSH'
+
+        $result | Should Be 'C:\Program Files\Git\usr\bin;C:\Windows\System32;C:\Program Files\Git\cmd'
+    }
+}
+
 Describe "Get-GitBash" {
     It "returns a path or null" {
         $result = Get-GitBash
