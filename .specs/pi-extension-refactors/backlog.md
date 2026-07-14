@@ -1,15 +1,15 @@
 # Pi Extension Refactor Backlog
 
-## Current wave
+## Completed refactors
 
-The following four refactors are being implemented now and are not deferred by this backlog:
+The initial four refactors have been implemented and validated:
 
-1. Shared Git preflight for `/commit`.
-2. Queued complete transactions for custom edit tools.
-3. Canonical agent paths and atomic settings updates.
-4. Shared session JSONL parsing primitives.
+1. Shared Git preflight for `/commit` (`fdf6834`).
+2. Queued complete transactions for custom edit tools (`957e9f1`).
+3. Canonical agent paths and atomic settings updates (`d5742d9`, `424d9dd`).
+4. Shared session JSONL parsing primitives (`eaa0ace`).
 
-Evidence: `.tmp/extension-review-synthesis.md:11-58`.
+Validation completed with `make check-pi-extensions`: 95 test files passed, with 1,293 tests passed and 1 expected platform skip.
 
 ## Deferred refactors
 
