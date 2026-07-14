@@ -465,15 +465,19 @@ export async function fetchCodexUsage(
 	return { auth, usage: (await response.json()) as ApiUsage };
 }
 
+export async function formatConfiguredUsageReport(): Promise<string> {
+	const { auth, usage } = await fetchCodexUsage();
+	const sections = [formatUsage(usage, auth, { color: true })];
+	const bedrock = await formatConfiguredBedrockUsageSection();
+	if (bedrock) sections.push(bedrock);
+	return sections.join("\n\n");
+}
+
 export async function showCodexStatus(
 	ctx: Pick<ExtensionContext, "ui">,
 ): Promise<void> {
 	try {
-		const { auth, usage } = await fetchCodexUsage();
-		const sections = [formatUsage(usage, auth, { color: true })];
-		const bedrock = await formatConfiguredBedrockUsageSection();
-		if (bedrock) sections.push(bedrock);
-		ctx.ui.notify(sections.join("\n\n"), "info");
+		ctx.ui.notify(await formatConfiguredUsageReport(), "info");
 	} catch (error) {
 		ctx.ui.notify(errorMessage(error), "error");
 	}
