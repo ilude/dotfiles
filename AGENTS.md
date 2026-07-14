@@ -7,7 +7,8 @@ Read this file first. More specific instructions for the active client or direct
 - Claude Code: `CLAUDE.md`
 - OpenCode/Codex: `opencode/AGENTS.md`
 - Copilot: `copilot/`
-- Pi: [`pi/README.md`](pi/README.md) and [`pi/PI-INSTRUCTIONS.md`](pi/PI-INSTRUCTIONS.md), not `pi/AGENTS.md` (that path is a symlink to Claude content)
+- Shared global instructions: [`pi/AGENTS.md`](pi/AGENTS.md), linked from `claude/CLAUDE.md`
+- Pi runtime: [`pi/README.md`](pi/README.md) and [`pi/PI-INSTRUCTIONS.md`](pi/PI-INSTRUCTIONS.md)
 
 Claude hooks, commands, settings, and runtime workarounds are Claude-only. `menos/` deployment and Claude-only content ingestion are also outside this file's scope. Follow the owning surface rather than blending client, shell, PowerShell, WSL, or platform conventions.
 

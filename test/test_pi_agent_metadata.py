@@ -52,9 +52,28 @@ def test_orchestrator_is_not_a_worker_or_lead() -> None:
     assert "leads" in metadata
 
 
+def test_pi_instructions_are_canonical_source_for_claude() -> None:
+    pi_instructions = Path("pi/AGENTS.md")
+    claude_instructions = Path("claude/CLAUDE.md")
+
+    assert pi_instructions.is_file()
+    assert not pi_instructions.is_symlink()
+    assert claude_instructions.is_symlink()
+    assert claude_instructions.resolve() == pi_instructions.resolve()
+
+
 def test_review_it_does_not_recommend_leads_as_routine_reviewers() -> None:
     instructions = Path("pi/skills/workflow/review-it.md").read_text(encoding="utf-8")
-    assert "Do not use lead agents as normal reviewers" in instructions
-    assert "Do not select `engineering-lead`" in instructions
-    assert "Do not select `validation-lead`" in instructions
-    assert "Do not select `orchestrator`" in instructions
+    start = instructions.index("- Lead/coordinator agents are not reviewers.")
+    end = instructions.index("\n- ", start + 2)
+    invariant = instructions[start:end]
+
+    assert "Never panel" in invariant
+    for agent in (
+        "planning-lead",
+        "engineering-lead",
+        "validation-lead",
+        "ml-research-lead",
+        "orchestrator",
+    ):
+        assert f"`{agent}`" in invariant

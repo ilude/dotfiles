@@ -810,7 +810,7 @@ A fresh span id is generated for each subagent invocation (single, parallel, or 
 | File | Purpose |
 |------|---------|
 | `~/.dotfiles/pi/settings.json` | Default provider/model for session startup |
-| `~/.dotfiles/pi/AGENTS.md` | Global agent instructions (auto-loaded by Pi) |
+| `~/.dotfiles/pi/AGENTS.md` | Canonical shared global instructions, auto-loaded by Pi and linked from `claude/CLAUDE.md` |
 | `~/.dotfiles/pi/damage-control-rules.yaml` | Safety rules for damage-control extension |
 | `~/.dotfiles/pi/agents/teams.yaml` | Coordination roster consumed by current helper extensions; not a `/team` command |
 

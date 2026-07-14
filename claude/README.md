@@ -6,7 +6,7 @@ This is not a standalone Git repository workflow. Manage changes from the root d
 
 ## Contents
 
-- **CLAUDE.md** - Claude-specific repo guidance
+- **CLAUDE.md** - Symlink to the canonical shared instructions in `pi/AGENTS.md`
 - **commands/** - Claude command definitions; this is also the canonical shared command source for OpenCode overlays
 - **COMMANDS-QUICKSTART.md** - Documentation for custom commands
 - **settings.json** - Claude Code runtime settings
@@ -49,7 +49,7 @@ Make changes from the root repo, not by treating `~/.claude` as an independent c
 claude/
 ├── .gitignore              # Protects sensitive files
 ├── README.md               # This file
-├── CLAUDE.md               # Claude-specific repo guidance
+├── CLAUDE.md               # Symlink to ../pi/AGENTS.md
 ├── COMMANDS-QUICKSTART.md  # Command documentation
 ├── settings.json           # Claude Code settings
 ├── commands/               # Shared command source for Claude and OpenCode
@@ -75,8 +75,9 @@ The following files and directories are automatically excluded via `.gitignore`:
 
 ### Guidance Layers
 
-- Root `AGENTS.md` contains repo-wide rules for all coding agents.
-- `CLAUDE.md` contains Claude-specific runtime guidance for this repo.
+- Root `AGENTS.md` contains repository-specific rules for all coding agents.
+- `pi/AGENTS.md` is the canonical shared global instruction file.
+- `CLAUDE.md` links to `pi/AGENTS.md` so Claude Code receives the same global instructions.
 - Nested `.claude/CLAUDE.md` files still take precedence inside subprojects such as `menos/`.
 
 ### Custom Commands

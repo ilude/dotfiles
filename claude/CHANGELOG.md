@@ -1,3 +1,13 @@
+## 2026-07-14: Make Pi instructions canonical
+
+**Why:** Pi is the primary coding interface, while Claude Code should continue receiving the same shared global instructions.
+
+**Fix:** Reversed the instruction symlink so `pi/AGENTS.md` owns the content and `claude/CLAUDE.md` links to it. Updated live documentation and added a topology regression test.
+
+**Files:** ~/.dotfiles/pi/AGENTS.md, ~/.dotfiles/claude/CLAUDE.md, ~/.dotfiles/AGENTS.md, ~/.dotfiles/pi/README.md, ~/.dotfiles/claude/README.md, ~/.dotfiles/test/test_pi_agent_metadata.py
+
+---
+
 ## 2026-07-10: Treat explicit requests as authorization
 
 **Why:** Agents could ask for conversational confirmation after the user had already specified or selected an action, then trigger a second runtime safety confirmation for the same operation.
