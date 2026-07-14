@@ -1,4 +1,7 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import {
+	type ExtensionAPI,
+	withFileMutationQueue,
+} from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { formatToolError } from "../lib/extension-utils.js";
@@ -94,23 +97,26 @@ export default function (pi: ExtensionAPI) {
 				]),
 			),
 		}),
-		async execute(_id, params, _signal, _onUpdate, ctx) {
+		async execute(_id, params, signal, _onUpdate, ctx) {
 			try {
 				const cwd = ctx.cwd ?? process.cwd();
 				const dryRun = params.dryRun ?? false;
 				const summaries: string[] = [];
 				for (const raw of params.paths) {
 					const file = resolveSafePath(raw, cwd);
-					const before = readSafeText(file);
-					const result = applyTextOperations(
-						before,
-						params.operations as Operation[],
-					);
-					if (!dryRun && result.text !== before)
-						writeSafeText(file, result.text);
-					summaries.push(
-						`${file.relative}: ${dryRun ? "dry-run" : "updated"}; operations=${params.operations.length}; matches=${result.matches.join(",")}; preview=\n${boundedPreview(before, result.text)}`,
-					);
+					await withFileMutationQueue(file.absolute, async () => {
+						if (signal?.aborted) throw new Error("Text edit aborted");
+						const before = readSafeText(file);
+						const result = applyTextOperations(
+							before,
+							params.operations as Operation[],
+						);
+						if (!dryRun && result.text !== before)
+							writeSafeText(file, result.text);
+						summaries.push(
+							`${file.relative}: ${dryRun ? "dry-run" : "updated"}; operations=${params.operations.length}; matches=${result.matches.join(",")}; preview=\n${boundedPreview(before, result.text)}`,
+						);
+					});
 				}
 				return {
 					content: [{ type: "text" as const, text: summaries.join("\n\n") }],

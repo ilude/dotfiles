@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import textEditExtension, {
 	applyTextOperations,
@@ -78,6 +79,113 @@ describe("text_edit", () => {
 		);
 		expect(r.details.dryRun).toBe(true);
 		expect(readFileSync(path.join(cwd, "a.txt"), "utf8")).toBe("hello\n");
+	});
+	it("serializes concurrent same-target edits across canonical aliases", async () => {
+		const cwd = repo();
+		const target = path.join(cwd, "a.txt");
+		writeFileSync(target, "alpha beta\n");
+		const t = tool();
+		let enterBlocker!: () => void;
+		let releaseBlocker!: () => void;
+		const blockerEntered = new Promise<void>((resolve) => {
+			enterBlocker = resolve;
+		});
+		const blocker = withFileMutationQueue(target, async () => {
+			enterBlocker();
+			await new Promise<void>((resolve) => {
+				releaseBlocker = resolve;
+			});
+		});
+		await blockerEntered;
+
+		const calls = [
+			t.execute(
+				"1",
+				{
+					paths: ["a.txt"],
+					operations: [
+						{
+							mode: "literal_replace",
+							search: "alpha",
+							replace: "A",
+							expectedMatches: 1,
+						},
+					],
+				},
+				undefined,
+				undefined,
+				{ cwd },
+			),
+			t.execute(
+				"2",
+				{
+					paths: ["./a.txt"],
+					operations: [
+						{
+							mode: "literal_replace",
+							search: "beta",
+							replace: "B",
+							expectedMatches: 1,
+						},
+					],
+				},
+				undefined,
+				undefined,
+				{ cwd },
+			),
+		];
+		const whileBlocked = readFileSync(target, "utf8");
+		releaseBlocker();
+		await blocker;
+		const results = await Promise.all(calls);
+
+		expect(whileBlocked).toBe("alpha beta\n");
+		expect(results.every((result) => result.isError !== true)).toBe(true);
+		expect(readFileSync(target, "utf8")).toBe("A B\n");
+	});
+	it("does not mutate when aborted while waiting for the file queue", async () => {
+		const cwd = repo();
+		const target = path.join(cwd, "a.txt");
+		writeFileSync(target, "alpha\n");
+		const t = tool();
+		let enterBlocker!: () => void;
+		let releaseBlocker!: () => void;
+		const blockerEntered = new Promise<void>((resolve) => {
+			enterBlocker = resolve;
+		});
+		const blocker = withFileMutationQueue(target, async () => {
+			enterBlocker();
+			await new Promise<void>((resolve) => {
+				releaseBlocker = resolve;
+			});
+		});
+		await blockerEntered;
+		const controller = new AbortController();
+		const call = t.execute(
+			"1",
+			{
+				paths: ["a.txt"],
+				operations: [
+					{
+						mode: "literal_replace",
+						search: "alpha",
+						replace: "changed",
+						expectedMatches: 1,
+					},
+				],
+			},
+			controller.signal,
+			undefined,
+			{ cwd },
+		);
+
+		controller.abort();
+		releaseBlocker();
+		await blocker;
+		const result = await call;
+
+		expect(result.isError).toBe(true);
+		expect(readFileSync(target, "utf8")).toBe("alpha\n");
 	});
 	it("expectedMatches and allowZero protect silent misses", () => {
 		expect(() =>

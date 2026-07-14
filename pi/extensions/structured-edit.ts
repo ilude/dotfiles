@@ -1,4 +1,7 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import {
+	type ExtensionAPI,
+	withFileMutationQueue,
+} from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { formatToolError } from "../lib/extension-utils.js";
@@ -96,34 +99,37 @@ export default function (pi: ExtensionAPI) {
 				]),
 			),
 		}),
-		async execute(_id, params, _signal, _onUpdate, ctx) {
+		async execute(_id, params, signal, _onUpdate, ctx) {
 			try {
 				if (params.format !== "json")
 					throw new Error("Only format=json is supported in v1");
 				const file = resolveSafePath(params.path, ctx.cwd ?? process.cwd());
-				const before = readSafeText(file);
-				const data = JSON.parse(before);
-				const edited = applyStructuredOperations(
-					data,
-					params.operations as Operation[],
-				);
-				const text = setFinalNewline(
-					JSON.stringify(edited, null, params.indent ?? 2),
-					params.finalNewline ?? true,
-				);
-				writeSafeText(file, text);
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: `${file.relative}: updated ${params.operations.length} JSON operation(s)`,
+				return await withFileMutationQueue(file.absolute, async () => {
+					if (signal?.aborted) throw new Error("Structured edit aborted");
+					const before = readSafeText(file);
+					const data = JSON.parse(before);
+					const edited = applyStructuredOperations(
+						data,
+						params.operations as Operation[],
+					);
+					const text = setFinalNewline(
+						JSON.stringify(edited, null, params.indent ?? 2),
+						params.finalNewline ?? true,
+					);
+					writeSafeText(file, text);
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: `${file.relative}: updated ${params.operations.length} JSON operation(s)`,
+							},
+						],
+						details: {
+							format: "json",
+							finalNewline: params.finalNewline ?? true,
 						},
-					],
-					details: {
-						format: "json",
-						finalNewline: params.finalNewline ?? true,
-					},
-				};
+					};
+				});
 			} catch (error) {
 				return formatToolError(
 					error instanceof Error ? error.message : String(error),
