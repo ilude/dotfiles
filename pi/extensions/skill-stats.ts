@@ -1,18 +1,15 @@
-import {
-	createReadStream,
-	existsSync,
-	readdirSync,
-	readFileSync,
-	statSync,
-} from "node:fs";
-import fs from "node:fs/promises";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import readline from "node:readline";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import {
+	enumerateJsonlFiles,
+	readJsonlFile,
+	resolveSessionRoot,
+} from "../lib/session-jsonl.ts";
 
 export type SkillEvidenceSource =
 	| "explicit_slash_command"
@@ -35,6 +32,7 @@ export interface SkillStatsOptions {
 	sessionRoot?: string;
 	now?: Date;
 	cwd?: string;
+	signal?: AbortSignal;
 }
 
 export interface UnusedSkill {
@@ -204,13 +202,6 @@ function loadUnusedSkills(
 		.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function sessionRoot(): string {
-	return path.join(
-		process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), ".pi", "agent"),
-		"sessions",
-	);
-}
-
 function inc(map: Map<string, number>, key: string, by = 1): void {
 	map.set(key, (map.get(key) || 0) + by);
 }
@@ -336,20 +327,6 @@ function eventFromJson(
 	return out;
 }
 
-async function* jsonlFiles(root: string): AsyncGenerator<string> {
-	let entries: import("node:fs").Dirent[];
-	try {
-		entries = await fs.readdir(root, { withFileTypes: true });
-	} catch {
-		return;
-	}
-	for (const entry of entries) {
-		const p = path.join(root, entry.name);
-		if (entry.isDirectory()) yield* jsonlFiles(p);
-		else if (entry.isFile() && entry.name.endsWith(".jsonl")) yield p;
-	}
-}
-
 function fileTime(file: string): Date {
 	const m = path
 		.basename(file)
@@ -366,33 +343,20 @@ export async function collectSkillStats(
 		return {
 			errorMarkdown: `## /skill-stats usage\n\nUse \`/skill-stats [1..365|all ...]\`. Invalid argument: \`${safeLabel(parsed.error)}\`.`,
 		};
-	const root = options.sessionRoot || sessionRoot();
+	const root = options.sessionRoot || resolveSessionRoot();
 	const now = options.now || new Date();
 	const events: SkillEvent[] = [];
 	const diagnostics = new Map<string, number>();
-	for await (const file of jsonlFiles(root)) {
+	for (const file of await enumerateJsonlFiles(root, options.signal)) {
 		const fallback = fileTime(file);
-		const rl = readline.createInterface({
-			input: createReadStream(file),
-			crlfDelay: Infinity,
-		});
-		let line = 0;
-		for await (const raw of rl) {
-			line++;
-			try {
-				const parsedLine: unknown = JSON.parse(raw);
-				if (isObject(parsedLine))
-					events.push(
-						...eventFromJson(
-							parsedLine,
-							path.relative(root, file),
-							line,
-							fallback,
-						),
-					);
-			} catch {
-				inc(diagnostics, "malformed_json");
-			}
+		for await (const { line, value } of readJsonlFile(file, {
+			signal: options.signal,
+			onMalformedLine: () => inc(diagnostics, "malformed_json"),
+		})) {
+			if (isObject(value))
+				events.push(
+					...eventFromJson(value, path.relative(root, file), line, fallback),
+				);
 		}
 	}
 	const deduped = new Map<string, SkillEvent>();
@@ -435,7 +399,7 @@ export async function collectSkillStats(
 	return {
 		result: {
 			generatedAt: now,
-			sessionRootLabel: "~/.pi/agent/sessions",
+			sessionRootLabel: root,
 			windows: parsed.windows,
 			usage,
 			sources,
@@ -522,6 +486,7 @@ export default function (pi: ExtensionAPI) {
 		handler: async (args: string, ctx: ExtensionContext) => {
 			const { result, errorMarkdown } = await collectSkillStats(args, {
 				cwd: ctx.cwd,
+				sessionRoot: ctx.sessionManager.getSessionDir(),
 			});
 			const markdown =
 				errorMarkdown ||

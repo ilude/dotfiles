@@ -97,7 +97,7 @@ describe("/skill-stats extension", () => {
 		expect(result).toBeDefined();
 		if (!result) throw new Error("expected skill stats result");
 		const markdown = renderSkillStatsMarkdown(result);
-		expect(markdown).toContain("Session root: ~/.pi/agent/sessions");
+		expect(markdown).toContain(`Session root: ${root}`);
 		expect(markdown).toContain("## Unused skills");
 		expect(markdown).toContain("| Skill | Location | Count | Description |");
 		expect(markdown).toContain("| Skill | Location | Description |");
