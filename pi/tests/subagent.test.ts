@@ -1196,7 +1196,10 @@ You are a test agent.
 				if (!tool) throw new Error("subagent tool not registered");
 				const ctx = createMockCtx({
 					cwd: tmpDir,
-					sessionManager: { getSessionId: () => "session-integration" },
+					sessionManager: {
+						getSessionId: () => "session-integration",
+						getEntries: () => [],
+					},
 				});
 				const beforeAgent = pi._getHook("before_agent_start")[0]?.handler;
 				const settled = pi._getHook("agent_settled")[0]?.handler;

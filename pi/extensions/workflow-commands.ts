@@ -208,10 +208,15 @@ interface SecretCandidate {
 	context: string;
 }
 
+export type SecretReviewClassification =
+	| "likely_secret"
+	| "false_positive"
+	| "ambiguous";
+
 interface SecretReviewFinding {
 	path: string;
 	label: string;
-	classification: "likely_secret" | "example" | "ambiguous";
+	classification: SecretReviewClassification;
 	reason: string;
 	match?: string;
 }
@@ -1541,12 +1546,24 @@ function isValidConventionalCommit(subject: string) {
 	return CONVENTIONAL_COMMIT_RE.test(subject);
 }
 
-function parseSecretReviewResult(text: string): SecretReviewResult {
+export function parseSecretReviewResult(text: string): SecretReviewResult {
 	const jsonText = extractJsonObject(text);
 	if (!jsonText) throw new Error("Secret reviewer did not return JSON");
 	const parsed = JSON.parse(jsonText) as SecretReviewResult;
-	if (!parsed || !Array.isArray(parsed.findings))
+	const classifications = new Set([
+		"likely_secret",
+		"false_positive",
+		"ambiguous",
+	]);
+	if (
+		!parsed ||
+		!Array.isArray(parsed.findings) ||
+		parsed.findings.some(
+			(finding) => !classifications.has(finding.classification),
+		)
+	) {
 		throw new Error("Secret reviewer returned invalid findings");
+	}
 	return parsed;
 }
 
@@ -1564,6 +1581,12 @@ async function reviewSecretFindingsWithLlm(
 	return parseSecretReviewResult(text).findings;
 }
 
+export function isBlockingSecretReviewClassification(
+	classification: SecretReviewClassification,
+): boolean {
+	return classification === "likely_secret" || classification === "ambiguous";
+}
+
 async function confirmSecretScan(
 	pi: ExtensionAPI,
 	ctx: WorkflowContext,
@@ -1571,10 +1594,8 @@ async function confirmSecretScan(
 ) {
 	if (findings.length === 0) return true;
 	const reviewed = await reviewSecretFindingsWithLlm(pi, ctx, findings);
-	const blocking = reviewed.filter(
-		(finding) =>
-			finding.classification === "likely_secret" ||
-			finding.classification === "ambiguous",
+	const blocking = reviewed.filter((finding) =>
+		isBlockingSecretReviewClassification(finding.classification),
 	);
 	if (blocking.length === 0) return true;
 	const preview = blocking

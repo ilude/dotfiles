@@ -40,12 +40,16 @@ async function fire(
 	}
 }
 
-function setupExtension() {
+function setupExtension(bedrockAvailable = true) {
 	const pi = createMockPi();
 	const setStatus = vi.fn();
 	const notify = vi.fn();
 	const ctx = createMockCtx({
 		hasUI: true,
+		modelRegistry: {
+			getAvailable: () =>
+				bedrockAvailable ? [{ provider: "amazon-bedrock" }] : [],
+		},
 		ui: {
 			notify,
 			setStatus,
@@ -115,7 +119,16 @@ describe("bedrock message filtering", () => {
 });
 
 describe("bedrock cost extension", () => {
-	it("sets the footer status from the existing ledger on session_start", async () => {
+	it("omits the footer status when Bedrock is unavailable", async () => {
+		const { pi, ctx, setStatus, notify } = setupExtension(false);
+
+		await fire(pi, "session_start", { type: "session_start" }, ctx);
+
+		expect(setStatus).toHaveBeenLastCalledWith("bedrock", undefined);
+		expect(notify).not.toHaveBeenCalled();
+	});
+
+	it("sets the footer status from the existing ledger when Bedrock is available", async () => {
 		await recordBedrockUsage({
 			model: "anthropic.claude-test",
 			usage: { input: 10, output: 5, cost: { total: 1.23456 } },

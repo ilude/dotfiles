@@ -3,11 +3,11 @@ import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { StringEnum, Type } from "@earendil-works/pi-ai";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
 import { recordEvent } from "../lib/metrics.js";
 import { buildOrchestrationInteractionEvent } from "../lib/orchestration-telemetry.js";
 import { sanitizeTaskValue } from "../lib/task-security.js";
@@ -47,6 +47,8 @@ const MAX_TOOL_RESULT = 2_000;
 const REVIEW_MODEL_PROVIDER = "openai-codex";
 const REVIEW_MODEL_ID = "gpt-5.6-terra";
 const REVIEW_MODEL_EFFORT = "low";
+const LEARNING_DECISION_LOCK_ATTEMPTS = 80;
+const LEARNING_DECISION_LOCK_RETRY_MS = 25;
 const MUTATION_TOOLS = new Set([
 	"edit",
 	"write",
@@ -69,6 +71,8 @@ interface ActiveTool {
 interface ActiveInteraction {
 	interactionId: string;
 	sessionId: string;
+	repoRoot: string;
+	hasPriorAssistant: boolean;
 	mode: WorkflowMode;
 	startedAt: number;
 	startedMonotonic: number;
@@ -103,6 +107,25 @@ interface CaptureAnnotation {
 	captureNote?: string;
 }
 
+interface PendingLearningDiscussion {
+	candidateId: string;
+	userDecisionText?: string;
+}
+
+export interface LearningDecisionRecord {
+	schemaVersion: 1;
+	candidateId: string;
+	decidedAt: string;
+	decision: "applied" | "skipped";
+	decisionText: string;
+	approvedText?: string;
+	targetPaths?: string[];
+	validation?: string;
+	rollback?: string;
+	reason?: string;
+	experimentId?: string;
+}
+
 function storageRoot(): string {
 	return workflowFrictionStorageRoot();
 }
@@ -129,6 +152,14 @@ function interactionsPath(): string {
 
 function experimentsPath(): string {
 	return path.join(storageRoot(), "experiments.jsonl");
+}
+
+export function learningDecisionsPath(): string {
+	return path.join(storageRoot(), "learning-decisions.jsonl");
+}
+
+function learningDecisionLockPath(): string {
+	return path.join(storageRoot(), "learning-decisions.lock");
 }
 
 function workerLockPath(): string {
@@ -262,6 +293,14 @@ function resultText(result: unknown): string {
 function modeForInput(text: string): WorkflowMode {
 	if (/^\/(?:plan-it|review-it|do-it)\b/i.test(text.trim())) return "engineer";
 	return "explore";
+}
+
+function sessionHasPriorAssistant(ctx: ExtensionContext): boolean {
+	return ctx.sessionManager
+		.getEntries()
+		.some(
+			(entry) => entry.type === "message" && entry.message.role === "assistant",
+		);
 }
 
 function failedResult(isError: boolean, text: string): boolean {
@@ -404,6 +443,177 @@ async function acquireWorkerLock(): Promise<fs.promises.FileHandle | null> {
 	return null;
 }
 
+function workspaceRoot(cwd: string): string {
+	let current = path.resolve(cwd);
+	const root = path.parse(current).root;
+	while (true) {
+		if (fs.existsSync(path.join(current, ".git"))) return current;
+		if (current === root) return path.resolve(cwd);
+		const parent = path.dirname(current);
+		if (parent === current) return path.resolve(cwd);
+		current = parent;
+	}
+}
+
+function normalizedWorkspace(value: string): string {
+	const normalized = path
+		.resolve(value)
+		.replaceAll("\\", "/")
+		.replace(/\/+$/, "");
+	return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
+function learningScope(record: StoredReviewRecord): string {
+	return (
+		record.review?.reusableInstruction.scope ??
+		(record.review?.reusableInstruction.targetSkill ? "skill" : "uncertain")
+	);
+}
+
+function isLearningCandidate(record: StoredReviewRecord): boolean {
+	return Boolean(
+		record.status === "completed" &&
+			record.review?.reusableInstruction.likely === "yes" &&
+			record.review.suggestedChange?.trim(),
+	);
+}
+
+function learningCandidateVisible(
+	record: StoredReviewRecord,
+	cwd: string,
+): boolean {
+	return (
+		Boolean(record.repoRoot) &&
+		normalizedWorkspace(record.repoRoot ?? "") ===
+			normalizedWorkspace(workspaceRoot(cwd))
+	);
+}
+
+export async function readCurrentLearningDecisions(): Promise<
+	LearningDecisionRecord[]
+> {
+	const latest = new Map<string, LearningDecisionRecord>();
+	for (const record of await readJsonLines<LearningDecisionRecord>(
+		learningDecisionsPath(),
+	))
+		if (
+			record?.schemaVersion === 1 &&
+			typeof record.candidateId === "string" &&
+			(record.decision === "applied" || record.decision === "skipped")
+		)
+			latest.set(record.candidateId, record);
+	return [...latest.values()].sort(
+		(a, b) =>
+			a.decidedAt.localeCompare(b.decidedAt) ||
+			a.candidateId.localeCompare(b.candidateId),
+	);
+}
+
+async function withLearningDecisionLock<T>(
+	operation: () => Promise<T>,
+): Promise<T> {
+	await ensureStorage();
+	const lockPath = learningDecisionLockPath();
+	let handle: fs.promises.FileHandle | null = null;
+	for (
+		let attempt = 0;
+		attempt < LEARNING_DECISION_LOCK_ATTEMPTS;
+		attempt += 1
+	) {
+		try {
+			handle = await fsp.open(lockPath, "wx", 0o600);
+			await handle.writeFile(`${process.pid}\n`, "utf8");
+			break;
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+			let owner = 0;
+			try {
+				owner = Number.parseInt(
+					(await fsp.readFile(lockPath, "utf8")).trim(),
+					10,
+				);
+			} catch {
+				owner = 0;
+			}
+			if (owner <= 0 || !processExists(owner)) {
+				await fsp.rm(lockPath, { force: true });
+				continue;
+			}
+			await new Promise((resolve) =>
+				setTimeout(resolve, LEARNING_DECISION_LOCK_RETRY_MS),
+			);
+		}
+	}
+	if (!handle) throw new Error("Learning decision store is busy");
+	try {
+		return await operation();
+	} finally {
+		await handle.close();
+		await fsp.rm(lockPath, { force: true });
+	}
+}
+
+async function recordLearningDecision(
+	decision: LearningDecisionRecord,
+	experiment?: ExperimentRecord,
+): Promise<void> {
+	await withLearningDecisionLock(async () => {
+		if (
+			(await readCurrentLearningDecisions()).some(
+				(item) => item.candidateId === decision.candidateId,
+			)
+		)
+			throw new Error("Learning candidate is already resolved");
+		if (experiment) {
+			const experiments = await readJsonLines<ExperimentRecord>(
+				experimentsPath(),
+			);
+			if (
+				!experiments.some(
+					(item) => item.experimentId === experiment.experimentId,
+				)
+			)
+				await appendJsonLine(experimentsPath(), sanitizeTaskValue(experiment));
+		}
+		await appendJsonLine(learningDecisionsPath(), sanitizeTaskValue(decision));
+	});
+}
+
+function buildLearningDiscussionPrompt(record: StoredReviewRecord): string {
+	const review = record.review;
+	if (!review) throw new Error("Learning candidate review is missing");
+	return `Discuss exactly one cross-session learning candidate with the user.
+
+Candidate ID: ${record.interactionId}
+Proposed lesson: ${review.suggestedChange}
+Scope hint: ${learningScope(record)}
+Target skill hint: ${review.reusableInstruction.targetSkill ?? "none"}
+Reason: ${review.reusableInstruction.reason}
+Evidence:
+${review.evidence.map((item) => `- ${item}`).join("\n")}
+
+Use the full 1-3-1 format in normal conversation:
+- Problem: explain the observed recurring risk or correction and its evidence.
+- Goal: state the future behavior the lesson should produce.
+- Option 1: Apply the proposed lesson as written.
+- Option 2: Edit the lesson or target before applying it.
+- Option 3: Skip it as non-durable or incorrect.
+- Recommendation: choose one option and explain why.
+
+Wait for the user's natural-language decision. Do not edit files or resolve the candidate before the user selects an option. Once selected, execute that choice immediately without another approval request.
+
+For Apply or Edit:
+- Inspect existing AGENTS.md files and relevant skills before editing.
+- Check for duplicate or contradictory guidance.
+- Use the narrowest existing tracked surface.
+- Prefer a test, hook, validator, or code fix when deterministic enforcement is required.
+- Do not create a new skill from one interaction.
+- Validate the changed surface through the user-facing Pi workflow.
+- Call learning_candidate_decide with decision applied, the user's exact decision text, the final approved text, target paths, validation evidence, and rollback instructions.
+
+For Skip, call learning_candidate_decide with decision skipped, the user's exact decision text, and the user's reason.`;
+}
+
 async function appendFailedReview(
 	job: ReviewJob,
 	error: string,
@@ -421,6 +631,7 @@ async function appendFailedReview(
 		mode: packet.mode,
 		selectionReasons: packet.selectionReasons,
 		captureNote: packet.captureNote,
+		repoRoot: packet.repoRoot,
 		status: "failed",
 		error: bounded(sanitizeTaskValue(error), 600),
 	};
@@ -484,6 +695,7 @@ async function executeReview(
 			mode: finalPacket.mode,
 			selectionReasons: finalPacket.selectionReasons,
 			captureNote: finalPacket.captureNote,
+			repoRoot: finalPacket.repoRoot,
 			status: "completed" as const,
 			review,
 		});
@@ -560,6 +772,7 @@ function packetFromInteraction(
 		schemaVersion: FRICTION_SCHEMA_VERSION,
 		interactionId: active.interactionId,
 		sessionId: active.sessionId,
+		repoRoot: active.repoRoot,
 		mode: active.mode,
 		startedAt: new Date(active.startedAt).toISOString(),
 		settledAt: new Date(settledAt).toISOString(),
@@ -600,6 +813,12 @@ async function recentReviewRecords(): Promise<StoredReviewRecord[]> {
 	);
 }
 
+async function learningReviewRecords(): Promise<StoredReviewRecord[]> {
+	return (await readJsonLines<StoredReviewRecord>(reviewsPath())).filter(
+		(record) => isLearningCandidate(record),
+	);
+}
+
 async function recentInteractionMetadata(): Promise<
 	InteractionMetadataRecord[]
 > {
@@ -620,6 +839,7 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 	let active: ActiveInteraction | null = null;
 	let latestCompleted: InteractionPacket | null = null;
 	let currentSessionId = "unknown";
+	let pendingLearningDiscussion: PendingLearningDiscussion | null = null;
 
 	pi.on("session_start", async (_event, ctx) => {
 		const sessionId = ctx.sessionManager.getSessionId();
@@ -633,10 +853,16 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 		resetOrchestrationInteraction(currentSessionId);
 		active = null;
 		pendingInput = null;
+		pendingLearningDiscussion = null;
 	});
 
 	pi.on("input", async (event) => {
 		if (event.source === "extension") return { action: "continue" as const };
+		if (pendingLearningDiscussion && event.text.trim())
+			pendingLearningDiscussion.userDecisionText = bounded(
+				event.text.trim(),
+				1_000,
+			);
 		if (active) {
 			active.userTexts.push(bounded(event.text, MAX_USER_TEXT));
 			return { action: "continue" as const };
@@ -672,6 +898,8 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 		active = {
 			interactionId: createInteractionId(),
 			sessionId,
+			repoRoot: workspaceRoot(ctx.cwd),
+			hasPriorAssistant: sessionHasPriorAssistant(ctx),
 			mode: submission?.mode ?? "unknown",
 			startedAt,
 			startedMonotonic: performance.now() - Math.max(0, now - startedAt),
@@ -746,6 +974,10 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 			provisional.userText,
 			completed.tools,
 		);
+		if (!completed.hasPriorAssistant) {
+			const correctionIndex = triggers.indexOf("user_correction");
+			if (correctionIndex >= 0) triggers.splice(correctionIndex, 1);
+		}
 		if (
 			provisional.subagentRunId &&
 			provisional.durationMs >= REVIEW_MIN_DURATION_MS
@@ -817,6 +1049,51 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 		},
 	});
 
+	pi.registerCommand("learning-review", {
+		description:
+			"Discuss one quarantined cross-session learning candidate using the full 1-3-1 format",
+		handler: async (args: string, ctx: ExtensionContext) => {
+			if (args.trim()) {
+				ctx.ui.notify("Usage: /learning-review", "warning");
+				return;
+			}
+			const resolved = new Set(
+				(await readCurrentLearningDecisions()).map(
+					(decision) => decision.candidateId,
+				),
+			);
+			const candidate = (await learningReviewRecords())
+				.filter(
+					(record) =>
+						isLearningCandidate(record) &&
+						!resolved.has(record.interactionId) &&
+						learningCandidateVisible(record, ctx.cwd),
+				)
+				.sort(
+					(a, b) =>
+						a.reviewedAt.localeCompare(b.reviewedAt) ||
+						a.interactionId.localeCompare(b.interactionId),
+				)[0];
+			if (!candidate) {
+				ctx.ui.notify(
+					"No pending learning candidates exist for this workspace.",
+					"info",
+				);
+				return;
+			}
+			pendingLearningDiscussion = { candidateId: candidate.interactionId };
+			noteWorkflowSubmission("/learning-review", "explore");
+			pi.sendMessage(
+				{
+					customType: "workflow-friction.learningReview",
+					content: buildLearningDiscussionPrompt(candidate),
+					display: false,
+				},
+				{ triggerTurn: true, deliverAs: "followUp" },
+			);
+		},
+	});
+
 	pi.registerCommand("workflow-review", {
 		description: "Aggregate the previous 15 days of workflow-friction reviews",
 		handler: async (args: string, ctx: ExtensionContext) => {
@@ -862,6 +1139,122 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 				},
 				{ triggerTurn: true, deliverAs: "followUp" },
 			);
+		},
+	});
+
+	pi.registerTool({
+		name: "learning_candidate_decide",
+		label: "Record Learning Decision",
+		description:
+			"Record the user's decision after discussing one cross-session learning candidate.",
+		promptSnippet:
+			"Record an applied or skipped learning candidate after the user decides.",
+		promptGuidelines: [
+			"Call learning_candidate_decide only after the user explicitly chooses Apply, Edit, or Skip for the candidate shown by /learning-review.",
+			"For applied learning candidates, call learning_candidate_decide only after the approved change is applied and validated.",
+		],
+		parameters: Type.Object({
+			candidateId: Type.String(),
+			decision: StringEnum(["applied", "skipped"] as const),
+			decisionText: Type.String({ maxLength: 1_000 }),
+			approvedText: Type.Optional(Type.String({ maxLength: 600 })),
+			targetPaths: Type.Array(Type.String(), { maxItems: 10 }),
+			validation: Type.Optional(Type.String({ maxLength: 2_000 })),
+			rollback: Type.Optional(Type.String({ maxLength: 1_000 })),
+			reason: Type.Optional(Type.String({ maxLength: 1_000 })),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const values = params as {
+				candidateId: string;
+				decision: "applied" | "skipped";
+				decisionText: string;
+				approvedText?: string;
+				targetPaths: string[];
+				validation?: string;
+				rollback?: string;
+				reason?: string;
+			};
+			const decisionText = bounded(values.decisionText.trim(), 1_000);
+			if (
+				pendingLearningDiscussion?.candidateId !== values.candidateId ||
+				!pendingLearningDiscussion.userDecisionText ||
+				pendingLearningDiscussion.userDecisionText !== decisionText
+			)
+				throw new Error(
+					"Learning candidate requires a subsequent user decision from /learning-review",
+				);
+			const candidate = (await learningReviewRecords()).find(
+				(record) =>
+					record.interactionId === values.candidateId &&
+					isLearningCandidate(record) &&
+					learningCandidateVisible(record, ctx.cwd),
+			);
+			if (!candidate?.review)
+				throw new Error(
+					"Learning candidate was not found or is no longer eligible",
+				);
+			const now = new Date().toISOString();
+			const targetPaths = [
+				...new Set(
+					values.targetPaths
+						.map((item) => bounded(item.trim(), 300))
+						.filter(Boolean),
+				),
+			];
+			const approvedText = bounded(values.approvedText?.trim() ?? "", 600);
+			const validation = bounded(values.validation?.trim() ?? "", 2_000);
+			const rollback = bounded(values.rollback?.trim() ?? "", 1_000);
+			const reason = bounded(values.reason?.trim() ?? "", 1_000);
+			if (
+				values.decision === "applied" &&
+				(!approvedText || targetPaths.length === 0 || !validation || !rollback)
+			)
+				throw new Error(
+					"Applied candidates require approved text, target paths, validation evidence, and rollback instructions",
+				);
+			if (values.decision === "skipped" && !reason)
+				throw new Error("Skipped candidates require a reason");
+
+			const experimentId = `experiment-${values.candidateId}`;
+			const decision: LearningDecisionRecord = sanitizeTaskValue({
+				schemaVersion: 1,
+				candidateId: values.candidateId,
+				decidedAt: now,
+				decision: values.decision,
+				decisionText,
+				approvedText: approvedText || undefined,
+				targetPaths: targetPaths.length > 0 ? targetPaths : undefined,
+				validation: validation || undefined,
+				rollback: rollback || undefined,
+				reason: reason || undefined,
+				experimentId: values.decision === "applied" ? experimentId : undefined,
+			});
+			const experiment: ExperimentRecord | undefined =
+				values.decision === "applied"
+					? sanitizeTaskValue({
+							schemaVersion: FRICTION_SCHEMA_VERSION,
+							experimentId,
+							recordedAt: now,
+							sessionId: currentSessionId,
+							pattern: bounded(
+								candidate.review.reusableInstruction.reason,
+								300,
+							),
+							treatment: approvedText,
+							surfaces: targetPaths,
+						})
+					: undefined;
+			await recordLearningDecision(decision, experiment);
+			pendingLearningDiscussion = null;
+			return {
+				content: [
+					{
+						type: "text" as const,
+						text: `Learning candidate ${decision.candidateId} marked ${decision.decision}.`,
+					},
+				],
+				details: decision,
+			};
 		},
 	});
 

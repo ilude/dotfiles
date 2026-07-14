@@ -69,6 +69,8 @@ const OFFICIAL_USAGE_PAGE = "https://chatgpt.com/codex/settings/usage";
 const CODEX_FOOTER_REFRESH_MS = 5 * 60 * 1000;
 const CODEX_FOOTER_FETCH_TIMEOUT_MS = 15 * 1000;
 const CODEX_FOOTER_FAILURE_THRESHOLD = 3;
+const FIVE_HOUR_WINDOW_SECONDS = 5 * 60 * 60;
+const WEEKLY_WINDOW_SECONDS = 7 * 24 * 60 * 60;
 
 let codexFooterInterval: ReturnType<typeof setInterval> | null = null;
 let codexFooterAbortController: AbortController | null = null;
@@ -307,20 +309,37 @@ function formatWindow(
 	return `${color(label.padEnd(8), ANSI_LIGHT_BLUE, colorEnabled)} ${color(percent, percentColor, colorEnabled)} used${formatReset(label, window)}`;
 }
 
+function windowsByDuration(limit: ApiRateLimit | null | undefined): {
+	fiveHour?: ApiWindow;
+	weekly?: ApiWindow;
+	windowCount: number;
+} {
+	const windows = [limit?.primary_window, limit?.secondary_window].filter(
+		(window): window is ApiWindow => Boolean(window),
+	);
+	return {
+		fiveHour: windows.find(
+			(window) => window.limit_window_seconds === FIVE_HOUR_WINDOW_SECONDS,
+		),
+		weekly: windows.find(
+			(window) => window.limit_window_seconds === WEEKLY_WINDOW_SECONDS,
+		),
+		windowCount: windows.length,
+	};
+}
+
 function formatLimit(
 	name: string,
 	limit: ApiRateLimit | null | undefined,
 	colorEnabled: boolean,
 ): string[] {
 	const lines = [color(`${name}:`, ANSI_LIGHT_GREEN, colorEnabled)];
-	const primary = formatWindow("5h", limit?.primary_window, colorEnabled);
-	const secondary = formatWindow(
-		"weekly",
-		limit?.secondary_window,
-		colorEnabled,
-	);
-	if (primary) lines.push(primary);
-	if (secondary) lines.push(secondary);
+	const windows = windowsByDuration(limit);
+	const fiveHour = formatWindow("5h", windows.fiveHour, colorEnabled);
+	const weekly = formatWindow("weekly", windows.weekly, colorEnabled);
+	if (fiveHour) lines.push(fiveHour);
+	else if (windows.windowCount > 0) lines.push("5h       disabled");
+	if (weekly) lines.push(weekly);
 	if (lines.length === 1) lines.push("  no window data reported");
 	return lines;
 }
@@ -396,20 +415,14 @@ export function formatCodexFooterStatus(
 	options: { color?: boolean } = {},
 ): string {
 	const colorEnabled = options.color ?? false;
-	const primary = formatFooterWindow(
-		"5h",
-		usage.rate_limit?.primary_window,
-		colorEnabled,
+	const windows = windowsByDuration(usage.rate_limit);
+	if (windows.windowCount === 0) return "codex: unknown";
+	const fiveHour = formatFooterWindow("5h", windows.fiveHour, colorEnabled);
+	const weekly = formatFooterWindow("wk", windows.weekly, colorEnabled);
+	const parts = [fiveHour ?? "5h disabled", weekly].filter(
+		(value): value is string => Boolean(value),
 	);
-	const secondary = formatFooterWindow(
-		"wk",
-		usage.rate_limit?.secondary_window,
-		colorEnabled,
-	);
-	const parts = [primary, secondary].filter((value): value is string =>
-		Boolean(value),
-	);
-	return parts.length > 0 ? `codex ${parts.join(" | ")}` : "codex: unknown";
+	return `codex ${parts.join(" | ")}`;
 }
 
 function formatFooterWindow(

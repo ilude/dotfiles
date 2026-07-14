@@ -17,8 +17,10 @@ import {
 	confirmCommitMessage,
 	filterCommitSafeFiles,
 	getCommitRuntimePathReason,
+	isBlockingSecretReviewClassification,
 	normalizeCommitSubject,
 	parseCommitPlan,
+	parseSecretReviewResult,
 	parseUntrackedClassifierResult,
 	proposeCommitMessage,
 	validateCommitPlan,
@@ -77,6 +79,45 @@ describe("parseCommitPlan", () => {
 		expect(plan.groups[0]?.subject).toBe(
 			"style(status): dim context token counts",
 		);
+	});
+});
+
+describe("parseSecretReviewResult", () => {
+	it("accepts false positives so commit processing can continue", () => {
+		const result = parseSecretReviewResult(
+			JSON.stringify({
+				findings: [
+					{
+						path: "example.ts",
+						label: "Hardcoded password/token/secret/key",
+						classification: "false_positive",
+						reason: "Type annotation with no credential value.",
+					},
+				],
+			}),
+		);
+
+		expect(result.findings[0]?.classification).toBe("false_positive");
+		expect(isBlockingSecretReviewClassification("false_positive")).toBe(false);
+		expect(isBlockingSecretReviewClassification("likely_secret")).toBe(true);
+		expect(isBlockingSecretReviewClassification("ambiguous")).toBe(true);
+	});
+
+	it("rejects unknown secret-review classifications", () => {
+		expect(() =>
+			parseSecretReviewResult(
+				JSON.stringify({
+					findings: [
+						{
+							path: "example.ts",
+							label: "candidate",
+							classification: "safe",
+							reason: "Unrecognized classification.",
+						},
+					],
+				}),
+			),
+		).toThrow("Secret reviewer returned invalid findings");
 	});
 });
 

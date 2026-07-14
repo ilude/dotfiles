@@ -22,6 +22,27 @@ evidence artifacts whenever practical.
 
 Workflow telemetry owns command-lifecycle episodes, phases, and workflow evidence. Orchestration telemetry owns delegation topology, worker and parent usage, cost, output-byte handling, and run status. Correlate the two only through explicit IDs: workflow records use their episode and artifact identifiers, while orchestration records use `interactionId`, `orchestrationId`, `runId`, and optional `taskId`. Neither stream infers ownership or joins from timestamps, names, or paths.
 
+## Session Lifecycle Evidence
+
+Persisted session JSONL may contain a custom `workflow.sessionClose` entry when
+a logical session runtime closes. The marker is metadata-only and does not
+participate in model context.
+
+| Field | Meaning |
+|---|---|
+| `schemaVersion` | Marker schema version, currently `1`. |
+| `sessionId` | Pi session UUID. |
+| `reason` | `quit`, `new`, `resume`, or `fork`. |
+| `closedAt` | ISO-8601 close timestamp. |
+| `targetSessionFile` | Optional destination for session replacement. |
+
+A close marker means the runtime branch definitely closed. It does not mean the
+requested work completed, validation passed, or the user-facing workflow
+succeeded. Reload does not create a marker because it preserves the logical
+session. An absent marker means close state is unknown or provisional, not that
+the session is definitely open. Existing sessions created before this marker
+remain valid.
+
 ## Goals
 
 1. Reproduce a workflow episode from durable local artifacts.

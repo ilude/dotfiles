@@ -38,7 +38,17 @@ export function shouldRecordBedrockMessage(
 	);
 }
 
+function isBedrockAvailable(ctx: ExtensionContext): boolean {
+	return ctx.modelRegistry
+		.getAvailable()
+		.some((model) => model.provider === BEDROCK_PROVIDER);
+}
+
 async function refreshStatus(ctx: ExtensionContext): Promise<void> {
+	if (!isBedrockAvailable(ctx)) {
+		ctx.ui.setStatus(STATUS_KEY, undefined);
+		return;
+	}
 	const summary = await getCurrentBedrockMonthSummary();
 	ctx.ui.setStatus(STATUS_KEY, formatBedrockStatus(summary));
 }

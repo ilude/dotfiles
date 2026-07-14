@@ -16,6 +16,14 @@ const FAILURE_PATTERN =
 	/\b(?:command exited with code [1-9]\d*|elifecycle|failed|non-zero exit|timed out|traceback)\b/i;
 const FRUSTRATION_PATTERN =
 	/\b(?:bullshit|crap|damn|fuck(?:ed|ing)?|shit|wtf|not what i asked|over[- ]?designed|over[- ]?engineer(?:ed|ing)?|over[- ]?test(?:ed|ing)?|spinning (?:your|our) wheels|taking too long)\b/i;
+const USER_CORRECTION_PATTERN =
+	/(?:^|[.!?\n]\s*)(?:no[,;:]|actually[,;:]|that(?:'s| is) (?:wrong|not right)|don(?:'t| not)\b|do not\b|stop\b|you should(?:n't| not)?\b|i (?:said|asked|meant)\b|use\b[^\n.!?]+\binstead\b)/i;
+const EXPLICIT_LEARNING_PATTERN =
+	/(?:^|[.!?\n]\s*)(?:(?:please\s+)?remember(?:\s+that|\s+this)?|from now on|going forward|make (?:a )?note of this|do not forget|don't forget)\b/i;
+const IMMEDIATE_LEARNING_TRIGGERS = new Set([
+	"explicit_learning_request",
+	"user_correction",
+]);
 
 export type WorkflowMode = "explore" | "engineer" | "unknown";
 export type ReviewClassification =
@@ -54,6 +62,7 @@ export interface InteractionPacket {
 	assistantText: string;
 	tools: ToolTrace[];
 	captureNote?: string;
+	repoRoot?: string;
 }
 
 export interface InteractionMetadataRecord {
@@ -91,6 +100,14 @@ export interface InteractionMetadataSummary {
 	p95DurationMs: number;
 }
 
+export type LearningScope =
+	| "user"
+	| "project"
+	| "path"
+	| "skill"
+	| "deterministic-control"
+	| "uncertain";
+
 export interface ReviewResult {
 	classification: ReviewClassification;
 	confidence: number;
@@ -99,6 +116,7 @@ export interface ReviewResult {
 	reusableInstruction: {
 		likely: "yes" | "no" | "uncertain";
 		reason: string;
+		scope?: LearningScope;
 		targetSkill?: string;
 	};
 	suggestedChange?: string;
@@ -116,6 +134,7 @@ export interface StoredReviewRecord {
 	mode: WorkflowMode;
 	selectionReasons: string[];
 	captureNote?: string;
+	repoRoot?: string;
 	status: "completed" | "failed";
 	review?: ReviewResult;
 	error?: string;
@@ -467,6 +486,9 @@ export function detectFrictionTriggers(
 ): string[] {
 	const reasons = new Set<string>();
 	if (FRUSTRATION_PATTERN.test(userText)) reasons.add("user_frustration");
+	if (USER_CORRECTION_PATTERN.test(userText)) reasons.add("user_correction");
+	if (EXPLICIT_LEARNING_PATTERN.test(userText))
+		reasons.add("explicit_learning_request");
 
 	const failedCommands = new Map<string, number>();
 	const validationCommands = new Map<string, number>();
@@ -517,6 +539,10 @@ export function selectInteractionForReview(input: {
 		for (const trigger of input.triggers) reasons.add(trigger);
 		return [...reasons].sort();
 	}
+
+	for (const trigger of input.triggers)
+		if (IMMEDIATE_LEARNING_TRIGGERS.has(trigger)) reasons.add(trigger);
+	if (reasons.size > 0) return [...reasons].sort();
 
 	if (
 		input.durationMs >= REVIEW_MIN_DURATION_MS &&
@@ -578,6 +604,20 @@ export function parseReviewResult(raw: string): ReviewResult | null {
 		reusable.likely !== "uncertain"
 	)
 		return null;
+	const learningScopes = new Set<LearningScope>([
+		"user",
+		"project",
+		"path",
+		"skill",
+		"deterministic-control",
+		"uncertain",
+	]);
+	if (
+		reusable.scope !== undefined &&
+		(typeof reusable.scope !== "string" ||
+			!learningScopes.has(reusable.scope as LearningScope))
+	)
+		return null;
 	if (!Array.isArray(value.evidence)) return null;
 
 	return {
@@ -591,6 +631,7 @@ export function parseReviewResult(raw: string): ReviewResult | null {
 		reusableInstruction: {
 			likely: reusable.likely,
 			reason: trimText(reusable.reason, 500),
+			scope: (reusable.scope as LearningScope | undefined) ?? undefined,
 			targetSkill: trimText(reusable.targetSkill, 120) || undefined,
 		},
 		suggestedChange: trimText(value.suggestedChange, 600) || undefined,
@@ -601,13 +642,16 @@ export function buildReviewPrompt(packet: InteractionPacket): string {
 	return `Review one Pi interaction for workflow friction.
 
 Return JSON only with this exact shape:
-{"classification":"productive|mixed|churn|uncertain","confidence":0.0,"summary":"brief assessment","evidence":["specific bounded evidence"],"reusableInstruction":{"likely":"yes|no|uncertain","reason":"whether clearer reusable instructions would have prevented repeated failures","targetSkill":"optional existing skill or gap"},"suggestedChange":"optional smallest evidence-backed improvement"}
+{"classification":"productive|mixed|churn|uncertain","confidence":0.0,"summary":"brief assessment","evidence":["specific bounded evidence"],"reusableInstruction":{"likely":"yes|no|uncertain","reason":"whether a durable lesson is supported","scope":"user|project|path|skill|deterministic-control|uncertain","targetSkill":"optional existing skill"},"suggestedChange":"required concise imperative lesson when likely is yes; otherwise omit"}
 
 Rules:
 - Judge progress, not raw activity volume.
 - Distinguish productive debugging from repeated work that produced no new evidence.
 - Check for premature or repeated validation, failure isolation before retry, delegation overhead, scope drift, unnecessary complexity, and whether the requested outcome was reached.
-- When tools or helper scripts failed repeatedly, decide whether clearer reusable instructions probably would have prevented it. Do not force a skill recommendation when the problem is a tool, runtime, dependency, or task-specific defect.
+- Treat explicit user corrections and remember requests as candidate signals, not automatic policy.
+- Reject one-off task directions, transient environment state, missing dependencies, unverified technical claims, and isolated tool defects as durable lessons.
+- When tools or helper scripts failed repeatedly, decide whether clearer reusable instructions probably would have prevented it. Prefer deterministic-control when a test, hook, validator, or code fix is the enforceable solution.
+- Scope user preferences globally only when they are genuinely cross-project. Use project or path scope for repository-specific conventions and skill scope for reusable procedures.
 - Do not quote credentials, tokens, private values, or long source content.
 - Use at most five short evidence items.
 - Omit suggestedChange unless the evidence supports one small change.

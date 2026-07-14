@@ -129,10 +129,12 @@ describe("codex-status usage", () => {
 				rate_limit: {
 					primary_window: {
 						used_percent: 6,
+						limit_window_seconds: 5 * 60 * 60,
 						reset_at: new Date(2026, 4, 6, 18, 43, 0).getTime() / 1000,
 					},
 					secondary_window: {
 						used_percent: 11,
+						limit_window_seconds: 7 * 24 * 60 * 60,
 						reset_at: new Date(2026, 4, 12, 19, 18, 0).getTime() / 1000,
 					},
 				},
@@ -161,6 +163,25 @@ describe("codex-status usage", () => {
 		expect(text.trimEnd()).toMatch(
 			/https:\/\/chatgpt\.com\/codex\/settings\/usage$/,
 		);
+	});
+
+	it("labels a weekly primary window and reports the missing five-hour limit", () => {
+		const text = formatUsage(
+			{
+				rate_limit: {
+					primary_window: {
+						used_percent: 5,
+						limit_window_seconds: 7 * 24 * 60 * 60,
+					},
+					secondary_window: null,
+				},
+			},
+			{ source: "pi", path: "/tmp/auth.json", accessToken: "redacted" },
+		);
+
+		expect(text).toContain("5h       disabled");
+		expect(text).toContain("weekly       5% used");
+		expect(text).not.toContain("5h           5% used");
 	});
 
 	it("colors window percent by elapsed-window pace", () => {
@@ -270,15 +291,32 @@ describe("codex-status usage", () => {
 		).toContain("\u001b[92m    0%\u001b[0m used");
 	});
 
-	it("formats the Codex footer slot", () => {
+	it("formats the Codex footer slot by window duration", () => {
 		expect(
 			formatCodexFooterStatus({
 				rate_limit: {
-					primary_window: { used_percent: 42 },
-					secondary_window: { used_percent: 61 },
+					primary_window: {
+						used_percent: 42,
+						limit_window_seconds: 5 * 60 * 60,
+					},
+					secondary_window: {
+						used_percent: 61,
+						limit_window_seconds: 7 * 24 * 60 * 60,
+					},
 				},
 			}),
 		).toBe("codex 5h 42% | wk 61%");
+		expect(
+			formatCodexFooterStatus({
+				rate_limit: {
+					primary_window: {
+						used_percent: 5,
+						limit_window_seconds: 7 * 24 * 60 * 60,
+					},
+					secondary_window: null,
+				},
+			}),
+		).toBe("codex 5h disabled | wk 5%");
 		expect(formatCodexFooterStatus({ rate_limit: {} })).toBe("codex: unknown");
 	});
 

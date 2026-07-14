@@ -1,6 +1,9 @@
 import * as fs from "node:fs";
 import { describe, expect, it } from "vitest";
-import { buildCommitPlanningPrompt } from "../lib/workflow-commands/prompts.ts";
+import {
+	buildCommitPlanningPrompt,
+	buildSecretReviewPrompt,
+} from "../lib/workflow-commands/prompts.ts";
 
 function readPrompt(relativePath: string) {
 	return fs.readFileSync(
@@ -131,6 +134,24 @@ describe("workflow prompt contracts", () => {
 		});
 		expect(prompt).toContain("Each subject must be exactly one line");
 		expect(prompt).toContain("Do not put a newline before or after the colon");
+	});
+
+	it("secret review distinguishes ordinary code from credentials", () => {
+		const prompt = buildSecretReviewPrompt([
+			{
+				path: "example.ts",
+				label: "Hardcoded password/token/secret/key",
+				match: "accessToken: string",
+				line: 1,
+				context: "type Auth = { accessToken: string };",
+			},
+		]);
+
+		expect(prompt).toContain("false_positive");
+		expect(prompt).toContain("keyword-only match");
+		expect(prompt).toContain("type annotations");
+		expect(prompt).toContain("runtime expressions");
+		expect(prompt).toContain("no literal credential value");
 	});
 
 	it("/gitlab-ticket documents issue-numbered branch naming and draft MR follow-on", () => {

@@ -4,6 +4,8 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import workflowFrictionExtension, {
 	buildReviewerArgs,
+	learningDecisionsPath,
+	readCurrentLearningDecisions,
 } from "../extensions/workflow-friction-review.js";
 import {
 	activateOrchestrationInteraction,
@@ -18,6 +20,7 @@ import {
 	registerOrchestrationInvocation,
 	resetOrchestrationInteraction,
 	reviewSampleBucket,
+	type StoredReviewRecord,
 	selectInteractionForReview,
 	settleOrchestrationInteraction,
 	summarizeInteractionMetadata,
@@ -46,6 +49,62 @@ function trace(overrides: Partial<ToolTrace> = {}): ToolTrace {
 	};
 }
 
+function commandLearningReviewRecord(
+	repoRoot: string,
+	scope: "project" | "user" = "project",
+): StoredReviewRecord {
+	return {
+		schemaVersion: 1,
+		interactionId: "interaction-command",
+		sessionId: "session-command",
+		reviewedAt: "2026-07-14T00:00:00.000Z",
+		startedAt: "2026-07-14T00:00:00.000Z",
+		durationMs: 1_000,
+		mode: "explore",
+		selectionReasons: ["user_correction"],
+		repoRoot,
+		status: "completed",
+		review: {
+			classification: "mixed",
+			confidence: 0.9,
+			summary: "The user corrected the package manager.",
+			evidence: ["The user said to use pnpm instead."],
+			reusableInstruction: {
+				likely: "yes",
+				reason: "The package manager is a durable project convention.",
+				scope,
+			},
+			suggestedChange: "Use pnpm for Pi TypeScript work.",
+		},
+	};
+}
+
+async function waitForPath(filePath: string): Promise<void> {
+	for (let attempt = 0; attempt < 100; attempt += 1) {
+		try {
+			await fs.access(filePath);
+			return;
+		} catch {
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+	}
+	throw new Error(`Timed out waiting for ${filePath}`);
+}
+
+async function seedCommandLearningReview(
+	repoRoot: string,
+	scope: "project" | "user" = "project",
+): Promise<StoredReviewRecord> {
+	const review = commandLearningReviewRecord(repoRoot, scope);
+	const reviewsPath = path.join(
+		path.dirname(learningDecisionsPath()),
+		"reviews.jsonl",
+	);
+	await fs.mkdir(path.dirname(reviewsPath), { recursive: true });
+	await fs.writeFile(reviewsPath, `${JSON.stringify(review)}\n`, "utf8");
+	return review;
+}
+
 describe("workflow friction selection", () => {
 	it("reviews all interactions over ten minutes", () => {
 		expect(
@@ -67,17 +126,31 @@ describe("workflow friction selection", () => {
 		).toEqual(["subagent_duration_over_2m"]);
 	});
 
-	it("reviews sub-two-minute interactions only when captured", () => {
+	it("reviews short corrections immediately but leaves other short friction sampled out", () => {
 		expect(
 			selectInteractionForReview({
-				interactionId: "short",
+				interactionId: "short-failure",
 				durationMs: 90_000,
 				triggers: ["repeated_tool_failure"],
 			}),
 		).toEqual([]);
 		expect(
 			selectInteractionForReview({
-				interactionId: "short",
+				interactionId: "short-correction",
+				durationMs: 1_000,
+				triggers: ["user_correction"],
+			}),
+		).toEqual(["user_correction"]);
+		expect(
+			selectInteractionForReview({
+				interactionId: "short-remember",
+				durationMs: 1_000,
+				triggers: ["explicit_learning_request"],
+			}),
+		).toEqual(["explicit_learning_request"]);
+		expect(
+			selectInteractionForReview({
+				interactionId: "short-manual",
 				durationMs: 90_000,
 				triggers: [],
 				manual: true,
@@ -123,6 +196,18 @@ describe("workflow friction triggers", () => {
 			"repeated_tool_failure",
 			"user_frustration",
 		]);
+	});
+
+	it("detects direct corrections and explicit remember requests", () => {
+		expect(detectFrictionTriggers("No, use pnpm instead.", [])).toEqual([
+			"user_correction",
+		]);
+		expect(
+			detectFrictionTriggers(
+				"Please remember that Pi TypeScript uses pnpm.",
+				[],
+			),
+		).toEqual(["explicit_learning_request"]);
 	});
 });
 
@@ -285,12 +370,17 @@ describe("workflow friction reviewer", () => {
 					reusableInstruction: {
 						likely: "yes",
 						reason: "A focused validation rule would prevent repetition.",
+						scope: "skill",
 						targetSkill: "analysis-workflow",
 					},
 					suggestedChange: "Run validation after a coherent edit.",
 				}),
 			),
-		).toMatchObject({ classification: "churn", confidence: 0.9 });
+		).toMatchObject({
+			classification: "churn",
+			confidence: 0.9,
+			reusableInstruction: { scope: "skill" },
+		});
 	});
 
 	it("rejects invalid reviewer classifications", () => {
@@ -448,8 +538,10 @@ describe("workflow friction extension", () => {
 		workflowFrictionExtension(pi as never);
 		expect(pi._commands.map((command) => command.name)).toEqual([
 			"capture",
+			"learning-review",
 			"workflow-review",
 		]);
+		expect(pi._getTool("learning_candidate_decide")).toBeDefined();
 		expect(pi._getTool("workflow_friction_mark_change")).toBeDefined();
 		expect(pi._getHook("before_agent_start")).toHaveLength(1);
 		expect(pi._getHook("agent_settled")).toHaveLength(1);
@@ -467,6 +559,254 @@ describe("workflow friction extension", () => {
 		);
 	});
 
+	it("turns a short correction into a quarantined conversational review", async () => {
+		const scratch = await fs.mkdtemp(
+			path.join(os.tmpdir(), "pi-learning-auto-"),
+		);
+		const previous = process.env.PI_WORKFLOW_FRICTION_DIR;
+		process.env.PI_WORKFLOW_FRICTION_DIR = scratch;
+		try {
+			const ctx = createMockCtx({
+				cwd: "/test/dir",
+				sessionManager: {
+					getSessionId: () => "session-auto-learning",
+					getEntries: () => [
+						{
+							type: "message",
+							message: { role: "assistant" },
+						},
+					],
+				},
+			});
+			const pi = createMockPi();
+			pi.exec.mockResolvedValue({
+				code: 0,
+				stdout: JSON.stringify(commandLearningReviewRecord(ctx.cwd).review),
+				stderr: "",
+			});
+			workflowFrictionExtension(pi as never);
+			const beforeAgent = pi._getHook("before_agent_start")[0]?.handler;
+			const settled = pi._getHook("agent_settled")[0]?.handler;
+			await beforeAgent({ prompt: "No, use pnpm instead." }, ctx);
+			await settled({}, ctx);
+			await waitForPath(path.join(scratch, "reviews.jsonl"));
+			expect(pi.sendMessage).not.toHaveBeenCalled();
+
+			const command = pi._commands.find(
+				(item) => item.name === "learning-review",
+			);
+			await command?.handler("", ctx);
+			expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+			const prompt = String(pi.sendMessage.mock.calls[0]?.[0]?.content ?? "");
+			expect(prompt).toContain("Use the full 1-3-1 format");
+			expect(prompt).toContain(
+				"Proposed lesson: Use pnpm for Pi TypeScript work.",
+			);
+			expect(await readCurrentLearningDecisions()).toEqual([]);
+		} finally {
+			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
+			else process.env.PI_WORKFLOW_FRICTION_DIR = previous;
+			await fs.rm(scratch, { recursive: true, force: true });
+		}
+	});
+
+	it("does not classify an initial instruction as a correction", async () => {
+		const scratch = await fs.mkdtemp(
+			path.join(os.tmpdir(), "pi-learning-initial-"),
+		);
+		const previous = process.env.PI_WORKFLOW_FRICTION_DIR;
+		process.env.PI_WORKFLOW_FRICTION_DIR = scratch;
+		try {
+			const ctx = createMockCtx({
+				cwd: "/test/dir",
+				sessionManager: {
+					getSessionId: () => "session-initial",
+					getEntries: () => [],
+				},
+			});
+			const pi = createMockPi();
+			workflowFrictionExtension(pi as never);
+			const beforeAgent = pi._getHook("before_agent_start")[0]?.handler;
+			const settled = pi._getHook("agent_settled")[0]?.handler;
+			await beforeAgent({ prompt: "Do not use npm for this task." }, ctx);
+			await settled({}, ctx);
+			expect(pi.exec).not.toHaveBeenCalled();
+		} finally {
+			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
+			else process.env.PI_WORKFLOW_FRICTION_DIR = previous;
+			await fs.rm(scratch, { recursive: true, force: true });
+		}
+	});
+
+	it("captures an explicit remember request on the first turn", async () => {
+		const scratch = await fs.mkdtemp(
+			path.join(os.tmpdir(), "pi-learning-remember-"),
+		);
+		const previous = process.env.PI_WORKFLOW_FRICTION_DIR;
+		process.env.PI_WORKFLOW_FRICTION_DIR = scratch;
+		try {
+			const ctx = createMockCtx({
+				cwd: "/test/dir",
+				sessionManager: {
+					getSessionId: () => "session-remember",
+					getEntries: () => [],
+				},
+			});
+			const pi = createMockPi();
+			pi.exec.mockResolvedValue({
+				code: 0,
+				stdout: JSON.stringify(commandLearningReviewRecord(ctx.cwd).review),
+				stderr: "",
+			});
+			workflowFrictionExtension(pi as never);
+			const beforeAgent = pi._getHook("before_agent_start")[0]?.handler;
+			const settled = pi._getHook("agent_settled")[0]?.handler;
+			await beforeAgent(
+				{ prompt: "Please remember that Pi TypeScript work uses pnpm." },
+				ctx,
+			);
+			await settled({}, ctx);
+			await waitForPath(path.join(scratch, "reviews.jsonl"));
+			expect(pi.exec).toHaveBeenCalledTimes(1);
+		} finally {
+			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
+			else process.env.PI_WORKFLOW_FRICTION_DIR = previous;
+			await fs.rm(scratch, { recursive: true, force: true });
+		}
+	});
+
+	it("records an edited and applied decision with validation and rollback", async () => {
+		const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "pi-learning-"));
+		const previous = process.env.PI_WORKFLOW_FRICTION_DIR;
+		process.env.PI_WORKFLOW_FRICTION_DIR = scratch;
+		try {
+			const ctx = createMockCtx({ cwd: "/test/dir" });
+			const candidate = await seedCommandLearningReview(ctx.cwd);
+			const pi = createMockPi();
+			workflowFrictionExtension(pi as never);
+			const command = pi._commands.find(
+				(item) => item.name === "learning-review",
+			);
+			await command?.handler("", ctx);
+			const decideTool = pi._getTool("learning_candidate_decide");
+			const decisionText =
+				"Option 2: apply the edited lesson after focused validation.";
+			const appliedParams = {
+				candidateId: candidate.interactionId,
+				decision: "applied",
+				decisionText,
+				approvedText: "Use pnpm and run the focused Pi tests.",
+				targetPaths: ["pi/AGENTS.md"],
+				validation: "Reloaded Pi and verified the instruction was present.",
+				rollback: "Revert the candidate-specific edit in pi/AGENTS.md.",
+			};
+			await expect(
+				decideTool?.execute(
+					"premature-call",
+					appliedParams,
+					undefined,
+					undefined,
+					ctx,
+				),
+			).rejects.toThrow(/subsequent user decision/);
+			const input = pi._getHook("input")[0]?.handler;
+			await input({ source: "interactive", text: decisionText }, ctx);
+			await decideTool?.execute(
+				"decision-call",
+				appliedParams,
+				undefined,
+				undefined,
+				ctx,
+			);
+			expect((await readCurrentLearningDecisions())[0]).toMatchObject({
+				candidateId: candidate.interactionId,
+				decision: "applied",
+				approvedText: "Use pnpm and run the focused Pi tests.",
+				targetPaths: ["pi/AGENTS.md"],
+				experimentId: `experiment-${candidate.interactionId}`,
+			});
+			const experimentLog = await fs.readFile(
+				path.join(scratch, "experiments.jsonl"),
+				"utf8",
+			);
+			expect(experimentLog).toContain(`experiment-${candidate.interactionId}`);
+			pi.sendMessage.mockClear();
+			await command?.handler("", ctx);
+			expect(pi.sendMessage).not.toHaveBeenCalled();
+			expect(ctx.ui.notify).toHaveBeenCalledWith(
+				"No pending learning candidates exist for this workspace.",
+				"info",
+			);
+		} finally {
+			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
+			else process.env.PI_WORKFLOW_FRICTION_DIR = previous;
+			await fs.rm(scratch, { recursive: true, force: true });
+		}
+	});
+
+	it("records a skipped candidate without an experiment", async () => {
+		const scratch = await fs.mkdtemp(
+			path.join(os.tmpdir(), "pi-learning-skip-"),
+		);
+		const previous = process.env.PI_WORKFLOW_FRICTION_DIR;
+		process.env.PI_WORKFLOW_FRICTION_DIR = scratch;
+		try {
+			const ctx = createMockCtx({ cwd: "/test/dir" });
+			const candidate = await seedCommandLearningReview(ctx.cwd, "user");
+			const pi = createMockPi();
+			workflowFrictionExtension(pi as never);
+			const command = pi._commands.find(
+				(item) => item.name === "learning-review",
+			);
+			await command?.handler("", ctx);
+			const decisionText = "Skip this because it was specific to one task.";
+			const input = pi._getHook("input")[0]?.handler;
+			await input({ source: "interactive", text: decisionText }, ctx);
+			const decideTool = pi._getTool("learning_candidate_decide");
+			await expect(
+				decideTool?.execute(
+					"cross-workspace-call",
+					{
+						candidateId: candidate.interactionId,
+						decision: "skipped",
+						decisionText,
+						targetPaths: [],
+						reason: "Wrong workspace.",
+					},
+					undefined,
+					undefined,
+					createMockCtx({ cwd: "/other/project" }),
+				),
+			).rejects.toThrow(/not found/);
+			await decideTool?.execute(
+				"decision-call",
+				{
+					candidateId: candidate.interactionId,
+					decision: "skipped",
+					decisionText,
+					targetPaths: [],
+					reason: "The correction was specific to one task.",
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+			expect((await readCurrentLearningDecisions())[0]).toMatchObject({
+				candidateId: candidate.interactionId,
+				decision: "skipped",
+				reason: "The correction was specific to one task.",
+				decisionText,
+			});
+			await expect(
+				fs.access(path.join(scratch, "experiments.jsonl")),
+			).rejects.toThrow();
+		} finally {
+			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
+			else process.env.PI_WORKFLOW_FRICTION_DIR = previous;
+			await fs.rm(scratch, { recursive: true, force: true });
+		}
+	});
+
 	it("emits one top-level interaction event with grouped parent usage", async () => {
 		const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "pi-friction-"));
 		const metricsDir = path.join(scratch, "metrics");
@@ -479,7 +819,10 @@ describe("workflow friction extension", () => {
 		delete process.env.PI_SUBAGENT_RUN_ID;
 		try {
 			const ctx = createMockCtx({
-				sessionManager: { getSessionId: () => "session-top-level" },
+				sessionManager: {
+					getSessionId: () => "session-top-level",
+					getEntries: () => [],
+				},
 			});
 			const pi = createMockPi();
 			workflowFrictionExtension(pi as never);

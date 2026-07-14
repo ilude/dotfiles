@@ -310,16 +310,17 @@ Workflow highlights:
 
 ### `workflow-friction-review.ts`
 
-Measures each interaction from submission through `agent_settled` and records metadata-only denominator metrics for every interaction. It silently queues selected interactions for a bounded GPT-5.6 Terra review: every interaction over 10 minutes, every subagent run lasting at least 2 minutes, high-confidence triggered interactions from 2 through 10 minutes, and a deterministic 15 percent control sample from the remaining 2-to-10-minute interactions. Subagent records include the durable run ID and spawn time for correlation with operator tasks. Review jobs run one at a time from a persistent local queue and never delay the original interaction.
+Measures each interaction from submission through `agent_settled` and records metadata-only denominator metrics for every interaction. It silently queues selected interactions for a bounded background review: explicit remember requests, corrections after an existing conversation turn, every interaction over 10 minutes, every subagent run lasting at least 2 minutes, high-confidence triggered interactions from 2 through 10 minutes, and a deterministic 15 percent control sample from the remaining 2-to-10-minute interactions. Subagent records include the durable run ID and spawn time for correlation with operator tasks. Review jobs run one at a time from a persistent local queue and never delay the original interaction.
 
-Runtime records live under `~/.pi/agent/workflow-friction/` and remain uncommitted. `interactions.jsonl` contains timing, mode, selection, tool, validation, subagent, and mutation counts without prompt or response content. Set `PI_WORKFLOW_FRICTION_DIR` to use a separate local directory. At interaction settlement, the extension also emits a metadata-only `orchestration_interaction` metrics event for direct and delegated interactions.
+Runtime records live under `~/.pi/agent/workflow-friction/` and remain uncommitted. `interactions.jsonl` contains timing, mode, selection, tool, validation, subagent, and mutation counts without prompt or response content. Reviewed interaction packets remain local in `reviews.jsonl`; applied or skipped learning decisions are append-only records in `learning-decisions.jsonl`. Set `PI_WORKFLOW_FRICTION_DIR` to use a separate local directory. At interaction settlement, the extension also emits a metadata-only `orchestration_interaction` metrics event for direct and delegated interactions.
 
 ```text
 /capture [optional note]  # review the latest completed interaction
+/learning-review          # discuss one pending cross-session lesson
 /workflow-review          # discuss findings from the previous 15 days
 ```
 
-`/workflow-review` presents concise evidence and recommendations but does not apply changes. Approved changes can be recorded for later comparison with the `workflow_friction_mark_change` tool.
+`/learning-review` presents one quarantined lesson in the normal conversation using the full 1-3-1 format. It waits for an Apply, Edit, or Skip decision before changing tracked instructions or skills. Applied lessons require target paths, validation evidence, and rollback instructions; they also create an experiment marker for later comparison. `/workflow-review` remains an aggregate discussion surface and does not apply changes directly.
 
 ### `orchestration-stats.ts`
 

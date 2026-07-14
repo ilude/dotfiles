@@ -74,11 +74,12 @@ export function buildSecretReviewPrompt(findings: SecretReviewPromptFinding[]) {
 	return `You are reviewing candidate secret findings for Pi's /commit workflow.
 
 Classify each candidate as exactly one of:
-- likely_secret → appears to be a real credential, private key, token, password assignment, or other sensitive secret that should block commit
-- example → documentation, sample text, test fixture, placeholder, redacted value, or obviously non-secret instructional content
-- ambiguous → unclear from context; may be real, should require human confirmation
+- likely_secret -> appears to be a real credential, private key, token, password assignment, or other sensitive secret that should block commit
+- false_positive -> keyword-only match, ordinary code, documentation, sample text, test fixture, placeholder, redacted value, or other content with no usable credential value
+- ambiguous -> unclear from context; may be real, should require human confirmation
 
-Be skeptical of false positives in markdown docs, comments, tests, examples, and instructional text.
+Be skeptical of false positives in code, markdown docs, comments, tests, examples, and instructional text.
+Classify identifier-only declarations, type annotations, function parameters, property names, and runtime expressions as false_positive when no literal credential value is present.
 Only mark likely_secret when the content looks like an actual usable secret or credential-bearing assignment.
 
 Return JSON only in this schema:
@@ -87,7 +88,7 @@ Return JSON only in this schema:
     {
       "path": "file",
       "label": "pattern label",
-      "classification": "likely_secret|example|ambiguous",
+      "classification": "likely_secret|false_positive|ambiguous",
       "reason": "short reason",
       "match": "matched text preview"
     }

@@ -1,3 +1,32 @@
+## 2026-07-14: Add Pi cross-session learning review
+
+**Why:** Pi needed to turn explicit corrections into quarantined, reviewable
+lessons instead of changing durable instructions automatically.
+
+**Fix:** Added immediate correction review, a conversational `/learning-review`
+1-3-1 flow, and append-only applied/skipped decisions with validation and
+rollback evidence.
+
+**Files:** ~/.dotfiles/pi/extensions/workflow-friction-review.ts,
+~/.dotfiles/pi/lib/workflow-friction.ts,
+~/.dotfiles/pi/tests/workflow-friction.test.ts, ~/.dotfiles/pi/README.md
+
+---
+
+## 2026-07-14: Reduce workflow-friction instruction conflicts
+
+**Why:** Session review found that broad warning repair and over-scope guidance
+could conflict with exact-workflow validation and bounded execution.
+
+**Fix:** Limited repair to the requested workflow or changed boundary, made
+informational requests read-only unless mutation is explicit, required work to
+be bounded before mutation, aligned delegation with the conditional Pi policy,
+and prohibited behavior-changing bypasses of supported repository entrypoints.
+
+**Files:** ~/.dotfiles/pi/AGENTS.md, ~/.dotfiles/AGENTS.md
+
+---
+
 ## 2026-07-14: Make Pi instructions canonical
 
 **Why:** Pi is the primary coding interface, while Claude Code should continue receiving the same shared global instructions.
