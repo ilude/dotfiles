@@ -11,7 +11,6 @@
  *   /prd-it        — refine fuzzy ideas into an optional PRD artifact
  *   /review-it     — adversarial review of a plan file
  *   /do-it         — smart task routing by complexity
- *   /research      — parallel multi-angle research on a topic
  *   /summarize     — concise session recap and workflow friction notes
  *   /exit          — gracefully quit pi
  */
@@ -2678,18 +2677,6 @@ export default function (pi: ExtensionAPI) {
 				? `\n\nAdditional focus: ${args.trim()}`
 				: "";
 			sendHiddenWorkflowPrompt(pi, `${SUMMARIZE_PROMPT}${extraContext}`);
-		},
-	});
-
-	pi.registerCommand("research", {
-		description:
-			"Parallel multi-angle research — primary sources, practical guidance, and alternatives",
-		handler: async (args, _ctx) => {
-			echoSlashCommand(pi, "research", args);
-			const template = loadSkill("research.md");
-			await pi.sendUserMessage(
-				buildSkillPrompt(template, args, { replaceArguments: true }),
-			);
 		},
 	});
 

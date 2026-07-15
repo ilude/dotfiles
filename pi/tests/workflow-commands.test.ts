@@ -126,6 +126,12 @@ describe("workflow command dispatch", () => {
 		return cmd.handler as (args: string, ctx: unknown) => Promise<void>;
 	}
 
+	it("does not register the retired /research command", () => {
+		expect(
+			mockPi._commands.find((candidate) => candidate.name === "research"),
+		).toBeUndefined();
+	});
+
 	it("initializes the new session with Codex status before previous usage", async () => {
 		type NewSessionOptions = {
 			setup?: (sessionManager: {

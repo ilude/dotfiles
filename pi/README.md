@@ -297,7 +297,6 @@ Registers shared skill-backed slash commands:
 /plan-it       # crystallize conversation context into an executable plan
 /review-it     # adversarial multi-reviewer coordination for a plan file
 /do-it         # smart task routing by complexity or plan-file execution
-/research      # parallel multi-angle research on a topic
 ```
 
 Skills are loaded from `~/.dotfiles/pi/skills/workflow/`.

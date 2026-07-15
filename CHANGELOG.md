@@ -2,6 +2,22 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-15: Retire the unused Pi research command
+
+**Why:** `/research` was an unused public command with a dedicated workflow that
+duplicated on-demand research available through normal orchestration.
+
+**Changed:**
+- Removed the `/research` registration and its orphaned workflow template.
+- Removed `/research` from the Pi command documentation.
+- Added a regression that keeps the retired command out of the runtime registry.
+
+**Files:** `pi/extensions/workflow-commands.ts`,
+`pi/skills/workflow/research.md`, `pi/tests/workflow-commands.test.ts`,
+`pi/README.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-15: Consolidate repository changelogs
 
 **Why:** Separate client and Pi changelogs duplicated entries and made update instructions depend on the edited surface.
