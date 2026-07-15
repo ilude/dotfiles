@@ -39,10 +39,8 @@ The legacy `*-mental-model.json` snapshot loader/regenerator has been
 retired. Per-agent JSONL logs at
 `pi/multi-team/expertise/**/*-expertise-log.jsonl` are now the single
 source of truth, and startup memory hydration uses procedural files plus
-the JSONL-backed retrieval block in `pi/lib/memory-retrieve.ts`. The
-read path in `pi/extensions/agent-chain.ts` no longer rebuilds or writes
-mental-model snapshots; it renders a category-grouped raw view directly
-from JSONL.
+the JSONL-backed retrieval utilities in `pi/lib/memory-retrieve.ts`.
+These utilities do not rebuild or write mental-model snapshots.
 
 Historical snapshots are preserved offline:
 

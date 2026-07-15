@@ -30,19 +30,19 @@ pi/multi-team/expertise/
 - Superseded records are removed before ranking.
 - A task query uses local hashed-vector similarity plus lexical overlap; an empty query uses recency.
 - Result count and rendered token size are bounded.
-- `/chain` uses this implementation internally to add relevant prior expertise. It is not exposed as an agent tool.
+- Retrieval is not exposed as an agent tool.
 
-Canonical coverage is in [`pi/tests/memory-retrieve.test.ts`](../tests/memory-retrieve.test.ts) and the `/chain` integration tests in [`pi/tests/agent-chain.test.ts`](../tests/agent-chain.test.ts).
+Canonical coverage is in [`pi/tests/memory-retrieve.test.ts`](../tests/memory-retrieve.test.ts).
 
 Run the focused checks with pnpm:
 
 ```bash
-cd pi && pnpm test memory-retrieve.test.ts agent-chain.test.ts
+cd pi && pnpm test memory-retrieve.test.ts
 ```
 
 ## Tool availability and durable guidance
 
-`read_expertise` and `append_expertise` are intentionally unavailable. [`pi/extensions/agents-context.ts`](../extensions/agents-context.ts) removes them from active tools and blocks attempted calls. [`pi/extensions/agent-chain.ts`](../extensions/agent-chain.ts) does not register them.
+`read_expertise` and `append_expertise` are intentionally unavailable. [`pi/extensions/agents-context.ts`](../extensions/agents-context.ts) removes them from active tools and blocks attempted calls.
 
 Use these supported durable surfaces instead:
 

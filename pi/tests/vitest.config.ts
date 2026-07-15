@@ -70,7 +70,6 @@ export default defineConfig({
 				"extensions/tool-search.ts",
 				"extensions/workflow-commands.ts",
 				"extensions/prompt-router.ts",
-				"extensions/agent-chain.ts",
 				"lib/model-routing.ts",
 				"lib/commit/**",
 				"lib/observability.ts",

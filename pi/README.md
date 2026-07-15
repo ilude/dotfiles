@@ -213,9 +213,8 @@ cd ~/.dotfiles/pi
 just          # default -- Pi with all auto-discovered extensions
 just solo     # bare Pi, no extensions
 just safe     # damage-control only (safety rules)
-just chain    # damage-control + plan-build-review pipeline
 just team     # legacy recipe; use subagent team dispatch for new workflows
-just full     # all extensions (damage-control + chain + subagent + quality-gates + session-hooks)
+just full     # all extensions (damage-control + subagent + quality-gates + session-hooks)
 just guard    # full stack + conventional commit enforcement
 ```
 
@@ -244,17 +243,6 @@ Intercepts tool calls and blocks dangerous operations before they execute.
 - **No-delete paths** -- protects `package.json`, `Makefile`, `pyproject.toml`
 
 Primary policy file: `~/.dotfiles/claude/hooks/damage-control/patterns.yaml`. Fallback Pi-only rules file: `~/.dotfiles/pi/damage-control-rules.yaml`.
-
-### `agent-chain.ts`
-
-Implements the `/chain` plan-build-review pipeline. Planner output feeds the builder,
-and builder output feeds the reviewer. The extension registers `log_exchange` for
-session conversation records and internally retrieves bounded relevant expertise from
-JSONL before dispatch. It does not register `read_expertise` or `append_expertise`.
-
-```text
-/chain <task description>
-```
 
 ### `agent-team.ts`
 
@@ -299,7 +287,13 @@ Registers shared skill-backed slash commands:
 /do-it         # smart task routing by complexity or plan-file execution
 ```
 
-Skills are loaded from `~/.dotfiles/pi/skills/workflow/`.
+Stateful workflow templates are loaded from `~/.dotfiles/pi/skills/workflow/`.
+Prompt-only commands use Pi-native templates under `~/.dotfiles/pi/prompts/`:
+
+```text
+/summarize [focus]                 # concise session recap and workflow friction
+/gitlab-ticket [feature or change] # structured issue with optional branch and draft MR
+```
 
 Workflow highlights:
 - `/plan-it` writes plans with explicit `small` / `medium` / `large` model sizing and agent assignments.
@@ -811,13 +805,6 @@ Project-level overrides: place `AGENTS.md` or `.pi/settings.json` in any repo ro
 ```bash
 just          # launch with all extensions
 > Build a REST endpoint for /api/users
-```
-
-### Plan-build-review pipeline
-
-```bash
-just chain
-/chain Refactor the auth module to use JWT
 ```
 
 ### Multi-agent team task

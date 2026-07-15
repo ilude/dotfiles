@@ -17,6 +17,43 @@ included prompt and skill commands that were not useful in the startup list.
 
 ---
 
+## 2026-07-15: Move prompt-only Pi commands to native templates
+
+**Why:** `/summarize` and `/gitlab-ticket` only expanded prompts, so extension
+registrations duplicated Pi's native prompt-template command surface.
+
+**Changed:**
+- Moved `/summarize` and `/gitlab-ticket` to `pi/prompts/` with frontmatter,
+  argument hints, and `$ARGUMENTS` expansion.
+- Removed their extension registrations and obsolete prompt-building helper.
+- Updated command documentation and prompt-placement regressions.
+
+**Files:** `pi/prompts/summarize.md`, `pi/prompts/gitlab-ticket.md`,
+`pi/skills/workflow/gitlab-ticket.md`, `pi/extensions/workflow-commands.ts`,
+`pi/lib/workflow-commands/prompts.ts`, `pi/tests/workflow-commands.test.ts`,
+`pi/tests/workflow-prompts.test.ts`, `pi/README.md`, `CHANGELOG.md`
+
+---
+
+## 2026-07-15: Retire the unused Pi agent chain
+
+**Why:** `/chain` was a legacy user macro around sequential subagent calls, and
+its `log_exchange` tool had no recorded calls or conversation logs. Native
+subagent chain mode now owns model-driven sequencing.
+
+**Changed:**
+- Removed the `/chain` command, `log_exchange` tool, and obsolete extension.
+- Removed the dedicated launch recipe, integration test, coverage entry, and
+  command documentation.
+- Retained the independently used memory retrieval and promotion libraries.
+
+**Files:** `pi/extensions/agent-chain.ts`, `pi/tests/agent-chain.test.ts`,
+`pi/tests/vitest.config.ts`, `pi/justfile`, `pi/README.md`,
+`pi/docs/expertise-layering.md`, `pi/extensions/README.md`,
+`.specs/pi-extension-refactors/backlog.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-15: Use Pi's command inventory for the startup widget
 
 **Why:** The startup widget replaced `pi.registerCommand`, duplicated Pi's
