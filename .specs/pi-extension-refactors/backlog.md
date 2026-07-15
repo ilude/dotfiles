@@ -36,7 +36,7 @@ Execute and validate one item at a time. Do not batch state transitions, securit
 | Completed | Unify task lifecycle policy | Command/tool lifecycle and active cancellation now share one policy | None |
 | Completed | Complete damage-control audit recording | Security decisions now produce correlated, redacted provenance | Independent; completed in `d805c8d` |
 | Completed | Fix workflow-review queue deduplication | Claimed and recovered jobs are rechecked before recording | Independent; completed before reviewer migration |
-| P4 | Move the background reviewer behind a typed semantic contract | Removes manual prompt/subprocess/JSON plumbing after queue correctness is proven | Queue correctness completed |
+| Completed | Move the background reviewer behind a typed semantic contract | Reviewer now uses the shared typed-agent boundary | Queue correctness completed |
 | Blocked | Unify Bedrock refresh identity and region | Requires live work-machine evidence | Work-machine access |
 
 ## Verified problems and completed follow-ups
@@ -108,7 +108,11 @@ Execute and validate one item at a time. Do not batch state transitions, securit
 
 ### Background workflow reviewer duplicates typed semantic-stage infrastructure
 
-- Status: P4 - design ready, implementation blocked by the workflow-review queue fix
+- Status: completed
+- Implemented: Added bounded TypeBox input/output contracts, exact Terra model resolution through the active model registry, one correction retry through `defineAgent()`, signal propagation, nested-session disposal, and deterministic post-schema normalization.
+- Removed: Temporary prompt files, subprocess argument construction, subprocess execution, and legacy free-form review parsing.
+- Preserved: Queue deduplication, annotations, stored review shapes, candidate ranking, and explicit Apply/Edit/Skip authorization.
+- Validation: Workflow-friction, typed-agent, and subagent suites passed 67 tests; typecheck and focused Biome passed.
 - Verified problem: `executeReview()` in `pi/extensions/workflow-friction-review.ts:907-946` writes a temporary prompt file, launches a second Pi process with `pi.exec`, applies a command timeout, manually parses stdout through `parseReviewResult()`, and maps the result into a persisted review record. This duplicates model resolution, output correction, timeout, schema validation, and disposal behavior now owned by `pi/lib/typed-agent.ts`.
 - User impact: The background reviewer has a separate structured-output reliability path from `/commit`. Invalid semantic output receives only the legacy parser behavior, provider/session setup is encoded in subprocess arguments, and future retry or telemetry fixes must be maintained twice.
 - Existing deterministic ownership to preserve: Interaction selection, packet construction and sanitization, queue locking, deduplication, annotation application, persisted review status, candidate ranking, and Apply/Edit/Skip authorization remain ordinary code. The semantic stage may classify friction and propose one durable improvement; it must not write instructions, mutate files, choose queue state, or authorize an applied learning decision.

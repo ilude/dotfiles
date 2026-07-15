@@ -1,9 +1,8 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import workflowFrictionExtension, {
-	buildReviewerArgs,
 	collectCandidateUsage,
 	type ImprovementCandidateUsage,
 	learningDecisionsPath,
@@ -21,7 +20,6 @@ import {
 	isControlSample,
 	noteParentAssistantUsage,
 	noteWorkflowSubmission,
-	parseReviewResult,
 	registerOrchestrationInvocation,
 	resetOrchestrationInteraction,
 	reviewSampleBucket,
@@ -109,6 +107,14 @@ function queuedReviewJob(packet: InteractionPacket) {
 		schemaVersion: 1,
 		queuedAt: "2026-07-15T00:01:00.000Z",
 		packet,
+	};
+}
+
+function fakeReviewer() {
+	const output = commandLearningReviewRecord("/test/dir").review;
+	if (!output) throw new Error("Review fixture is missing");
+	return {
+		run: vi.fn(async () => ({ output, attempts: 1 })),
 	};
 }
 
@@ -400,24 +406,17 @@ describe("workflow friction reviewer", () => {
 				})}\n`,
 				"utf8",
 			);
-			const pi = createMockPi();
-			let executions = 0;
-			pi.exec.mockImplementation(async () => {
-				executions += 1;
-				if (executions === 1)
-					await fs.writeFile(pendingPath, `${JSON.stringify(job)}\n`, "utf8");
-				return {
-					code: 0,
-					stdout: JSON.stringify(
-						commandLearningReviewRecord("/test/dir").review,
-					),
-					stderr: "",
-				};
+			const reviewer = fakeReviewer();
+			reviewer.run.mockImplementationOnce(async () => {
+				await fs.writeFile(pendingPath, `${JSON.stringify(job)}\n`, "utf8");
+				const output = commandLearningReviewRecord("/test/dir").review;
+				if (!output) throw new Error("Review fixture is missing");
+				return { output, attempts: 1 };
 			});
 
-			await processPendingReviews(pi as never, "/test/dir");
+			await processPendingReviews(createMockCtx(), reviewer);
 
-			expect(pi.exec).toHaveBeenCalledTimes(1);
+			expect(reviewer.run).toHaveBeenCalledTimes(1);
 			const records = (
 				await fs.readFile(path.join(scratch, "reviews.jsonl"), "utf8")
 			)
@@ -460,11 +459,11 @@ describe("workflow friction reviewer", () => {
 				`${JSON.stringify(existing)}\n`,
 				"utf8",
 			);
-			const pi = createMockPi();
+			const reviewer = fakeReviewer();
 
-			await processPendingReviews(pi as never, "/test/dir");
+			await processPendingReviews(createMockCtx(), reviewer);
 
-			expect(pi.exec).not.toHaveBeenCalled();
+			expect(reviewer.run).not.toHaveBeenCalled();
 			const records = (
 				await fs.readFile(path.join(scratch, "reviews.jsonl"), "utf8")
 			)
@@ -476,14 +475,6 @@ describe("workflow friction reviewer", () => {
 			else process.env.PI_WORKFLOW_FRICTION_DIR = previous;
 			await fs.rm(scratch, { recursive: true, force: true });
 		}
-	});
-
-	it("runs Terra at low effort with tools and persistent state disabled", () => {
-		const args = buildReviewerArgs("C:/tmp/prompt.md");
-		expect(args).toContain("gpt-5.6-terra");
-		expect(args).toContain("low");
-		expect(args).toContain("--no-tools");
-		expect(args).toContain("--no-session");
 	});
 
 	it("includes bounded assistant turns and the final response", () => {
@@ -507,49 +498,6 @@ describe("workflow friction reviewer", () => {
 		expect(prompt).toContain("Then I repaired it.");
 		expect(prompt).toContain('"subagentRunId":"run-123"');
 		expect(prompt).toContain('"subagentStartedAt":"2026-07-10T00:00:00.000Z"');
-	});
-
-	it("accepts the bounded review schema", () => {
-		expect(
-			parseReviewResult(
-				JSON.stringify({
-					classification: "churn",
-					confidence: 0.9,
-					impact: "efficiency",
-					summary: "Repeated validation before implementation.",
-					evidence: ["The same command ran twice without an edit."],
-					reusableInstruction: {
-						likely: "yes",
-						reason: "A focused validation rule would prevent repetition.",
-						scope: "skill",
-						targetSkill: "analysis-workflow",
-						target: { kind: "skill", name: "analysis-workflow" },
-					},
-					suggestedChange: "Run validation after a coherent edit.",
-				}),
-			),
-		).toMatchObject({
-			classification: "churn",
-			confidence: 0.9,
-			impact: "efficiency",
-			reusableInstruction: {
-				scope: "skill",
-				target: { kind: "skill", name: "analysis-workflow" },
-			},
-		});
-	});
-
-	it("rejects invalid reviewer classifications", () => {
-		expect(
-			parseReviewResult(
-				JSON.stringify({
-					classification: "bad",
-					confidence: 0.9,
-					evidence: [],
-					reusableInstruction: { likely: "no", reason: "" },
-				}),
-			),
-		).toBeNull();
 	});
 });
 
@@ -863,12 +811,8 @@ describe("workflow friction extension", () => {
 				},
 			});
 			const pi = createMockPi();
-			pi.exec.mockResolvedValue({
-				code: 0,
-				stdout: JSON.stringify(commandLearningReviewRecord(ctx.cwd).review),
-				stderr: "",
-			});
-			workflowFrictionExtension(pi as never);
+			const reviewer = fakeReviewer();
+			workflowFrictionExtension(pi as never, { reviewer });
 			const beforeAgent = pi._getHook("before_agent_start")[0]?.handler;
 			const settled = pi._getHook("agent_settled")[0]?.handler;
 			await beforeAgent({ prompt: "No, use pnpm instead." }, ctx);
@@ -1064,12 +1008,8 @@ describe("workflow friction extension", () => {
 				},
 			});
 			const pi = createMockPi();
-			pi.exec.mockResolvedValue({
-				code: 0,
-				stdout: JSON.stringify(commandLearningReviewRecord(ctx.cwd).review),
-				stderr: "",
-			});
-			workflowFrictionExtension(pi as never);
+			const reviewer = fakeReviewer();
+			workflowFrictionExtension(pi as never, { reviewer });
 			const beforeAgent = pi._getHook("before_agent_start")[0]?.handler;
 			const settled = pi._getHook("agent_settled")[0]?.handler;
 			await beforeAgent(
@@ -1078,7 +1018,7 @@ describe("workflow friction extension", () => {
 			);
 			await settled({}, ctx);
 			await waitForPath(path.join(scratch, "reviews.jsonl"));
-			expect(pi.exec).toHaveBeenCalledTimes(1);
+			expect(reviewer.run).toHaveBeenCalledTimes(1);
 		} finally {
 			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
 			else process.env.PI_WORKFLOW_FRICTION_DIR = previous;

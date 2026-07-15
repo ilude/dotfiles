@@ -1,16 +1,16 @@
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
-import { StringEnum, Type } from "@earendil-works/pi-ai";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
 import { recordEvent } from "../lib/metrics.js";
 import { buildOrchestrationInteractionEvent } from "../lib/orchestration-telemetry.js";
 import { sanitizeTaskValue } from "../lib/task-security.js";
+import { defineAgent, type TypedAgentRunContext } from "../lib/typed-agent.js";
 import {
 	activateOrchestrationInteraction,
 	buildReviewPrompt,
@@ -24,9 +24,9 @@ import {
 	interactionMetadataFromPacket,
 	noteParentAssistantUsage,
 	noteWorkflowSubmission,
-	parseReviewResult,
 	REVIEW_LOOKBACK_DAYS,
 	REVIEW_MIN_DURATION_MS,
+	type ReviewResult,
 	resetOrchestrationInteraction,
 	type StoredReviewRecord,
 	selectInteractionForReview,
@@ -47,9 +47,118 @@ const MAX_TOOL_ARGS = 1_000;
 const MAX_TOOL_RESULT = 2_000;
 const REVIEW_MODEL_PROVIDER = "openai-codex";
 const REVIEW_MODEL_ID = "gpt-5.6-terra";
-const REVIEW_MODEL_EFFORT = "low";
 const LEARNING_DECISION_LOCK_ATTEMPTS = 80;
 const LEARNING_DECISION_LOCK_RETRY_MS = 25;
+
+const WorkflowReviewInputSchema = Type.Object(
+	{
+		packet: Type.Object(
+			{
+				schemaVersion: Type.Number(),
+				interactionId: Type.String(),
+				sessionId: Type.String(),
+				mode: Type.Union([
+					Type.Literal("explore"),
+					Type.Literal("engineer"),
+					Type.Literal("unknown"),
+				]),
+				startedAt: Type.String(),
+				settledAt: Type.String(),
+				durationMs: Type.Number({ minimum: 0 }),
+				subagentRunId: Type.Optional(Type.String()),
+				subagentStartedAt: Type.Optional(Type.String()),
+				selectionReasons: Type.Array(Type.String()),
+				userText: Type.String({ maxLength: MAX_USER_TEXT }),
+				assistantTurns: Type.Array(
+					Type.String({ maxLength: MAX_ASSISTANT_TURN }),
+					{
+						maxItems: MAX_ASSISTANT_TURNS,
+					},
+				),
+				assistantText: Type.String({ maxLength: MAX_ASSISTANT_TURN }),
+				tools: Type.Array(
+					Type.Object(
+						{
+							toolName: Type.String(),
+							argsText: Type.String({ maxLength: MAX_TOOL_ARGS }),
+							resultText: Type.String({ maxLength: MAX_TOOL_RESULT }),
+							isError: Type.Boolean(),
+							mutationGeneration: Type.Number({ minimum: 0 }),
+						},
+						{ additionalProperties: false },
+					),
+					{ maxItems: MAX_TOOL_TRACES },
+				),
+				captureNote: Type.Optional(Type.String({ maxLength: 1_000 })),
+				repoRoot: Type.Optional(Type.String()),
+			},
+			{ additionalProperties: false },
+		),
+	},
+	{ additionalProperties: false },
+);
+
+const WorkflowReviewOutputSchema = Type.Object(
+	{
+		classification: Type.Union([
+			Type.Literal("productive"),
+			Type.Literal("mixed"),
+			Type.Literal("churn"),
+			Type.Literal("uncertain"),
+		]),
+		confidence: Type.Number({ minimum: 0, maximum: 1 }),
+		impact: Type.Optional(
+			Type.Union([
+				Type.Literal("safety"),
+				Type.Literal("correctness"),
+				Type.Literal("efficiency"),
+				Type.Literal("maintainability"),
+			]),
+		),
+		summary: Type.String({ maxLength: 600 }),
+		evidence: Type.Array(Type.String({ maxLength: 500 }), { maxItems: 5 }),
+		reusableInstruction: Type.Object(
+			{
+				likely: Type.Union([
+					Type.Literal("yes"),
+					Type.Literal("no"),
+					Type.Literal("uncertain"),
+				]),
+				reason: Type.String({ maxLength: 500 }),
+				scope: Type.Optional(
+					Type.Union([
+						Type.Literal("user"),
+						Type.Literal("project"),
+						Type.Literal("path"),
+						Type.Literal("skill"),
+						Type.Literal("deterministic-control"),
+						Type.Literal("uncertain"),
+					]),
+				),
+				targetSkill: Type.Optional(Type.String({ maxLength: 120 })),
+				target: Type.Optional(
+					Type.Object(
+						{
+							kind: Type.Union([
+								Type.Literal("skill"),
+								Type.Literal("command"),
+								Type.Literal("extension"),
+								Type.Literal("tool"),
+							]),
+							name: Type.String({ minLength: 1, maxLength: 120 }),
+							owner: Type.Optional(Type.String({ maxLength: 120 })),
+						},
+						{ additionalProperties: false },
+					),
+				),
+			},
+			{ additionalProperties: false },
+		),
+		suggestedChange: Type.Optional(Type.String({ maxLength: 600 })),
+	},
+	{ additionalProperties: false },
+);
+
 const MUTATION_TOOLS = new Set([
 	"edit",
 	"write",
@@ -313,37 +422,28 @@ function failedResult(isError: boolean, text: string): boolean {
 	);
 }
 
-function getPiInvocation(args: string[]): { command: string; args: string[] } {
-	const currentScript = process.argv[1];
-	if (currentScript && fs.existsSync(currentScript))
-		return { command: process.execPath, args: [currentScript, ...args] };
-	const execName = path.basename(process.execPath).toLowerCase();
-	if (!/^(?:node|bun)(?:\.exe)?$/.test(execName))
-		return { command: process.execPath, args };
-	return { command: "pi", args };
+async function resolveWorkflowReviewModel(ctx: TypedAgentRunContext) {
+	return ctx.modelRegistry
+		.getAvailable()
+		.find(
+			(model) =>
+				model.provider === REVIEW_MODEL_PROVIDER &&
+				model.id === REVIEW_MODEL_ID,
+		);
 }
 
-export function buildReviewerArgs(promptFile: string): string[] {
-	return [
-		"--provider",
-		REVIEW_MODEL_PROVIDER,
-		"--model",
-		REVIEW_MODEL_ID,
-		"--thinking",
-		REVIEW_MODEL_EFFORT,
-		"--no-tools",
-		"--no-extensions",
-		"--no-skills",
-		"--no-context-files",
-		"--no-prompt-templates",
-		"--no-themes",
-		"--no-session",
-		"--no-approve",
-		`@${promptFile}`,
-		"--print",
-		"Review the attached interaction and return only the requested JSON.",
-	];
-}
+export const workflowReviewAgent = defineAgent({
+	id: "workflow-friction-reviewer",
+	instructions:
+		"Classify one sanitized Pi interaction for workflow friction and propose at most one supported durable improvement.",
+	inputSchema: WorkflowReviewInputSchema,
+	outputSchema: WorkflowReviewOutputSchema,
+	resolveModel: resolveWorkflowReviewModel,
+	prompt: ({ packet }) => buildReviewPrompt(packet),
+	timeoutMs: REVIEW_TIMEOUT_MS,
+});
+
+export type WorkflowReviewRunner = Pick<typeof workflowReviewAgent, "run">;
 
 async function readJsonLines<T>(filePath: string): Promise<T[]> {
 	let text: string;
@@ -907,62 +1007,64 @@ async function recoverInterruptedReviews(): Promise<void> {
 	}
 }
 
+function normalizeWorkflowReview(review: ReviewResult): ReviewResult {
+	const suggestedChange = review.suggestedChange?.trim();
+	if (review.reusableInstruction.likely === "yes" && !suggestedChange)
+		throw new Error(
+			"Workflow review marked a reusable instruction without a suggested change.",
+		);
+	return {
+		...review,
+		summary: review.summary.trim(),
+		evidence: review.evidence.map((item) => item.trim()),
+		reusableInstruction: {
+			...review.reusableInstruction,
+			reason: review.reusableInstruction.reason.trim(),
+			targetSkill: review.reusableInstruction.targetSkill?.trim() || undefined,
+			target: review.reusableInstruction.target
+				? {
+						...review.reusableInstruction.target,
+						name: review.reusableInstruction.target.name.trim(),
+						owner: review.reusableInstruction.target.owner?.trim() || undefined,
+					}
+				: undefined,
+		},
+		suggestedChange: suggestedChange || undefined,
+	};
+}
+
 async function executeReview(
-	pi: ExtensionAPI,
-	cwd: string,
+	ctx: TypedAgentRunContext,
 	job: ReviewJob,
+	reviewer: WorkflowReviewRunner,
 ): Promise<StoredReviewRecord> {
-	const tempDir = await fsp.mkdtemp(
-		path.join(os.tmpdir(), "pi-friction-review-"),
-	);
-	const promptFile = path.join(tempDir, "prompt.md");
-	try {
-		const packet = await applyCaptureAnnotation(job.packet);
-		await fsp.writeFile(promptFile, buildReviewPrompt(packet), {
-			encoding: "utf8",
-			mode: 0o600,
-		});
-		const invocation = getPiInvocation(buildReviewerArgs(promptFile));
-		const result = await pi.exec(invocation.command, invocation.args, {
-			cwd,
-			timeout: REVIEW_TIMEOUT_MS,
-		});
-		if (result.code !== 0)
-			throw new Error(
-				bounded(
-					result.stderr || result.stdout || "Background reviewer failed.",
-					600,
-				),
-			);
-		const review = parseReviewResult(result.stdout);
-		if (!review) throw new Error("Background reviewer returned invalid JSON.");
-		const finalPacket = await applyCaptureAnnotation(packet);
-		return sanitizeTaskValue({
-			schemaVersion: FRICTION_SCHEMA_VERSION,
-			interactionId: finalPacket.interactionId,
-			sessionId: finalPacket.sessionId,
-			reviewedAt: new Date().toISOString(),
-			startedAt: finalPacket.startedAt,
-			durationMs: finalPacket.durationMs,
-			subagentRunId: finalPacket.subagentRunId,
-			subagentStartedAt: finalPacket.subagentStartedAt,
-			mode: finalPacket.mode,
-			selectionReasons: finalPacket.selectionReasons,
-			captureNote: finalPacket.captureNote,
-			repoRoot: finalPacket.repoRoot,
-			status: "completed" as const,
-			review,
-		});
-	} finally {
-		await fsp.rm(tempDir, { recursive: true, force: true });
-	}
+	const packet = await applyCaptureAnnotation(job.packet);
+	const result = await reviewer.run({ packet }, ctx);
+	const review = normalizeWorkflowReview(result.output);
+	const finalPacket = await applyCaptureAnnotation(packet);
+	return sanitizeTaskValue({
+		schemaVersion: FRICTION_SCHEMA_VERSION,
+		interactionId: finalPacket.interactionId,
+		sessionId: finalPacket.sessionId,
+		reviewedAt: new Date().toISOString(),
+		startedAt: finalPacket.startedAt,
+		durationMs: finalPacket.durationMs,
+		subagentRunId: finalPacket.subagentRunId,
+		subagentStartedAt: finalPacket.subagentStartedAt,
+		mode: finalPacket.mode,
+		selectionReasons: finalPacket.selectionReasons,
+		captureNote: finalPacket.captureNote,
+		repoRoot: finalPacket.repoRoot,
+		status: "completed" as const,
+		review,
+	});
 }
 
 let localWorkerRunning = false;
 
 export async function processPendingReviews(
-	pi: ExtensionAPI,
-	cwd: string,
+	ctx: TypedAgentRunContext,
+	reviewer: WorkflowReviewRunner = workflowReviewAgent,
 ): Promise<void> {
 	if (localWorkerRunning) return;
 	localWorkerRunning = true;
@@ -991,7 +1093,7 @@ export async function processPendingReviews(
 					await fsp.readFile(processingPath, "utf8"),
 				) as ReviewJob;
 				if (await reviewAlreadyRecorded(job.packet.interactionId)) continue;
-				const record = await executeReview(pi, cwd, job);
+				const record = await executeReview(ctx, job, reviewer);
 				await appendJsonLine(reviewsPath(), record);
 			} catch (error) {
 				if (job)
@@ -1012,8 +1114,11 @@ export async function processPendingReviews(
 	}
 }
 
-function startBackgroundWorker(pi: ExtensionAPI, cwd: string): void {
-	void processPendingReviews(pi, cwd).catch(() => {
+function startBackgroundWorker(
+	ctx: TypedAgentRunContext,
+	reviewer: WorkflowReviewRunner,
+): void {
+	void processPendingReviews(ctx, reviewer).catch(() => {
 		// Background review must not interrupt the active Pi workflow.
 	});
 }
@@ -1089,7 +1194,11 @@ async function experimentRecords(): Promise<Record<string, unknown>[]> {
 	).slice(-100);
 }
 
-export default function workflowFrictionExtension(pi: ExtensionAPI) {
+export default function workflowFrictionExtension(
+	pi: ExtensionAPI,
+	options: { reviewer?: WorkflowReviewRunner } = {},
+) {
+	const reviewer = options.reviewer ?? workflowReviewAgent;
 	let pendingInput: PendingInput | null = null;
 	let active: ActiveInteraction | null = null;
 	let latestCompleted: InteractionPacket | null = null;
@@ -1101,7 +1210,7 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 		if (currentSessionId !== sessionId)
 			resetOrchestrationInteraction(currentSessionId);
 		currentSessionId = sessionId;
-		startBackgroundWorker(pi, ctx.cwd);
+		startBackgroundWorker(ctx, reviewer);
 	});
 
 	pi.on("session_shutdown", async () => {
@@ -1268,7 +1377,7 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 		if (reasons.length === 0) return;
 		const packet = latestCompleted;
 		void enqueueReview(packet)
-			.then(() => startBackgroundWorker(pi, ctx.cwd))
+			.then(() => startBackgroundWorker(ctx, reviewer))
 			.catch(() => {
 				// Selection persistence must not delay or interrupt control return.
 			});
@@ -1301,7 +1410,7 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 						: "Latest interaction captured for background review.",
 					"info",
 				);
-				startBackgroundWorker(pi, ctx.cwd);
+				startBackgroundWorker(ctx, reviewer);
 				return;
 			}
 			const resolved = new Set(
@@ -1395,7 +1504,7 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 		],
 		parameters: Type.Object({
 			candidateId: Type.String(),
-			decision: StringEnum(["applied", "skipped"] as const),
+			decision: Type.Union([Type.Literal("applied"), Type.Literal("skipped")]),
 			decisionText: Type.String({ maxLength: 1_000 }),
 			approvedText: Type.Optional(Type.String({ maxLength: 600 })),
 			targetPaths: Type.Array(Type.String(), { maxItems: 10 }),

@@ -15,6 +15,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 	SettingsManager: { inMemory: vi.fn(() => ({})) },
 }));
 
+import { workflowReviewAgent } from "../extensions/workflow-friction-review.js";
 import { defineAgent, type TypedAgentRunContext } from "../lib/typed-agent.js";
 
 const InputSchema = Type.Object({ text: Type.String() });
@@ -121,6 +122,44 @@ describe("typed agent", () => {
 		});
 		expect(prompt).toHaveBeenCalledTimes(2);
 		expect(prompt.mock.calls[1]?.[0]).toContain("failed output validation");
+	});
+
+	it("runs workflow reviews through the configured Terra model and corrects invalid output", async () => {
+		const { prompt } = setupSession([
+			'{"classification":"bad"}',
+			'{"classification":"productive","confidence":0.8,"summary":"Useful progress.","evidence":[],"reusableInstruction":{"likely":"no","reason":"No durable change."}}',
+		]);
+		const model = { provider: "openai-codex", id: "gpt-5.6-terra" } as never;
+		const result = await workflowReviewAgent.run(
+			{
+				packet: {
+					schemaVersion: 1,
+					interactionId: "interaction-1",
+					sessionId: "session-1",
+					mode: "explore",
+					startedAt: "2026-07-15T00:00:00.000Z",
+					settledAt: "2026-07-15T00:01:00.000Z",
+					durationMs: 60_000,
+					selectionReasons: ["user_correction"],
+					userText: "Use pnpm.",
+					assistantTurns: [],
+					assistantText: "",
+					tools: [],
+				},
+			},
+			{
+				cwd: "C:/repo",
+				model: undefined,
+				modelRegistry: { getAvailable: () => [model] } as never,
+				signal: undefined,
+			},
+		);
+
+		expect(result.attempts).toBe(2);
+		expect(prompt).toHaveBeenCalledTimes(2);
+		expect(createAgentSessionMock).toHaveBeenCalledWith(
+			expect.objectContaining({ model, thinkingLevel: "low", noTools: "all" }),
+		);
 	});
 
 	it("surfaces provider failures without masking them", async () => {

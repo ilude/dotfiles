@@ -2,6 +2,27 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-15: Migrate workflow reviews to a typed agent
+
+**Why:** The background reviewer duplicated model resolution, subprocess,
+timeout, JSON parsing, and cleanup behavior already owned by the typed-agent
+runtime.
+
+**Changed:**
+- Added bounded TypeBox contracts for sanitized interaction packets and reviews.
+- Resolved Terra through the active model registry and reused typed-agent
+  correction, cancellation, timeout, isolation, and disposal behavior.
+- Removed temporary prompt files, subprocess invocation, and legacy review
+  parsing while preserving queue and decision policy.
+- Added focused model-selection and correction coverage.
+
+**Files:** `pi/extensions/workflow-friction-review.ts`,
+`pi/lib/workflow-friction.ts`, `pi/tests/workflow-friction.test.ts`,
+`pi/tests/typed-agent.test.ts`, `.specs/pi-extension-refactors/backlog.md`,
+`CHANGELOG.md`
+
+---
+
 ## 2026-07-15: Deduplicate claimed workflow reviews
 
 **Why:** An enqueue/claim race could recreate a pending review after the worker
