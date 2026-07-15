@@ -68,6 +68,13 @@ const { output } = await reviewer.run({ candidate }, ctx);
 - Never let model output directly stage, commit, push, delete, deploy, or bypass approval policy.
 - Test the agent boundary with a fake session, then validate the exact command workflow.
 
+## Workflow Design Checks
+
+- Before automating an unfamiliar multi-stage workflow, execute its intended entrypoint end to end once. Identify deterministic inputs, semantic judgments, validation signals, and operator approval boundaries before extracting stages.
+- Run linters, type checks, tests, and pass/fail routing in deterministic code. When a typed stage owns remediation, pass only bounded diagnostics back as explicit input; code still owns retry limits and the final validation decision.
+
+Reference: IndyDevDan, [FORGET Loop Engineering. Agentic Engineering is about THIS](https://www.youtube.com/watch?v=VQy50fuxI34), especially 27:27-30:34.
+
 ## Composition Pattern
 
 ```typescript
