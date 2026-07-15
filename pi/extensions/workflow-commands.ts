@@ -781,6 +781,22 @@ export function parseCommitPlan(text: string): CommitPlan {
 	return parsed;
 }
 
+export function formatCommitPlannerFailure(error: unknown): string {
+	const raw =
+		error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+	const sanitized = raw
+		.replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
+		.replace(
+			/\b(token|secret|password|api[-_ ]?key)\s*[:=]\s*\S+/gi,
+			"$1=[redacted]",
+		)
+		.replace(/\b[A-Za-z0-9+/_=-]{40,}\b/g, "[redacted]")
+		.replace(/\s+/g, " ")
+		.trim()
+		.slice(0, 300);
+	return `Commit planner failed: ${sanitized || "unknown error"}`;
+}
+
 export function formatCommitPlanWarnings(
 	warnings: string[] | undefined,
 ): string[] {
@@ -927,9 +943,7 @@ export function buildDeterministicCommitFallback(
 					...(message.body ? { body: message.body } : {}),
 				};
 			}),
-			warnings: [
-				"Commit planner unavailable; used deterministic ownership fallback.",
-			],
+			warnings: ["Using deterministic ownership fallback."],
 		},
 	};
 }
@@ -2247,7 +2261,8 @@ async function executeCommitCommand(
 				cachedDiff: prepared.cachedDiff,
 				hint: prepared.parsedArgs.hint,
 			});
-		} catch (_err) {
+		} catch (error) {
+			activity.logInfo(formatCommitPlannerFailure(error));
 			const fallback = buildDeterministicCommitFallback(
 				{
 					files: prepared.selection.files,

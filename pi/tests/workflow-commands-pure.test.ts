@@ -14,6 +14,7 @@ import {
 	chooseFilesToCommit,
 	confirmCommitMessage,
 	filterCommitSafeFiles,
+	formatCommitPlannerFailure,
 	formatCommitPlanWarnings,
 	getCommitRuntimePathReason,
 	isBlockingSecretReviewClassification,
@@ -27,6 +28,17 @@ import {
 } from "../extensions/workflow-commands.ts";
 
 describe("commit planner warnings", () => {
+	it("sanitizes and bounds the fallback reason", () => {
+		const message = formatCommitPlannerFailure(
+			new Error(`provider token=secret-value\n${"x".repeat(400)}`),
+		);
+		expect(message).toContain(
+			"Commit planner failed: Error: provider token=[redacted]",
+		);
+		expect(message).not.toContain("secret-value");
+		expect(message.length).toBeLessThanOrEqual(323);
+	});
+
 	it("trims warnings and drops empty entries before display", () => {
 		expect(
 			formatCommitPlanWarnings([

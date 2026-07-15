@@ -456,6 +456,50 @@ describe("workflow command dispatch", () => {
 		);
 	});
 
+	it("surfaces the sanitized planner failure before deterministic fallback", async () => {
+		const notify = vi.fn();
+		const file = "pi/lib/extension-utils.ts";
+		for (const result of [
+			{ stdout: ` M ${file}\n` },
+			{},
+			{ stdout: `${file}\n` },
+			{},
+			{},
+			{ stdout: `${file} | 1 +\n` },
+			{ code: 1 },
+			{},
+			{ stdout: `${file} | 1 +\n` },
+			{ stdout: `diff --git a/${file} b/${file}\n` },
+			{ code: 1, stderr: "stop after fallback\n" },
+		]) {
+			mockSpawn.mockImplementationOnce(() => mockGitSpawn(result));
+		}
+		mockTypedAgentRun.mockRejectedValueOnce(
+			new Error("schema validation omitted one path"),
+		);
+
+		await getHandler("commit")("", {
+			cwd: path.resolve(process.cwd(), ".."),
+			ui: { notify },
+		});
+
+		expect(mockPi.sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				customType: "workflow-commit-activity",
+				content:
+					"Commit planner failed: Error: schema validation omitted one path",
+				display: true,
+			}),
+		);
+		expect(mockPi.sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				customType: "workflow-commit-activity",
+				content: "Planner warning: Using deterministic ownership fallback.",
+				display: true,
+			}),
+		);
+	});
+
 	it("reports /commit executor failures without dispatching a workflow prompt", async () => {
 		const notify = vi.fn();
 		mockSpawn.mockImplementationOnce(() =>
