@@ -1,4 +1,53 @@
-## 2026-07-14: Rank Pi improvements by verified usage impact
+# Changelog
+
+This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
+
+## 2026-07-15: Consolidate repository changelogs
+
+**Why:** Separate client and Pi changelogs duplicated entries and made update instructions depend on the edited surface.
+
+**Changed:**
+- Merged the tracked client and Pi histories into this root changelog.
+- Redirected changelog instructions to `~/.dotfiles/CHANGELOG.md`.
+- Removed the superseded `claude/CHANGELOG.md` and `pi/CHANGELOG.md` files.
+
+**Files:** `CHANGELOG.md`, `claude/CLAUDE.md`, `pi/AGENTS.md`
+
+---
+
+## Repository and client history
+
+### 2026-07-15: Ground Pi typed workflows in end-to-end design
+
+**Why:** The typed-agent skill described stage boundaries but did not explicitly
+require walking an unfamiliar workflow end to end before automation or keeping
+validator execution and pass/fail routing outside semantic stages.
+
+**Fix:** Added workflow-design checks for identifying deterministic inputs,
+semantic judgments, validation signals, approval boundaries, bounded diagnostic
+handoffs, and code-owned retry decisions. Linked the source video and timestamps.
+
+**Files:** ~/.dotfiles/pi/skills/typed-agent-workflows/SKILL.md
+
+---
+
+### 2026-07-15: Surface Pi commit planner fallback reasons
+
+**Why:** `/commit` discarded planner exceptions and labeled every fallback as
+planner unavailability, leaving the actual failure unrecoverable.
+
+**Fix:** Added bounded credential-redacted failure reporting before the
+existing deterministic ownership fallback, with helper and command-level
+regressions.
+
+**Files:** ~/.dotfiles/pi/extensions/workflow-commands.ts,
+~/.dotfiles/pi/tests/workflow-commands-pure.test.ts,
+~/.dotfiles/pi/tests/workflow-commands.test.ts,
+~/.dotfiles/pi/CHANGELOG.md
+
+---
+
+### 2026-07-14: Rank Pi improvements by verified usage impact
 
 **Why:** `/improve` selected the oldest supported candidate without considering
 how often the affected surface was used, while local stats had attribution and
@@ -20,25 +69,29 @@ verified zero usage.
 
 ---
 
-## 2026-07-14: Remove test-only Pi router paths
+### 2026-07-14: Remove test-only Pi router paths
 
 **Why:** Legacy hysteresis, policy, status-label, and transcript-emission helpers
 were no longer called by the provider routing path. Tests that invoked those
 helpers directly gave them the appearance of runtime coverage.
 
-**Fix:** Removed the test-only helpers and their direct tests while retaining
-the authoritative provider-route implementation, same-turn telemetry, and live
-routing coverage. Recorded the separate production-visible policy-settings
-contract for a later support-or-retire decision.
+**Fix:** Removed the test-only helpers and their direct tests, then retired the
+production-visible policy parsing, legacy state, status fields, and docs that
+had no effect on authoritative provider routing. Retained same-turn telemetry
+and live routing coverage.
 
 **Files:** ~/.dotfiles/pi/extensions/prompt-router.ts,
+~/.dotfiles/pi/lib/prompt-router/config.ts,
 ~/.dotfiles/pi/tests/prompt-router.test.ts,
 ~/.dotfiles/pi/tests/transcript-integration.test.ts,
+~/.dotfiles/pi/prompt-routing/docs/settings-doc.md,
+~/.dotfiles/pi/prompt-routing/docs/classifier-training.md,
+~/.dotfiles/pi/README.md,
 ~/.dotfiles/.specs/pi-extension-refactors/backlog.md
 
 ---
 
-## 2026-07-14: Retire duplicate Pi skill commands
+### 2026-07-14: Retire duplicate Pi skill commands
 
 **Why:** Pi's custom skill loader duplicated native skill discovery, exposed
 reference documents as slash commands, and made `/skills` and `/yt-local`
@@ -58,7 +111,7 @@ and updated `/skill-stats` for current nested session records.
 
 ---
 
-## 2026-07-14: Stabilize Pi secret-review coverage
+### 2026-07-14: Stabilize Pi secret-review coverage
 
 **Why:** `/commit` required the secret reviewer to reproduce path, label, line, and
 match text verbatim. Harmless output normalization could therefore fail exact
@@ -76,7 +129,7 @@ back to the original candidate metadata in code.
 
 ---
 
-## 2026-07-14: Surface Pi commit planner warnings
+### 2026-07-14: Surface Pi commit planner warnings
 
 **Why:** `/commit` accepted validated planner warnings but discarded them before
 creating commits, leaving useful uncertainty invisible to the operator.
@@ -89,7 +142,7 @@ existing `/commit` activity stream before staging each planned group.
 
 ---
 
-## 2026-07-14: Consolidate Pi self-improvement commands
+### 2026-07-14: Consolidate Pi self-improvement commands
 
 **Why:** Pi exposed interaction capture, aggregate review, candidate approval,
 and skill linting as overlapping self-improvement workflows.
@@ -107,7 +160,7 @@ Apply/Edit/Skip discussion, and retired `/capture`, `/learning-review`,
 
 ---
 
-## 2026-07-14: Strengthen Pi review readiness checks
+### 2026-07-14: Strengthen Pi review readiness checks
 
 **Why:** Material plan repairs and incremental readiness findings could bypass
 renewed adversarial coverage or exhaust the fixed repair budget one blocker at a
@@ -121,7 +174,7 @@ audit, and consolidated standalone-readiness checks to the Pi review workflow.
 
 ---
 
-## 2026-07-14: Add Pi typed-agent workflows
+### 2026-07-14: Add Pi typed-agent workflows
 
 **Why:** Pi commands needed a small reusable boundary between deterministic
 workflow code and focused semantic decisions without introducing a second
@@ -141,7 +194,7 @@ retry, and added a skill with evidence-triggered capability specifications.
 
 ---
 
-## 2026-07-14: Add Pi cross-session learning review
+### 2026-07-14: Add Pi cross-session learning review
 
 **Why:** Pi needed to turn explicit corrections into quarantined, reviewable
 lessons instead of changing durable instructions automatically.
@@ -156,7 +209,7 @@ rollback evidence.
 
 ---
 
-## 2026-07-14: Reduce workflow-friction instruction conflicts
+### 2026-07-14: Reduce workflow-friction instruction conflicts
 
 **Why:** Session review found that broad warning repair and over-scope guidance
 could conflict with exact-workflow validation and bounded execution.
@@ -170,7 +223,7 @@ and prohibited behavior-changing bypasses of supported repository entrypoints.
 
 ---
 
-## 2026-07-14: Make Pi instructions canonical
+### 2026-07-14: Make Pi instructions canonical
 
 **Why:** Pi is the primary coding interface, while Claude Code should continue receiving the same shared global instructions.
 
@@ -180,7 +233,7 @@ and prohibited behavior-changing bypasses of supported repository entrypoints.
 
 ---
 
-## 2026-07-10: Treat explicit requests as authorization
+### 2026-07-10: Treat explicit requests as authorization
 
 **Why:** Agents could ask for conversational confirmation after the user had already specified or selected an action, then trigger a second runtime safety confirmation for the same operation.
 
@@ -190,7 +243,7 @@ and prohibited behavior-changing bypasses of supported repository entrypoints.
 
 ---
 
-## 2026-07-09: Restore private-store contract wording
+### 2026-07-09: Restore private-store contract wording
 
 **Why:** CI contract tests require the private-store skill to preserve the Obsidian vault wording used by browser tab capture and handoff guidance.
 
@@ -200,7 +253,7 @@ and prohibited behavior-changing bypasses of supported repository entrypoints.
 
 ---
 
-## 2026-06-28: Encode recurring workflow preferences
+### 2026-06-28: Encode recurring workflow preferences
 
 **Why:** Past-session review found repeated workflow expectations around exact-path validation, durable handoff, scratch output handling, worktree state, deployment checks, private values, and domain-specific triage loops.
 
@@ -210,7 +263,7 @@ and prohibited behavior-changing bypasses of supported repository entrypoints.
 
 ---
 
-## 2026-06-24: Expand Pi extension authoring footguns
+### 2026-06-24: Expand Pi extension authoring footguns
 
 **Why:** Public Pi skill and extension repositories surfaced additional recurring authoring mistakes beyond shell-out performance, especially around registration-time actions, reload-safe state, command-only context methods, and custom tool contracts.
 
@@ -220,7 +273,7 @@ and prohibited behavior-changing bypasses of supported repository entrypoints.
 
 ---
 
-## 2026-06-24: Add Pi extension runtime guidance
+### 2026-06-24: Add Pi extension runtime guidance
 
 **Why:** Pi extension work needed a dedicated checklist for hot-path subprocess risks, runtime cleanup, bounded output, and Pi-native extension patterns.
 
@@ -230,7 +283,7 @@ and prohibited behavior-changing bypasses of supported repository entrypoints.
 
 ---
 
-## 2026-06-08: Compact large domain skills
+### 2026-06-08: Compact large domain skills
 
 **Why:** Several broad domain skills had grown into tutorial-heavy files, which made routine activation expensive and blurred when to load optional details.
 
@@ -240,7 +293,7 @@ and prohibited behavior-changing bypasses of supported repository entrypoints.
 
 ---
 
-## 2026-06-06: Make private datastore Obsidian-compatible
+### 2026-06-06: Make private datastore Obsidian-compatible
 
 **Why:** Private datastore writers needed one vault structure so browser captures, handoffs, X data, attachments, and indexes are browsable in Obsidian instead of mixing notes and raw artifacts in timestamp folders.
 
@@ -250,7 +303,7 @@ and prohibited behavior-changing bypasses of supported repository entrypoints.
 
 ---
 
-## 2026-06-06: Align private archive commit behavior
+### 2026-06-06: Align private archive commit behavior
 
 **Why:** Private datastore writes were expected to be encrypted into the commit artifact during normal commits, but the Dolos hook only scanned staged paths and left packing as a manual step.
 
@@ -260,7 +313,7 @@ and prohibited behavior-changing bypasses of supported repository entrypoints.
 
 ---
 
-## 2026-06-06: Add Brave tab capture workflow
+### 2026-06-06: Add Brave tab capture workflow
 
 **Why:** Open Brave tab capture needed a repeatable workflow that keeps sensitive URLs in the ignored private store and reports whether results came from live CDP or session-file parsing.
 
@@ -270,7 +323,7 @@ and prohibited behavior-changing bypasses of supported repository entrypoints.
 
 ---
 
-## 2026-06-04: Document verifiable shell temp cleanup patterns
+### 2026-06-04: Document verifiable shell temp cleanup patterns
 
 **Why:** Damage-control can now prove several canonical temporary-file cleanup patterns, and shell guidance needed to steer future scripts toward those easy-to-verify forms.
 
@@ -280,7 +333,7 @@ and prohibited behavior-changing bypasses of supported repository entrypoints.
 
 ---
 
-## 2026-06-03: Require inline goal prompts to start with /goal
+### 2026-06-03: Require inline goal prompts to start with /goal
 
 **Why:** Inline Pi goal prompt requests were still allowed to include a short lead-in, so some responses did not begin with the copyable `/goal` command.
 
@@ -290,7 +343,7 @@ and prohibited behavior-changing bypasses of supported repository entrypoints.
 
 ---
 
-## 2026-06-03: Clean up Pi skill client references
+### 2026-06-03: Clean up Pi skill client references
 
 **Why:** A few Pi skills still had Claude-specific references or vague "best practices" wording that could confuse cross-client use.
 
@@ -300,7 +353,7 @@ and prohibited behavior-changing bypasses of supported repository entrypoints.
 
 ---
 
-## 2026-06-03: Tighten coding-quality and cross-client instruction guidance
+### 2026-06-03: Tighten coding-quality and cross-client instruction guidance
 
 **Why:** Goal prompts and shared instruction files needed a concrete coding-quality bar without vague "best practices" wording, and several shared surfaces carried Claude-specific tool/path names while also being loaded by Pi.
 
@@ -310,7 +363,7 @@ and prohibited behavior-changing bypasses of supported repository entrypoints.
 
 ---
 
-## 2026-06-01: Default Pi goal prompt skill to inline output
+### 2026-06-01: Default Pi goal prompt skill to inline output
 
 **Why:** Requests to create a `/goal` prompt should usually return a copyable command on screen, not create a markdown file unless the user asks for one or the prompt is too large for inline use.
 
@@ -320,7 +373,7 @@ and prohibited behavior-changing bypasses of supported repository entrypoints.
 
 ---
 
-## 2026-05-23: Tune Pi commit secret scanning
+### 2026-05-23: Tune Pi commit secret scanning
 
 **Why:** The Pi `/commit` workflow's documented `detect-secrets-hook` command used the default Yelp detect-secrets ruleset, so `KeywordDetector` blocked harmless test fixtures containing words like `secret` or `key`.
 
@@ -330,7 +383,7 @@ and prohibited behavior-changing bypasses of supported repository entrypoints.
 
 ---
 
-## 2026-05-02: yt-local scripts use PEP 723 inline metadata
+### 2026-05-02: yt-local scripts use PEP 723 inline metadata
 
 **Why:** `uv run <abs-path>/fetch_transcript.py` from any cwd other than `claude/commands/yt-local` failed with `No module named 'youtube_transcript_api'` because uv resolves deps from cwd, not script location.
 
@@ -340,7 +393,7 @@ and prohibited behavior-changing bypasses of supported repository entrypoints.
 
 ---
 
-## 2026-04-29: Vendor three skills from mattpocock/skills
+### 2026-04-29: Vendor three skills from mattpocock/skills
 
 **Added:**
 - `claude/skills/grill-me/` -- aggressive plan interrogation skill; one question at a time, model provides recommended answer with each, prefers exploring the codebase over asking
@@ -354,7 +407,7 @@ Upstream: https://github.com/mattpocock/skills @ `f71bb975bfae2dc0d31c529c7dd4a8
 
 ---
 
-## 2026-04-29: Adopt personal-preferences ruleset (over-scope guard, command discipline, package-manager policy)
+### 2026-04-29: Adopt personal-preferences ruleset (over-scope guard, command discipline, package-manager policy)
 
 **Added:**
 - Critical rule "Stop when over-scoped": if a request bundles too much work, STOP and propose a sequenced 1-3-1 breakdown rather than silently attempting the whole thing.
@@ -365,7 +418,7 @@ Upstream: https://github.com/mattpocock/skills @ `f71bb975bfae2dc0d31c529c7dd4a8
 
 ---
 
-## 2026-04-16: Ban em-dashes / en-dashes in file content
+### 2026-04-16: Ban em-dashes / en-dashes in file content
 
 **Added:**
 - Critical rule: never write em-dash or en-dash characters into code, comments, docs, or commit messages. Use ASCII `--` or `-` instead. Triggered by a session where an Edit-then-Read round-trip on a Windows host turned in-file em-dashes into mojibake, which then broke subsequent Edit string-matching and forced a full Write rewrite of the file. Chat replies to the user are unaffected.
@@ -374,20 +427,20 @@ Upstream: https://github.com/mattpocock/skills @ `f71bb975bfae2dc0d31c529c7dd4a8
 
 ---
 
-## 2026-04-16: Add validate-before-committing rule
+### 2026-04-16: Add validate-before-committing rule
 
 **Added:**
 - Critical rule: NEVER commit unverified fixes. Must run the code path and confirm broken->working before git commit. Added to CLAUDE.md after a session where multiple cert/infra fixes were committed before being validated end-to-end, causing wasted cycles.
 
 **Files:** ~/.claude/CLAUDE.md
 
-# Personal Ruleset Changelog
+### Personal ruleset changelog
 
 This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.md`) and associated skills/commands.
 
 ---
 
-## 2026-04-15: Add no-magic-values guidance to all language skills
+### 2026-04-15: Add no-magic-values guidance to all language skills
 
 **Added:**
 - "No Magic Values" section to 7 language skills (TypeScript, Python, C#, Go, Rust, Ruby, Shell) with idiomatic patterns per language and consistent "When Literals Are Fine" exceptions
@@ -396,7 +449,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
-## 2026-04-08: plan-it and review-it emit next-step commands
+### 2026-04-08: plan-it and review-it emit next-step commands
 
 **Changed:**
 - `/plan-it` now outputs both `/review-it` and `/do-it` commands with the concrete `.specs/{slug}/plan.md` path so the user can copy either
@@ -404,7 +457,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 **Files:** claude/shared/plan-it-instructions.md, claude/shared/review-it-instructions.md
 
-## 2026-03-18: Improve war-report specificity and formatting
+### 2026-03-18: Improve war-report specificity and formatting
 
 **Changed:**
 - Added explicit rule requiring specific entries (name the feature/component/system) -- generic statements like "fixed a bug" are never acceptable
@@ -414,7 +467,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 **Files:** claude/skills/war-report/SKILL.md
 
-## 2026-02-26: Fix Windows console window flashing caused by uv in hooks
+### 2026-02-26: Fix Windows console window flashing caused by uv in hooks
 
 **Fixed:**
 - Replaced `uv run` with bare `python` in all hook commands in `settings.json` -- `uv.exe` spawns visible `conhost.exe` windows on the hook execution path in Claude Code v2.1.45+
@@ -430,7 +483,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
-## 2026-02-26: /review-plan file persistence -- findings survive context compaction
+### 2026-02-26: /review-plan file persistence -- findings survive context compaction
 
 **Changed:**
 - All reviewer agents now write findings to files at `.specs/{plan-name}/review-{N}/{reviewer-slug}.md`
@@ -449,7 +502,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
-## 2026-02-25: Major /review-plan redesign -- dynamic panels, outside-the-box expert, rebuttal round
+### 2026-02-25: Major /review-plan redesign -- dynamic panels, outside-the-box expert, rebuttal round
 
 **Changed:**
 - Dynamic expert panel -- main agent analyzes plan content and composes the reviewer panel (4-8 experts) instead of hardcoded 4
@@ -468,7 +521,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
-## 2026-02-25: Create /review-plan command
+### 2026-02-25: Create /review-plan command
 
 **Added:**
 - `/review-plan` command -- launches 4 parallel expert reviewers (Ops/SRE, Security, Completeness, Adversarial/Red Team) against a plan file
@@ -479,7 +532,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
-## 2026-02-21: Add workflow orchestration rules
+### 2026-02-21: Add workflow orchestration rules
 
 **Added:**
 - "Plan mode default" critical rule -- enter plan mode for non-trivial tasks, re-plan on failure
@@ -494,7 +547,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
-## 2026-02-17: Eliminate provenance-based work avoidance
+### 2026-02-17: Eliminate provenance-based work avoidance
 
 **Added:**
 - New critical rule: "Never use provenance to avoid requested work" -- blocks using "pre-existing", "not my changes", etc. as reasons to skip user-requested work
@@ -508,7 +561,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
-## 2026-02-16: Add root cause analysis rules and common pitfalls
+### 2026-02-16: Add root cause analysis rules and common pitfalls
 
 **Added:**
 - Technology capabilities verification rule (search docs before claiming limitations)
@@ -519,7 +572,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
-## 2026-02-15: CLAUDE.md Cleanup & Skill Trigger Expansion
+### 2026-02-15: CLAUDE.md Cleanup & Skill Trigger Expansion
 
 **Removed:**
 - Session History Capture section (never produced meaningful entries, only "session_end" stubs)
@@ -541,7 +594,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
-## 2025-11-10: Ruleset Optimization (History Analysis)
+### 2025-11-10: Ruleset Optimization (History Analysis)
 
 **First `/optimize-ruleset personal` run:**
 - Analyzed all 242 history entries (Nov 7-10, 2025)
@@ -572,7 +625,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
-## 2025-11-10: Skills Consolidation from GitHub Copilot Analysis
+### 2025-11-10: Skills Consolidation from GitHub Copilot Analysis
 
 **Analyzed 7 GitHub Copilot projects** and consolidated best practices into Claude Code skills:
 - agent-spike, mentat-cli, joyride-python, ContextMenuEditor, onboard, attempt-one, onramp
@@ -648,7 +701,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
-## 2025-11-08: Git Workflow & Commit Command Optimization
+### 2025-11-08: Git Workflow & Commit Command Optimization
 
 **Optimized commit.md for Haiku 4.5:** (38% reduction)
 - Before: 114 lines, 478 words, ~621 tokens
@@ -682,7 +735,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
-## 2025-11-08: Prompt Engineering Optimization & Help Separation
+### 2025-11-08: Prompt Engineering Optimization & Help Separation
 
 **Created `/prompt-help` command for documentation:**
 - New dedicated help command (106 lines, ~260 tokens)
@@ -712,7 +765,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
-## 2025-11-08: Major Command & Skill Optimization for Haiku 4.5
+### 2025-11-08: Major Command & Skill Optimization for Haiku 4.5
 
 **Optimized for Haiku 4.5 Compatibility:**
 
@@ -766,7 +819,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
-## 2025-11-05: Prompt Engineering Skill and Commands
+### 2025-11-05: Prompt Engineering Skill and Commands
 
 **Added:**
 - Created `prompt-engineering` skill with 7 advanced techniques
@@ -792,7 +845,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
-## 2025-11-04: Ruleset Optimization via /optimize-ruleset
+### 2025-11-04: Ruleset Optimization via /optimize-ruleset
 
 **Changed:**
 - Added Context Efficiency Philosophy as PRIMARY principle
@@ -807,7 +860,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
-## 2025-11-04: Moved Context-Specific Sections to Skills
+### 2025-11-04: Moved Context-Specific Sections to Skills
 
 **Created Skills:**
 - `python-workflow` skill (~18 lines saved in non-Python projects)
@@ -828,7 +881,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
-## 2025-11-04: Git Workflow Moved to Skill
+### 2025-11-04: Git Workflow Moved to Skill
 
 **Created:**
 - `git-workflow` skill in `~/.claude/skills/git-workflow/`
@@ -847,7 +900,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
-## 2025-11-04: Enhanced Git Workflow Section
+### 2025-11-04: Enhanced Git Workflow Section
 
 **Added:**
 - Extracted core principles from `/commit` command
@@ -863,7 +916,7 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
-## 2025-11-04: Initial Personal Ruleset Creation
+### 2025-11-04: Initial Personal Ruleset Creation
 
 **Created:**
 - `~/.claude/CLAUDE.md` (personal ruleset applying to all projects)
@@ -889,11 +942,11 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 
 ---
 
-## Changelog Conventions
+### Changelog Conventions
 
 **Entry Format:**
 ```markdown
-## YYYY-MM-DD: Brief Description
+### YYYY-MM-DD: Brief Description
 
 **Added/Changed/Removed/Fixed:**
 - Bullet points describing changes
@@ -915,3 +968,230 @@ This file tracks changes to the personal Claude Code ruleset (`~/.claude/CLAUDE.
 - **Changed**: Modifications to existing functionality
 - **Removed**: Deprecated or deleted features
 - **Fixed**: Bug fixes or corrections
+
+## Pi runtime history
+
+
+### 2026-07-15: Ground typed workflows in end-to-end design
+
+**Why:** The typed-agent skill described stage boundaries but did not explicitly
+require walking an unfamiliar workflow end to end before automation or keeping
+validator execution and pass/fail routing outside semantic stages.
+
+**Changed:**
+- Added a pre-automation walkthrough that identifies deterministic inputs,
+  semantic judgments, validation signals, and operator approval boundaries.
+- Kept linters, tests, pass/fail decisions, and retry limits in deterministic
+  code while allowing bounded diagnostics to return to a remediation stage.
+- Linked the source video and relevant timestamps.
+
+**Files:** `pi/skills/typed-agent-workflows/SKILL.md`, `pi/CHANGELOG.md`
+
+---
+
+### 2026-07-15: Surface commit planner fallback reasons
+
+**Why:** `/commit` discarded commit-planner exceptions and reported every
+failure as planner unavailability, preventing diagnosis after fallback.
+
+**Changed:**
+- Logged a bounded, single-line, credential-redacted planner failure reason
+  before deterministic ownership fallback.
+- Kept the fallback warning separate from the underlying cause.
+- Added helper and registered-command regressions.
+
+**Files:** `pi/extensions/workflow-commands.ts`,
+`pi/tests/workflow-commands-pure.test.ts`,
+`pi/tests/workflow-commands.test.ts`, `pi/CHANGELOG.md`
+
+---
+
+### 2026-07-14: Rank improvements by verified usage impact
+
+**Why:** `/improve` selected the oldest pending candidate even when another
+supported issue affected a much more frequently used surface. Several stats
+commands also had attribution, scope, and window defects that made their counts
+unsafe for prioritization.
+
+**Changed:**
+- Ranked safety and correctness candidates first, then normal candidates by
+  verified 30-day usage, confidence, age, and interaction ID.
+- Added structured skill, command, extension, and tool targets to review
+  records while preserving legacy `targetSkill` records.
+- Distinguished observed, verified-zero, and unknown usage in improvement
+  discussions.
+- Corrected repeated router hash attribution, trace/session double counting,
+  current `/usage` ownership, orchestration review windows, skill roots and
+  unused windows, and configured usage-session roots.
+- Made `/usage-stats` render deterministically without starting a provider
+  turn and removed unused extension-stats TUI code.
+
+**Files:** `pi/extensions/extension-stats.ts`,
+`pi/extensions/orchestration-stats.ts`, `pi/extensions/router-stats.ts`,
+`pi/extensions/skill-stats.ts`, `pi/extensions/usage.ts`,
+`pi/extensions/workflow-friction-review.ts`, `pi/lib/workflow-friction.ts`,
+`pi/tests/orchestration-stats.test.ts`, `pi/tests/session-jsonl-stats.test.ts`,
+`pi/tests/skill-stats.test.ts`, `pi/tests/usage.test.ts`,
+`pi/tests/workflow-friction.test.ts`, `pi/README.md`, `pi/CHANGELOG.md`
+
+---
+
+### 2026-07-14: Stabilize secret-review coverage
+
+**Why:** `/commit` required the secret reviewer to reproduce path, label, line,
+and match text verbatim. Harmless output normalization could therefore fail
+exact candidate coverage before commit planning.
+
+**Changed:**
+- Assigned stable numeric IDs to deterministic scanner candidates.
+- Reduced reviewer output to each candidate ID, classification, and reason.
+- Retried one incomplete response with an explicit exact-coverage correction.
+- Validated exact ID coverage and joined decisions back to original candidate
+  metadata in deterministic code.
+- Added focused prompt, coverage, and retry regressions.
+
+**Files:** `pi/extensions/workflow-commands.ts`,
+`pi/lib/workflow-commands/prompts.ts`,
+`pi/tests/workflow-commands-pure.test.ts`,
+`pi/tests/workflow-prompts.test.ts`, `pi/CHANGELOG.md`
+
+---
+
+### 2026-07-14: Surface commit planner warnings
+
+**Why:** `/commit` accepted validated planner warnings but discarded them before
+creating commits, leaving useful uncertainty invisible to the operator.
+
+**Changed:**
+- Normalized non-empty planner warnings.
+- Emitted warnings through the existing commit activity stream before staging
+  planned commit groups.
+- Added focused coverage for trimming, empty warnings, and display formatting.
+
+**Files:** `pi/extensions/workflow-commands.ts`,
+`pi/tests/workflow-commands-pure.test.ts`, `pi/CHANGELOG.md`
+
+---
+
+### 2026-07-14: Consolidate self-improvement into /improve
+
+**Why:** Interaction capture, trend review, candidate approval, and skill review
+were exposed as overlapping workflows with inconsistent evidence and outcomes.
+
+**Changed:**
+- Added `/improve` as the only public self-improvement command.
+- Combined one supported candidate with recent interaction metadata, prior
+  experiments, and target-skill usage before the Apply/Edit/Skip decision.
+- Retired `/capture`, `/learning-review`, `/workflow-review`, and
+  `/skill-review` while preserving automatic background review and existing
+  decision records.
+- Kept `/review-it` for plan and PRD review and stats commands as read-only
+  diagnostics.
+
+**Files:** `pi/extensions/workflow-friction-review.ts`,
+`pi/extensions/skill-review-command.ts`, `pi/lib/workflow-friction.ts`,
+`pi/tests/workflow-friction.test.ts`, `pi/tests/skill-review.test.ts`,
+`pi/README.md`, `pi/CHANGELOG.md`
+
+---
+
+### 2026-07-14: Prevent incremental standalone-review blockers
+
+**Why:** A material auto-applied plan rewrite bypassed renewed panel coverage, and
+standalone blockers were discovered one repair pass at a time until the fixed
+repair budget was exhausted.
+
+**Changed:**
+- Added a mandatory post-change adversarial panel when review fixes materially
+  change a plan's objective, architecture, runtime boundary, task structure, or
+  archive mechanism.
+- Added a pre-readiness contract audit for repository prerequisites, command
+  truth tables, exact workflow boundaries, mutations, rollback, archive
+  postconditions, and checklist integrity.
+- Moved standalone readiness to a large reviewer that must inspect every audit
+  domain and consolidate all blockers before repair passes begin.
+
+**Files:** `pi/skills/workflow/review-it.md`,
+`pi/tests/workflow-prompts.test.ts`, `pi/CHANGELOG.md`
+
+---
+
+### 2026-07-14: Add typed-agent workflows
+
+**Why:** Pi commands needed a reusable boundary between deterministic workflow
+code and focused semantic decisions without a second language or general
+workflow framework.
+
+**Changed:**
+- Added a Pi SDK-backed `defineAgent` API with typed input/output contracts,
+  isolated sessions, one correction retry, cancellation, and disposal.
+- Migrated `/commit` untracked classification, secret review, and commit planning
+  while keeping Git and policy mutations deterministic.
+- Added a focused skill and evidence-triggered specifications for deferred
+  capabilities.
+
+**Files:** `pi/lib/typed-agent.ts`, `pi/extensions/workflow-commands.ts`,
+`pi/tests/typed-agent.test.ts`, `pi/tests/workflow-commands.test.ts`,
+`pi/tests/workflow-commands-pure.test.ts`,
+`pi/skills/typed-agent-workflows/SKILL.md`,
+`pi/skills/typed-agent-workflows/roadmap.md`, `pi/CHANGELOG.md`
+
+---
+
+### 2026-07-14: Add reviewed cross-session learning
+
+**Why:** Durable corrections should carry across sessions without allowing a
+background review to rewrite instructions automatically.
+
+**Changed:**
+- Detect explicit remember requests and corrections after an existing turn and
+  queue them for the bounded workflow review.
+- Added `/learning-review` to discuss one supported lesson at a time using the
+  full 1-3-1 format.
+- Added append-only Apply/Edit/Skip decisions. Applied lessons require target
+  paths, validation evidence, and rollback instructions and create an experiment
+  marker for later comparison.
+
+**Files:** `pi/extensions/workflow-friction-review.ts`,
+`pi/lib/workflow-friction.ts`, `pi/tests/workflow-friction.test.ts`,
+`pi/README.md`, `pi/CHANGELOG.md`
+
+---
+
+### 2026-07-14: Tighten workflow boundaries and record session closure
+
+**Why:** Recent session review found scope expansion, informational requests
+causing mutation, supported entrypoints being bypassed, and active sessions
+being mistaken for completed work.
+
+**Changed:**
+- Narrowed global workflow guidance to in-scope failures, read-only
+  informational requests, bounded execution, and conditional delegation.
+- Added durable `workflow.sessionClose` evidence for logical shutdowns while
+  keeping close state distinct from work completion.
+- Documented the lifecycle marker and its provisional-state semantics.
+
+**Files:** `pi/AGENTS.md`, `AGENTS.md`, `pi/extensions/session-hooks.ts`,
+`pi/tests/session-hooks.test.ts`, `pi/docs/workflow-eval-telemetry.md`,
+`pi/CHANGELOG.md`
+
+---
+
+### 2026-05-26: Document workflow eval telemetry operations
+
+**Why:** Pi workflow telemetry now records dispatch events and defines lifecycle
+data for future adaptive review sizing. Pi workflow maintainers need clear
+rules for what runtime telemetry not to commit and which docs/tests to update
+when the contract changes.
+
+**Added:**
+- Workflow eval telemetry guidance: runtime JSONL stays local by default,
+  DuckDB files are rebuildable caches, and workflow telemetry contract changes
+  must update the Pi telemetry docs and prompt-contract tests.
+- Operations documentation and a local telemetry query helper.
+
+**Files:** `pi/docs/workflow-eval-telemetry.md`,
+`pi/docs/workflow-eval-operations.md`, `pi/scripts/workflow-eval-query.py`,
+`pi/CHANGELOG.md`
+
+---
