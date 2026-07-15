@@ -1,6 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import {
+	type ExtensionAPI,
+	truncateTail,
+} from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { isAllowedTransition } from "../lib/operator-state.js";
@@ -40,13 +43,20 @@ import {
 	isTaskRenderMode,
 	setTaskRenderMode,
 } from "../lib/task-settings.js";
-import { TaskExecutionCoordinator } from "./tasks/execution.js";
+import {
+	TaskExecutionCoordinator,
+	type TaskExecutionResult,
+} from "./tasks/execution.js";
 
 export { formatTaskDetail, formatTaskList, groupTasksByUrgency };
 
 const TASK_SUMMARY_MAX_LENGTH = 100;
 const TASK_NOTES_MAX_LENGTH = 500;
 const TASK_PROMPT_MAX_LENGTH = 2_000;
+const TASK_PARENT_OUTPUT_MAX_BYTES = 2_000;
+const TASK_PARENT_OUTPUT_MAX_LINES = 100;
+const TASK_LIST_MODEL_MAX_ITEMS = 50;
+const TASK_LIST_BLOCKER_MAX_ITEMS = 5;
 
 function validateTaskText(
 	label: "summary" | "notes" | "skipReason" | "task",
@@ -250,11 +260,61 @@ export class TaskLifecycleService {
 	}
 }
 
-function toolResult(details: unknown) {
+function toolResult(details: unknown, modelVisible: unknown = details) {
 	return {
-		content: [{ type: "text" as const, text: JSON.stringify(details) }],
+		content: [{ type: "text" as const, text: JSON.stringify(modelVisible) }],
 		details,
 	};
+}
+
+function compactTask(record: TaskRecordV1) {
+	const blockedBy = record.blockedBy ?? [];
+	return {
+		id: record.id,
+		state: record.state,
+		summary: truncateTaskText(record.summary, TASK_SUMMARY_MAX_LENGTH),
+		...(blockedBy.length
+			? { blockedBy: blockedBy.slice(0, TASK_LIST_BLOCKER_MAX_ITEMS) }
+			: {}),
+		...(blockedBy.length > TASK_LIST_BLOCKER_MAX_ITEMS
+			? { blockedByCount: blockedBy.length }
+			: {}),
+	};
+}
+
+function compactTaskCollection(
+	records: TaskRecordV1[],
+	includeSummaries = true,
+) {
+	const visible = records.slice(0, TASK_LIST_MODEL_MAX_ITEMS);
+	return {
+		outcome: "persisted",
+		count: records.length,
+		tasks: visible.map((record) =>
+			includeSummaries
+				? compactTask(record)
+				: { id: record.id, state: record.state },
+		),
+		...(visible.length < records.length ? { truncated: true } : {}),
+	};
+}
+
+function operationToolResult(
+	result: TaskOperationResult | TaskExecutionResult,
+	id?: string,
+) {
+	const resultId = result.record?.id ?? id;
+	const error =
+		result.error ??
+		(result.outcome === "not_found" && resultId
+			? `task not found: ${resultId}`
+			: undefined);
+	return toolResult(result, {
+		outcome: result.outcome,
+		...(resultId ? { id: resultId } : {}),
+		...(result.record?.state ? { state: result.record.state } : {}),
+		...(error ? { error } : {}),
+	});
 }
 
 function asParams(params: unknown): Record<string, unknown> {
@@ -422,24 +482,40 @@ function createTaskFromInput(
 function taskOutputResult(coordinator: TaskExecutionCoordinator, id: string) {
 	const result = coordinator.output(id);
 	const execution = result.record?.execution;
+	const output = result.output ?? "(no output available)";
+	const parentOutput = truncateTail(output, {
+		maxBytes: TASK_PARENT_OUTPUT_MAX_BYTES,
+		maxLines: TASK_PARENT_OUTPUT_MAX_LINES,
+	});
+	const useArtifact = Boolean(
+		execution?.outputPath && (result.truncated || parentOutput.truncated),
+	);
+	const metadata = {
+		outcome: result.outcome,
+		id: result.record?.id ?? id,
+		state: result.record?.state,
+		...(result.outcome === "not_found"
+			? { error: result.error ?? `task not found: ${id}` }
+			: result.error
+				? { error: result.error }
+				: {}),
+		truncated: result.truncated === true || parentOutput.truncated,
+		...(useArtifact ? { output: "file-only" } : {}),
+		execution: execution
+			? {
+					status: execution.status,
+					outputPath: execution.outputPath,
+					outputError: execution.outputError,
+				}
+			: undefined,
+	};
 	return {
 		content: [
 			{
 				type: "text" as const,
-				text: `${result.output ?? "(no output available)"}\n\n${JSON.stringify({
-					outcome: result.outcome,
-					truncated: result.truncated,
-					execution: execution
-						? {
-								status: execution.status,
-								agent: execution.agent,
-								model: execution.model,
-								modelSize: execution.modelSize,
-								outputPath: execution.outputPath,
-								outputError: execution.outputError,
-							}
-						: undefined,
-				})}`,
+				text: useArtifact
+					? JSON.stringify(metadata)
+					: `${parentOutput.content}\n\n${JSON.stringify(metadata)}`,
 			},
 		],
 		details: result,
@@ -530,12 +606,12 @@ export function registerTaskTools(
 		promptSnippet:
 			"Manage durable planning tasks and background subagent execution through one task surface",
 		promptGuidelines: [
-			"Use task only for durable dependencies or background execution, not direct single-threaded work.",
+			"Use task only for durable dependencies or background execution, not lightweight planning or direct single-threaded work.",
 			"Task entries are index cards, not handoff documents: keep summary under 100 characters and notes under 500; put detailed context in an artifact and reference its path.",
 			"Summary contains only the deliverable; notes contain only blockers, dependencies, or acceptance checks. Never copy conversation summaries, plans, diffs, or investigation narratives into task fields.",
-			"Create dependencies with blockedBy; use ready to find parallelizable work.",
-			"Set state to running when direct work starts and completed when it finishes.",
-			"For background work, create an executable task and then use execute; inspect it with output and cancel it with stop.",
+			"Create dependencies with blockedBy; use ready once when selecting runnable work.",
+			"For direct durable work, update state only when it changes; do not repeat lifecycle calls.",
+			"For background work, create an executable task and use execute once; use output when results are needed and stop only to cancel. Do not poll list, get, ready, or output in loops.",
 		],
 		parameters,
 		renderCall(args, theme) {
@@ -575,7 +651,7 @@ export function registerTaskTools(
 			const action = input.action;
 			const workspace = resolveTaskWorkspace(ctx.cwd);
 			if (action === "create")
-				return toolResult({
+				return operationToolResult({
 					outcome: "persisted",
 					record: createTaskFromInput(input, ctx.cwd),
 				});
@@ -597,12 +673,13 @@ export function registerTaskTools(
 					if (typeof task.notes === "string")
 						validateTaskText("notes", task.notes, TASK_NOTES_MAX_LENGTH);
 				}
-				return toolResult({
-					outcome: "persisted",
-					records: tasks.map((item) =>
-						createTaskFromInput(asParams(item), ctx.cwd),
-					),
-				});
+				const records = tasks.map((item) =>
+					createTaskFromInput(asParams(item), ctx.cwd),
+				);
+				return toolResult(
+					{ outcome: "persisted", records },
+					compactTaskCollection(records, false),
+				);
 			}
 			if (action === "list" || action === "ready") {
 				const allRecords = listTasks({ includeTombstones: false });
@@ -612,11 +689,12 @@ export function registerTaskTools(
 						: allRecords.filter(
 								(record) => !record.workspace || record.workspace === workspace,
 							);
-				return toolResult({
-					outcome: "persisted",
-					records:
-						action === "ready" ? partitionReadyTasks(records).ready : records,
-				});
+				const selected =
+					action === "ready" ? partitionReadyTasks(records).ready : records;
+				return toolResult(
+					{ outcome: "persisted", records: selected },
+					compactTaskCollection(selected),
+				);
 			}
 			const id = typeof input.id === "string" ? input.id : undefined;
 			if (!id)
@@ -633,7 +711,7 @@ export function registerTaskTools(
 			}
 			if (action === "remove") {
 				try {
-					return toolResult({
+					return operationToolResult({
 						outcome: "persisted",
 						record: tombstoneTask(id),
 					});
@@ -713,7 +791,7 @@ export function registerTaskTools(
 							listTasks({ includeTombstones: true }),
 						);
 						if (blocked)
-							return toolResult({
+							return operationToolResult({
 								outcome: "rejected",
 								record: existing,
 								error: blocked,
@@ -727,13 +805,13 @@ export function registerTaskTools(
 							skipReason,
 						});
 						if (transition.outcome !== "persisted")
-							return toolResult(transition);
-						return toolResult({
+							return operationToolResult(transition, id);
+						return operationToolResult({
 							outcome: "persisted",
 							record: transition.record,
 						});
 					}
-					return toolResult({ outcome: "persisted", record });
+					return operationToolResult({ outcome: "persisted", record });
 				} catch (error) {
 					return toolResult({
 						outcome: "rejected",
@@ -742,8 +820,9 @@ export function registerTaskTools(
 				}
 			}
 			if (action === "execute")
-				return toolResult(coordinator.start(id, ctx.cwd));
-			if (action === "stop") return toolResult(await lifecycle.cancel(id));
+				return operationToolResult(coordinator.start(id, ctx.cwd), id);
+			if (action === "stop")
+				return operationToolResult(await lifecycle.cancel(id), id);
 			if (action === "output") return taskOutputResult(coordinator, id);
 			return toolResult({ outcome: "rejected", error: "unknown action" });
 		},

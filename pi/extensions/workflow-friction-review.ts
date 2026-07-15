@@ -899,7 +899,8 @@ async function recoverInterruptedReviews(): Promise<void> {
 		const filePath = path.join(processingDir(), name);
 		try {
 			const job = JSON.parse(await fsp.readFile(filePath, "utf8")) as ReviewJob;
-			await appendFailedReview(job, "Background review was interrupted.");
+			if (!(await reviewAlreadyRecorded(job.packet.interactionId)))
+				await appendFailedReview(job, "Background review was interrupted.");
 		} finally {
 			await fsp.rm(filePath, { force: true });
 		}
@@ -959,7 +960,7 @@ async function executeReview(
 
 let localWorkerRunning = false;
 
-async function processPendingReviews(
+export async function processPendingReviews(
 	pi: ExtensionAPI,
 	cwd: string,
 ): Promise<void> {
@@ -989,6 +990,7 @@ async function processPendingReviews(
 				job = JSON.parse(
 					await fsp.readFile(processingPath, "utf8"),
 				) as ReviewJob;
+				if (await reviewAlreadyRecorded(job.packet.interactionId)) continue;
 				const record = await executeReview(pi, cwd, job);
 				await appendJsonLine(reviewsPath(), record);
 			} catch (error) {

@@ -34,9 +34,9 @@ Execute and validate one item at a time. Do not batch state transitions, securit
 | Priority | Work item | Why now | Dependency |
 | --- | --- | --- | --- |
 | Completed | Unify task lifecycle policy | Command/tool lifecycle and active cancellation now share one policy | None |
-| P2 | Complete damage-control audit recording | Security decisions currently disappear from provenance | Independent; keep separate from P1 |
-| P3 | Fix workflow-review queue deduplication | Duplicate background reviews are reachable | Independent; required before reviewer migration |
-| P4 | Move the background reviewer behind a typed semantic contract | Removes manual prompt/subprocess/JSON plumbing after queue correctness is proven | P3 |
+| Completed | Complete damage-control audit recording | Security decisions now produce correlated, redacted provenance | Independent; completed in `d805c8d` |
+| Completed | Fix workflow-review queue deduplication | Claimed and recovered jobs are rechecked before recording | Independent; completed before reviewer migration |
+| P4 | Move the background reviewer behind a typed semantic contract | Removes manual prompt/subprocess/JSON plumbing after queue correctness is proven | Queue correctness completed |
 | Blocked | Unify Bedrock refresh identity and region | Requires live work-machine evidence | Work-machine access |
 
 ## Verified problems and completed follow-ups
@@ -92,16 +92,19 @@ Execute and validate one item at a time. Do not batch state transitions, securit
   6. Run `memory-retrieve.test.ts`, `memory-promote-scan.test.ts`, `agents-context.test.ts`, typecheck, focused Biome, `git diff --check`, and `make check-pi-extensions`.
 - Do not remove: `memory-retrieve.ts` as a unit. `cosine` and `chainTail` still have production callers.
 
-### Workflow review queue can execute duplicate reviews
+### Workflow review queue deduplicates claimed and recovered jobs
 
-- Status: ready for correctness fix; broad module separation blocked
-- Verified problem: `enqueueReview()` checks the processing path before creating a pending job, while the worker renames pending to processing and executes without rechecking recorded reviews. An enqueue/claim race can therefore create and execute a second job for one interaction.
-- User impact: Duplicate reviews and duplicate persisted findings can be produced for one interaction.
-- Evidence: `pi/extensions/workflow-friction-review.ts:368-410,960-1010`. The 35 focused tests and 25 subagent tests pass, but none exercises queue contention, interrupted recovery, or enqueue during pending-to-processing rename.
-- Root cause: Deduplication is split across unsynchronized pending, processing, and completed filesystem states.
-- Recommended solution: Add a narrow queue test seam and recheck `reviewAlreadyRecorded()` after claiming a job and before reviewer execution. Add contention, stale-processing recovery, restart, and capture-through-decision tests before considering extraction.
-- Acceptance criteria: Two workers or an enqueue/rename race execute exactly one review; annotations remain preserved; stale processing is recorded once; pending jobs survive restart; invalid or repeated decisions remain rejected.
-- Validation: Run `workflow-friction.test.ts`, `subagent.test.ts`, typecheck, and a deterministic queue-contention fixture.
+- Status: completed
+- Resolved problem: `enqueueReview()` checked the processing path before creating a pending job, while the worker renamed pending to processing and executed without rechecking recorded reviews. An enqueue/claim race could therefore create and execute a second job for one interaction.
+- Root cause: Deduplication was split across unsynchronized pending, processing, and completed filesystem states.
+- Implemented:
+  1. Recheck `reviewAlreadyRecorded()` after each pending job is claimed and before reviewer execution.
+  2. Recheck interrupted processing jobs before appending a failed recovery record.
+  3. Export the queue processor as a narrow deterministic test seam.
+  4. Added contention coverage that recreates a duplicate pending job after claim and verifies one execution, one persisted review, and preserved capture annotations.
+  5. Added interrupted-recovery coverage that verifies an already recorded job is not duplicated as failed.
+- Result: Pending jobs still resume through the worker, while duplicate claimed jobs and stale processing remnants no longer execute or append a second review.
+- Validation: `workflow-friction.test.ts` and `subagent.test.ts` passed 62 tests; typecheck and focused Biome passed.
 
 ### Background workflow reviewer duplicates typed semantic-stage infrastructure
 
@@ -131,16 +134,19 @@ Execute and validate one item at a time. Do not batch state transitions, securit
   - Apply/Edit/Skip remains an explicit operator decision recorded by `learning_candidate_decide`.
 - Validation: Add fake-session tests for schema correction, timeout, cancellation, and disposal; run queue contention and restart fixtures; run `workflow-friction.test.ts`, `typed-agent.test.ts`, `subagent.test.ts`, typecheck, and the exact capture -> background review -> `/improve` -> decision workflow in an isolated storage root.
 
-### Damage-control omits audit records for security decisions
+### Damage-control records security decisions consistently
 
-- Status: ready
-- Verified problem: Dangerous-sequence, semantic Git, Bun stdin, AST, and SSH metadata approvals return without the audit/provenance records produced for regex approvals. Rule-load failures fail closed but also bypass `recordBlock`. Registered handlers hardcode `hasUI: true` instead of using `ctx.hasUI`.
-- User impact: Approved high-risk actions and rule-load denials are missing from `/permissions`, evaluation statistics, provenance, replay metadata, and tool-call correlation. No current no-UI bypass was reproduced, but safety depends on the runtime confirmation stub rather than the declared context contract.
-- Evidence: `pi/extensions/damage-control.ts:433-505,564-605,639-675`; approval branches in `pi/extensions/damage-control-engine.ts:183-190,562-655`. The four focused suites pass 121 tests but do not assert a registered-handler audit matrix.
-- Root cause: Branch-specific exits bypass common audit finalization.
-- Recommended solution: Add one typed approved-ask recorder, route rule-load denials through audited block recording, and use `ctx.hasUI` to produce explicit audited `ask_denied` outcomes. Do not merge tool-specific policy evaluators.
-- Acceptance criteria: Bash, PowerShell, read, write, and edit produce correlated, redacted records for approved asks, denied asks, hard blocks, and rule-load failures. Actual no-UI mode fails closed without prompting.
-- Validation: Run the four focused damage-control suites, typecheck, and an actual no-UI runtime matrix.
+- Status: completed in `d805c8d`
+- Resolved problem: Dangerous-sequence, semantic Git, Bun stdin, AST, and SSH metadata approvals returned without the audit/provenance records produced for regex approvals. Rule-load failures failed closed but bypassed block recording, and registered handlers hardcoded UI availability.
+- Implemented:
+  1. Added one typed approved-ask callback and centralized approved decision recording.
+  2. Added tool-call, working-directory, and rule-source correlation metadata.
+  3. Redacted permission actions and summaries at the recorder boundary.
+  4. Routed Bash, PowerShell, and file rule-load failures through audited block recording.
+  5. Used `ctx.hasUI` so no-UI asks fail closed without prompting.
+  6. Added registered-handler matrices for approvals, denials, hard blocks, and rule-load failures.
+- Result: Bash, PowerShell, read, write, and edit decisions now produce correlated, redacted provenance across approval and denial paths.
+- Validation: Four focused suites passed 125 tests; typecheck, focused Biome, and `git diff --check` passed.
 
 ## Verified problem - work-machine validation required
 

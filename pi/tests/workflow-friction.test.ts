@@ -7,6 +7,7 @@ import workflowFrictionExtension, {
 	collectCandidateUsage,
 	type ImprovementCandidateUsage,
 	learningDecisionsPath,
+	processPendingReviews,
 	rankImprovementCandidates,
 	readCurrentLearningDecisions,
 } from "../extensions/workflow-friction-review.js";
@@ -15,6 +16,7 @@ import {
 	buildReviewPrompt,
 	consumeWorkflowSubmission,
 	detectFrictionTriggers,
+	type InteractionPacket,
 	interactionMetadataFromPacket,
 	isControlSample,
 	noteParentAssistantUsage,
@@ -81,6 +83,32 @@ function commandLearningReviewRecord(
 			},
 			suggestedChange: "Use pnpm for Pi TypeScript work.",
 		},
+	};
+}
+
+function queuedReviewPacket(interactionId: string): InteractionPacket {
+	return {
+		schemaVersion: 1,
+		interactionId,
+		sessionId: `session-${interactionId}`,
+		mode: "explore",
+		startedAt: "2026-07-15T00:00:00.000Z",
+		settledAt: "2026-07-15T00:01:00.000Z",
+		durationMs: 60_000,
+		selectionReasons: ["user_correction"],
+		userText: "Use pnpm instead.",
+		assistantTurns: ["I used npm."],
+		assistantText: "I used npm.",
+		tools: [],
+		repoRoot: "/test/dir",
+	};
+}
+
+function queuedReviewJob(packet: InteractionPacket) {
+	return {
+		schemaVersion: 1,
+		queuedAt: "2026-07-15T00:01:00.000Z",
+		packet,
 	};
 }
 
@@ -348,6 +376,108 @@ describe("workflow friction metadata", () => {
 });
 
 describe("workflow friction reviewer", () => {
+	it("executes one review when a duplicate pending job appears after claim", async () => {
+		const scratch = await fs.mkdtemp(
+			path.join(os.tmpdir(), "pi-review-contention-"),
+		);
+		const previous = process.env.PI_WORKFLOW_FRICTION_DIR;
+		process.env.PI_WORKFLOW_FRICTION_DIR = scratch;
+		try {
+			const packet = queuedReviewPacket("interaction-contention");
+			const job = queuedReviewJob(packet);
+			const pendingDir = path.join(scratch, "queue", "pending");
+			const pendingPath = path.join(pendingDir, `${packet.interactionId}.json`);
+			await fs.mkdir(pendingDir, { recursive: true });
+			await fs.writeFile(pendingPath, `${JSON.stringify(job)}\n`, "utf8");
+			const annotationDir = path.join(scratch, "annotations");
+			await fs.mkdir(annotationDir, { recursive: true });
+			await fs.writeFile(
+				path.join(annotationDir, `${packet.interactionId}.json`),
+				`${JSON.stringify({
+					interactionId: packet.interactionId,
+					selectionReasons: ["manual_capture"],
+					captureNote: "Preserve this annotation.",
+				})}\n`,
+				"utf8",
+			);
+			const pi = createMockPi();
+			let executions = 0;
+			pi.exec.mockImplementation(async () => {
+				executions += 1;
+				if (executions === 1)
+					await fs.writeFile(pendingPath, `${JSON.stringify(job)}\n`, "utf8");
+				return {
+					code: 0,
+					stdout: JSON.stringify(
+						commandLearningReviewRecord("/test/dir").review,
+					),
+					stderr: "",
+				};
+			});
+
+			await processPendingReviews(pi as never, "/test/dir");
+
+			expect(pi.exec).toHaveBeenCalledTimes(1);
+			const records = (
+				await fs.readFile(path.join(scratch, "reviews.jsonl"), "utf8")
+			)
+				.trim()
+				.split("\n")
+				.map((line) => JSON.parse(line) as StoredReviewRecord);
+			expect(records).toHaveLength(1);
+			expect(records[0]).toMatchObject({
+				selectionReasons: ["manual_capture", "user_correction"],
+				captureNote: "Preserve this annotation.",
+			});
+		} finally {
+			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
+			else process.env.PI_WORKFLOW_FRICTION_DIR = previous;
+			await fs.rm(scratch, { recursive: true, force: true });
+		}
+	});
+
+	it("does not append a failed review when recovering an already recorded job", async () => {
+		const scratch = await fs.mkdtemp(
+			path.join(os.tmpdir(), "pi-review-recovery-"),
+		);
+		const previous = process.env.PI_WORKFLOW_FRICTION_DIR;
+		process.env.PI_WORKFLOW_FRICTION_DIR = scratch;
+		try {
+			const packet = queuedReviewPacket("interaction-recovered");
+			const processingDir = path.join(scratch, "queue", "processing");
+			await fs.mkdir(processingDir, { recursive: true });
+			await fs.writeFile(
+				path.join(processingDir, `${packet.interactionId}.json`),
+				`${JSON.stringify(queuedReviewJob(packet))}\n`,
+				"utf8",
+			);
+			const existing = {
+				...commandLearningReviewRecord("/test/dir"),
+				interactionId: packet.interactionId,
+			};
+			await fs.writeFile(
+				path.join(scratch, "reviews.jsonl"),
+				`${JSON.stringify(existing)}\n`,
+				"utf8",
+			);
+			const pi = createMockPi();
+
+			await processPendingReviews(pi as never, "/test/dir");
+
+			expect(pi.exec).not.toHaveBeenCalled();
+			const records = (
+				await fs.readFile(path.join(scratch, "reviews.jsonl"), "utf8")
+			)
+				.trim()
+				.split("\n");
+			expect(records).toHaveLength(1);
+		} finally {
+			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
+			else process.env.PI_WORKFLOW_FRICTION_DIR = previous;
+			await fs.rm(scratch, { recursive: true, force: true });
+		}
+	});
+
 	it("runs Terra at low effort with tools and persistent state disabled", () => {
 		const args = buildReviewerArgs("C:/tmp/prompt.md");
 		expect(args).toContain("gpt-5.6-terra");

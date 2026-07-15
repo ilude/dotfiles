@@ -2,6 +2,67 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-15: Deduplicate claimed workflow reviews
+
+**Why:** An enqueue/claim race could recreate a pending review after the worker
+claimed the original, causing the same interaction to run and persist twice.
+Interrupted processing could also append a failed duplicate after completion.
+
+**Changed:**
+- Rechecked completed reviews after claiming a pending job and before execution.
+- Rechecked interrupted processing jobs before recording recovery failures.
+- Added deterministic contention and interrupted-recovery coverage, including
+  annotation preservation.
+
+**Files:** `pi/extensions/workflow-friction-review.ts`,
+`pi/tests/workflow-friction.test.ts`,
+`.specs/pi-extension-refactors/backlog.md`, `CHANGELOG.md`
+
+---
+
+## 2026-07-15: Complete damage-control audit recording
+
+**Why:** Approved high-risk actions and rule-load denials could bypass security
+provenance, while registered handlers assumed an interactive UI.
+
+**Changed:**
+- Centralized correlated, redacted recording for approved asks.
+- Audited denied asks, hard blocks, and rule-load failures across registered
+  Bash, PowerShell, read, write, and edit handlers.
+- Used runtime UI capability so no-UI asks fail closed without prompting.
+- Added registered-handler audit matrices and focused evaluator coverage.
+
+**Files:** `pi/extensions/damage-control-engine.ts`,
+`pi/extensions/damage-control.ts`, `pi/tests/damage-control.test.ts`,
+`pi/tests/damage-control-ast.test.ts`,
+`pi/tests/damage-control-parity-gaps.test.ts`,
+`.specs/pi-extension-refactors/backlog.md`, `CHANGELOG.md`
+
+---
+
+## 2026-07-15: Bound Pi task tool context output
+
+**Why:** Durable task operations repeated complete records and worker output in
+model-visible tool results, consuming parent context during normal lifecycle and
+readiness workflows.
+
+**Changed:**
+- Reduced mutation results to outcome, task ID, state, and actionable errors
+  while retaining complete records in renderer details.
+- Made `list` and `ready` return bounded compact summaries by default and kept
+  `get` as the explicit complete-record path.
+- Returned concise artifact references for large worker output while preserving
+  bounded output details for expanded TUI rendering.
+- Clarified that lightweight plans do not need durable task records and
+  discouraged polling and redundant lifecycle calls.
+- Added behavioral coverage for compact results, bounded collections, complete
+  record retrieval, and file-only large output.
+
+**Files:** `pi/extensions/tasks.ts`, `pi/tests/task-tools.test.ts`,
+`pi/AGENTS.md`, `pi/PI-INSTRUCTIONS.md`, `pi/README.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-15: Unify task lifecycle policy
 
 **Why:** The task tool, `/tasks`, and background coordinator enforced different

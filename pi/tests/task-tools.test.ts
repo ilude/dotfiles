@@ -111,6 +111,119 @@ describe("task tools", () => {
 		).toEqual([blockerId]);
 	});
 
+	it("keeps model-visible mutations and collections compact while retaining full details", async () => {
+		const pi = createMockPi();
+		registerTaskTools(
+			pi as Parameters<typeof registerTaskTools>[0],
+			new TaskExecutionCoordinator(),
+		);
+		const ctx = createMockCtx({ cwd: tmpRoot });
+		const tool = pi._getTool("task");
+		const created = await tool?.execute(
+			"compact-create",
+			{
+				action: "create",
+				summary: "durable worker",
+				notes: "Acceptance: preserve complete durable task details.",
+				agent: "coding-light",
+				task: "Inspect the implementation and report detailed evidence.",
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		const id = created.details.record.id as string;
+		const createVisible = JSON.parse(created.content[0].text);
+		expect(createVisible).toEqual({
+			outcome: "persisted",
+			id,
+			state: "pending",
+		});
+		expect(created.details.record.notes).toContain("complete durable");
+		expect(created.details.record.prompt).toContain("detailed evidence");
+
+		const updated = await tool?.execute(
+			"compact-update",
+			{ action: "update", id, notes: "Updated acceptance check." },
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(JSON.parse(updated.content[0].text)).toEqual({
+			outcome: "persisted",
+			id,
+			state: "pending",
+		});
+		expect(updated.details.record.notes).toBe("Updated acceptance check.");
+
+		const listed = await tool?.execute(
+			"compact-list",
+			{ action: "list" },
+			undefined,
+			undefined,
+			ctx,
+		);
+		const listVisible = JSON.parse(listed.content[0].text);
+		expect(listVisible).toEqual({
+			outcome: "persisted",
+			count: 1,
+			tasks: [{ id, state: "pending", summary: "durable worker" }],
+		});
+		expect(listed.details.records[0]).toHaveProperty("createdAt");
+		expect(listed.content[0].text.length).toBeLessThan(500);
+
+		const ready = await tool?.execute(
+			"compact-ready",
+			{ action: "ready" },
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(JSON.parse(ready.content[0].text).tasks).toEqual([
+			{ id, state: "pending", summary: "durable worker" },
+		]);
+
+		const full = await tool?.execute(
+			"full-get",
+			{ action: "get", id },
+			undefined,
+			undefined,
+			ctx,
+		);
+		const fullVisible = JSON.parse(full.content[0].text);
+		expect(fullVisible.record).toMatchObject({
+			id,
+			notes: "Updated acceptance check.",
+			prompt: "Inspect the implementation and report detailed evidence.",
+		});
+		expect(fullVisible.record).toHaveProperty("createdAt");
+	});
+
+	it("bounds model-visible task collections without trimming TUI details", async () => {
+		const pi = createMockPi();
+		registerTaskTools(
+			pi as Parameters<typeof registerTaskTools>[0],
+			new TaskExecutionCoordinator(),
+		);
+		for (let index = 0; index < 55; index++) {
+			createTask({ origin: "other", summary: `task ${index}` });
+		}
+		const result = await pi
+			._getTool("task")
+			?.execute(
+				"bounded-list",
+				{ action: "list" },
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpRoot }),
+			);
+		const visible = JSON.parse(result.content[0].text);
+		expect(visible.count).toBe(55);
+		expect(visible.tasks).toHaveLength(50);
+		expect(visible.truncated).toBe(true);
+		expect(result.details.records).toHaveLength(55);
+	});
+
 	it("rejects oversized task fields without partial batch creation", async () => {
 		const pi = createMockPi();
 		const coordinator = new TaskExecutionCoordinator();
@@ -481,13 +594,24 @@ describe("task tools", () => {
 		const output = await pi
 			._getTool("task")
 			?.execute("output", { action: "output", id }, undefined, undefined, ctx);
-		expect(output.content[0].text).toContain("completed output");
+		const visible = JSON.parse(output.content[0].text);
+		expect(visible).toMatchObject({
+			outcome: "persisted",
+			id,
+			state: "completed",
+			truncated: true,
+			output: "file-only",
+		});
+		expect(output.content[0].text).not.toContain("completed output");
+		expect(output.content[0].text.length).toBeLessThan(1_000);
+		expect(output.details.output).toContain("completed output");
 		expect(output.details.truncated).toBe(true);
 		const outputPath = getTask(id)?.execution?.outputPath;
 		expect(outputPath).toBeTruthy();
 		if (!outputPath) throw new Error("task output path was not persisted");
+		expect(visible.execution.outputPath).toBe(outputPath);
 		expect(fs.readFileSync(outputPath, "utf-8").length).toBeGreaterThan(
-			output.content[0].text.length,
+			output.details.output.length,
 		);
 	});
 

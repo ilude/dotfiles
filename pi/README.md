@@ -427,10 +427,11 @@ Commands:
 - `/tasks retry <id>` -- transitions `failed` -> `running`; the registry bumps `retryCount` and clears `errorReason`. Does not re-execute the work; you re-issue the original action through normal channels.
 
 Model-callable task surface:
-- The unified `task` tool owns planning and background execution through `create`, `batch`, `update`, `remove`, `list`, `ready`, `get`, `execute`, `stop`, and `output` actions.
-- Tasks default to the current repository workspace; `list` and `ready` accept `all: true` for a cross-repository view.
+- The unified `task` tool owns durable dependencies and background execution through `create`, `batch`, `update`, `remove`, `list`, `ready`, `get`, `execute`, `stop`, and `output` actions. Ordinary multi-step work uses a lightweight prose plan instead.
+- Tasks default to the current repository workspace; `list` and `ready` accept `all: true` for a cross-repository view and return compact model-visible summaries. Use `get` for one complete record.
 - Executable tasks accept `agent`, `task`, `cwd`, `agentScope`, `model`, and `modelSize`. The `execute` action validates dependencies and starts the child in the background.
-- `stop` cancels a running child process tree. `output` returns a bounded sanitized tail plus the durable artifact path and execution metadata.
+- `stop` cancels a running child process tree. `output` returns small results inline and a concise durable artifact reference for large results; full bounded details remain available to the TUI renderer.
+- Start execution once, request output when needed, and record lifecycle changes only when state changes. Do not poll task actions in loops.
 - Legacy `.pi/todo.json` entries are imported idempotently into the durable registry at session startup. Isolated tests may set `PI_LEGACY_TODO_SOURCE_DIR` to an empty native directory while preserving the tested workspace identity. The retired `todo` and individual `task_*` tools are no longer registered.
 
 Lifecycle (defined in `pi/lib/operator-state.ts`):

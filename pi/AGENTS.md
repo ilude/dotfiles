@@ -38,7 +38,7 @@
 
 ### Task Lists
 
-Use the active harness's task-list tool for 3+ step tasks or user-requested lists. Skip for trivial/informational work. Mark one task `in_progress` before starting it and mark it done immediately on completion.
+Use a lightweight prose plan for ordinary 3+ step work. Use the active harness's task tool when the work needs durable dependencies, cross-turn handoff, or background execution, or when the user explicitly requests durable tracking. Skip durable tasks for trivial, informational, or direct single-threaded work. Record lifecycle changes only when state changes; do not poll task state or repeat lifecycle calls.
 
 ### Durable Handoff
 
