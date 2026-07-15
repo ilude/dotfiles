@@ -44,7 +44,7 @@ describe("createTask", () => {
 
 	it("sets startedAt when initial state is running", () => {
 		const task = createTask({
-			origin: "team",
+			origin: "other",
 			summary: "build feature",
 			state: "running",
 		});
@@ -273,9 +273,9 @@ describe("listTasks", () => {
 
 	it("filters by origin", () => {
 		createTask({ origin: "subagent", summary: "s" });
-		const team = createTask({ origin: "team", summary: "t" });
-		const got = listTasks({ origins: ["team"] });
-		expect(got.map((t) => t.id)).toEqual([team.id]);
+		const shell = createTask({ origin: "shell", summary: "t" });
+		const got = listTasks({ origins: ["shell"] });
+		expect(got.map((t) => t.id)).toEqual([shell.id]);
 	});
 
 	it("filters by repoSlug", () => {

@@ -2,6 +2,20 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-15: Improve session warning icon spacing
+
+**Why:** The branch-behind notification rendered the warning icon too close to
+its message text in the terminal.
+
+**Changed:**
+- Added a second display space between the warning icon and `Branch`.
+- Added focused coverage for singular and plural branch-behind messages.
+
+**Files:** `pi/extensions/session-hooks.ts`,
+`pi/tests/session-hooks.test.ts`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-15: Remove duplicate YouTube skill source
 
 **Why:** The explicitly configured YouTube skill collided with the community
@@ -11,6 +25,44 @@ skill already discovered under Pi's user skill directory.
 discovery loads only the community `youtube-transcript` skill.
 
 **Files:** `pi/settings.json`, `CHANGELOG.md`
+
+---
+
+## 2026-07-15: Preserve max thinking during model refresh
+
+**Why:** Provider catalogs now expose native `max` thinking for additional models,
+but the local refresh allowlist stopped at `xhigh`.
+
+**Changed:**
+- Added `max` to refreshed model thinking maps.
+- Strengthened the regression to assert the complete map, including unsupported
+  levels represented by `null`.
+
+**Files:** `pi/extensions/refresh-models.ts`,
+`pi/tests/refresh-models.test.ts`, `.specs/pi-extension-refactors/backlog.md`,
+`CHANGELOG.md`
+
+---
+
+## 2026-07-15: Retire the unused Pi agent-team runtime
+
+**Why:** The no-op extension, native team dispatch, configuration files, and
+launch recipes were unused and duplicated direct subagent orchestration.
+
+**Changed:**
+- Removed the agent-team extension, team configuration files, dispatch mode,
+  task origin, telemetry mode, and dedicated tests.
+- Removed the `just team` recipe and stopped generated projects from loading the
+  retired extension.
+- Retained single, parallel, and chain subagent execution and standalone agent
+  personas.
+
+**Files:** `pi/extensions/agent-team.ts`, `pi/extensions/subagent/index.ts`,
+`pi/extensions/fable.ts`, `pi/extensions/tasks.ts`,
+`pi/lib/task-registry.ts`, `pi/lib/orchestration-telemetry.ts`,
+`pi/agents/teams.yaml`, `pi/agents/ml-team-config.yaml`, `pi/justfile`,
+`pi/scripts/pi-new`, `pi/README.md`, tests,
+`.specs/pi-extension-refactors/backlog.md`, `CHANGELOG.md`
 
 ---
 

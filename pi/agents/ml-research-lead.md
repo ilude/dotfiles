@@ -4,7 +4,6 @@ description: Team lead for prompt-routing ML work; coordinates data-engineer, mo
 model: openai-codex/gpt-5.6-sol
 roleType: lead
 routingUse: "Use only for coordinated prompt-routing ML work across data-engineer, model-engineer, and eval-engineer."
-team: [data-engineer, model-engineer, eval-engineer]
 isolation: none
 memory: project
 effort: high

@@ -139,6 +139,11 @@ You are a test agent.
 		);
 	}
 
+	it("does not expose the retired team dispatch parameter", async () => {
+		const { tool } = await loadTool();
+		expect(tool.parameters.properties).not.toHaveProperty("team");
+	});
+
 	it(
 		"passes an execution-attempt runId override to the child process",
 		async () => {
@@ -513,39 +518,6 @@ You are a test agent.
 			const spawnArgs = spawnMock.mock.calls[0][1] as string[];
 			expect(spawnArgs).toContain("--model");
 			expect(spawnArgs).toContain("anthropic/claude-sonnet-4-6");
-		},
-		SUBAGENT_TEST_TIMEOUT_MS,
-	);
-
-	it(
-		"dispatches an explicit team request through the registered subagent tool",
-		async () => {
-			mockSuccessfulSpawn();
-			const { tool } = await loadTool();
-
-			const ctx = createMockCtx({
-				cwd: tmpDir,
-				model: { provider: "anthropic", id: "claude-sonnet-4-6" },
-			});
-
-			const result = await tool.execute(
-				"call-team",
-				{
-					team: "engineering",
-					task: "Coordinate a safe backend change",
-					confirmProjectAgents: false,
-				},
-				undefined,
-				undefined,
-				ctx,
-			);
-
-			expect(result.isError).not.toBe(true);
-			expect(spawnMock).toHaveBeenCalledTimes(1);
-			const spawnArgs = spawnMock.mock.calls[0][1] as string[];
-			expect(spawnArgs.join(" ")).toContain("engineering-lead");
-			expect(spawnArgs.join(" ")).toContain("Coordinate a safe backend change");
-			expect(spawnArgs.join(" ")).not.toContain("/team");
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
@@ -1269,7 +1241,6 @@ You are a test agent.
 				],
 				agentScope: "project",
 			});
-			await execute({ team: "engineering", task: "team" });
 			await execute({
 				agent: "missing",
 				task: "failure",
@@ -1277,7 +1248,7 @@ You are a test agent.
 			});
 
 			const runs = await orchestrationRuns();
-			expect(runs).toHaveLength(5);
+			expect(runs).toHaveLength(4);
 			const byMode = new Map(
 				runs.map((event) => [
 					(event.data as { mode: string }).mode,
@@ -1308,7 +1279,6 @@ You are a test agent.
 			const chain = byMode.get("chain");
 			expect(chain?.workers[0]?.chainTransferBytes).toBeGreaterThan(0);
 			expect(chain?.workers[0]?.parentVisibleBytes).toBe(0);
-			expect(byMode.get("team")?.status).toBe("completed");
 			const failure = runs.find(
 				(event) => (event.data as { status: string }).status === "failed",
 			)?.data as { status: string } | undefined;

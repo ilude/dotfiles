@@ -4,7 +4,6 @@ description: Team lead for coordinated engineering work; delegates to frontend-d
 model: openai-codex/gpt-5.6-sol
 roleType: lead
 routingUse: "Use only for coordinated engineering across frontend-dev and backend-dev."
-team: [frontend-dev, backend-dev]
 isolation: none
 memory: project
 effort: high

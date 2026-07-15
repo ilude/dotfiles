@@ -12,6 +12,8 @@
 8. Startup command inventory migration to documented `pi.getCommands()` (`e9368be`).
 9. Legacy agent-chain runtime and generated-project retirement (`1593f3e` plus the P0 follow-up below).
 10. Native prompt migration for `/summarize` and `/gitlab-ticket` (`c2b2c57`).
+11. Restored `max` in refreshed model thinking maps.
+12. Retired the unused agent-team extension, native team dispatch, configuration, and launch recipes.
 
 ## Active handoff state - 2026-07-15
 
@@ -34,8 +36,6 @@ Execute and validate one item at a time. Do not batch state transitions, securit
 | P2 | Complete damage-control audit recording | Security decisions currently disappear from provenance | Independent; keep separate from P1 |
 | P3 | Fix workflow-review queue deduplication | Duplicate background reviews are reachable | Independent; required before reviewer migration |
 | P4 | Move the background reviewer behind a typed semantic contract | Removes manual prompt/subprocess/JSON plumbing after queue correctness is proven | P3 |
-| P5 | Restore the `max` thinking level in model refresh | Small isolated compatibility bug | Independent; do not bundle with helper extraction |
-| P6 | Clean up the no-op agent-team extension boundary | Removes another obsolete public runtime surface without changing native team dispatch | Confirm recipe usage first |
 | Blocked | Unify Bedrock refresh identity and region | Requires live work-machine evidence | Work-machine access |
 
 ## Verified problems and completed follow-ups
@@ -51,16 +51,13 @@ Execute and validate one item at a time. Do not batch state transitions, securit
 - Acceptance criteria: Equivalent command and tool actions agree on blocked starts, invalid transitions, skip reasons, retry counts, and terminal state. Cancelling active work aborts and settles the child process.
 - Validation: Run the four focused task suites, typecheck, and the exact `/tasks cancel` workflow against a running background task.
 
-### Model refresh drops the supported max thinking level
+### Model refresh preserves the supported max thinking level
 
-- Status: ready
-- Verified problem: `/refresh-models` silently omits `max` from generated `thinkingLevelMap` values.
-- User impact: Refreshed GPT-5.6 model definitions lose an available thinking level.
-- Evidence: `PI_THINKING_LEVELS` stops at `xhigh` in `pi/extensions/refresh-models.ts:265-282`. The fixture contains `max` in `pi/tests/refresh-models.test.ts:182-210`, but the assertion at `:402-408` checks only through `xhigh`. Pi 0.80.6 and the installed GPT-5.6 catalog support `max`.
-- Root cause: A stale local allowlist.
-- Recommended solution: Add `max` to `PI_THINKING_LEVELS` and assert the complete generated map, including unsupported levels mapped to `null`.
-- Acceptance criteria: Remote `max` becomes `max: "max"`; modern-map, legacy-map, remote-map, and unrelated `compat` behavior remains unchanged.
-- Validation: Run `refresh-models.test.ts`, `model-visibility.test.ts`, typecheck, and one `/refresh-models` dry run against the installed catalog.
+- Status: completed
+- Resolved problem: `/refresh-models` omitted `max` from generated `thinkingLevelMap` values.
+- Implemented: Added `max` to `PI_THINKING_LEVELS` and changed the regression assertion to require the complete generated map, including unsupported levels mapped to `null`.
+- Result: Refreshed GPT-5.6 and Fable 5 definitions retain `max` when the provider catalog advertises it.
+- Validation: `refresh-models.test.ts` and `model-visibility.test.ts` passed 18 tests.
 
 ### Complete active agent-chain retirement
 
@@ -156,21 +153,13 @@ Execute and validate one item at a time. Do not batch state transitions, securit
 
 ## Investigated maintenance candidates - no verified defect
 
-### Agent-team is a no-op extension with live helper ownership
+### Agent-team runtime is retired
 
-- Status: P6 - investigate recipe usage, then perform a narrow ownership cleanup
-- Current state: `/team` is retired and the default export in `pi/extensions/agent-team.ts` intentionally registers nothing. Native `subagent({ team, task })` owns team dispatch. However, `pi/extensions/fable.ts` imports `loadTeamsConfig()` and `resolveTeam()` from the no-op extension, tests import its parsing helpers, and `pi/justfile` plus `pi/scripts/pi-new` still present a `team` launch mode.
-- Why this matters: Auto-discovered extension files should own runtime behavior. A no-op extension acting as a utility module obscures ownership, while a user-facing recipe suggests a distinct runtime capability that no longer exists.
-- Required evidence before recipe removal: Search retained shell history, Pi sessions, documentation, and generated projects for `just team`. If no real use exists, retire the recipe. If it is used as a convenience launch profile, rename and document the actual extension set rather than implying a `/team` command.
-- Recommended solution:
-  1. Move team config types, YAML parsing, path resolution, and team lookup into a focused `pi/lib/team-config.ts` module.
-  2. Update `fable.ts`, the native subagent implementation, and focused tests to import the library owner.
-  3. Delete the empty `agent-team.ts` extension and the control-plane test that only proves its no-op registration.
-  4. Remove or rename `just team` and the generated recipe based on verified usage.
-  5. Preserve `pi/agents/teams.yaml`, native `subagent` team dispatch, model routing, cancellation, and orchestration telemetry.
-- Out of scope: Rebuilding `/team`, adding another dispatcher, changing team keys, or moving model-selected routing out of the native subagent tool.
-- Acceptance criteria: No auto-discovered extension has an empty default export solely to host helpers; `fable` and native team dispatch resolve the same fixtures; unknown teams still fail explicitly; runtime command inventory contains no `/team`; supported recipes reference only behavior they actually provide.
-- Validation: Run `agent-team.test.ts`, `fable.test.ts`, `subagent.test.ts`, `agent-control-plane.test.ts` after updating or replacing its contract, typecheck, focused Biome, a native `subagent({ team, task })` fixture, and generated-Justfile checks.
+- Status: completed
+- Decision: The agent-team surface was unused, so it was retired instead of moving its helpers into another module.
+- Removed: `agent-team.ts`, team configuration files, native `subagent({ team, task })` dispatch, team-only task origins and telemetry modes, the `just team` recipe, generated-project team recipes, and dedicated tests.
+- Preserved: Single, parallel, and chain subagent modes; standalone agent personas; model routing; cancellation; and orchestration telemetry for retained modes.
+- Validation: Active-reference searches, focused subagent and task tests, typecheck, and generated-Justfile checks.
 
 ### Quality gates already match the target design
 

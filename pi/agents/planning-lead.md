@@ -4,7 +4,6 @@ description: Team lead for coordinated product planning; delegates to product-ma
 model: openai-codex/gpt-5.6-sol
 roleType: lead
 routingUse: "Use only for coordinated product planning across product-manager and ux-researcher."
-team: [product-manager, ux-researcher]
 isolation: none
 memory: project
 effort: high

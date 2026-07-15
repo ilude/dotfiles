@@ -1,6 +1,5 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { loadTeamsConfig, resolveTeam } from "./agent-team.js";
 import { type AgentScope, discoverAgents } from "./subagent/agents.js";
 
 const FABLE_MODEL_ID = "amazon-bedrock/us.anthropic.claude-fable-5";
@@ -38,7 +37,6 @@ const FOREMAN_INSTRUCTION = [
 
 type SubagentInput = {
 	agent?: unknown;
-	team?: unknown;
 	tasks?: unknown;
 	chain?: unknown;
 	agentScope?: unknown;
@@ -84,12 +82,7 @@ function requestedAgentNames(input: SubagentInput): string[] {
 	const taskAgents = agentNamesFrom(input.tasks);
 	if (taskAgents.length > 0) return taskAgents;
 
-	if (typeof input.agent === "string") return [input.agent];
-	if (typeof input.team !== "string") return [];
-
-	const teams = loadTeamsConfig();
-	const resolvedTeam = teams && resolveTeam(teams, input.team);
-	return resolvedTeam ? [resolvedTeam[1].name] : [];
+	return typeof input.agent === "string" ? [input.agent] : [];
 }
 
 function preservesRequestedAgentModels(

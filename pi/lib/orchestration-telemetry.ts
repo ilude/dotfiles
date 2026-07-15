@@ -21,7 +21,7 @@ const MAX_LINE_BYTES = 8 * 1024 * 1024;
 const MAX_INPUT_BYTES = 256 * 1024 * 1024;
 const MAX_MALFORMED_LINES = 10_000;
 
-const MODES = new Set(["single", "parallel", "chain", "team", "task-execute"]);
+const MODES = new Set(["single", "parallel", "chain", "task-execute"]);
 const STATUSES = new Set([
 	"pending",
 	"running",
@@ -39,12 +39,7 @@ const METADATA_VALUE = /^[A-Za-z0-9 ._\-/:@]+$/;
 const FORBIDDEN_METADATA =
 	/(?:\bBearer\s+|-----BEGIN|\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+\.|:\/\/[^/\s@]+@)/i;
 
-type OrchestrationMode =
-	| "single"
-	| "parallel"
-	| "chain"
-	| "team"
-	| "task-execute";
+type OrchestrationMode = "single" | "parallel" | "chain" | "task-execute";
 type OrchestrationStatus =
 	| "pending"
 	| "running"

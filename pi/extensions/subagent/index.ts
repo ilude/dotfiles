@@ -48,14 +48,6 @@ import {
 } from "../../lib/task-registry.js";
 import { registerOrchestrationInvocation } from "../../lib/workflow-friction.js";
 import {
-	buildDispatchMessage,
-	formatTeamList,
-	getAgentDir,
-	loadTeamsConfig,
-	resolveAgentPath,
-	resolveTeam,
-} from "../agent-team.js";
-import {
 	formatTraceparent,
 	getTraceId,
 	newSpanId,
@@ -1089,15 +1081,9 @@ const SubagentParams = Type.Object({
 			description: "Name of the agent to invoke (for single mode)",
 		}),
 	),
-	team: Type.Optional(
-		Type.String({
-			description:
-				"Team key or lead name from pi/agents/teams.yaml (team-dispatch mode)",
-		}),
-	),
 	task: Type.Optional(
 		Type.String({
-			description: "Task to delegate (for single or team-dispatch mode)",
+			description: "Task to delegate (for single mode)",
 		}),
 	),
 	tasks: Type.Optional(
@@ -1128,14 +1114,13 @@ const SubagentParams = Type.Object({
 	),
 	cwd: Type.Optional(
 		Type.String({
-			description:
-				"Working directory for the agent process (single or team-dispatch mode)",
+			description: "Working directory for the agent process (single mode)",
 		}),
 	),
 	output: Type.Optional(
 		Type.Union([Type.String(), Type.Boolean()], {
 			description:
-				"Optional artifact path for full output in single or team-dispatch mode. Set false to disable saved artifacts.",
+				"Optional artifact path for full output in single mode. Set false to disable saved artifacts.",
 		}),
 	),
 	outputMode: Type.Optional(OutputModeSchema),
@@ -1186,12 +1171,7 @@ export default function (pi: ExtensionAPI) {
 			const hasChain = (params.chain?.length ?? 0) > 0;
 			const hasTasks = (params.tasks?.length ?? 0) > 0;
 			const hasSingle = Boolean(params.agent && params.task);
-			const hasTeam = Boolean(params.team && params.task);
-			const modeCount =
-				Number(hasChain) +
-				Number(hasTasks) +
-				Number(hasSingle) +
-				Number(hasTeam);
+			const modeCount = Number(hasChain) + Number(hasTasks) + Number(hasSingle);
 
 			const makeDetails =
 				(mode: "single" | "parallel" | "chain") =>
@@ -1204,13 +1184,11 @@ export default function (pi: ExtensionAPI) {
 			const orchestrationId = randomUUID();
 			const interactionId = registerOrchestrationInvocation(orchestrationId);
 			const invocationStartedAt = Date.now();
-			const originalMode = hasTeam
-				? "team"
-				: hasChain
-					? "chain"
-					: hasTasks
-						? "parallel"
-						: "single";
+			const originalMode = hasChain
+				? "chain"
+				: hasTasks
+					? "parallel"
+					: "single";
 			let orchestrationEmitted = false;
 			const complete = <T extends AgentToolResult<SubagentDetails>>(
 				result: T,
@@ -1338,52 +1316,6 @@ export default function (pi: ExtensionAPI) {
 					],
 					details: makeDetails("single")([]),
 				});
-			}
-
-			if (hasTeam) {
-				const teams = loadTeamsConfig();
-				if (!teams) {
-					return complete({
-						content: [
-							{
-								type: "text",
-								text: "Could not load teams config for subagent team dispatch.",
-							},
-						],
-						details: makeDetails("single")([]),
-					});
-				}
-				const resolved = resolveTeam(teams, String(params.team));
-				if (!resolved) {
-					return complete({
-						content: [
-							{
-								type: "text",
-								text: `Team or lead "${String(params.team)}" not found.\n\n${formatTeamList(teams)}`,
-							},
-						],
-						details: makeDetails("single")([]),
-					});
-				}
-				const [, teamEntry] = resolved;
-				const agentFilePath = resolveAgentPath(teamEntry.file, getAgentDir());
-				if (!fs.existsSync(agentFilePath)) {
-					return complete({
-						content: [
-							{ type: "text", text: `Agent file not found: ${agentFilePath}` },
-						],
-						details: makeDetails("single")([]),
-					});
-				}
-				params = {
-					...params,
-					agent: teamEntry.name,
-					task: buildDispatchMessage(
-						teamEntry,
-						agentFilePath,
-						String(params.task),
-					),
-				};
 			}
 
 			if (

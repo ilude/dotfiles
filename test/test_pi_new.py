@@ -10,7 +10,7 @@ BASH = shutil.which("bash")
 
 
 @pytest.mark.skipif(BASH is None, reason="bash not found")
-def test_pi_new_omits_retired_agent_chain_recipes(tmp_path: Path) -> None:
+def test_pi_new_omits_retired_extension_recipes(tmp_path: Path) -> None:
     home = tmp_path / "home"
     home.mkdir()
 
@@ -26,3 +26,5 @@ def test_pi_new_omits_retired_agent_chain_recipes(tmp_path: Path) -> None:
     justfile = (tmp_path / "project" / "justfile").read_text(encoding="utf-8")
     assert "agent-chain.ts" not in justfile
     assert "\nchain:" not in justfile
+    assert "agent-team.ts" not in justfile
+    assert "\nteam:" not in justfile

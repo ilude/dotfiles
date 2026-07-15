@@ -14,7 +14,7 @@ import { sanitizeTaskValue } from "./task-security.ts";
 
 export type { TaskState } from "./operator-state.ts";
 
-export type TaskOrigin = "subagent" | "team" | "shell" | "other";
+export type TaskOrigin = "subagent" | "shell" | "other";
 export type TaskPersistenceOutcome =
 	| "persisted"
 	| "rejected"
@@ -256,12 +256,7 @@ function normalizeTaskRecord(
 }
 
 function isTaskOrigin(value: unknown): value is TaskOrigin {
-	return (
-		value === "subagent" ||
-		value === "team" ||
-		value === "shell" ||
-		value === "other"
-	);
+	return value === "subagent" || value === "shell" || value === "other";
 }
 
 function normalizeIdList(value: unknown): string[] {

@@ -29,7 +29,7 @@ def test_all_pi_agents_have_routing_metadata() -> None:
         assert metadata.get("routingUse"), f"{path} missing routingUse"
 
 
-def test_lead_agents_declare_worker_teams() -> None:
+def test_workers_report_to_expected_leads() -> None:
     agents = _agent_metadata()
     expected = {
         "planning-lead": ["product-manager", "ux-researcher"],
@@ -39,10 +39,8 @@ def test_lead_agents_declare_worker_teams() -> None:
     }
 
     for lead, workers in expected.items():
-        metadata = agents[lead]
-        assert metadata["roleType"] == "lead"
+        assert agents[lead]["roleType"] == "lead"
         for worker in workers:
-            assert worker in metadata.get("team", "")
             assert agents[worker]["reportsTo"] == lead
 
 

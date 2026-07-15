@@ -213,7 +213,6 @@ cd ~/.dotfiles/pi
 just          # default -- Pi with all auto-discovered extensions
 just solo     # bare Pi, no extensions
 just safe     # damage-control only (safety rules)
-just team     # legacy recipe; use subagent team dispatch for new workflows
 just full     # all extensions (damage-control + subagent + quality-gates + session-hooks)
 just guard    # full stack + conventional commit enforcement
 ```
@@ -243,17 +242,6 @@ Intercepts tool calls and blocks dangerous operations before they execute.
 - **No-delete paths** -- protects `package.json`, `Makefile`, `pyproject.toml`
 
 Primary policy file: `~/.dotfiles/claude/hooks/damage-control/patterns.yaml`. Fallback Pi-only rules file: `~/.dotfiles/pi/damage-control-rules.yaml`.
-
-### `agent-team.ts`
-
-Shared configuration helpers remain available to current coordination extensions.
-The `/team` slash command is retired; use the `subagent` tool instead:
-
-```json
-{ "team": "engineering", "task": "Add rate limiting to the API" }
-```
-
-Agent config recovery: active agent personas live in `pi/agents/`. If a bad role/tool config prevents normal coordination, start Pi with `pi --no-extensions`, edit the affected file under `pi/agents/`, then run `cd pi && pnpm test agent-role-semantics.test.ts` before restarting Pi normally.
 
 ### `quality-gates.ts`
 
@@ -606,7 +594,7 @@ and `gpt-5.6-sol` at xhigh effort assess whether complex work has two or more
 independent work items that benefit from parallel delegation. `gpt-5.6-sol` at
 medium effort delegates only when that split is clearly beneficial. When a
 parent delegates, the active subagent runtime and current agent files determine
-routing and execution behavior. The `/team` slash command is retired.
+routing and execution behavior.
 
 Active user-level personas live in `pi/agents/` and are discovered from
 `~/.pi/agent/agents/` at runtime. A nearest project `.pi/agents/` directory may
@@ -629,8 +617,8 @@ Missing skills fail the launch explicitly. `tools` is a tool-name allowlist, not
 a path sandbox; any assigned path scope in an agent prompt is guidance only.
 Unknown fields are not execution contracts.
 
-If a bad persona prevents normal coordination, start Pi with
-`pi --no-extensions`, repair the affected file under `pi/agents/`, run
+Agent config recovery: if a bad persona prevents normal coordination, start Pi
+with `pi --no-extensions`, repair the affected file under `pi/agents/`, run
 `cd pi && pnpm test agent-role-semantics.test.ts`, and restart Pi normally.
 
 ### Expertise storage and retrieval
@@ -792,7 +780,6 @@ A fresh span id is generated for each subagent invocation (single, parallel, or 
 | `~/.dotfiles/pi/settings.json` | Default provider/model for session startup |
 | `~/.dotfiles/pi/AGENTS.md` | Canonical shared global instructions, auto-loaded by Pi and linked from `claude/CLAUDE.md` |
 | `~/.dotfiles/pi/damage-control-rules.yaml` | Safety rules for damage-control extension |
-| `~/.dotfiles/pi/agents/teams.yaml` | Coordination roster consumed by current helper extensions; not a `/team` command |
 
 Project-level overrides: place `AGENTS.md` or `.pi/settings.json` in any repo root.
 
@@ -805,14 +792,6 @@ Project-level overrides: place `AGENTS.md` or `.pi/settings.json` in any repo ro
 ```bash
 just          # launch with all extensions
 > Build a REST endpoint for /api/users
-```
-
-### Multi-agent team task
-
-Use the `subagent` tool with a team key or lead name from `pi/agents/teams.yaml`:
-
-```json
-{ "team": "engineering", "task": "Add rate limiting to the API" }
 ```
 
 ### Expertise reference

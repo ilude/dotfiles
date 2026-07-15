@@ -147,7 +147,3 @@ no_delete_paths:
   - "Cargo.toml"
   - "pyproject.toml"
   - "Makefile"
-
-domain_constraints:
-  # placeholder - populated by agent persona files
-  note: "Domain constraints are loaded from individual agent persona files by agent-team extension"

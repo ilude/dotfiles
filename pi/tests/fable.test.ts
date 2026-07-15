@@ -1,19 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-const { discoverAgentsMock, loadTeamsConfigMock, resolveTeamMock } = vi.hoisted(
-	() => ({
-		discoverAgentsMock: vi.fn(() => ({ agents: [], projectAgentsDir: null })),
-		loadTeamsConfigMock: vi.fn(),
-		resolveTeamMock: vi.fn(),
-	}),
-);
+const { discoverAgentsMock } = vi.hoisted(() => ({
+	discoverAgentsMock: vi.fn(() => ({ agents: [], projectAgentsDir: null })),
+}));
 
 vi.mock("../extensions/subagent/agents.js", () => ({
 	discoverAgents: discoverAgentsMock,
-}));
-vi.mock("../extensions/agent-team.js", () => ({
-	loadTeamsConfig: loadTeamsConfigMock,
-	resolveTeam: resolveTeamMock,
 }));
 
 import fableCommand, {
@@ -204,33 +196,6 @@ describe("fable orchestration policy", () => {
 					{ agent: "coding-heavy", task: "heavy work" },
 				],
 			},
-		};
-
-		expect(tool(event, orchestratorCtx())).toBeUndefined();
-		expect(event.input).not.toHaveProperty("model");
-	});
-
-	it("leaves a resolved team lead with an allowed effort pin unoverridden", () => {
-		loadTeamsConfigMock.mockReturnValue({
-			engineering: {
-				name: "engineering-lead",
-				file: "agents/engineering-lead.md",
-			},
-		});
-		resolveTeamMock.mockReturnValue([
-			"engineering",
-			{ name: "engineering-lead", file: "agents/engineering-lead.md" },
-		]);
-		discoverAgentsMock.mockReturnValue({
-			agents: [
-				{ name: "engineering-lead", model: "openai-codex/gpt-5.6-sol:xhigh" },
-			],
-			projectAgentsDir: null,
-		});
-		const { tool } = hooks();
-		const event = {
-			toolName: "subagent",
-			input: { team: "engineering", task: "work" },
 		};
 
 		expect(tool(event, orchestratorCtx())).toBeUndefined();

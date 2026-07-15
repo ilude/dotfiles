@@ -15,11 +15,11 @@ import {
 	type SubagentTaskExecution,
 	safeTransitionTask,
 	type TaskRecordV1,
-	type UpdateTaskPatch,
 	type TaskState,
 	tasksByIdSnapshot,
 	tombstoneTask,
 	transitionTask,
+	type UpdateTaskPatch,
 	updateTask,
 } from "../lib/task-registry.js";
 import {
@@ -272,10 +272,8 @@ export function importLegacyTodos(
 	return imported.map((record) => getTask(record.id) ?? record);
 }
 
-function originFrom(value: unknown): "subagent" | "team" | "shell" | "other" {
-	return value === "subagent" || value === "team" || value === "shell"
-		? value
-		: "other";
+function originFrom(value: unknown): "subagent" | "shell" | "other" {
+	return value === "subagent" || value === "shell" ? value : "other";
 }
 
 function executionFrom(
@@ -391,7 +389,6 @@ export function registerTaskTools(
 			origin: Type.Optional(
 				Type.Union([
 					Type.Literal("subagent"),
-					Type.Literal("team"),
 					Type.Literal("shell"),
 					Type.Literal("other"),
 				]),
@@ -589,21 +586,17 @@ export function registerTaskTools(
 					patch = {
 						summary:
 							typeof input.summary === "string"
-									? validateTaskText(
-											"summary",
-											input.summary,
-											TASK_SUMMARY_MAX_LENGTH,
-											true,
-										)
-									: undefined,
+								? validateTaskText(
+										"summary",
+										input.summary,
+										TASK_SUMMARY_MAX_LENGTH,
+										true,
+									)
+								: undefined,
 						notes:
 							typeof input.notes === "string"
-									? validateTaskText(
-											"notes",
-											input.notes,
-											TASK_NOTES_MAX_LENGTH,
-										)
-									: undefined,
+								? validateTaskText("notes", input.notes, TASK_NOTES_MAX_LENGTH)
+								: undefined,
 						blockedBy: validatedBlockers(input.blockedBy),
 					};
 				} catch (error) {
@@ -628,8 +621,12 @@ export function registerTaskTools(
 					const record = updateTask(id, patch);
 					if (typeof input.state === "string") {
 						const transition = safeTransitionTask(id, input.state as TaskState);
-						if (transition.outcome !== "persisted") return toolResult(transition);
-						return toolResult({ outcome: "persisted", record: transition.record });
+						if (transition.outcome !== "persisted")
+							return toolResult(transition);
+						return toolResult({
+							outcome: "persisted",
+							record: transition.record,
+						});
 					}
 					return toolResult({ outcome: "persisted", record });
 				} catch (error) {
