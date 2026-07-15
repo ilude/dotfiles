@@ -10,24 +10,19 @@
 6. Test-only legacy routing helpers and duplicate telemetry emitter removal.
 7. Dormant router policy settings and legacy state retirement.
 8. Startup command inventory migration to documented `pi.getCommands()` (`e9368be`).
+9. Legacy agent-chain runtime and generated-project retirement (`1593f3e` plus the P0 follow-up below).
+10. Native prompt migration for `/summarize` and `/gitlab-ticket` (`c2b2c57`).
 
 ## Active handoff state - 2026-07-15
 
-The working tree contains two related command-surface migrations that were validated together but are not yet committed:
+The initial agent-chain and prompt-only command migrations are pushed. The current P0 follow-up closes the two gaps found during review:
 
-1. Agent-chain retirement removes `pi/extensions/agent-chain.ts`, `/chain`, `log_exchange`, the dedicated `just chain` recipe, the integration test, coverage registration, and active documentation. Native `subagent` chain mode remains the supported model-driven sequencing surface. Memory retrieval and promotion libraries remain because `cosine` and `chainTail` have production callers.
-2. Prompt-only command migration moves `/summarize` and `/gitlab-ticket` from extension registration into `pi/prompts/`, removes the orphaned GitLab workflow skill, and updates prompt and dispatch tests.
+- `pi/scripts/pi-new` no longer emits a `chain` recipe or loads deleted `agent-chain.ts` from generated `full` and `guard` recipes. `test/test_pi_new.py` generates a project and protects this contract.
+- The stale `pi/multi-team/skills/active-listener.md` skill is deleted. Multi-team agents now rely on native Pi session and subagent assignment context rather than an unwritten `conversation.jsonl` file.
+- `/yt` commands use `uv run --isolated --frozen` for the locked menos project and `uv run --script` for PEP 723 local fallbacks, so stale ignored `.venv` directories cannot select missing `C:\Python314`.
+- Prompt migration stability was independently checked with three parallel and three serial focused runs. All 216 test executions passed, so no persistent ordering or state-leak defect was reproduced and no prompt-migration code change is warranted.
 
-Observed retirement evidence:
-
-- Retained Pi session logs contain no `log_exchange` tool-result calls. Files containing the string only contained tool schemas, documentation, or investigation output.
-- `~/.pi/agent/multi-team/sessions/` contained no `conversation.jsonl` files.
-- No active tracked agent instruction calls `log_exchange`.
-- `pi/extensions/agent-team.ts` does not depend on agent-chain; `fable.ts` depends only on team-resolution helpers.
-- Focused post-retirement validation passed 54 tests across workflow dispatch, prompt contracts, memory retrieval, and agents-context coverage.
-- `make check-pi-extensions` passed after the prompt migration caught up: 95 test files, 1,279 passed, 1 skipped. Typecheck, focused Biome, `git diff --check`, and `just --list` also passed.
-
-Do not finalize the active retirement until the generated-Justfile and active-listener gaps below are resolved. Reload or start a new Pi session after installation so the live startup registry drops `/chain` and `log_exchange`.
+Retained behavior remains unchanged: native `subagent` chain and team modes, orchestration telemetry, Pi session context, memory retrieval, and memory promotion. Reload or start a new Pi session after installation so prompt and skill discovery use the updated files.
 
 ## Recommended execution order
 
@@ -35,8 +30,7 @@ Execute and validate one item at a time. Do not batch state transitions, securit
 
 | Priority | Work item | Why now | Dependency |
 | --- | --- | --- | --- |
-| P0 | Complete agent-chain retirement | Active worktree would otherwise leave newly generated projects broken | None |
-| P1 | Unify task lifecycle policy | Verified command/tool correctness and cancellation defect | P0 only for clean review scope |
+| P1 | Unify task lifecycle policy | Verified command/tool correctness and cancellation defect | None |
 | P2 | Complete damage-control audit recording | Security decisions currently disappear from provenance | Independent; keep separate from P1 |
 | P3 | Fix workflow-review queue deduplication | Duplicate background reviews are reachable | Independent; required before reviewer migration |
 | P4 | Move the background reviewer behind a typed semantic contract | Removes manual prompt/subprocess/JSON plumbing after queue correctness is proven | P3 |
@@ -44,7 +38,7 @@ Execute and validate one item at a time. Do not batch state transitions, securit
 | P6 | Clean up the no-op agent-team extension boundary | Removes another obsolete public runtime surface without changing native team dispatch | Confirm recipe usage first |
 | Blocked | Unify Bedrock refresh identity and region | Requires live work-machine evidence | Work-machine access |
 
-## Verified problems - ready
+## Verified problems and completed follow-ups
 
 ### Task lifecycle policy differs between the tool and slash command
 
@@ -70,17 +64,17 @@ Execute and validate one item at a time. Do not batch state transitions, securit
 
 ### Complete active agent-chain retirement
 
-- Status: P0 - ready within the active retirement change
-- Verified problem: The active worktree deletes `pi/extensions/agent-chain.ts` and removes it from `pi/justfile`, but `pi/scripts/pi-new:74-95` still emits `chain`, `full`, and `guard` recipes that load that path. Committing the retirement as-is would make newly generated recipes fail at startup. At `HEAD`, the extension still exists, so this is a verified gap in the active change set rather than a released regression.
-- Stale listener contract: The retirement removes `log_exchange`, while `pi/multi-team/skills/active-listener.md:10` requires every response to read `.pi/multi-team/sessions/{SESSION_ID}/conversation.jsonl`. No current writer, caller, or retained conversation log supports that requirement.
+- Status: completed in the P0 follow-up
+- Resolved problem: Commit `1593f3e` deleted `pi/extensions/agent-chain.ts`, but `pi/scripts/pi-new` still emitted `chain`, `full`, and `guard` recipes that loaded that path. Generated projects would therefore have failed at startup.
+- Resolved listener contract: The retirement removed `log_exchange`, while `pi/multi-team/skills/active-listener.md` required every response to read `.pi/multi-team/sessions/{SESSION_ID}/conversation.jsonl`. No writer, caller, or retained conversation log supported that requirement, so the skill and its agent references were retired.
 - Decision: Retire the legacy active-listener conversation-file requirement rather than create a replacement writer. Current Pi sessions, compaction summaries, task state, subagent transfer, and orchestration telemetry already own their respective context and observability boundaries. Reintroduce a conversation writer only after a concrete consumer and retention contract exist.
 - Root cause: The original chain command, project generator, multi-team skill, test, documentation, and launch recipes formed one feature, but the active retirement initially changed only the runtime extension and hand-written recipe.
-- In scope:
-  1. Remove the `chain` recipe from the heredoc in `pi/scripts/pi-new`.
-  2. Remove `agent-chain.ts` from generated `full` and `guard` recipes.
-  3. Add a generated-project regression using an OS-temp destination. Assert no generated recipe names or extension paths reference agent-chain.
-  4. Remove or rewrite `pi/multi-team/skills/active-listener.md` so no active guidance requires an unwritten file. If the remaining content only says to respect supplied context, delete the skill rather than restating global instructions.
-  5. Re-run active-reference searches across `pi/`, generated templates, launch recipes, tests, and non-archived specifications.
+- Implemented:
+  1. Removed the `chain` recipe from the heredoc in `pi/scripts/pi-new`.
+  2. Removed `agent-chain.ts` from generated `full` and `guard` recipes.
+  3. Added `test/test_pi_new.py`, which generates a project in an isolated temporary home and asserts the retired recipe and path are absent.
+  4. Deleted `pi/multi-team/skills/active-listener.md`, removed all agent skill references, and changed `precise-worker.md` to use native Pi session assignment context.
+  5. Re-ran active-reference searches across `pi/`, generated templates, launch recipes, and tests.
 - Out of scope: Native `subagent` chain mode, orchestration chain telemetry, agent team keys, memory promotion, and unrelated historical archive evidence.
 - Acceptance criteria:
   - Generated Justfiles contain no `chain` recipe and no `agent-chain.ts` path.

@@ -19,6 +19,9 @@ describe("workflow prompt contracts", () => {
 		expect(prompt).toContain("YouTube request: $ARGUMENTS");
 		expect(prompt).toContain("Always attempt menos first");
 		expect(prompt).toContain("locally fall back");
+		expect(prompt).toContain("uv run --isolated --frozen");
+		expect(prompt).toContain("uv run --script fetch_transcript.py");
+		expect(prompt).not.toContain("uv run ingest_video.py");
 		expect(
 			fs.existsSync(new URL("../prompts/yt-local.md", import.meta.url)),
 		).toBe(false);

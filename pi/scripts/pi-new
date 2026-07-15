@@ -67,12 +67,6 @@ solo:
 safe:
     pi --no-extensions -e ${EXT_DIR}/damage-control.ts
 
-# Plan-build-review pipeline
-chain:
-    pi --no-extensions \\
-        -e ${EXT_DIR}/damage-control.ts \\
-        -e ${EXT_DIR}/agent-chain.ts
-
 # Team dispatcher
 team:
     pi --no-extensions \\
@@ -83,7 +77,6 @@ team:
 full:
     pi --no-extensions \\
         -e ${EXT_DIR}/damage-control.ts \\
-        -e ${EXT_DIR}/agent-chain.ts \\
         -e ${EXT_DIR}/agent-team.ts \\
         -e ${EXT_DIR}/quality-gates.ts \\
         -e ${EXT_DIR}/session-hooks.ts
@@ -92,7 +85,6 @@ full:
 guard:
     pi --no-extensions \\
         -e ${EXT_DIR}/damage-control.ts \\
-        -e ${EXT_DIR}/agent-chain.ts \\
         -e ${EXT_DIR}/agent-team.ts \\
         -e ${EXT_DIR}/quality-gates.ts \\
         -e ${EXT_DIR}/session-hooks.ts \\

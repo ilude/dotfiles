@@ -12,8 +12,6 @@ skills:
     use-when: Always use when writing responses.
   - path: .pi/multi-team/skills/mental-model.md
     use-when: Read at task start. Update after completing work.
-  - path: .pi/multi-team/skills/active-listener.md
-    use-when: Always. Read the conversation log before every response.
   - path: .pi/multi-team/skills/precise-worker.md
     use-when: Always. Execute exactly what your lead assigned — no improvising.
 tools: read, grep, bash, review_artifact_write

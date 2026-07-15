@@ -1310,3 +1310,25 @@ when a later play failed before Forgejo configuration ran.
 `tests/test_ansible_safety.py`, `docs/forgejo-bind-mount.md`
 
 ---
+
+### 2026-07-15: Finish agent-chain retirement and isolate YouTube environments
+
+**Why:** Generated Pi projects still loaded the deleted agent-chain extension,
+multi-team guidance required a conversation log with no writer, and `/yt`
+commands selected ignored virtual environments tied to a removed Python install.
+
+**Changed:**
+- Removed retired agent-chain recipes from `pi-new` and added a generated-project
+  regression.
+- Retired the active-listener skill and its unsupported conversation-file
+  contract while preserving native Pi session and subagent context.
+- Made menos `/yt` commands use the locked project in an isolated uv environment
+  and local fallback scripts use their PEP 723 metadata.
+- Verified the prompt migration repeatedly in parallel and serial test modes; no
+  persistent ordering defect was reproduced.
+
+**Files:** `pi/scripts/pi-new`, `test/test_pi_new.py`,
+`pi/multi-team/agents/`, `pi/multi-team/skills/`, `pi/prompts/yt.md`,
+`pi/tests/workflow-prompts.test.ts`, `.specs/pi-extension-refactors/backlog.md`
+
+---

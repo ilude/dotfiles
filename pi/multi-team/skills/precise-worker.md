@@ -17,7 +17,7 @@ Your lead assigned you a specific task. Do that task. Do not:
 
 ## What Precise Execution Looks Like
 
-1. Read your assignment from the conversation log
+1. Read your assignment from the native Pi session context
 2. Identify the exact deliverable: file to create, function to fix, test to write, review to produce
 3. Do exactly that
 4. Report completion with what you did — not what else could be done
