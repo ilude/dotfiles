@@ -11,8 +11,9 @@ The initial four refactors have been implemented and validated:
 5. Native skill-loader retirement and `/yt` prompt migration.
 6. Test-only legacy routing helpers and duplicate telemetry emitter removal.
 7. Dormant router policy settings and legacy state retirement.
+8. Startup command inventory migration to documented `pi.getCommands()`.
 
-The initial four refactors passed `make check-pi-extensions` with 95 test files, 1,293 tests passed, and 1 expected platform skip. After retiring the duplicate skill-loader tests and adding the `/yt` migration contract, the complete suite passed with 94 test files, 1,287 tests passed, and 1 expected platform skip. After removing the test-only router paths and retiring their dormant settings and state, the complete suite passed with 95 test files, 1,278 tests passed, and 1 expected platform skip.
+The initial four refactors passed `make check-pi-extensions` with 95 test files, 1,293 tests passed, and 1 expected platform skip. After retiring the duplicate skill-loader tests and adding the `/yt` migration contract, the complete suite passed with 94 test files, 1,287 tests passed, and 1 expected platform skip. After removing the test-only router paths and retiring their dormant settings and state, the complete suite passed with 95 test files, 1,278 tests passed, and 1 expected platform skip. After migrating startup command inventory to `pi.getCommands()`, the complete suite passed with 96 test files, 1,282 tests passed, and 1 expected platform skip.
 
 ## Deferred refactors
 
@@ -23,14 +24,6 @@ The initial four refactors passed `make check-pi-extensions` with 95 test files,
 - Revisit trigger: The current agent-path/settings changes have landed with their focused validation, and an explicit AWS precedence contract is agreed.
 - Smallest safe scope: Extract one pure profile-and-region resolver used by both extensions. Preserve environment mutation in `aws-bedrock-env.ts` and CLI argument construction in `bedrock-refresh.ts`.
 - Required validation: Verify explicit options, existing environment values, `AWS_CONFIG_FILE`, `AWS_SHARED_CREDENTIALS_FILE`, default and single credential profiles, configured-region fallback, and generated AWS CLI arguments.
-
-### Layered registerCommand monkey patches
-
-- Evidence: `pi/extensions/00-echo-slash-commands.ts:38-52` replaces `pi.registerCommand` to wrap handlers. `pi/extensions/01-startup-commands.ts:14-20` replaces the same method to collect names. `.tmp/extension-review-tools.md:63-75` identifies load-order and inventory gaps.
-- Reason deferred: Echoing requires an invocation boundary that Pi does not yet expose directly; replacing both wrappers at once risks changing command behavior.
-- Revisit trigger: A command-invocation event is available, or an inventory implementation proves the startup list is complete without affecting echo behavior.
-- Smallest safe scope: Change startup display to query `pi.getCommands()` at `session_start`; leave the echo decorator in place unless it can be safely centralized.
-- Required validation: Verify commands registered before and after extension loading, duplicate suffixes, reloads, native templates and skills in the startup list, and exactly one echo per extension-command invocation.
 
 ### Seam-driven workflow-commands split
 
