@@ -11,7 +11,6 @@
  *   /prd-it        — refine fuzzy ideas into an optional PRD artifact
  *   /review-it     — adversarial review of a plan file
  *   /do-it         — smart task routing by complexity
- *   /summarize     — concise session recap and workflow friction notes
  *   /exit          — gracefully quit pi
  */
 
@@ -43,7 +42,6 @@ import { scanSecrets } from "../lib/secret-scan";
 import { defineAgent, type TypedAgentRunContext } from "../lib/typed-agent";
 import {
 	buildCommitPlanningPrompt,
-	buildGitlabTicketPrompt,
 	buildSecretReviewPrompt,
 	buildSkillPrompt,
 } from "../lib/workflow-commands/prompts";
@@ -388,33 +386,6 @@ const CLEAR_CODEX_STATUS_TYPE = "workflow-clear-codex-status";
 const COMMIT_ACTIVITY_TYPE = "workflow-commit-activity";
 const COMMIT_REPORT_TYPE = "workflow-commit-report";
 const SLASH_ECHO_TYPE = "slash-echo";
-const SUMMARIZE_PROMPT = `Summarize the work done in this session as a compact handoff note.
-
-Use this structure when applicable:
-
-1. Start with the primary artifact/path or main outcome in a short sentence.
-2. Include links/paths to any PRD.md or plan.md files created or materially updated in this session, with state: open, ready for review, ready for plan/implementation, completed, or archived. Before reporting a PRD/plan as active or recommending it as next work, validate whether it still exists at the stated path, whether it has moved under .specs/archive/, and whether its frontmatter/status/checklist marks it completed or archived.
-3. Add a "Current direction" or "Current status" section if there is an active design/plan/change.
-4. Add "Key decisions captured" as concise bullets for durable decisions.
-5. Add "Telemetry/validation/implementation notes" only if relevant.
-6. Add "Workflow friction" only when commands, agents, tools, prompts, or process issues should be improved later.
-7. End with "Recommended next command" or "Next step" when there is a clear follow-up.
-
-Evidence rules:
-- Treat the available session context, including any compaction summaries, as the source of truth for session scope.
-- Before drafting, inventory the distinct work phases in that context so earlier work is not displaced by recent activity.
-- Use Git status and history only to corroborate implementation and current state. Do not infer session scope from nearby commits.
-- If compaction left insufficient detail, state that coverage is limited instead of reconstructing missing work from Git history.
-- Current repository state may update the final status, but it must not erase work completed earlier in the session.
-
-Style rules:
-- Keep any top-level bullet list to 3 bullets or fewer when a sectioned handoff is not needed.
-- Prefer grouped sections over a flat chronological recap.
-- Preserve exact paths, commands, model names, and important enum/value choices.
-- Keep it concise but complete enough to survive compaction or handoff.
-- Skip routine tool calls and dead-end exploration unless they affect the next step.
-- Do not invent validation; say "not run" or omit if unknown.
-- Include any workflow issue that materially affects the next handoff.`;
 
 interface BranchLaunchPlan {
 	executable?: string;
@@ -2673,27 +2644,6 @@ export default function (pi: ExtensionAPI) {
 					sendHiddenWorkflowPrompt(pi, prompt);
 				},
 			);
-		},
-	});
-
-	pi.registerCommand("summarize", {
-		description: "Concise recap of this session and notable workflow friction",
-		handler: async (args, _ctx) => {
-			echoSlashCommand(pi, "summarize", args);
-			const extraContext = args.trim()
-				? `\n\nAdditional focus: ${args.trim()}`
-				: "";
-			sendHiddenWorkflowPrompt(pi, `${SUMMARIZE_PROMPT}${extraContext}`);
-		},
-	});
-
-	pi.registerCommand("gitlab-ticket", {
-		description:
-			"Generate a structured GitLab issue, then optionally create an issue-numbered branch and draft MR",
-		handler: async (args, _ctx) => {
-			echoSlashCommand(pi, "gitlab-ticket", args);
-			const template = loadSkill("gitlab-ticket.md");
-			await pi.sendUserMessage(buildGitlabTicketPrompt(template, args));
 		},
 	});
 

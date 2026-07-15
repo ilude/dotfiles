@@ -200,13 +200,35 @@ describe("workflow prompt contracts", () => {
 		expect(prompt).toContain('"id": 1');
 	});
 
-	it("/gitlab-ticket documents issue-numbered branch naming and draft MR follow-on", () => {
-		const prompt = readPrompt("skills/workflow/gitlab-ticket.md");
+	it("/summarize stays grounded in session context", () => {
+		const prompt = readPrompt("prompts/summarize.md");
+		expect(prompt).toContain("argument-hint:");
+		expect(prompt).toContain("Additional focus: $ARGUMENTS");
+		expect(prompt).toContain(
+			"Treat the available session context, including any compaction summaries, as the source of truth for session scope.",
+		);
+		expect(prompt).toContain(
+			"Use Git status and history only to corroborate implementation and current state.",
+		);
+		expect(prompt).toContain(
+			"state that coverage is limited instead of reconstructing missing work from Git history.",
+		);
+	});
+
+	it("/gitlab-ticket is a native prompt with issue and draft MR follow-on", () => {
+		const prompt = readPrompt("prompts/gitlab-ticket.md");
+		expect(prompt).toContain("argument-hint:");
+		expect(prompt).toContain("GitLab ticket request: $ARGUMENTS");
 		expect(prompt).toContain("<issue-number>-<kebab-case-title>");
 		expect(prompt).toContain("474-migrate-e2e-coverage-to-playwright");
 		expect(prompt).toContain("Default to a **draft** MR");
 		expect(prompt).toContain(
 			"Want me to create a branch and draft MR for this issue too?",
 		);
+		expect(
+			fs.existsSync(
+				new URL("../skills/workflow/gitlab-ticket.md", import.meta.url),
+			),
+		).toBe(false);
 	});
 });

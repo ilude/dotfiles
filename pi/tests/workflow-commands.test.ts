@@ -132,25 +132,12 @@ describe("workflow command dispatch", () => {
 		).toBeUndefined();
 	});
 
-	it("keeps /summarize grounded in session context", async () => {
-		await getHandler("summarize")("", {});
-
-		const message = mockPi.sendMessage.mock.calls.at(-1)?.[0];
-		expect(message).toEqual(
-			expect.objectContaining({
-				customType: "workflow.hiddenPrompt",
-				display: false,
-			}),
-		);
-		expect(message?.content).toContain(
-			"Treat the available session context, including any compaction summaries, as the source of truth for session scope.",
-		);
-		expect(message?.content).toContain(
-			"Use Git status and history only to corroborate implementation and current state.",
-		);
-		expect(message?.content).toContain(
-			"state that coverage is limited instead of reconstructing missing work from Git history.",
-		);
+	it("does not register prompt-only commands", () => {
+		for (const name of ["summarize", "gitlab-ticket"]) {
+			expect(
+				mockPi._commands.find((candidate) => candidate.name === name),
+			).toBeUndefined();
+		}
 	});
 
 	it("initializes the new session with Codex status before previous usage", async () => {

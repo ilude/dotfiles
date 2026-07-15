@@ -115,9 +115,3 @@ export function buildSkillPrompt(
 	const appendSuffix = !options.replaceArguments && trimmedArgs;
 	return resolvedTemplate + (appendSuffix ? `\n\nArgs: ${args}` : "");
 }
-
-export function buildGitlabTicketPrompt(template: string, args: string) {
-	const followOn =
-		"\n\nFollow the full GitLab workflow in the skill: issue first, then if the user wants follow-on work, prefer an <issue-number>-<kebab-case-title> branch name and a draft MR by default.";
-	return buildSkillPrompt(template + followOn, args);
-}

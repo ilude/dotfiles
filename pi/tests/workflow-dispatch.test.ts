@@ -76,24 +76,6 @@ describe("workflow slash command dispatch", () => {
 		});
 	});
 
-	it("/summarize sends a terse session-summary prompt as a follow-up turn", async () => {
-		const mockPi = createMockPi();
-		const mod = await import("../extensions/workflow-commands.ts");
-		mod.default(mockPi as Parameters<typeof mod.default>[0]);
-
-		await getHandler(mockPi, "summarize")("", {});
-
-		const hiddenPromptCall = mockPi.sendMessage.mock.calls.find(
-			([message]) => message.customType === "workflow.hiddenPrompt",
-		);
-		expect(hiddenPromptCall?.[0].content).toContain("3 bullets or fewer");
-		expect(hiddenPromptCall?.[0].content).toContain("workflow issue");
-		expect(hiddenPromptCall?.[1]).toEqual({
-			triggerTurn: true,
-			deliverAs: "followUp",
-		});
-	});
-
 	it("/do-it plan-file sessions trigger the new turn immediately", async () => {
 		const mockPi = createMockPi();
 		const mod = await import("../extensions/workflow-commands.ts");
