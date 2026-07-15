@@ -1,8 +1,20 @@
+import { execFile } from "node:child_process";
 import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { promisify } from "node:util";
 import type {
+	ExecResult,
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import {
+	awsProfileRegions,
+	type BedrockAuthEnvironment,
+	type BedrockTarget,
+	parseAwsIni,
+	resolveBedrockTarget,
+} from "../lib/bedrock-auth.ts";
 import {
 	getSettingsPath,
 	updateJsonObjectAtomic,
@@ -10,6 +22,18 @@ import {
 
 const COMMAND_NAME = "bedrock-refresh";
 const POLL_TIMEOUT_MS = 60_000;
+const AWS_OUTPUT_MAX_BYTES = 10 * 1024 * 1024;
+const execFileAsync = promisify(execFile);
+
+interface AwsExecutionOptions {
+	env?: NodeJS.ProcessEnv;
+	signal?: AbortSignal;
+}
+
+type AwsExecutor = (
+	args: string[],
+	options: AwsExecutionOptions,
+) => Promise<ExecResult>;
 
 interface PollResult {
 	profile: string;
@@ -71,35 +95,101 @@ function helpText(): string {
 	].join("\n");
 }
 
-function profile(parsed: ParsedArgs): string {
-	return parsed.profile ?? process.env.AWS_PROFILE ?? "default";
+function resolveHomePath(filePath: string): string {
+	if (filePath === "~") return os.homedir();
+	if (filePath.startsWith("~/") || filePath.startsWith("~\\"))
+		return path.join(os.homedir(), filePath.slice(2));
+	return filePath;
 }
 
-function region(parsed: ParsedArgs): string {
-	return (
-		parsed.region ??
-		process.env.AWS_REGION ??
-		process.env.AWS_DEFAULT_REGION ??
-		"us-east-2"
+function configuredProfileRegions(): Record<string, string> {
+	const configPath = resolveHomePath(
+		process.env.AWS_CONFIG_FILE ?? path.join(os.homedir(), ".aws", "config"),
 	);
+	if (!fs.existsSync(configPath)) return {};
+	return awsProfileRegions(parseAwsIni(fs.readFileSync(configPath, "utf-8")));
 }
 
-function awsArgs(parsed: ParsedArgs, commandArgs: string[]): string[] {
-	const args: string[] = [];
-	const selectedProfile = profile(parsed);
-	if (selectedProfile) args.push("--profile", selectedProfile);
-	args.push(...commandArgs);
-	return args;
+async function providerEnvironment(
+	ctx: ExtensionContext,
+): Promise<BedrockAuthEnvironment | undefined> {
+	const model = ctx.modelRegistry
+		.getAll()
+		.find((candidate) => candidate.provider === "amazon-bedrock");
+	if (!model) return undefined;
+	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+	if (!auth.ok) throw new Error(auth.error);
+	return auth.env as BedrockAuthEnvironment | undefined;
+}
+
+function awsArgs(target: BedrockTarget, commandArgs: string[]): string[] {
+	return [
+		...(target.profile ? ["--profile", target.profile] : []),
+		...commandArgs,
+	];
+}
+
+function scopedAwsEnvironment(
+	target: BedrockTarget,
+	providerEnv: BedrockAuthEnvironment | undefined,
+): NodeJS.ProcessEnv | undefined {
+	if (target.credentialSource !== "non-profile" || !providerEnv)
+		return undefined;
+	const env: NodeJS.ProcessEnv = { ...process.env };
+	delete env.AWS_PROFILE;
+	delete env.AWS_DEFAULT_PROFILE;
+	for (const [key, value] of Object.entries(providerEnv)) {
+		if (key === "AWS_PROFILE" || key === "AWS_DEFAULT_PROFILE") continue;
+		if (value) env[key] = value;
+	}
+	return env;
+}
+
+function createAwsExecutor(pi: ExtensionAPI): AwsExecutor {
+	return async (args, options) => {
+		if (!options.env)
+			return pi.exec("aws", args, {
+				timeout: POLL_TIMEOUT_MS,
+				signal: options.signal,
+			});
+		try {
+			const result = await execFileAsync("aws", args, {
+				env: options.env,
+				maxBuffer: AWS_OUTPUT_MAX_BYTES,
+				signal: options.signal,
+				timeout: POLL_TIMEOUT_MS,
+				windowsHide: true,
+			});
+			return {
+				stdout: result.stdout,
+				stderr: result.stderr,
+				code: 0,
+				killed: false,
+			};
+		} catch (error) {
+			const failure = error as Error & {
+				code?: number;
+				killed?: boolean;
+				stdout?: string;
+				stderr?: string;
+			};
+			return {
+				stdout: failure.stdout ?? "",
+				stderr: failure.stderr ?? failure.message,
+				code: typeof failure.code === "number" ? failure.code : 1,
+				killed: failure.killed ?? false,
+			};
+		}
+	};
 }
 
 async function awsJson(
-	pi: ExtensionAPI,
-	parsed: ParsedArgs,
+	executeAws: AwsExecutor,
+	target: BedrockTarget,
 	commandArgs: string[],
+	options: AwsExecutionOptions,
 ): Promise<Record<string, unknown>> {
-	const result = await pi.exec("aws", awsArgs(parsed, commandArgs), {
-		timeout: POLL_TIMEOUT_MS,
-	});
+	const result = await executeAws(awsArgs(target, commandArgs), options);
 	if (result.code !== 0) {
 		const output = [result.stdout.trim(), result.stderr.trim()]
 			.filter(Boolean)
@@ -154,31 +244,53 @@ function trackedLine(
 }
 
 async function runPoll(
-	pi: ExtensionAPI,
 	parsed: ParsedArgs,
+	ctx: ExtensionContext,
+	executeAws: AwsExecutor,
 ): Promise<PollResult> {
-	const selectedRegion = region(parsed);
+	const providerEnv = await providerEnvironment(ctx);
+	const target = resolveBedrockTarget({
+		explicitProfile: parsed.profile,
+		explicitRegion: parsed.region,
+		providerEnv,
+		processEnv: process.env as BedrockAuthEnvironment,
+		profileRegions: configuredProfileRegions(),
+	});
+	const executionOptions: AwsExecutionOptions = {
+		env: scopedAwsEnvironment(target, providerEnv),
+		signal: ctx.signal,
+	};
 	const [foundation, profiles] = await Promise.all([
-		awsJson(pi, parsed, [
-			"bedrock",
-			"list-foundation-models",
-			"--region",
-			selectedRegion,
-			"--by-provider",
-			"Anthropic",
-			"--output",
-			"json",
-		]),
-		awsJson(pi, parsed, [
-			"bedrock",
-			"list-inference-profiles",
-			"--region",
-			selectedRegion,
-			"--type-equals",
-			"SYSTEM_DEFINED",
-			"--output",
-			"json",
-		]),
+		awsJson(
+			executeAws,
+			target,
+			[
+				"bedrock",
+				"list-foundation-models",
+				"--region",
+				target.region,
+				"--by-provider",
+				"Anthropic",
+				"--output",
+				"json",
+			],
+			executionOptions,
+		),
+		awsJson(
+			executeAws,
+			target,
+			[
+				"bedrock",
+				"list-inference-profiles",
+				"--region",
+				target.region,
+				"--type-equals",
+				"SYSTEM_DEFINED",
+				"--output",
+				"json",
+			],
+			executionOptions,
+		),
 	]);
 	const modelIds = new Set([
 		...stringValues(foundation, "modelSummaries", "modelId"),
@@ -225,8 +337,8 @@ async function runPoll(
 	const missing = recommended.filter((modelId) => !current.includes(modelId));
 	const stale = current.filter((modelId) => !recommended.includes(modelId));
 	return {
-		profile: profile(parsed),
-		region: selectedRegion,
+		profile: target.profile ?? "default credential chain",
+		region: target.region,
 		settingsFile,
 		current,
 		latest,
@@ -301,7 +413,11 @@ function notify(
 	ctx.ui.notify(message, level);
 }
 
-export default function bedrockRefresh(pi: ExtensionAPI): void {
+export default function bedrockRefresh(
+	pi: ExtensionAPI,
+	options: { executeAws?: AwsExecutor } = {},
+): void {
+	const executeAws = options.executeAws ?? createAwsExecutor(pi);
 	pi.registerCommand(COMMAND_NAME, {
 		description: "Poll AWS Bedrock for current Claude model IDs",
 		handler: async (args, ctx) => {
@@ -318,7 +434,7 @@ export default function bedrockRefresh(pi: ExtensionAPI): void {
 			}
 
 			try {
-				const poll = await runPoll(pi, parsed);
+				const poll = await runPoll(parsed, ctx, executeAws);
 				const summary = formatPollSummary(poll);
 				if (!parsed.apply) {
 					notify(

@@ -48,7 +48,7 @@ Bedrock credentials stay local and ignored in `~/.pi/agent/auth.json` (`pi/auth.
 {
   "amazon-bedrock": {
     "type": "api_key",
-    "key": "<authenticated>",
+    "key": "",
     "env": {
       "AWS_PROFILE": "default",
       "AWS_REGION": "us-east-2"
@@ -57,7 +57,7 @@ Bedrock credentials stay local and ignored in `~/.pi/agent/auth.json` (`pi/auth.
 }
 ```
 
-This does not store AWS keys in the repo. It tells Pi to use the existing local AWS profile for Bedrock only, while normal shell AWS commands keep their own environment/profile behavior.
+This does not store AWS keys in the repo. The empty `key` keeps Pi 0.80.7 on profile-based AWS authentication instead of treating the ambient-auth marker as a Bedrock bearer token. The provider-scoped environment tells Pi to use the existing local AWS profile for Bedrock only, while normal shell AWS commands keep their own environment/profile behavior.
 
 Poll AWS Bedrock for newer Opus, Fable, and Sonnet model IDs from inside Pi:
 

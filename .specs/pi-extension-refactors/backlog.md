@@ -37,7 +37,7 @@ Execute and validate one item at a time. Do not batch state transitions, securit
 | Completed | Complete damage-control audit recording | Security decisions now produce correlated, redacted provenance | Independent; completed in `d805c8d` |
 | Completed | Fix workflow-review queue deduplication | Claimed and recovered jobs are rechecked before recording | Independent; completed before reviewer migration |
 | Completed | Move the background reviewer behind a typed semantic contract | Reviewer now uses the shared typed-agent boundary | Queue correctness completed |
-| Blocked | Unify Bedrock refresh identity and region | Requires live work-machine evidence | Work-machine access |
+| Completed | Unify Bedrock refresh identity and region | Provider and refresh now share one resolved target | Live validation completed |
 
 ## Verified problems and completed follow-ups
 
@@ -154,16 +154,20 @@ Execute and validate one item at a time. Do not batch state transitions, securit
 
 ## Verified problem - work-machine validation required
 
-### Bedrock refresh can use a different identity and region than the provider
+### Bedrock provider and refresh share identity and region resolution
 
-- Status: blocked on live AWS validation
-- Verified local problem: `aws-bedrock-env.ts` avoids profile inference for non-profile authentication, but `bedrock-refresh.ts` manufactures `--profile default`. Refresh reads process environment only, while documented Bedrock credentials can provide profile and region through provider-scoped environment values. Behavior also depends on incidental extension load order.
-- User impact: `/bedrock-refresh` can query a different account or region from the active Bedrock provider, so a successful refresh does not prove runtime model availability.
-- Evidence: `pi/extensions/aws-bedrock-env.ts:65-128`; `pi/extensions/bedrock-refresh.ts:74-94`; provider-scoped setup at `pi/README.md:45-60`. Current refresh tests pass four cases but do not cover resolver precedence or exact AWS arguments.
-- Root cause: Two resolvers consume different inputs and communicate through process mutation.
-- Recommended solution: On the work machine, define provider-scoped versus process precedence and confirm that non-profile authentication must omit `--profile`. Then extract a pure resolver while keeping process mutation and AWS command construction in their owning extensions.
-- Acceptance criteria: Synthetic fixtures cover explicit options, provider/process environment, config-file overrides, default/single/multiple profiles, non-profile authentication, fallback region, and exact AWS arguments. A real provider request and `/bedrock-refresh` target the same approved profile and region.
-- Validation: Add resolver fixtures locally, then run the documented provider request followed by `/bedrock-refresh` on the work machine. Record only profile name, region, exit status, and model IDs - never credential values.
+- Status: completed
+- Resolved problem: `bedrock-refresh.ts` manufactured `--profile default` and ignored provider-scoped authentication, so refresh could query a different target than the active Bedrock provider.
+- Root cause: Environment setup and refresh independently resolved profile and region, while refresh could not distinguish profile from non-profile credentials.
+- Implemented:
+  1. Added a pure resolver with explicit option, provider environment, process environment, config profile, inferred profile, and fallback precedence.
+  2. Routed both AWS environment setup and refresh through the shared resolver.
+  3. Read provider-scoped Bedrock environment values through the active model registry.
+  4. Omitted `--profile` for access keys, bearer tokens, container credentials, and web identity.
+  5. Added deterministic resolver and exact AWS argument fixtures.
+  6. Corrected the local Pi 0.80.7 auth entry and documentation so an empty compatibility key selects profile credentials instead of the ambient-auth marker being treated as a bearer token.
+- Result: The provider request and `/bedrock-refresh` both target profile `default` in `us-east-2`; refresh reports the configured Opus, Fable, and Sonnet model IDs as current.
+- Validation: The documented provider request returned `bedrock-ok`; the exact RPC `/bedrock-refresh` command succeeded with profile `default`, region `us-east-2`, and current model IDs; 12 focused tests, typecheck, focused Biome, and `git diff --check` passed.
 
 ## Investigated maintenance candidates - no verified defect
 

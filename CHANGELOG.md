@@ -2,6 +2,27 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-15: Unify Bedrock provider and refresh targeting
+
+**Why:** `/bedrock-refresh` manufactured a default profile and ignored
+provider-scoped AWS configuration, allowing model inventory to come from a
+different profile or region than runtime requests.
+
+**Changed:**
+- Added one pure resolver for explicit, provider-scoped, process, config, and
+  inferred AWS profile and region inputs.
+- Reused the resolver for environment setup and refresh command construction.
+- Omitted `--profile` for non-profile AWS credential sources.
+- Corrected the Pi 0.80.7 profile-auth compatibility key and documented its
+  required empty value.
+- Added precedence and exact AWS argument regression coverage.
+
+**Files:** `pi/lib/bedrock-auth.ts`, `pi/extensions/aws-bedrock-env.ts`,
+`pi/extensions/bedrock-refresh.ts`, `pi/tests/bedrock-refresh.test.ts`,
+`pi/README.md`, `.specs/pi-extension-refactors/backlog.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-15: Migrate workflow reviews to a typed agent
 
 **Why:** The background reviewer duplicated model resolution, subprocess,
