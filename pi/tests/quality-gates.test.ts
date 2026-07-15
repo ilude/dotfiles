@@ -14,7 +14,10 @@ import type {
 import { describe, expect, it, vi } from "vitest";
 import {
 	buildExtMap,
+	buildValidatorCommand,
 	filterNetChangedFiles,
+	filterValidatorsByDetection,
+	findProjectRoot,
 	getFilePath,
 	registerQualityGates,
 	runFirstAvailableValidator,
@@ -53,6 +56,57 @@ describe("quality-gates extension", () => {
 				typeof buildExtMap
 			>[0];
 			expect(buildExtMap(config).size).toBe(0);
+		});
+	});
+
+	describe("validator command resolution", () => {
+		it("finds a project root from a glob marker", () => {
+			const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-quality-root-"));
+			try {
+				fs.writeFileSync(path.join(root, "Example.csproj"), "<Project />\n");
+				const filePath = path.join(root, "src", "Example.cs");
+				fs.mkdirSync(path.dirname(filePath), { recursive: true });
+				fs.writeFileSync(filePath, "namespace Example;\n");
+
+				expect(findProjectRoot(filePath, ["*.csproj"])).toBe(root);
+			} finally {
+				fs.rmSync(root, { recursive: true, force: true });
+			}
+		});
+
+		it("replaces file and project-root placeholders", () => {
+			expect(
+				buildValidatorCommand(
+					["dotnet", "format", "{project_root}", "--include", "{file}"],
+					"/repo/src/Example.cs",
+					"/repo",
+				),
+			).toEqual([
+				"dotnet",
+				"format",
+				"/repo",
+				"--include",
+				"/repo/src/Example.cs",
+			]);
+		});
+
+		it("uses detected validators instead of fallback validators", () => {
+			const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-quality-detect-"));
+			try {
+				fs.writeFileSync(path.join(root, "tsconfig.json"), "{}\n");
+				const detected = {
+					name: "tsc",
+					command: ["tsc"],
+					detect: ["tsconfig.json"],
+				};
+				const fallback = { name: "lizard", command: ["lizard"] };
+
+				expect(filterValidatorsByDetection([detected, fallback], root)).toEqual(
+					[detected],
+				);
+			} finally {
+				fs.rmSync(root, { recursive: true, force: true });
+			}
 		});
 	});
 
@@ -124,6 +178,47 @@ describe("quality-gates extension", () => {
 	});
 
 	describe("runFirstAvailableValidator", () => {
+		it("runs validators from the detected project root", async () => {
+			const root = fs.mkdtempSync(
+				path.join(os.tmpdir(), "pi-quality-validator-root-"),
+			);
+			try {
+				fs.writeFileSync(path.join(root, "Example.csproj"), "<Project />\n");
+				const filePath = path.join(root, "Example.cs");
+				fs.writeFileSync(filePath, "namespace Example;\n");
+				const lookup = process.platform === "win32" ? "where.exe" : "which";
+				const exec = vi.fn(async () => ({ code: 0, stdout: "", stderr: "" }));
+				const pi = { exec } as unknown as ExtensionAPI;
+				const langConfig: Parameters<typeof runFirstAvailableValidator>[1] = {
+					extensions: [".cs"],
+					markers: ["*.csproj"],
+					validators: [
+						{
+							name: "project-root-validator",
+							command: ["project-root-validator", "{project_root}", "{file}"],
+							check: "project-root-validator-check",
+							timeout: 60,
+						},
+					],
+				};
+
+				await runFirstAvailableValidator(pi, langConfig, filePath, root);
+
+				expect(exec).toHaveBeenCalledWith(
+					lookup,
+					["project-root-validator-check"],
+					{ timeout: 2000 },
+				);
+				expect(exec).toHaveBeenCalledWith(
+					"project-root-validator",
+					[root, filePath],
+					{ cwd: root, timeout: 60000 },
+				);
+			} finally {
+				fs.rmSync(root, { recursive: true, force: true });
+			}
+		});
+
 		it("caches validator availability after first lookup", async () => {
 			const lookup = process.platform === "win32" ? "where.exe" : "which";
 			const exec = vi.fn(async (command: string) => ({

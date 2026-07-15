@@ -33,10 +33,12 @@ interface ValidatorConfig {
 	command: string[];
 	check?: string;
 	detect?: string[];
+	timeout?: number;
 }
 
 interface LanguageConfig {
 	extensions: string[];
+	markers?: string[];
 	validators: ValidatorConfig[];
 }
 
@@ -84,6 +86,63 @@ const MAX_AUTO_REPAIR_ATTEMPTS = 2;
 function normalizedRelativePath(root: string, filePath: string): string {
 	const relative = path.relative(root, filePath).replaceAll("\\", "/");
 	return process.platform === "win32" ? relative.toLowerCase() : relative;
+}
+
+function markerPattern(marker: string): RegExp {
+	const escaped = marker.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+	const pattern = escaped.replaceAll("*", ".*").replaceAll("?", ".");
+	return new RegExp(`^${pattern}$`, process.platform === "win32" ? "i" : "");
+}
+
+function directoryMatchesMarker(directory: string, marker: string): boolean {
+	if (!marker.includes("*") && !marker.includes("?"))
+		return fs.existsSync(path.join(directory, marker));
+	try {
+		const pattern = markerPattern(marker);
+		return fs.readdirSync(directory).some((entry) => pattern.test(entry));
+	} catch {
+		return false;
+	}
+}
+
+export function findProjectRoot(
+	filePath: string,
+	markers: string[],
+): string | undefined {
+	let current = path.dirname(path.resolve(filePath));
+	while (true) {
+		if (markers.some((marker) => directoryMatchesMarker(current, marker)))
+			return current;
+		const parent = path.dirname(current);
+		if (parent === current) return undefined;
+		current = parent;
+	}
+}
+
+export function buildValidatorCommand(
+	command: string[],
+	filePath: string,
+	projectRoot: string,
+): string[] {
+	return command.map((part) =>
+		part
+			.replaceAll("{file}", filePath)
+			.replaceAll("{project_root}", projectRoot),
+	);
+}
+
+export function filterValidatorsByDetection(
+	validatorConfigs: ValidatorConfig[],
+	projectRoot: string,
+): ValidatorConfig[] {
+	const detected = validatorConfigs.filter((validator) =>
+		validator.detect?.every((filePath) =>
+			fs.existsSync(path.join(projectRoot, filePath)),
+		),
+	);
+	return detected.length > 0
+		? detected
+		: validatorConfigs.filter((validator) => !validator.detect);
 }
 
 function parseChangedPaths(output: string): Set<string> {
@@ -195,18 +254,30 @@ export async function runFirstAvailableValidator(
 	pi: ExtensionAPI,
 	langConfig: LanguageConfig,
 	filePath: string,
+	cwd: string = process.cwd(),
 ): Promise<{ name: string; output: string } | undefined> {
-	for (const validator of langConfig.validators) {
-		const checkBin = validator.check ?? validator.command[0];
+	const absoluteFilePath = path.resolve(cwd, filePath);
+	const projectRoot =
+		findProjectRoot(absoluteFilePath, langConfig.markers ?? []) ?? cwd;
+
+	for (const validator of filterValidatorsByDetection(
+		langConfig.validators,
+		projectRoot,
+	)) {
+		const command = buildValidatorCommand(
+			validator.command,
+			absoluteFilePath,
+			projectRoot,
+		);
+		const checkBin = validator.check ?? command[0];
 		const lookup = process.platform === "win32" ? "where.exe" : "which";
 		if (!(await isValidatorAvailable(pi, lookup, checkBin))) continue;
 
-		const args = validator.command
-			.slice(1)
-			.map((part) => (part === "{file}" ? filePath : part));
-
-		const result = await pi.exec(validator.command[0], args, {
-			timeout: VALIDATOR_RUN_TIMEOUT_MS,
+		const result = await pi.exec(command[0], command.slice(1), {
+			cwd: projectRoot,
+			timeout: validator.timeout
+				? validator.timeout * 1000
+				: VALIDATOR_RUN_TIMEOUT_MS,
 		});
 		if (result.code !== 0) {
 			return {
@@ -276,6 +347,7 @@ export function registerQualityGates(
 				pi,
 				langConfig,
 				filePath,
+				cwd,
 			);
 			const hashAfter = contentHash(filePath, cwd);
 			if (hashBefore !== hashAfter) {
