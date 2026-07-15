@@ -23,6 +23,78 @@ different profile or region than runtime requests.
 
 ---
 
+## 2026-07-15: Resolve quality-gate project placeholders
+
+**Why:** Pi's batched quality gate passed `{project_root}` literally to validators,
+so C# formatting failed before inspecting the edited file.
+
+**Changed:**
+- Detected validator project roots from configured literal and glob markers.
+- Expanded `{file}` and `{project_root}` across complete validator commands.
+- Honored validator detection files before selecting fallback validators.
+- Ran validators from the detected root and honored configured timeouts.
+- Added focused command-resolution and project-root regression coverage.
+
+**Files:** `pi/extensions/quality-gates.ts`,
+`pi/tests/quality-gates.test.ts`, `CHANGELOG.md`
+
+---
+
+## 2026-07-15: Hide target-context deferral messages
+
+**Why:** Loading nested AGENTS instructions before a mutating tool retry is an
+expected internal workflow and did not need a user-visible error message.
+
+**Changed:**
+- Kept deterministic target-path discovery at tool-call time.
+- Suppressed the expected blocked tool result from the transcript.
+- Added a hidden instruction that tells the model to retry after applying the
+  newly loaded target context.
+
+**Files:** `pi/extensions/agents-context.ts`,
+`pi/tests/agents-context.test.ts`, `CHANGELOG.md`
+
+---
+
+## 2026-07-15: Scope the root changelog to dotfiles changes
+
+**Why:** The global instruction could be read as requiring entries for workflow
+configuration changed in unrelated repositories.
+
+**Changed:**
+- Limited root changelog entries to instructions, skills, commands, and runtime
+  workflows changed within the dotfiles repository.
+- Explicitly excluded changes made in other repositories.
+
+**Files:** `pi/AGENTS.md`, `CHANGELOG.md`
+
+---
+
+## 2026-07-15: Make plan review converge in one invocation
+
+**Why:** `/review-it` intentionally blocked after applying material findings from
+its post-change panel, forcing repeated review invocations even when all defects
+were locally repairable. `/plan-it` also checked contract presence without
+checking task dependency order or command failure paths.
+
+**Changed:**
+- Made `/plan-it` validate dependency ordering, command truth tables, cleanup,
+  host/container boundaries, and safe read-only probes before writing a plan.
+- Prevented plan-specific telemetry script requirements when existing workflow
+  artifacts can carry the evidence.
+- Made `/review-it` continue from one post-change panel through deterministic
+  audit and standalone readiness instead of blocking solely for material fixes.
+- Limited auto-apply to must-fix/readiness changes and safety-critical hardening;
+  nonblocking hardening remains backlog.
+- Added an explicit review-blocked status for genuine external input or exhausted
+  repair budgets and regression checks for convergence behavior.
+
+**Files:** `pi/skills/workflow/plan-it.md`,
+`pi/skills/workflow/review-it.md`, `pi/tests/workflow-prompts.test.ts`,
+`CHANGELOG.md`
+
+---
+
 ## 2026-07-15: Migrate workflow reviews to a typed agent
 
 **Why:** The background reviewer duplicated model resolution, subprocess,
