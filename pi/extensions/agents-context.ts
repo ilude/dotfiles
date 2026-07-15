@@ -61,6 +61,8 @@ type State = {
 	cwd?: string;
 	basePaths: Set<string>;
 	injectedTargetFingerprints: Set<string>;
+	deferredToolCalls: Set<string>;
+	retryRequested: boolean;
 	toolFailures: Map<string, { resultFingerprint: string; count: number }>;
 };
 
@@ -73,6 +75,8 @@ const state: State = {
 	expertiseDisabled: false,
 	basePaths: new Set(),
 	injectedTargetFingerprints: new Set(),
+	deferredToolCalls: new Set(),
+	retryRequested: false,
 	toolFailures: new Map(),
 };
 
@@ -435,6 +439,8 @@ function clearInstructionState(): void {
 	clearLoadedSnapshot();
 	state.basePaths.clear();
 	state.injectedTargetFingerprints.clear();
+	state.deferredToolCalls.clear();
+	state.retryRequested = false;
 	state.toolFailures.clear();
 }
 
@@ -523,6 +529,10 @@ export default function (pi: ExtensionAPI) {
 		);
 		if (!targetFiles.length) return { messages };
 		const payload = instructionPayload(targetFiles);
+		const content = state.retryRequested
+			? `${payload}\n\nApply these instructions, then retry the deferred mutating tool call.`
+			: payload;
+		state.retryRequested = false;
 		return {
 			messages: [
 				...messages,
@@ -530,7 +540,7 @@ export default function (pi: ExtensionAPI) {
 					role: "custom" as const,
 					customType: REPORT_TYPE,
 					display: false,
-					content: payload,
+					content,
 					timestamp: Date.now(),
 				},
 			],
@@ -566,8 +576,9 @@ export default function (pi: ExtensionAPI) {
 			const contextFingerprint = targetPayload;
 			if (!state.injectedTargetFingerprints.has(contextFingerprint)) {
 				state.injectedTargetFingerprints.add(contextFingerprint);
+				state.deferredToolCalls.add(event.toolCallId);
+				state.retryRequested = true;
 				const reason = `Loaded ${targetFiles.length} target-specific AGENTS context file(s). Retry this ${toolName} call after the next model request applies them.`;
-				recordToolFailure(callFingerprint, reason);
 				return { block: true, reason };
 			}
 		}
@@ -576,6 +587,9 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("tool_result", async (event) => {
 		const callFingerprint = toolCallFingerprint(event.toolName, event.input);
+		if (state.deferredToolCalls.delete(event.toolCallId)) {
+			return { content: [] };
+		}
 		if (event.isError) {
 			recordToolFailure(callFingerprint, normalizedFailureFingerprint(event));
 		} else {

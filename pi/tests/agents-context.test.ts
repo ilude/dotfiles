@@ -295,21 +295,41 @@ describe("agents-context extension", () => {
 		).resolves.toBeUndefined();
 	});
 
-	it("blocks newly discovered context exactly once and permits the immediate identical retry", async () => {
+	it("defers newly discovered context once without displaying the block reason", async () => {
 		const cwd = path.join(tmp, "repo");
 		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
 		writeFile(path.join(cwd, "src", "AGENTS.md"), "src agents");
 		const pi = createMockPi();
 		registerAgentsContext(pi);
 		const toolHook = pi._getHook("tool_call")[0].handler;
+		const resultHook = pi._getHook("tool_result")[0].handler;
 		const contextHook = pi._getHook("context")[0].handler;
 		const ctx = createMockCtx({ cwd });
-		const event = { toolName: "edit", input: { path: "src/file.ts" } };
-		await expect(toolHook(event, ctx)).resolves.toMatchObject({ block: true });
-		await expect(toolHook(event, ctx)).resolves.toBeUndefined();
+		const event = {
+			toolCallId: "deferred-edit",
+			toolName: "edit",
+			input: { path: "src/file.ts" },
+		};
+		const blocked = await toolHook(event, ctx);
+		expect(blocked).toMatchObject({ block: true });
+		await expect(
+			resultHook(
+				{
+					...event,
+					content: [{ type: "text", text: blocked.reason }],
+					isError: true,
+				},
+				ctx,
+			),
+		).resolves.toEqual({ content: [] });
 		const retryContext = await contextHook({ messages: [] }, ctx);
 		expect(retryContext.messages).toHaveLength(1);
+		expect(retryContext.messages[0]).toMatchObject({ display: false });
 		expect(retryContext.messages[0].content).toContain("src agents");
+		expect(retryContext.messages[0].content).toContain(
+			"retry the deferred mutating tool call",
+		);
+		await expect(toolHook(event, ctx)).resolves.toBeUndefined();
 		expect(pi.sendMessage).not.toHaveBeenCalled();
 	});
 
