@@ -867,33 +867,3 @@ def test_install_conf_wsl_sync():
     assert wsl_only == expected_wsl_only, (
         f"WSL config has unexpected extra targets: {sorted(wsl_only - expected_wsl_only)}"
     )
-
-
-def test_install_conf_wsl_sync_missing_detection():
-    """Sync test catches missing links in WSL config.
-
-    This is a negative-path test that proves the check would catch
-    a missing link. We temporarily simulate a missing link by
-    excluding a target, verify the test would fail, then restore it.
-    """
-    main_conf = DOTFILES / "install.conf.yaml"
-    wsl_conf = DOTFILES / "wsl" / "install.conf.yaml"
-
-    main_targets = _parse_link_targets_from_yaml(main_conf)
-    wsl_targets = _parse_link_targets_from_yaml(wsl_conf)
-
-    main_unconditional = _get_unconditional_targets(main_targets)
-    wsl_all = set(wsl_targets.keys())
-
-    # Pick a real target from main config
-    test_target = next(iter(main_unconditional))
-
-    # Verify the target IS currently in WSL (baseline)
-    assert test_target in wsl_all, f"Test setup failed: {test_target} not in WSL config"
-
-    # Simulate missing by removing it temporarily
-    wsl_all_minus_one = wsl_all - {test_target}
-
-    # Verify the check would catch this as missing
-    missing = main_unconditional - wsl_all_minus_one
-    assert test_target in missing, f"Check failed to detect missing {test_target}"

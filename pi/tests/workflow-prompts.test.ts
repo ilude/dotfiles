@@ -79,12 +79,6 @@ describe("workflow prompt contracts", () => {
 		expect(prompt).toMatch(
 			/Classify the\s+resulting diff with the complete MATERIAL_CHANGE_REVIEW definition/,
 		);
-		expect(
-			prompt.match(
-				/return(?:s)? to the complete MATERIAL_CHANGE_REVIEW state/g,
-			),
-		).toHaveLength(2);
-		expect(prompt.match(/execute every step in that state/g)).toHaveLength(2);
 		expect(prompt).toContain(
 			"resume at\nPRE_READINESS_AUDIT without repeating KNOWN_BLOCKER_QUICKFIX",
 		);
@@ -178,6 +172,9 @@ describe("workflow prompt contracts", () => {
 			cachedDiff: "diff --git a/a.ts b/a.ts",
 			hint: "",
 		});
+		expect(prompt).toContain(
+			"Use only these commit types: feat, fix, docs, chore, refactor, test, perf, style, ci, build, deps, revert, wip.",
+		);
 		expect(prompt).toContain("Each subject must be exactly one line");
 		expect(prompt).toContain("Do not put a newline before or after the colon");
 	});

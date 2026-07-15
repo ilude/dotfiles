@@ -81,7 +81,7 @@ Categorize uncommitted files using this approach:
 
 When asking about unclear files, use batch prompting if there are multiple files. Show the list and ask "Track these files? (y/n/pattern)" where pattern allows specifying a .gitignore rule.
 
-Group files by logical change using commit types: feat (new features), fix (bug fixes), docs (documentation), test (tests), refactor (code improvements), perf (performance), style (formatting), chore (maintenance), build (build system), ci (CI/CD), deps (dependencies), revert (undo previous). Related functionality changes go together. Don't mix unrelated changes. Each commit should do ONE thing (atomic commits).
+Group files by logical change using commit types: feat (new features), fix (bug fixes), docs (documentation), chore (maintenance), refactor (code improvements), test (tests), perf (performance), style (formatting), ci (CI/CD), build (build system), deps (dependencies), revert (undo previous), wip (temporary save points). Related functionality changes go together. Don't mix unrelated changes. Each commit should do ONE thing (atomic commits).
 
 For each group of related files:
 1. Run `uv run python scripts/commit-helper stage-plan` or `stage-plan --paths <paths...>` and stage only entries with `recommended_action: stage` and `safe_to_git_add: true`. Keep `staged_deletion` / `keep_staged` entries as-is; do not add them.

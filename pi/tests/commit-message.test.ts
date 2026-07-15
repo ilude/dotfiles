@@ -1,24 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { validateCommitMessage } from "../lib/commit/message.ts";
+import { COMMIT_TYPES, validateCommitMessage } from "../lib/commit/message.ts";
 
 describe("commit message validation", () => {
 	// Constraint: valid conventional type prefix
-	it("accepts conventional subjects", () => {
-		expect(validateCommitMessage("docs(workflow): harden pi workflow validation").valid).toBe(true);
-	});
-	it("accepts wip subjects", () => {
-		expect(validateCommitMessage("wip: save tui latency instrumentation").valid).toBe(true);
+	it.each(COMMIT_TYPES)("accepts %s subjects", (type) => {
+		expect(
+			validateCommitMessage(`${type}: update workflow validation`).valid,
+		).toBe(true);
 	});
 	it("rejects unknown type", () => {
-		expect(validateCommitMessage("Ignore generated menos status").valid).toBe(false);
+		expect(validateCommitMessage("Ignore generated menos status").valid).toBe(
+			false,
+		);
 	});
 
 	// Constraint: non-empty scope
 	it("accepts type with non-empty scope", () => {
-		expect(validateCommitMessage("fix(auth): correct token expiry").valid).toBe(true);
+		expect(validateCommitMessage("fix(auth): correct token expiry").valid).toBe(
+			true,
+		);
 	});
 	it("rejects empty scope fix():", () => {
-		expect(validateCommitMessage("fix(): correct token expiry").valid).toBe(false);
+		expect(validateCommitMessage("fix(): correct token expiry").valid).toBe(
+			false,
+		);
 	});
 
 	// Constraint: lowercase or digit description start
@@ -26,7 +31,9 @@ describe("commit message validation", () => {
 		expect(validateCommitMessage("chore: 2fa cleanup").valid).toBe(true);
 	});
 	it("rejects uppercase description start", () => {
-		expect(validateCommitMessage("fix(auth): Correct token expiry").valid).toBe(false);
+		expect(validateCommitMessage("fix(auth): Correct token expiry").valid).toBe(
+			false,
+		);
 	});
 
 	// Constraint: subject <= 72 chars description length (description portion up to 72 chars total)
@@ -50,7 +57,9 @@ describe("commit message validation", () => {
 
 	// Constraint: colon+space separator
 	it("accepts type without scope", () => {
-		expect(validateCommitMessage("chore: update dependencies").valid).toBe(true);
+		expect(validateCommitMessage("chore: update dependencies").valid).toBe(
+			true,
+		);
 	});
 	it("rejects missing space after colon", () => {
 		expect(validateCommitMessage("fix:correct token expiry").valid).toBe(false);

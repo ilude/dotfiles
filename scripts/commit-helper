@@ -13,7 +13,8 @@ from typing import Any
 
 SCHEMA_VERSION = 1
 VALID_MESSAGE_RE = re.compile(
-    r"^(feat|fix|docs|chore|refactor|test|perf|ci|build)(\([a-z0-9._-]+\))?: [a-z0-9].{0,68}$"
+    r"^(feat|fix|docs|chore|refactor|test|perf|style|ci|build|deps|revert|wip)"
+    r"(\([a-z0-9._-]+\))?: [a-z0-9].{0,68}$"
 )
 
 

@@ -34,6 +34,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Key, Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
+import { validateCommitMessage } from "../lib/commit/message";
 import { preflightGitStateAsync } from "../lib/commit/plan";
 import { emitTerminalBell } from "../lib/extension-utils";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
@@ -57,23 +58,6 @@ const SKILLS_DIR = path.join(
 	"skills",
 	"workflow",
 );
-const CONVENTIONAL_TYPES = [
-	"feat",
-	"fix",
-	"docs",
-	"chore",
-	"refactor",
-	"test",
-	"perf",
-	"ci",
-	"build",
-	"deps",
-	"wip",
-];
-const CONVENTIONAL_COMMIT_RE = new RegExp(
-	`^(${CONVENTIONAL_TYPES.join("|")})(\\([^)]+\\))?: [a-z0-9].{0,71}$`,
-);
-
 const COMMIT_RUNTIME_PATH_PATTERNS = [
 	{ label: "Pi runtime cache", regex: /^pi\/cache(?:\/|$)/ },
 	{ label: "runtime log directory", regex: /(?:^|\/)logs?\// },
@@ -816,111 +800,21 @@ interface CommitFallbackContext {
 	hint: string;
 }
 
-export type CommitFallbackResult =
-	| { plan: CommitPlan; needsUserDecision?: undefined }
-	| { plan?: undefined; needsUserDecision: string };
-
-function extractPlanOwnedGroups(cwd: string, files: string[]): string[][] {
-	const changed = new Set(files);
-	const groups: string[][] = [];
-	for (const planFile of files.filter((file) =>
-		/(?:^|\/)plan\.md$/.test(file),
-	)) {
-		let content: string;
-		try {
-			content = fs.readFileSync(path.resolve(cwd, planFile), "utf8");
-		} catch {
-			continue;
-		}
-		for (const line of content.split(/\r?\n/)) {
-			if (!/(?:^|[-|])\s*Files\s*:/i.test(line)) continue;
-			const owned = uniqueSorted(
-				[...line.matchAll(/`([^`]+)`/g)]
-					.map((match) => normalizeGitPath(match[1] ?? ""))
-					.filter((file) => changed.has(file)),
-			);
-			if (owned.length > 0) groups.push(owned);
-		}
-	}
-	return groups.sort((left, right) =>
-		left.join("\0").localeCompare(right.join("\0")),
-	);
-}
-
-function fallbackSurface(file: string): string | null {
-	const normalized = normalizeGitPath(file);
-	if (normalized.startsWith(".specs/")) return "specs";
-	if (normalized.startsWith("claude/")) return "claude-config";
-	if (
-		normalized.startsWith("pi/skills/workflow/") ||
-		normalized.startsWith("pi/prompts/")
-	)
-		return "workflow-prompts";
-	if (normalized.startsWith("pi/")) return "pi";
-	return null;
-}
-
 export function buildDeterministicCommitFallback(
 	context: CommitFallbackContext,
-	options: { cwd?: string; planOwnedGroups?: string[][] } = {},
-): CommitFallbackResult {
+): { plan: CommitPlan } {
 	const files = uniqueSorted(context.files.map(normalizeGitPath));
-	const explicitGroups = (
-		options.planOwnedGroups ??
-		(options.cwd ? extractPlanOwnedGroups(options.cwd, files) : [])
-	)
-		.map((group) => uniqueSorted(group.map(normalizeGitPath)))
-		.filter((group) => group.length > 0);
-	const assigned = new Set<string>();
-	const groups: string[][] = [];
-	for (const group of explicitGroups) {
-		const available = group.filter(
-			(file) => files.includes(file) && !assigned.has(file),
-		);
-		if (available.length === 0) continue;
-		for (const file of available) assigned.add(file);
-		groups.push(available);
-	}
-
-	const surfaces = new Map<string, string[]>();
-	const ambiguous: string[] = [];
-	for (const file of files) {
-		if (assigned.has(file)) continue;
-		const surface = fallbackSurface(file);
-		if (!surface) ambiguous.push(file);
-		else surfaces.set(surface, [...(surfaces.get(surface) ?? []), file]);
-	}
-	for (const surface of [...surfaces.keys()].sort()) {
-		groups.push(uniqueSorted(surfaces.get(surface) ?? []));
-	}
-	if (
-		ambiguous.length > 0 &&
-		(groups.length > 0 || new Set(ambiguous.map(topLevelCommitRoot)).size > 1)
-	) {
-		return {
-			needsUserDecision: `Commit planner failed and these paths cross ambiguous ownership surfaces:\n${ambiguous.map((file) => `- ${file}`).join("\n")}\nChoose explicit path groups and run /commit once per group.`,
-		};
-	}
-	if (ambiguous.length > 0) groups.push(ambiguous);
-
-	const stableGroups = groups
-		.filter((group) => group.length > 0)
-		.sort((left, right) => left.join("\0").localeCompare(right.join("\0")));
+	const message = proposeCommitMessage(files, context.hint, context.cachedDiff);
 	return {
 		plan: {
-			groups: stableGroups.map((group) => {
-				const message = proposeCommitMessage(
-					group,
-					context.hint,
-					context.cachedDiff,
-				);
-				return {
-					files: group,
+			groups: [
+				{
+					files,
 					subject: message.subject,
 					...(message.body ? { body: message.body } : {}),
-				};
-			}),
-			warnings: ["Using deterministic ownership fallback."],
+				},
+			],
+			warnings: ["Using deterministic single-commit fallback."],
 		},
 	};
 }
@@ -1539,7 +1433,7 @@ export function proposeCommitMessage(
 }
 
 function isValidConventionalCommit(subject: string) {
-	return CONVENTIONAL_COMMIT_RE.test(subject);
+	return validateCommitMessage(subject).valid;
 }
 
 export function parseSecretReviewResult(text: string): SecretReviewResult {
@@ -2240,19 +2134,13 @@ async function executeCommitCommand(
 			});
 		} catch (error) {
 			activity.logInfo(formatCommitPlannerFailure(error));
-			const fallback = buildDeterministicCommitFallback(
-				{
-					files: prepared.selection.files,
-					diffStat: prepared.diffStat,
-					cachedStat: prepared.cachedStat,
-					cachedDiff: prepared.cachedDiff,
-					hint: prepared.parsedArgs.hint,
-				},
-				{ cwd: ctx.cwd },
-			);
-			if ("needsUserDecision" in fallback) {
-				throw new Error(fallback.needsUserDecision);
-			}
+			const fallback = buildDeterministicCommitFallback({
+				files: prepared.selection.files,
+				diffStat: prepared.diffStat,
+				cachedStat: prepared.cachedStat,
+				cachedDiff: prepared.cachedDiff,
+				hint: prepared.parsedArgs.hint,
+			});
 			plan = fallback.plan;
 		}
 

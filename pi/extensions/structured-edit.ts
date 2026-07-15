@@ -138,7 +138,7 @@ export default function (pi: ExtensionAPI) {
 		},
 		renderCall(args, theme) {
 			return new Text(
-				theme.fg("accent", "🧩 ") + theme.fg("toolTitle", args.path ?? "json"),
+				theme.fg("accent", "🧩  ") + theme.fg("toolTitle", args.path ?? "json"),
 				0,
 				0,
 			);

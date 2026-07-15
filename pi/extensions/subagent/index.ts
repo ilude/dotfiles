@@ -1726,7 +1726,7 @@ export default function (pi: ExtensionAPI) {
 
 				if (expanded) {
 					const container = new Container();
-					let header = `${icon} ${theme.fg("toolTitle", theme.bold(r.agent))}${theme.fg("muted", ` (${r.agentSource})`)}${formatAgentExecutionLabel(r, theme.fg.bind(theme))}`;
+					let header = `${icon}  ${theme.fg("toolTitle", theme.bold(r.agent))}${theme.fg("muted", ` (${r.agentSource})`)}${formatAgentExecutionLabel(r, theme.fg.bind(theme))}`;
 					if (isError && r.stopReason)
 						header += ` ${theme.fg("error", `[${r.stopReason}]`)}`;
 					container.addChild(new Text(header, 0, 0));
@@ -1776,7 +1776,7 @@ export default function (pi: ExtensionAPI) {
 					return container;
 				}
 
-				let text = `${icon} ${theme.fg("toolTitle", theme.bold(r.agent))}${theme.fg("muted", ` (${r.agentSource})`)}${formatAgentExecutionLabel(r, theme.fg.bind(theme))}`;
+				let text = `${icon}  ${theme.fg("toolTitle", theme.bold(r.agent))}${theme.fg("muted", ` (${r.agentSource})`)}${formatAgentExecutionLabel(r, theme.fg.bind(theme))}`;
 				if (isError && r.stopReason)
 					text += ` ${theme.fg("error", `[${r.stopReason}]`)}`;
 				if (isError && r.errorMessage)
@@ -1828,7 +1828,7 @@ export default function (pi: ExtensionAPI) {
 					container.addChild(
 						new Text(
 							icon +
-								" " +
+								"  " +
 								theme.fg("toolTitle", theme.bold("chain ")) +
 								theme.fg(
 									"accent",
@@ -1907,7 +1907,7 @@ export default function (pi: ExtensionAPI) {
 				// Collapsed view
 				let text =
 					icon +
-					" " +
+					"  " +
 					theme.fg("toolTitle", theme.bold("chain ")) +
 					theme.fg("accent", `${successCount}/${details.results.length} steps`);
 				for (const r of details.results) {
@@ -1947,7 +1947,7 @@ export default function (pi: ExtensionAPI) {
 					const container = new Container();
 					container.addChild(
 						new Text(
-							`${icon} ${theme.fg("toolTitle", theme.bold("parallel "))}${theme.fg("accent", status)}`,
+							`${icon}  ${theme.fg("toolTitle", theme.bold("parallel "))}${theme.fg("accent", status)}`,
 							0,
 							0,
 						),
@@ -2019,7 +2019,7 @@ export default function (pi: ExtensionAPI) {
 				}
 
 				// Collapsed view (or still running)
-				let text = `${icon} ${theme.fg("toolTitle", theme.bold("parallel "))}${theme.fg("accent", status)}`;
+				let text = `${icon}  ${theme.fg("toolTitle", theme.bold("parallel "))}${theme.fg("accent", status)}`;
 				for (const r of details.results) {
 					const rIcon =
 						r.exitCode === -1

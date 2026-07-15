@@ -2,6 +2,45 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-15: Make commit fallback exhaustive
+
+**Why:** A valid formatting commit subject was rejected by a mismatched type
+policy, then the fallback refused a mixed-surface selection instead of
+committing every selected file.
+
+**Changed:**
+- Unified conventional commit types across the planner prompt, Pi validators,
+  compatibility instructions, and deterministic helper.
+- Changed planner failure fallback to one commit containing every selected
+  path, regardless of ownership surface.
+- Added regression coverage for formatting subjects and mixed Pi, Python, Go,
+  and root-file selections.
+
+**Files:** `pi/extensions/workflow-commands.ts`,
+`pi/lib/commit/message.ts`, `pi/lib/workflow-commands/prompts.ts`,
+`pi/tests/commit-message.test.ts`, `pi/tests/workflow-commands-pure.test.ts`,
+`pi/tests/workflow-commands.test.ts`, `pi/tests/workflow-prompts.test.ts`,
+`claude/shared/commit-instructions.md`, `scripts/commit-helper`,
+`test/test_commit_helper.py`, `CHANGELOG.md`
+
+---
+
+## 2026-07-15: Normalize Pi runtime icon spacing
+
+**Why:** Leading icons in Pi tool labels and notifications used inconsistent
+visual gaps before their text.
+
+**Changed:**
+- Standardized active Pi runtime labels on two display spaces after leading
+  icons.
+- Kept spacing as presentation-only behavior without exact-whitespace tests.
+
+**Files:** `pi/extensions/structured-edit.ts`, `pi/extensions/text-edit.ts`,
+`pi/extensions/tool-search.ts`, `pi/extensions/subagent/index.ts`,
+`pi/extensions/tps-tracker.ts`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-15: Improve session warning icon spacing
 
 **Why:** The branch-behind notification rendered the warning icon too close to
@@ -9,10 +48,9 @@ its message text in the terminal.
 
 **Changed:**
 - Added a second display space between the warning icon and `Branch`.
-- Added focused coverage for singular and plural branch-behind messages.
+- Preserved singular and plural branch-behind wording.
 
-**Files:** `pi/extensions/session-hooks.ts`,
-`pi/tests/session-hooks.test.ts`, `CHANGELOG.md`
+**Files:** `pi/extensions/session-hooks.ts`, `CHANGELOG.md`
 
 ---
 

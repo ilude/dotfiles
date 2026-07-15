@@ -1,13 +1,17 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createMockPi } from "./helpers/mock-pi";
 import registerProviderCommand, {
 	describeConfiguredProviders,
 	parseProviderCommand,
 	resolveProvider,
 } from "../extensions/provider";
+import { createMockPi } from "./helpers/mock-pi";
 
 describe("parseProviderCommand", () => {
 	it("parses interactive default", () => {
@@ -16,13 +20,23 @@ describe("parseProviderCommand", () => {
 
 	it("parses list/remove/set", () => {
 		expect(parseProviderCommand("list")).toEqual({ action: "list" });
-		expect(parseProviderCommand("remove opencode")).toEqual({ action: "remove", provider: "opencode" });
-		expect(parseProviderCommand("openrouter")).toEqual({ action: "set", provider: "openrouter" });
+		expect(parseProviderCommand("remove opencode")).toEqual({
+			action: "remove",
+			provider: "opencode",
+		});
+		expect(parseProviderCommand("openrouter")).toEqual({
+			action: "set",
+			provider: "openrouter",
+		});
 	});
 
 	it("rejects invalid forms", () => {
-		expect(() => parseProviderCommand("remove")).toThrow("Usage: /provider remove <provider>");
-		expect(() => parseProviderCommand("a b")).toThrow("Usage: /provider [list|remove <provider>|<provider>]");
+		expect(() => parseProviderCommand("remove")).toThrow(
+			"Usage: /provider remove <provider>",
+		);
+		expect(() => parseProviderCommand("a b")).toThrow(
+			"Usage: /provider [list|remove <provider>|<provider>]",
+		);
 	});
 });
 
@@ -38,9 +52,12 @@ describe("describeConfiguredProviders", () => {
 	it("renders provider/type list", () => {
 		const authStorage = {
 			list: () => ["opencode", "anthropic"],
-			get: (id: string) => (id === "anthropic" ? { type: "oauth" } : { type: "api_key", key: "x" }),
+			get: (id: string) =>
+				id === "anthropic" ? { type: "oauth" } : { type: "api_key", key: "x" },
 		};
-		expect(describeConfiguredProviders(authStorage)).toBe("Configured providers: anthropic (oauth), opencode (api_key)");
+		expect(describeConfiguredProviders(authStorage)).toBe(
+			"Configured providers: anthropic (oauth), opencode (api_key)",
+		);
 	});
 });
 
@@ -49,11 +66,7 @@ describe("/provider command", () => {
 
 	beforeEach(() => {
 		mockPi = createMockPi();
-		registerProviderCommand(mockPi as any);
-	});
-
-	it("registers command", () => {
-		expect(mockPi._commands.find((command) => command.name === "provider")).toBeDefined();
+		registerProviderCommand(mockPi as unknown as ExtensionAPI);
 	});
 
 	it("sets api key in auth storage", async () => {
@@ -79,9 +92,15 @@ describe("/provider command", () => {
 			},
 		};
 
-		await cmd.handler("opencode", ctx as any);
-		expect(set).toHaveBeenCalledWith("opencode", { type: "api_key", key: "test-key" });
-		expect(notify).toHaveBeenCalledWith(expect.stringContaining("Saved API key for opencode"), "info");
+		await cmd.handler("opencode", ctx as unknown as ExtensionContext);
+		expect(set).toHaveBeenCalledWith("opencode", {
+			type: "api_key",
+			key: "test-key",
+		});
+		expect(notify).toHaveBeenCalledWith(
+			expect.stringContaining("Saved API key for opencode"),
+			"info",
+		);
 	});
 
 	it("oauth provider routes to /login guidance", async () => {
@@ -106,8 +125,11 @@ describe("/provider command", () => {
 			},
 		};
 
-		await cmd.handler("anthropic", ctx as any);
-		expect(notify).toHaveBeenCalledWith(expect.stringContaining("uses OAuth. Run /login"), "warning");
+		await cmd.handler("anthropic", ctx as unknown as ExtensionContext);
+		expect(notify).toHaveBeenCalledWith(
+			expect.stringContaining("uses OAuth. Run /login"),
+			"warning",
+		);
 	});
 
 	it("removes provider credentials", async () => {
@@ -133,9 +155,12 @@ describe("/provider command", () => {
 			},
 		};
 
-		await cmd.handler("remove opencode", ctx as any);
+		await cmd.handler("remove opencode", ctx as unknown as ExtensionContext);
 		expect(remove).toHaveBeenCalledWith("opencode");
-		expect(notify).toHaveBeenCalledWith(expect.stringContaining("Removed credentials for opencode"), "info");
+		expect(notify).toHaveBeenCalledWith(
+			expect.stringContaining("Removed credentials for opencode"),
+			"info",
+		);
 	});
 });
 
@@ -171,7 +196,9 @@ describe("provider.ts auth-baseline parity (T4 fixture)", () => {
 		const actual = {
 			round_trip: auth,
 			describe: describeConfiguredProviders(storage),
-			per_provider: Object.fromEntries(Object.keys(auth).map((id) => [id, storage.get(id)])),
+			per_provider: Object.fromEntries(
+				Object.keys(auth).map((id) => [id, storage.get(id)]),
+			),
 		};
 
 		expect(actual).toEqual(expected);

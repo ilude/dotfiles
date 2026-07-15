@@ -470,20 +470,32 @@ describe("workflow command dispatch", () => {
 		);
 	});
 
-	it("surfaces the sanitized planner failure before deterministic fallback", async () => {
+	it("uses one complete fallback commit after planner failure", async () => {
 		const notify = vi.fn();
-		const file = "pi/lib/extension-utils.ts";
+		const files = [
+			"CHANGELOG.md",
+			"pi/lib/extension-utils.ts",
+			"test/test_config_patterns.py",
+			"tools/dolos/internal/state/state_test.go",
+		];
+		const names = `${files.join("\n")}\n`;
+		const status = `${files.map((file) => ` M ${file}`).join("\n")}\n`;
+		const stat = `${files.map((file) => `${file} | 1 +`).join("\n")}\n`;
+		const diff = `${files.map((file) => `diff --git a/${file} b/${file}`).join("\n")}\n`;
 		for (const result of [
-			{ stdout: ` M ${file}\n` },
+			{ stdout: status },
 			{},
-			{ stdout: `${file}\n` },
+			{ stdout: names },
 			{},
 			{},
-			{ stdout: `${file} | 1 +\n` },
+			{ stdout: stat },
+			{ code: 1 },
+			{ code: 1 },
+			{ code: 1 },
 			{ code: 1 },
 			{},
-			{ stdout: `${file} | 1 +\n` },
-			{ stdout: `diff --git a/${file} b/${file}\n` },
+			{ stdout: stat },
+			{ stdout: diff },
 			{ code: 1, stderr: "stop after fallback\n" },
 		]) {
 			mockSpawn.mockImplementationOnce(() => mockGitSpawn(result));
@@ -508,7 +520,7 @@ describe("workflow command dispatch", () => {
 		expect(mockPi.sendMessage).toHaveBeenCalledWith(
 			expect.objectContaining({
 				customType: "workflow-commit-activity",
-				content: "Planner warning: Using deterministic ownership fallback.",
+				content: "Planner warning: Using deterministic single-commit fallback.",
 				display: true,
 			}),
 		);
@@ -611,92 +623,29 @@ describe("workflow command dispatch", () => {
 		);
 	});
 
-	it("builds stable ownership fallback groups for a mixed 47-file selection", async () => {
+	it("keeps every mixed-surface path in one fallback commit", async () => {
 		const { buildDeterministicCommitFallback } = await import(
 			"../extensions/workflow-commands.ts"
 		);
 		const files = [
-			...Array.from({ length: 20 }, (_, index) => `pi/lib/feature-${index}.ts`),
-			...Array.from(
-				{ length: 10 },
-				(_, index) => `pi/tests/feature-${index}.test.ts`,
-			),
-			...Array.from(
-				{ length: 7 },
-				(_, index) => `pi/skills/workflow/step-${index}.md`,
-			),
-			...Array.from(
-				{ length: 5 },
-				(_, index) => `claude/settings/config-${index}.json`,
-			),
-			...Array.from(
-				{ length: 5 },
-				(_, index) => `.specs/change/note-${index}.md`,
-			),
+			"CHANGELOG.md",
+			"pi/extensions/session-hooks.ts",
+			"test/test_config_patterns.py",
+			"tools/dolos/internal/state/state_test.go",
 		];
-		const context = {
+		const result = buildDeterministicCommitFallback({
 			files,
 			diffStat: "",
 			cachedStat: "",
 			cachedDiff: "",
 			hint: "",
-		};
-
-		const forward = buildDeterministicCommitFallback(context);
-		const reversed = buildDeterministicCommitFallback({
-			...context,
-			files: [...files].reverse(),
 		});
 
-		expect(forward).toEqual(reversed);
-		expect(forward.plan?.groups).toHaveLength(4);
-		expect(
-			forward.plan?.groups
-				.map((group) => group.files.length)
-				.sort((a, b) => a - b),
-		).toEqual([5, 5, 7, 30]);
-	});
-
-	it("prefers explicit plan-owned groups over ownership surfaces", async () => {
-		const { buildDeterministicCommitFallback } = await import(
-			"../extensions/workflow-commands.ts"
-		);
-		const result = buildDeterministicCommitFallback(
-			{
-				files: ["pi/lib/a.ts", "pi/lib/b.ts", "pi/tests/a.test.ts"],
-				diffStat: "",
-				cachedStat: "",
-				cachedDiff: "",
-				hint: "",
-			},
-			{
-				planOwnedGroups: [
-					["pi/tests/a.test.ts", "pi/lib/a.ts"],
-					["pi/lib/b.ts"],
-				],
-			},
-		);
-
-		expect(result.plan?.groups.map((group) => group.files)).toEqual([
-			["pi/lib/a.ts", "pi/tests/a.test.ts"],
-			["pi/lib/b.ts"],
+		expect(result.plan.groups).toHaveLength(1);
+		expect(result.plan.groups[0]?.files).toEqual([...files].sort());
+		expect(result.plan.warnings).toEqual([
+			"Using deterministic single-commit fallback.",
 		]);
-	});
-
-	it("requires a user decision for ambiguous cross-domain fallback", async () => {
-		const { buildDeterministicCommitFallback } = await import(
-			"../extensions/workflow-commands.ts"
-		);
-		const result = buildDeterministicCommitFallback({
-			files: ["pi/lib/a.ts", "scripts/setup", "zsh/rc.d/tool.zsh"],
-			diffStat: "",
-			cachedStat: "",
-			cachedDiff: "",
-			hint: "",
-		});
-
-		expect(result.plan).toBeUndefined();
-		expect(result.needsUserDecision).toContain("run /commit once per group");
 	});
 
 	it("terminates the running git process tree when /commit is aborted", async () => {

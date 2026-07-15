@@ -37,7 +37,7 @@ export default function (pi: ExtensionAPI) {
 		estimatedStreamedTokens = 0;
 		if (!ctx.hasUI) return;
 		const theme = ctx.ui.theme;
-		ctx.ui.setStatus("tps", theme.fg("dim", "⏱ generating..."));
+		ctx.ui.setStatus("tps", theme.fg("dim", "⏱  generating..."));
 	});
 
 	pi.on("message_start", async (event) => {
@@ -140,7 +140,7 @@ export default function (pi: ExtensionAPI) {
 			`${totalOutputTokens} tokens in ${elapsed.toFixed(1)}s streaming${latencyDetail}`,
 		);
 
-		ctx.ui.notify(`${icon} ${tpsLabel}  ${detail}\n${finishedAt}`, "info");
+		ctx.ui.notify(`${icon}  ${tpsLabel}  ${detail}\n${finishedAt}`, "info");
 		ctx.ui.setStatus("tps", theme.fg("dim", `done - ${tpsLabel}`));
 	});
 }

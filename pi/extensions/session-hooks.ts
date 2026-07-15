@@ -59,10 +59,6 @@ function shouldRunGitPreflight(reason: string): boolean {
 	return reason === "startup" && !process.argv.includes("--no-session");
 }
 
-export function formatBehindWarning(count: number): string {
-	return `⚠  Branch is ${count} commit${count === 1 ? "" : "s"} behind remote. Consider git pull before starting.`;
-}
-
 function withSshSafetyOptions(command: string): string {
 	const trimmed = command.trim();
 	if (!trimmed.startsWith("ssh")) return command;
@@ -219,9 +215,12 @@ export default function (pi: ExtensionAPI) {
 
 				const count = parseInt(behindResult.stdout.trim(), 10);
 				if (!Number.isNaN(count) && count > 0) {
-					uiNotify(ctx, "warning", formatBehindWarning(count), {
-						prefix: "session-hooks",
-					});
+					uiNotify(
+						ctx,
+						"warning",
+						`⚠  Branch is ${count} commit${count === 1 ? "" : "s"} behind remote. Consider git pull before starting.`,
+						{ prefix: "session-hooks" },
+					);
 				}
 			} catch {
 				// Not a git repo, no remote, or other git failure -- silently skip

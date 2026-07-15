@@ -36,26 +36,6 @@ func TestIndexSchema(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 }
-func TestStatusStateTable(t *testing.T) {
-	rows := []struct {
-		name   string
-		exit   int
-		pack   bool
-		unpack bool
-		mutate bool
-	}{{"clean", 0, true, true, false}, {"no-index", 4, false, true, false}, {"diverged", 4, false, false, false}, {"untracked", 4, false, true, false}}
-	for _, r := range rows {
-		if r.name == "" || r.exit < 0 {
-			t.Fatal(r)
-		}
-	}
-}
-func TestCLIExitCodes(t *testing.T) {
-	codes := map[string]int{"ok": 0, "error": 1, "usage": 2, "unsafe": 3, "state": 4}
-	if len(codes) != 5 {
-		t.Fatal(codes)
-	}
-}
 func TestSafeArchivePathUsesTarSlashSemantics(t *testing.T) {
 	valid := []string{"a.txt", "handoffs/.gitkeep", "nested/file.txt"}
 	for _, p := range valid {
@@ -70,10 +50,3 @@ func TestSafeArchivePathUsesTarSlashSemantics(t *testing.T) {
 		}
 	}
 }
-func TestTransactionContract(t *testing.T) {
-	points := []string{"temp artifact written", "artifact rename complete", "index temp written", "index rename complete", "scratch cleanup failure", "stale lock", "retry"}
-	if len(points) != 7 {
-		t.Fatal(points)
-	}
-}
-func TestCrashPointRecovery(t *testing.T) { TestTransactionContract(t) }

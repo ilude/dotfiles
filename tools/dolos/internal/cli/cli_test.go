@@ -142,17 +142,6 @@ func TestLocking(t *testing.T) {
 		t.Fatal("expected locked failure")
 	}
 }
-func TestAgeSSHSupport(t *testing.T)                      { TestEndToEndTempRepoSSHKeys(t) }
-func TestPackSSHAuthorizedKeys(t *testing.T)              { TestEndToEndTempRepoSSHKeys(t) }
-func TestPackAtomic(t *testing.T)                         { TestEndToEndTempRepoSSHKeys(t) }
-func TestPackIndex(t *testing.T)                          { TestEndToEndTempRepoSSHKeys(t) }
-func TestPackRefusesStale(t *testing.T)                   {}
-func TestPackCrashPoint(t *testing.T)                     {}
-func TestUnpackTransaction(t *testing.T)                  { TestEndToEndTempRepoSSHKeys(t) }
-func TestUnpackRollback(t *testing.T)                     {}
-func TestUnpackCrashPoint(t *testing.T)                   {}
-func TestUnpackScratchPermissionsAndCleanup(t *testing.T) {}
-
 func TestEndToEndTempRepoSSHKeys(t *testing.T) {
 	dir := inTempRepo(t)
 	withCwd(t, dir)

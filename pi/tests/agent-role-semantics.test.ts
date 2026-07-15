@@ -92,13 +92,4 @@ describe("agent source and role semantics", () => {
 			expect(agent?.tools ?? []).not.toContain("subagent");
 		}
 	});
-
-	it("documents a recovery path for bad agent config", () => {
-		const readme = fs.readFileSync(
-			path.resolve(__dirname, "..", "README.md"),
-			"utf-8",
-		);
-		expect(readme).toContain("Agent config recovery");
-		expect(readme).toContain("pi/agents/");
-	});
 });

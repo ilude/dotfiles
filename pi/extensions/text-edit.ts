@@ -134,7 +134,7 @@ export default function (pi: ExtensionAPI) {
 		},
 		renderCall(args, theme) {
 			return new Text(
-				theme.fg("accent", "✏️ ") +
+				theme.fg("accent", "✏️  ") +
 					theme.fg("toolTitle", `${args.paths?.length ?? 0} file(s)`),
 				0,
 				0,

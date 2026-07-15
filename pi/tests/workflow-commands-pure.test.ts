@@ -187,9 +187,12 @@ describe("validateCommitPlan", () => {
 		);
 	});
 
-	it("accepts dependency commit subjects", () => {
+	it.each([
+		"deps(pi): update packages",
+		"style(pi): normalize runtime icon spacing",
+	])("accepts supported commit subject %s", (subject) => {
 		const plan = {
-			groups: [{ files: ["a.ts"], subject: "deps(pi): update packages" }],
+			groups: [{ files: ["a.ts"], subject }],
 		};
 		expect(() => validateCommitPlan(plan, ["a.ts"])).not.toThrow();
 	});

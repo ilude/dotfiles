@@ -1,3 +1,5 @@
+import { COMMIT_TYPES } from "../commit/message";
+
 export interface CommitPlanningPromptContext {
 	files: string[];
 	diffStat: string;
@@ -49,7 +51,7 @@ Return JSON only with this schema:
 
 Rules:
 - Group files into atomic commits.
-- Use conventional commit subjects.
+- Use only these commit types: ${COMMIT_TYPES.join(", ")}.
 - Each subject must be exactly one line in the form "type(scope): description".
 - Do not put a newline before or after the colon in a subject.
 - Do not include Markdown, explanations, or extra prose in any subject.

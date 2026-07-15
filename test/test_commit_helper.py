@@ -66,16 +66,21 @@ def test_ignored_staged_deletion_keeps_staged_and_is_not_safe_to_add(tmp_path: P
     assert entry["recommended_action"] == "keep_staged"
 
 
-
 def test_validate_message_accepts_conventional_and_rejects_plain_sentence(tmp_path: Path) -> None:
     repo = init_repo(tmp_path)
 
     invalid = helper(repo, "validate-message", "Ignore generated menos status", check=False)
-    valid = helper(repo, "validate-message", "chore: ignore generated menos status", check=False)
+    valid_subjects = [
+        "chore: ignore generated menos status",
+        "style(pi): normalize runtime icon spacing",
+        "deps: update packages",
+        "revert: restore prior behavior",
+        "wip: preserve current changes",
+    ]
 
     assert invalid.returncode != 0
-    assert valid.returncode == 0
-
+    for subject in valid_subjects:
+        assert helper(repo, "validate-message", subject, check=False).returncode == 0
 
 
 def test_status_json_parseable_and_paths_with_spaces_are_repo_relative(tmp_path: Path) -> None:
@@ -93,7 +98,6 @@ def test_status_json_parseable_and_paths_with_spaces_are_repo_relative(tmp_path:
     entry = next(item for item in payload["entries"] if item["path"] == "docs/file with spaces.txt")
     assert entry["classification"] == "untracked"
     assert entry["path"] == "docs/file with spaces.txt"
-
 
 
 def test_stage_plan_marks_modified_tracked_file_safe_to_stage(tmp_path: Path) -> None:
