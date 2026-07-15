@@ -12,10 +12,14 @@ import {
 	listTasks,
 	partitionReadyTasks,
 	resolveTaskWorkspace,
+	retryTask,
 	type SubagentTaskExecution,
 	safeTransitionTask,
+	startTask,
+	type TaskOperationResult,
 	type TaskRecordV1,
 	type TaskState,
+	type TransitionOptions,
 	tasksByIdSnapshot,
 	tombstoneTask,
 	transitionTask,
@@ -45,7 +49,7 @@ const TASK_NOTES_MAX_LENGTH = 500;
 const TASK_PROMPT_MAX_LENGTH = 2_000;
 
 function validateTaskText(
-	label: "summary" | "notes" | "task",
+	label: "summary" | "notes" | "skipReason" | "task",
 	value: string,
 	maxLength: number,
 	oneLine = false,
@@ -182,6 +186,68 @@ function notifyOutcome(
 			`${label} rejected: ${result.error ?? result.outcome}`,
 			"warning",
 		);
+}
+
+export class TaskLifecycleService {
+	constructor(private readonly coordinator: TaskExecutionCoordinator) {}
+
+	start(id: string): TaskOperationResult {
+		const task = getTask(id);
+		if (!task) return { outcome: "not_found", error: `task not found: ${id}` };
+		const blocked = formatStartBlockedMessage(
+			task,
+			listTasks({ includeTombstones: true }),
+		);
+		if (blocked) return { outcome: "rejected", record: task, error: blocked };
+		return startTask(id);
+	}
+
+	retry(id: string): TaskOperationResult {
+		return retryTask(id);
+	}
+
+	skip(id: string, skipReason?: string): TaskOperationResult {
+		return safeTransitionTask(id, "skipped", { skipReason });
+	}
+
+	async cancel(id: string): Promise<TaskOperationResult> {
+		const task = getTask(id);
+		if (!task) return { outcome: "not_found", error: `task not found: ${id}` };
+		if (
+			task.state === "completed" ||
+			task.state === "cancelled" ||
+			task.state === "skipped"
+		)
+			return {
+				outcome: "rejected",
+				record: task,
+				error: `task is already ${task.state}`,
+			};
+		if (task.state === "running") {
+			const stopped = await this.coordinator.stop(id);
+			if (stopped.outcome === "failed_to_stop")
+				return {
+					outcome: "rejected",
+					record: stopped.record ?? task,
+					error: stopped.error ?? "active execution failed to stop",
+				};
+			const current = getTask(id);
+			if (current?.state === "cancelled")
+				return { outcome: "persisted", record: current };
+		}
+		return safeTransitionTask(id, "cancelled");
+	}
+
+	async transition(
+		id: string,
+		target: TaskState,
+		opts: TransitionOptions = {},
+	): Promise<TaskOperationResult> {
+		if (target === "running") return this.start(id);
+		if (target === "cancelled") return this.cancel(id);
+		if (target === "skipped") return this.skip(id, opts.skipReason);
+		return safeTransitionTask(id, target, opts);
+	}
 }
 
 function toolResult(details: unknown) {
@@ -384,6 +450,7 @@ export function registerTaskTools(
 	pi: ExtensionAPI,
 	coordinator: TaskExecutionCoordinator,
 ): void {
+	const lifecycle = new TaskLifecycleService(coordinator);
 	const taskItem = Type.Object(
 		{
 			origin: Type.Optional(
@@ -439,6 +506,9 @@ export function registerTaskTools(
 			),
 			notes: Type.Optional(Type.String({ maxLength: TASK_NOTES_MAX_LENGTH })),
 			state: Type.Optional(Type.String()),
+			skipReason: Type.Optional(
+				Type.String({ maxLength: TASK_NOTES_MAX_LENGTH }),
+			),
 			blockedBy: Type.Optional(Type.Array(Type.String())),
 			all: Type.Optional(Type.Boolean()),
 			origin: Type.Optional(taskItem.properties.origin),
@@ -582,6 +652,7 @@ export function registerTaskTools(
 						error: `task not found: ${id}`,
 					});
 				let patch: UpdateTaskPatch;
+				let skipReason: string | undefined;
 				try {
 					patch = {
 						summary:
@@ -599,14 +670,30 @@ export function registerTaskTools(
 								: undefined,
 						blockedBy: validatedBlockers(input.blockedBy),
 					};
+					skipReason =
+						typeof input.skipReason === "string"
+							? validateTaskText(
+									"skipReason",
+									input.skipReason,
+									TASK_NOTES_MAX_LENGTH,
+								)
+							: undefined;
 				} catch (error) {
 					return toolResult({
 						outcome: "rejected",
 						error: error instanceof Error ? error.message : String(error),
 					});
 				}
-				if (typeof input.state === "string") {
-					const target = input.state as TaskState;
+				const target =
+					typeof input.state === "string"
+						? (input.state as TaskState)
+						: undefined;
+				if (skipReason !== undefined && target !== "skipped")
+					return toolResult({
+						outcome: "rejected",
+						error: "skipReason requires state skipped",
+					});
+				if (target) {
 					if (
 						(target === existing.state && target !== "skipped") ||
 						(target !== existing.state &&
@@ -616,11 +703,29 @@ export function registerTaskTools(
 							outcome: "rejected",
 							error: `invalid transition for ${id}: ${existing.state} -> ${input.state}`,
 						});
+					if (target === "running") {
+						const candidate = {
+							...existing,
+							blockedBy: patch.blockedBy ?? existing.blockedBy,
+						};
+						const blocked = formatStartBlockedMessage(
+							candidate,
+							listTasks({ includeTombstones: true }),
+						);
+						if (blocked)
+							return toolResult({
+								outcome: "rejected",
+								record: existing,
+								error: blocked,
+							});
+					}
 				}
 				try {
 					const record = updateTask(id, patch);
-					if (typeof input.state === "string") {
-						const transition = safeTransitionTask(id, input.state as TaskState);
+					if (target) {
+						const transition = await lifecycle.transition(id, target, {
+							skipReason,
+						});
 						if (transition.outcome !== "persisted")
 							return toolResult(transition);
 						return toolResult({
@@ -638,31 +743,18 @@ export function registerTaskTools(
 			}
 			if (action === "execute")
 				return toolResult(coordinator.start(id, ctx.cwd));
-			if (action === "stop") return toolResult(await coordinator.stop(id));
+			if (action === "stop") return toolResult(await lifecycle.cancel(id));
 			if (action === "output") return taskOutputResult(coordinator, id);
 			return toolResult({ outcome: "rejected", error: "unknown action" });
 		},
 	});
 }
 
-export default function (pi: ExtensionAPI) {
-	const coordinator = new TaskExecutionCoordinator();
-	registerTaskTools(pi, coordinator);
-	pi.on("session_start", (_event, ctx) => {
-		try {
-			importLegacyTodos(
-				ctx.cwd,
-				process.env.PI_LEGACY_TODO_SOURCE_DIR || ctx.cwd,
-			);
-		} catch (error) {
-			ctx.ui.notify(
-				`Legacy task migration failed: ${error instanceof Error ? error.message : String(error)}`,
-				"warning",
-			);
-		}
-		coordinator.reconcileOrphans();
-	});
-	pi.on("session_shutdown", async () => coordinator.shutdown());
+export function registerTasksCommand(
+	pi: ExtensionAPI,
+	coordinator: TaskExecutionCoordinator,
+): void {
+	const lifecycle = new TaskLifecycleService(coordinator);
 	pi.registerCommand("tasks", {
 		description:
 			"Task control plane. Use /tasks help for lifecycle, settings, and recovery commands.",
@@ -744,52 +836,28 @@ export default function (pi: ExtensionAPI) {
 					),
 					"info",
 				);
-			if (parsed.verb === "start") {
-				const blockedMessage = formatStartBlockedMessage(target, all);
-				if (blockedMessage) return ctx.ui.notify(blockedMessage, "warning");
-				return notifyOutcome(
-					ctx,
-					"Started",
-					safeTransitionTask(target.id, "running"),
-				);
-			}
+			if (parsed.verb === "start")
+				return notifyOutcome(ctx, "Started", lifecycle.start(target.id));
 			if (parsed.verb === "complete")
 				return notifyOutcome(
 					ctx,
 					"Completed",
-					safeTransitionTask(target.id, "completed"),
+					await lifecycle.transition(target.id, "completed"),
 				);
 			if (parsed.verb === "skip")
 				return notifyOutcome(
 					ctx,
 					"Skipped",
-					safeTransitionTask(target.id, "skipped", { skipReason: parsed.text }),
+					lifecycle.skip(target.id, parsed.text),
 				);
-			if (parsed.verb === "cancel") {
-				if (
-					target.state === "completed" ||
-					target.state === "cancelled" ||
-					target.state === "skipped"
-				) {
-					return ctx.ui.notify(
-						`Task ${shortTaskId(target.id)} is already ${target.state}.`,
-						"warning",
-					);
-				}
+			if (parsed.verb === "cancel")
 				return notifyOutcome(
 					ctx,
 					"Cancelled",
-					safeTransitionTask(target.id, "cancelled"),
+					await lifecycle.cancel(target.id),
 				);
-			}
 			if (parsed.verb === "retry") {
-				if (target.state !== "failed") {
-					return ctx.ui.notify(
-						`Retry only valid for failed tasks (this one is ${target.state}).`,
-						"warning",
-					);
-				}
-				const result = safeTransitionTask(target.id, "running");
+				const result = lifecycle.retry(target.id);
 				return ctx.ui.notify(
 					result.outcome === "persisted" && result.record
 						? `Reopened ${shortTaskId(target.id)} (retry x${result.record.retryCount}). This does not execute work.`
@@ -800,4 +868,25 @@ export default function (pi: ExtensionAPI) {
 			return;
 		},
 	});
+}
+
+export default function (pi: ExtensionAPI) {
+	const coordinator = new TaskExecutionCoordinator();
+	registerTaskTools(pi, coordinator);
+	registerTasksCommand(pi, coordinator);
+	pi.on("session_start", (_event, ctx) => {
+		try {
+			importLegacyTodos(
+				ctx.cwd,
+				process.env.PI_LEGACY_TODO_SOURCE_DIR || ctx.cwd,
+			);
+		} catch (error) {
+			ctx.ui.notify(
+				`Legacy task migration failed: ${error instanceof Error ? error.message : String(error)}`,
+				"warning",
+			);
+		}
+		coordinator.reconcileOrphans();
+	});
+	pi.on("session_shutdown", async () => coordinator.shutdown());
 }

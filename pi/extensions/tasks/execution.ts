@@ -11,14 +11,13 @@ import {
 } from "../../lib/orchestration-telemetry.js";
 import {
 	getTask,
-	getUnmetBlockers,
 	listTasks,
 	type NormalizedTaskUsage,
 	normalizeTaskUsage,
 	type SubagentTaskExecution,
 	safeTransitionTask,
+	startTask,
 	type TaskRecordV1,
-	tasksByIdSnapshot,
 	updateTask,
 } from "../../lib/task-registry.js";
 import { sanitizeTaskValue } from "../../lib/task-security.js";
@@ -243,17 +242,6 @@ export class TaskExecutionCoordinator {
 				record,
 				error: `task state ${record.state} cannot be executed`,
 			};
-		const blockers = getUnmetBlockers(
-			record,
-			tasksByIdSnapshot(listTasks({ includeTombstones: true })),
-		);
-		if (blockers.length > 0)
-			return {
-				outcome: "rejected",
-				record,
-				error: `task is waiting on ${blockers.map((item) => item.id).join(", ")}`,
-			};
-
 		const controller = new AbortController();
 		const active: ActiveExecution = {
 			controller,
@@ -273,7 +261,7 @@ export class TaskExecutionCoordinator {
 		const transition =
 			record.state === "running"
 				? { outcome: "persisted" as const, record }
-				: safeTransitionTask(taskId, "running");
+				: startTask(taskId);
 		if (transition.outcome !== "persisted")
 			return {
 				outcome: "rejected",
@@ -466,15 +454,13 @@ export class TaskExecutionCoordinator {
 		if (!completed) {
 			const current = getTask(taskId);
 			const currentExecution = current && executionFor(current);
-			if (currentExecution) {
-				safeTransitionTask(taskId, "cancelled");
+			if (currentExecution)
 				this.settleExecution(
 					taskId,
 					currentExecution,
 					"failed_to_stop",
 					active,
 				);
-			}
 			return {
 				outcome: "failed_to_stop",
 				record: getTask(taskId) ?? record,

@@ -1,7 +1,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type vi } from "vitest";
+import type { TaskState } from "../lib/task-registry.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 let tmpRoot: string;
@@ -22,7 +23,7 @@ afterEach(() => {
 async function loadTasks() {
 	const pi = createMockPi();
 	const mod = await import("../extensions/tasks.ts");
-	mod.default(pi as any);
+	mod.default(pi as Parameters<typeof mod.default>[0]);
 	const cmd = pi._commands.find((c) => c.name === "tasks");
 	if (!cmd) throw new Error("tasks command not registered");
 	return { pi, cmd };
@@ -36,13 +37,22 @@ describe("parseTasksArgs", () => {
 
 	it("recognizes cancel and retry verbs", async () => {
 		const mod = await import("../extensions/tasks.ts");
-		expect(mod.parseTasksArgs("cancel abc12345")).toEqual({ verb: "cancel", idArg: "abc12345" });
-		expect(mod.parseTasksArgs("retry abc12345")).toEqual({ verb: "retry", idArg: "abc12345" });
+		expect(mod.parseTasksArgs("cancel abc12345")).toEqual({
+			verb: "cancel",
+			idArg: "abc12345",
+		});
+		expect(mod.parseTasksArgs("retry abc12345")).toEqual({
+			verb: "retry",
+			idArg: "abc12345",
+		});
 	});
 
 	it("treats a single token as show", async () => {
 		const mod = await import("../extensions/tasks.ts");
-		expect(mod.parseTasksArgs("abc12345")).toEqual({ verb: "show", idArg: "abc12345" });
+		expect(mod.parseTasksArgs("abc12345")).toEqual({
+			verb: "show",
+			idArg: "abc12345",
+		});
 	});
 });
 
@@ -53,7 +63,7 @@ describe("groupTasksByUrgency", () => {
 			schemaVersion: 1 as const,
 			id,
 			origin: "subagent" as const,
-			state: state as any,
+			state: state as TaskState,
 			summary: state,
 			createdAt: "2026-04-27T00:00:00.000Z",
 			updatedAt: "2026-04-27T00:00:00.000Z",
@@ -90,27 +100,39 @@ describe("/tasks command", () => {
 	});
 
 	it("groups by urgency in the default list view", async () => {
-		const { createTask, transitionTask } = await import("../lib/task-registry.ts");
-		const blocked = createTask({ origin: "subagent", summary: "needs creds", state: "running" });
+		const { createTask, transitionTask } = await import(
+			"../lib/task-registry.ts"
+		);
+		const blocked = createTask({
+			origin: "subagent",
+			summary: "needs creds",
+			state: "running",
+		});
 		transitionTask(blocked.id, "blocked", { blockReason: "no creds" });
 		createTask({ origin: "subagent", summary: "running 1", state: "running" });
 
 		const { cmd } = await loadTasks();
 		const ctx = createMockCtx();
 		await cmd.handler("", ctx);
-		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock
+			.calls[0][0] as string;
 		// blocked must come before running in the output
 		expect(text.indexOf("blocked")).toBeLessThan(text.indexOf("running"));
 	});
 
 	it("show by id-prefix returns the detail view", async () => {
 		const { createTask } = await import("../lib/task-registry.ts");
-		const t = createTask({ origin: "subagent", summary: "hello", agentName: "validator" });
+		const t = createTask({
+			origin: "subagent",
+			summary: "hello",
+			agentName: "validator",
+		});
 
 		const { cmd } = await loadTasks();
 		const ctx = createMockCtx();
 		await cmd.handler(t.id.slice(0, 8), ctx);
-		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock
+			.calls[0][0] as string;
 		expect(text).toContain(t.id);
 		expect(text).toContain("agent: validator");
 		expect(text).toContain("summary: hello");
@@ -118,7 +140,11 @@ describe("/tasks command", () => {
 
 	it("cancel transitions a running task to cancelled", async () => {
 		const { createTask, getTask } = await import("../lib/task-registry.ts");
-		const t = createTask({ origin: "subagent", summary: "long-runner", state: "running" });
+		const t = createTask({
+			origin: "subagent",
+			summary: "long-runner",
+			state: "running",
+		});
 
 		const { cmd } = await loadTasks();
 		const ctx = createMockCtx();
@@ -129,9 +155,27 @@ describe("/tasks command", () => {
 		expect(after?.summary).toBe("long-runner"); // summary preserved
 	});
 
+	it("skip persists its reason", async () => {
+		const { createTask, getTask } = await import("../lib/task-registry.ts");
+		const task = createTask({ origin: "other", summary: "optional work" });
+		const { cmd } = await loadTasks();
+		const ctx = createMockCtx();
+
+		await cmd.handler(`skip ${task.id} superseded`, ctx);
+
+		expect(getTask(task.id)?.state).toBe("skipped");
+		expect(getTask(task.id)?.skipReason).toBe("superseded");
+	});
+
 	it("retry on a failed task transitions it to running and bumps retryCount", async () => {
-		const { createTask, transitionTask, getTask } = await import("../lib/task-registry.ts");
-		const t = createTask({ origin: "subagent", summary: "x", state: "running" });
+		const { createTask, transitionTask, getTask } = await import(
+			"../lib/task-registry.ts"
+		);
+		const t = createTask({
+			origin: "subagent",
+			summary: "x",
+			state: "running",
+		});
 		transitionTask(t.id, "failed", { errorReason: "boom" });
 
 		const { cmd } = await loadTasks();
@@ -146,7 +190,11 @@ describe("/tasks command", () => {
 
 	it("retry rejects when task is not in failed state", async () => {
 		const { createTask } = await import("../lib/task-registry.ts");
-		const t = createTask({ origin: "subagent", summary: "x", state: "running" });
+		const t = createTask({
+			origin: "subagent",
+			summary: "x",
+			state: "running",
+		});
 
 		const { cmd } = await loadTasks();
 		const ctx = createMockCtx();
@@ -154,12 +202,20 @@ describe("/tasks command", () => {
 
 		const notify = ctx.ui.notify as ReturnType<typeof vi.fn>;
 		expect(notify.mock.calls[0][1]).toBe("warning");
-		expect(notify.mock.calls[0][0]).toContain("Retry only valid for failed tasks");
+		expect(notify.mock.calls[0][0]).toContain(
+			"Retry only valid for failed tasks",
+		);
 	});
 
 	it("rejects cancel on already-terminal task", async () => {
-		const { createTask, transitionTask } = await import("../lib/task-registry.ts");
-		const t = createTask({ origin: "subagent", summary: "x", state: "running" });
+		const { createTask, transitionTask } = await import(
+			"../lib/task-registry.ts"
+		);
+		const t = createTask({
+			origin: "subagent",
+			summary: "x",
+			state: "running",
+		});
 		transitionTask(t.id, "completed");
 
 		const { cmd } = await loadTasks();
@@ -184,23 +240,36 @@ describe("/tasks command", () => {
 		const { createTask } = await import("../lib/task-registry.ts");
 		const blocker = createTask({ origin: "subagent", summary: "blocker" });
 		const ready = createTask({ origin: "subagent", summary: "ready work" });
-		createTask({ origin: "subagent", summary: "waiting work", blockedBy: [blocker.id] });
+		createTask({
+			origin: "subagent",
+			summary: "waiting work",
+			blockedBy: [blocker.id],
+		});
 		const { cmd } = await loadTasks();
 		const ctx = createMockCtx();
 		await cmd.handler("ready", ctx);
-		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock
+			.calls[0][0] as string;
 		expect(text).toContain(ready.summary);
 		expect(text).not.toContain("waiting work");
 	});
 
 	it("lists blocked tasks with actionable blocker context", async () => {
 		const { createTask } = await import("../lib/task-registry.ts");
-		const blocker = createTask({ origin: "subagent", summary: "blocker token=abc" });
-		const waiting = createTask({ origin: "subagent", summary: "waiting work", blockedBy: [blocker.id] });
+		const blocker = createTask({
+			origin: "subagent",
+			summary: "blocker token=abc",
+		});
+		const waiting = createTask({
+			origin: "subagent",
+			summary: "waiting work",
+			blockedBy: [blocker.id],
+		});
 		const { cmd } = await loadTasks();
 		const ctx = createMockCtx();
 		await cmd.handler("blocked", ctx);
-		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock
+			.calls[0][0] as string;
 		expect(text).toContain(waiting.id.slice(0, 8));
 		expect(text).toContain(blocker.id.slice(0, 8));
 		expect(text).toContain("pending");
@@ -212,7 +281,8 @@ describe("/tasks command", () => {
 		const { cmd } = await loadTasks();
 		const ctx = createMockCtx();
 		await cmd.handler("help", ctx);
-		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock
+			.calls[0][0] as string;
 		expect(text).toContain("ready");
 		expect(text).toContain("blocked");
 		expect(text).toContain("what can I work on now");
@@ -223,18 +293,33 @@ describe("/tasks command", () => {
 	it("rejects starting a waiting task without mutating persisted records", async () => {
 		const { createTask, getTask } = await import("../lib/task-registry.ts");
 		const blocker = createTask({ origin: "subagent", summary: "blocker" });
-		const waiting = createTask({ origin: "subagent", summary: "waiting work", blockedBy: [blocker.id] });
+		const waiting = createTask({
+			origin: "subagent",
+			summary: "waiting work",
+			blockedBy: [blocker.id],
+		});
 		const taskDir = path.join(tmpRoot, "tasks");
 		const before = new Map(
-			fs.readdirSync(taskDir).map((file) => [file, fs.readFileSync(path.join(taskDir, file), "utf-8")]),
+			fs
+				.readdirSync(taskDir)
+				.map((file) => [
+					file,
+					fs.readFileSync(path.join(taskDir, file), "utf-8"),
+				]),
 		);
 		const { cmd } = await loadTasks();
 		const ctx = createMockCtx();
 		await cmd.handler(`start ${waiting.id}`, ctx);
 		const after = new Map(
-			fs.readdirSync(taskDir).map((file) => [file, fs.readFileSync(path.join(taskDir, file), "utf-8")]),
+			fs
+				.readdirSync(taskDir)
+				.map((file) => [
+					file,
+					fs.readFileSync(path.join(taskDir, file), "utf-8"),
+				]),
 		);
-		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock
+			.calls[0][0] as string;
 		expect(text).toContain("Cannot start");
 		expect(text).toContain(blocker.id.slice(0, 8));
 		expect(text).toContain("Next: /tasks show");
@@ -243,7 +328,9 @@ describe("/tasks command", () => {
 	});
 
 	it("lists only current-workspace tasks unless --all is provided", async () => {
-		const { createTask, resolveTaskWorkspace } = await import("../lib/task-registry.ts");
+		const { createTask, resolveTaskWorkspace } = await import(
+			"../lib/task-registry.ts"
+		);
 		const currentDir = path.join(tmpRoot, "current");
 		const foreignDir = path.join(tmpRoot, "foreign");
 		fs.mkdirSync(currentDir);
@@ -263,18 +350,22 @@ describe("/tasks command", () => {
 		const ctx = createMockCtx({ cwd: currentDir });
 
 		await cmd.handler("list", ctx);
-		const scoped = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+		const scoped = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock
+			.calls[0][0] as string;
 		expect(scoped).toContain(current.summary);
 		expect(scoped).toContain(global.summary);
 		expect(scoped).not.toContain(foreign.summary);
 
 		await cmd.handler("list --all", ctx);
-		const globalList = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[1][0] as string;
+		const globalList = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock
+			.calls[1][0] as string;
 		expect(globalList).toContain(foreign.summary);
 	});
 
 	it("clears completed tasks only in the current workspace", async () => {
-		const { createTask, getTask, resolveTaskWorkspace } = await import("../lib/task-registry.ts");
+		const { createTask, getTask, resolveTaskWorkspace } = await import(
+			"../lib/task-registry.ts"
+		);
 		const currentDir = path.join(tmpRoot, "current");
 		const foreignDir = path.join(tmpRoot, "foreign");
 		fs.mkdirSync(currentDir);
@@ -313,6 +404,8 @@ describe("/tasks command", () => {
 		const ctx = createMockCtx();
 		await cmd.handler(`start ${ready.id}`, ctx);
 		expect(getTask(ready.id)?.state).toBe("running");
-		expect((ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain("Started");
+		expect(
+			(ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0][0],
+		).toContain("Started");
 	});
 });

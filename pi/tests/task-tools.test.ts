@@ -21,10 +21,11 @@ process.env.PI_METRICS_DIR = metricsRoot;
 const { TaskExecutionCoordinator } = await import(
 	"../extensions/tasks/execution.ts"
 );
-const { registerTaskTools } = await import("../extensions/tasks.ts");
-const { createTask, getTask, listTasks, resolveTaskWorkspace } = await import(
-	"../lib/task-registry.ts"
+const { registerTasksCommand, registerTaskTools } = await import(
+	"../extensions/tasks.ts"
 );
+const { createTask, getTask, listTasks, resolveTaskWorkspace, transitionTask } =
+	await import("../lib/task-registry.ts");
 
 let tmpRoot: string;
 let prevOperatorDir: string | undefined;
@@ -286,6 +287,84 @@ describe("task tools", () => {
 		expect(getTask(task.id)).toEqual(before);
 	});
 
+	it("rejects blocked starts through update without applying the patch", async () => {
+		const pi = createMockPi();
+		registerTaskTools(
+			pi as Parameters<typeof registerTaskTools>[0],
+			new TaskExecutionCoordinator(),
+		);
+		const ctx = createMockCtx({ cwd: tmpRoot });
+		const tool = pi._getTool("task");
+		const blocker = createTask({ origin: "other", summary: "blocker" });
+		const waiting = createTask({
+			origin: "other",
+			summary: "waiting",
+			notes: "original",
+			blockedBy: [blocker.id],
+		});
+
+		const result = await tool?.execute(
+			"blocked-start",
+			{
+				action: "update",
+				id: waiting.id,
+				state: "running",
+				notes: "must not persist",
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		expect(result.details.outcome).toBe("rejected");
+		expect(result.details.error).toContain(blocker.id.slice(0, 8));
+		expect(getTask(waiting.id)?.state).toBe("pending");
+		expect(getTask(waiting.id)?.notes).toBe("original");
+	});
+
+	it("persists skip reasons and retry counts through update", async () => {
+		const pi = createMockPi();
+		registerTaskTools(
+			pi as Parameters<typeof registerTaskTools>[0],
+			new TaskExecutionCoordinator(),
+		);
+		const ctx = createMockCtx({ cwd: tmpRoot });
+		const tool = pi._getTool("task");
+		const skipped = createTask({ origin: "other", summary: "skip me" });
+		const failed = createTask({
+			origin: "other",
+			summary: "retry me",
+			state: "running",
+		});
+		transitionTask(failed.id, "failed", { errorReason: "first failure" });
+
+		const skipResult = await tool?.execute(
+			"skip-task",
+			{
+				action: "update",
+				id: skipped.id,
+				state: "skipped",
+				skipReason: "not required",
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		const retryResult = await tool?.execute(
+			"retry-task",
+			{ action: "update", id: failed.id, state: "running" },
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		expect(skipResult.details.outcome).toBe("persisted");
+		expect(getTask(skipped.id)?.skipReason).toBe("not required");
+		expect(retryResult.details.outcome).toBe("persisted");
+		expect(getTask(failed.id)?.retryCount).toBe(1);
+		expect(getTask(failed.id)?.errorReason).toBeUndefined();
+	});
+
 	it("reads legacy todos from an override while preserving the target workspace", async () => {
 		const sourceRoot = fs.mkdtempSync(
 			path.join(os.tmpdir(), "pi-legacy-source-"),
@@ -456,6 +535,67 @@ describe("task tools", () => {
 		expect(stopped.details.outcome).toBe("persisted");
 		expect(getTask(id)?.state).toBe("cancelled");
 		expect(getTask(id)?.execution?.status).toBe("stopped");
+	});
+
+	it("cancels active execution through the tasks command", async () => {
+		const aborted = vi.fn();
+		const pi = createMockPi();
+		const coordinator = new TaskExecutionCoordinator(
+			async (_execution, _cwd, signal) => {
+				await new Promise<void>((_resolve, reject) => {
+					signal.addEventListener(
+						"abort",
+						() => {
+							aborted();
+							reject(new Error("aborted"));
+						},
+						{ once: true },
+					);
+				});
+				return { output: "late output", exitCode: 0 };
+			},
+		);
+		registerTaskTools(
+			pi as Parameters<typeof registerTaskTools>[0],
+			coordinator,
+		);
+		registerTasksCommand(
+			pi as Parameters<typeof registerTasksCommand>[0],
+			coordinator,
+		);
+		const ctx = createMockCtx({ cwd: tmpRoot });
+		const tool = pi._getTool("task");
+		const created = await tool?.execute(
+			"create-command-cancel",
+			{
+				action: "create",
+				agent: "coding-light",
+				task: "Wait",
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		const id = created.details.record.id as string;
+		await tool?.execute(
+			"execute-command-cancel",
+			{ action: "execute", id },
+			undefined,
+			undefined,
+			ctx,
+		);
+		const command = pi._commands.find((item) => item.name === "tasks");
+		if (!command) throw new Error("tasks command not registered");
+
+		await command.handler(`cancel ${id}`, ctx);
+
+		expect(aborted).toHaveBeenCalledOnce();
+		expect(getTask(id)?.state).toBe("cancelled");
+		expect(getTask(id)?.execution?.status).toBe("stopped");
+		expect(getTask(id)?.execution?.outputPath).toBeUndefined();
+		expect(
+			(ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0],
+		).toContain("Cancelled");
 	});
 
 	it("rejects execution while dependencies are unresolved", () => {

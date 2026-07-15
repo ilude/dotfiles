@@ -14,6 +14,7 @@
 10. Native prompt migration for `/summarize` and `/gitlab-ticket` (`c2b2c57`).
 11. Restored `max` in refreshed model thinking maps.
 12. Retired the unused agent-team extension, native team dispatch, configuration, and launch recipes.
+13. Unified task lifecycle policy across the task tool, `/tasks`, and background execution.
 
 ## Active handoff state - 2026-07-15
 
@@ -32,7 +33,7 @@ Execute and validate one item at a time. Do not batch state transitions, securit
 
 | Priority | Work item | Why now | Dependency |
 | --- | --- | --- | --- |
-| P1 | Unify task lifecycle policy | Verified command/tool correctness and cancellation defect | None |
+| Completed | Unify task lifecycle policy | Command/tool lifecycle and active cancellation now share one policy | None |
 | P2 | Complete damage-control audit recording | Security decisions currently disappear from provenance | Independent; keep separate from P1 |
 | P3 | Fix workflow-review queue deduplication | Duplicate background reviews are reachable | Independent; required before reviewer migration |
 | P4 | Move the background reviewer behind a typed semantic contract | Removes manual prompt/subprocess/JSON plumbing after queue correctness is proven | P3 |
@@ -40,16 +41,19 @@ Execute and validate one item at a time. Do not batch state transitions, securit
 
 ## Verified problems and completed follow-ups
 
-### Task lifecycle policy differs between the tool and slash command
+### Task lifecycle policy is unified across public surfaces
 
-- Status: ready
-- Verified problem: `task(update, state="running")` can start a task whose dependencies are unresolved, while `/tasks start` rejects it. `/tasks cancel` changes registry state but does not stop coordinator-managed execution. The tool cannot persist the `skipReason` supported by `/tasks skip`.
-- User impact: A blocked task can run through one public surface, and a cancelled background task can continue consuming resources and later report execution output against a cancelled registry record.
-- Evidence: `pi/extensions/tasks.ts:580-632,750-798`; actual execution cancellation is implemented separately at `pi/extensions/tasks/execution.ts:430-481`. Existing focused suites pass but test each surface independently: 61 tests across `tasks.test.ts`, `task-tools.test.ts`, `task-registry.test.ts`, and `task-execution.test.ts`.
-- Root cause: Lifecycle policy is independently implemented around the shared registry.
-- Recommended solution: Add a narrow lifecycle service for start, transition, skip, cancel, and retry. Enforce dependency readiness in shared start, route active cancellation through `TaskExecutionCoordinator.stop()`, and add `skipReason` to the tool input.
-- Acceptance criteria: Equivalent command and tool actions agree on blocked starts, invalid transitions, skip reasons, retry counts, and terminal state. Cancelling active work aborts and settles the child process.
-- Validation: Run the four focused task suites, typecheck, and the exact `/tasks cancel` workflow against a running background task.
+- Status: completed
+- Resolved problem: `task(update, state="running")`, `/tasks start`, and background execution now share dependency-readiness policy. `/tasks cancel` and `task(stop)` route active work through the execution coordinator, and tool updates persist `skipReason`.
+- Root cause: Lifecycle policy was independently implemented around the shared registry.
+- Implemented:
+  1. Added `TaskLifecycleService` for start, transition, skip, cancel, and retry actions shared by the command and tool.
+  2. Added registry-level start and retry operations so coordinator execution uses the same dependency gate.
+  3. Preserved truthful `failed_to_stop` state without marking a still-running child as cancelled.
+  4. Added `skipReason` to task tool updates and preserved retry-count and error-reset behavior.
+  5. Added an injectable command registration seam for exact active-cancellation coverage.
+- Result: Blocked starts, invalid transitions, skip reasons, retries, terminal states, and active cancellation agree across command, tool, and coordinator paths.
+- Validation: The four focused suites passed 65 tests; typecheck, Biome, and the exact `/tasks cancel` workflow against active background execution passed.
 
 ### Model refresh preserves the supported max thinking level
 

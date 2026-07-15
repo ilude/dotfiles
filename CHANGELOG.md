@@ -2,6 +2,27 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-15: Unify task lifecycle policy
+
+**Why:** The task tool, `/tasks`, and background coordinator enforced different
+start and cancellation behavior, allowing blocked direct work to start and
+active background work to outlive command cancellation.
+
+**Changed:**
+- Added one lifecycle service for command and tool transitions, skip reasons,
+  retries, and cancellation.
+- Reused registry readiness checks for direct and background starts.
+- Routed active command cancellation through the execution coordinator and
+  preserved truthful failed-to-stop state.
+- Added parity and active-cancellation regression coverage.
+
+**Files:** `pi/extensions/tasks.ts`, `pi/extensions/tasks/execution.ts`,
+`pi/lib/task-registry.ts`, `pi/tests/tasks.test.ts`,
+`pi/tests/task-tools.test.ts`, `pi/tests/task-execution.test.ts`,
+`.specs/pi-extension-refactors/backlog.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-15: Make commit fallback exhaustive
 
 **Why:** A valid formatting commit subject was rejected by a mismatched type

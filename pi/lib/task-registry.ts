@@ -396,7 +396,16 @@ export function transitionTask(
 	const existing = getTask(id);
 	if (!existing) throw new TaskRegistryError(`task not found: ${id}`);
 	if (existing.state === target) {
-		if (target === "skipped") return existing;
+		if (target === "skipped") {
+			if (opts.skipReason === undefined) return existing;
+			const updated = sanitizeTaskValue({
+				...existing,
+				skipReason: opts.skipReason,
+				updatedAt: new Date().toISOString(),
+			}) as TaskRecordV1;
+			writeTaskFile(updated);
+			return updated;
+		}
 		throw new TaskRegistryError(
 			`task ${id} already in state ${target}; use updateTask for in-place changes`,
 		);
@@ -568,6 +577,34 @@ export function isTaskReady(
 	tasksById: ReadonlyMap<string, TaskRecordV1>,
 ): boolean {
 	return task.state === "pending" && getTaskReadiness(task, tasksById).ready;
+}
+
+export function startTask(id: string): TaskOperationResult {
+	const record = getTask(id);
+	if (!record) return { outcome: "not_found", error: `task not found: ${id}` };
+	const blockers = getUnmetBlockers(
+		record,
+		tasksByIdSnapshot(listTasks({ includeTombstones: true })),
+	);
+	if (blockers.length > 0)
+		return {
+			outcome: "rejected",
+			record,
+			error: `task is waiting on ${blockers.map((item) => item.id).join(", ")}`,
+		};
+	return safeTransitionTask(id, "running");
+}
+
+export function retryTask(id: string): TaskOperationResult {
+	const record = getTask(id);
+	if (!record) return { outcome: "not_found", error: `task not found: ${id}` };
+	if (record.state !== "failed")
+		return {
+			outcome: "rejected",
+			record,
+			error: `Retry only valid for failed tasks (this one is ${record.state})`,
+		};
+	return startTask(id);
 }
 
 export function partitionReadyTasks(tasks: readonly TaskRecordV1[]): {

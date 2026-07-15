@@ -265,7 +265,8 @@ Test agent.
 		const stopped = coordinator.stop(task.id);
 		await vi.advanceTimersByTimeAsync(7_000);
 		expect((await stopped).outcome).toBe("failed_to_stop");
-		expect(getTask(task.id)?.state).toBe("cancelled");
+		expect(getTask(task.id)?.state).toBe("running");
+		expect(getTask(task.id)?.execution?.status).toBe("failed_to_stop");
 		completeLate?.();
 		await vi.runAllTimersAsync();
 		vi.useRealTimers();
