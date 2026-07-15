@@ -9,8 +9,9 @@ The initial four refactors have been implemented and validated:
 3. Canonical agent paths and atomic settings updates (`d5742d9`, `424d9dd`).
 4. Shared session JSONL parsing primitives (`eaa0ace`).
 5. Native skill-loader retirement and `/yt` prompt migration.
+6. Test-only legacy routing helpers and duplicate telemetry emitter removal.
 
-The initial four refactors passed `make check-pi-extensions` with 95 test files, 1,293 tests passed, and 1 expected platform skip. After retiring the duplicate skill-loader tests and adding the `/yt` migration contract, the complete suite passed with 94 test files, 1,287 tests passed, and 1 expected platform skip.
+The initial four refactors passed `make check-pi-extensions` with 95 test files, 1,293 tests passed, and 1 expected platform skip. After retiring the duplicate skill-loader tests and adding the `/yt` migration contract, the complete suite passed with 94 test files, 1,287 tests passed, and 1 expected platform skip. After removing the test-only router paths, the complete suite passed with 94 test files, 1,266 tests passed, and 1 expected platform skip.
 
 ## Deferred refactors
 
@@ -22,13 +23,13 @@ The initial four refactors passed `make check-pi-extensions` with 95 test files,
 - Smallest safe scope: Extract one pure profile-and-region resolver used by both extensions. Preserve environment mutation in `aws-bedrock-env.ts` and CLI argument construction in `bedrock-refresh.ts`.
 - Required validation: Verify explicit options, existing environment values, `AWS_CONFIG_FILE`, `AWS_SHARED_CREDENTIALS_FILE`, default and single credential profiles, configured-region fallback, and generated AWS CLI arguments.
 
-### Legacy routing policy and telemetry removal
+### Dormant router policy settings contract
 
-- Evidence: The live path uses `chooseAppliedRoute` at `pi/extensions/prompt-router.ts:419-470` and emits telemetry at `pi/extensions/prompt-router.ts:1365-1402`. Legacy `applyHysteresis`, `applyPolicy`, and `emitRoutingDecision` remain at `pi/extensions/prompt-router.ts:963-1207`. `.tmp/extension-review-tools.md:48-61` records that legacy callers are tests only.
-- Reason deferred: Meaningful legacy scenarios must first be migrated to the provider-route path so removal does not drop supported routing behavior.
-- Revisit trigger: Provider-route tests cover every remaining hysteresis, cooldown, and transcript scenario currently exercised through the legacy helpers.
-- Smallest safe scope: Retain `resolveProviderRouteDecision` and one telemetry emitter; remove only unused tier-policy helpers and migrate their tests.
-- Required validation: Verify continuation holds, explicit overrides, context-window floors, fallback decisions, supported hysteresis or cooldown rules, and exactly one `routing_decision` event per decision.
+- Evidence: `pi/lib/prompt-router/config.ts` still loads hysteresis, cooldown, uncertainty, and effort-cap settings, and `/router-status` displays them. The authoritative `resolveProviderRouteDecision` path uses classifier mode and default effort but does not apply those legacy policy settings.
+- Reason deferred: The test-only implementations have been removed, but these settings remain production-visible. Removing them changes the documented operator contract; restoring them changes live routing behavior.
+- Revisit trigger: Decide whether each setting is supported runtime policy or retired configuration.
+- Smallest safe scope: Either port an explicitly retained policy into `chooseAppliedRoute` with provider-route tests, or remove its config parsing, status output, and documentation together.
+- Required validation: Verify the selected settings affect live `before_provider_request` decisions exactly as documented, or are absent from settings docs and router status.
 
 ### Layered registerCommand monkey patches
 
