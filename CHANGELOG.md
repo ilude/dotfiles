@@ -2,6 +2,38 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-15: Use Pi's command inventory for the startup widget
+
+**Why:** The startup widget replaced `pi.registerCommand`, duplicated Pi's
+command registry, and omitted native prompt and skill commands.
+
+**Changed:**
+- Replaced registration interception with the documented `pi.getCommands()` API.
+- Included extension commands, duplicate suffixes, prompt templates, and skills.
+- Preserved reload refreshes and exactly one slash echo per extension command.
+
+**Files:** `pi/extensions/01-startup-commands.ts`,
+`pi/tests/startup-commands.test.ts`,
+`.specs/pi-extension-refactors/backlog.md`, `CHANGELOG.md`
+
+---
+
+## 2026-07-15: Keep Pi session summaries grounded in session context
+
+**Why:** `/summarize` could over-weight recent Git history and omit earlier work
+represented by a compaction summary.
+
+**Changed:**
+- Made available session context authoritative for summary scope.
+- Restricted Git status and history to corroborating implementation and current state.
+- Required limited-coverage disclosure when compaction leaves insufficient detail.
+- Added a command-level regression for the summary evidence rules.
+
+**Files:** `pi/extensions/workflow-commands.ts`,
+`pi/tests/workflow-commands.test.ts`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-15: Retire the unused Pi research command
 
 **Why:** `/research` was an unused public command with a dedicated workflow that

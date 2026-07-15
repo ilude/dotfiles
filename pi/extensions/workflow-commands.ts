@@ -400,6 +400,13 @@ Use this structure when applicable:
 6. Add "Workflow friction" only when commands, agents, tools, prompts, or process issues should be improved later.
 7. End with "Recommended next command" or "Next step" when there is a clear follow-up.
 
+Evidence rules:
+- Treat the available session context, including any compaction summaries, as the source of truth for session scope.
+- Before drafting, inventory the distinct work phases in that context so earlier work is not displaced by recent activity.
+- Use Git status and history only to corroborate implementation and current state. Do not infer session scope from nearby commits.
+- If compaction left insufficient detail, state that coverage is limited instead of reconstructing missing work from Git history.
+- Current repository state may update the final status, but it must not erase work completed earlier in the session.
+
 Style rules:
 - Keep any top-level bullet list to 3 bullets or fewer when a sectioned handoff is not needed.
 - Prefer grouped sections over a flat chronological recap.
