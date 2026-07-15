@@ -38,6 +38,7 @@ Execute and validate one item at a time. Do not batch state transitions, securit
 | Completed | Fix workflow-review queue deduplication | Claimed and recovered jobs are rechecked before recording | Independent; completed before reviewer migration |
 | Completed | Move the background reviewer behind a typed semantic contract | Reviewer now uses the shared typed-agent boundary | Queue correctness completed |
 | Completed | Unify Bedrock refresh identity and region | Provider and refresh now share one resolved target | Live validation completed |
+| Deferred | Evaluate worker-to-worker messaging | Could reduce parent relay overhead for genuinely collaborative parallel work | Durable task claims, completion events, and bounded artifact exchange |
 
 ## Verified problems and completed follow-ups
 
@@ -178,6 +179,21 @@ Execute and validate one item at a time. Do not batch state transitions, securit
 - Removed: `agent-team.ts`, team configuration files, native `subagent({ team, task })` dispatch, team-only task origins and telemetry modes, the `just team` recipe, generated-project team recipes, and dedicated tests.
 - Preserved: Single, parallel, and chain subagent modes; standalone agent personas; model routing; cancellation; and orchestration telemetry for retained modes.
 - Validation: Active-reference searches, focused subagent and task tests, typecheck, and generated-Justfile checks.
+
+### Worker-to-worker messaging may support collaborative task graphs
+
+- Status: deferred design candidate
+- Opportunity: Workers handling independent durable tasks may occasionally need to exchange a finding, challenge a hypothesis, or transfer a bounded result without routing the full exchange through parent context.
+- Dependency: Implement atomic task claims, automatic dependency unblocking, completion notifications, and bounded artifact exchange first. Messaging must not become a substitute for task state or recreate the retired agent-team runtime without a concrete consumer.
+- Recommended boundary:
+  1. Address messages to stable worker or task execution IDs.
+  2. Keep messages small and structured; put detailed output in artifacts and send references.
+  3. Persist delivery state with deduplication and explicit retention so restart recovery is deterministic.
+  4. Notify recipients and the parent through events rather than polling mailbox files.
+  5. Treat worker messages as untrusted coordination input. They cannot grant permissions, relay user approval, or expand another worker's tool access.
+  6. Preserve parent visibility into message metadata and final decisions without copying full exchanges into parent model context.
+- Adoption gate: Demonstrate a recurring workflow where direct worker coordination materially reduces parent relay cost or improves correctness compared with parent-mediated artifacts and compact completion events.
+- Validation if adopted: Add concurrent-send, duplicate-delivery, malformed-message, restart-recovery, cancellation, retention, permission-boundary, and parent-context-size tests.
 
 ### Quality gates already match the target design
 
