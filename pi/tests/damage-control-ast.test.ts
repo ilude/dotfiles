@@ -125,6 +125,39 @@ no_delete_paths: []
 		});
 	});
 
+	it("reports approvals for Bun stdin and AST asks", async () => {
+		const bunApproval = vi.fn();
+		await expect(
+			evaluateDangerousCommand(
+				'printf \'require("fs").rmSync("target")\' | bun run -',
+				[],
+				{
+					toolName: "bash",
+					hasUI: true,
+					ui: { confirm: vi.fn(async () => true) },
+					onAskApproved: bunApproval,
+				},
+			),
+		).resolves.toBeUndefined();
+		expect(bunApproval).toHaveBeenCalledWith(
+			expect.objectContaining({ rule: "bun stdin script" }),
+		);
+
+		const astApproval = vi.fn();
+		await expect(
+			evaluateDangerousCommand("eval $CMD", [rmRule], {
+				toolName: "bash",
+				hasUI: true,
+				ui: { confirm: vi.fn(async () => true) },
+				onAskApproved: astApproval,
+				astAnalysis: astConfig,
+			}),
+		).resolves.toBeUndefined();
+		expect(astApproval).toHaveBeenCalledWith(
+			expect.objectContaining({ rule: "AST analysis" }),
+		);
+	});
+
 	it("blocks a destructive command hidden behind bash -c", async () => {
 		const result = await analyzeCommandAst(
 			"bash -c 'rm -rf /tmp/x'",
@@ -244,7 +277,7 @@ no_delete_paths: []
 		).resolves.toBeUndefined();
 		await expect(
 			evaluateDangerousCommand(
-				'tmpdir="$(mktemp -d)"; outfile="${tmpdir}/output.txt"; rm -f -- "$outfile"',
+				`tmpdir="$(mktemp -d)"; outfile="\${tmpdir}/output.txt"; rm -f -- "$outfile"`,
 				[rmForceAskRule],
 				{ toolName: "bash", astAnalysis: astConfig },
 			),
@@ -274,7 +307,7 @@ no_delete_paths: []
 	it("keeps asking on fallback expansion cleanup targets", async () => {
 		await expect(
 			evaluateDangerousCommand(
-				'tmpfile="$(mktemp)"; rm -f -- "${tmpfile:-/}"',
+				`tmpfile="$(mktemp)"; rm -f -- "\${tmpfile:-/}"`,
 				[rmForceAskRule],
 				{ toolName: "bash", astAnalysis: astConfig },
 			),

@@ -16,6 +16,11 @@ import {
 
 export type DamageControlMode = "default" | "noshell";
 
+export interface DamageControlAskApproval {
+	rule: string;
+	reason: string;
+}
+
 const SHELL_TOOLS = new Set(["bash", "pwsh"]);
 const READ_ONLY_SEARCH_COMMANDS = new Set([
 	"ack",
@@ -176,6 +181,7 @@ export async function checkZeroAccess(
 	ctx?: {
 		ui?: { confirm?: (title: string, message: string) => Promise<boolean> };
 		hasUI?: boolean;
+		onAskApproved?: (approval: DamageControlAskApproval) => void;
 	},
 ): Promise<{ block: true; reason: string } | undefined> {
 	for (const pattern of patterns) {
@@ -187,7 +193,13 @@ export async function checkZeroAccess(
 					"Confirm SSH path inspection",
 					`${toolName} on ${canonical} reveals filenames/metadata for an SSH-protected path (matched "${pattern}").`,
 				);
-				if (ok) return undefined;
+				if (ok) {
+					ctx.onAskApproved?.({
+						rule: pattern,
+						reason: "SSH path inspection",
+					});
+					return undefined;
+				}
 			}
 			return {
 				block: true,
@@ -550,7 +562,7 @@ export async function evaluateDangerousCommand(
 		ui?: { confirm?: (title: string, message: string) => Promise<boolean> };
 		hasUI?: boolean;
 		toolName?: string;
-		onConfirm?: (rule: DangerousCommand) => void;
+		onAskApproved?: (approval: DamageControlAskApproval) => void;
 		astAnalysis?: AstAnalysisConfig;
 		cwd?: string;
 	},
@@ -568,7 +580,13 @@ export async function evaluateDangerousCommand(
 				"Confirm dangerous command",
 				semanticGit.reason,
 			);
-			if (ok) return undefined;
+			if (ok) {
+				ctx.onAskApproved?.({
+					rule: "semantic_git",
+					reason: semanticGit.reason,
+				});
+				return undefined;
+			}
 		}
 		return {
 			block: true,
@@ -607,7 +625,7 @@ export async function evaluateDangerousCommand(
 					formatDangerousConfirmation(analysisCommand, rule, ctx),
 				);
 				if (ok) {
-					ctx.onConfirm?.(rule);
+					ctx.onAskApproved?.({ rule: rule.pattern, reason: rule.reason });
 					return undefined;
 				}
 			}
@@ -631,7 +649,13 @@ export async function evaluateDangerousCommand(
 					"Confirm dangerous command",
 					bunStdinDecision.reason,
 				);
-				if (ok) return undefined;
+				if (ok) {
+					ctx.onAskApproved?.({
+						rule: "bun stdin script",
+						reason: bunStdinDecision.reason,
+					});
+					return undefined;
+				}
 			}
 			return {
 				block: true,
@@ -652,7 +676,13 @@ export async function evaluateDangerousCommand(
 					"Confirm dangerous command",
 					astDecision.reason,
 				);
-				if (ok) return undefined;
+				if (ok) {
+					ctx.onAskApproved?.({
+						rule: "AST analysis",
+						reason: astDecision.reason,
+					});
+					return undefined;
+				}
 			}
 			return {
 				block: true,

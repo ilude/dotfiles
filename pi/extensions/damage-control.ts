@@ -37,6 +37,7 @@ import {
 	checkZeroAccess,
 	containsInjectionPattern,
 	contentNeedsScan,
+	type DamageControlAskApproval,
 	type DamageControlMode,
 	evaluateDangerousCommand,
 	evaluateShellMode,
@@ -103,12 +104,13 @@ function safeRecordDeny(
 	metadata?: Record<string, unknown>,
 ): void {
 	try {
-		const action = `${toolName}:${rawAction.slice(0, 200)}`;
+		const action = `${toolName}:${redactSummary(rawAction).slice(0, 200)}`;
+		const summary = redactSummary(reason);
 		recordDecision({
 			action,
 			outcome: "deny",
 			provenance: DENY_PROVENANCE,
-			summary: reason,
+			summary,
 			rule,
 			replayPayload,
 			metadata,
@@ -120,7 +122,8 @@ function safeRecordDeny(
 				outcome: "deny",
 				provenance: DENY_PROVENANCE,
 				rule,
-				summary: reason,
+				summary,
+				toolCallId: metadata?.toolCallId,
 			},
 		});
 	} catch {
@@ -133,16 +136,32 @@ function safeRecordAllow(
 	rawAction: string,
 	provenance: DecisionProvenance,
 	summary?: string,
+	rule?: string,
+	metadata?: Record<string, unknown>,
 ): void {
 	try {
-		const action = `${toolName}:${rawAction.slice(0, 200)}`;
-		recordDecision({ action, outcome: "allow", provenance, summary });
+		const action = `${toolName}:${redactSummary(rawAction).slice(0, 200)}`;
+		recordDecision({
+			action,
+			outcome: "allow",
+			provenance,
+			summary,
+			rule,
+			metadata,
+		});
 		recordEvent({
 			event: "permission_decision",
-			data: { tool: toolName, outcome: "allow", provenance, summary },
+			data: {
+				tool: toolName,
+				outcome: "allow",
+				provenance,
+				summary,
+				rule,
+				toolCallId: metadata?.toolCallId,
+			},
 		});
 	} catch {
-		// ignore
+		// Registry/metrics failures must never block damage-control flow.
 	}
 }
 
@@ -188,13 +207,51 @@ function safeRecordDamageControlEval(input: {
 			redactedAction: redactSummary(input.rawAction),
 			rule: input.rule,
 			ruleSource: input.ruleSource,
-			summary: input.reason,
+			summary: input.reason ? redactSummary(input.reason) : undefined,
 			cwd: input.cwd,
 			toolCallId: input.toolCallId,
 		});
 	} catch {
 		// Eval logging must never affect safety flow.
 	}
+}
+
+interface ApprovedAskRecord {
+	toolName: string;
+	rawAction: string;
+	cwd: string;
+	approval: DamageControlAskApproval;
+	ruleSource?: string;
+	toolCallId?: string;
+	metadata?: Record<string, unknown>;
+}
+
+function safeRecordApprovedAsk(input: ApprovedAskRecord): void {
+	const summary = redactSummary(input.approval.reason);
+	const metadata = {
+		cwd: input.cwd,
+		ruleSource: input.ruleSource,
+		toolCallId: input.toolCallId,
+		...input.metadata,
+	};
+	safeRecordDamageControlEval({
+		decisionType: "ask_approved",
+		toolName: input.toolName,
+		rawAction: input.rawAction,
+		cwd: input.cwd,
+		reason: summary,
+		rule: input.approval.rule,
+		ruleSource: input.ruleSource,
+		toolCallId: input.toolCallId,
+	});
+	safeRecordAllow(
+		input.toolName,
+		input.rawAction,
+		"manual_once",
+		summary,
+		input.approval.rule,
+		metadata,
+	);
 }
 
 function damageControlStatusMessage(state: DamageControlRuntimeState): string {
@@ -377,6 +434,12 @@ function recordBlock(
 	metadata?: Record<string, unknown>,
 ): void {
 	const rule = extractRulePattern(decision.reason);
+	const auditMetadata = {
+		cwd,
+		ruleSource,
+		toolCallId,
+		...metadata,
+	};
 	safeRecordDamageControlEval({
 		decisionType: decision.reason.startsWith("Confirmation required")
 			? "ask_denied"
@@ -400,9 +463,9 @@ function recordBlock(
 			cwd,
 			reason: decision.reason,
 			rule,
-			metadata,
+			metadata: auditMetadata,
 		}),
-		metadata,
+		auditMetadata,
 	);
 }
 
@@ -430,9 +493,20 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("tool_call", async (event, ctx) => {
 		if (event.toolName !== "bash") return undefined;
-		const failed = blockIfRulesFailed(state);
-		if (failed) return failed;
 		const command = (event as BashToolCallEvent).input.command ?? "";
+		const failed = blockIfRulesFailed(state);
+		if (failed) {
+			recordBlock(
+				"bash",
+				command,
+				ctx.cwd,
+				failed,
+				loaded.health.ruleSource,
+				event.toolCallId,
+				{ ruleLoadFailure: true },
+			);
+			return failed;
+		}
 		debugLog("tool_call_seen", {
 			toolName: event.toolName,
 			actionSummary: command,
@@ -445,13 +519,29 @@ export default function (pi: ExtensionAPI) {
 				block: true as const,
 				reason: `${sequenceDecision.action === "ask" ? "Confirmation required" : "Blocked"} for dangerous sequence (matched "${sequenceDecision.name}"): ${sequenceDecision.reason}`,
 			};
-			if (sequenceDecision.action === "ask" && ctx.ui?.confirm) {
+			if (sequenceDecision.action === "ask" && ctx.hasUI && ctx.ui?.confirm) {
 				emitTerminalBell();
 				const ok = await ctx.ui.confirm(
 					"Confirm dangerous sequence",
 					sequenceDecision.reason,
 				);
-				if (ok) return undefined;
+				if (ok) {
+					safeRecordApprovedAsk({
+						toolName: "bash",
+						rawAction: command,
+						cwd: ctx.cwd,
+						approval: {
+							rule: sequenceDecision.name,
+							reason: sequenceDecision.reason,
+						},
+						ruleSource: loaded.health.ruleSource,
+						toolCallId: event.toolCallId,
+						metadata: sequenceDecision.evidence
+							? { sequenceEvidence: sequenceDecision.evidence }
+							: undefined,
+					});
+					return undefined;
+				}
 			}
 			recordBlock(
 				"bash",
@@ -485,24 +575,19 @@ export default function (pi: ExtensionAPI) {
 			rules.dangerous_commands,
 			{
 				ui: ctx.ui,
-				hasUI: true,
+				hasUI: ctx.hasUI,
 				toolName: "bash",
 				astAnalysis: rules.astAnalysis,
 				cwd: ctx.cwd,
-				onConfirm: (rule) => {
-					const summary = `Confirmed dangerous command (matched "${rule.pattern}"): ${rule.reason}`;
-					safeRecordDamageControlEval({
-						decisionType: "ask_approved",
+				onAskApproved: (approval) =>
+					safeRecordApprovedAsk({
 						toolName: "bash",
 						rawAction: command,
 						cwd: ctx.cwd,
-						reason: summary,
-						rule: rule.pattern,
+						approval,
 						ruleSource: loaded.health.ruleSource,
 						toolCallId: event.toolCallId,
-					});
-					safeRecordAllow("bash", command, "manual_once", summary);
-				},
+					}),
 			},
 		);
 		if (dangerous) {
@@ -561,9 +646,20 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("tool_call", async (event, ctx) => {
 		if (event.toolName !== "pwsh") return undefined;
-		const failed = blockIfRulesFailed(state);
-		if (failed) return failed;
 		const command = (event.input as { command?: string }).command ?? "";
+		const failed = blockIfRulesFailed(state);
+		if (failed) {
+			recordBlock(
+				"pwsh",
+				command,
+				ctx.cwd,
+				failed,
+				loaded.health.ruleSource,
+				event.toolCallId,
+				{ ruleLoadFailure: true },
+			);
+			return failed;
+		}
 		debugLog("tool_call_seen", {
 			toolName: event.toolName,
 			actionSummary: command,
@@ -586,23 +682,18 @@ export default function (pi: ExtensionAPI) {
 			rules.dangerous_commands,
 			{
 				ui: ctx.ui,
-				hasUI: true,
+				hasUI: ctx.hasUI,
 				toolName: "pwsh",
 				cwd: ctx.cwd,
-				onConfirm: (rule) => {
-					const summary = `Confirmed dangerous command (matched "${rule.pattern}"): ${rule.reason}`;
-					safeRecordDamageControlEval({
-						decisionType: "ask_approved",
+				onAskApproved: (approval) =>
+					safeRecordApprovedAsk({
 						toolName: "pwsh",
 						rawAction: command,
 						cwd: ctx.cwd,
-						reason: summary,
-						rule: rule.pattern,
+						approval,
 						ruleSource: loaded.health.ruleSource,
 						toolCallId: event.toolCallId,
-					});
-					safeRecordAllow("pwsh", command, "manual_once", summary);
-				},
+					}),
 			},
 		);
 		if (dangerous) {
@@ -636,13 +727,24 @@ export default function (pi: ExtensionAPI) {
 	pi.on("tool_call", async (event, ctx) => {
 		const FILE_TOOLS = new Set(["read", "write", "edit", "find", "ls", "glob"]);
 		if (!FILE_TOOLS.has(event.toolName)) return undefined;
-		const failed = blockIfRulesFailed(state);
-		if (failed) return failed;
 		const fileEvent = event as
 			| ReadToolCallEvent
 			| WriteToolCallEvent
 			| EditToolCallEvent;
 		const rawPath = (fileEvent.input as { path?: string }).path ?? "";
+		const failed = blockIfRulesFailed(state);
+		if (failed) {
+			recordBlock(
+				event.toolName,
+				rawPath,
+				ctx.cwd,
+				failed,
+				loaded.health.ruleSource,
+				event.toolCallId,
+				{ ruleLoadFailure: true },
+			);
+			return failed;
+		}
 		if (!rawPath) return undefined;
 		debugLog("tool_call_seen", {
 			toolName: event.toolName,
@@ -671,7 +773,19 @@ export default function (pi: ExtensionAPI) {
 					canonResult.canonical,
 					rules.zero_access_paths,
 					event.toolName,
-					{ ui: ctx.ui, hasUI: true },
+					{
+						ui: ctx.ui,
+						hasUI: ctx.hasUI,
+						onAskApproved: (approval) =>
+							safeRecordApprovedAsk({
+								toolName: event.toolName,
+								rawAction: rawPath,
+								cwd: ctx.cwd,
+								approval,
+								ruleSource: loaded.health.ruleSource,
+								toolCallId: event.toolCallId,
+							}),
+					},
 				);
 		if (zeroAccess) {
 			debugDecision(
@@ -699,11 +813,14 @@ export default function (pi: ExtensionAPI) {
 				ctx.cwd,
 			);
 			if (readConfirm) {
-				emitTerminalBell();
-				const ok = await ctx.ui.confirm(
-					"Confirm protected read",
-					readConfirm.reason,
-				);
+				let ok = false;
+				if (ctx.hasUI) {
+					emitTerminalBell();
+					ok = await ctx.ui.confirm(
+						"Confirm protected read",
+						readConfirm.reason,
+					);
+				}
 				if (!ok) {
 					const decision = {
 						block: true as const,
@@ -719,22 +836,17 @@ export default function (pi: ExtensionAPI) {
 					);
 					return decision;
 				}
-				safeRecordDamageControlEval({
-					decisionType: "ask_approved",
+				safeRecordApprovedAsk({
 					toolName: event.toolName,
 					rawAction: rawPath,
 					cwd: ctx.cwd,
-					reason: readConfirm.reason,
-					rule: extractRulePattern(readConfirm.reason),
+					approval: {
+						rule: extractRulePattern(readConfirm.reason) ?? "protected read",
+						reason: readConfirm.reason,
+					},
 					ruleSource: loaded.health.ruleSource,
 					toolCallId: event.toolCallId,
 				});
-				safeRecordAllow(
-					event.toolName,
-					rawPath,
-					"manual_once",
-					readConfirm.reason,
-				);
 			}
 		}
 
@@ -789,11 +901,14 @@ export default function (pi: ExtensionAPI) {
 				ctx.cwd,
 			);
 			if (writeConfirm) {
-				emitTerminalBell();
-				const ok = await ctx.ui.confirm(
-					"Confirm protected write",
-					writeConfirm.reason,
-				);
+				let ok = false;
+				if (ctx.hasUI) {
+					emitTerminalBell();
+					ok = await ctx.ui.confirm(
+						"Confirm protected write",
+						writeConfirm.reason,
+					);
+				}
 				if (!ok) {
 					const decision = {
 						block: true as const,
@@ -809,22 +924,17 @@ export default function (pi: ExtensionAPI) {
 					);
 					return decision;
 				}
-				safeRecordDamageControlEval({
-					decisionType: "ask_approved",
+				safeRecordApprovedAsk({
 					toolName: event.toolName,
 					rawAction: rawPath,
 					cwd: ctx.cwd,
-					reason: writeConfirm.reason,
-					rule: extractRulePattern(writeConfirm.reason),
+					approval: {
+						rule: extractRulePattern(writeConfirm.reason) ?? "protected write",
+						reason: writeConfirm.reason,
+					},
 					ruleSource: loaded.health.ruleSource,
 					toolCallId: event.toolCallId,
 				});
-				safeRecordAllow(
-					event.toolName,
-					rawPath,
-					"manual_once",
-					writeConfirm.reason,
-				);
 			}
 		}
 

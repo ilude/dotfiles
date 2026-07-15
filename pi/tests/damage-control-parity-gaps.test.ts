@@ -32,6 +32,21 @@ describe("remaining damage-control parity gaps", () => {
 			"git push --force can overwrite remote history without safety checks",
 		);
 		expect(result?.reason).toContain("semantic_git");
+
+		const onAskApproved = vi.fn();
+		await expect(
+			evaluateDangerousCommand("git push --force", [], {
+				toolName: "bash",
+				hasUI: true,
+				ui: { confirm: vi.fn(async () => true) },
+				onAskApproved,
+			}),
+		).resolves.toBeUndefined();
+		expect(onAskApproved).toHaveBeenCalledWith({
+			rule: "semantic_git",
+			reason:
+				"git push --force can overwrite remote history without safety checks",
+		});
 	});
 
 	it("keeps context relaxations for readonly search and supported dry-run commands", async () => {
