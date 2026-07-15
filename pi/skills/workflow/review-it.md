@@ -38,6 +38,10 @@ entry condition says it is optional.
 - Findings distinguish substantive defect, process defect, duplicate,
   low-value/theater, and false positive. Treat severity rationale, evidence,
   required fix, and confidence as mandatory reviewer data.
+- One invocation must converge whenever defects are locally repairable. Never
+  block solely because a review-applied fix is material; block only for an
+  unresolved user/product decision, unsafe external action, unavailable
+  prerequisite, or exhausted repair budget.
 - Read `templates/review-it-reviewer-prompts.md` at dispatch time. It owns the
   dispatch shape, artifact schema, finding budget, and return budget.
 - Prefer `review_artifact_write`; do not silently route reviewer personas through proxy agents merely to gain write access. Proxy substitution requires user
@@ -242,11 +246,14 @@ Say `Synthesis written; applying structured plan fixes.` before default apply.
 
 ## APPLY_MODE
 ### Auto-apply
-Apply every verified bug, hardening item, readiness fix, and necessary clarity
-change to the reviewed plan only, while preserving separate implementation and
-rollout waves. First write `{review_dir}/applied-fixes.md`
-with a table mapping finding, category, target sections, edit intent, and
-checklist impact. Record any intentional omission and reason.
+Apply every verified bug, readiness fix, and necessary clarity change to the
+reviewed plan only, while preserving separate implementation and rollout waves.
+Apply hardening only when it is required for the objective, realistic safety,
+or standalone execution readiness. Record nonblocking hardening as deferred
+backlog instead of expanding the executable plan. First write
+`{review_dir}/applied-fixes.md` with a table mapping finding, category, target
+sections, edit intent, and checklist impact. Record any intentional omission or
+deferral and reason.
 
 After every plan edit, run the Section Integrity Check before another edit:
 
@@ -294,12 +301,16 @@ contract. Before standalone readiness:
 4. Verify and read every post-change artifact, verify HIGH/CRITICAL claims, update
    synthesis and applied-fixes records, apply accepted findings, and run Section
    Integrity Check after each edit.
-5. Run at most one post-change panel. If its fixes are material under the same
-   definition, mark the plan blocked for a new `/review-it` rather than
-   recursively paneling.
+5. Run at most one post-change panel. Apply its verified must-fix/readiness
+   findings, then continue to `PRE_READINESS_AUDIT` even when those fixes are
+   material. Do not launch another full panel in the same invocation; the final
+   standalone-readiness reviewer must inspect the complete revised plan.
 
 The standalone repair budget does not start until the post-change panel and all
-resulting plan edits finish. If no material change occurred, record why this
+resulting plan edits finish. A material post-change repair is not itself a
+blocker. Block only when the repair requires unresolved user/product input,
+unsafe external action, an unavailable prerequisite, or exceeds the later audit
+or standalone repair budget. If no material change occurred, record why this
 state was skipped.
 
 ## KNOWN_BLOCKER_QUICKFIX
@@ -311,12 +322,11 @@ only listed blocker fixes before standalone review. Write
 `{review_dir}/known-blocker-fixes.md` with source path, each blocker, sections
 edited, and omissions with reasons. Run Section Integrity Check.
 Classify the resulting diff with the complete MATERIAL_CHANGE_REVIEW definition.
-For a material fix, return to the complete MATERIAL_CHANGE_REVIEW state. If no
-post-change panel has run, execute every step in that state, then resume at
-PRE_READINESS_AUDIT without repeating KNOWN_BLOCKER_QUICKFIX. If the post-change
-panel already ran, mark the plan blocked for a new `/review-it`. For a
-non-material fix, record why renewed panel coverage was skipped. If safe repair
-requires user/product scope input, ask and stop before readiness.
+For a material fix, return to the complete MATERIAL_CHANGE_REVIEW state only when
+no post-change panel has run. After a post-change panel, record the material fix
+and continue to PRE_READINESS_AUDIT; the final standalone-readiness reviewer
+covers the complete revised plan. If safe repair requires user/product scope
+input, ask and stop before readiness.
 
 ## PRE_READINESS_AUDIT
 Auto-apply only. Run this deterministic contract audit after all panel and known
@@ -344,11 +354,11 @@ synthesis. Do not consume a standalone repair pass for failures found here.
 Fix deterministic failures immediately and rerun the complete audit. Allow two
 audit repair cycles. Classify every repair with the complete
 MATERIAL_CHANGE_REVIEW definition. A material repair consumes its current audit
-repair cycle and returns to the complete MATERIAL_CHANGE_REVIEW state. If no
-post-change panel has run, execute every step in that state, then resume the
-complete audit with the remaining cycle budget. If the panel already ran, mark
-the plan blocked for a new `/review-it`. If the audit still fails after two
-repair cycles, write the remaining items to
+repair cycle. If no post-change panel has run, execute that state once, then
+resume the complete audit with the remaining cycle budget. If the panel already
+ran, do not start another panel or block solely for materiality; record the
+repair for the final standalone-readiness reviewer and continue the audit. If
+the audit still fails after two repair cycles, write the remaining items to
 `{review_dir}/pre-readiness-audit-blockers.md`, mark not ready, and stop. If a fix
 requires product scope, ask and stop before mutation.
 
@@ -388,13 +398,15 @@ The first line must be exactly one of:
 PASS: REVIEW COMPLETE: plan is ready to execute.
 FAIL: REVIEW COMPLETE: plan is not ready to execute until bugs are fixed.
 WARN: REVIEW COMPLETE: plan can execute, but hardening is recommended.
+BLOCKED: REVIEW INCOMPLETE: external input or repair budget is required.
 ```
 
 Include `## Outcome` with:
 
-- **Status:** `READY TO EXECUTE`, `NOT READY TO EXECUTE`, or
-  `READY WITH HARDENING RECOMMENDED`
-- **Reason:** concise bug/hardening basis
+- **Status:** `READY TO EXECUTE`, `NOT READY TO EXECUTE`,
+  `READY WITH HARDENING RECOMMENDED`, or `REVIEW BLOCKED`
+- **Reason:** concise bug/hardening basis, or the exact external/budget blocker;
+  never report generic must-fix bugs when the only issue is review process state
 - **Plan state:** active path and `{review_dir}/synthesis.md`
 - **Recommended next action:** fixes first when needed, otherwise
   `/do-it <plan-path>`
@@ -408,4 +420,5 @@ The final line must be exactly one of:
 FINAL STATUS: READY TO EXECUTE -- no must-fix bugs found.
 FINAL STATUS: NOT READY TO EXECUTE -- must-fix bugs remain.
 FINAL STATUS: READY WITH HARDENING RECOMMENDED -- no must-fix bugs, but hardening remains.
+FINAL STATUS: REVIEW BLOCKED -- external input or repair budget is required.
 ```

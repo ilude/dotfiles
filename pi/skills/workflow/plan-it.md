@@ -55,7 +55,7 @@ Do not implement the plan.
 - For every medium or large task, record a concrete alternative and rejected-because trade-off. If all wave tasks converge on one architectural pattern, record the possible trend bias and when the opposite pattern fits.
 - Populate `Automation Plan` with every operation's command or wrapper, credential-source expectation, mutation boundaries, and evidence signal.
 - Populate `Validation Contract` and `Telemetry & Evidence Contract` through the authoritative template.
-- Until runtime emits all fields, instruct the plan to record machine-readable telemetry/evidence: episode ID (`episode_id`), phase ID (`phase_id`), task ID (`task_id`), validation command (`validation_command`), `status`, `archive_status`, `started_at`, `completed_at`, and non-secret evidence paths.
+- Until runtime emits all fields, record workflow evidence in the plan, checklist, review artifacts, or existing evidence helpers whenever practical: episode ID (`episode_id`), phase ID (`phase_id`), task ID (`task_id`), validation command (`validation_command`), `status`, `archive_status`, `started_at`, `completed_at`, and non-secret evidence paths. Do not invent plan-specific telemetry scripts or cross-shell writers solely to satisfy this contract.
 - Record adaptive review fields: `plan_profile`, `review_panel_decision`, expected reviewer count, selected reviewer personas and reasons, complexity score, risk score, and expected high-risk areas.
 - In worktree mode: preflight unresolved merge/rebase state and branch/worktree collisions; create a dedicated branch and worktree before implementation; run every implementation and validation command there; commit locally only after all gates pass; never push, merge, rebase, cherry-pick, or fast-forward back; leave changes uncommitted or mark commit blocked when any gate is pending or failed. Reflect this mode in all relevant template sections.
 - Transition to `VALIDATE_PLAN_CONTRACT` when the draft is complete.
@@ -68,9 +68,14 @@ Do not implement the plan.
 - Confirm every task has Model, Agent, dependency, Verify, Pass, Fail, files, and mutation boundaries.
 - Confirm checklist, task, wave, gate, and dependency IDs map one-to-one and all template invariants hold.
 - Confirm every wave has one correctly sized validation gate and coherent dependencies.
-- Confirm Automation Plan, Validation Contract, success criteria, archive conditions, and telemetry fields are complete and executable.
+- Build a dependency truth table: every command, variable, wrapper, file, and behavior used by a task or gate must exist before that task runs. Reject plans that add a prerequisite in a later wave.
+- Inspect the repository implementation behind every planned wrapper. Check shell scope, exit-code precedence, cleanup on success/failure/interruption, and whether the command proves its stated pass condition.
+- Use safe read-only probes such as dry-runs, config rendering, exact version queries, or static command inspection when they can decide readiness. Do not mutate implementation during planning.
+- Confirm the plan uses the documented host/container boundary and declares every host executable it invokes.
+- Confirm Automation Plan, Validation Contract, success criteria, archive conditions, and telemetry fields are complete and executable without plan-specific process machinery.
 - Confirm end-to-end success criteria test the MVP rather than only task internals.
-- On failure, return to `BUILD_PLAN`; on success, transition to `WRITE_ARTIFACT`.
+- A plan that fails any repository-aware readiness check must return to `BUILD_PLAN`; do not write it and defer deterministic repair to `/review-it`.
+- On success, transition to `WRITE_ARTIFACT`.
 
 ### WRITE_ARTIFACT
 

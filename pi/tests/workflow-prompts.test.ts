@@ -57,6 +57,13 @@ describe("workflow prompt contracts", () => {
 		expect(prompt).toContain("plan_profile");
 		expect(prompt).toContain("review_panel_decision");
 		expect(prompt).toContain("expected reviewer count");
+		expect(prompt).toContain("Build a dependency truth table");
+		expect(prompt).toContain("cleanup on success/failure/interruption");
+		expect(prompt).toContain("safe read-only probes");
+		expect(prompt).toContain(
+			"Reject plans that add a prerequisite in a later wave",
+		);
+		expect(prompt).toContain("Do not invent plan-specific telemetry scripts");
 	});
 
 	it("/review-it requires fixed standard reviewers plus dynamic expert reviewers", () => {
@@ -75,12 +82,20 @@ describe("workflow prompt contracts", () => {
 			"original panel verdict is invalid for the changed",
 		);
 		expect(prompt).toContain("Run at most one post-change panel");
-		expect(prompt).toContain("If its fixes are material under the same");
-		expect(prompt).toMatch(
-			/Classify the\s+resulting diff with the complete MATERIAL_CHANGE_REVIEW definition/,
+		expect(prompt).toContain(
+			"continue to `PRE_READINESS_AUDIT` even when those fixes are",
 		);
 		expect(prompt).toContain(
-			"resume at\nPRE_READINESS_AUDIT without repeating KNOWN_BLOCKER_QUICKFIX",
+			"Never\n  block solely because a review-applied fix is material",
+		);
+		expect(prompt).toContain(
+			"the final\n   standalone-readiness reviewer must inspect the complete revised plan",
+		);
+		expect(prompt).not.toContain(
+			"mark the plan blocked for a new `/review-it`",
+		);
+		expect(prompt).toMatch(
+			/Classify the\s+resulting diff with the complete MATERIAL_CHANGE_REVIEW definition/,
 		);
 		expect(prompt).toContain("PRE_READINESS_AUDIT");
 		expect(prompt).toContain("Repository prerequisites");
@@ -89,6 +104,15 @@ describe("workflow prompt contracts", () => {
 		expect(prompt).toContain("Allow two\naudit repair cycles");
 		expect(prompt).toContain(
 			"A material repair consumes its current audit\nrepair cycle",
+		);
+		expect(prompt).toContain(
+			"do not start another panel or block solely for materiality",
+		);
+		expect(prompt).toContain(
+			"Apply hardening only when it is required for the objective",
+		);
+		expect(prompt).toContain(
+			"BLOCKED: REVIEW INCOMPLETE: external input or repair budget is required.",
 		);
 		expect(prompt).toContain(
 			'`modelSize: "large"`, and\n`modelPolicy: "same-family"`. This gate is a single serial reviewer',

@@ -96,4 +96,4 @@ command, and do not put prompt-only commands in `workflow-commands.ts`.
 
 ## Changelog
 
-When modifying repository instructions, skills, commands, or runtime workflows, append a dated entry to `~/.dotfiles/CHANGELOG.md` listing what changed and why. This root file is the only repository changelog.
+When modifying instructions, skills, commands, or runtime workflows in the dotfiles repository, append a dated entry to `~/.dotfiles/CHANGELOG.md` listing what changed and why. This root file is the only changelog for the dotfiles repository. Do not record changes from other repositories here.
