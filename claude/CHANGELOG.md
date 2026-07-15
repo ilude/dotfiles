@@ -1,3 +1,43 @@
+## 2026-07-14: Rank Pi improvements by verified usage impact
+
+**Why:** `/improve` selected the oldest supported candidate without considering
+how often the affected surface was used, while local stats had attribution and
+scope defects that prevented reliable prioritization.
+
+**Fix:** Corrected the stats pipelines, added structured improvement targets,
+and ranked safety and correctness first followed by verified 30-day usage,
+confidence, age, and interaction ID. Unknown telemetry remains distinct from
+verified zero usage.
+
+**Files:** ~/.dotfiles/pi/extensions/extension-stats.ts,
+~/.dotfiles/pi/extensions/orchestration-stats.ts,
+~/.dotfiles/pi/extensions/router-stats.ts,
+~/.dotfiles/pi/extensions/skill-stats.ts,
+~/.dotfiles/pi/extensions/usage.ts,
+~/.dotfiles/pi/extensions/workflow-friction-review.ts,
+~/.dotfiles/pi/lib/workflow-friction.ts, ~/.dotfiles/pi/tests,
+~/.dotfiles/pi/README.md, ~/.dotfiles/pi/CHANGELOG.md
+
+---
+
+## 2026-07-14: Remove test-only Pi router paths
+
+**Why:** Legacy hysteresis, policy, status-label, and transcript-emission helpers
+were no longer called by the provider routing path. Tests that invoked those
+helpers directly gave them the appearance of runtime coverage.
+
+**Fix:** Removed the test-only helpers and their direct tests while retaining
+the authoritative provider-route implementation, same-turn telemetry, and live
+routing coverage. Recorded the separate production-visible policy-settings
+contract for a later support-or-retire decision.
+
+**Files:** ~/.dotfiles/pi/extensions/prompt-router.ts,
+~/.dotfiles/pi/tests/prompt-router.test.ts,
+~/.dotfiles/pi/tests/transcript-integration.test.ts,
+~/.dotfiles/.specs/pi-extension-refactors/backlog.md
+
+---
+
 ## 2026-07-14: Retire duplicate Pi skill commands
 
 **Why:** Pi's custom skill loader duplicated native skill discovery, exposed
