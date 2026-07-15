@@ -139,11 +139,10 @@ tuning the LinearSVC will not materially improve results. Recommended next
 steps (for team-lead to decide):
 
 1. **Accept the current model for integration**: the classifier beats baseline
-   on top-1 and all recall gates pass. The TypeScript T3 router policy
-   (UNCERTAIN_THRESHOLD=0.55) provides runtime safety for uncertain predictions.
-   Catastrophic under-routing in production is partially mitigated by the
-   router's uncertainty fallback -- when confidence < 0.55, the router biases
-   toward a costlier candidate.
+   on top-1 and all recall gates pass. Runtime safety comes from provider trust
+   boundaries, the context-window floor, and the dependent-continuation hold.
+   The earlier uncertainty fallback was retired because it was never applied by
+   the authoritative provider route.
 
 2. **Re-label the 38 catastrophic cases**: they are available in the eval set.
    If the human review confirms the labels are correct, the corpus has

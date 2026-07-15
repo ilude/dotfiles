@@ -23,31 +23,16 @@
  *   confidence          -- 0.0..1.0 calibrated probability
  *   candidates[]        -- ranked route alternatives
  *
- * Runtime policy (T3, settings-driven thresholds):
- *   - Ship default: N_HOLD=0, UNCERTAIN_FALLBACK_ENABLED=false. Hysteresis
- *     and uncertainty fallback are dormant -- the classifier drives every
- *     turn, with effort cap and cooldown as the only active safety nets.
- *     Shadow-eval showed both policies hurt cost without meaningfully
- *     reducing catastrophic under-routing on this corpus.
- *   - When N_HOLD > 0: after an upgrade, stay at the higher tier for at
- *     least N_HOLD turns. Downgrade only after K_CONSEC consecutive turns
- *     where classifier confidence for the lower tier exceeds
- *     DOWNGRADE_THRESHOLD. One tier step per eligible turn (no free-fall).
- *   - When UNCERTAIN_FALLBACK_ENABLED=true: confidence < UNCERTAIN_THRESHOLD
- *     clamps to max(classifier_primary, current_applied).
- *   - Temporary escalation (e.g. after tool failure) lasts COOLDOWN_TURNS
- *     turns then decays toward the classifier recommendation.
+ * Runtime route selection applies explicit overrides, a one-turn hold for
+ * dependent continuation prompts, a context-window floor, and provider trust
+ * boundaries. Explicit cheap/fast/brief intent bypasses the continuation hold.
  *
- * Effort cap: router.effort.maxLevel in settings (default "high") prevents
- * xhigh from being applied even if the classifier recommends it.
  * Router default effort: router.effort.defaultLevel in settings (default
  * "medium") controls reset/startup and premium Codex routine-effort bias.
  *
- * All thresholds read from pi/settings.json under router.policy.*.
- *
  * Commands:
- *   /router-status   -- show current tier, hysteresis state, and last classification
- *   /router-reset    -- reset hysteresis state (start fresh)
+ *   /router-status   -- show current route and last classification
+ *   /router-reset    -- reset session routing state
  *   /router-explain  -- show last-turn decision: classifier output, applied route, rule fired
  *   /router-off      -- disable automatic routing
  *   /router-on       -- re-enable automatic routing
@@ -74,8 +59,8 @@ import {
 } from "../lib/prompt-router/classifier.js";
 import {
 	CLASSIFY_SCRIPT,
-	loadRouterPolicy,
-	POLICY_DEFAULTS,
+	loadRouterConfig,
+	ROUTER_DEFAULTS,
 	readPromptRouterSettings,
 } from "../lib/prompt-router/config.js";
 import type {
@@ -554,7 +539,7 @@ function fallbackRouteDecision(
 	return {
 		route_decision_id: makeRouteDecisionId(`${promptHash}-${reason}`),
 		prompt_hash: promptHash,
-		classifier_mode: POLICY_DEFAULTS.classifierMode,
+		classifier_mode: ROUTER_DEFAULTS.classifierMode,
 		raw_route: "core",
 		applied_route: "core",
 		provider_family: provider,
@@ -586,9 +571,9 @@ export async function resolveProviderRouteDecision(
 ): Promise<RouteDecision> {
 	const startedAt = Date.now();
 	const promptHash = sha256Hex(text);
-	const policy = loadRouterPolicy(EFFORT_ORDER);
+	const config = loadRouterConfig(EFFORT_ORDER);
 	const classified = await withTimeout(
-		classifyWithV3(pi, text, ctx, policy.classifierMode),
+		classifyWithV3(pi, text, ctx, config.classifierMode),
 		timeoutMs,
 	);
 	if (classified === "timeout")
@@ -652,12 +637,12 @@ export async function resolveProviderRouteDecision(
 
 	const rawThinking =
 		SCHEMA_EFFORT_TO_THINKING[classified.primary.effort] ??
-		policy.defaultEffortLevel;
+		config.defaultEffortLevel;
 	const thinking = applyModelEffortBias(
 		rawThinking,
 		classified,
 		model,
-		policy.defaultEffortLevel,
+		config.defaultEffortLevel,
 	);
 	const provider =
 		typeof model.provider === "string" ? model.provider : "unknown";
@@ -669,7 +654,7 @@ export async function resolveProviderRouteDecision(
 		classifierRecommendation: classified,
 		route_decision_id: makeRouteDecisionId(promptHash),
 		prompt_hash: promptHash,
-		classifier_mode: policy.classifierMode,
+		classifier_mode: config.classifierMode,
 		raw_route: rawRoute,
 		applied_route: appliedRoute,
 		provider_family: provider,
@@ -776,13 +761,6 @@ async function appendTranscriptDebug(
 // Config
 // ---------------------------------------------------------------------------
 
-// Static tier->effort mapping -- fallback when classifier returns null.
-const TIER_EFFORT: Record<Tier, string> = {
-	low: "low",
-	mid: "medium",
-	high: "high",
-};
-
 // Effort ordering for clamping and comparison.
 const EFFORT_ORDER: Record<string, number> = {
 	off: 0,
@@ -810,23 +788,10 @@ const ROUTE_TO_RUNTIME_SIZE: Record<string, "small" | "medium" | "large"> = {
 	max: "large",
 };
 
-// Map router size bucket -> legacy Tier (for hysteresis state machine).
-const SIZE_TO_TIER: Record<string, Tier> = {
-	small: "low",
-	medium: "mid",
-	large: "high",
-};
-
-const TIER_TO_ROUTE: Record<Tier, RouterSize> = {
-	low: "mini",
-	mid: "core",
-	high: "large",
-};
-
 // Premium Codex models are strong enough that routine prompts should stay at
 // the configured default effort. Medium classifier effort is biased to that
 // default, and high is reserved for high-confidence complex prompts. xhigh is
-// never selected by the router because the global default cap remains "high".
+// never selected because the classifier schema tops out at high.
 const CODEX_PREMIUM_PROVIDER = "openai-codex";
 const CODEX_PREMIUM_MODELS = new Set(["gpt-5.5", "gpt-5.6-sol"]);
 const CODEX_PREMIUM_HIGH_CONFIDENCE_FLOOR = 0.8;
@@ -835,31 +800,16 @@ const CODEX_PREMIUM_HIGH_CONFIDENCE_FLOOR = 0.8;
 // State
 // ---------------------------------------------------------------------------
 
-type Tier = "low" | "mid" | "high";
 type RuntimeModelSize = "small" | "medium" | "large";
 
-// Which policy rule fired on the last turn (for /router-explain).
-type RuleFired =
-	| "classifier"
-	| "hysteresis-hold"
-	| "cooldown"
-	| "uncertainty-fallback"
-	| "effort-cap"
-	| "null-fallback";
-
 interface RouterState {
-	currentTier: Tier;
-	turnsAtCurrentTier: number;
-	downgradeCandidateTier: Tier | null;
-	consecutiveDowngradeTurns: number;
-	lastRaw: Tier | null;
-	lastEffective: Tier | null;
+	lastRaw: RouterSize | null;
+	lastEffective: RouterSize | null;
 	lastPromptSnippet: string;
 	enabled: boolean;
 	lastClassifierRec: ClassifierRecommendation | null;
 	lastAppliedEffort: string | null;
-	lastRuleFired: RuleFired | null;
-	cooldownTurnsRemaining: number;
+	lastRuleFired: string | null;
 	lastRouteDecision: RouteDecision | null;
 }
 
@@ -955,13 +905,9 @@ function serializeModelForLog(model: unknown): Record<string, string> | null {
 // ---------------------------------------------------------------------------
 
 export default function (pi: ExtensionAPI) {
-	const policy = loadRouterPolicy(EFFORT_ORDER);
+	const config = loadRouterConfig(EFFORT_ORDER);
 
 	const state: RouterState = {
-		currentTier: "low",
-		turnsAtCurrentTier: 0,
-		downgradeCandidateTier: null,
-		consecutiveDowngradeTurns: 0,
 		lastRaw: null,
 		lastEffective: null,
 		lastPromptSnippet: "",
@@ -969,7 +915,6 @@ export default function (pi: ExtensionAPI) {
 		lastClassifierRec: null,
 		lastAppliedEffort: null,
 		lastRuleFired: null,
-		cooldownTurnsRemaining: 0,
 		lastRouteDecision: null,
 	};
 
@@ -977,9 +922,9 @@ export default function (pi: ExtensionAPI) {
 		description: "Reset thinking level to router default",
 		handler: async (ctx) => {
 			try {
-				(pi as any).setThinkingLevel(policy.defaultEffortLevel);
-				state.lastAppliedEffort = policy.defaultEffortLevel;
-				ctx.ui.setStatus?.("router", `thinking: ${policy.defaultEffortLevel}`);
+				(pi as any).setThinkingLevel(config.defaultEffortLevel);
+				state.lastAppliedEffort = config.defaultEffortLevel;
+				ctx.ui.setStatus?.("router", `thinking: ${config.defaultEffortLevel}`);
 			} catch (err: unknown) {
 				ctx.ui?.notify?.(
 					err instanceof Error ? err.message : String(err),
@@ -996,23 +941,18 @@ export default function (pi: ExtensionAPI) {
 			getSessionId() ||
 			`pi-${process.pid}`;
 		void appendTranscriptDebug("prompt_router_session_start");
-		state.currentTier = "low";
-		state.turnsAtCurrentTier = 0;
-		state.downgradeCandidateTier = null;
-		state.consecutiveDowngradeTurns = 0;
 		state.lastRaw = null;
 		state.lastEffective = null;
 		state.lastClassifierRec = null;
 		state.lastAppliedEffort = null;
 		state.lastRuleFired = null;
-		state.cooldownTurnsRemaining = 0;
 		state.lastRouteDecision = null;
 		if (
 			shouldSetDefaultThinkingOnSessionStart(ctx) &&
 			typeof (pi as any).setThinkingLevel === "function"
 		) {
-			(pi as any).setThinkingLevel(policy.defaultEffortLevel);
-			state.lastAppliedEffort = policy.defaultEffortLevel;
+			(pi as any).setThinkingLevel(config.defaultEffortLevel);
+			state.lastAppliedEffort = config.defaultEffortLevel;
 		}
 		ctx.ui.setStatus?.("router", "router: ready");
 	});
@@ -1047,18 +987,16 @@ export default function (pi: ExtensionAPI) {
 			event.payload,
 		);
 		const previousAppliedRoute = state.lastRouteDecision?.applied_route ?? null;
-		state.lastRuleFired = decision.decisionTrace.rule as RuleFired;
+		state.lastRuleFired = decision.decisionTrace.rule;
 		state.lastClassifierRec =
 			"classifierRecommendation" in decision
 				? ((decision as { classifierRecommendation?: ClassifierRecommendation })
 						.classifierRecommendation ?? null)
 				: null;
-		const rawSize = ROUTE_TO_RUNTIME_SIZE[decision.raw_route] ?? "medium";
 		const appliedSize =
 			ROUTE_TO_RUNTIME_SIZE[decision.applied_route] ?? "medium";
-		state.lastRaw = SIZE_TO_TIER[rawSize] ?? "mid";
-		state.lastEffective = SIZE_TO_TIER[appliedSize] ?? "mid";
-		state.currentTier = state.lastEffective;
+		state.lastRaw = decision.raw_route;
+		state.lastEffective = decision.applied_route;
 		state.lastAppliedEffort = decision.thinking_level;
 		state.lastPromptSnippet = `sha256:${decision.prompt_hash.slice(0, 12)}`;
 		state.lastRouteDecision = { ...decision, same_turn_applied: true };
@@ -1159,10 +1097,9 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("router-status", {
 		description: "Show current prompt routing state",
 		handler: async (_args, ctx) => {
-			const eff = state.lastEffective;
-			const raw = state.lastRaw;
-			const tier = state.currentTier;
-			const effort = state.lastAppliedEffort ?? TIER_EFFORT[tier];
+			const appliedRoute = state.lastEffective;
+			const rawRoute = state.lastRaw;
+			const effort = state.lastAppliedEffort ?? config.defaultEffortLevel;
 
 			const resolved = getResolvedTierMap(ctx);
 			const current = getCurrentModelHint(
@@ -1179,7 +1116,7 @@ export default function (pi: ExtensionAPI) {
 				`  Enabled:          ${state.enabled}`,
 				`  Route decision:   ${decision?.route_decision_id ?? "--"}`,
 				`  Same-turn:        ${decision?.same_turn_applied ?? false}`,
-				`  Classifier mode:  ${decision?.classifier_mode ?? policy.classifierMode}`,
+				`  Classifier mode:  ${decision?.classifier_mode ?? config.classifierMode}`,
 				`  Raw/applied:      ${decision ? `${decision.raw_route} -> ${decision.applied_route}` : "--"}`,
 				`  Provider/model:   ${trace ? `${trace.provider}/${trace.model}` : currentLabel}`,
 				`  Route state:      ${trace?.routeState ?? "--"}`,
@@ -1190,20 +1127,15 @@ export default function (pi: ExtensionAPI) {
 				`  Operator summary: ${decision ? `${decision.applied_route}/${decision.thinking_level} via ${trace?.rule ?? decision.route_resolution_reason}` : "no dispatch decision yet"}`,
 				`  Current model:    ${currentLabel}`,
 				`  Current effort:   ${effort}`,
-				`  Tier state:       ${tier}`,
-				`  Turns at tier:    ${state.turnsAtCurrentTier} (hold window: ${policy.N_HOLD})`,
-				`  Last tier:        ${raw ?? "--"} -> applied: ${eff ?? "--"}`,
+				`  Last route:       ${rawRoute ?? "--"} -> applied: ${appliedRoute ?? "--"}`,
 				`  Last rule:        ${state.lastRuleFired ?? "--"}`,
 				`  Last prompt:      "${state.lastPromptSnippet}"`,
-				`  Cooldown turns:   ${state.cooldownTurnsRemaining}`,
 				``,
 				`  Runtime tier map (diagnostic):`,
 				`    low  -> ${resolveModelTierLabel(resolved.low, "small")}  [route: mini, effort: low]`,
 				`    mid  -> ${resolveModelTierLabel(resolved.mid, "medium")}  [route: core, effort: medium]`,
 				`    high -> ${resolveModelTierLabel(resolved.high, "large")}  [route: large, effort: high]`,
 				``,
-				`  Hysteresis: N_HOLD=${policy.N_HOLD} DOWNGRADE_THRESHOLD=${policy.DOWNGRADE_THRESHOLD} K_CONSEC=${policy.K_CONSEC}`,
-				`  Effort cap: maxLevel=${policy.maxEffortLevel} UNCERTAIN_THRESHOLD=${policy.UNCERTAIN_THRESHOLD} UNCERTAIN_FALLBACK_ENABLED=${policy.UNCERTAIN_FALLBACK_ENABLED}`,
 				`  Classifier: ${CLASSIFY_SCRIPT}`,
 				`  Audit log:  ~/.dotfiles/pi/prompt-routing/logs/routing_log.jsonl`,
 			];
@@ -1223,7 +1155,7 @@ export default function (pi: ExtensionAPI) {
 			const ruleFired = trace?.rule ?? state.lastRuleFired ?? "--";
 			const appliedEffort =
 				decision?.thinking_level ?? state.lastAppliedEffort ?? "--";
-			const appliedTier =
+			const appliedRoute =
 				decision?.applied_route ?? state.lastEffective ?? "--";
 
 			const promptSnippet = state.lastPromptSnippet
@@ -1240,18 +1172,14 @@ export default function (pi: ExtensionAPI) {
 				? `${current.provider}/${current.id}`
 				: "(unknown)";
 
-			const appliedRouteDisplay =
-				appliedTier === "low" || appliedTier === "mid" || appliedTier === "high"
-					? TIER_TO_ROUTE[appliedTier]
-					: appliedTier;
-			const appliedRouteStr = `${appliedRouteDisplay}/${appliedEffort}`;
+			const appliedRouteStr = `${appliedRoute}/${appliedEffort}`;
 
 			const lines = [
 				`Last turn decision:`,
 				`  Prompt: "${promptSnippet}"`,
 				`  Route decision: ${decision?.route_decision_id ?? "--"}`,
 				`  Same-turn applied: ${decision?.same_turn_applied ?? false}`,
-				`  Classifier: ${decision?.classifier_mode ?? policy.classifierMode}`,
+				`  Classifier: ${decision?.classifier_mode ?? config.classifierMode}`,
 				`  Raw/applied route: ${decision ? `${decision.raw_route} -> ${decision.applied_route}` : "--"}`,
 				`  Confidence: ${trace?.confidence ?? "--"}`,
 				`  Context flags: ${trace?.contextFlags.join(",") || "--"}`,
@@ -1282,7 +1210,7 @@ export default function (pi: ExtensionAPI) {
 			lines.push(`  Applied route: ${appliedRouteStr}`);
 			lines.push(`  Rule fired: ${ruleFired}`);
 			lines.push(
-				`  Current state: model=${currentLabel}, effort=${appliedEffort}, cap=${policy.maxEffortLevel}`,
+				`  Current state: model=${currentLabel}, effort=${appliedEffort}`,
 			);
 
 			ctx.ui.notify(lines.join("\n"), "info");
@@ -1291,19 +1219,13 @@ export default function (pi: ExtensionAPI) {
 
 	// -- /router-reset command --
 	pi.registerCommand("router-reset", {
-		description:
-			"Reset prompt router session state (re-enables and clears hysteresis)",
+		description: "Reset prompt router session state and re-enable routing",
 		handler: async (_args, ctx) => {
-			state.currentTier = "low";
-			state.turnsAtCurrentTier = 0;
-			state.downgradeCandidateTier = null;
-			state.consecutiveDowngradeTurns = 0;
 			state.lastRaw = null;
 			state.lastEffective = null;
 			state.lastClassifierRec = null;
 			state.lastAppliedEffort = null;
 			state.lastRuleFired = null;
-			state.cooldownTurnsRemaining = 0;
 			state.lastRouteDecision = null;
 			state.enabled = true;
 			ctx.ui.setStatus?.("router", "router: reset");

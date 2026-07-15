@@ -824,9 +824,14 @@ describe("prompt-router extension -- command registration", () => {
 			"info",
 		);
 		expect((ctx.ui as any).notify).toHaveBeenCalledWith(
-			expect.stringContaining("Current effort:   low"),
+			expect.stringContaining("Current effort:   medium"),
 			"info",
 		);
+		const output = (ctx.ui as any).notify.mock.calls[0][0] as string;
+		expect(output).not.toContain("Hysteresis:");
+		expect(output).not.toContain("Cooldown turns:");
+		expect(output).not.toContain("Effort cap:");
+		expect(output).not.toContain("Turns at tier:");
 	});
 
 	it("/router-reset clears session state", async () => {
@@ -1138,11 +1143,11 @@ describe("T5: /router-explain full decision trail", () => {
 		// (c) rule fired
 		expect(output).toContain("Rule fired:");
 		// (d) confidence already asserted above
-		// (e) current model + current effort + cap
+		// (e) current model + current effort
 		expect(output).toContain("Current state:");
 		expect(output).toContain("model=openai-codex/gpt-5.4-fast");
 		expect(output).toContain("effort=medium");
-		expect(output).toContain("cap=high");
+		expect(output).not.toContain("cap=");
 		// prompt text is not exposed in the explanation.
 		expect(output).toContain('Prompt: "sha256:');
 	});

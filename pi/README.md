@@ -492,21 +492,16 @@ See `pi/prompt-routing/docs/operator-handoff.md` for `/router-status`,
 `/router-explain`, required operator examples, telemetry privacy/purge, and eval
 commands.
 
-#### Runtime policy (ship config)
+#### Runtime routing contract
 
-The session-wide never-downgrade rule was retired. Policy lives in
-`pi/settings.json` under `router.policy.*` and `router.effort.*`; see
-`pi/prompt-routing/docs/settings-doc.md` for the per-key reference.
+The provider route is authoritative. It applies explicit overrides, a one-turn
+hold for dependent continuation prompts, explicit downgrade-intent bypass, a
+context-window floor, and provider-family trust boundaries.
 
-| Knob | Ship value | Meaning |
-|------|------------|---------|
-| `router.effort.maxLevel` | `high` | Hard cap on applied thinking level; blocks `xhigh` |
-| `router.policy.N_HOLD` | `0` | Hysteresis hold disabled -- shadow-eval showed hold inflated cost |
-| `router.policy.K_CONSEC` | `1` | Tied to `N_HOLD` |
-| `router.policy.COOLDOWN_TURNS` | `2` | Runtime escalation cooldown (e.g. after tool failure) |
-| `router.policy.UNCERTAIN_THRESHOLD` | `0.55` | Dormant; retained for future use |
-| `router.policy.UNCERTAIN_FALLBACK_ENABLED` | `false` | Disabled -- fallback blocked legitimate downgrades |
-| `router.policy.DOWNGRADE_THRESHOLD` | `0.85` | Hysteresis downgrade gate (dormant at N_HOLD=0) |
+Active settings are limited to `router.classifier.mode` and
+`router.effort.defaultLevel`; see
+`pi/prompt-routing/docs/settings-doc.md` for the per-key reference. Legacy
+`router.policy.*` settings and `router.effort.maxLevel` are retired.
 
 **Footer indicator:** `> <small model>` / `>> <medium model>` / `>>> <large model>` after each routed prompt.
 
@@ -525,8 +520,8 @@ provider/model/effort resolution, route state, fallback reason when present, and
 a one-line operator summary.
 
 Common `Rule fired` values include `classifier`, `context-continuation-hold`,
-`explicit-route-override`, `manual-model-selection`, `safety-floor`,
-`effort-cap`, and `null-fallback`.
+`explicit-route-override`, `manual-model-selection`, `context-window-floor`,
+and `null-fallback`.
 
 **Where the classifier lives.** `~/.dotfiles/pi/prompt-routing/` -- see the
 README/AGENTS.md there for the training pipeline. `classify.py` is the CLI
@@ -546,8 +541,6 @@ Artifacts: `models/router_v3.joblib` (T2) and `models/router_v3_lgbm.joblib`
 - If `context-continuation-hold` fires unexpectedly, check whether the prompt
   looked like a dependent follow-up. Add explicit cheap/fast/brief wording to
   request a downgrade.
-- If `effort-cap` fires often, raise `router.effort.maxLevel` or call
-  `/router-reset` to clear session state.
 
 ---
 
@@ -691,7 +684,7 @@ The sidecar trace captures:
 - Exact provider request payloads sent before each LLM call (`llm_request` events).
 - Assistant message content returned at turn end, including **visible thinking** blocks that the model exposes (`assistant_message`, one record per turn at `message_end` -- never one per streaming token).
 - Tool-call inputs and outputs as Pi received them, including truncation metadata and a `full_output_path` reference when output is spilled to disk (`tool_call`, `tool_result`).
-- Prompt-router classifier output, the applied route, confidence, rule fired, and policy/cap/hysteresis metadata (`routing_decision`).
+- Prompt-router classifier output, applied route, confidence, rule, context flags, overrides, provider trust, and fallback metadata (`routing_decision`).
 - Model-selection changes (`model_select`).
 - Session lifecycle (`session_start`, `session_shutdown`).
 - Nested subagent events correlated to their parent via `parent_trace_id` (W3C Trace Context `TRACEPARENT` propagation).

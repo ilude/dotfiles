@@ -1,80 +1,54 @@
 # Router Settings Reference
 
 Location: `pi/settings.json` under the `router.*` key. JSON does not allow
-comments, so this doc is the canonical reference for what each knob does.
+comments, so this document is the canonical reference for active router
+settings.
 
-## Ship configuration (current)
+## Ship configuration
 
 ```json
 "router": {
-  "policy": {
-    "N_HOLD": 0,
-    "DOWNGRADE_THRESHOLD": 0.85,
-    "K_CONSEC": 1,
-    "COOLDOWN_TURNS": 2,
-    "UNCERTAIN_THRESHOLD": 0.55,
-    "UNCERTAIN_FALLBACK_ENABLED": false
+  "classifier": {
+    "mode": "confgate"
   },
   "effort": {
-    "maxLevel": "high"
+    "defaultLevel": "medium"
   }
 }
 ```
 
-## Per-key reference
+## Active settings
 
-### `router.policy.N_HOLD` (int, default 0)
+### `router.classifier.mode`
 
-Number of turns a just-upgraded tier is held before a downgrade is eligible.
-Ship value: `0` (hysteresis hold disabled). Shadow-eval on `eval_v3` showed
-that any `N_HOLD >= 1` carried Opus/Sonnet over additional turns, which cost
-more than it saved. Keeping the hold at zero lets the classifier drive every
-turn.
+Selects the classifier implementation. Allowed values are `t2`, `lgbm`,
+`ensemble`, and `confgate`. The default is `t2` when the setting is absent.
 
-### `router.policy.K_CONSEC` (int, default 1)
+### `router.effort.defaultLevel`
 
-Consecutive turns where the classifier recommends a strictly lower tier before
-a single downgrade step fires. Tightly coupled to `N_HOLD`; with `N_HOLD=0`
-there is no reason to require more than one consecutive signal.
+Sets startup/reset thinking effort and the routine-effort bias for premium
+Codex models. Allowed values are `off`, `minimal`, `low`, `medium`, `high`, and
+`xhigh`. The default is `medium`.
 
-### `router.policy.COOLDOWN_TURNS` (int, default 2)
+## Runtime routing contract
 
-Runtime escalation cooldown. When `_escalateFor(n)` is invoked (e.g. after a
-tool-call failure), the router holds the escalated tier for exactly `n` turns
-and then decays back to classifier recommendation. Not session-sticky.
+The authoritative provider route applies:
 
-### `router.policy.UNCERTAIN_THRESHOLD` (float, default 0.55)
+- explicit request and session overrides;
+- a one-turn hold for dependent continuation prompts;
+- explicit cheap, fast, brief, or similar downgrade intent as a hold bypass;
+- a `core` floor when the context window is high; and
+- provider-family trust boundaries.
 
-Dormant under ship config because `UNCERTAIN_FALLBACK_ENABLED=false`. Retained
-for future use if a calibrated classifier is introduced. Below this confidence
-value, the uncertainty fallback path (when enabled) applies
-`max(classifier_primary, current_applied)`.
-
-### `router.policy.UNCERTAIN_FALLBACK_ENABLED` (bool, default false)
-
-Hard-disabled. Shadow-eval showed the fallback blocked legitimate downgrades
-because T2 softmax probabilities are low-entropy across 12 joint classes.
-Leaving it off lets the classifier recommendation drive routing.
-
-### `router.policy.DOWNGRADE_THRESHOLD` (float, default 0.85)
-
-Retained for hysteresis-based downgrade gating. Dormant when `N_HOLD=0` because
-the hysteresis machine always allows downgrades immediately. Kept in settings
-so that raising `N_HOLD` at a later date re-activates the threshold without a
-schema change.
-
-### `router.effort.maxLevel` (string, default `"high"`)
-
-Hard cap on the applied thinking level regardless of classifier output. Allowed
-values: `off | minimal | low | medium | high`. Ship value `high` blocks `xhigh`.
-When the classifier recommendation exceeds the cap, the router clamps and
-reports `effort-cap` as the rule fired in `/router-explain`.
+Legacy `router.policy.*` settings and `router.effort.maxLevel` are retired. They
+were parsed and displayed but were not applied by the authoritative provider
+route. Remove them from local settings if present.
 
 ## Runtime operations
 
-- `/router-status` -- show current tier, effort, and policy snapshot.
-- `/router-explain` -- decision trail for the last turn.
-- `/router-reset` -- clear session state.
-- `/router-off` / `/router-on` -- disable / enable routing entirely.
+- `/router-status` -- show the current route, model, classifier, overrides, and fallback state.
+- `/router-explain` -- show the decision trail for the last turn.
+- `/router-reset` -- clear session routing state.
+- `/router-off` / `/router-on` -- disable or enable routing.
 
-Audit log (when classifier logging is enabled): `pi/prompt-routing/logs/routing_log.jsonl`.
+Audit log: `pi/prompt-routing/logs/routing_log.jsonl`.
