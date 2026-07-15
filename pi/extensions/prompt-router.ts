@@ -76,7 +76,6 @@ import {
 	CLASSIFY_SCRIPT,
 	loadRouterPolicy,
 	POLICY_DEFAULTS,
-	type RouterPolicy,
 	readPromptRouterSettings,
 } from "../lib/prompt-router/config.js";
 import type {
@@ -95,8 +94,8 @@ import {
 	ROUTER_SIZE_ORDER,
 	type RouterSize,
 } from "../lib/prompt-router/route-vocabulary.js";
-import { makeExcerpt, sha256Hex } from "../lib/transcript.js";
-import { emit, getSessionId, getWriter } from "./transcript-runtime.js";
+import { sha256Hex } from "../lib/transcript.js";
+import { emit, getSessionId } from "./transcript-runtime.js";
 
 export type { RouteDecision, RouteResolutionReason };
 export { safeParseClassifierOutput };
@@ -777,9 +776,6 @@ async function appendTranscriptDebug(
 // Config
 // ---------------------------------------------------------------------------
 
-const TIER_ORDER: Record<string, number> = { low: 0, mid: 1, high: 2 };
-const TIER_KEYS: Tier[] = ["low", "mid", "high"];
-
 // Static tier->effort mapping -- fallback when classifier returns null.
 const TIER_EFFORT: Record<Tier, string> = {
 	low: "low",
@@ -867,12 +863,6 @@ interface RouterState {
 	lastRouteDecision: RouteDecision | null;
 }
 
-interface AppliedRoute {
-	tier: Tier;
-	effort: string;
-	ruleFired: RuleFired;
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -950,135 +940,6 @@ export function applyModelEffortBias(
 	return effort;
 }
 
-export function isValidTier(raw: string): raw is Tier {
-	return raw === "low" || raw === "mid" || raw === "high";
-}
-
-/**
- * Applies hysteresis to the raw classifier tier output.
- *
- * Thresholds N_HOLD and K_CONSEC come from the supplied policy (settings.json).
- * The DOWNGRADE_THRESHOLD check is enforced in applyPolicy before this is called.
- */
-export function applyHysteresis(
-	raw: Tier,
-	state: RouterState,
-	policy: RouterPolicy = POLICY_DEFAULTS,
-): Tier {
-	const rawOrder = TIER_ORDER[raw];
-	const curOrder = TIER_ORDER[state.currentTier];
-
-	if (rawOrder > curOrder) {
-		// Upgrade: apply immediately, reset hold counter.
-		state.currentTier = raw;
-		state.turnsAtCurrentTier = 1;
-		state.downgradeCandidateTier = null;
-		state.consecutiveDowngradeTurns = 0;
-		state.lastEffective = raw;
-		return raw;
-	}
-
-	if (rawOrder < curOrder) {
-		if (state.turnsAtCurrentTier < policy.N_HOLD) {
-			// Still within hold window -- keep current.
-			state.turnsAtCurrentTier += 1;
-			state.downgradeCandidateTier = null;
-			state.consecutiveDowngradeTurns = 0;
-			state.lastEffective = state.currentTier;
-			return state.currentTier;
-		}
-
-		// Past hold window: accumulate consecutive downgrade signal.
-		if (state.downgradeCandidateTier === raw) {
-			state.consecutiveDowngradeTurns += 1;
-		} else {
-			state.downgradeCandidateTier = raw;
-			state.consecutiveDowngradeTurns = 1;
-		}
-
-		if (state.consecutiveDowngradeTurns >= policy.K_CONSEC) {
-			// Step down exactly one tier (no free-fall).
-			const nextTier = TIER_KEYS[curOrder - 1];
-			state.currentTier = nextTier;
-			state.turnsAtCurrentTier = 1;
-			state.downgradeCandidateTier = null;
-			state.consecutiveDowngradeTurns = 0;
-			state.lastEffective = nextTier;
-			return nextTier;
-		}
-
-		// Not enough consecutive turns yet -- hold.
-		state.turnsAtCurrentTier += 1;
-		state.lastEffective = state.currentTier;
-		return state.currentTier;
-	}
-
-	// Same tier.
-	state.turnsAtCurrentTier += 1;
-	state.downgradeCandidateTier = null;
-	state.consecutiveDowngradeTurns = 0;
-	state.lastEffective = state.currentTier;
-	return state.currentTier;
-}
-
-/**
- * Applies the full T3 runtime policy: uncertainty fallback, cooldown,
- * hysteresis (settings-driven thresholds), and effort cap.
- */
-export function applyPolicy(
-	rec: ClassifierRecommendation,
-	state: RouterState,
-	policy: RouterPolicy,
-): AppliedRoute {
-	const route = normalizeRouteCandidate(rec.primary.model_tier) ?? "core";
-	const size = ROUTE_TO_RUNTIME_SIZE[route] ?? "medium";
-	const rawTier = SIZE_TO_TIER[size] ?? "mid";
-
-	let effectiveTier: Tier;
-	let ruleFired: RuleFired;
-
-	// Step 1: uncertainty fallback -- only when explicitly enabled.
-	if (
-		policy.UNCERTAIN_FALLBACK_ENABLED &&
-		rec.confidence < policy.UNCERTAIN_THRESHOLD
-	) {
-		const recOrder = TIER_ORDER[rawTier];
-		const curOrder = TIER_ORDER[state.currentTier];
-		effectiveTier = recOrder >= curOrder ? rawTier : state.currentTier;
-		ruleFired = "uncertainty-fallback";
-		state.turnsAtCurrentTier += 1;
-		state.lastEffective = effectiveTier;
-
-		// Step 2: cooldown in force -- hold escalated route for remaining turns.
-	} else if (state.cooldownTurnsRemaining > 0) {
-		state.cooldownTurnsRemaining -= 1;
-		effectiveTier = state.currentTier;
-		ruleFired = "cooldown";
-		state.turnsAtCurrentTier += 1;
-		state.lastEffective = effectiveTier;
-
-		// Step 3: normal hysteresis path.
-	} else {
-		effectiveTier = applyHysteresis(rawTier, state, policy);
-		ruleFired = effectiveTier === rawTier ? "classifier" : "hysteresis-hold";
-	}
-
-	const schemaEffort = rec.primary.effort;
-	let thinkingEffort = SCHEMA_EFFORT_TO_THINKING[schemaEffort] ?? "medium";
-
-	// Apply effort cap.
-	if (EFFORT_ORDER[thinkingEffort] > EFFORT_ORDER[policy.maxEffortLevel]) {
-		thinkingEffort = policy.maxEffortLevel;
-		ruleFired = "effort-cap";
-	}
-
-	return { tier: effectiveTier, effort: thinkingEffort, ruleFired };
-}
-
-function modelSizeForTier(tier: Tier): RuntimeModelSize {
-	return tier === "low" ? "small" : tier === "mid" ? "medium" : "large";
-}
-
 function serializeModelForLog(model: unknown): Record<string, string> | null {
 	if (!model || typeof model !== "object") return null;
 	const m = model as Record<string, unknown>;
@@ -1087,127 +948,6 @@ function serializeModelForLog(model: unknown): Record<string, string> | null {
 		if (typeof m[key] === "string" && m[key]) out[key] = m[key];
 	}
 	return Object.keys(out).length > 0 ? out : null;
-}
-
-export function buildStatusLabel(
-	effective: Tier,
-	_raw: Tier,
-	_currentModel?: string,
-	_currentEffort?: string,
-	_cap?: string,
-	_ruleFired?: RuleFired,
-): string {
-	const size = modelSizeForTier(effective);
-	return `route: ${size}`;
-}
-
-/**
- * Emit a `routing_decision` event into the sidecar transcript.
- *
- * The `prompt_hash` is a stable sha256(prompt_text) so this event can be
- * post-hoc joined to the existing Python-side log at
- * `~/.dotfiles/pi/prompt-routing/logs/routing_log.jsonl`. Both logs are
- * intentionally kept (the Python log captures classifier internals; this
- * sidecar log captures the runtime envelope and policy decision) -- they
- * are not duplicated.
- *
- * Safe no-op when transcript tracing is disabled.
- */
-export async function emitRoutingDecision(
-	promptText: string,
-	rec: ClassifierRecommendation | null,
-	applied: { tier: Tier; effort: string; ruleFired: RuleFired } | null,
-	policy: RouterPolicy,
-	runtime: {
-		selectedModelSize?: RuntimeModelSize | null;
-		actualModel?: unknown;
-		modelSwitchApplied?: boolean | null;
-		userSelectedRoute?: {
-			route: RouterSize | null;
-			effort: string | null;
-		} | null;
-		overrideType?: string | null;
-	} = {},
-): Promise<void> {
-	const writerAvailable = Boolean(getWriter());
-	await appendTranscriptDebug("emitRoutingDecision_called", {
-		writerAvailable,
-		applied_route: applied ? TIER_TO_ROUTE[applied.tier] : null,
-		legacy_applied_tier: applied ? applied.tier : null,
-		selected_model_size:
-			runtime.selectedModelSize ??
-			(applied ? modelSizeForTier(applied.tier) : null),
-	});
-	if (!writerAvailable) return;
-	try {
-		await emit(
-			{ event_type: "prompt_router_emit_attempt" },
-			{
-				source: "prompt-router",
-				has_recommendation: rec !== null,
-				applied_route: applied ? TIER_TO_ROUTE[applied.tier] : null,
-				legacy_applied_tier: applied ? applied.tier : null,
-				selected_model_size:
-					runtime.selectedModelSize ??
-					(applied ? modelSizeForTier(applied.tier) : null),
-			},
-		);
-		const capsule = buildRoutingContextCapsule({ prompt: promptText }, {});
-		const payload: Record<string, unknown> = {
-			...buildRouterTelemetryPayload({
-				promptHash: sha256Hex(promptText),
-				classifierMode: policy.classifierMode,
-				rawRoute: normalizeRouteCandidate(rec?.primary.model_tier) ?? null,
-				appliedRoute: applied ? TIER_TO_ROUTE[applied.tier] : null,
-				rec,
-				previousRoute: null,
-				ruleFired: applied?.ruleFired ?? "null-fallback",
-				contextCapsule: toTelemetryContextCapsule(capsule),
-				providerFamily: null,
-				modelLabel: null,
-				profile: null,
-				latencyMs: null,
-				fallbackReason: null,
-				selectedModelSize:
-					runtime.selectedModelSize ??
-					(applied ? modelSizeForTier(applied.tier) : null),
-				actualModel: runtime.actualModel,
-				modelSwitchApplied: runtime.modelSwitchApplied ?? null,
-				userSelectedRoute: runtime.userSelectedRoute ?? null,
-				finalAppliedEffort: applied?.effort ?? null,
-				overrideType: runtime.overrideType ?? "none",
-			}),
-			legacy_applied_tier: applied ? applied.tier : null,
-			confidence: rec?.confidence ?? null,
-			fallback_metadata: {
-				cap: applied?.ruleFired === "effort-cap" ? policy.maxEffortLevel : null,
-				hysteresis: applied?.ruleFired === "hysteresis-hold" ? "active" : null,
-				cooldown: applied?.ruleFired === "cooldown" ? "active" : null,
-				uncertainty:
-					applied?.ruleFired === "uncertainty-fallback" ? "active" : null,
-			},
-		};
-		if (process.env.PI_ROUTER_EXCERPTS_OPT_IN === "1") {
-			payload.prompt_excerpt = makeExcerpt(promptText, 120).replace(
-				/[A-Za-z0-9]/g,
-				"#",
-			);
-		}
-		await emit({ event_type: "routing_decision" }, payload);
-		await emit(
-			{ event_type: "prompt_router_emit_success" },
-			{
-				source: "prompt-router",
-				applied_route: payload.applied_route,
-				selected_model_size: payload.selected_model_size,
-			},
-		);
-	} catch (err: unknown) {
-		await appendTranscriptDebug("emitRoutingDecision_failed", {
-			error: err instanceof Error ? err.message : String(err),
-		});
-		// Tracing must never break the routing path.
-	}
 }
 
 // ---------------------------------------------------------------------------

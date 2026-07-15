@@ -45,6 +45,7 @@ interface ModelRow {
 
 interface ReviewRecord {
 	interactionId?: unknown;
+	reviewedAt?: unknown;
 	status?: unknown;
 	review?: { classification?: unknown };
 }
@@ -121,6 +122,8 @@ function renderModelTable(
 
 async function reviewStates(
 	interactionIds: Set<string>,
+	start: number,
+	end: number,
 ): Promise<Map<ReviewState, number>> {
 	const states = new Map<ReviewState, number>([
 		["productive", 0],
@@ -142,6 +145,7 @@ async function reviewStates(
 		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 	}
 	const reviews = new Map<string, ReviewState>();
+	const reviewTimestamps = new Map<string, unknown>();
 	for (const line of text.split(/\r?\n/)) {
 		if (!line.trim()) continue;
 		try {
@@ -160,6 +164,7 @@ async function reviewStates(
 					state = classification;
 			}
 			reviews.set(record.interactionId, state);
+			reviewTimestamps.set(record.interactionId, record.reviewedAt);
 		} catch {}
 	}
 	for (const interactionId of interactionIds) {
@@ -167,7 +172,15 @@ async function reviewStates(
 		states.set(state, (states.get(state) ?? 0) + 1);
 	}
 	for (const interactionId of reviews.keys()) {
-		if (!interactionIds.has(interactionId))
+		const reviewedAt = reviewTimestamps.get(interactionId);
+		const timestamp =
+			typeof reviewedAt === "string" ? Date.parse(reviewedAt) : Number.NaN;
+		if (
+			!interactionIds.has(interactionId) &&
+			Number.isFinite(timestamp) &&
+			timestamp >= start &&
+			timestamp <= end
+		)
 			states.set("unmatched", (states.get("unmatched") ?? 0) + 1);
 	}
 	return states;
@@ -257,6 +270,8 @@ export async function renderOrchestrationStatsReport(
 	}
 	const quality = await reviewStates(
 		new Set(interactions.map((entry) => entry.interactionId)),
+		now.getTime() - days * 24 * 60 * 60 * 1000,
+		now.getTime(),
 	);
 	const config = getMetricsConfig();
 	const lines = [

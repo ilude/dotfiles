@@ -8,23 +8,22 @@
  * registration helper from helpers/mock-pi.ts.
  *
  * Coverage:
- *   1. Provider/router/message hooks: a single prompt yields correlated
- *      llm_request, routing_decision, assistant_message (EXACTLY ONE per
- *      turn), tool_call metadata, usage (OTel attrs), stop_reason. Response
- *      headers in llm_response have set-cookie, authorization redacted.
- *      routing_decision.prompt_hash matches sha256(prompt_text).
+ *   1. Provider/message hooks: a single prompt yields correlated llm_request
+ *      and assistant_message events (EXACTLY ONE per turn), tool_call metadata,
+ *      usage (OTel attrs), and stop_reason. Response headers in llm_response
+ *      have set-cookie and authorization redacted.
  *   2. Tool lifecycle: tool_call, tool_execution_start/end, tool_result with
  *      parameters, content, error state, truncation. Out-of-order parallel
  *      completions correlate by tool_call_id.
- *   3. End-to-end mock: a turn with one tool call and one routing decision;
- *      assert all expected event families with redacted secrets.
+ *   3. End-to-end mock: a turn with one tool call; assert all expected event
+ *      families with redacted secrets.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { REDACTED, sha256Hex } from "../lib/transcript.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import providerExtension from "../extensions/transcript-provider.js";
 import {
 	formatTraceparent,
 	getCurrentSpanId,
@@ -34,9 +33,8 @@ import {
 	parseTraceparent,
 	resetRuntime,
 } from "../extensions/transcript-runtime.js";
-import providerExtension from "../extensions/transcript-provider.js";
 import toolsExtension from "../extensions/transcript-tools.js";
-import { emitRoutingDecision } from "../extensions/prompt-router.js";
+import { REDACTED } from "../lib/transcript.js";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.js";
 
 // ---------------------------------------------------------------------------
@@ -149,7 +147,12 @@ describe("T3 -- provider, router, message hooks (criterion 1)", () => {
 	afterEach(() => env.cleanup());
 
 	it("emits llm_request with cloned + redacted payload (request headers scrubbed)", async () => {
-		await fire(env.pi, "turn_start", { type: "turn_start", turnIndex: 1, timestamp: Date.now() }, env.ctx);
+		await fire(
+			env.pi,
+			"turn_start",
+			{ type: "turn_start", turnIndex: 1, timestamp: Date.now() },
+			env.ctx,
+		);
 		await fire(
 			env.pi,
 			"before_provider_request",
@@ -157,7 +160,9 @@ describe("T3 -- provider, router, message hooks (criterion 1)", () => {
 				type: "before_provider_request",
 				payload: {
 					model: "claude-sonnet-4-5",
-					messages: [{ role: "user", content: "Refactor the auth module to use JWT." }],
+					messages: [
+						{ role: "user", content: "Refactor the auth module to use JWT." },
+					],
 					headers: {
 						authorization: "Bearer sk-ant-real-secret-1234567890abcdefghij",
 						"x-api-key": "real-key",
@@ -178,7 +183,12 @@ describe("T3 -- provider, router, message hooks (criterion 1)", () => {
 	});
 
 	it("emits llm_response with set-cookie and authorization redacted in response headers", async () => {
-		await fire(env.pi, "turn_start", { type: "turn_start", turnIndex: 1, timestamp: Date.now() }, env.ctx);
+		await fire(
+			env.pi,
+			"turn_start",
+			{ type: "turn_start", turnIndex: 1, timestamp: Date.now() },
+			env.ctx,
+		);
 		await fire(
 			env.pi,
 			"after_provider_response",
@@ -211,14 +221,28 @@ describe("T3 -- provider, router, message hooks (criterion 1)", () => {
 
 	it("emits exactly ONE assistant_message per turn (no per-token spam)", async () => {
 		// Turn 1
-		await fire(env.pi, "turn_start", { type: "turn_start", turnIndex: 1, timestamp: Date.now() }, env.ctx);
-		await fire(env.pi, "message_start", { type: "message_start", message: { id: "msg-1", role: "assistant" } }, env.ctx);
+		await fire(
+			env.pi,
+			"turn_start",
+			{ type: "turn_start", turnIndex: 1, timestamp: Date.now() },
+			env.ctx,
+		);
+		await fire(
+			env.pi,
+			"message_start",
+			{ type: "message_start", message: { id: "msg-1", role: "assistant" } },
+			env.ctx,
+		);
 		// 50 streaming updates -- the extension must not emit one record each.
 		for (let i = 0; i < 50; i++) {
 			await fire(
 				env.pi,
 				"message_update",
-				{ type: "message_update", message: { id: "msg-1" }, assistantMessageEvent: { delta: `tok${i}` } },
+				{
+					type: "message_update",
+					message: { id: "msg-1" },
+					assistantMessageEvent: { delta: `tok${i}` },
+				},
 				env.ctx,
 			);
 		}
@@ -233,7 +257,12 @@ describe("T3 -- provider, router, message hooks (criterion 1)", () => {
 					content: [
 						{ type: "thinking", thinking: "I should read the auth module." },
 						{ type: "text", text: "Reading now." },
-						{ type: "toolCall", id: "tc-001", name: "read", arguments: { file_path: "src/auth.ts" } },
+						{
+							type: "toolCall",
+							id: "tc-001",
+							name: "read",
+							arguments: { file_path: "src/auth.ts" },
+						},
 					],
 					usage: { input: 1024, output: 312, cacheRead: 0, cacheWrite: 0 },
 					stopReason: "tool_use",
@@ -260,9 +289,13 @@ describe("T3 -- provider, router, message hooks (criterion 1)", () => {
 		);
 
 		const records = readJsonl(tracePathFor(env.tmpHome));
-		const assistant = records.filter((r) => r.event_type === "assistant_message");
+		const assistant = records.filter(
+			(r) => r.event_type === "assistant_message",
+		);
 		expect(assistant.length).toBe(1);
-		const updates = records.filter((r) => r.event_type === "assistant_streaming");
+		const updates = records.filter(
+			(r) => r.event_type === "assistant_streaming",
+		);
 		expect(updates.length).toBe(0);
 
 		// usage maps to OTel attribute names.
@@ -281,48 +314,28 @@ describe("T3 -- provider, router, message hooks (criterion 1)", () => {
 		expect(toolCalls[0].id).toBe("tc-001");
 	});
 
-	it("routing_decision.prompt_hash matches sha256 of the prompt (joins routing_log.jsonl)", async () => {
-		await fire(env.pi, "turn_start", { type: "turn_start", turnIndex: 1, timestamp: Date.now() }, env.ctx);
-
-		const promptText = "Refactor the auth module to use JWT.";
-		const rec = {
-			schema_version: "3.0.0",
-			primary: { model_tier: "Sonnet", effort: "medium" },
-			candidates: [{ model_tier: "Sonnet", effort: "medium", confidence: 0.81 }],
-			confidence: 0.81,
-		};
-		const policy = {
-			N_HOLD: 0,
-			DOWNGRADE_THRESHOLD: 0.85,
-			K_CONSEC: 2,
-			COOLDOWN_TURNS: 2,
-			UNCERTAIN_THRESHOLD: 0.55,
-			UNCERTAIN_FALLBACK_ENABLED: false,
-			maxEffortLevel: "high",
-			defaultEffortLevel: "medium",
-		};
-		await emitRoutingDecision(promptText, rec as any, { tier: "mid", effort: "medium", ruleFired: "classifier" }, policy);
-
-		const records = readJsonl(tracePathFor(env.tmpHome));
-		const routing = records.filter((r) => r.event_type === "routing_decision");
-		expect(routing.length).toBe(1);
-		const payload = routing[0].payload as Record<string, unknown>;
-		expect(payload.prompt_hash).toBe(sha256Hex(promptText));
-		expect(payload.applied_route).toBe("core");
-		expect(payload.confidence).toBe(0.81);
-		expect(payload.rule_fired).toBe("classifier");
-		expect(payload.candidates).toBeDefined();
-	});
-
 	it("emits model_select with previous + current model identity", async () => {
-		await fire(env.pi, "turn_start", { type: "turn_start", turnIndex: 1, timestamp: Date.now() }, env.ctx);
+		await fire(
+			env.pi,
+			"turn_start",
+			{ type: "turn_start", turnIndex: 1, timestamp: Date.now() },
+			env.ctx,
+		);
 		await fire(
 			env.pi,
 			"model_select",
 			{
 				type: "model_select",
-				model: { provider: "anthropic", id: "claude-sonnet-4-5", name: "Sonnet" },
-				previousModel: { provider: "anthropic", id: "claude-haiku-4", name: "Haiku" },
+				model: {
+					provider: "anthropic",
+					id: "claude-sonnet-4-5",
+					name: "Sonnet",
+				},
+				previousModel: {
+					provider: "anthropic",
+					id: "claude-haiku-4",
+					name: "Haiku",
+				},
 				source: "cycle",
 			},
 			env.ctx,
@@ -338,14 +351,24 @@ describe("T3 -- provider, router, message hooks (criterion 1)", () => {
 	});
 
 	it("turn_start advances the runtime turn counter", async () => {
-		await fire(env.pi, "turn_start", { type: "turn_start", turnIndex: 1, timestamp: Date.now() }, env.ctx);
+		await fire(
+			env.pi,
+			"turn_start",
+			{ type: "turn_start", turnIndex: 1, timestamp: Date.now() },
+			env.ctx,
+		);
 		await fire(
 			env.pi,
 			"before_provider_request",
 			{ type: "before_provider_request", payload: { messages: [], turn: 1 } },
 			env.ctx,
 		);
-		await fire(env.pi, "turn_start", { type: "turn_start", turnIndex: 2, timestamp: Date.now() }, env.ctx);
+		await fire(
+			env.pi,
+			"turn_start",
+			{ type: "turn_start", turnIndex: 2, timestamp: Date.now() },
+			env.ctx,
+		);
 		await fire(
 			env.pi,
 			"before_provider_request",
@@ -372,25 +395,46 @@ describe("T3 -- tool lifecycle hooks (criterion 2)", () => {
 	afterEach(() => env.cleanup());
 
 	it("emits tool_call, tool_execution_start, tool_execution_end, tool_result for a single tool", async () => {
-		await fire(env.pi, "turn_start", { type: "turn_start", turnIndex: 1, timestamp: Date.now() }, env.ctx);
+		await fire(
+			env.pi,
+			"turn_start",
+			{ type: "turn_start", turnIndex: 1, timestamp: Date.now() },
+			env.ctx,
+		);
 		const tcId = "tc-bash-001";
 
 		await fire(
 			env.pi,
 			"tool_call",
-			{ type: "tool_call", toolCallId: tcId, toolName: "bash", input: { command: "ls -la" } },
+			{
+				type: "tool_call",
+				toolCallId: tcId,
+				toolName: "bash",
+				input: { command: "ls -la" },
+			},
 			env.ctx,
 		);
 		await fire(
 			env.pi,
 			"tool_execution_start",
-			{ type: "tool_execution_start", toolCallId: tcId, toolName: "bash", args: { command: "ls -la" } },
+			{
+				type: "tool_execution_start",
+				toolCallId: tcId,
+				toolName: "bash",
+				args: { command: "ls -la" },
+			},
 			env.ctx,
 		);
 		await fire(
 			env.pi,
 			"tool_execution_end",
-			{ type: "tool_execution_end", toolCallId: tcId, toolName: "bash", result: {}, isError: false },
+			{
+				type: "tool_execution_end",
+				toolCallId: tcId,
+				toolName: "bash",
+				result: {},
+				isError: false,
+			},
 			env.ctx,
 		);
 		await fire(
@@ -423,17 +467,27 @@ describe("T3 -- tool lifecycle hooks (criterion 2)", () => {
 		// tool_execution_end carries duration_ms
 		const endRec = records.find((r) => r.event_type === "tool_execution_end");
 		expect(endRec).toBeDefined();
-		expect(typeof (endRec!.payload as any).duration_ms === "number" || (endRec!.payload as any).duration_ms === null).toBe(true);
+		expect(
+			typeof (endRec!.payload as any).duration_ms === "number" ||
+				(endRec!.payload as any).duration_ms === null,
+		).toBe(true);
 
 		// tool_result carries content + details
 		const resultRec = records.find((r) => r.event_type === "tool_result");
 		expect(resultRec).toBeDefined();
 		expect((resultRec!.payload as any).is_error).toBe(false);
-		expect(((resultRec!.payload as any).content as Array<any>)[0].text).toBe("total 0\nfile.txt");
+		expect(((resultRec!.payload as any).content as Array<any>)[0].text).toBe(
+			"total 0\nfile.txt",
+		);
 	});
 
 	it("redacts secrets in tool_result content[*].text via free-text scan", async () => {
-		await fire(env.pi, "turn_start", { type: "turn_start", turnIndex: 1, timestamp: Date.now() }, env.ctx);
+		await fire(
+			env.pi,
+			"turn_start",
+			{ type: "turn_start", turnIndex: 1, timestamp: Date.now() },
+			env.ctx,
+		);
 		await fire(
 			env.pi,
 			"tool_result",
@@ -442,7 +496,9 @@ describe("T3 -- tool lifecycle hooks (criterion 2)", () => {
 				toolCallId: "tc-bash-secret",
 				toolName: "bash",
 				input: { command: "cat ~/.aws/credentials" },
-				content: [{ type: "text", text: "aws_access_key_id = AKIAABCDEFGHIJKLMNOP" }],
+				content: [
+					{ type: "text", text: "aws_access_key_id = AKIAABCDEFGHIJKLMNOP" },
+				],
 				details: { stdout: "AKIAABCDEFGHIJKLMNOP" },
 				isError: false,
 			},
@@ -454,7 +510,12 @@ describe("T3 -- tool lifecycle hooks (criterion 2)", () => {
 	});
 
 	it("preserves truncation metadata in tool_result", async () => {
-		await fire(env.pi, "turn_start", { type: "turn_start", turnIndex: 1, timestamp: Date.now() }, env.ctx);
+		await fire(
+			env.pi,
+			"turn_start",
+			{ type: "turn_start", turnIndex: 1, timestamp: Date.now() },
+			env.ctx,
+		);
 		await fire(
 			env.pi,
 			"tool_result",
@@ -464,7 +525,12 @@ describe("T3 -- tool lifecycle hooks (criterion 2)", () => {
 				toolName: "bash",
 				input: { command: "find /" },
 				content: [{ type: "text", text: "truncated..." }],
-				details: { truncated: true, originalLength: 50000, returnedLength: 1000, fullOutputPath: "/tmp/full.txt" },
+				details: {
+					truncated: true,
+					originalLength: 50000,
+					returnedLength: 1000,
+					fullOutputPath: "/tmp/full.txt",
+				},
 				isError: false,
 			},
 			env.ctx,
@@ -480,7 +546,12 @@ describe("T3 -- tool lifecycle hooks (criterion 2)", () => {
 	});
 
 	it("captures tool_result error state for failed tools", async () => {
-		await fire(env.pi, "turn_start", { type: "turn_start", turnIndex: 1, timestamp: Date.now() }, env.ctx);
+		await fire(
+			env.pi,
+			"turn_start",
+			{ type: "turn_start", turnIndex: 1, timestamp: Date.now() },
+			env.ctx,
+		);
 		await fire(
 			env.pi,
 			"tool_result",
@@ -503,31 +574,56 @@ describe("T3 -- tool lifecycle hooks (criterion 2)", () => {
 	});
 
 	it("correlates out-of-order parallel completions by tool_call_id", async () => {
-		await fire(env.pi, "turn_start", { type: "turn_start", turnIndex: 1, timestamp: Date.now() }, env.ctx);
+		await fire(
+			env.pi,
+			"turn_start",
+			{ type: "turn_start", turnIndex: 1, timestamp: Date.now() },
+			env.ctx,
+		);
 
 		// Launch two tools in parallel.
 		await fire(
 			env.pi,
 			"tool_call",
-			{ type: "tool_call", toolCallId: "tc-fast", toolName: "read", input: { file_path: "fast.txt" } },
+			{
+				type: "tool_call",
+				toolCallId: "tc-fast",
+				toolName: "read",
+				input: { file_path: "fast.txt" },
+			},
 			env.ctx,
 		);
 		await fire(
 			env.pi,
 			"tool_call",
-			{ type: "tool_call", toolCallId: "tc-slow", toolName: "read", input: { file_path: "slow.txt" } },
+			{
+				type: "tool_call",
+				toolCallId: "tc-slow",
+				toolName: "read",
+				input: { file_path: "slow.txt" },
+			},
 			env.ctx,
 		);
 		await fire(
 			env.pi,
 			"tool_execution_start",
-			{ type: "tool_execution_start", toolCallId: "tc-fast", toolName: "read", args: {} },
+			{
+				type: "tool_execution_start",
+				toolCallId: "tc-fast",
+				toolName: "read",
+				args: {},
+			},
 			env.ctx,
 		);
 		await fire(
 			env.pi,
 			"tool_execution_start",
-			{ type: "tool_execution_start", toolCallId: "tc-slow", toolName: "read", args: {} },
+			{
+				type: "tool_execution_start",
+				toolCallId: "tc-slow",
+				toolName: "read",
+				args: {},
+			},
 			env.ctx,
 		);
 
@@ -537,7 +633,13 @@ describe("T3 -- tool lifecycle hooks (criterion 2)", () => {
 		await fire(
 			env.pi,
 			"tool_execution_end",
-			{ type: "tool_execution_end", toolCallId: "tc-fast", toolName: "read", result: {}, isError: false },
+			{
+				type: "tool_execution_end",
+				toolCallId: "tc-fast",
+				toolName: "read",
+				result: {},
+				isError: false,
+			},
 			env.ctx,
 		);
 		await fire(
@@ -557,7 +659,13 @@ describe("T3 -- tool lifecycle hooks (criterion 2)", () => {
 		await fire(
 			env.pi,
 			"tool_execution_end",
-			{ type: "tool_execution_end", toolCallId: "tc-slow", toolName: "read", result: {}, isError: false },
+			{
+				type: "tool_execution_end",
+				toolCallId: "tc-slow",
+				toolName: "read",
+				result: {},
+				isError: false,
+			},
 			env.ctx,
 		);
 		await fire(
@@ -582,7 +690,9 @@ describe("T3 -- tool lifecycle hooks (criterion 2)", () => {
 		// Each result is correlatable to its launching call by tool_call_id.
 		const calls = records.filter((r) => r.event_type === "tool_call");
 		for (const call of calls) {
-			const matching = results.find((r) => r.tool_call_id === call.tool_call_id);
+			const matching = results.find(
+				(r) => r.tool_call_id === call.tool_call_id,
+			);
 			expect(matching).toBeDefined();
 		}
 
@@ -605,30 +715,14 @@ describe("T3 -- end-to-end turn (criterion 3)", () => {
 	});
 	afterEach(() => env.cleanup());
 
-	it("a single turn with routing + tool call produces all expected event families with redacted secrets", async () => {
+	it("a single turn with a tool call produces all expected event families with redacted secrets", async () => {
 		const promptText = "Refactor the auth module to use JWT.";
-		const policy = {
-			N_HOLD: 0,
-			DOWNGRADE_THRESHOLD: 0.85,
-			K_CONSEC: 2,
-			COOLDOWN_TURNS: 2,
-			UNCERTAIN_THRESHOLD: 0.55,
-			UNCERTAIN_FALLBACK_ENABLED: false,
-			maxEffortLevel: "high",
-			defaultEffortLevel: "medium",
-		};
 
-		await fire(env.pi, "turn_start", { type: "turn_start", turnIndex: 1, timestamp: Date.now() }, env.ctx);
-		await emitRoutingDecision(
-			promptText,
-			{
-				schema_version: "3.0.0",
-				primary: { model_tier: "Sonnet", effort: "medium" },
-				candidates: [{ model_tier: "Sonnet", effort: "medium", confidence: 0.81 }],
-				confidence: 0.81,
-			} as any,
-			{ tier: "mid", effort: "medium", ruleFired: "classifier" },
-			policy,
+		await fire(
+			env.pi,
+			"turn_start",
+			{ type: "turn_start", turnIndex: 1, timestamp: Date.now() },
+			env.ctx,
 		);
 		await fire(
 			env.pi,
@@ -658,7 +752,15 @@ describe("T3 -- end-to-end turn (criterion 3)", () => {
 			},
 			env.ctx,
 		);
-		await fire(env.pi, "message_start", { type: "message_start", message: { id: "msg-end-001", role: "assistant" } }, env.ctx);
+		await fire(
+			env.pi,
+			"message_start",
+			{
+				type: "message_start",
+				message: { id: "msg-end-001", role: "assistant" },
+			},
+			env.ctx,
+		);
 		await fire(
 			env.pi,
 			"message_end",
@@ -669,7 +771,12 @@ describe("T3 -- end-to-end turn (criterion 3)", () => {
 					role: "assistant",
 					content: [
 						{ type: "text", text: "Reading auth module." },
-						{ type: "toolCall", id: "tc-end-001", name: "read", arguments: { file_path: "src/auth.ts" } },
+						{
+							type: "toolCall",
+							id: "tc-end-001",
+							name: "read",
+							arguments: { file_path: "src/auth.ts" },
+						},
 					],
 					usage: { input: 100, output: 30 },
 					stopReason: "tool_use",
@@ -681,19 +788,35 @@ describe("T3 -- end-to-end turn (criterion 3)", () => {
 		await fire(
 			env.pi,
 			"tool_call",
-			{ type: "tool_call", toolCallId: "tc-end-001", toolName: "read", input: { file_path: "src/auth.ts" } },
+			{
+				type: "tool_call",
+				toolCallId: "tc-end-001",
+				toolName: "read",
+				input: { file_path: "src/auth.ts" },
+			},
 			env.ctx,
 		);
 		await fire(
 			env.pi,
 			"tool_execution_start",
-			{ type: "tool_execution_start", toolCallId: "tc-end-001", toolName: "read", args: {} },
+			{
+				type: "tool_execution_start",
+				toolCallId: "tc-end-001",
+				toolName: "read",
+				args: {},
+			},
 			env.ctx,
 		);
 		await fire(
 			env.pi,
 			"tool_execution_end",
-			{ type: "tool_execution_end", toolCallId: "tc-end-001", toolName: "read", result: {}, isError: false },
+			{
+				type: "tool_execution_end",
+				toolCallId: "tc-end-001",
+				toolName: "read",
+				result: {},
+				isError: false,
+			},
 			env.ctx,
 		);
 		await fire(
@@ -704,7 +827,9 @@ describe("T3 -- end-to-end turn (criterion 3)", () => {
 				toolCallId: "tc-end-001",
 				toolName: "read",
 				input: { file_path: "src/auth.ts" },
-				content: [{ type: "text", text: "// auth source\nAKIAABCDEFGHIJKLMNOP" }],
+				content: [
+					{ type: "text", text: "// auth source\nAKIAABCDEFGHIJKLMNOP" },
+				],
 				details: undefined,
 				isError: false,
 			},
@@ -713,7 +838,6 @@ describe("T3 -- end-to-end turn (criterion 3)", () => {
 
 		const records = readJsonl(tracePathFor(env.tmpHome));
 		const types = new Set(records.map((r) => r.event_type));
-		expect(types.has("routing_decision")).toBe(true);
 		expect(types.has("llm_request")).toBe(true);
 		expect(types.has("llm_response")).toBe(true);
 		expect(types.has("message_start")).toBe(true);
@@ -724,7 +848,9 @@ describe("T3 -- end-to-end turn (criterion 3)", () => {
 		expect(types.has("tool_result")).toBe(true);
 
 		// Exactly one assistant_message for the single turn.
-		expect(records.filter((r) => r.event_type === "assistant_message").length).toBe(1);
+		expect(
+			records.filter((r) => r.event_type === "assistant_message").length,
+		).toBe(1);
 
 		// All sensitive material redacted.
 		const raw = fs.readFileSync(tracePathFor(env.tmpHome), "utf-8");
@@ -766,7 +892,11 @@ describe("T3 -- W3C TRACEPARENT propagation", () => {
 		expect(parseTraceparent("not-a-traceparent")).toBeNull();
 		expect(parseTraceparent("00-toosmall-aabbccddeeff0011-01")).toBeNull();
 		// The W3C version byte must be 00 (current spec); other versions are rejected.
-		expect(parseTraceparent("99-0123456789abcdef0123456789abcdef-aabbccddeeff0011-01")).toBeNull();
+		expect(
+			parseTraceparent(
+				"99-0123456789abcdef0123456789abcdef-aabbccddeeff0011-01",
+			),
+		).toBeNull();
 	});
 
 	it("inherits parent_trace_id from process.env.TRACEPARENT at session_start", () => {

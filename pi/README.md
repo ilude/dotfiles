@@ -319,9 +319,9 @@ Runtime records live under `~/.pi/agent/workflow-friction/` and remain uncommitt
 /improve <capture note>  # queue the latest interaction for background review
 ```
 
-`/improve` is the only public self-improvement workflow. It combines one pending cross-session candidate with the previous 15 days of interaction metadata, prior experiments, and target-skill usage when applicable. It presents the candidate using the full 1-3-1 format and waits for an Apply, Edit, or Skip decision. Applied changes require target paths, validation evidence, and rollback instructions and create an experiment marker for later comparison.
+`/improve` is the only public self-improvement workflow. It ranks pending candidates by safety or correctness impact first, then verified 30-day usage, confidence, and stable age/ID tie-breakers. Structured skill, command, extension, and tool targets use deterministic local statistics; unresolved telemetry remains unknown rather than being treated as zero. It presents the selected candidate with its ranking evidence, the previous 15 days of interaction metadata, and prior experiments using the full 1-3-1 format. Applied changes require target paths, validation evidence, and rollback instructions and create an experiment marker for later comparison.
 
-Interaction capture and background review remain automatic internal stages; the optional note provides a manual capture path through the same command. The retired `/capture`, `/learning-review`, `/workflow-review`, and `/skill-review` commands are not registered. `/review-it` remains separate because it reviews a supplied plan or PRD, while stats commands remain read-only diagnostics.
+Interaction capture and background review remain automatic internal stages; the optional note provides a manual capture path through the same command. The retired `/capture`, `/learning-review`, `/workflow-review`, and `/skill-review` commands are not registered. `/review-it` remains separate because it reviews a supplied plan or PRD, while `/usage`, `/usage-stats`, `/extension-stats`, `/router-stats`, `/skill-stats`, and `/orchestration-stats` remain read-only diagnostics. `/usage-stats` renders its deterministic report without starting a provider turn.
 
 ### `orchestration-stats.ts`
 
@@ -508,7 +508,7 @@ The session-wide never-downgrade rule was retired. Policy lives in
 | `router.policy.UNCERTAIN_FALLBACK_ENABLED` | `false` | Disabled -- fallback blocked legitimate downgrades |
 | `router.policy.DOWNGRADE_THRESHOLD` | `0.85` | Hysteresis downgrade gate (dormant at N_HOLD=0) |
 
-**Footer indicator:** `▸ <small model>` / `▸▸ <medium model>` / `▸▸▸ <large model>` after each routed prompt.
+**Footer indicator:** `> <small model>` / `>> <medium model>` / `>>> <large model>` after each routed prompt.
 
 **Slash commands:**
 ```text
@@ -561,17 +561,17 @@ transparently into every Pi session.
 
 ```
 You type a prompt
-        ↓
+        v
 prompt-router.ts intercepts (input event)
-        ↓
+        v
 classify.py calls model.pkl (~200ms)
-        ↓
+        v
 route() returns low | mid | high
-        ↓
+        v
 resolve current provider/model ladder
-        ↓
+        v
 pi.setModel() switches to the resolved small / medium / large rung
-        ↓
+        v
 Agent runs on the right model
 ```
 

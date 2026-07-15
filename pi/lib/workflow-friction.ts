@@ -108,9 +108,24 @@ export type LearningScope =
 	| "deterministic-control"
 	| "uncertain";
 
+export type ImprovementImpact =
+	| "safety"
+	| "correctness"
+	| "efficiency"
+	| "maintainability";
+
+export type ImprovementTargetKind = "skill" | "command" | "extension" | "tool";
+
+export interface ImprovementTarget {
+	kind: ImprovementTargetKind;
+	name: string;
+	owner?: string;
+}
+
 export interface ReviewResult {
 	classification: ReviewClassification;
 	confidence: number;
+	impact?: ImprovementImpact;
 	summary: string;
 	evidence: string[];
 	reusableInstruction: {
@@ -118,6 +133,7 @@ export interface ReviewResult {
 		reason: string;
 		scope?: LearningScope;
 		targetSkill?: string;
+		target?: ImprovementTarget;
 	};
 	suggestedChange?: string;
 }
@@ -619,10 +635,52 @@ export function parseReviewResult(raw: string): ReviewResult | null {
 	)
 		return null;
 	if (!Array.isArray(value.evidence)) return null;
+	const impacts = new Set<ImprovementImpact>([
+		"safety",
+		"correctness",
+		"efficiency",
+		"maintainability",
+	]);
+	if (
+		value.impact !== undefined &&
+		(typeof value.impact !== "string" ||
+			!impacts.has(value.impact as ImprovementImpact))
+	)
+		return null;
+	const targetKinds = new Set<ImprovementTargetKind>([
+		"skill",
+		"command",
+		"extension",
+		"tool",
+	]);
+	let target: ImprovementTarget | undefined;
+	if (reusable.target !== undefined) {
+		if (
+			!reusable.target ||
+			typeof reusable.target !== "object" ||
+			Array.isArray(reusable.target)
+		)
+			return null;
+		const rawTarget = reusable.target as Record<string, unknown>;
+		if (
+			typeof rawTarget.kind !== "string" ||
+			!targetKinds.has(rawTarget.kind as ImprovementTargetKind) ||
+			typeof rawTarget.name !== "string" ||
+			!rawTarget.name.trim() ||
+			(rawTarget.owner !== undefined && typeof rawTarget.owner !== "string")
+		)
+			return null;
+		target = {
+			kind: rawTarget.kind as ImprovementTargetKind,
+			name: trimText(rawTarget.name, 120),
+			owner: trimText(rawTarget.owner, 120) || undefined,
+		};
+	}
 
 	return {
 		classification: value.classification,
 		confidence: value.confidence,
+		impact: value.impact as ImprovementImpact | undefined,
 		summary: trimText(value.summary, 600),
 		evidence: value.evidence
 			.filter((item): item is string => typeof item === "string")
@@ -633,6 +691,7 @@ export function parseReviewResult(raw: string): ReviewResult | null {
 			reason: trimText(reusable.reason, 500),
 			scope: (reusable.scope as LearningScope | undefined) ?? undefined,
 			targetSkill: trimText(reusable.targetSkill, 120) || undefined,
+			target,
 		},
 		suggestedChange: trimText(value.suggestedChange, 600) || undefined,
 	};
@@ -642,7 +701,7 @@ export function buildReviewPrompt(packet: InteractionPacket): string {
 	return `Review one Pi interaction for workflow friction.
 
 Return JSON only with this exact shape:
-{"classification":"productive|mixed|churn|uncertain","confidence":0.0,"summary":"brief assessment","evidence":["specific bounded evidence"],"reusableInstruction":{"likely":"yes|no|uncertain","reason":"whether a durable lesson is supported","scope":"user|project|path|skill|deterministic-control|uncertain","targetSkill":"optional existing skill"},"suggestedChange":"required concise imperative lesson when likely is yes; otherwise omit"}
+{"classification":"productive|mixed|churn|uncertain","confidence":0.0,"impact":"safety|correctness|efficiency|maintainability","summary":"brief assessment","evidence":["specific bounded evidence"],"reusableInstruction":{"likely":"yes|no|uncertain","reason":"whether a durable lesson is supported","scope":"user|project|path|skill|deterministic-control|uncertain","targetSkill":"optional existing skill","target":{"kind":"skill|command|extension|tool","name":"canonical target name","owner":"optional extension owner"}},"suggestedChange":"required concise imperative lesson when likely is yes; otherwise omit"}
 
 Rules:
 - Judge progress, not raw activity volume.
@@ -652,6 +711,8 @@ Rules:
 - Reject one-off task directions, transient environment state, missing dependencies, unverified technical claims, and isolated tool defects as durable lessons.
 - When tools or helper scripts failed repeatedly, decide whether clearer reusable instructions probably would have prevented it. Prefer deterministic-control when a test, hook, validator, or code fix is the enforceable solution.
 - Scope user preferences globally only when they are genuinely cross-project. Use project or path scope for repository-specific conventions and skill scope for reusable procedures.
+- Classify impact as safety or correctness only when the evidence shows that risk; otherwise use efficiency or maintainability.
+- Set target only when one existing skill, command, extension, or tool is clearly named. Omit it when ambiguous. Keep targetSkill for compatibility when kind is skill.
 - Do not quote credentials, tokens, private values, or long source content.
 - Use at most five short evidence items.
 - Omit suggestedChange unless the evidence supports one small change.

@@ -2,8 +2,11 @@ import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import extensionStats from "../extensions/extension-stats.ts";
+import extensionStats, {
+	collectExtensionUsageSnapshot,
+} from "../extensions/extension-stats.ts";
 import routerStats from "../extensions/router-stats.ts";
 import skillStats from "../extensions/skill-stats.ts";
 import {
@@ -198,7 +201,7 @@ describe("shared session JSONL stats primitives", () => {
 			sessionManager: { getSessionDir: () => path.join(agentDir, "sessions") },
 		});
 		const routerPi = createMockPi();
-		routerStats(routerPi as any);
+		routerStats(routerPi as unknown as ExtensionAPI);
 		await routerPi._commands
 			.find((command) => command.name === "router-stats")
 			?.handler("", ctx);
@@ -207,17 +210,215 @@ describe("shared session JSONL stats primitives", () => {
 			getAllTools: () => never[];
 		};
 		extensionPi.getAllTools = () => [];
-		extensionStats(extensionPi as any);
+		extensionStats(extensionPi as unknown as ExtensionAPI);
 		await extensionPi._commands
 			.find((command) => command.name === "extension-stats")
 			?.handler("", ctx);
 
 		expect(commandOutput(routerPi, "router-stats")).toContain(
-			"1 routed prompts · 36 est. tokens",
+			"1 routed prompts; 36 est. tokens",
 		);
 		expect(commandOutput(extensionPi, "extension-stats")).toContain(
 			"| prompt-router/route | 1 | 36 |",
 		);
+	});
+
+	it("pairs repeated prompt hashes by occurrence without multiplying tokens", async () => {
+		const root = await makeTempDir("router-repeat-");
+		const sessionDir = path.join(root, "sessions");
+		const cwd = path.join(root, "workspace");
+		const now = new Date();
+		const prompt = "repeat this route";
+		const promptHash = createHash("sha256").update(prompt).digest("hex");
+		const sessionName = `${now.toISOString().replace(/:/g, "-").replace(".", "-")}_repeat.jsonl`;
+		await writeLines(path.join(sessionDir, sessionName), [
+			JSON.stringify({
+				type: "message",
+				timestamp: now.toISOString(),
+				message: { role: "user", content: prompt },
+			}),
+			JSON.stringify({
+				type: "message",
+				message: { role: "assistant", content: [], usage: { input: 10 } },
+			}),
+			JSON.stringify({
+				type: "message",
+				timestamp: now.toISOString(),
+				message: { role: "user", content: prompt },
+			}),
+			JSON.stringify({
+				type: "message",
+				message: { role: "assistant", content: [], usage: { input: 20 } },
+			}),
+		]);
+		await writeLines(
+			path.join(cwd, "pi", "prompt-routing", "logs", "routing_log.jsonl"),
+			[10, 20].map((tokens) =>
+				JSON.stringify({
+					ts: now.getTime() / 1000,
+					prompt_hash: promptHash,
+					prompt_excerpt: `${prompt} ${tokens}`,
+					primary: { model_size: "medium", effort: "high" },
+				}),
+			),
+		);
+		const ctx = createMockCtx({
+			cwd,
+			sessionManager: { getSessionDir: () => sessionDir },
+		});
+		const pi = createMockPi();
+		routerStats(pi as unknown as ExtensionAPI);
+		await pi._commands
+			.find((command) => command.name === "router-stats")
+			?.handler("", ctx);
+		expect(commandOutput(pi, "router-stats")).toContain(
+			"2 routed prompts; 30 est. tokens",
+		);
+	});
+
+	it("reconciles keyed and unkeyed trace token evidence by occurrence", async () => {
+		const root = await makeTempDir("extension-trace-");
+		const agentDir = path.join(root, "agent");
+		const sessionDir = path.join(root, "sessions");
+		const cwd = path.join(root, "workspace");
+		process.env.PI_CODING_AGENT_DIR = agentDir;
+		const now = new Date();
+		const prompt = "trace-backed route";
+		const promptHash = createHash("sha256").update(prompt).digest("hex");
+		const secondPrompt = "session fallback route";
+		const secondPromptHash = createHash("sha256")
+			.update(secondPrompt)
+			.digest("hex");
+		const sessionName = `${now.toISOString().replace(/:/g, "-").replace(".", "-")}_trace.jsonl`;
+		await writeLines(path.join(sessionDir, sessionName), [
+			JSON.stringify({
+				type: "message",
+				timestamp: now.toISOString(),
+				message: { role: "user", content: prompt },
+			}),
+			JSON.stringify({
+				type: "message",
+				message: { role: "assistant", content: [], usage: { input: 36 } },
+			}),
+			JSON.stringify({
+				type: "message",
+				timestamp: now.toISOString(),
+				message: { role: "user", content: secondPrompt },
+			}),
+			JSON.stringify({
+				type: "message",
+				message: { role: "assistant", content: [], usage: { input: 12 } },
+			}),
+		]);
+		await writeLines(
+			path.join(cwd, "pi", "prompt-routing", "logs", "routing_log.jsonl"),
+			[
+				JSON.stringify({
+					ts: now.getTime() / 1000,
+					prompt_hash: promptHash,
+					prompt_excerpt: prompt,
+					primary: { model_size: "medium", effort: "high" },
+				}),
+				JSON.stringify({
+					ts: now.getTime() / 1000,
+					prompt_hash: secondPromptHash,
+					prompt_excerpt: secondPrompt,
+					primary: { model_size: "small", effort: "low" },
+				}),
+			],
+		);
+		await writeLines(path.join(agentDir, "traces", "trace.jsonl"), [
+			JSON.stringify({
+				turn_id: "turn-1",
+				event_type: "routing_decision",
+				timestamp: now.toISOString(),
+				payload: { prompt_hash: promptHash },
+			}),
+			JSON.stringify({
+				turn_id: "turn-1",
+				event_type: "assistant_message",
+				payload: { usage: { input: 36 } },
+			}),
+			JSON.stringify({
+				turn_id: "turn-2",
+				event_type: "routing_decision",
+				timestamp: now.toISOString(),
+			}),
+			JSON.stringify({
+				turn_id: "turn-2",
+				event_type: "assistant_message",
+				payload: { usage: { input: 12 } },
+			}),
+		]);
+		const pi = createMockPi() as ReturnType<typeof createMockPi> & {
+			getAllTools: () => never[];
+		};
+		pi.getAllTools = () => [];
+		extensionStats(pi as unknown as ExtensionAPI);
+		await pi._commands
+			.find((command) => command.name === "extension-stats")
+			?.handler(
+				"",
+				createMockCtx({
+					cwd,
+					sessionManager: { getSessionDir: () => sessionDir },
+				}),
+			);
+		const output = commandOutput(pi, "extension-stats");
+		expect(output).toContain("| prompt-router/route | 2 | 48 |");
+		expect(output).toContain("Router token fallback: 1 unkeyed trace turn");
+	});
+
+	it("attributes the current /usage command to codex-status", async () => {
+		const root = await makeTempDir("extension-usage-owner-");
+		const agentDir = path.join(root, "agent");
+		const sessionDir = path.join(root, "sessions");
+		process.env.PI_CODING_AGENT_DIR = agentDir;
+		await fs.mkdir(path.join(agentDir, "extensions"), { recursive: true });
+		await fs.writeFile(
+			path.join(agentDir, "extensions", "codex-status.ts"),
+			'pi.registerCommand("usage", {});\n',
+			"utf8",
+		);
+		await fs.writeFile(
+			path.join(agentDir, "extensions", "usage.ts"),
+			'pi.registerCommand("usage-stats", {});\n',
+			"utf8",
+		);
+		const now = new Date();
+		const sessionName = `${now.toISOString().replace(/:/g, "-").replace(".", "-")}_usage.jsonl`;
+		await writeLines(path.join(sessionDir, sessionName), [
+			JSON.stringify({
+				type: "custom_message",
+				customType: "slash-echo",
+				content: "/usage",
+				timestamp: now.toISOString(),
+			}),
+		]);
+		const pi = createMockPi() as ReturnType<typeof createMockPi> & {
+			getAllTools: () => never[];
+		};
+		pi.getAllTools = () => [];
+		extensionStats(pi as unknown as ExtensionAPI);
+		await pi._commands
+			.find((command) => command.name === "extension-stats")
+			?.handler(
+				"",
+				createMockCtx({
+					cwd: root,
+					sessionManager: { getSessionDir: () => sessionDir },
+				}),
+			);
+		const output = commandOutput(pi, "extension-stats");
+		expect(output).toContain("| usage/usage | 1 |");
+		expect(output).not.toContain("| usage/usage-stats | 1 |");
+		const snapshot = await collectExtensionUsageSnapshot(
+			pi as unknown as ExtensionAPI,
+			root,
+			sessionDir,
+		);
+		expect(snapshot.commands.get("codex-status/usage")).toBe(1);
+		expect(snapshot.extensions.get("codex-status")).toBe(1);
 	});
 
 	it("uses the command context session directory for all stats commands", async () => {
@@ -300,7 +501,7 @@ describe("shared session JSONL stats primitives", () => {
 			sessionManager: { getSessionDir },
 		});
 		const routerPi = createMockPi();
-		routerStats(routerPi as any);
+		routerStats(routerPi as unknown as ExtensionAPI);
 		await routerPi._commands
 			.find((command) => command.name === "router-stats")
 			?.handler("", ctx);
@@ -309,13 +510,13 @@ describe("shared session JSONL stats primitives", () => {
 			getAllTools: () => never[];
 		};
 		extensionPi.getAllTools = () => [];
-		extensionStats(extensionPi as any);
+		extensionStats(extensionPi as unknown as ExtensionAPI);
 		await extensionPi._commands
 			.find((command) => command.name === "extension-stats")
 			?.handler("", ctx);
 
 		const skillPi = createMockPi();
-		skillStats(skillPi as any);
+		skillStats(skillPi as unknown as ExtensionAPI);
 		await skillPi._commands
 			.find((command) => command.name === "skill-stats")
 			?.handler("", ctx);
@@ -324,13 +525,19 @@ describe("shared session JSONL stats primitives", () => {
 		const extensionOutput = commandOutput(extensionPi, "extension-stats");
 		const skillOutput = commandOutput(skillPi, "skill-stats");
 		expect(getSessionDir).toHaveBeenCalledTimes(3);
-		expect(routerOutput).toContain("2 routed prompts · 11 est. tokens");
+		expect(routerOutput).toContain("2 routed prompts; 11 est. tokens");
 		expect(routerOutput).not.toContain("108 est. tokens");
 		expect(extensionOutput).toContain(
 			`Sessions directory: ${customSessionDir}`,
 		);
 		expect(extensionOutput).toContain("| grep | 1 | 11 |");
 		expect(extensionOutput).not.toContain("| find | 1 | 97 |");
+		const snapshot = await collectExtensionUsageSnapshot(
+			extensionPi as unknown as ExtensionAPI,
+			cwd,
+			customSessionDir,
+		);
+		expect(snapshot.tools.get("Pi/grep")).toBe(1);
 		expect(skillOutput).toContain("| custom-root-skill |");
 		expect(skillOutput).not.toContain("| default-root-skill |");
 	});

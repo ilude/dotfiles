@@ -10,15 +10,11 @@ vi.mock("../extensions/transcript-runtime.ts", () => ({
 }));
 
 import promptRouter, {
-	applyHysteresis,
 	applyModelEffortBias,
-	applyPolicy,
 	applyRouteDecisionToProviderPayload,
 	buildRouterTelemetryPayload,
 	buildRoutingContextCapsule,
-	buildStatusLabel,
 	effortOverrideType,
-	isValidTier,
 	readUserEffortOverride,
 	resolveProviderRouteDecision,
 	resolveRouteProfile,
@@ -70,10 +66,10 @@ async function routeProviderPrompt(
 ): Promise<Record<string, unknown>> {
 	const hook = pi._getHook("before_provider_request")[0];
 	if (!hook) throw new Error("before_provider_request hook not registered");
-	return (await hook.handler({ payload: { prompt, ...payload } }, ctx)) as Record<
-		string,
-		unknown
-	>;
+	return (await hook.handler(
+		{ payload: { prompt, ...payload } },
+		ctx,
+	)) as Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------
@@ -115,11 +111,7 @@ describe("applyModelEffortBias", () => {
 				),
 			).toBe("medium");
 			expect(
-				applyModelEffortBias(
-					"high",
-					makeV3Rec("large", "high", 0.8),
-					model,
-				),
+				applyModelEffortBias("high", makeV3Rec("large", "high", 0.8), model),
 			).toBe("high");
 		}
 	});
@@ -141,9 +133,15 @@ describe("applyModelEffortBias", () => {
 
 describe("default Codex route profiles", () => {
 	it("maps GPT-5.6 models to the Luna, Terra, and Sol ladder", () => {
-		expect(resolveDefaultCodexProfile("mini").preferredModels[0]).toBe("gpt-5.6-luna");
-		expect(resolveDefaultCodexProfile("core").preferredModels[0]).toBe("gpt-5.6-terra");
-		expect(resolveDefaultCodexProfile("large").preferredModels[0]).toBe("gpt-5.6-sol");
+		expect(resolveDefaultCodexProfile("mini").preferredModels[0]).toBe(
+			"gpt-5.6-luna",
+		);
+		expect(resolveDefaultCodexProfile("core").preferredModels[0]).toBe(
+			"gpt-5.6-terra",
+		);
+		expect(resolveDefaultCodexProfile("large").preferredModels[0]).toBe(
+			"gpt-5.6-sol",
+		);
 	});
 });
 
@@ -163,101 +161,6 @@ describe("canonical route vocabulary parity", () => {
 		for (const [alias, route] of Object.entries(fixture.route_aliases)) {
 			expect(normalizeRouteCandidate(alias)).toBe(route);
 		}
-	});
-});
-
-// ---------------------------------------------------------------------------
-// isValidTier
-// ---------------------------------------------------------------------------
-
-describe("isValidTier", () => {
-	it("accepts low, mid, high", () => {
-		expect(isValidTier("low")).toBe(true);
-		expect(isValidTier("mid")).toBe(true);
-		expect(isValidTier("high")).toBe(true);
-	});
-
-	it("rejects unknown strings", () => {
-		expect(isValidTier("")).toBe(false);
-		expect(isValidTier("medium")).toBe(false);
-		expect(isValidTier("HIGH")).toBe(false);
-		expect(isValidTier("unknown")).toBe(false);
-	});
-});
-
-// ---------------------------------------------------------------------------
-// applyHysteresis
-// ---------------------------------------------------------------------------
-
-describe("applyHysteresis", () => {
-	function makeState(
-		currentTier: "low" | "mid" | "high",
-		turnsAtCurrentTier = 0,
-	) {
-		return {
-			currentTier,
-			turnsAtCurrentTier,
-			downgradeCandidateTier: null as "low" | "mid" | "high" | null,
-			consecutiveDowngradeTurns: 0,
-			lastRaw: null,
-			lastEffective: null,
-			lastPromptSnippet: "",
-			enabled: true,
-			lastClassifierRec: null,
-			lastAppliedEffort: null,
-			lastRuleFired: null,
-			cooldownTurnsRemaining: 0,
-		};
-	}
-
-	it("returns raw tier when it equals current", () => {
-		const state = makeState("mid", 2);
-		expect(applyHysteresis("mid", state)).toBe("mid");
-		expect(state.currentTier).toBe("mid");
-	});
-
-	it("upgrades immediately when raw is higher", () => {
-		const state = makeState("low", 1);
-		const effective = applyHysteresis("high", state);
-		expect(effective).toBe("high");
-		expect(state.currentTier).toBe("high");
-		expect(state.turnsAtCurrentTier).toBe(1);
-	});
-
-	it("holds during N_HOLD window when raw is lower", () => {
-		// turnsAtCurrentTier=1 < N_HOLD=3, so must hold
-		const state = makeState("high", 1);
-		const effective = applyHysteresis("low", state);
-		expect(effective).toBe("high");
-		expect(state.currentTier).toBe("high");
-	});
-
-	it("holds when past N_HOLD but not enough consecutive downgrade turns", () => {
-		// turnsAtCurrentTier=3 >= N_HOLD=3, but K_CONSEC=2 requires 2 consecutive turns
-		const state = makeState("high", 3);
-		const effective = applyHysteresis("low", state);
-		// First eligible turn: consecutiveDowngradeTurns=1, not yet >= K_CONSEC=2
-		expect(effective).toBe("high");
-		expect(state.consecutiveDowngradeTurns).toBe(1);
-	});
-
-	it("downgrades one step after K_CONSEC consecutive eligible turns", () => {
-		const state = makeState("high", 3);
-		// First downgrade-eligible turn
-		applyHysteresis("low", state);
-		expect(state.currentTier).toBe("high");
-		// Second consecutive turn: triggers downgrade, but only one step (high->mid)
-		const effective = applyHysteresis("low", state);
-		expect(effective).toBe("mid");
-		expect(state.currentTier).toBe("mid");
-	});
-
-	it("resets consecutive counter when downgrade candidate changes", () => {
-		const state = makeState("high", 3);
-		applyHysteresis("mid", state); // candidate=mid, consec=1
-		applyHysteresis("low", state); // candidate changes to low, consec resets to 1
-		expect(state.consecutiveDowngradeTurns).toBe(1);
-		expect(state.currentTier).toBe("high");
 	});
 });
 
@@ -360,37 +263,6 @@ describe("safeParseClassifierOutput", () => {
 });
 
 // ---------------------------------------------------------------------------
-// buildStatusLabel
-// ---------------------------------------------------------------------------
-
-describe("buildStatusLabel", () => {
-	it("shows only route size for small", () => {
-		expect(buildStatusLabel("low", "low", "gpt-5.6-luna", "low")).toBe(
-			"route: small",
-		);
-	});
-
-	it("shows only route size for medium", () => {
-		expect(
-			buildStatusLabel(
-				"mid",
-				"mid",
-				"gpt-5.4-fast",
-				"medium",
-				"medium",
-				"classifier",
-			),
-		).toBe("route: medium");
-	});
-
-	it("shows only route size for large", () => {
-		expect(buildStatusLabel("high", "low", "claude-opus-4-6", "high")).toBe(
-			"route: large",
-		);
-	});
-});
-
-// ---------------------------------------------------------------------------
 // Input hook no longer performs background routing
 // ---------------------------------------------------------------------------
 
@@ -417,7 +289,9 @@ describe("prompt-router input hook", () => {
 
 describe("user effort override", () => {
 	it("detects user effort overrides and classifies direction", () => {
-		expect(readUserEffortOverride({}, { user_selected_effort: "high" })).toEqual({
+		expect(
+			readUserEffortOverride({}, { user_selected_effort: "high" }),
+		).toEqual({
 			effort: "high",
 			scope: "request",
 		});
@@ -565,7 +439,8 @@ describe("effort set per tier", () => {
 			stderr: "",
 		});
 		expect(
-			(await routeProviderPrompt(pi, ctx, "what is a variable")).reasoning_effort,
+			(await routeProviderPrompt(pi, ctx, "what is a variable"))
+				.reasoning_effort,
 		).toBe("low");
 
 		(pi.exec as any).mockResolvedValueOnce({
@@ -620,7 +495,9 @@ describe("effort set per tier", () => {
 				stdout: makeV3Json(route, route === "large" ? "high" : "medium", 0.9),
 				stderr: "",
 			});
-			expect((await routeProviderPrompt(pi, ctx, `route ${route}`)).model).toBe(model);
+			expect((await routeProviderPrompt(pi, ctx, `route ${route}`)).model).toBe(
+				model,
+			);
 		}
 	});
 });
@@ -726,9 +603,7 @@ describe("classifier JSON parse -- T4", () => {
 			stdout: JSON.stringify({
 				schema_version: "99.0.0",
 				primary: { model_tier: "core", effort: "medium" },
-				candidates: [
-					{ model_tier: "core", effort: "medium", confidence: 0.8 },
-				],
+				candidates: [{ model_tier: "core", effort: "medium", confidence: 0.8 }],
 				confidence: 0.8,
 			}),
 			stderr: "",
@@ -750,9 +625,7 @@ describe("classifier JSON parse -- T4", () => {
 			stdout: JSON.stringify({
 				schema_version: "3.0.0",
 				primary: { model_tier: "core" },
-				candidates: [
-					{ model_tier: "core", effort: "medium", confidence: 0.8 },
-				],
+				candidates: [{ model_tier: "core", effort: "medium", confidence: 0.8 }],
 				confidence: 0.8,
 			}),
 			stderr: "",
@@ -783,42 +656,6 @@ describe("classifier JSON parse -- T4", () => {
 
 		expect(payload.model).toBe("gpt-5.4");
 		expect(payload.reasoning_effort).toBe("high");
-	});
-
-	it("effort cap clamps via maxEffortLevel in applyPolicy", () => {
-		// Test applyPolicy directly: maxEffortLevel="low" must clamp "high" down to "low".
-		const state = {
-			currentTier: "low" as const,
-			turnsAtCurrentTier: 0,
-			downgradeCandidateTier: null,
-			consecutiveDowngradeTurns: 0,
-			lastRaw: null,
-			lastEffective: null,
-			lastPromptSnippet: "",
-			enabled: true,
-			lastClassifierRec: null,
-			lastAppliedEffort: null,
-			lastRuleFired: null,
-			cooldownTurnsRemaining: 0,
-		};
-		const rec = {
-			schema_version: "3.0.0",
-			primary: { model_tier: "large", effort: "high" },
-			candidates: [{ model_tier: "large", effort: "high", confidence: 0.9 }],
-			confidence: 0.9,
-		};
-		const policy = {
-			N_HOLD: 3,
-			DOWNGRADE_THRESHOLD: 0.85,
-			K_CONSEC: 2,
-			COOLDOWN_TURNS: 2,
-			UNCERTAIN_THRESHOLD: 0.55,
-			UNCERTAIN_FALLBACK_ENABLED: false,
-			maxEffortLevel: "low",
-		};
-		const applied = applyPolicy(rec, state, policy);
-		expect(applied.effort).toBe("low");
-		expect(applied.ruleFired).toBe("effort-cap");
 	});
 });
 
@@ -925,7 +762,10 @@ describe("prompt-router extension -- input hook", () => {
 
 	it("handles plain exit", async () => {
 		const { inputHook, ctx } = setup();
-		const result = await inputHook.handler({ text: "exit", source: "user" }, ctx);
+		const result = await inputHook.handler(
+			{ text: "exit", source: "user" },
+			ctx,
+		);
 		expect(result).toEqual({ action: "handled" });
 		expect(ctx.shutdown).toHaveBeenCalled();
 	});
@@ -1097,244 +937,6 @@ describe("prompt-router extension -- session_start hook", () => {
 	});
 });
 
-// ---------------------------------------------------------------------------
-// T3: policy engine unit tests
-// ---------------------------------------------------------------------------
-
-function makeRouterState(
-	currentTier: "low" | "mid" | "high",
-	turnsAtCurrentTier = 0,
-) {
-	return {
-		currentTier,
-		turnsAtCurrentTier,
-		downgradeCandidateTier: null as "low" | "mid" | "high" | null,
-		consecutiveDowngradeTurns: 0,
-		lastRaw: null as "low" | "mid" | "high" | null,
-		lastEffective: null as "low" | "mid" | "high" | null,
-		lastPromptSnippet: "",
-		enabled: true,
-		lastClassifierRec: null,
-		lastAppliedEffort: null,
-		lastRuleFired: null,
-		cooldownTurnsRemaining: 0,
-	};
-}
-
-function makePolicy(
-	overrides: Partial<{
-		N_HOLD: number;
-		DOWNGRADE_THRESHOLD: number;
-		K_CONSEC: number;
-		COOLDOWN_TURNS: number;
-		UNCERTAIN_THRESHOLD: number;
-		UNCERTAIN_FALLBACK_ENABLED: boolean;
-		maxEffortLevel: string;
-		defaultEffortLevel: string;
-	}> = {},
-) {
-	return {
-		N_HOLD: 3,
-		DOWNGRADE_THRESHOLD: 0.85,
-		K_CONSEC: 2,
-		COOLDOWN_TURNS: 2,
-		UNCERTAIN_THRESHOLD: 0.55,
-		UNCERTAIN_FALLBACK_ENABLED: false,
-		maxEffortLevel: "high",
-		defaultEffortLevel: "medium",
-		...overrides,
-	};
-}
-
-describe("T3: hysteresis covers joint state", () => {
-	it("alternating low/mid over 5 turns with confidence 0.6 produces at most 1 upgrade, no downgrade during N_HOLD", () => {
-		const state = makeRouterState("low", 0);
-		const policy = makePolicy();
-		const tiers = ["low", "mid", "low", "mid", "low"] as const;
-		let upgrades = 0;
-		let downgrades = 0;
-		let prevTier = state.currentTier;
-
-		for (const tier of tiers) {
-			const rec = {
-				schema_version: "3.0.0",
-				primary: {
-					model_tier: tier === "low" ? "mini" : "core",
-					effort: "medium",
-				},
-				candidates: [
-					{
-						model_tier: tier === "low" ? "mini" : "core",
-						effort: "medium",
-						confidence: 0.6,
-					},
-				],
-				confidence: 0.6,
-			};
-			const { tier: applied } = applyPolicy(rec as any, state, policy);
-			if (applied !== prevTier) {
-				const prevOrder = applied === "low" ? 0 : applied === "mid" ? 1 : 2;
-				const curOrder = prevTier === "low" ? 0 : prevTier === "mid" ? 1 : 2;
-				if (prevOrder > curOrder) upgrades++;
-				else downgrades++;
-				prevTier = applied;
-			}
-		}
-
-		// At most 1 upgrade (low->mid on first mid classifier output), no downgrades during N_HOLD window.
-		expect(upgrades).toBeLessThanOrEqual(1);
-		expect(downgrades).toBe(0);
-	});
-});
-
-describe("T3: downgrade requires K_CONSEC", () => {
-	it("1 turn of low confidence after N_HOLD does not downgrade; 2nd turn does", () => {
-		const policy = makePolicy();
-		const state = makeRouterState("mid", policy.N_HOLD); // already past hold window
-
-		// Turn 1: low confidence > DOWNGRADE_THRESHOLD, but only 1 consecutive -- no downgrade yet.
-		const rec1 = {
-			schema_version: "3.0.0",
-			primary: { model_tier: "mini", effort: "low" },
-			candidates: [{ model_tier: "mini", effort: "low", confidence: 0.9 }],
-			confidence: 0.9,
-		};
-		const { tier: tier1 } = applyPolicy(rec1 as any, state, policy);
-		expect(tier1).toBe("mid");
-
-		// Turn 2: same low recommendation -- K_CONSEC=2 satisfied, downgrade fires.
-		const rec2 = {
-			schema_version: "3.0.0",
-			primary: { model_tier: "mini", effort: "low" },
-			candidates: [{ model_tier: "mini", effort: "low", confidence: 0.9 }],
-			confidence: 0.9,
-		};
-		const { tier: tier2 } = applyPolicy(rec2 as any, state, policy);
-		expect(tier2).toBe("low");
-	});
-});
-
-describe("T3: cooldown decays", () => {
-	it("escalateFor(2) applies the escalated route for exactly 2 turns then exits cooldown", () => {
-		// Test the policy engine directly so we can observe state precisely.
-		const policy = makePolicy({ COOLDOWN_TURNS: 2 });
-		const state = makeRouterState("mid", 1); // mid baseline
-
-		// Trigger cooldown -- escalates currentTier from mid to high for 2 turns.
-		state.currentTier = "high";
-		state.cooldownTurnsRemaining = 2;
-
-		// Turn 1 of cooldown: classifier says low, cooldown keeps high.
-		const rec = {
-			schema_version: "3.0.0",
-			primary: { model_tier: "mini", effort: "low" },
-			candidates: [{ model_tier: "mini", effort: "low", confidence: 0.9 }],
-			confidence: 0.9,
-		};
-		const { tier: tier1, ruleFired: rule1 } = applyPolicy(
-			rec as any,
-			state,
-			policy,
-		);
-		expect(tier1).toBe("high");
-		expect(rule1).toBe("cooldown");
-		expect(state.cooldownTurnsRemaining).toBe(1);
-
-		// Turn 2 of cooldown: still held.
-		const { tier: tier2, ruleFired: rule2 } = applyPolicy(
-			rec as any,
-			state,
-			policy,
-		);
-		expect(tier2).toBe("high");
-		expect(rule2).toBe("cooldown");
-		expect(state.cooldownTurnsRemaining).toBe(0);
-
-		// Turn 3: cooldown expired -- normal hysteresis takes over.
-		const { ruleFired: rule3 } = applyPolicy(rec as any, state, policy);
-		expect(rule3).not.toBe("cooldown");
-	});
-});
-
-describe("T3: uncertainty fallback", () => {
-	it("when enabled: classifier returns mini with confidence 0.4 while at mid -> stays at mid", () => {
-		const policy = makePolicy({
-			UNCERTAIN_THRESHOLD: 0.55,
-			UNCERTAIN_FALLBACK_ENABLED: true,
-		});
-		const state = makeRouterState("mid", 5);
-
-		const rec = {
-			schema_version: "3.0.0",
-			primary: { model_tier: "mini", effort: "low" },
-			candidates: [{ model_tier: "mini", effort: "low", confidence: 0.4 }],
-			confidence: 0.4,
-		};
-		const { tier, ruleFired } = applyPolicy(rec as any, state, policy);
-		expect(tier).toBe("mid"); // stayed at mid, not downgraded
-		expect(ruleFired).toBe("uncertainty-fallback");
-	});
-
-	it("when disabled (default): low-confidence low-tier classifier downgrades normally after hysteresis allows", () => {
-		const policy = makePolicy({ UNCERTAIN_THRESHOLD: 0.55 }); // UNCERTAIN_FALLBACK_ENABLED=false
-		const state = makeRouterState("mid", 5); // past N_HOLD window
-
-		// Turn 1: low-confidence mini; fallback is disabled, so hysteresis path runs.
-		// With K_CONSEC=2, first eligible turn does not downgrade yet.
-		const rec = {
-			schema_version: "3.0.0",
-			primary: { model_tier: "mini", effort: "low" },
-			candidates: [{ model_tier: "mini", effort: "low", confidence: 0.4 }],
-			confidence: 0.4,
-		};
-		const { tier: t1, ruleFired: r1 } = applyPolicy(rec as any, state, policy);
-		expect(t1).toBe("mid");
-		expect(r1).not.toBe("uncertainty-fallback");
-
-		// Turn 2: same low-confidence mini; K_CONSEC=2 satisfied, downgrade to low.
-		const { tier: t2, ruleFired: r2 } = applyPolicy(rec as any, state, policy);
-		expect(t2).toBe("low");
-		expect(r2).not.toBe("uncertainty-fallback");
-	});
-});
-
-describe("T3: effort cap clamps", () => {
-	it("classifier returns large/high with high confidence and maxLevel=high -> applies large/high (xhigh clamped)", () => {
-		const policy = makePolicy({ maxEffortLevel: "high" });
-		const state = makeRouterState("low", 0);
-
-		// Classifier wants xhigh -- schema maps to thinking level "xhigh" -> clamped to "high".
-		const rec = {
-			schema_version: "3.0.0",
-			primary: { model_tier: "large", effort: "high" },
-			candidates: [{ model_tier: "large", effort: "high", confidence: 0.95 }],
-			confidence: 0.95,
-		};
-		const { tier, effort, ruleFired } = applyPolicy(rec as any, state, policy);
-		expect(tier).toBe("high");
-		expect(effort).toBe("high"); // not xhigh
-		// If classifier had said xhigh (via schema), effort-cap would fire.
-		// Here effort stays "high" which is within cap, so rule is classifier.
-		expect(ruleFired).toBe("classifier");
-	});
-
-	it("effort above maxLevel is clamped and fires effort-cap rule", () => {
-		const policy = makePolicy({ maxEffortLevel: "medium" });
-		const state = makeRouterState("low", 0);
-
-		// SCHEMA_EFFORT_TO_THINKING maps "high" -> "high", which exceeds cap "medium".
-		const rec = {
-			schema_version: "3.0.0",
-			primary: { model_tier: "large", effort: "high" },
-			candidates: [{ model_tier: "large", effort: "high", confidence: 0.95 }],
-			confidence: 0.95,
-		};
-		const { effort, ruleFired } = applyPolicy(rec as any, state, policy);
-		expect(effort).toBe("medium");
-		expect(ruleFired).toBe("effort-cap");
-	});
-});
-
 describe("T3: /router-explain exists", () => {
 	it("router-explain command is registered", () => {
 		const pi = createMockPi();
@@ -1347,36 +949,6 @@ describe("T3: /router-explain exists", () => {
 // ---------------------------------------------------------------------------
 // T5: ship-config regression coverage
 // ---------------------------------------------------------------------------
-
-describe("T5: effort cap clamps xhigh to high", () => {
-	it("classifier-shaped xhigh intent is clamped down to maxLevel=high", () => {
-		// Schema-mapped effort "high" exceeds cap "medium" -> cap fires.
-		// There is no schema value for xhigh (schema enum: none/low/medium/high),
-		// so xhigh is prevented at the wire. The policy-level cap is the
-		// belt-and-suspenders guarantee.
-		const policy = makePolicy({ maxEffortLevel: "high" });
-		const state = makeRouterState("low", 0);
-
-		// With maxEffortLevel="high", schema "high" is within cap -- classifier rule.
-		const rec = {
-			schema_version: "3.0.0",
-			primary: { model_tier: "large", effort: "high" },
-			candidates: [{ model_tier: "large", effort: "high", confidence: 0.95 }],
-			confidence: 0.95,
-		};
-		const { effort, ruleFired } = applyPolicy(rec as any, state, policy);
-		expect(effort).toBe("high");
-		expect(ruleFired).toBe("classifier");
-
-		// Now lower the cap to "medium" -- the same classifier recommendation
-		// must be clamped down.
-		const cappedPolicy = makePolicy({ maxEffortLevel: "medium" });
-		const state2 = makeRouterState("low", 0);
-		const applied = applyPolicy(rec as any, state2, cappedPolicy);
-		expect(applied.effort).toBe("medium");
-		expect(applied.ruleFired).toBe("effort-cap");
-	});
-});
 
 describe("T5: schema_version mismatch falls back", () => {
 	it("schema_version 99.0.0 -> null-path, no crash", async () => {
@@ -1404,9 +976,7 @@ describe("T5: schema_version mismatch falls back", () => {
 			stdout: JSON.stringify({
 				schema_version: "99.0.0",
 				primary: { model_tier: "core", effort: "medium" },
-				candidates: [
-					{ model_tier: "core", effort: "medium", confidence: 0.8 },
-				],
+				candidates: [{ model_tier: "core", effort: "medium", confidence: 0.8 }],
 				confidence: 0.8,
 			}),
 			stderr: "",
@@ -1449,28 +1019,6 @@ describe("T5: malformed JSON falls back", () => {
 		const payload = await routeProviderPrompt(pi, ctx, "trigger garbage");
 
 		expect(payload.route_resolution_reason).toBe("classifier_failure");
-	});
-});
-
-describe("T5: N_HOLD=0 disables hysteresis hold", () => {
-	it("with N_HOLD=0, classifier output drives routing every turn -- no hold window", () => {
-		const policy = makePolicy({ N_HOLD: 0, K_CONSEC: 1 });
-		const state = makeRouterState("high", 1); // Just upgraded, turnsAtCurrentTier=1.
-
-		// With N_HOLD=0, downgrade to low should fire immediately (K_CONSEC=1).
-		const rec = {
-			schema_version: "3.0.0",
-			primary: { model_tier: "mini", effort: "low" },
-			candidates: [{ model_tier: "mini", effort: "low", confidence: 0.9 }],
-			confidence: 0.9,
-		};
-		const { tier } = applyPolicy(rec as any, state, policy);
-		// Step size stays at one tier per eligible turn (high -> mid).
-		expect(tier).toBe("mid");
-
-		// Next turn: another low recommendation -> one more step.
-		const { tier: tier2 } = applyPolicy(rec as any, state, policy);
-		expect(tier2).toBe("low");
 	});
 });
 
@@ -1596,7 +1144,7 @@ describe("T5: /router-explain full decision trail", () => {
 		expect(output).toContain("effort=medium");
 		expect(output).toContain("cap=high");
 		// prompt text is not exposed in the explanation.
-		expect(output).toContain("Prompt: \"sha256:");
+		expect(output).toContain('Prompt: "sha256:');
 	});
 });
 
@@ -2168,11 +1716,13 @@ describe("T0: same-turn routing feasibility", () => {
 
 		await routeProviderPrompt(pi, ctx, "synthetic telemetry prompt");
 
-		const routingCall = vi.mocked(transcriptEmit).mock.calls.find(
-			([envelope]) => envelope.event_type === "routing_decision",
-		);
-		expect(routingCall).toBeDefined();
-		const payload = routingCall?.[1] as Record<string, unknown>;
+		const routingCalls = vi
+			.mocked(transcriptEmit)
+			.mock.calls.filter(
+				([envelope]) => envelope.event_type === "routing_decision",
+			);
+		expect(routingCalls).toHaveLength(1);
+		const payload = routingCalls[0]?.[1] as Record<string, unknown>;
 		expect(payload.selected_model_size).toBe("medium");
 		expect(payload.actual_model).toEqual({
 			provider: "openai-codex",

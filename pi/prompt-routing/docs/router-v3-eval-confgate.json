@@ -63,18 +63,270 @@
     "max": 4
   },
   "sequence_results": {
-    "n_sequences": 0,
-    "n_turns": 0,
-    "route_thrash": 0,
-    "violations": [],
-    "cases": []
+    "n_sequences": 6,
+    "n_turns": 12,
+    "route_thrash": 4,
+    "policy_deltas": 2,
+    "violations": [
+      {
+        "sequence_id": "cheap_brief_negative",
+        "turn": 1,
+        "kind": "unexpected_route"
+      },
+      {
+        "sequence_id": "cheap_brief_negative",
+        "turn": 2,
+        "kind": "unexpected_route"
+      },
+      {
+        "sequence_id": "non_continuation_lookalike",
+        "turn": 1,
+        "kind": "unexpected_route"
+      }
+    ],
+    "cases": [
+      {
+        "sequence_id": "continuation_from_mini",
+        "turn": 1,
+        "raw_route": "core",
+        "applied_route": "core",
+        "rule_fired": "classifier",
+        "expected_route": null,
+        "expected_min_route": null
+      },
+      {
+        "sequence_id": "continuation_from_mini",
+        "turn": 2,
+        "raw_route": "mini",
+        "applied_route": "mini",
+        "rule_fired": "classifier",
+        "expected_route": null,
+        "expected_min_route": "mini"
+      },
+      {
+        "sequence_id": "continuation_from_core",
+        "turn": 1,
+        "raw_route": "large",
+        "applied_route": "large",
+        "rule_fired": "classifier",
+        "expected_route": null,
+        "expected_min_route": "core"
+      },
+      {
+        "sequence_id": "continuation_from_core",
+        "turn": 2,
+        "raw_route": "mini",
+        "applied_route": "core",
+        "rule_fired": "context-continuation-hold",
+        "expected_route": null,
+        "expected_min_route": "core"
+      },
+      {
+        "sequence_id": "continuation_from_large",
+        "turn": 1,
+        "raw_route": "large",
+        "applied_route": "large",
+        "rule_fired": "classifier",
+        "expected_route": null,
+        "expected_min_route": "large"
+      },
+      {
+        "sequence_id": "continuation_from_large",
+        "turn": 2,
+        "raw_route": "large",
+        "applied_route": "large",
+        "rule_fired": "classifier",
+        "expected_route": null,
+        "expected_min_route": "large"
+      },
+      {
+        "sequence_id": "continuation_from_max",
+        "turn": 1,
+        "raw_route": "large",
+        "applied_route": "large",
+        "rule_fired": "classifier",
+        "expected_route": null,
+        "expected_min_route": null
+      },
+      {
+        "sequence_id": "continuation_from_max",
+        "turn": 2,
+        "raw_route": "mini",
+        "applied_route": "max",
+        "rule_fired": "context-continuation-hold",
+        "expected_route": null,
+        "expected_min_route": "max"
+      },
+      {
+        "sequence_id": "cheap_brief_negative",
+        "turn": 1,
+        "raw_route": "core",
+        "applied_route": "core",
+        "rule_fired": "classifier",
+        "expected_route": "mini",
+        "expected_min_route": null
+      },
+      {
+        "sequence_id": "cheap_brief_negative",
+        "turn": 2,
+        "raw_route": "core",
+        "applied_route": "core",
+        "rule_fired": "classifier",
+        "expected_route": "mini",
+        "expected_min_route": null
+      },
+      {
+        "sequence_id": "non_continuation_lookalike",
+        "turn": 1,
+        "raw_route": "core",
+        "applied_route": "core",
+        "rule_fired": "classifier",
+        "expected_route": "mini",
+        "expected_min_route": null
+      },
+      {
+        "sequence_id": "non_continuation_lookalike",
+        "turn": 2,
+        "raw_route": "mini",
+        "applied_route": "mini",
+        "rule_fired": "classifier",
+        "expected_route": "mini",
+        "expected_min_route": null
+      }
+    ]
   },
   "sequence_aggregation": {
-    "n_sequences": 0,
-    "n_turns": 0,
-    "route_thrash": 0,
-    "violations": [],
-    "cases": []
+    "n_sequences": 6,
+    "n_turns": 12,
+    "route_thrash": 4,
+    "policy_deltas": 2,
+    "violations": [
+      {
+        "sequence_id": "cheap_brief_negative",
+        "turn": 1,
+        "kind": "unexpected_route"
+      },
+      {
+        "sequence_id": "cheap_brief_negative",
+        "turn": 2,
+        "kind": "unexpected_route"
+      },
+      {
+        "sequence_id": "non_continuation_lookalike",
+        "turn": 1,
+        "kind": "unexpected_route"
+      }
+    ],
+    "cases": [
+      {
+        "sequence_id": "continuation_from_mini",
+        "turn": 1,
+        "raw_route": "core",
+        "applied_route": "core",
+        "rule_fired": "classifier",
+        "expected_route": null,
+        "expected_min_route": null
+      },
+      {
+        "sequence_id": "continuation_from_mini",
+        "turn": 2,
+        "raw_route": "mini",
+        "applied_route": "mini",
+        "rule_fired": "classifier",
+        "expected_route": null,
+        "expected_min_route": "mini"
+      },
+      {
+        "sequence_id": "continuation_from_core",
+        "turn": 1,
+        "raw_route": "large",
+        "applied_route": "large",
+        "rule_fired": "classifier",
+        "expected_route": null,
+        "expected_min_route": "core"
+      },
+      {
+        "sequence_id": "continuation_from_core",
+        "turn": 2,
+        "raw_route": "mini",
+        "applied_route": "core",
+        "rule_fired": "context-continuation-hold",
+        "expected_route": null,
+        "expected_min_route": "core"
+      },
+      {
+        "sequence_id": "continuation_from_large",
+        "turn": 1,
+        "raw_route": "large",
+        "applied_route": "large",
+        "rule_fired": "classifier",
+        "expected_route": null,
+        "expected_min_route": "large"
+      },
+      {
+        "sequence_id": "continuation_from_large",
+        "turn": 2,
+        "raw_route": "large",
+        "applied_route": "large",
+        "rule_fired": "classifier",
+        "expected_route": null,
+        "expected_min_route": "large"
+      },
+      {
+        "sequence_id": "continuation_from_max",
+        "turn": 1,
+        "raw_route": "large",
+        "applied_route": "large",
+        "rule_fired": "classifier",
+        "expected_route": null,
+        "expected_min_route": null
+      },
+      {
+        "sequence_id": "continuation_from_max",
+        "turn": 2,
+        "raw_route": "mini",
+        "applied_route": "max",
+        "rule_fired": "context-continuation-hold",
+        "expected_route": null,
+        "expected_min_route": "max"
+      },
+      {
+        "sequence_id": "cheap_brief_negative",
+        "turn": 1,
+        "raw_route": "core",
+        "applied_route": "core",
+        "rule_fired": "classifier",
+        "expected_route": "mini",
+        "expected_min_route": null
+      },
+      {
+        "sequence_id": "cheap_brief_negative",
+        "turn": 2,
+        "raw_route": "core",
+        "applied_route": "core",
+        "rule_fired": "classifier",
+        "expected_route": "mini",
+        "expected_min_route": null
+      },
+      {
+        "sequence_id": "non_continuation_lookalike",
+        "turn": 1,
+        "raw_route": "core",
+        "applied_route": "core",
+        "rule_fired": "classifier",
+        "expected_route": "mini",
+        "expected_min_route": null
+      },
+      {
+        "sequence_id": "non_continuation_lookalike",
+        "turn": 2,
+        "raw_route": "mini",
+        "applied_route": "mini",
+        "rule_fired": "classifier",
+        "expected_route": "mini",
+        "expected_min_route": null
+      }
+    ]
   },
   "policy_deltas": {
     "source": "runtime_settings",

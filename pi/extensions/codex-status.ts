@@ -302,9 +302,7 @@ function formatWindow(
 ): string | undefined {
 	const used = usedPercent(window);
 	if (used === undefined) return undefined;
-	const percent = `${used.toFixed(Number.isInteger(used) ? 0 : 1)}%`.padStart(
-		6,
-	);
+	const percent = `${used.toFixed(Number.isInteger(used) ? 0 : 1)}%`;
 	const percentColor = pacedPercentColor(window, used);
 	return `${color(label.padEnd(8), ANSI_LIGHT_BLUE, colorEnabled)} ${color(percent, percentColor, colorEnabled)} used${formatReset(label, window)}`;
 }

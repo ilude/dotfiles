@@ -93,14 +93,21 @@ function toNumber(value: unknown): number | null {
 	return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function normalizeModelSize(obj: any): ModelSize {
-	const direct = obj?.primary?.model_size;
+function asRecord(value: unknown): Record<string, unknown> | null {
+	return typeof value === "object" && value !== null && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: null;
+}
+
+function normalizeModelSize(obj: Record<string, unknown>): ModelSize {
+	const primary = asRecord(obj.primary);
+	const direct = primary?.model_size;
 	if (direct === "small" || direct === "medium" || direct === "large")
 		return direct;
 	const tier =
-		typeof obj?.tier === "string"
+		typeof obj.tier === "string"
 			? obj.tier
-			: typeof obj?.raw_pred === "string"
+			: typeof obj.raw_pred === "string"
 				? obj.raw_pred
 				: null;
 	if (tier === "low" || tier === "small") return "small";
@@ -109,18 +116,18 @@ function normalizeModelSize(obj: any): ModelSize {
 	return "unknown";
 }
 
-function normalizeEffort(obj: any): string {
-	return typeof obj?.primary?.effort === "string"
-		? obj.primary.effort
-		: "unknown";
+function normalizeEffort(obj: Record<string, unknown>): string {
+	const primary = asRecord(obj.primary);
+	return typeof primary?.effort === "string" ? primary.effort : "unknown";
 }
 
-function normalizeConfidence(obj: any): number | null {
-	const direct = toNumber(obj?.confidence);
+function normalizeConfidence(obj: Record<string, unknown>): number | null {
+	const direct = toNumber(obj.confidence);
 	if (direct !== null) return direct;
-	if (obj?.proba && typeof obj.proba === "object") {
+	const proba = asRecord(obj.proba);
+	if (proba) {
 		return Math.max(
-			...Object.values(obj.proba).map((v) => (typeof v === "number" ? v : 0)),
+			...Object.values(proba).map((v) => (typeof v === "number" ? v : 0)),
 		);
 	}
 	return null;
@@ -134,44 +141,40 @@ async function readRoutingRecords(cwd: string): Promise<RouterRecord[]> {
 	} catch {
 		return records;
 	}
-	for await (const { value: obj } of readJsonlFile(filePath)) {
-		if (!obj || typeof obj !== "object") continue;
-		const ts = toNumber((obj as any).ts);
+	for await (const { value } of readJsonlFile(filePath)) {
+		const obj = asRecord(value);
+		if (!obj) continue;
+		const ts = toNumber(obj.ts);
 		if (!ts) continue;
+		const elapsedUs = toNumber(obj.elapsed_us);
 		records.push({
 			ts,
-			promptHash:
-				typeof (obj as any).prompt_hash === "string"
-					? (obj as any).prompt_hash
-					: "",
+			promptHash: typeof obj.prompt_hash === "string" ? obj.prompt_hash : "",
 			promptExcerpt:
-				typeof (obj as any).prompt_excerpt === "string"
-					? (obj as any).prompt_excerpt
-					: "",
+				typeof obj.prompt_excerpt === "string" ? obj.prompt_excerpt : "",
 			modelSize: normalizeModelSize(obj),
 			effort: normalizeEffort(obj),
 			confidence: normalizeConfidence(obj),
-			elapsedMs:
-				toNumber((obj as any).elapsed_us) === null
-					? null
-					: (toNumber((obj as any).elapsed_us) ?? 0) / 1000,
+			elapsedMs: elapsedUs === null ? null : elapsedUs / 1000,
 			tokens: 0,
 		});
 	}
 	return records;
 }
 
-async function readTokenByPromptHash(
+async function readTokensByPromptHash(
 	hashes: Set<string>,
 	sessionRoot: string,
-): Promise<Map<string, number>> {
-	const out = new Map<string, number>();
+): Promise<Map<string, number[]>> {
+	const out = new Map<string, number[]>();
 	if (hashes.size === 0) return out;
 	for (const filePath of await enumerateJsonlFiles(sessionRoot)) {
 		for await (const joined of joinPromptsToNextAssistant(filePath)) {
 			const hash = sha256Hex(joined.userText.trim());
 			if (!hashes.has(hash) || joined.usageTokens <= 0) continue;
-			out.set(hash, (out.get(hash) ?? 0) + joined.usageTokens);
+			const tokens = out.get(hash) ?? [];
+			tokens.push(joined.usageTokens);
+			out.set(hash, tokens);
 		}
 	}
 	return out;
@@ -265,12 +268,16 @@ async function renderReport(
 	sessionRoot: string,
 ): Promise<string> {
 	const records = await readRoutingRecords(cwd);
-	const tokenByHash = await readTokenByPromptHash(
+	const tokensByHash = await readTokensByPromptHash(
 		new Set(records.map((r) => r.promptHash).filter(Boolean)),
 		sessionRoot,
 	);
-	for (const record of records)
-		record.tokens = tokenByHash.get(record.promptHash) ?? 0;
+	const tokenIndexes = new Map<string, number>();
+	for (const record of records) {
+		const index = tokenIndexes.get(record.promptHash) ?? 0;
+		record.tokens = tokensByHash.get(record.promptHash)?.[index] ?? 0;
+		tokenIndexes.set(record.promptHash, index + 1);
+	}
 
 	const now = localMidnight(new Date());
 	const lines = [
@@ -278,7 +285,7 @@ async function renderReport(
 		"",
 		`Generated: ${new Date().toISOString()}`,
 		`Log: ${routingLogPath(cwd)}`,
-		"Attribution: routing_log.jsonl plus prompt-hash session token join.",
+		"Attribution: routing_log.jsonl plus prompt-hash session token join; repeated hashes pair by routing-log and session JSONL occurrence order.",
 	];
 
 	for (const days of daysList) {
@@ -301,7 +308,7 @@ async function renderReport(
 		lines.push(
 			"",
 			`## Last ${days} days`,
-			`${formatInt(subset.length)} routed prompts · ${formatInt(totalTokens)} est. tokens · avg confidence ${confidenceRows.length > 0 ? avgConfidence.toFixed(2) : "--"} · avg latency ${latency.avg} · p95 latency ${latency.p95}`,
+			`${formatInt(subset.length)} routed prompts; ${formatInt(totalTokens)} est. tokens; avg confidence ${confidenceRows.length > 0 ? avgConfidence.toFixed(2) : "--"}; avg latency ${latency.avg}; p95 latency ${latency.p95}`,
 		);
 
 		const bySize = new Map<string, BucketRow>();

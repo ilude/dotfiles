@@ -8,6 +8,7 @@ import type {
 import {
 	enumerateJsonlFiles,
 	readJsonlFile,
+	resolveAgentDir,
 	resolveSessionRoot,
 } from "../lib/session-jsonl.ts";
 
@@ -68,16 +69,94 @@ interface SkillRoot {
 	location: string;
 }
 
-function defaultSkillRoots(): SkillRoot[] {
+function expandHome(value: string): string {
+	if (value === "~") return os.homedir();
+	if (value.startsWith("~/") || value.startsWith("~\\"))
+		return path.join(os.homedir(), value.slice(2));
+	return value;
+}
+
+function configuredSkillRoots(
+	settingsPath: string,
+	basePath: string,
+	location: string,
+): SkillRoot[] {
+	let settings: unknown;
+	try {
+		settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+	} catch {
+		return [];
+	}
+	if (!isObject(settings) || !Array.isArray(settings.skills)) return [];
+	return settings.skills.flatMap((value) => {
+		if (typeof value !== "string") return [];
+		const configuredPath = value.trim();
+		if (
+			configuredPath.length === 0 ||
+			configuredPath.startsWith("!") ||
+			configuredPath.startsWith("-")
+		)
+			return [];
+		const skillPath = expandHome(
+			configuredPath.startsWith("+") ? configuredPath.slice(1) : configuredPath,
+		);
+		return [
+			{
+				path: path.isAbsolute(skillPath)
+					? skillPath
+					: path.resolve(basePath, skillPath),
+				location,
+			},
+		];
+	});
+}
+
+function projectSkillRoots(cwd: string): SkillRoot[] {
+	const roots: SkillRoot[] = [
+		{ path: path.join(cwd, ".pi", "skills"), location: "project" },
+	];
+	let directory = path.resolve(cwd);
+	while (true) {
+		roots.push({
+			path: path.join(directory, ".agents", "skills"),
+			location: "project",
+		});
+		if (existsSync(path.join(directory, ".git"))) break;
+		const parent = path.dirname(directory);
+		if (parent === directory) break;
+		directory = parent;
+	}
+	const settingsDirectory = path.join(cwd, ".pi");
+	for (const settingsName of ["settings.json", "settings.local.json"])
+		roots.push(
+			...configuredSkillRoots(
+				path.join(settingsDirectory, settingsName),
+				settingsDirectory,
+				"project",
+			),
+		);
+	return roots;
+}
+
+function defaultSkillRoots(cwd?: string): SkillRoot[] {
 	const home = os.homedir();
-	return [
+	const agentDirectory = resolveAgentDir();
+	const roots: SkillRoot[] = [
 		{
 			path: path.join(home, ".dotfiles", "claude", "skills"),
 			location: "claude",
 		},
 		{ path: path.join(home, ".dotfiles", "pi", "skills"), location: "pi" },
-		{ path: path.join(home, ".pi", "agent", "skills"), location: "pi" },
+		{ path: path.join(agentDirectory, "skills"), location: "pi" },
+		{ path: path.join(home, ".agents", "skills"), location: "pi" },
+		...configuredSkillRoots(
+			path.join(agentDirectory, "settings.json"),
+			agentDirectory,
+			"configured",
+		),
 	];
+	if (cwd) roots.push(...projectSkillRoots(cwd));
+	return roots;
 }
 
 function parseSkillMetadata(
@@ -131,64 +210,64 @@ function discoverSkillMetadataInRoot(
 	location: string,
 ): UnusedSkill[] {
 	const out: UnusedSkill[] = [];
-	let entries: string[];
-	try {
-		entries = readdirSync(root);
-	} catch {
-		return out;
-	}
-	for (const entry of entries) {
-		const entryPath = path.join(root, entry);
-		let isDirectory = false;
+	const stack = [root];
+	while (stack.length > 0) {
+		const current = stack.pop();
+		if (!current) continue;
+		let stat: ReturnType<typeof statSync>;
 		try {
-			isDirectory = statSync(entryPath).isDirectory();
+			stat = statSync(current);
 		} catch {
 			continue;
 		}
-		if (isDirectory) {
-			const skillFile = path.join(entryPath, "SKILL.md");
-			if (existsSync(skillFile)) {
-				const metadata = parseSkillMetadata(skillFile, entry, location);
+		if (stat.isFile()) {
+			const entry = path.basename(current);
+			if (
+				entry.toLowerCase().endsWith(".md") &&
+				entry.toLowerCase() !== "readme.md"
+			) {
+				const metadata = parseSkillMetadata(
+					current,
+					entry.replace(/\.md$/i, ""),
+					location,
+				);
 				if (metadata) out.push(metadata);
 			}
 			continue;
 		}
-		if (
-			entry.toLowerCase().endsWith(".md") &&
-			entry.toLowerCase() !== "readme.md"
-		) {
+		const skillFile = path.join(current, "SKILL.md");
+		if (existsSync(skillFile)) {
 			const metadata = parseSkillMetadata(
-				entryPath,
-				entry.replace(/\.md$/i, ""),
+				skillFile,
+				path.basename(current),
 				location,
 			);
 			if (metadata) out.push(metadata);
+			continue;
 		}
+		try {
+			for (const entry of readdirSync(current)) {
+				const entryPath = path.join(current, entry);
+				if (statSync(entryPath).isDirectory()) stack.push(entryPath);
+				else if (
+					entry.toLowerCase().endsWith(".md") &&
+					entry.toLowerCase() !== "readme.md"
+				)
+					stack.push(entryPath);
+			}
+		} catch {}
 	}
 	return out;
 }
 
-function loadSkillMetadata(): Map<string, UnusedSkill> {
+function loadSkillMetadata(cwd?: string): Map<string, UnusedSkill> {
 	const byName = new Map<string, UnusedSkill>();
-	for (const root of defaultSkillRoots()) {
+	const roots = new Map<string, SkillRoot>();
+	for (const root of defaultSkillRoots(cwd))
+		roots.set(path.resolve(root.path), root);
+	for (const root of roots.values()) {
 		for (const skill of discoverSkillMetadataInRoot(root.path, root.location))
 			byName.set(skill.name.toLowerCase(), skill);
-		let entries: string[];
-		try {
-			entries = readdirSync(root.path);
-		} catch {
-			entries = [];
-		}
-		for (const entry of entries) {
-			const nested = path.join(root.path, entry);
-			try {
-				if (!statSync(nested).isDirectory()) continue;
-				if (existsSync(path.join(nested, "SKILL.md"))) continue;
-				const nestedLocation = root.location === "pi" ? entry : root.location;
-				for (const skill of discoverSkillMetadataInRoot(nested, nestedLocation))
-					byName.set(skill.name.toLowerCase(), skill);
-			} catch {}
-		}
 	}
 	return byName;
 }
@@ -390,7 +469,7 @@ export async function collectSkillStats(
 	const now = options.now || new Date();
 	const events: SkillEvent[] = [];
 	const diagnostics = new Map<string, number>();
-	const skillMetadata = loadSkillMetadata();
+	const skillMetadata = loadSkillMetadata(options.cwd);
 	const knownSkills = new Set(skillMetadata.keys());
 	for (const file of await enumerateJsonlFiles(root, options.signal)) {
 		const fallback = fileTime(file);
@@ -436,15 +515,18 @@ export async function collectSkillStats(
 			inc(candidates, e.skill);
 			continue;
 		}
-		usedSkills.add(e.skill.toLowerCase());
+		let usedInRequestedWindow = false;
 		for (const w of parsed.windows) {
 			const bucket = usage.get(String(w));
 			if (
 				bucket &&
 				(w === "all" || e.timestamp.getTime() >= now.getTime() - w * 86400000)
-			)
+			) {
 				inc(bucket, e.skill);
+				usedInRequestedWindow = true;
+			}
 		}
+		if (usedInRequestedWindow) usedSkills.add(e.skill.toLowerCase());
 	}
 	return {
 		result: {

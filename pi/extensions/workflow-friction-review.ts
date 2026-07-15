@@ -18,6 +18,7 @@ import {
 	createInteractionId,
 	detectFrictionTriggers,
 	FRICTION_SCHEMA_VERSION,
+	type ImprovementTarget,
 	type InteractionMetadataRecord,
 	type InteractionPacket,
 	interactionMetadataFromPacket,
@@ -579,16 +580,248 @@ async function recordLearningDecision(
 	});
 }
 
+export type ImprovementUsageState = "observed" | "zero" | "unknown";
+
+export interface ImprovementCandidateUsage {
+	target?: ImprovementTarget;
+	state: ImprovementUsageState;
+	source: "skill-stats" | "extension-stats" | "none";
+	calls30d?: number;
+	manualReadCandidates?: number;
+	diagnostic?: string;
+}
+
+function normalizedTarget(
+	record: StoredReviewRecord,
+): ImprovementTarget | undefined {
+	const target = record.review?.reusableInstruction.target;
+	if (target) return target;
+	const targetSkill = record.review?.reusableInstruction.targetSkill;
+	return targetSkill ? { kind: "skill", name: targetSkill } : undefined;
+}
+
+function usageStateRank(state: ImprovementUsageState): number {
+	if (state === "observed") return 2;
+	if (state === "unknown") return 1;
+	return 0;
+}
+
+function safetyCorrectnessRank(record: StoredReviewRecord): number {
+	return record.review?.impact === "safety" ||
+		record.review?.impact === "correctness"
+		? 1
+		: 0;
+}
+
+export function rankImprovementCandidates(
+	candidates: readonly StoredReviewRecord[],
+	usage: ReadonlyMap<string, ImprovementCandidateUsage>,
+): StoredReviewRecord[] {
+	return [...candidates].sort((left, right) => {
+		const impactDifference =
+			safetyCorrectnessRank(right) - safetyCorrectnessRank(left);
+		if (impactDifference !== 0) return impactDifference;
+		const leftUsage = usage.get(left.interactionId) ?? {
+			state: "unknown" as const,
+			source: "none" as const,
+		};
+		const rightUsage = usage.get(right.interactionId) ?? {
+			state: "unknown" as const,
+			source: "none" as const,
+		};
+		const stateDifference =
+			usageStateRank(rightUsage.state) - usageStateRank(leftUsage.state);
+		if (stateDifference !== 0) return stateDifference;
+		const callsDifference =
+			(rightUsage.calls30d ?? -1) - (leftUsage.calls30d ?? -1);
+		if (callsDifference !== 0) return callsDifference;
+		const confidenceDifference =
+			(right.review?.confidence ?? 0) - (left.review?.confidence ?? 0);
+		if (confidenceDifference !== 0) return confidenceDifference;
+		return (
+			left.reviewedAt.localeCompare(right.reviewedAt) ||
+			left.interactionId.localeCompare(right.interactionId)
+		);
+	});
+}
+
+function mapContainsTarget(
+	values: ReadonlyMap<string, number>,
+	name: string,
+	owner?: string,
+): boolean {
+	const normalizedName = name.toLowerCase();
+	const normalizedOwner = owner?.toLowerCase();
+	for (const key of values.keys()) {
+		const slash = key.indexOf("/");
+		const keyOwner = slash >= 0 ? key.slice(0, slash) : "";
+		const keyName = slash >= 0 ? key.slice(slash + 1) : key;
+		if (keyName.toLowerCase() !== normalizedName) continue;
+		if (!normalizedOwner || keyOwner.toLowerCase() === normalizedOwner)
+			return true;
+	}
+	return false;
+}
+
+function mapValue(
+	values: ReadonlyMap<string, number>,
+	name: string,
+	owner?: string,
+): number {
+	const normalizedName = name.toLowerCase();
+	const normalizedOwner = owner?.toLowerCase();
+	let total = 0;
+	for (const [key, count] of values) {
+		const slash = key.indexOf("/");
+		const keyOwner = slash >= 0 ? key.slice(0, slash) : "";
+		const keyName = slash >= 0 ? key.slice(slash + 1) : key;
+		if (keyName.toLowerCase() !== normalizedName) continue;
+		if (normalizedOwner && keyOwner.toLowerCase() !== normalizedOwner) continue;
+		total += count;
+	}
+	return total;
+}
+
+function rankingReason(
+	record: StoredReviewRecord,
+	usage: ImprovementCandidateUsage,
+): string {
+	if (safetyCorrectnessRank(record) > 0)
+		return `${record.review?.impact} impact overrides usage ROI`;
+	if (usage.state === "observed")
+		return `highest observed 30-day usage ROI (${usage.calls30d ?? 0} calls)`;
+	if (usage.state === "zero")
+		return "verified zero 30-day usage; consider simplification or retirement";
+	return `usage unknown${usage.diagnostic ? `: ${usage.diagnostic}` : ""}`;
+}
+
+export async function collectCandidateUsage(
+	candidates: readonly StoredReviewRecord[],
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+): Promise<Map<string, ImprovementCandidateUsage>> {
+	const usage = new Map<string, ImprovementCandidateUsage>();
+	const targets = candidates.map((candidate) => ({
+		candidate,
+		target: normalizedTarget(candidate),
+	}));
+	for (const { candidate, target } of targets)
+		usage.set(candidate.interactionId, {
+			target,
+			state: "unknown",
+			source: "none",
+			diagnostic: target ? "telemetry unavailable" : "target unresolved",
+		});
+
+	if (targets.some(({ target }) => target?.kind === "skill")) {
+		try {
+			const stats = await collectSkillStats("30", {
+				cwd: ctx.cwd,
+				sessionRoot: ctx.sessionManager.getSessionDir(),
+			});
+			if (stats.result)
+				for (const { candidate, target } of targets) {
+					if (target?.kind !== "skill") continue;
+					if (!stats.result.skillMetadata.has(target.name.toLowerCase())) {
+						usage.set(candidate.interactionId, {
+							target,
+							state: "unknown",
+							source: "skill-stats",
+							diagnostic: "target not discovered",
+						});
+						continue;
+					}
+					const calls30d = mapValue(
+						stats.result.usage.get("30") ?? new Map(),
+						target.name,
+					);
+					usage.set(candidate.interactionId, {
+						target,
+						state: calls30d > 0 ? "observed" : "zero",
+						source: "skill-stats",
+						calls30d,
+						manualReadCandidates: mapValue(
+							stats.result.candidates,
+							target.name,
+						),
+					});
+				}
+		} catch (error) {
+			const diagnostic = bounded(
+				error instanceof Error ? error.message : String(error),
+				160,
+			);
+			for (const { candidate, target } of targets)
+				if (target?.kind === "skill")
+					usage.set(candidate.interactionId, {
+						target,
+						state: "unknown",
+						source: "skill-stats",
+						diagnostic,
+					});
+		}
+	}
+
+	if (targets.some(({ target }) => target && target.kind !== "skill")) {
+		try {
+			const { collectExtensionUsageSnapshot } = await import(
+				"./extension-stats.js"
+			);
+			const stats = await collectExtensionUsageSnapshot(
+				pi,
+				ctx.cwd,
+				ctx.sessionManager.getSessionDir(),
+			);
+			for (const { candidate, target } of targets) {
+				if (!target || target.kind === "skill") continue;
+				const values =
+					target.kind === "extension"
+						? stats.extensions
+						: target.kind === "command"
+							? stats.commands
+							: stats.tools;
+				if (!mapContainsTarget(values, target.name, target.owner)) {
+					usage.set(candidate.interactionId, {
+						target,
+						state: "unknown",
+						source: "extension-stats",
+						diagnostic: "target not discovered",
+					});
+					continue;
+				}
+				const calls30d = mapValue(values, target.name, target.owner);
+				usage.set(candidate.interactionId, {
+					target,
+					state: calls30d > 0 ? "observed" : "zero",
+					source: "extension-stats",
+					calls30d,
+				});
+			}
+		} catch (error) {
+			const diagnostic = bounded(
+				error instanceof Error ? error.message : String(error),
+				160,
+			);
+			for (const { candidate, target } of targets)
+				if (target && target.kind !== "skill")
+					usage.set(candidate.interactionId, {
+						target,
+						state: "unknown",
+						source: "extension-stats",
+						diagnostic,
+					});
+		}
+	}
+	return usage;
+}
+
 interface ImprovementContext {
 	reviewCount: number;
 	pendingCandidateCount: number;
 	interactionSummary: ReturnType<typeof summarizeInteractionMetadata>;
 	priorExperimentCount: number;
-	targetSkillUsage?: {
-		name: string;
-		used30d: number;
-		manualReadCandidates: number;
-	};
+	candidateUsage: ImprovementCandidateUsage;
+	rankingReason: string;
 }
 
 function buildImprovementDiscussionPrompt(
@@ -602,7 +835,9 @@ function buildImprovementDiscussionPrompt(
 Candidate ID: ${record.interactionId}
 Proposed change: ${review.suggestedChange}
 Scope hint: ${learningScope(record)}
-Target skill hint: ${review.reusableInstruction.targetSkill ?? "none"}
+Impact: ${review.impact ?? "unspecified"}
+Target: ${context.candidateUsage.target ? JSON.stringify(context.candidateUsage.target) : "unresolved"}
+Ranking reason: ${context.rankingReason}
 Reason: ${review.reusableInstruction.reason}
 Evidence:
 ${review.evidence.map((item) => `- ${item}`).join("\n")}
@@ -1072,18 +1307,28 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 					(decision) => decision.candidateId,
 				),
 			);
-			const candidates = (await learningReviewRecords())
-				.filter(
-					(record) =>
-						isLearningCandidate(record) &&
-						!resolved.has(record.interactionId) &&
-						learningCandidateVisible(record, ctx.cwd),
-				)
-				.sort(
-					(a, b) =>
-						a.reviewedAt.localeCompare(b.reviewedAt) ||
-						a.interactionId.localeCompare(b.interactionId),
+			const eligibleCandidates = (await learningReviewRecords()).filter(
+				(record) =>
+					isLearningCandidate(record) &&
+					!resolved.has(record.interactionId) &&
+					learningCandidateVisible(record, ctx.cwd),
+			);
+			if (eligibleCandidates.length === 0) {
+				ctx.ui.notify(
+					"No supported improvement candidates exist for this workspace.",
+					"info",
 				);
+				return;
+			}
+			const usageByCandidate = await collectCandidateUsage(
+				eligibleCandidates,
+				pi,
+				ctx,
+			);
+			const candidates = rankImprovementCandidates(
+				eligibleCandidates,
+				usageByCandidate,
+			);
 			const candidate = candidates[0];
 			if (!candidate) {
 				ctx.ui.notify(
@@ -1110,17 +1355,11 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 					].sort(),
 				};
 			});
-			const targetSkill = candidate.review?.reusableInstruction.targetSkill;
-			let targetSkillUsage: ImprovementContext["targetSkillUsage"];
-			if (targetSkill) {
-				const stats = await collectSkillStats("30", { cwd: ctx.cwd });
-				if (stats.result)
-					targetSkillUsage = {
-						name: targetSkill,
-						used30d: stats.result.usage.get("30")?.get(targetSkill) ?? 0,
-						manualReadCandidates: stats.result.candidates.get(targetSkill) ?? 0,
-					};
-			}
+			const candidateUsage = usageByCandidate.get(candidate.interactionId) ?? {
+				state: "unknown" as const,
+				source: "none" as const,
+				diagnostic: "target unresolved",
+			};
 			pendingLearningDiscussion = { candidateId: candidate.interactionId };
 			noteWorkflowSubmission("/improve", "explore");
 			pi.sendMessage(
@@ -1131,7 +1370,8 @@ export default function workflowFrictionExtension(pi: ExtensionAPI) {
 						pendingCandidateCount: candidates.length,
 						interactionSummary: summarizeInteractionMetadata(metadata),
 						priorExperimentCount: (await experimentRecords()).length,
-						targetSkillUsage,
+						candidateUsage,
+						rankingReason: rankingReason(candidate, candidateUsage),
 					}),
 					display: false,
 				},

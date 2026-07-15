@@ -164,6 +164,57 @@ describe("orchestration stats report", () => {
 		);
 	});
 
+	it("bounds unmatched friction reviews to valid reviewed timestamps in the report window", async () => {
+		fs.writeFileSync(
+			path.join(metrics, "metrics-2026-07-10.jsonl"),
+			line(
+				"interaction-1",
+				"orchestration_interaction",
+				interaction("interaction-1", []),
+			),
+		);
+		fs.writeFileSync(
+			path.join(friction, "reviews.jsonl"),
+			[
+				{
+					interactionId: "at-window-start",
+					reviewedAt: "2026-07-09T13:00:00.000Z",
+					status: "completed",
+				},
+				{
+					interactionId: "at-window-end",
+					reviewedAt: "2026-07-10T13:00:00.000Z",
+					status: "completed",
+				},
+				{
+					interactionId: "before-window",
+					reviewedAt: "2026-07-09T12:59:59.999Z",
+					status: "completed",
+				},
+				{
+					interactionId: "after-window",
+					reviewedAt: "2026-07-10T13:00:00.001Z",
+					status: "completed",
+				},
+				{ interactionId: "missing-timestamp", status: "completed" },
+				{
+					interactionId: "malformed-timestamp",
+					reviewedAt: "not-a-timestamp",
+					status: "completed",
+				},
+			]
+				.map((review) => JSON.stringify(review))
+				.join("\n"),
+		);
+		const now = new Date("2026-07-10T13:00:00.000Z");
+		const first = await renderOrchestrationStatsReport(1, now);
+		const second = await renderOrchestrationStatsReport(1, now);
+		expect(second).toBe(first);
+		expect(first).toContain(
+			"Friction classifications: productive 0, mixed 0, churn 0, uncertain 0, failed 0, pending 0, unreviewed 1, unmatched 2.",
+		);
+	});
+
 	it("parses the registered slash command and does not register a tool", async () => {
 		const command = vi.fn();
 		const registerTool = vi.fn();

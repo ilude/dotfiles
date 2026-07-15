@@ -9,11 +9,6 @@
  * Shows rolling lookback windows (1/7/30/90d) with two sections:
  * - aggregates by extension
  * - aggregates by extension/tool or extension/command (native tools are annotated as Pi/<tool>)
- *
- * Controls:
- * - m: toggle calls vs token-estimate attribution
- * - e/t: focus extensions vs tools table
- * - ↑/↓: page active table
  */
 
 import { execFile } from "node:child_process";
@@ -26,15 +21,6 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { BorderedLoader } from "@earendil-works/pi-coding-agent";
-import {
-	type Component,
-	Key,
-	matchesKey,
-	type TUI,
-	truncateToWidth,
-	visibleWidth,
-} from "@earendil-works/pi-tui";
 import {
 	enumerateJsonlFiles,
 	extractEntryUsageTokens,
@@ -45,7 +31,6 @@ import {
 } from "../lib/session-jsonl.ts";
 
 type MetricMode = "calls" | "tokens";
-type TableSection = "extensions" | "tools";
 
 interface ParsedSession {
 	startedAt: Date;
@@ -92,11 +77,13 @@ interface BreakdownData {
 	generatedAt: Date;
 	ranges: Map<number, RangeAgg>;
 	sessionRoot: string;
+	ownership: ToolOwnershipDiscovery;
 	discoveredOwnerNames: string[];
 	ownerDiagnostics: {
 		discoveredOwners: number;
 		unattributedTools: number;
 		packageScanRoots: number;
+		unkeyedRouterTraceTurns: number;
 	};
 }
 
@@ -116,17 +103,17 @@ interface ToolOwnershipDiscovery {
 	packageScanRoots: number;
 }
 
-interface TableRenderResult {
-	lines: string[];
-	offset: number;
-	totalRows: number;
+export interface ExtensionUsageSnapshot {
+	generatedAt: Date;
+	extensions: Map<string, number>;
+	commands: Map<string, number>;
+	tools: Map<string, number>;
 }
 
 const execFileAsync = promisify(execFile);
 
 const RANGE_DAYS = [1, 7, 30, 60, 90] as const;
 const DEFAULT_REPORT_DAYS = [1, 7, 30] as const;
-const PAGE_SIZE = 10;
 
 const BUILTIN_TOOL_NAMES = new Set([
 	"bash",
@@ -141,6 +128,15 @@ const LEGACY_TOOL_OWNERS = new Map([
 	["search", "Pi"],
 	["think", "Pi"],
 ]);
+
+function requiredRange(
+	ranges: ReadonlyMap<number, RangeAgg>,
+	days: number,
+): RangeAgg {
+	const range = ranges.get(days);
+	if (!range) throw new Error(`Missing ${days}-day extension stats range`);
+	return range;
+}
 
 function getExtensionRoot(): string {
 	return path.join(resolveAgentDir(), "extensions");
@@ -181,24 +177,6 @@ function parseSessionStartFromFilename(name: string): Date | null {
 	return Number.isFinite(d.getTime()) ? d : null;
 }
 
-function padRight(s: string, n: number): string {
-	const delta = n - s.length;
-	return delta > 0 ? s + " ".repeat(delta) : s;
-}
-
-function padLeft(s: string, n: number): string {
-	const delta = n - s.length;
-	return delta > 0 ? " ".repeat(delta) + s : s;
-}
-
-function dim(text: string): string {
-	return `\x1b[2m${text}\x1b[0m`;
-}
-
-function bold(text: string): string {
-	return `\x1b[1m${text}\x1b[0m`;
-}
-
 function formatPercent(pct: number): string {
 	if (!Number.isFinite(pct) || pct <= 0) return "0%";
 	if (pct >= 10) return `${pct.toFixed(0)}%`;
@@ -216,14 +194,6 @@ function formatCompact(value: number): string {
 	if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
 	if (Math.abs(n) >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
 	return String(n);
-}
-
-function sortMapByValueDesc<K extends string>(
-	m: Map<K, number>,
-): Array<{ key: K; value: number }> {
-	return [...m.entries()]
-		.map(([key, value]) => ({ key, value }))
-		.sort((a, b) => b.value - a.value || a.key.localeCompare(b.key));
 }
 
 function normalizeOwnerName(name: string): string {
@@ -331,7 +301,8 @@ async function walkCodeFiles(
 
 	while (stack.length > 0) {
 		if (signal?.aborted) break;
-		const dir = stack.pop()!;
+		const dir = stack.pop();
+		if (!dir) continue;
 		let entries: Dirent[] = [];
 		try {
 			entries = await fs.readdir(dir, { withFileTypes: true });
@@ -366,30 +337,32 @@ async function pathExists(p: string): Promise<boolean> {
 	}
 }
 
-async function readJsonFile(filePath: string): Promise<any | null> {
+function asRecord(value: unknown): Record<string, unknown> | null {
+	return typeof value === "object" && value !== null && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: null;
+}
+
+async function readJsonFile(filePath: string): Promise<unknown | null> {
 	try {
 		const raw = await fs.readFile(filePath, "utf8");
-		return JSON.parse(raw);
+		return JSON.parse(raw) as unknown;
 	} catch {
 		return null;
 	}
 }
 
-function extractPackageSources(settings: any): string[] {
-	if (!settings || !Array.isArray(settings.packages)) return [];
+function extractPackageSources(settings: unknown): string[] {
+	const settingsRecord = asRecord(settings);
+	if (!settingsRecord || !Array.isArray(settingsRecord.packages)) return [];
 	const out: string[] = [];
-	for (const entry of settings.packages) {
+	for (const entry of settingsRecord.packages) {
 		if (typeof entry === "string") {
 			out.push(entry);
 			continue;
 		}
-		if (
-			entry &&
-			typeof entry === "object" &&
-			typeof entry.source === "string"
-		) {
-			out.push(entry.source);
-		}
+		const entryRecord = asRecord(entry);
+		if (typeof entryRecord?.source === "string") out.push(entryRecord.source);
 	}
 	return out;
 }
@@ -420,9 +393,10 @@ async function resolvePackageScanRoots(packageRoot: string): Promise<string[]> {
 	const packageJson = await readJsonFile(packageJsonPath);
 	const scanRoots: string[] = [];
 
-	const manifestExtensions = packageJson?.pi?.extensions;
-	if (Array.isArray(manifestExtensions)) {
-		for (const extEntry of manifestExtensions) {
+	const manifestExtensions = asRecord(packageJson)?.pi;
+	const extensionEntries = asRecord(manifestExtensions)?.extensions;
+	if (Array.isArray(extensionEntries)) {
+		for (const extEntry of extensionEntries) {
 			if (typeof extEntry !== "string") continue;
 			const resolved = path.resolve(packageRoot, extEntry);
 			if (await pathExists(resolved)) scanRoots.push(resolved);
@@ -627,9 +601,7 @@ function resolveCommandOwner(
 }
 
 function normalizeHistoricalCommandName(commandName: string): string {
-	if (commandName === "status") return "usage";
-	if (commandName === "usage") return "usage-stats";
-	return commandName;
+	return commandName === "status" ? "usage" : commandName;
 }
 
 function parseSlashEchoCommand(content: unknown): string | null {
@@ -710,12 +682,13 @@ async function parseSessionFile(
 	try {
 		for await (const { value } of readJsonlFile(filePath, { signal })) {
 			if (signal?.aborted) return null;
-			const obj: any = value;
+			const obj = asRecord(value);
+			if (!obj) continue;
 
 			if (
 				!startedAt &&
-				obj?.type === "session" &&
-				typeof obj?.timestamp === "string"
+				obj.type === "session" &&
+				typeof obj.timestamp === "string"
 			) {
 				const d = new Date(obj.timestamp);
 				if (Number.isFinite(d.getTime())) startedAt = d;
@@ -723,8 +696,8 @@ async function parseSessionFile(
 			}
 
 			if (
-				obj?.type === "custom_message" &&
-				typeof obj?.customType === "string" &&
+				obj.type === "custom_message" &&
+				typeof obj.customType === "string" &&
 				ownersByCommand.has(obj.customType)
 			) {
 				const commandName = obj.customType;
@@ -745,7 +718,7 @@ async function parseSessionFile(
 				continue;
 			}
 
-			if (obj?.type === "custom_message" && obj?.customType === "slash-echo") {
+			if (obj.type === "custom_message" && obj.customType === "slash-echo") {
 				const commandName = parseSlashEchoCommand(obj.content);
 				if (!commandName) continue;
 				const { commandKey } = addCommandUsage(
@@ -764,18 +737,19 @@ async function parseSessionFile(
 				continue;
 			}
 
-			if (obj?.type !== "message") continue;
-			const message = obj?.message;
-			if (message?.role !== "assistant" || !Array.isArray(message?.content))
+			if (obj.type !== "message") continue;
+			const message = asRecord(obj.message);
+			if (message?.role !== "assistant" || !Array.isArray(message.content))
 				continue;
 
 			const toolNames = message.content
+				.map(asRecord)
 				.filter(
-					(block: any) =>
-						block?.type === "toolCall" && typeof block?.name === "string",
+					(block): block is Record<string, unknown> =>
+						block?.type === "toolCall" && typeof block.name === "string",
 				)
-				.map((block: any) => String(block.name).trim())
-				.filter((name: string) => name.length > 0);
+				.map((block) => String(block.name).trim())
+				.filter((name) => name.length > 0);
 			if (toolNames.length === 0) continue;
 
 			const usageTokens = extractEntryUsageTokens(obj);
@@ -988,37 +962,58 @@ function addTokensToRange(
 	);
 }
 
+interface TraceTokenAttribution {
+	promptHashTimes: Map<string, number[]>;
+	unkeyedTurns: number;
+}
+
 async function addPromptRouterTraceTokensToRanges(
 	ranges: Map<number, RangeAgg>,
 	signal?: AbortSignal,
-): Promise<void> {
+): Promise<TraceTokenAttribution> {
+	const result: TraceTokenAttribution = {
+		promptHashTimes: new Map(),
+		unkeyedTurns: 0,
+	};
 	const traceRoot = path.join(resolveAgentDir(), "traces");
-	if (!(await pathExists(traceRoot))) return;
+	if (!(await pathExists(traceRoot))) return result;
 	const traceFiles = await enumerateJsonlFiles(traceRoot, signal);
 	for (const filePath of traceFiles) {
-		if (signal?.aborted) return;
-		const byTurn = new Map<string, { routedAt?: Date; tokens: number }>();
-		for await (const { value: obj } of readJsonlFile(filePath, { signal })) {
+		if (signal?.aborted) return result;
+		const byTurn = new Map<
+			string,
+			{ routedAt?: Date; tokens: number; promptHash?: string }
+		>();
+		for await (const { value } of readJsonlFile(filePath, { signal })) {
+			const obj = asRecord(value);
+			if (!obj) continue;
 			const turnId =
-				typeof (obj as any)?.turn_id === "string"
-					? (obj as any).turn_id
-					: "turn-unknown";
+				typeof obj.turn_id === "string" ? obj.turn_id : "turn-unknown";
 			const current = byTurn.get(turnId) ?? { tokens: 0 };
-			if ((obj as any)?.event_type === "routing_decision") {
-				const d = new Date((obj as any).timestamp);
-				if (Number.isFinite(d.getTime())) current.routedAt = d;
+			if (obj.event_type === "routing_decision") {
+				const routedAt = new Date(String(obj.timestamp ?? ""));
+				if (Number.isFinite(routedAt.getTime())) current.routedAt = routedAt;
+				const promptHash = asRecord(obj.payload)?.prompt_hash;
+				if (typeof promptHash === "string") current.promptHash = promptHash;
 			}
-			if ((obj as any)?.event_type === "assistant_message") {
-				current.tokens += extractUsageTokens((obj as any)?.payload?.usage);
-			}
+			if (obj.event_type === "assistant_message")
+				current.tokens += extractUsageTokens(asRecord(obj.payload)?.usage);
 			byTurn.set(turnId, current);
 		}
-		for (const { routedAt, tokens } of byTurn.values()) {
+		for (const { routedAt, tokens, promptHash } of byTurn.values()) {
 			if (!routedAt || tokens <= 0) continue;
+			if (!promptHash) {
+				result.unkeyedTurns += 1;
+				continue;
+			}
+			const times = result.promptHashTimes.get(promptHash) ?? [];
+			times.push(routedAt.getTime());
+			result.promptHashTimes.set(promptHash, times);
 			const sessionDay = localMidnight(routedAt);
 			const dayKey = toLocalDayKey(routedAt);
 			for (const d of RANGE_DAYS) {
-				const range = ranges.get(d)!;
+				const range = ranges.get(d);
+				if (!range) continue;
 				const start = range.days[0].date;
 				const end = range.days[range.days.length - 1].date;
 				if (sessionDay < start || sessionDay > end) continue;
@@ -1032,6 +1027,7 @@ async function addPromptRouterTraceTokensToRanges(
 			}
 		}
 	}
+	return result;
 }
 
 async function readPromptRouterHashes(
@@ -1047,9 +1043,9 @@ async function readPromptRouterHashes(
 	);
 	const hashes = new Set<string>();
 	if (!(await pathExists(logPath))) return hashes;
-	for await (const { value: obj } of readJsonlFile(logPath, { signal })) {
-		if (typeof (obj as any)?.prompt_hash === "string")
-			hashes.add((obj as any).prompt_hash);
+	for await (const { value } of readJsonlFile(logPath, { signal })) {
+		const obj = asRecord(value);
+		if (typeof obj?.prompt_hash === "string") hashes.add(obj.prompt_hash);
 	}
 	return hashes;
 }
@@ -1058,10 +1054,14 @@ async function addPromptRouterSessionTokensToRanges(
 	ranges: Map<number, RangeAgg>,
 	cwd: string,
 	sessionFiles: string[],
+	excludedPromptHashTimes: ReadonlyMap<string, number[]> = new Map(),
 	signal?: AbortSignal,
 ): Promise<void> {
 	const hashes = await readPromptRouterHashes(cwd, signal);
 	if (hashes.size === 0) return;
+	const remainingExcluded = new Map(
+		[...excludedPromptHashTimes].map(([hash, times]) => [hash, [...times]]),
+	);
 	for (const filePath of sessionFiles) {
 		if (signal?.aborted) return;
 		for await (const joined of joinPromptsToNextAssistant(filePath, {
@@ -1072,11 +1072,30 @@ async function addPromptRouterSessionTokensToRanges(
 			const timestamp = joined.userEntry.timestamp;
 			const routedAt =
 				typeof timestamp === "string" ? new Date(timestamp) : null;
+			const remaining = remainingExcluded.get(hash) ?? [];
+			if (
+				routedAt &&
+				Number.isFinite(routedAt.getTime()) &&
+				remaining.length > 0
+			) {
+				let nearestIndex = 0;
+				for (let index = 1; index < remaining.length; index += 1)
+					if (
+						Math.abs(remaining[index] - routedAt.getTime()) <
+						Math.abs(remaining[nearestIndex] - routedAt.getTime())
+					)
+						nearestIndex = index;
+				if (Math.abs(remaining[nearestIndex] - routedAt.getTime()) <= 600_000) {
+					remaining.splice(nearestIndex, 1);
+					remainingExcluded.set(hash, remaining);
+					continue;
+				}
+			}
 			if (!routedAt || !Number.isFinite(routedAt.getTime())) continue;
 			const sessionDay = localMidnight(routedAt);
 			const dayKey = toLocalDayKey(routedAt);
 			for (const d of RANGE_DAYS) {
-				const range = ranges.get(d)!;
+				const range = requiredRange(ranges, d);
 				const start = range.days[0].date;
 				const end = range.days[range.days.length - 1].date;
 				if (sessionDay < start || sessionDay > end) continue;
@@ -1106,8 +1125,8 @@ async function addPromptRouterEventsToRanges(
 	);
 	if (!(await pathExists(logPath))) return;
 
-	for await (const { value: obj } of readJsonlFile(logPath, { signal })) {
-		const ts = toFiniteNumber((obj as any)?.ts);
+	for await (const { value } of readJsonlFile(logPath, { signal })) {
+		const ts = toFiniteNumber(asRecord(value)?.ts);
 		if (ts <= 0) continue;
 		const startedAt = new Date(ts * 1000);
 		if (!Number.isFinite(startedAt.getTime())) continue;
@@ -1125,7 +1144,7 @@ async function addPromptRouterEventsToRanges(
 		};
 		const sessionDay = localMidnight(startedAt);
 		for (const d of RANGE_DAYS) {
-			const range = ranges.get(d)!;
+			const range = requiredRange(ranges, d);
 			const start = range.days[0].date;
 			const end = range.days[range.days.length - 1].date;
 			if (sessionDay < start || sessionDay > end) continue;
@@ -1189,72 +1208,6 @@ function buildUsageRows(
 	return rows;
 }
 
-function clampOffset(
-	offset: number,
-	totalRows: number,
-	pageSize: number,
-): number {
-	if (totalRows <= 0) return 0;
-	const maxOffset = Math.max(0, totalRows - pageSize);
-	return Math.max(0, Math.min(offset, maxOffset));
-}
-
-function renderUsageTable(
-	title: string,
-	rows: UsageRow[],
-	width: number,
-	offset: number,
-	pageSize: number,
-	metric: MetricMode,
-	active: boolean,
-): TableRenderResult {
-	const lines: string[] = [];
-	lines.push(active ? bold(`${title}  [active]`) : bold(title));
-
-	if (rows.length === 0) {
-		lines.push(dim("(no usage found)"));
-		return { lines, offset: 0, totalRows: 0 };
-	}
-
-	const safeOffset = clampOffset(offset, rows.length, pageSize);
-	const pageRows = rows.slice(safeOffset, safeOffset + pageSize);
-
-	const fixedColumns = 2 + 9 + 2 + 9 + 2 + 9 + 2 + 8;
-	const minNameWidth = 16;
-	const maxNameWidth = 64;
-	const nameWidth = Math.max(
-		minNameWidth,
-		Math.min(maxNameWidth, width - fixedColumns),
-	);
-
-	const callsLabel = metric === "calls" ? "calls*" : "calls";
-	const tokensLabel = metric === "tokens" ? "tokens*" : "tokens";
-
-	const header = `${padRight("name", nameWidth)}  ${padLeft(callsLabel, 9)}  ${padLeft(tokensLabel, 9)}  ${padLeft("sessions", 9)}  ${padLeft("share", 8)}`;
-	const rule = `${"-".repeat(nameWidth)}  ${"-".repeat(9)}  ${"-".repeat(9)}  ${"-".repeat(9)}  ${"-".repeat(8)}`;
-
-	lines.push(header);
-	lines.push(rule);
-
-	for (const row of pageRows) {
-		const rowText = `${padRight(row.name.slice(0, nameWidth), nameWidth)}  ${padLeft(formatInt(row.calls), 9)}  ${padLeft(formatCompact(row.tokens), 9)}  ${padLeft(formatInt(row.sessions), 9)}  ${padLeft(formatPercent(row.sharePct), 8)}`;
-		lines.push(rowText);
-	}
-
-	const from = safeOffset + 1;
-	const to = Math.min(rows.length, safeOffset + pageRows.length);
-	const nav = `${from}-${to} of ${rows.length}`;
-	const hints = [
-		safeOffset > 0 ? "↑" : null,
-		to < rows.length ? "↓" : null,
-	].filter((x): x is string => !!x);
-	lines.push(
-		dim(`showing ${nav}${hints.length > 0 ? ` · ${hints.join(" ")}` : ""}`),
-	);
-
-	return { lines, offset: safeOffset, totalRows: rows.length };
-}
-
 function rangeSummary(range: RangeAgg, days: number): string {
 	const extCount = [...range.callsByExtension.values()].filter(
 		(x) => x > 0,
@@ -1262,7 +1215,7 @@ function rangeSummary(range: RangeAgg, days: number): string {
 	const toolCount = [...range.callsByToolKey.values()].filter(
 		(x) => x > 0,
 	).length;
-	return `Last ${days} days: ${range.sessions} sessions · ${range.toolCalls} tool calls · ~${formatCompact(range.estimatedToolTokens)} tool-call tokens · ${extCount} extensions · ${toolCount} extension/tools`;
+	return `Last ${days} days: ${range.sessions} sessions; ${range.toolCalls} tool calls; ~${formatCompact(range.estimatedToolTokens)} tool-call tokens; ${extCount} extensions; ${toolCount} extension/tools`;
 }
 
 async function computeBreakdown(
@@ -1276,7 +1229,7 @@ async function computeBreakdown(
 	for (const d of RANGE_DAYS) ranges.set(d, buildRangeAgg(d, now));
 
 	const maxRange = Math.max(...RANGE_DAYS);
-	const maxRangeAgg = ranges.get(maxRange)!;
+	const maxRangeAgg = requiredRange(ranges, maxRange);
 	const startMaxRange = maxRangeAgg.days[0].date;
 
 	const ownership = await discoverExtensionToolOwners(cwd, signal);
@@ -1317,7 +1270,7 @@ async function computeBreakdown(
 
 		const sessionDay = localMidnight(session.startedAt);
 		for (const d of RANGE_DAYS) {
-			const range = ranges.get(d)!;
+			const range = requiredRange(ranges, d);
 			const start = range.days[0].date;
 			const end = range.days[range.days.length - 1].date;
 			if (sessionDay < start || sessionDay > end) continue;
@@ -1326,8 +1279,14 @@ async function computeBreakdown(
 	}
 
 	await addPromptRouterEventsToRanges(ranges, cwd, signal);
-	await addPromptRouterTraceTokensToRanges(ranges, signal);
-	await addPromptRouterSessionTokensToRanges(ranges, cwd, candidates, signal);
+	const traceTokens = await addPromptRouterTraceTokensToRanges(ranges, signal);
+	await addPromptRouterSessionTokensToRanges(
+		ranges,
+		cwd,
+		candidates,
+		traceTokens.promptHashTimes,
+		signal,
+	);
 
 	const allToolNames = new Set(pi.getAllTools().map((t) => t.name));
 	const unattributedTools = [...allToolNames].filter(
@@ -1338,227 +1297,51 @@ async function computeBreakdown(
 		generatedAt: now,
 		ranges,
 		sessionRoot,
+		ownership,
 		discoveredOwnerNames: ownership.ownerNames,
 		ownerDiagnostics: {
 			discoveredOwners: ownership.ownerNames.length,
 			unattributedTools,
 			packageScanRoots: ownership.packageScanRoots,
+			unkeyedRouterTraceTurns: traceTokens.unkeyedTurns,
 		},
 	};
 }
 
-class ExtensionStatsComponent implements Component {
-	private data: BreakdownData;
-	private tui: TUI;
-	private onDone: () => void;
-	private rangeIndex = 1; // default 30d
-	private metric: MetricMode = "calls";
-	private activeSection: TableSection = "tools";
-	private extensionOffset = 0;
-	private toolOffset = 0;
-	private cachedWidth?: number;
-	private cachedLines?: string[];
-
-	constructor(data: BreakdownData, tui: TUI, onDone: () => void) {
-		this.data = data;
-		this.tui = tui;
-		this.onDone = onDone;
+export async function collectExtensionUsageSnapshot(
+	pi: ExtensionAPI,
+	cwd: string,
+	sessionRoot: string,
+	signal?: AbortSignal,
+): Promise<ExtensionUsageSnapshot> {
+	const data = await computeBreakdown(pi, cwd, sessionRoot, signal);
+	const range = requiredRange(data.ranges, 30);
+	const commands = new Map<string, number>();
+	for (const commandName of data.ownership.ownersByCommand.keys()) {
+		const owner = resolveCommandOwner(
+			commandName,
+			data.ownership.ownersByCommand,
+		);
+		const key = `${owner}/${commandName}`;
+		commands.set(key, range.callsByToolKey.get(key) ?? 0);
 	}
-
-	invalidate(): void {
-		this.cachedWidth = undefined;
-		this.cachedLines = undefined;
+	const tools = new Map<string, number>();
+	for (const toolName of data.ownership.ownersByTool.keys()) {
+		const owner = resolveToolOwner(toolName, data.ownership.ownersByTool);
+		const key = `${owner}/${toolName}`;
+		tools.set(key, range.callsByToolKey.get(key) ?? 0);
 	}
-
-	private requestRender(): void {
-		this.invalidate();
-		this.tui.requestRender();
-	}
-
-	private resetTableOffsets(): void {
-		this.extensionOffset = 0;
-		this.toolOffset = 0;
-	}
-
-	handleInput(data: string): void {
-		const lower = data.toLowerCase();
-		if (
-			matchesKey(data, Key.escape) ||
-			matchesKey(data, Key.ctrl("c")) ||
-			lower === "q"
-		) {
-			this.onDone();
-			return;
-		}
-
-		const prevRange = () => {
-			this.rangeIndex =
-				(this.rangeIndex + RANGE_DAYS.length - 1) % RANGE_DAYS.length;
-			this.resetTableOffsets();
-			this.requestRender();
-		};
-		const nextRange = () => {
-			this.rangeIndex = (this.rangeIndex + 1) % RANGE_DAYS.length;
-			this.resetTableOffsets();
-			this.requestRender();
-		};
-
-		if (matchesKey(data, Key.left) || lower === "h") prevRange();
-		if (matchesKey(data, Key.right) || lower === "l") nextRange();
-
-		if (data === "1") {
-			this.rangeIndex = 0;
-			this.resetTableOffsets();
-			this.requestRender();
-		}
-		if (data === "2") {
-			this.rangeIndex = 1;
-			this.resetTableOffsets();
-			this.requestRender();
-		}
-		if (data === "3") {
-			this.rangeIndex = 2;
-			this.resetTableOffsets();
-			this.requestRender();
-		}
-		if (data === "4") {
-			this.rangeIndex = 3;
-			this.resetTableOffsets();
-			this.requestRender();
-		}
-
-		if (lower === "m") {
-			this.metric = this.metric === "calls" ? "tokens" : "calls";
-			this.resetTableOffsets();
-			this.requestRender();
-		}
-
-		if (lower === "e") {
-			this.activeSection = "extensions";
-			this.requestRender();
-		}
-		if (lower === "t") {
-			this.activeSection = "tools";
-			this.requestRender();
-		}
-
-		if (matchesKey(data, Key.down)) {
-			if (this.activeSection === "extensions") {
-				this.extensionOffset += PAGE_SIZE;
-			} else {
-				this.toolOffset += PAGE_SIZE;
-			}
-			this.requestRender();
-		}
-		if (matchesKey(data, Key.up)) {
-			if (this.activeSection === "extensions") {
-				this.extensionOffset = Math.max(0, this.extensionOffset - PAGE_SIZE);
-			} else {
-				this.toolOffset = Math.max(0, this.toolOffset - PAGE_SIZE);
-			}
-			this.requestRender();
-		}
-
-		if (lower === "g") {
-			if (this.activeSection === "extensions") this.extensionOffset = 0;
-			else this.toolOffset = 0;
-			this.requestRender();
-		}
-	}
-
-	render(width: number): string[] {
-		if (this.cachedWidth === width && this.cachedLines) return this.cachedLines;
-
-		const selectedDays = RANGE_DAYS[this.rangeIndex];
-		const range = this.data.ranges.get(selectedDays)!;
-		const effectiveMetric = resolveEffectiveMetric(
-			this.metric,
-			range.estimatedToolTokens,
-		);
-
-		const extensionRows = buildUsageRows(
-			range.callsByExtension,
-			range.tokensByExtension,
-			range.sessionsByExtension,
-			effectiveMetric,
-		);
-		const toolRows = buildUsageRows(
-			range.callsByToolKey,
-			range.tokensByToolKey,
-			range.sessionsByToolKey,
-			effectiveMetric,
-		);
-
-		const tab = (days: number, idx: number): string => {
-			const selected = idx === this.rangeIndex;
-			const label = `${days}d`;
-			return selected ? bold(`[${label}]`) : dim(` ${label} `);
-		};
-
-		const header = `${bold("Tool usage stats")}  ${tab(7, 0)} ${tab(30, 1)} ${tab(60, 2)} ${tab(90, 3)}  ${dim("←/→ range · m metric · e/t focus · ↑/↓ page · q close")}`;
-
-		const lines: string[] = [];
-		lines.push(truncateToWidth(header, width));
-		lines.push(
-			truncateToWidth(
-				dim(`Sessions directory: ${this.data.sessionRoot}`),
-				width,
-			),
-		);
-		lines.push(
-			truncateToWidth(
-				dim(
-					`Attribution: extension/tool for extension-registered tools, Pi/tool for native tools (${this.data.ownerDiagnostics.unattributedTools} unattributed active tools, ${this.data.ownerDiagnostics.packageScanRoots} package scan roots)`,
-				),
-				width,
-			),
-		);
-		lines.push(
-			truncateToWidth(
-				dim(
-					`Metric mode: ${effectiveMetric} ${effectiveMetric === "tokens" ? "(estimated)" : ""}`,
-				),
-				width,
-			),
-		);
-		lines.push("");
-		lines.push(truncateToWidth(rangeSummary(range, selectedDays), width));
-		lines.push("");
-
-		const extensionTable = renderUsageTable(
-			`By extension (${effectiveMetric})`,
-			extensionRows,
-			width,
-			this.extensionOffset,
-			PAGE_SIZE,
-			effectiveMetric,
-			this.activeSection === "extensions",
-		);
-		this.extensionOffset = extensionTable.offset;
-		for (const line of extensionTable.lines)
-			lines.push(truncateToWidth(line, width));
-
-		lines.push("");
-
-		const toolTable = renderUsageTable(
-			`By extension/tool (${effectiveMetric})`,
-			toolRows,
-			width,
-			this.toolOffset,
-			PAGE_SIZE,
-			effectiveMetric,
-			this.activeSection === "tools",
-		);
-		this.toolOffset = toolTable.offset;
-		for (const line of toolTable.lines)
-			lines.push(truncateToWidth(line, width));
-
-		this.cachedWidth = width;
-		this.cachedLines = lines.map((line) =>
-			visibleWidth(line) > width ? truncateToWidth(line, width) : line,
-		);
-		return this.cachedLines;
-	}
+	const extensions = new Map<string, number>();
+	for (const owner of data.ownership.ownerNames)
+		extensions.set(owner, range.callsByExtension.get(owner) ?? 0);
+	for (const [owner, calls] of range.callsByExtension)
+		if (!extensions.has(owner)) extensions.set(owner, calls);
+	return {
+		generatedAt: data.generatedAt,
+		extensions,
+		commands,
+		tools,
+	};
 }
 
 function displayOwnerName(owner: string): string {
@@ -1630,10 +1413,11 @@ function renderMarkdownReport(
 		`Generated: ${data.generatedAt.toISOString()}`,
 		`Sessions directory: ${data.sessionRoot}`,
 		`Attribution: extension/tool for extension-registered tools, Pi/tool for native tools (${data.ownerDiagnostics.unattributedTools} unattributed active tools, ${data.ownerDiagnostics.packageScanRoots} package scan roots).`,
+		`Router token fallback: ${data.ownerDiagnostics.unkeyedRouterTraceTurns} unkeyed trace turn${data.ownerDiagnostics.unkeyedRouterTraceTurns === 1 ? "" : "s"} excluded from trace-token attribution and reconciled from session evidence when available.`,
 	];
 
 	for (const days of reportDays) {
-		const range = data.ranges.get(days)!;
+		const range = requiredRange(data.ranges, days);
 		const effectiveMetric: MetricMode = "calls";
 		const extensionRows = buildUsageRows(
 			range.callsByExtension,
@@ -1662,7 +1446,7 @@ function renderMarkdownReport(
 	}
 
 	const maxRange = Math.max(...reportDays);
-	const maxRangeAgg = data.ranges.get(maxRange)!;
+	const maxRangeAgg = requiredRange(data.ranges, maxRange);
 	const usedOwners = new Set(maxRangeAgg.callsByExtension.keys());
 	const unusedOwners = data.discoveredOwnerNames.filter(
 		(owner) => owner !== "Pi" && !usedOwners.has(owner),

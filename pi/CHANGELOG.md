@@ -1,5 +1,35 @@
 # Pi Changelog
 
+## 2026-07-14: Rank improvements by verified usage impact
+
+**Why:** `/improve` selected the oldest pending candidate even when another
+supported issue affected a much more frequently used surface. Several stats
+commands also had attribution, scope, and window defects that made their counts
+unsafe for prioritization.
+
+**Changed:**
+- Ranked safety and correctness candidates first, then normal candidates by
+  verified 30-day usage, confidence, age, and interaction ID.
+- Added structured skill, command, extension, and tool targets to review
+  records while preserving legacy `targetSkill` records.
+- Distinguished observed, verified-zero, and unknown usage in improvement
+  discussions.
+- Corrected repeated router hash attribution, trace/session double counting,
+  current `/usage` ownership, orchestration review windows, skill roots and
+  unused windows, and configured usage-session roots.
+- Made `/usage-stats` render deterministically without starting a provider
+  turn and removed unused extension-stats TUI code.
+
+**Files:** `pi/extensions/extension-stats.ts`,
+`pi/extensions/orchestration-stats.ts`, `pi/extensions/router-stats.ts`,
+`pi/extensions/skill-stats.ts`, `pi/extensions/usage.ts`,
+`pi/extensions/workflow-friction-review.ts`, `pi/lib/workflow-friction.ts`,
+`pi/tests/orchestration-stats.test.ts`, `pi/tests/session-jsonl-stats.test.ts`,
+`pi/tests/skill-stats.test.ts`, `pi/tests/usage.test.ts`,
+`pi/tests/workflow-friction.test.ts`, `pi/README.md`, `pi/CHANGELOG.md`
+
+---
+
 ## 2026-07-14: Stabilize secret-review coverage
 
 **Why:** `/commit` required the secret reviewer to reproduce path, label, line,

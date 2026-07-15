@@ -35,6 +35,16 @@ async function writeJsonl(
 	);
 }
 
+async function writeSkill(root: string, name: string): Promise<void> {
+	const skillPath = path.join(root, name, "SKILL.md");
+	await fs.mkdir(path.dirname(skillPath), { recursive: true });
+	await fs.writeFile(
+		skillPath,
+		`---\nname: ${name}\ndescription: ${name} description\n---\n`,
+		"utf-8",
+	);
+}
+
 describe("/skill-stats extension", () => {
 	it("registers the command", () => {
 		const pi = createMockPi();
@@ -141,6 +151,62 @@ describe("/skill-stats extension", () => {
 		expect(markdown).toContain("| Skill | Location | Count | Description |");
 		expect(markdown).toContain("| Skill | Location | Description |");
 		expect(markdown).not.toContain("/home/person");
+	});
+
+	it("discovers project and configured roots from cwd and scopes unused skills to report windows", async () => {
+		const root = await makeSessionRoot();
+		const cwd = await makeSessionRoot();
+		const configuredRoot = path.join(cwd, "configured-skills");
+		await Promise.all([
+			writeSkill(path.join(cwd, ".pi", "skills"), "project-unused"),
+			writeSkill(path.join(cwd, ".agents", "skills"), "agent-unused"),
+			writeSkill(configuredRoot, "configured-old"),
+		]);
+		await fs.writeFile(
+			path.join(cwd, ".pi", "settings.json"),
+			JSON.stringify({ skills: ["../configured-skills"] }),
+			"utf-8",
+		);
+		await writeJsonl(root, "2026-03-01T00-00-00-000Z_old.jsonl", [
+			{
+				type: "custom",
+				customType: "skill-load",
+				data: {
+					skill: "configured-old",
+					source: "explicit_slash_command",
+					timestamp: "2026-03-01T00:00:00.000Z",
+				},
+			},
+		]);
+
+		const options = {
+			sessionRoot: root,
+			cwd,
+			now: new Date("2026-05-07T12:00:00.000Z"),
+		};
+		const recent = await collectSkillStats("30", options);
+		expect(recent.result?.skillMetadata.get("project-unused")?.location).toBe(
+			"project",
+		);
+		expect(recent.result?.skillMetadata.get("agent-unused")?.location).toBe(
+			"project",
+		);
+		expect(recent.result?.skillMetadata.get("configured-old")?.location).toBe(
+			"project",
+		);
+		expect(recent.result?.usage.get("30")?.has("configured-old")).toBe(false);
+		expect(recent.result?.unusedSkills.map((skill) => skill.name)).toEqual(
+			expect.arrayContaining([
+				"agent-unused",
+				"configured-old",
+				"project-unused",
+			]),
+		);
+
+		const allTime = await collectSkillStats("all", options);
+		expect(
+			allTime.result?.unusedSkills.map((skill) => skill.name),
+		).not.toContain("configured-old");
 	});
 
 	it("returns usage markdown for invalid args", async () => {

@@ -4,7 +4,10 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import workflowFrictionExtension, {
 	buildReviewerArgs,
+	collectCandidateUsage,
+	type ImprovementCandidateUsage,
 	learningDecisionsPath,
+	rankImprovementCandidates,
 	readCurrentLearningDecisions,
 } from "../extensions/workflow-friction-review.js";
 import {
@@ -78,6 +81,20 @@ function commandLearningReviewRecord(
 			},
 			suggestedChange: "Use pnpm for Pi TypeScript work.",
 		},
+	};
+}
+
+function rankedCandidate(
+	id: string,
+	impact: "safety" | "correctness" | "efficiency" | "maintainability",
+	reviewedAt: string,
+): StoredReviewRecord {
+	const record = commandLearningReviewRecord("/test/dir");
+	return {
+		...record,
+		interactionId: id,
+		reviewedAt,
+		review: record.review ? { ...record.review, impact } : undefined,
 	};
 }
 
@@ -368,6 +385,7 @@ describe("workflow friction reviewer", () => {
 				JSON.stringify({
 					classification: "churn",
 					confidence: 0.9,
+					impact: "efficiency",
 					summary: "Repeated validation before implementation.",
 					evidence: ["The same command ran twice without an edit."],
 					reusableInstruction: {
@@ -375,6 +393,7 @@ describe("workflow friction reviewer", () => {
 						reason: "A focused validation rule would prevent repetition.",
 						scope: "skill",
 						targetSkill: "analysis-workflow",
+						target: { kind: "skill", name: "analysis-workflow" },
 					},
 					suggestedChange: "Run validation after a coherent edit.",
 				}),
@@ -382,7 +401,11 @@ describe("workflow friction reviewer", () => {
 		).toMatchObject({
 			classification: "churn",
 			confidence: 0.9,
-			reusableInstruction: { scope: "skill" },
+			impact: "efficiency",
+			reusableInstruction: {
+				scope: "skill",
+				target: { kind: "skill", name: "analysis-workflow" },
+			},
 		});
 	});
 
@@ -397,6 +420,126 @@ describe("workflow friction reviewer", () => {
 				}),
 			),
 		).toBeNull();
+	});
+});
+
+describe("improvement candidate ranking", () => {
+	it("prioritizes safety and correctness, then higher observed usage", () => {
+		const safety = rankedCandidate(
+			"safety-zero",
+			"safety",
+			"2026-07-12T00:00:00.000Z",
+		);
+		const high = rankedCandidate(
+			"normal-high",
+			"efficiency",
+			"2026-07-13T00:00:00.000Z",
+		);
+		const low = rankedCandidate(
+			"normal-low",
+			"efficiency",
+			"2026-07-11T00:00:00.000Z",
+		);
+		const usage = new Map<string, ImprovementCandidateUsage>([
+			[
+				safety.interactionId,
+				{ state: "zero", source: "skill-stats", calls30d: 0 },
+			],
+			[
+				high.interactionId,
+				{ state: "observed", source: "skill-stats", calls30d: 8 },
+			],
+			[
+				low.interactionId,
+				{ state: "observed", source: "skill-stats", calls30d: 1 },
+			],
+		]);
+		expect(
+			rankImprovementCandidates([low, high, safety], usage).map(
+				(candidate) => candidate.interactionId,
+			),
+		).toEqual(["safety-zero", "normal-high", "normal-low"]);
+	});
+
+	it("keeps undiscovered targets unknown instead of verified zero", async () => {
+		const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "pi-targets-"));
+		const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+		process.env.PI_CODING_AGENT_DIR = path.join(scratch, "agent");
+		try {
+			const candidates = (
+				["skill", "command", "extension", "tool"] as const
+			).map((kind) => {
+				const candidate = rankedCandidate(
+					`missing-${kind}`,
+					"efficiency",
+					"2026-07-14T00:00:00.000Z",
+				);
+				if (candidate.review)
+					candidate.review.reusableInstruction.target = {
+						kind,
+						name: `missing-${kind}`,
+					};
+				return candidate;
+			});
+			const pi = createMockPi() as ReturnType<typeof createMockPi> & {
+				getAllTools: () => never[];
+			};
+			pi.getAllTools = () => [];
+			const usage = await collectCandidateUsage(
+				candidates,
+				pi as never,
+				createMockCtx({
+					cwd: scratch,
+					sessionManager: {
+						getSessionDir: () => path.join(scratch, "sessions"),
+					},
+				}),
+			);
+			for (const candidate of candidates)
+				expect(usage.get(candidate.interactionId)).toMatchObject({
+					state: "unknown",
+					diagnostic: "target not discovered",
+				});
+		} finally {
+			if (previousAgentDir === undefined)
+				delete process.env.PI_CODING_AGENT_DIR;
+			else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			await fs.rm(scratch, { recursive: true, force: true });
+		}
+	});
+
+	it("ranks observed usage above unknown and verified zero deterministically", () => {
+		const observed = rankedCandidate(
+			"observed",
+			"maintainability",
+			"2026-07-14T00:00:00.000Z",
+		);
+		const unknown = rankedCandidate(
+			"unknown",
+			"maintainability",
+			"2026-07-12T00:00:00.000Z",
+		);
+		const zero = rankedCandidate(
+			"zero",
+			"maintainability",
+			"2026-07-10T00:00:00.000Z",
+		);
+		const usage = new Map<string, ImprovementCandidateUsage>([
+			[
+				observed.interactionId,
+				{ state: "observed", source: "extension-stats", calls30d: 2 },
+			],
+			[unknown.interactionId, { state: "unknown", source: "none" }],
+			[
+				zero.interactionId,
+				{ state: "zero", source: "extension-stats", calls30d: 0 },
+			],
+		]);
+		expect(
+			rankImprovementCandidates([zero, unknown, observed], usage).map(
+				(candidate) => candidate.interactionId,
+			),
+		).toEqual(["observed", "unknown", "zero"]);
 	});
 });
 
@@ -634,7 +777,12 @@ describe("workflow friction extension", () => {
 			await fs.mkdir(path.join(scratch, "agent", "sessions"), {
 				recursive: true,
 			});
-			const ctx = createMockCtx({ cwd: "/test/dir" });
+			const ctx = createMockCtx({
+				cwd: "/test/dir",
+				sessionManager: {
+					getSessionDir: () => path.join(scratch, "agent", "sessions"),
+				},
+			});
 			await seedCommandLearningReview(ctx.cwd, "project", "typescript");
 			const pi = createMockPi();
 			workflowFrictionExtension(pi as never);
@@ -644,7 +792,93 @@ describe("workflow friction extension", () => {
 			await improve?.handler("", ctx);
 			const prompt = String(pi.sendMessage.mock.calls[0]?.[0]?.content ?? "");
 			expect(prompt).toContain(
-				'"targetSkillUsage":{"name":"typescript","used30d":0,"manualReadCandidates":0}',
+				'"candidateUsage":{"target":{"kind":"skill","name":"typescript"},"state":"zero","source":"skill-stats","calls30d":0,"manualReadCandidates":0}',
+			);
+		} finally {
+			if (previousFriction === undefined)
+				delete process.env.PI_WORKFLOW_FRICTION_DIR;
+			else process.env.PI_WORKFLOW_FRICTION_DIR = previousFriction;
+			if (previousAgentDir === undefined)
+				delete process.env.PI_CODING_AGENT_DIR;
+			else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			await fs.rm(scratch, { recursive: true, force: true });
+		}
+	});
+
+	it("selects the higher-usage candidate before an older lower-usage candidate", async () => {
+		const scratch = await fs.mkdtemp(
+			path.join(os.tmpdir(), "pi-improve-ranking-"),
+		);
+		const previousFriction = process.env.PI_WORKFLOW_FRICTION_DIR;
+		const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+		process.env.PI_WORKFLOW_FRICTION_DIR = path.join(scratch, "friction");
+		process.env.PI_CODING_AGENT_DIR = path.join(scratch, "agent");
+		try {
+			const cwd = path.join(scratch, "workspace");
+			const sessionDir = path.join(scratch, "sessions");
+			for (const skill of ["high-use", "low-use"]) {
+				const skillDir = path.join(scratch, "agent", "skills", skill);
+				await fs.mkdir(skillDir, { recursive: true });
+				await fs.writeFile(
+					path.join(skillDir, "SKILL.md"),
+					`---\nname: ${skill}\ndescription: ${skill} fixture\n---\n`,
+					"utf8",
+				);
+			}
+			await fs.mkdir(sessionDir, { recursive: true });
+			await fs.writeFile(
+				path.join(sessionDir, "2026-07-14T00-00-00-000Z_ranking.jsonl"),
+				[
+					["high-use", "high-1"],
+					["high-use", "high-2"],
+					["low-use", "low-1"],
+				]
+					.map(([skill, turnId]) =>
+						JSON.stringify({
+							type: "custom",
+							customType: "skill-load",
+							data: {
+								skill,
+								source: "explicit_slash_command",
+								timestamp: "2026-07-14T00:00:00.000Z",
+								turnId,
+							},
+						}),
+					)
+					.join("\n"),
+				"utf8",
+			);
+			const low = commandLearningReviewRecord(cwd, "project", "low-use");
+			low.interactionId = "candidate-low";
+			low.reviewedAt = "2026-07-12T00:00:00.000Z";
+			if (low.review) low.review.impact = "efficiency";
+			const high = commandLearningReviewRecord(cwd, "project", "high-use");
+			high.interactionId = "candidate-high";
+			high.reviewedAt = "2026-07-13T00:00:00.000Z";
+			if (high.review) high.review.impact = "efficiency";
+			const reviewsPath = path.join(
+				path.dirname(learningDecisionsPath()),
+				"reviews.jsonl",
+			);
+			await fs.mkdir(path.dirname(reviewsPath), { recursive: true });
+			await fs.writeFile(
+				reviewsPath,
+				`${JSON.stringify(low)}\n${JSON.stringify(high)}\n`,
+				"utf8",
+			);
+			const ctx = createMockCtx({
+				cwd,
+				sessionManager: { getSessionDir: () => sessionDir },
+			});
+			const pi = createMockPi();
+			workflowFrictionExtension(pi as never);
+			await pi._commands
+				.find((command) => command.name === "improve")
+				?.handler("", ctx);
+			const prompt = String(pi.sendMessage.mock.calls[0]?.[0]?.content ?? "");
+			expect(prompt).toContain("Candidate ID: candidate-high");
+			expect(prompt).toContain(
+				"Ranking reason: highest observed 30-day usage ROI (2 calls)",
 			);
 		} finally {
 			if (previousFriction === undefined)

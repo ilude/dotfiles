@@ -156,8 +156,8 @@ describe("codex-status usage", () => {
 		expect(text).not.toContain("Codex usage");
 		expect(text).not.toContain("source:");
 		expect(text).not.toContain("account:");
-		expect(text).toContain("5h           6% used resets 6:43pm");
-		expect(text).toContain("weekly      11% used resets 05/12 7:18pm");
+		expect(text).toContain("5h       6% used resets 6:43pm");
+		expect(text).toContain("weekly   11% used resets 05/12 7:18pm");
 		expect(text).toContain("credits: 12");
 		expect(text).toContain("GPT-5.3-Codex-Spark");
 		expect(text.trimEnd()).toMatch(
@@ -180,8 +180,8 @@ describe("codex-status usage", () => {
 		);
 
 		expect(text).toContain("5h       disabled");
-		expect(text).toContain("weekly       5% used");
-		expect(text).not.toContain("5h           5% used");
+		expect(text).toContain("weekly   5% used");
+		expect(text).not.toContain("5h       5% used");
 	});
 
 	it("colors window percent by elapsed-window pace", () => {
@@ -200,7 +200,7 @@ describe("codex-status usage", () => {
 				{ source: "pi", path: "/tmp/auth.json", accessToken: "redacted" },
 				{ color: true },
 			),
-		).toContain("\u001b[92m   22%\u001b[0m used");
+		).toContain("\u001b[92m22%\u001b[0m used");
 		expect(
 			formatUsage(
 				{
@@ -211,7 +211,7 @@ describe("codex-status usage", () => {
 				{ source: "pi", path: "/tmp/auth.json", accessToken: "redacted" },
 				{ color: true },
 			),
-		).toContain("\u001b[33m   31%\u001b[0m used");
+		).toContain("\u001b[33m31%\u001b[0m used");
 		expect(
 			formatUsage(
 				{
@@ -222,7 +222,7 @@ describe("codex-status usage", () => {
 				{ source: "pi", path: "/tmp/auth.json", accessToken: "redacted" },
 				{ color: true },
 			),
-		).toContain("\u001b[31m   36%\u001b[0m used");
+		).toContain("\u001b[31m36%\u001b[0m used");
 
 		const earlyWeeklyResetAt = new Date(2026, 4, 14, 19, 0, 0).getTime() / 1000;
 		expect(
@@ -239,7 +239,7 @@ describe("codex-status usage", () => {
 				{ source: "pi", path: "/tmp/auth.json", accessToken: "redacted" },
 				{ color: true },
 			),
-		).toContain("\u001b[92m    1%\u001b[0m used");
+		).toContain("\u001b[92m1%\u001b[0m used");
 
 		const earlyUsageResetAt = new Date(2026, 4, 14, 18, 43, 0).getTime() / 1000;
 		expect(
@@ -256,7 +256,7 @@ describe("codex-status usage", () => {
 				{ source: "pi", path: "/tmp/auth.json", accessToken: "redacted" },
 				{ color: true },
 			),
-		).toContain("\u001b[92m    2%\u001b[0m used");
+		).toContain("\u001b[92m2%\u001b[0m used");
 
 		const fiveHourResetAt = new Date(2026, 4, 7, 22, 18, 0).getTime() / 1000;
 		expect(
@@ -273,7 +273,7 @@ describe("codex-status usage", () => {
 				{ source: "pi", path: "/tmp/auth.json", accessToken: "redacted" },
 				{ color: true },
 			),
-		).toContain("\u001b[92m   30%\u001b[0m used");
+		).toContain("\u001b[92m30%\u001b[0m used");
 		expect(
 			formatUsage(
 				{
@@ -288,7 +288,7 @@ describe("codex-status usage", () => {
 				{ source: "pi", path: "/tmp/auth.json", accessToken: "redacted" },
 				{ color: true },
 			),
-		).toContain("\u001b[92m    0%\u001b[0m used");
+		).toContain("\u001b[92m0%\u001b[0m used");
 	});
 
 	it("formats the Codex footer slot by window duration", () => {

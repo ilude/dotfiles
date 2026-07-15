@@ -4,12 +4,18 @@
 // Local changes: this version computes usage with a deterministic TypeScript parser
 // instead of asking the agent to rebuild parsing scripts from prompt text.
 
-import { statSync } from "node:fs";
 import * as fs from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import {
+	enumerateJsonlFiles,
+	readJsonlFile,
+	resolveAgentDir,
+	resolveSessionRoot,
+} from "../lib/session-jsonl.ts";
 
 const WINDOWS = [1, 7, 30, 90] as const;
 const MODELS_DEV_URL = "https://models.dev/api.json";
@@ -49,7 +55,7 @@ function objectValue(value: unknown): Record<string, unknown> | undefined {
 
 function timestampFrom(
 	record: Record<string, unknown>,
-	fallbackPath: string,
+	fallbackTimestamp: number,
 ): number {
 	for (const key of ["timestamp", "time", "created_at", "createdAt", "date"]) {
 		const value = record[key];
@@ -59,33 +65,15 @@ function timestampFrom(
 			if (!Number.isNaN(parsed)) return parsed / 1000;
 		}
 	}
-	return statMtimeSeconds(fallbackPath);
+	return fallbackTimestamp;
 }
 
-function statMtimeSeconds(filePath: string): number {
+async function statMtimeSeconds(filePath: string): Promise<number> {
 	try {
-		return statSync(filePath).mtimeMs / 1000;
+		return (await stat(filePath)).mtimeMs / 1000;
 	} catch {
 		return Date.now() / 1000;
 	}
-}
-
-async function findJsonlFiles(root: string): Promise<string[]> {
-	const out: string[] = [];
-	async function walk(dir: string): Promise<void> {
-		try {
-			for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
-				const full = path.join(dir, entry.name);
-				if (entry.isDirectory()) await walk(full);
-				else if (entry.isFile() && entry.name.endsWith(".jsonl"))
-					out.push(full);
-			}
-		} catch {
-			return;
-		}
-	}
-	await walk(root);
-	return out;
 }
 
 function modelKey(provider: unknown, model: unknown): string {
@@ -96,24 +84,20 @@ function modelKey(provider: unknown, model: unknown): string {
 }
 
 async function parsePiSessions(
-	files: string[],
+	root: string,
 	skipped: Record<string, number>,
-): Promise<UsageRecord[]> {
+): Promise<{ files: string[]; records: UsageRecord[] }> {
+	const files = await enumerateJsonlFiles(root);
 	const records: UsageRecord[] = [];
 	for (const file of files) {
-		const text = await fs.readFile(file, "utf8").catch(() => "");
-		for (const line of text.split(/\r?\n/)) {
-			if (!line.trim()) continue;
-			let json: Record<string, unknown>;
-			try {
-				json = JSON.parse(line);
-			} catch {
-				skipped.Pi += 1;
-				continue;
-			}
-			const message = objectValue(json.message);
+		const fallbackTimestamp = await statMtimeSeconds(file);
+		for await (const { value } of readJsonlFile(file, {
+			onMalformedLine: () => (skipped.Pi += 1),
+		})) {
+			const json = objectValue(value);
+			const message = objectValue(json?.message);
 			const usage = objectValue(message?.usage);
-			if (json.type !== "message" || message?.role !== "assistant" || !usage)
+			if (json?.type !== "message" || message?.role !== "assistant" || !usage)
 				continue;
 			const input = numberValue(
 				usage.input ?? usage.inputTokens ?? usage.prompt_tokens,
@@ -133,7 +117,7 @@ async function parsePiSessions(
 					message.provider ?? json.provider,
 					message.model ?? json.model,
 				),
-				timestamp: timestampFrom(json, file),
+				timestamp: timestampFrom(json, fallbackTimestamp),
 				input,
 				output,
 				cached,
@@ -143,27 +127,24 @@ async function parsePiSessions(
 			});
 		}
 	}
-	return records;
+	return { files, records };
 }
 
 async function parseCodexSessions(
-	files: string[],
+	root: string,
 	skipped: Record<string, number>,
-): Promise<UsageRecord[]> {
+): Promise<{ files: string[]; records: UsageRecord[] }> {
+	const files = await enumerateJsonlFiles(root);
 	const records: UsageRecord[] = [];
 	for (const file of files) {
 		let currentModel: unknown;
 		let currentProvider: unknown = "codex-cli";
-		const text = await fs.readFile(file, "utf8").catch(() => "");
-		for (const line of text.split(/\r?\n/)) {
-			if (!line.trim()) continue;
-			let json: Record<string, unknown>;
-			try {
-				json = JSON.parse(line);
-			} catch {
-				skipped["Codex CLI"] += 1;
-				continue;
-			}
+		const fallbackTimestamp = await statMtimeSeconds(file);
+		for await (const { value } of readJsonlFile(file, {
+			onMalformedLine: () => (skipped["Codex CLI"] += 1),
+		})) {
+			const json = objectValue(value);
+			if (!json) continue;
 			const payload = objectValue(json.payload);
 			if (
 				payload &&
@@ -182,7 +163,7 @@ async function parseCodexSessions(
 			records.push({
 				source: "Codex CLI",
 				model: modelKey(currentProvider, currentModel),
-				timestamp: timestampFrom(json, file),
+				timestamp: timestampFrom(json, fallbackTimestamp),
 				input,
 				output,
 				cached,
@@ -190,7 +171,7 @@ async function parseCodexSessions(
 			});
 		}
 	}
-	return records;
+	return { files, records };
 }
 
 async function refreshPricingCache(cachePath: string): Promise<void> {
@@ -203,13 +184,7 @@ async function refreshPricingCache(cachePath: string): Promise<void> {
 }
 
 async function appendUsageLog(event: Record<string, unknown>): Promise<void> {
-	const logPath = path.join(
-		os.homedir(),
-		".pi",
-		"agent",
-		"logs",
-		"usage.jsonl",
-	);
+	const logPath = path.join(resolveAgentDir(), "logs", "usage.jsonl");
 	await fs.mkdir(path.dirname(logPath), { recursive: true });
 	await fs.appendFile(
 		logPath,
@@ -250,9 +225,7 @@ async function loadPricing(
 	refresh = false,
 ): Promise<{ prices: Map<string, Price>; note: string }> {
 	const cachePath = path.join(
-		os.homedir(),
-		".pi",
-		"agent",
+		resolveAgentDir(),
 		"cache",
 		"models-dev-api.json",
 	);
@@ -366,20 +339,22 @@ function row(item: Aggregate): string {
 	return `| ${item.source} | ${item.model} | ${item.turns.toLocaleString()} | ${item.input.toLocaleString()} | ${item.output.toLocaleString()} | ${item.cached.toLocaleString()} | ${item.total.toLocaleString()} | ${money(item.price)} |`;
 }
 
-async function buildUsageReport(refreshPricing = false): Promise<string> {
-	const home = os.homedir();
+export async function buildUsageReport(
+	refreshPricing = false,
+	sessionRoot = resolveSessionRoot(),
+	codexRoots: readonly string[] = [
+		path.join(os.homedir(), ".codex", "sessions"),
+		path.join(os.homedir(), ".codex", "archived_sessions"),
+	],
+): Promise<string> {
 	const skipped = { Pi: 0, "Codex CLI": 0 };
-	const piFiles = await findJsonlFiles(
-		path.join(home, ".pi", "agent", "sessions"),
+	const pi = await parsePiSessions(sessionRoot, skipped);
+	const codex = await Promise.all(
+		codexRoots.map((root) => parseCodexSessions(root, skipped)),
 	);
-	const codexFiles = [
-		...(await findJsonlFiles(path.join(home, ".codex", "sessions"))),
-		...(await findJsonlFiles(path.join(home, ".codex", "archived_sessions"))),
-	];
-	const records = [
-		...(await parsePiSessions(piFiles, skipped)),
-		...(await parseCodexSessions(codexFiles, skipped)),
-	];
+	const piFiles = pi.files;
+	const codexFiles = codex.flatMap(({ files }) => files);
+	const records = [...pi.records, ...codex.flatMap(({ records }) => records)];
 	const { prices, note } = await loadPricing(refreshPricing);
 	const lines = [`Generated: ${new Date().toISOString()}`];
 	for (const days of WINDOWS) {
@@ -447,11 +422,18 @@ export default function (pi: ExtensionAPI) {
 		description:
 			"Summarize Pi/Codex token usage and cost for the last 1, 7, 30, and 90 days",
 		handler: async (args, ctx) => {
-			await ctx.waitForIdle();
 			const refreshPricing = args.trim() === "--refresh-pricing";
-			const markdown = await buildUsageReport(refreshPricing);
-			pi.sendUserMessage(
-				`Here is the deterministic usage report from the local usage_report parser. Briefly summarize notable trends and caveats.\n\n${markdown}`,
+			const markdown = await buildUsageReport(
+				refreshPricing,
+				ctx.sessionManager.getSessionDir(),
+			);
+			pi.sendMessage(
+				{
+					customType: "usage-stats",
+					content: markdown,
+					display: true,
+				},
+				{ triggerTurn: false },
 			);
 		},
 	});
