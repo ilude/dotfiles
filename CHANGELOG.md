@@ -2,6 +2,18 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-15: Remove duplicate YouTube skill source
+
+**Why:** The explicitly configured YouTube skill collided with the community
+skill already discovered under Pi's user skill directory.
+
+**Changed:** Removed the redundant skill path from Pi settings so native
+discovery loads only the community `youtube-transcript` skill.
+
+**Files:** `pi/settings.json`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-15: Unpin the startup command list
 
 **Why:** The complete command inventory occupied persistent editor space and
