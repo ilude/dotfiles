@@ -2,6 +2,21 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-15: Unpin the startup command list
+
+**Why:** The complete command inventory occupied persistent editor space and
+included prompt and skill commands that were not useful in the startup list.
+
+**Changed:**
+- Replaced the persistent startup widget with a one-time startup status line.
+- Limited the startup list to extension commands.
+- Cleared the old widget during reload so existing sessions lose it immediately.
+
+**Files:** `pi/extensions/01-startup-commands.ts`,
+`pi/tests/startup-commands.test.ts`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-15: Use Pi's command inventory for the startup widget
 
 **Why:** The startup widget replaced `pi.registerCommand`, duplicated Pi's

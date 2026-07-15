@@ -12,10 +12,11 @@ describe("startup command inventory", () => {
 		vi.useRealTimers();
 	});
 
-	it("renders the current extension, prompt, and skill commands on each session start", async () => {
+	it("notifies with extension commands without leaving a persistent widget", async () => {
 		let sessionStart:
 			| ((event: unknown, ctx: unknown) => Promise<void>)
 			| undefined;
+		const notify = vi.fn();
 		const setWidget = vi.fn();
 		const getCommands = vi
 			.fn()
@@ -39,21 +40,18 @@ describe("startup command inventory", () => {
 
 		expect(pi.registerCommand).toBe(registerCommand);
 		expect(sessionStart).toBeDefined();
-		await sessionStart?.({ reason: "startup" }, { ui: { setWidget } });
+		await sessionStart?.({ reason: "startup" }, { ui: { notify, setWidget } });
 		vi.runAllTimers();
-		expect(setWidget).toHaveBeenLastCalledWith(
-			"startup-commands",
-			["[Commands]", "  /plan, /review, /review:1, /skill:youtube-transcript"],
-			{ placement: "aboveEditor" },
+		expect(setWidget).toHaveBeenLastCalledWith("startup-commands", undefined);
+		expect(notify).toHaveBeenLastCalledWith(
+			"[Commands] /review, /review:1",
+			"info",
 		);
 
-		await sessionStart?.({ reason: "reload" }, { ui: { setWidget } });
+		await sessionStart?.({ reason: "reload" }, { ui: { notify, setWidget } });
 		vi.runAllTimers();
-		expect(setWidget).toHaveBeenLastCalledWith(
-			"startup-commands",
-			["[Commands]", "  /reload-added"],
-			{ placement: "aboveEditor" },
-		);
+		expect(setWidget).toHaveBeenLastCalledWith("startup-commands", undefined);
+		expect(notify).toHaveBeenLastCalledWith("[Commands] /reload-added", "info");
 		expect(getCommands).toHaveBeenCalledTimes(2);
 	});
 
