@@ -54,7 +54,7 @@ function mockJsonResponse(payload: unknown, status = 200) {
 		ok: status >= 200 && status < 300,
 		status,
 		text: async () => JSON.stringify(payload),
-	} as any;
+	} as Response;
 }
 
 describe("parseRefreshModelsArgs", () => {
@@ -133,7 +133,9 @@ describe("/refresh-models command", () => {
 
 	it("registers the slash command", () => {
 		const pi = createMockPi();
-		registerRefreshModelsCommand(pi as any);
+		registerRefreshModelsCommand(
+			pi as Parameters<typeof registerRefreshModelsCommand>[0],
+		);
 		expect(pi.registerCommand).toHaveBeenCalledWith(
 			"refresh-models",
 			expect.objectContaining({
@@ -145,7 +147,9 @@ describe("/refresh-models command", () => {
 
 	it("refreshes all active subscriptions when no provider is supplied", async () => {
 		const pi = createMockPi();
-		registerRefreshModelsCommand(pi as any);
+		registerRefreshModelsCommand(
+			pi as Parameters<typeof registerRefreshModelsCommand>[0],
+		);
 		const cmd = pi._commands.find((c) => c.name === "refresh-models");
 		if (!cmd) throw new Error("command not registered");
 
@@ -352,7 +356,7 @@ describe("/refresh-models command", () => {
 			},
 		};
 
-		await cmd.handler("", ctx as any);
+		await cmd.handler("", ctx as Parameters<typeof cmd.handler>[1]);
 
 		expect(registerProvider).toHaveBeenCalledTimes(2);
 		expect(registerProvider).toHaveBeenCalledWith(
@@ -400,11 +404,14 @@ describe("/refresh-models command", () => {
 		);
 		expect(
 			codexModels.find((model) => model.id === "gpt-5.6-sol")?.thinkingLevelMap,
-		).toMatchObject({
+		).toEqual({
+			off: null,
+			minimal: null,
 			low: "low",
 			medium: "medium",
 			high: "high",
 			xhigh: "xhigh",
+			max: "max",
 		});
 		expect(registerProvider).toHaveBeenCalledWith(
 			"github-copilot",
@@ -517,7 +524,9 @@ describe("/refresh-models command", () => {
 
 	it("refreshes anthropic using /v1/models with x-api-key auth", async () => {
 		const pi = createMockPi();
-		registerRefreshModelsCommand(pi as any);
+		registerRefreshModelsCommand(
+			pi as Parameters<typeof registerRefreshModelsCommand>[0],
+		);
 		const cmd = pi._commands.find((c) => c.name === "refresh-models");
 		if (!cmd) throw new Error("command not registered");
 
@@ -572,7 +581,7 @@ describe("/refresh-models command", () => {
 			},
 		};
 
-		await cmd.handler("anthropic", ctx as any);
+		await cmd.handler("anthropic", ctx as Parameters<typeof cmd.handler>[1]);
 
 		expect(registerProvider).toHaveBeenCalledWith(
 			"anthropic",
@@ -612,7 +621,9 @@ describe("/refresh-models command", () => {
 
 	it("continues remaining providers and reports auth failures as warnings", async () => {
 		const pi = createMockPi();
-		registerRefreshModelsCommand(pi as any);
+		registerRefreshModelsCommand(
+			pi as Parameters<typeof registerRefreshModelsCommand>[0],
+		);
 		const cmd = pi._commands.find((c) => c.name === "refresh-models");
 		if (!cmd) throw new Error("command not registered");
 
@@ -692,7 +703,7 @@ describe("/refresh-models command", () => {
 			},
 		};
 
-		await cmd.handler("", ctx as any);
+		await cmd.handler("", ctx as Parameters<typeof cmd.handler>[1]);
 
 		expect(registerProvider).toHaveBeenCalledWith(
 			"github-copilot",
@@ -711,7 +722,9 @@ describe("/refresh-models command", () => {
 
 	it("refreshes API-key providers with generic /models catalogs", async () => {
 		const pi = createMockPi();
-		registerRefreshModelsCommand(pi as any);
+		registerRefreshModelsCommand(
+			pi as Parameters<typeof registerRefreshModelsCommand>[0],
+		);
 		const cmd = pi._commands.find((c) => c.name === "refresh-models");
 		if (!cmd) throw new Error("command not registered");
 
@@ -770,7 +783,7 @@ describe("/refresh-models command", () => {
 			},
 		};
 
-		await cmd.handler("", ctx as any);
+		await cmd.handler("", ctx as Parameters<typeof cmd.handler>[1]);
 
 		expect(registerProvider).toHaveBeenCalledTimes(2);
 		expect(registerProvider).toHaveBeenCalledWith(
@@ -826,7 +839,9 @@ describe("/refresh-models command", () => {
 
 	it("fails when an explicit provider is not configured", async () => {
 		const pi = createMockPi();
-		registerRefreshModelsCommand(pi as any);
+		registerRefreshModelsCommand(
+			pi as Parameters<typeof registerRefreshModelsCommand>[0],
+		);
 		const cmd = pi._commands.find((c) => c.name === "refresh-models");
 		if (!cmd) throw new Error("command not registered");
 
@@ -846,7 +861,10 @@ describe("/refresh-models command", () => {
 			},
 		};
 
-		await cmd.handler("github-copilot", ctx as any);
+		await cmd.handler(
+			"github-copilot",
+			ctx as Parameters<typeof cmd.handler>[1],
+		);
 		expect(notify).toHaveBeenCalledWith(
 			expect.stringContaining("not configured"),
 			"error",
