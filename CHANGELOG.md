@@ -1295,3 +1295,18 @@ when the contract changes.
 `pi/CHANGELOG.md`
 
 ---
+
+### 2026-07-15: Preserve service-managed storage ownership during apply
+
+**Why:** Storage preparation reset an existing Forgejo dataset to the initial
+mapped-root owner before service orchestration, leaving the database unavailable
+when a later play failed before Forgejo configuration ran.
+
+**Changed:**
+- Limited initial ZFS dataset ownership assignment to newly created datasets.
+- Added regression coverage and documented ownership handoff to the service role.
+
+**Files:** `infra/ansible/tasks/zfs-dataset.yml`,
+`tests/test_ansible_safety.py`, `docs/forgejo-bind-mount.md`
+
+---
