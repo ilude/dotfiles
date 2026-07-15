@@ -25,6 +25,7 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { formatBehindWarning } from "../extensions/session-hooks";
 import * as transcriptRuntime from "../extensions/transcript-runtime";
 import type { TranscriptSettings } from "../lib/transcript";
 import * as transcriptLib from "../lib/transcript";
@@ -106,6 +107,15 @@ afterEach(() => {
 	process.argv = originalArgv;
 	fs.rmSync(tmpDir, { recursive: true, force: true });
 	vi.restoreAllMocks();
+});
+
+describe("session-hooks: warning formatting", () => {
+	it("keeps a visible gap between the warning icon and branch text", () => {
+		expect(formatBehindWarning(1)).toBe(
+			"⚠  Branch is 1 commit behind remote. Consider git pull before starting.",
+		);
+		expect(formatBehindWarning(9)).toContain("9 commits behind remote");
+	});
 });
 
 describe("session-hooks: session_start", () => {
