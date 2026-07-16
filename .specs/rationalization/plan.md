@@ -360,7 +360,7 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
   - [x] user approval received (gate - never inferred)
   - [x] deletions and old-name reference updates executed
 - [x] T5: routing policy consolidation - done: 48eb3c5
-- [ ] T6: Pi test alignment - pending
+- [x] T6: Pi test alignment - done: dea299b
 - [x] T7: test_config_patterns split - done: 085b069
 - [x] T8: browser wrapper and CI contract - done: 8a0ab09
 - [ ] T9: pin quality tools - pending
@@ -377,11 +377,11 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 
 - **Classification:** execution in progress
 - **Current blocker:** none; T8 instruction-linkage gate resolved by explicit user decision
-- **Last completed wave/gate:** T8 browser wrapper and CI contract behavior validation
-- **Next:** T6 Pi test alignment; T9 is independently ready
-- **Completed work:** T1-T5 and T7 complete; the configuration suite now protects grouped shell/Git behavior and parsed Dotbot meaning
-- **Commands/results:** T8 browser/capture entrypoint passed 5 tests; `make test-ci-contract` passed 8 tests; Ruff, formatting, and `git diff --check` passed; intentional loopback and identity regressions failed 2 tests as required
-- **Remaining checks:** T6 and T9-T12 task gates; final `make check`
+- **Last completed wave/gate:** T6 Pi test behavior alignment
+- **Next:** T9 pin and configure quality tools
+- **Completed work:** T1-T8 complete; Pi prompt/source-shape assertions are deleted or replaced with runtime behavior, and all ledger rows through T8 are executed
+- **Commands/results:** T6 focused Pi suite passed 54 tests; typecheck and `git diff --check` passed; intentional hidden-process regressions failed the two replacement tests as required
+- **Remaining checks:** T9-T12 task gates; final `make check`
 - **Worktree note:** out-of-scope `claude/settings.json` remains unstaged and untouched by plan commits
 - **Exact user action:** none
 - **Resume:** `/do-it .specs/rationalization/plan.md`
@@ -397,3 +397,8 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - **T8 phase:** phase ID `T8`; type `implementation`; status `passed`; evidence commit `8a0ab09`, `.specs/rationalization/t8-instruction-linkage.md`, and the T8 ledger rows.
 - **T8 command events:** focused browser/capture suite exited 0 with 5 tests; `make test-ci-contract` exited 0 with 8 tests; intentional-regression fixture exited 1 with the expected two failures; Ruff, formatting, and `git diff --check` exited 0.
 - **T8 manual gate:** required because current repository ownership contradicted the stale symlink contract; risk low; blast radius personal-repo; rollback easy; user selected deletion of the stale test; gate passed.
+- **T6 phase:** phase ID `T6`; type `implementation`; started `2026-07-16T23:10:53Z`; completed `2026-07-16T23:13:49Z`; status `passed`; evidence commit `dea299b` and the T6 ledger rows.
+- **T6 command events:** focused Pi suite exited 0 with 54 tests; `pnpm run typecheck` exited 0; intentional `windowsHide: false` regressions exited 1 with the expected two failures; restored reducer suite exited 0 with 6 tests; `git diff --check` exited 0.
+- **T6 manual gate:** not required; risk low; blast radius personal-repo; rollback easy; local reversible test-only changes covered by runtime behavior and intentional-regression evidence.
+- **T6 archive:** not attempted because required checklist items T9-T12 remain pending.
+- **T6 post-run eval:** checklist and evidence agree; no manual or deployment gate remains; friction tag `none`; missing evidence is limited to unexecuted T9-T12; no improvement candidate; confidence high from focused runtime checks, regression proof, typecheck, and commit evidence.
