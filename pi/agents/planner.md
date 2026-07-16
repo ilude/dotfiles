@@ -2,8 +2,6 @@
 name: planner
 description: "Plans tasks by breaking them into clear steps and success criteria before any implementation begins."
 model: openai-codex/gpt-5.6-terra
-roleType: worker
-routingUse: "Use for standalone implementation plans; not team orchestration."
 isolation: none
 memory: project
 effort: medium

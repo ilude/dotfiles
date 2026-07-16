@@ -125,7 +125,7 @@ describe("task tools", () => {
 				action: "create",
 				summary: "durable worker",
 				notes: "Acceptance: preserve complete durable task details.",
-				agent: "coding-light",
+				agent: "builder",
 				task: "Inspect the implementation and report detailed evidence.",
 			},
 			undefined,
@@ -267,7 +267,7 @@ describe("task tools", () => {
 				{
 					action: "create",
 					summary: "valid",
-					agent: "coding-light",
+					agent: "builder",
 					task: "t".repeat(2_001),
 				},
 				undefined,
@@ -570,7 +570,7 @@ describe("task tools", () => {
 			{
 				action: "create",
 				summary: "worker task",
-				agent: "coding-light",
+				agent: "builder",
 				task: "Read one file",
 			},
 			undefined,
@@ -637,7 +637,7 @@ describe("task tools", () => {
 			._getTool("task")
 			?.execute(
 				"create",
-				{ action: "create", agent: "coding-light", task: "Wait" },
+				{ action: "create", agent: "builder", task: "Wait" },
 				undefined,
 				undefined,
 				ctx,
@@ -693,7 +693,7 @@ describe("task tools", () => {
 			"create-command-cancel",
 			{
 				action: "create",
-				agent: "coding-light",
+				agent: "builder",
 				task: "Wait",
 			},
 			undefined,
@@ -730,7 +730,7 @@ describe("task tools", () => {
 			blockedBy: [blocker.id],
 			execution: {
 				kind: "subagent",
-				agent: "coding-light",
+				agent: "builder",
 				task: "Wait for blocker",
 				status: "pending",
 			},
@@ -752,7 +752,7 @@ describe("task tools", () => {
 			state: "running",
 			execution: {
 				kind: "subagent",
-				agent: "coding-light",
+				agent: "builder",
 				task: "Wait",
 				status: "running",
 				ownerPid: 2_147_483_647,
@@ -917,14 +917,14 @@ describe("task tools", () => {
 					key: "worker-one",
 					summary: "run first worker",
 					blockedByKeys: ["prepare"],
-					agent: "coding-light",
+					agent: "builder",
 					task: "Run first worker",
 				},
 				{
 					key: "worker-two",
 					summary: "run second worker",
 					blockedByKeys: ["prepare"],
-					agent: "coding-light",
+					agent: "builder",
 					task: "Run second worker",
 				},
 				{
@@ -1217,7 +1217,7 @@ describe("task tools", () => {
 				state: "completed",
 				execution: {
 					kind: "subagent",
-					agent: "coding-light",
+					agent: "builder",
 					task: "Run",
 					status: "completed",
 					outputPath: `C:/tmp/${"😀".repeat(1_000)}/${index}.md`,
@@ -1263,7 +1263,7 @@ describe("task tools", () => {
 			state: "running",
 			execution: {
 				kind: "subagent",
-				agent: "coding-light",
+				agent: "builder",
 				task: "Run",
 				status: "failed_to_stop",
 				ownerPid: process.pid,
@@ -1314,7 +1314,7 @@ function createExecutable(summary: string, workspace?: string) {
 		workspace,
 		execution: {
 			kind: "subagent",
-			agent: "coding-light",
+			agent: "builder",
 			task: "Run",
 			status: "pending",
 		},

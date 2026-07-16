@@ -355,10 +355,10 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - [x] T1: test decision ledger - done: 95efc55
 - [x] T2: workflow skills and templates - done: 772d4c0
 - [x] T3: Pi instruction trim - done: 1e57024
-- [ ] T4: agent roster consolidation - blocked: explicit approval required for the 15-file deletion proposal in roster.md
+- [x] T4: agent roster consolidation - done: validated slice commit pending
   - [x] roster.md proposal written
-  - [ ] user approval received (gate - never inferred)
-  - [ ] deletions and old-name reference updates executed
+  - [x] user approval received (gate - never inferred)
+  - [x] deletions and old-name reference updates executed
 - [ ] T5: routing policy consolidation - pending
 - [ ] T6: Pi test alignment - pending
 - [ ] T7: test_config_patterns split - pending
@@ -375,12 +375,12 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 
 ### State
 
-- **Classification:** blocked-by-user-decision at T4 deletion gate; unrelated T7-T9 work remains dependency-ready
-- **Current blocker:** explicit approval of `.specs/rationalization/roster.md` is required before deleting 15 merged worker files
-- **Last completed wave/gate:** T3 instruction ownership trim and focused loading validation
-- **Next:** on approval, execute T4 parser/roster/reference/test slice; otherwise revise roster.md
-- **Completed work:** T1-T3 complete; T4 proposal maps all 33 current names to 18 survivors and 15 deletions
-- **Commands/results:** roster check passed with 33 unique mappings, 18 survivors, 15 deletions, and ASCII-only content
-- **Remaining checks:** T4 approval and implementation; all T5-T12 gates; final `make check`
-- **Exact user action:** approve the roster proposal or request named mapping changes
-- **Resume:** `/do-it .specs/rationalization/plan.md` after the gate is resolved
+- **Classification:** execution in progress
+- **Current blocker:** none; T4 roster deletion approved explicitly
+- **Last completed wave/gate:** T4 roster consolidation and parse-to-launch validation
+- **Next:** commit validated T4 slice, record its hash, then start T5 routing consolidation
+- **Completed work:** T1-T4 complete; roster reduced from 33 to 18 definitions with org-chart parser/schema removed and deterministic skill-review targets preserved
+- **Commands/results:** focused Pi suites passed 88 tests; `pnpm run typecheck` passed; Python shared-instruction link test passed; active removed-name/taxonomy scans returned no matches
+- **Remaining checks:** T4 slice commit; all T5-T12 gates; final `make check`
+- **Exact user action:** none
+- **Resume:** `/do-it .specs/rationalization/plan.md`

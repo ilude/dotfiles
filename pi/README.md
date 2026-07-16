@@ -630,7 +630,6 @@ The agent parser consumes these frontmatter fields:
 - Required: `name`, `description`
 - Enforced by the subagent launcher: `tools`, `model`, `effort`, `skills`
 - Advisory metadata: `isolation`, `memory`
-- Validation and policy metadata: `roleType`
 
 The parser applies no default frontmatter values. `effort` is passed to child Pi
 as `--thinking`. Child skill discovery is disabled with `--no-skills`; each
@@ -640,9 +639,9 @@ Missing skills fail the launch explicitly. `tools` is a tool-name allowlist, not
 a path sandbox; any assigned path scope in an agent prompt is guidance only.
 Unknown fields are not execution contracts.
 
-Agent config recovery: if a bad persona prevents normal coordination, start Pi
+Agent config recovery: if a bad worker definition prevents normal coordination, start Pi
 with `pi --no-extensions`, repair the affected file under `pi/agents/`, run
-`cd pi && pnpm test agent-role-semantics.test.ts`, and restart Pi normally.
+`cd pi && pnpm test subagent.test.ts`, and restart Pi normally.
 
 ### Expertise storage and retrieval
 

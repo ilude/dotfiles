@@ -2,8 +2,6 @@
 name: typescript-pro
 description: Expert TypeScript developer for autonomous multi-step tasks. Activate for TypeScript/JavaScript files, full-stack type safety, and modern build tooling work.
 model: openai-codex/gpt-5.6-terra
-roleType: specialist
-routingUse: "Use for direct TypeScript/JavaScript implementation, debugging, typecheck, and review."
 isolation: none
 memory: project
 effort: medium

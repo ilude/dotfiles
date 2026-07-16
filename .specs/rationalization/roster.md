@@ -1,6 +1,6 @@
 # Proposed Pi worker roster
 
-Status: awaiting explicit approval
+Status: approved and executed
 
 ## Decision criteria
 

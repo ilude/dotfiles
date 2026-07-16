@@ -124,7 +124,7 @@ describe("formatTaskToolResult", () => {
 				state: "completed",
 				execution: {
 					kind: "subagent",
-					agent: "coding-light",
+					agent: "builder",
 					task: "Run",
 					status: "completed",
 					outputPath: `C:/tmp/${"😀".repeat(1_000)}/${index}.md`,
@@ -190,15 +190,15 @@ describe("task renderer/settings", () => {
 	it("shows subagent model and effort in compact and detail views", () => {
 		const task = createTask({
 			origin: "subagent",
-			summary: "engineering-lead",
-			agentName: "engineering-lead",
+			summary: "orchestrator",
+			agentName: "orchestrator",
 			state: "running",
 			metadata: { model: "anthropic/claude-sonnet-4-6", effort: "high" },
 		});
 
 		const listText = formatTaskList([task], "compact");
 		expect(listText).toContain(
-			"engineering-lead anthropic/claude-sonnet-4-6[high]",
+			"orchestrator anthropic/claude-sonnet-4-6[high]",
 		);
 		expect(formatTaskDetail(task)).toContain(
 			"model: anthropic/claude-sonnet-4-6[high]",
@@ -211,7 +211,7 @@ describe("task renderer/settings", () => {
 			summary: "background task",
 			execution: {
 				kind: "subagent",
-				agent: "coding-light",
+				agent: "builder",
 				task: "Read one file",
 				status: "completed",
 				outputPath: "C:/tmp/task-output.md",

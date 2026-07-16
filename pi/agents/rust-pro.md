@@ -2,8 +2,6 @@
 name: rust-pro
 description: Expert Rust developer for autonomous multi-step tasks. Activate for Rust files, async/await, concurrency, workspaces, and performance optimization work.
 model: openai-codex/gpt-5.6-terra
-roleType: specialist
-routingUse: "Use for direct Rust implementation, debugging, build, and review."
 isolation: none
 memory: project
 effort: medium

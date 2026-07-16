@@ -2,9 +2,6 @@
 name: security-reviewer
 description: Owns threat modeling, vulnerability scanning, and compliance checks; read-only auditor
 model: openai-codex/gpt-5.6-sol
-roleType: worker
-reportsTo: validation-lead
-routingUse: "Use for direct security, permissions, threat modeling, and risk review."
 isolation: none
 memory: project
 effort: medium

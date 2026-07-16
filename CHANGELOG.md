@@ -2,6 +2,29 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-16: Consolidate the Pi worker roster
+
+**Why:** Model-bound variants and an unenforced organization chart duplicated
+roles without adding distinct permissions, tools, or task boundaries.
+
+**Changed:**
+- Consolidated 33 worker definitions into 18 approved, distinct roles and
+  recorded the complete old-to-new mapping in the rationalization roster.
+- Removed 15 model/taxonomy duplicates while preserving the three exact
+  deterministic skill-review dispatch targets.
+- Removed unconsumed `roleType`, `reportsTo`, `leads`, and `routingUse`
+  metadata plus parser support for `roleType`.
+- Replaced hierarchy and source-shape tests with consumed frontmatter-to-child
+  launch coverage for tools, runtime hint, effort, and skills.
+- Updated active task, routing, documentation, and test references to surviving
+  worker names.
+
+**Files:** `pi/agents/`, `pi/extensions/subagent/agents.ts`, `pi/tests/`,
+`test/test_pi_agent_metadata.py`, `pi/README.md`,
+`.specs/rationalization/{plan,ledger,roster}.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-16: Consolidate Pi instruction ownership
 
 **Why:** Runtime discovery mechanics, repository package policy, and delegation

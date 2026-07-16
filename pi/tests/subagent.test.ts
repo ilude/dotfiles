@@ -66,6 +66,7 @@ name: tester
 description: Test agent
 model: anthropic/claude-sonnet-4-6
 effort: high
+tools: read, grep
 skills:
   - ../skills/test-skill/SKILL.md
 ---
@@ -215,6 +216,12 @@ You are a test agent.
 			expect(spawnArgs).toContain("--no-skills");
 			expect(spawnArgs).toContain("--thinking");
 			expect(spawnArgs[spawnArgs.indexOf("--thinking") + 1]).toBe("high");
+			expect(spawnArgs).toContain("--tools");
+			expect(spawnArgs[spawnArgs.indexOf("--tools") + 1]).toBe("read,grep");
+			expect(spawnArgs).toContain("--model");
+			expect(spawnArgs[spawnArgs.indexOf("--model") + 1]).toBe(
+				"anthropic/claude-sonnet-4-6",
+			);
 			expect(spawnArgs).toContain("--skill");
 			expect(spawnArgs[spawnArgs.indexOf("--skill") + 1]).toBe(
 				path.join(skillDir, "SKILL.md"),

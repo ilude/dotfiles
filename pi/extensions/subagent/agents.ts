@@ -23,12 +23,6 @@ export type AgentEffort =
 	| "high"
 	| "xhigh"
 	| "max";
-export type AgentRoleType =
-	| "orchestrator"
-	| "lead"
-	| "worker"
-	| "specialist"
-	| "tier";
 
 export interface AgentConfig {
 	name: string;
@@ -42,7 +36,6 @@ export interface AgentConfig {
 	memory?: AgentMemory;
 	effort?: AgentEffort;
 	skills?: string[];
-	roleType?: AgentRoleType;
 }
 
 export interface AgentDiscoveryResult {
@@ -69,14 +62,6 @@ const VALID_EFFORT = new Set<AgentEffort>([
 	"xhigh",
 	"max",
 ]);
-const VALID_ROLE_TYPE = new Set<AgentRoleType>([
-	"orchestrator",
-	"lead",
-	"worker",
-	"specialist",
-	"tier",
-]);
-
 function asIsolation(value: string | undefined): AgentIsolation | undefined {
 	if (!value) return undefined;
 	return VALID_ISOLATION.has(value as AgentIsolation)
@@ -93,12 +78,6 @@ function asEffort(value: string | undefined): AgentEffort | undefined {
 	if (!value) return undefined;
 	return VALID_EFFORT.has(value as AgentEffort)
 		? (value as AgentEffort)
-		: undefined;
-}
-function asRoleType(value: string | undefined): AgentRoleType | undefined {
-	if (!value) return undefined;
-	return VALID_ROLE_TYPE.has(value as AgentRoleType)
-		? (value as AgentRoleType)
 		: undefined;
 }
 function asString(value: unknown): string | undefined {
@@ -154,8 +133,6 @@ function parseAgentFile(
 	if (effort) config.effort = effort;
 	const skills = asStringArray(frontmatter.skills);
 	if (skills) config.skills = skills;
-	const roleType = asRoleType(asString(frontmatter.roleType));
-	if (roleType) config.roleType = roleType;
 
 	return config;
 }

@@ -164,15 +164,15 @@ describe("fable orchestration policy", () => {
 	it("leaves allowed pinned agents unoverridden without a size", () => {
 		discoverAgentsMock.mockReturnValue({
 			agents: [
-				{ name: "coding-light", model: "openai-codex/gpt-5.6-luna" },
-				{ name: "coding-medium", model: "openai-codex/gpt-5.6-terra" },
-				{ name: "coding-heavy", model: "openai-codex/gpt-5.6-sol" },
+				{ name: "builder", model: "openai-codex/gpt-5.6-terra" },
+				{ name: "validator", model: "openai-codex/gpt-5.6-terra" },
+				{ name: "orchestrator", model: "openai-codex/gpt-5.6-sol" },
 			],
 			projectAgentsDir: null,
 		});
 		const { tool } = hooks();
 
-		for (const agent of ["coding-light", "coding-medium", "coding-heavy"]) {
+		for (const agent of ["builder", "validator", "orchestrator"]) {
 			const event = { toolName: "subagent", input: { agent, task: "work" } };
 			expect(tool(event, orchestratorCtx())).toBeUndefined();
 			expect(event.input).not.toHaveProperty("model");
@@ -182,8 +182,8 @@ describe("fable orchestration policy", () => {
 	it("leaves mixed allowed parallel agents unoverridden without a size", () => {
 		discoverAgentsMock.mockReturnValue({
 			agents: [
-				{ name: "coding-light", model: "openai-codex/gpt-5.6-luna" },
-				{ name: "coding-heavy", model: "openai-codex/gpt-5.6-sol" },
+				{ name: "builder", model: "openai-codex/gpt-5.6-terra" },
+				{ name: "orchestrator", model: "openai-codex/gpt-5.6-sol" },
 			],
 			projectAgentsDir: null,
 		});
@@ -192,8 +192,8 @@ describe("fable orchestration policy", () => {
 			toolName: "subagent",
 			input: {
 				tasks: [
-					{ agent: "coding-light", task: "light work" },
-					{ agent: "coding-heavy", task: "heavy work" },
+					{ agent: "builder", task: "implementation" },
+					{ agent: "orchestrator", task: "coordination" },
 				],
 			},
 		};
