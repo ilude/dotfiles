@@ -6,238 +6,219 @@ completed:
 
 # Plan: {title}
 
-## Context & Motivation
+## Context and Motivation
 
-{Why this work exists. Summarize the conversation findings -- research results, problem
-discovered, user need identified. Be specific enough that someone with zero context can
-understand what triggered this plan and why it matters.}
-
-## Constraints
-
-{Hard requirements, platform details, user preferences, and acceptable trade-offs.}
-
-- Platform: {detected}
-- Shell: {detected}
-- {any additional constraints from conversation}
-
-## Risk & Manual Gate Decision
-
-Manual gates are exceptional. Decide based on blast radius and rollback, not generic confidence. Be conservative for work/shared systems and data/resources that cost money; treat personal/local GitHub repos as localized-to-user when changes are reversible and validated.
-
-- **Risk level:** {low/medium/high}
-- **Blast radius:** {personal-local-repo/local/home-lab/shared/work-prod/paid-resource}
-- **Rollback:** {easy/known/unclear/impossible}
-- **Manual approval before action:** {required/not required}
-- **Manual validation after action:** {required/not required}
-- **Decision reason:** {why this does or does not need a manual gate; if uncertain, ask the user during planning before writing this plan}
-
-## Alternatives Considered
-
-| Approach | Pros | Cons | Verdict |
-|----------|------|------|---------|
-| {approach} | {pros} | {cons} | **Selected** / Rejected: {why} |
+{Why this work exists, what evidence established the need, and enough context for a fresh session.}
 
 ## Objective
 
-{What the plan produces when complete. Concrete, verifiable end state.}
+{Concrete, verifiable end state.}
 
-## MVP Boundary
+## Boundaries
 
-{The smallest user-visible outcome this plan will deliver. State why this is sufficient for the current plan and small enough to implement/validate in one focused session.}
+- In scope: {requested outcome and owned surfaces}
+- Out of scope: {explicit exclusions}
+- Preserve: {public interfaces, data, behavior, and user decisions}
+- Platform and shell: {detected facts}
+- Assumptions: {verified assumptions or "None."}
 
-## Explicit Deferrals
+## MVP and Deferrals
 
-{Follow-up work intentionally out of scope for this plan. Deferred items are not required for archive. If there are no deferrals, write "None."}
+- **MVP:** {smallest complete outcome}
+- **Explicit deferrals:** {follow-up work that cannot block completion, or "None."}
 
-## Project Context
+## Risk and Gate Decision
 
-- **Language**: {detected from markers}
-- **Test command**: {detected or "none detected -- tasks must define their own verification"}
-- **Lint command**: {detected or "none detected"}
+- **Risk level:** {low/medium/high}
+- **Blast radius:** {local/personal-repo/home-lab/shared/work/production}
+- **Rollback:** {easy/known/unclear/none}
+- **Manual approval before action:** {required/not required}
+- **Manual validation after action:** {required/not required}
+- **Deployment:** {required/not required}
+- **Reason:** {facts supporting the gate decision}
+
+For a required manual or deployment gate, include exact action, success signal, failure action, rollback, and evidence destination. Manual gates are exceptional and must be tied to destructive, irreversible, data-loss, shared-production, paid-resource, secret-exposure, hardware, or subjective-judgment risk.
+
+## Approach Decisions
+
+| Decision | Selected approach | Rejected alternative and trade-off |
+| --- | --- | --- |
+| {material choice} | {choice and rationale} | {alternative and why it does not fit} |
+
+Write "None" when the work has no material approach choice.
+
+## Project Evidence
+
+- **Owning files:** {paths}
+- **Supported entrypoints:** {commands}
+- **Focused validation:** {commands}
+- **Repository completion validation:** {commands}
+- **Credentials/external systems:** {none or source and boundary}
+- **Evidence artifacts:** {existing paths or plan-owned paths}
 
 ## Automation Plan
 
-List every operational step required to complete this plan and how it is automated. Prefer scripts, playbooks, wrappers, and repeatable commands over manual steps. Any manual-only step must include why it cannot be safely automated.
+| Operation | Command or wrapper | Mutation boundary | Credentials | Evidence |
+| --- | --- | --- | --- | --- |
+| Preflight | `{command}` | read-only | {none/source} | {signal/path} |
+| Implement | `{command or file edits}` | {exact targets} | {none/source} | {signal/path} |
+| Validate | `{command}` | read-only or test-owned output | {none/source} | {signal/path} |
+| Deploy | `{command or not applicable}` | {target} | {none/source} | {signal/path} |
+| Roll back | `{command or not applicable}` | {target} | {none/source} | {signal/path} |
 
-| Operation | Command/wrapper | Credentials | Evidence |
-|-----------|-----------------|-------------|----------|
-| Preflight | `{command or "none"}` | `{none/local gitignored/vault/user prompt}` | `{artifact or "none"}` |
-| Deploy | `{command or "not applicable"}` | `{source}` | `{artifact or "none"}` |
-| Verify | `{command}` | `{source}` | `{artifact}` |
-| Rollback | `{command/manual step}` | `{source}` | `{artifact}` |
+## Task Breakdown
 
-## Execution Checklist
+| ID | Deliverable | Files | Depends on | Required capability | Mutation boundary | Verification |
+| --- | --- | --- | --- | --- | --- | --- |
+| T1 | {deliverable} | {paths} | none | {optional domain/tool/permission need or "none"} | {exact boundary} | `{command}` |
+| V1 | Validate wave 1 | {paths or none} | T1 | {optional capability or "none"} | read-only | `{command}` |
 
-This checklist is the durable resume ledger for `/do-it`. Every executable task, validation gate, and final completion gate has exactly one matching checkbox. Checked means verified complete; unchecked means pending, in-progress, blocked, or invalidated.
+Tasks protect deliverables, not activity. Add only real dependencies. A required capability describes domain knowledge, tools, or permissions; execution resolves available resources at runtime.
 
-`/do-it` must mark each item `[x]` immediately after that item passes its required verification and before starting any dependent or next sequential step. `/review-it` must preserve checked state, add unchecked items for new executable work, and never mark implementation or validation work complete.
+## Execution Waves
 
 ### Wave 1
 
-- [ ] T1: {task name}
-  - Status: pending
-  - Evidence: --
-- [ ] T2: {task name}
-  - Status: pending
-  - Evidence: --
-- [ ] V1: Validate wave 1
-  - Status: pending
-  - Evidence: --
+**T1: {deliverable}**
 
-### Wave 2
+- Files: {paths}
+- Depends on: {IDs or none}
+- Required capability: {optional or none}
+- Mutation boundary: {create/update/delete targets and external target, if any}
+- Work: {concise implementation intent}
+- Acceptance:
+  - {observable criterion}
+  - Verify: `{exact command}`
+  - Pass: {observable success signal}
+  - Fail: {diagnosis or rollback action}
+  - Evidence: {non-secret result or artifact path}
 
-- [ ] T3: {task name}
+### Wave 1 Validation Gate
+
+**V1: {gate objective}**
+
+- Depends on: {wave task IDs}
+- Run: `{exact command or command set}`
+- Pass: {observable success signal}
+- Fail: {smallest repair boundary; do not start dependent waves}
+- Evidence: {non-secret result or artifact path}
+
+Repeat the wave and gate shape only when dependencies require another stage. Independent stateful replacements belong in separate waves, each naming current backup evidence, restore action, rollback boundary, one target, endpoint check, and persisted-state check.
+
+## Dependency Graph
+
+```text
+T1 -> V1
+```
+
+{Include every task and gate ID exactly once.}
+
+## Validation Contract
+
+### Task and wave checks
+
+- Run every task verification command and wave gate above.
+- A failed check leaves its checklist item unchecked and blocks dependent work.
+- After a repair, rerun the failing command and its owning gate.
+
+### Exact workflow validation
+
+- Entry point: `{the command or sequence users rely on}`
+- Expected result: {observable outcome}
+- Failure action: {diagnosis, rollback, or blocker rule}
+- Evidence: {non-secret result or artifact path}
+
+### Repository completion validation
+
+- Command: `{strongest supported aggregate command or explicit command set}`
+- Pass: exits 0 with required warnings resolved
+- Fail: do not archive; record the failing command and next repair in Execution Status
+
+### Manual validation
+
+- Required: {yes/no}
+- Reason: {risk facts or "Automated validation is sufficient."}
+- Action/signal/rollback/evidence: {details or "None."}
+
+### Deployment validation
+
+- Required: {yes/no}
+- Action/signal/rollback/evidence: {details or "None."}
+
+## Telemetry and Evidence Contract
+
+Use `pi/docs/workflow-eval-telemetry.md`. Record existing runtime events plus plan-local evidence where detailed events are not emitted.
+
+- `schema_version`: 1
+- `episode_id`: {assigned at execution}
+- `command`: do-it
+- `artifact_path`: {this plan path}
+- `repo_root`: {path or repo ID}
+- `started_at` / `completed_at`: {ISO-8601}
+- `status` / `classification` / `archive_status`: {execution result}
+- Phase fields: `phase_id`, `phase_type`, dependencies, timestamps, status, evidence
+- Event fields: `event_id`, `phase_id`, `task_id`, `event_type`, command/result, duration when available, status, evidence, failure/repair fields when applicable
+- Manual/deployment gate facts and decisions
+- Redaction status; never store secrets or raw sensitive output
+
+## Execution Checklist
+
+This is the durable resume ledger. Every executable task and gate has exactly one matching item. Keep an item unchecked while it is pending, in progress, blocked, or invalidated. Immediately after its required verification passes, mark it `[x]`, record status and non-secret evidence, save the plan, and only then start dependent or sequential work.
+
+### Wave 1
+
+- [ ] T1: {deliverable}
   - Status: pending
   - Evidence: --
-- [ ] V2: Validate wave 2
+- [ ] V1: {wave gate}
   - Status: pending
   - Evidence: --
 
 ### Final Gates
 
-- [ ] F1: Task-specific verification complete
+- [ ] F1: All task-specific and wave validation passed
   - Status: pending
   - Evidence: --
-- [ ] F2: Repo-wide validation complete
+- [ ] F2: Exact user workflow passed
   - Status: pending
   - Evidence: --
-- [ ] F3: Manual validation not required or completed
+- [ ] F3: Repository completion validation passed
   - Status: pending
   - Evidence: --
-- [ ] F4: Deployment validation complete or not required
+- [ ] F4: Manual and deployment gates passed or are not applicable
   - Status: pending
   - Evidence: --
-- [ ] F5: Archive preflight complete
+- [ ] F5: Evidence consistency and archive preflight passed
   - Status: pending
   - Evidence: --
-
-## Task Breakdown
-
-| # | Task | Files | Type | Model | Agent | Depends On |
-|---|------|-------|------|-------|-------|------------|
-| T1 | {task name} | {count} | {mechanical/feature/architecture} | {small/medium/large} | {agent} | -- |
-| T2 | {task name} | {count} | {type} | {model} | {agent} | -- |
-| T3 | {task name} | {count} | {type} | {model} | {agent} | T1, T2 |
-| V1 | Validate wave 1 | -- | validation | {model} | {validator agent} | T1, T2 |
-| V2 | Validate wave 2 | -- | validation | {model} | {validator agent} | T3 |
-
-## Execution Waves
-
-### Wave 1 (parallel)
-
-**T1: {task name}** [{model}] -- {agent}
-- Description: {what this task does, with enough detail to execute independently}
-- Files: {specific file paths or patterns}
-- Acceptance Criteria:
-  1. [ ] {specific, measurable outcome}
-     - Verify: `{exact command}`
-     - Pass: {expected output}
-     - Fail: {what failure looks like and what to do}
-
-**T2: {task name}** [{model}] -- {agent}
-- Description: {details}
-- Files: {paths}
-- Acceptance Criteria:
-  1. [ ] {criterion}
-     - Verify: `{command}`
-     - Pass: {expected}
-     - Fail: {diagnosis steps}
-
-### Wave 1 -- Validation Gate
-
-**V1: Validate wave 1** [{validator model}] -- {validator agent}
-- Blocked by: T1, T2
-- Checks:
-  1. Run acceptance criteria for T1 and T2
-  2. `{test command}` -- all tests pass
-  3. `{lint command}` -- no new warnings
-  4. Cross-task integration: {any interactions between T1 and T2 outputs to verify}
-- On failure: create a fix task, re-validate after fix
-
-### Wave 2
-
-**T3: {task name}** [{model}] -- {agent}
-- Blocked by: V1
-- Description: {details}
-- Files: {paths}
-- Acceptance Criteria:
-  1. [ ] {criterion}
-     - Verify: `{command}`
-     - Pass: {expected}
-     - Fail: {diagnosis steps}
-
-### Wave 2 -- Validation Gate
-
-**V2: Validate wave 2** [{validator model}] -- {validator agent}
-- Blocked by: T3
-- Checks: {same pattern as V1}
-
-## Dependency Graph
-
-```
-Wave 1: T1, T2 (parallel) → V1
-Wave 2: T3 → V2
-```
 
 ## Success Criteria
 
-{How to verify the ENTIRE MVP succeeded end-to-end, not just individual tasks. Keep this outcome-based; do not require exhaustive hardening or deferred follow-up work for archive.}
-
-1. [ ] {end-to-end verification}
+1. {end-to-end requested outcome}
    - Verify: `{command}`
-   - Pass: {expected}
-2. [ ] {user-facing outcome check}
-   - Verify: `{command, scripted check, test, screenshot/log inspection, or "not required"}`
-   - Pass: {expected}
+   - Pass: {observable signal}
+2. {safety, compatibility, or operational outcome}
+   - Verify: `{command or not required}`
+   - Pass: {observable signal}
 
-## Validation Contract
+## Archive Rule
 
-`/do-it` must satisfy this contract before reporting the plan complete or archiving it.
+Archive only when every required task, validation, exact-workflow, repository-wide, manual, deployment, evidence, and archive gate passes or is explicitly not applicable, and Execution Status has no unresolved item. Move the plan and owned siblings to a collision-safe `.specs/archive/{slug}/` path unless this plan records an explicit opt-out rationale.
 
-### Automation completeness
+## Execution Status
 
-- Required: yes
-- `/do-it` must be able to run all agent-runnable validation/deployment steps through documented commands, scripts, playbooks, or wrappers.
-- If credentials are required, the plan must define a gitignored/local credential path or an explicit user-approved auth mode.
-- Manual-only steps must be justified and include exact user actions plus expected success signals.
+- **Classification:** planned, not started
+- **Current blocker:** none
+- **Last completed wave/gate:** none
+- **Next ready wave/gate:** T1
+- **Completed work:** none
+- **Commands/results:** none
+- **Remaining checks:** all checklist items
+- **Exact user action:** none
+- **Resume:** `/do-it {plan-path}`
 
-### Required automated validation
+Before any incomplete report or context-clearing handoff, update this section with the actual state, blocker, recovery entrypoint, and whether the resume command remains appropriate.
 
-1. [ ] Run the strongest repo-wide validation command or command set for this project.
-   - Command: `{repo-wide validation command, e.g. make check; or explicit test/lint/format commands}`
-   - Pass: exits 0 with no errors or warnings
-   - Fail: do not archive; update `## Execution Status` with the failing command and next fix
+## Workflow Eval Record
 
-2. [ ] Run task-specific verification from every acceptance criterion above.
-   - Command: see each task's `Verify:` command
-   - Pass: every acceptance criterion passes as written
-   - Fail: create/fix a task, rerun affected checks, then rerun repo-wide validation
-
-Do not require exact test function names, exhaustive evidence files, or audit-grade traceability unless those tests/scripts already exist or the user explicitly requested that rigor.
-
-### Manual validation
-
-Manual validation is exceptional. It should be `Required: no` unless the plan includes destructive operations, data-loss risk, irreversible external side effects, shared/work production impact, paid/billing/data-costing resources, secret exposure risk, hardware/physical checks, or genuinely subjective user judgment that cannot be replaced by safe automation. Scale matters: personal/local GitHub repos, local/home-lab, and new-backed-up systems are usually agent-runnable; work/shared/multi-user production systems and money/data-costing resources may need user gates when other people, spend, quota, or costly recovery could be affected.
-
-- Required: {yes/no}
-- Justification: {If yes, name the destructive/data-loss/irreversible/shared-production/secret-exposure/hardware/subjective reason. If no, write "Automated validation is sufficient."}
-- Steps:
-  1. {If required, exact user/manual step with expected success signal. If not required, write "None."}
-
-If manual validation is required and not confirmed passed, `/do-it` must classify the result as `implemented-awaiting-manual-validation`, update `## Execution Status`, and must not archive the plan. If manual validation is not required, `/do-it` may mark the manual gate complete after recording why automated evidence is sufficient.
-
-### Deployment validation
-
-- Required: {yes/no}
-- Procedure: {If required, reference `## Deployment Procedure`; otherwise write "None."}
-
-If deployment is required and skipped, cancelled, or fails, `/do-it` must not archive the plan.
-
-### Archive rule
-
-`/do-it` may archive this plan only after all required automated validation, task-specific verification, exceptional manual validation (if required), deployment validation, and repo-wide validation pass. Do not require manual validation merely to increase confidence in non-destructive behavior that automated checks already cover, especially for local/home-lab/new-backed-up systems.
-
-## Handoff Notes
-
-{Anything the executor needs to know that isn't captured above -- environment setup,
-credentials needed, sequencing gotchas, known flaky areas. If nothing, write "None."}
+{Filled by `/do-it` at terminal state using the repository telemetry schema: outcome, archive result, validation and gate results, checklist state, blocker, friction, missing evidence, improvement candidates, and confidence.}

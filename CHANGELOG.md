@@ -2,6 +2,30 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-16: Simplify Pi planning and execution contracts
+
+**Why:** File-count routing, fixed worker assignments, named evaluation panels,
+and duplicated step recipes made workflow prompts brittle and repeated policy
+owned by runtime discovery and repository instructions.
+
+**Changed:**
+- Reframed `/plan-it` and `/do-it` around objectives, hard boundaries,
+  repository evidence, validation, durable state, and definitions of done.
+- Removed file-count complexity ladders, required runtime assignment columns,
+  fixed specialist routing, named hidden panels, and duplicated delegation
+  recipes.
+- Reworked the plan template around deliverables, dependencies, required
+  capabilities, mutation boundaries, exact workflow checks, and durable
+  evidence.
+- Kept `/prd-it` unchanged because it already delegates to its canonical skill
+  without duplicating the retired prescriptions.
+
+**Files:** `pi/skills/workflow/plan-it.md`,
+`pi/skills/workflow/do-it.md`,
+`pi/skills/workflow/templates/plan-template.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-16: Inventory static-content test contracts
 
 **Why:** The rationalization plan requires every source-, prompt-, prose-, and
