@@ -123,6 +123,25 @@ function sessionContextFixture(sessionId: string) {
 	});
 }
 
+async function invokeImproveCommand(
+	pi: ReturnType<typeof createMockPi>,
+	ctx: ReturnType<typeof createMockCtx>,
+	args: string,
+): Promise<void> {
+	const command = pi._commands.find((item) => item.name === "improve");
+	if (!command) throw new Error("improve command not registered");
+	await command.handler(args, ctx);
+}
+
+function improveMessageContent(
+	pi: ReturnType<typeof createMockPi>,
+	index: number,
+): string {
+	const call = pi.sendMessage.mock.calls[index];
+	if (!call) throw new Error(`Missing improve message at index ${index}`);
+	return String((call[0] as { content: unknown }).content);
+}
+
 async function emitTopLevelInteractionEvents(
 	ctx: ReturnType<typeof createMockCtx>,
 ): Promise<void> {
@@ -248,19 +267,52 @@ async function waitForPath(filePath: string): Promise<void> {
 	throw new Error(`Timed out waiting for ${filePath}`);
 }
 
+async function waitForPathRemoval(filePath: string): Promise<void> {
+	for (let attempt = 0; attempt < 100; attempt += 1) {
+		try {
+			await fs.access(filePath);
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		} catch {
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			return;
+		}
+	}
+	throw new Error(`Timed out waiting for removal of ${filePath}`);
+}
+
+async function seedLearningReviews(
+	records: readonly StoredReviewRecord[],
+): Promise<void> {
+	const reviewsPath = path.join(
+		path.dirname(learningDecisionsPath()),
+		"reviews.jsonl",
+	);
+	await fs.mkdir(path.dirname(reviewsPath), { recursive: true });
+	await fs.writeFile(
+		reviewsPath,
+		`${records.map((record) => JSON.stringify(record)).join("\n")}\n`,
+		"utf8",
+	);
+}
+
 async function seedCommandLearningReview(
 	repoRoot: string,
 	scope: "project" | "user" = "project",
 	targetSkill?: string,
 ): Promise<StoredReviewRecord> {
 	const review = commandLearningReviewRecord(repoRoot, scope, targetSkill);
-	const reviewsPath = path.join(
-		path.dirname(learningDecisionsPath()),
-		"reviews.jsonl",
-	);
-	await fs.mkdir(path.dirname(reviewsPath), { recursive: true });
-	await fs.writeFile(reviewsPath, `${JSON.stringify(review)}\n`, "utf8");
+	await seedLearningReviews([review]);
 	return review;
+}
+
+function ordinalCandidateRecords(): StoredReviewRecord[] {
+	return ["11111111", "22222222", "33333333", "da4f5e4b"].map((id, index) =>
+		rankedCandidate(
+			`interaction-${id}`,
+			"efficiency",
+			`2026-07-14T00:00:0${index}.000Z`,
+		),
+	);
 }
 
 describe("workflow friction selection", () => {
@@ -865,10 +917,32 @@ describe("workflow friction extension", () => {
 		const pi = createMockPi();
 		workflowFrictionExtension(pi as never);
 		expect(pi._commands.map((command) => command.name)).toEqual(["improve"]);
-		expect(pi._getTool("learning_candidate_decide")).toBeDefined();
+		const decideTool = pi._getTool("learning_candidate_decide");
+		expect(decideTool).toBeDefined();
+		expect(decideTool?.parameters.properties).not.toHaveProperty(
+			"decisionText",
+		);
 		expect(pi._getTool("workflow_friction_mark_change")).toBeDefined();
 		expect(pi._getHook("before_agent_start")).toHaveLength(1);
 		expect(pi._getHook("agent_settled")).toHaveLength(1);
+	});
+
+	it("rejects empty edit and skip decision commands visibly", async () => {
+		const pi = createMockPi();
+		workflowFrictionExtension(pi as never);
+		const ctx = createMockCtx();
+
+		await invokeImproveCommand(pi, ctx, "decide edit");
+		await invokeImproveCommand(pi, ctx, "decide skip   ");
+
+		expect(improveMessageContent(pi, 0)).toContain(
+			"/improve decide edit requires nonempty text.",
+		);
+		expect(improveMessageContent(pi, 1)).toContain(
+			"/improve decide skip requires nonempty text.",
+		);
+		expect(pi.sendMessage.mock.calls[0]?.[1]).toEqual({ triggerTurn: false });
+		expect(pi.sendMessage.mock.calls[1]?.[1]).toEqual({ triggerTurn: false });
 	});
 
 	it("reports when no supported improvement candidate exists", async () => {
@@ -908,7 +982,7 @@ describe("workflow friction extension", () => {
 		);
 		await improve?.handler("Repeated validation with no edit", ctx);
 		expect(ctx.ui.notify).toHaveBeenLastCalledWith(
-			expect.stringContaining("/improve select <id>"),
+			expect.stringContaining("/improve select <number-or-id>"),
 			"warning",
 		);
 	});
@@ -935,23 +1009,149 @@ describe("workflow friction extension", () => {
 			);
 
 			await improve?.handler("list", ctx);
-			expect(pi.sendMessage).not.toHaveBeenCalled();
-			expect(ctx.ui.notify).toHaveBeenCalledWith(
-				expect.stringContaining(
-					"Available improvement candidates (1):\n1. command",
-				),
-				"info",
+			expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+			expect(pi.sendMessage).toHaveBeenLastCalledWith(
+				expect.objectContaining({
+					customType: "workflow-friction.improve-command",
+					display: true,
+					content: expect.stringContaining(
+						"> /improve list\n\nAvailable improvement candidates (1):\n1. command",
+					),
+				}),
+				{ triggerTurn: false },
 			);
 
 			await improve?.handler("select command", ctx);
-			expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+			expect(pi.sendMessage).toHaveBeenCalledTimes(3);
+			expect(pi.sendMessage.mock.calls[1]).toEqual([
+				expect.objectContaining({
+					display: true,
+					content: expect.stringContaining(
+						"> /improve select command\n\nSelected improvement candidate 1 of 1: command",
+					),
+				}),
+				{ triggerTurn: false },
+			]);
 			expect(
-				String(pi.sendMessage.mock.calls[0]?.[0]?.content ?? ""),
+				String(pi.sendMessage.mock.calls[2]?.[0]?.content ?? ""),
 			).toContain(`Candidate ID: ${candidate.interactionId}`);
-			const beforeAgent = pi._getHook("before_agent_start")[0]?.handler;
-			const settled = pi._getHook("agent_settled")[0]?.handler;
-			await beforeAgent({ prompt: "/improve select command" }, ctx);
-			await settled({}, ctx);
+			expect(consumeWorkflowSubmission(Date.now())?.text).toBe("/improve");
+		} finally {
+			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
+			else process.env.PI_WORKFLOW_FRICTION_DIR = previous;
+			await fs.rm(scratch, { recursive: true, force: true });
+		}
+	});
+
+	it("selects the fourth ranked candidate by its displayed ordinal", async () => {
+		const scratch = await fs.mkdtemp(
+			path.join(os.tmpdir(), "pi-improve-ordinal-"),
+		);
+		const previous = process.env.PI_WORKFLOW_FRICTION_DIR;
+		process.env.PI_WORKFLOW_FRICTION_DIR = scratch;
+		try {
+			await seedLearningReviews(ordinalCandidateRecords());
+			const ctx = sessionContextFixture("session-improve-ordinal");
+			const pi = createMockPi();
+			workflowFrictionExtension(pi as never);
+
+			await invokeImproveCommand(pi, ctx, "list");
+			expect(improveMessageContent(pi, 0)).toContain("4. da4f5e4b");
+
+			await invokeImproveCommand(pi, ctx, "select 4");
+			expect(improveMessageContent(pi, 1)).toContain(
+				"> /improve select 4\n\nSelected improvement candidate 4 of 4: da4f5e4b",
+			);
+			expect(improveMessageContent(pi, 2)).toContain(
+				"Candidate ID: interaction-da4f5e4b",
+			);
+			expect(consumeWorkflowSubmission(Date.now())?.text).toBe("/improve");
+		} finally {
+			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
+			else process.env.PI_WORKFLOW_FRICTION_DIR = previous;
+			await fs.rm(scratch, { recursive: true, force: true });
+		}
+	});
+
+	it("resolves numeric selection against the displayed snapshot after reranking", async () => {
+		const scratch = await fs.mkdtemp(
+			path.join(os.tmpdir(), "pi-improve-snapshot-"),
+		);
+		const previous = process.env.PI_WORKFLOW_FRICTION_DIR;
+		process.env.PI_WORKFLOW_FRICTION_DIR = scratch;
+		try {
+			const records = ordinalCandidateRecords();
+			await seedLearningReviews(records);
+			const ctx = sessionContextFixture("session-improve-snapshot");
+			const pi = createMockPi();
+			workflowFrictionExtension(pi as never);
+
+			await invokeImproveCommand(pi, ctx, "list");
+			expect(improveMessageContent(pi, 0)).toContain("1. 11111111");
+			if (records[1]?.review) records[1].review.impact = "safety";
+			await seedLearningReviews(records);
+
+			await invokeImproveCommand(pi, ctx, "select 1");
+			expect(improveMessageContent(pi, 1)).toContain(
+				"Selected improvement candidate 1 of 4: 11111111",
+			);
+			expect(improveMessageContent(pi, 2)).toContain(
+				"Candidate ID: interaction-11111111",
+			);
+			expect(consumeWorkflowSubmission(Date.now())?.text).toBe("/improve");
+		} finally {
+			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
+			else process.env.PI_WORKFLOW_FRICTION_DIR = previous;
+			await fs.rm(scratch, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects numeric selection without a displayed snapshot", async () => {
+		const scratch = await fs.mkdtemp(
+			path.join(os.tmpdir(), "pi-improve-no-snapshot-"),
+		);
+		const previous = process.env.PI_WORKFLOW_FRICTION_DIR;
+		process.env.PI_WORKFLOW_FRICTION_DIR = scratch;
+		try {
+			await seedLearningReviews(ordinalCandidateRecords());
+			const ctx = sessionContextFixture("session-improve-no-snapshot");
+			const pi = createMockPi();
+			workflowFrictionExtension(pi as never);
+
+			await invokeImproveCommand(pi, ctx, "select 1");
+
+			expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+			expect(improveMessageContent(pi, 0)).toContain(
+				"No displayed improvement list is available in this session. Run /improve list",
+			);
+		} finally {
+			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
+			else process.env.PI_WORKFLOW_FRICTION_DIR = previous;
+			await fs.rm(scratch, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects a stale numeric snapshot entry", async () => {
+		const scratch = await fs.mkdtemp(
+			path.join(os.tmpdir(), "pi-improve-stale-snapshot-"),
+		);
+		const previous = process.env.PI_WORKFLOW_FRICTION_DIR;
+		process.env.PI_WORKFLOW_FRICTION_DIR = scratch;
+		try {
+			const records = ordinalCandidateRecords();
+			await seedLearningReviews(records);
+			const ctx = sessionContextFixture("session-improve-stale-snapshot");
+			const pi = createMockPi();
+			workflowFrictionExtension(pi as never);
+			await invokeImproveCommand(pi, ctx, "list");
+			await seedLearningReviews(records.slice(1));
+
+			await invokeImproveCommand(pi, ctx, "select 1");
+
+			expect(pi.sendMessage).toHaveBeenCalledTimes(2);
+			expect(improveMessageContent(pi, 1)).toContain(
+				"interaction-11111111 from displayed number 1 is no longer eligible",
+			);
 		} finally {
 			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
 			else process.env.PI_WORKFLOW_FRICTION_DIR = previous;
@@ -986,6 +1186,7 @@ describe("workflow friction extension", () => {
 			await beforeAgent({ prompt: "No, use pnpm instead." }, ctx);
 			await settled({}, ctx);
 			await waitForPath(path.join(scratch, "reviews.jsonl"));
+			await waitForPathRemoval(path.join(scratch, "worker.lock"));
 			expect(pi.sendMessage).not.toHaveBeenCalled();
 
 			const command = pi._commands.find((item) => item.name === "improve");
@@ -1188,8 +1389,13 @@ describe("workflow friction extension", () => {
 				ctx,
 			);
 			await settled({}, ctx);
-			await waitForPath(path.join(scratch, "reviews.jsonl"));
-			expect(reviewer.run).toHaveBeenCalledTimes(1);
+			const reviewPath = path.join(scratch, "reviews.jsonl");
+			await waitForPath(reviewPath);
+			const review = JSON.parse(
+				(await fs.readFile(reviewPath, "utf8")).trim(),
+			) as StoredReviewRecord;
+			expect(review.selectionReasons).toContain("explicit_learning_request");
+			await waitForPathRemoval(path.join(scratch, "worker.lock"));
 		} finally {
 			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
 			else process.env.PI_WORKFLOW_FRICTION_DIR = previous;
@@ -1197,7 +1403,94 @@ describe("workflow friction extension", () => {
 		}
 	});
 
-	it("records an edited and applied decision with validation and rollback", async () => {
+	it("does not authorize a decision from conversational Apply input", async () => {
+		const scratch = await fs.mkdtemp(
+			path.join(os.tmpdir(), "pi-learning-conversation-"),
+		);
+		const previous = process.env.PI_WORKFLOW_FRICTION_DIR;
+		process.env.PI_WORKFLOW_FRICTION_DIR = scratch;
+		try {
+			const ctx = createMockCtx({ cwd: "/test/dir" });
+			const candidate = await seedCommandLearningReview(ctx.cwd);
+			const pi = createMockPi();
+			workflowFrictionExtension(pi as never);
+			await invokeImproveCommand(pi, ctx, "");
+			const input = pi._getHook("input")[0]?.handler;
+			await input({ source: "interactive", text: "Apply" }, ctx);
+
+			await expect(
+				pi._getTool("learning_candidate_decide")?.execute(
+					"conversation-call",
+					{
+						candidateId: candidate.interactionId,
+						decision: "applied",
+						approvedText: "Use pnpm.",
+						targetPaths: ["pi/AGENTS.md"],
+						validation: "Validated.",
+						rollback: "Revert the edit.",
+					},
+					undefined,
+					undefined,
+					ctx,
+				),
+			).rejects.toThrow(/explicit \/improve decide command/);
+			expect(await readCurrentLearningDecisions()).toEqual([]);
+		} finally {
+			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
+			else process.env.PI_WORKFLOW_FRICTION_DIR = previous;
+			await fs.rm(scratch, { recursive: true, force: true });
+		}
+	});
+
+	it("captures an explicit apply command and triggers execution", async () => {
+		const scratch = await fs.mkdtemp(
+			path.join(os.tmpdir(), "pi-learning-apply-"),
+		);
+		const previous = process.env.PI_WORKFLOW_FRICTION_DIR;
+		process.env.PI_WORKFLOW_FRICTION_DIR = scratch;
+		try {
+			const ctx = createMockCtx({ cwd: "/test/dir" });
+			const candidate = await seedCommandLearningReview(ctx.cwd);
+			const pi = createMockPi();
+			workflowFrictionExtension(pi as never);
+			await invokeImproveCommand(pi, ctx, "");
+			await invokeImproveCommand(pi, ctx, "decide apply");
+
+			expect(improveMessageContent(pi, 1)).toContain(
+				"> /improve decide apply\n\nCaptured apply decision",
+			);
+			expect(improveMessageContent(pi, 2)).toContain(
+				"Captured command: /improve decide apply",
+			);
+			expect(pi.sendMessage.mock.calls[2]?.[1]).toEqual({
+				triggerTurn: true,
+				deliverAs: "followUp",
+			});
+			await pi._getTool("learning_candidate_decide")?.execute(
+				"apply-call",
+				{
+					candidateId: candidate.interactionId,
+					decision: "applied",
+					approvedText: "Use pnpm.",
+					targetPaths: ["pi/AGENTS.md"],
+					validation: "Validated the Pi workflow.",
+					rollback: "Revert the candidate-specific edit.",
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+			expect((await readCurrentLearningDecisions())[0]?.decisionText).toBe(
+				"/improve decide apply",
+			);
+		} finally {
+			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
+			else process.env.PI_WORKFLOW_FRICTION_DIR = previous;
+			await fs.rm(scratch, { recursive: true, force: true });
+		}
+	});
+
+	it("records an explicit edited decision with validation and rollback", async () => {
 		const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "pi-learning-"));
 		const previous = process.env.PI_WORKFLOW_FRICTION_DIR;
 		process.env.PI_WORKFLOW_FRICTION_DIR = scratch;
@@ -1206,47 +1499,23 @@ describe("workflow friction extension", () => {
 			const candidate = await seedCommandLearningReview(ctx.cwd);
 			const pi = createMockPi();
 			workflowFrictionExtension(pi as never);
-			const command = pi._commands.find((item) => item.name === "improve");
-			await command?.handler("", ctx);
-			const decideTool = pi._getTool("learning_candidate_decide");
-			const decisionText =
-				"Option 2: apply the edited lesson after focused validation.";
-			const appliedParams = {
-				candidateId: candidate.interactionId,
-				decision: "applied",
-				decisionText,
-				approvedText: "Use pnpm and run the focused Pi tests.",
-				targetPaths: ["pi/AGENTS.md"],
-				validation: "Reloaded Pi and verified the instruction was present.",
-				rollback: "Revert the candidate-specific edit in pi/AGENTS.md.",
-			};
-			await expect(
-				decideTool?.execute(
-					"premature-call",
-					appliedParams,
-					undefined,
-					undefined,
-					ctx,
-				),
-			).rejects.toThrow(/explicit Apply, Edit, or Skip/);
-			const input = pi._getHook("input")[0]?.handler;
-			await input(
-				{ source: "interactive", text: "Can we change the target first?" },
+			await invokeImproveCommand(pi, ctx, "");
+			await invokeImproveCommand(
+				pi,
 				ctx,
+				"decide edit include focused validation",
 			);
-			await expect(
-				decideTool?.execute(
-					"question-call",
-					appliedParams,
-					undefined,
-					undefined,
-					ctx,
-				),
-			).rejects.toThrow(/explicit Apply, Edit, or Skip/);
-			await input({ source: "interactive", text: decisionText }, ctx);
+			const decideTool = pi._getTool("learning_candidate_decide");
 			await decideTool?.execute(
 				"decision-call",
-				appliedParams,
+				{
+					candidateId: candidate.interactionId,
+					decision: "applied",
+					approvedText: "Use pnpm and run the focused Pi tests.",
+					targetPaths: ["pi/AGENTS.md"],
+					validation: "Reloaded Pi and verified the instruction was present.",
+					rollback: "Revert the candidate-specific edit in pi/AGENTS.md.",
+				},
 				undefined,
 				undefined,
 				ctx,
@@ -1254,6 +1523,7 @@ describe("workflow friction extension", () => {
 			expect((await readCurrentLearningDecisions())[0]).toMatchObject({
 				candidateId: candidate.interactionId,
 				decision: "applied",
+				decisionText: "/improve decide edit include focused validation",
 				approvedText: "Use pnpm and run the focused Pi tests.",
 				targetPaths: ["pi/AGENTS.md"],
 				experimentId: `experiment-${candidate.interactionId}`,
@@ -1263,13 +1533,6 @@ describe("workflow friction extension", () => {
 				"utf8",
 			);
 			expect(experimentLog).toContain(`experiment-${candidate.interactionId}`);
-			pi.sendMessage.mockClear();
-			ctx.ui.notify.mockClear();
-			await command?.handler("list", ctx);
-			expect(pi.sendMessage).not.toHaveBeenCalled();
-			expect(JSON.stringify(ctx.ui.notify.mock.calls)).not.toContain(
-				candidate.interactionId,
-			);
 		} finally {
 			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
 			else process.env.PI_WORKFLOW_FRICTION_DIR = previous;
@@ -1290,9 +1553,13 @@ describe("workflow friction extension", () => {
 			workflowFrictionExtension(pi as never);
 			const command = pi._commands.find((item) => item.name === "improve");
 			await command?.handler("", ctx);
-			const decisionText = "Skip: this was specific to one task.";
-			const input = pi._getHook("input")[0]?.handler;
-			await input({ source: "interactive", text: decisionText }, ctx);
+			await command?.handler("decide skip this was specific to one task", ctx);
+			expect(improveMessageContent(pi, 1)).toContain(
+				"> /improve decide skip this was specific to one task\n\nCaptured skip decision",
+			);
+			expect(improveMessageContent(pi, 2)).toContain(
+				"Captured detail: this was specific to one task",
+			);
 			const decideTool = pi._getTool("learning_candidate_decide");
 			await expect(
 				decideTool?.execute(
@@ -1300,7 +1567,6 @@ describe("workflow friction extension", () => {
 					{
 						candidateId: candidate.interactionId,
 						decision: "skipped",
-						decisionText,
 						targetPaths: [],
 						reason: "Wrong workspace.",
 					},
@@ -1314,9 +1580,8 @@ describe("workflow friction extension", () => {
 				{
 					candidateId: candidate.interactionId,
 					decision: "skipped",
-					decisionText,
 					targetPaths: [],
-					reason: "The correction was specific to one task.",
+					reason: "This model-supplied reason is ignored.",
 				},
 				undefined,
 				undefined,
@@ -1325,8 +1590,8 @@ describe("workflow friction extension", () => {
 			expect((await readCurrentLearningDecisions())[0]).toMatchObject({
 				candidateId: candidate.interactionId,
 				decision: "skipped",
-				reason: "The correction was specific to one task.",
-				decisionText,
+				reason: "this was specific to one task",
+				decisionText: "/improve decide skip this was specific to one task",
 			});
 			await expect(
 				fs.access(path.join(scratch, "experiments.jsonl")),

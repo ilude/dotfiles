@@ -219,13 +219,16 @@ interface CaptureAnnotation {
 
 type ImprovementDecisionChoice = "apply" | "edit" | "skip";
 
+interface ImprovementDecisionSelection {
+	choice: ImprovementDecisionChoice;
+	text: string;
+	detail?: string;
+}
+
 interface PendingLearningDiscussion {
 	candidateId: string;
 	phase: "discussing" | "selected";
-	selection?: {
-		choice: ImprovementDecisionChoice;
-		text: string;
-	};
+	selection?: ImprovementDecisionSelection;
 }
 
 export interface LearningDecisionRecord {
@@ -366,24 +369,32 @@ function bounded(value: string, max: number): string {
 	return value.length <= max ? value : `${value.slice(0, max)}\n[truncated]`;
 }
 
-function parseImprovementSelection(text: string): {
-	choice: ImprovementDecisionChoice;
-	text: string;
-} | null {
-	const trimmed = text.trim();
-	const match =
-		/^(apply|edit|skip|option\s*1|option\s*2|option\s*3)(?:\s*:\s*(.*))?$/i.exec(
-			trimmed,
-		);
-	if (!match) return null;
-	const token = match[1]?.toLowerCase().replace(/\s+/g, " ");
-	const choice: ImprovementDecisionChoice =
-		token === "apply" || token === "option 1"
-			? "apply"
-			: token === "edit" || token === "option 2"
-				? "edit"
-				: "skip";
-	return { choice, text: bounded(trimmed, 1_000) };
+function parseImprovementDecisionCommand(
+	args: string,
+): { selection: ImprovementDecisionSelection } | { error: string } {
+	const trimmed = args.trim();
+	if (/^decide\s+apply$/i.test(trimmed))
+		return {
+			selection: { choice: "apply", text: `/improve ${trimmed}` },
+		};
+	const match = /^decide\s+(edit|skip)(?:\s+([\s\S]*))?$/i.exec(trimmed);
+	if (!match)
+		return {
+			error:
+				"Usage: /improve decide apply | /improve decide edit <change> | /improve decide skip <reason>",
+		};
+	const detail = match[2]?.trim();
+	if (!detail)
+		return {
+			error: `/improve decide ${match[1]?.toLowerCase()} requires nonempty text.`,
+		};
+	return {
+		selection: {
+			choice: match[1]?.toLowerCase() === "edit" ? "edit" : "skip",
+			text: bounded(`/improve ${trimmed}`, 1_000),
+			detail: bounded(detail, 1_000),
+		},
+	};
 }
 
 function stableText(value: unknown, max: number): string {
@@ -865,17 +876,66 @@ function formatImprovementCandidateList(
 			: "target:unresolved";
 		return `${index + 1}. ${improvementCandidateReference(candidate, candidates)} [${review?.impact ?? "unspecified"}] ${targetLabel}\n   ${bounded(review?.suggestedChange?.trim() ?? "", 160)}\n   ${rankingReason(candidate, usage)}`;
 	});
-	return `Available improvement candidates (${candidates.length}):\n${rows.join("\n")}\n\nSelect with /improve select <id>.`;
+	return `Available improvement candidates (${candidates.length}):\n${rows.join("\n")}\n\nSelect with /improve select <number-or-id>.`;
+}
+
+function formatImprovementCandidateSelection(
+	candidate: StoredReviewRecord,
+	candidates: readonly StoredReviewRecord[],
+	ordinal: number,
+	total: number,
+): string {
+	const review = candidate.review;
+	const target = normalizedTarget(candidate);
+	const targetLabel = target
+		? `${target.kind}:${target.owner ? `${target.owner}/` : ""}${target.name}`
+		: "target:unresolved";
+	return `Selected improvement candidate ${ordinal} of ${total}: ${improvementCandidateReference(candidate, candidates)} [${review?.impact ?? "unspecified"}] ${targetLabel}\n${bounded(review?.suggestedChange?.trim() ?? "", 160)}`;
+}
+
+function showImprovementCommandOutput(
+	pi: ExtensionAPI,
+	args: string,
+	content: string,
+): void {
+	const invocation = args.trim() ? `/improve ${args.trim()}` : "/improve";
+	pi.sendMessage(
+		{
+			customType: "workflow-friction.improve-command",
+			content: `> ${invocation}\n\n${content}`,
+			display: true,
+		},
+		{ triggerTurn: false },
+	);
+}
+
+function improvementDecisionFollowUpPrompt(
+	candidateId: string,
+	selection: ImprovementDecisionSelection,
+): string {
+	const detail = selection.detail
+		? `\nCaptured detail: ${selection.detail}`
+		: "";
+	return `Execute the captured /improve decision immediately without another approval request.
+
+Candidate ID: ${candidateId}
+Captured command: ${selection.text}
+Choice: ${selection.choice}${detail}
+
+For apply or edit, apply the selected change, validate it through the user-facing workflow, preserve rollback instructions, then call learning_candidate_decide. For skip, call learning_candidate_decide without editing. The tool records the captured command directly.`;
 }
 
 function improveHelpText(): string {
 	return [
 		"Usage:",
-		"  /improve                 Discuss the highest-ranked unresolved candidate",
-		"  /improve list            List ranked unresolved candidates",
-		"  /improve select <id>     Discuss one candidate from the list",
-		"  /improve help            Show this help",
-		"During discussion, ask questions normally. Select with Apply, Edit: <change>, or Skip: <reason>.",
+		"  /improve                          Discuss the highest-ranked unresolved candidate",
+		"  /improve list                     List ranked unresolved candidates",
+		"  /improve select <number-or-id>    Discuss one candidate from the list",
+		"  /improve decide apply             Apply the selected proposal",
+		"  /improve decide edit <change>     Apply an edited proposal",
+		"  /improve decide skip <reason>     Skip the selected proposal",
+		"  /improve help                     Show this help",
+		"During discussion, ask questions normally. Only /improve decide changes authorization state.",
 	].join("\n");
 }
 
@@ -1037,7 +1097,7 @@ Use the full 1-3-1 format in normal conversation:
 - Option 3: Skip it as non-durable or incorrect.
 - Recommendation: choose one option and explain why.
 
-Questions and comments continue the discussion and must not select or resolve the candidate. Wait for an explicit selection in one of these forms: Apply, Edit: <requested change>, Skip: <reason>, or the equivalent Option 1, Option 2, or Option 3 form. Once selected, execute that choice immediately without another approval request.
+Questions and comments continue the discussion and must not select or resolve the candidate. Normal conversational input, including the words Apply, Edit, Skip, or Option, never authorizes a choice. Wait for exactly one explicit command: /improve decide apply, /improve decide edit <requested change>, or /improve decide skip <reason>. Once the command is captured, execute that choice immediately without another approval request.
 
 For Apply or Edit:
 - Inspect existing AGENTS.md files and relevant skills before editing.
@@ -1046,9 +1106,9 @@ For Apply or Edit:
 - Prefer a test, hook, validator, or code fix when deterministic enforcement is required.
 - Do not create a new skill from one interaction.
 - Validate the changed surface through the user-facing Pi workflow.
-- Call learning_candidate_decide with decision applied, the user's exact decision text, the final approved text, target paths, validation evidence, and rollback instructions.
+- Call learning_candidate_decide with decision applied, the final approved text, target paths, validation evidence, and rollback instructions. The tool records the captured command text directly.
 
-For Skip, call learning_candidate_decide with decision skipped, the user's exact decision text, and the user's reason.`;
+For Skip, call learning_candidate_decide with decision skipped. The tool records the captured command and reason directly.`;
 }
 
 async function appendFailedReview(
@@ -1288,11 +1348,15 @@ export default function workflowFrictionExtension(
 	let latestCompleted: InteractionPacket | null = null;
 	let currentSessionId = "unknown";
 	let pendingLearningDiscussion: PendingLearningDiscussion | null = null;
+	let improvementListSnapshot: string[] | null = null;
 
 	pi.on("session_start", async (_event, ctx) => {
 		const sessionId = ctx.sessionManager.getSessionId();
-		if (currentSessionId !== sessionId)
+		if (currentSessionId !== sessionId) {
 			resetOrchestrationInteraction(currentSessionId);
+			improvementListSnapshot = null;
+			pendingLearningDiscussion = null;
+		}
 		currentSessionId = sessionId;
 		startBackgroundWorker(ctx, reviewer);
 	});
@@ -1302,19 +1366,11 @@ export default function workflowFrictionExtension(
 		active = null;
 		pendingInput = null;
 		pendingLearningDiscussion = null;
+		improvementListSnapshot = null;
 	});
 
 	pi.on("input", async (event) => {
 		if (event.source === "extension") return { action: "continue" as const };
-		if (pendingLearningDiscussion) {
-			const selection = parseImprovementSelection(event.text);
-			if (selection)
-				pendingLearningDiscussion = {
-					...pendingLearningDiscussion,
-					phase: "selected",
-					selection,
-				};
-		}
 		if (active) {
 			active.userTexts.push(bounded(event.text, MAX_USER_TEXT));
 			return { action: "continue" as const };
@@ -1332,6 +1388,8 @@ export default function workflowFrictionExtension(
 		if (currentSessionId !== sessionId) {
 			resetOrchestrationInteraction(currentSessionId);
 			active = null;
+			improvementListSnapshot = null;
+			pendingLearningDiscussion = null;
 			currentSessionId = sessionId;
 		}
 		if (active) return undefined;
@@ -1481,12 +1539,59 @@ export default function workflowFrictionExtension(
 				ctx.ui.notify(improveHelpText(), "info");
 				return;
 			}
-			if (action && action !== "list" && action !== "select") {
+			if (
+				action &&
+				action !== "list" &&
+				action !== "select" &&
+				action !== "decide"
+			) {
 				ctx.ui.notify(improveHelpText(), "warning");
 				return;
 			}
+			if (action === "decide") {
+				const parsed = parseImprovementDecisionCommand(args);
+				if ("error" in parsed) {
+					showImprovementCommandOutput(pi, args, parsed.error);
+					return;
+				}
+				if (pendingLearningDiscussion?.phase !== "discussing") {
+					showImprovementCommandOutput(
+						pi,
+						args,
+						"No active improvement candidate is awaiting a decision. Run /improve or /improve select <number-or-id> first.",
+					);
+					return;
+				}
+				pendingLearningDiscussion = {
+					...pendingLearningDiscussion,
+					phase: "selected",
+					selection: parsed.selection,
+				};
+				showImprovementCommandOutput(
+					pi,
+					args,
+					`Captured ${parsed.selection.choice} decision for ${pendingLearningDiscussion.candidateId}. Executing now.`,
+				);
+				noteWorkflowSubmission(parsed.selection.text, "explore");
+				pi.sendMessage(
+					{
+						customType: "workflow-friction.improve-decision",
+						content: improvementDecisionFollowUpPrompt(
+							pendingLearningDiscussion.candidateId,
+							parsed.selection,
+						),
+						display: false,
+					},
+					{ triggerTurn: true, deliverAs: "followUp" },
+				);
+				return;
+			}
 			if (action === "select" && parts.length !== 2) {
-				ctx.ui.notify("Usage: /improve select <id>", "warning");
+				showImprovementCommandOutput(
+					pi,
+					args,
+					"Usage: /improve select <number-or-id>",
+				);
 				return;
 			}
 			const resolved = new Set(
@@ -1500,6 +1605,44 @@ export default function workflowFrictionExtension(
 					!resolved.has(record.interactionId) &&
 					learningCandidateVisible(record, ctx.cwd),
 			);
+			const selectionToken = action === "select" ? (parts[1] ?? "") : "";
+			const numericSelection = /^\d+$/.test(selectionToken);
+			let snapshotCandidateId: string | undefined;
+			if (numericSelection) {
+				if (!improvementListSnapshot) {
+					showImprovementCommandOutput(
+						pi,
+						args,
+						"No displayed improvement list is available in this session. Run /improve list before selecting by number.",
+					);
+					return;
+				}
+				const ordinal = Number(selectionToken);
+				snapshotCandidateId =
+					Number.isSafeInteger(ordinal) && ordinal >= 1
+						? improvementListSnapshot[ordinal - 1]
+						: undefined;
+				if (!snapshotCandidateId) {
+					showImprovementCommandOutput(
+						pi,
+						args,
+						`No candidate was displayed as number ${selectionToken}. Run /improve list to refresh the snapshot.`,
+					);
+					return;
+				}
+				if (
+					!eligibleCandidates.some(
+						(candidate) => candidate.interactionId === snapshotCandidateId,
+					)
+				) {
+					showImprovementCommandOutput(
+						pi,
+						args,
+						`Improvement candidate ${snapshotCandidateId} from displayed number ${selectionToken} is no longer eligible. Run /improve list to refresh the snapshot.`,
+					);
+					return;
+				}
+			}
 			if (eligibleCandidates.length === 0) {
 				ctx.ui.notify(
 					"No supported improvement candidates exist for this workspace.",
@@ -1517,39 +1660,69 @@ export default function workflowFrictionExtension(
 				usageByCandidate,
 			);
 			if (action === "list") {
-				ctx.ui.notify(
+				improvementListSnapshot = candidates.map(
+					(candidate) => candidate.interactionId,
+				);
+				showImprovementCommandOutput(
+					pi,
+					args,
 					formatImprovementCandidateList(candidates, usageByCandidate),
-					"info",
 				);
 				return;
 			}
-			let candidate = candidates[0];
+			let candidate: StoredReviewRecord | undefined = candidates[0];
 			if (action === "select") {
-				const selection = parts[1]?.toLowerCase() ?? "";
-				const matches = candidates.filter((item) => {
-					const fullId = item.interactionId.toLowerCase();
-					const body = improvementCandidateIdBody(
-						item.interactionId,
-					).toLowerCase();
-					return fullId === selection || body.startsWith(selection);
-				});
-				if (matches.length === 0) {
-					ctx.ui.notify(
-						`No unresolved improvement candidate matches ${parts[1]}.`,
-						"warning",
+				const selection = selectionToken.toLowerCase();
+				if (numericSelection) {
+					candidate = candidates.find(
+						(item) => item.interactionId === snapshotCandidateId,
 					);
-					return;
+				} else {
+					const matches = candidates.filter((item) => {
+						const fullId = item.interactionId.toLowerCase();
+						const body = improvementCandidateIdBody(
+							item.interactionId,
+						).toLowerCase();
+						return fullId === selection || body.startsWith(selection);
+					});
+					if (matches.length === 0) {
+						showImprovementCommandOutput(
+							pi,
+							args,
+							`No unresolved improvement candidate matches ${parts[1]}.`,
+						);
+						return;
+					}
+					if (matches.length > 1) {
+						showImprovementCommandOutput(
+							pi,
+							args,
+							`Improvement candidate ID ${parts[1]} is ambiguous. Use a longer prefix from /improve list.`,
+						);
+						return;
+					}
+					candidate = matches[0];
 				}
-				if (matches.length > 1) {
-					ctx.ui.notify(
-						`Improvement candidate ID ${parts[1]} is ambiguous. Use a longer prefix from /improve list.`,
-						"warning",
-					);
-					return;
-				}
-				candidate = matches[0];
 			}
 			if (!candidate) return;
+			if (action === "select") {
+				const ordinal = numericSelection
+					? Number(selectionToken)
+					: candidates.indexOf(candidate) + 1;
+				const total = numericSelection
+					? (improvementListSnapshot?.length ?? 0)
+					: candidates.length;
+				showImprovementCommandOutput(
+					pi,
+					args,
+					formatImprovementCandidateSelection(
+						candidate,
+						candidates,
+						ordinal,
+						total,
+					),
+				);
+			}
 			const records = await recentReviewRecords();
 			const selectedByReview = new Map(
 				records.map((record) => [
@@ -1600,17 +1773,16 @@ export default function workflowFrictionExtension(
 		name: "learning_candidate_decide",
 		label: "Record Improvement Decision",
 		description:
-			"Record the user's decision after discussing one /improve candidate.",
+			"Record the captured command decision after discussing one /improve candidate.",
 		promptSnippet:
-			"Record an applied or skipped improvement candidate after the user decides.",
+			"Record an applied or skipped improvement candidate after /improve decide.",
 		promptGuidelines: [
-			"Call learning_candidate_decide only after the user explicitly chooses Apply, Edit, or Skip for the candidate shown by /improve.",
+			"Call learning_candidate_decide only after /improve decide captures a choice for the candidate shown by /improve.",
 			"For applied improvement candidates, call learning_candidate_decide only after the approved change is applied and validated.",
 		],
 		parameters: Type.Object({
 			candidateId: Type.String(),
 			decision: Type.Union([Type.Literal("applied"), Type.Literal("skipped")]),
-			decisionText: Type.String({ maxLength: 1_000 }),
 			approvedText: Type.Optional(Type.String({ maxLength: 600 })),
 			targetPaths: Type.Array(Type.String(), { maxItems: 10 }),
 			validation: Type.Optional(Type.String({ maxLength: 2_000 })),
@@ -1621,23 +1793,20 @@ export default function workflowFrictionExtension(
 			const values = params as {
 				candidateId: string;
 				decision: "applied" | "skipped";
-				decisionText: string;
 				approvedText?: string;
 				targetPaths: string[];
 				validation?: string;
 				rollback?: string;
 				reason?: string;
 			};
-			const decisionText = bounded(values.decisionText.trim(), 1_000);
 			const selection = pendingLearningDiscussion?.selection;
 			if (
 				pendingLearningDiscussion?.candidateId !== values.candidateId ||
 				pendingLearningDiscussion.phase !== "selected" ||
-				!selection ||
-				selection.text !== decisionText
+				!selection
 			)
 				throw new Error(
-					"Improvement candidate requires an explicit Apply, Edit, or Skip selection from /improve",
+					"Improvement candidate requires an explicit /improve decide command",
 				);
 			const expectedDecision =
 				selection.choice === "skip" ? "skipped" : "applied";
@@ -1666,7 +1835,12 @@ export default function workflowFrictionExtension(
 			const approvedText = bounded(values.approvedText?.trim() ?? "", 600);
 			const validation = bounded(values.validation?.trim() ?? "", 2_000);
 			const rollback = bounded(values.rollback?.trim() ?? "", 1_000);
-			const reason = bounded(values.reason?.trim() ?? "", 1_000);
+			const reason = bounded(
+				selection.choice === "skip"
+					? (selection.detail ?? "")
+					: (values.reason?.trim() ?? ""),
+				1_000,
+			);
 			if (
 				values.decision === "applied" &&
 				(!approvedText || targetPaths.length === 0 || !validation || !rollback)
@@ -1683,7 +1857,7 @@ export default function workflowFrictionExtension(
 				candidateId: values.candidateId,
 				decidedAt: now,
 				decision: values.decision,
-				decisionText,
+				decisionText: selection.text,
 				approvedText: approvedText || undefined,
 				targetPaths: targetPaths.length > 0 ? targetPaths : undefined,
 				validation: validation || undefined,
