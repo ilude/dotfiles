@@ -363,7 +363,7 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - [x] T6: Pi test alignment - done: dea299b
 - [x] T7: test_config_patterns split - done: 085b069
 - [x] T8: browser wrapper and CI contract - done: 8a0ab09
-- [ ] T9: pin quality tools - pending
+- [ ] T9: pin quality tools - in-progress: repair fresh-install ownership for shfmt and shared-hook Biome resolution, then record durable bad-fixture evidence
 - [ ] T10: changed-file validation entrypoint - pending
 - [ ] T11: Make target split - pending
 - [ ] T12: ledger close and final validation - pending
@@ -375,15 +375,15 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 
 ### State
 
-- **Classification:** execution in progress
-- **Current blocker:** none; T8 instruction-linkage gate resolved by explicit user decision
+- **Classification:** blocked-by-failure as of 2026-07-16
+- **Current blocker:** T9 fresh-install ownership is incomplete: shfmt is workstation-provided, and the shared validator resolves bare `biome` instead of the pinned Pi binary; intentional fixture results are not yet durable repository evidence
 - **Last completed wave/gate:** T6 Pi test behavior alignment
-- **Next:** T9 pin and configure quality tools
-- **Completed work:** T1-T8 complete; Pi prompt/source-shape assertions are deleted or replaced with runtime behavior, and all ledger rows through T8 are executed
-- **Commands/results:** T6 focused Pi suite passed 54 tests; typecheck and `git diff --check` passed; intentional hidden-process regressions failed the two replacement tests as required
-- **Remaining checks:** T9-T12 task gates; final `make check`
-- **Worktree note:** out-of-scope `claude/settings.json` remains unstaged and untouched by plan commits
-- **Exact user action:** none
+- **Next:** repair T9 tool resolution and add durable validator fixtures, then rerun the T9 fresh-setup gate
+- **Completed work:** T1-T8 complete; T9 implementation commit `21e12e1` pins Biome and Lizard, adds a non-mutating shfmt target, and records baseline debt, but its completion gate remains open
+- **Commands/results:** frozen Pi install, Biome 2.5.3, TypeScript typecheck, 46 quality-hook tests, installer syntax/PowerShell parse, and `git diff --check` passed; scratch bad fixtures exited 1 for Biome, shfmt, and Lizard; independent audit found unresolved fresh-install and durable-evidence gaps
+- **Remaining checks:** T9 repair and completion gate; T10-T12; exact workflow fixtures; `make check-pi-extensions`; final `make check`; archive preflight
+- **Worktree note:** out-of-scope `.specs/rationalization-phase2/` remains untracked and untouched by plan commits
+- **Exact user action:** none; rerun `/do-it .specs/rationalization/plan.md`
 - **Resume:** `/do-it .specs/rationalization/plan.md`
 
 ### Current execution telemetry
@@ -402,3 +402,9 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - **T6 manual gate:** not required; risk low; blast radius personal-repo; rollback easy; local reversible test-only changes covered by runtime behavior and intentional-regression evidence.
 - **T6 archive:** not attempted because required checklist items T9-T12 remain pending.
 - **T6 post-run eval:** checklist and evidence agree; no manual or deployment gate remains; friction tag `none`; missing evidence is limited to unexecuted T9-T12; no improvement candidate; confidence high from focused runtime checks, regression proof, typecheck, and commit evidence.
+- **Current episode:** schema version 1; episode ID `2026-07-16T23-10-53Z-do-it-rationalization`; command `do-it`; artifact `.specs/rationalization/plan.md`; repository root `C:/Users/mglenn/.dotfiles`; started `2026-07-16T23:10:53Z`; completed `2026-07-16T23:31:01Z`; status `not_complete`; classification `blocked-by-failure`; archive status `active`; redaction status `no_sensitive_output`.
+- **T9 phase:** phase ID `T9`; type `implementation`; depends on none; started `2026-07-16T23:15:00Z`; completed `2026-07-16T23:31:01Z`; status `failed`; evidence commit `21e12e1`, `CHANGELOG.md`, and independent validator audit.
+- **T9 command events:** `cd pi && pnpm install --frozen-lockfile && pnpm exec biome --version && pnpm run typecheck` exited 0; quality-hook focused suite exited 0 with 46 tests; installer syntax and PowerShell parse exited 0; scratch Biome, shfmt, and Lizard bad fixtures each exited 1 as expected; independent evidence audit recorded the unresolved ownership gaps.
+- **T9 manual gate:** not required; risk low; blast radius personal-repo; rollback easy; local reversible tooling changes have no deployment or shared-user impact.
+- **Current archive:** not attempted because T9-T12 and final gates remain incomplete.
+- **Current post-run eval:** classification `blocked-by-failure`; checklist correctly leaves T9-T12 open; archive status `active`; friction tags `fresh-install-ownership` and `evidence-durability`; missing evidence is a repository-owned shfmt source, pinned Biome resolution in the shared validator, and durable bad-fixture coverage; improvement candidate is to make T10's runner the single repository-owned tool resolver; independent audit confidence high from direct file and git evidence.
