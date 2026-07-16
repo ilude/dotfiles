@@ -359,7 +359,7 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
   - [x] roster.md proposal written
   - [x] user approval received (gate - never inferred)
   - [x] deletions and old-name reference updates executed
-- [x] T5: routing policy consolidation - done: validated slice commit pending
+- [x] T5: routing policy consolidation - done: 48eb3c5
 - [ ] T6: Pi test alignment - pending
 - [ ] T7: test_config_patterns split - pending
 - [ ] T8: browser wrapper and CI contract - pending
@@ -378,9 +378,10 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - **Classification:** execution in progress
 - **Current blocker:** none; T4 roster deletion approved explicitly
 - **Last completed wave/gate:** T5 routing consolidation and focused validation
-- **Next:** commit T5 slice, record its hash, then execute dependency-ready T7 or T8
+- **Next:** T7 test_config_patterns behavior split; T8 is independently ready
 - **Completed work:** T1-T5 complete; one model-routing owner now serves subagent sizing, explicit workflow choices, and premium-provider policy
 - **Commands/results:** focused Pi routing suites passed 144 tests; `pnpm run typecheck` passed; `git diff --check` passed
-- **Remaining checks:** T5 slice commit; T6-T12 task gates; final `make check`
+- **Remaining checks:** T6-T12 task gates; final `make check`
+- **Worktree note:** out-of-scope `CLAUDE.md`, `claude/settings.json`, and `scripts/pi-run` changes remain unstaged and untouched by plan commits
 - **Exact user action:** none
 - **Resume:** `/do-it .specs/rationalization/plan.md`
