@@ -170,8 +170,10 @@ For live smoke tests, restart/reload Pi so extension modules and policy files re
 This repository keeps curated Pi source/config trackable and leaves generated runtime
 state local. Commit changes to maintained config such as `pi/agents/`,
 `pi/multi-team/skills/`, `pi/skills/`, `pi/extensions/`,
-`pi/lib/`, `pi/tests/`, `pi/settings.json`, prompt-router source/docs/data/models that
-are intentionally versioned, and lockfiles such as `pi/prompt-routing/uv.lock`.
+`pi/lib/`, `pi/tests/`, `pi/settings.json`, `pi/feature-memory.json`, tracked
+feature dossiers under `.specs/features/`, prompt-router source/docs/data/models
+that are intentionally versioned, and lockfiles such as
+`pi/prompt-routing/uv.lock`.
 
 Do not delete or commit local runtime state unless a separate migration explicitly
 approves it. Treat these as generated/local: `pi/history/`, `pi/sessions/`,
@@ -289,6 +291,16 @@ Workflow highlights:
 - `/do-it` can route a raw task **or** execute an existing `.specs/*/plan.md` file wave by wave.
 - `/commit` uses shared deterministic candidate extraction plus an isolated low-effort GPT-5.6 Luna child to distinguish real secrets from docs/examples/tests before blocking and to plan commit groups. If commit planning fails, a deterministic ownership fallback separates Pi implementation, workflow prompts, Claude configuration, and specification artifacts. Ambiguous cross-domain paths require an explicit user decision instead of becoming one broad commit. The child runs through Pi's normal agent entrypoint because direct `completeSimple()` calls are not supported for Luna on the Codex subscription backend.
 
+### `feature-memory.ts`
+
+Feature memory provides bounded, feature-specific context across sessions. The tracked `pi/feature-memory.json` registry maps stable feature IDs to a title, a tracked dossier, literal case-insensitive prompt triggers, and repo-relative path triggers. On the first matching prompt in a session, `before_agent_start` injects one hidden, non-authoritative custom message containing the curated dossier and recent local events. A feature is injected only once per session; a new session or `/reload` resets that in-memory boundary.
+
+Curated dossiers and local events have different owners. A dossier such as `.specs/features/pi-improve/context.md` is reviewed, tracked repository context. Runtime events are append-only observations in `${PI_FEATURE_MEMORY_DIR}/events.jsonl` when the override is set, otherwise `~/.pi/agent/feature-memory/events.jsonl`; they remain untracked and never modify a dossier automatically. The model-callable `feature_memory_record` tool is available only as a narrow capture boundary during work that matched a registered feature. It records explicit user decisions, validated evidence, open questions, or supersessions. It must not record raw transcripts, general summaries, secrets, speculative conclusions, or unbounded tool output.
+
+Each local event contains only its schema version, event ID, recording time, feature ID, kind, bounded summary, and supporting repository paths. Retrieval is bounded to recent events. Treat local events as potentially stale: later `supersession` events and current repository evidence take precedence, while promotion into a dossier requires an explicit tracked edit. Do not point `PI_FEATURE_MEMORY_DIR` at a shared or synced directory.
+
+Rollback: remove or disable `pi/extensions/feature-memory.ts` and reload Pi to stop retrieval and capture. Removing the registry, loader, tests, and tracked dossiers completes a source rollback. Local events may be retained because tracked behavior does not depend on them. To remove local events, first stop Pi writers, verify the exact configured directory, and remove only its `events.jsonl` file.
+
 ### `workflow-friction-review.ts`
 
 Measures each interaction from submission through `agent_settled` and records metadata-only denominator metrics for every interaction. It silently queues selected interactions for a bounded background review: explicit remember requests, corrections after an existing conversation turn, every interaction over 10 minutes, every subagent run lasting at least 2 minutes, high-confidence triggered interactions from 2 through 10 minutes, and a deterministic 15 percent control sample from the remaining 2-to-10-minute interactions. Subagent records include the durable run ID and spawn time for correlation with operator tasks. Review jobs run one at a time from a persistent local queue and never delay the original interaction.
@@ -296,15 +308,18 @@ Measures each interaction from submission through `agent_settled` and records me
 Runtime records live under `~/.pi/agent/workflow-friction/` and remain uncommitted. `interactions.jsonl` contains timing, mode, selection, tool, validation, subagent, and mutation counts without prompt or response content. Reviewed interaction packets remain local in `reviews.jsonl`; applied or skipped learning decisions are append-only records in `learning-decisions.jsonl`. Set `PI_WORKFLOW_FRICTION_DIR` to use a separate local directory. At interaction settlement, the extension also emits a metadata-only `orchestration_interaction` metrics event for direct and delegated interactions.
 
 ```text
-/improve                 # discuss the highest-ranked unresolved candidate
-/improve list            # list ranked unresolved candidates
-/improve select <id>     # discuss one listed candidate by unique ID prefix
-/improve help            # show command and decision guidance
+/improve                          # discuss the highest-ranked unresolved candidate
+/improve list                     # list ranked unresolved candidates
+/improve select <number-or-id>    # discuss one listed candidate by ordinal or unique ID prefix
+/improve decide apply             # apply the selected proposal
+/improve decide edit <change>     # apply an edited proposal
+/improve decide skip <reason>     # skip the selected proposal
+/improve help                     # show command and decision guidance
 ```
 
-`/improve` is the only public self-improvement workflow. It ranks pending candidates by safety or correctness impact first, then verified 30-day usage, confidence, and stable age/ID tie-breakers. Structured skill, command, extension, and tool targets use deterministic local statistics; unresolved telemetry remains unknown rather than being treated as zero. `/improve list` shows the ranked workspace-visible candidates without starting a discussion, and `/improve select <id>` starts one using the unique prefix displayed by the list. Bare `/improve` preserves the highest-ranked default.
+`/improve` is the only public self-improvement workflow. It ranks pending candidates by safety or correctness impact first, then verified 30-day usage, confidence, and stable age/ID tie-breakers. Structured skill, command, extension, and tool targets use deterministic local statistics; unresolved telemetry remains unknown rather than being treated as zero. `/improve list` writes the ranked workspace-visible candidates to the transcript without starting a discussion and stores that displayed order for the session. `/improve select <number-or-id>` resolves ordinals against the displayed snapshot, accepts unique ID prefixes against current candidates, and records the selected candidate in the transcript before discussion. Bare `/improve` preserves the highest-ranked default.
 
-Each discussion remains in a deterministic `discussing` state while the user asks questions or raises issues. Only an explicit `Apply`, `Edit: <change>`, `Skip: <reason>`, or equivalent numbered option selects a decision. Applied changes require target paths, validation evidence, and rollback instructions and create an experiment marker for later comparison. A recorded applied or skipped decision removes that candidate from later lists.
+Each discussion remains in a deterministic `discussing` state while the user asks questions or raises issues. Ordinary conversation never authorizes a change. Only `/improve decide apply`, `/improve decide edit <change>`, or `/improve decide skip <reason>` captures a decision and resumes execution without another approval request. Applied changes require target paths, validation evidence, and rollback instructions and create an experiment marker for later comparison. A recorded applied or skipped decision removes that candidate from later lists.
 
 Interaction capture and background review remain automatic internal stages. Free-form `/improve <capture note>` input is no longer supported. The retired `/capture`, `/learning-review`, `/workflow-review`, and `/skill-review` commands are not registered. `/review-it` remains separate because it reviews a supplied plan or PRD, while `/usage`, `/usage-stats`, `/extension-stats`, `/router-stats`, `/skill-stats`, and `/orchestration-stats` remain read-only diagnostics. `/usage-stats` renders its deterministic report without starting a provider turn.
 

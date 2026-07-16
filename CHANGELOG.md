@@ -2,6 +2,41 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-16: Add bounded feature memory
+
+**Why:** Feature discussions and validated follow-up evidence were difficult to recover in fresh sessions without copying transcripts or making local observations authoritative tracked state.
+
+**Changed:**
+- Added a tracked schema-versioned feature registry and curated `/improve` dossier.
+- Added deterministic trigger matching, repository containment checks, and once-per-session hidden context injection.
+- Added bounded append-only local decision, evidence, open-question, and supersession events with serialized writes.
+- Added a narrow matched-feature recording tool that never edits tracked dossiers.
+- Documented privacy, staleness, curation, and rollback boundaries and added focused regression coverage.
+
+**Files:** `pi/feature-memory.json`, `pi/lib/feature-memory-store.ts`,
+`pi/extensions/feature-memory.ts`, `pi/tests/feature-memory.test.ts`,
+`.specs/features/pi-improve/context.md`, `pi/README.md`, `CHANGELOG.md`
+
+---
+
+## 2026-07-15: Make improvement selection match its displayed list
+
+**Why:** `/improve list` displayed numbered candidates but `/improve select`
+accepted only ID prefixes. List and selection results were transient
+notifications, so they were absent from the transcript and later model context.
+
+**Changed:**
+- Accepted displayed candidate ordinals as well as unique ID prefixes.
+- Wrote list and selection output as visible session messages without starting an
+  extra provider turn.
+- Added regression coverage for selecting candidate 4 and retaining command
+  output in the transcript.
+
+**Files:** `pi/extensions/workflow-friction-review.ts`,
+`pi/tests/workflow-friction.test.ts`, `pi/README.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-15: Fully hide target-context deferrals
 
 **Why:** The target-context guard removed the blocked result text but retained its

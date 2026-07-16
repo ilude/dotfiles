@@ -175,3 +175,4 @@ claude/commands/yt/hermes-transcript.tmp.txt
 /pi/workflow-friction/queue/pending/
 /pi/workflow-friction/queue/processing/
 /pi/workflow-friction/worker.lock
+/pi/feature-memory.json

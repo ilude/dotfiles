@@ -5,6 +5,7 @@ const SECRET_PATTERNS: RegExp[] = [
 	/\bAKIA[0-9A-Z]{16}\b/g,
 	/\b(?:ghp|github_pat|sk|xox[baprs])-?[A-Za-z0-9_-]{20,}\b/g,
 	/\b(?:api[_-]?key|token|secret|password)\s*[:=]\s*[^\s,;]+/gi,
+	/\bauthorization\s*:\s*(?:bearer|basic)\s+[^\s,;]+/gi,
 ];
 
 export function redactTaskText(value: string): string {
