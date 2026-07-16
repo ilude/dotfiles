@@ -355,8 +355,8 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - [x] T1: test decision ledger - done: 95efc55
 - [x] T2: workflow skills and templates - done: 772d4c0
 - [x] T3: Pi instruction trim - done: 1e57024
-- [ ] T4: agent roster consolidation - pending
-  - [ ] roster.md proposal written
+- [ ] T4: agent roster consolidation - blocked: explicit approval required for the 15-file deletion proposal in roster.md
+  - [x] roster.md proposal written
   - [ ] user approval received (gate - never inferred)
   - [ ] deletions and old-name reference updates executed
 - [ ] T5: routing policy consolidation - pending
@@ -375,12 +375,12 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 
 ### State
 
-- **Classification:** execution in progress
-- **Current blocker:** none
-- **Last completed wave/gate:** none
+- **Classification:** blocked-by-user-decision at T4 deletion gate; unrelated T7-T9 work remains dependency-ready
+- **Current blocker:** explicit approval of `.specs/rationalization/roster.md` is required before deleting 15 merged worker files
 - **Last completed wave/gate:** T3 instruction ownership trim and focused loading validation
-- **Next:** prepare T4 roster proposal and request the required deletion approval
-- **Completed work:** T1-T3 complete; instruction/reference bytes reduced from 73,445 to 68,559 with named delegation gates and duplicate discovery recipes removed
-- **Commands/results:** `pnpm test pi-instructions.test.ts` passed 4 tests; `pnpm run typecheck` passed; canonical instruction-link Pytest passed; ownership scan returned no matches
-- **Remaining checks:** T3 slice commit; T4 approval and all T4-T12 gates; final `make check`
-- **Resume:** `/do-it .specs/rationalization/plan.md`
+- **Next:** on approval, execute T4 parser/roster/reference/test slice; otherwise revise roster.md
+- **Completed work:** T1-T3 complete; T4 proposal maps all 33 current names to 18 survivors and 15 deletions
+- **Commands/results:** roster check passed with 33 unique mappings, 18 survivors, 15 deletions, and ASCII-only content
+- **Remaining checks:** T4 approval and implementation; all T5-T12 gates; final `make check`
+- **Exact user action:** approve the roster proposal or request named mapping changes
+- **Resume:** `/do-it .specs/rationalization/plan.md` after the gate is resolved
