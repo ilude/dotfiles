@@ -148,9 +148,7 @@ def test_migrate_existing_capture_layout(tmp_path: Path) -> None:
         "manifest": [],
         "parseErrors": [],
     }
-    (legacy_dir / "brave-tabs-full.json").write_text(
-        json.dumps(legacy_capture), encoding="utf-8"
-    )
+    (legacy_dir / "brave-tabs-full.json").write_text(json.dumps(legacy_capture), encoding="utf-8")
     (legacy_dir / "brave-tabs-full.md").write_text("# old\n", encoding="utf-8")
     (legacy_dir / "Default__Session_1").write_bytes(b"session")
 
@@ -183,34 +181,4 @@ def test_migrate_existing_capture_layout(tmp_path: Path) -> None:
     assert (attachments_root / "fixture" / "brave-tabs-full.json").exists()
     assert (attachments_root / "fixture" / "manifest.json").exists()
     assert (attachments_root / "fixture" / "session-files" / "Default__Session_1").exists()
-    assert "[[fixture]] - 1 tabs, session, 0 locked files" in index_path.read_text(
-        encoding="utf-8"
-    )
-
-
-def test_browser_tab_capture_skill_points_to_private_vault() -> None:
-    skill = (ROOT / "pi/skills/browser-tab-capture/SKILL.md").read_text(encoding="utf-8")
-    assert "scripts/brave-tab-capture --json" in skill
-    assert "private/browser-tabs/brave/<timestamp>.md" in skill
-    assert "private/_attachments/browser-tabs/brave/<timestamp>/" in skill
-    assert "private/_indexes/browser-tabs.md" in skill
-    assert "--migrate-existing" in skill
-
-
-def test_private_store_skill_defines_obsidian_vault_contract() -> None:
-    skill = (ROOT / "pi/skills/private-store/SKILL.md").read_text(encoding="utf-8")
-    assert "private/` is the local plaintext Obsidian-compatible vault" in skill
-    assert "private/_attachments/<domain>/" in skill
-    assert "private/_indexes/" in skill
-    assert "YAML frontmatter" in skill
-    assert "one H1 matching `title`" in skill
-
-
-def test_handoff_prompt_uses_private_vault_contract() -> None:
-    prompt = (ROOT / "pi/prompts/handoff.md").read_text(encoding="utf-8")
-    assert "private/handoffs/" in prompt
-    assert "YAML frontmatter" in prompt
-    assert "private/_attachments/handoffs/<timestamp>/" in prompt
-    assert "private/_indexes/handoffs.md" in prompt
-    assert "pre-commit hook packs diverged `private/`" in prompt
-    assert "Do not rely on hooks" not in prompt
+    assert "[[fixture]] - 1 tabs, session, 0 locked files" in index_path.read_text(encoding="utf-8")

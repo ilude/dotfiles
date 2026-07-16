@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
-import re
+import shlex
 import subprocess
 from pathlib import Path
 from types import ModuleType
@@ -19,14 +19,6 @@ CI_DIRECT_EXECUTABLES = (
     "scripts/git-hooks/pre-commit-dolos",
     "scripts/install-dolos-hook",
 )
-
-REQUIRED_WORKFLOW_PATHS = (
-    ".github/workflows/test.yml",
-    "Makefile",
-    "scripts/ci-bootstrap",
-)
-
-SCRIPT_RUN_RE = re.compile(r"(?:^|&&|;)\s*(scripts/[\w./-]+)(?:\s|$)")
 
 
 def git_mode(path: str) -> str:
@@ -52,15 +44,51 @@ def load_path_hook() -> ModuleType:
     return module
 
 
-def workflow_run_commands() -> list[str]:
+def workflow_steps() -> list[dict]:
     workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    commands: list[str] = []
-    for job in workflow["jobs"].values():
-        for step in job.get("steps", []):
-            run = step.get("run")
-            if isinstance(run, str):
-                commands.append(run)
-    return commands
+    return [step for job in workflow["jobs"].values() for step in job.get("steps", [])]
+
+
+def shell_commands(command: str) -> list[list[str]]:
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|")
+    lexer.whitespace_split = True
+    commands: list[list[str]] = [[]]
+    for token in lexer:
+        if token in {";", "&&", "||", "|"}:
+            if commands[-1]:
+                commands.append([])
+            continue
+        commands[-1].append(token)
+    return [segment for segment in commands if segment]
+
+
+def workflow_referenced_paths() -> set[str]:
+    paths = {str(WORKFLOW.relative_to(ROOT)).replace("\\", "/")}
+    for step in workflow_steps():
+        uses = step.get("uses")
+        if isinstance(uses, str) and uses.startswith("./"):
+            paths.add(uses[2:])
+        run = step.get("run")
+        if not isinstance(run, str):
+            continue
+        for command in shell_commands(run):
+            executable = command[0].removeprefix("./")
+            if executable.startswith("scripts/"):
+                paths.add(executable)
+            if executable == "make":
+                paths.add("Makefile")
+    return paths
+
+
+def package_lock_guard_roots() -> set[Path]:
+    proc = subprocess.run(
+        ["git", "ls-files", "--", "*pnpm-lock.yaml"],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    return {ROOT, *((ROOT / path).parent for path in proc.stdout.splitlines())}
 
 
 def test_ci_invoked_scripts_are_tracked_executable() -> None:
@@ -73,27 +101,33 @@ def test_ci_invoked_scripts_are_tracked_executable() -> None:
 
 
 def test_workflow_references_existing_paths() -> None:
-    for path in REQUIRED_WORKFLOW_PATHS:
+    for path in workflow_referenced_paths():
         assert (ROOT / path).exists(), f"GitHub Actions expects {path} to exist"
 
 
 def test_workflow_direct_script_runs_are_executable() -> None:
-    for command in workflow_run_commands():
-        for match in SCRIPT_RUN_RE.finditer(command):
-            path = match.group(1)
-            if not (ROOT / path).exists():
-                continue
-            mode = git_mode(path)
-            assert mode == "100755", (
-                f"Workflow runs {path} directly, so it must be tracked executable; "
-                f"got {mode}. Either chmod it in git or invoke it via bash/python."
-            )
+    scripts = {
+        command[0].removeprefix("./")
+        for step in workflow_steps()
+        if isinstance(step.get("run"), str)
+        for command in shell_commands(step["run"])
+        if command[0].removeprefix("./").startswith("scripts/")
+    }
+    for path in scripts:
+        mode = git_mode(path)
+        assert mode == "100755", (
+            f"Workflow runs {path} directly, so it must be tracked executable; "
+            f"got {mode}. Either chmod it in git or invoke it via bash/python."
+        )
 
 
 def test_no_npm_package_lock() -> None:
-    assert not (ROOT / "package-lock.json").exists(), (
-        "Use bun or pnpm per repo policy; do not commit package-lock.json"
-    )
+    unexpected = [
+        root / "package-lock.json"
+        for root in package_lock_guard_roots()
+        if (root / "package-lock.json").exists()
+    ]
+    assert not unexpected, f"Use each package root's owned lockfile; remove: {unexpected}"
 
 
 def test_path_hook_treats_windows_drive_as_absolute_on_any_host() -> None:

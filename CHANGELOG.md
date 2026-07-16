@@ -2,6 +2,27 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-16: Replace browser and CI source assertions
+
+**Why:** Browser safety and workflow deployment checks relied on prose and
+source spelling instead of observable process behavior and parsed workflow
+meaning.
+
+**Changed:**
+- Replaced Brave wrapper greps with fake-process tests for loopback launch,
+  owned profiles, warnings, identity refusal, and recorded-PID termination.
+- Removed skill, prompt, and README wording assertions with no runtime consumer.
+- Derived CI paths and direct script invocations from parsed workflow steps and
+  shell tokens instead of duplicated path tuples and regular expressions.
+- Removed the obsolete Claude/Pi instruction symlink test after its recorded
+  user gate confirmed the files now have independent ownership.
+
+**Files:** `test/test_agent_browser_brave.py`,
+`test/test_brave_tab_capture.py`, `test/test_ci_contract.py`,
+`test/test_pi_agent_metadata.py`, `.specs/rationalization/`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-16: Replace configuration source greps
 
 **Why:** The fast configuration suite asserted shell source spelling instead of
