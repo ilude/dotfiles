@@ -2,6 +2,27 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-16: Split the rationalization plan into three lean plans
+
+**Why:** The monolithic 19-task plan serialized independent workstreams and was
+itself written in the over-prescriptive style it aimed to remove. Research
+(repo inventory, Pi runtime capabilities, GPT-5.x/Claude prompting guidance)
+supported splitting by concern.
+
+**Changed:**
+- Added three independent plans: Pi harness rework, shell/config test
+  rationalization, and quality tooling ownership.
+- Marked the original plan superseded; deferred friction instruction-context
+  capture to a future plan.
+- Recorded user decisions: Claude client commands stay separate from Pi;
+  org-chart agent taxonomy is deleted; agent roster consolidates aggressively.
+
+**Files:** `.specs/harness-rework/plan.md`,
+`.specs/shell-test-rationalization/plan.md`, `.specs/quality-tooling/plan.md`,
+`.specs/workflow-test-rationalization/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-16: Generalize `/review-it` orchestration
 
 **Why:** Fixed reviewer names, model tiers, panel sizes, and automatic follow-up
