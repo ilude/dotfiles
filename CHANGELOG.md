@@ -2,6 +2,33 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-16: Establish quality-tool ownership baselines
+
+**Why:** Pi formatting and complexity checks depended on workstation tools, while
+shell formatting had no non-mutating check.
+
+**Changed:**
+- Pinned Biome 2.5.3 in the Pi pnpm workspace with a minimal formatting-only
+  configuration and a `pnpm run biome:check` command.
+- Added `make lint-shell-format`, which runs `shfmt -d` without writing files.
+- Made the existing installer the authoritative Lizard owner because the
+  shared hook runs bare commands in Windows/WSL; it now installs Lizard 1.21.3
+  exactly and the validator setup guidance matches.
+- Kept the new Biome and shfmt checks out of existing blocking targets until
+  their historical debt is addressed.
+
+**Baseline (nonblocking):** Biome reports 87 formatting diagnostics across
+225 Pi TypeScript files. `shfmt -d` reports 12 files in the existing shell
+check scope. Lizard reports 239 warnings across 438 tracked supported source
+files (233 CCN, 13 parameter-count, and 6 function-length violations; classes
+overlap).
+
+**Files:** `pi/{package.json,pnpm-lock.yaml,biome.json}`, `Makefile`,
+`{install,install.ps1}`, `claude/hooks/quality-validation/validators.yaml`,
+`CHANGELOG.md`
+
+---
+
 ## 2026-07-16: Align Pi tests with runtime behavior
 
 **Why:** Pi tests still froze prompt wording, file placement, and implementation

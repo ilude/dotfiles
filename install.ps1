@@ -1163,11 +1163,8 @@ function Install-Packages {
     # Python dev tools (uv-managed) - mirrors the unix install script
     # ruff: linter/formatter for Python files in this repo and the quality
     #       validation hook
-    # lizard: cyclomatic complexity analyzer used by the quality validation
-    #         hook across ALL supported languages (Python, TS, Go, Rust,
-    #         Java, Ruby, ...). Language-specific tools (clippy, biome,
-    #         rubocop, etc.) are expected to be provided by their own
-    #         project setup, not this dotfiles bootstrap.
+    # lizard: pinned cyclomatic complexity analyzer used by the quality
+    #         validation hook across all supported languages.
     # detect-secrets: staged-file secret scanner used by the /commit workflow.
     Write-Host "`n--- Python Dev Tools (uv-managed) ---" -ForegroundColor Cyan
     if (Get-Command uv -ErrorAction SilentlyContinue) {
@@ -1177,12 +1174,22 @@ function Install-Packages {
         $uvSecurityArgs = @('--exclude-newer', '3 days', '--index-strategy', 'first-index', '--no-sources', '--no-build')
         $uvTools = @('ruff', 'lizard', 'detect-secrets')
         foreach ($tool in $uvTools) {
+            $package = if ($tool -eq 'lizard') { 'lizard==1.21.3' } else { $tool }
             Write-Host "  $tool..." -ForegroundColor Cyan -NoNewline
-            if (Get-Command $tool -ErrorAction SilentlyContinue) {
+            $command = Get-Command $tool -ErrorAction SilentlyContinue
+            $needsInstall = -not $command
+            if ($tool -eq 'lizard' -and $command) {
+                $needsInstall = ((& $command.Source --version 2>$null).Trim() -ne '1.21.3')
+            }
+            if (-not $needsInstall) {
                 Write-Host " already installed" -ForegroundColor DarkGray
             } else {
                 try {
-                    uv tool install @uvSecurityArgs $tool 2>&1 | Out-Null
+                    if ($tool -eq 'lizard') {
+                        uv tool install @uvSecurityArgs --reinstall $package 2>&1 | Out-Null
+                    } else {
+                        uv tool install @uvSecurityArgs $package 2>&1 | Out-Null
+                    }
                     if ($LASTEXITCODE -eq 0) {
                         Write-Host " installed" -ForegroundColor Green
                     } else {

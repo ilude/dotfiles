@@ -173,12 +173,12 @@ if command -v uv &>/dev/null; then
         echo "Installing ruff..."
         uv tool install --exclude-newer "${UV_EXCLUDE_NEWER}" --index-strategy "${UV_INDEX_STRATEGY}" --no-sources --no-build ruff
     fi
-    # Install lizard (cyclomatic complexity analyzer) globally via uv tool
-    if command -v lizard &>/dev/null; then
+    # Install the pinned lizard complexity analyzer used by quality validation.
+    if command -v lizard &>/dev/null && [[ "$(lizard --version 2>/dev/null | tr -d '\r')" == "1.21.3" ]]; then
         echo "lizard: already installed"
     else
-        echo "Installing lizard..."
-        uv tool install --exclude-newer "${UV_EXCLUDE_NEWER}" --index-strategy "${UV_INDEX_STRATEGY}" --no-sources --no-build lizard
+        echo "Installing lizard 1.21.3..."
+        uv tool install --reinstall --exclude-newer "${UV_EXCLUDE_NEWER}" --index-strategy "${UV_INDEX_STRATEGY}" --no-sources --no-build 'lizard==1.21.3'
     fi
     # Install detect-secrets for /commit secret scanning
     if command -v detect-secrets-hook &>/dev/null; then

@@ -29,7 +29,7 @@ _lizard_excludes: &lizard_excludes
   - "*/.venv/*"
 
 _lizard_install: &lizard_install
-  pip: "uv tool install lizard"
+  pip: "uv tool install lizard==1.21.3"
 
 # ===========================================================================
 # Existing languages (preserved at top for git-blame stability)
@@ -52,7 +52,7 @@ python:
       check: "lizard"
       exclude_paths: *lizard_excludes
   install:
-    pip: "uv tool install ruff lizard"
+    pip: "uv tool install ruff lizard==1.21.3"
 
 typescript:
   extensions: [".ts", ".tsx"]

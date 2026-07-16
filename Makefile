@@ -1,4 +1,4 @@
-.PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all ci-bootstrap test test-ci test-ci-contract test-local test-runtime test-quick test-parallel test-docker test-powershell test-pytest help lint lint-python format format-python check check-ci check-pi-ci check-pi-extensions pi-doctor install-hooks
+.PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all ci-bootstrap test test-ci test-ci-contract test-local test-runtime test-quick test-parallel test-docker test-powershell test-pytest help lint lint-python lint-shell-format format format-python check check-ci check-pi-ci check-pi-extensions pi-doctor install-hooks
 
 # Shell scripts to check (excludes dotbot submodule and plugins)
 SHELL_SCRIPTS := home/.bashrc home/.zshrc install wsl/install scripts/ci-bootstrap scripts/git-ssh-setup scripts/claude-link-setup scripts/claude-mcp-setup scripts/copilot-link-setup scripts/zsh-setup scripts/zsh-plugins wsl/packages
@@ -20,6 +20,7 @@ help:
 	@echo "  make test-quick    - Run only core tests locally"
 	@echo "  make lint          - Run shellcheck + ruff check"
 	@echo "  make lint-python   - Run ruff check on Python files"
+	@echo "  make lint-shell-format - Check shell formatting with shfmt without writing"
 	@echo "  make format        - Format shell scripts (shfmt) + Python (ruff)"
 	@echo "  make format-python - Format Python files with ruff"
 	@echo "  make check         - Run all checks (lint + test)"
@@ -164,6 +165,19 @@ lint-python:
 	@echo "Running ruff check..."
 	uv run ruff check
 	@echo "Ruff check passed."
+
+# Check shell formatting with shfmt without modifying files
+lint-shell-format:
+	@echo "Checking shell formatting..."
+	@if ! command -v shfmt >/dev/null 2>&1; then \
+		echo "ERROR: shfmt not found."; \
+		echo "Install: winget install mvdan.shfmt (Windows)"; \
+		echo "         brew install shfmt (macOS)"; \
+		echo "         apt install shfmt (Ubuntu)"; \
+		exit 1; \
+	fi
+	shfmt -d -i 4 -ci $(SHELL_SCRIPTS)
+	@echo "Shell format check passed."
 
 # Format shell scripts with shfmt
 format: format-python

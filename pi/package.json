@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit -p extensions",
+    "biome:check": "biome check extensions lib tests",
     "test": "vitest run --config tests/vitest.config.ts",
     "test:watch": "vitest --config tests/vitest.config.ts",
     "test:coverage": "vitest run --coverage --config tests/vitest.config.ts"
@@ -18,6 +19,7 @@
     "web-tree-sitter": "^0.26.9"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.3",
     "@types/node": "^25.9.4",
     "@types/proper-lockfile": "^4.1.4",
     "@vitest/coverage-v8": "^4.1.9",
