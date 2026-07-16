@@ -1,78 +1,73 @@
-### Reviewer task templates
+# Adaptive Reviewer Prompt Contract
 
-#### Required file-backed output contract
-Every independent reviewer prompt must include these fields:
-- `Plan path: <path>`
-- `Review output directory: <review_dir>`
-- `Reviewer artifact path: <review_dir>/<unique-reviewer-name>.md`
+Build each reviewer assignment from the artifact's actual risks and the capabilities discovered in the current runtime. Do not require a particular agent name, provider, model, model size, or organization structure.
 
-Preferred artifact path: if a constrained `review_artifact_write` tool is available, the reviewer must call that tool with at most 5 structured findings instead of using general file-write tools. If the tool is not available, the reviewer may use the narrowest available file-write mechanism, but only for the assigned reviewer artifact path.
+## Assignment Shape
 
-Every independent reviewer must write its full findings to the reviewer artifact path using this shape:
+Every reviewer assignment must state:
+
+- artifact path;
+- relevant repository scope;
+- assigned review perspective;
+- why that perspective is independently useful;
+- sections, commands, or risks to inspect;
+- skeptical angle and likely failure modes;
+- output location and format available in the current runtime;
+- instruction to inspect but not modify implementation files.
+
+A perspective can combine related concerns. Do not add reviewers whose coverage duplicates another assignment.
+
+Useful coverage dimensions include:
+
+- completeness and fresh-session usability;
+- correctness, safety, rollback, and failure handling;
+- simplicity, proportionality, scope, and reuse;
+- validation realism, automation, and evidence;
+- domain-specific implementation or operational behavior.
+
+These are coverage dimensions, not required reviewer names.
+
+## Finding Contract
+
+Return at most five findings. Each finding must include:
+
+- `category`: must-fix defect, required hardening, optional improvement, duplicate, or false positive;
+- `severity`: critical, high, medium, or low;
+- `severity_rationale`: realistic likelihood and impact;
+- `evidence`: a specific artifact section, repository path, command, or observed fact;
+- `required_fix`: the smallest concrete correction;
+- `confidence`: high, medium, or low.
+
+Rules:
+
+- Verify critical and high claims with repository evidence when possible.
+- Do not quote or restate the artifact.
+- Do not include praise or generic best practices.
+- Do not elevate optional hardening into a defect.
+- Reject findings already handled by the artifact.
+- Keep each finding under 120 words.
+- Stay within the assigned scope unless an adjacent defect changes the verdict.
+
+## Output
+
+When a constrained review-artifact writer is available, use it with the assigned review directory and unique artifact name. When another narrow file-output mechanism is available, write only the assigned artifact. Otherwise return the bounded findings inline and state that file output was unavailable.
+
+For file-backed output, use this structure when the available writer does not impose its own schema:
 
 ```markdown
 ---
-reviewer: <agent-or-persona-name>
+reviewer: <perspective>
 status: complete
 ---
 
 # Findings
 
-- category: <substantive defect|process defect|duplicate|low-value/theater|false positive>
-  severity: <critical|high|medium|low>
-  severity_rationale: <why this severity matches the likely impact>
-  evidence: <specific plan section, file, command, or quoted text>
-  required_fix: <concrete change required before execution or hardening recommendation>
-  confidence: <high|medium|low>
+- category: <category>
+  severity: <severity>
+  severity_rationale: <rationale>
+  evidence: <evidence>
+  required_fix: <fix>
+  confidence: <confidence>
 ```
 
-Rules:
-- Write at most 5 findings.
-- Each finding must include `category`, `severity`, `severity_rationale`, `evidence`, `required_fix`, and `confidence`.
-- Category must be one of `substantive defect`, `process defect`, `duplicate`, `low-value/theater`, or `false positive`.
-- Do not inflate duplicate, low-value/theater, or false positive findings into must-fix defects; label them directly.
-- Keep each finding under 120 words.
-- Do not include praise, plan restatement, or generic commentary.
-- Provide a severity rationale and confidence for every finding, even when the category is duplicate, low-value/theater, or false positive.
-- After writing the artifact, read/verify it if the available tool surface permits, then return only: `WROTE: <reviewer_artifact_path>`.
-- If `review_artifact_write` is available but rejects the artifact, return only: `FAILED_TO_WRITE: <reason>` with no long inline dump unless explicitly requested by the coordinator.
-- If writing the artifact is impossible because no constrained artifact tool or file-write mechanism is available, return only: `FAILED_TO_WRITE: <reason>` plus the same at-most-5 findings inline. The coordinator must treat this as a recovery/exception path, not the normal source of truth.
-
-
-#### Standard reviewer 1 -- `reviewer`
-Task shape:
-- review the plan for missing assumptions, hidden prerequisites, ambiguous instructions, and weak verification
-- identify where the plan cannot be executed safely by someone with no conversation context
-- flag acceptance criteria that are vague or pass without proving behavior
-- check whether operational steps are automated enough for `/do-it` to run without hidden manual context
-
-#### Standard reviewer 2 -- `security-reviewer`
-Task shape:
-- review the plan adversarially for realistic failure modes, safety issues, permission risks, rollback gaps, and operational hazards
-- prefer realistic breakage over hypothetical theater
-- identify where the plan could damage state, widen permissions, or fail under realistic conditions
-- scrutinize credential flows, evidence artifacts, redaction, and archive gates for secret or operational safety gaps
-
-#### Standard reviewer 3 -- `product-manager`
-Task shape:
-- challenge whether the plan is the right size and shape for the problem
-- look for smaller solutions, simpler implementation paths, or reuse of what already exists
-- call out speculative abstractions or complexity that is not justified by the stated constraints
-- challenge manual-only process where a small wrapper, script, or playbook would make execution simpler
-
-#### Additional domain reviewers
-For each additional reviewer, tailor the task to:
-- the specific domain they own
-- the specific expert persona they are playing for this plan
-- the specific plan sections they should scrutinize
-- a skeptical lens aimed at finding implementation or validation issues in that domain
-- the exact failure modes or blind spots they should try to expose
-
-Examples:
-- `backend-dev` as `API and state-transition reviewer` -> API and data flow flaws, hidden coupling, backward compatibility breaks
-- `frontend-dev` as `workflow and operator-friction reviewer` -> UI-state, workflow, usability, and integration gaps
-- `qa-engineer` as `verification realism reviewer` -> false-positive acceptance criteria, weak tests, missing regression coverage
-- `devops-pro` as `rollout and operational safety reviewer` -> rollout, CI, deployment, environment pitfalls, partial-failure recovery
-- `typescript-pro` as `type/build/toolchain reviewer` -> typing, module/runtime, and TS build constraints
-
-Do not launch an extra reviewer with only a generic task like "review this plan as backend-dev". Every extra reviewer must be persona-seeded for the plan and given a unique reviewer artifact path.
+After writing, verify the artifact when possible and return only its path. Do not return the full findings again.

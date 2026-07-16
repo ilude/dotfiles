@@ -2,6 +2,27 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-16: Generalize `/review-it` orchestration
+
+**Why:** Fixed reviewer names, model tiers, panel sizes, and automatic follow-up
+panels made plan review fragile and caused unnecessary review churn.
+
+**Changed:**
+- Replaced the fixed state machine with a runtime-adaptive review, apply, and
+  validation flow.
+- Made reviewer and routing selection depend on capabilities discovered at run
+  time instead of predefined agents or models.
+- Kept automatic application of verified artifact fixes while removing the
+  alternate ask mode and automatic post-change panels.
+- Simplified reviewer and synthesis templates, documentation, and contract tests.
+
+**Files:** `pi/skills/workflow/review-it.md`,
+`pi/skills/workflow/templates/review-it-reviewer-prompts.md`,
+`pi/skills/workflow/templates/review-synthesis-template.md`,
+`pi/tests/workflow-prompts.test.ts`, `pi/README.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-16: Preserve Pi model metadata across catalog refreshes
 
 **Why:** The Codex model cache stored complete provider definitions and replayed

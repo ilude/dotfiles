@@ -66,94 +66,40 @@ describe("workflow prompt contracts", () => {
 		expect(prompt).toContain("Do not invent plan-specific telemetry scripts");
 	});
 
-	it("/review-it requires fixed standard reviewers plus dynamic expert reviewers", () => {
+	it("/review-it adapts review composition to runtime capabilities", () => {
 		const prompt = readPrompt("skills/workflow/review-it.md");
-		expect(prompt).toContain("3 standard reviewers");
-		expect(prompt).toContain(
-			"at least 3 additional domain-specific expert reviewers",
-		);
-		expect(prompt).toContain('modelSize: "small"` by default');
-		expect(prompt).toContain("do not raise the whole\npanel tier by default");
-		expect(prompt).toContain(
-			'Escalate independent reviewers to `modelSize: "medium"`',
-		);
-		expect(prompt).toContain("MATERIAL_CHANGE_REVIEW");
-		expect(prompt).toContain(
-			"original panel verdict is invalid for the changed",
-		);
-		expect(prompt).toContain("Run at most one post-change panel");
-		expect(prompt).toContain(
-			"continue to `PRE_READINESS_AUDIT` even when those fixes are",
-		);
-		expect(prompt).toContain(
-			"Never\n  block solely because a review-applied fix is material",
-		);
-		expect(prompt).toContain(
-			"the final\n   standalone-readiness reviewer must inspect the complete revised plan",
-		);
-		expect(prompt).not.toContain(
-			"mark the plan blocked for a new `/review-it`",
-		);
-		expect(prompt).toMatch(
-			/Classify the\s+resulting diff with the complete MATERIAL_CHANGE_REVIEW definition/,
-		);
-		expect(prompt).toContain("PRE_READINESS_AUDIT");
-		expect(prompt).toContain("Repository prerequisites");
-		expect(prompt).toContain("Command truth tables");
-		expect(prompt).toContain("Archive before/after");
-		expect(prompt).toContain("Allow two\naudit repair cycles");
-		expect(prompt).toContain(
-			"A material repair consumes its current audit\nrepair cycle",
-		);
-		expect(prompt).toContain(
-			"do not start another panel or block solely for materiality",
-		);
-		expect(prompt).toContain(
-			"Apply hardening only when it is required for the objective",
-		);
-		expect(prompt).toContain(
-			"BLOCKED: REVIEW INCOMPLETE: external input or repair budget is required.",
-		);
-		expect(prompt).toContain(
-			'`modelSize: "large"`, and\n`modelPolicy: "same-family"`. This gate is a single serial reviewer',
-		);
-		expect(prompt).toContain(
-			"The reviewer must evaluate every PRE_READINESS_AUDIT domain",
-		);
-		expect(prompt).toContain(
-			"The budget starts only here, after all earlier audits pass",
-		);
-		expect(prompt).toContain("Contested or Dismissed Findings");
-		expect(prompt).toContain("Default mode is **auto-apply**");
-		expect(prompt).toContain("final standalone-readiness reviewer");
-		expect(prompt).toContain("review_artifact_write");
-		expect(prompt).toContain(
-			"do not silently route reviewer personas through proxy agents",
-		);
-		expect(prompt).toContain("substantive defect");
-		expect(prompt).toContain("process defect");
-		expect(prompt).toContain("duplicate");
-		expect(prompt).toContain("low-value/theater");
-		expect(prompt).toContain("false positive");
-		expect(prompt).toContain("severity rationale");
-		expect(prompt).toContain("confidence");
-		expect(prompt).toContain("review_yield");
-		expect(prompt).toContain("per-reviewer yield");
+		expect(prompt).toContain("DISCOVER");
+		expect(prompt).toContain("Choose from what is actually available");
+		expect(prompt).toContain("smallest panel");
+		expect(prompt).toContain("Apply all verified must-fix defects");
+		expect(prompt).toContain("Do not ask first");
+		expect(prompt).toContain("Do not automatically launch a second panel");
+		expect(prompt).not.toContain("--ask");
+		expect(prompt).not.toContain("modelSize:");
+		expect(prompt).not.toContain("MATERIAL_CHANGE_REVIEW");
+		expect(prompt).not.toContain("STANDALONE_READINESS");
 	});
 
-	it("/review-it reviewer template prefers constrained artifact writer", () => {
+	it("/review-it reviewer template is capability-neutral", () => {
 		const prompt = readPrompt(
 			"skills/workflow/templates/review-it-reviewer-prompts.md",
 		);
-		expect(prompt).toContain("review_artifact_write");
-		expect(prompt).toContain("narrowest available file-write mechanism");
-		expect(prompt).toContain(
-			"read/verify it if the available tool surface permits",
-		);
-		expect(prompt).toContain("substantive defect");
-		expect(prompt).toContain("low-value/theater");
+		expect(prompt).toContain("capabilities discovered in the current runtime");
+		expect(prompt).toContain("Do not require a particular agent name");
+		expect(prompt).toContain("constrained review-artifact writer");
 		expect(prompt).toContain("severity_rationale");
 		expect(prompt).toContain("confidence");
+		expect(prompt).not.toContain("modelSize:");
+	});
+
+	it("/review-it synthesis records discovery, edits, and final readiness", () => {
+		const prompt = readPrompt(
+			"skills/workflow/templates/review-synthesis-template.md",
+		);
+		expect(prompt).toContain("## Runtime Discovery");
+		expect(prompt).toContain("## Applied Edits");
+		expect(prompt).toContain("## Final Readiness");
+		expect(prompt).not.toContain("Standalone-readiness");
 	});
 
 	it("/do-it enforces telemetry, safe manual-gate downgrade, archive defaults, and automatic post-run eval", () => {

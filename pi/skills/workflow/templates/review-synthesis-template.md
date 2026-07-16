@@ -1,74 +1,68 @@
-# Review: <plan title>
+---
+date: YYYY-MM-DD
+status: synthesis-complete
+---
 
-## Review Panel
-| Reviewer | Base Agent | Assigned Expert Persona | Why selected | Adversarial angle | Artifact |
-|----------|------------|-------------------------|--------------|-------------------|----------|
+# Review: <artifact title>
 
-## Standard Reviewer Findings
-### reviewer
-- ...
-### security-reviewer
-- ...
-### product-manager
-- ...
+## Artifact
+- Path: `<artifact path>`
+- Type: `<plan|requirements|other>`
+- Intended next workflow: `<command or action>`
 
-## Additional Expert Findings
-### <agent>
-- ...
+## Runtime Discovery
+- Available review mechanisms: ...
+- Available artifact-output mechanisms: ...
+- Routing used: runtime default or reason for override
+- Capability gaps: ...
 
-## Suggested Additional Reviewers
-- <agent> -- <why relevant>
-- <agent> -- <why relevant>
-- <agent> -- <why relevant>
+## Review Coverage
+| Perspective | Why selected | Scope | Output | Status |
+|-------------|--------------|-------|--------|--------|
+| ... | ... | ... | ... | ... |
 
-## Bugs (must fix before execution)
+## Accepted Findings
+| Severity | Category | Evidence | Required fix | Applied |
+|----------|----------|----------|--------------|---------|
+| ... | ... | ... | ... | yes/no |
+
+## Deferred Improvements
 1. ...
 
-## Hardening
+## Duplicates and Rejected Findings
 1. ...
 
-## Simpler Alternatives / Scope Reductions
-1. ...
+## Applied Edits
+- Applied fixes artifact: `<review-dir>/applied-fixes.md` or `not needed`
+- Sections changed: ...
+- Checklist or schema impact: ...
+- Objective or scope preserved: yes/no with reason
 
-## Automation Readiness
-- Agent-runnable operational steps: ...
-- Credential/auth flow clarity: ...
-- Evidence and archive gates: ...
-- Manual-only steps and justification: ...
+## Validation
+- Checks run: ...
+- Evidence: ...
+- Remaining blocker: none or ...
 
-## Contested or Dismissed Findings
-1. ...
+## Reviewer Output Status
+| Perspective | Output | Status | Recovery |
+|-------------|--------|--------|----------|
+| ... | ... | ... | ... |
 
-## Verification Notes
-1. ...
+## Timing
+| Step | Duration |
+|------|----------|
+| Review | ... |
+| Verification and synthesis | ... |
+| Apply and validation | ... |
 
-## Reviewer Artifact Status
-| Reviewer | Artifact | Status | Notes |
-|----------|----------|--------|-------|
-| ... | `{review_dir}/reviewer.md` | read | preview truncation, if any, was ignored because artifact was usable |
+## Finding Counts
+- Accepted: N
+- Applied: N
+- Deferred: N
+- Duplicates: N
+- Rejected: N
 
-## Timing Notes
-| Step | Duration | Notes |
-|------|----------|-------|
-| Initial review panel | ... | ... |
-| Artifact reads | ... | all expected reviewer artifacts read / list missing or unusable artifacts |
-| Recovery calls | ... | ... |
-| Verification | ... | ... |
-| Synthesis | ... | ... |
+## Final Readiness
+`READY`, `READY WITH DEFERRALS`, `NOT READY`, or `BLOCKED`
 
-## Auto-Apply Plan
-- Applied fixes artifact: `{review_dir}/applied-fixes.md` or `not run (ask mode/review only)`
-- Known-blocker fixes artifact: `{review_dir}/known-blocker-fixes.md` or `not run/no prior blockers`
-- Section integrity check: `passed|failed|not run`
-- Standalone-readiness result: `STANDALONE READY|blocked|not run`
-- Repair passes used: `<N>`
-
-## Review Artifact
-Wrote full synthesis to: `{review_dir}/synthesis.md`
-
-## Overall Verdict
-**Fix bugs first**
-
-## Recommended Next Step
-- apply selected review fixes to the plan if requested
-- execute via `/do-it <path>`
+Reason: ...
