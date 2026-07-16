@@ -355,7 +355,7 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - [x] T1: test decision ledger - done: 95efc55
 - [x] T2: workflow skills and templates - done: 772d4c0
 - [x] T3: Pi instruction trim - done: 1e57024
-- [x] T4: agent roster consolidation - done: validated slice commit pending
+- [x] T4: agent roster consolidation - done: 04c84c7
   - [x] roster.md proposal written
   - [x] user approval received (gate - never inferred)
   - [x] deletions and old-name reference updates executed
@@ -378,7 +378,7 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - **Classification:** execution in progress
 - **Current blocker:** none; T4 roster deletion approved explicitly
 - **Last completed wave/gate:** T4 roster consolidation and parse-to-launch validation
-- **Next:** commit validated T4 slice, record its hash, then start T5 routing consolidation
+- **Next:** T5 routing policy consolidation
 - **Completed work:** T1-T4 complete; roster reduced from 33 to 18 definitions with org-chart parser/schema removed and deterministic skill-review targets preserved
 - **Commands/results:** focused Pi suites passed 88 tests; `pnpm run typecheck` passed; Python shared-instruction link test passed; active removed-name/taxonomy scans returned no matches
 - **Remaining checks:** T4 slice commit; all T5-T12 gates; final `make check`
