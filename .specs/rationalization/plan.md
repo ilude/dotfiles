@@ -354,7 +354,7 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 
 - [x] T1: test decision ledger - done: 95efc55
 - [x] T2: workflow skills and templates - done: 772d4c0
-- [ ] T3: Pi instruction trim - pending
+- [x] T3: Pi instruction trim - done: validated slice commit pending
 - [ ] T4: agent roster consolidation - pending
   - [ ] roster.md proposal written
   - [ ] user approval received (gate - never inferred)
@@ -378,9 +378,9 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - **Classification:** execution in progress
 - **Current blocker:** none
 - **Last completed wave/gate:** none
-- **Last completed wave/gate:** T2 workflow contract rewrite and focused dispatch validation
-- **Next:** T3 Pi instruction ownership trim
-- **Completed work:** T1 ledger complete; T2 removed fixed routing, assignment, panel, and file-count prescriptions from plan/execution surfaces
-- **Commands/results:** `pnpm test workflow-dispatch.test.ts` passed 3 tests; `pnpm test skill-discovery.test.ts` passed 16 tests; anti-pattern scan returned no matches
-- **Remaining checks:** T2 slice commit; all T3-T12 task gates and final `make check`
+- **Last completed wave/gate:** T3 instruction ownership trim and focused loading validation
+- **Next:** commit validated T3 slice, record its hash, then prepare T4 roster proposal
+- **Completed work:** T1-T3 complete; instruction/reference bytes reduced from 73,445 to 68,559 with named delegation gates and duplicate discovery recipes removed
+- **Commands/results:** `pnpm test pi-instructions.test.ts` passed 4 tests; `pnpm run typecheck` passed; canonical instruction-link Pytest passed; ownership scan returned no matches
+- **Remaining checks:** T3 slice commit; T4 approval and all T4-T12 gates; final `make check`
 - **Resume:** `/do-it .specs/rationalization/plan.md`

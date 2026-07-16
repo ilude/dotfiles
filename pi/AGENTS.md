@@ -67,11 +67,6 @@ frontmatter, `argument-hint`, and `$ARGUMENTS` when needed. Reusable workflow
 guidance belongs in `pi/skills/<name>/SKILL.md`. Runtime/state/UI/autocomplete,
 git, or session-control commands belong in TypeScript extensions.
 
-Extension commands have precedence over prompt templates. Search
-`pi/extensions/*.ts` for `registerCommand("<name>"` before adding a prompt-only
-command, and do not put prompt-only commands in `workflow-commands.ts`.
-
-
 ## Common Pitfalls
 
 - Committing without explicit request.
@@ -80,7 +75,6 @@ command, and do not put prompt-only commands in `workflow-commands.ts`.
 - Unnecessary `python -m` -- only for modules, not scripts.
 - Always `python` not `python3` in bash commands.
 - Windows shell: `/dev/null` not `nul` in bash redirects; forward slashes in paths.
-- Non-idempotent setup/install scripts -- ALL must be safely re-runnable.
 - Migration/refactor drift -- preserve behavior parity first; prove old and new paths match before removing the old path or changing defaults.
 - State tracking files -- detect state from system directly.
 - Removing functionality as a "fix" -- if data is wrong, fix the pipeline, don't hide the display.
@@ -93,7 +87,3 @@ command, and do not put prompt-only commands in `workflow-commands.ts`.
 2. **Never mask symptoms** -- fix the data pipeline, not the display.
 3. **Fix forward, don't remove** -- understand and fix the failing migration; don't delete the problematic clause.
 4. **Verify end-to-end** -- after a fix, confirm the original problem is resolved, not just that the error went away.
-
-## Changelog
-
-When modifying instructions, skills, commands, or runtime workflows in the dotfiles repository, append a dated entry to `~/.dotfiles/CHANGELOG.md` listing what changed and why. This root file is the only changelog for the dotfiles repository. Do not record changes from other repositories here.

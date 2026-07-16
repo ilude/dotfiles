@@ -212,7 +212,7 @@ All recipes live in `~/.dotfiles/pi/justfile`. Run from any directory with `just
 ```bash
 cd ~/.dotfiles/pi
 
-just          # default -- Pi with all auto-discovered extensions
+just          # default -- Pi with the configured extension set
 just solo     # bare Pi, no extensions
 just safe     # damage-control only (safety rules)
 just full     # all extensions (damage-control + subagent + quality-gates + session-hooks)
@@ -222,16 +222,16 @@ just guard    # full stack + conventional commit enforcement
 Or invoke Pi directly:
 
 ```bash
-pi                          # auto-discovers extensions from ~/.pi/agent/extensions/
-pi --no-extensions          # clean slate
-pi -e ~/.dotfiles/pi/extensions/damage-control.ts   # explicit load
+pi
+pi --no-extensions
+pi -e ~/.dotfiles/pi/extensions/damage-control.ts
 ```
 
 ---
 
 ## Extensions
 
-TypeScript extensions live in `~/.dotfiles/pi/extensions/` and are auto-discovered (or loaded explicitly via `-e`):
+Repository-owned TypeScript extensions live in `~/.dotfiles/pi/extensions/`. See the upstream Pi extension documentation for loading and discovery behavior.
 
 Extension-owned slash commands persist their visible invocation in the transcript
 without starting an extra provider turn. Each command-owning extension wraps its
@@ -292,10 +292,10 @@ Prompt-only commands use Pi-native templates under `~/.dotfiles/pi/prompts/`:
 ```
 
 Workflow highlights:
-- `/plan-it` writes plans with explicit `small` / `medium` / `large` model sizing and agent assignments.
-- `/review-it` discovers available runtime capabilities, selects the smallest useful set of independent review perspectives, applies verified artifact fixes once, and validates the result without an automatic second panel.
-- `/do-it` can route a raw task **or** execute an existing `.specs/*/plan.md` file wave by wave.
-- `/commit` uses shared deterministic candidate extraction plus an isolated low-effort GPT-5.6 Luna child to distinguish real secrets from docs/examples/tests before blocking and to plan commit groups. If commit planning fails, a deterministic ownership fallback separates Pi implementation, workflow prompts, Claude configuration, and specification artifacts. Ambiguous cross-domain paths require an explicit user decision instead of becoming one broad commit. The child runs through Pi's normal agent entrypoint because direct `completeSimple()` calls are not supported for Luna on the Codex subscription backend.
+- `/plan-it` writes standalone plans with evidence, dependencies, validation, and durable execution state.
+- `/review-it` selects independent review capabilities from the current runtime, applies verified artifact fixes, and validates readiness.
+- `/do-it` handles bounded raw tasks or executes an existing `.specs/*/plan.md` through its recorded gates.
+- `/commit` uses deterministic candidate extraction, isolated secret review, and ownership-aware commit planning. Ambiguous cross-domain paths require an explicit user decision instead of becoming one broad commit.
 
 ### `feature-memory.ts`
 
@@ -619,16 +619,9 @@ Full documentation: `~/.dotfiles/pi/prompt-routing/AGENTS.md`
 
 ## Agent Architecture
 
-Interactive parents work directly by default on one coherent task. Fable, Opus,
-and `gpt-5.6-sol` at xhigh effort assess whether complex work has two or more
-independent work items that benefit from parallel delegation. `gpt-5.6-sol` at
-medium effort delegates only when that split is clearly beneficial. When a
-parent delegates, the active subagent runtime and current agent files determine
-routing and execution behavior.
+Work directly on one coherent task. Delegate when independent work, specialized capability, verification independence, or context isolation provides a concrete benefit. Explicit user routing overrides remain authoritative.
 
-Active user-level personas live in `pi/agents/` and are discovered from
-`~/.pi/agent/agents/` at runtime. A nearest project `.pi/agents/` directory may
-override a user persona with the same name.
+Repository-owned worker definitions live in `pi/agents/`; loading and precedence are implemented by `pi/extensions/subagent/agents.ts`.
 
 ### Agent configuration
 
@@ -665,9 +658,7 @@ Current paths, retrieval behavior, safety, and canonical tests are documented in
 
 ## Skills
 
-Shared repo skills from `~/.dotfiles/claude/skills/` are referenced into `~/.dotfiles/pi/skills/shared/` so Pi can auto-discover the same `SKILL.md` packages without duplicating them.
-
-Community pi-skills installed at `~/.dotfiles/pi/skills/pi-skills/`:
+Shared skill packages are referenced under `~/.dotfiles/pi/skills/shared/` without duplicating their source. Community packages are installed under `~/.dotfiles/pi/skills/pi-skills/`:
 
 | Skill | Purpose |
 |-------|---------|
@@ -680,7 +671,7 @@ Community pi-skills installed at `~/.dotfiles/pi/skills/pi-skills/`:
 | `transcribe` | Audio transcription |
 | `vscode` | VS Code integration |
 
-Skills are SKILL.md files -- read them to activate their guidance and tools.
+Loading and invocation behavior is documented by upstream Pi.
 
 ---
 
@@ -808,7 +799,7 @@ A fresh span id is generated for each subagent invocation (single, parallel, or 
 | File | Purpose |
 |------|---------|
 | `~/.dotfiles/pi/settings.json` | Default provider/model for session startup |
-| `~/.dotfiles/pi/AGENTS.md` | Canonical shared global instructions, auto-loaded by Pi and linked from `claude/CLAUDE.md` |
+| `~/.dotfiles/pi/AGENTS.md` | Canonical shared global instructions linked from `claude/CLAUDE.md` |
 | `~/.dotfiles/pi/damage-control-rules.yaml` | Safety rules for damage-control extension |
 
 Project-level overrides: place `AGENTS.md` or `.pi/settings.json` in any repo root.

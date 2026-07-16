@@ -2,6 +2,27 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-16: Consolidate Pi instruction ownership
+
+**Why:** Runtime discovery mechanics, repository package policy, and delegation
+rules were repeated across loaded instruction and reference layers.
+
+**Changed:**
+- Replaced named delegation gates with capability-based judgment and explicit
+  override precedence.
+- Reduced the always-appended Pi policy to Pi-specific ownership, safety,
+  delegation evidence, and approval boundaries.
+- Removed duplicate package-policy prose from the root client instructions and
+  duplicate repository rules from shared global instructions.
+- Replaced runtime discovery recipes in the Pi README with source-owner or
+  upstream-documentation pointers.
+- Reduced measured instruction/reference content from 73,445 to 68,559 bytes.
+
+**Files:** Pi README, Pi runtime/global instructions, Pi instruction extension,
+root client instructions, `CHANGELOG.md`
+
+---
+
 ## 2026-07-16: Simplify Pi planning and execution contracts
 
 **Why:** File-count routing, fixed worker assignments, named evaluation panels,
