@@ -14,10 +14,17 @@ import fableCommand, {
 } from "../extensions/fable.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
+const codexModels = [
+	{ provider: "openai-codex", id: "gpt-5.6-luna" },
+	{ provider: "openai-codex", id: "gpt-5.6-terra" },
+	{ provider: "openai-codex", id: "gpt-5.6-sol" },
+];
+
 function orchestratorCtx(overrides: Record<string, unknown> = {}) {
 	return createMockCtx({
 		mode: "tui",
-		model: { provider: "openai-codex", id: "gpt-5.6-sol" },
+		model: codexModels[2],
+		modelRegistry: { getAvailable: vi.fn(() => codexModels) },
 		...overrides,
 	});
 }
@@ -114,7 +121,7 @@ describe("fable orchestration policy", () => {
 		).toBeUndefined();
 	});
 
-	it("maps subagent sizes to Codex models and preserves valid explicit models", async () => {
+	it("resolves subagent sizes from available models and preserves explicit models", async () => {
 		const { tool } = hooks();
 		const cases = [
 			["small", "openai-codex/gpt-5.6-luna"],
@@ -145,20 +152,52 @@ describe("fable orchestration policy", () => {
 			);
 		}
 
-		const explicitWithUnsupportedThinkingLevel = {
-			toolName: "subagent",
-			input: { model: "openai-codex/gpt-5.6-sol:max" },
-		};
-		await tool(explicitWithUnsupportedThinkingLevel, orchestratorCtx());
-		expect(explicitWithUnsupportedThinkingLevel.input.model).toBe(
-			"openai-codex/gpt-5.6-terra",
-		);
-
-		for (const input of [{ model: "other/model" }, {}]) {
-			const event = { toolName: "subagent", input };
+		for (const model of [
+			"openai-codex/gpt-5.6-sol:max",
+			"other/model",
+		]) {
+			const event = { toolName: "subagent", input: { model } };
 			expect(tool(event, orchestratorCtx())).toBeUndefined();
-			expect(event.input.model).toBe("openai-codex/gpt-5.6-terra");
+			expect(event.input.model).toBe(model);
 		}
+
+		const defaulted = { toolName: "subagent", input: {} as { model?: string } };
+		expect(tool(defaulted, orchestratorCtx())).toBeUndefined();
+		expect(defaulted.input.model).toBe("openai-codex/gpt-5.6-terra");
+	});
+
+	it("uses current-provider metadata rather than the former fixed ladder", () => {
+		const { tool } = hooks();
+		const models = [
+			{
+				provider: "anthropic",
+				id: "claude-haiku-4-6",
+				contextWindow: 200_000,
+				cost: { input: 1, output: 5 },
+			},
+			{
+				provider: "anthropic",
+				id: "claude-opus-4-6",
+				reasoning: true,
+				contextWindow: 200_000,
+				maxTokens: 32_000,
+				cost: { input: 15, output: 75 },
+			},
+		];
+		const event = {
+			toolName: "subagent",
+			input: { modelSize: "large" },
+		};
+		const ctx = orchestratorCtx({
+			model: models[1],
+			modelRegistry: { getAvailable: vi.fn(() => models) },
+		});
+
+		expect(tool(event, ctx)).toBeUndefined();
+		expect(event.input).toHaveProperty(
+			"model",
+			"anthropic/claude-opus-4-6",
+		);
 	});
 
 	it("leaves allowed pinned agents unoverridden without a size", () => {
@@ -202,7 +241,7 @@ describe("fable orchestration policy", () => {
 		expect(event.input).not.toHaveProperty("model");
 	});
 
-	it("forces Terra for a requested Fable-pinned agent without a size", () => {
+	it("preserves a requested agent model without a size", () => {
 		discoverAgentsMock.mockReturnValue({
 			agents: [
 				{
@@ -219,7 +258,7 @@ describe("fable orchestration policy", () => {
 		};
 
 		expect(tool(event, orchestratorCtx())).toBeUndefined();
-		expect(event.input.model).toBe("openai-codex/gpt-5.6-terra");
+		expect(event.input).not.toHaveProperty("model");
 	});
 
 	it("makes Fable a foreman and retains delegation bias for Opus and Sol xhigh", () => {
@@ -322,6 +361,31 @@ describe("foreman command", () => {
 });
 
 describe("fable command", () => {
+	it("reports the shared policy diagnostic when Fable is unavailable", async () => {
+		const pi = Object.assign(createMockPi(), {
+			setModel: vi.fn(async () => true),
+			setThinkingLevel: vi.fn(),
+		});
+		fableCommand(pi as Parameters<typeof fableCommand>[0]);
+		const command = pi._commands.find(
+			(candidate) => candidate.name === "fable",
+		);
+		if (!command) throw new Error("fable command not registered");
+		const ctx = createMockCtx({
+			modelRegistry: { getAvailable: vi.fn(() => []) },
+		});
+
+		await command.handler("Ship the feature", ctx);
+
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			expect.stringContaining(
+				"requires amazon-bedrock/us.anthropic.claude-fable-5",
+			),
+			"error",
+		);
+		expect(pi.setModel).not.toHaveBeenCalled();
+	});
+
 	it("switches to Fable high and sends the original task", async () => {
 		const pi = Object.assign(createMockPi(), {
 			setModel: vi.fn(async () => true),

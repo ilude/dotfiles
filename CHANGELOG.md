@@ -2,6 +2,26 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-16: Centralize Pi model routing policy
+
+**Why:** Subagent sizing, explicit workflow choices, and premium-provider
+preferences were duplicated across extensions and drifted independently.
+
+**Changed:**
+- Made `pi/lib/model-routing.ts` the owner of named preferences, explicit
+  workflow choices, metadata-aware scoring, and premium-provider membership.
+- Routed `/fable`, `/foreman`, and subagent size requests through the shared
+  resolver while preserving explicit user overrides.
+- Removed the duplicate Fable ladder and pinned-model regular expression.
+- Added deterministic zero, one, and many-model coverage plus clear missing
+  capability diagnostics.
+
+**Files:** `pi/lib/model-routing.ts`, `pi/extensions/fable.ts`,
+`pi/extensions/prompt-router.ts`, `pi/tests/{model-routing,fable}.test.ts`,
+`CHANGELOG.md`
+
+---
+
 ## 2026-07-16: Consolidate the Pi worker roster
 
 **Why:** Model-bound variants and an unenforced organization chart duplicated

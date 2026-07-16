@@ -1,21 +1,18 @@
-import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import {
+	type ModelLike,
+	preferredModelId,
+	resolveDynamicModel,
+	resolveExplicitModelPolicy,
+} from "../lib/model-routing.js";
 import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 import { type AgentScope, discoverAgents } from "./subagent/agents.js";
 
-const FABLE_MODEL_ID = "amazon-bedrock/us.anthropic.claude-fable-5";
 const FABLE_THINKING_LEVEL = "high";
-const FOREMAN_MODEL_ID = "openai-codex/gpt-5.6-sol";
 const FOREMAN_THINKING_LEVEL = "xhigh";
 const UNKNOWN_PROVIDER_ERROR = "An unknown error occurred";
 const FABLE_BEDROCK_UNKNOWN_ERROR =
 	"Bedrock Fable request failed without provider details. The Bedrock stream adapter did not preserve the underlying ValidationException or stop reason.";
-const DEFAULT_SUBAGENT_MODEL_ID = "openai-codex/gpt-5.6-terra";
-const SUBAGENT_MODELS = {
-	small: "openai-codex/gpt-5.6-luna",
-	medium: DEFAULT_SUBAGENT_MODEL_ID,
-	large: "openai-codex/gpt-5.6-sol",
-} as const;
 const DIRECT_FIRST_INSTRUCTION = [
 	"Work directly by default on one coherent task.",
 	"Delegate only when two or more independent work items improve latency, expertise coverage, independent verification, or parent-context use.",
@@ -46,15 +43,6 @@ type SubagentInput = {
 };
 
 type AgentRequest = { agent?: unknown };
-
-const ALLOWED_PINNED_SUBAGENT_MODEL_RE =
-	/^openai-codex\/gpt-5\.6-(?:luna|terra|sol)(?::(?:off|minimal|low|medium|high|xhigh))?$/;
-
-function isAllowedPinnedSubagentModel(model: unknown): model is string {
-	return (
-		typeof model === "string" && ALLOWED_PINNED_SUBAGENT_MODEL_RE.test(model)
-	);
-}
 
 function agentScopeFor(input: SubagentInput): AgentScope {
 	if (
@@ -96,27 +84,8 @@ function preservesRequestedAgentModels(
 	const agents = discoverAgents(cwd, agentScopeFor(input)).agents;
 	return names.every((name) => {
 		const model = agents.find((agent) => agent.name === name)?.model;
-		return isAllowedPinnedSubagentModel(model);
+		return typeof model === "string" && model.trim().length > 0;
 	});
-}
-
-function parseModelId(
-	modelId: string,
-): { provider: string; id: string } | null {
-	const slash = modelId.indexOf("/");
-	if (slash <= 0 || slash === modelId.length - 1) return null;
-	return { provider: modelId.slice(0, slash), id: modelId.slice(slash + 1) };
-}
-
-function findModel(
-	models: readonly Model<Api>[],
-	modelId: string,
-): Model<Api> | undefined {
-	const parsed = parseModelId(modelId);
-	if (!parsed) return undefined;
-	return models.find(
-		(model) => model.provider === parsed.provider && model.id === parsed.id,
-	);
 }
 
 function isFableBedrockModel(model?: {
@@ -182,14 +151,25 @@ export function isInteractiveOrchestratorParent(ctx: {
 	);
 }
 
-export function subagentModelFor(input: SubagentInput): string {
-	if (isAllowedPinnedSubagentModel(input.model)) return input.model;
-	if (typeof input.model === "string" && input.model.trim()) {
-		return DEFAULT_SUBAGENT_MODEL_ID;
-	}
-	if (input.modelSize === "small") return SUBAGENT_MODELS.small;
-	if (input.modelSize === "large") return SUBAGENT_MODELS.large;
-	return DEFAULT_SUBAGENT_MODEL_ID;
+export function subagentModelFor(
+	input: SubagentInput,
+	availableModels: readonly ModelLike[] = [],
+	currentModel?: ModelLike,
+): string {
+	if (typeof input.model === "string" && input.model.trim()) return input.model;
+	const size =
+		input.modelSize === "small" || input.modelSize === "large"
+			? input.modelSize
+			: "medium";
+	const resolved = resolveDynamicModel(
+		availableModels,
+		currentModel,
+		size,
+		"same-family",
+	);
+	return resolved
+		? `${resolved.provider}/${resolved.id}`
+		: preferredModelId(size);
 }
 
 export function isDelegationBiasedParent(
@@ -255,7 +235,11 @@ export default function fableCommand(pi: ExtensionAPI): void {
 			) {
 				return undefined;
 			}
-			input.model = subagentModelFor(input);
+			input.model = subagentModelFor(
+				input,
+				ctx.modelRegistry.getAvailable(),
+				ctx.model,
+			);
 			return undefined;
 		}
 		return undefined;
@@ -270,22 +254,20 @@ export default function fableCommand(pi: ExtensionAPI): void {
 				return;
 			}
 
-			const foremanModel = findModel(
+			const resolution = resolveExplicitModelPolicy(
 				ctx.modelRegistry.getAvailable(),
-				FOREMAN_MODEL_ID,
+				"foreman",
 			);
+			const foremanModel = resolution.model;
 			if (!foremanModel) {
-				ctx.ui.notify(
-					`Foreman model not available: ${FOREMAN_MODEL_ID}`,
-					"error",
-				);
+				ctx.ui.notify(resolution.diagnostic ?? "Foreman model unavailable.", "error");
 				return;
 			}
 
 			const changed = await pi.setModel(foremanModel);
 			if (!changed) {
 				ctx.ui.notify(
-					`Could not switch to ${FOREMAN_MODEL_ID}. Check provider credentials.`,
+					`Could not switch to ${resolution.modelId}. Check provider credentials.`,
 					"error",
 				);
 				return;
@@ -294,7 +276,7 @@ export default function fableCommand(pi: ExtensionAPI): void {
 			foremanMode = true;
 			pi.setThinkingLevel(FOREMAN_THINKING_LEVEL);
 			ctx.ui.notify(
-				`${FOREMAN_MODEL_ID}[${FOREMAN_THINKING_LEVEL}] orchestration started.`,
+				`${resolution.modelId}[${FOREMAN_THINKING_LEVEL}] orchestration started.`,
 				"info",
 			);
 			await pi.sendUserMessage(task);
@@ -310,19 +292,20 @@ export default function fableCommand(pi: ExtensionAPI): void {
 				return;
 			}
 
-			const fableModel = findModel(
+			const resolution = resolveExplicitModelPolicy(
 				ctx.modelRegistry.getAvailable(),
-				FABLE_MODEL_ID,
+				"fable",
 			);
+			const fableModel = resolution.model;
 			if (!fableModel) {
-				ctx.ui.notify(`Fable model not available: ${FABLE_MODEL_ID}`, "error");
+				ctx.ui.notify(resolution.diagnostic ?? "Fable model unavailable.", "error");
 				return;
 			}
 
 			const changed = await pi.setModel(fableModel);
 			if (!changed) {
 				ctx.ui.notify(
-					`Could not switch to ${FABLE_MODEL_ID}. Check provider credentials.`,
+					`Could not switch to ${resolution.modelId}. Check provider credentials.`,
 					"error",
 				);
 				return;
@@ -331,7 +314,7 @@ export default function fableCommand(pi: ExtensionAPI): void {
 			foremanMode = false;
 			pi.setThinkingLevel(FABLE_THINKING_LEVEL);
 			ctx.ui.notify(
-				`${FABLE_MODEL_ID}[${FABLE_THINKING_LEVEL}] orchestration started.`,
+				`${resolution.modelId}[${FABLE_THINKING_LEVEL}] orchestration started.`,
 				"info",
 			);
 			await pi.sendUserMessage(task);

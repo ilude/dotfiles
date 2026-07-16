@@ -49,6 +49,8 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
 import {
 	getCurrentModelHint,
+	isConfiguredPremiumCodex,
+	isPremiumCodexModel,
 	resolveDynamicModelFromRegistry,
 	resolveModelTierLabel,
 } from "../lib/model-routing.js";
@@ -789,12 +791,6 @@ const ROUTE_TO_RUNTIME_SIZE: Record<string, "small" | "medium" | "large"> = {
 	max: "large",
 };
 
-// Premium Codex models are strong enough that routine prompts should stay at
-// the configured default effort. Medium classifier effort is biased to that
-// default, and high is reserved for high-confidence complex prompts. xhigh is
-// never selected because the classifier schema tops out at high.
-const CODEX_PREMIUM_PROVIDER = "openai-codex";
-const CODEX_PREMIUM_MODELS = new Set(["gpt-5.5", "gpt-5.6-sol"]);
 const CODEX_PREMIUM_HIGH_CONFIDENCE_FLOOR = 0.8;
 
 // ---------------------------------------------------------------------------
@@ -841,26 +837,11 @@ function getResolvedTierMap(ctx: any) {
 	};
 }
 
-function modelNameMatchesPremiumCodex(model: Record<string, unknown>): boolean {
-	return [model.id, model.model, model.name].some(
-		(name) => typeof name === "string" && CODEX_PREMIUM_MODELS.has(name),
-	);
-}
-
-function isPremiumCodexModel(model: unknown): boolean {
-	if (!model || typeof model !== "object") return false;
-	const m = model as Record<string, unknown>;
-	return (
-		m.provider === CODEX_PREMIUM_PROVIDER && modelNameMatchesPremiumCodex(m)
-	);
-}
-
 function isConfiguredDefaultPremiumCodex(): boolean {
 	const settings = readPromptRouterSettings();
-	return (
-		settings?.defaultProvider === CODEX_PREMIUM_PROVIDER &&
-		typeof settings.defaultModel === "string" &&
-		CODEX_PREMIUM_MODELS.has(settings.defaultModel)
+	return isConfiguredPremiumCodex(
+		settings?.defaultProvider,
+		settings?.defaultModel,
 	);
 }
 
@@ -869,7 +850,7 @@ function shouldSetDefaultThinkingOnSessionStart(ctx: unknown): boolean {
 	return (
 		isPremiumCodexModel(currentModel) ||
 		(typeof currentModel === "string" &&
-			CODEX_PREMIUM_MODELS.has(currentModel)) ||
+			isConfiguredPremiumCodex("openai-codex", currentModel)) ||
 		isConfiguredDefaultPremiumCodex()
 	);
 }

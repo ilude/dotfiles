@@ -359,7 +359,7 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
   - [x] roster.md proposal written
   - [x] user approval received (gate - never inferred)
   - [x] deletions and old-name reference updates executed
-- [ ] T5: routing policy consolidation - pending
+- [x] T5: routing policy consolidation - done: validated slice commit pending
 - [ ] T6: Pi test alignment - pending
 - [ ] T7: test_config_patterns split - pending
 - [ ] T8: browser wrapper and CI contract - pending
@@ -377,10 +377,10 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 
 - **Classification:** execution in progress
 - **Current blocker:** none; T4 roster deletion approved explicitly
-- **Last completed wave/gate:** T4 roster consolidation and parse-to-launch validation
-- **Next:** T5 routing policy consolidation
-- **Completed work:** T1-T4 complete; roster reduced from 33 to 18 definitions with org-chart parser/schema removed and deterministic skill-review targets preserved
-- **Commands/results:** focused Pi suites passed 88 tests; `pnpm run typecheck` passed; Python shared-instruction link test passed; active removed-name/taxonomy scans returned no matches
-- **Remaining checks:** T4 slice commit; all T5-T12 gates; final `make check`
+- **Last completed wave/gate:** T5 routing consolidation and focused validation
+- **Next:** commit T5 slice, record its hash, then execute dependency-ready T7 or T8
+- **Completed work:** T1-T5 complete; one model-routing owner now serves subagent sizing, explicit workflow choices, and premium-provider policy
+- **Commands/results:** focused Pi routing suites passed 144 tests; `pnpm run typecheck` passed; `git diff --check` passed
+- **Remaining checks:** T5 slice commit; T6-T12 task gates; final `make check`
 - **Exact user action:** none
 - **Resume:** `/do-it .specs/rationalization/plan.md`

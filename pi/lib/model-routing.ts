@@ -4,6 +4,16 @@ export interface ModelLike {
 	provider: string;
 	id: string;
 	name?: string;
+	reasoning?: boolean;
+	thinkingLevelMap?: Partial<Record<string, string | null>>;
+	contextWindow?: number;
+	maxTokens?: number;
+	cost?: {
+		input: number;
+		output: number;
+		cacheRead?: number;
+		cacheWrite?: number;
+	};
 }
 
 export type ModelSize =
@@ -29,15 +39,27 @@ const MINI_HINT_RE = /(mini|small|haiku)/i;
 const FAST_HINT_RE = /(fast|turbo|flash|lite)/i;
 const LARGE_HINT_RE = /(opus|large|xl|thinking|reasoning)/i;
 const VERSION_RE = /(\d+(?:[.-]\d+)*)/;
-const CODEX_DEFAULTS: Record<ModelSize, string[]> = {
-	nano: ["gpt-5.6-luna", "gpt-5.4-nano", "gpt-5.4-mini"],
-	mini: ["gpt-5.6-luna", "gpt-5.4-mini"],
-	core: ["gpt-5.6-terra", "gpt-5.5", "gpt-5.3-codex"],
-	large: ["gpt-5.6-sol", "gpt-5.5", "gpt-5.3-codex"],
-	max: ["gpt-5.6-sol", "gpt-5.5", "gpt-5.3-codex"],
-	small: ["gpt-5.6-luna", "gpt-5.4-mini"],
-	medium: ["gpt-5.6-terra", "gpt-5.5", "gpt-5.3-codex"],
-};
+export const MODEL_ROUTING_POLICY = {
+	preferredCodexIds: {
+		nano: ["gpt-5.6-luna", "gpt-5.4-nano", "gpt-5.4-mini"],
+		mini: ["gpt-5.6-luna", "gpt-5.4-mini"],
+		core: ["gpt-5.6-terra", "gpt-5.5", "gpt-5.3-codex"],
+		large: ["gpt-5.6-sol", "gpt-5.5", "gpt-5.3-codex"],
+		max: ["gpt-5.6-sol", "gpt-5.5", "gpt-5.3-codex"],
+		small: ["gpt-5.6-luna", "gpt-5.4-mini"],
+		medium: ["gpt-5.6-terra", "gpt-5.5", "gpt-5.3-codex"],
+	},
+	explicitChoices: {
+		fable: "amazon-bedrock/us.anthropic.claude-fable-5",
+		foreman: "openai-codex/gpt-5.6-sol",
+	},
+	premiumCodex: {
+		provider: "openai-codex",
+		ids: ["gpt-5.5", "gpt-5.6-sol"],
+	},
+} as const;
+
+export type ExplicitModelPolicy = keyof typeof MODEL_ROUTING_POLICY.explicitChoices;
 const CODEX_MAX_RE = /codex-max/i;
 
 function isProvider(model: ModelLike, provider: string) {
@@ -52,7 +74,7 @@ function normalize(value: string | undefined) {
 	return (value || "").toLowerCase();
 }
 
-function parseProviderModelString(raw: string): ModelLike | undefined {
+export function parseProviderModelString(raw: string): ModelLike | undefined {
 	const slash = raw.indexOf("/");
 	if (slash <= 0 || slash === raw.length - 1) return undefined;
 	return { provider: raw.slice(0, slash), id: raw.slice(slash + 1) };
@@ -94,6 +116,16 @@ function isMiniModel(model: ModelLike) {
 	return MINI_HINT_RE.test(text);
 }
 
+function modelCost(model: ModelLike): number {
+	if (!model.cost) return 0;
+	return model.cost.input + model.cost.output;
+}
+
+function supportsHighReasoning(model: ModelLike): boolean {
+	if (model.reasoning !== true) return false;
+	return model.thinkingLevelMap?.high !== null;
+}
+
 function scoreModelForSize(
 	model: ModelLike,
 	size: ModelSize,
@@ -113,6 +145,24 @@ function scoreModelForSize(
 
 	if (text.includes("gpt-5.4")) score += 8;
 	if (text.includes("claude")) score += 6;
+
+	const contextWindow = model.contextWindow ?? 0;
+	const maxTokens = model.maxTokens ?? 0;
+	const cost = modelCost(model);
+	if (size === "nano" || size === "mini" || size === "small") {
+		score -= Math.min(cost, 100);
+		if (contextWindow >= 100_000) score += 5;
+	} else if (size === "core" || size === "medium") {
+		if (model.reasoning === true) score += 20;
+		if (contextWindow >= 128_000) score += 15;
+		if (maxTokens >= 16_000) score += 5;
+		score -= Math.min(cost, 100) / 4;
+	} else {
+		if (supportsHighReasoning(model)) score += 45;
+		if (contextWindow >= 200_000) score += 30;
+		else if (contextWindow >= 128_000) score += 15;
+		if (maxTokens >= 32_000) score += 10;
+	}
 
 	if (size === "nano") {
 		if (NANO_HINT_RE.test(text)) score += 140;
@@ -168,7 +218,9 @@ function compareScoredModels<T extends ModelLike>(
 	b: { model: T; score: number },
 ) {
 	if (b.score !== a.score) return b.score - a.score;
-	return getDisplayName(a.model).localeCompare(getDisplayName(b.model));
+	const providerOrder = a.model.provider.localeCompare(b.model.provider);
+	if (providerOrder !== 0) return providerOrder;
+	return a.model.id.localeCompare(b.model.id);
 }
 
 function pickBestModel<T extends ModelLike>(
@@ -201,11 +253,62 @@ function pickCodexDefault<T extends ModelLike>(
 		(model) => model.provider === "openai-codex",
 	);
 	if (codexModels.length === 0) return undefined;
-	for (const id of CODEX_DEFAULTS[size]) {
+	for (const id of MODEL_ROUTING_POLICY.preferredCodexIds[size]) {
 		const model = findExact(codexModels, "openai-codex", id);
 		if (model) return model;
 	}
 	return undefined;
+}
+
+export interface ExplicitModelResolution<T extends ModelLike> {
+	model?: T;
+	modelId: string;
+	diagnostic?: string;
+}
+
+export function resolveExplicitModelPolicy<T extends ModelLike>(
+	availableModels: readonly T[],
+	policy: ExplicitModelPolicy,
+): ExplicitModelResolution<T> {
+	const modelId = MODEL_ROUTING_POLICY.explicitChoices[policy];
+	const parsed = parseProviderModelString(modelId);
+	const model = parsed
+		? findExact(availableModels, parsed.provider, parsed.id)
+		: undefined;
+	return model
+		? { model, modelId }
+		: {
+				modelId,
+				diagnostic: `Model policy '${policy}' requires ${modelId}, but that capability is not available.`,
+			};
+}
+
+export function isPremiumCodexModel(model: unknown): boolean {
+	if (!model || typeof model !== "object") return false;
+	const candidate = model as Record<string, unknown>;
+	if (candidate.provider !== MODEL_ROUTING_POLICY.premiumCodex.provider) {
+		return false;
+	}
+	return [candidate.id, candidate.model, candidate.name].some(
+		(value) =>
+			typeof value === "string" &&
+			MODEL_ROUTING_POLICY.premiumCodex.ids.some((id) => id === value),
+	);
+}
+
+export function isConfiguredPremiumCodex(
+	provider: unknown,
+	model: unknown,
+): boolean {
+	return (
+		provider === MODEL_ROUTING_POLICY.premiumCodex.provider &&
+		typeof model === "string" &&
+		MODEL_ROUTING_POLICY.premiumCodex.ids.some((id) => id === model)
+	);
+}
+
+export function preferredModelId(size: ModelSize): string {
+	return `openai-codex/${MODEL_ROUTING_POLICY.preferredCodexIds[size][0]}`;
 }
 
 function findFirstMini<T extends ModelLike>(
