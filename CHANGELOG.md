@@ -2,6 +2,24 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-16: Inventory static-content test contracts
+
+**Why:** The rationalization plan requires every source-, prompt-, prose-, and
+configuration-shape test to have an explicit decision before test cleanup.
+
+**Changed:**
+- Added `.specs/rationalization/ledger.md` with 108 unique decision rows tied
+  to execution tasks T4, T6, T7, and T8.
+- Corrected the prior audit from 89 strict / 106 broad declarations to 90
+  strict / 107 broad declarations after finding one omitted source assertion.
+- Recorded full Pytest and Vitest collection counts, test entrypoints, runtime
+  consumers, replacement boundaries, and pending execution ownership.
+
+**Files:** `.specs/rationalization/ledger.md`,
+`.specs/rationalization/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-16: Consolidate rationalization into one phased plan
 
 **Why:** The interim three-plan split kept concerns independent but the user
