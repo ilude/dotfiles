@@ -354,7 +354,7 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 
 - [x] T1: test decision ledger - done: 95efc55
 - [x] T2: workflow skills and templates - done: 772d4c0
-- [x] T3: Pi instruction trim - done: validated slice commit pending
+- [x] T3: Pi instruction trim - done: 1e57024
 - [ ] T4: agent roster consolidation - pending
   - [ ] roster.md proposal written
   - [ ] user approval received (gate - never inferred)
@@ -379,7 +379,7 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - **Current blocker:** none
 - **Last completed wave/gate:** none
 - **Last completed wave/gate:** T3 instruction ownership trim and focused loading validation
-- **Next:** commit validated T3 slice, record its hash, then prepare T4 roster proposal
+- **Next:** prepare T4 roster proposal and request the required deletion approval
 - **Completed work:** T1-T3 complete; instruction/reference bytes reduced from 73,445 to 68,559 with named delegation gates and duplicate discovery recipes removed
 - **Commands/results:** `pnpm test pi-instructions.test.ts` passed 4 tests; `pnpm run typecheck` passed; canonical instruction-link Pytest passed; ownership scan returned no matches
 - **Remaining checks:** T3 slice commit; T4 approval and all T4-T12 gates; final `make check`
