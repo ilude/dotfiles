@@ -23,6 +23,7 @@ import {
 	type DecisionProvenance,
 	recordDecision,
 } from "../lib/permission-registry.js";
+import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 import {
 	debugDecision,
 	debugLog,
@@ -470,6 +471,7 @@ function recordBlock(
 }
 
 export default function (pi: ExtensionAPI) {
+	wrapCommandRegistration(pi);
 	debugLog("extension_registered");
 	const state = createDamageControlState();
 	const sessionState = new DamageControlSessionState();

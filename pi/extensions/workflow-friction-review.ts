@@ -9,6 +9,7 @@ import type {
 import { Type } from "@sinclair/typebox";
 import { recordEvent } from "../lib/metrics.js";
 import { buildOrchestrationInteractionEvent } from "../lib/orchestration-telemetry.js";
+import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 import { sanitizeTaskValue } from "../lib/task-security.js";
 import { defineAgent, type TypedAgentRunContext } from "../lib/typed-agent.js";
 import {
@@ -1342,6 +1343,7 @@ export default function workflowFrictionExtension(
 	pi: ExtensionAPI,
 	options: { reviewer?: WorkflowReviewRunner } = {},
 ) {
+	wrapCommandRegistration(pi, { excludeCommands: ["improve"] });
 	const reviewer = options.reviewer ?? workflowReviewAgent;
 	let pendingInput: PendingInput | null = null;
 	let active: ActiveInteraction | null = null;

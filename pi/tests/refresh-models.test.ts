@@ -174,12 +174,13 @@ describe("/refresh-models command", () => {
 		registerRefreshModelsCommand(
 			pi as Parameters<typeof registerRefreshModelsCommand>[0],
 		);
-		expect(pi.registerCommand).toHaveBeenCalledWith(
-			"refresh-models",
-			expect.objectContaining({
-				description: expect.any(String),
-				handler: expect.any(Function),
-			}),
+		expect(pi._commands).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					name: "refresh-models",
+					handler: expect.any(Function),
+				}),
+			]),
 		);
 	});
 
@@ -212,9 +213,10 @@ describe("/refresh-models command", () => {
 		registerRefreshModelsCommand(
 			pi as Parameters<typeof registerRefreshModelsCommand>[0],
 		);
-		expect(pi.registerCommand).toHaveBeenCalledWith(
-			"refresh-models",
-			expect.any(Object),
+		expect(pi._commands).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ name: "refresh-models" }),
+			]),
 		);
 	});
 

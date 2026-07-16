@@ -19,6 +19,7 @@ import {
 	getSettingsPath,
 	updateJsonObjectAtomic,
 } from "../lib/settings-file.ts";
+import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 
 const COMMAND_NAME = "bedrock-refresh";
 const POLL_TIMEOUT_MS = 60_000;
@@ -417,6 +418,7 @@ export default function bedrockRefresh(
 	pi: ExtensionAPI,
 	options: { executeAws?: AwsExecutor } = {},
 ): void {
+	wrapCommandRegistration(pi);
 	const executeAws = options.executeAws ?? createAwsExecutor(pi);
 	pi.registerCommand(COMMAND_NAME, {
 		description: "Poll AWS Bedrock for current Claude model IDs",

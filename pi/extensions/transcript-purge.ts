@@ -13,8 +13,9 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { loadSettings, sweepRetention } from "../lib/transcript.js";
 import { uiNotify } from "../lib/extension-utils.js";
+import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
+import { loadSettings, sweepRetention } from "../lib/transcript.js";
 
 const UNIT_MS: Record<string, number> = {
 	ms: 1,
@@ -42,6 +43,7 @@ export function parseAgeArgument(raw: string): number | null | undefined {
 }
 
 export default function (pi: ExtensionAPI) {
+	wrapCommandRegistration(pi);
 	pi.registerCommand("transcript-purge", {
 		description:
 			"Delete trace+spill files older than the given age (default: all). Examples: /transcript-purge, /transcript-purge 7d, /transcript-purge 24h",

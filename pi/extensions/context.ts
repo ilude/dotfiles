@@ -11,6 +11,7 @@
 //   run in the conversation log.
 
 import { type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 
 const CONTEXT_REPORT_MESSAGE_TYPE = "context-report";
 
@@ -328,6 +329,7 @@ function buildReport(ctx: any): string[] {
 }
 
 export default function registerContextCommand(pi: ExtensionAPI) {
+	wrapCommandRegistration(pi);
 	pi.on("context", (event: any) => ({
 		messages: event.messages.filter(
 			(message: any) => !(message.role === "custom" && message.customType === CONTEXT_REPORT_MESSAGE_TYPE),

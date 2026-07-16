@@ -11,6 +11,7 @@ import {
 	resolveAgentDir,
 	resolveSessionRoot,
 } from "../lib/session-jsonl.ts";
+import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 
 export type SkillEvidenceSource =
 	| "explicit_slash_command"
@@ -613,6 +614,7 @@ export function renderSkillStatsMarkdown(result: SkillStatsResult): string {
 }
 
 export default function (pi: ExtensionAPI) {
+	wrapCommandRegistration(pi);
 	pi.registerCommand("skill-stats", {
 		description: "Show best-effort skill usage from Pi session logs.",
 		handler: async (args: string, ctx: ExtensionContext) => {

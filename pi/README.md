@@ -233,6 +233,12 @@ pi -e ~/.dotfiles/pi/extensions/damage-control.ts   # explicit load
 
 TypeScript extensions live in `~/.dotfiles/pi/extensions/` and are auto-discovered (or loaded explicitly via `-e`):
 
+Extension-owned slash commands persist their visible invocation in the transcript
+without starting an extra provider turn. Each command-owning extension wraps its
+local registration API through `pi/lib/slash-command-echo.ts`; workflows that
+already persist a mature invocation format are explicitly excluded from the
+shared echo.
+
 ### `damage-control.ts`
 
 Pi damage-control is a Pi-native adapter for the intent of the Claude Code damage-control hooks. It uses Pi extension APIs, status text, `/doctor`, and `/permissions` rather than importing the Claude hook runtime. Current coverage is intentionally bounded: Claude `bashToolPatterns` (Bash-only, excluding `exfil` entries from all-pattern parity claims) plus Claude path/write sections that map to Pi's tool surfaces. Semantic git analysis, AST bash analysis, taint/sequence detection, and post-tool secret-output detection remain deferred.
@@ -287,7 +293,7 @@ Prompt-only commands use Pi-native templates under `~/.dotfiles/pi/prompts/`:
 
 Workflow highlights:
 - `/plan-it` writes plans with explicit `small` / `medium` / `large` model sizing and agent assignments.
-- `/review-it` coordinates a fixed 3-reviewer core plus at least 3 persona-seeded domain reviewers, with targeted rebuttal only when disagreement matters.
+- `/review-it` discovers available runtime capabilities, selects the smallest useful set of independent review perspectives, applies verified artifact fixes once, and validates the result without an automatic second panel.
 - `/do-it` can route a raw task **or** execute an existing `.specs/*/plan.md` file wave by wave.
 - `/commit` uses shared deterministic candidate extraction plus an isolated low-effort GPT-5.6 Luna child to distinguish real secrets from docs/examples/tests before blocking and to plan commit groups. If commit planning fails, a deterministic ownership fallback separates Pi implementation, workflow prompts, Claude configuration, and specification artifacts. Ambiguous cross-domain paths require an explicit user decision instead of becoming one broad commit. The child runs through Pi's normal agent entrypoint because direct `completeSimple()` calls are not supported for Luna on the Codex subscription backend.
 

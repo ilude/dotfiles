@@ -10,6 +10,7 @@ import {
 	type OrchestrationRunData,
 	readOrchestrationEvents,
 } from "../lib/orchestration-telemetry.js";
+import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 import { workflowFrictionStorageRoot } from "../lib/workflow-friction.js";
 
 const DEFAULT_DAYS = 7;
@@ -310,6 +311,7 @@ export async function renderOrchestrationStatsReport(
 }
 
 export default function orchestrationStatsExtension(pi: ExtensionAPI) {
+	wrapCommandRegistration(pi);
 	pi.registerCommand("orchestration-stats", {
 		description: "Show deterministic orchestration telemetry statistics",
 		handler: async (args: string, ctx: ExtensionContext) => {

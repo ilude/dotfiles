@@ -1,5 +1,6 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 import { type AgentScope, discoverAgents } from "./subagent/agents.js";
 
 const FABLE_MODEL_ID = "amazon-bedrock/us.anthropic.claude-fable-5";
@@ -207,6 +208,7 @@ export function isDelegationBiasedParent(
 }
 
 export default function fableCommand(pi: ExtensionAPI): void {
+	wrapCommandRegistration(pi);
 	let foremanMode = false;
 
 	pi.on("before_provider_request", (event, ctx) =>

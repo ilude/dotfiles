@@ -286,13 +286,15 @@ no_delete_paths: []
 				) => Promise<void>;
 			}
 		> = {};
+		const registerCommand = vi.fn(
+			(name: string, command: (typeof commands)[string]) => {
+				commands[name] = command;
+			},
+		);
 		const pi = {
 			on: vi.fn(),
-			registerCommand: vi.fn(
-				(name: string, command: (typeof commands)[string]) => {
-					commands[name] = command;
-				},
-			),
+			registerCommand,
+			sendMessage: vi.fn(),
 		};
 		const ctx = {
 			ui: {
@@ -305,11 +307,11 @@ no_delete_paths: []
 		await commands.dc.handler("mode noshell", ctx);
 		await commands["damage-control"].handler("status", ctx);
 
-		expect(pi.registerCommand).toHaveBeenCalledWith(
+		expect(registerCommand).toHaveBeenCalledWith(
 			"damage-control",
 			expect.any(Object),
 		);
-		expect(pi.registerCommand).toHaveBeenCalledWith("dc", expect.any(Object));
+		expect(registerCommand).toHaveBeenCalledWith("dc", expect.any(Object));
 		expect(ctx.ui.setStatus).toHaveBeenCalledWith(
 			"damage-control",
 			expect.stringContaining("noshell"),
@@ -970,6 +972,8 @@ no_delete_paths: []
 				handlers[name] ??= [];
 				handlers[name].push(handler);
 			}),
+			registerCommand: vi.fn(),
+			sendMessage: vi.fn(),
 		};
 		const confirm = vi.fn(async () => true);
 		const ctx = {
@@ -1475,6 +1479,8 @@ describe("damage-control refactor hardening", () => {
 			on: vi.fn((name: string, handler: Handler) => {
 				if (name === "tool_call") handlers.push(handler);
 			}),
+			registerCommand: vi.fn(),
+			sendMessage: vi.fn(),
 		} as unknown as Parameters<typeof mod.default>[0]);
 		const ctx = {
 			cwd: process.cwd(),
@@ -1504,6 +1510,8 @@ describe("damage-control refactor hardening", () => {
 			on: vi.fn((name: string, handler: Handler) => {
 				if (name === "tool_call") handlers.push(handler);
 			}),
+			registerCommand: vi.fn(),
+			sendMessage: vi.fn(),
 		} as unknown as Parameters<typeof mod.default>[0]);
 		const ctx = {
 			cwd: process.cwd(),
@@ -1529,6 +1537,8 @@ describe("damage-control refactor hardening", () => {
 			on: vi.fn((name: string, handler: Handler) => {
 				if (name === "tool_call") handlers.push(handler);
 			}),
+			registerCommand: vi.fn(),
+			sendMessage: vi.fn(),
 		} as unknown as Parameters<typeof mod.default>[0]);
 		const ctx = {
 			cwd: process.cwd(),
@@ -1640,6 +1650,7 @@ describe("damage-control registered-handler audit matrix", () => {
 				registerCommand: vi.fn((name: string, command) => {
 					commands.set(name, command);
 				}),
+				sendMessage: vi.fn(),
 			} as unknown as Parameters<typeof mod.default>[0]);
 			const confirm = vi.fn(async () => true);
 			const ui = { confirm, notify: vi.fn(), setStatus: vi.fn() };
@@ -1851,6 +1862,8 @@ describe("damage-control registered-handler audit matrix", () => {
 				on: vi.fn((name: string, handler) => {
 					if (name === "tool_call") handlers.push(handler);
 				}),
+				registerCommand: vi.fn(),
+				sendMessage: vi.fn(),
 			} as unknown as Parameters<typeof mod.default>[0]);
 			const confirm = vi.fn(async () => true);
 			const ctx = {

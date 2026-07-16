@@ -10,6 +10,7 @@
 //   command-handler messaging where the user already knows the context.
 import { type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { emitTerminalBell } from "../lib/extension-utils.js";
+import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 
 type ProviderAuthType = "api_key" | "oauth";
 
@@ -206,6 +207,7 @@ async function runInteractiveFlow(ctx: any) {
 }
 
 export default function registerProviderCommand(pi: ExtensionAPI) {
+	wrapCommandRegistration(pi);
 	pi.registerCommand("provider", {
 		description: "Manage provider credentials (API keys in ~/.pi/agent/auth.json, OAuth guidance)",
 		handler: async (args, ctx) => {
@@ -247,4 +249,4 @@ export default function registerProviderCommand(pi: ExtensionAPI) {
 	});
 }
 
-export { parseProviderCommand, resolveProvider, describeConfiguredProviders };
+export { describeConfiguredProviders, parseProviderCommand, resolveProvider };

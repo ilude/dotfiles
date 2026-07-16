@@ -8,10 +8,10 @@
  *   /commit        -- smart git commit with secret scanning
  *   /new-terminal  -- open a plain shell in this cwd in a new terminal
  *   /plan-it       -- crystallize conversation context into an executable plan
- *   /prd-it        — refine fuzzy ideas into an optional PRD artifact
- *   /review-it     — adversarial review of a plan file
- *   /do-it         — smart task routing by complexity
- *   /exit          — gracefully quit pi
+ *   /prd-it        -- refine fuzzy ideas into an optional PRD artifact
+ *   /review-it     -- adversarial review of a plan file
+ *   /do-it         -- smart task routing by complexity
+ *   /exit          -- gracefully quit pi
  */
 
 // Convention exception: direct ctx.ui.notify calls in slash-command flows.
@@ -40,6 +40,10 @@ import { emitTerminalBell } from "../lib/extension-utils";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
 import { withTimingSpan } from "../lib/observability";
 import { scanSecrets } from "../lib/secret-scan";
+import {
+	SLASH_COMMAND_ECHO_TYPE,
+	wrapCommandRegistration,
+} from "../lib/slash-command-echo.js";
 import { defineAgent, type TypedAgentRunContext } from "../lib/typed-agent";
 import {
 	buildCommitPlanningPrompt,
@@ -361,15 +365,10 @@ const untrackedClassifierAgent = defineAgent({
 	timeoutMs: COMMIT_MODEL_TIMEOUT_MS,
 });
 
-interface SlashEchoExtensionAPI extends ExtensionAPI {
-	__slashEchoRegisterCommandWrapped?: boolean;
-}
-
 const CLEAR_USAGE_TYPE = "workflow-clear-usage";
 const CLEAR_CODEX_STATUS_TYPE = "workflow-clear-codex-status";
 const COMMIT_ACTIVITY_TYPE = "workflow-commit-activity";
 const COMMIT_REPORT_TYPE = "workflow-commit-report";
-const SLASH_ECHO_TYPE = "slash-echo";
 
 interface BranchLaunchPlan {
 	executable?: string;
@@ -1837,12 +1836,10 @@ function emitCommitReport(
 }
 
 function echoSlashCommand(pi: ExtensionAPI, command: string, args: string) {
-	if ((pi as SlashEchoExtensionAPI).__slashEchoRegisterCommandWrapped)
-		return undefined;
 	const text = args.trim() ? `/${command} ${args.trim()}` : `/${command}`;
 	if (typeof pi.sendMessage === "function") {
 		pi.sendMessage({
-			customType: SLASH_ECHO_TYPE,
+			customType: SLASH_COMMAND_ECHO_TYPE,
 			content: text,
 			display: true,
 		});
@@ -2217,6 +2214,9 @@ async function executeCommitCommand(
 }
 
 export default function (pi: ExtensionAPI) {
+	wrapCommandRegistration(pi, {
+		excludeCommands: ["plan-it", "prd-it", "review-it", "do-it"],
+	});
 	pi.on("input", async (event, ctx) => {
 		if (event.source === "extension") {
 			return { action: "continue" };
@@ -2245,18 +2245,21 @@ export default function (pi: ExtensionAPI) {
 			return new Text(text, 1, 0);
 		});
 
-		pi.registerMessageRenderer(SLASH_ECHO_TYPE, (message, _options, theme) => {
-			const text =
-				typeof message.content === "string"
-					? message.content
-					: String(message.content ?? "");
-			return new Text(
-				theme.bold(theme.fg("success", "> ")) +
-					theme.bold(theme.fg("text", text)),
-				0,
-				0,
-			);
-		});
+		pi.registerMessageRenderer(
+			SLASH_COMMAND_ECHO_TYPE,
+			(message, _options, theme) => {
+				const text =
+					typeof message.content === "string"
+						? message.content
+						: String(message.content ?? "");
+				return new Text(
+					theme.bold(theme.fg("success", "> ")) +
+						theme.bold(theme.fg("text", text)),
+					0,
+					0,
+				);
+			},
+		);
 
 		pi.registerMessageRenderer(
 			COMMIT_ACTIVITY_TYPE,

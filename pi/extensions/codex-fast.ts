@@ -2,6 +2,7 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 
 type ProviderPayload = Record<string, unknown>;
 
@@ -27,6 +28,7 @@ function canPatchPayload(payload: unknown): payload is ProviderPayload {
 }
 
 export default function (pi: ExtensionAPI) {
+	wrapCommandRegistration(pi);
 	pi.on("session_start", (_event, ctx) => {
 		enabled = false;
 		refreshStatus(ctx, pi);

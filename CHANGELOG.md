@@ -23,6 +23,23 @@ panels made plan review fragile and caused unnecessary review churn.
 
 ---
 
+## 2026-07-16: Persist extension slash command invocations
+
+**Why:** Pi gives each extension a separate API, so the slash echo renderer could
+not wrap command registrations owned by other extensions.
+
+**Changed:**
+- Added a shared local registration wrapper that persists one visible invocation
+  without triggering a provider turn.
+- Wired every command-owning extension through the wrapper, with explicit
+  exclusions for workflows that already persist their invocation.
+- Corrected startup coverage and added focused separate-API and echo tests.
+
+**Files:** `pi/lib/slash-command-echo.ts`, `pi/extensions/`, `pi/tests/`,
+`pi/README.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-16: Preserve Pi model metadata across catalog refreshes
 
 **Why:** The Codex model cache stored complete provider definitions and replayed

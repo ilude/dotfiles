@@ -7,6 +7,7 @@ import {
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { isAllowedTransition } from "../lib/operator-state.js";
+import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 import {
 	type CreateTaskBatchInput,
 	clearCompletedTasks,
@@ -1199,6 +1200,7 @@ export function registerTasksCommand(
 }
 
 export default function (pi: ExtensionAPI) {
+	wrapCommandRegistration(pi);
 	const coordinator = new TaskExecutionCoordinator();
 	registerTaskTools(pi, coordinator);
 	registerTasksCommand(pi, coordinator);

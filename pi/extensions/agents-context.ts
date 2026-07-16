@@ -5,6 +5,7 @@ import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
+import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 
 const EXPERTISE_TOOLS = new Set(["read_expertise", "append_expertise"]);
 const PRIMARY_INSTRUCTION_NAMES = [
@@ -500,6 +501,7 @@ export const agentsContextTestApi = {
 };
 
 export default function (pi: ExtensionAPI) {
+	wrapCommandRegistration(pi);
 	pi.on("before_agent_start", async (event, ctx) => {
 		removeExpertiseTools(event);
 		state.expertiseDisabled = true;

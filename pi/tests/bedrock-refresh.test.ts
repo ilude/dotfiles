@@ -191,12 +191,13 @@ describe("bedrock-refresh extension", () => {
 
 		bedrockRefresh(pi as unknown as ExtensionApiArg);
 
-		expect(pi.registerCommand).toHaveBeenCalledWith(
-			"bedrock-refresh",
-			expect.objectContaining({
-				description: expect.stringContaining("AWS Bedrock"),
-				handler: expect.any(Function),
-			}),
+		expect(pi._commands).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					name: "bedrock-refresh",
+					handler: expect.any(Function),
+				}),
+			]),
 		);
 	});
 
