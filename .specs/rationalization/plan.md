@@ -16,15 +16,15 @@ stalled task never blocks unrelated work.
 1. Pi workflow skills, agent definitions, routing, and instructions state
    goals, boundaries, and required capabilities instead of runtime snapshots.
 2. Every test in the repository either protects executable behavior, a parsed
-   schema, or a normalized config meaning â€” or is deleted with a recorded
+   schema, or a normalized config meaning -- or is deleted with a recorded
    decision. One ledger reconciles the whole cleanup.
 3. Code quality is guarded by pinned, repository-owned tools with a fast
    changed-file path; full suites run only at integration gates.
 
 ## Why
 
-Most of the current prescription â€” fixed model ladders, named agents, panel
-sizes, file-count routing, step recipes, prompt-wording tests â€” was written to
+Most of the current prescription -- fixed model ladders, named agents, panel
+sizes, file-count routing, step recipes, prompt-wording tests -- was written to
 compensate for older models that could not be trusted to judge. Modern models
 follow instructions literally, so contradictions and over-specification now
 cost reasoning tokens and cause workflow churn instead of preventing it. The
@@ -35,20 +35,20 @@ partly workstation-incidental rather than repository-owned.
 
 Read before executing. All file:line claims below come from these reports:
 
-- `.specs/workflow-test-rationalization/research/repo-state.md` â€” hardcoded
+- `.specs/workflow-test-rationalization/research/repo-state.md` -- hardcoded
   inventories, duplicated rules, prose/wording tests, compensation-vs-durable
   classification.
-- `.specs/workflow-test-rationalization/research/pi-capabilities.md` â€” what
+- `.specs/workflow-test-rationalization/research/pi-capabilities.md` -- what
   upstream Pi provides (model registry metadata, discovery, context loading,
   extension hooks) vs. what is repository-owned (agents, subagents, routing).
-- `.specs/workflow-test-rationalization/research/prompting-guidance.md` â€”
+- `.specs/workflow-test-rationalization/research/prompting-guidance.md` --
   primary-source prompting principles; its anti-patterns checklist is the
   audit criteria for every rewritten prompt.
 
 ## Boundaries
 
 - **Client scope:** Pi surfaces only. Do not modify `claude/shared/`,
-  `claude/commands/`, `opencode/`, or `copilot/` â€” the Claude client keeps its
+  `claude/commands/`, `opencode/`, or `copilot/` -- the Claude client keeps its
   own separate command system by explicit user decision.
 - Preserve public command names and argument shapes (`/plan-it`, `/do-it`,
   `/review-it`, `/prd-it`, `/improve`, subagent tool schema). Explicit user
@@ -56,11 +56,11 @@ Read before executing. All file:line claims below come from these reports:
 - Every test deletion resolves to a row in `.specs/rationalization/ledger.md`.
   Behavior replacement precedes deletion of real protection: the replacement
   must fail against an intentional regression before the old check goes.
-  Prose-only wording tests need no replacement â€” classify and delete.
+  Prose-only wording tests need no replacement -- classify and delete.
 - Text inspection in a test is legitimate only when runtime code parses that
   text or the token is an external protocol.
 - A static grep test is nearly free; a spawned-shell test is not. Do not
-  replace a cheap grep with a slow or flaky execution test â€” prefer explicit
+  replace a cheap grep with a slow or flaky execution test -- prefer explicit
   accepted loss when a behavior test is not cheap and deterministic.
 - Keep semantic checks that parse structured config and compare meaning:
   WSL / main Dotbot link parity (`test_config_patterns.py:841-868`), CI
@@ -86,7 +86,7 @@ when coordination overhead would exceed the gain.
 
 ## Decision protocol
 
-Already decided â€” do not relitigate or ask again:
+Already decided -- do not relitigate or ask again:
 
 - Claude/OpenCode/Copilot command systems stay separate from Pi.
 - The org-chart taxonomy (`roleType`, `reportsTo`, `leads`, `routingUse`) is
@@ -98,7 +98,7 @@ Already decided â€” do not relitigate or ask again:
 Open judgment calls (test classifications, fixture design, which prose line
 survives a trim, tool configuration details): decide, then record the decision
 and one-line rationale in the ledger or the slice's CHANGELOG entry. Do not
-silently skip a task element because it was ambiguous â€” record what was
+silently skip a task element because it was ambiguous -- record what was
 ambiguous and what you chose.
 
 Stop and ask the user before: changing any public command name or argument
@@ -116,10 +116,10 @@ Never proceed past a gate on inferred or assumed consent.
 Session continuity: work in ledger/checklist order, and after each completed
 slice update the Execution status checklist and commit before starting the
 next task. On starting or resuming a session, read Execution status and the
-ledger first and continue from the recorded state â€” do not re-derive progress
+ledger first and continue from the recorded state -- do not re-derive progress
 from the worktree or re-do completed tasks.
 
-## Phase 0 â€” Inventory
+## Phase 0 -- Inventory
 
 ### T1: Build the test decision ledger
 
@@ -132,12 +132,12 @@ literal content, presence, or shape without executing behavior. Record each in
 protects, runtime consumer (verified in code, not assumed), decision (keep /
 replace-with-behavior / delete / accepted-loss), one-line rationale, and the
 task that executes it. Reconcile against the prior audit's 89 strict / 106
-broad counts â€” explain any delta rather than forcing the numbers.
+broad counts -- explain any delta rather than forcing the numbers.
 
 Done when: every static-content candidate has exactly one ledger row and
 decision, and no decision claims an unverified runtime consumer.
 
-## Phase 1 â€” Pi harness rework
+## Phase 1 -- Pi harness rework
 
 ### T2: Rewrite workflow skills and templates
 
@@ -184,8 +184,8 @@ the `skill-review-*` trio would break its deterministic dispatch, keep the
 trio and note why rather than deleting the protocol.
 
 **Approval gate:** before deleting any agent file, write the proposed roster
-to `.specs/rationalization/roster.md` â€” surviving agents with their
-role/tool/boundary rationale, plus an old-name to new-name mapping â€” and get
+to `.specs/rationalization/roster.md` -- surviving agents with their
+role/tool/boundary rationale, plus an old-name to new-name mapping -- and get
 explicit user approval. After approval, update every reference to old names
 (skills, docs, `skill-review.ts`, tests) in the same slice.
 
@@ -207,9 +207,9 @@ express them through the resolver. Named-model preferences that remain (e.g.
 the Codex premium set in `prompt-router.ts`) live in one clearly-marked policy
 table in the resolver module, not scattered across extensions.
 
-Do not invent a new capability taxonomy. The existing request vocabulary â€”
+Do not invent a new capability taxonomy. The existing request vocabulary --
 subagent `modelSize` (`small`/`medium`/`large`) and the router's
-`nano`/`mini`/`core`/`large`/`max` mapping â€” is a durable runtime interface
+`nano`/`mini`/`core`/`large`/`max` mapping -- is a durable runtime interface
 (repo-state report, "Hardcoded runtime inventories"); keep it as the request
 schema and change only how it resolves to concrete models.
 
@@ -222,9 +222,9 @@ subagent/routing tests pass against the consolidated path.
 
 Execute the ledger decisions for Pi tests: delete remaining prompt/wording
 assertions (`workflow-prompts.test.ts` literals beyond dispatch behavior,
-`runtime-smoke.test.ts` source-shape checks â€” replace with a fixture-driven
+`runtime-smoke.test.ts` source-shape checks -- replace with a fixture-driven
 extension-load test if cheap, else accepted loss, `tool-reduction.test.ts`
-source greps â€” extend the existing process-behavior tests to cover Windows
+source greps -- extend the existing process-behavior tests to cover Windows
 invocation options via mocked spawn, and the prompt-wording case in
 `workflow-commands-pure.test.ts:310-318`). Keep tests that exercise runtime
 output (`pi-instructions`, `skill-prompt`, `review-artifact`, dispatch,
@@ -233,7 +233,7 @@ subagent). Mark each ledger row executed.
 Done when: no Pi test passes or fails on unparsed prose; focused suites and
 typecheck pass; the Pi section of the ledger is fully executed.
 
-## Phase 2 â€” Python test cleanup
+## Phase 2 -- Python test cleanup
 
 ### T7: Split test_config_patterns.py
 
@@ -258,7 +258,7 @@ Done when: wrapper safety is proven by behavior, not string absence; CI
 contract checks parse structure, not prose; no Python-side ledger row remains
 unexecuted.
 
-## Phase 3 â€” Quality tooling
+## Phase 3 -- Quality tooling
 
 ### T9: Pin and configure tools
 
@@ -291,7 +291,7 @@ text; no duplicated work within one invocation.
 Done when: command graph and a three-run median timing comparison show
 distinct scopes and at least one faster routine path.
 
-## Phase 4 â€” Reconciliation and final validation
+## Phase 4 -- Reconciliation and final validation
 
 ### T12: Close the ledger and validate the whole
 
@@ -331,22 +331,49 @@ Phases 1-3 can interleave; only T6 and T12 have cross-phase dependencies.
 
 ## Execution status
 
-Update after every slice: mark a task `[x]` only when its done-when is
-verified, and record the commit hash and any decisions or blockers on its
-line. This section is the resume point for interrupted sessions.
+This section is the executor's working state and the single resume point.
+Rules for maintaining it:
 
-- [ ] T1: test decision ledger â€” pending
-- [ ] T2: workflow skills and templates â€” pending
-- [ ] T3: Pi instruction trim â€” pending
-- [ ] T4: agent roster consolidation â€” pending (approval gate: roster.md)
-- [ ] T5: routing policy consolidation â€” pending
-- [ ] T6: Pi test alignment â€” pending
-- [ ] T7: test_config_patterns split â€” pending
-- [ ] T8: browser wrapper and CI contract â€” pending
-- [ ] T9: pin quality tools â€” pending
-- [ ] T10: changed-file validation entrypoint â€” pending
-- [ ] T11: Make target split â€” pending
-- [ ] T12: ledger close and final validation â€” pending
+1. **Starting a task:** set its status to `in-progress` with a one-line note
+   naming the next concrete step. Update the note whenever the next step
+   changes, so an interrupted session resumes mid-task, not just mid-plan.
+2. **Finishing a task:** mark `[x]` only after its done-when is verified;
+   replace the note with the commit hash and any recorded decisions.
+3. **Blocked:** set `blocked: <reason>` and mirror it under **Current
+   blocker**.
+4. **Ending any session** (or before context compaction): confirm every
+   in-progress note reflects reality, then commit this plan file even if the
+   task is unfinished -- the note is the checkpoint.
+5. **Resuming:** read this section and the ledger first; trust recorded state
+   over re-derivation. Never re-do a `[x]` task.
+
+Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
+`done: <commit>`.
+
+### Task checklist
+
+- [ ] T1: test decision ledger -- pending
+- [ ] T2: workflow skills and templates -- pending
+- [ ] T3: Pi instruction trim -- pending
+- [ ] T4: agent roster consolidation -- pending
+  - [ ] roster.md proposal written
+  - [ ] user approval received (gate -- never inferred)
+  - [ ] deletions and old-name reference updates executed
+- [ ] T5: routing policy consolidation -- pending
+- [ ] T6: Pi test alignment -- pending
+- [ ] T7: test_config_patterns split -- pending
+- [ ] T8: browser wrapper and CI contract -- pending
+- [ ] T9: pin quality tools -- pending
+- [ ] T10: changed-file validation entrypoint -- pending
+- [ ] T11: Make target split -- pending
+- [ ] T12: ledger close and final validation -- pending
+  - [ ] ledger closed: every row executed or explicitly deferred
+  - [ ] entrypoint fixtures exercised (/plan-it, /do-it, /review-it)
+  - [ ] `make check-pi-extensions` passed
+  - [ ] `make check` passed
+  - [ ] before/after measurements recorded in ledger
+
+### State
 
 - **Classification:** planned, not started
 - **Current blocker:** none
