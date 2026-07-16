@@ -267,9 +267,14 @@ Test agent.
 		expect((await stopped).outcome).toBe("failed_to_stop");
 		expect(getTask(task.id)?.state).toBe("running");
 		expect(getTask(task.id)?.execution?.status).toBe("failed_to_stop");
+		expect((await coordinator.wait([task.id])).results[0]?.classification).toBe(
+			"failed_to_stop",
+		);
 		completeLate?.();
 		await vi.runAllTimersAsync();
 		vi.useRealTimers();
+		expect(getTask(task.id)?.state).toBe("cancelled");
+		expect(getTask(task.id)?.execution?.status).toBe("stopped");
 		expect(readRunEvents(path.join(tmpDir, "metrics"))).toHaveLength(1);
 
 		const orphan = createTask({
@@ -299,7 +304,213 @@ Test agent.
 		expect(orphanEvent.workers[0]).not.toHaveProperty("usage");
 		expect(getTask(orphan.id)?.execution?.status).toBe("orphaned");
 	});
+
+	it("starts eligible tasks together and preserves request classifications", async () => {
+		const { TaskExecutionCoordinator } = await import(
+			"../extensions/tasks/execution.ts"
+		);
+		const { createTask } = await import("../lib/task-registry.ts");
+		const releases = new Map<
+			string,
+			(result: { output: string; exitCode: number }) => void
+		>();
+		const entries: string[] = [];
+		const runner = vi.fn(
+			(_execution, _cwd, _signal, _onUpdate, taskId: string) =>
+				new Promise<{ output: string; exitCode: number }>((resolve) => {
+					entries.push(taskId);
+					releases.set(taskId, resolve);
+				}),
+		);
+		const coordinator = new TaskExecutionCoordinator(runner);
+		const first = executableTask(createTask, "first");
+		const second = executableTask(createTask, "second");
+		const manual = createTask({ origin: "other", summary: "manual" });
+		const blocker = createTask({ origin: "other", summary: "blocker" });
+		const blocked = executableTask(createTask, "blocked", [blocker.id]);
+
+		const result = coordinator.startMany(
+			[first.id, manual.id, second.id, blocked.id, "missing"],
+			tmpDir,
+		);
+
+		expect(result.outcome).toBe("partial");
+		expect(result.results.map((item) => item.classification)).toEqual([
+			"started",
+			"manual_ready",
+			"started",
+			"blocked",
+			"missing",
+		]);
+		expect(entries).toEqual([first.id, second.id]);
+		releases.get(first.id)?.({ output: "first", exitCode: 0 });
+		releases.get(second.id)?.({ output: "second", exitCode: 0 });
+		const waited = await coordinator.wait([second.id, first.id]);
+		expect(waited.results.map((item) => item.classification)).toEqual([
+			"terminal",
+			"terminal",
+		]);
+	});
+
+	it("wait aborts only the join and safely observes later rejection", async () => {
+		const { TaskExecutionCoordinator } = await import(
+			"../extensions/tasks/execution.ts"
+		);
+		const { createTask, getTask } = await import("../lib/task-registry.ts");
+		let rejectRunner: ((error: Error) => void) | undefined;
+		let workerSignal: AbortSignal | undefined;
+		const coordinator = new TaskExecutionCoordinator(
+			async (_execution, _cwd, signal) => {
+				workerSignal = signal;
+				return new Promise((_resolve, reject) => {
+					rejectRunner = reject;
+				});
+			},
+		);
+		const task = executableTask(createTask, "abortable");
+		coordinator.start(task.id, tmpDir);
+		const controller = new AbortController();
+		const waiting = coordinator.wait([task.id], controller.signal);
+		controller.abort();
+
+		const aborted = await waiting;
+		expect(aborted).toMatchObject({
+			outcome: "aborted",
+			results: [{ id: task.id, classification: "aborted" }],
+		});
+		expect(workerSignal?.aborted).toBe(false);
+		const alreadyAborted = new AbortController();
+		alreadyAborted.abort();
+		expect(
+			(await coordinator.wait([task.id], alreadyAborted.signal)).results[0]
+				?.classification,
+		).toBe("aborted");
+		rejectRunner?.(new Error("late rejection"));
+		await vi.waitFor(() => expect(getTask(task.id)?.state).toBe("failed"));
+		expect((await coordinator.wait([task.id])).results[0]?.classification).toBe(
+			"terminal",
+		);
+	});
+
+	it("classifies running ownership states with failed-to-stop precedence", async () => {
+		const { TaskExecutionCoordinator } = await import(
+			"../extensions/tasks/execution.ts"
+		);
+		const { createTask } = await import("../lib/task-registry.ts");
+		const coordinator = new TaskExecutionCoordinator();
+		const manual = createTask({
+			origin: "other",
+			summary: "manual running",
+			state: "running",
+		});
+		const external = createTask({
+			origin: "subagent",
+			summary: "external",
+			state: "running",
+			execution: executionFixture("running", process.pid),
+		});
+		const orphan = createTask({
+			origin: "subagent",
+			summary: "orphan",
+			state: "running",
+			execution: executionFixture("stop_requested", 2_147_483_647),
+		});
+		const unknown = createTask({
+			origin: "subagent",
+			summary: "unknown",
+			state: "running",
+			execution: executionFixture("completed", process.pid),
+		});
+		const failedToStop = createTask({
+			origin: "subagent",
+			summary: "failed to stop",
+			state: "running",
+			execution: executionFixture("failed_to_stop", process.pid),
+		});
+
+		const result = await coordinator.wait([
+			manual.id,
+			external.id,
+			orphan.id,
+			unknown.id,
+			failedToStop.id,
+		]);
+		expect(result.results.map((item) => item.classification)).toEqual([
+			"manual_running",
+			"external_running",
+			"orphaned",
+			"ownership_unknown",
+			"failed_to_stop",
+		]);
+		expect(coordinator.start(failedToStop.id, tmpDir).outcome).toBe(
+			"failed_to_stop",
+		);
+	});
+
+	it("compensates ownership persistence failure without starting a runner", async () => {
+		const { TaskExecutionCoordinator } = await import(
+			"../extensions/tasks/execution.ts"
+		);
+		const { createTask, getTask, safeTransitionTask } = await import(
+			"../lib/task-registry.ts"
+		);
+		const runner = vi.fn(async () => ({ output: "unexpected", exitCode: 0 }));
+		const coordinator = new TaskExecutionCoordinator(
+			runner,
+			() => {
+				throw new Error("disk full");
+			},
+			safeTransitionTask,
+		);
+		const task = executableTask(createTask, "write failure");
+
+		const result = coordinator.startMany([task.id], tmpDir);
+
+		expect(result.results[0]).toMatchObject({
+			classification: "start_failed",
+			state: "blocked",
+			error: "disk full",
+		});
+		expect(getTask(task.id)?.blockReason).toBe(
+			"execution metadata persistence failed",
+		);
+		expect(runner).not.toHaveBeenCalled();
+		expect((await coordinator.wait([task.id])).results[0]?.classification).toBe(
+			"blocked",
+		);
+	});
 });
+
+function executionFixture(
+	status: "running" | "stop_requested" | "completed" | "failed_to_stop",
+	ownerPid: number,
+) {
+	return {
+		kind: "subagent" as const,
+		agent: "tester",
+		task: "Run",
+		status,
+		ownerPid,
+	};
+}
+
+function executableTask(
+	createTask: typeof import("../lib/task-registry.ts").createTask,
+	summary: string,
+	blockedBy?: string[],
+) {
+	return createTask({
+		origin: "subagent",
+		summary,
+		blockedBy,
+		execution: {
+			kind: "subagent",
+			agent: "tester",
+			task: "Run",
+			status: "pending",
+		},
+	});
+}
 
 interface RunEvent {
 	data: {

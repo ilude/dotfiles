@@ -38,7 +38,7 @@
 
 ### Task Lists
 
-Use a lightweight prose plan for ordinary 3+ step work. Use the active harness's task tool when the work needs durable dependencies, cross-turn handoff, or background execution, or when the user explicitly requests durable tracking. Skip durable tasks for trivial, informational, or direct single-threaded work. Record lifecycle changes only when state changes; do not poll task state or repeat lifecycle calls.
+Use a lightweight prose plan for ordinary 3+ step work. Durable task records are optional and valid for user-requested lists, main-thread tracking, dependencies, cross-turn work, and background execution. Ordinary multi-step work can remain prose. Record lifecycle changes only when state changes; do not poll public task actions or repeat lifecycle calls.
 
 ### Durable Handoff
 

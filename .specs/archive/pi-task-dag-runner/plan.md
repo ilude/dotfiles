@@ -1,7 +1,7 @@
 ---
 created: 2026-07-15
-status: draft
-completed:
+status: complete
+completed: 2026-07-15T23:07:12Z
 ---
 
 # Plan: Durable mixed task DAG runner
@@ -20,6 +20,7 @@ The target is one optional durable work graph, not separate planning and orchest
 - Shell: Git Bash for repository commands; Pi TypeScript remains pnpm-only.
 - Preserve the existing `task` tool and optional `TaskRecordV1.execution` model.
 - Preserve lifecycle, readiness, retry, cancellation, orphan reconciliation, `failed_to_stop`, workspace scoping, legacy import, telemetry, and TUI rendering behavior.
+- Route every public task lifecycle mutation through `TaskLifecycleService` and its registry/coordinator delegates. Command, tool-update/stop, and execution paths must not implement competing transition, cancellation, retry, or ownership rules.
 - Preserve compact model-visible mutation and collection results and full renderer details.
 - Support main-thread-only task lists, executable subagent tasks, and mixed DAGs without requiring execution metadata on every task.
 - Do not make task creation mandatory for ordinary multi-step work.
@@ -30,7 +31,7 @@ The target is one optional durable work graph, not separate planning and orchest
 - Do not add exact-whitespace tests.
 - Do not add worker-to-worker messaging in this MVP.
 - Do not commit or push unless separately requested.
-- Plan-owned tracked paths are `Makefile`, `CHANGELOG.md`, `pi/AGENTS.md`, `pi/PI-INSTRUCTIONS.md`, `pi/README.md`, `pi/extensions/tasks.ts`, `pi/extensions/tasks/execution.ts`, `pi/lib/task-registry.ts`, `pi/lib/task-renderer.ts`, `pi/tests/task-registry.test.ts`, `pi/tests/task-dependencies.test.ts`, `pi/tests/task-tools.test.ts`, `pi/tests/task-execution.test.ts`, `pi/tests/task-renderer.test.ts`, and `pi/tests/tasks.test.ts`. Mutate only task-DAG contract blocks in those paths.
+- Plan-owned tracked paths are `Makefile`, `CHANGELOG.md`, `pi/AGENTS.md`, `pi/PI-INSTRUCTIONS.md`, `pi/README.md`, `pi/extensions/tasks.ts`, `pi/extensions/tasks/execution.ts`, `pi/lib/task-registry.ts`, `pi/lib/task-renderer.ts`, `pi/lib/workflow-friction.ts`, `pi/tests/task-registry.test.ts`, `pi/tests/task-dependencies.test.ts`, `pi/tests/task-tools.test.ts`, `pi/tests/task-execution.test.ts`, `pi/tests/task-renderer.test.ts`, `pi/tests/tasks.test.ts`, and `pi/tests/workflow-friction.test.ts`. Mutate only task-DAG contract blocks in those paths.
 - Preserve unrelated working-tree changes through targeted edits. In currently modified shared files, this plan authorizes only the task-guidance block in `pi/AGENTS.md`, task-tool documentation in `pi/README.md`, and one append-only entry in `CHANGELOG.md`; capture before/after diffs and preserve every other hunk.
 - Use ASCII punctuation in repository files.
 
@@ -228,12 +229,12 @@ Classification precedence is: missing, foreign workspace, non-running task state
 | Preflight state | `git status --short --branch && test ! -e .git/MERGE_HEAD && test ! -d .git/rebase-merge && test ! -d .git/rebase-apply` | none | terminal output recorded in execution report |
 | Repository/linker target | `test "$(cd "$(git rev-parse --show-toplevel)" && pwd -P)" = "$(cd "${HOME}/.dotfiles" && pwd -P)"` | none | active repository is the linker's hardcoded target |
 | Dependency setup | Run Repository/linker target, then `cd pi && pnpm install --frozen-lockfile && cd .. && scripts/pi-deps-link-setup` | no credentials; globally installed Pi packages required | target assertion, linker output, and package existence check |
-| Owned-path baseline | `mkdir -p .tmp && test ! -e .tmp/pi-task-dag-baseline.patch && git diff -- Makefile CHANGELOG.md pi/AGENTS.md pi/PI-INSTRUCTIONS.md pi/README.md pi/extensions/tasks.ts pi/extensions/tasks/execution.ts pi/lib/task-registry.ts pi/lib/task-renderer.ts pi/tests/task-registry.test.ts pi/tests/task-dependencies.test.ts pi/tests/task-tools.test.ts pi/tests/task-execution.test.ts pi/tests/task-renderer.test.ts pi/tests/tasks.test.ts > .tmp/pi-task-dag-baseline.patch && test -f .tmp/pi-task-dag-baseline.patch` | none | immutable pre-mutation patch referenced by checklist evidence |
+| Owned-path baseline | `mkdir -p .tmp && test ! -e .tmp/pi-task-dag-baseline.patch && git diff -- Makefile CHANGELOG.md pi/AGENTS.md pi/PI-INSTRUCTIONS.md pi/README.md pi/extensions/tasks.ts pi/extensions/tasks/execution.ts pi/lib/task-registry.ts pi/lib/task-renderer.ts pi/lib/workflow-friction.ts pi/tests/task-registry.test.ts pi/tests/task-dependencies.test.ts pi/tests/task-tools.test.ts pi/tests/task-execution.test.ts pi/tests/task-renderer.test.ts pi/tests/tasks.test.ts pi/tests/workflow-friction.test.ts > .tmp/pi-task-dag-baseline.patch && test -f .tmp/pi-task-dag-baseline.patch` | none | immutable pre-mutation patch referenced by checklist evidence |
 | Dependency existence | `for p in pi/node_modules/@earendil-works/pi-coding-agent pi/node_modules/@earendil-works/pi-agent-core pi/node_modules/@earendil-works/pi-ai pi/node_modules/@earendil-works/pi-tui pi/node_modules/@sinclair/typebox; do test -e "$p" || { printf 'missing runtime package: %s\n' "$p"; exit 1; }; done` | none | all five paths exist or command exits nonzero |
 | Focused registry verification | `cd pi && pnpm test task-registry.test.ts task-dependencies.test.ts` | none | Vitest output |
-| Focused integration verification | `cd pi && pnpm test task-tools.test.ts task-execution.test.ts task-renderer.test.ts tasks.test.ts` | none | Vitest output |
+| Focused integration verification | `cd pi && pnpm test task-tools.test.ts task-execution.test.ts task-renderer.test.ts tasks.test.ts workflow-friction.test.ts` | none | Vitest output |
 | Type verification | `cd pi && pnpm run typecheck` | none | TypeScript exit status |
-| Targeted lint | `cd pi && pnpm exec biome check extensions/tasks.ts extensions/tasks/execution.ts lib/task-registry.ts lib/task-renderer.ts tests/task-registry.test.ts tests/task-dependencies.test.ts tests/task-tools.test.ts tests/task-execution.test.ts tests/task-renderer.test.ts` | none | Biome exits 0 with no diagnostics |
+| Targeted lint | `cd pi && pnpm exec biome check extensions/tasks.ts extensions/tasks/execution.ts lib/task-registry.ts lib/task-renderer.ts tests/task-registry.test.ts tests/task-dependencies.test.ts tests/task-tools.test.ts tests/task-execution.test.ts tests/task-renderer.test.ts lib/workflow-friction.ts tests/workflow-friction.test.ts` | none | Biome exits 0 with no diagnostics |
 | Repository focused Pi verification | `make check-pi-extensions` | none after dependency setup | relinking, typecheck, and complete Pi Vitest output |
 | Repository completion verification | `make check && make test-ci` | none | aggregate lint/tests/Pi output plus independently truth-preserving root pytest exit status |
 | Diff verification | `bash -c 'status=0; git diff --check || status=$?; git diff --stat || status=$?; git status --short --branch || status=$?; exit "$status"'` | none | whitespace result plus changed-path inventory even on failure |
@@ -255,6 +256,7 @@ Classification precedence is: missing, foreign workspace, non-running task state
 | Compact results | yes | compact operation and collection helpers exist in `pi/extensions/tasks.ts` |
 | Renderer details | yes, limited | `formatTaskToolResult` supports `record`, `records`, and `output`; T3 extends only if selected envelope needs it |
 | Focused test seams | yes | injectable runner and mock Pi/context helpers exist |
+| Workflow-friction execution predicate | yes, extended by T3 | `isTaskExecutionTrace` recognizes single `execute`; T3 adds `execute_many` as one invocation and leaves `await` excluded |
 | Planned graph batch helper | no, created by T1 | T3 is blocked by V1 |
 | Planned multi-start/wait and public actions | no, created together by T3 | exact workflow T4 is blocked by V2 |
 
@@ -267,7 +269,7 @@ Classification precedence is: missing, foreign workspace, non-running task state
 | T1 | Add prospective mixed-DAG batch creation | 3 | feature | medium | typescript-pro | V0 |
 | T2 | Correct durable task guidance for main-thread use | 2 | mechanical | small | coding-light | V0 |
 | V1 | Validate registry graph creation, public contract, and guidance | -- | validation | medium | validator | T1, T2 |
-| T3 | Implement bounded fan-out, wait, workspace, renderer, and canonical validation contracts | 7 | architecture | large | coding-heavy | V1 |
+| T3 | Implement bounded fan-out, wait, workspace, renderer, and canonical validation contracts | 9 | architecture | large | coding-heavy | V1 |
 | V2 | Validate coordinator and public tool integration | -- | validation | large | validator-heavy | T3 |
 | T4 | Prove the exact mixed manual and subagent workflow | 3 | feature | medium | coding-medium | V2 |
 | V3 | Validate the complete MVP workflow and documentation | -- | validation | medium | validation-lead | T4 |
@@ -362,9 +364,9 @@ Classification precedence is: missing, foreign workspace, non-running task state
 
 **T3: Implement bounded fan-out, wait, workspace, renderer, and canonical validation contracts** [large] -- coding-heavy
 - Blocked by: V1
-- Description: Implement `startMany` and race-safe `wait`, expose `execute_many` and `await` in the unified tool, enforce current-workspace ownership, preserve compact provider content, render the positional results envelope, reject direct restart of `failed_to_stop` for both legacy and multi-ID execute paths, and make the canonical Pi validation target relink runtime packages after its frozen install. Use the exact Public Action Contract and Wait Truth Table validated by V1.
-- Files: `pi/extensions/tasks.ts`, `pi/extensions/tasks/execution.ts`, `pi/lib/task-renderer.ts`, `pi/tests/task-tools.test.ts`, `pi/tests/task-execution.test.ts`, `pi/tests/task-renderer.test.ts`, `Makefile`
-- Mutation boundary: New action schemas/routing, coordinator fan-out/wait and ownership compensation, mandatory renderer support, splitting the existing combined frozen-install/typecheck recipe line in `check-pi-extensions` plus inserting exactly one linker command between install and typecheck, and focused tests. Do not change runner transport, stop timeout, telemetry event count, orphan reconciliation, shutdown, existing output bounds, or unrelated Make targets. The legacy `execute` path changes only to reject `failed_to_stop` until explicit stop/orphan reconciliation proves the prior owner is gone.
+- Description: Implement `startMany` and race-safe `wait`, expose `execute_many` and `await` in the unified tool, enforce current-workspace ownership, preserve compact provider content, render the positional results envelope, reject direct restart of `failed_to_stop` for both legacy and multi-ID execute paths, recognize `execute_many` as one task-execution invocation in workflow-friction metrics without counting `await`, and make the canonical Pi validation target relink runtime packages after its frozen install. Use the exact Public Action Contract and Wait Truth Table validated by V1.
+- Files: `pi/extensions/tasks.ts`, `pi/extensions/tasks/execution.ts`, `pi/lib/task-renderer.ts`, `pi/lib/workflow-friction.ts`, `pi/tests/task-tools.test.ts`, `pi/tests/task-execution.test.ts`, `pi/tests/task-renderer.test.ts`, `pi/tests/workflow-friction.test.ts`, `Makefile`
+- Mutation boundary: New action schemas/routing, coordinator fan-out/wait and ownership compensation, mandatory renderer support, extending only the workflow-friction task-execution action predicate and focused tests, splitting the existing combined frozen-install/typecheck recipe line in `check-pi-extensions` plus inserting exactly one linker command between install and typecheck, and focused tests. Do not change runner transport, stop timeout, telemetry event count, orphan reconciliation, shutdown, existing output bounds, or unrelated Make targets. The legacy `execute` path changes only to reject `failed_to_stop` until explicit stop/orphan reconciliation proves the prior owner is gone.
 - Alternative: Separate coordinator and public tool waves. Rejected because exact signal, ownership, details-envelope, and renderer contracts are one integration boundary and splitting them caused prerequisite ambiguity.
 - Trend bias: This task extends the unified task/coordinator pattern. A separate scheduler fits only when claims, cross-process ownership, or autonomous graph advancement become required.
 - Acceptance Criteria:
@@ -384,11 +386,15 @@ Classification precedence is: missing, foreign workspace, non-running task state
      - Verify: `cd pi && pnpm test task-tools.test.ts task-renderer.test.ts`
      - Pass: Mandatory IDs/classifications/order always remain in valid JSON; deterministic two-pass optional-field budgeting keeps every new or extended action at or below 4,096 UTF-8 bytes for eight Unicode errors and eight long artifact paths without splitting code points; positional details omit records for missing/foreign IDs; every classification and authorized artifact path renders in mixed output capped at 4,096 UTF-8 bytes compact and 16,384 UTF-8 bytes expanded.
      - Fail: Prompts, notes, timestamps, execution prompts, worker output, foreign records, full errors, or unbounded arrays enter content/details incorrectly, or classifications disappear in the TUI.
-  5. [ ] Existing retry, cancellation, orphan, shutdown, output, and `failed_to_stop` behavior remains truthful.
+  5. [ ] Existing retry, cancellation, orphan, shutdown, output, and `failed_to_stop` behavior remains truthful through one shared lifecycle policy.
      - Verify: `cd pi && pnpm test task-tools.test.ts task-execution.test.ts tasks.test.ts`
-     - Pass: Legacy execute and execute_many both reject `failed_to_stop`; active-plus-failed-to-stop and later inactive-plus-failed-to-stop fixtures both classify `failed_to_stop`; await does not join the timed-out active promise; explicit stop reports still-live or reconciles dead ownership to orphaned/blocked before a later start; stale runner settlement cannot overwrite a new attempt; all existing assertions pass.
-     - Fail: Wait abort behaves like stop, failed-to-stop restarts directly, stale settlement overwrites ownership, or lifecycle parity changes.
-  6. [ ] Canonical Pi validation relinks runtime packages after frozen install.
+     - Pass: Command, tool-update/stop, legacy execute, execute_many, and coordinator paths delegate lifecycle decisions to `TaskLifecycleService` and its registry/coordinator delegates; parity fixtures cover blocked starts, skip reasons, retries, active cancellation, and failed-to-stop preservation; legacy execute and execute_many both reject `failed_to_stop`; active-plus-failed-to-stop and later inactive-plus-failed-to-stop fixtures both classify `failed_to_stop`; await does not join the timed-out active promise; explicit stop reports still-live or reconciles dead ownership to orphaned/blocked before a later start; stale runner settlement cannot overwrite a new attempt; all existing assertions pass.
+     - Fail: Any public path duplicates lifecycle policy, parity fixtures diverge, wait abort behaves like stop, failed-to-stop restarts directly, or stale settlement overwrites ownership.
+  6. [ ] Workflow-friction metrics recognize DAG fan-out without treating joins as new execution.
+     - Verify: `cd pi && pnpm test workflow-friction.test.ts`
+     - Pass: A `task` trace with `action: "execute_many"` increments the existing invocation-level `subagentCount` once; `execute` remains unchanged; `await`, `batch`, and other task actions do not increment it; per-worker counts remain owned by orchestration-run telemetry.
+     - Fail: Fan-out remains invisible, one fan-out call is counted as multiple invocation traces, a join is counted as execution, or existing direct execution metrics change.
+  7. [ ] Canonical Pi validation relinks runtime packages after frozen install.
      - Verify: Run `make -n check-pi-extensions > .tmp/check-pi-extensions.commands && python -c 'import sys; s=open(sys.argv[1], encoding="utf-8").read(); terms=["pnpm install --frozen-lockfile", "scripts/pi-deps-link-setup", "pnpm run typecheck", "pnpm test"]; pos=[s.index(x) for x in terms]; assert pos == sorted(pos)' .tmp/check-pi-extensions.commands`, then run `make check-pi-extensions && for p in pi/node_modules/@earendil-works/pi-coding-agent pi/node_modules/@earendil-works/pi-agent-core pi/node_modules/@earendil-works/pi-ai pi/node_modules/@earendil-works/pi-tui pi/node_modules/@sinclair/typebox; do test -e "$p" || exit 1; done`
      - Pass: The target runs frozen install, then `scripts/pi-deps-link-setup`, then typecheck and full Vitest against that linked state; all five paths still exist afterward.
      - Fail: Linker runs before install, is absent, silently skips a package, any path is absent after the target, or the target exits nonzero.
@@ -399,7 +405,7 @@ Classification precedence is: missing, foreign workspace, non-running task state
 - Blocked by: T3
 - Checks:
   1. Run all T3 acceptance commands.
-  2. `cd pi && pnpm test task-tools.test.ts task-execution.test.ts task-renderer.test.ts task-dependencies.test.ts task-registry.test.ts tasks.test.ts` -- all task suites pass.
+  2. `cd pi && pnpm test task-tools.test.ts task-execution.test.ts task-renderer.test.ts task-dependencies.test.ts task-registry.test.ts tasks.test.ts workflow-friction.test.ts` -- all task suites pass.
   3. `cd pi && pnpm run typecheck` -- exits 0.
   4. Run targeted Biome command from Automation Plan -- no diagnostics.
   5. Verify the exact public handler passes its signal only to `await`, workspace checks occur before coordinator calls, and abort never calls `stop`.
@@ -412,14 +418,14 @@ Classification precedence is: missing, foreign workspace, non-running task state
 
 **T4: Prove the exact mixed manual and subagent workflow** [medium] -- coding-medium
 - Blocked by: V2
-- Description: Add one behavioral test using an isolated registry and controlled runner barriers. Create a representative graph with an initial manual task, two executable tasks blocked by it, and a downstream manual task blocked by both workers. Complete the first manual task, call `ready` once, launch both workers with `execute_many`, call `await` once, confirm artifacts and terminal states, call `ready` once, then complete the downstream manual task. Update user-facing documentation and changelog through targeted edits.
+- Description: Add one behavioral test using an isolated registry and controlled runner barriers. Create a representative graph with an initial manual task, two executable tasks blocked by it, and a downstream manual task blocked by both workers. Advance the first manual task through `running` to `completed`, call `ready` once, launch both workers with `execute_many`, call `await` once, confirm artifacts and terminal states, call `ready` once, then advance the downstream manual task through `running` to `completed`. Update user-facing documentation and changelog through targeted edits.
 - Files: `pi/tests/task-tools.test.ts`, `pi/README.md`, `CHANGELOG.md`
 - Mutation boundary: One end-to-end behavioral test, targeted README edits, and an append-only changelog entry inserted without replacing existing entries. Write the exact owned-path diff to `.tmp/pi-task-dag-after-t4.patch`, compare it with `.tmp/pi-task-dag-baseline.patch` using the same status-preserving `diff -u` pattern, record T4-owned hunks in checklist evidence, preserve every unrelated hunk, and avoid exact-whitespace assertions.
 - Alternative: Rely on unit tests. Rejected because the requested contract is the exact mixed parent/subagent sequence.
 - Acceptance Criteria:
   1. [ ] The public workflow completes without public action polling and preserves manual ownership.
      - Verify: `cd pi && pnpm test task-tools.test.ts`
-     - Pass: An action spy observes exactly `batch`, manual update, one `ready`, `execute_many`, one `await`, one `ready`, and final manual update; every later ID comes from the batch response alias mapping; aliases cover every request key; zero `list`, `get`, and `output` actions; no polling timer; both runner entries precede release; final graph is complete.
+     - Pass: An action spy observes exactly `batch`, two initial manual lifecycle updates, one `ready`, `execute_many`, one `await`, one `ready`, and two final manual lifecycle updates; every later ID comes from the batch response alias mapping; aliases cover every request key; zero `list`, `get`, and `output` actions; no polling timer; both runner entries precede release; final graph is complete.
      - Fail: Extra public reads are required, workers serialize, a manual task starts, or downstream readiness is wrong.
   2. [ ] Abort remains distinct from stop in the public workflow.
      - Verify: `cd pi && pnpm test task-tools.test.ts task-execution.test.ts`
@@ -503,9 +509,9 @@ Final:  V3 -> F1 -> F2 -> F3 -> F4 -> F5
 3. [ ] New actions enforce workspace, ownership, provider-size, and TUI-detail contracts.
    - Verify: `cd pi && pnpm test task-tools.test.ts task-execution.test.ts task-renderer.test.ts`
    - Pass: Every truth-table row and content/details assertion passes.
-4. [ ] Existing behavior remains compatible.
-   - Verify: `cd pi && pnpm test task-registry.test.ts task-dependencies.test.ts task-tools.test.ts task-execution.test.ts task-renderer.test.ts tasks.test.ts`
-   - Pass: Lifecycle, retry, cancellation, orphan, shutdown, output, workspace, legacy, and renderer tests pass.
+4. [ ] Existing behavior remains compatible and every public lifecycle surface remains policy-equivalent.
+   - Verify: `cd pi && pnpm test task-registry.test.ts task-dependencies.test.ts task-tools.test.ts task-execution.test.ts task-renderer.test.ts tasks.test.ts workflow-friction.test.ts`
+   - Pass: Lifecycle, retry, cancellation, orphan, shutdown, output, workspace, legacy, renderer, and execution-invocation metrics tests pass; command, tool-update/stop, and execution parity regressions prove the shared lifecycle policy remains authoritative.
 5. [ ] Complete repository surface remains healthy.
    - Verify: Run the exact F2 `make check && make test-ci` plus post-target package existence command.
    - Pass: Aggregate checks, independently truth-preserving root pytest, Pi relinking, typecheck, complete Pi Vitest, and all package checks exit 0.
@@ -587,60 +593,60 @@ This checklist is the durable resume ledger for `/do-it`. Checked means verified
 
 ### Wave 0
 
-- [ ] T0: Prepare and verify Pi runtime dependencies
-  - Status: pending
-  - Evidence: --
-- [ ] V0: Validate execution preflight
-  - Status: pending
-  - Evidence: --
+- [x] T0: Prepare and verify Pi runtime dependencies
+  - Status: complete
+  - Evidence: 2026-07-15T21:44:57Z wave-0 - repository/operation/tool/linker-target preflight passed; `.tmp/pi-task-dag-baseline.patch` captured; frozen pnpm install, runtime linker, and all five package existence checks passed.
+- [x] V0: Validate execution preflight
+  - Status: complete
+  - Evidence: 2026-07-15 wave-0 gate - dependency existence recheck passed; `pi/package.json`, `pi/pnpm-lock.yaml`, linker, Makefile, baseline patch, and T0 evidence are present.
 
 ### Wave 1
 
-- [ ] T1: Add prospective mixed-DAG batch creation
-  - Status: pending
-  - Evidence: --
-- [ ] T2: Correct durable task guidance for main-thread use
-  - Status: pending
-  - Evidence: --
-- [ ] V1: Validate registry graph creation, public contract, and guidance
-  - Status: pending
-  - Evidence: --
+- [x] T1: Add prospective mixed-DAG batch creation
+  - Status: complete
+  - Evidence: 2026-07-15 wave-1 - registry batch API and focused validation/recovery tests added in the three scoped files; parent rerun passed 2 files and 34 tests; focused diff and `git diff --check` inspected.
+- [x] T2: Correct durable task guidance for main-thread use
+  - Status: complete
+  - Evidence: 2026-07-15 wave-1 - only task-use paragraphs changed in `pi/AGENTS.md` and `pi/PI-INSTRUCTIONS.md`; `.tmp/pi-task-dag-after-t2.patch` captured; baseline comparison, rg guidance check, and diff check passed.
+- [x] V1: Validate registry graph creation, public contract, and guidance
+  - Status: complete
+  - Evidence: 2026-07-15 wave-1 gate - initial Biome failure repaired; full rerun passed 3 files/54 tests, targeted Biome with no diagnostics, guidance rg, focused diff inspection, and diff check.
 
 ### Wave 2
 
-- [ ] T3: Implement bounded fan-out, wait, workspace, renderer, and canonical validation contracts
-  - Status: pending
-  - Evidence: --
-- [ ] V2: Validate coordinator and public tool integration
-  - Status: pending
-  - Evidence: --
+- [x] T3: Implement bounded fan-out, wait, workspace, renderer, and canonical validation contracts
+  - Status: complete
+  - Evidence: 2026-07-15 wave-2 - execute_many/await, ownership/workspace/abort/budget/renderer/friction/Makefile contracts implemented; transient broad failures passed on rerun; final focused run passed 5 files/101 tests, typecheck, targeted Biome, diff check, Makefile order, and `make check-pi-extensions` with 93 files/1312 passed/1 skipped.
+- [x] V2: Validate coordinator and public tool integration
+  - Status: complete
+  - Evidence: 2026-07-15 wave-2 gate - exact seven-suite run passed 7 files/135 tests after isolating workflow-friction storage; typecheck, targeted Biome, signal/workspace/abort handler inspection, content-budget tests, and diff check passed.
 
 ### Wave 3
 
-- [ ] T4: Prove the exact mixed manual and subagent workflow
-  - Status: pending
-  - Evidence: --
-- [ ] V3: Validate the complete MVP workflow and documentation
-  - Status: pending
-  - Evidence: --
+- [x] T4: Prove the exact mixed manual and subagent workflow
+  - Status: complete
+  - Evidence: 2026-07-15 wave-3 - exact public mixed-DAG test added with lifecycle-correct manual updates; task-tools passed 26 tests and combined task-tools/execution passed 34 tests; docs rg, Biome, diff check, refreshed `.tmp/pi-task-dag-after-t4.patch`, README, and append-only changelog passed.
+- [x] V3: Validate the complete MVP workflow and documentation
+  - Status: complete
+  - Evidence: 2026-07-15 wave-3 gate - all seven focused suites passed 136 tests; typecheck, targeted Biome, aggregate diff check, lifecycle regression coverage, and documentation consistency rg passed.
 
 ### Final Gates
 
-- [ ] F1: Task-specific verification complete
-  - Status: pending
-  - Evidence: --
-- [ ] F2: Repo-wide validation complete
-  - Status: pending
-  - Evidence: --
-- [ ] F3: Manual validation not required or completed
-  - Status: pending
-  - Evidence: --
-- [ ] F4: Deployment validation complete or not required
-  - Status: pending
-  - Evidence: --
-- [ ] F5: Archive preflight complete
-  - Status: pending
-  - Evidence: --
+- [x] F1: Task-specific verification complete
+  - Status: complete
+  - Evidence: 2026-07-15 final gate - exact F1 command passed 6 files/101 tests and TypeScript typecheck after final source edits.
+- [x] F2: Repo-wide validation complete
+  - Status: complete
+  - Evidence: 2026-07-15 final gate - `make check && make test-ci` exited 0: repository checks passed, Pi 93 files passed, root pytest 1203 passed/11 skipped, and all five linked runtime package checks passed.
+- [x] F3: Manual validation not required or completed
+  - Status: complete
+  - Evidence: 2026-07-15 final gate - manual validation not required; automated mixed-DAG, workspace, abort/cancellation, lifecycle, type, lint, focused, and full-suite evidence passed for local reversible changes.
+- [x] F4: Deployment validation complete or not required
+  - Status: complete
+  - Evidence: 2026-07-15 final gate - deployment not applicable; no external runtime or production mutation occurred.
+- [x] F5: Archive preflight complete
+  - Status: complete
+  - Evidence: 2026-07-15 final gate - diff verification and all active-plan/review/readiness/complete/ready/no-collision predicates passed; archive publication prerequisites are satisfied.
 
 ## Handoff Notes
 
@@ -655,11 +661,57 @@ This checklist is the durable resume ledger for `/do-it`. Checked means verified
 
 ## Execution Status
 
-- **status:** not-started
-- **current_wave:** wave-0
-- **last_completed_id:** none
-- **next_id:** T0
-- **archive_status:** active
-- **started_at:** --
-- **completed_at:** --
-- **blockers:** three standalone-readiness fixes applied; independent `/review-it` revalidation required before execution
+- **status:** complete
+- **classification:** completed-and-archived
+- **current_wave:** final-gates
+- **last_completed_id:** F5
+- **last_completed_gate:** archive preflight
+- **next_id:** none
+- **next_ready_gate:** none
+- **archive_status:** archived
+- **started_at:** 2026-07-15T21:44:57Z
+- **completed_at:** 2026-07-15T23:07:12Z
+- **completed_work:** Waves 0-3 and final gates F1-F4 are complete; implementation, focused validation, repo-wide validation, manual decision, and deployment decision passed.
+- **commands_results:** Focused suites passed 136 tests; F1 passed 101 tests plus typecheck; `make check && make test-ci` passed with Pi 93 files and root pytest 1,203 passed/11 skipped; all linked package checks passed.
+- **blockers:** none
+- **remaining_checks:** none.
+- **exact_user_actions:** none
+- **resume_appropriate:** No after successful archive.
+
+## Workflow Eval Record
+
+- **schema_version:** 1
+- **episode_id:** 2026-07-15T21-44-57Z-do-it-pi-task-dag-runner
+- **command:** do-it
+- **artifact_path:** `.specs/pi-task-dag-runner/plan.md`
+- **repo_root:** `C:/Users/mglenn/.dotfiles`
+- **started_at:** 2026-07-15T21:44:57Z
+- **completed_at:** 2026-07-15T23:07:12Z
+- **status:** completed
+- **classification:** completed-and-archived
+- **archive_status:** archived
+- **redaction_status:** no_sensitive_output
+- **phase_id:** final-gates
+- **phase_type:** validation
+- **task_id:** F5
+- **phase_status:** passed
+- **depends_on:** F1-F4
+- **validation_command:** checklist ledger, diff, readiness, status, and archive preflight commands from the plan
+- **validation_result:** passed
+- **evidence:** Focused and repository-wide validation passed; archived plan and required review artifacts are present at `.specs/archive/pi-task-dag-runner/`; active plan path is absent.
+- **manual_required:** false
+- **risk_level:** medium
+- **blast_radius:** personal-repo
+- **rollback:** known
+- **manual_decision:** not_required
+- **manual_decision_reason:** The blocker is an automated plan-readiness prerequisite, not a manual runtime validation gate.
+- **deployment_decision:** not_required
+- **checklist_completion:** 14 of 14 items complete
+- **blocker_reason:** none
+- **friction_tags:** stale-readiness-artifact-overrode-repaired-plan, lifecycle-fixture-plan-contradiction, transient-cross-suite-isolation, hidden-panel-launch-failed
+- **missing_evidence:** Hidden evaluator panel produced no findings because all three launches exited with code 1; deterministic completion consistency checks passed and no factual archive inconsistency was established.
+- **improvement_candidates:** Treat applied review repairs as authoritative; require lifecycle-valid manual task fixtures in plan review; isolate workflow-friction storage in tests.
+- **eval_confidence:** high - focused, integration, type, lint, canonical Pi, and root repository gates passed.
+- **execution_outcome:** `{"classification":"completed-and-archived","completed":true,"blocked_by_plan_gap":false,"validation_failures_after_review":3,"manual_gate_ambiguity":false,"archive_issue":false,"missed_by_review":["manual fixture required invalid pending-to-completed transition"]}`
+- **panel_quality_label:** `{"sizing":"under_sized","reason":"Review repaired three contract defects but missed the manual lifecycle contradiction; execution repaired it and all gates passed.","confidence":"high"}`
+- **hidden_panel:** `evidence-auditor`, `workflow-friction-analyst`, and `regression-test-hunter` were launched after archive; each exited with code 1 without findings. Deterministic archive and ledger checks remain authoritative.

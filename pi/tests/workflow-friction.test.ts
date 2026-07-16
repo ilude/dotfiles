@@ -110,6 +110,110 @@ function queuedReviewJob(packet: InteractionPacket) {
 	};
 }
 
+function emptySessionEntries(): [] {
+	return [];
+}
+
+function sessionContextFixture(sessionId: string) {
+	return createMockCtx({
+		sessionManager: {
+			getSessionId: () => sessionId,
+			getEntries: emptySessionEntries,
+		},
+	});
+}
+
+async function emitTopLevelInteractionEvents(
+	ctx: ReturnType<typeof createMockCtx>,
+): Promise<void> {
+	const pi = createMockPi();
+	workflowFrictionExtension(pi as never);
+	const beforeAgent = pi._getHook("before_agent_start")[0]?.handler;
+	const messageEnd = pi._getHook("message_end")[0]?.handler;
+	const settled = pi._getHook("agent_settled")[0]?.handler;
+	await beforeAgent({ prompt: "direct" }, ctx);
+	await messageEnd({
+		message: {
+			role: "assistant",
+			provider: "provider-one",
+			model: "model-one",
+			usage: { input: 7, output: 2, totalTokens: 9 },
+			content: [],
+		},
+	});
+	await messageEnd({
+		message: {
+			role: "assistant",
+			provider: "provider-two",
+			model: "model-two",
+			usage: { input: 3, output: 1, totalTokens: 4, cost: { total: 0 } },
+			content: [{ type: "text", text: "done" }],
+		},
+	});
+	await settled({}, ctx);
+
+	await beforeAgent({ prompt: "delegated" }, ctx);
+	registerOrchestrationInvocation("orchestration-delegated");
+	await settled({}, ctx);
+
+	process.env.PI_SUBAGENT_RUN_ID = "child-run";
+	const child = createMockPi();
+	workflowFrictionExtension(child as never);
+	const childBefore = child._getHook("before_agent_start")[0]?.handler;
+	const childSettled = child._getHook("agent_settled")[0]?.handler;
+	await childBefore({ prompt: "child" }, ctx);
+	await childSettled({}, ctx);
+}
+
+async function readOrchestrationInteractionEvents(
+	metricsDir: string,
+): Promise<Record<string, unknown>[]> {
+	const files = await fs.readdir(metricsDir);
+	const lines = await fs.readFile(
+		path.join(metricsDir, files[0] ?? ""),
+		"utf8",
+	);
+	return lines
+		.trim()
+		.split("\n")
+		.map((line) => JSON.parse(line) as Record<string, unknown>)
+		.filter((event) => event.event === "orchestration_interaction");
+}
+
+function expectTopLevelInteractionEvents(
+	events: Record<string, unknown>[],
+): void {
+	expect(events).toHaveLength(2);
+	expect(events[0]).toMatchObject({
+		session: "session-top-level",
+		data: {
+			orchestrationIds: [],
+			direct: true,
+			parentUsageByModel: [
+				{
+					provider: "provider-one",
+					model: "model-one",
+					inputTokens: 7,
+					costSource: "unavailable",
+				},
+				{
+					provider: "provider-two",
+					model: "model-two",
+					inputTokens: 3,
+					costUsd: 0,
+					costSource: "pi-usage",
+				},
+			],
+		},
+	});
+	expect(events[1]).toMatchObject({
+		data: {
+			orchestrationIds: ["orchestration-delegated"],
+			direct: false,
+		},
+	});
+}
+
 function fakeReviewer() {
 	const output = commandLearningReviewRecord("/test/dir").review;
 	if (!output) throw new Error("Review fixture is missing");
@@ -313,7 +417,7 @@ describe("workflow friction metadata", () => {
 		expect(JSON.stringify(metadata)).not.toContain("private assistant text");
 	});
 
-	it("counts task execute traces as subagent invocations", () => {
+	it("counts task execute actions but excludes joins and graph mutations", () => {
 		const metadata = interactionMetadataFromPacket({
 			schemaVersion: 1,
 			interactionId: "interaction-task-execute",
@@ -326,16 +430,16 @@ describe("workflow friction metadata", () => {
 			userText: "",
 			assistantTurns: [],
 			assistantText: "",
-			tools: [
+			tools: ["execute", "execute_many", "await", "batch"].map((action) =>
 				trace({
 					toolName: "task",
-					argsText: JSON.stringify({ action: "execute" }),
+					argsText: JSON.stringify({ action }),
 					resultText: "completed",
 					isError: false,
 				}),
-			],
+			),
 		});
-		expect(metadata.subagentCount).toBe(1);
+		expect(metadata.subagentCount).toBe(2);
 		expect(metadata.failedSubagentCount).toBe(0);
 	});
 
@@ -768,27 +872,91 @@ describe("workflow friction extension", () => {
 	});
 
 	it("reports when no supported improvement candidate exists", async () => {
+		const scratch = await fs.mkdtemp(
+			path.join(os.tmpdir(), "pi-improve-empty-"),
+		);
+		const previous = process.env.PI_WORKFLOW_FRICTION_DIR;
+		process.env.PI_WORKFLOW_FRICTION_DIR = scratch;
+		try {
+			const pi = createMockPi();
+			workflowFrictionExtension(pi as never);
+			const ctx = createMockCtx();
+			const improve = pi._commands.find(
+				(command) => command.name === "improve",
+			);
+			await improve?.handler("", ctx);
+			expect(ctx.ui.notify).toHaveBeenCalledWith(
+				"No supported improvement candidates exist for this workspace.",
+				"info",
+			);
+		} finally {
+			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
+			else process.env.PI_WORKFLOW_FRICTION_DIR = previous;
+			await fs.rm(scratch, { recursive: true, force: true });
+		}
+	});
+
+	it("shows /improve help and rejects retired free-form capture arguments", async () => {
 		const pi = createMockPi();
 		workflowFrictionExtension(pi as never);
 		const ctx = createMockCtx();
 		const improve = pi._commands.find((command) => command.name === "improve");
-		await improve?.handler("", ctx);
+		await improve?.handler("help", ctx);
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			"No supported improvement candidates exist for this workspace.",
+			expect.stringContaining("/improve list"),
 			"info",
+		);
+		await improve?.handler("Repeated validation with no edit", ctx);
+		expect(ctx.ui.notify).toHaveBeenLastCalledWith(
+			expect.stringContaining("/improve select <id>"),
+			"warning",
 		);
 	});
 
-	it("uses /improve notes as the manual capture path", async () => {
-		const pi = createMockPi();
-		workflowFrictionExtension(pi as never);
-		const ctx = createMockCtx();
-		const improve = pi._commands.find((command) => command.name === "improve");
-		await improve?.handler("Repeated validation with no edit", ctx);
-		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			"No completed interaction is available to capture.",
-			"warning",
+	it("lists unresolved candidates and selects one by its displayed ID", async () => {
+		const scratch = await fs.mkdtemp(
+			path.join(os.tmpdir(), "pi-improve-list-"),
 		);
+		const previous = process.env.PI_WORKFLOW_FRICTION_DIR;
+		process.env.PI_WORKFLOW_FRICTION_DIR = scratch;
+		try {
+			const ctx = createMockCtx({
+				cwd: "/test/dir",
+				sessionManager: {
+					getSessionId: () => "session-improve-list",
+					getEntries: emptySessionEntries,
+				},
+			});
+			const candidate = await seedCommandLearningReview(ctx.cwd);
+			const pi = createMockPi();
+			workflowFrictionExtension(pi as never);
+			const improve = pi._commands.find(
+				(command) => command.name === "improve",
+			);
+
+			await improve?.handler("list", ctx);
+			expect(pi.sendMessage).not.toHaveBeenCalled();
+			expect(ctx.ui.notify).toHaveBeenCalledWith(
+				expect.stringContaining(
+					"Available improvement candidates (1):\n1. command",
+				),
+				"info",
+			);
+
+			await improve?.handler("select command", ctx);
+			expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+			expect(
+				String(pi.sendMessage.mock.calls[0]?.[0]?.content ?? ""),
+			).toContain(`Candidate ID: ${candidate.interactionId}`);
+			const beforeAgent = pi._getHook("before_agent_start")[0]?.handler;
+			const settled = pi._getHook("agent_settled")[0]?.handler;
+			await beforeAgent({ prompt: "/improve select command" }, ctx);
+			await settled({}, ctx);
+		} finally {
+			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
+			else process.env.PI_WORKFLOW_FRICTION_DIR = previous;
+			await fs.rm(scratch, { recursive: true, force: true });
+		}
 	});
 
 	it("turns a short correction into a quarantined improvement discussion", async () => {
@@ -825,6 +993,9 @@ describe("workflow friction extension", () => {
 			expect(pi.sendMessage).toHaveBeenCalledTimes(1);
 			const prompt = String(pi.sendMessage.mock.calls[0]?.[0]?.content ?? "");
 			expect(prompt).toContain("Use the full 1-3-1 format");
+			expect(prompt).toContain(
+				"Questions and comments continue the discussion",
+			);
 			expect(prompt).toContain(
 				"Proposed change: Use pnpm for Pi TypeScript work.",
 			);
@@ -976,7 +1147,7 @@ describe("workflow friction extension", () => {
 				cwd: "/test/dir",
 				sessionManager: {
 					getSessionId: () => "session-initial",
-					getEntries: () => [],
+					getEntries: emptySessionEntries,
 				},
 			});
 			const pi = createMockPi();
@@ -1004,7 +1175,7 @@ describe("workflow friction extension", () => {
 				cwd: "/test/dir",
 				sessionManager: {
 					getSessionId: () => "session-remember",
-					getEntries: () => [],
+					getEntries: emptySessionEntries,
 				},
 			});
 			const pi = createMockPi();
@@ -1057,8 +1228,21 @@ describe("workflow friction extension", () => {
 					undefined,
 					ctx,
 				),
-			).rejects.toThrow(/subsequent user decision/);
+			).rejects.toThrow(/explicit Apply, Edit, or Skip/);
 			const input = pi._getHook("input")[0]?.handler;
+			await input(
+				{ source: "interactive", text: "Can we change the target first?" },
+				ctx,
+			);
+			await expect(
+				decideTool?.execute(
+					"question-call",
+					appliedParams,
+					undefined,
+					undefined,
+					ctx,
+				),
+			).rejects.toThrow(/explicit Apply, Edit, or Skip/);
 			await input({ source: "interactive", text: decisionText }, ctx);
 			await decideTool?.execute(
 				"decision-call",
@@ -1080,11 +1264,11 @@ describe("workflow friction extension", () => {
 			);
 			expect(experimentLog).toContain(`experiment-${candidate.interactionId}`);
 			pi.sendMessage.mockClear();
-			await command?.handler("", ctx);
+			ctx.ui.notify.mockClear();
+			await command?.handler("list", ctx);
 			expect(pi.sendMessage).not.toHaveBeenCalled();
-			expect(ctx.ui.notify).toHaveBeenCalledWith(
-				"No supported improvement candidates exist for this workspace.",
-				"info",
+			expect(JSON.stringify(ctx.ui.notify.mock.calls)).not.toContain(
+				candidate.interactionId,
 			);
 		} finally {
 			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
@@ -1106,7 +1290,7 @@ describe("workflow friction extension", () => {
 			workflowFrictionExtension(pi as never);
 			const command = pi._commands.find((item) => item.name === "improve");
 			await command?.handler("", ctx);
-			const decisionText = "Skip this because it was specific to one task.";
+			const decisionText = "Skip: this was specific to one task.";
 			const input = pi._getHook("input")[0]?.handler;
 			await input({ source: "interactive", text: decisionText }, ctx);
 			const decideTool = pi._getTool("learning_candidate_decide");
@@ -1165,89 +1349,11 @@ describe("workflow friction extension", () => {
 		process.env.PI_WORKFLOW_FRICTION_DIR = frictionDir;
 		delete process.env.PI_SUBAGENT_RUN_ID;
 		try {
-			const ctx = createMockCtx({
-				sessionManager: {
-					getSessionId: () => "session-top-level",
-					getEntries: () => [],
-				},
-			});
-			const pi = createMockPi();
-			workflowFrictionExtension(pi as never);
-			const beforeAgent = pi._getHook("before_agent_start")[0]?.handler;
-			const messageEnd = pi._getHook("message_end")[0]?.handler;
-			const settled = pi._getHook("agent_settled")[0]?.handler;
-			await beforeAgent({ prompt: "direct" }, ctx);
-			await messageEnd({
-				message: {
-					role: "assistant",
-					provider: "provider-one",
-					model: "model-one",
-					usage: { input: 7, output: 2, totalTokens: 9 },
-					content: [],
-				},
-			});
-			await messageEnd({
-				message: {
-					role: "assistant",
-					provider: "provider-two",
-					model: "model-two",
-					usage: { input: 3, output: 1, totalTokens: 4, cost: { total: 0 } },
-					content: [{ type: "text", text: "done" }],
-				},
-			});
-			await settled({}, ctx);
-
-			await beforeAgent({ prompt: "delegated" }, ctx);
-			registerOrchestrationInvocation("orchestration-delegated");
-			await settled({}, ctx);
-
-			process.env.PI_SUBAGENT_RUN_ID = "child-run";
-			const child = createMockPi();
-			workflowFrictionExtension(child as never);
-			const childBefore = child._getHook("before_agent_start")[0]?.handler;
-			const childSettled = child._getHook("agent_settled")[0]?.handler;
-			await childBefore({ prompt: "child" }, ctx);
-			await childSettled({}, ctx);
-
-			const files = await fs.readdir(metricsDir);
-			const lines = await fs.readFile(
-				path.join(metricsDir, files[0] ?? ""),
-				"utf8",
+			const ctx = sessionContextFixture("session-top-level");
+			await emitTopLevelInteractionEvents(ctx);
+			expectTopLevelInteractionEvents(
+				await readOrchestrationInteractionEvents(metricsDir),
 			);
-			const events = lines
-				.trim()
-				.split("\n")
-				.map((line) => JSON.parse(line) as Record<string, unknown>)
-				.filter((event) => event.event === "orchestration_interaction");
-			expect(events).toHaveLength(2);
-			expect(events[0]).toMatchObject({
-				session: "session-top-level",
-				data: {
-					orchestrationIds: [],
-					direct: true,
-					parentUsageByModel: [
-						{
-							provider: "provider-one",
-							model: "model-one",
-							inputTokens: 7,
-							costSource: "unavailable",
-						},
-						{
-							provider: "provider-two",
-							model: "model-two",
-							inputTokens: 3,
-							costUsd: 0,
-							costSource: "pi-usage",
-						},
-					],
-				},
-			});
-			expect(events[1]).toMatchObject({
-				data: {
-					orchestrationIds: ["orchestration-delegated"],
-					direct: false,
-				},
-			});
 		} finally {
 			if (previousMetrics === undefined) delete process.env.PI_METRICS_DIR;
 			else process.env.PI_METRICS_DIR = previousMetrics;

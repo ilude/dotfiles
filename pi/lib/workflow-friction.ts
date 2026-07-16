@@ -389,7 +389,7 @@ function isTaskExecutionTrace(trace: ToolTrace): boolean {
 	if (trace.toolName !== "task") return false;
 	try {
 		const args = JSON.parse(trace.argsText) as Record<string, unknown>;
-		return args.action === "execute";
+		return args.action === "execute" || args.action === "execute_many";
 	} catch {
 		return false;
 	}

@@ -2,6 +2,48 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-15: Fully hide target-context deferrals
+
+**Why:** The target-context guard removed the blocked result text but retained its
+error state and the detailed block reason, so Pi could still surface the expected
+internal retry as a visible failure.
+
+**Changed:**
+- Made expected target-context deferrals reasonless.
+- Finalized deferred tool calls as empty non-error results.
+- Added regression coverage for the complete blocked-result transformation.
+- Updated the extension type-check wrapper to resolve the current package from
+  project-local, pnpm, npm, Pi-bin, and Bun locations and use the pinned local
+  TypeScript compiler.
+- Split the test suites and named their lifecycle callbacks so complexity
+  validation recognizes bounded functions.
+- Preserved the task batch validator's mutable return contract with a copy of
+  readonly input values, and split workspace resolution, batch dependency
+  validation, transitions, and task listing into bounded helpers.
+- Updated the damage-control audit fixture to use the supported Claude policy
+  shape while retaining Bash, file-tool, and PowerShell hard-block coverage.
+
+**Files:** `pi/extensions/agents-context.ts`, `pi/extensions/tsc-check.py`,
+`pi/lib/task-registry.ts`, `pi/tests/agents-context.test.ts`,
+`pi/tests/damage-control.test.ts`, `CHANGELOG.md`
+
+---
+
+## 2026-07-15: Add explicit improvement candidate selection
+
+**Why:** `/improve` hid all but the top-ranked candidate and treated every follow-up message as a potential decision, making candidate choice opaque and discussion state too permissive.
+
+**Changed:**
+- Added `/improve list`, `/improve select <id>`, and `/improve help`.
+- Removed free-form manual capture arguments from the public command.
+- Kept questions in a discussion state until an explicit Apply, Edit, Skip, or numbered selection.
+- Added command selection and decision-state regression coverage.
+
+**Files:** `pi/extensions/workflow-friction-review.ts`,
+`pi/tests/workflow-friction.test.ts`, `pi/README.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-15: Unify Bedrock provider and refresh targeting
 
 **Why:** `/bedrock-refresh` manufactured a default profile and ignored
@@ -1628,5 +1670,21 @@ commands selected ignored virtual environments tied to a removed Python install.
 **Files:** `pi/scripts/pi-new`, `test/test_pi_new.py`,
 `pi/multi-team/agents/`, `pi/multi-team/skills/`, `pi/prompts/yt.md`,
 `pi/tests/workflow-prompts.test.ts`, `.specs/pi-extension-refactors/backlog.md`
+
+---
+
+## 2026-07-15: Document and verify mixed task DAG execution
+
+**Why:** A mixed graph needs one public workflow that keeps manual work
+main-thread-owned while concurrently executing and joining ready subagent work.
+
+**Changed:**
+- Added end-to-end coverage for graph batch aliases, manual transitions,
+  concurrent `execute_many`, one-shot `await`, artifacts, and downstream
+  readiness without public-action polling.
+- Documented optional durable main-thread lists, mixed graphs, bounded fan-out,
+  one-shot waits, and explicit `write_failed` recovery.
+
+**Files:** `pi/tests/task-tools.test.ts`, `pi/README.md`, `CHANGELOG.md`
 
 ---

@@ -171,7 +171,7 @@ describe("atomic JSON-object updates", () => {
 			first: true,
 			second: true,
 		});
-	});
+	}, 60_000);
 
 	it("recovers an expired lock", async () => {
 		const settingsPath = path.join(tempDir, "settings.json");

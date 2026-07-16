@@ -22,25 +22,28 @@ function registerAgentsContext(pi: ReturnType<typeof createMockPi>) {
 	agentsContext(pi as unknown as Parameters<typeof agentsContext>[0]);
 }
 
-describe("agents-context extension", () => {
-	let tmp: string;
-	let originalHome: string | undefined;
+let tmp: string;
+let originalHome: string | undefined;
 
-	beforeEach(() => {
-		resetAgentsContextStateForTests();
-		tmp = fs.mkdtempSync(path.join(os.tmpdir(), "agents-context-"));
-		originalHome = process.env.HOME;
-		process.env.HOME = tmp;
-		vi.spyOn(os, "homedir").mockReturnValue(tmp);
-	});
+function setupAgentsContextTest() {
+	resetAgentsContextStateForTests();
+	tmp = fs.mkdtempSync(path.join(os.tmpdir(), "agents-context-"));
+	originalHome = process.env.HOME;
+	process.env.HOME = tmp;
+	vi.spyOn(os, "homedir").mockReturnValue(tmp);
+}
 
-	afterEach(() => {
-		vi.restoreAllMocks();
-		resetAgentsContextStateForTests();
-		if (originalHome === undefined) delete process.env.HOME;
-		else process.env.HOME = originalHome;
-		fs.rmSync(tmp, { recursive: true, force: true });
-	});
+function cleanupAgentsContextTest() {
+	vi.restoreAllMocks();
+	resetAgentsContextStateForTests();
+	if (originalHome === undefined) delete process.env.HOME;
+	else process.env.HOME = originalHome;
+	fs.rmSync(tmp, { recursive: true, force: true });
+}
+
+describe("agents-context discovery", () => {
+	beforeEach(setupAgentsContextTest);
+	afterEach(cleanupAgentsContextTest);
 
 	it("filters and blocks expertise tools", async () => {
 		const pi = createMockPi();
@@ -256,6 +259,12 @@ describe("agents-context extension", () => {
 		expect(result.messages[0].content).not.toContain("first root");
 	});
 
+});
+
+describe("agents-context runtime guards", () => {
+	beforeEach(setupAgentsContextTest);
+	afterEach(cleanupAgentsContextTest);
+
 	it("relies on native base context and blocks only new target scope", async () => {
 		const cwd = path.join(tmp, "repo");
 		const rootInstructions = path.join(cwd, "AGENTS.md");
@@ -295,7 +304,7 @@ describe("agents-context extension", () => {
 		).resolves.toBeUndefined();
 	});
 
-	it("defers newly discovered context once without displaying the block reason", async () => {
+	it("defers newly discovered context once without a visible error result", async () => {
 		const cwd = path.join(tmp, "repo");
 		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
 		writeFile(path.join(cwd, "src", "AGENTS.md"), "src agents");
@@ -311,17 +320,17 @@ describe("agents-context extension", () => {
 			input: { path: "src/file.ts" },
 		};
 		const blocked = await toolHook(event, ctx);
-		expect(blocked).toMatchObject({ block: true });
+		expect(blocked).toEqual({ block: true });
 		await expect(
 			resultHook(
 				{
 					...event,
-					content: [{ type: "text", text: blocked.reason }],
+					content: [{ type: "text", text: "Tool execution was blocked" }],
 					isError: true,
 				},
 				ctx,
 			),
-		).resolves.toEqual({ content: [] });
+		).resolves.toEqual({ content: [], details: {}, isError: false });
 		const retryContext = await contextHook({ messages: [] }, ctx);
 		expect(retryContext.messages).toHaveLength(1);
 		expect(retryContext.messages[0]).toMatchObject({ display: false });

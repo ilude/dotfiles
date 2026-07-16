@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	createTask,
+	createTaskBatch,
 	getTask,
 	listTasks,
 	normalizeTaskUsage,
@@ -78,6 +79,63 @@ describe("createTask", () => {
 			),
 		);
 		expect(ids.size).toBe(5);
+	});
+});
+
+describe("createTaskBatch", () => {
+	it("creates mixed graphs with request-local keys in declaration-independent order", () => {
+		const existing = createTask({
+			origin: "other",
+			summary: "existing blocker",
+			workspace: "/workspace",
+		});
+		const createGraph = (reverse: boolean) => {
+			const inputs = [
+				{
+					origin: "other" as const,
+					summary: "manual",
+					key: "manual",
+					blockedBy: [existing.id],
+				},
+				{
+					origin: "subagent" as const,
+					summary: "worker",
+					key: "worker",
+					blockedByKeys: ["manual"],
+					execution: {
+						kind: "subagent" as const,
+						agent: "validator",
+						task: "validate",
+						status: "pending" as const,
+					},
+				},
+			];
+			const result = createTaskBatch(
+				reverse ? [...inputs].reverse() : inputs,
+				"/workspace",
+			);
+			expect(result.outcome).toBe("persisted");
+			if (result.outcome !== "persisted")
+				throw new Error("batch should persist");
+			return result;
+		};
+
+		const topological = createGraph(false);
+		const reverse = createGraph(true);
+		for (const result of [topological, reverse]) {
+			const manualId = result.aliases.manual;
+			const workerId = result.aliases.worker;
+			expect(manualId).toBeDefined();
+			expect(workerId).toBeDefined();
+			if (!manualId || !workerId) throw new Error("aliases should exist");
+			const manual = getTask(manualId);
+			const worker = getTask(workerId);
+			expect(manual?.blockedBy).toEqual([existing.id]);
+			expect(worker?.blockedBy).toEqual([manual?.id]);
+			expect(getTask(existing.id)?.blocks).toContain(manual?.id);
+			expect(manual?.blocks).toEqual([worker?.id]);
+			expect(worker?.execution?.kind).toBe("subagent");
+		}
 	});
 });
 

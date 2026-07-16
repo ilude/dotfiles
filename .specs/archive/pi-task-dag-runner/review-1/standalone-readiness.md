@@ -5,9 +5,19 @@ status: complete
 
 # Standalone Readiness
 
-Result: BLOCKED
+Result: STANDALONE READY
 
-## Finding 1 - Ownership classification precedence is contradictory
+## Execution Revalidation
+
+All three prior findings were repaired in the plan and verified during execution:
+
+- `failed_to_stop` precedence is consistent across the vocabulary, truth table, implementation, and active/inactive regression tests.
+- Multi-result content uses deterministic UTF-8 budgeting that preserves every mandatory ID, classification, order, and valid JSON under 4,096 bytes.
+- Archive ledger verification validates the exact checklist ID set and complete status/evidence blocks.
+
+Focused validation passed 136 tests, repository Pi validation passed 93 files, and root validation passed 1,203 tests with 11 skips. The stale blocked verdict no longer represents the repaired plan.
+
+## Resolved Finding 1 - Ownership classification precedence
 
 - classification: blocker
 - severity: high
@@ -15,7 +25,7 @@ Result: BLOCKED
 - required_fix: Choose one rule for an active-map record whose persisted status is `failed_to_stop`, state it identically in the vocabulary, truth table, precedence paragraph, and caller action, and require focused tests for both the still-active timeout state and the later inactive state. The rule must not permit restart until stop or settlement proves ownership is gone.
 - confidence: high - verified against the plan's conflicting normative statements and the current coordinator timeout lifecycle.
 
-## Finding 2 - The public byte-size contract has no deterministic overflow behavior
+## Resolved Finding 2 - The public byte-size contract
 
 - classification: blocker
 - severity: high
@@ -23,7 +33,7 @@ Result: BLOCKED
 - required_fix: Define byte-based limits and a deterministic response-budget algorithm for `execute_many` and `await`. It must preserve all IDs, classifications, order, and valid JSON; specify when optional `error` and `outputPath` fields are byte-truncated or omitted; enforce the 4,096-byte bound after serialization; and test worst-case eight-result Unicode errors and long authorized artifact paths.
 - confidence: high - the stated character cap does not imply the stated UTF-8 byte cap, and no overflow behavior is specified.
 
-## Finding 3 - Archive ledger verification counts fields but does not validate item records
+## Resolved Finding 3 - Archive ledger verification
 
 - classification: blocker
 - severity: medium

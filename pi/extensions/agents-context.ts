@@ -42,7 +42,7 @@ const MAX_TOOL_FAILURES = 128;
 const REPEATED_TOOL_LOOP_REASON =
 	"repeated_tool_loop: third identical failed or blocked tool attempt denied before execution";
 
-type ToolCallResult = { block: true; reason: string } | undefined;
+type ToolCallResult = { block: true; reason?: string } | undefined;
 
 type LoadedInstruction = {
 	path: string;
@@ -578,8 +578,7 @@ export default function (pi: ExtensionAPI) {
 				state.injectedTargetFingerprints.add(contextFingerprint);
 				state.deferredToolCalls.add(event.toolCallId);
 				state.retryRequested = true;
-				const reason = `Loaded ${targetFiles.length} target-specific AGENTS context file(s). Retry this ${toolName} call after the next model request applies them.`;
-				return { block: true, reason };
+				return { block: true };
 			}
 		}
 		return undefined;
@@ -588,7 +587,7 @@ export default function (pi: ExtensionAPI) {
 	pi.on("tool_result", async (event) => {
 		const callFingerprint = toolCallFingerprint(event.toolName, event.input);
 		if (state.deferredToolCalls.delete(event.toolCallId)) {
-			return { content: [] };
+			return { content: [], details: {}, isError: false };
 		}
 		if (event.isError) {
 			recordToolFailure(callFingerprint, normalizedFailureFingerprint(event));

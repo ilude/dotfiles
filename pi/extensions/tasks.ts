@@ -8,8 +8,10 @@ import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { isAllowedTransition } from "../lib/operator-state.js";
 import {
+	type CreateTaskBatchInput,
 	clearCompletedTasks,
 	createTask,
+	createTaskBatch,
 	getTask,
 	getUnmetBlockers,
 	listTasks,
@@ -46,6 +48,7 @@ import {
 import {
 	TaskExecutionCoordinator,
 	type TaskExecutionResult,
+	type TaskMultiResult,
 } from "./tasks/execution.js";
 
 export { formatTaskDetail, formatTaskList, groupTasksByUrgency };
@@ -57,6 +60,11 @@ const TASK_PARENT_OUTPUT_MAX_BYTES = 2_000;
 const TASK_PARENT_OUTPUT_MAX_LINES = 100;
 const TASK_LIST_MODEL_MAX_ITEMS = 50;
 const TASK_LIST_BLOCKER_MAX_ITEMS = 5;
+const TASK_BATCH_MAX_ITEMS = 16;
+const TASK_MULTI_MAX_ITEMS = 8;
+const TASK_MULTI_CONTENT_MAX_BYTES = 4_096;
+const TASK_MULTI_ERROR_MAX_CODE_POINTS = 200;
+const TASK_BATCH_KEY_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
 
 function validateTaskText(
 	label: "summary" | "notes" | "skipReason" | "task",
@@ -450,10 +458,11 @@ function validatedBlockers(value: unknown): string[] | undefined {
 	return ids;
 }
 
-function createTaskFromInput(
+function taskInputFrom(
 	input: Record<string, unknown>,
 	cwd: string,
-): TaskRecordV1 {
+	batch = false,
+): CreateTaskBatchInput {
 	const execution = executionFrom(input, cwd);
 	const summary = validateTaskText(
 		"summary",
@@ -467,7 +476,32 @@ function createTaskFromInput(
 		typeof input.notes === "string"
 			? validateTaskText("notes", input.notes, TASK_NOTES_MAX_LENGTH)
 			: undefined;
-	return createTask({
+	const key = input.key;
+	const blockedByKeys = input.blockedByKeys;
+	if (
+		batch &&
+		key !== undefined &&
+		(typeof key !== "string" || !TASK_BATCH_KEY_PATTERN.test(key))
+	)
+		throw new Error("key must match ^[A-Za-z0-9_-]{1,32}$");
+	if (batch && blockedByKeys !== undefined && !Array.isArray(blockedByKeys))
+		throw new Error("blockedByKeys must be an array");
+	if (
+		batch &&
+		Array.isArray(blockedByKeys) &&
+		(blockedByKeys.length > TASK_BATCH_MAX_ITEMS ||
+			blockedByKeys.some((item) => typeof item !== "string"))
+	)
+		throw new Error("blockedByKeys must contain at most 16 strings");
+	if (
+		batch &&
+		input.blockedBy !== undefined &&
+		(!Array.isArray(input.blockedBy) ||
+			input.blockedBy.length > TASK_BATCH_MAX_ITEMS ||
+			input.blockedBy.some((item) => typeof item !== "string"))
+	)
+		throw new Error("blockedBy must contain at most 16 strings");
+	return {
 		origin: originFrom(input.origin),
 		summary,
 		agentName: execution?.agent,
@@ -475,8 +509,136 @@ function createTaskFromInput(
 		execution,
 		workspace: resolveTaskWorkspace(cwd),
 		notes,
-		blockedBy: validatedBlockers(input.blockedBy),
+		blockedBy: batch
+			? (input.blockedBy as string[] | undefined)
+			: validatedBlockers(input.blockedBy),
+		...(batch && typeof key === "string" ? { key } : {}),
+		...(batch && Array.isArray(blockedByKeys)
+			? { blockedByKeys: blockedByKeys as string[] }
+			: {}),
+	};
+}
+
+function createTaskFromInput(
+	input: Record<string, unknown>,
+	cwd: string,
+): TaskRecordV1 {
+	return createTask(taskInputFrom(input, cwd));
+}
+
+function validateMultiIds(value: unknown): string[] {
+	if (
+		!Array.isArray(value) ||
+		value.length < 1 ||
+		value.length > TASK_MULTI_MAX_ITEMS
+	)
+		throw new Error("ids must contain between 1 and 8 entries");
+	const ids = value.map((item) => {
+		if (typeof item !== "string" || item.length < 1 || item.length > 64)
+			throw new Error("ids entries must contain between 1 and 64 characters");
+		return item;
 	});
+	if (new Set(ids).size !== ids.length) throw new Error("duplicate task id");
+	return ids;
+}
+
+function codePointPrefix(value: string, maxCodePoints: number): string {
+	return [...value].slice(0, maxCodePoints).join("");
+}
+
+function fitOptionalField(
+	envelope: Record<string, unknown>,
+	entry: Record<string, unknown>,
+	field: "outputPath" | "error",
+	value: string,
+): void {
+	const fits = (candidate: string): boolean => {
+		entry[field] = candidate;
+		return (
+			Buffer.byteLength(JSON.stringify(envelope), "utf8") <=
+			TASK_MULTI_CONTENT_MAX_BYTES
+		);
+	};
+	if (fits(value)) return;
+	const points = [...value];
+	let low = 0;
+	let high = points.length;
+	let best: string | undefined;
+	while (low <= high) {
+		const middle = Math.floor((low + high) / 2);
+		const candidate = `${points.slice(0, middle).join("")}...`;
+		if (fits(candidate)) {
+			best = candidate;
+			low = middle + 1;
+		} else high = middle - 1;
+	}
+	if (best !== undefined) entry[field] = best;
+	else delete entry[field];
+}
+
+function multiToolResult(
+	outcome: "accepted" | "partial" | "rejected" | "persisted" | "aborted",
+	results: TaskMultiResult[],
+) {
+	const visibleResults: Array<Record<string, unknown>> = results.map(
+		(result) => ({
+			id: result.id,
+			classification: result.classification,
+			...(result.state ? { state: result.state } : {}),
+		}),
+	);
+	const envelope: Record<string, unknown> = {
+		outcome,
+		count: results.length,
+		results: visibleResults,
+	};
+	if (
+		Buffer.byteLength(JSON.stringify(envelope), "utf8") >
+		TASK_MULTI_CONTENT_MAX_BYTES
+	)
+		throw new Error("mandatory multi-task result exceeds content budget");
+	for (let index = 0; index < results.length; index++) {
+		const result = results[index];
+		const outputPath =
+			result.classification === "terminal"
+				? result.record?.execution?.outputPath
+				: undefined;
+		if (outputPath)
+			fitOptionalField(
+				envelope,
+				visibleResults[index],
+				"outputPath",
+				outputPath,
+			);
+	}
+	for (let index = 0; index < results.length; index++) {
+		const error = results[index].error;
+		if (error)
+			fitOptionalField(
+				envelope,
+				visibleResults[index],
+				"error",
+				codePointPrefix(error, TASK_MULTI_ERROR_MAX_CODE_POINTS),
+			);
+	}
+	const text = JSON.stringify(envelope);
+	if (Buffer.byteLength(text, "utf8") > TASK_MULTI_CONTENT_MAX_BYTES)
+		throw new Error("multi-task result exceeds content budget");
+	return {
+		content: [{ type: "text" as const, text }],
+		details: { outcome, results },
+	};
+}
+
+function scopedMultiResult(
+	id: string,
+	workspace: string,
+): TaskMultiResult | undefined {
+	const record = getTask(id);
+	if (!record) return { id, classification: "missing" };
+	if (record.workspace && record.workspace !== workspace)
+		return { id, classification: "foreign_workspace" };
+	return undefined;
 }
 
 function taskOutputResult(coordinator: TaskExecutionCoordinator, id: string) {
@@ -540,7 +702,17 @@ export function registerTaskTools(
 				Type.String({ maxLength: TASK_SUMMARY_MAX_LENGTH }),
 			),
 			notes: Type.Optional(Type.String({ maxLength: TASK_NOTES_MAX_LENGTH })),
-			blockedBy: Type.Optional(Type.Array(Type.String())),
+			key: Type.Optional(Type.String({ pattern: "^[A-Za-z0-9_-]{1,32}$" })),
+			blockedBy: Type.Optional(
+				Type.Array(Type.String({ minLength: 1, maxLength: 64 }), {
+					maxItems: TASK_BATCH_MAX_ITEMS,
+				}),
+			),
+			blockedByKeys: Type.Optional(
+				Type.Array(Type.String({ pattern: "^[A-Za-z0-9_-]{1,32}$" }), {
+					maxItems: TASK_BATCH_MAX_ITEMS,
+				}),
+			),
 			agent: Type.Optional(Type.String()),
 			task: Type.Optional(Type.String({ maxLength: TASK_PROMPT_MAX_LENGTH })),
 			cwd: Type.Optional(Type.String()),
@@ -573,10 +745,18 @@ export function registerTaskTools(
 				Type.Literal("ready"),
 				Type.Literal("get"),
 				Type.Literal("execute"),
+				Type.Literal("execute_many"),
+				Type.Literal("await"),
 				Type.Literal("stop"),
 				Type.Literal("output"),
 			]),
 			id: Type.Optional(Type.String()),
+			ids: Type.Optional(
+				Type.Array(Type.String({ minLength: 1, maxLength: 64 }), {
+					minItems: 1,
+					maxItems: TASK_MULTI_MAX_ITEMS,
+				}),
+			),
 			summary: Type.Optional(
 				Type.String({ maxLength: TASK_SUMMARY_MAX_LENGTH }),
 			),
@@ -594,7 +774,12 @@ export function registerTaskTools(
 			agentScope: Type.Optional(taskItem.properties.agentScope),
 			model: Type.Optional(Type.String()),
 			modelSize: Type.Optional(taskItem.properties.modelSize),
-			tasks: Type.Optional(Type.Array(taskItem)),
+			tasks: Type.Optional(
+				Type.Array(taskItem, {
+					minItems: 0,
+					maxItems: TASK_BATCH_MAX_ITEMS,
+				}),
+			),
 		},
 		{ additionalProperties: true },
 	);
@@ -606,12 +791,12 @@ export function registerTaskTools(
 		promptSnippet:
 			"Manage durable planning tasks and background subagent execution through one task surface",
 		promptGuidelines: [
-			"Use task only for durable dependencies or background execution, not lightweight planning or direct single-threaded work.",
+			"Durable task records are optional and valid for user-requested lists, main-thread tracking, dependencies, cross-turn work, and background execution; ordinary multi-step work can remain prose.",
 			"Task entries are index cards, not handoff documents: keep summary under 100 characters and notes under 500; put detailed context in an artifact and reference its path.",
 			"Summary contains only the deliverable; notes contain only blockers, dependencies, or acceptance checks. Never copy conversation summaries, plans, diffs, or investigation narratives into task fields.",
 			"Create dependencies with blockedBy; use ready once when selecting runnable work.",
 			"For direct durable work, update state only when it changes; do not repeat lifecycle calls.",
-			"For background work, create an executable task and use execute once; use output when results are needed and stop only to cancel. Do not poll list, get, ready, or output in loops.",
+			"For background work, create executable tasks, start them once with execute or execute_many, and join same-session work once with await; use output only when needed and stop only to cancel. Do not poll public task actions.",
 		],
 		parameters,
 		renderCall(args, theme) {
@@ -646,7 +831,7 @@ export function registerTaskTools(
 			const { text, failed } = formatTaskToolResult(result.details, expanded);
 			return new Text(theme.fg(failed ? "warning" : "dim", text), 0, 0);
 		},
-		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
+		execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {
 			const input = asParams(params);
 			const action = input.action;
 			const workspace = resolveTaskWorkspace(ctx.cwd);
@@ -656,30 +841,53 @@ export function registerTaskTools(
 					record: createTaskFromInput(input, ctx.cwd),
 				});
 			if (action === "batch") {
+				if (input.tasks !== undefined && !Array.isArray(input.tasks))
+					throw new Error("tasks must be an array");
 				const tasks = Array.isArray(input.tasks) ? input.tasks : [];
-				for (const item of tasks) {
-					const task = asParams(item);
-					executionFrom(task, ctx.cwd);
-					validateTaskText(
-						"summary",
-						typeof task.summary === "string"
-							? task.summary
-							: typeof task.task === "string"
-								? task.task
-								: "untitled task",
-						TASK_SUMMARY_MAX_LENGTH,
-						true,
-					);
-					if (typeof task.notes === "string")
-						validateTaskText("notes", task.notes, TASK_NOTES_MAX_LENGTH);
+				if (tasks.length > TASK_BATCH_MAX_ITEMS)
+					throw new Error("batch may contain at most 16 tasks");
+				const batchInputs = tasks.map((item) => {
+					if (!item || typeof item !== "object" || Array.isArray(item))
+						throw new Error("batch task must be an object");
+					return taskInputFrom(asParams(item), ctx.cwd, true);
+				});
+				const result = createTaskBatch(batchInputs, workspace);
+				if (result.outcome === "write_failed") {
+					const visible = {
+						...result,
+						error: codePointPrefix(
+							result.error,
+							TASK_MULTI_ERROR_MAX_CODE_POINTS,
+						),
+					};
+					const text = JSON.stringify(visible);
+					if (Buffer.byteLength(text, "utf8") > TASK_MULTI_CONTENT_MAX_BYTES)
+						throw new Error("batch failure result exceeds content budget");
+					return {
+						content: [{ type: "text" as const, text }],
+						details: result,
+					};
 				}
-				const records = tasks.map((item) =>
-					createTaskFromInput(asParams(item), ctx.cwd),
-				);
-				return toolResult(
-					{ outcome: "persisted", records },
-					compactTaskCollection(records, false),
-				);
+				const visible = {
+					outcome: result.outcome,
+					count: result.records.length,
+					tasks: result.records.map((record, index) => ({
+						...(batchInputs[index]?.key ? { key: batchInputs[index].key } : {}),
+						id: record.id,
+						state: record.state,
+					})),
+				};
+				const text = JSON.stringify(visible);
+				if (Buffer.byteLength(text, "utf8") > TASK_MULTI_CONTENT_MAX_BYTES)
+					throw new Error("batch result exceeds content budget");
+				return {
+					content: [{ type: "text" as const, text }],
+					details: {
+						outcome: result.outcome,
+						records: result.records,
+						aliases: result.aliases,
+					},
+				};
 			}
 			if (action === "list" || action === "ready") {
 				const allRecords = listTasks({ includeTombstones: false });
@@ -694,6 +902,47 @@ export function registerTaskTools(
 				return toolResult(
 					{ outcome: "persisted", records: selected },
 					compactTaskCollection(selected),
+				);
+			}
+			if (action === "execute_many" || action === "await") {
+				const ids = validateMultiIds(input.ids);
+				const fixed = new Map<string, TaskMultiResult>();
+				const authorized: string[] = [];
+				for (const id of ids) {
+					const scoped = scopedMultiResult(id, workspace);
+					if (scoped) fixed.set(id, scoped);
+					else authorized.push(id);
+				}
+				const coordinated =
+					action === "execute_many"
+						? coordinator.startMany(authorized, ctx.cwd)
+						: await coordinator.wait(authorized, signal);
+				const coordinatedById = new Map(
+					coordinated.results.map((result) => [result.id, result]),
+				);
+				const results = ids.map(
+					(id) => fixed.get(id) ?? coordinatedById.get(id),
+				);
+				if (results.some((result) => result === undefined))
+					throw new Error("coordinator omitted a task result");
+				const complete = results as TaskMultiResult[];
+				if (action === "await")
+					return multiToolResult(
+						complete.some((result) => result.classification === "aborted")
+							? "aborted"
+							: "persisted",
+						complete,
+					);
+				const started = complete.filter(
+					(result) => result.classification === "started",
+				).length;
+				return multiToolResult(
+					started === complete.length
+						? "accepted"
+						: started > 0
+							? "partial"
+							: "rejected",
+					complete,
 				);
 			}
 			const id = typeof input.id === "string" ? input.id : undefined;

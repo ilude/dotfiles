@@ -766,6 +766,535 @@ describe("task tools", () => {
 		expect(getTask(record.id)?.execution?.status).toBe("orphaned");
 	});
 
+	it("advertises bounded graph and multi-ID schemas", () => {
+		const pi = createMockPi();
+		registerTaskTools(
+			pi as Parameters<typeof registerTaskTools>[0],
+			new TaskExecutionCoordinator(),
+		);
+		const parameters = pi._getTool("task")?.parameters;
+		expect(parameters.additionalProperties).toBe(true);
+		expect(parameters.properties.ids).toMatchObject({
+			minItems: 1,
+			maxItems: 8,
+		});
+		expect(parameters.properties.tasks).toMatchObject({
+			minItems: 0,
+			maxItems: 16,
+		});
+		const taskItem = parameters.properties.tasks.items;
+		expect(taskItem.additionalProperties).toBe(true);
+		expect(taskItem.properties).toHaveProperty("key");
+		expect(taskItem.properties.blockedBy.maxItems).toBe(16);
+		expect(taskItem.properties.blockedByKeys.maxItems).toBe(16);
+		const actions = parameters.properties.action.anyOf.map(
+			(item: { const: string }) => item.const,
+		);
+		expect(actions).toEqual(expect.arrayContaining(["execute_many", "await"]));
+	});
+
+	it("publishes graph-aware batches and rejects malformed bounds", async () => {
+		const pi = createMockPi();
+		registerTaskTools(
+			pi as Parameters<typeof registerTaskTools>[0],
+			new TaskExecutionCoordinator(),
+		);
+		const tool = pi._getTool("task");
+		const ctx = createMockCtx({ cwd: tmpRoot });
+		const empty = await tool?.execute(
+			"batch-empty",
+			{ action: "batch" },
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(JSON.parse(empty.content[0].text)).toEqual({
+			outcome: "persisted",
+			count: 0,
+			tasks: [],
+		});
+		const result = await tool?.execute(
+			"batch-graph",
+			{
+				action: "batch",
+				tasks: [
+					{ key: "downstream", summary: "downstream", blockedByKeys: ["root"] },
+					{ key: "root", summary: "root" },
+				],
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		const visible = JSON.parse(result.content[0].text);
+		expect(visible.tasks.map((item: { key: string }) => item.key)).toEqual([
+			"downstream",
+			"root",
+		]);
+		expect(result.details.aliases).toEqual({
+			downstream: visible.tasks[0].id,
+			root: visible.tasks[1].id,
+		});
+		expect(getTask(visible.tasks[0].id)?.blockedBy).toEqual([
+			visible.tasks[1].id,
+		]);
+		expect(
+			Buffer.byteLength(result.content[0].text, "utf8"),
+		).toBeLessThanOrEqual(4_096);
+		const worstCase = await tool?.execute(
+			"batch-worst-case",
+			{
+				action: "batch",
+				tasks: Array.from({ length: 16 }, (_, index) => ({
+					key: `${String(index).padStart(2, "0")}${"x".repeat(30)}`,
+					summary: `task ${index}`,
+				})),
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(JSON.parse(worstCase.content[0].text).tasks).toHaveLength(16);
+		expect(
+			Buffer.byteLength(worstCase.content[0].text, "utf8"),
+		).toBeLessThanOrEqual(4_096);
+		await expect(
+			tool?.execute(
+				"batch-too-large",
+				{
+					action: "batch",
+					tasks: Array.from({ length: 17 }, (_, index) => ({
+						key: `task-${index}`,
+						summary: `task ${index}`,
+					})),
+				},
+				undefined,
+				undefined,
+				ctx,
+			),
+		).rejects.toThrow("at most 16");
+	});
+
+	it("runs a mixed manual and subagent graph through the public one-shot workflow", async () => {
+		const releases = new Map<
+			string,
+			(value: { output: string; exitCode: number }) => void
+		>();
+		const runnerEntries: string[] = [];
+		const runner = vi.fn(
+			(_execution, _cwd, _signal, _onUpdate, taskId: string) => {
+				runnerEntries.push(taskId);
+				return new Promise<{ output: string; exitCode: number }>((resolve) => {
+					releases.set(taskId, resolve);
+				});
+			},
+		);
+		const coordinator = new TaskExecutionCoordinator(runner);
+		const pi = createMockPi();
+		registerTaskTools(
+			pi as Parameters<typeof registerTaskTools>[0],
+			coordinator,
+		);
+		const ctx = createMockCtx({ cwd: tmpRoot });
+		const tool = pi._getTool("task");
+		const actionSpy = vi.fn();
+		const invoke = async (params: Record<string, unknown>) => {
+			actionSpy(params.action);
+			return tool?.execute(
+				"mixed-graph-workflow",
+				params,
+				undefined,
+				undefined,
+				ctx,
+			);
+		};
+
+		const batch = await invoke({
+			action: "batch",
+			tasks: [
+				{ key: "prepare", summary: "prepare manually" },
+				{
+					key: "worker-one",
+					summary: "run first worker",
+					blockedByKeys: ["prepare"],
+					agent: "coding-light",
+					task: "Run first worker",
+				},
+				{
+					key: "worker-two",
+					summary: "run second worker",
+					blockedByKeys: ["prepare"],
+					agent: "coding-light",
+					task: "Run second worker",
+				},
+				{
+					key: "finish",
+					summary: "finish manually",
+					blockedByKeys: ["worker-one", "worker-two"],
+				},
+			],
+		});
+		const aliases = batch.details.aliases as Record<string, string>;
+		expect(Object.keys(aliases).sort()).toEqual([
+			"finish",
+			"prepare",
+			"worker-one",
+			"worker-two",
+		]);
+		const prepareId = aliases.prepare;
+		const workerIds = [aliases["worker-one"], aliases["worker-two"]];
+		const finishId = aliases.finish;
+		expect(getTask(workerIds[0])?.blockedBy).toEqual([prepareId]);
+		expect(getTask(workerIds[1])?.blockedBy).toEqual([prepareId]);
+		expect(getTask(finishId)?.blockedBy).toEqual(workerIds);
+
+		const preparing = await invoke({
+			action: "update",
+			id: prepareId,
+			state: "running",
+		});
+		expect(preparing.details.outcome).toBe("persisted");
+		const prepared = await invoke({
+			action: "update",
+			id: prepareId,
+			state: "completed",
+		});
+		expect(prepared.details.outcome).toBe("persisted");
+		const workersReady = await invoke({ action: "ready" });
+		expect(
+			workersReady.details.records
+				.map((record: { id: string }) => record.id)
+				.sort(),
+		).toEqual([...workerIds].sort());
+
+		const started = await invoke({ action: "execute_many", ids: workerIds });
+		expect(
+			started.details.results.map(
+				(result: { classification: string }) => result.classification,
+			),
+		).toEqual(["started", "started"]);
+		expect(runnerEntries).toEqual(workerIds);
+
+		const waiting = invoke({ action: "await", ids: workerIds });
+		for (const workerId of workerIds) {
+			releases.get(workerId)?.({
+				output: `artifact for ${workerId}`,
+				exitCode: 0,
+			});
+		}
+		const awaited = await waiting;
+		expect(
+			awaited.details.results.map(
+				(result: { classification: string }) => result.classification,
+			),
+		).toEqual(["terminal", "terminal"]);
+		for (const workerId of workerIds) {
+			const worker = getTask(workerId);
+			expect(worker?.state).toBe("completed");
+			expect(worker?.execution?.outputPath).toBeTruthy();
+			if (!worker?.execution?.outputPath)
+				throw new Error("worker artifact was not persisted");
+			expect(fs.readFileSync(worker.execution.outputPath, "utf-8")).toContain(
+				workerId,
+			);
+		}
+
+		const finishReady = await invoke({ action: "ready" });
+		expect(
+			finishReady.details.records.map((record: { id: string }) => record.id),
+		).toEqual([finishId]);
+		await invoke({ action: "update", id: finishId, state: "running" });
+		await invoke({ action: "update", id: finishId, state: "completed" });
+
+		expect(actionSpy.mock.calls.map(([action]) => action)).toEqual([
+			"batch",
+			"update",
+			"update",
+			"ready",
+			"execute_many",
+			"await",
+			"ready",
+			"update",
+			"update",
+		]);
+		expect(actionSpy.mock.calls.flat()).not.toEqual(
+			expect.arrayContaining(["list", "get", "output"]),
+		);
+		expect(getTask(prepareId)?.state).toBe("completed");
+		expect(getTask(finishId)?.state).toBe("completed");
+	});
+
+	it("executes and awaits workspace-safe mixed requests in order", async () => {
+		const releases = new Map<
+			string,
+			(value: { output: string; exitCode: number }) => void
+		>();
+		const runner = vi.fn(
+			(_execution, _cwd, _signal, _onUpdate, taskId: string) =>
+				new Promise<{ output: string; exitCode: number }>((resolve) => {
+					releases.set(taskId, resolve);
+				}),
+		);
+		const coordinator = new TaskExecutionCoordinator(runner);
+		const pi = createMockPi();
+		registerTaskTools(
+			pi as Parameters<typeof registerTaskTools>[0],
+			coordinator,
+		);
+		const ctx = createMockCtx({ cwd: tmpRoot });
+		const workspace = resolveTaskWorkspace(tmpRoot);
+		const first = createExecutable("first", workspace);
+		const unscoped = createExecutable("unscoped");
+		const manual = createTask({
+			origin: "other",
+			summary: "manual",
+			workspace,
+		});
+		const foreign = createExecutable("foreign", `${workspace}-foreign`);
+		const ids = [first.id, manual.id, foreign.id, "missing", unscoped.id];
+		const started = await pi
+			._getTool("task")
+			?.execute(
+				"execute-many",
+				{ action: "execute_many", ids },
+				undefined,
+				undefined,
+				ctx,
+			);
+		expect(
+			started.details.results.map(
+				(item: { classification: string }) => item.classification,
+			),
+		).toEqual([
+			"started",
+			"manual_ready",
+			"foreign_workspace",
+			"missing",
+			"started",
+		]);
+		expect(started.details.results[2]).not.toHaveProperty("record");
+		expect(started.details.results[3]).not.toHaveProperty("record");
+		expect(runner.mock.calls.map((call) => call[4])).toEqual([
+			first.id,
+			unscoped.id,
+		]);
+		const waiting = pi
+			._getTool("task")
+			?.execute(
+				"await-many",
+				{ action: "await", ids },
+				undefined,
+				undefined,
+				ctx,
+			);
+		releases.get(first.id)?.({ output: "first", exitCode: 0 });
+		releases.get(unscoped.id)?.({ output: "unscoped", exitCode: 0 });
+		const awaited = await waiting;
+		expect(
+			awaited.details.results.map(
+				(item: { classification: string }) => item.classification,
+			),
+		).toEqual([
+			"terminal",
+			"manual_ready",
+			"foreign_workspace",
+			"missing",
+			"terminal",
+		]);
+		expect(JSON.parse(awaited.content[0].text).results).toHaveLength(
+			ids.length,
+		);
+	});
+
+	it("passes await abort without cancelling workers and rejects duplicate IDs", async () => {
+		let release:
+			| ((value: { output: string; exitCode: number }) => void)
+			| undefined;
+		let workerSignal: AbortSignal | undefined;
+		const coordinator = new TaskExecutionCoordinator(
+			async (_execution, _cwd, signal) => {
+				workerSignal = signal;
+				return new Promise((resolve) => {
+					release = resolve;
+				});
+			},
+		);
+		const pi = createMockPi();
+		registerTaskTools(
+			pi as Parameters<typeof registerTaskTools>[0],
+			coordinator,
+		);
+		const ctx = createMockCtx({ cwd: tmpRoot });
+		const task = createExecutable(
+			"abort public",
+			resolveTaskWorkspace(tmpRoot),
+		);
+		await pi
+			._getTool("task")
+			?.execute(
+				"start-public",
+				{ action: "execute_many", ids: [task.id] },
+				undefined,
+				undefined,
+				ctx,
+			);
+		const controller = new AbortController();
+		const waiting = pi
+			._getTool("task")
+			?.execute(
+				"await-public",
+				{ action: "await", ids: [task.id] },
+				controller.signal,
+				undefined,
+				ctx,
+			);
+		controller.abort();
+		const result = await waiting;
+		expect(result.details.results[0].classification).toBe("aborted");
+		expect(workerSignal?.aborted).toBe(false);
+		await expect(
+			pi
+				._getTool("task")
+				?.execute(
+					"duplicate-public",
+					{ action: "execute_many", ids: [task.id, task.id] },
+					undefined,
+					undefined,
+					ctx,
+				),
+		).rejects.toThrow("duplicate task id");
+		release?.({ output: "done", exitCode: 0 });
+		await vi.waitFor(() => expect(getTask(task.id)?.state).toBe("completed"));
+	});
+
+	it("keeps all mandatory results under the Unicode content budget", async () => {
+		const tasks = Array.from({ length: 8 }, (_, index) =>
+			createExecutable(`failure ${index}`, resolveTaskWorkspace(tmpRoot)),
+		);
+		const coordinator = new TaskExecutionCoordinator(
+			async () => ({ output: "unexpected", exitCode: 0 }),
+			() => {
+				throw new Error(`write failed ${"😀".repeat(500)}`);
+			},
+		);
+		const pi = createMockPi();
+		registerTaskTools(
+			pi as Parameters<typeof registerTaskTools>[0],
+			coordinator,
+		);
+		const result = await pi
+			._getTool("task")
+			?.execute(
+				"budget-many",
+				{ action: "execute_many", ids: tasks.map((task) => task.id) },
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpRoot }),
+			);
+		const visible = JSON.parse(result.content[0].text);
+		expect(
+			Buffer.byteLength(result.content[0].text, "utf8"),
+		).toBeLessThanOrEqual(4_096);
+		expect(visible.results).toHaveLength(8);
+		expect(visible.results.map((item: { id: string }) => item.id)).toEqual(
+			tasks.map((task) => task.id),
+		);
+		expect(
+			visible.results.every(
+				(item: { classification: string }) =>
+					item.classification === "start_failed",
+			),
+		).toBe(true);
+	});
+
+	it("budgets long terminal artifact paths after mandatory await fields", async () => {
+		const workspace = resolveTaskWorkspace(tmpRoot);
+		const tasks = Array.from({ length: 8 }, (_, index) =>
+			createTask({
+				origin: "subagent",
+				summary: `terminal ${index}`,
+				workspace,
+				state: "completed",
+				execution: {
+					kind: "subagent",
+					agent: "coding-light",
+					task: "Run",
+					status: "completed",
+					outputPath: `C:/tmp/${"😀".repeat(1_000)}/${index}.md`,
+				},
+			}),
+		);
+		const pi = createMockPi();
+		registerTaskTools(
+			pi as Parameters<typeof registerTaskTools>[0],
+			new TaskExecutionCoordinator(),
+		);
+		const result = await pi
+			._getTool("task")
+			?.execute(
+				"await-artifacts",
+				{ action: "await", ids: tasks.map((task) => task.id) },
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpRoot }),
+			);
+		const visible = JSON.parse(result.content[0].text);
+		expect(
+			Buffer.byteLength(result.content[0].text, "utf8"),
+		).toBeLessThanOrEqual(4_096);
+		expect(visible.results).toHaveLength(8);
+		expect(
+			visible.results.every(
+				(item: { classification: string }) =>
+					item.classification === "terminal",
+			),
+		).toBe(true);
+		expect(result.details.results[0].record.execution.outputPath).toContain(
+			"😀".repeat(1_000),
+		);
+	});
+
+	it("rejects failed-to-stop execution through legacy and multi actions", async () => {
+		const workspace = resolveTaskWorkspace(tmpRoot);
+		const task = createTask({
+			origin: "subagent",
+			summary: "failed to stop",
+			workspace,
+			state: "running",
+			execution: {
+				kind: "subagent",
+				agent: "coding-light",
+				task: "Run",
+				status: "failed_to_stop",
+				ownerPid: process.pid,
+			},
+		});
+		const pi = createMockPi();
+		registerTaskTools(
+			pi as Parameters<typeof registerTaskTools>[0],
+			new TaskExecutionCoordinator(),
+		);
+		const tool = pi._getTool("task");
+		const ctx = createMockCtx({ cwd: tmpRoot });
+		const legacy = await tool?.execute(
+			"legacy-failed-to-stop",
+			{ action: "execute", id: task.id },
+			undefined,
+			undefined,
+			ctx,
+		);
+		const many = await tool?.execute(
+			"many-failed-to-stop",
+			{ action: "execute_many", ids: [task.id] },
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(legacy.details.outcome).toBe("failed_to_stop");
+		expect(many.details.results[0].classification).toBe("failed_to_stop");
+		expect(getTask(task.id)?.execution?.status).toBe("failed_to_stop");
+	});
+
 	it("registers provider-safe object schemas for Codex/OpenAI", async () => {
 		const pi = createMockPi();
 		const mod = await import("../extensions/tasks.ts");
@@ -777,3 +1306,17 @@ describe("task tools", () => {
 		}
 	});
 });
+
+function createExecutable(summary: string, workspace?: string) {
+	return createTask({
+		origin: "subagent",
+		summary,
+		workspace,
+		execution: {
+			kind: "subagent",
+			agent: "coding-light",
+			task: "Run",
+			status: "pending",
+		},
+	});
+}

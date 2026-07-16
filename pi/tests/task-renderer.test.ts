@@ -81,6 +81,73 @@ describe("formatTaskToolResult", () => {
 		expect(result.text).toContain("11 chars, truncated");
 		expect(result.text).toContain("output body");
 	});
+
+	it("renders every multi-task classification and authorized artifact", () => {
+		const classifications = [
+			"started",
+			"manual_ready",
+			"manual_running",
+			"pending",
+			"blocked",
+			"active",
+			"terminal",
+			"external_running",
+			"failed_to_stop",
+			"start_failed",
+			"orphaned",
+			"ownership_unknown",
+			"missing",
+			"foreign_workspace",
+			"aborted",
+		];
+		for (const group of [
+			classifications.slice(0, 8),
+			classifications.slice(8),
+		]) {
+			const result = formatTaskToolResult({
+				outcome: "partial",
+				results: group.map((classification, index) => ({
+					id: `${classification}-${index}`,
+					classification,
+					state: "running",
+				})),
+			});
+			for (const classification of group)
+				expect(result.text).toContain(classification);
+			expect(Buffer.byteLength(result.text, "utf8")).toBeLessThanOrEqual(4_096);
+		}
+
+		const records = Array.from({ length: 8 }, (_, index) =>
+			createTask({
+				origin: "subagent",
+				summary: `artifact ${index}`,
+				state: "completed",
+				execution: {
+					kind: "subagent",
+					agent: "coding-light",
+					task: "Run",
+					status: "completed",
+					outputPath: `C:/tmp/${"😀".repeat(1_000)}/${index}.md`,
+				},
+			}),
+		);
+		const details = {
+			outcome: "persisted",
+			results: records.map((record) => ({
+				id: record.id,
+				classification: "terminal",
+				state: record.state,
+				record,
+			})),
+		};
+		for (const expanded of [false, true]) {
+			const result = formatTaskToolResult(details, expanded);
+			expect(result.text.match(/output:/g)).toHaveLength(8);
+			expect(Buffer.byteLength(result.text, "utf8")).toBeLessThanOrEqual(
+				expanded ? 16_384 : 4_096,
+			);
+		}
+	});
 });
 
 describe("task renderer/settings", () => {

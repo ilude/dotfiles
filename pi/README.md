@@ -296,13 +296,17 @@ Measures each interaction from submission through `agent_settled` and records me
 Runtime records live under `~/.pi/agent/workflow-friction/` and remain uncommitted. `interactions.jsonl` contains timing, mode, selection, tool, validation, subagent, and mutation counts without prompt or response content. Reviewed interaction packets remain local in `reviews.jsonl`; applied or skipped learning decisions are append-only records in `learning-decisions.jsonl`. Set `PI_WORKFLOW_FRICTION_DIR` to use a separate local directory. At interaction settlement, the extension also emits a metadata-only `orchestration_interaction` metrics event for direct and delegated interactions.
 
 ```text
-/improve                 # discuss one supported self-improvement candidate
-/improve <capture note>  # queue the latest interaction for background review
+/improve                 # discuss the highest-ranked unresolved candidate
+/improve list            # list ranked unresolved candidates
+/improve select <id>     # discuss one listed candidate by unique ID prefix
+/improve help            # show command and decision guidance
 ```
 
-`/improve` is the only public self-improvement workflow. It ranks pending candidates by safety or correctness impact first, then verified 30-day usage, confidence, and stable age/ID tie-breakers. Structured skill, command, extension, and tool targets use deterministic local statistics; unresolved telemetry remains unknown rather than being treated as zero. It presents the selected candidate with its ranking evidence, the previous 15 days of interaction metadata, and prior experiments using the full 1-3-1 format. Applied changes require target paths, validation evidence, and rollback instructions and create an experiment marker for later comparison.
+`/improve` is the only public self-improvement workflow. It ranks pending candidates by safety or correctness impact first, then verified 30-day usage, confidence, and stable age/ID tie-breakers. Structured skill, command, extension, and tool targets use deterministic local statistics; unresolved telemetry remains unknown rather than being treated as zero. `/improve list` shows the ranked workspace-visible candidates without starting a discussion, and `/improve select <id>` starts one using the unique prefix displayed by the list. Bare `/improve` preserves the highest-ranked default.
 
-Interaction capture and background review remain automatic internal stages; the optional note provides a manual capture path through the same command. The retired `/capture`, `/learning-review`, `/workflow-review`, and `/skill-review` commands are not registered. `/review-it` remains separate because it reviews a supplied plan or PRD, while `/usage`, `/usage-stats`, `/extension-stats`, `/router-stats`, `/skill-stats`, and `/orchestration-stats` remain read-only diagnostics. `/usage-stats` renders its deterministic report without starting a provider turn.
+Each discussion remains in a deterministic `discussing` state while the user asks questions or raises issues. Only an explicit `Apply`, `Edit: <change>`, `Skip: <reason>`, or equivalent numbered option selects a decision. Applied changes require target paths, validation evidence, and rollback instructions and create an experiment marker for later comparison. A recorded applied or skipped decision removes that candidate from later lists.
+
+Interaction capture and background review remain automatic internal stages. Free-form `/improve <capture note>` input is no longer supported. The retired `/capture`, `/learning-review`, `/workflow-review`, and `/skill-review` commands are not registered. `/review-it` remains separate because it reviews a supplied plan or PRD, while `/usage`, `/usage-stats`, `/extension-stats`, `/router-stats`, `/skill-stats`, and `/orchestration-stats` remain read-only diagnostics. `/usage-stats` renders its deterministic report without starting a provider turn.
 
 ### `orchestration-stats.ts`
 
@@ -427,11 +431,13 @@ Commands:
 - `/tasks retry <id>` -- transitions `failed` -> `running`; the registry bumps `retryCount` and clears `errorReason`. Does not re-execute the work; you re-issue the original action through normal channels.
 
 Model-callable task surface:
-- The unified `task` tool owns durable dependencies and background execution through `create`, `batch`, `update`, `remove`, `list`, `ready`, `get`, `execute`, `stop`, and `output` actions. Ordinary multi-step work uses a lightweight prose plan instead.
+- The unified `task` tool owns durable dependencies and background execution through `create`, `batch`, `update`, `remove`, `list`, `ready`, `get`, `execute`, `execute_many`, `await`, `stop`, and `output` actions. Ordinary multi-step work uses a lightweight prose plan instead; durable records are optional for user-requested lists, main-thread tracking, dependencies, cross-turn work, and background execution.
+- A graph-aware `batch` can mix manual and executable tasks with request-local keys and dependency keys. Use returned aliases for later actions; manual tasks remain main-thread-owned and advance through `update`.
 - Tasks default to the current repository workspace; `list` and `ready` accept `all: true` for a cross-repository view and return compact model-visible summaries. Use `get` for one complete record.
-- Executable tasks accept `agent`, `task`, `cwd`, `agentScope`, `model`, and `modelSize`. The `execute` action validates dependencies and starts the child in the background.
+- Executable tasks accept `agent`, `task`, `cwd`, `agentScope`, `model`, and `modelSize`. Use bounded `execute_many` to start ready workers concurrently, then call `await` once to join same-session workers without polling.
 - `stop` cancels a running child process tree. `output` returns small results inline and a concise durable artifact reference for large results; full bounded details remain available to the TUI renderer.
 - Start execution once, request output when needed, and record lifecycle changes only when state changes. Do not poll task actions in loops.
+- Batch graph validation occurs before writes, but batch publication is not transactional. On `write_failed`, inspect the returned persisted IDs, clear each persisted task's `blockedBy` in reverse request order through `update`, then tombstone it with `remove`; do not assume automatic rollback or retry.
 - Legacy `.pi/todo.json` entries are imported idempotently into the durable registry at session startup. Isolated tests may set `PI_LEGACY_TODO_SOURCE_DIR` to an empty native directory while preserving the tested workspace identity. The retired `todo` and individual `task_*` tools are no longer registered.
 
 Lifecycle (defined in `pi/lib/operator-state.ts`):

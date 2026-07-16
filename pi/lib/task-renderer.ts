@@ -19,6 +19,8 @@ const URGENCY_ORDER: TaskState[] = [
 	"skipped",
 ];
 const COMPACT_PREVIEW_LEN = 60;
+const TOOL_RESULT_COMPACT_MAX_BYTES = 4_096;
+const TOOL_RESULT_EXPANDED_MAX_BYTES = 16_384;
 const TERMINAL = new Set<TaskState>(["completed", "cancelled", "skipped"]);
 
 export interface TaskGroup {
@@ -142,6 +144,79 @@ export function formatTaskList(
 		: `No active tasks. terminal (${terminalCount})`;
 }
 
+function truncateRendererValue(value: string, maxBytes: number): string {
+	if (Buffer.byteLength(value, "utf8") <= maxBytes) return value;
+	const points = [...value];
+	let low = 0;
+	let high = points.length;
+	let best = "...";
+	while (low <= high) {
+		const middle = Math.floor((low + high) / 2);
+		const candidate = `${points.slice(0, middle).join("")}...`;
+		if (Buffer.byteLength(candidate, "utf8") <= maxBytes) {
+			best = candidate;
+			low = middle + 1;
+		} else high = middle - 1;
+	}
+	return best;
+}
+
+function formatMultiTaskToolResult(
+	result: {
+		outcome?: unknown;
+		results: Array<{
+			id?: unknown;
+			classification?: unknown;
+			state?: unknown;
+			error?: unknown;
+			record?: TaskRecordV1;
+		}>;
+	},
+	expanded: boolean,
+): TaskToolRenderResult {
+	const maxBytes = expanded
+		? TOOL_RESULT_EXPANDED_MAX_BYTES
+		: TOOL_RESULT_COMPACT_MAX_BYTES;
+	const lines = result.results.map((item) => {
+		const id = typeof item.id === "string" ? shortTaskId(item.id) : "?";
+		const classification = String(item.classification ?? "unknown");
+		const state = typeof item.state === "string" ? ` (${item.state})` : "";
+		return `${id} ${classification}${state}`;
+	});
+	const outputIndexes = result.results.flatMap((item, index) =>
+		item.record?.execution?.outputPath ? [index] : [],
+	);
+	if (outputIndexes.length > 0) {
+		const marker = " -- output: ";
+		const markerBytes =
+			Buffer.byteLength(marker, "utf8") * outputIndexes.length;
+		const available =
+			maxBytes - Buffer.byteLength(lines.join("\n"), "utf8") - markerBytes;
+		const valueBudget = Math.max(
+			3,
+			Math.floor(available / outputIndexes.length),
+		);
+		for (const index of outputIndexes) {
+			const outputPath = result.results[index]?.record?.execution?.outputPath;
+			if (outputPath)
+				lines[index] +=
+					`${marker}${truncateRendererValue(outputPath, valueBudget)}`;
+		}
+	}
+	if (expanded) {
+		for (const item of result.results) {
+			if (!item.record) continue;
+			const detail = formatTaskDetail(item.record);
+			if (Buffer.byteLength([...lines, detail].join("\n"), "utf8") <= maxBytes)
+				lines.push(detail);
+		}
+	}
+	return {
+		text: lines.length > 0 ? lines.join("\n") : `ok ${String(result.outcome)}`,
+		failed: result.outcome === "rejected",
+	};
+}
+
 export function formatTaskToolResult(
 	details: unknown,
 	expanded = false,
@@ -153,9 +228,21 @@ export function formatTaskToolResult(
 		error?: unknown;
 		record?: TaskRecordV1;
 		records?: TaskRecordV1[];
+		results?: Array<{
+			id?: unknown;
+			classification?: unknown;
+			state?: unknown;
+			error?: unknown;
+			record?: TaskRecordV1;
+		}>;
 		output?: unknown;
 		truncated?: unknown;
 	};
+	if (Array.isArray(result.results))
+		return formatMultiTaskToolResult(
+			{ outcome: result.outcome, results: result.results },
+			expanded,
+		);
 	const outcome = String(result.outcome);
 	if (outcome !== "persisted" && outcome !== "accepted") {
 		const error =
@@ -164,7 +251,9 @@ export function formatTaskToolResult(
 				: "";
 		const text = `x ${outcome}${error ? `: ${error}` : ""}`;
 		return {
-			text: result.record ? `${text}\n${formatCompactRow(result.record)}` : text,
+			text: result.record
+				? `${text}\n${formatCompactRow(result.record)}`
+				: text,
 			failed: true,
 		};
 	}

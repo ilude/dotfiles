@@ -1588,14 +1588,7 @@ describe("damage-control registered-handler audit matrix", () => {
 		fs.writeFileSync(
 			policyPath,
 			JSON.stringify({
-				bashToolPatterns: [
-					{
-						pattern: "Remove-Item",
-						reason: "removes a filesystem item",
-						action: "ask",
-						tools: ["pwsh"],
-					},
-				],
+				bashToolPatterns: [],
 				zeroAccessPaths: ["*.pem"],
 				zeroAccessExclusions: [],
 				readOnlyPaths: [],
@@ -1692,14 +1685,6 @@ describe("damage-control registered-handler audit matrix", () => {
 				},
 				tuiCtx,
 			);
-			await pwshHandler(
-				{
-					toolName: "pwsh",
-					toolCallId: "approved-pwsh",
-					input: { command: "Remove-Item target" },
-				},
-				tuiCtx,
-			);
 			for (const [toolName, toolCallId, input] of [
 				["read", "approved-read", { path: "terraform.tfvars" }],
 				[
@@ -1728,14 +1713,6 @@ describe("damage-control registered-handler audit matrix", () => {
 						toolName: "bash",
 						toolCallId: "denied-bash-no-ui",
 						input: { command: "git reset --hard" },
-					},
-				],
-				[
-					pwshHandler,
-					{
-						toolName: "pwsh",
-						toolCallId: "denied-pwsh-no-ui",
-						input: { command: "Remove-Item target" },
 					},
 				],
 				[
@@ -1796,13 +1773,11 @@ describe("damage-control registered-handler audit matrix", () => {
 			const expectedIds = [
 				"approved-sequence",
 				"approved-bash",
-				"approved-pwsh",
 				"approved-read",
 				"approved-write",
 				"approved-edit",
 				"approved-ssh-metadata",
 				"denied-bash-no-ui",
-				"denied-pwsh-no-ui",
 				"denied-read-no-ui",
 				"denied-write-no-ui",
 				"denied-edit-no-ui",
@@ -1823,10 +1798,10 @@ describe("damage-control registered-handler audit matrix", () => {
 			}
 			expect(
 				events.filter((event) => event.decisionType === "ask_approved"),
-			).toHaveLength(7);
+			).toHaveLength(6);
 			expect(
 				events.filter((event) => event.decisionType === "ask_denied"),
-			).toHaveLength(6);
+			).toHaveLength(5);
 			expect(
 				events.some(
 					(event) =>

@@ -11,6 +11,7 @@ import {
 } from "../../lib/orchestration-telemetry.js";
 import {
 	getTask,
+	getUnmetBlockers,
 	listTasks,
 	type NormalizedTaskUsage,
 	normalizeTaskUsage,
@@ -18,6 +19,7 @@ import {
 	safeTransitionTask,
 	startTask,
 	type TaskRecordV1,
+	tasksByIdSnapshot,
 	updateTask,
 } from "../../lib/task-registry.js";
 import { sanitizeTaskValue } from "../../lib/task-security.js";
@@ -70,11 +72,47 @@ export interface TaskExecutionResult {
 		| "not_found"
 		| "rejected"
 		| "not_running"
-		| "failed_to_stop";
+		| "failed_to_stop"
+		| "start_failed";
 	record?: TaskRecordV1;
 	output?: string;
 	truncated?: boolean;
 	error?: string;
+}
+
+export type TaskMultiClassification =
+	| "started"
+	| "manual_ready"
+	| "manual_running"
+	| "pending"
+	| "blocked"
+	| "active"
+	| "terminal"
+	| "external_running"
+	| "failed_to_stop"
+	| "start_failed"
+	| "orphaned"
+	| "ownership_unknown"
+	| "missing"
+	| "foreign_workspace"
+	| "aborted";
+
+export interface TaskMultiResult {
+	id: string;
+	classification: TaskMultiClassification;
+	state?: TaskRecordV1["state"];
+	error?: string;
+	record?: TaskRecordV1;
+}
+
+export interface TaskStartManyResult {
+	outcome: "accepted" | "partial" | "rejected";
+	results: TaskMultiResult[];
+}
+
+export interface TaskWaitResult {
+	outcome: "persisted" | "aborted";
+	results: TaskMultiResult[];
 }
 
 function outputPathFor(taskId: string): string {
@@ -215,11 +253,21 @@ export class TaskExecutionCoordinator {
 	private readonly active = new Map<string, ActiveExecution>();
 	private readonly settledOrchestrationIds = new Set<string>();
 
-	constructor(private readonly runner: TaskExecutionRunner = runTaskSubagent) {}
+	constructor(
+		private readonly runner: TaskExecutionRunner = runTaskSubagent,
+		private readonly ownershipWriter: typeof updateTask = updateTask,
+		private readonly compensateStart: typeof safeTransitionTask = safeTransitionTask,
+	) {}
 
 	start(taskId: string, fallbackCwd: string): TaskExecutionResult {
 		const record = getTask(taskId);
 		if (!record) return { outcome: "not_found" };
+		if (record.execution?.status === "failed_to_stop")
+			return {
+				outcome: "failed_to_stop",
+				record,
+				error: "task execution ownership must be reconciled with stop",
+			};
 		if (this.active.has(taskId))
 			return { outcome: "rejected", record, error: "task is already running" };
 		const execution = executionFor(record);
@@ -229,14 +277,7 @@ export class TaskExecutionCoordinator {
 				record,
 				error: "task has no executable subagent specification",
 			};
-		const reopenedForExecution =
-			record.state === "running" &&
-			execution.status !== "running" &&
-			execution.status !== "stop_requested";
-		if (
-			!new Set(["pending", "blocked", "failed"]).has(record.state) &&
-			!reopenedForExecution
-		)
+		if (!new Set(["pending", "blocked", "failed"]).has(record.state))
 			return {
 				outcome: "rejected",
 				record,
@@ -258,10 +299,7 @@ export class TaskExecutionCoordinator {
 			orchestrationId: crypto.randomUUID(),
 			startedAt: new Date().toISOString(),
 		};
-		const transition =
-			record.state === "running"
-				? { outcome: "persisted" as const, record }
-				: startTask(taskId);
+		const transition = startTask(taskId);
 		if (transition.outcome !== "persisted")
 			return {
 				outcome: "rejected",
@@ -272,15 +310,222 @@ export class TaskExecutionCoordinator {
 			? registerOrchestrationInvocation(runningExecution.orchestrationId)
 			: undefined;
 		if (interactionId) runningExecution.interactionId = interactionId;
-		updateTask(taskId, { execution: runningExecution });
+		try {
+			this.ownershipWriter(taskId, { execution: runningExecution });
+		} catch (error) {
+			const persistenceError =
+				error instanceof Error ? error.message : String(error);
+			const compensation = this.compensateStart(taskId, "blocked", {
+				blockReason: "execution metadata persistence failed",
+			});
+			const recoveryError =
+				compensation.outcome === "persisted"
+					? undefined
+					: (compensation.error ?? compensation.outcome);
+			return {
+				outcome: "start_failed",
+				record: getTask(taskId) ?? transition.record ?? record,
+				error: recoveryError
+					? `${persistenceError}; compensation failed: ${recoveryError}`
+					: persistenceError,
+			};
+		}
 		this.active.set(taskId, active);
 		active.promise = this.finishExecution(
 			taskId,
 			runningExecution,
 			fallbackCwd,
 			active,
-		).finally(() => this.active.delete(taskId));
+		).finally(() => {
+			if (this.active.get(taskId) === active) this.active.delete(taskId);
+		});
 		return { outcome: "accepted", record: getTask(taskId) ?? record };
+	}
+
+	private classify(
+		record: TaskRecordV1 | null,
+		forExecute: boolean,
+	): TaskMultiResult {
+		if (!record) return { id: "", classification: "missing" };
+		const base = { id: record.id, state: record.state, record };
+		const blockers = getUnmetBlockers(
+			record,
+			tasksByIdSnapshot(listTasks({ includeTombstones: true })),
+		);
+		if (record.state !== "running") {
+			if (forExecute && blockers.length > 0)
+				return { ...base, classification: "blocked" };
+			if (record.state === "pending")
+				return {
+					...base,
+					classification:
+						blockers.length > 0
+							? "blocked"
+							: record.execution === undefined
+								? "manual_ready"
+								: "pending",
+				};
+			if (record.state === "blocked")
+				return { ...base, classification: "blocked" };
+			return { ...base, classification: "terminal" };
+		}
+		if (record.execution?.status === "failed_to_stop")
+			return { ...base, classification: "failed_to_stop" };
+		if (this.active.has(record.id))
+			return { ...base, classification: "active" };
+		if (record.execution === undefined)
+			return { ...base, classification: "manual_running" };
+		const execution = executionFor(record);
+		if (!execution) return { ...base, classification: "ownership_unknown" };
+		if (execution.status === "running" || execution.status === "stop_requested")
+			return {
+				...base,
+				classification:
+					execution.ownerPid && processExists(execution.ownerPid)
+						? "external_running"
+						: "orphaned",
+			};
+		return { ...base, classification: "ownership_unknown" };
+	}
+
+	startMany(
+		taskIds: readonly string[],
+		fallbackCwd: string,
+	): TaskStartManyResult {
+		const candidates = taskIds.map((taskId) => {
+			const record = getTask(taskId);
+			return { taskId, record, classified: this.classify(record, true) };
+		});
+		const results = candidates.map(
+			({ taskId, record, classified }): TaskMultiResult => {
+				if (!record) return { ...classified, id: taskId };
+				if (
+					!executionFor(record) ||
+					!(
+						classified.classification === "pending" ||
+						record.state === "blocked" ||
+						record.state === "failed"
+					)
+				)
+					return { ...classified, id: taskId };
+				const started = this.start(taskId, fallbackCwd);
+				if (started.outcome === "accepted")
+					return {
+						id: taskId,
+						classification: "started",
+						state: started.record?.state,
+						record: started.record,
+					};
+				if (started.outcome === "start_failed")
+					return {
+						id: taskId,
+						classification: "start_failed",
+						state: started.record?.state,
+						record: started.record,
+						error: started.error,
+					};
+				return {
+					id: taskId,
+					classification:
+						started.outcome === "failed_to_stop" ? "failed_to_stop" : "blocked",
+					state: started.record?.state,
+					record: started.record,
+					error: started.error,
+				};
+			},
+		);
+		const started = results.filter(
+			(result) => result.classification === "started",
+		).length;
+		return {
+			outcome:
+				started === results.length
+					? "accepted"
+					: started > 0
+						? "partial"
+						: "rejected",
+			results,
+		};
+	}
+
+	async wait(
+		taskIds: readonly string[],
+		signal?: AbortSignal,
+	): Promise<TaskWaitResult> {
+		const immediate = taskIds.map((taskId) => ({
+			taskId,
+			result: this.classify(getTask(taskId), false),
+		}));
+		const captured = immediate.flatMap(({ taskId, result }) => {
+			if (result.classification !== "active") return [];
+			const active = this.active.get(taskId);
+			if (!active) return [];
+			const capture = { taskId, settled: false, promise: Promise.resolve() };
+			capture.promise = active.promise.then(
+				() => {
+					capture.settled = true;
+				},
+				() => {
+					capture.settled = true;
+				},
+			);
+			return [capture];
+		});
+		if (captured.length === 0)
+			return {
+				outcome: "persisted",
+				results: immediate.map(({ taskId, result }) => ({
+					...result,
+					id: taskId,
+				})),
+			};
+		if (signal?.aborted)
+			return {
+				outcome: "aborted",
+				results: immediate.map(({ taskId, result }) =>
+					result.classification === "active"
+						? {
+								id: taskId,
+								classification: "aborted" as const,
+								state: result.state,
+								record: result.record,
+							}
+						: { ...result, id: taskId },
+				),
+			};
+		let aborted = false;
+		let onAbort: (() => void) | undefined;
+		const abortPromise = signal
+			? new Promise<void>((resolve) => {
+					onAbort = () => {
+						aborted = true;
+						resolve();
+					};
+					signal.addEventListener("abort", onAbort, { once: true });
+					if (signal.aborted) onAbort();
+				})
+			: undefined;
+		if (abortPromise)
+			await Promise.race([
+				Promise.all(captured.map((item) => item.promise)).then(() => undefined),
+				abortPromise,
+			]);
+		else await Promise.all(captured.map((item) => item.promise));
+		if (signal && onAbort) signal.removeEventListener("abort", onAbort);
+		const capturedById = new Map(captured.map((item) => [item.taskId, item]));
+		const results = immediate.map(({ taskId, result }): TaskMultiResult => {
+			const capture = capturedById.get(taskId);
+			if (!capture) return { ...result, id: taskId };
+			if (capture.settled)
+				return { ...this.classify(getTask(taskId), false), id: taskId };
+			return {
+				id: taskId,
+				classification: "aborted",
+				state: result.state,
+				record: result.record,
+			};
+		});
+		return { outcome: aborted ? "aborted" : "persisted", results };
 	}
 
 	private settleExecution(
@@ -355,6 +600,22 @@ export class TaskExecutionCoordinator {
 		if (event) recordEvent(event as Parameters<typeof recordEvent>[0]);
 	}
 
+	private reconcileLateStoppedExecution(
+		taskId: string,
+		active: ActiveExecution,
+	): boolean {
+		if (!active.settled || !active.stopRequested) return active.settled;
+		const current = getTask(taskId);
+		const currentExecution = current && executionFor(current);
+		if (currentExecution?.status === "failed_to_stop") {
+			updateTask(taskId, {
+				execution: { ...currentExecution, status: "stopped" },
+			});
+			safeTransitionTask(taskId, "cancelled");
+		}
+		return true;
+	}
+
 	private async finishExecution(
 		taskId: string,
 		execution: SubagentTaskExecution,
@@ -371,7 +632,7 @@ export class TaskExecutionCoordinator {
 				},
 				taskId,
 			);
-			if (active.settled) return;
+			if (this.reconcileLateStoppedExecution(taskId, active)) return;
 			const savedOutput = saveOutput(taskId, result.output);
 			if (active.stopRequested) {
 				this.settleExecution(
@@ -402,7 +663,7 @@ export class TaskExecutionCoordinator {
 					: { errorReason: `subagent exited with code ${result.exitCode}` },
 			);
 		} catch (error) {
-			if (active.settled) return;
+			if (this.reconcileLateStoppedExecution(taskId, active)) return;
 			if (active.stopRequested) {
 				this.settleExecution(taskId, execution, "stopped", active);
 				safeTransitionTask(taskId, "cancelled");
@@ -440,7 +701,7 @@ export class TaskExecutionCoordinator {
 
 		active.stopRequested = true;
 		const execution = executionFor(record);
-		if (execution)
+		if (execution && execution.status !== "failed_to_stop")
 			updateTask(taskId, {
 				execution: { ...execution, status: "stop_requested" },
 			});

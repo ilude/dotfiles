@@ -195,7 +195,9 @@ check-pi-ci:
 
 check-pi-extensions:
 	@echo "==> Type-checking Pi extensions"
-	cd pi && pnpm install --frozen-lockfile && pnpm run typecheck
+	cd pi && pnpm install --frozen-lockfile
+	scripts/pi-deps-link-setup
+	cd pi && pnpm run typecheck
 	@echo "==> Running Pi Vitest suite (includes runtime smoke checks)"
 	cd pi && pnpm test
 	@echo "Pi extension checks passed."

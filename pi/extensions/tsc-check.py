@@ -30,51 +30,55 @@ def bun_install_dir() -> Path:
     return Path.home() / ".bun"
 
 
-def resolve_pi_agent_dir() -> Path:
-    candidates: list[Path] = []
+def package_manager_roots() -> list[Path]:
+    roots: list[Path] = []
+    for package_manager in ("pnpm", "npm"):
+        executable = find_bin(package_manager)
+        if not executable:
+            continue
+        result = subprocess.run([executable, "root", "-g"], capture_output=True, text=True)
+        if result.returncode == 0:
+            roots.append(Path(result.stdout.strip()))
+    return roots
 
-    bun_global = (
-        bun_install_dir()
-        / "install"
-        / "global"
-        / "node_modules"
-        / "@mariozechner"
-        / "pi-coding-agent"
-    )
-    candidates.append(bun_global)
+
+def resolve_pi_agent() -> tuple[Path, Path]:
+    package_path = Path("@earendil-works") / "pi-coding-agent"
+    project_node_modules = Path(__file__).resolve().parent.parent / "node_modules"
+    node_module_roots = [project_node_modules]
 
     pi_bin = find_bin("pi")
     if pi_bin:
-        pi_parent = Path(pi_bin).resolve().parent
-        candidates.append(pi_parent / "node_modules" / "@mariozechner" / "pi-coding-agent")
+        node_module_roots.append(Path(pi_bin).resolve().parent / "node_modules")
 
-    npm = find_bin("npm")
-    if npm:
-        result = subprocess.run([npm, "root", "-g"], capture_output=True, text=True)
-        if result.returncode == 0:
-            npm_global = Path(result.stdout.strip())
-            candidates.append(npm_global / "@mariozechner" / "pi-coding-agent")
+    node_module_roots.extend(package_manager_roots())
+    node_module_roots.append(bun_install_dir() / "install" / "global" / "node_modules")
 
     seen: set[Path] = set()
-    for candidate in candidates:
-        resolved = candidate.expanduser().resolve()
+    checked: list[Path] = []
+    for node_modules in node_module_roots:
+        expanded_root = node_modules.expanduser()
+        candidate = expanded_root / package_path
+        resolved = candidate.resolve()
         if resolved in seen:
             continue
         seen.add(resolved)
-        if resolved.exists():
-            return resolved
+        checked.append(candidate)
+        if candidate.exists():
+            return candidate, expanded_root
 
-    checked = "\n  - ".join(str(path) for path in seen)
+    locations = "\n  - ".join(str(path) for path in checked)
     print(
-        "tsc-check: could not locate @earendil-works/pi-coding-agent. Checked:\n"
-        f"  - {checked}",
+        f"tsc-check: could not locate @earendil-works/pi-coding-agent. Checked:\n  - {locations}",
         file=sys.stderr,
     )
     sys.exit(1)
 
 
 def run_tsc(local_tsconfig: str, cwd: str) -> int:
-    tsc = find_bin("tsc")
+    local_bin = Path(cwd).parent / "node_modules" / ".bin"
+    local_tsc = local_bin / ("tsc.CMD" if os.name == "nt" else "tsc")
+    tsc = str(local_tsc) if local_tsc.exists() else find_bin("tsc")
     if tsc:
         result = subprocess.run(
             [tsc, "-p", local_tsconfig],
@@ -111,18 +115,14 @@ def main():
     need_regen = True
 
     if need_regen:
-        pi_agent_dir = resolve_pi_agent_dir()
+        pi_agent_dir, pi_node_modules_dir = resolve_pi_agent()
         pi_agent = pi_agent_dir.as_posix()
-        pi_node_modules_dir = pi_agent_dir / "node_modules"
-        if not pi_node_modules_dir.exists():
-            pi_node_modules_dir = pi_agent_dir.parent.parent
         pi_nm = pi_node_modules_dir.as_posix()
 
         config = {
             "extends": "./tsconfig.json",
             "compilerOptions": {
                 "baseUrl": ".",
-                "ignoreDeprecations": "6.0",
                 "allowImportingTsExtensions": True,
                 "types": ["node"],
                 "paths": {
@@ -149,12 +149,11 @@ def main():
                     "typebox": [f"{pi_nm}/typebox"],
                     "typebox/compile": [f"{pi_nm}/typebox/compile"],
                     "typebox/value": [f"{pi_nm}/typebox/value"],
-                    "@sinclair/typebox": [f"{pi_nm}/typebox"],
-                    "@sinclair/typebox/compile": [f"{pi_nm}/typebox/compile"],
-                    "@sinclair/typebox/value": [f"{pi_nm}/typebox/value"],
+                    "@sinclair/typebox": [f"{pi_nm}/@sinclair/typebox"],
+                    "@sinclair/typebox/compile": [f"{pi_nm}/@sinclair/typebox/compile"],
+                    "@sinclair/typebox/value": [f"{pi_nm}/@sinclair/typebox/value"],
                     "yaml": [f"{pi_nm}/yaml"],
                 },
-                "typeRoots": [f"{pi_nm}/@types"],
             },
         }
         with open(local_tsconfig, "w") as f:
