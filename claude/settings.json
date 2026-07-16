@@ -6,7 +6,12 @@
   },
   "includeCoAuthoredBy": false,
   "permissions": {
-    "allow": [],
+    "allow": [
+      "Bash(pi-run:*)",
+      "Bash(~/.dotfiles/scripts/pi-run:*)",
+      "Bash(pi -p:*)",
+      "Bash(pi --list-models:*)"
+    ],
     "deny": [
       "Bash(rm -rf /*:*)",
       "Bash(rm -rf ~/*:*)",

@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+
+# Headless Pi delegation wrapper for Claude Code.
+# Routes subagent-style work to Pi on the Codex subscription (Luna/Sol)
+# instead of Claude-model subagents, preserving Claude plan limits.
+#
+# Usage:
+#   pi-run dig    "task"   # cheap investigation / search / verification (Luna)
+#   pi-run work   "task"   # implementation and multi-step edits (Sol)
+#   pi-run review "task"   # careful review / analysis (Sol, high thinking)
+#
+# Extra pi flags may follow the task, e.g.:
+#   pi-run dig "trace config load order" --no-context-files
+
+set -euo pipefail
+
+usage() {
+    echo 'usage: pi-run <dig|work|review> "<task>" [pi flags...]' >&2
+    exit 2
+}
+
+mode="${1:-}"
+[ -n "$mode" ] || usage
+shift
+task="${1:-}"
+[ -n "$task" ] || usage
+shift
+
+extra=()
+case "$mode" in
+    dig)    model="openai-codex/gpt-5.6-luna"; extra+=(--no-session) ;;
+    work)   model="openai-codex/gpt-5.6-sol" ;;
+    review) model="openai-codex/gpt-5.6-sol:high"; extra+=(--no-session) ;;
+    *)      usage ;;
+esac
+
+exec pi -p --model "$model" "${extra[@]}" "$@" "$task"
