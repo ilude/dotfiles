@@ -363,7 +363,7 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - [x] T6: Pi test alignment - done: dea299b
 - [x] T7: test_config_patterns split - done: 085b069
 - [x] T8: browser wrapper and CI contract - done: 8a0ab09
-- [ ] T9: pin quality tools - in-progress: repair fresh-install ownership for shfmt and shared-hook Biome resolution, then record durable bad-fixture evidence
+- [x] T9: pin quality tools - done: 21e12e1, 07a2fad
 - [ ] T10: changed-file validation entrypoint - pending
 - [ ] T11: Make target split - pending
 - [ ] T12: ledger close and final validation - pending
@@ -375,13 +375,13 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 
 ### State
 
-- **Classification:** blocked-by-failure as of 2026-07-16
-- **Current blocker:** T9 fresh-install ownership is incomplete: shfmt is workstation-provided, and the shared validator resolves bare `biome` instead of the pinned Pi binary; intentional fixture results are not yet durable repository evidence
-- **Last completed wave/gate:** T6 Pi test behavior alignment
-- **Next:** repair T9 tool resolution and add durable validator fixtures, then rerun the T9 fresh-setup gate
-- **Completed work:** T1-T8 complete; T9 implementation commit `21e12e1` pins Biome and Lizard, adds a non-mutating shfmt target, and records baseline debt, but its completion gate remains open
-- **Commands/results:** frozen Pi install, Biome 2.5.3, TypeScript typecheck, 46 quality-hook tests, installer syntax/PowerShell parse, and `git diff --check` passed; scratch bad fixtures exited 1 for Biome, shfmt, and Lizard; independent audit found unresolved fresh-install and durable-evidence gaps
-- **Remaining checks:** T9 repair and completion gate; T10-T12; exact workflow fixtures; `make check-pi-extensions`; final `make check`; archive preflight
+- **Classification:** execution in progress
+- **Current blocker:** none
+- **Last completed wave/gate:** T9 quality-tool ownership and defect-class validation
+- **Next:** T10 implement the changed-file validation entrypoint
+- **Completed work:** T1-T9 complete; Biome and Lizard are pinned, shfmt has a non-mutating nonblocking check with tracked platform provisioning, and the shared hook resolves Biome through the owning Pi pnpm workspace
+- **Commands/results:** frozen Pi install, Biome 2.5.3, TypeScript typecheck, 47 quality-hook tests, installer syntax/PowerShell parse, and `git diff --check` passed; Biome, shfmt, and Lizard bad fixtures each exited 1 as required
+- **Remaining checks:** T10-T12; exact workflow fixtures; `make check-pi-extensions`; final `make check`; archive preflight
 - **Worktree note:** out-of-scope `.specs/rationalization-phase2/` remains untracked and untouched by plan commits
 - **Exact user action:** none; rerun `/do-it .specs/rationalization/plan.md`
 - **Resume:** `/do-it .specs/rationalization/plan.md`
@@ -408,3 +408,7 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - **T9 manual gate:** not required; risk low; blast radius personal-repo; rollback easy; local reversible tooling changes have no deployment or shared-user impact.
 - **Current archive:** not attempted because T9-T12 and final gates remain incomplete.
 - **Current post-run eval:** classification `blocked-by-failure`; checklist correctly leaves T9-T12 open; archive status `active`; friction tags `fresh-install-ownership` and `evidence-durability`; missing evidence is a repository-owned shfmt source, pinned Biome resolution in the shared validator, and durable bad-fixture coverage; improvement candidate is to make T10's runner the single repository-owned tool resolver; independent audit confidence high from direct file and git evidence.
+- **T9 repair phase:** phase ID `T9-repair`; type `implementation`; depends on `T9`; status `passed`; evidence commit `07a2fad` and quality-hook semantic config test.
+- **T9 repair command events:** focused quality-hook suite exited 0 with 47 tests; pinned Biome 2.5.3 and Pi typecheck exited 0; `git diff --check` exited 0. The earlier bad-fixture command recorded Biome, shfmt, and Lizard exit 1 as expected.
+- **T9 decision:** shfmt remains nonblocking while 12-file baseline debt exists; tracked Windows and WSL setup provision it, so exact fresh-install pinning applies only before it becomes blocking. Biome resolves through `pnpm --dir {project_root} exec biome`; Lizard is exact-pinned by the tracked installers.
+- **T9 gate:** passed; no manual or deployment gate required; risk low; blast radius personal-repo; rollback easy.
