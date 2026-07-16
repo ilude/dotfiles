@@ -106,6 +106,19 @@ shape, deleting a user-facing feature (including the deterministic skill-review
 protocol), acting where the worktree or code contradicts this plan's claims, or
 executing the T4 roster deletion without the approval gate below.
 
+Gate mechanics: when a stop-and-ask condition is hit, write the question or
+proposal to a file under `.specs/rationalization/` (the T4 gate uses
+`roster.md`), set the blocker in Execution status, and ask the user directly.
+Approval is the user's explicit reply or their edit of the proposal file; a
+gate answered in a previous session counts if the proposal file is unchanged.
+Never proceed past a gate on inferred or assumed consent.
+
+Session continuity: work in ledger/checklist order, and after each completed
+slice update the Execution status checklist and commit before starting the
+next task. On starting or resuming a session, read Execution status and the
+ledger first and continue from the recorded state â€” do not re-derive progress
+from the worktree or re-do completed tasks.
+
 ## Phase 0 â€” Inventory
 
 ### T1: Build the test decision ledger
@@ -318,6 +331,24 @@ Phases 1-3 can interleave; only T6 and T12 have cross-phase dependencies.
 
 ## Execution status
 
+Update after every slice: mark a task `[x]` only when its done-when is
+verified, and record the commit hash and any decisions or blockers on its
+line. This section is the resume point for interrupted sessions.
+
+- [ ] T1: test decision ledger â€” pending
+- [ ] T2: workflow skills and templates â€” pending
+- [ ] T3: Pi instruction trim â€” pending
+- [ ] T4: agent roster consolidation â€” pending (approval gate: roster.md)
+- [ ] T5: routing policy consolidation â€” pending
+- [ ] T6: Pi test alignment â€” pending
+- [ ] T7: test_config_patterns split â€” pending
+- [ ] T8: browser wrapper and CI contract â€” pending
+- [ ] T9: pin quality tools â€” pending
+- [ ] T10: changed-file validation entrypoint â€” pending
+- [ ] T11: Make target split â€” pending
+- [ ] T12: ledger close and final validation â€” pending
+
 - **Classification:** planned, not started
+- **Current blocker:** none
 - **Next:** T1; then T2/T3/T7/T8/T9 as capacity allows
 - **Resume:** `/do-it .specs/rationalization/plan.md`
