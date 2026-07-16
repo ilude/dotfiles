@@ -69,8 +69,8 @@ typescript:
         ESLINT_USE_FLAT_CONFIG: "false"
       detect: [".eslintrc", ".eslintrc.js", ".eslintrc.json", ".eslintrc.yml", ".eslintrc.yaml", ".eslintrc.cjs"]
     - name: biome
-      command: ["biome", "check", "{file}"]
-      check: "biome"
+      command: ["pnpm", "--dir", "{project_root}", "exec", "biome", "check", "{file}"]
+      check: "pnpm"
       detect: ["biome.json", "biome.jsonc"]
     - name: tsc-check
       command: ["python", "{project_root}/tsc-check.py"]
@@ -88,8 +88,8 @@ javascript:
   markers: ["package.json"]
   validators:
     - name: biome
-      command: ["biome", "check", "{file}"]
-      check: "biome"
+      command: ["pnpm", "--dir", "{project_root}", "exec", "biome", "check", "{file}"]
+      check: "pnpm"
       detect: ["biome.json", "biome.jsonc"]
     - name: lizard-complexity
       command: *lizard_command
@@ -371,8 +371,8 @@ vue:
   markers: ["vue.config.js", "vite.config.js", "vite.config.ts", "package.json"]
   validators:
     - name: biome
-      command: ["biome", "check", "{file}"]
-      check: "biome"
+      command: ["pnpm", "--dir", "{project_root}", "exec", "biome", "check", "{file}"]
+      check: "pnpm"
       detect: ["biome.json", "biome.jsonc"]
     - name: lizard-complexity
       command: *lizard_command

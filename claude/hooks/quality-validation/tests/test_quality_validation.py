@@ -40,6 +40,19 @@ class TestLoadConfig:
             result = hook.load_config()
         assert result is None
 
+    def test_biome_uses_project_pnpm_binary(self):
+        config = hook.load_config()
+        assert config is not None
+        biome_commands = [
+            validator["command"]
+            for language in ("typescript", "javascript", "vue")
+            for validator in config[language]["validators"]
+            if validator["name"] == "biome"
+        ]
+        assert biome_commands == [
+            ["pnpm", "--dir", "{project_root}", "exec", "biome", "check", "{file}"]
+        ] * 3
+
 
 class TestLoadSkipList:
     """Tests for load_skip_list()."""
