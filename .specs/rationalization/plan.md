@@ -364,7 +364,7 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - [x] T7: test_config_patterns split - done: 085b069
 - [x] T8: browser wrapper and CI contract - done: 8a0ab09
 - [x] T9: pin quality tools - done: 21e12e1, 07a2fad
-- [ ] T10: changed-file validation entrypoint - pending
+- [x] T10: changed-file validation entrypoint - done: 7344bd2, 887d54d
 - [ ] T11: Make target split - pending
 - [ ] T12: ledger close and final validation - pending
   - [ ] ledger closed: every row executed or explicitly deferred
@@ -377,11 +377,11 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 
 - **Classification:** execution in progress
 - **Current blocker:** none
-- **Last completed wave/gate:** T9 quality-tool ownership and defect-class validation
-- **Next:** T10 implement the changed-file validation entrypoint
-- **Completed work:** T1-T9 complete; Biome and Lizard are pinned, shfmt has a non-mutating nonblocking check with tracked platform provisioning, and the shared hook resolves Biome through the owning Pi pnpm workspace
-- **Commands/results:** frozen Pi install, Biome 2.5.3, TypeScript typecheck, 47 quality-hook tests, installer syntax/PowerShell parse, and `git diff --check` passed; Biome, shfmt, and Lizard bad fixtures each exited 1 as required
-- **Remaining checks:** T10-T12; exact workflow fixtures; `make check-pi-extensions`; final `make check`; archive preflight
+- **Last completed wave/gate:** T10 changed-file validation CLI
+- **Next:** T11 split Make validation targets without duplicated work
+- **Completed work:** T1-T10 complete; `scripts/quality-check` routes explicit file lists through repository validator config with bounded parallelism and stable exit codes
+- **Commands/results:** exact CLI passed Python, shell, and Pi TypeScript files; no-argument invocation exited 2; 51 focused tests, Ruff, formatting, shell syntax, executable mode, and `git diff --check` passed
+- **Remaining checks:** T11-T12; exact workflow fixtures; `make check-pi-extensions`; final `make check`; archive preflight
 - **Worktree note:** out-of-scope `.specs/rationalization-phase2/` remains untracked and untouched by plan commits
 - **Exact user action:** none; rerun `/do-it .specs/rationalization/plan.md`
 - **Resume:** `/do-it .specs/rationalization/plan.md`
@@ -412,3 +412,6 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - **T9 repair command events:** focused quality-hook suite exited 0 with 47 tests; pinned Biome 2.5.3 and Pi typecheck exited 0; `git diff --check` exited 0. The earlier bad-fixture command recorded Biome, shfmt, and Lizard exit 1 as expected.
 - **T9 decision:** shfmt remains nonblocking while 12-file baseline debt exists; tracked Windows and WSL setup provision it, so exact fresh-install pinning applies only before it becomes blocking. Biome resolves through `pnpm --dir {project_root} exec biome`; Lizard is exact-pinned by the tracked installers.
 - **T9 gate:** passed; no manual or deployment gate required; risk low; blast radius personal-repo; rollback easy.
+- **T10 phase:** phase ID `T10`; type `implementation`; depends on `T9`; status `passed`; evidence commits `7344bd2` and `887d54d` plus focused CLI tests.
+- **T10 command events:** exact `scripts/quality-check` invocation exited 0 for Python, shell, and Pi TypeScript inputs; no-argument usage exited 2; focused quality-hook suite exited 0 with 51 tests; Ruff, format check, shell syntax, executable-mode check, and `git diff --check` exited 0.
+- **T10 manual gate:** not required; risk low; blast radius personal-repo; rollback easy; local deterministic CLI only.
