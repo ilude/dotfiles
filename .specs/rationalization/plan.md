@@ -84,6 +84,28 @@ task prescribes one. Tasks marked parallel in the dependency graph may be
 dispatched to subagents when that genuinely saves wall time; work directly
 when coordination overhead would exceed the gain.
 
+## Decision protocol
+
+Already decided â€” do not relitigate or ask again:
+
+- Claude/OpenCode/Copilot command systems stay separate from Pi.
+- The org-chart taxonomy (`roleType`, `reportsTo`, `leads`, `routingUse`) is
+  deleted, not enforced.
+- The agent roster consolidates aggressively (subject to the T4 approval gate).
+- Friction instruction-context capture is deferred; do not build it here.
+- Accepted loss beats a slow or flaky behavior test.
+
+Open judgment calls (test classifications, fixture design, which prose line
+survives a trim, tool configuration details): decide, then record the decision
+and one-line rationale in the ledger or the slice's CHANGELOG entry. Do not
+silently skip a task element because it was ambiguous â€” record what was
+ambiguous and what you chose.
+
+Stop and ask the user before: changing any public command name or argument
+shape, deleting a user-facing feature (including the deterministic skill-review
+protocol), acting where the worktree or code contradicts this plan's claims, or
+executing the T4 roster deletion without the approval gate below.
+
 ## Phase 0 â€” Inventory
 
 ### T1: Build the test decision ledger
@@ -144,9 +166,18 @@ lead/orchestrator variants, `skill-review-*` if the deterministic review
 protocol allows). An agent file survives only if its role, tools, or
 boundaries genuinely differ from every other agent. Keep model frontmatter
 only as a default hint; routing (T5) owns selection. Update
-`pi/lib/skill-review.ts:602,628-641` for whatever roster survives.
+`pi/lib/skill-review.ts:602,628-641` for whatever roster survives; if merging
+the `skill-review-*` trio would break its deterministic dispatch, keep the
+trio and note why rather than deleting the protocol.
 
-Done when: every remaining agent has a distinct role/tool/boundary rationale;
+**Approval gate:** before deleting any agent file, write the proposed roster
+to `.specs/rationalization/roster.md` â€” surviving agents with their
+role/tool/boundary rationale, plus an old-name to new-name mapping â€” and get
+explicit user approval. After approval, update every reference to old names
+(skills, docs, `skill-review.ts`, tests) in the same slice.
+
+Done when: roster approved; every remaining agent has a distinct
+role/tool/boundary rationale;
 the parser accepts only fields the launcher consumes;
 `agent-role-semantics.test.ts` is replaced by a behavior test of
 parse-to-launch (frontmatter in, spawn flags out) with no org-chart
@@ -162,6 +193,12 @@ hardcoded ladder in `pi/extensions/fable.ts:13-18` and its pinned-ID regexp;
 express them through the resolver. Named-model preferences that remain (e.g.
 the Codex premium set in `prompt-router.ts`) live in one clearly-marked policy
 table in the resolver module, not scattered across extensions.
+
+Do not invent a new capability taxonomy. The existing request vocabulary â€”
+subagent `modelSize` (`small`/`medium`/`large`) and the router's
+`nano`/`mini`/`core`/`large`/`max` mapping â€” is a durable runtime interface
+(repo-state report, "Hardcoded runtime inventories"); keep it as the request
+schema and change only how it resolves to concrete models.
 
 Done when: exactly one module maps capability needs to model selection; zero,
 one, and many available-model fixtures resolve deterministically; missing
