@@ -2,6 +2,25 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-16: Align Pi tests with runtime behavior
+
+**Why:** Pi tests still froze prompt wording, file placement, and implementation
+spelling that no runtime parser consumed.
+
+**Changed:**
+- Removed prompt, source-shape, and classifier-wording assertions without an
+  executable contract.
+- Replaced reducer source greps with mocked process invocation and timeout-tree
+  cleanup behavior.
+- Kept the memory promotion scanner's sandboxed output behavior while removing
+  redundant source inspection.
+- Recorded accepted loss for extension-loader layout checks because no cheap
+  repository-owned runtime seam exists.
+
+**Files:** `pi/tests/`, `.specs/rationalization/ledger.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-16: Replace browser and CI source assertions
 
 **Why:** Browser safety and workflow deployment checks relied on prose and

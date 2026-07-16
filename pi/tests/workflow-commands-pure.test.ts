@@ -10,7 +10,6 @@ vi.mock("../lib/model-routing", () => ({
 
 import {
 	buildStagingPlan,
-	buildUntrackedClassifierPrompt,
 	chooseFilesToCommit,
 	confirmCommitMessage,
 	filterCommitSafeFiles,
@@ -306,16 +305,6 @@ describe("untracked classifier helpers", () => {
 		"pi/inspect/snapshots/session.json",
 		"pi/extensions/source.ts",
 	];
-
-	it("builds a constrained prompt with Git best practices and confidence gate", () => {
-		const prompt = buildUntrackedClassifierPrompt(untracked);
-		expect(prompt).toContain(
-			"Allowed decisions are exactly ignore and do_not_ignore",
-		);
-		expect(prompt).toContain("85% confidence gate");
-		expect(prompt).toContain("generated runtime state");
-		expect(prompt).toContain("source code, tests, documentation");
-	});
 
 	it("accepts full coverage and splits low confidence decisions", () => {
 		const classifications = [
