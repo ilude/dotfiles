@@ -2,6 +2,25 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-16: Preserve Pi model metadata across catalog refreshes
+
+**Why:** The Codex model cache stored complete provider definitions and replayed
+those stale definitions over Pi 0.80.7 built-ins at startup, hiding newer
+thinking levels and other model metadata.
+
+**Changed:**
+- Replaced complete cached model definitions with schema-versioned provider
+  catalog facts.
+- Composed cached Codex discoveries over current Pi built-ins, preserving Pi's
+  metadata for known models while retaining models not yet shipped by Pi.
+- Migrated legacy cache records in memory and added regression coverage for
+  stale thinking-level metadata and the new cache schema.
+
+**Files:** `pi/extensions/refresh-models.ts`,
+`pi/tests/refresh-models.test.ts`, `pi/README.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-16: Add bounded feature memory
 
 **Why:** Feature discussions and validated follow-up evidence were difficult to recover in fresh sessions without copying transcripts or making local observations authoritative tracked state.

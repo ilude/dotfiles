@@ -18,8 +18,46 @@ vi.mock("@earendil-works/pi-ai/oauth", () => ({
 	}),
 }));
 
-vi.mock("@earendil-works/pi-ai", () => ({
+vi.mock("@earendil-works/pi-ai/compat", () => ({
 	getModels: vi.fn((provider: string) => {
+		if (provider === "openai-codex") {
+			return [
+				{
+					id: "gpt-5.6-luna",
+					name: "GPT-5.6 Luna",
+					provider,
+					api: "openai-codex-responses",
+					baseUrl: "https://chatgpt.com/backend-api",
+					reasoning: true,
+					thinkingLevelMap: {
+						minimal: "low",
+						xhigh: "xhigh",
+						max: "max",
+					},
+					input: ["text", "image"],
+					cost: { input: 1, output: 6, cacheRead: 0.1, cacheWrite: 1.25 },
+					contextWindow: 372000,
+					maxTokens: 128000,
+				},
+				{
+					id: "gpt-5.6-sol",
+					name: "GPT-5.6 Sol",
+					provider,
+					api: "openai-codex-responses",
+					baseUrl: "https://chatgpt.com/backend-api",
+					reasoning: true,
+					thinkingLevelMap: {
+						minimal: "low",
+						xhigh: "xhigh",
+						max: "max",
+					},
+					input: ["text", "image"],
+					cost: { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 6.25 },
+					contextWindow: 372000,
+					maxTokens: 128000,
+				},
+			];
+		}
 		if (provider !== "github-copilot") return [];
 		return [
 			{
@@ -143,6 +181,123 @@ describe("/refresh-models command", () => {
 				handler: expect.any(Function),
 			}),
 		);
+	});
+
+	it("leaves Pi built-ins alone when the cache has no new models", () => {
+		const cacheDir = path.join(
+			tempHome,
+			".pi",
+			"agent",
+			"model-cache",
+			"refresh-models",
+		);
+		fs.mkdirSync(cacheDir, { recursive: true });
+		fs.writeFileSync(
+			path.join(cacheDir, "openai-codex.json"),
+			JSON.stringify({
+				schemaVersion: 2,
+				provider: "openai-codex",
+				fetchedAt: "2026-07-09T00:00:00.000Z",
+				models: [
+					{
+						id: "gpt-5.6-luna",
+						thinkingLevelMap: { off: null, max: null },
+					},
+				],
+			}),
+			"utf-8",
+		);
+
+		const pi = createMockPi();
+		registerRefreshModelsCommand(
+			pi as Parameters<typeof registerRefreshModelsCommand>[0],
+		);
+		expect(pi.registerCommand).toHaveBeenCalledWith(
+			"refresh-models",
+			expect.any(Object),
+		);
+	});
+
+	it("composes legacy cached discoveries over current Pi model metadata", () => {
+		const cacheDir = path.join(
+			tempHome,
+			".pi",
+			"agent",
+			"model-cache",
+			"refresh-models",
+		);
+		fs.mkdirSync(cacheDir, { recursive: true });
+		fs.writeFileSync(
+			path.join(cacheDir, "openai-codex.json"),
+			JSON.stringify({
+				provider: "openai-codex",
+				baseUrl: "https://stale.example.invalid",
+				api: "openai-codex-responses",
+				models: [
+					{
+						id: "gpt-5.6-luna",
+						name: "Stale Luna",
+						api: "openai-codex-responses",
+						reasoning: true,
+						thinkingLevelMap: {
+							off: null,
+							minimal: null,
+							low: "low",
+							medium: "medium",
+							high: "high",
+							xhigh: "xhigh",
+						},
+						input: ["text"],
+						contextWindow: 128000,
+						maxTokens: 16000,
+					},
+					{
+						id: "gpt-5.7-preview",
+						name: "GPT-5.7 Preview",
+						api: "openai-codex-responses",
+						reasoning: true,
+						input: ["text"],
+						contextWindow: 400000,
+						maxTokens: 128000,
+					},
+				],
+			}),
+			"utf-8",
+		);
+
+		const pi = createMockPi();
+		const registerProvider = vi.fn();
+		Object.assign(pi, { registerProvider });
+		registerRefreshModelsCommand(
+			pi as Parameters<typeof registerRefreshModelsCommand>[0],
+		);
+		const providerCall = registerProvider.mock.calls.find(
+			([provider]: [string]) => provider === "openai-codex",
+		);
+		if (!providerCall) throw new Error("missing cached provider registration");
+		const definition = providerCall[1] as {
+			baseUrl: string;
+			models: Array<{
+				id: string;
+				name: string;
+				thinkingLevelMap?: Record<string, string | null>;
+			}>;
+		};
+		expect(definition.baseUrl).toBe("https://chatgpt.com/backend-api");
+		expect(definition.models.map((model) => model.id)).toEqual([
+			"gpt-5.6-luna",
+			"gpt-5.6-sol",
+			"gpt-5.7-preview",
+		]);
+		expect(definition.models[0]).toMatchObject({
+			name: "GPT-5.6 Luna",
+			thinkingLevelMap: {
+				minimal: "low",
+				xhigh: "xhigh",
+				max: "max",
+			},
+		});
+		expect(definition.models[0].thinkingLevelMap).not.toHaveProperty("off");
 	});
 
 	it("refreshes all active subscriptions when no provider is supplied", async () => {
@@ -487,18 +642,41 @@ describe("/refresh-models command", () => {
 			"github-copilot/gpt-4.1",
 		]);
 		expect(settings.unrelated).toEqual({ preserved: true });
-		expect(
-			fs.existsSync(
-				path.join(
-					tempHome,
-					".pi",
-					"agent",
-					"model-cache",
-					"refresh-models",
-					"openai-codex.json",
-				),
-			),
-		).toBe(true);
+		const cacheFile = path.join(
+			tempHome,
+			".pi",
+			"agent",
+			"model-cache",
+			"refresh-models",
+			"openai-codex.json",
+		);
+		expect(fs.existsSync(cacheFile)).toBe(true);
+		const cache = JSON.parse(fs.readFileSync(cacheFile, "utf-8")) as {
+			schemaVersion: number;
+			provider: string;
+			fetchedAt: string;
+			models: Array<Record<string, unknown>>;
+		};
+		expect(cache).toMatchObject({
+			schemaVersion: 2,
+			provider: "openai-codex",
+			fetchedAt: expect.any(String),
+		});
+		expect(cache.models.find((model) => model.id === "gpt-5.6-sol")).toEqual(
+			expect.objectContaining({
+				id: "gpt-5.6-sol",
+				thinkingLevelMap: {
+					off: null,
+					minimal: null,
+					low: "low",
+					medium: "medium",
+					high: "high",
+					xhigh: "xhigh",
+					max: "max",
+				},
+			}),
+		);
+		expect(cache.models[0]).not.toHaveProperty("cost");
 		expect(reload).toHaveBeenCalledTimes(1);
 		expect(notify).toHaveBeenCalledWith(
 			expect.stringContaining(

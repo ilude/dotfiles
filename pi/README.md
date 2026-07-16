@@ -391,6 +391,8 @@ Behavior:
 - Unsupported providers are skipped with a warning.
 - Uses existing session credentials and updates in-session model availability immediately.
 - Prints per-provider diffs with model IDs that were added/removed.
+- Caches versioned provider catalog facts rather than complete Pi model definitions.
+- On startup, preserves current Pi metadata for built-in Codex models and restores only cached model discoveries that Pi does not yet know.
 - Newly released Codex models may appear through `/refresh-models openai-codex` before they are added to the tracked startup `enabledModels` list.
 
 ### `model-visibility.ts`

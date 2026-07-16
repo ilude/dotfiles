@@ -84,6 +84,15 @@ type RemoteModelInfo = {
 	eligible?: boolean;
 };
 
+type ProviderCatalogCache = {
+	schemaVersion: 2;
+	provider: string;
+	fetchedAt: string;
+	models: RemoteModelInfo[];
+};
+
+const MODEL_CACHE_SCHEMA_VERSION = 2;
+
 export function parseRefreshModelsArgs(raw: string): RefreshScope {
 	const trimmed = raw.trim();
 	if (!trimmed) return {};
@@ -166,39 +175,69 @@ function cachePath(provider: string): string {
 
 async function writeProviderCache(
 	provider: string,
-	baseUrl: string,
-	api: string,
-	models: ProviderModelDef[],
+	models: RemoteModelInfo[],
 ): Promise<void> {
 	await writeJsonObjectAtomic(cachePath(provider), {
+		schemaVersion: MODEL_CACHE_SCHEMA_VERSION,
 		provider,
-		baseUrl,
-		api,
+		fetchedAt: new Date().toISOString(),
 		models,
 	});
 }
 
-function loadProviderCache(
-	provider: string,
-): { baseUrl: string; api: string; models: ProviderModelDef[] } | undefined {
+function legacyCacheModels(models: unknown[]): RemoteModelInfo[] {
+	return models.flatMap((model) => {
+		if (!model || typeof model !== "object") return [];
+		const record = model as Record<string, unknown>;
+		const id = asString(record.id);
+		if (!id) return [];
+		return [
+			{
+				id,
+				name: asString(record.name),
+				api: asString(record.api),
+				reasoning:
+					typeof record.reasoning === "boolean" ? record.reasoning : undefined,
+				input: asStringArray(record.input).filter(
+					(value): value is InputKind => value === "text" || value === "image",
+				),
+				contextWindow: asNumber(record.contextWindow),
+				maxTokens: asNumber(record.maxTokens),
+				thinkingLevelMap:
+					record.thinkingLevelMap &&
+					typeof record.thinkingLevelMap === "object" &&
+					!Array.isArray(record.thinkingLevelMap)
+						? (record.thinkingLevelMap as ThinkingLevelMap)
+						: undefined,
+			},
+		];
+	});
+}
+
+function loadProviderCache(provider: string): ProviderCatalogCache | undefined {
 	const filePath = cachePath(provider);
 	if (!fs.existsSync(filePath)) return undefined;
-	const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8")) as {
-		baseUrl?: unknown;
-		api?: unknown;
-		models?: unknown;
-	};
-	if (
-		typeof parsed.baseUrl !== "string" ||
-		typeof parsed.api !== "string" ||
-		!Array.isArray(parsed.models)
-	) {
+	const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8")) as Record<
+		string,
+		unknown
+	>;
+	if (!Array.isArray(parsed.models)) {
 		throw new Error(`Invalid cached model catalog: ${filePath}`);
 	}
+	if (parsed.schemaVersion === MODEL_CACHE_SCHEMA_VERSION) {
+		if (
+			parsed.provider !== provider ||
+			typeof parsed.fetchedAt !== "string"
+		) {
+			throw new Error(`Invalid cached model catalog: ${filePath}`);
+		}
+		return parsed as ProviderCatalogCache;
+	}
 	return {
-		baseUrl: parsed.baseUrl,
-		api: parsed.api,
-		models: parsed.models as ProviderModelDef[],
+		schemaVersion: MODEL_CACHE_SCHEMA_VERSION,
+		provider,
+		fetchedAt: "legacy",
+		models: legacyCacheModels(parsed.models),
 	};
 }
 
@@ -676,6 +715,24 @@ function hasCopilotUsableEndpoint(endpoints: string[]): boolean {
 	);
 }
 
+function toProviderModelDefinition(model: ModelLike): ProviderModelDef {
+	return {
+		id: model.id,
+		name: model.name,
+		api: model.api as ProviderModelDef["api"],
+		reasoning: model.reasoning,
+		input: model.input,
+		cost: model.cost,
+		contextWindow: model.contextWindow,
+		maxTokens: model.maxTokens,
+		headers: model.headers,
+		thinkingLevelMap: model.thinkingLevelMap,
+		compat: compatWithoutReasoningEffortMap(
+			model.compat,
+		) as ProviderModelDef["compat"],
+	};
+}
+
 function buildProviderModelDefinitions(
 	provider: string,
 	existingModels: ModelLike[],
@@ -801,6 +858,23 @@ function buildProviderModelDefinitions(
 	});
 }
 
+function buildCachedProviderModelDefinitions(
+	provider: string,
+	existingModels: ModelLike[],
+	remoteModels: RemoteModelInfo[],
+): ProviderModelDef[] {
+	const existingIds = new Set(existingModels.map((model) => model.id));
+	const discoveredModels = buildProviderModelDefinitions(
+		provider,
+		existingModels,
+		remoteModels,
+	).filter((model) => !existingIds.has(model.id));
+	return [
+		...existingModels.map(toProviderModelDefinition),
+		...discoveredModels,
+	];
+}
+
 async function refreshProviderAvailability(
 	ctx: Pick<ExtensionContext, "modelRegistry">,
 	provider: string,
@@ -868,12 +942,7 @@ async function refreshProviderAvailability(
 	}
 
 	ctx.modelRegistry.registerProvider(provider, providerDefinition);
-	await writeProviderCache(
-		provider,
-		allModels[0].baseUrl,
-		allModels[0].api,
-		refreshedModels,
-	);
+	await writeProviderCache(provider, remoteModels);
 
 	const beforeIds = new Set(allModels.map((model) => model.id));
 	const afterIds = new Set(refreshedModels.map((model) => model.id));
@@ -927,14 +996,25 @@ export function formatRefreshFailure(provider: string, error: unknown): string {
 	return `${provider}: ${detail}`;
 }
 
-function registerCachedProvider(pi: ExtensionAPI, provider: string): void {
+function registerCachedProvider(
+	pi: ExtensionAPI,
+	provider: "openai-codex",
+): void {
 	const cache = loadProviderCache(provider);
 	if (!cache) return;
+	const builtInModels = getModels(provider) as ModelLike[];
+	if (builtInModels.length === 0) return;
+	const models = buildCachedProviderModelDefinitions(
+		provider,
+		builtInModels,
+		cache.models,
+	);
+	if (models.length === builtInModels.length) return;
 	const oauthProvider = getOAuthProvider(provider);
 	if (!oauthProvider) return;
 	pi.registerProvider(provider, {
-		baseUrl: cache.baseUrl,
-		api: cache.api as ProviderModelDef["api"],
+		baseUrl: builtInModels[0].baseUrl,
+		api: builtInModels[0].api as ProviderModelDef["api"],
 		oauth: {
 			name: oauthProvider.name,
 			login: oauthProvider.login,
@@ -942,7 +1022,7 @@ function registerCachedProvider(pi: ExtensionAPI, provider: string): void {
 			getApiKey: oauthProvider.getApiKey,
 			modifyModels: oauthProvider.modifyModels,
 		},
-		models: cache.models,
+		models,
 	});
 }
 
