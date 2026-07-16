@@ -361,7 +361,7 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
   - [x] deletions and old-name reference updates executed
 - [x] T5: routing policy consolidation - done: 48eb3c5
 - [ ] T6: Pi test alignment - pending
-- [ ] T7: test_config_patterns split - pending
+- [x] T7: test_config_patterns split - done: 085b069
 - [ ] T8: browser wrapper and CI contract - pending
 - [ ] T9: pin quality tools - pending
 - [ ] T10: changed-file validation entrypoint - pending
@@ -375,13 +375,22 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 
 ### State
 
-- **Classification:** execution in progress
-- **Current blocker:** none; T4 roster deletion approved explicitly
-- **Last completed wave/gate:** T5 routing consolidation and focused validation
-- **Next:** T7 test_config_patterns behavior split; T8 is independently ready
-- **Completed work:** T1-T5 complete; one model-routing owner now serves subagent sizing, explicit workflow choices, and premium-provider policy
-- **Commands/results:** focused Pi routing suites passed 144 tests; `pnpm run typecheck` passed; `git diff --check` passed
-- **Remaining checks:** T6-T12 task gates; final `make check`
-- **Worktree note:** out-of-scope `CLAUDE.md`, `claude/settings.json`, and `scripts/pi-run` changes remain unstaged and untouched by plan commits
-- **Exact user action:** none
+- **Classification:** blocked-by-failure as of 2026-07-16; execution session capacity ended after the completed T7 slice
+- **Current blocker:** session capacity ended before T6 and T8-T12 could be executed; no repository validation is failing
+- **Last completed wave/gate:** T7 configuration test rationalization and exact `make test-quick` validation
+- **Next:** T8 browser wrapper and CI contract; T6 and T9 are independently ready
+- **Completed work:** T1-T5 and T7 complete; the configuration suite now protects grouped shell/Git behavior and parsed Dotbot meaning
+- **Commands/results:** T7 baseline 198 passed in 0.28s (3.737s wall); replacement 4 passed in 0.45s (1.972s wall); intentional locale regression failed as required; `make test-quick` passed 4 tests in 0.29s (1.783s wall); Ruff and `git diff --check` passed
+- **Remaining checks:** T6 and T8-T12 task gates; final `make check`
+- **Worktree note:** out-of-scope `claude/settings.json` remains unstaged and untouched by plan commits
+- **Exact user action:** rerun `/do-it .specs/rationalization/plan.md` to resume at T8
 - **Resume:** `/do-it .specs/rationalization/plan.md`
+
+### Current execution telemetry
+
+- **Episode:** schema version 1; episode ID `2026-07-16T20-47-09Z-do-it-rationalization`; command `do-it`; artifact `.specs/rationalization/plan.md`; repository root `C:/Users/mglenn/.dotfiles`; started `2026-07-16T20:47:09Z`; completed `2026-07-16T20:54:36Z`; status `not_complete`; classification `blocked-by-failure`; archive status `active`; redaction status `no_sensitive_output`.
+- **T7 phase:** phase ID `T7`; type `implementation`; started `2026-07-16T20:47:09Z`; completed `2026-07-16T20:54:36Z`; status `passed`; evidence commit `085b069` and `.specs/rationalization/ledger.md`.
+- **T7 command events:** baseline `uv run pytest test/test_config_patterns.py -q` exited 0; focused replacement exited 0; intentional-regression fixture exited 1 as expected; `make test-quick` exited 0; Ruff checks and `git diff --check` exited 0.
+- **Manual gate decision:** not required; risk low; blast radius personal-repo; rollback easy; local reversible test-only change covered by automated behavior and intentional-regression evidence.
+- **Archive:** not attempted because required checklist items T6 and T8-T12 remain pending.
+- **Post-run eval:** checklist and evidence agree; T7 passed; no manual or deployment gate remains from this slice; friction tag `session-capacity`; missing evidence is limited to unexecuted T6 and T8-T12; improvement candidate is to keep future slices bounded to one validated commit; confidence high from direct command and commit evidence.
