@@ -75,6 +75,7 @@ typescript:
     - name: tsc-check
       command: ["python", "{project_root}/tsc-check.py"]
       check: "tsc"
+      timeout: 60
       detect: ["tsconfig.json", "tsc-check.py"]
     - name: lizard-complexity
       command: *lizard_command

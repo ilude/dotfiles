@@ -49,9 +49,10 @@ class TestLoadConfig:
             for validator in config[language]["validators"]
             if validator["name"] == "biome"
         ]
-        assert biome_commands == [
-            ["pnpm", "--dir", "{project_root}", "exec", "biome", "check", "{file}"]
-        ] * 3
+        assert (
+            biome_commands
+            == [["pnpm", "--dir", "{project_root}", "exec", "biome", "check", "{file}"]] * 3
+        )
 
 
 class TestLoadSkipList:
@@ -510,3 +511,139 @@ class TestMainFunction:
 
         captured = capsys.readouterr()
         assert captured.out == ""  # No output = no errors = silent pass
+
+
+class TestChangedFilesCli:
+    """Tests for the explicit-file quality validation CLI."""
+
+    @staticmethod
+    def _write_config(tmp_path, config):
+        config_path = tmp_path / "validators.yaml"
+        config_path.write_text(json.dumps(config))
+        return config_path
+
+    def test_validates_python_shell_and_pi_typescript_paths_with_spaces(self, tmp_path):
+        (tmp_path / "pyproject.toml").write_text("[project]\n")
+        (tmp_path / "Makefile").write_text("all:\n")
+        (tmp_path / "package.json").write_text("{}\n")
+        python_file = tmp_path / "space dir" / "source file.py"
+        shell_file = tmp_path / "check.sh"
+        typescript_file = tmp_path / "pi-file.ts"
+        python_file.parent.mkdir()
+        for file_path in (python_file, shell_file, typescript_file):
+            file_path.write_text("content\n")
+
+        command = [
+            sys.executable,
+            "-c",
+            "import pathlib, sys; pathlib.Path(sys.argv[1] + '.validated').write_text('ok')",
+            "{file}",
+        ]
+        config_path = self._write_config(
+            tmp_path,
+            {
+                "python": {
+                    "extensions": [".py"],
+                    "markers": ["pyproject.toml"],
+                    "validators": [{"name": "python", "command": command}],
+                },
+                "shell": {
+                    "extensions": [".sh"],
+                    "markers": ["Makefile"],
+                    "validators": [{"name": "shell", "command": command}],
+                },
+                "typescript": {
+                    "extensions": [".ts"],
+                    "markers": ["package.json"],
+                    "validators": [{"name": "typescript", "command": command}],
+                },
+            },
+        )
+
+        arguments = [
+            "--config",
+            str(config_path),
+            "--files",
+            str(python_file),
+            str(shell_file),
+            str(typescript_file),
+        ]
+        assert hook.changed_files_main(arguments) == 0
+        for file_path in (python_file, shell_file, typescript_file):
+            assert Path(f"{file_path}.validated").read_text() == "ok"
+
+    def test_unsupported_file_passes_without_a_validator(self, tmp_path):
+        (tmp_path / "pyproject.toml").write_text("[project]\n")
+        unsupported_file = tmp_path / "notes.txt"
+        unsupported_file.write_text("notes\n")
+        config_path = self._write_config(
+            tmp_path,
+            {"python": {"extensions": [".py"], "markers": ["pyproject.toml"], "validators": []}},
+        )
+
+        assert (
+            hook.changed_files_main(
+                ["--config", str(config_path), "--files", str(unsupported_file)]
+            )
+            == 0
+        )
+
+    def test_missing_tool_returns_explicit_exit_code(self, tmp_path, capsys):
+        (tmp_path / "pyproject.toml").write_text("[project]\n")
+        python_file = tmp_path / "source.py"
+        python_file.write_text("content\n")
+        config_path = self._write_config(
+            tmp_path,
+            {
+                "python": {
+                    "extensions": [".py"],
+                    "markers": ["pyproject.toml"],
+                    "validators": [
+                        {
+                            "name": "missing",
+                            "command": ["missing-tool", "{file}"],
+                            "check": "missing-tool",
+                        }
+                    ],
+                }
+            },
+        )
+
+        with patch("shutil.which", return_value=None):
+            result = hook.changed_files_main(
+                ["--config", str(config_path), "--files", str(python_file)]
+            )
+
+        assert result == 3
+        assert "required tool not found: missing-tool" in capsys.readouterr().err
+
+    def test_multiple_failures_preserve_validator_order(self, tmp_path, capsys):
+        (tmp_path / "pyproject.toml").write_text("[project]\n")
+        python_file = tmp_path / "source.py"
+        python_file.write_text("content\n")
+        command = [
+            sys.executable,
+            "-c",
+            "import sys; print('failed', file=sys.stderr); sys.exit(1)",
+            "{file}",
+        ]
+        config_path = self._write_config(
+            tmp_path,
+            {
+                "python": {
+                    "extensions": [".py"],
+                    "markers": ["pyproject.toml"],
+                    "validators": [
+                        {"name": "first", "command": command},
+                        {"name": "second", "command": command},
+                    ],
+                }
+            },
+        )
+
+        assert (
+            hook.changed_files_main(["--config", str(config_path), "--files", str(python_file)])
+            == 1
+        )
+        output = capsys.readouterr().err
+        assert output.index("first errors") < output.index("second errors")

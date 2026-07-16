@@ -2,6 +2,26 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-16: Add explicit-file quality validation
+
+**Why:** Changed-file validation required repeated one-off validator commands and
+could silently skip missing tools.
+
+**Changed:**
+- Added `scripts/quality-check FILE...`, which routes explicit Python, shell,
+  and Pi TypeScript files through the shared validator configuration.
+- Reused the configured validator runner with four-worker bounded parallelism
+  and deterministic diagnostic ordering.
+- Made the CLI report unsupported files as clean, validator failures as exit 1,
+  input or configuration errors as exit 2, and required missing tools as exit
+  3 without installing anything.
+
+**Files:** `scripts/quality-check`,
+`claude/hooks/quality-validation/{quality_validation_hook.py,validators.yaml,tests/test_quality_validation.py}`,
+`CHANGELOG.md`
+
+---
+
 ## 2026-07-16: Establish quality-tool ownership baselines
 
 **Why:** Pi formatting and complexity checks depended on workstation tools, while

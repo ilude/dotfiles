@@ -9,6 +9,7 @@ Runs linters on files after Write/Edit operations.
 Loads validator config from validators.yaml.
 """
 
+import argparse
 import fnmatch
 import json
 import os
@@ -55,9 +56,7 @@ def load_skip_list() -> set:
         return set()
     try:
         with open(SKIP_FILE) as f:
-            return {
-                line.strip() for line in f if line.strip() and not line.startswith("#")
-            }
+            return {line.strip() for line in f if line.strip() and not line.startswith("#")}
     except OSError:
         return set()
 
@@ -125,9 +124,7 @@ def match_language(
     return None
 
 
-def filter_validators_by_detection(
-    validators: list[dict], project_root: str
-) -> list[dict]:
+def filter_validators_by_detection(validators: list[dict], project_root: str) -> list[dict]:
     """Filter validators using detect fields.
 
     A validator with a 'detect' field is included only when ALL listed files
@@ -159,9 +156,7 @@ def detect_package_manager() -> Optional[str]:
     return None
 
 
-def get_install_suggestion(
-    lang_config: dict[str, Any], validator_name: str
-) -> Optional[str]:
+def get_install_suggestion(lang_config: dict[str, Any], validator_name: str) -> Optional[str]:
     """Get install command for the current platform."""
     install_config = lang_config.get("install", {})
     if not install_config:
@@ -179,9 +174,7 @@ def get_install_suggestion(
     return None
 
 
-def build_command(
-    cmd_template: list[str], file_path: str, project_root: str = ""
-) -> list[str]:
+def build_command(cmd_template: list[str], file_path: str, project_root: str = "") -> list[str]:
     """Replace {file} and {project_root} placeholders in command list safely."""
     result = []
     for arg in cmd_template:
@@ -312,23 +305,18 @@ def _filter_runnable_validators(
     return runnable
 
 
-def _run_one_validator(
-    validator: dict, file_path: str, project_root: str
-) -> Optional[str]:
+def _run_one_validator(validator: dict, file_path: str, project_root: str) -> Optional[str]:
     """Run a single validator and return its formatted error (or None on success)."""
     cmd = build_command(validator.get("command", []), file_path, project_root)
     timeout = validator.get("timeout", 8)
     returncode, output = run_validator(cmd, timeout=timeout, env=validator.get("env"))
-    if returncode != 0 and output:
-        return format_validator_error(
-            validator.get("name", "unknown"), file_path, output
-        )
-    return None
+    if returncode == 0:
+        return None
+    diagnostic = output or f"validator exited with code {returncode}"
+    return format_validator_error(validator.get("name", "unknown"), file_path, diagnostic)
 
 
-def _run_validators_parallel(
-    runnable: list[dict], file_path: str, project_root: str
-) -> list[str]:
+def _run_validators_parallel(runnable: list[dict], file_path: str, project_root: str) -> list[str]:
     """Run multiple validators concurrently; preserve submission order in results."""
     results: list[Optional[str]] = [None] * len(runnable)
     max_workers = min(len(runnable), MAX_PARALLEL_VALIDATORS)
@@ -350,15 +338,114 @@ def run_validator_suite(
     skip_list: set,
 ) -> list[str]:
     """Filter and run all applicable validators (parallel when more than one)."""
-    runnable = _filter_runnable_validators(
-        validators, file_path, lang_config, skip_list
-    )
+    runnable = _filter_runnable_validators(validators, file_path, lang_config, skip_list)
     if not runnable:
         return []
     if len(runnable) == 1:
         err = _run_one_validator(runnable[0], file_path, project_root)
         return [err] if err else []
     return _run_validators_parallel(runnable, file_path, project_root)
+
+
+def _cli_runnable_validators(
+    validators: list[dict], file_path: str, lang_config: dict[str, Any]
+) -> tuple[list[dict], list[str]]:
+    """Return runnable validators and missing-tool diagnostics for the CLI."""
+    runnable = []
+    missing_tools = []
+    for validator in validators:
+        if not validator.get("command") or is_path_excluded(validator, file_path):
+            continue
+        check_tool = validator.get("check") or validator["command"][0]
+        if not shutil.which(check_tool):
+            name = validator.get("name", "unknown")
+            message = f"{name}: required tool not found: {check_tool}"
+            suggestion = get_install_suggestion(lang_config, name)
+            if suggestion:
+                message += f". Install with: {suggestion}"
+            missing_tools.append(message)
+            continue
+        runnable.append(validator)
+    return runnable, missing_tools
+
+
+def _build_changed_file_jobs(
+    file_paths: list[str], config: dict[str, Any]
+) -> tuple[list[tuple[dict, str, str]], list[str]]:
+    """Build validation jobs and missing-tool diagnostics for explicit files."""
+    jobs: list[tuple[dict, str, str]] = []
+    missing_tools = []
+    for file_path in file_paths:
+        normalized_path = normalize_path(file_path)
+        if not os.path.isfile(normalized_path):
+            raise ValueError(f"Input error: file not found: {file_path}")
+        match = match_language(normalized_path, config)
+        if not match:
+            continue
+        _, lang_config, project_root = match
+        validators = filter_validators_by_detection(lang_config.get("validators", []), project_root)
+        runnable, missing = _cli_runnable_validators(validators, normalized_path, lang_config)
+        missing_tools.extend(f"{normalized_path}: {message}" for message in missing)
+        jobs.extend((validator, normalized_path, project_root) for validator in runnable)
+    return jobs, missing_tools
+
+
+def _run_changed_file_jobs(jobs: list[tuple[dict, str, str]]) -> list[str]:
+    """Run validation jobs with bounded parallelism and ordered diagnostics."""
+    results: list[Optional[str]] = [None] * len(jobs)
+    if not jobs:
+        return []
+    with ThreadPoolExecutor(max_workers=min(len(jobs), MAX_PARALLEL_VALIDATORS)) as executor:
+        future_to_index = {
+            executor.submit(_run_one_validator, validator, file_path, project_root): i
+            for i, (validator, file_path, project_root) in enumerate(jobs)
+        }
+        for future in as_completed(future_to_index):
+            results[future_to_index[future]] = future.result()
+    return [result for result in results if result is not None]
+
+
+def run_changed_files(file_paths: list[str], config: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Run configured validators for explicit files in deterministic result order."""
+    jobs, missing_tools = _build_changed_file_jobs(file_paths, config)
+    return _run_changed_file_jobs(jobs), missing_tools
+
+
+def _load_changed_files_config(config_path: Path) -> dict[str, Any]:
+    """Load a changed-file CLI configuration or raise a diagnostic ValueError."""
+    try:
+        with open(config_path) as config_file:
+            config = yaml.safe_load(config_file)
+    except (OSError, yaml.YAMLError) as error:
+        raise ValueError(f"Configuration error: {error}") from error
+    if not isinstance(config, dict):
+        raise ValueError("Configuration error: expected a mapping.")
+    return config
+
+
+def _changed_files_exit_code(failures: list[str], missing_tools: list[str]) -> int:
+    """Return the stable exit code for changed-file validation results."""
+    if missing_tools:
+        return 3
+    return 1 if failures else 0
+
+
+def changed_files_main(argv: list[str]) -> int:
+    """Run validators for an explicit file list with stable exit codes."""
+    parser = argparse.ArgumentParser(description="Validate explicit changed files.")
+    parser.add_argument("--config", type=Path, default=CONFIG_FILE)
+    parser.add_argument("--files", nargs="+", required=True, metavar="FILE")
+    args = parser.parse_args(argv)
+    try:
+        config = _load_changed_files_config(args.config)
+        failures, missing_tools = run_changed_files(args.files, config)
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 2
+
+    for message in [*failures, *missing_tools]:
+        print(message, file=sys.stderr)
+    return _changed_files_exit_code(failures, missing_tools)
 
 
 def main() -> None:
@@ -380,12 +467,8 @@ def main() -> None:
         sys.exit(0)
 
     _, lang_config, project_root = match
-    validators = filter_validators_by_detection(
-        lang_config.get("validators", []), project_root
-    )
-    errors = run_validator_suite(
-        validators, file_path, project_root, lang_config, load_skip_list()
-    )
+    validators = filter_validators_by_detection(lang_config.get("validators", []), project_root)
+    errors = run_validator_suite(validators, file_path, project_root, lang_config, load_skip_list())
 
     if errors:
         print(json.dumps({"decision": "block", "reason": "\n\n".join(errors)}))
@@ -394,6 +477,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    if "--files" in sys.argv[1:]:
+        sys.exit(changed_files_main(sys.argv[1:]))
     try:
         main()
     except Exception as e:
