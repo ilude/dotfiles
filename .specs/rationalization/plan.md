@@ -352,7 +352,7 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 
 ### Task checklist
 
-- [x] T1: test decision ledger - done: validated slice commit pending
+- [x] T1: test decision ledger - done: 95efc55
 - [ ] T2: workflow skills and templates - pending
 - [ ] T3: Pi instruction trim - pending
 - [ ] T4: agent roster consolidation - pending
@@ -379,7 +379,7 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - **Current blocker:** none
 - **Last completed wave/gate:** none
 - **Last completed wave/gate:** T1 inventory and ledger reconciliation
-- **Next:** commit validated T1 slice, record its hash, then start dependency-ready work
+- **Next:** T2 workflow skills and templates
 - **Completed work:** T1 ledger created with 108 unique decisions; prior 89/106 audit corrected to 90/107 static declarations
 - **Commands/results:** Pytest collected 1222 tests; Vitest listed 1334 tests; ledger check passed with task counts T4=6, T6=22, T7=65, T8=15
 - **Remaining checks:** T1 slice commit; all T2-T12 task gates and final `make check`
