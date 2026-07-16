@@ -2,6 +2,24 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-16: Replace configuration source greps
+
+**Why:** The fast configuration suite asserted shell source spelling instead of
+runtime behavior or parsed configuration meaning.
+
+**Changed:**
+- Replaced 198 source-pattern cases with grouped zsh runtime, Git parser,
+  Git ignore, and normalized Dotbot parity contracts.
+- Reused existing prompt behavior suites instead of duplicating prompt checks.
+- Recorded explicit accepted loss where a deterministic cross-platform fixture
+  would cost more than the source check protected.
+- Reduced the exact `make test-quick` entrypoint to four passing contracts.
+
+**Files:** `test/test_config_patterns.py`,
+`.specs/rationalization/ledger.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-16: Centralize Pi model routing policy
 
 **Why:** Subagent sizing, explicit workflow choices, and premium-provider
