@@ -135,9 +135,10 @@ invocation options via mocked spawn), and the prompt-wording case in
 output (`pi-instructions`, `skill-prompt`, `review-artifact`, dispatch,
 subagent).
 
-Done when: no Pi test passes or fails on unparsed prose; each deletion is
-classified (wording-only delete vs. behavior-replaced); focused suites and
-typecheck pass.
+Done when: no Pi test passes or fails on unparsed prose; each deletion has a
+row in the repo-wide decision ledger at
+`.specs/test-rationalization/ledger.md` (wording-only delete vs.
+behavior-replaced vs. accepted loss); focused suites and typecheck pass.
 
 ## Dependencies
 
@@ -157,7 +158,8 @@ resolve). T5 last â€” it deletes the locks after the surfaces stabilize.
 ## Out of scope
 
 - Claude/OpenCode/Copilot command bodies (kept separate by user decision).
-- Shell/config Python tests (`.specs/shell-test-rationalization/plan.md`).
+- Shell/config Python tests and the repo-wide test decision ledger
+  (`.specs/test-rationalization/plan.md`).
 - Quality tooling pinning (`.specs/quality-tooling/plan.md`).
 - Workflow-friction instruction-context capture (deferred follow-up).
 

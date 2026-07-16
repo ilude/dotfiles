@@ -8,7 +8,7 @@ completed:
 
 > **Superseded 2026-07-16.** After research (see `research/`), this monolithic
 > plan was split into three independent plans written in a leaner style:
-> `.specs/harness-rework/plan.md`, `.specs/shell-test-rationalization/plan.md`,
+> `.specs/harness-rework/plan.md`, `.specs/test-rationalization/plan.md`,
 > and `.specs/quality-tooling/plan.md`. The friction instruction-context
 > capture (T19) is deferred to a future plan. This file is retained for the
 > context, constraints, and inventory it records; do not execute it.

@@ -10,15 +10,18 @@ itself written in the over-prescriptive style it aimed to remove. Research
 supported splitting by concern.
 
 **Changed:**
-- Added three independent plans: Pi harness rework, shell/config test
+- Added three independent plans: Pi harness rework, repository-wide test
   rationalization, and quality tooling ownership.
+- Restored the formal per-test inventory reconciliation: the test plan owns a
+  repo-wide decision ledger; every static-content test gets an explicit keep,
+  replace, delete, or accepted-loss row before cleanup executes.
 - Marked the original plan superseded; deferred friction instruction-context
   capture to a future plan.
 - Recorded user decisions: Claude client commands stay separate from Pi;
   org-chart agent taxonomy is deleted; agent roster consolidates aggressively.
 
 **Files:** `.specs/harness-rework/plan.md`,
-`.specs/shell-test-rationalization/plan.md`, `.specs/quality-tooling/plan.md`,
+`.specs/test-rationalization/plan.md`, `.specs/quality-tooling/plan.md`,
 `.specs/workflow-test-rationalization/plan.md`, `CHANGELOG.md`
 
 ---
