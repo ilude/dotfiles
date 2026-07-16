@@ -353,7 +353,7 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 ### Task checklist
 
 - [x] T1: test decision ledger - done: 95efc55
-- [x] T2: workflow skills and templates - done: validated slice commit pending
+- [x] T2: workflow skills and templates - done: 772d4c0
 - [ ] T3: Pi instruction trim - pending
 - [ ] T4: agent roster consolidation - pending
   - [ ] roster.md proposal written
@@ -379,7 +379,7 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - **Current blocker:** none
 - **Last completed wave/gate:** none
 - **Last completed wave/gate:** T2 workflow contract rewrite and focused dispatch validation
-- **Next:** commit validated T2 slice, record its hash, then start T3
+- **Next:** T3 Pi instruction ownership trim
 - **Completed work:** T1 ledger complete; T2 removed fixed routing, assignment, panel, and file-count prescriptions from plan/execution surfaces
 - **Commands/results:** `pnpm test workflow-dispatch.test.ts` passed 3 tests; `pnpm test skill-discovery.test.ts` passed 16 tests; anti-pattern scan returned no matches
 - **Remaining checks:** T2 slice commit; all T3-T12 task gates and final `make check`
