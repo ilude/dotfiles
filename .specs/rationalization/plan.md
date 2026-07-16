@@ -362,7 +362,7 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - [x] T5: routing policy consolidation - done: 48eb3c5
 - [ ] T6: Pi test alignment - pending
 - [x] T7: test_config_patterns split - done: 085b069
-- [ ] T8: browser wrapper and CI contract - pending
+- [x] T8: browser wrapper and CI contract - done: 8a0ab09
 - [ ] T9: pin quality tools - pending
 - [ ] T10: changed-file validation entrypoint - pending
 - [ ] T11: Make target split - pending
@@ -375,15 +375,15 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 
 ### State
 
-- **Classification:** blocked-by-failure as of 2026-07-16; execution session capacity ended after the completed T7 slice
-- **Current blocker:** session capacity ended before T6 and T8-T12 could be executed; no repository validation is failing
-- **Last completed wave/gate:** T7 configuration test rationalization and exact `make test-quick` validation
-- **Next:** T8 browser wrapper and CI contract; T6 and T9 are independently ready
+- **Classification:** execution in progress
+- **Current blocker:** none; T8 instruction-linkage gate resolved by explicit user decision
+- **Last completed wave/gate:** T8 browser wrapper and CI contract behavior validation
+- **Next:** T6 Pi test alignment; T9 is independently ready
 - **Completed work:** T1-T5 and T7 complete; the configuration suite now protects grouped shell/Git behavior and parsed Dotbot meaning
-- **Commands/results:** T7 baseline 198 passed in 0.28s (3.737s wall); replacement 4 passed in 0.45s (1.972s wall); intentional locale regression failed as required; `make test-quick` passed 4 tests in 0.29s (1.783s wall); Ruff and `git diff --check` passed
-- **Remaining checks:** T6 and T8-T12 task gates; final `make check`
+- **Commands/results:** T8 browser/capture entrypoint passed 5 tests; `make test-ci-contract` passed 8 tests; Ruff, formatting, and `git diff --check` passed; intentional loopback and identity regressions failed 2 tests as required
+- **Remaining checks:** T6 and T9-T12 task gates; final `make check`
 - **Worktree note:** out-of-scope `claude/settings.json` remains unstaged and untouched by plan commits
-- **Exact user action:** rerun `/do-it .specs/rationalization/plan.md` to resume at T8
+- **Exact user action:** none
 - **Resume:** `/do-it .specs/rationalization/plan.md`
 
 ### Current execution telemetry
@@ -393,4 +393,7 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - **T7 command events:** baseline `uv run pytest test/test_config_patterns.py -q` exited 0; focused replacement exited 0; intentional-regression fixture exited 1 as expected; `make test-quick` exited 0; Ruff checks and `git diff --check` exited 0.
 - **Manual gate decision:** not required; risk low; blast radius personal-repo; rollback easy; local reversible test-only change covered by automated behavior and intentional-regression evidence.
 - **Archive:** not attempted because required checklist items T6 and T8-T12 remain pending.
-- **Post-run eval:** checklist and evidence agree; T7 passed; no manual or deployment gate remains from this slice; friction tag `session-capacity`; missing evidence is limited to unexecuted T6 and T8-T12; improvement candidate is to keep future slices bounded to one validated commit; confidence high from direct command and commit evidence.
+- **Post-run eval:** checklist and evidence agree; T7 passed; no manual or deployment gate remains from this slice; friction tag `session-capacity`; missing evidence is limited to unexecuted T6 and T9-T12; improvement candidate is to keep future slices bounded to one validated commit; confidence high from direct command and commit evidence.
+- **T8 phase:** phase ID `T8`; type `implementation`; status `passed`; evidence commit `8a0ab09`, `.specs/rationalization/t8-instruction-linkage.md`, and the T8 ledger rows.
+- **T8 command events:** focused browser/capture suite exited 0 with 5 tests; `make test-ci-contract` exited 0 with 8 tests; intentional-regression fixture exited 1 with the expected two failures; Ruff, formatting, and `git diff --check` exited 0.
+- **T8 manual gate:** required because current repository ownership contradicted the stale symlink contract; risk low; blast radius personal-repo; rollback easy; user selected deletion of the stale test; gate passed.
