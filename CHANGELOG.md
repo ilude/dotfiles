@@ -2,6 +2,28 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Enable the generic reducer fallback
+
+**Why:** The generic fallback rule existed but was unreachable through the lazy
+argv index, so large unknown output passed through unchanged.
+
+**Changed:**
+- Lazy-loaded the generic fallback as the last rule after all command-specific
+  rules.
+- Preserved shell normalization before fallback selection and kept tiny output
+  raw through the existing guard.
+- Extended replay and focused tests for unknown large and tiny output.
+
+**Validation:** Thirty focused reducer/evaluator tests passed. Replay over
+32,097 records reached 99.94% matching with 20 empty-argv records unmatched and
+zero failure-survival failures. Unknown-command p50 was 335.3 ms, below the
+recorded 524 ms baseline. Ruff and `git diff --check` passed.
+
+**Files:** `pi/tool-reduction/{rules.py,reduce.py,evaluate.py,tests/}`,
+`.specs/rationalization-phase2/{plan,ledger}.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Align reducer schema and retention
 
 **Why:** The reducer request claimed separate stderr and real exit-code data the

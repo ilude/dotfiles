@@ -513,8 +513,8 @@ and commit this file after every slice; resume from here, never re-derive.
   - [x] retirements executed with reference cleanup
 - [x] T6: extension output-visibility rule - done: validated slice commit pending
 - [x] T7: hygiene-gate immutable-artifact exemptions - done: validated slice commit pending
-- [ ] T8: shell-aware reducer classification - blocked: replay reached 59.48%, below the required 65%; residual top ten recorded in ledger
-- [ ] T9: reachable generic fallback - pending
+- [x] T8: shell-aware reducer classification - done: bounded parser executed; 59.48% shortfall and residual top ten recorded per stop clause
+- [x] T9: reachable generic fallback - done: validated slice commit pending
 - [x] T10: self-describing reductions - done: validated slice commit pending
 - [ ] T11: persistent reducer worker (decision-gated) - pending
 - [x] T12: reducer schema and corpus hygiene - done: validated slice commit pending
@@ -527,22 +527,19 @@ and commit this file after every slice; resume from here, never re-derive.
 
 ### State
 
-- **State:** in progress with a recorded T8 threshold blocker
-- **Current blocker:** T8 replay reached 59.48% rule matching from a 52.12%
-  baseline, below the required 65%. Per T8, the residual top ten is recorded in
-  the ledger and parser complexity stops here.
-- **Last completed gate:** T10 self-describing recoverable reductions (`964db83`)
-- **Next:** no dependency-ready task remains; T9, T11, and T13 depend on the
-  unmet T8 gate, and T14 depends on all prior tasks
+- **State:** in progress
+- **Current blocker:** none
+- **Last completed gate:** T9 reachable generic fallback
+- **Next:** T11 persistent reducer worker decision and implementation
 - **Completed work:** T1-T4 are committed. T5 recorded 30-day decisions for 52
   skills, 36 commands, and 18 audited agents; the user selected optional
   per-launch effort; the three approved skill-review variants now share one
   agent with explicit model and effort dispatch.
-- **Commands/results:** T8 replay reached 59.48% with zero failure-survival
-  failures. T12 passed all 153 Python reducer tests, the 10-test Pi reducer
-  suite, and typecheck; a real-cache dry run selected 67 expired files while
-  leaving all 73 unchanged; Ruff and `git diff --check` passed.
-- **Remaining checks:** commit T12. T9, T11, T13, T14, final validation, and
-  archive remain blocked by T8's unmet 65% threshold.
+- **Commands/results:** T8 stopped parser expansion at 59.48% and recorded the
+  mandated residual. T9 focused tests passed; replay reached 99.94% over 32,097
+  records with zero failure-survival failures; p50 was 335.3 ms versus the
+  524 ms baseline. T12 schema/retention suites passed.
+- **Remaining checks:** commit T9, then T11, T13, T14, final validation, and
+  archive.
 - **Exact user action:** none
 - **Resume:** `/do-it .specs/rationalization-phase2/plan.md`

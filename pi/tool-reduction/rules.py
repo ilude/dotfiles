@@ -101,7 +101,9 @@ def _builtin_files_for_argv0(builtin_dir: Path, argv0: str) -> list[Path] | None
         with open(index_path, encoding="utf-8") as f:
             index = json.load(f)
     except Exception as exc:
-        logger.warning("Failed to read rule index %s: %s. Falling back to full scan.", index_path, exc)
+        logger.warning(
+            "Failed to read rule index %s: %s. Falling back to full scan.", index_path, exc
+        )
         return None
     rel_paths: list[str] = index.get("argv0_to_files", {}).get(argv0, [])
     return [builtin_dir / rel for rel in rel_paths]
@@ -151,6 +153,9 @@ def load_rules(
         builtin_files = _builtin_files_for_argv0(builtin_dir, argv0)
         if builtin_files is None:
             builtin_files = _walk_json_files(builtin_dir)
+        fallback_path = builtin_dir / "generic" / "fallback.json"
+        if fallback_path.exists() and fallback_path not in builtin_files:
+            builtin_files.append(fallback_path)
     else:
         builtin_files = _walk_json_files(builtin_dir)
 
@@ -176,9 +181,7 @@ def load_rules(
                 try:
                     jsonschema.validate(rule, schema)
                 except jsonschema.ValidationError as exc:
-                    logger.warning(
-                        "Skipping malformed rule in %s: %s", json_path, exc.message
-                    )
+                    logger.warning("Skipping malformed rule in %s: %s", json_path, exc.message)
                     continue
             elif not isinstance(rule.get("id"), str):
                 logger.warning("Skipping malformed rule in %s: missing string id", json_path)
@@ -221,10 +224,13 @@ def classify_argv(argv: list[str], rules: list[dict]) -> tuple[Optional[str], fl
         return None, 0.0
 
     argv0 = argv[0]
+    fallback_rule_id: Optional[str] = None
 
     for rule in rules:
         match_block = rule.get("match", {})
         if not match_block:
+            if rule.get("id") == "generic/fallback":
+                fallback_rule_id = rule["id"]
             continue
 
         argv0_list: list[str] = match_block.get("argv0", [])
@@ -242,13 +248,12 @@ def classify_argv(argv: list[str], rules: list[dict]) -> tuple[Optional[str], fl
 
         argv_includes: list[list[str]] = match_block.get("argvIncludes", [])
         if argv_includes:
-            all_groups_match = all(
-                all(token in argv for token in group)
-                for group in argv_includes
-            )
+            all_groups_match = all(all(token in argv for token in group) for group in argv_includes)
             if not all_groups_match:
                 continue
 
         return rule["id"], 1.0
 
+    if fallback_rule_id is not None:
+        return fallback_rule_id, 1.0
     return None, 0.0

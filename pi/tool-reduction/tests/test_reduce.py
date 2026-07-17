@@ -102,6 +102,34 @@ def test_unknown_command_passthrough():
     assert result.inline_text == "some output line"
 
 
+def test_generic_fallback_reduces_large_unknown_output():
+    raw = "\n".join(f"line {index}" for index in range(200))
+
+    with patch("corpus.log_reduction"):
+        result = reduce_execution(
+            argv=["unknown-command"],
+            exit_code=0,
+            stdout=raw,
+        )
+
+    assert result.rule_id == "generic/fallback"
+    assert result.reduction_applied is True
+    assert result.bytes_after < result.bytes_before
+
+
+def test_generic_fallback_keeps_tiny_unknown_output_raw():
+    with patch("corpus.log_reduction"):
+        result = reduce_execution(
+            argv=["unknown-command"],
+            exit_code=0,
+            stdout="tiny output",
+        )
+
+    assert result.rule_id == "generic/fallback"
+    assert result.reduction_applied is False
+    assert result.inline_text == "tiny output"
+
+
 # ---------------------------------------------------------------------------
 # test_corpus_logged
 # ---------------------------------------------------------------------------

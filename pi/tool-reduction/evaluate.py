@@ -113,17 +113,17 @@ def _replay_rule_metrics(corpus: list[dict]) -> dict:
         argv = original
         rule_id, loaded = classify(argv)
         was_new = False
-        if rule_id is None:
+        if rule_id in {None, "generic/fallback"}:
             argv = normalize_shell_argv(original)
             if argv != original:
                 rule_id, loaded = classify(argv)
-                was_new = rule_id is not None
+                was_new = rule_id not in {None, "generic/fallback"}
         if rule_id is None:
             unmatched[(argv[0] if argv else "(empty)")] += 1
             continue
         matched += 1
         newly_matched += int(was_new)
-        if not was_new or int(record.get("exit_code", 0)) != 0:
+        if int(record.get("exit_code", 0)) != 0:
             continue
         raw = (record.get("stdout_sample") or "") + (record.get("stderr_sample") or "")
         matched_rule = next((rule for rule in loaded if rule.get("id") == rule_id), None)

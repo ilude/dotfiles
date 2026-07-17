@@ -74,7 +74,7 @@ def reduce_execution(
     rules = _rules_mod.load_rules(builtin_dir=builtin_dir, argv0=argv[0] if argv else None)
     rule_id, _confidence = _rules_mod.classify_argv(argv, rules)
 
-    if rule_id is None:
+    if rule_id in {None, "generic/fallback"}:
         normalized_argv = normalize_shell_argv(argv)
         if normalized_argv != argv:
             argv = normalized_argv

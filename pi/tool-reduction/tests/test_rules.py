@@ -15,6 +15,7 @@ from rules import classify_argv, load_rules
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _write_rule(directory: Path, filename: str, rule: dict) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / filename
@@ -33,6 +34,7 @@ _VALID_RULE_BASE = {
 # test_overlay_order
 # ---------------------------------------------------------------------------
 
+
 def test_overlay_order(tmp_path: Path) -> None:
     builtin_dir = tmp_path / "builtin"
     project_dir = tmp_path / "project"
@@ -49,6 +51,7 @@ def test_overlay_order(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # test_malformed_rule_skipped
 # ---------------------------------------------------------------------------
+
 
 def test_malformed_rule_skipped(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     builtin_dir = tmp_path / "builtin"
@@ -75,6 +78,7 @@ def test_malformed_rule_skipped(tmp_path: Path, caplog: pytest.LogCaptureFixture
 # ---------------------------------------------------------------------------
 # test_collision_logged
 # ---------------------------------------------------------------------------
+
 
 def test_collision_logged(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     builtin_dir = tmp_path / "builtin"
@@ -107,6 +111,7 @@ def test_collision_logged(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> N
 # test_classify_argv_match
 # ---------------------------------------------------------------------------
 
+
 def test_classify_argv_match(tmp_path: Path) -> None:
     builtin_dir = tmp_path / "builtin"
     rule = {
@@ -130,6 +135,7 @@ def test_classify_argv_match(tmp_path: Path) -> None:
 # test_classify_argv_no_match
 # ---------------------------------------------------------------------------
 
+
 def test_classify_argv_no_match(tmp_path: Path) -> None:
     builtin_dir = tmp_path / "builtin"
     rule = {
@@ -152,6 +158,7 @@ def test_classify_argv_no_match(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # test_classify_argv_skips_rules_without_argv0
 # ---------------------------------------------------------------------------
+
 
 def test_classify_argv_skips_rules_without_argv0() -> None:
     # Rule with only toolNames -- no argv0 -- must never match via classify_argv.
@@ -196,13 +203,16 @@ def test_classify_argv_git_subcommands_real_builtins() -> None:
 
     # git ls-files must match the gitSubcommands rule
     rule_id, confidence = classify_argv(["git", "ls-files"], rules)
-    assert rule_id == "filesystem/git-ls-files", f"Expected filesystem/git-ls-files, got {rule_id!r}"
+    assert rule_id == "filesystem/git-ls-files", (
+        f"Expected filesystem/git-ls-files, got {rule_id!r}"
+    )
     assert confidence == 1.0
 
 
 # ---------------------------------------------------------------------------
 # lazy-load tests
 # ---------------------------------------------------------------------------
+
 
 def test_lazy_load_opens_only_matched_argv0(tmp_path: Path) -> None:
     """load_rules with argv0='git' should open only the git subset + index, not all 107 files."""
@@ -217,9 +227,15 @@ def test_lazy_load_opens_only_matched_argv0(tmp_path: Path) -> None:
         rules = load_rules(_BUILTIN_DIR, user_dir=None, project_dir=None, argv0="git")
 
     # Only files opened for json reads (excludes schema, index itself)
-    rule_opens = [p for p in open_calls if p.endswith(".json") and "_index" not in p and "rule.schema" not in p]
+    rule_opens = [
+        p
+        for p in open_calls
+        if p.endswith(".json") and "_index" not in p and "rule.schema" not in p
+    ]
     # 11 git rules in the index -- allow a small margin for any extras
-    assert len(rule_opens) <= 15, f"Expected <=15 rule file opens, got {len(rule_opens)}: {rule_opens}"
+    assert len(rule_opens) <= 15, (
+        f"Expected <=15 rule file opens, got {len(rule_opens)}: {rule_opens}"
+    )
     # Verify classification still works on the narrowed set
     rule_id, _ = classify_argv(["git", "status"], rules)
     assert rule_id == "git/status"
@@ -247,6 +263,7 @@ def test_stale_index_falls_back(tmp_path: Path, caplog: pytest.LogCaptureFixture
     status_json = builtin_copy / "git" / "status.json"
     future_time = time.time() + 10
     import os
+
     os.utime(str(status_json), (future_time, future_time))
 
     with caplog.at_level(logging.WARNING):
@@ -259,6 +276,13 @@ def test_stale_index_falls_back(tmp_path: Path, caplog: pytest.LogCaptureFixture
     # Full scan fallback must still return a correct rule set
     rule_id, _ = classify_argv(["git", "status"], loaded_rules)
     assert rule_id == "git/status"
+
+
+def test_lazy_unknown_argv_loads_generic_fallback_only() -> None:
+    loaded = load_rules(_BUILTIN_DIR, user_dir=None, project_dir=None, argv0="unknown-command")
+
+    assert [rule["id"] for rule in loaded] == ["generic/fallback"]
+    assert classify_argv(["unknown-command"], loaded) == ("generic/fallback", 1.0)
 
 
 def test_classify_argv_still_correct_after_lazy() -> None:
