@@ -327,7 +327,7 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
   - [x] failure/starvation semantics with explicit report
   - [x] /do-it handoff wired; wave narration removed
   - [x] fixture DAG validation passed
-- [ ] T5: schema-validated subagent output - in-progress: implementation validated; record commit
+- [x] T5: schema-validated subagent output - done: `0ffda45`
   - [x] outputSchema validation with one bounded correction
   - [x] chain forwards validated objects / artifact references
   - [x] absent-schema behavior byte-identical
@@ -338,7 +338,7 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
 
 ### State
 
-- **Classification:** in progress; T1-T4 complete; T5 implementation validated
+- **Classification:** in progress; T1-T5 complete
 - **Current blocker:** none
-- **Next:** record T5's implementation commit, then run T6 close
+- **Next:** T6, run the close validation and live end-to-end exercise
 - **Resume:** `/do-it .specs/rationalization-phase3/plan.md`
