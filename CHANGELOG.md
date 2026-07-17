@@ -2,6 +2,27 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Protect immutable artifacts from hygiene checks
+
+**Why:** Generic formatting validation previously changed an applied migration
+checksum and broke deployment.
+
+**Changed:**
+- Added declared immutable-path patterns for migrations and Flyway artifacts.
+- Made the explicit-file quality CLI report matching paths and skip validators
+  without modifying the file.
+- Added the immutable-artifact rule to `/commit`.
+
+**Validation:** The quality-validation suite passed 52 tests. The exact
+`scripts/quality-check` workflow reported an intentionally malformed migration,
+left its SHA-256 unchanged, and validated a non-exempt Python file normally.
+Ruff and `git diff --check` passed.
+
+**Files:** `claude/hooks/quality-validation/`, `pi/skills/workflow/commit.md`,
+`.specs/rationalization-phase2/{plan,ledger}.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Persist visible command output
 
 **Why:** Three `/improve` branches rendered help or state only through UI

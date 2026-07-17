@@ -1,6 +1,6 @@
 Run `git status --short` to check uncommitted files. If the working tree is clean or merge conflicts exist, exit with an appropriate message.
 
-Do not modify files as part of this workflow, except for adding auto-ignore patterns to `.gitignore` when the rules below require it. `/commit` stages, commits, and optionally pushes existing changes; it does not fix, refactor, format, or update code before committing.
+Do not modify files as part of this workflow, except for adding auto-ignore patterns to `.gitignore` when the rules below require it. `/commit` stages, commits, and optionally pushes existing changes; it does not fix, refactor, format, or update code before committing. Formatting fixes never touch migration files or other declared immutable paths; report those findings without rewriting the artifact.
 
 Commit all legitimate uncommitted changes in the working tree. Do not skip files because they were changed in a previous task, by the user manually, or by another agent. If a file is uncommitted and matches the auto-stage rules below, it gets committed. The "never revert user changes" rule applies to destructive actions, not to committing via `/commit`.
 

@@ -16,6 +16,7 @@
 | Philosophy restatements across instructions and skills | Poor implementation choices | `.specs/workflow-test-rationalization/summary.md` | Repeated drift across seven surfaces | Consolidate | `pi/AGENTS.md` is always loaded and now owns the policy; activation-triggered skills point to it. | T4 | Executed |
 | Delegation restatements | Unnecessary or unsafe delegation | `research/context-reduction-research.md` | Repeated policy copies in two instruction files and skills | Consolidate | One always-loaded paragraph owns direct work, justified delegation, read parallelism, and single-threaded writes. | T4 | Executed |
 | `/improve` UI-only help/error/empty output | Model cannot observe user-visible command state | `.specs/rationalization-phase2/plan.md` | Three branches in one command owner | Fix | All visible command output now uses the owner-specific transcript message path. | T6 | Executed |
+| Generic hygiene on immutable paths | Migration checksum changes | `research/friction-work-gitlab-networkiac.md` - monorepo 2026-05-27 | One documented deployment break | Keep as code gate | Declared immutable paths are reported and skipped without validator execution or file mutation. | T7 | Executed |
 
 ## Surface usage decisions
 

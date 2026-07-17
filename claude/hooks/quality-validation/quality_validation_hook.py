@@ -256,6 +256,23 @@ def is_path_excluded(validator: dict, file_path: str) -> bool:
     return False
 
 
+def matching_immutable_pattern(
+    config: dict[str, Any], file_path: str, project_root: str
+) -> Optional[str]:
+    """Return the declared immutable-path pattern matching file_path, if any."""
+    patterns = config.get("immutable_paths", [])
+    if not isinstance(patterns, list):
+        return None
+    normalized = file_path.replace("\\", "/")
+    relative = os.path.relpath(file_path, project_root).replace("\\", "/")
+    for pattern in patterns:
+        if isinstance(pattern, str) and (
+            fnmatch.fnmatch(normalized, pattern) or fnmatch.fnmatch(relative, pattern)
+        ):
+            return pattern
+    return None
+
+
 def check_validator_available(validator: dict, lang_config: dict[str, Any]) -> bool:
     """Return True if the validator's tool is installed (or no check is required).
 
@@ -371,10 +388,11 @@ def _cli_runnable_validators(
 
 def _build_changed_file_jobs(
     file_paths: list[str], config: dict[str, Any]
-) -> tuple[list[tuple[dict, str, str]], list[str]]:
-    """Build validation jobs and missing-tool diagnostics for explicit files."""
+) -> tuple[list[tuple[dict, str, str]], list[str], list[str]]:
+    """Build validation jobs, missing-tool diagnostics, and immutable notices."""
     jobs: list[tuple[dict, str, str]] = []
     missing_tools = []
+    immutable_notices = []
     for file_path in file_paths:
         normalized_path = normalize_path(file_path)
         if not os.path.isfile(normalized_path):
@@ -383,11 +401,18 @@ def _build_changed_file_jobs(
         if not match:
             continue
         _, lang_config, project_root = match
+        immutable_pattern = matching_immutable_pattern(config, normalized_path, project_root)
+        if immutable_pattern:
+            immutable_notices.append(
+                f"immutable path finding: {normalized_path} matches "
+                f"{immutable_pattern}; validators skipped without modifying the file"
+            )
+            continue
         validators = filter_validators_by_detection(lang_config.get("validators", []), project_root)
         runnable, missing = _cli_runnable_validators(validators, normalized_path, lang_config)
         missing_tools.extend(f"{normalized_path}: {message}" for message in missing)
         jobs.extend((validator, normalized_path, project_root) for validator in runnable)
-    return jobs, missing_tools
+    return jobs, missing_tools, immutable_notices
 
 
 def _run_changed_file_jobs(jobs: list[tuple[dict, str, str]]) -> list[str]:
@@ -405,10 +430,12 @@ def _run_changed_file_jobs(jobs: list[tuple[dict, str, str]]) -> list[str]:
     return [result for result in results if result is not None]
 
 
-def run_changed_files(file_paths: list[str], config: dict[str, Any]) -> tuple[list[str], list[str]]:
+def run_changed_files(
+    file_paths: list[str], config: dict[str, Any]
+) -> tuple[list[str], list[str], list[str]]:
     """Run configured validators for explicit files in deterministic result order."""
-    jobs, missing_tools = _build_changed_file_jobs(file_paths, config)
-    return _run_changed_file_jobs(jobs), missing_tools
+    jobs, missing_tools, immutable_notices = _build_changed_file_jobs(file_paths, config)
+    return _run_changed_file_jobs(jobs), missing_tools, immutable_notices
 
 
 def _load_changed_files_config(config_path: Path) -> dict[str, Any]:
@@ -438,11 +465,13 @@ def changed_files_main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
     try:
         config = _load_changed_files_config(args.config)
-        failures, missing_tools = run_changed_files(args.files, config)
+        failures, missing_tools, immutable_notices = run_changed_files(args.files, config)
     except ValueError as error:
         print(error, file=sys.stderr)
         return 2
 
+    for message in immutable_notices:
+        print(message)
     for message in [*failures, *missing_tools]:
         print(message, file=sys.stderr)
     return _changed_files_exit_code(failures, missing_tools)

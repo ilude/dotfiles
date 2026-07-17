@@ -12,6 +12,13 @@
 # Languages without a slam-dunk native linter get lizard-only — that still
 # enforces CCN ≤ 8, length ≤ 250, and parameters ≤ 7 on every edit.
 
+# Declared immutable artifacts are reported by the explicit-file CLI but are
+# never passed to generic hygiene validators.
+immutable_paths:
+  - "*/migrations/*"
+  - "*/db/migration/*"
+  - "*/flyway/*"
+
 # ---- Shared anchors (skipped by the hook because they aren't dicts) -------
 
 _lizard_command: &lizard_command

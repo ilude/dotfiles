@@ -572,6 +572,41 @@ class TestChangedFilesCli:
         for file_path in (python_file, shell_file, typescript_file):
             assert Path(f"{file_path}.validated").read_text() == "ok"
 
+    def test_declared_immutable_path_is_reported_without_running_validator(self, tmp_path, capsys):
+        (tmp_path / "pyproject.toml").write_text("[project]\n")
+        migration = tmp_path / "migrations" / "V1__applied.py"
+        source = tmp_path / "source.py"
+        migration.parent.mkdir()
+        migration.write_text("immutable content\n")
+        source.write_text("normal content\n")
+        command = [
+            sys.executable,
+            "-c",
+            "import pathlib, sys; pathlib.Path(sys.argv[1] + '.validated').write_text('ok')",
+            "{file}",
+        ]
+        config_path = self._write_config(
+            tmp_path,
+            {
+                "immutable_paths": ["migrations/*"],
+                "python": {
+                    "extensions": [".py"],
+                    "markers": ["pyproject.toml"],
+                    "validators": [{"name": "python", "command": command}],
+                },
+            },
+        )
+
+        result = hook.changed_files_main(
+            ["--config", str(config_path), "--files", str(migration), str(source)]
+        )
+
+        assert result == 0
+        assert migration.read_text() == "immutable content\n"
+        assert not Path(f"{migration}.validated").exists()
+        assert Path(f"{source}.validated").read_text() == "ok"
+        assert "immutable path finding" in capsys.readouterr().out
+
     def test_unsupported_file_passes_without_a_validator(self, tmp_path):
         (tmp_path / "pyproject.toml").write_text("[project]\n")
         unsupported_file = tmp_path / "notes.txt"
