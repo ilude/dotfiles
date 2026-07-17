@@ -314,7 +314,7 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
   - [x] headless resume mechanism verified: `pi --session <path> -p <message>`
   - [x] opt-in continuation and follow-up action implemented
   - [x] compress-on-age in place (no deletion); context-carryover proof passed
-- [ ] T3: cross-client worktree occupancy leases - in-progress: add the shared lease helper
+- [ ] T3: cross-client worktree occupancy leases - in-progress: wire the shared helper into both clients
   - [x] user decision received: delete advisory metadata; add lease warning
   - [x] `isolation` and `memory` removed from parser, docs, and agent files
   - [ ] shared atomic lease lifecycle implemented for Pi and Claude
@@ -340,5 +340,5 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
 
 - **Classification:** in progress; T1-T2 complete
 - **Current blocker:** none
-- **Next:** T3, implement the shared atomic lease registry and fixtures
+- **Next:** T3, wire Pi and Claude lifecycle, warning, and status surfaces to the validated shared helper
 - **Resume:** `/do-it .specs/rationalization-phase3/plan.md`

@@ -2,6 +2,32 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Add the shared worktree lease registry
+
+**Why:** Pi and Claude need one deterministic coordination boundary before
+either client can warn about concurrent modifying sessions in the same Git
+worktree.
+
+**Changed:**
+- Added a cross-platform lease helper with atomic registration, heartbeat,
+  status, and identity-checked release operations.
+- Recorded bounded per-session JSON leases under each worktree's ignored
+  `.agent-instances/` directory.
+- Added shared stale cleanup semantics: an expired lease is removed only when
+  its recorded process is absent or its start identity no longer matches;
+  malformed records are reported and retained.
+
+**Validation:** Five focused fixtures covered simultaneous Pi/Claude
+registration, idempotency, separate-worktree isolation, live-process retention,
+crash expiry, malformed records, heartbeat, release, and CLI status. Ruff lint
+and format checks passed, and Git confirmed lease files are ignored.
+
+**Files:** `scripts/agent_instance_lease.py`,
+`test/test_agent_instance_lease.py`, `.gitignore`,
+`.specs/rationalization-phase3/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Remove unenforced agent metadata
 
 **Why:** Agent frontmatter advertised isolation and memory behavior that the
