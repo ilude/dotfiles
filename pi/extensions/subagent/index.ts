@@ -55,6 +55,7 @@ import {
 } from "../transcript-runtime.js";
 import {
 	type AgentConfig,
+	type AgentEffort,
 	type AgentScope,
 	discoverAgents,
 	resolveAgentSkillPaths,
@@ -74,13 +75,14 @@ function safeCreateSubagentTask(
 	step: number | undefined,
 	agentConfig?: AgentConfig,
 	model?: string,
+	effort?: AgentEffort,
 ): string | undefined {
 	try {
 		const snippet = task.length > 200 ? `${task.slice(0, 200)}...` : task;
 		const summary = step ? `${agentName} step ${step}` : agentName;
 		const metadata: Record<string, unknown> = { cwd };
 		metadata.model = model ?? agentConfig?.model ?? "default";
-		metadata.effort = agentConfig?.effort ?? "default";
+		metadata.effort = effort ?? agentConfig?.effort ?? "default";
 		if (agentConfig?.skills) metadata.skills = agentConfig.skills;
 		if (agentConfig?.isolation) metadata.isolation = agentConfig.isolation;
 		if (agentConfig?.memory) metadata.memory = agentConfig.memory;
@@ -665,6 +667,7 @@ export async function runSingleAgent(
 	modelOverride: string | undefined,
 	modelSizeHint: ModelSize | undefined,
 	modelPolicyHint: ModelPolicy | undefined,
+	effortOverride: AgentEffort | undefined,
 	existingTaskId?: string,
 	executionAttemptRunId?: string,
 ): Promise<SingleResult> {
@@ -704,7 +707,8 @@ export async function runSingleAgent(
 	];
 	if (modelOverride) args.push("--model", modelOverride);
 	else if (agent.model) args.push("--model", agent.model);
-	if (agent.effort) args.push("--thinking", agent.effort);
+	const effectiveEffort = effortOverride ?? agent.effort;
+	if (effectiveEffort) args.push("--thinking", effectiveEffort);
 	if (agent.tools && agent.tools.length > 0)
 		args.push("--tools", agent.tools.join(","));
 	for (const skillPath of resolveAgentSkillPaths(agent))
@@ -730,7 +734,7 @@ export async function runSingleAgent(
 			turns: 0,
 		},
 		model: modelOverride || agent.model,
-		effort: agent.effort ?? "default",
+		effort: effectiveEffort ?? "default",
 		step,
 		runId: executionAttemptRunId,
 	};
@@ -760,6 +764,7 @@ export async function runSingleAgent(
 			step,
 			agent,
 			currentResult.model,
+			effectiveEffort,
 		);
 	const runId = executionAttemptRunId ?? taskId ?? randomUUID();
 	currentResult.runId = runId;
@@ -776,6 +781,7 @@ export async function runSingleAgent(
 			modelSize: modelSizeHint,
 			modelPolicy: modelPolicyHint,
 			resolvedModel: modelOverride || agent.model,
+			effort: effectiveEffort ?? "default",
 			workflow,
 			phase: step ? "chain-step" : "run",
 			planPath,
@@ -1001,6 +1007,7 @@ export async function runSingleAgent(
 type TaskParams = {
 	agent: string;
 	task: string;
+	effort?: AgentEffort;
 	cwd?: string;
 	output?: string | boolean;
 	outputMode?: OutputMode;
@@ -1017,9 +1024,20 @@ const OutputModeSchema = Type.Union(
 	},
 );
 
+const EffortSchema = Type.Union([
+	Type.Literal("off"),
+	Type.Literal("minimal"),
+	Type.Literal("low"),
+	Type.Literal("medium"),
+	Type.Literal("high"),
+	Type.Literal("xhigh"),
+	Type.Literal("max"),
+]);
+
 const TaskItem = Type.Object({
 	agent: Type.String({ description: "Name of the agent to invoke" }),
 	task: Type.String({ description: "Task to delegate to the agent" }),
+	effort: Type.Optional(EffortSchema),
 	cwd: Type.Optional(
 		Type.String({ description: "Working directory for the agent process" }),
 	),
@@ -1034,6 +1052,7 @@ const TaskItem = Type.Object({
 
 const ChainItem = Type.Object({
 	agent: Type.String({ description: "Name of the agent to invoke" }),
+	effort: Type.Optional(EffortSchema),
 	task: Type.String({
 		description: "Task with optional {previous} placeholder for prior output",
 	}),
@@ -1105,6 +1124,7 @@ const SubagentParams = Type.Object({
 	),
 	modelSize: Type.Optional(ModelSizeSchema),
 	modelPolicy: Type.Optional(ModelPolicySchema),
+	effort: Type.Optional(EffortSchema),
 	confirmProjectAgents: Type.Optional(
 		Type.Boolean({
 			description:
@@ -1150,6 +1170,7 @@ export default function (pi: ExtensionAPI) {
 			const modelPolicy =
 				(params.modelPolicy as unknown as ModelPolicy | undefined) ??
 				"same-provider";
+			const effort = params.effort as unknown as AgentEffort | undefined;
 			const resolvedModel =
 				!explicitModel && modelSize
 					? resolveDynamicModelFromRegistry(
@@ -1397,6 +1418,7 @@ export default function (pi: ExtensionAPI) {
 						resolvedModelId,
 						modelSize,
 						modelPolicy,
+						step.effort ?? effort,
 					);
 					finalizeOutput(
 						result,
@@ -1473,7 +1495,7 @@ export default function (pi: ExtensionAPI) {
 							turns: 0,
 						},
 						model: resolvedModelId || agent?.model,
-						effort: agent?.effort ?? "default",
+						effort: tasks[i].effort ?? effort ?? agent?.effort ?? "default",
 					};
 				}
 
@@ -1518,6 +1540,7 @@ export default function (pi: ExtensionAPI) {
 							resolvedModelId,
 							modelSize,
 							modelPolicy,
+							t.effort ?? effort,
 						);
 						finalizeOutput(
 							result,
@@ -1564,6 +1587,7 @@ export default function (pi: ExtensionAPI) {
 					resolvedModelId,
 					modelSize,
 					modelPolicy,
+					effort,
 				);
 				finalizeOutput(
 					result,

@@ -2,6 +2,26 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Merge skill-review agent variants
+
+**Why:** Three agent definitions differed only by model and thinking effort.
+
+**Changed:**
+- Added optional per-launch `effort` overrides for single, parallel, and chain
+  subagents, with explicit values taking precedence over frontmatter.
+- Merged three skill-review variants into one `skill-review` agent while
+  preserving exact model and effort dispatch records.
+- Recorded 30-day usage decisions for all 52 skills, 36 extension commands,
+  and 18 audited agents.
+
+**Validation:** Focused subagent and skill-review suites passed 38 tests; Pi
+typecheck and the full skill-review smoke/validate/runner sequence passed.
+
+**Files:** `pi/{agents,extensions,lib,scripts,tests,README.md}`,
+`.specs/rationalization-phase2/{plan,ledger}.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Centralize Pi development philosophy
 
 **Why:** General implementation and delegation policy was repeated across

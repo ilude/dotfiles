@@ -179,6 +179,7 @@ You are a test agent.
 				undefined,
 				undefined,
 				undefined,
+				undefined,
 				"attempt-override",
 			);
 
@@ -486,6 +487,76 @@ You are a test agent.
 			expect(spawnArgs).not.toContain("openai-codex/gpt-5.5");
 			expect(spawnArgs).not.toContain("anthropic/claude-sonnet-4-6");
 			expect(result.details.results[0].model).toBe("anthropic/claude-opus-4-5");
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"uses explicit effort over agent frontmatter in every mode",
+		async () => {
+			const { tool } = await loadTool();
+			const ctx = createMockCtx({ cwd: tmpDir });
+			const cases = [
+				{
+					name: "single",
+					params: {
+						agent: "tester",
+						task: "Check single effort",
+						effort: "low",
+						agentScope: "project",
+					},
+				},
+				{
+					name: "parallel",
+					params: {
+						tasks: [
+							{
+								agent: "tester",
+								task: "Check parallel effort",
+								effort: "minimal",
+							},
+						],
+						agentScope: "project",
+					},
+				},
+				{
+					name: "chain",
+					params: {
+						chain: [
+							{
+								agent: "tester",
+								task: "Check chain effort",
+								effort: "xhigh",
+							},
+						],
+						agentScope: "project",
+					},
+				},
+			] as const;
+
+			for (const item of cases) {
+				mockSuccessfulSpawn();
+				const before = spawnMock.mock.calls.length;
+				const result = await tool.execute(
+					`call-effort-${item.name}`,
+					item.params,
+					undefined,
+					undefined,
+					ctx,
+				);
+				expect(result.isError).not.toBe(true);
+				const spawnArgs = spawnMock.mock.calls[before][1] as string[];
+				const thinkingIndex = spawnArgs.indexOf("--thinking");
+				expect(thinkingIndex).toBeGreaterThan(-1);
+				const expected =
+					item.name === "single"
+						? "low"
+						: item.name === "parallel"
+							? "minimal"
+							: "xhigh";
+				expect(spawnArgs[thinkingIndex + 1]).toBe(expected);
+				expect(result.details.results[0].effort).toBe(expected);
+			}
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);

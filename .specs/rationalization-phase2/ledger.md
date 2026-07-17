@@ -18,7 +18,129 @@
 
 ## Surface usage decisions
 
-T5 will add one row for every skill, extension command, and agent after its deterministic usage scan establishes the covered window and counts.
+30-day counts are from `.tmp/rationalization-phase2/t5-usage-audit.md`. Command counts prefer timestamp-bounded fallback evidence.
+
+### Skills
+
+| Item | Calls (30d) | Decision | Rationale | Task | Status |
+| --- | ---: | --- | --- | --- | --- |
+| analysis-workflow | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| ansible | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| api-design | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| approval-aware-operations | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| brainstorming | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| browser-tab-capture | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| caveman | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| claude-code-workflow | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| code-review | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| csharp | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| database | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| development-philosophy | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| docker | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| docs | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| forgejo-actions | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| forgejo-git | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| git-workflow | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| go | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| grill-me | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| justfile | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| kubernetes-helm | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| least-astonishment | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| llmstxt | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| logging-observability | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| m365-tenant-automation | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| no-ai-slop | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| orchestration | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| pdf-reader | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| pi-command | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| pi-contributor-workflow | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| pi-extension | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| pi-goal | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| planning | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| playwright-e2e | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| prd | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| private-store | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| python | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| reddit | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| research-archive | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| ruby | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| rust | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| shell | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| skills-engineer | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| terraform | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| tui-ux | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| typed-agent-workflows | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| typescript | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| ux-design-workflow | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| war-report | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| workflow-design | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| x-twitter | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+| zoom-out | 0 | Keep | Tracking excludes normal injected/manual-read usage. | T5 | Decided |
+
+### Extension commands
+
+| Item | Calls (30d) | Decision | Rationale | Task | Status |
+| --- | ---: | --- | --- | --- | --- |
+| /agents-context | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /bedrock-refresh | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /fast | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /usage | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /context | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /damage-control | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /dc | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /extension-stats | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /foreman | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /fable | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /goal | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /orchestration-stats | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /permissions | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /router-status | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /router-explain | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /router-reset | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /router-off | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /router-on | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /provider | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /refresh-models | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /router-stats | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /skill-stats | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /tasks | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /transcript-purge | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /usage-stats | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /commit | 1 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /branch | 2 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /new-instance | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /new-terminal | 1 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /plan-it | 9 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /prd-it | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /review-it | 12 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /do-it | 10 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /clear | 1 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /exit | 0 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+| /improve | 1 | Keep | Preserve public interface and on-demand diagnostics. | T5 | Decided |
+
+### Agents
+
+| Item | Dispatches (30d) | Decision | Rationale | Task | Status |
+| --- | ---: | --- | --- | --- | --- |
+| backend-dev | 1 | Keep | Distinct role. | T5 | Decided |
+| builder | 4 | Keep | Distinct role. | T5 | Decided |
+| code-reviewer | 11 | Keep | Distinct role. | T5 | Decided |
+| csharp-pro | 0 | Keep | Distinct role. | T5 | Decided |
+| devops-pro | 6 | Keep | Distinct role. | T5 | Decided |
+| frontend-dev | 0 | Keep | Distinct role. | T5 | Decided |
+| orchestrator | 0 | Keep | Distinct role. | T5 | Decided |
+| planner | 1 | Keep | Distinct role. | T5 | Decided |
+| python-pro | 1 | Keep | Distinct role. | T5 | Decided |
+| qa-engineer | 10 | Keep | Distinct role. | T5 | Decided |
+| reviewer | 26 | Keep | Distinct role. | T5 | Decided |
+| rust-pro | 0 | Keep | Distinct role. | T5 | Decided |
+| security-reviewer | 0 | Keep | Distinct role. | T5 | Decided |
+| skill-review-fable-high | 0 | Merge into `skill-review` | Preserve Fable model and high effort. | T5 | Decided |
+| skill-review-fable-medium | 0 | Merge into `skill-review` | Preserve Fable model and medium effort. | T5 | Decided |
+| skill-review-gpt | 0 | Merge into `skill-review` | Preserve GPT model and xhigh effort. | T5 | Decided |
+| typescript-pro | 25 | Keep | Distinct role. | T5 | Decided |
+| validator | 5 | Keep | Distinct role. | T5 | Decided |
+| skill-review | n/a | Keep merged replacement | Dispatch explicitly preserves Fable medium/high and GPT xhigh model/effort. | T5 | Decided |
 
 ## Measurements
 

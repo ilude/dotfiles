@@ -51,7 +51,7 @@ if (writeEvidence) {
     skill_count: inventory.length,
     finding_count: findings.length,
     high_risk_count: highRisk.length,
-    model_ids: ["openai-codex/gpt-5.5:xhigh", "amazon-bedrock/us.anthropic.claude-fable-5:medium", "amazon-bedrock/us.anthropic.claude-fable-5:high"],
+    model_ids: ["openai-codex/gpt-5.6-sol:xhigh", "amazon-bedrock/us.anthropic.claude-fable-5:medium", "amazon-bedrock/us.anthropic.claude-fable-5:high"],
     validation_commands: ["pi/scripts/skill-review-validate-run <run-dir>", "pi/scripts/skill-review-run-models <run-dir>", "pi/scripts/skill-review-validate-run <run-dir> --write-evidence-manifest"],
     status: "passed",
     archive_status: "ready"

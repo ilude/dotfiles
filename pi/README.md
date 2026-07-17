@@ -631,8 +631,10 @@ The agent parser consumes these frontmatter fields:
 - Enforced by the subagent launcher: `tools`, `model`, `effort`, `skills`
 - Advisory metadata: `isolation`, `memory`
 
-The parser applies no default frontmatter values. `effort` is passed to child Pi
-as `--thinking`. Child skill discovery is disabled with `--no-skills`; each
+The parser applies no default frontmatter values. Frontmatter `effort` is passed
+to child Pi as `--thinking`; an explicit per-launch `effort` override takes
+precedence in single, parallel, and chain modes. Child skill discovery is
+disabled with `--no-skills`; each
 `skills` entry is resolved to an explicit skill file and passed with `--skill`.
 Skill entries may be discovered skill names or paths relative to the agent file.
 Missing skills fail the launch explicitly. `tools` is a tool-name allowlist, not

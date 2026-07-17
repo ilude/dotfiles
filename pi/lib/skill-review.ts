@@ -598,8 +598,7 @@ export function buildDecisionLedger(
 
 function comparisonTemplate() {
 	return {
-		reviewer:
-			"skill-review-gpt|skill-review-fable-medium|skill-review-fable-high",
+		reviewer: "skill-review",
 		model_id: "exact model id",
 		status: "pass|invalid",
 		decisions: [
@@ -625,21 +624,24 @@ function subagentTasks(highRisk: HighRiskSkill[]): unknown[] {
 		.map((item) => item.skill);
 	return [
 		{
-			agent: "skill-review-gpt",
-			model: "openai-codex/gpt-5.5:xhigh",
+			agent: "skill-review",
+			model: "openai-codex/gpt-5.6-sol:xhigh",
+			effort: "xhigh",
 			output: "gpt-review.json",
 			task: "Review model-packet.md and write normalized JSON matching comparison-template.json. Do not edit source skills. Label deterministic false positives.",
 		},
 		{
-			agent: "skill-review-fable-medium",
+			agent: "skill-review",
 			model: "amazon-bedrock/us.anthropic.claude-fable-5:medium",
+			effort: "medium",
 			output: "fable-medium-review.json",
 			skills: fableMedium,
 			task: "Review only listed medium-policy skills. Skip low-complexity items. Never use above high effort. Write normalized JSON only.",
 		},
 		{
-			agent: "skill-review-fable-high",
+			agent: "skill-review",
 			model: "amazon-bedrock/us.anthropic.claude-fable-5:high",
+			effort: "high",
 			output: "fable-high-review.json",
 			skills: fableHigh,
 			task: "Review only listed high-policy workflow, safety, routing-conflict, delete, or split decisions. Never use above high effort. Write normalized JSON only.",
@@ -671,7 +673,7 @@ function renderSummary(
 		``,
 		`## Next actions`,
 		`- Run packet safety validation before any model subagent.`,
-		`- Run GPT-5.5 plus Fable-5 comparison for selected high-risk items.`,
+		`- Run GPT-5.6 Sol plus Fable-5 comparison for selected high-risk items.`,
 		`- Treat model output as advisory content-remediation input only.`,
 		``,
 	].join("\n");
@@ -686,7 +688,7 @@ function renderModelPacket(
 	return [
 		`# Skill Review Model Packet`,
 		``,
-		`Review path: GPT-5.5 reviews the full high-risk packet. Fable-5 reviews only skip/medium/high policy selections; above high is forbidden. Low-complexity and simple items must be skipped.`,
+		`Review path: GPT-5.6 Sol reviews the full high-risk packet. Fable-5 reviews only skip/medium/high policy selections; above high is forbidden. Low-complexity and simple items must be skipped.`,
 		``,
 		`## High-risk skills`,
 		stableJson(highRisk),

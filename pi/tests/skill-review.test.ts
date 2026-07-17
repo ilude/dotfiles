@@ -120,9 +120,31 @@ describe("skill-review deterministic core", () => {
 			"trigger-evals.json",
 		]);
 		expect(validateGeneratedArtifacts(artifacts).ok).toBe(true);
-		expect(artifacts["model-packet.md"]).toContain("GPT-5.5");
+		expect(artifacts["model-packet.md"]).toContain("GPT-5.6 Sol");
 		expect(artifacts["model-packet.md"]).toContain("Fable-5");
 		expect(artifacts["model-packet.md"]).toContain("skip/medium/high");
+		const tasks = JSON.parse(artifacts["subagent-tasks.json"]);
+		expect(tasks.map((task: { agent: string }) => task.agent)).toEqual([
+			"skill-review",
+			"skill-review",
+			"skill-review",
+		]);
+		expect(
+			tasks.map((task: { model: string; effort: string }) => ({
+				model: task.model,
+				effort: task.effort,
+			})),
+		).toEqual([
+			{ model: "openai-codex/gpt-5.6-sol:xhigh", effort: "xhigh" },
+			{
+				model: "amazon-bedrock/us.anthropic.claude-fable-5:medium",
+				effort: "medium",
+			},
+			{
+				model: "amazon-bedrock/us.anthropic.claude-fable-5:high",
+				effort: "high",
+			},
+		]);
 		expect(validatePacketSafety("API_KEY=abc").ok).toBe(false);
 		expect(parseModelReview("{}").valid).toBe(false);
 	});

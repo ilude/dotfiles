@@ -18,7 +18,7 @@ const tasksPath = path.join(runDir, "subagent-tasks.json");
 const ledgerPath = path.join(runDir, "decision-ledger.json");
 const highRiskPath = path.join(runDir, "high-risk-skills.json");
 const tasks = JSON.parse(fs.readFileSync(tasksPath, "utf-8"));
-for (const task of tasks) console.log(`${task.agent} -> ${relRunDir}/${task.output} model=${task.model}`);
+for (const task of tasks) console.log(`${task.agent} -> ${relRunDir}/${task.output} model=${task.model} effort=${task.effort}`);
 if (dryRun) process.exit(0);
 const highRisk = JSON.parse(fs.readFileSync(highRiskPath, "utf-8"));
 const decisions = highRisk.map((item) => ({
@@ -29,7 +29,7 @@ const decisions = highRisk.map((item) => ({
   deterministic_false_positives: [],
   recommended_next_action: item.fablePolicy === "skip" ? "Use deterministic findings only because Fable policy skipped this item." : "Compare deterministic findings with reviewer notes before content remediation."
 }));
-const gpt = { reviewer: "skill-review-gpt", model_id: "openai-codex/gpt-5.5:xhigh", status: "pass", decisions };
+const gpt = { reviewer: "skill-review", model_id: "openai-codex/gpt-5.6-sol:xhigh", status: "pass", decisions };
 const fableDecisions = highRisk.map((item) => ({
   skill: item.skill,
   verdict: item.fablePolicy === "skip" ? "skipped" : "pass",
@@ -38,7 +38,7 @@ const fableDecisions = highRisk.map((item) => ({
   deterministic_false_positives: [],
   recommended_next_action: item.fablePolicy === "skip" ? "No Fable action." : "Use as advisory check for remediation."
 }));
-const fable = { reviewer: "skill-review-fable", model_id: "amazon-bedrock/us.anthropic.claude-fable-5:medium, amazon-bedrock/us.anthropic.claude-fable-5:high", status: "pass", decisions: fableDecisions };
+const fable = { reviewer: "skill-review", model_id: "amazon-bedrock/us.anthropic.claude-fable-5:medium, amazon-bedrock/us.anthropic.claude-fable-5:high", status: "pass", decisions: fableDecisions };
 fs.writeFileSync(path.join(runDir, "gpt-review.json"), stableJson(gpt), "utf-8");
 fs.writeFileSync(path.join(runDir, "fable-review.json"), stableJson(fable), "utf-8");
 const comparison = synthesizeComparison(stableJson(gpt), stableJson(fable), fs.readFileSync(ledgerPath, "utf-8"));

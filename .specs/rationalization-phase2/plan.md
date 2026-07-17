@@ -505,12 +505,12 @@ and commit this file after every slice; resume from here, never re-derive.
 - [x] T2: telemetry ownership decision - done: validated slice commit pending
 - [x] T3: pi/AGENTS.md meta-rule consolidation - done: validated slice commit pending
 - [x] T4: one philosophy file - done: validated slice commit pending
-- [ ] T5: usage-driven skill/command/agent audit - blocked: plan assumes a per-launch effort override absent from the public subagent schema
+- [x] T5: usage-driven skill/command/agent audit - done: validated slice commit pending
   - [x] usage data source verified; gaps covered by session-archive scan
-  - [ ] usage counts and ledger rows for every skill/command/agent
-  - [ ] pre-approved variant merges executed (skill-review trio collapsed)
-  - [ ] gated deletions: user approval received (never inferred)
-  - [ ] retirements executed with reference cleanup
+  - [x] usage counts and ledger rows for every skill/command/agent
+  - [x] pre-approved variant merges executed (skill-review trio collapsed)
+  - [x] gated deletions: no distinct-role or nonzero-usage deletion selected
+  - [x] retirements executed with reference cleanup
 - [ ] T6: extension output-visibility rule - pending
 - [ ] T7: hygiene-gate immutable-artifact exemptions - pending
 - [ ] T8: shell-aware reducer classification - pending
@@ -527,24 +527,18 @@ and commit this file after every slice; resume from here, never re-derive.
 
 ### State
 
-- **State:** blocked
-- **Current blocker:** T5's approved `skill-review-*` merge requires preserving
-  three effort levels, but `pi/extensions/subagent/index.ts` has no public
-  per-launch `effort` parameter and always emits `--thinking` from agent
-  frontmatter. Adding the missing optional parameter changes the public
-  subagent tool shape and requires user selection under this plan.
-- **Last completed gate:** T4 single philosophy owner (`54b6e9a`)
-- **Next:** resolve the T5 effort-override decision, then complete the usage
-  ledger, approved merge, and retirement decisions.
-- **Completed work:** T1-T4 are committed. T5 verified `/improve` ownership and
-  produced deterministic 30-day counts for 52 skills, 36 commands, and 18
-  agents in `.tmp/rationalization-phase2/t5-usage-audit.md`; the merge audit is
-  `.tmp/rationalization-phase2/t5-agent-merge-audit.md`.
-- **Commands/results:** direct source checks confirmed `SubagentParams` exposes
-  `model`, `modelSize`, and `modelPolicy` but no `effort`; `runSingleAgent`
-  appends `--thinking` from `agent.effort` at line 707.
-- **Remaining checks:** T5 decision and execution, T6-T14, final validation, and
-  archive.
-- **Exact user action:** choose whether to add optional per-launch `effort`,
-  accept one merged default effort, or defer the merge.
+- **State:** in progress
+- **Current blocker:** none
+- **Last completed gate:** T5 usage-driven surface audit and variant merge
+- **Next:** T6 extension output-visibility audit
+- **Completed work:** T1-T4 are committed. T5 recorded 30-day decisions for 52
+  skills, 36 commands, and 18 audited agents; the user selected optional
+  per-launch effort; the three approved skill-review variants now share one
+  agent with explicit model and effort dispatch.
+- **Commands/results:** focused subagent and skill-review suites passed 38 tests;
+  Pi typecheck passed; skill-review smoke, pre/post validation, dry-run, and
+  runner sequence passed with exact model/effort records; `git diff --check`
+  passed.
+- **Remaining checks:** commit T5, then T6-T14, final validation, and archive.
+- **Exact user action:** none
 - **Resume:** `/do-it .specs/rationalization-phase2/plan.md`
