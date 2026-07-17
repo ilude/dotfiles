@@ -180,6 +180,24 @@ Verified 2026-07-17 from `loadRules()` and the tracked policy:
   must count coverage only when the oracle runner demonstrates an equivalent
   outcome or records an explicit waiver. Loader presence is not coverage.
 
+### T2 oracle-runner baseline
+
+Implemented and measured 2026-07-17 with `pnpm run damage-control-coverage`:
+
+- The subprocess oracle loads Claude's actual Bash hook module and tracked YAML,
+  evaluates the tracked fixture suite, and returns the hook outcome plus stable
+  `bashToolPatterns:<index>` identity. Pi evaluates the same command through its
+  normalized engine and no-delete path.
+- The inventory accounts for 592 rows across Bash, paths, exfiltration,
+  injection, secrets, contexts, and AST lists. Existing fixtures provide 42
+  commands and positively cover 13 policy rows.
+- Baseline: 579 uncovered rows, two outcome divergences, zero stale negative
+  controls, and `coverage_debt_count = 581`. The two divergences are wrapped
+  root-delete fixtures where Claude blocks and Pi asks.
+- Gate mode is `PI_DAMAGE_CONTROL_COVERAGE_GATE=1 pnpm run
+  damage-control-coverage`; it fails until uncovered rows are covered or
+  explicitly waived and all divergences are resolved.
+
 ## Tasks
 
 ### T1: Structured decision logging in both clients
@@ -316,9 +334,9 @@ from here.
   - [x] schema and shared location implemented in both clients
   - [x] live four-outcome validation on both clients
   - [x] fail-open and secret-scrub proven
-- [ ] T2: canonical source, oracle runner, coverage debt zero - in-progress: build the per-pattern Claude-oracle runner
+- [ ] T2: canonical source, oracle runner, coverage debt zero - in-progress: drive measured coverage debt to zero
   - [x] verified what damage-control-rules.ts already loads
-  - [ ] per-pattern coverage runner built (Claude hook as oracle)
+  - [x] per-pattern coverage runner built (Claude hook as oracle)
   - [ ] coverage_debt_count = 0 (covered or explicitly waived)
   - [ ] canonical source created; both engines pass the runner
   - [ ] cutover recorded; archived parity plan's header updated to
@@ -335,8 +353,9 @@ from here.
 
 ### State
 
-- **Classification:** in progress; T2 loader behavior verified
+- **Classification:** in progress; T2 oracle runner reports 581 debt rows
 - **Current blocker:** none
-- **Next:** T2, build the per-pattern Claude-oracle coverage runner covering
-  command, path, exfiltration, injection, context, and AST policy surfaces
+- **Next:** T2, add positive fixtures and explicit unsupported-feature waivers
+  by policy family; classify the two wrapped root-delete divergences and stop
+  for approval before any existing-vector outcome change
 - **Resume:** `/do-it .specs/rationalization-phase5/plan.md`

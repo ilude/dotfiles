@@ -2,6 +2,34 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Add the damage-control oracle coverage runner
+
+**Why:** Policy-source convergence needs a mechanical debt count showing which
+Claude rules have proven Pi outcomes, rather than aggregate loader counts.
+
+**Changed:**
+- Added a Python subprocess adapter around Claude's actual Bash hook and tracked
+  fixture/policy files.
+- Added a TypeScript runner that inventories every policy row, evaluates the
+  same fixtures through Claude and Pi, records stable covered IDs, and reports
+  divergences, stale controls, uncovered rows, and total coverage debt.
+- Added `pnpm run damage-control-coverage` and an opt-in zero-debt gate via
+  `PI_DAMAGE_CONTROL_COVERAGE_GATE=1`.
+
+**Baseline:** 592 inventory rows, 42 fixtures, 13 covered rows, 579 uncovered
+rows, two wrapped root-delete divergences, zero stale controls, and
+`coverage_debt_count = 581`.
+
+**Validation:** The focused Vitest runner passed, Ruff passed for the oracle,
+and Pi typecheck plus Biome passed.
+
+**Files:** `pi/scripts/damage-control-claude-oracle.py`,
+`pi/lib/damage-control-coverage.ts`,
+`pi/tests/damage-control-coverage.test.ts`, `pi/package.json`,
+`.specs/rationalization-phase5/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Record the damage-control loader boundary
 
 **Why:** Canonical-policy cutover needs a measured inventory of what Pi already
