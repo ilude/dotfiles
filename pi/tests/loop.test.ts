@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,8 +8,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const spawnMock = vi.hoisted(() =>
 	vi.fn(() => ({ pid: 4242, unref: vi.fn() })),
 );
-vi.mock("node:child_process", () => ({ spawn: spawnMock }));
+vi.mock("node:child_process", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:child_process")>();
+	return { ...actual, spawn: spawnMock };
+});
 
+import loopRuntimeLogging from "../extensions/loop/runtime-logging.ts";
 import loop, { loopTestApi } from "../extensions/loop.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
@@ -20,7 +25,51 @@ function temporaryDirectory(): string {
 	return directory;
 }
 
+function writeJobFixture(
+	stateRoot: string,
+	id: string,
+	pid: number,
+	iteration?: number,
+): void {
+	const directory = path.join(stateRoot, id);
+	fs.mkdirSync(directory, { recursive: true });
+	fs.writeFileSync(
+		path.join(directory, "job.json"),
+		`${JSON.stringify({
+			version: 1,
+			id,
+			cwd: "C:/repo",
+			plans: ["plan.md"],
+			pid,
+			startedAt: "2026-07-17T00:00:00.000Z",
+			initialHead: "abc123",
+			maxIterations: 100,
+		})}\n`,
+	);
+	if (iteration !== undefined)
+		fs.writeFileSync(
+			path.join(directory, "loop.log"),
+			`2026-07-17T00:00:00.000Z iteration=${iteration} attempt=1 started\n`,
+		);
+}
+
+function initializeRepository(workspace: string): void {
+	execFileSync("git", ["init", "-q"], { cwd: workspace });
+	execFileSync("git", ["config", "user.email", "loop-test@example.invalid"], {
+		cwd: workspace,
+	});
+	execFileSync("git", ["config", "user.name", "Loop Test"], {
+		cwd: workspace,
+	});
+	execFileSync("git", ["add", "--", "plan.md"], { cwd: workspace });
+	execFileSync("git", ["commit", "-q", "-m", "test: add plan"], {
+		cwd: workspace,
+	});
+}
+
 afterEach(() => {
+	vi.useRealTimers();
+	vi.clearAllMocks();
 	for (const directory of temporaryDirectories.splice(0))
 		fs.rmSync(directory, { recursive: true, force: true });
 });
@@ -69,10 +118,125 @@ describe("loop extension", () => {
 		expect(loopTestApi.boundedId("C:/repo", ["b.md", "a.md"])).not.toBe(first);
 	});
 
+	it("shows live loop iteration in the footer and clears it on shutdown", async () => {
+		vi.useFakeTimers();
+		const stateRoot = temporaryDirectory();
+		writeJobFixture(stateRoot, "active-job", process.pid, 12);
+		writeJobFixture(stateRoot, "dead-job", 999_999, 4);
+		const priorRoot = process.env.PI_LOOP_DIR;
+		process.env.PI_LOOP_DIR = stateRoot;
+		const pi = createMockPi();
+		const setStatus = vi.fn();
+		const ctx = createMockCtx({
+			hasUI: true,
+			mode: "tui",
+			ui: { setStatus, notify: vi.fn() },
+		});
+		loop(pi as unknown as ExtensionAPI);
+
+		try {
+			for (const hook of pi._getHook("session_start"))
+				await hook.handler({ reason: "startup" }, ctx);
+			await vi.waitFor(() =>
+				expect(setStatus).toHaveBeenLastCalledWith(
+					"loop",
+					"loop active-job T:12/100",
+				),
+			);
+
+			await vi.advanceTimersByTimeAsync(5_000);
+			await vi.waitFor(() => expect(vi.getTimerCount()).toBe(1));
+			expect(setStatus).toHaveBeenCalledTimes(1);
+
+			fs.appendFileSync(
+				path.join(stateRoot, "active-job", "loop.log"),
+				`${JSON.stringify({
+					schema_version: 1,
+					timestamp: "2026-07-17T00:00:05.000Z",
+					event: "invocation_started",
+					iteration: 13,
+					attempt: 1,
+				})}\n`,
+			);
+			await vi.advanceTimersByTimeAsync(5_000);
+			await vi.waitFor(() =>
+				expect(setStatus).toHaveBeenLastCalledWith(
+					"loop",
+					"loop active-job T:13/100",
+				),
+			);
+
+			for (const hook of pi._getHook("session_shutdown"))
+				await hook.handler({ reason: "quit" }, ctx);
+			expect(setStatus).toHaveBeenLastCalledWith("loop", undefined);
+			expect(vi.getTimerCount()).toBe(0);
+		} finally {
+			if (priorRoot === undefined) delete process.env.PI_LOOP_DIR;
+			else process.env.PI_LOOP_DIR = priorRoot;
+		}
+	});
+
+	it("records child Pi lifecycle events with loop correlation fields", async () => {
+		const stateRoot = temporaryDirectory();
+		const logPath = path.join(stateRoot, "loop.log");
+		const environment = {
+			PI_LOOP_LOG_PATH: logPath,
+			PI_LOOP_JOB_ID: "job-123",
+			PI_LOOP_SUPERVISOR_PID: "321",
+			PI_LOOP_ITERATION: "7",
+			PI_LOOP_ATTEMPT: "2",
+		};
+		const prior = Object.fromEntries(
+			Object.keys(environment).map((key) => [key, process.env[key]]),
+		);
+		const pi = createMockPi();
+		const ctx = createMockCtx({
+			sessionManager: { getSessionId: () => "session-456" },
+		});
+
+		try {
+			Object.assign(process.env, environment);
+			loopRuntimeLogging(pi as unknown as ExtensionAPI);
+			for (const hook of pi._getHook("session_start"))
+				await hook.handler({ reason: "startup" }, ctx);
+			for (const hook of pi._getHook("session_shutdown"))
+				await hook.handler({ reason: "quit" }, ctx);
+		} finally {
+			for (const [key, value] of Object.entries(prior)) {
+				if (value === undefined) delete process.env[key];
+				else process.env[key] = value;
+			}
+		}
+
+		const records = fs
+			.readFileSync(logPath, "utf8")
+			.trim()
+			.split("\n")
+			.map((line) => JSON.parse(line));
+		expect(records).toHaveLength(2);
+		expect(records[0]).toMatchObject({
+			schema_version: 1,
+			event: "pi_process_started",
+			job_id: "job-123",
+			supervisor_pid: 321,
+			pi_pid: process.pid,
+			iteration: 7,
+			attempt: 2,
+			session_id: "session-456",
+		});
+		expect(records[1]).toMatchObject({
+			event: "pi_process_stopped",
+			reason: "quit",
+			session_id: "session-456",
+		});
+		expect(records[1].duration_ms).toEqual(expect.any(Number));
+	});
+
 	it("starts through the registered command after a clean Git preflight", async () => {
 		const workspace = temporaryDirectory();
 		const stateRoot = temporaryDirectory();
 		fs.writeFileSync(path.join(workspace, "plan.md"), "# Plan\n");
+		initializeRepository(workspace);
 		const priorRoot = process.env.PI_LOOP_DIR;
 		process.env.PI_LOOP_DIR = stateRoot;
 		const pi = createMockPi();
@@ -106,6 +270,47 @@ describe("loop extension", () => {
 			.readdirSync(stateRoot, { recursive: true })
 			.filter((entry) => String(entry).endsWith("job.json"));
 		expect(records).toHaveLength(1);
+	});
+
+	it("queues the existing /commit workflow before retrying a dirty start", async () => {
+		vi.useFakeTimers();
+		const workspace = temporaryDirectory();
+		const stateRoot = temporaryDirectory();
+		fs.writeFileSync(path.join(workspace, "plan.md"), "# Plan\n");
+		initializeRepository(workspace);
+		fs.writeFileSync(path.join(workspace, "source.ts"), "dirty\n");
+		const priorRoot = process.env.PI_LOOP_DIR;
+		process.env.PI_LOOP_DIR = stateRoot;
+		const pi = createMockPi();
+		pi.exec.mockResolvedValue({
+			stdout: " M source.ts\n",
+			stderr: "",
+			code: 0,
+			killed: false,
+		});
+		loop(pi as unknown as ExtensionAPI);
+		const command = pi._commands.find((item) => item.name === "loop");
+
+		try {
+			await command?.handler(
+				"start plan.md",
+				createMockCtx({ cwd: workspace, mode: "tui" }),
+			);
+			vi.runAllTimers();
+		} finally {
+			if (priorRoot === undefined) delete process.env.PI_LOOP_DIR;
+			else process.env.PI_LOOP_DIR = priorRoot;
+		}
+
+		expect(spawnMock).not.toHaveBeenCalled();
+		expect(pi.sendUserMessage).toHaveBeenNthCalledWith(1, "/commit", {
+			deliverAs: "followUp",
+		});
+		expect(pi.sendUserMessage).toHaveBeenNthCalledWith(
+			2,
+			'/loop start "plan.md" --baseline-complete',
+			{ deliverAs: "followUp" },
+		);
 	});
 
 	it("registers /loop and renders help without starting a model turn", async () => {

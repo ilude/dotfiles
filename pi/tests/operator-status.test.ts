@@ -104,19 +104,33 @@ describe("footer extension status placement", () => {
 	it("keeps codex right-anchored and excludes noisy health statuses", async () => {
 		const mod = await import("../extensions/operator-status.ts");
 		const data = footerData({
-			bedrock: "bedrock $17.49 mtd",
+			bedrock: "bedrock $17.49",
 			"damage-control": "damage-control: active",
 			codex: "codex 5h 42% | wk 61%",
 			router: "router: ready",
 			tps: "done -- 42 tok/s",
 		});
-		const status = "bedrock $17.49 mtd done -- 42 tok/s";
+		const status = "done -- 42 tok/s | bedrock $17.49";
 
 		expect(mod.rightAnchoredStatus(data)).toBe("codex 5h 42% | wk 61%");
 		expect(mod.formatExtensionStatuses(data)).toBe(status);
 		expect(mod.formatExtensionStatusLine(data, 50)).toBe(
-			"done -- 42 tok/s                bedrock $17.49 mtd",
+			"done -- 42 tok/s                    bedrock $17.49",
 		);
+	});
+
+	it("orders loop and active tasks before compact Bedrock cost", async () => {
+		const mod = await import("../extensions/operator-status.ts");
+		const data = footerData({
+			bedrock: "bedrock $71.64",
+			loop: "loop rationalization-345 T:35/48",
+			task: "tasks 2 (2 running)",
+		});
+		const expected =
+			"loop rationalization-345 T:35/48 | tasks 2 (2 running) | bedrock $71.64";
+
+		expect(mod.formatExtensionStatuses(data)).toBe(expected);
+		expect(mod.formatExtensionStatusLine(data, expected.length)).toBe(expected);
 	});
 });
 
@@ -222,7 +236,9 @@ describe("formatPiStatusLine", () => {
 		expect(mod.colorForThinkingLevel("gpt-5.6-sol", "medium")).toBe(
 			"\x1b[38;5;205m",
 		);
-		expect(mod.colorForThinkingLevel("gpt-5.6-sol", "high")).toBe("\x1b[38;5;205m");
+		expect(mod.colorForThinkingLevel("gpt-5.6-sol", "high")).toBe(
+			"\x1b[38;5;205m",
+		);
 		expect(mod.colorForThinkingLevel("gpt-5.6-sol", "xhigh")).toBe(
 			"\x1b[38;5;205m",
 		);
