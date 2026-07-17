@@ -224,7 +224,7 @@ from here.
   - [x] four violation classes caught on fixtures; clean plan passes
   - [x] wired into /do-it report path
   - [x] phase 2 "commit pending" rows flagged or confirmed fixed
-- [ ] T2: routing outcome sampling - in-progress: implementation validated; record commit
+- [x] T2: routing outcome sampling - done: `c94879b`
   - [x] sampling layer with named-constant rate; arms as data
   - [x] explicit overrides never sampled (proven)
   - [x] telemetry tags verified at configured rate; rate 0 byte-identical
@@ -242,7 +242,7 @@ from here.
 
 ### State
 
-- **Classification:** in progress; T1 complete; T2 implementation validated
+- **Classification:** in progress; T1-T2 complete
 - **Current blocker:** none
-- **Next:** record T2's implementation commit, then start T3 improvement-report
+- **Next:** T3, build the deterministic improvement report and aggregation tests
 - **Resume:** `/do-it .specs/rationalization-phase4/plan.md`
