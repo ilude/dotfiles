@@ -263,9 +263,9 @@ from here.
 
 ### Task checklist
 
-- [ ] T1: structured decision logging - in-progress: implement the verified shared schema and correlation contract
+- [ ] T1: structured decision logging - in-progress: wire both clients to the shared writers
   - [x] per-client decision knowability verified and recorded
-  - [ ] schema and shared location implemented in both clients
+  - [x] schema and shared location implemented in both clients
   - [ ] live four-outcome validation on both clients
   - [ ] fail-open and secret-scrub proven
 - [ ] T2: canonical source, oracle runner, coverage debt zero - pending
@@ -287,8 +287,8 @@ from here.
 
 ### State
 
-- **Classification:** in progress; T1 knowability verified
+- **Classification:** in progress; T1 knowability and shared writer complete
 - **Current blocker:** none
-- **Next:** T1, implement the shared fail-open writer, Pi direct outcomes, and
-  Claude pending-ask correlation using the recorded knowability limits
+- **Next:** T1, wire Pi direct outcomes and Claude pending-ask correlation to
+  the shared monthly log, then run live four-outcome validation
 - **Resume:** `/do-it .specs/rationalization-phase5/plan.md`

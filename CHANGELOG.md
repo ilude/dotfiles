@@ -2,6 +2,30 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Add the shared damage-control decision schema
+
+**Why:** Pi and Claude need one bounded, secret-scrubbed audit row before their
+different enforcement runtimes can feed the same tuning loop.
+
+**Changed:**
+- Added the canonical JSON schema for client, correlation, rule, action,
+  user-decision, and latency fields.
+- Added fail-open TypeScript and Python writers targeting
+  `~/.local/share/damage-control/decisions-YYYY-MM.jsonl` with a test override.
+- Added matching secret scrubbing, field bounds, monthly files, and 30-day gzip
+  compression without loss of the compressed decision data.
+
+**Validation:** Three Python and four Pi tests verified required schema fields,
+monthly paths, redaction and bounds, invalid/unwritable fail-open behavior, and
+gzip content preservation. Ruff, Pi typecheck, and Biome passed.
+
+**Files:** `shared/damage-control/{decision.schema.json,decision_log.py}`,
+`pi/{lib/damage-control-decision-log.ts,tests/damage-control-decision-log.test.ts}`,
+`test/test_damage_control_decision_log.py`,
+`.specs/rationalization-phase5/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Record damage-control decision knowability
 
 **Why:** A shared decision schema cannot truthfully label user outcomes until
