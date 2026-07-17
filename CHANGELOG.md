@@ -2,6 +2,29 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Wire Pi worktree occupancy
+
+**Why:** The shared lease registry needed a Pi lifecycle owner and visible
+warning before it could prevent silent same-worktree concurrency.
+
+**Changed:**
+- Registered primary Pi sessions at startup, refreshed their leases once per
+  minute, and released them on clean shutdown.
+- Excluded nested subagent processes from instance occupancy.
+- Added an instance-count status and a next-turn context warning when another
+  active agent session occupies the same worktree.
+- Kept helper failures fail-open and cleared timers and status on shutdown.
+
+**Validation:** Focused extension tests covered conflict and sole-occupant
+status, bounded warning delivery, heartbeat refresh, clean release, nested-child
+exclusion, failure behavior, and timer cleanup. Pi typecheck and focused Biome
+checks passed.
+
+**Files:** `pi/{extensions/agent-instances.ts,tests/agent-instances.test.ts,README.md}`,
+`.specs/rationalization-phase3/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Add the shared worktree lease registry
 
 **Why:** Pi and Claude need one deterministic coordination boundary before

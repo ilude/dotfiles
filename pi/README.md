@@ -429,6 +429,18 @@ Behavior:
 - Limits Amazon Bedrock visibility to the configured `us.anthropic` Claude models used by the Codex plus Bedrock workflow.
 - Applies provider-specific blocklists (including internal/legacy model IDs) before `/model` selection.
 
+### Worktree occupancy
+
+`agent-instances.ts` registers the primary Pi session in the worktree-local,
+Git-ignored `.agent-instances/` registry. It refreshes the lease once per minute,
+releases it on clean shutdown, and excludes nested subagent processes.
+
+The status line shows the active instance count. When another registered Pi or
+Claude session occupies the same worktree, Pi also appends a warning to session context
+that further modifying work should move to a separate Git worktree. Lease
+failures do not block the session; expired crashed-process leases are recovered
+by the shared helper in `scripts/agent_instance_lease.py`.
+
 ### Operator Layer
 
 Three companion extensions surface durable task and permission state for
