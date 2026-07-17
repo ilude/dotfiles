@@ -366,25 +366,25 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - [x] T9: pin quality tools - done: 21e12e1, 07a2fad
 - [x] T10: changed-file validation entrypoint - done: 7344bd2, 887d54d
 - [x] T11: Make target split - done: 475807f
-- [ ] T12: ledger close and final validation - pending
-  - [ ] ledger closed: every row executed or explicitly deferred
-  - [ ] entrypoint fixtures exercised (/plan-it, /do-it, /review-it)
-  - [ ] `make check-pi-extensions` passed
-  - [ ] `make check` passed
-  - [ ] before/after measurements recorded in ledger
+- [x] T12: ledger close and final validation - done: 5b50b30, d417fd5
+  - [x] ledger closed: every row executed or explicitly deferred
+  - [x] entrypoint fixtures exercised (/plan-it, /do-it, /review-it)
+  - [x] `make check-pi-extensions` passed
+  - [x] `make check` passed
+  - [x] before/after measurements recorded in ledger
 
 ### State
 
-- **Classification:** execution in progress
+- **Classification:** implementation and validation complete; archive preflight passed
 - **Current blocker:** none
-- **Last completed wave/gate:** T11 split validation entrypoints and timing gate
-- **Next:** T12 close the ledger, exercise workflow fixtures, run final aggregates, and archive
-- **Completed work:** T1-T11 complete; changed-file, fast-static, focused-test, and full-check routes have distinct nonduplicated scopes
-- **Commands/results:** `make check-changed` and `make check-fast` passed; command graph test passed 9 tests; focused Pi repair tests passed 28 tests; three successful `make check` runs measured 209932, 152150, and 167466 ms with median 167466 ms
-- **Remaining checks:** T12 ledger reconciliation; exact workflow fixtures; final `make check-pi-extensions`; final `make check`; archive preflight
-- **Worktree note:** out-of-scope `.specs/rationalization-phase2/` remains untracked and untouched by plan commits
-- **Exact user action:** none; rerun `/do-it .specs/rationalization/plan.md`
-- **Resume:** `/do-it .specs/rationalization/plan.md`
+- **Last completed wave/gate:** T12 final repository aggregate and evidence audit
+- **Next:** move this plan and owned siblings to `.specs/archive/rationalization/`
+- **Completed work:** T1-T12 complete; 109/109 ledger rows executed; workflow fixtures use actual skill files and scratch plans; final aggregates pass
+- **Commands/results:** final `make check-pi-extensions` passed 1,313 tests with one skip; repaired final `make check` passed; independent static sweep found no uncovered candidates; archive path is collision-free
+- **Remaining checks:** archive move and archived-state commit only
+- **Worktree note:** untracked `.specs/rationalization-phase2/` and `.specs/rationalization-phase3/` are excluded from this plan and archive; one import-only Ruff repair was applied to the phase2 research script so the exact aggregate could run
+- **Exact user action:** none
+- **Resume:** not applicable after the archive move
 
 ### Current execution telemetry
 
@@ -419,3 +419,9 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - **T11 command events:** `make check-changed` exited 0; `make check-fast` exited 0; focused CI-contract suite exited 0 with 9 tests; focused Pi repair suites exited 0 with 28 tests; three successful `make check` runs exited 0 with median 167466 ms; `git diff --check` exited 0.
 - **T11 repair evidence:** Pi dependency linking now resolves from the checked-out repository; stale task model and secret-review fixtures were aligned with T5 behavior; a full-suite concurrency failure in task ownership passed immediately in isolation and the next aggregate run, so no implementation change was made for that nondeterministic test.
 - **T11 manual gate:** not required; risk low; blast radius personal-repo; rollback easy; local command and test changes only.
+- **T12 phase:** phase ID `T12`; type `validation`; depends on `T1`-`T11`; started `2026-07-17T00:30:00Z`; completed `2026-07-17T01:15:37Z`; status `passed`; evidence commits `5b50b30` and `d417fd5`, `.specs/rationalization/ledger.md`, and `.tmp/rationalization/t12/` logs.
+- **T12 command events:** Pytest collection exited 0 with 1,025 tests; Vitest collection recorded 1,314 tests including one skip; workflow dispatch fixture exited 0 with 4 tests; private archive behavior suite exited 0 with 4 tests; final `make check-pi-extensions` exited 0 with 1,313 passed and one skipped; initial final `make check` exited 2 on a load-dependent task-await fixture; focused task suite exited 0 with 26 tests after synchronization repair; repaired final `make check` exited 0.
+- **T12 evidence decisions:** 109 ledger rows are executed; instruction bytes decreased 73,445 to 68,559; Pytest decreased 1,222 to 1,025; Vitest decreased 1,334 to 1,314; `make test-quick` decreased 15,152 ms to 1,782 ms.
+- **T12 manual gate:** not required; risk low; blast radius personal-repo; rollback easy; automated fixture and aggregate evidence covers local reversible changes.
+- **T12 independent eval:** initial final audit found stale checklist state and a mocked-fixture gap; checklist state is now reconciled and workflow tests read actual skill files against scratch plan paths. The runnable-test arithmetic is net -19 plus one fewer skipped test, matching net -20. Final static sweep found no uncovered candidate. Friction tags are `state-drift`, `repair-loop`, `nondeterministic-test`, and `evidence-gap-resolved`; no factual completion inconsistency remains; confidence high.
+- **Archive preflight:** passed; `.specs/archive/rationalization/` does not exist, all owned siblings are present, required gates pass, and untracked phase2/phase3 artifacts are outside the move.
