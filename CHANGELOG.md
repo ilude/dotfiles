@@ -2,6 +2,33 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Add shared damage-control audit entry points
+
+**Why:** The deterministic report needs equivalent thin client commands and a
+model-visible persisted result rather than separate advisory workflows.
+
+**Changed:**
+- Pi `/dc-audit` runs the shared Python proposer with a bounded subprocess and
+  places the report path plus bounded contents in session context.
+- Claude `/dc-audit` now invokes the same proposer and forbids policy mutation;
+  the prior agent-driven discovery/apply workflow is no longer the command.
+- The shared program now defaults its log, policy, 14-day window, and required
+  phase report output path.
+- Added `.specs/rationalization-phase5/reports/2026-07-17.md` from the exact
+  synthetic workflow.
+
+**Validation:** Three Python tests and 88 Pi damage-control tests passed. The
+fixture report contains all three proposal classes and scrubbed denial evidence;
+Ruff, Pi typecheck, Biome, and plan lint passed.
+
+**Files:** `shared/damage-control/audit.py`, `claude/commands/dc-audit.md`,
+`pi/extensions/damage-control.ts`, `pi/tests/damage-control.test.ts`,
+`test/test_damage_control_audit.py`,
+`.specs/rationalization-phase5/reports/2026-07-17.md`,
+`.specs/rationalization-phase5/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Add the deterministic damage-control audit core
 
 **Why:** Shared decision logs need a reproducible report that separates prompt

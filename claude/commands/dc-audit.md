@@ -1,6 +1,13 @@
 ---
-description: "Audit CLI tool usage and update damage-control patterns with missing protections"
-argument-hint: "[--history-only | --projects-only | --apply]"
+description: "Generate the shared damage-control noise/signal report"
 ---
 
-@~/.dotfiles/claude/shared/dc-audit-instructions.md
+Run this deterministic proposer exactly once:
+
+```bash
+python ~/.dotfiles/shared/damage-control/audit.py
+```
+
+Return the emitted report path and summarize the narrow/allowlist,
+strengthen/add, and retire candidate counts. Do not edit policy or apply any
+proposal.

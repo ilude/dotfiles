@@ -266,6 +266,29 @@ Decision options:
 No option is inferred. Canonical-source cutover remains separately gated after
 coverage debt reaches zero.
 
+### T3 audit evidence
+
+Validated 2026-07-17:
+
+- The shared Python program defaults to the monthly decision-log location, the
+  tracked Claude policy inventory, a 14-day UTC window, and
+  `.specs/rationalization-phase5/reports/<date>.md`.
+- Pi `/dc-audit` invokes that program with a bounded subprocess, persists the
+  report, and places its path plus bounded contents in model-visible context.
+- Claude `/dc-audit` invokes the same proposer and explicitly forbids policy
+  edits or applying proposals.
+- The exact synthetic workflow produced
+  `.specs/rationalization-phase5/reports/2026-07-17.md` with all three proposal
+  classes, 100% approval/latency evidence, denial samples scrubbed, and no raw
+  synthetic token.
+- Focused validation: three Python CLI/command tests and 88 Pi damage-control
+  tests passed; Ruff, Pi typecheck, and Biome passed.
+
+The fixture's narrow candidate is not a real policy rule. Applying it to the
+production policy would be invalid. T3 therefore needs either a user-approved
+fixture-only application/measurement demonstration or two weeks of real rows
+and a real proposal selection.
+
 ## Tasks
 
 ### T1: Structured decision logging in both clients
@@ -409,8 +432,8 @@ from here.
   - [ ] canonical source created; both engines pass the runner
   - [ ] cutover recorded; archived parity plan's header updated to
         completed-by-successor
-- [ ] T3: noise/signal audit tool - in-progress: add thin Pi and Claude entry points
-  - [ ] report with three proposal classes from real or fixture data
+- [ ] T3: noise/signal audit tool - blocked: user must choose fixture-only demonstration or wait for real data
+  - [x] report with three proposal classes from real or fixture data
   - [ ] one approved proposal applied and measured
 - [ ] T4: plan-scoped authorization - pending
   - [ ] design presented; user decision received (gate - never inferred)
@@ -421,9 +444,10 @@ from here.
 
 ### State
 
-- **Classification:** blocked on T2 user decision; independent T3 core audit is validated
-- **Current blocker:** T2 requires divergence option 1, 2, or 3; T3 has no
-  current blocker
-- **Next:** T3, add thin Pi and Claude entry points to the shared program, then
-  run the exact fixture workflow into the required `.specs` report path
+- **Classification:** blocked on independent T2 and T3 user decisions
+- **Current blocker:** T2 requires divergence option 1, 2, or 3; T3 requires
+  either approval for a fixture-only apply/measure demonstration or waiting for
+  two weeks of real decision rows before selecting a real proposal
+- **Next:** after a user decision, execute only that approved T2 or T3 slice;
+  otherwise present T4's independent design gate on the next iteration
 - **Resume:** `/do-it .specs/rationalization-phase5/plan.md`

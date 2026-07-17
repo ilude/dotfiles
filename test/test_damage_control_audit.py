@@ -106,6 +106,14 @@ def test_cli_reports_all_three_proposal_classes_and_scrubs_samples(tmp_path: Pat
     assert "This report proposes changes only" in report
 
 
+def test_claude_command_invokes_shared_proposer_only() -> None:
+    command = (ROOT / "claude" / "commands" / "dc-audit.md").read_text(encoding="utf-8")
+
+    assert "python ~/.dotfiles/shared/damage-control/audit.py" in command
+    assert "Do not edit policy or apply any" in command
+    assert "--apply" not in command
+
+
 def test_cli_rejects_malformed_decision_rows(tmp_path: Path) -> None:
     log_dir = tmp_path / "logs"
     log_dir.mkdir()

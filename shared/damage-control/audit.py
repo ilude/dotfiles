@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from decision_log import sanitize_summary
+from decision_log import decision_log_dir, sanitize_summary
 
 MIN_NARROW_FIRES = 3
 MIN_NARROW_APPROVAL_RATE = 0.95
@@ -210,26 +210,42 @@ def markdown_report(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--log-dir", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--log-dir", type=Path)
+    parser.add_argument("--output", type=Path)
     parser.add_argument("--policy", type=Path)
-    parser.add_argument("--end-date", required=True, help="exclusive UTC date, YYYY-MM-DD")
+    parser.add_argument("--end-date", help="exclusive UTC date, YYYY-MM-DD")
     parser.add_argument("--days", type=int, default=14)
     return parser
 
 
+def default_repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
 def main() -> int:
     args = build_parser().parse_args()
-    end = datetime.fromisoformat(args.end_date).replace(tzinfo=timezone.utc)
+    end = (
+        datetime.fromisoformat(args.end_date).replace(tzinfo=timezone.utc)
+        if args.end_date
+        else datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        + timedelta(days=1)
+    )
     if args.days < 1:
         raise ValueError("--days must be positive")
     start = end - timedelta(days=args.days)
-    rows = load_decisions(args.log_dir, start, end)
-    inventory = load_rule_inventory(args.policy)
+    repo_root = default_repo_root()
+    log_dir = args.log_dir or decision_log_dir()
+    policy = args.policy or repo_root / "claude" / "hooks" / "damage-control" / "patterns.yaml"
+    report_date = (end - timedelta(days=1)).date().isoformat()
+    output = args.output or (
+        repo_root / ".specs" / "rationalization-phase5" / "reports" / f"{report_date}.md"
+    )
+    rows = load_decisions(log_dir, start, end)
+    inventory = load_rule_inventory(policy)
     report = markdown_report(rows, inventory, start, end)
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(report, encoding="utf-8", newline="\n")
-    print(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(report, encoding="utf-8", newline="\n")
+    print(output)
     return 0
 
 

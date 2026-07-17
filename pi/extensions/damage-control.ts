@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import type {
 	BashToolCallEvent,
@@ -93,6 +96,17 @@ export {
 
 const DENY_PROVENANCE: DecisionProvenance = "rule";
 const DAMAGE_CONTROL_MODES: DamageControlMode[] = ["default", "noshell"];
+const REPO_ROOT = path.resolve(
+	path.dirname(fileURLToPath(import.meta.url)),
+	"..",
+	"..",
+);
+const DAMAGE_CONTROL_AUDIT_SCRIPT = path.join(
+	REPO_ROOT,
+	"shared",
+	"damage-control",
+	"audit.py",
+);
 interface DamageControlRuntimeState {
 	health: DamageControlHealth;
 	mode: DamageControlMode;
@@ -374,6 +388,61 @@ function safeRecordModeTransition(
 	}
 }
 
+function sendDamageControlAuditOutput(pi: ExtensionAPI, content: string): void {
+	pi.sendMessage(
+		{
+			customType: "damage-control.audit-command",
+			content,
+			display: true,
+		},
+		{ triggerTurn: false },
+	);
+}
+
+function boundedAuditReport(content: string, limit = 20_000): string {
+	return content.length <= limit
+		? content
+		: `${content.slice(0, limit)}\n\n[Report truncated in context; read the saved path for the complete report.]`;
+}
+
+function registerDamageControlAuditCommand(pi: ExtensionAPI): void {
+	pi.registerCommand("dc-audit", {
+		description: "Generate the shared damage-control noise/signal report",
+		handler: async (args) => {
+			if (args.trim()) {
+				sendDamageControlAuditOutput(pi, "Usage: /dc-audit");
+				return;
+			}
+			const result = await pi.exec("python", [DAMAGE_CONTROL_AUDIT_SCRIPT], {
+				cwd: REPO_ROOT,
+				timeout: 300_000,
+			});
+			if (result.code !== 0) {
+				const error =
+					result.stderr.trim() || result.stdout.trim() || "unknown error";
+				sendDamageControlAuditOutput(
+					pi,
+					`Damage-control audit failed: ${error.slice(0, 1_000)}`,
+				);
+				return;
+			}
+			const reportPath = result.stdout.trim().split(/\r?\n/).at(-1);
+			if (!reportPath || !fs.existsSync(reportPath)) {
+				sendDamageControlAuditOutput(
+					pi,
+					"Damage-control audit completed without a readable report path.",
+				);
+				return;
+			}
+			const report = fs.readFileSync(reportPath, "utf8");
+			sendDamageControlAuditOutput(
+				pi,
+				`Damage-control audit: ${reportPath}\n\n${boundedAuditReport(report)}`,
+			);
+		},
+	});
+}
+
 function registerDamageControlCommand(
 	pi: ExtensionAPI,
 	state: DamageControlRuntimeState,
@@ -548,6 +617,7 @@ export default function (pi: ExtensionAPI) {
 	debugLog("rules_loaded", { health: loaded.health });
 	publishDamageControlHealth(loaded.health);
 	registerDamageControlCommand(pi, state);
+	registerDamageControlAuditCommand(pi);
 
 	pi.on("session_start", async (_event, ctx) => {
 		compressOldDamageControlDecisionLogs();

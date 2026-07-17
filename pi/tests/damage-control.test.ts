@@ -338,6 +338,55 @@ no_delete_paths: []
 		);
 	});
 
+	it("runs /dc-audit through the shared proposer and persists output in context", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-dc-report-"));
+		const reportPath = path.join(root, "report.md");
+		fs.writeFileSync(
+			reportPath,
+			"# Damage-Control Noise/Signal Audit\n\n## Narrow or allowlist candidates\n",
+			"utf8",
+		);
+		try {
+			const commands: Record<
+				string,
+				{ handler: (args: string, ctx: unknown) => Promise<void> }
+			> = {};
+			const sendMessage = vi.fn();
+			const exec = vi.fn(async () => ({
+				code: 0,
+				stdout: `${reportPath}\n`,
+				stderr: "",
+			}));
+			mod.default({
+				on: vi.fn(),
+				registerCommand: vi.fn((name: string, command) => {
+					commands[name] = command;
+				}),
+				sendMessage,
+				exec,
+			} as unknown as Parameters<typeof mod.default>[0]);
+
+			await commands["dc-audit"].handler("", {});
+
+			expect(exec).toHaveBeenCalledWith(
+				"python",
+				[expect.stringMatching(/shared[\\/]damage-control[\\/]audit\.py$/)],
+				expect.objectContaining({ timeout: 300_000 }),
+			);
+			expect(sendMessage).toHaveBeenCalledWith(
+				expect.objectContaining({
+					customType: "damage-control.audit-command",
+					content: expect.stringContaining("Narrow or allowlist candidates"),
+					display: true,
+				}),
+				{ triggerTurn: false },
+			);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("preserves regex metadata and matches command variants", async () => {
 		const mod = await import("../extensions/damage-control.ts");
 		const rules = [
