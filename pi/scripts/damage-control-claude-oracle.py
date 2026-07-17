@@ -169,7 +169,14 @@ def _regex_witness_tokens(tokens: Any) -> str:
 def regex_witness(pattern: str) -> str | None:
     try:
         witness = _regex_witness_tokens(sre_parse.parse(pattern, re.IGNORECASE))
-        candidates = [witness, f"x {witness}", f"{witness} x", f"x {witness} x"]
+        candidates = [
+            f"{witness} fixture",
+            f"x {witness} fixture",
+            witness,
+            f"x {witness}",
+            f"{witness} x",
+            f"x {witness} x",
+        ]
         compiled = re.compile(pattern, re.IGNORECASE)
         return next((candidate for candidate in candidates if compiled.search(candidate)), None)
     except (OverflowError, re.error, ValueError):
@@ -242,6 +249,8 @@ def fixtures() -> list[dict[str, Any]]:
                     "expected": expected,
                     "checkExpected": False,
                     "targetRuleId": f"{section}:{index:04d}",
+                    "isolatedNoDeleteIndex": index if section == "noDeletePaths" else None,
+                    "piNoDeletePath": pattern if section == "noDeletePaths" else None,
                 }
             )
     ast = policy.get("astAnalysis", {})
@@ -296,7 +305,11 @@ def bash_decision(
         else None
     )
     if matched_rule_id is None:
-        matched_rule_id = _bash_path_rule_id(command, matched or "", hook, config)
+        matched_rule_id = (
+            target_rule_id
+            if target_rule_id and matched in {"readonly_path", "nodelete_path"}
+            else _bash_path_rule_id(command, matched or "", hook, config)
+        )
     return {
         "outcome": "block" if blocked else "ask" if ask else "allow",
         "reason": reason,
@@ -351,6 +364,7 @@ def evaluate_vector(
     tool = vector.get("tool", "Bash")
     if tool == "Bash":
         isolated_index = vector.get("isolatedRuleIndex")
+        isolated_no_delete = vector.get("isolatedNoDeleteIndex")
         config = bash_config
         if isinstance(isolated_index, int):
             isolated_policy = {
@@ -359,6 +373,16 @@ def evaluate_vector(
                 "zeroAccessPaths": [],
                 "readOnlyPaths": [],
                 "noDeletePaths": [],
+                "astAnalysis": {"enabled": False},
+            }
+            config = bash_hook.compile_config(isolated_policy)
+        elif isinstance(isolated_no_delete, int):
+            isolated_policy = {
+                **policy,
+                "bashToolPatterns": [],
+                "zeroAccessPaths": [],
+                "readOnlyPaths": [],
+                "noDeletePaths": [policy["noDeletePaths"][isolated_no_delete]],
                 "astAnalysis": {"enabled": False},
             }
             config = bash_hook.compile_config(isolated_policy)

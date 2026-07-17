@@ -218,10 +218,14 @@ Implemented and measured 2026-07-17 with `pnpm run damage-control-coverage`:
   and credits only the stable rule ID actually reached. Totals are 401 covered,
   140 waived, 51 uncovered, 36 divergences, zero stale controls, and
   `coverage_debt_count = 87`.
-- Remaining uncovered rows are 48 Bash patterns without a reachable witness on
-  this platform and three no-delete paths shadowed by an earlier Claude stage.
-  Four new Bash divergences cover TMPDIR cleanup, kubectl delete, and terraform
-  state rm/mv; no outcome changed.
+- Suffix-enriched witnesses now avoid incomplete-command bypasses, and every
+  no-delete row runs with only its target path enabled in both clients. All 30
+  no-delete rows are covered; TMPDIR and kubectl now agree.
+- Remaining uncovered rows are 46 Bash patterns: 29 lack a generated witness
+  and 17 are shadowed by semantic/platform handling. Totals are 406 covered,
+  140 waived, 46 uncovered, 34 divergences, zero stale controls, and
+  `coverage_debt_count = 80`. The only isolated Bash divergences left are
+  terraform state rm/mv; no outcome changed.
 - Gate mode is `PI_DAMAGE_CONTROL_COVERAGE_GATE=1 pnpm run
   damage-control-coverage`; it fails until uncovered rows are covered or
   explicitly waived and all divergences are resolved.
@@ -381,9 +385,9 @@ from here.
 
 ### State
 
-- **Classification:** in progress; T2 oracle runner reports 87 debt rows
+- **Classification:** in progress; T2 oracle runner reports 80 debt rows
 - **Current blocker:** none
-- **Next:** T2, resolve or explicitly classify the 48 unreachable Bash and
-  three shadowed no-delete fixtures, then replace the path-exclusion waiver
-  with paired controls. Keep all 36 divergences unchanged until user approval
+- **Next:** T2, add explicit positive commands for 29 regexes without generated
+  witnesses and classify 17 semantic/platform-shadowed Bash rows, then replace
+  the path-exclusion waiver. Keep all 34 divergences unchanged pending approval
 - **Resume:** `/do-it .specs/rationalization-phase5/plan.md`

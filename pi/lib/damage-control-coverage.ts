@@ -52,6 +52,8 @@ export interface CoverageFixture {
 	filePath?: string;
 	targetRuleId?: string;
 	isolatedRuleIndex?: number;
+	isolatedNoDeleteIndex?: number;
+	piNoDeletePath?: string;
 	piRule?: DangerousCommand;
 	checkExpected?: boolean;
 	expected: "allow" | "ask" | "block";
@@ -242,6 +244,7 @@ export async function buildDamageControlCoverageReport(): Promise<DamageControlC
 			filePath: fixture.filePath,
 			targetRuleId: fixture.targetRuleId,
 			isolatedRuleIndex: fixture.isolatedRuleIndex,
+			isolatedNoDeleteIndex: fixture.isolatedNoDeleteIndex,
 		})),
 	});
 	const covered = new Set<string>();
@@ -267,7 +270,14 @@ export async function buildDamageControlCoverageReport(): Promise<DamageControlC
 					no_delete_paths: [],
 					astAnalysis: { enabled: false },
 				}
-			: loaded.rules;
+			: fixture.piNoDeletePath
+				? {
+						...loaded.rules,
+						dangerous_commands: [],
+						no_delete_paths: [fixture.piNoDeletePath],
+						astAnalysis: { enabled: false },
+					}
+				: loaded.rules;
 		const pi =
 			fixture.tool === "Bash"
 				? await evaluatePiBash(fixture.command, fixtureRules)

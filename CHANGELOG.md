@@ -2,6 +2,30 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Refine generated policy witnesses
+
+**Why:** Minimal regex witnesses could be syntactically incomplete and full
+policy ordering shadowed three no-delete rows.
+
+**Changed:**
+- Witness selection now prefers a benign trailing argument before accepting a
+  minimal regex match.
+- Every no-delete fixture isolates its target path in both engines while still
+  using the actual Claude no-delete stage and Pi matcher.
+- Stable target IDs are retained when generic no-delete stages report a match.
+
+**Baseline:** All 30 no-delete rows are covered; TMPDIR and kubectl probes now
+agree. Totals are 406 covered, 140 waived, 46 uncovered, 34 divergences, zero
+stale controls, and `coverage_debt_count = 80`.
+
+**Validation:** Both focused Vitest cases, Ruff, Pi typecheck, and Biome passed.
+
+**Files:** `pi/scripts/damage-control-claude-oracle.py`,
+`pi/lib/damage-control-coverage.ts`, `.specs/rationalization-phase5/plan.md`,
+`CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Generate isolated Bash-policy witnesses
 
 **Why:** The tracked fixture corpus reached only a small fraction of 329
