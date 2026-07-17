@@ -136,6 +136,20 @@ def fixtures() -> list[dict[str, Any]]:
                     "targetRuleId": f"{section}:{index:04d}",
                 }
             )
+    ast = policy.get("astAnalysis", {})
+    for section, expected in (("safeCommands", "allow"), ("dangerousCommands", "ask")):
+        for index, command in enumerate(ast.get(section, [])):
+            rows.append(
+                {
+                    "id": f"generated:astAnalysis.{section}:{index:04d}",
+                    "tool": "Ast",
+                    "command": command
+                    if section == "safeCommands"
+                    else f'{command} "$UNSAFE_INPUT"',
+                    "expected": expected,
+                    "targetRuleId": f"astAnalysis.{section}:{index:04d}",
+                }
+            )
     return rows
 
 
@@ -206,6 +220,22 @@ def edit_decision(file_path: str, hook: ModuleType, config: dict[str, Any]) -> d
     return {"outcome": "block", "reason": reason, "matchedRuleId": None}
 
 
+def ast_decision(
+    command: str,
+    target_rule_id: str | None,
+    hook: ModuleType,
+    policy: dict[str, Any],
+) -> dict[str, Any]:
+    analyzer = hook.ASTAnalyzer()
+    result = analyzer.analyze_command_ast(command, policy)
+    decision = result.get("decision", "allow")
+    return {
+        "outcome": "block" if decision == "block" else "ask" if decision == "ask" else "allow",
+        "reason": result.get("reason", ""),
+        "matchedRuleId": target_rule_id,
+    }
+
+
 def main() -> None:
     request = json.load(sys.stdin)
     mode = request.get("mode")
@@ -218,12 +248,20 @@ def main() -> None:
         bash_hook = load_hook("damage_control_bash_oracle", "bash-tool-damage-control.py")
         bash_config = bash_hook.compile_config(policy)
         edit_hook = load_hook("damage_control_edit_oracle", "edit-tool-damage-control.py")
+        ast_hook = load_hook("damage_control_ast_oracle", "ast_analyzer.py")
         if mode == "evaluate":
             tool = request.get("tool", "Bash")
             if tool == "Bash":
                 result = bash_decision(str(request.get("command", "")), bash_hook, bash_config)
             elif tool == "Edit":
                 result = edit_decision(str(request.get("filePath", "")), edit_hook, policy)
+            elif tool == "Ast":
+                result = ast_decision(
+                    str(request.get("command", "")),
+                    request.get("targetRuleId"),
+                    ast_hook,
+                    policy,
+                )
             else:
                 raise ValueError(f"unsupported oracle tool: {tool}")
         else:
@@ -234,6 +272,13 @@ def main() -> None:
                 bash_decision(str(vector.get("command", "")), bash_hook, bash_config)
                 if vector.get("tool", "Bash") == "Bash"
                 else edit_decision(str(vector.get("filePath", "")), edit_hook, policy)
+                if vector.get("tool") == "Edit"
+                else ast_decision(
+                    str(vector.get("command", "")),
+                    vector.get("targetRuleId"),
+                    ast_hook,
+                    policy,
+                )
                 for vector in vectors
             ]
     else:

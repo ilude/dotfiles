@@ -210,6 +210,10 @@ Implemented and measured 2026-07-17 with `pnpm run damage-control-coverage`:
   write-confirm, and three no-delete directory/path vectors where Claude
   blocks/asks and Pi allows. They are evidence only; changing those outcomes
   requires the plan's user gate.
+- Direct actual-analyzer fixtures now cover all 14 AST safe-command entries and
+  all 10 dangerous-command entries using unsafe-variable vectors. Claude and Pi
+  agree on all 24: current totals are 133 covered, 140 waived, 319 uncovered,
+  32 divergences, zero stale controls, and `coverage_debt_count = 351`.
 - Gate mode is `PI_DAMAGE_CONTROL_COVERAGE_GATE=1 pnpm run
   damage-control-coverage`; it fails until uncovered rows are covered or
   explicitly waived and all divergences are resolved.
@@ -369,9 +373,9 @@ from here.
 
 ### State
 
-- **Classification:** in progress; T2 oracle runner reports 375 debt rows
+- **Classification:** in progress; T2 oracle runner reports 351 debt rows
 - **Current blocker:** none
-- **Next:** T2, add positive Bash and AST fixtures, then replace the
-  path-exclusion waiver with paired negative controls. Keep all 32 measured
-  outcome divergences unchanged until a separate user decision
+- **Next:** T2, add positive Bash fixtures and replace the path-exclusion
+  waiver with paired negative controls. Keep all 32 measured outcome
+  divergences unchanged until a separate user decision
 - **Resume:** `/do-it .specs/rationalization-phase5/plan.md`

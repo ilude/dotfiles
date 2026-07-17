@@ -2,6 +2,31 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Cover all configured AST command rows
+
+**Why:** AST safe/dangerous command lists are semantic policy inputs and need
+engine-level evidence rather than loader-only credit.
+
+**Changed:**
+- Generated direct analyzer fixtures for all 14 configured safe commands and
+  all 10 dangerous commands.
+- Dangerous-command fixtures use unsafe variable arguments so the configured
+  AST veto path is exercised; safe commands exercise the exact safe-list path.
+- Claude's actual AST analyzer and Pi's analyzer now run side by side in the
+  coverage report.
+
+**Baseline:** All 24 AST rows are covered with no new divergence. Totals are
+133 covered, 140 waived, 319 uncovered, 32 divergences, zero stale controls,
+and `coverage_debt_count = 351`.
+
+**Validation:** Both focused Vitest cases, Ruff, Pi typecheck, and Biome passed.
+
+**Files:** `pi/scripts/damage-control-claude-oracle.py`,
+`pi/lib/damage-control-coverage.ts`, `.specs/rationalization-phase5/plan.md`,
+`CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Add generated path-policy oracle fixtures
 
 **Why:** Aggregate path counts did not prove that each Claude path rule reaches

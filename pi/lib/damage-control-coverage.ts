@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { analyzeCommandAst } from "../extensions/damage-control/ast-analyzer.ts";
 import {
 	canonicalizeOrBlock,
 	checkNoDeletePaths,
@@ -204,6 +205,18 @@ async function evaluatePiEdit(
 	return writeConfirm ? "ask" : "allow";
 }
 
+async function evaluatePiAst(
+	command: string,
+	rules: ReturnType<typeof loadRules>["rules"],
+): Promise<"allow" | "ask" | "block"> {
+	const result = await analyzeCommandAst(
+		command,
+		rules.dangerous_commands,
+		rules.astAnalysis,
+	);
+	return result.decision;
+}
+
 export async function buildDamageControlCoverageReport(): Promise<DamageControlCoverageReport> {
 	const inventory = oracle<CoverageInventoryRow[]>({ mode: "inventory" });
 	const fixtures = oracle<CoverageFixture[]>({ mode: "fixtures" });
@@ -221,6 +234,7 @@ export async function buildDamageControlCoverageReport(): Promise<DamageControlC
 			tool: fixture.tool,
 			command: fixture.command,
 			filePath: fixture.filePath,
+			targetRuleId: fixture.targetRuleId,
 		})),
 	});
 	const covered = new Set<string>();
@@ -242,7 +256,9 @@ export async function buildDamageControlCoverageReport(): Promise<DamageControlC
 		const pi =
 			fixture.tool === "Bash"
 				? await evaluatePiBash(fixture.command, loaded.rules)
-				: await evaluatePiEdit(fixture.filePath ?? "", loaded.rules);
+				: fixture.tool === "Edit"
+					? await evaluatePiEdit(fixture.filePath ?? "", loaded.rules)
+					: await evaluatePiAst(fixture.command, loaded.rules);
 		if (pi !== claude.outcome)
 			divergences.push({
 				fixtureId: fixture.id,
