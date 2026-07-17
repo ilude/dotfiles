@@ -409,7 +409,7 @@ from here.
   - [ ] canonical source created; both engines pass the runner
   - [ ] cutover recorded; archived parity plan's header updated to
         completed-by-successor
-- [ ] T3: noise/signal audit tool - pending
+- [ ] T3: noise/signal audit tool - in-progress: add thin Pi and Claude entry points
   - [ ] report with three proposal classes from real or fixture data
   - [ ] one approved proposal applied and measured
 - [ ] T4: plan-scoped authorization - pending
@@ -421,9 +421,9 @@ from here.
 
 ### State
 
-- **Classification:** blocked; T2 has zero uncovered rows and 65 classified divergence debt
-- **Current blocker:** user must select divergence option 1, 2, or 3 above; no
-  enforcement outcome or canonical-source cutover is inferred
-- **Next:** after the user decision, implement only the approved outcome slice,
-  rerun the zero-debt gate, then present canonical-source cutover separately
+- **Classification:** blocked on T2 user decision; independent T3 core audit is validated
+- **Current blocker:** T2 requires divergence option 1, 2, or 3; T3 has no
+  current blocker
+- **Next:** T3, add thin Pi and Claude entry points to the shared program, then
+  run the exact fixture workflow into the required `.specs` report path
 - **Resume:** `/do-it .specs/rationalization-phase5/plan.md`

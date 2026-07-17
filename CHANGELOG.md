@@ -2,6 +2,29 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Add the deterministic damage-control audit core
+
+**Why:** Shared decision logs need a reproducible report that separates prompt
+fatigue from denial evidence and dormant rules without applying policy changes.
+
+**Changed:**
+- Added a 14-day JSONL audit that reports per-rule fires, approval rate, denial
+  evidence, and median approval latency.
+- Added deterministic narrow/allowlist, strengthen/add, and retire proposal
+  classes with named thresholds and stable ranking.
+- Added policy-inventory support, bounded secret-scrubbed denial samples, and
+  explicit failure on malformed decision rows.
+
+**Validation:** Two focused CLI tests produced all three proposal classes from
+synthetic data, verified secret scrubbing/proposer-only wording, and proved
+malformed rows fail with file/line diagnostics. Ruff passed.
+
+**Files:** `shared/damage-control/audit.py`,
+`test/test_damage_control_audit.py`, `.specs/rationalization-phase5/plan.md`,
+`CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Classify damage-control outcome divergences
 
 **Why:** The remaining coverage debt represents real allow/ask/block choices;
