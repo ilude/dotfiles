@@ -2,6 +2,27 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Validate the phase 3 orchestration workflow
+
+**Why:** Phase 3 required one live workflow proving its capabilities compose,
+not only isolated unit coverage.
+
+**Changed:**
+- Recorded the final decisions for notification timing, continuation retention,
+  worktree leases, DAG scheduling, and structured chain transfer.
+- Ran an ignored `/do-it` scratch plan through persistent Pi RPC so a later user
+  turn could receive queued background completion messages.
+
+**Validation:** `make check-pi-extensions` passed 98 test files with 1,356 tests
+passing and one skipped. The live session used one task batch and one drain,
+automatically released a dependent task, recalled a fact through a persisted
+subagent continuation, and reported both queued completion notifications on a
+later turn with zero verification tool calls.
+
+**Files:** `.specs/rationalization-phase3/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Validate structured subagent output
 
 **Why:** Subagent results crossed the process boundary as unvalidated prose, so

@@ -299,6 +299,36 @@ All -> T6
 - Claude/OpenCode surfaces.
 - Changing default delegation guidance (work directly by default stands).
 
+## Closeout decisions and evidence
+
+- Background completion delivery remains non-interrupting: task completion uses
+  `deliverAs: "nextTurn"`, does not trigger an autonomous turn, and becomes
+  model-visible on the next user prompt. The persistent RPC exercise observed
+  both completed task IDs, statuses, and first output lines on that later turn
+  with zero second-turn tool calls.
+- Continuation remains opt-in for ordinary delegation. Structured-output calls
+  persist a child session only because one bounded correction may be required;
+  invalid output gets exactly one same-session correction before failure.
+- Child transcripts remain refinement data: they are compressed after 30 days,
+  never deleted by this feature, and the friction scanner reads compressed
+  sessions.
+- Unenforced `isolation` and `memory` metadata stay deleted. Cross-client leases
+  warn about same-worktree occupancy but neither create worktrees nor block
+  mutation; stale cleanup requires both heartbeat expiry and process-identity
+  evidence.
+- DAG draining remains opt-in. Declared read-only workers may run concurrently;
+  missing scopes and unknown or mutating tool capabilities serialize
+  conservatively. Ready ordering is stable and critical-path-first, and
+  starvation is explicit rather than silently abandoned.
+- Structured chain data is normalized after schema validation. Payloads larger
+  than 8 KB transfer by artifact reference instead of coordinator
+  re-summarization; schema-less calls retain their previous path.
+- `make check-pi-extensions` passed with 98 test files, 1,356 passing tests, and
+  one skipped test. The ignored persistent RPC artifact at
+  `.tmp/phase3-e2e/plan-rpc.md` passed one batch, one drain, automatic dependency
+  release, persisted continuation, and later-turn notification delivery without
+  `task await` or `task output`.
+
 ## Execution status
 
 Same maintenance rules as phases 1-2. Statuses: `pending` |
@@ -331,14 +361,16 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
   - [x] outputSchema validation with one bounded correction
   - [x] chain forwards validated objects / artifact references
   - [x] absent-schema behavior byte-identical
-- [ ] T6: close - pending
-  - [ ] material decisions recorded in the closeout
-  - [ ] `make check-pi-extensions` passed
-  - [ ] live end-to-end /do-it exercise passed (all capabilities)
+- [ ] T6: close - in-progress: all close gates passed; record commit and archive
+  - [x] material decisions recorded in the closeout
+  - [x] `make check-pi-extensions` passed (98 files, 1,356 tests; 1 skipped)
+  - [x] live end-to-end /do-it exercise passed (one batch and drain,
+        continuation, and later-turn notifications with zero verification tools)
 
 ### State
 
-- **Classification:** in progress; T1-T5 complete
+- **Classification:** in progress; T1-T5 complete; all T6 close gates passed
 - **Current blocker:** none
-- **Next:** T6, run the close validation and live end-to-end exercise
+- **Next:** record T6's closeout commit, then archive phase 3 with completion
+  metadata
 - **Resume:** `/do-it .specs/rationalization-phase3/plan.md`
