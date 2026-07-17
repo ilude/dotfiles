@@ -73,6 +73,54 @@ describe("task tools", () => {
 		}
 	});
 
+	it("exposes opt-in drain with bounded concurrency", async () => {
+		const pi = createMockPi();
+		const coordinator = new TaskExecutionCoordinator();
+		const drain = vi.spyOn(coordinator, "drain").mockResolvedValue({
+			outcome: "starved",
+			started: ["started"],
+			completed: [],
+			failed: ["failed"],
+			waiting: ["waiting"],
+			starvation: [
+				{
+					taskId: "waiting",
+					blockers: [{ id: "failed", status: "failed" }],
+				},
+			],
+		});
+		registerTaskTools(
+			pi as Parameters<typeof registerTaskTools>[0],
+			coordinator,
+		);
+		const tool = pi._getTool("task");
+		const ctx = createMockCtx({ cwd: tmpRoot });
+
+		const result = await tool?.execute(
+			"drain",
+			{ action: "drain", maxConcurrent: 3 },
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		expect(drain).toHaveBeenCalledWith({
+			workspace: resolveTaskWorkspace(tmpRoot),
+			fallbackCwd: tmpRoot,
+			maxConcurrent: 3,
+			signal: undefined,
+		});
+		expect(JSON.parse(result.content[0].text)).toMatchObject({
+			outcome: "starved",
+			starvation: [
+				{
+					taskId: "waiting",
+					blockers: [{ id: "failed", status: "failed" }],
+				},
+			],
+		});
+	});
+
 	it("accepts additive write scopes on create, batch, and update", async () => {
 		const pi = createMockPi();
 		registerTaskTools(

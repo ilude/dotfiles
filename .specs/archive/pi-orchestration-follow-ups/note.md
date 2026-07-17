@@ -10,9 +10,9 @@ Follow-up work identified while refining Pi orchestration, prompt size, and suba
 
 ## Status
 
-2. **Open - Replace the mutation blocklist with capability metadata**
+2. **Complete - Replace the mutation blocklist with capability metadata**
 
-   New mutating tools could bypass `fable.ts` until manually added. Tools should declare capabilities such as `read`, `execute`, `mutate-files`, `mutate-git`, or `external-write`; orchestration policy can then enforce categories.
+   Phase 3 T4 added central read, execute, and mutate declarations for launcher-enforced tools. The task scheduler derives read-only workers from those enforced tool sets, treats undeclared tools as mutating, and serializes overlapping or scope-less writers.
 
 3. **Complete - Fix agents-context accumulation**
 

@@ -2,6 +2,35 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Add the opt-in task DAG drain
+
+**Why:** Dependency graphs still required the model to dispatch each ready wave
+and reason about safe writer concurrency.
+
+**Changed:**
+- Added an opt-in `task drain` action with default concurrency four and an
+  explicit one-to-eight bound.
+- Rescanned the durable graph after each completion so newly unblocked and
+  mid-drain tasks dispatch automatically until quiescence.
+- Parallelized read-only agents from enforced tool capabilities, serialized
+  overlapping and scope-less writers, and ordered ready work by longest
+  downstream dependency path with stable ties.
+- Continued independent branches after failures and returned explicit
+  starvation records naming failed, cancelled, missing, or tombstoned blockers.
+
+**Validation:** The fixture DAG exercised a diamond, independent deliberate
+failure, overlapping writers, parallel readers, a task created mid-drain, and a
+failed dependent. It verified critical-path-first start, measured parallelism,
+writer serialization, dynamic dispatch, independent completion, and starvation.
+Forty-three focused execution, public task-tool, and scheduler tests passed with
+Pi typecheck and Biome checks.
+
+**Files:** `pi/{extensions/tasks.ts,extensions/tasks/execution.ts,README.md,tests/task-execution.test.ts,tests/task-tools.test.ts}`,
+`.specs/{rationalization-phase3/plan.md,archive/pi-orchestration-follow-ups/note.md}`,
+`CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Add deterministic task scheduling primitives
 
 **Why:** The upcoming opt-in DAG drain needs durable write scopes, mechanical

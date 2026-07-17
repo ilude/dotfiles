@@ -22,6 +22,12 @@ import {
 	tasksByIdSnapshot,
 	updateTask,
 } from "../../lib/task-registry.js";
+import {
+	executionIsReadOnly,
+	scheduledTasksConflict,
+	sortCriticalPathFirst,
+	type ScheduledTask,
+} from "../../lib/task-scheduler.js";
 import { sanitizeTaskValue } from "../../lib/task-security.js";
 import { registerOrchestrationInvocation } from "../../lib/workflow-friction.js";
 import { subagentModelFor } from "../fable.js";
@@ -128,6 +134,20 @@ export interface TaskStartManyResult {
 export interface TaskWaitResult {
 	outcome: "persisted" | "aborted";
 	results: TaskMultiResult[];
+}
+
+export interface TaskDrainBlocker {
+	taskId: string;
+	blockers: Array<{ id: string; status: string }>;
+}
+
+export interface TaskDrainResult {
+	outcome: "quiescent" | "starved" | "aborted";
+	started: string[];
+	completed: string[];
+	failed: string[];
+	waiting: string[];
+	starvation: TaskDrainBlocker[];
 }
 
 function outputPathFor(taskId: string): string {
@@ -518,6 +538,162 @@ export class TaskExecutionCoordinator {
 						: "rejected",
 			results,
 		};
+	}
+
+	private scheduledTask(
+		record: TaskRecordV1,
+		fallbackCwd: string,
+	): ScheduledTask {
+		const execution = executionFor(record);
+		const readOnly = executionIsReadOnly(record, (agentName) => {
+			if (!execution) return undefined;
+			const cwd = execution.cwd ?? fallbackCwd;
+			const scope: AgentScope = execution.agentScope ?? "user";
+			return discoverAgents(cwd, scope).agents.find(
+				(agent) => agent.name === agentName,
+			)?.tools;
+		});
+		return { record, readOnly };
+	}
+
+	private async waitForAnyActive(
+		taskIds: readonly string[],
+		signal?: AbortSignal,
+	): Promise<"settled" | "aborted"> {
+		const promises = taskIds.flatMap((id) => {
+			const active = this.active.get(id);
+			return active ? [active.promise] : [];
+		});
+		if (promises.length === 0) return "settled";
+		if (signal?.aborted) return "aborted";
+		let onAbort: (() => void) | undefined;
+		const abortPromise = signal
+			? new Promise<"aborted">((resolve) => {
+					onAbort = () => resolve("aborted");
+					signal.addEventListener("abort", onAbort, { once: true });
+				})
+			: undefined;
+		const settled = Promise.race(promises).then(() => "settled" as const);
+		const outcome = abortPromise
+			? await Promise.race([settled, abortPromise])
+			: await settled;
+		if (signal && onAbort) signal.removeEventListener("abort", onAbort);
+		return outcome;
+	}
+
+	async drain(options: {
+		workspace: string;
+		fallbackCwd: string;
+		maxConcurrent?: number;
+		signal?: AbortSignal;
+	}): Promise<TaskDrainResult> {
+		const maxConcurrent = options.maxConcurrent ?? 4;
+		if (
+			!Number.isInteger(maxConcurrent) ||
+			maxConcurrent < 1 ||
+			maxConcurrent > 8
+		)
+			throw new Error("maxConcurrent must be an integer between 1 and 8");
+		const started = new Set<string>();
+		const finish = (outcome: TaskDrainResult["outcome"]): TaskDrainResult => {
+			const records = listTasks({
+				includeTombstones: false,
+				workspace: options.workspace,
+			});
+			const byId = tasksByIdSnapshot(listTasks({ includeTombstones: true }));
+			const waitingRecords = records.filter(
+				(record) =>
+					record.state === "pending" &&
+					executionFor(record) !== null &&
+					getUnmetBlockers(record, byId).length > 0,
+			);
+			const starvation = waitingRecords.flatMap((record) => {
+				const blockers = getUnmetBlockers(record, byId).filter((blocker) =>
+					["failed", "cancelled", "missing", "tombstoned"].includes(
+						blocker.status,
+					),
+				);
+				return blockers.length > 0
+					? [
+							{
+								taskId: record.id,
+								blockers: blockers.map((blocker) => ({
+									id: blocker.id,
+									status: blocker.status,
+								})),
+							},
+						]
+					: [];
+			});
+			return {
+				outcome:
+					outcome === "quiescent" && starvation.length > 0
+						? "starved"
+						: outcome,
+				started: [...started],
+				completed: records
+					.filter(
+						(record) => started.has(record.id) && record.state === "completed",
+					)
+					.map((record) => record.id),
+				failed: records
+					.filter(
+						(record) => started.has(record.id) && record.state === "failed",
+					)
+					.map((record) => record.id),
+				waiting: waitingRecords.map((record) => record.id),
+				starvation,
+			};
+		};
+
+		while (true) {
+			if (options.signal?.aborted) return finish("aborted");
+			const records = listTasks({
+				includeTombstones: false,
+				workspace: options.workspace,
+			});
+			const byId = tasksByIdSnapshot(listTasks({ includeTombstones: true }));
+			const running = records.filter((record) => record.state === "running");
+			const localActiveIds = running
+				.filter((record) => this.active.has(record.id))
+				.map((record) => record.id);
+			const scheduled = running.map((record) =>
+				this.scheduledTask(record, options.fallbackCwd),
+			);
+			const ready = sortCriticalPathFirst(
+				records.filter(
+					(record) =>
+						record.state === "pending" &&
+						executionFor(record) !== null &&
+						getUnmetBlockers(record, byId).length === 0,
+				),
+				records,
+			);
+			let slots = Math.max(0, maxConcurrent - running.length);
+			for (const record of ready) {
+				if (slots === 0) break;
+				const candidate = this.scheduledTask(record, options.fallbackCwd);
+				if (
+					scheduled.some((active) => scheduledTasksConflict(active, candidate))
+				)
+					continue;
+				const result = this.start(record.id, options.fallbackCwd);
+				if (result.outcome !== "accepted") continue;
+				started.add(record.id);
+				scheduled.push(candidate);
+				localActiveIds.push(record.id);
+				slots--;
+			}
+			if (localActiveIds.length > 0) {
+				const waitOutcome = await this.waitForAnyActive(
+					localActiveIds,
+					options.signal,
+				);
+				if (waitOutcome === "aborted") return finish("aborted");
+				continue;
+			}
+			return finish("quiescent");
+		}
 	}
 
 	async wait(
