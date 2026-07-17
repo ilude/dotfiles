@@ -10,6 +10,13 @@ import re
 import shlex
 import sys
 from pathlib import Path
+
+try:
+    from re import _constants as sre
+    from re import _parser as sre_parse
+except ImportError:  # pragma: no cover - Python 3.9 compatibility
+    import sre_constants as sre
+    import sre_parse
 from types import ModuleType
 from typing import Any
 
@@ -19,6 +26,9 @@ ROOT = Path(__file__).resolve().parents[2]
 HOOK_DIR = ROOT / "claude" / "hooks" / "damage-control"
 POLICY_PATH = HOOK_DIR / "patterns.yaml"
 FIXTURES_PATH = HOOK_DIR / "tests" / "test_fixtures.yaml"
+REPEAT_OPS = {sre.MAX_REPEAT, sre.MIN_REPEAT}
+if hasattr(sre, "POSSESSIVE_REPEAT"):
+    REPEAT_OPS.add(sre.POSSESSIVE_REPEAT)
 if str(HOOK_DIR) not in sys.path:
     sys.path.insert(0, str(HOOK_DIR))
 
@@ -96,6 +106,76 @@ def materialize_path(pattern: str) -> str:
     return path
 
 
+def _category_witness(category: Any) -> str:
+    return {
+        sre.CATEGORY_DIGIT: "1",
+        sre.CATEGORY_NOT_DIGIT: "x",
+        sre.CATEGORY_SPACE: " ",
+        sre.CATEGORY_NOT_SPACE: "x",
+        sre.CATEGORY_WORD: "x",
+        sre.CATEGORY_NOT_WORD: "-",
+        sre.CATEGORY_LINEBREAK: "\n",
+        sre.CATEGORY_NOT_LINEBREAK: "x",
+    }.get(category, "x")
+
+
+def _class_witness(items: list[tuple[Any, Any]]) -> str:
+    negate = any(op is sre.NEGATE for op, _value in items)
+    if negate:
+        excluded = {chr(value) for op, value in items if op is sre.LITERAL}
+        return next(char for char in "x1_-" if char not in excluded)
+    for op, value in items:
+        if op is sre.LITERAL:
+            return chr(value)
+        if op is sre.RANGE:
+            return chr(value[0])
+        if op is sre.CATEGORY:
+            return _category_witness(value)
+    return "x"
+
+
+def _regex_witness_tokens(tokens: Any) -> str:
+    result: list[str] = []
+    for op, value in tokens:
+        if op is sre.LITERAL:
+            result.append(chr(value))
+        elif op is sre.NOT_LITERAL:
+            result.append("x" if value != ord("x") else "y")
+        elif op is sre.ANY:
+            result.append("x")
+        elif op is sre.IN:
+            result.append(_class_witness(value))
+        elif op is sre.CATEGORY:
+            result.append(_category_witness(value))
+        elif op in REPEAT_OPS:
+            minimum, maximum, repeated = value
+            count = minimum if minimum > 0 else (1 if maximum > 0 else 0)
+            result.append(_regex_witness_tokens(repeated) * count)
+        elif op is sre.SUBPATTERN:
+            result.append(_regex_witness_tokens(value[-1]))
+        elif op is sre.BRANCH:
+            result.append(_regex_witness_tokens(value[1][0]))
+        elif op is sre.GROUPREF:
+            result.append("x")
+        elif op is sre.ASSERT and value[0] < 0:
+            result.append(_regex_witness_tokens(value[1]))
+        elif op in {sre.AT, sre.ASSERT, sre.ASSERT_NOT}:
+            continue
+        else:
+            return ""
+    return "".join(result)
+
+
+def regex_witness(pattern: str) -> str | None:
+    try:
+        witness = _regex_witness_tokens(sre_parse.parse(pattern, re.IGNORECASE))
+        candidates = [witness, f"x {witness}", f"{witness} x", f"x {witness} x"]
+        compiled = re.compile(pattern, re.IGNORECASE)
+        return next((candidate for candidate in candidates if compiled.search(candidate)), None)
+    except (OverflowError, re.error, ValueError):
+        return None
+
+
 def fixtures() -> list[dict[str, Any]]:
     with FIXTURES_PATH.open(encoding="utf-8") as stream:
         suites = yaml.safe_load(stream) or {}
@@ -115,9 +195,36 @@ def fixtures() -> list[dict[str, Any]]:
                             "ask": "ask",
                             "allowed": "allow",
                         }[expected],
+                        "checkExpected": True,
                     }
                 )
     policy = load_policy()
+    for index, entry in enumerate(policy.get("bashToolPatterns", [])):
+        if entry.get("exfil"):
+            continue
+        witness = regex_witness(entry.get("pattern", ""))
+        if witness is None:
+            continue
+        rows.append(
+            {
+                "id": f"generated:bashToolPatterns:{index:04d}",
+                "tool": "Bash",
+                "command": witness,
+                "expected": "ask" if entry.get("ask") is True else "block",
+                "checkExpected": False,
+                "targetRuleId": f"bashToolPatterns:{index:04d}",
+                "isolatedRuleIndex": index,
+                "piRule": {
+                    "pattern": entry["pattern"],
+                    "regex": entry["pattern"],
+                    "reason": entry.get("reason", "Claude damage-control rule"),
+                    "action": "ask" if entry.get("ask") is True else "block",
+                    "platforms": entry.get("platforms"),
+                    "exclude_platforms": entry.get("exclude_platforms"),
+                    "tools": ["bash"],
+                },
+            }
+        )
     for section, tool, expected in (
         ("zeroAccessPaths", "Edit", "block"),
         ("readOnlyPaths", "Edit", "block"),
@@ -133,6 +240,7 @@ def fixtures() -> list[dict[str, Any]]:
                     "command": f"rm -- {shlex.quote(materialized)}" if tool == "Bash" else "",
                     "filePath": materialized if tool == "Edit" else "",
                     "expected": expected,
+                    "checkExpected": False,
                     "targetRuleId": f"{section}:{index:04d}",
                 }
             )
@@ -147,6 +255,7 @@ def fixtures() -> list[dict[str, Any]]:
                     if section == "safeCommands"
                     else f'{command} "$UNSAFE_INPUT"',
                     "expected": expected,
+                    "checkExpected": False,
                     "targetRuleId": f"astAnalysis.{section}:{index:04d}",
                 }
             )
@@ -171,10 +280,21 @@ def _bash_path_rule_id(
     return None
 
 
-def bash_decision(command: str, hook: ModuleType, config: dict[str, Any]) -> dict[str, Any]:
+def bash_decision(
+    command: str,
+    hook: ModuleType,
+    config: dict[str, Any],
+    target_rule_id: str | None = None,
+) -> dict[str, Any]:
     blocked, ask, reason, matched, _unwrapped, _semantic = hook.check_command(command, config)
     yaml_match = re.fullmatch(r"yaml_pattern_(\d+)", matched or "")
-    matched_rule_id = f"bashToolPatterns:{int(yaml_match.group(1)):04d}" if yaml_match else None
+    matched_rule_id = (
+        target_rule_id
+        if yaml_match and target_rule_id
+        else f"bashToolPatterns:{int(yaml_match.group(1)):04d}"
+        if yaml_match
+        else None
+    )
     if matched_rule_id is None:
         matched_rule_id = _bash_path_rule_id(command, matched or "", hook, config)
     return {
@@ -218,6 +338,44 @@ def edit_decision(file_path: str, hook: ModuleType, config: dict[str, Any]) -> d
                 "matchedRuleId": f"readOnlyPaths:{index:04d}",
             }
     return {"outcome": "block", "reason": reason, "matchedRuleId": None}
+
+
+def evaluate_vector(
+    vector: dict[str, Any],
+    policy: dict[str, Any],
+    bash_hook: ModuleType,
+    bash_config: dict[str, Any],
+    edit_hook: ModuleType,
+    ast_hook: ModuleType,
+) -> dict[str, Any]:
+    tool = vector.get("tool", "Bash")
+    if tool == "Bash":
+        isolated_index = vector.get("isolatedRuleIndex")
+        config = bash_config
+        if isinstance(isolated_index, int):
+            isolated_policy = {
+                **policy,
+                "bashToolPatterns": [policy["bashToolPatterns"][isolated_index]],
+                "zeroAccessPaths": [],
+                "readOnlyPaths": [],
+                "noDeletePaths": [],
+                "astAnalysis": {"enabled": False},
+            }
+            config = bash_hook.compile_config(isolated_policy)
+        return bash_decision(
+            str(vector.get("command", "")),
+            bash_hook,
+            config,
+            vector.get("targetRuleId"),
+        )
+    if tool == "Edit":
+        return edit_decision(str(vector.get("filePath", "")), edit_hook, policy)
+    return ast_decision(
+        str(vector.get("command", "")),
+        vector.get("targetRuleId"),
+        ast_hook,
+        policy,
+    )
 
 
 def ast_decision(
@@ -269,15 +427,13 @@ def main() -> None:
                 {"tool": "Bash", "command": command} for command in request.get("commands", [])
             ]
             result = [
-                bash_decision(str(vector.get("command", "")), bash_hook, bash_config)
-                if vector.get("tool", "Bash") == "Bash"
-                else edit_decision(str(vector.get("filePath", "")), edit_hook, policy)
-                if vector.get("tool") == "Edit"
-                else ast_decision(
-                    str(vector.get("command", "")),
-                    vector.get("targetRuleId"),
-                    ast_hook,
+                evaluate_vector(
+                    vector,
                     policy,
+                    bash_hook,
+                    bash_config,
+                    edit_hook,
+                    ast_hook,
                 )
                 for vector in vectors
             ]

@@ -10,8 +10,8 @@ describe("damage-control Claude oracle coverage", () => {
 		const report = await buildDamageControlCoverageReport();
 
 		expect(report.inventoryCount).toBeGreaterThan(500);
-		expect(report.fixtureCount).toBeGreaterThan(30);
-		expect(report.coveredPatternIds.length).toBeGreaterThan(0);
+		expect(report.fixtureCount).toBeGreaterThan(400);
+		expect(report.coveredPatternIds.length).toBeGreaterThan(350);
 		expect(report.waivedPatternIds.length).toBeGreaterThan(100);
 		expect(
 			report.coveredPatternIds.length +

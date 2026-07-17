@@ -210,10 +210,18 @@ Implemented and measured 2026-07-17 with `pnpm run damage-control-coverage`:
   write-confirm, and three no-delete directory/path vectors where Claude
   blocks/asks and Pi allows. They are evidence only; changing those outcomes
   requires the plan's user gate.
-- Direct actual-analyzer fixtures now cover all 14 AST safe-command entries and
-  all 10 dangerous-command entries using unsafe-variable vectors. Claude and Pi
-  agree on all 24: current totals are 133 covered, 140 waived, 319 uncovered,
-  32 divergences, zero stale controls, and `coverage_debt_count = 351`.
+- Direct actual-analyzer fixtures cover all 14 AST safe-command entries and all
+  10 dangerous-command entries using unsafe-variable vectors; both clients
+  agree on all 24.
+- A deterministic regex witness generator now isolates each non-exfil Bash
+  policy row in Claude and Pi, validates the witness through the original regex,
+  and credits only the stable rule ID actually reached. Totals are 401 covered,
+  140 waived, 51 uncovered, 36 divergences, zero stale controls, and
+  `coverage_debt_count = 87`.
+- Remaining uncovered rows are 48 Bash patterns without a reachable witness on
+  this platform and three no-delete paths shadowed by an earlier Claude stage.
+  Four new Bash divergences cover TMPDIR cleanup, kubectl delete, and terraform
+  state rm/mv; no outcome changed.
 - Gate mode is `PI_DAMAGE_CONTROL_COVERAGE_GATE=1 pnpm run
   damage-control-coverage`; it fails until uncovered rows are covered or
   explicitly waived and all divergences are resolved.
@@ -373,9 +381,9 @@ from here.
 
 ### State
 
-- **Classification:** in progress; T2 oracle runner reports 351 debt rows
+- **Classification:** in progress; T2 oracle runner reports 87 debt rows
 - **Current blocker:** none
-- **Next:** T2, add positive Bash fixtures and replace the path-exclusion
-  waiver with paired negative controls. Keep all 32 measured outcome
-  divergences unchanged until a separate user decision
+- **Next:** T2, resolve or explicitly classify the 48 unreachable Bash and
+  three shadowed no-delete fixtures, then replace the path-exclusion waiver
+  with paired controls. Keep all 36 divergences unchanged until user approval
 - **Resume:** `/do-it .specs/rationalization-phase5/plan.md`

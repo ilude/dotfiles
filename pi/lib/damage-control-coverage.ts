@@ -14,7 +14,10 @@ import {
 	extractBashDeleteTargets,
 	isExcludedPath,
 } from "../extensions/damage-control-engine.ts";
-import { loadRules } from "../extensions/damage-control-rules.ts";
+import {
+	type DangerousCommand,
+	loadRules,
+} from "../extensions/damage-control-rules.ts";
 
 const ROOT = path.resolve(
 	path.dirname(fileURLToPath(import.meta.url)),
@@ -48,6 +51,9 @@ export interface CoverageFixture {
 	command: string;
 	filePath?: string;
 	targetRuleId?: string;
+	isolatedRuleIndex?: number;
+	piRule?: DangerousCommand;
+	checkExpected?: boolean;
 	expected: "allow" | "ask" | "block";
 }
 
@@ -235,6 +241,7 @@ export async function buildDamageControlCoverageReport(): Promise<DamageControlC
 			command: fixture.command,
 			filePath: fixture.filePath,
 			targetRuleId: fixture.targetRuleId,
+			isolatedRuleIndex: fixture.isolatedRuleIndex,
 		})),
 	});
 	const covered = new Set<string>();
@@ -247,15 +254,23 @@ export async function buildDamageControlCoverageReport(): Promise<DamageControlC
 		const claude = claudeResults[index];
 		if (!claude) throw new Error(`Claude oracle omitted fixture ${fixture.id}`);
 		if (claude.matchedRuleId) covered.add(claude.matchedRuleId);
-		if (claude.outcome !== fixture.expected)
+		if (fixture.checkExpected && claude.outcome !== fixture.expected)
 			negativeControlFailures.push({
 				fixtureId: fixture.id,
 				expected: fixture.expected,
 				actual: claude.outcome,
 			});
+		const fixtureRules = fixture.piRule
+			? {
+					...loaded.rules,
+					dangerous_commands: [fixture.piRule],
+					no_delete_paths: [],
+					astAnalysis: { enabled: false },
+				}
+			: loaded.rules;
 		const pi =
 			fixture.tool === "Bash"
-				? await evaluatePiBash(fixture.command, loaded.rules)
+				? await evaluatePiBash(fixture.command, fixtureRules)
 				: fixture.tool === "Edit"
 					? await evaluatePiEdit(fixture.filePath ?? "", loaded.rules)
 					: await evaluatePiAst(fixture.command, loaded.rules);

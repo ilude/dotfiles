@@ -2,6 +2,33 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Generate isolated Bash-policy witnesses
+
+**Why:** The tracked fixture corpus reached only a small fraction of 329
+non-exfil Bash rules and full-policy ordering can hide later patterns.
+
+**Changed:**
+- Added a deterministic regex witness generator covering literals, classes,
+  categories, repeats, branches, subpatterns, boundaries, and assertions.
+- Each generated command is verified against its original Python regex, then
+  evaluated with the corresponding rule isolated in Claude and Pi.
+- Generated probes discover outcomes; only tracked manual fixtures act as
+  expected-outcome negative controls.
+
+**Baseline:** 465 fixtures now cover 401 rows; 140 rows are waived, 51 remain
+uncovered, 36 diverge, no manual negative control is stale, and
+`coverage_debt_count = 87`. Four newly exposed Bash divergences involve TMPDIR
+cleanup, kubectl delete, and terraform state rm/mv; no outcome changed.
+
+**Validation:** Both focused Vitest cases, Ruff, Pi typecheck, and Biome passed.
+
+**Files:** `pi/scripts/damage-control-claude-oracle.py`,
+`pi/lib/damage-control-coverage.ts`,
+`pi/tests/damage-control-coverage.test.ts`,
+`.specs/rationalization-phase5/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Cover all configured AST command rows
 
 **Why:** AST safe/dangerous command lists are semantic policy inputs and need
