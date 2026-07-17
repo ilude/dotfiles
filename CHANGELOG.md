@@ -28,26 +28,32 @@ checks passed.
 
 ---
 
-## 2026-07-17: Add a resumable rationalization loop
+## 2026-07-17: Add a resumable plan loop
 
-**Why:** The phase 3-5 plans need bounded unattended progress that survives
-individual worker exits without turning user-decision gates into repeated calls.
+**Why:** Long plan sets need bounded unattended progress that survives individual
+worker exits without turning user-decision gates into repeated calls.
 
 **Changed:**
+- Added `/loop start|status|stop|resume` with atomic local job records and
+  process-tree control.
+- Made the Dolos pre-commit hook treat linked worktrees without `private/` as
+  artifact-only checkouts after staged-path scanning, so unrelated validated
+  commits do not require a private identity key.
 - Added a PowerShell supervisor that resumes one dedicated Pi session, retries
   failed invocations with bounded backoff, and stops after repeated no-progress
   iterations.
 - Limited each iteration to one validated slice and one exact-path conventional
   commit, with no pushes or broad staging.
-- Added a durable prompt that routes around independent gated work and reports
+- Added a reusable prompt that routes around independent gated work and reports
   progress, quiescence, or blockage through a bounded status marker.
 
-**Validation:** PowerShell parsing and the no-provider dry run passed. The dry
-run resolved the workspace, runtime state directory, worktree extension paths,
-and Pi command without creating a session.
+**Validation:** Focused command tests, typecheck, PowerShell parsing, and the
+no-provider dry run passed. The dry run resolved the workspace, runtime state,
+plan files, worktree extension paths, and Pi command without creating a session.
 
-**Files:** `pi/scripts/{run-rationalization-loop.ps1,rationalization-loop-prompt.md}`,
-`CHANGELOG.md`
+**Files:** `pi/extensions/loop.ts`, `pi/scripts/{run-loop.ps1,loop-prompt.md}`,
+`pi/tests/loop.test.ts`, `pi/README.md`, `scripts/git-hooks/pre-commit-dolos`,
+`test/test_private_archive.py`, `CHANGELOG.md`
 
 ---
 

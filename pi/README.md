@@ -297,6 +297,25 @@ Workflow highlights:
 - `/do-it` handles bounded raw tasks or executes an existing `.specs/*/plan.md` through its recorded gates.
 - `/commit` uses deterministic candidate extraction, isolated secret review, and ownership-aware commit planning. Ambiguous cross-domain paths require an explicit user decision instead of becoming one broad commit.
 
+### `loop.ts`
+
+Runs one validated plan slice per resumable iteration in a clean worktree. Starting
+a loop exits the current Pi process after launching the detached supervisor so
+only one writer occupies the worktree.
+
+```text
+/loop start .specs/example/plan.md [more plans...]
+/loop status [job-id]
+/loop stop <job-id>
+/loop resume <job-id>
+```
+
+Runtime state and logs live under `~/.pi/agent/loops/<job-id>/` by default. Set
+`PI_LOOP_DIR` to override the state root. A job becomes trustworthy only after
+its first validated commit; startup and extension loading alone are not reported
+as progress. The supervisor never pushes and stops after bounded invocation
+failures, quiescence, or repeated iterations without a commit.
+
 ### `feature-memory.ts`
 
 Feature memory provides bounded, feature-specific context across sessions. The tracked `pi/feature-memory.json` registry maps stable feature IDs to a title, a tracked dossier, literal case-insensitive prompt triggers, and repo-relative path triggers. On the first matching prompt in a session, `before_agent_start` injects one hidden, non-authoritative custom message containing the curated dossier and recent local events. A feature is injected only once per session; a new session or `/reload` resets that in-memory boundary.

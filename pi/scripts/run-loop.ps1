@@ -7,6 +7,13 @@ param(
 
     [string]$StateRoot,
 
+    [string]$JobId = "default",
+
+    [string]$PlanPaths = ".specs/rationalization-phase3/plan.md;.specs/rationalization-phase4/plan.md;.specs/rationalization-phase5/plan.md",
+
+    [ValidateRange(0, 300)]
+    [int]$StartupDelaySeconds = 0,
+
     [ValidateRange(1, 200)]
     [int]$MaxIterations = 48,
 
@@ -14,7 +21,7 @@ param(
     [int]$MaxInvocationRetries = 5,
 
     [ValidateRange(1, 10)]
-    [int]$MaxNoProgress = 2,
+    [int]$MaxNoProgress = 4,
 
     [ValidateRange(1, 3600)]
     [int]$InitialBackoffSeconds = 30,
@@ -83,7 +90,10 @@ function Get-PiArguments {
         [string]$PromptFile,
 
         [Parameter(Mandatory = $true)]
-        [string]$WorkingDirectory
+        [string]$WorkingDirectory,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$Plans
     )
 
     $extensionRoot = Join-Path $WorkingDirectory "pi/extensions"
@@ -110,21 +120,23 @@ function Get-PiArguments {
         $arguments.Add("--continue")
     }
     $arguments.Add("--print")
-    $arguments.Add("--no-extensions")
     $arguments.Add("--append-system-prompt")
     $arguments.Add($PromptFile)
 
-    foreach ($extension in $extensions) {
-        $extensionPath = Join-Path $extensionRoot $extension
-        if (-not (Test-Path -LiteralPath $extensionPath -PathType Leaf)) {
-            throw "Required extension not found: $extensionPath"
+    if (Test-Path -LiteralPath (Join-Path $extensionRoot "tasks.ts") -PathType Leaf) {
+        $arguments.Add("--no-extensions")
+        foreach ($extension in $extensions) {
+            $extensionPath = Join-Path $extensionRoot $extension
+            if (-not (Test-Path -LiteralPath $extensionPath -PathType Leaf)) {
+                throw "Required extension not found: $extensionPath"
+            }
+            $arguments.Add("--extension")
+            $arguments.Add($extensionPath)
         }
-        $arguments.Add("--extension")
-        $arguments.Add($extensionPath)
     }
 
     $arguments.Add(
-        "Run the next rationalization loop iteration. Follow the iteration contract and finish with the required RALPH_STATUS marker."
+        "Run the next plan loop iteration for: $($Plans -join ', '). Follow the iteration contract and finish with the required LOOP_STATUS marker."
     )
     return $arguments.ToArray()
 }
@@ -135,7 +147,7 @@ if (-not (Test-Path -LiteralPath $workspacePath -PathType Container)) {
 }
 
 if (-not $PromptPath) {
-    $PromptPath = Join-Path $workspacePath "pi/scripts/rationalization-loop-prompt.md"
+    $PromptPath = Join-Path $PSScriptRoot "loop-prompt.md"
 }
 $promptFile = Resolve-FullPath -Path $PromptPath -BasePath $workspacePath
 if (-not (Test-Path -LiteralPath $promptFile -PathType Leaf)) {
@@ -149,9 +161,22 @@ if (-not $StateRoot) {
     else {
         Join-Path $HOME ".pi"
     }
-    $StateRoot = Join-Path $localRoot "pi-night-runs/rationalization-345"
+    $StateRoot = Join-Path $localRoot "pi-loops/$JobId"
 }
 $statePath = Resolve-FullPath -Path $StateRoot -BasePath $workspacePath
+$plans = @(
+    $PlanPaths.Split(";", [System.StringSplitOptions]::RemoveEmptyEntries) |
+        ForEach-Object { $_.Trim() }
+)
+if ($plans.Count -eq 0) {
+    throw "At least one plan path is required."
+}
+foreach ($plan in $plans) {
+    $planPath = Resolve-FullPath -Path $plan -BasePath $workspacePath
+    if (-not (Test-Path -LiteralPath $planPath -PathType Leaf)) {
+        throw "Plan file not found: $plan"
+    }
+}
 $sessionPath = Join-Path $statePath "session"
 $logsPath = Join-Path $statePath "logs"
 $script:LoopLog = Join-Path $statePath "loop.log"
@@ -174,7 +199,8 @@ $previewArguments = Get-PiArguments `
     -ContinueSession $false `
     -SessionDirectory $sessionPath `
     -PromptFile $promptFile `
-    -WorkingDirectory $workspacePath
+    -WorkingDirectory $workspacePath `
+    -Plans $plans
 
 if ($DryRun) {
     Write-Output "dry-run-ok"
@@ -187,7 +213,11 @@ if ($DryRun) {
 
 New-Item -ItemType Directory -Path $sessionPath -Force | Out-Null
 New-Item -ItemType Directory -Path $logsPath -Force | Out-Null
-Write-LoopLog "loop started workspace=$workspacePath"
+Set-Content -LiteralPath (Join-Path $statePath "supervisor.pid") -Value $PID -Encoding ascii
+if ($StartupDelaySeconds -gt 0) {
+    Start-Sleep -Seconds $StartupDelaySeconds
+}
+Write-LoopLog "loop started workspace=$workspacePath job=$JobId"
 
 $noProgress = 0
 for ($iteration = 1; $iteration -le $MaxIterations; $iteration++) {
@@ -204,7 +234,8 @@ for ($iteration = 1; $iteration -le $MaxIterations; $iteration++) {
         -ContinueSession $sessionExists `
         -SessionDirectory $sessionPath `
         -PromptFile $promptFile `
-        -WorkingDirectory $workspacePath
+        -WorkingDirectory $workspacePath `
+        -Plans $plans
 
     $completed = $false
     $iterationLog = Join-Path $logsPath ("iteration-{0:D3}.log" -f $iteration)
@@ -243,7 +274,7 @@ for ($iteration = 1; $iteration -le $MaxIterations; $iteration++) {
     $output = Get-Content -LiteralPath $iterationLog -Raw
     $statusMatch = [regex]::Match(
         $output,
-        "(?m)^RALPH_STATUS: (progress|quiescent|blocked)\s*$"
+        "(?m)^LOOP_STATUS: (progress|quiescent|blocked)\s*$"
     )
     $status = if ($statusMatch.Success) {
         $statusMatch.Groups[1].Value

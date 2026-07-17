@@ -306,7 +306,7 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
 
 ### Task checklist
 
-- [ ] T1: background completion notifications - in-progress: validated; commit blocked because Dolos has no artifact-only linked-worktree index
+- [x] T1: background completion notifications - done: `1fc8ac8`
   - [x] message-injection API verified: `pi.sendMessage` with `deliverAs: "nextTurn"`
   - [x] completion/failure notifications implemented and capped
   - [x] extension-level two-task fan-out validated without await
@@ -338,7 +338,7 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
 
 ### State
 
-- **Classification:** in progress; T1 implementation and validation complete
-- **Current blocker:** the linked worktree has no worktree-local Dolos index (`.git/worktrees/rationalization-345/dolos/private.index.json`), while the main Git directory has one; with no `private/` plaintext here, Dolos reports `status=untracked plain=false artifact=true`. Its only supported recovery is `unpack private --identity KEY`, but no identity key is available in this session. Copying the main index would still report divergence because its plaintext digest is nonempty.
-- **Next:** supply the Dolos identity for an unpack, or land a separately validated artifact-only linked-worktree hook fix; then commit the staged T1 slice
+- **Classification:** in progress; T1 complete
+- **Current blocker:** none
+- **Next:** T2, verify headless session resumption before implementation
 - **Resume:** `/do-it .specs/rationalization-phase3/plan.md`
