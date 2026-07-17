@@ -310,10 +310,10 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
   - [x] message-injection API verified: `pi.sendMessage` with `deliverAs: "nextTurn"`
   - [x] completion/failure notifications implemented and capped
   - [x] extension-level two-task fan-out validated without await
-- [ ] T2: continuable subagents - pending
-  - [ ] headless resume mechanism verified (else: blocked on upstream)
-  - [ ] opt-in continuation and follow-up action implemented
-  - [ ] compress-on-age in place (no deletion); context-carryover proof passed
+- [ ] T2: continuable subagents - in-progress: implementation validated; record slice commit hash
+  - [x] headless resume mechanism verified: `pi --session <path> -p <message>`
+  - [x] opt-in continuation and follow-up action implemented
+  - [x] compress-on-age in place (no deletion); context-carryover proof passed
 - [ ] T3: cross-client worktree occupancy leases - pending
   - [x] user decision received: delete advisory metadata; add lease warning
   - [ ] `isolation` and `memory` removed from parser, docs, and agent files
@@ -338,7 +338,7 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
 
 ### State
 
-- **Classification:** in progress; T1 complete
+- **Classification:** in progress; T1 complete; T2 implementation validated
 - **Current blocker:** none
-- **Next:** T2, verify headless session resumption before implementation
+- **Next:** record T2's slice commit hash, then start independent T3
 - **Resume:** `/do-it .specs/rationalization-phase3/plan.md`

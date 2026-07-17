@@ -2,6 +2,32 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Add continuable subagent sessions
+
+**Why:** Delegated follow-ups restarted from a cold context because child
+processes were always ephemeral and left no session trail.
+
+**Changed:**
+- Added opt-in persisted child sessions and a continue mode that resumes a
+  specific session through Pi's supported headless `--session` path.
+- Stored the child session path in tool details, parent-visible output, and the
+  task record while preserving ephemeral behavior by default.
+- Compressed delegated sessions after 30 days without deleting session data,
+  restored compressed sessions before continuation, and taught the friction
+  scanner to read recursive plain or gzip session files.
+
+**Validation:** A live child retained the private fact `violet-orbit` across a
+separate follow-up process. Focused tests covered ephemeral parity, session
+persistence, task metadata, compressed-session continuation, and age-based dry
+runs. The compressed friction-scanner fixture was discovered and read. Pi
+focused tests, typecheck, Biome checks, and Python lint/format checks passed.
+
+**Files:** `pi/{extensions/subagent/index.ts,tests/subagent.test.ts}`,
+`.specs/{rationalization-phase3/plan.md,archive/rationalization-phase2/research/friction-scan.py}`,
+`CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Notify sessions when background tasks finish
 
 **Why:** Background fan-out required a blocking join to learn when workers

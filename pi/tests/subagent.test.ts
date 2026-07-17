@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import * as zlib from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import workflowFrictionExtension from "../extensions/workflow-friction-review.js";
 import {
@@ -235,6 +236,127 @@ You are a test agent.
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
+
+	it(
+		"persists an opt-in child session and records its path",
+		async () => {
+			spawnMock.mockImplementation((_command: string, args: string[]) => {
+				const proc = createMockProcess();
+				const sessionDir = args[args.indexOf("--session-dir") + 1];
+				const sessionId = args[args.indexOf("--session-id") + 1];
+				const sessionPath = path.join(
+					sessionDir,
+					`2026-07-17T00-00-00-000Z_${sessionId}.jsonl`,
+				);
+				fs.mkdirSync(sessionDir, { recursive: true });
+				fs.writeFileSync(sessionPath, '{"type":"session"}\n', "utf8");
+				queueMicrotask(() => {
+					proc.stdout.emit(
+						"data",
+						`${JSON.stringify({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: "remembered" }],
+								stopReason: "end_turn",
+							},
+						})}\n`,
+					);
+					proc.emit("close", 0);
+				});
+				return proc;
+			});
+			const { tool } = await loadTool();
+			const result = await tool.execute(
+				"call-continuable",
+				{
+					agent: "tester",
+					task: "Remember the private fact",
+					agentScope: "project",
+					continuable: true,
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			const child = result.details.results[0];
+			expect(child.sessionPath).toMatch(/\.jsonl$/);
+			expect(fs.existsSync(child.sessionPath as string)).toBe(true);
+			const { getTask } = await import("../lib/task-registry.ts");
+			expect(getTask(child.taskId as string)?.metadata?.sessionPath).toBe(
+				child.sessionPath,
+			);
+			const args = spawnMock.mock.calls[0][1] as string[];
+			expect(args).not.toContain("--no-session");
+			expect(args).toContain("--session-id");
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"continues a compressed child session with the same launcher policy",
+		async () => {
+			const sessionPath = path.join(tmpDir, "delegated-session.jsonl");
+			const original = '{"type":"session","fact":"violet-orbit"}\n';
+			await fs.promises.writeFile(
+				`${sessionPath}.gz`,
+				zlib.gzipSync(Buffer.from(original)),
+			);
+			mockSuccessfulSpawn();
+			const { tool } = await loadTool();
+			const result = await tool.execute(
+				"call-continue",
+				{
+					continue: {
+						agent: "tester",
+						session: sessionPath,
+						task: "What fact did I give you?",
+					},
+					agentScope: "project",
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			expect(result.isError).not.toBe(true);
+			expect(await fs.promises.readFile(sessionPath, "utf8")).toBe(original);
+			expect(fs.existsSync(`${sessionPath}.gz`)).toBe(false);
+			const args = spawnMock.mock.calls[0][1] as string[];
+			expect(
+				args.slice(args.indexOf("--session"), args.indexOf("--session") + 2),
+			).toEqual(["--session", sessionPath]);
+			expect(args[args.indexOf("--tools") + 1]).toBe("read,grep");
+			expect(result.details.results[0].sessionPath).toBe(sessionPath);
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it("compresses delegated sessions only after the age threshold", async () => {
+		const { compressDelegatedSessions } = await import(
+			"../extensions/subagent/index.ts"
+		);
+		const dir = path.join(tmpDir, "sessions");
+		const sessionPath = path.join(dir, "old.jsonl");
+		await fs.promises.mkdir(dir, { recursive: true });
+		await fs.promises.writeFile(sessionPath, "old session\n", "utf8");
+		const now = Date.UTC(2026, 6, 17);
+		const old = new Date(now - 31 * 24 * 60 * 60 * 1000);
+		await fs.promises.utimes(sessionPath, old, old);
+
+		expect(await compressDelegatedSessions({ dir, now, dryRun: true })).toEqual(
+			[sessionPath],
+		);
+		expect(fs.existsSync(sessionPath)).toBe(true);
+		await compressDelegatedSessions({ dir, now });
+		expect(fs.existsSync(sessionPath)).toBe(false);
+		expect(
+			zlib
+				.gunzipSync(await fs.promises.readFile(`${sessionPath}.gz`))
+				.toString(),
+		).toBe("old session\n");
+	});
 
 	it(
 		"queues parallel tasks beyond the concurrency limit",
