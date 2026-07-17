@@ -2,8 +2,6 @@
 name: frontend-dev
 description: Builds and maintains UI layer, components, client-side logic, and styling
 model: openai-codex/gpt-5.6-terra
-isolation: none
-memory: project
 effort: medium
 skills:
   - typescript

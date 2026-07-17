@@ -66,6 +66,8 @@ description: Test-only skill
 name: tester
 description: Test agent
 model: anthropic/claude-sonnet-4-6
+isolation: worktree
+memory: session
 effort: high
 tools: read, grep
 skills:
@@ -763,6 +765,8 @@ You are a test agent.
 			expect(record.usage?.outputTokens).toBe(5);
 			expect(record.metadata?.model).toBe("anthropic/claude-sonnet-4-6");
 			expect(record.metadata?.effort).toBe("high");
+			expect(record.metadata).not.toHaveProperty("isolation");
+			expect(record.metadata).not.toHaveProperty("memory");
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);

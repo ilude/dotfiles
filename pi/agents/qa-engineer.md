@@ -2,8 +2,6 @@
 name: qa-engineer
 description: Owns functional testing, regression suites, and acceptance criteria verification
 model: openai-codex/gpt-5.6-terra
-isolation: none
-memory: project
 effort: medium
 skills:
   - analysis-workflow

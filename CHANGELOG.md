@@ -2,6 +2,27 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Remove unenforced agent metadata
+
+**Why:** Agent frontmatter advertised isolation and memory behavior that the
+subagent launcher never enforced.
+
+**Changed:**
+- Removed `isolation` and `memory` from the agent parser and task metadata.
+- Removed both fields from all repository-owned agent definitions.
+- Updated the agent configuration reference to list only launcher-enforced
+  fields; unknown frontmatter remains non-contractual.
+
+**Validation:** Repository agent definitions and the subagent implementation no
+longer contain either field. A focused fixture proved legacy frontmatter is
+ignored and does not enter task records. Subagent tests, Pi typecheck, and
+focused Biome checks passed.
+
+**Files:** `pi/{extensions/subagent/agents.ts,extensions/subagent/index.ts,agents/,tests/subagent.test.ts,README.md}`,
+`.specs/rationalization-phase3/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Add continuable subagent sessions
 
 **Why:** Delegated follow-ups restarted from a cold context because child

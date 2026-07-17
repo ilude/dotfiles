@@ -88,8 +88,6 @@ function safeCreateSubagentTask(
 		metadata.model = model ?? agentConfig?.model ?? "default";
 		metadata.effort = effort ?? agentConfig?.effort ?? "default";
 		if (agentConfig?.skills) metadata.skills = agentConfig.skills;
-		if (agentConfig?.isolation) metadata.isolation = agentConfig.isolation;
-		if (agentConfig?.memory) metadata.memory = agentConfig.memory;
 		const record = createTask({
 			origin: "subagent",
 			summary,

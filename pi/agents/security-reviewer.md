@@ -2,8 +2,6 @@
 name: security-reviewer
 description: Owns threat modeling, vulnerability scanning, and compliance checks; read-only auditor
 model: openai-codex/gpt-5.6-sol
-isolation: none
-memory: project
 effort: medium
 skills:
   - analysis-workflow

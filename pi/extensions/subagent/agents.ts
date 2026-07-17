@@ -11,10 +11,8 @@ export type AgentScope = "user" | "project" | "both";
 
 /**
  * Agent execution configuration. The subagent launcher enforces tools, model,
- * effort, and skills. Isolation and memory remain advisory metadata.
+ * effort, and skills.
  */
-export type AgentIsolation = "none" | "worktree";
-export type AgentMemory = "user" | "project" | "session";
 export type AgentEffort =
 	| "off"
 	| "minimal"
@@ -32,8 +30,6 @@ export interface AgentConfig {
 	systemPrompt: string;
 	source: "user" | "project";
 	filePath: string;
-	isolation?: AgentIsolation;
-	memory?: AgentMemory;
 	effort?: AgentEffort;
 	skills?: string[];
 }
@@ -51,8 +47,6 @@ function readDirEntries(dir: string): fs.Dirent[] {
 	}
 }
 
-const VALID_ISOLATION = new Set<AgentIsolation>(["none", "worktree"]);
-const VALID_MEMORY = new Set<AgentMemory>(["user", "project", "session"]);
 const VALID_EFFORT = new Set<AgentEffort>([
 	"off",
 	"minimal",
@@ -62,18 +56,6 @@ const VALID_EFFORT = new Set<AgentEffort>([
 	"xhigh",
 	"max",
 ]);
-function asIsolation(value: string | undefined): AgentIsolation | undefined {
-	if (!value) return undefined;
-	return VALID_ISOLATION.has(value as AgentIsolation)
-		? (value as AgentIsolation)
-		: undefined;
-}
-function asMemory(value: string | undefined): AgentMemory | undefined {
-	if (!value) return undefined;
-	return VALID_MEMORY.has(value as AgentMemory)
-		? (value as AgentMemory)
-		: undefined;
-}
 function asEffort(value: string | undefined): AgentEffort | undefined {
 	if (!value) return undefined;
 	return VALID_EFFORT.has(value as AgentEffort)
@@ -125,10 +107,6 @@ function parseAgentFile(
 		filePath,
 	};
 
-	const isolation = asIsolation(asString(frontmatter.isolation));
-	if (isolation) config.isolation = isolation;
-	const memory = asMemory(asString(frontmatter.memory));
-	if (memory) config.memory = memory;
 	const effort = asEffort(asString(frontmatter.effort));
 	if (effort) config.effort = effort;
 	const skills = asStringArray(frontmatter.skills);

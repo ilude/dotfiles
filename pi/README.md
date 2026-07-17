@@ -648,7 +648,6 @@ The agent parser consumes these frontmatter fields:
 
 - Required: `name`, `description`
 - Enforced by the subagent launcher: `tools`, `model`, `effort`, `skills`
-- Advisory metadata: `isolation`, `memory`
 
 The parser applies no default frontmatter values. Frontmatter `effort` is passed
 to child Pi as `--thinking`; an explicit per-launch `effort` override takes
