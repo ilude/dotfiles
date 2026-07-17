@@ -365,7 +365,7 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - [x] T8: browser wrapper and CI contract - done: 8a0ab09
 - [x] T9: pin quality tools - done: 21e12e1, 07a2fad
 - [x] T10: changed-file validation entrypoint - done: 7344bd2, 887d54d
-- [ ] T11: Make target split - pending
+- [x] T11: Make target split - done: 475807f
 - [ ] T12: ledger close and final validation - pending
   - [ ] ledger closed: every row executed or explicitly deferred
   - [ ] entrypoint fixtures exercised (/plan-it, /do-it, /review-it)
@@ -377,11 +377,11 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 
 - **Classification:** execution in progress
 - **Current blocker:** none
-- **Last completed wave/gate:** T10 changed-file validation CLI
-- **Next:** T11 split Make validation targets without duplicated work
-- **Completed work:** T1-T10 complete; `scripts/quality-check` routes explicit file lists through repository validator config with bounded parallelism and stable exit codes
-- **Commands/results:** exact CLI passed Python, shell, and Pi TypeScript files; no-argument invocation exited 2; 51 focused tests, Ruff, formatting, shell syntax, executable mode, and `git diff --check` passed
-- **Remaining checks:** T11-T12; exact workflow fixtures; `make check-pi-extensions`; final `make check`; archive preflight
+- **Last completed wave/gate:** T11 split validation entrypoints and timing gate
+- **Next:** T12 close the ledger, exercise workflow fixtures, run final aggregates, and archive
+- **Completed work:** T1-T11 complete; changed-file, fast-static, focused-test, and full-check routes have distinct nonduplicated scopes
+- **Commands/results:** `make check-changed` and `make check-fast` passed; command graph test passed 9 tests; focused Pi repair tests passed 28 tests; three successful `make check` runs measured 209932, 152150, and 167466 ms with median 167466 ms
+- **Remaining checks:** T12 ledger reconciliation; exact workflow fixtures; final `make check-pi-extensions`; final `make check`; archive preflight
 - **Worktree note:** out-of-scope `.specs/rationalization-phase2/` remains untracked and untouched by plan commits
 - **Exact user action:** none; rerun `/do-it .specs/rationalization/plan.md`
 - **Resume:** `/do-it .specs/rationalization/plan.md`
@@ -415,3 +415,7 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - **T10 phase:** phase ID `T10`; type `implementation`; depends on `T9`; status `passed`; evidence commits `7344bd2` and `887d54d` plus focused CLI tests.
 - **T10 command events:** exact `scripts/quality-check` invocation exited 0 for Python, shell, and Pi TypeScript inputs; no-argument usage exited 2; focused quality-hook suite exited 0 with 51 tests; Ruff, format check, shell syntax, executable-mode check, and `git diff --check` exited 0.
 - **T10 manual gate:** not required; risk low; blast radius personal-repo; rollback easy; local deterministic CLI only.
+- **T11 phase:** phase ID `T11`; type `implementation`; depends on `T10`; status `passed`; evidence commit `475807f`, Make dry-run graph test, and `.tmp/rationalization/t11/` timing logs.
+- **T11 command events:** `make check-changed` exited 0; `make check-fast` exited 0; focused CI-contract suite exited 0 with 9 tests; focused Pi repair suites exited 0 with 28 tests; three successful `make check` runs exited 0 with median 167466 ms; `git diff --check` exited 0.
+- **T11 repair evidence:** Pi dependency linking now resolves from the checked-out repository; stale task model and secret-review fixtures were aligned with T5 behavior; a full-suite concurrency failure in task ownership passed immediately in isolation and the next aggregate run, so no implementation change was made for that nondeterministic test.
+- **T11 manual gate:** not required; risk low; blast radius personal-repo; rollback easy; local command and test changes only.
