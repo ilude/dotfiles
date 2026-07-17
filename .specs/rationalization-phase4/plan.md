@@ -228,7 +228,7 @@ from here.
   - [x] sampling layer with named-constant rate; arms as data
   - [x] explicit overrides never sampled (proven)
   - [x] telemetry tags verified at configured rate; rate 0 byte-identical
-- [ ] T3: improvement-report - in-progress: implementation validated; record commit
+- [x] T3: improvement-report - done: `d225ddf`
   - [x] all present sources aggregated; absent sources as coverage notes
   - [x] deletions-first report generated from real data
   - [x] aggregation math tested
@@ -242,8 +242,7 @@ from here.
 
 ### State
 
-- **Classification:** in progress; T1-T2 complete; T3 implementation validated
+- **Classification:** in progress; T1-T3 complete
 - **Current blocker:** none
-- **Next:** record T3's implementation commit, then add the T4 manual report
-  entry point and cadence guidance
+- **Next:** T4, add the manual `/improve report` entry point and cadence guidance
 - **Resume:** `/do-it .specs/rationalization-phase4/plan.md`
