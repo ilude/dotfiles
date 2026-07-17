@@ -1,7 +1,7 @@
 ---
 created: 2026-07-16
-status: in-progress
-completed:
+status: completed
+completed: 2026-07-17
 ---
 
 # Plan: Harness rationalization phase 2 - contracts, meta-rules, and surface area
@@ -498,50 +498,52 @@ and commit this file after every slice; resume from here, never re-derive.
 
 ### Task checklist
 
-- [x] T1: /do-it report contract rewrite - done: validated slice commit pending
-- [x] T2: telemetry ownership decision - done: validated slice commit pending
-- [x] T3: pi/AGENTS.md meta-rule consolidation - done: validated slice commit pending
-- [x] T4: one philosophy file - done: validated slice commit pending
-- [x] T5: usage-driven skill/command/agent audit - done: validated slice commit pending
+- [x] T1: /do-it report contract rewrite - done: `8016709`
+- [x] T2: telemetry ownership decision - done: `75d9e99`
+- [x] T3: pi/AGENTS.md meta-rule consolidation - done: `306ace6`
+- [x] T4: one philosophy file - done: `54b6e9a`
+- [x] T5: usage-driven skill/command/agent audit - done: `3df285a`
   - [x] usage data source verified; gaps covered by session-archive scan
   - [x] usage counts verified for retirement and merge decisions
   - [x] pre-approved variant merges executed (skill-review trio collapsed)
   - [x] gated deletions: no distinct-role or nonzero-usage deletion selected
   - [x] retirements executed with reference cleanup
-- [x] T6: extension output-visibility rule - done: validated slice commit pending
-- [x] T7: hygiene-gate immutable-artifact exemptions - done: validated slice commit pending
-- [x] T8: shell-aware reducer classification - done: bounded parser executed; 59.48% shortfall and residual top ten recorded per stop clause
-- [x] T9: reachable generic fallback - done: validated slice commit pending
-- [x] T10: self-describing reductions - done: validated slice commit pending
-- [x] T11: persistent reducer worker (decision-gated) - done: validated slice commit pending
+- [x] T6: extension output-visibility rule - done: `3fc10bf`
+- [x] T7: hygiene-gate immutable-artifact exemptions - done: `6f825c1`
+- [x] T8: shell-aware reducer classification - done: `30b977f`; bounded parser stopped at 59.48% with the residual top ten recorded
+- [x] T9: reachable generic fallback - done: `f629ca6`
+- [x] T10: self-describing reductions - done: `964db83`
+- [x] T11: persistent reducer worker - done: `3629d27`
 - [x] T12: reducer schema and corpus hygiene - done: `c1bacbc`
-- [x] T13: retroactive context reduction - done: validated slice commit pending
-- [ ] T14: close and validation - pending
-  - [ ] checklist and material decisions reconciled
-  - [ ] `make check-pi-extensions` and changed-file CLI passed
-  - [ ] scratch-plan /do-it exercised (new report contract end to end)
-  - [ ] byte counts and Phase D context-growth numbers recorded
+- [x] T13: retroactive context reduction - done: `b998e12`, `4c5e8d0`
+- [x] T14: close and validation - done
+  - [x] checklist and material decisions reconciled
+  - [x] `make check-pi-extensions` and changed-file CLI passed
+  - [x] scratch-plan /do-it exercised (new report contract end to end)
+  - [x] byte counts and Phase D context-growth numbers recorded
 
 ### State
 
-- **State:** in progress
+- **State:** complete
 - **Current blocker:** none
-- **Last completed gate:** T13 retroactive context reduction
-- **Next:** commit T13, then execute T14 close and validation
-- **Completed work:** T1-T4 are committed. T5 recorded 30-day decisions for 52
-  skills, 36 commands, and 18 audited agents; the user selected optional
-  per-launch effort; the three approved skill-review variants now share one
-  agent with explicit model and effort dispatch.
-- **Commands/results:** T8-T10 and T12 checks passed with the recorded T8
-  shortfall. T11 passed 8 Python and 13 Pi tests plus typecheck; one-shot and
-  worker output matched; p50 improved from 329.9 ms to 9.7 ms (97.1%). T13
-  passed 17 focused extension tests and Pi typecheck; its combined reducer and
-  dispatch run passed 21 tests, and 31 reducer invariant/classification tests
-  passed. The scratch context fixture verified the 50% trigger, five-result
-  recency window, 5,000-token batch generation, stable back-to-back payload,
-  transient retry, session-tree recency restoration, and readable transcript
-  recovery. A broad Python format check reported four unchanged files that
-  would be reformatted; T13 changed no Python files.
-- **Remaining checks:** commit T13, then T14 final validation and archive.
+- **Last completed gate:** T14 close and validation
+- **Next:** none
+- **Completed work:** T1-T14 are complete. The workflow contract, runtime-owned
+  telemetry, instruction ownership, usage-driven surface consolidation,
+  immutable-artifact handling, and threshold-triggered tool reduction landed
+  in the commits recorded above.
+- **Commands/results:** final `make check-pi-extensions` passed 1,324 tests with
+  one skip after the reducer worker tests isolated mock state and ignored stale
+  stdin errors from an already closed child. The changed-file CLI passed for 51
+  existing Phase 2 files. The exact scratch `/do-it` command reported S1 as a
+  checkpoint, S2 next, and no blocker. Instruction surfaces changed by this
+  phase decreased from 61,509 to 47,906 bytes (13,603 bytes, 22.12%). On the
+  current 635-result session replay, retroactive reduction modeled 1,623,335
+  raw tool-result bytes down to 1,405,517 bytes (217,818 bytes, 13.42%) while
+  preserving the five newest results. The current session contains one
+  compaction; the prior ten sessions contain four. No comparable
+  post-deployment operational window exists yet, so no causal compaction-rate
+  claim is made.
+- **Remaining checks:** none
 - **Exact user action:** none
-- **Resume:** `/do-it .specs/rationalization-phase2/plan.md`
+- **Archive:** `.specs/archive/rationalization-phase2/`
