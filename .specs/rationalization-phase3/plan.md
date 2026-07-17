@@ -320,7 +320,7 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
   - [x] shared atomic lease lifecycle implemented for Pi and Claude
   - [x] same-worktree warning and separate-worktree non-warning validated
   - [x] clean shutdown, stale recovery, and clean Git status validated
-- [ ] T4: mechanical DAG scheduler - pending
+- [ ] T4: mechanical DAG scheduler - in-progress: implement the opt-in drain over validated scheduling primitives
   - [ ] auto-dispatch on unblock with maxConcurrent
   - [ ] write-scope serialization; read-only derived from enforced tools
   - [ ] critical-path-first ordering
@@ -340,5 +340,5 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
 
 - **Classification:** in progress; T1-T3 complete
 - **Current blocker:** none
-- **Next:** T4, implement the opt-in DAG scheduler over the existing task registry
+- **Next:** T4, add the opt-in drain action with bounded auto-dispatch and failure/starvation reporting
 - **Resume:** `/do-it .specs/rationalization-phase3/plan.md`

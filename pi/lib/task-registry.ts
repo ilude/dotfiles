@@ -15,6 +15,9 @@ import { sanitizeTaskValue } from "./task-security.ts";
 export type { TaskState } from "./operator-state.ts";
 
 export type TaskOrigin = "subagent" | "shell" | "other";
+const TASK_SCOPE_MAX_ITEMS = 16;
+const TASK_SCOPE_MAX_LENGTH = 256;
+
 export type TaskPersistenceOutcome =
 	| "persisted"
 	| "rejected"
@@ -130,6 +133,7 @@ export interface TaskRecordV1 {
 	preview?: string;
 	repoSlug?: string;
 	workspace?: string;
+	scope?: string[];
 	notes?: string;
 	blockReason?: string;
 	errorReason?: string;
@@ -152,6 +156,7 @@ export interface CreateTaskInput {
 	preview?: string;
 	repoSlug?: string;
 	workspace?: string;
+	scope?: string[];
 	notes?: string;
 	metadata?: Record<string, unknown>;
 	execution?: SubagentTaskExecution;
@@ -190,6 +195,7 @@ export interface UpdateTaskPatch {
 	execution?: SubagentTaskExecution;
 	agentName?: string;
 	workspace?: string;
+	scope?: string[];
 	notes?: string;
 	blockedBy?: string[];
 	blocks?: string[];
@@ -215,6 +221,29 @@ export interface TaskOperationResult<T = TaskRecordV1> {
 	outcome: TaskPersistenceOutcome;
 	record?: T;
 	error?: string;
+}
+
+export function normalizeTaskScope(
+	scope: readonly string[] | undefined,
+): string[] | undefined {
+	if (scope === undefined) return undefined;
+	if (scope.length > TASK_SCOPE_MAX_ITEMS)
+		throw new TaskRegistryError("scope may contain at most 16 entries");
+	const normalized = scope.map((entry) => {
+		if (typeof entry !== "string")
+			throw new TaskRegistryError("scope entries must be strings");
+		const value = entry.trim().replaceAll("\\", "/").replace(/^\.\//, "");
+		if (!value || value.length > TASK_SCOPE_MAX_LENGTH)
+			throw new TaskRegistryError(
+				`scope entries must contain between 1 and ${TASK_SCOPE_MAX_LENGTH} characters`,
+			);
+		if (path.isAbsolute(value) || value.split("/").includes(".."))
+			throw new TaskRegistryError("scope entries must be worktree-relative");
+		return value;
+	});
+	if (new Set(normalized).size !== normalized.length)
+		throw new TaskRegistryError("duplicate scope entry");
+	return normalized;
 }
 
 export class TaskRegistryError extends Error {
@@ -377,6 +406,7 @@ function createTaskRecord(
 		preview: input.preview,
 		repoSlug: input.repoSlug,
 		workspace: input.workspace,
+		scope: normalizeTaskScope(input.scope),
 		notes: input.notes,
 		metadata: input.metadata,
 		execution: input.execution,
@@ -602,6 +632,9 @@ export function updateTask(id: string, patch: UpdateTaskPatch): TaskRecordV1 {
 		...(patch.execution !== undefined ? { execution: patch.execution } : {}),
 		...(patch.agentName !== undefined ? { agentName: patch.agentName } : {}),
 		...(patch.workspace !== undefined ? { workspace: patch.workspace } : {}),
+		...(patch.scope !== undefined
+			? { scope: normalizeTaskScope(patch.scope) }
+			: {}),
 		...(patch.notes !== undefined ? { notes: patch.notes } : {}),
 		...(patch.blockedBy !== undefined ? { blockedBy: nextBlockedBy } : {}),
 		...(patch.blocks !== undefined

@@ -7,6 +7,7 @@ import {
 	createTaskBatch,
 	getTask,
 	listTasks,
+	normalizeTaskScope,
 	normalizeTaskUsage,
 	TaskRegistryError,
 	transitionTask,
@@ -72,6 +73,28 @@ describe("createTask", () => {
 		expect(task.metadata).toEqual({ ticket: "OPS-42" });
 	});
 
+	it("normalizes and persists optional write scopes", () => {
+		const task = createTask({
+			origin: "subagent",
+			summary: "scoped worker",
+			scope: ["./src/**", "test\\focused.test.ts"],
+		});
+		expect(task.scope).toEqual(["src/**", "test/focused.test.ts"]);
+		expect(getTask(task.id)?.scope).toEqual(task.scope);
+
+		const updated = updateTask(task.id, { scope: ["docs/**"] });
+		expect(updated.scope).toEqual(["docs/**"]);
+	});
+
+	it("rejects unsafe or duplicate write scopes", () => {
+		expect(() => normalizeTaskScope(["../outside"])).toThrow(
+			/worktree-relative/,
+		);
+		expect(() => normalizeTaskScope(["src/**", "src/**"])).toThrow(
+			/duplicate scope/,
+		);
+	});
+
 	it("generates distinct ids for concurrent creations", () => {
 		const ids = new Set(
 			Array.from({ length: 5 }).map(
@@ -102,6 +125,7 @@ describe("createTaskBatch", () => {
 					summary: "worker",
 					key: "worker",
 					blockedByKeys: ["manual"],
+					scope: ["src/**"],
 					execution: {
 						kind: "subagent" as const,
 						agent: "validator",
@@ -135,6 +159,7 @@ describe("createTaskBatch", () => {
 			expect(getTask(existing.id)?.blocks).toContain(manual?.id);
 			expect(manual?.blocks).toEqual([worker?.id]);
 			expect(worker?.execution?.kind).toBe("subagent");
+			expect(worker?.scope).toEqual(["src/**"]);
 		}
 	});
 });

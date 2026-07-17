@@ -2,6 +2,33 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Add deterministic task scheduling primitives
+
+**Why:** The upcoming opt-in DAG drain needs durable write scopes, mechanical
+tool mutability, conflict checks, and critical-path ordering rather than model
+judgment.
+
+**Changed:**
+- Added optional worktree-relative `scope` paths and globs to task create,
+  batch, update, and durable records.
+- Added central read, execute, and mutate capability declarations for
+  launcher-enforced tools; undeclared and default tool sets remain
+  conservatively mutating.
+- Added pure scheduling primitives for read-only derivation, conservative scope
+  overlap, scope-less writer conflicts, and stable longest-downstream-path
+  ordering.
+
+**Validation:** Sixty focused registry, public task-tool, capability, and
+scheduler tests passed. They covered scope persistence and rejection,
+create/batch/update compatibility, writer serialization decisions, reader
+parallelism, unknown-tool safety, and diamond critical-path ordering. Pi
+extension typecheck and focused Biome checks passed.
+
+**Files:** `pi/{lib/task-registry.ts,lib/tool-capabilities.ts,lib/task-scheduler.ts,extensions/tasks.ts,tests/task-registry.test.ts,tests/task-tools.test.ts,tests/tool-capabilities.test.ts,tests/task-scheduler.test.ts}`,
+`.specs/rationalization-phase3/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Validate cross-client worktree occupancy
 
 **Why:** Live Pi/Claude validation exposed a Windows stale-process edge case and

@@ -73,6 +73,52 @@ describe("task tools", () => {
 		}
 	});
 
+	it("accepts additive write scopes on create, batch, and update", async () => {
+		const pi = createMockPi();
+		registerTaskTools(
+			pi as Parameters<typeof registerTaskTools>[0],
+			new TaskExecutionCoordinator(),
+		);
+		const tool = pi._getTool("task");
+		const ctx = createMockCtx({ cwd: tmpRoot });
+		const created = await tool?.execute(
+			"scoped-create",
+			{ action: "create", summary: "scoped", scope: ["./src/**"] },
+			undefined,
+			undefined,
+			ctx,
+		);
+		const id = created.details.record.id as string;
+		expect(created.details.record.scope).toEqual(["src/**"]);
+
+		const updated = await tool?.execute(
+			"scoped-update",
+			{ action: "update", id, scope: ["docs/**"] },
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(updated.details.record.scope).toEqual(["docs/**"]);
+
+		const batch = await tool?.execute(
+			"scoped-batch",
+			{
+				action: "batch",
+				tasks: [
+					{
+						key: "worker",
+						summary: "worker",
+						scope: ["test/**"],
+					},
+				],
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(batch.details.records[0].scope).toEqual(["test/**"]);
+	});
+
 	it("uses one registry for planning dependencies and readiness", async () => {
 		const pi = createMockPi();
 		const coordinator = new TaskExecutionCoordinator();

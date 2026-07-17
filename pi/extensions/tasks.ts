@@ -16,6 +16,7 @@ import {
 	getTask,
 	getUnmetBlockers,
 	listTasks,
+	normalizeTaskScope,
 	partitionReadyTasks,
 	resolveTaskWorkspace,
 	retryTask,
@@ -66,6 +67,8 @@ const TASK_BATCH_MAX_ITEMS = 16;
 const TASK_MULTI_MAX_ITEMS = 8;
 const TASK_MULTI_CONTENT_MAX_BYTES = 4_096;
 const TASK_MULTI_ERROR_MAX_CODE_POINTS = 200;
+const TASK_SCOPE_MAX_ITEMS = 16;
+const TASK_SCOPE_MAX_LENGTH = 256;
 const TASK_BATCH_KEY_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
 
 function validateTaskText(
@@ -451,6 +454,12 @@ function executionFrom(
 	};
 }
 
+function validatedScope(value: unknown): string[] | undefined {
+	if (value === undefined) return undefined;
+	if (!Array.isArray(value)) throw new Error("scope must be an array");
+	return normalizeTaskScope(value as string[]);
+}
+
 function validatedBlockers(value: unknown): string[] | undefined {
 	if (!Array.isArray(value)) return undefined;
 	const ids = value.filter((item): item is string => typeof item === "string");
@@ -510,6 +519,7 @@ function taskInputFrom(
 		prompt: execution?.task,
 		execution,
 		workspace: resolveTaskWorkspace(cwd),
+		scope: validatedScope(input.scope),
 		notes,
 		blockedBy: batch
 			? (input.blockedBy as string[] | undefined)
@@ -704,6 +714,14 @@ export function registerTaskTools(
 				Type.String({ maxLength: TASK_SUMMARY_MAX_LENGTH }),
 			),
 			notes: Type.Optional(Type.String({ maxLength: TASK_NOTES_MAX_LENGTH })),
+			scope: Type.Optional(
+				Type.Array(
+					Type.String({ minLength: 1, maxLength: TASK_SCOPE_MAX_LENGTH }),
+					{
+						maxItems: TASK_SCOPE_MAX_ITEMS,
+					},
+				),
+			),
 			key: Type.Optional(Type.String({ pattern: "^[A-Za-z0-9_-]{1,32}$" })),
 			blockedBy: Type.Optional(
 				Type.Array(Type.String({ minLength: 1, maxLength: 64 }), {
@@ -763,6 +781,7 @@ export function registerTaskTools(
 				Type.String({ maxLength: TASK_SUMMARY_MAX_LENGTH }),
 			),
 			notes: Type.Optional(Type.String({ maxLength: TASK_NOTES_MAX_LENGTH })),
+			scope: Type.Optional(taskItem.properties.scope),
 			state: Type.Optional(Type.String()),
 			skipReason: Type.Optional(
 				Type.String({ maxLength: TASK_NOTES_MAX_LENGTH }),
@@ -997,6 +1016,7 @@ export function registerTaskTools(
 							typeof input.notes === "string"
 								? validateTaskText("notes", input.notes, TASK_NOTES_MAX_LENGTH)
 								: undefined,
+						scope: validatedScope(input.scope),
 						blockedBy: validatedBlockers(input.blockedBy),
 					};
 					skipReason =
