@@ -503,7 +503,7 @@ and commit this file after every slice; resume from here, never re-derive.
 
 - [x] T1: /do-it report contract rewrite - done: validated slice commit pending
 - [x] T2: telemetry ownership decision - done: validated slice commit pending
-- [ ] T3: pi/AGENTS.md meta-rule consolidation - pending
+- [x] T3: pi/AGENTS.md meta-rule consolidation - done: validated slice commit pending
 - [ ] T4: one philosophy file - pending
 - [ ] T5: usage-driven skill/command/agent audit - pending
   - [ ] usage data source verified; gaps covered by session-archive scan
@@ -529,14 +529,13 @@ and commit this file after every slice; resume from here, never re-derive.
 
 - **State:** in progress
 - **Current blocker:** none
-- **Last completed gate:** T2 telemetry ownership decision
-- **Next:** T3 Pi meta-rule consolidation
-- **Completed work:** T1 is committed. T2 selected the no-detailed-consumer path,
-  removed telemetry-shaped workflow prose, and narrowed runtime types and docs
-  to mechanically written dispatch records.
-- **Commands/results:** focused telemetry and dispatch tests passed 6 tests;
-  Pi typecheck passed; workflow prose scan, Ruff, format check, query-helper
-  empty-state run, and `git diff --check` passed.
-- **Remaining checks:** commit T2, then T3-T14 and final archive gates.
+- **Last completed gate:** T3 Pi meta-rule consolidation
+- **Next:** T4 single philosophy owner
+- **Completed work:** T1 (`8016709`) and T2 (`75d9e99`) are committed. T3
+  consolidated ask/execute and choice rules, removed presentation rituals, and
+  recorded the 10,909 to 8,627 byte reduction.
+- **Commands/results:** retired-rule searches and `git diff --check` passed;
+  direct byte measurement recorded the 2,282-byte reduction.
+- **Remaining checks:** commit T3, then T4-T14 and final archive gates.
 - **Exact user action:** none
 - **Resume:** `/do-it .specs/rationalization-phase2/plan.md`

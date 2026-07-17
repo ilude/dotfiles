@@ -8,6 +8,11 @@
 | `/do-it` incomplete-report checklist | Lost resume state | `.specs/rationalization-phase2/plan.md` - fabricated blocker, session 019f6c3b | One documented contradiction on 2026-07-16 | Consolidate | One checkpoint paragraph preserves durable state without making stopping the dominant path. | T1 | Executed |
 | `/do-it` stale blocker and review-artifact handling | Obsolete evidence blocking repaired work | `research/friction-work-gitlab-networkiac.md`; `research/friction-dotfiles-homelab-onramp.md` | Two documented incidents | Keep in one owner | Current state must re-verify recorded evidence; the rule belongs in `/do-it` and is not duplicated in `/review-it`. | T1 | Executed |
 | Model-narrated workflow telemetry contract | Missing machine-readable execution evidence | `pi/docs/workflow-eval-telemetry.md` | Runtime never emitted the prescribed detailed events | Delete | The only consumer reads mechanically written dispatch JSONL; schema-shaped plan prose was not machine telemetry. | T2 | Executed |
+| Hedge-word certainty detector | Overconfident agreement with user hypotheses | `unknown` | No documented detector-specific prevention | Consolidate | Confidence now names its evidence or assumption without lexical rituals. | T3 | Executed |
+| Four-rule ask/execute cluster | Unauthorized scope and unnecessary confirmation loops | `research/friction-gcc-automation.md`; `research/friction-work-gitlab-networkiac.md` | Recurred in both directions | Consolidate | One execution rule covers ambiguity, access, scope, denials, safety gating, and accepted risk. | T3 | Executed |
+| 1-3-1 response template | Unstructured architecture choices | `unknown` | No documented template-specific prevention | Delete | Real choices need brief trade-offs and one recommendation, not a fixed presentation ritual. | T3 | Executed |
+| `[N/total]` issue counter | Losing place in multi-issue responses | `unknown` | No documented prevention | Delete | Presentation ritual has no surviving failure class. | T3 | Executed |
+| Question-tool format preference | Ambiguous user prompts | `unknown` | No documented prevention | Delete | The consolidated ask rule owns when a question is needed; tool mode is runtime judgment. | T3 | Executed |
 
 ## Surface usage decisions
 

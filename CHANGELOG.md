@@ -2,6 +2,27 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Consolidate Pi execution meta-rules
+
+**Why:** Overlapping ask, authorization, confidence, and response-format rules
+encouraged ceremony and repeated scope gates.
+
+**Changed:**
+- Replaced four ask/execute rules with one execution rule covering ambiguity,
+  access, scope, denials, safety gating, and accepted risk.
+- Reduced confidence calibration and unresolved-choice handling to their
+  underlying values.
+- Removed hedge-word, fixed-option, question-format, and issue-counter rituals.
+
+**Validation:** `pi/AGENTS.md` decreased from 10,909 to 8,627 bytes; searches
+found none of the retired rule names or presentation tokens, and
+`git diff --check` passed.
+
+**Files:** `pi/AGENTS.md`, `.specs/rationalization-phase2/{plan,ledger}.md`,
+`CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Make workflow telemetry runtime-owned
 
 **Why:** Workflow prompts prescribed detailed telemetry that runtime code never
