@@ -2,6 +2,27 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Add shell-aware reducer fallback
+
+**Why:** Environment assignments, shell preambles, directory leaders, chained
+segments, and pipelines hid commands from reducer rules.
+
+**Changed:**
+- Added bounded shell-shape normalization only after the original argv fails to
+  match, preserving all currently matched commands.
+- Added verbatim failure-line survival and nonzero-exit fall-through guards.
+- Added corpus replay metrics and the project Python floor.
+
+**Validation:** Focused reducer/evaluator suites passed 39 tests. Corpus replay
+processed 32,081 records, increased match rate from 52.12% to 59.48%, newly
+matched 2,367 entries, and reported zero failure-survival failures. The plan's
+65% gate remains unmet; the residual top ten is recorded in the phase ledger.
+
+**Files:** `pi/tool-reduction/`,
+`.specs/rationalization-phase2/{plan,ledger}.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Make tool reductions recoverable
 
 **Why:** Reduced Bash output did not identify the reducer or provide a path back

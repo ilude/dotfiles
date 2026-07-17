@@ -1,11 +1,24 @@
 # Passthrough guard and text clamping utilities.
 # Ported from tokenjuice src/core/reduce.ts and src/core/text.ts
 
+import re
+
 # Matches tokenjuice TINY_OUTPUT_MAX_CHARS = 240
 TINY_OUTPUT_MAX_CHARS = 240
 
 TRUNCATION_SUFFIX = "\n... truncated ..."
 MIDDLE_TRUNCATION_MARKER = "\n... omitted ...\n"
+_FAILURE_LINE_RE = re.compile(
+    r"\b(error|warning|warn|failed|failure|exception|traceback|fatal|panic)\b",
+    re.IGNORECASE,
+)
+
+
+def failure_signals_survive(raw: str, compact: str, facts: dict) -> bool:
+    """Return True when every failure-relevant raw line survives compaction."""
+    del facts
+    failure_lines = [line for line in raw.splitlines() if _FAILURE_LINE_RE.search(line)]
+    return all(line in compact for line in failure_lines)
 
 
 def select_inline_text(

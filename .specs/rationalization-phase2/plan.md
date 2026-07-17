@@ -513,7 +513,7 @@ and commit this file after every slice; resume from here, never re-derive.
   - [x] retirements executed with reference cleanup
 - [x] T6: extension output-visibility rule - done: validated slice commit pending
 - [x] T7: hygiene-gate immutable-artifact exemptions - done: validated slice commit pending
-- [ ] T8: shell-aware reducer classification - pending
+- [ ] T8: shell-aware reducer classification - blocked: replay reached 59.48%, below the required 65%; residual top ten recorded in ledger
 - [ ] T9: reachable generic fallback - pending
 - [x] T10: self-describing reductions - done: validated slice commit pending
 - [ ] T11: persistent reducer worker (decision-gated) - pending
@@ -527,19 +527,20 @@ and commit this file after every slice; resume from here, never re-derive.
 
 ### State
 
-- **State:** in progress
-- **Current blocker:** none
-- **Last completed gate:** T10 self-describing recoverable reductions
-- **Next:** T8 shell-aware reducer classification
+- **State:** in progress with a recorded T8 threshold blocker
+- **Current blocker:** T8 replay reached 59.48% rule matching from a 52.12%
+  baseline, below the required 65%. Per T8, the residual top ten is recorded in
+  the ledger and parser complexity stops here.
+- **Last completed gate:** T10 self-describing recoverable reductions (`964db83`)
+- **Next:** T12 reducer schema and corpus hygiene, which is independent of T8
 - **Completed work:** T1-T4 are committed. T5 recorded 30-day decisions for 52
   skills, 36 commands, and 18 audited agents; the user selected optional
   per-launch effort; the three approved skill-review variants now share one
   agent with explicit model and effort dispatch.
-- **Commands/results:** T5-T7 focused and exact workflow checks passed. T10's
-  10-test reducer suite passed with real reduction markers, both raw recovery
-  paths, bypass, age/size caps, and failure fall-through; Pi typecheck and
-  `git diff --check` passed.
-- **Remaining checks:** commit T10, then T8, T9, T11-T14, final validation,
-  and archive.
+- **Commands/results:** T8 focused suites passed 39 tests. Replay processed
+  32,081 records: 52.12% baseline to 59.48%, 2,367 newly matched, 152 safety
+  fallbacks, zero failure-survival failures. Ruff and `git diff --check` passed.
+- **Remaining checks:** commit the T8 checkpoint; complete independent T12;
+  T9, T11, T13, T14, final validation, and archive remain blocked by T8.
 - **Exact user action:** none
 - **Resume:** `/do-it .specs/rationalization-phase2/plan.md`

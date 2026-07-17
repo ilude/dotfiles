@@ -39,8 +39,10 @@ def _load_rules_module():
     """Import rules module if available; return a stub if not yet present (T5 in progress)."""
     try:
         import rules as _rules
+
         return _rules
     except ImportError:
+
         class _Stub:
             @staticmethod
             def load_rules(**kwargs):
@@ -62,13 +64,20 @@ def reduce_execution(
     """Run the deterministic reduction pipeline on one bash tool result."""
     import guards
     import pipeline
+    from shell_argv import normalize_shell_argv
 
     _rules_mod = _load_rules_module()
 
     builtin_dir = _HERE / "rules" / "builtin"
     rules = _rules_mod.load_rules(builtin_dir=builtin_dir, argv0=argv[0] if argv else None)
-
     rule_id, _confidence = _rules_mod.classify_argv(argv, rules)
+
+    if rule_id is None:
+        normalized_argv = normalize_shell_argv(argv)
+        if normalized_argv != argv:
+            argv = normalized_argv
+            rules = _rules_mod.load_rules(builtin_dir=builtin_dir, argv0=argv[0] if argv else None)
+            rule_id, _confidence = _rules_mod.classify_argv(argv, rules)
 
     sep = "\n" if stdout and stderr else ""
     raw_text = stdout + sep + stderr
@@ -94,6 +103,8 @@ def reduce_execution(
         max_inline_chars=1200,
         tiny_max=guards.TINY_OUTPUT_MAX_CHARS,
     )
+    if exit_code != 0 or not guards.failure_signals_survive(raw_text, selected, facts):
+        selected = raw_text
 
     bytes_after = len(selected.encode("utf-8"))
     reduction_applied = selected != raw_text
@@ -110,17 +121,19 @@ def reduce_execution(
     try:
         import corpus
 
-        corpus.log_reduction({
-            "ts": datetime.now(timezone.utc).isoformat(),
-            "argv": argv,
-            "exit_code": exit_code,
-            "bytes_before": bytes_before,
-            "bytes_after": bytes_after,
-            "rule_id": rule_id,
-            "reduction_applied": reduction_applied,
-            "stdout_sample": stdout,
-            "stderr_sample": stderr,
-        })
+        corpus.log_reduction(
+            {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "argv": argv,
+                "exit_code": exit_code,
+                "bytes_before": bytes_before,
+                "bytes_after": bytes_after,
+                "rule_id": rule_id,
+                "reduction_applied": reduction_applied,
+                "stdout_sample": stdout,
+                "stderr_sample": stderr,
+            }
+        )
     except Exception:
         pass
 

@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 
 
@@ -87,6 +88,64 @@ def _compute_metrics(corpus: list[dict], labeled: list[dict] | None) -> dict:
     }
 
 
+def _replay_rule_metrics(corpus: list[dict]) -> dict:
+    import guards
+    import pipeline
+    import rules
+    from shell_argv import normalize_shell_argv
+
+    builtin_dir = Path(__file__).parent / "rules" / "builtin"
+    cache: dict[str, list[dict]] = {}
+    matched = 0
+    newly_matched = 0
+    guard_fallbacks = 0
+    unmatched: Counter[str] = Counter()
+
+    def classify(argv: list[str]) -> tuple[str | None, list[dict]]:
+        argv0 = argv[0] if argv else ""
+        if argv0 not in cache:
+            cache[argv0] = rules.load_rules(builtin_dir=builtin_dir, argv0=argv0 or None)
+        rule_id, _ = rules.classify_argv(argv, cache[argv0])
+        return rule_id, cache[argv0]
+
+    for record in corpus:
+        original = record.get("argv") or []
+        argv = original
+        rule_id, loaded = classify(argv)
+        was_new = False
+        if rule_id is None:
+            argv = normalize_shell_argv(original)
+            if argv != original:
+                rule_id, loaded = classify(argv)
+                was_new = rule_id is not None
+        if rule_id is None:
+            unmatched[(argv[0] if argv else "(empty)")] += 1
+            continue
+        matched += 1
+        newly_matched += int(was_new)
+        if not was_new or int(record.get("exit_code", 0)) != 0:
+            continue
+        raw = (record.get("stdout_sample") or "") + (record.get("stderr_sample") or "")
+        matched_rule = next((rule for rule in loaded if rule.get("id") == rule_id), None)
+        if matched_rule is None:
+            continue
+        rule_with_exit = dict(matched_rule)
+        rule_with_exit["_exit_code"] = 0
+        compacted, facts = pipeline.apply_rule(pipeline.normalize_lines(raw), rule_with_exit)
+        selected = guards.select_inline_text(raw, "\n".join(compacted), max_inline_chars=1200)
+        if not guards.failure_signals_survive(raw, selected, facts):
+            guard_fallbacks += 1
+
+    total = len(corpus)
+    return {
+        "rule_match_rate": matched / total if total else None,
+        "newly_matched": newly_matched,
+        "failure_guard_fallbacks": guard_fallbacks,
+        "failure_survival_failures": 0,
+        "top_unmatched": unmatched.most_common(10),
+    }
+
+
 def _print_table(metrics: dict, labeled_count: int | None) -> None:
     sep = "=" * 64
     print(f"\n{sep}")
@@ -115,6 +174,14 @@ def _print_table(metrics: dict, labeled_count: int | None) -> None:
         print("False-positive rate:   (no labeled data)")
     else:
         print(f"False-positive rate:   {fpr:.2%}")
+
+    match_rate = metrics.get("rule_match_rate")
+    if match_rate is not None:
+        print(f"Rule match rate:        {match_rate:.2%}")
+        print(f"Newly matched:          {metrics['newly_matched']}")
+        print(f"Failure guard fallbacks:{metrics['failure_guard_fallbacks']:>8}")
+        print(f"Failure survival fails: {metrics['failure_survival_failures']}")
+        print(f"Top unmatched:          {metrics['top_unmatched']}")
 
     hits = metrics["rule_hits"]
     if hits:
@@ -147,12 +214,11 @@ def _check_gates(
             passed = bsp >= min_reduction
             status = "PASS" if passed else "FAIL"
             if not passed:
-                failures.append(
-                    f"bytes_saved_pct {bsp:.2%} < min_reduction {min_reduction:.2%}"
-                )
+                failures.append(f"bytes_saved_pct {bsp:.2%} < min_reduction {min_reduction:.2%}")
         print(
-            f"  [{status}] Bytes saved >= {min_reduction:.0%}:  "
-            f"{bsp:.2%}" if bsp is not None else f"  [{status}] Bytes saved >= {min_reduction:.0%}:  (n/a)"
+            f"  [{status}] Bytes saved >= {min_reduction:.0%}:  {bsp:.2%}"
+            if bsp is not None
+            else f"  [{status}] Bytes saved >= {min_reduction:.0%}:  (n/a)"
         )
 
     fpr = metrics["false_positive_rate"]
@@ -162,9 +228,7 @@ def _check_gates(
         else:
             passed = fpr <= max_fp
             status = "PASS" if passed else "FAIL"
-            print(
-                f"  [{status}] FP rate <= {max_fp:.0%}:  {fpr:.2%}"
-            )
+            print(f"  [{status}] FP rate <= {max_fp:.0%}:  {fpr:.2%}")
             if not passed:
                 failures.append(f"false_positive_rate {fpr:.2%} > max_fp {max_fp:.2%}")
     elif fpr is None:
@@ -176,12 +240,27 @@ def _check_gates(
 def _print_json_summary(metrics: dict, gates_passed: bool) -> None:
     summary = {
         "total_records": metrics["total_records"],
-        "bytes_saved_pct": round(metrics["bytes_saved_pct"], 6) if metrics["bytes_saved_pct"] is not None else None,
-        "passthrough_rate": round(metrics["passthrough_rate"], 6) if metrics["passthrough_rate"] is not None else None,
+        "bytes_saved_pct": round(metrics["bytes_saved_pct"], 6)
+        if metrics["bytes_saved_pct"] is not None
+        else None,
+        "passthrough_rate": round(metrics["passthrough_rate"], 6)
+        if metrics["passthrough_rate"] is not None
+        else None,
         "rule_hits": metrics["rule_hits"],
-        "false_positive_rate": round(metrics["false_positive_rate"], 6) if metrics["false_positive_rate"] is not None else None,
+        "false_positive_rate": round(metrics["false_positive_rate"], 6)
+        if metrics["false_positive_rate"] is not None
+        else None,
         "gates_passed": gates_passed,
     }
+    for key in (
+        "rule_match_rate",
+        "newly_matched",
+        "failure_guard_fallbacks",
+        "failure_survival_failures",
+        "top_unmatched",
+    ):
+        if key in metrics:
+            summary[key] = metrics[key]
     print(json.dumps(summary))
 
 
@@ -190,6 +269,7 @@ def evaluate(
     labeled_path: Path | None,
     min_reduction: float | None,
     max_fp: float | None,
+    replay_rules: bool = False,
 ) -> int:
     corpus = _load_corpus(corpus_paths)
     labeled: list[dict] | None = None
@@ -197,6 +277,8 @@ def evaluate(
         labeled = _load_jsonl(labeled_path)
 
     metrics = _compute_metrics(corpus, labeled)
+    if replay_rules:
+        metrics.update(_replay_rule_metrics(corpus))
     _print_table(metrics, labeled_count=len(labeled) if labeled is not None else None)
 
     failures = _check_gates(metrics, min_reduction, max_fp)
@@ -216,6 +298,7 @@ def evaluate(
 
 def _default_corpus_path() -> Path:
     from datetime import date
+
     filename = f"corpus-{date.today().isoformat()}.jsonl"
     return Path.home() / ".cache" / "pi" / "tool-reduction" / filename
 
@@ -243,6 +326,11 @@ def main() -> None:
         help="Minimum bytes-saved fraction gate (e.g. 0.30); exit 1 if not met",
     )
     parser.add_argument(
+        "--replay-rules",
+        action="store_true",
+        help="Reclassify stored argv with current shell normalization and rules",
+    )
+    parser.add_argument(
         "--max-fp",
         type=float,
         metavar="FLOAT",
@@ -268,7 +356,13 @@ def main() -> None:
             print(f"ERROR: labeled file not found: {labeled_path}", file=sys.stderr)
             sys.exit(1)
 
-    exit_code = evaluate(corpus_paths, labeled_path, args.min_reduction, args.max_fp)
+    exit_code = evaluate(
+        corpus_paths,
+        labeled_path,
+        args.min_reduction,
+        args.max_fp,
+        replay_rules=args.replay_rules,
+    )
     sys.exit(exit_code)
 
 

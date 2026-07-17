@@ -3,7 +3,19 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from guards import select_inline_text, clamp_text, clamp_text_middle, TINY_OUTPUT_MAX_CHARS
+from guards import (
+    TINY_OUTPUT_MAX_CHARS,
+    clamp_text,
+    clamp_text_middle,
+    failure_signals_survive,
+    select_inline_text,
+)
+
+
+def test_failure_signals_must_survive_verbatim() -> None:
+    raw = "ok\nWARNING: disk pressure\nERROR: failed request\ndone"
+    assert failure_signals_survive(raw, raw, {})
+    assert not failure_signals_survive(raw, "ok\ndone", {})
 
 
 class TestSelectInlineText:
