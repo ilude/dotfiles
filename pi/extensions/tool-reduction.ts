@@ -248,6 +248,10 @@ class ReducerWorker {
 				stdio: ["pipe", "pipe", "pipe"],
 			});
 			this.child = child;
+			child.stdin?.on("error", () => {
+				this.terminate(child);
+				this.finishPending(null);
+			});
 			child.stdout?.on("data", (chunk: Buffer) => this.readResponse(child, chunk));
 			child.on("error", () => this.handleExit(child));
 			child.on("close", () => this.handleExit(child));

@@ -80,6 +80,16 @@ def test_malformed_rule_skipped(tmp_path: Path, caplog: pytest.LogCaptureFixture
 # ---------------------------------------------------------------------------
 
 
+def _assert_collision_warning(
+    records: list[logging.LogRecord], builtin_path: Path, project_path: Path
+) -> None:
+    messages = [record.message for record in records if record.levelno == logging.WARNING]
+    assert any("dup" in message for message in messages), "Expected WARN about id collision"
+    combined = " ".join(messages)
+    assert str(builtin_path) in combined or "builtin" in combined
+    assert str(project_path) in combined or "project" in combined
+
+
 def test_collision_logged(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     builtin_dir = tmp_path / "builtin"
     project_dir = tmp_path / "project"
@@ -94,13 +104,7 @@ def test_collision_logged(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> N
     with caplog.at_level(logging.WARNING):
         rules = load_rules(builtin_dir, user_dir=None, project_dir=project_dir)
 
-    warn_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
-    assert any("dup" in msg for msg in warn_messages), "Expected WARN about id collision"
-
-    # Both source paths should appear in at least one warning message together
-    combined = " ".join(warn_messages)
-    assert str(builtin_path) in combined or "builtin" in combined
-    assert str(project_path) in combined or "project" in combined
+    _assert_collision_warning(caplog.records, builtin_path, project_path)
 
     # project version wins
     assert len([r for r in rules if r["id"] == "dup"]) == 1

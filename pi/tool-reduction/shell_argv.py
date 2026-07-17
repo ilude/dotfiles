@@ -24,24 +24,32 @@ def _after_last(tokens: list[str], operator: str) -> list[str]:
     return tokens[index + 1 :]
 
 
-def normalize_shell_argv(argv: list[str]) -> list[str]:
-    """Normalize measured shell leaders without attempting full shell parsing."""
-    tokens = _tokenize(argv)
-
+def _strip_setup(tokens: list[str]) -> list[str]:
     if tokens and tokens[0] == "set" and ";" in tokens:
-        tokens = tokens[tokens.index(";") + 1 :]
+        return tokens[tokens.index(";") + 1 :]
+    return tokens
 
+
+def _strip_cd(tokens: list[str]) -> list[str]:
     while tokens and tokens[0] == "cd":
-        separators = [i for i, token in enumerate(tokens) if token in {"&&", ";"}]
+        separators = [index for index, token in enumerate(tokens) if token in {"&&", ";"}]
         if not separators:
             return []
         tokens = tokens[separators[0] + 1 :]
+    return tokens
 
-    tokens = _after_last(tokens, "&&")
-    tokens = _after_last(tokens, "|")
 
+def _strip_environment(tokens: list[str]) -> list[str]:
     if tokens and tokens[0] == "env":
         tokens = tokens[1:]
     while tokens and _ENV_ASSIGNMENT_RE.match(tokens[0]):
         tokens = tokens[1:]
     return tokens
+
+
+def normalize_shell_argv(argv: list[str]) -> list[str]:
+    """Normalize measured shell leaders without attempting full shell parsing."""
+    tokens = _strip_cd(_strip_setup(_tokenize(argv)))
+    tokens = _after_last(tokens, "&&")
+    tokens = _after_last(tokens, "|")
+    return _strip_environment(tokens)

@@ -28,43 +28,47 @@ def _load_schema() -> dict:
         return json.load(f)
 
 
+def _compile_filters(patterns: list[str], label: str, rule_id: str | None) -> list:
+    compiled = []
+    for pattern in patterns:
+        try:
+            compiled.append(safe_compile(pattern))
+        except ReDoSRejected:
+            logger.warning("ReDoS guard rejected %s %r in rule %r", label, pattern, rule_id)
+    return compiled
+
+
+def _compile_counters(counters: list[dict], rule_id: str | None) -> list[dict]:
+    compiled = []
+    for counter in counters:
+        result = dict(counter)
+        pattern = counter.get("pattern", "")
+        if pattern:
+            try:
+                result["_compiled"] = safe_compile(pattern)
+            except ReDoSRejected:
+                logger.warning(
+                    "ReDoS guard rejected counter pattern %r in rule %r", pattern, rule_id
+                )
+                result["_compiled"] = None
+        compiled.append(result)
+    return compiled
+
+
 def _compile_rule_patterns(rule: dict) -> dict:
     """Pre-compile regex patterns in a rule dict. Returns a shallow copy with compiled entries."""
     rule = dict(rule)
-
     filters = rule.get("filters", {})
     if filters:
-        rule["_compiled_skip"] = []
-        for p in filters.get("skipPatterns", []):
-            try:
-                rule["_compiled_skip"].append(safe_compile(p))
-            except ReDoSRejected:
-                logger.warning("ReDoS guard rejected skipPattern %r in rule %r", p, rule.get("id"))
-
-        rule["_compiled_keep"] = []
-        for p in filters.get("keepPatterns", []):
-            try:
-                rule["_compiled_keep"].append(safe_compile(p))
-            except ReDoSRejected:
-                logger.warning("ReDoS guard rejected keepPattern %r in rule %r", p, rule.get("id"))
-
-    counters = rule.get("counters", [])
-    compiled_counters = []
-    for counter in counters:
-        cc = dict(counter)
-        p = counter.get("pattern", "")
-        if p:
-            try:
-                cc["_compiled"] = safe_compile(p)
-            except ReDoSRejected:
-                logger.warning(
-                    "ReDoS guard rejected counter pattern %r in rule %r", p, rule.get("id")
-                )
-                cc["_compiled"] = None
-        compiled_counters.append(cc)
+        rule["_compiled_skip"] = _compile_filters(
+            filters.get("skipPatterns", []), "skipPattern", rule.get("id")
+        )
+        rule["_compiled_keep"] = _compile_filters(
+            filters.get("keepPatterns", []), "keepPattern", rule.get("id")
+        )
+    compiled_counters = _compile_counters(rule.get("counters", []), rule.get("id"))
     if compiled_counters:
         rule["_compiled_counters"] = compiled_counters
-
     return rule
 
 
@@ -109,6 +113,55 @@ def _builtin_files_for_argv0(builtin_dir: Path, argv0: str) -> list[Path] | None
     return [builtin_dir / rel for rel in rel_paths]
 
 
+def _builtin_rule_files(builtin_dir: Path, argv0: Optional[str]) -> list[Path]:
+    if argv0 is None:
+        return _walk_json_files(builtin_dir)
+    files = _builtin_files_for_argv0(builtin_dir, argv0)
+    if files is None:
+        files = _walk_json_files(builtin_dir)
+    fallback_path = builtin_dir / "generic" / "fallback.json"
+    if fallback_path.exists() and fallback_path not in files:
+        files.append(fallback_path)
+    return files
+
+
+def _read_valid_rule(json_path: Path, schema: dict) -> dict | None:
+    try:
+        with open(json_path, encoding="utf-8") as file:
+            rule = json.load(file)
+    except Exception as exc:
+        logger.warning("Failed to read rule file %s: %s", json_path, exc)
+        return None
+    if jsonschema is not None:
+        try:
+            jsonschema.validate(rule, schema)
+        except jsonschema.ValidationError as exc:
+            logger.warning("Skipping malformed rule in %s: %s", json_path, exc.message)
+            return None
+    elif not isinstance(rule.get("id"), str):
+        logger.warning("Skipping malformed rule in %s: missing string id", json_path)
+        return None
+    return rule
+
+
+def _merge_layer(
+    merged: dict[str, tuple[dict, Path]], layer_name: str, files: list[Path], schema: dict
+) -> None:
+    for json_path in files:
+        rule = _read_valid_rule(json_path, schema)
+        if rule is None:
+            continue
+        rule_id: str = rule["id"]
+        if rule_id in merged and layer_name != "builtin":
+            logger.warning(
+                "Rule id %r shadowed: existing source %s overridden by %s",
+                rule_id,
+                merged[rule_id][1],
+                json_path,
+            )
+        merged[rule_id] = (_compile_rule_patterns(rule), json_path)
+
+
 def load_rules(
     builtin_dir: Path,
     user_dir: Optional[Path] = None,
@@ -138,70 +191,40 @@ def load_rules(
     Returns:
         List of compiled rule dicts ordered arbitrarily (use classify_argv to match).
     """
-    if user_dir is None:
-        user_dir = Path.home() / ".config" / "pi" / "tool-reduction" / "rules"
-    if project_dir is None:
-        project_dir = Path.cwd() / ".pi" / "tool-reduction" / "rules"
-
+    user_dir = user_dir or Path.home() / ".config" / "pi" / "tool-reduction" / "rules"
+    project_dir = project_dir or Path.cwd() / ".pi" / "tool-reduction" / "rules"
     schema = _load_schema()
-
-    # Maps rule id -> (rule_dict, source_path)
     merged: dict[str, tuple[dict, Path]] = {}
-
-    # Determine builtin file list: narrow via index when argv0 is given, else full scan.
-    if argv0 is not None:
-        builtin_files = _builtin_files_for_argv0(builtin_dir, argv0)
-        if builtin_files is None:
-            builtin_files = _walk_json_files(builtin_dir)
-        fallback_path = builtin_dir / "generic" / "fallback.json"
-        if fallback_path.exists() and fallback_path not in builtin_files:
-            builtin_files.append(fallback_path)
-    else:
-        builtin_files = _walk_json_files(builtin_dir)
-
-    layers: list[tuple[str, list[Path] | None]] = [
-        ("builtin", builtin_files),
-        ("user", None),
-        ("project", None),
-    ]
-    walk_dirs = {"user": user_dir, "project": project_dir}
-
-    for layer_name, layer_files in layers:
-        if layer_files is None:
-            layer_files = _walk_json_files(walk_dirs[layer_name])
-        for json_path in layer_files:
-            try:
-                with open(json_path, encoding="utf-8") as f:
-                    rule = json.load(f)
-            except Exception as exc:
-                logger.warning("Failed to read rule file %s: %s", json_path, exc)
-                continue
-
-            if jsonschema is not None:
-                try:
-                    jsonschema.validate(rule, schema)
-                except jsonschema.ValidationError as exc:
-                    logger.warning("Skipping malformed rule in %s: %s", json_path, exc.message)
-                    continue
-            elif not isinstance(rule.get("id"), str):
-                logger.warning("Skipping malformed rule in %s: missing string id", json_path)
-                continue
-
-            rule_id: str = rule["id"]
-
-            if rule_id in merged and layer_name != "builtin":
-                existing_path = merged[rule_id][1]
-                logger.warning(
-                    "Rule id %r shadowed: existing source %s overridden by %s",
-                    rule_id,
-                    existing_path,
-                    json_path,
-                )
-
-            compiled = _compile_rule_patterns(rule)
-            merged[rule_id] = (compiled, json_path)
-
+    layers = (
+        ("builtin", _builtin_rule_files(builtin_dir, argv0)),
+        ("user", _walk_json_files(user_dir)),
+        ("project", _walk_json_files(project_dir)),
+    )
+    for layer_name, files in layers:
+        _merge_layer(merged, layer_name, files, schema)
     return [rule for rule, _path in merged.values()]
+
+
+def _contains_tokens(argv: list[str], tokens: list[str]) -> bool:
+    return all(token in argv for token in tokens)
+
+
+def _contains_groups(argv: list[str], groups: list[list[str]]) -> bool:
+    return all(_contains_tokens(argv, group) for group in groups)
+
+
+def _rule_matches_argv(rule: dict, argv: list[str]) -> bool:
+    match_block = rule.get("match", {})
+    if not match_block:
+        return False
+    argv0_list: list[str] = match_block.get("argv0", [])
+    if not argv0_list or argv[0] not in argv0_list:
+        return False
+    git_subcmds: list[str] = match_block.get("gitSubcommands", [])
+    if git_subcmds and not _contains_tokens(argv, git_subcmds):
+        return False
+    argv_includes: list[list[str]] = match_block.get("argvIncludes", [])
+    return not argv_includes or _contains_groups(argv, argv_includes)
 
 
 def classify_argv(argv: list[str], rules: list[dict]) -> tuple[Optional[str], float]:
@@ -223,36 +246,12 @@ def classify_argv(argv: list[str], rules: list[dict]) -> tuple[Optional[str], fl
     if not argv:
         return None, 0.0
 
-    argv0 = argv[0]
     fallback_rule_id: Optional[str] = None
-
     for rule in rules:
-        match_block = rule.get("match", {})
-        if not match_block:
-            if rule.get("id") == "generic/fallback":
-                fallback_rule_id = rule["id"]
-            continue
-
-        argv0_list: list[str] = match_block.get("argv0", [])
-        # Rules without argv0 (e.g. toolNames/commandIncludes-only rules) are not
-        # argv-matchable. Skip rather than treating absent argv0 as a wildcard.
-        if not argv0_list or argv0 not in argv0_list:
-            continue
-
-        # gitSubcommands acts as an implicit argvIncludes group: each token must
-        # appear in argv. Without this check, rules like git-ls-files wildcard-match
-        # all git invocations because they have no argvIncludes entry.
-        git_subcmds: list[str] = match_block.get("gitSubcommands", [])
-        if git_subcmds and not all(token in argv for token in git_subcmds):
-            continue
-
-        argv_includes: list[list[str]] = match_block.get("argvIncludes", [])
-        if argv_includes:
-            all_groups_match = all(all(token in argv for token in group) for group in argv_includes)
-            if not all_groups_match:
-                continue
-
-        return rule["id"], 1.0
+        if not rule.get("match") and rule.get("id") == "generic/fallback":
+            fallback_rule_id = rule["id"]
+        if _rule_matches_argv(rule, argv):
+            return rule["id"], 1.0
 
     if fallback_rule_id is not None:
         return fallback_rule_id, 1.0

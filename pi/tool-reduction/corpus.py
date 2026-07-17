@@ -36,6 +36,42 @@ def _truncate_sample(text: str) -> str:
     return head + "..." + tail
 
 
+def _retained_corpus_files(
+    cache_dir: Path, current_time: float, retention_seconds: int
+) -> tuple[list[tuple[Path, float, int]], list[Path]]:
+    retained = []
+    expired: list[Path] = []
+    for file_path in sorted(cache_dir.glob("corpus-*.jsonl")):
+        try:
+            stat = file_path.stat()
+        except OSError:
+            continue
+        if current_time - stat.st_mtime > retention_seconds:
+            expired.append(file_path)
+        else:
+            retained.append((file_path, stat.st_mtime, stat.st_size))
+    return retained, expired
+
+
+def _files_over_limit(files: list[tuple[Path, float, int]], max_bytes: int) -> list[Path]:
+    total = sum(size for _, _, size in files)
+    removals: list[Path] = []
+    for file_path, _, size in sorted(files, key=lambda item: item[1]):
+        if total <= max_bytes:
+            break
+        removals.append(file_path)
+        total -= size
+    return removals
+
+
+def _remove_files(paths: list[Path]) -> None:
+    for file_path in paths:
+        try:
+            file_path.unlink()
+        except FileNotFoundError:
+            pass
+
+
 def prune_corpus_cache(
     cache_dir: Path,
     *,
@@ -46,31 +82,10 @@ def prune_corpus_cache(
 ) -> list[Path]:
     """Remove expired and oldest corpus files, or report them in dry-run mode."""
     current_time = time.time() if now is None else now
-    files = []
-    removals: list[Path] = []
-    for file_path in sorted(cache_dir.glob("corpus-*.jsonl")):
-        try:
-            stat = file_path.stat()
-        except OSError:
-            continue
-        if current_time - stat.st_mtime > retention_seconds:
-            removals.append(file_path)
-        else:
-            files.append((file_path, stat.st_mtime, stat.st_size))
-
-    total = sum(size for _, _, size in files)
-    for file_path, _, size in sorted(files, key=lambda item: item[1]):
-        if total <= max_bytes:
-            break
-        removals.append(file_path)
-        total -= size
-
+    retained, removals = _retained_corpus_files(cache_dir, current_time, retention_seconds)
+    removals.extend(_files_over_limit(retained, max_bytes))
     if not dry_run:
-        for file_path in removals:
-            try:
-                file_path.unlink()
-            except FileNotFoundError:
-                pass
+        _remove_files(removals)
     return removals
 
 

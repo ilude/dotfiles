@@ -136,14 +136,29 @@ function closeWithStdout(
 	});
 }
 
-describe("tool-reduction extension", () => {
-	let mockPi: ReturnType<typeof createMockPi>;
-
-	beforeEach(() => {
-		vi.resetModules();
-		spawnBehavior = "real";
-		mockPi = createMockPi();
+function contextWithUsage(
+	percent: number,
+	sessionFile = "C:/sessions/test.jsonl",
+) {
+	return createMockCtx({
+		getContextUsage: () => ({
+			tokens: percent * 1000,
+			contextWindow: 100_000,
+			percent,
+		}),
+		sessionManager: {
+			getSessionFile: () => sessionFile,
+		},
 	});
+}
+
+let mockPi: ReturnType<typeof createMockPi>;
+
+beforeEach(() => {
+	vi.resetModules();
+	spawnBehavior = "real";
+	mockPi = createMockPi();
+});
 
 	// ---------------------------------------------------------------------------
 	// Test 1: real end-to-end compaction
@@ -299,23 +314,7 @@ describe("tool-reduction extension", () => {
 		});
 	});
 
-	describe("retroactive context reduction", () => {
-		function contextWithUsage(
-			percent: number,
-			sessionFile = "C:/sessions/test.jsonl",
-		) {
-			return createMockCtx({
-				getContextUsage: () => ({
-					tokens: percent * 1000,
-					contextWindow: 100_000,
-					percent,
-				}),
-				sessionManager: {
-					getSessionFile: () => sessionFile,
-				},
-			});
-		}
-
+describe("retroactive context reduction", () => {
 		it("keeps the five newest results whole and reduces older results in one batch", async () => {
 			const { spawn } = await import("node:child_process");
 			const child = createMockChild();
@@ -538,7 +537,38 @@ describe("tool-reduction extension", () => {
 			}
 		});
 
-		it("(c) subprocess emits non-JSON stdout: returns undefined", async () => {
+		it("(c) asynchronous stdin failure stops the worker and returns undefined", async () => {
+			const { spawn } = await import("node:child_process");
+			const child = createMockChild();
+			spawnBehavior = () => child;
+			const processKill = vi
+				.spyOn(process, "kill")
+				.mockImplementation(() => true);
+			try {
+				const mod = await import("../extensions/tool-reduction.ts");
+				mod.default(mockPi as unknown as ExtensionAPI);
+				const [hook] = mockPi._getHook("tool_result");
+				const result = hook.handler(
+					makeBashResultEvent(extremeOutput("some output")),
+				);
+				child.stdin?.emit("error", new Error("write EOF"));
+
+				expect(await result).toBeUndefined();
+				if (process.platform === "win32") {
+					expect(spawn).toHaveBeenLastCalledWith(
+						"taskkill",
+						["/PID", "123", "/T", "/F"],
+						expect.objectContaining({ stdio: "ignore", windowsHide: true }),
+					);
+				} else {
+					expect(processKill).toHaveBeenCalledWith(-123, "SIGKILL");
+				}
+			} finally {
+				processKill.mockRestore();
+			}
+		});
+
+		it("(d) subprocess emits non-JSON stdout: returns undefined", async () => {
 			const child = createMockChild();
 			spawnBehavior = () => {
 				closeWithStdout(child, "not json");
@@ -556,7 +586,7 @@ describe("tool-reduction extension", () => {
 		});
 	});
 
-	describe("persistent worker behavior", () => {
+describe("persistent worker behavior", () => {
 		it("reuses one worker process for sequential requests", async () => {
 			const { spawn } = await import("node:child_process");
 			const child = createMockChild();
@@ -671,4 +701,3 @@ describe("tool-reduction extension", () => {
 			);
 		});
 	});
-});

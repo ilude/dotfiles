@@ -58,73 +58,61 @@ def _load_rules_module():
         return _Stub()
 
 
-def reduce_execution(
-    argv: list[str],
-    exit_code: int,
-    stdout: str,
-    rules_module=None,
-    loaded_rules: list[dict] | None = None,
-) -> CompactResult:
-    """Run the deterministic reduction pipeline on one bash tool result."""
-    import guards
-    import pipeline
+def _classify_execution(
+    argv: list[str], rules_module, loaded_rules: list[dict] | None
+) -> tuple[list[str], list[dict], str | None]:
     from shell_argv import normalize_shell_argv
 
-    rules_module = rules_module or _load_rules_module()
     builtin_dir = _HERE / "rules" / "builtin"
     rules = loaded_rules
     if rules is None:
         rules = rules_module.load_rules(builtin_dir=builtin_dir, argv0=argv[0] if argv else None)
     rule_id, _confidence = rules_module.classify_argv(argv, rules)
+    if rule_id not in {None, "generic/fallback"}:
+        return argv, rules, rule_id
 
-    if rule_id in {None, "generic/fallback"}:
-        normalized_argv = normalize_shell_argv(argv)
-        if normalized_argv != argv:
-            argv = normalized_argv
-            if loaded_rules is None:
-                rules = rules_module.load_rules(
-                    builtin_dir=builtin_dir, argv0=argv[0] if argv else None
-                )
-            rule_id, _confidence = rules_module.classify_argv(argv, rules)
+    normalized_argv = normalize_shell_argv(argv)
+    if normalized_argv == argv:
+        return argv, rules, rule_id
+    if loaded_rules is None:
+        rules = rules_module.load_rules(
+            builtin_dir=builtin_dir, argv0=normalized_argv[0] if normalized_argv else None
+        )
+    rule_id, _confidence = rules_module.classify_argv(normalized_argv, rules)
+    return normalized_argv, rules, rule_id
 
-    raw_text = stdout
 
-    bytes_before = len(raw_text.encode("utf-8"))
-    facts: dict = {}
-    compact_text = raw_text
+def _compact_output(
+    stdout: str, exit_code: int, rule_id: str | None, rules: list[dict]
+) -> tuple[str, dict]:
+    import pipeline
 
-    if rule_id is not None:
-        # Fetch the matched rule dict by id
-        matched_rule = next((r for r in rules if r.get("id") == rule_id), None)
-        if matched_rule is not None:
-            rule_with_exit = dict(matched_rule)
-            rule_with_exit["_exit_code"] = exit_code
+    if rule_id is None:
+        return stdout, {}
+    matched_rule = next((rule for rule in rules if rule.get("id") == rule_id), None)
+    if matched_rule is None:
+        return stdout, {}
+    rule_with_exit = dict(matched_rule)
+    rule_with_exit["_exit_code"] = exit_code
+    lines, facts = pipeline.apply_rule(pipeline.normalize_lines(stdout), rule_with_exit)
+    return "\n".join(lines), facts
 
-            lines = pipeline.normalize_lines(raw_text)
-            compacted_lines, facts = pipeline.apply_rule(lines, rule_with_exit)
-            compact_text = "\n".join(compacted_lines)
+
+def _select_output(stdout: str, compact_text: str, exit_code: int, facts: dict) -> str:
+    import guards
 
     selected = guards.select_inline_text(
-        raw_text,
+        stdout,
         compact_text,
         max_inline_chars=1200,
         tiny_max=guards.TINY_OUTPUT_MAX_CHARS,
     )
-    if exit_code != 0 or not guards.failure_signals_survive(raw_text, selected, facts):
-        selected = raw_text
+    if exit_code != 0 or not guards.failure_signals_survive(stdout, selected, facts):
+        return stdout
+    return selected
 
-    bytes_after = len(selected.encode("utf-8"))
-    reduction_applied = selected != raw_text
 
-    result = CompactResult(
-        inline_text=selected,
-        facts=facts,
-        rule_id=rule_id,
-        bytes_before=bytes_before,
-        bytes_after=bytes_after,
-        reduction_applied=reduction_applied,
-    )
-
+def _log_result(result: CompactResult, argv: list[str], exit_code: int, stdout: str) -> None:
     try:
         import corpus
 
@@ -133,16 +121,38 @@ def reduce_execution(
                 "ts": datetime.now(timezone.utc).isoformat(),
                 "argv": argv,
                 "exit_code": exit_code,
-                "bytes_before": bytes_before,
-                "bytes_after": bytes_after,
-                "rule_id": rule_id,
-                "reduction_applied": reduction_applied,
+                "bytes_before": result.bytes_before,
+                "bytes_after": result.bytes_after,
+                "rule_id": result.rule_id,
+                "reduction_applied": result.reduction_applied,
                 "stdout_sample": stdout,
             }
         )
     except Exception:
         pass
 
+
+def reduce_execution(
+    argv: list[str],
+    exit_code: int,
+    stdout: str,
+    rules_module=None,
+    loaded_rules: list[dict] | None = None,
+) -> CompactResult:
+    """Run the deterministic reduction pipeline on one bash tool result."""
+    rules_module = rules_module or _load_rules_module()
+    argv, rules, rule_id = _classify_execution(argv, rules_module, loaded_rules)
+    compact_text, facts = _compact_output(stdout, exit_code, rule_id, rules)
+    selected = _select_output(stdout, compact_text, exit_code, facts)
+    result = CompactResult(
+        inline_text=selected,
+        facts=facts,
+        rule_id=rule_id,
+        bytes_before=len(stdout.encode("utf-8")),
+        bytes_after=len(selected.encode("utf-8")),
+        reduction_applied=selected != stdout,
+    )
+    _log_result(result, argv, exit_code, stdout)
     return result
 
 
