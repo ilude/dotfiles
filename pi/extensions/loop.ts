@@ -9,6 +9,10 @@ import type {
 	ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
+import {
+	filterCommitSafeFiles,
+	listChangedFiles,
+} from "./workflow-commands.js";
 
 type LoopAction = "help" | "start" | "status" | "stop" | "resume";
 
@@ -158,15 +162,16 @@ async function git(pi: ExtensionAPI, cwd: string, args: string[]) {
 	return pi.exec("git", args, { cwd, timeout: 30_000 });
 }
 
+function committableChanges(cwd: string): string[] {
+	return filterCommitSafeFiles(listChangedFiles(cwd).all).included;
+}
+
 async function preflight(pi: ExtensionAPI, cwd: string): Promise<string> {
 	const root = await git(pi, cwd, ["rev-parse", "--show-toplevel"]);
 	if (root.code !== 0)
 		throw new Error("Current directory is not a Git worktree.");
-	const status = await git(pi, cwd, ["status", "--porcelain"]);
-	if (status.code !== 0)
-		throw new Error(status.stderr.trim() || "git status failed");
-	if (status.stdout.trim())
-		throw new Error("The worktree must be clean before /loop start.");
+	if (committableChanges(cwd).length > 0)
+		throw new Error("The /commit baseline did not finish cleanly.");
 	const head = await git(pi, cwd, ["rev-parse", "HEAD"]);
 	if (head.code !== 0)
 		throw new Error(head.stderr.trim() || "git rev-parse failed");
@@ -298,19 +303,45 @@ async function handleLoop(
 	}
 
 	if (ctx.mode !== "tui") throw new Error("/loop start requires TUI mode.");
-	const plans = resolvePlans(ctx.cwd, request.values);
+	const baselineComplete = request.values.includes("--baseline-complete");
+	const planValues = request.values.filter(
+		(value) => value !== "--baseline-complete",
+	);
+	const plans = resolvePlans(ctx.cwd, planValues);
 	const cwd = fs.realpathSync(ctx.cwd);
 	const active = listJobs().find(
 		(job) =>
-			path.resolve(job.cwd) === path.resolve(cwd) && processAlive(job.pid),
+			processAlive(job.pid) &&
+			job.plans.join("\0") === plans.join("\0") &&
+			(path.resolve(job.cwd) === path.resolve(cwd) ||
+				isContained(cwd, job.cwd) ||
+				isContained(job.cwd, cwd)),
 	);
-	if (active) throw new Error(`Loop ${active.id} already owns this worktree.`);
+	if (active)
+		throw new Error(`Loop ${active.id} is already running for these plans.`);
+
+	if (committableChanges(cwd).length > 0) {
+		if (baselineComplete)
+			throw new Error(
+				"The /commit baseline left outstanding changes. Resolve them before restarting /loop.",
+			);
+		const quotedPlans = plans.map((plan) => `"${plan}"`).join(" ");
+		show(pi, "Preparing the loop baseline through /commit.");
+		setTimeout(() => {
+			pi.sendUserMessage("/commit", { deliverAs: "followUp" });
+			pi.sendUserMessage(`/loop start ${quotedPlans} --baseline-complete`, {
+				deliverAs: "followUp",
+			});
+		}, 0);
+		return;
+	}
+
 	const initialHead = await preflight(pi, cwd);
 	const id = boundedId(cwd, plans);
 	const started = launch({ version: 1, id, cwd, plans, initialHead });
 	show(
 		pi,
-		`Started loop ${started.id} (PID ${started.pid}). Pi will exit so the loop can take over this worktree.`,
+		`Started loop ${started.id} (PID ${started.pid}). Pi will exit so the loop can take over this worktree. Baseline: ${initialHead.slice(0, 12)}.`,
 	);
 	ctx.shutdown();
 }

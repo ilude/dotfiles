@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,7 +8,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const spawnMock = vi.hoisted(() =>
 	vi.fn(() => ({ pid: 4242, unref: vi.fn() })),
 );
-vi.mock("node:child_process", () => ({ spawn: spawnMock }));
+vi.mock("node:child_process", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:child_process")>();
+	return { ...actual, spawn: spawnMock };
+});
 
 import loop, { loopTestApi } from "../extensions/loop.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
@@ -20,7 +24,23 @@ function temporaryDirectory(): string {
 	return directory;
 }
 
+function initializeRepository(workspace: string): void {
+	execFileSync("git", ["init", "-q"], { cwd: workspace });
+	execFileSync("git", ["config", "user.email", "loop-test@example.invalid"], {
+		cwd: workspace,
+	});
+	execFileSync("git", ["config", "user.name", "Loop Test"], {
+		cwd: workspace,
+	});
+	execFileSync("git", ["add", "--", "plan.md"], { cwd: workspace });
+	execFileSync("git", ["commit", "-q", "-m", "test: add plan"], {
+		cwd: workspace,
+	});
+}
+
 afterEach(() => {
+	vi.useRealTimers();
+	vi.clearAllMocks();
 	for (const directory of temporaryDirectories.splice(0))
 		fs.rmSync(directory, { recursive: true, force: true });
 });
@@ -73,6 +93,7 @@ describe("loop extension", () => {
 		const workspace = temporaryDirectory();
 		const stateRoot = temporaryDirectory();
 		fs.writeFileSync(path.join(workspace, "plan.md"), "# Plan\n");
+		initializeRepository(workspace);
 		const priorRoot = process.env.PI_LOOP_DIR;
 		process.env.PI_LOOP_DIR = stateRoot;
 		const pi = createMockPi();
@@ -106,6 +127,47 @@ describe("loop extension", () => {
 			.readdirSync(stateRoot, { recursive: true })
 			.filter((entry) => String(entry).endsWith("job.json"));
 		expect(records).toHaveLength(1);
+	});
+
+	it("queues the existing /commit workflow before retrying a dirty start", async () => {
+		vi.useFakeTimers();
+		const workspace = temporaryDirectory();
+		const stateRoot = temporaryDirectory();
+		fs.writeFileSync(path.join(workspace, "plan.md"), "# Plan\n");
+		initializeRepository(workspace);
+		fs.writeFileSync(path.join(workspace, "source.ts"), "dirty\n");
+		const priorRoot = process.env.PI_LOOP_DIR;
+		process.env.PI_LOOP_DIR = stateRoot;
+		const pi = createMockPi();
+		pi.exec.mockResolvedValue({
+			stdout: " M source.ts\n",
+			stderr: "",
+			code: 0,
+			killed: false,
+		});
+		loop(pi as unknown as ExtensionAPI);
+		const command = pi._commands.find((item) => item.name === "loop");
+
+		try {
+			await command?.handler(
+				"start plan.md",
+				createMockCtx({ cwd: workspace, mode: "tui" }),
+			);
+			vi.runAllTimers();
+		} finally {
+			if (priorRoot === undefined) delete process.env.PI_LOOP_DIR;
+			else process.env.PI_LOOP_DIR = priorRoot;
+		}
+
+		expect(spawnMock).not.toHaveBeenCalled();
+		expect(pi.sendUserMessage).toHaveBeenNthCalledWith(1, "/commit", {
+			deliverAs: "followUp",
+		});
+		expect(pi.sendUserMessage).toHaveBeenNthCalledWith(
+			2,
+			'/loop start "plan.md" --baseline-complete',
+			{ deliverAs: "followUp" },
+		);
 	});
 
 	it("registers /loop and renders help without starting a model turn", async () => {

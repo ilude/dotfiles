@@ -299,9 +299,10 @@ Workflow highlights:
 
 ### `loop.ts`
 
-Runs one validated plan slice per resumable iteration in a clean worktree. Starting
-a loop exits the current Pi process after launching the detached supervisor so
-only one writer occupies the worktree.
+Runs one validated plan slice per resumable iteration. When the worktree is
+dirty, `/loop start` queues the existing `/commit` workflow and retries only
+after that baseline finishes cleanly. It then exits the current Pi process after
+launching the detached supervisor so only one writer occupies the worktree.
 
 ```text
 /loop start .specs/example/plan.md [more plans...]
