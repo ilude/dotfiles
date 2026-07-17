@@ -2,6 +2,29 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Feed Pi decisions into the shared audit log
+
+**Why:** The shared schema only becomes operational when enforcement handlers
+record the final outcome they directly observe.
+
+**Changed:**
+- Pi now records unmatched allows, approved and denied confirmation requests,
+  and hard blocks with session/tool-call correlation and exact handler latency.
+- All Bash, PowerShell, and file-tool enforcement branches use the shared
+  fail-open writer without replacing the existing permission and eval streams.
+- Damage-control session start compresses aged monthly logs.
+
+**Validation:** The 87-test Pi damage-control suite passed, including one
+handler-level exercise that produced and secret-checked all four shared outcomes
+(`allow/not_applicable`, `ask/approved`, `ask/denied`, and
+`block/not_present`). Pi typecheck and Biome passed.
+
+**Files:** `pi/extensions/damage-control.ts`,
+`pi/tests/damage-control.test.ts`, `.specs/rationalization-phase5/plan.md`,
+`CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Add the shared damage-control decision schema
 
 **Why:** Pi and Claude need one bounded, secret-scrubbed audit row before their

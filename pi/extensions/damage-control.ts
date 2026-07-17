@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type {
 	BashToolCallEvent,
 	EditToolCallEvent,
@@ -12,6 +14,10 @@ import {
 	recordDamageControlEval,
 	summarizeDamageControlEval,
 } from "../lib/damage-control-eval.js";
+import {
+	compressOldDamageControlDecisionLogs,
+	recordDamageControlDecision,
+} from "../lib/damage-control-decision-log.js";
 import {
 	type DamageControlHealth,
 	getDamageControlHealth,
@@ -90,6 +96,45 @@ const DAMAGE_CONTROL_MODES: DamageControlMode[] = ["default", "noshell"];
 interface DamageControlRuntimeState {
 	health: DamageControlHealth;
 	mode: DamageControlMode;
+}
+
+interface SharedDecisionContext {
+	sessionId: string;
+	startedAt: number;
+}
+
+function sharedDecisionContext(
+	ctx: { sessionManager?: { getSessionId?: () => string | undefined } },
+	fallbackSessionId: string,
+): SharedDecisionContext {
+	return {
+		sessionId: ctx.sessionManager?.getSessionId?.() ?? fallbackSessionId,
+		startedAt: performance.now(),
+	};
+}
+
+function safeRecordSharedDecision(input: {
+	context: SharedDecisionContext;
+	toolName: string;
+	toolCallId?: string;
+	rawAction: string;
+	rule?: string;
+	engineAction: "allow" | "ask" | "block";
+	userDecision: "approved" | "denied" | "not_applicable" | "not_present";
+}): void {
+	recordDamageControlDecision({
+		client: "pi",
+		sessionId: input.context.sessionId,
+		toolUseId: input.toolCallId,
+		tool: input.toolName,
+		ruleId: input.rule ?? "none",
+		matchedPattern: input.rule,
+		actionSummary: input.rawAction,
+		engineAction: input.engineAction,
+		userDecision: input.userDecision,
+		latencyMs: Math.max(0, performance.now() - input.context.startedAt),
+		latencyKind: "exact",
+	});
 }
 
 function createDamageControlState(): DamageControlRuntimeState {
@@ -218,6 +263,7 @@ function safeRecordDamageControlEval(input: {
 }
 
 interface ApprovedAskRecord {
+	context: SharedDecisionContext;
 	toolName: string;
 	rawAction: string;
 	cwd: string;
@@ -229,6 +275,15 @@ interface ApprovedAskRecord {
 
 function safeRecordApprovedAsk(input: ApprovedAskRecord): void {
 	const summary = redactSummary(input.approval.reason);
+	safeRecordSharedDecision({
+		context: input.context,
+		toolName: input.toolName,
+		toolCallId: input.toolCallId,
+		rawAction: input.rawAction,
+		rule: input.approval.rule,
+		engineAction: "ask",
+		userDecision: "approved",
+	});
 	const metadata = {
 		cwd: input.cwd,
 		ruleSource: input.ruleSource,
@@ -430,11 +485,22 @@ function recordBlock(
 	rawAction: string,
 	cwd: string,
 	decision: { block: true; reason: string },
-	ruleSource?: string,
-	toolCallId?: string,
-	metadata?: Record<string, unknown>,
+	ruleSource: string | undefined,
+	toolCallId: string | undefined,
+	metadata: Record<string, unknown> | undefined,
+	context: SharedDecisionContext,
 ): void {
 	const rule = extractRulePattern(decision.reason);
+	const isDeniedAsk = decision.reason.startsWith("Confirmation required");
+	safeRecordSharedDecision({
+		context,
+		toolName,
+		toolCallId,
+		rawAction,
+		rule,
+		engineAction: isDeniedAsk ? "ask" : "block",
+		userDecision: isDeniedAsk ? "denied" : "not_present",
+	});
 	const auditMetadata = {
 		cwd,
 		ruleSource,
@@ -472,6 +538,7 @@ function recordBlock(
 
 export default function (pi: ExtensionAPI) {
 	wrapCommandRegistration(pi);
+	const fallbackSessionId = `pi-${randomUUID()}`;
 	debugLog("extension_registered");
 	const state = createDamageControlState();
 	const sessionState = new DamageControlSessionState();
@@ -483,6 +550,7 @@ export default function (pi: ExtensionAPI) {
 	registerDamageControlCommand(pi, state);
 
 	pi.on("session_start", async (_event, ctx) => {
+		compressOldDamageControlDecisionLogs();
 		debugLog("session_start", { health: state.health });
 		ctx.ui.setStatus?.("damage-control", "damage-control: active");
 		if (state.health.status === "failed") {
@@ -496,6 +564,8 @@ export default function (pi: ExtensionAPI) {
 	pi.on("tool_call", async (event, ctx) => {
 		if (event.toolName !== "bash") return undefined;
 		const command = (event as BashToolCallEvent).input.command ?? "";
+		const decisionContext = sharedDecisionContext(ctx, fallbackSessionId);
+		let approvedAskRecorded = false;
 		const failed = blockIfRulesFailed(state);
 		if (failed) {
 			recordBlock(
@@ -506,6 +576,7 @@ export default function (pi: ExtensionAPI) {
 				loaded.health.ruleSource,
 				event.toolCallId,
 				{ ruleLoadFailure: true },
+				decisionContext,
 			);
 			return failed;
 		}
@@ -529,6 +600,7 @@ export default function (pi: ExtensionAPI) {
 				);
 				if (ok) {
 					safeRecordApprovedAsk({
+						context: decisionContext,
 						toolName: "bash",
 						rawAction: command,
 						cwd: ctx.cwd,
@@ -555,6 +627,7 @@ export default function (pi: ExtensionAPI) {
 				sequenceDecision.evidence
 					? { sequenceEvidence: sequenceDecision.evidence }
 					: undefined,
+				decisionContext,
 			);
 			return decision;
 		}
@@ -568,6 +641,8 @@ export default function (pi: ExtensionAPI) {
 				modeDecision,
 				loaded.health.ruleSource,
 				event.toolCallId,
+				undefined,
+				decisionContext,
 			);
 			return modeDecision;
 		}
@@ -581,15 +656,18 @@ export default function (pi: ExtensionAPI) {
 				toolName: "bash",
 				astAnalysis: rules.astAnalysis,
 				cwd: ctx.cwd,
-				onAskApproved: (approval) =>
+				onAskApproved: (approval) => {
+					approvedAskRecorded = true;
 					safeRecordApprovedAsk({
+						context: decisionContext,
 						toolName: "bash",
 						rawAction: command,
 						cwd: ctx.cwd,
 						approval,
 						ruleSource: loaded.health.ruleSource,
 						toolCallId: event.toolCallId,
-					}),
+					});
+				},
 			},
 		);
 		if (dangerous) {
@@ -606,6 +684,8 @@ export default function (pi: ExtensionAPI) {
 				dangerous,
 				loaded.health.ruleSource,
 				event.toolCallId,
+				undefined,
+				decisionContext,
 			);
 			return dangerous;
 		}
@@ -627,9 +707,20 @@ export default function (pi: ExtensionAPI) {
 				noDelete,
 				loaded.health.ruleSource,
 				event.toolCallId,
+				undefined,
+				decisionContext,
 			);
 		} else {
 			sessionState.record("bash", command);
+			if (!approvedAskRecorded)
+				safeRecordSharedDecision({
+					context: decisionContext,
+					toolName: "bash",
+					toolCallId: event.toolCallId,
+					rawAction: command,
+					engineAction: "allow",
+					userDecision: "not_applicable",
+				});
 		}
 		return noDelete;
 	});
@@ -649,6 +740,8 @@ export default function (pi: ExtensionAPI) {
 	pi.on("tool_call", async (event, ctx) => {
 		if (event.toolName !== "pwsh") return undefined;
 		const command = (event.input as { command?: string }).command ?? "";
+		const decisionContext = sharedDecisionContext(ctx, fallbackSessionId);
+		let approvedAskRecorded = false;
 		const failed = blockIfRulesFailed(state);
 		if (failed) {
 			recordBlock(
@@ -659,6 +752,7 @@ export default function (pi: ExtensionAPI) {
 				loaded.health.ruleSource,
 				event.toolCallId,
 				{ ruleLoadFailure: true },
+				decisionContext,
 			);
 			return failed;
 		}
@@ -676,6 +770,8 @@ export default function (pi: ExtensionAPI) {
 				modeDecision,
 				loaded.health.ruleSource,
 				event.toolCallId,
+				undefined,
+				decisionContext,
 			);
 			return modeDecision;
 		}
@@ -687,15 +783,18 @@ export default function (pi: ExtensionAPI) {
 				hasUI: ctx.hasUI,
 				toolName: "pwsh",
 				cwd: ctx.cwd,
-				onAskApproved: (approval) =>
+				onAskApproved: (approval) => {
+					approvedAskRecorded = true;
 					safeRecordApprovedAsk({
+						context: decisionContext,
 						toolName: "pwsh",
 						rawAction: command,
 						cwd: ctx.cwd,
 						approval,
 						ruleSource: loaded.health.ruleSource,
 						toolCallId: event.toolCallId,
-					}),
+					});
+				},
 			},
 		);
 		if (dangerous) {
@@ -706,6 +805,8 @@ export default function (pi: ExtensionAPI) {
 				dangerous,
 				loaded.health.ruleSource,
 				event.toolCallId,
+				undefined,
+				decisionContext,
 			);
 			return dangerous;
 		}
@@ -722,7 +823,18 @@ export default function (pi: ExtensionAPI) {
 				noDelete,
 				loaded.health.ruleSource,
 				event.toolCallId,
+				undefined,
+				decisionContext,
 			);
+		else if (!approvedAskRecorded)
+			safeRecordSharedDecision({
+				context: decisionContext,
+				toolName: "pwsh",
+				toolCallId: event.toolCallId,
+				rawAction: command,
+				engineAction: "allow",
+				userDecision: "not_applicable",
+			});
 		return noDelete;
 	});
 
@@ -734,6 +846,8 @@ export default function (pi: ExtensionAPI) {
 			| WriteToolCallEvent
 			| EditToolCallEvent;
 		const rawPath = (fileEvent.input as { path?: string }).path ?? "";
+		const decisionContext = sharedDecisionContext(ctx, fallbackSessionId);
+		let approvedAskRecorded = false;
 		const failed = blockIfRulesFailed(state);
 		if (failed) {
 			recordBlock(
@@ -744,6 +858,7 @@ export default function (pi: ExtensionAPI) {
 				loaded.health.ruleSource,
 				event.toolCallId,
 				{ ruleLoadFailure: true },
+				decisionContext,
 			);
 			return failed;
 		}
@@ -763,6 +878,8 @@ export default function (pi: ExtensionAPI) {
 				canonResult,
 				loaded.health.ruleSource,
 				event.toolCallId,
+				undefined,
+				decisionContext,
 			);
 			return canonResult;
 		}
@@ -778,15 +895,18 @@ export default function (pi: ExtensionAPI) {
 					{
 						ui: ctx.ui,
 						hasUI: ctx.hasUI,
-						onAskApproved: (approval) =>
+						onAskApproved: (approval) => {
+							approvedAskRecorded = true;
 							safeRecordApprovedAsk({
+								context: decisionContext,
 								toolName: event.toolName,
 								rawAction: rawPath,
 								cwd: ctx.cwd,
 								approval,
 								ruleSource: loaded.health.ruleSource,
 								toolCallId: event.toolCallId,
-							}),
+							});
+						},
 					},
 				);
 		if (zeroAccess) {
@@ -803,6 +923,8 @@ export default function (pi: ExtensionAPI) {
 				zeroAccess,
 				loaded.health.ruleSource,
 				event.toolCallId,
+				undefined,
+				decisionContext,
 			);
 			return zeroAccess;
 		}
@@ -835,10 +957,14 @@ export default function (pi: ExtensionAPI) {
 						decision,
 						loaded.health.ruleSource,
 						event.toolCallId,
+						undefined,
+						decisionContext,
 					);
 					return decision;
 				}
+				approvedAskRecorded = true;
 				safeRecordApprovedAsk({
+					context: decisionContext,
 					toolName: event.toolName,
 					rawAction: rawPath,
 					cwd: ctx.cwd,
@@ -867,6 +993,8 @@ export default function (pi: ExtensionAPI) {
 					readOnly,
 					loaded.health.ruleSource,
 					event.toolCallId,
+					undefined,
+					decisionContext,
 				);
 				return readOnly;
 			}
@@ -892,6 +1020,8 @@ export default function (pi: ExtensionAPI) {
 						decision,
 						loaded.health.ruleSource,
 						event.toolCallId,
+						undefined,
+						decisionContext,
 					);
 					return decision;
 				}
@@ -923,10 +1053,14 @@ export default function (pi: ExtensionAPI) {
 						decision,
 						loaded.health.ruleSource,
 						event.toolCallId,
+						undefined,
+						decisionContext,
 					);
 					return decision;
 				}
+				approvedAskRecorded = true;
 				safeRecordApprovedAsk({
+					context: decisionContext,
 					toolName: event.toolName,
 					rawAction: rawPath,
 					cwd: ctx.cwd,
@@ -963,12 +1097,32 @@ export default function (pi: ExtensionAPI) {
 					noDelete,
 					loaded.health.ruleSource,
 					event.toolCallId,
+					undefined,
+					decisionContext,
 				);
+			else if (!approvedAskRecorded)
+				safeRecordSharedDecision({
+					context: decisionContext,
+					toolName: event.toolName,
+					toolCallId: event.toolCallId,
+					rawAction: rawPath,
+					engineAction: "allow",
+					userDecision: "not_applicable",
+				});
 			return noDelete;
 		}
 		if (["read", "glob"].includes(event.toolName)) {
 			sessionState.record(event.toolName, rawPath);
 		}
+		if (!approvedAskRecorded)
+			safeRecordSharedDecision({
+				context: decisionContext,
+				toolName: event.toolName,
+				toolCallId: event.toolCallId,
+				rawAction: rawPath,
+				engineAction: "allow",
+				userDecision: "not_applicable",
+			});
 		return undefined;
 	});
 }

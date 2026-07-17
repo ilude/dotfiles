@@ -1,4 +1,20 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+const decisionLogRoot = fs.mkdtempSync(
+	path.join(os.tmpdir(), "pi-damage-control-shared-log-"),
+);
+const previousDecisionLogRoot = process.env.DAMAGE_CONTROL_DECISION_DIR;
+process.env.DAMAGE_CONTROL_DECISION_DIR = decisionLogRoot;
+
+afterAll(() => {
+	if (previousDecisionLogRoot === undefined)
+		delete process.env.DAMAGE_CONTROL_DECISION_DIR;
+	else process.env.DAMAGE_CONTROL_DECISION_DIR = previousDecisionLogRoot;
+	fs.rmSync(decisionLogRoot, { recursive: true, force: true });
+});
 
 function setPlatform(value: NodeJS.Platform) {
 	Object.defineProperty(process, "platform", {
@@ -1202,8 +1218,6 @@ describe("damage-control no_delete_paths enforcement", () => {
 //
 // "ssh-protected patterns" = ~/.ssh/, *.pem, *.ppk, *.p12, *.pfx in the
 // configured zero_access_paths list.
-import * as os from "node:os";
-import * as path from "node:path";
 
 // Tests use native-separator paths (path.join only) because expandPattern
 // inside damage-control.ts uses path.join too; mixing forward/backslash
@@ -1654,16 +1668,26 @@ describe("damage-control registered-handler audit matrix", () => {
 			} as unknown as Parameters<typeof mod.default>[0]);
 			const confirm = vi.fn(async () => true);
 			const ui = { confirm, notify: vi.fn(), setStatus: vi.fn() };
-			const tuiCtx = { cwd: root, hasUI: true, ui };
+			const sessionManager = { getSessionId: () => "pi-audit-session" };
+			const tuiCtx = { cwd: root, hasUI: true, ui, sessionManager };
 			const noUiConfirm = vi.fn(async () => true);
 			const noUiCtx = {
 				cwd: root,
 				hasUI: false,
 				ui: { confirm: noUiConfirm, notify: vi.fn(), setStatus: vi.fn() },
+				sessionManager,
 			};
 			const [bashHandler, pwshHandler, fileHandler] = handlers;
 			if (!bashHandler || !pwshHandler || !fileHandler)
 				throw new Error("damage-control handlers not registered");
+			await bashHandler(
+				{
+					toolName: "bash",
+					toolCallId: "allowed-bash",
+					input: { command: "pwd" },
+				},
+				tuiCtx,
+			);
 
 			await fileHandler(
 				{
@@ -1822,6 +1846,44 @@ describe("damage-control registered-handler audit matrix", () => {
 			).toBe(true);
 			expect(JSON.stringify(decisions)).not.toContain(sensitiveValue);
 			expect(JSON.stringify(events)).not.toContain(sensitiveValue);
+
+			const decisionRows = fs
+				.readFileSync(
+					path.join(
+						decisionLogRoot,
+						`decisions-${new Date().toISOString().slice(0, 7)}.jsonl`,
+					),
+					"utf8",
+				)
+				.trim()
+				.split("\n")
+				.map((line) => JSON.parse(line))
+				.filter((row) => row.sessionId === "pi-audit-session");
+			expect(decisionRows).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						toolUseId: "allowed-bash",
+						engineAction: "allow",
+						userDecision: "not_applicable",
+					}),
+					expect.objectContaining({
+						toolUseId: "approved-bash",
+						engineAction: "ask",
+						userDecision: "approved",
+					}),
+					expect.objectContaining({
+						toolUseId: "denied-bash-no-ui",
+						engineAction: "ask",
+						userDecision: "denied",
+					}),
+					expect.objectContaining({
+						toolUseId: "blocked-pwsh",
+						engineAction: "block",
+						userDecision: "not_present",
+					}),
+				]),
+			);
+			expect(JSON.stringify(decisionRows)).not.toContain(sensitiveValue);
 		} finally {
 			if (previousOperatorDir === undefined) delete process.env.PI_OPERATOR_DIR;
 			else process.env.PI_OPERATOR_DIR = previousOperatorDir;
