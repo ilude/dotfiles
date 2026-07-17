@@ -2,6 +2,29 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Hand plan execution to the DAG drain
+
+**Why:** `/do-it` still instructed the model to pump dependency waves even after
+the scheduler could own readiness, ordering, and writer safety.
+
+**Changed:**
+- Replaced wave-by-wave execution prose with one graph-aware `task batch`
+  handoff using stable keys, dependency keys, and writer scopes.
+- Directed background work through `task drain`, completion notifications, and
+  explicit starvation state while retaining direct execution for ready manual
+  tasks.
+- Added the planning rule that overlapping same-file writes must be combined or
+  connected by a dependency edge.
+
+**Validation:** Focused workflow contract tests verified the batch, dependency,
+scope, drain, and same-file instructions and rejected the retired wave-by-wave
+phrase. Pi typecheck and focused Biome checks passed.
+
+**Files:** `pi/{skills/workflow/do-it.md,skills/workflow/plan-it.md,tests/workflow-skills.test.ts}`,
+`.specs/rationalization-phase3/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Add the opt-in task DAG drain
 
 **Why:** Dependency graphs still required the model to dispatch each ready wave

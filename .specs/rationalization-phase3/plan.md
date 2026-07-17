@@ -320,12 +320,12 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
   - [x] shared atomic lease lifecycle implemented for Pi and Claude
   - [x] same-worktree warning and separate-worktree non-warning validated
   - [x] clean shutdown, stale recovery, and clean Git status validated
-- [ ] T4: mechanical DAG scheduler - in-progress: wire the /do-it graph handoff
+- [ ] T4: mechanical DAG scheduler - in-progress: implementation validated; record final slice commit hash
   - [x] auto-dispatch on unblock with maxConcurrent
   - [x] write-scope serialization; read-only derived from enforced tools
   - [x] critical-path-first ordering
   - [x] failure/starvation semantics with explicit report
-  - [ ] /do-it handoff wired; wave narration removed
+  - [x] /do-it handoff wired; wave narration removed
   - [x] fixture DAG validation passed
 - [ ] T5: schema-validated subagent output - pending
   - [ ] outputSchema validation with one bounded correction
@@ -340,5 +340,5 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
 
 - **Classification:** in progress; T1-T3 complete
 - **Current blocker:** none
-- **Next:** T4, replace /do-it wave narration with one graph-aware batch plus drain handoff and add the plan-it same-file rule
+- **Next:** record T4's final handoff commit hash, then start T5 schema-validated subagent output
 - **Resume:** `/do-it .specs/rationalization-phase3/plan.md`

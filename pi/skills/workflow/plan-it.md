@@ -44,7 +44,7 @@ Read `templates/plan-template.md` and use it as the structural contract. The pla
 - non-secret evidence destinations for tasks and gates;
 - archive conditions and durable incomplete-state requirements.
 
-Choose the smallest executable task breakdown that preserves real dependencies. Record alternatives only when approach judgment matters; include the rejected trade-off that would help an executor avoid reopening the decision.
+Choose the smallest executable task breakdown that preserves real dependencies. Never assign overlapping same-file write scopes to parallel tasks; combine them or add a dependency edge. Record alternatives only when approach judgment matters; include the rejected trade-off that would help an executor avoid reopening the decision.
 
 ## Readiness Audit
 

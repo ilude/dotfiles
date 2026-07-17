@@ -25,7 +25,7 @@ Assume a fresh session. Read the complete plan, its durable checklist/status, ow
 
 Require enough objective, boundaries, task breakdown, dependencies, waves, validation, and success criteria to execute safely. Older plans may proceed from equivalent content, but record any contract gap that blocks completion.
 
-Resume from the first unchecked dependency-ready item. Trust checked work only when its required evidence exists and current repository state does not contradict it.
+Reconcile unchecked plan items with the durable task graph. Trust checked work only when its required evidence exists and current repository state does not contradict it.
 
 ## Hard Boundaries
 
@@ -39,13 +39,11 @@ Resume from the first unchecked dependency-ready item. Trust checked work only w
 
 ## Execution and Evidence
 
-Execute ready tasks wave by wave. Keep an item unchecked while it is in progress. Immediately after its required verification passes:
+Materialize the unchecked task breakdown once with one graph-aware `task batch` call: use stable keys for dependency references, `blockedByKeys` for edges, worktree-relative `scope` for writers, executable fields only for delegated work, and manual records for main-thread work. Reuse existing records on resume instead of creating duplicates. If the graph exceeds the public batch bound, record the contract gap and stop rather than publishing a partial graph.
 
-1. mark it `[x]`;
-2. set completed status;
-3. record non-secret evidence;
-4. save the plan;
-5. only then start dependent or sequential work.
+Start `task drain` for dependency-aware background dispatch. Let the scheduler own readiness, bounded concurrency, critical-path ordering, and writer serialization; react to completion notifications rather than pumping waves with `ready`, `execute`, or polling. At quiescence, execute any ready manual task directly, record its state once, and drain again only when that state change can unblock executable work. A starvation result is a blocker and must be copied into plan state with the named failed dependencies.
+
+Keep an item unchecked while it is in progress. Immediately after its required verification passes, mark it `[x]`, set completed status, record non-secret evidence, and save the plan before dependent or sequential work proceeds.
 
 ## Validation and Repair
 
