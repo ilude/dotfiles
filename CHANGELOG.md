@@ -2,6 +2,28 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Present the plan-scoped authorization design
+
+**Why:** Plan-scoped ask auto-approval changes a safety boundary and requires an
+explicit design decision before implementation.
+
+**Designed:**
+- Explicit linted authorization declarations bound to plan hash, run, task,
+  repository, tool, ask rule, anchored action matcher, and cwd scope.
+- One visible `/do-it` confirmation, ask-only matching, hard-block immunity,
+  conservative expiry, task/child isolation, and no daemon or bearer secret.
+- Additive authorizer audit fields with logging/validation failure falling back
+  to ordinary confirmation.
+- Default-off validation for matching/nonmatching asks, blocks, expiry, tamper,
+  RPC, child scope, and audit failure.
+
+**Decision:** Approve, revise, or decline is required. No implementation or
+plan authorization is inferred from silence.
+
+**Files:** `.specs/rationalization-phase5/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Add shared damage-control audit entry points
 
 **Why:** The deterministic report needs equivalent thin client commands and a

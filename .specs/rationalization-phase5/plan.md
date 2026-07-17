@@ -289,6 +289,56 @@ production policy would be invalid. T3 therefore needs either a user-approved
 fixture-only application/measurement demonstration or two weeks of real rows
 and a real proposal selection.
 
+### T4 plan-scoped authorization design
+
+Presented 2026-07-17 for an explicit user decision. Recommended design:
+
+1. **Explicit declarations, never prose inference.** A plan may add a structured
+   `authorizations` block. Each row names an authorization ID, task ID, Pi tool,
+   current damage-control ask rule ID, anchored action regex, and repo-relative
+   cwd scope. `plan-lint` rejects unknown tasks/tools/rules, invalid or unanchored
+   regexes, duplicate IDs, absolute/out-of-repo cwd scopes, and declarations on
+   completed tasks. Plans without this additive block behave byte-for-byte as
+   today.
+2. **One visible approval boundary.** `/do-it` shows the exact declarations and
+   asks once before dispatch. Confirmation creates grants; cancellation or
+   non-interactive failure creates none and normal per-tool asks remain. The
+   planning model may propose declarations but cannot activate them.
+3. **Run/task binding.** A grant binds plan path plus SHA-256 content hash,
+   `/do-it` run ID, task ID, repository root, tool, ask rule ID, action regex,
+   and cwd scope. A worker receives only its current run/task IDs. Missing,
+   mismatched, malformed, or overlapping context falls back to the normal ask.
+4. **Ask-only auto-approval.** Damage-control first computes its existing
+   outcome. Only an `ask` may consult the grant broker. Hard blocks, rule-load
+   failures, malformed paths, and tools outside the declaration are never
+   bypassed. Matching uses the already secret-scrubbed action but execution uses
+   the untouched tool input.
+5. **Conservative expiry.** A grant expires at the earliest of task terminal
+   state, `/do-it` cancellation/completion, session shutdown, plan-hash change,
+   or four hours. Resume/retry requires a fresh confirmation. Durable records
+   may remain for audit but cannot reactivate.
+6. **No service or bearer secret.** Active grants use atomically written,
+   mode-restricted JSON under the operator directory; there is no daemon or IPC.
+   Run/task IDs select scope but confer nothing without every stored matcher.
+   Subagent launch propagates only those IDs.
+7. **Authorization is auditable or it does not happen.** The T1 schema gains an
+   optional additive `authorizer` object with `kind=plan`, plan path/hash, run
+   ID, task ID, and authorization ID. An auto-approved row remains
+   `engineAction=ask`, `userDecision=approved`. If grant validation or decision
+   logging fails, the tool falls back to the ordinary confirmation instead of
+   auto-approving.
+8. **Validation/rollout.** Default-off tests must prove matching ask approval,
+   nonmatching ask, hard block, expiry, hash tamper, task isolation, child scope,
+   RPC confirmation, audit fields, and logging-failure fallback. One synthetic
+   plan runs in RPC before any real authorization declaration is added.
+
+Alternatives rejected: deriving scope from task prose is nondeterministic;
+authorizing an entire rule without an anchored action matcher is too broad;
+reusing grants across resume weakens the explicit approval boundary.
+
+Decision requested: **approve**, **revise**, or **decline** this T4 design. No
+implementation or plan declaration is inferred from silence.
+
 ## Tasks
 
 ### T1: Structured decision logging in both clients
@@ -435,7 +485,7 @@ from here.
 - [ ] T3: noise/signal audit tool - blocked: user must choose fixture-only demonstration or wait for real data
   - [x] report with three proposal classes from real or fixture data
   - [ ] one approved proposal applied and measured
-- [ ] T4: plan-scoped authorization - pending
+- [ ] T4: plan-scoped authorization - blocked: approve, revise, or decline the presented design
   - [ ] design presented; user decision received (gate - never inferred)
   - [ ] approved design implemented and validated (or decline recorded)
 - [ ] T5: close - pending
@@ -444,10 +494,10 @@ from here.
 
 ### State
 
-- **Classification:** blocked on independent T2 and T3 user decisions
-- **Current blocker:** T2 requires divergence option 1, 2, or 3; T3 requires
-  either approval for a fixture-only apply/measure demonstration or waiting for
-  two weeks of real decision rows before selecting a real proposal
-- **Next:** after a user decision, execute only that approved T2 or T3 slice;
-  otherwise present T4's independent design gate on the next iteration
+- **Classification:** blocked on independent T2, T3, and T4 user decisions
+- **Current blocker:** T2 requires divergence option 1, 2, or 3; T3 requires a
+  fixture-only demonstration approval or two weeks of real data; T4 requires
+  approve, revise, or decline on the design above
+- **Next:** execute only the user-selected T2, T3, or T4 slice; if no selection
+  is made, Phase 5 is quiescent
 - **Resume:** `/do-it .specs/rationalization-phase5/plan.md`
