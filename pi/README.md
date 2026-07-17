@@ -323,7 +323,7 @@ records. While an interactive Pi session is open, the footer shows
 `loop <job-id> T:<iteration>/<maximum>` when the maximum is known and omits the
 maximum for legacy jobs. Active task status follows the loop, and compact
 month-to-date Bedrock cost is last, for example
-`loop rationalization-345 T:35/48 | tasks 2 (2 running) | bedrock $71.64`.
+`loop rationalization-345 T:35/100 | tasks 2 (2 running) | bedrock $71.64`.
 The five-second refresh uses asynchronous file reads, never overlaps polls, and
 updates the footer only when the value changes. It disappears when no supervisor
 PID is active. A job becomes trustworthy only after its first

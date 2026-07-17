@@ -43,7 +43,7 @@ function writeJobFixture(
 			pid,
 			startedAt: "2026-07-17T00:00:00.000Z",
 			initialHead: "abc123",
-			maxIterations: 48,
+			maxIterations: 100,
 		})}\n`,
 	);
 	if (iteration !== undefined)
@@ -140,7 +140,7 @@ describe("loop extension", () => {
 			await vi.waitFor(() =>
 				expect(setStatus).toHaveBeenLastCalledWith(
 					"loop",
-					"loop active-job T:12/48",
+					"loop active-job T:12/100",
 				),
 			);
 
@@ -162,7 +162,7 @@ describe("loop extension", () => {
 			await vi.waitFor(() =>
 				expect(setStatus).toHaveBeenLastCalledWith(
 					"loop",
-					"loop active-job T:13/48",
+					"loop active-job T:13/100",
 				),
 			);
 

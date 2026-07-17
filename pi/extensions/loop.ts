@@ -44,7 +44,7 @@ function loopRoot(): string {
 }
 const STATUS_KEY = "loop";
 const STATUS_REFRESH_MS = 5_000;
-const MAX_LOOP_ITERATIONS = 48;
+const MAX_LOOP_ITERATIONS = 100;
 const LOG_TAIL_BYTES = 8 * 1024;
 const MAX_STATUS_JOBS = 64;
 const SCRIPT_PATH = fileURLToPath(

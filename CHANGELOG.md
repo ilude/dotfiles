@@ -70,6 +70,8 @@ worker exits without turning user-decision gates into repeated calls.
 - Added a PowerShell supervisor that resumes one dedicated Pi session, retries
   failed invocations with bounded backoff, and stops after repeated no-progress
   iterations.
+- Set the default loop budget to 100 iterations while retaining earlier stops
+  for completion, user gates, repeated no-progress, and invocation failures.
 - Added schema-versioned loop lifecycle records with supervisor and child Pi
   PIDs, correlation fields, durations, exit codes, output/session sizes, retry
   scheduling, and terminal stop reasons.

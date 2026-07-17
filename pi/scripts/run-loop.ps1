@@ -15,7 +15,7 @@ param(
     [int]$StartupDelaySeconds = 0,
 
     [ValidateRange(1, 200)]
-    [int]$MaxIterations = 48,
+    [int]$MaxIterations = 100,
 
     [ValidateRange(1, 20)]
     [int]$MaxInvocationRetries = 5,
