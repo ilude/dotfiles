@@ -93,6 +93,12 @@ def test_stale_cleanup_requires_expiry_and_absent_or_replaced_identity(tmp_path,
     assert crashed["removed"] == [str(crashed_path)]
 
 
+def test_invalid_process_identifier_is_absent():
+    lease = load_script()
+
+    assert lease.process_exists(2147483647) is False
+
+
 def test_malformed_records_are_reported_and_never_removed(tmp_path):
     lease = load_script()
     root = make_worktree(tmp_path / "repo")

@@ -2,6 +2,29 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Validate cross-client worktree occupancy
+
+**Why:** Live Pi/Claude validation exposed a Windows stale-process edge case and
+was required to prove warnings and cleanup across the actual client entrypoints.
+
+**Changed:**
+- Treated Windows `os.kill(pid, 0)` invalid-parameter results as an absent
+  process identity during stale lease recovery.
+- Added a regression fixture for invalid process identifiers.
+
+**Validation:** A live Claude hook and Pi RPC session in one scratch worktree
+both reported `instances 2 !` and received the separate-worktree warning on the
+next model turn. Equivalent sessions in separate worktrees remained at
+`instances 1` without warnings. Clean shutdown removed both leases, simulated
+crash expiry removed the dead lease, and real lease activity left Git status
+unchanged. Ten focused helper and cross-client tests passed with Ruff checks.
+
+**Files:** `scripts/agent_instance_lease.py`,
+`test/test_agent_instance_lease.py`,
+`.specs/rationalization-phase3/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Wire Claude worktree occupancy
 
 **Why:** Cross-client concurrency remained silent until Claude Code joined the

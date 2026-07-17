@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import json
 import os
@@ -77,6 +78,10 @@ def process_exists(pid: int) -> bool:
         return False
     except PermissionError:
         return True
+    except OSError as error:
+        if error.errno == errno.ESRCH or getattr(error, "winerror", None) == 87:
+            return False
+        raise
     return True
 
 
