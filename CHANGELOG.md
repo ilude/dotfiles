@@ -2,6 +2,30 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-16: Close test rationalization ledger
+
+**Why:** Final reconciliation needed current collection arithmetic, a fresh
+static-content sweep, exact workflow dispatch coverage, and aggregate validation.
+
+**Changed:**
+- Classified and removed the one legacy-token grep missed by the original
+  ledger inventory; all 109 decision rows are now executed.
+- Added `/review-it` dispatch and mutation-boundary coverage alongside the
+  existing `/plan-it` and `/do-it` workflow fixtures.
+- Synchronized task-await fixtures before releasing worker promises to remove
+  load-dependent ownership assertions.
+- Recorded before/after instruction bytes, test collections, and
+  `make test-quick` timing in the ledger.
+
+**Validation:** `make check-pi-extensions` passed 1,313 tests with one skip;
+`make check` passed after focused repair of the task-await test race.
+
+**Files:** `.specs/rationalization/ledger.md`,
+`test/test_private_archive.py`, `pi/tests/{workflow-dispatch,task-tools}.test.ts`,
+`CHANGELOG.md`
+
+---
+
 ## 2026-07-16: Split quality Make targets
 
 **Why:** Routine changed-file and static checks needed separate entrypoints from

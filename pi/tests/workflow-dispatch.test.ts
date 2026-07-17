@@ -57,6 +57,28 @@ describe("workflow slash command dispatch", () => {
 		});
 	});
 
+	it("/review-it dispatches the plan path without opening a new session", async () => {
+		const mockPi = createMockPi();
+		const mod = await import("../extensions/workflow-commands.ts");
+		mod.default(mockPi as Parameters<typeof mod.default>[0]);
+		const ctx = { newSession: vi.fn() };
+
+		await getHandler(mockPi, "review-it")(
+			".specs/workflow-fixture/plan.md",
+			ctx,
+		);
+
+		expect(mockPi.sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				content: "Review skill body .specs/workflow-fixture/plan.md",
+				customType: "workflow.hiddenPrompt",
+				display: false,
+			}),
+			{ triggerTurn: true, deliverAs: "followUp" },
+		);
+		expect(ctx.newSession).not.toHaveBeenCalled();
+	});
+
 	it("/prd-it sends its hidden workflow prompt as a follow-up turn", async () => {
 		const mockPi = createMockPi();
 		const mod = await import("../extensions/workflow-commands.ts");
@@ -87,7 +109,10 @@ describe("workflow slash command dispatch", () => {
 			}),
 		};
 
-		await getHandler(mockPi, "do-it")(".specs/example/plan.md", ctx);
+		await getHandler(mockPi, "do-it")(
+			".specs/workflow-fixture/plan.md",
+			ctx,
+		);
 
 		expect(newSessionSendMessage).toHaveBeenCalledWith(
 			expect.objectContaining({

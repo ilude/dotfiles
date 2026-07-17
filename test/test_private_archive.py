@@ -100,36 +100,6 @@ def make_hook_repo(tmp_path: Path) -> Path:
     return repo
 
 
-def test_legacy_allowlist():
-    proc = run(
-        [
-            "git",
-            "grep",
-            "-nE",
-            r"\\.encrypted|recipients\\.txt|private-archive|x-private|private_archive_lib|pre-commit-x-private|install-x-private-hook",
-            "--",
-            ".gitignore",
-            ".gitattributes",
-            "scripts",
-            "test/test_private_archive.py",
-            "tests",
-            "pi/prompts/handoff.md",
-            "pi/skills/x-twitter/SKILL.md",
-        ],
-        check=False,
-    )
-    allowed_prefixes = (
-        "scripts/install-dolos-hook:",
-        "test/test_private_archive.py:",
-    )
-    unexpected = [
-        line
-        for line in proc.stdout.splitlines()
-        if not line.startswith(allowed_prefixes)
-    ]
-    assert unexpected == []
-
-
 def test_hook_install_idempotent_auto_pack_and_unrelated_commit(tmp_path):
     repo = make_hook_repo(tmp_path)
     run(script(repo / "scripts/install-dolos-hook") + ["--dry-run"], cwd=repo)

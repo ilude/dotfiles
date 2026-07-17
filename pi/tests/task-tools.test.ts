@@ -976,6 +976,7 @@ describe("task tools", () => {
 		expect(runnerEntries).toEqual(workerIds);
 
 		const waiting = invoke({ action: "await", ids: workerIds });
+		await new Promise<void>((resolve) => setImmediate(resolve));
 		for (const workerId of workerIds) {
 			releases.get(workerId)?.({
 				output: `artifact for ${workerId}`,
@@ -1087,6 +1088,7 @@ describe("task tools", () => {
 				undefined,
 				ctx,
 			);
+		await new Promise<void>((resolve) => setImmediate(resolve));
 		releases.get(first.id)?.({ output: "first", exitCode: 0 });
 		releases.get(unscoped.id)?.({ output: "unscoped", exitCode: 0 });
 		const awaited = await waiting;
