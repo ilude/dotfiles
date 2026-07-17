@@ -152,6 +152,34 @@ Validated 2026-07-17 through the supported client entry points:
   passed and 1 skipped; shared-writer suites 7 passed. Pi typecheck, Biome, and
   Ruff passed in the implementation slices.
 
+### T2 loader findings
+
+Verified 2026-07-17 from `loadRules()` and the tracked policy:
+
+- Source precedence is `PI_DAMAGE_CONTROL_CLAUDE_POLICY_PATH`, then the tracked
+  `claude/hooks/damage-control/patterns.yaml`, then legacy Pi YAML candidates
+  only when neither Claude path exists. In this checkout the legacy candidates
+  are unreachable by default.
+- Claude independently prefers a project-local
+  `.claude/hooks/damage-control/patterns.yaml` when `CLAUDE_PROJECT_DIR` points
+  to one. Pi does not mirror that precedence unless the override variable is
+  set, so project-local policy can currently diverge by client.
+- Of 353 `bashToolPatterns`, Pi normalizes 329 into Bash-only command rules.
+  The 24 entries carrying `exfil: true` are deliberately skipped. `ask: true`
+  becomes ask; every other included entry becomes block. A malformed or
+  Python-only included regex fails the complete policy load.
+- Pi copies all tracked string entries from `zeroAccessPaths` (18),
+  `zeroAccessExclusions` (68), `readOnlyPaths` (46), `noDeletePaths` (30),
+  `writeConfirmPaths` (5), `readConfirmPaths` (3), and `contentScanPaths` (7).
+- The 19 tracked `injectionPatterns` are mappings, while Pi's normalizer accepts
+  only strings for that field, so all 19 currently normalize to an empty list.
+  The 17 `secretPatterns` and two `contexts` are also ignored. `astAnalysis` is
+  copied, including enabled state, timeout, safe commands, and dangerous
+  commands.
+- Pi's sequence and output protections may cover some skipped vectors, but T2
+  must count coverage only when the oracle runner demonstrates an equivalent
+  outcome or records an explicit waiver. Loader presence is not coverage.
+
 ## Tasks
 
 ### T1: Structured decision logging in both clients
@@ -288,8 +316,8 @@ from here.
   - [x] schema and shared location implemented in both clients
   - [x] live four-outcome validation on both clients
   - [x] fail-open and secret-scrub proven
-- [ ] T2: canonical source, oracle runner, coverage debt zero - pending
-  - [ ] verified what damage-control-rules.ts already loads
+- [ ] T2: canonical source, oracle runner, coverage debt zero - in-progress: build the per-pattern Claude-oracle runner
+  - [x] verified what damage-control-rules.ts already loads
   - [ ] per-pattern coverage runner built (Claude hook as oracle)
   - [ ] coverage_debt_count = 0 (covered or explicitly waived)
   - [ ] canonical source created; both engines pass the runner
@@ -307,8 +335,8 @@ from here.
 
 ### State
 
-- **Classification:** in progress; T1 complete
+- **Classification:** in progress; T2 loader behavior verified
 - **Current blocker:** none
-- **Next:** T2, verify exactly what `damage-control-rules.ts` loads, then build
-  the per-pattern Claude-oracle coverage runner before canonical cutover
+- **Next:** T2, build the per-pattern Claude-oracle coverage runner covering
+  command, path, exfiltration, injection, context, and AST policy surfaces
 - **Resume:** `/do-it .specs/rationalization-phase5/plan.md`

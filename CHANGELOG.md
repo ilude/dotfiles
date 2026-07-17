@@ -2,6 +2,28 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Record the damage-control loader boundary
+
+**Why:** Canonical-policy cutover needs a measured inventory of what Pi already
+loads, not an assumption that pointing at Claude's YAML provides parity.
+
+**Recorded:**
+- Pi's override, tracked-Claude, and legacy-source precedence, including the
+  project-local precedence that only Claude currently applies.
+- Exact loaded counts for command and path sections.
+- The 24 exfiltration command entries, 19 mapping-shaped injection patterns,
+  17 secret patterns, and two contexts that Pi currently skips or ignores.
+- The rule that built-in protections count as coverage only after the oracle
+  runner proves an equivalent outcome or records a waiver.
+
+**Validation:** Parsed the tracked YAML for section shapes and counts, traced
+`loadRules()` and `normalizeClaudePolicy()`, and confirmed the tracked-policy
+loader test exercises the default source.
+
+**Files:** `.specs/rationalization-phase5/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Validate shared decision logging end to end
 
 **Why:** Unit coverage does not prove that confirmation responses, hard blocks,
