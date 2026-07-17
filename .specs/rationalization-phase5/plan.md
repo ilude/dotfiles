@@ -132,6 +132,26 @@ The implementation therefore needs one shared fail-open writer plus a bounded
 pending-ask correlation store. Existing per-client logs remain migration inputs,
 not the canonical output.
 
+### T1 validation evidence
+
+Validated 2026-07-17 through the supported client entry points:
+
+- Pi persistent RPC loaded the worktree damage-control extension and executed
+  four model-requested tool calls. The shared log contained
+  `allow/not_applicable`, `ask/approved`, `ask/denied`, and
+  `block/not_present`; the synthetic token was absent.
+- A second Pi RPC run pointed `DAMAGE_CONTROL_DECISION_DIR` at a regular file.
+  The safe Bash tool still completed successfully while logging failed.
+- Direct bare-`python` Claude PreToolUse, PostToolUse, and SessionEnd hook
+  invocations produced all four knowable Claude outcomes, scrubbed the same
+  synthetic token, and left no pending asks.
+- With the Claude destination pointed at a regular file, allow still exited 0,
+  ask still emitted `permissionDecision: ask` and exited 0, and hard block
+  still exited 2.
+- Automated coverage: Pi damage-control 87 passed; Claude damage-control 763
+  passed and 1 skipped; shared-writer suites 7 passed. Pi typecheck, Biome, and
+  Ruff passed in the implementation slices.
+
 ## Tasks
 
 ### T1: Structured decision logging in both clients
@@ -263,11 +283,11 @@ from here.
 
 ### Task checklist
 
-- [ ] T1: structured decision logging - in-progress: complete live Pi and fail-open validation
+- [x] T1: structured decision logging - done: `bb39783`
   - [x] per-client decision knowability verified and recorded
   - [x] schema and shared location implemented in both clients
-  - [ ] live four-outcome validation on both clients
-  - [ ] fail-open and secret-scrub proven
+  - [x] live four-outcome validation on both clients
+  - [x] fail-open and secret-scrub proven
 - [ ] T2: canonical source, oracle runner, coverage debt zero - pending
   - [ ] verified what damage-control-rules.ts already loads
   - [ ] per-pattern coverage runner built (Claude hook as oracle)
@@ -287,8 +307,8 @@ from here.
 
 ### State
 
-- **Classification:** in progress; T1 Claude outcomes flow to the shared writer
+- **Classification:** in progress; T1 complete
 - **Current blocker:** none
-- **Next:** T1, run live Pi four-outcome and both-client fail-open validation,
-  record the evidence, and close the task
+- **Next:** T2, verify exactly what `damage-control-rules.ts` loads, then build
+  the per-pattern Claude-oracle coverage runner before canonical cutover
 - **Resume:** `/do-it .specs/rationalization-phase5/plan.md`

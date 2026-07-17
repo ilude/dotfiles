@@ -2,6 +2,25 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Validate shared decision logging end to end
+
+**Why:** Unit coverage does not prove that confirmation responses, hard blocks,
+and fail-open behavior survive each client's real process boundary.
+
+**Validated:**
+- Pi persistent RPC recorded allow, approved ask, denied ask, and hard block
+  outcomes from four model-requested tools, with the synthetic token scrubbed.
+- Pi still completed a safe Bash tool when its decision-log destination was a
+  regular file.
+- Bare-Python Claude hook invocations recorded all four knowable outcomes and
+  left no pending asks.
+- Claude preserved allow, ask, and block exit/output behavior when its log
+  destination was a regular file.
+
+**Files:** `.specs/rationalization-phase5/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Correlate Claude decisions in the shared audit log
 
 **Why:** Claude PreToolUse knows the enforcement action but does not receive a
