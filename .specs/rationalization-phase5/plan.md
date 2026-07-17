@@ -265,8 +265,8 @@ from here.
 
 ### State
 
-- **Classification:** not started; gated on phase 2 archive
-- **Current blocker:** phase 2 executing
-- **Next:** after phase 2 archives, start T1 (independent of phases 3-4;
-  earlier T1 means more decision data for phase 4's report)
+- **Classification:** ready; phase 2 is archived
+- **Current blocker:** none
+- **Next:** T1, verify per-client decision knowability before implementing the
+  shared structured decision log (independent of phase 4)
 - **Resume:** `/do-it .specs/rationalization-phase5/plan.md`

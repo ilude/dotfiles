@@ -242,8 +242,8 @@ from here.
 
 ### State
 
-- **Classification:** not started; gated on phase 2 archive (default: after
-  phase 3; T1/T3 may start earlier on user instruction)
-- **Current blocker:** phase 2 executing
-- **Next:** T1 when the gate clears
+- **Classification:** ready; phase 2 and phase 3 are archived
+- **Current blocker:** none
+- **Next:** T1, implement the deterministic plan-lint and wire it into
+  `/do-it` reporting
 - **Resume:** `/do-it .specs/rationalization-phase4/plan.md`

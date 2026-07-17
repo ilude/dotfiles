@@ -2,6 +2,24 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Clear the phase 4 and phase 5 execution gates
+
+**Why:** Both plans still recorded phase 2 as executing after phases 2 and 3 had
+been validated and archived.
+
+**Changed:**
+- Reconciled both durable State blocks with the archived plan evidence.
+- Marked phase 4 and phase 5 ready and recorded each next dependency-ready T1.
+
+**Validation:** Confirmed completed plans exist at
+`.specs/archive/rationalization-phase{2,3}/plan.md`; both active plans now have
+no recorded blocker and retain pending implementation checklists.
+
+**Files:** `.specs/{rationalization-phase4/plan.md,rationalization-phase5/plan.md}`,
+`CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Validate the phase 3 orchestration workflow
 
 **Why:** Phase 3 required one live workflow proving its capabilities compose,
