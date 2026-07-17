@@ -238,6 +238,34 @@ Implemented and measured 2026-07-17 with `pnpm run damage-control-coverage`:
   damage-control-coverage`; it fails until uncovered rows are covered or
   explicitly waived and all divergences are resolved.
 
+### T2 divergence decision
+
+Classified 2026-07-17 after reaching zero uncovered rows:
+
+| Family | Count | Claude | Pi | Root cause / proposed handling |
+| --- | ---: | --- | --- | --- |
+| Root-delete shell wrappers | 2 | block | ask | Pi evaluates the broad destructive `rm` confirmation before the unwrapped root-delete block. Align Pi to block. |
+| Terraform tfvars/state | 3 | ask | allow | Pi's read-only classifier bypasses the isolated YAML asks for plan/state commands. Align Pi to ask. |
+| Zero-access positive paths | 3 | block | allow | Pi's matcher treats internal wildcards literally and does not normalize policy separators. Align Pi to block. |
+| Read-only paths | 20 | block | allow | Pi's canonical Windows paths do not match slash-based absolute, home, or directory policy patterns. Align Pi to block. |
+| Write-confirm paths | 4 | ask | allow | The same path matcher misses home/relative configuration paths. Align Pi to ask. |
+| No-delete paths | 3 | block | allow | The same separator/directory mismatch misses `.git/`, `.github/`, and `.circleci/`. Align Pi to block. |
+| Exclusion modifiers | 30 | allow | block | Synthetic paired controls expose matcher differences for security-sensitive exclusions. Keep Pi's stricter block as an explicit Pi extension rather than weakening it. |
+
+Decision options:
+
+1. **Recommended - strengthen only:** approve the 35 Pi changes toward stricter
+   Claude outcomes (26 allow-to-block, seven allow-to-ask, two ask-to-block),
+   while recording the 30 existing Pi-stricter exclusions as a client extension.
+2. **Full Claude parity:** also weaken the 30 Pi block outcomes to Claude allow.
+   This includes browser credential stores, system password databases, wallet
+   files, and cloud/session directories, so it is not recommended.
+3. **No outcome changes:** record all 65 differences as client extensions. This
+   avoids behavior changes but leaves 35 known weaker Pi outcomes.
+
+No option is inferred. Canonical-source cutover remains separately gated after
+coverage debt reaches zero.
+
 ## Tasks
 
 ### T1: Structured decision logging in both clients
@@ -374,7 +402,7 @@ from here.
   - [x] schema and shared location implemented in both clients
   - [x] live four-outcome validation on both clients
   - [x] fail-open and secret-scrub proven
-- [ ] T2: canonical source, oracle runner, coverage debt zero - in-progress: classify 65 divergence rows for the user gate
+- [ ] T2: canonical source, oracle runner, coverage debt zero - blocked: user decision required on the classified 65 divergences
   - [x] verified what damage-control-rules.ts already loads
   - [x] per-pattern coverage runner built (Claude hook as oracle)
   - [ ] coverage_debt_count = 0 (covered or explicitly waived)
@@ -393,9 +421,9 @@ from here.
 
 ### State
 
-- **Classification:** in progress; T2 has zero uncovered rows and 65 divergence debt
-- **Current blocker:** none
-- **Next:** T2, group all 65 divergences by root cause and proposed outcome,
-  present the allow/ask/block changes for user approval, and do not implement
-  them or cut over either client before that decision
+- **Classification:** blocked; T2 has zero uncovered rows and 65 classified divergence debt
+- **Current blocker:** user must select divergence option 1, 2, or 3 above; no
+  enforcement outcome or canonical-source cutover is inferred
+- **Next:** after the user decision, implement only the approved outcome slice,
+  rerun the zero-debt gate, then present canonical-source cutover separately
 - **Resume:** `/do-it .specs/rationalization-phase5/plan.md`

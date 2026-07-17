@@ -2,6 +2,28 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Classify damage-control outcome divergences
+
+**Why:** The remaining coverage debt represents real allow/ask/block choices;
+changing those outcomes or hiding them as waivers requires an explicit decision.
+
+**Classified:**
+- Thirty-five weaker Pi outcomes: 26 allow-to-block, seven allow-to-ask, and two
+  ask-to-block changes would align with Claude.
+- Thirty Pi-stricter exclusion outcomes where full parity would weaken block to
+  allow across security-sensitive browser, system-password, wallet, cloud, and
+  session paths.
+- Root causes span wrapper ordering, read-only command bypasses, wildcard
+  handling, path-separator normalization, and directory matching.
+
+**Decision:** The plan recommends strengthening the 35 weaker Pi outcomes while
+preserving the 30 stricter outcomes as an explicit Pi extension. Full parity and
+no-change alternatives are recorded; no option or canonical cutover is inferred.
+
+**Files:** `.specs/rationalization-phase5/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Replace path-exclusion debt with paired controls
 
 **Why:** Exclusion rows are negative modifiers; counting them requires proving
