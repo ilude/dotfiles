@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # Claude Code status line script - cross-platform (Linux/macOS/Windows Git Bash/WSL)
 # Reads JSON from stdin with model and workspace info, outputs formatted status
+import importlib.util
 import json
 import os
 import re
@@ -9,22 +10,30 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Fast path: delegate to compiled Go binary if available
-def _try_go_binary() -> None:
+
+# Fast path: delegate display formatting to the compiled Go binary if available.
+def _try_go_binary(data: dict, occupancy: str) -> None:
     here = Path(os.path.realpath(__file__)).parent
     for candidate in (here / "claude-status.exe", here / "claude-status-bin"):
-        if candidate.is_file():
-            result = subprocess.run([str(candidate)])
-            sys.exit(result.returncode)
-
-_try_go_binary()
+        if not candidate.is_file():
+            continue
+        result = subprocess.run(
+            [str(candidate)],
+            input=json.dumps(data),
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            line = result.stdout.rstrip("\r\n")
+            if occupancy:
+                line += f" | {occupancy}"
+            sys.stdout.write(line + "\n")
+        sys.exit(result.returncode)
 
 
 def run(args: list, cwd: str = None) -> str:
     try:
-        r = subprocess.run(
-            args, capture_output=True, text=True, cwd=cwd, timeout=5
-        )
+        r = subprocess.run(args, capture_output=True, text=True, cwd=cwd, timeout=5)
         return r.stdout.strip() if r.returncode == 0 else ""
     except Exception:
         return ""
@@ -50,9 +59,9 @@ def to_wsl_path(p: str) -> str:
 
 def normalize_path(p: str) -> str:
     p = p.replace("\\", "/")
-    p = re.sub(r"^[A-Za-z]:", "", p)       # strip C:
-    p = re.sub(r"^/[a-z]/", "/", p)        # strip /c/
-    p = re.sub(r"^/mnt/[a-z]/", "/", p)    # strip /mnt/c/
+    p = re.sub(r"^[A-Za-z]:", "", p)  # strip C:
+    p = re.sub(r"^/[a-z]/", "/", p)  # strip /c/
+    p = re.sub(r"^/mnt/[a-z]/", "/", p)  # strip /mnt/c/
     return p
 
 
@@ -63,14 +72,32 @@ def get_home_pattern() -> str:
     return normalize_path(home)
 
 
+def occupancy_status(data: dict) -> str:
+    try:
+        hook_path = Path(os.path.realpath(__file__)).parent / "hooks" / "agent_instances.py"
+        spec = importlib.util.spec_from_file_location("agent_instances", hook_path)
+        if spec is None or spec.loader is None:
+            return ""
+        hook = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(hook)
+        label, _warning = hook.status_occupancy(data)
+        return label
+    except Exception:
+        return ""
+
+
 def main() -> None:
     try:
         data = json.load(sys.stdin)
         model = data.get("model", {}).get("display_name", "unknown")
         cwd = data.get("workspace", {}).get("current_dir", "")
     except Exception:
+        data = {}
         model = "unknown"
         cwd = ""
+
+    occupancy = occupancy_status(data)
+    _try_go_binary(data, occupancy)
 
     current_path = cwd or os.getcwd()
     git_path = to_wsl_path(current_path) if is_wsl() else current_path
@@ -85,15 +112,13 @@ def main() -> None:
         display_dir = f"~/{basename}" if norm_root.startswith(home_pat) else basename
     else:
         if normalized.startswith(home_pat):
-            rel = normalized[len(home_pat):]
+            rel = normalized[len(home_pat) :]
             display_dir = f"~{rel}" if rel else "~"
         else:
             display_dir = normalized
 
     branch_name = run(["git", "-C", git_path, "branch", "--show-current"])
-    branch = (
-        f"\033[33m[\033[34m{branch_name}\033[33m]\033[0m" if branch_name else ""
-    )
+    branch = f"\033[33m[\033[34m{branch_name}\033[33m]\033[0m" if branch_name else ""
 
     effort = "medium"
     settings_path = Path(os.path.expanduser("~")) / ".claude" / "settings.json"
@@ -129,10 +154,11 @@ def main() -> None:
         )
     else:
         line = (
-            f"{GREEN}{display_dir}{RESET}"
-            f" | {ORANGE}{model}{RESET}{effort_label} | {version_label}"
+            f"{GREEN}{display_dir}{RESET} | {ORANGE}{model}{RESET}{effort_label} | {version_label}"
         )
 
+    if occupancy:
+        line += f" | {occupancy}"
     sys.stdout.write(line + "\n")
 
 

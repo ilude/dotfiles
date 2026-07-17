@@ -2,6 +2,31 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Wire Claude worktree occupancy
+
+**Why:** Cross-client concurrency remained silent until Claude Code joined the
+same worktree lease registry and exposed occupancy in its context and status
+line.
+
+**Changed:**
+- Registered and refreshed Claude leases through `SessionStart` and
+  `UserPromptSubmit`, with identity-checked release through `SessionEnd`.
+- Added same-worktree context warnings and instance counts to both Python and
+  compiled-binary status-line paths.
+- Reused the shared helper for atomic registration, stale recovery, and
+  separate-worktree boundaries; hook and status failures remain fail-open.
+
+**Validation:** Focused fixtures covered Pi/Claude same-worktree detection,
+separate-worktree non-warning, context injection, prompt refresh, status display,
+clean release, and settings lifecycle wiring. Eight shared-helper and Claude
+fixtures passed with Ruff lint and format checks; settings JSON parsed cleanly.
+
+**Files:** `claude/{hooks/agent_instances.py,claude-status,settings.json}`,
+`test/test_claude_agent_instances.py`, `CLAUDE.md`,
+`.specs/rationalization-phase3/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Wire Pi worktree occupancy
 
 **Why:** The shared lease registry needed a Pi lifecycle owner and visible
