@@ -62,24 +62,30 @@ def reduce_execution(
     argv: list[str],
     exit_code: int,
     stdout: str,
+    rules_module=None,
+    loaded_rules: list[dict] | None = None,
 ) -> CompactResult:
     """Run the deterministic reduction pipeline on one bash tool result."""
     import guards
     import pipeline
     from shell_argv import normalize_shell_argv
 
-    _rules_mod = _load_rules_module()
-
+    rules_module = rules_module or _load_rules_module()
     builtin_dir = _HERE / "rules" / "builtin"
-    rules = _rules_mod.load_rules(builtin_dir=builtin_dir, argv0=argv[0] if argv else None)
-    rule_id, _confidence = _rules_mod.classify_argv(argv, rules)
+    rules = loaded_rules
+    if rules is None:
+        rules = rules_module.load_rules(builtin_dir=builtin_dir, argv0=argv[0] if argv else None)
+    rule_id, _confidence = rules_module.classify_argv(argv, rules)
 
     if rule_id in {None, "generic/fallback"}:
         normalized_argv = normalize_shell_argv(argv)
         if normalized_argv != argv:
             argv = normalized_argv
-            rules = _rules_mod.load_rules(builtin_dir=builtin_dir, argv0=argv[0] if argv else None)
-            rule_id, _confidence = _rules_mod.classify_argv(argv, rules)
+            if loaded_rules is None:
+                rules = rules_module.load_rules(
+                    builtin_dir=builtin_dir, argv0=argv[0] if argv else None
+                )
+            rule_id, _confidence = rules_module.classify_argv(argv, rules)
 
     raw_text = stdout
 
@@ -140,19 +146,18 @@ def reduce_execution(
     return result
 
 
-def main() -> None:
-    raw_input = sys.stdin.read()
-
+def reduce_request(
+    raw_input: str,
+    rules_module=None,
+    loaded_rules: list[dict] | None = None,
+) -> dict:
+    """Reduce one JSON request, preserving raw output on every failure."""
     try:
         req = json.loads(raw_input)
         argv: list[str] = req.get("argv", [])
         exit_code: int = int(req.get("exit_code", 0))
         stdout: str = req.get("stdout", "") or ""
-
-        result = reduce_execution(argv, exit_code, stdout)
-        out = asdict(result)
-        sys.stdout.write(json.dumps(out) + "\n")
-
+        return asdict(reduce_execution(argv, exit_code, stdout, rules_module, loaded_rules))
     except Exception:
         # Fall through to raw output -- never break the agent
         try:
@@ -160,8 +165,7 @@ def main() -> None:
             raw = req.get("stdout", "") or ""
         except Exception:
             raw = ""
-
-        fallback = {
+        return {
             "inline_text": raw,
             "facts": {},
             "rule_id": None,
@@ -169,8 +173,28 @@ def main() -> None:
             "bytes_after": len(raw.encode("utf-8")),
             "reduction_applied": False,
         }
-        sys.stdout.write(json.dumps(fallback) + "\n")
+
+
+def write_response(response: dict) -> None:
+    sys.stdout.write(json.dumps(response) + "\n")
+    sys.stdout.flush()
+
+
+def main() -> None:
+    raw_input = sys.stdin.read()
+    write_response(reduce_request(raw_input))
+
+
+def worker() -> None:
+    """Serve newline-delimited JSON requests without reloading modules or rules."""
+    rules_module = _load_rules_module()
+    loaded_rules = rules_module.load_rules(builtin_dir=_HERE / "rules" / "builtin")
+    for raw_input in sys.stdin:
+        write_response(reduce_request(raw_input, rules_module, loaded_rules))
 
 
 if __name__ == "__main__":
-    main()
+    if "--worker" in sys.argv[1:]:
+        worker()
+    else:
+        main()

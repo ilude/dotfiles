@@ -95,7 +95,7 @@ function closeWithStdout(
 	stdout: string,
 ): void {
 	queueMicrotask(() => {
-		child.stdout?.emit("data", Buffer.from(stdout));
+		child.stdout?.emit("data", Buffer.from(`${stdout}\n`));
 		child.emit("close", 0);
 	});
 }
@@ -337,6 +337,85 @@ describe("tool-reduction extension", () => {
 		});
 	});
 
+	describe("persistent worker behavior", () => {
+		it("reuses one worker process for sequential requests", async () => {
+			const { spawn } = await import("node:child_process");
+			const child = createMockChild();
+			child.stdin?.on("data", () => {
+				queueMicrotask(() => {
+					child.stdout?.emit("data", Buffer.from(`${reducedResponse()}\n`));
+				});
+			});
+			spawnBehavior = () => child;
+
+			const mod = await import("../extensions/tool-reduction.ts");
+			mod.default(mockPi as unknown as ExtensionAPI);
+			const [hook] = mockPi._getHook("tool_result");
+
+			await hook.handler(makeBashResultEvent("first output".repeat(24)));
+			await hook.handler(makeBashResultEvent("second output".repeat(24)));
+
+			expect(spawn).toHaveBeenCalledTimes(1);
+		});
+
+		it("cleans the worker process tree on session shutdown", async () => {
+			const child = createMockChild();
+			spawnBehavior = () => child;
+			const processKill = vi
+				.spyOn(process, "kill")
+				.mockImplementation(() => true);
+			try {
+				const mod = await import("../extensions/tool-reduction.ts");
+				mod.default(mockPi as unknown as ExtensionAPI);
+				const [toolHook] = mockPi._getHook("tool_result");
+				const [shutdownHook] = mockPi._getHook("session_shutdown");
+				const result = toolHook.handler(
+					makeBashResultEvent("pending output".repeat(24)),
+				);
+
+				shutdownHook.handler();
+				if (process.platform !== "win32") {
+					expect(processKill).toHaveBeenCalledWith(-123, "SIGKILL");
+				}
+				expect(await result).toBeUndefined();
+			} finally {
+				processKill.mockRestore();
+			}
+		});
+
+		it("restarts after a worker crash", async () => {
+			const { spawn } = await import("node:child_process");
+			const crashed = createMockChild(101);
+			const restarted = createMockChild(102);
+			restarted.stdin?.on("data", () => {
+				queueMicrotask(() => {
+					restarted.stdout?.emit("data", Buffer.from(`${reducedResponse()}\n`));
+				});
+			});
+			let attempts = 0;
+			spawnBehavior = () => {
+				attempts += 1;
+				if (attempts === 1) {
+					queueMicrotask(() => crashed.emit("close", 1));
+					return crashed;
+				}
+				return restarted;
+			};
+
+			const mod = await import("../extensions/tool-reduction.ts");
+			mod.default(mockPi as unknown as ExtensionAPI);
+			const [hook] = mockPi._getHook("tool_result");
+
+			expect(
+				await hook.handler(makeBashResultEvent("crashed output".repeat(24))),
+			).toBeUndefined();
+			expect(
+				await hook.handler(makeBashResultEvent("restarted output".repeat(24))),
+			).toBeDefined();
+			expect(spawn).toHaveBeenCalledTimes(2);
+		});
+	});
+
 	describe("child-process invocation", () => {
 		it("uses bare Python and sends only the observable reducer schema", async () => {
 			const { spawn } = await import("node:child_process");
@@ -363,7 +442,7 @@ describe("tool-reduction extension", () => {
 			});
 			expect(spawn).toHaveBeenCalledWith(
 				"python",
-				[expect.stringMatching(/tool-reduction[\\/]reduce\.py$/)],
+				[expect.stringMatching(/tool-reduction[\\/]reduce\.py$/), "--worker"],
 				expect.objectContaining({
 					detached: process.platform !== "win32",
 					windowsHide: true,

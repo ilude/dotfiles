@@ -229,3 +229,44 @@ def test_cli_roundtrip(tmp_path):
 
     assert response["reduction_applied"] is False
     assert response["inline_text"] == "hello from cli"
+
+
+def test_worker_response_matches_one_shot_cli():
+    reduce_script = str(_ROOT / "reduce.py")
+    request = {
+        "argv": ["git", "status"],
+        "exit_code": 0,
+        "stdout": _GIT_STATUS_SAMPLE,
+    }
+    env = {**os.environ, "PYTHONPATH": str(_ROOT)}
+
+    one_shot = subprocess.run(
+        [sys.executable, reduce_script],
+        input=json.dumps(request),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+    )
+    assert one_shot.returncode == 0, one_shot.stderr
+
+    worker = subprocess.Popen(
+        [sys.executable, reduce_script, "--worker"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+    )
+    try:
+        assert worker.stdin is not None
+        assert worker.stdout is not None
+        worker.stdin.write(json.dumps(request) + "\n")
+        worker.stdin.flush()
+        worker_response = worker.stdout.readline()
+    finally:
+        if worker.stdin is not None:
+            worker.stdin.close()
+        worker.wait(timeout=30)
+
+    assert json.loads(worker_response) == json.loads(one_shot.stdout)

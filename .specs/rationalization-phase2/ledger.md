@@ -22,6 +22,7 @@
 | Reducer stderr request field | Separate stderr and real exit status | Pi `BashToolDetails` exposes neither | Never populated by the hook | Delete | Request now contains combined stdout and Pi's isError encoded as `exit_code` 0/1; new corpus records omit stderr samples. | T12 | Executed |
 | Unbounded reducer corpus | Cache growth | `.specs/rationalization-phase2/plan.md` | Daily files accumulated without retention | Fix | First write of a new daily corpus enforces seven-day and 64 MiB retention; dry-run reports exact removals without mutation. | T12 | Executed |
 | Unreachable generic fallback | Large unknown output bypasses reduction | `.specs/rationalization-phase2/plan.md` corpus evidence | 15,370 stored records had no prior rule | Fix | Lazy loads append only the fallback rule; specific matches win, unknown large output clamps, tiny output stays raw, and markers remain recoverable. Replay reached 99.94% (20 empty argv records unmatched), zero failure-survival failures; p50 was 335.3 ms versus 524 ms baseline. | T9 | Executed |
+| Per-call reducer interpreter startup | Repeated Windows process and Defender overhead | `pi/tool-reduction/docs/baseline-latency.md` | Baseline p50 524 ms across roughly 440 daily calls | Replace with persistent worker | Serialized NDJSON worker preserves one-shot output and fail-open behavior, restarts after crash, and cleans up on shutdown. Measured p50 329.9 ms one-shot versus 9.7 ms persistent (97.1% improvement). | T11 | Executed |
 
 ## Surface usage decisions
 

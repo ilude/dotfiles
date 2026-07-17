@@ -2,6 +2,28 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Keep the reducer worker alive
+
+**Why:** Even after lazy rule loading, starting Python for every reduced Bash
+result cost hundreds of milliseconds per call.
+
+**Changed:**
+- Added a serialized persistent `reduce.py --worker` NDJSON mode with rules
+  loaded once.
+- Reused one worker per extension instance, restarted after crashes, failed open
+  for the current request, and cleaned the process tree on session shutdown.
+- Preserved byte-identical one-shot CLI output and all marker/recovery behavior.
+
+**Validation:** Python worker parity tests passed 8 tests; Pi reducer behavior
+passed 13 tests and typecheck passed. Measured p50 improved from 329.9 ms
+one-shot to 9.7 ms persistent, a 97.1% reduction. Ruff and
+`git diff --check` passed.
+
+**Files:** `pi/{extensions/tool-reduction.ts,tests/tool-reduction.test.ts,tool-reduction/}`,
+`.specs/rationalization-phase2/{plan,ledger}.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Enable the generic reducer fallback
 
 **Why:** The generic fallback rule existed but was unreachable through the lazy

@@ -171,73 +171,122 @@ export function shouldRunReducer(stdout: string): boolean {
 	return Buffer.byteLength(stdout, "utf-8") >= MIN_REDUCER_INPUT_BYTES;
 }
 
-function callReducer(
-	request: ReduceRequest,
-	scriptPath: string,
-): Promise<ReduceResponse | null> {
-	return new Promise((resolve) => {
-		let child: child_process.ChildProcess;
+interface PendingRequest {
+	request: ReduceRequest;
+	resolve: (response: ReduceResponse | null) => void;
+}
+
+class ReducerWorker {
+	private child: child_process.ChildProcess | undefined;
+	private readonly queue: PendingRequest[] = [];
+	private pending: PendingRequest | undefined;
+	private responseBuffer = "";
+	private timer: ReturnType<typeof setTimeout> | undefined;
+
+	constructor(private readonly scriptPath: string) {}
+
+	reduce(request: ReduceRequest): Promise<ReduceResponse | null> {
+		return new Promise((resolve) => {
+			this.queue.push({ request, resolve });
+			this.drain();
+		});
+	}
+
+	shutdown(): void {
+		this.queue.splice(0).forEach(({ resolve }) => resolve(null));
+		this.finishPending(null);
+		if (this.child?.pid) stopProcessTree(this.child.pid);
+		this.child = undefined;
+		this.responseBuffer = "";
+	}
+
+	private drain(): void {
+		if (this.pending || this.queue.length === 0) return;
+		const child = this.ensureChild();
+		if (!child) {
+			this.queue.shift()?.resolve(null);
+			this.drain();
+			return;
+		}
+
+		const pending = this.queue.shift();
+		if (!pending) return;
+		this.pending = pending;
+		this.timer = setTimeout(() => {
+			if (this.child === child) this.terminate(child);
+			this.finishPending(null);
+		}, TIMEOUT_MS);
 		try {
-			child = child_process.spawn("python", [scriptPath], {
+			child.stdin?.write(`${JSON.stringify(pending.request)}\n`, "utf-8");
+		} catch {
+			this.terminate(child);
+			this.finishPending(null);
+		}
+	}
+
+	private ensureChild(): child_process.ChildProcess | undefined {
+		if (this.child) return this.child;
+		try {
+			const child = child_process.spawn("python", [this.scriptPath, "--worker"], {
 				detached: process.platform !== "win32",
 				windowsHide: true,
 				stdio: ["pipe", "pipe", "pipe"],
 			});
+			this.child = child;
+			child.stdout?.on("data", (chunk: Buffer) => this.readResponse(child, chunk));
+			child.on("error", () => this.handleExit(child));
+			child.on("close", () => this.handleExit(child));
+			return child;
 		} catch {
-			resolve(null);
-			return;
+			return undefined;
 		}
+	}
 
-		let stdout = "";
-		let timedOut = false;
-
-		const timer = setTimeout(() => {
-			timedOut = true;
-			if (child.pid) {
-				stopProcessTree(child.pid);
-			}
-		}, TIMEOUT_MS);
-
-		child.stdout?.on("data", (chunk: Buffer) => {
-			stdout += chunk.toString("utf-8");
-		});
-
-		child.on("error", () => {
-			clearTimeout(timer);
-			resolve(null);
-		});
-
-		child.on("close", (code: number | null) => {
-			clearTimeout(timer);
-			if (timedOut || code !== 0) {
-				resolve(null);
-				return;
-			}
-			try {
-				const parsed = JSON.parse(stdout.trim()) as ReduceResponse;
-				if (typeof parsed.inline_text !== "string") {
-					resolve(null);
-					return;
-				}
-				resolve(parsed);
-			} catch {
-				resolve(null);
-			}
-		});
-
+	private readResponse(child: child_process.ChildProcess, chunk: Buffer): void {
+		if (this.child !== child || !this.pending) return;
+		this.responseBuffer += chunk.toString("utf-8");
+		const newline = this.responseBuffer.indexOf("\n");
+		if (newline === -1) return;
+		const line = this.responseBuffer.slice(0, newline);
+		this.responseBuffer = this.responseBuffer.slice(newline + 1);
 		try {
-			child.stdin?.write(JSON.stringify(request), "utf-8");
-			child.stdin?.end();
+			const response = JSON.parse(line) as ReduceResponse;
+			if (typeof response.inline_text !== "string") throw new Error("invalid response");
+			this.finishPending(response);
 		} catch {
-			clearTimeout(timer);
-			resolve(null);
+			this.terminate(child);
+			this.finishPending(null);
 		}
-	});
+	}
+
+	private handleExit(child: child_process.ChildProcess): void {
+		if (this.child !== child) return;
+		this.child = undefined;
+		this.responseBuffer = "";
+		this.finishPending(null);
+	}
+
+	private terminate(child: child_process.ChildProcess): void {
+		if (this.child === child) this.child = undefined;
+		this.responseBuffer = "";
+		if (child.pid) stopProcessTree(child.pid);
+	}
+
+	private finishPending(response: ReduceResponse | null): void {
+		if (this.timer) clearTimeout(this.timer);
+		this.timer = undefined;
+		const pending = this.pending;
+		this.pending = undefined;
+		pending?.resolve(response);
+		this.drain();
+	}
 }
 
 export const EXTENSION_NAME = "tool-reduction";
 
 export default function (pi: ExtensionAPI) {
+	const worker = new ReducerWorker(getReduceScriptPath());
+	pi.on("session_shutdown", () => worker.shutdown());
 	pi.on("tool_result", async (event: ToolResultEvent) => {
 		if (!isBashToolResult(event)) return undefined;
 		if (process.env.PI_TOOL_REDUCTION?.toLowerCase() === "off") return undefined;
@@ -252,7 +301,7 @@ export default function (pi: ExtensionAPI) {
 			stdout,
 		};
 
-		const result = await callReducer(request, getReduceScriptPath());
+		const result = await worker.reduce(request);
 
 		if (result === null || !result.reduction_applied) {
 			return undefined;

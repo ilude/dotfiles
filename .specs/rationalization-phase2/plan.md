@@ -516,7 +516,7 @@ and commit this file after every slice; resume from here, never re-derive.
 - [x] T8: shell-aware reducer classification - done: bounded parser executed; 59.48% shortfall and residual top ten recorded per stop clause
 - [x] T9: reachable generic fallback - done: validated slice commit pending
 - [x] T10: self-describing reductions - done: validated slice commit pending
-- [ ] T11: persistent reducer worker (decision-gated) - pending
+- [x] T11: persistent reducer worker (decision-gated) - done: validated slice commit pending
 - [x] T12: reducer schema and corpus hygiene - done: validated slice commit pending
 - [ ] T13: retroactive context reduction - pending
 - [ ] T14: ledger close and validation - pending
@@ -529,17 +529,15 @@ and commit this file after every slice; resume from here, never re-derive.
 
 - **State:** in progress
 - **Current blocker:** none
-- **Last completed gate:** T9 reachable generic fallback
-- **Next:** T11 persistent reducer worker decision and implementation
+- **Last completed gate:** T11 persistent reducer worker
+- **Next:** T13 retroactive context reduction
 - **Completed work:** T1-T4 are committed. T5 recorded 30-day decisions for 52
   skills, 36 commands, and 18 audited agents; the user selected optional
   per-launch effort; the three approved skill-review variants now share one
   agent with explicit model and effort dispatch.
-- **Commands/results:** T8 stopped parser expansion at 59.48% and recorded the
-  mandated residual. T9 focused tests passed; replay reached 99.94% over 32,097
-  records with zero failure-survival failures; p50 was 335.3 ms versus the
-  524 ms baseline. T12 schema/retention suites passed.
-- **Remaining checks:** commit T9, then T11, T13, T14, final validation, and
-  archive.
+- **Commands/results:** T8-T10 and T12 checks passed with the recorded T8
+  shortfall. T11 passed 8 Python and 13 Pi tests plus typecheck; one-shot and
+  worker output matched; p50 improved from 329.9 ms to 9.7 ms (97.1%).
+- **Remaining checks:** commit T11, then T13, T14, final validation, and archive.
 - **Exact user action:** none
 - **Resume:** `/do-it .specs/rationalization-phase2/plan.md`
