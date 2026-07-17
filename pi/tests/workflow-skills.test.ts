@@ -18,6 +18,19 @@ describe("workflow scheduling guidance", () => {
 		expect(doIt).not.toContain("Execute ready tasks wave by wave");
 	});
 
+	it("requires deterministic plan state lint before execution and reporting", () => {
+		const doIt = workflow("do-it");
+		expect(doIt).toContain(
+			"python ~/.dotfiles/pi/scripts/plan-lint <plan-path>",
+		);
+		expect(doIt).toContain(
+			"A checked top-level task must use `done: <existing-commit>`",
+		);
+		expect(doIt).toContain(
+			"make the first and final status lines match its `report_state`",
+		);
+	});
+
 	it("keeps same-file writes out of parallel plan tasks", () => {
 		expect(workflow("plan-it")).toContain(
 			"Never assign overlapping same-file write scopes to parallel tasks",

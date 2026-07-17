@@ -55,13 +55,9 @@ import { startWorkflowEpisode } from "../lib/workflow-telemetry";
 import { formatConfiguredUsageReport } from "./codex-status";
 import { isOperatorReloadNeeded } from "./operator-status";
 
-const SKILLS_DIR = path.join(
-	os.homedir(),
-	".dotfiles",
-	"pi",
-	"skills",
-	"workflow",
-);
+const DOTFILES_PI_DIR = path.join(os.homedir(), ".dotfiles", "pi");
+const SKILLS_DIR = path.join(DOTFILES_PI_DIR, "skills", "workflow");
+const PLAN_LINT_PATH = path.join(DOTFILES_PI_DIR, "scripts", "plan-lint");
 const COMMIT_RUNTIME_PATH_PATTERNS = [
 	{ label: "Pi runtime cache", regex: /^pi\/cache(?:\/|$)/ },
 	{ label: "runtime log directory", regex: /(?:^|\/)logs?\// },
@@ -1865,10 +1861,42 @@ function sendHiddenWorkflowPrompt(
 	);
 }
 
+function planFileInput(args: string): string | undefined {
+	return args
+		.trim()
+		.match(
+			/(?:^|\s)(\.specs\/[A-Za-z0-9._/-]+\/plan\.md|[^\s]+plan\.md)(?:\s|$)/,
+		)?.[1];
+}
+
 function isPlanFileInput(args: string) {
-	return /(?:^|\s)(?:\.specs\/[A-Za-z0-9._/-]+\/plan\.md|[^\s]+plan\.md)(?:\s|$)/.test(
-		args.trim(),
-	);
+	return planFileInput(args) !== undefined;
+}
+
+function runPlanLint(
+	cwd: string,
+	planPath: string,
+): {
+	ok: boolean;
+	output: string;
+} {
+	const result = spawnSync("python", [PLAN_LINT_PATH, planPath], {
+		cwd,
+		encoding: "utf8",
+		windowsHide: true,
+	});
+	const output = [result.stdout, result.stderr]
+		.filter(
+			(value): value is string =>
+				typeof value === "string" && value.trim() !== "",
+		)
+		.join("\n")
+		.trim();
+	return {
+		ok: result.status === 0,
+		output:
+			output || `plan-lint exited with status ${result.status ?? "unknown"}`,
+	};
 }
 
 function formatGitOutput(result?: GitRunResult) {
@@ -2513,6 +2541,18 @@ export default function (pi: ExtensionAPI) {
 				},
 				async () => {
 					echoSlashCommand(pi, "do-it", args);
+					const lintPlanPath = planFileInput(args);
+					if (lintPlanPath) {
+						const lint = runPlanLint(ctx.cwd, lintPlanPath);
+						if (!lint.ok) {
+							pi.sendMessage({
+								customType: "workflow.planLint",
+								content: `Plan lint failed. Fix durable plan state before /do-it continues.\n${lint.output}`,
+								display: true,
+							});
+							return;
+						}
+					}
 					const template = loadSkill("do-it.md");
 					const prompt = buildSkillPrompt(template, args, {
 						replaceArguments: true,

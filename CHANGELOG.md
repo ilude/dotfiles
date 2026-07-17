@@ -2,6 +2,31 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Enforce durable plan state before `/do-it`
+
+**Why:** Checked tasks, State blocks, and final reports could contradict Git or
+each other, allowing fresh sessions to inherit false completion claims.
+
+**Changed:**
+- Added a deterministic `plan-lint` CLI that verifies checked-task commit
+  hashes, in-progress next steps, checklist/State agreement, and optional report
+  status claims.
+- Made `/do-it` stop before dispatch when plan lint fails and display the named
+  violations without starting a provider turn.
+- Required final workflow reports to use plan-lint's canonical report state and
+  documented the two-commit transition for newly completed task hashes.
+
+**Validation:** Eight focused Python tests and eight Pi workflow tests passed,
+along with Ruff, Pi typecheck, and Biome. Standalone lint passes the active
+phase 4 plan and flags archived phase 2 T14's missing close commit. A live RPC
+`/do-it` invocation surfaced that violation and emitted zero `agent_start`
+events.
+
+**Files:** `pi/{scripts/plan-lint,extensions/workflow-commands.ts,skills/workflow/do-it.md,tests/workflow-dispatch.test.ts,tests/workflow-skills.test.ts}`,
+`test/test_plan_lint.py`, `.specs/rationalization-phase4/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Clear the phase 4 and phase 5 execution gates
 
 **Why:** Both plans still recorded phase 2 as executing after phases 2 and 3 had

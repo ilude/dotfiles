@@ -220,10 +220,10 @@ from here.
 
 ### Task checklist
 
-- [ ] T1: plan-lint - pending
-  - [ ] four violation classes caught on fixtures; clean plan passes
-  - [ ] wired into /do-it report path
-  - [ ] phase 2 "commit pending" rows flagged or confirmed fixed
+- [ ] T1: plan-lint - in-progress: implementation validated; record commit
+  - [x] four violation classes caught on fixtures; clean plan passes
+  - [x] wired into /do-it report path
+  - [x] phase 2 "commit pending" rows flagged or confirmed fixed
 - [ ] T2: routing outcome sampling - pending
   - [ ] sampling layer with named-constant rate; arms as data
   - [ ] explicit overrides never sampled (proven)
@@ -242,8 +242,8 @@ from here.
 
 ### State
 
-- **Classification:** ready; phase 2 and phase 3 are archived
+- **Classification:** in progress; T1 implementation validated
 - **Current blocker:** none
-- **Next:** T1, implement the deterministic plan-lint and wire it into
-  `/do-it` reporting
+- **Next:** record T1's implementation commit, then start T2 routing outcome
+  sampling
 - **Resume:** `/do-it .specs/rationalization-phase4/plan.md`

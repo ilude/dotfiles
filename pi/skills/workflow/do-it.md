@@ -27,6 +27,8 @@ Require enough objective, boundaries, task breakdown, dependencies, waves, valid
 
 Reconcile unchecked plan items with the durable task graph. Trust checked work only when its required evidence exists and current repository state does not contradict it.
 
+The `/do-it` command runs `python ~/.dotfiles/pi/scripts/plan-lint <plan-path>` before dispatch. A nonzero result stops execution until the named durable-state violations are fixed. Run the same command again before done-marking or the final report; its `report_state` is authoritative. When validating a saved report, pass `--report <report-path>` so completion, checkpoint, blocked, and archive claims are checked against the plan.
+
 ## Hard Boundaries
 
 - Preserve public interfaces, explicit user decisions, security controls, and plan scope.
@@ -43,7 +45,7 @@ Materialize the unchecked task breakdown once with one graph-aware `task batch` 
 
 Start `task drain` for dependency-aware background dispatch. Let the scheduler own readiness, bounded concurrency, critical-path ordering, and writer serialization; react to completion notifications rather than pumping waves with `ready`, `execute`, or polling. At quiescence, execute any ready manual task directly, record its state once, and drain again only when that state change can unblock executable work. A starvation result is a blocker and must be copied into plan state with the named failed dependencies.
 
-Keep an item unchecked while it is in progress. Immediately after its required verification passes, mark it `[x]`, set completed status, record non-secret evidence, and save the plan before dependent or sequential work proceeds.
+Keep an item unchecked while it is in progress. Immediately after its required verification passes, record non-secret evidence and save the plan before dependent or sequential work proceeds. A checked top-level task must use `done: <existing-commit>`; when the implementation commit does not exist yet, keep the task in progress, commit the validated slice, and record its hash in the next plan-state slice.
 
 ## Validation and Repair
 
@@ -89,6 +91,6 @@ A plan execution is complete only when:
 
 ## Report
 
-Use `templates/do-it-report-template.md` for plan execution. State what changed, the commands and observed results that validate it, what remains, and the next action.
+Use `templates/do-it-report-template.md` for plan execution. State what changed, the commands and observed results that validate it, what remains, and the next action. Before sending the report, rerun plan-lint and make the first and final status lines match its `report_state`; use `--report` when the report is materialized as a file.
 
 The first and last lines must agree with current Execution Status: complete and archived, checkpointed with no blocker, or blocked by a recorded current condition. A report must not claim a blocker that Execution Status does not record.
