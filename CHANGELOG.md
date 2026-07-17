@@ -2,6 +2,29 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Add a resumable rationalization loop
+
+**Why:** The phase 3-5 plans need bounded unattended progress that survives
+individual worker exits without turning user-decision gates into repeated calls.
+
+**Changed:**
+- Added a PowerShell supervisor that resumes one dedicated Pi session, retries
+  failed invocations with bounded backoff, and stops after repeated no-progress
+  iterations.
+- Limited each iteration to one validated slice and one exact-path conventional
+  commit, with no pushes or broad staging.
+- Added a durable prompt that routes around independent gated work and reports
+  progress, quiescence, or blockage through a bounded status marker.
+
+**Validation:** PowerShell parsing and the no-provider dry run passed. The dry
+run resolved the workspace, runtime state directory, worktree extension paths,
+and Pi command without creating a session.
+
+**Files:** `pi/scripts/{run-rationalization-loop.ps1,rationalization-loop-prompt.md}`,
+`CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Reduce old tool results in context batches
 
 **Why:** Reducing routine tool output as it arrived removed evidence while it was
