@@ -24,7 +24,9 @@ plan changes the launcher those depend on.
    fan-out never requires a blocking join or polling.
 2. A subagent can be continued with its context intact, and delegated work
    leaves an auditable session trail.
-3. Agent frontmatter promises nothing the launcher does not enforce.
+3. Agent frontmatter promises nothing the launcher does not enforce, and a
+   cross-client lease registry warns when multiple Pi or Claude instances occupy
+   the same Git worktree.
 4. Ready tasks dispatch mechanically when their blockers complete; workflow
    skills stop narrating wave scheduling.
 5. Subagent results can carry schema-validated structured output across the
@@ -44,7 +46,8 @@ Verified 2026-07-16 against the current source:
 - `pi/extensions/subagent/agents.ts:14`: "Isolation and memory remain
   advisory metadata" - `isolation: worktree` parses and is advertised but
   never enforced, the same unenforced-frontmatter class phase 1 T4 deleted
-  (`roleType`).
+  (`roleType`). The actual need is detecting multiple Pi or Claude instances
+  modifying one worktree, not placing intra-instance subagents in worktrees.
 - The 2026-07-15 DAG-runner MVP (archived) delivered graph-aware batch,
   bounded fan-out, event-driven await, and cycle rejection - but explicitly
   excluded auto-dispatch: the model still pumps waves manually, dispatch
@@ -85,6 +88,8 @@ Verified 2026-07-16 against the current source:
 - Session data is never deleted (user decision 2026-07-16: transcripts are
   refinement/training data). Continuable child sessions get
   compress-on-age, not deletion; scanners must read compressed files.
+  Ephemeral occupancy leases are runtime coordination state, not session data;
+  expired leases may be removed after identity and heartbeat checks.
 - No security/permission semantic changes; child processes keep the same
   damage-control posture as today.
 - Commit each validated slice with a conventional message and CHANGELOG
@@ -105,10 +110,15 @@ Already decided - do not relitigate:
   never an automatic dispatch behavior. This deliberately trades peak write
   throughput for a single coherent working tree and zero merge ceremony,
   diverging from the field's per-subagent default (research item 9).
+- T3 decision (user decision 2026-07-17): delete the unenforced `isolation`
+  and `memory` agent metadata. Replace subagent isolation with a gitignored,
+  per-worktree lease registry shared by Pi and Claude. A second active
+  instance warns that further modifying work belongs in a separate Git
+  worktree; V1 does not create worktrees automatically or block mutations.
 
-Stop and ask before: changing a public tool schema shape, choosing to delete
-`isolation` rather than implement it (T3 presents the evidence first), or
-enabling auto-dispatch as default-on rather than opt-in.
+Stop and ask before: changing a public tool schema shape, turning T3's warning
+into automatic worktree creation or mutation blocking, or enabling
+auto-dispatch as default-on rather than opt-in.
 
 Session continuity: same protocol as phases 1-2 - work in checklist order,
 update Execution status and commit after each slice, resume from recorded
@@ -157,35 +167,38 @@ run (proven by referencing a fact only present there); non-continuable
 launches behave exactly as today; compress-on-age verified in a dry run
 with a compressed session still readable by the friction scanner.
 
-### T3: Isolation - enforce as option or delete
+### T3: Cross-client worktree occupancy leases
 
-The decision protocol scopes worktrees to the multi-instance case: several
-Pi/Claude instances sharing one repo (the phase 1 execution alongside
-concurrent `.specs/` editing on 2026-07-16 is the live example - today that
-coordination happens through prose notes in the plan file). Within that
-scope, present the evidence and the user's choice (stop-and-ask):
+Delete `isolation` and `memory` from the agent parser, documentation, and agent
+files. They are unenforced metadata and do not model the actual concurrency
+boundary.
 
-1. Implement `isolation: worktree` as an explicit opt-in only (never a
-   default, never automatic dispatch behavior): temporary worktree for the
-   child cwd, auto-removed if unchanged, path reported if dirty. Include
-   the known gotcha: fresh worktrees lack gitignored files (.env, local
-   config, node_modules), so provide a declared copy-in mechanism or the
-   child fails confusingly at startup.
-2. Or delete the field and its parser support as unenforced metadata, and
-   serve the multi-instance case instead with a session-level helper
-   (create/enter/clean a named worktree for a second instance), which may
-   be the better fit since the use case is instance isolation, not
-   subagent isolation.
+Implement one deterministic lease helper used by Pi and Claude. Each Git
+worktree owns a gitignored `.agent-instances/` directory with one bounded JSON
+record per active session. A record contains client, session id, worktree root,
+branch, start time, last heartbeat, and process identity where reliable.
+Registration is atomic and idempotent. After registering, each client rescans
+so two simultaneous starts cannot both silently assume sole occupancy.
 
-Apply the same enforce-or-delete test to `memory` frontmatter while in the
-file.
+Pi registers on `session_start`, refreshes while active, removes its lease on
+`session_shutdown`, and shows occupancy in session context and operator status.
+Claude uses its lifecycle hooks and status line for the same register,
+heartbeat, warning, and best-effort release behavior. Both clients use the same
+stale test. A lease may be removed only when its heartbeat has expired and its
+recorded process identity is absent or no longer matches; malformed records are
+reported, not silently treated as inactive.
 
-Done when: either an opt-in worktree-isolated child demonstrably cannot
-dirty the main tree and leftover worktrees are cleaned, or the fields are
-gone from parser, docs, and agent files and the chosen multi-instance
-mechanism (session-level helper or documented practice) is in place; in
-both outcomes no advertised-but-unenforced field remains and nothing
-dispatches worktrees automatically.
+When another active lease exists in the same worktree, display a compact warning
+that further modifying work should move to a separate Git worktree. V1 is
+advisory: it neither creates a worktree nor blocks tools. Different worktree
+roots do not warn about one another. Lease files remain runtime state and never
+enter commits.
+
+Done when: parser, docs, and agent files contain no `isolation` or `memory`
+contract; simultaneous Pi/Pi and Pi/Claude fixtures detect both occupants; live
+Pi and Claude sessions in one worktree show the warning; sessions in separate
+worktrees do not; clean shutdown and simulated crash expiry are verified; and
+`git status --short` remains unchanged by lease activity.
 
 ### T4: Mechanical DAG scheduler
 
@@ -301,10 +314,12 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
   - [ ] headless resume mechanism verified (else: blocked on upstream)
   - [ ] opt-in continuation and follow-up action implemented
   - [ ] compress-on-age in place (no deletion); context-carryover proof passed
-- [ ] T3: isolation enforce-or-delete (stop-and-ask gate) - pending
-  - [ ] evidence and both options presented to user
-  - [ ] user decision received (gate - never inferred)
-  - [ ] chosen option executed, including `memory` frontmatter
+- [ ] T3: cross-client worktree occupancy leases - pending
+  - [x] user decision received: delete advisory metadata; add lease warning
+  - [ ] `isolation` and `memory` removed from parser, docs, and agent files
+  - [ ] shared atomic lease lifecycle implemented for Pi and Claude
+  - [ ] same-worktree warning and separate-worktree non-warning validated
+  - [ ] clean shutdown, stale recovery, and clean Git status validated
 - [ ] T4: mechanical DAG scheduler - pending
   - [ ] auto-dispatch on unblock with maxConcurrent
   - [ ] write-scope serialization; read-only derived from enforced tools
@@ -323,8 +338,7 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
 
 ### State
 
-- **Classification:** not started; gated on phase 2 archive
-- **Current blocker:** phase 2 (`.specs/rationalization-phase2/plan.md`) not
-  yet started (itself gated on phase 1)
-- **Next:** after phase 2 archives, start T1
+- **Classification:** not started; phase 2 archive gate satisfied
+- **Current blocker:** none
+- **Next:** start T1
 - **Resume:** `/do-it .specs/rationalization-phase3/plan.md`
