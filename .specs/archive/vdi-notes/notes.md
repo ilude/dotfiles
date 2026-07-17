@@ -1,3 +1,5 @@
+> Archived 2026-07-17 per user decision: reference notes, dormant since 2026-05-22.
+
 # VDI / Remote Development Notes
 
 Date: 2026-05-22

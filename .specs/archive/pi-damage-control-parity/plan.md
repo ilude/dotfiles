@@ -1,3 +1,5 @@
+> Archived 2026-07-17: superseded by .specs/rationalization-phase5/ - its T2 completes this plan's blocked T5 (per-pattern oracle runner, coverage_debt_count = 0). Waves T0-T4 and T6 completed here; evidence files remain authoritative inputs.
+
 # Pi Damage-Control Claude Parity Plan
 
 ## Context & Motivation

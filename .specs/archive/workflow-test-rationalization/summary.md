@@ -1,3 +1,5 @@
+> Archived 2026-07-17: superseded research that seeded the rationalization wave (phases 1-2 executed its findings; phase 2 evidence base cites these files). Content unchanged.
+
 # Workflow, test, and instruction rationalization summary
 
 ## Purpose

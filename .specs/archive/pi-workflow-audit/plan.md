@@ -1,3 +1,5 @@
+> Archived 2026-07-17: implemented 2026-05-26. report.md is the longitudinal friction baseline consumed by .specs/rationalization-phase4/ T3.
+
 # Plan: Scientific Audit of Pi `/plan-it`, `/review-it`, and `/do-it` Workflows
 
 ## Objective

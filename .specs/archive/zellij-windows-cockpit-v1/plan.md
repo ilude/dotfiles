@@ -1,3 +1,5 @@
+> Archived 2026-07-17 per user decision: dormant since 2026-04-27, no successor plan. Revive from archive if the idea returns.
+
 ---
 created: 2026-04-19
 updated: 2026-04-27

@@ -1,3 +1,5 @@
+> Archived 2026-07-17: absorbed by the rationalization wave - phase 1 T3 (instruction trim, 1e57024), commit 1601e21 (split Claude globals from pi/AGENTS.md), and phase 2 T3/T4 (meta-rule and philosophy consolidation).
+
 # Pi instruction control-plane repair
 
 ## Problem

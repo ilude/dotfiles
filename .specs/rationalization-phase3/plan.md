@@ -82,8 +82,9 @@ Verified 2026-07-16 against the current source:
   `parallel()`, `pipeline()` remain deferred behind the roadmap's evidence
   triggers). This plan does not touch `pi/lib/typed-agent.ts` except where
   T5 reuses its validation helpers.
-- Continuable child sessions get a retention policy; do not grow
-  `~/.pi/agent/sessions` unbounded with delegation traffic.
+- Session data is never deleted (user decision 2026-07-16: transcripts are
+  refinement/training data). Continuable child sessions get
+  compress-on-age, not deletion; scanners must read compressed files.
 - No security/permission semantic changes; child processes keep the same
   damage-control posture as today.
 - Commit each validated slice with a conventional message and CHANGELOG
@@ -146,13 +147,15 @@ opt-in continuation: a launch parameter (or agent frontmatter default)
 that drops `--no-session` and records the child session path in the result
 details and task record; add a follow-up action (`subagent` continue mode or
 task action) that resumes that session with a new message via the same
-launcher. Child sessions from delegation get a dedicated directory and a
-retention policy aligned with the corpus retention approach (phase 2 T12).
+launcher. Child sessions from delegation get a dedicated directory and
+compress-on-age (never deletion - session data is refinement data by user
+decision; any scanner touching these files must handle the compressed
+form).
 
 Done when: a spawned agent answers a follow-up using context from its first
 run (proven by referencing a fact only present there); non-continuable
-launches behave exactly as today; retention prunes old delegation sessions
-in a dry run.
+launches behave exactly as today; compress-on-age verified in a dry run
+with a compressed session still readable by the friction scanner.
 
 ### T3: Isolation - enforce as option or delete
 
@@ -207,7 +210,11 @@ Build the scheduler as an opt-in drain action over the existing registry:
    with everything except read-only tasks. A task is read-only when its
    agent's launcher-enforced tool set contains no mutating tools - derived
    mechanically from the enforced tools, never from agent names or
-   descriptions; read-only tasks always parallelize. Overlapping writers
+   descriptions; read-only tasks always parallelize. This absorbs the open
+   item in `.specs/archive/pi-orchestration-follow-ups/note.md` (tools
+   declaring read/execute/mutate capability metadata instead of a manual
+   blocklist; archived 2026-07-17 with this absorption noted); mark the
+   item complete in the archived note when this lands. Overlapping writers
    queue - they are never automatically dispatched into worktrees (decision
    protocol: worktrees serve multi-instance isolation, not intra-instance
    parallelism). This mechanically enforces
@@ -254,8 +261,9 @@ behavior is byte-identical to today.
 
 ### T6: Close
 
-Ledger of decisions, `make check-pi-extensions`, and a live end-to-end
-exercise: one /do-it run over a scratch plan that fans out background tasks,
+Record material decisions in the closeout, run `make check-pi-extensions`, and
+complete a live end-to-end exercise: one /do-it run over a scratch plan that
+fans out background tasks,
 receives notifications, continues one agent with a follow-up, and drains a
 dependency wave mechanically.
 
@@ -286,11 +294,32 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
 ### Task checklist
 
 - [ ] T1: background completion notifications - pending
+  - [ ] message-injection API verified (sanctioned write path found)
+  - [ ] completion/failure notifications implemented and capped
+  - [ ] live fan-out validated without await
 - [ ] T2: continuable subagents - pending
+  - [ ] headless resume mechanism verified (else: blocked on upstream)
+  - [ ] opt-in continuation and follow-up action implemented
+  - [ ] compress-on-age in place (no deletion); context-carryover proof passed
 - [ ] T3: isolation enforce-or-delete (stop-and-ask gate) - pending
+  - [ ] evidence and both options presented to user
+  - [ ] user decision received (gate - never inferred)
+  - [ ] chosen option executed, including `memory` frontmatter
 - [ ] T4: mechanical DAG scheduler - pending
+  - [ ] auto-dispatch on unblock with maxConcurrent
+  - [ ] write-scope serialization; read-only derived from enforced tools
+  - [ ] critical-path-first ordering
+  - [ ] failure/starvation semantics with explicit report
+  - [ ] /do-it handoff wired; wave narration removed
+  - [ ] fixture DAG validation passed
 - [ ] T5: schema-validated subagent output - pending
+  - [ ] outputSchema validation with one bounded correction
+  - [ ] chain forwards validated objects / artifact references
+  - [ ] absent-schema behavior byte-identical
 - [ ] T6: close - pending
+  - [ ] material decisions recorded in the closeout
+  - [ ] `make check-pi-extensions` passed
+  - [ ] live end-to-end /do-it exercise passed (all capabilities)
 
 ### State
 

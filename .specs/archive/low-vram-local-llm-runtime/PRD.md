@@ -1,3 +1,5 @@
+> Archived 2026-07-17 per user decision: dormant idea PRD since 2026-05-12, no successor plan. Revive from archive if the idea returns.
+
 ---
 created: 2026-05-12
 status: draft

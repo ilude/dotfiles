@@ -1,10 +1,15 @@
 ---
 created: 2026-05-08
-status: draft
-completed:
+status: resolved-externally
+completed: 2026-07-17
 ---
 
 # Plan: Defender RTP tuning for AI CLI workloads
+
+> Archived 2026-07-17: resolved per user - the Defender tuning this plan
+> targeted was completed outside the plan. Verified same day: RTP on,
+> Tamper Protection on. Phase 2 T11 re-benches reducer latency before its
+> own decision, so no dependency on this plan remains.
 
 ## Context & Motivation
 

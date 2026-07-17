@@ -176,3 +176,12 @@ claude/commands/yt/hermes-transcript.tmp.txt
 /pi/workflow-friction/queue/processing/
 /pi/workflow-friction/worker.lock
 /pi/feature-memory.json
+.specs/archive/pi-damage-control-parity/evidence/*.exit
+.specs/archive/pi-damage-control-parity/evidence/*.patch
+.specs/archive/pi-workflow-audit/artifacts/*/git-diff-after-audit.txt
+.specs/archive/pi-workflow-audit/artifacts/*/git-timeline-raw.txt
+.specs/archive/pi-workflow-audit/artifacts/*/git-timeline.csv
+.specs/archive/pi-workflow-audit/artifacts/*/redaction-scan.txt
+.specs/archive/pi-workflow-audit/artifacts/*/repo-commit.txt
+.specs/archive/pi-workflow-audit/artifacts/*/RUN_STATUS.md
+.specs/archive/pi-workflow-audit/artifacts/*/source-roots.json

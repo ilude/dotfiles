@@ -49,16 +49,16 @@ model weakness:
   certainty calibration) reward exactly that gate-keeping behavior.
 
 Operating principles, per the user (recorded in
-`.specs/workflow-test-rationalization/summary.md`): less instructions is
+`.specs/archive/workflow-test-rationalization/summary.md`): less instructions is
 always preferred; tests are for code, not policy; linters own slop; recurring
 mechanical operations become programs, not model narration.
 
 ## Evidence base
 
-- `.specs/workflow-test-rationalization/summary.md` - user principles and the
-  churn incident record.
-- `.specs/archive/rationalization*/ledger.md` (after phase 1 archives) -
-  decision format and byte-count baselines.
+- `.specs/archive/workflow-test-rationalization/summary.md` - user principles
+  and the churn incident record (archived 2026-07-17).
+- `.specs/archive/rationalization/plan.md` - phase 1 decisions and byte-count
+  baselines.
 - Pi session transcripts of 2026-07-16 under
   `~/.pi/agent/sessions/--C--Users-mglenn-.dotfiles--/` - the fabricated
   blocker (session 019f6c3b) and the review-it churn (session 019f6bb0).
@@ -96,11 +96,8 @@ mechanical operations become programs, not model narration.
 - Preserve public command names and argument shapes.
 - Do not change security or permission semantics (damage-control, permissions,
   hooks). Damage-control and pinned linters are the guardrails that stay.
-- Every deleted rule, skill, or command gets one ledger row in
-  `.specs/rationalization-phase2/ledger.md`: item, what it nominally
-  prevented, originating incident (cite `research/friction-*.md` or session
-  evidence, else `unknown`), recurrence since the rule was introduced,
-  decision, rationale.
+- Record only material deletions and merges in the owning task with the usage
+  evidence and rationale needed to review the change.
 - A rule survives only if it names a real failure class - documented in the
   friction history or recent sessions - that values plus linters plus
   damage-control do not already cover. Non-recurrence of a documented
@@ -189,7 +186,8 @@ Decide and execute one of:
    extension records episode facts mechanically from observable data -
    commands, exit codes, timestamps, commits); the model never narrates it.
 2. No code consumer: delete the telemetry requirement from `do-it.md` and
-   `pi/docs/workflow-eval-telemetry.md`, and note the deletion in the ledger.
+   `pi/docs/workflow-eval-telemetry.md`, and record the deletion in the task
+   evidence.
 
 Done when: no workflow skill instructs the model to emit schema-shaped prose;
 whatever telemetry remains is written by code and readable by code.
@@ -210,7 +208,7 @@ Apply the survival test from Boundaries to the middle of `pi/AGENTS.md`:
 - Reduce 1-3-1 to its value: when a real unresolved choice exists, recommend
   one option with brief trade-offs; a selection is authorization.
 - Delete presentation rituals ([N/total] counter, template formats) unless
-  the ledger records a recent failure they prevented.
+  recent session or friction evidence shows a failure they prevented.
 - Fold two documented failure classes into the consolidated text as one-line
   values, not new rule blocks: safety guidance gates execution, never
   implementation (gcc 2026-06-25 "should be not to skip building"); a
@@ -274,10 +272,9 @@ by model or effort. Execute the retirements. Nonzero-usage deletions and
 deletion of any distinct-role agent still require the stop-and-ask gate;
 the variant merges do not.
 
-Done when: every skill, command, and agent has a ledger row with usage count
-and decision; retired items are removed along with their activation prose
-and name references; /improve consumes the same data source on demand rather
-than ad hoc.
+Done when: usage evidence supports every retirement or merge; retired items
+are removed along with their activation prose and name references; /improve
+consumes the same data source on demand rather than a maintained inventory.
 
 ### T6: Extension output-visibility rule
 
@@ -347,8 +344,8 @@ rate at or above 65% (baseline 52%; the named shapes alone account for
 enough of the miss profile to reach this - if replay lands short, record
 the residual top-10 unmatched shapes and stop rather than adding parser
 complexity); no regression on currently-matched fixtures; the failure-line
-survival check passes over all newly matched replay entries; both results
-recorded in the ledger with before/after numbers.
+survival check passes over all newly matched replay entries; both results are
+recorded in the task evidence with before/after numbers.
 
 ### T9: Make the generic fallback reachable
 
@@ -394,8 +391,8 @@ in-process port is explicitly out of scope until a worker has been measured
 insufficient.
 
 Done when: either the worker shows a measured p50 improvement with all
-failure modes still falling open to raw output, or a ledger row records the
-measurement that made it unnecessary.
+failure modes still falling open to raw output, or the task evidence records
+the measurement that made it unnecessary.
 
 ### T12: Reducer schema and corpus hygiene
 
@@ -445,9 +442,9 @@ the retroactive path (raw remains in the session file).
 
 ## Phase E - close
 
-### T14: Ledger close and validation
+### T14: Close and validation
 
-Verify every ledger row executed or explicitly deferred; run
+Reconcile the checklist and material decisions; run
 `make check-pi-extensions` and the phase 1 changed-file validation CLI
 (phase 1's T10) over touched files; exercise /do-it against a scratch plan
 fixture confirming the new report contract end to end; record before/after
@@ -459,8 +456,8 @@ session files expose compaction events, record compaction frequency
 before/after over a comparable window. Bytes saved is the proxy; slower
 context growth is the goal.
 
-Done when: ledger closed, aggregates pass, measurements recorded including
-the Phase D context-growth numbers.
+Done when: the checklist is reconciled, aggregates pass, and measurements are
+recorded including the Phase D context-growth numbers.
 
 ## Dependency graph
 
@@ -507,7 +504,7 @@ and commit this file after every slice; resume from here, never re-derive.
 - [x] T4: one philosophy file - done: validated slice commit pending
 - [x] T5: usage-driven skill/command/agent audit - done: validated slice commit pending
   - [x] usage data source verified; gaps covered by session-archive scan
-  - [x] usage counts and ledger rows for every skill/command/agent
+  - [x] usage counts verified for retirement and merge decisions
   - [x] pre-approved variant merges executed (skill-review trio collapsed)
   - [x] gated deletions: no distinct-role or nonzero-usage deletion selected
   - [x] retirements executed with reference cleanup
@@ -519,8 +516,8 @@ and commit this file after every slice; resume from here, never re-derive.
 - [x] T11: persistent reducer worker (decision-gated) - done: validated slice commit pending
 - [x] T12: reducer schema and corpus hygiene - done: `c1bacbc`
 - [x] T13: retroactive context reduction - done: validated slice commit pending
-- [ ] T14: ledger close and validation - pending
-  - [ ] every ledger row executed or explicitly deferred
+- [ ] T14: close and validation - pending
+  - [ ] checklist and material decisions reconciled
   - [ ] `make check-pi-extensions` and changed-file CLI passed
   - [ ] scratch-plan /do-it exercised (new report contract end to end)
   - [ ] byte counts and Phase D context-growth numbers recorded

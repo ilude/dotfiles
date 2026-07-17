@@ -1,3 +1,5 @@
+> Archived 2026-07-17: the one open item (tool capability metadata replacing the mutation blocklist) is absorbed by .specs/rationalization-phase3/ T4; all other items were complete.
+
 ---
 status: active
 ---
