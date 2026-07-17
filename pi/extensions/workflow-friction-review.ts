@@ -1538,7 +1538,7 @@ export default function workflowFrictionExtension(
 			const parts = args.trim().split(/\s+/).filter(Boolean);
 			const action = parts[0]?.toLowerCase();
 			if (action === "help") {
-				ctx.ui.notify(improveHelpText(), "info");
+				showImprovementCommandOutput(pi, args, improveHelpText());
 				return;
 			}
 			if (
@@ -1547,7 +1547,7 @@ export default function workflowFrictionExtension(
 				action !== "select" &&
 				action !== "decide"
 			) {
-				ctx.ui.notify(improveHelpText(), "warning");
+				showImprovementCommandOutput(pi, args, improveHelpText());
 				return;
 			}
 			if (action === "decide") {
@@ -1646,9 +1646,10 @@ export default function workflowFrictionExtension(
 				}
 			}
 			if (eligibleCandidates.length === 0) {
-				ctx.ui.notify(
+				showImprovementCommandOutput(
+					pi,
+					args,
 					"No supported improvement candidates exist for this workspace.",
-					"info",
 				);
 				return;
 			}

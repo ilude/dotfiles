@@ -959,9 +959,15 @@ describe("workflow friction extension", () => {
 				(command) => command.name === "improve",
 			);
 			await improve?.handler("", ctx);
-			expect(ctx.ui.notify).toHaveBeenCalledWith(
-				"No supported improvement candidates exist for this workspace.",
-				"info",
+			expect(pi.sendMessage).toHaveBeenCalledWith(
+				expect.objectContaining({
+					customType: "workflow-friction.improve-command",
+					display: true,
+					content: expect.stringContaining(
+						"> /improve\n\nNo supported improvement candidates exist for this workspace.",
+					),
+				}),
+				{ triggerTurn: false },
 			);
 		} finally {
 			if (previous === undefined) delete process.env.PI_WORKFLOW_FRICTION_DIR;
@@ -976,14 +982,22 @@ describe("workflow friction extension", () => {
 		const ctx = createMockCtx();
 		const improve = pi._commands.find((command) => command.name === "improve");
 		await improve?.handler("help", ctx);
-		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			expect.stringContaining("/improve list"),
-			"info",
+		expect(pi.sendMessage).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				content: expect.stringContaining(
+					"> /improve help\n\nUsage:\n  /improve",
+				),
+				display: true,
+			}),
+			{ triggerTurn: false },
 		);
 		await improve?.handler("Repeated validation with no edit", ctx);
-		expect(ctx.ui.notify).toHaveBeenLastCalledWith(
-			expect.stringContaining("/improve select <number-or-id>"),
-			"warning",
+		expect(pi.sendMessage).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				content: expect.stringContaining("/improve select <number-or-id>"),
+				display: true,
+			}),
+			{ triggerTurn: false },
 		);
 	});
 

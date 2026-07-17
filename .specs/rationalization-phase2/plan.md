@@ -511,7 +511,7 @@ and commit this file after every slice; resume from here, never re-derive.
   - [x] pre-approved variant merges executed (skill-review trio collapsed)
   - [x] gated deletions: no distinct-role or nonzero-usage deletion selected
   - [x] retirements executed with reference cleanup
-- [ ] T6: extension output-visibility rule - pending
+- [x] T6: extension output-visibility rule - done: validated slice commit pending
 - [ ] T7: hygiene-gate immutable-artifact exemptions - pending
 - [ ] T8: shell-aware reducer classification - pending
 - [ ] T9: reachable generic fallback - pending
@@ -529,16 +529,16 @@ and commit this file after every slice; resume from here, never re-derive.
 
 - **State:** in progress
 - **Current blocker:** none
-- **Last completed gate:** T5 usage-driven surface audit and variant merge
-- **Next:** T6 extension output-visibility audit
+- **Last completed gate:** T6 extension output-visibility audit
+- **Next:** T7 immutable-artifact hygiene exemptions
 - **Completed work:** T1-T4 are committed. T5 recorded 30-day decisions for 52
   skills, 36 commands, and 18 audited agents; the user selected optional
   per-launch effort; the three approved skill-review variants now share one
   agent with explicit model and effort dispatch.
-- **Commands/results:** focused subagent and skill-review suites passed 38 tests;
-  Pi typecheck passed; skill-review smoke, pre/post validation, dry-run, and
-  runner sequence passed with exact model/effort records; `git diff --check`
+- **Commands/results:** T5 focused suites passed 38 tests and its exact smoke
+  sequence passed. T6 audited 21 command owners; slash-command echo and
+  workflow-friction suites passed 45 tests; Pi typecheck and `git diff --check`
   passed.
-- **Remaining checks:** commit T5, then T6-T14, final validation, and archive.
+- **Remaining checks:** commit T6, then T7-T14, final validation, and archive.
 - **Exact user action:** none
 - **Resume:** `/do-it .specs/rationalization-phase2/plan.md`

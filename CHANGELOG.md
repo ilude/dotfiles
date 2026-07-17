@@ -2,6 +2,27 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Persist visible command output
+
+**Why:** Three `/improve` branches rendered help or state only through UI
+notifications, leaving the model unable to observe what the user saw.
+
+**Changed:**
+- Added the model-visible output rule to the Pi command-authoring skill.
+- Routed `/improve help`, unsupported input, and empty-candidate results through
+  the command's visible transcript message path.
+- Audited all 21 command-owning extensions; no other violation remained.
+
+**Validation:** Slash-command echo and workflow-friction suites passed 45 tests;
+Pi typecheck and `git diff --check` passed.
+
+**Files:** `pi/skills/pi-command/SKILL.md`,
+`pi/extensions/workflow-friction-review.ts`,
+`pi/tests/workflow-friction.test.ts`,
+`.specs/rationalization-phase2/{plan,ledger}.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Merge skill-review agent variants
 
 **Why:** Three agent definitions differed only by model and thinking effort.

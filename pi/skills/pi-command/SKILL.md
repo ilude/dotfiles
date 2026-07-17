@@ -34,6 +34,8 @@ Pi-first rule: when improving agent runtime features, implement in Pi unless the
 
 Stateful commands must be idempotent and use locked read-modify-write plus atomic writes for shared `.pi/*.json` files. Reset commands must target exact owned files, never broad globs.
 
+A command whose output is visible to the user must persist that output or a faithful summary in model context. UI-only notifications, widgets, and overlays are defects when they contain state the model cannot read back.
+
 ## Anti-Patterns
 
 - Modifying `claude/` as a proxy for Pi behavior.
