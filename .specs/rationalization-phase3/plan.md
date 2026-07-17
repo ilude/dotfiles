@@ -314,7 +314,7 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
   - [x] headless resume mechanism verified: `pi --session <path> -p <message>`
   - [x] opt-in continuation and follow-up action implemented
   - [x] compress-on-age in place (no deletion); context-carryover proof passed
-- [ ] T3: cross-client worktree occupancy leases - in-progress: validation passed; record final slice commit hash
+- [x] T3: cross-client worktree occupancy leases - done: `1828e9b`
   - [x] user decision received: delete advisory metadata; add lease warning
   - [x] `isolation` and `memory` removed from parser, docs, and agent files
   - [x] shared atomic lease lifecycle implemented for Pi and Claude
@@ -338,7 +338,7 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
 
 ### State
 
-- **Classification:** in progress; T1-T2 complete
+- **Classification:** in progress; T1-T3 complete
 - **Current blocker:** none
-- **Next:** record T3's final validation commit hash, then start T4's opt-in DAG scheduler
+- **Next:** T4, implement the opt-in DAG scheduler over the existing task registry
 - **Resume:** `/do-it .specs/rationalization-phase3/plan.md`
