@@ -28,9 +28,12 @@ type LoopJob = {
 };
 
 function loopRoot(): string {
-	return process.env.PI_LOOP_DIR?.trim()
-		? path.resolve(process.env.PI_LOOP_DIR)
-		: path.join(os.homedir(), ".pi", "agent", "loops");
+	if (process.env.PI_LOOP_DIR?.trim())
+		return path.resolve(process.env.PI_LOOP_DIR);
+	const localState = process.env.LOCALAPPDATA?.trim()
+		? path.resolve(process.env.LOCALAPPDATA)
+		: path.join(os.homedir(), ".local", "state");
+	return path.join(localState, "pi", "loops");
 }
 const SCRIPT_PATH = fileURLToPath(
 	new URL("../scripts/run-loop.ps1", import.meta.url),

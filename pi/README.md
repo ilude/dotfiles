@@ -310,8 +310,9 @@ only one writer occupies the worktree.
 /loop resume <job-id>
 ```
 
-Runtime state and logs live under `~/.pi/agent/loops/<job-id>/` by default. Set
-`PI_LOOP_DIR` to override the state root. A job becomes trustworthy only after
+Runtime state and logs live under `%LOCALAPPDATA%/pi/loops/<job-id>/` on
+Windows and `~/.local/state/pi/loops/<job-id>/` elsewhere. Set `PI_LOOP_DIR` to
+override the state root. A job becomes trustworthy only after
 its first validated commit; startup and extension loading alone are not reported
 as progress. The supervisor never pushes and stops after bounded invocation
 failures, quiescence, or repeated iterations without a commit.
