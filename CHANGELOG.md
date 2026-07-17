@@ -2,6 +2,35 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Generate the evidence-backed improvement report
+
+**Why:** Friction, usage, routing experiments, plan consistency, and dormant
+specs were separate evidence streams with no deterministic proposal boundary.
+
+**Changed:**
+- Added one Python report generator for routing cells, session friction signals,
+  command/skill/agent usage, active-plan lint, and 60-day `.specs/` hygiene.
+- Ordered deletion and consolidation proposals before additions and limited
+  additions so they never outnumber deletion candidates.
+- Treated absent metrics, sessions, friction metadata, routing cells, skill
+  events, and phase 5 decision logs as explicit coverage notes.
+- Added the May 2026 audit comparison and refused routing conclusions below 30
+  runs per arm.
+- Generated the first real-data report at
+  `.specs/improvement-reports/2026-07-17.md`.
+
+**Validation:** Five focused tests cover nearest-rank aggregation, quality/time/
+token/cost cells, report ordering, low-sample refusal, missing sources, and
+slash-echo command accounting. Ruff passed. Real-data inspection confirmed
+active `/do-it` and `/commit` usage is counted, all required report sections are
+ordered, and the empty routing table makes no conclusion.
+
+**Files:** `pi/scripts/improvement-report.py`, `test/test_improvement_report.py`,
+`.specs/{improvement-reports/2026-07-17.md,rationalization-phase4/plan.md}`,
+`CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Sample policy-resolved routing outcomes
 
 **Why:** Terra, Luna-high, and Sol-low dispatch choices lacked controlled outcome

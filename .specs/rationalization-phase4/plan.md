@@ -228,10 +228,10 @@ from here.
   - [x] sampling layer with named-constant rate; arms as data
   - [x] explicit overrides never sampled (proven)
   - [x] telemetry tags verified at configured rate; rate 0 byte-identical
-- [ ] T3: improvement-report - pending
-  - [ ] all present sources aggregated; absent sources as coverage notes
-  - [ ] deletions-first report generated from real data
-  - [ ] aggregation math tested
+- [ ] T3: improvement-report - in-progress: implementation validated; record commit
+  - [x] all present sources aggregated; absent sources as coverage notes
+  - [x] deletions-first report generated from real data
+  - [x] aggregation math tested
 - [ ] T4: cadence and entry point - pending
   - [ ] /improve report end to end
   - [ ] loop documented once, in the philosophy file
@@ -242,7 +242,8 @@ from here.
 
 ### State
 
-- **Classification:** in progress; T1-T2 complete
+- **Classification:** in progress; T1-T2 complete; T3 implementation validated
 - **Current blocker:** none
-- **Next:** T3, build the deterministic improvement report and aggregation tests
+- **Next:** record T3's implementation commit, then add the T4 manual report
+  entry point and cadence guidance
 - **Resume:** `/do-it .specs/rationalization-phase4/plan.md`
