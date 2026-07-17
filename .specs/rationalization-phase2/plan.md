@@ -515,7 +515,7 @@ and commit this file after every slice; resume from here, never re-derive.
 - [x] T7: hygiene-gate immutable-artifact exemptions - done: validated slice commit pending
 - [ ] T8: shell-aware reducer classification - pending
 - [ ] T9: reachable generic fallback - pending
-- [ ] T10: self-describing reductions - pending
+- [x] T10: self-describing reductions - done: validated slice commit pending
 - [ ] T11: persistent reducer worker (decision-gated) - pending
 - [ ] T12: reducer schema and corpus hygiene - pending
 - [ ] T13: retroactive context reduction - pending
@@ -529,17 +529,17 @@ and commit this file after every slice; resume from here, never re-derive.
 
 - **State:** in progress
 - **Current blocker:** none
-- **Last completed gate:** T7 immutable-artifact hygiene exemptions
-- **Next:** T10 self-describing reductions (required before T8/T9)
+- **Last completed gate:** T10 self-describing recoverable reductions
+- **Next:** T8 shell-aware reducer classification
 - **Completed work:** T1-T4 are committed. T5 recorded 30-day decisions for 52
   skills, 36 commands, and 18 audited agents; the user selected optional
   per-launch effort; the three approved skill-review variants now share one
   agent with explicit model and effort dispatch.
-- **Commands/results:** T5 focused suites passed 38 tests and its exact smoke
-  sequence passed. T6 passed 45 focused tests. T7 passed 52 quality-validation
-  tests; exact `scripts/quality-check` left the exempt fixture hash unchanged,
-  reported the exemption, and validated the non-exempt fixture; Ruff and
+- **Commands/results:** T5-T7 focused and exact workflow checks passed. T10's
+  10-test reducer suite passed with real reduction markers, both raw recovery
+  paths, bypass, age/size caps, and failure fall-through; Pi typecheck and
   `git diff --check` passed.
-- **Remaining checks:** commit T7, then T8-T14, final validation, and archive.
+- **Remaining checks:** commit T10, then T8, T9, T11-T14, final validation,
+  and archive.
 - **Exact user action:** none
 - **Resume:** `/do-it .specs/rationalization-phase2/plan.md`

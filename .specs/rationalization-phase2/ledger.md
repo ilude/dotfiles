@@ -17,6 +17,7 @@
 | Delegation restatements | Unnecessary or unsafe delegation | `research/context-reduction-research.md` | Repeated policy copies in two instruction files and skills | Consolidate | One always-loaded paragraph owns direct work, justified delegation, read parallelism, and single-threaded writes. | T4 | Executed |
 | `/improve` UI-only help/error/empty output | Model cannot observe user-visible command state | `.specs/rationalization-phase2/plan.md` | Three branches in one command owner | Fix | All visible command output now uses the owner-specific transcript message path. | T6 | Executed |
 | Generic hygiene on immutable paths | Migration checksum changes | `research/friction-work-gitlab-networkiac.md` - monorepo 2026-05-27 | One documented deployment break | Keep as code gate | Declared immutable paths are reported and skipped without validator execution or file mutation. | T7 | Executed |
+| Reducer output without recovery marker | Lost raw failure evidence | `research/context-reduction-research.md` | Existing reducer dropped content without a model-visible recovery path | Fix | Every applied reduction now states bytes, rule, and a readable raw-output path; bypass and bounded raw retention are enforced. | T10 | Executed |
 
 ## Surface usage decisions
 

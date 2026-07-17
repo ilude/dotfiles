@@ -25,6 +25,7 @@
 //   tool result the LLM consumes.
 
 import * as child_process from "node:child_process";
+import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
@@ -49,6 +50,72 @@ function getReduceScriptPath(): string {
 
 const TIMEOUT_MS = 3000;
 const MIN_REDUCER_INPUT_BYTES = 240;
+const RAW_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const RAW_MAX_BYTES = 64 * 1024 * 1024;
+
+function getRawOutputDir(): string {
+	return path.join(
+		getHomeDir(),
+		".cache",
+		"pi",
+		"tool-reduction",
+		"raw",
+	);
+}
+
+export async function pruneRawOutputs(
+	rawDir: string,
+	options: {
+		now?: number;
+		retentionMs?: number;
+		maxBytes?: number;
+	} = {},
+): Promise<void> {
+	let entries: fs.Dirent[];
+	try {
+		entries = await fs.promises.readdir(rawDir, { withFileTypes: true });
+	} catch {
+		return;
+	}
+	const now = options.now ?? Date.now();
+	const retentionMs = options.retentionMs ?? RAW_RETENTION_MS;
+	const maxBytes = options.maxBytes ?? RAW_MAX_BYTES;
+	const files: Array<{ path: string; mtimeMs: number; size: number }> = [];
+	for (const entry of entries) {
+		if (!entry.isFile()) continue;
+		const filePath = path.join(rawDir, entry.name);
+		try {
+			const stat = await fs.promises.stat(filePath);
+			if (now - stat.mtimeMs > retentionMs) {
+				await fs.promises.unlink(filePath);
+				continue;
+			}
+			files.push({ path: filePath, mtimeMs: stat.mtimeMs, size: stat.size });
+		} catch {
+			// A concurrent cleanup may already have removed the file.
+		}
+	}
+	let total = files.reduce((sum, file) => sum + file.size, 0);
+	for (const file of files.sort((a, b) => a.mtimeMs - b.mtimeMs)) {
+		if (total <= maxBytes) break;
+		try {
+			await fs.promises.unlink(file.path);
+			total -= file.size;
+		} catch {
+			// A concurrent cleanup may already have removed the file.
+		}
+	}
+}
+
+async function saveRawOutput(toolCallId: string, rawText: string): Promise<string> {
+	const rawDir = getRawOutputDir();
+	await fs.promises.mkdir(rawDir, { recursive: true, mode: 0o700 });
+	await pruneRawOutputs(rawDir);
+	const safeId = toolCallId.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 80);
+	const filePath = path.join(rawDir, `${Date.now()}-${safeId || "bash"}.txt`);
+	await fs.promises.writeFile(filePath, rawText, { encoding: "utf-8", mode: 0o600 });
+	return filePath;
+}
 
 function stopProcessTree(pid: number): void {
 	if (process.platform === "win32") {
@@ -178,6 +245,7 @@ export const EXTENSION_NAME = "tool-reduction";
 export default function (pi: ExtensionAPI) {
 	pi.on("tool_result", async (event: ToolResultEvent) => {
 		if (!isBashToolResult(event)) return undefined;
+		if (process.env.PI_TOOL_REDUCTION?.toLowerCase() === "off") return undefined;
 
 		const command = (event.input as { command?: string }).command ?? "";
 		const { stdout, stderr } = extractTextContent(event.content);
@@ -192,12 +260,28 @@ export default function (pi: ExtensionAPI) {
 
 		const result = await callReducer(request, getReduceScriptPath());
 
-		if (result === null) {
+		if (result === null || !result.reduction_applied) {
 			return undefined;
 		}
 
+		const separator = stdout && stderr ? "\n" : "";
+		const rawText = `${stdout}${separator}${stderr}`;
+		let rawPath = event.details?.fullOutputPath;
+		if (!rawPath) {
+			try {
+				rawPath = await saveRawOutput(event.toolCallId, rawText);
+			} catch {
+				return undefined;
+			}
+		}
+		const ruleId = result.rule_id ?? "generic";
+		const marker = `[tool-reduction] bytes=${result.bytes_before}->${result.bytes_after} rule=${ruleId} raw=${rawPath}`;
+		const compactText = result.inline_text.endsWith("\n")
+			? `${result.inline_text}${marker}`
+			: `${result.inline_text}\n${marker}`;
+
 		return {
-			content: [{ type: "text" as const, text: result.inline_text }],
+			content: [{ type: "text" as const, text: compactText }],
 		};
 	});
 }

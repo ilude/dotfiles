@@ -2,6 +2,29 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Make tool reductions recoverable
+
+**Why:** Reduced Bash output did not identify the reducer or provide a path back
+to the full raw result.
+
+**Changed:**
+- Appended bytes, rule ID, and raw-output recovery path to every applied
+  reduction.
+- Reused Pi's full-output path for truncated results and saved reducer-only raw
+  output under the local tool-reduction cache.
+- Added a seven-day and 64 MiB raw-output cap plus `PI_TOOL_REDUCTION=off`.
+
+**Validation:** The real reducer fixture and mocked Pi-truncated/reducer-only
+paths passed; cited files contained the full raw output. Toggle, age retention,
+size cap, failure fall-through, and process cleanup coverage passed in the
+10-test reducer suite; Pi typecheck and `git diff --check` passed.
+
+**Files:** `pi/extensions/tool-reduction.ts`,
+`pi/tests/tool-reduction.test.ts`,
+`.specs/rationalization-phase2/{plan,ledger}.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Protect immutable artifacts from hygiene checks
 
 **Why:** Generic formatting validation previously changed an applied migration

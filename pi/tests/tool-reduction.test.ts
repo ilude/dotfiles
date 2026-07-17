@@ -52,7 +52,11 @@ const FIXTURE_PATH = path.resolve(
 
 type TextBlock = { type: "text"; text: string };
 
-function makeBashResultEvent(stdout: string, isError = false) {
+function makeBashResultEvent(
+	stdout: string,
+	isError = false,
+	details?: { fullOutputPath?: string },
+) {
 	return {
 		type: "tool_result" as const,
 		toolName: "bash" as const,
@@ -60,7 +64,7 @@ function makeBashResultEvent(stdout: string, isError = false) {
 		input: { command: "git status" },
 		content: [{ type: "text" as const, text: stdout }],
 		isError,
-		details: undefined,
+		details,
 	};
 }
 
@@ -73,6 +77,17 @@ function createMockChild(pid = 123): import("node:child_process").ChildProcess {
 		stderr: new PassThrough(),
 	});
 	return child as unknown as import("node:child_process").ChildProcess;
+}
+
+function reducedResponse(inlineText = "compacted"): string {
+	return JSON.stringify({
+		inline_text: inlineText,
+		facts: {},
+		rule_id: "git/status",
+		bytes_before: 1000,
+		bytes_after: Buffer.byteLength(inlineText, "utf-8"),
+		reduction_applied: true,
+	});
 }
 
 function closeWithStdout(
@@ -127,6 +142,10 @@ describe("tool-reduction extension", () => {
 
 			const bytesAfter = Buffer.byteLength(compactedText, "utf-8");
 			expect(bytesAfter).toBeLessThan(bytesBefore);
+			expect(compactedText).toContain("[tool-reduction] bytes=");
+			const rawPath = compactedText.match(/ raw=(.+)$/)?.[1];
+			expect(rawPath).toBeDefined();
+			expect(fs.readFileSync(rawPath ?? "", "utf-8")).toBe(fixtureText);
 		}, 30000);
 	});
 
@@ -142,6 +161,103 @@ describe("tool-reduction extension", () => {
 
 			expect(result).toBeUndefined();
 			expect(spawn).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("recovery markers", () => {
+		it("writes reducer-only raw output and appends a recovery marker", async () => {
+			const scratchHome = fs.mkdtempSync(
+				path.join(os.tmpdir(), "tool-reduction-home-"),
+			);
+			const previousHome = process.env.HOME;
+			process.env.HOME = scratchHome;
+			try {
+				const child = createMockChild();
+				spawnBehavior = () => {
+					closeWithStdout(child, reducedResponse());
+					return child;
+				};
+				const mod = await import("../extensions/tool-reduction.ts");
+				mod.default(mockPi as unknown as ExtensionAPI);
+				const [hook] = mockPi._getHook("tool_result");
+				const raw = "raw output\n".repeat(30);
+				const result = await hook.handler(makeBashResultEvent(raw));
+				const text = (result?.content[0] as TextBlock).text;
+				expect(text).toContain(
+					"[tool-reduction] bytes=1000->9 rule=git/status raw=",
+				);
+				const rawPath = text.match(/ raw=(.+)$/)?.[1];
+				expect(rawPath).toBeDefined();
+				expect(fs.readFileSync(rawPath ?? "", "utf-8")).toBe(raw);
+			} finally {
+				if (previousHome === undefined) delete process.env.HOME;
+				else process.env.HOME = previousHome;
+			}
+		});
+
+		it("uses Pi's full output path when the bash result was truncated", async () => {
+			const fullPath = path.join(
+				fs.mkdtempSync(path.join(os.tmpdir(), "tool-reduction-full-")),
+				"full.txt",
+			);
+			fs.writeFileSync(fullPath, "complete raw output", "utf-8");
+			const child = createMockChild();
+			spawnBehavior = () => {
+				closeWithStdout(child, reducedResponse());
+				return child;
+			};
+			const mod = await import("../extensions/tool-reduction.ts");
+			mod.default(mockPi as unknown as ExtensionAPI);
+			const [hook] = mockPi._getHook("tool_result");
+			const result = await hook.handler(
+				makeBashResultEvent("truncated\n".repeat(30), false, {
+					fullOutputPath: fullPath,
+				}),
+			);
+			const text = (result?.content[0] as TextBlock).text;
+			expect(text).toContain(`raw=${fullPath}`);
+			expect(fs.readFileSync(fullPath, "utf-8")).toBe("complete raw output");
+		});
+
+		it("bypasses reduction when PI_TOOL_REDUCTION is off", async () => {
+			const previous = process.env.PI_TOOL_REDUCTION;
+			process.env.PI_TOOL_REDUCTION = "off";
+			try {
+				const { spawn } = await import("node:child_process");
+				vi.mocked(spawn).mockClear();
+				const mod = await import("../extensions/tool-reduction.ts");
+				mod.default(mockPi as unknown as ExtensionAPI);
+				const [hook] = mockPi._getHook("tool_result");
+				expect(
+					await hook.handler(makeBashResultEvent("raw output".repeat(30))),
+				).toBeUndefined();
+				expect(spawn).not.toHaveBeenCalled();
+			} finally {
+				if (previous === undefined) delete process.env.PI_TOOL_REDUCTION;
+				else process.env.PI_TOOL_REDUCTION = previous;
+			}
+		});
+
+		it("removes expired raw output and enforces the byte cap", async () => {
+			const rawDir = fs.mkdtempSync(path.join(os.tmpdir(), "tool-reduction-raw-"));
+			const expired = path.join(rawDir, "expired.txt");
+			const oldest = path.join(rawDir, "oldest.txt");
+			const newest = path.join(rawDir, "newest.txt");
+			fs.writeFileSync(expired, "old");
+			fs.writeFileSync(oldest, "1234");
+			fs.writeFileSync(newest, "5678");
+			fs.utimesSync(expired, new Date(0), new Date(0));
+			fs.utimesSync(oldest, new Date(1000), new Date(1000));
+			fs.utimesSync(newest, new Date(2000), new Date(2000));
+			const mod = await import("../extensions/tool-reduction.ts");
+			await mod.pruneRawOutputs(rawDir, {
+				now: 3000,
+				retentionMs: 2500,
+				maxBytes: 4,
+			});
+			expect(fs.existsSync(expired)).toBe(false);
+			expect(fs.existsSync(oldest)).toBe(false);
+			expect(fs.existsSync(newest)).toBe(true);
 		});
 	});
 
