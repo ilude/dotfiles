@@ -28,9 +28,13 @@ import {
 	withFileMutationQueue,
 } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
-import { Type } from "@sinclair/typebox";
+import { type TSchema, Type } from "@sinclair/typebox";
 import { emitTerminalBell } from "../../lib/extension-utils.js";
 import { recordEvent } from "../../lib/metrics.js";
+import {
+	decodeSchemaOutput,
+	schemaOutputInstruction,
+} from "../../lib/typed-agent.js";
 import {
 	type ModelPolicy,
 	type ModelSize,
@@ -178,6 +182,7 @@ function buildSubagentTraceparent(): string {
 
 const MAX_CONCURRENCY = 8;
 const COLLAPSED_ITEM_COUNT = 10;
+const STRUCTURED_CHAIN_ARTIFACT_BYTES = 8_000;
 const DELEGATED_SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 function getDelegatedSessionDir(): string {
@@ -431,6 +436,8 @@ export interface SingleResult {
 	taskId?: string;
 	durationMs?: number;
 	sessionPath?: string;
+	structuredOutput?: unknown;
+	outputAttempts?: number;
 }
 
 export interface SubagentDetails {
@@ -450,6 +457,49 @@ export function getFinalOutput(messages: Message[]): string {
 		}
 	}
 	return "";
+}
+
+function getResultOutput(result: SingleResult, pretty = false): string {
+	if (
+		result.outputAttempts === undefined ||
+		result.structuredOutput === undefined
+	)
+		return getFinalOutput(result.messages);
+	return JSON.stringify(result.structuredOutput, null, pretty ? 2 : undefined);
+}
+
+function structuredOutputIsBulky(result: SingleResult): boolean {
+	return (
+		result.outputAttempts !== undefined &&
+		Buffer.byteLength(getResultOutput(result), "utf-8") >
+			STRUCTURED_CHAIN_ARTIFACT_BYTES
+	);
+}
+
+function mergeCorrectionResult(
+	result: SingleResult,
+	correction: SingleResult,
+): void {
+	result.messages.push(...correction.messages);
+	result.exitCode = correction.exitCode;
+	result.stderr = [result.stderr, correction.stderr].filter(Boolean).join("\n");
+	result.usage.input += correction.usage.input;
+	result.usage.output += correction.usage.output;
+	result.usage.cacheRead += correction.usage.cacheRead;
+	result.usage.cacheWrite += correction.usage.cacheWrite;
+	result.usage.cost =
+		result.usage.cost === null && correction.usage.cost === null
+			? null
+			: (result.usage.cost ?? 0) + (correction.usage.cost ?? 0);
+	result.usage.contextPeakTokens = Math.max(
+		result.usage.contextPeakTokens,
+		correction.usage.contextPeakTokens,
+	);
+	result.usage.turns += correction.usage.turns;
+	result.model = correction.model ?? result.model;
+	result.stopReason = correction.stopReason;
+	result.errorMessage = correction.errorMessage;
+	result.durationMs = (result.durationMs ?? 0) + (correction.durationMs ?? 0);
 }
 
 function countLines(text: string): number {
@@ -556,7 +606,7 @@ function finalizeOutput(
 	) {
 		const saved = saveOutputArtifact(
 			result.outputPath,
-			getFinalOutput(result.messages),
+			getResultOutput(result, result.outputAttempts !== undefined),
 		);
 		result.outputReference = saved.reference;
 		result.saveError = saved.error;
@@ -575,7 +625,7 @@ function getArtifactFallbackMessage(result: SingleResult): string | undefined {
 }
 
 function getOutputForParent(result: SingleResult): string {
-	const output = getFinalOutput(result.messages);
+	const output = getResultOutput(result);
 	let visible = output;
 	if (result.outputMode === "file-only") {
 		if (result.outputReference) visible = result.outputReference.message;
@@ -595,7 +645,7 @@ export function aggregateParallelOutputs(results: SingleResult[]): string {
 	return results
 		.map((r, i) => {
 			const header = `=== Parallel Task ${i + 1} (${r.agent}) ===`;
-			const output = getFinalOutput(r.messages);
+			const output = getResultOutput(r);
 			const hasOutput = Boolean(output.trim());
 			const isModelError = r.stopReason === "error" || Boolean(r.errorMessage);
 			const status =
@@ -1263,6 +1313,12 @@ const SubagentParams = Type.Object({
 	modelSize: Type.Optional(ModelSizeSchema),
 	modelPolicy: Type.Optional(ModelPolicySchema),
 	effort: Type.Optional(EffortSchema),
+	outputSchema: Type.Optional(
+		Type.Record(Type.String(), Type.Unknown(), {
+			description:
+				"JSON Schema for validated child output. Invalid output receives at most one continuation correction.",
+		}),
+	),
 	continuable: Type.Optional(
 		Type.Boolean({
 			description: "Persist child sessions so they can be continued later.",
@@ -1300,6 +1356,7 @@ export default function (pi: ExtensionAPI) {
 			'Default agent scope is "user" (from ~/.pi/agent/agents).',
 			'To enable project-local agents in .pi/agents, set agentScope: "both" (or "project").',
 			"Optional model overrides the agent frontmatter model. Optional modelSize/modelPolicy parameters dynamically map subagents onto the current provider/model ladder.",
+			"Optional outputSchema validates JSON output and permits one continuation correction.",
 		].join(" "),
 		parameters: SubagentParams,
 
@@ -1316,6 +1373,9 @@ export default function (pi: ExtensionAPI) {
 				(params.modelPolicy as unknown as ModelPolicy | undefined) ??
 				"same-provider";
 			const effort = params.effort as unknown as AgentEffort | undefined;
+			const outputSchema = params.outputSchema as unknown as
+				| TSchema
+				| undefined;
 			const resolvedModel =
 				!explicitModel && modelSize
 					? resolveDynamicModelFromRegistry(
@@ -1380,10 +1440,12 @@ export default function (pi: ExtensionAPI) {
 						isCancelled;
 					const isFinalChainWorker =
 						originalMode === "chain" && index === results.length - 1;
-					const childText = getFinalOutput(worker.messages);
+					const childText = getResultOutput(worker);
 					const forwarded =
 						originalMode === "chain" && !isFinalChainWorker
-							? worker.outputMode === "file-only" && worker.outputReference
+							? worker.outputReference &&
+								(worker.outputMode === "file-only" ||
+									structuredOutputIsBulky(worker))
 								? worker.outputReference.message
 								: childText
 							: undefined;
@@ -1454,14 +1516,74 @@ export default function (pi: ExtensionAPI) {
 			const run = async (
 				...args: Parameters<typeof runSingleAgent>
 			): Promise<SingleResult> => {
+				let result: SingleResult | undefined;
 				try {
-					return await runSingleAgent(...args);
+					if (outputSchema) {
+						args[3] = `${args[3]}\n\n${schemaOutputInstruction(outputSchema)}`;
+						args[15] = { ...(args[15] ?? {}), continuable: true };
+					}
+					result = await runSingleAgent(...args);
+					if (
+						!outputSchema ||
+						result.exitCode !== 0 ||
+						result.stopReason === "error" ||
+						result.stopReason === "aborted"
+					)
+						return result;
+					try {
+						result.structuredOutput = decodeSchemaOutput(
+							outputSchema,
+							getFinalOutput(result.messages),
+						);
+						result.outputAttempts = 1;
+						return result;
+					} catch (firstError) {
+						result.outputAttempts = 1;
+						if (!result.sessionPath)
+							throw new Error(
+								`Structured output validation failed and no continuable session is available: ${firstError instanceof Error ? firstError.message : String(firstError)}`,
+							);
+						const correctionArgs = [...args] as Parameters<
+							typeof runSingleAgent
+						>;
+						const validationError =
+							firstError instanceof Error
+								? firstError.message
+								: String(firstError);
+						correctionArgs[3] = `Your previous response failed output validation: ${validationError.slice(0, 500)}. ${schemaOutputInstruction(outputSchema)}`;
+						correctionArgs[13] = undefined;
+						correctionArgs[14] = undefined;
+						correctionArgs[15] = {
+							continuable: true,
+							sessionPath: result.sessionPath,
+						};
+						const correction = await runSingleAgent(...correctionArgs);
+						mergeCorrectionResult(result, correction);
+						result.outputAttempts = 2;
+						try {
+							result.structuredOutput = decodeSchemaOutput(
+								outputSchema,
+								getFinalOutput(correction.messages),
+							);
+							return result;
+						} catch (secondError) {
+							throw new Error(
+								`Structured output validation failed after one correction: ${secondError instanceof Error ? secondError.message : String(secondError)}`,
+							);
+						}
+					}
 				} catch (error) {
 					const failedResult =
-						error instanceof Error
+						result ??
+						(error instanceof Error
 							? (error as Error & { subagentResult?: SingleResult })
 									.subagentResult
-							: undefined;
+							: undefined);
+					if (failedResult && outputSchema) {
+						failedResult.stopReason = "error";
+						failedResult.errorMessage =
+							error instanceof Error ? error.message : String(error);
+					}
 					complete({
 						content: [],
 						details: makeDetails(
@@ -1471,6 +1593,8 @@ export default function (pi: ExtensionAPI) {
 						)(failedResult ? [failedResult] : []),
 						isError: true,
 					});
+					if (error instanceof Error && failedResult)
+						Object.assign(error, { subagentResult: failedResult });
 					throw error;
 				}
 			};
@@ -1628,7 +1752,7 @@ export default function (pi: ExtensionAPI) {
 						ctx.cwd,
 						step.cwd,
 						i,
-						false,
+						structuredOutputIsBulky(result),
 					);
 					results.push(result);
 
@@ -1654,9 +1778,11 @@ export default function (pi: ExtensionAPI) {
 						});
 					}
 					previousOutput =
-						result.outputMode === "file-only" && result.outputReference
+						result.outputReference &&
+						(result.outputMode === "file-only" ||
+							structuredOutputIsBulky(result))
 							? result.outputReference.message
-							: getFinalOutput(result.messages);
+							: getResultOutput(result);
 				}
 				const finalResult = results[results.length - 1];
 				return complete({

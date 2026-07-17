@@ -327,10 +327,10 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
   - [x] failure/starvation semantics with explicit report
   - [x] /do-it handoff wired; wave narration removed
   - [x] fixture DAG validation passed
-- [ ] T5: schema-validated subagent output - pending
-  - [ ] outputSchema validation with one bounded correction
-  - [ ] chain forwards validated objects / artifact references
-  - [ ] absent-schema behavior byte-identical
+- [ ] T5: schema-validated subagent output - in-progress: implementation validated; record commit
+  - [x] outputSchema validation with one bounded correction
+  - [x] chain forwards validated objects / artifact references
+  - [x] absent-schema behavior byte-identical
 - [ ] T6: close - pending
   - [ ] material decisions recorded in the closeout
   - [ ] `make check-pi-extensions` passed
@@ -338,7 +338,7 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
 
 ### State
 
-- **Classification:** in progress; T1-T4 complete
+- **Classification:** in progress; T1-T4 complete; T5 implementation validated
 - **Current blocker:** none
-- **Next:** T5, add schema-validated subagent output with one continuation correction
+- **Next:** record T5's implementation commit, then run T6 close
 - **Resume:** `/do-it .specs/rationalization-phase3/plan.md`

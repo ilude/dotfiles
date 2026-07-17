@@ -14,6 +14,7 @@ import {
 const spawnMock = vi.fn();
 const SUBAGENT_TEST_TIMEOUT_MS = 30000;
 const SPAWN_WAIT_TIMEOUT_MS = 20000;
+const STRUCTURED_TEST_ARTIFACT_BYTES = 9000;
 
 type MockProcess = EventEmitter & {
 	stdout: EventEmitter;
@@ -135,6 +136,13 @@ You are a test agent.
 		if (!tool) throw new Error("subagent tool not registered");
 		return { pi, tool };
 	}
+
+	const outputSchema = {
+		type: "object",
+		properties: { value: { type: "string" } },
+		required: ["value"],
+		additionalProperties: false,
+	};
 
 	async function orchestrationRuns() {
 		const { readRecentEvents } = await import("../lib/metrics.ts");
@@ -359,6 +367,303 @@ You are a test agent.
 				.toString(),
 		).toBe("old session\n");
 	});
+
+	it(
+		"returns schema-validated parsed output without changing schema-less defaults",
+		async () => {
+			spawnMock.mockImplementation((_command: string, args: string[]) => {
+				const proc = createMockProcess();
+				const sessionDir = args[args.indexOf("--session-dir") + 1];
+				const sessionId = args[args.indexOf("--session-id") + 1];
+				fs.mkdirSync(sessionDir, { recursive: true });
+				fs.writeFileSync(
+					path.join(sessionDir, `2026-07-17T00-00-00-000Z_${sessionId}.jsonl`),
+					'{"type":"session"}\n',
+					"utf8",
+				);
+				queueMicrotask(() => {
+					proc.stdout.emit(
+						"data",
+						`${JSON.stringify({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: 'Result: {"value":"valid"}' }],
+								stopReason: "end_turn",
+							},
+						})}\n`,
+					);
+					proc.emit("close", 0);
+				});
+				return proc;
+			});
+			const { tool } = await loadTool();
+			const result = await tool.execute(
+				"call-structured",
+				{
+					agent: "tester",
+					task: "Return structured output",
+					agentScope: "project",
+					outputSchema,
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			expect(result.details.results[0]).toMatchObject({
+				structuredOutput: { value: "valid" },
+				outputAttempts: 1,
+			});
+			expect(result.content[0].text).toContain('{"value":"valid"}');
+			const args = spawnMock.mock.calls[0][1] as string[];
+			expect(args).toContain("--session-id");
+			expect(args.join(" ")).toContain("Return only one JSON object");
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"uses exactly one continuation correction for invalid structured output",
+		async () => {
+			let call = 0;
+			spawnMock.mockImplementation((_command: string, args: string[]) => {
+				const proc = createMockProcess();
+				if (call === 0) {
+					const sessionDir = args[args.indexOf("--session-dir") + 1];
+					const sessionId = args[args.indexOf("--session-id") + 1];
+					fs.mkdirSync(sessionDir, { recursive: true });
+					fs.writeFileSync(
+						path.join(
+							sessionDir,
+							`2026-07-17T00-00-00-000Z_${sessionId}.jsonl`,
+						),
+						'{"type":"session"}\n',
+						"utf8",
+					);
+				}
+				const text = call++ === 0 ? "not json" : '{"value":"corrected"}';
+				queueMicrotask(() => {
+					proc.stdout.emit(
+						"data",
+						`${JSON.stringify({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text }],
+								stopReason: "end_turn",
+							},
+						})}\n`,
+					);
+					proc.emit("close", 0);
+				});
+				return proc;
+			});
+			const { tool } = await loadTool();
+			const result = await tool.execute(
+				"call-corrected",
+				{
+					agent: "tester",
+					task: "Return structured output",
+					agentScope: "project",
+					outputSchema,
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			expect(spawnMock).toHaveBeenCalledTimes(2);
+			expect(result.details.results[0]).toMatchObject({
+				structuredOutput: { value: "corrected" },
+				outputAttempts: 2,
+			});
+			const correctionArgs = spawnMock.mock.calls[1][1] as string[];
+			expect(correctionArgs).toContain("--session");
+			expect(correctionArgs.join(" ")).toContain(
+				"previous response failed output validation",
+			);
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"fails structured output after one invalid correction",
+		async () => {
+			let call = 0;
+			spawnMock.mockImplementation((_command: string, args: string[]) => {
+				const proc = createMockProcess();
+				if (call++ === 0) {
+					const sessionDir = args[args.indexOf("--session-dir") + 1];
+					const sessionId = args[args.indexOf("--session-id") + 1];
+					fs.mkdirSync(sessionDir, { recursive: true });
+					fs.writeFileSync(
+						path.join(
+							sessionDir,
+							`2026-07-17T00-00-00-000Z_${sessionId}.jsonl`,
+						),
+						'{"type":"session"}\n',
+						"utf8",
+					);
+				}
+				queueMicrotask(() => {
+					proc.stdout.emit(
+						"data",
+						`${JSON.stringify({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: "still invalid" }],
+								stopReason: "end_turn",
+							},
+						})}\n`,
+					);
+					proc.emit("close", 0);
+				});
+				return proc;
+			});
+			const { tool } = await loadTool();
+
+			await expect(
+				tool.execute(
+					"call-invalid-correction",
+					{
+						agent: "tester",
+						task: "Return structured output",
+						agentScope: "project",
+						outputSchema,
+					},
+					undefined,
+					undefined,
+					createMockCtx({ cwd: tmpDir }),
+				),
+			).rejects.toThrow("failed after one correction");
+			expect(spawnMock).toHaveBeenCalledTimes(2);
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"forwards normalized structured objects through chains",
+		async () => {
+			const spawnArgs: string[][] = [];
+			let call = 0;
+			spawnMock.mockImplementation((_command: string, args: string[]) => {
+				spawnArgs.push(args);
+				const proc = createMockProcess();
+				const sessionDir = args[args.indexOf("--session-dir") + 1];
+				const sessionId = args[args.indexOf("--session-id") + 1];
+				fs.mkdirSync(sessionDir, { recursive: true });
+				fs.writeFileSync(
+					path.join(sessionDir, `2026-07-17T00-00-00-000Z_${sessionId}.jsonl`),
+					'{"type":"session"}\n',
+					"utf8",
+				);
+				const text =
+					call++ === 0
+						? 'prose before {"value":"first"} prose after'
+						: '{"value":"second"}';
+				queueMicrotask(() => {
+					proc.stdout.emit(
+						"data",
+						`${JSON.stringify({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text }],
+								stopReason: "end_turn",
+							},
+						})}\n`,
+					);
+					proc.emit("close", 0);
+				});
+				return proc;
+			});
+			const { tool } = await loadTool();
+			const result = await tool.execute(
+				"call-structured-chain",
+				{
+					chain: [
+						{ agent: "tester", task: "First" },
+						{ agent: "tester", task: "Use {previous}" },
+					],
+					agentScope: "project",
+					outputSchema,
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			expect(spawnArgs[1].join(" ")).toContain('Use {"value":"first"}');
+			expect(spawnArgs[1].join(" ")).not.toContain("prose before");
+			expect(result.details.results[1].structuredOutput).toEqual({
+				value: "second",
+			});
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"forwards bulky structured chain output by artifact reference",
+		async () => {
+			const spawnArgs: string[][] = [];
+			const largeValue = "x".repeat(STRUCTURED_TEST_ARTIFACT_BYTES);
+			let call = 0;
+			spawnMock.mockImplementation((_command: string, args: string[]) => {
+				spawnArgs.push(args);
+				const proc = createMockProcess();
+				const sessionDir = args[args.indexOf("--session-dir") + 1];
+				const sessionId = args[args.indexOf("--session-id") + 1];
+				fs.mkdirSync(sessionDir, { recursive: true });
+				fs.writeFileSync(
+					path.join(sessionDir, `2026-07-17T00-00-00-000Z_${sessionId}.jsonl`),
+					'{"type":"session"}\n',
+					"utf8",
+				);
+				const text = JSON.stringify({
+					value: call++ === 0 ? largeValue : "done",
+				});
+				queueMicrotask(() => {
+					proc.stdout.emit(
+						"data",
+						`${JSON.stringify({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text }],
+								stopReason: "end_turn",
+							},
+						})}\n`,
+					);
+					proc.emit("close", 0);
+				});
+				return proc;
+			});
+			const { tool } = await loadTool();
+			const result = await tool.execute(
+				"call-bulky-structured-chain",
+				{
+					chain: [
+						{ agent: "tester", task: "First" },
+						{ agent: "tester", task: "Use {previous}" },
+					],
+					agentScope: "project",
+					outputSchema,
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			expect(spawnArgs[1].join(" ")).toContain("Output saved to:");
+			expect(spawnArgs[1].join(" ")).not.toContain(largeValue);
+			expect(result.details.results[0].outputReference?.bytes).toBeGreaterThan(
+				STRUCTURED_TEST_ARTIFACT_BYTES,
+			);
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
 
 	it(
 		"queues parallel tasks beyond the concurrency limit",

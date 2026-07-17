@@ -2,6 +2,30 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Validate structured subagent output
+
+**Why:** Subagent results crossed the process boundary as unvalidated prose, so
+chains could silently forward malformed or re-summarized data.
+
+**Changed:**
+- Added optional `outputSchema` validation to every subagent mode and returned
+  parsed values in result details.
+- Reused typed-agent schema parsing and allowed exactly one correction through
+  the child's persisted continuation session before returning a typed failure.
+- Forwarded normalized objects through chains and automatically used artifact
+  references for structured payloads larger than 8 KB.
+- Preserved the existing launch and output paths when no schema is supplied.
+
+**Validation:** Thirty-four focused subagent tests covered valid output, one
+successful correction, correction exhaustion, normalized chain transfer, bulky
+artifact transfer, and unchanged schema-less behavior. Eight typed-agent tests,
+Pi extension typecheck, focused Biome checks, and `git diff --check` passed.
+
+**Files:** `pi/{extensions/subagent/index.ts,lib/typed-agent.ts,tests/subagent.test.ts}`,
+`.specs/rationalization-phase3/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Hand plan execution to the DAG drain
 
 **Why:** `/do-it` still instructed the model to pump dependency waves even after
