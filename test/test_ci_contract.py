@@ -80,6 +80,17 @@ def workflow_referenced_paths() -> set[str]:
     return paths
 
 
+def make_dry_run(target: str, *variables: str) -> str:
+    proc = subprocess.run(
+        ["make", "-n", *variables, target],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    return proc.stdout
+
+
 def package_lock_guard_roots() -> set[Path]:
     proc = subprocess.run(
         ["git", "ls-files", "--", "*pnpm-lock.yaml"],
@@ -119,6 +130,27 @@ def test_workflow_direct_script_runs_are_executable() -> None:
             f"Workflow runs {path} directly, so it must be tracked executable; "
             f"got {mode}. Either chmod it in git or invoke it via bash/python."
         )
+
+
+def test_make_quality_targets_have_distinct_nonduplicated_scopes() -> None:
+    changed = make_dry_run("check-changed", "FILES=scripts/quality-check")
+    fast = make_dry_run("check-fast")
+    full = make_dry_run("check")
+
+    assert changed.count("scripts/quality-check scripts/quality-check") == 1
+    assert "uv run pytest" not in changed
+    assert "uv run ruff check" not in changed
+
+    assert fast.count("uv run ruff check") == 1
+    assert fast.count("shellcheck --severity=warning") == 1
+    assert "uv run pytest" not in fast
+    assert "pnpm run typecheck" not in fast
+
+    assert full.count("uv run ruff check") == 1
+    assert full.count("shellcheck --severity=warning") == 1
+    assert full.count("uv run pytest test/") == 1
+    assert full.count("cd pi && pnpm run typecheck") == 1
+    assert full.count("cd pi && pnpm test") == 1
 
 
 def test_no_npm_package_lock() -> None:

@@ -283,15 +283,34 @@ describe("workflow command dispatch", () => {
 			}
 			return mockGitSpawn();
 		});
-		mockTypedAgentRun.mockResolvedValueOnce({
-			output: {
-				groups: [
-					{ files: [files[0]], subject: "chore(pi): update utilities" },
-					{ files: [files[1]], subject: "chore(pi): update routing" },
-				],
-			},
-			attempts: 1,
-		});
+		mockTypedAgentRun.mockImplementation(
+			async (id: string, input: Record<string, unknown>) => ({
+				output:
+					id === "secret-reviewer"
+						? {
+								findings: (
+									input.findings as Array<{ id: number }>
+								).map(({ id }) => ({
+									id,
+									classification: "false_positive",
+									reason: "Synthetic diff has no credential value.",
+								})),
+							}
+						: {
+							groups: [
+								{
+									files: [files[0]],
+									subject: "chore(pi): update utilities",
+								},
+								{
+									files: [files[1]],
+									subject: "chore(pi): update routing",
+								},
+							],
+						},
+				attempts: 1,
+			}),
+		);
 
 		await getHandler("commit")("", { cwd, ui: { notify } });
 

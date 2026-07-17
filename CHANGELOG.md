@@ -2,6 +2,42 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-16: Split quality Make targets
+
+**Why:** Routine changed-file and static checks needed separate entrypoints from
+the full repository aggregate.
+
+**Changed:**
+- Added `make check-changed FILES='...'`, which invokes the explicit-file
+  quality runner once.
+- Added `make check-fast` for preflight and shell static checks.
+- Kept focused test entrypoints and the independent full `make check` graph;
+  the graph contract verifies each full-stage command appears once.
+- Made Pi dependency linking resolve from the checked-out repository so fresh
+  worktrees exercise the intended package graph.
+- Updated stale task-model and secret-review test fixtures exposed by the full
+  aggregate.
+- Kept Biome and shfmt nonblocking because their documented baseline debt
+  remains unresolved.
+
+**Three-run timing, Windows Git Bash (milliseconds):**
+
+| Entry point | Runs | Median | Result and scope |
+| --- | --- | --- | --- |
+| `make check-changed FILES='scripts/quality-check'` | 1935, 1834, 1723 | 1834 | Passed; one explicit shell file through the configured runner. |
+| `make check-fast` | 2619, 2601, 2875 | 2619 | Passed; preflight, Ruff, and ShellCheck. |
+| `make check` | 209932, 152150, 167466 | 167466 | Passed; lint, Pytest suites, Pi typecheck, and full Vitest suite. |
+
+The changed-file route was 785 ms faster at the median than the successful
+fast static route and validates a narrower, explicit scope. The full route
+passed at a distinct integration scope.
+
+**Files:** `Makefile`, `test/test_ci_contract.py`,
+`scripts/pi-deps-link-setup`, `pi/tests/{task-execution,workflow-commands}.test.ts`,
+`CHANGELOG.md`
+
+---
+
 ## 2026-07-16: Add explicit-file quality validation
 
 **Why:** Changed-file validation required repeated one-off validator commands and

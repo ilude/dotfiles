@@ -1,4 +1,4 @@
-.PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all ci-bootstrap test test-ci test-ci-contract test-local test-runtime test-quick test-parallel test-docker test-powershell test-pytest help lint lint-python lint-shell-format format format-python check check-ci check-pi-ci check-pi-extensions pi-doctor install-hooks
+.PHONY: validate validate-env validate-tools validate-config validate-bash validate-pwsh validate-all ci-bootstrap test test-ci test-ci-contract test-local test-runtime test-quick test-parallel test-docker test-powershell test-pytest help lint lint-python lint-shell lint-shell-format format format-python check check-changed check-fast check-ci check-pi-ci check-pi-extensions pi-doctor install-hooks
 
 # Shell scripts to check (excludes dotbot submodule and plugins)
 SHELL_SCRIPTS := home/.bashrc home/.zshrc install wsl/install scripts/ci-bootstrap scripts/git-ssh-setup scripts/claude-link-setup scripts/claude-mcp-setup scripts/copilot-link-setup scripts/zsh-setup scripts/zsh-plugins wsl/packages
@@ -23,7 +23,9 @@ help:
 	@echo "  make lint-shell-format - Check shell formatting with shfmt without writing"
 	@echo "  make format        - Format shell scripts (shfmt) + Python (ruff)"
 	@echo "  make format-python - Format Python files with ruff"
-	@echo "  make check         - Run all checks (lint + test)"
+	@echo "  make check-changed FILES='...' - Run changed-file quality validation once"
+	@echo "  make check-fast    - Run fast static quality checks"
+	@echo "  make check         - Run full quality, pytest, and Pi extension checks"
 	@echo "  make check-ci      - Run CI-safe lint + test contract"
 	@echo "  make check-pi-ci   - Run CI-safe Pi Vitest contract"
 	@echo "  make install-hooks - Install git pre-commit hook for testing"
@@ -138,8 +140,11 @@ test-powershell:
 	@echo "Running Pester tests..."
 	@powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Pester test/*.tests.ps1"
 
+# Lint Python and shell scripts.
+lint: lint-python lint-shell
+
 # Lint shell scripts with shellcheck
-lint: lint-python
+lint-shell:
 	@echo "Running shellcheck..."
 	@if ! command -v shellcheck >/dev/null 2>&1; then \
 		echo "ERROR: shellcheck not found."; \
@@ -216,11 +221,24 @@ check-pi-extensions:
 	cd pi && pnpm test
 	@echo "Pi extension checks passed."
 
+# Run configured quality validators once for an explicit file list.
+check-changed:
+	@if [ -z "$(strip $(FILES))" ]; then \
+		echo "Usage: make check-changed FILES='file1 file2'" >&2; \
+		exit 2; \
+	fi
+	scripts/quality-check $(FILES)
+
+# Run fast static Python and shell checks. Biome and shfmt remain
+# nonblocking until their documented baseline debt is resolved.
+check-fast: preflight lint
+	@echo "Fast static quality checks passed."
+
 # Run CI-safe checks.
 check-ci: lint test-ci
 	@echo "CI-safe checks passed."
 
-# Run all checks
+# Run full checks without routing through check-fast, which would duplicate lint.
 check: lint test check-pi-extensions
 	@echo "All checks passed."
 

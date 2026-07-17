@@ -7,7 +7,8 @@
 # `pnpm root -g`, so link individual package directories instead of linking an
 # entire scope directory.
 
-DOTFILES_DIR="${HOME}/.dotfiles"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DOTFILES_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PI_DIR="${DOTFILES_DIR}/pi"
 PI_NODE_MODULES="${PI_DIR}/node_modules"
 PNPM_GLOBAL_NODE_MODULES="${PNPM_GLOBAL_NODE_MODULES:-}"

@@ -128,7 +128,9 @@ Test agent.
 			expect(registry.getTask(id)?.state).toBe("completed"),
 		);
 		expect(spawnMock).toHaveBeenCalledTimes(1);
-		expect(spawnMock.mock.calls[0][1]).toContain("openai-codex/gpt-5.6-terra");
+		expect(spawnMock.mock.calls[0][1]).toContain(
+			"anthropic/claude-sonnet-4-6",
+		);
 
 		const result = await task.execute(
 			"task-output",
