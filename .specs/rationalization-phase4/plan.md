@@ -232,17 +232,18 @@ from here.
   - [x] all present sources aggregated; absent sources as coverage notes
   - [x] deletions-first report generated from real data
   - [x] aggregation math tested
-- [ ] T4: cadence and entry point - pending
-  - [ ] /improve report end to end
-  - [ ] loop documented once, in the philosophy file
-  - [ ] timer condition recorded (not built)
+- [ ] T4: cadence and entry point - in-progress: implementation validated; record commit
+  - [x] /improve report end to end
+  - [x] loop documented once, in the philosophy file
+  - [x] timer condition recorded (not built)
 - [ ] T5: close - pending
   - [ ] one full cycle recorded with evidence
   - [ ] routing baseline and n=30 projection recorded
 
 ### State
 
-- **Classification:** in progress; T1-T3 complete
+- **Classification:** in progress; T1-T3 complete; T4 implementation validated
 - **Current blocker:** none
-- **Next:** T4, add the manual `/improve report` entry point and cadence guidance
+- **Next:** record T4's implementation commit, then run the T5 user-selected
+  improvement cycle
 - **Resume:** `/do-it .specs/rationalization-phase4/plan.md`

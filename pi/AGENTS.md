@@ -29,6 +29,12 @@ Keep workflows flexible and instructions minimal. Repeated mechanical operations
 
 Work directly by default. Delegation costs substantially more tokens and loses shared context, so use it only for genuinely independent parallel streams, output-heavy investigation where a worker returns conclusions instead of transcripts, a distinct capability boundary, or independent verification. Never split interdependent work; parallelize reads and keep writes single-threaded.
 
+### Improvement loop
+
+1. Run `/improve report` to generate the evidence-backed proposal report.
+2. Pick report items deliberately; each applied change becomes a user-approved plan slice.
+3. Add a timer only after two valuable manual cycles and an explicit user request.
+
 ## File & Tool Operations
 
 - **Read before Edit/Write.** Prefer Edit over Write for existing files. Check existence before creating.

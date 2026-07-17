@@ -1001,6 +1001,51 @@ describe("workflow friction extension", () => {
 		);
 	});
 
+	it("runs /improve report through the repository generator", async () => {
+		const pi = createMockPi();
+		pi.exec.mockResolvedValueOnce({
+			code: 0,
+			stdout: "C:/repo/.specs/improvement-reports/2026-07-17.md\n",
+			stderr: "",
+		});
+		workflowFrictionExtension(pi as never);
+		const ctx = createMockCtx({ cwd: "C:/repo" });
+
+		await invokeImproveCommand(pi, ctx, "report");
+
+		expect(pi.exec).toHaveBeenCalledWith(
+			"python",
+			[
+				expect.stringMatching(
+					/[\\/]pi[\\/]scripts[\\/]improvement-report\.py$/,
+				),
+				"--repo",
+				"C:/repo",
+			],
+			{ cwd: "C:/repo", timeout: 300_000 },
+		);
+		expect(improveMessageContent(pi, 0)).toContain(
+			"Improvement report: C:/repo/.specs/improvement-reports/2026-07-17.md",
+		);
+	});
+
+	it("reports bounded /improve report failures without starting discussion", async () => {
+		const pi = createMockPi();
+		pi.exec.mockResolvedValueOnce({
+			code: 1,
+			stdout: "",
+			stderr: "report failed",
+		});
+		workflowFrictionExtension(pi as never);
+		const ctx = createMockCtx({ cwd: "C:/repo" });
+
+		await invokeImproveCommand(pi, ctx, "report");
+
+		expect(improveMessageContent(pi, 0)).toContain(
+			"Improvement report failed: report failed",
+		);
+	});
+
 	it("lists unresolved candidates and selects one by its displayed ID", async () => {
 		const scratch = await fs.mkdtemp(
 			path.join(os.tmpdir(), "pi-improve-list-"),

@@ -1,0 +1,13 @@
+#!/usr/bin/env python
+"""Run the repository improvement report generator."""
+
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = ROOT / "pi" / "scripts" / "improvement-report.py"
+
+os.execv(sys.executable, [sys.executable, str(SCRIPT), "--repo", str(ROOT), *sys.argv[1:]])

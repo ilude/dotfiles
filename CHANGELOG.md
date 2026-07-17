@@ -2,6 +2,30 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Add the manual improvement-report entry point
+
+**Why:** The deterministic report existed as an internal script but lacked the
+single operator workflow required to run the improvement loop.
+
+**Changed:**
+- Added `/improve report` to run the repository report generator and return its
+  path without starting a provider turn.
+- Added `scripts/improvement-report` as the cross-repository thin wrapper.
+- Documented the three-step manual loop once in Pi's development philosophy:
+  run the report, select user-approved plan slices, and add a timer only after
+  two valuable manual cycles plus an explicit request.
+
+**Validation:** Six focused Python tests and 44 Pi workflow-friction tests passed
+with Ruff, Biome, and Pi typecheck. A persistent live RPC invocation ran
+`/improve report`, returned `.specs/improvement-reports/2026-07-17.md` in a
+visible command message, and emitted zero `agent_start` events.
+
+**Files:** `pi/{AGENTS.md,README.md,extensions/workflow-friction-review.ts,tests/workflow-friction.test.ts}`,
+`scripts/improvement-report`, `test/test_improvement_report.py`,
+`.specs/rationalization-phase4/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Generate the evidence-backed improvement report
 
 **Why:** Friction, usage, routing experiments, plan consistency, and dormant

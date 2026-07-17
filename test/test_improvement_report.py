@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import collections
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -138,6 +139,43 @@ def test_session_scan_counts_slash_echo_custom_messages(
 
     assert friction == []
     assert commands == collections.Counter({"do-it": 1, "context": 1})
+
+
+def test_repository_wrapper_generates_report_end_to_end(tmp_path: Path) -> None:
+    (tmp_path / ".specs").mkdir()
+    for name in ["metrics", "sessions", "friction", "decisions"]:
+        (tmp_path / name).mkdir()
+    output = tmp_path / "report.md"
+
+    result = subprocess.run(
+        [
+            "python",
+            str(ROOT / "scripts" / "improvement-report"),
+            "--repo",
+            str(tmp_path),
+            "--metrics-dir",
+            str(tmp_path / "metrics"),
+            "--sessions-dir",
+            str(tmp_path / "sessions"),
+            "--friction-dir",
+            str(tmp_path / "friction"),
+            "--decision-dir",
+            str(tmp_path / "decisions"),
+            "--output",
+            str(output),
+            "--date",
+            "2026-07-17",
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == str(output.resolve())
+    assert output.read_text(encoding="utf-8").startswith(
+        "# Harness Improvement Report - 2026-07-17"
+    )
 
 
 def test_absent_sources_are_coverage_notes_not_errors(report: ModuleType, tmp_path: Path) -> None:

@@ -334,6 +334,7 @@ Runtime records live under `~/.pi/agent/workflow-friction/` and remain uncommitt
 
 ```text
 /improve                          # discuss the highest-ranked unresolved candidate
+/improve report                   # generate the evidence-backed proposal report
 /improve list                     # list ranked unresolved candidates
 /improve select <number-or-id>    # discuss one listed candidate by ordinal or unique ID prefix
 /improve decide apply             # apply the selected proposal
@@ -342,7 +343,7 @@ Runtime records live under `~/.pi/agent/workflow-friction/` and remain uncommitt
 /improve help                     # show command and decision guidance
 ```
 
-`/improve` is the only public self-improvement workflow. It ranks pending candidates by safety or correctness impact first, then verified 30-day usage, confidence, and stable age/ID tie-breakers. Structured skill, command, extension, and tool targets use deterministic local statistics; unresolved telemetry remains unknown rather than being treated as zero. `/improve list` writes the ranked workspace-visible candidates to the transcript without starting a discussion and stores that displayed order for the session. `/improve select <number-or-id>` resolves ordinals against the displayed snapshot, accepts unique ID prefixes against current candidates, and records the selected candidate in the transcript before discussion. Bare `/improve` preserves the highest-ranked default.
+`/improve` is the only public self-improvement workflow. `/improve report` runs the deterministic repository report generator and returns its output path without starting a provider turn. Candidate discussion ranks pending candidates by safety or correctness impact first, then verified 30-day usage, confidence, and stable age/ID tie-breakers. Structured skill, command, extension, and tool targets use deterministic local statistics; unresolved telemetry remains unknown rather than being treated as zero. `/improve list` writes the ranked workspace-visible candidates to the transcript without starting a discussion and stores that displayed order for the session. `/improve select <number-or-id>` resolves ordinals against the displayed snapshot, accepts unique ID prefixes against current candidates, and records the selected candidate in the transcript before discussion. Bare `/improve` preserves the highest-ranked default.
 
 Each discussion remains in a deterministic `discussing` state while the user asks questions or raises issues. Ordinary conversation never authorizes a change. Only `/improve decide apply`, `/improve decide edit <change>`, or `/improve decide skip <reason>` captures a decision and resumes execution without another approval request. Applied changes require target paths, validation evidence, and rollback instructions and create an experiment marker for later comparison. A recorded applied or skipped decision removes that candidate from later lists.
 
