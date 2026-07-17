@@ -15,6 +15,13 @@ fi
 
 "$dolos" scan --staged
 
+# A linked worktree normally has the tracked artifact but no local plaintext
+# vault or worktree-local Dolos index. Scanning staged paths is sufficient for
+# artifact-only commits; status and packing apply only where private/ exists.
+if [ ! -d private ]; then
+  exit 0
+fi
+
 status_output=$("$dolos" status 2>&1) || status_code=$?
 status_code=${status_code:-0}
 case "$status_output" in

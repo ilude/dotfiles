@@ -90,6 +90,7 @@ def make_hook_repo(tmp_path: Path) -> Path:
     fake.chmod(0o755)
     git_init(repo)
     run(["git", "add", "scripts", ".gitignore", ".gitattributes"], cwd=repo)
+    run(["git", "add", "-f", str(fake.relative_to(repo))], cwd=repo)
     run(["git", "commit", "-m", "base"], cwd=repo)
     hook_path = run(
         ["git", "rev-parse", "--git-path", "hooks/pre-commit"], cwd=repo
@@ -134,6 +135,22 @@ def test_hook_install_idempotent_auto_pack_and_unrelated_commit(tmp_path):
     proc = run(["git", "commit", "-m", "plaintext"], cwd=repo, check=False)
     assert proc.returncode != 0
     assert not (repo / ".dolos" / "artifacts" / "private.tar.gz.age").exists()
+
+
+def test_linked_worktree_commit_skips_plaintext_status(tmp_path):
+    repo = make_hook_repo(tmp_path)
+    run(script(repo / "scripts/install-dolos-hook"), cwd=repo)
+    worktree = tmp_path / "worktree"
+    run(["git", "worktree", "add", "-b", "worktree-test", str(worktree)], cwd=repo)
+
+    (worktree / "README.md").write_text("worktree change\n", encoding="utf-8")
+    run(["git", "add", "README.md"], cwd=worktree)
+    run(["git", "commit", "-m", "worktree commit"], cwd=worktree)
+
+    args_log = (worktree / "dolos-args.log").read_text(encoding="utf-8")
+    assert "scan\n--staged\n" in args_log
+    assert "status\n" not in args_log
+    assert "pack\nprivate\n" not in args_log
 
 
 def test_real_repo_dolos_scan_is_non_mutating():
