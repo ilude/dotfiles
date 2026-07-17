@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from corpus import default_path, log_reduction
+from corpus import default_path, log_reduction, prune_corpus_cache
 
 
 def _write_records(args: tuple[Path, int]) -> None:
@@ -22,7 +22,6 @@ def _write_records(args: tuple[Path, int]) -> None:
                 "rule_id": "git/status",
                 "reduction_applied": True,
                 "stdout_sample": f"worker output {i}",
-                "stderr_sample": "",
             },
             path=path,
         )
@@ -39,7 +38,9 @@ def test_concurrent_append() -> None:
         pool.map(_write_records, [(path, records_each)] * workers)
 
     lines = path.read_text(encoding="utf-8").splitlines()
-    assert len(lines) == workers * records_each, f"Expected {workers * records_each} lines, got {len(lines)}"
+    assert len(lines) == workers * records_each, (
+        f"Expected {workers * records_each} lines, got {len(lines)}"
+    )
     for line in lines:
         json.loads(line)  # must parse cleanly
 
@@ -71,7 +72,6 @@ def test_scrub_before_truncation() -> None:
             "rule_id": None,
             "reduction_applied": False,
             "stdout_sample": stdout_with_token,
-            "stderr_sample": "",
         },
         path=path,
     )
@@ -81,3 +81,53 @@ def test_scrub_before_truncation() -> None:
         "Token beyond 2KB head should still be redacted (scrub runs before truncation)"
     )
     assert token not in record["stdout_sample"]
+    assert "stderr_sample" not in record
+
+
+def test_retention_dry_run_reports_without_deleting(tmp_path) -> None:
+    expired = tmp_path / "corpus-2026-01-01.jsonl"
+    newest = tmp_path / "corpus-2026-01-02.jsonl"
+    expired.write_text("old", encoding="utf-8")
+    newest.write_text("new", encoding="utf-8")
+    expired.touch()
+    newest.touch()
+    expired_mtime = 1000.0
+    newest_mtime = 1900.0
+    import os
+
+    os.utime(expired, (expired_mtime, expired_mtime))
+    os.utime(newest, (newest_mtime, newest_mtime))
+
+    removals = prune_corpus_cache(
+        tmp_path,
+        now=2000.0,
+        retention_seconds=500,
+        max_bytes=1024,
+        dry_run=True,
+    )
+
+    assert removals == [expired]
+    assert expired.exists()
+    assert newest.exists()
+
+
+def test_retention_enforces_size_cap(tmp_path) -> None:
+    oldest = tmp_path / "corpus-2026-01-01.jsonl"
+    newest = tmp_path / "corpus-2026-01-02.jsonl"
+    oldest.write_text("1234", encoding="utf-8")
+    newest.write_text("5678", encoding="utf-8")
+    import os
+
+    os.utime(oldest, (1000.0, 1000.0))
+    os.utime(newest, (2000.0, 2000.0))
+
+    removals = prune_corpus_cache(
+        tmp_path,
+        now=2000.0,
+        retention_seconds=5000,
+        max_bytes=4,
+    )
+
+    assert removals == [oldest]
+    assert not oldest.exists()
+    assert newest.exists()

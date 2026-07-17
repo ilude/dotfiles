@@ -2,7 +2,10 @@
 Reducer orchestrator CLI.
 
 Reads one JSON request from stdin:
-  {argv: list[str], exit_code: int, stdout: str, stderr: str}
+  {argv: list[str], exit_code: int, stdout: str}
+
+`exit_code` is Pi's boolean isError flag encoded as 0 or 1; Pi does not expose
+a real process exit code or a separate stderr stream to this hook.
 
 Writes one JSON response to stdout:
   {inline_text: str, facts: dict, rule_id: str|null,
@@ -59,7 +62,6 @@ def reduce_execution(
     argv: list[str],
     exit_code: int,
     stdout: str,
-    stderr: str,
 ) -> CompactResult:
     """Run the deterministic reduction pipeline on one bash tool result."""
     import guards
@@ -79,8 +81,7 @@ def reduce_execution(
             rules = _rules_mod.load_rules(builtin_dir=builtin_dir, argv0=argv[0] if argv else None)
             rule_id, _confidence = _rules_mod.classify_argv(argv, rules)
 
-    sep = "\n" if stdout and stderr else ""
-    raw_text = stdout + sep + stderr
+    raw_text = stdout
 
     bytes_before = len(raw_text.encode("utf-8"))
     facts: dict = {}
@@ -131,7 +132,6 @@ def reduce_execution(
                 "rule_id": rule_id,
                 "reduction_applied": reduction_applied,
                 "stdout_sample": stdout,
-                "stderr_sample": stderr,
             }
         )
     except Exception:
@@ -148,9 +148,8 @@ def main() -> None:
         argv: list[str] = req.get("argv", [])
         exit_code: int = int(req.get("exit_code", 0))
         stdout: str = req.get("stdout", "") or ""
-        stderr: str = req.get("stderr", "") or ""
 
-        result = reduce_execution(argv, exit_code, stdout, stderr)
+        result = reduce_execution(argv, exit_code, stdout)
         out = asdict(result)
         sys.stdout.write(json.dumps(out) + "\n")
 
@@ -158,7 +157,7 @@ def main() -> None:
         # Fall through to raw output -- never break the agent
         try:
             req = json.loads(raw_input)
-            raw = (req.get("stdout", "") or "") + (req.get("stderr", "") or "")
+            raw = req.get("stdout", "") or ""
         except Exception:
             raw = ""
 

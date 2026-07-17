@@ -22,6 +22,7 @@ _GIT_STATUS_SAMPLE = (_FIXTURES / "git-status-sample.txt").read_text(encoding="u
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_rules_module(rules: list[dict]):
     """Return a minimal rules-module duck-type with the given rule list."""
 
@@ -37,9 +38,7 @@ def _make_rules_module(rules: list[dict]):
                 argv0_list = match.get("argv0", [])
                 if argv and argv[0] in argv0_list:
                     includes = match.get("argvIncludes", [])
-                    if all(
-                        any(tok in argv for tok in group) for group in includes
-                    ):
+                    if all(any(tok in argv for tok in group) for group in includes):
                         return (rule["id"], 1.0)
             return (None, 0.0)
 
@@ -55,17 +54,19 @@ def _load_git_status_rule() -> dict:
 # test_git_status_compacts
 # ---------------------------------------------------------------------------
 
+
 def test_git_status_compacts(tmp_path):
     rule = _load_git_status_rule()
     fake_rules = _make_rules_module([rule])
 
-    with patch.object(reduce, "_load_rules_module", return_value=fake_rules), \
-         patch("corpus.log_reduction"):
+    with (
+        patch.object(reduce, "_load_rules_module", return_value=fake_rules),
+        patch("corpus.log_reduction"),
+    ):
         result = reduce_execution(
             argv=["git", "status"],
             exit_code=0,
             stdout=_GIT_STATUS_SAMPLE,
-            stderr="",
         )
 
     assert isinstance(result, CompactResult)
@@ -80,18 +81,20 @@ def test_git_status_compacts(tmp_path):
 # test_unknown_command_passthrough
 # ---------------------------------------------------------------------------
 
+
 def test_unknown_command_passthrough():
     # Use an empty rule list so no rule can match -- tests the passthrough path
     # regardless of what rules T5 loads from builtin.
     empty_rules = _make_rules_module([])
 
-    with patch.object(reduce, "_load_rules_module", return_value=empty_rules), \
-         patch("corpus.log_reduction"):
+    with (
+        patch.object(reduce, "_load_rules_module", return_value=empty_rules),
+        patch("corpus.log_reduction"),
+    ):
         result = reduce_execution(
             argv=["xyznonexistent"],
             exit_code=0,
             stdout="some output line",
-            stderr="",
         )
 
     assert result.reduction_applied is False
@@ -103,18 +106,20 @@ def test_unknown_command_passthrough():
 # test_corpus_logged
 # ---------------------------------------------------------------------------
 
+
 def test_corpus_logged(tmp_path):
     corpus_file = tmp_path / "corpus-test.jsonl"
     rule = _load_git_status_rule()
     fake_rules = _make_rules_module([rule])
 
-    with patch.object(reduce, "_load_rules_module", return_value=fake_rules), \
-         patch.object(corpus_mod, "default_path", return_value=corpus_file):
+    with (
+        patch.object(reduce, "_load_rules_module", return_value=fake_rules),
+        patch.object(corpus_mod, "default_path", return_value=corpus_file),
+    ):
         reduce_execution(
             argv=["git", "status"],
             exit_code=0,
             stdout=_GIT_STATUS_SAMPLE,
-            stderr="",
         )
 
     lines = corpus_file.read_text(encoding="utf-8").strip().splitlines()
@@ -125,12 +130,14 @@ def test_corpus_logged(tmp_path):
     assert "reduction_applied" in record
     assert "ts" in record, "corpus record must include ts field"
     from datetime import datetime
+
     datetime.fromisoformat(record["ts"])  # raises ValueError if ts is malformed
 
 
 # ---------------------------------------------------------------------------
 # test_scrub_in_corpus
 # ---------------------------------------------------------------------------
+
 
 def test_scrub_in_corpus(tmp_path):
     corpus_file = tmp_path / "corpus-scrub.jsonl"
@@ -141,13 +148,14 @@ def test_scrub_in_corpus(tmp_path):
 
     empty_rules = _make_rules_module([])
 
-    with patch.object(reduce, "_load_rules_module", return_value=empty_rules), \
-         patch.object(corpus_mod, "default_path", return_value=corpus_file):
+    with (
+        patch.object(reduce, "_load_rules_module", return_value=empty_rules),
+        patch.object(corpus_mod, "default_path", return_value=corpus_file),
+    ):
         reduce_execution(
             argv=["xyznonexistent"],
             exit_code=0,
             stdout=stdout_with_secret,
-            stderr="",
         )
 
     lines = corpus_file.read_text(encoding="utf-8").strip().splitlines()
@@ -162,13 +170,13 @@ def test_scrub_in_corpus(tmp_path):
 # test_cli_roundtrip
 # ---------------------------------------------------------------------------
 
+
 def test_cli_roundtrip(tmp_path):
     reduce_script = str(_ROOT / "reduce.py")
     request = {
         "argv": ["xyznonexistent"],
         "exit_code": 0,
         "stdout": "hello from cli",
-        "stderr": "",
     }
     env = {**os.environ, "PYTHONPATH": str(_ROOT)}
 

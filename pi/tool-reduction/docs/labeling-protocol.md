@@ -105,7 +105,6 @@ extended with three additional fields:
   "rule_id": "git/status",
   "reduction_applied": true,
   "stdout_sample": "...",
-  "stderr_sample": "",
 
   // Labeling fields added by the labeler:
   "lost_signal": false,       // bool -- required; never null in a finished file

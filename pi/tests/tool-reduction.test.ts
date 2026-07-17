@@ -338,9 +338,13 @@ describe("tool-reduction extension", () => {
 	});
 
 	describe("child-process invocation", () => {
-		it("uses bare Python with hidden Windows process options", async () => {
+		it("uses bare Python and sends only the observable reducer schema", async () => {
 			const { spawn } = await import("node:child_process");
 			const child = createMockChild();
+			let requestBody = "";
+			child.stdin?.on("data", (chunk: Buffer) => {
+				requestBody += chunk.toString("utf-8");
+			});
 			spawnBehavior = () => {
 				closeWithStdout(child, '{"inline_text":"compacted"}');
 				return child;
@@ -352,6 +356,11 @@ describe("tool-reduction extension", () => {
 			const [hook] = mockPi._getHook("tool_result");
 			await hook.handler(makeBashResultEvent("some output".repeat(24)));
 
+			expect(JSON.parse(requestBody)).toEqual({
+				argv: ["git", "status"],
+				exit_code: 0,
+				stdout: "some output".repeat(24),
+			});
 			expect(spawn).toHaveBeenCalledWith(
 				"python",
 				[expect.stringMatching(/tool-reduction[\\/]reduce\.py$/)],

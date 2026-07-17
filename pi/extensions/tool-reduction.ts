@@ -139,9 +139,9 @@ function stopProcessTree(pid: number): void {
 
 interface ReduceRequest {
 	argv: string[];
+	// Pi exposes only isError; encode it as 0/1 for reducer failure guards.
 	exit_code: number;
 	stdout: string;
-	stderr: string;
 }
 
 interface ReduceResponse {
@@ -159,21 +159,16 @@ function splitArgv(command: string): string[] {
 	return command.trim().split(/\s+/).filter(Boolean);
 }
 
-function extractTextContent(content: ToolResultEvent["content"]): {
-	stdout: string;
-	stderr: string;
-} {
+function extractTextContent(content: ToolResultEvent["content"]): string {
 	const texts = content
 		.filter((c): c is { type: "text"; text: string } => c.type === "text")
 		.map((c) => c.text);
-	// Bash tool emits a single text block combining stdout and stderr.
-	return { stdout: texts.join(""), stderr: "" };
+	// Bash tool emits one combined text stream; stderr is not separately available.
+	return texts.join("");
 }
 
-export function shouldRunReducer(stdout: string, stderr: string): boolean {
-	const separator = stdout && stderr ? "\n" : "";
-	const rawText = `${stdout}${separator}${stderr}`;
-	return Buffer.byteLength(rawText, "utf-8") >= MIN_REDUCER_INPUT_BYTES;
+export function shouldRunReducer(stdout: string): boolean {
+	return Buffer.byteLength(stdout, "utf-8") >= MIN_REDUCER_INPUT_BYTES;
 }
 
 function callReducer(
@@ -248,14 +243,13 @@ export default function (pi: ExtensionAPI) {
 		if (process.env.PI_TOOL_REDUCTION?.toLowerCase() === "off") return undefined;
 
 		const command = (event.input as { command?: string }).command ?? "";
-		const { stdout, stderr } = extractTextContent(event.content);
-		if (!shouldRunReducer(stdout, stderr)) return undefined;
+		const stdout = extractTextContent(event.content);
+		if (!shouldRunReducer(stdout)) return undefined;
 
 		const request: ReduceRequest = {
 			argv: splitArgv(command),
 			exit_code: event.isError ? 1 : 0,
 			stdout,
-			stderr,
 		};
 
 		const result = await callReducer(request, getReduceScriptPath());
@@ -264,8 +258,7 @@ export default function (pi: ExtensionAPI) {
 			return undefined;
 		}
 
-		const separator = stdout && stderr ? "\n" : "";
-		const rawText = `${stdout}${separator}${stderr}`;
+		const rawText = stdout;
 		let rawPath = event.details?.fullOutputPath;
 		if (!rawPath) {
 			try {

@@ -2,6 +2,28 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Align reducer schema and retention
+
+**Why:** The reducer request claimed separate stderr and real exit-code data the
+Pi hook cannot provide, while daily corpus files grew without a cap.
+
+**Changed:**
+- Removed the dead stderr request field and documented `exit_code` as Pi's
+  boolean error flag encoded as 0 or 1.
+- Stopped writing stderr samples in new corpus records while retaining legacy
+  corpus readability.
+- Added seven-day and 64 MiB corpus retention on the first daily write, with a
+  non-mutating dry-run mode.
+
+**Validation:** All 153 tool-reduction Python tests passed; the Pi reducer suite
+passed 10 tests and typecheck passed. A real cache dry run selected 67 expired
+files while leaving all 73 files unchanged. Ruff and `git diff --check` passed.
+
+**Files:** `pi/{extensions/tool-reduction.ts,tests/tool-reduction.test.ts,tool-reduction/}`,
+`.specs/rationalization-phase2/{plan,ledger}.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Add shell-aware reducer fallback
 
 **Why:** Environment assignments, shell preambles, directory leaders, chained

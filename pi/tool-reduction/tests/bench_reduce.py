@@ -67,7 +67,6 @@ def main() -> None:
         "argv": ["git", "status"],
         "exit_code": 0,
         "stdout": fixture_text,
-        "stderr": "",
     }
     request_json = json.dumps(request)
 
