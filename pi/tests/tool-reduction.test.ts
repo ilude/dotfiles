@@ -155,6 +155,7 @@ function contextWithUsage(
 let mockPi: ReturnType<typeof createMockPi>;
 
 beforeEach(() => {
+	vi.clearAllMocks();
 	vi.resetModules();
 	spawnBehavior = "real";
 	mockPi = createMockPi();

@@ -249,6 +249,7 @@ class ReducerWorker {
 			});
 			this.child = child;
 			child.stdin?.on("error", () => {
+				if (this.child !== child) return;
 				this.terminate(child);
 				this.finishPending(null);
 			});
