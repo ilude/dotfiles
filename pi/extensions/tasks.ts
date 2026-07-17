@@ -47,6 +47,7 @@ import {
 	setTaskRenderMode,
 } from "../lib/task-settings.js";
 import {
+	formatTaskCompletionNotification,
 	TaskExecutionCoordinator,
 	type TaskExecutionResult,
 	type TaskMultiResult,
@@ -797,7 +798,7 @@ export function registerTaskTools(
 			"Summary contains only the deliverable; notes contain only blockers, dependencies, or acceptance checks. Never copy conversation summaries, plans, diffs, or investigation narratives into task fields.",
 			"Create dependencies with blockedBy; use ready once when selecting runnable work.",
 			"For direct durable work, update state only when it changes; do not repeat lifecycle calls.",
-			"For background work, create executable tasks, start them once with execute or execute_many, and join same-session work once with await; use output only when needed and stop only to cancel. Do not poll public task actions.",
+			"For background work, create executable tasks and start them once with execute or execute_many. Completion arrives as a next-turn notification; use await only when the current call must join, output only when needed, and stop only to cancel. Do not poll public task actions.",
 		],
 		parameters,
 		renderCall(args, theme) {
@@ -1201,7 +1202,21 @@ export function registerTasksCommand(
 
 export default function (pi: ExtensionAPI) {
 	wrapCommandRegistration(pi);
-	const coordinator = new TaskExecutionCoordinator();
+	const coordinator = new TaskExecutionCoordinator(
+		undefined,
+		undefined,
+		undefined,
+		(notification) => {
+			pi.sendMessage(
+				{
+					customType: "task-completion",
+					content: formatTaskCompletionNotification(notification),
+					display: true,
+				},
+				{ deliverAs: "nextTurn" },
+			);
+		},
+	);
 	registerTaskTools(pi, coordinator);
 	registerTasksCommand(pi, coordinator);
 	pi.on("session_start", (_event, ctx) => {

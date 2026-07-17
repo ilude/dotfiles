@@ -2,6 +2,32 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Notify sessions when background tasks finish
+
+**Why:** Background fan-out required a blocking join to learn when workers
+finished, even though task state and output were already persisted.
+
+**Changed:**
+- Sent compact completion, failure, and cancellation messages to the parent
+  session through Pi's sanctioned next-turn message path.
+- Capped notification content at 500 UTF-8 bytes and included task, agent,
+  status, duration, and an output artifact path or first-line result.
+- Kept delivery fail-open so notification errors cannot change task state or
+  make persisted output unavailable.
+- Updated task guidance to reserve `await` for calls that must join immediately.
+
+**Validation:** The task extension fan-out workflow started two background
+workers without `await` and received one next-turn notification for each,
+including the failed worker. Focused tests also covered cancellation, byte
+capping, delivery failure, state consistency, and output retrieval. All 37
+task execution and public task-tool tests, Pi typecheck, and focused Biome
+checks passed.
+
+**Files:** `pi/{extensions/tasks.ts,extensions/tasks/execution.ts,tests/task-execution.test.ts}`,
+`.specs/rationalization-phase3/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Add a resumable rationalization loop
 
 **Why:** The phase 3-5 plans need bounded unattended progress that survives

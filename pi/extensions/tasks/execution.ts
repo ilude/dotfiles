@@ -36,6 +36,21 @@ import {
 const OUTPUT_MAX_BYTES = 12_000;
 const OUTPUT_MAX_LINES = 200;
 const STOP_TIMEOUT_MS = 7_000;
+export const TASK_NOTIFICATION_MAX_BYTES = 500;
+
+export interface TaskCompletionNotification {
+	taskId: string;
+	agent: string;
+	status: "completed" | "failed" | "stopped";
+	durationMs?: number;
+	output?: string;
+	outputPath?: string;
+	error?: string;
+}
+
+export type TaskCompletionNotifier = (
+	notification: TaskCompletionNotification,
+) => void;
 
 export interface TaskExecutionRunResult {
 	output: string;
@@ -173,6 +188,53 @@ function boundedOutput(output: string): {
 	return { content: result.content, truncated: result.truncated };
 }
 
+function boundedUtf8(value: string, maxBytes: number): string {
+	if (Buffer.byteLength(value, "utf8") <= maxBytes) return value;
+	const suffix = "...";
+	let result = "";
+	let bytes = Buffer.byteLength(suffix, "utf8");
+	for (const character of value) {
+		const characterBytes = Buffer.byteLength(character, "utf8");
+		if (bytes + characterBytes > maxBytes) break;
+		result += character;
+		bytes += characterBytes;
+	}
+	return result + suffix;
+}
+
+function executionDurationMs(
+	execution: SubagentTaskExecution,
+	reportedDurationMs?: number,
+): number {
+	if (reportedDurationMs !== undefined) return Math.max(0, reportedDurationMs);
+	const startedAt = execution.startedAt
+		? Date.parse(execution.startedAt)
+		: Number.NaN;
+	return Number.isFinite(startedAt) ? Math.max(0, Date.now() - startedAt) : 0;
+}
+
+export function formatTaskCompletionNotification(
+	notification: TaskCompletionNotification,
+): string {
+	const duration =
+		notification.durationMs === undefined
+			? ""
+			: ` durationMs=${Math.max(0, Math.round(notification.durationMs))}`;
+	const firstLine = sanitizeTaskValue(
+		notification.outputPath ??
+			notification.output?.split(/\r?\n/, 1)[0] ??
+			notification.error ??
+			"",
+	).trim();
+	const evidence = firstLine
+		? ` ${notification.outputPath ? "artifact" : "output"}=${firstLine}`
+		: "";
+	return boundedUtf8(
+		`task=${notification.taskId} agent=${notification.agent} status=${notification.status}${duration}${evidence}`,
+		TASK_NOTIFICATION_MAX_BYTES,
+	);
+}
+
 export async function runTaskSubagent(
 	execution: SubagentTaskExecution,
 	fallbackCwd: string,
@@ -258,7 +320,16 @@ export class TaskExecutionCoordinator {
 		private readonly runner: TaskExecutionRunner = runTaskSubagent,
 		private readonly ownershipWriter: typeof updateTask = updateTask,
 		private readonly compensateStart: typeof safeTransitionTask = safeTransitionTask,
+		private readonly completionNotifier?: TaskCompletionNotifier,
 	) {}
+
+	private notifyCompletion(notification: TaskCompletionNotification): void {
+		try {
+			this.completionNotifier?.(notification);
+		} catch {
+			// Notification delivery is fail-open; task state and output are authoritative.
+		}
+	}
 
 	start(taskId: string, fallbackCwd: string): TaskExecutionResult {
 		const record = getTask(taskId);
@@ -613,6 +684,12 @@ export class TaskExecutionCoordinator {
 				execution: { ...currentExecution, status: "stopped" },
 			});
 			safeTransitionTask(taskId, "cancelled");
+			this.notifyCompletion({
+				taskId,
+				agent: currentExecution.agent,
+				status: "stopped",
+				durationMs: executionDurationMs(currentExecution),
+			});
 		}
 		return true;
 	}
@@ -645,6 +722,14 @@ export class TaskExecutionCoordinator {
 					savedOutput,
 				);
 				safeTransitionTask(taskId, "cancelled");
+				this.notifyCompletion({
+					taskId,
+					agent: execution.agent,
+					status: "stopped",
+					durationMs: executionDurationMs(execution, result.durationMs),
+					output: result.output,
+					outputPath: savedOutput.outputPath,
+				});
 				return;
 			}
 			const status = result.exitCode === 0 ? "completed" : "failed";
@@ -663,16 +748,37 @@ export class TaskExecutionCoordinator {
 					? {}
 					: { errorReason: `subagent exited with code ${result.exitCode}` },
 			);
+			this.notifyCompletion({
+				taskId,
+				agent: execution.agent,
+				status,
+				durationMs: executionDurationMs(execution, result.durationMs),
+				output: result.output,
+				outputPath: savedOutput.outputPath,
+			});
 		} catch (error) {
 			if (this.reconcileLateStoppedExecution(taskId, active)) return;
 			if (active.stopRequested) {
 				this.settleExecution(taskId, execution, "stopped", active);
 				safeTransitionTask(taskId, "cancelled");
+				this.notifyCompletion({
+					taskId,
+					agent: execution.agent,
+					status: "stopped",
+					durationMs: executionDurationMs(execution),
+				});
 				return;
 			}
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
 			this.settleExecution(taskId, execution, "failed", active);
-			safeTransitionTask(taskId, "failed", {
-				errorReason: error instanceof Error ? error.message : String(error),
+			safeTransitionTask(taskId, "failed", { errorReason: errorMessage });
+			this.notifyCompletion({
+				taskId,
+				agent: execution.agent,
+				status: "failed",
+				durationMs: executionDurationMs(execution),
+				error: errorMessage,
 			});
 		}
 	}

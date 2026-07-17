@@ -128,9 +128,7 @@ Test agent.
 			expect(registry.getTask(id)?.state).toBe("completed"),
 		);
 		expect(spawnMock).toHaveBeenCalledTimes(1);
-		expect(spawnMock.mock.calls[0][1]).toContain(
-			"anthropic/claude-sonnet-4-6",
-		);
+		expect(spawnMock.mock.calls[0][1]).toContain("anthropic/claude-sonnet-4-6");
 
 		const result = await task.execute(
 			"task-output",
@@ -141,6 +139,164 @@ Test agent.
 		);
 		expect(result.content[0].text).toContain("done");
 		expect(registry.getTask(id)?.execution?.outputPath).toBeTruthy();
+		expect(pi.sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				customType: "task-completion",
+				content: expect.stringContaining(`task=${id}`),
+				display: true,
+			}),
+			{ deliverAs: "nextTurn" },
+		);
+	});
+
+	it("notifies for a no-await fan-out, including failure", async () => {
+		let spawnCount = 0;
+		spawnMock.mockImplementation(() => {
+			const proc = createMockProcess();
+			const current = spawnCount++;
+			queueMicrotask(() => {
+				proc.stdout.emit(
+					"data",
+					`${JSON.stringify({
+						type: "message_end",
+						message: {
+							role: "assistant",
+							content: [
+								{
+									type: "text",
+									text: current === 0 ? "first done" : "second failed",
+								},
+							],
+							usage: {
+								input: 1,
+								output: 1,
+								cacheRead: 0,
+								cacheWrite: 0,
+								cost: { total: 0 },
+								totalTokens: 2,
+							},
+							stopReason: "end_turn",
+						},
+					})}\n`,
+				);
+				proc.emit("close", current === 0 ? 0 : 1);
+			});
+			return proc;
+		});
+		const pi = createMockPi();
+		const tasks = await import("../extensions/tasks.ts");
+		const registry = await import("../lib/task-registry.ts");
+		tasks.default(pi as Parameters<typeof tasks.default>[0]);
+		const taskTool = pi._getTool("task");
+		if (!taskTool) throw new Error("task tool not registered");
+		const ctx = createMockCtx({ cwd: tmpDir });
+		const ids: string[] = [];
+		for (const summary of ["fan-out one", "fan-out two"]) {
+			const created = await taskTool.execute(
+				`create-${summary}`,
+				{
+					action: "create",
+					summary,
+					agent: "tester",
+					task: summary,
+					agentScope: "project",
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+			ids.push(created.details.record.id as string);
+		}
+
+		const started = await taskTool.execute(
+			"execute-fan-out",
+			{ action: "execute_many", ids },
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(started.details.outcome).toBe("accepted");
+		await vi.waitFor(() => {
+			expect(ids.map((id) => registry.getTask(id)?.state)).toEqual([
+				"completed",
+				"failed",
+			]);
+		});
+		expect(pi.sendMessage).toHaveBeenCalledTimes(2);
+		const notifications = pi.sendMessage.mock.calls.map(
+			([message, options]) => ({ message, options }),
+		);
+		expect(notifications.map(({ message }) => message.content)).toEqual([
+			expect.stringContaining("status=completed"),
+			expect.stringContaining("status=failed"),
+		]);
+		for (const { message, options } of notifications) {
+			expect(Buffer.byteLength(message.content, "utf8")).toBeLessThanOrEqual(
+				500,
+			);
+			expect(options).toEqual({ deliverAs: "nextTurn" });
+		}
+	});
+
+	it("caps notification bytes and leaves task state consistent when delivery fails", async () => {
+		const {
+			formatTaskCompletionNotification,
+			TaskExecutionCoordinator,
+			TASK_NOTIFICATION_MAX_BYTES,
+		} = await import("../extensions/tasks/execution.ts");
+		const { createTask, getTask } = await import("../lib/task-registry.ts");
+		const content = formatTaskCompletionNotification({
+			taskId: "long-task",
+			agent: "tester",
+			status: "completed",
+			durationMs: 12.4,
+			output: `result ${"x".repeat(1_000)} ${"\u2603".repeat(100)}`,
+		});
+		expect(Buffer.byteLength(content, "utf8")).toBeLessThanOrEqual(
+			TASK_NOTIFICATION_MAX_BYTES,
+		);
+		const coordinator = new TaskExecutionCoordinator(
+			async () => ({ output: "saved output", exitCode: 0 }),
+			undefined,
+			undefined,
+			() => {
+				throw new Error("session unavailable");
+			},
+		);
+		const task = executableTask(createTask, "notification failure");
+
+		expect(coordinator.start(task.id, tmpDir).outcome).toBe("accepted");
+		await vi.waitFor(() => expect(getTask(task.id)?.state).toBe("completed"));
+		expect(getTask(task.id)?.execution?.outputPath).toBeTruthy();
+	});
+
+	it("notifies when an active execution is cancelled", async () => {
+		const { TaskExecutionCoordinator } = await import(
+			"../extensions/tasks/execution.ts"
+		);
+		const { createTask, getTask } = await import("../lib/task-registry.ts");
+		const notifications: Array<{ status: string }> = [];
+		const coordinator = new TaskExecutionCoordinator(
+			async (_execution, _cwd, signal) =>
+				new Promise((resolve) => {
+					signal.addEventListener(
+						"abort",
+						() => resolve({ output: "cancelled output", exitCode: 0 }),
+						{ once: true },
+					);
+				}),
+			undefined,
+			undefined,
+			(notification) => notifications.push(notification),
+		);
+		const task = executableTask(createTask, "cancel notification");
+		coordinator.start(task.id, tmpDir);
+
+		expect((await coordinator.stop(task.id)).outcome).toBe("persisted");
+		expect(getTask(task.id)?.state).toBe("cancelled");
+		expect(notifications).toEqual([
+			expect.objectContaining({ taskId: task.id, status: "stopped" }),
+		]);
 	});
 
 	it("emits one terminal event per execution attempt and propagates its run ID", async () => {
