@@ -320,7 +320,7 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
   - [x] shared atomic lease lifecycle implemented for Pi and Claude
   - [x] same-worktree warning and separate-worktree non-warning validated
   - [x] clean shutdown, stale recovery, and clean Git status validated
-- [ ] T4: mechanical DAG scheduler - in-progress: implementation validated; record final slice commit hash
+- [x] T4: mechanical DAG scheduler - done: `274a829`
   - [x] auto-dispatch on unblock with maxConcurrent
   - [x] write-scope serialization; read-only derived from enforced tools
   - [x] critical-path-first ordering
@@ -338,7 +338,7 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
 
 ### State
 
-- **Classification:** in progress; T1-T3 complete
+- **Classification:** in progress; T1-T4 complete
 - **Current blocker:** none
-- **Next:** record T4's final handoff commit hash, then start T5 schema-validated subagent output
+- **Next:** T5, add schema-validated subagent output with one continuation correction
 - **Resume:** `/do-it .specs/rationalization-phase3/plan.md`
