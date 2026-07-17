@@ -63,10 +63,10 @@ describe("bedrock cost status formatting", () => {
 	it("formats exact and partial month-to-date totals", () => {
 		expect(
 			formatBedrockStatus({ costTotal: 1.23456, unpricedRequestCount: 0 }),
-		).toBe("bedrock $1.2346 mtd");
+		).toBe("bedrock $1.23");
 		expect(
 			formatBedrockStatus({ costTotal: 1.23456, unpricedRequestCount: 2 }),
-		).toBe("bedrock >= $1.2346 mtd");
+		).toBe("bedrock >= $1.23");
 	});
 });
 
@@ -137,10 +137,7 @@ describe("bedrock cost extension", () => {
 
 		await fire(pi, "session_start", { type: "session_start" }, ctx);
 
-		expect(setStatus).toHaveBeenLastCalledWith(
-			"bedrock",
-			"bedrock $1.2346 mtd",
-		);
+		expect(setStatus).toHaveBeenLastCalledWith("bedrock", "bedrock $1.23");
 		expect(notify).not.toHaveBeenCalled();
 	});
 
@@ -179,10 +176,7 @@ describe("bedrock cost extension", () => {
 			ctx,
 		);
 		expect((await getCurrentBedrockMonthSummary()).requestCount).toBe(1);
-		expect(setStatus).toHaveBeenLastCalledWith(
-			"bedrock",
-			"bedrock $0.0100 mtd",
-		);
+		expect(setStatus).toHaveBeenLastCalledWith("bedrock", "bedrock $0.01");
 
 		await fire(
 			pi,
@@ -201,9 +195,6 @@ describe("bedrock cost extension", () => {
 		const summary = await getCurrentBedrockMonthSummary();
 		expect(summary.requestCount).toBe(2);
 		expect(summary.unpricedRequestCount).toBe(1);
-		expect(setStatus).toHaveBeenLastCalledWith(
-			"bedrock",
-			"bedrock >= $0.0100 mtd",
-		);
+		expect(setStatus).toHaveBeenLastCalledWith("bedrock", "bedrock >= $0.01");
 	});
 });

@@ -313,13 +313,45 @@ launching the detached supervisor so only one writer occupies the worktree.
 
 Runtime state and logs live under `%LOCALAPPDATA%/pi/loops/<job-id>/` on
 Windows and `~/.local/state/pi/loops/<job-id>/` elsewhere. Set `PI_LOOP_DIR` to
-override the state root. While an interactive Pi session is open, the footer
-shows `loop <job-id> i<iteration>` for one live job or `loops <count> running`
-for several. The status refreshes every five seconds and disappears when no
-supervisor PID is active. A job becomes trustworthy only after its first
+override the state root. `loop.log` contains compact, schema-versioned JSON
+records for supervisor and child Pi lifecycle events, process IDs, invocation
+and iteration duration, exit status, output/session sizes, retries, and the
+terminal stop reason. Per-invocation stdout and stderr remain in
+`logs/iteration-NNN.log`, and continued session records remain under `session/`.
+Jobs started by older versions may have legacy text lines before the JSON
+records. While an interactive Pi session is open, the footer shows
+`loop <job-id> T:<iteration>/<maximum>` when the maximum is known and omits the
+maximum for legacy jobs. Active task status follows the loop, and compact
+month-to-date Bedrock cost is last, for example
+`loop rationalization-345 T:35/48 | tasks 2 (2 running) | bedrock $71.64`.
+The five-second refresh uses asynchronous file reads, never overlaps polls, and
+updates the footer only when the value changes. It disappears when no supervisor
+PID is active. A job becomes trustworthy only after its first
 validated commit; startup and extension loading alone are not reported as
 progress. The supervisor never pushes and stops after bounded invocation
 failures, quiescence, or repeated iterations without a commit.
+
+### `scheduler.ts`
+
+Provides process-local one-shot and recurring prompt scheduling. Jobs survive
+`/reload`, `/new`, `/resume`, and `/fork` within the current Pi process, then
+stop when that process exits. If a job becomes due during session replacement,
+it is delivered to the next active session. Recurring jobs keep at most one
+prompt pending until the agent settles.
+
+```text
+/at 15m -- Recheck the deployment status
+/at 2026-07-18T09:00:00-04:00 -- Continue the release checklist
+/cron "0 9 * * 1-5" --tz America/New_York -- Review open tasks
+/schedule list
+/schedule cancel <id>
+```
+
+Cron expressions use five fields. Scheduled prompts cannot start with `/`, so
+slash workflows do not run unattended. The model-callable `schedule` tool can
+create, list, and cancel the same jobs; create and cancel actions require TUI
+confirmation. Schedule lifecycle metrics contain job IDs and timing metadata,
+not prompt text.
 
 ### `feature-memory.ts`
 

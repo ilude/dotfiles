@@ -2,6 +2,32 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Surface active work and schedule process-local prompts
+
+**Why:** The compact footer buried active loop and task state behind provider
+cost, while delayed follow-up prompts required an external scheduler.
+
+**Changed:**
+- Ordered compact footer status as loop, active tasks, other runtime state, and
+  two-decimal Bedrock cost, with explicit separators.
+- Added known loop iteration totals and replaced synchronous interval polling
+  with non-overlapping asynchronous reads that render only changed values.
+- Added `/at`, `/cron`, and `/schedule list|cancel` on Croner for process-local
+  scheduled prompts that survive session replacement but stop with Pi.
+- Added a model-callable `schedule` tool with TUI confirmation for create and
+  cancel actions, bounded prompts, and rejection of scheduled slash commands.
+
+**Validation:** Pi typecheck, focused Biome checks, and all 38 focused footer,
+loop, poller, Bedrock, and scheduler tests passed. A stateful Pi RPC smoke test
+created one-shot and recurring jobs, listed them before and after session
+replacement, cancelled both, and confirmed the final list was empty.
+
+**Files:** `pi/extensions/{bedrock-cost.ts,loop.ts,operator-status.ts,scheduler.ts}`,
+`pi/lib/{async-poller.ts,process-scheduler.ts}`, focused tests,
+`pi/{package.json,pnpm-lock.yaml,README.md}`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Notify sessions when background tasks finish
 
 **Why:** Background fan-out required a blocking join to learn when workers
@@ -44,17 +70,24 @@ worker exits without turning user-decision gates into repeated calls.
 - Added a PowerShell supervisor that resumes one dedicated Pi session, retries
   failed invocations with bounded backoff, and stops after repeated no-progress
   iterations.
+- Added schema-versioned loop lifecycle records with supervisor and child Pi
+  PIDs, correlation fields, durations, exit codes, output/session sizes, retry
+  scheduling, and terminal stop reasons.
 - Limited each iteration to one validated slice and one exact-path conventional
   commit, with no pushes or broad staging.
 - Added a reusable prompt that routes around independent gated work and reports
   progress, quiescence, or blockage through a bounded status marker.
 
-**Validation:** Focused command tests, typecheck, PowerShell parsing, and the
-no-provider dry run passed. The dry run resolved the workspace, runtime state,
-plan files, worktree extension paths, and Pi command without creating a session.
+**Validation:** Eight focused command and runtime-logging tests, typecheck,
+PowerShell parsing, and the no-provider dry run passed. The dry run resolved the
+workspace, runtime state, plan files, worktree extension paths, and Pi command
+without creating a session. An isolated one-iteration supervisor run emitted
+the expected start, invocation, iteration, and quiescent-stop records with
+populated timing, exit, and size fields.
 
-**Files:** `pi/extensions/loop.ts`, `pi/scripts/{run-loop.ps1,loop-prompt.md}`,
-`pi/tests/loop.test.ts`, `pi/README.md`, `scripts/git-hooks/pre-commit-dolos`,
+**Files:** `pi/extensions/{loop.ts,loop/runtime-logging.ts}`,
+`pi/scripts/{run-loop.ps1,loop-prompt.md}`, `pi/tests/loop.test.ts`,
+`pi/README.md`, `scripts/git-hooks/pre-commit-dolos`,
 `test/test_private_archive.py`, `CHANGELOG.md`
 
 ---

@@ -6,7 +6,6 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import {
 	type BedrockMonthSummary,
-	formatMoney,
 	getCurrentBedrockMonthSummary,
 	recordBedrockUsage,
 } from "../lib/bedrock-cost-ledger.js";
@@ -18,7 +17,8 @@ export function formatBedrockStatus(
 	summary: Pick<BedrockMonthSummary, "costTotal" | "unpricedRequestCount">,
 ): string {
 	const prefix = summary.unpricedRequestCount > 0 ? "bedrock >=" : "bedrock";
-	return `${prefix} ${formatMoney(summary.costTotal)} mtd`;
+	const cost = Number.isFinite(summary.costTotal) ? summary.costTotal : 0;
+	return `${prefix} $${cost.toFixed(2)}`;
 }
 
 export function shouldRecordBedrockMessage(

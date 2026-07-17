@@ -39,6 +39,13 @@ let cachedPiVersion: string | null | undefined;
 let currentSessionStartedAt: string | null = null;
 const cachedStatusDirectories = new Map<string, string>();
 const FOOTER_STATUS_EXCLUDE_KEYS = new Set(["damage-control", "router"]);
+const FOOTER_STATUS_PRIORITY = new Map([
+	["loop", 0],
+	["task", 10],
+	["elevated", 20],
+	["tps", 30],
+	["bedrock", 100],
+]);
 const reloadStatus = createReloadStatusState();
 
 const ANSI = {
@@ -226,15 +233,21 @@ export function rightAnchoredStatus(
 	return status ? sanitizeSingleLine(status) : null;
 }
 
+function compareFooterStatusKeys(left: string, right: string): number {
+	const leftPriority = FOOTER_STATUS_PRIORITY.get(left) ?? 50;
+	const rightPriority = FOOTER_STATUS_PRIORITY.get(right) ?? 50;
+	return leftPriority - rightPriority || left.localeCompare(right);
+}
+
 export function formatExtensionStatuses(
 	footerData: ReadonlyFooterDataProvider,
 ): string | null {
 	const statuses = Array.from(footerData.getExtensionStatuses().entries())
 		.filter(([key]) => key !== "codex" && !FOOTER_STATUS_EXCLUDE_KEYS.has(key))
-		.sort(([a], [b]) => a.localeCompare(b))
+		.sort(([a], [b]) => compareFooterStatusKeys(a, b))
 		.map(([, text]) => sanitizeSingleLine(text))
 		.filter(Boolean);
-	return statuses.length > 0 ? statuses.join(" ") : null;
+	return statuses.length > 0 ? statuses.join(" | ") : null;
 }
 
 export function formatExtensionStatusLine(
@@ -250,10 +263,10 @@ export function formatExtensionStatusLine(
 				key !== "tps" &&
 				!FOOTER_STATUS_EXCLUDE_KEYS.has(key),
 		)
-		.sort(([a], [b]) => a.localeCompare(b))
+		.sort(([a], [b]) => compareFooterStatusKeys(a, b))
 		.map(([, text]) => sanitizeSingleLine(text))
 		.filter(Boolean)
-		.join(" ");
+		.join(" | ");
 	if (!left && !right) return null;
 	if (!left) return rightAlign(right, width);
 	if (!right)

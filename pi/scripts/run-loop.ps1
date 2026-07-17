@@ -48,15 +48,57 @@ function Resolve-FullPath {
     return [System.IO.Path]::GetFullPath((Join-Path $BasePath $Path))
 }
 
-function Write-LoopLog {
+function Write-LoopEvent {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$Message
+        [string]$Event,
+
+        [System.Collections.IDictionary]$Data = @{}
     )
 
-    $line = "{0} {1}" -f (Get-Date).ToUniversalTime().ToString("o"), $Message
+    $record = [ordered]@{
+        schema_version = 1
+        timestamp = (Get-Date).ToUniversalTime().ToString("o")
+        event = $Event
+        job_id = $JobId
+        supervisor_pid = $PID
+    }
+    foreach ($key in $Data.Keys) {
+        $record[$key] = $Data[$key]
+    }
+
+    $line = $record | ConvertTo-Json -Compress -Depth 4
     Add-Content -LiteralPath $script:LoopLog -Value $line -Encoding utf8
     Write-Output $line
+}
+
+function Get-FileStats {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [string]$Filter = "*"
+    )
+
+    $files = @(
+        Get-ChildItem `
+            -LiteralPath $Path `
+            -File `
+            -Filter $Filter `
+            -Recurse `
+            -ErrorAction SilentlyContinue
+    )
+    $measure = $files | Measure-Object -Property Length -Sum
+    $bytes = if ($null -eq $measure -or $null -eq $measure.Sum) {
+        0
+    }
+    else {
+        [long]$measure.Sum
+    }
+    return [pscustomobject]@{
+        Count = $files.Count
+        Bytes = $bytes
+    }
 }
 
 function Get-HeadCommit {
@@ -100,6 +142,7 @@ function Get-PiArguments {
     $extensions = @(
         "commit-guard.ts",
         "damage-control.ts",
+        "loop/runtime-logging.ts",
         "direct-personality.ts",
         "goal.ts",
         "operator-status.ts",
@@ -214,22 +257,29 @@ if ($DryRun) {
 New-Item -ItemType Directory -Path $sessionPath -Force | Out-Null
 New-Item -ItemType Directory -Path $logsPath -Force | Out-Null
 Set-Content -LiteralPath (Join-Path $statePath "supervisor.pid") -Value $PID -Encoding ascii
+$env:PI_LOOP_LOG_PATH = $script:LoopLog
+$env:PI_LOOP_JOB_ID = $JobId
+$env:PI_LOOP_SUPERVISOR_PID = [string]$PID
 if ($StartupDelaySeconds -gt 0) {
     Start-Sleep -Seconds $StartupDelaySeconds
 }
-Write-LoopLog "loop started workspace=$workspacePath job=$JobId"
+Write-LoopEvent -Event "loop_started" -Data ([ordered]@{
+    workspace = $workspacePath
+    state_root = $statePath
+    session_dir = $sessionPath
+    max_iterations = $MaxIterations
+    max_invocation_retries = $MaxInvocationRetries
+    max_no_progress = $MaxNoProgress
+    initial_backoff_seconds = $InitialBackoffSeconds
+    startup_delay_seconds = $StartupDelaySeconds
+})
 
 $noProgress = 0
 for ($iteration = 1; $iteration -le $MaxIterations; $iteration++) {
+    $iterationStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     $beforeHead = Get-HeadCommit -WorkingDirectory $workspacePath
-    $sessionExists = @(
-        Get-ChildItem `
-            -LiteralPath $sessionPath `
-            -File `
-            -Filter "*.jsonl" `
-            -Recurse `
-            -ErrorAction SilentlyContinue
-    ).Count -gt 0
+    $sessionStats = Get-FileStats -Path $sessionPath -Filter "*.jsonl"
+    $sessionExists = $sessionStats.Count -gt 0
     $arguments = Get-PiArguments `
         -ContinueSession $sessionExists `
         -SessionDirectory $sessionPath `
@@ -240,14 +290,62 @@ for ($iteration = 1; $iteration -le $MaxIterations; $iteration++) {
     $completed = $false
     $iterationLog = Join-Path $logsPath ("iteration-{0:D3}.log" -f $iteration)
     for ($attempt = 1; $attempt -le $MaxInvocationRetries; $attempt++) {
-        Write-LoopLog "iteration=$iteration attempt=$attempt started"
+        $env:PI_LOOP_ITERATION = [string]$iteration
+        $env:PI_LOOP_ATTEMPT = [string]$attempt
+        Write-LoopEvent -Event "invocation_started" -Data ([ordered]@{
+            iteration = $iteration
+            attempt = $attempt
+            head_before = $beforeHead
+            continue_session = $sessionExists
+            session_files = $sessionStats.Count
+            session_bytes = $sessionStats.Bytes
+            iteration_log = [System.IO.Path]::GetFileName($iterationLog)
+        })
+
+        $invocationStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+        $exitCode = -1
+        $invocationError = $null
         Push-Location $workspacePath
         try {
             & $piCommand.Source @arguments *> $iterationLog
             $exitCode = $LASTEXITCODE
         }
+        catch {
+            $invocationError = $_
+        }
         finally {
             Pop-Location
+            $invocationStopwatch.Stop()
+        }
+
+        $outputBytes = if (Test-Path -LiteralPath $iterationLog -PathType Leaf) {
+            (Get-Item -LiteralPath $iterationLog).Length
+        }
+        else {
+            0
+        }
+        $sessionStats = Get-FileStats -Path $sessionPath -Filter "*.jsonl"
+        $invocationOutcome = if ($null -ne $invocationError) {
+            "error"
+        }
+        elseif ($exitCode -eq 0) {
+            "success"
+        }
+        else {
+            "failed"
+        }
+        Write-LoopEvent -Event "invocation_finished" -Data ([ordered]@{
+            iteration = $iteration
+            attempt = $attempt
+            outcome = $invocationOutcome
+            exit_code = $exitCode
+            duration_ms = $invocationStopwatch.ElapsedMilliseconds
+            output_bytes = $outputBytes
+            session_files = $sessionStats.Count
+            session_bytes = $sessionStats.Bytes
+        })
+        if ($null -ne $invocationError) {
+            throw $invocationError
         }
 
         if ($exitCode -eq 0) {
@@ -255,18 +353,28 @@ for ($iteration = 1; $iteration -le $MaxIterations; $iteration++) {
             break
         }
 
-        Write-LoopLog "iteration=$iteration attempt=$attempt exit=$exitCode"
         if ($attempt -lt $MaxInvocationRetries) {
             $backoff = [Math]::Min(
                 $InitialBackoffSeconds * [Math]::Pow(2, $attempt - 1),
                 600
             )
+            Write-LoopEvent -Event "invocation_retry_scheduled" -Data ([ordered]@{
+                iteration = $iteration
+                attempt = $attempt
+                backoff_seconds = [int]$backoff
+            })
             Start-Sleep -Seconds ([int]$backoff)
         }
     }
 
     if (-not $completed) {
-        Write-LoopLog "loop stopped after repeated invocation failures iteration=$iteration"
+        $iterationStopwatch.Stop()
+        Write-LoopEvent -Event "loop_stopped" -Data ([ordered]@{
+            reason = "repeated_invocation_failures"
+            iteration = $iteration
+            duration_ms = $iterationStopwatch.ElapsedMilliseconds
+            exit_code = 2
+        })
         exit 2
     }
 
@@ -282,25 +390,63 @@ for ($iteration = 1; $iteration -le $MaxIterations; $iteration++) {
     else {
         "missing"
     }
+    $iterationStopwatch.Stop()
 
     if ($afterHead -ne $beforeHead) {
         $noProgress = 0
-        Write-LoopLog "iteration=$iteration committed head=$afterHead status=$status"
+        Write-LoopEvent -Event "iteration_finished" -Data ([ordered]@{
+            iteration = $iteration
+            outcome = "progress"
+            reported_status = $status
+            head_before = $beforeHead
+            head_after = $afterHead
+            duration_ms = $iterationStopwatch.ElapsedMilliseconds
+            no_progress = $noProgress
+        })
         continue
     }
 
     if ($status -eq "quiescent") {
-        Write-LoopLog "loop reached quiescence iteration=$iteration"
+        Write-LoopEvent -Event "iteration_finished" -Data ([ordered]@{
+            iteration = $iteration
+            outcome = "quiescent"
+            reported_status = $status
+            head_before = $beforeHead
+            head_after = $afterHead
+            duration_ms = $iterationStopwatch.ElapsedMilliseconds
+            no_progress = $noProgress
+        })
+        Write-LoopEvent -Event "loop_stopped" -Data ([ordered]@{
+            reason = "quiescent"
+            iteration = $iteration
+            exit_code = 0
+        })
         exit 0
     }
 
     $noProgress += 1
-    Write-LoopLog "iteration=$iteration no-progress=$noProgress status=$status"
+    Write-LoopEvent -Event "iteration_finished" -Data ([ordered]@{
+        iteration = $iteration
+        outcome = "no_progress"
+        reported_status = $status
+        head_before = $beforeHead
+        head_after = $afterHead
+        duration_ms = $iterationStopwatch.ElapsedMilliseconds
+        no_progress = $noProgress
+    })
     if ($noProgress -ge $MaxNoProgress) {
-        Write-LoopLog "loop stopped after repeated no-progress iterations"
+        Write-LoopEvent -Event "loop_stopped" -Data ([ordered]@{
+            reason = "repeated_no_progress"
+            iteration = $iteration
+            exit_code = 3
+        })
         exit 3
     }
 }
 
-Write-LoopLog "loop reached MaxIterations=$MaxIterations"
+Write-LoopEvent -Event "loop_stopped" -Data ([ordered]@{
+    reason = "max_iterations"
+    iteration = $MaxIterations
+    exit_code = 4
+})
 exit 4

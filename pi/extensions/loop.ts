@@ -9,6 +9,7 @@ import type {
 	ExtensionCommandContext,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { createAsyncPoller, type AsyncPoller } from "../lib/async-poller.js";
 import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 import {
 	filterCommitSafeFiles,
@@ -30,6 +31,7 @@ type LoopJob = {
 	pid: number;
 	startedAt: string;
 	initialHead: string;
+	maxIterations?: number;
 };
 
 function loopRoot(): string {
@@ -42,6 +44,7 @@ function loopRoot(): string {
 }
 const STATUS_KEY = "loop";
 const STATUS_REFRESH_MS = 5_000;
+const MAX_LOOP_ITERATIONS = 48;
 const LOG_TAIL_BYTES = 8 * 1024;
 const MAX_STATUS_JOBS = 64;
 const SCRIPT_PATH = fileURLToPath(
@@ -122,6 +125,10 @@ function readJob(id: string): LoopJob {
 	return JSON.parse(fs.readFileSync(jobPath(id), "utf8")) as LoopJob;
 }
 
+async function readJobAsync(id: string): Promise<LoopJob> {
+	return JSON.parse(await fs.promises.readFile(jobPath(id), "utf8")) as LoopJob;
+}
+
 function listJobs(): LoopJob[] {
 	const root = loopRoot();
 	if (!fs.existsSync(root)) return [];
@@ -137,6 +144,32 @@ function listJobs(): LoopJob[] {
 				return [];
 			}
 		})
+		.sort((left, right) => left.startedAt.localeCompare(right.startedAt));
+}
+
+async function listJobsAsync(): Promise<LoopJob[]> {
+	const root = loopRoot();
+	let entries: fs.Dirent[];
+	try {
+		entries = await fs.promises.readdir(root, { withFileTypes: true });
+	} catch {
+		return [];
+	}
+	const jobs = await Promise.all(
+		entries
+			.filter((entry) => entry.isDirectory())
+			.sort((left, right) => left.name.localeCompare(right.name))
+			.slice(0, MAX_STATUS_JOBS)
+			.map(async (entry) => {
+				try {
+					return await readJobAsync(entry.name);
+				} catch {
+					return undefined;
+				}
+			}),
+	);
+	return jobs
+		.filter((job): job is LoopJob => job !== undefined)
 		.sort((left, right) => left.startedAt.localeCompare(right.startedAt));
 }
 
@@ -163,13 +196,23 @@ function readLoopIteration(id: string): number | undefined {
 		}
 		const lines = buffer.toString("utf8").split(/\r?\n/).reverse();
 		for (const line of lines) {
-			const match = line.match(/\biteration=(\d+)\b/);
-			if (match) return Number(match[1]);
+			const legacyMatch = line.match(/\biteration=(\d+)\b/);
+			if (legacyMatch) return Number(legacyMatch[1]);
+			const structuredMatch = line.match(/"iteration"\s*:\s*(\d+)/);
+			if (structuredMatch) return Number(structuredMatch[1]);
 		}
 	} catch {
 		return undefined;
 	}
 	return undefined;
+}
+
+function formatLoopProgress(job: LoopJob, iteration: number): string {
+	const total =
+		Number.isSafeInteger(job.maxIterations) && (job.maxIterations ?? 0) > 0
+			? `/${job.maxIterations}`
+			: "";
+	return `loop ${job.id} T:${iteration}${total}`;
 }
 
 function formatLoopStatus(
@@ -183,12 +226,53 @@ function formatLoopStatus(
 	const iteration = readLoopIteration(job.id);
 	return iteration === undefined
 		? `loop ${job.id} starting`
-		: `loop ${job.id} i${iteration}`;
+		: formatLoopProgress(job, iteration);
 }
 
-function refreshLoopStatus(ctx: ExtensionContext): void {
-	if (!ctx.hasUI) return;
-	ctx.ui.setStatus(STATUS_KEY, formatLoopStatus(listJobs()));
+async function readLoopIterationAsync(
+	id: string,
+	signal: AbortSignal,
+): Promise<number | undefined> {
+	const logPath = path.join(jobDirectory(id), "loop.log");
+	try {
+		if (signal.aborted) return undefined;
+		const stat = await fs.promises.stat(logPath);
+		const length = Math.min(stat.size, LOG_TAIL_BYTES);
+		if (length === 0) return undefined;
+		const buffer = Buffer.alloc(length);
+		const descriptor = await fs.promises.open(logPath, "r");
+		try {
+			await descriptor.read(buffer, 0, length, stat.size - length);
+		} finally {
+			await descriptor.close();
+		}
+		if (signal.aborted) return undefined;
+		const lines = buffer.toString("utf8").split(/\r?\n/).reverse();
+		for (const line of lines) {
+			const legacyMatch = line.match(/\biteration=(\d+)\b/);
+			if (legacyMatch) return Number(legacyMatch[1]);
+			const structuredMatch = line.match(/"iteration"\s*:\s*(\d+)/);
+			if (structuredMatch) return Number(structuredMatch[1]);
+		}
+	} catch {
+		return undefined;
+	}
+	return undefined;
+}
+
+async function readLoopStatus(
+	signal: AbortSignal,
+): Promise<string | undefined> {
+	const jobs = await listJobsAsync();
+	if (signal.aborted) return undefined;
+	const running = jobs.filter((job) => processAlive(job.pid));
+	if (running.length === 0) return undefined;
+	if (running.length > 1) return `loops ${running.length} running`;
+	const job = running[0];
+	const iteration = await readLoopIterationAsync(job.id, signal);
+	return iteration === undefined
+		? `loop ${job.id} starting`
+		: formatLoopProgress(job, iteration);
 }
 
 function show(pi: ExtensionAPI, text: string): void {
@@ -260,6 +344,8 @@ function launch(job: Omit<LoopJob, "pid" | "startedAt">): LoopJob {
 			job.plans.join(";"),
 			"-StartupDelaySeconds",
 			"5",
+			"-MaxIterations",
+			String(job.maxIterations ?? MAX_LOOP_ITERATIONS),
 		],
 		{
 			cwd: job.cwd,
@@ -346,6 +432,7 @@ async function handleLoop(
 			cwd: prior.cwd,
 			plans: prior.plans,
 			initialHead: prior.initialHead,
+			maxIterations: prior.maxIterations ?? MAX_LOOP_ITERATIONS,
 		});
 		show(pi, `Resumed loop ${started.id} (PID ${started.pid}).`);
 		return;
@@ -387,7 +474,14 @@ async function handleLoop(
 
 	const initialHead = await preflight(pi, cwd);
 	const id = boundedId(cwd, plans);
-	const started = launch({ version: 1, id, cwd, plans, initialHead });
+	const started = launch({
+		version: 1,
+		id,
+		cwd,
+		plans,
+		initialHead,
+		maxIterations: MAX_LOOP_ITERATIONS,
+	});
 	show(
 		pi,
 		`Started loop ${started.id} (PID ${started.pid}). Pi will exit so the loop can take over this worktree. Baseline: ${initialHead.slice(0, 12)}.`,
@@ -405,19 +499,23 @@ export const loopTestApi = {
 };
 
 export default function (pi: ExtensionAPI) {
-	let statusTimer: ReturnType<typeof setInterval> | undefined;
+	let statusPoller: AsyncPoller | undefined;
 	wrapCommandRegistration(pi);
 	pi.on("session_start", (_event, ctx) => {
-		if (statusTimer) clearInterval(statusTimer);
-		refreshLoopStatus(ctx);
-		if (!ctx.hasUI) return;
-		statusTimer = setInterval(() => refreshLoopStatus(ctx), STATUS_REFRESH_MS);
-		statusTimer.unref?.();
+		statusPoller?.dispose();
+		statusPoller = undefined;
+		if (ctx.mode !== "tui") return;
+		statusPoller = createAsyncPoller({
+			intervalMs: STATUS_REFRESH_MS,
+			run: readLoopStatus,
+			onValue: (status) => ctx.ui.setStatus(STATUS_KEY, status),
+		});
+		statusPoller.start();
 	});
 	pi.on("session_shutdown", (_event, ctx) => {
-		if (statusTimer) clearInterval(statusTimer);
-		statusTimer = undefined;
-		if (ctx.hasUI) ctx.ui.setStatus(STATUS_KEY, undefined);
+		statusPoller?.dispose();
+		statusPoller = undefined;
+		if (ctx.mode === "tui") ctx.ui.setStatus(STATUS_KEY, undefined);
 	});
 	pi.registerCommand("loop", {
 		description: "Start, resume, inspect, or stop a durable plan loop",

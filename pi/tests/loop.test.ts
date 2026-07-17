@@ -13,6 +13,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 	return { ...actual, spawn: spawnMock };
 });
 
+import loopRuntimeLogging from "../extensions/loop/runtime-logging.ts";
 import loop, { loopTestApi } from "../extensions/loop.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
@@ -42,6 +43,7 @@ function writeJobFixture(
 			pid,
 			startedAt: "2026-07-17T00:00:00.000Z",
 			initialHead: "abc123",
+			maxIterations: 48,
 		})}\n`,
 	);
 	if (iteration !== undefined)
@@ -127,6 +129,7 @@ describe("loop extension", () => {
 		const setStatus = vi.fn();
 		const ctx = createMockCtx({
 			hasUI: true,
+			mode: "tui",
 			ui: { setStatus, notify: vi.fn() },
 		});
 		loop(pi as unknown as ExtensionAPI);
@@ -134,14 +137,34 @@ describe("loop extension", () => {
 		try {
 			for (const hook of pi._getHook("session_start"))
 				await hook.handler({ reason: "startup" }, ctx);
-			expect(setStatus).toHaveBeenLastCalledWith("loop", "loop active-job i12");
+			await vi.waitFor(() =>
+				expect(setStatus).toHaveBeenLastCalledWith(
+					"loop",
+					"loop active-job T:12/48",
+				),
+			);
+
+			await vi.advanceTimersByTimeAsync(5_000);
+			await vi.waitFor(() => expect(vi.getTimerCount()).toBe(1));
+			expect(setStatus).toHaveBeenCalledTimes(1);
 
 			fs.appendFileSync(
 				path.join(stateRoot, "active-job", "loop.log"),
-				"2026-07-17T00:00:05.000Z iteration=13 attempt=1 started\n",
+				`${JSON.stringify({
+					schema_version: 1,
+					timestamp: "2026-07-17T00:00:05.000Z",
+					event: "invocation_started",
+					iteration: 13,
+					attempt: 1,
+				})}\n`,
 			);
-			vi.advanceTimersByTime(5_000);
-			expect(setStatus).toHaveBeenLastCalledWith("loop", "loop active-job i13");
+			await vi.advanceTimersByTimeAsync(5_000);
+			await vi.waitFor(() =>
+				expect(setStatus).toHaveBeenLastCalledWith(
+					"loop",
+					"loop active-job T:13/48",
+				),
+			);
 
 			for (const hook of pi._getHook("session_shutdown"))
 				await hook.handler({ reason: "quit" }, ctx);
@@ -151,6 +174,62 @@ describe("loop extension", () => {
 			if (priorRoot === undefined) delete process.env.PI_LOOP_DIR;
 			else process.env.PI_LOOP_DIR = priorRoot;
 		}
+	});
+
+	it("records child Pi lifecycle events with loop correlation fields", async () => {
+		const stateRoot = temporaryDirectory();
+		const logPath = path.join(stateRoot, "loop.log");
+		const environment = {
+			PI_LOOP_LOG_PATH: logPath,
+			PI_LOOP_JOB_ID: "job-123",
+			PI_LOOP_SUPERVISOR_PID: "321",
+			PI_LOOP_ITERATION: "7",
+			PI_LOOP_ATTEMPT: "2",
+		};
+		const prior = Object.fromEntries(
+			Object.keys(environment).map((key) => [key, process.env[key]]),
+		);
+		const pi = createMockPi();
+		const ctx = createMockCtx({
+			sessionManager: { getSessionId: () => "session-456" },
+		});
+
+		try {
+			Object.assign(process.env, environment);
+			loopRuntimeLogging(pi as unknown as ExtensionAPI);
+			for (const hook of pi._getHook("session_start"))
+				await hook.handler({ reason: "startup" }, ctx);
+			for (const hook of pi._getHook("session_shutdown"))
+				await hook.handler({ reason: "quit" }, ctx);
+		} finally {
+			for (const [key, value] of Object.entries(prior)) {
+				if (value === undefined) delete process.env[key];
+				else process.env[key] = value;
+			}
+		}
+
+		const records = fs
+			.readFileSync(logPath, "utf8")
+			.trim()
+			.split("\n")
+			.map((line) => JSON.parse(line));
+		expect(records).toHaveLength(2);
+		expect(records[0]).toMatchObject({
+			schema_version: 1,
+			event: "pi_process_started",
+			job_id: "job-123",
+			supervisor_pid: 321,
+			pi_pid: process.pid,
+			iteration: 7,
+			attempt: 2,
+			session_id: "session-456",
+		});
+		expect(records[1]).toMatchObject({
+			event: "pi_process_stopped",
+			reason: "quit",
+			session_id: "session-456",
+		});
+		expect(records[1].duration_ms).toEqual(expect.any(Number));
 	});
 
 	it("starts through the registered command after a clean Git preflight", async () => {
