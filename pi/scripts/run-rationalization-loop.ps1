@@ -91,7 +91,6 @@ function Get-PiArguments {
         "commit-guard.ts",
         "damage-control.ts",
         "direct-personality.ts",
-        "feature-memory.ts",
         "goal.ts",
         "operator-status.ts",
         "pwsh.ts",
