@@ -2,6 +2,32 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Account for every damage-control policy row
+
+**Why:** The final uncovered Bash rows required valid domain commands or an
+explicit explanation of why the actual hook can never reach that YAML branch.
+
+**Changed:**
+- Added 29 explicit positive commands for complex one-liners, xargs/parallel,
+  cloud, Helm, tfvars, GitLab, SQL, and environment-file patterns.
+- Added exact-ID waivers for semantic-Git precedence, Claude's read-only find
+  bypass, node-wrapper unwrapping, and Linux-only rules on the Windows oracle.
+- Waiver validation now supports exact ID selectors and rejects overlapping
+  claims across waiver entries.
+
+**Baseline:** All 592 rows are accounted for: 434 covered, 158 explicitly
+waived, zero uncovered, 35 divergences, zero stale controls, and
+`coverage_debt_count = 35`. No enforcement outcome changed.
+
+**Validation:** Both focused Vitest cases, Ruff, Pi typecheck, Biome, and JSON
+parsing passed.
+
+**Files:** `pi/scripts/damage-control-claude-oracle.py`,
+`pi/lib/damage-control-coverage.ts`, `shared/damage-control/coverage-waivers.json`,
+`.specs/rationalization-phase5/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Refine generated policy witnesses
 
 **Why:** Minimal regex witnesses could be syntactically incomplete and full

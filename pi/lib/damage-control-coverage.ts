@@ -64,6 +64,7 @@ export interface CoverageWaiver {
 	match: {
 		section: string;
 		exfil?: boolean;
+		ids?: string[];
 	};
 	reason: string;
 }
@@ -109,6 +110,7 @@ export function applyCoverageWaivers(
 	waivers: CoverageWaiver[],
 ): AppliedCoverageWaiver[] {
 	const seenIds = new Set<string>();
+	const claimedPatterns = new Map<string, string>();
 	return waivers.map((waiver) => {
 		if (!waiver.id.trim() || !waiver.reason.trim())
 			throw new Error("coverage waiver id and reason are required");
@@ -120,12 +122,21 @@ export function applyCoverageWaivers(
 				(row) =>
 					row.section === waiver.match.section &&
 					(waiver.match.exfil === undefined ||
-						Boolean(row.exfil) === waiver.match.exfil),
+						Boolean(row.exfil) === waiver.match.exfil) &&
+					(waiver.match.ids === undefined || waiver.match.ids.includes(row.id)),
 			)
 			.map((row) => row.id)
 			.sort();
 		if (patternIds.length === 0)
 			throw new Error(`coverage waiver matches no policy rows: ${waiver.id}`);
+		for (const patternId of patternIds) {
+			const claimedBy = claimedPatterns.get(patternId);
+			if (claimedBy)
+				throw new Error(
+					`policy row ${patternId} is waived by both ${claimedBy} and ${waiver.id}`,
+				);
+			claimedPatterns.set(patternId, waiver.id);
+		}
 		return { id: waiver.id, reason: waiver.reason, patternIds };
 	});
 }

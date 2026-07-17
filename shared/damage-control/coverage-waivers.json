@@ -50,6 +50,60 @@
         "section": "zeroAccessExclusions"
       },
       "reason": "Exclusions are non-triggering modifiers; per-pattern paired negative controls are not yet generated."
+    },
+    {
+      "id": "semantic-git-precedes-yaml-rule",
+      "match": {
+        "section": "bashToolPatterns",
+        "ids": [
+          "bashToolPatterns:0022",
+          "bashToolPatterns:0023",
+          "bashToolPatterns:0025",
+          "bashToolPatterns:0031",
+          "bashToolPatterns:0032",
+          "bashToolPatterns:0038"
+        ]
+      },
+      "reason": "Claude and Pi semantic Git analysis runs before these isolated YAML rules, so the YAML branch is unreachable."
+    },
+    {
+      "id": "readonly-find-bypass-precedes-yaml-rule",
+      "match": {
+        "section": "bashToolPatterns",
+        "ids": [
+          "bashToolPatterns:0055",
+          "bashToolPatterns:0056",
+          "bashToolPatterns:0057",
+          "bashToolPatterns:0058",
+          "bashToolPatterns:0059"
+        ]
+      },
+      "reason": "Claude classifies these find commands as read-only before YAML evaluation, so the isolated YAML branches are unreachable."
+    },
+    {
+      "id": "node-wrapper-unwrapped-before-yaml-rule",
+      "match": {
+        "section": "bashToolPatterns",
+        "ids": [
+          "bashToolPatterns:0067"
+        ]
+      },
+      "reason": "Claude unwraps node -e before YAML evaluation, removing the node prefix required by this pattern."
+    },
+    {
+      "id": "linux-only-rules-not-runnable-on-windows",
+      "match": {
+        "section": "bashToolPatterns",
+        "ids": [
+          "bashToolPatterns:0143",
+          "bashToolPatterns:0144",
+          "bashToolPatterns:0145",
+          "bashToolPatterns:0146",
+          "bashToolPatterns:0147",
+          "bashToolPatterns:0148"
+        ]
+      },
+      "reason": "These rules are explicitly Linux-only and cannot reach their policy branch in the Windows oracle run."
     }
   ]
 }

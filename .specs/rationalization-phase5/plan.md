@@ -221,11 +221,14 @@ Implemented and measured 2026-07-17 with `pnpm run damage-control-coverage`:
 - Suffix-enriched witnesses now avoid incomplete-command bypasses, and every
   no-delete row runs with only its target path enabled in both clients. All 30
   no-delete rows are covered; TMPDIR and kubectl now agree.
-- Remaining uncovered rows are 46 Bash patterns: 29 lack a generated witness
-  and 17 are shadowed by semantic/platform handling. Totals are 406 covered,
-  140 waived, 46 uncovered, 34 divergences, zero stale controls, and
-  `coverage_debt_count = 80`. The only isolated Bash divergences left are
-  terraform state rm/mv; no outcome changed.
+- Explicit positive commands now cover 28 patterns that resisted generic
+  generation. Eighteen unreachable rows are explicitly classified: six behind
+  semantic Git precedence, five behind Claude's read-only find bypass, one
+  behind node-wrapper unwrapping, and six Linux-only rows on the Windows oracle.
+- Every inventory row is now accounted for: 434 covered, 158 waived, zero
+  uncovered, 35 divergences, zero stale controls, and
+  `coverage_debt_count = 35`. The added terraform tfvars fixture exposes one
+  additional Pi-allow/Claude-ask divergence; no outcome changed.
 - Gate mode is `PI_DAMAGE_CONTROL_COVERAGE_GATE=1 pnpm run
   damage-control-coverage`; it fails until uncovered rows are covered or
   explicitly waived and all divergences are resolved.
@@ -385,9 +388,9 @@ from here.
 
 ### State
 
-- **Classification:** in progress; T2 oracle runner reports 80 debt rows
+- **Classification:** in progress; T2 has zero uncovered rows and 35 divergence debt
 - **Current blocker:** none
-- **Next:** T2, add explicit positive commands for 29 regexes without generated
-  witnesses and classify 17 semantic/platform-shadowed Bash rows, then replace
-  the path-exclusion waiver. Keep all 34 divergences unchanged pending approval
+- **Next:** T2, replace the 68-row path-exclusion waiver with paired negative
+  controls, then classify the 35 remaining outcome divergences and request a
+  user decision before any enforcement or canonical-source cutover
 - **Resume:** `/do-it .specs/rationalization-phase5/plan.md`
