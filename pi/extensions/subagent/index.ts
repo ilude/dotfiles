@@ -38,7 +38,8 @@ import {
 import {
 	type ModelPolicy,
 	type ModelSize,
-	resolveDynamicModelFromRegistry,
+	type RoutingOutcomeAssignment,
+	resolveSampledDynamicModelFromRegistry,
 } from "../../lib/model-routing.js";
 import { TimingSpan } from "../../lib/observability.js";
 import {
@@ -438,6 +439,7 @@ export interface SingleResult {
 	sessionPath?: string;
 	structuredOutput?: unknown;
 	outputAttempts?: number;
+	routingExperiment?: RoutingOutcomeAssignment;
 }
 
 export interface SubagentDetails {
@@ -1376,15 +1378,28 @@ export default function (pi: ExtensionAPI) {
 			const outputSchema = params.outputSchema as unknown as
 				| TSchema
 				| undefined;
-			const resolvedModel =
+			const hasChain = (params.chain?.length ?? 0) > 0;
+			const hasTasks = (params.tasks?.length ?? 0) > 0;
+			const hasSingle = Boolean(params.agent && params.task);
+			const hasContinue = Boolean(params.continue);
+			const sampledResolution =
 				!explicitModel && modelSize
-					? resolveDynamicModelFromRegistry(
+					? resolveSampledDynamicModelFromRegistry(
 							ctx.modelRegistry,
 							ctx,
 							modelSize,
 							modelPolicy,
+							_toolCallId,
+							hasChain
+								? "subagent-chain"
+								: hasTasks
+									? "subagent-parallel"
+									: "subagent-single",
+							effort || hasContinue ? 0 : undefined,
 						)
 					: undefined;
+			const resolvedModel = sampledResolution?.model;
+			const routingExperiment = sampledResolution?.experiment;
 			const resolvedModelId =
 				explicitModel ??
 				(resolvedModel
@@ -1393,11 +1408,6 @@ export default function (pi: ExtensionAPI) {
 			const discovery = discoverAgents(ctx.cwd, agentScope);
 			const agents = discovery.agents;
 			const confirmProjectAgents = params.confirmProjectAgents ?? false;
-
-			const hasChain = (params.chain?.length ?? 0) > 0;
-			const hasTasks = (params.tasks?.length ?? 0) > 0;
-			const hasSingle = Boolean(params.agent && params.task);
-			const hasContinue = Boolean(params.continue);
 			const modeCount =
 				Number(hasChain) +
 				Number(hasTasks) +
@@ -1454,6 +1464,18 @@ export default function (pi: ExtensionAPI) {
 						...(worker.taskId ? { taskId: worker.taskId } : {}),
 						agent: worker.agent,
 						...(worker.model ? { resolvedModel: worker.model } : {}),
+						...(worker.routingExperiment
+							? {
+									experimentId: worker.routingExperiment.experimentId,
+									experimentArm: worker.routingExperiment.id,
+									experimentTaskClass: worker.routingExperiment.taskClass,
+									validationOutcome: outputSchema
+										? failed
+											? ("failed" as const)
+											: ("passed" as const)
+										: ("unavailable" as const),
+								}
+							: {}),
 						status: isCancelled ? "cancelled" : failed ? "failed" : "completed",
 						exitCode: Math.max(0, worker.exitCode),
 						durationMs: worker.durationMs ?? 0,
@@ -1518,11 +1540,14 @@ export default function (pi: ExtensionAPI) {
 			): Promise<SingleResult> => {
 				let result: SingleResult | undefined;
 				try {
+					if (routingExperiment && args[12] === undefined)
+						args[12] = routingExperiment.effort;
 					if (outputSchema) {
 						args[3] = `${args[3]}\n\n${schemaOutputInstruction(outputSchema)}`;
 						args[15] = { ...(args[15] ?? {}), continuable: true };
 					}
 					result = await runSingleAgent(...args);
+					if (routingExperiment) result.routingExperiment = routingExperiment;
 					if (
 						!outputSchema ||
 						result.exitCode !== 0 ||

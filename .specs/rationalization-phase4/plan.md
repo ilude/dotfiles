@@ -224,10 +224,10 @@ from here.
   - [x] four violation classes caught on fixtures; clean plan passes
   - [x] wired into /do-it report path
   - [x] phase 2 "commit pending" rows flagged or confirmed fixed
-- [ ] T2: routing outcome sampling - pending
-  - [ ] sampling layer with named-constant rate; arms as data
-  - [ ] explicit overrides never sampled (proven)
-  - [ ] telemetry tags verified at configured rate; rate 0 byte-identical
+- [ ] T2: routing outcome sampling - in-progress: implementation validated; record commit
+  - [x] sampling layer with named-constant rate; arms as data
+  - [x] explicit overrides never sampled (proven)
+  - [x] telemetry tags verified at configured rate; rate 0 byte-identical
 - [ ] T3: improvement-report - pending
   - [ ] all present sources aggregated; absent sources as coverage notes
   - [ ] deletions-first report generated from real data
@@ -242,7 +242,7 @@ from here.
 
 ### State
 
-- **Classification:** in progress; T1 complete
+- **Classification:** in progress; T1 complete; T2 implementation validated
 - **Current blocker:** none
-- **Next:** T2, add routing outcome sampling for policy-resolved dispatches
+- **Next:** record T2's implementation commit, then start T3 improvement-report
 - **Resume:** `/do-it .specs/rationalization-phase4/plan.md`

@@ -41,6 +41,7 @@ describe("subagent model override routing", () => {
 	let skillDir: string;
 	let prevOperatorDir: string | undefined;
 	let prevMetricsDir: string | undefined;
+	let prevRoutingSampleRate: string | undefined;
 
 	beforeEach(async () => {
 		tmpDir = await fs.promises.mkdtemp(
@@ -81,6 +82,8 @@ You are a test agent.
 		);
 		prevOperatorDir = process.env.PI_OPERATOR_DIR;
 		prevMetricsDir = process.env.PI_METRICS_DIR;
+		prevRoutingSampleRate = process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE;
+		process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE = "0";
 		process.env.PI_OPERATOR_DIR = path.join(tmpDir, "operator");
 		process.env.PI_METRICS_DIR = path.join(tmpDir, "metrics");
 		const { getMetricsLogPath } = await import("../lib/metrics.ts");
@@ -93,6 +96,9 @@ You are a test agent.
 		else process.env.PI_OPERATOR_DIR = prevOperatorDir;
 		if (prevMetricsDir === undefined) delete process.env.PI_METRICS_DIR;
 		else process.env.PI_METRICS_DIR = prevMetricsDir;
+		if (prevRoutingSampleRate === undefined)
+			delete process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE;
+		else process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE = prevRoutingSampleRate;
 		await fs.promises.rm(tmpDir, { recursive: true, force: true });
 		vi.clearAllMocks();
 	});
@@ -878,8 +884,63 @@ You are a test agent.
 	);
 
 	it(
+		"tags sampled policy-resolved dispatches with model effort and outcome telemetry",
+		async () => {
+			process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE = "1";
+			mockSuccessfulSpawn();
+			const { tool } = await loadTool();
+			const ctx = createMockCtx({
+				cwd: tmpDir,
+				model: { provider: "openai-codex", id: "gpt-5.6-sol" },
+				modelRegistry: {
+					getAvailable: vi.fn(() => [
+						{ provider: "openai-codex", id: "gpt-5.6-luna" },
+						{ provider: "openai-codex", id: "gpt-5.6-terra" },
+						{ provider: "openai-codex", id: "gpt-5.6-sol" },
+					]),
+				},
+			});
+
+			const result = await tool.execute(
+				"call-sampled-policy-dispatch",
+				{
+					agent: "tester",
+					task: "Check sampled routing",
+					agentScope: "project",
+					modelSize: "medium",
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			const worker = result.details.results[0];
+			expect(worker.routingExperiment).toMatchObject({
+				experimentId: "codex-routing-outcomes-v1",
+				taskClass: "subagent-single",
+			});
+			const args = spawnMock.mock.calls[0][1] as string[];
+			expect(args).toContain(
+				`openai-codex/${worker.routingExperiment?.modelId}`,
+			);
+			expect(args[args.indexOf("--thinking") + 1]).toBe(
+				worker.routingExperiment?.effort,
+			);
+			const event = (await orchestrationRuns()).at(-1);
+			expect(event?.data.workers[0]).toMatchObject({
+				experimentId: "codex-routing-outcomes-v1",
+				experimentArm: worker.routingExperiment?.id,
+				experimentTaskClass: "subagent-single",
+				validationOutcome: "unavailable",
+			});
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
 		"uses explicit model over modelSize and pinned agent models",
 		async () => {
+			process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE = "1";
 			mockSuccessfulSpawn();
 			const { tool } = await loadTool();
 			const getAvailable = vi.fn(() => [
@@ -916,6 +977,7 @@ You are a test agent.
 			expect(spawnArgs).not.toContain("openai-codex/gpt-5.5");
 			expect(spawnArgs).not.toContain("anthropic/claude-sonnet-4-6");
 			expect(result.details.results[0].model).toBe("anthropic/claude-opus-4-5");
+			expect(result.details.results[0].routingExperiment).toBeUndefined();
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);

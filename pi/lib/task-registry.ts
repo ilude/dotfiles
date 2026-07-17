@@ -105,6 +105,10 @@ export interface SubagentTaskExecution {
 	agentScope?: "user" | "project" | "both";
 	model?: string;
 	modelSize?: "small" | "medium" | "large";
+	experimentId?: string;
+	experimentArm?: string;
+	experimentTaskClass?: string;
+	experimentEffort?: "medium" | "high" | "low";
 	status: TaskExecutionStatus;
 	ownerPid?: number;
 	runId?: string;

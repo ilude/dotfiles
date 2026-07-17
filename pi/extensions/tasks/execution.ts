@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { truncateTail } from "@earendil-works/pi-coding-agent";
 import { recordEvent } from "../../lib/metrics.js";
+import { assignRoutingOutcomeExperiment } from "../../lib/model-routing.js";
 import { getTasksDir } from "../../lib/operator-state.js";
 import {
 	buildOrchestrationRunEvent,
@@ -296,7 +297,7 @@ export async function runTaskSubagent(
 		model,
 		execution.modelSize,
 		undefined,
-		undefined,
+		execution.experimentEffort,
 		taskId,
 		execution.runId,
 	);
@@ -383,8 +384,21 @@ export class TaskExecutionCoordinator {
 			stopRequested: false,
 			settled: false,
 		};
+		const routingExperiment =
+			execution.modelSize !== undefined && execution.model === undefined
+				? assignRoutingOutcomeExperiment(taskId, "task-execute-modelSize")
+				: undefined;
 		const runningExecution: SubagentTaskExecution = {
 			...execution,
+			...(routingExperiment
+				? {
+						model: `${routingExperiment.provider}/${routingExperiment.modelId}`,
+						experimentId: routingExperiment.experimentId,
+						experimentArm: routingExperiment.id,
+						experimentTaskClass: routingExperiment.taskClass,
+						experimentEffort: routingExperiment.effort,
+					}
+				: {}),
 			status: "running",
 			ownerPid: process.pid,
 			runId: crypto.randomUUID(),
@@ -826,6 +840,16 @@ export class TaskExecutionCoordinator {
 					agent: execution.agent,
 					...((result?.resolvedModel ?? execution.model)
 						? { resolvedModel: result?.resolvedModel ?? execution.model }
+						: {}),
+					...(execution.experimentId &&
+					execution.experimentArm &&
+					execution.experimentTaskClass
+						? {
+								experimentId: execution.experimentId,
+								experimentArm: execution.experimentArm,
+								experimentTaskClass: execution.experimentTaskClass,
+								validationOutcome: "unavailable" as const,
+							}
 						: {}),
 					status,
 					...(result ? { exitCode: Math.max(0, result.exitCode) } : {}),

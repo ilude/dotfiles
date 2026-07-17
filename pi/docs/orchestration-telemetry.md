@@ -73,6 +73,10 @@ Run and worker `status` values are `pending`, `running`, `completed`, `failed`,
 | `taskId` | no | Durable task identity when this worker has one. |
 | `agent` | yes | Sanitized worker identity. |
 | `resolvedModel` | no | Sanitized resolved model identity. |
+| `experimentId` | no | Fixed routing experiment identity for sampled policy dispatches. |
+| `experimentArm` | no | `terra-baseline`, `luna-high`, or `sol-low`. |
+| `experimentTaskClass` | no | Dispatch origin such as `subagent-single` or `task-execute-modelSize`. |
+| `validationOutcome` | no | `passed`, `failed`, or `unavailable` when the run is sampled. |
 | `status` | yes | Worker status. |
 | `exitCode` | no | Nonnegative process exit code. |
 | `durationMs` | no | Worker wall duration. |
@@ -94,6 +98,22 @@ when `costSource` is `pi-usage`; it is `null` when `costSource` is
 `totalTokens` is retained only for schema version 1 compatibility. New analysis
 must use `processedTokens`, which includes input, output, cache creation, and
 cache read tokens.
+
+### Routing outcome sampling
+
+Policy-resolved `modelSize` dispatches are assigned deterministically to the
+`codex-routing-outcomes-v1` experiment at a default rate of 10 percent. The
+three data-defined arms are Terra at medium effort, Luna at high effort, and Sol
+at low effort. Explicit model or effort overrides and continued sessions are
+never sampled. Set `PI_ROUTING_OUTCOME_SAMPLE_RATE=0` to disable sampling; values
+from 0 through 1 are accepted. At zero, model resolution and telemetry remain on
+the unsampled path.
+
+The assignment hash uses the run or task identity, so retries of one identity
+stay in one arm. Sampled worker rows use the existing status, exit code,
+duration, turns, usage, and cost fields alongside the experiment tags. A result
+without a structured validation contract records `validationOutcome` as
+`unavailable` rather than inferring quality from process success.
 
 ## `orchestration_interaction`
 

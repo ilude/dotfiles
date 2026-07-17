@@ -2,6 +2,34 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Sample policy-resolved routing outcomes
+
+**Why:** Terra, Luna-high, and Sol-low dispatch choices lacked controlled outcome
+data covering quality, speed, and cost.
+
+**Changed:**
+- Added deterministic 10 percent assignment across data-defined Terra-medium,
+  Luna-high, and Sol-low arms for policy-resolved `modelSize` dispatches.
+- Kept explicit model and effort choices, continuation calls, and rate-zero
+  routing on the unsampled path.
+- Tagged sampled subagent and durable-task worker telemetry with experiment,
+  arm, task class, and available validation outcome while reusing existing exit,
+  duration, turn, token, and cost fields.
+- Added `PI_ROUTING_OUTCOME_SAMPLE_RATE` as the bounded zero-to-one kill and
+  sampling-rate control.
+
+**Validation:** Deterministic assignment over 10,000 keys landed within the
+configured-rate tolerance and covered all arms. Focused integration tests
+verified selected model/effort and telemetry for direct and durable-task
+workers, explicit override exclusion, missing-arm fallback, and byte-identical
+rate-zero model resolution. Seventy-six focused tests, Pi typecheck, and Biome
+passed.
+
+**Files:** `pi/{lib/model-routing.ts,lib/orchestration-telemetry.ts,lib/task-registry.ts,extensions/subagent/index.ts,extensions/tasks/execution.ts,docs/orchestration-telemetry.md,tests/model-routing.test.ts,tests/subagent.test.ts,tests/task-execution.test.ts}`,
+`.specs/rationalization-phase4/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Enforce durable plan state before `/do-it`
 
 **Why:** Checked tasks, State blocks, and final reports could contradict Git or

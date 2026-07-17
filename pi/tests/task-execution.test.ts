@@ -31,6 +31,7 @@ describe("durable task execution", () => {
 	let tmpDir: string;
 	let previousOperatorDir: string | undefined;
 	let previousMetricsDir: string | undefined;
+	let previousRoutingSampleRate: string | undefined;
 
 	beforeEach(async () => {
 		tmpDir = await fs.promises.mkdtemp(
@@ -65,6 +66,8 @@ Test agent.
 		);
 		previousOperatorDir = process.env.PI_OPERATOR_DIR;
 		previousMetricsDir = process.env.PI_METRICS_DIR;
+		previousRoutingSampleRate = process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE;
+		process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE = "0";
 		process.env.PI_OPERATOR_DIR = path.join(tmpDir, "operator");
 		process.env.PI_METRICS_DIR = path.join(tmpDir, "metrics");
 		spawnMock.mockReset();
@@ -75,6 +78,9 @@ Test agent.
 		else process.env.PI_OPERATOR_DIR = previousOperatorDir;
 		if (previousMetricsDir === undefined) delete process.env.PI_METRICS_DIR;
 		else process.env.PI_METRICS_DIR = previousMetricsDir;
+		if (previousRoutingSampleRate === undefined)
+			delete process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE;
+		else process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE = previousRoutingSampleRate;
 		await fs.promises.rm(tmpDir, { recursive: true, force: true });
 		vi.clearAllMocks();
 	});
@@ -159,6 +165,82 @@ Test agent.
 			}),
 			{ deliverAs: "nextTurn" },
 		);
+	});
+
+	it("samples modelSize task execution and records outcome telemetry", async () => {
+		process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE = "1";
+		spawnMock.mockImplementation(() => {
+			const proc = createMockProcess();
+			queueMicrotask(() => {
+				proc.stdout.emit(
+					"data",
+					`${JSON.stringify({
+						type: "message_end",
+						message: {
+							role: "assistant",
+							content: [{ type: "text", text: "sampled" }],
+							stopReason: "end_turn",
+						},
+					})}\n`,
+				);
+				proc.emit("close", 0);
+			});
+			return proc;
+		});
+		const pi = createMockPi();
+		const tasks = await import("../extensions/tasks.ts");
+		const registry = await import("../lib/task-registry.ts");
+		const metrics = await import("../lib/metrics.ts");
+		tasks.default(pi as Parameters<typeof tasks.default>[0]);
+		const task = pi._getTool("task");
+		if (!task) throw new Error("task tool not registered");
+		const ctx = createMockCtx({ cwd: tmpDir });
+		const created = await task.execute(
+			"create-sampled-task",
+			{
+				action: "create",
+				summary: "sampled worker",
+				agent: "tester",
+				task: "Check sampled routing",
+				agentScope: "project",
+				modelSize: "medium",
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		const id = created.details.record.id as string;
+
+		await task.execute(
+			"execute-sampled-task",
+			{ action: "execute", id },
+			undefined,
+			undefined,
+			ctx,
+		);
+		await vi.waitFor(() =>
+			expect(registry.getTask(id)?.state).toBe("completed"),
+		);
+		const execution = registry.getTask(id)?.execution;
+		expect(execution).toMatchObject({
+			experimentId: "codex-routing-outcomes-v1",
+			experimentTaskClass: "task-execute-modelSize",
+		});
+		const args = spawnMock.mock.calls[0][1] as string[];
+		expect(args).toContain(execution?.model);
+		expect(args[args.indexOf("--thinking") + 1]).toBe(
+			execution?.experimentEffort,
+		);
+		const event = metrics
+			.readRecentEvents(100)
+			.filter((candidate) => candidate.event === "orchestration_run")
+			.at(-1);
+		expect(event?.data.workers[0]).toMatchObject({
+			experimentId: "codex-routing-outcomes-v1",
+			experimentArm: execution?.experimentArm,
+			experimentTaskClass: "task-execute-modelSize",
+			validationOutcome: "unavailable",
+		});
 	});
 
 	it("notifies for a no-await fan-out, including failure", async () => {
