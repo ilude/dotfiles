@@ -1,47 +1,26 @@
-For plan-file execution, report with an unmistakable status. **The first line and the last line must both state whether the task fully completed.** Do not rely on the status bar, tool output, or indirect wording.
+For plan-file execution, report the observed state plainly. The first and last lines must agree with the plan's current Execution Status.
 
-Do not use this template for raw Simple/Medium task execution unless a plan was actually created or executed.
+Use one of these first-line forms:
 
-Use one of these exact first-line forms:
-- `✅ COMPLETE: <one-sentence outcome>` only when validation passed and the plan was archived.
-- `❌ NOT COMPLETE: <one-sentence blocker>` when validation failed, truly required manual validation remains, archiving did not happen, or any required gate failed. Non-destructive optional confidence checks should not block completion when automated validation passed.
-- `⏸ BLOCKED: <one-sentence user decision needed>` when paused on an explicit user decision.
-
-Then include a required `## Outcome` section before the detailed bullets:
-- **Status:** `COMPLETE`, `NOT COMPLETE`, or `BLOCKED`
-- **Reason:** one sentence naming the completion condition or blocker
-- **Plan state:** archived path when complete, or active path plus whether `## Execution Status` was updated
-- **Recommended next action:** `None` if complete; exact command/action if not complete
+- `COMPLETE: <one-sentence outcome>` only when all required gates passed and the plan was archived.
+- `CHECKPOINT: <one-sentence progress summary>` when verified work and the next ready item were saved without a blocker.
+- `BLOCKED: <one-sentence blocker or user decision>` only when the plan's Execution Status records the same current blocker.
 
 Then include:
 
-1. **Route taken** — Simple / Medium / Complex / Execute Plan File — and why
-2. **Completion classification** — one of `completed-and-archived`, `implemented-awaiting-manual-validation`, `blocked-by-failure`, or `blocked-by-user-decision`. For Simple/Medium raw tasks without a plan, use `completed` or `blocked` if the plan classifications do not apply.
-3. **What was done** — specific files changed, commands run, or delegation dispatched
-4. **Verification** — test results, lint output, validation gate results, or behavior confirmation. If any required validation failed, this section must say `Required validation failed` and name the failing command(s).
-5. **Next steps** — follow-up tasks surfaced during implementation. If the plan was not archived, provide exact user steps to unblock completion: commands to run, services to start/stop, files/logs to inspect, expected success signals, and what to do if a step fails.
-6. **Plan state note** — if a plan file was executed but not archived, explicitly say that `## Execution Status` was updated in the plan file and summarize what it records, including last completed wave/gate and next gate.
-7. **Copy/paste commands** — when there is a useful follow-up command, print it verbatim in a fenced code block:
-   - Plan created but not executed:
-     ```bash
-     /review-it <plan-path>
-     /do-it <plan-path>
-     ```
-   - Plan executed successfully and archived with no specific follow-up needed: write `None.`
-   - Plan executed successfully and archived, but follow-up review is specifically useful:
-     ```bash
-     /review-it .specs/archive/<slug>/plan.md
-     ```
-   - Plan executed but follow-up review is recommended before archiving:
-     ```bash
-     /review-it <plan-path>
-     ```
-   - Validation failed, truly required live/manual validation remains, or the same active plan should be retried after user steps:
-     ```bash
-     /do-it <plan-path>
-     ```
+## Outcome
 
-Never print `/do-it <plan-path>` as the next-step command after a successful archived plan. It is a retry/resume command for failed validation, incomplete execution, blocked required user/manual validation, or active unarchived plans only.
+- **State:** `complete`, `checkpoint`, or `blocked`
+- **Plan:** archived path when complete; active path when checkpointed or blocked
+- **What changed:** concise file and behavior summary
+- **Validation:** commands run and observed results
+- **What remains:** `None` when complete; otherwise the next unchecked work or unresolved gate
+- **Next action:** `None` when complete; otherwise the exact resume command or required user action
 
-   - No follow-up command is useful: write `None.`
+For a checkpoint, state the last completed task or gate and the next dependency-ready item. Do not describe an ordinary pause as a failure or invent a blocker. For a blocked report, name only a blocker recorded in the plan after re-verifying it against current state.
 
+Use exactly one matching final line:
+
+- `FINAL STATUS: COMPLETE -- archived at <archive-path>.`
+- `FINAL STATUS: CHECKPOINT -- saved at <active-plan-path>; next: <next task or gate>.`
+- `FINAL STATUS: BLOCKED -- <blocker recorded in Execution Status>.`

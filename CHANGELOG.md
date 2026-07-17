@@ -2,6 +2,28 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Make workflow checkpoints honest
+
+**Why:** The `/do-it` report contract forced interrupted work into a failure
+classification even when the plan recorded no blocker.
+
+**Changed:**
+- Replaced the four-way completion enum with observable complete, checkpoint,
+  and blocked states.
+- Reduced interrupted-run handling to one checkpoint rule and required blocker
+  claims to match current plan state.
+- Made stale blocker and review evidence subject to current-state verification.
+
+**Validation:** A live `/do-it .tmp/rationalization-phase2/t1/plan.md` run
+reported a checkpoint on both boundary lines, named the next task, and claimed
+no blocker. Contract scans found no old enum labels or non-ASCII content.
+
+**Files:** `pi/skills/workflow/do-it.md`,
+`pi/skills/workflow/templates/do-it-report-template.md`,
+`.specs/rationalization-phase2/{plan,ledger}.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-16: Close test rationalization ledger
 
 **Why:** Final reconciliation needed current collection arithmetic, a fresh

@@ -61,7 +61,7 @@ On failure:
 - rerun the failing command, then the gate it belongs to;
 - stop when repair requires destructive action, unavailable access, secrets, production action, user judgment, out-of-scope work, or unknown rollback/blast radius.
 
-Before any incomplete report, update `## Execution Status` with classification, date, last completed gate, next ready gate, completed work, commands/results, blocker, remaining checks, exact user action, and whether rerunning `/do-it <plan-path>` is appropriate.
+When context pressure interrupts otherwise ready work, finish and verify the current slice, update and commit Execution Status, then either continue in a fresh session or report a checkpoint. A checkpoint is not a failure or blocker, and there is no execution-window concept.
 
 ## Manual and Deployment Gates
 
@@ -79,9 +79,11 @@ Unless the plan records an explicit opt-out rationale, move the completed plan a
 
 ## Workflow Evaluation
 
-Every plan execution records a compact post-run evaluation using the repository telemetry schema. Include final classification, archive result, validation results, gate decisions, checklist state, blocker, friction tags, missing evidence, improvement candidates, and confidence.
+Every plan execution records a compact post-run evaluation using the repository telemetry schema. Include archive result, validation results, gate decisions, checklist state, blocker, friction tags, missing evidence, improvement candidates, and confidence.
 
-Independent evaluation is needed only when direct evidence reveals friction: blocked or incomplete outcome, validation failure, manual-gate exception, archive problem or opt-out, checklist/evidence mismatch, missing telemetry, unexpected scope expansion, or user-visible confusion. Select available independent review capabilities at runtime; do not assume a fixed panel.
+Treat recorded blockers and review artifacts as evidence to re-verify, not permanent gates. Current repository state and a repaired or approved plan supersede stale artifacts. Do not repeat this rule in review workflows that already enforce it.
+
+Independent evaluation is needed only when direct evidence reveals friction: a blocked outcome, validation failure, manual-gate exception, archive problem or opt-out, checklist/evidence mismatch, missing telemetry, unexpected scope expansion, or user-visible confusion. Select available independent review capabilities at runtime; do not assume a fixed panel.
 
 Evaluation findings cannot overturn a successful archive unless they establish a factual completion inconsistency.
 
@@ -97,15 +99,6 @@ A plan execution is complete only when:
 
 ## Report
 
-Use `templates/do-it-report-template.md` for plan execution. Classify the result as one of:
+Use `templates/do-it-report-template.md` for plan execution. State what changed, the commands and observed results that validate it, what remains, and the next action.
 
-- `completed-and-archived`
-- `implemented-awaiting-manual-validation`
-- `blocked-by-failure`
-- `blocked-by-user-decision`
-
-Use exactly one final line:
-
-- `FINAL STATUS: COMPLETE -- archived at <archive-path>.`
-- `FINAL STATUS: NOT COMPLETE -- <required validation/manual/archive gate still failing>.`
-- `FINAL STATUS: BLOCKED -- <user decision needed>.`
+The first and last lines must agree with current Execution Status: complete and archived, checkpointed with no blocker, or blocked by a recorded current condition. A report must not claim a blocker that Execution Status does not record.
