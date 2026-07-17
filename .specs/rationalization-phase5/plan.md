@@ -110,6 +110,28 @@ Session continuity: same protocol as the rationalization plans - checklist
 order, update Execution status and commit after each slice, resume from
 recorded state.
 
+## T1 decision knowability findings
+
+Verified 2026-07-17 before implementation:
+
+| Client/outcome | Directly knowable | Evidence and required representation |
+| --- | --- | --- |
+| Pi allow with no matching rule | Yes | `tool_call` has tool name, input, call ID, cwd, and session context. The handler knows evaluation returned no decision; record `engineAction=allow`, `userDecision=not_applicable`. Plain allows are not currently recorded. |
+| Pi ask approved/denied | Yes | `ctx.ui.confirm()` returns the user's boolean before the handler returns. `safeRecordApprovedAsk()` and `recordBlock()` already distinguish approval and denial in the permission registry and damage-control eval stream. Record `approved` or `denied`; no inference is needed. |
+| Pi hard block | Yes | The handler returns `{ block: true }` without asking. Record `engineAction=block`, `userDecision=not_present`. |
+| Claude allow with no matching rule | Yes | Each PreToolUse script computes allow/ask/block and already logs an `allowed` row, but discards common hook identifiers. Preserve `session_id`, `tool_use_id`, tool, cwd, and the matched rule in the shared row; use `userDecision=not_applicable`. |
+| Claude ask approved | Correlatable | PreToolUse emits `permissionDecision: ask` but does not receive the user's response. PostToolUse and PostToolUseFailure carry the same `tool_use_id`; either event proves approval and an execution attempt. Record `approved`, with approval latency exact only when post input exposes subtractable tool duration and otherwise marked estimated. |
+| Claude ask denied or abandoned | Not distinguishable | An ask with no matching post event cannot prove denial. At SessionEnd, settle it as `denied_or_abandoned`, never `denied`. The pending ask retains its original timestamp and correlation ID. |
+| Claude hard block | Yes | A PreToolUse exit-2 block is final and no user decision exists. Record `engineAction=block`, `userDecision=not_present`. |
+
+Claude's common hook fields and PostToolUse correlation contract are documented
+at <https://docs.anthropic.com/en/docs/claude-code/hooks>. Current local
+PreToolUse scripts read only `tool_name` and `tool_input`; `claude/settings.json`
+has no damage-control PostToolUse, PostToolUseFailure, or SessionEnd correlator.
+The implementation therefore needs one shared fail-open writer plus a bounded
+pending-ask correlation store. Existing per-client logs remain migration inputs,
+not the canonical output.
+
 ## Tasks
 
 ### T1: Structured decision logging in both clients
@@ -241,8 +263,8 @@ from here.
 
 ### Task checklist
 
-- [ ] T1: structured decision logging - pending
-  - [ ] per-client decision knowability verified and recorded
+- [ ] T1: structured decision logging - in-progress: implement the verified shared schema and correlation contract
+  - [x] per-client decision knowability verified and recorded
   - [ ] schema and shared location implemented in both clients
   - [ ] live four-outcome validation on both clients
   - [ ] fail-open and secret-scrub proven
@@ -265,8 +287,8 @@ from here.
 
 ### State
 
-- **Classification:** ready; phase 2 is archived
+- **Classification:** in progress; T1 knowability verified
 - **Current blocker:** none
-- **Next:** T1, verify per-client decision knowability before implementing the
-  shared structured decision log (independent of phase 4)
+- **Next:** T1, implement the shared fail-open writer, Pi direct outcomes, and
+  Claude pending-ask correlation using the recorded knowability limits
 - **Resume:** `/do-it .specs/rationalization-phase5/plan.md`

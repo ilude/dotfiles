@@ -2,6 +2,29 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Record damage-control decision knowability
+
+**Why:** A shared decision schema cannot truthfully label user outcomes until
+both clients' hook and confirmation boundaries are verified.
+
+**Changed:**
+- Recorded which allow, ask, and block outcomes Pi knows directly from its
+  `tool_call` handler and confirmation result.
+- Recorded Claude's PreToolUse-to-PostToolUse correlation boundary: execution
+  proves approval, while a manually denied or abandoned ask remains
+  indistinguishable without a matching post event.
+- Defined conservative labels for not-applicable, not-present, approved,
+  denied, and denied-or-abandoned outcomes before implementation.
+
+**Validation:** Verified Pi's existing permission/eval writers and direct
+`ctx.ui.confirm()` branches, inspected all three Claude damage-control
+PreToolUse scripts and current hook registration, and checked Anthropic's hook
+reference for common IDs plus PostToolUse/PostToolUseFailure correlation.
+
+**Files:** `.specs/rationalization-phase5/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Add the manual improvement-report entry point
 
 **Why:** The deterministic report existed as an internal script but lacked the
