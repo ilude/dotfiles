@@ -310,7 +310,7 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
   - [x] message-injection API verified: `pi.sendMessage` with `deliverAs: "nextTurn"`
   - [x] completion/failure notifications implemented and capped
   - [x] extension-level two-task fan-out validated without await
-- [ ] T2: continuable subagents - in-progress: implementation validated; record slice commit hash
+- [x] T2: continuable subagents - done: `489e93a`
   - [x] headless resume mechanism verified: `pi --session <path> -p <message>`
   - [x] opt-in continuation and follow-up action implemented
   - [x] compress-on-age in place (no deletion); context-carryover proof passed
@@ -338,7 +338,7 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
 
 ### State
 
-- **Classification:** in progress; T1 complete; T2 implementation validated
+- **Classification:** in progress; T1-T2 complete
 - **Current blocker:** none
-- **Next:** record T2's slice commit hash, then start independent T3
+- **Next:** T3, remove unenforced agent metadata and add occupancy leases
 - **Resume:** `/do-it .specs/rationalization-phase3/plan.md`
