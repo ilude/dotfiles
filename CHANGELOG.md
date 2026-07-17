@@ -2,6 +2,33 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Add explicit damage-control coverage waivers
+
+**Why:** One-sided and unsupported policy families must be named and expanded
+to stable IDs instead of remaining indistinguishable from missing fixtures.
+
+**Changed:**
+- Added seven reasoned waiver selectors for deferred exfiltration, injection,
+  secret, context, read-confirmation, content-scan, and path-exclusion surfaces.
+- The oracle runner now expands selectors to policy IDs, rejects empty,
+  duplicate, unmatched, or covered waivers, and excludes only validated IDs
+  from uncovered debt.
+- Coverage output is concise by default; full row details are opt-in through
+  `PI_DAMAGE_CONTROL_COVERAGE_DETAILS=1`.
+
+**Baseline:** 13 covered rows, 140 explicitly waived rows, 439 uncovered rows,
+two divergences, zero stale controls, and `coverage_debt_count = 441`.
+
+**Validation:** Both focused Vitest cases passed; Pi typecheck, Biome, JSON
+parsing, and plan lint passed.
+
+**Files:** `shared/damage-control/coverage-waivers.json`,
+`pi/lib/damage-control-coverage.ts`,
+`pi/tests/damage-control-coverage.test.ts`,
+`.specs/rationalization-phase5/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Add the damage-control oracle coverage runner
 
 **Why:** Policy-source convergence needs a mechanical debt count showing which

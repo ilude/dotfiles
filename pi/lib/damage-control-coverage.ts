@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -20,6 +21,12 @@ const ORACLE = path.join(
 	"scripts",
 	"damage-control-claude-oracle.py",
 );
+const WAIVERS = path.join(
+	ROOT,
+	"shared",
+	"damage-control",
+	"coverage-waivers.json",
+);
 
 export interface CoverageInventoryRow {
 	id: string;
@@ -34,6 +41,26 @@ export interface CoverageFixture {
 	tool: string;
 	command: string;
 	expected: "allow" | "ask" | "block";
+}
+
+export interface CoverageWaiver {
+	id: string;
+	match: {
+		section: string;
+		exfil?: boolean;
+	};
+	reason: string;
+}
+
+interface CoverageWaiverFile {
+	version: 1;
+	waivers: CoverageWaiver[];
+}
+
+export interface AppliedCoverageWaiver {
+	id: string;
+	reason: string;
+	patternIds: string[];
 }
 
 export interface CoverageDivergence {
@@ -53,10 +80,47 @@ export interface DamageControlCoverageReport {
 	inventoryCount: number;
 	fixtureCount: number;
 	coveredPatternIds: string[];
+	waivedPatternIds: string[];
+	waivers: AppliedCoverageWaiver[];
 	uncoveredPatternIds: string[];
 	divergences: CoverageDivergence[];
 	negativeControlFailures: NegativeControlFailure[];
 	coverageDebtCount: number;
+}
+
+export function applyCoverageWaivers(
+	inventory: CoverageInventoryRow[],
+	waivers: CoverageWaiver[],
+): AppliedCoverageWaiver[] {
+	const seenIds = new Set<string>();
+	return waivers.map((waiver) => {
+		if (!waiver.id.trim() || !waiver.reason.trim())
+			throw new Error("coverage waiver id and reason are required");
+		if (seenIds.has(waiver.id))
+			throw new Error(`duplicate coverage waiver: ${waiver.id}`);
+		seenIds.add(waiver.id);
+		const patternIds = inventory
+			.filter(
+				(row) =>
+					row.section === waiver.match.section &&
+					(waiver.match.exfil === undefined ||
+						Boolean(row.exfil) === waiver.match.exfil),
+			)
+			.map((row) => row.id)
+			.sort();
+		if (patternIds.length === 0)
+			throw new Error(`coverage waiver matches no policy rows: ${waiver.id}`);
+		return { id: waiver.id, reason: waiver.reason, patternIds };
+	});
+}
+
+function loadCoverageWaivers(): CoverageWaiver[] {
+	const parsed = JSON.parse(
+		fs.readFileSync(WAIVERS, "utf8"),
+	) as CoverageWaiverFile;
+	if (parsed.version !== 1 || !Array.isArray(parsed.waivers))
+		throw new Error("coverage waiver file must use version 1");
+	return parsed.waivers;
 }
 
 function oracle<T>(request: Record<string, unknown>): T {
@@ -118,6 +182,8 @@ export async function buildDamageControlCoverageReport(): Promise<DamageControlC
 		commands: bashFixtures.map((fixture) => fixture.command),
 	});
 	const covered = new Set<string>();
+	const appliedWaivers = applyCoverageWaivers(inventory, loadCoverageWaivers());
+	const waived = new Set(appliedWaivers.flatMap((waiver) => waiver.patternIds));
 	const divergences: CoverageDivergence[] = [];
 	const negativeControlFailures: NegativeControlFailure[] = [];
 
@@ -141,14 +207,23 @@ export async function buildDamageControlCoverageReport(): Promise<DamageControlC
 			});
 	}
 
+	const coveredPatternIds = [...covered].sort();
+	const overlap = coveredPatternIds.filter((id) => waived.has(id));
+	if (overlap.length > 0)
+		throw new Error(
+			`covered policy rows must not remain waived: ${overlap.join(", ")}`,
+		);
+	const waivedPatternIds = [...waived].sort();
 	const uncoveredPatternIds = inventory
 		.map((row) => row.id)
-		.filter((id) => !covered.has(id))
+		.filter((id) => !covered.has(id) && !waived.has(id))
 		.sort();
 	return {
 		inventoryCount: inventory.length,
 		fixtureCount: fixtures.length,
-		coveredPatternIds: [...covered].sort(),
+		coveredPatternIds,
+		waivedPatternIds,
+		waivers: appliedWaivers,
 		uncoveredPatternIds,
 		divergences,
 		negativeControlFailures,

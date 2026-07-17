@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { buildDamageControlCoverageReport } from "../lib/damage-control-coverage.ts";
+import {
+	applyCoverageWaivers,
+	buildDamageControlCoverageReport,
+} from "../lib/damage-control-coverage.ts";
 
 describe("damage-control Claude oracle coverage", () => {
 	it("accounts for every policy row and reports uncovered debt", async () => {
@@ -9,8 +12,11 @@ describe("damage-control Claude oracle coverage", () => {
 		expect(report.inventoryCount).toBeGreaterThan(500);
 		expect(report.fixtureCount).toBeGreaterThan(30);
 		expect(report.coveredPatternIds.length).toBeGreaterThan(0);
+		expect(report.waivedPatternIds.length).toBeGreaterThan(100);
 		expect(
-			report.coveredPatternIds.length + report.uncoveredPatternIds.length,
+			report.coveredPatternIds.length +
+				report.waivedPatternIds.length +
+				report.uncoveredPatternIds.length,
 		).toBe(report.inventoryCount);
 		expect(report.coverageDebtCount).toBe(
 			report.uncoveredPatternIds.length +
@@ -18,8 +24,42 @@ describe("damage-control Claude oracle coverage", () => {
 				report.negativeControlFailures.length,
 		);
 
-		console.log(`DAMAGE_CONTROL_COVERAGE ${JSON.stringify(report)}`);
+		console.log(
+			`DAMAGE_CONTROL_COVERAGE ${JSON.stringify({
+				inventoryCount: report.inventoryCount,
+				fixtureCount: report.fixtureCount,
+				coveredCount: report.coveredPatternIds.length,
+				waivedCount: report.waivedPatternIds.length,
+				uncoveredCount: report.uncoveredPatternIds.length,
+				divergenceCount: report.divergences.length,
+				negativeControlFailureCount: report.negativeControlFailures.length,
+				coverageDebtCount: report.coverageDebtCount,
+			})}`,
+		);
+		if (process.env.PI_DAMAGE_CONTROL_COVERAGE_DETAILS === "1")
+			console.log(`DAMAGE_CONTROL_COVERAGE_DETAILS ${JSON.stringify(report)}`);
 		if (process.env.PI_DAMAGE_CONTROL_COVERAGE_GATE === "1")
 			expect(report.coverageDebtCount).toBe(0);
+	});
+
+	it("rejects waivers that do not identify policy rows", () => {
+		expect(() =>
+			applyCoverageWaivers(
+				[
+					{
+						id: "bashToolPatterns:0000",
+						section: "bashToolPatterns",
+						pattern: "rm",
+					},
+				],
+				[
+					{
+						id: "missing-section",
+						match: { section: "not-present" },
+						reason: "must not silently match nothing",
+					},
+				],
+			),
+		).toThrow("matches no policy rows");
 	});
 });

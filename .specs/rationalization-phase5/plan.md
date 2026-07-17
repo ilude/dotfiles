@@ -191,9 +191,16 @@ Implemented and measured 2026-07-17 with `pnpm run damage-control-coverage`:
 - The inventory accounts for 592 rows across Bash, paths, exfiltration,
   injection, secrets, contexts, and AST lists. Existing fixtures provide 42
   commands and positively cover 13 policy rows.
-- Baseline: 579 uncovered rows, two outcome divergences, zero stale negative
-  controls, and `coverage_debt_count = 581`. The two divergences are wrapped
-  root-delete fixtures where Claude blocks and Pi asks.
+- Initial baseline: 579 uncovered rows, two outcome divergences, zero stale
+  negative controls, and `coverage_debt_count = 581`. The two divergences are
+  wrapped root-delete fixtures where Claude blocks and Pi asks.
+- Seven explicit unsupported/deferred-family waivers now expand to 140 stable
+  policy IDs: exfiltration semantics, mapping-shaped injection patterns,
+  secret patterns, contexts, Pi-only read confirmation, content-scan scopes,
+  and pending path-exclusion negative controls. Empty and duplicate waiver IDs,
+  zero-match selectors, and covered/waived overlap fail validation.
+- Current baseline: 13 covered, 140 explicitly waived, 439 uncovered, two
+  divergences, zero stale controls, and `coverage_debt_count = 441`.
 - Gate mode is `PI_DAMAGE_CONTROL_COVERAGE_GATE=1 pnpm run
   damage-control-coverage`; it fails until uncovered rows are covered or
   explicitly waived and all divergences are resolved.
@@ -353,9 +360,9 @@ from here.
 
 ### State
 
-- **Classification:** in progress; T2 oracle runner reports 581 debt rows
+- **Classification:** in progress; T2 oracle runner reports 441 debt rows
 - **Current blocker:** none
-- **Next:** T2, add positive fixtures and explicit unsupported-feature waivers
-  by policy family; classify the two wrapped root-delete divergences and stop
-  for approval before any existing-vector outcome change
+- **Next:** T2, add positive Bash, path, and AST fixtures by policy family;
+  replace the path-exclusion waiver with paired negative controls, and classify
+  the two wrapped root-delete divergences before any outcome-change gate
 - **Resume:** `/do-it .specs/rationalization-phase5/plan.md`

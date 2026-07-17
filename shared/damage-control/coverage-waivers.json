@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "waivers": [
+    {
+      "id": "pi-exfil-semantics-deferred",
+      "match": {
+        "section": "bashToolPatterns",
+        "exfil": true
+      },
+      "reason": "Pi skips exfil rules because allowed-host bypass semantics are not implemented."
+    },
+    {
+      "id": "pi-injection-mapping-deferred",
+      "match": {
+        "section": "injectionPatterns"
+      },
+      "reason": "Pi currently normalizes mapping-shaped injection patterns to an empty list."
+    },
+    {
+      "id": "pi-secret-patterns-deferred",
+      "match": {
+        "section": "secretPatterns"
+      },
+      "reason": "Pi uses separate output-secret heuristics and does not load canonical secret patterns."
+    },
+    {
+      "id": "pi-context-relaxation-deferred",
+      "match": {
+        "section": "contexts"
+      },
+      "reason": "Pi does not implement Claude context-specific policy relaxation."
+    },
+    {
+      "id": "claude-read-confirm-extension",
+      "match": {
+        "section": "readConfirmPaths"
+      },
+      "reason": "Claude has no damage-control Read PreToolUse hook; read confirmation is currently a Pi-only extension."
+    },
+    {
+      "id": "content-scan-requires-injection-support",
+      "match": {
+        "section": "contentScanPaths"
+      },
+      "reason": "Content-scan paths only take effect with the deferred mapping-shaped injection patterns."
+    },
+    {
+      "id": "path-exclusion-negative-controls-pending",
+      "match": {
+        "section": "zeroAccessExclusions"
+      },
+      "reason": "Exclusions are non-triggering modifiers; per-pattern paired negative controls are not yet generated."
+    }
+  ]
+}
