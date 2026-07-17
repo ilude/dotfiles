@@ -1,7 +1,7 @@
 ---
 created: 2026-07-16
-status: draft
-completed:
+status: completed
+completed: 2026-07-17
 ---
 
 # Plan: Harness, test, and tooling rationalization
@@ -375,13 +375,13 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 
 ### State
 
-- **Classification:** implementation and validation complete; archive preflight passed
+- **Classification:** completed-and-archived
 - **Current blocker:** none
-- **Last completed wave/gate:** T12 final repository aggregate and evidence audit
-- **Next:** move this plan and owned siblings to `.specs/archive/rationalization/`
-- **Completed work:** T1-T12 complete; 109/109 ledger rows executed; workflow fixtures use actual skill files and scratch plans; final aggregates pass
-- **Commands/results:** final `make check-pi-extensions` passed 1,313 tests with one skip; repaired final `make check` passed; independent static sweep found no uncovered candidates; archive path is collision-free
-- **Remaining checks:** archive move and archived-state commit only
+- **Last completed wave/gate:** archive move and archived-state verification
+- **Next:** none
+- **Completed work:** T1-T12 complete; 109/109 ledger rows executed; workflow fixtures use actual skill files and scratch plans; final aggregates pass; owned artifacts are archived
+- **Commands/results:** final `make check-pi-extensions` passed 1,313 tests with one skip; repaired final `make check` passed; independent static sweep found no uncovered candidates; archive move completed at `.specs/archive/rationalization/`
+- **Remaining checks:** none
 - **Worktree note:** untracked `.specs/rationalization-phase2/` and `.specs/rationalization-phase3/` are excluded from this plan and archive; one import-only Ruff repair was applied to the phase2 research script so the exact aggregate could run
 - **Exact user action:** none
 - **Resume:** not applicable after the archive move
@@ -424,4 +424,8 @@ Status values: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - **T12 evidence decisions:** 109 ledger rows are executed; instruction bytes decreased 73,445 to 68,559; Pytest decreased 1,222 to 1,025; Vitest decreased 1,334 to 1,314; `make test-quick` decreased 15,152 ms to 1,782 ms.
 - **T12 manual gate:** not required; risk low; blast radius personal-repo; rollback easy; automated fixture and aggregate evidence covers local reversible changes.
 - **T12 independent eval:** initial final audit found stale checklist state and a mocked-fixture gap; checklist state is now reconciled and workflow tests read actual skill files against scratch plan paths. The runnable-test arithmetic is net -19 plus one fewer skipped test, matching net -20. Final static sweep found no uncovered candidate. Friction tags are `state-drift`, `repair-loop`, `nondeterministic-test`, and `evidence-gap-resolved`; no factual completion inconsistency remains; confidence high.
-- **Archive preflight:** passed; `.specs/archive/rationalization/` does not exist, all owned siblings are present, required gates pass, and untracked phase2/phase3 artifacts are outside the move.
+- **Archive preflight:** passed before mutation; the collision-free destination did not exist, all owned siblings were present, required gates passed, and untracked phase2/phase3 artifacts were outside the move.
+- **Archive phase:** phase ID `archive`; type `archive`; depends on `T12`; started `2026-07-17T01:16:30Z`; completed `2026-07-17T01:17:02Z`; status `passed`; evidence `.specs/archive/rationalization/` contains `plan.md`, `ledger.md`, `roster.md`, and `t8-instruction-linkage.md`.
+- **Archive event:** event type `archive_move`; status `passed`; archive status `archived`; archive path `.specs/archive/rationalization/`; no collision or opt-out.
+- **Final episode:** schema version 1; episode ID `2026-07-16T23-32-00Z-do-it-rationalization-resume`; command `do-it`; artifact `.specs/archive/rationalization/plan.md`; repository root `C:/Users/mglenn/.dotfiles`; started `2026-07-16T23:32:00Z`; completed `2026-07-17T01:17:02Z`; status `completed`; classification `completed-and-archived`; archive status `archived`; archive path `.specs/archive/rationalization/`; redaction status `no_sensitive_output`.
+- **Final post-run eval:** classification `completed-and-archived`; all checklist items and required gates passed; manual and deployment gates are not required; archive result passed; friction tags `state-drift-resolved`, `repair-loop`, `nondeterministic-test-repaired`, and `evidence-gap-resolved`; missing evidence none; improvement candidates are machine-readable checklist reconciliation and atomic final telemetry/checklist updates; confidence high from direct aggregate logs, archived artifacts, and independent audit.
