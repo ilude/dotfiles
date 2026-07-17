@@ -17,7 +17,6 @@ A PRD is optional. Use an explicit PRD path when provided; otherwise use the use
 - Separate independent stateful replacements into distinct waves. Each such wave names backup evidence, restore action, rollback boundary, and one mutation target.
 - A failed live mutation blocks later rollout work until the affected boundary is healthy again.
 - Do not prescribe a fixed worker roster or runtime selection. Record a required capability only when execution needs specialized tools, permissions, or domain knowledge.
-- Do not invent plan-specific telemetry scripts or wrappers solely for the artifact.
 
 ## Required Evidence
 
@@ -42,7 +41,7 @@ Read `templates/plan-template.md` and use it as the structural contract. The pla
 - an automation plan for operational steps and credential sources;
 - end-to-end success criteria;
 - a durable execution checklist that maps one-to-one to tasks and gates;
-- the repository's telemetry and evidence fields without secret output;
+- non-secret evidence destinations for tasks and gates;
 - archive conditions and durable incomplete-state requirements.
 
 Choose the smallest executable task breakdown that preserves real dependencies. Record alternatives only when approach judgment matters; include the rejected trade-off that would help an executor avoid reopening the decision.

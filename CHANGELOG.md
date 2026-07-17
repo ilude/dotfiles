@@ -2,6 +2,28 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Make workflow telemetry runtime-owned
+
+**Why:** Workflow prompts prescribed detailed telemetry that runtime code never
+emitted, so plans accumulated schema-shaped prose with no reliable consumer.
+
+**Changed:**
+- Limited workflow telemetry to mechanically written command-dispatch episodes
+  and events.
+- Removed model-authored telemetry and post-run evaluation requirements from
+  `/plan-it`, `/do-it`, and the plan template.
+- Narrowed telemetry types, tests, and documentation to the records the runtime
+  actually writes and the query helper reads.
+
+**Validation:** Focused workflow telemetry and dispatch tests passed 6 tests;
+Pi typecheck, Ruff, Python format, prompt-contract scans, the query helper, and
+`git diff --check` passed.
+
+**Files:** `pi/{lib,tests,docs,skills}/`,
+`.specs/rationalization-phase2/{plan,ledger}.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Make workflow checkpoints honest
 
 **Why:** The `/do-it` report contract forced interrupted work into a failure

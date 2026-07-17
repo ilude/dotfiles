@@ -7,6 +7,7 @@
 | `/do-it` four-way completion classification | Ambiguous final outcomes | `.specs/rationalization-phase2/plan.md` - fabricated blocker, session 019f6c3b | One documented contradiction on 2026-07-16 | Delete | Observable state plus validation and archive facts are sufficient; the enum forced an unsupported failure label. | T1 | Executed |
 | `/do-it` incomplete-report checklist | Lost resume state | `.specs/rationalization-phase2/plan.md` - fabricated blocker, session 019f6c3b | One documented contradiction on 2026-07-16 | Consolidate | One checkpoint paragraph preserves durable state without making stopping the dominant path. | T1 | Executed |
 | `/do-it` stale blocker and review-artifact handling | Obsolete evidence blocking repaired work | `research/friction-work-gitlab-networkiac.md`; `research/friction-dotfiles-homelab-onramp.md` | Two documented incidents | Keep in one owner | Current state must re-verify recorded evidence; the rule belongs in `/do-it` and is not duplicated in `/review-it`. | T1 | Executed |
+| Model-narrated workflow telemetry contract | Missing machine-readable execution evidence | `pi/docs/workflow-eval-telemetry.md` | Runtime never emitted the prescribed detailed events | Delete | The only consumer reads mechanically written dispatch JSONL; schema-shaped plan prose was not machine telemetry. | T2 | Executed |
 
 ## Surface usage decisions
 

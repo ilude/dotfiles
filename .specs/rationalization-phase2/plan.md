@@ -502,7 +502,7 @@ and commit this file after every slice; resume from here, never re-derive.
 ### Task checklist
 
 - [x] T1: /do-it report contract rewrite - done: validated slice commit pending
-- [ ] T2: telemetry ownership decision - pending
+- [x] T2: telemetry ownership decision - done: validated slice commit pending
 - [ ] T3: pi/AGENTS.md meta-rule consolidation - pending
 - [ ] T4: one philosophy file - pending
 - [ ] T5: usage-driven skill/command/agent audit - pending
@@ -527,40 +527,16 @@ and commit this file after every slice; resume from here, never re-derive.
 
 ### State
 
-- **State:** checkpoint
+- **State:** in progress
 - **Current blocker:** none
-- **Last completed gate:** T1 report contract rewrite
-- **Next:** T2 telemetry ownership decision
-- **Completed work:** Phase 1 archive prerequisite verified; T1 replaced the
-  classification enum with complete/checkpoint/blocked facts, consolidated
-  interrupted-run handling, and added current-state verification for stale
-  blocker and review evidence.
-- **Commands/results:** `pi --no-session --tools read --thinking low -p
-  "/do-it .tmp/rationalization-phase2/t1/plan.md"` exited 0 and reported a
-  checkpoint on both boundary lines with S2 next and no blocker; contract token,
-  non-ASCII, and diff checks passed.
-- **Remaining checks:** T2-T14 and final archive gates.
+- **Last completed gate:** T2 telemetry ownership decision
+- **Next:** T3 Pi meta-rule consolidation
+- **Completed work:** T1 is committed. T2 selected the no-detailed-consumer path,
+  removed telemetry-shaped workflow prose, and narrowed runtime types and docs
+  to mechanically written dispatch records.
+- **Commands/results:** focused telemetry and dispatch tests passed 6 tests;
+  Pi typecheck passed; workflow prose scan, Ruff, format check, query-helper
+  empty-state run, and `git diff --check` passed.
+- **Remaining checks:** commit T2, then T3-T14 and final archive gates.
 - **Exact user action:** none
 - **Resume:** `/do-it .specs/rationalization-phase2/plan.md`
-
-### Current execution telemetry
-
-- **Episode:** schema version 1; episode ID
-  `2026-07-17T01-26-00Z-do-it-rationalization-phase2`; command `do-it`;
-  artifact `.specs/rationalization-phase2/plan.md`; repository root
-  `C:/Users/mglenn/.dotfiles`; started `2026-07-17T01:26:00Z`; status
-  `not_complete`; archive status `active`; redaction status
-  `no_sensitive_output`.
-- **T1 phase:** phase ID `T1`; type `implementation`; status `passed`; evidence
-  `pi/skills/workflow/do-it.md`,
-  `pi/skills/workflow/templates/do-it-report-template.md`, and
-  `.tmp/rationalization-phase2/t1/report.txt`.
-- **T1 command event:** the exact scratch-plan `/do-it` command exited 0; report
-  state matched the fixture's no-blocker checkpoint and named S2 next.
-- **Manual gate:** not required; risk low; blast radius personal-repo; rollback
-  easy; local reversible workflow text covered by exact entrypoint evidence.
-- **Archive:** active; T2-T14 remain unchecked.
-- **Post-run eval:** checklist and evidence agree; blocker none; friction tags
-  `contract-forced-failure-resolved`; missing evidence is limited to unexecuted
-  T2-T14; no improvement candidate; confidence high from direct scratch-run
-  output.

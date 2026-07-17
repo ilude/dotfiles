@@ -34,7 +34,7 @@ Resume from the first unchecked dependency-ready item. Trust checked work only w
 - Before stateful mutation, verify current backup evidence, restore action, rollback boundary, and one target.
 - The first failed live mutation enters incident mode: stop later rollout work, preserve healthy systems, diagnose one affected boundary, and recover its original endpoint and persisted state before resuming.
 - Use the plan's required capabilities, but resolve workers and runtime resources from what is actually available.
-- Keep secrets and raw sensitive output out of plans, telemetry, and reports.
+- Keep secrets and raw sensitive output out of plans and reports.
 - Do not archive with an unresolved checklist item, required gate, deployment, blocker, or evidence mismatch.
 
 ## Execution and Evidence
@@ -47,8 +47,6 @@ Execute ready tasks wave by wave. Keep an item unchecked while it is in progress
 4. save the plan;
 5. only then start dependent or sequential work.
 
-For each task and gate, record the fields defined by `pi/docs/workflow-eval-telemetry.md`, including episode, phase, task identity, command, result, timestamps, archive status, and non-secret evidence where applicable. Use existing runtime or plan artifacts; do not invent a parallel schema.
-
 ## Validation and Repair
 
 Run every task-specific and wave command required by the plan. At completion, run the plan's repository-wide command set; if an older plan names none, use the strongest supported project aggregate.
@@ -60,8 +58,6 @@ On failure:
 - apply the smallest safe, reversible, in-scope repair supported by evidence;
 - rerun the failing command, then the gate it belongs to;
 - stop when repair requires destructive action, unavailable access, secrets, production action, user judgment, out-of-scope work, or unknown rollback/blast radius.
-
-When context pressure interrupts otherwise ready work, finish and verify the current slice, update and commit Execution Status, then either continue in a fresh session or report a checkpoint. A checkpoint is not a failure or blocker, and there is no execution-window concept.
 
 ## Manual and Deployment Gates
 
@@ -77,15 +73,11 @@ Archive only after implementation, task-specific validation, wave validation, re
 
 Unless the plan records an explicit opt-out rationale, move the completed plan and owned sibling artifacts to a collision-safe `.specs/archive/{slug}/` path and record completion metadata. Never overwrite an existing archive.
 
-## Workflow Evaluation
-
-Every plan execution records a compact post-run evaluation using the repository telemetry schema. Include archive result, validation results, gate decisions, checklist state, blocker, friction tags, missing evidence, improvement candidates, and confidence.
+## Evidence Review
 
 Treat recorded blockers and review artifacts as evidence to re-verify, not permanent gates. Current repository state and a repaired or approved plan supersede stale artifacts. Do not repeat this rule in review workflows that already enforce it.
 
-Independent evaluation is needed only when direct evidence reveals friction: a blocked outcome, validation failure, manual-gate exception, archive problem or opt-out, checklist/evidence mismatch, missing telemetry, unexpected scope expansion, or user-visible confusion. Select available independent review capabilities at runtime; do not assume a fixed panel.
-
-Evaluation findings cannot overturn a successful archive unless they establish a factual completion inconsistency.
+Use independent review only when direct evidence reveals friction: a blocked outcome, validation failure, manual-gate exception, archive problem or opt-out, checklist/evidence mismatch, unexpected scope expansion, or user-visible confusion. Review findings cannot overturn a successful archive unless they establish a factual completion inconsistency.
 
 ## Definition of Done
 
@@ -94,7 +86,7 @@ A plan execution is complete only when:
 - every required checklist item and gate passed;
 - the requested workflow and repository-wide completion checks passed;
 - no blocker or required user/deployment action remains;
-- telemetry and evidence are consistent with the outcome;
+- checklist state and evidence are consistent with the outcome;
 - archive preflight passed and the plan was archived, unless an explicit opt-out applies.
 
 ## Report

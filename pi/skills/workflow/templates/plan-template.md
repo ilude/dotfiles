@@ -145,21 +145,9 @@ T1 -> V1
 - Required: {yes/no}
 - Action/signal/rollback/evidence: {details or "None."}
 
-## Telemetry and Evidence Contract
+## Evidence Contract
 
-Use `pi/docs/workflow-eval-telemetry.md`. Record existing runtime events plus plan-local evidence where detailed events are not emitted.
-
-- `schema_version`: 1
-- `episode_id`: {assigned at execution}
-- `command`: do-it
-- `artifact_path`: {this plan path}
-- `repo_root`: {path or repo ID}
-- `started_at` / `completed_at`: {ISO-8601}
-- `status` / `classification` / `archive_status`: {execution result}
-- Phase fields: `phase_id`, `phase_type`, dependencies, timestamps, status, evidence
-- Event fields: `event_id`, `phase_id`, `task_id`, `event_type`, command/result, duration when available, status, evidence, failure/repair fields when applicable
-- Manual/deployment gate facts and decisions
-- Redaction status; never store secrets or raw sensitive output
+For each task and gate, record the exact command or decision, its observed result, and a bounded non-secret evidence summary in the checklist or Execution Status. Keep raw sensitive output out of the plan.
 
 ## Execution Checklist
 
@@ -207,7 +195,7 @@ Archive only when every required task, validation, exact-workflow, repository-wi
 
 ## Execution Status
 
-- **Classification:** planned, not started
+- **State:** planned, not started
 - **Current blocker:** none
 - **Last completed wave/gate:** none
 - **Next ready wave/gate:** T1
@@ -218,7 +206,3 @@ Archive only when every required task, validation, exact-workflow, repository-wi
 - **Resume:** `/do-it {plan-path}`
 
 Before any incomplete report or context-clearing handoff, update this section with the actual state, blocker, recovery entrypoint, and whether the resume command remains appropriate.
-
-## Workflow Eval Record
-
-{Filled by `/do-it` at terminal state using the repository telemetry schema: outcome, archive result, validation and gate results, checklist state, blocker, friction, missing evidence, improvement candidates, and confidence.}
