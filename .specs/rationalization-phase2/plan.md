@@ -504,7 +504,7 @@ and commit this file after every slice; resume from here, never re-derive.
 - [x] T1: /do-it report contract rewrite - done: validated slice commit pending
 - [x] T2: telemetry ownership decision - done: validated slice commit pending
 - [x] T3: pi/AGENTS.md meta-rule consolidation - done: validated slice commit pending
-- [ ] T4: one philosophy file - pending
+- [x] T4: one philosophy file - done: validated slice commit pending
 - [ ] T5: usage-driven skill/command/agent audit - pending
   - [ ] usage data source verified; gaps covered by session-archive scan
   - [ ] usage counts and ledger rows for every skill/command/agent
@@ -529,13 +529,14 @@ and commit this file after every slice; resume from here, never re-derive.
 
 - **State:** in progress
 - **Current blocker:** none
-- **Last completed gate:** T3 Pi meta-rule consolidation
-- **Next:** T4 single philosophy owner
-- **Completed work:** T1 (`8016709`) and T2 (`75d9e99`) are committed. T3
-  consolidated ask/execute and choice rules, removed presentation rituals, and
-  recorded the 10,909 to 8,627 byte reduction.
-- **Commands/results:** retired-rule searches and `git diff --check` passed;
-  direct byte measurement recorded the 2,282-byte reduction.
-- **Remaining checks:** commit T3, then T4-T14 and final archive gates.
+- **Last completed gate:** T4 single philosophy owner
+- **Next:** T5 usage-driven surface audit
+- **Completed work:** T1-T3 are committed (`8016709`, `75d9e99`, `306ace6`).
+  T4 made `pi/AGENTS.md` the single philosophy and delegation owner and reduced
+  overlapping skills to distinct boundaries and pointers.
+- **Commands/results:** repository searches found one full owner; touched
+  instruction/skill bytes decreased from 25,141 to 19,198; `git diff --check`
+  passed.
+- **Remaining checks:** commit T4, then T5-T14 and final archive gates.
 - **Exact user action:** none
 - **Resume:** `/do-it .specs/rationalization-phase2/plan.md`

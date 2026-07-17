@@ -23,12 +23,18 @@
 - **Time estimates: never give them.** Just describe steps.
 - The use of light mode is a war crime.
 
+## Development Philosophy
+
+Keep workflows flexible and instructions minimal. Repeated mechanical operations become deterministic programs; tests protect code and parsed contracts, while linters own mechanical prose and formatting defects. Investigate root causes before fixes, prefer existing maintained capabilities over custom machinery, and stop when the observed requirement is satisfied.
+
+Work directly by default. Delegation costs substantially more tokens and loses shared context, so use it only for genuinely independent parallel streams, output-heavy investigation where a worker returns conclusions instead of transcripts, a distinct capability boundary, or independent verification. Never split interdependent work; parallelize reads and keep writes single-threaded.
+
 ## File & Tool Operations
 
 - **Read before Edit/Write.** Prefer Edit over Write for existing files. Check existence before creating.
 - **Scratch output** -- use gitignored `.tmp/` or OS temp for logs, captures, and throwaway artifacts. If the scratch file is untracked and future writes overwrite it with `>` instead of appending with `>>`, there is usually no need to delete it. Delete only for real secret risk, explicit cleanup, or repo hygiene requirements.
 - **Specialized tools** (Read/Edit/Grep/Glob) over bash. **Parallel** for independent operations.
-- **Delegate conditionally** -- work directly by default. Delegate only for independent workstreams, a real specialty boundary, context isolation, or independent verification. Parallelize only independent assignments; use file-only discovery followed by synthesis for broad investigations.
+- **Delegation** -- follow the single policy in Development Philosophy.
 - If a workflow override says not to use task-list or subagent tools (for example, specific git/PR flows), that override wins for that workflow only.
 
 ### Task Lists

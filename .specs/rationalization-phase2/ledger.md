@@ -13,6 +13,8 @@
 | 1-3-1 response template | Unstructured architecture choices | `unknown` | No documented template-specific prevention | Delete | Real choices need brief trade-offs and one recommendation, not a fixed presentation ritual. | T3 | Executed |
 | `[N/total]` issue counter | Losing place in multi-issue responses | `unknown` | No documented prevention | Delete | Presentation ritual has no surviving failure class. | T3 | Executed |
 | Question-tool format preference | Ambiguous user prompts | `unknown` | No documented prevention | Delete | The consolidated ask rule owns when a question is needed; tool mode is runtime judgment. | T3 | Executed |
+| Philosophy restatements across instructions and skills | Poor implementation choices | `.specs/workflow-test-rationalization/summary.md` | Repeated drift across seven surfaces | Consolidate | `pi/AGENTS.md` is always loaded and now owns the policy; activation-triggered skills point to it. | T4 | Executed |
+| Delegation restatements | Unnecessary or unsafe delegation | `research/context-reduction-research.md` | Repeated policy copies in two instruction files and skills | Consolidate | One always-loaded paragraph owns direct work, justified delegation, read parallelism, and single-threaded writes. | T4 | Executed |
 
 ## Surface usage decisions
 

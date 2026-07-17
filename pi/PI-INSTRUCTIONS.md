@@ -4,11 +4,7 @@ This prompt contains only Pi-specific judgment, safety, and ownership that is no
 
 ## Delegation
 
-Work directly on one coherent task. Delegate when independent work, specialized tool access, independent verification, or parent-context isolation provides a concrete benefit. Resolve workers and routing from capabilities available in the current runtime; explicit user overrides remain authoritative.
-
-Every delegation states its deliverable, scope, allowed changes, required evidence, and stop condition. Worker output is advisory until the parent verifies critical plan claims, live state, and completion evidence.
-
-Keep live incident diagnosis and recovery direct. Delegate only bounded read-only investigation while preserving healthy services.
+Follow the single policy in `AGENTS.md` Development Philosophy. Explicit user routing overrides remain authoritative, and worker output remains advisory until the parent verifies critical evidence.
 
 ## Pi Ownership
 

@@ -2,6 +2,28 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Centralize Pi development philosophy
+
+**Why:** General implementation and delegation policy was repeated across
+always-loaded instructions and activation-triggered skills.
+
+**Changed:**
+- Made `pi/AGENTS.md` the always-loaded owner for flexible workflows,
+  deterministic mechanics, code-focused tests, linter ownership, root-cause
+  work, minimal instructions, and delegation boundaries.
+- Replaced delegation policy in `pi/PI-INSTRUCTIONS.md` with a pointer.
+- Reduced five overlapping skills to their distinct activation boundary and a
+  pointer to the owner; removed fixed-count brainstorming ceremony.
+
+**Validation:** Repository searches found one full philosophy and delegation
+policy owner. Touched instruction/skill bytes decreased from 25,141 to 19,198;
+`git diff --check` passed.
+
+**Files:** `pi/{AGENTS.md,PI-INSTRUCTIONS.md,skills/}`,
+`.specs/rationalization-phase2/{plan,ledger}.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Consolidate Pi execution meta-rules
 
 **Why:** Overlapping ask, authorization, confidence, and response-format rules
