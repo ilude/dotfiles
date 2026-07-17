@@ -28,8 +28,12 @@ import * as child_process from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import {
+	type ContextEvent,
 	type ExtensionAPI,
+	type ExtensionContext,
 	isBashToolResult,
 	type ToolResultEvent,
 } from "@earendil-works/pi-coding-agent";
@@ -50,6 +54,11 @@ function getReduceScriptPath(): string {
 
 const TIMEOUT_MS = 3000;
 const MIN_REDUCER_INPUT_BYTES = 240;
+const INGESTION_REDUCTION_MIN_BYTES = 64 * 1024;
+const RETROACTIVE_CONTEXT_THRESHOLD_PERCENT = 50;
+const RETROACTIVE_KEEP_LAST_RESULTS = 5;
+const RETROACTIVE_MIN_RECLAIM_TOKENS = 5000;
+const RETROACTIVE_MIN_RECLAIM_BYTES = 20_000;
 const RAW_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const RAW_MAX_BYTES = 64 * 1024 * 1024;
 
@@ -144,6 +153,8 @@ interface ReduceRequest {
 	stdout: string;
 }
 
+type ReduceRequestMetadata = Omit<ReduceRequest, "stdout">;
+
 interface ReduceResponse {
 	inline_text: string;
 	facts: Record<string, unknown>;
@@ -169,6 +180,10 @@ function extractTextContent(content: ToolResultEvent["content"]): string {
 
 export function shouldRunReducer(stdout: string): boolean {
 	return Buffer.byteLength(stdout, "utf-8") >= MIN_REDUCER_INPUT_BYTES;
+}
+
+export function shouldReduceAtIngestion(stdout: string): boolean {
+	return Buffer.byteLength(stdout, "utf-8") >= INGESTION_REDUCTION_MIN_BYTES;
 }
 
 interface PendingRequest {
@@ -282,48 +297,176 @@ class ReducerWorker {
 	}
 }
 
+function isToolResultMessage(message: AgentMessage): message is ToolResultMessage {
+	return message.role === "toolResult";
+}
+
+function addMarker(
+	result: ReduceResponse,
+	rawPath: string,
+	locator?: string,
+): string {
+	const ruleId = result.rule_id ?? "generic";
+	const facts = Object.keys(result.facts).length > 0
+		? ` facts=${JSON.stringify(result.facts)}`
+		: "";
+	const location = locator ? ` raw=${rawPath} locator=${locator}` : ` raw=${rawPath}`;
+	const marker = `[tool-reduction] bytes=${result.bytes_before}->${result.bytes_after} rule=${ruleId}${facts}${location}`;
+	return result.inline_text.endsWith("\n")
+		? `${result.inline_text}${marker}`
+		: `${result.inline_text}\n${marker}`;
+}
+
+function replaceTextContent(
+	message: ToolResultMessage,
+	text: string,
+): ToolResultMessage {
+	let replaced = false;
+	const content: ToolResultMessage["content"] = [];
+	for (const block of message.content) {
+		if (block.type !== "text") {
+			content.push(block);
+		} else if (!replaced) {
+			content.push({ type: "text", text });
+			replaced = true;
+		}
+	}
+	if (!replaced) content.unshift({ type: "text", text });
+	return { ...message, content };
+}
+
 export const EXTENSION_NAME = "tool-reduction";
 
 export default function (pi: ExtensionAPI) {
 	const worker = new ReducerWorker(getReduceScriptPath());
-	pi.on("session_shutdown", () => worker.shutdown());
-	pi.on("tool_result", async (event: ToolResultEvent) => {
-		if (!isBashToolResult(event)) return undefined;
+	const requests = new Map<string, ReduceRequestMetadata>();
+	const compacted = new Set<string>();
+	const compactCache = new Map<string, ReduceResponse>();
+	let nextReductionTokenThreshold: number | undefined;
+
+	pi.on("session_shutdown", () => {
+		worker.shutdown();
+		requests.clear();
+		compacted.clear();
+		compactCache.clear();
+		nextReductionTokenThreshold = undefined;
+	});
+	pi.on("context", async (event: ContextEvent, ctx: ExtensionContext) => {
 		if (process.env.PI_TOOL_REDUCTION?.toLowerCase() === "off") return undefined;
 
-		const command = (event.input as { command?: string }).command ?? "";
-		const stdout = extractTextContent(event.content);
-		if (!shouldRunReducer(stdout)) return undefined;
-
-		const request: ReduceRequest = {
-			argv: splitArgv(command),
-			exit_code: event.isError ? 1 : 0,
-			stdout,
-		};
-
-		const result = await worker.reduce(request);
-
-		if (result === null || !result.reduction_applied) {
-			return undefined;
+		const toolResults = event.messages.filter(isToolResultMessage);
+		const currentIds = new Set(toolResults.map((message) => message.toolCallId));
+		for (const id of compacted) {
+			if (!currentIds.has(id)) compacted.delete(id);
+		}
+		for (const id of compactCache.keys()) {
+			if (!currentIds.has(id)) compactCache.delete(id);
+		}
+		for (const id of requests.keys()) {
+			if (!currentIds.has(id)) requests.delete(id);
 		}
 
-		const rawText = stdout;
+		const sessionFile = ctx.sessionManager.getSessionFile();
+		if (!sessionFile) return undefined;
+		const usage = ctx.getContextUsage();
+		const usageTokens = usage?.tokens;
+		const usagePercent = usage?.percent;
+		if (compacted.size === 0 && (usagePercent ?? 0) < RETROACTIVE_CONTEXT_THRESHOLD_PERCENT) {
+			nextReductionTokenThreshold = undefined;
+		}
+		const thresholdReached = usageTokens !== null &&
+			usageTokens !== undefined &&
+			usagePercent !== null &&
+			usagePercent !== undefined &&
+			usagePercent >= RETROACTIVE_CONTEXT_THRESHOLD_PERCENT &&
+			(nextReductionTokenThreshold === undefined ||
+				usageTokens >= nextReductionTokenThreshold);
+		const eligible = toolResults.slice(0, -RETROACTIVE_KEEP_LAST_RESULTS);
+		const eligibleIds = new Set(eligible.map((message) => message.toolCallId));
+
+		if (thresholdReached) {
+			for (const message of eligible) {
+				if (compacted.has(message.toolCallId) || compactCache.has(message.toolCallId)) {
+					continue;
+				}
+				const stdout = extractTextContent(message.content);
+				if (!shouldRunReducer(stdout) || stdout.includes("[tool-reduction]")) {
+					continue;
+				}
+				const metadata = requests.get(message.toolCallId) ?? {
+					argv: [message.toolName],
+					exit_code: message.isError ? 1 : 0,
+				};
+				const response = await worker.reduce({ ...metadata, stdout });
+				if (response) compactCache.set(message.toolCallId, response);
+			}
+
+			const pending = eligible.filter((message) => {
+				const result = compactCache.get(message.toolCallId);
+				return !compacted.has(message.toolCallId) && result?.reduction_applied;
+			});
+			const reclaimBytes = pending.reduce((total, message) => {
+				const result = compactCache.get(message.toolCallId);
+				return total + (result ? result.bytes_before - result.bytes_after : 0);
+			}, 0);
+			if (reclaimBytes >= RETROACTIVE_MIN_RECLAIM_BYTES) {
+				for (const message of pending) compacted.add(message.toolCallId);
+				if (usageTokens !== null && usageTokens !== undefined) {
+					nextReductionTokenThreshold =
+						usageTokens + RETROACTIVE_MIN_RECLAIM_TOKENS;
+				}
+			}
+		}
+
+		if (compacted.size === 0) return undefined;
+		let changed = false;
+		const messages = event.messages.map((message) => {
+			if (
+				!isToolResultMessage(message) ||
+				!eligibleIds.has(message.toolCallId) ||
+				!compacted.has(message.toolCallId)
+			) {
+				return message;
+			}
+			const result = compactCache.get(message.toolCallId);
+			if (!result?.reduction_applied) return message;
+			changed = true;
+			return replaceTextContent(
+				message,
+				addMarker(result, sessionFile, `toolCallId:${message.toolCallId}`),
+			);
+		});
+		return changed ? { messages } : undefined;
+	});
+
+	pi.on("tool_result", async (event: ToolResultEvent) => {
+		if (process.env.PI_TOOL_REDUCTION?.toLowerCase() === "off") return undefined;
+		const stdout = extractTextContent(event.content);
+		const command = isBashToolResult(event)
+			? (event.input as { command?: string }).command ?? ""
+			: event.toolName;
+		const metadata: ReduceRequestMetadata = {
+			argv: isBashToolResult(event) ? splitArgv(command) : [event.toolName],
+			exit_code: event.isError ? 1 : 0,
+		};
+		requests.set(event.toolCallId, metadata);
+
+		if (!isBashToolResult(event) || !shouldReduceAtIngestion(stdout)) {
+			return undefined;
+		}
+		const result = await worker.reduce({ ...metadata, stdout });
+		if (result === null || !result.reduction_applied) return undefined;
+
 		let rawPath = event.details?.fullOutputPath;
 		if (!rawPath) {
 			try {
-				rawPath = await saveRawOutput(event.toolCallId, rawText);
+				rawPath = await saveRawOutput(event.toolCallId, stdout);
 			} catch {
 				return undefined;
 			}
 		}
-		const ruleId = result.rule_id ?? "generic";
-		const marker = `[tool-reduction] bytes=${result.bytes_before}->${result.bytes_after} rule=${ruleId} raw=${rawPath}`;
-		const compactText = result.inline_text.endsWith("\n")
-			? `${result.inline_text}${marker}`
-			: `${result.inline_text}\n${marker}`;
-
 		return {
-			content: [{ type: "text" as const, text: compactText }],
+			content: [{ type: "text" as const, text: addMarker(result, rawPath) }],
 		};
 	});
 }

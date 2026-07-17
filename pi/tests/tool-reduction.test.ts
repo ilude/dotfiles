@@ -13,7 +13,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createMockPi } from "./helpers/mock-pi.js";
+import { createMockCtx, createMockPi } from "./helpers/mock-pi.js";
 
 // ---------------------------------------------------------------------------
 // Controlled spawn mock -- tests set spawnBehavior before importing extension.
@@ -79,14 +79,50 @@ function createMockChild(pid = 123): import("node:child_process").ChildProcess {
 	return child as unknown as import("node:child_process").ChildProcess;
 }
 
-function reducedResponse(inlineText = "compacted"): string {
+function reducedResponse(inlineText = "compacted", bytesBefore = 1000): string {
 	return JSON.stringify({
 		inline_text: inlineText,
 		facts: {},
 		rule_id: "git/status",
-		bytes_before: 1000,
+		bytes_before: bytesBefore,
 		bytes_after: Buffer.byteLength(inlineText, "utf-8"),
 		reduction_applied: true,
+	});
+}
+
+function extremeOutput(text: string): string {
+	return text.repeat(Math.ceil((64 * 1024) / Buffer.byteLength(text, "utf-8")) + 1);
+}
+
+function makeToolResultMessage(
+	toolCallId: string,
+	toolName: string,
+	stdout: string,
+	isError = false,
+) {
+	return {
+		role: "toolResult" as const,
+		toolCallId,
+		toolName,
+		content: [{ type: "text" as const, text: stdout }],
+		isError,
+		timestamp: 1,
+	};
+}
+
+function attachRequestAwareReducer(
+	child: import("node:child_process").ChildProcess,
+): void {
+	child.stdin?.on("data", (chunk: Buffer) => {
+		const request = JSON.parse(chunk.toString("utf-8")) as { stdout: string };
+		queueMicrotask(() => {
+			child.stdout?.emit(
+				"data",
+				Buffer.from(
+					`${reducedResponse("compacted", Buffer.byteLength(request.stdout, "utf-8"))}\n`,
+				),
+			);
+		});
 	});
 }
 
@@ -113,8 +149,8 @@ describe("tool-reduction extension", () => {
 	// Test 1: real end-to-end compaction
 	// ---------------------------------------------------------------------------
 	describe("git status compaction (end-to-end)", () => {
-		it("compacts git status sample to fewer bytes", async () => {
-			const fixtureText = fs.readFileSync(FIXTURE_PATH, "utf-8");
+		it("compacts an extreme git status sample to fewer bytes", async () => {
+			const fixtureText = extremeOutput(fs.readFileSync(FIXTURE_PATH, "utf-8"));
 			const bytesBefore = Buffer.byteLength(fixtureText, "utf-8");
 
 			const mod = await import("../extensions/tool-reduction.ts");
@@ -149,15 +185,17 @@ describe("tool-reduction extension", () => {
 		}, 30000);
 	});
 
-	describe("small-output bypass", () => {
-		it("does not spawn the reducer for tiny bash output", async () => {
+	describe("ingestion bypass", () => {
+		it("does not spawn the reducer for routine bash output", async () => {
 			const { spawn } = await import("node:child_process");
 			vi.mocked(spawn).mockClear();
 			const mod = await import("../extensions/tool-reduction.ts");
 			mod.default(mockPi as unknown as ExtensionAPI);
 
 			const [hook] = mockPi._getHook("tool_result");
-			const result = await hook.handler(makeBashResultEvent("ok\n"));
+			const result = await hook.handler(
+				makeBashResultEvent("routine output\n".repeat(100)),
+			);
 
 			expect(result).toBeUndefined();
 			expect(spawn).not.toHaveBeenCalled();
@@ -180,7 +218,7 @@ describe("tool-reduction extension", () => {
 				const mod = await import("../extensions/tool-reduction.ts");
 				mod.default(mockPi as unknown as ExtensionAPI);
 				const [hook] = mockPi._getHook("tool_result");
-				const raw = "raw output\n".repeat(30);
+				const raw = extremeOutput("raw output\n");
 				const result = await hook.handler(makeBashResultEvent(raw));
 				const text = (result?.content[0] as TextBlock).text;
 				expect(text).toContain(
@@ -210,7 +248,7 @@ describe("tool-reduction extension", () => {
 			mod.default(mockPi as unknown as ExtensionAPI);
 			const [hook] = mockPi._getHook("tool_result");
 			const result = await hook.handler(
-				makeBashResultEvent("truncated\n".repeat(30), false, {
+				makeBashResultEvent(extremeOutput("truncated\n"), false, {
 					fullOutputPath: fullPath,
 				}),
 			);
@@ -261,8 +299,189 @@ describe("tool-reduction extension", () => {
 		});
 	});
 
+	describe("retroactive context reduction", () => {
+		function contextWithUsage(
+			percent: number,
+			sessionFile = "C:/sessions/test.jsonl",
+		) {
+			return createMockCtx({
+				getContextUsage: () => ({
+					tokens: percent * 1000,
+					contextWindow: 100_000,
+					percent,
+				}),
+				sessionManager: {
+					getSessionFile: () => sessionFile,
+				},
+			});
+		}
+
+		it("keeps the five newest results whole and reduces older results in one batch", async () => {
+			const { spawn } = await import("node:child_process");
+			const child = createMockChild();
+			attachRequestAwareReducer(child);
+			spawnBehavior = () => child;
+			const mod = await import("../extensions/tool-reduction.ts");
+			mod.default(mockPi as unknown as ExtensionAPI);
+			const [hook] = mockPi._getHook("context");
+			const oldOutput = "old evidence line\n".repeat(900);
+			const recentOutput = "recent full-fidelity output\n".repeat(900);
+			const messages = [
+				makeToolResultMessage("old-task", "task", oldOutput),
+				makeToolResultMessage("old-subagent", "subagent", oldOutput),
+				...Array.from({ length: 5 }, (_, index) =>
+					makeToolResultMessage(`recent-${index}`, "bash", recentOutput),
+				),
+			];
+
+			const sessionFile = path.join(
+				fs.mkdtempSync(path.join(os.tmpdir(), "tool-reduction-session-")),
+				"session.jsonl",
+			);
+			fs.writeFileSync(
+				sessionFile,
+				messages
+					.map((message) => JSON.stringify({ type: "message", message }))
+					.join("\n"),
+				"utf-8",
+			);
+			const first = await hook.handler(
+				{ type: "context", messages },
+				contextWithUsage(51, sessionFile),
+			);
+			const second = await hook.handler(
+				{ type: "context", messages },
+				contextWithUsage(40, sessionFile),
+			);
+
+			expect(first).toEqual(second);
+			expect(spawn).toHaveBeenCalledTimes(1);
+			for (const message of first.messages.slice(0, 2)) {
+				const text = (message.content[0] as TextBlock).text;
+				expect(text).toContain("compacted");
+				expect(text).toContain(`raw=${sessionFile}`);
+				expect(text).toContain("locator=toolCallId:old-");
+			}
+			for (const message of first.messages.slice(-5)) {
+				expect((message.content[0] as TextBlock).text).toBe(recentOutput);
+			}
+			expect((messages[0].content[0] as TextBlock).text).toBe(oldOutput);
+			const stored = fs
+				.readFileSync(sessionFile, "utf-8")
+				.split("\n")
+				.map((line) => JSON.parse(line));
+			expect(stored[0].message.content[0].text).toBe(oldOutput);
+
+			const shortenedBranch = messages.slice(0, 5);
+			expect(
+				await hook.handler(
+					{ type: "context", messages: shortenedBranch },
+					contextWithUsage(40, sessionFile),
+				),
+			).toBeUndefined();
+
+			const appended = [
+				...messages,
+				makeToolResultMessage("newest", "bash", recentOutput),
+			];
+			const beforeNextGeneration = await hook.handler(
+				{ type: "context", messages: appended },
+				contextWithUsage(55, sessionFile),
+			);
+			expect(
+				(beforeNextGeneration.messages[2].content[0] as TextBlock).text,
+			).toBe(recentOutput);
+			expect(spawn).toHaveBeenCalledTimes(1);
+
+			const nextGeneration = await hook.handler(
+				{ type: "context", messages: appended },
+				contextWithUsage(56, sessionFile),
+			);
+			expect(
+				(nextGeneration.messages[2].content[0] as TextBlock).text,
+			).toContain("[tool-reduction]");
+			expect(spawn).toHaveBeenCalledTimes(1);
+		});
+
+		it("does nothing below the threshold before any batch has run", async () => {
+			const { spawn } = await import("node:child_process");
+			vi.mocked(spawn).mockClear();
+			const mod = await import("../extensions/tool-reduction.ts");
+			mod.default(mockPi as unknown as ExtensionAPI);
+			const [hook] = mockPi._getHook("context");
+			const messages = Array.from({ length: 6 }, (_, index) =>
+				makeToolResultMessage(
+					`result-${index}`,
+					"task",
+					"full output\n".repeat(2000),
+				),
+			);
+
+			expect(
+				await hook.handler(
+					{ type: "context", messages },
+					contextWithUsage(49),
+				),
+			).toBeUndefined();
+			expect(spawn).not.toHaveBeenCalled();
+		});
+
+		it("retries a retroactive result after a transient worker crash", async () => {
+			const { spawn } = await import("node:child_process");
+			const crashed = createMockChild(201);
+			const restarted = createMockChild(202);
+			attachRequestAwareReducer(restarted);
+			let attempts = 0;
+			spawnBehavior = () => {
+				attempts += 1;
+				if (attempts === 1) {
+					queueMicrotask(() => crashed.emit("close", 1));
+					return crashed;
+				}
+				return restarted;
+			};
+			const mod = await import("../extensions/tool-reduction.ts");
+			mod.default(mockPi as unknown as ExtensionAPI);
+			const [hook] = mockPi._getHook("context");
+			const messages = [
+				makeToolResultMessage("old", "task", "old output\n".repeat(2500)),
+				...Array.from({ length: 5 }, (_, index) =>
+					makeToolResultMessage(`recent-${index}`, "task", "recent"),
+				),
+			];
+			const event = { type: "context", messages };
+			const ctx = contextWithUsage(60);
+
+			expect(await hook.handler(event, ctx)).toBeUndefined();
+			expect(await hook.handler(event, ctx)).toBeDefined();
+			expect(spawn).toHaveBeenCalledTimes(2);
+		});
+
+		it("waits until pending reductions reclaim a full batch", async () => {
+			const { spawn } = await import("node:child_process");
+			const child = createMockChild();
+			attachRequestAwareReducer(child);
+			spawnBehavior = () => child;
+			const mod = await import("../extensions/tool-reduction.ts");
+			mod.default(mockPi as unknown as ExtensionAPI);
+			const [hook] = mockPi._getHook("context");
+			const messages = [
+				makeToolResultMessage("old", "task", "old output\n".repeat(400)),
+				...Array.from({ length: 5 }, (_, index) =>
+					makeToolResultMessage(`recent-${index}`, "task", "recent"),
+				),
+			];
+			const event = { type: "context", messages };
+			const ctx = contextWithUsage(60);
+
+			expect(await hook.handler(event, ctx)).toBeUndefined();
+			expect(await hook.handler(event, ctx)).toBeUndefined();
+			expect(spawn).toHaveBeenCalledTimes(1);
+		});
+	});
+
 	// ---------------------------------------------------------------------------
-	// Test 2: failure modes fall through to raw (return undefined)
+	// Failure modes fall through to raw (return undefined)
 	// ---------------------------------------------------------------------------
 	describe("failure modes fall through to raw", () => {
 		it("(a) spawn throws ENOENT: returns undefined without throwing", async () => {
@@ -274,7 +493,7 @@ describe("tool-reduction extension", () => {
 			mod.default(mockPi as unknown as ExtensionAPI);
 
 			const [hook] = mockPi._getHook("tool_result");
-			const event = makeBashResultEvent("some output".repeat(24));
+			const event = makeBashResultEvent(extremeOutput("some output"));
 			const result = await hook.handler(event);
 			expect(result).toBeUndefined();
 		});
@@ -294,7 +513,7 @@ describe("tool-reduction extension", () => {
 
 				const [hook] = mockPi._getHook("tool_result");
 				const resultPromise = hook.handler(
-					makeBashResultEvent("some output".repeat(24)),
+					makeBashResultEvent(extremeOutput("some output")),
 				);
 				await vi.advanceTimersByTimeAsync(3000);
 
@@ -331,7 +550,7 @@ describe("tool-reduction extension", () => {
 
 			const [hook] = mockPi._getHook("tool_result");
 			const result = await hook.handler(
-				makeBashResultEvent("some output".repeat(24)),
+				makeBashResultEvent(extremeOutput("some output")),
 			);
 			expect(result).toBeUndefined();
 		});
@@ -352,8 +571,8 @@ describe("tool-reduction extension", () => {
 			mod.default(mockPi as unknown as ExtensionAPI);
 			const [hook] = mockPi._getHook("tool_result");
 
-			await hook.handler(makeBashResultEvent("first output".repeat(24)));
-			await hook.handler(makeBashResultEvent("second output".repeat(24)));
+			await hook.handler(makeBashResultEvent(extremeOutput("first output")));
+			await hook.handler(makeBashResultEvent(extremeOutput("second output")));
 
 			expect(spawn).toHaveBeenCalledTimes(1);
 		});
@@ -370,7 +589,7 @@ describe("tool-reduction extension", () => {
 				const [toolHook] = mockPi._getHook("tool_result");
 				const [shutdownHook] = mockPi._getHook("session_shutdown");
 				const result = toolHook.handler(
-					makeBashResultEvent("pending output".repeat(24)),
+					makeBashResultEvent(extremeOutput("pending output")),
 				);
 
 				shutdownHook.handler();
@@ -407,10 +626,10 @@ describe("tool-reduction extension", () => {
 			const [hook] = mockPi._getHook("tool_result");
 
 			expect(
-				await hook.handler(makeBashResultEvent("crashed output".repeat(24))),
+				await hook.handler(makeBashResultEvent(extremeOutput("crashed output"))),
 			).toBeUndefined();
 			expect(
-				await hook.handler(makeBashResultEvent("restarted output".repeat(24))),
+				await hook.handler(makeBashResultEvent(extremeOutput("restarted output"))),
 			).toBeDefined();
 			expect(spawn).toHaveBeenCalledTimes(2);
 		});
@@ -433,12 +652,13 @@ describe("tool-reduction extension", () => {
 			mod.default(mockPi as unknown as ExtensionAPI);
 
 			const [hook] = mockPi._getHook("tool_result");
-			await hook.handler(makeBashResultEvent("some output".repeat(24)));
+			const stdout = extremeOutput("some output");
+			await hook.handler(makeBashResultEvent(stdout));
 
 			expect(JSON.parse(requestBody)).toEqual({
 				argv: ["git", "status"],
 				exit_code: 0,
-				stdout: "some output".repeat(24),
+				stdout,
 			});
 			expect(spawn).toHaveBeenCalledWith(
 				"python",

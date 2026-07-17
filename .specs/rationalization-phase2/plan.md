@@ -517,8 +517,8 @@ and commit this file after every slice; resume from here, never re-derive.
 - [x] T9: reachable generic fallback - done: validated slice commit pending
 - [x] T10: self-describing reductions - done: validated slice commit pending
 - [x] T11: persistent reducer worker (decision-gated) - done: validated slice commit pending
-- [x] T12: reducer schema and corpus hygiene - done: validated slice commit pending
-- [ ] T13: retroactive context reduction - pending
+- [x] T12: reducer schema and corpus hygiene - done: `c1bacbc`
+- [x] T13: retroactive context reduction - done: validated slice commit pending
 - [ ] T14: ledger close and validation - pending
   - [ ] every ledger row executed or explicitly deferred
   - [ ] `make check-pi-extensions` and changed-file CLI passed
@@ -529,15 +529,22 @@ and commit this file after every slice; resume from here, never re-derive.
 
 - **State:** in progress
 - **Current blocker:** none
-- **Last completed gate:** T11 persistent reducer worker
-- **Next:** T13 retroactive context reduction
+- **Last completed gate:** T13 retroactive context reduction
+- **Next:** commit T13, then execute T14 close and validation
 - **Completed work:** T1-T4 are committed. T5 recorded 30-day decisions for 52
   skills, 36 commands, and 18 audited agents; the user selected optional
   per-launch effort; the three approved skill-review variants now share one
   agent with explicit model and effort dispatch.
 - **Commands/results:** T8-T10 and T12 checks passed with the recorded T8
   shortfall. T11 passed 8 Python and 13 Pi tests plus typecheck; one-shot and
-  worker output matched; p50 improved from 329.9 ms to 9.7 ms (97.1%).
-- **Remaining checks:** commit T11, then T13, T14, final validation, and archive.
+  worker output matched; p50 improved from 329.9 ms to 9.7 ms (97.1%). T13
+  passed 17 focused extension tests and Pi typecheck; its combined reducer and
+  dispatch run passed 21 tests, and 31 reducer invariant/classification tests
+  passed. The scratch context fixture verified the 50% trigger, five-result
+  recency window, 5,000-token batch generation, stable back-to-back payload,
+  transient retry, session-tree recency restoration, and readable transcript
+  recovery. A broad Python format check reported four unchanged files that
+  would be reformatted; T13 changed no Python files.
+- **Remaining checks:** commit T13, then T14 final validation and archive.
 - **Exact user action:** none
 - **Resume:** `/do-it .specs/rationalization-phase2/plan.md`

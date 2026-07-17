@@ -2,6 +2,33 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Reduce old tool results in context batches
+
+**Why:** Reducing routine tool output as it arrived removed evidence while it was
+most useful and rewrote the provider payload more often than necessary.
+
+**Changed:**
+- Kept routine tool results whole until Pi reports at least 50% context usage,
+  while retaining ingestion-time reduction for outputs at or above 64 KiB.
+- Reduced only results older than the five-result recency window, in batches
+  reclaiming approximately 5,000 tokens, with another batch gated on 5,000
+  additional Pi-accounted context tokens.
+- Applied the same deterministic reducer to Bash and custom tool results, kept
+  transient worker failures retryable, and preserved the five newest results
+  across session-tree changes.
+- Added markers naming the readable session file and tool-call locator; the
+  outgoing payload changes without mutating the full session transcript.
+
+**Validation:** Seventeen focused extension tests passed, including threshold,
+recency, batch stability, transient recovery, and transcript recovery cases.
+Pi typecheck passed. Thirty-one reducer guard, reduction, and shell
+classification tests passed; the combined reducer/dispatch run passed 21 tests.
+
+**Files:** `pi/{extensions/tool-reduction.ts,tests/tool-reduction.test.ts}`,
+`.specs/rationalization-phase2/{plan,ledger}.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Keep the reducer worker alive
 
 **Why:** Even after lazy rule loading, starting Python for every reduced Bash
