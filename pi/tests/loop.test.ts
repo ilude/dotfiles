@@ -24,6 +24,33 @@ function temporaryDirectory(): string {
 	return directory;
 }
 
+function writeJobFixture(
+	stateRoot: string,
+	id: string,
+	pid: number,
+	iteration?: number,
+): void {
+	const directory = path.join(stateRoot, id);
+	fs.mkdirSync(directory, { recursive: true });
+	fs.writeFileSync(
+		path.join(directory, "job.json"),
+		`${JSON.stringify({
+			version: 1,
+			id,
+			cwd: "C:/repo",
+			plans: ["plan.md"],
+			pid,
+			startedAt: "2026-07-17T00:00:00.000Z",
+			initialHead: "abc123",
+		})}\n`,
+	);
+	if (iteration !== undefined)
+		fs.writeFileSync(
+			path.join(directory, "loop.log"),
+			`2026-07-17T00:00:00.000Z iteration=${iteration} attempt=1 started\n`,
+		);
+}
+
 function initializeRepository(workspace: string): void {
 	execFileSync("git", ["init", "-q"], { cwd: workspace });
 	execFileSync("git", ["config", "user.email", "loop-test@example.invalid"], {
@@ -87,6 +114,43 @@ describe("loop extension", () => {
 		expect(first).toHaveLength(12);
 		expect(loopTestApi.boundedId("C:/repo", ["a.md", "b.md"])).toBe(first);
 		expect(loopTestApi.boundedId("C:/repo", ["b.md", "a.md"])).not.toBe(first);
+	});
+
+	it("shows live loop iteration in the footer and clears it on shutdown", async () => {
+		vi.useFakeTimers();
+		const stateRoot = temporaryDirectory();
+		writeJobFixture(stateRoot, "active-job", process.pid, 12);
+		writeJobFixture(stateRoot, "dead-job", 999_999, 4);
+		const priorRoot = process.env.PI_LOOP_DIR;
+		process.env.PI_LOOP_DIR = stateRoot;
+		const pi = createMockPi();
+		const setStatus = vi.fn();
+		const ctx = createMockCtx({
+			hasUI: true,
+			ui: { setStatus, notify: vi.fn() },
+		});
+		loop(pi as unknown as ExtensionAPI);
+
+		try {
+			for (const hook of pi._getHook("session_start"))
+				await hook.handler({ reason: "startup" }, ctx);
+			expect(setStatus).toHaveBeenLastCalledWith("loop", "loop active-job i12");
+
+			fs.appendFileSync(
+				path.join(stateRoot, "active-job", "loop.log"),
+				"2026-07-17T00:00:05.000Z iteration=13 attempt=1 started\n",
+			);
+			vi.advanceTimersByTime(5_000);
+			expect(setStatus).toHaveBeenLastCalledWith("loop", "loop active-job i13");
+
+			for (const hook of pi._getHook("session_shutdown"))
+				await hook.handler({ reason: "quit" }, ctx);
+			expect(setStatus).toHaveBeenLastCalledWith("loop", undefined);
+			expect(vi.getTimerCount()).toBe(0);
+		} finally {
+			if (priorRoot === undefined) delete process.env.PI_LOOP_DIR;
+			else process.env.PI_LOOP_DIR = priorRoot;
+		}
 	});
 
 	it("starts through the registered command after a clean Git preflight", async () => {

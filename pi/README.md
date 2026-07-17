@@ -313,9 +313,12 @@ launching the detached supervisor so only one writer occupies the worktree.
 
 Runtime state and logs live under `%LOCALAPPDATA%/pi/loops/<job-id>/` on
 Windows and `~/.local/state/pi/loops/<job-id>/` elsewhere. Set `PI_LOOP_DIR` to
-override the state root. A job becomes trustworthy only after
-its first validated commit; startup and extension loading alone are not reported
-as progress. The supervisor never pushes and stops after bounded invocation
+override the state root. While an interactive Pi session is open, the footer
+shows `loop <job-id> i<iteration>` for one live job or `loops <count> running`
+for several. The status refreshes every five seconds and disappears when no
+supervisor PID is active. A job becomes trustworthy only after its first
+validated commit; startup and extension loading alone are not reported as
+progress. The supervisor never pushes and stops after bounded invocation
 failures, quiescence, or repeated iterations without a commit.
 
 ### `feature-memory.ts`

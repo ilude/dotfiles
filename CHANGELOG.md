@@ -36,6 +36,8 @@ worker exits without turning user-decision gates into repeated calls.
 **Changed:**
 - Added `/loop start|status|stop|resume` with atomic local job records and
   process-tree control.
+- Added a five-second footer refresh that shows the live loop job and iteration,
+  omits dead supervisors, and clears on shutdown or reload.
 - Made the Dolos pre-commit hook treat linked worktrees without `private/` as
   artifact-only checkouts after staged-path scanning, so unrelated validated
   commits do not require a private identity key.
