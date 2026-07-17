@@ -220,7 +220,7 @@ from here.
 
 ### Task checklist
 
-- [ ] T1: plan-lint - in-progress: implementation validated; record commit
+- [x] T1: plan-lint - done: `54989a8`
   - [x] four violation classes caught on fixtures; clean plan passes
   - [x] wired into /do-it report path
   - [x] phase 2 "commit pending" rows flagged or confirmed fixed
@@ -242,8 +242,7 @@ from here.
 
 ### State
 
-- **Classification:** in progress; T1 implementation validated
+- **Classification:** in progress; T1 complete
 - **Current blocker:** none
-- **Next:** record T1's implementation commit, then start T2 routing outcome
-  sampling
+- **Next:** T2, add routing outcome sampling for policy-resolved dispatches
 - **Resume:** `/do-it .specs/rationalization-phase4/plan.md`
