@@ -45,11 +45,27 @@
       "reason": "Content-scan paths only take effect with the deferred mapping-shaped injection patterns."
     },
     {
-      "id": "path-exclusion-negative-controls-pending",
+      "id": "claude-directory-glob-exclusions-unreachable",
       "match": {
-        "section": "zeroAccessExclusions"
+        "section": "zeroAccessExclusions",
+        "ids": [
+          "zeroAccessExclusions:0017",
+          "zeroAccessExclusions:0018",
+          "zeroAccessExclusions:0019",
+          "zeroAccessExclusions:0039",
+          "zeroAccessExclusions:0040",
+          "zeroAccessExclusions:0041",
+          "zeroAccessExclusions:0042",
+          "zeroAccessExclusions:0043",
+          "zeroAccessExclusions:0045",
+          "zeroAccessExclusions:0049",
+          "zeroAccessExclusions:0050",
+          "zeroAccessExclusions:0051",
+          "zeroAccessExclusions:0057",
+          "zeroAccessExclusions:0060"
+        ]
       },
-      "reason": "Exclusions are non-triggering modifiers; per-pattern paired negative controls are not yet generated."
+      "reason": "Claude normalizes candidate paths before fnmatch, stripping the trailing separator required by these directory glob patterns, so they are unreachable."
     },
     {
       "id": "semantic-git-precedes-yaml-rule",

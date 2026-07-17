@@ -12,7 +12,7 @@ describe("damage-control Claude oracle coverage", () => {
 		expect(report.inventoryCount).toBeGreaterThan(500);
 		expect(report.fixtureCount).toBeGreaterThan(400);
 		expect(report.coveredPatternIds.length).toBeGreaterThan(350);
-		expect(report.waivedPatternIds.length).toBeGreaterThan(100);
+		expect(report.waivedPatternIds.length).toBeGreaterThan(80);
 		expect(
 			report.coveredPatternIds.length +
 				report.waivedPatternIds.length +

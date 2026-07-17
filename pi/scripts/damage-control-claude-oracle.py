@@ -128,11 +128,15 @@ def inventory() -> list[dict[str, Any]]:
     return rows
 
 
-def materialize_path(pattern: str) -> str:
+def is_unmatchable_directory_glob(pattern: str) -> bool:
+    return pattern.endswith(("/", os.sep)) and any(char in pattern for char in "*?[")
+
+
+def materialize_path(pattern: str, *, directory_child: bool = True) -> str:
     path = os.path.expanduser(pattern)
     path = re.sub(r"\[[^\]]+\]", "x", path)
     path = path.replace("*", "fixture").replace("?", "x")
-    if pattern.endswith(("/", os.sep)):
+    if directory_child and pattern.endswith(("/", os.sep)):
         path = os.path.join(path, "fixture.txt")
     return path
 
@@ -284,6 +288,25 @@ def fixtures() -> list[dict[str, Any]]:
                     "piNoDeletePath": pattern if section == "noDeletePaths" else None,
                 }
             )
+    for index, pattern in enumerate(policy.get("zeroAccessExclusions", [])):
+        if is_unmatchable_directory_glob(pattern):
+            continue
+        materialized = materialize_path(pattern, directory_child=False)
+        for role, expected in (("baseline", "block"), ("excluded", "allow")):
+            rows.append(
+                {
+                    "id": f"generated:zeroAccessExclusions:{index:04d}:{role}",
+                    "tool": "Exclusion",
+                    "filePath": materialized,
+                    "exclusionPattern": pattern,
+                    "pairRole": role,
+                    "expected": expected,
+                    "checkExpected": True,
+                    "targetRuleId": f"zeroAccessExclusions:{index:04d}"
+                    if role == "excluded"
+                    else None,
+                }
+            )
     ast = policy.get("astAnalysis", {})
     for section, expected in (("safeCommands", "allow"), ("dangerousCommands", "ask")):
         for index, command in enumerate(ast.get(section, [])):
@@ -384,6 +407,27 @@ def edit_decision(file_path: str, hook: ModuleType, config: dict[str, Any]) -> d
     return {"outcome": "block", "reason": reason, "matchedRuleId": None}
 
 
+def exclusion_decision(
+    file_path: str,
+    exclusion_pattern: str,
+    role: str,
+    target_rule_id: str | None,
+    hook: ModuleType,
+) -> dict[str, Any]:
+    config = {
+        "zeroAccessPaths": ["*"],
+        "zeroAccessExclusions": [exclusion_pattern] if role == "excluded" else [],
+        "readOnlyPaths": [],
+        "writeConfirmPaths": [],
+    }
+    blocked, reason = hook.check_path(file_path, config)
+    return {
+        "outcome": "block" if blocked else "allow",
+        "reason": reason,
+        "matchedRuleId": target_rule_id if role == "excluded" and not blocked else None,
+    }
+
+
 def evaluate_vector(
     vector: dict[str, Any],
     policy: dict[str, Any],
@@ -425,6 +469,14 @@ def evaluate_vector(
         )
     if tool == "Edit":
         return edit_decision(str(vector.get("filePath", "")), edit_hook, policy)
+    if tool == "Exclusion":
+        return exclusion_decision(
+            str(vector.get("filePath", "")),
+            str(vector.get("exclusionPattern", "")),
+            str(vector.get("pairRole", "")),
+            vector.get("targetRuleId"),
+            edit_hook,
+        )
     return ast_decision(
         str(vector.get("command", "")),
         vector.get("targetRuleId"),

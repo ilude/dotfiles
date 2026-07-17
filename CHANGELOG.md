@@ -2,6 +2,33 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Replace path-exclusion debt with paired controls
+
+**Why:** Exclusion rows are negative modifiers; counting them requires proving
+both a blocking baseline and an allowed excluded path.
+
+**Changed:**
+- Added baseline/excluded fixture pairs for every reachable
+  `zeroAccessExclusions` row using a synthetic wildcard parent rule.
+- Claude and Pi now execute the same isolated exclusion matcher contract.
+- Replaced the broad 68-row waiver with 54 paired controls and a precise 14-row
+  waiver for directory globs that Claude cannot reach after path normalization.
+
+**Baseline:** 488 covered, 104 explicitly waived, zero uncovered, 65
+divergences, zero stale controls, and `coverage_debt_count = 65`. Thirty new
+divergences are exclusion-pair mismatches; no enforcement outcome changed.
+
+**Validation:** Both focused Vitest cases, Ruff, Pi typecheck, Biome, and JSON
+parsing passed.
+
+**Files:** `pi/scripts/damage-control-claude-oracle.py`,
+`pi/lib/damage-control-coverage.ts`,
+`pi/tests/damage-control-coverage.test.ts`,
+`shared/damage-control/coverage-waivers.json`,
+`.specs/rationalization-phase5/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Account for every damage-control policy row
 
 **Why:** The final uncovered Bash rows required valid domain commands or an

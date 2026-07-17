@@ -54,6 +54,8 @@ export interface CoverageFixture {
 	isolatedRuleIndex?: number;
 	isolatedNoDeleteIndex?: number;
 	piNoDeletePath?: string;
+	exclusionPattern?: string;
+	pairRole?: "baseline" | "excluded";
 	piRule?: DangerousCommand;
 	checkExpected?: boolean;
 	expected: "allow" | "ask" | "block";
@@ -224,6 +226,19 @@ async function evaluatePiEdit(
 	return writeConfirm ? "ask" : "allow";
 }
 
+async function evaluatePiExclusion(
+	filePath: string,
+	exclusionPattern: string,
+	role: "baseline" | "excluded",
+): Promise<"allow" | "block"> {
+	const canonical = canonicalizeOrBlock(filePath, ROOT);
+	if ("block" in canonical) return "block";
+	const exclusions = role === "excluded" ? [exclusionPattern] : [];
+	if (isExcludedPath(canonical.canonical, exclusions)) return "allow";
+	const decision = await checkZeroAccess(canonical.canonical, ["*"], "edit");
+	return decision ? "block" : "allow";
+}
+
 async function evaluatePiAst(
 	command: string,
 	rules: ReturnType<typeof loadRules>["rules"],
@@ -256,6 +271,8 @@ export async function buildDamageControlCoverageReport(): Promise<DamageControlC
 			targetRuleId: fixture.targetRuleId,
 			isolatedRuleIndex: fixture.isolatedRuleIndex,
 			isolatedNoDeleteIndex: fixture.isolatedNoDeleteIndex,
+			exclusionPattern: fixture.exclusionPattern,
+			pairRole: fixture.pairRole,
 		})),
 	});
 	const covered = new Set<string>();
@@ -294,7 +311,13 @@ export async function buildDamageControlCoverageReport(): Promise<DamageControlC
 				? await evaluatePiBash(fixture.command, fixtureRules)
 				: fixture.tool === "Edit"
 					? await evaluatePiEdit(fixture.filePath ?? "", loaded.rules)
-					: await evaluatePiAst(fixture.command, loaded.rules);
+					: fixture.tool === "Exclusion"
+						? await evaluatePiExclusion(
+								fixture.filePath ?? "",
+								fixture.exclusionPattern ?? "",
+								fixture.pairRole ?? "baseline",
+							)
+						: await evaluatePiAst(fixture.command, loaded.rules);
 		if (pi !== claude.outcome)
 			divergences.push({
 				fixtureId: fixture.id,

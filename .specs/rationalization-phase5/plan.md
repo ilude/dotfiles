@@ -225,10 +225,15 @@ Implemented and measured 2026-07-17 with `pnpm run damage-control-coverage`:
   generation. Eighteen unreachable rows are explicitly classified: six behind
   semantic Git precedence, five behind Claude's read-only find bypass, one
   behind node-wrapper unwrapping, and six Linux-only rows on the Windows oracle.
-- Every inventory row is now accounted for: 434 covered, 158 waived, zero
-  uncovered, 35 divergences, zero stale controls, and
-  `coverage_debt_count = 35`. The added terraform tfvars fixture exposes one
-  additional Pi-allow/Claude-ask divergence; no outcome changed.
+- Every inventory row was accounted for at the first zero-uncovered checkpoint:
+  434 covered, 158 waived, 35 divergences, and `coverage_debt_count = 35`.
+- Paired controls now prove baseline block plus exclusion allow for 54 of 68
+  `zeroAccessExclusions`. The remaining 14 are explicitly unreachable in
+  Claude because path normalization strips the trailing separator required by
+  their directory-glob patterns. Thirty paired controls expose Pi/Claude
+  exclusion divergences; no outcome changed.
+- Current totals: 488 covered, 104 waived, zero uncovered, 65 divergences, zero
+  stale controls, and `coverage_debt_count = 65`.
 - Gate mode is `PI_DAMAGE_CONTROL_COVERAGE_GATE=1 pnpm run
   damage-control-coverage`; it fails until uncovered rows are covered or
   explicitly waived and all divergences are resolved.
@@ -369,7 +374,7 @@ from here.
   - [x] schema and shared location implemented in both clients
   - [x] live four-outcome validation on both clients
   - [x] fail-open and secret-scrub proven
-- [ ] T2: canonical source, oracle runner, coverage debt zero - in-progress: drive measured coverage debt to zero
+- [ ] T2: canonical source, oracle runner, coverage debt zero - in-progress: classify 65 divergence rows for the user gate
   - [x] verified what damage-control-rules.ts already loads
   - [x] per-pattern coverage runner built (Claude hook as oracle)
   - [ ] coverage_debt_count = 0 (covered or explicitly waived)
@@ -388,9 +393,9 @@ from here.
 
 ### State
 
-- **Classification:** in progress; T2 has zero uncovered rows and 35 divergence debt
+- **Classification:** in progress; T2 has zero uncovered rows and 65 divergence debt
 - **Current blocker:** none
-- **Next:** T2, replace the 68-row path-exclusion waiver with paired negative
-  controls, then classify the 35 remaining outcome divergences and request a
-  user decision before any enforcement or canonical-source cutover
+- **Next:** T2, group all 65 divergences by root cause and proposed outcome,
+  present the allow/ask/block changes for user approval, and do not implement
+  them or cut over either client before that decision
 - **Resume:** `/do-it .specs/rationalization-phase5/plan.md`
