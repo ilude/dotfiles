@@ -2,6 +2,31 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Add generated path-policy oracle fixtures
+
+**Why:** Aggregate path counts did not prove that each Claude path rule reaches
+the equivalent Pi decision boundary.
+
+**Changed:**
+- The oracle now materializes a deterministic synthetic path for every
+  zero-access, read-only, write-confirm, and no-delete policy row.
+- Generated Edit and Bash vectors run through Claude's actual hook functions
+  and Pi's ordered path/command checks with stable matched-rule IDs.
+- The runner reports path divergences without changing enforcement outcomes.
+
+**Baseline:** 141 fixtures now cover 109 rows; 140 rows remain explicitly
+waived, 343 are uncovered, 32 diverge, no negative control is stale, and
+`coverage_debt_count = 375`. The new divergences comprise three zero-access,
+20 read-only, four write-confirm, and three no-delete vectors.
+
+**Validation:** Both focused Vitest cases, Ruff, Pi typecheck, and Biome passed.
+
+**Files:** `pi/scripts/damage-control-claude-oracle.py`,
+`pi/lib/damage-control-coverage.ts`, `.specs/rationalization-phase5/plan.md`,
+`CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Add explicit damage-control coverage waivers
 
 **Why:** One-sided and unsupported policy families must be named and expanded

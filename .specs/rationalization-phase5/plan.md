@@ -199,8 +199,17 @@ Implemented and measured 2026-07-17 with `pnpm run damage-control-coverage`:
   secret patterns, contexts, Pi-only read confirmation, content-scan scopes,
   and pending path-exclusion negative controls. Empty and duplicate waiver IDs,
   zero-match selectors, and covered/waived overlap fail validation.
-- Current baseline: 13 covered, 140 explicitly waived, 439 uncovered, two
-  divergences, zero stale controls, and `coverage_debt_count = 441`.
+- After explicit waivers: 13 covered, 140 explicitly waived, 439 uncovered,
+  two divergences, zero stale controls, and `coverage_debt_count = 441`.
+- Deterministic path materialization now exercises every `zeroAccessPaths`,
+  `readOnlyPaths`, `writeConfirmPaths`, and `noDeletePaths` row through Claude's
+  actual Edit/Bash engines and the equivalent Pi functions. Current baseline:
+  109 covered, 140 waived, 343 uncovered, 32 divergences, zero stale controls,
+  and `coverage_debt_count = 375`.
+- The 30 newly exposed divergences are three zero-access, 20 read-only, four
+  write-confirm, and three no-delete directory/path vectors where Claude
+  blocks/asks and Pi allows. They are evidence only; changing those outcomes
+  requires the plan's user gate.
 - Gate mode is `PI_DAMAGE_CONTROL_COVERAGE_GATE=1 pnpm run
   damage-control-coverage`; it fails until uncovered rows are covered or
   explicitly waived and all divergences are resolved.
@@ -360,9 +369,9 @@ from here.
 
 ### State
 
-- **Classification:** in progress; T2 oracle runner reports 441 debt rows
+- **Classification:** in progress; T2 oracle runner reports 375 debt rows
 - **Current blocker:** none
-- **Next:** T2, add positive Bash, path, and AST fixtures by policy family;
-  replace the path-exclusion waiver with paired negative controls, and classify
-  the two wrapped root-delete divergences before any outcome-change gate
+- **Next:** T2, add positive Bash and AST fixtures, then replace the
+  path-exclusion waiver with paired negative controls. Keep all 32 measured
+  outcome divergences unchanged until a separate user decision
 - **Resume:** `/do-it .specs/rationalization-phase5/plan.md`

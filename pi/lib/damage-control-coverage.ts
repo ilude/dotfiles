@@ -4,9 +4,14 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+	canonicalizeOrBlock,
 	checkNoDeletePaths,
+	checkReadOnlyPath,
+	checkWriteConfirmPath,
+	checkZeroAccess,
 	evaluateDangerousCommand,
 	extractBashDeleteTargets,
+	isExcludedPath,
 } from "../extensions/damage-control-engine.ts";
 import { loadRules } from "../extensions/damage-control-rules.ts";
 
@@ -40,6 +45,8 @@ export interface CoverageFixture {
 	id: string;
 	tool: string;
 	command: string;
+	filePath?: string;
+	targetRuleId?: string;
 	expected: "allow" | "ask" | "block";
 }
 
@@ -164,13 +171,45 @@ async function evaluatePiBash(
 	return noDelete ? decisionFromReason(noDelete.reason) : "allow";
 }
 
+async function evaluatePiEdit(
+	filePath: string,
+	rules: ReturnType<typeof loadRules>["rules"],
+): Promise<"allow" | "ask" | "block"> {
+	const canonical = canonicalizeOrBlock(filePath, ROOT);
+	if ("block" in canonical) return "block";
+	const zeroAccess = isExcludedPath(
+		canonical.canonical,
+		rules.zero_access_exclusions,
+	)
+		? undefined
+		: await checkZeroAccess(
+				canonical.canonical,
+				rules.zero_access_paths,
+				"edit",
+			);
+	if (zeroAccess) return decisionFromReason(zeroAccess.reason);
+	const readOnly = checkReadOnlyPath(
+		filePath,
+		rules.read_only_paths,
+		rules.zero_access_exclusions,
+		ROOT,
+	);
+	if (readOnly) return decisionFromReason(readOnly.reason);
+	const writeConfirm = checkWriteConfirmPath(
+		filePath,
+		rules.write_confirm_paths,
+		rules.zero_access_exclusions,
+		ROOT,
+	);
+	return writeConfirm ? "ask" : "allow";
+}
+
 export async function buildDamageControlCoverageReport(): Promise<DamageControlCoverageReport> {
 	const inventory = oracle<CoverageInventoryRow[]>({ mode: "inventory" });
 	const fixtures = oracle<CoverageFixture[]>({ mode: "fixtures" });
 	const loaded = loadRules(ROOT);
 	if (loaded.health.status !== "active")
 		throw new Error(loaded.health.error ?? "Pi policy failed to load");
-	const bashFixtures = fixtures.filter((fixture) => fixture.tool === "Bash");
 	const claudeResults = oracle<
 		Array<{
 			outcome: "allow" | "ask" | "block";
@@ -178,8 +217,11 @@ export async function buildDamageControlCoverageReport(): Promise<DamageControlC
 		}>
 	>({
 		mode: "evaluate_batch",
-		tool: "Bash",
-		commands: bashFixtures.map((fixture) => fixture.command),
+		vectors: fixtures.map((fixture) => ({
+			tool: fixture.tool,
+			command: fixture.command,
+			filePath: fixture.filePath,
+		})),
 	});
 	const covered = new Set<string>();
 	const appliedWaivers = applyCoverageWaivers(inventory, loadCoverageWaivers());
@@ -187,7 +229,7 @@ export async function buildDamageControlCoverageReport(): Promise<DamageControlC
 	const divergences: CoverageDivergence[] = [];
 	const negativeControlFailures: NegativeControlFailure[] = [];
 
-	for (const [index, fixture] of bashFixtures.entries()) {
+	for (const [index, fixture] of fixtures.entries()) {
 		const claude = claudeResults[index];
 		if (!claude) throw new Error(`Claude oracle omitted fixture ${fixture.id}`);
 		if (claude.matchedRuleId) covered.add(claude.matchedRuleId);
@@ -197,7 +239,10 @@ export async function buildDamageControlCoverageReport(): Promise<DamageControlC
 				expected: fixture.expected,
 				actual: claude.outcome,
 			});
-		const pi = await evaluatePiBash(fixture.command, loaded.rules);
+		const pi =
+			fixture.tool === "Bash"
+				? await evaluatePiBash(fixture.command, loaded.rules)
+				: await evaluatePiEdit(fixture.filePath ?? "", loaded.rules);
 		if (pi !== claude.outcome)
 			divergences.push({
 				fixtureId: fixture.id,
