@@ -505,8 +505,8 @@ and commit this file after every slice; resume from here, never re-derive.
 - [x] T2: telemetry ownership decision - done: validated slice commit pending
 - [x] T3: pi/AGENTS.md meta-rule consolidation - done: validated slice commit pending
 - [x] T4: one philosophy file - done: validated slice commit pending
-- [ ] T5: usage-driven skill/command/agent audit - pending
-  - [ ] usage data source verified; gaps covered by session-archive scan
+- [ ] T5: usage-driven skill/command/agent audit - blocked: plan assumes a per-launch effort override absent from the public subagent schema
+  - [x] usage data source verified; gaps covered by session-archive scan
   - [ ] usage counts and ledger rows for every skill/command/agent
   - [ ] pre-approved variant merges executed (skill-review trio collapsed)
   - [ ] gated deletions: user approval received (never inferred)
@@ -527,16 +527,24 @@ and commit this file after every slice; resume from here, never re-derive.
 
 ### State
 
-- **State:** in progress
-- **Current blocker:** none
-- **Last completed gate:** T4 single philosophy owner
-- **Next:** T5 usage-driven surface audit
-- **Completed work:** T1-T3 are committed (`8016709`, `75d9e99`, `306ace6`).
-  T4 made `pi/AGENTS.md` the single philosophy and delegation owner and reduced
-  overlapping skills to distinct boundaries and pointers.
-- **Commands/results:** repository searches found one full owner; touched
-  instruction/skill bytes decreased from 25,141 to 19,198; `git diff --check`
-  passed.
-- **Remaining checks:** commit T4, then T5-T14 and final archive gates.
-- **Exact user action:** none
+- **State:** blocked
+- **Current blocker:** T5's approved `skill-review-*` merge requires preserving
+  three effort levels, but `pi/extensions/subagent/index.ts` has no public
+  per-launch `effort` parameter and always emits `--thinking` from agent
+  frontmatter. Adding the missing optional parameter changes the public
+  subagent tool shape and requires user selection under this plan.
+- **Last completed gate:** T4 single philosophy owner (`54b6e9a`)
+- **Next:** resolve the T5 effort-override decision, then complete the usage
+  ledger, approved merge, and retirement decisions.
+- **Completed work:** T1-T4 are committed. T5 verified `/improve` ownership and
+  produced deterministic 30-day counts for 52 skills, 36 commands, and 18
+  agents in `.tmp/rationalization-phase2/t5-usage-audit.md`; the merge audit is
+  `.tmp/rationalization-phase2/t5-agent-merge-audit.md`.
+- **Commands/results:** direct source checks confirmed `SubagentParams` exposes
+  `model`, `modelSize`, and `modelPolicy` but no `effort`; `runSingleAgent`
+  appends `--thinking` from `agent.effort` at line 707.
+- **Remaining checks:** T5 decision and execution, T6-T14, final validation, and
+  archive.
+- **Exact user action:** choose whether to add optional per-launch `effort`,
+  accept one merged default effort, or defer the merge.
 - **Resume:** `/do-it .specs/rationalization-phase2/plan.md`
