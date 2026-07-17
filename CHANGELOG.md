@@ -19,7 +19,7 @@ automatically released a dependent task, recalled a fact through a persisted
 subagent continuation, and reported both queued completion notifications on a
 later turn with zero verification tool calls.
 
-**Files:** `.specs/rationalization-phase3/plan.md`, `CHANGELOG.md`
+**Files:** `.specs/archive/rationalization-phase3/plan.md`, `CHANGELOG.md`
 
 ---
 

@@ -1,7 +1,7 @@
 ---
 created: 2026-07-16
-status: draft
-completed:
+status: completed
+completed: 2026-07-17
 ---
 
 # Plan: Orchestration capability parity - phase 3
@@ -361,7 +361,7 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
   - [x] outputSchema validation with one bounded correction
   - [x] chain forwards validated objects / artifact references
   - [x] absent-schema behavior byte-identical
-- [ ] T6: close - in-progress: all close gates passed; record commit and archive
+- [x] T6: close - done
   - [x] material decisions recorded in the closeout
   - [x] `make check-pi-extensions` passed (98 files, 1,356 tests; 1 skipped)
   - [x] live end-to-end /do-it exercise passed (one batch and drain,
@@ -369,8 +369,19 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
 
 ### State
 
-- **Classification:** in progress; T1-T5 complete; all T6 close gates passed
+- **State:** complete
 - **Current blocker:** none
-- **Next:** record T6's closeout commit, then archive phase 3 with completion
-  metadata
-- **Resume:** `/do-it .specs/rationalization-phase3/plan.md`
+- **Last completed gate:** T6 close and validation
+- **Next:** none
+- **Completed work:** T1-T6 are complete. Background completion notifications,
+  continuable subagents, cross-client occupancy leases, opt-in DAG draining,
+  and schema-validated subagent output landed in the commits recorded above.
+- **Commands/results:** final `make check-pi-extensions` passed 98 test files
+  with 1,356 tests passing and one skipped. The persistent RPC `/do-it`
+  exercise used one graph batch and one drain, automatically released its
+  dependency join, recalled a fact through a persisted subagent session, and
+  reported both queued completion notifications on the later user turn with
+  zero verification tool calls and no `task await` or `task output`.
+- **Remaining checks:** none
+- **Exact user action:** none
+- **Archive:** `.specs/archive/rationalization-phase3/`
