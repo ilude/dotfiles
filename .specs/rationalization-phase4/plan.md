@@ -232,7 +232,7 @@ from here.
   - [x] all present sources aggregated; absent sources as coverage notes
   - [x] deletions-first report generated from real data
   - [x] aggregation math tested
-- [ ] T4: cadence and entry point - in-progress: implementation validated; record commit
+- [x] T4: cadence and entry point - done: `976e814`
   - [x] /improve report end to end
   - [x] loop documented once, in the philosophy file
   - [x] timer condition recorded (not built)
@@ -242,8 +242,9 @@ from here.
 
 ### State
 
-- **Classification:** in progress; T1-T3 complete; T4 implementation validated
-- **Current blocker:** none
-- **Next:** record T4's implementation commit, then run the T5 user-selected
-  improvement cycle
+- **Classification:** blocked; T1-T4 complete
+- **Current blocker:** T5 requires the user to select at least one item from
+  `.specs/improvement-reports/2026-07-17.md`; no selection is inferred
+- **Next:** after the user selects an item, execute it as a separate approved
+  slice, record cycle time, and capture routing baseline plus n=30 projection
 - **Resume:** `/do-it .specs/rationalization-phase4/plan.md`
