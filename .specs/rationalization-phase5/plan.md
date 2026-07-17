@@ -263,7 +263,7 @@ from here.
 
 ### Task checklist
 
-- [ ] T1: structured decision logging - in-progress: wire Claude ask correlation to the shared writer
+- [ ] T1: structured decision logging - in-progress: complete live Pi and fail-open validation
   - [x] per-client decision knowability verified and recorded
   - [x] schema and shared location implemented in both clients
   - [ ] live four-outcome validation on both clients
@@ -287,8 +287,8 @@ from here.
 
 ### State
 
-- **Classification:** in progress; T1 Pi outcomes flow to the shared writer
+- **Classification:** in progress; T1 Claude outcomes flow to the shared writer
 - **Current blocker:** none
-- **Next:** T1, wire Claude PreToolUse outcomes plus pending-ask correlation to
-  the shared monthly log, then run live four-outcome validation
+- **Next:** T1, run live Pi four-outcome and both-client fail-open validation,
+  record the evidence, and close the task
 - **Resume:** `/do-it .specs/rationalization-phase5/plan.md`

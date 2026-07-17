@@ -2,6 +2,30 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Correlate Claude decisions in the shared audit log
+
+**Why:** Claude PreToolUse knows the enforcement action but does not receive a
+manual confirmation result, so asks need conservative cross-hook correlation.
+
+**Changed:**
+- Claude Bash, Edit, and Write PreToolUse hooks now record final allows and hard
+  blocks or stage secret-scrubbed asks by session and tool-use ID.
+- PostToolUse and PostToolUseFailure settle staged asks as approved; SessionEnd
+  records unmatched asks as `denied_or_abandoned` rather than inferring denial.
+- Added exact or estimated latency labels, fail-open pending storage, and hook
+  registration for all correlation events.
+
+**Validation:** All 763 Claude damage-control tests passed with one skipped;
+Ruff passed. Direct bare-`python` hook invocations produced all four knowable
+Claude outcomes in one shared monthly log, scrubbed a synthetic token, and left
+no pending rows.
+
+**Files:** `claude/hooks/damage-control/{decision_audit.py,bash-tool-damage-control.py,edit-tool-damage-control.py,write-tool-damage-control.py}`,
+`claude/hooks/damage-control/tests/{conftest.py,test_decision_audit.py}`,
+`claude/settings.json`, `.specs/rationalization-phase5/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Feed Pi decisions into the shared audit log
 
 **Why:** The shared schema only becomes operational when enforcement handlers

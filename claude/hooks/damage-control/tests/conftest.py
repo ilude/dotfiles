@@ -1,11 +1,25 @@
 """Pytest fixtures for damage-control hook tests."""
 
 import os
+import sys
+from pathlib import Path
 
 import pytest
 
+HOOK_DIR = Path(__file__).parent.parent
+if str(HOOK_DIR) not in sys.path:
+    sys.path.insert(0, str(HOOK_DIR))
+
 # Set UTF-8 encoding for YAML parsing on Windows
 os.environ["PYTHONIOENCODING"] = "utf-8"
+
+
+@pytest.fixture(autouse=True)
+def shared_decision_log_dir(tmp_path, monkeypatch):
+    """Keep shared decision rows and pending asks inside each test sandbox."""
+    decision_dir = tmp_path / "shared-decisions"
+    monkeypatch.setenv("DAMAGE_CONTROL_DECISION_DIR", str(decision_dir))
+    return decision_dir
 
 
 @pytest.fixture
