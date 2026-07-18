@@ -34,6 +34,9 @@ if [[ -f "$_dotfiles/.env" ]]; then
 elif [[ -f "$_dotfiles/.secrets" ]]; then
     source "$_dotfiles/.secrets"
 fi
+if [[ -f "$_dotfiles/private/secrets.env" ]]; then
+    source "$_dotfiles/private/secrets.env"
+fi
 
 # Source rc.d modules (interactive shell config)
 for f in "$_dotfiles/zsh/rc.d"/*.zsh(N); do

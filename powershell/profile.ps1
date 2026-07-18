@@ -102,6 +102,7 @@ function Import-Secrets {
 
 # Auto-import secrets on profile load
 Import-Secrets
+Import-Secrets -Path "$env:USERPROFILE\.dotfiles\private\secrets.env"
 
 #endregion
 
