@@ -36,7 +36,7 @@
       "Bash(git reset --hard:*)"
     ]
   },
-  "model": "sonnet",
+  "model": "claude-fable-5[1m]",
   "enableAllProjectMcpServers": false,
   "hooks": {
     "PermissionRequest": [
@@ -188,7 +188,7 @@
     "superpowers@superpowers-marketplace": true
   },
   "alwaysThinkingEnabled": true,
-  "effortLevel": "medium",
+  "effortLevel": "high",
   "companyAnnouncements": [],
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark",
