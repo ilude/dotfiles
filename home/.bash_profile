@@ -65,4 +65,4 @@ fi
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 
-source C:\Users\mglenn\AppData\Roaming\dystroy\broot\config\launcher\bash\br
+[[ -f "$HOME/AppData/Roaming/dystroy/broot/config/launcher/bash/br" ]] && source "$HOME/AppData/Roaming/dystroy/broot/config/launcher/bash/br"
