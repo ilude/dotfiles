@@ -2,7 +2,7 @@
 	path = dotbot
 	url = https://github.com/anishathalye/dotbot
 	ignore = dirty
-[submodule "menos"]
-	path = menos
-	url = git@github.com:ilude/menos.git
-	branch = main
+[submodule "onclave"]
+	path = onclave
+	url = git@github.com:traefikturkey/onclave.git
+	branch = feature/v2-broker-core
