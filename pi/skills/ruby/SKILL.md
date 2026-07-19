@@ -5,9 +5,9 @@ description: Ruby development with Rails, RSpec, and best practices. Activate wh
 
 # Ruby Skill
 
-Ruby prioritizes developer happiness with expressive syntax and convention over configuration. Use Bundler for dependency management, leverage blocks and iterators, and follow the principle of least surprise.
+Use Bundler, follow local conventions, and prefer explicit, readable code over metaprogramming.
 
-## Quick Reference
+## Commands
 
 | Command | Purpose |
 |---------|---------|
@@ -18,11 +18,9 @@ Ruby prioritizes developer happiness with expressive syntax and convention over 
 | `bundle exec rake db:migrate` | Run migrations |
 | `ruby -c file.rb` | Syntax check |
 
-**Key patterns:** Blocks (`do...end`, `{}`), symbols (`:name`), duck typing, mixins via modules, `Enumerable` for collection processing.
-
 ## Contents
 
-- [core.md](core.md) - Ruby style, Bundler, blocks, error handling
-- [testing.md](testing.md) - RSpec, Minitest, Factory Bot, mocking
-- [rails.md](rails.md) - Rails 8.x patterns, controllers, services, Hotwire
-- [hanami.md](hanami.md) - Hanami slices, ROM, dry-validation
+- [core.md](core.md) - Ruby style, Bundler, blocks, errors, and metaprogramming
+- [testing.md](testing.md) - RSpec, Minitest, factories, and external boundaries
+- [rails.md](rails.md) - Rails 8 patterns, services, jobs, Hotwire, and migrations
+- [hanami.md](hanami.md) - Hanami slices, ROM, contracts, and actions

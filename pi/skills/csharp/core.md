@@ -2,419 +2,58 @@
 
 ## Tool Grid
 
-| Task | Tool | Command |
-|------|------|---------|
-| Lint | Roslynator | `dotnet roslynator analyze` |
-| Format | dotnet format | `dotnet format` |
-| Build | dotnet | `dotnet build` |
-| Test | dotnet | `dotnet test` |
-| Publish | dotnet | `dotnet publish` |
-| Watch | dotnet | `dotnet watch run` |
-| NuGet restore | dotnet | `dotnet restore` |
-| Add package | dotnet | `dotnet add package <name>` |
+| Task | Command |
+|------|---------|
+| Lint | `dotnet roslynator analyze` |
+| Format | `dotnet format` |
+| Build | `dotnet build` |
+| Test | `dotnet test` |
+| Publish | `dotnet publish` |
+| Watch | `dotnet watch run` |
+| Restore | `dotnet restore` |
 
----
+## C# 12+ and .NET 8+
 
-## C# 12+ Features
+- Use file-scoped namespaces and enable nullable reference types in every project.
+- Use primary constructors for simple dependency injection or initialization; use an explicit constructor when validation, ownership, or initialization logic needs a body.
+- Use collection expressions when the target type is clear, raw string literals for structured multiline text, and records for DTOs and immutable value objects.
+- Use minimal APIs for small, cohesive endpoints; use controllers when routing, filters, versioning, or endpoint complexity warrants their structure.
+- For native AOT, avoid reflection-heavy paths, prefer source generators, and use `JsonSerializerContext` with `[JsonSerializable]`.
+- Use keyed services only for genuine named implementations, not as a replacement for a clear interface boundary.
 
-### Primary Constructors
+## Naming, values, and nullability
 
-SHOULD use primary constructors for dependency injection and simple initialization:
+- Use PascalCase for public members and constants, `_camelCase` for private fields, camelCase for locals, `I`-prefixed interfaces, `T`-prefixed type parameters, and `Async`-suffixed asynchronous methods.
+- Name repeated domain values with `const`, `static readonly`, or enums. Inline literals are appropriate for tests, indices, one-off messages, and well-known framework values.
+- Declare optional references as nullable, use `required` for required initialization, and avoid null-forgiving operators except where a checked invariant cannot be represented otherwise.
 
-```csharp
-public class UserService(IUserRepository repository, ILogger<UserService> logger)
-{
-    public async Task<User?> GetByIdAsync(int id) => await repository.FindAsync(id);
-}
-```
+## Async and errors
 
-### Collection Expressions
+- Keep I/O asynchronous end-to-end, accept `CancellationToken` for cancellable work, and use `ConfigureAwait(false)` in library code.
+- Reserve `ValueTask` for measured hot paths with frequent synchronous completion; never use `async void` except event handlers.
+- Catch specific exceptions, preserve useful context, and do not swallow failures. Use result types for expected domain failures and exceptions for exceptional conditions.
 
-SHOULD use collection expressions for collection initialization:
+## Dependency injection
 
-```csharp
-// Preferred
-int[] numbers = [1, 2, 3, 4, 5];
-List<string> names = ["Alice", "Bob", "Charlie"];
+- Use constructor injection for required dependencies; never use a service locator.
+- Register singleton services only when thread-safe and state is application-wide, scoped services for request or unit-of-work state such as `DbContext`, and transient services for lightweight stateless operations.
+- Do not capture scoped services in singletons. Match disposal ownership to the container lifetime.
 
-// Spread operator
-int[] combined = [..firstArray, ..secondArray];
-```
+## Data, configuration, and quality
 
-### Raw String Literals
+- Prefer method-syntax LINQ, materialize queries before repeated enumeration, use `Any()` for existence checks, and benchmark hot paths before retaining LINQ there.
+- Bind configuration with the Options pattern rather than reading configuration throughout application code.
+- Centralize target framework, nullable settings, and warning policy in `Directory.Build.props` when the solution shares them. Keep `.editorconfig` and analyzers aligned with repository policy.
 
-SHOULD use raw string literals for multi-line strings and strings containing quotes:
+## Tests and layout
 
-```csharp
-var json = """
-    {
-        "name": "Example",
-        "value": 42
-    }
-    """;
-```
+See [testing.md](testing.md) for test rules.
 
-### File-Scoped Namespaces
-
-MUST use file-scoped namespaces to reduce nesting:
-
-```csharp
-namespace MyApp.Services;
-
-public class MyService { }
-```
-
----
-
-## .NET 8+ Patterns
-
-### Minimal APIs
-
-SHOULD use minimal APIs for microservices and simple endpoints:
-
-```csharp
-var builder = WebApplication.CreateBuilder(args);
-var app = builder.Build();
-
-app.MapGet("/api/users/{id}", async (int id, IUserService service) =>
-    await service.GetByIdAsync(id) is User user
-        ? Results.Ok(user)
-        : Results.NotFound());
-
-app.Run();
-```
-
-### AOT Compilation
-
-SHOULD design for AOT compatibility when targeting native deployment:
-
-- MUST NOT use reflection-heavy patterns
-- SHOULD use source generators instead of runtime reflection
-- MUST use `[JsonSerializable]` for System.Text.Json
-
-```csharp
-[JsonSerializable(typeof(User))]
-[JsonSerializable(typeof(List<User>))]
-internal partial class AppJsonContext : JsonSerializerContext { }
-```
-
-### Keyed Services
-
-MAY use keyed services for named dependency resolution:
-
-```csharp
-builder.Services.AddKeyedSingleton<ICache, RedisCache>("redis");
-builder.Services.AddKeyedSingleton<ICache, MemoryCache>("memory");
-```
-
----
-
-## No Magic Values
-
-MUST NOT use literal strings, numbers, or booleans inline when they represent a domain concept, configuration, or repeated value. Extract to `const`, `static readonly`, or `enum`.
-
-### Patterns
-
-```csharp
-// BAD: magic values
-if (user.Role == "admin") { /* ... */ }
-var timeout = TimeSpan.FromSeconds(30);
-
-// GOOD: const for compile-time values
-public static class Timeouts
-{
-    public const int DefaultSeconds = 30;
-    public static readonly TimeSpan Default = TimeSpan.FromSeconds(DefaultSeconds);
-}
-
-// GOOD: enum for fixed sets
-public enum UserRole { Admin, User, Guest }
-
-if (user.Role == UserRole.Admin) { /* ... */ }
-```
-
-### const vs static readonly
-
-| Use | When |
-|-----|------|
-| `const` | Compile-time primitives and strings (`int`, `string`, `bool`) |
-| `static readonly` | Runtime-computed values, `TimeSpan`, arrays, complex types |
-
-### When Literals Are Fine
-
-- Array indices (`0`, `1`), boolean flags, empty strings/collections
-- Test assertions and fixture data
-- Single-use string interpolations and log messages
-- Well-known framework values (HTTP methods, status codes) used once
-
----
-
-## Naming Conventions
-
-### General Rules
-
-| Element | Convention | Example |
-|---------|------------|---------|
-| Public members | PascalCase | `GetUserAsync()` |
-| Private fields | _camelCase | `_userRepository` |
-| Local variables | camelCase | `userName` |
-| Constants | PascalCase | `MaxRetryCount` |
-| Interfaces | IPascalCase | `IUserService` |
-| Type parameters | TPascalCase | `TEntity` |
-| Async methods | Async suffix | `GetUserAsync()` |
-
-### MUST Follow
-
-- MUST use `I` prefix for interfaces
-- MUST use `Async` suffix for async methods
-- MUST NOT use Hungarian notation
-- MUST NOT use underscores in public identifiers
-
----
-
-## Nullable Reference Types
-
-### Configuration
-
-MUST enable nullable reference types in all projects:
-
-```xml
-<PropertyGroup>
-    <Nullable>enable</Nullable>
-</PropertyGroup>
-```
-
-### Usage Rules
-
-- MUST annotate all reference types explicitly
-- MUST handle null appropriately with null-conditional operators
-- SHOULD use `required` keyword for required properties
-- MUST NOT use `!` (null-forgiving operator) except when absolutely necessary
-
-```csharp
-public class User
-{
-    public required string Name { get; init; }
-    public string? Email { get; set; }
-}
-```
-
----
-
-## Async/Await Best Practices
-
-### Rules
-
-- MUST use async all the way (no sync-over-async)
-- MUST use `ConfigureAwait(false)` in library code
-- MUST use `CancellationToken` for cancellable operations
-- SHOULD prefer `ValueTask` for hot paths with frequent sync completion
-- MUST NOT use `async void` except for event handlers
-
-```csharp
-public async Task<User?> GetUserAsync(int id, CancellationToken ct = default)
-{
-    return await _repository.FindAsync(id, ct).ConfigureAwait(false);
-}
-```
-
-### Exception Handling
-
-- MUST catch specific exceptions, not `Exception`
-- SHOULD use `when` clause for conditional catches
-- MUST NOT swallow exceptions silently
-
----
-
-## Dependency Injection
-
-### Rules
-
-- MUST use constructor injection for required dependencies
-- SHOULD use primary constructors for DI
-- MUST NOT use service locator pattern
-- MUST register services with appropriate lifetime
-
-```csharp
-// Registration
-builder.Services.AddScoped<IUserService, UserService>();
-builder.Services.AddSingleton<ICacheService, CacheService>();
-builder.Services.AddTransient<IEmailService, EmailService>();
-```
-
-### Lifetime Guidelines
-
-| Lifetime | Use Case |
-|----------|----------|
-| Singleton | Stateless services, caches |
-| Scoped | Per-request services, DbContext |
-| Transient | Lightweight, stateless operations |
-
----
-
-## Record Types
-
-### DTOs and Value Objects
-
-MUST use records for DTOs and immutable data:
-
-```csharp
-public record UserDto(int Id, string Name, string? Email);
-
-public record CreateUserRequest(string Name, string Email);
-
-public record ApiResponse<T>(T Data, bool Success, string? Error = null);
-```
-
-### Rules
-
-- MUST use positional records for simple DTOs
-- MAY use record classes with properties for complex objects
-- SHOULD use `with` expressions for immutable updates
-
----
-
-## LINQ Best Practices
-
-### Method Syntax
-
-SHOULD prefer method syntax over query syntax:
-
-```csharp
-// Preferred
-var adults = users
-    .Where(u => u.Age >= 18)
-    .OrderBy(u => u.Name)
-    .Select(u => new UserDto(u.Id, u.Name, u.Email));
-
-// Avoid query syntax for simple queries
-var adults = from u in users
-             where u.Age >= 18
-             select u;
-```
-
-### Performance
-
-- MUST materialize queries when iterating multiple times
-- SHOULD use `Any()` instead of `Count() > 0`
-- SHOULD use `FirstOrDefault()` with predicate
-- MUST NOT use LINQ in hot paths without benchmarking
-
----
-
-## Testing
-
-For comprehensive testing patterns see [testing.md](testing.md).
-
-### Quick Reference
-
-```bash
-dotnet test                    # Run all tests
-dotnet test --filter "Category=Unit"  # Run unit tests
-dotnet test --collect:"XPlat Code Coverage"  # With coverage
-```
-
-## Project Structure
-
-### RECOMMENDED Layout
-
-```
+```text
 MySolution/
-├── src/
-│   ├── MyApp.Api/
-│   │   ├── Controllers/
-│   │   ├── Endpoints/
-│   │   └── Program.cs
-│   ├── MyApp.Application/
-│   │   ├── Services/
-│   │   └── DTOs/
-│   ├── MyApp.Domain/
-│   │   ├── Entities/
-│   │   └── Interfaces/
-│   └── MyApp.Infrastructure/
-│       ├── Data/
-│       └── Services/
-├── tests/
-│   ├── MyApp.UnitTests/
-│   └── MyApp.IntegrationTests/
-├── Directory.Build.props
-├── Directory.Packages.props
-└── MySolution.sln
+  src/    # API, application, domain, infrastructure projects
+  tests/  # unit and integration projects
+  Directory.Build.props
+  Directory.Packages.props
+  MySolution.sln
 ```
-
-### Directory.Build.props
-
-SHOULD use centralized build configuration:
-
-```xml
-<Project>
-    <PropertyGroup>
-        <TargetFramework>net8.0</TargetFramework>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
-        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    </PropertyGroup>
-</Project>
-```
-
----
-
-## Error Handling
-
-### Result Pattern
-
-SHOULD use Result pattern for expected failures:
-
-```csharp
-public record Result<T>(T? Value, bool IsSuccess, string? Error = null)
-{
-    public static Result<T> Success(T value) => new(value, true);
-    public static Result<T> Failure(string error) => new(default, false, error);
-}
-```
-
-### Exceptions
-
-- MUST use exceptions for exceptional conditions only
-- SHOULD create custom exceptions for domain errors
-- MUST include relevant context in exception messages
-
----
-
-## Configuration
-
-### Options Pattern
-
-MUST use Options pattern for configuration:
-
-```csharp
-public class DatabaseOptions
-{
-    public const string SectionName = "Database";
-    public required string ConnectionString { get; init; }
-    public int MaxRetryCount { get; init; } = 3;
-}
-
-// Registration
-builder.Services.Configure<DatabaseOptions>(
-    builder.Configuration.GetSection(DatabaseOptions.SectionName));
-```
-
----
-
-## Code Quality
-
-### Analyzers
-
-SHOULD enable code analysis:
-
-```xml
-<PropertyGroup>
-    <EnableNETAnalyzers>true</EnableNETAnalyzers>
-    <AnalysisLevel>latest-recommended</AnalysisLevel>
-</PropertyGroup>
-```
-
-### EditorConfig
-
-MUST include `.editorconfig` for consistent style across team.
