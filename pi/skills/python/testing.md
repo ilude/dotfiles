@@ -2,7 +2,7 @@
 
 Pytest patterns and best practices for Python projects.
 
-## CRITICAL: Zero Warnings Tolerance
+## Zero warnings tolerance
 
 **Treat all warnings as errors. No exceptions.**
 
@@ -27,7 +27,7 @@ Pytest patterns and best practices for Python projects.
 
 ---
 
-## CRITICAL: UV Execution Rules
+## UV execution rules
 
 ```bash
 # CORRECT
@@ -125,7 +125,7 @@ tests/
 - Test functions: `test_*` (e.g., `test_create_user_success`)
 - Fixtures: Descriptive names (e.g., `user_service`, `mock_database`)
 
-**CRITICAL:** MUST NOT name non-test classes with "Test" prefix - framework will try to collect them as tests.
+**MUST NOT name non-test classes with "Test" prefix - framework will try to collect them as tests.**
 
 ---
 

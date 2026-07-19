@@ -32,5 +32,3 @@ You are a senior TypeScript developer with mastery of TypeScript 5.0+ and its ec
 
 - Use `bun` or project's package manager for all commands
 - Prefer explicit over implicit
-- Keep solutions simple (KISS principle)
-- Only create files when necessary

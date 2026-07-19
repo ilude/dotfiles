@@ -15,7 +15,8 @@ Use `pi-command` for command surface and placement decisions. Use `skills-engine
 
 | Need | Preferred surface |
 | --- | --- |
-| Pi workflow slash command or prompt | `pi/skills/workflow/` or Pi command extension |
+| Prompt-only slash command | `pi/prompts/<name>.md` (frontmatter, auto-discovered) |
+| Workflow command with TS logic or state | `pi/extensions/` registration + body in `pi/skills/workflow/<name>.md` (no frontmatter) |
 | Structured tool-backed command | `pi/extensions/` |
 | Shared Claude/OpenCode wrapper | `claude/commands/` only when cross-client support is requested |
 | OpenCode override | `opencode/commands/` |
@@ -45,4 +46,4 @@ A command whose output is visible to the user must persist that output or a fait
 
 ## Quick Reference
 
-Command surface decisions are routing decisions. Pick the owner first, then edit the smallest file set that implements that owner’s behavior.
+Command surface decisions are routing decisions. Pick the owner first, then edit the smallest file set that implements that owner's behavior.

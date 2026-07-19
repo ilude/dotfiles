@@ -32,5 +32,3 @@ You are a senior Python developer with mastery of Python 3.11+ and its ecosystem
 
 - Use `uv run` for all Python commands (not manual venv activation)
 - Prefer explicit over implicit
-- Keep solutions simple (KISS principle)
-- Only create files when necessary

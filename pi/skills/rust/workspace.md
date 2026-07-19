@@ -1,26 +1,6 @@
 # Workspaces & Feature Flags
 
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119.
-
 ## Workspace Layout
-
-### Basic Structure
-```
-my-project/
-├── Cargo.toml          # Workspace root
-├── Cargo.lock          # Shared lockfile (MUST commit for workspaces)
-├── crates/
-│   ├── core/
-│   │   ├── Cargo.toml
-│   │   └── src/lib.rs
-│   ├── api/
-│   │   ├── Cargo.toml
-│   │   └── src/main.rs
-│   └── cli/
-│       ├── Cargo.toml
-│       └── src/main.rs
-└── README.md
-```
 
 ### Root Cargo.toml
 ```toml
@@ -143,7 +123,7 @@ pub fn log_event(event: &Event) {
 
 ### Feature Flag Rules
 - MUST NOT use features for mutually exclusive options (use cfg instead)
-- MUST make features additive — enabling a feature should never break compilation
+- MUST make features additive - enabling a feature should never break compilation
 - SHOULD name features after the optional dependency they gate
 - SHOULD provide a `default` feature set for common use
 - MAY provide a `full` feature for enabling everything
@@ -151,43 +131,6 @@ pub fn log_event(event: &Event) {
 ---
 
 ## Conditional Compilation
-
-### Platform Detection
-```rust
-#[cfg(target_os = "linux")]
-fn platform_specific() { /* Linux only */ }
-
-#[cfg(target_os = "windows")]
-fn platform_specific() { /* Windows only */ }
-
-#[cfg(unix)]
-fn unix_only() { /* Unix-like (Linux, macOS, BSD) */ }
-
-// Multiple conditions
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-fn linux_x64_only() { /* ... */ }
-
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-fn posix_like() { /* ... */ }
-```
-
-### Build Scripts (build.rs)
-```rust
-// build.rs
-fn main() {
-    // Set cfg flags from build script
-    println!("cargo::rustc-cfg=has_feature_x");
-
-    // Conditional on environment
-    if std::env::var("DATABASE_URL").is_ok() {
-        println!("cargo::rustc-cfg=has_database");
-    }
-
-    // Re-run conditions
-    println!("cargo::rerun-if-changed=build.rs");
-    println!("cargo::rerun-if-env-changed=DATABASE_URL");
-}
-```
 
 ### cfg_attr for Conditional Attributes
 ```rust
@@ -209,11 +152,11 @@ mod platform;
 ```toml
 [workspace.dependencies]
 # Pin major version for stability
-serde = "1"            # ^1.0.0 — any 1.x
-tokio = "1"            # ^1.0.0 — any 1.x
+serde = "1"            # ^1.0.0 - any 1.x
+tokio = "1"            # ^1.0.0 - any 1.x
 
 # Pin minor for tighter control
-sqlx = "0.8"           # ^0.8.0 — any 0.8.x
+sqlx = "0.8"           # ^0.8.0 - any 0.8.x
 
 # Exact pin only when necessary (rare)
 openssl-sys = "=0.9.93"
@@ -221,11 +164,11 @@ openssl-sys = "=0.9.93"
 
 ### Workspace Dependency Inheritance
 ```toml
-# Root Cargo.toml — define once
+# Root Cargo.toml - define once
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 
-# Member Cargo.toml — inherit
+# Member Cargo.toml - inherit
 [dependencies]
 serde.workspace = true
 

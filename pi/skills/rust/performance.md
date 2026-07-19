@@ -1,7 +1,5 @@
 # Performance
 
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119.
-
 ## Release Profile Optimization
 
 ### Cargo.toml Profiles
@@ -49,35 +47,6 @@ name = "my_benchmarks"
 harness = false
 ```
 
-### Writing Benchmarks
-```rust
-// benches/my_benchmarks.rs
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-
-fn bench_sort(c: &mut Criterion) {
-    let mut group = c.benchmark_group("sorting");
-
-    for size in [100, 1_000, 10_000] {
-        group.bench_with_input(
-            BenchmarkId::new("vec_sort", size),
-            &size,
-            |b, &size| {
-                let data: Vec<u64> = (0..size).rev().collect();
-                b.iter(|| {
-                    let mut d = data.clone();
-                    d.sort();
-                    black_box(d)
-                });
-            },
-        );
-    }
-    group.finish();
-}
-
-criterion_group!(benches, bench_sort);
-criterion_main!(benches);
-```
-
 ### Benchmark Rules
 - MUST use `black_box()` to prevent dead code elimination
 - MUST separate setup from measured code
@@ -97,18 +66,6 @@ cargo bench -- --baseline before
 ---
 
 ## Profiling with Flamegraph
-
-### Setup and Usage
-```bash
-# Install
-cargo install flamegraph
-
-# Generate flamegraph (requires perf on Linux, dtrace on macOS)
-cargo flamegraph --bin my-app -- --some-args
-
-# Profile specific benchmark
-cargo flamegraph --bench my_benchmarks -- --bench "sorting"
-```
 
 ### Cargo.toml for Profiling
 ```toml
@@ -131,31 +88,13 @@ tags.push("rust".to_string());
 // No heap allocation if 4 or fewer elements
 ```
 
-### Cow for Flexible Ownership
-```rust
-use std::borrow::Cow;
-
-// Avoids cloning when input is already owned
-fn process(input: Cow<'_, str>) -> Cow<'_, str> {
-    if input.contains("bad") {
-        Cow::Owned(input.replace("bad", "good"))
-    } else {
-        input // No allocation — returns borrowed data
-    }
-}
-
-// Usage
-process(Cow::Borrowed("hello"));           // No allocation
-process(Cow::Owned(String::from("hello"))); // Takes ownership
-```
-
 ### Iterator Chains Over Intermediate Collections
 ```rust
-// WRONG — allocates intermediate Vec
+// WRONG - allocates intermediate Vec
 let filtered: Vec<_> = items.iter().filter(|x| x.active).collect();
 let mapped: Vec<_> = filtered.iter().map(|x| x.name.clone()).collect();
 
-// RIGHT — single pass, no intermediate allocation
+// RIGHT - single pass, no intermediate allocation
 let names: Vec<_> = items.iter()
     .filter(|x| x.active)
     .map(|x| x.name.clone())
@@ -184,29 +123,6 @@ let result = parts.join(", ");
 
 ## Inline Hints
 
-### When to Use
-```rust
-// Small, hot functions called in tight loops
-#[inline]
-fn is_valid(c: char) -> bool {
-    c.is_ascii_alphanumeric() || c == '_'
-}
-
-// Force inlining for critical hot paths
-#[inline(always)]
-fn fast_hash(key: u64) -> u64 {
-    key.wrapping_mul(0x517cc1b727220a95)
-}
-
-// Prevent inlining for cold error paths
-#[cold]
-#[inline(never)]
-fn handle_error(err: Error) -> ! {
-    eprintln!("fatal: {err}");
-    std::process::exit(1);
-}
-```
-
 ### Inline Rules
 - SHOULD let the compiler decide (no annotation) by default
 - SHOULD use `#[inline]` for small functions in library crates (cross-crate inlining)
@@ -230,15 +146,7 @@ fn handle_error(err: Error) -> ! {
 | Small fixed-size | `[T; N]` or `SmallVec` | Stack allocated |
 
 ### Capacity Hints
-```rust
-// Preallocate when size is known or estimatable
-let mut map = HashMap::with_capacity(1000);
-let mut vec = Vec::with_capacity(items.len());
-let mut s = String::with_capacity(256);
-
-// Extend instead of repeated push
-vec.extend(iter);
-```
+Preallocate collections only when a useful size estimate exists; use `extend` for iterator input instead of repeated `push`.
 
 ### HashMap Performance
 ```rust
@@ -259,21 +167,7 @@ match map.entry(key) {
 ## Zero-Copy Patterns
 
 ### Borrowed Data in Structs
-```rust
-// Borrow input instead of cloning
-struct Parser<'a> {
-    input: &'a [u8],
-    position: usize,
-}
-
-impl<'a> Parser<'a> {
-    fn next_token(&mut self) -> &'a [u8] {
-        let start = self.position;
-        // ... advance position ...
-        &self.input[start..self.position]
-    }
-}
-```
+Borrow input only when the lifetime remains clear at the API boundary; otherwise own the data and measure before optimizing allocations.
 
 ### bytes::Bytes for Network Data
 ```rust
@@ -281,5 +175,5 @@ use bytes::Bytes;
 
 // Reference-counted, cheaply cloneable byte buffer
 let data = Bytes::from(vec![1, 2, 3, 4]);
-let slice = data.slice(1..3); // No copy — shared reference
+let slice = data.slice(1..3); // No copy - shared reference
 ```

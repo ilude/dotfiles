@@ -34,7 +34,7 @@ Research notes should preserve what was learned, where it came from, and how rel
 ## Key Findings
 
 ## Sources
-- <title> — <url> — <source type>
+- <title> - <url> - <source type>
 
 ## Open Questions
 ```

@@ -12,9 +12,16 @@ Example:
     python get-user-commits.py /c/Projects/Work/Gitlab/eisa "2026-01-12" "2026-01-18 23:59:59"
 """
 
+import os
 import subprocess
 import sys
 from pathlib import Path
+
+
+def resolve_war_root() -> Path:
+    """Resolve the report output directory."""
+    configured = os.environ.get("WAR_ROOT") or os.environ.get("CLAUDE_WAR_ROOT")
+    return Path(configured).expanduser() if configured else Path.home() / ".claude" / "war"
 
 
 def get_user_email(repo_path: Path) -> str:
@@ -75,9 +82,14 @@ def get_commits(repo_path: Path, since: str, until: str, user_email: str) -> lis
 
 
 def main():
+    if sys.argv[1:] == ["--print-war-root"]:
+        print(resolve_war_root())
+        return
+
     if len(sys.argv) != 4:
         print(
-            "Usage: get-user-commits.py <repo_path> <since_date> <until_date>",
+            "Usage: get-user-commits.py <repo_path> <since_date> <until_date>\n"
+            "       get-user-commits.py --print-war-root",
             file=sys.stderr,
         )
         sys.exit(1)

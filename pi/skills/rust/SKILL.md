@@ -19,8 +19,6 @@ Rust guarantees memory safety without garbage collection through its ownership s
 | `cargo doc --open` | Generate and view docs |
 | `cargo bench` | Run benchmarks |
 
-**Ownership basics:** Each value has one owner. When the owner goes out of scope, the value is dropped. Use references (`&T`, `&mut T`) to borrow without taking ownership.
-
 ## Contents
 
 - [core.md](core.md) - Cargo, error handling, ownership, memory safety, modules

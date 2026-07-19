@@ -39,6 +39,6 @@ Stop only when:
 
 ## Anti-Patterns
 
-- Do not ask one question and then end with “next question when ready.”
+- Do not ask one question and then end with "next question when ready."
 - Do not summarize after every question unless needed to lock a decision.
 - Do not continue indefinitely without a checkpoint.

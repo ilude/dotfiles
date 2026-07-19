@@ -14,7 +14,7 @@ export type AgentScope = "user" | "project" | "both";
  * effort, and skills. Isolation and memory remain advisory metadata.
  */
 export type AgentIsolation = "none" | "worktree";
-export type AgentMemory = "user" | "project" | "session";
+export type AgentMemory = "none" | "user" | "project" | "session";
 export type AgentEffort =
 	| "off"
 	| "minimal"
@@ -52,7 +52,12 @@ function readDirEntries(dir: string): fs.Dirent[] {
 }
 
 const VALID_ISOLATION = new Set<AgentIsolation>(["none", "worktree"]);
-const VALID_MEMORY = new Set<AgentMemory>(["user", "project", "session"]);
+const VALID_MEMORY = new Set<AgentMemory>([
+	"none",
+	"user",
+	"project",
+	"session",
+]);
 const VALID_EFFORT = new Set<AgentEffort>([
 	"off",
 	"minimal",

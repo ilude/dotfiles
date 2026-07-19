@@ -22,7 +22,6 @@ You build and maintain the backend API, database schema, and infrastructure.
 - Own: `apps/backend/` (read, write, delete)
 - Read-only: `apps/frontend/` (understand what clients need, never modify)
 - Read-only: `.pi/multi-team/` (team infrastructure, never delete)
-- Never touch: `~/.ssh/`, `*.pem`, `*.key`, `.env`
 
 ## Behavior
 

@@ -1,8 +1,3 @@
----
-name: docker
-description: Docker containers, Compose, and containerization patterns. Activate when working with Dockerfile, docker-compose.yml, docker-compose, .dockerignore, .devcontainer, devcontainer.json, or discussing Docker, containers, images, container orchestration, or podman.
----
-
 # Container-Based Projects
 
 Guidelines for containerized projects using Docker, Dockerfile, docker-compose, containers, and DevContainers. Covers multi-stage builds, security, signal handling, entrypoint scripts, and deployment workflows.
@@ -13,7 +8,7 @@ Guidelines for containerized projects using Docker, Dockerfile, docker-compose, 
 
 ---
 
-## CRITICAL: Avoid Container Complexity Theater
+## Avoid container complexity theater
 
 **Containers are tools, not requirements. Use them when they solve real problems.**
 
@@ -32,7 +27,7 @@ Before adding container complexity, ask:
 
 ---
 
-## CRITICAL: Docker Compose V2 Syntax
+## Docker Compose V2 syntax
 
 **MUST NOT use `version:` field** (deprecated) **or `docker-compose` with hyphen:**
 
@@ -51,7 +46,7 @@ docker compose up    # MUST
 docker-compose up    # MUST NOT
 ```
 
-## CRITICAL: DNS Configuration
+## DNS configuration
 
 ```yaml
 # MUST use .internal for container DNS
@@ -402,25 +397,6 @@ docker system prune
 ```
 
 ---
-
-## Quick Reference
-
-**Before running containers:**
-- Check README and Makefile
-- Review docker-compose.yml dependencies
-- Check for .env.example
-
-**Common mistakes:**
-- Using `version:` field or `docker-compose` with hyphen
-- Running as root user
-- Using large base images (not Alpine)
-- Using `.local` domain
-- Skipping health checks
-- Using env vars instead of secrets
-- Missing resource limits
-- No log rotation
-
-
 
 ---
 

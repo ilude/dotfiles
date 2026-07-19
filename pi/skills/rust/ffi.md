@@ -1,12 +1,10 @@
 # Foreign Function Interface (FFI)
 
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119.
-
 ## C FFI Fundamentals
 
 ### Exporting Functions
 ```rust
-// lib.rs — crate-type = ["cdylib"] in Cargo.toml
+// lib.rs - crate-type = ["cdylib"] in Cargo.toml
 
 /// # Safety
 /// `name` must be a valid null-terminated C string.
@@ -85,7 +83,7 @@ pub enum LogLevel {
 - MUST use `#[repr(C)]` on all types shared with C
 - MUST use integer repr (`#[repr(u8)]`, `#[repr(i32)]`, etc.) for enums crossing FFI
 - MUST NOT use Rust-specific types (`String`, `Vec`, `Option`) in `#[repr(C)]` structs
-- Use `bool` carefully — C `_Bool` and Rust `bool` differ on some platforms; prefer `u8`
+- Use `bool` carefully - C `_Bool` and Rust `bool` differ on some platforms; prefer `u8`
 
 ---
 
@@ -95,13 +93,13 @@ pub enum LogLevel {
 ```rust
 use std::ffi::{CStr, CString, c_char};
 
-// Rust → C: CString (owned, null-terminated)
+// Rust to C: CString (owned, null-terminated)
 let rust_string = "hello";
 let c_string = CString::new(rust_string)?; // Fails if string contains \0
 let ptr: *const c_char = c_string.as_ptr();
 // c_string must live as long as ptr is used
 
-// C → Rust: CStr (borrowed view of C string)
+// C to Rust: CStr (borrowed view of C string)
 unsafe fn from_c(ptr: *const c_char) -> String {
     let c_str = unsafe { CStr::from_ptr(ptr) };
     c_str.to_string_lossy().into_owned()
@@ -140,7 +138,7 @@ pub extern "C" fn fill_buffer(out: *mut u8, out_len: usize) -> usize {
 // Expose complex Rust types to C as opaque pointers
 
 pub struct Engine {
-    // Complex Rust internals — not exposed to C
+    // Complex Rust internals - not exposed to C
     config: Config,
     state: HashMap<String, Value>,
 }
@@ -182,7 +180,7 @@ pub unsafe extern "C" fn engine_free(engine: *mut Engine) {
 - MUST document ownership transfer in function docs
 - MUST check null before dereferencing
 - SHOULD use `Box::into_raw` / `Box::from_raw` for heap allocation
-- MUST NOT expose struct fields — only accessor functions
+- MUST NOT expose struct fields - only accessor functions
 
 ---
 
@@ -231,7 +229,7 @@ use std::panic;
 #[no_mangle]
 pub extern "C" fn safe_operation(input: *const c_char) -> i32 {
     let result = panic::catch_unwind(|| {
-        // All Rust code here — panics caught
+        // All Rust code here - panics caught
         if input.is_null() { return -1; }
         let s = unsafe { CStr::from_ptr(input) };
         do_work(s.to_str().unwrap_or(""))
@@ -279,87 +277,12 @@ prefix = "MYLIB_API"
 cbindgen --config cbindgen.toml --crate my-lib --output include/my_lib.h
 ```
 
-### Generated Header Example
-```c
-/* my_lib.h */
-#ifndef MY_LIB_H
-#define MY_LIB_H
-
-typedef struct Engine Engine;
-
-typedef enum ErrorCode {
-    Success = 0,
-    NullPointer = 1,
-    InvalidInput = 2,
-} ErrorCode;
-
-Engine *engine_new(void);
-int32_t engine_process(Engine *engine, const char *input);
-void engine_free(Engine *engine);
-const char *get_last_error(void);
-
-#endif /* MY_LIB_H */
-```
-
 ---
 
 ## PyO3 (Python Bindings)
 
-### Basic Module
-```rust
-use pyo3::prelude::*;
-
-#[pyclass]
-#[derive(Clone)]
-struct Calculator {
-    value: f64,
-}
-
-#[pymethods]
-impl Calculator {
-    #[new]
-    fn new() -> Self {
-        Calculator { value: 0.0 }
-    }
-
-    fn add(&mut self, x: f64) {
-        self.value += x;
-    }
-
-    fn result(&self) -> f64 {
-        self.value
-    }
-
-    fn __repr__(&self) -> String {
-        format!("Calculator(value={})", self.value)
-    }
-}
-
-// Standalone function
-#[pyfunction]
-fn fibonacci(n: u64) -> u64 {
-    match n {
-        0 => 0,
-        1 => 1,
-        _ => {
-            let (mut a, mut b) = (0u64, 1u64);
-            for _ in 2..=n {
-                let tmp = a + b;
-                a = b;
-                b = tmp;
-            }
-            b
-        }
-    }
-}
-
-#[pymodule]
-fn my_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<Calculator>()?;
-    m.add_function(wrap_pyfunction!(fibonacci, m)?)?;
-    Ok(())
-}
-```
+### Module design
+Expose narrow `#[pyfunction]` and `#[pyclass]` APIs, translate Rust errors to Python exceptions, and release the GIL around CPU-bound Rust work.
 
 ### Cargo.toml for PyO3
 ```toml
@@ -371,31 +294,11 @@ crate-type = ["cdylib"]
 pyo3 = { version = "0.22", features = ["extension-module"] }
 ```
 
-### Error Handling in PyO3
-```rust
-use pyo3::exceptions::PyValueError;
-
-#[pyfunction]
-fn parse_config(path: &str) -> PyResult<Config> {
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| PyValueError::new_err(format!("failed to read {path}: {e}")))?;
-    // ...
-    Ok(config)
-}
-```
+### Error handling in PyO3
+Map Rust failures to specific Python exception types and preserve actionable context without exposing internal details.
 
 ### Releasing the GIL
-```rust
-use pyo3::prelude::*;
-
-#[pyfunction]
-fn compute_heavy(py: Python<'_>, data: Vec<f64>) -> PyResult<f64> {
-    // Release GIL for CPU-intensive work
-    py.allow_threads(|| {
-        data.iter().map(|x| x.sin().powi(2)).sum()
-    })
-}
-```
+Release the GIL around CPU-intensive Rust work, but do not access Python objects while it is released.
 
 ### Building with Maturin
 ```bash
@@ -441,164 +344,23 @@ wasm-bindgen = "0.2"
 ```
 
 ### Exporting to JavaScript
-```rust
-use wasm_bindgen::prelude::*;
-
-#[wasm_bindgen]
-pub fn add(a: i32, b: i32) -> i32 {
-    a + b
-}
-
-#[wasm_bindgen]
-pub struct Universe {
-    width: u32,
-    height: u32,
-    cells: Vec<u8>,
-}
-
-#[wasm_bindgen]
-impl Universe {
-    #[wasm_bindgen(constructor)]
-    pub fn new(width: u32, height: u32) -> Universe {
-        Universe {
-            width,
-            height,
-            cells: vec![0; (width * height) as usize],
-        }
-    }
-
-    pub fn width(&self) -> u32 { self.width }
-    pub fn height(&self) -> u32 { self.height }
-
-    pub fn tick(&mut self) {
-        // ... update cells ...
-    }
-
-    /// Returns a pointer to the cells buffer for direct memory access from JS.
-    pub fn cells_ptr(&self) -> *const u8 {
-        self.cells.as_ptr()
-    }
-}
-```
+Export small, ownership-clear APIs with `#[wasm_bindgen]`; do not expose pointers into reallocatable Rust storage without a lifetime and invalidation contract.
 
 ### Calling JavaScript from Rust
-```rust
-use wasm_bindgen::prelude::*;
-
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_namespace = console)]
-    fn log(s: &str);
-
-    #[wasm_bindgen(js_namespace = Math)]
-    fn random() -> f64;
-}
-
-#[wasm_bindgen]
-pub fn greet(name: &str) {
-    log(&format!("Hello, {name}!"));
-}
-```
+Declare imported JavaScript functions in an `extern "C"` block and keep conversion, exception, and ownership behavior explicit.
 
 ### web-sys (DOM Access)
-```rust
-use wasm_bindgen::prelude::*;
-use web_sys::{Document, Element, HtmlElement};
-
-#[wasm_bindgen]
-pub fn update_dom() -> Result<(), JsValue> {
-    let window = web_sys::window().unwrap();
-    let document = window.document().unwrap();
-    let body = document.body().unwrap();
-
-    let element = document.create_element("p")?;
-    element.set_text_content(Some("Created from Rust!"));
-    body.append_child(&element)?;
-
-    Ok(())
-}
-```
+Use `web-sys` for browser APIs and return `Result<_, JsValue>` for fallible DOM operations.
 
 ### Building with wasm-pack
-```bash
-# Install
-cargo install wasm-pack
-
-# Build for bundler (webpack, vite)
-wasm-pack build --target bundler
-
-# Build for direct web usage
-wasm-pack build --target web
-
-# Build for Node.js
-wasm-pack build --target nodejs
-
-# Run tests in headless browser
-wasm-pack test --headless --firefox
-```
+Use `wasm-pack` with the target matching the consumer (bundler, web, or Node.js) and run browser tests in a target runtime.
 
 ---
 
 ## Testing FFI Code
 
-### C FFI Tests
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::ffi::{CStr, CString};
-
-    #[test]
-    fn test_roundtrip_string() {
-        let input = CString::new("hello").unwrap();
-        let result = unsafe { greet(input.as_ptr()) };
-        assert!(!result.is_null());
-        let output = unsafe { CStr::from_ptr(result) };
-        assert_eq!(output.to_str().unwrap(), "Hello, hello!");
-        unsafe { free_string(result); }
-    }
-
-    #[test]
-    fn test_null_input() {
-        let result = unsafe { engine_process(std::ptr::null_mut(), std::ptr::null()) };
-        assert_eq!(result, -1);
-    }
-
-    #[test]
-    fn test_opaque_lifecycle() {
-        let engine = engine_new();
-        assert!(!engine.is_null());
-        let input = CString::new("test").unwrap();
-        let code = unsafe { engine_process(engine, input.as_ptr()) };
-        assert_eq!(code, 0);
-        unsafe { engine_free(engine); }
-    }
-}
-```
-
-### PyO3 Tests
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use pyo3::types::PyModule;
-
-    #[test]
-    fn test_fibonacci() {
-        assert_eq!(fibonacci(0), 0);
-        assert_eq!(fibonacci(1), 1);
-        assert_eq!(fibonacci(10), 55);
-    }
-
-    #[test]
-    fn test_calculator() {
-        let mut calc = Calculator::new();
-        calc.add(3.0);
-        calc.add(4.0);
-        assert_eq!(calc.result(), 7.0);
-    }
-}
-```
+### FFI tests
+Exercise null input, ownership transfer, error codes, and allocation/free lifecycles from the foreign caller's perspective. Test Python and WebAssembly exports through their target runtimes.
 
 ### Memory Safety Checklist
 - [ ] Every `*_new()` has a matching `*_free()`

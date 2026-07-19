@@ -4,7 +4,7 @@ Systematically evaluate security implications before implementation.
 
 ---
 
-## CRITICAL: Avoid Security Theater
+## Avoid security theater
 
 **Finding problems is easy. Finding problems WORTH SOLVING is hard.**
 

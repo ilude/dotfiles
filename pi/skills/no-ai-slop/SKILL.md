@@ -17,13 +17,13 @@ Keep only claims that are specific, supported, and useful. Plain language beats 
 
 ## Practical Steps
 
-1. Cut throat-clearing: "In today's world", "It's important to note", "delve".
-2. Replace hype with evidence: say what changed, by how much, or for whom.
-3. Prefer concrete verbs over abstract nouns.
-4. Remove repeated sentence shapes and summary boilerplate.
-5. Delete unsupported superlatives and invented precision.
-6. Preserve the author's meaning, terminology, and level of certainty.
-7. If a claim needs a source, mark it or remove it.
+- Cut throat-clearing: "In today's world", "It's important to note", "delve".
+- Replace hype with evidence: say what changed, by how much, or for whom.
+- Prefer concrete verbs over abstract nouns.
+- Remove repeated sentence shapes and summary boilerplate.
+- Delete unsupported superlatives and invented precision.
+- Preserve the author's meaning, terminology, and level of certainty.
+- If a claim needs a source, mark it or remove it.
 
 ## Edit Rules
 

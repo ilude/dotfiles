@@ -1,7 +1,5 @@
 # Rust Projects Workflow
 
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119.
-
 ## Tool Grid
 
 | Task | Tool | Command |
@@ -46,25 +44,6 @@ Public types SHOULD implement:
 - `Eq` - When `PartialEq` is reflexive (most cases)
 - `Hash` - When the type may be used as a key
 - `Default` - When a sensible default exists
-
-### Common Derive Patterns
-```rust
-// Minimal public struct
-#[derive(Debug, Clone)]
-pub struct Config { /* ... */ }
-
-// Value type (data container)
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct UserId(String);
-
-// With default
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct Settings { /* ... */ }
-
-// Serializable types
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ApiResponse { /* ... */ }
-```
 
 ### Display Trait
 Types representing user-facing values SHOULD implement `Display`:
@@ -157,33 +136,6 @@ pub type Result<T> = std::result::Result<T, LibraryError>;
 - Only one mutable borrow (`&mut T`) at a time
 - Cannot mix mutable and immutable borrows
 
-### Lifetime Annotations
-```rust
-// Explicit lifetime when returning borrowed data
-fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {
-    if x.len() > y.len() { x } else { y }
-}
-
-// Struct containing references
-struct Parser<'a> {
-    input: &'a str,
-}
-```
-
-### Common Patterns
-```rust
-// Clone to avoid borrow issues (acceptable for small types)
-let owned = borrowed.to_string();
-
-// Use Cow for flexible ownership
-use std::borrow::Cow;
-fn process(input: Cow<'_, str>) -> String { /* ... */ }
-
-// Arc/Rc for shared ownership
-use std::sync::Arc;
-let shared = Arc::new(data);
-```
-
 ### Memory Safety Rules
 - MUST NOT use raw pointers outside `unsafe` blocks
 - SHOULD prefer `&[T]` over raw pointers for slices
@@ -194,20 +146,8 @@ let shared = Arc::new(data);
 
 ## Module Organization
 
-### File Structure
-```
-src/
-├── lib.rs          # Library root (pub mod declarations)
-├── main.rs         # Binary entry point (optional)
-├── config.rs       # Single-file module
-├── handlers/       # Multi-file module
-│   ├── mod.rs      # Module root (pub mod + re-exports)
-│   ├── auth.rs     # Submodule
-│   └── api.rs      # Submodule
-└── utils/
-    ├── mod.rs
-    └── helpers.rs
-```
+### File structure
+Use `lib.rs` or `main.rs` as the crate root. Keep modules cohesive, expose a small public surface from module roots, and avoid a catch-all `utils` module.
 
 ### mod.rs Patterns
 ```rust
@@ -255,50 +195,6 @@ cargo test -- --nocapture     # Show println output
 
 ## Documentation
 
-### Item Documentation (///)
-```rust
-/// Calculates the factorial of a number.
-///
-/// # Arguments
-///
-/// * `n` - The number to calculate factorial for
-///
-/// # Returns
-///
-/// The factorial of `n`, or `None` if overflow occurs.
-///
-/// # Examples
-///
-/// ```
-/// use mylib::factorial;
-/// assert_eq!(factorial(5), Some(120));
-/// ```
-///
-/// # Panics
-///
-/// This function does not panic.
-pub fn factorial(n: u64) -> Option<u64> {
-    // implementation
-}
-```
-
-### Module Documentation (//!)
-```rust
-//! # Authentication Module
-//!
-//! This module provides authentication and authorization
-//! functionality for the application.
-//!
-//! ## Features
-//!
-//! - JWT token validation
-//! - Role-based access control
-//! - Session management
-
-mod jwt;
-mod roles;
-```
-
 ### Documentation Rules
 - MUST document all public items
 - MUST include `# Examples` for non-trivial functions
@@ -342,33 +238,8 @@ pub unsafe fn read_ptr<T>(ptr: *const T) -> T {
 }
 ```
 
-### Safe Abstractions
-```rust
-pub struct SafeBuffer {
-    ptr: *mut u8,
-    len: usize,
-}
-
-impl SafeBuffer {
-    pub fn new(size: usize) -> Self {
-        let ptr = unsafe {
-            // SAFETY: size > 0 checked, layout is valid
-            std::alloc::alloc(std::alloc::Layout::array::<u8>(size).unwrap())
-        };
-        Self { ptr, len: size }
-    }
-
-    // Safe public API
-    pub fn get(&self, index: usize) -> Option<u8> {
-        if index < self.len {
-            // SAFETY: bounds checked above
-            Some(unsafe { *self.ptr.add(index) })
-        } else {
-            None
-        }
-    }
-}
-```
+### Safe abstractions
+Keep `unsafe` implementation details private, validate every invariant at the boundary, and expose only operations that preserve those invariants.
 
 ### Unsafe Code Rules
 - MUST add `// SAFETY:` comment before every `unsafe` block
@@ -426,77 +297,11 @@ impl Config {
 ---
 ## Common Patterns
 
-### Builder Pattern
-```rust
-#[derive(Debug, Clone, Default)]
-pub struct RequestBuilder {
-    url: String,
-    headers: Vec<(String, String)>,
-    timeout: Option<u64>,
-}
+### Builder and newtype patterns
+Use builders when optional configuration would otherwise make a constructor unclear. Use newtypes to make invalid states unrepresentable; validate at construction and expose only the intended operations.
 
-impl RequestBuilder {
-    pub fn new(url: impl Into<String>) -> Self {
-        Self { url: url.into(), ..Default::default() }
-    }
-
-    pub fn header(mut self, key: &str, value: &str) -> Self {
-        self.headers.push((key.to_string(), value.to_string()));
-        self
-    }
-
-    pub fn timeout(mut self, seconds: u64) -> Self {
-        self.timeout = Some(seconds);
-        self
-    }
-
-    pub fn build(self) -> Request {
-        Request { /* ... */ }
-    }
-}
-```
-
-### Newtype Pattern
-```rust
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Email(String);
-
-impl Email {
-    pub fn new(value: &str) -> Result<Self, ValidationError> {
-        if value.contains('@') {
-            Ok(Self(value.to_string()))
-        } else {
-            Err(ValidationError::InvalidEmail)
-        }
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-```
-
-### Type State Pattern
-```rust
-pub struct Connection<State> {
-    inner: TcpStream,
-    _state: std::marker::PhantomData<State>,
-}
-
-pub struct Disconnected;
-pub struct Connected;
-
-impl Connection<Disconnected> {
-    pub fn connect(addr: &str) -> Result<Connection<Connected>, Error> {
-        let stream = TcpStream::connect(addr)?;
-        Ok(Connection { inner: stream, _state: std::marker::PhantomData })
-    }
-}
-
-impl Connection<Connected> {
-    pub fn send(&mut self, data: &[u8]) -> Result<(), Error> { /* ... */ }
-}
-```
+### Type state pattern
+Use type states when transitions make invalid operations unrepresentable and the additional public API complexity is justified.
 
 ---
 

@@ -1,8 +1,3 @@
----
-name: python
-description: Python development with uv, pytest, Pydantic, type hints, and modern tooling. Activate when working with Python files, pyproject.toml, uv, pip, pytest, or discussing Python code patterns.
----
-
 # Python Projects Workflow
 
 Guidelines for working with Python projects across different package managers, code styles, and architectural patterns using modern tooling (uv, Python 3.9+).
@@ -183,7 +178,7 @@ conn = connect(DEFAULT_HOST, DEFAULT_PORT)
 - Provide **meaningful error messages** that help debugging
 - Use Python's `logging` module with structured logging
 - Handle edge cases explicitly (empty inputs, None values, invalid types)
-- **CRITICAL:** MUST NOT remove public methods for lint fixes - preserve API stability
+- **MUST NOT remove public methods for lint fixes - preserve API stability**
 
 ## Project Structure
 
@@ -294,22 +289,3 @@ For web framework patterns, load the appropriate framework rules:
 | Security | Bandit | `uv run bandit -r src/` |
 | Dead code | Vulture | `uv run vulture src/` |
 | Coverage | pytest-cov | `uv run pytest --cov=src` |
-
-## Quick Reference
-
-**Package managers:**
-- UV: `uv run`, `uv sync`, `uv add`, `uv add --dev`
-- Poetry: `poetry run`, `poetry install`, `poetry add`
-- Pip: `pip install`, `python -m pip`
-
-**Key rules:**
-- MUST use `uv run python` (MUST NOT use manual .venv paths)
-- MUST use `-m` flag for module CLIs
-- MUST check `pyproject.toml` for config
-- MUST use strong type hints for all parameters/returns
-- MUST separate concerns: models, services, repositories
-- SHOULD use Pydantic for validation
-- SHOULD use pytest with fixtures
-- MUST NOT mix package managers
-- MUST NOT remove public methods for lint fixes
-- MUST NOT name helper classes with "Test" prefix

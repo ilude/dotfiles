@@ -1,42 +1,6 @@
 # Web Development with Axum
 
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119.
-
 ## Router Setup
-
-### Basic Application
-```rust
-use axum::{Router, routing::{get, post}, Extension};
-use std::sync::Arc;
-use tokio::net::TcpListener;
-
-#[derive(Clone)]
-struct AppState {
-    db: sqlx::PgPool,
-    config: Arc<Config>,
-}
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::init();
-
-    let pool = sqlx::PgPool::connect(&std::env::var("DATABASE_URL")?).await?;
-    let state = AppState { db: pool, config: Arc::new(Config::load()?) };
-
-    let app = Router::new()
-        .route("/health", get(health))
-        .nest("/api/v1", api_routes())
-        .with_state(state);
-
-    let listener = TcpListener::bind("0.0.0.0:3000").await?;
-    tracing::info!("listening on {}", listener.local_addr()?);
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
-
-    Ok(())
-}
-```
 
 ### Route Organization
 ```rust
@@ -63,105 +27,18 @@ fn user_routes() -> Router<AppState> {
 
 ## Handlers and Extractors
 
-### Basic Handlers
-```rust
-use axum::{
-    extract::{Path, Query, State, Json},
-    http::StatusCode,
-    response::IntoResponse,
-};
+### Basic handlers
+Extract state and validated input, delegate to an application service, and return a typed success or `AppError`; do not mix transport and business logic.
 
-// GET /users?page=1&limit=10
-async fn list_users(
-    State(state): State<AppState>,
-    Query(params): Query<PaginationParams>,
-) -> Result<Json<Vec<User>>, AppError> {
-    let users = User::list(&state.db, params.page, params.limit).await?;
-    Ok(Json(users))
-}
-
-// GET /users/:id
-async fn get_user(
-    State(state): State<AppState>,
-    Path(id): Path<i64>,
-) -> Result<Json<User>, AppError> {
-    let user = User::find(&state.db, id).await?
-        .ok_or(AppError::NotFound)?;
-    Ok(Json(user))
-}
-
-// POST /users
-async fn create_user(
-    State(state): State<AppState>,
-    Json(payload): Json<CreateUserRequest>,
-) -> Result<(StatusCode, Json<User>), AppError> {
-    let user = User::create(&state.db, payload).await?;
-    Ok((StatusCode::CREATED, Json(user)))
-}
-```
-
-### Query and Path Parameters
-```rust
-#[derive(Debug, serde::Deserialize)]
-struct PaginationParams {
-    #[serde(default = "default_page")]
-    page: u32,
-    #[serde(default = "default_limit")]
-    limit: u32,
-}
-
-fn default_page() -> u32 { 1 }
-fn default_limit() -> u32 { 20 }
-
-// Multiple path params
-// GET /users/:user_id/posts/:post_id
-async fn get_user_post(
-    Path((user_id, post_id)): Path<(i64, i64)>,
-) -> impl IntoResponse {
-    // ...
-}
-```
+### Query and path parameters
+Deserialize typed query/path values, apply bounded defaults, and reject malformed or out-of-range input before invoking application logic.
 
 ### Custom Extractors
-```rust
-use axum::{
-    extract::FromRequestParts,
-    http::request::Parts,
-};
-
-struct AuthUser {
-    user_id: i64,
-    role: Role,
-}
-
-#[axum::async_trait]
-impl<S> FromRequestParts<S> for AuthUser
-where
-    S: Send + Sync,
-{
-    type Rejection = AppError;
-
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        let token = parts.headers
-            .get("authorization")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.strip_prefix("Bearer "))
-            .ok_or(AppError::Unauthorized)?;
-
-        let claims = decode_jwt(token)?;
-        Ok(AuthUser { user_id: claims.sub, role: claims.role })
-    }
-}
-
-// Usage — just add to handler signature
-async fn admin_endpoint(user: AuthUser) -> impl IntoResponse {
-    // user is extracted and validated automatically
-}
-```
+Use `FromRequestParts` for header/query authentication and validation. Return a typed rejection, keep authentication policy in the extractor, and make handler inputs trusted domain values.
 
 ### Extractor Rules
-- Extractors run in argument order — put fallible ones last
-- `Json<T>` consumes the body — only one body extractor per handler
+- Extractors run in argument order - put fallible ones last
+- `Json<T>` consumes the body - only one body extractor per handler
 - MUST implement `FromRequestParts` (not `FromRequest`) for header/query extractors
 - SHOULD validate input in the extractor, not the handler
 
@@ -378,36 +255,7 @@ sqlx::migrate!("./migrations")
 ## JWT Authentication
 
 ### Token Creation and Validation
-```rust
-use jsonwebtoken::{encode, decode, Header, Validation, EncodingKey, DecodingKey};
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-struct Claims {
-    sub: i64,        // user id
-    role: String,
-    exp: usize,      // expiration (UNIX timestamp)
-    iat: usize,      // issued at
-}
-
-fn create_token(user_id: i64, role: &str, secret: &[u8]) -> Result<String, AppError> {
-    let now = chrono::Utc::now();
-    let claims = Claims {
-        sub: user_id,
-        role: role.to_string(),
-        exp: (now + chrono::Duration::hours(24)).timestamp() as usize,
-        iat: now.timestamp() as usize,
-    };
-
-    encode(&Header::default(), &claims, &EncodingKey::from_secret(secret))
-        .map_err(|e| AppError::Internal(e.into()))
-}
-
-fn validate_token(token: &str, secret: &[u8]) -> Result<Claims, AppError> {
-    decode::<Claims>(token, &DecodingKey::from_secret(secret), &Validation::default())
-        .map(|data| data.claims)
-        .map_err(|_| AppError::Unauthorized)
-}
-```
+Validate signature, issuer, audience, expiry, and algorithm explicitly. Map any invalid token to the same unauthorized response and never log credentials or raw tokens.
 
 ---
 

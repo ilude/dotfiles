@@ -28,7 +28,7 @@ For detailed patterns and examples, see:
 
 ---
 
-## CRITICAL: Avoid Complexity Theater
+## Avoid complexity theater
 
 **Adding patterns is easy. Adding patterns WORTH THE COMPLEXITY is hard.**
 

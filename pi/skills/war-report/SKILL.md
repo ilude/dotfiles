@@ -10,7 +10,8 @@ Routing card for weekly work accomplishment reports.
 ## Inputs and Scope
 
 - Use `date` to calculate the Sunday-Saturday reporting range and Friday report filename.
-- Scan `CLAUDE_WAR_ROOT` when set, otherwise `C:\\Projects\\Work\\Gitlab\\` for Git repos.
+- Scan `C:\\Projects\\Work\\Gitlab\\` for Git repos.
+- Resolve the report output directory from `WAR_ROOT`, then `CLAUDE_WAR_ROOT`, then `~/.claude/war`.
 - Do not include GitHub/personal repos.
 - Use exact author email matching via `war-report/get-user-commits.py`:
 
@@ -18,11 +19,11 @@ Routing card for weekly work accomplishment reports.
 python SKILL_DIR/get-user-commits.py <repo_path> "<since>" "<until>"
 ```
 
-- Review the previous report in `~/.claude/war/` for continuity when available.
+- Review the previous report in the resolved output directory for continuity when available.
 
 ## Output
 
-Write `~/.claude/war/war-YYYY-MM-DD.md` using date-prefixed chronological entries only, no header:
+Write `war-YYYY-MM-DD.md` in the resolved output directory using date-prefixed chronological entries only, no header:
 
 ```text
 9 Feb: Developed onboarding application edit models and update functionality

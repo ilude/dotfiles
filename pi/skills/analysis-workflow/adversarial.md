@@ -8,7 +8,7 @@
 
 ## Core Principle: Prospective Hindsight
 
-**From Gary Klein's research**: Pre-mortem analysis—imagining the project has already failed—increases ability to identify risks by **30%** compared to standard critique.
+**From Gary Klein's research**: Pre-mortem analysis - imagining the project has already failed - increases ability to identify risks by **30%** compared to standard critique.
 
 > **"The project has failed. What went wrong?"**
 
@@ -25,7 +25,7 @@ Research on devil's advocacy shows:
 
 ---
 
-## CRITICAL: Avoid Security Theater
+## Avoid security theater
 
 **Finding problems is easy. Finding problems WORTH SOLVING is hard.**
 
@@ -67,7 +67,7 @@ If the answer is vague ("defense in depth", "best practices"), the control may b
 > "It's 6 months from now. This project/design/plan has failed catastrophically. What went wrong?"
 
 - List 5-10 plausible failure scenarios
-- Don't censor—even "unlikely" scenarios
+- Don't censor - even "unlikely" scenarios
 - Focus on what would make YOU look foolish for not anticipating
 
 ### Phase 2: Challenge Assumptions
@@ -157,7 +157,7 @@ Be skeptical of your own findings. If every finding leads to "add more controls,
 | Stimulates divergent thought | May feel "destructive" |
 | Harder to find | Easy to assign |
 
-**Guidance**: When possible, seek people who genuinely disagree. When that's not available, assign the devil's advocate role—it's still better than no challenge.
+**Guidance**: When possible, seek people who genuinely disagree. When that's not available, assign the devil's advocate role - it's still better than no challenge.
 
 ---
 

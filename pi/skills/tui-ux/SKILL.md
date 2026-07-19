@@ -9,8 +9,6 @@ Treat terminal UI as a product surface, not just command output. Users should no
 
 ## Research-Informed Additions
 
-Sources reviewed: OpenAI GPT-5/GPT-5.2 prompting guides and CLI UX pattern writing. I did not find a clearly authoritative public GPT-5.6-specific TUI UX guide; treat GPT-5.6-specific claims from social posts as unverified unless backed by official docs.
-
 Key takeaways to apply:
 
 - **Control agent eagerness:** when changing UX, gather enough context to identify existing patterns, then make the smallest scoped change. Do not invent unrelated UI components or behavior.
@@ -23,13 +21,12 @@ Key takeaways to apply:
 ## Core Principles
 
 1. **Responsiveness first**
-   - Never block typing, navigation, cancel, help, or quit on network/storage/provider work.
+   - Keep typing, navigation, cancel, help, and quit responsive during network/storage/provider work.
    - Use async work with stale-result guards for provider/model/session changes.
    - Discover live provider/model data on startup or cache refresh instead of hardcoding stale lists.
    - Add timeouts for provider/model list calls so one bad endpoint cannot hang the UI.
 
 2. **Predictable navigation**
-   - Every selectable list must support Up/Down, Vim-style `k`/`j` where appropriate, Enter, Esc/cancel, and typed selection only if visible/documented.
    - Selection movement must update the visible window. Never let selection move into hidden rows without scrolling/windowing.
    - Preserve selection where sensible after refresh; clamp safely when list length changes.
 
@@ -40,7 +37,6 @@ Key takeaways to apply:
 
 4. **Window long content**
    - Long lists need pagination/windowing and clear indicators: `... N previous`, `... N more`.
-   - Keep the selected row visible.
    - Avoid hiding available items with a static top-N truncation.
 
 5. **Provider isolation and graceful degradation**
@@ -51,10 +47,8 @@ Key takeaways to apply:
 6. **Safe configuration behavior**
    - Do not silently overwrite or drop existing profile fields, secret refs, user-chosen models, or unknown future fields.
    - Prefer additive migration and explicit dedupe rules.
-   - Generated default config should be created in the OS user config directory, formatted, with final newline, and never overwrite user edits.
 
 7. **Secrets stay secret**
-   - Never print API keys, tokens, passwords, AWS keys, or bearer tokens.
    - UI should mention secret refs/locations only when safe; avoid exposing values.
    - When editing config manually or by tool, preserve `secret_ref` unless intentionally deleting credentials.
 
@@ -63,12 +57,8 @@ Key takeaways to apply:
 
 9. **Explicit recovery paths**
    - Every error/degraded state should explain what happened and what the user can do: retry, cancel, run `/login`, edit config, restart, etc.
-   - Cancellation should leave the app usable and preserve drafts.
 
-10. **Least astonishment**
-    - Match existing keybindings, wording, spacing, and layout patterns.
-    - No drive-by reformatting or unrelated behavior changes.
-    - If changing a stored-data convention, add migration tests.
+10. Apply POLA (see the `least-astonishment` skill) to keybindings, wording, and spacing.
 
 ## Agent Behavior Rules for TUI Work
 

@@ -10,7 +10,7 @@ TypeScript/JavaScript testing patterns using Bun's built-in test runner.
 - **Readable tests** - Test names should document expected behavior
 - **Pragmatic coverage** - Cover critical paths, not vanity metrics
 
-## CRITICAL: Bun Test Execution
+## Bun test execution
 
 **NEVER use jest, vitest, or other test runners in Bun projects:**
 

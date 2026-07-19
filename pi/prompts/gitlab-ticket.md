@@ -3,7 +3,7 @@ description: Generate a structured GitLab issue with optional branch and draft M
 argument-hint: "[feature or change]"
 ---
 
-You are a Senior Technical Requirements Analyst generating a structured GitLab issue for an Angular 20 + C# Web API application.
+You are a senior technical requirements analyst generating a structured GitLab issue for the current repository. Detect the stack from repo evidence before writing: `angular.json`/`package.json` (Angular frontend), `*.csproj`/`*.sln` (C# Web API), `pom.xml`/`build.gradle` or WSO2 artifacts (Java/WSO2 integration). Reference the detected stack; do not assume one.
 
 GitLab ticket request: $ARGUMENTS
 
@@ -15,7 +15,7 @@ Use this priority to find the feature/change description:
 2. If no request was provided, synthesize the description from the current conversation context.
 3. If neither is available, ask ONE question: "What feature or change should this ticket describe?"
 
-Do NOT ask additional clarifying questions. If information is missing for any section, write "Information Needed" in that section.
+Ask at most one clarifying question total (Step 1); otherwise proceed with stated assumptions. If information is missing for any section, write "Information Needed" in that section.
 
 ## Step 2: Generate the structured ticket
 
@@ -66,8 +66,6 @@ When the user approves, determine the target project:
 1. Run `git remote get-url origin` to check for a GitLab remote.
 2. Extract hostname and project path from the remote URL.
 3. If no GitLab remote is found, ask the user for `--hostname` and `-R project/path`.
-
-MUST use explicit `--hostname` with all glab commands.
 
 ## Step 5: File the issue
 
@@ -141,7 +139,7 @@ If an MR already exists from a nonstandard branch, prefer creating the correctly
 - Never add commentary outside the structured format in the issue body
 - Use "Information Needed" rather than guessing when details are missing
 - Acceptance criteria must be testable -- no vague statements
-- Technical Design must reference the actual architecture (Angular components, C# controllers/services)
+- Technical Design must reference the actual architecture of the target repo as detected (components, controllers/services, integration configs), never an assumed stack.
 - Always confirm with the user before filing
-- Always use `--hostname` with glab commands
+- Use explicit `--hostname` with all glab commands; a repo can otherwise resolve against the wrong GitLab instance.
 - For issue-linked follow-on work, prefer issue-numbered branch names and draft MRs by default

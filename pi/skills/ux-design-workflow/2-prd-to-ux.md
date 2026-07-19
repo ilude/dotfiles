@@ -141,7 +141,7 @@ THEN: Visual Specifications
 - ...
 ```
 
-No visuals required—just clarity on what signals what.
+No visuals required - just clarity on what signals what.
 
 ---
 
@@ -205,7 +205,7 @@ No visuals required—just clarity on what signals what.
 | Error | | | |
 ```
 
-This prevents "dead UX"—screens with no feedback.
+This prevents "dead UX" - screens with no feedback.
 
 ---
 
@@ -259,9 +259,9 @@ If you catch yourself doing any of these, STOP and return to the passes:
 | No friction point analysis | Pass 4 (cognitive load) |
 | States only in component specs | Pass 5 (holistic state design) |
 | No "where could they fail?" | Pass 6 (flow integrity) |
-| "User is in a hurry" | ALL passes — urgency is a trap |
-| "Just this once, skip to visuals" | ALL passes — exceptions become habits |
-| "The PRD is simple enough" | ALL passes — simple PRDs still need mental model analysis |
+| "User is in a hurry" | ALL passes - urgency is a trap |
+| "Just this once, skip to visuals" | ALL passes - exceptions become habits |
+| "The PRD is simple enough" | ALL passes - simple PRDs still need mental model analysis |
 
 ## Common Mistakes
 

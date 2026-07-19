@@ -31,4 +31,7 @@ Report method and limitations: `cdp` is live CDP capture; `session` is parsed co
 
 ## Safety
 
-Never kill Brave to unlock files, write captures under `.pi/` or tracked paths, force-add `private/`, or claim session parsing is live.
+- Do not kill Brave to unlock files.
+- Do not write captures under `.pi/` or tracked paths.
+- Do not force-add `private/`.
+- Do not claim session parsing is live.

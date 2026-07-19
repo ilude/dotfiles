@@ -1,7 +1,5 @@
 # Concurrency
 
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119.
-
 ## Shared State Primitives
 
 ### Arc (Atomic Reference Counting)
@@ -19,23 +17,6 @@ std::thread::spawn(move || {
 - MUST use `Arc::clone(&arc)` not `arc.clone()` for clarity
 - `Arc<T>` provides shared ownership; does NOT provide interior mutability
 - Combine with `Mutex` or `RwLock` for mutable shared state
-
-### Mutex
-```rust
-use std::sync::{Arc, Mutex};
-
-let counter = Arc::new(Mutex::new(0));
-
-let handles: Vec<_> = (0..10).map(|_| {
-    let counter = Arc::clone(&counter);
-    std::thread::spawn(move || {
-        let mut num = counter.lock().unwrap();
-        *num += 1;
-    })
-}).collect();
-
-for h in handles { h.join().unwrap(); }
-```
 
 ### std::sync::Mutex vs tokio::sync::Mutex
 
@@ -62,33 +43,11 @@ let data = Arc::new(tokio::sync::Mutex::new(Connection::new()));
 }
 ```
 
-### RwLock
-```rust
-use std::sync::RwLock;
-
-let config = Arc::new(RwLock::new(Config::default()));
-
-// Multiple readers
-let cfg = config.read().unwrap();
-println!("{}", cfg.timeout);
-
-// Single writer (blocks all readers)
-let mut cfg = config.write().unwrap();
-cfg.timeout = 30;
-```
-
 - SHOULD use `RwLock` when reads greatly outnumber writes
 - SHOULD prefer `Mutex` when read/write ratio is balanced (simpler, less overhead)
 
-### parking_lot Alternatives
-```rust
-// Drop-in replacements with better performance
-use parking_lot::{Mutex, RwLock};
-
-let data = Mutex::new(0);
-let guard = data.lock(); // No Result — never poisons
-// No .unwrap() needed
-```
+### parking_lot alternatives
+`parking_lot` provides non-poisoning `Mutex` and `RwLock` implementations with smaller, often faster locks; adopt it consistently rather than mixing lock families.
 
 Benefits over `std::sync`:
 - No lock poisoning (panics don't permanently lock)
@@ -119,11 +78,11 @@ let old = COUNTER.fetch_add(1, Ordering::Relaxed);
 
 | Ordering | Use Case |
 |----------|----------|
-| `Relaxed` | Counters, statistics — no ordering guarantees needed |
+| `Relaxed` | Counters, statistics - no ordering guarantees needed |
 | `Acquire` | Reading a flag/value set by another thread (pairs with `Release`) |
 | `Release` | Writing a flag/value to be read by another thread (pairs with `Acquire`) |
 | `AcqRel` | Read-modify-write when both sides need ordering (e.g., `compare_exchange`) |
-| `SeqCst` | When unsure — strictest ordering, always correct, slight perf cost |
+| `SeqCst` | When unsure - strictest ordering, always correct, slight perf cost |
 
 ### Ordering Rules
 - MUST use `SeqCst` when unsure about correct ordering
@@ -158,8 +117,8 @@ loop {
 ## Send and Sync Traits
 
 ### Definitions
-- `Send` — type can be **transferred** to another thread
-- `Sync` — type can be **referenced** from another thread (`&T` is `Send`)
+- `Send` - type can be **transferred** to another thread
+- `Sync` - type can be **referenced** from another thread (`&T` is `Send`)
 
 ### Common Types
 
@@ -187,41 +146,10 @@ assert_sync::<MyType>();
 ## Crossbeam
 
 ### Scoped Threads
-```rust
-use crossbeam::thread;
-
-let data = vec![1, 2, 3, 4, 5];
-
-// Scoped threads can borrow from the enclosing scope
-thread::scope(|s| {
-    for chunk in data.chunks(2) {
-        s.spawn(move |_| {
-            println!("{chunk:?}");
-        });
-    }
-}).unwrap();
-// All threads guaranteed joined here
-```
+Use `crossbeam::scope` when threads must borrow enclosing data; its scope guarantees joins before borrowed data can go out of scope.
 
 ### Crossbeam Channels
-```rust
-use crossbeam::channel;
-
-// Bounded channel
-let (tx, rx) = channel::bounded::<Message>(100);
-
-// Unbounded channel
-let (tx, rx) = channel::unbounded::<Message>();
-
-// Select across multiple channels
-use crossbeam::channel::select;
-
-select! {
-    recv(rx1) -> msg => handle(msg.unwrap()),
-    recv(rx2) -> msg => handle(msg.unwrap()),
-    default(Duration::from_secs(1)) => println!("timeout"),
-}
-```
+Use bounded channels for backpressure and `select!` to receive from multiple sources.
 
 ---
 

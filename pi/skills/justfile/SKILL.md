@@ -17,16 +17,16 @@ A Justfile should expose memorable project tasks while delegating complex logic 
 
 ## Practical Steps
 
-1. Follow existing recipe naming and grouping.
-2. Keep public recipes short and discoverable.
-3. Use private helper recipes for shared setup.
-4. Quote variables passed to shell commands.
-5. Be explicit about dotenv and environment requirements.
-6. Test recipes from a clean shell where practical.
+- Follow existing recipe naming and grouping.
+- Keep public recipes short and discoverable.
+- Use private helper recipes for shared setup.
+- Quote variables passed to shell commands.
+- Be explicit about dotenv and environment requirements.
+- Test recipes from a clean shell where practical.
 
 ## Cross-Platform Notes
 
-- Match the repo’s configured shell rather than assuming Bash.
+- Match the repo's configured shell rather than assuming Bash.
 - Avoid POSIX-only snippets when Windows support is claimed.
 - Prefer calling checked-in scripts for complex multi-line logic.
 

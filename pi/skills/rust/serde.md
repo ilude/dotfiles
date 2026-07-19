@@ -1,20 +1,9 @@
 # Serde Serialization
 
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119.
-
 ## Derive Basics
 
-### Standard Derives
-```rust
-use serde::{Serialize, Deserialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct User {
-    pub id: i64,
-    pub name: String,
-    pub email: String,
-}
-```
+### Standard derives
+Derive `Serialize` and `Deserialize` on boundary data types; keep transport representations separate from domain invariants when their compatibility needs differ.
 
 ### Feature-Gated Serde
 ```toml
@@ -45,9 +34,9 @@ pub struct Config {
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiResponse {
-    pub user_id: i64,        // → "userId"
-    pub first_name: String,  // → "firstName"
-    pub is_active: bool,     // → "isActive"
+    pub user_id: i64,        // -> "userId"
+    pub first_name: String,  // -> "firstName"
+    pub is_active: bool,     // -> "isActive"
 }
 
 // Available: camelCase, snake_case, PascalCase, SCREAMING_SNAKE_CASE,
@@ -56,7 +45,7 @@ pub struct ApiResponse {
 
 ### deny_unknown_fields
 ```rust
-// Strict deserialization — reject unexpected fields
+// Strict deserialization - reject unexpected fields
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CreateUserRequest {
@@ -65,44 +54,8 @@ pub struct CreateUserRequest {
 }
 ```
 
-### tag / content (Enum Representations)
-```rust
-// Externally tagged (default): {"variant_name": { fields }}
-#[derive(Serialize, Deserialize)]
-enum Message {
-    Text { body: String },
-    Image { url: String, width: u32 },
-}
-// → {"Text": {"body": "hello"}}
-
-// Internally tagged: {"type": "variant", fields}
-#[derive(Serialize, Deserialize)]
-#[serde(tag = "type")]
-enum Event {
-    Click { x: i32, y: i32 },
-    Scroll { delta: f64 },
-}
-// → {"type": "Click", "x": 10, "y": 20}
-
-// Adjacently tagged: {"t": "variant", "c": { fields }}
-#[derive(Serialize, Deserialize)]
-#[serde(tag = "t", content = "c")]
-enum Payload {
-    Data(Vec<u8>),
-    Error(String),
-}
-// → {"t": "Data", "c": [1, 2, 3]}
-
-// Untagged: tries each variant in order
-#[derive(Serialize, Deserialize)]
-#[serde(untagged)]
-enum Value {
-    Int(i64),
-    Float(f64),
-    Text(String),
-}
-// → 42 or 3.14 or "hello"
-```
+### `tag` / `content` enum representations
+Choose the representation as part of the public protocol. Prefer internal or adjacent tags for JSON APIs; reserve untagged enums for unambiguous inputs because variant order affects deserialization.
 
 ### Enum Representation Guide
 
@@ -117,53 +70,8 @@ enum Value {
 
 ## Field Attributes
 
-### Common Field Attributes
-```rust
-#[derive(Serialize, Deserialize)]
-pub struct Config {
-    // Rename individual field
-    #[serde(rename = "apiKey")]
-    pub api_key: String,
-
-    // Use default if missing during deserialization
-    #[serde(default)]
-    pub retries: u32,
-
-    // Custom default value
-    #[serde(default = "default_timeout")]
-    pub timeout_secs: u64,
-
-    // Skip field entirely (both ser and de)
-    #[serde(skip)]
-    pub internal_cache: Option<Cache>,
-
-    // Skip serializing if None
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-
-    // Skip serializing if empty
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub tags: Vec<String>,
-
-    // Flatten nested struct into parent
-    #[serde(flatten)]
-    pub metadata: Metadata,
-
-    // Deserialize with custom function
-    #[serde(deserialize_with = "deserialize_timestamp")]
-    pub created_at: DateTime,
-
-    // Serialize with custom function
-    #[serde(serialize_with = "serialize_as_string")]
-    pub big_number: u128,
-
-    // Alias for backwards compatibility
-    #[serde(alias = "user_name", alias = "username")]
-    pub name: String,
-}
-
-fn default_timeout() -> u64 { 30 }
-```
+### Common field attributes
+Use `rename`, `default`, `skip`, `skip_serializing_if`, `flatten`, `serialize_with`/`deserialize_with`, and `alias` to define the wire contract explicitly. Prefer `alias` plus a deprecation window for renamed fields.
 
 ### Flatten
 ```rust
@@ -186,7 +94,7 @@ pub struct Document {
 ### Flatten Rules
 - MUST NOT combine `#[serde(flatten)]` with `#[serde(deny_unknown_fields)]`
 - Flatten has a performance cost (uses intermediate `Map`)
-- SHOULD use sparingly — prefer explicit fields for clarity
+- SHOULD use sparingly - prefer explicit fields for clarity
 
 ---
 
@@ -289,14 +197,14 @@ struct LogEntry<'a> {
     level: u8,  // Copied (small value)
 }
 
-// Usage — input must outlive the deserialized value
+// Usage - input must outlive the deserialized value
 let input = r#"{"message": "hello", "source": "app", "level": 3}"#;
 let entry: LogEntry = serde_json::from_str(input)?;
-// entry.message borrows from input — no String allocation
+// entry.message borrows from input - no String allocation
 ```
 
 ### Zero-Copy Rules
-- `&'a str` borrows from input — zero allocation for unescaped strings
+- `&'a str` borrows from input - zero allocation for unescaped strings
 - `Cow<'a, str>` borrows when possible, allocates only for escaped content
 - `&'a [u8]` borrows raw bytes
 - MUST add `#[serde(borrow)]` for borrowed fields
@@ -364,10 +272,10 @@ let decoded: Value = rmp_serde::from_slice(&bytes)?;
 #[derive(Serialize, Deserialize)]
 struct ConfigV2 {
     name: String,
-    // New field — old data deserializes with default
+    // New field - old data deserializes with default
     #[serde(default)]
     retries: u32,
-    // New optional field — old data has None
+    // New optional field - old data has None
     #[serde(default, skip_serializing_if = "Option::is_none")]
     timeout: Option<u64>,
 }

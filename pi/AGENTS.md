@@ -63,10 +63,14 @@ Exceptions OK when non-determinism is inherent (UUIDs, crypto, ML) -- justify th
 ## Pi Command Authoring
 
 Before creating, reviewing, or relocating a Pi slash command, use the
-`pi-command` skill. Prompt-only commands belong in `pi/prompts/<name>.md` with
-frontmatter, `argument-hint`, and `$ARGUMENTS` when needed. Reusable workflow
-guidance belongs in `pi/skills/<name>/SKILL.md`. Runtime/state/UI/autocomplete,
-git, or session-control commands belong in TypeScript extensions.
+`pi-command` skill. Two command surfaces exist. Prompt-only commands live in
+`pi/prompts/<name>.md` with frontmatter (`description`, `argument-hint`,
+`$ARGUMENTS` when needed) and are auto-discovered. Workflow commands that need
+TypeScript-side logic or state are registered in `pi/extensions/` (see
+`workflow-commands.ts`) with their prompt bodies in
+`pi/skills/workflow/<name>.md`; those bodies carry no frontmatter because the
+extension owns registration. Reusable guidance that is not a command belongs
+in `pi/skills/<name>/SKILL.md`.
 
 ## Common Pitfalls
 

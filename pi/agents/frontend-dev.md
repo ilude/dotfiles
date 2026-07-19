@@ -22,7 +22,6 @@ You build and maintain the UI layer -- components, pages, client-side logic, sty
 - Own: `apps/frontend/` (read, write, delete)
 - Read-only: `apps/backend/` (read APIs to integrate, never modify)
 - Read-only: project root (configs, docs)
-- Never touch: `~/.ssh/`, secrets, infra configs
 
 ## Behavior
 

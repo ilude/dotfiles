@@ -1,8 +1,3 @@
----
-name: typescript
-description: TypeScript/JavaScript development with Bun, Biome, Zod, and modern tooling. Activate when working with .ts, .tsx, .js, .jsx files, package.json, or discussing TypeScript/JavaScript patterns.
----
-
 # TypeScript/JavaScript Projects Workflow
 
 Guidelines for working with TypeScript and JavaScript projects using the lockfile-selected package manager, project conventions, and typecheck/lint/test validation.

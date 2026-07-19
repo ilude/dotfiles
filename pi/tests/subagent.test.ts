@@ -66,6 +66,7 @@ name: tester
 description: Test agent
 model: anthropic/claude-sonnet-4-6
 effort: high
+memory: none
 tools: read, grep
 skills:
   - ../skills/test-skill/SKILL.md
@@ -139,6 +140,17 @@ You are a test agent.
 			(event) => event.event === "orchestration_run",
 		);
 	}
+
+	it("accepts memory none in agent frontmatter", async () => {
+		const { loadAgentsFromDir } = await import(
+			"../extensions/subagent/agents.ts"
+		);
+		const agents = loadAgentsFromDir(
+			path.join(tmpDir, ".pi", "agents"),
+			"project",
+		);
+		expect(agents[0]?.memory).toBe("none");
+	});
 
 	it("does not expose the retired team dispatch parameter", async () => {
 		const { tool } = await loadTool();

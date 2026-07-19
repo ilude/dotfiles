@@ -7,7 +7,7 @@ description: Database design, SQL, ORM patterns, migrations, and optimization. A
 
 Language-agnostic guidelines for database design, migrations, schema management, ORM patterns, and query optimization.
 
-## CRITICAL: Avoid Complexity Theater
+## Avoid complexity theater
 
 **Default to simplicity. Optimize only when you have measured evidence of a problem.**
 

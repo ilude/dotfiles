@@ -12,7 +12,7 @@ Use this workflow to ingest, search, list, fetch content, or fetch transcripts f
 ## Ingest default
 
 1. Extract the YouTube video ID or URL from the request.
-2. Always attempt menos first; do not gate on `~/.claude/state/menos_status.json`.
+2. Attempt menos first; `~/.claude/state/menos_status.json` is a display hint and never gates the attempt.
 
 ```bash
 cd ~/.claude/commands/yt && unset VIRTUAL_ENV && uv run --isolated --frozen ingest_video.py "{url_or_video_id}"
