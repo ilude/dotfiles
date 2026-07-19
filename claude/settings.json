@@ -187,9 +187,10 @@
     "superpowers@superpowers-marketplace": true
   },
   "alwaysThinkingEnabled": true,
-  "effortLevel": "medium",
+  "effortLevel": "high",
   "companyAnnouncements": [],
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark",
-  "releaseChannel": "latest"
+  "releaseChannel": "latest",
+  "model": "claude-fable-5[1m]"
 }
