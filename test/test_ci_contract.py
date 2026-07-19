@@ -132,6 +132,26 @@ def test_workflow_direct_script_runs_are_executable() -> None:
         )
 
 
+def test_workflow_provisions_zsh_for_shell_runtime_contract() -> None:
+    steps = {step.get("name"): step for step in workflow_steps()}
+
+    linux_install = steps["Install dependencies (Linux)"]
+    assert "zsh" in shlex.split(linux_install["run"])
+
+    windows_install = steps["Install zsh (Windows)"]
+    assert windows_install["if"] == "runner.os == 'Windows'"
+    assert windows_install["uses"] == "msys2/setup-msys2@v2.32.0"
+    assert "zsh" in windows_install["with"]["install"].split()
+
+    windows_export = steps["Export zsh executable (Windows)"]
+    assert windows_export["if"] == "runner.os == 'Windows'"
+    assert "ZSH_EXECUTABLE=" in windows_export["run"]
+    assert "msys2-location" in windows_export["run"]
+
+    verify = steps["Verify zsh dependency"]
+    assert verify["run"] == '"${ZSH_EXECUTABLE:-zsh}" --version'
+
+
 def test_make_quality_targets_have_distinct_nonduplicated_scopes() -> None:
     changed = make_dry_run("check-changed", "FILES=scripts/quality-check")
     fast = make_dry_run("check-fast")

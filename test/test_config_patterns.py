@@ -4,6 +4,7 @@
 # ///
 """Semantic contracts for Dotbot link configuration."""
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -45,7 +46,7 @@ def _unconditional_targets(targets: dict[str, Any]) -> set[str]:
 
 def test_shell_modules_expose_runtime_state() -> None:
     """Zsh modules produce the expected environment, options, and bindings."""
-    zsh = shutil.which("zsh")
+    zsh = os.environ.get("ZSH_EXECUTABLE") or shutil.which("zsh")
     assert zsh, "zsh is required to validate shell configuration"
 
     modules = [
