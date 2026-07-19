@@ -26,7 +26,7 @@ Produce the issue body using EXACTLY this structure -- no additional text or com
 [A detailed description of the functional requirement. Include specific inputs, outputs, constraints, and performance expectations. If information is missing, state "Information Needed".]
 
 **Technical Design & Rationale:**
-[Identify the specific components/modules affected. Describe the high-level logic or architectural change. Call out whether this touches Angular frontend, C# backend, or both. Name specific controllers, services, or Angular components/modules where applicable.]
+[Identify the specific components/modules affected. Describe the high-level logic or architectural change. Name the detected stack's relevant components, services, controllers, or integration artifacts where applicable.]
 
 **Acceptance Criteria:**
 - [ ] [Testable criterion 1]
