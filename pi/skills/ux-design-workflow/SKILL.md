@@ -12,7 +12,7 @@ End-to-end workflow for designing and building user interfaces with accessibilit
 
 | Topic | When to Load |
 |-------|--------------|
-| [aesthetics.md](./aesthetics.md) | Bold visual design, anti-AI-slop, typography, motion |
+| [aesthetics.md](./aesthetics.md) | Bold visual design, distinctive typography, motion |
 | [pipeline.md](./pipeline.md) | Full 4-phase pipeline overview |
 | [1-prd-generator.md](./1-prd-generator.md) | Detailed PRD generation instructions |
 | [2-prd-to-ux.md](./2-prd-to-ux.md) | 6-pass UX specification process |
@@ -48,31 +48,7 @@ End-to-end workflow for designing and building user interfaces with accessibilit
 - Custom components MUST implement appropriate ARIA roles
 - Escape key MUST close modals and dropdowns
 
-```typescript
-// Focus trap for modals
-const useFocusTrap = (containerRef: RefObject<HTMLElement>) => {
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const focusables = container.querySelectorAll(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-    const first = focusables[0] as HTMLElement;
-    const last = focusables[focusables.length - 1] as HTMLElement;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab') return;
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault(); last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault(); first.focus();
-      }
-    };
-    container.addEventListener('keydown', handleKeyDown);
-    first?.focus();
-    return () => container.removeEventListener('keydown', handleKeyDown);
-  }, [containerRef]);
-};
-```
+Reference: [WAI modal dialog pattern](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/) defines the required focus behavior.
 
 ### Focus Management
 
@@ -82,15 +58,7 @@ const useFocusTrap = (containerRef: RefObject<HTMLElement>) => {
 
 ### Reduced Motion (MUST Respect)
 
-```css
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-}
-```
+Reference: [WCAG 2.2 quick reference](https://www.w3.org/WAI/WCAG22/quickref/) covers contrast, motion, and keyboard criteria.
 
 ### Lighthouse Score: MUST be >95
 
@@ -98,48 +66,15 @@ const useFocusTrap = (containerRef: RefObject<HTMLElement>) => {
 
 ## Design Tokens
 
-```css
-:root {
-  /* Colors - Semantic */
-  --color-primary: #2563eb;
-  --color-primary-hover: #1d4ed8;
-  --color-success: #16a34a;
-  --color-warning: #ca8a04;
-  --color-error: #dc2626;
+Use semantic color, spacing, typography, and breakpoint tokens. Match the project's existing design system before adding tokens.
 
-  /* Colors - Neutral */
-  --color-neutral-50: #fafafa;
-  --color-neutral-100: #f4f4f5;
-  --color-neutral-700: #3f3f46;
-  --color-neutral-900: #18181b;
-
-  /* Spacing - 4px base */
-  --space-1: 0.25rem; --space-2: 0.5rem; --space-4: 1rem;
-  --space-6: 1.5rem; --space-8: 2rem; --space-16: 4rem;
-
-  /* Typography */
-  --font-sans: system-ui, -apple-system, sans-serif;
-  --font-mono: ui-monospace, 'Cascadia Code', monospace;
-  --text-sm: 0.875rem; --text-base: 1rem; --text-xl: 1.25rem;
-}
-```
+Reference: [W3C Design Tokens Community Group](https://www.w3.org/community/design-tokens/) maintains the design-token standardization work.
 
 ---
 
 ## Dark Mode
 
-```css
-:root {
-  --bg-primary: #ffffff;
-  --text-primary: #18181b;
-  --border-color: #e4e4e7;
-}
-:root.dark {
-  --bg-primary: #18181b;
-  --text-primary: #fafafa;
-  --border-color: #3f3f46;
-}
-```
+Define semantic foreground, background, and border tokens for each theme.
 
 - MUST persist user preference (localStorage)
 - MUST respect `prefers-color-scheme` as default
@@ -151,29 +86,10 @@ const useFocusTrap = (containerRef: RefObject<HTMLElement>) => {
 
 ### Buttons
 
-```css
-.btn {
-  display: inline-flex; align-items: center; gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  font-weight: 500; border-radius: 0.375rem;
-  transition: background-color 150ms;
-}
-.btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-```
-
 - MUST have visible focus state
 - MUST be minimum 44x44px touch target on mobile
 
 ### Forms
-
-```html
-<div class="form-field">
-  <label for="email">Email</label>
-  <input type="email" id="email" aria-describedby="email-error" aria-invalid="true" />
-  <span id="email-error" role="alert">Please enter a valid email</span>
-</div>
-```
 
 - Labels MUST be visible (no placeholder-only labels)
 - Error messages MUST be associated via `aria-describedby`
@@ -189,19 +105,6 @@ const useFocusTrap = (containerRef: RefObject<HTMLElement>) => {
 
 ## Loading and Error States
 
-```tsx
-// Loading
-<button disabled={isLoading}>
-  {isLoading ? <><Spinner aria-hidden="true" /> Saving...</> : 'Save'}
-</button>
-
-// Error
-<div role="alert" class="error-banner">
-  <p>Failed to save changes</p>
-  <button onClick={retry}>Retry</button>
-</div>
-```
-
 - Loading MUST be indicated within 100ms
 - Errors MUST explain what went wrong
 - MUST NOT show raw error messages to users
@@ -211,12 +114,6 @@ const useFocusTrap = (containerRef: RefObject<HTMLElement>) => {
 ## Responsive Design
 
 Mobile-first approach is REQUIRED.
-
-```css
-:root { --bp-sm: 640px; --bp-md: 768px; --bp-lg: 1024px; }
-.container { padding: var(--space-4); }
-@media (min-width: 768px) { .container { padding: var(--space-6); } }
-```
 
 - Touch targets MUST be minimum 44x44px on mobile
 - Text MUST be readable without horizontal scrolling

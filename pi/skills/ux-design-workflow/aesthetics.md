@@ -1,6 +1,6 @@
 # Frontend Aesthetics Guidelines
 
-Create distinctive, production-grade frontend interfaces that avoid generic "AI slop" aesthetics.
+Create distinctive, production-grade frontend interfaces that avoid generic aesthetics.
 
 ## Design Thinking
 
@@ -18,7 +18,7 @@ Before coding, commit to a BOLD aesthetic direction:
 
 Choose fonts that are beautiful, unique, and interesting:
 
-- **NEVER use**: Arial, Inter, Roboto, system fonts (generic AI aesthetics)
+- **NEVER use**: Arial, Inter, Roboto, system fonts
 - **DO use**: Distinctive choices that elevate the frontend
 - **Pair fonts**: A distinctive display font with a refined body font
 
@@ -30,7 +30,7 @@ Commit to a cohesive aesthetic:
 
 - Use CSS variables for consistency
 - Dominant colors with sharp accents outperform timid, evenly-distributed palettes
-- **AVOID**: Purple gradients on white backgrounds (cliched AI aesthetic)
+- **AVOID**: Purple gradients on white backgrounds
 
 ---
 
@@ -56,22 +56,7 @@ Use animations for effects and micro-interactions:
 
 ---
 
-## Backgrounds & Visual Details
-
-Create atmosphere and depth rather than defaulting to solid colors:
-
-- Gradient meshes
-- Noise textures
-- Geometric patterns
-- Layered transparencies
-- Dramatic shadows
-- Decorative borders
-- Custom cursors
-- Grain overlays
-
----
-
-## Anti-Patterns (AI Slop)
+## Anti-Patterns
 
 NEVER use these generic patterns:
 
@@ -86,21 +71,4 @@ NEVER use these generic patterns:
 
 ## Implementation Notes
 
-**Match implementation complexity to the aesthetic vision:**
-
-- Maximalist designs need elaborate code with extensive animations and effects
-- Minimalist designs need restraint, precision, and careful attention to spacing, typography, and subtle details
-- Elegance comes from executing the vision well
-
-**Vary across designs:**
-
-- Light and dark themes
-- Different fonts
-- Different aesthetics
-- NEVER converge on common choices across generations
-
----
-
-## Remember
-
-Claude is capable of extraordinary creative work. Don't hold back - show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
+Match implementation complexity to the aesthetic vision. Vary themes, fonts, and aesthetic directions across designs.

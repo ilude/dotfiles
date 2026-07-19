@@ -137,8 +137,8 @@ High-level logic only (no architecture diagrams).
 
 Example formats:
 
-- Input → transform → output
-- Fetch → analyze → summarize
+- Input -> transform -> output
+- Fetch -> analyze -> summarize
 
 #### 7.3 Outputs
 
@@ -162,12 +162,6 @@ If the user input is extremely vague, ask one clarifying question max, then proc
 
 ## Done When
 
-A builder could:
-
-- Read this PRD
-- Build a demo without guessing
-- Explain the product clearly to someone else
-
-## Next Step
-
-After generating the PRD, suggest running Stage 2 (PRD to UX) to translate it into a UX specification.
+- [ ] A builder can identify the user, problem, and demo goal.
+- [ ] A builder can implement the demo without guessing.
+- [ ] A builder can explain the product clearly to someone else.

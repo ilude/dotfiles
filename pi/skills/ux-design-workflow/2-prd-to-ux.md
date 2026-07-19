@@ -18,9 +18,9 @@ Translate product requirements into UX foundations through **6 forced designer m
 **Write the UX specification to a file in the same directory as the source PRD.**
 
 Naming convention:
-- If PRD is `feature-x.md` → output `feature-x-ux-spec.md`
-- If PRD is `PRD.md` → output `UX-spec.md`
-- If PRD is `requirements.md` → output `requirements-ux-spec.md`
+- If PRD is `feature-x.md` -> output `feature-x-ux-spec.md`
+- If PRD is `PRD.md` -> output `UX-spec.md`
+- If PRD is `requirements.md` -> output `requirements-ux-spec.md`
 
 Pattern: `{prd-basename}-ux-spec.md` (or just `UX-spec.md` if PRD has generic name)
 
@@ -37,26 +37,21 @@ NO VISUAL SPECS UNTIL ALL 6 PASSES COMPLETE
 - Don't describe screen layouts until information architecture is explicit
 - Don't design components until affordances are mapped
 
-**No exceptions for urgency:**
-- "I'm in a hurry" → Passes take 5 minutes; fixing bad UX takes days
-- "Just give me screens" → Screens without foundations need rework
-- "Skip the analysis" → Analysis IS the value; screens are just output
-- "I know what I want" → Then passes will be fast; still do them
-
-Skipping passes to "save time" produces specs that need redesign. The 6 passes ARE the shortcut.
+Skipping passes produces specifications that need redesign.
 
 ## The 6 Passes
 
 Execute these IN ORDER. Each pass produces required outputs before the next begins.
 
 ```
-Pass 1: Mental Model        → What does user think?
-Pass 2: Information Architecture → What exists, how organized?
-Pass 3: Affordances         → What's obvious without explanation?
-Pass 4: Cognitive Load      → Where will user hesitate?
-Pass 5: State Design        → How does system talk back?
-Pass 6: Flow Integrity      → Does this feel inevitable?
-        ↓
+Pass 1: Mental Model        -> What does user think?
+Pass 2: Information Architecture -> What exists, how organized?
+Pass 3: Affordances         -> What's obvious without explanation?
+Pass 4: Cognitive Load      -> Where will user hesitate?
+Pass 5: State Design        -> How does system talk back?
+Pass 6: Flow Integrity      -> Does this feel inevitable?
+        |
+        v
 THEN: Visual Specifications
 ```
 
@@ -114,8 +109,6 @@ THEN: Visual Specifications
 ...
 ```
 
-**This is where most AI UX attempts fail.** If you skip explicit IA, your visual specs will be disorganized.
-
 ---
 
 ### Pass 3: Affordances & Action Clarity
@@ -140,8 +133,6 @@ THEN: Visual Specifications
 - If user sees X, they should assume Y
 - ...
 ```
-
-No visuals required - just clarity on what signals what.
 
 ---
 
@@ -205,15 +196,12 @@ No visuals required - just clarity on what signals what.
 | Error | | | |
 ```
 
-This prevents "dead UX" - screens with no feedback.
-
 ---
 
 ### Pass 6: Flow Integrity Check
 
 **Designer mindset:** "Does this feel inevitable?"
 
-**Final sanity check:**
 - Where could users get lost?
 - Where would a first-time user fail?
 - What must be visible vs can be implied?
@@ -245,8 +233,6 @@ Only after all 6 passes are complete, create:
 - Interaction specifications
 - Responsive breakpoints
 
-The 6 passes inform every visual decision.
-
 ## Red Flags - STOP and Restart
 
 If you catch yourself doing any of these, STOP and return to the passes:
@@ -265,43 +251,7 @@ If you catch yourself doing any of these, STOP and return to the passes:
 
 ## Common Mistakes
 
-**Merging passes:** "I'll cover mental model while doing IA" → You won't. Separate passes force separate thinking.
-
-**Skipping to visuals:** "The PRD is clear, I can design screens" → Baseline testing shows agents skip 4+ passes when allowed.
-
-**Implicit affordances:** "Buttons are obviously clickable" → Map EVERY action explicitly. What's obvious to you isn't obvious to users.
-
-**Scattered state design:** "I'll add states to each component" → Holistic state table in Pass 5 catches gaps.
-
-## Output Template
-
-```markdown
-# UX Specification: [Product Name]
-
-## Pass 1: Mental Model
-[Required content]
-
-## Pass 2: Information Architecture
-[Required content]
-
-## Pass 3: Affordances
-[Required content]
-
-## Pass 4: Cognitive Load
-[Required content]
-
-## Pass 5: State Design
-[Required content]
-
-## Pass 6: Flow Integrity
-[Required content]
-
----
-
-## Visual Specifications
-[Only after passes complete]
-```
-
-## Next Step
-
-After generating the UX spec, suggest running Stage 3 (UX to Build Prompts) to create sequenced build prompts for UI generation tools.
+- Merging passes hides missing decisions.
+- Skipping to visuals omits foundations.
+- Implicit affordances leave actions unclear.
+- Scattered state design misses gaps.

@@ -7,8 +7,8 @@ Transform detailed UX specifications into a sequence of self-contained prompts o
 ## When to Use
 
 - User has a UX spec, PRD, or detailed feature documentation
-- Output needs to feed into UI generation tools (v0, Bolt, Claude, etc.)
-- User wants build-order sequencing (foundations → features → polish)
+- Output needs to feed into a UI implementation tool
+- User wants build-order sequencing (foundations -> features -> polish)
 - Large specs that would overwhelm a single prompt
 
 **Not for:** Quick component requests, already-atomic features, specs that fit in one prompt.
@@ -16,21 +16,12 @@ Transform detailed UX specifications into a sequence of self-contained prompts o
 ## Core Pattern
 
 ```
-UX Spec → Extract Atomic Units → Sequence by Dependencies → Generate Self-Contained Prompts
+UX Spec -> Extract Atomic Units -> Sequence by Dependencies -> Generate Self-Contained Prompts
 ```
 
 ## Build Order Strategy
 
-Generate prompts in this order:
-
-```
-1. Foundation      → Design tokens, shared types, base styles
-2. Layout Shell    → Page structure, navigation, panels
-3. Core Components → Primary UI elements (nodes, cards, inputs)
-4. Interactions    → Drag-drop, connections, pickers
-5. States & Feedback → Empty, loading, error, success states
-6. Polish          → Animations, responsive, edge cases
-```
+Generate prompts in dependency order:
 
 | Phase | What to Include | Why First |
 |-------|-----------------|-----------|
@@ -40,34 +31,6 @@ Generate prompts in this order:
 | **Interactions** | Drag-drop, connections, pickers | Depend on components existing |
 | **States & Feedback** | Empty, loading, error, success states | Refinement of existing elements |
 | **Polish** | Animations, responsive, edge cases | Final layer |
-
-## Prompt Structure Template
-
-Each generated prompt follows this structure:
-
-```markdown
-## [Feature Name]
-
-### Context
-[What this feature is and where it fits in the app]
-
-### Requirements
-- [Specific behavior/appearance requirement]
-- [Another requirement]
-- [Include relevant specs: dimensions, colors, states]
-
-### States
-- Default: [description]
-- [Other states from spec]
-
-### Interactions
-- [How user interacts]
-- [Keyboard support if applicable]
-
-### Constraints
-- [Technical or design constraints]
-- [What NOT to include]
-```
 
 ## Extraction Process
 
@@ -112,49 +75,17 @@ Each prompt MUST NOT:
 - Assume knowledge from other prompts
 - Leave specs vague ("appropriate styling")
 
-## Example Transformation
-
-**From UX Spec:**
-```
-#### Node Card (Sidebar)
-- Dimensions: ~200px width, ~48px height
-- Content: Icon (left), Name (center/left), Preview badge (right, if applicable)
-- States: Default, Hover (subtle highlight), Dragging (ghost follows cursor)
-```
-
-**To Prompt:**
-```markdown
-## Sidebar Node Card Component
-
-### Context
-A draggable card in the workflow builder sidebar representing a node type
-users can add to the canvas. Part of a node palette with "Triggers" and
-"Actions" sections.
-
-### Requirements
-- Width: 200px, Height: 48px
-- Layout: Icon on left, node name center-left, optional "Preview" badge on right
-- Background: Neutral/card background color
-- Border-radius: 8px (standard card radius)
-
-### States
-- Default: Standard card appearance
-- Hover: Subtle background highlight, cursor changes to grab
-- Dragging: Semi-transparent ghost follows cursor, original card shows placeholder
-
-### Interactions
-- Click: Could select or auto-place on canvas
-- Drag: Initiates drag-drop to canvas
-- Drag end on canvas: Creates node at drop position
-- Drag end outside canvas: Cancels, no node created
-
-### Constraints
-- Component only - not the full sidebar
-- Do not implement actual drag-drop logic, just visual states
-- Placeholder nodes show muted styling + "Preview" badge
-```
-
 ## Output Format
+
+Each `## Prompt N: [Feature Name]` MUST contain these headings in order:
+
+```markdown
+### Context
+### Requirements
+### States
+### Interactions
+### Constraints
+```
 
 Generate a markdown document with:
 
@@ -204,15 +135,6 @@ Before finalizing prompts:
 | Wrong build order | Check dependency graph |
 | Duplicated component definitions | Each component defined once, in first prompt that needs it |
 
-## Integration with UI Tools
-
-These prompts are designed to work with:
-- **v0.dev** - Paste prompts sequentially
-- **Bolt** - Use prompts as feature requests
-- **Claude frontend-design** - Combine with the `frontend-design` skill for visual execution
-- **Google Stitch** - Feed prompts for mockup generation
-- **Polymet** - Sequential feature building
-
 ## Next Step
 
-After generating build prompts, use them sequentially with your preferred UI generation tool. For best results with Claude, activate the `frontend-design` skill for distinctive visual execution.
+After generating build prompts, use them sequentially with the selected implementation tool.
