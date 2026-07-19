@@ -31,6 +31,14 @@ Compact index for Ansible playbooks, roles, inventories, and tests.
 5. Validate syntax/lint and, for role changes, Molecule or a focused dry run/check mode.
 6. Converge one stateful or failed service independently before running broad orchestration; verify its direct endpoint and persisted state, not only playbook exit status.
 
+## Containerized lint performance
+
+- On Windows hosts, do not run `ansible-lint` repeatedly against a Docker bind mount by default. It launches syntax-check subprocesses that amplify bind-mount filesystem latency.
+- Copy the complete lint inputs to a temporary directory on the container filesystem, run `ansible-lint` from that project root, and set `ANSIBLE_CONFIG` to the copied `ansible.cfg` so roles and relative paths do not resolve back to the bind mount.
+- Include untracked working-tree inputs needed by linting; do not use `git archive` when validation must cover current changes.
+- Preserve the same lint targets, configuration, rules, environment variables, and exit status. This is a filesystem optimization, not permission to skip syntax checks or reduce coverage.
+- Clean up the container-local temporary directory with a trap. On native Linux, macOS, or non-bind-mounted workspaces, measure first and avoid the copy when it does not improve runtime.
+
 ## Recovery mode
 
 After a live playbook or infrastructure mutation fails:
