@@ -30,7 +30,7 @@ Shell scripts should be explicit about interpreter, inputs, failure behavior, an
 4. Prefer functions for repeated logic.
 5. Use temporary files safely and clean them up.
 6. Return meaningful exit codes and messages.
-7. Run lint/format tools used by the repo when available.
+7. Run focused lint/format checks used by the repo when they validate the changed script contract.
 
 ## Bash Defaults
 
