@@ -88,4 +88,4 @@ The design follows these references:
 - [Harness engineering](https://www.faros.ai/blog/harness-engineering)
 - [Agent harness engineering](https://addyosmani.com/blog/agent-harness-engineering/)
 
-Rejected and deferred sensors, their rationale, and the evidence required to revisit them are recorded in [the plan's "Not implemented and why" section](../../.specs/pi-session-budget/plan.md#not-implemented-and-why).
+Rejected and deferred sensors, their rationale, and the evidence required to revisit them are recorded in [the archived plan's "Not implemented and why" section](../../.specs/archive/pi-session-budget/plan.md#not-implemented-and-why).
