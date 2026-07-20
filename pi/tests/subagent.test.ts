@@ -1226,6 +1226,104 @@ You are a test agent.
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
 
+	it("resolves the current CLI without a shell-name fallback", async () => {
+		const cliPath = path.join(tmpDir, "cli.js");
+		await fs.promises.writeFile(cliPath, "", "utf8");
+		const { subagentTestApi } = await import(
+			"../extensions/subagent/index.ts"
+		);
+
+		expect(
+			subagentTestApi.getPiInvocation(
+				["--version"],
+				cliPath,
+				"C:/Program Files/nodejs/node.exe",
+			),
+		).toEqual({
+			command: "C:/Program Files/nodejs/node.exe",
+			args: [cliPath, "--version"],
+		});
+		expect(() =>
+			subagentTestApi.getPiInvocation(
+				["--version"],
+				path.join(tmpDir, "missing-cli.js"),
+				"C:/Program Files/nodejs/node.exe",
+			),
+		).toThrow("Pi CLI entrypoint is unavailable");
+		expect(
+			subagentTestApi.getPiInvocation(
+				["--version"],
+				"",
+				"C:/Tools/pi.exe",
+			),
+		).toEqual({ command: "C:/Tools/pi.exe", args: ["--version"] });
+	});
+
+	it(
+		"reports child process launch errors",
+		async () => {
+			spawnMock.mockImplementation(() => {
+				const proc = createMockProcess();
+				queueMicrotask(() => {
+					proc.emit("error", new Error("spawn node ENOENT"));
+				});
+				return proc;
+			});
+			const { tool } = await loadTool();
+			const { listTasks } = await import("../lib/task-registry.ts");
+
+			const result = await tool.execute(
+				"call-launch-error",
+				{
+					agent: "tester",
+					task: "Will not launch",
+					agentScope: "project",
+					confirmProjectAgents: false,
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			expect(result.content[0].text).toContain("spawn node ENOENT");
+			expect(listTasks()[0]?.errorReason).toContain("spawn node ENOENT");
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"reports non-JSON child startup output",
+		async () => {
+			spawnMock.mockImplementation(() => {
+				const proc = createMockProcess();
+				queueMicrotask(() => {
+					proc.stdout.emit("data", "Unable to load child CLI\n");
+					proc.emit("close", 1);
+				});
+				return proc;
+			});
+			const { tool } = await loadTool();
+			const { listTasks } = await import("../lib/task-registry.ts");
+
+			const result = await tool.execute(
+				"call-startup-output",
+				{
+					agent: "tester",
+					task: "Will fail during startup",
+					agentScope: "project",
+					confirmProjectAgents: false,
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			expect(result.content[0].text).toContain("Unable to load child CLI");
+			expect(listTasks()[0]?.errorReason).toContain("Unable to load child CLI");
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
 	it(
 		"registers a subagent failure as state=failed with errorReason",
 		async () => {

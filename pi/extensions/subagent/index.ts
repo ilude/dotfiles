@@ -612,20 +612,25 @@ function terminateProcessTree(proc: ReturnType<typeof spawn>): void {
 	}, 5000);
 }
 
-function getPiInvocation(args: string[]): { command: string; args: string[] } {
-	const currentScript = process.argv[1];
+function getPiInvocation(
+	args: string[],
+	currentScript = process.argv[1],
+	execPath = process.execPath,
+): { command: string; args: string[] } {
 	if (currentScript && fs.existsSync(currentScript)) {
-		return { command: process.execPath, args: [currentScript, ...args] };
+		return { command: execPath, args: [currentScript, ...args] };
 	}
 
-	const execName = path.basename(process.execPath).toLowerCase();
+	const execName = path.basename(execPath).toLowerCase();
 	const isGenericRuntime = /^(node|bun)(\.exe)?$/.test(execName);
-	if (!isGenericRuntime) {
-		return { command: process.execPath, args };
-	}
+	if (!isGenericRuntime) return { command: execPath, args };
 
-	return { command: "pi", args };
+	throw new Error(
+		`Cannot launch subagent: Pi CLI entrypoint is unavailable (${currentScript || "process.argv[1] is empty"}).`,
+	);
 }
+
+export const subagentTestApi = { getPiInvocation };
 
 type OnUpdateCallback = (partial: AgentToolResult<SubagentDetails>) => void;
 
@@ -802,6 +807,7 @@ export async function runSingleAgent(
 
 		args.push(`Task: ${task}`);
 		let wasAborted = false;
+		let unparsedStdout = "";
 
 		const subagentStartedAt = new Date().toISOString();
 		const exitCode = await new Promise<number>((resolve) => {
@@ -843,6 +849,7 @@ export async function runSingleAgent(
 				try {
 					event = JSON.parse(line) as typeof event;
 				} catch {
+					unparsedStdout += `${line}\n`;
 					return;
 				}
 
@@ -909,7 +916,8 @@ export async function runSingleAgent(
 				finish(code ?? 0);
 			});
 
-			proc.on("error", () => {
+			proc.on("error", (error: Error) => {
+				currentResult.errorMessage = `Failed to start subagent process (${invocation.command}): ${error.message}`;
 				finish(1);
 			});
 
@@ -924,6 +932,12 @@ export async function runSingleAgent(
 		});
 
 		currentResult.exitCode = exitCode;
+		if (exitCode !== 0 && unparsedStdout.trim()) {
+			const childStdout = `Child stdout:\n${unparsedStdout.trimEnd()}`;
+			currentResult.stderr = currentResult.stderr.trim()
+				? `${currentResult.stderr.trimEnd()}\n${childStdout}`
+				: childStdout;
+		}
 		const taskUsage = taskUsageSnapshot(currentResult.usage);
 		if (wasAborted) {
 			safeTransitionTask(taskId, "cancelled", { usage: taskUsage });
