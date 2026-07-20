@@ -29,5 +29,5 @@ export function formatDamageControlHealthDetail(
 	if (health.status === "active") {
 		return `active; source=${health.ruleSource ?? "unknown"}; rules=${health.commandRules}/${health.zeroAccessRules}/${health.noDeleteRules}; fail-closed tools=bash,pwsh,read,write,edit,find,ls`;
 	}
-	return `failed; ${health.error ?? "rules unavailable"}; fail-closed tools=bash,pwsh,read,write,edit,find,ls; remediation: fix .pi/damage-control-rules.yaml or pi/damage-control-rules.yaml`;
+	return `failed; ${health.error ?? "rules unavailable"}; fail-closed tools=bash,pwsh,read,write,edit,find,ls; remediation: fix PI_DAMAGE_CONTROL_POLICY_PATH or pi/damage-control-rules.yaml`;
 }

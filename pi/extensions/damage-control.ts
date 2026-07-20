@@ -80,7 +80,6 @@ export {
 	type DamageControlRules,
 	type DangerousCommand,
 	loadRules,
-	normalizeClaudePolicy,
 	parseDamageControlRules,
 	validateDamageControlRules,
 } from "./damage-control-rules.js";

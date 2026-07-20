@@ -1,9 +1,7 @@
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { DamageControlHealth } from "../lib/damage-control-health.js";
-import { loadYamlFileViaPythonDetailed } from "../lib/yaml-helpers.js";
 import { parseYamlMini } from "../lib/yaml-mini.js";
 
 export interface DangerousCommand {
@@ -103,6 +101,21 @@ export function validateDamageControlRules(value: unknown): string[] {
 	const errors: string[] = [];
 	if (!isRecord(value)) return ["policy root must be a mapping"];
 
+	const allowedRootKeys = new Set([
+		"astAnalysis",
+		"dangerous_commands",
+		"zero_access_paths",
+		"zero_access_exclusions",
+		"read_only_paths",
+		"no_delete_paths",
+		"write_confirm_paths",
+		"read_confirm_paths",
+		"content_scan_paths",
+		"injection_patterns",
+	]);
+	for (const key of Object.keys(value))
+		if (!allowedRootKeys.has(key)) errors.push(`unknown policy field: ${key}`);
+
 	for (const key of [
 		"dangerous_commands",
 		"zero_access_paths",
@@ -118,6 +131,18 @@ export function validateDamageControlRules(value: unknown): string[] {
 				errors.push(`dangerous_commands[${idx}] must be a mapping`);
 				return;
 			}
+			const allowedCommandKeys = new Set([
+				"pattern",
+				"regex",
+				"reason",
+				"action",
+				"platforms",
+				"exclude_platforms",
+				"tools",
+			]);
+			for (const key of Object.keys(entry))
+				if (!allowedCommandKeys.has(key))
+					errors.push(`dangerous_commands[${idx}] unknown field: ${key}`);
 			if (!stringField(entry.pattern)) {
 				errors.push(`dangerous_commands[${idx}].pattern is required`);
 			}
@@ -165,10 +190,45 @@ export function validateDamageControlRules(value: unknown): string[] {
 	] as const) {
 		const section = value[key];
 		if (
-			Array.isArray(section) &&
-			section.some((entry) => typeof entry !== "string")
+			section !== undefined &&
+			(!Array.isArray(section) ||
+				section.some((entry) => typeof entry !== "string"))
 		) {
-			errors.push(`${key} must contain only strings`);
+			errors.push(`${key} must be an array of strings`);
+		}
+	}
+
+	const astAnalysis = value.astAnalysis;
+	if (astAnalysis !== undefined) {
+		if (!isRecord(astAnalysis)) {
+			errors.push("astAnalysis must be a mapping");
+		} else {
+			const allowedAstKeys = new Set([
+				"enabled",
+				"timeoutMs",
+				"safeCommands",
+				"dangerousCommands",
+			]);
+			for (const key of Object.keys(astAnalysis))
+				if (!allowedAstKeys.has(key))
+					errors.push(`astAnalysis unknown field: ${key}`);
+			if (
+				astAnalysis.enabled === undefined ||
+				booleanField(astAnalysis.enabled) === undefined
+			)
+				errors.push("astAnalysis.enabled must be true or false");
+			if (
+				astAnalysis.timeoutMs !== undefined &&
+				numberField(astAnalysis.timeoutMs) === undefined
+			)
+				errors.push("astAnalysis.timeoutMs must be a non-negative number");
+			for (const field of ["safeCommands", "dangerousCommands"] as const) {
+				if (
+					astAnalysis[field] !== undefined &&
+					!stringArrayField(astAnalysis[field])
+				)
+					errors.push(`astAnalysis.${field} must be an array of strings`);
+			}
 		}
 	}
 
@@ -212,7 +272,8 @@ function booleanField(value: unknown): boolean | undefined {
 }
 
 function numberField(value: unknown): number | undefined {
-	if (typeof value === "number") return value;
+	if (typeof value === "number" && Number.isFinite(value) && value >= 0)
+		return value;
 	if (typeof value === "string" && /^\d+$/.test(value)) return Number(value);
 	return undefined;
 }
@@ -225,95 +286,6 @@ function astAnalysisConfig(value: unknown): AstAnalysisConfig | undefined {
 		safeCommands: stringArrayField(value.safeCommands),
 		dangerousCommands: stringArrayField(value.dangerousCommands),
 	};
-}
-
-export function normalizeClaudePolicy(value: unknown): LoadedRules {
-	const errors: string[] = [];
-	if (!isRecord(value)) {
-		return {
-			rules: emptyRules(),
-			health: failedHealth("Claude policy root must be a mapping"),
-		};
-	}
-	const commands = value.bashToolPatterns;
-	if (!Array.isArray(commands)) {
-		return {
-			rules: emptyRules(),
-			health: failedHealth("Claude bashToolPatterns must be an array"),
-		};
-	}
-	const normalized: DangerousCommand[] = [];
-	commands.forEach((entry, idx) => {
-		if (!isRecord(entry)) {
-			errors.push(`bashToolPatterns[${idx}] must be a mapping`);
-			return;
-		}
-		const unsupported = Object.keys(entry).filter(
-			(key) =>
-				![
-					"pattern",
-					"ask",
-					"reason",
-					"platforms",
-					"exclude_platforms",
-					"exfil",
-					"pi_allow",
-				].includes(key),
-		);
-		if (unsupported.length > 0)
-			errors.push(
-				`bashToolPatterns[${idx}] unsupported keys: ${unsupported.join(", ")}`,
-			);
-		if (entry.pi_allow !== undefined && typeof entry.pi_allow !== "boolean") {
-			errors.push(
-				`bashToolPatterns[${idx}].pi_allow must be boolean when present`,
-			);
-			return;
-		}
-		if (entry.exfil !== undefined) return;
-		// pi_allow drops the rule for Pi only; Claude hooks still enforce it.
-		if (entry.pi_allow === true) return;
-		const pattern = stringField(entry.pattern);
-		const reason = stringField(entry.reason) ?? "Claude damage-control rule";
-		if (!pattern) {
-			errors.push(`bashToolPatterns[${idx}].pattern is required`);
-			return;
-		}
-		validateRegex(pattern, errors, `bashToolPatterns[${idx}].pattern`);
-		if (entry.ask !== undefined && typeof entry.ask !== "boolean") {
-			errors.push(`bashToolPatterns[${idx}].ask must be boolean when present`);
-		}
-		const platforms = stringArrayField(entry.platforms);
-		const exclude = stringArrayField(entry.exclude_platforms);
-		if (entry.platforms !== undefined && !platforms)
-			errors.push(`bashToolPatterns[${idx}].platforms must be strings`);
-		if (entry.exclude_platforms !== undefined && !exclude)
-			errors.push(`bashToolPatterns[${idx}].exclude_platforms must be strings`);
-		normalized.push({
-			pattern,
-			regex: pattern,
-			reason,
-			action: entry.ask === true ? "ask" : "block",
-			platforms,
-			exclude_platforms: exclude,
-			tools: ["bash"],
-		});
-	});
-	const rules: DamageControlRules = {
-		dangerous_commands: normalized,
-		zero_access_paths: stringList(value, "zeroAccessPaths"),
-		zero_access_exclusions: stringList(value, "zeroAccessExclusions"),
-		read_only_paths: stringList(value, "readOnlyPaths"),
-		no_delete_paths: stringList(value, "noDeletePaths"),
-		write_confirm_paths: stringList(value, "writeConfirmPaths"),
-		read_confirm_paths: stringList(value, "readConfirmPaths"),
-		content_scan_paths: stringList(value, "contentScanPaths"),
-		injection_patterns: stringList(value, "injectionPatterns"),
-		astAnalysis: astAnalysisConfig(value.astAnalysis) ?? { enabled: false },
-	};
-	if (errors.length > 0)
-		return { rules: emptyRules(), health: failedHealth(errors.join("; ")) };
-	return { rules, health: summarizeRules(rules) };
 }
 
 function summarizeRules(
@@ -343,68 +315,21 @@ export default function damageControlRulesModule(): void {
 	// No-op default keeps Pi top-level extension auto-discovery from failing.
 }
 
-export function loadRules(cwd: string = process.cwd()): LoadedRules {
+export function loadRules(): LoadedRules {
 	const extensionDir = path.dirname(fileURLToPath(import.meta.url));
-	const override = process.env.PI_DAMAGE_CONTROL_CLAUDE_POLICY_PATH;
-	const repoClaudePolicy = path.join(
-		extensionDir,
-		"..",
-		"..",
-		"claude",
-		"hooks",
-		"damage-control",
-		"patterns.yaml",
-	);
-	const claudePolicy =
-		override ||
-		(fs.existsSync(repoClaudePolicy) ? repoClaudePolicy : undefined);
-	if (claudePolicy) {
-		try {
-			const parsed = loadYamlFileViaPythonDetailed<unknown>(claudePolicy);
-			if (!parsed.ok)
-				return {
-					rules: emptyRules(),
-					health: failedHealth(
-						`${claudePolicy}: ${parsed.error}; ${parsed.attempts.join("; ")}`,
-					),
-				};
-			const loaded = normalizeClaudePolicy(parsed.value);
-			loaded.health.ruleSource = claudePolicy;
-			return loaded;
-		} catch (err) {
-			return {
-				rules: emptyRules(),
-				health: failedHealth(
-					`${claudePolicy}: ${err instanceof Error ? err.message : String(err)}`,
-				),
-			};
-		}
+	const policyPath =
+		process.env.PI_DAMAGE_CONTROL_POLICY_PATH ??
+		path.join(extensionDir, "..", "damage-control-rules.yaml");
+	try {
+		const content = fs.readFileSync(policyPath, "utf-8");
+		const rules = parseDamageControlRules(content);
+		return { rules, health: summarizeRules(rules, policyPath) };
+	} catch (err) {
+		return {
+			rules: emptyRules(),
+			health: failedHealth(
+				`${policyPath}: ${err instanceof Error ? err.message : String(err)}`,
+			),
+		};
 	}
-	const candidates = [
-		path.join(cwd, ".pi", "damage-control-rules.yaml"),
-		path.join(extensionDir, "..", "damage-control-rules.yaml"),
-		path.join(os.homedir(), ".pi", "agent", "damage-control-rules.yaml"),
-	];
-	const errors: string[] = [];
-	for (const candidate of candidates) {
-		try {
-			const content = fs.readFileSync(candidate, "utf-8");
-			const rules = parseDamageControlRules(content);
-			return { rules, health: summarizeRules(rules, candidate) };
-		} catch (err) {
-			errors.push(
-				`${candidate}: ${err instanceof Error ? err.message : String(err)}`,
-			);
-		}
-	}
-	return {
-		rules: emptyRules(),
-		health: {
-			status: "failed",
-			error: `No damage-control rules loaded. Tried: ${errors.join("; ")}`,
-			commandRules: 0,
-			zeroAccessRules: 0,
-			noDeleteRules: 0,
-		},
-	};
 }

@@ -852,77 +852,72 @@ no_delete_paths: []
 		).toBe(true);
 	});
 
-	it("loads the tracked Claude policy as the canonical source", async () => {
+	it("loads the Pi-owned policy from the extension-relative default", async () => {
 		const mod = await import("../extensions/damage-control.ts");
-		const loaded = mod.loadRules("C:/definitely/not/a/real/project");
+		const loaded = mod.loadRules();
 
 		expect(loaded.health.status).toBe("active");
-		expect(loaded.health.ruleSource).toContain("claude");
-		expect(loaded.rules.dangerous_commands.length).toBeGreaterThan(300);
-	});
-
-	it("normalizes Claude bashToolPatterns with strict booleans and regex validation", async () => {
-		const mod = await import("../extensions/damage-control.ts");
-		const loaded = mod.normalizeClaudePolicy({
-			bashToolPatterns: [
-				{ pattern: "\\brm\\b", ask: true, reason: "rm asks" },
-				{ pattern: "\\brm\\s+-rf\\s+/", reason: "root delete blocks" },
-			],
-		});
-		expect(loaded.health.status).toBe("active");
-		expect(loaded.rules.dangerous_commands[0].action).toBe("ask");
-		expect(loaded.rules.dangerous_commands[1].action).toBe("block");
-		expect(loaded.rules.dangerous_commands[0].tools).toEqual(["bash"]);
-		expect(loaded.rules.read_confirm_paths).toEqual([]);
-
-		const stringAsk = mod.normalizeClaudePolicy({
-			bashToolPatterns: [{ pattern: "rm", ask: "true", reason: "bad" }],
-		});
-		expect(stringAsk.health.status).toBe("failed");
-
-		const pythonOnly = mod.normalizeClaudePolicy({
-			bashToolPatterns: [{ pattern: "(?P<x>rm)", reason: "bad" }],
-		});
-		expect(pythonOnly.health.status).toBe("failed");
-	});
-
-	it("drops bashToolPatterns marked pi_allow while Claude keeps them", async () => {
-		const mod = await import("../extensions/damage-control.ts");
-		const loaded = mod.normalizeClaudePolicy({
-			bashToolPatterns: [
-				{
-					pattern: "\\bkubectl\\s+exec\\b",
-					ask: true,
-					reason: "kubectl exec",
-					pi_allow: true,
-				},
-				{ pattern: "\\brm\\b", ask: true, reason: "rm asks" },
-			],
-		});
-		expect(loaded.health.status).toBe("active");
-		expect(loaded.rules.dangerous_commands).toHaveLength(1);
-		expect(loaded.rules.dangerous_commands[0].pattern).toBe("\\brm\\b");
-
-		const badFlag = mod.normalizeClaudePolicy({
-			bashToolPatterns: [
-				{ pattern: "rm", ask: true, reason: "bad", pi_allow: "true" },
-			],
-		});
-		expect(badFlag.health.status).toBe("failed");
-	});
-
-	it("normalizes Claude readConfirmPaths for protected read prompts", async () => {
-		const mod = await import("../extensions/damage-control.ts");
-		const loaded = mod.normalizeClaudePolicy({
-			bashToolPatterns: [],
-			readConfirmPaths: ["*.tfvars", "terraform.tfvars"],
-		});
-
-		expect(loaded.health.status).toBe("active");
+		expect(loaded.health.ruleSource).toMatch(
+			/pi[\\/]damage-control-rules\.yaml$/,
+		);
+		expect(loaded.health.ruleSource).not.toContain("claude");
+		expect(loaded.rules.dangerous_commands).toHaveLength(337);
+		expect(
+			loaded.rules.dangerous_commands.filter(
+				(rule) => rule.tools?.[0] === "bash",
+			),
+		).toHaveLength(326);
+		expect(
+			loaded.rules.dangerous_commands.filter(
+				(rule) => rule.tools?.[0] === "pwsh",
+			),
+		).toHaveLength(11);
+		expect(
+			loaded.rules.dangerous_commands.filter((rule) => rule.action === "ask"),
+		).toHaveLength(225);
+		expect(
+			loaded.rules.dangerous_commands.filter((rule) => rule.action !== "ask"),
+		).toHaveLength(112);
 		expect(loaded.rules.read_confirm_paths).toEqual([
 			"*.tfvars",
 			"terraform.tfvars",
+			"*.auto.tfvars",
 		]);
+	});
+
+	it("enforces catastrophic PowerShell rules through the pwsh tool", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const loaded = mod.loadRules();
+		for (const command of [
+			"Remove-Item -Recurse C:\\\\",
+			"Clear-Disk -Number 0",
+			"Remove-Item HKLM:\\Software\\Synthetic",
+		])
+			expect(
+				(
+					await mod.evaluateDangerousCommand(
+						command,
+						loaded.rules.dangerous_commands,
+						{ toolName: "pwsh" },
+					)
+				)?.block,
+			).toBe(true);
+	});
+
+	it("fails closed when the explicit policy override is missing", async () => {
+		const previousPolicy = process.env.PI_DAMAGE_CONTROL_POLICY_PATH;
+		process.env.PI_DAMAGE_CONTROL_POLICY_PATH =
+			"C:/definitely/not/a/policy.yaml";
+		try {
+			const mod = await import("../extensions/damage-control.ts");
+			const loaded = mod.loadRules();
+			expect(loaded.health.status).toBe("failed");
+			expect(loaded.rules.dangerous_commands).toEqual([]);
+		} finally {
+			if (previousPolicy === undefined)
+				delete process.env.PI_DAMAGE_CONTROL_POLICY_PATH;
+			else process.env.PI_DAMAGE_CONTROL_POLICY_PATH = previousPolicy;
+		}
 	});
 
 	it("asks before reading .tfvars but allows writing it", async () => {
@@ -942,7 +937,7 @@ no_delete_paths: []
 		).resolves.toBeUndefined();
 	});
 
-	it("matches Claude command regexes case-sensitively by default and scopes them to bash", async () => {
+	it("matches native command regexes case-sensitively by default and scopes them to bash", async () => {
 		const mod = await import("../extensions/damage-control.ts");
 		const rules = [
 			{
@@ -1439,7 +1434,7 @@ describe("damage-control refactor hardening", () => {
 
 	it("real tracked rules allow docker rm -f named containers only", async () => {
 		const mod = await import("../extensions/damage-control.ts");
-		const loaded = mod.loadRules(process.cwd());
+		const loaded = mod.loadRules();
 		expect(loaded.health.status).toBe("active");
 
 		await expect(
@@ -1471,7 +1466,7 @@ describe("damage-control refactor hardening", () => {
 
 	it("real tracked rules block synthetic secret reads and destructive commands", async () => {
 		const mod = await import("../extensions/damage-control.ts");
-		const loaded = mod.loadRules(process.cwd());
+		const loaded = mod.loadRules();
 		expect(loaded.health.status).toBe("active");
 		await expect(
 			mod.evaluateDangerousCommand(
@@ -1604,6 +1599,22 @@ describe("damage-control refactor hardening", () => {
 				"unsupported schema value",
 				'dangerous_commands:\n  - pattern: "x"\n    reason: "bad"\n    platforms: "linux"\nzero_access_paths: []\nno_delete_paths: []\n',
 			],
+			[
+				"malformed optional path section",
+				'dangerous_commands: []\nzero_access_paths: []\nno_delete_paths: []\nread_only_paths: "invalid"\n',
+			],
+			[
+				"unknown protection field",
+				"dangerous_commands: []\nzero_access_paths: []\nno_delete_paths: []\nread_only_path: []\n",
+			],
+			[
+				"malformed AST section",
+				'dangerous_commands: []\nzero_access_paths: []\nno_delete_paths: []\nastAnalysis:\n  enabled: "invalid"\n',
+			],
+			[
+				"missing AST enabled flag",
+				"dangerous_commands: []\nzero_access_paths: []\nno_delete_paths: []\nastAnalysis: {}\n",
+			],
 		] as const) {
 			expect(() => mod.parseDamageControlRules(yaml), name).toThrow();
 		}
@@ -1618,29 +1629,16 @@ describe("damage-control eval hasUI tracking", () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-dc-hasui-"));
 		const previousOperatorDir = process.env.PI_OPERATOR_DIR;
 		const previousMetricsDir = process.env.PI_METRICS_DIR;
-		const previousPolicy = process.env.PI_DAMAGE_CONTROL_CLAUDE_POLICY_PATH;
+		const previousPolicy = process.env.PI_DAMAGE_CONTROL_POLICY_PATH;
 		const policyPath = path.join(root, "policy.json");
 		fs.writeFileSync(
 			policyPath,
-			JSON.stringify({
-				bashToolPatterns: [
-					{ pattern: "\\bkubectl\\s+drain\\b", ask: true, reason: "drain" },
-				],
-				zeroAccessPaths: [],
-				zeroAccessExclusions: [],
-				readOnlyPaths: [],
-				noDeletePaths: [],
-				writeConfirmPaths: [],
-				readConfirmPaths: [],
-				contentScanPaths: [],
-				injectionPatterns: [],
-				astAnalysis: { enabled: false },
-			}),
+			'dangerous_commands:\n  - pattern: "kubectl drain"\n    regex: "\\\\bkubectl\\\\s+drain\\\\b"\n    reason: "drain"\n    action: "ask"\nzero_access_paths: []\nno_delete_paths: []\n',
 			"utf-8",
 		);
 		process.env.PI_OPERATOR_DIR = path.join(root, "operator");
 		process.env.PI_METRICS_DIR = path.join(root, "metrics");
-		process.env.PI_DAMAGE_CONTROL_CLAUDE_POLICY_PATH = policyPath;
+		process.env.PI_DAMAGE_CONTROL_POLICY_PATH = policyPath;
 		try {
 			vi.resetModules();
 			const mod = await import("../extensions/damage-control.ts");
@@ -1724,8 +1722,8 @@ describe("damage-control eval hasUI tracking", () => {
 			if (previousMetricsDir === undefined) delete process.env.PI_METRICS_DIR;
 			else process.env.PI_METRICS_DIR = previousMetricsDir;
 			if (previousPolicy === undefined)
-				delete process.env.PI_DAMAGE_CONTROL_CLAUDE_POLICY_PATH;
-			else process.env.PI_DAMAGE_CONTROL_CLAUDE_POLICY_PATH = previousPolicy;
+				delete process.env.PI_DAMAGE_CONTROL_POLICY_PATH;
+			else process.env.PI_DAMAGE_CONTROL_POLICY_PATH = previousPolicy;
 			fs.rmSync(root, { recursive: true, force: true });
 		}
 	});
@@ -1739,27 +1737,16 @@ describe("damage-control registered-handler audit matrix", () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-dc-audit-"));
 		const previousOperatorDir = process.env.PI_OPERATOR_DIR;
 		const previousMetricsDir = process.env.PI_METRICS_DIR;
-		const previousPolicy = process.env.PI_DAMAGE_CONTROL_CLAUDE_POLICY_PATH;
+		const previousPolicy = process.env.PI_DAMAGE_CONTROL_POLICY_PATH;
 		const policyPath = path.join(root, "policy.json");
 		fs.writeFileSync(
 			policyPath,
-			JSON.stringify({
-				bashToolPatterns: [],
-				zeroAccessPaths: ["*.pem"],
-				zeroAccessExclusions: [],
-				readOnlyPaths: [],
-				noDeletePaths: [],
-				writeConfirmPaths: ["settings.json"],
-				readConfirmPaths: ["*.tfvars"],
-				contentScanPaths: [],
-				injectionPatterns: [],
-				astAnalysis: { enabled: false },
-			}),
+			'dangerous_commands: []\nzero_access_paths:\n  - "*.pem"\nno_delete_paths: []\nwrite_confirm_paths:\n  - "settings.json"\nread_confirm_paths:\n  - "*.tfvars"\n',
 			"utf-8",
 		);
 		process.env.PI_OPERATOR_DIR = path.join(root, "operator");
 		process.env.PI_METRICS_DIR = path.join(root, "metrics");
-		process.env.PI_DAMAGE_CONTROL_CLAUDE_POLICY_PATH = policyPath;
+		process.env.PI_DAMAGE_CONTROL_POLICY_PATH = policyPath;
 		try {
 			const mod = await import("../extensions/damage-control.ts");
 			const { listRecentDecisions } = await import(
@@ -1974,8 +1961,8 @@ describe("damage-control registered-handler audit matrix", () => {
 			if (previousMetricsDir === undefined) delete process.env.PI_METRICS_DIR;
 			else process.env.PI_METRICS_DIR = previousMetricsDir;
 			if (previousPolicy === undefined)
-				delete process.env.PI_DAMAGE_CONTROL_CLAUDE_POLICY_PATH;
-			else process.env.PI_DAMAGE_CONTROL_CLAUDE_POLICY_PATH = previousPolicy;
+				delete process.env.PI_DAMAGE_CONTROL_POLICY_PATH;
+			else process.env.PI_DAMAGE_CONTROL_POLICY_PATH = previousPolicy;
 			fs.rmSync(root, { recursive: true, force: true });
 		}
 	});
@@ -1986,13 +1973,13 @@ describe("damage-control registered-handler audit matrix", () => {
 		const path = await import("node:path");
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-dc-rules-"));
 		const invalidPolicy = path.join(root, "invalid-policy.yaml");
-		fs.writeFileSync(invalidPolicy, "bashToolPatterns: [", "utf-8");
+		fs.writeFileSync(invalidPolicy, "dangerous_commands: [", "utf-8");
 		const previousOperatorDir = process.env.PI_OPERATOR_DIR;
 		const previousMetricsDir = process.env.PI_METRICS_DIR;
-		const previousPolicy = process.env.PI_DAMAGE_CONTROL_CLAUDE_POLICY_PATH;
+		const previousPolicy = process.env.PI_DAMAGE_CONTROL_POLICY_PATH;
 		process.env.PI_OPERATOR_DIR = path.join(root, "operator");
 		process.env.PI_METRICS_DIR = path.join(root, "metrics");
-		process.env.PI_DAMAGE_CONTROL_CLAUDE_POLICY_PATH = invalidPolicy;
+		process.env.PI_DAMAGE_CONTROL_POLICY_PATH = invalidPolicy;
 		try {
 			const mod = await import("../extensions/damage-control.ts");
 			const { listRecentDecisions } = await import(
@@ -2069,8 +2056,8 @@ describe("damage-control registered-handler audit matrix", () => {
 			if (previousMetricsDir === undefined) delete process.env.PI_METRICS_DIR;
 			else process.env.PI_METRICS_DIR = previousMetricsDir;
 			if (previousPolicy === undefined)
-				delete process.env.PI_DAMAGE_CONTROL_CLAUDE_POLICY_PATH;
-			else process.env.PI_DAMAGE_CONTROL_CLAUDE_POLICY_PATH = previousPolicy;
+				delete process.env.PI_DAMAGE_CONTROL_POLICY_PATH;
+			else process.env.PI_DAMAGE_CONTROL_POLICY_PATH = previousPolicy;
 			fs.rmSync(root, { recursive: true, force: true });
 		}
 	});

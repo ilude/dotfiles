@@ -22,7 +22,7 @@ Optimize for the correct completed outcome with the least unnecessary risk. Conf
 
 ## Policy model
 
-Pi damage-control evaluates shell commands and protected file operations before execution. The default policy is [`claude/hooks/damage-control/patterns.yaml`](../../../claude/hooks/damage-control/patterns.yaml), loaded by [`pi/extensions/damage-control.ts`](../../extensions/damage-control.ts). An explicit runtime override may select another policy.
+Pi damage-control evaluates shell commands and protected file operations before execution. The default policy is [`pi/damage-control-rules.yaml`](../../damage-control-rules.yaml), loaded by [`pi/extensions/damage-control.ts`](../../extensions/damage-control.ts). `PI_DAMAGE_CONTROL_POLICY_PATH` may select an explicit alternate Pi policy.
 
 Treat outcomes as follows:
 
