@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	appendWorkflowEvent,
 	createWorkflowEpisodeId,
 	startWorkflowEpisode,
 	workflowTelemetryDir,
@@ -25,6 +26,34 @@ describe("workflow telemetry", () => {
 		});
 
 		expect(id).toBe("2026-05-26T12-10-42-000Z-do-it-specs-example");
+	});
+
+	it("appends a structured runtime event without prompt or command content", () => {
+		const record = appendWorkflowEvent({
+			episodeId: "budget-1",
+			eventId: "budget-001",
+			phaseId: "session-budget",
+			eventType: "budget_trip",
+			evidence: "Session budget threshold reached.",
+			data: { sensor: "budget", measured: 25, threshold: 25 },
+			now: new Date("2026-05-26T12:10:42.000Z"),
+		});
+
+		expect(record).toMatchObject({
+			episode_id: "budget-1",
+			event_id: "budget-001",
+			phase_id: "session-budget",
+			event_type: "budget_trip",
+			status: "recorded",
+			data: { sensor: "budget", measured: 25, threshold: 25 },
+		});
+		expect(fs.appendFileSync).toHaveBeenCalledTimes(1);
+		expect(String(vi.mocked(fs.appendFileSync).mock.calls[0][0])).toContain(
+			"budget-1",
+		);
+		expect(vi.mocked(fs.appendFileSync).mock.calls[0][1]).not.toContain(
+			"command_line",
+		);
 	});
 
 	it("appends one runtime episode and one dispatch event as JSONL", () => {

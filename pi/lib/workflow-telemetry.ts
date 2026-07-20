@@ -41,6 +41,28 @@ export interface WorkflowEpisodeStartInput {
 	now?: Date;
 }
 
+export interface WorkflowRuntimeEventRecord {
+	schema_version: 1;
+	episode_id: string;
+	event_id: string;
+	phase_id: string;
+	event_type: string;
+	status: "recorded";
+	evidence: string;
+	data?: Record<string, unknown>;
+	created_at: string;
+}
+
+export interface WorkflowRuntimeEventInput {
+	episodeId: string;
+	eventId: string;
+	phaseId: string;
+	eventType: string;
+	evidence: string;
+	data?: Record<string, unknown>;
+	now?: Date;
+}
+
 const WORKFLOW_TELEMETRY_DIR = path.join(
 	os.homedir(),
 	".pi",
@@ -70,6 +92,28 @@ export function createWorkflowEpisodeId(
 		: safeSegment(input.args || "no-args");
 	const suffix = artifactSlug ? `-${artifactSlug}` : "";
 	return `${timestamp}-${safeSegment(input.command)}${suffix}`;
+}
+
+export function appendWorkflowEvent(
+	input: WorkflowRuntimeEventInput,
+): WorkflowRuntimeEventRecord {
+	const now = input.now ?? new Date();
+	const record: WorkflowRuntimeEventRecord = {
+		schema_version: 1,
+		episode_id: input.episodeId,
+		event_id: input.eventId,
+		phase_id: input.phaseId,
+		event_type: input.eventType,
+		status: "recorded",
+		evidence: input.evidence,
+		created_at: now.toISOString(),
+	};
+	if (input.data) record.data = input.data;
+	appendJsonl(
+		path.join(WORKFLOW_TELEMETRY_DIR, input.episodeId, "events.jsonl"),
+		record,
+	);
+	return record;
 }
 
 export function startWorkflowEpisode(

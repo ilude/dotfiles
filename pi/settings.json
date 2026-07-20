@@ -11,6 +11,15 @@
       "defaultLevel": "medium"
     }
   },
+  "sessionBudget": {
+    "enabled": true,
+    "softToolCalls": 25,
+    "hardToolCalls": 60,
+    "softMinutes": 10,
+    "hardMinutes": 30,
+    "maxSameAgentSpawns": 1,
+    "maxCommandErrorRepeats": 3
+  },
   "packages": [],
   "_disabledPackages": [
     "npm:pi-inspect",
