@@ -3,13 +3,8 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
-	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import {
-	emitTerminalBell,
-	formatToolError,
-	uiNotify,
-} from "../lib/extension-utils.js";
+import { formatToolError, uiNotify } from "../lib/extension-utils.js";
 import {
 	getProcessScheduler,
 	type ProcessScheduler,
@@ -232,16 +227,6 @@ async function handleSchedule(
 	throw new Error(`Unknown /schedule action: ${action}`);
 }
 
-async function confirmMutation(
-	ctx: ExtensionContext,
-	title: string,
-	message: string,
-): Promise<boolean> {
-	if (ctx.mode !== "tui") return false;
-	emitTerminalBell();
-	return ctx.ui.confirm(title, message);
-}
-
 function toolInput(value: unknown): ScheduleToolInput {
 	return value as ScheduleToolInput;
 }
@@ -301,7 +286,7 @@ export default function registerScheduler(pi: ExtensionAPI) {
 		promptSnippet: "Create, list, or cancel process-local scheduled prompts",
 		promptGuidelines: [
 			"Use schedule only after the user explicitly asks to schedule a future or recurring prompt.",
-			"Schedule create and cancel actions require interactive user confirmation.",
+			"Create and cancel schedules directly without requesting confirmation.",
 			"Scheduled prompts cannot be slash commands and schedules do not survive Pi process exit.",
 		],
 		parameters: Type.Object({
@@ -312,7 +297,7 @@ export default function registerScheduler(pi: ExtensionAPI) {
 			prompt: Type.Optional(Type.String({ maxLength: MAX_PROMPT_LENGTH })),
 			id: Type.Optional(Type.String()),
 		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
 			const input = toolInput(params);
 			const scheduler = getProcessScheduler();
 			if (input.action === "list") {
@@ -321,11 +306,6 @@ export default function registerScheduler(pi: ExtensionAPI) {
 					content: [{ type: "text" as const, text: formatJobs(jobs) }],
 					details: { outcome: "listed", jobs },
 				};
-			}
-			if (ctx.mode !== "tui") {
-				return formatToolError(
-					"Schedule create and cancel actions require TUI mode",
-				);
 			}
 			if (input.action === "cancel") {
 				if (!input.id) return formatToolError("cancel requires id");
@@ -336,14 +316,6 @@ export default function registerScheduler(pi: ExtensionAPI) {
 					return formatToolError(
 						error instanceof Error ? error.message : String(error),
 					);
-				}
-				if (!(await confirmMutation(ctx, "Cancel schedule?", formatJob(job)))) {
-					return {
-						content: [
-							{ type: "text" as const, text: "Cancellation declined." },
-						],
-						details: { outcome: "declined" },
-					};
 				}
 				const cancelled = scheduler.cancel(job.id);
 				return {
@@ -359,20 +331,17 @@ export default function registerScheduler(pi: ExtensionAPI) {
 
 			if (!input.prompt)
 				return formatToolError(`${input.action} requires prompt`);
-			let preview: string;
 			let create: () => ScheduledPromptSnapshot;
 			try {
 				const prompt = validatePrompt(input.prompt);
 				if (input.action === "create_at") {
 					if (!input.when) return formatToolError("create_at requires when");
 					const runAt = parseAtTime(input.when);
-					preview = `at ${runAt.toISOString()} -- ${promptPreview(prompt)}`;
 					create = () => scheduler.scheduleAt(runAt, prompt);
 				} else {
 					if (!input.pattern)
 						return formatToolError("create_cron requires pattern");
 					const pattern = input.pattern.trim();
-					preview = `cron ${pattern}${input.timezone ? ` tz=${input.timezone}` : ""} -- ${promptPreview(prompt)}`;
 					create = () =>
 						scheduler.scheduleCron(pattern, prompt, input.timezone);
 				}
@@ -380,14 +349,6 @@ export default function registerScheduler(pi: ExtensionAPI) {
 				return formatToolError(
 					error instanceof Error ? error.message : String(error),
 				);
-			}
-			if (!(await confirmMutation(ctx, "Schedule prompt?", preview))) {
-				return {
-					content: [
-						{ type: "text" as const, text: "Schedule creation declined." },
-					],
-					details: { outcome: "declined" },
-				};
 			}
 			try {
 				const job = create();

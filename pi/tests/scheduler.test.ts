@@ -141,33 +141,34 @@ describe("scheduler extension", () => {
 		expect(getProcessScheduler().list()).toHaveLength(0);
 	});
 
-	it("requires confirmation for tool mutations and rejects slash prompts", async () => {
+	it("mutates schedules without confirmation and rejects slash prompts", async () => {
 		const pi = createMockPi();
 		registerScheduler(pi as unknown as ExtensionAPI);
 		const tool = pi._getTool("schedule") as any;
 		const confirm = vi.fn(async () => false);
-		const ctx = createMockCtx({ mode: "tui", ui: { confirm } });
+		const ctx = createMockCtx({ mode: "rpc", ui: { confirm } });
 
-		const declined = await tool.execute(
+		const created = await tool.execute(
 			"call-1",
 			{ action: "create_at", when: "1m", prompt: "continue work" },
 			undefined,
 			undefined,
 			ctx,
 		);
-		expect(declined.details).toEqual({ outcome: "declined" });
-		expect(getProcessScheduler().list()).toHaveLength(0);
+		expect(created.details.outcome).toBe("scheduled");
+		const [job] = getProcessScheduler().list();
+		expect(confirm).not.toHaveBeenCalled();
 
-		confirm.mockResolvedValueOnce(true);
-		const created = await tool.execute(
+		const cancelled = await tool.execute(
 			"call-2",
-			{ action: "create_at", when: "1m", prompt: "continue work" },
+			{ action: "cancel", id: job.id },
 			undefined,
 			undefined,
 			ctx,
 		);
-		expect(created.details.outcome).toBe("scheduled");
-		expect(getProcessScheduler().list()).toHaveLength(1);
+		expect(cancelled.details.outcome).toBe("cancelled");
+		expect(getProcessScheduler().list()).toHaveLength(0);
+		expect(confirm).not.toHaveBeenCalled();
 
 		const rejected = await tool.execute(
 			"call-3",
