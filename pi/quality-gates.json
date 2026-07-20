@@ -1,5 +1,22 @@
 {
   "version": 1,
+  "lizardThresholds": {
+    "ccn": 8,
+    "parameters": 7,
+    "length": 250
+  },
+  "excludedPaths": [
+    "**/node_modules/**",
+    "**/.venv/**",
+    "**/vendor/**",
+    "**/target/**",
+    "**/build/**",
+    "**/dist/**",
+    "**/generated/**"
+  ],
+  "immutablePaths": [
+    "**/migrations/**"
+  ],
   "languages": {
     "python": {
       "extensions": [
@@ -100,6 +117,7 @@
           ],
           "check": "tsc",
           "timeout": 60,
+          "scope": "project",
           "detectAll": [
             "tsconfig.json",
             "tsc-check.py"
@@ -109,7 +127,8 @@
           "name": "lizard-complexity",
           "kind": "lizard",
           "check": "lizard",
-          "always": true
+          "always": true,
+          "advisory": true
         }
       ]
     },
@@ -145,7 +164,8 @@
           "name": "lizard-complexity",
           "kind": "lizard",
           "check": "lizard",
-          "always": true
+          "always": true,
+          "advisory": true
         }
       ]
     },
@@ -611,7 +631,8 @@
           "name": "lizard-complexity",
           "kind": "lizard",
           "check": "lizard",
-          "always": true
+          "always": true,
+          "advisory": true
         }
       ]
     },

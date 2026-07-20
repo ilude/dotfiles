@@ -19,6 +19,8 @@ import {
 	filterValidatorsByDetection,
 	findProjectRoot,
 	getFilePath,
+	getFilePaths,
+	matchesQualityPath,
 	POLICY_PATH,
 	REPAIR_GUIDANCE,
 	registerQualityGates,
@@ -200,6 +202,122 @@ describe("quality-gates extension", () => {
 		).resolves.toEqual([{ name: "gofmt", output: "unformatted.go" }]);
 	});
 
+	it("returns advisory Lizard findings without making them blocking", async () => {
+		const csv =
+			'10,9,50,1,10,"target@1-10@target.ts","target.ts","target","target ( )",1,10';
+		const pi = {
+			exec: vi.fn(async (command: string, args: string[] = []) => {
+				if (command === "where.exe" || command === "which")
+					return { code: 0, stdout: "lizard", stderr: "" };
+				if (command === "lizard") return { code: 0, stdout: csv, stderr: "" };
+				if (command === "git" && args[0] === "rev-parse")
+					return { code: 1, stdout: "", stderr: "not a repository" };
+				return { code: 1, stdout: "", stderr: "unexpected command" };
+			}),
+		} as unknown as ExtensionAPI;
+		await expect(
+			runAvailableValidators(
+				pi,
+				{
+					extensions: [".ts"],
+					validators: [
+						{
+							name: "lizard-complexity",
+							kind: "lizard",
+							check: "lizard",
+							always: true,
+							advisory: true,
+						},
+					],
+				},
+				"target.ts",
+			),
+		).resolves.toEqual([
+			{
+				name: "lizard-complexity",
+				output: "target: ccn 9 exceeds 8 (new)",
+				advisory: true,
+			},
+		]);
+		await expect(
+			runAvailableValidators(
+				pi,
+				{
+					extensions: [".ts"],
+					validators: [
+						{
+							name: "lizard-complexity",
+							kind: "lizard",
+							check: "lizard",
+							always: true,
+							advisory: true,
+							thresholds: { ccn: 10 },
+						},
+					],
+				},
+				"target.ts",
+			),
+		).resolves.toEqual([]);
+	});
+
+	it("runs a project-scoped validator once per validation batch", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-quality-project-"));
+		fs.writeFileSync(path.join(root, "project.marker"), "");
+		const pi = {
+			exec: vi.fn(async () => ({ code: 0, stdout: "", stderr: "" })),
+		} as unknown as ExtensionAPI;
+		const executedProjectValidators = new Set<string>();
+		const language = {
+			extensions: [".ts"],
+			markers: ["project.marker"],
+			validators: [
+				{
+					name: "project-check",
+					command: ["project-check"],
+					always: true as const,
+					scope: "project" as const,
+				},
+			],
+		};
+		try {
+			await runAvailableValidators(pi, language, "one.ts", root, {
+				executedProjectValidators,
+			});
+			await runAvailableValidators(pi, language, "two.ts", root, {
+				executedProjectValidators,
+			});
+			expect(pi.exec).toHaveBeenCalledTimes(2);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("bounds validator output before returning it", async () => {
+		const pi = {
+			exec: vi.fn(async (command: string) =>
+				command === "bounded-validator"
+					? { code: 1, stdout: "x".repeat(9000), stderr: "" }
+					: { code: 0, stdout: "", stderr: "" },
+			),
+		} as unknown as ExtensionAPI;
+		const issues = await runAvailableValidators(
+			pi,
+			{
+				extensions: [".bounded"],
+				validators: [
+					{
+						name: "bounded",
+						command: ["bounded-validator"],
+						always: true,
+					},
+				],
+			},
+			"file.bounded",
+		);
+		expect(issues[0].output).toContain("... output truncated");
+		expect(issues[0].output.length).toBeLessThan(8100);
+	});
+
 	describe("Pi policy and differential Lizard", () => {
 		it("parses Lizard CSV function names and source lines", () => {
 			expect(
@@ -222,8 +340,18 @@ describe("quality-gates extension", () => {
 			expect(POLICY_PATH).toMatch(/quality-gates\.json$/);
 			const policy = loadQualityGatesPolicy(POLICY_PATH);
 			expect(policy.version).toBe(1);
+			expect(policy.lizardThresholds).toEqual({
+				ccn: 8,
+				parameters: 7,
+				length: 250,
+			});
+			expect(policy.immutablePaths).toContain("**/migrations/**");
 			expect(policy.languages.typescript.validators).toContainEqual(
-				expect.objectContaining({ kind: "lizard", always: true }),
+				expect.objectContaining({
+					kind: "lizard",
+					always: true,
+					advisory: true,
+				}),
 			);
 		});
 
@@ -292,6 +420,9 @@ describe("quality-gates extension", () => {
 		it("rejects empty or contradictory validator selection modes", () => {
 			const policyWith = (validator: Record<string, unknown>) => ({
 				version: 1,
+				lizardThresholds: { ccn: 8, parameters: 7, length: 250 },
+				excludedPaths: [],
+				immutablePaths: [],
 				languages: {
 					test: {
 						extensions: [".test"],
@@ -309,6 +440,32 @@ describe("quality-gates extension", () => {
 				expect(() => parseQualityGatesPolicy(policyWith(validator))).toThrow(
 					"Invalid validator",
 				);
+		});
+
+		it("rejects malformed threshold configuration", () => {
+			const policy = {
+				version: 1,
+				lizardThresholds: { ccn: 8, parameters: 7, length: 250 },
+				excludedPaths: [],
+				immutablePaths: [],
+				languages: {
+					test: {
+						extensions: [".test"],
+						validators: [
+							{
+								name: "lizard",
+								kind: "lizard",
+								check: "lizard",
+								always: true,
+								thresholds: { cnn: 9 },
+							},
+						],
+					},
+				},
+			};
+			expect(() => parseQualityGatesPolicy(policy)).toThrow(
+				"Invalid validator",
+			);
 		});
 
 		it("blocks only new or worsened Lizard violations", () => {
@@ -437,6 +594,29 @@ describe("quality-gates extension", () => {
 			expect(REPAIR_GUIDANCE).toBe(
 				"Fix reported issues using the most focused and minimal change needed to make the check pass; avoid wholesale refactors or scope expansion; if passing requires major refactoring or material scope expansion, stop and discuss with the user.",
 			);
+		});
+	});
+
+	describe("changed path collection and exclusions", () => {
+		it("reads every path from text_edit", () => {
+			expect(
+				getFilePaths({
+					input: { paths: ["one.ts", "two.ts"] },
+				} as unknown as ToolResultEvent),
+			).toEqual(["one.ts", "two.ts"]);
+		});
+
+		it("matches excluded and immutable path globs", () => {
+			expect(
+				matchesQualityPath("src/migrations/001_create.py", process.cwd(), [
+					"**/migrations/**",
+				]),
+			).toBe(true);
+			expect(
+				matchesQualityPath("src/service.py", process.cwd(), [
+					"**/migrations/**",
+				]),
+			).toBe(false);
 		});
 	});
 
@@ -609,8 +789,8 @@ describe("quality-gates extension", () => {
 				const toolResult = pi._getHook("tool_result")[0].handler;
 				const agentSettled = pi._getHook("agent_settled")[0].handler;
 				const event = {
-					toolName: "edit",
-					input: { path: filePath },
+					toolName: "text_edit",
+					input: { paths: [filePath] },
 				} as unknown as ToolResultEvent;
 
 				await toolResult(event);
@@ -634,6 +814,56 @@ describe("quality-gates extension", () => {
 					},
 					{ triggerTurn: true, deliverAs: "followUp" },
 				);
+			} finally {
+				fs.rmSync(root, { recursive: true, force: true });
+			}
+		});
+
+		it("displays advisory findings without queuing a repair turn", async () => {
+			const root = fs.mkdtempSync(
+				path.join(os.tmpdir(), "pi-quality-advisory-"),
+			);
+			const filePath = path.join(root, "foo.advisory");
+			try {
+				fs.writeFileSync(filePath, "broken\n");
+				const pi = createMockPi();
+				pi.exec.mockImplementation(async (command: string) => {
+					if (command === "git") return { code: 1, stdout: "", stderr: "" };
+					if (command === "lizard")
+						return {
+							code: 0,
+							stdout:
+								'10,9,50,1,10,"target@1-10@foo.ts","foo.ts","target","target ( )",1,10',
+							stderr: "",
+						};
+					return { code: 0, stdout: "", stderr: "" };
+				});
+				const map = buildExtMap({
+					typescript: {
+						extensions: [".advisory"],
+						validators: [
+							{
+								name: "lizard-complexity",
+								kind: "lizard",
+								check: "lizard",
+								always: true,
+								advisory: true,
+							},
+						],
+					},
+				});
+				registerQualityGates(pi as unknown as ExtensionAPI, map);
+				await pi._getHook("tool_result")[0].handler({
+					toolName: "edit",
+					input: { path: filePath },
+				} as unknown as ToolResultEvent);
+				await pi._getHook("agent_settled")[0].handler({}, { cwd: root });
+
+				expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+				expect(pi.sendMessage.mock.calls[0][0].content).toContain(
+					"Quality gate advisory",
+				);
+				expect(pi.sendMessage.mock.calls[0][1]).toBeUndefined();
 			} finally {
 				fs.rmSync(root, { recursive: true, force: true });
 			}
@@ -849,6 +1079,48 @@ describe("quality-gates extension", () => {
 				expect(pi.sendMessage.mock.calls[2][0].content).toContain(
 					"Automatic repair limit reached",
 				);
+			} finally {
+				fs.rmSync(root, { recursive: true, force: true });
+			}
+		});
+
+		it("skips excluded and immutable paths", async () => {
+			const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-quality-skip-"));
+			const filePath = path.join(root, "migrations", "001.skip-quality");
+			try {
+				fs.mkdirSync(path.dirname(filePath));
+				fs.writeFileSync(filePath, "unchanged artifact\n");
+				const pi = createMockPi();
+				pi.exec.mockImplementation(async (command: string) => ({
+					code: command === "git" ? 1 : 0,
+					stdout: "",
+					stderr: "",
+				}));
+				const map = buildExtMap({
+					test: {
+						extensions: [".skip-quality"],
+						validators: [
+							{
+								name: "should-not-run",
+								command: ["should-not-run", "{file}"],
+								always: true,
+							},
+						],
+					},
+				});
+				registerQualityGates(pi as unknown as ExtensionAPI, map);
+				await pi._getHook("tool_result")[0].handler({
+					toolName: "structured_edit",
+					input: { path: filePath },
+				} as unknown as ToolResultEvent);
+				await pi._getHook("agent_settled")[0].handler({}, { cwd: root });
+
+				expect(
+					pi.exec.mock.calls.filter(
+						([command]) => command === "should-not-run",
+					),
+				).toHaveLength(0);
+				expect(pi.sendMessage).not.toHaveBeenCalled();
 			} finally {
 				fs.rmSync(root, { recursive: true, force: true });
 			}

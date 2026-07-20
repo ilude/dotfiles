@@ -27,8 +27,11 @@ suffix so auto-discovery skips them.
 Damage-control loads the Pi-owned `pi/damage-control-rules.yaml` through
 `pi/lib/yaml-mini.ts`. `PI_DAMAGE_CONTROL_POLICY_PATH` may select an explicit
 alternate Pi policy. Missing or invalid default and override policies fail
-closed. Quality-gates loads the independent Pi-owned `pi/quality-gates.json`.
-Neither extension reads another client's policy or executable. Keep loader
+closed. Quality-gates loads validators, complexity thresholds, advisory modes,
+and excluded or immutable paths from the independent Pi-owned
+`pi/quality-gates.json`. It bounds diagnostics and deduplicates project-scoped
+validators within each batch. Neither extension reads another client's policy
+or executable. Keep loader
 helpers under `pi/lib/`, not as new auto-discovered `pi/extensions/*.ts` files.
 
 ## Snapshot retirement

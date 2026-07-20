@@ -10,6 +10,7 @@ import type {
 import {
 	evaluateDifferentialLizard,
 	LIZARD_THRESHOLDS,
+	type LizardThresholds,
 	parseGitDiffLineMapper,
 	parseLizardCsv,
 } from "../lib/quality-gates/lizard.ts";
@@ -28,6 +29,8 @@ const POLICY_PATH = fileURLToPath(
 const VALIDATOR_LOOKUP_TIMEOUT_MS = 2000;
 const VALIDATOR_RUN_TIMEOUT_MS = 10000;
 const MAX_AUTO_REPAIR_ATTEMPTS = 2;
+const MAX_VALIDATOR_OUTPUT_CHARS = 8000;
+const MAX_QUALITY_MESSAGE_CHARS = 24000;
 const REPAIR_GUIDANCE =
 	"Fix reported issues using the most focused and minimal change needed to make the check pass; avoid wholesale refactors or scope expansion; if passing requires major refactoring or material scope expansion, stop and discuss with the user.";
 const validatorAvailabilityCache = new Map<string, boolean>();
@@ -51,6 +54,10 @@ export function buildExtMap(
 }
 
 const extMap = buildExtMap(validators);
+const skippedPathPatterns = [
+	...validators.excludedPaths,
+	...validators.immutablePaths,
+];
 
 function relativePath(root: string, filePath: string): string {
 	return path.relative(root, filePath).replaceAll("\\", "/");
@@ -59,6 +66,39 @@ function relativePath(root: string, filePath: string): string {
 function normalizedRelativePath(root: string, filePath: string): string {
 	const relative = relativePath(root, filePath);
 	return process.platform === "win32" ? relative.toLowerCase() : relative;
+}
+
+function globSource(pattern: string): string {
+	let source = "";
+	for (let index = 0; index < pattern.length; index++) {
+		const char = pattern[index];
+		if (char === "*" && pattern[index + 1] === "*") {
+			if (pattern[index + 2] === "/") {
+				source += "(?:.*/)?";
+				index += 2;
+			} else {
+				source += ".*";
+				index += 1;
+			}
+		} else if (char === "*") source += "[^/]*";
+		else if (char === "?") source += "[^/]";
+		else source += char.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+	}
+	return source;
+}
+
+export function matchesQualityPath(
+	filePath: string,
+	cwd: string,
+	patterns: string[],
+): boolean {
+	const relative = relativePath(cwd, path.resolve(cwd, filePath));
+	return patterns.some((pattern) =>
+		new RegExp(
+			`^${globSource(pattern.replaceAll("\\", "/").replace(/^\.\//, ""))}$`,
+			process.platform === "win32" ? "i" : "",
+		).test(relative),
+	);
 }
 
 function markerPattern(marker: string): RegExp {
@@ -211,11 +251,22 @@ function contentHash(filePath: string, cwd: string): string | undefined {
 	}
 }
 
+export function getFilePaths(event: ToolResultEvent): string[] {
+	const input = event.input as {
+		path?: string;
+		file_path?: string;
+		paths?: unknown;
+	};
+	if (Array.isArray(input.paths))
+		return input.paths.filter(
+			(item): item is string => typeof item === "string",
+		);
+	const filePath = input.path ?? input.file_path;
+	return filePath ? [filePath] : [];
+}
+
 export function getFilePath(event: ToolResultEvent): string | undefined {
-	return (
-		(event.input as { path?: string; file_path?: string }).path ??
-		(event.input as { file_path?: string }).file_path
-	);
+	return getFilePaths(event)[0];
 }
 
 async function isValidatorAvailable(
@@ -238,6 +289,7 @@ async function runDifferentialLizard(
 	pi: ExtensionAPI,
 	filePath: string,
 	cwd: string,
+	thresholds: LizardThresholds,
 ): Promise<string | undefined> {
 	const absolutePath = path.resolve(cwd, filePath);
 	const currentResult = await pi.exec("lizard", ["--csv", absolutePath], {
@@ -323,7 +375,7 @@ async function runDifferentialLizard(
 	const violations = evaluateDifferentialLizard(
 		parseLizardCsv(currentResult.stdout),
 		baselineOutput ? parseLizardCsv(baselineOutput) : undefined,
-		LIZARD_THRESHOLDS,
+		thresholds,
 		baselineLineMapper,
 	);
 	return violations.length === 0
@@ -336,20 +388,43 @@ async function runDifferentialLizard(
 				.join("\n");
 }
 
+export interface ValidationIssue {
+	name: string;
+	output: string;
+	advisory?: true;
+}
+
+interface ValidationRunOptions {
+	lizardThresholds?: LizardThresholds;
+	executedProjectValidators?: Set<string>;
+}
+
+function boundedText(value: string, limit: number): string {
+	if (value.length <= limit) return value;
+	const suffix = "\n... output truncated";
+	return `${value.slice(0, limit - suffix.length)}${suffix}`;
+}
+
 export async function runAvailableValidators(
 	pi: ExtensionAPI,
 	langConfig: LanguageConfig,
 	filePath: string,
 	cwd = process.cwd(),
-): Promise<Array<{ name: string; output: string }>> {
+	options: ValidationRunOptions = {},
+): Promise<ValidationIssue[]> {
 	const absoluteFilePath = path.resolve(cwd, filePath);
 	const projectRoot =
 		findProjectRoot(absoluteFilePath, langConfig.markers ?? []) ?? cwd;
-	const failures: Array<{ name: string; output: string }> = [];
+	const failures: ValidationIssue[] = [];
 	for (const validator of filterValidatorsByDetection(
 		langConfig.validators,
 		projectRoot,
 	)) {
+		if ("scope" in validator && validator.scope === "project") {
+			const key = `${projectRoot}\0${validator.name}`;
+			if (options.executedProjectValidators?.has(key)) continue;
+			options.executedProjectValidators?.add(key);
+		}
 		const checkBin =
 			validator.check ??
 			("command" in validator ? validator.command[0] : "lizard");
@@ -360,8 +435,17 @@ export async function runAvailableValidators(
 				pi,
 				absoluteFilePath,
 				projectRoot,
+				{
+					...(options.lizardThresholds ?? LIZARD_THRESHOLDS),
+					...validator.thresholds,
+				},
 			);
-			if (output) failures.push({ name: validator.name, output });
+			if (output)
+				failures.push({
+					name: validator.name,
+					output: boundedText(output, MAX_VALIDATOR_OUTPUT_CHARS),
+					...(validator.advisory ? { advisory: true } : {}),
+				});
 			continue;
 		}
 		const command = buildValidatorCommand(
@@ -378,9 +462,11 @@ export async function runAvailableValidators(
 		if (result.code !== 0 || (validator.failOnStdout && result.stdout.trim()))
 			failures.push({
 				name: validator.name,
-				output:
+				output: boundedText(
 					(result.stdout + result.stderr).trim() ||
-					`Validator exited with code ${result.code}`,
+						`Validator exited with code ${result.code}`,
+					MAX_VALIDATOR_OUTPUT_CHARS,
+				),
 			});
 	}
 	return failures;
@@ -395,94 +481,216 @@ export async function runFirstAvailableValidator(
 	return (await runAvailableValidators(pi, langConfig, filePath, cwd))[0];
 }
 
+interface FileValidationIssue extends ValidationIssue {
+	filePath: string;
+}
+
+function formatIssueMessage(
+	heading: string,
+	issues: FileValidationIssue[],
+): string {
+	const content = `${heading}:\n\n${issues.map((issue) => `${issue.name} reported issues in ${path.basename(issue.filePath)}:\n${issue.output}`).join("\n\n")}`;
+	return boundedText(content, MAX_QUALITY_MESSAGE_CHARS);
+}
+
+function sendAdvisoryIssues(
+	pi: ExtensionAPI,
+	advisories: FileValidationIssue[],
+	failures: FileValidationIssue[],
+): void {
+	if (advisories.length === 0) return;
+	if (failures.length > 0) return;
+	pi.sendMessage({
+		customType: "quality-gates",
+		content: formatIssueMessage("Quality gate advisory", advisories),
+		display: true,
+	});
+}
+
+interface QualityGateState {
+	touchedFiles: Set<string>;
+	successfulHashes: Map<string, string>;
+	repairAttempts: number;
+	repairQueued: boolean;
+}
+
+interface PendingFileValidation {
+	filePath: string;
+	absolutePath: string;
+	langConfig: LanguageConfig;
+	hashBefore: string | undefined;
+}
+
+interface ValidationBatch {
+	failures: FileValidationIssue[];
+	advisories: FileValidationIssue[];
+}
+
+const emptyValidationBatch = (): ValidationBatch => ({
+	failures: [],
+	advisories: [],
+});
+
+function prepareFileValidation(
+	filePath: string,
+	cwd: string,
+	languageByExtension: Map<string, LanguageConfig>,
+	state: QualityGateState,
+): PendingFileValidation | undefined {
+	const absolutePath = path.resolve(cwd, filePath);
+	if (!fs.existsSync(absolutePath)) return undefined;
+	if (matchesQualityPath(filePath, cwd, skippedPathPatterns)) return undefined;
+	const langConfig = languageByExtension.get(
+		path.extname(filePath).toLowerCase(),
+	);
+	if (!langConfig) return undefined;
+	const hashBefore = contentHash(filePath, cwd);
+	if (hashBefore && state.successfulHashes.get(absolutePath) === hashBefore)
+		return undefined;
+	return { filePath, absolutePath, langConfig, hashBefore };
+}
+
+const validatePendingFile = async (
+	pi: ExtensionAPI,
+	pending: PendingFileValidation,
+	cwd: string,
+	executedProjectValidators: Set<string>,
+	state: QualityGateState,
+): Promise<ValidationBatch> => {
+	const issues = await runAvailableValidators(
+		pi,
+		pending.langConfig,
+		pending.filePath,
+		cwd,
+		{
+			lizardThresholds: validators.lizardThresholds,
+			executedProjectValidators,
+		},
+	);
+	const hashAfter = contentHash(pending.filePath, cwd);
+	if (pending.hashBefore !== hashAfter) {
+		if (hashAfter) state.touchedFiles.add(pending.filePath);
+		return emptyValidationBatch();
+	}
+	const failures = issues
+		.filter((issue) => !issue.advisory)
+		.map((issue) => ({ filePath: pending.filePath, ...issue }));
+	const advisories = issues
+		.filter((issue) => issue.advisory)
+		.map((issue) => ({ filePath: pending.filePath, ...issue }));
+	if (failures.length === 0 && hashAfter)
+		state.successfulHashes.set(pending.absolutePath, hashAfter);
+	return { failures, advisories };
+};
+
+async function collectValidationBatch(
+	pi: ExtensionAPI,
+	languageByExtension: Map<string, LanguageConfig>,
+	state: QualityGateState,
+	cwd: string,
+): Promise<ValidationBatch> {
+	const pendingFiles = [...state.touchedFiles].sort();
+	state.touchedFiles.clear();
+	if (pendingFiles.length === 0) return emptyValidationBatch();
+	const files = await filterNetChangedFiles(pi, pendingFiles, cwd);
+	const batch = emptyValidationBatch();
+	const executedProjectValidators = new Set<string>();
+	for (const filePath of files) {
+		const pending = prepareFileValidation(
+			filePath,
+			cwd,
+			languageByExtension,
+			state,
+		);
+		if (!pending) continue;
+		const result = await validatePendingFile(
+			pi,
+			pending,
+			cwd,
+			executedProjectValidators,
+			state,
+		);
+		batch.failures.push(...result.failures);
+		batch.advisories.push(...result.advisories);
+	}
+	return batch;
+}
+
+function handleValidationBatch(
+	pi: ExtensionAPI,
+	batch: ValidationBatch,
+	state: QualityGateState,
+): void {
+	sendAdvisoryIssues(pi, batch.advisories, batch.failures);
+	if (batch.failures.length === 0) {
+		state.repairAttempts = 0;
+		return;
+	}
+	const content = formatIssueMessage(
+		"Quality gate validation failed",
+		batch.failures,
+	);
+	if (state.repairAttempts >= MAX_AUTO_REPAIR_ATTEMPTS) {
+		state.repairAttempts = 0;
+		pi.sendMessage({
+			customType: "quality-gates",
+			content: `${content}\n\n${REPAIR_GUIDANCE}\n\nAutomatic repair limit reached. Resolve these failures before continuing.`,
+			display: true,
+		});
+		return;
+	}
+	state.repairAttempts++;
+	state.repairQueued = true;
+	for (const failure of batch.failures)
+		state.touchedFiles.add(failure.filePath);
+	pi.sendMessage(
+		{
+			customType: "quality-gates",
+			content: `${content}\n\n${REPAIR_GUIDANCE}`,
+			display: true,
+		},
+		{ triggerTurn: true, deliverAs: "followUp" },
+	);
+}
+
 export function registerQualityGates(
 	pi: ExtensionAPI,
 	languageByExtension: Map<string, LanguageConfig> = extMap,
 ): void {
-	const touchedFiles = new Set<string>();
-	const successfulHashes = new Map<string, string>();
-	let repairAttempts = 0;
-	let repairQueued = false;
+	const state: QualityGateState = {
+		touchedFiles: new Set<string>(),
+		successfulHashes: new Map<string, string>(),
+		repairAttempts: 0,
+		repairQueued: false,
+	};
 	pi.on("agent_start", () => {
-		if (repairQueued) {
-			repairQueued = false;
+		if (state.repairQueued) {
+			state.repairQueued = false;
 			return;
 		}
-		repairAttempts = 0;
+		state.repairAttempts = 0;
 	});
 	pi.on("tool_result", (event: ToolResultEvent) => {
-		if (event.toolName !== "write" && event.toolName !== "edit") return;
-		const filePath = getFilePath(event);
 		if (
-			filePath &&
-			languageByExtension.has(path.extname(filePath).toLowerCase())
+			event.toolName !== "write" &&
+			event.toolName !== "edit" &&
+			event.toolName !== "text_edit" &&
+			event.toolName !== "structured_edit"
 		)
-			touchedFiles.add(filePath);
+			return;
+		for (const filePath of getFilePaths(event))
+			if (languageByExtension.has(path.extname(filePath).toLowerCase()))
+				state.touchedFiles.add(filePath);
 	});
 	pi.on("agent_settled", async (_event, ctx) => {
-		const pendingFiles = [...touchedFiles].sort();
-		touchedFiles.clear();
-		if (pendingFiles.length === 0) return;
 		const cwd = ctx?.cwd ?? process.cwd();
-		const files = await filterNetChangedFiles(pi, pendingFiles, cwd);
-		if (files.length === 0) {
-			repairAttempts = 0;
-			return;
-		}
-		const failures: Array<{ filePath: string; name: string; output: string }> =
-			[];
-		for (const filePath of files) {
-			const absolutePath = path.resolve(cwd, filePath);
-			if (!fs.existsSync(absolutePath)) continue;
-			const langConfig = languageByExtension.get(
-				path.extname(filePath).toLowerCase(),
-			);
-			if (!langConfig) continue;
-			const hashBefore = contentHash(filePath, cwd);
-			if (hashBefore && successfulHashes.get(absolutePath) === hashBefore)
-				continue;
-			const validatorFailures = await runAvailableValidators(
-				pi,
-				langConfig,
-				filePath,
-				cwd,
-			);
-			const hashAfter = contentHash(filePath, cwd);
-			if (hashBefore !== hashAfter) {
-				if (hashAfter) touchedFiles.add(filePath);
-				continue;
-			}
-			if (validatorFailures.length > 0)
-				failures.push(
-					...validatorFailures.map((failure) => ({ filePath, ...failure })),
-				);
-			else if (hashAfter) successfulHashes.set(absolutePath, hashAfter);
-		}
-		if (failures.length === 0) {
-			repairAttempts = 0;
-			return;
-		}
-		const content = `Quality gate validation failed:\n\n${failures.map((failure) => `${failure.name} reported issues in ${path.basename(failure.filePath)}:\n${failure.output}`).join("\n\n")}`;
-		if (repairAttempts >= MAX_AUTO_REPAIR_ATTEMPTS) {
-			repairAttempts = 0;
-			pi.sendMessage({
-				customType: "quality-gates",
-				content: `${content}\n\n${REPAIR_GUIDANCE}\n\nAutomatic repair limit reached. Resolve these failures before continuing.`,
-				display: true,
-			});
-			return;
-		}
-		repairAttempts++;
-		repairQueued = true;
-		for (const failure of failures) touchedFiles.add(failure.filePath);
-		pi.sendMessage(
-			{
-				customType: "quality-gates",
-				content: `${content}\n\n${REPAIR_GUIDANCE}`,
-				display: true,
-			},
-			{ triggerTurn: true, deliverAs: "followUp" },
+		const batch = await collectValidationBatch(
+			pi,
+			languageByExtension,
+			state,
+			cwd,
 		);
+		handleValidationBatch(pi, batch, state);
 	});
 }
 

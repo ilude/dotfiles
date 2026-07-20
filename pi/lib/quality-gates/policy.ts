@@ -1,10 +1,18 @@
 import * as fs from "node:fs";
 
+export interface LizardThresholdsConfig {
+	ccn: number;
+	parameters: number;
+	length: number;
+}
+
 export interface LizardValidatorConfig {
 	name: string;
 	kind: "lizard";
 	check: "lizard";
 	always: true;
+	advisory?: true;
+	thresholds?: Partial<LizardThresholdsConfig>;
 	timeout?: number;
 }
 
@@ -16,6 +24,7 @@ export interface CommandValidatorConfig {
 	detectAll?: string[];
 	always?: true;
 	failOnStdout?: true;
+	scope?: "project";
 	timeout?: number;
 }
 
@@ -29,6 +38,9 @@ export interface LanguageConfig {
 
 export interface QualityGatesPolicy {
 	version: 1;
+	lizardThresholds: LizardThresholdsConfig;
+	excludedPaths: string[];
+	immutablePaths: string[];
 	languages: Record<string, LanguageConfig>;
 }
 
@@ -49,22 +61,87 @@ const hasInvalidTimeout = (validator: Record<string, unknown>): boolean =>
 	validator.timeout !== undefined &&
 	numberField(validator.timeout) === undefined;
 
-const parseLizardValidator = (
+const thresholdMetrics = ["ccn", "parameters", "length"] as const;
+const thresholdMetricNames = new Set<string>(thresholdMetrics);
+
+const parseThresholdValue = (
+	thresholds: Record<string, unknown>,
+	metric: keyof LizardThresholdsConfig,
+	requireAll: boolean,
+): number | null | undefined => {
+	if (thresholds[metric] === undefined) return requireAll ? null : undefined;
+	return numberField(thresholds[metric]) ?? null;
+};
+
+const buildThresholds = (
+	ccn: number | undefined,
+	parameters: number | undefined,
+	length: number | undefined,
+): Partial<LizardThresholdsConfig> => {
+	const parsed: Partial<LizardThresholdsConfig> = {};
+	if (ccn !== undefined) parsed.ccn = ccn;
+	if (parameters !== undefined) parsed.parameters = parameters;
+	if (length !== undefined) parsed.length = length;
+	return parsed;
+};
+
+const parseThresholds = (
+	value: unknown,
+	requireAll: boolean,
+): Partial<LizardThresholdsConfig> | undefined => {
+	if (!value || typeof value !== "object") return undefined;
+	const thresholds = value as Record<string, unknown>;
+	const keys = Object.keys(thresholds);
+	if (keys.length === 0) return undefined;
+	if (keys.some((key) => !thresholdMetricNames.has(key))) return undefined;
+	const ccn = parseThresholdValue(thresholds, "ccn", requireAll);
+	const parameters = parseThresholdValue(thresholds, "parameters", requireAll);
+	const length = parseThresholdValue(thresholds, "length", requireAll);
+	if ([ccn, parameters, length].includes(null)) return undefined;
+	return buildThresholds(
+		ccn as number | undefined,
+		parameters as number | undefined,
+		length as number | undefined,
+	);
+};
+
+const hasInvalidLizardMetadata = (
 	validator: Record<string, unknown>,
-): LizardValidatorConfig | undefined => {
-	if (validator.check !== "lizard") return undefined;
-	if (!trueField(validator.always)) return undefined;
-	if (validator.detectAny !== undefined) return undefined;
-	if (validator.detectAll !== undefined) return undefined;
+): boolean => {
+	if (validator.check !== "lizard") return true;
+	if (!trueField(validator.always)) return true;
+	if (validator.detectAny !== undefined) return true;
+	if (validator.detectAll !== undefined) return true;
+	return validator.advisory !== undefined && !trueField(validator.advisory);
+};
+
+const buildLizardValidator = (
+	validator: Record<string, unknown>,
+	thresholds: Partial<LizardThresholdsConfig> | undefined,
+): LizardValidatorConfig => {
 	const parsed: LizardValidatorConfig = {
 		name: validator.name as string,
 		kind: "lizard",
 		check: "lizard",
 		always: true,
 	};
+	if (trueField(validator.advisory)) parsed.advisory = true;
+	if (thresholds) parsed.thresholds = thresholds;
 	const timeout = numberField(validator.timeout);
 	if (timeout !== undefined) parsed.timeout = timeout;
 	return parsed;
+};
+
+const parseLizardValidator = (
+	validator: Record<string, unknown>,
+): LizardValidatorConfig | undefined => {
+	if (hasInvalidLizardMetadata(validator)) return undefined;
+	const thresholds =
+		validator.thresholds === undefined
+			? undefined
+			: parseThresholds(validator.thresholds, false);
+	if (validator.thresholds !== undefined && !thresholds) return undefined;
+	return buildLizardValidator(validator, thresholds);
 };
 
 const parseDetectionField = (value: unknown): string[] | null | undefined => {
@@ -72,6 +149,9 @@ const parseDetectionField = (value: unknown): string[] | null | undefined => {
 	if (!isStringArray(value)) return null;
 	return value.length > 0 ? value : null;
 };
+
+const hasInvalidCommandScope = (validator: Record<string, unknown>): boolean =>
+	validator.scope !== undefined && validator.scope !== "project";
 
 const hasInvalidCommandMetadata = (
 	validator: Record<string, unknown>,
@@ -85,6 +165,7 @@ const hasInvalidCommandMetadata = (
 		!trueField(validator.failOnStdout)
 	)
 		return true;
+	if (hasInvalidCommandScope(validator)) return true;
 	return false;
 };
 
@@ -102,6 +183,7 @@ const buildCommandValidator = (
 	if (detectAll) parsed.detectAll = detectAll;
 	if (trueField(validator.always)) parsed.always = true;
 	if (trueField(validator.failOnStdout)) parsed.failOnStdout = true;
+	if (validator.scope === "project") parsed.scope = "project";
 	const timeout = numberField(validator.timeout);
 	if (timeout !== undefined) parsed.timeout = timeout;
 	return parsed;
@@ -138,12 +220,18 @@ export function parseQualityGatesPolicy(value: unknown): QualityGatesPolicy {
 	if (!value || typeof value !== "object")
 		throw new Error("Policy must be an object");
 	const policy = value as Record<string, unknown>;
+	const lizardThresholds = parseThresholds(policy.lizardThresholds, true);
 	if (
 		policy.version !== 1 ||
 		!policy.languages ||
-		typeof policy.languages !== "object"
+		typeof policy.languages !== "object" ||
+		!lizardThresholds ||
+		!isStringArray(policy.excludedPaths) ||
+		!isStringArray(policy.immutablePaths)
 	)
-		throw new Error("Policy must contain version 1 and languages");
+		throw new Error(
+			"Policy must contain version 1, languages, Lizard thresholds, and path exclusions",
+		);
 	const languages: Record<string, LanguageConfig> = {};
 	for (const [name, value] of Object.entries(policy.languages)) {
 		if (!value || typeof value !== "object")
@@ -165,7 +253,13 @@ export function parseQualityGatesPolicy(value: unknown): QualityGatesPolicy {
 			validators: validators as ValidatorConfig[],
 		};
 	}
-	return { version: 1, languages };
+	return {
+		version: 1,
+		lizardThresholds: lizardThresholds as LizardThresholdsConfig,
+		excludedPaths: policy.excludedPaths,
+		immutablePaths: policy.immutablePaths,
+		languages,
+	};
 }
 
 export function loadQualityGatesPolicy(policyPath: string): QualityGatesPolicy {

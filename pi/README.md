@@ -253,9 +253,9 @@ Policy file: `~/.dotfiles/pi/damage-control-rules.yaml`. Set `PI_DAMAGE_CONTROL_
 
 ### `quality-gates.ts`
 
-Collects files changed by write and edit operations, then runs the appropriate linters when the agent run ends. Failures trigger a follow-up repair turn before the session settles, with at most two automatic repair attempts before control returns with an unresolved warning.
+Collects files changed by `write`, `edit`, `text_edit`, and `structured_edit` operations, then runs the appropriate linters when the agent run ends. Failures trigger a follow-up repair turn before the session settles, with at most two automatic repair attempts before control returns with an unresolved warning. Validator output and aggregate repair messages are bounded, and project-scoped validators run once per project in each validation batch.
 
-Validators are configured in the Pi-owned `~/.dotfiles/pi/quality-gates.json`. Pi runs all applicable available validators. Its Lizard check compares functions with Git `HEAD` and blocks only new or worsened CCN, function-length, or parameter-count violations; new files have no baseline.
+Validators, Lizard thresholds, excluded paths, and immutable paths are configured in the Pi-owned `~/.dotfiles/pi/quality-gates.json`. Pi runs all applicable available validators. Its Lizard check compares functions with Git `HEAD` and reports only new or worsened CCN, function-length, or parameter-count violations; new files have no baseline. Lizard findings for TypeScript, JavaScript, and Vue are advisory because their parser output can misattribute function boundaries; other configured languages remain blocking.
 
 ### `session-hooks.ts`
 
