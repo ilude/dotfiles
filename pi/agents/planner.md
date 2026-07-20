@@ -7,7 +7,7 @@ memory: project
 effort: medium
 skills:
   - planning
-tools: read, grep
+tools: read, grep, find, ls
 ---
 
 # Planner
