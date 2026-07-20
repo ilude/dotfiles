@@ -84,35 +84,21 @@ function assistantText(messages: AgentMessage[]): string | undefined {
 	return undefined;
 }
 
-function extractJsonObject(text: string): string | undefined {
+const extractJsonObject = (text: string): string | undefined => {
 	const start = text.indexOf("{");
 	if (start < 0) return undefined;
-	const stack: string[] = [];
-	let inString = false;
-	let escaped = false;
-	for (let index = start; index < text.length; index += 1) {
-		const character = text[index];
-		if (escaped) {
-			escaped = false;
+	for (let end = text.length; end > start; end -= 1) {
+		if (text[end - 1] !== "}") continue;
+		const candidate = text.slice(start, end);
+		try {
+			JSON.parse(candidate);
+			return candidate;
+		} catch {
 			continue;
-		}
-		if (character === "\\") {
-			escaped = true;
-			continue;
-		}
-		if (character === '"') {
-			inString = !inString;
-			continue;
-		}
-		if (inString) continue;
-		if (character === "{") stack.push("}");
-		else if (character === "}") {
-			if (stack.pop() !== "}") return undefined;
-			if (stack.length === 0) return text.slice(start, index + 1);
 		}
 	}
 	return undefined;
-}
+};
 
 function decodeOutput<TSchemaType extends TSchema>(
 	schema: TSchemaType,
@@ -139,6 +125,38 @@ function timeoutError(id: string, timeoutMs: number): Error {
 	return error;
 }
 
+function createRunCancellation(
+	id: string,
+	timeoutMs: number | undefined,
+	sourceSignal: AbortSignal | undefined,
+) {
+	const controller = new AbortController();
+	let timedOut = false;
+	const abortFromContext = () => controller.abort();
+	sourceSignal?.addEventListener("abort", abortFromContext, { once: true });
+	const timeout =
+		timeoutMs === undefined
+			? undefined
+			: setTimeout(() => {
+					timedOut = true;
+					controller.abort();
+				}, timeoutMs);
+	return {
+		controller,
+		throwIfAborted() {
+			if (!controller.signal.aborted) return;
+			if (timedOut && timeoutMs !== undefined) {
+				throw timeoutError(id, timeoutMs);
+			}
+			throw abortError(id);
+		},
+		dispose() {
+			sourceSignal?.removeEventListener("abort", abortFromContext);
+			if (timeout !== undefined) clearTimeout(timeout);
+		},
+	};
+}
+
 export function defineAgent<
 	TInputSchema extends TSchema,
 	TOutputSchema extends TSchema,
@@ -153,25 +171,13 @@ export function defineAgent<
 				config.inputSchema,
 				input,
 			) as Static<TInputSchema>;
-			const controller = new AbortController();
-			let timedOut = false;
-			const abortFromContext = () => controller.abort();
-			ctx.signal?.addEventListener("abort", abortFromContext, { once: true });
-			const timeout =
-				config.timeoutMs === undefined
-					? undefined
-					: setTimeout(() => {
-							timedOut = true;
-							controller.abort();
-						}, config.timeoutMs);
+			const cancellation = createRunCancellation(
+				config.id,
+				config.timeoutMs,
+				ctx.signal,
+			);
+			const { controller, throwIfAborted } = cancellation;
 			const runContext = { ...ctx, signal: controller.signal };
-			const throwIfAborted = () => {
-				if (!controller.signal.aborted) return;
-				if (timedOut && config.timeoutMs !== undefined) {
-					throw timeoutError(config.id, config.timeoutMs);
-				}
-				throw abortError(config.id);
-			};
 			try {
 				const model = await config.resolveModel(runContext);
 				throwIfAborted();
@@ -185,7 +191,6 @@ export function defineAgent<
 					cwd: ctx.cwd,
 					model,
 					thinkingLevel: "low",
-					modelRegistry: ctx.modelRegistry,
 					resourceLoader: createResourceLoader(systemPrompt),
 					noTools: "all",
 					sessionManager: SessionManager.inMemory(ctx.cwd),
@@ -232,8 +237,7 @@ export function defineAgent<
 					session.dispose();
 				}
 			} finally {
-				ctx.signal?.removeEventListener("abort", abortFromContext);
-				if (timeout !== undefined) clearTimeout(timeout);
+				cancellation.dispose();
 			}
 		},
 	};
