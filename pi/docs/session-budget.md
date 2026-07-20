@@ -1,6 +1,6 @@
-# Session budget watchdog
+# Session watchdog
 
-The session budget gives each user request a tool-call and time budget, detects repeated delegation or command failures, and pauses for a user decision instead of terminating the session.
+The session watchdog records each request's footprint and interrupts repeated delegation or command failures. It never pauses work solely because a request runs for a long time or uses many tools.
 
 ## Interaction epochs
 
@@ -12,11 +12,10 @@ The watchdog records only the current epoch's start time, tool-call count, modif
 
 | Sensor | Soft trip | Hard trip |
 | --- | --- | --- |
-| Budget | 25 tool calls or 10 minutes | 60 tool calls or 30 minutes |
 | Repeat spawn | None | Second subagent launch with the same agent type and normalized prompt |
 | Command errors | Third consecutive identical command/error pair | Fifth consecutive identical command/error pair |
 
-Time is evaluated when watchdog events occur, including before tool calls. The first known wait or poll call counts toward the tool budget; repeated identical calls do not. Recognized waits are `onclave_await`, `onclave_get`, `task` with `action: "await"`, and direct `sleep` or `wait` shell commands.
+Elapsed time and tool-call count are informational footprint values, not trip sensors. Long-running work continues without a time or turn limit.
 
 Direct `subagent` calls and executable `task` starts both feed the repeat-spawn sensor. A successful command, a changed command, or a changed error signature resets the command-error streak.
 
@@ -28,13 +27,13 @@ Run:
 /budget
 ```
 
-The report shows elapsed time, tool calls, modified files, subagent counts, the current command-error streak, configured thresholds, and whether each sensor is clear, soft, hard, or acknowledged. If no user message has started an epoch, it reports that no epoch is active.
+The report shows informational elapsed time and tool calls, modified files, subagent counts, the current command-error streak, repetition thresholds, and whether each sensor is clear, soft, hard, or acknowledged. If no user message has started an epoch, it reports that no epoch is active.
 
 ## Escalation behavior
 
 A soft trip injects one hidden re-anchoring notice for that sensor. The notice quotes the request that opened the epoch, reports the measured footprint, and directs the current run to finish only the remaining requested work or ask the user.
 
-A hard budget or repeat-spawn trip gates the tool call that reaches the threshold. A hard command-error trip gates the following tool call because the failure is known only after command completion. The gate presents three choices:
+A hard repeat-spawn trip gates the tool call that reaches the threshold. A hard command-error trip gates the following tool call because the failure is known only after command completion. The gate presents three choices:
 
 - `continue as scoped` - allow the pending tool and acknowledge that sensor for the rest of the epoch.
 - `wrap up now` - allow the pending tool and inject a directive to stop expanding work, perform only necessary validation, and report.
@@ -50,17 +49,13 @@ The user-owned `sessionBudget` object in `~/.pi/agent/settings.json` controls th
 {
   "sessionBudget": {
     "enabled": true,
-    "softToolCalls": 25,
-    "hardToolCalls": 60,
-    "softMinutes": 10,
-    "hardMinutes": 30,
     "maxSameAgentSpawns": 1,
     "maxCommandErrorRepeats": 3
   }
 }
 ```
 
-Missing fields use the defaults above. Values must be positive, call and repeat limits must be integers, and each hard budget must exceed its soft budget. Invalid user configuration disables the watchdog for that session and `/budget` reports the configuration error.
+Missing fields use the defaults above. Repeat limits must be positive integers. Legacy call/time limit fields are ignored. Invalid user configuration disables the watchdog for that session and `/budget` reports the configuration error.
 
 Set `enabled` to `false` to disable event subscriptions while retaining the read-only `/budget` command. Project `.pi/settings.json` and `.pi/settings.local.json` files cannot weaken or disable this user-owned control.
 
@@ -76,7 +71,7 @@ Trips and user responses append metadata-only records under:
 
 Records include the epoch ID, sensor, level, metric, measured value, threshold, and selected hard-trip response. They do not include prompts, commands, tool output, or error text. Telemetry failure is logged but never changes an allow or block decision.
 
-Use telemetry to decide whether thresholds need adjustment after observed sessions. Do not lower or add sensors from speculation alone.
+Use telemetry to decide whether repetition thresholds need adjustment after observed sessions. Generic time and tool-call trip thresholds were removed because duration alone does not show that work is off target.
 
 ## Prior art and exclusions
 

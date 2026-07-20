@@ -97,38 +97,6 @@ function hashText(value: string): string {
 	return createHash("sha256").update(normalizeText(value)).digest("hex");
 }
 
-function stableValue(value: unknown): unknown {
-	if (Array.isArray(value)) return value.map(stableValue);
-	if (!value || typeof value !== "object") return value;
-	return Object.fromEntries(
-		Object.entries(value as Record<string, unknown>)
-			.sort(([a], [b]) => a.localeCompare(b))
-			.map(([key, item]) => [key, stableValue(item)]),
-	);
-}
-
-function stableJson(value: unknown): string {
-	return JSON.stringify(stableValue(value));
-}
-
-function waitPollKey(toolName: string, input: Record<string, unknown>) {
-	if (toolName === "onclave_await" || toolName === "onclave_get") {
-		return `${toolName}:${stableJson(input)}`;
-	}
-	if (toolName === "task" && input.action === "await") {
-		return `task:await:${stableJson(input.ids ?? input.id)}`;
-	}
-	if (toolName === "bash" || toolName === "pwsh") {
-		const command = normalizeText(
-			typeof input.command === "string" ? input.command : "",
-		);
-		if (/^(?:sleep\s+\d+(?:\.\d+)?|wait(?:\s|$))/.test(command)) {
-			return `${toolName}:${command}`;
-		}
-	}
-	return undefined;
-}
-
 function touchedPaths(
 	toolName: string,
 	input: Record<string, unknown>,
@@ -242,7 +210,7 @@ function softNotice(
 	const prompt =
 		tracker.snapshot(now).prompt ?? "(opening request unavailable)";
 	return [
-		`Session budget soft check-in (${finding.sensor}).`,
+		`Session watchdog soft check-in (${finding.sensor}).`,
 		"",
 		"Opening request:",
 		quotePrompt(prompt),
@@ -263,7 +231,7 @@ function hardSummary(
 				`${finding.sensor}: ${formatMetric(finding.measured)}/${formatMetric(finding.threshold)} ${finding.metric}`,
 		)
 		.join("; ");
-	return `Session budget hard check-in. ${formatFootprint(tracker, now)}. ${sensors}`;
+	return `Session watchdog hard check-in. ${formatFootprint(tracker, now)}. ${sensors}`;
 }
 
 function formatSensorState(state: {
@@ -283,21 +251,21 @@ function formatBudgetStatus(
 	now: number,
 ): string {
 	const snapshot = tracker.snapshot(now);
-	if (!snapshot.epochId) return "Session budget: enabled; no active epoch.";
+	if (!snapshot.epochId) return "Session watchdog: enabled; no active epoch.";
 	const spawns = snapshot.spawns.length
 		? snapshot.spawns
 				.map((item) => `${item.agentType}=${item.count}`)
 				.join(", ")
 		: "none";
 	return [
-		"Session budget",
+		"Session watchdog",
 		`Epoch: ${snapshot.epochId}`,
-		`Elapsed: ${formatMetric(snapshot.elapsedMinutes)}m (soft ${config.softMinutes}, hard ${config.hardMinutes})`,
-		`Tool calls: ${snapshot.toolCalls} (soft ${config.softToolCalls}, hard ${config.hardToolCalls})`,
+		`Elapsed: ${formatMetric(snapshot.elapsedMinutes)}m (informational only)`,
+		`Tool calls: ${snapshot.toolCalls} (informational only)`,
 		`Files touched: ${snapshot.filesTouched.length}${snapshot.filesTouched.length ? ` - ${snapshot.filesTouched.join(", ")}` : ""}`,
 		`Spawns: ${spawns} (same-agent max ${config.maxSameAgentSpawns})`,
 		`Repeated command errors: ${snapshot.maxCommandErrorRepeats} (soft ${config.maxCommandErrorRepeats}, hard ${config.maxCommandErrorRepeats + 2})`,
-		`Sensors: budget=${formatSensorState(snapshot.sensors.budget)}, repeat_spawn=${formatSensorState(snapshot.sensors.repeat_spawn)}, command_error_repeat=${formatSensorState(snapshot.sensors.command_error_repeat)}`,
+		`Sensors: repeat_spawn=${formatSensorState(snapshot.sensors.repeat_spawn)}, command_error_repeat=${formatSensorState(snapshot.sensors.command_error_repeat)}`,
 	].join("\n");
 }
 
@@ -338,7 +306,7 @@ export function registerSessionBudget(
 		disabledByError = error instanceof Error ? error.message : String(error);
 		console.error(`[session-budget] disabled: ${disabledByError}`);
 		ctx.ui.notify(
-			`Session budget disabled for this session: ${disabledByError}`,
+			`Session watchdog disabled for this session: ${disabledByError}`,
 			"error",
 		);
 	};
@@ -355,7 +323,7 @@ export function registerSessionBudget(
 				eventId: `budget-${String(telemetryCounter).padStart(3, "0")}`,
 				phaseId: "session-budget",
 				eventType,
-				evidence: "Session budget runtime decision.",
+				evidence: "Session watchdog runtime decision.",
 				data,
 				now: new Date(deps.now()),
 			});
@@ -419,7 +387,8 @@ export function registerSessionBudget(
 		if (!ctx.hasUI) {
 			return {
 				block: true,
-				reason: "Session budget hard check-in requires interactive user input.",
+				reason:
+					"Session watchdog hard check-in requires interactive user input.",
 			};
 		}
 		const choice = (await ctx.ui.select(hardSummary(tracker, hard, now), [
@@ -428,7 +397,7 @@ export function registerSessionBudget(
 		if (!choice) {
 			return {
 				block: true,
-				reason: "Session budget hard check-in was cancelled.",
+				reason: "Session watchdog hard check-in was cancelled.",
 			};
 		}
 		pendingHardFindings = [];
@@ -447,36 +416,39 @@ export function registerSessionBudget(
 		if (choice === "continue as scoped") return undefined;
 		if (choice === "wrap up now") {
 			sendDirective(
-				"Session budget decision: wrap up now. Stop expanding the implementation, complete only the minimum validation needed for the opening request, and report the result.",
+				"Session watchdog decision: wrap up now. Stop expanding the implementation, complete only the minimum validation needed for the opening request, and report the result.",
 			);
 			return undefined;
 		}
 		try {
 			sendDirective(
-				"Session budget decision: stop. Do not execute more tools for the opening request. Report current state and remaining work.",
+				"Session watchdog decision: stop. Do not execute more tools for the opening request. Report current state and remaining work.",
 			);
 		} catch (error) {
 			disableForSession(error, ctx);
 		}
-		return { block: true, reason: "Stopped by session budget user decision." };
+		return {
+			block: true,
+			reason: "Stopped by session watchdog user decision.",
+		};
 	};
 
 	pi.registerCommand("budget", {
-		description: "Show the current session budget footprint",
+		description: "Show the current session watchdog footprint",
 		handler: async (_args, ctx) => {
 			try {
 				if (configError) {
-					show(pi, `Session budget: configuration error - ${configError}`);
+					show(pi, `Session watchdog: configuration error - ${configError}`);
 					return;
 				}
 				if (!config?.enabled) {
-					show(pi, "Session budget: disabled by configuration.");
+					show(pi, "Session watchdog: disabled by configuration.");
 					return;
 				}
 				if (disabledByError) {
 					show(
 						pi,
-						`Session budget: disabled for this session - ${disabledByError}`,
+						`Session watchdog: disabled for this session - ${disabledByError}`,
 					);
 					return;
 				}
@@ -526,7 +498,7 @@ export function registerSessionBudget(
 			if (stoppedEpochId) {
 				return {
 					block: true,
-					reason: "Stopped by session budget user decision.",
+					reason: "Stopped by session watchdog user decision.",
 				};
 			}
 			if (disabledByError || !tracker) return undefined;
@@ -537,7 +509,6 @@ export function registerSessionBudget(
 				type: "tool_call",
 				toolName: event.toolName,
 				timestamp: deps.now(),
-				waitPollKey: waitPollKey(event.toolName, input),
 				touchedPaths: touchedPaths(event.toolName, input),
 			});
 			for (const spawn of spawnDescriptors(
@@ -599,7 +570,6 @@ export const sessionBudgetTestApi = {
 	formatBudgetStatus,
 	spawnDescriptors,
 	touchedPaths,
-	waitPollKey,
 };
 
 export default function sessionBudgetExtension(pi: ExtensionAPI) {

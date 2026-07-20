@@ -12,10 +12,6 @@ import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 const baseConfig: SessionBudgetConfig = {
 	enabled: true,
-	softToolCalls: 2,
-	hardToolCalls: 4,
-	softMinutes: 100,
-	hardMinutes: 200,
 	maxSameAgentSpawns: 1,
 	maxCommandErrorRepeats: 3,
 };
@@ -75,6 +71,29 @@ async function callTool(
 	);
 }
 
+async function failCommand(runtime: ReturnType<typeof setup>, index: number) {
+	const toolCallId = `bash-${index}`;
+	await callTool(runtime, toolCallId, "bash", { command: "pnpm test" });
+	await runtime.toolResult(
+		{
+			type: "tool_result",
+			toolCallId,
+			toolName: "bash",
+			input: { command: "pnpm test" },
+			content: [{ type: "text", text: "same failure" }],
+			isError: true,
+			details: {},
+		},
+		runtime.ctx,
+	);
+}
+
+async function repeatSpawn(runtime: ReturnType<typeof setup>) {
+	const input = { agent: "reviewer", task: "Review the same plan" };
+	await callTool(runtime, "spawn-1", "subagent", input);
+	return callTool(runtime, "spawn-2", "subagent", input);
+}
+
 function hiddenMessages(runtime: ReturnType<typeof setup>) {
 	return runtime.pi.sendMessage.mock.calls.filter(
 		([message]) => message.customType === "session-budget.notice",
@@ -95,7 +114,7 @@ describe("session budget extension", () => {
 		expect(pi.sendMessage).toHaveBeenCalledWith(
 			expect.objectContaining({
 				customType: "session-budget.status",
-				content: "Session budget: disabled by configuration.",
+				content: "Session watchdog: disabled by configuration.",
 			}),
 			expect.objectContaining({ triggerTurn: false }),
 		);
@@ -110,33 +129,43 @@ describe("session budget extension", () => {
 		fs.mkdirSync(path.join(projectRoot, ".pi"), { recursive: true });
 		fs.writeFileSync(
 			userPath,
-			JSON.stringify({ sessionBudget: { enabled: true, softToolCalls: 12 } }),
+			JSON.stringify({
+				sessionBudget: {
+					enabled: true,
+					maxCommandErrorRepeats: 4,
+					softToolCalls: 1,
+					hardMinutes: 1,
+				},
+			}),
 		);
 		fs.writeFileSync(
 			path.join(projectRoot, ".pi", "settings.json"),
-			JSON.stringify({ sessionBudget: { enabled: false, softToolCalls: 999 } }),
+			JSON.stringify({
+				sessionBudget: { enabled: false, maxCommandErrorRepeats: 999 },
+			}),
 		);
 		try {
-			expect(loadSessionBudgetConfig(projectRoot, userPath)).toMatchObject({
+			expect(loadSessionBudgetConfig(projectRoot, userPath)).toEqual({
 				enabled: true,
-				softToolCalls: 12,
+				maxSameAgentSpawns: 1,
+				maxCommandErrorRepeats: 4,
 			});
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
 		}
 	});
 
-	it("injects one soft notice with the opening request and footprint", async () => {
+	it("injects one soft notice after repeated failures", async () => {
 		const runtime = setup();
 		await startEpoch(runtime);
-		await callTool(runtime, "read-1");
-		await callTool(runtime, "read-2");
-		await callTool(runtime, "read-3");
+		for (let index = 1; index <= 3; index += 1) {
+			await failCommand(runtime, index);
+		}
 
 		const notices = hiddenMessages(runtime);
 		expect(notices).toHaveLength(1);
 		expect(notices[0][0].content).toContain("Fix only the requested bug");
-		expect(notices[0][0].content).toContain("2 tool calls");
+		expect(notices[0][0].content).toContain("3 tool calls");
 		expect(notices[0][1]).toEqual({
 			triggerTurn: true,
 			deliverAs: "steer",
@@ -144,7 +173,12 @@ describe("session budget extension", () => {
 		expect(runtime.recordEvent).toHaveBeenCalledTimes(1);
 		expect(runtime.recordEvent.mock.calls[0][0]).toMatchObject({
 			eventType: "budget_trip",
-			data: { sensor: "budget", level: "soft", measured: 2, threshold: 2 },
+			data: {
+				sensor: "command_error_repeat",
+				level: "soft",
+				measured: 3,
+				threshold: 3,
+			},
 		});
 	});
 
@@ -158,8 +192,9 @@ describe("session budget extension", () => {
 			},
 			runtime.ctx,
 		);
-		await callTool(runtime, "read-1");
-		await callTool(runtime, "read-2");
+		for (let index = 1; index <= 3; index += 1) {
+			await failCommand(runtime, index);
+		}
 		expect(hiddenMessages(runtime)[0][0].content).toContain(
 			"Continue the queued workflow",
 		);
@@ -171,19 +206,16 @@ describe("session budget extension", () => {
 		[
 			"stop",
 			true,
-			{ block: true, reason: "Stopped by session budget user decision." },
+			{ block: true, reason: "Stopped by session watchdog user decision." },
 		],
 	] as const)("handles the hard choice %s before the pending tool", async (choice, expectsDirective, expectedDecision) => {
 		const runtime = setup();
 		runtime.ctx.ui.select.mockResolvedValue(choice);
 		await startEpoch(runtime);
-		for (let index = 1; index < 4; index += 1) {
-			await callTool(runtime, `read-${index}`);
-		}
-		const decision = await callTool(runtime, "read-4");
+		const decision = await repeatSpawn(runtime);
 
 		expect(runtime.ctx.ui.select).toHaveBeenCalledWith(
-			expect.stringContaining("Session budget hard check-in"),
+			expect.stringContaining("Session watchdog hard check-in"),
 			["continue as scoped", "wrap up now", "stop"],
 		);
 		expect(decision).toEqual(expectedDecision);
@@ -205,15 +237,13 @@ describe("session budget extension", () => {
 		const runtime = setup();
 		runtime.ctx.ui.select.mockResolvedValue("stop");
 		await startEpoch(runtime);
-		for (let index = 1; index < 4; index += 1)
-			await callTool(runtime, `read-${index}`);
-		await expect(callTool(runtime, "read-4")).resolves.toEqual({
+		await expect(repeatSpawn(runtime)).resolves.toEqual({
 			block: true,
-			reason: "Stopped by session budget user decision.",
+			reason: "Stopped by session watchdog user decision.",
 		});
 		await expect(callTool(runtime, "read-5")).resolves.toEqual({
 			block: true,
-			reason: "Stopped by session budget user decision.",
+			reason: "Stopped by session watchdog user decision.",
 		});
 		expect(runtime.ctx.ui.select).toHaveBeenCalledTimes(1);
 		await runtime.input(
@@ -227,16 +257,13 @@ describe("session budget extension", () => {
 		const runtime = setup();
 		runtime.ctx.hasUI = false;
 		await startEpoch(runtime);
-		for (let index = 1; index < 4; index += 1) {
-			await callTool(runtime, `read-${index}`);
-		}
-		await expect(callTool(runtime, "read-4")).resolves.toEqual({
+		await expect(repeatSpawn(runtime)).resolves.toEqual({
 			block: true,
-			reason: "Session budget hard check-in requires interactive user input.",
+			reason: "Session watchdog hard check-in requires interactive user input.",
 		});
 		await expect(callTool(runtime, "read-5")).resolves.toEqual({
 			block: true,
-			reason: "Session budget hard check-in requires interactive user input.",
+			reason: "Session watchdog hard check-in requires interactive user input.",
 		});
 	});
 
@@ -244,26 +271,19 @@ describe("session budget extension", () => {
 		const runtime = setup();
 		runtime.ctx.ui.select.mockResolvedValue(undefined);
 		await startEpoch(runtime);
-		for (let index = 1; index < 4; index += 1) {
-			await callTool(runtime, `read-${index}`);
-		}
-		await expect(callTool(runtime, "read-4")).resolves.toEqual({
+		await expect(repeatSpawn(runtime)).resolves.toEqual({
 			block: true,
-			reason: "Session budget hard check-in was cancelled.",
+			reason: "Session watchdog hard check-in was cancelled.",
 		});
 		await expect(callTool(runtime, "read-5")).resolves.toEqual({
 			block: true,
-			reason: "Session budget hard check-in was cancelled.",
+			reason: "Session watchdog hard check-in was cancelled.",
 		});
 		expect(runtime.ctx.ui.select).toHaveBeenCalledTimes(2);
 	});
 
 	it("hard-gates a repeated same-agent spawn with the same normalized prompt", async () => {
-		const runtime = setup({
-			...baseConfig,
-			softToolCalls: 100,
-			hardToolCalls: 200,
-		});
+		const runtime = setup();
 		runtime.ctx.ui.select.mockResolvedValue("continue as scoped");
 		await startEpoch(runtime);
 		const input = { agent: "reviewer", task: "Review the same plan" };
@@ -280,19 +300,12 @@ describe("session budget extension", () => {
 	});
 
 	it("observes durable task executions as subagent spawns", async () => {
-		const runtime = setup(
-			{
-				...baseConfig,
-				softToolCalls: 100,
-				hardToolCalls: 200,
-			},
-			{
-				resolveTaskSpawn: () => ({
-					agentType: "reviewer",
-					prompt: "Review the durable task",
-				}),
-			},
-		);
+		const runtime = setup(baseConfig, {
+			resolveTaskSpawn: () => ({
+				agentType: "reviewer",
+				prompt: "Review the durable task",
+			}),
+		});
 		runtime.ctx.ui.select.mockResolvedValue("continue as scoped");
 		await startEpoch(runtime);
 		await callTool(runtime, "task-1", "task", {
@@ -310,14 +323,7 @@ describe("session budget extension", () => {
 
 	it("ignores durable task executions that are not eligible to start", async () => {
 		const resolveTaskSpawn = vi.fn(() => undefined);
-		const runtime = setup(
-			{
-				...baseConfig,
-				softToolCalls: 100,
-				hardToolCalls: 200,
-			},
-			{ resolveTaskSpawn },
-		);
+		const runtime = setup(baseConfig, { resolveTaskSpawn });
 		await startEpoch(runtime);
 		await callTool(runtime, "blocked", "task", {
 			action: "execute",
@@ -336,29 +342,11 @@ describe("session budget extension", () => {
 	});
 
 	it("queues a hard command-error trip and gates the next tool call", async () => {
-		const runtime = setup({
-			...baseConfig,
-			softToolCalls: 100,
-			hardToolCalls: 200,
-		});
+		const runtime = setup();
 		runtime.ctx.ui.select.mockResolvedValue("continue as scoped");
 		await startEpoch(runtime);
 		for (let index = 1; index <= 5; index += 1) {
-			await callTool(runtime, `bash-${index}`, "bash", {
-				command: "pnpm test",
-			});
-			await runtime.toolResult(
-				{
-					type: "tool_result",
-					toolCallId: `bash-${index}`,
-					toolName: "bash",
-					input: { command: "pnpm test" },
-					content: [{ type: "text", text: "same failure" }],
-					isError: true,
-					details: {},
-				},
-				runtime.ctx,
-			);
+			await failCommand(runtime, index);
 		}
 		expect(runtime.ctx.ui.select).not.toHaveBeenCalled();
 		await callTool(runtime, "next-read");
@@ -372,25 +360,19 @@ describe("session budget extension", () => {
 		expect(tripEvents).toHaveLength(2);
 	});
 
-	it("does not inflate the budget for repeated wait polling", async () => {
+	it("does not interrupt long-running work based on time or tool count", async () => {
 		const runtime = setup();
 		await startEpoch(runtime);
-		for (let index = 1; index <= 6; index += 1) {
-			await callTool(runtime, `await-${index}`, "onclave_await", {
-				msg_id: "message-1",
-				timeout_ms: 300_000,
-			});
+		runtime.setNow(8 * 60 * 60_000);
+		for (let index = 1; index <= 100; index += 1) {
+			await callTool(runtime, `read-${index}`);
 		}
 		expect(hiddenMessages(runtime)).toHaveLength(0);
 		expect(runtime.ctx.ui.select).not.toHaveBeenCalled();
 	});
 
-	it("reports footprint and sensor thresholds through /budget", async () => {
-		const runtime = setup({
-			...baseConfig,
-			softToolCalls: 100,
-			hardToolCalls: 200,
-		});
+	it("reports informational footprint and repetition thresholds through /budget", async () => {
+		const runtime = setup();
 		await startEpoch(runtime);
 		await callTool(runtime, "edit-1", "edit", { path: "src/a.ts" });
 		await callTool(runtime, "spawn-1", "subagent", {
@@ -414,16 +396,15 @@ describe("session budget extension", () => {
 			.spyOn(console, "error")
 			.mockImplementation(() => {});
 		try {
-			const runtime = setup(
-				{ ...baseConfig, softToolCalls: 1, hardToolCalls: 2 },
-				{
-					recordEvent: vi.fn(() => {
-						throw new Error("telemetry unavailable");
-					}),
-				},
-			);
+			const runtime = setup(baseConfig, {
+				recordEvent: vi.fn(() => {
+					throw new Error("telemetry unavailable");
+				}),
+			});
 			await startEpoch(runtime);
-			await expect(callTool(runtime, "read-1")).resolves.toBeUndefined();
+			for (let index = 1; index <= 3; index += 1) {
+				await failCommand(runtime, index);
+			}
 			expect(hiddenMessages(runtime)).toHaveLength(1);
 			expect(runtime.ctx.ui.notify).not.toHaveBeenCalled();
 			expect(consoleError).toHaveBeenCalledWith(
@@ -448,11 +429,9 @@ describe("session budget extension", () => {
 			});
 			runtime.ctx.ui.select.mockResolvedValue("stop");
 			await startEpoch(runtime);
-			for (let index = 1; index < 4; index += 1)
-				await callTool(runtime, `read-${index}`);
-			await expect(callTool(runtime, "read-4")).resolves.toEqual({
+			await expect(repeatSpawn(runtime)).resolves.toEqual({
 				block: true,
-				reason: "Stopped by session budget user decision.",
+				reason: "Stopped by session watchdog user decision.",
 			});
 			expect(consoleError).toHaveBeenCalledWith(
 				"[session-budget] telemetry failed: response telemetry unavailable",
@@ -478,7 +457,7 @@ describe("session budget extension", () => {
 			await startEpoch(runtime);
 			await expect(callTool(runtime, "read-1")).resolves.toBeUndefined();
 			expect(runtime.ctx.ui.notify).toHaveBeenCalledWith(
-				"Session budget disabled for this session: clock unavailable",
+				"Session watchdog disabled for this session: clock unavailable",
 				"error",
 			);
 			await expect(callTool(runtime, "read-2")).resolves.toBeUndefined();

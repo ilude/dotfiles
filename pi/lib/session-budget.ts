@@ -1,33 +1,18 @@
 export const SESSION_BUDGET_DEFAULTS = {
 	enabled: true,
-	softToolCalls: 25,
-	hardToolCalls: 60,
-	softMinutes: 10,
-	hardMinutes: 30,
 	maxSameAgentSpawns: 1,
 	maxCommandErrorRepeats: 3,
 } as const;
 
 export interface SessionBudgetConfig {
 	enabled: boolean;
-	softToolCalls: number;
-	hardToolCalls: number;
-	softMinutes: number;
-	hardMinutes: number;
 	maxSameAgentSpawns: number;
 	maxCommandErrorRepeats: number;
 }
 
-export type SessionBudgetSensor =
-	| "budget"
-	| "repeat_spawn"
-	| "command_error_repeat";
+export type SessionBudgetSensor = "repeat_spawn" | "command_error_repeat";
 export type SessionBudgetLevel = "soft" | "hard";
-export type SessionBudgetMetric =
-	| "tool_calls"
-	| "minutes"
-	| "same_agent_spawns"
-	| "command_errors";
+export type SessionBudgetMetric = "same_agent_spawns" | "command_errors";
 
 export interface SessionBudgetFinding {
 	sensor: SessionBudgetSensor;
@@ -49,7 +34,6 @@ export type SessionBudgetEvent =
 			type: "tool_call";
 			toolName: string;
 			timestamp: number;
-			waitPollKey?: string;
 			touchedPaths?: string[];
 	  }
 	| {
@@ -90,7 +74,6 @@ interface EpochState {
 	startedAt: number;
 	toolCalls: number;
 	filesTouched: Set<string>;
-	seenWaitPollKeys: Set<string>;
 	spawnCounts: Map<string, number>;
 	spawnTypes: Map<string, number>;
 	commandErrorStreak?: {
@@ -124,11 +107,10 @@ function readBoolean(
 	return value;
 }
 
-function readPositiveNumber(
+function readPositiveInteger(
 	settings: Record<string, unknown>,
 	key: string,
 	fallback: number,
-	integer: boolean,
 ): number {
 	const value = settings[key];
 	if (value === undefined) return fallback;
@@ -136,67 +118,28 @@ function readPositiveNumber(
 		typeof value !== "number" ||
 		!Number.isFinite(value) ||
 		value <= 0 ||
-		(integer && !Number.isInteger(value))
+		!Number.isInteger(value)
 	) {
-		throw new Error(
-			`sessionBudget.${key} must be a positive ${integer ? "integer" : "number"}`,
-		);
+		throw new Error(`sessionBudget.${key} must be a positive integer`);
 	}
 	return value;
 }
 
 export function parseSessionBudgetConfig(value: unknown): SessionBudgetConfig {
 	const settings = requireObject(value);
-	const config: SessionBudgetConfig = {
+	return {
 		enabled: readBoolean(settings, "enabled", SESSION_BUDGET_DEFAULTS.enabled),
-		softToolCalls: readPositiveNumber(
-			settings,
-			"softToolCalls",
-			SESSION_BUDGET_DEFAULTS.softToolCalls,
-			true,
-		),
-		hardToolCalls: readPositiveNumber(
-			settings,
-			"hardToolCalls",
-			SESSION_BUDGET_DEFAULTS.hardToolCalls,
-			true,
-		),
-		softMinutes: readPositiveNumber(
-			settings,
-			"softMinutes",
-			SESSION_BUDGET_DEFAULTS.softMinutes,
-			false,
-		),
-		hardMinutes: readPositiveNumber(
-			settings,
-			"hardMinutes",
-			SESSION_BUDGET_DEFAULTS.hardMinutes,
-			false,
-		),
-		maxSameAgentSpawns: readPositiveNumber(
+		maxSameAgentSpawns: readPositiveInteger(
 			settings,
 			"maxSameAgentSpawns",
 			SESSION_BUDGET_DEFAULTS.maxSameAgentSpawns,
-			true,
 		),
-		maxCommandErrorRepeats: readPositiveNumber(
+		maxCommandErrorRepeats: readPositiveInteger(
 			settings,
 			"maxCommandErrorRepeats",
 			SESSION_BUDGET_DEFAULTS.maxCommandErrorRepeats,
-			true,
 		),
 	};
-	if (config.hardToolCalls <= config.softToolCalls) {
-		throw new Error(
-			"sessionBudget.hardToolCalls must be greater than softToolCalls",
-		);
-	}
-	if (config.hardMinutes <= config.softMinutes) {
-		throw new Error(
-			"sessionBudget.hardMinutes must be greater than softMinutes",
-		);
-	}
-	return config;
 }
 
 function findingKey(sensor: SessionBudgetSensor, level: SessionBudgetLevel) {
@@ -216,7 +159,6 @@ export class SessionBudgetTracker {
 				startedAt: event.timestamp,
 				toolCalls: 0,
 				filesTouched: new Set(),
-				seenWaitPollKeys: new Set(),
 				spawnCounts: new Map(),
 				spawnTypes: new Map(),
 				emitted: new Set(),
@@ -228,11 +170,7 @@ export class SessionBudgetTracker {
 
 		const findings: SessionBudgetFinding[] = [];
 		if (event.type === "tool_call") {
-			const repeatedWaitPoll =
-				Boolean(event.waitPollKey) &&
-				this.epoch.seenWaitPollKeys.has(event.waitPollKey as string);
-			if (event.waitPollKey) this.epoch.seenWaitPollKeys.add(event.waitPollKey);
-			if (!repeatedWaitPoll) this.epoch.toolCalls += 1;
+			this.epoch.toolCalls += 1;
 			for (const filePath of event.touchedPaths ?? []) {
 				if (filePath) this.epoch.filesTouched.add(filePath);
 			}
@@ -293,7 +231,6 @@ export class SessionBudgetTracker {
 			}
 		}
 
-		this.addBudgetFindings(findings, event.timestamp);
 		return findings;
 	}
 
@@ -327,43 +264,6 @@ export class SessionBudgetTracker {
 		};
 	}
 
-	private addBudgetFindings(
-		findings: SessionBudgetFinding[],
-		timestamp: number,
-	): void {
-		if (!this.epoch) return;
-		const minutes = Math.max(0, timestamp - this.epoch.startedAt) / MINUTE_MS;
-		if (
-			this.epoch.toolCalls >= this.config.hardToolCalls ||
-			minutes >= this.config.hardMinutes
-		) {
-			const byCalls = this.epoch.toolCalls >= this.config.hardToolCalls;
-			this.addFinding(findings, {
-				sensor: "budget",
-				level: "hard",
-				metric: byCalls ? "tool_calls" : "minutes",
-				measured: byCalls ? this.epoch.toolCalls : minutes,
-				threshold: byCalls
-					? this.config.hardToolCalls
-					: this.config.hardMinutes,
-			});
-		} else if (
-			this.epoch.toolCalls >= this.config.softToolCalls ||
-			minutes >= this.config.softMinutes
-		) {
-			const byCalls = this.epoch.toolCalls >= this.config.softToolCalls;
-			this.addFinding(findings, {
-				sensor: "budget",
-				level: "soft",
-				metric: byCalls ? "tool_calls" : "minutes",
-				measured: byCalls ? this.epoch.toolCalls : minutes,
-				threshold: byCalls
-					? this.config.softToolCalls
-					: this.config.softMinutes,
-			});
-		}
-	}
-
 	private addFinding(
 		findings: SessionBudgetFinding[],
 		finding: Omit<SessionBudgetFinding, "epochId">,
@@ -384,7 +284,6 @@ export class SessionBudgetTracker {
 			acknowledged: epoch?.acknowledged.has(sensor) ?? false,
 		});
 		return {
-			budget: state("budget"),
 			repeat_spawn: state("repeat_spawn"),
 			command_error_repeat: state("command_error_repeat"),
 		};
