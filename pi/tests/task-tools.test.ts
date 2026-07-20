@@ -199,6 +199,56 @@ describe("task tools", () => {
 		expect(fullVisible.record).toHaveProperty("createdAt");
 	});
 
+	it("lists only active workspace tasks unless all is requested", async () => {
+		const pi = createMockPi();
+		registerTaskTools(
+			pi as Parameters<typeof registerTaskTools>[0],
+			new TaskExecutionCoordinator(),
+		);
+		const workspace = resolveTaskWorkspace(tmpRoot);
+		const active = createTask({
+			origin: "other",
+			summary: "active task",
+			workspace,
+		});
+		const completed = createTask({
+			origin: "other",
+			summary: "completed task",
+			workspace,
+			state: "running",
+		});
+		transitionTask(completed.id, "completed");
+		const foreign = createTask({
+			origin: "other",
+			summary: "foreign task",
+			workspace: path.join(tmpRoot, "other"),
+		});
+		const tool = pi._getTool("task");
+		const ctx = createMockCtx({ cwd: tmpRoot });
+
+		const current = await tool?.execute(
+			"current-list",
+			{ action: "list" },
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(current.details.records.map((record: { id: string }) => record.id)).toEqual([
+			active.id,
+		]);
+
+		const all = await tool?.execute(
+			"all-list",
+			{ action: "list", all: true },
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(
+			new Set(all.details.records.map((record: { id: string }) => record.id)),
+		).toEqual(new Set([active.id, completed.id, foreign.id]));
+	});
+
 	it("bounds model-visible task collections without trimming TUI details", async () => {
 		const pi = createMockPi();
 		registerTaskTools(

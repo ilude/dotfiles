@@ -6,7 +6,10 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { isAllowedTransition } from "../lib/operator-state.js";
+import {
+	isAllowedTransition,
+	TERMINAL_TASK_STATES,
+} from "../lib/operator-state.js";
 import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 import {
 	type CreateTaskBatchInput,
@@ -768,7 +771,12 @@ export function registerTaskTools(
 				Type.String({ maxLength: TASK_NOTES_MAX_LENGTH }),
 			),
 			blockedBy: Type.Optional(Type.Array(Type.String())),
-			all: Type.Optional(Type.Boolean()),
+			all: Type.Optional(
+				Type.Boolean({
+					description:
+						"Include terminal tasks and tasks from other workspaces when listing.",
+				}),
+			),
 			origin: Type.Optional(taskItem.properties.origin),
 			agent: Type.Optional(Type.String()),
 			task: Type.Optional(Type.String({ maxLength: TASK_PROMPT_MAX_LENGTH })),
@@ -893,14 +901,20 @@ export function registerTaskTools(
 			}
 			if (action === "list" || action === "ready") {
 				const allRecords = listTasks({ includeTombstones: false });
-				const records =
+				const scopedRecords =
 					input.all === true
 						? allRecords
 						: allRecords.filter(
 								(record) => !record.workspace || record.workspace === workspace,
 							);
 				const selected =
-					action === "ready" ? partitionReadyTasks(records).ready : records;
+					action === "ready"
+						? partitionReadyTasks(scopedRecords).ready
+						: input.all === true
+							? scopedRecords
+							: scopedRecords.filter(
+									(record) => !TERMINAL_TASK_STATES.has(record.state),
+								);
 				return toolResult(
 					{ outcome: "persisted", records: selected },
 					compactTaskCollection(selected),
