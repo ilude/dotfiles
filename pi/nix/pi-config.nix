@@ -32,6 +32,7 @@ symlinkJoin {
     (cleanFile "AGENTS.md")
     (cleanFile "README.md")
     (cleanFile "damage-control-rules.yaml")
+    (cleanFile "quality-gates.json")
     (cleanFile "justfile")
     (cleanFile "keybindings.json")
     (cleanFile "settings.json")

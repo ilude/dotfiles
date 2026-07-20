@@ -1,0 +1,643 @@
+{
+  "version": 1,
+  "languages": {
+    "python": {
+      "extensions": [
+        ".py"
+      ],
+      "markers": [
+        "pyproject.toml",
+        "setup.py",
+        "requirements.txt"
+      ],
+      "validators": [
+        {
+          "name": "ruff-check",
+          "command": [
+            "ruff",
+            "check",
+            "{file}"
+          ],
+          "check": "ruff",
+          "always": true
+        },
+        {
+          "name": "ruff-format",
+          "command": [
+            "ruff",
+            "format",
+            "--check",
+            "{file}"
+          ],
+          "check": "ruff",
+          "always": true
+        },
+        {
+          "name": "lizard-complexity",
+          "kind": "lizard",
+          "check": "lizard",
+          "always": true
+        }
+      ]
+    },
+    "typescript": {
+      "extensions": [
+        ".ts",
+        ".tsx"
+      ],
+      "markers": [
+        "package.json",
+        "tsconfig.json"
+      ],
+      "validators": [
+        {
+          "name": "eslint",
+          "command": [
+            "pnpm",
+            "--dir",
+            "{project_root}",
+            "exec",
+            "eslint",
+            "{file}"
+          ],
+          "check": "pnpm",
+          "detectAny": [
+            "eslint.config.js",
+            "eslint.config.mjs",
+            "eslint.config.cjs",
+            "eslint.config.ts",
+            "eslint.config.mts",
+            ".eslintrc",
+            ".eslintrc.js",
+            ".eslintrc.json",
+            ".eslintrc.yml",
+            ".eslintrc.yaml",
+            ".eslintrc.cjs"
+          ]
+        },
+        {
+          "name": "biome",
+          "command": [
+            "pnpm",
+            "--dir",
+            "{project_root}",
+            "exec",
+            "biome",
+            "check",
+            "{file}"
+          ],
+          "check": "pnpm",
+          "detectAny": [
+            "biome.json",
+            "biome.jsonc"
+          ]
+        },
+        {
+          "name": "tsc-check",
+          "command": [
+            "python",
+            "{project_root}/tsc-check.py"
+          ],
+          "check": "tsc",
+          "timeout": 60,
+          "detectAll": [
+            "tsconfig.json",
+            "tsc-check.py"
+          ]
+        },
+        {
+          "name": "lizard-complexity",
+          "kind": "lizard",
+          "check": "lizard",
+          "always": true
+        }
+      ]
+    },
+    "javascript": {
+      "extensions": [
+        ".js",
+        ".jsx",
+        ".mjs",
+        ".cjs"
+      ],
+      "markers": [
+        "package.json"
+      ],
+      "validators": [
+        {
+          "name": "biome",
+          "command": [
+            "pnpm",
+            "--dir",
+            "{project_root}",
+            "exec",
+            "biome",
+            "check",
+            "{file}"
+          ],
+          "check": "pnpm",
+          "detectAny": [
+            "biome.json",
+            "biome.jsonc"
+          ]
+        },
+        {
+          "name": "lizard-complexity",
+          "kind": "lizard",
+          "check": "lizard",
+          "always": true
+        }
+      ]
+    },
+    "shell": {
+      "extensions": [
+        ".sh",
+        ".bash"
+      ],
+      "validators": [
+        {
+          "name": "shellcheck",
+          "command": [
+            "shellcheck",
+            "{file}"
+          ],
+          "check": "shellcheck",
+          "always": true
+        }
+      ]
+    },
+    "go": {
+      "extensions": [
+        ".go"
+      ],
+      "validators": [
+        {
+          "name": "go-vet",
+          "command": [
+            "go",
+            "vet",
+            "{file}"
+          ],
+          "check": "go",
+          "always": true
+        },
+        {
+          "name": "gofmt",
+          "command": [
+            "gofmt",
+            "-l",
+            "{file}"
+          ],
+          "check": "gofmt",
+          "always": true,
+          "failOnStdout": true
+        },
+        {
+          "name": "lizard-complexity",
+          "kind": "lizard",
+          "check": "lizard",
+          "always": true
+        }
+      ]
+    },
+    "cpp": {
+      "extensions": [
+        ".c",
+        ".cc",
+        ".cpp",
+        ".cxx",
+        ".h",
+        ".hh",
+        ".hpp",
+        ".hxx"
+      ],
+      "markers": [
+        "CMakeLists.txt",
+        "Makefile",
+        "meson.build",
+        "conanfile.txt",
+        "compile_commands.json"
+      ],
+      "validators": [
+        {
+          "name": "clang-format",
+          "command": [
+            "clang-format",
+            "--dry-run",
+            "--Werror",
+            "{file}"
+          ],
+          "check": "clang-format",
+          "always": true
+        },
+        {
+          "name": "lizard-complexity",
+          "kind": "lizard",
+          "check": "lizard",
+          "always": true
+        }
+      ]
+    },
+    "csharp": {
+      "extensions": [
+        ".cs"
+      ],
+      "markers": [
+        "*.csproj"
+      ],
+      "validators": [
+        {
+          "name": "dotnet-format",
+          "command": [
+            "dotnet",
+            "format",
+            "{project_root}",
+            "--verify-no-changes",
+            "--include",
+            "{file}"
+          ],
+          "check": "dotnet",
+          "timeout": 60,
+          "always": true
+        },
+        {
+          "name": "lizard-complexity",
+          "kind": "lizard",
+          "check": "lizard",
+          "always": true
+        }
+      ]
+    },
+    "rust": {
+      "extensions": [
+        ".rs"
+      ],
+      "validators": [
+        {
+          "name": "rustfmt",
+          "command": [
+            "rustfmt",
+            "--check",
+            "{file}"
+          ],
+          "check": "rustfmt",
+          "always": true
+        },
+        {
+          "name": "lizard-complexity",
+          "kind": "lizard",
+          "check": "lizard",
+          "always": true
+        }
+      ]
+    },
+    "ruby": {
+      "extensions": [
+        ".rb",
+        ".rake",
+        ".gemspec"
+      ],
+      "validators": [
+        {
+          "name": "rubocop",
+          "command": [
+            "rubocop",
+            "--no-color",
+            "--format",
+            "simple",
+            "{file}"
+          ],
+          "check": "rubocop",
+          "always": true
+        },
+        {
+          "name": "lizard-complexity",
+          "kind": "lizard",
+          "check": "lizard",
+          "always": true
+        }
+      ]
+    },
+    "erlang": {
+      "extensions": [
+        ".erl",
+        ".hrl"
+      ],
+      "validators": [
+        {
+          "name": "lizard-complexity",
+          "kind": "lizard",
+          "check": "lizard",
+          "always": true
+        }
+      ]
+    },
+    "fortran": {
+      "extensions": [
+        ".f",
+        ".f90",
+        ".f95",
+        ".f03",
+        ".f08",
+        ".for",
+        ".ftn"
+      ],
+      "validators": [
+        {
+          "name": "lizard-complexity",
+          "kind": "lizard",
+          "check": "lizard",
+          "always": true
+        }
+      ]
+    },
+    "gdscript": {
+      "extensions": [
+        ".gd"
+      ],
+      "markers": [
+        "project.godot"
+      ],
+      "validators": [
+        {
+          "name": "lizard-complexity",
+          "kind": "lizard",
+          "check": "lizard",
+          "always": true
+        }
+      ]
+    },
+    "java": {
+      "extensions": [
+        ".java"
+      ],
+      "validators": [
+        {
+          "name": "lizard-complexity",
+          "kind": "lizard",
+          "check": "lizard",
+          "always": true
+        }
+      ]
+    },
+    "kotlin": {
+      "extensions": [
+        ".kt",
+        ".kts"
+      ],
+      "validators": [
+        {
+          "name": "ktlint",
+          "command": [
+            "ktlint",
+            "--color=never",
+            "{file}"
+          ],
+          "check": "ktlint",
+          "always": true
+        },
+        {
+          "name": "lizard-complexity",
+          "kind": "lizard",
+          "check": "lizard",
+          "always": true
+        }
+      ]
+    },
+    "lua": {
+      "extensions": [
+        ".lua"
+      ],
+      "validators": [
+        {
+          "name": "luacheck",
+          "command": [
+            "luacheck",
+            "{file}"
+          ],
+          "check": "luacheck",
+          "always": true
+        },
+        {
+          "name": "stylua",
+          "command": [
+            "stylua",
+            "--check",
+            "{file}"
+          ],
+          "check": "stylua",
+          "always": true
+        },
+        {
+          "name": "lizard-complexity",
+          "kind": "lizard",
+          "check": "lizard",
+          "always": true
+        }
+      ]
+    },
+    "objectivec": {
+      "extensions": [
+        ".m",
+        ".mm"
+      ],
+      "validators": [
+        {
+          "name": "clang-format",
+          "command": [
+            "clang-format",
+            "--dry-run",
+            "--Werror",
+            "{file}"
+          ],
+          "check": "clang-format",
+          "always": true
+        },
+        {
+          "name": "lizard-complexity",
+          "kind": "lizard",
+          "check": "lizard",
+          "always": true
+        }
+      ]
+    },
+    "php": {
+      "extensions": [
+        ".php"
+      ],
+      "validators": [
+        {
+          "name": "phpcs",
+          "command": [
+            "phpcs",
+            "--standard=PSR12",
+            "{file}"
+          ],
+          "check": "phpcs",
+          "always": true
+        },
+        {
+          "name": "lizard-complexity",
+          "kind": "lizard",
+          "check": "lizard",
+          "always": true
+        }
+      ]
+    },
+    "scala": {
+      "extensions": [
+        ".scala",
+        ".sc"
+      ],
+      "validators": [
+        {
+          "name": "scalafmt",
+          "command": [
+            "scalafmt",
+            "--test",
+            "{file}"
+          ],
+          "check": "scalafmt",
+          "always": true
+        },
+        {
+          "name": "lizard-complexity",
+          "kind": "lizard",
+          "check": "lizard",
+          "always": true
+        }
+      ]
+    },
+    "solidity": {
+      "extensions": [
+        ".sol"
+      ],
+      "validators": [
+        {
+          "name": "solhint",
+          "command": [
+            "solhint",
+            "{file}"
+          ],
+          "check": "solhint",
+          "always": true
+        },
+        {
+          "name": "lizard-complexity",
+          "kind": "lizard",
+          "check": "lizard",
+          "always": true
+        }
+      ]
+    },
+    "swift": {
+      "extensions": [
+        ".swift"
+      ],
+      "validators": [
+        {
+          "name": "swiftlint",
+          "command": [
+            "swiftlint",
+            "lint",
+            "--quiet",
+            "{file}"
+          ],
+          "check": "swiftlint",
+          "always": true
+        },
+        {
+          "name": "swift-format",
+          "command": [
+            "swift-format",
+            "lint",
+            "{file}"
+          ],
+          "check": "swift-format",
+          "always": true
+        },
+        {
+          "name": "lizard-complexity",
+          "kind": "lizard",
+          "check": "lizard",
+          "always": true
+        }
+      ]
+    },
+    "ttcn": {
+      "extensions": [
+        ".ttcn",
+        ".ttcn3",
+        ".ttcnpp"
+      ],
+      "validators": [
+        {
+          "name": "lizard-complexity",
+          "kind": "lizard",
+          "check": "lizard",
+          "always": true
+        }
+      ]
+    },
+    "vue": {
+      "extensions": [
+        ".vue"
+      ],
+      "markers": [
+        "vue.config.js",
+        "vite.config.js",
+        "vite.config.ts",
+        "package.json"
+      ],
+      "validators": [
+        {
+          "name": "biome",
+          "command": [
+            "pnpm",
+            "--dir",
+            "{project_root}",
+            "exec",
+            "biome",
+            "check",
+            "{file}"
+          ],
+          "check": "pnpm",
+          "detectAny": [
+            "biome.json",
+            "biome.jsonc"
+          ]
+        },
+        {
+          "name": "lizard-complexity",
+          "kind": "lizard",
+          "check": "lizard",
+          "always": true
+        }
+      ]
+    },
+    "zig": {
+      "extensions": [
+        ".zig"
+      ],
+      "validators": [
+        {
+          "name": "zig-fmt",
+          "command": [
+            "zig",
+            "fmt",
+            "--check",
+            "{file}"
+          ],
+          "check": "zig",
+          "always": true
+        },
+        {
+          "name": "lizard-complexity",
+          "kind": "lizard",
+          "check": "lizard",
+          "always": true
+        }
+      ]
+    }
+  }
+}

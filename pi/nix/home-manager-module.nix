@@ -137,6 +137,8 @@ in
         "${cfg.stateDir}/agents".source = "${cfg.package}/agents";
         "${cfg.stateDir}/damage-control-rules.yaml".source =
           "${cfg.package}/damage-control-rules.yaml";
+        "${cfg.stateDir}/quality-gates.json".source =
+          "${cfg.package}/quality-gates.json";
         "${cfg.stateDir}/docs".source = "${cfg.package}/docs";
         "${cfg.stateDir}/extensions".source = "${cfg.package}/extensions";
         "${cfg.stateDir}/justfile".source = "${cfg.package}/justfile";

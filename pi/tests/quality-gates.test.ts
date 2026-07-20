@@ -19,9 +19,22 @@ import {
 	filterValidatorsByDetection,
 	findProjectRoot,
 	getFilePath,
+	POLICY_PATH,
+	REPAIR_GUIDANCE,
 	registerQualityGates,
+	runAvailableValidators,
 	runFirstAvailableValidator,
 } from "../extensions/quality-gates.ts";
+import {
+	evaluateDifferentialLizard,
+	LIZARD_THRESHOLDS,
+	parseGitDiffLineMapper,
+	parseLizardCsv,
+} from "../lib/quality-gates/lizard.ts";
+import {
+	loadQualityGatesPolicy,
+	parseQualityGatesPolicy,
+} from "../lib/quality-gates/policy.ts";
 import { createMockPi } from "./helpers/mock-pi.ts";
 
 describe("quality-gates extension", () => {
@@ -90,23 +103,340 @@ describe("quality-gates extension", () => {
 			]);
 		});
 
-		it("uses detected validators instead of fallback validators", () => {
+		it("selects detected and always-applicable validators", () => {
 			const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-quality-detect-"));
 			try {
 				fs.writeFileSync(path.join(root, "tsconfig.json"), "{}\n");
 				const detected = {
 					name: "tsc",
 					command: ["tsc"],
-					detect: ["tsconfig.json"],
+					detectAll: ["tsconfig.json"],
 				};
-				const fallback = { name: "lizard", command: ["lizard"] };
+				const always = {
+					name: "lizard",
+					command: ["lizard"],
+					always: true as const,
+				};
 
-				expect(filterValidatorsByDetection([detected, fallback], root)).toEqual(
-					[detected],
+				expect(filterValidatorsByDetection([detected, always], root)).toEqual([
+					detected,
+					always,
+				]);
+			} finally {
+				fs.rmSync(root, { recursive: true, force: true });
+			}
+		});
+	});
+
+	it("supports any-file and all-files detection", () => {
+		const root = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-quality-detect-mode-"),
+		);
+		try {
+			fs.writeFileSync(path.join(root, "biome.json"), "{}\n");
+			fs.writeFileSync(path.join(root, "tsconfig.json"), "{}\n");
+			const any = {
+				name: "any",
+				command: ["any"],
+				detectAny: ["biome.json", "biome.jsonc"],
+			};
+			const all = {
+				name: "all",
+				command: ["all"],
+				detectAll: ["tsconfig.json", "tsc-check.py"],
+			};
+			expect(filterValidatorsByDetection([any, all], root)).toEqual([any]);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("runs every available applicable validator", async () => {
+		const pi = {
+			exec: vi.fn(async () => ({ code: 0, stdout: "", stderr: "" })),
+		} as unknown as ExtensionAPI;
+		const language = {
+			extensions: [".all"],
+			validators: [
+				{ name: "detected", command: ["detected"], detectAll: ["missing"] },
+				{ name: "always-one", command: ["always-one"], always: true as const },
+				{ name: "always-two", command: ["always-two"], always: true as const },
+			],
+		};
+		await runAvailableValidators(pi, language, "file.all");
+		expect(pi.exec).toHaveBeenCalledWith("always-one", [], expect.any(Object));
+		expect(pi.exec).toHaveBeenCalledWith("always-two", [], expect.any(Object));
+		expect(pi.exec).not.toHaveBeenCalledWith(
+			"detected",
+			[],
+			expect.any(Object),
+		);
+	});
+
+	it("treats configured stdout as a validator failure", async () => {
+		const pi = {
+			exec: vi.fn(async (command: string) => ({
+				code: 0,
+				stdout: command === "gofmt" ? "unformatted.go\n" : "",
+				stderr: "",
+			})),
+		} as unknown as ExtensionAPI;
+		await expect(
+			runAvailableValidators(
+				pi,
+				{
+					extensions: [".go"],
+					validators: [
+						{
+							name: "gofmt",
+							command: ["gofmt", "-l", "{file}"],
+							always: true,
+							failOnStdout: true,
+						},
+					],
+				},
+				"unformatted.go",
+			),
+		).resolves.toEqual([{ name: "gofmt", output: "unformatted.go" }]);
+	});
+
+	describe("Pi policy and differential Lizard", () => {
+		it("parses Lizard CSV function names and source lines", () => {
+			expect(
+				parseLizardCsv(
+					'11,5,97,1,11,"buildExtMap@40-50@file.ts","file.ts","buildExtMap","buildExtMap ( config )",40,50',
+				),
+			).toEqual([
+				{
+					name: "buildExtMap",
+					signature: "buildExtMap ( config )",
+					ccn: 5,
+					parameters: 1,
+					length: 11,
+					startLine: 40,
+				},
+			]);
+		});
+
+		it("loads the tracked Pi policy", () => {
+			expect(POLICY_PATH).toMatch(/quality-gates\.json$/);
+			const policy = loadQualityGatesPolicy(POLICY_PATH);
+			expect(policy.version).toBe(1);
+			expect(policy.languages.typescript.validators).toContainEqual(
+				expect.objectContaining({ kind: "lizard", always: true }),
+			);
+		});
+
+		it("runs differential Lizard against the Git HEAD baseline", async () => {
+			const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-quality-lizard-"));
+			const sourceDir = path.join(root, "MixedCase");
+			fs.mkdirSync(sourceDir);
+			const filePath = path.join(sourceDir, "Target.ts");
+			fs.writeFileSync(filePath, "function target() {}\n");
+			let lizardRuns = 0;
+			const csv = (ccn: number) =>
+				`10,${ccn},50,1,10,"target@1-10@target.ts","target.ts","target","target ( )",1,10`;
+			const pi = {
+				exec: vi.fn(async (command: string, args: string[] = []) => {
+					if (command === "where.exe" || command === "which")
+						return { code: 0, stdout: "lizard", stderr: "" };
+					if (command === "lizard") {
+						lizardRuns += 1;
+						return {
+							code: 0,
+							stdout: csv(lizardRuns === 1 ? 9 : 8),
+							stderr: "",
+						};
+					}
+					if (command === "git" && args[0] === "rev-parse")
+						return { code: 0, stdout: `${root}\n`, stderr: "" };
+					if (command === "git" && args[0] === "show")
+						return { code: 0, stdout: "function target() {}\n", stderr: "" };
+					return { code: 1, stdout: "", stderr: "unexpected command" };
+				}),
+			} as unknown as ExtensionAPI;
+			try {
+				const failures = await runAvailableValidators(
+					pi,
+					{
+						extensions: [".ts"],
+						validators: [
+							{
+								name: "lizard-complexity",
+								kind: "lizard",
+								check: "lizard",
+								always: true,
+							},
+						],
+					},
+					filePath,
+					root,
+				);
+				expect(failures).toEqual([
+					{
+						name: "lizard-complexity",
+						output: "target: ccn 9 exceeds 8 (HEAD: 8)",
+					},
+				]);
+				expect(lizardRuns).toBe(2);
+				expect(pi.exec).toHaveBeenCalledWith(
+					"git",
+					["show", "HEAD:MixedCase/Target.ts"],
+					expect.objectContaining({ cwd: root }),
 				);
 			} finally {
 				fs.rmSync(root, { recursive: true, force: true });
 			}
+		});
+
+		it("rejects empty or contradictory validator selection modes", () => {
+			const policyWith = (validator: Record<string, unknown>) => ({
+				version: 1,
+				languages: {
+					test: {
+						extensions: [".test"],
+						validators: [
+							{ name: "validator", command: ["validator"], ...validator },
+						],
+					},
+				},
+			});
+			for (const validator of [
+				{ detectAny: [] },
+				{ detectAll: [] },
+				{ always: true, detectAny: ["config"] },
+			])
+				expect(() => parseQualityGatesPolicy(policyWith(validator))).toThrow(
+					"Invalid validator",
+				);
+		});
+
+		it("blocks only new or worsened Lizard violations", () => {
+			const baseline = [
+				{ name: "stable", ccn: 10, length: 300, parameters: 8, startLine: 1 },
+				{ name: "worse", ccn: 8, length: 100, parameters: 2, startLine: 10 },
+			];
+			const current = [
+				{ name: "stable", ccn: 10, length: 300, parameters: 8, startLine: 1 },
+				{ name: "worse", ccn: 9, length: 100, parameters: 2, startLine: 10 },
+				{ name: "new", ccn: 2, length: 251, parameters: 1, startLine: 20 },
+			];
+			expect(
+				evaluateDifferentialLizard(current, baseline, LIZARD_THRESHOLDS),
+			).toEqual([
+				{
+					functionName: "worse",
+					metric: "ccn",
+					current: 9,
+					baseline: 8,
+					limit: 8,
+				},
+				{ functionName: "new", metric: "length", current: 251, limit: 250 },
+			]);
+		});
+
+		it("uses Git line mapping to identify inserted duplicate functions", () => {
+			const baseline = [
+				{
+					name: "handler",
+					signature: "handler ( oldName )",
+					ccn: 10,
+					length: 20,
+					parameters: 1,
+					startLine: 30,
+				},
+			];
+			const current = [
+				{
+					name: "handler",
+					signature: "handler ( )",
+					ccn: 10,
+					length: 20,
+					parameters: 1,
+					startLine: 1,
+				},
+				{
+					name: "handler",
+					signature: "handler ( newName )",
+					ccn: 7,
+					length: 20,
+					parameters: 1,
+					startLine: 50,
+				},
+			];
+			const lineMapper = parseGitDiffLineMapper("@@ -0,0 +1,20 @@");
+			expect(
+				evaluateDifferentialLizard(
+					current,
+					baseline,
+					LIZARD_THRESHOLDS,
+					lineMapper,
+				),
+			).toEqual([
+				{
+					functionName: "handler",
+					metric: "ccn",
+					current: 10,
+					limit: 8,
+				},
+			]);
+		});
+
+		it("does not treat a signature-only edit as new complexity", () => {
+			const baseline = [
+				{
+					name: "handler",
+					signature: "handler ( oldName )",
+					ccn: 10,
+					length: 20,
+					parameters: 1,
+					startLine: 30,
+				},
+			];
+			const current = [
+				{
+					name: "handler",
+					signature: "handler ( newName )",
+					ccn: 10,
+					length: 20,
+					parameters: 1,
+					startLine: 30,
+				},
+			];
+			expect(evaluateDifferentialLizard(current, baseline)).toEqual([]);
+		});
+
+		it("compares repeated function names by mapped source line", () => {
+			const baseline = [
+				{ name: "handler", ccn: 9, length: 20, parameters: 1, startLine: 1 },
+				{ name: "handler", ccn: 9, length: 20, parameters: 1, startLine: 30 },
+			];
+			const current = [
+				{ name: "handler", ccn: 9, length: 20, parameters: 1, startLine: 1 },
+				{ name: "handler", ccn: 10, length: 20, parameters: 1, startLine: 30 },
+			];
+			expect(
+				evaluateDifferentialLizard(
+					current,
+					baseline,
+					LIZARD_THRESHOLDS,
+					(line) => line,
+				),
+			).toEqual([
+				{
+					functionName: "handler",
+					metric: "ccn",
+					current: 10,
+					baseline: 9,
+					limit: 8,
+				},
+			]);
+		});
+
+		it("uses the exact bounded repair guidance", () => {
+			expect(REPAIR_GUIDANCE).toBe(
+				"Fix reported issues using the most focused and minimal change needed to make the check pass; avoid wholesale refactors or scope expansion; if passing requires major refactoring or material scope expansion, stop and discuss with the user.",
+			);
 		});
 	});
 
@@ -299,7 +629,7 @@ describe("quality-gates extension", () => {
 					{
 						customType: "quality-gates",
 						content:
-							"Quality gate validation failed:\n\nbatch-failure-validator reported issues in foo.batch-failure:\nE501 line too long\n\nAddress every validation failure, re-run the relevant checks, and do not finish until they pass. After they pass, provide a complete final summary of the original task, all changes and repairs, changed files, and final validation results. Do not summarize only this repair.",
+							"Quality gate validation failed:\n\nbatch-failure-validator reported issues in foo.batch-failure:\nE501 line too long\n\nFix reported issues using the most focused and minimal change needed to make the check pass; avoid wholesale refactors or scope expansion; if passing requires major refactoring or material scope expansion, stop and discuss with the user.",
 						display: true,
 					},
 					{ triggerTurn: true, deliverAs: "followUp" },

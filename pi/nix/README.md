@@ -94,8 +94,8 @@ After `home-manager switch`:
   - read-only symlinks into the Nix store for `extensions/`, `agents/`,
     `skills/workflow`, `skills/pi-skills`, `lib/`, `multi-team/agents`,
     `multi-team/skills`, `project-templates/`, `settings.json`,
-    `AGENTS.md`, `damage-control-rules.yaml`, `justfile`,
-    `keybindings.json`, and (if enabled) `prompt-routing/`;
+    `AGENTS.md`, `damage-control-rules.yaml`, `quality-gates.json`,
+    `justfile`, `keybindings.json`, and (if enabled) `prompt-routing/`;
   - writable directories created on activation for `history/`, `sessions/`,
     `multi-team/expertise/`, `multi-team/logs/`, `multi-team/sessions/`.
 - `auth.json` is **not** managed -- run `pi` and `/login` (or set
