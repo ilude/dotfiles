@@ -1901,11 +1901,11 @@ export default function workflowFrictionExtension(
 		name: "workflow_friction_mark_change",
 		label: "Record Workflow Experiment",
 		description:
-			"Record an approved and applied workflow change for later before-and-after review. Use only after explicit user approval.",
+			"Record an applied workflow change for later before-and-after review only when the user explicitly requests experiment tracking.",
 		promptSnippet:
-			"Record an approved workflow change after it has been applied.",
+			"Record an applied workflow change only after an explicit tracking request.",
 		promptGuidelines: [
-			"Call only after the user explicitly approves a workflow change and the change is applied.",
+			"Call only when the user explicitly requests experiment tracking and the workflow change has been applied; approval of ordinary work is insufficient.",
 		],
 		parameters: Type.Object({
 			pattern: Type.String({

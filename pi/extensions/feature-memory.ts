@@ -68,11 +68,12 @@ async function registerFeatureMemoryExtension(
 		name: "feature_memory_record",
 		label: "Record Feature Memory",
 		description:
-			"Append one bounded local feature event for explicit decisions, validated evidence, open questions, or supersessions. Does not edit tracked dossiers.",
+			"Append one bounded local feature event when the user explicitly requests memory or an active owning workflow requires it. Does not edit tracked dossiers.",
 		promptSnippet:
-			"Record a narrow local event during work matched to a registered feature",
+			"Record a requested or workflow-required event for a matched feature",
 		promptGuidelines: [
-			"Call feature_memory_record only during matched feature work, and only for an explicit user decision, validated evidence, an open question, or a supersession.",
+			"Call feature_memory_record only when the user explicitly requests memory or an active owning workflow requires the durable event; matching a feature alone is insufficient.",
+			"Record only an explicit user decision, validated evidence, an open question, or a supersession during matched feature work.",
 			"Do not pass raw transcripts, speculative conclusions, secrets, tool output, or general session summaries to feature_memory_record.",
 			"Use feature_memory_record sourcePaths only for the bounded repository paths that support the event.",
 		],
