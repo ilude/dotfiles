@@ -186,3 +186,4 @@ claude/commands/yt/hermes-transcript.tmp.txt
 .specs/archive/pi-workflow-audit/artifacts/*/RUN_STATUS.md
 .specs/archive/pi-workflow-audit/artifacts/*/source-roots.json
 copilot/config.json
+/pi/models-store.json
