@@ -152,6 +152,35 @@ You are a test agent.
 		expect(agents[0]?.memory).toBe("none");
 	});
 
+	it("ships a read-only explorer agent", async () => {
+		const { loadAgentsFromDir } = await import(
+			"../extensions/subagent/agents.ts"
+		);
+		const agents = loadAgentsFromDir(
+			path.resolve(import.meta.dirname, "../agents"),
+			"user",
+		);
+		const explorer = agents.find((agent) => agent.name === "explorer");
+
+		expect(explorer).toMatchObject({
+			memory: "none",
+			effort: "medium",
+			model: "openai-codex/gpt-5.6-sol",
+			skills: ["analysis-workflow"],
+		});
+		expect(explorer?.tools).toEqual([
+			"read",
+			"grep",
+			"find",
+			"ls",
+			"web_search",
+			"web_fetch",
+		]);
+		expect(explorer?.systemPrompt).toContain(
+			"Investigate the assigned question without modifying repository or external state.",
+		);
+	});
+
 	it("does not expose the retired team dispatch parameter", async () => {
 		const { tool } = await loadTool();
 		expect(tool.parameters.properties).not.toHaveProperty("team");
