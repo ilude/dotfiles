@@ -15,7 +15,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getModels } from "@earendil-works/pi-ai/compat";
-import { getOAuthProvider } from "@earendil-works/pi-ai/oauth";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
@@ -104,30 +103,35 @@ export function parseRefreshModelsArgs(raw: string): RefreshScope {
 	return { provider: parts[0] };
 }
 
-type AuthStorageLike = {
-	list(): string[];
-	get(provider: string): { type?: string } | undefined;
+type ModelRegistryWithAuthStatus = {
+	getAll(): Array<{ provider: string }>;
+	getProviderAuthStatus(provider: string): { configured: boolean };
 };
 
-type ModelRegistryWithAuth = {
-	authStorage?: AuthStorageLike;
+type LegacyModelRegistryWithAuth = {
+	authStorage: {
+		list(): string[];
+		get(provider: string): { type?: string } | undefined;
+	};
 };
 
 export function getCurrentRefreshableProviders(
-	modelRegistry: ModelRegistryWithAuth,
+	modelRegistry: ModelRegistryWithAuthStatus | LegacyModelRegistryWithAuth,
 ): string[] {
-	const authStorage = modelRegistry.authStorage;
-	if (
-		!authStorage ||
-		typeof authStorage.list !== "function" ||
-		typeof authStorage.get !== "function"
-	) {
-		return [];
+	if ("authStorage" in modelRegistry) {
+		return modelRegistry.authStorage.list().filter((provider) => {
+			const type = modelRegistry.authStorage.get(provider)?.type;
+			return type === "oauth" || type === "api_key";
+		});
 	}
-	return authStorage.list().filter((provider: string) => {
-		const type = authStorage.get(provider)?.type;
-		return type === "oauth" || type === "api_key";
-	});
+	const providers = new Set(
+		modelRegistry.getAll().map((model) => model.provider),
+	);
+	return [...providers]
+		.filter(
+			(provider) => modelRegistry.getProviderAuthStatus(provider).configured,
+		)
+		.sort();
 }
 
 export const getCurrentSubscriptionProviders = getCurrentRefreshableProviders;
@@ -923,26 +927,11 @@ async function refreshProviderAvailability(
 		throw new Error("Could not build refreshed model definitions");
 	}
 
-	const providerDefinition: Record<string, unknown> = {
+	ctx.modelRegistry.registerProvider(provider, {
 		baseUrl: allModels[0].baseUrl,
 		api: allModels[0].api,
 		models: refreshedModels,
-	};
-	const oauthProvider = getOAuthProvider(provider);
-	if (oauthProvider) {
-		providerDefinition.oauth = {
-			name: oauthProvider.name,
-			login: oauthProvider.login,
-			refreshToken: oauthProvider.refreshToken,
-			getApiKey: oauthProvider.getApiKey,
-			usesCallbackServer: oauthProvider.usesCallbackServer,
-			modifyModels: oauthProvider.modifyModels,
-		};
-	} else {
-		providerDefinition.apiKey = apiKey;
-	}
-
-	ctx.modelRegistry.registerProvider(provider, providerDefinition);
+	});
 	await writeProviderCache(provider, remoteModels);
 
 	const beforeIds = new Set(allModels.map((model) => model.id));
@@ -1011,18 +1000,9 @@ function registerCachedProvider(
 		cache.models,
 	);
 	if (models.length === builtInModels.length) return;
-	const oauthProvider = getOAuthProvider(provider);
-	if (!oauthProvider) return;
 	pi.registerProvider(provider, {
 		baseUrl: builtInModels[0].baseUrl,
 		api: builtInModels[0].api as ProviderModelDef["api"],
-		oauth: {
-			name: oauthProvider.name,
-			login: oauthProvider.login,
-			refreshToken: oauthProvider.refreshToken,
-			getApiKey: oauthProvider.getApiKey,
-			modifyModels: oauthProvider.modifyModels,
-		},
 		models,
 	});
 }

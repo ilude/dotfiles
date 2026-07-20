@@ -4,20 +4,6 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockPi } from "./helpers/mock-pi";
 
-vi.mock("@earendil-works/pi-ai/oauth", () => ({
-	getOAuthProvider: vi.fn((provider: string) => {
-		if (["openrouter", "opencode", "opencode-go"].includes(provider))
-			return undefined;
-		return {
-			id: provider,
-			name: provider,
-			login: vi.fn(),
-			refreshToken: vi.fn(),
-			getApiKey: vi.fn(),
-		};
-	}),
-}));
-
 vi.mock("@earendil-works/pi-ai/compat", () => ({
 	getModels: vi.fn((provider: string) => {
 		if (provider === "openai-codex") {
@@ -986,12 +972,12 @@ describe("/refresh-models command", () => {
 			([provider]) => provider === "openrouter",
 		)?.[1];
 		expect(openrouterDefinition.oauth).toBeUndefined();
-		expect(openrouterDefinition.apiKey).toBe("openrouter-key");
+		expect(openrouterDefinition.apiKey).toBeUndefined();
 		expect(openrouterDefinition.api).toBe("openai-completions");
 		const opencodeDefinition = registerProvider.mock.calls.find(
 			([provider]) => provider === "opencode",
 		)?.[1];
-		expect(opencodeDefinition.apiKey).toBe("opencode-key");
+		expect(opencodeDefinition.apiKey).toBeUndefined();
 		expect(opencodeDefinition.api).toBe("openai-completions");
 		expect(
 			fetchMock.mock.calls.find(

@@ -1,4 +1,3 @@
-import { getOAuthProvider } from "@earendil-works/pi-ai/oauth";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { uiNotify } from "../lib/extension-utils.js";
 
@@ -353,7 +352,7 @@ function toProviderModelDef(model: ModelLike) {
 	};
 }
 
-async function applyProviderFilter(
+export async function applyProviderFilter(
 	ctx: any,
 	provider: string,
 ): Promise<{ before: number; after: number } | undefined> {
@@ -371,18 +370,8 @@ async function applyProviderFilter(
 	}
 
 	if (provider === "github-copilot" || provider === "openai-codex") {
-		const oauthProvider = getOAuthProvider(provider);
-		if (!oauthProvider) return { before: models.length, after: models.length };
 		ctx.modelRegistry.registerProvider(provider, {
 			baseUrl: models[0].baseUrl,
-			oauth: {
-				name: oauthProvider.name,
-				login: oauthProvider.login,
-				refreshToken: oauthProvider.refreshToken,
-				getApiKey: oauthProvider.getApiKey,
-				usesCallbackServer: oauthProvider.usesCallbackServer,
-				modifyModels: oauthProvider.modifyModels,
-			},
 			models: filtered.map((model) => toProviderModelDef(model)),
 		});
 		return { before: models.length, after: filtered.length };

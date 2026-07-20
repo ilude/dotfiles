@@ -8,8 +8,14 @@
 // Why shared helper is inappropriate: `uiNotify`'s prefix wrapper exists for
 //   ambient/background notifications; it is not the right surface for
 //   command-handler messaging where the user already knows the context.
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { emitTerminalBell } from "../lib/extension-utils.js";
+import {
+	getAgentDir,
+	updateJsonObjectAtomic,
+} from "../lib/settings-file.js";
 import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 
 type ProviderAuthType = "api_key" | "oauth";
@@ -76,7 +82,48 @@ function resolveProvider(query: string): ProviderEntry | undefined {
 	return PROVIDERS.find((provider) => provider.label.toLowerCase() === lowered);
 }
 
-function describeConfiguredProviders(authStorage: any): string {
+type AuthStorageLike = {
+	list(): string[];
+	get(provider: string): { type?: string } | undefined;
+	set?(provider: string, credential: Record<string, unknown>): void | Promise<void>;
+	remove?(provider: string): void | Promise<void>;
+};
+
+function storedAuthStorage(): AuthStorageLike {
+	const authPath = path.join(getAgentDir(), "auth.json");
+	const read = (): Record<string, { type?: string }> => {
+		if (!fs.existsSync(authPath)) return {};
+		const parsed: unknown = JSON.parse(fs.readFileSync(authPath, "utf-8"));
+		return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+			? (parsed as Record<string, { type?: string }>)
+			: {};
+	};
+	return {
+		list: () => Object.keys(read()),
+		get: (provider) => read()[provider],
+		set: async (provider, credential) => {
+			await updateJsonObjectAtomic(authPath, (current) => ({
+				...current,
+				[provider]: credential,
+			}));
+		},
+		remove: async (provider) => {
+			await updateJsonObjectAtomic(authPath, (current) => {
+				const { [provider]: _removed, ...remaining } = current;
+				return remaining;
+			});
+		},
+	};
+}
+
+function getAuthStorage(ctx: any): AuthStorageLike {
+	return (
+		(ctx.modelRegistry as { authStorage?: AuthStorageLike }).authStorage ??
+		storedAuthStorage()
+	);
+}
+
+function describeConfiguredProviders(authStorage: AuthStorageLike): string {
 	if (!authStorage || typeof authStorage.list !== "function" || typeof authStorage.get !== "function") {
 		return "No auth storage available in this context.";
 	}
@@ -118,7 +165,17 @@ async function setApiKeyForProvider(ctx: any, provider: ProviderEntry) {
 		ctx.ui.notify("API key cannot be empty.", "error");
 		return;
 	}
-	ctx.modelRegistry.authStorage.set(provider.id, { type: "api_key", key: trimmed });
+	const authStorage = getAuthStorage(ctx);
+	if (!authStorage.set) throw new Error("Auth storage is not writable");
+	await authStorage.set(provider.id, { type: "api_key", key: trimmed });
+	const runtime = (
+		ctx.modelRegistry as {
+			runtime?: {
+				setRuntimeApiKey(provider: string, key: string): Promise<void>;
+			};
+		}
+	).runtime;
+	if (runtime) await runtime.setRuntimeApiKey(provider.id, trimmed);
 	ctx.ui.notify(`Saved API key for ${provider.id} in ~/.pi/agent/auth.json`, "info");
 }
 
@@ -134,7 +191,8 @@ async function handleSet(ctx: any, provider: ProviderEntry) {
 }
 
 async function handleRemove(ctx: any, provider: ProviderEntry) {
-	const exists = ctx.modelRegistry.authStorage.get(provider.id);
+	const authStorage = getAuthStorage(ctx);
+	const exists = authStorage.get(provider.id);
 	if (!exists) {
 		ctx.ui.notify(`No credentials found for ${provider.id}.`, "warning");
 		return;
@@ -145,7 +203,17 @@ async function handleRemove(ctx: any, provider: ProviderEntry) {
 		ctx.ui.notify("Cancelled.", "info");
 		return;
 	}
-	ctx.modelRegistry.authStorage.remove(provider.id);
+	const runtime = (
+		ctx.modelRegistry as {
+			runtime?: { logout(provider: string): Promise<void> };
+		}
+	).runtime;
+	if (runtime) {
+		await runtime.logout(provider.id);
+	} else {
+		if (!authStorage.remove) throw new Error("Auth storage is not writable");
+		await authStorage.remove(provider.id);
+	}
 	ctx.ui.notify(`Removed credentials for ${provider.id} from ~/.pi/agent/auth.json`, "info");
 }
 
@@ -163,7 +231,7 @@ async function runInteractiveFlow(ctx: any) {
 	}
 
 	if (action === "Show configured providers") {
-		ctx.ui.notify(describeConfiguredProviders(ctx.modelRegistry.authStorage), "info");
+		ctx.ui.notify(describeConfiguredProviders(getAuthStorage(ctx)), "info");
 		return;
 	}
 
@@ -187,7 +255,7 @@ async function runInteractiveFlow(ctx: any) {
 		return;
 	}
 
-	const configured = ctx.modelRegistry.authStorage.list() as string[];
+	const configured = getAuthStorage(ctx).list();
 	if (!configured.length) {
 		ctx.ui.notify("No configured providers to remove.", "warning");
 		return;
@@ -225,7 +293,7 @@ export default function registerProviderCommand(pi: ExtensionAPI) {
 			}
 
 			if (command.action === "list") {
-				ctx.ui.notify(describeConfiguredProviders(ctx.modelRegistry.authStorage), "info");
+				ctx.ui.notify(describeConfiguredProviders(getAuthStorage(ctx)), "info");
 				return;
 			}
 

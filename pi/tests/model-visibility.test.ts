@@ -1,10 +1,48 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@earendil-works/pi-ai/oauth", () => ({
-	getOAuthProvider: vi.fn(),
-}));
+import {
+	applyProviderFilter,
+	shouldHideModel,
+} from "../extensions/model-visibility";
 
-import { shouldHideModel } from "../extensions/model-visibility";
+describe("applyProviderFilter", () => {
+	it("re-registers built-in OAuth providers without legacy OAuth helpers", async () => {
+		const registerProvider = vi.fn();
+		const model = {
+			provider: "openai-codex",
+			name: "GPT-5.5",
+			api: "openai-codex-responses",
+			baseUrl: "https://chatgpt.com/backend-api/codex",
+			reasoning: true,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 200000,
+			maxTokens: 128000,
+		};
+		const ctx = {
+			modelRegistry: {
+				getAll: () => [
+					{ ...model, id: "gpt-5.5" },
+					{ ...model, id: "codex-auto-review", name: "Codex Auto Review" },
+				],
+				registerProvider,
+			},
+		};
+
+		await expect(applyProviderFilter(ctx, "openai-codex")).resolves.toEqual({
+			before: 2,
+			after: 1,
+		});
+		expect(registerProvider).toHaveBeenCalledWith(
+			"openai-codex",
+			expect.objectContaining({
+				baseUrl: model.baseUrl,
+				models: [expect.objectContaining({ id: "gpt-5.5" })],
+			}),
+		);
+		expect(registerProvider.mock.calls[0]?.[1]).not.toHaveProperty("oauth");
+	});
+});
 
 describe("shouldHideModel", () => {
 	it("hides date/version suffix and preview snapshots", () => {
