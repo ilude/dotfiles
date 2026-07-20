@@ -336,9 +336,11 @@ bashToolPatterns:
   # Dangerous code execution via interpreter -c/-e flags
 
   # Python dangerous operations
+  # pi_allow: Pi auto-allows (10/10 interactive approvals in eval data); Claude still asks.
   - pattern: '\bpython[23]?\s+-c\s+[''"].*\b(os\.remove|os\.unlink|shutil\.rmtree|os\.system|subprocess)\b'
     reason: Python one-liner with potentially dangerous operation
     ask: true
+    pi_allow: true
 
   # Node.js dangerous operations
   - pattern: '\bnode\s+(-e|--eval)\s+[''"].*\b(fs\.rm|fs\.unlink|child_process|exec|spawn)\b'
@@ -759,9 +761,11 @@ bashToolPatterns:
     reason: kubectl scale (changes replica count)
     ask: true
 
+  # pi_allow: Pi auto-allows (32/32 interactive approvals in eval data); Claude still asks.
   - pattern: '\bkubectl\s+exec\b'
     reason: kubectl exec (shell access to pod)
     ask: true
+    pi_allow: true
 
   - pattern: '\bkubectl\s+port-forward\b'
     reason: kubectl port-forward (network access)
@@ -779,9 +783,11 @@ bashToolPatterns:
     reason: helm install (deploys to cluster)
     ask: true
 
+  # pi_allow: Pi auto-allows (10/10 interactive approvals in eval data); Claude still asks.
   - pattern: '\bhelm\s+upgrade\b'
     reason: helm upgrade (modifies deployment)
     ask: true
+    pi_allow: true
 
   - pattern: '\bhelm\s+rollback\b'
     reason: helm rollback (reverts release)

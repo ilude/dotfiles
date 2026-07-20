@@ -886,6 +886,31 @@ no_delete_paths: []
 		expect(pythonOnly.health.status).toBe("failed");
 	});
 
+	it("drops bashToolPatterns marked pi_allow while Claude keeps them", async () => {
+		const mod = await import("../extensions/damage-control.ts");
+		const loaded = mod.normalizeClaudePolicy({
+			bashToolPatterns: [
+				{
+					pattern: "\\bkubectl\\s+exec\\b",
+					ask: true,
+					reason: "kubectl exec",
+					pi_allow: true,
+				},
+				{ pattern: "\\brm\\b", ask: true, reason: "rm asks" },
+			],
+		});
+		expect(loaded.health.status).toBe("active");
+		expect(loaded.rules.dangerous_commands).toHaveLength(1);
+		expect(loaded.rules.dangerous_commands[0].pattern).toBe("\\brm\\b");
+
+		const badFlag = mod.normalizeClaudePolicy({
+			bashToolPatterns: [
+				{ pattern: "rm", ask: true, reason: "bad", pi_allow: "true" },
+			],
+		});
+		expect(badFlag.health.status).toBe("failed");
+	});
+
 	it("normalizes Claude readConfirmPaths for protected read prompts", async () => {
 		const mod = await import("../extensions/damage-control.ts");
 		const loaded = mod.normalizeClaudePolicy({
@@ -1581,6 +1606,127 @@ describe("damage-control refactor hardening", () => {
 			],
 		] as const) {
 			expect(() => mod.parseDamageControlRules(yaml), name).toThrow();
+		}
+	});
+});
+
+describe("damage-control eval hasUI tracking", () => {
+	it("records hasUI on ask approvals and denials", async () => {
+		const fs = await import("node:fs");
+		const os = await import("node:os");
+		const path = await import("node:path");
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-dc-hasui-"));
+		const previousOperatorDir = process.env.PI_OPERATOR_DIR;
+		const previousMetricsDir = process.env.PI_METRICS_DIR;
+		const previousPolicy = process.env.PI_DAMAGE_CONTROL_CLAUDE_POLICY_PATH;
+		const policyPath = path.join(root, "policy.json");
+		fs.writeFileSync(
+			policyPath,
+			JSON.stringify({
+				bashToolPatterns: [
+					{ pattern: "\\bkubectl\\s+drain\\b", ask: true, reason: "drain" },
+				],
+				zeroAccessPaths: [],
+				zeroAccessExclusions: [],
+				readOnlyPaths: [],
+				noDeletePaths: [],
+				writeConfirmPaths: [],
+				readConfirmPaths: [],
+				contentScanPaths: [],
+				injectionPatterns: [],
+				astAnalysis: { enabled: false },
+			}),
+			"utf-8",
+		);
+		process.env.PI_OPERATOR_DIR = path.join(root, "operator");
+		process.env.PI_METRICS_DIR = path.join(root, "metrics");
+		process.env.PI_DAMAGE_CONTROL_CLAUDE_POLICY_PATH = policyPath;
+		try {
+			vi.resetModules();
+			const mod = await import("../extensions/damage-control.ts");
+			const { listDamageControlEvalEvents } = await import(
+				"../lib/damage-control-eval.ts"
+			);
+			type Handler = (
+				event: {
+					toolName: string;
+					toolCallId?: string;
+					input: Record<string, string>;
+				},
+				ctx: {
+					cwd: string;
+					hasUI: boolean;
+					ui: {
+						confirm: ReturnType<typeof vi.fn>;
+						notify: ReturnType<typeof vi.fn>;
+						setStatus: ReturnType<typeof vi.fn>;
+					};
+				},
+			) => Promise<unknown>;
+			const handlers: Handler[] = [];
+			mod.default({
+				on: vi.fn((name: string, handler: Handler) => {
+					if (name === "tool_call") handlers.push(handler);
+				}),
+				registerCommand: vi.fn(),
+				sendMessage: vi.fn(),
+			} as unknown as Parameters<typeof mod.default>[0]);
+			const [bashHandler] = handlers;
+			if (!bashHandler) throw new Error("bash handler not registered");
+
+			await bashHandler(
+				{
+					toolName: "bash",
+					toolCallId: "hasui-approved",
+					input: { command: "kubectl drain node-1" },
+				},
+				{
+					cwd: root,
+					hasUI: true,
+					ui: {
+						confirm: vi.fn(async () => true),
+						notify: vi.fn(),
+						setStatus: vi.fn(),
+					},
+				},
+			);
+			await bashHandler(
+				{
+					toolName: "bash",
+					toolCallId: "hasui-autodenied",
+					input: { command: "kubectl drain node-2" },
+				},
+				{
+					cwd: root,
+					hasUI: false,
+					ui: {
+						confirm: vi.fn(async () => true),
+						notify: vi.fn(),
+						setStatus: vi.fn(),
+					},
+				},
+			);
+
+			const events = listDamageControlEvalEvents();
+			const approved = events.find(
+				(event) => event.toolCallId === "hasui-approved",
+			);
+			const denied = events.find(
+				(event) => event.toolCallId === "hasui-autodenied",
+			);
+			expect(approved?.decisionType).toBe("ask_approved");
+			expect(approved?.hasUI).toBe(true);
+			expect(denied?.decisionType).toBe("ask_denied");
+			expect(denied?.hasUI).toBe(false);
+		} finally {
+			if (previousOperatorDir === undefined) delete process.env.PI_OPERATOR_DIR;
+			else process.env.PI_OPERATOR_DIR = previousOperatorDir;
+			if (previousMetricsDir === undefined) delete process.env.PI_METRICS_DIR;
+			else process.env.PI_METRICS_DIR = previousMetricsDir;
+			if (previousPolicy === undefined)
+				delete process.env.PI_DAMAGE_CONTROL_CLAUDE_POLICY_PATH;
+			else process.env.PI_DAMAGE_CONTROL_CLAUDE_POLICY_PATH = previousPolicy;
+			fs.rmSync(root, { recursive: true, force: true });
 		}
 	});
 });

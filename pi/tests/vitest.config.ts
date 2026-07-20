@@ -57,6 +57,7 @@ export default defineConfig({
 		globals: true,
 		environment: "node",
 		include: ["tests/**/*.test.ts"],
+		setupFiles: ["tests/setup.ts"],
 		mockReset: true,
 		maxWorkers: 8,
 		testTimeout: 30000,

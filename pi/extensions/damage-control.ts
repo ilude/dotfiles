@@ -200,6 +200,7 @@ function safeRecordDamageControlEval(input: {
 	rule?: string;
 	ruleSource?: string;
 	toolCallId?: string;
+	hasUI?: boolean;
 }): void {
 	try {
 		recordDamageControlEval({
@@ -211,6 +212,7 @@ function safeRecordDamageControlEval(input: {
 			summary: input.reason ? redactSummary(input.reason) : undefined,
 			cwd: input.cwd,
 			toolCallId: input.toolCallId,
+			hasUI: input.hasUI,
 		});
 	} catch {
 		// Eval logging must never affect safety flow.
@@ -244,6 +246,7 @@ function safeRecordApprovedAsk(input: ApprovedAskRecord): void {
 		rule: input.approval.rule,
 		ruleSource: input.ruleSource,
 		toolCallId: input.toolCallId,
+		hasUI: true,
 	});
 	safeRecordAllow(
 		input.toolName,
@@ -430,6 +433,7 @@ function recordBlock(
 	rawAction: string,
 	cwd: string,
 	decision: { block: true; reason: string },
+	hasUI: boolean,
 	ruleSource?: string,
 	toolCallId?: string,
 	metadata?: Record<string, unknown>,
@@ -452,6 +456,7 @@ function recordBlock(
 		rule,
 		ruleSource,
 		toolCallId,
+		hasUI,
 	});
 	safeRecordDeny(
 		toolName,
@@ -503,6 +508,7 @@ export default function (pi: ExtensionAPI) {
 				command,
 				ctx.cwd,
 				failed,
+				ctx.hasUI,
 				loaded.health.ruleSource,
 				event.toolCallId,
 				{ ruleLoadFailure: true },
@@ -550,6 +556,7 @@ export default function (pi: ExtensionAPI) {
 				command,
 				ctx.cwd,
 				decision,
+				ctx.hasUI,
 				loaded.health.ruleSource,
 				event.toolCallId,
 				sequenceDecision.evidence
@@ -566,6 +573,7 @@ export default function (pi: ExtensionAPI) {
 				command,
 				ctx.cwd,
 				modeDecision,
+				ctx.hasUI,
 				loaded.health.ruleSource,
 				event.toolCallId,
 			);
@@ -604,6 +612,7 @@ export default function (pi: ExtensionAPI) {
 				command,
 				ctx.cwd,
 				dangerous,
+				ctx.hasUI,
 				loaded.health.ruleSource,
 				event.toolCallId,
 			);
@@ -625,6 +634,7 @@ export default function (pi: ExtensionAPI) {
 				command,
 				ctx.cwd,
 				noDelete,
+				ctx.hasUI,
 				loaded.health.ruleSource,
 				event.toolCallId,
 			);
@@ -656,6 +666,7 @@ export default function (pi: ExtensionAPI) {
 				command,
 				ctx.cwd,
 				failed,
+				ctx.hasUI,
 				loaded.health.ruleSource,
 				event.toolCallId,
 				{ ruleLoadFailure: true },
@@ -674,6 +685,7 @@ export default function (pi: ExtensionAPI) {
 				command,
 				ctx.cwd,
 				modeDecision,
+				ctx.hasUI,
 				loaded.health.ruleSource,
 				event.toolCallId,
 			);
@@ -704,6 +716,7 @@ export default function (pi: ExtensionAPI) {
 				command,
 				ctx.cwd,
 				dangerous,
+				ctx.hasUI,
 				loaded.health.ruleSource,
 				event.toolCallId,
 			);
@@ -720,6 +733,7 @@ export default function (pi: ExtensionAPI) {
 				command,
 				ctx.cwd,
 				noDelete,
+				ctx.hasUI,
 				loaded.health.ruleSource,
 				event.toolCallId,
 			);
@@ -741,6 +755,7 @@ export default function (pi: ExtensionAPI) {
 				rawPath,
 				ctx.cwd,
 				failed,
+				ctx.hasUI,
 				loaded.health.ruleSource,
 				event.toolCallId,
 				{ ruleLoadFailure: true },
@@ -761,6 +776,7 @@ export default function (pi: ExtensionAPI) {
 				rawPath,
 				ctx.cwd,
 				canonResult,
+				ctx.hasUI,
 				loaded.health.ruleSource,
 				event.toolCallId,
 			);
@@ -801,6 +817,7 @@ export default function (pi: ExtensionAPI) {
 				rawPath,
 				ctx.cwd,
 				zeroAccess,
+				ctx.hasUI,
 				loaded.health.ruleSource,
 				event.toolCallId,
 			);
@@ -833,6 +850,7 @@ export default function (pi: ExtensionAPI) {
 						rawPath,
 						ctx.cwd,
 						decision,
+						ctx.hasUI,
 						loaded.health.ruleSource,
 						event.toolCallId,
 					);
@@ -865,6 +883,7 @@ export default function (pi: ExtensionAPI) {
 					rawPath,
 					ctx.cwd,
 					readOnly,
+					ctx.hasUI,
 					loaded.health.ruleSource,
 					event.toolCallId,
 				);
@@ -890,6 +909,7 @@ export default function (pi: ExtensionAPI) {
 						rawPath,
 						ctx.cwd,
 						decision,
+						ctx.hasUI,
 						loaded.health.ruleSource,
 						event.toolCallId,
 					);
@@ -921,6 +941,7 @@ export default function (pi: ExtensionAPI) {
 						rawPath,
 						ctx.cwd,
 						decision,
+						ctx.hasUI,
 						loaded.health.ruleSource,
 						event.toolCallId,
 					);
@@ -961,6 +982,7 @@ export default function (pi: ExtensionAPI) {
 					rawPath,
 					ctx.cwd,
 					noDelete,
+					ctx.hasUI,
 					loaded.health.ruleSource,
 					event.toolCallId,
 				);

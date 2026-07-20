@@ -50,4 +50,25 @@ describe("damage-control eval registry", () => {
 		expect(stats.byDecisionType.hard_block).toBe(1);
 		expect(stats.byRule[0].total).toBe(1);
 	});
+
+	it("persists hasUI so interactive denials are separable from auto-denials", async () => {
+		const mod = await import("../lib/damage-control-eval.ts");
+		mod.recordDamageControlEval({
+			decisionType: "ask_denied",
+			toolName: "bash",
+			redactedAction: "rm -rf ./build",
+			rule: "rm recursive force",
+			hasUI: false,
+		});
+		mod.recordDamageControlEval({
+			decisionType: "ask_denied",
+			toolName: "bash",
+			redactedAction: "rm -rf ./dist",
+			rule: "rm recursive force",
+			hasUI: true,
+		});
+
+		const events = mod.listDamageControlEvalEvents();
+		expect(events.map((event) => event.hasUI)).toEqual([true, false]);
+	});
 });

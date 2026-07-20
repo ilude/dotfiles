@@ -257,13 +257,22 @@ export function normalizeClaudePolicy(value: unknown): LoadedRules {
 					"platforms",
 					"exclude_platforms",
 					"exfil",
+					"pi_allow",
 				].includes(key),
 		);
 		if (unsupported.length > 0)
 			errors.push(
 				`bashToolPatterns[${idx}] unsupported keys: ${unsupported.join(", ")}`,
 			);
+		if (entry.pi_allow !== undefined && typeof entry.pi_allow !== "boolean") {
+			errors.push(
+				`bashToolPatterns[${idx}].pi_allow must be boolean when present`,
+			);
+			return;
+		}
 		if (entry.exfil !== undefined) return;
+		// pi_allow drops the rule for Pi only; Claude hooks still enforce it.
+		if (entry.pi_allow === true) return;
 		const pattern = stringField(entry.pattern);
 		const reason = stringField(entry.reason) ?? "Claude damage-control rule";
 		if (!pattern) {

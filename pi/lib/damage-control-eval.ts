@@ -28,6 +28,7 @@ export interface DamageControlEvalEvent {
 	summary?: string;
 	cwd?: string;
 	toolCallId?: string;
+	hasUI?: boolean;
 	labels?: DamageControlEvalLabel[];
 }
 
@@ -40,6 +41,7 @@ export interface RecordDamageControlEvalInput {
 	summary?: string;
 	cwd?: string;
 	toolCallId?: string;
+	hasUI?: boolean;
 }
 
 export interface DamageControlEvalStats {
@@ -88,6 +90,7 @@ export function recordDamageControlEval(
 		summary: input.summary,
 		cwd: input.cwd,
 		toolCallId: input.toolCallId,
+		hasUI: input.hasUI,
 		labels: [],
 	};
 	ensureDirectory(getDamageControlEvalDir());
