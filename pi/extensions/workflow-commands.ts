@@ -2446,8 +2446,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("review-it", {
-		description:
-			"Adversarial review of a plan file -- finds bugs, gaps, and failure modes",
+		description: "Review and repair an artifact for its next workflow",
 		handler: async (args, _ctx) => {
 			const planPath = args
 				.trim()

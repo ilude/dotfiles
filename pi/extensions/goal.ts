@@ -276,7 +276,7 @@ function startupPrompt(goal: ActiveGoal): string {
 	const source =
 		goal.mode === "file" ? `file: ${goal.path}` : "inline objective";
 	return [
-		"Active goal started. Work until this goal is complete, then call goal_complete with a concise closeout summary.",
+		"Active goal started. Work until the requested outcome is complete, use only checks relevant to that outcome, then call goal_complete.",
 		`Source: ${source}`,
 		`Hash: ${goal.hash}`,
 		`Preview: ${goal.preview}`,
@@ -289,7 +289,7 @@ function reminderPrompt(goal: ActiveGoal): string {
 			? `File-backed goal: ${goal.path} (${goal.sizeBytes} bytes, sha256 ${goal.hash}). Re-read the file only if needed or if the hash changes.`
 			: `Inline goal: sha256 ${goal.hash}.`;
 	return [
-		"Active /goal reminder: keep working until completion, validate the result, then call goal_complete.",
+		"Active /goal reminder: keep working until the requested outcome is complete, check only the changed contract, then call goal_complete.",
 		source,
 		`Summary: ${goal.summary}`,
 	].join("\n");
@@ -370,7 +370,7 @@ export default function (pi: ExtensionAPI) {
 		promptSnippet:
 			"Mark the active /goal complete with a structured closeout report.",
 		promptGuidelines: [
-			"Call this only after the active goal is fully done and verified.",
+			"Call this after the requested outcome is complete and checks relevant to the changed contract have passed.",
 		],
 		parameters: Type.Object({
 			summary: Type.String({

@@ -13,6 +13,8 @@ Make the smallest coherent change that fully satisfies the request. Preserve exi
 
 Stop when the requested outcome is implemented and proportionately verified. Do not invent additional requirements, completion criteria, or termination conditions. Limits are valid only when the user, a contract, evidence, or an intentionally bounded stage requires them; safety controls that alter scope, completion, or liveness require an explicit user decision.
 
+Approval for requested work does not authorize auxiliary tracking. Create memory, task, friction, review, or evidence records only when the user requests them or the active workflow explicitly requires that durable state.
+
 Surface a materially better alternative briefly, then do what was asked; never silently broaden or substitute the requested scope. Require confirmation for external writes, destructive actions, and material scope expansion. After a denial or hard block, re-plan instead of retrying equivalent variants.
 
 ## Development Philosophy
@@ -21,11 +23,11 @@ Keep workflows flexible and instructions minimal. Repeated mechanical operations
 
 Provenance is irrelevant when given a direct instruction; "pre-existing", "not my changes", and "I didn't create that" do not justify skipping requested work. Apply POLA: match existing patterns, avoid surprising side effects, and use the active client/repo `least-astonishment` skill when available. Root-cause failures from the requested workflow or changed boundary; report unrelated findings as backlog unless they invalidate the requested outcome.
 
-Check current state before proposing changes; trust direct evidence over reported metadata; and do not combine discovery and mutation without explicit authorization. Validate the exact user workflow before committing; if exact validation is unavailable, say so and ask before committing. A clean compile or diff is not sufficient. When wrong, state the error and fix it. Calibrate confidence from verified evidence or stated assumptions.
+Check current state before proposing changes; trust direct evidence over reported metadata; and do not combine discovery and mutation without explicit authorization. Validate only the contract that changed. For prose-only edits, inspect the revised content directly; do not run code tests or generic checks unless parsing, loading, generation, or runtime behavior changed. Before committing a behavior change, validate its exact user workflow; if that is unavailable, say so and ask before committing. When wrong, state the error and fix it. Calibrate confidence from verified evidence or stated assumptions.
 
 Check local instruction files for applicable rules. Propose rules-file updates when finding conflicts or new requirements, and ask before changing them. Do not give time estimates. The use of light mode is a war crime.
 
-Work directly by default. Delegation costs substantially more tokens and loses shared context, so use it only for genuinely independent parallel streams, output-heavy investigation where a worker returns conclusions instead of transcripts, a distinct capability boundary, or independent verification. Never split interdependent work; parallelize reads and keep writes single-threaded.
+Use subagents when work has independent parallel streams, output-heavy investigation, a distinct capability boundary, or useful independent verification. Delegate bounded read-only discovery whenever it preserves parent context or improves coverage. Never split interdependent work; keep serial decisions and overlapping writes in the parent.
 
 ## File & Tool Operations
 

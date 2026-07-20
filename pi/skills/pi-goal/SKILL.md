@@ -13,44 +13,38 @@ Use this skill when the output will be pasted into `/goal` or saved as a goal pr
 
 ## Core Principle
 
-A goal prompt should let Pi work autonomously until completion, with explicit scope, validation, and closeout rules.
+A goal prompt should state the outcome and constraints clearly enough for autonomous execution without turning ordinary work into a project-management artifact.
 
 ## Practical Steps
 
-1. Prefer inline `/goal ...` unless the user asks for a file or the prompt is long.
-2. Name the outcome and why it matters.
-3. List scope: files, systems, constraints, non-goals.
-4. Give execution rules: ask only when blocked, track batches, avoid unrelated changes.
-5. Define validation with exact commands or inspection criteria.
-6. Separate migrations, stateful replacements, hardening, backup redesign, and orchestration changes into explicit waves.
-7. Require incident behavior: after the first failed live mutation, stop batch execution and recover one affected service before continuing.
-8. Require closeout: concise summary, validation, gaps, next steps.
-
-A goal may cover a broad authorized outcome, but it must not turn that outcome into one mutation batch. For stateful infrastructure, define a one-service canary, backup evidence, restore path, and direct health gate for each rollout wave.
+1. Prefer inline `/goal ...` unless the user asks for a file or the prompt needs durable detail.
+2. State the outcome, relevant scope, and constraints.
+3. Include tasks only when order or coverage would otherwise be ambiguous.
+4. Encourage subagents for independent streams, capability boundaries, output-heavy investigation, or useful independent verification.
+5. Name validation only when it directly tests the requested outcome; do not prescribe generic checks.
+6. Add waves, backup, rollback, approval, or incident behavior only for actual destructive, stateful, deployment, external-mutation, secret, paid-resource, hardware, or irreversible work.
+7. End with `goal_complete` after the requested outcome and relevant checks are complete.
 
 ## Template
 
 ```markdown
-/goal Objective: <specific outcome>
-Context: <relevant background>
-Scope: <in scope / out of scope>
-Execution rules: Work until complete; ask only if blocked; keep changes focused.
-Tasks:
-- <task 1>
-- <task 2>
-Validation: <commands/checks>
-Completion: Call goal_complete with summary, validation, gaps, next steps.
+/goal Outcome: <specific end state>
+Scope: <important boundaries and constraints>
+Work: <tasks only when needed>
+Validation: <checks that directly test the outcome, or omit>
+Completion: Call goal_complete when complete, naming any real gap.
 ```
+
+For actual stateful infrastructure, add the minimum safe rollout details: one independent target at a time, current backup or explicit no-prior-state evidence, restore action, rollback boundary, health check, and stop-on-failure behavior.
 
 ## Anti-Patterns
 
-- Writing a PRD instead of an executable goal.
-- Omitting validation or completion criteria.
-- Hiding autonomy boundaries in vague prose.
-- Asking multiple clarifying questions when one blocker question is enough.
-- Combining migration, stateful replacement, hardening, and workflow redesign into one rollout wave.
-- Omitting the stop-and-recover rule for live failures.
+- Writing a PRD or detailed plan instead of a goal.
+- Requiring waves, incident handling, or rollback for local and reversible work.
+- Listing tests or repository checks that do not exercise the requested outcome.
+- Expanding scope with optional hardening or speculative tasks.
+- Omitting a real destructive or stateful safety boundary.
 
 ## Quick Reference
 
-Goal prompts optimize execution. They should be concrete enough that another agent can finish without reinterpreting intent.
+State the outcome, real boundaries, direct checks, and completion condition. Add structure only when the work requires it.

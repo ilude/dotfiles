@@ -1,93 +1,62 @@
 # Plan an Executable Change
 
-Turn `$ARGUMENTS` and relevant conversation context into a standalone plan. Do not implement the plan.
+Turn `$ARGUMENTS` and relevant conversation context into a standalone `.specs/{slug}/plan.md`. Do not implement the plan.
 
 ## Objective
 
-Produce `.specs/{slug}/plan.md` with enough repository evidence, task detail, validation, and durable state for a fresh `/do-it` session to execute safely.
+Give a fresh `/do-it` session the smallest plan that preserves the requested outcome, real dependencies, relevant validation, and resume state.
 
-A PRD is optional. Use an explicit PRD path when provided; otherwise use the user's stated goal and constraints. Never select a PRD merely because it is the newest file.
+Use an explicit PRD path when provided. Otherwise use the user's stated goal and constraints. Never select a PRD because it is merely the newest file.
 
-## Hard Boundaries
+## Boundaries
 
-- Planning is read-only except for the plan artifact and its owned planning evidence.
-- Preserve explicit user decisions, rejected approaches, scope limits, and public interfaces.
-- Ask only when unresolved ambiguity changes the executable outcome, destructive scope, or required user gate.
-- Keep the plan to the requested outcome. Put useful but unnecessary work in explicit deferrals.
-- Separate independent stateful replacements into distinct waves. Each such wave names backup evidence, restore action, rollback boundary, and one mutation target.
-- A failed live mutation blocks later rollout work until the affected boundary is healthy again.
-- Do not prescribe a fixed worker roster or runtime selection. Record a required capability only when execution needs specialized tools, permissions, or domain knowledge.
+- Planning is read-only except for the plan artifact.
+- Preserve explicit decisions, scope limits, public interfaces, and rejected approaches only when they prevent likely rework.
+- Ask only when ambiguity changes the outcome, destructive scope, or required approval.
+- Keep useful but unnecessary work out of the plan.
+- Do not prescribe a worker roster or runtime. Name a capability only when execution requires specialized tools, permissions, or knowledge.
 
-## Required Evidence
+## Repository Context
 
-Inspect enough repository state to ground every executable claim:
+Inspect only enough repository state to verify ownership, supported entrypoints, affected boundaries, relevant checks, external constraints, and a collision-free `.specs/` path. Stop investigating when those facts are sufficient.
 
-- owning files and local instructions;
-- supported entrypoints and likely affected boundaries;
-- test, lint, typecheck, deployment, and rollback commands;
-- platform, credential, external-system, and mutation constraints;
-- existing `.specs/` paths and collision risks.
+## Proportionality
 
-Use safe read-only probes when they resolve readiness. A command, file, variable, wrapper, or service required by a task must exist before that task runs.
+Use `templates/plan-template.md` as the compact default.
 
-## Plan Content
+- A local change should normally have 1-3 tasks.
+- Add stages or waves only for a real dependency, staged rollout, or independent stateful target.
+- Add operational safety only for actual destructive, stateful, deployment, external-mutation, secret, paid-resource, hardware, or irreversible work.
+- Add approach decisions only when an executor could reasonably reopen a material choice.
+- Do not create separate evidence files unless an external audit, migration record, or user request requires them.
+- Record each fact once. Do not duplicate tasks across tables, wave narratives, dependency graphs, checklists, and success sections.
 
-Read `templates/plan-template.md` and use it as the structural contract. The plan must include:
+## Required Content
 
-- context, objective, boundaries, assumptions, and explicit deferrals;
-- risk, blast radius, rollback, approval, manual validation, and deployment decisions;
-- concrete tasks with files, dependencies, mutation boundaries, required capabilities, acceptance criteria, exact verification commands, pass signals, and failure actions;
-- execution waves and validation gates aligned with the dependency graph;
-- an automation plan for operational steps and credential sources;
-- end-to-end success criteria;
-- a durable execution checklist that maps one-to-one to tasks and gates;
-- non-secret evidence destinations for tasks and gates;
-- archive conditions and durable incomplete-state requirements.
+Every plan includes:
 
-Choose the smallest executable task breakdown that preserves real dependencies. Record alternatives only when approach judgment matters; include the rejected trade-off that would help an executor avoid reopening the decision.
+- context, objective, boundaries, and assumptions that affect execution;
+- one checkbox list of executable tasks, with files, dependencies when present, action, acceptance, and relevant verification;
+- validation that directly tests the requested outcome;
+- concise archive and resume state.
 
-## Readiness Audit
+Conditionally include stages, decisions, failure actions, rollback, backup, approval, canary, deployment, or incident handling only when the work requires them.
 
-Before writing the artifact, verify:
+## Readiness
 
-- the plan is standalone and project-specific;
-- every task and gate has an action, success signal, failure action, and evidence destination;
-- task, wave, dependency, validation, and checklist IDs agree;
-- prerequisites exist before dependent work;
-- validation exercises the requested workflow, not only an adjacent helper;
-- repository-wide completion checks are named;
-- stateful work has backup, restore, rollback, canary, and incident boundaries;
-- manual gates exist only for risk that automation cannot safely resolve;
-- no deferred item blocks completion or archive.
+Before writing, confirm that referenced files, prerequisites, and commands exist; dependencies agree with task order; validation exercises the requested workflow; and no omitted decision blocks execution.
 
-Repair deterministic plan defects before writing. Do not defer basic executability to `/review-it`.
+For actual stateful mutation, include one target, backup and restore or explicit no-prior-state handling, rollback boundary, and stop-on-failure behavior.
 
 ## Artifact
 
-Create a lowercase hyphenated slug that does not collide with an existing `.specs/` path. Write `.specs/{slug}/plan.md` from the template.
-
-If no substantive goal exists, ask: "What should this plan accomplish? Describe the goal and any constraints."
-
-## Definition of Done
-
-- The plan artifact exists at a unique path.
-- It can be resumed in a fresh session without conversation-only context.
-- Its commands, dependencies, gates, and evidence requirements are executable and internally consistent.
-- No implementation or deployment action ran.
+Create a lowercase hyphenated slug that does not collide with an existing `.specs/` path. If no substantive goal exists, ask: "What should this plan accomplish? Describe the goal and any constraints."
 
 ## Report
 
-First line:
-
-`[OK] PLAN CREATED: no code was executed.`
-
-Report the plan path, concise scope, task/dependency summary, assumptions or unresolved blockers, and both next commands:
+Report the plan path, scope, dependencies, assumptions or blockers, and the next commands:
 
 ```bash
 /review-it .specs/{slug}/plan.md
 /do-it .specs/{slug}/plan.md
 ```
-
-Final line:
-
-`FINAL STATUS: PLAN CREATED -- no code executed.`
