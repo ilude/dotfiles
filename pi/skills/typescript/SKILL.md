@@ -33,7 +33,7 @@ Compact index for TypeScript and JavaScript work. Load linked files only when th
 1. Identify package root by lockfile and nearest `package.json`.
 2. Read scripts before inventing commands.
 3. Make the smallest change that matches local naming, import, error, and test patterns.
-4. Validate the changed contract with typecheck/lint/tests from that package.
+4. Validate the changed contract with the relevant typecheck, lint, or tests from that package.
 5. If adding dependencies, update only the owning package manager files.
 
 ## Quick validation

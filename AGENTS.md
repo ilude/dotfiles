@@ -54,10 +54,9 @@ Tooling rules:
 - Pi TypeScript is pnpm-only, with `pi/package.json` as the dependency, typecheck, and Vitest source of truth. Never use `bun add`, `bun install`, `bun run`, or `bun test` for Pi packages/tests. Run `cd pi && pnpm install --frozen-lockfile && pnpm run typecheck` and `cd pi && pnpm test`.
 - For one Vitest file, pass the filter directly, for example `cd pi && pnpm test operator-status.test.ts`; never insert `--`, because the script passes it through to Vitest and would run the full suite.
 - `@earendil-works/*` and `@sinclair/*` are intentionally absent from `pi/package.json`; `scripts/pi-deps-link-setup` links them from pnpm-global into `pi/node_modules` so they match the installed Pi binary. See [`pi/README.md#javascript-package-manager-policy`](pi/README.md#javascript-package-manager-policy).
-- Validation must exercise the intended contract or regression and, for a workflow, the exact entrypoint and sequence users rely on. A smoke test is not contract verification; identify it as such. Never claim behavior that was not run and observed.
-- Use a validation ladder: reproduce the failure once, isolate the boundary, implement the fix, run focused static checks/tests, then run the exact user workflow once. Escalate to broad suites only when the change is shared or high-risk, focused results indicate wider impact, or a required final gate calls for them. Run broad validation after implementation, not repeatedly during diagnosis.
-- Stop testing when additional runs are unlikely to change the implementation decision or confidence. Do not repeat passing probes, vary irrelevant parameters, or add tests that only restate implementation details; every test must protect a distinct contract, regression, edge case, or safety property.
-- For bug fixes, define the failing entrypoint and expected successful outcome before editing. Do not report completion until that exact workflow succeeds. Better diagnostics, passing unit tests, or a plausible code change are not substitutes. If exact validation is blocked, report the fix as incomplete and name the blocker.
+- Validation must exercise the changed contract or regression. When the request requires preserving a workflow, validate its user entrypoint and sequence. A smoke test is not contract verification; identify it as such. Never claim behavior that was not run and observed.
+- Use proportionate checks for the changed contract. Stop testing when additional runs are unlikely to change the implementation decision or confidence.
+- For bug fixes, define the expected successful outcome before editing. When exact workflow validation is required by the requested behavior and is blocked, report the fix as incomplete and name the blocker.
 
 ## Repository invariants
 
@@ -102,8 +101,7 @@ git submodule update --init --recursive
 
 ### Rollout and incident discipline
 
-- Treat review findings as a prioritized backlog. A request to address all findings authorizes the scope, but does not justify one batch; separate migrations, stateful replacements, hardening, backup redesign, and orchestration changes into validated waves.
-- For stateful infrastructure, replace or migrate one independent service per rollout until the canary is healthy. Before mutation, require a current backup, a known restore path, an explicit rollback boundary, and a reviewed plan naming every create, update, replace, and delete.
+- For live stateful infrastructure, replace or migrate one independent service per rollout until the canary is healthy. Before mutation, require a current backup, a known restore path, an explicit rollback boundary, and a reviewed plan naming every create, update, replace, and delete.
 - The first failed live mutation enters incident mode: stop roadmap work, broad applies, parallel recovery, and unrelated refactoring. Diagnose directly, recover one service, preserve healthy services, and exit incident mode only after the original endpoint and state checks pass.
 - Direct command output, saved logs, and endpoint checks outrank summaries. The parent executing or coordinating live work must independently verify critical plan and health claims.
 - Reuse the user's authorization for repeated in-scope, non-destructive recovery steps. Ask again only when the target, destructive scope, rollback risk, or intended outcome materially changes.

@@ -4,7 +4,7 @@ Comprehensive testing patterns for Rust projects.
 
 ## Unit Tests
 
-Unit tests MUST be in the same file as the code being tested:
+When adding unit tests, place them in the same file as the code being tested:
 ```rust
 // src/calculator.rs
 pub fn add(a: i32, b: i32) -> i32 {
@@ -29,7 +29,7 @@ mod tests {
 
 ## Integration Tests
 
-Integration tests MUST be in the `tests/` directory. Put shared test support in a child module so Cargo does not execute it as a separate test crate.
+Place integration tests in the `tests/` directory. Put shared test support in a child module so Cargo does not execute it as a separate test crate.
 
 ## Test patterns
 Use fixtures for setup, test error paths directly, and reserve `#[should_panic]` for invariants that cannot be expressed as `Result` assertions.
@@ -49,10 +49,7 @@ async fn async_test() { /* ... */ }
 
 ## Testing Rules
 
-- MUST have unit tests for public functions
-- SHOULD have integration tests for public API
-- SHOULD use `#[ignore]` for slow tests
-- MUST NOT have tests that depend on execution order
+Add tests needed to protect the changed contract. Use integration tests when the public API contract needs them, use `#[ignore]` for slow tests, and do not make tests depend on execution order.
 
 ## Essential Commands
 

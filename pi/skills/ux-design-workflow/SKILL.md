@@ -6,7 +6,7 @@ location: user
 
 # UX Design Workflow
 
-End-to-end workflow for designing and building user interfaces with accessibility, distinctive aesthetics, and production-quality code.
+Guidance for designing and building user interfaces when the requested contract needs UX design work.
 
 ## Sub-Files (Load When Needed)
 
@@ -22,6 +22,8 @@ End-to-end workflow for designing and building user interfaces with accessibilit
 
 ## Core Principles
 
+Apply these principles when they affect the requested UI contract.
+
 1. **Clarity over decoration** - Function before form
 2. **Consistency over novelty** - Reuse patterns
 3. **Accessibility over convenience** - WCAG 2.1 AA minimum
@@ -33,7 +35,9 @@ End-to-end workflow for designing and building user interfaces with accessibilit
 
 ---
 
-## Accessibility Requirements (MUST Achieve)
+## Accessibility Requirements
+
+Apply the relevant requirements when the requested UI contract affects the corresponding interaction.
 
 ### Color Contrast
 
@@ -60,13 +64,15 @@ Reference: [WAI modal dialog pattern](https://www.w3.org/WAI/ARIA/apg/patterns/d
 
 Reference: [WCAG 2.2 quick reference](https://www.w3.org/WAI/WCAG22/quickref/) covers contrast, motion, and keyboard criteria.
 
-### Lighthouse Score: MUST be >95
+### Lighthouse Score
+
+Set and verify a Lighthouse target only when the requested contract includes it.
 
 ---
 
 ## Design Tokens
 
-Use semantic color, spacing, typography, and breakpoint tokens. Match the project's existing design system before adding tokens.
+When adding or changing a design system, use semantic color, spacing, typography, and breakpoint tokens. Match the project's existing design system before adding tokens.
 
 Reference: [W3C Design Tokens Community Group](https://www.w3.org/community/design-tokens/) maintains the design-token standardization work.
 
@@ -74,15 +80,13 @@ Reference: [W3C Design Tokens Community Group](https://www.w3.org/community/desi
 
 ## Dark Mode
 
-Define semantic foreground, background, and border tokens for each theme.
-
-- MUST persist user preference (localStorage)
-- MUST respect `prefers-color-scheme` as default
-- MUST NOT flash wrong theme on load
+When the requested UI contract includes themes, define semantic foreground, background, and border tokens for each theme. Persist user preference, respect `prefers-color-scheme` as the default, and avoid a wrong-theme flash on load.
 
 ---
 
 ## Component Patterns
+
+Apply the relevant pattern when adding or changing that component.
 
 ### Buttons
 
@@ -105,16 +109,18 @@ Define semantic foreground, background, and border tokens for each theme.
 
 ## Loading and Error States
 
-- Loading MUST be indicated within 100ms
-- Errors MUST explain what went wrong
-- MUST NOT show raw error messages to users
+For UI work that affects loading or error behavior:
+
+- Indicate loading promptly.
+- Explain errors without exposing raw error messages to users.
 
 ---
 
 ## Responsive Design
 
-Mobile-first approach is REQUIRED.
+For UI work whose requested contract includes mobile or responsive behavior:
 
-- Touch targets MUST be minimum 44x44px on mobile
-- Text MUST be readable without horizontal scrolling
-- Images MUST be responsive (`max-width: 100%`)
+- Use a mobile-first approach.
+- Keep touch targets at least 44x44px on mobile.
+- Keep text readable without horizontal scrolling.
+- Make images responsive (`max-width: 100%`).

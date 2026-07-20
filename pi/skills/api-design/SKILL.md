@@ -83,8 +83,8 @@ If the answer is vague ("flexibility", "future-proofing", "best practices"), the
 
 ### GraphQL Principles
 - **Deprecation over versioning** - Use `@deprecated` directive
-- **DataLoaders for N+1 prevention** - MUST use batching for nested resolvers
-- **Query depth limiting** - SHOULD limit to 10-15 levels
+- **DataLoaders for N+1 prevention** - Use batching when nested resolvers would create N+1 queries
+- **Query depth limiting** - Set limits when the requested GraphQL contract needs them
 
 ---
 
@@ -163,7 +163,7 @@ Good: DELETE /users/123
 Standardize error format across ALL endpoints.
 
 ### Missing Pagination
-MUST paginate all collection endpoints. No unbounded result sets.
+Paginate collection endpoints when their requested contract needs bounded results; do not add pagination to small, intentionally complete collections.
 
 ### Exposed Internals
 ```
@@ -181,15 +181,15 @@ Good: GET /api/data (Authorization: Bearer <token>)
 
 ## API Design Checklist
 
-**MUST include:**
+Apply the items required by the requested API contract:
 - [ ] Consistent endpoint structure
 - [ ] Clear error responses
 - [ ] Proper status codes
-- [ ] Pagination on collections
-- [ ] Authentication/authorization
+- [ ] Pagination for bounded collection results
+- [ ] Authentication/authorization for protected access
 - [ ] Request validation
-- [ ] Documentation (OpenAPI/GraphQL schema)
-- [ ] Caching headers (for REST)
+- [ ] Documentation (OpenAPI/GraphQL schema) when consumers need it
+- [ ] Caching headers for REST responses whose caching behavior is part of the contract
 
 ---
 

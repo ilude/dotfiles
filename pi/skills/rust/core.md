@@ -35,15 +35,12 @@ cargo test --release
 ## Trait Requirements
 
 ### Public Types
-All public types MUST implement:
-- `Debug` - Required for error messages and debugging
-- `Clone` - Required unless the type explicitly manages unique resources
-
-Public types SHOULD implement:
-- `PartialEq` - When equality comparison is meaningful
-- `Eq` - When `PartialEq` is reflexive (most cases)
-- `Hash` - When the type may be used as a key
-- `Default` - When a sensible default exists
+Implement traits that the requested public contract needs:
+- `Debug` for error messages and debugging
+- `Clone` when callers need copyable values and the type does not manage unique resources
+- `PartialEq` and `Eq` when equality comparison is meaningful
+- `Hash` when the type may be used as a key
+- `Default` when a sensible default exists
 
 ### Display Trait
 Types representing user-facing values SHOULD implement `Display`:
@@ -196,12 +193,7 @@ cargo test -- --nocapture     # Show println output
 ## Documentation
 
 ### Documentation Rules
-- MUST document all public items
-- MUST include `# Examples` for non-trivial functions
-- SHOULD include `# Panics` if the function can panic
-- SHOULD include `# Errors` for functions returning `Result`
-- SHOULD include `# Safety` for unsafe functions
-- MAY use `#[doc(hidden)]` for public-but-internal items
+Document public items when the requested public contract or local conventions require it. For documented functions, include relevant `# Examples`, `# Panics`, `# Errors`, and `# Safety` sections. `#[doc(hidden)]` remains appropriate for public-but-internal items.
 
 ### Doc Tests
 Examples in documentation are compiled and run as tests:
@@ -251,7 +243,7 @@ Keep `unsafe` implementation details private, validate every invariant at the bo
 
 ## No Magic Values
 
-MUST NOT use literal strings, numbers, or booleans inline when they represent a domain concept, configuration, or repeated value. Extract to `const`, enums, or associated constants.
+Extract literals to `const`, enums, or associated constants when they represent a repeated or shared domain concept, configuration, or when the requested change needs a named value.
 
 ### Patterns
 

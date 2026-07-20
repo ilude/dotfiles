@@ -24,7 +24,7 @@ Before editing, ask:
 3. Did I avoid drive-by formatting and unrelated cleanup?
 4. Does any API behavior or default silently change?
 5. Would the diff title accurately describe all touched files?
-6. For a migration or refactor, does the new path preserve behavior parity with the old path until the cutover is proven?
+6. If the request requires behavior preservation during a migration or refactor, does the new path preserve that behavior until cutover?
 
 ## Compliant Patterns
 
@@ -32,7 +32,7 @@ Before editing, ask:
 - Match existing vocabulary and abstractions.
 - Preserve return types and defaults unless asked.
 - Add backward-compatible parameters where possible.
-- For migrations and refactors, keep old and new behavior aligned with targeted parity checks before removing the old path.
+- When a migration or refactor must preserve behavior, check that behavior before removing the old path.
 - Flag broader refactors separately instead of bundling them.
 
 ## Anti-Patterns

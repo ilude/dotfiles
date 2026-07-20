@@ -357,7 +357,7 @@ func main() {
 
 ## No Magic Values
 
-You MUST NOT use literal strings, numbers, or booleans inline when they represent a domain concept, configuration, or repeated value. Extract to typed constants or `const` blocks.
+Extract literals to typed constants or `const` blocks when they represent a repeated or shared domain concept, configuration, or when the requested change needs a named value.
 
 ### Patterns
 
@@ -608,12 +608,9 @@ func main() {
 
 ## CI/CD Requirements
 
-### Required Checks
+### Checks for CI Workflows
 
-- You MUST run `go build ./...` to verify compilation
-- You MUST run `go test -race ./...` for race detection
-- You SHOULD run `golangci-lint run` for static analysis
-- You SHOULD run `govulncheck ./...` for vulnerability scanning
+When defining or changing a Go CI workflow, include the build, test, race-detection, lint, and vulnerability checks required by that workflow.
 
 ### Example GitHub Actions
 

@@ -17,14 +17,12 @@ A PRD aligns product intent, constraints, and acceptance criteria before executi
 
 ## Practical Steps
 
-1. Identify the target user, problem, and desired outcome.
-2. Separate goals, non-goals, assumptions, and open questions.
-3. Define user stories or scenarios only where they clarify behavior.
-4. Add acceptance criteria and verification hooks, including the exact user workflow when workflow behavior is in scope.
-5. For migrations or refactors, require behavior parity before cutover.
-6. Prefer existing library or platform capabilities over custom product requirements unless differentiation requires custom behavior.
-7. Capture rollout, risks, and dependencies when they affect delivery.
-8. Ask one concise clarification question only when a missing fact changes the PRD.
+1. Define the problem and desired outcome.
+2. Separate goals and non-goals.
+3. Define requirements and acceptance criteria.
+4. Add users, scenarios, assumptions, risks, dependencies, or open questions only when requested or needed by the product decision.
+5. Add planning or review handoffs only when requested.
+6. Ask one concise clarification question only when a missing fact changes the PRD.
 
 ## Minimal PRD Shape
 
@@ -33,11 +31,8 @@ A PRD aligns product intent, constraints, and acceptance criteria before executi
 ## Problem
 ## Goals
 ## Non-Goals
-## Users / Scenarios
 ## Requirements
 ## Acceptance Criteria
-## Risks / Dependencies
-## Open Questions
 ```
 
 ## Anti-Patterns

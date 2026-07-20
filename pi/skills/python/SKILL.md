@@ -29,8 +29,8 @@ Compact index for Python work. Load linked files only for framework-specific det
 
 1. Identify the Python project root and read `pyproject.toml`/existing tests.
 2. Use `uv` for dependency and command execution when the project supports it.
-3. Change the smallest code path needed; update tests for the changed contract.
-4. Run focused tests first, then lint/format checks appropriate to the touched package.
+3. Change the smallest code path needed; update tests when they are needed to protect the changed contract.
+4. Run focused validation appropriate to the changed contract and touched package.
 
 ## Quick validation
 

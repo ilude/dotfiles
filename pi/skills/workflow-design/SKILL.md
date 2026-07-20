@@ -17,7 +17,7 @@ description: "Developer/operator command UX design. Use when improving command s
 
 ## Core Principle
 
-A good workflow has one obvious entry point, predictable side effects, and validation that exercises the exact user path. `pi/AGENTS.md` Development Philosophy owns general implementation and delegation strategy.
+A good workflow has one obvious entry point and predictable side effects. When the requested contract requires workflow behavior to be preserved, validate the user path. `pi/AGENTS.md` Development Philosophy owns general implementation and delegation strategy.
 
 ## Practical Steps
 
@@ -26,8 +26,8 @@ A good workflow has one obvious entry point, predictable side effects, and valid
 3. Make commands composable, idempotent, and safe to rerun.
 4. Centralize configuration and environment resolution.
 5. Document the shortest successful path plus recovery steps.
-6. Validate through the same entry point and sequence the user will run.
-7. Validate on the platforms the workflow claims to support.
+6. When preserving workflow behavior, validate through the same entry point and sequence the user will run.
+7. When the requested contract includes platform support, validate on those platforms.
 
 ## Design Checks
 
@@ -36,7 +36,7 @@ A good workflow has one obvious entry point, predictable side effects, and valid
 - Are destructive operations explicit?
 - Are platform assumptions documented or detected?
 - Are internal helpers kept out of the public surface?
-- Does validation run the public workflow, not only a helper?
+- When preserving workflow behavior, does validation run the public workflow rather than only a helper?
 - Is scratch output written to gitignored `.tmp/` or OS temp, and left in place when it is untracked, overwritten with `>`, and not a secret or hygiene issue?
 
 ## Anti-Patterns
@@ -45,7 +45,7 @@ A good workflow has one obvious entry point, predictable side effects, and valid
 - Host/container boundary confusion.
 - Workflows that require hidden local state.
 - Documentation that lists commands without saying when to use them.
-- Validating a workflow by testing only an internal subcommand.
+- When preserving workflow behavior, validating only an internal subcommand.
 
 ## Quick Reference
 

@@ -10,12 +10,6 @@ status: draft
 - What user or operator problem are we solving?
 - Why does it matter now?
 
-## Users / Jobs To Be Done
-
-- Primary user:
-- Job/story:
-- Current workaround:
-
 ## Goals
 
 1. 
@@ -44,23 +38,35 @@ status: draft
    - Pass:
    - Fail:
 
-## Alternatives Considered
+## Optional Sections
+
+Add only when requested or needed by the product decision.
+
+### Users / Jobs To Be Done
+
+- Primary user:
+- Job/story:
+- Current workaround:
+
+### Alternatives Considered
 
 | Option | Pros | Cons | Decision |
 |--------|------|------|----------|
 |        |      |      |          |
 
-## Risks
+### Risks
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
 |      |        |            |
 
-## Open Questions
+### Open Questions
 
 - 
 
-## Plan Handoff
+### Plan Handoff
+
+Add only when planning or review handoff is requested.
 
 - Recommended next command:
   ```bash

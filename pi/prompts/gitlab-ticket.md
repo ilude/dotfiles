@@ -1,9 +1,9 @@
 ---
-description: Generate a structured GitLab issue with optional branch and draft MR follow-on
+description: Generate a structured GitLab issue
 argument-hint: "[feature or change]"
 ---
 
-You are a senior technical requirements analyst generating a structured GitLab issue for the current repository. Detect the stack from repo evidence before writing: `angular.json`/`package.json` (Angular frontend), `*.csproj`/`*.sln` (C# Web API), `pom.xml`/`build.gradle` or WSO2 artifacts (Java/WSO2 integration). Reference the detected stack; do not assume one.
+You are a senior technical requirements analyst generating a structured GitLab issue for the current repository. When a technical design section is needed, detect the stack from repo evidence: `angular.json`/`package.json` (Angular frontend), `*.csproj`/`*.sln` (C# Web API), `pom.xml`/`build.gradle` or WSO2 artifacts (Java/WSO2 integration). Reference the detected stack; do not assume one.
 
 GitLab ticket request: $ARGUMENTS
 
@@ -19,14 +19,11 @@ Ask at most one clarifying question total (Step 1); otherwise proceed with state
 
 ## Step 2: Generate the structured ticket
 
-Produce the issue body using EXACTLY this structure -- no additional text or commentary:
+Produce the issue body using EXACTLY this structure -- no additional text or commentary. Include the optional Technical Design & Rationale section only when the user requests it or the issue needs design detail to be understood:
 
 ```
 **Requirement:**
 [A detailed description of the functional requirement. Include specific inputs, outputs, constraints, and performance expectations. If information is missing, state "Information Needed".]
-
-**Technical Design & Rationale:**
-[Identify the specific components/modules affected. Describe the high-level logic or architectural change. Name the detected stack's relevant components, services, controllers, or integration artifacts where applicable.]
 
 **Acceptance Criteria:**
 - [ ] [Testable criterion 1]
@@ -36,6 +33,13 @@ Produce the issue body using EXACTLY this structure -- no additional text or com
 
 **Priority:**
 [High/Medium/Low -- infer from context, or default to Medium if unclear]
+```
+
+When included, add this section between Requirement and Acceptance Criteria:
+
+```
+**Technical Design & Rationale:**
+[Identify the specific components/modules affected. Describe the high-level logic or architectural change. Name the detected stack's relevant components, services, controllers, or integration artifacts where applicable.]
 ```
 
 ## Step 3: Present for review
@@ -81,23 +85,15 @@ glab issue create \
 
 Report the issue URL back to the user.
 
-## Step 6: Labels (optional)
+## Step 6: Labels, branch naming, and MR follow-on
 
-After filing, ask once: "Want to add any labels?" If the user provides labels:
+Handle labels or branch/MR work only when the user explicitly requests it. If the user provides labels:
 
 ```bash
 glab issue update <number> --label "label1,label2" --hostname <hostname> -R <project/path>
 ```
 
-## Step 7: Branch naming + MR follow-on (optional)
-
-After labels are handled, ask once:
-
-```text
-Want me to create a branch and draft MR for this issue too?
-```
-
-If the user says yes:
+If the user explicitly requests a branch or draft MR:
 
 1. Use this branch naming convention:
 
@@ -139,7 +135,7 @@ If an MR already exists from a nonstandard branch, prefer creating the correctly
 - Never add commentary outside the structured format in the issue body
 - Use "Information Needed" rather than guessing when details are missing
 - Acceptance criteria must be testable -- no vague statements
-- Technical Design must reference the actual architecture of the target repo as detected (components, controllers/services, integration configs), never an assumed stack.
+- When included, Technical Design must reference the actual architecture of the target repo as detected (components, controllers/services, integration configs), never an assumed stack.
 - Always confirm with the user before filing
 - Use explicit `--hostname` with all glab commands; a repo can otherwise resolve against the wrong GitLab instance.
-- For issue-linked follow-on work, prefer issue-numbered branch names and draft MRs by default
+- For explicitly requested issue-linked follow-on work, prefer issue-numbered branch names and draft MRs by default

@@ -151,7 +151,7 @@ pnpm add -g --allow-build=koffi --allow-build=protobufjs \
 
 ## Damage-control safety validation
 
-Pi damage-control is Pi-only and lives in `pi/extensions/damage-control.ts` plus focused sibling modules for rule loading, pure engine decisions, and opt-in debug logging. The canonical command/path policy is Claude's in-repo `claude/hooks/damage-control/patterns.yaml` when present, parsed through the full-YAML Python/PyYAML helper and normalized into Pi's TypeScript engine. `PI_DAMAGE_CONTROL_CLAUDE_POLICY_PATH` can point at an explicit Claude policy; if that override is missing or invalid, damage-control fails closed. If no override is set and the in-repo Claude policy is unavailable, Pi falls back to `pi/damage-control-rules.yaml` in explicit Pi-only mode.
+Pi damage-control is Pi-only and lives in `pi/extensions/damage-control.ts` plus focused sibling modules for rule loading, pure engine decisions, and opt-in debug logging. The canonical command/path policy is `pi/damage-control-rules.yaml`, loaded through Pi's native policy schema. `PI_DAMAGE_CONTROL_POLICY_PATH` can select an explicit alternate Pi policy. A missing or invalid default or override fails closed.
 
 Debug logging is disabled by default. To enable redacted diagnostic logs for a short investigation, set `PI_DAMAGE_CONTROL_DEBUG=1`; logs may appear at `.pi/damage-control-debug.log` and `~/.pi/agent/damage-control-debug.log`. Do not print old debug logs directly: inventory paths first and inspect only redacted, synthetic entries.
 
@@ -241,7 +241,7 @@ shared echo.
 
 ### `damage-control.ts`
 
-Pi damage-control is a Pi-native adapter for the intent of the Claude Code damage-control hooks. It uses Pi extension APIs, status text, `/doctor`, and `/permissions` rather than importing the Claude hook runtime. Current coverage is intentionally bounded: Claude `bashToolPatterns` (Bash-only, excluding `exfil` entries from all-pattern parity claims) plus Claude path/write sections that map to Pi's tool surfaces. Semantic git analysis, AST bash analysis, taint/sequence detection, and post-tool secret-output detection remain deferred.
+Pi damage-control is a Pi-native safety extension with its own policy, parser, engine, status text, `/doctor`, and `/permissions` integration. It enforces Bash, PowerShell, file-path, semantic Git, Bash AST, sequence/taint, and post-tool secret-output rules through Pi extension hooks.
 
 Intercepts tool calls and blocks dangerous operations before they execute.
 
@@ -249,13 +249,13 @@ Intercepts tool calls and blocks dangerous operations before they execute.
 - **Zero-access paths** -- blocks read/write to `~/.ssh/*`, `*.pem`, `*.key`, `.env`
 - **No-delete paths** -- protects `package.json`, `Makefile`, `pyproject.toml`
 
-Primary policy file: `~/.dotfiles/claude/hooks/damage-control/patterns.yaml`. Fallback Pi-only rules file: `~/.dotfiles/pi/damage-control-rules.yaml`.
+Policy file: `~/.dotfiles/pi/damage-control-rules.yaml`. Set `PI_DAMAGE_CONTROL_POLICY_PATH` only when an explicit alternate Pi policy is required.
 
 ### `quality-gates.ts`
 
 Collects files changed by write and edit operations, then runs the appropriate linters when the agent run ends. Failures trigger a follow-up repair turn before the session settles, with at most two automatic repair attempts before control returns with an unresolved warning.
 
-Validators are configured in `~/.dotfiles/claude/hooks/quality-validation/validators.yaml` -- shared with the Claude Code quality-validation hook.
+Validators are configured in the Pi-owned `~/.dotfiles/pi/quality-gates.json`. Pi runs all applicable available validators. Its Lizard check compares functions with Git `HEAD` and blocks only new or worsened CCN, function-length, or parameter-count violations; new files have no baseline.
 
 ### `session-hooks.ts`
 
@@ -857,7 +857,8 @@ A fresh span id is generated for each subagent invocation (single, parallel, or 
 |------|---------|
 | `~/.dotfiles/pi/settings.json` | Default provider/model for session startup |
 | `~/.dotfiles/pi/AGENTS.md` | Canonical shared global instructions linked from `claude/CLAUDE.md` |
-| `~/.dotfiles/pi/damage-control-rules.yaml` | Safety rules for damage-control extension |
+| `~/.dotfiles/pi/damage-control-rules.yaml` | Pi damage-control safety policy |
+| `~/.dotfiles/pi/quality-gates.json` | Pi lint and complexity validator policy |
 
 Project-level overrides: place `AGENTS.md` or `.pi/settings.json` in any repo root.
 

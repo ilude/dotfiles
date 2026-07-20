@@ -106,7 +106,7 @@ def fetch_user(repo: Repository, user_id: str) -> User | None:
 
 ## No Magic Values
 
-MUST NOT use literal strings, numbers, or booleans inline when they represent a domain concept, configuration, or repeated value. Extract to named constants, `Enum`, or `Final` annotations.
+Extract literals to named constants, `Enum`, or `Final` annotations when they represent a repeated or shared domain concept, configuration, or when the requested change needs a named value.
 
 ### Patterns
 
@@ -161,10 +161,7 @@ conn = connect(DEFAULT_HOST, DEFAULT_PORT)
 ## Documentation and Comments
 
 ### Docstrings (PEP 257)
-- Provide docstrings for all public modules, classes, and functions
-- Use triple quotes: `"""Docstring text."""`
-- First line: brief summary (ends with period)
-- Document parameters, return values, and exceptions
+Document public modules, classes, and functions when the requested public contract or local conventions require it. For docstrings, use triple quotes, a brief first-line summary, and relevant parameters, return values, and exceptions.
 
 ### Comment Philosophy
 - Comment to explain **WHY**, not **WHAT**

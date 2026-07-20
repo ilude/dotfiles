@@ -2,28 +2,9 @@
 
 Pytest patterns and best practices for Python projects.
 
-## Zero warnings tolerance
+## Warnings and Pre-Commit Checks
 
-**Treat all warnings as errors. No exceptions.**
-
-| Status | Output | Action |
-|--------|--------|--------|
-| PASS | All tests passed, no warnings | Proceed |
-| FAIL | Tests passed with DeprecationWarning | Fix immediately |
-| FAIL | Any warning present | Block commit |
-
-**Pre-Commit Requirements:**
-- All tests pass
-- Zero warnings
-- No linting errors
-- No type errors
-- Code formatted
-
-**MUST NOT commit with:**
-- Failing tests
-- Any warnings
-- Linting errors
-- Unformatted code
+When the project or an explicitly invoked pre-commit workflow requires warning-free tests, treat warnings as failures and run its required checks. Otherwise, validate warnings and checks relevant to the changed contract.
 
 ---
 
@@ -65,16 +46,13 @@ uv run pytest --cov=app --cov-report=html
 - Framework magic (unless you suspect bugs)
 
 ### Coverage Requirements
-- **Minimum:** 80% overall coverage
-- **Critical paths:** 100% coverage
-- **New code:** Should not decrease overall coverage
-- **Focus:** Behavior over line count
+Follow project-defined coverage thresholds when they apply. For changed critical paths, prioritize behavior coverage over line count.
 
 ---
 
 ## Test Structure - Arrange-Act-Assert Pattern
 
-All tests follow the **Arrange-Act-Assert (AAA)** pattern for clarity:
+Use the **Arrange-Act-Assert (AAA)** pattern when it clarifies a test:
 
 1. **Arrange** - Set up test data and conditions
 2. **Act** - Execute the functionality being tested
@@ -317,7 +295,7 @@ def test_create_user_invalid_email(user_service):
 
 ## Edge Case Testing
 
-Always test these edge cases:
+Test relevant edge cases:
 
 ```python
 def test_edge_cases():
@@ -470,25 +448,14 @@ pythonpath = ["src"]
 ## Development Workflow
 
 **During Development:**
-1. Write/modify code
-2. Run targeted tests for fast iteration
-3. Fix issues immediately
+1. Write/modify code.
+2. Run targeted tests when they protect the changed contract.
+3. Address relevant failures.
 
 **Before Commit:**
-1. Run full suite (`uv run pytest` or `make check`)
-2. Fix all warnings/errors
-3. Verify coverage hasn't decreased
-4. Commit when zero warnings
+Run the full suite, warning checks, and coverage gates only when the project or an explicitly invoked workflow requires them. Otherwise, run the focused validation that protects the changed contract.
 
-**MUST:**
-- Test after every change
-- Fix warnings immediately
-- Add tests for new features
-
-**MUST NOT:**
-- Commit with failures/warnings
-- Skip tests after changes
-- Ignore failures as "known issues"
+Add tests for new features when they are needed to protect their contract. Do not ignore failures relevant to the requested change.
 
 ---
 
@@ -508,7 +475,7 @@ pythonpath = ["src"]
 
 | Pattern | Description |
 |---------|-------------|
-| **Local-first** | All tests MUST run locally without external dependencies |
+| **Local-first** | Prefer tests that run locally without external dependencies unless the contract needs external integration |
 | **Testcontainers** | Use testcontainers for integration tests |
 | **Flaky policy** | 48-hour remediation, then quarantine or delete |
 | **Idempotence** | Verify operations are safely re-runnable |

@@ -20,6 +20,8 @@ Key takeaways to apply:
 
 ## Core Principles
 
+Apply the invariants affected by the requested TUI change. Security and preservation rules apply whenever config, profiles, or secrets are affected.
+
 1. **Responsiveness first**
    - Keep typing, navigation, cancel, help, and quit responsive during network/storage/provider work.
    - Use async work with stale-result guards for provider/model/session changes.
@@ -64,12 +66,12 @@ Key takeaways to apply:
 
 Before implementing TUI changes:
 
-1. Inspect nearby UI/state/test patterns first.
-2. Identify the user-visible invariant, e.g. "selection remains visible" or "one provider failure does not block others".
-3. Add or update tests for that invariant.
-4. For typing latency, instrument first and validate against measured input/render timing before guessing.
+1. Inspect nearby UI/state/test patterns relevant to the requested change.
+2. Identify the affected user-visible invariant, e.g. "selection remains visible" or "one provider failure does not block others".
+3. Add or update tests when they are needed to protect that invariant.
+4. For typing latency changes, instrument first and validate against measured input/render timing before guessing.
 5. Avoid extra UX embellishments beyond the request unless they are baseline usability requirements.
-6. If touching config/profile/secret behavior, preserve existing fields and add migration/preservation tests.
+6. If touching config/profile/secret behavior, preserve existing fields and add migration/preservation tests when the change can affect them.
 
 When responding after TUI work, use compact structure:
 
@@ -80,7 +82,7 @@ When responding after TUI work, use compact structure:
 
 ## Checklist Before Marking a TUI Change Done
 
-For any TUI/list/form/setup change, verify:
+For a TUI/list/form/setup change, verify the items affected by the requested contract:
 
 - [ ] Keyboard navigation works and selected item remains visible.
 - [ ] Esc/cancel behavior is clear and safe.

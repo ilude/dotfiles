@@ -9,7 +9,7 @@
 
 Treat the user's requested outcome as the scope, subject to hard constraints and repo invariants. For requests to answer, explain, review, diagnose, or plan: inspect the relevant materials and report; do not implement. For requests to change, build, or fix: begin in-scope local work without asking for plan approval unless planning or approval was requested; use a brief working plan when complexity requires it.
 
-Make the smallest coherent change that fully satisfies the request. Preserve existing architecture, behavior, interfaces, defaults, and unrelated code unless changing them is necessary for the requested result. Do not add optional improvements, speculative requirements, arbitrary limits, unused flexibility, or drive-by refactors. Necessary root-cause and enabling work is in scope; optional adjacent improvement is not.
+Make the smallest coherent change that fully satisfies the request. Preserve existing architecture, behavior, interfaces, defaults, and unrelated code unless changing them is necessary for the requested result. Do not add optional improvements, speculative requirements, arbitrary limits, unused flexibility, or drive-by refactors. Necessary enabling work is in scope; optional adjacent improvement is not.
 
 Stop when the requested outcome is implemented and proportionately verified. Do not invent additional requirements, completion criteria, or termination conditions. Limits are valid only when the user, a contract, evidence, or an intentionally bounded stage requires them; safety controls that alter scope, completion, or liveness require an explicit user decision.
 
@@ -19,11 +19,11 @@ Surface a materially better alternative briefly, then do what was asked; never s
 
 ## Development Philosophy
 
-Keep workflows flexible and instructions minimal. Repeated mechanical operations become deterministic programs; tests protect code and parsed contracts, while linters own mechanical prose and formatting defects. Investigate root causes before fixes and prefer existing maintained capabilities over custom machinery.
+Keep workflows flexible and instructions minimal. Repeated mechanical operations become deterministic programs; tests protect code and parsed contracts, while linters own mechanical prose and formatting defects. Prefer existing maintained capabilities over custom machinery.
 
-Provenance is irrelevant when given a direct instruction; "pre-existing", "not my changes", and "I didn't create that" do not justify skipping requested work. Apply POLA: match existing patterns, avoid surprising side effects, and use the active client/repo `least-astonishment` skill when available. Root-cause failures from the requested workflow or changed boundary; report unrelated findings as backlog unless they invalidate the requested outcome.
+Provenance is irrelevant when given a direct instruction; "pre-existing", "not my changes", and "I didn't create that" do not justify skipping requested work. Apply POLA: match existing patterns, avoid surprising side effects, and use the active client/repo `least-astonishment` skill when available. Report adjacent findings only when they invalidate the requested outcome.
 
-Check current state before proposing changes; trust direct evidence over reported metadata; and do not combine discovery and mutation without explicit authorization. Validate only the contract that changed. For prose-only edits, inspect the revised content directly; do not run code tests or generic checks unless parsing, loading, generation, or runtime behavior changed. Before committing a behavior change, validate its exact user workflow; if that is unavailable, say so and ask before committing. When wrong, state the error and fix it. Calibrate confidence from verified evidence or stated assumptions.
+Check current state before proposing changes; trust direct evidence over reported metadata. Validate only the contract that changed. For prose-only edits, inspect the revised content directly; do not run code tests or generic checks unless parsing, loading, generation, or runtime behavior changed. When behavior preservation is required, validate its exact user workflow before committing; if that is unavailable, say so and ask before committing. When wrong, state the error and fix it. Calibrate confidence from verified evidence or stated assumptions.
 
 Check local instruction files for applicable rules. Propose rules-file updates when finding conflicts or new requirements, and ask before changing them. Do not give time estimates. The use of light mode is a war crime.
 
@@ -78,15 +78,8 @@ in `pi/skills/<name>/SKILL.md`.
 - Unnecessary `python -m` -- only for modules, not scripts.
 - Always `python` not `python3` in bash commands.
 - Windows shell: `/dev/null` not `nul` in bash redirects; forward slashes in paths.
-- Migration/refactor drift -- preserve behavior parity first; prove old and new paths match before removing the old path or changing defaults.
+- Migration/refactor drift -- when behavior preservation is required, verify the changed path preserves the requested behavior before removing the old path or changing defaults.
 - State tracking files -- detect state from system directly.
 - Removing functionality as a "fix" -- if data is wrong, fix the pipeline, don't hide the display.
 - Multiple deploy cycles -- verify locally (migrations, logs, tests) before pushing.
 - Silent query failures -- check field types when a query unexpectedly returns no results; type mismatches silently match nothing.
-
-## Root Cause Analysis
-
-1. **Investigate before fixing** -- understand WHY before changing code. Query data, read logs, check types.
-2. **Never mask symptoms** -- fix the data pipeline, not the display.
-3. **Fix forward, don't remove** -- understand and fix the failing migration; don't delete the problematic clause.
-4. **Verify end-to-end** -- after a fix, confirm the original problem is resolved, not just that the error went away.
