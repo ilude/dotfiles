@@ -1,7 +1,7 @@
 ---
 created: 2026-07-16
-status: draft
-completed:
+status: completed
+completed: 2026-07-21
 ---
 
 # Plan: Measurement and improvement loop - phase 4
@@ -234,13 +234,13 @@ from here.
   - [x] /improve report end to end
   - [x] loop documented once, in the philosophy file
   - [x] timer condition recorded (not built)
-- [ ] T5: close - in-progress: record the user-declined experiment and archive the plan
-  - [ ] one full cycle recorded with evidence (not required by user decision)
-  - [ ] routing baseline and n=30 projection recorded (not required by user decision)
+- [x] T5: close - done: `5437d26` (experiment declined by user)
+  - [x] one full cycle recorded with evidence (not required by user decision)
+  - [x] routing baseline and n=30 projection recorded (not required by user decision)
 
 ### State
 
-- **Classification:** in progress; T1-T4 complete
+- **Classification:** completed
 - **Current blocker:** none
-- **Next:** commit the T5 closure decision and archive the plan
-- **Resume:** `/do-it .specs/rationalization-phase4/plan.md`
+- **Next:** none
+- **Resume:** none
