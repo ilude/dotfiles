@@ -73,6 +73,100 @@ describe("task tools", () => {
 		}
 	});
 
+	it("exposes opt-in drain with bounded concurrency", async () => {
+		const pi = createMockPi();
+		const coordinator = new TaskExecutionCoordinator();
+		const drain = vi.spyOn(coordinator, "drain").mockResolvedValue({
+			outcome: "starved",
+			started: ["started"],
+			completed: [],
+			failed: ["failed"],
+			waiting: ["waiting"],
+			starvation: [
+				{
+					taskId: "waiting",
+					blockers: [{ id: "failed", status: "failed" }],
+				},
+			],
+		});
+		registerTaskTools(
+			pi as Parameters<typeof registerTaskTools>[0],
+			coordinator,
+		);
+		const tool = pi._getTool("task");
+		const ctx = createMockCtx({ cwd: tmpRoot });
+
+		const result = await tool?.execute(
+			"drain",
+			{ action: "drain", maxConcurrent: 3 },
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		expect(drain).toHaveBeenCalledWith({
+			workspace: resolveTaskWorkspace(tmpRoot),
+			fallbackCwd: tmpRoot,
+			maxConcurrent: 3,
+			signal: undefined,
+		});
+		expect(JSON.parse(result.content[0].text)).toMatchObject({
+			outcome: "starved",
+			starvation: [
+				{
+					taskId: "waiting",
+					blockers: [{ id: "failed", status: "failed" }],
+				},
+			],
+		});
+	});
+
+	it("accepts additive write scopes on create, batch, and update", async () => {
+		const pi = createMockPi();
+		registerTaskTools(
+			pi as Parameters<typeof registerTaskTools>[0],
+			new TaskExecutionCoordinator(),
+		);
+		const tool = pi._getTool("task");
+		const ctx = createMockCtx({ cwd: tmpRoot });
+		const created = await tool?.execute(
+			"scoped-create",
+			{ action: "create", summary: "scoped", scope: ["./src/**"] },
+			undefined,
+			undefined,
+			ctx,
+		);
+		const id = created.details.record.id as string;
+		expect(created.details.record.scope).toEqual(["src/**"]);
+
+		const updated = await tool?.execute(
+			"scoped-update",
+			{ action: "update", id, scope: ["docs/**"] },
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(updated.details.record.scope).toEqual(["docs/**"]);
+
+		const batch = await tool?.execute(
+			"scoped-batch",
+			{
+				action: "batch",
+				tasks: [
+					{
+						key: "worker",
+						summary: "worker",
+						scope: ["test/**"],
+					},
+				],
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(batch.details.records[0].scope).toEqual(["test/**"]);
+	});
+
 	it("uses one registry for planning dependencies and readiness", async () => {
 		const pi = createMockPi();
 		const coordinator = new TaskExecutionCoordinator();

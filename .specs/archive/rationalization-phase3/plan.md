@@ -1,7 +1,7 @@
 ---
 created: 2026-07-16
-status: draft
-completed:
+status: completed
+completed: 2026-07-17
 ---
 
 # Plan: Orchestration capability parity - phase 3
@@ -299,6 +299,36 @@ All -> T6
 - Claude/OpenCode surfaces.
 - Changing default delegation guidance (work directly by default stands).
 
+## Closeout decisions and evidence
+
+- Background completion delivery remains non-interrupting: task completion uses
+  `deliverAs: "nextTurn"`, does not trigger an autonomous turn, and becomes
+  model-visible on the next user prompt. The persistent RPC exercise observed
+  both completed task IDs, statuses, and first output lines on that later turn
+  with zero second-turn tool calls.
+- Continuation remains opt-in for ordinary delegation. Structured-output calls
+  persist a child session only because one bounded correction may be required;
+  invalid output gets exactly one same-session correction before failure.
+- Child transcripts remain refinement data: they are compressed after 30 days,
+  never deleted by this feature, and the friction scanner reads compressed
+  sessions.
+- Unenforced `isolation` and `memory` metadata stay deleted. Cross-client leases
+  warn about same-worktree occupancy but neither create worktrees nor block
+  mutation; stale cleanup requires both heartbeat expiry and process-identity
+  evidence.
+- DAG draining remains opt-in. Declared read-only workers may run concurrently;
+  missing scopes and unknown or mutating tool capabilities serialize
+  conservatively. Ready ordering is stable and critical-path-first, and
+  starvation is explicit rather than silently abandoned.
+- Structured chain data is normalized after schema validation. Payloads larger
+  than 8 KB transfer by artifact reference instead of coordinator
+  re-summarization; schema-less calls retain their previous path.
+- `make check-pi-extensions` passed with 98 test files, 1,356 passing tests, and
+  one skipped test. The ignored persistent RPC artifact at
+  `.tmp/phase3-e2e/plan-rpc.md` passed one batch, one drain, automatic dependency
+  release, persisted continuation, and later-turn notification delivery without
+  `task await` or `task output`.
+
 ## Execution status
 
 Same maintenance rules as phases 1-2. Statuses: `pending` |
@@ -310,35 +340,48 @@ Same maintenance rules as phases 1-2. Statuses: `pending` |
   - [x] message-injection API verified: `pi.sendMessage` with `deliverAs: "nextTurn"`
   - [x] completion/failure notifications implemented and capped
   - [x] extension-level two-task fan-out validated without await
-- [ ] T2: continuable subagents - pending
-  - [ ] headless resume mechanism verified (else: blocked on upstream)
-  - [ ] opt-in continuation and follow-up action implemented
-  - [ ] compress-on-age in place (no deletion); context-carryover proof passed
-- [ ] T3: cross-client worktree occupancy leases - pending
+- [x] T2: continuable subagents - done: `489e93a`
+  - [x] headless resume mechanism verified: `pi --session <path> -p <message>`
+  - [x] opt-in continuation and follow-up action implemented
+  - [x] compress-on-age in place (no deletion); context-carryover proof passed
+- [x] T3: cross-client worktree occupancy leases - done: `1828e9b`
   - [x] user decision received: delete advisory metadata; add lease warning
-  - [ ] `isolation` and `memory` removed from parser, docs, and agent files
-  - [ ] shared atomic lease lifecycle implemented for Pi and Claude
-  - [ ] same-worktree warning and separate-worktree non-warning validated
-  - [ ] clean shutdown, stale recovery, and clean Git status validated
-- [ ] T4: mechanical DAG scheduler - pending
-  - [ ] auto-dispatch on unblock with maxConcurrent
-  - [ ] write-scope serialization; read-only derived from enforced tools
-  - [ ] critical-path-first ordering
-  - [ ] failure/starvation semantics with explicit report
-  - [ ] /do-it handoff wired; wave narration removed
-  - [ ] fixture DAG validation passed
-- [ ] T5: schema-validated subagent output - pending
-  - [ ] outputSchema validation with one bounded correction
-  - [ ] chain forwards validated objects / artifact references
-  - [ ] absent-schema behavior byte-identical
-- [ ] T6: close - pending
-  - [ ] material decisions recorded in the closeout
-  - [ ] `make check-pi-extensions` passed
-  - [ ] live end-to-end /do-it exercise passed (all capabilities)
+  - [x] `isolation` and `memory` removed from parser, docs, and agent files
+  - [x] shared atomic lease lifecycle implemented for Pi and Claude
+  - [x] same-worktree warning and separate-worktree non-warning validated
+  - [x] clean shutdown, stale recovery, and clean Git status validated
+- [x] T4: mechanical DAG scheduler - done: `274a829`
+  - [x] auto-dispatch on unblock with maxConcurrent
+  - [x] write-scope serialization; read-only derived from enforced tools
+  - [x] critical-path-first ordering
+  - [x] failure/starvation semantics with explicit report
+  - [x] /do-it handoff wired; wave narration removed
+  - [x] fixture DAG validation passed
+- [x] T5: schema-validated subagent output - done: `0ffda45`
+  - [x] outputSchema validation with one bounded correction
+  - [x] chain forwards validated objects / artifact references
+  - [x] absent-schema behavior byte-identical
+- [x] T6: close - done
+  - [x] material decisions recorded in the closeout
+  - [x] `make check-pi-extensions` passed (98 files, 1,356 tests; 1 skipped)
+  - [x] live end-to-end /do-it exercise passed (one batch and drain,
+        continuation, and later-turn notifications with zero verification tools)
 
 ### State
 
-- **Classification:** in progress; T1 complete
+- **State:** complete
 - **Current blocker:** none
-- **Next:** T2, verify headless session resumption before implementation
-- **Resume:** `/do-it .specs/rationalization-phase3/plan.md`
+- **Last completed gate:** T6 close and validation
+- **Next:** none
+- **Completed work:** T1-T6 are complete. Background completion notifications,
+  continuable subagents, cross-client occupancy leases, opt-in DAG draining,
+  and schema-validated subagent output landed in the commits recorded above.
+- **Commands/results:** final `make check-pi-extensions` passed 98 test files
+  with 1,356 tests passing and one skipped. The persistent RPC `/do-it`
+  exercise used one graph batch and one drain, automatically released its
+  dependency join, recalled a fact through a persisted subagent session, and
+  reported both queued completion notifications on the later user turn with
+  zero verification tool calls and no `task await` or `task output`.
+- **Remaining checks:** none
+- **Exact user action:** none
+- **Archive:** `.specs/archive/rationalization-phase3/`

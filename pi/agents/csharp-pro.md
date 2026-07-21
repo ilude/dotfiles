@@ -2,8 +2,6 @@
 name: csharp-pro
 description: Expert C#/.NET specialist for autonomous multi-step tasks, project build/test/debugging, application frameworks, NuGet, and type-safe C# work.
 model: openai-codex/gpt-5.6-terra
-isolation: none
-memory: project
 effort: medium
 skills:
   - csharp

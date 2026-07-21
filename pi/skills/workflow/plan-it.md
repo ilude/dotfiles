@@ -40,6 +40,8 @@ Every plan includes:
 - validation that directly tests the requested outcome;
 - concise archive and resume state.
 
+Never assign overlapping same-file write scopes to parallel tasks; combine them or add a dependency edge.
+
 Conditionally include stages, decisions, failure actions, rollback, backup, approval, canary, deployment, or incident handling only when the work requires them.
 
 ## Readiness

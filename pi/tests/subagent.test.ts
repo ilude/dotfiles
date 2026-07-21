@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import * as zlib from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import workflowFrictionExtension from "../extensions/workflow-friction-review.js";
 import {
@@ -13,6 +14,7 @@ import {
 const spawnMock = vi.fn();
 const SUBAGENT_TEST_TIMEOUT_MS = 30000;
 const SPAWN_WAIT_TIMEOUT_MS = 20000;
+const STRUCTURED_TEST_ARTIFACT_BYTES = 9000;
 
 type MockProcess = EventEmitter & {
 	stdout: EventEmitter;
@@ -39,6 +41,7 @@ describe("subagent model override routing", () => {
 	let skillDir: string;
 	let prevOperatorDir: string | undefined;
 	let prevMetricsDir: string | undefined;
+	let prevRoutingSampleRate: string | undefined;
 
 	beforeEach(async () => {
 		tmpDir = await fs.promises.mkdtemp(
@@ -66,7 +69,6 @@ name: tester
 description: Test agent
 model: anthropic/claude-sonnet-4-6
 effort: high
-memory: none
 tools: read, grep
 skills:
   - ../skills/test-skill/SKILL.md
@@ -78,6 +80,8 @@ You are a test agent.
 		);
 		prevOperatorDir = process.env.PI_OPERATOR_DIR;
 		prevMetricsDir = process.env.PI_METRICS_DIR;
+		prevRoutingSampleRate = process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE;
+		process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE = "0";
 		process.env.PI_OPERATOR_DIR = path.join(tmpDir, "operator");
 		process.env.PI_METRICS_DIR = path.join(tmpDir, "metrics");
 		const { getMetricsLogPath } = await import("../lib/metrics.ts");
@@ -90,6 +94,9 @@ You are a test agent.
 		else process.env.PI_OPERATOR_DIR = prevOperatorDir;
 		if (prevMetricsDir === undefined) delete process.env.PI_METRICS_DIR;
 		else process.env.PI_METRICS_DIR = prevMetricsDir;
+		if (prevRoutingSampleRate === undefined)
+			delete process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE;
+		else process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE = prevRoutingSampleRate;
 		await fs.promises.rm(tmpDir, { recursive: true, force: true });
 		vi.clearAllMocks();
 	});
@@ -134,23 +141,19 @@ You are a test agent.
 		return { pi, tool };
 	}
 
+	const outputSchema = {
+		type: "object",
+		properties: { value: { type: "string" } },
+		required: ["value"],
+		additionalProperties: false,
+	};
+
 	async function orchestrationRuns() {
 		const { readRecentEvents } = await import("../lib/metrics.ts");
 		return readRecentEvents(100).filter(
 			(event) => event.event === "orchestration_run",
 		);
 	}
-
-	it("accepts memory none in agent frontmatter", async () => {
-		const { loadAgentsFromDir } = await import(
-			"../extensions/subagent/agents.ts"
-		);
-		const agents = loadAgentsFromDir(
-			path.join(tmpDir, ".pi", "agents"),
-			"project",
-		);
-		expect(agents[0]?.memory).toBe("none");
-	});
 
 	it("ships a read-only explorer agent", async () => {
 		const { loadAgentsFromDir } = await import(
@@ -163,7 +166,6 @@ You are a test agent.
 		const explorer = agents.find((agent) => agent.name === "explorer");
 
 		expect(explorer).toMatchObject({
-			memory: "none",
 			effort: "medium",
 			model: "openai-codex/gpt-5.6-sol",
 			skills: ["analysis-workflow"],
@@ -273,6 +275,424 @@ You are a test agent.
 			};
 			expect(spawnOptions.env.PI_SUBAGENT_RUN_ID).toMatch(/^[0-9a-f-]+$/);
 			expect(Date.parse(spawnOptions.env.PI_SUBAGENT_STARTED_AT)).not.toBeNaN();
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"persists an opt-in child session and records its path",
+		async () => {
+			spawnMock.mockImplementation((_command: string, args: string[]) => {
+				const proc = createMockProcess();
+				const sessionDir = args[args.indexOf("--session-dir") + 1];
+				const sessionId = args[args.indexOf("--session-id") + 1];
+				const sessionPath = path.join(
+					sessionDir,
+					`2026-07-17T00-00-00-000Z_${sessionId}.jsonl`,
+				);
+				fs.mkdirSync(sessionDir, { recursive: true });
+				fs.writeFileSync(sessionPath, '{"type":"session"}\n', "utf8");
+				queueMicrotask(() => {
+					proc.stdout.emit(
+						"data",
+						`${JSON.stringify({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: "remembered" }],
+								stopReason: "end_turn",
+							},
+						})}\n`,
+					);
+					proc.emit("close", 0);
+				});
+				return proc;
+			});
+			const { tool } = await loadTool();
+			const result = await tool.execute(
+				"call-continuable",
+				{
+					agent: "tester",
+					task: "Remember the private fact",
+					agentScope: "project",
+					continuable: true,
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			const child = result.details.results[0];
+			expect(child.sessionPath).toMatch(/\.jsonl$/);
+			expect(fs.existsSync(child.sessionPath as string)).toBe(true);
+			const { getTask } = await import("../lib/task-registry.ts");
+			expect(getTask(child.taskId as string)?.metadata?.sessionPath).toBe(
+				child.sessionPath,
+			);
+			const args = spawnMock.mock.calls[0][1] as string[];
+			expect(args).not.toContain("--no-session");
+			expect(args).toContain("--session-id");
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"continues a compressed child session with the same launcher policy",
+		async () => {
+			const sessionPath = path.join(tmpDir, "delegated-session.jsonl");
+			const original = '{"type":"session","fact":"violet-orbit"}\n';
+			await fs.promises.writeFile(
+				`${sessionPath}.gz`,
+				zlib.gzipSync(Buffer.from(original)),
+			);
+			mockSuccessfulSpawn();
+			const { tool } = await loadTool();
+			const result = await tool.execute(
+				"call-continue",
+				{
+					continue: {
+						agent: "tester",
+						session: sessionPath,
+						task: "What fact did I give you?",
+					},
+					agentScope: "project",
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			expect(result.isError).not.toBe(true);
+			expect(await fs.promises.readFile(sessionPath, "utf8")).toBe(original);
+			expect(fs.existsSync(`${sessionPath}.gz`)).toBe(false);
+			const args = spawnMock.mock.calls[0][1] as string[];
+			expect(
+				args.slice(args.indexOf("--session"), args.indexOf("--session") + 2),
+			).toEqual(["--session", sessionPath]);
+			expect(args[args.indexOf("--tools") + 1]).toBe("read,grep");
+			expect(result.details.results[0].sessionPath).toBe(sessionPath);
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it("compresses delegated sessions only after the age threshold", async () => {
+		const { compressDelegatedSessions } = await import(
+			"../extensions/subagent/index.ts"
+		);
+		const dir = path.join(tmpDir, "sessions");
+		const sessionPath = path.join(dir, "old.jsonl");
+		await fs.promises.mkdir(dir, { recursive: true });
+		await fs.promises.writeFile(sessionPath, "old session\n", "utf8");
+		const now = Date.UTC(2026, 6, 17);
+		const old = new Date(now - 31 * 24 * 60 * 60 * 1000);
+		await fs.promises.utimes(sessionPath, old, old);
+
+		expect(await compressDelegatedSessions({ dir, now, dryRun: true })).toEqual(
+			[sessionPath],
+		);
+		expect(fs.existsSync(sessionPath)).toBe(true);
+		await compressDelegatedSessions({ dir, now });
+		expect(fs.existsSync(sessionPath)).toBe(false);
+		expect(
+			zlib
+				.gunzipSync(await fs.promises.readFile(`${sessionPath}.gz`))
+				.toString(),
+		).toBe("old session\n");
+	});
+
+	it(
+		"returns schema-validated parsed output without changing schema-less defaults",
+		async () => {
+			spawnMock.mockImplementation((_command: string, args: string[]) => {
+				const proc = createMockProcess();
+				const sessionDir = args[args.indexOf("--session-dir") + 1];
+				const sessionId = args[args.indexOf("--session-id") + 1];
+				fs.mkdirSync(sessionDir, { recursive: true });
+				fs.writeFileSync(
+					path.join(sessionDir, `2026-07-17T00-00-00-000Z_${sessionId}.jsonl`),
+					'{"type":"session"}\n',
+					"utf8",
+				);
+				queueMicrotask(() => {
+					proc.stdout.emit(
+						"data",
+						`${JSON.stringify({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: 'Result: {"value":"valid"}' }],
+								stopReason: "end_turn",
+							},
+						})}\n`,
+					);
+					proc.emit("close", 0);
+				});
+				return proc;
+			});
+			const { tool } = await loadTool();
+			const result = await tool.execute(
+				"call-structured",
+				{
+					agent: "tester",
+					task: "Return structured output",
+					agentScope: "project",
+					outputSchema,
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			expect(result.details.results[0]).toMatchObject({
+				structuredOutput: { value: "valid" },
+				outputAttempts: 1,
+			});
+			expect(result.content[0].text).toContain('{"value":"valid"}');
+			const args = spawnMock.mock.calls[0][1] as string[];
+			expect(args).toContain("--session-id");
+			expect(args.join(" ")).toContain("Return only one JSON object");
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"uses exactly one continuation correction for invalid structured output",
+		async () => {
+			let call = 0;
+			spawnMock.mockImplementation((_command: string, args: string[]) => {
+				const proc = createMockProcess();
+				if (call === 0) {
+					const sessionDir = args[args.indexOf("--session-dir") + 1];
+					const sessionId = args[args.indexOf("--session-id") + 1];
+					fs.mkdirSync(sessionDir, { recursive: true });
+					fs.writeFileSync(
+						path.join(
+							sessionDir,
+							`2026-07-17T00-00-00-000Z_${sessionId}.jsonl`,
+						),
+						'{"type":"session"}\n',
+						"utf8",
+					);
+				}
+				const text = call++ === 0 ? "not json" : '{"value":"corrected"}';
+				queueMicrotask(() => {
+					proc.stdout.emit(
+						"data",
+						`${JSON.stringify({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text }],
+								stopReason: "end_turn",
+							},
+						})}\n`,
+					);
+					proc.emit("close", 0);
+				});
+				return proc;
+			});
+			const { tool } = await loadTool();
+			const result = await tool.execute(
+				"call-corrected",
+				{
+					agent: "tester",
+					task: "Return structured output",
+					agentScope: "project",
+					outputSchema,
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			expect(spawnMock).toHaveBeenCalledTimes(2);
+			expect(result.details.results[0]).toMatchObject({
+				structuredOutput: { value: "corrected" },
+				outputAttempts: 2,
+			});
+			const correctionArgs = spawnMock.mock.calls[1][1] as string[];
+			expect(correctionArgs).toContain("--session");
+			expect(correctionArgs.join(" ")).toContain(
+				"previous response failed output validation",
+			);
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"fails structured output after one invalid correction",
+		async () => {
+			let call = 0;
+			spawnMock.mockImplementation((_command: string, args: string[]) => {
+				const proc = createMockProcess();
+				if (call++ === 0) {
+					const sessionDir = args[args.indexOf("--session-dir") + 1];
+					const sessionId = args[args.indexOf("--session-id") + 1];
+					fs.mkdirSync(sessionDir, { recursive: true });
+					fs.writeFileSync(
+						path.join(
+							sessionDir,
+							`2026-07-17T00-00-00-000Z_${sessionId}.jsonl`,
+						),
+						'{"type":"session"}\n',
+						"utf8",
+					);
+				}
+				queueMicrotask(() => {
+					proc.stdout.emit(
+						"data",
+						`${JSON.stringify({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: "still invalid" }],
+								stopReason: "end_turn",
+							},
+						})}\n`,
+					);
+					proc.emit("close", 0);
+				});
+				return proc;
+			});
+			const { tool } = await loadTool();
+
+			await expect(
+				tool.execute(
+					"call-invalid-correction",
+					{
+						agent: "tester",
+						task: "Return structured output",
+						agentScope: "project",
+						outputSchema,
+					},
+					undefined,
+					undefined,
+					createMockCtx({ cwd: tmpDir }),
+				),
+			).rejects.toThrow("failed after one correction");
+			expect(spawnMock).toHaveBeenCalledTimes(2);
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"forwards normalized structured objects through chains",
+		async () => {
+			const spawnArgs: string[][] = [];
+			let call = 0;
+			spawnMock.mockImplementation((_command: string, args: string[]) => {
+				spawnArgs.push(args);
+				const proc = createMockProcess();
+				const sessionDir = args[args.indexOf("--session-dir") + 1];
+				const sessionId = args[args.indexOf("--session-id") + 1];
+				fs.mkdirSync(sessionDir, { recursive: true });
+				fs.writeFileSync(
+					path.join(sessionDir, `2026-07-17T00-00-00-000Z_${sessionId}.jsonl`),
+					'{"type":"session"}\n',
+					"utf8",
+				);
+				const text =
+					call++ === 0
+						? 'prose before {"value":"first"} prose after'
+						: '{"value":"second"}';
+				queueMicrotask(() => {
+					proc.stdout.emit(
+						"data",
+						`${JSON.stringify({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text }],
+								stopReason: "end_turn",
+							},
+						})}\n`,
+					);
+					proc.emit("close", 0);
+				});
+				return proc;
+			});
+			const { tool } = await loadTool();
+			const result = await tool.execute(
+				"call-structured-chain",
+				{
+					chain: [
+						{ agent: "tester", task: "First" },
+						{ agent: "tester", task: "Use {previous}" },
+					],
+					agentScope: "project",
+					outputSchema,
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			expect(spawnArgs[1].join(" ")).toContain('Use {"value":"first"}');
+			expect(spawnArgs[1].join(" ")).not.toContain("prose before");
+			expect(result.details.results[1].structuredOutput).toEqual({
+				value: "second",
+			});
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"forwards bulky structured chain output by artifact reference",
+		async () => {
+			const spawnArgs: string[][] = [];
+			const largeValue = "x".repeat(STRUCTURED_TEST_ARTIFACT_BYTES);
+			let call = 0;
+			spawnMock.mockImplementation((_command: string, args: string[]) => {
+				spawnArgs.push(args);
+				const proc = createMockProcess();
+				const sessionDir = args[args.indexOf("--session-dir") + 1];
+				const sessionId = args[args.indexOf("--session-id") + 1];
+				fs.mkdirSync(sessionDir, { recursive: true });
+				fs.writeFileSync(
+					path.join(sessionDir, `2026-07-17T00-00-00-000Z_${sessionId}.jsonl`),
+					'{"type":"session"}\n',
+					"utf8",
+				);
+				const text = JSON.stringify({
+					value: call++ === 0 ? largeValue : "done",
+				});
+				queueMicrotask(() => {
+					proc.stdout.emit(
+						"data",
+						`${JSON.stringify({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text }],
+								stopReason: "end_turn",
+							},
+						})}\n`,
+					);
+					proc.emit("close", 0);
+				});
+				return proc;
+			});
+			const { tool } = await loadTool();
+			const result = await tool.execute(
+				"call-bulky-structured-chain",
+				{
+					chain: [
+						{ agent: "tester", task: "First" },
+						{ agent: "tester", task: "Use {previous}" },
+					],
+					agentScope: "project",
+					outputSchema,
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			expect(spawnArgs[1].join(" ")).toContain("Output saved to:");
+			expect(spawnArgs[1].join(" ")).not.toContain(largeValue);
+			expect(result.details.results[0].outputReference?.bytes).toBeGreaterThan(
+				STRUCTURED_TEST_ARTIFACT_BYTES,
+			);
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
@@ -490,8 +910,63 @@ You are a test agent.
 	);
 
 	it(
+		"tags sampled policy-resolved dispatches with model effort and outcome telemetry",
+		async () => {
+			process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE = "1";
+			mockSuccessfulSpawn();
+			const { tool } = await loadTool();
+			const ctx = createMockCtx({
+				cwd: tmpDir,
+				model: { provider: "openai-codex", id: "gpt-5.6-sol" },
+				modelRegistry: {
+					getAvailable: vi.fn(() => [
+						{ provider: "openai-codex", id: "gpt-5.6-luna" },
+						{ provider: "openai-codex", id: "gpt-5.6-terra" },
+						{ provider: "openai-codex", id: "gpt-5.6-sol" },
+					]),
+				},
+			});
+
+			const result = await tool.execute(
+				"call-sampled-policy-dispatch",
+				{
+					agent: "tester",
+					task: "Check sampled routing",
+					agentScope: "project",
+					modelSize: "medium",
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+
+			const worker = result.details.results[0];
+			expect(worker.routingExperiment).toMatchObject({
+				experimentId: "codex-routing-outcomes-v1",
+				taskClass: "subagent-single",
+			});
+			const args = spawnMock.mock.calls[0][1] as string[];
+			expect(args).toContain(
+				`openai-codex/${worker.routingExperiment?.modelId}`,
+			);
+			expect(args[args.indexOf("--thinking") + 1]).toBe(
+				worker.routingExperiment?.effort,
+			);
+			const event = (await orchestrationRuns()).at(-1);
+			expect(event?.data.workers[0]).toMatchObject({
+				experimentId: "codex-routing-outcomes-v1",
+				experimentArm: worker.routingExperiment?.id,
+				experimentTaskClass: "subagent-single",
+				validationOutcome: "unavailable",
+			});
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
 		"uses explicit model over modelSize and pinned agent models",
 		async () => {
+			process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE = "1";
 			mockSuccessfulSpawn();
 			const { tool } = await loadTool();
 			const getAvailable = vi.fn(() => [
@@ -528,6 +1003,7 @@ You are a test agent.
 			expect(spawnArgs).not.toContain("openai-codex/gpt-5.5");
 			expect(spawnArgs).not.toContain("anthropic/claude-sonnet-4-6");
 			expect(result.details.results[0].model).toBe("anthropic/claude-opus-4-5");
+			expect(result.details.results[0].routingExperiment).toBeUndefined();
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);
@@ -682,6 +1158,8 @@ You are a test agent.
 			expect(record.usage?.outputTokens).toBe(5);
 			expect(record.metadata?.model).toBe("anthropic/claude-sonnet-4-6");
 			expect(record.metadata?.effort).toBe("high");
+			expect(record.metadata).not.toHaveProperty("isolation");
+			expect(record.metadata).not.toHaveProperty("memory");
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);

@@ -35,6 +35,7 @@ const STATUSES = new Set([
 ]);
 const OUTPUT_MODES = new Set(["inline", "artifact", "none"]);
 const COST_SOURCES = new Set(["pi-usage", "unavailable"]);
+const VALIDATION_OUTCOMES = new Set(["passed", "failed", "unavailable"]);
 const METADATA_VALUE = /^[A-Za-z0-9 ._\-/:@]+$/;
 const FORBIDDEN_METADATA =
 	/(?:\bBearer\s+|-----BEGIN|\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+\.|:\/\/[^/\s@]+@)/i;
@@ -60,6 +61,10 @@ export interface OrchestrationWorker {
 	taskId?: string;
 	agent: string;
 	resolvedModel?: string;
+	experimentId?: string;
+	experimentArm?: string;
+	experimentTaskClass?: string;
+	validationOutcome?: "passed" | "failed" | "unavailable";
 	status: OrchestrationStatus;
 	exitCode?: number;
 	durationMs?: number;
@@ -252,6 +257,10 @@ function buildWorker(value: unknown): OrchestrationWorker | undefined {
 			"taskId",
 			"agent",
 			"resolvedModel",
+			"experimentId",
+			"experimentArm",
+			"experimentTaskClass",
+			"validationOutcome",
 			"status",
 			"exitCode",
 			"durationMs",
@@ -272,14 +281,32 @@ function buildWorker(value: unknown): OrchestrationWorker | undefined {
 	const result: OrchestrationWorker = { runId, agent, status: workerStatus };
 	const taskId = metadataString(worker.taskId);
 	const resolvedModel = metadataString(worker.resolvedModel);
+	const experimentId = metadataString(worker.experimentId);
+	const experimentArm = metadataString(worker.experimentArm);
+	const experimentTaskClass = metadataString(worker.experimentTaskClass);
+	const validationOutcome =
+		typeof worker.validationOutcome === "string" &&
+		VALIDATION_OUTCOMES.has(worker.validationOutcome)
+			? (worker.validationOutcome as OrchestrationWorker["validationOutcome"])
+			: undefined;
 	const workerOutputMode = outputMode(worker.outputMode);
 	const usage = normalizeUsage(worker.usage);
 	if (worker.taskId !== undefined && !taskId) return undefined;
 	if (worker.resolvedModel !== undefined && !resolvedModel) return undefined;
+	if (worker.experimentId !== undefined && !experimentId) return undefined;
+	if (worker.experimentArm !== undefined && !experimentArm) return undefined;
+	if (worker.experimentTaskClass !== undefined && !experimentTaskClass)
+		return undefined;
+	if (worker.validationOutcome !== undefined && !validationOutcome)
+		return undefined;
 	if (worker.outputMode !== undefined && !workerOutputMode) return undefined;
 	if (worker.usage !== undefined && !usage) return undefined;
 	if (taskId) result.taskId = taskId;
 	if (resolvedModel) result.resolvedModel = resolvedModel;
+	if (experimentId) result.experimentId = experimentId;
+	if (experimentArm) result.experimentArm = experimentArm;
+	if (experimentTaskClass) result.experimentTaskClass = experimentTaskClass;
+	if (validationOutcome) result.validationOutcome = validationOutcome;
 	if (workerOutputMode) result.outputMode = workerOutputMode;
 	for (const key of [
 		"exitCode",

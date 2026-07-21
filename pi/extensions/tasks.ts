@@ -19,6 +19,7 @@ import {
 	getTask,
 	getUnmetBlockers,
 	listTasks,
+	normalizeTaskScope,
 	partitionReadyTasks,
 	resolveTaskWorkspace,
 	retryTask,
@@ -52,6 +53,7 @@ import {
 import {
 	formatTaskCompletionNotification,
 	TaskExecutionCoordinator,
+	type TaskDrainResult,
 	type TaskExecutionResult,
 	type TaskMultiResult,
 } from "./tasks/execution.js";
@@ -69,6 +71,8 @@ const TASK_BATCH_MAX_ITEMS = 16;
 const TASK_MULTI_MAX_ITEMS = 8;
 const TASK_MULTI_CONTENT_MAX_BYTES = 4_096;
 const TASK_MULTI_ERROR_MAX_CODE_POINTS = 200;
+const TASK_SCOPE_MAX_ITEMS = 16;
+const TASK_SCOPE_MAX_LENGTH = 256;
 const TASK_BATCH_KEY_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
 
 function validateTaskText(
@@ -454,6 +458,12 @@ function executionFrom(
 	};
 }
 
+function validatedScope(value: unknown): string[] | undefined {
+	if (value === undefined) return undefined;
+	if (!Array.isArray(value)) throw new Error("scope must be an array");
+	return normalizeTaskScope(value as string[]);
+}
+
 function validatedBlockers(value: unknown): string[] | undefined {
 	if (!Array.isArray(value)) return undefined;
 	const ids = value.filter((item): item is string => typeof item === "string");
@@ -513,6 +523,7 @@ function taskInputFrom(
 		prompt: execution?.task,
 		execution,
 		workspace: resolveTaskWorkspace(cwd),
+		scope: validatedScope(input.scope),
 		notes,
 		blockedBy: batch
 			? (input.blockedBy as string[] | undefined)
@@ -646,6 +657,29 @@ function scopedMultiResult(
 	return undefined;
 }
 
+function drainToolResult(result: TaskDrainResult) {
+	const limit = 20;
+	const visible = {
+		outcome: result.outcome,
+		started: result.started.slice(0, limit),
+		completed: result.completed.slice(0, limit),
+		failed: result.failed.slice(0, limit),
+		waiting: result.waiting.slice(0, limit),
+		starvation: result.starvation.slice(0, 10),
+		...(result.started.length > limit ||
+		result.completed.length > limit ||
+		result.failed.length > limit ||
+		result.waiting.length > limit ||
+		result.starvation.length > 10
+			? { truncated: true }
+			: {}),
+	};
+	return {
+		content: [{ type: "text" as const, text: JSON.stringify(visible) }],
+		details: result,
+	};
+}
+
 function taskOutputResult(coordinator: TaskExecutionCoordinator, id: string) {
 	const result = coordinator.output(id);
 	const execution = result.record?.execution;
@@ -707,6 +741,14 @@ export function registerTaskTools(
 				Type.String({ maxLength: TASK_SUMMARY_MAX_LENGTH }),
 			),
 			notes: Type.Optional(Type.String({ maxLength: TASK_NOTES_MAX_LENGTH })),
+			scope: Type.Optional(
+				Type.Array(
+					Type.String({ minLength: 1, maxLength: TASK_SCOPE_MAX_LENGTH }),
+					{
+						maxItems: TASK_SCOPE_MAX_ITEMS,
+					},
+				),
+			),
 			key: Type.Optional(Type.String({ pattern: "^[A-Za-z0-9_-]{1,32}$" })),
 			blockedBy: Type.Optional(
 				Type.Array(Type.String({ minLength: 1, maxLength: 64 }), {
@@ -751,6 +793,7 @@ export function registerTaskTools(
 				Type.Literal("get"),
 				Type.Literal("execute"),
 				Type.Literal("execute_many"),
+				Type.Literal("drain"),
 				Type.Literal("await"),
 				Type.Literal("stop"),
 				Type.Literal("output"),
@@ -766,6 +809,7 @@ export function registerTaskTools(
 				Type.String({ maxLength: TASK_SUMMARY_MAX_LENGTH }),
 			),
 			notes: Type.Optional(Type.String({ maxLength: TASK_NOTES_MAX_LENGTH })),
+			scope: Type.Optional(taskItem.properties.scope),
 			state: Type.Optional(Type.String()),
 			skipReason: Type.Optional(
 				Type.String({ maxLength: TASK_NOTES_MAX_LENGTH }),
@@ -776,6 +820,9 @@ export function registerTaskTools(
 					description:
 						"Include terminal tasks and tasks from other workspaces when listing.",
 				}),
+			),
+			maxConcurrent: Type.Optional(
+				Type.Integer({ minimum: 1, maximum: TASK_MULTI_MAX_ITEMS, default: 4 }),
 			),
 			origin: Type.Optional(taskItem.properties.origin),
 			agent: Type.Optional(Type.String()),
@@ -806,7 +853,7 @@ export function registerTaskTools(
 			"Summary contains only the deliverable; notes contain only blockers, dependencies, or acceptance checks. Never copy conversation summaries, plans, diffs, or investigation narratives into task fields.",
 			"Create dependencies with blockedBy; use ready once when selecting runnable work.",
 			"For direct durable work, update state only when it changes; do not repeat lifecycle calls.",
-			"For background work, create executable tasks and start them once with execute or execute_many. Completion arrives as a next-turn notification; use await only when the current call must join, output only when needed, and stop only to cancel. Do not poll public task actions.",
+			"For background work, create executable tasks and start them once with execute or execute_many, or opt into drain for dependency-aware automatic dispatch. Completion arrives as a next-turn notification; use await only when the current call must join, output only when needed, and stop only to cancel. Do not poll public task actions.",
 		],
 		parameters,
 		renderCall(args, theme) {
@@ -920,6 +967,20 @@ export function registerTaskTools(
 					compactTaskCollection(selected),
 				);
 			}
+			if (action === "drain") {
+				const maxConcurrent =
+					typeof input.maxConcurrent === "number"
+						? input.maxConcurrent
+						: undefined;
+				return drainToolResult(
+					await coordinator.drain({
+						workspace,
+						fallbackCwd: ctx.cwd,
+						maxConcurrent,
+						signal,
+					}),
+				);
+			}
 			if (action === "execute_many" || action === "await") {
 				const ids = validateMultiIds(input.ids);
 				const fixed = new Map<string, TaskMultiResult>();
@@ -1011,6 +1072,7 @@ export function registerTaskTools(
 							typeof input.notes === "string"
 								? validateTaskText("notes", input.notes, TASK_NOTES_MAX_LENGTH)
 								: undefined,
+						scope: validatedScope(input.scope),
 						blockedBy: validatedBlockers(input.blockedBy),
 					};
 					skipReason =

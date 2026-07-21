@@ -8,6 +8,7 @@
  *   - Single: { agent: "name", task: "..." }
  *   - Parallel: { tasks: [{ agent: "name", task: "..." }, ...] }
  *   - Chain: { chain: [{ agent: "name", task: "... {previous} ..." }, ...] }
+ *   - Continue: { continue: { agent: "name", session: "...", task: "..." } }
  *
  * Uses JSON mode to capture structured output from subagents.
  */
@@ -17,21 +18,28 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import * as zlib from "node:zlib";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
 import {
 	type ExtensionAPI,
+	getAgentDir,
 	getMarkdownTheme,
 	withFileMutationQueue,
 } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
-import { Type } from "@sinclair/typebox";
+import { type TSchema, Type } from "@sinclair/typebox";
 import { emitTerminalBell } from "../../lib/extension-utils.js";
 import { recordEvent } from "../../lib/metrics.js";
 import {
+	decodeSchemaOutput,
+	schemaOutputInstruction,
+} from "../../lib/typed-agent.js";
+import {
 	type ModelPolicy,
 	type ModelSize,
-	resolveDynamicModelFromRegistry,
+	type RoutingOutcomeAssignment,
+	resolveSampledDynamicModelFromRegistry,
 } from "../../lib/model-routing.js";
 import { TimingSpan } from "../../lib/observability.js";
 import {
@@ -40,6 +48,7 @@ import {
 } from "../../lib/orchestration-telemetry.js";
 import {
 	createTask,
+	getTask,
 	type NormalizedTaskUsage,
 	normalizeTaskUsage,
 	resolveTaskWorkspace,
@@ -84,8 +93,6 @@ function safeCreateSubagentTask(
 		metadata.model = model ?? agentConfig?.model ?? "default";
 		metadata.effort = effort ?? agentConfig?.effort ?? "default";
 		if (agentConfig?.skills) metadata.skills = agentConfig.skills;
-		if (agentConfig?.isolation) metadata.isolation = agentConfig.isolation;
-		if (agentConfig?.memory) metadata.memory = agentConfig.memory;
 		const record = createTask({
 			origin: "subagent",
 			summary,
@@ -149,6 +156,19 @@ function safeUpdateTaskSnippet(id: string | undefined, snippet: string): void {
 	}
 }
 
+function safeUpdateTaskSession(
+	id: string | undefined,
+	sessionPath: string | undefined,
+): void {
+	if (!id || !sessionPath) return;
+	try {
+		const metadata = getTask(id)?.metadata ?? {};
+		updateTask(id, { metadata: { ...metadata, sessionPath } });
+	} catch {
+		// ignore
+	}
+}
+
 /**
  * Build a W3C `TRACEPARENT` value for a child subagent process. The parent
  * span id is freshly generated for each subagent invocation so parallel
@@ -163,6 +183,77 @@ function buildSubagentTraceparent(): string {
 
 const MAX_CONCURRENCY = 8;
 const COLLAPSED_ITEM_COUNT = 10;
+const STRUCTURED_CHAIN_ARTIFACT_BYTES = 8_000;
+const DELEGATED_SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+function getDelegatedSessionDir(): string {
+	return path.join(getAgentDir(), "sessions", "subagents");
+}
+
+export async function compressDelegatedSessions(
+	options: { dir?: string; now?: number; dryRun?: boolean } = {},
+): Promise<string[]> {
+	const dir = options.dir ?? getDelegatedSessionDir();
+	const cutoff = (options.now ?? Date.now()) - DELEGATED_SESSION_MAX_AGE_MS;
+	let entries: fs.Dirent[];
+	try {
+		entries = await fs.promises.readdir(dir, { withFileTypes: true });
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+		throw error;
+	}
+	const candidates: string[] = [];
+	for (const entry of entries) {
+		if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+		const source = path.join(dir, entry.name);
+		const stat = await fs.promises.stat(source);
+		if (stat.mtimeMs >= cutoff) continue;
+		candidates.push(source);
+		if (options.dryRun) continue;
+		const target = `${source}.gz`;
+		const temp = `${target}.${process.pid}.tmp`;
+		const compressed = zlib.gzipSync(await fs.promises.readFile(source));
+		await fs.promises.writeFile(temp, compressed, { mode: 0o600 });
+		await fs.promises.rename(temp, target);
+		await fs.promises.unlink(source);
+	}
+	return candidates;
+}
+
+async function ensureDelegatedSessionReadable(
+	sessionPath: string,
+): Promise<string> {
+	const source = sessionPath.endsWith(".gz")
+		? sessionPath
+		: `${sessionPath}.gz`;
+	const target = sessionPath.endsWith(".gz")
+		? sessionPath.slice(0, -3)
+		: sessionPath;
+	if (fs.existsSync(target)) return target;
+	if (!fs.existsSync(source))
+		throw new Error(`Subagent session not found: ${sessionPath}`);
+	const temp = `${target}.${process.pid}.tmp`;
+	const content = zlib.gunzipSync(await fs.promises.readFile(source));
+	await fs.promises.writeFile(temp, content, { mode: 0o600 });
+	await fs.promises.rename(temp, target);
+	await fs.promises.unlink(source);
+	return target;
+}
+
+function findDelegatedSession(
+	sessionDir: string,
+	sessionId: string,
+): string | undefined {
+	try {
+		const suffix = `_${sessionId}.jsonl`;
+		const name = fs
+			.readdirSync(sessionDir)
+			.find((entry) => entry.endsWith(suffix));
+		return name ? path.join(sessionDir, name) : undefined;
+	} catch {
+		return undefined;
+	}
+}
 
 function formatTokens(count: number): string {
 	if (count < 1000) return count.toString();
@@ -345,6 +436,10 @@ export interface SingleResult {
 	runId?: string;
 	taskId?: string;
 	durationMs?: number;
+	sessionPath?: string;
+	structuredOutput?: unknown;
+	outputAttempts?: number;
+	routingExperiment?: RoutingOutcomeAssignment;
 }
 
 export interface SubagentDetails {
@@ -364,6 +459,49 @@ export function getFinalOutput(messages: Message[]): string {
 		}
 	}
 	return "";
+}
+
+function getResultOutput(result: SingleResult, pretty = false): string {
+	if (
+		result.outputAttempts === undefined ||
+		result.structuredOutput === undefined
+	)
+		return getFinalOutput(result.messages);
+	return JSON.stringify(result.structuredOutput, null, pretty ? 2 : undefined);
+}
+
+function structuredOutputIsBulky(result: SingleResult): boolean {
+	return (
+		result.outputAttempts !== undefined &&
+		Buffer.byteLength(getResultOutput(result), "utf-8") >
+			STRUCTURED_CHAIN_ARTIFACT_BYTES
+	);
+}
+
+function mergeCorrectionResult(
+	result: SingleResult,
+	correction: SingleResult,
+): void {
+	result.messages.push(...correction.messages);
+	result.exitCode = correction.exitCode;
+	result.stderr = [result.stderr, correction.stderr].filter(Boolean).join("\n");
+	result.usage.input += correction.usage.input;
+	result.usage.output += correction.usage.output;
+	result.usage.cacheRead += correction.usage.cacheRead;
+	result.usage.cacheWrite += correction.usage.cacheWrite;
+	result.usage.cost =
+		result.usage.cost === null && correction.usage.cost === null
+			? null
+			: (result.usage.cost ?? 0) + (correction.usage.cost ?? 0);
+	result.usage.contextPeakTokens = Math.max(
+		result.usage.contextPeakTokens,
+		correction.usage.contextPeakTokens,
+	);
+	result.usage.turns += correction.usage.turns;
+	result.model = correction.model ?? result.model;
+	result.stopReason = correction.stopReason;
+	result.errorMessage = correction.errorMessage;
+	result.durationMs = (result.durationMs ?? 0) + (correction.durationMs ?? 0);
 }
 
 function countLines(text: string): number {
@@ -470,7 +608,7 @@ function finalizeOutput(
 	) {
 		const saved = saveOutputArtifact(
 			result.outputPath,
-			getFinalOutput(result.messages),
+			getResultOutput(result, result.outputAttempts !== undefined),
 		);
 		result.outputReference = saved.reference;
 		result.saveError = saved.error;
@@ -489,18 +627,27 @@ function getArtifactFallbackMessage(result: SingleResult): string | undefined {
 }
 
 function getOutputForParent(result: SingleResult): string {
-	const output = getFinalOutput(result.messages);
-	if (result.outputMode !== "file-only") return output;
-	if (result.outputReference) return result.outputReference.message;
-	const fallbackMessage = getArtifactFallbackMessage(result);
-	return fallbackMessage ? `${output}\n\n${fallbackMessage}`.trim() : output;
+	const output = getResultOutput(result);
+	let visible = output;
+	if (result.outputMode === "file-only") {
+		if (result.outputReference) visible = result.outputReference.message;
+		else {
+			const fallbackMessage = getArtifactFallbackMessage(result);
+			visible = fallbackMessage
+				? `${output}\n\n${fallbackMessage}`.trim()
+				: output;
+		}
+	}
+	return result.sessionPath
+		? `${visible}\n\nContinuable session: ${result.sessionPath}`.trim()
+		: visible;
 }
 
 export function aggregateParallelOutputs(results: SingleResult[]): string {
 	return results
 		.map((r, i) => {
 			const header = `=== Parallel Task ${i + 1} (${r.agent}) ===`;
-			const output = getFinalOutput(r.messages);
+			const output = getResultOutput(r);
 			const hasOutput = Boolean(output.trim());
 			const isModelError = r.stopReason === "error" || Boolean(r.errorMessage);
 			const status =
@@ -523,6 +670,8 @@ export function aggregateParallelOutputs(results: SingleResult[]): string {
 				const fallbackMessage = getArtifactFallbackMessage(r);
 				if (fallbackMessage) body = `${body}\n\n${fallbackMessage}`;
 			}
+			if (r.sessionPath)
+				body = `${body}\n\nContinuable session: ${r.sessionPath}`;
 			return `${header}\n${body}`;
 		})
 		.join("\n\n");
@@ -675,6 +824,7 @@ export async function runSingleAgent(
 	effortOverride: AgentEffort | undefined,
 	existingTaskId?: string,
 	executionAttemptRunId?: string,
+	sessionOptions?: { continuable?: boolean; sessionPath?: string },
 ): Promise<SingleResult> {
 	const runStartedAt = Date.now();
 	const agent = agents.find((a) => a.name === agentName);
@@ -703,13 +853,7 @@ export async function runSingleAgent(
 		};
 	}
 
-	const args: string[] = [
-		"--mode",
-		"json",
-		"-p",
-		"--no-session",
-		"--no-skills",
-	];
+	const args: string[] = ["--mode", "json", "-p", "--no-skills"];
 	if (modelOverride) args.push("--model", modelOverride);
 	else if (agent.model) args.push("--model", agent.model);
 	const effectiveEffort = effortOverride ?? agent.effort;
@@ -774,6 +918,25 @@ export async function runSingleAgent(
 	const runId = executionAttemptRunId ?? taskId ?? randomUUID();
 	currentResult.runId = runId;
 	currentResult.taskId = taskId;
+	const continuable = sessionOptions?.continuable === true;
+	const delegatedSessionDir = getDelegatedSessionDir();
+	let resumedSessionPath: string | undefined;
+	if (sessionOptions?.sessionPath) {
+		resumedSessionPath = await ensureDelegatedSessionReadable(
+			sessionOptions.sessionPath,
+		);
+		args.push(
+			"--session-dir",
+			path.dirname(resumedSessionPath),
+			"--session",
+			resumedSessionPath,
+		);
+	} else if (continuable) {
+		await fs.promises.mkdir(delegatedSessionDir, { recursive: true });
+		args.push("--session-dir", delegatedSessionDir, "--session-id", runId);
+	} else {
+		args.push("--no-session");
+	}
 	const planPath = extractPlanPath(task);
 	const workflow = inferWorkflow(task);
 	const timingSpan = new TimingSpan({
@@ -938,6 +1101,12 @@ export async function runSingleAgent(
 				? `${currentResult.stderr.trimEnd()}\n${childStdout}`
 				: childStdout;
 		}
+		currentResult.sessionPath =
+			resumedSessionPath ??
+			(continuable
+				? findDelegatedSession(delegatedSessionDir, runId)
+				: undefined);
+		safeUpdateTaskSession(taskId, currentResult.sessionPath);
 		const taskUsage = taskUsageSnapshot(currentResult.usage);
 		if (wasAborted) {
 			safeTransitionTask(taskId, "cancelled", { usage: taskUsage });
@@ -1029,6 +1198,16 @@ type TaskParams = {
 
 type ChainParams = TaskParams;
 
+type ContinueParams = {
+	agent: string;
+	session: string;
+	task: string;
+	cwd?: string;
+	output?: string | boolean;
+	outputMode?: OutputMode;
+	effort?: AgentEffort;
+};
+
 const OutputModeSchema = Type.Union(
 	[Type.Literal("inline"), Type.Literal("file-only")],
 	{
@@ -1109,6 +1288,17 @@ const ModelPolicySchema = Type.Union(
 );
 
 const SubagentParams = Type.Object({
+	continue: Type.Optional(
+		Type.Object({
+			agent: Type.String({ description: "Agent used to create the session" }),
+			session: Type.String({ description: "Saved child session path" }),
+			task: Type.String({ description: "Follow-up message" }),
+			effort: Type.Optional(EffortSchema),
+			cwd: Type.Optional(Type.String({ description: "Working directory" })),
+			output: Type.Optional(Type.Union([Type.String(), Type.Boolean()])),
+			outputMode: Type.Optional(OutputModeSchema),
+		}),
+	),
 	agent: Type.Optional(
 		Type.String({
 			description: "Name of the agent to invoke (for single mode)",
@@ -1139,6 +1329,18 @@ const SubagentParams = Type.Object({
 	modelSize: Type.Optional(ModelSizeSchema),
 	modelPolicy: Type.Optional(ModelPolicySchema),
 	effort: Type.Optional(EffortSchema),
+	outputSchema: Type.Optional(
+		Type.Record(Type.String(), Type.Unknown(), {
+			description:
+				"JSON Schema for validated child output. Invalid output receives at most one continuation correction.",
+		}),
+	),
+	continuable: Type.Optional(
+		Type.Boolean({
+			description: "Persist child sessions so they can be continued later.",
+			default: false,
+		}),
+	),
 	confirmProjectAgents: Type.Optional(
 		Type.Boolean({
 			description:
@@ -1166,14 +1368,16 @@ export default function (pi: ExtensionAPI) {
 		label: "Subagent",
 		description: [
 			"Delegate tasks to specialized subagents with isolated context.",
-			"Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder).",
+			"Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder), continue (saved session follow-up).",
 			'Default agent scope is "user" (from ~/.pi/agent/agents).',
 			'To enable project-local agents in .pi/agents, set agentScope: "both" (or "project").',
 			"Optional model overrides the agent frontmatter model. Optional modelSize/modelPolicy parameters dynamically map subagents onto the current provider/model ladder.",
+			"Optional outputSchema validates JSON output and permits one continuation correction.",
 		].join(" "),
 		parameters: SubagentParams,
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
+			await compressDelegatedSessions().catch(() => []);
 			const agentScope =
 				(params.agentScope as unknown as AgentScope | undefined) ?? "user";
 			const explicitModel =
@@ -1185,15 +1389,31 @@ export default function (pi: ExtensionAPI) {
 				(params.modelPolicy as unknown as ModelPolicy | undefined) ??
 				"same-provider";
 			const effort = params.effort as unknown as AgentEffort | undefined;
-			const resolvedModel =
+			const outputSchema = params.outputSchema as unknown as
+				| TSchema
+				| undefined;
+			const hasChain = (params.chain?.length ?? 0) > 0;
+			const hasTasks = (params.tasks?.length ?? 0) > 0;
+			const hasSingle = Boolean(params.agent && params.task);
+			const hasContinue = Boolean(params.continue);
+			const sampledResolution =
 				!explicitModel && modelSize
-					? resolveDynamicModelFromRegistry(
+					? resolveSampledDynamicModelFromRegistry(
 							ctx.modelRegistry,
 							ctx,
 							modelSize,
 							modelPolicy,
+							_toolCallId,
+							hasChain
+								? "subagent-chain"
+								: hasTasks
+									? "subagent-parallel"
+									: "subagent-single",
+							effort || hasContinue ? 0 : undefined,
 						)
 					: undefined;
+			const resolvedModel = sampledResolution?.model;
+			const routingExperiment = sampledResolution?.experiment;
 			const resolvedModelId =
 				explicitModel ??
 				(resolvedModel
@@ -1202,11 +1422,11 @@ export default function (pi: ExtensionAPI) {
 			const discovery = discoverAgents(ctx.cwd, agentScope);
 			const agents = discovery.agents;
 			const confirmProjectAgents = params.confirmProjectAgents ?? false;
-
-			const hasChain = (params.chain?.length ?? 0) > 0;
-			const hasTasks = (params.tasks?.length ?? 0) > 0;
-			const hasSingle = Boolean(params.agent && params.task);
-			const modeCount = Number(hasChain) + Number(hasTasks) + Number(hasSingle);
+			const modeCount =
+				Number(hasChain) +
+				Number(hasTasks) +
+				Number(hasSingle) +
+				Number(hasContinue);
 
 			const makeDetails =
 				(mode: "single" | "parallel" | "chain") =>
@@ -1244,10 +1464,12 @@ export default function (pi: ExtensionAPI) {
 						isCancelled;
 					const isFinalChainWorker =
 						originalMode === "chain" && index === results.length - 1;
-					const childText = getFinalOutput(worker.messages);
+					const childText = getResultOutput(worker);
 					const forwarded =
 						originalMode === "chain" && !isFinalChainWorker
-							? worker.outputMode === "file-only" && worker.outputReference
+							? worker.outputReference &&
+								(worker.outputMode === "file-only" ||
+									structuredOutputIsBulky(worker))
 								? worker.outputReference.message
 								: childText
 							: undefined;
@@ -1256,6 +1478,18 @@ export default function (pi: ExtensionAPI) {
 						...(worker.taskId ? { taskId: worker.taskId } : {}),
 						agent: worker.agent,
 						...(worker.model ? { resolvedModel: worker.model } : {}),
+						...(worker.routingExperiment
+							? {
+									experimentId: worker.routingExperiment.experimentId,
+									experimentArm: worker.routingExperiment.id,
+									experimentTaskClass: worker.routingExperiment.taskClass,
+									validationOutcome: outputSchema
+										? failed
+											? ("failed" as const)
+											: ("passed" as const)
+										: ("unavailable" as const),
+								}
+							: {}),
 						status: isCancelled ? "cancelled" : failed ? "failed" : "completed",
 						exitCode: Math.max(0, worker.exitCode),
 						durationMs: worker.durationMs ?? 0,
@@ -1318,14 +1552,77 @@ export default function (pi: ExtensionAPI) {
 			const run = async (
 				...args: Parameters<typeof runSingleAgent>
 			): Promise<SingleResult> => {
+				let result: SingleResult | undefined;
 				try {
-					return await runSingleAgent(...args);
+					if (routingExperiment && args[12] === undefined)
+						args[12] = routingExperiment.effort;
+					if (outputSchema) {
+						args[3] = `${args[3]}\n\n${schemaOutputInstruction(outputSchema)}`;
+						args[15] = { ...(args[15] ?? {}), continuable: true };
+					}
+					result = await runSingleAgent(...args);
+					if (routingExperiment) result.routingExperiment = routingExperiment;
+					if (
+						!outputSchema ||
+						result.exitCode !== 0 ||
+						result.stopReason === "error" ||
+						result.stopReason === "aborted"
+					)
+						return result;
+					try {
+						result.structuredOutput = decodeSchemaOutput(
+							outputSchema,
+							getFinalOutput(result.messages),
+						);
+						result.outputAttempts = 1;
+						return result;
+					} catch (firstError) {
+						result.outputAttempts = 1;
+						if (!result.sessionPath)
+							throw new Error(
+								`Structured output validation failed and no continuable session is available: ${firstError instanceof Error ? firstError.message : String(firstError)}`,
+							);
+						const correctionArgs = [...args] as Parameters<
+							typeof runSingleAgent
+						>;
+						const validationError =
+							firstError instanceof Error
+								? firstError.message
+								: String(firstError);
+						correctionArgs[3] = `Your previous response failed output validation: ${validationError.slice(0, 500)}. ${schemaOutputInstruction(outputSchema)}`;
+						correctionArgs[13] = undefined;
+						correctionArgs[14] = undefined;
+						correctionArgs[15] = {
+							continuable: true,
+							sessionPath: result.sessionPath,
+						};
+						const correction = await runSingleAgent(...correctionArgs);
+						mergeCorrectionResult(result, correction);
+						result.outputAttempts = 2;
+						try {
+							result.structuredOutput = decodeSchemaOutput(
+								outputSchema,
+								getFinalOutput(correction.messages),
+							);
+							return result;
+						} catch (secondError) {
+							throw new Error(
+								`Structured output validation failed after one correction: ${secondError instanceof Error ? secondError.message : String(secondError)}`,
+							);
+						}
+					}
 				} catch (error) {
 					const failedResult =
-						error instanceof Error
+						result ??
+						(error instanceof Error
 							? (error as Error & { subagentResult?: SingleResult })
 									.subagentResult
-							: undefined;
+							: undefined);
+					if (failedResult && outputSchema) {
+						failedResult.stopReason = "error";
+						failedResult.errorMessage =
+							error instanceof Error ? error.message : String(error);
+					}
 					complete({
 						content: [],
 						details: makeDetails(
@@ -1335,6 +1632,8 @@ export default function (pi: ExtensionAPI) {
 						)(failedResult ? [failedResult] : []),
 						isError: true,
 					});
+					if (error instanceof Error && failedResult)
+						Object.assign(error, { subagentResult: failedResult });
 					throw error;
 				}
 			};
@@ -1364,6 +1663,7 @@ export default function (pi: ExtensionAPI) {
 				if (params.tasks)
 					for (const t of params.tasks) requestedAgentNames.add(t.agent);
 				if (params.agent) requestedAgentNames.add(params.agent);
+				if (params.continue) requestedAgentNames.add(params.continue.agent);
 
 				const projectAgentsRequested = Array.from(requestedAgentNames)
 					.map((name) => agents.find((a) => a.name === name))
@@ -1390,6 +1690,53 @@ export default function (pi: ExtensionAPI) {
 							)([]),
 						});
 				}
+			}
+
+			if (params.continue) {
+				const followUp = params.continue as ContinueParams;
+				const result = await run(
+					ctx.cwd,
+					agents,
+					followUp.agent,
+					followUp.task,
+					followUp.cwd,
+					undefined,
+					signal,
+					onUpdate,
+					makeDetails("single"),
+					resolvedModelId,
+					modelSize,
+					modelPolicy,
+					followUp.effort ?? effort,
+					undefined,
+					undefined,
+					{ continuable: true, sessionPath: followUp.session },
+				);
+				finalizeOutput(
+					result,
+					followUp.output,
+					followUp.outputMode,
+					ctx.cwd,
+					followUp.cwd,
+					0,
+					false,
+				);
+				const isError =
+					result.exitCode !== 0 ||
+					result.stopReason === "error" ||
+					result.stopReason === "aborted";
+				return complete({
+					content: [
+						{
+							type: "text",
+							text: isError
+								? `Agent ${result.stopReason || "failed"}: ${result.errorMessage || result.stderr || "(no output)"}`
+								: getOutputForParent(result) || "(no output)",
+						},
+					],
+					details: makeDetails("single")([result]),
+					...(isError ? { isError: true } : {}),
+				});
 			}
 
 			if (params.chain && params.chain.length > 0) {
@@ -1433,6 +1780,9 @@ export default function (pi: ExtensionAPI) {
 						modelSize,
 						modelPolicy,
 						step.effort ?? effort,
+						undefined,
+						undefined,
+						{ continuable: params.continuable === true },
 					);
 					finalizeOutput(
 						result,
@@ -1441,7 +1791,7 @@ export default function (pi: ExtensionAPI) {
 						ctx.cwd,
 						step.cwd,
 						i,
-						false,
+						structuredOutputIsBulky(result),
 					);
 					results.push(result);
 
@@ -1467,9 +1817,11 @@ export default function (pi: ExtensionAPI) {
 						});
 					}
 					previousOutput =
-						result.outputMode === "file-only" && result.outputReference
+						result.outputReference &&
+						(result.outputMode === "file-only" ||
+							structuredOutputIsBulky(result))
 							? result.outputReference.message
-							: getFinalOutput(result.messages);
+							: getResultOutput(result);
 				}
 				const finalResult = results[results.length - 1];
 				return complete({
@@ -1555,6 +1907,9 @@ export default function (pi: ExtensionAPI) {
 							modelSize,
 							modelPolicy,
 							t.effort ?? effort,
+							undefined,
+							undefined,
+							{ continuable: params.continuable === true },
 						);
 						finalizeOutput(
 							result,
@@ -1602,6 +1957,9 @@ export default function (pi: ExtensionAPI) {
 					modelSize,
 					modelPolicy,
 					effort,
+					undefined,
+					undefined,
+					{ continuable: params.continuable === true },
 				);
 				finalizeOutput(
 					result,
@@ -1664,6 +2022,16 @@ export default function (pi: ExtensionAPI) {
 				: args.modelSize
 					? ` ${theme.fg("muted", `(${args.modelSize}${args.modelPolicy ? `, ${args.modelPolicy}` : ""})`)}`
 					: "";
+			if (args.continue) {
+				return new Text(
+					theme.fg("toolTitle", theme.bold("subagent ")) +
+						theme.fg("accent", `continue ${args.continue.agent}`) +
+						theme.fg("muted", ` [${scope}]`) +
+						`\n  ${theme.fg("dim", args.continue.task)}`,
+					0,
+					0,
+				);
+			}
 			if (args.chain && args.chain.length > 0) {
 				let text =
 					theme.fg("toolTitle", theme.bold("subagent ")) +

@@ -2,8 +2,6 @@
 name: skill-review
 description: Skill-review packet reviewer with model and effort selected explicitly per dispatch.
 model: openai-codex/gpt-5.6-sol:xhigh
-isolation: none
-memory: none
 effort: xhigh
 skills:
   - skills-engineer

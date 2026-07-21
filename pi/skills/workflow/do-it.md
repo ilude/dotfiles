@@ -18,9 +18,13 @@ Create a plan only when unresolved architecture, migration design, destructive o
 
 Read the complete plan and resume from the first unchecked dependency-ready task. A usable plan needs an objective, boundaries, executable tasks, real dependencies, validation, and current status; equivalent structures are acceptable.
 
+Run `python ~/.dotfiles/pi/scripts/plan-lint <plan-path>` before dispatch and again before the final report; a nonzero result means fix the named plan-state violations before proceeding.
+
 Treat checked work as complete when current repository state and its recorded result do not contradict it. Do not demand separate evidence files, gate IDs, wave narratives, or duplicate checklists.
 
 After a task's relevant check passes, mark its checkbox complete and save the plan. Record a concise result only when it is needed for resume, external mutation, or a required audit.
+
+Materialize the unchecked breakdown as one graph-aware `task batch` call and start `task drain`; react to completion notifications instead of polling. Copy a starvation result into plan state with the named failed dependencies.
 
 ## Boundaries
 
