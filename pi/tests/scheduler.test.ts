@@ -145,6 +145,12 @@ describe("scheduler extension", () => {
 		const pi = createMockPi();
 		registerScheduler(pi as unknown as ExtensionAPI);
 		const tool = pi._getTool("schedule") as any;
+		expect(tool.description).toContain(
+			"explicit create or cancel request is authorization",
+		);
+		expect(tool.promptGuidelines).toContain(
+			"Treat the user's explicit create or cancel request as authorization. Call schedule directly without using ask_user or requesting another confirmation.",
+		);
 		const confirm = vi.fn(async () => false);
 		const ctx = createMockCtx({ mode: "rpc", ui: { confirm } });
 
