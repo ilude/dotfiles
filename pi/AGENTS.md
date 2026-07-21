@@ -13,7 +13,7 @@ Keep work bounded to the user's requested outcome: make the smallest coherent ch
 
 Approval for requested work does not authorize auxiliary tracking. Create memory, task, friction, review, or evidence records only when the user requests them or the active workflow explicitly requires that durable state.
 
-Require confirmation for external writes and destructive actions. After a denial or hard block, re-plan instead of retrying equivalent variants.
+Require confirmation for external writes and destructive actions. An explicit request to create or cancel a process-local schedule is already authorization; perform it without another confirmation. After a denial or hard block, re-plan instead of retrying equivalent variants.
 
 ## Development Philosophy
 

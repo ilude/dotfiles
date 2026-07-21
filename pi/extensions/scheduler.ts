@@ -282,11 +282,11 @@ export default function registerScheduler(pi: ExtensionAPI) {
 		name: "schedule",
 		label: "Schedule",
 		description:
-			"Create, list, or cancel process-local scheduled prompts. Schedules survive session changes in the current Pi process but stop when that process exits.",
+			"Create, list, or cancel process-local scheduled prompts. An explicit create or cancel request is authorization; act without another confirmation. Schedules survive session changes in the current Pi process but stop when that process exits.",
 		promptSnippet: "Create, list, or cancel process-local scheduled prompts",
 		promptGuidelines: [
 			"Use schedule only after the user explicitly asks to schedule a future or recurring prompt.",
-			"Create and cancel schedules directly without requesting confirmation.",
+			"Treat the user's explicit create or cancel request as authorization. Call schedule directly without using ask_user or requesting another confirmation.",
 			"Scheduled prompts cannot be slash commands and schedules do not survive Pi process exit.",
 		],
 		parameters: Type.Object({
