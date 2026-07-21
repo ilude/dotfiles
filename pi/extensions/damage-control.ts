@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
 	BashToolCallEvent,
 	EditToolCallEvent,
@@ -12,6 +13,12 @@ import {
 	recordDamageControlEval,
 	summarizeDamageControlEval,
 } from "../lib/damage-control-eval.js";
+import {
+	judgeDamageControl,
+	listDamageControlJudgeRecords,
+	summarizeDamageControlJudge,
+} from "../lib/damage-control-judge.js";
+import { readMergedSettings } from "../lib/settings-loader.js";
 import {
 	type DamageControlHealth,
 	getDamageControlHealth,
@@ -191,7 +198,7 @@ function replayDescriptor(input: {
 }
 
 function safeRecordDamageControlEval(input: {
-	decisionType: "ask_approved" | "ask_denied" | "hard_block";
+	decisionType: "ask_approved" | "ask_denied" | "auto_allowed" | "hard_block";
 	toolName: string;
 	rawAction: string;
 	cwd?: string;
@@ -200,21 +207,31 @@ function safeRecordDamageControlEval(input: {
 	ruleSource?: string;
 	toolCallId?: string;
 	hasUI?: boolean;
-}): void {
+	tier?: "scoped_delete";
+	id?: string;
+}): string | undefined {
 	try {
-		recordDamageControlEval({
+		const redactedAction = redactSummary(input.rawAction);
+		return recordDamageControlEval({
 			decisionType: input.decisionType,
 			toolName: input.toolName,
-			redactedAction: redactSummary(input.rawAction),
+			redactedAction,
+			redactedActionTruncated:
+				input.rawAction.length > SHADOW_JUDGE_MAX_REDACTED_BYTES &&
+				redactedAction.length === SHADOW_JUDGE_MAX_REDACTED_BYTES,
+			redactedActionLossy: input.rawAction !== redactedAction,
 			rule: input.rule,
 			ruleSource: input.ruleSource,
 			summary: input.reason ? redactSummary(input.reason) : undefined,
 			cwd: input.cwd,
 			toolCallId: input.toolCallId,
 			hasUI: input.hasUI,
-		});
+			tier: input.tier,
+			id: input.id,
+		}).id;
 	} catch {
 		// Eval logging must never affect safety flow.
+		return undefined;
 	}
 }
 
@@ -226,6 +243,7 @@ interface ApprovedAskRecord {
 	ruleSource?: string;
 	toolCallId?: string;
 	metadata?: Record<string, unknown>;
+	evalEventId?: string;
 }
 
 function safeRecordApprovedAsk(input: ApprovedAskRecord): void {
@@ -246,6 +264,7 @@ function safeRecordApprovedAsk(input: ApprovedAskRecord): void {
 		ruleSource: input.ruleSource,
 		toolCallId: input.toolCallId,
 		hasUI: true,
+		id: input.evalEventId,
 	});
 	safeRecordAllow(
 		input.toolName,
@@ -281,10 +300,168 @@ function formatDamageControlStats(): string {
 			.map(([label, count]) => `${label}=${count}`)
 			.join(", ");
 		lines.push(
-			`    ${row.total} ${row.rule} (approved=${row.askApproved}, denied=${row.askDenied}, blocked=${row.hardBlock}${labels ? `, ${labels}` : ""})`,
+			`    ${row.total} ${row.rule} (approved=${row.askApproved}, denied=${row.askDenied}, auto-allowed=${row.autoAllowed}, blocked=${row.hardBlock}${labels ? `, ${labels}` : ""})`,
 		);
 	}
 	return lines.join("\n");
+}
+
+function formatDamageControlJudge(): string {
+	const stats = summarizeDamageControlJudge(
+		listDamageControlJudgeRecords(500),
+		listDamageControlEvalEvents(500),
+	);
+	const lines = ["damage-control judge agreement:"];
+	lines.push(`  judge rows: ${stats.total}; matched asks: ${stats.matched}`);
+	lines.push(
+		`  approval agreement: ${stats.approvalAgreement.matching}/${stats.approvalAgreement.total}`,
+	);
+	lines.push(`  judge allow on user denied: ${stats.judgeAllowOnDenied}`);
+	for (const row of stats.byRule) {
+		lines.push(
+			`    ${row.rule}: ${row.approvalAgreement.matching}/${row.approvalAgreement.total} approvals, judge-allow-on-denied=${row.judgeAllowOnDenied}`,
+		);
+	}
+	return lines.join("\n");
+}
+
+function isJudgeEnabled(): boolean {
+	const damageControl = readMergedSettings().damageControl;
+	if (!damageControl || typeof damageControl !== "object") return false;
+	const judge = (damageControl as Record<string, unknown>).judge;
+	return Boolean(
+		judge &&
+			typeof judge === "object" &&
+			(judge as Record<string, unknown>).enabled === true,
+	);
+}
+
+function isJudgeEligible(approval: DamageControlAskApproval): boolean {
+	return !/(?:secret|\.env|exfil)/i.test(`${approval.rule} ${approval.reason}`);
+}
+
+const SHADOW_JUDGE_MAX_REDACTED_BYTES = 200;
+const SHADOW_JUDGE_CREDENTIAL_OPTION =
+	/^--(?:user|proxy-user|oauth2-bearer|[a-z-]*?(?:token|password|secret|credential|api[-_]?key)[a-z-]*)(?:=(.*))?$/i;
+const SHADOW_JUDGE_HEADER_OPTION =
+	/^(?:-H|--(?:header|http-header|proxy-header))$/i;
+const SHADOW_JUDGE_SENSITIVE_HEADER =
+	/^(?:authorization|proxy-authorization|x-api-key|x-auth-token|x-amz-security-token|x-goog-api-key)\s*:/i;
+
+function tokenizeShadowJudgeCommand(command: string): string[] | undefined {
+	const tokens: string[] = [];
+	let index = 0;
+	while (index < command.length) {
+		while (/\s/.test(command[index] ?? "")) index += 1;
+		if (index === command.length) break;
+		if (/[\\\\`$(){}<>|&;]/.test(command[index] ?? "")) return undefined;
+		let token = "";
+		if (command[index] === "'" || command[index] === '"') {
+			const quote = command[index];
+			index += 1;
+			const end = command.indexOf(quote, index);
+			if (end === -1 || !/\s|$/.test(command[end + 1] ?? "")) {
+				return undefined;
+			}
+			token = command.slice(index, end);
+			index = end + 1;
+		} else {
+			while (index < command.length && !/\s/.test(command[index] ?? "")) {
+				const character = command[index] ?? "";
+				if (/[\\\\'"`$(){}<>|&;]/.test(character)) return undefined;
+				token += character;
+				index += 1;
+			}
+		}
+		if (!token) return undefined;
+		tokens.push(token);
+	}
+	return tokens.length > 0 ? tokens : undefined;
+}
+
+function sanitizeShadowJudgeCommand(command: string): string | undefined {
+	const tokens = tokenizeShadowJudgeCommand(command);
+	if (!tokens) return undefined;
+	const redacted: string[] = [];
+	for (let index = 0; index < tokens.length; index += 1) {
+		const token = tokens[index] ?? "";
+		if (/^-u.+/i.test(token)) {
+			redacted.push("-u[redacted]");
+			continue;
+		}
+		if (/^-u$/i.test(token)) {
+			if (!tokens[index + 1]) return undefined;
+			redacted.push(token, "[redacted]");
+			index += 1;
+			continue;
+		}
+		const credential = token.match(SHADOW_JUDGE_CREDENTIAL_OPTION);
+		if (credential) {
+			if (token.includes("=")) {
+				redacted.push(`${token.slice(0, token.indexOf("="))}=[redacted]`);
+				continue;
+			}
+			if (!tokens[index + 1]) return undefined;
+			redacted.push(token, "[redacted]");
+			index += 1;
+			continue;
+		}
+		const headerAssignment = token.match(
+			/^(--(?:header|http-header|proxy-header))=(.*)$/i,
+		);
+		if (headerAssignment) {
+			if (!headerAssignment[2]) return undefined;
+			redacted.push(`${headerAssignment[1]}=[redacted]`);
+			continue;
+		}
+		if (SHADOW_JUDGE_HEADER_OPTION.test(token)) {
+			if (!tokens[index + 1]) return undefined;
+			redacted.push(token, "[redacted]");
+			index += 1;
+			continue;
+		}
+		redacted.push(
+			SHADOW_JUDGE_SENSITIVE_HEADER.test(token) ? "[redacted]" : token,
+		);
+	}
+	return redacted.join(" ");
+}
+
+export function redactShadowJudgeCommand(command: string): string | undefined {
+	if (
+		command.length > SHADOW_JUDGE_MAX_REDACTED_BYTES ||
+		/(?:secret|\.env|exfil)/i.test(command)
+	) {
+		return undefined;
+	}
+	const sanitized = sanitizeShadowJudgeCommand(command);
+	if (!sanitized) return undefined;
+	const redacted = redactSummary(sanitized);
+	return redacted.length <= SHADOW_JUDGE_MAX_REDACTED_BYTES
+		? redacted
+		: undefined;
+}
+
+function startShadowJudge(input: {
+	approval: DamageControlAskApproval;
+	command: string;
+	cwd: string;
+	modelRegistry: Parameters<typeof judgeDamageControl>[0]["modelRegistry"];
+}): string | undefined {
+	const command = redactShadowJudgeCommand(input.command);
+	if (!isJudgeEnabled() || !isJudgeEligible(input.approval) || !command) {
+		return undefined;
+	}
+	const eventId = randomUUID();
+	void judgeDamageControl({
+		eventId,
+		command,
+		cwd: input.cwd,
+		rule: input.approval.rule,
+		reason: input.approval.reason,
+		modelRegistry: input.modelRegistry,
+	}).catch(() => undefined);
+	return eventId;
 }
 
 function formatDamageControlRecent(): string {
@@ -359,6 +536,10 @@ function registerDamageControlCommand(
 				ctx.ui.notify(formatDamageControlRecent(), "info");
 				return;
 			}
+			if (subcommand === "judge") {
+				ctx.ui.notify(formatDamageControlJudge(), "info");
+				return;
+			}
 			if (subcommand === "label") {
 				if (!rawMode || !labelArg || !isDamageControlEvalLabel(labelArg)) {
 					ctx.ui.notify(
@@ -383,7 +564,7 @@ function registerDamageControlCommand(
 			}
 			if (subcommand !== "mode" || tokens.length !== 2) {
 				ctx.ui.notify(
-					"Usage: /damage-control status | /damage-control mode default|noshell | /damage-control stats | /damage-control recent | /damage-control label <id> <label>",
+					"Usage: /damage-control status | /damage-control mode default|noshell | /damage-control stats | /damage-control recent | /damage-control judge | /damage-control label <id> <label>",
 					"warning",
 				);
 				return;
@@ -436,6 +617,7 @@ function recordBlock(
 	ruleSource?: string,
 	toolCallId?: string,
 	metadata?: Record<string, unknown>,
+	evalEventId?: string,
 ): void {
 	const rule = extractRulePattern(decision.reason);
 	const auditMetadata = {
@@ -456,6 +638,7 @@ function recordBlock(
 		ruleSource,
 		toolCallId,
 		hasUI,
+		id: evalEventId,
 	});
 	safeRecordDeny(
 		toolName,
@@ -579,6 +762,7 @@ export default function (pi: ExtensionAPI) {
 			return modeDecision;
 		}
 
+		let askEventId: string | undefined;
 		const dangerous = await evaluateDangerousCommand(
 			command,
 			rules.dangerous_commands,
@@ -588,6 +772,29 @@ export default function (pi: ExtensionAPI) {
 				toolName: "bash",
 				astAnalysis: rules.astAnalysis,
 				cwd: ctx.cwd,
+				noDeletePaths: rules.no_delete_paths,
+				onAutoAllowed: (approval) => {
+					safeRecordDamageControlEval({
+						decisionType: "auto_allowed",
+						toolName: "bash",
+						rawAction: command,
+						cwd: ctx.cwd,
+						reason: approval.reason,
+						rule: approval.rule,
+						ruleSource: loaded.health.ruleSource,
+						toolCallId: event.toolCallId,
+						hasUI: ctx.hasUI,
+						tier: "scoped_delete",
+					});
+				},
+				onAskStart: (approval) => {
+					askEventId = startShadowJudge({
+						approval,
+						command,
+						cwd: ctx.cwd,
+						modelRegistry: ctx.modelRegistry,
+					});
+				},
 				onAskApproved: (approval) =>
 					safeRecordApprovedAsk({
 						toolName: "bash",
@@ -596,6 +803,7 @@ export default function (pi: ExtensionAPI) {
 						approval,
 						ruleSource: loaded.health.ruleSource,
 						toolCallId: event.toolCallId,
+						evalEventId: askEventId,
 					}),
 			},
 		);
@@ -614,6 +822,8 @@ export default function (pi: ExtensionAPI) {
 				ctx.hasUI,
 				loaded.health.ruleSource,
 				event.toolCallId,
+				undefined,
+				askEventId,
 			);
 			return dangerous;
 		}
@@ -690,6 +900,7 @@ export default function (pi: ExtensionAPI) {
 			);
 			return modeDecision;
 		}
+		let askEventId: string | undefined;
 		const dangerous = await evaluateDangerousCommand(
 			command,
 			rules.dangerous_commands,
@@ -698,6 +909,14 @@ export default function (pi: ExtensionAPI) {
 				hasUI: ctx.hasUI,
 				toolName: "pwsh",
 				cwd: ctx.cwd,
+				onAskStart: (approval) => {
+					askEventId = startShadowJudge({
+						approval,
+						command,
+						cwd: ctx.cwd,
+						modelRegistry: ctx.modelRegistry,
+					});
+				},
 				onAskApproved: (approval) =>
 					safeRecordApprovedAsk({
 						toolName: "pwsh",
@@ -706,6 +925,7 @@ export default function (pi: ExtensionAPI) {
 						approval,
 						ruleSource: loaded.health.ruleSource,
 						toolCallId: event.toolCallId,
+						evalEventId: askEventId,
 					}),
 			},
 		);
@@ -718,6 +938,8 @@ export default function (pi: ExtensionAPI) {
 				ctx.hasUI,
 				loaded.health.ruleSource,
 				event.toolCallId,
+				undefined,
+				askEventId,
 			);
 			return dangerous;
 		}

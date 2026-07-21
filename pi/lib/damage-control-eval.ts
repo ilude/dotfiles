@@ -7,6 +7,7 @@ import { ensureDirectory, getOperatorStateDir } from "./operator-state.ts";
 export type DamageControlEvalDecisionType =
 	| "ask_approved"
 	| "ask_denied"
+	| "auto_allowed"
 	| "hard_block";
 
 export type DamageControlEvalLabel =
@@ -29,6 +30,9 @@ export interface DamageControlEvalEvent {
 	cwd?: string;
 	toolCallId?: string;
 	hasUI?: boolean;
+	tier?: "scoped_delete";
+	redactedActionTruncated?: boolean;
+	redactedActionLossy?: boolean;
 	labels?: DamageControlEvalLabel[];
 }
 
@@ -42,6 +46,10 @@ export interface RecordDamageControlEvalInput {
 	cwd?: string;
 	toolCallId?: string;
 	hasUI?: boolean;
+	tier?: "scoped_delete";
+	redactedActionTruncated?: boolean;
+	redactedActionLossy?: boolean;
+	id?: string;
 }
 
 export interface DamageControlEvalStats {
@@ -53,6 +61,7 @@ export interface DamageControlEvalStats {
 		askApproved: number;
 		askDenied: number;
 		hardBlock: number;
+		autoAllowed: number;
 		labels: Record<string, number>;
 	}>;
 }
@@ -80,7 +89,7 @@ export function recordDamageControlEval(
 	if (!input.redactedAction) throw new Error("redactedAction is required");
 	const event: DamageControlEvalEvent = {
 		schemaVersion: 1,
-		id: crypto.randomUUID(),
+		id: input.id ?? crypto.randomUUID(),
 		recordedAt: new Date().toISOString(),
 		decisionType: input.decisionType,
 		toolName: input.toolName,
@@ -91,6 +100,9 @@ export function recordDamageControlEval(
 		cwd: input.cwd,
 		toolCallId: input.toolCallId,
 		hasUI: input.hasUI,
+		tier: input.tier,
+		redactedActionTruncated: input.redactedActionTruncated ?? false,
+		redactedActionLossy: input.redactedActionLossy ?? false,
 		labels: [],
 	};
 	ensureDirectory(getDamageControlEvalDir());
@@ -168,6 +180,7 @@ export function summarizeDamageControlEval(
 			askApproved: number;
 			askDenied: number;
 			hardBlock: number;
+			autoAllowed: number;
 			labels: Record<string, number>;
 		}
 	>();
@@ -181,12 +194,14 @@ export function summarizeDamageControlEval(
 			askApproved: 0,
 			askDenied: 0,
 			hardBlock: 0,
+			autoAllowed: 0,
 			labels: {},
 		};
 		row.total += 1;
 		if (event.decisionType === "ask_approved") row.askApproved += 1;
 		if (event.decisionType === "ask_denied") row.askDenied += 1;
 		if (event.decisionType === "hard_block") row.hardBlock += 1;
+		if (event.decisionType === "auto_allowed") row.autoAllowed += 1;
 		for (const label of event.labels ?? []) {
 			row.labels[label] = (row.labels[label] ?? 0) + 1;
 		}

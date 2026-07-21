@@ -1432,7 +1432,7 @@ describe("damage-control refactor hardening", () => {
 		else process.env.PI_DAMAGE_CONTROL_DEBUG = oldDebug;
 	});
 
-	it("real tracked rules allow docker rm -f named containers only", async () => {
+	it("real tracked rules allow named containers and scoped file deletes", async () => {
 		const mod = await import("../extensions/damage-control.ts");
 		const loaded = mod.loadRules();
 		expect(loaded.health.status).toBe("active");
@@ -1461,7 +1461,7 @@ describe("damage-control refactor hardening", () => {
 				loaded.rules.dangerous_commands,
 				{ toolName: "bash", cwd: process.cwd() },
 			),
-		).resolves.toMatchObject({ block: true });
+		).resolves.toBeUndefined();
 	});
 
 	it("real tracked rules block synthetic secret reads and destructive commands", async () => {
@@ -1508,11 +1508,13 @@ describe("damage-control refactor hardening", () => {
 		};
 
 		// Inert test input literals only; this test invokes no shell/process APIs.
-		for (const command of [
-			"rm -rf ./synthetic-build",
-			"git reset --hard",
-			"git clean -fd",
-		]) {
+		await expect(
+			handlers[0](
+				{ toolName: "bash", input: { command: "rm -rf ./synthetic-build" } },
+				ctx,
+			),
+		).resolves.toBeUndefined();
+		for (const command of ["git reset --hard", "git clean -fd"]) {
 			await expect(
 				handlers[0]({ toolName: "bash", input: { command } }, ctx),
 			).resolves.toMatchObject({ block: true });

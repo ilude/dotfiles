@@ -30,6 +30,13 @@ describe("damage-control eval registry", () => {
 			summary: "confirmed",
 		});
 		mod.recordDamageControlEval({
+			decisionType: "auto_allowed",
+			toolName: "bash",
+			redactedAction: "rm -rf ./build",
+			rule: "rm recursive force",
+			tier: "scoped_delete",
+		});
+		mod.recordDamageControlEval({
 			decisionType: "hard_block",
 			toolName: "read",
 			redactedAction: "[redacted-secret-path]",
@@ -38,17 +45,26 @@ describe("damage-control eval registry", () => {
 			summary: "blocked",
 		});
 
-		expect(mod.listDamageControlEvalEvents()).toHaveLength(2);
+		const events = mod.listDamageControlEvalEvents();
+		expect(events).toHaveLength(3);
+		expect(events[0]).toMatchObject({
+			redactedActionTruncated: false,
+			redactedActionLossy: false,
+		});
 		const labeled = mod.addDamageControlEvalLabel(
 			approved.id.slice(0, 8),
 			"noise",
 		);
 		expect(labeled.labels).toEqual(["noise"]);
 		const stats = mod.summarizeDamageControlEval();
-		expect(stats.total).toBe(2);
+		expect(stats.total).toBe(3);
 		expect(stats.byDecisionType.ask_approved).toBe(1);
+		expect(stats.byDecisionType.auto_allowed).toBe(1);
 		expect(stats.byDecisionType.hard_block).toBe(1);
-		expect(stats.byRule[0].total).toBe(1);
+		expect(stats.byRule[0]).toMatchObject({
+			total: 2,
+			autoAllowed: 1,
+		});
 	});
 
 	it("persists hasUI so interactive denials are separable from auto-denials", async () => {

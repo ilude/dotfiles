@@ -246,10 +246,17 @@ Pi damage-control is a Pi-native safety extension with its own policy, parser, e
 Intercepts tool calls and blocks dangerous operations before they execute.
 
 - **Dangerous commands** -- blocks `rm -rf`, `git reset --hard`, `dd if=`, etc.
+- **Scoped-delete containment** -- ask-tier `rm` commands are auto-allowed only when every statically extracted target stays under the session cwd or an approved scratch root. Parent traversal, home expansion, dynamic variables or substitution, non-scratch absolute paths, the cwd itself, `.git`, `.pi`, configured no-delete paths, parse failures, and remote SSH payloads still ask.
+- **Symlink and glob containment** -- relative globs such as `build/*` are checked by prefix, and any existing target prefix that is a symlink falls back to confirmation.
 - **Zero-access paths** -- blocks read/write to `~/.ssh/*`, `*.pem`, `*.key`, `.env`
 - **No-delete paths** -- protects `package.json`, `Makefile`, `pyproject.toml`
+- **Auto-allowed telemetry** -- auto-allowed scoped-delete decisions are logged as `auto_allowed` with `tier=scoped_delete`.
+- **Shadow judge** -- enabled shadow judge runs are asynchronous, redacted, and context-limited. It can not authorize execution by itself and only provides agreement telemetry in `/damage-control judge` and `/dc judge`.
+- **Future arming gate** -- shadow mode must collect at least 100 events, reach at least 95% agreement on approvals, and produce zero judge-allows on danger-shaped denials before any separate authority decision.
 
 Policy file: `~/.dotfiles/pi/damage-control-rules.yaml`. Set `PI_DAMAGE_CONTROL_POLICY_PATH` only when an explicit alternate Pi policy is required.
+
+The shadow judge is disabled by default. Enable it with `damageControl.judge.enabled: true` in Pi settings. Judge logs are persisted to `~/.pi/agent/operator/damage-control/judge.jsonl` and summarized by `/damage-control judge` and `/dc judge`. Inputs are redacted and limited to command, cwd, matched rule, and rule reason; verdicts never affect the tool decision.
 
 ### `quality-gates.ts`
 

@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
@@ -555,6 +556,186 @@ export function evaluateShellMode(
 	return undefined;
 }
 
+const SCOPED_DELETE_RULE_PATTERNS = new Set([
+	"(?<!git\\s)(?<!docker\\s)\\brm\\s+(-[^\\s]*)*-[rRf]",
+	"(?<!git\\s)(?<!docker\\s)\\brm\\s+-[rRf]",
+	"(?<!-)\\brm\\s+[^-\\s]",
+	"(?<!docker\\s)\\brm\\s+--recursive",
+	"(?<!docker\\s)\\brm\\s+--force",
+]);
+
+export interface ScopedDeleteRules {
+	no_delete_paths: string[];
+}
+
+function quotedPayloadAt(command: string, index: number): string | undefined {
+	let quote: string | undefined;
+	let start = -1;
+	for (let cursor = 0; cursor < command.length; cursor += 1) {
+		const character = command[cursor];
+		if (character === "\\" && quote !== "'" && cursor + 1 < command.length) {
+			cursor += 1;
+			continue;
+		}
+		if ((character === "'" || character === '"') && !quote) {
+			quote = character;
+			start = cursor + 1;
+			continue;
+		}
+		if (character === quote) {
+			if (index >= start && index < cursor) return command.slice(start, cursor);
+			quote = undefined;
+			start = -1;
+		}
+	}
+	return undefined;
+}
+
+function isScratchTarget(
+	target: string,
+	canonical: string,
+	cwd: string,
+): boolean {
+	const raw = target.replaceAll("\\", "/");
+	if (raw === "/tmp" || raw.startsWith("/tmp/")) return true;
+	const roots = [os.tmpdir(), process.env.TMPDIR].filter(
+		(value): value is string => Boolean(value),
+	);
+	return roots.some((root) => {
+		const rootResult = canonicalizeOrBlock(root, cwd);
+		if ("block" in rootResult) return false;
+		return (
+			canonical === rootResult.canonical ||
+			canonical.startsWith(rootResult.canonical + path.sep)
+		);
+	});
+}
+
+function canonicalCwd(cwd: string): string | undefined {
+	const result = canonicalizeOrBlock(cwd, cwd);
+	return "canonical" in result ? result.canonical : undefined;
+}
+
+function isScopedDeleteFloor(canonical: string, cwd: string): boolean {
+	const resolvedCwd = canonicalCwd(cwd);
+	if (!resolvedCwd) return true;
+	if (canonical === resolvedCwd) return true;
+	return [".git", ".pi"].some((directory) => {
+		const protectedRoot = path.join(resolvedCwd, directory);
+		return (
+			canonical === protectedRoot ||
+			canonical.startsWith(protectedRoot + path.sep)
+		);
+	});
+}
+
+function hasUnsafeScopedDeleteSyntax(target: string): boolean {
+	return (
+		target.includes("..") ||
+		target.includes("~") ||
+		target.includes("$") ||
+		target.includes("`") ||
+		/^[a-z]:[\\/]/i.test(target)
+	);
+}
+
+function hasOnlyModelledScopedDeleteSyntax(command: string): boolean {
+	return !/[\\\\'"`$(){}<>|&;]/.test(command);
+}
+
+function hasSymlinkPrefix(target: string, cwd: string): boolean {
+	const absolute = path.resolve(cwd, target);
+	const root = path.parse(absolute).root;
+	let current = root;
+	for (const segment of path.relative(root, absolute).split(path.sep)) {
+		if (!segment || /[*?[\]]/.test(segment)) break;
+		current = path.join(current, segment);
+		try {
+			if (fs.lstatSync(current).isSymbolicLink()) return true;
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+			return true;
+		}
+	}
+	return false;
+}
+
+export function evaluateScopedDelete(
+	command: string,
+	cwd: string,
+	rules: ScopedDeleteRules,
+): "allow" | "ask" {
+	const rmMatches = [...command.matchAll(/\brm\b/g)];
+	if (rmMatches.length === 0) return "ask";
+	if (/\b(?:ssh|scp)\b[\s\S]*\brm\b/.test(command)) return "ask";
+	for (const rmMatch of rmMatches) {
+		if (rmMatch.index === undefined) return "ask";
+		const quotedPayload = quotedPayloadAt(command, rmMatch.index);
+		const rmCommand =
+			quotedPayload ?? rmCommandAtMatch(command, rmMatch.index);
+		if (
+			!hasOnlyModelledScopedDeleteSyntax(rmCommand) ||
+			(!quotedPayload && !hasOnlyModelledScopedDeleteSyntax(command))
+		) {
+			return "ask";
+		}
+		const targets = extractRmTargets(rmCommand);
+		if (targets.length === 0) return "ask";
+		for (const target of targets) {
+			if (
+				hasUnsafeScopedDeleteSyntax(target) ||
+				hasSymlinkPrefix(target, cwd)
+			) {
+				return "ask";
+			}
+			if (
+				(path.isAbsolute(target) || target.startsWith("/")) &&
+				!isRawTempPath(target)
+			) {
+				return "ask";
+			}
+			const result = canonicalizeOrBlock(target, cwd);
+			if ("block" in result || isScopedDeleteFloor(result.canonical, cwd)) {
+				return "ask";
+			}
+			if (checkNoDeletePaths([target], rules.no_delete_paths, cwd))
+				return "ask";
+			if (isScratchTarget(target, result.canonical, cwd)) continue;
+			const resolvedCwd = canonicalCwd(cwd);
+			if (!resolvedCwd) return "ask";
+			const relative = path.relative(resolvedCwd, result.canonical);
+			if (
+				relative === "" ||
+				relative.startsWith("..") ||
+				path.isAbsolute(relative)
+			) {
+				return "ask";
+			}
+		}
+	}
+	return "allow";
+}
+
+function isScopedDeleteRule(rule: DangerousCommand): boolean {
+	return SCOPED_DELETE_RULE_PATTERNS.has(rule.pattern);
+}
+
+function hasOtherMatchedRule(
+	command: string,
+	rules: DangerousCommand[],
+	matchedRule: DangerousCommand,
+	toolName: string | undefined,
+): boolean {
+	return rules.some(
+		(rule) =>
+			rule !== matchedRule &&
+			!isScopedDeleteRule(rule) &&
+			commandAppliesToCurrentPlatform(rule) &&
+			commandAppliesToTool(rule, toolName) &&
+			commandMatchesRule(command, rule),
+	);
+}
+
 export async function evaluateDangerousCommand(
 	command: string,
 	rules: DangerousCommand[],
@@ -563,8 +744,11 @@ export async function evaluateDangerousCommand(
 		hasUI?: boolean;
 		toolName?: string;
 		onAskApproved?: (approval: DamageControlAskApproval) => void;
+		onAskStart?: (approval: DamageControlAskApproval) => void;
+		onAutoAllowed?: (approval: DamageControlAskApproval) => void;
 		astAnalysis?: AstAnalysisConfig;
 		cwd?: string;
+		noDeletePaths?: string[];
 	},
 ): Promise<{ block: true; reason: string } | undefined> {
 	const analysisCommand =
@@ -617,8 +801,22 @@ export async function evaluateDangerousCommand(
 		) {
 			continue;
 		}
+		if (
+			rule.action === "ask" &&
+			ctx?.toolName === "bash" &&
+			ctx.cwd &&
+			isScopedDeleteRule(rule) &&
+			!hasOtherMatchedRule(analysisCommand, rules, rule, ctx.toolName) &&
+			evaluateScopedDelete(analysisCommand, ctx.cwd, {
+				no_delete_paths: ctx.noDeletePaths ?? [],
+			}) === "allow"
+		) {
+			ctx.onAutoAllowed?.({ rule: rule.pattern, reason: rule.reason });
+			return undefined;
+		}
 		if (rule.action === "ask") {
 			if (ctx?.hasUI && ctx.ui?.confirm) {
+				ctx.onAskStart?.({ rule: rule.pattern, reason: rule.reason });
 				emitTerminalBell();
 				const ok = await ctx.ui.confirm(
 					"Confirm dangerous command",
