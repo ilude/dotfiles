@@ -256,12 +256,12 @@ Statuses: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - [x] T3: rebase-sensitive code checks - done: 7482eb3 (subagent and workflow tests updated for removed metadata and exact conflict-policy prose)
 - [x] T4: remove Claude scope - done: 20754bb
 - [x] T5: live capability smoke - done: 9fb1119 (two no-await notifications, continuation recall, DAG drain, and same-worktree-only lease warning observed)
-- [ ] T6: .specs bookkeeping - in-progress: validate the updated and archived plans
-- [ ] T7: land - pending
+- [x] T6: .specs bookkeeping - done: db25c1a
+- [ ] T7: land - in-progress: merge to main and rerun the Pi suite
 
 ### State
 
 - **Classification:** in progress
 - **Current blocker:** none
-- **Next:** validate and commit T6 bookkeeping
+- **Next:** merge the integration branch to main and rerun T3's Pi suite
 - **Resume:** `/do-it .specs/rationalization-port/plan.md`
