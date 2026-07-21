@@ -1,6 +1,6 @@
 ---
 name: docs
-description: "Technical documentation structure and Markdown conventions. Use for README, CHANGELOG, docs/ files, RFCs, ADRs, guides, and Markdown organization. Not for prose de-slopping or research archiving."
+description: "Technical documentation structure and Markdown conventions. Use for README, CHANGELOG, docs/ files, RFCs, ADRs, guides, and Markdown organization. Not for prose cleanup or archival work."
 ---
 
 # Documentation Workflow
@@ -13,7 +13,6 @@ description: "Technical documentation structure and Markdown conventions. Use fo
 | --- | --- |
 | Document structure, headings, examples, docs navigation | `docs` |
 | Remove generic/hypey wording from prose | `no-ai-slop` |
-| Save sourced research findings | `research-archive` |
 
 ## Core Principle
 

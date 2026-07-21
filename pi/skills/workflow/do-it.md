@@ -12,8 +12,6 @@ Deliver the requested outcome, check the contract that changed, preserve enough 
 
 Inspect only enough repository state to establish scope, ownership, and relevant validation. Execute bounded work directly.
 
-Use subagents for independent parallel streams, output-heavy investigation, distinct capability boundaries, or useful independent verification. Keep interdependent work and final writes coordinated by the parent.
-
 Create a plan only when unresolved architecture, migration design, destructive or stateful rollout, or material ambiguity makes direct execution unsafe. Otherwise do the work without adding planning ceremony.
 
 ## Plan Task
@@ -26,11 +24,8 @@ After a task's relevant check passes, mark its checkbox complete and save the pl
 
 ## Boundaries
 
-- Preserve public interfaces, explicit user decisions, security controls, and requested scope.
-- Do not add optional improvements or unrelated repairs.
 - Keep secrets and sensitive output out of plans and reports.
-- Use subagents when work splits cleanly; do not duplicate the same assignment or parallelize dependent writes.
-- Ask before destructive, irreversible, shared-production, paid-resource, credential-exposing, or materially expanded action.
+- Ask before destructive, irreversible, shared-production, paid-resource, or credential-exposing action.
 
 For actual stateful mutation, verify the current backup or explicit no-prior-state condition, restore action, rollback boundary, and one mutation target. After the first failed live mutation, stop later rollout work and recover the affected boundary before resuming. Do not apply this ceremony to local code, prompt, documentation, or reversible configuration edits.
 
@@ -49,10 +44,10 @@ On failure, isolate the changed boundary, make the smallest in-scope repair, and
 
 For a raw task, stop when the requested outcome and relevant checks are complete.
 
-For a plan, archive it to a collision-safe `.specs/archive/{slug}/` path when all required tasks are checked, relevant validation passed, and no required user or deployment action remains. Do not invent extra gates or reviews before archive. If work remains, save the current status and exact next ready task instead.
+For a plan, archive it to a collision-safe `.specs/archive/{slug}/` path when all required tasks are checked, relevant validation passed, and no required user or deployment action remains. Do not add requirements beyond the plan before archive. If work remains, save the current status and exact next ready task instead.
 
 ## Report
 
 For raw work, state what changed, relevant validation, and anything that remains.
 
-For plan work, use `templates/do-it-report-template.md`. Report `complete`, `checkpoint`, or `blocked` consistently with the saved plan. Do not add timing, finding counts, evidence inventories, or independent review unless they were required by the work.
+For plan work, use `templates/do-it-report-template.md`. Report `complete`, `checkpoint`, or `blocked` consistently with the saved plan. Do not add timing, finding counts, or evidence inventories unless they were required by the work.

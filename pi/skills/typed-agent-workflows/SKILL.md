@@ -13,7 +13,6 @@ description: "Pi typed-agent implementation and composition. Use when creating o
 | --- | --- |
 | Typed semantic stage implementation | `typed-agent-workflows` |
 | Pi hooks, commands, tools, or status UI | `pi-extension` |
-| Delegating current-session work | `orchestration` |
 | Public command UX | `workflow-design` |
 | Broad architecture strategy | `development-philosophy` |
 
@@ -70,7 +69,7 @@ const { output } = await reviewer.run({ candidate }, ctx);
 
 ## Workflow Design Checks
 
-- Before automating an unfamiliar multi-stage workflow, execute its intended entrypoint end to end once. Identify deterministic inputs, semantic judgments, validation signals, and operator approval boundaries before extracting stages.
+- Before automating an unfamiliar multi-stage workflow, inspect its intended entrypoint and identify deterministic inputs, semantic judgments, validation signals, and operator approval boundaries. Exercise it end to end only through an isolated safe fixture; do not run a stateful or external entrypoint solely for discovery.
 - Run linters, type checks, tests, and pass/fail routing in deterministic code. When a typed stage owns remediation, pass only bounded diagnostics back as explicit input; code still owns retry limits and the final validation decision.
 
 Reference: IndyDevDan, [FORGET Loop Engineering. Agentic Engineering is about THIS](https://www.youtube.com/watch?v=VQy50fuxI34), especially 27:27-30:34.

@@ -16,6 +16,4 @@ Follow the single policy in `AGENTS.md` Development Philosophy. Explicit user ro
 
 ## Approval-Aware Execution
 
-Damage-control is a safety boundary, not a target to evade. Before an operation likely to require confirmation, decide whether its effect is necessary for the requested outcome. Omit incidental cleanup, narrow targets, and prefer overwriteable scratch output or non-destructive tools when they preserve the intended result.
-
-Do not switch languages, wrappers, aliases, encodings, or command shapes to hide the same risky effect. Issue a necessary risky operation plainly and allow the normal confirmation boundary. Use the approval-aware operations guidance for deletion, protected paths, destructive Git, process control, package/cache removal, uploads, or external infrastructure mutation.
+Damage control is a safety boundary. Omit incidental risky effects, but issue required operations directly and accept normal confirmation. Never change syntax, tools, or command shape to evade policy.

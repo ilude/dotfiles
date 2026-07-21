@@ -16,8 +16,7 @@ user decision.
 
 ## Work rules
 
-- Work directly on one coherent slice. Delegate only bounded independent
-  investigation, specialty work, or independent verification.
+- Work directly on one coherent slice.
 - Keep writes single-threaded in this worktree.
 - Preserve public schemas unless a plan explicitly permits an additive field.
 - Diagnose failures before changing code. Do not suppress errors or remove

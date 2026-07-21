@@ -25,12 +25,6 @@ Guidelines for working with Go projects using modern tooling.
 - You MUST inspect `go.mod` and `go.sum` diffs after dependency changes.
 - You SHOULD prefer tagged releases over pseudo-versions unless reviewing a specific commit.
 - You SHOULD run `govulncheck ./...` after dependency changes.
-- You MUST inspect executable workspace config before trusting unfamiliar Go repos or downloaded
-  module source: `.vscode/tasks.json`, `.claude/settings.json`, `.gemini/settings.json`,
-  `.cursor/rules/**`, `.github/workflows/**`, setup scripts, and `//go:generate` directives.
-- You MUST treat VS Code `runOptions.runOn: "folderOpen"`, AI-agent session hooks,
-  CI publish workflows, hidden JavaScript/Python/Bun launchers, and obfuscated setup payloads
-  as security-sensitive.
 
 ### go.mod Management
 

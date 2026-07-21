@@ -11,9 +11,7 @@ Treat terminal UI as a product surface, not just command output. Users should no
 
 Key takeaways to apply:
 
-- **Control agent eagerness:** when changing UX, gather enough context to identify existing patterns, then make the smallest scoped change. Do not invent unrelated UI components or behavior.
 - **Preserve design consistency:** reuse existing TUI styles, tokens, wording, spacing, and component patterns instead of creating one-off UI.
-- **Constrain output shape:** for UX/code changes, report concise sections: what changed, where, validation, and remaining risks.
 - **Interactive mode should reduce mistakes:** setup/login flows should constrain choices, validate early, and explain recovery steps.
 - **Good CLI/TUI UX reduces time-to-value:** show useful first actions and examples in-app instead of forcing users to read docs.
 - **Interactive UX does not replace automation:** keep non-interactive/env/config paths working when adding wizards.
@@ -70,15 +68,7 @@ Before implementing TUI changes:
 2. Identify the affected user-visible invariant, e.g. "selection remains visible" or "one provider failure does not block others".
 3. Add or update tests when they are needed to protect that invariant.
 4. For typing latency changes, instrument first and validate against measured input/render timing before guessing.
-5. Avoid extra UX embellishments beyond the request unless they are baseline usability requirements.
-6. If touching config/profile/secret behavior, preserve existing fields and add migration/preservation tests when the change can affect them.
-
-When responding after TUI work, use compact structure:
-
-- `Changed:` behavior summary.
-- `Files:` key files only.
-- `Validation:` exact commands run.
-- `Notes/Risks:` only if meaningful.
+5. If touching config/profile/secret behavior, preserve existing fields and add migration/preservation tests when the change can affect them.
 
 ## Checklist Before Marking a TUI Change Done
 

@@ -152,10 +152,7 @@ describe("fable orchestration policy", () => {
 			);
 		}
 
-		for (const model of [
-			"openai-codex/gpt-5.6-sol:max",
-			"other/model",
-		]) {
+		for (const model of ["openai-codex/gpt-5.6-sol:max", "other/model"]) {
 			const event = { toolName: "subagent", input: { model } };
 			expect(tool(event, orchestratorCtx())).toBeUndefined();
 			expect(event.input.model).toBe(model);
@@ -194,10 +191,7 @@ describe("fable orchestration policy", () => {
 		});
 
 		expect(tool(event, ctx)).toBeUndefined();
-		expect(event.input).toHaveProperty(
-			"model",
-			"anthropic/claude-opus-4-6",
-		);
+		expect(event.input).toHaveProperty("model", "anthropic/claude-opus-4-6");
 	});
 
 	it("leaves allowed pinned agents unoverridden without a size", () => {
@@ -261,14 +255,20 @@ describe("fable orchestration policy", () => {
 		expect(event.input).not.toHaveProperty("model");
 	});
 
-	it("makes Fable a foreman and retains delegation bias for Opus and Sol xhigh", () => {
+	it("makes Fable a foreman and keeps other parents direct-first", () => {
 		const { beforeAgentStart: solMedium } = hooks("medium");
 		const { beforeAgentStart: solXhigh } = hooks("xhigh");
 		const medium = solMedium({ systemPrompt: "base" }, orchestratorCtx());
 		const xhigh = solXhigh({ systemPrompt: "base" }, orchestratorCtx());
 
-		expect(medium.systemPrompt).not.toContain("Before complex repository work");
-		expect(xhigh.systemPrompt).toContain("Before complex repository work");
+		for (const result of [medium, xhigh]) {
+			expect(result.systemPrompt).toContain(
+				"Work directly by default on one coherent task.",
+			);
+			expect(result.systemPrompt).not.toContain(
+				"Before complex repository work",
+			);
+		}
 		expect(
 			solMedium(
 				{ systemPrompt: "base" },
@@ -276,7 +276,7 @@ describe("fable orchestration policy", () => {
 					model: { provider: "openai-codex", id: "gpt-5.6-sol:xhigh" },
 				}),
 			).systemPrompt,
-		).toContain("Before complex repository work");
+		).toContain("Work directly by default on one coherent task.");
 
 		const { beforeAgentStart } = hooks("medium");
 		const fable = beforeAgentStart(
@@ -305,7 +305,7 @@ describe("fable orchestration policy", () => {
 				{ systemPrompt: "base" },
 				createMockCtx({ mode: "tui", model: { id: "claude-opus-test" } }),
 			).systemPrompt,
-		).toContain("Before complex repository work");
+		).toContain("Work directly by default on one coherent task.");
 	});
 
 	it("allows direct tools while enforcing GPT-5.6 routing after delegation", () => {

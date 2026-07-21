@@ -20,21 +20,15 @@ Compact index for TypeScript and JavaScript work. Load linked files only when th
 - Pi TypeScript is pnpm-only: `pi/extensions/` and `pi/tests/` must use `pnpm`, not `bun` or `npm`.
 - Never create or commit `package-lock.json`; do not use `npm` unless the user explicitly asks for npm-specific troubleshooting.
 - Preserve module style and formatter already used by the package; do not reformat unrelated code.
-- Use deterministic code for routing, retries, transforms, status handling, and install detection; reserve judgment calls for ambiguous language tasks.
 - Before adding or resolving dependencies, check the package-manager hardening guidance in
   `reference.md`; do not bypass lifecycle-script, build-script, or minimum-release-age
   protections to make installs pass.
-- Treat `.vscode/tasks.json`, `.claude/settings.json`, `.gemini/settings.json`,
-  `.cursor/rules/**`, `.github/workflows/**`, package lifecycle scripts, and setup scripts as
-  executable or agent-instruction attack surface.
 
 ## Practical steps
 
-1. Identify package root by lockfile and nearest `package.json`.
-2. Read scripts before inventing commands.
-3. Make the smallest change that matches local naming, import, error, and test patterns.
-4. Validate the changed contract with the relevant typecheck, lint, or tests from that package.
-5. If adding dependencies, update only the owning package manager files.
+1. Identify the package root by lockfile and nearest `package.json`.
+2. Read package scripts before selecting commands.
+3. If adding dependencies, update only the owning package-manager files.
 
 ## Quick validation
 

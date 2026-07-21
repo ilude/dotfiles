@@ -17,7 +17,7 @@ description: Generate multiple approaches before implementing. Activate when fac
 2. Identify viable approaches without a fixed count.
 3. Compare concrete costs, risks, and fit with existing patterns.
 4. Recommend one approach and explain the decisive evidence.
-5. Implement once the choice is resolved.
+5. Implement the selected approach only when implementation was requested; otherwise report the recommendation.
 
 ## Anti-Patterns
 

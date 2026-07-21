@@ -85,13 +85,4 @@ Do not run forbidden project commands from `AGENTS.md` such as `npm run dev`, `n
 
 ## Local Handoff Artifacts
 
-For potential upstream fixes, keep local notes under `.specs/`:
-
-```text
-.specs/<slug>/issue-draft.md
-.specs/<slug>/pr-draft.md
-.specs/<slug>/follow-up.md
-.specs/<slug>/evidence/
-```
-
-Do not stage `.specs/` unless the user explicitly asks.
+When the user requests a durable draft or handoff, keep it under `.specs/<slug>/`. Do not stage `.specs/` unless the user explicitly asks.
