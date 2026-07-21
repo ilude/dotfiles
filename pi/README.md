@@ -722,9 +722,6 @@ Shared skill packages are referenced under `~/.dotfiles/pi/skills/shared/` witho
 | `brave-search` | Web search via Brave Search API |
 | `browser-tools` | Browser automation and content extraction; use `scripts/agent-browser-brave` for safe Brave + `agent-browser` workflows |
 | `youtube-transcript` | Fetch YouTube transcripts |
-| `gccli` | Google Calendar CLI integration |
-| `gdcli` | Google Drive CLI integration |
-| `gmcli` | Gmail CLI integration |
 | `transcribe` | Audio transcription |
 | `vscode` | VS Code integration |
 
