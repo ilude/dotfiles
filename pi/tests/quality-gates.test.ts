@@ -348,6 +348,34 @@ describe("quality-gates extension", () => {
 			expect(policy.immutablePaths).toContain("**/migrations/**");
 			expect(policy.languages.typescript.validators).toContainEqual(
 				expect.objectContaining({
+					name: "biome",
+					command: [
+						"pnpm",
+						"--dir",
+						"{project_root}",
+						"exec",
+						"biome",
+						"lint",
+						"{file}",
+					],
+				}),
+			);
+			expect(policy.languages.javascript.validators).toContainEqual(
+				expect.objectContaining({
+					name: "biome",
+					command: [
+						"pnpm",
+						"--dir",
+						"{project_root}",
+						"exec",
+						"biome",
+						"lint",
+						"{file}",
+					],
+				}),
+			);
+			expect(policy.languages.typescript.validators).toContainEqual(
+				expect.objectContaining({
 					kind: "lizard",
 					always: true,
 					advisory: true,

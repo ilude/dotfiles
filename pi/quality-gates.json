@@ -100,7 +100,7 @@
             "{project_root}",
             "exec",
             "biome",
-            "check",
+            "lint",
             "{file}"
           ],
           "check": "pnpm",
@@ -151,7 +151,7 @@
             "{project_root}",
             "exec",
             "biome",
-            "check",
+            "lint",
             "{file}"
           ],
           "check": "pnpm",

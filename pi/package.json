@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit -p extensions",
-    "biome:check": "biome check extensions lib tests",
+    "biome:check": "biome lint extensions lib tests",
     "test": "vitest run --config tests/vitest.config.ts",
     "test:watch": "vitest --config tests/vitest.config.ts",
     "test:coverage": "vitest run --coverage --config tests/vitest.config.ts"

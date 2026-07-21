@@ -1,10 +1,18 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.3/schema.json",
   "formatter": {
-    "lineEnding": "lf"
+    "enabled": false
   },
   "linter": {
-    "enabled": false
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "style": "off",
+      "complexity": "off",
+      "suspicious": {
+        "noExplicitAny": "off"
+      }
+    }
   },
   "assist": {
     "enabled": false
