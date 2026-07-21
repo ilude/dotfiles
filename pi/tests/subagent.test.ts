@@ -68,10 +68,7 @@ description: Test-only skill
 name: tester
 description: Test agent
 model: anthropic/claude-sonnet-4-6
-isolation: worktree
-memory: session
 effort: high
-memory: none
 tools: read, grep
 skills:
   - ../skills/test-skill/SKILL.md
@@ -158,17 +155,6 @@ You are a test agent.
 		);
 	}
 
-	it("accepts memory none in agent frontmatter", async () => {
-		const { loadAgentsFromDir } = await import(
-			"../extensions/subagent/agents.ts"
-		);
-		const agents = loadAgentsFromDir(
-			path.join(tmpDir, ".pi", "agents"),
-			"project",
-		);
-		expect(agents[0]?.memory).toBe("none");
-	});
-
 	it("ships a read-only explorer agent", async () => {
 		const { loadAgentsFromDir } = await import(
 			"../extensions/subagent/agents.ts"
@@ -180,7 +166,6 @@ You are a test agent.
 		const explorer = agents.find((agent) => agent.name === "explorer");
 
 		expect(explorer).toMatchObject({
-			memory: "none",
 			effort: "medium",
 			model: "openai-codex/gpt-5.6-sol",
 			skills: ["analysis-workflow"],

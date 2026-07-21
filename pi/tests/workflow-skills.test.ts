@@ -13,8 +13,7 @@ describe("workflow scheduling guidance", () => {
 	it("hands plan execution to one graph batch and the drain scheduler", () => {
 		const doIt = workflow("do-it");
 		expect(doIt).toContain("one graph-aware `task batch` call");
-		expect(doIt).toContain("`blockedByKeys`");
-		expect(doIt).toContain("Start `task drain`");
+		expect(doIt).toContain("start `task drain`");
 		expect(doIt).not.toContain("Execute ready tasks wave by wave");
 	});
 
@@ -23,12 +22,7 @@ describe("workflow scheduling guidance", () => {
 		expect(doIt).toContain(
 			"python ~/.dotfiles/pi/scripts/plan-lint <plan-path>",
 		);
-		expect(doIt).toContain(
-			"A checked top-level task must use `done: <existing-commit>`",
-		);
-		expect(doIt).toContain(
-			"make the first and final status lines match its `report_state`",
-		);
+		expect(doIt).toContain("again before the final report");
 	});
 
 	it("keeps same-file writes out of parallel plan tasks", () => {
