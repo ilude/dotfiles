@@ -222,7 +222,9 @@ async function extractWithReadability(targetUrl) {
 	} else {
 		const fallback = new JSDOM(html, { url: targetUrl });
 		const body = fallback.window.document;
-		body.querySelectorAll("script, style, noscript, nav, header, footer, aside").forEach((el) => el.remove());
+		body.querySelectorAll("script, style, noscript, nav, header, footer, aside").forEach((el) => {
+			el.remove();
+		});
 		const title = body.querySelector("title")?.textContent?.trim();
 		const main = body.querySelector("main, article, [role='main'], .content, #content") || body.body;
 		if (title) output += `# ${title}\n\n`;

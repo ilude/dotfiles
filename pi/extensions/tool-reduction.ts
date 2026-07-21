@@ -208,7 +208,9 @@ class ReducerWorker {
 	}
 
 	shutdown(): void {
-		this.queue.splice(0).forEach(({ resolve }) => resolve(null));
+		this.queue.splice(0).forEach(({ resolve }) => {
+			resolve(null);
+		});
 		this.finishPending(null);
 		if (this.child?.pid) stopProcessTree(this.child.pid);
 		this.child = undefined;

@@ -5,7 +5,6 @@ import {
 	SessionBudgetTracker,
 	type SessionBudgetConfig,
 	type SessionBudgetFinding,
-	type SessionBudgetSensor,
 } from "../lib/session-budget.js";
 import { readMergedSettings } from "../lib/settings-loader.js";
 import { wrapCommandRegistration } from "../lib/slash-command-echo.js";

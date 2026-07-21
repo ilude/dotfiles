@@ -7,7 +7,6 @@ import { fileURLToPath } from "node:url";
 import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
-	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { createAsyncPoller, type AsyncPoller } from "../lib/async-poller.js";
 import { wrapCommandRegistration } from "../lib/slash-command-echo.js";

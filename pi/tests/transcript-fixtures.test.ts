@@ -29,8 +29,6 @@ import {
 } from "../lib/transcript.ts";
 import {
   DEFAULT_SESSION_ID,
-  DEFAULT_TRACE_ID,
-  DEFAULT_TURN_ID,
   makeAssistantMessageEvent,
   makeBashTruncatedResultEvent,
   makeParallelToolResultEvents,

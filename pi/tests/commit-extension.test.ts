@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import registerCommitTools from "../extensions/commit.js";
 import { createMockPi } from "./helpers/mock-pi.js";
 import { buildCommitPlan } from "../lib/commit/plan.ts";

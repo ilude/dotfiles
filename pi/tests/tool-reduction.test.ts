@@ -236,7 +236,8 @@ beforeEach(() => {
 				const [hook] = mockPi._getHook("tool_result");
 				const raw = extremeOutput("raw output\n");
 				const result = await hook.handler(makeBashResultEvent(raw));
-				const text = (result?.content[0] as TextBlock).text;
+				if (!result) throw new Error("expected reduced tool result");
+				const text = (result.content[0] as TextBlock).text;
 				expect(text).toContain(
 					"[tool-reduction] bytes=1000->9 rule=git/status raw=",
 				);
@@ -268,7 +269,8 @@ beforeEach(() => {
 					fullOutputPath: fullPath,
 				}),
 			);
-			const text = (result?.content[0] as TextBlock).text;
+			if (!result) throw new Error("expected reduced tool result");
+			const text = (result.content[0] as TextBlock).text;
 			expect(text).toContain(`raw=${fullPath}`);
 			expect(fs.readFileSync(fullPath, "utf-8")).toBe("complete raw output");
 		});

@@ -187,6 +187,7 @@ export function hashSuffix(input: string): string {
 
 function normalizeSegmentBasic(segment: string): string {
   if (!segment) return "";
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: Windows forbids this ASCII control range in path segments.
   let s = segment.toLowerCase().replace(/[<>:"\\|?*\x00-\x1f]/g, "-");
   s = s.replace(/[. ]+$/g, "");
   return s;

@@ -10,7 +10,6 @@ import {
   planArchive,
   writeArchive,
   restoreSmoke,
-  type ManifestEntry,
   type ArchivePlan,
 } from "../lib/memory-snapshot-archive";
 

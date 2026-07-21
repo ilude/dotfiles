@@ -20,7 +20,7 @@ const schemaPath = resolve(
 );
 const classifyScript = resolve(repoRoot, "pi/prompt-routing/classify.py");
 
-const schema = JSON.parse(readFileSync(schemaPath, "utf-8"));
+const _schema = JSON.parse(readFileSync(schemaPath, "utf-8"));
 
 const CANNED_PROMPTS = [
   { label: "trivial", text: "what is the http 404 code for" },
