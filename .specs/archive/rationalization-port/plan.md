@@ -1,7 +1,7 @@
 ---
 created: 2026-07-21
-status: draft
-completed:
+status: completed
+completed: 2026-07-21
 ---
 
 # Plan: Port rationalization/phase3-5 back to main
@@ -257,11 +257,11 @@ Statuses: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - [x] T4: remove Claude scope - done: 20754bb
 - [x] T5: live capability smoke - done: 9fb1119 (two no-await notifications, continuation recall, DAG drain, and same-worktree-only lease warning observed)
 - [x] T6: .specs bookkeeping - done: db25c1a
-- [ ] T7: land - in-progress: merge to main and rerun the Pi suite
+- [x] T7: land - done: a3598d73
 
 ### State
 
-- **Classification:** in progress
+- **Classification:** completed
 - **Current blocker:** none
-- **Next:** merge the integration branch to main and rerun T3's Pi suite
-- **Resume:** `/do-it .specs/rationalization-port/plan.md`
+- **Next:** none
+- **Resume:** none
