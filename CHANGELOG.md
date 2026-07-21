@@ -2,6 +2,20 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-21: Close the optional improvement-loop experiment
+
+**Why:** The delivered Pi report and routing telemetry do not require an applied
+proposal solely to satisfy an old plan gate.
+
+**Changed:**
+- Recorded the user's decision to decline the phase 4 T5 experiment.
+- Removed the artificial proposal-selection blocker and prepared the completed
+  phase 4 plan for archive.
+
+**Files:** `.specs/rationalization-phase4/plan.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Add the manual improvement-report entry point
 
 **Why:** The deterministic report existed as an internal script but lacked the

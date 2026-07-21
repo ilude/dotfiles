@@ -97,6 +97,9 @@ Already decided - do not relitigate:
   in every routing comparison; a quality tie goes to faster-and-cheaper.
 - Cadence starts manual; a timer is added only after the manual loop has
   produced value at least twice.
+- Closure supersession (user, 2026-07-21): decline the T5 applied-proposal
+  experiment and archive phase 4. The delivered report and routing telemetry
+  remain available without requiring a synthetic completion cycle.
 
 Stop and ask before: raising the sampling rate above 10%, letting any
 report consumer apply a change without a user-approved slice, or drawing a
@@ -231,15 +234,13 @@ from here.
   - [x] /improve report end to end
   - [x] loop documented once, in the philosophy file
   - [x] timer condition recorded (not built)
-- [ ] T5: close - pending
-  - [ ] one full cycle recorded with evidence
-  - [ ] routing baseline and n=30 projection recorded
+- [ ] T5: close - in-progress: record the user-declined experiment and archive the plan
+  - [ ] one full cycle recorded with evidence (not required by user decision)
+  - [ ] routing baseline and n=30 projection recorded (not required by user decision)
 
 ### State
 
-- **Classification:** blocked; T1-T4 complete
-- **Current blocker:** T5 requires the user to select at least one item from
-  a fresh Pi-only improvement report; no selection is inferred
-- **Next:** run `/improve report`, then after the user selects an item, execute
-  it as a separate approved slice and capture the routing baseline
+- **Classification:** in progress; T1-T4 complete
+- **Current blocker:** none
+- **Next:** commit the T5 closure decision and archive the plan
 - **Resume:** `/do-it .specs/rationalization-phase4/plan.md`
