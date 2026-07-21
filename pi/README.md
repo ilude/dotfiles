@@ -356,8 +356,10 @@ prompt pending until the agent settles.
 
 Cron expressions use five fields. Scheduled prompts cannot start with `/`, so
 slash workflows do not run unattended. The model-callable `schedule` tool can
-create, list, and cancel the same jobs. An explicit create or cancel request is
-authorization, so those actions run without another confirmation. Schedule
+create, list, and cancel the same jobs. Creation and cancellation do not use a
+confirmation dialog. A direct request authorizes creation; an explicit request
+or an existing schedule's completion condition authorizes cancellation. Missing
+required values may still require a non-confirmation clarification. Schedule
 lifecycle metrics contain job IDs and timing metadata, not prompt text.
 
 ### `feature-memory.ts`

@@ -38,6 +38,26 @@ interface ScheduleToolInput {
 	id?: string;
 }
 
+interface AskUserInput {
+	question?: unknown;
+	mode?: unknown;
+}
+
+const SCHEDULE_CONFIRMATION_PATTERN =
+	/\b(?:cron|schedul(?:e|es|ed|ing)|reminders?|recurring prompts?)\b/i;
+const SCHEDULE_CONFIRMATION_BLOCK_REASON =
+	"Schedule creation and cancellation have no confirmation step. If the user already requested the mutation or an existing schedule's completion condition authorizes it, call schedule directly. If required values are missing, ask a non-confirmation clarification; otherwise do not mutate.";
+
+function isScheduleConfirmation(input: unknown): boolean {
+	if (!input || typeof input !== "object") return false;
+	const { mode, question } = input as AskUserInput;
+	return (
+		mode === "confirm" &&
+		typeof question === "string" &&
+		SCHEDULE_CONFIRMATION_PATTERN.test(question)
+	);
+}
+
 function tokenize(input: string): string[] {
 	const tokens: string[] = [];
 	const pattern = /"([^"]*)"|'([^']*)'|(\S+)/g;
@@ -253,6 +273,15 @@ export default function registerScheduler(pi: ExtensionAPI) {
 		getProcessScheduler().markAgentSettled();
 	});
 
+	pi.on("tool_call", (event) => {
+		if (
+			event.toolName === "ask_user" &&
+			isScheduleConfirmation(event.input)
+		) {
+			return { block: true, reason: SCHEDULE_CONFIRMATION_BLOCK_REASON };
+		}
+	});
+
 	for (const [name, handler] of [
 		["at", handleAt],
 		["cron", handleCron],
@@ -282,11 +311,12 @@ export default function registerScheduler(pi: ExtensionAPI) {
 		name: "schedule",
 		label: "Schedule",
 		description:
-			"Create, list, or cancel process-local scheduled prompts. An explicit create or cancel request is authorization; act without another confirmation. Schedules survive session changes in the current Pi process but stop when that process exits.",
+			"Create, list, or cancel process-local scheduled prompts. Creation and cancellation have no confirmation step. Schedules survive session changes in the current Pi process but stop when that process exits.",
 		promptSnippet: "Create, list, or cancel process-local scheduled prompts",
 		promptGuidelines: [
 			"Use schedule only after the user explicitly asks to schedule a future or recurring prompt.",
-			"Treat the user's explicit create or cancel request as authorization. Call schedule directly without using ask_user or requesting another confirmation.",
+			"Never use ask_user to confirm schedule creation or cancellation. Call schedule directly when the user requested the mutation or an existing schedule's completion condition authorizes cancellation.",
+			"Ask a non-confirmation clarification only when required schedule values are missing or ambiguous.",
 			"Scheduled prompts cannot be slash commands and schedules do not survive Pi process exit.",
 		],
 		parameters: Type.Object({

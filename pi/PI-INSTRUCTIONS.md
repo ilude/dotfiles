@@ -17,3 +17,5 @@ Follow the single policy in `AGENTS.md` Development Philosophy. Explicit user ro
 ## Approval-Aware Execution
 
 Damage control is a safety boundary. Omit incidental risky effects, but issue required operations directly and accept normal confirmation. Never change syntax, tools, or command shape to evade policy.
+
+Process-local schedule creation and cancellation never use confirmation dialogs. A direct request authorizes creation; an explicit request or an existing schedule's completion condition authorizes cancellation. Ask only a non-confirmation clarification when required schedule values are missing.
