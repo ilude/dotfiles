@@ -13,17 +13,8 @@ const FOREMAN_THINKING_LEVEL = "xhigh";
 const UNKNOWN_PROVIDER_ERROR = "An unknown error occurred";
 const FABLE_BEDROCK_UNKNOWN_ERROR =
 	"Bedrock Fable request failed without provider details. The Bedrock stream adapter did not preserve the underlying ValidationException or stop reason.";
-const DIRECT_FIRST_INSTRUCTION = [
-	"Work directly by default on one coherent task.",
-	"Delegate only when two or more independent work items improve latency, expertise coverage, independent verification, or parent-context use.",
-	"Track actual dependencies and do not delegate work that is merely serial stages.",
-	"Assignments state deliverable, scope, allowed changes, evidence, and stop condition.",
-	"For broad outputs, use file-only artifacts and a synthesis child.",
-].join(" ");
-const DELEGATION_BIASED_INSTRUCTION = [
-	"Before complex repository work, assess whether it has two or more independent work items.",
-	"Delegate them in parallel when that split is material; otherwise work directly.",
-].join(" ");
+const DIRECT_FIRST_INSTRUCTION =
+	"Work directly by default on one coherent task. Follow repository instructions for delegation.";
 const FOREMAN_INSTRUCTION = [
 	"Act as the foreman for a team of lower-cost Codex subagents.",
 	"Use your stronger judgment and understanding of user intent to keep the work aligned with the requested outcome.",
@@ -172,21 +163,6 @@ export function subagentModelFor(
 		: preferredModelId(size);
 }
 
-export function isDelegationBiasedParent(
-	ctx: Parameters<typeof isInteractiveOrchestratorParent>[0],
-	thinkingLevel: unknown,
-): boolean {
-	if (!isInteractiveOrchestratorParent(ctx)) return false;
-	const id = ctx.model?.id;
-	if (typeof id !== "string") return false;
-	if (id.includes("claude-fable-") || id.includes("claude-opus-")) return true;
-	return (
-		ctx.model?.provider === "openai-codex" &&
-		/^gpt-5\.6-sol(?::xhigh)?$/.test(id) &&
-		(thinkingLevel === "xhigh" || id.endsWith(":xhigh"))
-	);
-}
-
 export default function fableCommand(pi: ExtensionAPI): void {
 	wrapCommandRegistration(pi);
 	let foremanMode = false;
@@ -216,9 +192,7 @@ export default function fableCommand(pi: ExtensionAPI): void {
 				ctx.model?.provider === "openai-codex" &&
 				ctx.model.id === "gpt-5.6-sol")
 				? FOREMAN_INSTRUCTION
-				: isDelegationBiasedParent(ctx, pi.getThinkingLevel())
-					? `${DIRECT_FIRST_INSTRUCTION} ${DELEGATION_BIASED_INSTRUCTION}`
-					: DIRECT_FIRST_INSTRUCTION;
+				: DIRECT_FIRST_INSTRUCTION;
 		return {
 			systemPrompt: `${event.systemPrompt}\n\n${instruction}`,
 		};
