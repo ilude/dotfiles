@@ -51,7 +51,6 @@ from typing import Any, Callable, Optional
 from urllib.parse import urlparse
 
 import yaml
-from decision_audit import record_pretool_decision
 
 HOOK_NAME = "damage-control"
 
@@ -2066,7 +2065,6 @@ def _emit_ask(reason: str) -> None:
 
 
 def main() -> None:
-    started_at = time.perf_counter()
     if is_hook_disabled():
         sys.exit(0)
 
@@ -2100,15 +2098,6 @@ def main() -> None:
 
     spawn_log_rotation()
 
-    engine_action = "block" if is_blocked else "ask" if should_ask else "allow"
-    record_pretool_decision(
-        input_data,
-        engine_action=engine_action,
-        action_summary=command,
-        rule_id=pattern_matched or "none",
-        matched_pattern=pattern_matched or None,
-        started_at=started_at,
-    )
     if is_blocked:
         _emit_block(reason, command)
     if should_ask:

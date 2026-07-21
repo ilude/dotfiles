@@ -20,17 +20,15 @@ main without regressing any of that.
 - Drop the phase 5 parity apparatus entirely. Pi-native damage control on
   main stands ("pi's rules are the definitive ones"). The 65-divergence
   decision is moot.
-- Decision logging: port the Claude side only. Pi keeps main's eval
-  telemetry (`pi/lib/damage-control-eval.ts`). Two schemas coexist.
+- Supersession (user, 2026-07-21): make this port Pi-only. Remove all
+  branch-side Claude and shared decision-logging changes; keep Pi's eval
+  telemetry (`pi/lib/damage-control-eval.ts`) as the only damage-control
+  telemetry in scope.
 - Port phase 4 routing outcome sampling, rebased onto main's current
   `pi/lib/model-routing.ts`.
 - Port shape: merge into an integration branch and fix, not cherry-pick.
-- Phase 5 T3 closes as tool-delivered. The applied-proposal measurement
-  waits for about two weeks of real Claude decision rows after landing,
-  then a `/dc-audit` run and a user-selected proposal. No fixture
-  application.
-- Phase 5 T4 is declined for now, superseded by main's shadow judge.
-  Revisit only if decision-log data shows plan-run asks still dominate.
+- Phase 5 is not ported. Main's Pi-native damage-control eval telemetry
+  and shadow judge supersede it for this Pi-only integration.
 
 ## Decision protocol
 
@@ -43,19 +41,18 @@ Stop and ask the user before:
   the branch;
 - resolving a conflict in a way not covered by the policy table below.
 
-Do not relitigate the four decisions above. Do not run repeated broad
-review passes; validate with the specific checks named per task.
+Do not relitigate the decisions above. Do not run repeated broad review
+passes; validate with the specific checks named per task.
 
 ## Port inventory
 
 Port (branch capability code, with tests):
 
-- Phase 3, all of it: background completion notifications
+- Phase 3, Pi side: background completion notifications
   (`pi/extensions/tasks/execution.ts`), continuable subagents
-  (`pi/extensions/subagent/index.ts`), cross-client worktree occupancy
-  leases (`pi/extensions/agent-instances.ts`,
-  `scripts/agent_instance_lease.py`, `claude/hooks/agent_instances.py`,
-  `claude/claude-status`, `claude/settings.json` hook wiring),
+  (`pi/extensions/subagent/index.ts`), Pi worktree occupancy leases
+  (`pi/extensions/agent-instances.ts`,
+  `scripts/agent_instance_lease.py`),
   `isolation`/`memory` metadata removal (parser in
   `pi/extensions/subagent/agents.ts` plus 16 agent files - still present
   on main, still unenforced), opt-in DAG drain (`pi/lib/task-scheduler.ts`,
@@ -66,23 +63,13 @@ Port (branch capability code, with tests):
   `model-routing.ts`, `pi/scripts/improvement-report.py` plus
   `scripts/improvement-report` wrapper, `/improve` entry in
   `workflow-commands.ts`, `.specs/improvement-reports/2026-07-17.md`.
-- Phase 5, Claude side only: `shared/damage-control/decision.schema.json`,
-  `shared/damage-control/decision_log.py`, `shared/damage-control/audit.py`,
-  `claude/hooks/damage-control/decision_audit.py`, the branch's logging
-  hunks in `bash-tool-damage-control.py`, `edit-tool-damage-control.py`,
-  `write-tool-damage-control.py`, `tests/conftest.py`,
-  `tests/test_decision_audit.py`, and `claude/commands/dc-audit.md`.
-  Python tests: `test/test_damage_control_decision_log.py`,
-  `test/test_damage_control_audit.py`, `test/test_agent_instance_lease.py`,
-  `test/test_claude_agent_instances.py`, `test/test_plan_lint.py`,
-  `test/test_improvement_report.py`.
+  Python tests: `test/test_agent_instance_lease.py`,
+  `test/test_plan_lint.py`, and `test/test_improvement_report.py`.
 - `pi/extensions/workflow-friction-review.ts` branch changes (compressed
   child-session support from phase 3 T2). Keep them only where they do not
   reverse main's `0f315d91` (tracking requires explicit intent).
 - `.specs` bookkeeping from the branch: `rationalization-phase3` moved to
-  archive, phase 4/5 plan-state updates,
-  `.specs/rationalization-phase5/reports/2026-07-17.md`, friction-scan
-  script changes.
+  archive, phase 4/5 plan-state updates, and friction-scan script changes.
 
 Drop (superseded by main) - exact paths:
 
@@ -142,22 +129,17 @@ sentence:
 > combine them or add a dependency edge.
 
 Auto-merged files are not trusted blind. Audit list for T2:
-`pi/AGENTS.md`, `pi/README.md`, `CLAUDE.md`, `CHANGELOG.md`,
-`workflow-commands.ts`, `workflow-friction-review.ts`,
-`claude/settings.json`, `claude/claude-status`, `claude/commands/dc-audit.md`,
-`.gitignore`, the 16 agent files, and the three Claude damage-control
-hook files.
+`pi/AGENTS.md`, `pi/README.md`, `CHANGELOG.md`, `workflow-commands.ts`,
+`workflow-friction-review.ts`, `.gitignore`, and the 16 agent files.
 
 ## Boundaries
 
 - No regression of main's anti-over-engineering changes: no reintroduced
   mandates, turn limits, or verification ceremony. When branch prose and
   main prose disagree, main wins.
-- Damage-control semantics on main are untouched except the Claude-side
-  logging additions, which are fail-open and change no allow/ask/block
-  outcome.
-- Pi tests run under pnpm (`make check-pi-extensions`); Claude hook and
-  repo Python tests run under bare `python -m pytest`.
+- Pi damage-control files and semantics on main are untouched.
+- Pi tests run under pnpm (`make check-pi-extensions`); repository Python
+  tests run under bare `python -m pytest`.
 - Commit per validated slice; merge to main and push only when the user
   says so.
 
@@ -200,23 +182,19 @@ one specific check each:
    `pi/tests/subagent.test.ts` passes unmodified.
 
 Then the full suite: `make check-pi-extensions` and
-`python -m pytest test/ claude/hooks/damage-control/tests/`.
+`python -m pytest test/`.
 
 Done when: all named suites pass; any test that had to be modified is
 listed with the interface change that forced it.
 
-### T4: Claude-side decision logging validation (requires the user)
+### T4: Remove Claude scope
 
-The ask-approved and ask-denied rows require a human answering real
-permission prompts. Do not simulate them. Prepare the fixture commands,
-then ask the user to run one Claude session producing: an allow, an
-ask-approved, an ask-denied, and a block. Separately verifiable without
-the user: unwritable log directory does not block the tool call
-(fail-open), the secret-scrub fixture passes, and `/dc-audit` reads the
-log and renders its report.
+Revert every branch-side Claude file to `main`, delete shared
+Claude decision-logging and audit additions, remove their tests and
+CHANGELOG claims, and retain only Pi occupancy behavior.
 
-Done when: all four row types exist in the decision log from a real
-session and the three non-interactive checks pass.
+Done when: `git diff main -- CLAUDE.md claude shared/damage-control` is
+empty and no retained port claim requires Claude validation.
 
 ### T5: Live capability smoke
 
@@ -232,17 +210,13 @@ Done when: each observed in a real session, not just unit tests.
 
 ### T6: .specs bookkeeping
 
-Update the phase 4/5 plans to record the 2026-07-21 decisions verbatim
-from this plan's Decisions section: phase 5 T2 dropped as superseded by
-Pi-native damage control; T1 narrowed to Claude-side; T3 closed as
-tool-delivered with the applied-proposal measurement deferred to a
-real-data `/dc-audit` run about two weeks after landing; T4 declined for
-now as superseded by the shadow judge, with the recorded revisit
-condition. With no open gates, archive `.specs/rationalization-phase5/`.
+Update the phase 4/5 plans to record the 2026-07-21 Pi-only supersession.
+Archive `.specs/rationalization-phase5/` as not ported because main's
+Pi-native damage-control eval telemetry and shadow judge supersede it.
 Phase 4 T5 still awaits an improvement-report selection, noting the
 07-17 report predates the port and a fresh `/improve` run is the natural
-next step; leave phase 4 active with updated state. Run
-`pi/scripts/plan-lint` against every touched plan.
+next step; leave phase 4 active with updated state. Run `pi/scripts/plan-lint`
+against every touched plan.
 
 Done when: plan states match repository reality and plan-lint passes on
 each.
@@ -280,14 +254,14 @@ Statuses: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - [x] T1: integration branch and merge - done: dfe8291
 - [x] T2: audit auto-merges - done: b7c863c
 - [x] T3: rebase-sensitive code checks - done: 7482eb3 (subagent and workflow tests updated for removed metadata and exact conflict-policy prose)
-- [ ] T4: Claude-side decision logging validation - blocked: non-interactive checks passed in the 874-test Python suite; waiting for one real Claude session with allow, ask-approved, ask-denied-or-abandoned, and block rows
+- [ ] T4: remove Claude scope - in-progress: validate the Pi-only revert
 - [x] T5: live capability smoke - done: 9fb1119 (two no-await notifications, continuation recall, DAG drain, and same-worktree-only lease warning observed)
 - [ ] T6: .specs bookkeeping - pending
 - [ ] T7: land - pending
 
 ### State
 
-- **Classification:** blocked
-- **Current blocker:** user-run Claude permission fixture for T4
-- **Next:** verify the four Claude decision rows
+- **Classification:** in progress
+- **Current blocker:** none
+- **Next:** validate and commit T4, then complete T6 bookkeeping
 - **Resume:** `/do-it .specs/rationalization-port/plan.md`

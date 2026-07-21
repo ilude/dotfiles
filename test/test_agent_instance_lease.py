@@ -37,11 +37,11 @@ def test_register_is_atomic_idempotent_and_rescans_concurrent_clients(tmp_path):
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(
-            pool.map(lambda item: register(*item), [("pi", "pi-1"), ("claude", "claude-1")])
+            pool.map(lambda item: register(*item), [("pi", "pi-1"), ("pi", "pi-2")])
         )
 
     final = lease.scan_leases(root, now=now)
-    assert {record["client"] for record in final["active"]} == {"pi", "claude"}
+    assert {record["sessionId"] for record in final["active"]} == {"pi-1", "pi-2"}
     assert any(len(result["active"]) == 2 for result in results)
     assert all(result["lease"]["branch"] == "feature/leases" for result in results)
     assert len(list((root / ".agent-instances").glob("*.json"))) == 2
@@ -58,7 +58,7 @@ def test_separate_worktrees_never_share_occupants(tmp_path):
     now = datetime(2026, 7, 17, tzinfo=timezone.utc)
 
     lease.register_lease(first, "pi", "first-session", os.getpid(), now=now)
-    lease.register_lease(second, "claude", "second-session", os.getpid(), now=now)
+    lease.register_lease(second, "pi", "second-session", os.getpid(), now=now)
 
     assert [item["sessionId"] for item in lease.scan_leases(first, now=now)["active"]] == [
         "first-session"

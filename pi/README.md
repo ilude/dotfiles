@@ -480,8 +480,8 @@ Behavior:
 Git-ignored `.agent-instances/` registry. It refreshes the lease once per minute,
 releases it on clean shutdown, and excludes nested subagent processes.
 
-The status line shows the active instance count. When another registered Pi or
-Claude session occupies the same worktree, Pi also appends a warning to session context
+The status line shows the active instance count. When another registered Pi
+session occupies the same worktree, Pi also appends a warning to session context
 that further modifying work should move to a separate Git worktree. Lease
 failures do not block the session; expired crashed-process leases are recovered
 by the shared helper in `scripts/agent_instance_lease.py`.

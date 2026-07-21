@@ -2,114 +2,6 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
-## 2026-07-17: Add shared damage-control audit entry points
-
-**Why:** The deterministic report needs a thin Claude command and a persisted
-result rather than a separate advisory workflow.
-
-**Changed:**
-- Claude `/dc-audit` now invokes the shared proposer and forbids policy mutation;
-  the prior agent-driven discovery/apply workflow is no longer the command.
-- The shared program now defaults its log, policy, 14-day window, and required
-  phase report output path.
-- Added `.specs/rationalization-phase5/reports/2026-07-17.md` from the exact
-  synthetic workflow.
-
-**Validation:** Three Python tests passed. The fixture report contains all three
-proposal classes and scrubbed denial evidence; Ruff and plan lint passed.
-
-**Files:** `shared/damage-control/audit.py`, `claude/commands/dc-audit.md`,
-`test/test_damage_control_audit.py`,
-`.specs/rationalization-phase5/reports/2026-07-17.md`,
-`.specs/rationalization-phase5/plan.md`, `CHANGELOG.md`
-
----
-
-## 2026-07-17: Add the deterministic damage-control audit core
-
-**Why:** Shared decision logs need a reproducible report that separates prompt
-fatigue from denial evidence and dormant rules without applying policy changes.
-
-**Changed:**
-- Added a 14-day JSONL audit that reports per-rule fires, approval rate, denial
-  evidence, and median approval latency.
-- Added deterministic narrow/allowlist, strengthen/add, and retire proposal
-  classes with named thresholds and stable ranking.
-- Added policy-inventory support, bounded secret-scrubbed denial samples, and
-  explicit failure on malformed decision rows.
-
-**Validation:** Two focused CLI tests produced all three proposal classes from
-synthetic data, verified secret scrubbing/proposer-only wording, and proved
-malformed rows fail with file/line diagnostics. Ruff passed.
-
-**Files:** `shared/damage-control/audit.py`,
-`test/test_damage_control_audit.py`, `.specs/rationalization-phase5/plan.md`,
-`CHANGELOG.md`
-
----
-
-## 2026-07-17: Validate shared decision logging end to end
-
-**Why:** Unit coverage does not prove that confirmation responses, hard blocks,
-and fail-open behavior survive Claude's real process boundary.
-
-**Validated:**
-- Bare-Python Claude hook invocations recorded all four knowable outcomes and
-  left no pending asks.
-- Claude preserved allow, ask, and block exit/output behavior when its log
-  destination was a regular file.
-
-**Files:** `.specs/rationalization-phase5/plan.md`, `CHANGELOG.md`
-
----
-
-## 2026-07-17: Correlate Claude decisions in the shared audit log
-
-**Why:** Claude PreToolUse knows the enforcement action but does not receive a
-manual confirmation result, so asks need conservative cross-hook correlation.
-
-**Changed:**
-- Claude Bash, Edit, and Write PreToolUse hooks now record final allows and hard
-  blocks or stage secret-scrubbed asks by session and tool-use ID.
-- PostToolUse and PostToolUseFailure settle staged asks as approved; SessionEnd
-  records unmatched asks as `denied_or_abandoned` rather than inferring denial.
-- Added exact or estimated latency labels, fail-open pending storage, and hook
-  registration for all correlation events.
-
-**Validation:** All 763 Claude damage-control tests passed with one skipped;
-Ruff passed. Direct bare-`python` hook invocations produced all four knowable
-Claude outcomes in one shared monthly log, scrubbed a synthetic token, and left
-no pending rows.
-
-**Files:** `claude/hooks/damage-control/{decision_audit.py,bash-tool-damage-control.py,edit-tool-damage-control.py,write-tool-damage-control.py}`,
-`claude/hooks/damage-control/tests/{conftest.py,test_decision_audit.py}`,
-`claude/settings.json`, `.specs/rationalization-phase5/plan.md`, `CHANGELOG.md`
-
----
-
-## 2026-07-17: Add the shared damage-control decision schema
-
-**Why:** Claude needs one bounded, secret-scrubbed audit row before its
-enforcement runtime can feed the tuning loop.
-
-**Changed:**
-- Added a JSON schema for client, correlation, rule, action, user-decision, and
-  latency fields.
-- Added a fail-open Python writer targeting
-  `~/.local/share/damage-control/decisions-YYYY-MM.jsonl` with a test override.
-- Added secret scrubbing, field bounds, monthly files, and 30-day gzip
-  compression without loss of the compressed decision data.
-
-**Validation:** Three Python tests verified required schema fields, monthly
-paths, redaction and bounds, invalid/unwritable fail-open behavior, and gzip
-content preservation. Ruff passed.
-
-**Files:** `shared/damage-control/{decision.schema.json,decision_log.py}`,
-`test/test_damage_control_decision_log.py`,
-`.specs/rationalization-phase5/plan.md`, `CHANGELOG.md`
-
----
-
 ## 2026-07-17: Add the manual improvement-report entry point
 
 **Why:** The deterministic report existed as an internal script but lacked the
@@ -358,54 +250,6 @@ extension typecheck and focused Biome checks passed.
 
 ---
 
-## 2026-07-17: Validate cross-client worktree occupancy
-
-**Why:** Live Pi/Claude validation exposed a Windows stale-process edge case and
-was required to prove warnings and cleanup across the actual client entrypoints.
-
-**Changed:**
-- Treated Windows `os.kill(pid, 0)` invalid-parameter results as an absent
-  process identity during stale lease recovery.
-- Added a regression fixture for invalid process identifiers.
-
-**Validation:** A live Claude hook and Pi RPC session in one scratch worktree
-both reported `instances 2 !` and received the separate-worktree warning on the
-next model turn. Equivalent sessions in separate worktrees remained at
-`instances 1` without warnings. Clean shutdown removed both leases, simulated
-crash expiry removed the dead lease, and real lease activity left Git status
-unchanged. Ten focused helper and cross-client tests passed with Ruff checks.
-
-**Files:** `scripts/agent_instance_lease.py`,
-`test/test_agent_instance_lease.py`,
-`.specs/rationalization-phase3/plan.md`, `CHANGELOG.md`
-
----
-
-## 2026-07-17: Wire Claude worktree occupancy
-
-**Why:** Cross-client concurrency remained silent until Claude Code joined the
-same worktree lease registry and exposed occupancy in its context and status
-line.
-
-**Changed:**
-- Registered and refreshed Claude leases through `SessionStart` and
-  `UserPromptSubmit`, with identity-checked release through `SessionEnd`.
-- Added same-worktree context warnings and instance counts to both Python and
-  compiled-binary status-line paths.
-- Reused the shared helper for atomic registration, stale recovery, and
-  separate-worktree boundaries; hook and status failures remain fail-open.
-
-**Validation:** Focused fixtures covered Pi/Claude same-worktree detection,
-separate-worktree non-warning, context injection, prompt refresh, status display,
-clean release, and settings lifecycle wiring. Eight shared-helper and Claude
-fixtures passed with Ruff lint and format checks; settings JSON parsed cleanly.
-
-**Files:** `claude/{hooks/agent_instances.py,claude-status,settings.json}`,
-`test/test_claude_agent_instances.py`, `CLAUDE.md`,
-`.specs/rationalization-phase3/plan.md`, `CHANGELOG.md`
-
----
-
 ## 2026-07-17: Wire Pi worktree occupancy
 
 **Why:** The shared lease registry needed a Pi lifecycle owner and visible
@@ -431,9 +275,8 @@ checks passed.
 
 ## 2026-07-17: Add the shared worktree lease registry
 
-**Why:** Pi and Claude need one deterministic coordination boundary before
-either client can warn about concurrent modifying sessions in the same Git
-worktree.
+**Why:** Concurrent Pi sessions need one deterministic coordination boundary
+before either can warn about modifying the same Git worktree.
 
 **Changed:**
 - Added a cross-platform lease helper with atomic registration, heartbeat,
@@ -444,7 +287,7 @@ worktree.
   its recorded process is absent or its start identity no longer matches;
   malformed records are reported and retained.
 
-**Validation:** Five focused fixtures covered simultaneous Pi/Claude
+**Validation:** Five focused fixtures covered simultaneous Pi session
 registration, idempotency, separate-worktree isolation, live-process retention,
 crash expiry, malformed records, heartbeat, release, and CLI status. Ruff lint
 and format checks passed, and Git confirmed lease files are ignored.

@@ -44,7 +44,7 @@ describe("Pi agent instance occupancy", () => {
 	it("registers, warns in context and status, heartbeats, then releases", async () => {
 		const { pi, ctx } = setup([
 			{ client: "pi", sessionId: "pi-session", pid: process.pid },
-			{ client: "claude", sessionId: "claude-session", pid: 200 },
+			{ client: "pi", sessionId: "other-pi-session", pid: 200 },
 		]);
 		const start = pi._getHook("session_start")[0].handler;
 		const shutdown = pi._getHook("session_shutdown")[0].handler;

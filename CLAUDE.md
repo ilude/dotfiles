@@ -111,19 +111,6 @@ Content items can have annotations linked to a video:
 
 All API endpoints use RFC 9421 HTTP signatures with ed25519 keys from `~/.ssh/id_ed25519`. Client signing is handled by `~/.claude/commands/yt/signing.py`.
 
-## Worktree occupancy
-
-Claude Code registers each session in the worktree-local, Git-ignored
-`.agent-instances/` registry through `SessionStart`, `UserPromptSubmit`, and
-`SessionEnd` hooks. The status line refreshes the lease and shows the active
-instance count. When another registered Pi or Claude session occupies the same
-worktree, Claude receives a context warning that further modifying work should
-move to a separate Git worktree.
-
-The shared lifecycle helper is `scripts/agent_instance_lease.py`. Hook failures
-are fail-open, while expired crashed-process leases are recovered only after the
-recorded process identity is absent or no longer matches.
-
 ## Testing
 
 Use the repo-wide test and validation commands from `AGENTS.md`.
