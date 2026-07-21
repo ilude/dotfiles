@@ -445,13 +445,6 @@ def render_report(
         "- Noise candidate: zero-use commands are proposals only; absence of "
         "telemetry is not proof of no value."
     )
-    missing_decisions = any("decision log" in note.lower() for note in coverage)
-    lines.append(
-        "- No damage-control tuning proposal: decision-log data is not available yet."
-        if missing_decisions
-        else "- Damage-control decision data is available for later rule-level analysis."
-    )
-
     lines.extend(["", "## `.specs/` hygiene", ""])
     if hygiene:
         lines.extend(
@@ -479,7 +472,6 @@ def main() -> int:
     parser.add_argument("--metrics-dir", type=Path)
     parser.add_argument("--sessions-dir", type=Path)
     parser.add_argument("--friction-dir", type=Path)
-    parser.add_argument("--decision-dir", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--date", type=dt.date.fromisoformat, default=dt.date.today())
     args = parser.parse_args()
@@ -489,7 +481,6 @@ def main() -> int:
     metrics_dir = args.metrics_dir or agent_dir / "logs"
     sessions_dir = args.sessions_dir or agent_dir / "sessions"
     friction_dir = args.friction_dir or agent_dir / "workflow-friction"
-    decision_dir = args.decision_dir or Path.home() / ".local" / "share" / "damage-control"
     report_dir = repo / ".specs" / "improvement-reports"
     output = args.output or report_dir / f"{args.date.isoformat()}.md"
     cutoff = last_report_cutoff(report_dir, args.date)
@@ -516,9 +507,6 @@ def main() -> int:
             f"Workflow-friction metadata present at `{friction_dir}`; session "
             "signal scan supplies pattern citations"
         )
-    decision_paths = list(decision_dir.glob("decisions-*.jsonl*")) if decision_dir.exists() else []
-    if not decision_paths:
-        coverage.append(f"Missing phase 5 damage-control decision log at `{decision_dir}`")
     if not routing:
         coverage.append("Routing experiment has no sampled worker cells yet")
     if not skill_counts:

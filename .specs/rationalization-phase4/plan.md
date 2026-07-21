@@ -44,8 +44,8 @@ user says so.
   turns, and exit codes per worker run - the data exists, unaggregated.
 - Today's improvement cycle was manual: user frustration -> transcript
   archaeology -> plans. The pieces (friction-scan, usage data, telemetry,
-  decision log once phase 5 T1 lands) exist; nothing
-  composes them into a reviewable proposal.
+  Pi-native telemetry) exist; nothing composes them into a reviewable
+  proposal.
 - User decisions 2026-07-16: automatic collection and proposal generation,
   human-gated application; session/telemetry data is never deleted
   (compress on age); speed and cost are first-class outcome dimensions.
@@ -60,8 +60,6 @@ user says so.
   the run events emitted by `pi/extensions/subagent/index.ts` and
   `pi/extensions/tasks/execution.ts` - the routing-outcome data source.
 - `pi/lib/model-routing.ts` - the single routing policy point (phase 1 T5).
-- `.specs/rationalization-phase5/plan.md` T1 - the decision log that
-  becomes a report source when it lands.
 - `.specs/pi-workflow-friction-review/design.md` - the reference design
   behind the friction extension this plan's report consumes.
 - `.specs/archive/pi-workflow-audit/report.md` - the 2026-05-26 scientific audit
@@ -151,8 +149,7 @@ sampled; a killed sampling flag (rate 0) restores byte-identical routing.
 One program that reads whatever sources exist and degrades gracefully when
 one is absent: friction-scan output over new sessions since the last
 report, skill/command/agent usage counts, routing experiment cells (T2),
-plan-lint results across active plans, and the phase 5 damage-control decision log
-when available. Output: one markdown report at
+plan-lint results across active plans. Output: one markdown report at
 `.specs/improvement-reports/<date>.md` with sections in this order:
 proposed deletions/consolidations, routing table (per cell: n, success
 rate, p50/p90 duration, tokens - no conclusion below n=30), friction
@@ -207,8 +204,6 @@ T1 -> T3 (report includes lint results)
 - Applying any proposed change (each is its own user-approved slice).
 - Learned routing, RL, or any adaptive policy - the sampling is a fixed
   A/B, the analysis is arithmetic.
-- Damage-control decision logging itself (owned by
-  `.specs/rationalization-phase5/` T1; T3 merely reads its output).
 - Dashboards or web UI.
 - OpenCode/Copilot surfaces (deprecated tooling).
 
@@ -244,7 +239,7 @@ from here.
 
 - **Classification:** blocked; T1-T4 complete
 - **Current blocker:** T5 requires the user to select at least one item from
-  `.specs/improvement-reports/2026-07-17.md`; no selection is inferred
-- **Next:** after the user selects an item, execute it as a separate approved
-  slice, record cycle time, and capture routing baseline plus n=30 projection
+  a fresh Pi-only improvement report; no selection is inferred
+- **Next:** run `/improve report`, then after the user selects an item, execute
+  it as a separate approved slice and capture the routing baseline
 - **Resume:** `/do-it .specs/rationalization-phase4/plan.md`

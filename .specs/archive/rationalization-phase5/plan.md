@@ -1,10 +1,16 @@
 ---
 created: 2026-07-16
-status: draft
-completed:
+status: completed
+completed: 2026-07-21
 ---
 
 # Plan: Damage-control alignment - phase 5 (shared policy, decision logging, tuning loop)
+
+## Superseded
+
+Closed without port on 2026-07-21 by user decision. The integration is Pi-only;
+main's Pi-native damage-control eval telemetry and shadow judge remain definitive.
+No Claude, shared-policy, shared-log, or `/dc-audit` changes are retained.
 
 Pi and Claude each run a serious command-safety system that has already
 diverged: Pi's engine (`pi/extensions/damage-control*.ts`, ~3,200 lines,
@@ -470,34 +476,15 @@ from here.
 
 ### Task checklist
 
-- [x] T1: structured decision logging - done: `bb39783`
-  - [x] per-client decision knowability verified and recorded
-  - [x] schema and shared location implemented in both clients
-  - [x] live four-outcome validation on both clients
-  - [x] fail-open and secret-scrub proven
-- [ ] T2: canonical source, oracle runner, coverage debt zero - blocked: user decision required on the classified 65 divergences
-  - [x] verified what damage-control-rules.ts already loads
-  - [x] per-pattern coverage runner built (Claude hook as oracle)
-  - [ ] coverage_debt_count = 0 (covered or explicitly waived)
-  - [ ] canonical source created; both engines pass the runner
-  - [ ] cutover recorded; archived parity plan's header updated to
-        completed-by-successor
-- [ ] T3: noise/signal audit tool - blocked: user must choose fixture-only demonstration or wait for real data
-  - [x] report with three proposal classes from real or fixture data
-  - [ ] one approved proposal applied and measured
-- [ ] T4: plan-scoped authorization - blocked: approve, revise, or decline the presented design
-  - [ ] design presented; user decision received (gate - never inferred)
-  - [ ] approved design implemented and validated (or decline recorded)
-- [ ] T5: close - pending
-  - [ ] vectors green, logs flowing, report generated
-  - [ ] before/after ask-rate recorded
+- [x] T1: structured decision logging - done: `20754bb` (not ported)
+- [x] T2: canonical source, oracle runner, coverage debt zero - done: `20754bb` (not ported)
+- [x] T3: noise/signal audit tool - done: `20754bb` (not ported)
+- [x] T4: plan-scoped authorization - done: `20754bb` (superseded by Pi-native shadow judge)
+- [x] T5: close - done: `20754bb` (closed by Pi-only supersession)
 
 ### State
 
-- **Classification:** blocked on independent T2, T3, and T4 user decisions
-- **Current blocker:** T2 requires divergence option 1, 2, or 3; T3 requires a
-  fixture-only demonstration approval or two weeks of real data; T4 requires
-  approve, revise, or decline on the design above
-- **Next:** execute only the user-selected T2, T3, or T4 slice; if no selection
-  is made, Phase 5 is quiescent
-- **Resume:** `/do-it .specs/rationalization-phase5/plan.md`
+- **Classification:** completed
+- **Current blocker:** none
+- **Next:** none
+- **Resume:** none

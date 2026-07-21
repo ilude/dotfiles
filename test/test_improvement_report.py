@@ -86,7 +86,7 @@ def test_render_is_deletions_first_and_refuses_small_cell_conclusions(report: Mo
         agent_counts=collections.Counter({"validator": 3}),
         lint=[(".specs/plan/plan.md", True, [])],
         hygiene=[(".specs/old", report.dt.date(2026, 4, 1), 107)],
-        coverage=["Missing phase 5 damage-control decision log"],
+        coverage=["Missing session corpus"],
         audit_present=True,
     )
 
@@ -143,7 +143,7 @@ def test_session_scan_counts_slash_echo_custom_messages(
 
 def test_repository_wrapper_generates_report_end_to_end(tmp_path: Path) -> None:
     (tmp_path / ".specs").mkdir()
-    for name in ["metrics", "sessions", "friction", "decisions"]:
+    for name in ["metrics", "sessions", "friction"]:
         (tmp_path / name).mkdir()
     output = tmp_path / "report.md"
 
@@ -159,8 +159,6 @@ def test_repository_wrapper_generates_report_end_to_end(tmp_path: Path) -> None:
             str(tmp_path / "sessions"),
             "--friction-dir",
             str(tmp_path / "friction"),
-            "--decision-dir",
-            str(tmp_path / "decisions"),
             "--output",
             str(output),
             "--date",

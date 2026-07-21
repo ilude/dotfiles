@@ -254,14 +254,14 @@ Statuses: `pending` | `in-progress: <next step>` | `blocked: <reason>` |
 - [x] T1: integration branch and merge - done: dfe8291
 - [x] T2: audit auto-merges - done: b7c863c
 - [x] T3: rebase-sensitive code checks - done: 7482eb3 (subagent and workflow tests updated for removed metadata and exact conflict-policy prose)
-- [ ] T4: remove Claude scope - in-progress: validate the Pi-only revert
+- [x] T4: remove Claude scope - done: 20754bb
 - [x] T5: live capability smoke - done: 9fb1119 (two no-await notifications, continuation recall, DAG drain, and same-worktree-only lease warning observed)
-- [ ] T6: .specs bookkeeping - pending
+- [ ] T6: .specs bookkeeping - in-progress: validate the updated and archived plans
 - [ ] T7: land - pending
 
 ### State
 
 - **Classification:** in progress
 - **Current blocker:** none
-- **Next:** validate and commit T4, then complete T6 bookkeeping
+- **Next:** validate and commit T6 bookkeeping
 - **Resume:** `/do-it .specs/rationalization-port/plan.md`
