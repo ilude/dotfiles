@@ -13,19 +13,20 @@ Use `playwright-e2e` for browser end-to-end behavior and suite triage. Use `type
 
 ## Triage Rules
 
+For requested multi-spec or suite triage:
+
 - Work one spec file at a time so progress is resumable.
-- Record each file as pass, fail, or skip with the reason and the exact command used.
+- Record each in-scope file as pass, fail, or skip with the reason and exact command.
 - Respect dependency gates. Do not run suites that require unavailable services, credentials, seeded data, or prior jobs unless those dependencies are ready.
 - Preserve traces, screenshots, videos, or logs needed to explain failures.
-- Clean up Docker-backed test stacks, volumes, and orphan containers according to the repo workflow after triage.
+- Run repository-owned teardown after triage. Do not remove volumes unless the workflow requires it.
 
 ## Practical Steps
 
-1. Identify the Playwright config, projects, browser targets, base URL, and required services.
+1. Identify the Playwright config, affected project, browser target, base URL, and required services.
 2. Run the smallest affected spec first.
-3. Fix or document the root cause before moving to the next spec file.
-4. After targeted specs pass or are explicitly skipped with reasons, run the full relevant Playwright suite.
-5. Record final pass, fail, or skip status for every in-scope file.
+3. Fix or document the root cause before moving to another spec.
+4. Run a broader suite only when shared impact, repository policy, or the requested triage scope requires it.
 
 ## Quick Commands
 
@@ -41,5 +42,5 @@ Use `playwright-e2e` for browser end-to-end behavior and suite triage. Use `type
 
 - Jumping between many failing files without recording status.
 - Calling a suite green when dependency-gated tests were skipped without reasons.
-- Leaving Docker stacks running after failed e2e attempts.
+- Leaving test infrastructure running when the requested workflow owns teardown.
 - Treating screenshots alone as proof without checking the assertion, trace, or browser console context.

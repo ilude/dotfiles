@@ -14,6 +14,7 @@ description: "Structured investigation workflow. Use for analyze, validate, debu
 | Debugging, validation, root-cause analysis, red-team critique | `analysis-workflow` |
 | Reviewing a diff/branch/PR/commit for findings | `code-review` |
 | Logs, metrics, traces, alerts, SLOs | `logging-observability` |
+| Failed live mutation | Follow the active repository incident policy |
 
 ## Core Principle
 
@@ -27,18 +28,6 @@ Structured evidence beats analysis theater. Form hypotheses, test them, and sepa
 4. Run the cheapest decisive check first.
 5. Distinguish confirmed facts, likely causes, and unknowns.
 6. Recommend the smallest next action backed by evidence.
-
-## Incident Transition
-
-The first failed live mutation changes the workflow:
-
-1. Stop broad rollout, parallel recovery, and unrelated improvement work.
-2. Preserve healthy systems and capture the failing command, output, and current state.
-3. Select one affected service or boundary and diagnose it directly.
-4. Apply the smallest reversible recovery step and verify the original endpoint plus state.
-5. Resume normal rollout only after the affected service is healthy; otherwise remain in incident mode and record the next evidence-based action.
-
-Do not treat repeated broad retries as investigation. A retry must test a specific hypothesis or follow a verified repair.
 
 ## Debugging Checklist
 
@@ -54,7 +43,7 @@ Do not treat repeated broad retries as investigation. A retry must test a specif
 - Treating correlation as cause.
 - Jumping to broad refactors before isolating the fault.
 - Reporting risks without probability, impact, or mitigation.
-- Continuing roadmap work or batch retries after a live mutation fails.
+- Retrying without evidence that distinguishes a new hypothesis.
 
 ## Quick Reference
 

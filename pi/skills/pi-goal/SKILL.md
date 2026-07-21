@@ -20,10 +20,9 @@ A goal prompt should state the outcome and constraints clearly enough for autono
 1. Prefer inline `/goal ...` unless the user asks for a file or the prompt needs durable detail.
 2. State the outcome, relevant scope, and constraints.
 3. Include tasks only when order or coverage would otherwise be ambiguous.
-4. Encourage subagents for independent streams, capability boundaries, output-heavy investigation, or useful independent verification.
-5. Name validation only when it directly tests the requested outcome; do not prescribe generic checks.
-6. Add waves, backup, rollback, approval, or incident behavior only for actual destructive, stateful, deployment, external-mutation, secret, paid-resource, hardware, or irreversible work.
-7. End with `goal_complete` after the requested outcome and relevant checks are complete.
+4. Name validation only when it directly tests the requested outcome; do not prescribe generic checks.
+5. Add waves, backup, rollback, approval, or incident behavior only for actual destructive, stateful, deployment, external-mutation, secret, paid-resource, hardware, or irreversible work.
+6. End with `goal_complete` after the requested outcome and relevant checks are complete.
 
 ## Template
 

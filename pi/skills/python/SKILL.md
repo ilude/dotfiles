@@ -18,19 +18,14 @@ Compact index for Python work. Load linked files only for framework-specific det
 - This repo uses `uv`, `pytest`, and `ruff`; Python floor is 3.9 from `pyproject.toml`.
 - Prefer explicit exceptions when required data/dependencies are missing; do not add silent fallback logic.
 - Keep scripts idempotent and LF-only.
-- Match local type, error-handling, logging, and test style; avoid drive-by refactors.
 - Do not introduce broad try/except wrappers or guard flags unless requested.
 - Before resolving new dependencies, apply the uv supply-chain hardening settings from `reference.md`; prefer locked installs and avoid ad-hoc `uv pip install`.
-- Treat `.vscode/tasks.json`, `.claude/settings.json`, `.gemini/settings.json`,
-  `.cursor/rules/**`, `.github/workflows/**`, `pyproject.toml` build hooks, `tox.ini`,
-  setup scripts, and Make/Just recipes as executable or agent-instruction attack surface.
+- In Bash commands, use `python`, not `python3`. Run script paths directly; use `python -m` only for modules.
 
 ## Practical steps
 
-1. Identify the Python project root and read `pyproject.toml`/existing tests.
+1. Identify the Python project root and read `pyproject.toml` and relevant tests.
 2. Use `uv` for dependency and command execution when the project supports it.
-3. Change the smallest code path needed; update tests when they are needed to protect the changed contract.
-4. Run focused validation appropriate to the changed contract and touched package.
 
 ## Quick validation
 

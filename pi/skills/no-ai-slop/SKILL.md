@@ -1,6 +1,6 @@
 ---
 name: no-ai-slop
-description: "Prose cleanup for generic machine-style writing. Use when writing, editing, or reviewing prose for filler, hype, vague claims, repetitive structure, detection tells, or uncited specifics. Not for Markdown/doc architecture or research archiving."
+description: "Prose cleanup for generic machine-style writing. Use when writing, editing, or reviewing prose for filler, hype, vague claims, repetitive structure, detection tells, or uncited specifics. Not for Markdown architecture or archival work."
 ---
 
 # No-Slop Writing
@@ -9,7 +9,7 @@ description: "Prose cleanup for generic machine-style writing. Use when writing,
 
 ## Boundary
 
-Use this skill for wording quality. Use `docs` for document structure and `research-archive` for saving sourced findings. `pi/AGENTS.md` Development Philosophy owns implementation strategy.
+Use this skill for wording quality and `docs` for document structure. Archival work is outside this skill. `pi/AGENTS.md` owns implementation strategy.
 
 ## Core Principle
 

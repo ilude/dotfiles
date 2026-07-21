@@ -1,12 +1,12 @@
 ---
 name: ux-design-workflow
-description: "UX/UI design workflow from idea to code. Covers accessibility (WCAG), design tokens, aesthetics, pipelines. Triggers: design systems, UI components, build a UI, design this, user interface patterns, accessibility, WCAG."
+description: "Web and graphical UX/UI design workflow covering accessibility, design tokens, aesthetics, and pipelines. Not for terminal interfaces; use tui-ux."
 location: user
 ---
 
 # UX Design Workflow
 
-Guidance for designing and building user interfaces when the requested contract needs UX design work.
+Guidance for designing and building web or graphical interfaces when the requested contract needs UX design work. Use `tui-ux` for terminal interfaces.
 
 ## Sub-Files (Load When Needed)
 
