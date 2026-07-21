@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import yaml
+from decision_audit import record_pretool_decision
 
 # ============================================================================
 # AUDIT LOGGING
@@ -287,6 +288,8 @@ def _check_content_injection(
     content: str,
     config: dict[str, Any],
     context: Optional[str],
+    input_data: dict[str, Any],
+    started_at: float,
 ) -> None:
     """If content matches an injection pattern in a scan path, emit ask and exit."""
     if not content or not _path_matches_content_scan(file_path, config):
@@ -295,6 +298,13 @@ def _check_content_injection(
     if reason:
         log_decision("Write", file_path, "ask", reason, context)
         spawn_log_rotation()
+        record_pretool_decision(
+            input_data,
+            engine_action="ask",
+            action_summary=file_path,
+            rule_id="content_injection",
+            started_at=started_at,
+        )
         print(json.dumps({"permissionDecision": "ask", "reason": reason}))
         sys.exit(0)
 
@@ -336,6 +346,7 @@ def check_path(
 
 
 def main() -> None:
+    started_at = time.perf_counter()
     config = load_config()
 
     try:
@@ -363,12 +374,26 @@ def main() -> None:
     if confirm_reason:
         log_decision("Write", file_path, "ask", confirm_reason, context)
         spawn_log_rotation()
+        record_pretool_decision(
+            input_data,
+            engine_action="ask",
+            action_summary=file_path,
+            rule_id=confirm_reason,
+            started_at=started_at,
+        )
         print(json.dumps({"permissionDecision": "ask", "reason": confirm_reason}))
         sys.exit(0)
 
     # Content injection scanning for sensitive paths (T6)
     # Runs after writeConfirmPaths check (T5) to avoid double-prompting.
-    _check_content_injection(file_path, tool_input.get("content", ""), config, context)
+    _check_content_injection(
+        file_path,
+        tool_input.get("content", ""),
+        config,
+        context,
+        input_data,
+        started_at,
+    )
 
     # Check if file is blocked with context awareness
     blocked, reason = check_path(file_path, config, context=context)
@@ -381,6 +406,13 @@ def main() -> None:
 
     # Spawn log rotation (fire-and-forget)
     spawn_log_rotation()
+    record_pretool_decision(
+        input_data,
+        engine_action="block" if blocked else "allow",
+        action_summary=file_path,
+        rule_id=reason or "none",
+        started_at=started_at,
+    )
 
     if blocked:
         print(f"SECURITY: Blocked write to {reason}: {file_path}", file=sys.stderr)

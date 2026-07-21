@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	assignRoutingOutcomeExperiment,
 	getCurrentModelHint,
 	isConfiguredPremiumCodex,
 	isPremiumCodexModel,
@@ -7,7 +8,80 @@ import {
 	resolveDynamicModel,
 	resolveExplicitModelPolicy,
 	resolveModelTierLabel,
+	resolveSampledDynamicModel,
+	ROUTING_OUTCOME_EXPERIMENT_ID,
 } from "../lib/model-routing.ts";
+
+describe("routing outcome sampling", () => {
+	const models = [
+		{ provider: "openai-codex", id: "gpt-5.6-luna" },
+		{ provider: "openai-codex", id: "gpt-5.6-terra" },
+		{ provider: "openai-codex", id: "gpt-5.6-sol" },
+	];
+
+	it("uses deterministic ten-percent assignment across configured arms", () => {
+		const assignments = Array.from({ length: 10_000 }, (_, index) =>
+			assignRoutingOutcomeExperiment(`run-${index}`, "subagent-single", 0.1),
+		).filter((assignment) => assignment !== undefined);
+
+		expect(assignments.length).toBeGreaterThan(900);
+		expect(assignments.length).toBeLessThan(1_100);
+		expect(new Set(assignments.map((assignment) => assignment.id))).toEqual(
+			new Set(["terra-baseline", "luna-high", "sol-low"]),
+		);
+		expect(
+			assignments.every(
+				(assignment) =>
+					assignment.experimentId === ROUTING_OUTCOME_EXPERIMENT_ID,
+			),
+		).toBe(true);
+	});
+
+	it("returns the byte-identical policy model with sampling disabled", () => {
+		const expected = resolveDynamicModel(
+			models,
+			models[2],
+			"medium",
+			"same-provider",
+		);
+		const result = resolveSampledDynamicModel(
+			models,
+			models[2],
+			"medium",
+			"same-provider",
+			"disabled-run",
+			"subagent-single",
+			0,
+		);
+
+		expect(result.model).toBe(expected);
+		expect(result.experiment).toBeUndefined();
+	});
+
+	it("does not tag a sample when its configured model is unavailable", () => {
+		const sampleKey = Array.from(
+			{ length: 100 },
+			(_, index) => `forced-${index}`,
+		).find(
+			(key) =>
+				assignRoutingOutcomeExperiment(key, "subagent-single", 1)?.id !==
+				"luna-high",
+		);
+		expect(sampleKey).toBeDefined();
+		const result = resolveSampledDynamicModel(
+			models.slice(0, 1),
+			models[0],
+			"small",
+			"same-provider",
+			sampleKey as string,
+			"subagent-single",
+			1,
+		);
+
+		expect(result.experiment).toBeUndefined();
+		expect(result.model).toBe(models[0]);
+	});
+});
 
 describe("resolveCommitPlanningModel", () => {
 	it("prefers the current same-family small model when available", () => {

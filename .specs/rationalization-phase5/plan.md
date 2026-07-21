@@ -110,6 +110,235 @@ Session continuity: same protocol as the rationalization plans - checklist
 order, update Execution status and commit after each slice, resume from
 recorded state.
 
+## T1 decision knowability findings
+
+Verified 2026-07-17 before implementation:
+
+| Client/outcome | Directly knowable | Evidence and required representation |
+| --- | --- | --- |
+| Pi allow with no matching rule | Yes | `tool_call` has tool name, input, call ID, cwd, and session context. The handler knows evaluation returned no decision; record `engineAction=allow`, `userDecision=not_applicable`. Plain allows are not currently recorded. |
+| Pi ask approved/denied | Yes | `ctx.ui.confirm()` returns the user's boolean before the handler returns. `safeRecordApprovedAsk()` and `recordBlock()` already distinguish approval and denial in the permission registry and damage-control eval stream. Record `approved` or `denied`; no inference is needed. |
+| Pi hard block | Yes | The handler returns `{ block: true }` without asking. Record `engineAction=block`, `userDecision=not_present`. |
+| Claude allow with no matching rule | Yes | Each PreToolUse script computes allow/ask/block and already logs an `allowed` row, but discards common hook identifiers. Preserve `session_id`, `tool_use_id`, tool, cwd, and the matched rule in the shared row; use `userDecision=not_applicable`. |
+| Claude ask approved | Correlatable | PreToolUse emits `permissionDecision: ask` but does not receive the user's response. PostToolUse and PostToolUseFailure carry the same `tool_use_id`; either event proves approval and an execution attempt. Record `approved`, with approval latency exact only when post input exposes subtractable tool duration and otherwise marked estimated. |
+| Claude ask denied or abandoned | Not distinguishable | An ask with no matching post event cannot prove denial. At SessionEnd, settle it as `denied_or_abandoned`, never `denied`. The pending ask retains its original timestamp and correlation ID. |
+| Claude hard block | Yes | A PreToolUse exit-2 block is final and no user decision exists. Record `engineAction=block`, `userDecision=not_present`. |
+
+Claude's common hook fields and PostToolUse correlation contract are documented
+at <https://docs.anthropic.com/en/docs/claude-code/hooks>. Current local
+PreToolUse scripts read only `tool_name` and `tool_input`; `claude/settings.json`
+has no damage-control PostToolUse, PostToolUseFailure, or SessionEnd correlator.
+The implementation therefore needs one shared fail-open writer plus a bounded
+pending-ask correlation store. Existing per-client logs remain migration inputs,
+not the canonical output.
+
+### T1 validation evidence
+
+Validated 2026-07-17 through the supported client entry points:
+
+- Pi persistent RPC loaded the worktree damage-control extension and executed
+  four model-requested tool calls. The shared log contained
+  `allow/not_applicable`, `ask/approved`, `ask/denied`, and
+  `block/not_present`; the synthetic token was absent.
+- A second Pi RPC run pointed `DAMAGE_CONTROL_DECISION_DIR` at a regular file.
+  The safe Bash tool still completed successfully while logging failed.
+- Direct bare-`python` Claude PreToolUse, PostToolUse, and SessionEnd hook
+  invocations produced all four knowable Claude outcomes, scrubbed the same
+  synthetic token, and left no pending asks.
+- With the Claude destination pointed at a regular file, allow still exited 0,
+  ask still emitted `permissionDecision: ask` and exited 0, and hard block
+  still exited 2.
+- Automated coverage: Pi damage-control 87 passed; Claude damage-control 763
+  passed and 1 skipped; shared-writer suites 7 passed. Pi typecheck, Biome, and
+  Ruff passed in the implementation slices.
+
+### T2 loader findings
+
+Verified 2026-07-17 from `loadRules()` and the tracked policy:
+
+- Source precedence is `PI_DAMAGE_CONTROL_CLAUDE_POLICY_PATH`, then the tracked
+  `claude/hooks/damage-control/patterns.yaml`, then legacy Pi YAML candidates
+  only when neither Claude path exists. In this checkout the legacy candidates
+  are unreachable by default.
+- Claude independently prefers a project-local
+  `.claude/hooks/damage-control/patterns.yaml` when `CLAUDE_PROJECT_DIR` points
+  to one. Pi does not mirror that precedence unless the override variable is
+  set, so project-local policy can currently diverge by client.
+- Of 353 `bashToolPatterns`, Pi normalizes 329 into Bash-only command rules.
+  The 24 entries carrying `exfil: true` are deliberately skipped. `ask: true`
+  becomes ask; every other included entry becomes block. A malformed or
+  Python-only included regex fails the complete policy load.
+- Pi copies all tracked string entries from `zeroAccessPaths` (18),
+  `zeroAccessExclusions` (68), `readOnlyPaths` (46), `noDeletePaths` (30),
+  `writeConfirmPaths` (5), `readConfirmPaths` (3), and `contentScanPaths` (7).
+- The 19 tracked `injectionPatterns` are mappings, while Pi's normalizer accepts
+  only strings for that field, so all 19 currently normalize to an empty list.
+  The 17 `secretPatterns` and two `contexts` are also ignored. `astAnalysis` is
+  copied, including enabled state, timeout, safe commands, and dangerous
+  commands.
+- Pi's sequence and output protections may cover some skipped vectors, but T2
+  must count coverage only when the oracle runner demonstrates an equivalent
+  outcome or records an explicit waiver. Loader presence is not coverage.
+
+### T2 oracle-runner baseline
+
+Implemented and measured 2026-07-17 with `pnpm run damage-control-coverage`:
+
+- The subprocess oracle loads Claude's actual Bash hook module and tracked YAML,
+  evaluates the tracked fixture suite, and returns the hook outcome plus stable
+  `bashToolPatterns:<index>` identity. Pi evaluates the same command through its
+  normalized engine and no-delete path.
+- The inventory accounts for 592 rows across Bash, paths, exfiltration,
+  injection, secrets, contexts, and AST lists. Existing fixtures provide 42
+  commands and positively cover 13 policy rows.
+- Initial baseline: 579 uncovered rows, two outcome divergences, zero stale
+  negative controls, and `coverage_debt_count = 581`. The two divergences are
+  wrapped root-delete fixtures where Claude blocks and Pi asks.
+- Seven explicit unsupported/deferred-family waivers now expand to 140 stable
+  policy IDs: exfiltration semantics, mapping-shaped injection patterns,
+  secret patterns, contexts, Pi-only read confirmation, content-scan scopes,
+  and pending path-exclusion negative controls. Empty and duplicate waiver IDs,
+  zero-match selectors, and covered/waived overlap fail validation.
+- After explicit waivers: 13 covered, 140 explicitly waived, 439 uncovered,
+  two divergences, zero stale controls, and `coverage_debt_count = 441`.
+- Deterministic path materialization now exercises every `zeroAccessPaths`,
+  `readOnlyPaths`, `writeConfirmPaths`, and `noDeletePaths` row through Claude's
+  actual Edit/Bash engines and the equivalent Pi functions. Current baseline:
+  109 covered, 140 waived, 343 uncovered, 32 divergences, zero stale controls,
+  and `coverage_debt_count = 375`.
+- The 30 newly exposed divergences are three zero-access, 20 read-only, four
+  write-confirm, and three no-delete directory/path vectors where Claude
+  blocks/asks and Pi allows. They are evidence only; changing those outcomes
+  requires the plan's user gate.
+- Direct actual-analyzer fixtures cover all 14 AST safe-command entries and all
+  10 dangerous-command entries using unsafe-variable vectors; both clients
+  agree on all 24.
+- A deterministic regex witness generator now isolates each non-exfil Bash
+  policy row in Claude and Pi, validates the witness through the original regex,
+  and credits only the stable rule ID actually reached. Totals are 401 covered,
+  140 waived, 51 uncovered, 36 divergences, zero stale controls, and
+  `coverage_debt_count = 87`.
+- Suffix-enriched witnesses now avoid incomplete-command bypasses, and every
+  no-delete row runs with only its target path enabled in both clients. All 30
+  no-delete rows are covered; TMPDIR and kubectl now agree.
+- Explicit positive commands now cover 28 patterns that resisted generic
+  generation. Eighteen unreachable rows are explicitly classified: six behind
+  semantic Git precedence, five behind Claude's read-only find bypass, one
+  behind node-wrapper unwrapping, and six Linux-only rows on the Windows oracle.
+- Every inventory row was accounted for at the first zero-uncovered checkpoint:
+  434 covered, 158 waived, 35 divergences, and `coverage_debt_count = 35`.
+- Paired controls now prove baseline block plus exclusion allow for 54 of 68
+  `zeroAccessExclusions`. The remaining 14 are explicitly unreachable in
+  Claude because path normalization strips the trailing separator required by
+  their directory-glob patterns. Thirty paired controls expose Pi/Claude
+  exclusion divergences; no outcome changed.
+- Current totals: 488 covered, 104 waived, zero uncovered, 65 divergences, zero
+  stale controls, and `coverage_debt_count = 65`.
+- Gate mode is `PI_DAMAGE_CONTROL_COVERAGE_GATE=1 pnpm run
+  damage-control-coverage`; it fails until uncovered rows are covered or
+  explicitly waived and all divergences are resolved.
+
+### T2 divergence decision
+
+Classified 2026-07-17 after reaching zero uncovered rows:
+
+| Family | Count | Claude | Pi | Root cause / proposed handling |
+| --- | ---: | --- | --- | --- |
+| Root-delete shell wrappers | 2 | block | ask | Pi evaluates the broad destructive `rm` confirmation before the unwrapped root-delete block. Align Pi to block. |
+| Terraform tfvars/state | 3 | ask | allow | Pi's read-only classifier bypasses the isolated YAML asks for plan/state commands. Align Pi to ask. |
+| Zero-access positive paths | 3 | block | allow | Pi's matcher treats internal wildcards literally and does not normalize policy separators. Align Pi to block. |
+| Read-only paths | 20 | block | allow | Pi's canonical Windows paths do not match slash-based absolute, home, or directory policy patterns. Align Pi to block. |
+| Write-confirm paths | 4 | ask | allow | The same path matcher misses home/relative configuration paths. Align Pi to ask. |
+| No-delete paths | 3 | block | allow | The same separator/directory mismatch misses `.git/`, `.github/`, and `.circleci/`. Align Pi to block. |
+| Exclusion modifiers | 30 | allow | block | Synthetic paired controls expose matcher differences for security-sensitive exclusions. Keep Pi's stricter block as an explicit Pi extension rather than weakening it. |
+
+Decision options:
+
+1. **Recommended - strengthen only:** approve the 35 Pi changes toward stricter
+   Claude outcomes (26 allow-to-block, seven allow-to-ask, two ask-to-block),
+   while recording the 30 existing Pi-stricter exclusions as a client extension.
+2. **Full Claude parity:** also weaken the 30 Pi block outcomes to Claude allow.
+   This includes browser credential stores, system password databases, wallet
+   files, and cloud/session directories, so it is not recommended.
+3. **No outcome changes:** record all 65 differences as client extensions. This
+   avoids behavior changes but leaves 35 known weaker Pi outcomes.
+
+No option is inferred. Canonical-source cutover remains separately gated after
+coverage debt reaches zero.
+
+### T3 audit evidence
+
+Validated 2026-07-17:
+
+- The shared Python program defaults to the monthly decision-log location, the
+  tracked Claude policy inventory, a 14-day UTC window, and
+  `.specs/rationalization-phase5/reports/<date>.md`.
+- Pi `/dc-audit` invokes that program with a bounded subprocess, persists the
+  report, and places its path plus bounded contents in model-visible context.
+- Claude `/dc-audit` invokes the same proposer and explicitly forbids policy
+  edits or applying proposals.
+- The exact synthetic workflow produced
+  `.specs/rationalization-phase5/reports/2026-07-17.md` with all three proposal
+  classes, 100% approval/latency evidence, denial samples scrubbed, and no raw
+  synthetic token.
+- Focused validation: three Python CLI/command tests and 88 Pi damage-control
+  tests passed; Ruff, Pi typecheck, and Biome passed.
+
+The fixture's narrow candidate is not a real policy rule. Applying it to the
+production policy would be invalid. T3 therefore needs either a user-approved
+fixture-only application/measurement demonstration or two weeks of real rows
+and a real proposal selection.
+
+### T4 plan-scoped authorization design
+
+Presented 2026-07-17 for an explicit user decision. Recommended design:
+
+1. **Explicit declarations, never prose inference.** A plan may add a structured
+   `authorizations` block. Each row names an authorization ID, task ID, Pi tool,
+   current damage-control ask rule ID, anchored action regex, and repo-relative
+   cwd scope. `plan-lint` rejects unknown tasks/tools/rules, invalid or unanchored
+   regexes, duplicate IDs, absolute/out-of-repo cwd scopes, and declarations on
+   completed tasks. Plans without this additive block behave byte-for-byte as
+   today.
+2. **One visible approval boundary.** `/do-it` shows the exact declarations and
+   asks once before dispatch. Confirmation creates grants; cancellation or
+   non-interactive failure creates none and normal per-tool asks remain. The
+   planning model may propose declarations but cannot activate them.
+3. **Run/task binding.** A grant binds plan path plus SHA-256 content hash,
+   `/do-it` run ID, task ID, repository root, tool, ask rule ID, action regex,
+   and cwd scope. A worker receives only its current run/task IDs. Missing,
+   mismatched, malformed, or overlapping context falls back to the normal ask.
+4. **Ask-only auto-approval.** Damage-control first computes its existing
+   outcome. Only an `ask` may consult the grant broker. Hard blocks, rule-load
+   failures, malformed paths, and tools outside the declaration are never
+   bypassed. Matching uses the already secret-scrubbed action but execution uses
+   the untouched tool input.
+5. **Conservative expiry.** A grant expires at the earliest of task terminal
+   state, `/do-it` cancellation/completion, session shutdown, plan-hash change,
+   or four hours. Resume/retry requires a fresh confirmation. Durable records
+   may remain for audit but cannot reactivate.
+6. **No service or bearer secret.** Active grants use atomically written,
+   mode-restricted JSON under the operator directory; there is no daemon or IPC.
+   Run/task IDs select scope but confer nothing without every stored matcher.
+   Subagent launch propagates only those IDs.
+7. **Authorization is auditable or it does not happen.** The T1 schema gains an
+   optional additive `authorizer` object with `kind=plan`, plan path/hash, run
+   ID, task ID, and authorization ID. An auto-approved row remains
+   `engineAction=ask`, `userDecision=approved`. If grant validation or decision
+   logging fails, the tool falls back to the ordinary confirmation instead of
+   auto-approving.
+8. **Validation/rollout.** Default-off tests must prove matching ask approval,
+   nonmatching ask, hard block, expiry, hash tamper, task isolation, child scope,
+   RPC confirmation, audit fields, and logging-failure fallback. One synthetic
+   plan runs in RPC before any real authorization declaration is added.
+
+Alternatives rejected: deriving scope from task prose is nondeterministic;
+authorizing an entire rule without an anchored action matcher is too broad;
+reusing grants across resume weakens the explicit approval boundary.
+
+Decision requested: **approve**, **revise**, or **decline** this T4 design. No
+implementation or plan declaration is inferred from silence.
+
 ## Tasks
 
 ### T1: Structured decision logging in both clients
@@ -241,22 +470,22 @@ from here.
 
 ### Task checklist
 
-- [ ] T1: structured decision logging - pending
-  - [ ] per-client decision knowability verified and recorded
-  - [ ] schema and shared location implemented in both clients
-  - [ ] live four-outcome validation on both clients
-  - [ ] fail-open and secret-scrub proven
-- [ ] T2: canonical source, oracle runner, coverage debt zero - pending
-  - [ ] verified what damage-control-rules.ts already loads
-  - [ ] per-pattern coverage runner built (Claude hook as oracle)
+- [x] T1: structured decision logging - done: `bb39783`
+  - [x] per-client decision knowability verified and recorded
+  - [x] schema and shared location implemented in both clients
+  - [x] live four-outcome validation on both clients
+  - [x] fail-open and secret-scrub proven
+- [ ] T2: canonical source, oracle runner, coverage debt zero - blocked: user decision required on the classified 65 divergences
+  - [x] verified what damage-control-rules.ts already loads
+  - [x] per-pattern coverage runner built (Claude hook as oracle)
   - [ ] coverage_debt_count = 0 (covered or explicitly waived)
   - [ ] canonical source created; both engines pass the runner
   - [ ] cutover recorded; archived parity plan's header updated to
         completed-by-successor
-- [ ] T3: noise/signal audit tool - pending
-  - [ ] report with three proposal classes from real or fixture data
+- [ ] T3: noise/signal audit tool - blocked: user must choose fixture-only demonstration or wait for real data
+  - [x] report with three proposal classes from real or fixture data
   - [ ] one approved proposal applied and measured
-- [ ] T4: plan-scoped authorization - pending
+- [ ] T4: plan-scoped authorization - blocked: approve, revise, or decline the presented design
   - [ ] design presented; user decision received (gate - never inferred)
   - [ ] approved design implemented and validated (or decline recorded)
 - [ ] T5: close - pending
@@ -265,8 +494,10 @@ from here.
 
 ### State
 
-- **Classification:** not started; gated on phase 2 archive
-- **Current blocker:** phase 2 executing
-- **Next:** after phase 2 archives, start T1 (independent of phases 3-4;
-  earlier T1 means more decision data for phase 4's report)
+- **Classification:** blocked on independent T2, T3, and T4 user decisions
+- **Current blocker:** T2 requires divergence option 1, 2, or 3; T3 requires a
+  fixture-only demonstration approval or two weeks of real data; T4 requires
+  approve, revise, or decline on the design above
+- **Next:** execute only the user-selected T2, T3, or T4 slice; if no selection
+  is made, Phase 5 is quiescent
 - **Resume:** `/do-it .specs/rationalization-phase5/plan.md`

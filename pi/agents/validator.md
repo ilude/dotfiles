@@ -2,8 +2,6 @@
 name: validator
 description: Read-only validation worker for focused or cross-file test, lint, typecheck, integration, and acceptance verification.
 model: openai-codex/gpt-5.6-terra
-isolation: none
-memory: project
 effort: medium
 skills:
   - analysis-workflow

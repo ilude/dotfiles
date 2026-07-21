@@ -378,6 +378,7 @@ Runtime records live under `~/.pi/agent/workflow-friction/` and remain uncommitt
 
 ```text
 /improve                          # discuss the highest-ranked unresolved candidate
+/improve report                   # generate the evidence-backed proposal report
 /improve list                     # list ranked unresolved candidates
 /improve select <number-or-id>    # discuss one listed candidate by ordinal or unique ID prefix
 /improve decide apply             # apply the selected proposal
@@ -386,7 +387,7 @@ Runtime records live under `~/.pi/agent/workflow-friction/` and remain uncommitt
 /improve help                     # show command and decision guidance
 ```
 
-`/improve` is the only public self-improvement workflow. It ranks pending candidates by safety or correctness impact first, then verified 30-day usage, confidence, and stable age/ID tie-breakers. Structured skill, command, extension, and tool targets use deterministic local statistics; unresolved telemetry remains unknown rather than being treated as zero. `/improve list` writes the ranked workspace-visible candidates to the transcript without starting a discussion and stores that displayed order for the session. `/improve select <number-or-id>` resolves ordinals against the displayed snapshot, accepts unique ID prefixes against current candidates, and records the selected candidate in the transcript before discussion. Bare `/improve` preserves the highest-ranked default.
+`/improve` is the only public self-improvement workflow. `/improve report` runs the deterministic repository report generator and returns its output path without starting a provider turn. Candidate discussion ranks pending candidates by safety or correctness impact first, then verified 30-day usage, confidence, and stable age/ID tie-breakers. Structured skill, command, extension, and tool targets use deterministic local statistics; unresolved telemetry remains unknown rather than being treated as zero. `/improve list` writes the ranked workspace-visible candidates to the transcript without starting a discussion and stores that displayed order for the session. `/improve select <number-or-id>` resolves ordinals against the displayed snapshot, accepts unique ID prefixes against current candidates, and records the selected candidate in the transcript before discussion. Bare `/improve` preserves the highest-ranked default.
 
 Each discussion remains in a deterministic `discussing` state while the user asks questions or raises issues. Ordinary conversation never authorizes a change. Only `/improve decide apply`, `/improve decide edit <change>`, or `/improve decide skip <reason>` captures a decision and resumes execution without another approval request. Applied changes require target paths, validation evidence, and rollback instructions and create an experiment marker for later comparison. A recorded applied or skipped decision removes that candidate from later lists.
 
@@ -473,6 +474,18 @@ Behavior:
 - Limits Amazon Bedrock visibility to the configured `us.anthropic` Claude models used by the Codex plus Bedrock workflow.
 - Applies provider-specific blocklists (including internal/legacy model IDs) before `/model` selection.
 
+### Worktree occupancy
+
+`agent-instances.ts` registers the primary Pi session in the worktree-local,
+Git-ignored `.agent-instances/` registry. It refreshes the lease once per minute,
+releases it on clean shutdown, and excludes nested subagent processes.
+
+The status line shows the active instance count. When another registered Pi or
+Claude session occupies the same worktree, Pi also appends a warning to session context
+that further modifying work should move to a separate Git worktree. Lease
+failures do not block the session; expired crashed-process leases are recovered
+by the shared helper in `scripts/agent_instance_lease.py`.
+
 ### Operator Layer
 
 Three companion extensions surface durable task and permission state for
@@ -517,10 +530,10 @@ Commands:
 - `/tasks retry <id>` -- transitions `failed` -> `running`; the registry bumps `retryCount` and clears `errorReason`. Does not re-execute the work; you re-issue the original action through normal channels.
 
 Model-callable task surface:
-- The unified `task` tool owns durable dependencies and background execution through `create`, `batch`, `update`, `remove`, `list`, `ready`, `get`, `execute`, `execute_many`, `await`, `stop`, and `output` actions. Ordinary multi-step work uses a lightweight prose plan instead; durable records are optional for user-requested lists, main-thread tracking, dependencies, cross-turn work, and background execution.
+- The unified `task` tool owns durable dependencies and background execution through `create`, `batch`, `update`, `remove`, `list`, `ready`, `get`, `execute`, `execute_many`, `drain`, `await`, `stop`, and `output` actions. Ordinary multi-step work uses a lightweight prose plan instead; durable records are optional for user-requested lists, main-thread tracking, dependencies, cross-turn work, and background execution.
 - A graph-aware `batch` can mix manual and executable tasks with request-local keys and dependency keys. Use returned aliases for later actions; manual tasks remain main-thread-owned and advance through `update`.
 - Tasks default to the current repository workspace; `list` and `ready` accept `all: true` for a cross-repository view and return compact model-visible summaries. Use `get` for one complete record.
-- Executable tasks accept `agent`, `task`, `cwd`, `agentScope`, `model`, and `modelSize`. Use bounded `execute_many` to start ready workers concurrently, then call `await` once to join same-session workers without polling.
+- Executable tasks accept `agent`, `task`, `cwd`, `agentScope`, `model`, `modelSize`, and optional worktree-relative `scope` paths/globs. Use bounded `execute_many` for an explicit set, or opt into `drain` for dependency-aware dispatch with bounded concurrency, read-only parallelism, writer-scope serialization, critical-path-first ordering, and explicit starvation results. Call `await` only to join same-session workers immediately; do not poll.
 - `stop` cancels a running child process tree. `output` returns small results inline and a concise durable artifact reference for large results; full bounded details remain available to the TUI renderer.
 - Start execution once, request output when needed, and record lifecycle changes only when state changes. Do not poll task actions in loops.
 - Batch graph validation occurs before writes, but batch publication is not transactional. On `write_failed`, inspect the returned persisted IDs, clear each persisted task's `blockedBy` in reverse request order through `update`, then tombstone it with `remove`; do not assume automatic rollback or retry.
@@ -692,7 +705,6 @@ The agent parser consumes these frontmatter fields:
 
 - Required: `name`, `description`
 - Enforced by the subagent launcher: `tools`, `model`, `effort`, `skills`
-- Advisory metadata: `isolation`, `memory`
 
 The parser applies no default frontmatter values. Frontmatter `effort` is passed
 to child Pi as `--thinking`; an explicit per-launch `effort` override takes

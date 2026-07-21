@@ -220,30 +220,31 @@ from here.
 
 ### Task checklist
 
-- [ ] T1: plan-lint - pending
-  - [ ] four violation classes caught on fixtures; clean plan passes
-  - [ ] wired into /do-it report path
-  - [ ] phase 2 "commit pending" rows flagged or confirmed fixed
-- [ ] T2: routing outcome sampling - pending
-  - [ ] sampling layer with named-constant rate; arms as data
-  - [ ] explicit overrides never sampled (proven)
-  - [ ] telemetry tags verified at configured rate; rate 0 byte-identical
-- [ ] T3: improvement-report - pending
-  - [ ] all present sources aggregated; absent sources as coverage notes
-  - [ ] deletions-first report generated from real data
-  - [ ] aggregation math tested
-- [ ] T4: cadence and entry point - pending
-  - [ ] /improve report end to end
-  - [ ] loop documented once, in the philosophy file
-  - [ ] timer condition recorded (not built)
+- [x] T1: plan-lint - done: `54989a8`
+  - [x] four violation classes caught on fixtures; clean plan passes
+  - [x] wired into /do-it report path
+  - [x] phase 2 "commit pending" rows flagged or confirmed fixed
+- [x] T2: routing outcome sampling - done: `c94879b`
+  - [x] sampling layer with named-constant rate; arms as data
+  - [x] explicit overrides never sampled (proven)
+  - [x] telemetry tags verified at configured rate; rate 0 byte-identical
+- [x] T3: improvement-report - done: `d225ddf`
+  - [x] all present sources aggregated; absent sources as coverage notes
+  - [x] deletions-first report generated from real data
+  - [x] aggregation math tested
+- [x] T4: cadence and entry point - done: `976e814`
+  - [x] /improve report end to end
+  - [x] loop documented once, in the philosophy file
+  - [x] timer condition recorded (not built)
 - [ ] T5: close - pending
   - [ ] one full cycle recorded with evidence
   - [ ] routing baseline and n=30 projection recorded
 
 ### State
 
-- **Classification:** not started; gated on phase 2 archive (default: after
-  phase 3; T1/T3 may start earlier on user instruction)
-- **Current blocker:** phase 2 executing
-- **Next:** T1 when the gate clears
+- **Classification:** blocked; T1-T4 complete
+- **Current blocker:** T5 requires the user to select at least one item from
+  `.specs/improvement-reports/2026-07-17.md`; no selection is inferred
+- **Next:** after the user selects an item, execute it as a separate approved
+  slice, record cycle time, and capture routing baseline plus n=30 projection
 - **Resume:** `/do-it .specs/rationalization-phase4/plan.md`

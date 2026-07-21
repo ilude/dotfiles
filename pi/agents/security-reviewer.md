@@ -2,8 +2,6 @@
 name: security-reviewer
 description: Read-only security review worker for threat modeling and security-sensitive changes. Use for auth, permissions, data exposure, external integrations, storage, and trust-boundary analysis; not generic diff review.
 model: openai-codex/gpt-5.6-sol
-isolation: none
-memory: project
 effort: medium
 skills:
   - analysis-workflow

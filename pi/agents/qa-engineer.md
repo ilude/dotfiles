@@ -2,8 +2,6 @@
 name: qa-engineer
 description: Implements assigned automated tests, fixtures, and regression coverage. Use when tests must be created or changed; not production implementation or read-only validation.
 model: openai-codex/gpt-5.6-terra
-isolation: none
-memory: project
 effort: medium
 skills:
   - analysis-workflow

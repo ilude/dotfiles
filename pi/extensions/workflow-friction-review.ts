@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
@@ -50,6 +51,10 @@ const REVIEW_MODEL_PROVIDER = "openai-codex";
 const REVIEW_MODEL_ID = "gpt-5.6-terra";
 const LEARNING_DECISION_LOCK_ATTEMPTS = 80;
 const LEARNING_DECISION_LOCK_RETRY_MS = 25;
+const IMPROVEMENT_REPORT_SCRIPT = path.resolve(
+	path.dirname(fileURLToPath(import.meta.url)),
+	"../scripts/improvement-report.py",
+);
 
 const WorkflowReviewInputSchema = Type.Object(
 	{
@@ -931,6 +936,7 @@ function improveHelpText(): string {
 		"Usage:",
 		"  /improve                          Discuss the highest-ranked unresolved candidate",
 		"  /improve list                     List ranked unresolved candidates",
+		"  /improve report                   Generate the evidence-backed report",
 		"  /improve select <number-or-id>    Discuss one candidate from the list",
 		"  /improve decide apply             Apply the selected proposal",
 		"  /improve decide edit <change>     Apply an edited proposal",
@@ -1533,12 +1539,44 @@ export default function workflowFrictionExtension(
 
 	pi.registerCommand("improve", {
 		description:
-			"List, select, or discuss supported self-improvement candidates",
+			"Generate a report or list, select, and discuss improvement candidates",
 		handler: async (args: string, ctx: ExtensionContext) => {
 			const parts = args.trim().split(/\s+/).filter(Boolean);
 			const action = parts[0]?.toLowerCase();
 			if (action === "help") {
 				showImprovementCommandOutput(pi, args, improveHelpText());
+				return;
+			}
+			if (action === "report") {
+				if (parts.length !== 1) {
+					showImprovementCommandOutput(pi, args, "Usage: /improve report");
+					return;
+				}
+				const result = await pi.exec(
+					"python",
+					[IMPROVEMENT_REPORT_SCRIPT, "--repo", ctx.cwd],
+					{ cwd: ctx.cwd, timeout: 300_000 },
+				);
+				if (result.code !== 0) {
+					const error = bounded(
+						result.stderr.trim() || result.stdout.trim() || "unknown error",
+						1_000,
+					);
+					showImprovementCommandOutput(
+						pi,
+						args,
+						`Improvement report failed: ${error}`,
+					);
+					return;
+				}
+				const reportPath = result.stdout.trim().split(/\r?\n/).at(-1);
+				showImprovementCommandOutput(
+					pi,
+					args,
+					reportPath
+						? `Improvement report: ${reportPath}`
+						: "Improvement report completed without a reported path.",
+				);
 				return;
 			}
 			if (

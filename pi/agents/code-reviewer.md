@@ -2,8 +2,6 @@
 name: code-reviewer
 description: Autonomous code review worker for branch/diff review. Use for PR-style review, background code review, and verifying changed code only.
 model: openai-codex/gpt-5.6-sol
-isolation: none
-memory: project
 effort: medium
 skills:
   - code-review

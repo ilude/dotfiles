@@ -2,8 +2,6 @@
 name: frontend-dev
 description: Implements assigned user-interface, component, client-logic, and styling changes. Use for bounded frontend work; not backend services or unrelated redesigns.
 model: openai-codex/gpt-5.6-terra
-isolation: none
-memory: project
 effort: medium
 skills:
   - typescript

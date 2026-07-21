@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Api, Model } from "@earendil-works/pi-ai";
 
 export interface ModelLike {
@@ -25,6 +26,84 @@ export type ModelSize =
 	| "small"
 	| "medium";
 export type ModelPolicy = "same-provider" | "same-family";
+
+export const ROUTING_OUTCOME_EXPERIMENT_ID = "codex-routing-outcomes-v1";
+export const ROUTING_OUTCOME_SAMPLE_RATE = 0.1;
+export const ROUTING_OUTCOME_SAMPLE_RATE_ENV = "PI_ROUTING_OUTCOME_SAMPLE_RATE";
+
+export interface RoutingOutcomeArm {
+	id: "terra-baseline" | "luna-high" | "sol-low";
+	provider: "openai-codex";
+	modelId: "gpt-5.6-terra" | "gpt-5.6-luna" | "gpt-5.6-sol";
+	effort: "medium" | "high" | "low";
+}
+
+export const ROUTING_OUTCOME_ARMS: readonly RoutingOutcomeArm[] = [
+	{
+		id: "terra-baseline",
+		provider: "openai-codex",
+		modelId: "gpt-5.6-terra",
+		effort: "medium",
+	},
+	{
+		id: "luna-high",
+		provider: "openai-codex",
+		modelId: "gpt-5.6-luna",
+		effort: "high",
+	},
+	{
+		id: "sol-low",
+		provider: "openai-codex",
+		modelId: "gpt-5.6-sol",
+		effort: "low",
+	},
+];
+
+export interface RoutingOutcomeAssignment extends RoutingOutcomeArm {
+	experimentId: typeof ROUTING_OUTCOME_EXPERIMENT_ID;
+	taskClass: string;
+}
+
+export interface SampledModelResolution<T extends ModelLike> {
+	model: T | undefined;
+	experiment?: RoutingOutcomeAssignment;
+}
+
+export function configuredRoutingOutcomeSampleRate(
+	value = process.env[ROUTING_OUTCOME_SAMPLE_RATE_ENV],
+): number {
+	if (value === undefined || value.trim() === "")
+		return ROUTING_OUTCOME_SAMPLE_RATE;
+	const rate = Number(value);
+	if (!Number.isFinite(rate) || rate < 0 || rate > 1)
+		throw new Error(
+			`${ROUTING_OUTCOME_SAMPLE_RATE_ENV} must be a number from 0 through 1`,
+		);
+	return rate;
+}
+
+function routingOutcomeBuckets(sampleKey: string): [number, number] {
+	const digest = createHash("sha256")
+		.update(`${ROUTING_OUTCOME_EXPERIMENT_ID}:${sampleKey}`)
+		.digest();
+	return [digest.readUInt32BE(0) / 0x1_0000_0000, digest.readUInt32BE(4)];
+}
+
+export function assignRoutingOutcomeExperiment(
+	sampleKey: string,
+	taskClass: string,
+	rate = configuredRoutingOutcomeSampleRate(),
+): RoutingOutcomeAssignment | undefined {
+	if (rate <= 0) return undefined;
+	const [sampleBucket, armBucket] = routingOutcomeBuckets(sampleKey);
+	if (sampleBucket >= rate) return undefined;
+	const arm = ROUTING_OUTCOME_ARMS[armBucket % ROUTING_OUTCOME_ARMS.length];
+	return {
+		...arm,
+		experimentId: ROUTING_OUTCOME_EXPERIMENT_ID,
+		taskClass,
+	};
+}
 
 type AnyModel = Model<Api>;
 
@@ -59,7 +138,8 @@ export const MODEL_ROUTING_POLICY = {
 	},
 } as const;
 
-export type ExplicitModelPolicy = keyof typeof MODEL_ROUTING_POLICY.explicitChoices;
+export type ExplicitModelPolicy =
+	keyof typeof MODEL_ROUTING_POLICY.explicitChoices;
 const CODEX_MAX_RE = /codex-max/i;
 
 function isProvider(model: ModelLike, provider: string) {
@@ -419,6 +499,54 @@ export function resolveDynamicModel<T extends ModelLike>(
 	return (
 		pickBestModel(sameProvider, size, currentModel) ??
 		pickBestModel(availableModels, size, currentModel)
+	);
+}
+
+export function resolveSampledDynamicModel<T extends ModelLike>(
+	availableModels: readonly T[],
+	currentModel: ModelLike | undefined,
+	size: ModelSize,
+	policy: ModelPolicy,
+	sampleKey: string,
+	taskClass: string,
+	rate = configuredRoutingOutcomeSampleRate(),
+): SampledModelResolution<T> {
+	const model = resolveDynamicModel(
+		availableModels,
+		currentModel,
+		size,
+		policy,
+	);
+	const experiment = assignRoutingOutcomeExperiment(sampleKey, taskClass, rate);
+	if (!experiment) return { model };
+	const experimentModel = availableModels.find(
+		(candidate) =>
+			candidate.provider === experiment.provider &&
+			candidate.id === experiment.modelId,
+	);
+	if (!experimentModel) return { model };
+	return { model: experimentModel, experiment };
+}
+
+export function resolveSampledDynamicModelFromRegistry(
+	modelRegistry: { getAvailable(): AnyModel[] },
+	ctx: unknown,
+	size: ModelSize,
+	policy: ModelPolicy,
+	sampleKey: string,
+	taskClass: string,
+	rate = configuredRoutingOutcomeSampleRate(),
+): SampledModelResolution<AnyModel> {
+	const available = modelRegistry.getAvailable();
+	const current = getCurrentModelHint(ctx, available);
+	return resolveSampledDynamicModel(
+		available,
+		current,
+		size,
+		policy,
+		sampleKey,
+		taskClass,
+		rate,
 	);
 }
 

@@ -29,6 +29,12 @@ Follow applicable local instructions. Report conflicts that block the requested 
 
 Delegate only when independent workstreams materially improve execution, such as parallel work, output-heavy investigation, or a distinct capability boundary. Never delegate serial stages or overlapping writes.
 
+### Improvement loop
+
+1. Run `/improve report` to generate the evidence-backed proposal report.
+2. Pick report items deliberately; each applied change becomes a user-approved plan slice.
+3. Add a timer only after two valuable manual cycles and an explicit user request.
+
 ## File & Tool Operations
 
 - **Read before Edit/Write.** Prefer Edit over Write for existing files. Check existence before creating.

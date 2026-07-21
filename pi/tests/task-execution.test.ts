@@ -31,6 +31,7 @@ describe("durable task execution", () => {
 	let tmpDir: string;
 	let previousOperatorDir: string | undefined;
 	let previousMetricsDir: string | undefined;
+	let previousRoutingSampleRate: string | undefined;
 
 	beforeEach(async () => {
 		tmpDir = await fs.promises.mkdtemp(
@@ -38,6 +39,18 @@ describe("durable task execution", () => {
 		);
 		const agentsDir = path.join(tmpDir, ".pi", "agents");
 		await fs.promises.mkdir(agentsDir, { recursive: true });
+		await fs.promises.writeFile(
+			path.join(agentsDir, "reader.md"),
+			`---
+name: reader
+description: Read-only test agent
+tools: read, grep
+---
+
+Read-only test agent.
+`,
+			"utf8",
+		);
 		await fs.promises.writeFile(
 			path.join(agentsDir, "tester.md"),
 			`---
@@ -53,6 +66,8 @@ Test agent.
 		);
 		previousOperatorDir = process.env.PI_OPERATOR_DIR;
 		previousMetricsDir = process.env.PI_METRICS_DIR;
+		previousRoutingSampleRate = process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE;
+		process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE = "0";
 		process.env.PI_OPERATOR_DIR = path.join(tmpDir, "operator");
 		process.env.PI_METRICS_DIR = path.join(tmpDir, "metrics");
 		spawnMock.mockReset();
@@ -63,6 +78,9 @@ Test agent.
 		else process.env.PI_OPERATOR_DIR = previousOperatorDir;
 		if (previousMetricsDir === undefined) delete process.env.PI_METRICS_DIR;
 		else process.env.PI_METRICS_DIR = previousMetricsDir;
+		if (previousRoutingSampleRate === undefined)
+			delete process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE;
+		else process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE = previousRoutingSampleRate;
 		await fs.promises.rm(tmpDir, { recursive: true, force: true });
 		vi.clearAllMocks();
 	});
@@ -147,6 +165,82 @@ Test agent.
 			}),
 			{ deliverAs: "nextTurn" },
 		);
+	});
+
+	it("samples modelSize task execution and records outcome telemetry", async () => {
+		process.env.PI_ROUTING_OUTCOME_SAMPLE_RATE = "1";
+		spawnMock.mockImplementation(() => {
+			const proc = createMockProcess();
+			queueMicrotask(() => {
+				proc.stdout.emit(
+					"data",
+					`${JSON.stringify({
+						type: "message_end",
+						message: {
+							role: "assistant",
+							content: [{ type: "text", text: "sampled" }],
+							stopReason: "end_turn",
+						},
+					})}\n`,
+				);
+				proc.emit("close", 0);
+			});
+			return proc;
+		});
+		const pi = createMockPi();
+		const tasks = await import("../extensions/tasks.ts");
+		const registry = await import("../lib/task-registry.ts");
+		const metrics = await import("../lib/metrics.ts");
+		tasks.default(pi as Parameters<typeof tasks.default>[0]);
+		const task = pi._getTool("task");
+		if (!task) throw new Error("task tool not registered");
+		const ctx = createMockCtx({ cwd: tmpDir });
+		const created = await task.execute(
+			"create-sampled-task",
+			{
+				action: "create",
+				summary: "sampled worker",
+				agent: "tester",
+				task: "Check sampled routing",
+				agentScope: "project",
+				modelSize: "medium",
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		const id = created.details.record.id as string;
+
+		await task.execute(
+			"execute-sampled-task",
+			{ action: "execute", id },
+			undefined,
+			undefined,
+			ctx,
+		);
+		await vi.waitFor(() =>
+			expect(registry.getTask(id)?.state).toBe("completed"),
+		);
+		const execution = registry.getTask(id)?.execution;
+		expect(execution).toMatchObject({
+			experimentId: "codex-routing-outcomes-v1",
+			experimentTaskClass: "task-execute-modelSize",
+		});
+		const args = spawnMock.mock.calls[0][1] as string[];
+		expect(args).toContain(execution?.model);
+		expect(args[args.indexOf("--thinking") + 1]).toBe(
+			execution?.experimentEffort,
+		);
+		const event = metrics
+			.readRecentEvents(100)
+			.filter((candidate) => candidate.event === "orchestration_run")
+			.at(-1);
+		expect(event?.data.workers[0]).toMatchObject({
+			experimentId: "codex-routing-outcomes-v1",
+			experimentArm: execution?.experimentArm,
+			experimentTaskClass: "task-execute-modelSize",
+			validationOutcome: "unavailable",
+		});
 	});
 
 	it("notifies for a no-await fan-out, including failure", async () => {
@@ -509,6 +603,141 @@ Test agent.
 			"terminal",
 		]);
 	});
+
+	it("drains a dynamic DAG with bounded conflicts, parallel readers, and starvation reporting", async () => {
+		const { TaskExecutionCoordinator } = await import(
+			"../extensions/tasks/execution.ts"
+		);
+		const { createTask, getTask, resolveTaskWorkspace } = await import(
+			"../lib/task-registry.ts"
+		);
+		const active = new Set<string>();
+		const starts: string[] = [];
+		let maxActive = 0;
+		let readersOverlapped = false;
+		let writersOverlapped = false;
+		let midTaskId: string | undefined;
+		let writerAId = "";
+		let writerBId = "";
+		let readerOneId = "";
+		let readerTwoId = "";
+		const runner = vi.fn(
+			async (execution, _cwd, _signal, _onUpdate, taskId: string) => {
+				starts.push(taskId);
+				active.add(taskId);
+				maxActive = Math.max(maxActive, active.size);
+				if (active.has(readerOneId) && active.has(readerTwoId))
+					readersOverlapped = true;
+				if (active.has(writerAId) && active.has(writerBId))
+					writersOverlapped = true;
+				if (execution.task === "create mid-drain") {
+					midTaskId = createTask({
+						origin: "subagent",
+						summary: "mid-drain",
+						workspace: resolveTaskWorkspace(tmpDir),
+						scope: ["mid/**"],
+						execution: {
+							kind: "subagent",
+							agent: "tester",
+							task: "mid task",
+							status: "pending",
+						},
+					}).id;
+				}
+				await new Promise((resolve) => setTimeout(resolve, 5));
+				active.delete(taskId);
+				return {
+					output: execution.task,
+					exitCode: execution.task === "deliberate failure" ? 1 : 0,
+				};
+			},
+		);
+		const coordinator = new TaskExecutionCoordinator(runner);
+		const workspace = resolveTaskWorkspace(tmpDir);
+		const executable = (
+			summary: string,
+			options: {
+				blockedBy?: string[];
+				scope?: string[];
+				agent?: string;
+				task?: string;
+			} = {},
+		) =>
+			createTask({
+				origin: "subagent",
+				summary,
+				workspace,
+				blockedBy: options.blockedBy,
+				scope: options.scope,
+				execution: {
+					kind: "subagent",
+					agent: options.agent ?? "tester",
+					task: options.task ?? summary,
+					agentScope: options.agent === "reader" ? "project" : "user",
+					status: "pending",
+				},
+			});
+
+		const root = executable("root", { scope: ["root/**"] });
+		const left = executable("left", {
+			blockedBy: [root.id],
+			scope: ["left/**"],
+		});
+		const right = executable("right", {
+			blockedBy: [root.id],
+			scope: ["right/**"],
+		});
+		const join = executable("join", {
+			blockedBy: [left.id, right.id],
+			scope: ["join/**"],
+		});
+		const failure = executable("failure", {
+			task: "deliberate failure",
+			scope: ["failure/**"],
+		});
+		const failedDependent = executable("failed dependent", {
+			blockedBy: [failure.id],
+			scope: ["dependent/**"],
+		});
+		const writerA = executable("writer A", { scope: ["shared/**"] });
+		const writerB = executable("writer B", { scope: ["shared/file.ts"] });
+		writerAId = writerA.id;
+		writerBId = writerB.id;
+		const readerOne = executable("reader one", { agent: "reader" });
+		const readerTwo = executable("reader two", { agent: "reader" });
+		readerOneId = readerOne.id;
+		readerTwoId = readerTwo.id;
+		const creator = executable("creator", {
+			task: "create mid-drain",
+			scope: ["creator/**"],
+		});
+
+		const result = await coordinator.drain({
+			workspace,
+			fallbackCwd: tmpDir,
+			maxConcurrent: 8,
+		});
+
+		expect(result.outcome).toBe("starved");
+		expect(starts[0]).toBe(root.id);
+		expect(maxActive).toBeGreaterThan(1);
+		expect(readersOverlapped).toBe(true);
+		expect(writersOverlapped).toBe(false);
+		expect(getTask(writerA.id)?.state).toBe("completed");
+		expect(getTask(writerB.id)?.state).toBe("completed");
+		expect(getTask(join.id)?.state).toBe("completed");
+		expect(getTask(creator.id)?.state).toBe("completed");
+		expect(midTaskId).toBeDefined();
+		expect(getTask(midTaskId as string)?.state).toBe("completed");
+		expect(getTask(failure.id)?.state).toBe("failed");
+		expect(getTask(failedDependent.id)?.state).toBe("pending");
+		expect(result.starvation).toEqual([
+			{
+				taskId: failedDependent.id,
+				blockers: [{ id: failure.id, status: "failed" }],
+			},
+		]);
+	}, 30_000);
 
 	it("wait aborts only the join and safely observes later rejection", async () => {
 		const { TaskExecutionCoordinator } = await import(

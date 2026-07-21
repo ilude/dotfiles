@@ -66,6 +66,11 @@
             "type": "command",
             "command": "python $HOME/.claude/hooks/quality-validation/quality_validation_hook.py",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "python $HOME/.claude/hooks/damage-control/decision_audit.py",
+            "timeout": 5
           }
         ]
       },
@@ -76,6 +81,11 @@
             "type": "command",
             "command": "python $HOME/.claude/hooks/quality-validation/quality_validation_hook.py",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "python $HOME/.claude/hooks/damage-control/decision_audit.py",
+            "timeout": 5
           }
         ]
       },
@@ -85,6 +95,11 @@
           {
             "type": "command",
             "command": "python $HOME/.claude/hooks/commit-guard/commit_guard_hook.py",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python $HOME/.claude/hooks/damage-control/decision_audit.py",
             "timeout": 5
           }
         ]
@@ -159,6 +174,15 @@
             "timeout": 2
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CLAUDE_AGENT_PARENT_PID=$PPID python $HOME/.claude/hooks/agent_instances.py",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "Stop": [
@@ -167,6 +191,49 @@
           {
             "type": "command",
             "command": "python $HOME/.claude/hooks/session-history/session_history_hook.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CLAUDE_AGENT_PARENT_PID=$PPID python $HOME/.claude/hooks/agent_instances.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CLAUDE_AGENT_PARENT_PID=$PPID python $HOME/.claude/hooks/agent_instances.py",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python $HOME/.claude/hooks/damage-control/decision_audit.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python $HOME/.claude/hooks/damage-control/decision_audit.py",
             "timeout": 5
           }
         ]

@@ -2,6 +2,506 @@
 
 This is the canonical changelog for repository configuration, client workflows, and Pi runtime changes.
 
+## 2026-07-17: Add shared damage-control audit entry points
+
+**Why:** The deterministic report needs a thin Claude command and a persisted
+result rather than a separate advisory workflow.
+
+**Changed:**
+- Claude `/dc-audit` now invokes the shared proposer and forbids policy mutation;
+  the prior agent-driven discovery/apply workflow is no longer the command.
+- The shared program now defaults its log, policy, 14-day window, and required
+  phase report output path.
+- Added `.specs/rationalization-phase5/reports/2026-07-17.md` from the exact
+  synthetic workflow.
+
+**Validation:** Three Python tests passed. The fixture report contains all three
+proposal classes and scrubbed denial evidence; Ruff and plan lint passed.
+
+**Files:** `shared/damage-control/audit.py`, `claude/commands/dc-audit.md`,
+`test/test_damage_control_audit.py`,
+`.specs/rationalization-phase5/reports/2026-07-17.md`,
+`.specs/rationalization-phase5/plan.md`, `CHANGELOG.md`
+
+---
+
+## 2026-07-17: Add the deterministic damage-control audit core
+
+**Why:** Shared decision logs need a reproducible report that separates prompt
+fatigue from denial evidence and dormant rules without applying policy changes.
+
+**Changed:**
+- Added a 14-day JSONL audit that reports per-rule fires, approval rate, denial
+  evidence, and median approval latency.
+- Added deterministic narrow/allowlist, strengthen/add, and retire proposal
+  classes with named thresholds and stable ranking.
+- Added policy-inventory support, bounded secret-scrubbed denial samples, and
+  explicit failure on malformed decision rows.
+
+**Validation:** Two focused CLI tests produced all three proposal classes from
+synthetic data, verified secret scrubbing/proposer-only wording, and proved
+malformed rows fail with file/line diagnostics. Ruff passed.
+
+**Files:** `shared/damage-control/audit.py`,
+`test/test_damage_control_audit.py`, `.specs/rationalization-phase5/plan.md`,
+`CHANGELOG.md`
+
+---
+
+## 2026-07-17: Validate shared decision logging end to end
+
+**Why:** Unit coverage does not prove that confirmation responses, hard blocks,
+and fail-open behavior survive Claude's real process boundary.
+
+**Validated:**
+- Bare-Python Claude hook invocations recorded all four knowable outcomes and
+  left no pending asks.
+- Claude preserved allow, ask, and block exit/output behavior when its log
+  destination was a regular file.
+
+**Files:** `.specs/rationalization-phase5/plan.md`, `CHANGELOG.md`
+
+---
+
+## 2026-07-17: Correlate Claude decisions in the shared audit log
+
+**Why:** Claude PreToolUse knows the enforcement action but does not receive a
+manual confirmation result, so asks need conservative cross-hook correlation.
+
+**Changed:**
+- Claude Bash, Edit, and Write PreToolUse hooks now record final allows and hard
+  blocks or stage secret-scrubbed asks by session and tool-use ID.
+- PostToolUse and PostToolUseFailure settle staged asks as approved; SessionEnd
+  records unmatched asks as `denied_or_abandoned` rather than inferring denial.
+- Added exact or estimated latency labels, fail-open pending storage, and hook
+  registration for all correlation events.
+
+**Validation:** All 763 Claude damage-control tests passed with one skipped;
+Ruff passed. Direct bare-`python` hook invocations produced all four knowable
+Claude outcomes in one shared monthly log, scrubbed a synthetic token, and left
+no pending rows.
+
+**Files:** `claude/hooks/damage-control/{decision_audit.py,bash-tool-damage-control.py,edit-tool-damage-control.py,write-tool-damage-control.py}`,
+`claude/hooks/damage-control/tests/{conftest.py,test_decision_audit.py}`,
+`claude/settings.json`, `.specs/rationalization-phase5/plan.md`, `CHANGELOG.md`
+
+---
+
+## 2026-07-17: Add the shared damage-control decision schema
+
+**Why:** Claude needs one bounded, secret-scrubbed audit row before its
+enforcement runtime can feed the tuning loop.
+
+**Changed:**
+- Added a JSON schema for client, correlation, rule, action, user-decision, and
+  latency fields.
+- Added a fail-open Python writer targeting
+  `~/.local/share/damage-control/decisions-YYYY-MM.jsonl` with a test override.
+- Added secret scrubbing, field bounds, monthly files, and 30-day gzip
+  compression without loss of the compressed decision data.
+
+**Validation:** Three Python tests verified required schema fields, monthly
+paths, redaction and bounds, invalid/unwritable fail-open behavior, and gzip
+content preservation. Ruff passed.
+
+**Files:** `shared/damage-control/{decision.schema.json,decision_log.py}`,
+`test/test_damage_control_decision_log.py`,
+`.specs/rationalization-phase5/plan.md`, `CHANGELOG.md`
+
+---
+
+## 2026-07-17: Add the manual improvement-report entry point
+
+**Why:** The deterministic report existed as an internal script but lacked the
+single operator workflow required to run the improvement loop.
+
+**Changed:**
+- Added `/improve report` to run the repository report generator and return its
+  path without starting a provider turn.
+- Added `scripts/improvement-report` as the cross-repository thin wrapper.
+- Documented the three-step manual loop once in Pi's development philosophy:
+  run the report, select user-approved plan slices, and add a timer only after
+  two valuable manual cycles plus an explicit request.
+
+**Validation:** Six focused Python tests and 44 Pi workflow-friction tests passed
+with Ruff, Biome, and Pi typecheck. A persistent live RPC invocation ran
+`/improve report`, returned `.specs/improvement-reports/2026-07-17.md` in a
+visible command message, and emitted zero `agent_start` events.
+
+**Files:** `pi/{AGENTS.md,README.md,extensions/workflow-friction-review.ts,tests/workflow-friction.test.ts}`,
+`scripts/improvement-report`, `test/test_improvement_report.py`,
+`.specs/rationalization-phase4/plan.md`, `CHANGELOG.md`
+
+---
+
+## 2026-07-17: Generate the evidence-backed improvement report
+
+**Why:** Friction, usage, routing experiments, plan consistency, and dormant
+specs were separate evidence streams with no deterministic proposal boundary.
+
+**Changed:**
+- Added one Python report generator for routing cells, session friction signals,
+  command/skill/agent usage, active-plan lint, and 60-day `.specs/` hygiene.
+- Ordered deletion and consolidation proposals before additions and limited
+  additions so they never outnumber deletion candidates.
+- Treated absent metrics, sessions, friction metadata, routing cells, skill
+  events, and phase 5 decision logs as explicit coverage notes.
+- Added the May 2026 audit comparison and refused routing conclusions below 30
+  runs per arm.
+- Generated the first real-data report at
+  `.specs/improvement-reports/2026-07-17.md`.
+
+**Validation:** Five focused tests cover nearest-rank aggregation, quality/time/
+token/cost cells, report ordering, low-sample refusal, missing sources, and
+slash-echo command accounting. Ruff passed. Real-data inspection confirmed
+active `/do-it` and `/commit` usage is counted, all required report sections are
+ordered, and the empty routing table makes no conclusion.
+
+**Files:** `pi/scripts/improvement-report.py`, `test/test_improvement_report.py`,
+`.specs/{improvement-reports/2026-07-17.md,rationalization-phase4/plan.md}`,
+`CHANGELOG.md`
+
+---
+
+## 2026-07-17: Sample policy-resolved routing outcomes
+
+**Why:** Terra, Luna-high, and Sol-low dispatch choices lacked controlled outcome
+data covering quality, speed, and cost.
+
+**Changed:**
+- Added deterministic 10 percent assignment across data-defined Terra-medium,
+  Luna-high, and Sol-low arms for policy-resolved `modelSize` dispatches.
+- Kept explicit model and effort choices, continuation calls, and rate-zero
+  routing on the unsampled path.
+- Tagged sampled subagent and durable-task worker telemetry with experiment,
+  arm, task class, and available validation outcome while reusing existing exit,
+  duration, turn, token, and cost fields.
+- Added `PI_ROUTING_OUTCOME_SAMPLE_RATE` as the bounded zero-to-one kill and
+  sampling-rate control.
+
+**Validation:** Deterministic assignment over 10,000 keys landed within the
+configured-rate tolerance and covered all arms. Focused integration tests
+verified selected model/effort and telemetry for direct and durable-task
+workers, explicit override exclusion, missing-arm fallback, and byte-identical
+rate-zero model resolution. Seventy-six focused tests, Pi typecheck, and Biome
+passed.
+
+**Files:** `pi/{lib/model-routing.ts,lib/orchestration-telemetry.ts,lib/task-registry.ts,extensions/subagent/index.ts,extensions/tasks/execution.ts,docs/orchestration-telemetry.md,tests/model-routing.test.ts,tests/subagent.test.ts,tests/task-execution.test.ts}`,
+`.specs/rationalization-phase4/plan.md`, `CHANGELOG.md`
+
+---
+
+## 2026-07-17: Enforce durable plan state before `/do-it`
+
+**Why:** Checked tasks, State blocks, and final reports could contradict Git or
+each other, allowing fresh sessions to inherit false completion claims.
+
+**Changed:**
+- Added a deterministic `plan-lint` CLI that verifies checked-task commit
+  hashes, in-progress next steps, checklist/State agreement, and optional report
+  status claims.
+- Made `/do-it` stop before dispatch when plan lint fails and display the named
+  violations without starting a provider turn.
+- Required final workflow reports to use plan-lint's canonical report state and
+  documented the two-commit transition for newly completed task hashes.
+
+**Validation:** Eight focused Python tests and eight Pi workflow tests passed,
+along with Ruff, Pi typecheck, and Biome. Standalone lint passes the active
+phase 4 plan and flags archived phase 2 T14's missing close commit. A live RPC
+`/do-it` invocation surfaced that violation and emitted zero `agent_start`
+events.
+
+**Files:** `pi/{scripts/plan-lint,extensions/workflow-commands.ts,skills/workflow/do-it.md,tests/workflow-dispatch.test.ts,tests/workflow-skills.test.ts}`,
+`test/test_plan_lint.py`, `.specs/rationalization-phase4/plan.md`, `CHANGELOG.md`
+
+---
+
+## 2026-07-17: Clear the phase 4 and phase 5 execution gates
+
+**Why:** Both plans still recorded phase 2 as executing after phases 2 and 3 had
+been validated and archived.
+
+**Changed:**
+- Reconciled both durable State blocks with the archived plan evidence.
+- Marked phase 4 and phase 5 ready and recorded each next dependency-ready T1.
+
+**Validation:** Confirmed completed plans exist at
+`.specs/archive/rationalization-phase{2,3}/plan.md`; both active plans now have
+no recorded blocker and retain pending implementation checklists.
+
+**Files:** `.specs/{rationalization-phase4/plan.md,rationalization-phase5/plan.md}`,
+`CHANGELOG.md`
+
+---
+
+## 2026-07-17: Validate the phase 3 orchestration workflow
+
+**Why:** Phase 3 required one live workflow proving its capabilities compose,
+not only isolated unit coverage.
+
+**Changed:**
+- Recorded the final decisions for notification timing, continuation retention,
+  worktree leases, DAG scheduling, and structured chain transfer.
+- Ran an ignored `/do-it` scratch plan through persistent Pi RPC so a later user
+  turn could receive queued background completion messages.
+
+**Validation:** `make check-pi-extensions` passed 98 test files with 1,356 tests
+passing and one skipped. The live session used one task batch and one drain,
+automatically released a dependent task, recalled a fact through a persisted
+subagent continuation, and reported both queued completion notifications on a
+later turn with zero verification tool calls.
+
+**Files:** `.specs/archive/rationalization-phase3/plan.md`, `CHANGELOG.md`
+
+---
+
+## 2026-07-17: Validate structured subagent output
+
+**Why:** Subagent results crossed the process boundary as unvalidated prose, so
+chains could silently forward malformed or re-summarized data.
+
+**Changed:**
+- Added optional `outputSchema` validation to every subagent mode and returned
+  parsed values in result details.
+- Reused typed-agent schema parsing and allowed exactly one correction through
+  the child's persisted continuation session before returning a typed failure.
+- Forwarded normalized objects through chains and automatically used artifact
+  references for structured payloads larger than 8 KB.
+- Preserved the existing launch and output paths when no schema is supplied.
+
+**Validation:** Thirty-four focused subagent tests covered valid output, one
+successful correction, correction exhaustion, normalized chain transfer, bulky
+artifact transfer, and unchanged schema-less behavior. Eight typed-agent tests,
+Pi extension typecheck, focused Biome checks, and `git diff --check` passed.
+
+**Files:** `pi/{extensions/subagent/index.ts,lib/typed-agent.ts,tests/subagent.test.ts}`,
+`.specs/rationalization-phase3/plan.md`, `CHANGELOG.md`
+
+---
+
+## 2026-07-17: Hand plan execution to the DAG drain
+
+**Why:** `/do-it` still instructed the model to pump dependency waves even after
+the scheduler could own readiness, ordering, and writer safety.
+
+**Changed:**
+- Replaced wave-by-wave execution prose with one graph-aware `task batch`
+  handoff using stable keys, dependency keys, and writer scopes.
+- Directed background work through `task drain`, completion notifications, and
+  explicit starvation state while retaining direct execution for ready manual
+  tasks.
+- Added the planning rule that overlapping same-file writes must be combined or
+  connected by a dependency edge.
+
+**Validation:** Focused workflow contract tests verified the batch, dependency,
+scope, drain, and same-file instructions and rejected the retired wave-by-wave
+phrase. Pi typecheck and focused Biome checks passed.
+
+**Files:** `pi/{skills/workflow/do-it.md,skills/workflow/plan-it.md,tests/workflow-skills.test.ts}`,
+`.specs/rationalization-phase3/plan.md`, `CHANGELOG.md`
+
+---
+
+## 2026-07-17: Add the opt-in task DAG drain
+
+**Why:** Dependency graphs still required the model to dispatch each ready wave
+and reason about safe writer concurrency.
+
+**Changed:**
+- Added an opt-in `task drain` action with default concurrency four and an
+  explicit one-to-eight bound.
+- Rescanned the durable graph after each completion so newly unblocked and
+  mid-drain tasks dispatch automatically until quiescence.
+- Parallelized read-only agents from enforced tool capabilities, serialized
+  overlapping and scope-less writers, and ordered ready work by longest
+  downstream dependency path with stable ties.
+- Continued independent branches after failures and returned explicit
+  starvation records naming failed, cancelled, missing, or tombstoned blockers.
+
+**Validation:** The fixture DAG exercised a diamond, independent deliberate
+failure, overlapping writers, parallel readers, a task created mid-drain, and a
+failed dependent. It verified critical-path-first start, measured parallelism,
+writer serialization, dynamic dispatch, independent completion, and starvation.
+Forty-three focused execution, public task-tool, and scheduler tests passed with
+Pi typecheck and Biome checks.
+
+**Files:** `pi/{extensions/tasks.ts,extensions/tasks/execution.ts,README.md,tests/task-execution.test.ts,tests/task-tools.test.ts}`,
+`.specs/{rationalization-phase3/plan.md,archive/pi-orchestration-follow-ups/note.md}`,
+`CHANGELOG.md`
+
+---
+
+## 2026-07-17: Add deterministic task scheduling primitives
+
+**Why:** The upcoming opt-in DAG drain needs durable write scopes, mechanical
+tool mutability, conflict checks, and critical-path ordering rather than model
+judgment.
+
+**Changed:**
+- Added optional worktree-relative `scope` paths and globs to task create,
+  batch, update, and durable records.
+- Added central read, execute, and mutate capability declarations for
+  launcher-enforced tools; undeclared and default tool sets remain
+  conservatively mutating.
+- Added pure scheduling primitives for read-only derivation, conservative scope
+  overlap, scope-less writer conflicts, and stable longest-downstream-path
+  ordering.
+
+**Validation:** Sixty focused registry, public task-tool, capability, and
+scheduler tests passed. They covered scope persistence and rejection,
+create/batch/update compatibility, writer serialization decisions, reader
+parallelism, unknown-tool safety, and diamond critical-path ordering. Pi
+extension typecheck and focused Biome checks passed.
+
+**Files:** `pi/{lib/task-registry.ts,lib/tool-capabilities.ts,lib/task-scheduler.ts,extensions/tasks.ts,tests/task-registry.test.ts,tests/task-tools.test.ts,tests/tool-capabilities.test.ts,tests/task-scheduler.test.ts}`,
+`.specs/rationalization-phase3/plan.md`, `CHANGELOG.md`
+
+---
+
+## 2026-07-17: Validate cross-client worktree occupancy
+
+**Why:** Live Pi/Claude validation exposed a Windows stale-process edge case and
+was required to prove warnings and cleanup across the actual client entrypoints.
+
+**Changed:**
+- Treated Windows `os.kill(pid, 0)` invalid-parameter results as an absent
+  process identity during stale lease recovery.
+- Added a regression fixture for invalid process identifiers.
+
+**Validation:** A live Claude hook and Pi RPC session in one scratch worktree
+both reported `instances 2 !` and received the separate-worktree warning on the
+next model turn. Equivalent sessions in separate worktrees remained at
+`instances 1` without warnings. Clean shutdown removed both leases, simulated
+crash expiry removed the dead lease, and real lease activity left Git status
+unchanged. Ten focused helper and cross-client tests passed with Ruff checks.
+
+**Files:** `scripts/agent_instance_lease.py`,
+`test/test_agent_instance_lease.py`,
+`.specs/rationalization-phase3/plan.md`, `CHANGELOG.md`
+
+---
+
+## 2026-07-17: Wire Claude worktree occupancy
+
+**Why:** Cross-client concurrency remained silent until Claude Code joined the
+same worktree lease registry and exposed occupancy in its context and status
+line.
+
+**Changed:**
+- Registered and refreshed Claude leases through `SessionStart` and
+  `UserPromptSubmit`, with identity-checked release through `SessionEnd`.
+- Added same-worktree context warnings and instance counts to both Python and
+  compiled-binary status-line paths.
+- Reused the shared helper for atomic registration, stale recovery, and
+  separate-worktree boundaries; hook and status failures remain fail-open.
+
+**Validation:** Focused fixtures covered Pi/Claude same-worktree detection,
+separate-worktree non-warning, context injection, prompt refresh, status display,
+clean release, and settings lifecycle wiring. Eight shared-helper and Claude
+fixtures passed with Ruff lint and format checks; settings JSON parsed cleanly.
+
+**Files:** `claude/{hooks/agent_instances.py,claude-status,settings.json}`,
+`test/test_claude_agent_instances.py`, `CLAUDE.md`,
+`.specs/rationalization-phase3/plan.md`, `CHANGELOG.md`
+
+---
+
+## 2026-07-17: Wire Pi worktree occupancy
+
+**Why:** The shared lease registry needed a Pi lifecycle owner and visible
+warning before it could prevent silent same-worktree concurrency.
+
+**Changed:**
+- Registered primary Pi sessions at startup, refreshed their leases once per
+  minute, and released them on clean shutdown.
+- Excluded nested subagent processes from instance occupancy.
+- Added an instance-count status and a next-turn context warning when another
+  active agent session occupies the same worktree.
+- Kept helper failures fail-open and cleared timers and status on shutdown.
+
+**Validation:** Focused extension tests covered conflict and sole-occupant
+status, bounded warning delivery, heartbeat refresh, clean release, nested-child
+exclusion, failure behavior, and timer cleanup. Pi typecheck and focused Biome
+checks passed.
+
+**Files:** `pi/{extensions/agent-instances.ts,tests/agent-instances.test.ts,README.md}`,
+`.specs/rationalization-phase3/plan.md`, `CHANGELOG.md`
+
+---
+
+## 2026-07-17: Add the shared worktree lease registry
+
+**Why:** Pi and Claude need one deterministic coordination boundary before
+either client can warn about concurrent modifying sessions in the same Git
+worktree.
+
+**Changed:**
+- Added a cross-platform lease helper with atomic registration, heartbeat,
+  status, and identity-checked release operations.
+- Recorded bounded per-session JSON leases under each worktree's ignored
+  `.agent-instances/` directory.
+- Added shared stale cleanup semantics: an expired lease is removed only when
+  its recorded process is absent or its start identity no longer matches;
+  malformed records are reported and retained.
+
+**Validation:** Five focused fixtures covered simultaneous Pi/Claude
+registration, idempotency, separate-worktree isolation, live-process retention,
+crash expiry, malformed records, heartbeat, release, and CLI status. Ruff lint
+and format checks passed, and Git confirmed lease files are ignored.
+
+**Files:** `scripts/agent_instance_lease.py`,
+`test/test_agent_instance_lease.py`, `.gitignore`,
+`.specs/rationalization-phase3/plan.md`, `CHANGELOG.md`
+
+---
+
+## 2026-07-17: Remove unenforced agent metadata
+
+**Why:** Agent frontmatter advertised isolation and memory behavior that the
+subagent launcher never enforced.
+
+**Changed:**
+- Removed `isolation` and `memory` from the agent parser and task metadata.
+- Removed both fields from all repository-owned agent definitions.
+- Updated the agent configuration reference to list only launcher-enforced
+  fields; unknown frontmatter remains non-contractual.
+
+**Validation:** Repository agent definitions and the subagent implementation no
+longer contain either field. A focused fixture proved legacy frontmatter is
+ignored and does not enter task records. Subagent tests, Pi typecheck, and
+focused Biome checks passed.
+
+**Files:** `pi/{extensions/subagent/agents.ts,extensions/subagent/index.ts,agents/,tests/subagent.test.ts,README.md}`,
+`.specs/rationalization-phase3/plan.md`, `CHANGELOG.md`
+
+---
+
+## 2026-07-17: Add continuable subagent sessions
+
+**Why:** Delegated follow-ups restarted from a cold context because child
+processes were always ephemeral and left no session trail.
+
+**Changed:**
+- Added opt-in persisted child sessions and a continue mode that resumes a
+  specific session through Pi's supported headless `--session` path.
+- Stored the child session path in tool details, parent-visible output, and the
+  task record while preserving ephemeral behavior by default.
+- Compressed delegated sessions after 30 days without deleting session data,
+  restored compressed sessions before continuation, and taught the friction
+  scanner to read recursive plain or gzip session files.
+
+**Validation:** A live child retained the private fact `violet-orbit` across a
+separate follow-up process. Focused tests covered ephemeral parity, session
+persistence, task metadata, compressed-session continuation, and age-based dry
+runs. The compressed friction-scanner fixture was discovered and read. Pi
+focused tests, typecheck, Biome checks, and Python lint/format checks passed.
+
+**Files:** `pi/{extensions/subagent/index.ts,tests/subagent.test.ts}`,
+`.specs/{rationalization-phase3/plan.md,archive/rationalization-phase2/research/friction-scan.py}`,
+`CHANGELOG.md`
+
+---
+
 ## 2026-07-17: Surface active work and schedule process-local prompts
 
 **Why:** The compact footer buried active loop and task state behind provider
