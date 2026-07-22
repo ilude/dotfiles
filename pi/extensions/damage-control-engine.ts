@@ -9,6 +9,8 @@ import {
 	analyzeCommandAst,
 	isProvenSafeTempCleanupAt,
 } from "./damage-control/ast-analyzer.js";
+
+export { analyzeUnsafeShellEdit } from "./damage-control/ast-analyzer.js";
 import {
 	type AstAnalysisConfig,
 	compileCommandRegex,

@@ -1008,7 +1008,7 @@ no_delete_paths: []
 
 		mod.default(pi as Parameters<typeof mod.default>[0]);
 		await handlers.session_start[0]({ reason: "startup" }, ctx);
-		const result = await handlers.tool_call[0](
+		const result = await handlers.tool_call[1](
 			{ toolName: "bash", input: { command: "docker compose down" } },
 			ctx,
 		);
@@ -1509,14 +1509,14 @@ describe("damage-control refactor hardening", () => {
 
 		// Inert test input literals only; this test invokes no shell/process APIs.
 		await expect(
-			handlers[0](
+			handlers[1](
 				{ toolName: "bash", input: { command: "rm -rf ./synthetic-build" } },
 				ctx,
 			),
 		).resolves.toBeUndefined();
 		for (const command of ["git reset --hard", "git clean -fd"]) {
 			await expect(
-				handlers[0]({ toolName: "bash", input: { command } }, ctx),
+				handlers[1]({ toolName: "bash", input: { command } }, ctx),
 			).resolves.toMatchObject({ block: true });
 		}
 	});
@@ -1541,7 +1541,7 @@ describe("damage-control refactor hardening", () => {
 		};
 
 		await expect(
-			handlers[0](
+			handlers[1](
 				{ toolName: "bash", input: { command: "git status --short" } },
 				ctx,
 			),
@@ -1566,12 +1566,12 @@ describe("damage-control refactor hardening", () => {
 			cwd: process.cwd(),
 			ui: { setStatus: vi.fn(), notify: vi.fn(), confirm: vi.fn() },
 		};
-		const bashResult = await handlers[0](
+		const bashResult = await handlers[1](
 			{ toolName: "bash", input: { command: "cat synthetic.env" } },
 			ctx,
 		);
 		expect(bashResult).toMatchObject({ block: true });
-		const fileResult = await handlers[2](
+		const fileResult = await handlers[3](
 			{ toolName: "read", input: { path: "~/.ssh/id_ed25519" } },
 			ctx,
 		);
@@ -1671,7 +1671,7 @@ describe("damage-control eval hasUI tracking", () => {
 				registerCommand: vi.fn(),
 				sendMessage: vi.fn(),
 			} as unknown as Parameters<typeof mod.default>[0]);
-			const [bashHandler] = handlers;
+			const [, bashHandler] = handlers;
 			if (!bashHandler) throw new Error("bash handler not registered");
 
 			await bashHandler(
@@ -1796,7 +1796,7 @@ describe("damage-control registered-handler audit matrix", () => {
 				hasUI: false,
 				ui: { confirm: noUiConfirm, notify: vi.fn(), setStatus: vi.fn() },
 			};
-			const [bashHandler, pwshHandler, fileHandler] = handlers;
+			const [, bashHandler, pwshHandler, fileHandler] = handlers;
 			if (!bashHandler || !pwshHandler || !fileHandler)
 				throw new Error("damage-control handlers not registered");
 
@@ -2006,7 +2006,7 @@ describe("damage-control registered-handler audit matrix", () => {
 				hasUI: false,
 				ui: { confirm, notify: vi.fn(), setStatus: vi.fn() },
 			};
-			const [bashHandler, pwshHandler, fileHandler] = handlers;
+			const [, bashHandler, pwshHandler, fileHandler] = handlers;
 			if (!bashHandler || !pwshHandler || !fileHandler)
 				throw new Error("damage-control handlers not registered");
 			for (const [handler, event] of [

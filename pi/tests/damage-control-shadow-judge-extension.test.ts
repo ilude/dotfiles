@@ -73,7 +73,7 @@ async function registerExtension(): Promise<{
 		}),
 		sendMessage: vi.fn(),
 	} as unknown as Parameters<typeof mod.default>[0]);
-	const bashHandler = handlers[0];
+	const bashHandler = handlers[1];
 	if (!bashHandler) throw new Error("bash handler not registered");
 	return { bashHandler, commands };
 }

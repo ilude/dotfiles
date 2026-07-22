@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type {
 	BashToolCallEvent,
 	EditToolCallEvent,
@@ -24,7 +24,7 @@ import {
 	getDamageControlHealth,
 	publishDamageControlHealth,
 } from "../lib/damage-control-health.js";
-import { emitTerminalBell } from "../lib/extension-utils.js";
+import { emitTerminalBell, uiNotify } from "../lib/extension-utils.js";
 import { recordEvent } from "../lib/metrics.js";
 import {
 	type DecisionProvenance,
@@ -37,6 +37,7 @@ import {
 	redactSummary,
 } from "./damage-control-debug.js";
 import {
+	analyzeUnsafeShellEdit,
 	canonicalizeOrBlock,
 	checkNoDeletePaths,
 	checkReadConfirmPath,
@@ -63,6 +64,7 @@ import {
 export { debugLog, redactSummary } from "./damage-control-debug.js";
 export {
 	analyzeGitCommand,
+	analyzeUnsafeShellEdit,
 	checkNoDeletePaths,
 	checkReadConfirmPath,
 	checkReadOnlyPath,
@@ -93,6 +95,95 @@ export {
 
 const DENY_PROVENANCE: DecisionProvenance = "rule";
 const DAMAGE_CONTROL_MODES: DamageControlMode[] = ["default", "noshell"];
+const MAX_TRACKED_TOOL_OUTCOMES = 128;
+const REPEATED_TOOL_LOOP_RULE = "repeated_tool_loop";
+const REPEATED_TOOL_LOOP_REASON =
+	`Blocked repeated tool loop (matched "${REPEATED_TOOL_LOOP_RULE}"): the same tool call produced the same result twice; the current agent run was aborted.`;
+
+interface RepeatedToolOutcome {
+	resultFingerprint: string;
+	count: number;
+}
+
+function normalizeFingerprintValue(value: unknown): unknown {
+	if (typeof value === "string")
+		return value.replaceAll("\r\n", "\n").trimEnd();
+	if (Array.isArray(value)) return value.map(normalizeFingerprintValue);
+	if (!value || typeof value !== "object") return value;
+	return Object.fromEntries(
+		Object.keys(value as Record<string, unknown>)
+			.sort()
+			.map((key) => [
+				key,
+				normalizeFingerprintValue(
+					(value as Record<string, unknown>)[key],
+				),
+			]),
+	);
+}
+
+function fingerprint(value: unknown): string | undefined {
+	try {
+		return JSON.stringify(normalizeFingerprintValue(value));
+	} catch {
+		return undefined;
+	}
+}
+
+function fingerprintHash(value: string): string {
+	return createHash("sha256").update(value).digest("hex");
+}
+
+export class RepeatedToolLoopGuard {
+	private readonly outcomes = new Map<string, RepeatedToolOutcome>();
+
+	reset(): void {
+		this.outcomes.clear();
+	}
+
+	check(toolName: string, input: unknown):
+		| {
+				callFingerprint: string;
+				resultFingerprint: string;
+				attemptCount: number;
+		  }
+		| undefined {
+		const callFingerprint = fingerprint([
+			toolName.trim().toLowerCase(),
+			input,
+		]);
+		if (!callFingerprint) return undefined;
+		const previous = this.outcomes.get(callFingerprint);
+		if (!previous || previous.count < 2) return undefined;
+		return {
+			callFingerprint,
+			resultFingerprint: previous.resultFingerprint,
+			attemptCount: previous.count + 1,
+		};
+	}
+
+	record(toolName: string, input: unknown, result: unknown): void {
+		const callFingerprint = fingerprint([
+			toolName.trim().toLowerCase(),
+			input,
+		]);
+		const resultFingerprint = fingerprint(result);
+		if (!callFingerprint || !resultFingerprint) return;
+		const previous = this.outcomes.get(callFingerprint);
+		this.outcomes.delete(callFingerprint);
+		this.outcomes.set(callFingerprint, {
+			resultFingerprint,
+			count:
+				previous?.resultFingerprint === resultFingerprint
+					? previous.count + 1
+					: 1,
+		});
+		if (this.outcomes.size <= MAX_TRACKED_TOOL_OUTCOMES) return;
+		const oldest = this.outcomes.keys().next().value;
+		if (typeof oldest === "string") this.outcomes.delete(oldest);
+	}
+}
+
 interface DamageControlRuntimeState {
 	health: DamageControlHealth;
 	mode: DamageControlMode;
@@ -662,6 +753,7 @@ export default function (pi: ExtensionAPI) {
 	debugLog("extension_registered");
 	const state = createDamageControlState();
 	const sessionState = new DamageControlSessionState();
+	const repeatedToolLoop = new RepeatedToolLoopGuard();
 	const loaded = loadRules();
 	const rules = loaded.rules;
 	state.health = loaded.health;
@@ -669,7 +761,50 @@ export default function (pi: ExtensionAPI) {
 	publishDamageControlHealth(loaded.health);
 	registerDamageControlCommand(pi, state);
 
+	pi.on("input", (event) => {
+		if (event.source !== "extension") repeatedToolLoop.reset();
+	});
+
+	pi.on("tool_call", (event, ctx) => {
+		const repeated = repeatedToolLoop.check(event.toolName, event.input);
+		if (!repeated) return undefined;
+		const rawAction =
+			fingerprint(event.input) ?? `[unserializable ${event.toolName} input]`;
+		const decision = { block: true as const, reason: REPEATED_TOOL_LOOP_REASON };
+		recordBlock(
+			event.toolName,
+			rawAction,
+			ctx.cwd,
+			decision,
+			ctx.hasUI,
+			loaded.health.ruleSource,
+			event.toolCallId,
+			{
+				attemptCount: repeated.attemptCount,
+				callFingerprint: fingerprintHash(repeated.callFingerprint),
+				resultFingerprint: fingerprintHash(repeated.resultFingerprint),
+			},
+		);
+		uiNotify(
+			ctx,
+			"warning",
+			"Stopped the current run after the same tool call produced the same result twice.",
+			{ prefix: "damage-control" },
+		);
+		ctx.abort();
+		return decision;
+	});
+
+	pi.on("tool_result", (event) => {
+		repeatedToolLoop.record(event.toolName, event.input, {
+			content: event.content,
+			details: event.details,
+			isError: event.isError,
+		});
+	});
+
 	pi.on("session_start", async (_event, ctx) => {
+		repeatedToolLoop.reset();
 		debugLog("session_start", { health: state.health });
 		ctx.ui.setStatus?.("damage-control", "damage-control: active");
 		if (state.health.status === "failed") {
@@ -760,6 +895,20 @@ export default function (pi: ExtensionAPI) {
 				event.toolCallId,
 			);
 			return modeDecision;
+		}
+
+		const shellEdit = await analyzeUnsafeShellEdit(command, rules.astAnalysis);
+		if (shellEdit) {
+			recordBlock(
+				"bash",
+				command,
+				ctx.cwd,
+				shellEdit,
+				ctx.hasUI,
+				loaded.health.ruleSource,
+				event.toolCallId,
+			);
+			return shellEdit;
 		}
 
 		let askEventId: string | undefined;

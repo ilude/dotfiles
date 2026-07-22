@@ -64,6 +64,7 @@ export function createMockPi() {
 export function createMockCtx(overrides: Record<string, any> = {}) {
 	return {
 		cwd: "/test/dir",
+		abort: vi.fn(),
 		ui: {
 			notify: vi.fn(),
 			setStatus: vi.fn(),

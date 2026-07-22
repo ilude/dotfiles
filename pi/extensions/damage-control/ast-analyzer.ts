@@ -27,6 +27,11 @@ const SAFE_VARIABLES = new Set([
 const SHELL_C_NAMES = new Set(["bash", "sh", "zsh", "ksh", "dash"]);
 const EVAL_SOURCE_COMMANDS = new Set(["eval", "source", "."]);
 const COMPOUND_SHELL_OPERATOR = /&&|\|\||[;|`<>]|\$\(/;
+const SHELL_EDIT_PREFILTER =
+	/\b(?:sed\s+(?:-i(?:\s|\.)|--in-place)|perl\s+-pi\b|cat\s*>|python(?:\d+(?:\.\d+)*)?\s+-\s*<<)/;
+const SHELL_EDIT_RULE = "unsafe_shell_edit";
+const SHELL_EDIT_GUIDANCE =
+	"Prefer Pi safe edit tools for repository edits: use write for new files, text_edit for text replacements/newlines, or structured_edit for JSON.";
 const MAX_RECURSION_DEPTH = 3;
 
 type TempProvenance = "mktemp_file" | "mktemp_dir" | "mktemp_dir_child";
@@ -583,6 +588,115 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 			},
 		);
 	});
+}
+
+function hasTruncatingRedirect(node: TreeSitter.Node): boolean {
+	if (
+		node.type.includes("redirect") &&
+		/(?<![<>])(?:\d*)>\|?(?!>)/.test(nodeText(node))
+	) {
+		return true;
+	}
+	return node.children.some((child) => hasTruncatingRedirect(child));
+}
+
+function commandArguments(node: TreeSitter.Node): string[] {
+	return node.children
+		.slice(1)
+		.map((child) => stripQuotes(nodeText(child).trim()))
+		.filter(Boolean);
+}
+
+function isInPlaceSed(node: TreeSitter.Node): boolean {
+	if (commandName(node) !== "sed") return false;
+	return commandArguments(node).some(
+		(argument) =>
+			/^-i(?:$|[^A-Za-z])/.test(argument) ||
+			/^--in-place(?:=|$)/.test(argument),
+	);
+}
+
+function isInPlacePerl(node: TreeSitter.Node): boolean {
+	if (commandName(node) !== "perl") return false;
+	return commandArguments(node).some((argument) =>
+		/^-[A-Za-z]*pi[A-Za-z]*$/.test(argument),
+	);
+}
+
+function redirectScope(node: TreeSitter.Node): TreeSitter.Node {
+	return node.parent?.type.includes("redirect") ? node.parent : node;
+}
+
+function isTruncatingCat(node: TreeSitter.Node): boolean {
+	return (
+		commandName(node) === "cat" &&
+		hasTruncatingRedirect(redirectScope(node))
+	);
+}
+
+function collectHeredocBodyText(node: TreeSitter.Node): string {
+	if (node.type === "heredoc_body") return nodeText(node);
+	return node.children.map((child) => collectHeredocBodyText(child)).join("\n");
+}
+
+function isMutatingPythonHeredoc(
+	node: TreeSitter.Node,
+	originalCommand: string,
+): boolean {
+	const name = commandName(node);
+	if (!name || !/^python(?:\d+(?:\.\d+)*)?$/.test(name)) return false;
+	if (!new RegExp(`\\b${name}\\s+-\\s*<<`).test(originalCommand))
+		return false;
+	const script = collectHeredocBodyText(redirectScope(node));
+	return (
+		/\.write_text\s*\(/.test(script) ||
+		/\bopen\s*\([^\n)]*,\s*["']w["']/.test(script)
+	);
+}
+
+function containsUnsafeShellEdit(
+	node: TreeSitter.Node,
+	originalCommand: string,
+): boolean {
+	if (
+		node.type === "command" &&
+		(isInPlaceSed(node) ||
+			isInPlacePerl(node) ||
+			isTruncatingCat(node) ||
+			isMutatingPythonHeredoc(node, originalCommand))
+	) {
+		return true;
+	}
+	return node.children.some((child) =>
+		containsUnsafeShellEdit(child, originalCommand),
+	);
+}
+
+export async function analyzeUnsafeShellEdit(
+	command: string,
+	astConfig?: AstAnalysisConfig,
+): Promise<{ block: true; reason: string } | undefined> {
+	if (!SHELL_EDIT_PREFILTER.test(command)) return undefined;
+	try {
+		const parser = await getParser();
+		const root = parse(parser, command);
+		const analysis = (async () =>
+			containsUnsafeShellEdit(root, command))();
+		const matched =
+			astConfig?.timeoutMs && astConfig.timeoutMs > 0
+				? await withTimeout(analysis, astConfig.timeoutMs)
+				: await analysis;
+		if (!matched) return undefined;
+		return {
+			block: true,
+			reason: `Blocked unsafe shell edit (matched "${SHELL_EDIT_RULE}"): ${SHELL_EDIT_GUIDANCE}`,
+		};
+	} catch {
+		return {
+			block: true,
+			reason: `Blocked ambiguous shell edit (matched "${SHELL_EDIT_RULE}"): structural analysis failed. ${SHELL_EDIT_GUIDANCE}`,
+		};
+	}
 }
 
 export async function isProvenSafeTempCleanupAt(
