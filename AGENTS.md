@@ -8,7 +8,7 @@ Read this file first. More specific instructions for the active client or direct
 - OpenCode/Codex: `opencode/AGENTS.md`
 - Copilot: `copilot/`
 - Pi global instructions: [`pi/AGENTS.md`](pi/AGENTS.md); Claude global instructions: `claude/CLAUDE.md` (independent files, no symlink)
-- Pi runtime: [`pi/README.md`](pi/README.md) and [`pi/PI-INSTRUCTIONS.md`](pi/PI-INSTRUCTIONS.md)
+- Pi runtime: [`pi/README.md`](pi/README.md)
 
 Claude hooks, commands, settings, and runtime workarounds are Claude-only. `menos/` deployment and Claude-only content ingestion are also outside this file's scope. Follow the owning surface rather than blending client, shell, PowerShell, WSL, or platform conventions.
 
@@ -112,7 +112,7 @@ If agent work coincides with high LSM, CryptSvc, Git LFS, MSYS helper, or consol
 
 ## Ownership and navigation
 
-For command ownership and the full client surface catalog, see [`docs/agent-command-surfaces.md`](docs/agent-command-surfaces.md). Pi runtime features, safety systems, slash/workflow commands, skills, routing, status UI, tools, and operator behavior are Pi-first and belong in `pi/` unless the user explicitly requests another client or cross-client support; follow [`pi/README.md`](pi/README.md) and [`pi/PI-INSTRUCTIONS.md`](pi/PI-INSTRUCTIONS.md). When client or platform patterns conflict, follow the owning/local surface and flag any consequential conflict.
+For command ownership and the full client surface catalog, see [`docs/agent-command-surfaces.md`](docs/agent-command-surfaces.md). Pi runtime features, safety systems, slash/workflow commands, skills, routing, status UI, tools, and operator behavior are Pi-first and belong in `pi/` unless the user explicitly requests another client or cross-client support; follow [`pi/README.md`](pi/README.md). When client or platform patterns conflict, follow the owning/local surface and flag any consequential conflict.
 
 Key paths:
 

@@ -15,6 +15,8 @@ Approval for requested work does not authorize auxiliary tracking. Create memory
 
 Require confirmation for external writes and destructive actions. Process-local schedule creation and cancellation never use confirmation dialogs: a direct request authorizes creation, and an explicit request or an existing schedule's completion condition authorizes cancellation. Ask only a non-confirmation clarification when required schedule values are missing. After a denial or hard block, re-plan instead of retrying equivalent variants.
 
+Damage control is a safety boundary. Never change syntax, tools, or command shape to evade policy; issue required operations directly and accept normal confirmation.
+
 ## Development Philosophy
 
 Keep workflows flexible and instructions minimal. When requested work requires an implementation choice, prefer existing maintained and deterministic mechanisms over custom heuristics. Do not refactor unrelated behavior to enforce that preference.
@@ -28,6 +30,12 @@ Before executing unfamiliar repository automation, inspect the specific entrypoi
 Follow applicable local instructions. Report conflicts that block the requested outcome; do not turn discoveries into instruction updates unless requested. Do not give time estimates.
 
 Delegate only when independent workstreams materially improve execution, such as parallel work, output-heavy investigation, or a distinct capability boundary. Never delegate serial stages or overlapping writes.
+
+## Pi Runtime Ownership
+
+- Pi workflow, runtime, safety, routing, status, and tool features belong in `pi/` unless the user requests another client or cross-client support.
+- Curated Pi source and configuration are trackable. Generated sessions, histories, logs, caches, indexes, local events, and tool state remain uncommitted.
+- Structured commit mutation tools belong to the `/commit` workflow. Non-mutating commit inspection and ordinary Git follow their normal safety rules.
 
 ## File & Tool Operations
 
