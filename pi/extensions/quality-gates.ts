@@ -14,6 +14,7 @@ import {
 	parseGitDiffLineMapper,
 	parseLizardCsv,
 } from "../lib/quality-gates/lizard.ts";
+import { recordEvent } from "../lib/metrics.js";
 import {
 	loadQualityGatesPolicy,
 	type LanguageConfig,
@@ -28,11 +29,8 @@ const POLICY_PATH = fileURLToPath(
 );
 const VALIDATOR_LOOKUP_TIMEOUT_MS = 2000;
 const VALIDATOR_RUN_TIMEOUT_MS = 10000;
-const MAX_AUTO_REPAIR_ATTEMPTS = 2;
 const MAX_VALIDATOR_OUTPUT_CHARS = 8000;
 const MAX_QUALITY_MESSAGE_CHARS = 24000;
-const REPAIR_GUIDANCE =
-	"Fix reported issues using the most focused and minimal change needed to make the check pass; avoid wholesale refactors or scope expansion; if passing requires major refactoring or material scope expansion, stop and discuss with the user.";
 const validatorAvailabilityCache = new Map<string, boolean>();
 
 function loadValidators(): QualityGatesPolicy {
@@ -394,15 +392,50 @@ export interface ValidationIssue {
 	advisory?: true;
 }
 
+export type ValidationOutcomeKind =
+	| "passed"
+	| "failed"
+	| "unavailable"
+	| "skipped";
+
+export interface ValidationOutcome {
+	name: string;
+	outcome: ValidationOutcomeKind;
+	durationMs: number;
+	reason?:
+		| "complexity"
+		| "explicit_only"
+		| "long_running"
+		| "not_detected"
+		| "project_scope"
+		| "stale_result";
+}
+
 interface ValidationRunOptions {
 	lizardThresholds?: LizardThresholds;
 	executedProjectValidators?: Set<string>;
+	automatic?: boolean;
+	onOutcome?: (outcome: ValidationOutcome) => void;
 }
 
 function boundedText(value: string, limit: number): string {
 	if (value.length <= limit) return value;
 	const suffix = "\n... output truncated";
 	return `${value.slice(0, limit - suffix.length)}${suffix}`;
+}
+
+function automaticSkipReason(
+	validator: ValidatorConfig,
+): ValidationOutcome["reason"] | undefined {
+	if (!("command" in validator)) return "complexity";
+	if (validator.automatic === false) return "explicit_only";
+	if (validator.scope === "project") return "project_scope";
+	if (
+		validator.timeout !== undefined &&
+		validator.timeout * 1000 > VALIDATOR_RUN_TIMEOUT_MS
+	)
+		return "long_running";
+	return undefined;
 }
 
 export async function runAvailableValidators(
@@ -416,20 +449,45 @@ export async function runAvailableValidators(
 	const projectRoot =
 		findProjectRoot(absoluteFilePath, langConfig.markers ?? []) ?? cwd;
 	const failures: ValidationIssue[] = [];
-	for (const validator of filterValidatorsByDetection(
-		langConfig.validators,
-		projectRoot,
-	)) {
+	for (const validator of langConfig.validators) {
+		const startedAt = Date.now();
+		const report = (
+			outcome: ValidationOutcomeKind,
+			reason?: ValidationOutcome["reason"],
+		) =>
+			options.onOutcome?.({
+				name: validator.name,
+				outcome,
+				durationMs: Date.now() - startedAt,
+				...(reason ? { reason } : {}),
+			});
+		if (filterValidatorsByDetection([validator], projectRoot).length === 0) {
+			report("skipped", "not_detected");
+			continue;
+		}
+		const skipReason = options.automatic
+			? automaticSkipReason(validator)
+			: undefined;
+		if (skipReason) {
+			report("skipped", skipReason);
+			continue;
+		}
 		if ("scope" in validator && validator.scope === "project") {
 			const key = `${projectRoot}\0${validator.name}`;
-			if (options.executedProjectValidators?.has(key)) continue;
+			if (options.executedProjectValidators?.has(key)) {
+				report("skipped", "project_scope");
+				continue;
+			}
 			options.executedProjectValidators?.add(key);
 		}
 		const checkBin =
 			validator.check ??
 			("command" in validator ? validator.command[0] : "lizard");
 		const lookup = process.platform === "win32" ? "where.exe" : "which";
-		if (!(await isValidatorAvailable(pi, lookup, checkBin))) continue;
+		if (!(await isValidatorAvailable(pi, lookup, checkBin))) {
+			report("unavailable");
+			continue;
+		}
 		if (!("command" in validator)) {
 			const output = await runDifferentialLizard(
 				pi,
@@ -440,12 +498,14 @@ export async function runAvailableValidators(
 					...validator.thresholds,
 				},
 			);
-			if (output)
+			if (output) {
 				failures.push({
 					name: validator.name,
 					output: boundedText(output, MAX_VALIDATOR_OUTPUT_CHARS),
 					...(validator.advisory ? { advisory: true } : {}),
 				});
+				report("failed");
+			} else report("passed");
 			continue;
 		}
 		const command = buildValidatorCommand(
@@ -459,7 +519,7 @@ export async function runAvailableValidators(
 				? validator.timeout * 1000
 				: VALIDATOR_RUN_TIMEOUT_MS,
 		});
-		if (result.code !== 0 || (validator.failOnStdout && result.stdout.trim()))
+		if (result.code !== 0 || (validator.failOnStdout && result.stdout.trim())) {
 			failures.push({
 				name: validator.name,
 				output: boundedText(
@@ -468,6 +528,8 @@ export async function runAvailableValidators(
 					MAX_VALIDATOR_OUTPUT_CHARS,
 				),
 			});
+			report("failed");
+		} else report("passed");
 	}
 	return failures;
 }
@@ -500,23 +562,28 @@ function sendAdvisoryIssues(
 ): void {
 	if (advisories.length === 0) return;
 	if (failures.length > 0) return;
-	pi.sendMessage({
-		customType: "quality-gates",
-		content: formatIssueMessage("Quality gate advisory", advisories),
-		display: true,
-	});
+	pi.sendMessage(
+		{
+			customType: "quality-gates",
+			content: formatIssueMessage("Quality gate advisory", advisories),
+			display: true,
+		},
+		{ triggerTurn: false },
+	);
+}
+
+interface TouchedFile {
+	filePath: string;
+	absolutePath: string;
+	cwd: string;
 }
 
 interface QualityGateState {
-	touchedFiles: Set<string>;
+	touchedFiles: Map<string, TouchedFile>;
 	successfulHashes: Map<string, string>;
-	repairAttempts: number;
-	repairQueued: boolean;
 }
 
-interface PendingFileValidation {
-	filePath: string;
-	absolutePath: string;
+interface PendingFileValidation extends TouchedFile {
 	langConfig: LanguageConfig;
 	hashBefore: string | undefined;
 }
@@ -532,53 +599,91 @@ const emptyValidationBatch = (): ValidationBatch => ({
 });
 
 function prepareFileValidation(
-	filePath: string,
-	cwd: string,
+	touched: TouchedFile,
 	languageByExtension: Map<string, LanguageConfig>,
 	state: QualityGateState,
 ): PendingFileValidation | undefined {
-	const absolutePath = path.resolve(cwd, filePath);
-	if (!fs.existsSync(absolutePath)) return undefined;
-	if (matchesQualityPath(filePath, cwd, skippedPathPatterns)) return undefined;
+	if (!fs.existsSync(touched.absolutePath)) return undefined;
+	if (
+		matchesQualityPath(touched.filePath, touched.cwd, skippedPathPatterns)
+	)
+		return undefined;
 	const langConfig = languageByExtension.get(
-		path.extname(filePath).toLowerCase(),
+		path.extname(touched.filePath).toLowerCase(),
 	);
 	if (!langConfig) return undefined;
-	const hashBefore = contentHash(filePath, cwd);
-	if (hashBefore && state.successfulHashes.get(absolutePath) === hashBefore)
+	const hashBefore = contentHash(touched.filePath, touched.cwd);
+	if (
+		hashBefore &&
+		state.successfulHashes.get(touched.absolutePath) === hashBefore
+	)
 		return undefined;
-	return { filePath, absolutePath, langConfig, hashBefore };
+	return { ...touched, langConfig, hashBefore };
+}
+
+function recordValidationOutcome(
+	pending: PendingFileValidation,
+	outcome: ValidationOutcome,
+): void {
+	recordEvent({
+		event: "quality_gate_validator",
+		data: {
+			validator: outcome.name,
+			outcome: outcome.outcome,
+			durationMs: outcome.durationMs,
+			file: relativePath(pending.cwd, pending.absolutePath),
+			...(outcome.reason ? { reason: outcome.reason } : {}),
+		},
+	});
 }
 
 const validatePendingFile = async (
 	pi: ExtensionAPI,
 	pending: PendingFileValidation,
-	cwd: string,
-	executedProjectValidators: Set<string>,
 	state: QualityGateState,
 ): Promise<ValidationBatch> => {
+	const outcomes: ValidationOutcome[] = [];
 	const issues = await runAvailableValidators(
 		pi,
 		pending.langConfig,
 		pending.filePath,
-		cwd,
+		pending.cwd,
 		{
+			automatic: true,
 			lizardThresholds: validators.lizardThresholds,
-			executedProjectValidators,
+			onOutcome: (outcome) => outcomes.push(outcome),
 		},
 	);
-	const hashAfter = contentHash(pending.filePath, cwd);
+	const hashAfter = contentHash(pending.filePath, pending.cwd);
 	if (pending.hashBefore !== hashAfter) {
-		if (hashAfter) state.touchedFiles.add(pending.filePath);
+		for (const outcome of outcomes)
+			recordValidationOutcome(pending, {
+				...outcome,
+				outcome: "skipped",
+				reason: "stale_result",
+			});
+		if (hashAfter)
+			state.touchedFiles.set(pending.absolutePath, {
+				filePath: pending.filePath,
+				absolutePath: pending.absolutePath,
+				cwd: pending.cwd,
+			});
 		return emptyValidationBatch();
 	}
+	for (const outcome of outcomes) recordValidationOutcome(pending, outcome);
 	const failures = issues
 		.filter((issue) => !issue.advisory)
 		.map((issue) => ({ filePath: pending.filePath, ...issue }));
 	const advisories = issues
 		.filter((issue) => issue.advisory)
 		.map((issue) => ({ filePath: pending.filePath, ...issue }));
-	if (failures.length === 0 && hashAfter)
+	const cacheable =
+		outcomes.some((outcome) => outcome.outcome === "passed") &&
+		outcomes.every(
+			(outcome) =>
+				outcome.outcome === "passed" || outcome.outcome === "skipped",
+		);
+	if (cacheable && failures.length === 0 && hashAfter)
 		state.successfulHashes.set(pending.absolutePath, hashAfter);
 	return { failures, advisories };
 };
@@ -587,31 +692,39 @@ async function collectValidationBatch(
 	pi: ExtensionAPI,
 	languageByExtension: Map<string, LanguageConfig>,
 	state: QualityGateState,
-	cwd: string,
 ): Promise<ValidationBatch> {
-	const pendingFiles = [...state.touchedFiles].sort();
+	const touchedFiles = [...state.touchedFiles.values()].sort((a, b) =>
+		a.absolutePath.localeCompare(b.absolutePath),
+	);
 	state.touchedFiles.clear();
-	if (pendingFiles.length === 0) return emptyValidationBatch();
-	const files = await filterNetChangedFiles(pi, pendingFiles, cwd);
+	if (touchedFiles.length === 0) return emptyValidationBatch();
+	const byCwd = new Map<string, TouchedFile[]>();
+	for (const touched of touchedFiles) {
+		const files = byCwd.get(touched.cwd) ?? [];
+		files.push(touched);
+		byCwd.set(touched.cwd, files);
+	}
 	const batch = emptyValidationBatch();
-	const executedProjectValidators = new Set<string>();
-	for (const filePath of files) {
-		const pending = prepareFileValidation(
-			filePath,
-			cwd,
-			languageByExtension,
-			state,
+	for (const [cwd, candidates] of byCwd) {
+		const changedPaths = new Set(
+			await filterNetChangedFiles(
+				pi,
+				candidates.map((candidate) => candidate.filePath),
+				cwd,
+			),
 		);
-		if (!pending) continue;
-		const result = await validatePendingFile(
-			pi,
-			pending,
-			cwd,
-			executedProjectValidators,
-			state,
-		);
-		batch.failures.push(...result.failures);
-		batch.advisories.push(...result.advisories);
+		for (const touched of candidates) {
+			if (!changedPaths.has(touched.filePath)) continue;
+			const pending = prepareFileValidation(
+				touched,
+				languageByExtension,
+				state,
+			);
+			if (!pending) continue;
+			const result = await validatePendingFile(pi, pending, state);
+			batch.failures.push(...result.failures);
+			batch.advisories.push(...result.advisories);
+		}
 	}
 	return batch;
 }
@@ -619,38 +732,27 @@ async function collectValidationBatch(
 function handleValidationBatch(
 	pi: ExtensionAPI,
 	batch: ValidationBatch,
-	state: QualityGateState,
 ): void {
 	sendAdvisoryIssues(pi, batch.advisories, batch.failures);
-	if (batch.failures.length === 0) {
-		state.repairAttempts = 0;
-		return;
-	}
-	const content = formatIssueMessage(
-		"Quality gate validation failed",
-		batch.failures,
-	);
-	if (state.repairAttempts >= MAX_AUTO_REPAIR_ATTEMPTS) {
-		state.repairAttempts = 0;
-		pi.sendMessage({
-			customType: "quality-gates",
-			content: `${content}\n\n${REPAIR_GUIDANCE}\n\nAutomatic repair limit reached. Resolve these failures before continuing.`,
-			display: true,
-		});
-		return;
-	}
-	state.repairAttempts++;
-	state.repairQueued = true;
-	for (const failure of batch.failures)
-		state.touchedFiles.add(failure.filePath);
+	if (batch.failures.length === 0) return;
 	pi.sendMessage(
 		{
 			customType: "quality-gates",
-			content: `${content}\n\n${REPAIR_GUIDANCE}`,
+			content: formatIssueMessage(
+				"Quality gate validation failed",
+				batch.failures,
+			),
 			display: true,
 		},
-		{ triggerTurn: true, deliverAs: "followUp" },
+		{ triggerTurn: false },
 	);
+	recordEvent({
+		event: "quality_gate_notification",
+		data: {
+			failures: batch.failures.length,
+			advisories: batch.advisories.length,
+		},
+	});
 }
 
 export function registerQualityGates(
@@ -658,19 +760,11 @@ export function registerQualityGates(
 	languageByExtension: Map<string, LanguageConfig> = extMap,
 ): void {
 	const state: QualityGateState = {
-		touchedFiles: new Set<string>(),
+		touchedFiles: new Map<string, TouchedFile>(),
 		successfulHashes: new Map<string, string>(),
-		repairAttempts: 0,
-		repairQueued: false,
 	};
-	pi.on("agent_start", () => {
-		if (state.repairQueued) {
-			state.repairQueued = false;
-			return;
-		}
-		state.repairAttempts = 0;
-	});
-	pi.on("tool_result", (event: ToolResultEvent) => {
+	pi.on("tool_result", (event: ToolResultEvent, ctx) => {
+		if (event.isError) return;
 		if (
 			event.toolName !== "write" &&
 			event.toolName !== "edit" &&
@@ -678,23 +772,25 @@ export function registerQualityGates(
 			event.toolName !== "structured_edit"
 		)
 			return;
-		for (const filePath of getFilePaths(event))
-			if (languageByExtension.has(path.extname(filePath).toLowerCase()))
-				state.touchedFiles.add(filePath);
-	});
-	pi.on("agent_settled", async (_event, ctx) => {
 		const cwd = ctx?.cwd ?? process.cwd();
+		for (const filePath of getFilePaths(event)) {
+			if (!languageByExtension.has(path.extname(filePath).toLowerCase()))
+				continue;
+			const absolutePath = path.resolve(cwd, filePath);
+			state.touchedFiles.set(absolutePath, { filePath, absolutePath, cwd });
+		}
+	});
+	pi.on("agent_settled", async () => {
 		const batch = await collectValidationBatch(
 			pi,
 			languageByExtension,
 			state,
-			cwd,
 		);
-		handleValidationBatch(pi, batch, state);
+		handleValidationBatch(pi, batch);
 	});
 }
 
-export { POLICY_PATH, REPAIR_GUIDANCE };
+export { POLICY_PATH };
 
 export default function (pi: ExtensionAPI) {
 	registerQualityGates(pi);

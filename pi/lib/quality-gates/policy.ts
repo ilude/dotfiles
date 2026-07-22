@@ -19,6 +19,7 @@ export interface LizardValidatorConfig {
 export interface CommandValidatorConfig {
 	name: string;
 	command: string[];
+	automatic?: false;
 	check?: string;
 	detectAny?: string[];
 	detectAll?: string[];
@@ -158,6 +159,8 @@ const hasInvalidCommandMetadata = (
 ): boolean => {
 	if (validator.check !== undefined && typeof validator.check !== "string")
 		return true;
+	if (validator.automatic !== undefined && validator.automatic !== false)
+		return true;
 	if (validator.always !== undefined && !trueField(validator.always))
 		return true;
 	if (
@@ -178,6 +181,7 @@ const buildCommandValidator = (
 		name: validator.name as string,
 		command: validator.command as string[],
 	};
+	if (validator.automatic === false) parsed.automatic = false;
 	if (typeof validator.check === "string") parsed.check = validator.check;
 	if (detectAny) parsed.detectAny = detectAny;
 	if (detectAll) parsed.detectAll = detectAll;

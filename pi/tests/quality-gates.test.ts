@@ -11,7 +11,7 @@ import type {
 	ExtensionAPI,
 	ToolResultEvent,
 } from "@earendil-works/pi-coding-agent";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
 	buildExtMap,
 	buildValidatorCommand,
@@ -22,7 +22,6 @@ import {
 	getFilePaths,
 	matchesQualityPath,
 	POLICY_PATH,
-	REPAIR_GUIDANCE,
 	registerQualityGates,
 	runAvailableValidators,
 	runFirstAvailableValidator,
@@ -38,6 +37,20 @@ import {
 	parseQualityGatesPolicy,
 } from "../lib/quality-gates/policy.ts";
 import { createMockPi } from "./helpers/mock-pi.ts";
+
+const metricsDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-quality-metrics-"));
+let previousMetricsDir: string | undefined;
+
+beforeAll(() => {
+	previousMetricsDir = process.env.PI_METRICS_DIR;
+	process.env.PI_METRICS_DIR = metricsDir;
+});
+
+afterAll(() => {
+	if (previousMetricsDir === undefined) delete process.env.PI_METRICS_DIR;
+	else process.env.PI_METRICS_DIR = previousMetricsDir;
+	fs.rmSync(metricsDir, { recursive: true, force: true });
+});
 
 describe("quality-gates extension", () => {
 	describe("buildExtMap (pure function)", () => {
@@ -172,6 +185,104 @@ describe("quality-gates extension", () => {
 			"detected",
 			[],
 			expect.any(Object),
+		);
+	});
+
+	it("limits automatic validation and reports skipped and unavailable outcomes", async () => {
+		const outcomes: Array<{ name: string; outcome: string; reason?: string }> = [];
+		const lookup = process.platform === "win32" ? "where.exe" : "which";
+		const pi = {
+			exec: vi.fn(async (command: string, args: string[] = []) => ({
+				code:
+					command === lookup && args[0] === "missing-validator" ? 1 : 0,
+				stdout: "",
+				stderr: "",
+			})),
+		} as unknown as ExtensionAPI;
+		await runAvailableValidators(
+			pi,
+			{
+				extensions: [".auto"],
+				validators: [
+					{
+						name: "file-validator",
+						command: ["file-validator", "{file}"],
+						always: true,
+					},
+					{
+						name: "project-validator",
+						command: ["project-validator"],
+						always: true,
+						scope: "project",
+					},
+					{
+						name: "long-validator",
+						command: ["long-validator"],
+						always: true,
+						timeout: 60,
+					},
+					{
+						name: "explicit-validator",
+						command: ["explicit-validator"],
+						automatic: false,
+						always: true,
+					},
+					{
+						name: "complexity",
+						kind: "lizard",
+						check: "lizard",
+						always: true,
+					},
+					{
+						name: "missing",
+						command: ["missing-validator"],
+						always: true,
+					},
+				],
+			},
+			"file.auto",
+			process.cwd(),
+			{
+				automatic: true,
+				onOutcome: (outcome) => outcomes.push(outcome),
+			},
+		);
+
+		expect(pi.exec).toHaveBeenCalledWith(
+			"file-validator",
+			expect.any(Array),
+			expect.any(Object),
+		);
+		expect(pi.exec).not.toHaveBeenCalledWith(
+			"project-validator",
+			expect.any(Array),
+			expect.any(Object),
+		);
+		expect(outcomes).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ name: "file-validator", outcome: "passed" }),
+				expect.objectContaining({
+					name: "project-validator",
+					outcome: "skipped",
+					reason: "project_scope",
+				}),
+				expect.objectContaining({
+					name: "long-validator",
+					outcome: "skipped",
+					reason: "long_running",
+				}),
+				expect.objectContaining({
+					name: "explicit-validator",
+					outcome: "skipped",
+					reason: "explicit_only",
+				}),
+				expect.objectContaining({
+					name: "complexity",
+					outcome: "skipped",
+					reason: "complexity",
+				}),
+				expect.objectContaining({ name: "missing", outcome: "unavailable" }),
+			]),
 		);
 	});
 
@@ -381,6 +492,12 @@ describe("quality-gates extension", () => {
 					advisory: true,
 				}),
 			);
+			expect(policy.languages.go.validators).toContainEqual(
+				expect.objectContaining({
+					name: "go-vet",
+					automatic: false,
+				}),
+			);
 		});
 
 		it("runs differential Lizard against the Git HEAD baseline", async () => {
@@ -464,6 +581,7 @@ describe("quality-gates extension", () => {
 				{ detectAny: [] },
 				{ detectAll: [] },
 				{ always: true, detectAny: ["config"] },
+				{ always: true, automatic: true },
 			])
 				expect(() => parseQualityGatesPolicy(policyWith(validator))).toThrow(
 					"Invalid validator",
@@ -618,11 +736,6 @@ describe("quality-gates extension", () => {
 			]);
 		});
 
-		it("uses the exact bounded repair guidance", () => {
-			expect(REPAIR_GUIDANCE).toBe(
-				"Fix reported issues using the most focused and minimal change needed to make the check pass; avoid wholesale refactors or scope expansion; if passing requires major refactoring or material scope expansion, stop and discuss with the user.",
-			);
-		});
 	});
 
 	describe("changed path collection and exclusions", () => {
@@ -790,7 +903,7 @@ describe("quality-gates extension", () => {
 	});
 
 	describe("batched hook timing", () => {
-		it("validates once at agent_settled and queues a repair follow-up", async () => {
+		it("validates once at agent_settled and reports without a follow-up", async () => {
 			const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-quality-batch-"));
 			const filePath = path.join(root, "foo.batch-failure");
 			try {
@@ -837,17 +950,25 @@ describe("quality-gates extension", () => {
 					{
 						customType: "quality-gates",
 						content:
-							"Quality gate validation failed:\n\nbatch-failure-validator reported issues in foo.batch-failure:\nE501 line too long\n\nFix reported issues using the most focused and minimal change needed to make the check pass; avoid wholesale refactors or scope expansion; if passing requires major refactoring or material scope expansion, stop and discuss with the user.",
+							"Quality gate validation failed:\n\nbatch-failure-validator reported issues in foo.batch-failure:\nE501 line too long",
 						display: true,
 					},
-					{ triggerTurn: true, deliverAs: "followUp" },
+					{ triggerTurn: false },
 				);
+				const metrics = fs
+					.readdirSync(metricsDir)
+					.map((name) => fs.readFileSync(path.join(metricsDir, name), "utf8"))
+					.join("\n");
+				expect(metrics).toContain('"event":"quality_gate_validator"');
+				expect(metrics).toContain('"validator":"batch-failure-validator"');
+				expect(metrics).toContain('"outcome":"failed"');
+				expect(metrics).toContain('"event":"quality_gate_notification"');
 			} finally {
 				fs.rmSync(root, { recursive: true, force: true });
 			}
 		});
 
-		it("displays advisory findings without queuing a repair turn", async () => {
+		it("skips complexity findings during automatic validation", async () => {
 			const root = fs.mkdtempSync(
 				path.join(os.tmpdir(), "pi-quality-advisory-"),
 			);
@@ -887,80 +1008,15 @@ describe("quality-gates extension", () => {
 				} as unknown as ToolResultEvent);
 				await pi._getHook("agent_settled")[0].handler({}, { cwd: root });
 
-				expect(pi.sendMessage).toHaveBeenCalledTimes(1);
-				expect(pi.sendMessage.mock.calls[0][0].content).toContain(
-					"Quality gate advisory",
-				);
-				expect(pi.sendMessage.mock.calls[0][1]).toBeUndefined();
+				expect(
+					pi.exec.mock.calls.filter(([command]) => command === "lizard"),
+				).toHaveLength(0);
+				expect(pi.sendMessage).not.toHaveBeenCalled();
 			} finally {
 				fs.rmSync(root, { recursive: true, force: true });
 			}
 		});
 
-		it("requeues only files whose validators failed", async () => {
-			const root = fs.mkdtempSync(
-				path.join(os.tmpdir(), "pi-quality-selective-"),
-			);
-			const goodPath = path.join(root, "good.selective");
-			const badPath = path.join(root, "bad.selective");
-			try {
-				fs.writeFileSync(goodPath, "good\n");
-				fs.writeFileSync(badPath, "bad\n");
-				const pi = createMockPi();
-				pi.exec.mockImplementation(
-					async (command: string, args: string[] = []) => {
-						const bad = args.some((arg) => arg.endsWith("bad.selective"));
-						return {
-							code: command === "selective-validator" && bad ? 1 : 0,
-							stdout:
-								command === "selective-validator" && bad ? "still broken" : "",
-							stderr: "",
-						};
-					},
-				);
-				const map = buildExtMap({
-					typescript: {
-						extensions: [".selective"],
-						validators: [
-							{
-								name: "selective-validator",
-								command: ["selective-validator", "check", "{file}"],
-							},
-						],
-					},
-				});
-				registerQualityGates(pi as unknown as ExtensionAPI, map);
-				const toolResult = pi._getHook("tool_result")[0].handler;
-				const agentStart = pi._getHook("agent_start")[0].handler;
-				const agentSettled = pi._getHook("agent_settled")[0].handler;
-				for (const filePath of [goodPath, badPath])
-					await toolResult({
-						toolName: "edit",
-						input: { path: filePath },
-					} as unknown as ToolResultEvent);
-
-				await agentSettled({}, { cwd: root });
-				await agentStart();
-				await agentSettled({}, { cwd: root });
-
-				const validatorCalls = pi.exec.mock.calls.filter(
-					([command]) => command === "selective-validator",
-				);
-				expect(validatorCalls).toHaveLength(3);
-				expect(
-					validatorCalls.filter(([, args]) =>
-						args.some((arg: string) => arg.endsWith("good.selective")),
-					),
-				).toHaveLength(1);
-				expect(
-					validatorCalls.filter(([, args]) =>
-						args.some((arg: string) => arg.endsWith("bad.selective")),
-					),
-				).toHaveLength(2);
-			} finally {
-				fs.rmSync(root, { recursive: true, force: true });
-			}
-		});
 
 		it("discards stale validator output and validates the new content next", async () => {
 			const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-quality-stale-"));
@@ -1058,54 +1114,81 @@ describe("quality-gates extension", () => {
 			}
 		});
 
-		it("stops automatic repair after two follow-up attempts", async () => {
-			const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-quality-limit-"));
-			const filePath = path.join(root, "foo.repair-limit");
+
+		it("ignores failed edit results", async () => {
+			const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-quality-error-"));
+			const filePath = path.join(root, "failed.failed-edit");
 			try {
-				fs.writeFileSync(filePath, "broken\n");
+				fs.writeFileSync(filePath, "unchanged\n");
 				const pi = createMockPi();
-				pi.exec.mockImplementation(async (command: string) => ({
-					code: command === "repair-limit-validator" ? 1 : 0,
-					stdout: command === "repair-limit-validator" ? "still broken" : "",
-					stderr: "",
-				}));
 				const map = buildExtMap({
-					typescript: {
-						extensions: [".repair-limit"],
+					test: {
+						extensions: [".failed-edit"],
 						validators: [
 							{
-								name: "repair-limit-validator",
-								command: ["repair-limit-validator", "check", "{file}"],
+								name: "should-not-run",
+								command: ["should-not-run", "{file}"],
+								always: true,
 							},
 						],
 					},
 				});
 				registerQualityGates(pi as unknown as ExtensionAPI, map);
-				await pi._getHook("tool_result")[0].handler({
-					toolName: "write",
-					input: { path: filePath },
-				} as unknown as ToolResultEvent);
-				const agentStart = pi._getHook("agent_start")[0].handler;
-				const agentSettled = pi._getHook("agent_settled")[0].handler;
+				await pi._getHook("tool_result")[0].handler(
+					{
+						toolName: "edit",
+						input: { path: filePath },
+						isError: true,
+					} as unknown as ToolResultEvent,
+					{ cwd: root },
+				);
+				await pi._getHook("agent_settled")[0].handler({}, { cwd: root });
+				expect(pi.exec).not.toHaveBeenCalled();
+			} finally {
+				fs.rmSync(root, { recursive: true, force: true });
+			}
+		});
 
-				await agentSettled({}, { cwd: root });
-				await agentStart();
-				await agentSettled({}, { cwd: root });
-				await agentStart();
-				await agentSettled({}, { cwd: root });
-
-				expect(pi.sendMessage).toHaveBeenCalledTimes(3);
-				expect(pi.sendMessage.mock.calls[0][1]).toEqual({
-					triggerTurn: true,
-					deliverAs: "followUp",
+		it("resolves relative touched paths against the edit-time cwd", async () => {
+			const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-quality-cwd-"));
+			const filePath = path.join(root, "relative.edit-cwd");
+			try {
+				fs.writeFileSync(filePath, "changed\n");
+				const pi = createMockPi();
+				pi.exec.mockImplementation(async (command: string) => ({
+					code: command === "git" ? 1 : 0,
+					stdout: "",
+					stderr: "",
+				}));
+				const map = buildExtMap({
+					test: {
+						extensions: [".edit-cwd"],
+						validators: [
+							{
+								name: "cwd-validator",
+								command: ["cwd-validator", "{file}"],
+								always: true,
+							},
+						],
+					},
 				});
-				expect(pi.sendMessage.mock.calls[1][1]).toEqual({
-					triggerTurn: true,
-					deliverAs: "followUp",
-				});
-				expect(pi.sendMessage.mock.calls[2][1]).toBeUndefined();
-				expect(pi.sendMessage.mock.calls[2][0].content).toContain(
-					"Automatic repair limit reached",
+				registerQualityGates(pi as unknown as ExtensionAPI, map);
+				await pi._getHook("tool_result")[0].handler(
+					{
+						toolName: "edit",
+						input: { path: "relative.edit-cwd" },
+						isError: false,
+					} as unknown as ToolResultEvent,
+					{ cwd: root },
+				);
+				await pi._getHook("agent_settled")[0].handler(
+					{},
+					{ cwd: process.cwd() },
+				);
+				expect(pi.exec).toHaveBeenCalledWith(
+					"cwd-validator",
+					[filePath],
+					expect.any(Object),
 				);
 			} finally {
 				fs.rmSync(root, { recursive: true, force: true });

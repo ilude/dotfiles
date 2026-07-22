@@ -198,6 +198,7 @@
             "vet",
             "{file}"
           ],
+          "automatic": false,
           "check": "go",
           "always": true
         },
