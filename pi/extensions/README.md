@@ -29,9 +29,10 @@ Damage-control loads the Pi-owned `pi/damage-control-rules.yaml` through
 alternate Pi policy. Missing or invalid default and override policies fail
 closed. Quality-gates loads validators, complexity thresholds, advisory modes,
 and excluded or immutable paths from the independent Pi-owned
-`pi/quality-gates.json`. It bounds diagnostics and deduplicates project-scoped
-validators within each batch. Neither extension reads another client's policy
-or executable. Keep loader
+`pi/quality-gates.json`. Automatic settlement checks are limited to bounded,
+file-scoped validators; policy-marked explicit-only, project-scoped,
+long-running, and complexity validators remain outside the settlement path.
+Neither extension reads another client's policy or executable. Keep loader
 helpers under `pi/lib/`, not as new auto-discovered `pi/extensions/*.ts` files.
 
 ## Snapshot retirement
@@ -184,7 +185,7 @@ When an extension reads a path from tool input:
 
 Damage-control is Pi-only safety enforcement for shell and file-tool decisions. `damage-control.ts` is the Pi event adapter; `damage-control-rules.ts` loads and validates the policy schema with `pi/lib/yaml-mini.ts`; `damage-control-engine.ts` contains pure deny/ask/allow decisions; `damage-control-debug.ts` contains opt-in redacted logging.
 
-Damage-control covers Pi's normal runtime `tool_call` event path for registered tools such as `bash`, `pwsh`, `read`, `write`, and `edit`. It is distinct from Claude Code `PreToolUse` hooks under `claude/hooks/`, and it does not claim coverage for external/direct API developer-tool surfaces such as this harness's `functions.bash` unless that surface is explicitly routed through Pi extension hooks. When investigating a bypass, first identify the execution boundary before adding a wrapper.
+Damage-control covers Pi's normal runtime `tool_call` event path for registered tools such as `bash`, `pwsh`, `read`, `write`, and `edit`. Its universal repeated-tool circuit breaker aborts a run before the third identical call after two identical normalized results; direct user input resets the circuit. It is distinct from Claude Code `PreToolUse` hooks under `claude/hooks/`, and it does not claim coverage for external/direct API developer-tool surfaces such as this harness's `functions.bash` unless that surface is explicitly routed through Pi extension hooks. When investigating a bypass, first identify the execution boundary before adding a wrapper.
 
 Automated destructive-command coverage must treat commands such as `rm -rf`, `git reset --hard`, and `git clean -fd` as inert string inputs to the damage-control handler. Live destructive probes are out of scope for routine tests and require a separate plan with disposable temp-dir safeguards.
 

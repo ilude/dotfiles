@@ -1,23 +1,9 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import type {
-	ExtensionAPI,
-	ExtensionCommandContext,
-} from "@earendil-works/pi-coding-agent";
-import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-const EXPERTISE_TOOLS = new Set(["read_expertise", "append_expertise"]);
-const PRIMARY_INSTRUCTION_NAMES = [
-	"AGENTS.override.md",
-	"AGENTS.md",
-	"AGENT.md",
-	path.join(".pi", "AGENTS.md"),
-];
-const FALLBACK_INSTRUCTION_NAMES = [
-	"CLAUDE.md",
-	path.join(".claude", "CLAUDE.md"),
-];
+const PRIMARY_INSTRUCTION_NAME = "AGENTS.md";
+const FALLBACK_INSTRUCTION_NAME = "CLAUDE.md";
 const MUTATING_TOOLS = new Set([
 	"edit",
 	"write",
@@ -37,11 +23,8 @@ const PATH_TOOLS = new Set([
 const MAX_FILES = 32;
 const MAX_BYTES_PER_FILE = 24 * 1024;
 const MAX_TOTAL_BYTES = 96 * 1024;
-const MAX_IMPORT_DEPTH = 3;
+const MAX_CACHED_FILES = 128;
 const REPORT_TYPE = "agents-context-report";
-const MAX_TOOL_FAILURES = 128;
-const REPEATED_TOOL_LOOP_REASON =
-	"repeated_tool_loop: third identical failed or blocked tool attempt denied before execution";
 
 type ToolCallResult = { block: true; reason?: string } | undefined;
 
@@ -50,6 +33,7 @@ type LoadedInstruction = {
 	bytes: number;
 	reason: string;
 	truncated: boolean;
+	content: string;
 };
 
 type State = {
@@ -58,14 +42,18 @@ type State = {
 	skippedOnce: Set<string>;
 	projectRoots: Map<string, string>;
 	totalBytes: number;
-	expertiseDisabled: boolean;
 	cwd?: string;
 	basePaths: Set<string>;
+	targetPaths: Set<string>;
 	injectedTargetFingerprints: Set<string>;
 	deferredToolCalls: Set<string>;
 	retryRequested: boolean;
-	toolFailures: Map<string, { resultFingerprint: string; count: number }>;
 };
+
+const instructionContentCache = new Map<
+	string,
+	{ mtimeMs: number; ctimeMs: number; size: number; content: string }
+>();
 
 const state: State = {
 	loaded: new Map(),
@@ -73,93 +61,26 @@ const state: State = {
 	skippedOnce: new Set(),
 	projectRoots: new Map(),
 	totalBytes: 0,
-	expertiseDisabled: false,
 	basePaths: new Set(),
+	targetPaths: new Set(),
 	injectedTargetFingerprints: new Set(),
 	deferredToolCalls: new Set(),
 	retryRequested: false,
-	toolFailures: new Map(),
 };
 
 function canonical(filePath: string): string {
 	return path.resolve(filePath);
 }
 
-function canonicalValue(value: unknown): unknown {
-	if (Array.isArray(value)) return value.map(canonicalValue);
-	if (!isRecord(value)) return value;
-	return Object.fromEntries(
-		Object.keys(value)
-			.sort()
-			.map((key) => [key, canonicalValue(value[key])]),
-	);
-}
-
-function toolCallFingerprint(toolName: unknown, input: unknown): string {
-	return JSON.stringify([
-		String(toolName ?? "")
-			.trim()
-			.toLowerCase(),
-		canonicalValue(input),
-	]);
-}
-
-function normalizeResultValue(value: unknown): unknown {
-	if (typeof value === "string")
-		return value.replaceAll("\r\n", "\n").trimEnd();
-	if (Array.isArray(value)) return value.map(normalizeResultValue);
-	if (!isRecord(value)) return value;
-	return Object.fromEntries(
-		Object.keys(value)
-			.sort()
-			.map((key) => [key, normalizeResultValue(value[key])]),
-	);
-}
-
-function normalizedFailureFingerprint(event: {
-	content?: unknown;
-	details?: unknown;
-	isError?: unknown;
-}): string {
-	return JSON.stringify(
-		normalizeResultValue({
-			content: event.content,
-			details: event.details,
-			isError: Boolean(event.isError),
-		}),
-	);
-}
-
-function recordToolFailure(
-	callFingerprint: string,
-	resultFingerprint: string,
-): void {
-	const previous = state.toolFailures.get(callFingerprint);
-	state.toolFailures.delete(callFingerprint);
-	state.toolFailures.set(callFingerprint, {
-		resultFingerprint,
-		count:
-			previous?.resultFingerprint === resultFingerprint
-				? previous.count + 1
-				: 1,
-	});
-	if (state.toolFailures.size > MAX_TOOL_FAILURES) {
-		const oldest = state.toolFailures.keys().next().value;
-		if (typeof oldest === "string") state.toolFailures.delete(oldest);
-	}
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function existingFiles(paths: string[]): string[] {
-	return paths
-		.map(canonical)
-		.filter(
-			(candidate) =>
-				fs.existsSync(candidate) && fs.statSync(candidate).isFile(),
-		);
+function existingFile(filePath: string): string | undefined {
+	const candidate = canonical(filePath);
+	return fs.existsSync(candidate) && fs.statSync(candidate).isFile()
+		? candidate
+		: undefined;
 }
 
 function noteSkipped(message: string): void {
@@ -168,23 +89,24 @@ function noteSkipped(message: string): void {
 	state.skipped.push(message);
 }
 
-function globalInstructionFiles(home = os.homedir()): string[] {
-	return existingFiles([
-		path.join(home, ".pi", "agent", "AGENTS.md"),
-		path.join(home, ".pi", "AGENTS.md"),
-	]);
-}
-
 function projectRootFor(cwd: string): string {
 	let current = canonical(cwd);
 	if (fs.existsSync(current) && fs.statSync(current).isFile())
 		current = path.dirname(current);
+	const cacheKey = current;
+	const cached = state.projectRoots.get(cacheKey);
+	if (cached) return cached;
 	const fallbackRoot = current;
 	while (true) {
-		const gitMarker = path.join(current, ".git");
-		if (fs.existsSync(gitMarker)) return current;
+		if (fs.existsSync(path.join(current, ".git"))) {
+			state.projectRoots.set(cacheKey, current);
+			return current;
+		}
 		const parent = path.dirname(current);
-		if (parent === current) return fallbackRoot;
+		if (parent === current) {
+			state.projectRoots.set(cacheKey, fallbackRoot);
+			return fallbackRoot;
+		}
 		current = parent;
 	}
 }
@@ -205,21 +127,17 @@ function ancestorsFromRoot(root: string, targetDir: string): string[] {
 	return dirs;
 }
 
-function instructionFilesForDir(dir: string): string[] {
-	const primary = existingFiles(
-		PRIMARY_INSTRUCTION_NAMES.map((name) => path.join(dir, name)),
-	);
-	const fallback = existingFiles(
-		FALLBACK_INSTRUCTION_NAMES.map((name) => path.join(dir, name)),
-	);
-	if (primary.length) {
-		for (const file of fallback)
+function instructionFileForDir(dir: string): string | undefined {
+	const primary = existingFile(path.join(dir, PRIMARY_INSTRUCTION_NAME));
+	if (primary) {
+		const fallback = existingFile(path.join(dir, FALLBACK_INSTRUCTION_NAME));
+		if (fallback)
 			noteSkipped(
-				`${file} skipped: AGENTS-style instruction exists in ${canonical(dir)}`,
+				`${fallback} skipped: ${PRIMARY_INSTRUCTION_NAME} exists in ${canonical(dir)}`,
 			);
-		return [primary[0]];
+		return primary;
 	}
-	return fallback.slice(0, 1);
+	return existingFile(path.join(dir, FALLBACK_INSTRUCTION_NAME));
 }
 
 function localInstructionFiles(cwd: string, targetPath: string): string[] {
@@ -229,142 +147,80 @@ function localInstructionFiles(cwd: string, targetPath: string): string[] {
 	const targetDir = path.extname(target) ? path.dirname(target) : target;
 	const root = projectRootFor(cwd);
 	state.projectRoots.set(canonical(cwd), root);
-	return ancestorsFromRoot(root, targetDir).flatMap(instructionFilesForDir);
+	return ancestorsFromRoot(root, targetDir)
+		.map(instructionFileForDir)
+		.filter((file): file is string => Boolean(file));
 }
 
-function parseImports(content: string): string[] {
-	const imports: string[] = [];
-	for (const line of content.split(/\r?\n/)) {
-		const match = line.match(/^\s*@([^\s#][^\r\n]*)\s*$/);
-		if (match) imports.push(match[1].trim());
+function readCachedInstruction(fullPath: string): string {
+	const stat = fs.statSync(fullPath);
+	const cached = instructionContentCache.get(fullPath);
+	if (
+		cached &&
+		cached.mtimeMs === stat.mtimeMs &&
+		cached.ctimeMs === stat.ctimeMs &&
+		cached.size === stat.size
+	)
+		return cached.content;
+	const content = fs.readFileSync(fullPath, "utf8");
+	instructionContentCache.delete(fullPath);
+	instructionContentCache.set(fullPath, {
+		mtimeMs: stat.mtimeMs,
+		ctimeMs: stat.ctimeMs,
+		size: stat.size,
+		content,
+	});
+	if (instructionContentCache.size > MAX_CACHED_FILES) {
+		const oldest = instructionContentCache.keys().next().value;
+		if (typeof oldest === "string") instructionContentCache.delete(oldest);
 	}
-	return imports;
-}
-
-function isPathInside(candidate: string, root: string): boolean {
-	const relative = path.relative(root, candidate);
-	return (
-		Boolean(relative) &&
-		!relative.startsWith("..") &&
-		!path.isAbsolute(relative)
-	);
-}
-
-function isSensitiveImportPath(imported: string): boolean {
-	const normalized = imported.split(/[\\/]+/).filter(Boolean);
-	const lower = normalized.map((part) => part.toLowerCase());
-	if (lower.some((part) => part === ".ssh")) return true;
-	return lower.some(
-		(part) =>
-			part === ".env" ||
-			part.startsWith(".env.") ||
-			part.endsWith(".pem") ||
-			part.endsWith(".key") ||
-			part === "id_rsa" ||
-			part === "id_ed25519" ||
-			part === "known_hosts" ||
-			part === "ssh_config",
-	);
-}
-
-function validateImportSpec(imported: string) {
-	if (path.isAbsolute(imported) || imported.startsWith("~"))
-		return "absolute imports are not allowed";
-	const parts = imported.split(/[\\/]+/).filter(Boolean);
-	if (parts.includes("..")) return "parent-directory imports are not allowed";
-	if (isSensitiveImportPath(imported))
-		return "sensitive file imports are not allowed";
-	return undefined;
-}
-
-function existingImportPath(imported: string, importerPath: string) {
-	const importPath = canonical(
-		path.resolve(path.dirname(importerPath), imported),
-	);
-	if (fs.existsSync(importPath) && fs.statSync(importPath).isFile())
-		return importPath;
-	noteSkipped(`${importPath} skipped: import not found`);
-	return undefined;
-}
-
-function realPathInsideRoot(importPath: string, importRoot: string) {
-	const rootReal = fs.realpathSync(importRoot);
-	const importReal = fs.realpathSync(importPath);
-	if (importReal === rootReal || isPathInside(importReal, rootReal))
-		return importPath;
-	noteSkipped(`${importPath} skipped: import escapes instruction root`);
-	return undefined;
-}
-
-function resolveSafeImport(
-	imported: string,
-	importerPath: string,
-	importRoot: string,
-) {
-	const validationError = validateImportSpec(imported);
-	if (validationError) {
-		noteSkipped(`${imported} skipped: ${validationError}`);
-		return undefined;
-	}
-	const importPath = existingImportPath(imported, importerPath);
-	return importPath ? realPathInsideRoot(importPath, importRoot) : undefined;
+	return content;
 }
 
 function readInstruction(
 	filePath: string,
 	reason: string,
-	importRoot: string,
-	depth = 0,
-): LoadedInstruction[] {
+): LoadedInstruction | undefined {
 	const fullPath = canonical(filePath);
-	if (state.loaded.has(fullPath)) return [];
+	if (state.loaded.has(fullPath) || state.basePaths.has(fullPath)) return undefined;
 	if (state.loaded.size >= MAX_FILES) {
 		noteSkipped(`${fullPath} skipped: file cap reached`);
-		return [];
+		return undefined;
 	}
-	const raw = fs.readFileSync(fullPath, "utf8");
+	const raw = readCachedInstruction(fullPath);
 	const remaining = MAX_TOTAL_BYTES - state.totalBytes;
 	if (remaining <= 0) {
 		noteSkipped(`${fullPath} skipped: total byte cap reached`);
-		return [];
+		return undefined;
 	}
-	const truncated = raw.length > MAX_BYTES_PER_FILE || raw.length > remaining;
-	const content = raw.slice(
-		0,
-		Math.min(raw.length, MAX_BYTES_PER_FILE, remaining),
-	);
+	const maxCharacters = Math.min(raw.length, MAX_BYTES_PER_FILE, remaining);
+	const content = raw.slice(0, maxCharacters);
 	const loaded: LoadedInstruction = {
 		path: fullPath,
 		bytes: Buffer.byteLength(content),
 		reason,
-		truncated,
+		truncated: maxCharacters < raw.length,
+		content,
 	};
 	state.loaded.set(fullPath, loaded);
 	state.totalBytes += loaded.bytes;
-	const result = [loaded];
-	if (truncated) noteSkipped(`${fullPath} truncated`);
-	if (depth >= MAX_IMPORT_DEPTH) return result;
-	for (const imported of parseImports(content)) {
-		const importPath = resolveSafeImport(imported, fullPath, importRoot);
-		if (!importPath) continue;
-		result.push(
-			...readInstruction(
-				importPath,
-				`imported by ${fullPath}`,
-				importRoot,
-				depth + 1,
-			),
-		);
-	}
-	return result;
+	if (loaded.truncated) noteSkipped(`${fullPath} truncated`);
+	return loaded;
 }
 
 function instructionPayload(files: LoadedInstruction[]): string {
-	const blocks = files.map((file) => {
-		const text = fs.readFileSync(file.path, "utf8").slice(0, file.bytes);
-		return `## ${file.path}\nReason: ${file.reason}${file.truncated ? " (truncated)" : ""}\n\n${text}`;
-	});
+	const blocks = files.map(
+		(file) =>
+			`## ${file.path}\nReason: ${file.reason}${file.truncated ? " (truncated)" : ""}\n\n${file.content}`,
+	);
 	return `# Loaded AGENTS context\n\n${blocks.join("\n\n")}`;
+}
+
+function clearLoadedSnapshot(): void {
+	state.loaded.clear();
+	state.skipped.length = 0;
+	state.skippedOnce.clear();
+	state.totalBytes = 0;
 }
 
 function recordNativeContextFiles(event: unknown): void {
@@ -374,30 +230,9 @@ function recordNativeContextFiles(event: unknown): void {
 	const contextFiles = event.systemPromptOptions.contextFiles;
 	if (!Array.isArray(contextFiles)) return;
 	for (const item of contextFiles) {
-		if (
-			!isRecord(item) ||
-			typeof item.path !== "string" ||
-			typeof item.content !== "string"
-		)
-			continue;
-		const filePath = canonical(item.path);
-		const bytes = Buffer.byteLength(item.content);
-		state.basePaths.add(filePath);
-		state.loaded.set(filePath, {
-			path: filePath,
-			bytes,
-			reason: "native Pi context",
-			truncated: false,
-		});
-		state.totalBytes += bytes;
+		if (!isRecord(item) || typeof item.path !== "string") continue;
+		state.basePaths.add(canonical(item.path));
 	}
-}
-
-function removeExpertiseTools(event: unknown): void {
-	if (!isRecord(event) || !Array.isArray(event.tools)) return;
-	event.tools = event.tools.filter(
-		(tool) => !isRecord(tool) || !EXPERTISE_TOOLS.has(String(tool.name)),
-	);
 }
 
 function collectToolPaths(
@@ -417,32 +252,20 @@ function collectToolPaths(
 	return paths.length ? paths : [cwd];
 }
 
-function instructionReason(file: string, globalFiles: Set<string>): string {
-	if (globalFiles.has(file)) return "global/user instruction";
-	const normalized = file.split(path.sep).join("/");
-	if (
-		normalized.endsWith("/CLAUDE.md") ||
-		normalized.endsWith("/.claude/CLAUDE.md")
-	)
-		return "project fallback instruction";
-	return "project primary instruction";
-}
-
-function clearLoadedSnapshot(): void {
-	state.loaded.clear();
-	state.skipped.length = 0;
-	state.skippedOnce.clear();
-	state.projectRoots.clear();
-	state.totalBytes = 0;
+function instructionReason(file: string): string {
+	return path.basename(file).toLowerCase() === "claude.md"
+		? "project fallback instruction"
+		: "project primary instruction";
 }
 
 function clearInstructionState(): void {
 	clearLoadedSnapshot();
+	state.projectRoots.clear();
 	state.basePaths.clear();
+	state.targetPaths.clear();
 	state.injectedTargetFingerprints.clear();
 	state.deferredToolCalls.clear();
 	state.retryRequested = false;
-	state.toolFailures.clear();
 }
 
 function resetForCwd(cwd: string): void {
@@ -455,26 +278,16 @@ function resetForCwd(cwd: string): void {
 function discoverForPaths(cwd: string, paths: string[]): LoadedInstruction[] {
 	resetForCwd(cwd);
 	clearLoadedSnapshot();
-	const globalFiles = globalInstructionFiles();
-	const globalFileSet = new Set(globalFiles);
-	const projectRoot = projectRootFor(cwd);
-	const files = [
-		...globalFiles,
-		...paths.flatMap((target) => localInstructionFiles(cwd, target)),
-	];
-	return files.flatMap((file) =>
-		readInstruction(
-			file,
-			instructionReason(file, globalFileSet),
-			globalFileSet.has(file) ? path.dirname(file) : projectRoot,
-		),
-	);
+	const files = [...new Set(paths.flatMap((target) => localInstructionFiles(cwd, target)))];
+	return files
+		.map((file) => readInstruction(file, instructionReason(file)))
+		.filter((file): file is LoadedInstruction => Boolean(file));
 }
 
 export function formatAgentsContextStatus(): string {
 	const lines = [
-		`Expertise tools disabled: ${state.expertiseDisabled ? "yes" : "no"}`,
-		`Loaded instruction files: ${state.loaded.size}`,
+		`Native instruction files: ${state.basePaths.size}`,
+		`Nested instruction files: ${state.loaded.size}`,
 		`Loaded bytes: ${state.totalBytes}/${MAX_TOTAL_BYTES}`,
 	];
 	for (const [cwd, root] of state.projectRoots)
@@ -487,28 +300,26 @@ export function formatAgentsContextStatus(): string {
 
 export function resetAgentsContextStateForTests(): void {
 	clearInstructionState();
-	state.expertiseDisabled = false;
+	instructionContentCache.clear();
 	state.cwd = undefined;
 }
 
 export const agentsContextTestApi = {
-	globalInstructionFiles,
 	projectRootFor,
 	localInstructionFiles,
-	parseImports,
 	discoverForPaths,
 	formatAgentsContextStatus,
 };
 
 export default function (pi: ExtensionAPI) {
-	wrapCommandRegistration(pi);
 	pi.on("before_agent_start", async (event, ctx) => {
-		removeExpertiseTools(event);
-		state.expertiseDisabled = true;
 		resetForCwd(ctx.cwd);
-		recordNativeContextFiles(event);
+		state.projectRoots.clear();
+		state.targetPaths.clear();
 		state.injectedTargetFingerprints.clear();
-		state.toolFailures.clear();
+		state.deferredToolCalls.clear();
+		state.retryRequested = false;
+		recordNativeContextFiles(event);
 		return undefined;
 	});
 
@@ -526,9 +337,7 @@ export default function (pi: ExtensionAPI) {
 			(message) =>
 				!(message.role === "custom" && message.customType === REPORT_TYPE),
 		);
-		const targetFiles = [...state.loaded.values()].filter(
-			(file) => !state.basePaths.has(file.path),
-		);
+		const targetFiles = [...state.loaded.values()];
 		if (!targetFiles.length) return { messages };
 		const payload = instructionPayload(targetFiles);
 		const content = state.retryRequested
@@ -549,35 +358,30 @@ export default function (pi: ExtensionAPI) {
 		};
 	});
 
-	pi.on("session_start", async (event, ctx) => {
+	pi.on("session_start", async (_event, ctx) => {
 		clearInstructionState();
 		state.cwd = canonical(ctx.cwd);
-		removeExpertiseTools(event);
-		state.expertiseDisabled = true;
 	});
 
 	pi.on("tool_call", async (event, ctx): Promise<ToolCallResult> => {
+		resetForCwd(ctx.cwd);
 		const toolName = String(event.toolName ?? "");
-		const callFingerprint = toolCallFingerprint(toolName, event.input);
-		if ((state.toolFailures.get(callFingerprint)?.count ?? 0) >= 2) {
-			return { block: true, reason: REPEATED_TOOL_LOOP_REASON };
-		}
-		if (EXPERTISE_TOOLS.has(toolName)) {
-			const reason =
-				"Expertise tools are disabled; use AGENTS.md, project .pi/skills, or user/global skills instead.";
-			recordToolFailure(callFingerprint, reason);
-			return { block: true, reason };
-		}
 		const targetPaths = collectToolPaths(toolName, event.input, ctx.cwd);
-		const files = discoverForPaths(ctx.cwd, targetPaths);
-		const targetFiles = files.filter((file) => !state.basePaths.has(file.path));
-		const targetPayload = targetFiles.length
-			? instructionPayload(targetFiles)
-			: undefined;
+		if (targetPaths.length === 0) return undefined;
+		for (const targetPath of targetPaths) {
+			state.targetPaths.add(
+				canonical(
+					path.isAbsolute(targetPath)
+						? targetPath
+						: path.join(ctx.cwd, targetPath),
+				),
+			);
+		}
+		const files = discoverForPaths(ctx.cwd, [...state.targetPaths]);
+		const targetPayload = files.length ? instructionPayload(files) : undefined;
 		if (targetPayload && MUTATING_TOOLS.has(toolName)) {
-			const contextFingerprint = targetPayload;
-			if (!state.injectedTargetFingerprints.has(contextFingerprint)) {
-				state.injectedTargetFingerprints.add(contextFingerprint);
+			if (!state.injectedTargetFingerprints.has(targetPayload)) {
+				state.injectedTargetFingerprints.add(targetPayload);
 				state.deferredToolCalls.add(event.toolCallId);
 				state.retryRequested = true;
 				return { block: true };
@@ -587,28 +391,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("tool_result", async (event) => {
-		const callFingerprint = toolCallFingerprint(event.toolName, event.input);
-		if (state.deferredToolCalls.delete(event.toolCallId)) {
-			return { content: [], details: {}, isError: false };
-		}
-		if (event.isError) {
-			recordToolFailure(callFingerprint, normalizedFailureFingerprint(event));
-		} else {
-			state.toolFailures.delete(callFingerprint);
-		}
-	});
-
-	pi.registerCommand("agents-context", {
-		description:
-			"Show AGENTS/CLAUDE instruction files loaded by the agents-context extension.",
-		handler: async (_args: string, ctx: ExtensionCommandContext) => {
-			const report = formatAgentsContextStatus();
-			if (ctx?.hasUI) ctx.ui.notify(report, "info");
-			else if (typeof pi.sendMessage === "function")
-				pi.sendMessage(
-					{ customType: REPORT_TYPE, display: true, content: report },
-					{ triggerTurn: false },
-				);
-		},
+		if (!state.deferredToolCalls.delete(event.toolCallId)) return undefined;
+		return { content: [], details: {}, isError: false };
 	});
 }

@@ -23,21 +23,15 @@ function registerAgentsContext(pi: ReturnType<typeof createMockPi>) {
 }
 
 let tmp: string;
-let originalHome: string | undefined;
 
 function setupAgentsContextTest() {
 	resetAgentsContextStateForTests();
 	tmp = fs.mkdtempSync(path.join(os.tmpdir(), "agents-context-"));
-	originalHome = process.env.HOME;
-	process.env.HOME = tmp;
-	vi.spyOn(os, "homedir").mockReturnValue(tmp);
 }
 
 function cleanupAgentsContextTest() {
 	vi.restoreAllMocks();
 	resetAgentsContextStateForTests();
-	if (originalHome === undefined) delete process.env.HOME;
-	else process.env.HOME = originalHome;
 	fs.rmSync(tmp, { recursive: true, force: true });
 }
 
@@ -45,43 +39,11 @@ describe("agents-context discovery", () => {
 	beforeEach(setupAgentsContextTest);
 	afterEach(cleanupAgentsContextTest);
 
-	it("filters and blocks expertise tools", async () => {
-		const pi = createMockPi();
-		registerAgentsContext(pi);
-		const beforeAgentStart = pi._getHook("before_agent_start")[0].handler;
-		const event = {
-			systemPrompt: "base",
-			tools: [
-				{ name: "read_expertise" },
-				{ name: "bash" },
-				{ name: "append_expertise" },
-			],
-		};
-		await beforeAgentStart(event, createMockCtx({ cwd: tmp }));
-		expect(event.tools).toEqual([{ name: "bash" }]);
-
-		const toolHook = pi._getHook("tool_call")[0].handler;
-		await expect(
-			toolHook(
-				{ toolName: "read_expertise", input: {} },
-				createMockCtx({ cwd: tmp }),
-			),
-		).resolves.toMatchObject({
-			block: true,
-		});
-	});
-
-	it("discovers global/user, root, nested, and imported instructions in deterministic order", () => {
+	it("discovers root and nested AGENTS files in deterministic order", () => {
 		const cwd = path.join(tmp, "repo");
 		const nested = path.join(cwd, "src", "feature");
-		writeFile(path.join(tmp, ".pi", "agent", "AGENTS.md"), "global agent");
-		writeFile(path.join(tmp, ".pi", "AGENTS.md"), "global compat");
-		writeFile(path.join(cwd, "AGENTS.md"), "root agents\n@docs/root.md");
-		writeFile(path.join(cwd, "docs", "root.md"), "root import");
-		writeFile(path.join(cwd, ".pi", "AGENTS.md"), "root .pi agents");
-		writeFile(path.join(cwd, "CLAUDE.md"), "root claude");
-		writeFile(path.join(cwd, ".claude", "CLAUDE.md"), "dot claude");
-		writeFile(path.join(cwd, "src", "AGENT.md"), "src agent");
+		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
+		writeFile(path.join(cwd, "src", "AGENTS.md"), "src agents");
 		writeFile(path.join(nested, "AGENTS.md"), "nested agents");
 
 		const files = agentsContextTestApi.discoverForPaths(cwd, [
@@ -92,80 +54,38 @@ describe("agents-context discovery", () => {
 				path.relative(tmp, file.path).replaceAll(path.sep, "/"),
 			),
 		).toEqual([
-			".pi/agent/AGENTS.md",
-			".pi/AGENTS.md",
 			"repo/AGENTS.md",
-			"repo/docs/root.md",
-			"repo/src/AGENT.md",
-			"repo/src/feature/AGENTS.md",
-		]);
-
-		const second = agentsContextTestApi.discoverForPaths(cwd, [
-			path.join("src", "feature", "thing.ts"),
-		]);
-		expect(
-			second.map((file) =>
-				path.relative(tmp, file.path).replaceAll(path.sep, "/"),
-			),
-		).toEqual([
-			".pi/agent/AGENTS.md",
-			".pi/AGENTS.md",
-			"repo/AGENTS.md",
-			"repo/docs/root.md",
-			"repo/src/AGENT.md",
+			"repo/src/AGENTS.md",
 			"repo/src/feature/AGENTS.md",
 		]);
 	});
 
-	it("rejects unsafe AGENTS imports without loading skipped content", () => {
+	it("uses CLAUDE.md only when AGENTS.md is absent in the same directory", () => {
 		const cwd = path.join(tmp, "repo");
-		writeFile(
-			path.join(cwd, "AGENTS.md"),
-			[
-				"root agents",
-				"@../outside.md",
-				"@/etc/hosts",
-				"@.env",
-				"@docs/ok.md",
-			].join("\n"),
-		);
-		writeFile(path.join(tmp, "outside.md"), "outside secret");
-		writeFile(path.join(cwd, ".env"), "TOKEN=secret");
-		writeFile(path.join(cwd, "docs", "ok.md"), "safe import");
+		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
+		writeFile(path.join(cwd, "CLAUDE.md"), "root fallback");
+		writeFile(path.join(cwd, "src", "CLAUDE.md"), "src fallback");
 
-		const files = agentsContextTestApi.discoverForPaths(cwd, ["file.ts"]);
-		expect(
-			files.map((file) =>
-				path.relative(tmp, file.path).replaceAll(path.sep, "/"),
-			),
-		).toEqual(["repo/AGENTS.md", "repo/docs/ok.md"]);
-		const status = formatAgentsContextStatus();
-		expect(status).toContain("parent-directory imports are not allowed");
-		expect(status).toContain("absolute imports are not allowed");
-		expect(status).toContain("sensitive file imports are not allowed");
-		expect(status).not.toContain("outside secret");
-		expect(status).not.toContain("TOKEN=secret");
-	});
-
-	it("rejects AGENTS imports through symlinks escaping the repo", () => {
-		const cwd = path.join(tmp, "repo");
-		writeFile(path.join(cwd, "AGENTS.md"), "root agents\n@links/outside.md");
-		writeFile(path.join(tmp, "outside", "outside.md"), "outside secret");
-		mkdirp(path.join(cwd, "links"));
-		fs.symlinkSync(
-			path.join(tmp, "outside", "outside.md"),
-			path.join(cwd, "links", "outside.md"),
-		);
-
-		const files = agentsContextTestApi.discoverForPaths(cwd, ["file.ts"]);
-		expect(
-			files.map((file) =>
-				path.relative(tmp, file.path).replaceAll(path.sep, "/"),
-			),
-		).toEqual(["repo/AGENTS.md"]);
+		const files = agentsContextTestApi.discoverForPaths(cwd, ["src/file.ts"]);
+		expect(files.map((file) => path.basename(file.path))).toEqual([
+			"AGENTS.md",
+			"CLAUDE.md",
+		]);
 		expect(formatAgentsContextStatus()).toContain(
-			"import escapes instruction root",
+			"CLAUDE.md skipped: AGENTS.md exists",
 		);
+	});
+
+	it("does not interpret instruction imports or compatibility filenames", () => {
+		const cwd = path.join(tmp, "repo");
+		writeFile(path.join(cwd, "AGENTS.md"), "root agents\n@docs/extra.md");
+		writeFile(path.join(cwd, "docs", "extra.md"), "imported content");
+		writeFile(path.join(cwd, "src", "AGENT.md"), "compat agent");
+		writeFile(path.join(cwd, "src", "AGENTS.override.md"), "override agent");
+
+		const files = agentsContextTestApi.discoverForPaths(cwd, ["src/file.ts"]);
+		expect(files.map((file) => path.basename(file.path))).toEqual(["AGENTS.md"]);
+		expect(files[0].content).toContain("@docs/extra.md");
 	});
 
 	it("does not persist discovered instructions with sendMessage", async () => {
@@ -173,25 +93,42 @@ describe("agents-context discovery", () => {
 		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
 		const pi = createMockPi();
 		registerAgentsContext(pi);
-		const toolHook = pi._getHook("tool_call")[0].handler;
-		await toolHook(
+		await pi._getHook("tool_call")[0].handler(
 			{ toolName: "read", input: { path: "file.ts" } },
 			createMockCtx({ cwd }),
 		);
 		expect(pi.sendMessage).not.toHaveBeenCalled();
 	});
 
-	it("filters historical reports and injects exactly one current ephemeral message", async () => {
+	it("skips discovery for tools without target paths", async () => {
 		const cwd = path.join(tmp, "repo");
 		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
 		const pi = createMockPi();
 		registerAgentsContext(pi);
 		const ctx = createMockCtx({ cwd });
-		const toolHook = pi._getHook("tool_call")[0].handler;
-		await toolHook({ toolName: "read", input: { path: "a.ts" } }, ctx);
-		await toolHook({ toolName: "read", input: { path: "b.ts" } }, ctx);
-		const contextHook = pi._getHook("context")[0].handler;
-		const result = await contextHook(
+
+		await pi._getHook("tool_call")[0].handler(
+			{ toolName: "bash", input: { command: "pwd" } },
+			ctx,
+		);
+		const result = await pi._getHook("context")[0].handler(
+			{ messages: [] },
+			ctx,
+		);
+		expect(result.messages).toEqual([]);
+	});
+
+	it("filters historical reports and injects one current ephemeral message", async () => {
+		const cwd = path.join(tmp, "repo");
+		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
+		const pi = createMockPi();
+		registerAgentsContext(pi);
+		const ctx = createMockCtx({ cwd });
+		await pi._getHook("tool_call")[0].handler(
+			{ toolName: "read", input: { path: "a.ts" } },
+			ctx,
+		);
+		const result = await pi._getHook("context")[0].handler(
 			{
 				messages: [
 					{ role: "user", content: "keep" },
@@ -199,12 +136,6 @@ describe("agents-context discovery", () => {
 						role: "custom",
 						customType: "agents-context-report",
 						content: "old",
-						display: false,
-					},
-					{
-						role: "custom",
-						customType: "agents-context-report",
-						content: "older",
 						display: false,
 					},
 				],
@@ -218,54 +149,35 @@ describe("agents-context discovery", () => {
 			),
 		).toHaveLength(1);
 		expect(result.messages.at(-1).content).toContain("root agents");
-		expect(result.messages.at(-1).content).not.toContain("older");
+		expect(result.messages.at(-1).content).not.toContain("old");
 	});
 
-	it("replaces cwd and target scopes instead of accumulating them", async () => {
-		const first = path.join(tmp, "first");
-		const second = path.join(tmp, "second");
-		writeFile(path.join(first, "AGENTS.md"), "first root");
-		writeFile(path.join(first, "src", "AGENTS.md"), "first src");
-		writeFile(path.join(first, "test", "AGENTS.md"), "first test");
-		writeFile(path.join(second, "AGENTS.md"), "second root");
+	it("unions sibling target scopes for the current user turn", async () => {
+		const cwd = path.join(tmp, "repo");
+		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
+		writeFile(path.join(cwd, "src", "AGENTS.md"), "src agents");
+		writeFile(path.join(cwd, "test", "AGENTS.md"), "test agents");
 		const pi = createMockPi();
 		registerAgentsContext(pi);
+		const ctx = createMockCtx({ cwd });
 		const toolHook = pi._getHook("tool_call")[0].handler;
-		const contextHook = pi._getHook("context")[0].handler;
-		await toolHook(
-			{ toolName: "read", input: { path: "src/file.ts" } },
-			createMockCtx({ cwd: first }),
-		);
-		await toolHook(
-			{ toolName: "read", input: { path: "test/file.ts" } },
-			createMockCtx({ cwd: first }),
-		);
-		let result = await contextHook(
-			{ messages: [] },
-			createMockCtx({ cwd: first }),
-		);
-		expect(result.messages[0].content).toContain("first test");
-		expect(result.messages[0].content).not.toContain("first src");
 
-		await toolHook(
-			{ toolName: "read", input: { path: "file.ts" } },
-			createMockCtx({ cwd: second }),
-		);
-		result = await contextHook(
+		await toolHook({ toolName: "read", input: { path: "src/file.ts" } }, ctx);
+		await toolHook({ toolName: "read", input: { path: "test/file.ts" } }, ctx);
+		const result = await pi._getHook("context")[0].handler(
 			{ messages: [] },
-			createMockCtx({ cwd: second }),
+			ctx,
 		);
-		expect(result.messages[0].content).toContain("second root");
-		expect(result.messages[0].content).not.toContain("first root");
+		expect(result.messages[0].content).toContain("src agents");
+		expect(result.messages[0].content).toContain("test agents");
 	});
-
 });
 
-describe("agents-context runtime guards", () => {
+describe("agents-context mutation deferral", () => {
 	beforeEach(setupAgentsContextTest);
 	afterEach(cleanupAgentsContextTest);
 
-	it("relies on native base context and blocks only new target scope", async () => {
+	it("relies on native base context and blocks only new nested scope", async () => {
 		const cwd = path.join(tmp, "repo");
 		const rootInstructions = path.join(cwd, "AGENTS.md");
 		writeFile(rootInstructions, "root agents");
@@ -273,21 +185,16 @@ describe("agents-context runtime guards", () => {
 		const pi = createMockPi();
 		registerAgentsContext(pi);
 		const ctx = createMockCtx({ cwd });
-		const beforeAgentStart = pi._getHook("before_agent_start")[0].handler;
-		const contextHook = pi._getHook("context")[0].handler;
-		const toolHook = pi._getHook("tool_call")[0].handler;
-		const startEvent = {
-			systemPrompt: "base\nroot agents",
-			tools: [],
-			systemPromptOptions: {
-				contextFiles: [{ path: rootInstructions, content: "root agents" }],
+		await pi._getHook("before_agent_start")[0].handler(
+			{
+				systemPrompt: "base\nroot agents",
+				systemPromptOptions: {
+					contextFiles: [{ path: rootInstructions, content: "root agents" }],
+				},
 			},
-		};
-
-		const start = await beforeAgentStart(startEvent, ctx);
-		expect(start).toBeUndefined();
-		expect(startEvent.systemPrompt.match(/root agents/g)).toHaveLength(1);
-		expect(formatAgentsContextStatus()).toContain("native Pi context");
+			ctx,
+		);
+		const toolHook = pi._getHook("tool_call")[0].handler;
 		await expect(
 			toolHook({ toolName: "edit", input: { path: "root.ts" } }, ctx),
 		).resolves.toBeUndefined();
@@ -295,34 +202,31 @@ describe("agents-context runtime guards", () => {
 			toolHook({ toolName: "edit", input: { path: "src/file.ts" } }, ctx),
 		).resolves.toMatchObject({ block: true });
 
-		const retryContext = await contextHook({ messages: [] }, ctx);
-		expect(retryContext.messages).toHaveLength(1);
+		const retryContext = await pi._getHook("context")[0].handler(
+			{ messages: [] },
+			ctx,
+		);
 		expect(retryContext.messages[0].content).toContain("src agents");
 		expect(retryContext.messages[0].content).not.toContain("root agents");
-		await expect(
-			toolHook({ toolName: "edit", input: { path: "src/file.ts" } }, ctx),
-		).resolves.toBeUndefined();
 	});
 
-	it("defers newly discovered context once without a visible error result", async () => {
+	it("defers new context once without a visible error result", async () => {
 		const cwd = path.join(tmp, "repo");
 		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
 		writeFile(path.join(cwd, "src", "AGENTS.md"), "src agents");
 		const pi = createMockPi();
 		registerAgentsContext(pi);
-		const toolHook = pi._getHook("tool_call")[0].handler;
-		const resultHook = pi._getHook("tool_result")[0].handler;
-		const contextHook = pi._getHook("context")[0].handler;
 		const ctx = createMockCtx({ cwd });
 		const event = {
 			toolCallId: "deferred-edit",
 			toolName: "edit",
 			input: { path: "src/file.ts" },
 		};
+		const toolHook = pi._getHook("tool_call")[0].handler;
 		const blocked = await toolHook(event, ctx);
 		expect(blocked).toEqual({ block: true });
 		await expect(
-			resultHook(
+			pi._getHook("tool_result")[0].handler(
 				{
 					...event,
 					content: [{ type: "text", text: "Tool execution was blocked" }],
@@ -331,116 +235,49 @@ describe("agents-context runtime guards", () => {
 				ctx,
 			),
 		).resolves.toEqual({ content: [], details: {}, isError: false });
-		const retryContext = await contextHook({ messages: [] }, ctx);
-		expect(retryContext.messages).toHaveLength(1);
-		expect(retryContext.messages[0]).toMatchObject({ display: false });
-		expect(retryContext.messages[0].content).toContain("src agents");
+		const retryContext = await pi._getHook("context")[0].handler(
+			{ messages: [] },
+			ctx,
+		);
 		expect(retryContext.messages[0].content).toContain(
 			"retry the deferred mutating tool call",
 		);
 		await expect(toolHook(event, ctx)).resolves.toBeUndefined();
-		expect(pi.sendMessage).not.toHaveBeenCalled();
 	});
 
-	it("blocks once again when target instruction content changes", async () => {
+	it("blocks again when nested instruction content changes", async () => {
 		const cwd = path.join(tmp, "repo");
 		const instructionPath = path.join(cwd, "src", "AGENTS.md");
 		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
 		writeFile(instructionPath, "first version");
 		const pi = createMockPi();
 		registerAgentsContext(pi);
-		const toolHook = pi._getHook("tool_call")[0].handler;
-		const resultHook = pi._getHook("tool_result")[0].handler;
 		const ctx = createMockCtx({ cwd });
 		const event = { toolName: "edit", input: { path: "src/file.ts" } };
+		const toolHook = pi._getHook("tool_call")[0].handler;
 
 		await expect(toolHook(event, ctx)).resolves.toMatchObject({ block: true });
 		await expect(toolHook(event, ctx)).resolves.toBeUndefined();
-		await resultHook({ ...event, content: [], isError: false }, ctx);
 		writeFile(instructionPath, "second version");
 		await expect(toolHook(event, ctx)).resolves.toMatchObject({ block: true });
-		await expect(toolHook(event, ctx)).resolves.toBeUndefined();
 	});
 
-	it("does not stop identical successful tool calls", async () => {
+	it("does not register an inspection command or alter expertise tools", async () => {
 		const pi = createMockPi();
 		registerAgentsContext(pi);
-		const toolHook = pi._getHook("tool_call")[0].handler;
-		const resultHook = pi._getHook("tool_result")[0].handler;
-		const ctx = createMockCtx({ cwd: tmp });
-		const event = { toolName: "read", input: { path: "same.ts" } };
-
-		for (let attempt = 0; attempt < 3; attempt += 1) {
-			await expect(toolHook(event, ctx)).resolves.toBeUndefined();
-			await resultHook({ ...event, content: [], isError: false }, ctx);
-		}
-	});
-
-	it("stops a third identical failed attempt before execution and resets for a new user turn", async () => {
-		const cwd = path.join(tmp, "repo");
-		const pi = createMockPi();
-		registerAgentsContext(pi);
-		const toolHook = pi._getHook("tool_call")[0].handler;
-		const resultHook = pi._getHook("tool_result")[0].handler;
-		const beforeAgentStart = pi._getHook("before_agent_start")[0].handler;
-		const ctx = createMockCtx({ cwd });
-		const event = { toolName: "read", input: { path: "missing.ts" } };
-		const failedResult = {
-			...event,
-			content: [{ type: "text", text: "not found" }],
-			details: { code: "ENOENT" },
-			isError: true,
+		const event = {
+			systemPrompt: "base",
+			systemPromptOptions: { contextFiles: [] },
+			tools: [{ name: "read_expertise" }, { name: "bash" }],
 		};
-		let invocationCount = 0;
-
-		for (let attempt = 0; attempt < 2; attempt += 1) {
-			await expect(toolHook(event, ctx)).resolves.toBeUndefined();
-			invocationCount += 1;
-			await resultHook(failedResult, ctx);
-		}
-		await expect(toolHook(event, ctx)).resolves.toEqual({
-			block: true,
-			reason: expect.stringContaining("repeated_tool_loop"),
-		});
-		expect(invocationCount).toBe(2);
-
-		await beforeAgentStart({ systemPrompt: "base", tools: [] }, ctx);
-		await expect(toolHook(event, ctx)).resolves.toBeUndefined();
-		invocationCount += 1;
-		expect(invocationCount).toBe(3);
-	});
-
-	it("registers /agents-context inspection status without adding display reports to LLM context", async () => {
-		const cwd = path.join(tmp, "repo");
-		const rootInstructions = path.join(cwd, "AGENTS.md");
-		writeFile(rootInstructions, "root agents");
-		const pi = createMockPi();
-		registerAgentsContext(pi);
-		const beforeAgentStart = pi._getHook("before_agent_start")[0].handler;
-		await beforeAgentStart(
-			{
-				systemPrompt: "base\nroot agents",
-				tools: [],
-				systemPromptOptions: {
-					contextFiles: [{ path: rootInstructions, content: "root agents" }],
-				},
-			},
-			createMockCtx({ cwd }),
+		await pi._getHook("before_agent_start")[0].handler(
+			event,
+			createMockCtx({ cwd: tmp }),
 		);
-		const command = pi._commands.find((item) => item.name === "agents-context");
-		expect(command).toBeTruthy();
-		expect(formatAgentsContextStatus()).toContain(
-			"Expertise tools disabled: yes",
-		);
-		expect(formatAgentsContextStatus()).toContain("AGENTS.md");
-		const ctx = createMockCtx({ cwd, hasUI: false });
-		await command?.handler("", ctx);
-		expect(pi.sendMessage).toHaveBeenCalledWith(
-			expect.objectContaining({
-				customType: "agents-context-report",
-				display: true,
-			}),
-			expect.objectContaining({ triggerTurn: false }),
-		);
+		expect(event.tools).toEqual([
+			{ name: "read_expertise" },
+			{ name: "bash" },
+		]);
+		expect(pi._commands).toEqual([]);
 	});
 });

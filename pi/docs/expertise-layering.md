@@ -42,7 +42,7 @@ cd pi && pnpm test memory-retrieve.test.ts
 
 ## Tool availability and durable guidance
 
-`read_expertise` and `append_expertise` are intentionally unavailable. [`pi/extensions/agents-context.ts`](../extensions/agents-context.ts) removes them from active tools and blocks attempted calls.
+`read_expertise` and `append_expertise` are intentionally unavailable because no active Pi extension registers them. [`pi/extensions/agents-context.ts`](../extensions/agents-context.ts) is limited to nested path-scoped instruction discovery.
 
 Use these supported durable surfaces instead:
 
