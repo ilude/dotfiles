@@ -28,7 +28,7 @@ afterEach(() => {
 });
 
 describe("repeated tool loop guard", () => {
-	it("detects the third identical call after two identical results", () => {
+	it("detects the sixth identical call after five identical results", () => {
 		const guard = new RepeatedToolLoopGuard();
 		const input = { path: "missing.ts" };
 		const result = {
@@ -37,14 +37,16 @@ describe("repeated tool loop guard", () => {
 			isError: true,
 		};
 
-		expect(guard.check("read", input)).toBeUndefined();
-		guard.record("read", input, result);
-		expect(guard.check("read", input)).toBeUndefined();
-		guard.record("read", input, {
-			...result,
-			content: [{ type: "text", text: "not found\n" }],
-		});
-		expect(guard.check("read", input)).toMatchObject({ attemptCount: 3 });
+		for (let attempt = 0; attempt < 5; attempt += 1) {
+			expect(guard.check("read", input)).toBeUndefined();
+			guard.record("read", input, {
+				...result,
+				content: [
+					{ type: "text", text: attempt === 0 ? "not found\r\n" : "not found\n" },
+				],
+			});
+		}
+		expect(guard.check("read", input)).toMatchObject({ attemptCount: 6 });
 	});
 
 	it("counts identical successful no-op results and resets on changed output", () => {
@@ -53,8 +55,10 @@ describe("repeated tool loop guard", () => {
 		guard.record("bash", input, { content: "still waiting", isError: false });
 		guard.record("bash", input, { content: "progressed", isError: false });
 		expect(guard.check("bash", input)).toBeUndefined();
-		guard.record("bash", input, { content: "progressed", isError: false });
-		expect(guard.check("bash", input)).toMatchObject({ attemptCount: 3 });
+		for (let attempt = 1; attempt < 5; attempt += 1) {
+			guard.record("bash", input, { content: "progressed", isError: false });
+		}
+		expect(guard.check("bash", input)).toMatchObject({ attemptCount: 6 });
 		guard.reset();
 		expect(guard.check("bash", input)).toBeUndefined();
 	});
@@ -78,7 +82,7 @@ describe("repeated tool loop guard", () => {
 			isError: true,
 		};
 
-		for (let attempt = 0; attempt < 2; attempt += 1) {
+		for (let attempt = 0; attempt < 5; attempt += 1) {
 			expect(toolCall(event, ctx)).toBeUndefined();
 			await toolResult(result, ctx);
 		}
@@ -89,7 +93,7 @@ describe("repeated tool loop guard", () => {
 		});
 		expect(ctx.abort).toHaveBeenCalledTimes(1);
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			expect.stringContaining("Stopped the current run"),
+			expect.stringContaining("same result 5 times"),
 			"warning",
 		);
 

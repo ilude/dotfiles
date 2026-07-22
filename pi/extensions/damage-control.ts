@@ -96,9 +96,10 @@ export {
 const DENY_PROVENANCE: DecisionProvenance = "rule";
 const DAMAGE_CONTROL_MODES: DamageControlMode[] = ["default", "noshell"];
 const MAX_TRACKED_TOOL_OUTCOMES = 128;
+const REPEATED_TOOL_RESULT_LIMIT = 5;
 const REPEATED_TOOL_LOOP_RULE = "repeated_tool_loop";
 const REPEATED_TOOL_LOOP_REASON =
-	`Blocked repeated tool loop (matched "${REPEATED_TOOL_LOOP_RULE}"): the same tool call produced the same result twice; the current agent run was aborted.`;
+	`Blocked repeated tool loop (matched "${REPEATED_TOOL_LOOP_RULE}"): the same tool call produced the same result ${REPEATED_TOOL_RESULT_LIMIT} times; the current agent run was aborted.`;
 
 interface RepeatedToolOutcome {
 	resultFingerprint: string;
@@ -154,7 +155,8 @@ export class RepeatedToolLoopGuard {
 		]);
 		if (!callFingerprint) return undefined;
 		const previous = this.outcomes.get(callFingerprint);
-		if (!previous || previous.count < 2) return undefined;
+		if (!previous || previous.count < REPEATED_TOOL_RESULT_LIMIT)
+			return undefined;
 		return {
 			callFingerprint,
 			resultFingerprint: previous.resultFingerprint,
@@ -788,7 +790,7 @@ export default function (pi: ExtensionAPI) {
 		uiNotify(
 			ctx,
 			"warning",
-			"Stopped the current run after the same tool call produced the same result twice.",
+			`Stopped the current run after the same tool call produced the same result ${REPEATED_TOOL_RESULT_LIMIT} times.`,
 			{ prefix: "damage-control" },
 		);
 		ctx.abort();
