@@ -140,7 +140,6 @@ function Get-PiArguments {
 
     $extensionRoot = Join-Path $WorkingDirectory "pi/extensions"
     $extensions = @(
-        "commit-guard.ts",
         "damage-control.ts",
         "loop/runtime-logging.ts",
         "direct-personality.ts",

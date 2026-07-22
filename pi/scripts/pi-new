@@ -74,13 +74,6 @@ full:
         -e ${EXT_DIR}/quality-gates.ts \\
         -e ${EXT_DIR}/session-hooks.ts
 
-# Full stack + commit message enforcement
-guard:
-    pi --no-extensions \\
-        -e ${EXT_DIR}/damage-control.ts \\
-        -e ${EXT_DIR}/quality-gates.ts \\
-        -e ${EXT_DIR}/session-hooks.ts \\
-        -e ${EXT_DIR}/commit-guard.ts
 EOF
     echo "  justfile: created"
 fi
@@ -112,4 +105,3 @@ echo ""
 echo "Done. To start:"
 echo "  cd ${TARGET_DIR}"
 echo "  just        # Pi with all extensions"
-echo "  just guard  # + commit enforcement"

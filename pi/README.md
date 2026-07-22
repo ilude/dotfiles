@@ -216,7 +216,6 @@ just          # default -- Pi with the configured extension set
 just solo     # bare Pi, no extensions
 just safe     # damage-control only (safety rules)
 just full     # all extensions (damage-control + subagent + quality-gates + session-hooks)
-just guard    # full stack + conventional commit enforcement
 ```
 
 Or invoke Pi directly:
@@ -246,6 +245,8 @@ Pi damage-control is a Pi-native safety extension with its own policy, parser, e
 Intercepts tool calls and blocks dangerous operations before they execute.
 
 - **Dangerous commands** -- blocks `rm -rf`, `git reset --hard`, `dd if=`, etc.
+- **Safe-edit enforcement** -- structurally detects mutating Python heredocs, in-place `sed` or `perl`, and truncating `cat` redirection, then routes repository changes to Pi's safe file-edit tools. Blocks are recorded in damage-control decision and eval telemetry.
+- **Repeated-tool circuit breaker** -- aborts the current agent run before a third identical tool call when the first two calls produced the same normalized result. It applies to failures, blocked calls, and successful no-op results, resets on direct user input, and records `repeated_tool_loop` telemetry.
 - **Scoped-delete containment** -- ask-tier `rm` commands are auto-allowed only when every statically extracted target stays under the session cwd or an approved scratch root. Parent traversal, home expansion, dynamic variables or substitution, non-scratch absolute paths, the cwd itself, `.git`, `.pi`, configured no-delete paths, parse failures, and remote SSH payloads still ask.
 - **Symlink and glob containment** -- relative globs such as `build/*` are checked by prefix, and any existing target prefix that is a symlink falls back to confirmation.
 - **Zero-access paths** -- blocks read/write to `~/.ssh/*`, `*.pem`, `*.key`, `.env`
@@ -258,11 +259,15 @@ Policy file: `~/.dotfiles/pi/damage-control-rules.yaml`. Set `PI_DAMAGE_CONTROL_
 
 The shadow judge is disabled by default. Enable it with `damageControl.judge.enabled: true` in Pi settings. Judge logs are persisted to `~/.pi/agent/operator/damage-control/judge.jsonl` and summarized by `/damage-control judge` and `/dc judge`. Inputs are redacted and limited to command, cwd, matched rule, and rule reason; verdicts never affect the tool decision.
 
+### `agents-context.ts`
+
+Extends Pi's native startup context with instructions discovered below the startup cwd when a file tool targets a nested path. It loads `AGENTS.md`, falls back to `CLAUDE.md` in directories without `AGENTS.md`, and unions sibling target scopes for the current user turn. A mutating tool is deferred once when it first enters a newly discovered instruction scope so the next provider call receives those instructions before retrying.
+
 ### `quality-gates.ts`
 
-Collects files changed by `write`, `edit`, `text_edit`, and `structured_edit` operations, then runs the appropriate linters when the agent run ends. Failures trigger a follow-up repair turn before the session settles, with at most two automatic repair attempts before control returns with an unresolved warning. Validator output and aggregate repair messages are bounded, and project-scoped validators run once per project in each validation batch.
+Collects files successfully changed by `write`, `edit`, `text_edit`, and `structured_edit`, preserving the cwd from each edit, then runs cheap file-scoped linters and format checks when the agent run ends. Diagnostics are displayed without starting an automatic repair turn. Validator output and aggregate messages are bounded, unchanged content is cached, and stale results are discarded.
 
-Validators, Lizard thresholds, excluded paths, and immutable paths are configured in the Pi-owned `~/.dotfiles/pi/quality-gates.json`. Pi runs all applicable available validators. Its Lizard check compares functions with Git `HEAD` and reports only new or worsened CCN, function-length, or parameter-count violations; new files have no baseline. Lizard findings for TypeScript, JavaScript, and Vue are advisory because their parser output can misattribute function boundaries; other configured languages remain blocking.
+Validators, Lizard thresholds, excluded paths, and immutable paths are configured in the Pi-owned `~/.dotfiles/pi/quality-gates.json`. Automatic settlement checks skip policy-marked explicit-only, project-scoped, long-running, and Lizard validators; those remain available to explicit validation callers. Validator pass, failure, unavailable, skipped, duration, and notification outcomes are recorded in structured metrics.
 
 ### `session-hooks.ts`
 
@@ -270,14 +275,6 @@ Runs lifecycle actions at session boundaries:
 
 - **session_start** -- runs `git fetch` and notifies if the branch is behind remote
 - **session_shutdown** -- archives the session conversation log to `~/.pi/agent/history/YYYY-MM-DD-<sessionId>.jsonl`
-
-### `commit-guard.ts`
-
-Intercepts `git commit` bash calls and enforces safe commit practices:
-
-- Blocks `--no-verify` (pre-commit hook bypass)
-- Blocks commits missing `-m`
-- Enforces conventional commit message format (`feat:`, `fix:`, `chore:`, etc.)
 
 ### `workflow-commands.ts`
 
@@ -726,8 +723,8 @@ with `pi --no-extensions`, repair the affected file under `pi/agents/`, run
 
 Expertise JSONL under `pi/multi-team/expertise/` is the durable runtime source
 of truth. Derived indexes are disposable. The legacy mental-model snapshots are
-retired, and `read_expertise` and `append_expertise` are unavailable and blocked.
-Put durable instructions in `AGENTS.md` or skills instead.
+retired, and no active Pi extension registers `read_expertise` or
+`append_expertise`. Put durable instructions in `AGENTS.md` or skills instead.
 
 Current paths, retrieval behavior, safety, and canonical tests are documented in
 [`pi/docs/expertise-layering.md`](docs/expertise-layering.md).

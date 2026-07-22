@@ -65,10 +65,6 @@ web:
 route:
     pi --no-extensions -e ~/.dotfiles/pi/extensions/persistent-defaults.ts -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/prompt-router.ts
 
-# guard: full stack + commit message enforcement
-guard:
-    pi --no-extensions -e ~/.dotfiles/pi/extensions/persistent-defaults.ts -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/bedrock-cost.ts -e ~/.dotfiles/pi/extensions/codex-status.ts -e ~/.dotfiles/pi/extensions/quality-gates.ts -e ~/.dotfiles/pi/extensions/session-hooks.ts -e ~/.dotfiles/pi/extensions/web-tools.ts -e ~/.dotfiles/pi/extensions/model-visibility.ts -e ~/.dotfiles/pi/extensions/bedrock-refresh.ts -e ~/.dotfiles/pi/extensions/commit-guard.ts -e ~/.dotfiles/pi/extensions/prompt-router.ts
-
 # transcript: opt-in sidecar interaction trace + purge command
 transcript:
     pi --no-extensions -e ~/.dotfiles/pi/extensions/persistent-defaults.ts -e ~/.dotfiles/pi/extensions/damage-control.ts -e ~/.dotfiles/pi/extensions/session-hooks.ts -e ~/.dotfiles/pi/extensions/transcript-purge.ts -e ~/.dotfiles/pi/extensions/prompt-router.ts
