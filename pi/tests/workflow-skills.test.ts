@@ -10,19 +10,21 @@ function workflow(name: string): string {
 }
 
 describe("workflow scheduling guidance", () => {
-	it("hands plan execution to one graph batch and the drain scheduler", () => {
+	it("keeps plan execution proportional", () => {
 		const doIt = workflow("do-it");
-		expect(doIt).toContain("one graph-aware `task batch` call");
-		expect(doIt).toContain("start `task drain`");
-		expect(doIt).not.toContain("Execute ready tasks wave by wave");
+		expect(doIt).toContain("Execute plan tasks directly");
+		expect(doIt).toContain("Delegate only when independent workstreams");
+		expect(doIt).not.toContain("task batch");
+		expect(doIt).not.toContain("task drain");
+		expect(doIt).not.toContain("plan-lint");
+		expect(doIt).not.toContain("do-it-report-template");
 	});
 
-	it("requires deterministic plan state lint before execution and reporting", () => {
-		const doIt = workflow("do-it");
-		expect(doIt).toContain(
-			"python ~/.dotfiles/pi/scripts/plan-lint <plan-path>",
-		);
-		expect(doIt).toContain("again before the final report");
+	it("keeps review and execution tracking opt-in", () => {
+		const reviewIt = workflow("review-it");
+		expect(reviewIt).toContain("Do not edit the artifact");
+		expect(reviewIt).toContain("Delegate only when independent perspectives");
+		expect(reviewIt).not.toContain("RESOLVE ->");
 	});
 
 	it("keeps same-file writes out of parallel plan tasks", () => {

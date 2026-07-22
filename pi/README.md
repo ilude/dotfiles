@@ -286,8 +286,8 @@ Registers shared skill-backed slash commands:
 ```
 /commit        # smart git commit with LLM-adjudicated secret review
 /plan-it       # crystallize conversation context into an executable plan
-/review-it     # adversarial multi-reviewer coordination for a plan file
-/do-it         # smart task routing by complexity or plan-file execution
+/review-it     # focused readiness review for a plan or requirements artifact
+/do-it         # direct task or plan execution with proportional validation
 ```
 
 Stateful workflow templates are loaded from `~/.dotfiles/pi/skills/workflow/`.
@@ -300,8 +300,8 @@ Prompt-only commands use Pi-native templates under `~/.dotfiles/pi/prompts/`:
 
 Workflow highlights:
 - `/plan-it` writes standalone plans with evidence, dependencies, validation, and durable execution state.
-- `/review-it` selects independent review capabilities from the current runtime, applies verified artifact fixes, and validates readiness.
-- `/do-it` handles bounded raw tasks or executes an existing `.specs/*/plan.md` through its recorded gates.
+- `/review-it` reviews artifact readiness directly and edits only when the request explicitly asks for repairs. Delegation remains optional.
+- `/do-it` handles bounded raw tasks or executes an existing `.specs/*/plan.md` in the current session. It does not require plan linting, duplicate task tracking, or automatic archiving.
 - `/commit` uses deterministic candidate extraction, isolated secret review, and ownership-aware commit planning. Ambiguous cross-domain paths require an explicit user decision instead of becoming one broad commit.
 
 ### `loop.ts`

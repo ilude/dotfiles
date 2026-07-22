@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -18,10 +17,16 @@ vi.mock("node:child_process", () => ({
 	spawnSync: vi.fn(),
 }));
 
-const mockSpawnSync = spawnSync as ReturnType<typeof vi.fn>;
-
 vi.mock("../lib/model-routing", () => ({
 	resolveCommitPlanningModelFromRegistry: vi.fn(),
+}));
+
+vi.mock("../lib/workflow-friction", () => ({
+	noteWorkflowSubmission: vi.fn(),
+}));
+
+vi.mock("../lib/workflow-telemetry", () => ({
+	startWorkflowEpisode: vi.fn(),
 }));
 
 vi.mock("@earendil-works/pi-ai", () => ({
@@ -49,11 +54,6 @@ async function createPlanFixture(): Promise<{
 describe("workflow slash command dispatch", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		mockSpawnSync.mockReturnValue({
-			status: 0,
-			stdout: "PLAN_LINT_OK",
-			stderr: "",
-		});
 	});
 
 	it("/plan-it sends its hidden workflow prompt as a follow-up turn", async () => {
@@ -92,6 +92,10 @@ describe("workflow slash command dispatch", () => {
 				{ triggerTurn: true, deliverAs: "followUp" },
 			);
 			expect(ctx.newSession).not.toHaveBeenCalled();
+			const friction = await import("../lib/workflow-friction");
+			const telemetry = await import("../lib/workflow-telemetry");
+			expect(friction.noteWorkflowSubmission).not.toHaveBeenCalled();
+			expect(telemetry.startWorkflowEpisode).not.toHaveBeenCalled();
 		} finally {
 			fs.rmSync(fixture.root, { recursive: true, force: true });
 		}
@@ -114,68 +118,27 @@ describe("workflow slash command dispatch", () => {
 		});
 	});
 
-	it("/do-it plan-file sessions trigger the new turn immediately", async () => {
+	it("/do-it plan files dispatch in the current session without preflight", async () => {
 		const mockPi = createMockPi();
 		const mod = await import("../extensions/workflow-commands.ts");
 		mod.default(mockPi as Parameters<typeof mod.default>[0]);
-		const fixture = await createPlanFixture();
-		const newSessionSendMessage = vi.fn();
-		const ctx = {
-			cwd: fixture.root,
-			newSession: vi.fn(async ({ withSession }) => {
-				await withSession({ sendMessage: newSessionSendMessage });
+		const ctx = { newSession: vi.fn() };
+		const planPath = ".specs/workflow-fixture/plan.md";
+
+		await getHandler(mockPi, "do-it")(planPath, ctx);
+
+		expect(ctx.newSession).not.toHaveBeenCalled();
+		const friction = await import("../lib/workflow-friction");
+		const telemetry = await import("../lib/workflow-telemetry");
+		expect(friction.noteWorkflowSubmission).not.toHaveBeenCalled();
+		expect(telemetry.startWorkflowEpisode).not.toHaveBeenCalled();
+		expect(mockPi.sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				content: expect.stringContaining(planPath),
+				customType: "workflow.hiddenPrompt",
+				display: false,
 			}),
-		};
-
-		try {
-			await getHandler(mockPi, "do-it")(fixture.planPath, ctx);
-
-			expect(mockSpawnSync).toHaveBeenCalledWith(
-				"python",
-				[
-					expect.stringMatching(/[\\/]pi[\\/]scripts[\\/]plan-lint$/),
-					fixture.planPath,
-				],
-				expect.objectContaining({ cwd: fixture.root, windowsHide: true }),
-			);
-			expect(newSessionSendMessage).toHaveBeenCalledWith(
-				expect.objectContaining({
-					content: expect.stringContaining(fixture.planPath),
-					customType: "workflow.hiddenPrompt",
-					display: false,
-				}),
-				{ triggerTurn: true, deliverAs: "followUp" },
-			);
-		} finally {
-			fs.rmSync(fixture.root, { recursive: true, force: true });
-		}
-	});
-
-	it("/do-it stops before dispatch when plan lint fails", async () => {
-		mockSpawnSync.mockReturnValueOnce({
-			status: 1,
-			stdout: "PLAN_LINT_FAILED fixture\nchecked-task-commit:7: missing commit",
-			stderr: "",
-		});
-		const mockPi = createMockPi();
-		const mod = await import("../extensions/workflow-commands.ts");
-		mod.default(mockPi as Parameters<typeof mod.default>[0]);
-		const fixture = await createPlanFixture();
-		const ctx = { cwd: fixture.root, newSession: vi.fn() };
-
-		try {
-			await getHandler(mockPi, "do-it")(fixture.planPath, ctx);
-
-			expect(ctx.newSession).not.toHaveBeenCalled();
-			expect(mockPi.sendMessage).toHaveBeenCalledWith(
-				expect.objectContaining({
-					customType: "workflow.planLint",
-					content: expect.stringContaining("checked-task-commit"),
-					display: true,
-				}),
-			);
-		} finally {
-			fs.rmSync(fixture.root, { recursive: true, force: true });
-		}
+			{ triggerTurn: true, deliverAs: "followUp" },
+		);
 	});
 });

@@ -1,16 +1,8 @@
-# Review and Repair an Artifact
+# Review an Artifact
 
-Review the artifact at `$ARGUMENTS`, apply supported fixes to that artifact, and report whether it is ready for its next workflow.
+Review the artifact at `$ARGUMENTS` and report whether it is ready for its next workflow. Do not edit the artifact or implementation files unless the request explicitly asks for repairs.
 
-Do not edit implementation files. Ask only when the path is missing or a required product decision cannot be resolved from the artifact and repository.
-
-## Flow
-
-```text
-RESOLVE -> INSPECT -> REVIEW -> VERIFY -> APPLY -> VALIDATE -> REPORT
-```
-
-Keep the review proportional. Do not create review directories, synthesis files, timing tables, finding counts, or recovery ledgers unless the user or an external contract requires them.
+Ask only when the path is missing or a required product decision cannot be resolved from the artifact and repository. Keep the review proportional. Do not create review directories, synthesis files, timing tables, finding counts, or recovery ledgers unless the user or an external contract requires them.
 
 ## Resolve and Inspect
 
@@ -23,7 +15,7 @@ Plans require execution readiness. Requirements documents require clarity, consi
 
 ## Review
 
-Use available subagents when independent perspectives can inspect distinct concerns without duplicating work. A narrow artifact may need one delegated perspective; broader or cross-domain artifacts may benefit from parallel reviewers. Keep serial synthesis and artifact edits in the parent.
+Delegate only when independent perspectives materially improve the review without duplicating work. Keep synthesis and any explicitly requested artifact edits in the parent.
 
 Each delegated assignment must name the artifact, repository scope, perspective, evidence required, allowed changes, and stop condition. Prefer bounded inline findings. Persist reviewer artifacts only when the active workflow, user, or review coordinator requires them.
 
@@ -38,17 +30,17 @@ Review only concerns that can affect the artifact's objective or next workflow:
 
 A failed reviewer is not automatically a blocker. Continue when remaining evidence is sufficient; do not retry an equivalent failed delegation without a reason the retry will differ.
 
-## Verify and Apply
+## Verify
 
 Reviewer output is advisory. Verify verdict-changing findings against the artifact and repository using the cheapest decisive evidence.
 
-Apply supported must-fix defects and necessary clarity changes directly to the artifact in one coherent pass. Preserve its objective and valid completed work. Do not add optional hardening, a new architecture, or operational controls unrelated to actual risk.
+If repairs were explicitly requested, apply only supported must-fix defects and necessary clarity changes in one coherent pass. Preserve the artifact's objective and valid completed work. Do not add optional hardening, a new architecture, or operational controls unrelated to actual risk.
 
-If a required fix depends on an unresolved product choice, unsafe external action, credential, or unavailable prerequisite, leave the choice unmade and report the artifact as blocked.
+If a required fix depends on an unresolved product choice, unsafe external action, credential, or unavailable prerequisite, leave the choice unmade and report the blocker.
 
 ## Validate
 
-Read the revised artifact as a fresh executor would.
+Read the artifact as a fresh executor would. If repairs were requested, inspect the revised content directly.
 
 For a plan, confirm that tasks are actionable, real dependencies agree with order, validation exercises the requested workflow, conditional safety controls match actual risk, and resume state is clear. Do not require duplicate task tables, gate IDs, evidence destinations, or separate review artifacts.
 
@@ -56,13 +48,4 @@ For prose-only changes, validate the content directly. Run repository tests only
 
 ## Report
 
-State:
-
-- `READY`, `READY WITH DEFERRALS`, `NOT READY`, or `BLOCKED`;
-- reviewed artifact path;
-- material findings and fixes;
-- direct validation performed;
-- remaining blocker or optional deferral;
-- next workflow command when ready.
-
-Keep the report concise. Do not manufacture metrics or artifacts for the report.
+State whether the artifact is ready, the material findings, any explicitly requested fixes, relevant validation, and any remaining blocker or optional deferral. Keep the report concise. Do not manufacture metrics or artifacts.

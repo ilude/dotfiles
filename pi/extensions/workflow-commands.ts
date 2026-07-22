@@ -57,7 +57,6 @@ import { isOperatorReloadNeeded } from "./operator-status";
 
 const DOTFILES_PI_DIR = path.join(os.homedir(), ".dotfiles", "pi");
 const SKILLS_DIR = path.join(DOTFILES_PI_DIR, "skills", "workflow");
-const PLAN_LINT_PATH = path.join(DOTFILES_PI_DIR, "scripts", "plan-lint");
 const COMMIT_RUNTIME_PATH_PATTERNS = [
 	{ label: "Pi runtime cache", regex: /^pi\/cache(?:\/|$)/ },
 	{ label: "runtime log directory", regex: /(?:^|\/)logs?\// },
@@ -1861,44 +1860,6 @@ function sendHiddenWorkflowPrompt(
 	);
 }
 
-function planFileInput(args: string): string | undefined {
-	return args
-		.trim()
-		.match(
-			/(?:^|\s)(\.specs\/[A-Za-z0-9._/-]+\/plan\.md|[^\s]+plan\.md)(?:\s|$)/,
-		)?.[1];
-}
-
-function isPlanFileInput(args: string) {
-	return planFileInput(args) !== undefined;
-}
-
-function runPlanLint(
-	cwd: string,
-	planPath: string,
-): {
-	ok: boolean;
-	output: string;
-} {
-	const result = spawnSync("python", [PLAN_LINT_PATH, planPath], {
-		cwd,
-		encoding: "utf8",
-		windowsHide: true,
-	});
-	const output = [result.stdout, result.stderr]
-		.filter(
-			(value): value is string =>
-				typeof value === "string" && value.trim() !== "",
-		)
-		.join("\n")
-		.trim();
-	return {
-		ok: result.status === 0,
-		output:
-			output || `plan-lint exited with status ${result.status ?? "unknown"}`,
-	};
-}
-
 function formatGitOutput(result?: GitRunResult) {
 	if (!result) return [];
 	const lines: string[] = [];
@@ -2474,106 +2435,26 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("review-it", {
-		description: "Review and repair an artifact for its next workflow",
+		description: "Review a plan or requirements artifact",
 		handler: async (args, _ctx) => {
-			const planPath = args
-				.trim()
-				.match(/(\.specs\/[A-Za-z0-9._/-]+\/plan\.md)/)?.[1];
-			noteWorkflowSubmission(
-				args.trim() ? `/review-it ${args.trim()}` : "/review-it",
-				"engineer",
-			);
-			startWorkflowEpisode({
-				command: "review-it",
-				args,
-				artifactPath: planPath,
-			});
-			await withTimingSpan(
-				{
-					name: "slash.review-it",
-					category: "command",
-					metadata: {
-						command: "review-it",
-						workflow: "review-it",
-						phase: "dispatch",
-						planPath,
-					},
-				},
-				async () => {
-					echoSlashCommand(pi, "review-it", args);
-					const template = loadSkill("review-it.md");
-					sendHiddenWorkflowPrompt(
-						pi,
-						buildSkillPrompt(template, args, { replaceArguments: true }),
-					);
-				},
+			echoSlashCommand(pi, "review-it", args);
+			const template = loadSkill("review-it.md");
+			sendHiddenWorkflowPrompt(
+				pi,
+				buildSkillPrompt(template, args, { replaceArguments: true }),
 			);
 		},
 	});
 
 	pi.registerCommand("do-it", {
-		description:
-			"Smart task routing -- implements directly, delegates, or plans based on complexity",
-		handler: async (args, ctx) => {
-			const planPath = args
-				.trim()
-				.match(/(\.specs\/[A-Za-z0-9._/-]+\/plan\.md)/)?.[1];
-			noteWorkflowSubmission(
-				args.trim() ? `/do-it ${args.trim()}` : "/do-it",
-				"engineer",
-			);
-			startWorkflowEpisode({
-				command: "do-it",
-				args,
-				artifactPath: planPath,
+		description: "Execute a task or plan with proportional validation",
+		handler: async (args, _ctx) => {
+			echoSlashCommand(pi, "do-it", args);
+			const template = loadSkill("do-it.md");
+			const prompt = buildSkillPrompt(template, args, {
+				replaceArguments: true,
 			});
-			await withTimingSpan(
-				{
-					name: "slash.do-it",
-					category: "command",
-					metadata: {
-						command: "do-it",
-						workflow: "do-it",
-						phase: "dispatch",
-						planPath,
-					},
-				},
-				async () => {
-					echoSlashCommand(pi, "do-it", args);
-					const lintPlanPath = planFileInput(args);
-					if (lintPlanPath) {
-						const lint = runPlanLint(ctx.cwd, lintPlanPath);
-						if (!lint.ok) {
-							pi.sendMessage({
-								customType: "workflow.planLint",
-								content: `Plan lint failed. Fix durable plan state before /do-it continues.\n${lint.output}`,
-								display: true,
-							});
-							return;
-						}
-					}
-					const template = loadSkill("do-it.md");
-					const prompt = buildSkillPrompt(template, args, {
-						replaceArguments: true,
-					});
-					if (isPlanFileInput(args)) {
-						await newSessionWithReloadIfNeeded(ctx, {
-							withSession: async (newCtx) => {
-								await newCtx.sendMessage(
-									{
-										customType: "workflow.hiddenPrompt",
-										content: prompt,
-										display: false,
-									},
-									{ triggerTurn: true, deliverAs: "followUp" },
-								);
-							},
-						});
-						return;
-					}
-					sendHiddenWorkflowPrompt(pi, prompt);
-				},
-			);
+			sendHiddenWorkflowPrompt(pi, prompt);
 		},
 	});
 
