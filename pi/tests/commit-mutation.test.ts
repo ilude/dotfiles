@@ -10,11 +10,21 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({ ExtensionAPI: class {} }));
 vi.mock("@earendil-works/pi-ai", () => ({ completeSimple: vi.fn(), TextContent: {} }));
 vi.mock("@earendil-works/pi-tui", () => ({ Text: class {} }));
 
+import { commitFailureMessage } from "../lib/commit/failure.ts";
 import { buildCommitPlan } from "../lib/commit/plan.ts";
 import { stagePaths } from "../lib/commit/stage.ts";
 import { createCommit } from "../lib/commit/create.ts";
-import { chooseFilesToCommit, listChangedFiles, stageFiles, SECRET_PATTERNS } from "../extensions/workflow-commands.ts";
+import {
+	chooseFilesToCommit,
+	executeCommitCommand,
+	ignoredCommitArgumentPaths,
+	listChangedFiles,
+	postClassificationRequestedFiles,
+	stageFiles,
+	SECRET_PATTERNS,
+} from "../extensions/workflow-commands.ts";
 import { timingSafeTokenEqual } from "../lib/commit/token.ts";
+import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 const repos: string[] = [];
 function run(cwd: string, args: string[]) {
@@ -36,6 +46,87 @@ afterEach(() => {
 });
 
 describe("commit mutation safety", () => {
+	it("excludes dirty submodules until their checked-out commit changes", async () => {
+		const child = repo();
+		writeFileSync(join(child, "child.txt"), "base\n");
+		run(child, ["add", "--", "child.txt"]);
+		run(child, ["commit", "-m", "chore: seed child"]);
+
+		const parent = repo();
+		writeFileSync(join(parent, "parent.txt"), "base\n");
+		run(parent, ["add", "--", "parent.txt"]);
+		run(parent, ["commit", "-m", "chore: seed parent"]);
+		run(parent, [
+			"-c",
+			"protocol.file.allow=always",
+			"submodule",
+			"add",
+			child,
+			"module",
+		]);
+		run(parent, ["commit", "-m", "chore: add module"]);
+
+		const checkout = join(parent, "module");
+		writeFileSync(join(checkout, "child.txt"), "dirty\n");
+		expect(buildCommitPlan(parent).entries).toEqual([]);
+		expect(listChangedFiles(parent).all).toEqual([]);
+
+		const pi = createMockPi();
+		const ctx = createMockCtx({ cwd: parent });
+		await executeCommitCommand(pi as never, "", ctx as never);
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			"No committable parent-repository changes found; dirty submodule worktrees were left untouched.",
+			"info",
+		);
+		expect(run(parent, ["diff", "--cached", "--name-only"]).trim()).toBe("");
+
+		run(checkout, ["config", "user.email", "pi@example.invalid"]);
+		run(checkout, ["config", "user.name", "Pi Test"]);
+		run(checkout, ["add", "--", "child.txt"]);
+		run(checkout, ["commit", "-m", "feat: advance child"]);
+		expect(buildCommitPlan(parent).safeStagePaths).toEqual(["module"]);
+		expect(listChangedFiles(parent).all).toEqual(["module"]);
+	});
+
+	it.each([
+		"nothing to commit, working tree clean",
+		"nothing added to commit but untracked files present",
+	])("prioritizes %s over successful hook stderr", (message) => {
+		expect(
+			commitFailureMessage({
+				stdout: `On branch main\n${message}\n`,
+				stderr: "dolos scan ok\n",
+			}),
+		).toBe(message);
+	});
+
+	it("rejects explicit ignored paths instead of treating them as hints", async () => {
+		const dir = repo();
+		writeFileSync(join(dir, ".gitignore"), "*.secret\n");
+		writeFileSync(join(dir, "local.secret"), "secret\n");
+		writeFileSync(join(dir, "visible.txt"), "visible\n");
+		expect(
+			await ignoredCommitArgumentPaths(dir, "local.secret"),
+		).toEqual(["local.secret"]);
+
+		const pi = createMockPi();
+		const ctx = createMockCtx({ cwd: dir });
+		await expect(
+			executeCommitCommand(pi as never, "local.secret", ctx as never),
+		).rejects.toThrow("Requested commit paths are ignored");
+		expect(run(dir, ["diff", "--cached", "--name-only"]).trim()).toBe("");
+	});
+
+	it("keeps generated .gitignore changes in an explicit selection", () => {
+		expect(
+			postClassificationRequestedFiles(
+				["generated.log", "source.ts"],
+				[".gitignore", "source.ts"],
+				[".gitignore"],
+			),
+		).toEqual([".gitignore", "source.ts"]);
+	});
+
 	it("commit_stage rejects missing token and never stages unsafe ignored paths", () => {
 		const dir = repo();
 		writeFileSync(join(dir, ".gitignore"), "*.secret\n");
@@ -171,6 +262,25 @@ describe("stageFiles -- ignored paths and broad staging", () => {
 });
 
 describe("listChangedFiles -- fresh repo (no HEAD)", () => {
+	it("includes and commits staged files before the first commit", async () => {
+		const dir = repo();
+		writeFileSync(join(dir, "staged.txt"), "hello\n");
+		run(dir, ["add", "--", "staged.txt"]);
+		expect(listChangedFiles(dir)).toEqual({
+			all: ["staged.txt"],
+			staged: ["staged.txt"],
+			untracked: [],
+		});
+
+		const pi = createMockPi();
+		const ctx = createMockCtx({ cwd: dir });
+		await executeCommitCommand(pi as never, "", ctx as never);
+		expect(run(dir, ["rev-parse", "--verify", "HEAD"]).trim()).not.toBe("");
+		expect(run(dir, ["show", "--format=", "--name-only", "HEAD"])).toContain(
+			"staged.txt",
+		);
+	});
+
 	it("returns untracked files without throwing on a repo with no commits", () => {
 		const dir = repo();
 		writeFileSync(join(dir, "new-file.txt"), "hello\n");

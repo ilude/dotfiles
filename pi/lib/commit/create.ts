@@ -1,3 +1,4 @@
+import { commitFailureMessage } from "./failure";
 import { git, requireRepoRoot } from "./git";
 import { validateCommitMessage } from "./message";
 import { createConfirmationToken, normalizeCommitPaths, timingSafeTokenEqual } from "./token";
@@ -27,7 +28,7 @@ export function createCommit(cwd: string, message: string, expectedStagedPaths: 
 	if (actual.join("\0") !== normalizedExpected.join("\0")) throw new Error(`Staged set changed after confirmation. Expected ${normalizedExpected.join(", ") || "<none>"}; found ${actual.join(", ") || "<none>"}.`);
 	if (actual.length === 0) throw new Error("Nothing is staged for commit.");
 	const commit = git(repoRoot, ["commit", "-m", message]);
-	if (commit.code !== 0) throw new Error(commit.stderr.trim() || commit.stdout.trim() || "git commit failed");
+	if (commit.code !== 0) throw new Error(commitFailureMessage(commit));
 	const hash = git(repoRoot, ["rev-parse", "--short", "HEAD"]);
 	if (hash.code !== 0) throw new Error(hash.stderr.trim() || "git rev-parse failed after commit");
 	return { hash: hash.stdout.trim(), message, committedPaths: actual, pushed: false };

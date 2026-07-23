@@ -34,8 +34,10 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Key, Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
+import { commitFailureMessage } from "../lib/commit/failure";
 import { validateCommitMessage } from "../lib/commit/message";
 import { preflightGitStateAsync } from "../lib/commit/plan";
+import { excludeDirtyOnlySubmodules } from "../lib/commit/submodule";
 import { emitTerminalBell } from "../lib/extension-utils";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
 import { withTimingSpan } from "../lib/observability";
@@ -170,6 +172,8 @@ interface CommitPlan {
 	groups: CommitPlanGroup[];
 	warnings?: string[];
 }
+
+class NoCommittableChangesError extends Error {}
 
 interface GitRunResult {
 	code: number;
@@ -883,10 +887,12 @@ function runGit(
 	cwd: string,
 	args: string[],
 	activity?: CommitActivity,
+	input?: string,
 ): GitRunResult {
 	const result = spawnSync(resolveGit(), args, {
 		cwd,
 		encoding: "utf8",
+		input,
 		timeout: GIT_COMMAND_TIMEOUT_MS,
 		windowsHide: true,
 	});
@@ -927,6 +933,7 @@ function runGitAsync(
 	args: string[],
 	activity?: CommitActivity,
 	signal?: AbortSignal,
+	input?: string,
 ): Promise<GitRunResult> {
 	if (signal?.aborted) {
 		return Promise.resolve({
@@ -940,7 +947,7 @@ function runGitAsync(
 			cwd,
 			detached: process.platform !== "win32",
 			windowsHide: true,
-			stdio: ["ignore", "pipe", "pipe"],
+			stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
 		});
 		let stdout = "";
 		let stderr = "";
@@ -956,6 +963,12 @@ function runGitAsync(
 		};
 		child.stdout?.setEncoding("utf8");
 		child.stderr?.setEncoding("utf8");
+		if (input !== undefined) {
+			child.stdin?.on("error", () => {
+				// Process close reports the Git failure.
+			});
+			child.stdin?.end(input);
+		}
 		child.stdout?.on("data", (chunk) => {
 			stdout += chunk;
 		});
@@ -1050,7 +1063,7 @@ export function filterCommitSafeFiles(files: string[]) {
 
 export function listChangedFiles(cwd: string, activity?: CommitActivity) {
 	const hasHead = runGit(cwd, ["rev-parse", "--verify", "HEAD"]).code === 0;
-	const headDiff = hasHead
+	const rawHeadDiff = hasHead
 		? parseLines(gitOrThrow(cwd, ["diff", "--name-only", "HEAD"], activity))
 		: [];
 	const untracked = parseLines(
@@ -1059,8 +1072,12 @@ export function listChangedFiles(cwd: string, activity?: CommitActivity) {
 	const staged = parseLines(
 		gitOrThrow(cwd, ["diff", "--cached", "--name-only"], activity),
 	);
+	const rawDiffIndex = hasHead
+		? gitOrThrow(cwd, ["diff-index", "--raw", "-z", "HEAD"], activity)
+		: "";
+	const headDiff = excludeDirtyOnlySubmodules(rawHeadDiff, rawDiffIndex);
 	return {
-		all: uniqueSorted([...headDiff, ...untracked]),
+		all: uniqueSorted([...headDiff, ...untracked, ...staged]),
 		staged: uniqueSorted(staged),
 		untracked: uniqueSorted(untracked),
 	};
@@ -1080,7 +1097,7 @@ async function listChangedFilesAsync(
 				signal,
 			)
 		).code === 0;
-	const headDiff = hasHead
+	const rawHeadDiff = hasHead
 		? parseLines(
 				await gitOrThrowAsync(
 					cwd,
@@ -1106,10 +1123,20 @@ async function listChangedFilesAsync(
 			signal,
 		),
 	);
+	const rawDiffIndex = hasHead
+		? await gitOrThrowAsync(
+				cwd,
+				["diff-index", "--raw", "-z", "HEAD"],
+				activity,
+				signal,
+			)
+		: "";
+	const headDiff = excludeDirtyOnlySubmodules(rawHeadDiff, rawDiffIndex);
 	return {
-		all: uniqueSorted([...headDiff, ...untracked]),
+		all: uniqueSorted([...headDiff, ...untracked, ...staged]),
 		staged: uniqueSorted(staged),
 		untracked: uniqueSorted(untracked),
+		hasHead,
 	};
 }
 
@@ -1605,11 +1632,11 @@ async function resolveLowConfidenceClassifications(
 	return resolved;
 }
 
-function appendGitignorePatterns(cwd: string, patterns: string[]) {
+function appendGitignorePatterns(cwd: string, patterns: string[]): boolean {
 	const uniquePatterns = uniqueSorted(
 		patterns.map((p) => p.trim()).filter(Boolean),
 	);
-	if (uniquePatterns.length === 0) return;
+	if (uniquePatterns.length === 0) return false;
 	const gitignorePath = path.join(cwd, ".gitignore");
 	const existing = fs.existsSync(gitignorePath)
 		? fs.readFileSync(gitignorePath, "utf-8")
@@ -1618,18 +1645,19 @@ function appendGitignorePatterns(cwd: string, patterns: string[]) {
 	const missing = uniquePatterns.filter(
 		(pattern) => !existingLines.has(pattern),
 	);
-	if (missing.length === 0) return;
+	if (missing.length === 0) return false;
 	const prefix = existing.length === 0 || existing.endsWith("\n") ? "" : "\n";
 	fs.appendFileSync(gitignorePath, `${prefix}${missing.join("\n")}\n`);
+	return true;
 }
 
 function applyUntrackedClassifications(
 	cwd: string,
 	classifications: UntrackedClassification[],
 	activity?: CommitActivity,
-) {
+): string[] {
 	const ignored = classifications.filter((item) => item.decision === "ignore");
-	appendGitignorePatterns(
+	const gitignoreChanged = appendGitignorePatterns(
 		cwd,
 		ignored.map((item) => item.gitignorePattern || item.path),
 	);
@@ -1638,6 +1666,19 @@ function applyUntrackedClassifications(
 			`Ignored untracked paths:\n${ignored.map((item) => `- ${item.path}: ${item.reason}`).join("\n")}`,
 		);
 	}
+	return gitignoreChanged ? [".gitignore"] : [];
+}
+
+export function postClassificationRequestedFiles(
+	requestedFiles: string[],
+	changedFiles: string[],
+	generatedPaths: string[],
+): string[] {
+	if (requestedFiles.length === 0) return [];
+	const changed = new Set(changedFiles);
+	return uniqueSorted(
+		[...requestedFiles, ...generatedPaths].filter((file) => changed.has(file)),
+	);
 }
 
 const LARGE_COMMIT_FILE_THRESHOLD = 50;
@@ -1666,6 +1707,66 @@ export async function chooseFilesToCommit(
 	return { files: changedFiles, stageAll: true, cancelled: false };
 }
 
+function checkIgnoreInput(files: string[]): string {
+	return files.length > 0 ? `${files.join("\0")}\0` : "";
+}
+
+function parseIgnoredPaths(result: GitRunResult): string[] {
+	if (result.code !== 0 && result.code !== 1)
+		throw new Error(
+			(result.stderr || result.stdout).trim() || "git check-ignore failed",
+		);
+	return uniqueSorted(result.stdout.split("\0").filter(Boolean));
+}
+
+function ignoredPaths(
+	cwd: string,
+	files: string[],
+	activity?: CommitActivity,
+): string[] {
+	if (files.length === 0) return [];
+	return parseIgnoredPaths(
+		runGit(
+			cwd,
+			["check-ignore", "-z", "--stdin"],
+			activity,
+			checkIgnoreInput(files),
+		),
+	);
+}
+
+async function ignoredPathsAsync(
+	cwd: string,
+	files: string[],
+	activity?: CommitActivity,
+	signal?: AbortSignal,
+): Promise<string[]> {
+	if (files.length === 0) return [];
+	return parseIgnoredPaths(
+		await runGitAsync(
+			cwd,
+			["check-ignore", "-z", "--stdin"],
+			activity,
+			signal,
+			checkIgnoreInput(files),
+		),
+	);
+}
+
+export async function ignoredCommitArgumentPaths(
+	cwd: string,
+	rawArgs: string,
+	signal?: AbortSignal,
+): Promise<string[]> {
+	const candidates = rawArgs
+		.trim()
+		.split(/\s+/)
+		.filter((token) => token !== "push")
+		.map(normalizeGitPath)
+		.filter((token) => fs.existsSync(path.resolve(cwd, token)));
+	return ignoredPathsAsync(cwd, uniqueSorted(candidates), undefined, signal);
+}
+
 export function stageFiles(
 	cwd: string,
 	files: string[],
@@ -1682,9 +1783,7 @@ export function stageFiles(
 		fs.existsSync(path.resolve(cwd, file)),
 	);
 	const missingFiles = files.filter((file) => !existingFiles.includes(file));
-	const ignoredExisting = existingFiles.filter(
-		(file) => runGit(cwd, ["check-ignore", "--quiet", "--", file]).code === 0,
-	);
+	const ignoredExisting = ignoredPaths(cwd, existingFiles, activity);
 	const stagingPlan = buildStagingPlan({
 		files: existingFiles,
 		allCommittableFiles: isLargeOrMixedCommitSelection(files)
@@ -1734,16 +1833,12 @@ async function stageFilesAsync(
 		fs.existsSync(path.resolve(cwd, file)),
 	);
 	const missingFiles = files.filter((file) => !existingFiles.includes(file));
-	const ignoredExisting: string[] = [];
-	for (const file of existingFiles) {
-		const result = await runGitAsync(
-			cwd,
-			["check-ignore", "--quiet", "--", file],
-			undefined,
-			signal,
-		);
-		if (result.code === 0) ignoredExisting.push(file);
-	}
+	const ignoredExisting = await ignoredPathsAsync(
+		cwd,
+		existingFiles,
+		activity,
+		signal,
+	);
 	const stagingPlan = buildStagingPlan({
 		files: existingFiles,
 		allCommittableFiles: isLargeOrMixedCommitSelection(files)
@@ -1788,15 +1883,21 @@ async function unstageFilesAsync(
 	activity?: CommitActivity,
 	signal?: AbortSignal,
 ) {
-	const resetResult = await runGitAsync(
+	const head = await runGitAsync(
 		cwd,
-		["reset", "HEAD", "--", ...files],
+		["rev-parse", "--verify", "HEAD"],
 		activity,
 		signal,
 	);
+	const resetArgs =
+		head.code === 0
+			? ["reset", "HEAD", "--", ...files]
+			: ["rm", "--cached", "--ignore-unmatch", "--", ...files];
+	const resetResult = await runGitAsync(cwd, resetArgs, activity, signal);
 	if (resetResult.code !== 0)
 		throw new Error(
-			(resetResult.stderr || resetResult.stdout).trim() || "git reset failed",
+			(resetResult.stderr || resetResult.stdout).trim() ||
+				"git unstage failed",
 		);
 }
 
@@ -1826,10 +1927,7 @@ async function commitCurrentChangesAsync(
 		: ["commit", "-m", commitMessage.subject];
 	const commitResult = await runGitAsync(cwd, commitArgs, activity, signal);
 	if (commitResult.code !== 0)
-		throw new Error(
-			(commitResult.stderr || commitResult.stdout).trim() ||
-				"git commit failed",
-		);
+		throw new Error(commitFailureMessage(commitResult));
 	return gitOrThrowAsync(
 		cwd,
 		["rev-parse", "--short", "HEAD"],
@@ -1986,7 +2084,7 @@ async function getCommitContext(
 	activity?: CommitActivity,
 	signal?: AbortSignal,
 ) {
-	const { all, staged, untracked } = await listChangedFilesAsync(
+	const { all, staged, untracked, hasHead } = await listChangedFilesAsync(
 		cwd,
 		activity,
 		signal,
@@ -2004,10 +2102,15 @@ async function getCommitContext(
 		);
 	}
 	if (changed.included.length === 0)
-		throw new Error("No committable changed files found");
+		throw new NoCommittableChangesError(
+			"No committable changed files found",
+		);
+	const diffStatArgs = hasHead
+		? ["diff", "--stat", "HEAD", "--", ...changed.included]
+		: ["diff", "--cached", "--stat", "--", ...changed.included];
 	const diffStat = await gitOrThrowAsync(
 		cwd,
-		["diff", "--stat", "HEAD", "--", ...changed.included],
+		diffStatArgs,
 		activity,
 		signal,
 	);
@@ -2024,6 +2127,16 @@ async function prepareCommitSelection(
 	ctx: WorkflowContext,
 	activity?: CommitActivity,
 ) {
+	const explicitlyIgnored = await ignoredCommitArgumentPaths(
+		ctx.cwd,
+		args,
+		ctx.signal,
+	);
+	if (explicitlyIgnored.length > 0) {
+		throw new Error(
+			`Requested commit paths are ignored:\n${explicitlyIgnored.map((file) => `- ${file}`).join("\n")}`,
+		);
+	}
 	let { diffStat, changedFiles, stagedFiles, untrackedFiles } =
 		await getCommitContext(ctx.cwd, activity, ctx.signal);
 	const parsedArgs = parseCommitArgs(args, changedFiles);
@@ -2045,7 +2158,7 @@ async function prepareCommitSelection(
 			ctx,
 			plan.needsUserDecision,
 		);
-		applyUntrackedClassifications(
+		const generatedPaths = applyUntrackedClassifications(
 			ctx.cwd,
 			[...plan.accepted, ...userDecisions],
 			activity,
@@ -2056,7 +2169,11 @@ async function prepareCommitSelection(
 			ctx,
 			changedFiles,
 			stagedFiles,
-			parsedArgs.files,
+			postClassificationRequestedFiles(
+				parsedArgs.files,
+				changedFiles,
+				generatedPaths,
+			),
 		);
 		if (selection.cancelled || selection.files.length === 0) return null;
 	}
@@ -2134,8 +2251,17 @@ export async function executeCommitCommand(
 			activity.finish();
 			return ctx.ui.notify("Working tree is clean", "info");
 		}
-
-		const prepared = await prepareCommitSelection(args, ctx, activity);
+		let prepared: Awaited<ReturnType<typeof prepareCommitSelection>>;
+		try {
+			prepared = await prepareCommitSelection(args, ctx, activity);
+		} catch (error) {
+			if (!(error instanceof NoCommittableChangesError)) throw error;
+			activity.finish();
+			return ctx.ui.notify(
+				"No committable parent-repository changes found; dirty submodule worktrees were left untouched.",
+				"info",
+			);
+		}
 		if (!prepared) {
 			activity.finish();
 			return ctx.ui.notify("Commit cancelled", "warning");

@@ -113,18 +113,15 @@ describe("commit planning", () => {
 		});
 	});
 
-	it("marks ignored untracked files unsafe to add", () => {
+	it("omits ignored untracked files from commit planning", () => {
 		const dir = repo();
 		writeFileSync(join(dir, ".gitignore"), "*.secret\n");
 		writeFileSync(join(dir, "local.secret"), "x\n");
-		const entry = buildCommitPlan(dir).entries.find(
-			(item) => item.path === "local.secret",
+		const plan = buildCommitPlan(dir);
+		expect(plan.entries.some((item) => item.path === "local.secret")).toBe(
+			false,
 		);
-		expect(entry).toMatchObject({
-			classification: "ignored_untracked",
-			safeToGitAdd: false,
-			recommendedAction: "skip",
-		});
+		expect(plan.safeStagePaths).toEqual([".gitignore"]);
 	});
 
 	it("blocks detached HEAD before mutation", () => {

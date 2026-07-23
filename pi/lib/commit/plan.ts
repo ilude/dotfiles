@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { type GitAsyncRunner, type GitResult, git } from "./git";
+import { excludeDirtyOnlySubmodules } from "./submodule";
 import { createConfirmationToken, normalizeCommitPaths } from "./token";
 import type {
 	CommitPathEntry,
@@ -54,9 +55,16 @@ function isUnmerged(entry: { x: string; y: string }): boolean {
 	return UNMERGED_STATUS_PAIRS.has(`${entry.x}${entry.y}`);
 }
 
-function isIgnored(repoRoot: string, file: string): boolean {
-	const result = git(repoRoot, ["check-ignore", "-q", "--", file]);
-	return result.code === 0;
+function ignoredPaths(repoRoot: string, files: string[]): Set<string> {
+	if (files.length === 0) return new Set();
+	const result = git(
+		repoRoot,
+		["check-ignore", "-z", "--stdin"],
+		`${files.join("\0")}\0`,
+	);
+	if (result.code !== 0 && result.code !== 1)
+		throw new Error(result.stderr.trim() || "git check-ignore failed");
+	return new Set(result.stdout.split("\0").filter(Boolean));
 }
 
 function classify(
@@ -328,12 +336,25 @@ export function buildCommitPlan(cwd: string): CommitPlanResult {
 		"--branch",
 		"-z",
 		"--untracked-files=all",
-		"--ignored=matching",
 	]);
 	if (status.code !== 0) throw new Error(status.stderr.trim());
 	const preflight = preflightGitStateForRoot(root, status.stdout);
-	const entries = decodePorcelainStatus(status.stdout).map((entry) =>
-		classify(entry, isIgnored(root, entry.path)),
+	const diffIndex = git(root, ["diff-index", "--raw", "-z", "HEAD"]);
+	const committablePaths = new Set(
+		excludeDirtyOnlySubmodules(
+			decodePorcelainStatus(status.stdout).map((entry) => entry.path),
+			diffIndex.code === 0 ? diffIndex.stdout : "",
+		),
+	);
+	const statusEntries = decodePorcelainStatus(status.stdout).filter((entry) =>
+		committablePaths.has(entry.path),
+	);
+	const ignored = ignoredPaths(
+		root,
+		statusEntries.map((entry) => entry.path),
+	);
+	const entries = statusEntries.map((entry) =>
+		classify(entry, ignored.has(entry.path)),
 	);
 	const safeStagePaths = normalizeCommitPaths(
 		entries

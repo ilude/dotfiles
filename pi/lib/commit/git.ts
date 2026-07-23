@@ -46,10 +46,11 @@ function resolveGit(): string {
 	return _gitBin;
 }
 
-export function git(cwd: string, args: string[]): GitResult {
+export function git(cwd: string, args: string[], input?: string): GitResult {
 	const result = spawnSync(resolveGit(), args, {
 		cwd,
 		encoding: "utf8",
+		input,
 		windowsHide: true,
 	});
 	return {

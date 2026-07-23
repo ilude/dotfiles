@@ -427,6 +427,7 @@ describe("workflow command dispatch", () => {
 			{ stdout: `${file}\n` },
 			{},
 			{},
+			{},
 			{ stdout: `${file} | 1 +\n` },
 			{},
 			{ code: 1 },
@@ -513,6 +514,7 @@ describe("workflow command dispatch", () => {
 			{ stdout: `${file}\n` },
 			{},
 			{},
+			{},
 			{ stdout: `${file} | 1 +\n` },
 			{ code: 1 },
 			{},
@@ -561,24 +563,28 @@ describe("workflow command dispatch", () => {
 		const status = `${files.map((file) => ` M ${file}`).join("\n")}\n`;
 		const stat = `${files.map((file) => `${file} | 1 +`).join("\n")}\n`;
 		const diff = `${files.map((file) => `diff --git a/${file} b/${file}`).join("\n")}\n`;
-		for (const result of [
-			{ stdout: status },
-			{},
-			{ stdout: names },
-			{},
-			{},
-			{ stdout: stat },
-			{ code: 1 },
-			{ code: 1 },
-			{ code: 1 },
-			{ code: 1 },
-			{},
-			{ stdout: stat },
-			{ stdout: diff },
-			{ code: 1, stderr: "stop after fallback\n" },
-		]) {
-			mockSpawn.mockImplementationOnce(() => mockGitSpawn(result));
-		}
+		let addCalls = 0;
+		mockSpawn.mockImplementation((_command, args: string[]) => {
+			const signature = args.join(" ");
+			if (signature === "status --short")
+				return mockGitSpawn({ stdout: status });
+			if (signature === "diff --name-only HEAD")
+				return mockGitSpawn({ stdout: names });
+			if (signature === "diff --cached --stat")
+				return mockGitSpawn({ stdout: stat });
+			if (signature === "diff --cached --no-color")
+				return mockGitSpawn({ stdout: diff });
+			if (signature === `diff --stat HEAD -- ${files.join(" ")}`)
+				return mockGitSpawn({ stdout: stat });
+			if (args[0] === "check-ignore") return mockGitSpawn({ code: 1 });
+			if (args[0] === "add") {
+				addCalls += 1;
+				return addCalls === 1
+					? mockGitSpawn()
+					: mockGitSpawn({ code: 1, stderr: "stop after fallback\n" });
+			}
+			return mockGitSpawn();
+		});
 		mockTypedAgentRun.mockRejectedValueOnce(
 			new Error("schema validation omitted one path"),
 		);
