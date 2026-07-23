@@ -188,3 +188,4 @@ claude/commands/yt/hermes-transcript.tmp.txt
 .specs/archive/pi-workflow-audit/artifacts/*/source-roots.json
 copilot/config.json
 /pi/models-store.json
+.local/state/gh/device-id
