@@ -1,6 +1,6 @@
 ---
 name: m365-tenant-automation
-description: "Microsoft 365 tenant automation and inventory. Use when scripting Entra ID, Exchange Online, SharePoint Online, Teams, Graph, licensing, tenant inventory, or tenant-separated environment config. Not for generic PowerShell unrelated to M365."
+description: "M365 scripting: Entra ID, Exchange, SharePoint, Teams, Graph, licensing, inventory, or tenant config. Not for unrelated PowerShell."
 ---
 
 # Microsoft 365 Tenant Automation

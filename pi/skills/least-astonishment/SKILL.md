@@ -1,6 +1,6 @@
 ---
 name: least-astonishment
-description: "Edit-time least-astonishment guardrails. Use when modifying existing code to keep diffs focused, pattern-matching, and unsurprising. Not for architecture strategy or pure git operations."
+description: "Focused, pattern-matching edits to existing code. Not for architecture strategy or pure git operations."
 ---
 
 # Principle of Least Astonishment

@@ -1,6 +1,6 @@
 ---
 name: shell
-description: "Shell and PowerShell script implementation. Use for .sh, .bash, .zsh, .ps1, Makefile shell fragments, CLI scripts, quoting, exit codes, traps, and cross-platform shell behavior. Not for workflow command UX or Justfile routing."
+description: "Shell/PowerShell: .sh, .bash, .zsh, .ps1, Makefile fragments, CLI scripts, quoting, exits, traps, or cross-platform behavior. Not for workflow UX or Justfile routing."
 ---
 
 # Shell Script Workflow

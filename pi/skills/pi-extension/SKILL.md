@@ -1,6 +1,6 @@
 ---
 name: pi-extension
-description: "Pi TypeScript extension implementation and review. Use when editing or reviewing pi/extensions/*.ts, extension hooks, registerTool, registerCommand, footer/status UI, tool_result handlers, session hooks, or subprocess usage in Pi extensions. Not for slash-command placement decisions; use pi-command."
+description: "Pi extensions: pi/extensions/*.ts, hooks, registerTool, registerCommand, footer/status UI, tool_result, session hooks, or subprocesses. Not for slash-command placement; use pi-command."
 ---
 
 # Pi Extension Engineering

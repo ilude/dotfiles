@@ -1,6 +1,6 @@
 ---
 name: prd
-description: "PRD artifact workflow. Use when the user invokes /prd-it or explicitly asks to draft, refine, or review a Product Requirements Document. Not for ordinary acceptance criteria, planning, or Pi /goal prompts."
+description: "Use for /prd-it or to draft, refine, or review a Product Requirements Document. Not for acceptance criteria, planning, or Pi /goal prompts."
 ---
 
 # PRD Workflow

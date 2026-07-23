@@ -1,6 +1,6 @@
 ---
 name: pi-command
-description: "Pi command-surface guidance. Use when creating, reviewing, relocating, or documenting Pi slash commands, prompt templates, workflow skills, or command placement. Not for generic skill authoring; use skills-engineer."
+description: "Pi slash commands, prompt templates, workflow skills, or command placement. Not for skill authoring; use skills-engineer."
 ---
 
 # Pi Command Authoring

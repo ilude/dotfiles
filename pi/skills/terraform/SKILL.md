@@ -1,6 +1,6 @@
 ---
 name: terraform
-description: Terraform IaC, modules, and cloud infrastructure patterns. Activate when working with .tf files, variables.tf, main.tf, outputs.tf, terraform.tfvars, .tfstate, or discussing Terraform, HCL, terraform init/plan/apply, remote backends, or infrastructure as code with Terraform.
+description: "Terraform: .tf, variables.tf, main.tf, outputs.tf, terraform.tfvars, .tfstate, HCL, init/plan/apply, or remote backends."
 ---
 
 # Terraform Projects Workflow

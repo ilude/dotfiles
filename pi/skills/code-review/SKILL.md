@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: "Evidence-based review of code changes. Use for code review, PR review, diff review, branch/commit review, git diff, git show, or compare changes. Not for general debugging or design critique."
+description: "Code, PR, diff, branch, or commit review; git diff, git show, or change comparison. Not for debugging or design critique."
 ---
 
 # Evidence-Based Code Review

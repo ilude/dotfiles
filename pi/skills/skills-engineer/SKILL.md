@@ -1,6 +1,6 @@
 ---
 name: skills-engineer
-description: "Skill and agent-definition authoring. Use when editing SKILL.md files, skill frontmatter/descriptions, activation triggers, agent definitions, or command/agent meta-instructions. Not for Pi slash-command placement; use pi-command."
+description: "SKILL.md, skill frontmatter/descriptions, activation triggers, agent definitions, or command/agent instructions. Not for Pi slash-command placement; use pi-command."
 ---
 
 # Skills Engineering

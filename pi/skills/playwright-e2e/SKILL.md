@@ -1,6 +1,6 @@
 ---
 name: playwright-e2e
-description: "Playwright end-to-end test triage and validation. Use when working with Playwright specs, fixtures, traces, browsers, test projects, dependency-gated suites, or e2e Docker cleanup. Not for unit-test-only changes."
+description: "Playwright specs, fixtures, traces, browsers, test projects, gated suites, or e2e Docker cleanup. Not for unit-test-only changes."
 ---
 
 # Playwright E2E Workflow

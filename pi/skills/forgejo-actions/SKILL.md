@@ -1,6 +1,6 @@
 ---
 name: forgejo-actions
-description: "Forgejo Actions workflows and runner deployment. Use when working with .forgejo/workflows, forgejo-runner, runner labels, Actions secrets, workflow_dispatch, CI/CD, or automatic deployment from Forgejo. Not for Forgejo Git remote/repo setup; use forgejo-git."
+description: "Forgejo Actions: .forgejo/workflows, forgejo-runner, labels, secrets, workflow_dispatch, CI/CD, or deployment. Not for Git remote/repo setup; use forgejo-git."
 ---
 
 # Forgejo Actions Workflow

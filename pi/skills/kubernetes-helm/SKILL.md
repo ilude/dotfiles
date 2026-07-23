@@ -1,6 +1,6 @@
 ---
 name: kubernetes-helm
-description: "Kubernetes, Helm, Argo CD, and GitOps deployment validation. Use when working with Kubernetes manifests, Helm charts, Kustomize overlays, Argo CD apps, kubectl, helm, or cluster rollout checks. Not for Docker-only container files."
+description: "Kubernetes manifests, Helm charts, Kustomize, Argo CD, kubectl, helm, GitOps, or cluster rollout checks. Not for Docker-only files."
 ---
 
 # Kubernetes, Helm, and GitOps Workflow

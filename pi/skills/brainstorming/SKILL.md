@@ -1,6 +1,6 @@
 ---
 name: brainstorming
-description: Generate multiple approaches before implementing. Activate when facing design decisions, architectural choices, or problems with multiple valid solutions. Prevents premature commitment to first idea.
+description: Generate approaches before implementation for design decisions, architecture choices, or multiple valid solutions.
 ---
 
 # Brainstorming

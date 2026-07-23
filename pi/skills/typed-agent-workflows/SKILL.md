@@ -1,6 +1,6 @@
 ---
 name: typed-agent-workflows
-description: "Pi typed-agent implementation and composition. Use when creating or modifying defineAgent definitions, typed semantic stages, or code-plus-agent workflows built on pi/lib/typed-agent.ts. Not for general delegation, extension hooks, or command UX."
+description: "Pi defineAgent, typed semantic stages, or code-plus-agent workflows using pi/lib/typed-agent.ts. Not for delegation, extension hooks, or command UX."
 ---
 
 # Typed Agent Workflows

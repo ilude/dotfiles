@@ -1,6 +1,6 @@
 ---
 name: private-store
-description: Private datastore/Dolos workflow. Use when saving, archiving, packing, encrypting, or committing sensitive local private/ files.
+description: Save, archive, pack, encrypt, or commit sensitive local private/ files with Dolos.
 ---
 
 # Private Store

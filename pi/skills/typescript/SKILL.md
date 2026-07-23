@@ -1,6 +1,6 @@
 ---
 name: typescript
-description: TypeScript/JavaScript development with Bun, Biome, Zod, and modern tooling. Activate when working with .ts, .tsx, .js, .jsx files, package.json, or discussing TypeScript/JavaScript patterns.
+description: TypeScript/JavaScript, .ts, .tsx, .js, .jsx, package.json, Bun, Biome, Zod, or code patterns.
 ---
 
 # TypeScript/JavaScript Projects Workflow

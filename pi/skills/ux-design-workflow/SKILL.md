@@ -1,6 +1,6 @@
 ---
 name: ux-design-workflow
-description: "Web and graphical UX/UI design workflow covering accessibility, design tokens, aesthetics, and pipelines. Not for terminal interfaces; use tui-ux."
+description: "Web/graphical UX/UI: accessibility, design tokens, aesthetics, or pipelines. Not for terminal interfaces; use tui-ux."
 location: user
 ---
 

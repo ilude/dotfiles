@@ -1,6 +1,6 @@
 ---
 name: ruby
-description: Ruby development with Rails, RSpec, and best practices. Activate when working with .rb files, Gemfile, Gemfile.lock, Rakefile, .gemspec, or discussing Ruby/Rails patterns, bundler, ActiveRecord, migrations, RSpec, minitest, or Rails generators.
+description: "Ruby/Rails: .rb, Gemfile, Rakefile, .gemspec, bundler, ActiveRecord, migrations, RSpec, minitest, or generators."
 ---
 
 # Ruby Skill

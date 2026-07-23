@@ -1,6 +1,6 @@
 ---
 name: analysis-workflow
-description: "Structured investigation workflow. Use for analyze, validate, debug, troubleshoot, critique, red-team, adversarial checks, or what-could-go-wrong questions. Not for PR/diff code review; use code-review."
+description: "Analyze, validate, debug, troubleshoot, critique, red-team, adversarial, or what-could-go-wrong questions. Not for PR/diff review; use code-review."
 ---
 
 # Analysis Workflow

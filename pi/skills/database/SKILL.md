@@ -1,6 +1,6 @@
 ---
 name: database
-description: Database design, SQL, ORM patterns, migrations, and optimization. Activate when working with .sql files, database schemas, migrations, ORMs, query optimization, indexing, transactions, EXPLAIN plans, or discussing database patterns, PostgreSQL, MySQL, SQLite, DynamoDB, or Redis.
+description: SQL, schemas, migrations, ORMs, query optimization, indexing, transactions, EXPLAIN, PostgreSQL, MySQL, SQLite, DynamoDB, or Redis.
 ---
 
 # Database Workflow

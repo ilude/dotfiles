@@ -1,6 +1,6 @@
 ---
 name: pi-contributor-workflow
-description: "Pi-mono upstream contribution workflow. Activate only when working in badlogic/pi-mono or @mariozechner/pi-* packages and discussing Pi issue/PR submission, maintainer approval, contributor gates, pkg:* labels, changelog rules, or getting a Pi fix accepted upstream."
+description: "Only for badlogic/pi-mono or @mariozechner/pi-* upstream issues/PRs, approval, contributor gates, pkg:* labels, changelogs, or accepted fixes."
 ---
 
 # Pi Contributor Workflow

@@ -1,6 +1,6 @@
 ---
 name: justfile
-description: "Justfile recipe implementation. Use when editing justfile/Justfile files, just recipes, dotenv handling, recursive just calls, or cross-platform just behavior. Not for general workflow UX or shell scripting."
+description: "justfile/Justfile, recipes, dotenv, recursive just, or cross-platform just. Not for workflow UX or shell scripting."
 ---
 
 # Justfile Workflow

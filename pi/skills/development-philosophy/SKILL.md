@@ -1,6 +1,6 @@
 ---
 name: development-philosophy
-description: "Implementation strategy and design tradeoff guardrails. Use when planning implementation approach, architecture choices, experiment-driven development, or avoiding over-engineering. Not for edit-time diff consistency; use least-astonishment."
+description: "Implementation strategy, architecture, experiments, or avoiding over-engineering. Not for edit-time diff consistency; use least-astonishment."
 ---
 
 # Development Philosophy

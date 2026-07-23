@@ -1,6 +1,6 @@
 ---
 name: planning
-description: "Requirements and acceptance-criteria planning. Use for requirements, user stories, acceptance criteria, verification criteria, or turning vague requests into testable outcomes. Not for PRD artifact drafting (/prd) or Pi /goal prompt writing."
+description: "Requirements, user stories, acceptance/verification criteria, or testable outcomes. Not for PRD drafting (/prd) or Pi /goal prompts."
 ---
 
 # Planning

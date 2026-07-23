@@ -1,6 +1,6 @@
 ---
 name: docs
-description: "Technical documentation structure and Markdown conventions. Use for README, CHANGELOG, docs/ files, RFCs, ADRs, guides, and Markdown organization. Not for prose cleanup or archival work."
+description: "README, CHANGELOG, docs/, RFCs, ADRs, guides, or Markdown structure. Not for prose cleanup or archival work."
 ---
 
 # Documentation Workflow

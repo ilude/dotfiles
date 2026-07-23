@@ -1,6 +1,6 @@
 ---
 name: pdf-reader
-description: PDF extraction/search/render workflow. Use to read, search, or render PDF files, especially page-specific or visual PDF questions.
+description: Read, search, extract, or render PDFs, including page-specific or visual questions.
 ---
 
 # PDF Reader

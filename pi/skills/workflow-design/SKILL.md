@@ -1,6 +1,6 @@
 ---
 name: workflow-design
-description: "Developer/operator command UX design. Use when improving command surfaces, task runners, package scripts, Makefile/just workflows, deployment commands, or workflow docs. Not for shell-script syntax or Justfile-specific implementation details."
+description: "Command UX: command surfaces, task runners, package scripts, Makefile/just workflows, deployment commands, or workflow docs. Not for shell syntax or Justfile implementation."
 ---
 
 # Workflow Design

@@ -1,6 +1,6 @@
 ---
 name: logging-observability
-description: "Observability design and debugging. Use for logging, structured logs, metrics, tracing, monitoring, alerting, SLOs, correlation IDs, trace IDs, and log aggregation. Not for general debugging without telemetry."
+description: "Logging, metrics, tracing, monitoring, alerting, SLOs, correlation/trace IDs, or log aggregation. Not for debugging without telemetry."
 ---
 
 # Logging and Observability

@@ -1,6 +1,6 @@
 ---
 name: war-report
-description: Weekly activity report generator from Git commits. Use for war reports, weekly activity reports, or work accomplishment summaries.
+description: Generate war reports, weekly activity reports, or work accomplishment summaries from Git commits.
 ---
 
 # WAR Report

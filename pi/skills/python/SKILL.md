@@ -1,6 +1,6 @@
 ---
 name: python
-description: Python development with uv, pytest, Pydantic, type hints, and modern tooling. Activate when working with Python files, pyproject.toml, uv, pip, pytest, or discussing Python code patterns.
+description: Python, pyproject.toml, uv, pip, pytest, Pydantic, type hints, or Python patterns.
 ---
 
 # Python Projects Workflow

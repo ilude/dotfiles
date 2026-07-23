@@ -1,6 +1,6 @@
 ---
 name: reddit
-description: Reddit public .json script. Use for Reddit search, subreddit listings, or reading a specific Reddit post.
+description: Reddit public .json search, subreddit listings, or a specific post.
 ---
 
 # Reddit

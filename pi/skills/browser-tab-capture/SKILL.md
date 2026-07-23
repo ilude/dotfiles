@@ -1,6 +1,6 @@
 ---
 name: browser-tab-capture
-description: Brave tab capture/recovery. Use for exporting, archiving, saving, or recovering open Brave tabs or Chromium session files.
+description: Export, archive, save, or recover Brave tabs or Chromium session files.
 ---
 
 # Browser Tab Capture

@@ -1,6 +1,6 @@
 ---
 name: no-ai-slop
-description: "Prose cleanup for generic machine-style writing. Use when writing, editing, or reviewing prose for filler, hype, vague claims, repetitive structure, detection tells, or uncited specifics. Not for Markdown architecture or archival work."
+description: "Prose cleanup for filler, hype, vague claims, repetition, detection tells, or uncited specifics. Not for Markdown architecture or archival work."
 ---
 
 # No-Slop Writing

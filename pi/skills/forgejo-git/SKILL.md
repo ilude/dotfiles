@@ -1,6 +1,6 @@
 ---
 name: forgejo-git
-description: "Forgejo-specific Git hosting workflow. Use when working with Forgejo remotes, nested private values repos, Forgejo API tokens, repository creation, push-to-create, tea CLI, or Forgejo SSH/API troubleshooting. Not for generic git commits; use git-workflow."
+description: "Forgejo remotes, private values repos, API tokens, repository creation, push-to-create, tea, or SSH/API troubleshooting. Not for generic commits; use git-workflow."
 ---
 
 # Forgejo Git Workflow

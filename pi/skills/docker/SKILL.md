@@ -1,6 +1,6 @@
 ---
 name: docker
-description: Docker containers, Compose, and containerization patterns. Activate when working with Dockerfile, docker-compose.yml, docker-compose, .dockerignore, .devcontainer, devcontainer.json, or discussing Docker, containers, images, container orchestration, or podman.
+description: Dockerfile, docker-compose.yml, docker-compose, .dockerignore, .devcontainer, devcontainer.json, containers, images, orchestration, or Podman.
 ---
 
 # Container-Based Projects

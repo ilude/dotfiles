@@ -1,6 +1,6 @@
 ---
 name: tui-ux
-description: Terminal UI and interactive CLI UX best practices. Activate when designing, reviewing, or modifying TUIs, command palettes, model pickers, login/setup wizards, lists, forms, status bars, keyboard navigation, streaming views, or terminal workflows.
+description: "Terminal UI/CLI UX: TUIs, command palettes, pickers, setup wizards, lists, forms, status bars, keyboard navigation, streaming, or workflows."
 ---
 
 # TUI UX Skill

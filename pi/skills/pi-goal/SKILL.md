@@ -1,6 +1,6 @@
 ---
 name: pi-goal
-description: "Pi /goal prompt builder. Use when asked to write or improve an inline Pi /goal command, goal prompt file, long-running objective, or goal_prompt_file.md. Not for PRDs or normal task planning."
+description: "Write or improve Pi /goal, goal prompt files, long-running objectives, or goal_prompt_file.md. Not for PRDs or task planning."
 ---
 
 # Pi Goal Prompt Builder

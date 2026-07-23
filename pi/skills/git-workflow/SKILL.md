@@ -1,6 +1,6 @@
 ---
 name: git-workflow
-description: Activate when working with git operations, commits, branches, or version control. Trigger on git commands, .git/ files, .gitignore, .gitattributes, or mentions of commit, push, merge, rebase, reset, filter-branch, or history rewrite.
+description: Git operations, commits, branches, .git/, .gitignore, .gitattributes, push, merge, rebase, reset, filter-branch, or history rewrite.
 ---
 
 # Git Workflow Guidelines

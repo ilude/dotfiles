@@ -1,6 +1,6 @@
 ---
 name: api-design
-description: API design patterns including REST, GraphQL, and authentication. Activate when designing APIs or discussing API patterns.
+description: API design, REST, GraphQL, or authentication patterns.
 ---
 
 # API Design Patterns
