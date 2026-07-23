@@ -157,13 +157,9 @@ Test agent.
 		);
 		expect(result.content[0].text).toContain("done");
 		expect(registry.getTask(id)?.execution?.outputPath).toBeTruthy();
-		expect(pi.sendMessage).toHaveBeenCalledWith(
-			expect.objectContaining({
-				customType: "task-completion",
-				content: expect.stringContaining(`task=${id}`),
-				display: true,
-			}),
-			{ deliverAs: "nextTurn" },
+		expect(pi.sendUserMessage).toHaveBeenCalledWith(
+			expect.stringContaining(`task=${id}`),
+			{ deliverAs: "followUp" },
 		);
 	});
 
@@ -316,19 +312,17 @@ Test agent.
 				"failed",
 			]);
 		});
-		expect(pi.sendMessage).toHaveBeenCalledTimes(2);
-		const notifications = pi.sendMessage.mock.calls.map(
-			([message, options]) => ({ message, options }),
+		expect(pi.sendUserMessage).toHaveBeenCalledTimes(2);
+		const notifications = pi.sendUserMessage.mock.calls.map(
+			([prompt, options]) => ({ prompt, options }),
 		);
-		expect(notifications.map(({ message }) => message.content)).toEqual([
+		expect(notifications.map(({ prompt }) => prompt)).toEqual([
 			expect.stringContaining("status=completed"),
 			expect.stringContaining("status=failed"),
 		]);
-		for (const { message, options } of notifications) {
-			expect(Buffer.byteLength(message.content, "utf8")).toBeLessThanOrEqual(
-				500,
-			);
-			expect(options).toEqual({ deliverAs: "nextTurn" });
+		for (const { prompt, options } of notifications) {
+			expect(Buffer.byteLength(prompt, "utf8")).toBeLessThanOrEqual(500);
+			expect(options).toEqual({ deliverAs: "followUp" });
 		}
 	});
 
@@ -346,6 +340,9 @@ Test agent.
 			durationMs: 12.4,
 			output: `result ${"x".repeat(1_000)} ${"\u2603".repeat(100)}`,
 		});
+		expect(content).toContain(
+			"Review the result and continue the current work as appropriate.",
+		);
 		expect(Buffer.byteLength(content, "utf8")).toBeLessThanOrEqual(
 			TASK_NOTIFICATION_MAX_BYTES,
 		);

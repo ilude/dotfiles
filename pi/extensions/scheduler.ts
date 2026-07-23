@@ -4,6 +4,7 @@ import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
+import { sendBackgroundPrompt } from "../lib/background-prompt.js";
 import { formatToolError, uiNotify } from "../lib/extension-utils.js";
 import {
 	getProcessScheduler,
@@ -257,7 +258,7 @@ export default function registerScheduler(pi: ExtensionAPI) {
 
 	pi.on("session_start", (_event, _ctx) => {
 		activeDelivery = (job) => {
-			pi.sendUserMessage(job.prompt, { deliverAs: "followUp" });
+			sendBackgroundPrompt(pi, job.prompt);
 		};
 		getProcessScheduler().bind(activeDelivery);
 	});

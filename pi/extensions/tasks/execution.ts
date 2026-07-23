@@ -251,7 +251,7 @@ export function formatTaskCompletionNotification(
 		? ` ${notification.outputPath ? "artifact" : "output"}=${firstLine}`
 		: "";
 	return boundedUtf8(
-		`task=${notification.taskId} agent=${notification.agent} status=${notification.status}${duration}${evidence}`,
+		`Background task terminal event. Review the result and continue the current work as appropriate. task=${notification.taskId} agent=${notification.agent} status=${notification.status}${duration}${evidence}`,
 		TASK_NOTIFICATION_MAX_BYTES,
 	);
 }
