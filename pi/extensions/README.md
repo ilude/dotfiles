@@ -238,15 +238,17 @@ The extension exposes structured commit tools:
 
 The older Python `scripts/commit-helper` remains a compatibility/parity reference for non-Pi consumers. Pi behavior is canonical going forward.
 
+### Repository secret policy
+
+`/commit` checks the custom Git attribute `commit-secrets` only for paths with secret-scan findings. The exact value `allow` bypasses secret review for that path. Missing, unset, bare-set, and other values retain the default blocking behavior. Repositories can apply the policy to every path with `* commit-secrets=allow` or scope it with normal `.gitattributes` patterns. Git owns attribute resolution, so the convention is available to other clients without Pi-specific configuration.
+
 ### Direct-tool vs. slash-command usage
 
-**Agents must not call the structured mutating tools `commit_stage` or `commit_create` directly outside of the `/commit` slash-command flow.**
+Structured commit tools and `/commit` may create coherent, in-scope local commits without separate user approval. Neither interface pushes unless the user explicitly requests a push-capable workflow.
 
-The token-safety model is centralized in `/commit`: the command orchestrates `commit_plan`, presents the plan to the user for explicit approval, and only then passes the confirmation tokens to `commit_stage` and `commit_create`. Calling the mutating tools directly bypasses user review of the staged-path set and the commit message, eliminating the safety guarantee the token system provides.
+The structured tools use tokens as state-integrity checks. `commit_stage` accepts only the exact safe path set bound to `commit_plan`, and `commit_create` revalidates the expected staged set before committing. The tokens do not represent user confirmation.
 
-This restriction is about the structured Pi commit tools only. It does not prohibit ordinary git operations. When the user explicitly asks an agent to commit, the agent may use a normal shell git workflow (`git status`, targeted `git add -- <paths>`, secret scan, `git diff --cached --check`, `git commit`) while following the repo's git safety rules.
-
-`commit_plan` and `commit_validate_message` are non-mutating and may be called directly for inspection or validation purposes.
+`/commit` owns its deterministic end-to-end workflow in `workflow-commands.ts`. Agents may instead use the structured tools or a normal shell workflow (`git status`, targeted `git add -- <paths>`, repository-required checks, `git diff --cached --check`, `git commit`) while keeping local commits coherent and in scope.
 
 ## Validation
 

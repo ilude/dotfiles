@@ -19,6 +19,7 @@ import {
 	isBlockingSecretReviewClassification,
 	normalizeCommitSubject,
 	parseCommitPlan,
+	parseCommitSecretsAllowedPaths,
 	parseSecretReviewResult,
 	parseUntrackedClassifierResult,
 	proposeCommitMessage,
@@ -78,6 +79,33 @@ describe("parseCommitPlan", () => {
 		expect(plan.groups[0]?.subject).toBe(
 			"style(status): dim context token counts",
 		);
+	});
+});
+
+describe("parseCommitSecretsAllowedPaths", () => {
+	it("allows only paths with the exact commit-secrets=allow value", () => {
+		const output = [
+			"secrets/app.env",
+			"commit-secrets",
+			"allow",
+			"src/app.ts",
+			"commit-secrets",
+			"unspecified",
+			"private/key.txt",
+			"commit-secrets",
+			"set",
+			"",
+		].join("\0");
+
+		expect([...parseCommitSecretsAllowedPaths(output)]).toEqual([
+			"secrets/app.env",
+		]);
+	});
+
+	it("rejects malformed git check-attr output", () => {
+		expect(() =>
+			parseCommitSecretsAllowedPaths("path\0commit-secrets\0"),
+		).toThrow("malformed NUL-delimited output");
 	});
 });
 

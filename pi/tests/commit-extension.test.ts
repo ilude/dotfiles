@@ -37,6 +37,24 @@ describe("commit extension registration", () => {
 		expect(pi._getTool("commit_create")).toBeDefined();
 	});
 
+	it("treats commit tokens as state integrity rather than approval gates", () => {
+		const pi = createMockPi();
+		registerCommitTools(pi as any);
+
+		const stageTool = pi._getTool("commit_stage")!;
+		const createTool = pi._getTool("commit_create")!;
+		const guidance = [
+			stageTool.description,
+			stageTool.promptSnippet,
+			createTool.description,
+			createTool.promptSnippet,
+		].join("\n");
+
+		expect(guidance).not.toMatch(/explicit approval|user confirmation/i);
+		expect(guidance).toContain("exact safe path set");
+		expect(guidance).toContain("Does not push");
+	});
+
 	it("commit_stage returns formatToolError envelope on failure instead of throwing", async () => {
 		const pi = createMockPi();
 		registerCommitTools(pi as any);

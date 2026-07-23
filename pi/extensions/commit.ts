@@ -18,7 +18,7 @@ const CommitStageParams = Type.Object({
 const CommitCreateParams = Type.Object({
 	cwd: Type.Optional(Type.String({ description: "Repository directory; defaults to session cwd." })),
 	message: Type.String(),
-	expectedStagedPaths: Type.Array(Type.String(), { description: "Exact staged path set confirmed by the user." }),
+	expectedStagedPaths: Type.Array(Type.String(), { description: "Exact staged path set expected at commit time." }),
 	confirmationToken: Type.String({ description: "Token from commit_plan.createConfirmationToken for this exact staged path set." }),
 });
 type CommitPlanParams = Static<typeof CommitPlanParams>;
@@ -58,8 +58,8 @@ export function registerCommitTools(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "commit_stage",
 		label: "Commit Stage",
-		description: "Stage exact safe paths after user confirmation. Never force-adds ignored paths.",
-		promptSnippet: "Use only after showing commit_plan output and receiving explicit approval.",
+		description: "Stage exact safe paths bound to a commit_plan token. Never force-adds ignored paths.",
+		promptSnippet: "Run commit_plan first, then stage its exact safe path set with the matching token.",
 		parameters: CommitStageParams,
 		execute: async (_toolCallId, params: CommitStageParams, _signal, _onUpdate, ctx: { cwd?: string }) => {
 			return withTimingSpan({ name: "commit.stage", category: "tool" }, async () => {
@@ -77,7 +77,7 @@ export function registerCommitTools(pi: ExtensionAPI) {
 		name: "commit_create",
 		label: "Commit Create",
 		description: "Create a commit after token validation, message validation, and final staged-set revalidation. Does not push.",
-		promptSnippet: "Use only after commit_stage/user staging and explicit approval of the exact staged set and message.",
+		promptSnippet: "Create a local commit after validating the message and exact staged path set. Does not push.",
 		parameters: CommitCreateParams,
 		execute: async (_toolCallId, params: CommitCreateParams, _signal, _onUpdate, ctx: { cwd?: string }) => {
 			return withTimingSpan({ name: "commit.create", category: "tool" }, async () => {

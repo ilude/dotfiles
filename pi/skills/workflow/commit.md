@@ -14,21 +14,29 @@ Anti-patterns -- do not rationalize skipping files:
 The only valid reasons to skip a file:
 - It matches an auto-ignore pattern
 - The user explicitly said to skip it when asked
-- It contains secrets
+- It contains secrets and its resolved `commit-secrets` Git attribute is not `allow`
 - It is in `.gitignore`
 
 If `git status --short` shows untracked source code, documentation, or config files after your commit, the workflow is not finished. Stage and commit them.
 
-Use `detect-secrets-hook` for secret scanning after staging each commit group and before `git commit`. Disable Yelp detect-secrets `KeywordDetector` so the scan targets actual secret-shaped values instead of blocking on fixture words like `secret`, `key`, or `token`.
+Resolve the `commit-secrets` Git attribute for candidate paths before secret review:
 
 ```bash
-git diff --staged --name-only -z | xargs -0 detect-secrets-hook --disable-plugin KeywordDetector
+git check-attr -z commit-secrets -- <candidate-paths>
+```
+
+The exact value `allow` exempts that path from secret blocking. Missing, unset, bare-set, and other values do not. Do not add or change this attribute inside `/commit`; honor the repository policy already present in `.gitattributes` or Git's other attributes files.
+
+Use `detect-secrets-hook` for paths without `commit-secrets=allow` after staging each commit group and before `git commit`. Disable Yelp detect-secrets `KeywordDetector` so the scan targets actual secret-shaped values instead of blocking on fixture words like `secret`, `key`, or `token`.
+
+```bash
+detect-secrets-hook --disable-plugin KeywordDetector <paths-without-commit-secrets-allow>
 ```
 
 If `.secrets.baseline` exists, include it while keeping the same ruleset override:
 
 ```bash
-git diff --staged --name-only -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline --disable-plugin KeywordDetector
+detect-secrets-hook --baseline .secrets.baseline --disable-plugin KeywordDetector <paths-without-commit-secrets-allow>
 ```
 
 If `detect-secrets-hook` is not installed, rely on the repository's existing commit hooks and do not create ad-hoc secret-scanning scripts.
@@ -37,7 +45,7 @@ If the scanner or hook reports findings after `KeywordDetector` is disabled, rev
 - Treat documented hashes, checksums, prompt hashes, model hashes, fixture/example values, redacted values, and clearly non-credential test data as false positives when the surrounding context proves they are not usable secrets.
 - Prefer a repository baseline for stable false positives in generated or tracked data artifacts when comments are not legal for the file type, especially JSON. If `.secrets.baseline` exists, update it with the reviewed false positives and rerun the scan with `--baseline .secrets.baseline`. If no baseline exists and the false positives are clearly stable tracked artifacts, create one using `detect-secrets scan --disable-plugin KeywordDetector --baseline .secrets.baseline <affected paths>` and stage it with the commit group.
 - Prefer inline allowlist comments only for source or documentation formats where comments are valid and the comment will not corrupt generated data.
-- Stop immediately if any finding is likely a real secret or remains ambiguous after context review. Report the path, line, detector, and reason.
+- Stop immediately if any finding on a path without `commit-secrets=allow` is likely a real secret or remains ambiguous after context review. Report the path, line, detector, and reason.
 
 Do not ask the user for false-positive approval when the context is clear and the baseline or allowlist update is the standard deterministic fix. After updating the baseline or allowlist, rerun the required scan and proceed only if it passes.
 
@@ -50,12 +58,12 @@ When asking about unclear files, use batch prompting if there are multiple files
 
 Group files by logical change using commit types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `style`, `chore`, `build`, `ci`, `deps`, `revert`. Related functionality changes go together. Do not mix unrelated changes. Each commit should do one thing.
 
-Allow an explicit `wip: ...` save-point commit when the user says they are preserving work before switching branches, syncing, rebasing, or other cross-branch work. Treat WIP commits as local and temporary unless the user explicitly asks to push them.
+Use a `wip: ...` save-point commit when preserving work before switching branches, syncing, rebasing, or other cross-branch work. Treat WIP commits as local and temporary unless the user explicitly asks to push them.
 
 For each group of related files:
 1. Stage that group's files.
 2. If staging exits non-zero, stop before creating a commit and report the error.
-3. Run the `detect-secrets-hook` scan described above if it is installed.
+3. Run the `detect-secrets-hook` scan described above on paths without `commit-secrets=allow` if it is installed.
 4. Write a commit message that is human-style with natural grammar.
 5. No emojis in commit messages.
 6. Brief summary line with optional detailed body.

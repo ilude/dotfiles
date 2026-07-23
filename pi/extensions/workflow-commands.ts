@@ -58,6 +58,7 @@ import { isOperatorReloadNeeded } from "./operator-status";
 
 const DOTFILES_PI_DIR = path.join(os.homedir(), ".dotfiles", "pi");
 const SKILLS_DIR = path.join(DOTFILES_PI_DIR, "skills", "workflow");
+export const COMMIT_SECRETS_ATTRIBUTE = "commit-secrets";
 const COMMIT_RUNTIME_PATH_PATTERNS = [
 	{ label: "Pi runtime cache", regex: /^pi\/cache(?:\/|$)/ },
 	{ label: "runtime log directory", regex: /(?:^|\/)logs?\// },
@@ -1317,6 +1318,40 @@ function scanFilesForSecrets(cwd: string, files: string[]) {
 	return files.flatMap((file) => scanFileForSecrets(cwd, file));
 }
 
+export function parseCommitSecretsAllowedPaths(output: string) {
+	if (!output) return new Set<string>();
+	const fields = output.split("\0");
+	if (fields.at(-1) === "") fields.pop();
+	if (fields.length % 3 !== 0) {
+		throw new Error("git check-attr returned malformed NUL-delimited output");
+	}
+	const allowed = new Set<string>();
+	for (let index = 0; index < fields.length; index += 3) {
+		const file = fields[index];
+		const attribute = fields[index + 1];
+		const value = fields[index + 2];
+		if (file && attribute === COMMIT_SECRETS_ATTRIBUTE && value === "allow") {
+			allowed.add(normalizeGitPath(file));
+		}
+	}
+	return allowed;
+}
+
+async function getCommitSecretsAllowedPaths(
+	cwd: string,
+	files: string[],
+	signal?: AbortSignal,
+) {
+	if (files.length === 0) return new Set<string>();
+	const output = await gitOrThrowAsync(
+		cwd,
+		["check-attr", "-z", COMMIT_SECRETS_ATTRIBUTE, "--", ...files],
+		undefined,
+		signal,
+	);
+	return parseCommitSecretsAllowedPaths(output);
+}
+
 function classifyScopeRoot(file: string) {
 	if (["install", "install.ps1", "Brewfile"].includes(file)) return "dotfiles";
 	const root = file.split("/")[0] ?? file;
@@ -2026,7 +2061,21 @@ async function prepareCommitSelection(
 	}
 
 	const findings = scanFilesForSecrets(ctx.cwd, selection.files);
-	if (!(await confirmSecretScan(ctx, findings))) return null;
+	const findingPaths = uniqueSorted(findings.map((finding) => finding.path));
+	const allowedSecretPaths = await getCommitSecretsAllowedPaths(
+		ctx.cwd,
+		findingPaths,
+		ctx.signal,
+	);
+	const reviewableFindings = findings.filter(
+		(finding) => !allowedSecretPaths.has(normalizeGitPath(finding.path)),
+	);
+	if (allowedSecretPaths.size > 0) {
+		activity?.logInfo(
+			`${COMMIT_SECRETS_ATTRIBUTE}=allow for ${allowedSecretPaths.size} selected path(s); skipping secret review for those paths.`,
+		);
+	}
+	if (!(await confirmSecretScan(ctx, reviewableFindings))) return null;
 
 	if (selection.stageAll)
 		await stageFilesAsync(

@@ -301,7 +301,7 @@ Workflow highlights:
 - `/plan-it` writes standalone plans with evidence, dependencies, validation, and durable execution state.
 - `/review-it` reviews artifact readiness directly and edits only when the request explicitly asks for repairs. Delegation remains optional.
 - `/do-it` handles bounded raw tasks or executes an existing `.specs/*/plan.md` in the current session. It does not require plan linting, duplicate task tracking, or automatic archiving.
-- `/commit` uses deterministic candidate extraction, isolated secret review, and ownership-aware commit planning. Ambiguous cross-domain paths require an explicit user decision instead of becoming one broad commit.
+- `/commit` uses deterministic candidate extraction, isolated secret review, and ownership-aware commit planning. Paths with the repository-defined Git attribute `commit-secrets=allow` bypass secret review; all other paths retain the default blocking policy. Ambiguous cross-domain paths require an explicit user decision instead of becoming one broad commit.
 
 ### `loop.ts`
 

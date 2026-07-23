@@ -359,6 +359,65 @@ describe("workflow command dispatch", () => {
 		);
 	});
 
+	it("skips secret review for paths marked commit-secrets=allow", async () => {
+		const notify = vi.fn();
+		const cwd = path.resolve(process.cwd(), "..");
+		const file = "pi/lib/extension-utils.ts";
+		mockSpawn.mockImplementation((_command, args: string[]) => {
+			const signature = args.join(" ");
+			if (signature === "status --short") {
+				return mockGitSpawn({ stdout: ` M ${file}\n` });
+			}
+			if (signature === "diff --name-only HEAD") {
+				return mockGitSpawn({ stdout: `${file}\n` });
+			}
+			if (signature === `diff --stat HEAD -- ${file}`) {
+				return mockGitSpawn({ stdout: `${file} | 1 +\n` });
+			}
+			if (args[0] === "check-attr") {
+				return mockGitSpawn({
+					stdout: `${file}\0commit-secrets\0allow\0`,
+				});
+			}
+			if (args[0] === "check-ignore") {
+				return mockGitSpawn({ code: 1 });
+			}
+			if (args[0] === "add") {
+				return mockGitSpawn({ code: 1, stderr: "stop after attribute check\n" });
+			}
+			return mockGitSpawn();
+		});
+		mockScanSecrets.mockReturnValueOnce([
+			{
+				kind: "secret-assignment",
+				line: 1,
+				column: 1,
+				offset: 0,
+				length: 6,
+				redacted: "[REDACTED]",
+			},
+		]);
+
+		await getHandler("commit")("", { cwd, ui: { notify } });
+
+		expect(mockSpawn).toHaveBeenCalledWith(
+			expect.any(String),
+			["check-attr", "-z", "commit-secrets", "--", file],
+			expect.objectContaining({ cwd }),
+		);
+		expect(
+			mockTypedAgentRun.mock.calls.some(([id]) => id === "secret-reviewer"),
+		).toBe(false);
+		expect(mockPi.sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				customType: "workflow-commit-activity",
+				content:
+					"commit-secrets=allow for 1 selected path(s); skipping secret review for those paths.",
+				display: true,
+			}),
+		);
+	});
+
 	it("retries incomplete secret-review coverage with stable candidate IDs", async () => {
 		const notify = vi.fn();
 		const file = "pi/lib/extension-utils.ts";
@@ -369,6 +428,7 @@ describe("workflow command dispatch", () => {
 			{},
 			{},
 			{ stdout: `${file} | 1 +\n` },
+			{},
 			{ code: 1 },
 			{},
 			{ stdout: `${file} | 1 +\n` },

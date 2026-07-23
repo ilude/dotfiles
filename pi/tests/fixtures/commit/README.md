@@ -2,7 +2,7 @@
 
 Commit mutation tests use disposable real Git repositories created under the OS temp directory. Fixture expectations cover:
 
-- confirmation token required for `commit_stage`, `commit_create`, and future `commit_push` mutation
+- state-binding token required for `commit_stage`, `commit_create`, and future `commit_push` mutation
 - final staged-set revalidation immediately before `commit_create`
 - no force-add of ignored files
 - `commit_create` reports committed state with `pushed: false`

@@ -6,4 +6,4 @@ Entries expose `path`, `index`, `worktree`, `classification`, `ignored`, `safeTo
 
 Preflight blocks mutating operations during merge, rebase, cherry-pick, bisect, detached HEAD, and unmerged paths. Submodules, worktrees, sparse checkout, and partial index are surfaced explicitly; V1 treats them as states requiring conservative handling before mutation.
 
-Mutating tools (`commit_stage`, `commit_create`, future `commit_push`) require an explicit confirmation token generated after showing the exact plan; command UX must use `ctx.ui.confirm`. `commit_create` must re-read and verify the staged set immediately before `git commit`.
+Mutating tools (`commit_stage`, `commit_create`, future `commit_push`) require a state-binding token generated for the exact plan. The token prevents stale or mismatched path sets; it is not a user-approval gate. `commit_create` must re-read and verify the staged set immediately before `git commit`.
