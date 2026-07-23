@@ -73,11 +73,16 @@ const CODEX_FOOTER_FAILURE_THRESHOLD = 3;
 const FIVE_HOUR_WINDOW_SECONDS = 5 * 60 * 60;
 const WEEKLY_WINDOW_SECONDS = 7 * 24 * 60 * 60;
 
-let codexFooterInterval: ReturnType<typeof setInterval> | null = null;
-let codexFooterAbortController: AbortController | null = null;
+type CodexUsageResponse = { auth: AuthInfo; usage: ApiUsage };
+
+let codexFooterTimer: ReturnType<typeof setTimeout> | null = null;
 let codexFooterRefreshEpoch = 0;
 let codexFooterRefreshInFlightEpoch: number | null = null;
 let lastGoodCodexFooterStatus: string | null = null;
+let codexUsageCache: CodexUsageResponse | null = null;
+let codexUsageCacheAt = 0;
+let codexUsageAttemptAt = 0;
+let codexUsageRequest: Promise<CodexUsageResponse> | null = null;
 let codexFooterFailureCount = 0;
 
 function homePath(...parts: string[]): string {
@@ -464,8 +469,40 @@ export async function fetchCodexUsage(
 	return { auth, usage: (await response.json()) as ApiUsage };
 }
 
-export async function formatConfiguredUsageReport(): Promise<string> {
-	const { auth, usage } = await fetchCodexUsage();
+async function getCachedCodexUsage(
+	options: { forceRefresh?: boolean } = {},
+): Promise<CodexUsageResponse> {
+	const cached = codexUsageCache;
+	const cacheIsFresh =
+		cached !== null &&
+		Date.now() - codexUsageCacheAt < CODEX_FOOTER_REFRESH_MS;
+	if (!options.forceRefresh && cacheIsFresh) return cached;
+	if (codexUsageRequest) return codexUsageRequest;
+
+	codexUsageAttemptAt = Date.now();
+	const controller = new AbortController();
+	const timeout = setTimeout(
+		() => controller.abort(),
+		CODEX_FOOTER_FETCH_TIMEOUT_MS,
+	);
+	const request = fetchCodexUsage({ signal: controller.signal }).then((value) => {
+		codexUsageCache = value;
+		codexUsageCacheAt = Date.now();
+		return value;
+	});
+	codexUsageRequest = request;
+	try {
+		return await request;
+	} finally {
+		clearTimeout(timeout);
+		if (codexUsageRequest === request) codexUsageRequest = null;
+	}
+}
+
+export async function formatConfiguredUsageReport(
+	options: { forceRefresh?: boolean } = {},
+): Promise<string> {
+	const { auth, usage } = await getCachedCodexUsage(options);
 	const sections = [formatUsage(usage, auth, { color: true })];
 	const bedrock = await formatConfiguredBedrockUsageSection();
 	if (bedrock) sections.push(bedrock);
@@ -476,7 +513,10 @@ export async function showCodexStatus(
 	ctx: Pick<ExtensionContext, "ui">,
 ): Promise<void> {
 	try {
-		ctx.ui.notify(await formatConfiguredUsageReport(), "info");
+		ctx.ui.notify(
+			await formatConfiguredUsageReport({ forceRefresh: true }),
+			"info",
+		);
 	} catch (error) {
 		ctx.ui.notify(errorMessage(error), "error");
 	}
@@ -488,20 +528,15 @@ async function refreshCodexFooterStatus(
 ): Promise<void> {
 	if (codexFooterRefreshInFlightEpoch === epoch) return;
 	codexFooterRefreshInFlightEpoch = epoch;
-	const controller = new AbortController();
-	codexFooterAbortController = controller;
-	const timeout = setTimeout(() => {
-		controller.abort();
-	}, CODEX_FOOTER_FETCH_TIMEOUT_MS);
 	try {
-		const { usage } = await fetchCodexUsage({ signal: controller.signal });
-		if (controller.signal.aborted || epoch !== codexFooterRefreshEpoch) return;
+		const { usage } = await getCachedCodexUsage();
+		if (epoch !== codexFooterRefreshEpoch) return;
 		const status = formatCodexFooterStatus(usage, { color: true });
 		lastGoodCodexFooterStatus = status;
 		codexFooterFailureCount = 0;
 		ctx.ui.setStatus("codex", status);
 	} catch {
-		if (controller.signal.aborted || epoch !== codexFooterRefreshEpoch) return;
+		if (epoch !== codexFooterRefreshEpoch) return;
 		codexFooterFailureCount += 1;
 		if (codexFooterFailureCount < CODEX_FOOTER_FAILURE_THRESHOLD) return;
 		ctx.ui.setStatus(
@@ -511,10 +546,6 @@ async function refreshCodexFooterStatus(
 				: "codex: error",
 		);
 	} finally {
-		clearTimeout(timeout);
-		if (codexFooterAbortController === controller) {
-			codexFooterAbortController = null;
-		}
 		if (codexFooterRefreshInFlightEpoch === epoch) {
 			codexFooterRefreshInFlightEpoch = null;
 		}
@@ -523,41 +554,53 @@ async function refreshCodexFooterStatus(
 
 function clearCodexFooterRefresh(): void {
 	codexFooterRefreshEpoch += 1;
-	codexFooterAbortController?.abort();
-	codexFooterAbortController = null;
-	if (!codexFooterInterval) return;
-	clearInterval(codexFooterInterval);
-	codexFooterInterval = null;
+	if (!codexFooterTimer) return;
+	clearTimeout(codexFooterTimer);
+	codexFooterTimer = null;
+}
+
+function nextCodexFooterRefreshDelay(): number {
+	const lastRefreshActivity = Math.max(codexUsageCacheAt, codexUsageAttemptAt);
+	if (!lastRefreshActivity) return CODEX_FOOTER_REFRESH_MS;
+	const remaining =
+		CODEX_FOOTER_REFRESH_MS - (Date.now() - lastRefreshActivity);
+	return Math.max(1_000, remaining);
+}
+
+function scheduleCodexFooterRefresh(
+	ctx: ExtensionContext,
+	epoch: number,
+): void {
+	if (epoch !== codexFooterRefreshEpoch) return;
+	codexFooterTimer = setTimeout(() => {
+		void refreshCodexFooterStatus(ctx, epoch).finally(() =>
+			scheduleCodexFooterRefresh(ctx, epoch),
+		);
+	}, nextCodexFooterRefreshDelay());
 }
 
 function startCodexFooterRefresh(ctx: ExtensionContext): void {
 	clearCodexFooterRefresh();
 	const epoch = codexFooterRefreshEpoch;
-	void refreshCodexFooterStatus(ctx, epoch);
-	codexFooterInterval = setInterval(() => {
-		void refreshCodexFooterStatus(ctx, epoch);
-	}, CODEX_FOOTER_REFRESH_MS);
+	void refreshCodexFooterStatus(ctx, epoch).finally(() =>
+		scheduleCodexFooterRefresh(ctx, epoch),
+	);
 }
 
-function shouldShowStatusOnSessionStart(reason: string): boolean {
-	return reason === "startup";
-}
-
-function showCodexStatusAfterInitialRender(ctx: ExtensionContext): void {
-	// session_start fires before interactive mode renders the initial transcript.
-	// Defer the notification so startup/new-session rendering does not overwrite it.
-	setTimeout(() => {
-		void showCodexStatus(ctx);
-	}, 0);
+export function resetCodexStatusStateForTests(): void {
+	clearCodexFooterRefresh();
+	lastGoodCodexFooterStatus = null;
+	codexUsageCache = null;
+	codexUsageCacheAt = 0;
+	codexUsageAttemptAt = 0;
+	codexUsageRequest = null;
+	codexFooterFailureCount = 0;
 }
 
 export default function registerCodexStatusCommand(pi: ExtensionAPI) {
 	wrapCommandRegistration(pi);
-	pi.on("session_start", async (event, ctx) => {
+	pi.on("session_start", async (_event, ctx) => {
 		startCodexFooterRefresh(ctx);
-		if (shouldShowStatusOnSessionStart(String(event.reason))) {
-			showCodexStatusAfterInitialRender(ctx);
-		}
 	});
 
 	pi.on("session_shutdown", async () => {

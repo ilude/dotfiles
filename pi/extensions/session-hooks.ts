@@ -14,12 +14,14 @@
  *   and emits a `session_shutdown` event into the sidecar trace.
  */
 
-import { spawn } from "node:child_process";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import { uiNotify } from "../lib/extension-utils.js";
 import { readMergedSettings } from "../lib/settings-loader.js";
 import {
@@ -48,13 +50,6 @@ interface SessionCloseEntry {
 	targetSessionFile?: string;
 }
 
-interface CommandResult {
-	stdout: string;
-	stderr: string;
-	code: number;
-	killed: boolean;
-}
-
 function shouldRunGitPreflight(reason: string): boolean {
 	return reason === "startup" && !process.argv.includes("--no-session");
 }
@@ -75,78 +70,10 @@ function withSshSafetyOptions(command: string): string {
 	return command.replace(/^ssh(\s|$)/, `ssh ${options.join(" ")}$1`);
 }
 
-async function killProcessTree(pid: number): Promise<void> {
-	if (process.platform === "win32") {
-		await new Promise<void>((resolve) => {
-			spawn("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" })
-				.on("error", () => resolve())
-				.on("close", () => resolve());
-		});
-		return;
-	}
-
-	try {
-		process.kill(-pid, "SIGTERM");
-	} catch {
-		try {
-			process.kill(pid, "SIGTERM");
-		} catch {
-			// Process already exited.
-		}
-	}
-}
-
-function runCommandWithTreeTimeout(
-	command: string,
-	args: string[],
-	cwd: string,
-	timeout: number,
-): Promise<CommandResult> {
-	return new Promise((resolve) => {
-		const child = spawn(command, args, {
-			cwd,
-			detached: process.platform !== "win32",
-			shell: false,
-			stdio: ["ignore", "pipe", "pipe"],
-		});
-
-		let stdout = "";
-		let stderr = "";
-		let killed = false;
-		let settled = false;
-
-		const timeoutId = setTimeout(() => {
-			if (child.pid) {
-				killed = true;
-				void killProcessTree(child.pid);
-			}
-		}, timeout);
-
-		child.stdout.on("data", (data) => {
-			stdout += data.toString();
-		});
-		child.stderr.on("data", (data) => {
-			stderr += data.toString();
-		});
-		child.on("error", (error) => {
-			if (settled) return;
-			settled = true;
-			clearTimeout(timeoutId);
-			resolve({ stdout, stderr: stderr || error.message, code: 1, killed });
-		});
-		child.on("close", (code) => {
-			if (settled) return;
-			settled = true;
-			clearTimeout(timeoutId);
-			resolve({ stdout, stderr, code: code ?? 0, killed });
-		});
-	});
-}
-
 async function runGitFetchPreflight(
 	pi: ExtensionAPI,
 	cwd: string,
-): Promise<CommandResult> {
+) {
 	const args = ["fetch", "--quiet"];
 	const sshCommand = await pi.exec(
 		"git",
@@ -165,7 +92,37 @@ async function runGitFetchPreflight(
 		);
 	}
 
-	return runCommandWithTreeTimeout("git", args, cwd, GIT_PREFLIGHT_TIMEOUT_MS);
+	return pi.exec("git", args, {
+		cwd,
+		timeout: GIT_PREFLIGHT_TIMEOUT_MS,
+	});
+}
+
+async function notifyIfBranchBehind(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+): Promise<void> {
+	try {
+		const fetchResult = await runGitFetchPreflight(pi, ctx.cwd);
+		if (fetchResult.code !== 0) return;
+		const behindResult = await pi.exec(
+			"git",
+			["rev-list", "--count", "HEAD..@{u}"],
+			{ cwd: ctx.cwd, timeout: GIT_PREFLIGHT_TIMEOUT_MS },
+		);
+		if (behindResult.code !== 0) return;
+		const count = parseInt(behindResult.stdout.trim(), 10);
+		if (!Number.isNaN(count) && count > 0) {
+			uiNotify(
+				ctx,
+				"warning",
+				`Branch is ${count} commit${count === 1 ? "" : "s"} behind remote. Consider git pull before starting.`,
+				{ prefix: "session-hooks" },
+			);
+		}
+	} catch {
+		// Not a git repo, no remote, or other git failure.
+	}
 }
 
 export default function (pi: ExtensionAPI) {
@@ -198,33 +155,7 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		if (shouldRunGitPreflight(event.reason)) {
-			try {
-				// Silently skip if fetch fails (no remote, not a repo, no network, timeout, etc.)
-				const fetchResult = await runGitFetchPreflight(pi, ctx.cwd);
-				if (fetchResult.code !== 0) return;
-
-				const behindResult = await pi.exec(
-					"git",
-					["rev-list", "--count", "HEAD..@{u}"],
-					{
-						cwd: ctx.cwd,
-						timeout: GIT_PREFLIGHT_TIMEOUT_MS,
-					},
-				);
-				if (behindResult.code !== 0) return;
-
-				const count = parseInt(behindResult.stdout.trim(), 10);
-				if (!Number.isNaN(count) && count > 0) {
-					uiNotify(
-						ctx,
-						"warning",
-						`⚠  Branch is ${count} commit${count === 1 ? "" : "s"} behind remote. Consider git pull before starting.`,
-						{ prefix: "session-hooks" },
-					);
-				}
-			} catch {
-				// Not a git repo, no remote, or other git failure -- silently skip
-			}
+			void notifyIfBranchBehind(pi, ctx);
 		}
 
 		// Transcript retention sweep (opt-in via ~/.pi/agent/settings.json).
@@ -266,34 +197,6 @@ export default function (pi: ExtensionAPI) {
 			// Never crash session_start on transcript wiring failure.
 		}
 
-		// menos circuit breaker probe/backfill. Best-effort only; never fail session_start.
-		try {
-			if (process.env.MENOS_CIRCUIT_DISABLED !== "1") {
-				const home = os.homedir();
-				const probePath = path.join(
-					home,
-					".claude",
-					"hooks",
-					"menos-circuit",
-					"probe.py",
-				);
-				const backfillPath = path.join(
-					home,
-					".claude",
-					"hooks",
-					"menos-circuit",
-					"backfill.py",
-				);
-				await pi
-					.exec("python", [probePath], { timeout: 3000 })
-					.catch(() => undefined);
-				void pi
-					.exec("python", [backfillPath, "--detach"], { timeout: 3000 })
-					.catch(() => undefined);
-			}
-		} catch {
-			// menos hooks are best-effort.
-		}
 	});
 
 	// -- session_shutdown: archive conversation log -----------------------------

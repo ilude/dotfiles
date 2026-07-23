@@ -10,6 +10,7 @@ import registerCodexStatusCommand, {
 	formatCodexFooterStatus,
 	formatUsage,
 	isBedrockProviderConfigured,
+	resetCodexStatusStateForTests,
 	resolveAuth,
 	USAGE_ENDPOINT,
 } from "../extensions/codex-status";
@@ -31,6 +32,7 @@ function tempHome(): string {
 }
 
 afterEach(() => {
+	resetCodexStatusStateForTests();
 	process.env.HOME = OLD_HOME;
 	process.env.USERPROFILE = OLD_USERPROFILE;
 	vi.useRealTimers();
@@ -414,7 +416,7 @@ describe("/usage command", () => {
 		).toBeDefined();
 	});
 
-	it("shows status on startup only", async () => {
+	it("fetches startup status once and reuses it across session replacement", async () => {
 		const home = tempHome();
 		await mkdir(join(home, ".pi", "agent"), { recursive: true });
 		await writeFile(
@@ -423,15 +425,13 @@ describe("/usage command", () => {
 				"openai-codex": { access: fakeJwt({}), accountId: "acct-session" },
 			}),
 		);
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () => ({
-				ok: true,
-				json: async () => ({
-					rate_limit: { primary_window: { used_percent: 12 } },
-				}),
-			})),
-		);
+		const fetchMock = vi.fn(async () => ({
+			ok: true,
+			json: async () => ({
+				rate_limit: { primary_window: { used_percent: 12 } },
+			}),
+		}));
+		vi.stubGlobal("fetch", fetchMock);
 		const mockPi = createMockPi();
 		registerCodexStatusCommand(
 			mockPi as Parameters<typeof registerCodexStatusCommand>[0],
@@ -441,15 +441,25 @@ describe("/usage command", () => {
 		const startupCtx = createMockCtx();
 		await hook.handler({ reason: "startup" }, startupCtx);
 		await vi.waitFor(() => {
-			expect(startupCtx.ui.notify).toHaveBeenCalledWith(
-				expect.stringContaining("Codex:"),
-				"info",
+			expect(startupCtx.ui.setStatus).toHaveBeenCalledWith(
+				"codex",
+				expect.any(String),
 			);
 		});
+		expect(startupCtx.ui.notify).not.toHaveBeenCalled();
+		expect(fetchMock).toHaveBeenCalledTimes(1);
 
 		const newCtx = createMockCtx();
 		await hook.handler({ reason: "new" }, newCtx);
+		await vi.waitFor(() => {
+			expect(newCtx.ui.setStatus).toHaveBeenCalledWith(
+				"codex",
+				expect.any(String),
+			);
+		});
 		expect(newCtx.ui.notify).not.toHaveBeenCalled();
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		await mockPi._getHook("session_shutdown")[0].handler({}, newCtx);
 	});
 
 	it("does not auto-show status on reload or resume", async () => {

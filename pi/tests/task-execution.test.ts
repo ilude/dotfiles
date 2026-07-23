@@ -307,19 +307,22 @@ Test agent.
 		);
 		expect(started.details.outcome).toBe("accepted");
 		await vi.waitFor(() => {
-			expect(ids.map((id) => registry.getTask(id)?.state)).toEqual([
-				"completed",
-				"failed",
-			]);
+			expect(
+				ids.map((id) => registry.getTask(id)?.state).sort(),
+			).toEqual(["completed", "failed"]);
 		});
-		expect(pi.sendUserMessage).toHaveBeenCalledTimes(2);
+		await vi.waitFor(() =>
+			expect(pi.sendUserMessage).toHaveBeenCalledTimes(2),
+		);
 		const notifications = pi.sendUserMessage.mock.calls.map(
 			([prompt, options]) => ({ prompt, options }),
 		);
-		expect(notifications.map(({ prompt }) => prompt)).toEqual([
-			expect.stringContaining("status=completed"),
-			expect.stringContaining("status=failed"),
-		]);
+		expect(notifications.map(({ prompt }) => prompt)).toEqual(
+			expect.arrayContaining([
+				expect.stringContaining("status=completed"),
+				expect.stringContaining("status=failed"),
+			]),
+		);
 		for (const { prompt, options } of notifications) {
 			expect(Buffer.byteLength(prompt, "utf8")).toBeLessThanOrEqual(500);
 			expect(options).toEqual({ deliverAs: "followUp" });

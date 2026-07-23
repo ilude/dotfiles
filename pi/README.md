@@ -281,8 +281,10 @@ Validators, Lizard thresholds, excluded paths, and immutable paths are configure
 
 Runs lifecycle actions at session boundaries:
 
-- **session_start** -- runs `git fetch` and notifies if the branch is behind remote
+- **session_start** -- starts a bounded background `git fetch` preflight and notifies if the branch is behind remote without delaying session initialization
 - **session_shutdown** -- archives the session conversation log to `~/.pi/agent/history/YYYY-MM-DD-<sessionId>.jsonl`
+
+Pi session startup does not invoke Claude/menos hook scripts. Optional transcript initialization remains local and bounded by its settings.
 
 ### `workflow-commands.ts`
 
@@ -307,7 +309,7 @@ Workflow highlights:
 - `/plan-it` writes standalone plans with evidence, dependencies, validation, and durable execution state.
 - `/review-it` reviews artifact readiness directly and edits only when the request explicitly asks for repairs. Delegation remains optional.
 - `/do-it` handles bounded raw tasks or executes an existing `.specs/*/plan.md` in the current session. It does not require plan linting, duplicate task tracking, or automatic archiving.
-- `/commit` uses deterministic candidate extraction, isolated secret review, and ownership-aware commit planning. Paths with the repository-defined Git attribute `commit-secrets=allow` bypass secret review; all other paths retain the default blocking policy. Ambiguous cross-domain paths require an explicit user decision instead of becoming one broad commit.
+- `/commit` uses deterministic candidate extraction, isolated secret review, and ownership-aware commit planning. Ignored files are omitted, and a dirty submodule is excluded when its checked-out commit still matches the parent gitlink; an actual submodule commit change remains committable. Paths with the repository-defined Git attribute `commit-secrets=allow` bypass secret review; all other paths retain the default blocking policy. Ambiguous cross-domain paths require an explicit user decision instead of becoming one broad commit.
 
 ### `loop.ts`
 
@@ -484,8 +486,9 @@ Behavior:
 ### Worktree occupancy
 
 `agent-instances.ts` registers the primary Pi session in the worktree-local,
-Git-ignored `.agent-instances/` registry. It refreshes the lease once per minute,
-releases it on clean shutdown, and excludes nested subagent processes.
+Git-ignored `.agent-instances/` registry, releases it on clean shutdown, and
+excludes nested subagent processes. Lease scans verify process identity, so the
+extension does not spawn a Python heartbeat process every minute.
 
 The status line shows the active instance count. When another registered Pi
 session occupies the same worktree, Pi also appends a warning to session context

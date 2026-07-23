@@ -91,23 +91,9 @@ function isWindows11(): boolean {
 }
 
 export default function (pi: ExtensionAPI) {
-  pi.on("session_start", async (_event, ctx) => {
-    if (!isWindows11()) {
-      // Silently skip — tool is Windows 11 only
-      return;
-    }
-
-    try {
-      const result = await pi.exec("pwsh", ["--version"], { timeout: 5000 });
-      if (result.code !== 0) throw new Error("non-zero exit");
-    } catch {
-      ctx.ui.notify(
-        "pwsh not found — PowerShell tool disabled. Install from https://aka.ms/powershell",
-        "warning"
-      );
-      return;
-    }
-    registerPwshTool(pi);
+  if (!isWindows11()) return;
+  registerPwshTool(pi);
+  pi.on("session_start", () => {
     deactivateTools(pi, ["pwsh"]);
   });
 }

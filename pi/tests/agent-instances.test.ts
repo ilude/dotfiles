@@ -41,7 +41,7 @@ describe("Pi agent instance occupancy", () => {
 		return { pi, ctx };
 	}
 
-	it("registers, warns in context and status, heartbeats, then releases", async () => {
+	it("registers, warns in context and status, then releases without heartbeat churn", async () => {
 		const { pi, ctx } = setup([
 			{ client: "pi", sessionId: "pi-session", pid: process.pid },
 			{ client: "pi", sessionId: "other-pi-session", pid: 200 },
@@ -75,15 +75,15 @@ describe("Pi agent instance occupancy", () => {
 		);
 
 		await vi.advanceTimersByTimeAsync(60_000);
-		expect(pi.exec).toHaveBeenCalledTimes(2);
+		expect(pi.exec).toHaveBeenCalledTimes(1);
 		expect(pi.sendMessage).toHaveBeenCalledTimes(1);
 
 		await shutdown({}, ctx);
-		expect(pi.exec).toHaveBeenCalledTimes(3);
-		expect(pi.exec.mock.calls[2][1]).toContain("release");
+		expect(pi.exec).toHaveBeenCalledTimes(2);
+		expect(pi.exec.mock.calls[1][1]).toContain("release");
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("instances", "");
 		await vi.advanceTimersByTimeAsync(60_000);
-		expect(pi.exec).toHaveBeenCalledTimes(3);
+		expect(pi.exec).toHaveBeenCalledTimes(2);
 	});
 
 	it("shows sole occupancy without warning", async () => {

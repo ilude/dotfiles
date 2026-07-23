@@ -5,7 +5,6 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 
 const CLIENT = "pi";
-const HEARTBEAT_MS = 60_000;
 const HELPER_PATH = fileURLToPath(
 	new URL("../../scripts/agent_instance_lease.py", import.meta.url),
 );
@@ -86,7 +85,6 @@ async function runLeaseHelper(
 }
 
 export default function (pi: ExtensionAPI) {
-	let heartbeat: ReturnType<typeof setInterval> | undefined;
 	let activeContext: ExtensionContext | undefined;
 	let activeSessionId: string | undefined;
 	let lastWarning: string | undefined;
@@ -133,12 +131,9 @@ export default function (pi: ExtensionAPI) {
 		activeSessionId = sessionId(ctx);
 		if (!activeSessionId) return;
 		await refresh(true);
-		heartbeat = setInterval(() => void refresh(true), HEARTBEAT_MS);
 	});
 
 	pi.on("session_shutdown", async () => {
-		if (heartbeat) clearInterval(heartbeat);
-		heartbeat = undefined;
 		if (activeContext && activeSessionId) {
 			try {
 				await runLeaseHelper(pi, activeContext, "release", activeSessionId);

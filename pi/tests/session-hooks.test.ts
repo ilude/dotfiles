@@ -11,10 +11,8 @@
  *
  * Strategy: spy on the real `transcript-runtime` and `lib/transcript` exports.
  * Vitest's spy mechanism redirects the named imports inside session-hooks.ts
- * via the live ES-module binding. The git pre-flight branch in session_start
- * uses an early `return` when pi.exec yields code !== 0; tests therefore
- * provide a successful pi.exec stub so the handler reaches the transcript
- * init step.
+ * via the live ES-module binding. Git preflight runs in the background so it
+ * cannot delay transcript initialization or the rest of session startup.
  */
 
 import * as fs from "node:fs";
@@ -131,6 +129,33 @@ describe("session-hooks: session_start", () => {
 		);
 	});
 
+	it("does not await the startup git preflight", async () => {
+		let releaseGitConfig:
+			| ((value: { code: number; stdout: string; stderr: string }) => void)
+			| undefined;
+		const pi = makeGitFriendlyPi();
+		pi.exec.mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					releaseGitConfig = resolve;
+				}),
+		);
+		const mod = await import("../extensions/session-hooks");
+		mod.default(pi as unknown as ExtensionAPI);
+		const ctx = makeSessionCtx();
+
+		await expect(
+			pi
+				._getHook("session_start")[0]
+				.handler(
+					{ reason: "startup" },
+					ctx as unknown as ExtensionContext,
+				),
+		).resolves.toBeUndefined();
+		expect(initializeRuntimeSpy).toHaveBeenCalledTimes(1);
+		releaseGitConfig?.({ code: 1, stdout: "", stderr: "not a repo" });
+	});
+
 	it("skips git preflight for non-startup session events", async () => {
 		const pi = makeGitFriendlyPi();
 		const mod = await import("../extensions/session-hooks");
@@ -146,6 +171,11 @@ describe("session-hooks: session_start", () => {
 		expect(pi.exec).not.toHaveBeenCalledWith(
 			"git",
 			["config", "--get", "core.sshCommand"],
+			expect.anything(),
+		);
+		expect(pi.exec).not.toHaveBeenCalledWith(
+			"python",
+			expect.anything(),
 			expect.anything(),
 		);
 	});

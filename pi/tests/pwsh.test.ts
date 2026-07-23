@@ -50,6 +50,19 @@ describe("pwsh extension", () => {
   });
 
   describe("tool metadata", () => {
+    it("does not spawn a PowerShell version probe during session start", async () => {
+      Object.defineProperty(process, "platform", { value: "win32", writable: true, configurable: true });
+      try {
+        const mockPi = createMockPi();
+        const mod = await import("../extensions/pwsh.ts");
+        mod.default(mockPi as any);
+        await mockPi._getHook("session_start")[0].handler({}, createMockCtx());
+        expect(mockPi.exec).not.toHaveBeenCalled();
+      } finally {
+        Object.defineProperty(process, "platform", { value: originalPlatform, writable: true, configurable: true });
+      }
+    });
+
     it("should register as 'pwsh' with PowerShell label", () => {
       expect(tool.name).toBe("pwsh");
       expect(tool.label).toBe("PowerShell");
