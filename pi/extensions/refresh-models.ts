@@ -92,6 +92,7 @@ type ProviderCatalogCache = {
 };
 
 const MODEL_CACHE_SCHEMA_VERSION = 2;
+const DEFAULT_REFRESH_CONTEXT_WINDOW = 256_000;
 
 export function parseRefreshModelsArgs(raw: string): RefreshScope {
 	const trimmed = raw.trim();
@@ -796,8 +797,7 @@ function buildProviderModelDefinitions(
 			const contextWindow =
 				remote?.contextWindow ??
 				existing?.contextWindow ??
-				template.contextWindow ??
-				128000;
+				DEFAULT_REFRESH_CONTEXT_WINDOW;
 			const maxTokens =
 				remote?.maxTokens ??
 				existing?.maxTokens ??
@@ -834,8 +834,7 @@ function buildProviderModelDefinitions(
 		const contextWindow =
 			remote.contextWindow ??
 			existing?.contextWindow ??
-			template.contextWindow ??
-			128000;
+			DEFAULT_REFRESH_CONTEXT_WINDOW;
 		const maxTokens =
 			remote.maxTokens ??
 			existing?.maxTokens ??

@@ -982,11 +982,21 @@ describe("/refresh-models command", () => {
 		expect(openrouterDefinition.oauth).toBeUndefined();
 		expect(openrouterDefinition.apiKey).toBeUndefined();
 		expect(openrouterDefinition.api).toBe("openai-completions");
+		expect(
+			openrouterDefinition.models.find(
+				(model: { id: string }) => model.id === "openai/gpt-5.5",
+			)?.contextWindow,
+		).toBe(256000);
 		const opencodeDefinition = registerProvider.mock.calls.find(
 			([provider]) => provider === "opencode",
 		)?.[1];
 		expect(opencodeDefinition.apiKey).toBeUndefined();
 		expect(opencodeDefinition.api).toBe("openai-completions");
+		expect(
+			opencodeDefinition.models.find(
+				(model: { id: string }) => model.id === "sonnet",
+			)?.contextWindow,
+		).toBe(256000);
 		expect(
 			fetchMock.mock.calls.find(
 				([url]) => url === "https://openrouter.ai/api/v1/models",
