@@ -5,8 +5,6 @@ description: "Pi-mono upstream contribution workflow. Activate only when working
 
 # Pi Contributor Workflow
 
-**Auto-activate when:** The current repo is `badlogic/pi-mono`, files are under `packages/ai`, `packages/agent`, `packages/coding-agent`, `packages/tui`, or `packages/web-ui`, or the user mentions Pi-specific upstream work such as `pkg:tui`, `pkg:ai`, Pi issue gate, Pi PR gate, `lgtm`/`lgtmi`, Pi changelog, or submitting a fix to `badlogic/pi-mono`.
-
 Do **not** activate for generic GitHub contribution, generic npm packages, or non-Pi repositories.
 
 ## Core Principle

@@ -7,12 +7,6 @@ description: Ansible automation, playbooks, and configuration management. Activa
 
 Compact index for Ansible playbooks, roles, inventories, and tests.
 
-## Auto-activate when
-
-- Editing Ansible playbooks, roles, tasks, handlers, inventories, group/host vars, Molecule scenarios, `ansible.cfg`, or Ansible Galaxy metadata.
-- User mentions Ansible, `ansible-playbook`, `ansible-lint`, Molecule, roles, handlers, inventories, facts, vault, or idempotent configuration management.
-- Do not use for Terraform-only infrastructure or shell-only provisioning unless Ansible invokes it.
-
 ## Project-specific rules
 
 - Scripts and automation in this repo must be idempotent.

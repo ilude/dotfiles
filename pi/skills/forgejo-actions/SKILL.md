@@ -5,8 +5,6 @@ description: "Forgejo Actions workflows and runner deployment. Use when working 
 
 # Forgejo Actions Workflow
 
-**Auto-activate when:** editing `.forgejo/workflows/*.yml`, configuring `forgejo-runner`, runner labels, repository Actions settings/secrets, or designing CI/CD deployment from Forgejo pushes.
-
 ## Boundary
 
 | Need | Use |

@@ -7,12 +7,6 @@ description: Docker containers, Compose, and containerization patterns. Activate
 
 Compact index for Docker, Compose, and DevContainer work. Load linked files for full templates and examples.
 
-## Auto-activate when
-
-- Editing `Dockerfile`, `.dockerignore`, `docker-compose.yml`, `compose.yaml`, `.devcontainer/`, entrypoint scripts, or container CI/deploy files.
-- Discussing Docker, Compose, containers, images, build contexts, multi-stage builds, health checks, or Podman compatibility.
-- Do not use for Terraform/Ansible/Kubernetes-only orchestration unless container files are also changed.
-
 ## Project-specific rules
 
 - Avoid container complexity theater: do not add Compose, sidecars, custom networks, or orchestration unless the project need is real.

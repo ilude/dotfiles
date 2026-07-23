@@ -5,8 +5,6 @@ description: "Microsoft 365 tenant automation and inventory. Use when scripting 
 
 # Microsoft 365 Tenant Automation
 
-**Auto-activate when:** working with Microsoft 365 tenant scripts, Graph API, Entra ID, Exchange Online, SharePoint Online, Teams, licensing, tenant inventory, or tenant-specific environment separation.
-
 ## Boundary
 
 Use `m365-tenant-automation` for cloud tenant state and service APIs. Use `shell` for generic PowerShell mechanics. Use `private-store` for sensitive exports, credentials, and tenant data custody.

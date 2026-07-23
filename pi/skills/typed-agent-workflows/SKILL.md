@@ -5,8 +5,6 @@ description: "Pi typed-agent implementation and composition. Use when creating o
 
 # Typed Agent Workflows
 
-**Auto-activate when:** implementing `defineAgent`, migrating repeated model calls to typed agents, or composing deterministic code with focused semantic stages.
-
 ## Boundary
 
 | Need | Use |
@@ -71,20 +69,6 @@ const { output } = await reviewer.run({ candidate }, ctx);
 
 - Before automating an unfamiliar multi-stage workflow, inspect its intended entrypoint and identify deterministic inputs, semantic judgments, validation signals, and operator approval boundaries. Exercise it end to end only through an isolated safe fixture; do not run a stateful or external entrypoint solely for discovery.
 - Run linters, type checks, tests, and pass/fail routing in deterministic code. When a typed stage owns remediation, pass only bounded diagnostics back as explicit input; code still owns retry limits and the final validation decision.
-
-Reference: IndyDevDan, [FORGET Loop Engineering. Agentic Engineering is about THIS](https://www.youtube.com/watch?v=VQy50fuxI34), especially 27:27-30:34.
-
-## Composition Pattern
-
-```typescript
-const state = inspectState();
-const candidates = deterministicScan(state);
-const review = await reviewer.run({ candidates }, ctx);
-enforcePolicy(review.output);
-const result = deterministicMutation(state);
-```
-
-Prefer plain `if`, `switch`, loops, and functions. Add a framework primitive only after repeated production code proves the need.
 
 ## Deferred Capabilities
 

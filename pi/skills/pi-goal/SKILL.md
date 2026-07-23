@@ -5,8 +5,6 @@ description: "Pi /goal prompt builder. Use when asked to write or improve an inl
 
 # Pi Goal Prompt Builder
 
-**Auto-activate when:** drafting, improving, or converting work into a Pi `/goal` prompt or goal prompt file.
-
 ## Boundary
 
 Use this skill when the output will be pasted into `/goal` or saved as a goal prompt. Use `planning` for acceptance criteria and `prd` for product requirement documents.
@@ -22,7 +20,6 @@ A goal prompt should state the outcome and constraints clearly enough for autono
 3. Include tasks only when order or coverage would otherwise be ambiguous.
 4. Name validation only when it directly tests the requested outcome; do not prescribe generic checks.
 5. Add waves, backup, rollback, approval, or incident behavior only for actual destructive, stateful, deployment, external-mutation, secret, paid-resource, hardware, or irreversible work.
-6. End with `goal_complete` after the requested outcome and relevant checks are complete.
 
 ## Template
 
@@ -43,7 +40,3 @@ For actual stateful infrastructure, add the minimum safe rollout details: one in
 - Listing tests or repository checks that do not exercise the requested outcome.
 - Expanding scope with optional hardening or speculative tasks.
 - Omitting a real destructive or stateful safety boundary.
-
-## Quick Reference
-
-State the outcome, real boundaries, direct checks, and completion condition. Add structure only when the work requires it.

@@ -5,8 +5,6 @@ description: "PRD artifact workflow. Use when the user invokes /prd-it or explic
 
 # PRD Workflow
 
-**Auto-activate when:** creating, refining, or reviewing a PRD/product requirements document artifact.
-
 ## Boundary
 
 Use `prd` only when the deliverable is a PRD. Use `planning` for lightweight requirements/acceptance criteria and `pi-goal` for executable Pi goal prompts.
@@ -43,7 +41,3 @@ A PRD aligns product intent, constraints, and acceptance criteria before executi
 - Leaving open questions that block acceptance criteria.
 - Defining migration success without parity expectations.
 - Requiring custom implementation when an existing library or platform capability would satisfy the product need.
-
-## Quick Reference
-
-PRD = product artifact. Planning = requirements method. Pi goal = executable agent objective.

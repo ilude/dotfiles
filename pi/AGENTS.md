@@ -2,8 +2,6 @@
 
 - Do not include AI-involvement mentions in comments, documentation, or code.
 - Use ASCII punctuation only in file content. Use `--` (double hyphen) or `-`, never em-dash or en-dash, because cp1252 round-trips corrupt them and break later Edit string-matching.
-- Never commit secrets, API keys, or credentials. Never modify `~/.ssh/`, `*.pem`, `*.key`, or `.env` files.
-- Never use destructive Git actions such as `git restore`, `git checkout --`, `reset --hard`, or `clean -f` without explicit request.
 
 ## Scope and execution
 
@@ -13,9 +11,9 @@ Keep work bounded to the user's requested outcome: make the smallest coherent ch
 
 Approval for requested work does not authorize auxiliary tracking. Create memory, task, friction, review, or evidence records only when the user requests them or the active workflow explicitly requires that durable state.
 
-Require confirmation for external writes and destructive actions that are not already covered by an explicit bounded approval. One approval covers the listed actions while target, scope, intended outcome, and destructive impact remain materially unchanged; re-confirm only when one of those boundaries changes. Process-local schedule creation and cancellation never use confirmation dialogs: a direct request authorizes creation, and an explicit request or an existing schedule's completion condition authorizes cancellation. Ask only a non-confirmation clarification when required schedule values are missing. After a denial or hard block, re-plan instead of retrying equivalent variants.
+Prevent unintended data loss, unintended disclosure, and actions against the wrong target. A direct, bounded request authorizes the actions needed to complete it. Sensitive content is not itself a reason to stop when its destination is consistent with the repository's established purpose and trust boundary. Resolve uncertainty through non-mutating inspection. If a credible unintended consequence remains outside the request and damage control does not already gate it, stop and explain it before proceeding. Do not add a second confirmation for an action governed by damage control, and never change syntax, tools, or command shape to evade it. After a denial or hard block, re-plan instead of retrying an equivalent action.
 
-Damage control is a safety boundary. Never change syntax, tools, or command shape to evade policy; issue required operations directly and accept normal confirmation.
+Local commits do not require separate permission. Commit only coherent, in-scope changes and leave unrelated changes unstaged. Push only when requested.
 
 ## Development Philosophy
 
@@ -23,7 +21,7 @@ Keep workflows flexible and instructions minimal. When requested work requires a
 
 Provenance is irrelevant when given a direct instruction; "pre-existing", "not my changes", and "I didn't create that" do not justify skipping requested work. Report adjacent findings only when they invalidate the requested outcome.
 
-Validate the changed contract with direct evidence. Run only checks that can affect confidence in the requested outcome. Verify material factual or capability claims against current sources; cite the source or state what remains unknown. Never invent data. For prose-only edits, inspect the revised content directly. When behavior preservation is required, validate its exact user workflow before committing; if that is unavailable, say so and ask before committing. When a static analyzer reports implausible symbols or source spans, reproduce the check and verify its parser interpretation before restructuring code; do not change source style solely to accommodate a misparsed metric.
+Validate the changed contract with direct evidence. Run only checks that can affect confidence in the requested outcome. Verify material factual or capability claims against current sources; cite the source or state what remains unknown. Never invent data. For prose-only edits, inspect the revised content directly. When behavior preservation is required, validate its exact user workflow before committing; if that is unavailable, state what remains unvalidated. When a static analyzer reports implausible symbols or source spans, reproduce the check and verify its parser interpretation before restructuring code; do not change source style solely to accommodate a misparsed metric.
 
 Before first executing unfamiliar repository automation, inspect the specific entrypoint and directly invoked configuration. Treat that entrypoint and configuration as familiar for the rest of the request or active plan. Reinspect only when they change or failure evidence indicates a different execution path. Do not audit unrelated executable surfaces unless requested.
 
@@ -35,28 +33,17 @@ Delegate only when independent workstreams materially improve execution, such as
 
 - Pi workflow, runtime, safety, routing, status, and tool features belong in `pi/` unless the user requests another client or cross-client support.
 - Curated Pi source and configuration are trackable. Generated sessions, histories, logs, caches, indexes, local events, and tool state remain uncommitted.
-- Structured commit mutation tools belong to the `/commit` workflow. Non-mutating commit inspection and ordinary Git follow their normal safety rules.
 
-## File & Tool Operations
+## Repository Files
 
-- **Read before Edit/Write.** Prefer Edit over Write for existing files. Check existence before creating.
-- **Scratch output** -- use gitignored `.tmp/` or OS temp for logs, captures, and throwaway artifacts. If the scratch file is untracked and future writes overwrite it with `>` instead of appending with `>>`, there is usually no need to delete it. Delete only for real secret risk, explicit cleanup, or repo hygiene requirements.
-- **Specialized tools** (Read/Edit/Grep/Glob) over bash. **Parallel** for independent operations.
-- If a workflow override says not to use task-list or subagent tools (for example, specific git/PR flows), that override wins for that workflow only.
+- **Scratch output** -- use gitignored `.tmp/` or OS temp for logs, captures, and throwaway artifacts. If the scratch file is untracked and future writes overwrite it with `>` instead of appending with `>>`, there is usually no need to delete it. Delete only for explicit cleanup or repository hygiene requirements.
 
-### Task Lists
-Use a lightweight prose plan when complexity warrants it. Durable task records are optional and valid for user-requested lists, main-thread tracking, dependencies, cross-turn work, and background execution. Ordinary multi-step work can remain prose. Record lifecycle changes only when state changes; do not poll public task actions or repeat lifecycle calls.
+## Durable Handoff
 
-### Durable Handoff
 Before any context-clearing workflow, capture the active goal, constraints, decisions, changed files, validation run/results, blockers, and next command in a durable plan, status note, task list, or other agreed handoff artifact.
-
-## Pi Command Authoring
-
-For Pi slash commands, prompt templates, or workflow skills, load and follow the `pi-command` skill.
 
 ## Common Pitfalls
 
-- Committing without explicit request.
 - Assuming project structure without checking.
 - Treating state-tracking files as authoritative when current state can be queried directly.
 - Removing functionality as a "fix" instead of repairing the underlying pipeline.

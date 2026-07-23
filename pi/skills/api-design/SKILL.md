@@ -7,8 +7,6 @@ description: API design patterns including REST, GraphQL, and authentication. Ac
 
 Language-agnostic patterns for designing REST and GraphQL APIs. Focus on solving real problems with simple, maintainable solutions that match the project's existing API conventions.
 
-**Auto-activate when:** Working with API routes, endpoints, REST design, GraphQL schemas, OpenAPI/Swagger specs, authentication tokens, API documentation, or discussing endpoint design, versioning strategies, or API architecture.
-
 ## Reference Documentation
 
 For detailed patterns and examples, see:

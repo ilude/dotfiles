@@ -5,8 +5,6 @@ description: "Justfile recipe implementation. Use when editing justfile/Justfile
 
 # Justfile Workflow
 
-**Auto-activate when:** editing `justfile`/`Justfile`, designing `just` recipes, debugging just variables, dotenv loading, or recursive just calls.
-
 ## Boundary
 
 Use `justfile` for Just-specific implementation. Use `workflow-design` for command-surface design and `shell` for script syntax/behavior inside recipes.

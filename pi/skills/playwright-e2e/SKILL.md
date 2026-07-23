@@ -5,8 +5,6 @@ description: "Playwright end-to-end test triage and validation. Use when working
 
 # Playwright E2E Workflow
 
-**Auto-activate when:** editing Playwright tests, fixtures, config, browser traces, screenshots, dependency-gated suites, or Docker-backed end-to-end environments.
-
 ## Boundary
 
 Use `playwright-e2e` for browser end-to-end behavior and suite triage. Use `typescript` for unit-level TypeScript implementation. Use `docker` when only container files are changing.

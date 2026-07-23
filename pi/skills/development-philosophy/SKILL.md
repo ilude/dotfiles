@@ -5,8 +5,6 @@ description: "Implementation strategy and design tradeoff guardrails. Use when p
 
 # Development Philosophy
 
-**Auto-activate when:** choosing an implementation approach, evaluating architecture trade-offs, planning experiments, or explicitly applying development principles.
-
 ## Owner
 
 `pi/AGENTS.md` Development Philosophy is the single source of truth. Apply that section directly; use `least-astonishment` for edit-time diff consistency.

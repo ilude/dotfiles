@@ -5,8 +5,6 @@ description: "Prose cleanup for generic machine-style writing. Use when writing,
 
 # No-Slop Writing
 
-**Auto-activate when:** the user asks to clean up prose, make writing less AI-like, remove filler/hype, tighten wording, or review text quality.
-
 ## Boundary
 
 Use this skill for wording quality and `docs` for document structure. Archival work is outside this skill. `pi/AGENTS.md` owns implementation strategy.
@@ -40,7 +38,3 @@ Keep only claims that are specific, supported, and useful. Plain language beats 
 | Vague benefit claims | Add evidence or delete |
 | Repeated intro/body/conclusion rhythm | Vary structure around content |
 | Overconfident certainty | Match the evidence |
-
-## Quick Reference
-
-Before returning prose, ask: is every sentence either evidence, reasoning, instruction, or necessary context?

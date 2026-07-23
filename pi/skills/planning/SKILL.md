@@ -5,8 +5,6 @@ description: "Requirements and acceptance-criteria planning. Use for requirement
 
 # Planning
 
-**Auto-activate when:** defining requirements, acceptance criteria, success metrics, user stories, verification plans, or converting an ambiguous request into testable scope.
-
 ## Boundary
 
 | Need | Use |
@@ -49,7 +47,3 @@ A plan is useful only when it makes completion falsifiable. Write outcomes that 
 - Claiming validation without a concrete check.
 - Treating helper-level tests as sufficient when the requested behavior is in the user workflow.
 - Omitting behavior-preservation criteria from migrations or refactors when the request requires them.
-
-## Quick Reference
-
-Good criteria are specific, observable, bounded, and verifiable. If a reviewer cannot tell whether it passed, rewrite it.

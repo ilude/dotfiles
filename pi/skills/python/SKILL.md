@@ -7,12 +7,6 @@ description: Python development with uv, pytest, Pydantic, type hints, and moder
 
 Compact index for Python work. Load linked files only for framework-specific details or examples.
 
-## Auto-activate when
-
-- Editing `.py`, `pyproject.toml`, `uv.lock`, pytest config, Ruff config, Pydantic models, or Python CLIs.
-- Discussing Python packaging, type hints, pytest, Ruff, uv, virtualenvs, FastAPI, Flask, or Django.
-- Do not use for shell-only scripts or generic data analysis with no Python project files.
-
 ## Project-specific rules
 
 - This repo uses `uv`, `pytest`, and `ruff`; Python floor is 3.9 from `pyproject.toml`.

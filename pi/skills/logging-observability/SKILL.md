@@ -5,8 +5,6 @@ description: "Observability design and debugging. Use for logging, structured lo
 
 # Logging and Observability
 
-**Auto-activate when:** working with logs, metrics, traces, monitoring, alerting, SLOs, correlation IDs, trace IDs, or telemetry-driven debugging.
-
 ## Boundary
 
 Use this skill only when telemetry is central to the task. Use `analysis-workflow` for general investigation and `code-review` for diff review.
@@ -43,7 +41,3 @@ Prefer stable names: timestamp, level, message, service, environment, request_id
 - Free-text logs where structured fields are needed.
 - Redundant derived fields that duplicate existing structured data without a clear query need.
 - Adding telemetry without a query/use case.
-
-## Quick Reference
-
-Instrument to answer: what happened, who/what was affected, where did it fail, and how bad is it?

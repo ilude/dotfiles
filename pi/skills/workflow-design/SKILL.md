@@ -5,8 +5,6 @@ description: "Developer/operator command UX design. Use when improving command s
 
 # Workflow Design
 
-**Auto-activate when:** designing or consolidating developer/operator workflows, command surfaces, task runners, package scripts, deployment commands, or workflow documentation.
-
 ## Boundary
 
 | Need | Use |
@@ -36,8 +34,6 @@ A good workflow has one obvious entry point and predictable side effects. When t
 - Are destructive operations explicit?
 - Are platform assumptions documented or detected?
 - Are internal helpers kept out of the public surface?
-- When preserving workflow behavior, does validation run the public workflow rather than only a helper?
-- Is scratch output written to gitignored `.tmp/` or OS temp, and left in place when it is untracked, overwritten with `>`, and not a secret or hygiene issue?
 
 ## Anti-Patterns
 
@@ -45,8 +41,3 @@ A good workflow has one obvious entry point and predictable side effects. When t
 - Host/container boundary confusion.
 - Workflows that require hidden local state.
 - Documentation that lists commands without saying when to use them.
-- When preserving workflow behavior, validating only an internal subcommand.
-
-## Quick Reference
-
-Design the operator experience first; implement with Just, shell, Make, or package scripts second.

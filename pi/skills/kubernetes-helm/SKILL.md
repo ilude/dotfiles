@@ -5,8 +5,6 @@ description: "Kubernetes, Helm, Argo CD, and GitOps deployment validation. Use w
 
 # Kubernetes, Helm, and GitOps Workflow
 
-**Auto-activate when:** editing Kubernetes manifests, Helm charts, values files, Kustomize overlays, Argo CD applications, deployment pipelines, or using `kubectl`, `helm`, or Argo CD sync and health checks.
-
 ## Boundary
 
 Use `kubernetes-helm` for cluster deployment contracts and GitOps validation. Use `docker` for image build and Compose-only work. Use `terraform` for cluster infrastructure provisioning.

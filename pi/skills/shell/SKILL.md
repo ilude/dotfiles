@@ -5,8 +5,6 @@ description: "Shell and PowerShell script implementation. Use for .sh, .bash, .z
 
 # Shell Script Workflow
 
-**Auto-activate when:** editing shell/PowerShell scripts, CLI entrypoints, Makefile shell fragments, quoting, exit handling, traps, or cross-platform shell behavior.
-
 ## Boundary
 
 Use `shell` for script implementation details. Use `workflow-design` for public command UX and `justfile` for Just recipes.
@@ -67,7 +65,3 @@ For PowerShell readability, avoid dense or minified style:
 - Running generated mutation scripts without explicit instruction.
 - PowerShell admin scripts that mutate state without `ShouldProcess`/`-WhatIf` support.
 - PowerShell slop: minified one-line functions/control flow, giant one-line apply blocks, vague boilerplate comments, or decorative comments that do not explain behavior.
-
-## Quick Reference
-
-Make interpreter choice, input contract, and failure mode obvious.

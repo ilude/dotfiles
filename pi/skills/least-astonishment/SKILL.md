@@ -5,8 +5,6 @@ description: "Edit-time least-astonishment guardrails. Use when modifying existi
 
 # Principle of Least Astonishment
 
-**Auto-activate when:** editing, fixing, refactoring, extending, or integrating with existing code where local patterns matter.
-
 ## Boundary
 
 Use this skill as an edit-time diff guard. `pi/AGENTS.md` Development Philosophy owns broader implementation strategy and architecture trade-offs.
@@ -42,7 +40,3 @@ Before editing, ask:
 - Adding a dependency for a solved local pattern.
 - Changing error-handling style mid-file.
 - Modifying cross-file callers without a clear need.
-
-## Quick Reference
-
-Small, local, pattern-matching diffs are least surprising. No drive-by improvements.

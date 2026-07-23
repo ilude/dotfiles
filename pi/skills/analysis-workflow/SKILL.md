@@ -5,8 +5,6 @@ description: "Structured investigation workflow. Use for analyze, validate, debu
 
 # Analysis Workflow
 
-**Auto-activate when:** investigating failures, validating claims, debugging behavior, critiquing a design, red-teaming a plan, or answering "what could go wrong?".
-
 ## Boundary
 
 | Need | Use |
@@ -44,7 +42,3 @@ Structured evidence beats analysis theater. Form hypotheses, test them, and sepa
 - Jumping to broad refactors before isolating the fault.
 - Reporting risks without probability, impact, or mitigation.
 - Retrying without evidence that distinguishes a new hypothesis.
-
-## Quick Reference
-
-If you cannot name the evidence that changed your belief, you are guessing.

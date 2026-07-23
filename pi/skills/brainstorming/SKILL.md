@@ -5,8 +5,6 @@ description: Generate multiple approaches before implementing. Activate when fac
 
 # Brainstorming
 
-**Auto-activate when:** a real design or architecture choice has multiple viable approaches whose trade-offs could change the outcome.
-
 ## Boundary
 
 `pi/AGENTS.md` Development Philosophy owns implementation strategy. Use this skill only to compare genuine alternatives, not to manufacture options for obvious fixes.

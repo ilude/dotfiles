@@ -5,8 +5,6 @@ description: "Pi command-surface guidance. Use when creating, reviewing, relocat
 
 # Pi Command Authoring
 
-**Auto-activate when:** deciding where a Pi slash command, prompt template, workflow command, or command-related skill belongs.
-
 ## Boundary
 
 Use `pi-command` for command surface and placement decisions. Use `skills-engineer` for generic skill quality, frontmatter, or activation trigger editing.
@@ -20,6 +18,8 @@ Use `pi-command` for command surface and placement decisions. Use `skills-engine
 | Structured tool-backed command | `pi/extensions/` |
 | Shared Claude/OpenCode wrapper | `claude/commands/` only when cross-client support is requested |
 | OpenCode override | `opencode/commands/` |
+
+Keep command-specific model instructions in the owning prompt template, workflow skill, or extension. Do not place them in `pi/AGENTS.md`; reserve AGENTS for repository-wide rules that apply independently of the active command and tool set.
 
 Pi-first rule: when improving agent runtime features, implement in Pi unless the request is explicitly Claude/OpenCode-only.
 
@@ -42,8 +42,3 @@ A command whose output is visible to the user must persist that output or a fait
 - Modifying `claude/` as a proxy for Pi behavior.
 - Creating duplicate commands with unclear precedence.
 - Adding state without lock/atomic-write behavior.
-- Using `bun` for Pi TypeScript validation.
-
-## Quick Reference
-
-Command surface decisions are routing decisions. Pick the owner first, then edit the smallest file set that implements that owner's behavior.

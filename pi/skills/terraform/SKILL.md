@@ -7,12 +7,6 @@ description: Terraform IaC, modules, and cloud infrastructure patterns. Activate
 
 Compact index for Terraform modules, state, plans, and infrastructure workflows.
 
-## Auto-activate when
-
-- Editing `.tf`, `.tfvars`, `terraform.lock.hcl`, module files, provider/backend config, Terraform CI, or state-related docs.
-- User mentions Terraform, HCL, modules, providers, backend, state, plan/apply, import, drift, workspaces, or infrastructure as code.
-- Do not use for Ansible-only configuration management or Docker-only app containers.
-
 ## Project-specific rules
 
 - Do not reinterpret service `port` fields as host publishing when working near Onramp/Caddy Compose conventions.

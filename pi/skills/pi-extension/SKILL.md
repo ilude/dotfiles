@@ -5,8 +5,6 @@ description: "Pi TypeScript extension implementation and review. Use when editin
 
 # Pi Extension Engineering
 
-**Auto-activate when:** working in `pi/extensions/*.ts`, `pi/tests/*`, extension hooks, `registerTool`, `registerCommand`, footer/status rendering, `tool_result`, `session_start`, or subprocess behavior in Pi extensions.
-
 ## Boundary
 
 | Need | Use |
@@ -25,13 +23,17 @@ Pi docs, Pi examples, and local Pi source/types are authoritative for extension 
 ## Pi Runtime Rules
 
 1. Keep the extension factory for registration only: `pi.on`, `pi.registerTool`, `pi.registerCommand`, `pi.registerShortcut`, `pi.registerFlag`, `pi.registerProvider`, and renderers. Runtime actions such as `pi.sendMessage()` belong in handlers, tools, or commands after Pi binds the session runtime.
-2. Use `ctx.signal` for nested async work during active turn events such as `tool_call`, `tool_result`, `message_update`, and `turn_end`.
-3. Clean up timers, intervals, file watchers, background work, and long-running subprocesses in `session_shutdown` or component disposal paths.
-4. Use `ctx.hasUI` and `ctx.mode` before dialogs or TUI-only behavior. `ctx.hasUI` includes RPC; guard direct TUI components with `ctx.mode === "tui"`.
-5. For footer/status UI, prefer `footerData`, `ctx`, and cached state over fresh discovery.
-6. For custom tools that mutate files, use `withFileMutationQueue()` around the full read-modify-write window.
-7. Custom tools must truncate large output and tell the caller when full output is saved elsewhere.
-8. Throw from tool `execute()` to mark a failed tool result. Returning `isError: true` in a result object does not signal failure.
+2. Keep tool-specific model instructions in the owning `registerTool()` definition: use `description` and `parameters` for the callable contract, `promptSnippet` for one-line discovery, and `promptGuidelines` for behavioral guidance. Enforce mandatory behavior in `execute()` or `tool_call`; do not duplicate tool instructions in `pi/AGENTS.md`.
+3. Use `ctx.signal` for nested async work during active turn events such as `tool_call`, `tool_result`, `message_update`, and `turn_end`.
+4. Clean up timers, intervals, file watchers, background work, and long-running subprocesses in `session_shutdown` or component disposal paths.
+5. Use `ctx.hasUI` and `ctx.mode` before dialogs or TUI-only behavior. `ctx.hasUI` includes RPC; guard direct TUI components with `ctx.mode === "tui"`.
+6. For footer/status UI, prefer `footerData`, `ctx`, and cached state over fresh discovery.
+7. For custom tools that mutate files, use `withFileMutationQueue()` around the full read-modify-write window.
+8. Custom tools must truncate large output and tell the caller when full output is saved elsewhere.
+9. Throw from tool `execute()` to mark a failed tool result. Returning `isError: true` in a result object does not signal failure.
+10. Preload and cache external autocomplete data, filter it locally, and run session-transition guards in `session_before_*` rather than render paths.
+11. Use `StringEnum` from `@earendil-works/pi-ai` for string enums.
+12. Strip a leading `@` from custom-tool path arguments and resolve extension-relative helpers from `import.meta.url`.
 
 ## Shell-Out Rules
 
@@ -47,30 +49,6 @@ Pi docs, Pi examples, and local Pi source/types are authoritative for extension 
 10. On timeout or abort, clean up the whole child process tree. On Windows, use `taskkill /PID <pid> /T /F`; on Unix-like systems, spawn detached when appropriate and signal the process group.
 11. For Windows churn investigations, use `scripts/diagnose-windows-process-churn.ps1` before guessing. Check for hot LSM/CryptSvc, stale Git LFS/MSYS helpers, orphan-like console processes, and `Tcpip` event ID `4227`.
 
-## Known Bad Patterns
-
-| Pattern | Problem | Better pattern |
-| --- | --- | --- |
-| `git rev-parse` inside footer render | Repeats on repaint | Cache by cwd |
-| `where.exe` or `which` before every edit validator | Process churn per edit | Cache availability by binary |
-| Python reducer for every Bash result | Python startup for tiny output | Skip below a byte threshold and cache larger reductions by stable input key |
-| `git fetch` on every reload | Startup/network cost | Run only on primary startup, timeout, skip on failure |
-| Unbounded tool output | Context pressure and compaction risk | Use Pi truncation helpers and save full output when needed |
-| Background interval without shutdown cleanup | Work continues after reload/session switch | Clear it in `session_shutdown` or component disposal |
-
-## Good Pi Patterns To Prefer
-
-| Need | Pattern |
-| --- | --- |
-| Fast autocomplete backed by external data | Preload once, cache a promise, filter locally |
-| Footer branch display | Use `footerData.getGitBranch()` |
-| Session-transition guard | Run checks in `session_before_*`, not every render |
-| Long nested async work during a turn | Pass `ctx.signal` |
-| Shell command from extension code | Use `pi.exec` with explicit args, cwd, timeout, and signal |
-| String enum tool parameters | Use `StringEnum` from `@earendil-works/pi-ai` |
-| Path parameters in custom tools | Strip a leading `@` before resolving paths |
-| Extension-relative helper files | Resolve from `import.meta.url`, not process cwd |
-
 ## State And Session Rules
 
 1. Reconstruct in-memory state on `session_start`; `/reload`, `/new`, `/resume`, and `/fork` create fresh extension instances.
@@ -84,21 +62,6 @@ Pi docs, Pi examples, and local Pi source/types are authoritative for extension 
 For Pi extension changes, prefer targeted validation:
 
 ```bash
-cd pi/tests && pnpm test <matching-test-file>.ts
-cd pi/extensions && pnpm exec tsc --noEmit --pretty false
+cd pi && pnpm test <matching-test-file>.ts
+cd pi && pnpm run typecheck
 ```
-
-Pi TypeScript is pnpm-only in this repo. Do not use bun or npm for Pi extension validation.
-
-## Review Checklist
-
-- Is the code path registration-time, render-time, status-time, per-token, per-tool-result, or session startup?
-- Does any subprocess run more often than the user action that justifies it?
-- Do footer/status/tool-result hooks cache by stable key and skip tiny or no-op work?
-- Is availability discovery cached?
-- Is small/no-op input bypassed before spawning?
-- Are timeout, cancellation, and stdio behavior explicit?
-- Does background work clean up on reload, shutdown, session switch, or disposal?
-- Does state reconstruct from session entries or tool result details after reload/fork?
-- Does tool output stay bounded and documented?
-- Does the test prove the expensive call is skipped, cached, cancelled, truncated, or bounded?

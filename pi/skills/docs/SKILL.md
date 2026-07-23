@@ -5,8 +5,6 @@ description: "Technical documentation structure and Markdown conventions. Use fo
 
 # Documentation Workflow
 
-**Auto-activate when:** writing or editing technical documentation structure, Markdown files, README/CHANGELOG, RFCs, ADRs, guides, or docs folders.
-
 ## Boundary
 
 | Need | Use |
@@ -51,7 +49,3 @@ Documentation should help a reader do the next task. Optimize for accurate struc
 - Adding unsourced claims to technical references.
 - Duplicating content that should be linked.
 - Letting examples drift from real commands.
-
-## Quick Reference
-
-Good docs answer: who is this for, what should they do, what can go wrong, and where do they go next?

@@ -13,16 +13,16 @@ Comprehensive git workflow principles for all git operations.
 **MUST NOT push without explicit "push" keyword.** Examples: "commit my changes" -> NO push, "commit and push" -> YES push. After committing without push, inform: "Changes committed locally. Run 'git push' to push to remote."
 
 ### When to Commit
-Only commit when explicitly requested. MUST NOT commit proactively.
+Local commits do not require separate permission. Commit coherent, in-scope changes and leave unrelated changes unstaged. Push only as described above.
 
 ### Precedence
 For git status, staging, committing, and pushing, this skill is authoritative. Do not apply code-editing scope rules from least-astonishment to decide what to stage. Inspect all current changes, group them by commit type, and either commit them together when related or ask the user when a change is ambiguous.
 
-## Security First
+## Secret Policy
 
-**MUST scan for secrets. If found, STOP and refuse to commit.**
+Run repository-required secret checks before committing. By default, stop when a likely secret is found. A path whose resolved `commit-secrets` Git attribute has the exact value `allow` is explicitly permitted by repository policy and must not be blocked solely because it contains sensitive content. Query the policy with `git check-attr -z commit-secrets -- <paths>`; missing, unset, bare-set, or other values do not allow secrets.
 
-Critical patterns:
+Critical patterns for paths without `commit-secrets=allow`:
 - AWS keys (`AKIA`, `ABIA`, `ACCA`, `ASIA` prefixes)
 - GitHub tokens (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`)
 - Anthropic keys (`sk-ant-`)
@@ -34,11 +34,11 @@ Critical patterns:
 - Connection strings (`mongodb://`, `postgres://`, `mysql://`)
 - High-entropy strings (32+ char random alphanumeric)
 
-If detected:
-1. Show files/lines
-2. Suggest .gitignore
-3. Recommend env vars or secret manager
-4. Refuse even if insisted
+If detected on a path without `commit-secrets=allow`:
+1. Show files/lines without printing secret values
+2. Suggest `.gitignore`
+3. Recommend environment variables or a secret manager
+4. Stop the commit
 
 ### Git-Crypt Exception
 
@@ -281,7 +281,7 @@ See [worktrees.md](worktrees.md) for full details including parallel sessions an
 
 ## Philosophy
 
-This skill defines the principles. The `/commit` command implements the procedural execution. Security always comes first, commits require explicit request, and pushes require the "push" keyword.
+This skill defines the principles. The `/commit` command implements the procedural execution. Local commits do not require separate permission, and pushes require the "push" keyword.
 
 ---
 

@@ -5,8 +5,6 @@ description: "Forgejo-specific Git hosting workflow. Use when working with Forge
 
 # Forgejo Git Workflow
 
-**Auto-activate when:** the task mentions Forgejo remotes, creating/pushing repos on Forgejo, nested private repos hosted on Forgejo, Forgejo API tokens, `tea`, push-to-create, Forgejo SSH clone/push failures, or Forgejo repository permissions.
-
 ## Boundary
 
 | Need | Use |

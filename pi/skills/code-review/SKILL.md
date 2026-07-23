@@ -5,8 +5,6 @@ description: "Evidence-based review of code changes. Use for code review, PR rev
 
 # Evidence-Based Code Review
 
-**Auto-activate when:** the user asks to review code changes, a PR, branch, commit, `git diff`, or `git show` output.
-
 ## Boundary
 
 Use `code-review` only when reviewing a change set for findings. Use `analysis-workflow` for general troubleshooting and `least-astonishment` while making edits.
@@ -52,7 +50,3 @@ Required fix: <specific change or invariant>
 - Mixing style preferences with required fixes.
 - Missing tests but not explaining the untested risk.
 - Treating editor tasks, agent hooks, or workflow changes as harmless metadata without checking execution triggers and secret access.
-
-## Quick Reference
-
-Every finding needs changed-code evidence, a reachable scenario, impact, and a required fix.
