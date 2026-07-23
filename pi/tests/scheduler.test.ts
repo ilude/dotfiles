@@ -109,6 +109,25 @@ describe("scheduler extension", () => {
 		);
 	});
 
+	it("activates the scheduling tool only for scheduling intent", async () => {
+		const pi = createMockPi();
+		registerScheduler(pi as unknown as ExtensionAPI);
+		const ctx = createMockCtx({ mode: "tui" });
+		await pi._getHook("session_start")[0].handler({ reason: "startup" }, ctx);
+		expect(pi.getActiveTools()).not.toContain("schedule");
+
+		await pi._getHook("before_agent_start")[0].handler(
+			{ prompt: "Explain this code" },
+			ctx,
+		);
+		expect(pi.getActiveTools()).not.toContain("schedule");
+		await pi._getHook("before_agent_start")[0].handler(
+			{ prompt: "Schedule a reminder for tomorrow" },
+			ctx,
+		);
+		expect(pi.getActiveTools()).toContain("schedule");
+	});
+
 	it("creates, lists, and cancels cron schedules through commands", async () => {
 		const pi = createMockPi();
 		registerScheduler(pi as unknown as ExtensionAPI);

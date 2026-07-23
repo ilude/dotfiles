@@ -11,6 +11,7 @@ import {
 // system binary -- adding a [pwsh] prefix would be redundant with "pwsh not found" in the text.
 import { Type } from "@sinclair/typebox";
 import { Text } from "@earendil-works/pi-tui";
+import { deactivateTools } from "../lib/tool-activation.js";
 import { spawn } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import { tmpdir, release } from "node:os";
@@ -107,7 +108,7 @@ export default function (pi: ExtensionAPI) {
       return;
     }
     registerPwshTool(pi);
-    registerPlatformHook(pi);
+    deactivateTools(pi, ["pwsh"]);
   });
 }
 
@@ -312,15 +313,4 @@ export function renderResult(
   }
 
   return new Text(displayLines.join("\n"), 0, 0);
-}
-
-export function registerPlatformHook(pi: ExtensionAPI) {
-  pi.on("before_agent_start", async (event, _ctx) => {
-    const platformNote =
-      "Both bash and pwsh tools are available. Prefer pwsh for Windows-native tasks (cmdlets, registry, WMI, .NET, COM). Use bash for git, npm, POSIX text tools.";
-
-    return {
-      systemPrompt: event.systemPrompt + `\n\n## Shell Selection\n${platformNote}`,
-    };
-  });
 }

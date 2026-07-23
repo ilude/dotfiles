@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import { readMergedSettings } from "../lib/settings-loader.js";
 import directPersonality, {
-	appendDirectPersonalityPrompt,
 	applyDirectVerbosity,
 	isDirectPersonalityEnabled,
 	supportsOpenAiGpt5Verbosity,
@@ -20,14 +19,6 @@ describe("direct-personality helpers", () => {
 		expect(isDirectPersonalityEnabled({ personality: "none" })).toBe(false);
 		expect(isDirectPersonalityEnabled({ personality: "direct" })).toBe(true);
 		expect(isDirectPersonalityEnabled({ pi: { personality: "direct" } })).toBe(true);
-	});
-
-	it("appends direct prompt only once when enabled", () => {
-		const base = "base prompt";
-		const once = appendDirectPersonalityPrompt(base, { personality: "direct" });
-		expect(once).toContain("Communication style: direct");
-		expect(appendDirectPersonalityPrompt(once, { personality: "direct" })).toBe(once);
-		expect(appendDirectPersonalityPrompt(base, {})).toBe(base);
 	});
 
 	it("supports only OpenAI GPT-5 family verbosity", () => {
@@ -56,20 +47,11 @@ describe("direct-personality helpers", () => {
 });
 
 describe("direct-personality extension", () => {
-	it("registers prompt and provider hooks", () => {
+	it("registers only the provider verbosity hook", () => {
 		const pi = createMockPi();
 		directPersonality(pi as any);
-		expect(pi._getHook("before_agent_start")).toHaveLength(1);
+		expect(pi._getHook("before_agent_start")).toHaveLength(0);
 		expect(pi._getHook("before_provider_request")).toHaveLength(1);
-	});
-
-	it("before_agent_start hook appends prompt when user setting enables direct mode", async () => {
-		(readMergedSettings as any).mockReturnValueOnce({ personality: "direct" });
-		const pi = createMockPi();
-		directPersonality(pi as any);
-		const hook = pi._getHook("before_agent_start")[0].handler;
-		const result = await hook({ systemPrompt: "base" }, createMockCtx());
-		expect(result.systemPrompt).toContain("Communication style: direct");
 	});
 
 	it("provider hook is no-op when settings are absent", async () => {

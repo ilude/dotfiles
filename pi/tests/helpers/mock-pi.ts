@@ -26,10 +26,12 @@ export function createMockPi() {
 	const hooks: RegisteredHook[] = [];
 	const commands: Array<{ name: string; handler: Function }> = [];
 	const shortcuts: Array<{ shortcut: unknown; handler: Function }> = [];
+	let activeToolNames: string[] = [];
 
 	const mockPi = {
 		registerTool: vi.fn((toolDef: any) => {
 			tools.push(toolDef);
+			activeToolNames.push(toolDef.name);
 		}),
 		on: vi.fn((event: string, handler: Function) => {
 			hooks.push({ event, handler });
@@ -48,6 +50,12 @@ export function createMockPi() {
 		sendUserMessage: vi.fn(async (_msg: string) => {}),
 		sendMessage: vi.fn((_message: any, _options?: any) => {}),
 		appendEntry: vi.fn(async (_customType: string, _data?: unknown) => {}),
+		getAllTools: vi.fn(() => [...tools]),
+		getActiveTools: vi.fn(() => [...activeToolNames]),
+		setActiveTools: vi.fn((names: string[]) => {
+			const registered = new Set(tools.map((tool) => tool.name));
+			activeToolNames = names.filter((name) => registered.has(name));
+		}),
 
 		// Test helpers
 		_tools: tools,

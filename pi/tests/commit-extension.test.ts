@@ -37,6 +37,31 @@ describe("commit extension registration", () => {
 		expect(pi._getTool("commit_create")).toBeDefined();
 	});
 
+	it("activates commit tools only for commit intent", async () => {
+		const pi = createMockPi();
+		registerCommitTools(pi as any);
+		await pi._getHook("session_start")[0].handler({}, {});
+		expect(pi.getActiveTools()).not.toContain("commit_plan");
+
+		await pi._getHook("before_agent_start")[0].handler(
+			{ prompt: "Explain the current implementation" },
+			{},
+		);
+		expect(pi.getActiveTools()).not.toContain("commit_plan");
+		await pi._getHook("before_agent_start")[0].handler(
+			{ prompt: "Commit these changes" },
+			{},
+		);
+		expect(pi.getActiveTools()).toEqual(
+			expect.arrayContaining([
+				"commit_plan",
+				"commit_validate_message",
+				"commit_stage",
+				"commit_create",
+			]),
+		);
+	});
+
 	it("treats commit tokens as state integrity rather than approval gates", () => {
 		const pi = createMockPi();
 		registerCommitTools(pi as any);

@@ -53,6 +53,9 @@ const MAX_EVENT_LIMIT = 20;
 const MAX_SUMMARY_LENGTH = 600;
 const MAX_SOURCE_PATHS = 12;
 const MAX_SOURCE_PATH_LENGTH = 240;
+export const MAX_FEATURE_CONTEXT_CHARS = 16_000;
+const MAX_DOSSIER_CONTEXT_CHARS = 12_000;
+const MAX_EVENT_CONTEXT_CHARS = 3_000;
 const ALLOWED_REGISTRY_KEYS = ["schemaVersion", "features"];
 const ALLOWED_FEATURE_KEYS = [
 	"title",
@@ -274,6 +277,24 @@ export async function loadFeatureRegistry(
 	return { schemaVersion: 1, features, repoRoot, registryPath };
 }
 
+function containsBoundedTrigger(text: string, rawTrigger: string): boolean {
+	const trigger = rawTrigger.toLowerCase().replaceAll("\\", "/");
+	const word = /[a-z0-9_]/;
+	let offset = 0;
+	while (offset <= text.length - trigger.length) {
+		const index = text.indexOf(trigger, offset);
+		if (index < 0) return false;
+		const before = index > 0 ? text[index - 1] : "";
+		const after = text[index + trigger.length] ?? "";
+		const startsBounded = !word.test(trigger[0] ?? "") || !word.test(before);
+		const endsBounded =
+			!word.test(trigger.at(-1) ?? "") || !word.test(after);
+		if (startsBounded && endsBounded) return true;
+		offset = index + 1;
+	}
+	return false;
+}
+
 export function matchFeatureIds(
 	registry: FeatureRegistry,
 	prompt: string,
@@ -283,10 +304,10 @@ export function matchFeatureIds(
 		.filter(
 			([, feature]) =>
 				feature.promptTriggers.some((trigger) =>
-					normalizedPrompt.includes(trigger.toLowerCase()),
+					containsBoundedTrigger(normalizedPrompt, trigger),
 				) ||
 				feature.pathTriggers.some((trigger) =>
-					normalizedPrompt.includes(trigger.toLowerCase()),
+					containsBoundedTrigger(normalizedPrompt, trigger),
 				),
 		)
 		.map(([featureId]) => featureId)
@@ -424,6 +445,16 @@ export async function readRecentFeatureEvents(
 		.slice(-limit);
 }
 
+function boundedContextSection(
+	value: string,
+	maxCharacters: number,
+	label: string,
+): string {
+	const text = value.trim();
+	if (text.length <= maxCharacters) return text;
+	return `${text.slice(0, maxCharacters).trimEnd()}\n[${label} truncated at ${maxCharacters} characters]`;
+}
+
 export async function buildFeatureContext(
 	registry: FeatureRegistry,
 	featureId: string,
@@ -447,5 +478,8 @@ export async function buildFeatureContext(
 				)
 				.join("\n")
 		: "- None recorded.";
-	return `Feature context: ${feature.title} (${featureId})\nThis context is bounded background information. It is non-authoritative: verify it against the current repository and current user instructions. Local events may be stale; prefer later supersession events and current tracked evidence.\n\nTracked dossier (${feature.dossierPath}):\n${dossier.trim()}\n\nRecent local events:\n${eventText}`;
+	const context = `Feature context: ${feature.title} (${featureId})\nThis context is bounded background information. It is non-authoritative: verify it against the current repository and current user instructions. Local events may be stale; prefer later supersession events and current tracked evidence.\n\nTracked dossier (${feature.dossierPath}):\n${boundedContextSection(dossier, MAX_DOSSIER_CONTEXT_CHARS, "dossier")}\n\nRecent local events:\n${boundedContextSection(eventText, MAX_EVENT_CONTEXT_CHARS, "events")}`;
+	if (context.length <= MAX_FEATURE_CONTEXT_CHARS) return context;
+	const marker = "\n[feature context truncated at total character limit]";
+	return `${context.slice(0, MAX_FEATURE_CONTEXT_CHARS - marker.length).trimEnd()}${marker}`;
 }

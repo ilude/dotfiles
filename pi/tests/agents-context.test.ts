@@ -76,6 +76,21 @@ describe("agents-context discovery", () => {
 		);
 	});
 
+	it("enforces per-file byte caps for multibyte instructions", () => {
+		const cwd = path.join(tmp, "repo");
+		writeFile(path.join(cwd, "AGENTS.md"), "e".repeat(10));
+		writeFile(path.join(cwd, "src", "AGENTS.md"), "\u00e9".repeat(20_000));
+
+		const files = agentsContextTestApi.discoverForPaths(cwd, ["src/file.ts"]);
+		const nested = files.find((file) =>
+			file.path.endsWith(path.join("src", "AGENTS.md")),
+		);
+		expect(nested).toBeDefined();
+		expect(nested!.bytes).toBeLessThanOrEqual(32 * 1024);
+		expect(Buffer.byteLength(nested!.content, "utf8")).toBe(nested!.bytes);
+		expect(nested!.truncated).toBe(true);
+	});
+
 	it("does not interpret instruction imports or compatibility filenames", () => {
 		const cwd = path.join(tmp, "repo");
 		writeFile(path.join(cwd, "AGENTS.md"), "root agents\n@docs/extra.md");
@@ -86,6 +101,61 @@ describe("agents-context discovery", () => {
 		const files = agentsContextTestApi.discoverForPaths(cwd, ["src/file.ts"]);
 		expect(files.map((file) => path.basename(file.path))).toEqual(["AGENTS.md"]);
 		expect(files[0].content).toContain("@docs/extra.md");
+	});
+
+	it("deduplicates nested instructions that match native context content", async () => {
+		const cwd = path.join(tmp, "repo");
+		const nativePath = path.join(tmp, "global", "AGENTS.md");
+		writeFile(path.join(cwd, "AGENTS.md"), "shared agents");
+		writeFile(nativePath, "shared agents");
+		const pi = createMockPi();
+		registerAgentsContext(pi);
+		const ctx = createMockCtx({ cwd });
+		await pi._getHook("before_agent_start")[0].handler(
+			{
+				systemPrompt: "base",
+				systemPromptOptions: {
+					contextFiles: [{ path: nativePath, content: "shared agents" }],
+				},
+			},
+			ctx,
+		);
+		await pi._getHook("tool_call")[0].handler(
+			{ toolName: "read", input: { path: "file.ts" } },
+			ctx,
+		);
+		const result = await pi._getHook("context")[0].handler(
+			{ messages: [] },
+			ctx,
+		);
+		expect(result.messages).toEqual([]);
+		expect(formatAgentsContextStatus()).toContain(
+			"skipped: duplicate instruction content",
+		);
+	});
+
+	it("does not inject an instruction or hardlink alias merely because it was read", async () => {
+		const cwd = path.join(tmp, "repo");
+		const rootInstruction = path.join(cwd, "AGENTS.md");
+		const nestedInstruction = path.join(cwd, "src", "AGENTS.md");
+		writeFile(rootInstruction, "root agents");
+		mkdirp(path.dirname(nestedInstruction));
+		fs.linkSync(rootInstruction, nestedInstruction);
+		const pi = createMockPi();
+		registerAgentsContext(pi);
+		const ctx = createMockCtx({ cwd });
+		await pi._getHook("tool_call")[0].handler(
+			{ toolName: "read", input: { path: "src/AGENTS.md" } },
+			ctx,
+		);
+		const result = await pi._getHook("context")[0].handler(
+			{ messages: [] },
+			ctx,
+		);
+		expect(result.messages).toEqual([]);
+		expect(formatAgentsContextStatus()).toContain(
+			"skipped: matches read instruction target",
+		);
 	});
 
 	it("does not persist discovered instructions with sendMessage", async () => {
@@ -150,6 +220,26 @@ describe("agents-context discovery", () => {
 		).toHaveLength(1);
 		expect(result.messages.at(-1).content).toContain("root agents");
 		expect(result.messages.at(-1).content).not.toContain("old");
+	});
+
+	it("does not defer a mutation after the same nested context was delivered", async () => {
+		const cwd = path.join(tmp, "repo");
+		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
+		writeFile(path.join(cwd, "src", "AGENTS.md"), "src agents");
+		const pi = createMockPi();
+		registerAgentsContext(pi);
+		const ctx = createMockCtx({ cwd });
+		const toolHook = pi._getHook("tool_call")[0].handler;
+
+		await toolHook({ toolName: "read", input: { path: "src/file.ts" } }, ctx);
+		await pi._getHook("context")[0].handler({ messages: [] }, ctx);
+
+		await expect(
+			toolHook(
+				{ toolCallId: "edit-after-read", toolName: "edit", input: { path: "src/file.ts" } },
+				ctx,
+			),
+		).resolves.toBeUndefined();
 	});
 
 	it("unions sibling target scopes for the current user turn", async () => {
@@ -257,6 +347,7 @@ describe("agents-context mutation deferral", () => {
 		const toolHook = pi._getHook("tool_call")[0].handler;
 
 		await expect(toolHook(event, ctx)).resolves.toMatchObject({ block: true });
+		await pi._getHook("context")[0].handler({ messages: [] }, ctx);
 		await expect(toolHook(event, ctx)).resolves.toBeUndefined();
 		writeFile(instructionPath, "second version");
 		await expect(toolHook(event, ctx)).resolves.toMatchObject({ block: true });

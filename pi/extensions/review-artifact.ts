@@ -3,6 +3,7 @@ import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { formatToolError } from "../lib/extension-utils.js";
+import { activateTools, deactivateTools } from "../lib/tool-activation.js";
 
 const MAX_FINDINGS = 5;
 const MAX_FIELD_CHARS = 800;
@@ -10,6 +11,8 @@ const REVIEW_DIR_RE =
 	/(?:^|[\\/])\.specs[\\/](?:archive[\\/])?[^\\/]+[\\/]review-\d+$/;
 const ARTIFACT_RE = /^[A-Za-z0-9._-]+\.md$/;
 const SEVERITIES = new Set(["critical", "high", "medium", "low"]);
+const REVIEW_ARTIFACT_INTENT =
+	/(?:review_artifact_write|\.specs[\\/].+[\\/]review-\d+)/i;
 
 interface Finding {
 	severity: string;
@@ -77,6 +80,15 @@ function validateFindings(findings: Finding[]): string | null {
 }
 
 export default function (pi: ExtensionAPI) {
+	pi.on("session_start", () => {
+		deactivateTools(pi, ["review_artifact_write"]);
+	});
+	pi.on("before_agent_start", (event) => {
+		if (!REVIEW_ARTIFACT_INTENT.test(event.prompt)) return undefined;
+		activateTools(pi, ["review_artifact_write"]);
+		return undefined;
+	});
+
 	pi.registerTool({
 		name: "review_artifact_write",
 		label: "Review Artifact Write",

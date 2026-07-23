@@ -82,6 +82,30 @@ describe("context extension: buildContextBuckets", () => {
 		for (const b of buckets) assertValidBucket(b);
 	});
 
+	it("does not report tool schema tokens when no tools are active", () => {
+		const buckets = buildContextBuckets([], "", undefined, []);
+		expect(buckets.find((bucket) => bucket.label === "Tool schemas")).toBeUndefined();
+	});
+
+	it("accounts for active tool descriptions and parameter schemas", () => {
+		const buckets = buildContextBuckets([], "", undefined, [
+			{
+				name: "large_tool",
+				description: "A tool with a provider-visible description",
+				parameters: {
+					type: "object",
+					properties: {
+						query: { type: "string", description: "Search query text" },
+					},
+				},
+			},
+		]);
+		const schemaBucket = buckets.find((b) => b.label === "Tool schemas");
+		expect(schemaBucket).toBeDefined();
+		expect(schemaBucket!.tokens).toBeGreaterThan(0);
+		expect(schemaBucket!.details).toContain("1 active tool");
+	});
+
 	it("attributes user message text to a user-labeled bucket", () => {
 		const userText = "this is a unique user message that approximates many tokens";
 		const buckets = buildContextBuckets([userMessage(userText)], "");

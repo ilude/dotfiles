@@ -53,6 +53,7 @@ import {
 import { noteWorkflowSubmission } from "../lib/workflow-friction";
 import { sendHiddenWorkflowPrompt } from "../lib/workflow-prompt.js";
 import { startWorkflowEpisode } from "../lib/workflow-telemetry";
+import { activateTools } from "../lib/tool-activation";
 import { formatConfiguredUsageReport } from "./codex-status";
 import { isOperatorReloadNeeded } from "./operator-status";
 
@@ -2469,6 +2470,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("review-it", {
 		description: "Review a plan or requirements artifact",
 		handler: async (args, _ctx) => {
+			activateTools(pi, ["review_artifact_write"]);
 			echoSlashCommand(pi, "review-it", args);
 			const template = loadSkill("review-it.md");
 			sendHiddenWorkflowPrompt(

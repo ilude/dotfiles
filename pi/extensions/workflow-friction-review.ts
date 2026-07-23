@@ -11,6 +11,7 @@ import { Type } from "@sinclair/typebox";
 import { recordEvent } from "../lib/metrics.js";
 import { buildOrchestrationInteractionEvent } from "../lib/orchestration-telemetry.js";
 import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
+import { activateTools, deactivateTools } from "../lib/tool-activation.js";
 import { sanitizeTaskValue } from "../lib/task-security.js";
 import { defineAgent, type TypedAgentRunContext } from "../lib/typed-agent.js";
 import { sendHiddenWorkflowPrompt } from "../lib/workflow-prompt.js";
@@ -1360,6 +1361,10 @@ export default function workflowFrictionExtension(
 	let improvementListSnapshot: string[] | null = null;
 
 	pi.on("session_start", async (_event, ctx) => {
+		deactivateTools(pi, [
+			"learning_candidate_decide",
+			"workflow_friction_mark_change",
+		]);
 		const sessionId = ctx.sessionManager.getSessionId();
 		if (currentSessionId !== sessionId) {
 			resetOrchestrationInteraction(currentSessionId);
@@ -1393,6 +1398,17 @@ export default function workflowFrictionExtension(
 	});
 
 	pi.on("before_agent_start", async (event, ctx) => {
+		if (
+			pendingLearningDiscussion ||
+			/(?:\/improve\b|learning_candidate_decide)/i.test(event.prompt)
+		)
+			activateTools(pi, ["learning_candidate_decide"]);
+		if (
+			/(?:workflow_friction_mark_change|experiment tracking|track (?:this )?workflow change)/i.test(
+				event.prompt,
+			)
+		)
+			activateTools(pi, ["workflow_friction_mark_change"]);
 		const sessionId = ctx.sessionManager.getSessionId();
 		if (currentSessionId !== sessionId) {
 			resetOrchestrationInteraction(currentSessionId);
@@ -1542,6 +1558,7 @@ export default function workflowFrictionExtension(
 		description:
 			"Generate a report or list, select, and discuss improvement candidates",
 		handler: async (args: string, ctx: ExtensionContext) => {
+			activateTools(pi, ["learning_candidate_decide"]);
 			const parts = args.trim().split(/\s+/).filter(Boolean);
 			const action = parts[0]?.toLowerCase();
 			if (action === "help") {

@@ -32,7 +32,7 @@ Pi can opt into a direct communication style without relying on Codex's `persona
 }
 ```
 
-When enabled, `pi/extensions/direct-personality.ts` appends concise/direct style guidance to Pi's system prompt. For direct OpenAI/OpenAI-Codex GPT-5-family Responses payloads, the extension also requests `text.verbosity: "low"` when the provider payload supports that shape. Unsupported providers are left unchanged.
+When enabled, `pi/extensions/direct-personality.ts` requests `text.verbosity: "low"` for OpenAI/OpenAI-Codex GPT-5-family Responses payloads. It does not append duplicate style guidance to Pi's system prompt, and unsupported providers are left unchanged.
 
 Rollback: remove the `personality` key or set it to `"default"`/`"none"`. The repo-tracked `pi/settings.json` does not enable direct mode by default; the setting is intentionally per-user opt-in.
 
@@ -263,7 +263,13 @@ The shadow judge is disabled by default. Enable it with `damageControl.judge.ena
 
 ### `agents-context.ts`
 
-Extends Pi's native startup context with instructions discovered below the startup cwd when a file tool targets a nested path. It loads `AGENTS.md`, falls back to `CLAUDE.md` in directories without `AGENTS.md`, and unions sibling target scopes for the current user turn. A mutating tool is deferred once when it first enters a newly discovered instruction scope so the next provider call receives those instructions before retrying.
+Extends Pi's native startup context with instructions discovered below the startup cwd when a file tool targets a nested path. It loads `AGENTS.md`, falls back to `CLAUDE.md` in directories without `AGENTS.md`, and unions sibling target scopes for the current user turn. Native and nested instructions are deduplicated by content, including hardlinks exposed through different paths. Reading an instruction file does not inject that same file as a second context copy. A mutating tool is deferred once when it first enters a newly discovered instruction scope so the next provider call receives those instructions before retrying.
+
+### `tool-visibility.ts` and `tool-search.ts`
+
+Keeps specialized tools out of the default provider schema until they are relevant. Commit, feature-memory, goal completion, improvement capture, Onclave, PowerShell, review-artifact, scheduler, usage-report, and web tools start inactive. Stateful extensions activate their own tools from deterministic command or prompt state. `tool_search` activates matching inactive tools by default for a non-empty capability query, and reports the activated names in its result. Listing all tools without a query remains inspection-only.
+
+Core file, shell, task, subagent, and discovery tools remain active. This reduces baseline tool-schema and prompt-guideline overhead without removing capabilities.
 
 ### `quality-gates.ts`
 
@@ -363,7 +369,7 @@ lifecycle metrics contain job IDs and timing metadata, not prompt text.
 
 ### `feature-memory.ts`
 
-Feature memory provides bounded, feature-specific context across sessions. The tracked `pi/feature-memory.json` registry maps stable feature IDs to a title, a tracked dossier, literal case-insensitive prompt triggers, and repo-relative path triggers. On the first matching prompt in a session, `before_agent_start` injects one hidden, non-authoritative custom message containing the curated dossier and recent local events. A feature is injected only once per session; a new session or `/reload` resets that in-memory boundary.
+Feature memory provides bounded, feature-specific context across sessions. The tracked `pi/feature-memory.json` registry maps stable feature IDs to a title, a tracked dossier, bounded case-insensitive prompt triggers, and repo-relative path triggers. Trigger matching enforces identifier boundaries so longer unrelated words do not activate a feature. On the first matching prompt in a session, `before_agent_start` injects one hidden, non-authoritative custom message containing the curated dossier and recent local events. Injected context is capped at 16,000 characters with explicit truncation markers. A feature is injected only once per session; a new session or `/reload` resets that in-memory boundary.
 
 Curated dossiers and local events have different owners. A dossier such as `.specs/features/pi-improve/context.md` is reviewed, tracked repository context. Runtime events are append-only observations in `${PI_FEATURE_MEMORY_DIR}/events.jsonl` when the override is set, otherwise `~/.pi/agent/feature-memory/events.jsonl`; they remain untracked and never modify a dossier automatically. The model-callable `feature_memory_record` tool is available only as a narrow capture boundary during work that matched a registered feature. It records explicit user decisions, validated evidence, open questions, or supersessions. It must not record raw transcripts, general summaries, secrets, speculative conclusions, or unbounded tool output.
 
@@ -426,7 +432,7 @@ Shows Claude Code-style context usage for Pi.
 
 Behavior:
 - Displays current context usage from Pi's `ctx.getContextUsage()` API.
-- Estimates per-component buckets for system prompt, user messages, assistant text/thinking, tool calls, tool results, bash output, injected context, and summaries.
+- Estimates per-component buckets for system prompt, active provider-visible tool descriptions and parameter schemas, user messages, assistant text/thinking, tool calls, tool results, bash output, injected context, and summaries.
 - Shows cumulative session token spend, cache reads/writes, cost, and component breakdown.
 - Emits the full report as a normal transcript message so it scrolls with the conversation; the extension filters those report messages back out of future LLM context.
 

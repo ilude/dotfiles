@@ -7,6 +7,7 @@ import { stagePaths } from "../lib/commit/stage";
 import { createCommit } from "../lib/commit/create";
 import { formatToolError } from "../lib/extension-utils";
 import { withTimingSpan } from "../lib/observability";
+import { activateTools, deactivateTools } from "../lib/tool-activation";
 
 const CommitPlanParams = Type.Object({ cwd: Type.Optional(Type.String({ description: "Repository directory; defaults to session cwd." })) });
 const CommitValidateMessageParams = Type.Object({ message: Type.String() });
@@ -30,7 +31,25 @@ function toolResult(text: string, details: unknown) {
 	return { content: [{ type: "text" as const, text }], details };
 }
 
+export const COMMIT_TOOL_NAMES = [
+	"commit_plan",
+	"commit_validate_message",
+	"commit_stage",
+	"commit_create",
+] as const;
+const COMMIT_INTENT_PATTERN =
+	/\b(?:commit|commits|committed|committing|stage|staged|staging)\b/i;
+
 export function registerCommitTools(pi: ExtensionAPI) {
+	pi.on("session_start", () => {
+		deactivateTools(pi, COMMIT_TOOL_NAMES);
+	});
+	pi.on("before_agent_start", (event) => {
+		if (!COMMIT_INTENT_PATTERN.test(event.prompt)) return undefined;
+		activateTools(pi, COMMIT_TOOL_NAMES);
+		return undefined;
+	});
+
 	pi.registerTool({
 		name: "commit_plan",
 		label: "Commit Plan",

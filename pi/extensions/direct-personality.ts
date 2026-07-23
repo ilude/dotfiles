@@ -1,12 +1,6 @@
 import { type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { readMergedSettings } from "../lib/settings-loader.js";
 
-export const DIRECT_PERSONALITY_PROMPT = `
-
-# Communication style: direct
-
-When responding to the user, be direct, concise, and action-oriented. Avoid filler, praise-heavy phrasing, and unnecessary reassurance. Preserve required safety checks, verification detail, caveats, and exact commands when they are needed for correctness.`;
-
 type Settings = Record<string, unknown>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -19,12 +13,6 @@ export function isDirectPersonalityEnabled(settings: Settings): boolean {
 	const pi = settings.pi;
 	if (isRecord(pi) && pi.personality === "direct") return true;
 	return false;
-}
-
-export function appendDirectPersonalityPrompt(systemPrompt: string, settings: Settings): string {
-	if (!isDirectPersonalityEnabled(settings)) return systemPrompt;
-	if (systemPrompt.includes("# Communication style: direct")) return systemPrompt;
-	return `${systemPrompt}${DIRECT_PERSONALITY_PROMPT}`;
 }
 
 function modelId(model: unknown): string {
@@ -64,13 +52,6 @@ export function loadUserPersonalitySettings(): Settings {
 }
 
 export default function (pi: ExtensionAPI) {
-	pi.on("before_agent_start", async (event) => {
-		const settings = loadUserPersonalitySettings();
-		const systemPrompt = appendDirectPersonalityPrompt(event.systemPrompt, settings);
-		if (systemPrompt === event.systemPrompt) return undefined;
-		return { systemPrompt };
-	});
-
 	pi.on("before_provider_request", (event, ctx) => {
 		const settings = loadUserPersonalitySettings();
 		const payload = applyDirectVerbosity(event.payload, settings, (ctx as { model?: unknown }).model);

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -44,6 +45,8 @@ type State = {
 	totalBytes: number;
 	cwd?: string;
 	basePaths: Set<string>;
+	baseFingerprints: Set<string>;
+	loadedFingerprints: Set<string>;
 	targetPaths: Set<string>;
 	injectedTargetFingerprints: Set<string>;
 	deferredToolCalls: Set<string>;
@@ -62,6 +65,8 @@ const state: State = {
 	projectRoots: new Map(),
 	totalBytes: 0,
 	basePaths: new Set(),
+	baseFingerprints: new Set(),
+	loadedFingerprints: new Set(),
 	targetPaths: new Set(),
 	injectedTargetFingerprints: new Set(),
 	deferredToolCalls: new Set(),
@@ -140,7 +145,19 @@ function instructionFileForDir(dir: string): string | undefined {
 	return existingFile(path.join(dir, FALLBACK_INSTRUCTION_NAME));
 }
 
-function localInstructionFiles(cwd: string, targetPath: string): string[] {
+function isInstructionFile(filePath: string): boolean {
+	const name = path.basename(filePath).toLowerCase();
+	return (
+		name === PRIMARY_INSTRUCTION_NAME.toLowerCase() ||
+		name === FALLBACK_INSTRUCTION_NAME.toLowerCase()
+	);
+}
+
+function localInstructionFiles(
+	cwd: string,
+	targetPath: string,
+	excludeTargetInstruction = false,
+): string[] {
 	const target = canonical(
 		path.isAbsolute(targetPath) ? targetPath : path.join(cwd, targetPath),
 	);
@@ -149,7 +166,13 @@ function localInstructionFiles(cwd: string, targetPath: string): string[] {
 	state.projectRoots.set(canonical(cwd), root);
 	return ancestorsFromRoot(root, targetDir)
 		.map(instructionFileForDir)
-		.filter((file): file is string => Boolean(file));
+		.filter((file): file is string => Boolean(file))
+		.filter(
+			(file) =>
+				!excludeTargetInstruction ||
+				!isInstructionFile(target) ||
+				canonical(file) !== target,
+		);
 }
 
 function readCachedInstruction(fullPath: string): string {
@@ -177,9 +200,22 @@ function readCachedInstruction(fullPath: string): string {
 	return content;
 }
 
+function contentFingerprint(content: string): string {
+	return createHash("sha256").update(content).digest("hex");
+}
+
+function truncateUtf8(value: string, maxBytes: number): string {
+	const buffer = Buffer.from(value, "utf8");
+	if (buffer.length <= maxBytes) return value;
+	let end = Math.max(0, maxBytes);
+	while (end > 0 && (buffer[end] & 0xc0) === 0x80) end -= 1;
+	return buffer.subarray(0, end).toString("utf8");
+}
+
 function readInstruction(
 	filePath: string,
 	reason: string,
+	excludedFingerprints: ReadonlySet<string> = new Set(),
 ): LoadedInstruction | undefined {
 	const fullPath = canonical(filePath);
 	if (state.loaded.has(fullPath) || state.basePaths.has(fullPath)) return undefined;
@@ -188,21 +224,35 @@ function readInstruction(
 		return undefined;
 	}
 	const raw = readCachedInstruction(fullPath);
-	const remaining = MAX_TOTAL_BYTES - state.totalBytes;
-	if (remaining <= 0) {
+	const fingerprint = contentFingerprint(raw);
+	if (excludedFingerprints.has(fingerprint)) {
+		noteSkipped(`${fullPath} skipped: matches read instruction target`);
+		return undefined;
+	}
+	if (
+		state.baseFingerprints.has(fingerprint) ||
+		state.loadedFingerprints.has(fingerprint)
+	) {
+		noteSkipped(`${fullPath} skipped: duplicate instruction content`);
+		return undefined;
+	}
+	const remainingBytes = MAX_TOTAL_BYTES - state.totalBytes;
+	if (remainingBytes <= 0) {
 		noteSkipped(`${fullPath} skipped: total byte cap reached`);
 		return undefined;
 	}
-	const maxCharacters = Math.min(raw.length, MAX_BYTES_PER_FILE, remaining);
-	const content = raw.slice(0, maxCharacters);
+	const maxBytes = Math.min(MAX_BYTES_PER_FILE, remainingBytes);
+	const rawBytes = Buffer.byteLength(raw, "utf8");
+	const content = truncateUtf8(raw, maxBytes);
 	const loaded: LoadedInstruction = {
 		path: fullPath,
-		bytes: Buffer.byteLength(content),
+		bytes: Buffer.byteLength(content, "utf8"),
 		reason,
-		truncated: maxCharacters < raw.length,
+		truncated: rawBytes > maxBytes,
 		content,
 	};
 	state.loaded.set(fullPath, loaded);
+	state.loadedFingerprints.add(fingerprint);
 	state.totalBytes += loaded.bytes;
 	if (loaded.truncated) noteSkipped(`${fullPath} truncated`);
 	return loaded;
@@ -218,6 +268,7 @@ function instructionPayload(files: LoadedInstruction[]): string {
 
 function clearLoadedSnapshot(): void {
 	state.loaded.clear();
+	state.loadedFingerprints.clear();
 	state.skipped.length = 0;
 	state.skippedOnce.clear();
 	state.totalBytes = 0;
@@ -226,12 +277,15 @@ function clearLoadedSnapshot(): void {
 function recordNativeContextFiles(event: unknown): void {
 	clearLoadedSnapshot();
 	state.basePaths.clear();
+	state.baseFingerprints.clear();
 	if (!isRecord(event) || !isRecord(event.systemPromptOptions)) return;
 	const contextFiles = event.systemPromptOptions.contextFiles;
 	if (!Array.isArray(contextFiles)) return;
 	for (const item of contextFiles) {
 		if (!isRecord(item) || typeof item.path !== "string") continue;
 		state.basePaths.add(canonical(item.path));
+		if (typeof item.content === "string")
+			state.baseFingerprints.add(contentFingerprint(item.content));
 	}
 }
 
@@ -262,6 +316,7 @@ function clearInstructionState(): void {
 	clearLoadedSnapshot();
 	state.projectRoots.clear();
 	state.basePaths.clear();
+	state.baseFingerprints.clear();
 	state.targetPaths.clear();
 	state.injectedTargetFingerprints.clear();
 	state.deferredToolCalls.clear();
@@ -275,12 +330,44 @@ function resetForCwd(cwd: string): void {
 	state.cwd = resolvedCwd;
 }
 
-function discoverForPaths(cwd: string, paths: string[]): LoadedInstruction[] {
+function targetInstructionFingerprints(
+	cwd: string,
+	paths: string[],
+): Set<string> {
+	const fingerprints = new Set<string>();
+	for (const targetPath of paths) {
+		const target = canonical(
+			path.isAbsolute(targetPath) ? targetPath : path.join(cwd, targetPath),
+		);
+		if (!isInstructionFile(target)) continue;
+		const file = existingFile(target);
+		if (!file) continue;
+		fingerprints.add(contentFingerprint(readCachedInstruction(file)));
+	}
+	return fingerprints;
+}
+
+function discoverForPaths(
+	cwd: string,
+	paths: string[],
+	excludeTargetInstructions = false,
+): LoadedInstruction[] {
 	resetForCwd(cwd);
 	clearLoadedSnapshot();
-	const files = [...new Set(paths.flatMap((target) => localInstructionFiles(cwd, target)))];
+	const excludedFingerprints = excludeTargetInstructions
+		? targetInstructionFingerprints(cwd, paths)
+		: new Set<string>();
+	const files = [
+		...new Set(
+			paths.flatMap((target) =>
+				localInstructionFiles(cwd, target, excludeTargetInstructions),
+			),
+		),
+	];
 	return files
-		.map((file) => readInstruction(file, instructionReason(file)))
+		.map((file) =>
+			readInstruction(file, instructionReason(file), excludedFingerprints),
+		)
 		.filter((file): file is LoadedInstruction => Boolean(file));
 }
 
@@ -343,6 +430,7 @@ export default function (pi: ExtensionAPI) {
 		const content = state.retryRequested
 			? `${payload}\n\nApply these instructions, then retry the deferred mutating tool call.`
 			: payload;
+		state.injectedTargetFingerprints.add(payload);
 		state.retryRequested = false;
 		return {
 			messages: [
@@ -377,11 +465,14 @@ export default function (pi: ExtensionAPI) {
 				),
 			);
 		}
-		const files = discoverForPaths(ctx.cwd, [...state.targetPaths]);
+		const files = discoverForPaths(
+			ctx.cwd,
+			[...state.targetPaths],
+			toolName === "read",
+		);
 		const targetPayload = files.length ? instructionPayload(files) : undefined;
 		if (targetPayload && MUTATING_TOOLS.has(toolName)) {
 			if (!state.injectedTargetFingerprints.has(targetPayload)) {
-				state.injectedTargetFingerprints.add(targetPayload);
 				state.deferredToolCalls.add(event.toolCallId);
 				state.retryRequested = true;
 				return { block: true };

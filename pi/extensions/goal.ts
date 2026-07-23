@@ -5,6 +5,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { formatToolError } from "../lib/extension-utils.js";
 import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
+import { activateTools, deactivateTools } from "../lib/tool-activation.js";
 import { noteWorkflowSubmission } from "../lib/workflow-friction.js";
 
 const GOAL_STATE_TYPE = "local-goal-state";
@@ -327,10 +328,13 @@ export default function (pi: ExtensionAPI) {
 	wrapCommandRegistration(pi);
 	pi.on("session_start", async (_event, ctx) => {
 		restoreGoal(ctx);
+		if (activeGoal) activateTools(pi, ["goal_complete"]);
+		else deactivateTools(pi, ["goal_complete"]);
 	});
 
 	pi.on("before_agent_start", async (event) => {
 		if (!activeGoal) return undefined;
+		activateTools(pi, ["goal_complete"]);
 		activeGoal = {
 			...activeGoal,
 			iterationCount: activeGoal.iterationCount + 1,
@@ -355,6 +359,7 @@ export default function (pi: ExtensionAPI) {
 				"explore",
 			);
 			activeGoal = parsed.goal;
+			activateTools(pi, ["goal_complete"]);
 			await appendState(pi, stateEntry(activeGoal));
 			if (typeof pi.sendUserMessage === "function")
 				await pi.sendUserMessage(parsed.startupPrompt);
@@ -404,6 +409,7 @@ export default function (pi: ExtensionAPI) {
 				params.nextSteps ?? "",
 			);
 			activeGoal = null;
+			deactivateTools(pi, ["goal_complete"]);
 			await appendState(
 				pi,
 				stateEntry(null, {

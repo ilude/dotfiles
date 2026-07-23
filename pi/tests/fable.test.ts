@@ -93,23 +93,20 @@ describe("Fable Bedrock compatibility", () => {
 });
 
 describe("fable orchestration policy", () => {
-	it("adds the direct-first policy only for interactive orchestrator parents", async () => {
+	it("does not append orchestration guidance for ordinary parents", () => {
 		const { beforeAgentStart } = hooks();
 		const event = { systemPrompt: "base" };
 
-		expect(beforeAgentStart(event, orchestratorCtx())).toMatchObject({
-			systemPrompt: expect.stringContaining(
-				"Work directly by default on one coherent task.",
-			),
-		});
+		expect(beforeAgentStart(event, orchestratorCtx())).toBeUndefined();
 		expect(
 			beforeAgentStart(event, orchestratorCtx({ mode: "json" })),
 		).toBeUndefined();
-		for (const id of ["claude-fable-test", "claude-opus-test"]) {
-			expect(
-				beforeAgentStart(event, createMockCtx({ mode: "tui", model: { id } })),
-			).toMatchObject({ systemPrompt: expect.any(String) });
-		}
+		expect(
+			beforeAgentStart(
+				event,
+				createMockCtx({ mode: "tui", model: { id: "claude-opus-test" } }),
+			),
+		).toBeUndefined();
 		expect(
 			beforeAgentStart(
 				event,
@@ -255,30 +252,12 @@ describe("fable orchestration policy", () => {
 		expect(event.input).not.toHaveProperty("model");
 	});
 
-	it("makes Fable a foreman and keeps other parents direct-first", () => {
-		const { beforeAgentStart: solMedium } = hooks("medium");
-		const { beforeAgentStart: solXhigh } = hooks("xhigh");
-		const medium = solMedium({ systemPrompt: "base" }, orchestratorCtx());
-		const xhigh = solXhigh({ systemPrompt: "base" }, orchestratorCtx());
-
-		for (const result of [medium, xhigh]) {
-			expect(result.systemPrompt).toContain(
-				"Work directly by default on one coherent task.",
-			);
-			expect(result.systemPrompt).not.toContain(
-				"Before complex repository work",
-			);
-		}
-		expect(
-			solMedium(
-				{ systemPrompt: "base" },
-				orchestratorCtx({
-					model: { provider: "openai-codex", id: "gpt-5.6-sol:xhigh" },
-				}),
-			).systemPrompt,
-		).toContain("Work directly by default on one coherent task.");
-
+	it("adds foreman guidance only for Fable or explicit foreman mode", () => {
 		const { beforeAgentStart } = hooks("medium");
+		expect(
+			beforeAgentStart({ systemPrompt: "base" }, orchestratorCtx()),
+		).toBeUndefined();
+
 		const fable = beforeAgentStart(
 			{ systemPrompt: "base" },
 			createMockCtx({
@@ -288,7 +267,7 @@ describe("fable orchestration policy", () => {
 					id: "us.anthropic.claude-fable-5",
 				},
 			}),
-		).systemPrompt;
+		)?.systemPrompt;
 		expect(fable).toContain(
 			"Act as the foreman for a team of lower-cost Codex subagents.",
 		);
@@ -299,13 +278,6 @@ describe("fable orchestration policy", () => {
 		);
 		expect(fable).toContain("Stay focused on the big picture");
 		expect(fable).not.toContain("otherwise work directly");
-
-		expect(
-			beforeAgentStart(
-				{ systemPrompt: "base" },
-				createMockCtx({ mode: "tui", model: { id: "claude-opus-test" } }),
-			).systemPrompt,
-		).toContain("Work directly by default on one coherent task.");
 	});
 
 	it("allows direct tools while enforcing GPT-5.6 routing after delegation", () => {

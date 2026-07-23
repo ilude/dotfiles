@@ -11,7 +11,9 @@ import {
 	type LoadRegistryOptions,
 	loadFeatureRegistry,
 	matchFeatureIds,
+	MAX_FEATURE_CONTEXT_CHARS,
 } from "../lib/feature-memory-store.js";
+import { activateTools, deactivateTools } from "../lib/tool-activation.js";
 
 const FeatureEventKindSchema = StringEnum(
 	FEATURE_EVENT_KINDS,
@@ -19,6 +21,15 @@ const FeatureEventKindSchema = StringEnum(
 
 export interface FeatureMemoryExtensionOptions extends LoadRegistryOptions {
 	eventsPath?: string;
+}
+
+export const MAX_FEATURE_INJECTION_CHARS = MAX_FEATURE_CONTEXT_CHARS;
+
+export function boundFeatureContextInjection(contexts: string[]): string {
+	const combined = contexts.join("\n\n---\n\n");
+	if (combined.length <= MAX_FEATURE_INJECTION_CHARS) return combined;
+	const marker = "\n[feature context injection truncated at total character limit]";
+	return `${combined.slice(0, MAX_FEATURE_INJECTION_CHARS - marker.length).trimEnd()}${marker}`;
 }
 
 export default function featureMemoryExtension(
@@ -40,11 +51,13 @@ async function registerFeatureMemoryExtension(
 	pi.on("session_start", () => {
 		injectedFeatureIds.clear();
 		matchedFeatureIds.clear();
+		deactivateTools(pi, ["feature_memory_record"]);
 	});
 
 	pi.on("before_agent_start", async (event) => {
 		const matches = matchFeatureIds(registry, event.prompt ?? "");
 		for (const featureId of matches) matchedFeatureIds.add(featureId);
+		if (matches.length > 0) activateTools(pi, ["feature_memory_record"]);
 		const pending = matches.filter(
 			(featureId) => !injectedFeatureIds.has(featureId),
 		);
@@ -58,7 +71,7 @@ async function registerFeatureMemoryExtension(
 		return {
 			message: {
 				customType: "feature-memory",
-				content: contexts.join("\n\n---\n\n"),
+				content: boundFeatureContextInjection(contexts),
 				display: false,
 			},
 		};

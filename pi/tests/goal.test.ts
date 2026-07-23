@@ -60,6 +60,7 @@ describe("goal extension", () => {
 		expect(pi.sendUserMessage).toHaveBeenCalledWith(
 			expect.stringContaining("Active goal started"),
 		);
+		expect(pi.getActiveTools()).toContain("goal_complete");
 
 		const accepted = goalTestApi.goalFromInline("x".repeat(15_000));
 		expect(accepted.ok).toBe(true);
@@ -169,6 +170,7 @@ describe("goal extension", () => {
 				},
 			}),
 		);
+		expect(pi.getActiveTools()).toContain("goal_complete");
 		const beforeHook = pi._getHook("before_agent_start")[0].handler;
 		expect(
 			(await beforeHook({ systemPrompt: "base" }, createMockCtx({ cwd: tmp })))
@@ -202,6 +204,7 @@ describe("goal extension", () => {
 			"local-goal-state",
 			expect.objectContaining({ goal: null }),
 		);
+		expect(pi.getActiveTools()).not.toContain("goal_complete");
 		expect(
 			await beforeHook({ systemPrompt: "base" }, createMockCtx({ cwd: tmp })),
 		).toBeUndefined();

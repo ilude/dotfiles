@@ -18,6 +18,7 @@
 import type { ExtensionAPI, ToolInfo } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
+import { activateTools } from "../lib/tool-activation.js";
 
 /** Score a tool against search terms. Higher = better match. */
 export function scoreTool(
@@ -61,13 +62,13 @@ export default function (pi: ExtensionAPI) {
 		name: "tool_search",
 		label: "Tool Search",
 		description:
-			"Search available tools by keyword. Returns matching tool names, descriptions, and parameter schemas. " +
-			"Use when unsure which tool to use for a task, or to discover available capabilities.",
-		promptSnippet: "Search available tools by keyword to discover capabilities",
+			"Search available tools by keyword and activate matching inactive tools. Returns tool names, descriptions, and optional parameter schemas.",
+		promptSnippet:
+			"Search available tools by keyword and activate matching inactive capabilities",
 		promptGuidelines: [
-			"Use tool_search when you're unsure which tool handles a specific task.",
-			"Search with descriptive keywords, not tool names (e.g., 'powershell' not 'pwsh').",
-			"Use list mode (no query) to see all available tools when starting a new kind of task.",
+			"Use tool_search when the needed capability is not currently available.",
+			"Search with descriptive capability keywords; matching inactive tools are activated by default.",
+			"Use list mode without a query only to inspect all tools; it does not activate them.",
 		],
 		parameters: Type.Object({
 			query: Type.Optional(
@@ -78,6 +79,12 @@ export default function (pi: ExtensionAPI) {
 			include_params: Type.Optional(
 				Type.Boolean({
 					description: "Include parameter schemas in results (default: false)",
+				}),
+			),
+			activate: Type.Optional(
+				Type.Boolean({
+					description:
+						"Activate matching inactive tools. Defaults to true for a non-empty query.",
 				}),
 			),
 		}),
@@ -112,6 +119,18 @@ export default function (pi: ExtensionAPI) {
 				});
 			}
 
+			const hasQuery = Boolean(params.query?.trim());
+			const shouldActivate = hasQuery && (params.activate ?? true);
+			const activated = shouldActivate
+				? results
+						.map((tool) => tool.name)
+						.filter((name) => !activeNames.has(name))
+				: [];
+			if (activated.length > 0) {
+				activateTools(pi, activated);
+				for (const name of activated) activeNames.add(name);
+			}
+
 			const lines: string[] = [];
 
 			if (params.query) {
@@ -122,13 +141,16 @@ export default function (pi: ExtensionAPI) {
 				lines.push(`All ${results.length} available tools:\n`);
 			}
 
+			if (activated.length > 0)
+				lines.push(`Activated ${activated.join(", ")} for the next tool call.\n`);
+
 			for (let i = 0; i < results.length; i++) {
 				const t = results[i];
 				const active = activeNames.has(t.name) ? "" : " (inactive)";
 				const source =
-					t.sourceInfo?.origin === "top-level"
-						? `extension${active}`
-						: `built-in${active}`;
+					t.sourceInfo?.source === "builtin"
+						? `built-in${active}`
+						: `extension${active}`;
 
 				lines.push(
 					formatToolEntry(
@@ -154,6 +176,7 @@ export default function (pi: ExtensionAPI) {
 				details: {
 					total: allTools.length,
 					matched: results.length,
+					activated,
 					query: params.query,
 				},
 			});

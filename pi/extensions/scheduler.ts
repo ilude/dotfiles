@@ -12,6 +12,7 @@ import {
 	type ScheduledPromptSnapshot,
 } from "../lib/process-scheduler.js";
 import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
+import { activateTools, deactivateTools } from "../lib/tool-activation.js";
 
 const MAX_PROMPT_LENGTH = 4_000;
 const PREVIEW_LENGTH = 80;
@@ -261,6 +262,13 @@ export default function registerScheduler(pi: ExtensionAPI) {
 			sendBackgroundPrompt(pi, job.prompt);
 		};
 		getProcessScheduler().bind(activeDelivery);
+		deactivateTools(pi, ["schedule"]);
+	});
+
+	pi.on("before_agent_start", (event) => {
+		if (!SCHEDULE_CONFIRMATION_PATTERN.test(event.prompt)) return undefined;
+		activateTools(pi, ["schedule"]);
+		return undefined;
 	});
 
 	pi.on("session_shutdown", (event) => {

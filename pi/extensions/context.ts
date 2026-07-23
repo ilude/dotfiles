@@ -27,6 +27,12 @@ export type Bucket = {
 	details: string;
 };
 
+type ActiveToolSchema = {
+	name: string;
+	description?: string;
+	parameters?: unknown;
+};
+
 type SystemPromptOptions = {
 	customPrompt?: string;
 	selectedTools?: string[];
@@ -205,6 +211,7 @@ export function buildContextBuckets(
 	entries: AnyEntry[],
 	systemPrompt: string,
 	systemPromptOptions?: SystemPromptOptions,
+	activeTools: ActiveToolSchema[] = [],
 ): Bucket[] {
 	let userTokens = 0;
 	let assistantTokens = 0;
@@ -267,8 +274,26 @@ export function buildContextBuckets(
 		}
 	}
 
+	const toolSchemaTokens =
+		activeTools.length === 0
+			? 0
+			: estimateTokens(
+					JSON.stringify(
+						activeTools.map((tool) => ({
+							name: tool.name,
+							description: tool.description ?? "",
+							parameters: tool.parameters ?? {},
+						})),
+					),
+				);
+
 	return [
 		...buildSystemPromptBuckets(systemPrompt, systemPromptOptions),
+		bucket(
+			"Tool schemas",
+			toolSchemaTokens,
+			`${activeTools.length} active tool description(s) and parameter schema(s)`,
+		),
 		bucket("User messages", userTokens, `${userCount} message(s)`),
 		bucket("Assistant text", assistantTokens, `${assistantCount} message(s)`),
 		bucket("Assistant thinking", thinkingTokens, "reasoning blocks in session history"),
@@ -281,7 +306,7 @@ export function buildContextBuckets(
 	].filter((item) => item.tokens > 0 || item.label === "System prompt");
 }
 
-function buildReport(ctx: any): string[] {
+function buildReport(pi: ExtensionAPI, ctx: any): string[] {
 	const branch = ctx.sessionManager.getBranch() as AnyEntry[];
 	const entries = entriesThatContributeToContext(branch);
 	const allEntries = ctx.sessionManager.getEntries() as AnyEntry[];
@@ -291,7 +316,16 @@ function buildReport(ctx: any): string[] {
 		? ctx.getSystemPromptOptions()
 		: undefined;
 	const sessionUsage = collectSessionUsage(allEntries);
-	const buckets = buildContextBuckets(entries, systemPrompt, systemPromptOptions);
+	const activeToolNames = new Set(pi.getActiveTools());
+	const activeTools = pi
+		.getAllTools()
+		.filter((tool) => activeToolNames.has(tool.name));
+	const buckets = buildContextBuckets(
+		entries,
+		systemPrompt,
+		systemPromptOptions,
+		activeTools,
+	);
 	const estimatedTotal = buckets.reduce((sum, item) => sum + item.tokens, 0);
 	const displayTotal = usage?.tokens ?? estimatedTotal;
 	const modelName = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "no model selected";
@@ -352,7 +386,7 @@ export default function registerContextCommand(pi: ExtensionAPI) {
 				return;
 			}
 
-			const report = buildReport(ctx);
+			const report = buildReport(pi, ctx);
 			if (trimmed === "widget") {
 				ctx.ui.setWidget("context", report, { placement: "aboveEditor" });
 				ctx.ui.notify("Context widget shown above the editor. It may truncate; run /context for the full report.", "info");

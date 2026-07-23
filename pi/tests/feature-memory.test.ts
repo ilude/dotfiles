@@ -3,13 +3,18 @@ import os from "node:os";
 import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import featureMemoryExtension from "../extensions/feature-memory.ts";
+import featureMemoryExtension, {
+	boundFeatureContextInjection,
+	MAX_FEATURE_INJECTION_CHARS,
+} from "../extensions/feature-memory.ts";
 import {
 	appendFeatureMemoryEvent,
+	buildFeatureContext,
 	createFeatureMemoryEvent,
 	type FeatureRegistry,
 	loadFeatureRegistry,
 	matchFeatureIds,
+	MAX_FEATURE_CONTEXT_CHARS,
 	readRecentFeatureEvents,
 } from "../lib/feature-memory-store.ts";
 import { createMockPi } from "./helpers/mock-pi.ts";
@@ -80,6 +85,10 @@ describe("feature memory", () => {
 			),
 		).toEqual(["pi-improve"]);
 		expect(matchFeatureIds(registry, "unrelated task")).toEqual([]);
+		expect(matchFeatureIds(registry, "Use /improvement now")).toEqual([]);
+		expect(
+			matchFeatureIds(registry, "learning_candidate_decide_extra"),
+		).toEqual([]);
 
 		const orderedRegistry: FeatureRegistry = {
 			...registry,
@@ -166,6 +175,37 @@ describe("feature memory", () => {
 		expect(
 			(await beforeAgentStart({ prompt: "/improve" }, {})).message,
 		).toBeDefined();
+	});
+
+	it("bounds aggregate context across multiple matching features", () => {
+		const context = boundFeatureContextInjection([
+			"a".repeat(10_000),
+			"b".repeat(10_000),
+		]);
+		expect(context.length).toBeLessThanOrEqual(MAX_FEATURE_INJECTION_CHARS);
+		expect(context).toContain(
+			"[feature context injection truncated at total character limit]",
+		);
+	});
+
+	it("bounds injected feature context and marks truncation", async () => {
+		fs.writeFileSync(fixture.dossierPath, "x".repeat(20_000));
+		const registry = await loadFeatureRegistry(fixture);
+		const context = await buildFeatureContext(registry, "pi-improve", {
+			eventsPath: fixture.eventsPath,
+		});
+		expect(context.length).toBeLessThanOrEqual(MAX_FEATURE_CONTEXT_CHARS);
+		expect(context).toContain("[dossier truncated at 12000 characters]");
+	});
+
+	it("activates the recording tool only after a feature match", async () => {
+		const pi = await registerFixture(fixture);
+		await pi._getHook("session_start")[0].handler({ reason: "new" }, {});
+		expect(pi.getActiveTools()).not.toContain("feature_memory_record");
+		await pi
+			._getHook("before_agent_start")[0]
+			.handler({ prompt: "/improve" }, {});
+		expect(pi.getActiveTools()).toContain("feature_memory_record");
 	});
 
 	it("appends sanitized events and retrieves only the recent bounded set", async () => {
