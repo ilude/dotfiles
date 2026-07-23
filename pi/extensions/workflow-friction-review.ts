@@ -13,6 +13,7 @@ import { buildOrchestrationInteractionEvent } from "../lib/orchestration-telemet
 import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 import { sanitizeTaskValue } from "../lib/task-security.js";
 import { defineAgent, type TypedAgentRunContext } from "../lib/typed-agent.js";
+import { sendHiddenWorkflowPrompt } from "../lib/workflow-prompt.js";
 import {
 	activateOrchestrationInteraction,
 	buildReviewPrompt,
@@ -1613,16 +1614,13 @@ export default function workflowFrictionExtension(
 					`Captured ${parsed.selection.choice} decision for ${pendingLearningDiscussion.candidateId}. Executing now.`,
 				);
 				noteWorkflowSubmission(parsed.selection.text, "explore");
-				pi.sendMessage(
-					{
-						customType: "workflow-friction.improve-decision",
-						content: improvementDecisionFollowUpPrompt(
-							pendingLearningDiscussion.candidateId,
-							parsed.selection,
-						),
-						display: false,
-					},
-					{ triggerTurn: true, deliverAs: "followUp" },
+				sendHiddenWorkflowPrompt(
+					pi,
+					improvementDecisionFollowUpPrompt(
+						pendingLearningDiscussion.candidateId,
+						parsed.selection,
+					),
+					{ customType: "workflow-friction.improve-decision" },
 				);
 				return;
 			}
@@ -1792,20 +1790,17 @@ export default function workflowFrictionExtension(
 				phase: "discussing",
 			};
 			noteWorkflowSubmission("/improve", "explore");
-			pi.sendMessage(
-				{
-					customType: "workflow-friction.improve",
-					content: buildImprovementDiscussionPrompt(candidate, {
-						reviewCount: records.length,
-						pendingCandidateCount: candidates.length,
-						interactionSummary: summarizeInteractionMetadata(metadata),
-						priorExperimentCount: (await experimentRecords()).length,
-						candidateUsage,
-						rankingReason: rankingReason(candidate, candidateUsage),
-					}),
-					display: false,
-				},
-				{ triggerTurn: true, deliverAs: "followUp" },
+			sendHiddenWorkflowPrompt(
+				pi,
+				buildImprovementDiscussionPrompt(candidate, {
+					reviewCount: records.length,
+					pendingCandidateCount: candidates.length,
+					interactionSummary: summarizeInteractionMetadata(metadata),
+					priorExperimentCount: (await experimentRecords()).length,
+					candidateUsage,
+					rankingReason: rankingReason(candidate, candidateUsage),
+				}),
+				{ customType: "workflow-friction.improve" },
 			);
 		},
 	});

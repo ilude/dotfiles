@@ -8,9 +8,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const spawnMock = vi.hoisted(() =>
 	vi.fn(() => ({ pid: 4242, unref: vi.fn() })),
 );
+const executeCommitCommandMock = vi.hoisted(() => vi.fn());
 vi.mock("node:child_process", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:child_process")>();
 	return { ...actual, spawn: spawnMock };
+});
+vi.mock("../extensions/workflow-commands.ts", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("../extensions/workflow-commands.ts")>();
+	return { ...actual, executeCommitCommand: executeCommitCommandMock };
 });
 
 import loopRuntimeLogging from "../extensions/loop/runtime-logging.ts";
@@ -272,8 +278,47 @@ describe("loop extension", () => {
 		expect(records).toHaveLength(1);
 	});
 
-	it("queues the existing /commit workflow before retrying a dirty start", async () => {
-		vi.useFakeTimers();
+	it("runs the commit workflow before starting from a clean baseline", async () => {
+		const workspace = temporaryDirectory();
+		const stateRoot = temporaryDirectory();
+		const dirtyPath = path.join(workspace, "source.ts");
+		fs.writeFileSync(path.join(workspace, "plan.md"), "# Plan\n");
+		initializeRepository(workspace);
+		fs.writeFileSync(dirtyPath, "dirty\n");
+		const priorRoot = process.env.PI_LOOP_DIR;
+		process.env.PI_LOOP_DIR = stateRoot;
+		const pi = createMockPi();
+		pi.exec.mockImplementation(async (_command: string, args: string[]) => {
+			const key = args.join(" ");
+			if (key === "rev-parse --show-toplevel")
+				return { stdout: `${workspace}\n`, stderr: "", code: 0, killed: false };
+			if (key === "status --porcelain")
+				return { stdout: "", stderr: "", code: 0, killed: false };
+			if (key === "rev-parse HEAD")
+				return { stdout: "abc123\n", stderr: "", code: 0, killed: false };
+			throw new Error(`Unexpected command: ${key}`);
+		});
+		executeCommitCommandMock.mockImplementationOnce(async () => {
+			fs.rmSync(dirtyPath);
+		});
+		loop(pi as unknown as ExtensionAPI);
+		const command = pi._commands.find((item) => item.name === "loop");
+		const ctx = createMockCtx({ cwd: workspace, mode: "tui", shutdown: vi.fn() });
+
+		try {
+			await command?.handler("start plan.md", ctx);
+		} finally {
+			if (priorRoot === undefined) delete process.env.PI_LOOP_DIR;
+			else process.env.PI_LOOP_DIR = priorRoot;
+		}
+
+		expect(executeCommitCommandMock).toHaveBeenCalledWith(pi, "", ctx);
+		expect(pi.sendUserMessage).not.toHaveBeenCalled();
+		expect(spawnMock).toHaveBeenCalledOnce();
+		expect(ctx.shutdown).toHaveBeenCalledOnce();
+	});
+
+	it("does not start when the commit workflow leaves changes", async () => {
 		const workspace = temporaryDirectory();
 		const stateRoot = temporaryDirectory();
 		fs.writeFileSync(path.join(workspace, "plan.md"), "# Plan\n");
@@ -282,34 +327,28 @@ describe("loop extension", () => {
 		const priorRoot = process.env.PI_LOOP_DIR;
 		process.env.PI_LOOP_DIR = stateRoot;
 		const pi = createMockPi();
-		pi.exec.mockResolvedValue({
-			stdout: " M source.ts\n",
-			stderr: "",
-			code: 0,
-			killed: false,
-		});
+		executeCommitCommandMock.mockResolvedValueOnce(undefined);
 		loop(pi as unknown as ExtensionAPI);
 		const command = pi._commands.find((item) => item.name === "loop");
+		const ctx = createMockCtx({ cwd: workspace, mode: "tui", shutdown: vi.fn() });
 
 		try {
-			await command?.handler(
-				"start plan.md",
-				createMockCtx({ cwd: workspace, mode: "tui" }),
-			);
-			vi.runAllTimers();
+			await command?.handler("start plan.md", ctx);
 		} finally {
 			if (priorRoot === undefined) delete process.env.PI_LOOP_DIR;
 			else process.env.PI_LOOP_DIR = priorRoot;
 		}
 
+		expect(executeCommitCommandMock).toHaveBeenCalledOnce();
 		expect(spawnMock).not.toHaveBeenCalled();
-		expect(pi.sendUserMessage).toHaveBeenNthCalledWith(1, "/commit", {
-			deliverAs: "followUp",
-		});
-		expect(pi.sendUserMessage).toHaveBeenNthCalledWith(
-			2,
-			'/loop start "plan.md" --baseline-complete',
-			{ deliverAs: "followUp" },
+		expect(ctx.shutdown).not.toHaveBeenCalled();
+		expect(pi.sendMessage).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				content: expect.stringContaining(
+					"The /commit baseline left outstanding changes.",
+				),
+			}),
+			{ triggerTurn: false },
 		);
 	});
 

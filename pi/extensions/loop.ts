@@ -11,6 +11,7 @@ import type {
 import { createAsyncPoller, type AsyncPoller } from "../lib/async-poller.js";
 import { wrapCommandRegistration } from "../lib/slash-command-echo.js";
 import {
+	executeCommitCommand,
 	filterCommitSafeFiles,
 	listChangedFiles,
 } from "./workflow-commands.js";
@@ -438,11 +439,7 @@ async function handleLoop(
 	}
 
 	if (ctx.mode !== "tui") throw new Error("/loop start requires TUI mode.");
-	const baselineComplete = request.values.includes("--baseline-complete");
-	const planValues = request.values.filter(
-		(value) => value !== "--baseline-complete",
-	);
-	const plans = resolvePlans(ctx.cwd, planValues);
+	const plans = resolvePlans(ctx.cwd, request.values);
 	const cwd = fs.realpathSync(ctx.cwd);
 	const active = listJobs().find(
 		(job) =>
@@ -456,19 +453,12 @@ async function handleLoop(
 		throw new Error(`Loop ${active.id} is already running for these plans.`);
 
 	if (committableChanges(cwd).length > 0) {
-		if (baselineComplete)
-			throw new Error(
-				"The /commit baseline left outstanding changes. Resolve them before restarting /loop.",
-			);
-		const quotedPlans = plans.map((plan) => `"${plan}"`).join(" ");
 		show(pi, "Preparing the loop baseline through /commit.");
-		setTimeout(() => {
-			pi.sendUserMessage("/commit", { deliverAs: "followUp" });
-			pi.sendUserMessage(`/loop start ${quotedPlans} --baseline-complete`, {
-				deliverAs: "followUp",
-			});
-		}, 0);
-		return;
+		await executeCommitCommand(pi, "", ctx);
+		if (committableChanges(cwd).length > 0)
+			throw new Error(
+				"The /commit baseline left outstanding changes. Resolve them before starting /loop.",
+			);
 	}
 
 	const initialHead = await preflight(pi, cwd);

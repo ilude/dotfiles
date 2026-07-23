@@ -1,9 +1,9 @@
 /**
  * Workflow Commands Extension
  *
- * Registers shared slash commands. Most commands load skill template files and
- * dispatch them via sendUserMessage(). `/commit` uses the same prompt-dispatch
- * path so it can stay flexible for complex worktrees.
+ * Registers shared slash commands. Prompt-backed workflows load skill template
+ * files and dispatch them through hidden follow-up messages. `/commit` runs its
+ * deterministic commit workflow directly.
  *
  *   /commit        -- smart git commit with secret scanning
  *   /new-terminal  -- open a plain shell in this cwd in a new terminal
@@ -51,6 +51,7 @@ import {
 	buildSkillPrompt,
 } from "../lib/workflow-commands/prompts";
 import { noteWorkflowSubmission } from "../lib/workflow-friction";
+import { sendHiddenWorkflowPrompt } from "../lib/workflow-prompt.js";
 import { startWorkflowEpisode } from "../lib/workflow-telemetry";
 import { formatConfiguredUsageReport } from "./codex-status";
 import { isOperatorReloadNeeded } from "./operator-status";
@@ -1842,24 +1843,6 @@ function echoSlashCommand(pi: ExtensionAPI, command: string, args: string) {
 	return text;
 }
 
-function sendHiddenWorkflowPrompt(
-	sender: Pick<ExtensionAPI, "sendMessage">,
-	content: string,
-	options: { deliverAs?: "steer" | "followUp" | "nextTurn" } = {},
-) {
-	sender.sendMessage(
-		{
-			customType: "workflow.hiddenPrompt",
-			content,
-			display: false,
-		},
-		{
-			triggerTurn: true,
-			deliverAs: options.deliverAs ?? "followUp",
-		},
-	);
-}
-
 function formatGitOutput(result?: GitRunResult) {
 	if (!result) return [];
 	const lines: string[] = [];
@@ -2070,7 +2053,7 @@ async function prepareCommitSelection(
 	return { parsedArgs, selection, diffStat, cachedStat, cachedDiff };
 }
 
-async function executeCommitCommand(
+export async function executeCommitCommand(
 	pi: ExtensionAPI,
 	args: string,
 	ctx: WorkflowContext,

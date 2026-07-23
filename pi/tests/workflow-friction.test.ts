@@ -1521,6 +1521,10 @@ describe("workflow friction extension", () => {
 			expect(improveMessageContent(pi, 2)).toContain(
 				"Captured command: /improve decide apply",
 			);
+			expect(pi.sendMessage.mock.calls[2]?.[0]).toMatchObject({
+				customType: "workflow-friction.improve-decision",
+				display: false,
+			});
 			expect(pi.sendMessage.mock.calls[2]?.[1]).toEqual({
 				triggerTurn: true,
 				deliverAs: "followUp",
