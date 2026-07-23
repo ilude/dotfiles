@@ -21,6 +21,15 @@ afterEach(() => {
 describe("damage-control eval registry", () => {
 	it("records, summarizes, and labels eval events", async () => {
 		const mod = await import("../lib/damage-control-eval.ts");
+		const prompt = mod.recordDamageControlEval({
+			decisionType: "prompt_shown",
+			toolName: "bash",
+			redactedAction: "rm -rf ./build",
+			rule: "rm recursive force",
+			category: "local-state",
+			severity: "critical",
+			hasUI: true,
+		});
 		const approved = mod.recordDamageControlEval({
 			decisionType: "ask_approved",
 			toolName: "bash",
@@ -28,6 +37,9 @@ describe("damage-control eval registry", () => {
 			rule: "rm recursive force",
 			ruleSource: "policy.yaml",
 			summary: "confirmed",
+			category: "local-state",
+			severity: "critical",
+			promptId: prompt.id,
 		});
 		mod.recordDamageControlEval({
 			decisionType: "auto_allowed",
@@ -46,7 +58,7 @@ describe("damage-control eval registry", () => {
 		});
 
 		const events = mod.listDamageControlEvalEvents();
-		expect(events).toHaveLength(3);
+		expect(events).toHaveLength(4);
 		expect(events[0]).toMatchObject({
 			redactedActionTruncated: false,
 			redactedActionLossy: false,
@@ -57,13 +69,22 @@ describe("damage-control eval registry", () => {
 		);
 		expect(labeled.labels).toEqual(["noise"]);
 		const stats = mod.summarizeDamageControlEval();
-		expect(stats.total).toBe(3);
+		expect(stats.total).toBe(4);
+		expect(stats.byDecisionType.prompt_shown).toBe(1);
 		expect(stats.byDecisionType.ask_approved).toBe(1);
 		expect(stats.byDecisionType.auto_allowed).toBe(1);
 		expect(stats.byDecisionType.hard_block).toBe(1);
 		expect(stats.byRule[0]).toMatchObject({
-			total: 2,
+			total: 3,
+			promptShown: 1,
 			autoAllowed: 1,
+		});
+		expect(
+			events.find((event) => event.decisionType === "ask_approved"),
+		).toMatchObject({
+			promptId: prompt.id,
+			category: "local-state",
+			severity: "critical",
 		});
 	});
 

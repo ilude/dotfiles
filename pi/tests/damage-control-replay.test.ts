@@ -45,6 +45,17 @@ describe("damage-control replay script", () => {
 			[
 				{
 					schemaVersion: 1,
+					id: "prompt-shown",
+					decisionType: "prompt_shown",
+					toolName: "bash",
+					hasUI: true,
+					redactedAction: "rm -rf build",
+					redactedActionTruncated: false,
+					redactedActionLossy: false,
+					cwd,
+				},
+				{
+					schemaVersion: 1,
 					id: "approved-in-cwd",
 					decisionType: "ask_approved",
 					toolName: "bash",

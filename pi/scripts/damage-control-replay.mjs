@@ -41,6 +41,7 @@ function readEvents(logPath) {
 function isInteractiveRmEvent(event) {
 	return (
 		event?.schemaVersion === 1 &&
+		DECISION_TYPES.includes(event.decisionType) &&
 		event.hasUI === true &&
 		event.toolName === "bash" &&
 		typeof event.redactedAction === "string" &&

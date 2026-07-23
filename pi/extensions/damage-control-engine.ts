@@ -24,6 +24,29 @@ export interface DamageControlAskApproval {
 	reason: string;
 }
 
+export type DamageControlAskConfirmation = (
+	approval: DamageControlAskApproval,
+	title: string,
+	message: string,
+) => Promise<boolean>;
+
+async function confirmDamageControlAsk(
+	ctx: {
+		hasUI?: boolean;
+		ui?: { confirm?: (title: string, message: string) => Promise<boolean> };
+		confirmAsk?: DamageControlAskConfirmation;
+	},
+	approval: DamageControlAskApproval,
+	title: string,
+	message: string,
+): Promise<boolean> {
+	if (!ctx.hasUI) return false;
+	if (ctx.confirmAsk) return ctx.confirmAsk(approval, title, message);
+	if (!ctx.ui?.confirm) return false;
+	emitTerminalBell();
+	return ctx.ui.confirm(title, message);
+}
+
 const SHELL_TOOLS = new Set(["bash", "pwsh"]);
 const READ_ONLY_SEARCH_COMMANDS = new Set([
 	"ack",
@@ -184,25 +207,28 @@ export async function checkZeroAccess(
 	ctx?: {
 		ui?: { confirm?: (title: string, message: string) => Promise<boolean> };
 		hasUI?: boolean;
+		confirmAsk?: DamageControlAskConfirmation;
 		onAskApproved?: (approval: DamageControlAskApproval) => void;
 	},
 ): Promise<{ block: true; reason: string } | undefined> {
 	for (const pattern of patterns) {
 		if (!matchesPattern(canonical, pattern)) continue;
 		if (isSshProtectedPattern(pattern) && METADATA_ONLY_TOOLS.has(toolName)) {
-			if (ctx?.hasUI && ctx.ui?.confirm) {
-				emitTerminalBell();
-				const ok = await ctx.ui.confirm(
-					"Confirm SSH path inspection",
-					`${toolName} on ${canonical} reveals filenames/metadata for an SSH-protected path (matched "${pattern}").`,
-				);
-				if (ok) {
-					ctx.onAskApproved?.({
-						rule: pattern,
-						reason: "SSH path inspection",
-					});
-					return undefined;
-				}
+			const approval = {
+				rule: pattern,
+				reason: "SSH path inspection",
+			};
+			const ok = ctx
+				? await confirmDamageControlAsk(
+						ctx,
+						approval,
+						"Confirm SSH path inspection",
+						`${toolName} on ${canonical} reveals filenames/metadata for an SSH-protected path (matched "${pattern}").`,
+					)
+				: false;
+			if (ok) {
+				ctx?.onAskApproved?.(approval);
+				return undefined;
 			}
 			return {
 				block: true,
@@ -744,6 +770,7 @@ export async function evaluateDangerousCommand(
 	ctx?: {
 		ui?: { confirm?: (title: string, message: string) => Promise<boolean> };
 		hasUI?: boolean;
+		confirmAsk?: DamageControlAskConfirmation;
 		toolName?: string;
 		onAskApproved?: (approval: DamageControlAskApproval) => void;
 		onAskStart?: (approval: DamageControlAskApproval) => void;
@@ -760,19 +787,21 @@ export async function evaluateDangerousCommand(
 	const semanticGit =
 		ctx?.toolName === "bash" ? analyzeGitCommand(analysisCommand) : undefined;
 	if (semanticGit) {
-		if (ctx?.hasUI && ctx.ui?.confirm) {
-			emitTerminalBell();
-			const ok = await ctx.ui.confirm(
-				"Confirm dangerous command",
-				semanticGit.reason,
-			);
-			if (ok) {
-				ctx.onAskApproved?.({
-					rule: "semantic_git",
-					reason: semanticGit.reason,
-				});
-				return undefined;
-			}
+		const approval = {
+			rule: "semantic_git",
+			reason: semanticGit.reason,
+		};
+		const ok = ctx
+			? await confirmDamageControlAsk(
+					ctx,
+					approval,
+					"Confirm dangerous command",
+					semanticGit.reason,
+				)
+			: false;
+		if (ok) {
+			ctx?.onAskApproved?.(approval);
+			return undefined;
 		}
 		return {
 			block: true,
@@ -817,17 +846,19 @@ export async function evaluateDangerousCommand(
 			return undefined;
 		}
 		if (rule.action === "ask") {
-			if (ctx?.hasUI && ctx.ui?.confirm) {
-				ctx.onAskStart?.({ rule: rule.pattern, reason: rule.reason });
-				emitTerminalBell();
-				const ok = await ctx.ui.confirm(
-					"Confirm dangerous command",
-					formatDangerousConfirmation(analysisCommand, rule, ctx),
-				);
-				if (ok) {
-					ctx.onAskApproved?.({ rule: rule.pattern, reason: rule.reason });
-					return undefined;
-				}
+			const approval = { rule: rule.pattern, reason: rule.reason };
+			if (ctx?.hasUI) ctx.onAskStart?.(approval);
+			const ok = ctx
+				? await confirmDamageControlAsk(
+						ctx,
+						approval,
+						"Confirm dangerous command",
+						formatDangerousConfirmation(analysisCommand, rule, ctx),
+					)
+				: false;
+			if (ok) {
+				ctx?.onAskApproved?.(approval);
+				return undefined;
 			}
 			return {
 				block: true,
@@ -843,19 +874,19 @@ export async function evaluateDangerousCommand(
 		const bunStdinDecision = analyzeBunStdinCommand(analysisCommand);
 		if (bunStdinDecision?.decision === "allow") return undefined;
 		if (bunStdinDecision?.decision === "ask") {
-			if (ctx.hasUI && ctx.ui?.confirm) {
-				emitTerminalBell();
-				const ok = await ctx.ui.confirm(
-					"Confirm dangerous command",
-					bunStdinDecision.reason,
-				);
-				if (ok) {
-					ctx.onAskApproved?.({
-						rule: "bun stdin script",
-						reason: bunStdinDecision.reason,
-					});
-					return undefined;
-				}
+			const approval = {
+				rule: "bun stdin script",
+				reason: bunStdinDecision.reason,
+			};
+			const ok = await confirmDamageControlAsk(
+				ctx,
+				approval,
+				"Confirm dangerous command",
+				bunStdinDecision.reason,
+			);
+			if (ok) {
+				ctx.onAskApproved?.(approval);
+				return undefined;
 			}
 			return {
 				block: true,
@@ -870,19 +901,19 @@ export async function evaluateDangerousCommand(
 			ctx.astAnalysis,
 		);
 		if (astDecision.decision === "ask") {
-			if (ctx.hasUI && ctx.ui?.confirm) {
-				emitTerminalBell();
-				const ok = await ctx.ui.confirm(
-					"Confirm dangerous command",
-					astDecision.reason,
-				);
-				if (ok) {
-					ctx.onAskApproved?.({
-						rule: "AST analysis",
-						reason: astDecision.reason,
-					});
-					return undefined;
-				}
+			const approval = {
+				rule: "AST analysis",
+				reason: astDecision.reason,
+			};
+			const ok = await confirmDamageControlAsk(
+				ctx,
+				approval,
+				"Confirm dangerous command",
+				astDecision.reason,
+			);
+			if (ok) {
+				ctx.onAskApproved?.(approval);
+				return undefined;
 			}
 			return {
 				block: true,

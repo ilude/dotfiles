@@ -5,10 +5,21 @@ import * as path from "node:path";
 import { ensureDirectory, getOperatorStateDir } from "./operator-state.ts";
 
 export type DamageControlEvalDecisionType =
+	| "prompt_shown"
 	| "ask_approved"
 	| "ask_denied"
 	| "auto_allowed"
 	| "hard_block";
+
+export type DamageControlPromptCategory =
+	| "local-state"
+	| "version-control"
+	| "sensitive-data"
+	| "infrastructure"
+	| "system-execution"
+	| "remote-state";
+
+export type DamageControlPromptSeverity = "critical" | "high" | "review";
 
 export type DamageControlEvalLabel =
 	| "useful"
@@ -30,6 +41,9 @@ export interface DamageControlEvalEvent {
 	cwd?: string;
 	toolCallId?: string;
 	hasUI?: boolean;
+	category?: DamageControlPromptCategory;
+	severity?: DamageControlPromptSeverity;
+	promptId?: string;
 	tier?: "scoped_delete";
 	redactedActionTruncated?: boolean;
 	redactedActionLossy?: boolean;
@@ -46,6 +60,9 @@ export interface RecordDamageControlEvalInput {
 	cwd?: string;
 	toolCallId?: string;
 	hasUI?: boolean;
+	category?: DamageControlPromptCategory;
+	severity?: DamageControlPromptSeverity;
+	promptId?: string;
 	tier?: "scoped_delete";
 	redactedActionTruncated?: boolean;
 	redactedActionLossy?: boolean;
@@ -58,6 +75,7 @@ export interface DamageControlEvalStats {
 	byRule: Array<{
 		rule: string;
 		total: number;
+		promptShown: number;
 		askApproved: number;
 		askDenied: number;
 		hardBlock: number;
@@ -100,6 +118,9 @@ export function recordDamageControlEval(
 		cwd: input.cwd,
 		toolCallId: input.toolCallId,
 		hasUI: input.hasUI,
+		category: input.category,
+		severity: input.severity,
+		promptId: input.promptId,
 		tier: input.tier,
 		redactedActionTruncated: input.redactedActionTruncated ?? false,
 		redactedActionLossy: input.redactedActionLossy ?? false,
@@ -177,6 +198,7 @@ export function summarizeDamageControlEval(
 		{
 			rule: string;
 			total: number;
+			promptShown: number;
 			askApproved: number;
 			askDenied: number;
 			hardBlock: number;
@@ -191,6 +213,7 @@ export function summarizeDamageControlEval(
 		const row = byRule.get(rule) ?? {
 			rule,
 			total: 0,
+			promptShown: 0,
 			askApproved: 0,
 			askDenied: 0,
 			hardBlock: 0,
@@ -198,6 +221,7 @@ export function summarizeDamageControlEval(
 			labels: {},
 		};
 		row.total += 1;
+		if (event.decisionType === "prompt_shown") row.promptShown += 1;
 		if (event.decisionType === "ask_approved") row.askApproved += 1;
 		if (event.decisionType === "ask_denied") row.askDenied += 1;
 		if (event.decisionType === "hard_block") row.hardBlock += 1;

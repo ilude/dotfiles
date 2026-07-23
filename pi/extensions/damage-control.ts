@@ -3,11 +3,13 @@ import type {
 	BashToolCallEvent,
 	EditToolCallEvent,
 	ExtensionAPI,
+	ExtensionContext,
 	ReadToolCallEvent,
 	WriteToolCallEvent,
 } from "@earendil-works/pi-coding-agent";
 import {
 	addDamageControlEvalLabel,
+	type DamageControlEvalDecisionType,
 	isDamageControlEvalLabel,
 	listDamageControlEvalEvents,
 	recordDamageControlEval,
@@ -24,7 +26,7 @@ import {
 	getDamageControlHealth,
 	publishDamageControlHealth,
 } from "../lib/damage-control-health.js";
-import { emitTerminalBell, uiNotify } from "../lib/extension-utils.js";
+import { uiNotify } from "../lib/extension-utils.js";
 import { recordEvent } from "../lib/metrics.js";
 import {
 	type DecisionProvenance,
@@ -56,6 +58,13 @@ import {
 	matchesPattern,
 } from "./damage-control-engine.js";
 import { loadRules } from "./damage-control-rules.js";
+import {
+	classifyDamageControlPrompt,
+	damageControlPromptPresentation,
+	type DamageControlPromptCategory,
+	type DamageControlPromptSeverity,
+	showDamageControlPrompt,
+} from "./damage-control/prompt.js";
 import {
 	DamageControlSessionState,
 	outputContainsSecret,
@@ -291,7 +300,7 @@ function replayDescriptor(input: {
 }
 
 function safeRecordDamageControlEval(input: {
-	decisionType: "ask_approved" | "ask_denied" | "auto_allowed" | "hard_block";
+	decisionType: DamageControlEvalDecisionType;
 	toolName: string;
 	rawAction: string;
 	cwd?: string;
@@ -300,6 +309,9 @@ function safeRecordDamageControlEval(input: {
 	ruleSource?: string;
 	toolCallId?: string;
 	hasUI?: boolean;
+	category?: DamageControlPromptCategory;
+	severity?: DamageControlPromptSeverity;
+	promptId?: string;
 	tier?: "scoped_delete";
 	id?: string;
 }): string | undefined {
@@ -319,6 +331,9 @@ function safeRecordDamageControlEval(input: {
 			cwd: input.cwd,
 			toolCallId: input.toolCallId,
 			hasUI: input.hasUI,
+			category: input.category,
+			severity: input.severity,
+			promptId: input.promptId,
 			tier: input.tier,
 			id: input.id,
 		}).id;
@@ -326,6 +341,12 @@ function safeRecordDamageControlEval(input: {
 		// Eval logging must never affect safety flow.
 		return undefined;
 	}
+}
+
+interface DamageControlPromptTrace {
+	promptId?: string;
+	category: DamageControlPromptCategory;
+	severity: DamageControlPromptSeverity;
 }
 
 interface ApprovedAskRecord {
@@ -337,6 +358,7 @@ interface ApprovedAskRecord {
 	toolCallId?: string;
 	metadata?: Record<string, unknown>;
 	evalEventId?: string;
+	prompt?: DamageControlPromptTrace;
 }
 
 function safeRecordApprovedAsk(input: ApprovedAskRecord): void {
@@ -345,6 +367,9 @@ function safeRecordApprovedAsk(input: ApprovedAskRecord): void {
 		cwd: input.cwd,
 		ruleSource: input.ruleSource,
 		toolCallId: input.toolCallId,
+		promptId: input.prompt?.promptId,
+		category: input.prompt?.category,
+		severity: input.prompt?.severity,
 		...input.metadata,
 	};
 	safeRecordDamageControlEval({
@@ -357,6 +382,9 @@ function safeRecordApprovedAsk(input: ApprovedAskRecord): void {
 		ruleSource: input.ruleSource,
 		toolCallId: input.toolCallId,
 		hasUI: true,
+		category: input.prompt?.category,
+		severity: input.prompt?.severity,
+		promptId: input.prompt?.promptId,
 		id: input.evalEventId,
 	});
 	safeRecordAllow(
@@ -367,6 +395,52 @@ function safeRecordApprovedAsk(input: ApprovedAskRecord): void {
 		input.approval.rule,
 		metadata,
 	);
+}
+
+async function requestDamageControlApproval(
+	ctx: ExtensionContext,
+	input: {
+		toolName: string;
+		rawAction: string;
+		approval: DamageControlAskApproval;
+		title: string;
+		message: string;
+		ruleSource?: string;
+		toolCallId?: string;
+		category?: DamageControlPromptCategory;
+	},
+): Promise<{ approved: boolean; prompt: DamageControlPromptTrace }> {
+	const category = classifyDamageControlPrompt({
+		action: input.rawAction,
+		rule: input.approval.rule,
+		category: input.category,
+	});
+	const severity = damageControlPromptPresentation(category).severity;
+	if (!ctx.hasUI) {
+		return { approved: false, prompt: { category, severity } };
+	}
+	const promptId = safeRecordDamageControlEval({
+		decisionType: "prompt_shown",
+		toolName: input.toolName,
+		rawAction: input.rawAction,
+		cwd: ctx.cwd,
+		reason: input.approval.reason,
+		rule: input.approval.rule,
+		ruleSource: input.ruleSource,
+		toolCallId: input.toolCallId,
+		hasUI: true,
+		category,
+		severity,
+	});
+	const approved = await showDamageControlPrompt(ctx, {
+		category,
+		title: input.title,
+		message: input.message,
+	});
+	return {
+		approved,
+		prompt: { promptId, category, severity },
+	};
 }
 
 function damageControlStatusMessage(state: DamageControlRuntimeState): string {
@@ -393,7 +467,7 @@ function formatDamageControlStats(): string {
 			.map(([label, count]) => `${label}=${count}`)
 			.join(", ");
 		lines.push(
-			`    ${row.total} ${row.rule} (approved=${row.askApproved}, denied=${row.askDenied}, auto-allowed=${row.autoAllowed}, blocked=${row.hardBlock}${labels ? `, ${labels}` : ""})`,
+			`    ${row.total} ${row.rule} (shown=${row.promptShown}, approved=${row.askApproved}, denied=${row.askDenied}, auto-allowed=${row.autoAllowed}, blocked=${row.hardBlock}${labels ? `, ${labels}` : ""})`,
 		);
 	}
 	return lines.join("\n");
@@ -711,12 +785,16 @@ function recordBlock(
 	toolCallId?: string,
 	metadata?: Record<string, unknown>,
 	evalEventId?: string,
+	prompt?: DamageControlPromptTrace,
 ): void {
 	const rule = extractRulePattern(decision.reason);
 	const auditMetadata = {
 		cwd,
 		ruleSource,
 		toolCallId,
+		promptId: prompt?.promptId,
+		category: prompt?.category,
+		severity: prompt?.severity,
 		...metadata,
 	};
 	safeRecordDamageControlEval({
@@ -731,6 +809,9 @@ function recordBlock(
 		ruleSource,
 		toolCallId,
 		hasUI,
+		category: prompt?.category,
+		severity: prompt?.severity,
+		promptId: prompt?.promptId,
 		id: evalEventId,
 	});
 	safeRecordDeny(
@@ -846,26 +927,34 @@ export default function (pi: ExtensionAPI) {
 				block: true as const,
 				reason: `${sequenceDecision.action === "ask" ? "Confirmation required" : "Blocked"} for dangerous sequence (matched "${sequenceDecision.name}"): ${sequenceDecision.reason}`,
 			};
-			if (sequenceDecision.action === "ask" && ctx.hasUI && ctx.ui?.confirm) {
-				emitTerminalBell();
-				const ok = await ctx.ui.confirm(
-					"Confirm dangerous sequence",
-					sequenceDecision.reason,
-				);
-				if (ok) {
+			let prompt: DamageControlPromptTrace | undefined;
+			if (sequenceDecision.action === "ask" && ctx.hasUI) {
+				const approval = {
+					rule: sequenceDecision.name,
+					reason: sequenceDecision.reason,
+				};
+				const result = await requestDamageControlApproval(ctx, {
+					toolName: "bash",
+					rawAction: command,
+					approval,
+					title: "Confirm dangerous sequence",
+					message: sequenceDecision.reason,
+					ruleSource: loaded.health.ruleSource,
+					toolCallId: event.toolCallId,
+				});
+				prompt = result.prompt;
+				if (result.approved) {
 					safeRecordApprovedAsk({
 						toolName: "bash",
 						rawAction: command,
 						cwd: ctx.cwd,
-						approval: {
-							rule: sequenceDecision.name,
-							reason: sequenceDecision.reason,
-						},
+						approval,
 						ruleSource: loaded.health.ruleSource,
 						toolCallId: event.toolCallId,
 						metadata: sequenceDecision.evidence
 							? { sequenceEvidence: sequenceDecision.evidence }
 							: undefined,
+						prompt,
 					});
 					return undefined;
 				}
@@ -881,6 +970,8 @@ export default function (pi: ExtensionAPI) {
 				sequenceDecision.evidence
 					? { sequenceEvidence: sequenceDecision.evidence }
 					: undefined,
+				undefined,
+				prompt,
 			);
 			return decision;
 		}
@@ -914,12 +1005,26 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		let askEventId: string | undefined;
+		let dangerousPrompt: DamageControlPromptTrace | undefined;
 		const dangerous = await evaluateDangerousCommand(
 			command,
 			rules.dangerous_commands,
 			{
 				ui: ctx.ui,
 				hasUI: ctx.hasUI,
+				confirmAsk: async (approval, title, message) => {
+					const result = await requestDamageControlApproval(ctx, {
+						toolName: "bash",
+						rawAction: command,
+						approval,
+						title,
+						message,
+						ruleSource: loaded.health.ruleSource,
+						toolCallId: event.toolCallId,
+					});
+					dangerousPrompt = result.prompt;
+					return result.approved;
+				},
 				toolName: "bash",
 				astAnalysis: rules.astAnalysis,
 				cwd: ctx.cwd,
@@ -955,6 +1060,7 @@ export default function (pi: ExtensionAPI) {
 						ruleSource: loaded.health.ruleSource,
 						toolCallId: event.toolCallId,
 						evalEventId: askEventId,
+						prompt: dangerousPrompt,
 					}),
 			},
 		);
@@ -975,6 +1081,7 @@ export default function (pi: ExtensionAPI) {
 				event.toolCallId,
 				undefined,
 				askEventId,
+				dangerousPrompt,
 			);
 			return dangerous;
 		}
@@ -1052,12 +1159,26 @@ export default function (pi: ExtensionAPI) {
 			return modeDecision;
 		}
 		let askEventId: string | undefined;
+		let dangerousPrompt: DamageControlPromptTrace | undefined;
 		const dangerous = await evaluateDangerousCommand(
 			command,
 			rules.dangerous_commands,
 			{
 				ui: ctx.ui,
 				hasUI: ctx.hasUI,
+				confirmAsk: async (approval, title, message) => {
+					const result = await requestDamageControlApproval(ctx, {
+						toolName: "pwsh",
+						rawAction: command,
+						approval,
+						title,
+						message,
+						ruleSource: loaded.health.ruleSource,
+						toolCallId: event.toolCallId,
+					});
+					dangerousPrompt = result.prompt;
+					return result.approved;
+				},
 				toolName: "pwsh",
 				cwd: ctx.cwd,
 				onAskStart: (approval) => {
@@ -1077,6 +1198,7 @@ export default function (pi: ExtensionAPI) {
 						ruleSource: loaded.health.ruleSource,
 						toolCallId: event.toolCallId,
 						evalEventId: askEventId,
+						prompt: dangerousPrompt,
 					}),
 			},
 		);
@@ -1091,6 +1213,7 @@ export default function (pi: ExtensionAPI) {
 				event.toolCallId,
 				undefined,
 				askEventId,
+				dangerousPrompt,
 			);
 			return dangerous;
 		}
@@ -1155,6 +1278,7 @@ export default function (pi: ExtensionAPI) {
 			return canonResult;
 		}
 
+		let zeroAccessPrompt: DamageControlPromptTrace | undefined;
 		const zeroAccess = rules.zero_access_exclusions.some((pattern) =>
 			matchesPattern(canonResult.canonical, pattern),
 		)
@@ -1166,6 +1290,20 @@ export default function (pi: ExtensionAPI) {
 					{
 						ui: ctx.ui,
 						hasUI: ctx.hasUI,
+						confirmAsk: async (approval, title, message) => {
+							const result = await requestDamageControlApproval(ctx, {
+								toolName: event.toolName,
+								rawAction: rawPath,
+								approval,
+								title,
+								message,
+								ruleSource: loaded.health.ruleSource,
+								toolCallId: event.toolCallId,
+								category: "sensitive-data",
+							});
+							zeroAccessPrompt = result.prompt;
+							return result.approved;
+						},
 						onAskApproved: (approval) =>
 							safeRecordApprovedAsk({
 								toolName: event.toolName,
@@ -1174,6 +1312,7 @@ export default function (pi: ExtensionAPI) {
 								approval,
 								ruleSource: loaded.health.ruleSource,
 								toolCallId: event.toolCallId,
+								prompt: zeroAccessPrompt,
 							}),
 					},
 				);
@@ -1192,6 +1331,9 @@ export default function (pi: ExtensionAPI) {
 				ctx.hasUI,
 				loaded.health.ruleSource,
 				event.toolCallId,
+				undefined,
+				undefined,
+				zeroAccessPrompt,
 			);
 			return zeroAccess;
 		}
@@ -1204,15 +1346,21 @@ export default function (pi: ExtensionAPI) {
 				ctx.cwd,
 			);
 			if (readConfirm) {
-				let ok = false;
-				if (ctx.hasUI) {
-					emitTerminalBell();
-					ok = await ctx.ui.confirm(
-						"Confirm protected read",
-						readConfirm.reason,
-					);
-				}
-				if (!ok) {
+				const approval = {
+					rule: extractRulePattern(readConfirm.reason) ?? "protected read",
+					reason: readConfirm.reason,
+				};
+				const result = await requestDamageControlApproval(ctx, {
+					toolName: event.toolName,
+					rawAction: rawPath,
+					approval,
+					title: "Confirm protected read",
+					message: readConfirm.reason,
+					ruleSource: loaded.health.ruleSource,
+					toolCallId: event.toolCallId,
+					category: "sensitive-data",
+				});
+				if (!result.approved) {
 					const decision = {
 						block: true as const,
 						reason: readConfirm.reason,
@@ -1225,6 +1373,9 @@ export default function (pi: ExtensionAPI) {
 						ctx.hasUI,
 						loaded.health.ruleSource,
 						event.toolCallId,
+						undefined,
+						undefined,
+						result.prompt,
 					);
 					return decision;
 				}
@@ -1232,12 +1383,10 @@ export default function (pi: ExtensionAPI) {
 					toolName: event.toolName,
 					rawAction: rawPath,
 					cwd: ctx.cwd,
-					approval: {
-						rule: extractRulePattern(readConfirm.reason) ?? "protected read",
-						reason: readConfirm.reason,
-					},
+					approval,
 					ruleSource: loaded.health.ruleSource,
 					toolCallId: event.toolCallId,
+					prompt: result.prompt,
 				});
 			}
 		}
@@ -1295,15 +1444,21 @@ export default function (pi: ExtensionAPI) {
 				ctx.cwd,
 			);
 			if (writeConfirm) {
-				let ok = false;
-				if (ctx.hasUI) {
-					emitTerminalBell();
-					ok = await ctx.ui.confirm(
-						"Confirm protected write",
-						writeConfirm.reason,
-					);
-				}
-				if (!ok) {
+				const approval = {
+					rule: extractRulePattern(writeConfirm.reason) ?? "protected write",
+					reason: writeConfirm.reason,
+				};
+				const result = await requestDamageControlApproval(ctx, {
+					toolName: event.toolName,
+					rawAction: rawPath,
+					approval,
+					title: "Confirm protected write",
+					message: writeConfirm.reason,
+					ruleSource: loaded.health.ruleSource,
+					toolCallId: event.toolCallId,
+					category: "local-state",
+				});
+				if (!result.approved) {
 					const decision = {
 						block: true as const,
 						reason: writeConfirm.reason,
@@ -1316,6 +1471,9 @@ export default function (pi: ExtensionAPI) {
 						ctx.hasUI,
 						loaded.health.ruleSource,
 						event.toolCallId,
+						undefined,
+						undefined,
+						result.prompt,
 					);
 					return decision;
 				}
@@ -1323,12 +1481,10 @@ export default function (pi: ExtensionAPI) {
 					toolName: event.toolName,
 					rawAction: rawPath,
 					cwd: ctx.cwd,
-					approval: {
-						rule: extractRulePattern(writeConfirm.reason) ?? "protected write",
-						reason: writeConfirm.reason,
-					},
+					approval,
 					ruleSource: loaded.health.ruleSource,
 					toolCallId: event.toolCallId,
+					prompt: result.prompt,
 				});
 			}
 		}

@@ -1018,7 +1018,7 @@ no_delete_paths: []
 			expect.stringContaining("damage-control: active"),
 		);
 		expect(confirm).toHaveBeenCalledWith(
-			"Confirm dangerous command",
+			"[HIGH] Infrastructure - Confirm dangerous command",
 			expect.stringContaining("Reason: docker compose down"),
 		);
 		expect(result).toBeUndefined();
@@ -1708,16 +1708,39 @@ describe("damage-control eval hasUI tracking", () => {
 			);
 
 			const events = listDamageControlEvalEvents();
+			const promptShown = events.find(
+				(event) =>
+					event.toolCallId === "hasui-approved" &&
+					event.decisionType === "prompt_shown",
+			);
 			const approved = events.find(
-				(event) => event.toolCallId === "hasui-approved",
+				(event) =>
+					event.toolCallId === "hasui-approved" &&
+					event.decisionType === "ask_approved",
 			);
 			const denied = events.find(
 				(event) => event.toolCallId === "hasui-autodenied",
 			);
-			expect(approved?.decisionType).toBe("ask_approved");
-			expect(approved?.hasUI).toBe(true);
+			expect(promptShown).toMatchObject({
+				hasUI: true,
+				category: "infrastructure",
+				severity: "high",
+			});
+			expect(approved).toMatchObject({
+				hasUI: true,
+				category: "infrastructure",
+				severity: "high",
+				promptId: promptShown?.id,
+			});
 			expect(denied?.decisionType).toBe("ask_denied");
 			expect(denied?.hasUI).toBe(false);
+			expect(
+				events.some(
+					(event) =>
+						event.toolCallId === "hasui-autodenied" &&
+						event.decisionType === "prompt_shown",
+				),
+			).toBe(false);
 		} finally {
 			if (previousOperatorDir === undefined) delete process.env.PI_OPERATOR_DIR;
 			else process.env.PI_OPERATOR_DIR = previousOperatorDir;
@@ -1942,12 +1965,28 @@ describe("damage-control registered-handler audit matrix", () => {
 					toolCallId,
 				).toBe(true);
 			}
+			const prompts = events.filter(
+				(event) => event.decisionType === "prompt_shown",
+			);
+			expect(prompts).toHaveLength(6);
 			expect(
 				events.filter((event) => event.decisionType === "ask_approved"),
 			).toHaveLength(6);
 			expect(
 				events.filter((event) => event.decisionType === "ask_denied"),
 			).toHaveLength(5);
+			expect(
+				events
+					.filter((event) => event.decisionType === "ask_approved")
+					.every((event) =>
+						prompts.some((prompt) => prompt.id === event.promptId),
+					),
+			).toBe(true);
+			expect(
+				prompts.some((event) =>
+					event.toolCallId?.startsWith("denied-"),
+				),
+			).toBe(false);
 			expect(
 				events.some(
 					(event) =>
