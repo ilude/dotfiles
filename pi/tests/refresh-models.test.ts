@@ -170,7 +170,7 @@ describe("/refresh-models command", () => {
 		);
 	});
 
-	it("leaves Pi built-ins alone when the cache has no new models", () => {
+	it("restores current Pi metadata when the cache has no new models", () => {
 		const cacheDir = path.join(
 			tempHome,
 			".pi",
@@ -196,14 +196,22 @@ describe("/refresh-models command", () => {
 		);
 
 		const pi = createMockPi();
+		const registerProvider = vi.fn();
+		Object.assign(pi, { registerProvider });
 		registerRefreshModelsCommand(
 			pi as Parameters<typeof registerRefreshModelsCommand>[0],
 		);
-		expect(pi._commands).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({ name: "refresh-models" }),
-			]),
+		const providerCall = registerProvider.mock.calls.find(
+			([provider]: [string]) => provider === "openai-codex",
 		);
+		if (!providerCall) throw new Error("missing cached provider registration");
+		const definition = providerCall[1] as {
+			models: Array<{ id: string; contextWindow: number }>;
+		};
+		expect(
+			definition.models.find((model) => model.id === "gpt-5.6-sol")
+				?.contextWindow,
+		).toBe(372000);
 	});
 
 	it("composes legacy cached discoveries over current Pi model metadata", () => {

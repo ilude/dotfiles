@@ -999,7 +999,6 @@ function registerCachedProvider(
 		builtInModels,
 		cache.models,
 	);
-	if (models.length === builtInModels.length) return;
 	pi.registerProvider(provider, {
 		baseUrl: builtInModels[0].baseUrl,
 		api: builtInModels[0].api as ProviderModelDef["api"],
