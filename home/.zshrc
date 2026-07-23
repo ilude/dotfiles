@@ -29,6 +29,12 @@ fi
 
 # Source environment secrets if present (API keys, tokens, etc.)
 # Loaded here (not .zshenv) so secrets are only available in interactive shells
+# Keep broker selection owned by Onclave instead of the dotfiles secret files.
+_onclave_amqp_url_was_set=${+ONCLAVE_AMQP_URL}
+if (( _onclave_amqp_url_was_set )); then
+    _onclave_amqp_url=$ONCLAVE_AMQP_URL
+fi
+
 if [[ -f "$_dotfiles/.env" ]]; then
     source "$_dotfiles/.env"
 elif [[ -f "$_dotfiles/.secrets" ]]; then
@@ -37,6 +43,13 @@ fi
 if [[ -f "$_dotfiles/private/secrets.env" ]]; then
     source "$_dotfiles/private/secrets.env"
 fi
+
+if (( _onclave_amqp_url_was_set )); then
+    export ONCLAVE_AMQP_URL=$_onclave_amqp_url
+else
+    unset ONCLAVE_AMQP_URL
+fi
+unset _onclave_amqp_url _onclave_amqp_url_was_set
 
 # Source rc.d modules (interactive shell config)
 for f in "$_dotfiles/zsh/rc.d"/*.zsh(N); do

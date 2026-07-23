@@ -101,8 +101,20 @@ function Import-Secrets {
 }
 
 # Auto-import secrets on profile load
+# Keep broker selection owned by Onclave instead of the dotfiles secret files.
+$onclaveAmqpUrlWasSet = Test-Path Env:ONCLAVE_AMQP_URL
+$onclaveAmqpUrl = $env:ONCLAVE_AMQP_URL
+
 Import-Secrets
 Import-Secrets -Path "$env:USERPROFILE\.dotfiles\private\secrets.env"
+
+if ($onclaveAmqpUrlWasSet) {
+  $env:ONCLAVE_AMQP_URL = $onclaveAmqpUrl
+}
+else {
+  Remove-Item Env:ONCLAVE_AMQP_URL -ErrorAction SilentlyContinue
+}
+Remove-Variable onclaveAmqpUrl, onclaveAmqpUrlWasSet
 
 #endregion
 
