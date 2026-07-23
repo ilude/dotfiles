@@ -522,6 +522,18 @@ export function analyzeGitCommand(
 			};
 		}
 	}
+	if (subcommand === "restore") {
+		const stagedOnly =
+			(args.includes("--staged") || hasCombinedShortFlag(args, "S")) &&
+			!args.includes("--worktree") &&
+			!hasCombinedShortFlag(args, "W");
+		if (!stagedOnly) {
+			return {
+				ask: true,
+				reason: "git restore of the worktree discards uncommitted changes",
+			};
+		}
+	}
 	if (subcommand === "push") {
 		if (argsText.includes("--force-with-lease")) return undefined;
 		if (

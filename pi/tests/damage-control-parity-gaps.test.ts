@@ -20,6 +20,35 @@ describe("remaining damage-control parity gaps", () => {
 		);
 		expect(analyzeGitCommand("git push --force-with-lease")).toBeUndefined();
 		expect(analyzeGitCommand("git checkout -b feature/test")).toBeUndefined();
+		expect(analyzeGitCommand("git restore package.json")?.reason).toContain(
+			"discards uncommitted changes",
+		);
+		expect(
+			analyzeGitCommand("git restore --worktree package.json")?.reason,
+		).toContain("discards uncommitted changes");
+		expect(analyzeGitCommand("git restore -SW package.json")?.reason).toContain(
+			"discards uncommitted changes",
+		);
+		expect(
+			analyzeGitCommand("git restore --staged package.json"),
+		).toBeUndefined();
+		expect(analyzeGitCommand("git restore -S package.json")).toBeUndefined();
+
+		const restoreConfirm = vi.fn(async () => false);
+		const restoreResult = await evaluateDangerousCommand(
+			"git restore package.json",
+			[],
+			{
+				toolName: "bash",
+				hasUI: true,
+				ui: { confirm: restoreConfirm },
+			},
+		);
+		expect(restoreConfirm).toHaveBeenCalledWith(
+			"Confirm dangerous command",
+			"git restore of the worktree discards uncommitted changes",
+		);
+		expect(restoreResult?.reason).toContain("semantic_git");
 
 		const confirm = vi.fn(async () => false);
 		const result = await evaluateDangerousCommand("git push --force", [], {
