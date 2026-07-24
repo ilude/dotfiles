@@ -57,6 +57,8 @@ function setup(initialUsage: ContextUsage = usage(100_000)) {
 		},
 		sessionStart: hook("session_start"),
 		sessionShutdown: hook("session_shutdown"),
+		sessionBeforeCompact: hook("session_before_compact"),
+		sessionCompact: hook("session_compact"),
 		turnEnd: hook("turn_end"),
 	};
 }
@@ -118,22 +120,77 @@ describe("active-turn compaction", () => {
 		expect(runtime.compact).not.toHaveBeenCalled();
 	});
 
-	it("attempts only once while usage remains above the threshold", async () => {
+	it("opens a failure circuit while preserving manual and overflow compaction", async () => {
 		const runtime = setup(usage(360_000));
 		await runtime.sessionStart({ type: "session_start", reason: "startup" }, runtime.ctx);
 		await runtime.turnEnd(activeTurn(), runtime.ctx);
 		runtime.compactOptions?.onError?.(new Error("summarizer unavailable"));
-		await runtime.turnEnd(activeTurn(), runtime.ctx);
 
-		expect(runtime.compact).toHaveBeenCalledTimes(1);
-		expect(runtime.pi.sendMessage).toHaveBeenCalledTimes(1);
+		expect(
+			await runtime.sessionBeforeCompact(
+				{ type: "session_before_compact", reason: "threshold" },
+				runtime.ctx,
+			),
+		).toEqual({ cancel: true });
+		for (const reason of ["manual", "overflow"] as const) {
+			expect(
+				await runtime.sessionBeforeCompact(
+					{ type: "session_before_compact", reason },
+					runtime.ctx,
+				),
+			).toBeUndefined();
+		}
 
 		runtime.setUsage(usage(100_000));
 		await runtime.turnEnd(activeTurn(), runtime.ctx);
 		runtime.setUsage(usage(360_000));
 		await runtime.turnEnd(activeTurn(), runtime.ctx);
+		expect(runtime.compact).toHaveBeenCalledTimes(1);
+		expect(runtime.pi.sendMessage).toHaveBeenCalledTimes(1);
+
+		await runtime.sessionCompact(
+			{ type: "session_compact", reason: "manual" },
+			runtime.ctx,
+		);
+		expect(
+			await runtime.sessionBeforeCompact(
+				{ type: "session_before_compact", reason: "threshold" },
+				runtime.ctx,
+			),
+		).toBeUndefined();
+		await runtime.turnEnd(activeTurn(), runtime.ctx);
 		expect(runtime.compact).toHaveBeenCalledTimes(2);
 	});
+
+	it.each(["reload", "new"] as const)(
+		"resets the failure circuit on session start reason %s",
+		async (reason) => {
+			const runtime = setup(usage(360_000));
+			await runtime.sessionStart(
+				{ type: "session_start", reason: "startup" },
+				runtime.ctx,
+			);
+			await runtime.turnEnd(activeTurn(), runtime.ctx);
+			runtime.compactOptions?.onError?.(new Error("summarizer unavailable"));
+			expect(
+				await runtime.sessionBeforeCompact(
+					{ type: "session_before_compact", reason: "threshold" },
+					runtime.ctx,
+				),
+			).toEqual({ cancel: true });
+
+			await runtime.sessionStart(
+				{ type: "session_start", reason },
+				runtime.ctx,
+			);
+			expect(
+				await runtime.sessionBeforeCompact(
+					{ type: "session_before_compact", reason: "threshold" },
+					runtime.ctx,
+				),
+			).toBeUndefined();
+		},
+	);
 
 	it("does not resume when compaction is cancelled or after session shutdown", async () => {
 		const cancelled = setup(usage(360_000));

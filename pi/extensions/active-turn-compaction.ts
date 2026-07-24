@@ -71,17 +71,30 @@ export function registerActiveTurnCompaction(
 	let generation = 0;
 	let compactionPending = false;
 	let attemptedAboveThreshold = false;
+	let failureCircuitOpen = false;
 
 	pi.on("session_start", (_event, ctx) => {
 		generation += 1;
 		policy = loadPolicy(ctx.cwd, ctx.isProjectTrusted());
 		compactionPending = false;
 		attemptedAboveThreshold = false;
+		failureCircuitOpen = false;
 	});
 
 	pi.on("session_shutdown", () => {
 		generation += 1;
 		compactionPending = false;
+	});
+
+	pi.on("session_before_compact", (event) => {
+		if (failureCircuitOpen && event.reason === "threshold")
+			return { cancel: true };
+		return undefined;
+	});
+
+	pi.on("session_compact", () => {
+		failureCircuitOpen = false;
+		attemptedAboveThreshold = false;
 	});
 
 	pi.on("turn_end", (event, ctx) => {
@@ -93,7 +106,8 @@ export function registerActiveTurnCompaction(
 		if (
 			event.toolResults.length === 0 ||
 			compactionPending ||
-			attemptedAboveThreshold
+			attemptedAboveThreshold ||
+			failureCircuitOpen
 		) {
 			return;
 		}
@@ -136,6 +150,7 @@ export function registerActiveTurnCompaction(
 					prefix: "auto-compact",
 				});
 				if (error.name !== "AbortError" && error.message !== "Compaction cancelled") {
+					failureCircuitOpen = true;
 					resumeRequest();
 				}
 			},
