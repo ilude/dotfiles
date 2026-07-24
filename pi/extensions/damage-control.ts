@@ -105,19 +105,46 @@ export {
 const DENY_PROVENANCE: DecisionProvenance = "rule";
 const DAMAGE_CONTROL_MODES: DamageControlMode[] = ["default", "noshell"];
 const MAX_TRACKED_TOOL_OUTCOMES = 128;
-const REPEATED_TOOL_RESULT_LIMIT = 5;
+const REPEATED_FAILED_RESULT_LIMIT = 4;
+const REPEATED_SUCCESS_RESULT_LIMIT = 5;
 const REPEATED_TOOL_LOOP_RULE = "repeated_tool_loop";
-const REPEATED_TOOL_LOOP_REASON =
-	`Blocked repeated tool loop (matched "${REPEATED_TOOL_LOOP_RULE}"): the same tool call produced the same result ${REPEATED_TOOL_RESULT_LIMIT} times; the current agent run was aborted.`;
+const VOLATILE_ERROR_KEYS = new Set([
+	"duration",
+	"durationms",
+	"elapsed",
+	"elapsedms",
+	"endedat",
+	"id",
+	"requestid",
+	"runid",
+	"sessionid",
+	"startedat",
+	"timestamp",
+	"toolcallid",
+	"traceid",
+]);
+const STABLE_ERROR_CODE_KEYS = new Set([
+	"code",
+	"errorcode",
+	"exitcode",
+	"status",
+	"statuscode",
+]);
 
 interface RepeatedToolOutcome {
 	resultFingerprint: string;
 	count: number;
+	isError: boolean;
 }
 
 function normalizeFingerprintValue(value: unknown): unknown {
-	if (typeof value === "string")
-		return value.replaceAll("\r\n", "\n").trimEnd();
+	if (typeof value === "string") {
+		return value
+			.replaceAll("\r\n", "\n")
+			.replaceAll("\r", "\n")
+			.replace(/[ \t]+$/gm, "")
+			.trimEnd();
+	}
 	if (Array.isArray(value)) return value.map(normalizeFingerprintValue);
 	if (!value || typeof value !== "object") return value;
 	return Object.fromEntries(
@@ -140,6 +167,81 @@ function fingerprint(value: unknown): string | undefined {
 	}
 }
 
+function normalizedErrorKey(key: string): string {
+	return key.replace(/[^a-z0-9]/gi, "").toLowerCase();
+}
+
+function normalizeErrorText(value: string): string {
+	return (normalizeFingerprintValue(value) as string)
+		.replace(
+			/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\b/gi,
+			"<timestamp>",
+		)
+		.replace(
+			/\b(request|tool call|call|correlation|trace|run|session)[ _-]?id\s*[:=]\s*["']?[a-z0-9._:-]+["']?/gi,
+			"$1 id=<id>",
+		)
+		.replace(
+			/\b(duration|elapsed|took|after)\s*[:=]?\s*\d+(?:\.\d+)?\s*(?:milliseconds?|msecs?|ms|seconds?|secs?|s|minutes?|mins?|m)\b/gi,
+			"$1 <duration>",
+		);
+}
+
+function normalizeErrorContent(value: unknown): unknown {
+	if (typeof value === "string") return normalizeErrorText(value);
+	if (Array.isArray(value)) return value.map(normalizeErrorContent);
+	if (!value || typeof value !== "object") return value;
+	return Object.fromEntries(
+		Object.keys(value as Record<string, unknown>)
+			.sort()
+			.filter((key) => !VOLATILE_ERROR_KEYS.has(normalizedErrorKey(key)))
+			.map((key) => [
+				key,
+				normalizeErrorContent((value as Record<string, unknown>)[key]),
+			]),
+	);
+}
+
+function collectStableErrorCodes(
+	value: unknown,
+	path: string[] = [],
+): Array<[string, unknown]> {
+	if (Array.isArray(value)) {
+		return value.flatMap((entry, index) =>
+			collectStableErrorCodes(entry, [...path, String(index)]),
+		);
+	}
+	if (!value || typeof value !== "object") return [];
+	return Object.keys(value as Record<string, unknown>)
+		.sort()
+		.flatMap((key) => {
+			const nextPath = [...path, key];
+			const entry = (value as Record<string, unknown>)[key];
+			if (STABLE_ERROR_CODE_KEYS.has(normalizedErrorKey(key))) {
+				return [[nextPath.join("."), normalizeFingerprintValue(entry)]];
+			}
+			return collectStableErrorCodes(entry, nextPath);
+		});
+}
+
+function resultFingerprint(result: unknown):
+	| { value: string; isError: boolean }
+	| undefined {
+	const record =
+		result && typeof result === "object"
+			? (result as Record<string, unknown>)
+			: undefined;
+	const isError = record?.isError === true;
+	const value = isError
+		? fingerprint({
+				content: normalizeErrorContent(record?.content),
+				codes: collectStableErrorCodes(record?.details),
+				isError: true,
+			})
+		: fingerprint(result);
+	return value ? { value, isError } : undefined;
+}
+
 function fingerprintHash(value: string): string {
 	return createHash("sha256").update(value).digest("hex");
 }
@@ -156,6 +258,8 @@ export class RepeatedToolLoopGuard {
 				callFingerprint: string;
 				resultFingerprint: string;
 				attemptCount: number;
+				resultCount: number;
+				isError: boolean;
 		  }
 		| undefined {
 		const callFingerprint = fingerprint([
@@ -164,12 +268,16 @@ export class RepeatedToolLoopGuard {
 		]);
 		if (!callFingerprint) return undefined;
 		const previous = this.outcomes.get(callFingerprint);
-		if (!previous || previous.count < REPEATED_TOOL_RESULT_LIMIT)
-			return undefined;
+		const resultLimit = previous?.isError
+			? REPEATED_FAILED_RESULT_LIMIT
+			: REPEATED_SUCCESS_RESULT_LIMIT;
+		if (!previous || previous.count < resultLimit) return undefined;
 		return {
 			callFingerprint,
 			resultFingerprint: previous.resultFingerprint,
 			attemptCount: previous.count + 1,
+			resultCount: previous.count,
+			isError: previous.isError,
 		};
 	}
 
@@ -178,16 +286,17 @@ export class RepeatedToolLoopGuard {
 			toolName.trim().toLowerCase(),
 			input,
 		]);
-		const resultFingerprint = fingerprint(result);
-		if (!callFingerprint || !resultFingerprint) return;
+		const normalizedResult = resultFingerprint(result);
+		if (!callFingerprint || !normalizedResult) return;
 		const previous = this.outcomes.get(callFingerprint);
 		this.outcomes.delete(callFingerprint);
 		this.outcomes.set(callFingerprint, {
-			resultFingerprint,
+			resultFingerprint: normalizedResult.value,
 			count:
-				previous?.resultFingerprint === resultFingerprint
+				previous?.resultFingerprint === normalizedResult.value
 					? previous.count + 1
 					: 1,
+			isError: normalizedResult.isError,
 		});
 		if (this.outcomes.size <= MAX_TRACKED_TOOL_OUTCOMES) return;
 		const oldest = this.outcomes.keys().next().value;
@@ -856,27 +965,32 @@ export default function (pi: ExtensionAPI) {
 	pi.on("tool_call", (event, ctx) => {
 		const repeated = repeatedToolLoop.check(event.toolName, event.input);
 		if (!repeated) return undefined;
-		const rawAction =
-			fingerprint(event.input) ?? `[unserializable ${event.toolName} input]`;
-		const decision = { block: true as const, reason: REPEATED_TOOL_LOOP_REASON };
+		const callHash = fingerprintHash(repeated.callFingerprint);
+		const resultKind = repeated.isError ? "failure" : "result";
+		const decision = {
+			block: true as const,
+			reason: `Blocked repeated tool loop (matched "${REPEATED_TOOL_LOOP_RULE}"): the same tool call produced the same ${resultKind} ${repeated.resultCount} times; the current agent run was aborted.`,
+		};
 		recordBlock(
 			event.toolName,
-			rawAction,
+			`repeated tool call ${callHash}`,
 			ctx.cwd,
 			decision,
 			ctx.hasUI,
 			loaded.health.ruleSource,
-			event.toolCallId,
+			undefined,
 			{
 				attemptCount: repeated.attemptCount,
-				callFingerprint: fingerprintHash(repeated.callFingerprint),
+				resultCount: repeated.resultCount,
+				resultKind,
+				callFingerprint: callHash,
 				resultFingerprint: fingerprintHash(repeated.resultFingerprint),
 			},
 		);
 		uiNotify(
 			ctx,
 			"warning",
-			`Stopped the current run after the same tool call produced the same result ${REPEATED_TOOL_RESULT_LIMIT} times.`,
+			`Stopped the current run after the same tool call produced the same ${resultKind} ${repeated.resultCount} times.`,
 			{ prefix: "damage-control" },
 		);
 		ctx.abort();
