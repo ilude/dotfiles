@@ -311,6 +311,11 @@ type CommandRuleMatch = {
 	matchedText: string;
 };
 
+function rmIndexForRuleMatch(match: CommandRuleMatch): number | undefined {
+	const offset = match.matchedText.search(/\brm\b/);
+	return offset === -1 ? undefined : match.index + offset;
+}
+
 function commandRuleMatch(
 	command: string,
 	rule: DangerousCommand,
@@ -823,25 +828,33 @@ export async function evaluateDangerousCommand(
 
 	const skipPatternRules =
 		ctx?.toolName === "bash" && hasValidDryRun(analysisCommand);
+	const safeRmMatchIndices = new Set<number>();
 	for (const rule of rules) {
 		if (skipPatternRules && !rule.pattern.includes("LD_")) continue;
 		if (
 			!commandAppliesToCurrentPlatform(rule) ||
-			!commandAppliesToTool(rule, ctx?.toolName) ||
-			!commandMatchesRule(analysisCommand, rule)
+			!commandAppliesToTool(rule, ctx?.toolName)
 		)
 			continue;
-		if (shouldSkipMatchedRule(analysisCommand, rule, ctx)) continue;
+		const ruleMatch = commandRuleMatch(analysisCommand, rule);
+		if (!ruleMatch) continue;
+		const rmMatchIndex = rmIndexForRuleMatch(ruleMatch);
+		if (shouldSkipMatchedRule(analysisCommand, rule, ctx)) {
+			if (rmMatchIndex !== undefined) safeRmMatchIndices.add(rmMatchIndex);
+			continue;
+		}
 		if (
 			isRmForceRule(rule) &&
 			ctx?.toolName === "bash" &&
 			ctx.astAnalysis &&
+			rmMatchIndex !== undefined &&
 			(await isProvenSafeTempCleanupAt(
 				analysisCommand,
-				commandRuleMatch(analysisCommand, rule)?.index ?? -1,
+				rmMatchIndex,
 				ctx.astAnalysis,
 			))
 		) {
+			safeRmMatchIndices.add(rmMatchIndex);
 			continue;
 		}
 		if (
@@ -911,6 +924,7 @@ export async function evaluateDangerousCommand(
 			analysisCommand,
 			rules.filter((rule) => commandAppliesToTool(rule, "bash")),
 			ctx.astAnalysis,
+			[...safeRmMatchIndices],
 		);
 		if (astDecision.decision === "ask") {
 			const approval = {
@@ -1021,6 +1035,24 @@ function isTempLikeBasename(target: string): boolean {
 		isStaticPath(normalized) &&
 		!normalized.includes("/") &&
 		/(?:^|[-_.])tmp(?:[-_.]|$)/i.test(normalized)
+	);
+}
+
+function isRepoScratchPath(target: string, cwd: string): boolean {
+	if (!isStaticPath(target)) return false;
+	const targetResult = canonicalizeOrBlock(target, cwd);
+	const cwdResult = canonicalizeOrBlock(cwd, cwd);
+	if ("block" in targetResult || "block" in cwdResult) return false;
+	const relative = path.relative(cwdResult.canonical, targetResult.canonical);
+	return relative === ".tmp" || relative.startsWith(`.tmp${path.sep}`);
+}
+
+function isTempCleanupPath(target: string, cwd: string): boolean {
+	return (
+		isTempLikeBasename(path.basename(target)) ||
+		isRawTempPath(target) ||
+		isCanonicalTempPath(target, cwd) ||
+		isRepoScratchPath(target, cwd)
 	);
 }
 
@@ -1135,13 +1167,11 @@ function isGeneratedTempLikeFileCleanup(
 	const targets = extractRmTargets(rmCommand);
 	if (targets.length !== 1) return false;
 	const target = stripShellQuotes(targets[0]);
-	if (!isStaticPath(target) || !isTempLikeBasename(path.basename(target))) {
-		return false;
-	}
+	if (!isStaticPath(target) || !isTempCleanupPath(target, cwd)) return false;
 	const result = canonicalizeOrBlock(target, cwd);
 	if ("block" in result) return false;
 	return redirectionTargetsBefore(command, matchIndex).some((created) => {
-		if (!isStaticPath(created) || !isTempLikeBasename(path.basename(created))) {
+		if (!isStaticPath(created) || !isTempCleanupPath(created, cwd)) {
 			return false;
 		}
 		const createdResult = canonicalizeOrBlock(created, cwd);

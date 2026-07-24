@@ -43,6 +43,12 @@ type TempCleanupAnalysis = {
 	safeRanges: Array<{ start: number; end: number }>;
 };
 
+type ExtractedCommand = {
+	text: string;
+	startIndex?: number;
+	endIndex?: number;
+};
+
 let initPromise: Promise<TreeSitter.Parser> | undefined;
 
 function stripQuotes(value: string): string {
@@ -366,19 +372,31 @@ function commandParts(node: TreeSitter.Node): string[] {
 function collectCommandNode(
 	parser: TreeSitter.Parser,
 	node: TreeSitter.Node,
-	commands: string[],
+	commands: ExtractedCommand[],
 	depth: number,
+	preserveSourceRange: boolean,
 ): void {
 	const parts = commandParts(node);
 	if (parts.length === 0) return;
 	const commandName = stripQuotes(parts[0]);
-	commands.push([commandName, ...parts.slice(1)].join(" "));
+	commands.push({
+		text: [commandName, ...parts.slice(1)].join(" "),
+		startIndex: preserveSourceRange ? node.startIndex : undefined,
+		endIndex: preserveSourceRange ? node.endIndex : undefined,
+	});
 	if (!SHELL_C_NAMES.has(commandName)) return;
 	for (let i = 1; i < parts.length - 1; i += 1) {
 		if (parts[i] !== "-c") continue;
 		const inner = stripQuotes(parts[i + 1]);
-		if (inner)
-			collectCommands(parse(parser, inner), parser, commands, depth + 1);
+		if (inner) {
+			collectCommands(
+				parse(parser, inner),
+				parser,
+				commands,
+				depth + 1,
+				false,
+			);
+		}
 		break;
 	}
 }
@@ -386,40 +404,66 @@ function collectCommandNode(
 function collectCommands(
 	root: TreeSitter.Node,
 	parser: TreeSitter.Parser,
-	commands: string[],
+	commands: ExtractedCommand[],
 	depth = 0,
+	preserveSourceRange = true,
 ): void {
 	if (depth > MAX_RECURSION_DEPTH) return;
 	if (root.type === "command" && root.children.length > 0) {
-		collectCommandNode(parser, root, commands, depth);
+		collectCommandNode(
+			parser,
+			root,
+			commands,
+			depth,
+			preserveSourceRange,
+		);
 	}
-	for (const child of root.children)
-		collectCommands(child, parser, commands, depth);
+	for (const child of root.children) {
+		collectCommands(child, parser, commands, depth, preserveSourceRange);
+	}
 }
 
 function extractedCommands(
 	root: TreeSitter.Node,
 	parser: TreeSitter.Parser,
-): string[] {
-	const commands: string[] = [];
+): ExtractedCommand[] {
+	const commands: ExtractedCommand[] = [];
 	collectCommands(root, parser, commands);
 	return commands;
 }
 
+function isExternallySafeRmCommand(
+	command: ExtractedCommand,
+	safeRmMatchIndices: readonly number[],
+): boolean {
+	if (!(command.text === "rm" || command.text.startsWith("rm "))) return false;
+	const { startIndex, endIndex } = command;
+	if (startIndex === undefined || endIndex === undefined) return false;
+	return safeRmMatchIndices.some(
+		(index) => startIndex <= index && index < endIndex,
+	);
+}
+
 function checkExtractedCommands(
-	commands: string[],
+	commands: ExtractedCommand[],
 	rules: DangerousCommand[],
 	safeRmTexts = new Set<string>(),
+	safeRmMatchIndices: readonly number[] = [],
 ): AstDecision | undefined {
 	for (const command of commands) {
-		if (safeRmTexts.has(command)) continue;
+		if (
+			safeRmTexts.has(command.text) ||
+			isExternallySafeRmCommand(command, safeRmMatchIndices)
+		) {
+			continue;
+		}
 		for (const rule of rules) {
 			if (!commandAppliesToCurrentPlatform(rule)) continue;
-			if (shouldAllowReadOnlyXargsShellRule(command, rule)) continue;
+			if (shouldAllowReadOnlyXargsShellRule(command.text, rule)) continue;
 			const regex = rule.regex ? compileCommandRegex(rule.regex) : undefined;
 			const matched = regex
-				? regex.test(command)
-				: command.includes(rule.pattern);
+				? regex.test(command.text)
+				: command.text.includes(rule.pattern);
 			if (!matched) continue;
 			if (rule.action === "ask")
 				return { decision: "ask", reason: rule.reason };
@@ -553,6 +597,7 @@ async function runAnalysis(
 	command: string,
 	rules: DangerousCommand[],
 	astConfig: AstAnalysisConfig,
+	safeRmMatchIndices: readonly number[],
 ): Promise<AstDecision> {
 	const root = parse(parser, command);
 	const tempCleanup = analyzeTempCleanup(root, parser);
@@ -560,6 +605,7 @@ async function runAnalysis(
 		extractedCommands(root, parser),
 		rules,
 		tempCleanup.safeCommandTexts,
+		safeRmMatchIndices,
 	);
 	if (extracted) return extracted;
 	if (tempCleanup.ask) return tempCleanup.ask;
@@ -727,6 +773,7 @@ export async function analyzeCommandAst(
 	command: string,
 	rules: DangerousCommand[],
 	astConfig: AstAnalysisConfig | undefined,
+	safeRmMatchIndices: readonly number[] = [],
 ): Promise<AstDecision> {
 	if (!astConfig?.enabled) return { decision: "allow" };
 	if (
@@ -737,7 +784,13 @@ export async function analyzeCommandAst(
 	}
 	try {
 		const parser = await getParser();
-		const analysis = runAnalysis(parser, command, rules, astConfig);
+		const analysis = runAnalysis(
+			parser,
+			command,
+			rules,
+			astConfig,
+			safeRmMatchIndices,
+		);
 		return astConfig.timeoutMs && astConfig.timeoutMs > 0
 			? await withTimeout(analysis, astConfig.timeoutMs)
 			: await analysis;

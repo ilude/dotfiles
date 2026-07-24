@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { analyzeCommandAst } from "../extensions/damage-control/ast-analyzer.ts";
 import {
 	evaluateDangerousCommand,
+	loadRules,
 	parseDamageControlRules,
 } from "../extensions/damage-control.ts";
 import type {
@@ -34,6 +35,14 @@ const rmForceAskRule: DangerousCommand = {
 		"\\brm\\s+(?=[^|;&]*?(?:-[A-Za-z]*f[A-Za-z]*|--force)\\b)(?![^|;&]*?(?:-[A-Za-z]*r[A-Za-z]*|--recursive)\\b)",
 	reason:
 		"Force delete bypasses normal interactive safeguards and can remove files irreversibly",
+	action: "ask",
+	tools: ["bash"],
+};
+
+const scopedRmAskRule: DangerousCommand = {
+	pattern: "(?<!git\\s)(?<!docker\\s)\\brm\\s+(-[^\\s]*)*-[rRf]",
+	regex: "(?<!git\\s)(?<!docker\\s)\\brm\\s+(-[^\\s]*)*-[rRf]",
+	reason: "rm with recursive or force flags",
 	action: "ask",
 	tools: ["bash"],
 };
@@ -218,6 +227,65 @@ no_delete_paths: []
 				astConfig,
 			),
 		).resolves.toEqual({ decision: "allow" });
+	});
+
+	it.each([
+		["OS temp", "/tmp/kmis-local-claims.json"],
+		["repo scratch", ".tmp/kmis-local-claims.json"],
+	])(
+		"keeps same-command %s cleanup allowed through AST analysis",
+		async (_name, target) => {
+			const loaded = loadRules();
+			const command = [
+				"cd /c/Projects/Work/Gitlab/monorepo && set -euo pipefail",
+				'href=$(printf \'%s\' claim-dialect | python -c "import sys; print(sys.stdin.read())")',
+				`printf '%s' "$href" > ${target}`,
+				"python - <<'PY'",
+				"from pathlib import Path",
+				`Path('${target}').read_text()`,
+				"PY",
+				`rm -f ${target}`,
+			].join("\n");
+
+			await expect(
+				evaluateDangerousCommand(command, loaded.rules.dangerous_commands, {
+					toolName: "bash",
+					cwd: process.cwd(),
+					astAnalysis: loaded.rules.astAnalysis,
+					noDeletePaths: loaded.rules.no_delete_paths,
+				}),
+			).resolves.toBeUndefined();
+		},
+	);
+
+	it("keeps repo scratch cleanup interactive without same-command creation", async () => {
+		await expect(
+			evaluateDangerousCommand(
+				"set -euo pipefail\nvalue=$(printf inspected)\nrm -f .tmp/kmis-local-claims.json",
+				[scopedRmAskRule],
+				{
+					toolName: "bash",
+					cwd: process.cwd(),
+					astAnalysis: astConfig,
+				},
+			),
+		).resolves.toMatchObject({ block: true });
+	});
+
+	it("does not let one safe cleanup hide a later nested delete", async () => {
+		const command = [
+			"printf '{}' > .tmp/kmis-local-claims.json",
+			"rm -f .tmp/kmis-local-claims.json",
+			"bash -c 'rm -rf /etc'",
+		].join("; ");
+
+		await expect(
+			evaluateDangerousCommand(command, [scopedRmAskRule], {
+				toolName: "bash",
+				cwd: process.cwd(),
+				astAnalysis: astConfig,
+			}),
+		).resolves.toMatchObject({ block: true });
 	});
 
 	it("skips the rm force ask rule for proven mktemp file cleanup", async () => {
