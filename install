@@ -326,7 +326,8 @@ current_step="Pi coding agent install"
 # pi packages cleanly; bun's looser resolution let pi-agent-core/pi-ai/pi-tui
 # drift to newer patch versions even when pi-coding-agent itself was pinned.
 # Pi is updated frequently and intentionally uses a shorter release-age window
-# than the global pnpm default.
+# than the global pnpm default. Keep the runtime package family on one version.
+PI_VERSION=0.82.0
 PI_PNPM_MINIMUM_RELEASE_AGE=720
 
 # Ensure PNPM_HOME is set before bootstrap so the installer knows where to put
@@ -389,12 +390,12 @@ if command -v pnpm &>/dev/null; then
         npm uninstall -g @mariozechner/pi-coding-agent &>/dev/null || true
     fi
 
-    echo "Installing/updating pi-coding-agent via pnpm (minimumReleaseAge=${PI_PNPM_MINIMUM_RELEASE_AGE} minutes)..."
+    echo "Installing/updating pi-coding-agent ${PI_VERSION} via pnpm (minimumReleaseAge=${PI_PNPM_MINIMUM_RELEASE_AGE} minutes)..."
     pnpm --config.minimumReleaseAge="${PI_PNPM_MINIMUM_RELEASE_AGE}" add -g --allow-build=koffi --allow-build=protobufjs \
-        @earendil-works/pi-coding-agent \
-        @earendil-works/pi-agent-core \
-        @earendil-works/pi-ai \
-        @earendil-works/pi-tui \
+        "@earendil-works/pi-coding-agent@${PI_VERSION}" \
+        "@earendil-works/pi-agent-core@${PI_VERSION}" \
+        "@earendil-works/pi-ai@${PI_VERSION}" \
+        "@earendil-works/pi-tui@${PI_VERSION}" \
         @sinclair/typebox
 
     pi_markdown_patch="${BASEDIR}/install.d/50-pi-markdown-code-fence-fix.py"

@@ -1892,21 +1892,21 @@ try {
             }
         }
 
-        # Install or update Pi on every run with no version pin. Pi is updated
-        # frequently and intentionally uses a shorter release-age window than
-        # the global pnpm default.
+        # Install or update Pi on every run. Keep the runtime package family on
+        # one version and use a shorter release-age window than the global default.
+        $piVersion = '0.82.0'
         $piPnpmMinimumReleaseAge = 720
-        Write-Host "  Installing/updating pi-coding-agent via pnpm (minimumReleaseAge=$piPnpmMinimumReleaseAge minutes)..." -ForegroundColor Cyan
+        Write-Host "  Installing/updating pi-coding-agent $piVersion via pnpm (minimumReleaseAge=$piPnpmMinimumReleaseAge minutes)..." -ForegroundColor Cyan
         $previousCi = $env:CI
         $previousPnpmAllowAllBuilds = $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS
         $env:CI = '1'
         $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS = 'true'
         try {
             pnpm --config.minimumReleaseAge=$piPnpmMinimumReleaseAge add -g --allow-build=koffi --allow-build=protobufjs `
-                '@earendil-works/pi-coding-agent' `
-                '@earendil-works/pi-agent-core' `
-                '@earendil-works/pi-ai' `
-                '@earendil-works/pi-tui' `
+                "@earendil-works/pi-coding-agent@${piVersion}" `
+                "@earendil-works/pi-agent-core@${piVersion}" `
+                "@earendil-works/pi-ai@${piVersion}" `
+                "@earendil-works/pi-tui@${piVersion}" `
                 '@sinclair/typebox'
         } finally {
             $env:CI = $previousCi
