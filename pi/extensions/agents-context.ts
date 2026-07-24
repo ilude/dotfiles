@@ -11,6 +11,7 @@ const MUTATING_TOOLS = new Set([
 	"text_edit",
 	"structured_edit",
 ]);
+const CONTEXT_TOOLS = new Set(["read", "grep", "find", "ls"]);
 const PATH_TOOLS = new Set([
 	"read",
 	"edit",
@@ -27,7 +28,13 @@ const MAX_TOTAL_BYTES = 96 * 1024;
 const MAX_CACHED_FILES = 128;
 const REPORT_TYPE = "agents-context-report";
 
-type ToolCallResult = { block: true; reason?: string } | undefined;
+type ToolCallResult = { block: true; reason: string } | undefined;
+
+type FileVersion = {
+	mtimeMs: number;
+	ctimeMs: number;
+	size: number;
+};
 
 type LoadedInstruction = {
 	path: string;
@@ -49,7 +56,7 @@ type State = {
 	loadedFingerprints: Set<string>;
 	targetPaths: Set<string>;
 	injectedTargetFingerprints: Set<string>;
-	deferredToolCalls: Set<string>;
+	successfulReads: Map<string, FileVersion>;
 	retryRequested: boolean;
 };
 
@@ -69,7 +76,7 @@ const state: State = {
 	loadedFingerprints: new Set(),
 	targetPaths: new Set(),
 	injectedTargetFingerprints: new Set(),
-	deferredToolCalls: new Set(),
+	successfulReads: new Map(),
 	retryRequested: false,
 };
 
@@ -289,6 +296,52 @@ function recordNativeContextFiles(event: unknown): void {
 	}
 }
 
+function resolveToolPath(cwd: string, targetPath: string): string {
+	return canonical(
+		path.isAbsolute(targetPath) ? targetPath : path.join(cwd, targetPath),
+	);
+}
+
+function fileVersion(filePath: string): FileVersion | undefined {
+	try {
+		const stat = fs.statSync(filePath);
+		if (!stat.isFile()) return undefined;
+		return { mtimeMs: stat.mtimeMs, ctimeMs: stat.ctimeMs, size: stat.size };
+	} catch {
+		return undefined;
+	}
+}
+
+function recordSuccessfulReads(cwd: string, targetPaths: string[]): void {
+	for (const targetPath of targetPaths) {
+		const resolved = resolveToolPath(cwd, targetPath);
+		const version = fileVersion(resolved);
+		if (version) state.successfulReads.set(resolved, version);
+	}
+}
+
+function hasCurrentSuccessfulRead(filePath: string): boolean {
+	const recorded = state.successfulReads.get(filePath);
+	if (!recorded) return false;
+	const current = fileVersion(filePath);
+	if (
+		current &&
+		current.mtimeMs === recorded.mtimeMs &&
+		current.ctimeMs === recorded.ctimeMs &&
+		current.size === recorded.size
+	)
+		return true;
+	state.successfulReads.delete(filePath);
+	return false;
+}
+
+function displayPath(cwd: string, filePath: string): string {
+	const relative = path.relative(canonical(cwd), filePath);
+	return relative && !relative.startsWith("..") && !path.isAbsolute(relative)
+		? relative
+		: filePath;
+}
+
 function collectToolPaths(
 	toolName: string,
 	input: unknown,
@@ -319,7 +372,7 @@ function clearInstructionState(): void {
 	state.baseFingerprints.clear();
 	state.targetPaths.clear();
 	state.injectedTargetFingerprints.clear();
-	state.deferredToolCalls.clear();
+	state.successfulReads.clear();
 	state.retryRequested = false;
 }
 
@@ -404,7 +457,6 @@ export default function (pi: ExtensionAPI) {
 		state.projectRoots.clear();
 		state.targetPaths.clear();
 		state.injectedTargetFingerprints.clear();
-		state.deferredToolCalls.clear();
 		state.retryRequested = false;
 		recordNativeContextFiles(event);
 		return undefined;
@@ -454,35 +506,50 @@ export default function (pi: ExtensionAPI) {
 	pi.on("tool_call", async (event, ctx): Promise<ToolCallResult> => {
 		resetForCwd(ctx.cwd);
 		const toolName = String(event.toolName ?? "");
+		if (!MUTATING_TOOLS.has(toolName)) return undefined;
 		const targetPaths = collectToolPaths(toolName, event.input, ctx.cwd);
 		if (targetPaths.length === 0) return undefined;
-		for (const targetPath of targetPaths) {
-			state.targetPaths.add(
-				canonical(
-					path.isAbsolute(targetPath)
-						? targetPath
-						: path.join(ctx.cwd, targetPath),
-				),
-			);
-		}
-		const files = discoverForPaths(
-			ctx.cwd,
-			[...state.targetPaths],
-			toolName === "read",
+		const resolvedTargets = targetPaths.map((targetPath) =>
+			resolveToolPath(ctx.cwd, targetPath),
 		);
+		const unreadTarget = resolvedTargets.find(
+			(targetPath) =>
+				fileVersion(targetPath) && !hasCurrentSuccessfulRead(targetPath),
+		);
+		if (unreadTarget) {
+			return {
+				block: true,
+				reason: `Read ${displayPath(ctx.cwd, unreadTarget)} successfully before modifying it.`,
+			};
+		}
+		for (const targetPath of resolvedTargets) state.targetPaths.add(targetPath);
+		const files = discoverForPaths(ctx.cwd, [...state.targetPaths]);
 		const targetPayload = files.length ? instructionPayload(files) : undefined;
-		if (targetPayload && MUTATING_TOOLS.has(toolName)) {
-			if (!state.injectedTargetFingerprints.has(targetPayload)) {
-				state.deferredToolCalls.add(event.toolCallId);
-				state.retryRequested = true;
-				return { block: true };
-			}
+		if (
+			targetPayload &&
+			!state.injectedTargetFingerprints.has(targetPayload)
+		) {
+			state.retryRequested = true;
+			return {
+				block: true,
+				reason:
+					"Deferred while loading path-specific instructions. Apply them, then retry the mutation.",
+			};
 		}
 		return undefined;
 	});
 
-	pi.on("tool_result", async (event) => {
-		if (!state.deferredToolCalls.delete(event.toolCallId)) return undefined;
-		return { content: [], details: {}, isError: false };
+	pi.on("tool_result", async (event, ctx) => {
+		resetForCwd(ctx.cwd);
+		if (event.isError) return undefined;
+		const toolName = String(event.toolName ?? "");
+		if (!CONTEXT_TOOLS.has(toolName)) return undefined;
+		const targetPaths = collectToolPaths(toolName, event.input, ctx.cwd);
+		if (targetPaths.length === 0) return undefined;
+		for (const targetPath of targetPaths)
+			state.targetPaths.add(resolveToolPath(ctx.cwd, targetPath));
+		discoverForPaths(ctx.cwd, [...state.targetPaths], toolName === "read");
+		if (toolName === "read") recordSuccessfulReads(ctx.cwd, targetPaths);
+		return undefined;
 	});
 }

@@ -22,6 +22,28 @@ function registerAgentsContext(pi: ReturnType<typeof createMockPi>) {
 	agentsContext(pi as unknown as Parameters<typeof agentsContext>[0]);
 }
 
+async function completeTool(
+	pi: ReturnType<typeof createMockPi>,
+	ctx: ReturnType<typeof createMockCtx>,
+	event: {
+		toolCallId?: string;
+		toolName: string;
+		input: Record<string, unknown>;
+	},
+) {
+	await expect(
+		pi._getHook("tool_call")[0].handler(event, ctx),
+	).resolves.toBeUndefined();
+	await pi._getHook("tool_result")[0].handler(
+		{
+			...event,
+			content: [{ type: "text", text: "ok" }],
+			isError: false,
+		},
+		ctx,
+	);
+}
+
 let tmp: string;
 
 function setupAgentsContextTest() {
@@ -120,9 +142,10 @@ describe("agents-context discovery", () => {
 			},
 			ctx,
 		);
-		await pi._getHook("tool_call")[0].handler(
-			{ toolName: "read", input: { path: "file.ts" } },
+		await completeTool(
+			pi,
 			ctx,
+			{ toolName: "read", input: { path: "file.ts" } },
 		);
 		const result = await pi._getHook("context")[0].handler(
 			{ messages: [] },
@@ -144,9 +167,10 @@ describe("agents-context discovery", () => {
 		const pi = createMockPi();
 		registerAgentsContext(pi);
 		const ctx = createMockCtx({ cwd });
-		await pi._getHook("tool_call")[0].handler(
-			{ toolName: "read", input: { path: "src/AGENTS.md" } },
+		await completeTool(
+			pi,
 			ctx,
+			{ toolName: "read", input: { path: "src/AGENTS.md" } },
 		);
 		const result = await pi._getHook("context")[0].handler(
 			{ messages: [] },
@@ -163,9 +187,10 @@ describe("agents-context discovery", () => {
 		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
 		const pi = createMockPi();
 		registerAgentsContext(pi);
-		await pi._getHook("tool_call")[0].handler(
-			{ toolName: "read", input: { path: "file.ts" } },
+		await completeTool(
+			pi,
 			createMockCtx({ cwd }),
+			{ toolName: "read", input: { path: "file.ts" } },
 		);
 		expect(pi.sendMessage).not.toHaveBeenCalled();
 	});
@@ -194,9 +219,10 @@ describe("agents-context discovery", () => {
 		const pi = createMockPi();
 		registerAgentsContext(pi);
 		const ctx = createMockCtx({ cwd });
-		await pi._getHook("tool_call")[0].handler(
-			{ toolName: "read", input: { path: "a.ts" } },
+		await completeTool(
+			pi,
 			ctx,
+			{ toolName: "read", input: { path: "a.ts" } },
 		);
 		const result = await pi._getHook("context")[0].handler(
 			{
@@ -231,7 +257,12 @@ describe("agents-context discovery", () => {
 		const ctx = createMockCtx({ cwd });
 		const toolHook = pi._getHook("tool_call")[0].handler;
 
-		await toolHook({ toolName: "read", input: { path: "src/file.ts" } }, ctx);
+		writeFile(path.join(cwd, "src", "file.ts"), "original");
+		await completeTool(
+			pi,
+			ctx,
+			{ toolName: "read", input: { path: "src/file.ts" } },
+		);
 		await pi._getHook("context")[0].handler({ messages: [] }, ctx);
 
 		await expect(
@@ -250,10 +281,17 @@ describe("agents-context discovery", () => {
 		const pi = createMockPi();
 		registerAgentsContext(pi);
 		const ctx = createMockCtx({ cwd });
-		const toolHook = pi._getHook("tool_call")[0].handler;
 
-		await toolHook({ toolName: "read", input: { path: "src/file.ts" } }, ctx);
-		await toolHook({ toolName: "read", input: { path: "test/file.ts" } }, ctx);
+		await completeTool(
+			pi,
+			ctx,
+			{ toolName: "read", input: { path: "src/file.ts" } },
+		);
+		await completeTool(
+			pi,
+			ctx,
+			{ toolName: "read", input: { path: "test/file.ts" } },
+		);
 		const result = await pi._getHook("context")[0].handler(
 			{ messages: [] },
 			ctx,
@@ -300,7 +338,7 @@ describe("agents-context mutation deferral", () => {
 		expect(retryContext.messages[0].content).not.toContain("root agents");
 	});
 
-	it("defers new context once without a visible error result", async () => {
+	it("defers a direct new-file write with an explicit context reason", async () => {
 		const cwd = path.join(tmp, "repo");
 		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
 		writeFile(path.join(cwd, "src", "AGENTS.md"), "src agents");
@@ -308,23 +346,17 @@ describe("agents-context mutation deferral", () => {
 		registerAgentsContext(pi);
 		const ctx = createMockCtx({ cwd });
 		const event = {
-			toolCallId: "deferred-edit",
-			toolName: "edit",
-			input: { path: "src/file.ts" },
+			toolCallId: "deferred-write",
+			toolName: "write",
+			input: { path: "src/file.ts", content: "new file" },
 		};
 		const toolHook = pi._getHook("tool_call")[0].handler;
 		const blocked = await toolHook(event, ctx);
-		expect(blocked).toEqual({ block: true });
-		await expect(
-			pi._getHook("tool_result")[0].handler(
-				{
-					...event,
-					content: [{ type: "text", text: "Tool execution was blocked" }],
-					isError: true,
-				},
-				ctx,
-			),
-		).resolves.toEqual({ content: [], details: {}, isError: false });
+		expect(blocked).toEqual({
+			block: true,
+			reason:
+				"Deferred while loading path-specific instructions. Apply them, then retry the mutation.",
+		});
 		const retryContext = await pi._getHook("context")[0].handler(
 			{ messages: [] },
 			ctx,
@@ -335,6 +367,119 @@ describe("agents-context mutation deferral", () => {
 		await expect(toolHook(event, ctx)).resolves.toBeUndefined();
 	});
 
+	it("requires a successful read before changing an existing file", async () => {
+		const cwd = path.join(tmp, "repo");
+		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
+		writeFile(path.join(cwd, "src", "file.ts"), "original");
+		const pi = createMockPi();
+		registerAgentsContext(pi);
+		const ctx = createMockCtx({ cwd });
+		const event = {
+			toolName: "edit",
+			input: { path: "src/file.ts" },
+		};
+		const toolHook = pi._getHook("tool_call")[0].handler;
+
+		await expect(toolHook(event, ctx)).resolves.toEqual({
+			block: true,
+			reason: `Read ${path.join("src", "file.ts")} successfully before modifying it.`,
+		});
+		await completeTool(
+			pi,
+			ctx,
+			{ toolName: "read", input: { path: "src/file.ts" } },
+		);
+		await pi._getHook("context")[0].handler({ messages: [] }, ctx);
+		await expect(toolHook(event, ctx)).resolves.toBeUndefined();
+	});
+
+	it("requires another read after the file changes", async () => {
+		const cwd = path.join(tmp, "repo");
+		const filePath = path.join(cwd, "src", "file.ts");
+		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
+		writeFile(filePath, "original");
+		const pi = createMockPi();
+		registerAgentsContext(pi);
+		const ctx = createMockCtx({ cwd });
+		await completeTool(
+			pi,
+			ctx,
+			{ toolName: "read", input: { path: "src/file.ts" } },
+		);
+		await pi._getHook("context")[0].handler({ messages: [] }, ctx);
+		writeFile(filePath, "changed content");
+		await expect(
+			pi._getHook("tool_call")[0].handler(
+				{ toolName: "edit", input: { path: "src/file.ts" } },
+				ctx,
+			),
+		).resolves.toMatchObject({
+			block: true,
+			reason: expect.stringContaining("successfully before modifying"),
+		});
+	});
+
+	it("does not activate context after a failed read", async () => {
+		const cwd = path.join(tmp, "repo");
+		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
+		writeFile(path.join(cwd, "src", "AGENTS.md"), "src agents");
+		writeFile(path.join(cwd, "src", "file.ts"), "original");
+		const pi = createMockPi();
+		registerAgentsContext(pi);
+		const ctx = createMockCtx({ cwd });
+		await pi._getHook("tool_result")[0].handler(
+			{
+				toolName: "read",
+				input: { path: "src/file.ts" },
+				content: [{ type: "text", text: "failed" }],
+				isError: true,
+			},
+			ctx,
+		);
+		const result = await pi._getHook("context")[0].handler(
+			{ messages: [] },
+			ctx,
+		);
+		expect(result.messages).toEqual([]);
+		await expect(
+			pi._getHook("tool_call")[0].handler(
+				{ toolName: "edit", input: { path: "src/file.ts" } },
+				ctx,
+			),
+		).resolves.toMatchObject({
+			block: true,
+			reason: expect.stringContaining("successfully before modifying"),
+		});
+	});
+
+	it("allows a new file after a successful directory-scoped access", async () => {
+		const cwd = path.join(tmp, "repo");
+		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
+		writeFile(path.join(cwd, "src", "AGENTS.md"), "src agents");
+		const pi = createMockPi();
+		registerAgentsContext(pi);
+		const ctx = createMockCtx({ cwd });
+		await completeTool(
+			pi,
+			ctx,
+			{ toolName: "find", input: { path: "src", pattern: "*.ts" } },
+		);
+		const context = await pi._getHook("context")[0].handler(
+			{ messages: [] },
+			ctx,
+		);
+		expect(context.messages[0].content).toContain("src agents");
+		await expect(
+			pi._getHook("tool_call")[0].handler(
+				{
+					toolName: "write",
+					input: { path: "src/new.ts", content: "new file" },
+				},
+				ctx,
+			),
+		).resolves.toBeUndefined();
+	});
+
 	it("blocks again when nested instruction content changes", async () => {
 		const cwd = path.join(tmp, "repo");
 		const instructionPath = path.join(cwd, "src", "AGENTS.md");
@@ -343,7 +488,10 @@ describe("agents-context mutation deferral", () => {
 		const pi = createMockPi();
 		registerAgentsContext(pi);
 		const ctx = createMockCtx({ cwd });
-		const event = { toolName: "edit", input: { path: "src/file.ts" } };
+		const event = {
+			toolName: "write",
+			input: { path: "src/file.ts", content: "new file" },
+		};
 		const toolHook = pi._getHook("tool_call")[0].handler;
 
 		await expect(toolHook(event, ctx)).resolves.toMatchObject({ block: true });
