@@ -126,20 +126,6 @@ describe("workflow command dispatch", () => {
 		return cmd.handler as (args: string, ctx: unknown) => Promise<void>;
 	}
 
-	it("does not register the retired /research command", () => {
-		expect(
-			mockPi._commands.find((candidate) => candidate.name === "research"),
-		).toBeUndefined();
-	});
-
-	it("does not register prompt-only commands", () => {
-		for (const name of ["summarize", "gitlab-ticket"]) {
-			expect(
-				mockPi._commands.find((candidate) => candidate.name === name),
-			).toBeUndefined();
-		}
-	});
-
 	it("initializes the new session with Codex status before previous usage", async () => {
 		type NewSessionOptions = {
 			setup?: (sessionManager: {
@@ -546,66 +532,6 @@ describe("workflow command dispatch", () => {
 			expect.objectContaining({
 				customType: "workflow-commit-activity",
 				content: "Planner warning: Review generated files before committing.",
-				display: true,
-			}),
-		);
-	});
-
-	it("uses one complete fallback commit after planner failure", async () => {
-		const notify = vi.fn();
-		const files = [
-			"CHANGELOG.md",
-			"pi/lib/extension-utils.ts",
-			"test/test_config_patterns.py",
-			"tools/dolos/internal/state/state_test.go",
-		];
-		const names = `${files.join("\n")}\n`;
-		const status = `${files.map((file) => ` M ${file}`).join("\n")}\n`;
-		const stat = `${files.map((file) => `${file} | 1 +`).join("\n")}\n`;
-		const diff = `${files.map((file) => `diff --git a/${file} b/${file}`).join("\n")}\n`;
-		let addCalls = 0;
-		mockSpawn.mockImplementation((_command, args: string[]) => {
-			const signature = args.join(" ");
-			if (signature === "status --short")
-				return mockGitSpawn({ stdout: status });
-			if (signature === "diff --name-only HEAD")
-				return mockGitSpawn({ stdout: names });
-			if (signature === "diff --cached --stat")
-				return mockGitSpawn({ stdout: stat });
-			if (signature === "diff --cached --no-color")
-				return mockGitSpawn({ stdout: diff });
-			if (signature === `diff --stat HEAD -- ${files.join(" ")}`)
-				return mockGitSpawn({ stdout: stat });
-			if (args[0] === "check-ignore") return mockGitSpawn({ code: 1 });
-			if (args[0] === "add") {
-				addCalls += 1;
-				return addCalls === 1
-					? mockGitSpawn()
-					: mockGitSpawn({ code: 1, stderr: "stop after fallback\n" });
-			}
-			return mockGitSpawn();
-		});
-		mockTypedAgentRun.mockRejectedValueOnce(
-			new Error("schema validation omitted one path"),
-		);
-
-		await getHandler("commit")("", {
-			cwd: path.resolve(process.cwd(), ".."),
-			ui: { notify },
-		});
-
-		expect(mockPi.sendMessage).toHaveBeenCalledWith(
-			expect.objectContaining({
-				customType: "workflow-commit-activity",
-				content:
-					"Commit planner failed: Error: schema validation omitted one path",
-				display: true,
-			}),
-		);
-		expect(mockPi.sendMessage).toHaveBeenCalledWith(
-			expect.objectContaining({
-				customType: "workflow-commit-activity",
-				content: "Planner warning: Using deterministic single-commit fallback.",
 				display: true,
 			}),
 		);

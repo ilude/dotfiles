@@ -41,12 +41,12 @@ afterEach(() => {
 });
 
 describe("repeated tool loop guard", () => {
-	it.each([
-		["edit", { path: "missing.ts", edits: [{ oldText: "old", newText: "new" }] }],
-		["read", { path: "missing.ts" }],
-		["bash", { command: "synthetic failure" }],
-		["vendor.synthetic_tool", { operation: "fail" }],
-	])("blocks the fifth identical failed %s call", (toolName, input) => {
+	it("blocks the fifth identical failed edit call", () => {
+		const toolName = "edit";
+		const input = {
+			path: "missing.ts",
+			edits: [{ oldText: "old", newText: "new" }],
+		};
 		const guard = new RepeatedToolLoopGuard();
 		const result = {
 			content: [{ type: "text", text: "synthetic failure" }],

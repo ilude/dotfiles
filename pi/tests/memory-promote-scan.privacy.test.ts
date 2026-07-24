@@ -49,35 +49,4 @@ describe("memory-promote-scan privacy", () => {
 		}
 	});
 
-	it("emits a candidates or no-qualifying-candidates section", () => {
-		const sandbox = fs.mkdtempSync(
-			path.join(os.tmpdir(), "pi-promote-scan-empty-"),
-		);
-		try {
-			const env = { ...process.env, HOME: sandbox };
-			execSync(`bun ${JSON.stringify(SCRIPT_PATH)}`, {
-				env,
-				cwd: REPO_ROOT,
-				stdio: "pipe",
-			});
-			const out = fs.readFileSync(
-				path.join(
-					sandbox,
-					".pi",
-					"agent",
-					"index",
-					"policy-candidates.md",
-				),
-				"utf8",
-			);
-			expect(
-				out.startsWith("> LOCAL PRIVATE -- DO NOT COMMIT WITHOUT REVIEW"),
-			).toBe(true);
-			expect(
-				/## Candidate/.test(out) || /## No qualifying candidates/.test(out),
-			).toBe(true);
-		} finally {
-			fs.rmSync(sandbox, { recursive: true, force: true });
-		}
-	});
 });

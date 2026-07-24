@@ -7,9 +7,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import skillReviewExtension, {
-	runSkillReview,
-} from "../extensions/skill-review-command.js";
+import { runSkillReview } from "../extensions/skill-review-command.js";
 import { discoverSkills } from "../lib/skill-discovery.js";
 import {
 	buildInventory,
@@ -17,10 +15,8 @@ import {
 	buildTriggerEvals,
 	inventoryFromMarkdownFiles,
 	lintInventory,
-	parseModelReview,
 	rankHighRiskSkills,
 	synthesizeComparison,
-	validateGeneratedArtifacts,
 	validatePacketSafety,
 } from "../lib/skill-review.js";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.js";
@@ -100,55 +96,6 @@ describe("skill-review deterministic core", () => {
 		expect(evals.some((item) => item.promptId.endsWith("implicit"))).toBe(true);
 	});
 
-	it("renders complete stable artifact sets and validates malformed data", () => {
-		const artifacts = buildSkillReviewArtifacts({
-			repoRoot: path.resolve(".."),
-			runId: "test-run",
-			now: new Date("2026-07-08T00:00:00.000Z"),
-			skills: fixtureSkills(),
-		});
-		expect(Object.keys(artifacts).sort()).toEqual([
-			"comparison-template.json",
-			"decision-ledger.json",
-			"findings.json",
-			"high-risk-skills.json",
-			"inventory.json",
-			"model-packet.md",
-			"run-manifest.json",
-			"subagent-tasks.json",
-			"summary.md",
-			"trigger-evals.json",
-		]);
-		expect(validateGeneratedArtifacts(artifacts).ok).toBe(true);
-		expect(artifacts["model-packet.md"]).toContain("GPT-5.6 Sol");
-		expect(artifacts["model-packet.md"]).toContain("Fable-5");
-		expect(artifacts["model-packet.md"]).toContain("skip/medium/high");
-		const tasks = JSON.parse(artifacts["subagent-tasks.json"]);
-		expect(tasks.map((task: { agent: string }) => task.agent)).toEqual([
-			"skill-review",
-			"skill-review",
-			"skill-review",
-		]);
-		expect(
-			tasks.map((task: { model: string; effort: string }) => ({
-				model: task.model,
-				effort: task.effort,
-			})),
-		).toEqual([
-			{ model: "openai-codex/gpt-5.6-sol:xhigh", effort: "xhigh" },
-			{
-				model: "amazon-bedrock/us.anthropic.claude-fable-5:medium",
-				effort: "medium",
-			},
-			{
-				model: "amazon-bedrock/us.anthropic.claude-fable-5:high",
-				effort: "high",
-			},
-		]);
-		expect(validatePacketSafety("API_KEY=abc").ok).toBe(false);
-		expect(parseModelReview("{}").valid).toBe(false);
-	});
-
 	it("caps the actual rendered model packet when estimates undercount", () => {
 		const longTrigger = `general ${"x".repeat(12000)}`;
 		const skills = Array.from({ length: 10 }, (_, index) => ({
@@ -216,12 +163,6 @@ describe("skill-review deterministic core", () => {
 });
 
 describe("skill-review command", () => {
-	it("does not register the retired /skill-review command", () => {
-		const pi = createMockPi();
-		skillReviewExtension(asPi(pi));
-		expect(pi._commands.map((item) => item.name)).not.toContain("skill-review");
-	});
-
 	it("writes artifacts under repo-root output and leaves source fixtures unchanged", async () => {
 		const before = fileHashes(fixtureRoot);
 		const pi = createMockPi();

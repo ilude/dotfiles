@@ -33,12 +33,6 @@ function tool() {
 }
 
 describe("structured_edit", () => {
-	it("registers structured_edit with schema and handler", () => {
-		const t = tool();
-		expect(t.name).toBe("structured_edit");
-		expect(t.parameters).toBeTruthy();
-		expect(typeof t.execute).toBe("function");
-	});
 	it("applies JSON set and delete using typed array paths", () => {
 		const data = { a: { b: 1 }, list: ["x", "y"] };
 		applyStructuredOperations(data, [

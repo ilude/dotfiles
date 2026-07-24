@@ -201,23 +201,6 @@ beforeEach(() => {
 		}, 30000);
 	});
 
-	describe("ingestion bypass", () => {
-		it("does not spawn the reducer for routine bash output", async () => {
-			const { spawn } = await import("node:child_process");
-			vi.mocked(spawn).mockClear();
-			const mod = await import("../extensions/tool-reduction.ts");
-			mod.default(mockPi as unknown as ExtensionAPI);
-
-			const [hook] = mockPi._getHook("tool_result");
-			const result = await hook.handler(
-				makeBashResultEvent("routine output\n".repeat(100)),
-			);
-
-			expect(result).toBeUndefined();
-			expect(spawn).not.toHaveBeenCalled();
-		});
-	});
-
 	describe("recovery markers", () => {
 		it("writes reducer-only raw output and appends a recovery marker", async () => {
 			const scratchHome = fs.mkdtempSync(
@@ -403,29 +386,6 @@ describe("retroactive context reduction", () => {
 				(nextGeneration.messages[2].content[0] as TextBlock).text,
 			).toContain("[tool-reduction]");
 			expect(spawn).toHaveBeenCalledTimes(1);
-		});
-
-		it("does nothing below the threshold before any batch has run", async () => {
-			const { spawn } = await import("node:child_process");
-			vi.mocked(spawn).mockClear();
-			const mod = await import("../extensions/tool-reduction.ts");
-			mod.default(mockPi as unknown as ExtensionAPI);
-			const [hook] = mockPi._getHook("context");
-			const messages = Array.from({ length: 6 }, (_, index) =>
-				makeToolResultMessage(
-					`result-${index}`,
-					"task",
-					"full output\n".repeat(2000),
-				),
-			);
-
-			expect(
-				await hook.handler(
-					{ type: "context", messages },
-					contextWithUsage(49),
-				),
-			).toBeUndefined();
-			expect(spawn).not.toHaveBeenCalled();
 		});
 
 		it("retries a retroactive result after a transient worker crash", async () => {

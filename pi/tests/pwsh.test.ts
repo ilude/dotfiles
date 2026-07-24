@@ -62,23 +62,6 @@ describe("pwsh extension", () => {
         Object.defineProperty(process, "platform", { value: originalPlatform, writable: true, configurable: true });
       }
     });
-
-    it("should register as 'pwsh' with PowerShell label", () => {
-      expect(tool.name).toBe("pwsh");
-      expect(tool.label).toBe("PowerShell");
-    });
-
-    it("should mention PowerShell Core in description", () => {
-      expect(tool.description).toContain("PowerShell Core");
-    });
-
-    it("should document the default timeout", () => {
-      expect(tool.description).toContain("120s timeout");
-    });
-
-    it("should have prompt guidelines", () => {
-      expect(tool.promptGuidelines!.length).toBeGreaterThan(0);
-    });
   });
 
   describe("renderCall", () => {

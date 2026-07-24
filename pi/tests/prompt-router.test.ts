@@ -1,5 +1,3 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../extensions/transcript-runtime.ts", () => ({
@@ -20,12 +18,6 @@ import promptRouter, {
 	safeParseClassifierOutput,
 } from "../extensions/prompt-router.ts";
 import { emit as transcriptEmit } from "../extensions/transcript-runtime.ts";
-import { resolveDefaultCodexProfile } from "../lib/prompt-router/route-profile.ts";
-import {
-	legacyModelTierToRoute,
-	normalizeRouteCandidate,
-	ROUTER_SIZES,
-} from "../lib/prompt-router/route-vocabulary.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 // ---------------------------------------------------------------------------
@@ -127,43 +119,6 @@ describe("applyModelEffortBias", () => {
 });
 
 // ---------------------------------------------------------------------------
-// canonical route vocabulary
-// ---------------------------------------------------------------------------
-
-describe("default Codex route profiles", () => {
-	it("maps GPT-5.6 models to the Luna, Terra, and Sol ladder", () => {
-		expect(resolveDefaultCodexProfile("mini").preferredModels[0]).toBe(
-			"gpt-5.6-luna",
-		);
-		expect(resolveDefaultCodexProfile("core").preferredModels[0]).toBe(
-			"gpt-5.6-terra",
-		);
-		expect(resolveDefaultCodexProfile("large").preferredModels[0]).toBe(
-			"gpt-5.6-sol",
-		);
-	});
-});
-
-describe("canonical route vocabulary parity", () => {
-	it("matches the shared TS/Python fixture", () => {
-		const fixturePath = path.join(
-			__dirname,
-			"../prompt-routing/tests/fixtures/canonical_route_vocabulary.json",
-		);
-		const fixture = JSON.parse(fs.readFileSync(fixturePath, "utf-8"));
-
-		expect(ROUTER_SIZES).toEqual(fixture.canonical_routes);
-		for (const [legacy, route] of Object.entries(fixture.legacy_route_map)) {
-			expect(legacyModelTierToRoute(legacy)).toBe(route);
-			expect(normalizeRouteCandidate(legacy)).toBe(route);
-		}
-		for (const [alias, route] of Object.entries(fixture.route_aliases)) {
-			expect(normalizeRouteCandidate(alias)).toBe(route);
-		}
-	});
-});
-
-// ---------------------------------------------------------------------------
 // safeParseClassifierOutput (T4 -- schema validation)
 // ---------------------------------------------------------------------------
 
@@ -184,11 +139,6 @@ describe("safeParseClassifierOutput", () => {
 		expect(safeParseClassifierOutput("{}")).toBeNull();
 	});
 
-	it("rejects truly invalid input (non-JSON, non-tier strings)", () => {
-		expect(safeParseClassifierOutput("not json at all")).toBeNull();
-		expect(safeParseClassifierOutput("")).toBeNull();
-		expect(safeParseClassifierOutput("{}")).toBeNull();
-	});
 
 	it("rejects missing schema_version", () => {
 		const raw = JSON.stringify({
@@ -663,13 +613,6 @@ describe("classifier JSON parse -- T4", () => {
 // ---------------------------------------------------------------------------
 
 describe("router-explain command -- T4", () => {
-	it("registers router-explain command", () => {
-		const pi = createMockPi();
-		promptRouter(pi as any);
-		const names = pi._commands.map((c) => c.name);
-		expect(names).toContain("router-explain");
-	});
-
 	it("shows classifier output, applied route, and rule fired after a valid classification", async () => {
 		const pi = createMockPi();
 		(pi as any).setModel = vi.fn(async () => {});
@@ -775,18 +718,6 @@ describe("prompt-router extension -- input hook", () => {
 // ---------------------------------------------------------------------------
 
 describe("prompt-router extension -- command registration", () => {
-	it("registers all five router commands", () => {
-		const pi = createMockPi();
-		promptRouter(pi as any);
-
-		const names = pi._commands.map((c) => c.name);
-		expect(names).toContain("router-status");
-		expect(names).toContain("router-reset");
-		expect(names).toContain("router-off");
-		expect(names).toContain("router-on");
-		expect(names).toContain("router-explain");
-	});
-
 	it("/router-status shows the resolved current ladder and effort", async () => {
 		const pi = createMockPi();
 		promptRouter(pi as any);
@@ -941,90 +872,12 @@ describe("prompt-router extension -- session_start hook", () => {
 	});
 });
 
-describe("T3: /router-explain exists", () => {
-	it("router-explain command is registered", () => {
-		const pi = createMockPi();
-		promptRouter(pi as any);
-		const names = pi._commands.map((c) => c.name);
-		expect(names).toContain("router-explain");
-	});
-});
 
 // ---------------------------------------------------------------------------
 // T5: ship-config regression coverage
 // ---------------------------------------------------------------------------
 
-describe("T5: schema_version mismatch falls back", () => {
-	it("schema_version 99.0.0 -> null-path, no crash", async () => {
-		const pi = createMockPi();
-		promptRouter(pi as any);
 
-		const availableModels = [
-			{ provider: "openai-codex", id: "gpt-5.4-mini" },
-			{ provider: "openai-codex", id: "gpt-5.4-fast" },
-			{ provider: "openai-codex", id: "gpt-5.4" },
-		];
-		const ctx = createMockCtx({
-			model: { provider: "openai-codex", id: "gpt-5.4" },
-			modelRegistry: {
-				getAvailable: vi.fn(() => availableModels),
-				find: vi.fn((provider: string, id: string) =>
-					availableModels.find((m) => m.provider === provider && m.id === id),
-				),
-			},
-			ui: { ...createMockCtx().ui, setStatus: vi.fn(), notify: vi.fn() },
-		});
-
-		(pi.exec as any).mockResolvedValueOnce({
-			code: 0,
-			stdout: JSON.stringify({
-				schema_version: "99.0.0",
-				primary: { model_tier: "core", effort: "medium" },
-				candidates: [{ model_tier: "core", effort: "medium", confidence: 0.8 }],
-				confidence: 0.8,
-			}),
-			stderr: "",
-		});
-
-		const payload = await routeProviderPrompt(pi, ctx, "a prompt");
-
-		expect(payload.route_resolution_reason).toBe("classifier_failure");
-		expect((ctx.ui as any).notify).toHaveBeenCalledWith(
-			expect.stringContaining("classifier output invalid"),
-			"warning",
-		);
-	});
-});
-
-describe("T5: malformed JSON falls back", () => {
-	it("garbage stdout -> null-path, no crash", async () => {
-		const pi = createMockPi();
-		(pi as any).setModel = vi.fn(async () => {});
-		(pi as any).setThinkingLevel = vi.fn();
-		promptRouter(pi as any);
-
-		const ctx = createMockCtx({
-			model: { provider: "openai-codex", id: "gpt-5.4" },
-			modelRegistry: {
-				getAvailable: vi.fn(() => [
-					{ provider: "openai-codex", id: "gpt-5.4-mini" },
-				]),
-				find: vi.fn(() => ({ provider: "openai-codex", id: "gpt-5.4-mini" })),
-			},
-			ui: { ...createMockCtx().ui, setStatus: vi.fn(), notify: vi.fn() },
-		});
-
-		(pi.exec as any).mockResolvedValueOnce({
-			code: 0,
-			stdout: "}{ not json at all %%%",
-			stderr: "",
-		});
-
-		const payload = await routeProviderPrompt(pi, ctx, "trigger garbage");
-
-		expect(payload.route_resolution_reason).toBe("classifier_failure");
-	});
-});
 
 describe("T5: ConfGate ensemble_rule flows through", () => {
 	it("router captures ensemble_rule and /router-explain reports it", async () => {

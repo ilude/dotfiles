@@ -187,17 +187,6 @@ describe("medoid selection", () => {
 // 6. formatCandidates output format
 // ---------------------------------------------------------------------------
 describe("formatCandidates output", () => {
-  it("output begins with LOCAL PRIVATE header", () => {
-    const output = formatCandidates([], "2026-01-01T00:00:00Z", 0);
-    expect(output.startsWith("> LOCAL PRIVATE -- DO NOT COMMIT WITHOUT REVIEW")).toBe(true);
-  });
-
-  it("empty qualifying clusters list emits no-qualifying-candidates section", () => {
-    const output = formatCandidates([], "2026-01-01T00:00:00Z", 42);
-    expect(output).toContain("## No qualifying candidates");
-    expect(output).toContain("42");
-  });
-
   it("qualifying cluster produces cluster_id, canonical text, contributing ids, spanning repos", () => {
     const rows: MemoryRow[] = [
       makeRow({ embedding: near(6), repo_id: "gh/a/repo", id: "qa1", text: "shared pattern A" }),

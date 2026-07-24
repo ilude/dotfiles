@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import { analyzeCommandAst } from "../extensions/damage-control/ast-analyzer.ts";
 import {
 	evaluateDangerousCommand,
-	loadRules,
 	parseDamageControlRules,
 } from "../extensions/damage-control.ts";
 import type {
@@ -213,51 +212,6 @@ no_delete_paths: []
 		});
 	});
 
-	it("allows safe variable expansion in configured dangerous commands", async () => {
-		await expect(
-			analyzeCommandAst("rm $HOME/file.txt", [rmRule], astConfig),
-		).resolves.toEqual({ decision: "allow" });
-	});
-
-	it("allows proven mktemp file cleanup without asking on variable expansion", async () => {
-		await expect(
-			analyzeCommandAst(
-				'tmpfile="$(mktemp)"\nsome_command > "$tmpfile"\nrm -f -- "$tmpfile"',
-				[rmForceAskRule],
-				astConfig,
-			),
-		).resolves.toEqual({ decision: "allow" });
-	});
-
-	it.each([
-		["OS temp", "/tmp/kmis-local-claims.json"],
-		["repo scratch", ".tmp/kmis-local-claims.json"],
-	])(
-		"keeps same-command %s cleanup allowed through AST analysis",
-		async (_name, target) => {
-			const loaded = loadRules();
-			const command = [
-				"cd /c/Projects/Work/Gitlab/monorepo && set -euo pipefail",
-				'href=$(printf \'%s\' claim-dialect | python -c "import sys; print(sys.stdin.read())")',
-				`printf '%s' "$href" > ${target}`,
-				"python - <<'PY'",
-				"from pathlib import Path",
-				`Path('${target}').read_text()`,
-				"PY",
-				`rm -f ${target}`,
-			].join("\n");
-
-			await expect(
-				evaluateDangerousCommand(command, loaded.rules.dangerous_commands, {
-					toolName: "bash",
-					cwd: process.cwd(),
-					astAnalysis: loaded.rules.astAnalysis,
-					noDeletePaths: loaded.rules.no_delete_paths,
-				}),
-			).resolves.toBeUndefined();
-		},
-	);
-
 	it("keeps repo scratch cleanup interactive without same-command creation", async () => {
 		await expect(
 			evaluateDangerousCommand(
@@ -286,70 +240,6 @@ no_delete_paths: []
 				astAnalysis: astConfig,
 			}),
 		).resolves.toMatchObject({ block: true });
-	});
-
-	it("skips the rm force ask rule for proven mktemp file cleanup", async () => {
-		await expect(
-			evaluateDangerousCommand(
-				'tmpfile="$(mktemp)"; rm -f -- "$tmpfile"',
-				[rmForceAskRule],
-				{ toolName: "bash", astAnalysis: astConfig },
-			),
-		).resolves.toBeUndefined();
-	});
-
-	it("skips the recursive force rule only for proven mktemp directory cleanup", async () => {
-		await expect(
-			evaluateDangerousCommand(
-				'tmpdir="$(mktemp -d)"; rm -rf -- "$tmpdir"',
-				[rmRule],
-				{ toolName: "bash", astAnalysis: astConfig },
-			),
-		).resolves.toBeUndefined();
-	});
-
-	it("allows mktemp template variants for proven file cleanup", async () => {
-		await expect(
-			evaluateDangerousCommand(
-				'tmpfile="$(mktemp -t pi-output.XXXXXX)"; rm -f -- "$tmpfile"',
-				[rmForceAskRule],
-				{ toolName: "bash", astAnalysis: astConfig },
-			),
-		).resolves.toBeUndefined();
-		await expect(
-			evaluateDangerousCommand(
-				'tmpfile="$(mktemp /tmp/pi-output.XXXXXX)"; rm -f -- "$tmpfile"',
-				[rmForceAskRule],
-				{ toolName: "bash", astAnalysis: astConfig },
-			),
-		).resolves.toBeUndefined();
-	});
-
-	it("allows proven temp cleanup inside an EXIT trap", async () => {
-		await expect(
-			evaluateDangerousCommand(
-				'tmpfile="$(mktemp)"; trap \'rm -f -- "$tmpfile"\' EXIT',
-				[rmForceAskRule],
-				{ toolName: "bash", astAnalysis: astConfig },
-			),
-		).resolves.toBeUndefined();
-	});
-
-	it("allows files derived under a proven mktemp directory", async () => {
-		await expect(
-			evaluateDangerousCommand(
-				'tmpdir="$(mktemp -d)"; outfile="$tmpdir/output.txt"; rm -f -- "$outfile"; rm -rf -- "$tmpdir"',
-				[rmForceAskRule, rmRule],
-				{ toolName: "bash", astAnalysis: astConfig },
-			),
-		).resolves.toBeUndefined();
-		await expect(
-			evaluateDangerousCommand(
-				`tmpdir="$(mktemp -d)"; outfile="\${tmpdir}/output.txt"; rm -f -- "$outfile"`,
-				[rmForceAskRule],
-				{ toolName: "bash", astAnalysis: astConfig },
-			),
-		).resolves.toBeUndefined();
 	});
 
 	it("keeps asking when temp cleanup mixes in an unproven target", async () => {

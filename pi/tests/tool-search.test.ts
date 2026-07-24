@@ -61,11 +61,6 @@ describe("tool-search extension", () => {
 		tool = registered;
 	});
 
-	it("should register tool_search", () => {
-		expect(tool).toBeDefined();
-		expect(tool.name).toBe("tool_search");
-	});
-
 	describe("list all", () => {
 		it("should list all tools when no query", async () => {
 			const result = await tool.execute("id", {}, undefined, undefined, {});
@@ -126,20 +121,6 @@ describe("tool-search extension", () => {
 				{},
 			);
 			expect(result.content[0].text).toContain("pwsh");
-		});
-
-		it("activates matching inactive tools by default", async () => {
-			activeNames = activeNames.filter((name) => name !== "pwsh");
-			const result = await tool.execute(
-				"id",
-				{ query: "powershell" },
-				undefined,
-				undefined,
-				{},
-			);
-			expect(activeNames).toContain("pwsh");
-			expect(result.details.activated).toEqual(["pwsh"]);
-			expect(result.content[0].text).toContain("Activated pwsh");
 		});
 
 		it("does not activate matches when explicitly disabled", async () => {

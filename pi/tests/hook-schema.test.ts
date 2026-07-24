@@ -1,24 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
 	isKnownPiHookEvent,
-	PI_HOOK_EVENTS,
 	validateHookConfig,
 } from "../lib/hook-schema.js";
-
-describe("PI_HOOK_EVENTS", () => {
-	it("includes the documented runtime events", () => {
-		expect(new Set(PI_HOOK_EVENTS)).toEqual(
-			new Set([
-				"tool_call",
-				"tool_result",
-				"session_start",
-				"session_shutdown",
-				"input",
-				"before_agent_start",
-			]),
-		);
-	});
-});
 
 describe("isKnownPiHookEvent", () => {
 	it("returns true for runtime events", () => {

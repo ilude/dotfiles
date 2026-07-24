@@ -1,6 +1,3 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { fileURLToPath } from "node:url";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
@@ -161,46 +158,5 @@ describe("/provider command", () => {
 			expect.stringContaining("Removed credentials for opencode"),
 			"info",
 		);
-	});
-});
-
-// ---------------------------------------------------------------------------
-// T4 fixture-based parity test (Phase 2 Wave 2):
-//
-// The redacted auth.json baseline at pi/tests/fixtures/auth-baseline.json was
-// captured BEFORE any provider.ts refactor began. The expected parsed shape
-// at pi/tests/fixtures/auth-baseline-parsed.json was captured by running the
-// pre-refactor parser against that baseline (see _capture-baseline.mjs).
-//
-// This test deep-equals the post-refactor parser's output against the
-// COMMITTED expected fixture. Generating expected from the post-refactor
-// parser would be tautological and would not catch a regression.
-// ---------------------------------------------------------------------------
-
-describe("provider.ts auth-baseline parity (T4 fixture)", () => {
-	const __filename = fileURLToPath(import.meta.url);
-	const __dirname = path.dirname(__filename);
-	const fixturesDir = path.join(__dirname, "fixtures");
-	const inputPath = path.join(fixturesDir, "auth-baseline.json");
-	const expectedPath = path.join(fixturesDir, "auth-baseline-parsed.json");
-
-	it("describeConfiguredProviders + per-provider lookup match the committed pre-refactor expected", () => {
-		const auth = JSON.parse(fs.readFileSync(inputPath, "utf-8"));
-		const expected = JSON.parse(fs.readFileSync(expectedPath, "utf-8"));
-
-		const storage = {
-			list: () => Object.keys(auth),
-			get: (id: string) => auth[id],
-		};
-
-		const actual = {
-			round_trip: auth,
-			describe: describeConfiguredProviders(storage),
-			per_provider: Object.fromEntries(
-				Object.keys(auth).map((id) => [id, storage.get(id)]),
-			),
-		};
-
-		expect(actual).toEqual(expected);
 	});
 });

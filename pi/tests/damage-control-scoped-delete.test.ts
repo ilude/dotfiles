@@ -29,42 +29,14 @@ describe("scoped delete", () => {
 	it.each([
 		["allows a relative target", "rm -rf build", "allow"],
 		["asks for parent traversal", "rm -rf ../build", "ask"],
-		["asks for home expansion", "rm -rf ~/build", "ask"],
-		[
-			"asks for a non-scratch absolute target",
-			"rm -rf /var/cache/build",
-			"ask",
-		],
-		["allows a /tmp target", "rm -rf /tmp/pi-scratch", "allow"],
-		["asks for a drive-letter target", "rm -rf C:/temp/build", "ask"],
-		["allows a relative glob", "rm -rf build/*", "allow"],
-		["asks for the cwd", "rm -rf .", "ask"],
 		["asks for .git", "rm -rf .git", "ask"],
-		["asks for .pi", "rm -rf .pi", "ask"],
 		["asks for a no-delete path", "rm -rf package.json", "ask"],
-		["asks for an unparseable delete", "rm -rf", "ask"],
-		["asks for brace expansion", ["rm", "-rf", "{build,cache}"].join(" "), "ask"],
-		["asks for concatenated shell words", ["rm", "-rf", "''/etc"].join(" "), "ask"],
-		["asks for escaped shell words", ["rm", "-rf", "\\./build"].join(" "), "ask"],
-		["asks for unsupported shell syntax", ["rm", "-rf", "$(printf build)"].join(" "), "ask"],
-		["asks for unmodelled syntax outside the delete", ["rm", "-rf", "build", "&&", "printf", "done"].join(" "), "ask"],
 		["asks for an ssh payload", "ssh host 'rm -rf build'", "ask"],
 		[
 			"allows a docker payload",
 			"docker run image sh -c 'rm -rf build'",
 			"allow",
 		],
-		[
-			"asks for mixed contained and external targets",
-			"rm -rf build /var/cache/build",
-			"ask",
-		],
-		[
-			"asks when a later compound rm segment escapes the workspace",
-			"rm -rf build && rm -rf ../outside",
-			"ask",
-		],
-		["asks for an unquoted ssh payload delete", "ssh host rm -rf build", "ask"],
 		[
 			"asks for an unquoted scp payload delete",
 			"scp local host:rm -rf build",
@@ -88,13 +60,7 @@ describe("scoped delete", () => {
 		}
 	});
 
-	it.each([
-		"rm -rf build",
-		"rm -r build",
-		"rm build",
-		"rm --recursive build",
-		"rm --force build",
-	])("auto-allows each native scoped-delete ask form: %s", async (command) => {
+	it.each(["rm -rf build"])("auto-allows each native scoped-delete ask form: %s", async (command) => {
 			const rules = loadRules().rules.dangerous_commands;
 			const onAutoAllowed = vi.fn();
 

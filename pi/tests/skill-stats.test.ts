@@ -1,13 +1,11 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it } from "vitest";
-import skillStats, {
+import {
 	collectSkillStats,
 	renderSkillStatsMarkdown,
 } from "../extensions/skill-stats.ts";
-import { createMockPi } from "./helpers/mock-pi.ts";
 
 const tempDirs: string[] = [];
 
@@ -46,12 +44,6 @@ async function writeSkill(root: string, name: string): Promise<void> {
 }
 
 describe("/skill-stats extension", () => {
-	it("registers the command", () => {
-		const pi = createMockPi();
-		skillStats(pi as unknown as ExtensionAPI);
-		expect(pi._commands.find((c) => c.name === "skill-stats")).toBeDefined();
-	});
-
 	it("aggregates structured, prompt, and manual-read evidence safely", async () => {
 		const root = await makeSessionRoot();
 		await writeJsonl(root, "2026-05-07T00-00-00-000Z_a.jsonl", [

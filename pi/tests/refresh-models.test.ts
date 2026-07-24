@@ -155,21 +155,6 @@ describe("/refresh-models command", () => {
 		fs.rmSync(tempHome, { recursive: true, force: true });
 	});
 
-	it("registers the slash command", () => {
-		const pi = createMockPi();
-		registerRefreshModelsCommand(
-			pi as Parameters<typeof registerRefreshModelsCommand>[0],
-		);
-		expect(pi._commands).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({
-					name: "refresh-models",
-					handler: expect.any(Function),
-				}),
-			]),
-		);
-	});
-
 	it("restores current Pi metadata when the cache has no new models", () => {
 		const cacheDir = path.join(
 			tempHome,

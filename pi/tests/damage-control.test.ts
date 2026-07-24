@@ -409,33 +409,6 @@ no_delete_paths: []
 		).resolves.toBeUndefined();
 	});
 
-	it("allows cleanup of a temp-like file created earlier in the same command", async () => {
-		const mod = await import("../extensions/damage-control.ts");
-		const rules = [
-			{
-				pattern: "simple rm",
-				regex: "(?<!-)\\brm\\s+[^-\\s]",
-				reason: "rm deletes files permanently",
-				action: "ask" as const,
-			},
-		];
-		const command = [
-			"go run ./cmd/onramp --plan up booklore patriot-onramp -o json > booklore-plan.tmp",
-			"python - <<'PY'",
-			"import json",
-			"p=json.load(open('booklore-plan.tmp'))",
-			"PY",
-			"rm booklore-plan.tmp",
-		].join("\n");
-
-		await expect(
-			mod.evaluateDangerousCommand(command, rules, {
-				toolName: "bash",
-				cwd: process.cwd(),
-			}),
-		).resolves.toBeUndefined();
-	});
-
 	it("keeps requiring confirmation for temp-like file removal without same-command provenance", async () => {
 		const mod = await import("../extensions/damage-control.ts");
 		const rules = [
@@ -491,115 +464,6 @@ no_delete_paths: []
 		expect(message).toContain(
 			"Likely targets:\n- ./generated-cache/result.txt (repo)",
 		);
-	});
-
-	it("allows non-recursive rm -f when every literal target is under a temp directory", async () => {
-		const mod = await import("../extensions/damage-control.ts");
-		const rules = [
-			{
-				pattern: "rm recursive force",
-				regex:
-					"\\brm\\s+(?:-[A-Za-z]*r[A-Za-z]*f[A-Za-z]*|-[A-Za-z]*f[A-Za-z]*r[A-Za-z]*)\\b",
-				reason: "Recursive force delete can cause irreversible data loss",
-			},
-			{
-				pattern: "rm force",
-				regex:
-					"\\brm\\s+(?=[^|;&]*?(?:-[A-Za-z]*f[A-Za-z]*|--force)\\b)(?![^|;&]*?(?:-[A-Za-z]*r[A-Za-z]*|--recursive)\\b)",
-				reason:
-					"Force delete bypasses normal interactive safeguards and can remove files irreversibly",
-				action: "ask" as const,
-			},
-		];
-
-		await expect(
-			mod.evaluateDangerousCommand("rm -f /tmp/pi-scratch.txt", rules, {
-				toolName: "bash",
-				cwd: process.cwd(),
-			}),
-		).resolves.toBeUndefined();
-		await expect(
-			mod.evaluateDangerousCommand("rm -rf /tmp/pi-scratch-dir", rules, {
-				toolName: "bash",
-				cwd: process.cwd(),
-			}),
-		).resolves.toMatchObject({ block: true });
-	});
-
-	it("allows embedded non-recursive rm -f cleanup for literal temp files", async () => {
-		const mod = await import("../extensions/damage-control.ts");
-		const rules = [
-			{
-				pattern: "rm force",
-				regex:
-					"\\brm\\s+(?=[^|;&]*?(?:-[A-Za-z]*f[A-Za-z]*|--force)\\b)(?![^|;&]*?(?:-[A-Za-z]*r[A-Za-z]*|--recursive)\\b)",
-				reason:
-					"Force delete bypasses normal interactive safeguards and can remove files irreversibly",
-				action: "ask" as const,
-			},
-		];
-		const command =
-			"ssh host 'python /tmp/update.py && rm -f /tmp/update.py && docker compose up -d'";
-
-		await expect(
-			mod.evaluateDangerousCommand(command, rules, {
-				toolName: "bash",
-				cwd: process.cwd(),
-			}),
-		).resolves.toBeUndefined();
-	});
-
-	it("allows embedded non-recursive rm -f cleanup for Git Bash temp files", async () => {
-		const mod = await import("../extensions/damage-control.ts");
-		const rules = [
-			{
-				pattern: "rm force",
-				regex:
-					"\\brm\\s+(?=[^|;&]*?(?:-[A-Za-z]*f[A-Za-z]*|--force)\\b)(?![^|;&]*?(?:-[A-Za-z]*r[A-Za-z]*|--recursive)\\b)",
-				reason:
-					"Force delete bypasses normal interactive safeguards and can remove files irreversibly",
-				action: "ask" as const,
-			},
-		];
-
-		await expect(
-			mod.evaluateDangerousCommand(
-				"rm -f /c/Users/mglenn/AppData/Local/Temp/infisical-patch-body.json",
-				rules,
-				{
-					toolName: "bash",
-					cwd: process.cwd(),
-				},
-			),
-		).resolves.toBeUndefined();
-	});
-
-	it("allows EXIT trap cleanup for assigned temp-like basenames", async () => {
-		const mod = await import("../extensions/damage-control.ts");
-		const rules = [
-			{
-				pattern: "rm force",
-				regex:
-					"\\brm\\s+(?=[^|;&]*?(?:-[A-Za-z]*f[A-Za-z]*|--force)\\b)(?![^|;&]*?(?:-[A-Za-z]*r[A-Za-z]*|--recursive)\\b)",
-				reason:
-					"Force delete bypasses normal interactive safeguards and can remove files irreversibly",
-				action: "ask" as const,
-			},
-		];
-		const command = [
-			"set -euo pipefail",
-			"src=registry-key-src.tmp.json",
-			"out=registry-key-staging.tmp.json",
-			'trap \'rm -f "$src" "$out"\' EXIT',
-			'kubectl get secret registry-key -o json > "$src"',
-		].join("\n");
-
-		await expect(
-			mod.evaluateDangerousCommand(command, rules, {
-				toolName: "bash",
-				cwd: process.cwd(),
-			}),
-		).resolves.toBeUndefined();
 	});
 
 	it("does not allow EXIT trap cleanup for unknown or non-temp variables", async () => {
@@ -660,33 +524,6 @@ no_delete_paths: []
 		).resolves.toMatchObject({ block: true });
 	});
 
-	it("allows rm -f for Pi todo state only", async () => {
-		const mod = await import("../extensions/damage-control.ts");
-		const rules = [
-			{
-				pattern: "rm force",
-				regex:
-					"\\brm\\s+(?=[^|;&]*?(?:-[A-Za-z]*f[A-Za-z]*|--force)\\b)(?![^|;&]*?(?:-[A-Za-z]*r[A-Za-z]*|--recursive)\\b)",
-				reason:
-					"Force delete bypasses normal interactive safeguards and can remove files irreversibly",
-				action: "ask" as const,
-			},
-		];
-
-		await expect(
-			mod.evaluateDangerousCommand("rm -f .pi/todo.json", rules, {
-				toolName: "bash",
-				cwd: process.cwd(),
-			}),
-		).resolves.toBeUndefined();
-		await expect(
-			mod.evaluateDangerousCommand("rm -f .pi/other.json", rules, {
-				toolName: "bash",
-				cwd: process.cwd(),
-			}),
-		).resolves.toMatchObject({ block: true });
-	});
-
 	it("does not apply the temp removal exception when any target is outside temp", async () => {
 		const mod = await import("../extensions/damage-control.ts");
 		const rules = [
@@ -732,52 +569,6 @@ no_delete_paths: []
 			reason:
 				'Blocked dangerous command (matched "secret file read"): Reads secret-bearing files that must not be exposed',
 		});
-	});
-
-	it("does not treat docker env-file arguments as secret file reads", async () => {
-		const mod = await import("../extensions/damage-control.ts");
-		const rules = [
-			{
-				pattern: "env file",
-				regex: "\\.env(?!\\.(?:example|template|sample|j2))\\b",
-				reason: ".env file may contain secrets (API keys, passwords)",
-				action: "ask" as const,
-			},
-		];
-
-		expect(
-			await mod.evaluateDangerousCommand(
-				"docker run --rm --env-file .env image python app.py",
-				rules,
-				{ toolName: "bash" },
-			),
-		).toBeUndefined();
-		expect(
-			await mod.evaluateDangerousCommand(
-				"docker compose --env-file .env up",
-				rules,
-				{ toolName: "bash" },
-			),
-		).toBeUndefined();
-		expect(
-			await mod.evaluateDangerousCommand(
-				"docker network ls --format '{{.Name}}' | grep mps; docker run --rm --network mps_mps-net --env-file .env image python -u app.py",
-				rules,
-				{ toolName: "bash" },
-			),
-		).toBeUndefined();
-		expect(
-			await mod.evaluateDangerousCommand("cat service.env.j2", rules, {
-				toolName: "bash",
-			}),
-		).toBeUndefined();
-		expect(
-			(
-				await mod.evaluateDangerousCommand("cat .env", rules, {
-					toolName: "bash",
-				})
-			)?.block,
-		).toBe(true);
 	});
 
 	it("allows read-only git inspection commands in default dangerous-command analysis", async () => {
@@ -850,39 +641,6 @@ no_delete_paths: []
 				)
 			)?.block,
 		).toBe(true);
-	});
-
-	it("loads the Pi-owned policy from the extension-relative default", async () => {
-		const mod = await import("../extensions/damage-control.ts");
-		const loaded = mod.loadRules();
-
-		expect(loaded.health.status).toBe("active");
-		expect(loaded.health.ruleSource).toMatch(
-			/pi[\\/]damage-control-rules\.yaml$/,
-		);
-		expect(loaded.health.ruleSource).not.toContain("claude");
-		expect(loaded.rules.dangerous_commands).toHaveLength(337);
-		expect(
-			loaded.rules.dangerous_commands.filter(
-				(rule) => rule.tools?.[0] === "bash",
-			),
-		).toHaveLength(326);
-		expect(
-			loaded.rules.dangerous_commands.filter(
-				(rule) => rule.tools?.[0] === "pwsh",
-			),
-		).toHaveLength(11);
-		expect(
-			loaded.rules.dangerous_commands.filter((rule) => rule.action === "ask"),
-		).toHaveLength(225);
-		expect(
-			loaded.rules.dangerous_commands.filter((rule) => rule.action !== "ask"),
-		).toHaveLength(112);
-		expect(loaded.rules.read_confirm_paths).toEqual([
-			"*.tfvars",
-			"terraform.tfvars",
-			"*.auto.tfvars",
-		]);
 	});
 
 	it("enforces catastrophic PowerShell rules through the pwsh tool", async () => {

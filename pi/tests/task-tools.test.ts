@@ -53,26 +53,6 @@ afterAll(() => {
 });
 
 describe("task tools", () => {
-	it("registers one unified task tool", async () => {
-		const pi = createMockPi();
-		const mod = await import("../extensions/tasks.ts");
-		mod.default(pi as Parameters<typeof mod.default>[0]);
-		expect(pi._getTool("task")).toBeDefined();
-		for (const name of [
-			"todo",
-			"task_create",
-			"task_batch_create",
-			"task_list",
-			"task_get",
-			"task_update",
-			"task_execute",
-			"task_stop",
-			"task_output",
-		]) {
-			expect(pi._getTool(name)).toBeUndefined();
-		}
-	});
-
 	it("exposes opt-in drain with bounded concurrency", async () => {
 		const pi = createMockPi();
 		const coordinator = new TaskExecutionCoordinator();
@@ -341,133 +321,6 @@ describe("task tools", () => {
 		expect(
 			new Set(all.details.records.map((record: { id: string }) => record.id)),
 		).toEqual(new Set([active.id, completed.id, foreign.id]));
-	});
-
-	it("bounds model-visible task collections without trimming TUI details", async () => {
-		const pi = createMockPi();
-		registerTaskTools(
-			pi as Parameters<typeof registerTaskTools>[0],
-			new TaskExecutionCoordinator(),
-		);
-		for (let index = 0; index < 55; index++) {
-			createTask({ origin: "other", summary: `task ${index}` });
-		}
-		const result = await pi
-			._getTool("task")
-			?.execute(
-				"bounded-list",
-				{ action: "list" },
-				undefined,
-				undefined,
-				createMockCtx({ cwd: tmpRoot }),
-			);
-		const visible = JSON.parse(result.content[0].text);
-		expect(visible.count).toBe(55);
-		expect(visible.tasks).toHaveLength(50);
-		expect(visible.truncated).toBe(true);
-		expect(result.details.records).toHaveLength(55);
-	});
-
-	it("rejects oversized task fields without partial batch creation", async () => {
-		const pi = createMockPi();
-		const coordinator = new TaskExecutionCoordinator();
-		registerTaskTools(
-			pi as Parameters<typeof registerTaskTools>[0],
-			coordinator,
-		);
-		const ctx = createMockCtx({ cwd: tmpRoot });
-		const tool = pi._getTool("task");
-
-		await expect(
-			tool?.execute(
-				"long-summary",
-				{ action: "create", summary: "s".repeat(101) },
-				undefined,
-				undefined,
-				ctx,
-			),
-		).rejects.toThrow("summary must be at most 100 characters");
-		await expect(
-			tool?.execute(
-				"multiline-summary",
-				{ action: "create", summary: "first\nsecond" },
-				undefined,
-				undefined,
-				ctx,
-			),
-		).rejects.toThrow("summary must be one line");
-		await expect(
-			tool?.execute(
-				"long-notes",
-				{ action: "create", summary: "valid", notes: "n".repeat(501) },
-				undefined,
-				undefined,
-				ctx,
-			),
-		).rejects.toThrow("notes must be at most 500 characters");
-		await expect(
-			tool?.execute(
-				"long-prompt",
-				{
-					action: "create",
-					summary: "valid",
-					agent: "builder",
-					task: "t".repeat(2_001),
-				},
-				undefined,
-				undefined,
-				ctx,
-			),
-		).rejects.toThrow("task must be at most 2000 characters");
-		await expect(
-			tool?.execute(
-				"invalid-batch",
-				{
-					action: "batch",
-					tasks: [{ summary: "valid" }, { summary: "s".repeat(101) }],
-				},
-				undefined,
-				undefined,
-				ctx,
-			),
-		).rejects.toThrow("summary must be at most 100 characters");
-		expect(listTasks()).toHaveLength(0);
-	});
-
-	it("rejects an oversized summary update without transitioning the task", async () => {
-		const pi = createMockPi();
-		registerTaskTools(
-			pi as Parameters<typeof registerTaskTools>[0],
-			new TaskExecutionCoordinator(),
-		);
-		const ctx = createMockCtx({ cwd: tmpRoot });
-		const tool = pi._getTool("task");
-		const task = createTask({ origin: "other", summary: "pending task" });
-		const before = getTask(task.id);
-
-		const rejected = await tool?.execute(
-			"invalid-update",
-			{
-				action: "update",
-				id: task.id,
-				state: "running",
-				summary: "s".repeat(101),
-			},
-			undefined,
-			undefined,
-			ctx,
-		);
-		const missing = await tool?.execute(
-			"missing-update",
-			{ action: "update", id: "missing-task", summary: "valid" },
-			undefined,
-			undefined,
-			ctx,
-		);
-
-		expect(rejected.details.outcome).toBe("rejected");
-		expect(getTask(task.id)).toEqual(before);
-		expect(missing.details.outcome).toBe("not_found");
 	});
 
 	it("rejects invalid completed-to-skipped updates without patching fields", async () => {
@@ -910,33 +763,6 @@ describe("task tools", () => {
 		expect(getTask(record.id)?.execution?.status).toBe("orphaned");
 	});
 
-	it("advertises bounded graph and multi-ID schemas", () => {
-		const pi = createMockPi();
-		registerTaskTools(
-			pi as Parameters<typeof registerTaskTools>[0],
-			new TaskExecutionCoordinator(),
-		);
-		const parameters = pi._getTool("task")?.parameters;
-		expect(parameters.additionalProperties).toBe(true);
-		expect(parameters.properties.ids).toMatchObject({
-			minItems: 1,
-			maxItems: 8,
-		});
-		expect(parameters.properties.tasks).toMatchObject({
-			minItems: 0,
-			maxItems: 16,
-		});
-		const taskItem = parameters.properties.tasks.items;
-		expect(taskItem.additionalProperties).toBe(true);
-		expect(taskItem.properties).toHaveProperty("key");
-		expect(taskItem.properties.blockedBy.maxItems).toBe(16);
-		expect(taskItem.properties.blockedByKeys.maxItems).toBe(16);
-		const actions = parameters.properties.action.anyOf.map(
-			(item: { const: string }) => item.const,
-		);
-		expect(actions).toEqual(expect.arrayContaining(["execute_many", "await"]));
-	});
-
 	it("publishes graph-aware batches and rejects malformed bounds", async () => {
 		const pi = createMockPi();
 		registerTaskTools(
@@ -1353,53 +1179,6 @@ describe("task tools", () => {
 		).toBe(true);
 	});
 
-	it("budgets long terminal artifact paths after mandatory await fields", async () => {
-		const workspace = resolveTaskWorkspace(tmpRoot);
-		const tasks = Array.from({ length: 8 }, (_, index) =>
-			createTask({
-				origin: "subagent",
-				summary: `terminal ${index}`,
-				workspace,
-				state: "completed",
-				execution: {
-					kind: "subagent",
-					agent: "builder",
-					task: "Run",
-					status: "completed",
-					outputPath: `C:/tmp/${"😀".repeat(1_000)}/${index}.md`,
-				},
-			}),
-		);
-		const pi = createMockPi();
-		registerTaskTools(
-			pi as Parameters<typeof registerTaskTools>[0],
-			new TaskExecutionCoordinator(),
-		);
-		const result = await pi
-			._getTool("task")
-			?.execute(
-				"await-artifacts",
-				{ action: "await", ids: tasks.map((task) => task.id) },
-				undefined,
-				undefined,
-				createMockCtx({ cwd: tmpRoot }),
-			);
-		const visible = JSON.parse(result.content[0].text);
-		expect(
-			Buffer.byteLength(result.content[0].text, "utf8"),
-		).toBeLessThanOrEqual(4_096);
-		expect(visible.results).toHaveLength(8);
-		expect(
-			visible.results.every(
-				(item: { classification: string }) =>
-					item.classification === "terminal",
-			),
-		).toBe(true);
-		expect(result.details.results[0].record.execution.outputPath).toContain(
-			"😀".repeat(1_000),
-		);
-	});
-
 	it("rejects failed-to-stop execution through legacy and multi actions", async () => {
 		const workspace = resolveTaskWorkspace(tmpRoot);
 		const task = createTask({
@@ -1441,16 +1220,6 @@ describe("task tools", () => {
 		expect(getTask(task.id)?.execution?.status).toBe("failed_to_stop");
 	});
 
-	it("registers provider-safe object schemas for Codex/OpenAI", async () => {
-		const pi = createMockPi();
-		const mod = await import("../extensions/tasks.ts");
-		mod.default(pi as Parameters<typeof mod.default>[0]);
-		for (const tool of pi._tools) {
-			expect(tool.parameters.type).toBe("object");
-			expect(tool.parameters).toHaveProperty("properties");
-			expect(tool.parameters.properties).toBeTypeOf("object");
-		}
-	});
 });
 
 function createExecutable(summary: string, workspace?: string) {

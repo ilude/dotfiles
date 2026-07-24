@@ -277,19 +277,6 @@ describe("/tasks command", () => {
 		expect(text).not.toContain("token=abc");
 	});
 
-	it("documents ready and blocked in help", async () => {
-		const { cmd } = await loadTasks();
-		const ctx = createMockCtx();
-		await cmd.handler("help", ctx);
-		const text = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock
-			.calls[0][0] as string;
-		expect(text).toContain("ready");
-		expect(text).toContain("blocked");
-		expect(text).toContain("what can I work on now");
-		expect(text).toContain("why can't this start");
-		expect(text).toContain("Retry/reopen does not execute work");
-	});
-
 	it("rejects starting a waiting task without mutating persisted records", async () => {
 		const { createTask, getTask } = await import("../lib/task-registry.ts");
 		const blocker = createTask({ origin: "subagent", summary: "blocker" });

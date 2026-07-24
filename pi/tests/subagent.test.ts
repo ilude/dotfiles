@@ -155,39 +155,6 @@ You are a test agent.
 		);
 	}
 
-	it("ships a read-only explorer agent", async () => {
-		const { loadAgentsFromDir } = await import(
-			"../extensions/subagent/agents.ts"
-		);
-		const agents = loadAgentsFromDir(
-			path.resolve(import.meta.dirname, "../agents"),
-			"user",
-		);
-		const explorer = agents.find((agent) => agent.name === "explorer");
-
-		expect(explorer).toMatchObject({
-			effort: "medium",
-			model: "openai-codex/gpt-5.6-sol",
-			skills: ["analysis-workflow"],
-		});
-		expect(explorer?.tools).toEqual([
-			"read",
-			"grep",
-			"find",
-			"ls",
-			"web_search",
-			"web_fetch",
-		]);
-		expect(explorer?.systemPrompt).toContain(
-			"Investigate the assigned question without modifying repository or external state.",
-		);
-	});
-
-	it("does not expose the retired team dispatch parameter", async () => {
-		const { tool } = await loadTool();
-		expect(tool.parameters.properties).not.toHaveProperty("team");
-	});
-
 	it(
 		"passes an execution-attempt runId override to the child process",
 		async () => {
@@ -820,7 +787,12 @@ You are a test agent.
 		"finishes a subagent when the child emits agent_end without close",
 		async () => {
 			const proc = createMockProcess();
-			spawnMock.mockImplementation(() => proc);
+			const spawned = new Promise<void>((resolve) => {
+				spawnMock.mockImplementation(() => {
+					resolve();
+					return proc;
+				});
+			});
 			const { tool } = await loadTool();
 
 			const ctx = createMockCtx({
@@ -841,7 +813,8 @@ You are a test agent.
 				ctx,
 			);
 
-			await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1));
+			await spawned;
+			expect(spawnMock).toHaveBeenCalledTimes(1);
 			proc.stdout.emit(
 				"data",
 				`${JSON.stringify({
@@ -1239,7 +1212,12 @@ You are a test agent.
 		"persists unavailable cost and partial usage when cancelled",
 		async () => {
 			const proc = createMockProcess();
-			spawnMock.mockImplementation(() => proc);
+			const spawned = new Promise<void>((resolve) => {
+				spawnMock.mockImplementation(() => {
+					resolve();
+					return proc;
+				});
+			});
 			const { tool } = await loadTool();
 			const { listTasks } = await import("../lib/task-registry.ts");
 			const controller = new AbortController();
@@ -1256,7 +1234,8 @@ You are a test agent.
 				createMockCtx({ cwd: tmpDir }),
 			);
 
-			await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1));
+			await spawned;
+			expect(spawnMock).toHaveBeenCalledTimes(1);
 			proc.stdout.emit(
 				"data",
 				`${JSON.stringify({
@@ -1656,7 +1635,12 @@ You are a test agent.
 		"renders active parallel subagents with model and effort",
 		async () => {
 			const proc = createMockProcess();
-			spawnMock.mockImplementation(() => proc);
+			const spawned = new Promise<void>((resolve) => {
+				spawnMock.mockImplementation(() => {
+					resolve();
+					return proc;
+				});
+			});
 			const { tool } = await loadTool();
 
 			const ctx = createMockCtx({
@@ -1679,8 +1663,9 @@ You are a test agent.
 				ctx,
 			);
 
-			await vi.waitFor(() => expect(partialResult).toBeDefined());
-			await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(1));
+			await spawned;
+			expect(spawnMock).toHaveBeenCalledTimes(1);
+			expect(partialResult).toBeDefined();
 			const rendered = tool
 				.renderResult(partialResult, { expanded: false }, createMockTheme(), {})
 				.render(120)

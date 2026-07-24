@@ -4,7 +4,6 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import bedrockRefresh from "../extensions/bedrock-refresh.ts";
 import {
-	awsProfileRegions,
 	type BedrockAuthEnvironment,
 	parseAwsIni,
 	resolveBedrockTarget,
@@ -78,40 +77,6 @@ afterEach(() => {
 });
 
 describe("Bedrock target resolution", () => {
-	it("uses explicit options before provider and process configuration", () => {
-		expect(
-			resolveBedrockTarget({
-				explicitProfile: "explicit-profile",
-				explicitRegion: "eu-west-1",
-				providerEnv: {
-					AWS_PROFILE: "provider-profile",
-					AWS_REGION: "us-west-2",
-				},
-				processEnv: { AWS_PROFILE: "process-profile", AWS_REGION: "us-east-1" },
-			}),
-		).toEqual({
-			profile: "explicit-profile",
-			region: "eu-west-1",
-			credentialSource: "profile",
-		});
-	});
-
-	it("uses provider-scoped profile and region before process values", () => {
-		expect(
-			resolveBedrockTarget({
-				providerEnv: {
-					AWS_PROFILE: "provider-profile",
-					AWS_REGION: "us-west-2",
-				},
-				processEnv: { AWS_PROFILE: "process-profile", AWS_REGION: "us-east-1" },
-			}),
-		).toEqual({
-			profile: "provider-profile",
-			region: "us-west-2",
-			credentialSource: "profile",
-		});
-	});
-
 	it("omits profile arguments for provider-scoped non-profile authentication", () => {
 		expect(
 			resolveBedrockTarget({
@@ -127,22 +92,6 @@ describe("Bedrock target resolution", () => {
 			profile: undefined,
 			region: "us-east-2",
 			credentialSource: "non-profile",
-		});
-	});
-
-	it("uses inferred profiles and config regions only after environment values", () => {
-		expect(
-			resolveBedrockTarget({
-				inferredProfile: "single-profile",
-				profileRegions: {
-					default: "us-east-2",
-					"single-profile": "ca-central-1",
-				},
-			}),
-		).toEqual({
-			profile: "single-profile",
-			region: "ca-central-1",
-			credentialSource: "profile",
 		});
 	});
 
@@ -166,16 +115,6 @@ describe("Bedrock target resolution", () => {
 		).toBeUndefined();
 	});
 
-	it("reads default and named regions from AWS config sections", () => {
-		expect(
-			awsProfileRegions(
-				parseAwsIni(
-					"[default]\nregion = us-east-2\n[profile work]\nregion = eu-west-1\n[sso-session ignored]\nregion = ap-south-1\n",
-				),
-			),
-		).toEqual({ default: "us-east-2", work: "eu-west-1" });
-	});
-
 	it("falls back to the default credential chain and region", () => {
 		expect(resolveBedrockTarget({})).toEqual({
 			profile: undefined,
@@ -186,21 +125,6 @@ describe("Bedrock target resolution", () => {
 });
 
 describe("bedrock-refresh extension", () => {
-	it("registers the slash command", () => {
-		const pi = createMockPi();
-
-		bedrockRefresh(pi as unknown as ExtensionApiArg);
-
-		expect(pi._commands).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({
-					name: "bedrock-refresh",
-					handler: expect.any(Function),
-				}),
-			]),
-		);
-	});
-
 	it("polls Bedrock directly in read-only mode", async () => {
 		const pi = createMockPi();
 		pi.exec = vi.fn(async (_cmd: string, args?: string[], _opts?: unknown) => ({

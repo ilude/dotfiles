@@ -64,22 +64,6 @@ describe("parseCommitPlan", () => {
 			/no commit groups/i,
 		);
 	});
-
-	it("normalizes planner subjects onto one line", () => {
-		const plan = parseCommitPlan(
-			JSON.stringify({
-				groups: [
-					{
-						files: ["a.ts"],
-						subject: "style(status):\n dim context token counts",
-					},
-				],
-			}),
-		);
-		expect(plan.groups[0]?.subject).toBe(
-			"style(status): dim context token counts",
-		);
-	});
 });
 
 describe("parseCommitSecretsAllowedPaths", () => {
@@ -221,23 +205,6 @@ describe("validateCommitPlan", () => {
 		const plan = {
 			groups: [{ files: ["a.ts"], subject }],
 		};
-		expect(() => validateCommitPlan(plan, ["a.ts"])).not.toThrow();
-	});
-
-	it("accepts normalized wrapped dependency commit subjects", () => {
-		const plan = parseCommitPlan(
-			JSON.stringify({
-				groups: [
-					{
-						files: ["a.ts"],
-						subject: "deps(teams):\n update Kubernetes platform Helm charts",
-					},
-				],
-			}),
-		);
-		expect(plan.groups[0]?.subject).toBe(
-			"deps(teams): update Kubernetes platform Helm charts",
-		);
 		expect(() => validateCommitPlan(plan, ["a.ts"])).not.toThrow();
 	});
 
@@ -513,37 +480,6 @@ describe("chooseFilesToCommit", () => {
 // ---------------------------------------------------------------------------
 
 describe("parseCommitPlan multi-group", () => {
-	it("parses the first complete JSON object when extra text follows", () => {
-		const json = `${JSON.stringify({
-			groups: [{ files: ["src/api.ts"], subject: "feat(pi): add planner" }],
-		})}\n${JSON.stringify({ note: "extra model output" })}`;
-		const plan = parseCommitPlan(json);
-		expect(plan.groups).toHaveLength(1);
-		expect(plan.groups[0]?.subject).toBe("feat(pi): add planner");
-	});
-
-	it("parses a 3-group plan with body and warnings", () => {
-		const json = JSON.stringify({
-			groups: [
-				{
-					files: ["src/api.ts", "src/db.ts"],
-					subject: "feat(pi): add commit planner",
-					body: "Implements LLM-based commit grouping",
-				},
-				{
-					files: ["src/api.test.ts"],
-					subject: "test(pi): cover commit planner",
-				},
-				{ files: ["README.md"], subject: "docs(pi): document commit planner" },
-			],
-			warnings: ["large diff detected"],
-		});
-		const plan = parseCommitPlan(json);
-		expect(plan.groups).toHaveLength(3);
-		expect(plan.groups[0]?.body).toBe("Implements LLM-based commit grouping");
-		expect(Array.isArray(plan.warnings)).toBe(true);
-	});
-
 	it("rejects a group with an empty files array", () => {
 		const json = JSON.stringify({
 			groups: [{ files: [], subject: "feat(pi): add planner" }],

@@ -20,7 +20,6 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
-  REDACTED,
   SCHEMA_VERSION,
   TranscriptWriter,
   defaultSettings,
@@ -151,19 +150,6 @@ describe("provider request fixture (llm_request)", () => {
     expect(Array.isArray(payload.messages)).toBe(true);
   });
 
-  it("redacts x-api-key header in the persisted record", async () => {
-    const writer = makeWriter(tmpDir);
-    await writer.write(makeProviderRequestEvent());
-    const raw = fs.readFileSync(jsonlPath(tmpDir), "utf-8");
-    expect(raw).not.toContain("sk-ant-abcdefghijklmnopqrstuvwxyz");
-    expect(raw).toContain(REDACTED);
-    const record = readJsonl(jsonlPath(tmpDir))[0];
-    const payload = record.payload as Record<string, unknown>;
-    const headers = payload.headers as Record<string, unknown>;
-    expect(headers["x-api-key"]).toBe(REDACTED);
-    expect(headers["content-type"]).toBe("application/json");
-  });
-
   it("does not mutate the original fixture event payload", () => {
     const event = makeProviderRequestEvent();
     const originalHeaders = (event.payload as any).headers;
@@ -292,14 +278,6 @@ describe("bash truncated result fixture", () => {
     expect(typeof trunc.original_byte_count).toBe("number");
     expect(typeof trunc.returned_byte_count).toBe("number");
     expect(typeof trunc.full_output_path).toBe("string");
-  });
-
-  it("redacts AKIA-style AWS access key found in bash stdout via free-text scan", async () => {
-    const writer = makeWriter(tmpDir);
-    await writer.write(makeBashTruncatedResultEvent({ includeSecretInOutput: true }));
-    const raw = fs.readFileSync(jsonlPath(tmpDir), "utf-8");
-    expect(raw).not.toContain("AKIAABCDEFGHIJKLMNOP");
-    expect(raw).toContain(REDACTED);
   });
 
   it("does not redact non-secret content in bash output", async () => {

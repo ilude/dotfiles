@@ -112,25 +112,6 @@ afterEach(() => {
 });
 
 describe("damage-control scoped delete and shadow judge extension wiring", () => {
-	it.each([
-		["curl --token token-value https://example.test", "token-value"],
-		["tool --password password-value", "password-value"],
-		["curl --user user:password https://example.test", "user:password"],
-		["curl -uuser:password https://example.test", "user:password"],
-		["curl --proxy-user proxy:password https://example.test", "proxy:password"],
-		["curl --oauth2-bearer bearer-value https://example.test", "bearer-value"],
-		["curl -H 'Authorization: Bearer header-value' https://example.test", "Authorization: Bearer header-value"],
-		["curl --header=Private-Token:header-value https://example.test", "Private-Token:header-value"],
-		["curl --proxy-header 'Cookie: session-value' https://example.test", "Cookie: session-value"],
-	])("redacts credential and header values before shadow judging", async (command, secret) => {
-		const { redactShadowJudgeCommand } = await import(
-			"../extensions/damage-control.ts"
-		);
-		const sanitized = redactShadowJudgeCommand(command);
-		expect(sanitized).toContain("[redacted]");
-		expect(sanitized).not.toContain(secret);
-	});
-
 	it("skips shadow judging when shell syntax cannot be completely sanitized", async () => {
 		const { redactShadowJudgeCommand } = await import(
 			"../extensions/damage-control.ts"

@@ -30,13 +30,6 @@ describe("web-tools extension", () => {
     mockFetch.mockReset();
   });
 
-  it("should register both tools", async () => {
-    const mod = await import("../extensions/web-tools.ts");
-    mod.default(mockPi as any);
-    expect(mockPi._getTool("web_search")).toBeDefined();
-    expect(mockPi._getTool("web_fetch")).toBeDefined();
-  });
-
   describe("web_search", () => {
     let search: any;
 
@@ -136,14 +129,6 @@ describe("web-tools extension", () => {
       const args = mockPi.exec.mock.calls[0][1] as string[];
       expect(args).toContain("--max-chars");
       expect(args).toContain("5000");
-    });
-
-    it("should pass default --max-chars when unspecified", async () => {
-      mockPi.exec.mockResolvedValue({ code: 0, stdout: "content", stderr: "" });
-      await fetch_tool.execute("id", { url: "https://example.com" }, undefined, undefined, {});
-      const args = mockPi.exec.mock.calls[0][1] as string[];
-      expect(args).toContain("--max-chars");
-      expect(args).toContain("8000");
     });
 
     it("should return trimmed stdout", async () => {

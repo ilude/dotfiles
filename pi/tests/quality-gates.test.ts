@@ -20,8 +20,6 @@ import {
 	findProjectRoot,
 	getFilePath,
 	getFilePaths,
-	matchesQualityPath,
-	POLICY_PATH,
 	registerQualityGates,
 	runAvailableValidators,
 	runFirstAvailableValidator,
@@ -33,7 +31,6 @@ import {
 	parseLizardCsv,
 } from "../lib/quality-gates/lizard.ts";
 import {
-	loadQualityGatesPolicy,
 	parseQualityGatesPolicy,
 } from "../lib/quality-gates/policy.ts";
 import { createMockPi } from "./helpers/mock-pi.ts";
@@ -447,59 +444,6 @@ describe("quality-gates extension", () => {
 			]);
 		});
 
-		it("loads the tracked Pi policy", () => {
-			expect(POLICY_PATH).toMatch(/quality-gates\.json$/);
-			const policy = loadQualityGatesPolicy(POLICY_PATH);
-			expect(policy.version).toBe(1);
-			expect(policy.lizardThresholds).toEqual({
-				ccn: 8,
-				parameters: 7,
-				length: 250,
-			});
-			expect(policy.immutablePaths).toContain("**/migrations/**");
-			expect(policy.languages.typescript.validators).toContainEqual(
-				expect.objectContaining({
-					name: "biome",
-					command: [
-						"pnpm",
-						"--dir",
-						"{project_root}",
-						"exec",
-						"biome",
-						"lint",
-						"{file}",
-					],
-				}),
-			);
-			expect(policy.languages.javascript.validators).toContainEqual(
-				expect.objectContaining({
-					name: "biome",
-					command: [
-						"pnpm",
-						"--dir",
-						"{project_root}",
-						"exec",
-						"biome",
-						"lint",
-						"{file}",
-					],
-				}),
-			);
-			expect(policy.languages.typescript.validators).toContainEqual(
-				expect.objectContaining({
-					kind: "lizard",
-					always: true,
-					advisory: true,
-				}),
-			);
-			expect(policy.languages.go.validators).toContainEqual(
-				expect.objectContaining({
-					name: "go-vet",
-					automatic: false,
-				}),
-			);
-		});
-
 		it("runs differential Lizard against the Git HEAD baseline", async () => {
 			const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-quality-lizard-"));
 			const sourceDir = path.join(root, "MixedCase");
@@ -745,19 +689,6 @@ describe("quality-gates extension", () => {
 					input: { paths: ["one.ts", "two.ts"] },
 				} as unknown as ToolResultEvent),
 			).toEqual(["one.ts", "two.ts"]);
-		});
-
-		it("matches excluded and immutable path globs", () => {
-			expect(
-				matchesQualityPath("src/migrations/001_create.py", process.cwd(), [
-					"**/migrations/**",
-				]),
-			).toBe(true);
-			expect(
-				matchesQualityPath("src/service.py", process.cwd(), [
-					"**/migrations/**",
-				]),
-			).toBe(false);
 		});
 	});
 

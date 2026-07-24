@@ -67,9 +67,6 @@ describe("matchesPermissionRule -- Bash", () => {
 		expect(matchesPermissionRule(rule, "Bash", "git status")).toBe(true);
 	});
 
-	it("matches `git push --force`", () => {
-		expect(matchesPermissionRule(rule, "Bash", "git push --force")).toBe(true);
-	});
 
 	it("does NOT match `sudo git status` (no anchor escape via prefix)", () => {
 		expect(matchesPermissionRule(rule, "Bash", "sudo git status")).toBe(false);

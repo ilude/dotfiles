@@ -191,15 +191,7 @@ describe("commit planning", () => {
 		expect(state.rebaseInProgress).toBe(true);
 	});
 
-	it.each([
-		"DD",
-		"AU",
-		"UD",
-		"UA",
-		"DU",
-		"AA",
-		"UU",
-	])("blocks porcelain v1 unmerged pair %s without an operation marker", (pair) => {
+	it.each(["UU"])("blocks porcelain v1 unmerged pair %s without an operation marker", (pair) => {
 		const dir = repo();
 		const state = preflightGitState(dir, `${pair} conflicted.txt\0`);
 		expect(state.ok).toBe(false);

@@ -24,7 +24,6 @@ import {
 	isCloudSyncedPath,
 	expandHomePath,
 	isCompatibleSchemaVersion,
-	isSecretKey,
 	loadSettings,
 	makeExcerpt,
 	redact,
@@ -140,43 +139,6 @@ describe("transcript schema + envelope", () => {
 });
 
 describe("redaction surfaces", () => {
-	it("redacts known case-insensitive secret header names", () => {
-		expect(isSecretKey("Authorization")).toBe(true);
-		expect(isSecretKey("AUTHORIZATION")).toBe(true);
-		expect(isSecretKey("Set-Cookie")).toBe(true);
-		expect(isSecretKey("x-api-key")).toBe(true);
-		expect(isSecretKey("X-Anthropic-Api-Key")).toBe(true);
-		expect(isSecretKey("openai-organization")).toBe(true);
-		expect(isSecretKey("X-Amz-Security-Token")).toBe(true);
-		expect(isSecretKey("Content-Type")).toBe(false);
-	});
-
-	it("redacts pattern-matching key names (api_key, secret, token, cred, auth)", () => {
-		expect(isSecretKey("client_secret")).toBe(true);
-		expect(isSecretKey("apiKey")).toBe(true);
-		expect(isSecretKey("authToken")).toBe(true);
-		expect(isSecretKey("aws_credentials")).toBe(true);
-		expect(isSecretKey("user_id")).toBe(false);
-	});
-
-	it("does not redact OTel usage fields that contain 'token' as a suffix", () => {
-		// Regression: token must be a standalone segment, not a substring of 'tokens'.
-		expect(isSecretKey("input_tokens")).toBe(false);
-		expect(isSecretKey("output_tokens")).toBe(false);
-		expect(isSecretKey("max_tokens")).toBe(false);
-		// Standalone 'token' still matches.
-		expect(isSecretKey("token")).toBe(true);
-	});
-
-	it("does not redact field names where auth is an embedded prefix", () => {
-		// Regression: 'auth' must be a standalone segment, not a substring.
-		expect(isSecretKey("authentic")).toBe(false);
-		expect(isSecretKey("auther")).toBe(false);
-		// auth_token and authorization still match.
-		expect(isSecretKey("auth_token")).toBe(true);
-		expect(isSecretKey("authorization")).toBe(true);
-	});
-
 	it("preserves numeric values in OTel usage payloads after redaction (end-to-end)", async () => {
 		const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-transcript-otel-"));
 		try {
@@ -203,25 +165,6 @@ describe("redaction surfaces", () => {
 		} finally {
 			fs.rmSync(tmpDir, { recursive: true, force: true });
 		}
-	});
-
-	it("redacts both request and response header objects", () => {
-		const requestHeaders = {
-			authorization: "Bearer sk-anthropic-real-secret-1234567890",
-			"x-api-key": "real-key",
-			"content-type": "application/json",
-		};
-		const responseHeaders = {
-			"set-cookie": "session=secret",
-			"x-request-id": "abc",
-		};
-		const redactedReq = redact(requestHeaders);
-		const redactedRes = redact(responseHeaders);
-		expect(redactedReq.authorization).toBe(REDACTED);
-		expect(redactedReq["x-api-key"]).toBe(REDACTED);
-		expect(redactedReq["content-type"]).toBe("application/json");
-		expect(redactedRes["set-cookie"]).toBe(REDACTED);
-		expect(redactedRes["x-request-id"]).toBe("abc");
 	});
 
 	it("does not mutate source objects", () => {

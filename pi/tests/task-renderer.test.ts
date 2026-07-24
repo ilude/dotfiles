@@ -151,12 +151,6 @@ describe("formatTaskToolResult", () => {
 });
 
 describe("task renderer/settings", () => {
-	it("supports hidden mode recovery text", () => {
-		expect(formatTaskList([], "hidden")).toContain(
-			"/tasks settings mode compact",
-		);
-	});
-
 	it("stores settings mode", () => {
 		setTaskRenderMode("full");
 		expect(getTaskRenderMode()).toBe("full");

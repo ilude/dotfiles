@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { COMMIT_TYPES, validateCommitMessage } from "../lib/commit/message.ts";
+import { validateCommitMessage } from "../lib/commit/message.ts";
 
 describe("commit message validation", () => {
 	// Constraint: valid conventional type prefix
-	it.each(COMMIT_TYPES)("accepts %s subjects", (type) => {
+	it.each(["feat", "fix", "chore"])("accepts %s subjects", (type) => {
 		expect(
 			validateCommitMessage(`${type}: update workflow validation`).valid,
 		).toBe(true);

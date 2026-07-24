@@ -47,22 +47,6 @@ describe("direct-personality helpers", () => {
 });
 
 describe("direct-personality extension", () => {
-	it("registers only the provider verbosity hook", () => {
-		const pi = createMockPi();
-		directPersonality(pi as any);
-		expect(pi._getHook("before_agent_start")).toHaveLength(0);
-		expect(pi._getHook("before_provider_request")).toHaveLength(1);
-	});
-
-	it("provider hook is no-op when settings are absent", async () => {
-		(readMergedSettings as any).mockReturnValueOnce({});
-		const pi = createMockPi();
-		directPersonality(pi as any);
-		const hook = pi._getHook("before_provider_request")[0].handler;
-		const result = await hook({ payload: { model: "gpt-5.5" } }, createMockCtx({ model: { provider: "openai-codex", id: "gpt-5.5" } }));
-		expect(result).toBeUndefined();
-	});
-
 	it("provider hook applies verbosity only when user setting enables direct mode", async () => {
 		(readMergedSettings as any).mockReturnValueOnce({ personality: "direct" });
 		const pi = createMockPi();

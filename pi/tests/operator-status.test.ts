@@ -314,12 +314,3 @@ describe("session_start hook", () => {
 		expect(taskCall?.[1]).toContain("tasks 1");
 	});
 });
-
-describe("command registration", () => {
-	it("does not register the doctor command", async () => {
-		const pi = createMockPi();
-		const mod = await import("../extensions/operator-status.ts");
-		mod.default(pi as any);
-		expect(pi._commands.find((c) => c.name === "doctor")).toBeUndefined();
-	});
-});

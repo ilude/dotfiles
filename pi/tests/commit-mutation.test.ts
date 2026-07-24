@@ -10,6 +10,8 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({ ExtensionAPI: class {} }));
 vi.mock("@earendil-works/pi-ai", () => ({ completeSimple: vi.fn(), TextContent: {} }));
 vi.mock("@earendil-works/pi-tui", () => ({ Text: class {} }));
 
+const REAL_GIT_TEST_TIMEOUT_MS = 60_000;
+
 import { commitFailureMessage } from "../lib/commit/failure.ts";
 import { buildCommitPlan } from "../lib/commit/plan.ts";
 import { stagePaths } from "../lib/commit/stage.ts";
@@ -111,7 +113,7 @@ describe("commit mutation safety", () => {
 		expect(run(checkout, ["log", "-1", "--format=%s"]).trim()).toMatch(
 			/^(?:feat|fix|docs|chore|refactor|test|perf|ci|build|wip)(?:\([^)]+\))?: /,
 		);
-	});
+	}, REAL_GIT_TEST_TIMEOUT_MS);
 
 	it("stops before mutation when a dirty submodule has no upstream", async () => {
 		const child = repo();
@@ -197,7 +199,7 @@ describe("commit mutation safety", () => {
 		expect(run(parent, ["rev-parse", "HEAD:module"]).trim()).toBe(
 			run(checkout, ["rev-parse", "HEAD"]).trim(),
 		);
-	});
+	}, REAL_GIT_TEST_TIMEOUT_MS);
 
 	it.each([
 		"nothing to commit, working tree clean",

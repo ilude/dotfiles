@@ -406,16 +406,6 @@ describe("codex-status usage", () => {
 });
 
 describe("/usage command", () => {
-	it("registers usage command", () => {
-		const mockPi = createMockPi();
-		registerCodexStatusCommand(
-			mockPi as Parameters<typeof registerCodexStatusCommand>[0],
-		);
-		expect(
-			mockPi._commands.find((command) => command.name === "usage"),
-		).toBeDefined();
-	});
-
 	it("fetches startup status once and reuses it across session replacement", async () => {
 		const home = tempHome();
 		await mkdir(join(home, ".pi", "agent"), { recursive: true });

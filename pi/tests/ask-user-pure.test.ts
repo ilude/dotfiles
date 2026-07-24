@@ -14,13 +14,6 @@ describe("ask-user extension", () => {
     mod.default(mockPi as any);
   });
 
-  it("should register ask_user tool", () => {
-    const tool = mockPi._getTool("ask_user");
-    expect(tool).toBeDefined();
-    expect(tool!.name).toBe("ask_user");
-    expect(tool!.label).toBe("Ask User");
-  });
-
   describe("execute — text mode", () => {
     it("should call ctx.ui.input and return response", async () => {
       const tool = mockPi._getTool("ask_user")!;

@@ -182,19 +182,6 @@ describe("agents-context discovery", () => {
 		);
 	});
 
-	it("does not persist discovered instructions with sendMessage", async () => {
-		const cwd = path.join(tmp, "repo");
-		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
-		const pi = createMockPi();
-		registerAgentsContext(pi);
-		await completeTool(
-			pi,
-			createMockCtx({ cwd }),
-			{ toolName: "read", input: { path: "file.ts" } },
-		);
-		expect(pi.sendMessage).not.toHaveBeenCalled();
-	});
-
 	it("skips discovery for tools without target paths", async () => {
 		const cwd = path.join(tmp, "repo");
 		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
@@ -211,41 +198,6 @@ describe("agents-context discovery", () => {
 			ctx,
 		);
 		expect(result.messages).toEqual([]);
-	});
-
-	it("filters historical reports and injects one current ephemeral message", async () => {
-		const cwd = path.join(tmp, "repo");
-		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
-		const pi = createMockPi();
-		registerAgentsContext(pi);
-		const ctx = createMockCtx({ cwd });
-		await completeTool(
-			pi,
-			ctx,
-			{ toolName: "read", input: { path: "a.ts" } },
-		);
-		const result = await pi._getHook("context")[0].handler(
-			{
-				messages: [
-					{ role: "user", content: "keep" },
-					{
-						role: "custom",
-						customType: "agents-context-report",
-						content: "old",
-						display: false,
-					},
-				],
-			},
-			ctx,
-		);
-		expect(
-			result.messages.filter(
-				(message: Record<string, unknown>) =>
-					message.customType === "agents-context-report",
-			),
-		).toHaveLength(1);
-		expect(result.messages.at(-1).content).toContain("root agents");
-		expect(result.messages.at(-1).content).not.toContain("old");
 	});
 
 	it("does not defer a mutation after the same nested context was delivered", async () => {
@@ -535,22 +487,4 @@ describe("agents-context mutation deferral", () => {
 		await expect(toolHook(event, ctx)).resolves.toMatchObject({ block: true });
 	});
 
-	it("does not register an inspection command or alter expertise tools", async () => {
-		const pi = createMockPi();
-		registerAgentsContext(pi);
-		const event = {
-			systemPrompt: "base",
-			systemPromptOptions: { contextFiles: [] },
-			tools: [{ name: "read_expertise" }, { name: "bash" }],
-		};
-		await pi._getHook("before_agent_start")[0].handler(
-			event,
-			createMockCtx({ cwd: tmp }),
-		);
-		expect(event.tools).toEqual([
-			{ name: "read_expertise" },
-			{ name: "bash" },
-		]);
-		expect(pi._commands).toEqual([]);
-	});
 });

@@ -35,12 +35,6 @@ function tool() {
 }
 
 describe("text_edit", () => {
-	it("registers text_edit with schema and handler", () => {
-		const t = tool();
-		expect(t.name).toBe("text_edit");
-		expect(t.parameters).toBeTruthy();
-		expect(typeof t.execute).toBe("function");
-	});
 	it("literal_replace, regex_replace, line endings and finalNewline work", () => {
 		const result = applyTextOperations("a\r\nb\n", [
 			{

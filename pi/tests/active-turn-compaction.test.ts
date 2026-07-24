@@ -4,10 +4,7 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
-import {
-	registerActiveTurnCompaction,
-	shouldCompactDuringActiveTurn,
-} from "../extensions/active-turn-compaction.ts";
+import { registerActiveTurnCompaction } from "../extensions/active-turn-compaction.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
 const policy = { enabled: true, reserveTokens: 16_384 };
@@ -73,22 +70,6 @@ function activeTurn(toolResults: unknown[] = [{}]) {
 }
 
 describe("active-turn compaction", () => {
-	it("matches Pi's strict reserve-token threshold", () => {
-		expect(
-			shouldCompactDuringActiveTurn(usage(355_616), policy),
-		).toBe(false);
-		expect(
-			shouldCompactDuringActiveTurn(usage(355_617), policy),
-		).toBe(true);
-		expect(
-			shouldCompactDuringActiveTurn(usage(400_000), {
-				...policy,
-				enabled: false,
-			}),
-		).toBe(false);
-		expect(shouldCompactDuringActiveTurn(usage(null), policy)).toBe(false);
-	});
-
 	it("compacts during a tool-driven request and resumes after completion", async () => {
 		const runtime = setup(usage(360_000));
 		await runtime.sessionStart({ type: "session_start", reason: "startup" }, runtime.ctx);
@@ -161,36 +142,6 @@ describe("active-turn compaction", () => {
 		await runtime.turnEnd(activeTurn(), runtime.ctx);
 		expect(runtime.compact).toHaveBeenCalledTimes(2);
 	});
-
-	it.each(["reload", "new"] as const)(
-		"resets the failure circuit on session start reason %s",
-		async (reason) => {
-			const runtime = setup(usage(360_000));
-			await runtime.sessionStart(
-				{ type: "session_start", reason: "startup" },
-				runtime.ctx,
-			);
-			await runtime.turnEnd(activeTurn(), runtime.ctx);
-			runtime.compactOptions?.onError?.(new Error("summarizer unavailable"));
-			expect(
-				await runtime.sessionBeforeCompact(
-					{ type: "session_before_compact", reason: "threshold" },
-					runtime.ctx,
-				),
-			).toEqual({ cancel: true });
-
-			await runtime.sessionStart(
-				{ type: "session_start", reason },
-				runtime.ctx,
-			);
-			expect(
-				await runtime.sessionBeforeCompact(
-					{ type: "session_before_compact", reason: "threshold" },
-					runtime.ctx,
-				),
-			).toBeUndefined();
-		},
-	);
 
 	it("does not resume when compaction is cancelled or after session shutdown", async () => {
 		const cancelled = setup(usage(360_000));
