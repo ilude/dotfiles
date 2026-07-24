@@ -27,6 +27,17 @@ describe("workflow scheduling guidance", () => {
 		expect(reviewIt).not.toContain("RESOLVE ->");
 	});
 
+	it("keeps plan safety proportional to recoverability", () => {
+		const planIt = workflow("plan-it");
+		expect(planIt).toContain("Disposable or Git-recoverable local work");
+		expect(planIt).toContain("Shared but reversible external state");
+		expect(planIt).toContain(
+			"Durable, destructive, difficult-to-recreate, or production state",
+		);
+		expect(planIt).not.toContain("templates/plan-template.md");
+		expect(planIt).not.toContain("concise archive and resume state");
+	});
+
 	it("keeps same-file writes out of parallel plan tasks", () => {
 		expect(workflow("plan-it")).toContain(
 			"Never assign overlapping same-file write scopes to parallel tasks",

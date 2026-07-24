@@ -1,62 +1,69 @@
 # Plan an Executable Change
 
-Turn `$ARGUMENTS` and relevant conversation context into a standalone `.specs/{slug}/plan.md`. Do not implement the plan.
+Turn `$ARGUMENTS` and relevant conversation context into a standalone
+`.specs/{slug}/plan.md`. Do not implement the plan.
 
-## Objective
+## Goal and Scope
 
-Give a fresh `/do-it` session the smallest plan that preserves the requested outcome, real dependencies, relevant validation, and resume state.
+Use an explicitly provided PRD; otherwise use the user's stated goal and
+constraints. Never choose a PRD merely because it is newest. If no substantive
+goal exists, ask: "What should this plan accomplish? Describe the goal and any
+constraints."
 
-Use an explicit PRD path when provided. Otherwise use the user's stated goal and constraints. Never select a PRD because it is merely the newest file.
+Produce the smallest critical path that achieves the outcome:
 
-## Boundaries
+- Preserve explicit decisions, behavior, interfaces, and scope limits.
+- Prefer existing maintained mechanisms over new frameworks or abstractions.
+- Exclude adjacent defects, generic hardening, future lifecycle concerns, and
+  hypothetical requirements.
+- Resolve decisions that block the first task. Make later unknowns preflight
+  checks with stop conditions.
+- Ask only when ambiguity changes the outcome, destructive scope, or approval.
+- Inspect only enough to confirm ownership, files, entrypoints, dependencies,
+  validation, and a collision-free slug.
+- Planning is read-only except for the plan. Do not prescribe workers or runtime.
 
-- Planning is read-only except for the plan artifact.
-- Preserve explicit decisions, scope limits, public interfaces, and rejected approaches only when they prevent likely rework.
-- Ask only when ambiguity changes the outcome, destructive scope, or required approval.
-- Keep useful but unnecessary work out of the plan.
-- Do not prescribe a worker roster or runtime. Name a capability only when execution requires specialized tools, permissions, or knowledge.
+Remove any task whose absence would not break the requested outcome or a real
+safety boundary.
 
-## Repository Context
+## Proportionality and Safety
 
-Inspect only enough repository state to verify ownership, supported entrypoints, affected boundaries, relevant checks, external constraints, and a collision-free `.specs/` path. Stop investigating when those facts are sufficient.
+Use the lowest level justified by the affected state:
 
-## Proportionality
+- **Disposable or Git-recoverable local work:** rely on reproducibility and Git.
+  Do not add backups, rollback sections, approvals, evidence files, or archives.
+- **Shared but reversible external state:** name the target, required approval,
+  stop condition, and one concise rollback. Record a prior revision only when
+  recovery needs it.
+- **Durable, destructive, difficult-to-recreate, or production state:** include
+  explicit approval, backup and restore or verified no-prior-state handling,
+  rollback boundaries, and staged validation.
 
-Use `templates/plan-template.md` as the compact default.
+Do not escalate controls merely because work technically mutates state. Ask
+before destroying data of unknown value. Ordinary local work should have 1-3
+tasks; add stages or operational handling only for real dependencies or risk.
 
-- A local change should normally have 1-3 tasks.
-- Add stages or waves only for a real dependency, staged rollout, or independent stateful target.
-- Add operational safety only for actual destructive, stateful, deployment, external-mutation, secret, paid-resource, hardware, or irreversible work.
-- Add approach decisions only when an executor could reasonably reopen a material choice.
-- Do not create separate evidence files unless an external audit, migration record, or user request requires them.
-- Record each fact once. Do not duplicate tasks across tables, wave narratives, dependency graphs, checklists, and success sections.
+## Plan Contract
 
-## Required Content
+Include:
 
-Every plan includes:
+- context, objective, boundaries, and relevant assumptions;
+- one checkbox list whose tasks name files or targets, dependencies when present,
+  action, observable acceptance, and relevant verification;
+- direct validation of the changed workflow;
+- current status, blocker if any, and next action.
 
-- context, objective, boundaries, and assumptions that affect execution;
-- one checkbox list of executable tasks, with files, dependencies when present, action, acceptance, and relevant verification;
-- validation that directly tests the requested outcome;
-- concise archive and resume state.
+Never assign overlapping same-file write scopes to parallel tasks; combine them
+or add a dependency. Do not create a separate archive, evidence, safety,
+documentation, or validation task unless it performs substantive required work.
 
-Never assign overlapping same-file write scopes to parallel tasks; combine them or add a dependency edge.
+Before writing, verify referenced paths and commands, dependency order,
+workflow-level validation, and decisions blocking the first task.
 
-Conditionally include stages, decisions, failure actions, rollback, backup, approval, canary, deployment, or incident handling only when the work requires them.
+## Artifact and Report
 
-## Readiness
-
-Before writing, confirm that referenced files, prerequisites, and commands exist; dependencies agree with task order; validation exercises the requested workflow; and no omitted decision blocks execution.
-
-For actual stateful mutation, include one target, backup and restore or explicit no-prior-state handling, rollback boundary, and stop-on-failure behavior.
-
-## Artifact
-
-Create a lowercase hyphenated slug that does not collide with an existing `.specs/` path. If no substantive goal exists, ask: "What should this plan accomplish? Describe the goal and any constraints."
-
-## Report
-
-Report the plan path, scope, dependencies, assumptions or blockers, and the next commands:
+Create `.specs/{lowercase-hyphenated-slug}/plan.md`. Report its path, scope,
+dependencies, assumptions or blockers, and:
 
 ```bash
 /review-it .specs/{slug}/plan.md
