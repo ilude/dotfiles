@@ -848,6 +848,10 @@ export default function (pi: ExtensionAPI) {
 		if (event.source !== "extension") repeatedToolLoop.reset();
 	});
 
+	pi.on("agent_settled", () => {
+		repeatedToolLoop.reset();
+	});
+
 	pi.on("tool_call", (event, ctx) => {
 		const repeated = repeatedToolLoop.check(event.toolName, event.input);
 		if (!repeated) return undefined;

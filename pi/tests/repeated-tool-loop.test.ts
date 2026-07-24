@@ -63,7 +63,37 @@ describe("repeated tool loop guard", () => {
 		expect(guard.check("bash", input)).toBeUndefined();
 	});
 
-	it("aborts the run, records telemetry, and resets only on user input", async () => {
+	it("does not accumulate identical results across settled scheduled runs", async () => {
+		const pi = createMockPi();
+		damageControl(pi as unknown as Parameters<typeof damageControl>[0]);
+		const toolCall = pi._getHook("tool_call")[0].handler;
+		const toolResult = pi._getHook("tool_result")[0].handler;
+		const inputHook = pi._getHook("input")[0].handler;
+		const agentSettled = pi._getHook("agent_settled")[0].handler;
+		const ctx = createMockCtx({ cwd: tempState });
+		const event = {
+			toolCallId: "scheduled-check",
+			toolName: "bash",
+			input: { command: "check deployment" },
+		};
+		const result = {
+			...event,
+			content: [{ type: "text", text: "healthy" }],
+			details: {},
+			isError: false,
+		};
+
+		for (let run = 0; run < 6; run += 1) {
+			await inputHook({ source: "extension", text: "scheduled check" }, ctx);
+			expect(toolCall(event, ctx)).toBeUndefined();
+			await toolResult(result, ctx);
+			await agentSettled({}, ctx);
+		}
+
+		expect(ctx.abort).not.toHaveBeenCalled();
+	});
+
+	it("aborts an unsettled run, records telemetry, and resets on user input", async () => {
 		const pi = createMockPi();
 		damageControl(pi as unknown as Parameters<typeof damageControl>[0]);
 		const toolCall = pi._getHook("tool_call")[0].handler;
