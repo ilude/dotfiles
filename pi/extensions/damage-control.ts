@@ -436,6 +436,7 @@ async function requestDamageControlApproval(
 		category,
 		title: input.title,
 		message: input.message,
+		reason: input.approval.reason,
 	});
 	return {
 		approved,

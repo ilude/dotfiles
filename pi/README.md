@@ -251,7 +251,7 @@ Intercepts tool calls and blocks dangerous operations before they execute.
 - **Symlink and glob containment** -- relative globs such as `build/*` are checked by prefix, and any existing target prefix that is a symlink falls back to confirmation.
 - **Zero-access paths** -- blocks read/write to `~/.ssh/*`, `*.pem`, `*.key`, `.env`
 - **No-delete paths** -- protects `package.json`, `Makefile`, `pyproject.toml`
-- **Approval prompts** -- TUI confirmations show a theme-aware severity border and one of six bounded categories: local state, version control, sensitive data, infrastructure, system execution, or remote state. `Deny` is selected by default; non-TUI confirmation retains a labeled plain-text fallback.
+- **Approval prompts** -- TUI confirmations show a theme-aware severity border and one of six bounded categories: local state, version control, sensitive data, infrastructure, system execution, or remote state. The matched rule reason is highlighted, `Allow once` is selected by default, and Escape still denies. Non-TUI confirmation retains a labeled plain-text fallback.
 - **Prompt telemetry** -- every displayed approval records `prompt_shown` before rendering, with category and severity. The later approval or denial references that event through `promptId`; no-UI denials do not record a shown prompt.
 - **Auto-allowed telemetry** -- auto-allowed scoped-delete decisions are logged as `auto_allowed` with `tier=scoped_delete`.
 - **Shadow judge** -- enabled shadow judge runs are asynchronous, redacted, and context-limited. It can not authorize execution by itself and only provides agreement telemetry in `/damage-control judge` and `/dc judge`.

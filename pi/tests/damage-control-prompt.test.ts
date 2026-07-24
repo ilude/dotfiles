@@ -47,7 +47,7 @@ describe("damage-control approval prompt", () => {
 	});
 	});
 
-	it("renders a themed TUI prompt with deny selected first", async () => {
+	it("renders the matched reason in the highlight color with allow selected first", async () => {
 		const requestRender = vi.fn();
 		const theme = {
 			fg: vi.fn((color: string, text: string) => `<${color}>${text}</${color}>`),
@@ -77,16 +77,24 @@ describe("damage-control approval prompt", () => {
 			{
 				category: "local-state",
 				title: "Confirm dangerous command",
-				message: "This removes local files.",
+				message:
+					"Rule: semantic_git\nReason: Discards uncommitted changes. Use 'git stash' first or --staged to only unstage",
+				reason:
+					"Discards uncommitted changes. Use 'git stash' first or --staged to only unstage",
 			},
 		);
 
-		expect(approved).toBe(false);
+		expect(approved).toBe(true);
 		expect(confirm).not.toHaveBeenCalled();
 		expect(rendered).toContain("[CRITICAL] Local state");
-		expect(rendered).toContain("Deny (recommended)");
 		expect(rendered).toContain("Allow once");
+		expect(rendered).toContain("Deny");
+		expect(rendered).not.toContain("recommended");
 		expect(theme.fg).toHaveBeenCalledWith("error", expect.any(String));
+		expect(theme.fg).toHaveBeenCalledWith(
+			"accent",
+			"Reason: Discards uncommitted changes. Use 'git stash' first or --staged to only unstage",
+		);
 		expect(requestRender).toHaveBeenCalled();
 	});
 
@@ -101,6 +109,7 @@ describe("damage-control approval prompt", () => {
 				category: "infrastructure",
 				title: "Confirm dangerous command",
 				message: "This changes cluster state.",
+				reason: "Cluster state mutation",
 			},
 		);
 

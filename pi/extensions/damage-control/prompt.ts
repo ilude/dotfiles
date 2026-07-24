@@ -32,6 +32,7 @@ export interface DamageControlPromptRequest {
 	category: DamageControlPromptCategory;
 	title: string;
 	message: string;
+	reason: string;
 }
 
 interface DamageControlPromptPresentation {
@@ -116,6 +117,22 @@ export function damageControlPromptPresentation(
 	return PRESENTATION[category];
 }
 
+function highlightPromptReason(
+	message: string,
+	reason: string,
+	text: (value: string) => string,
+	highlight: (value: string) => string,
+): string {
+	const reasonLine = `Reason: ${reason}`;
+	const lineParts = message.split(reasonLine);
+	if (lineParts.length > 1)
+		return lineParts.map(text).join(highlight(reasonLine));
+	const reasonParts = message.split(reason);
+	if (reasonParts.length > 1)
+		return reasonParts.map(text).join(highlight(reason));
+	return `${text(message)}\n\n${highlight(reasonLine)}`;
+}
+
 export async function showDamageControlPrompt(
 	ctx: Pick<ExtensionContext, "mode" | "ui">,
 	request: DamageControlPromptRequest,
@@ -132,23 +149,29 @@ export async function showDamageControlPrompt(
 		(tui, theme, _keybindings, done) => {
 			const container = new Container();
 			const color = (text: string) => theme.fg(presentation.color, text);
+			const message = highlightPromptReason(
+				request.message,
+				request.reason,
+				(text) => theme.fg("text", text),
+				(text) => theme.fg("accent", text),
+			);
 			container.addChild(new DynamicBorder(color));
 			container.addChild(new Text(color(theme.bold(heading)), 1, 0));
 			container.addChild(
 				new Text(theme.fg("muted", request.title), 1, 0),
 			);
-			container.addChild(new Text(theme.fg("text", request.message), 1, 1));
+			container.addChild(new Text(message, 1, 1));
 
 			const items: SelectItem[] = [
-				{
-					value: "deny",
-					label: "Deny (recommended)",
-					description: "Keep the action blocked",
-				},
 				{
 					value: "allow",
 					label: "Allow once",
 					description: "Run this action one time",
+				},
+				{
+					value: "deny",
+					label: "Deny",
+					description: "Keep the action blocked",
 				},
 			];
 			const selectList = new SelectList(items, items.length, {
