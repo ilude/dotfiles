@@ -48,9 +48,11 @@ type State = {
 	basePaths: Set<string>;
 	baseFingerprints: Set<string>;
 	loadedFingerprints: Set<string>;
-	targetPaths: Set<string>;
-	injectedTargetFingerprints: Set<string>;
-	retryRequested: boolean;
+	deliveredInstructionFingerprints: Map<string, string>;
+	deferredCallFingerprints: Set<string>;
+	activeInstructionScope?: string;
+	activeInstructionFingerprint?: string;
+	retryRequestedFor?: string;
 };
 
 const instructionContentCache = new Map<
@@ -67,9 +69,8 @@ const state: State = {
 	basePaths: new Set(),
 	baseFingerprints: new Set(),
 	loadedFingerprints: new Set(),
-	targetPaths: new Set(),
-	injectedTargetFingerprints: new Set(),
-	retryRequested: false,
+	deliveredInstructionFingerprints: new Map(),
+	deferredCallFingerprints: new Set(),
 };
 
 function canonical(filePath: string): string {
@@ -203,6 +204,25 @@ function contentFingerprint(content: string): string {
 	return createHash("sha256").update(content).digest("hex");
 }
 
+function normalizeStructuredValue(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(normalizeStructuredValue);
+	if (!value || typeof value !== "object") return value;
+	return Object.fromEntries(
+		Object.keys(value as Record<string, unknown>)
+			.sort()
+			.map((key) => [
+				key,
+				normalizeStructuredValue((value as Record<string, unknown>)[key]),
+			]),
+	);
+}
+
+function mutationCallFingerprint(toolName: string, input: unknown): string {
+	return contentFingerprint(
+		JSON.stringify([toolName.trim().toLowerCase(), normalizeStructuredValue(input)]),
+	);
+}
+
 function truncateUtf8(value: string, maxBytes: number): string {
 	const buffer = Buffer.from(value, "utf8");
 	if (buffer.length <= maxBytes) return value;
@@ -265,6 +285,29 @@ function instructionPayload(files: LoadedInstruction[]): string {
 	return `# Loaded AGENTS context\n\n${blocks.join("\n\n")}`;
 }
 
+function setActiveInstructions(files: LoadedInstruction[]): void {
+	if (files.length === 0) {
+		state.activeInstructionScope = undefined;
+		state.activeInstructionFingerprint = undefined;
+		state.retryRequestedFor = undefined;
+		return;
+	}
+	const scope = contentFingerprint(files.map((file) => file.path).join("\n"));
+	const fingerprint = contentFingerprint(instructionPayload(files));
+	const identity = `${scope}:${fingerprint}`;
+	if (state.retryRequestedFor && state.retryRequestedFor !== identity) {
+		state.retryRequestedFor = undefined;
+	}
+	state.activeInstructionScope = scope;
+	state.activeInstructionFingerprint = fingerprint;
+}
+
+function activeInstructionIdentity(): string | undefined {
+	return state.activeInstructionScope && state.activeInstructionFingerprint
+		? `${state.activeInstructionScope}:${state.activeInstructionFingerprint}`
+		: undefined;
+}
+
 function clearLoadedSnapshot(): void {
 	state.loaded.clear();
 	state.loadedFingerprints.clear();
@@ -274,7 +317,6 @@ function clearLoadedSnapshot(): void {
 }
 
 function recordNativeContextFiles(event: unknown): void {
-	clearLoadedSnapshot();
 	state.basePaths.clear();
 	state.baseFingerprints.clear();
 	if (!isRecord(event) || !isRecord(event.systemPromptOptions)) return;
@@ -317,14 +359,20 @@ function instructionReason(file: string): string {
 		: "project primary instruction";
 }
 
-function clearInstructionState(): void {
+function clearRequestInstructionState(): void {
 	clearLoadedSnapshot();
+	state.deliveredInstructionFingerprints.clear();
+	state.deferredCallFingerprints.clear();
+	state.activeInstructionScope = undefined;
+	state.activeInstructionFingerprint = undefined;
+	state.retryRequestedFor = undefined;
+}
+
+function clearInstructionState(): void {
+	clearRequestInstructionState();
 	state.projectRoots.clear();
 	state.basePaths.clear();
 	state.baseFingerprints.clear();
-	state.targetPaths.clear();
-	state.injectedTargetFingerprints.clear();
-	state.retryRequested = false;
 }
 
 function resetForCwd(cwd: string): void {
@@ -368,11 +416,13 @@ function discoverForPaths(
 			),
 		),
 	];
-	return files
+	const loaded = files
 		.map((file) =>
 			readInstruction(file, instructionReason(file), excludedFingerprints),
 		)
 		.filter((file): file is LoadedInstruction => Boolean(file));
+	setActiveInstructions(loaded);
+	return loaded;
 }
 
 export function formatAgentsContextStatus(): string {
@@ -403,12 +453,14 @@ export const agentsContextTestApi = {
 };
 
 export default function (pi: ExtensionAPI) {
+	pi.on("input", (event, ctx) => {
+		resetForCwd(ctx.cwd);
+		if (event.source !== "extension") clearRequestInstructionState();
+	});
+
 	pi.on("before_agent_start", async (event, ctx) => {
 		resetForCwd(ctx.cwd);
 		state.projectRoots.clear();
-		state.targetPaths.clear();
-		state.injectedTargetFingerprints.clear();
-		state.retryRequested = false;
 		recordNativeContextFiles(event);
 		return undefined;
 	});
@@ -430,11 +482,19 @@ export default function (pi: ExtensionAPI) {
 		const targetFiles = [...state.loaded.values()];
 		if (!targetFiles.length) return { messages };
 		const payload = instructionPayload(targetFiles);
-		const content = state.retryRequested
-			? `${payload}\n\nApply these instructions, then retry the deferred mutating tool call.`
-			: payload;
-		state.injectedTargetFingerprints.add(payload);
-		state.retryRequested = false;
+		const identity = activeInstructionIdentity();
+		if (!identity || !state.activeInstructionScope) return { messages };
+		const content =
+			state.retryRequestedFor === identity
+				? `${payload}\n\nApply these instructions, then retry the deferred mutating tool call.`
+				: payload;
+		state.deliveredInstructionFingerprints.set(
+			state.activeInstructionScope,
+			state.activeInstructionFingerprint as string,
+		);
+		if (state.retryRequestedFor === identity) {
+			state.retryRequestedFor = undefined;
+		}
 		return {
 			messages: [
 				...messages,
@@ -463,21 +523,32 @@ export default function (pi: ExtensionAPI) {
 		const resolvedTargets = targetPaths.map((targetPath) =>
 			resolveToolPath(ctx.cwd, targetPath),
 		);
-		for (const targetPath of resolvedTargets) state.targetPaths.add(targetPath);
-		const files = discoverForPaths(ctx.cwd, [...state.targetPaths]);
-		const targetPayload = files.length ? instructionPayload(files) : undefined;
+		const files = discoverForPaths(ctx.cwd, resolvedTargets);
+		const identity = activeInstructionIdentity();
 		if (
-			targetPayload &&
-			!state.injectedTargetFingerprints.has(targetPayload)
+			files.length === 0 ||
+			!identity ||
+			!state.activeInstructionScope ||
+			!state.activeInstructionFingerprint
 		) {
-			state.retryRequested = true;
-			return {
-				block: true,
-				reason:
-					"Deferred while loading path-specific instructions. Apply them, then retry the mutation.",
-			};
+			return undefined;
 		}
-		return undefined;
+		if (
+			state.deliveredInstructionFingerprints.get(
+				state.activeInstructionScope,
+			) === state.activeInstructionFingerprint
+		) {
+			return undefined;
+		}
+		const deferredCall = `${mutationCallFingerprint(toolName, event.input)}:${identity}`;
+		if (state.deferredCallFingerprints.has(deferredCall)) return undefined;
+		state.deferredCallFingerprints.add(deferredCall);
+		state.retryRequestedFor = identity;
+		return {
+			block: true,
+			reason:
+				"Deferred while loading path-specific instructions. Apply them, then retry the mutation.",
+		};
 	});
 
 	pi.on("tool_result", async (event, ctx) => {
@@ -487,9 +558,11 @@ export default function (pi: ExtensionAPI) {
 		if (!CONTEXT_TOOLS.has(toolName)) return undefined;
 		const targetPaths = collectToolPaths(toolName, event.input, ctx.cwd);
 		if (targetPaths.length === 0) return undefined;
-		for (const targetPath of targetPaths)
-			state.targetPaths.add(resolveToolPath(ctx.cwd, targetPath));
-		discoverForPaths(ctx.cwd, [...state.targetPaths], toolName === "read");
+		discoverForPaths(
+			ctx.cwd,
+			targetPaths.map((targetPath) => resolveToolPath(ctx.cwd, targetPath)),
+			toolName === "read",
+		);
 		return undefined;
 	});
 }

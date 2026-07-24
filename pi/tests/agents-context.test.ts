@@ -273,7 +273,7 @@ describe("agents-context discovery", () => {
 		).resolves.toBeUndefined();
 	});
 
-	it("unions sibling target scopes for the current user turn", async () => {
+	it("replaces historical target context with the current target only", async () => {
 		const cwd = path.join(tmp, "repo");
 		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
 		writeFile(path.join(cwd, "src", "AGENTS.md"), "src agents");
@@ -287,17 +287,28 @@ describe("agents-context discovery", () => {
 			ctx,
 			{ toolName: "read", input: { path: "src/file.ts" } },
 		);
+		const first = await pi._getHook("context")[0].handler(
+			{ messages: [] },
+			ctx,
+		);
+		expect(first.messages[0].content).toContain("src agents");
+
 		await completeTool(
 			pi,
 			ctx,
 			{ toolName: "read", input: { path: "test/file.ts" } },
 		);
 		const result = await pi._getHook("context")[0].handler(
-			{ messages: [] },
+			{ messages: first.messages },
 			ctx,
 		);
-		expect(result.messages[0].content).toContain("src agents");
-		expect(result.messages[0].content).toContain("test agents");
+		const reports = result.messages.filter(
+			(message: Record<string, unknown>) =>
+				message.customType === "agents-context-report",
+		);
+		expect(reports).toHaveLength(1);
+		expect(reports[0].content).toContain("test agents");
+		expect(reports[0].content).not.toContain("src agents");
 	});
 });
 
@@ -367,6 +378,75 @@ describe("agents-context mutation deferral", () => {
 			"retry the deferred mutating tool call",
 		);
 		await expect(toolHook(event, ctx)).resolves.toBeUndefined();
+	});
+
+	it("defers a cross-repository mutation only once across automatic continuation", async () => {
+		const repoA = path.join(tmp, "repo-a");
+		const repoB = path.join(tmp, "repo-b");
+		const repoAInstructions = path.join(repoA, "AGENTS.md");
+		mkdirp(path.join(repoA, ".git"));
+		mkdirp(path.join(repoB, ".git"));
+		writeFile(repoAInstructions, "repo a agents");
+		writeFile(path.join(repoA, "src", "AGENTS.md"), "repo a src agents");
+		writeFile(path.join(repoB, "AGENTS.md"), "repo b agents");
+		writeFile(path.join(repoB, "src", "AGENTS.md"), "repo b src agents");
+		writeFile(path.join(repoB, "src", "file.ts"), "original");
+		const pi = createMockPi();
+		registerAgentsContext(pi);
+		const ctx = createMockCtx({ cwd: repoA });
+		const beforeAgentStart = pi._getHook("before_agent_start")[0].handler;
+		const event = {
+			toolCallId: "cross-repo-edit",
+			toolName: "edit",
+			input: {
+				path: path.join(repoB, "src", "file.ts"),
+				edits: [{ oldText: "original", newText: "updated" }],
+			},
+		};
+		const nativeContext = {
+			systemPrompt: "base\nrepo a agents",
+			systemPromptOptions: {
+				contextFiles: [
+					{ path: repoAInstructions, content: "repo a agents" },
+				],
+			},
+		};
+		await beforeAgentStart(nativeContext, ctx);
+		const toolHook = pi._getHook("tool_call")[0].handler;
+
+		await expect(toolHook(event, ctx)).resolves.toMatchObject({ block: true });
+		const retryContext = await pi._getHook("context")[0].handler(
+			{ messages: [] },
+			ctx,
+		);
+		expect(retryContext.messages[0].content).toContain("repo b agents");
+		expect(retryContext.messages[0].content).toContain("repo b src agents");
+		expect(retryContext.messages[0].content).not.toContain("repo a agents");
+
+		await beforeAgentStart(nativeContext, ctx);
+		await expect(toolHook(event, ctx)).resolves.toBeUndefined();
+		await beforeAgentStart(nativeContext, ctx);
+		await expect(toolHook(event, ctx)).resolves.toBeUndefined();
+
+		writeFile(path.join(repoB, "src", "AGENTS.md"), "repo b src changed");
+		await expect(toolHook(event, ctx)).resolves.toMatchObject({ block: true });
+
+		await completeTool(
+			pi,
+			ctx,
+			{ toolName: "read", input: { path: "src/file.ts" } },
+		);
+		const returnedContext = await pi._getHook("context")[0].handler(
+			{ messages: retryContext.messages },
+			ctx,
+		);
+		const reports = returnedContext.messages.filter(
+			(message: Record<string, unknown>) =>
+				message.customType === "agents-context-report",
+		);
+		expect(reports).toHaveLength(1);
+		expect(reports[0].content).toContain("repo a src agents");
+		expect(reports[0].content).not.toContain("repo b agents");
 	});
 
 	it("does not activate context after a failed read", async () => {
