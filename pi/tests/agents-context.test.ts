@@ -305,11 +305,13 @@ describe("agents-context mutation deferral", () => {
 	beforeEach(setupAgentsContextTest);
 	afterEach(cleanupAgentsContextTest);
 
-	it("relies on native base context and blocks only new nested scope", async () => {
+	it("relies on native base context and defers only uninjected nested scope", async () => {
 		const cwd = path.join(tmp, "repo");
 		const rootInstructions = path.join(cwd, "AGENTS.md");
 		writeFile(rootInstructions, "root agents");
+		writeFile(path.join(cwd, "root.ts"), "root file");
 		writeFile(path.join(cwd, "src", "AGENTS.md"), "src agents");
+		writeFile(path.join(cwd, "src", "file.ts"), "src file");
 		const pi = createMockPi();
 		registerAgentsContext(pi);
 		const ctx = createMockCtx({ cwd });
@@ -367,58 +369,6 @@ describe("agents-context mutation deferral", () => {
 		await expect(toolHook(event, ctx)).resolves.toBeUndefined();
 	});
 
-	it("requires a successful read before changing an existing file", async () => {
-		const cwd = path.join(tmp, "repo");
-		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
-		writeFile(path.join(cwd, "src", "file.ts"), "original");
-		const pi = createMockPi();
-		registerAgentsContext(pi);
-		const ctx = createMockCtx({ cwd });
-		const event = {
-			toolName: "edit",
-			input: { path: "src/file.ts" },
-		};
-		const toolHook = pi._getHook("tool_call")[0].handler;
-
-		await expect(toolHook(event, ctx)).resolves.toEqual({
-			block: true,
-			reason: `Read ${path.join("src", "file.ts")} successfully before modifying it.`,
-		});
-		await completeTool(
-			pi,
-			ctx,
-			{ toolName: "read", input: { path: "src/file.ts" } },
-		);
-		await pi._getHook("context")[0].handler({ messages: [] }, ctx);
-		await expect(toolHook(event, ctx)).resolves.toBeUndefined();
-	});
-
-	it("requires another read after the file changes", async () => {
-		const cwd = path.join(tmp, "repo");
-		const filePath = path.join(cwd, "src", "file.ts");
-		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
-		writeFile(filePath, "original");
-		const pi = createMockPi();
-		registerAgentsContext(pi);
-		const ctx = createMockCtx({ cwd });
-		await completeTool(
-			pi,
-			ctx,
-			{ toolName: "read", input: { path: "src/file.ts" } },
-		);
-		await pi._getHook("context")[0].handler({ messages: [] }, ctx);
-		writeFile(filePath, "changed content");
-		await expect(
-			pi._getHook("tool_call")[0].handler(
-				{ toolName: "edit", input: { path: "src/file.ts" } },
-				ctx,
-			),
-		).resolves.toMatchObject({
-			block: true,
-			reason: expect.stringContaining("successfully before modifying"),
-		});
-	});
-
 	it("does not activate context after a failed read", async () => {
 		const cwd = path.join(tmp, "repo");
 		writeFile(path.join(cwd, "AGENTS.md"), "root agents");
@@ -441,15 +391,19 @@ describe("agents-context mutation deferral", () => {
 			ctx,
 		);
 		expect(result.messages).toEqual([]);
-		await expect(
-			pi._getHook("tool_call")[0].handler(
-				{ toolName: "edit", input: { path: "src/file.ts" } },
-				ctx,
-			),
-		).resolves.toMatchObject({
+		const event = { toolName: "edit", input: { path: "src/file.ts" } };
+		const toolHook = pi._getHook("tool_call")[0].handler;
+		await expect(toolHook(event, ctx)).resolves.toEqual({
 			block: true,
-			reason: expect.stringContaining("successfully before modifying"),
+			reason:
+				"Deferred while loading path-specific instructions. Apply them, then retry the mutation.",
 		});
+		const retryContext = await pi._getHook("context")[0].handler(
+			{ messages: [] },
+			ctx,
+		);
+		expect(retryContext.messages[0].content).toContain("src agents");
+		await expect(toolHook(event, ctx)).resolves.toBeUndefined();
 	});
 
 	it("allows a new file after a successful directory-scoped access", async () => {

@@ -263,7 +263,7 @@ The shadow judge is disabled by default. Enable it with `damageControl.judge.ena
 
 ### `agents-context.ts`
 
-Extends Pi's native startup context with instructions discovered below the startup cwd after successful `read`, `grep`, `find`, or `ls` access. It loads `AGENTS.md`, falls back to `CLAUDE.md` in directories without `AGENTS.md`, and unions sibling target scopes for the current user turn. Native and nested instructions are deduplicated by content, including hardlinks exposed through different paths. Reading an instruction file does not inject that same file as a second context copy. Existing files require a current successful read before mutation. A direct new-file mutation is deferred only when it first enters an instruction scope that has not reached the model; the result explains the context deferral instead of reporting an unspecified block.
+Extends Pi's native startup context with instructions discovered below the startup cwd after successful `read`, `grep`, `find`, or `ls` access or when a mutating tool targets a nested path. It loads `AGENTS.md`, falls back to `CLAUDE.md` in directories without `AGENTS.md`, and unions sibling target scopes for the current user turn. Native and nested instructions are deduplicated by content, including hardlinks exposed through different paths. Reading an instruction file does not inject that same file as a second context copy. A mutation is deferred only when it first enters an instruction scope that has not reached the model; the result explains the context deferral instead of reporting an unspecified block.
 
 ### `tool-visibility.ts` and `tool-search.ts`
 
