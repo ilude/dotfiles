@@ -28,7 +28,7 @@
  * boundaries. Explicit cheap/fast/brief intent bypasses the continuation hold.
  *
  * Router default effort: router.effort.defaultLevel in settings (default
- * "medium") controls reset/startup and premium Codex routine-effort bias.
+ * "high") controls reset/startup and premium Codex routine-effort bias.
  *
  * Commands:
  *   /router-status   -- show current route and last classification

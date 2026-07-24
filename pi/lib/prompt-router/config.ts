@@ -21,7 +21,7 @@ export interface RouterConfig {
 }
 
 export const ROUTER_DEFAULTS: RouterConfig = {
-	defaultEffortLevel: "medium",
+	defaultEffortLevel: "high",
 	classifierMode: "t2",
 };
 

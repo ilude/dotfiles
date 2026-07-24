@@ -12,7 +12,7 @@ settings.
     "mode": "confgate"
   },
   "effort": {
-    "defaultLevel": "medium"
+    "defaultLevel": "high"
   }
 }
 ```
@@ -28,7 +28,7 @@ Selects the classifier implementation. Allowed values are `t2`, `lgbm`,
 
 Sets startup/reset thinking effort and the routine-effort bias for premium
 Codex models. Allowed values are `off`, `minimal`, `low`, `medium`, `high`, and
-`xhigh`. The default is `medium`.
+`xhigh`. The default is `high`.
 
 ## Runtime routing contract
 

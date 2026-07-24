@@ -17,7 +17,7 @@ import {
 export const PINNED_DEFAULTS = {
 	defaultModel: "gpt-5.6-sol",
 	defaultProvider: "openai-codex",
-	defaultThinkingLevel: "medium",
+	defaultThinkingLevel: "high",
 } as const;
 
 export function getSettingsPath(): string {

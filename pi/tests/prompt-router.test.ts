@@ -823,7 +823,7 @@ describe("prompt-router extension -- command registration", () => {
 			"info",
 		);
 		expect((ctx.ui as any).notify).toHaveBeenCalledWith(
-			expect.stringContaining("Current effort:   medium"),
+			expect.stringContaining("Current effort:   high"),
 			"info",
 		);
 		const output = (ctx.ui as any).notify.mock.calls[0][0] as string;
@@ -913,7 +913,7 @@ describe("prompt-router extension -- session_start hook", () => {
 
 		await sessionHooks[0].handler({}, ctx);
 
-		expect((pi as any).setThinkingLevel).toHaveBeenCalledWith("medium");
+		expect((pi as any).setThinkingLevel).toHaveBeenCalledWith("high");
 		expect((ctx.ui as any).setStatus).toHaveBeenCalledWith(
 			"router",
 			"router: ready",
@@ -933,10 +933,10 @@ describe("prompt-router extension -- session_start hook", () => {
 		});
 		await shortcut!.handler(ctx);
 
-		expect((pi as any).setThinkingLevel).toHaveBeenCalledWith("medium");
+		expect((pi as any).setThinkingLevel).toHaveBeenCalledWith("high");
 		expect((ctx.ui as any).setStatus).toHaveBeenCalledWith(
 			"router",
-			"thinking: medium",
+			"thinking: high",
 		);
 	});
 });
