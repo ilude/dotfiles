@@ -309,7 +309,7 @@ Workflow highlights:
 - `/plan-it` writes standalone plans with evidence, dependencies, validation, and durable execution state.
 - `/review-it` reviews artifact readiness directly and edits only when the request explicitly asks for repairs. Delegation remains optional.
 - `/do-it` handles bounded raw tasks or executes an existing `.specs/*/plan.md` in the current session. It does not require plan linting, duplicate task tracking, or automatic archiving.
-- `/commit` uses deterministic candidate extraction, isolated secret review, and ownership-aware commit planning. Ignored files are omitted, and a dirty submodule is excluded when its checked-out commit still matches the parent gitlink; an actual submodule commit change remains committable. Paths with the repository-defined Git attribute `commit-secrets=allow` bypass secret review; all other paths retain the default blocking policy. Ambiguous cross-domain paths require an explicit user decision instead of becoming one broad commit.
+- `/commit` uses deterministic candidate extraction, isolated secret review, and ownership-aware commit planning. Before the parent commit, each dirty direct submodule must be on an attached branch with an upstream, is updated with a fast-forward-only pull, and runs the same commit workflow; `/commit push` pushes each resulting submodule commit before the parent, while `--no-submodules` leaves dirty submodule worktrees untouched. Nested submodules are not processed automatically. Ignored files are omitted. Paths with the repository-defined Git attribute `commit-secrets=allow` bypass secret review; all other paths retain the default blocking policy. Ambiguous cross-domain paths require an explicit user decision instead of becoming one broad commit.
 
 ### `loop.ts`
 

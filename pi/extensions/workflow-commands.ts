@@ -5,7 +5,7 @@
  * files and dispatch them through hidden follow-up messages. `/commit` runs its
  * deterministic commit workflow directly.
  *
- *   /commit        -- smart git commit with secret scanning
+ *   /commit        -- smart git commit with submodule handling and secret scanning
  *   /new-terminal  -- open a plain shell in this cwd in a new terminal
  *   /plan-it       -- crystallize conversation context into an executable plan
  *   /prd-it        -- refine fuzzy ideas into an optional PRD artifact
@@ -37,7 +37,10 @@ import { Type } from "@sinclair/typebox";
 import { commitFailureMessage } from "../lib/commit/failure";
 import { validateCommitMessage } from "../lib/commit/message";
 import { preflightGitStateAsync } from "../lib/commit/plan";
-import { excludeDirtyOnlySubmodules } from "../lib/commit/submodule";
+import {
+	excludeDirtyOnlySubmodules,
+	parseDirectSubmodulePaths,
+} from "../lib/commit/submodule";
 import { emitTerminalBell } from "../lib/extension-utils";
 import { resolveCommitPlanningModelFromRegistry } from "../lib/model-routing";
 import { withTimingSpan } from "../lib/observability";
@@ -1264,6 +1267,33 @@ export function buildStagingPlan(input: {
 	};
 }
 
+interface CommitCommandOptions {
+	args: string;
+	noSubmodules: boolean;
+	push: boolean;
+}
+
+function parseCommitCommandOptions(rawArgs: string): CommitCommandOptions {
+	const tokens = rawArgs.trim().split(/\s+/).filter(Boolean);
+	return {
+		args: tokens.filter((token) => token !== "--no-submodules").join(" "),
+		noSubmodules: tokens.includes("--no-submodules"),
+		push: tokens.includes("push"),
+	};
+}
+
+export function statusHasDirtySubmodule(status: string): boolean {
+	return status.split(/\r?\n/).some((line) => {
+		const indexStatus = line[0] ?? "";
+		const worktreeStatus = line[1] ?? "";
+		return (
+			indexStatus === "m" ||
+			worktreeStatus === "m" ||
+			(worktreeStatus === "?" && indexStatus !== "?")
+		);
+	});
+}
+
 function parseCommitArgs(rawArgs: string, changedFiles: string[]) {
 	const tokens = rawArgs.trim().split(/\s+/).filter(Boolean);
 	const push = tokens.includes("push");
@@ -2220,12 +2250,179 @@ async function prepareCommitSelection(
 	return { parsedArgs, selection, diffStat, cachedStat, cachedDiff };
 }
 
+interface DirectSubmodule {
+	cwd: string;
+	path: string;
+}
+
+interface ExecuteCommitCommandOptions {
+	commandText?: string;
+	skipSubmoduleDiscovery?: boolean;
+}
+
+async function listDirtyDirectSubmodules(
+	cwd: string,
+	activity: CommitActivity,
+	signal?: AbortSignal,
+): Promise<DirectSubmodule[]> {
+	const root = await gitOrThrowAsync(
+		cwd,
+		["rev-parse", "--show-toplevel"],
+		activity,
+		signal,
+	);
+	const config = await runGitAsync(
+		root,
+		[
+			"config",
+			"-z",
+			"--file",
+			".gitmodules",
+			"--get-regexp",
+			"^submodule\\..*\\.path$",
+		],
+		activity,
+		signal,
+	);
+	if (config.code === 1 && !config.stdout && !config.stderr) return [];
+	if (config.code !== 0) {
+		throw new Error(
+			(config.stderr || config.stdout).trim() ||
+				"Failed to read direct submodule paths",
+		);
+	}
+
+	const dirty: DirectSubmodule[] = [];
+	for (const submodulePath of parseDirectSubmodulePaths(config.stdout)) {
+		const submoduleCwd = path.resolve(root, submodulePath);
+		const relative = path.relative(root, submoduleCwd);
+		if (
+			!relative ||
+			relative === ".." ||
+			relative.startsWith(`..${path.sep}`) ||
+			path.isAbsolute(relative)
+		) {
+			throw new Error(`Invalid submodule path outside repository: ${submodulePath}`);
+		}
+		if (!fs.existsSync(submoduleCwd)) continue;
+		const worktree = await runGitAsync(
+			submoduleCwd,
+			["rev-parse", "--is-inside-work-tree"],
+			undefined,
+			signal,
+		);
+		if (worktree.code !== 0 || worktree.stdout.trim() !== "true") continue;
+		const status = await gitOrThrowAsync(
+			submoduleCwd,
+			["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+			activity,
+			signal,
+		);
+		if (status) dirty.push({ cwd: submoduleCwd, path: submodulePath });
+	}
+	return dirty;
+}
+
+async function prepareDirtySubmodule(
+	submodule: DirectSubmodule,
+	activity: CommitActivity,
+	signal?: AbortSignal,
+): Promise<boolean> {
+	const preflight = await preflightGitStateAsync(
+		submodule.cwd,
+		(cwd, gitArgs, runSignal) =>
+			runGitAsync(cwd, gitArgs, activity, runSignal),
+		signal,
+	);
+	if (!preflight.ok) {
+		throw new Error(
+			`Submodule ${submodule.path} preflight failed:\n${preflight.blocked.join("\n")}`,
+		);
+	}
+	const upstream = await runGitAsync(
+		submodule.cwd,
+		["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+		activity,
+		signal,
+	);
+	if (upstream.code !== 0 || !upstream.stdout.trim()) {
+		throw new Error(
+			`Submodule ${submodule.path} must have an upstream branch before /commit can update it`,
+		);
+	}
+	const pull = await runGitAsync(
+		submodule.cwd,
+		["pull", "--ff-only", "--no-rebase", "--no-recurse-submodules"],
+		activity,
+		signal,
+	);
+	if (pull.code !== 0) {
+		throw new Error(
+			`Submodule ${submodule.path} pull failed: ${(pull.stderr || pull.stdout).trim() || "git pull failed"}`,
+		);
+	}
+	const status = await gitOrThrowAsync(
+		submodule.cwd,
+		["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+		activity,
+		signal,
+	);
+	return Boolean(status);
+}
+
+async function commitDirtyDirectSubmodules(
+	pi: ExtensionAPI,
+	ctx: WorkflowContext,
+	activity: CommitActivity,
+	push: boolean,
+) {
+	const submodules = await listDirtyDirectSubmodules(
+		ctx.cwd,
+		activity,
+		ctx.signal,
+	);
+	for (const submodule of submodules) {
+		activity.setPhase(`preparing submodule ${submodule.path}`);
+		activity.logInfo(`Preparing dirty submodule: ${submodule.path}`);
+		if (!(await prepareDirtySubmodule(submodule, activity, ctx.signal))) {
+			activity.logInfo(
+				`Submodule ${submodule.path} became clean after fast-forward pull`,
+			);
+			continue;
+		}
+		await executeCommitCommand(
+			pi,
+			push ? "push --no-submodules" : "--no-submodules",
+			{ ...ctx, cwd: submodule.cwd },
+			{
+				commandText: `/commit (${submodule.path})`,
+				skipSubmoduleDiscovery: true,
+			},
+		);
+		const remaining = await gitOrThrowAsync(
+			submodule.cwd,
+			["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+			activity,
+			ctx.signal,
+		);
+		if (remaining) {
+			throw new Error(
+				`Submodule ${submodule.path} still has uncommitted changes after its commit workflow`,
+			);
+		}
+	}
+	if (submodules.length > 0) activity.setPhase("preparing");
+}
+
 export async function executeCommitCommand(
 	pi: ExtensionAPI,
 	args: string,
 	ctx: WorkflowContext,
+	options: ExecuteCommitCommandOptions = {},
 ) {
-	const commandText = `/commit${args.trim() ? ` ${args.trim()}` : ""}`;
+	const commandOptions = parseCommitCommandOptions(args);
+	const commandText =
+		options.commandText ?? `/commit${args.trim() ? ` ${args.trim()}` : ""}`;
 	const activity = createCommitActivity(pi, ctx, commandText);
 	ctx.ui.notify(`Starting ${commandText}...`, "info");
 	activity.setPhase("preparing");
@@ -2251,9 +2448,25 @@ export async function executeCommitCommand(
 			activity.finish();
 			return ctx.ui.notify("Working tree is clean", "info");
 		}
+		if (
+			!options.skipSubmoduleDiscovery &&
+			!commandOptions.noSubmodules &&
+			statusHasDirtySubmodule(status)
+		) {
+			await commitDirtyDirectSubmodules(
+				pi,
+				ctx,
+				activity,
+				commandOptions.push,
+			);
+		}
 		let prepared: Awaited<ReturnType<typeof prepareCommitSelection>>;
 		try {
-			prepared = await prepareCommitSelection(args, ctx, activity);
+			prepared = await prepareCommitSelection(
+				commandOptions.args,
+				ctx,
+				activity,
+			);
 		} catch (error) {
 			if (!(error instanceof NoCommittableChangesError)) throw error;
 			activity.finish();
@@ -2460,7 +2673,7 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	pi.registerCommand("commit", {
-		description: "Smart git commit with flexible prompt-driven grouping",
+		description: "Smart git commit with submodule handling and flexible grouping",
 		handler: async (args, ctx) => {
 			try {
 				await executeCommitCommand(pi, args, ctx);

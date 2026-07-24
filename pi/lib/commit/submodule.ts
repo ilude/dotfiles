@@ -2,6 +2,21 @@ function normalizedPath(value: string): string {
 	return value.replaceAll("\\", "/");
 }
 
+export function parseDirectSubmodulePaths(rawConfig: string): string[] {
+	const paths: string[] = [];
+	const seen = new Set<string>();
+	for (const record of rawConfig.split("\0")) {
+		if (!record) continue;
+		const separator = record.indexOf("\n");
+		if (separator < 0) continue;
+		const submodulePath = normalizedPath(record.slice(separator + 1));
+		if (!submodulePath || seen.has(submodulePath)) continue;
+		seen.add(submodulePath);
+		paths.push(submodulePath);
+	}
+	return paths;
+}
+
 export function dirtyOnlySubmodulePaths(rawDiffIndex: string): Set<string> {
 	const records = rawDiffIndex.split("\0").filter(Boolean);
 	const dirtyOnly = new Set<string>();

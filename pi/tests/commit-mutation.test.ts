@@ -21,6 +21,7 @@ import {
 	listChangedFiles,
 	postClassificationRequestedFiles,
 	stageFiles,
+	statusHasDirtySubmodule,
 	SECRET_PATTERNS,
 } from "../extensions/workflow-commands.ts";
 import { timingSafeTokenEqual } from "../lib/commit/token.ts";
@@ -41,12 +42,30 @@ function repo() {
 	return dir;
 }
 
+function bareRepo() {
+	const dir = mkdtempSync(join(tmpdir(), "pi-commit-mutation-bare-"));
+	repos.push(dir);
+	run(dir, ["init", "--bare"]);
+	return dir;
+}
+
 afterEach(() => {
 	for (const dir of repos.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
 describe("commit mutation safety", () => {
-	it("excludes dirty submodules until their checked-out commit changes", async () => {
+	it.each([
+		[" m module", true],
+		[" ? module", true],
+		["Mm module", true],
+		["M? module", true],
+		[" M source.ts", false],
+		["?? source.ts", false],
+	])("detects dirty submodule status %s", (status, expected) => {
+		expect(statusHasDirtySubmodule(status)).toBe(expected);
+	});
+
+	it("commits dirty submodules before the parent unless opted out", async () => {
 		const child = repo();
 		writeFileSync(join(child, "child.txt"), "base\n");
 		run(child, ["add", "--", "child.txt"]);
@@ -67,25 +86,117 @@ describe("commit mutation safety", () => {
 		run(parent, ["commit", "-m", "chore: add module"]);
 
 		const checkout = join(parent, "module");
+		run(checkout, ["config", "user.email", "pi@example.invalid"]);
+		run(checkout, ["config", "user.name", "Pi Test"]);
 		writeFileSync(join(checkout, "child.txt"), "dirty\n");
 		expect(buildCommitPlan(parent).entries).toEqual([]);
 		expect(listChangedFiles(parent).all).toEqual([]);
 
 		const pi = createMockPi();
 		const ctx = createMockCtx({ cwd: parent });
-		await executeCommitCommand(pi as never, "", ctx as never);
+		await executeCommitCommand(pi as never, "--no-submodules", ctx as never);
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
 			"No committable parent-repository changes found; dirty submodule worktrees were left untouched.",
 			"info",
 		);
 		expect(run(parent, ["diff", "--cached", "--name-only"]).trim()).toBe("");
 
+		await executeCommitCommand(pi as never, "", ctx as never);
+
+		expect(run(checkout, ["status", "--porcelain"]).trim()).toBe("");
+		expect(run(parent, ["status", "--porcelain"]).trim()).toBe("");
+		expect(run(parent, ["rev-parse", "HEAD:module"]).trim()).toBe(
+			run(checkout, ["rev-parse", "HEAD"]).trim(),
+		);
+		expect(run(checkout, ["log", "-1", "--format=%s"]).trim()).toMatch(
+			/^(?:feat|fix|docs|chore|refactor|test|perf|ci|build|wip)(?:\([^)]+\))?: /,
+		);
+	});
+
+	it("stops before mutation when a dirty submodule has no upstream", async () => {
+		const child = repo();
+		writeFileSync(join(child, "child.txt"), "base\n");
+		run(child, ["add", "--", "child.txt"]);
+		run(child, ["commit", "-m", "chore: seed child"]);
+
+		const parent = repo();
+		writeFileSync(join(parent, "parent.txt"), "base\n");
+		run(parent, ["add", "--", "parent.txt"]);
+		run(parent, ["commit", "-m", "chore: seed parent"]);
+		run(parent, [
+			"-c",
+			"protocol.file.allow=always",
+			"submodule",
+			"add",
+			child,
+			"module",
+		]);
+		run(parent, ["commit", "-m", "chore: add module"]);
+
+		const checkout = join(parent, "module");
+		run(checkout, ["branch", "--unset-upstream"]);
+		writeFileSync(join(checkout, "child.txt"), "dirty\n");
+		const childHead = run(checkout, ["rev-parse", "HEAD"]).trim();
+		const parentHead = run(parent, ["rev-parse", "HEAD"]).trim();
+
+		const pi = createMockPi();
+		const ctx = createMockCtx({ cwd: parent });
+		await expect(
+			executeCommitCommand(pi as never, "", ctx as never),
+		).rejects.toThrow(
+			"Submodule module must have an upstream branch before /commit can update it",
+		);
+		expect(run(checkout, ["rev-parse", "HEAD"]).trim()).toBe(childHead);
+		expect(run(parent, ["rev-parse", "HEAD"]).trim()).toBe(parentHead);
+	});
+
+	it("pushes an automatically committed submodule before the parent", async () => {
+		const child = repo();
+		writeFileSync(join(child, "child.txt"), "base\n");
+		run(child, ["add", "--", "child.txt"]);
+		run(child, ["commit", "-m", "chore: seed child"]);
+		const childBranch = run(child, ["branch", "--show-current"]).trim();
+		const childRemote = bareRepo();
+		run(child, ["remote", "add", "origin", childRemote]);
+		run(child, ["push", "-u", "origin", childBranch]);
+		run(childRemote, ["symbolic-ref", "HEAD", `refs/heads/${childBranch}`]);
+
+		const parent = repo();
+		writeFileSync(join(parent, "parent.txt"), "base\n");
+		run(parent, ["add", "--", "parent.txt"]);
+		run(parent, ["commit", "-m", "chore: seed parent"]);
+		run(parent, [
+			"-c",
+			"protocol.file.allow=always",
+			"submodule",
+			"add",
+			childRemote,
+			"module",
+		]);
+		run(parent, ["commit", "-m", "chore: add module"]);
+		const parentBranch = run(parent, ["branch", "--show-current"]).trim();
+		const parentRemote = bareRepo();
+		run(parent, ["remote", "add", "origin", parentRemote]);
+		run(parent, ["push", "-u", "origin", parentBranch]);
+
+		const checkout = join(parent, "module");
 		run(checkout, ["config", "user.email", "pi@example.invalid"]);
 		run(checkout, ["config", "user.name", "Pi Test"]);
-		run(checkout, ["add", "--", "child.txt"]);
-		run(checkout, ["commit", "-m", "feat: advance child"]);
-		expect(buildCommitPlan(parent).safeStagePaths).toEqual(["module"]);
-		expect(listChangedFiles(parent).all).toEqual(["module"]);
+		writeFileSync(join(checkout, "child.txt"), "pushed\n");
+
+		const pi = createMockPi();
+		const ctx = createMockCtx({ cwd: parent });
+		await executeCommitCommand(pi as never, "push", ctx as never);
+
+		expect(run(childRemote, ["rev-parse", `refs/heads/${childBranch}`]).trim()).toBe(
+			run(checkout, ["rev-parse", "HEAD"]).trim(),
+		);
+		expect(run(parentRemote, ["rev-parse", `refs/heads/${parentBranch}`]).trim()).toBe(
+			run(parent, ["rev-parse", "HEAD"]).trim(),
+		);
+		expect(run(parent, ["rev-parse", "HEAD:module"]).trim()).toBe(
+			run(checkout, ["rev-parse", "HEAD"]).trim(),
+		);
 	});
 
 	it.each([
