@@ -1,6 +1,6 @@
 ---
 name: forgejo-actions
-description: "Forgejo Actions: .forgejo/workflows, forgejo-runner, labels, secrets, workflow_dispatch, CI/CD, or deployment. Not for Git remote/repo setup; use forgejo-git."
+description: "Forgejo Actions: .forgejo/workflows, forgejo-runner, labels, secrets, workflow_dispatch, CI/CD, or deployment. Not for Git remotes, repository setup, or Forgejo APIs; use git-workflow."
 ---
 
 # Forgejo Actions Workflow
@@ -10,7 +10,7 @@ description: "Forgejo Actions: .forgejo/workflows, forgejo-runner, labels, secre
 | Need | Use |
 | --- | --- |
 | Workflow YAML, runner labels, Actions deployment security | `forgejo-actions` |
-| Forgejo remotes, repo creation, push-to-create, API tokens | `forgejo-git` |
+| Forgejo remotes, repo creation, push-to-create, API tokens | `git-workflow` and its `forgejo.md` reference |
 | Forgejo service install/config via Ansible roles | `ansible` |
 | Generic Git commit/push workflow | `git-workflow` |
 

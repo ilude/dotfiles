@@ -1,11 +1,19 @@
 ---
 name: git-workflow
-description: Git operations, commits, branches, .git/, .gitignore, .gitattributes, push, merge, rebase, reset, filter-branch, or history rewrite.
+description: "Git operations, commits, branches, remotes, GitHub/GitLab/Forgejo repository setup, merge, rebase, reset, or history rewrite. Not for SSH client/server troubleshooting; use ssh. Not for Forgejo Actions; use forgejo-actions."
 ---
 
 # Git Workflow Guidelines
 
-Compact index for git operations. Load linked files for worktrees or hosting setup.
+Compact index for Git operations and repository hosting. Load linked files for worktrees or provider-specific setup.
+
+## Boundary
+
+| Need | Use |
+| --- | --- |
+| Git state, history, branches, worktrees, remotes, or repository hosting | `git-workflow` |
+| SSH transport, authentication, keys, agents, host verification, or sshd | `ssh` |
+| Forgejo Actions workflows and runners | `forgejo-actions` |
 
 ## Project-specific rules
 
@@ -48,4 +56,4 @@ Compact index for git operations. Load linked files for worktrees or hosting set
 ## Optional references
 
 - [reference.md](reference.md) - detailed guidance, examples, and templates.
-- [worktrees.md](worktrees.md), [github-setup.md](github-setup.md), [gitlab.md](gitlab.md).
+- [worktrees.md](worktrees.md), [github-setup.md](github-setup.md), [gitlab.md](gitlab.md), [forgejo.md](forgejo.md).

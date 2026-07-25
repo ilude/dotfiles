@@ -6,6 +6,7 @@ Comprehensive git workflow principles for all git operations.
 - [worktrees.md](worktrees.md) - Git worktrees for parallel development
 - [github-setup.md](github-setup.md) - GitHub repository configuration
 - [gitlab.md](gitlab.md) - GitLab CLI (glab) workflow
+- [forgejo.md](forgejo.md) - Forgejo repository hosting, APIs, and provider-specific authentication
 
 ## Critical Rules
 
