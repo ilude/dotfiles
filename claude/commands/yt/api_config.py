@@ -5,9 +5,6 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 
-DEFAULT_API_BASE = "http://192.168.16.241:8000/api/v1"
-
-
 def load_secrets_file() -> None:
     """Load secrets from ~/.dotfiles/.env if env vars not set.
 
@@ -37,9 +34,14 @@ def load_secrets_file() -> None:
 
 
 def get_api_base() -> str:
-    """Get menos API base URL from MENOS_API_BASE env var or default."""
+    """Get the explicitly configured menos API base URL."""
     load_secrets_file()
-    return os.getenv("MENOS_API_BASE", DEFAULT_API_BASE)
+    value = os.getenv("MENOS_API_BASE", "").strip()
+    if not value:
+        raise RuntimeError(
+            "MENOS_API_BASE is required; set it in the environment or ~/.dotfiles/.env"
+        )
+    return value
 
 
 def get_api_host() -> str:

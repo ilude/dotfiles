@@ -9,6 +9,8 @@ YouTube request: $ARGUMENTS
 
 Use this workflow to ingest, search, list, fetch content, or fetch transcripts for YouTube videos through menos.
 
+`MENOS_API_BASE` must be set in the environment or `~/.dotfiles/.env`. The clients fail clearly when it is missing instead of using an embedded endpoint.
+
 ## Ingest default
 
 1. Extract the YouTube video ID or URL from the request.

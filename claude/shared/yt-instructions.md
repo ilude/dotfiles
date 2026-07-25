@@ -135,7 +135,7 @@ When the user asks detailed questions about a video after ingestion:
 
 Required:
 - SSH key at `~/.ssh/id_ed25519` (for API auth via RFC 9421 signing)
-- menos API running at `192.168.16.241:8000`
+- `MENOS_API_BASE` set in the environment or `~/.dotfiles/.env` to the active `/api/v1` endpoint; there is no embedded endpoint fallback
 
 Optional (for local file browsing):
 - rclone configured with `menos` remote

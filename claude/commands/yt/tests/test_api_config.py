@@ -97,11 +97,11 @@ class TestGetApiBase:
             with patch("api_config.load_secrets_file"):
                 assert get_api_base() == "http://custom:9000/api/v1"
 
-    def test_get_api_base_returns_default(self):
+    def test_get_api_base_requires_configuration(self):
         with patch.dict(os.environ, {}, clear=True):
             with patch("api_config.load_secrets_file"):
-                result = get_api_base()
-                assert result == "http://192.168.16.241:8000/api/v1"
+                with pytest.raises(RuntimeError, match="MENOS_API_BASE is required"):
+                    get_api_base()
 
 
 class TestGetApiHost:
@@ -111,9 +111,9 @@ class TestGetApiHost:
         with patch("api_config.get_api_base", return_value="http://myhost:8000/api/v1"):
             assert get_api_host() == "myhost:8000"
 
-    def test_get_api_host_extracts_default_netloc(self):
-        with patch("api_config.get_api_base", return_value="http://192.168.16.241:8000/api/v1"):
-            assert get_api_host() == "192.168.16.241:8000"
+    def test_get_api_host_extracts_configured_netloc(self):
+        with patch("api_config.get_api_base", return_value="https://menos.example.net/api/v1"):
+            assert get_api_host() == "menos.example.net"
 
 
 class TestExtractVideoId:
