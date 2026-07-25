@@ -17,7 +17,6 @@ from urllib.parse import urlparse
 
 STATUS_PATH = Path.home() / ".claude" / "state" / "menos_status.json"
 YT_ROOT = Path.home() / ".dotfiles" / "yt"
-DEFAULT_API_BASE = "http://192.168.16.241:8000/api/v1"
 TRANSCRIPT_LIMIT_BYTES = 5 * 1024 * 1024
 
 
@@ -29,8 +28,16 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def configured_api_base() -> str | None:
+    value = os.getenv("MENOS_API_BASE") or os.getenv("MENOS_BASE_URL")
+    return value.strip() if value and value.strip() else None
+
+
 def api_base() -> str:
-    return os.getenv("MENOS_API_BASE") or os.getenv("MENOS_BASE_URL", DEFAULT_API_BASE)
+    value = configured_api_base()
+    if not value:
+        raise RuntimeError("MENOS_API_BASE or MENOS_BASE_URL is not configured")
+    return value
 
 
 def api_host() -> str:

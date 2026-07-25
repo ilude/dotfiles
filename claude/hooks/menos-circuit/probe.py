@@ -5,14 +5,17 @@ from __future__ import annotations
 
 from urllib.parse import urljoin
 
-from lib import api_base, disabled, http_request, write_status
+from lib import configured_api_base, disabled, http_request, write_status
 
 
 def main() -> int:
     if disabled():
         return 0
+    configured_base = configured_api_base()
+    if not configured_base:
+        return 0
     try:
-        base = api_base().removesuffix("/api/v1")
+        base = configured_base.removesuffix("/api/v1")
         status, body = http_request("GET", urljoin(base + "/", "health"), timeout=3.0)
         if 200 <= status < 300:
             write_status(True, None)

@@ -18,6 +18,7 @@ from lib import (
     YT_ROOT,
     api_base,
     atomic_delete_dir,
+    configured_api_base,
     disabled,
     http_request,
     read_status,
@@ -195,6 +196,9 @@ def run() -> int:
     logger = setup_logging()
     if disabled():
         logger.info("disabled via MENOS_CIRCUIT_DISABLED")
+        return 0
+    if not configured_api_base():
+        logger.info("skip: MENOS_API_BASE or MENOS_BASE_URL not configured")
         return 0
     status = read_status()
     if status and status.get("available") is False:
