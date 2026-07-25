@@ -12,6 +12,7 @@ DOTFILES_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PI_DIR="${DOTFILES_DIR}/pi"
 PI_NODE_MODULES="${PI_DIR}/node_modules"
 PNPM_GLOBAL_NODE_MODULES="${PNPM_GLOBAL_NODE_MODULES:-}"
+PNPM_GLOBAL_PACKAGE_PATHS=""
 
 PACKAGES=(
     "@earendil-works/pi-coding-agent"
@@ -101,24 +102,37 @@ package_name() {
     printf '%s\n' "${package##*/}"
 }
 
-package_path_from_pnpm_list() {
-    local package="$1"
-    pnpm list -g --json --depth -1 "$package" 2>/dev/null | node -e '
-const packageName = process.argv[1];
+global_package_paths_from_pnpm() {
+    pnpm list -g --json --depth -1 2>/dev/null | node -e '
 let input = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => { input += chunk; });
 process.stdin.on("end", () => {
   try {
     const parsed = JSON.parse(input || "[]");
-    const entry = Array.isArray(parsed) ? parsed[0] : undefined;
-    const dep = entry?.dependencies?.[packageName];
-    if (dep?.path) console.log(dep.path);
+    const entries = Array.isArray(parsed) ? parsed : [parsed];
+    for (const entry of entries) {
+      for (const [packageName, dependency] of Object.entries(entry?.dependencies ?? {})) {
+        if (dependency?.path) console.log(`${packageName}\t${dependency.path}`);
+      }
+    }
   } catch {
     process.exitCode = 0;
   }
 });
-' "$package"
+'
+}
+
+package_path_from_pnpm_list() {
+    local package="$1"
+    local listed_package listed_path
+    while IFS=$'\t' read -r listed_package listed_path; do
+        if [[ "$listed_package" == "$package" ]]; then
+            printf '%s\n' "$listed_path"
+            return 0
+        fi
+    done <<<"$PNPM_GLOBAL_PACKAGE_PATHS"
+    return 1
 }
 
 find_package_path() {
@@ -208,6 +222,7 @@ if [[ -z "$PNPM_GLOBAL_NODE_MODULES" || ! -d "$PNPM_GLOBAL_NODE_MODULES" ]]; the
 fi
 
 mkdir -p "$PI_NODE_MODULES"
+PNPM_GLOBAL_PACKAGE_PATHS=$(global_package_paths_from_pnpm)
 
 for package in "${PACKAGES[@]}"; do
     link_package "$package"

@@ -2,6 +2,7 @@
 
 # Shell scripts to check (excludes dotbot submodule and plugins)
 SHELL_SCRIPTS := home/.bashrc home/.zshrc install wsl/install scripts/ci-bootstrap scripts/git-ssh-setup scripts/claude-link-setup scripts/claude-mcp-setup scripts/copilot-link-setup scripts/zsh-setup scripts/zsh-plugins wsl/packages
+PYTEST_WORKERS ?= 4
 
 # Default target
 help:
@@ -69,31 +70,16 @@ preflight:
 ci-bootstrap:
 	@scripts/ci-bootstrap base
 
-# Run all tests (pytest) with timing
+# Run all tests (pytest) with bounded parallelism and timing.
 test: preflight
 	@echo "=== Test Suite ==="
 	@start_time=$$(date +%s); \
-	echo ""; \
-	echo "--- pytest: test/ ---"; \
-	file_start=$$(date +%s); \
-	uv run pytest test/ -v --tb=short --durations=5 && \
-	echo "  Time: $$(($$(date +%s) - file_start))s"; \
-	echo ""; \
-	echo "--- pytest: damage-control hooks ---"; \
-	file_start=$$(date +%s); \
-	uv run pytest claude/hooks/damage-control/tests/ -v --tb=short --durations=5 && \
-	echo "  Time: $$(($$(date +%s) - file_start))s"; \
-	echo ""; \
-	echo "--- pytest: path-normalization hooks ---"; \
-	file_start=$$(date +%s); \
-	uv run pytest claude/hooks/path-normalization/tests/ -v --tb=short --durations=5 && \
-	echo "  Time: $$(($$(date +%s) - file_start))s"; \
-	echo ""; \
-	echo "--- pytest: session-history hooks ---"; \
-	file_start=$$(date +%s); \
-	uv run pytest claude/hooks/session-history/tests/ -v --tb=short --durations=5 && \
-	echo "  Time: $$(($$(date +%s) - file_start))s"; \
-	echo ""; \
+	uv run pytest test/ \
+		claude/hooks/damage-control/tests/ \
+		claude/hooks/path-normalization/tests/ \
+		claude/hooks/session-history/tests/ \
+		-v --tb=short --durations=20 -n $(PYTEST_WORKERS) && \
+	echo "" && \
 	echo "=== All tests passed in $$(($$(date +%s) - start_time))s ==="
 
 # Run fast checks for repo invariants that CI depends on.
@@ -120,9 +106,9 @@ test-runtime: check-pi-extensions
 test-quick: preflight
 	uv run pytest test/test_config_patterns.py -v --tb=short -x
 
-# Run tests in parallel
+# Run all pytest-discovered suites with bounded parallelism.
 test-parallel: preflight
-	uv run pytest test/ claude/hooks/*/tests/ -v --tb=short -n auto
+	uv run pytest test/ claude/hooks/*/tests/ -v --tb=short -n $(PYTEST_WORKERS)
 
 # Run tests in Ubuntu 24.04 Docker container (matches CI environment)
 test-docker:
@@ -218,7 +204,9 @@ check-pi-extensions:
 	scripts/pi-deps-link-setup
 	cd pi && pnpm run typecheck
 	@echo "==> Running Pi Vitest suite (includes runtime smoke checks)"
-	cd pi && pnpm test
+	cd pi && pnpm test --exclude tests/commit-mutation.test.ts
+	@echo "==> Running subprocess-heavy Pi commit mutation tests in isolation"
+	cd pi && pnpm run test:commit-mutation
 	@echo "Pi extension checks passed."
 
 # Run configured quality validators once for an explicit file list.

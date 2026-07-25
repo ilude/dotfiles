@@ -30,6 +30,7 @@ index/
 operator/
 
 # Tool dependencies
+*.tsbuildinfo
 node_modules/
 extensions/web-fetch/node_modules/
 tests/node_modules/

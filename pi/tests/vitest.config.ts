@@ -59,7 +59,7 @@ export default defineConfig({
 		include: ["tests/**/*.test.ts"],
 		setupFiles: ["tests/setup.ts"],
 		mockReset: true,
-		maxWorkers: 8,
+		maxWorkers: process.platform === "win32" ? 4 : 8,
 		testTimeout: 30000,
 		hookTimeout: 30000,
 		coverage: {
