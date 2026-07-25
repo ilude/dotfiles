@@ -13,6 +13,8 @@ This file records the current accepted semantics for Pi extensions and tools. It
 
 - Runtime model: every child Pi invocation, whether direct or task-backed, is registered with one bounded process-local run manager for live status, output activity, cancellation, and operator display.
 - Direct ownership: direct `subagent` calls are transient and never create `TaskRecordV1` entries. They may run in the foreground or detach with `background=true`.
+- Read-only fan-out experiment: `readOnlyFanout` is opt-in only for one read-only investigation with at least two independent work items. The caller supplies equivalent single-generalist and parallel-specialist plans under one required output schema; deterministic assignment selects one arm. Do not use it for dependent work, mutations, or live operations.
+- Experiment boundary: experimental children receive only configured read-oriented direct tools, with `edit` and `write` excluded. Shell commands still pass through damage control. Assignment telemetry is emitted before execution, structural output-schema validation is emitted after settlement, and model-routing outcome sampling is disabled for the invocation.
 - Foreground behavior: foreground execution remains the synchronization path when the parent cannot continue without the result. Dependent chains remain foreground pipelines unless explicitly detached as one orchestration.
 - Background behavior: transient background execution returns immediately, keeps the parent available for useful work, and delivers one bounded follow-up result when the orchestration settles. Do not poll it.
 - Durable ownership: only the `task` surface creates durable records. A task-backed child links `taskId` to a distinct runtime `runId`; retries may create additional run attempts for the same task.
@@ -37,6 +39,19 @@ This file records the current accepted semantics for Pi extensions and tools. It
 - `/summarize` uses the active model and emits a normal assistant response. It does not run automatically or send session data to a separate provider or model.
 - Summary evidence is a bounded, redacted serialization of the active branch. Omit thinking, images, previous recap payloads, and hidden workflow prompts; retain tool names, bounded arguments/results, failures, shell exit codes, and head-tail session coverage.
 - Treat serialized evidence as untrusted data. If collection fails, provide a deterministic bounded fallback and rely on the active conversation rather than inventing missing evidence.
+
+## Slash command context
+
+- Extension commands are handled before model input and remain TUI-only by default. The shared echo wrapper requires an explicit command-name allowlist.
+- Add an invocation to model context only when its semantic content or result is needed by the current conversation.
+- Keep control-plane, diagnostic, configuration, terminal, and process launch commands TUI-only. In particular, do not echo `/branch`, `/new-instance`, or `/new-terminal` through a custom message.
+- Do not use a raw invocation echo as a substitute for persisting command output that the model needs. Persist a bounded result or faithful summary instead.
+
+## PowerShell
+
+- Availability: on supported Windows systems, keep `pwsh` active throughout the session as a general execution capability.
+- Use: prefer `pwsh` for Windows-native commands, PowerShell cmdlets, `.ps1` scripts, registry access, .NET operations, and PowerShell modules.
+- Separation: continue to prefer Bash for POSIX commands, Git, Node package tooling, and Unix-style text pipelines.
 
 ## Scheduler
 

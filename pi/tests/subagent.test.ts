@@ -5,6 +5,7 @@ import * as path from "node:path";
 import * as zlib from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import workflowFrictionExtension from "../extensions/workflow-friction-review.js";
+import { assignReadOnlyFanoutExperiment } from "../lib/orchestration-telemetry.js";
 import {
 	createMockCtx,
 	createMockPi,
@@ -438,6 +439,143 @@ You are a test agent.
 			const args = spawnMock.mock.calls[0][1] as string[];
 			expect(args).toContain("--session-id");
 			expect(args.join(" ")).toContain("Return only one JSON object");
+		},
+		SUBAGENT_TEST_TIMEOUT_MS,
+	);
+
+	it(
+		"assigns and records one read-only fan-out arm with structural validation",
+		async () => {
+			await fs.promises.writeFile(
+				path.join(tmpDir, ".pi", "agents", "tester.md"),
+				`---
+name: tester
+description: Test agent
+model: anthropic/claude-sonnet-4-6
+effort: high
+tools: read, bash, edit, write
+---
+
+You are a test agent.
+`,
+				"utf8",
+			);
+			spawnMock.mockImplementation((_command: string, args: string[]) => {
+				const proc = createMockProcess();
+				const sessionDir = args[args.indexOf("--session-dir") + 1];
+				const sessionId = args[args.indexOf("--session-id") + 1];
+				fs.mkdirSync(sessionDir, { recursive: true });
+				fs.writeFileSync(
+					path.join(
+						sessionDir,
+						`2026-07-17T00-00-00-000Z_${sessionId}.jsonl`,
+					),
+					'{"type":"session"}\n',
+					"utf8",
+				);
+				queueMicrotask(() => {
+					proc.stdout.emit(
+						"data",
+						`${JSON.stringify({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: '{"value":"valid"}' }],
+								stopReason: "end_turn",
+							},
+						})}\n`,
+					);
+					proc.emit("close", 0);
+				});
+				return proc;
+			});
+			const toolCallId = "fanout-call-3";
+			const expectedAssignment = assignReadOnlyFanoutExperiment(toolCallId, 2);
+			if (!expectedAssignment) throw new Error("assignment fixture must build");
+			expect(expectedAssignment.arm).toBe("parallel-specialists");
+			const { tool } = await loadTool();
+			const result = await tool.execute(
+				toolCallId,
+				{
+					readOnlyFanout: {
+						single: { agent: "tester", task: "Investigate both items" },
+						parallel: [
+							{ agent: "tester", task: "Investigate item one" },
+							{ agent: "tester", task: "Investigate item two" },
+						],
+					},
+					agentScope: "project",
+					outputSchema,
+				},
+				undefined,
+				undefined,
+				createMockCtx({ cwd: tmpDir }),
+			);
+
+			const expectedWorkers =
+				expectedAssignment.arm === "parallel-specialists" ? 2 : 1;
+			expect(spawnMock).toHaveBeenCalledTimes(expectedWorkers);
+			expect(result.details.experiment).toEqual(expectedAssignment);
+			expect(result.details.results).toHaveLength(expectedWorkers);
+			for (const call of spawnMock.mock.calls) {
+				const args = call[1] as string[];
+				const tools = args[args.indexOf("--tools") + 1];
+				expect(tools).toBe("read,bash");
+				expect(tools).not.toContain("edit");
+				expect(tools).not.toContain("write");
+				expect(args.join(" ")).toContain(
+					"This is a read-only experiment. Do not edit files or run mutating commands.",
+				);
+			}
+			const { getMetricsLogPath, readRecentEvents } = await import(
+				"../lib/metrics.ts"
+			);
+			const events = readRecentEvents(100);
+			const assignmentEvent = events.find(
+				(event) => event.event === "orchestration_experiment_assignment",
+			);
+			const outcomeEvent = events.find(
+				(event) => event.event === "orchestration_experiment_outcome",
+			);
+			const runEvent = events.find(
+				(event) => event.event === "orchestration_run",
+			);
+			expect(assignmentEvent?.data).toMatchObject({
+				assignmentId: expectedAssignment.assignmentId,
+				arm: expectedAssignment.arm,
+				independentWorkItems: 2,
+			});
+			expect(outcomeEvent?.data).toMatchObject({
+				assignmentId: expectedAssignment.assignmentId,
+				orchestrationId: assignmentEvent?.data?.orchestrationId,
+				validationOutcome: "passed",
+				checksTotal: expectedWorkers,
+				checksPassed: expectedWorkers,
+			});
+			expect(runEvent?.data).toMatchObject({
+				orchestrationId: assignmentEvent?.data?.orchestrationId,
+				mode:
+					expectedAssignment.arm === "parallel-specialists"
+						? "parallel"
+						: "single",
+				fanOut: expectedWorkers,
+			});
+			const storedEventNames = (
+				await fs.promises.readFile(getMetricsLogPath(), "utf8")
+			)
+				.trim()
+				.split("\n")
+				.map((line) => (JSON.parse(line) as { event: string }).event);
+			const assignmentIndex = storedEventNames.indexOf(
+				"orchestration_experiment_assignment",
+			);
+			const runIndex = storedEventNames.indexOf("orchestration_run");
+			const outcomeIndex = storedEventNames.indexOf(
+				"orchestration_experiment_outcome",
+			);
+			expect(assignmentIndex).toBeGreaterThanOrEqual(0);
+			expect(runIndex).toBeGreaterThan(assignmentIndex);
+			expect(outcomeIndex).toBeGreaterThan(runIndex);
 		},
 		SUBAGENT_TEST_TIMEOUT_MS,
 	);

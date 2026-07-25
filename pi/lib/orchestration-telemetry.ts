@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as readline from "node:readline";
@@ -11,8 +12,13 @@ import {
 import { sanitizeTaskValue } from "./task-security.ts";
 
 export const ORCHESTRATION_TELEMETRY_SCHEMA_VERSION = 1 as const;
+export const READ_ONLY_FANOUT_EXPERIMENT_ID = "read-only-fanout-v1";
+export const READ_ONLY_FANOUT_EXPERIMENT_VERSION = 1 as const;
+export const READ_ONLY_FANOUT_TASK_CLASS = "read-only-multi-item-analysis";
+export const READ_ONLY_FANOUT_RISK_CLASS = "read-only";
 
 const MAX_WORKERS = 32;
+const MAX_READ_ONLY_FANOUT_ITEMS = 8;
 const MAX_ORCHESTRATION_IDS = 64;
 const MAX_PARENT_USAGE_MODELS = 8;
 const MAX_STRING_LENGTH = 120;
@@ -116,6 +122,40 @@ export interface OrchestrationInteractionData {
 	direct: boolean;
 }
 
+export type ReadOnlyFanoutArm =
+	| "single-generalist"
+	| "parallel-specialists";
+
+export interface ReadOnlyFanoutAssignment {
+	experimentId: typeof READ_ONLY_FANOUT_EXPERIMENT_ID;
+	experimentVersion: typeof READ_ONLY_FANOUT_EXPERIMENT_VERSION;
+	assignmentId: string;
+	taskClass: typeof READ_ONLY_FANOUT_TASK_CLASS;
+	riskClass: typeof READ_ONLY_FANOUT_RISK_CLASS;
+	independentWorkItems: number;
+	arm: ReadOnlyFanoutArm;
+	assignmentMethod: "deterministic-hash";
+}
+
+export interface OrchestrationExperimentAssignmentData
+	extends ReadOnlyFanoutAssignment {
+	schemaVersion: 1;
+	orchestrationId: string;
+	interactionId?: string;
+}
+
+export interface OrchestrationExperimentOutcomeData {
+	schemaVersion: 1;
+	experimentId: typeof READ_ONLY_FANOUT_EXPERIMENT_ID;
+	experimentVersion: typeof READ_ONLY_FANOUT_EXPERIMENT_VERSION;
+	assignmentId: string;
+	orchestrationId: string;
+	validationKind: "output-schema";
+	validationOutcome: "passed" | "failed" | "not_run";
+	checksTotal: number;
+	checksPassed: number;
+}
+
 export interface BuildOrchestrationRunInput
 	extends Omit<OrchestrationRunData, "schemaVersion" | "workers"> {
 	workers: OrchestrationWorker[];
@@ -124,6 +164,16 @@ export interface BuildOrchestrationRunInput
 
 export interface BuildOrchestrationInteractionInput
 	extends Omit<OrchestrationInteractionData, "schemaVersion"> {
+	session?: string;
+}
+
+export interface BuildOrchestrationExperimentAssignmentInput
+	extends Omit<OrchestrationExperimentAssignmentData, "schemaVersion"> {
+	session?: string;
+}
+
+export interface BuildOrchestrationExperimentOutcomeInput
+	extends Omit<OrchestrationExperimentOutcomeData, "schemaVersion"> {
 	session?: string;
 }
 
@@ -137,6 +187,16 @@ export type OrchestrationEventInput =
 	| (Omit<RecordEventInput, "event" | "data"> & {
 			event: "orchestration_interaction";
 			data: MetricsData<OrchestrationInteractionData>;
+	  });
+
+export type OrchestrationExperimentEventInput =
+	| (Omit<RecordEventInput, "event" | "data"> & {
+			event: "orchestration_experiment_assignment";
+			data: MetricsData<OrchestrationExperimentAssignmentData>;
+	  })
+	| (Omit<RecordEventInput, "event" | "data"> & {
+			event: "orchestration_experiment_outcome";
+			data: MetricsData<OrchestrationExperimentOutcomeData>;
 	  });
 
 function hasOnlyKeys(
@@ -508,6 +568,155 @@ export function buildOrchestrationInteractionEvent(
 	if (input.session !== undefined && !session) return null;
 	return {
 		event: "orchestration_interaction",
+		...(session ? { session } : {}),
+		data,
+	};
+}
+
+/** Assigns the opt-in read-only fan-out experiment deterministically. */
+export function assignReadOnlyFanoutExperiment(
+	sampleKey: string,
+	independentWorkItems: number,
+): ReadOnlyFanoutAssignment | undefined {
+	if (
+		!sampleKey.trim() ||
+		!Number.isInteger(independentWorkItems) ||
+		independentWorkItems < 2 ||
+		independentWorkItems > MAX_READ_ONLY_FANOUT_ITEMS
+	)
+		return undefined;
+	const digest = createHash("sha256")
+		.update(`${READ_ONLY_FANOUT_EXPERIMENT_ID}:${sampleKey}`)
+		.digest();
+	return {
+		experimentId: READ_ONLY_FANOUT_EXPERIMENT_ID,
+		experimentVersion: READ_ONLY_FANOUT_EXPERIMENT_VERSION,
+		assignmentId: `fanout-${digest.subarray(1, 9).toString("hex")}`,
+		taskClass: READ_ONLY_FANOUT_TASK_CLASS,
+		riskClass: READ_ONLY_FANOUT_RISK_CLASS,
+		independentWorkItems,
+		arm:
+			digest[0] % 2 === 0
+				? "single-generalist"
+				: "parallel-specialists",
+		assignmentMethod: "deterministic-hash",
+	};
+}
+
+/** Builds the assignment event emitted before an experimental run starts. */
+export function buildOrchestrationExperimentAssignmentEvent(
+	input: BuildOrchestrationExperimentAssignmentInput,
+): OrchestrationExperimentEventInput | null {
+	const raw = input as unknown as Record<string, unknown>;
+	if (
+		!hasOnlyKeys(raw, [
+			"experimentId",
+			"experimentVersion",
+			"assignmentId",
+			"taskClass",
+			"riskClass",
+			"independentWorkItems",
+			"arm",
+			"assignmentMethod",
+			"orchestrationId",
+			"interactionId",
+			"session",
+		])
+	)
+		return null;
+	const assignmentId = metadataString(input.assignmentId);
+	const orchestrationId = metadataString(input.orchestrationId);
+	const interactionId = metadataString(input.interactionId);
+	if (
+		input.experimentId !== READ_ONLY_FANOUT_EXPERIMENT_ID ||
+		input.experimentVersion !== READ_ONLY_FANOUT_EXPERIMENT_VERSION ||
+		input.taskClass !== READ_ONLY_FANOUT_TASK_CLASS ||
+		input.riskClass !== READ_ONLY_FANOUT_RISK_CLASS ||
+		input.assignmentMethod !== "deterministic-hash" ||
+		(input.arm !== "single-generalist" &&
+			input.arm !== "parallel-specialists") ||
+		!Number.isInteger(input.independentWorkItems) ||
+		input.independentWorkItems < 2 ||
+		input.independentWorkItems > MAX_READ_ONLY_FANOUT_ITEMS ||
+		!assignmentId ||
+		!orchestrationId ||
+		(input.interactionId !== undefined && !interactionId)
+	)
+		return null;
+	const data: MetricsData<OrchestrationExperimentAssignmentData> = {
+		schemaVersion: 1,
+		experimentId: input.experimentId,
+		experimentVersion: input.experimentVersion,
+		assignmentId,
+		taskClass: input.taskClass,
+		riskClass: input.riskClass,
+		independentWorkItems: input.independentWorkItems,
+		arm: input.arm,
+		assignmentMethod: input.assignmentMethod,
+		orchestrationId,
+		...(interactionId ? { interactionId } : {}),
+	};
+	const session = metadataString(input.session);
+	if (input.session !== undefined && !session) return null;
+	return {
+		event: "orchestration_experiment_assignment",
+		...(session ? { session } : {}),
+		data,
+	};
+}
+
+/** Builds the structural validation outcome for an experimental run. */
+export function buildOrchestrationExperimentOutcomeEvent(
+	input: BuildOrchestrationExperimentOutcomeInput,
+): OrchestrationExperimentEventInput | null {
+	const raw = input as unknown as Record<string, unknown>;
+	if (
+		!hasOnlyKeys(raw, [
+			"experimentId",
+			"experimentVersion",
+			"assignmentId",
+			"orchestrationId",
+			"validationKind",
+			"validationOutcome",
+			"checksTotal",
+			"checksPassed",
+			"session",
+		])
+	)
+		return null;
+	const assignmentId = metadataString(input.assignmentId);
+	const orchestrationId = metadataString(input.orchestrationId);
+	if (
+		input.experimentId !== READ_ONLY_FANOUT_EXPERIMENT_ID ||
+		input.experimentVersion !== READ_ONLY_FANOUT_EXPERIMENT_VERSION ||
+		input.validationKind !== "output-schema" ||
+		(input.validationOutcome !== "passed" &&
+			input.validationOutcome !== "failed" &&
+			input.validationOutcome !== "not_run") ||
+		!Number.isInteger(input.checksTotal) ||
+		input.checksTotal < 0 ||
+		!Number.isInteger(input.checksPassed) ||
+		input.checksPassed < 0 ||
+		input.checksPassed > input.checksTotal ||
+		!assignmentId ||
+		!orchestrationId
+	)
+		return null;
+	const data: MetricsData<OrchestrationExperimentOutcomeData> = {
+		schemaVersion: 1,
+		experimentId: input.experimentId,
+		experimentVersion: input.experimentVersion,
+		assignmentId,
+		orchestrationId,
+		validationKind: input.validationKind,
+		validationOutcome: input.validationOutcome,
+		checksTotal: input.checksTotal,
+		checksPassed: input.checksPassed,
+	};
+	const session = metadataString(input.session);
+	if (input.session !== undefined && !session) return null;
+	return {
+		event: "orchestration_experiment_outcome",
 		...(session ? { session } : {}),
 		data,
 	};

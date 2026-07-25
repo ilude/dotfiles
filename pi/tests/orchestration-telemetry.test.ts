@@ -3,6 +3,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+	assignReadOnlyFanoutExperiment,
+	buildOrchestrationExperimentAssignmentEvent,
+	buildOrchestrationExperimentOutcomeEvent,
 	buildOrchestrationInteractionEvent,
 	buildOrchestrationRunEvent,
 	readOrchestrationEvents,
@@ -66,6 +69,66 @@ describe("orchestration telemetry builders", () => {
 			schemaVersion: 1,
 			inlineBytesNotReturned: 15,
 		});
+	});
+
+	it("builds deterministic read-only fan-out assignment and outcome events", () => {
+		const assignment = assignReadOnlyFanoutExperiment("interaction-1", 3);
+		expect(assignment).toEqual(
+			assignReadOnlyFanoutExperiment("interaction-1", 3),
+		);
+		expect(assignment).toMatchObject({
+			experimentId: "read-only-fanout-v1",
+			experimentVersion: 1,
+			taskClass: "read-only-multi-item-analysis",
+			riskClass: "read-only",
+			independentWorkItems: 3,
+			assignmentMethod: "deterministic-hash",
+		});
+		if (!assignment) throw new Error("assignment fixture must build");
+		const assignmentEvent = buildOrchestrationExperimentAssignmentEvent({
+			...assignment,
+			orchestrationId: "orchestration-1",
+			interactionId: "interaction-1",
+		});
+		expect(assignmentEvent?.event).toBe(
+			"orchestration_experiment_assignment",
+		);
+		expect(assignmentEvent?.data).toMatchObject({
+			assignmentId: assignment.assignmentId,
+			orchestrationId: "orchestration-1",
+			interactionId: "interaction-1",
+		});
+		expect(
+			buildOrchestrationExperimentAssignmentEvent({
+				...assignment,
+				orchestrationId: "orchestration-1",
+				prompt: "not retained",
+			} as never),
+		).toBeNull();
+		const outcome = buildOrchestrationExperimentOutcomeEvent({
+			experimentId: assignment.experimentId,
+			experimentVersion: assignment.experimentVersion,
+			assignmentId: assignment.assignmentId,
+			orchestrationId: "orchestration-1",
+			validationKind: "output-schema",
+			validationOutcome: "passed",
+			checksTotal: 3,
+			checksPassed: 3,
+		});
+		expect(outcome?.event).toBe("orchestration_experiment_outcome");
+		expect(outcome?.data).toMatchObject({
+			validationOutcome: "passed",
+			checksTotal: 3,
+			checksPassed: 3,
+		});
+		expect(assignReadOnlyFanoutExperiment("interaction-1", 1)).toBeUndefined();
+		expect(
+			buildOrchestrationExperimentOutcomeEvent({
+				...outcome?.data,
+				checksTotal: 1,
+				checksPassed: 2,
+			} as never),
+		).toBeNull();
 	});
 
 	it("rejects unknown and content-bearing fields while redacting supported secret-like values", () => {

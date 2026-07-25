@@ -4,11 +4,12 @@
  * Spawns a separate `pi` process for each subagent invocation,
  * giving it an isolated context window.
  *
- * Supports three modes:
+ * Supports these modes:
  *   - Single: { agent: "name", task: "..." }
  *   - Parallel: { tasks: [{ agent: "name", task: "..." }, ...] }
  *   - Chain: { chain: [{ agent: "name", task: "... {previous} ..." }, ...] }
  *   - Continue: { continue: { agent: "name", session: "...", task: "..." } }
+ *   - Read-only fan-out experiment: equivalent single and parallel plans
  *
  * Uses JSON mode to capture structured output from subagents.
  */
@@ -46,8 +47,12 @@ import {
 import { TimingSpan } from "../../lib/observability.js";
 import { wrapCommandRegistration } from "../../lib/slash-command-echo.js";
 import {
+	assignReadOnlyFanoutExperiment,
+	buildOrchestrationExperimentAssignmentEvent,
+	buildOrchestrationExperimentOutcomeEvent,
 	buildOrchestrationRunEvent,
 	type OrchestrationWorker,
+	type ReadOnlyFanoutAssignment,
 } from "../../lib/orchestration-telemetry.js";
 import {
 	type NormalizedTaskUsage,
@@ -95,6 +100,15 @@ const STRUCTURED_CHAIN_ARTIFACT_BYTES = 8_000;
 const DELEGATED_SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const BACKGROUND_RESULT_MAX_BYTES = 48 * 1024;
 const BACKGROUND_RESULT_MAX_LINES = 1000;
+const READ_ONLY_EXPERIMENT_TOOLS = new Set([
+	"read",
+	"grep",
+	"find",
+	"ls",
+	"bash",
+]);
+const READ_ONLY_EXPERIMENT_INSTRUCTION =
+	"This is a read-only experiment. Do not edit files or run mutating commands.";
 
 function getDelegatedSessionDir(): string {
 	return path.join(getAgentDir(), "sessions", "subagents");
@@ -369,6 +383,7 @@ export interface SubagentDetails {
 	agentScope: AgentScope;
 	projectAgentsDir: string | null;
 	results: SingleResult[];
+	experiment?: ReadOnlyFanoutAssignment;
 }
 
 export function getFinalOutput(messages: Message[]): string {
@@ -751,6 +766,7 @@ interface SubagentRunContext {
 	owner?: "direct" | "task";
 	orchestrationId?: string;
 	mode?: SubagentRunMode;
+	readOnly?: boolean;
 }
 
 export class SubagentAbortError extends Error {
@@ -811,8 +827,14 @@ export async function runSingleAgent(
 	else if (agent.model) args.push("--model", agent.model);
 	const effectiveEffort = effortOverride ?? agent.effort;
 	if (effectiveEffort) args.push("--thinking", effectiveEffort);
-	if (agent.tools && agent.tools.length > 0)
+	if (runContext?.readOnly) {
+		const tools = (agent.tools ?? ["read", "bash"]).filter((tool) =>
+			READ_ONLY_EXPERIMENT_TOOLS.has(tool),
+		);
+		args.push("--tools", (tools.length > 0 ? tools : ["read"]).join(","));
+	} else if (agent.tools && agent.tools.length > 0) {
 		args.push("--tools", agent.tools.join(","));
+	}
 	for (const skillPath of resolveAgentSkillPaths(agent))
 		args.push("--skill", skillPath);
 
@@ -938,7 +960,9 @@ export async function runSingleAgent(
 		}
 		if (runController.signal.aborted) throw new SubagentAbortError();
 
-		args.push(`Task: ${task}`);
+		args.push(
+			`Task: ${runContext?.readOnly ? `${READ_ONLY_EXPERIMENT_INSTRUCTION}\n\n${task}` : task}`,
+		);
 		let unparsedStdout = "";
 
 		const subagentStartedAt = new Date().toISOString();
@@ -1224,6 +1248,16 @@ type TaskParams = {
 
 type ChainParams = TaskParams;
 
+type ReadOnlyFanoutTaskParams = TaskParams & {
+	output?: undefined;
+	outputMode?: undefined;
+};
+
+type ReadOnlyFanoutParams = {
+	single: ReadOnlyFanoutTaskParams;
+	parallel: ReadOnlyFanoutTaskParams[];
+};
+
 type ContinueParams = {
 	agent: string;
 	session: string;
@@ -1268,6 +1302,32 @@ const TaskItem = Type.Object({
 	),
 	outputMode: Type.Optional(OutputModeSchema),
 });
+
+const ReadOnlyFanoutTaskItem = Type.Object(
+	{
+		agent: Type.String({ description: "Name of the agent to invoke" }),
+		task: Type.String({ description: "Read-only task to delegate" }),
+		effort: Type.Optional(EffortSchema),
+		cwd: Type.Optional(
+			Type.String({ description: "Working directory for the agent process" }),
+		),
+	},
+	{ additionalProperties: false },
+);
+
+const ReadOnlyFanoutSchema = Type.Object(
+	{
+		single: ReadOnlyFanoutTaskItem,
+		parallel: Type.Array(ReadOnlyFanoutTaskItem, {
+			minItems: 2,
+			maxItems: MAX_CONCURRENCY,
+		}),
+	},
+	{
+		description:
+			"Opt-in read-only experiment with equivalent single-generalist and parallel-specialist plans. One arm is assigned deterministically. Requires outputSchema.",
+	},
+);
 
 const ChainItem = Type.Object({
 	agent: Type.String({ description: "Name of the agent to invoke" }),
@@ -1314,6 +1374,7 @@ const ModelPolicySchema = Type.Union(
 );
 
 const SubagentParams = Type.Object({
+	readOnlyFanout: Type.Optional(ReadOnlyFanoutSchema),
 	continue: Type.Optional(
 		Type.Object({
 			agent: Type.String({ description: "Agent used to create the session" }),
@@ -1492,7 +1553,8 @@ export default function (pi: ExtensionAPI) {
 		label: "Subagent",
 		description: [
 			"Delegate tasks to specialized subagents with isolated context.",
-			"Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder), continue (saved session follow-up).",
+			"Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder), continue (saved session follow-up), readOnlyFanout (equivalent single and parallel plans for the opt-in experiment).",
+			"readOnlyFanout assigns one arm deterministically, requires outputSchema, and restricts direct child tools to read-oriented tools.",
 			"Foreground execution waits for the result. Set background=true for transient detached execution with follow-up result delivery.",
 			"Direct invocations are process-local and do not create durable task records; use the task tool when durable tracking or dependencies are required.",
 			'Default agent scope is "user" (from ~/.pi/agent/agents).',
@@ -1503,6 +1565,7 @@ export default function (pi: ExtensionAPI) {
 		promptSnippet:
 			"Delegate transient foreground or background work to isolated specialist agents",
 		promptGuidelines: [
+			"Use readOnlyFanout only when one read-only investigation has at least two independent work items and both supplied plans satisfy the same output schema.",
 			"Use subagent with background=true for independent transient work, continue useful parent work, and consume the delivered follow-up instead of polling.",
 			"Use foreground subagent execution when the current turn cannot continue without the result or when running a dependent chain.",
 			"Use task instead of subagent when work needs durable tracking, dependencies, or cross-session recovery.",
@@ -1528,6 +1591,10 @@ export default function (pi: ExtensionAPI) {
 			const background = params.background === true;
 			const executionSignal = background ? undefined : signal;
 			const visibleUpdate = background ? undefined : onUpdate;
+			const fanoutPlan = params.readOnlyFanout as unknown as
+				| ReadOnlyFanoutParams
+				| undefined;
+			const hasReadOnlyFanout = fanoutPlan !== undefined;
 			const hasChain = (params.chain?.length ?? 0) > 0;
 			const hasTasks = (params.tasks?.length ?? 0) > 0;
 			const hasSingle = Boolean(params.agent && params.task);
@@ -1540,12 +1607,14 @@ export default function (pi: ExtensionAPI) {
 							modelSize,
 							modelPolicy,
 							_toolCallId,
-							hasChain
-								? "subagent-chain"
-								: hasTasks
-									? "subagent-parallel"
-									: "subagent-single",
-							effort || hasContinue ? 0 : undefined,
+							hasReadOnlyFanout
+								? "subagent-read-only-fanout"
+								: hasChain
+									? "subagent-chain"
+									: hasTasks
+										? "subagent-parallel"
+										: "subagent-single",
+							hasReadOnlyFanout || effort || hasContinue ? 0 : undefined,
 						)
 					: undefined;
 			const resolvedModel = sampledResolution?.model;
@@ -1559,11 +1628,66 @@ export default function (pi: ExtensionAPI) {
 			const agents = discovery.agents;
 			const confirmProjectAgents = params.confirmProjectAgents ?? false;
 			const modeCount =
+				Number(hasReadOnlyFanout) +
 				Number(hasChain) +
 				Number(hasTasks) +
 				Number(hasSingle) +
 				Number(hasContinue);
 
+			const orchestrationId = randomUUID();
+			const interactionId = registerOrchestrationInvocation(orchestrationId);
+			const fanoutPlanValid =
+				fanoutPlan !== undefined &&
+				typeof fanoutPlan.single?.agent === "string" &&
+				fanoutPlan.single.agent.trim().length > 0 &&
+				typeof fanoutPlan.single.task === "string" &&
+				fanoutPlan.single.task.trim().length > 0 &&
+				params.cwd === undefined &&
+				params.output === undefined &&
+				params.outputMode === undefined &&
+				fanoutPlan.single.output === undefined &&
+				fanoutPlan.single.outputMode === undefined &&
+				Array.isArray(fanoutPlan.parallel) &&
+				fanoutPlan.parallel.every(
+					(item) =>
+						typeof item?.agent === "string" &&
+						item.agent.trim().length > 0 &&
+						typeof item.task === "string" &&
+						item.task.trim().length > 0 &&
+						item.output === undefined &&
+						item.outputMode === undefined,
+				);
+			const fanoutAssignment = fanoutPlanValid
+				? assignReadOnlyFanoutExperiment(
+						interactionId ?? _toolCallId,
+						fanoutPlan.parallel.length,
+					)
+				: undefined;
+			const selectedTasks = fanoutAssignment
+				? fanoutAssignment.arm === "parallel-specialists"
+					? fanoutPlan?.parallel
+					: undefined
+				: (params.tasks as unknown as TaskParams[] | undefined);
+			const selectedSingle = fanoutAssignment
+				? fanoutAssignment.arm === "single-generalist"
+					? fanoutPlan?.single
+					: undefined
+				: hasSingle
+					? ({
+							agent: params.agent,
+							task: params.task,
+							cwd: params.cwd,
+							output: params.output,
+							outputMode: params.outputMode,
+						} as TaskParams)
+					: undefined;
+			const originalMode = hasChain
+				? "chain"
+				: selectedTasks
+					? "parallel"
+					: "single";
+			const executionMode: Exclude<SubagentRunMode, "task-execute"> =
+				hasContinue ? "continue" : originalMode;
 			const makeDetails =
 				(mode: "single" | "parallel" | "chain") =>
 				(results: SingleResult[]): SubagentDetails => ({
@@ -1571,18 +1695,11 @@ export default function (pi: ExtensionAPI) {
 					agentScope,
 					projectAgentsDir: discovery.projectAgentsDir,
 					results,
+					...(fanoutAssignment ? { experiment: fanoutAssignment } : {}),
 				});
-			const orchestrationId = randomUUID();
-			const interactionId = registerOrchestrationInvocation(orchestrationId);
 			const invocationStartedAt = Date.now();
-			const originalMode = hasChain
-				? "chain"
-				: hasTasks
-					? "parallel"
-					: "single";
-			const executionMode: Exclude<SubagentRunMode, "task-execute"> =
-				hasContinue ? "continue" : originalMode;
 			let orchestrationEmitted = false;
+			let experimentAssignmentEmitted = false;
 			const complete = <T extends AgentToolResult<SubagentDetails>>(
 				result: T,
 			): T => {
@@ -1685,6 +1802,35 @@ export default function (pi: ExtensionAPI) {
 				});
 				if (event)
 					recordEvent(event as unknown as Parameters<typeof recordEvent>[0]);
+				if (fanoutAssignment && experimentAssignmentEmitted) {
+					const checksPassed = results.filter(
+						(worker) =>
+							worker.exitCode === 0 &&
+							worker.stopReason !== "error" &&
+							worker.stopReason !== "aborted" &&
+							Object.hasOwn(worker, "structuredOutput"),
+					).length;
+					const outcome = buildOrchestrationExperimentOutcomeEvent({
+						experimentId: fanoutAssignment.experimentId,
+						experimentVersion: fanoutAssignment.experimentVersion,
+						assignmentId: fanoutAssignment.assignmentId,
+						orchestrationId,
+						validationKind: "output-schema",
+						validationOutcome:
+							results.length === 0
+								? "not_run"
+								: checksPassed === results.length
+									? "passed"
+									: "failed",
+						checksTotal: results.length,
+						checksPassed,
+						session: ctx.sessionManager?.getSessionId?.(),
+					});
+					if (outcome)
+						recordEvent(
+							outcome as unknown as Parameters<typeof recordEvent>[0],
+						);
+				}
 				return result;
 			};
 			const run = async (
@@ -1698,6 +1844,7 @@ export default function (pi: ExtensionAPI) {
 						owner: "direct",
 						orchestrationId,
 						mode: executionMode,
+						...(fanoutAssignment ? { readOnly: true } : {}),
 					};
 					if (outputSchema) {
 						args[3] = `${args[3]}\n\n${schemaOutputInstruction(outputSchema)}`;
@@ -1794,6 +1941,28 @@ export default function (pi: ExtensionAPI) {
 					details: makeDetails("single")([]),
 				});
 			}
+			if (hasReadOnlyFanout && (!fanoutPlanValid || !fanoutAssignment)) {
+				return complete({
+					content: [
+						{
+							type: "text",
+							text: "Invalid readOnlyFanout parameters. Provide one single plan and 2-8 parallel plans.",
+						},
+					],
+					details: makeDetails("single")([]),
+				});
+			}
+			if (hasReadOnlyFanout && !outputSchema) {
+				return complete({
+					content: [
+						{
+							type: "text",
+							text: "Invalid readOnlyFanout parameters. outputSchema is required for structural validation.",
+						},
+					],
+					details: makeDetails("single")([]),
+				});
+			}
 
 			if (
 				(agentScope === "project" || agentScope === "both") &&
@@ -1803,9 +1972,10 @@ export default function (pi: ExtensionAPI) {
 				const requestedAgentNames = new Set<string>();
 				if (params.chain)
 					for (const step of params.chain) requestedAgentNames.add(step.agent);
-				if (params.tasks)
-					for (const t of params.tasks) requestedAgentNames.add(t.agent);
-				if (params.agent) requestedAgentNames.add(params.agent);
+				if (selectedTasks)
+					for (const task of selectedTasks)
+						requestedAgentNames.add(task.agent);
+				if (selectedSingle) requestedAgentNames.add(selectedSingle.agent);
 				if (params.continue) requestedAgentNames.add(params.continue.agent);
 
 				const projectAgentsRequested = Array.from(requestedAgentNames)
@@ -1828,11 +1998,24 @@ export default function (pi: ExtensionAPI) {
 									text: "Canceled: project-local agents not approved.",
 								},
 							],
-							details: makeDetails(
-								hasChain ? "chain" : hasTasks ? "parallel" : "single",
-							)([]),
+							details: makeDetails(originalMode)([]),
 						});
 				}
+			}
+
+			if (fanoutAssignment) {
+				const assignmentEvent = buildOrchestrationExperimentAssignmentEvent({
+					...fanoutAssignment,
+					orchestrationId,
+					...(interactionId ? { interactionId } : {}),
+					session: ctx.sessionManager?.getSessionId?.(),
+				});
+				if (assignmentEvent)
+					experimentAssignmentEmitted = Boolean(
+						recordEvent(
+							assignmentEvent as unknown as Parameters<typeof recordEvent>[0],
+						),
+					);
 			}
 
 			const executeSelectedMode = async (): Promise<
@@ -1981,8 +2164,8 @@ export default function (pi: ExtensionAPI) {
 				});
 			}
 
-			if (params.tasks && params.tasks.length > 0) {
-				const tasks = params.tasks as TaskParams[];
+			if (selectedTasks && selectedTasks.length > 0) {
+				const tasks = selectedTasks;
 
 				// Track all results for streaming updates
 				const allResults: SingleResult[] = new Array(tasks.length);
@@ -2088,13 +2271,13 @@ export default function (pi: ExtensionAPI) {
 				});
 			}
 
-			if (params.agent && params.task) {
+			if (selectedSingle) {
 				const result = await run(
 					ctx.cwd,
 					agents,
-					params.agent,
-					params.task,
-					params.cwd,
+					selectedSingle.agent,
+					selectedSingle.task,
+					selectedSingle.cwd,
 					undefined,
 					executionSignal,
 					visibleUpdate,
@@ -2109,10 +2292,10 @@ export default function (pi: ExtensionAPI) {
 				);
 				finalizeOutput(
 					result,
-					params.output,
-					params.outputMode,
+					selectedSingle.output,
+					selectedSingle.outputMode,
 					ctx.cwd,
-					params.cwd,
+					selectedSingle.cwd,
 					0,
 					false,
 				);
@@ -2195,6 +2378,18 @@ export default function (pi: ExtensionAPI) {
 			const backgroundHint = args.background
 				? ` ${theme.fg("warning", "(background)")}`
 				: "";
+			if (args.readOnlyFanout) {
+				const itemCount = args.readOnlyFanout.parallel.length;
+				return new Text(
+					theme.fg("toolTitle", theme.bold("subagent ")) +
+						theme.fg("accent", `read-only fan-out (${itemCount} items)`) +
+						theme.fg("muted", ` [${scope}]`) +
+						modelHint +
+						backgroundHint,
+					0,
+					0,
+				);
+			}
 			if (args.continue) {
 				return new Text(
 					theme.fg("toolTitle", theme.bold("subagent ")) +

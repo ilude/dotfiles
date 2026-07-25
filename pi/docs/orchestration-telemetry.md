@@ -1,8 +1,9 @@
 # Orchestration Telemetry
 
 Orchestration telemetry records bounded, metadata-only measurements for delegated
-work. It uses the existing metrics JSONL stream and has two event names:
-`orchestration_run` and `orchestration_interaction`.
+work. It uses the existing metrics JSONL stream and has four event names:
+`orchestration_run`, `orchestration_interaction`,
+`orchestration_experiment_assignment`, and `orchestration_experiment_outcome`.
 
 ## Storage, privacy, and retention
 
@@ -20,8 +21,8 @@ prompts, child output, terminal output, tool arguments, or response content.
 
 For a bounded purge, first stop writers for the target directory and make a
 backup of one identified metrics file. Then remove only JSONL records whose
-`event` is `orchestration_run` or `orchestration_interaction`, verify the backup
-and retained record count, and replace only that identified file. Do not purge a
+`event` is one of the four orchestration event names, verify the backup and
+retained record count, and replace only that identified file. Do not purge a
 shared metrics root. For a dedicated scratch `PI_METRICS_DIR`, remove the whole
 scratch directory only after confirming it contains no other records.
 
@@ -35,7 +36,7 @@ Every stored record uses the metrics envelope below. The event payload is in
 | `schemaVersion` | Metrics envelope schema version; currently `1`. |
 | `id` | Unique envelope record ID. |
 | `ts` | Event timestamp in ISO-8601 form. |
-| `event` | `orchestration_run` or `orchestration_interaction`. |
+| `event` | One of the four orchestration event names. |
 | `session` | Optional session identifier. |
 | `data` | Event-specific payload. |
 
@@ -115,6 +116,62 @@ duration, turns, usage, and cost fields alongside the experiment tags. A result
 without a structured validation contract records `validationOutcome` as
 `unavailable` rather than inferring quality from process success.
 
+## Read-only fan-out experiment
+
+`readOnlyFanout` is an opt-in subagent mode for one read-only investigation with
+at least two independent work items. The caller supplies equivalent
+single-generalist and parallel-specialist plans and one required `outputSchema`.
+`read-only-fanout-v1` deterministically assigns one arm from the current
+interaction ID, or the tool-call ID when no interaction is active. Model-routing
+outcome sampling is disabled for the invocation so two experiments do not
+confound each other.
+
+The experimental child process receives only configured read-oriented direct
+tools. `edit` and `write` are excluded; shell commands continue through damage
+control. This is a bounded tool restriction, not a claim that arbitrary shell
+commands are intrinsically read-only.
+
+### `orchestration_experiment_assignment`
+
+The assignment event is emitted before child execution. Its payload schema
+version is `1`.
+
+| Field | Required | Meaning |
+|---|---:|---|
+| `schemaVersion` | yes | Assignment payload schema version. |
+| `experimentId` | yes | `read-only-fanout-v1`. |
+| `experimentVersion` | yes | Experiment contract version, currently `1`. |
+| `assignmentId` | yes | Deterministic assignment identity. |
+| `orchestrationId` | yes | Invocation identity used to join the run. |
+| `interactionId` | no | Parent interaction identity when available. |
+| `taskClass` | yes | `read-only-multi-item-analysis`. |
+| `riskClass` | yes | `read-only`. |
+| `independentWorkItems` | yes | Number of supplied parallel work items, from 2 through 8. |
+| `arm` | yes | `single-generalist` or `parallel-specialists`. |
+| `assignmentMethod` | yes | `deterministic-hash`. |
+
+### `orchestration_experiment_outcome`
+
+The outcome event is emitted after the run settles and joins to the assignment
+and run through `orchestrationId`. It records structural output validation only;
+it does not assert factual correctness or user value.
+
+| Field | Required | Meaning |
+|---|---:|---|
+| `schemaVersion` | yes | Outcome payload schema version. |
+| `experimentId` | yes | `read-only-fanout-v1`. |
+| `experimentVersion` | yes | Experiment contract version, currently `1`. |
+| `assignmentId` | yes | Identity from the assignment event. |
+| `orchestrationId` | yes | Invocation identity used to join the run. |
+| `validationKind` | yes | `output-schema`. |
+| `validationOutcome` | yes | `passed`, `failed`, or `not_run`. |
+| `checksTotal` | yes | Number of selected workers requiring schema validation. |
+| `checksPassed` | yes | Number of selected workers whose output passed validation. |
+
+A `passed` structural outcome is not a task-quality label. Factual verification,
+repository validation, and user acceptance remain separate outcomes for later
+experiments.
+
 ## `orchestration_interaction`
 
 An interaction describes one parent interaction, whether it delegated work or
@@ -146,10 +203,14 @@ the token and cost fields are optional. `costSource` is `pi-usage` or
 - `interactionId` identifies the parent interaction. It joins run
   `interactionId` values to interaction records and joins interaction records to
   workflow-friction records by their explicit interaction ID.
+- `assignmentId` identifies one deterministic experimental assignment. The
+  assignment and outcome also retain `orchestrationId`, which is the exact join
+  to the executed run.
 
-Use `orchestrationId` for run-to-interaction membership, `runId` for worker
-identity, and `taskId` only for task-registry correlation. Do not infer a join
-from timestamps, agent names, or model names.
+Use `orchestrationId` for run-to-interaction and experiment-to-run membership,
+`assignmentId` for assignment-to-outcome identity, `runId` for worker identity,
+and `taskId` only for task-registry correlation. Do not infer a join from
+timestamps, agent names, or model names.
 
 ## Validation workflow
 
@@ -181,9 +242,11 @@ Run `make check` from the repository root after the live gate. Archive preflight
 
 `readOrchestrationEvents({ dir, days, now })` reads the legacy
 `metrics.jsonl` file and UTC daily files in the requested time window. It
-accepts only the two orchestration event names, validates their closed schemas,
+accepts the run and interaction event names, validates their closed schemas,
 filters by envelope timestamp, deduplicates by envelope `id`, and returns a
-stable sort by `ts` then `id`.
+stable sort by `ts` then `id`. Experiment assignment and outcome events remain
+available through the general metrics stream and offline analytics; the bounded
+operator report does not treat structural validation as task quality.
 
 The reader is bounded: at most 367 files, 8 MiB per line, 256 MiB total input,
 and 10,000 malformed lines. It skips malformed, oversized, duplicate, and
